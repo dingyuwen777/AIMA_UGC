@@ -31,17 +31,22 @@ class XiaohongshuUserSearchPagination:
         """按 search_id 推进用户搜索，并拒绝空页、重复页和停滞页。"""
         metadata = _find_mapping(body, required_any=("search_id", "next_page"))
         page_data = _find_mapping(body, required_any=("users", "user_list", "items", "has_more"))
-        items = extract_user_search_items(body)
+        raw_items = _find_list(body, keys=("users", "user_list", "items"))
         search_id = _string(metadata.get("search_id"))
         next_page = _integer(metadata.get("next_page"), default=current_page + 1)
+        if raw_items is None:
+            return cls(next_page, search_id, (), False, "response_shape_unavailable")
+
+        items = tuple(item for item in raw_items if isinstance(item, dict))
+        has_more = _first_value((page_data, metadata), "has_more")
         if not items:
-            return cls(next_page, search_id, (), False, "empty_page")
+            stop_reason = "empty_page_with_more" if has_more is True else "empty_page"
+            return cls(next_page, search_id, (), False, stop_reason)
 
         item_ids = tuple(filter(None, (_user_item_id(item) for item in items)))
         if item_ids and item_ids == previous_item_ids:
             return cls(next_page, search_id, item_ids, False, "duplicate_page")
 
-        has_more = _first_value((page_data, metadata), "has_more")
         if has_more is False:
             return cls(next_page, search_id, item_ids, False, "provider_exhausted")
         if next_page <= current_page:
@@ -68,17 +73,23 @@ class XiaohongshuUserNotesPagination:
         body: dict[str, Any],
         previous_item_ids: tuple[str, ...] = (),
     ) -> XiaohongshuUserNotesPagination:
-        """优先按响应级 cursor 推进用户笔记，并拒绝重复页和停滞 cursor。"""
-        items = extract_user_posted_note_items(body)
+        """优先按响应级 cursor 推进用户笔记，并拒绝异常结构、重复页和停滞 cursor。"""
+        page_data = _find_mapping(body, required_any=("notes", "has_more", "cursor"))
+        raw_items = _find_list(body, keys=("notes",))
+        if raw_items is None:
+            return cls(None, (), False, "response_shape_unavailable")
+
+        items = tuple(item for item in raw_items if isinstance(item, dict))
+        has_more = page_data.get("has_more")
         if not items:
-            return cls(None, (), False, "empty_page")
+            stop_reason = "empty_page_with_more" if has_more is True else "empty_page"
+            return cls(None, (), False, stop_reason)
 
         item_ids = tuple(filter(None, (_posted_note_item_id(item) for item in items)))
         if item_ids and item_ids == previous_item_ids:
             return cls(None, item_ids, False, "duplicate_page")
 
-        page_data = _find_mapping(body, required_any=("notes", "has_more", "cursor"))
-        if page_data.get("has_more") is False:
+        if has_more is False:
             return cls(None, item_ids, False, "provider_exhausted")
 
         next_cursor = _string(page_data.get("cursor")) or _posted_note_cursor(items[-1])
@@ -138,12 +149,10 @@ def build_user_posted_notes_request(
 
 def extract_user_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """从 App V2 用户搜索响应提取用户候选，不泄露 Provider Envelope。"""
-    page_data = _find_mapping(body, required_any=("users", "user_list", "items"))
-    for key in ("users", "user_list", "items"):
-        values = page_data.get(key)
-        if isinstance(values, list):
-            return tuple(item for item in values if isinstance(item, dict))
-    return ()
+    values = _find_list(body, keys=("users", "user_list", "items"))
+    if values is None:
+        return ()
+    return tuple(item for item in values if isinstance(item, dict))
 
 
 def extract_user_info_item(body: dict[str, Any]) -> dict[str, Any] | None:
@@ -166,9 +175,8 @@ def extract_user_info_item(body: dict[str, Any]) -> dict[str, Any] | None:
 
 def extract_user_posted_note_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """从 App V2 用户发布笔记响应提取 notes 列表。"""
-    page_data = _find_mapping(body, required_any=("notes",))
-    values = page_data.get("notes")
-    if not isinstance(values, list):
+    values = _find_list(body, keys=("notes",))
+    if values is None:
         return ()
     return tuple(item for item in values if isinstance(item, dict))
 
@@ -203,6 +211,20 @@ def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dic
             break
         current = nested
     return fallback
+
+
+def _find_list(body: dict[str, Any], *, keys: tuple[str, ...]) -> list[object] | None:
+    """沿 data Envelope 查找真实列表字段；缺失或字段类型异常返回 None。"""
+    current: object = body
+    for _ in range(5):
+        if not isinstance(current, dict):
+            return None
+        for key in keys:
+            if key in current:
+                value = current[key]
+                return value if isinstance(value, list) else None
+        current = current.get("data")
+    return None
 
 
 def _first_value(mappings: tuple[dict[str, Any], ...], key: str) -> object:
