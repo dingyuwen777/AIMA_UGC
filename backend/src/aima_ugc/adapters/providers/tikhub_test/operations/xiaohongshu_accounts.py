@@ -22,10 +22,10 @@ from aima_ugc.contracts.provider import assert_secret_free
 from aima_ugc.platform.time import beijing_now
 
 from .runner import (
+    TikHubTestRunResult,
     _DEFAULT_OUTPUT_ROOT,
     _RunLimits,
     _TikHubDebugRunner,
-    TikHubTestRunResult,
 )
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
@@ -65,6 +65,7 @@ class XiaohongshuAccountResolutionError(ValueError):
     """账号无法安全解析时的失败；reason 用于决定是否允许备用搜索词。"""
 
     def __init__(self, message: str, *, reason: ResolutionReason) -> None:
+        """保存稳定失败分类，供账号解析流程决定是否继续备用搜索。"""
         super().__init__(message)
         self.reason = reason
 
@@ -262,6 +263,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         comment_mode: CommentMode,
         validate_user_info: bool,
     ) -> None:
+        """初始化账号采集编排，并复用现有调试 Runner 的 Transport/输出/内容处理能力。"""
         if max_account_search_pages < 1:
             raise ValueError("max_account_search_pages 必须大于 0")
         if max_note_pages_per_account < 1:
@@ -269,7 +271,6 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         if comment_mode not in {"limited", "all"}:
             raise ValueError("comment_mode 只允许 limited 或 all")
 
-        self.accounts = accounts
         self.date_window = date_window
         self.max_account_search_pages = max_account_search_pages
         self.max_note_pages_per_account = max_note_pages_per_account
@@ -362,9 +363,8 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
             self._resolution_cache.remember(target, resolved)
             return resolved, "configured_user_id"
 
-        queries = _resolution_queries(target)
         last_not_found: XiaohongshuAccountResolutionError | None = None
-        for query in queries:
+        for query in _resolution_queries(target):
             try:
                 resolved = self._resolve_account_from_query(
                     transport,
@@ -404,7 +404,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         """分页搜索单个解析关键词；稳定 red_id 命中可提前停止，昵称必须等 Provider 耗尽。"""
         pagination: dict[str, object] | None = None
         candidates: list[dict[str, Any]] = []
-        for page_no in range(1, self.max_account_search_pages + 1):
+        for _ in range(self.max_account_search_pages):
             call = account_runtime.build_user_search_call(keyword=query, state=pagination)
             body, _ = self._send(transport, call, keyword=account_key)
             self._annotate_last_request(account_key, resolution_query=query)
@@ -677,7 +677,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         """把通用调试摘要投影为账号采集摘要，同时保留原始请求与内容失败证据。"""
         payload = super()._run_summary(error)
         account_summaries: list[dict[str, object]] = []
-        for key, target in self._account_by_key.items():
+        for key in self._account_by_key:
             summary = self._account_summaries[key]
             if summary["status"] == "pending":
                 reason = self._search_stop_reasons.get(key)
