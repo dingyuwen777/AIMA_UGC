@@ -118,7 +118,7 @@
 1. 本地开发从**本地任务分支**开始；不得直接在 `main` 上开始正式实现；
 2. 远程分支只能由已有本地分支的**首次 push**建立；不得先创建远程空分支，再把它当成本地开发起点；
 3. **早期 PR**在首个可审查治理、Change 或失败测试提交推送后尽早创建，用于 Requirement Source、CI 和 Review 追溯，不表示实现已经 Ready；
-4. 宿主已验证可自动完成 Draft → Ready 时使用 Draft PR；否则创建普通 PR并明确“逻辑未就绪”，所有 Ready 门禁完成前禁止 merge；
+4. 宿主已验证可自动完成 Draft → Ready 时使用 Draft PR；否则创建普通 PR，并明确“逻辑未就绪”，所有 Ready 门禁完成前禁止 merge；
 5. 保持 `Issue ↔ Change ↔ branch ↔ PR` 稳定关联。PR 使用 `Requirement-Source:`，只有当前 PR 完成整个 Issue 时才使用关闭关键字；
 6. 当前宿主没有相应外部写权限时，在依赖该权限的动作前停止并报告，不用远程空分支、口头关联或本地副本冒充已建立追溯链。
 
