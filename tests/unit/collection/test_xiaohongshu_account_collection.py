@@ -193,6 +193,70 @@ def _comment_page_two() -> dict[str, Any]:
     }
 
 
+def _single_comment_with_reply() -> dict[str, Any]:
+    """一级评论明确只有一页，但 reply_count 故意低报为 1。"""
+    return {
+        "data": {
+            "data": {
+                "comments": [
+                    {
+                        "id": "comment-root",
+                        "note_id": "note-aug",
+                        "content": "有回复的一级评论",
+                        "sub_comment_count": 1,
+                    }
+                ],
+                "cursor": "comment-root-done",
+                "index": 1,
+                "pageArea": "UNFOLDED",
+                "has_more": False,
+            }
+        }
+    }
+
+
+def _reply_page_one() -> dict[str, Any]:
+    """第一条回复达到低报的 reply_count，但 Provider 仍明确有下一页。"""
+    return {
+        "data": {
+            "data": {
+                "comments": [
+                    {
+                        "id": "reply-1",
+                        "note_id": "note-aug",
+                        "content": "二级回复 1",
+                    }
+                ],
+                "cursor": "reply-cursor-2",
+                "index": 2,
+                "pageArea": "UNFOLDED",
+                "has_more": True,
+            }
+        }
+    }
+
+
+def _reply_page_two() -> dict[str, Any]:
+    """第二条回复返回后 Provider 明确耗尽。"""
+    return {
+        "data": {
+            "data": {
+                "comments": [
+                    {
+                        "id": "reply-2",
+                        "note_id": "note-aug",
+                        "content": "二级回复 2",
+                    }
+                ],
+                "cursor": "reply-cursor-done",
+                "index": 3,
+                "pageArea": "UNFOLDED",
+                "has_more": False,
+            }
+        }
+    }
+
+
 def test_red_id_exact_match_wins_and_nickname_only_ambiguity_fails_closed() -> None:
     """账号身份必须由稳定 red_id 消歧；同名候选不能静默选择第一条。"""
     candidates = (
@@ -296,5 +360,66 @@ def test_account_run_filters_date_and_all_mode_crosses_soft_comment_target(
         assert workbook.sheetnames == ["内容", "标签明细", "评论"]
         assert workbook["内容"].max_row == 2
         assert workbook["评论"].max_row == 3
+    finally:
+        workbook.close()
+
+
+def test_account_all_mode_crosses_soft_reply_target(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """all 模式不能在达到低报 reply_count 后停止，必须继续到二级回复 Provider 耗尽。"""
+    env_file = tmp_path / ".env"
+    output_root = tmp_path / "output"
+    _write_env(env_file)
+
+    responses = [
+        _user_search_response(),
+        _user_notes_response(),
+        _detail_response(),
+        _single_comment_with_reply(),
+        _reply_page_one(),
+        _reply_page_two(),
+    ]
+    requests: list[ProviderTransportRequest] = []
+    monkeypatch.setattr(
+        "aima_ugc.adapters.providers.tikhub_test.operations.runner.TikHubHttpTransport",
+        _fake_transport_type(responses, requests),
+    )
+
+    result = run_xiaohongshu_accounts(
+        accounts=(XiaohongshuAccountTarget(nickname="爱玛电动车", red_id="49328786266"),),
+        start_date="2026-08-01",
+        end_date="2026-09-02",
+        env_file=env_file,
+        output_root=output_root,
+        run_id="account-replies",
+        max_account_search_pages=2,
+        max_note_pages_per_account=2,
+        max_comments_per_content=1,
+        max_comment_pages_per_content=2,
+        max_replies_per_root=1,
+        max_reply_pages_per_root=3,
+        include_comments=True,
+        include_replies=True,
+        comment_mode="all",
+    )
+
+    assert responses == []
+    assert result.request_count == 6
+    assert result.root_comment_count == 1
+    assert result.reply_count == 2
+    assert [request.path.rsplit("/", 1)[-1] for request in requests] == [
+        "search_users",
+        "get_user_posted_notes",
+        "get_image_note_detail",
+        "get_note_comments",
+        "get_note_sub_comments",
+        "get_note_sub_comments",
+    ]
+
+    workbook = load_workbook(result.workbook_path, data_only=False)
+    try:
+        assert workbook["评论"].max_row == 4
     finally:
         workbook.close()
