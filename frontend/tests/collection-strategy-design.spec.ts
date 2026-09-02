@@ -42,8 +42,8 @@ async function renderComponent(component: Component, props: Record<string, unkno
 }
 
 describe('采集策略正式 Figma 组件基线', () => {
-  it('把 API 绝对时间固定转换为北京时间而不依赖浏览器宿主时区', () => {
-    expect(formatBeijingDateTime('2026-08-28T00:00:00Z')).toBe('2026/8/28 08:00:00')
+  it('把 API 绝对时间固定转换为 Figma 约定的北京时间分钟粒度', () => {
+    expect(formatBeijingDateTime('2026-08-28T00:00:00Z')).toBe('2026/8/28 08:00')
   })
 
   it('将三个动态指标放在一个摘要条中并使用正式中文术语', async () => {
@@ -87,7 +87,7 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).toContain('目标平台 / 采集渠道')
     expect(html).toContain('新品词包')
     expect(html).toContain('车型：爱玛 A7')
-    expect(html).toContain('计划编号：33333333-3333-4333-8333-333333333333')
+    expect(html).toContain('计划编号： 33333333-3333-4333-8333-333333333333')
     expect(html).toContain('每6小时')
   })
 

@@ -62,7 +62,7 @@ function channelLines(
   return [...lines.slice(0, 2), `另有 ${lines.length - 2} 个平台`]
 }
 
-/** 用北京时间展示下一运行时间，未初始化时使用正式 Figma 调度状态文案。 */
+/** 用 Figma 约定的北京时间分钟粒度展示下一运行时间，未初始化时显示调度状态。 */
 function nextRun(value?: string | null): string {
   return value ? formatBeijingDateTime(value) : '等待调度系统初始化'
 }
@@ -101,7 +101,7 @@ function nextRun(value?: string | null): string {
             v-else
             :key="plan.id"
           >
-            <td><strong>{{ plan.name }}</strong><small>计划编号：{{ plan.id }}</small></td>
+            <td><strong>{{ plan.name }}</strong><small>计划编号： {{ plan.id }}</small></td>
             <td><span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span></td>
             <td class="scope-lines">
               <span

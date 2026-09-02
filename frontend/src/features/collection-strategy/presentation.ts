@@ -19,7 +19,7 @@ export function collectionPlatformLabel(platform: CollectionPlatform): string {
   return PLATFORM_LABELS[platform]
 }
 
-/** 把 API 的绝对时间统一转换为北京时间，避免展示结果依赖浏览器宿主时区。 */
+/** 把 API 的绝对时间统一转换为 Figma 约定的北京时间分钟粒度，避免展示依赖浏览器宿主时区。 */
 export function formatBeijingDateTime(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -28,7 +28,6 @@ export function formatBeijingDateTime(value: string): string {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: false,
   }).format(new Date(value))
 }

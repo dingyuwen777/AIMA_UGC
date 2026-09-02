@@ -118,7 +118,7 @@ test('matches the approved Figma workspace and resolves historical vehicle scope
   await expect(headers.nth(5)).toHaveText('操作')
 
   const planRow = page.locator('.plan-table tbody tr').filter({ hasText: '爱玛口碑周期采集' })
-  await expect(planRow.getByText(`计划编号：${planId}`)).toBeVisible()
+  await expect(planRow.getByText(`计划编号： ${planId}`)).toBeVisible()
   await expect(planRow.getByText('爱玛新品发现')).toBeVisible()
   await expect(planRow.getByText('车型：爱玛 A7')).toBeVisible()
   await expect(page.getByText('智能洞察')).toHaveCount(0)
