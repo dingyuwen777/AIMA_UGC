@@ -53,9 +53,9 @@ Excluded：后端 API/Contract/Schema/Migration、generated Client、数据库�
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 主表固定 7 列，不单独展示“关联对象” | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | Red 回归将直接渲染表头并检查正式 7 列 |
-| R2 | Campaign 只有 `can_start=true` 才渲染“开始导入” | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | Red 回归检查 DataImportDialog 模板条件与禁用占位逻辑 |
-| R3 | 辅助补采产品/可访问文案保持 Provider-neutral | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | Red 回归检查 Drawer aria-label 与页面创建成功提示 |
+| R1 | 主表固定 7 列，不单独展示“关联对象” | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | Red/Green 回归直接渲染表头并检查正式 7 列 |
+| R2 | Campaign 只有 `can_start=true` 才渲染“开始导入” | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | 回归检查 DataImportDialog 模板条件与禁用占位逻辑 |
+| R3 | 辅助补采产品/可访问文案保持 Provider-neutral | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | 回归检查 Drawer aria-label 与页面创建成功提示 |
 | R4 | cursor、北京时间 KPI、Capability/Eligibility 和条件轮询语义保持不变 | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | 既有 Store/API/设计基线回归及完整前端验证 |
 | R5 | 正式 Figma 与真实后端状态/动作一致且无已知几何重叠 | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | Figma 结构、几何、状态与 Design Context 复核 |
 
@@ -76,8 +76,8 @@ Excluded：后端 API/Contract/Schema/Migration、generated Client、数据库�
 
 - [x] 重新读取目标项目规则、当前实现、真实后端 Contract 与 Agent_Skills canonical Source Mode 规则。
 - [x] 审查并修正 Figma 的 Provider-neutral 命名、Campaign 动作矩阵、KPI/轮询注释和几何重叠。
-- [ ] Red：增加 7 列、Campaign Start 条件和 Provider-neutral 文案回归。
-- [ ] Green：最小修改现有 Vue 页面/组件，不重写 Store/API，不升级依赖。
+- [x] Red：增加 7 列、Campaign Start 条件和 Provider-neutral 文案回归；首轮 CI 新增 7 列测试按预期暴露断言脆弱性，其他新增断言通过。
+- [x] Green：最小修改现有 Vue 页面/组件，不重写 Store/API，不升级依赖。
 - [ ] 执行前端目标测试、lint、typecheck、build 与永久 CI。
 - [ ] 重新读取上游，完成 Completion Audit 与两阶段独立 Review。
 - [ ] Ready 后受保护合并，执行 main fresh 验证并独立归档本 Change。
@@ -89,6 +89,8 @@ Excluded：后端 API/Contract/Schema/Migration、generated Client、数据库�
 - Batch Supplement 已确认先筛选成功且有入库数据的批次，再以后端 eligibility 返回的平台作为最终资格。
 - Figma 已移除 discovering/running/partial_failed/succeeded 状态中的“开始导入”占位；修复 partial_failed/succeeded Footer 重叠与双操作行越界；关键帧重新取得 Design Context/1440×900 截图证据。
 - Figma 自动化同步当前状态为 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`，不替代最终人工视觉确认。
+- PR #303 首轮 CI 的 Frontend step 已完成 lint/typecheck 并运行 70 条 Unit；仅新增 7 列 SSR 断言因 Vue scoped attribute 导致定位过严而失败，69 条通过；断言已改为 scope-attribute tolerant 匹配，等待新一轮 CI。
+- PR #303 首轮 Runtime Acceptance 已成功；Change Completion Gate 首轮失败原因是 PR body 缺少机器要求的 `Requirement-Source`，待 PR metadata 修正。
 
 # Completion Audit
 
