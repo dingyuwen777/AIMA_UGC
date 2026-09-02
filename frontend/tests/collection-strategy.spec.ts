@@ -16,6 +16,7 @@ const generated = vi.hoisted(() => ({
   createCollectionPlan: vi.fn(),
   getCollectionPlan: vi.fn(),
   updateCollectionPlanEnabled: vi.fn(),
+  listVehicleModels: vi.fn(),
 }))
 
 vi.mock('../src/generated/api/client', () => generated)
@@ -44,12 +45,28 @@ const packDetail = {
   }],
 }
 
+const historicalVehicle = {
+  id: '66666666-6666-4666-8666-666666666666',
+  code: 'A7',
+  display_name: '爱玛 A7',
+  status: 'deprecated' as const,
+  version: 3,
+  catalog_version: 9,
+  merged_into_id: null,
+  aliases: [],
+  keyword_pack_ids: [],
+  referenced: true,
+  created_at: '2026-08-01T00:00:00Z',
+  updated_at: '2026-08-28T00:00:00Z',
+}
+
 describe('collection strategy feature', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     generated.listKeywordPacks.mockResolvedValue({ items: [], total: 0, offset: 0, limit: 100 })
     generated.listCollectionPlans.mockResolvedValue({ items: [], total: 0, enabled_count: 0, offset: 0, limit: 20 })
+    generated.listVehicleModels.mockResolvedValue({ items: [], total: 0, catalog_version: 1, offset: 0, limit: 200 })
     generated.getCollectionCapabilities.mockResolvedValue({ provider_configs: [], capabilities: [] })
     generated.getGlobalRelevanceConfig.mockResolvedValue({
       keyword_pack_id: 'pack-global', keyword_pack_version: 8, version: 3,
@@ -63,11 +80,12 @@ describe('collection strategy feature', () => {
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ search: '爱玛', enabled: true, offset: 0, limit: 20 })
   })
 
-  it('loads packs, global relevance, capabilities, and plans as one workspace', async () => {
+  it('loads packs, vehicles, global relevance, capabilities, and plans as one workspace', async () => {
     const store = useCollectionStrategyStore()
     await store.refresh()
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 20 })
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 100 })
+    expect(generated.listVehicleModels).toHaveBeenCalledWith({ offset: 0, limit: 200 })
     expect(generated.getGlobalRelevanceConfig).toHaveBeenCalledOnce()
     expect(generated.getCollectionCapabilities).toHaveBeenCalledOnce()
     expect(generated.listCollectionPlans).toHaveBeenCalledWith({
@@ -75,6 +93,31 @@ describe('collection strategy feature', () => {
     })
     expect(generated.listCollectionPlans).toHaveBeenCalledWith({ enabled: true, offset: 0, limit: 100 })
     expect(store.relevance?.keyword_pack_version).toBe(8)
+  })
+
+  it('loads the complete historical vehicle catalog without an active-only status filter', async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({
+      ...historicalVehicle,
+      id: `vehicle-${index}`,
+      code: `A${index}`,
+      display_name: `车型 ${index}`,
+      status: index % 2 === 0 ? 'deprecated' as const : 'merged' as const,
+    }))
+    generated.listVehicleModels.mockImplementation(async (params: { offset?: number; limit?: number; status?: string }) => {
+      if ((params.offset ?? 0) === 0) {
+        return { items: firstPage, total: 201, catalog_version: 9, offset: 0, limit: 200 }
+      }
+      return { items: [historicalVehicle], total: 201, catalog_version: 9, offset: 200, limit: 200 }
+    })
+    const store = useCollectionStrategyStore()
+
+    await store.refresh()
+
+    expect(generated.listVehicleModels).toHaveBeenNthCalledWith(1, { offset: 0, limit: 200 })
+    expect(generated.listVehicleModels).toHaveBeenNthCalledWith(2, { offset: 200, limit: 200 })
+    expect(generated.listVehicleModels.mock.calls[0]?.[0]).not.toHaveProperty('status')
+    expect(generated.listVehicleModels.mock.calls[1]?.[0]).not.toHaveProperty('status')
+    expect((store as unknown as { vehicleCatalog: unknown[] }).vehicleCatalog).toHaveLength(201)
   })
 
   it('creates only a periodic Plan without a Plan-level Relevance override', async () => {
