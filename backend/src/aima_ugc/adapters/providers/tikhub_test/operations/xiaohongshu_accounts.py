@@ -622,9 +622,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         )
         effective_root = root.model_copy(
             update={
-                "metrics": root.metrics.model_copy(
-                    update={"reply_count": _ALL_FETCH_SOFT_TARGET}
-                )
+                "metrics": root.metrics.model_copy(update={"reply_count": _ALL_FETCH_SOFT_TARGET})
             }
         )
         try:
