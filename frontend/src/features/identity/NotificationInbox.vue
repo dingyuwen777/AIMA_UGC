@@ -10,6 +10,7 @@ const unreadIds = computed(() => store.notifications.filter((item) => !item.is_r
 
 onMounted(() => void store.refreshNotifications())
 
+/** 切换通知面板；每次打开都从服务端重新校准未读事实。 */
 async function toggle(): Promise<void> {
   open.value = !open.value
   if (open.value) await store.refreshNotifications()
@@ -37,13 +38,28 @@ async function toggle(): Promise<void> {
         <div><strong>消息中心</strong><span>{{ store.unreadCount }} 条未读</span></div>
         <button
           type="button"
-          :disabled="unreadIds.length === 0"
+          :disabled="unreadIds.length === 0 || store.notificationLoading"
           @click="store.markRead(unreadIds)"
         >
           全部已读
         </button>
       </header>
-      <p v-if="store.notificationLoading && store.notifications.length === 0">
+      <div
+        v-if="store.notificationError"
+        class="inbox-error"
+        role="alert"
+      >
+        <strong>通知加载失败</strong>
+        <span>{{ store.notificationError }}</span>
+        <button
+          type="button"
+          :disabled="store.notificationLoading"
+          @click="store.refreshNotifications()"
+        >
+          {{ store.notificationLoading ? '重试中…' : '重试' }}
+        </button>
+      </div>
+      <p v-else-if="store.notificationLoading && store.notifications.length === 0">
         正在加载…
       </p>
       <p v-else-if="store.notifications.length === 0">
@@ -51,6 +67,7 @@ async function toggle(): Promise<void> {
       </p>
       <button
         v-for="item in store.notifications"
+        v-else
         :key="item.id"
         class="notification"
         :class="{ 'notification--unread': !item.is_read }"
@@ -76,6 +93,10 @@ async function toggle(): Promise<void> {
 .inbox-panel header span { color: var(--aima-text-muted); font-size: 10px; }
 .inbox-panel header button { border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }
 .inbox-panel > p { margin: 0; padding: 28px 16px; color: var(--aima-text-muted); text-align: center; }
+.inbox-error { display: grid; gap: 6px; padding: 18px 16px; color: var(--aima-danger); background: #fff7f7; }
+.inbox-error strong { font-size: 12px; }
+.inbox-error span { color: var(--aima-text-secondary); font-size: 10px; line-height: 16px; }
+.inbox-error button { justify-self: start; padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }
 .notification { display: grid; width: 100%; gap: 5px; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--aima-border); color: inherit; background: var(--aima-surface); cursor: pointer; text-align: left; }
 .notification--unread { background: var(--aima-primary-soft); }
 .notification strong { color: var(--aima-text); font-size: 12px; }
