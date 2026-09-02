@@ -22,8 +22,8 @@ from aima_ugc.contracts.provider import assert_secret_free
 from aima_ugc.platform.time import beijing_now
 
 from .runner import (
-    TikHubTestRunResult,
     _DEFAULT_OUTPUT_ROOT,
+    TikHubTestRunResult,
     _RunLimits,
     _TikHubDebugRunner,
 )
