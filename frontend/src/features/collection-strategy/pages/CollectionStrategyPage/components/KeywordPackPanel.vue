@@ -27,9 +27,9 @@ const emit = defineEmits<{
 
 const keyword = ref('')
 
-/** 把关键词平台范围转换为当前 Feature 的统一展示文案。 */
+/** 把关键词平台范围转换为当前 Feature 的统一展示文案；全平台范围按正式 Figma 省略冗余标签。 */
 function keywordScopeLabel(scope?: string): string {
-  if (!scope || scope === 'all') return '全部平台'
+  if (!scope || scope === 'all') return ''
   return COLLECTION_PLATFORM_OPTIONS.find((item) => item.value === scope)?.label ?? scope
 }
 </script>
@@ -115,7 +115,7 @@ function keywordScopeLabel(scope?: string): string {
           <span
             v-for="item in selected.keywords"
             :key="`${item.id}-${item.platform_scope}`"
-          >{{ item.text }}<small>{{ keywordScopeLabel(item.platform_scope) }}</small></span>
+          >{{ item.text }}<small v-if="keywordScopeLabel(item.platform_scope)">{{ keywordScopeLabel(item.platform_scope) }}</small></span>
           <em v-if="selected.keywords.length === 0">当前词包还没有关键词。</em>
         </div>
         <form @submit.prevent="emit('addKeyword', selected.id, keyword.trim()); keyword = ''">
