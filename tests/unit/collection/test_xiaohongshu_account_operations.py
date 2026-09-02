@@ -115,3 +115,24 @@ def test_user_posted_notes_cursor_uses_last_note_cursor_and_stops_safely() -> No
     )
     assert exhausted.should_continue is False
     assert exhausted.stop_reason == "provider_exhausted"
+
+
+def test_user_posted_notes_prefers_response_level_cursor() -> None:
+    """官方响应若显式给下一页 cursor，应优先于列表最后一条的兼容回退值。"""
+    body = {
+        "data": {
+            "data": {
+                "notes": [
+                    {"note_id": "note-1", "cursor": "item-cursor-1"},
+                    {"note_id": "note-2", "cursor": "item-cursor-2"},
+                ],
+                "cursor": "response-cursor-2",
+                "has_more": True,
+            }
+        }
+    }
+
+    pagination = XiaohongshuUserNotesPagination.from_response(previous_cursor="", body=body)
+
+    assert pagination.should_continue is True
+    assert pagination.next_cursor == "response-cursor-2"
