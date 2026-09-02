@@ -80,13 +80,13 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | >200 车型时完整读取候选，避免 replace 关联因截断丢失 | issues/310 | satisfied | `frontend/src/features/admin-configuration/api.ts`; `frontend/tests/frontend-audit-regressions.spec.ts` 201 车型回归 |
-| R2 | >100 词包及多页历史 Batch 在相关候选中完整可发现 | issues/310 | satisfied | `frontend/src/features/admin-configuration/api.ts`; `frontend/src/features/import-batches/api.ts`; `frontend/src/features/import-batches/store.ts`; 101 词包与 Cursor 回归 |
-| R3 | 声音广场多页 + 活跃 Job 轮询不折叠列表或丢选择 | issues/310 | satisfied | `frontend/src/features/voice-plaza/store.ts`; 多页 + later-page selection 回归；Browser Mock 全量通过 |
-| R4 | >50 未读时已读操作后角标仍以服务端全量未读数为准 | issues/310 | satisfied | `frontend/src/features/identity/store.ts`; 80→79 回归；identity stateful server-snapshot test |
-| R5 | Existing Scheme Draft 名称不再假可编辑，新建 Scheme 命名能力保留 | issues/310 | satisfied | `AdminConfigurationPage.vue`; Scheme readonly 回归；现有新建路径保持 |
-| R6 | 不改变 Contract/Schema/Runtime/直接依赖/业务语义，并取得与最终 diff 风险匹配的黑盒、构建、运行时与独立 Review 证据 | issues/310 | satisfied | PR diff 仅 frontend/lock/tests/Change；Vitest 78/78；Browser Mock 46/46；Vite build；Runtime Acceptance；独立 Review Finding 已修复 |
-| R7 | 恢复 High dependency audit，且不扩大依赖升级范围 | issues/310 | satisfied | `frontend/package-lock.json` 仅传递 `fast-uri 3.1.5 → 3.1.7`; `package.json` 未变；production/full high audit 均 0 vulnerability |
+| R1 | >200 车型时完整读取候选，避免 replace 关联因截断丢失 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | satisfied | `frontend/src/features/admin-configuration/api.ts`; `frontend/tests/frontend-audit-regressions.spec.ts` 201 车型回归 |
+| R2 | >100 词包及多页历史 Batch 在相关候选中完整可发现 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | satisfied | `frontend/src/features/admin-configuration/api.ts`; `frontend/src/features/import-batches/api.ts`; `frontend/src/features/import-batches/store.ts`; 101 词包与 Cursor 回归 |
+| R3 | 声音广场多页 + 活跃 Job 轮询不折叠列表或丢选择 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | satisfied | `frontend/src/features/voice-plaza/store.ts`; 多页 + later-page selection 回归；Browser Mock 全量通过 |
+| R4 | >50 未读时已读操作后角标仍以服务端全量未读数为准 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | satisfied | `frontend/src/features/identity/store.ts`; 80→79 回归；identity stateful server-snapshot test |
+| R5 | Existing Scheme Draft 名称不再假可编辑，新建 Scheme 命名能力保留 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | satisfied | `AdminConfigurationPage.vue`; Scheme readonly 回归；现有新建路径保持 |
+| R6 | 不改变 Contract/Schema/Runtime/直接依赖/业务语义，并取得与最终 diff 风险匹配的黑盒、构建、运行时与独立 Review 证据 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | satisfied | PR diff 仅 frontend/lock/tests/Change；Vitest 78/78；Browser Mock 46/46；Vite build；Runtime Acceptance；独立 Review Finding 已修复 |
+| R7 | 恢复 High dependency audit，且不扩大依赖升级范围 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | satisfied | `frontend/package-lock.json` 仅传递 `fast-uri 3.1.5 → 3.1.7`; `package.json` 未变；production/full high audit 均 0 vulnerability |
 
 # Validation Matrix
 
