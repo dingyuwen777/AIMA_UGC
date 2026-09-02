@@ -9,6 +9,7 @@ MANAGED_START = "<!-- agent-skills:managed:start -->"
 MANAGED_END = "<!-- agent-skills:managed:end -->"
 PROJECT_GOVERNANCE_MARKER = "<!-- agent-skills:project-governance:v1 -->"
 READY_CHECK = Path(".agents/skills/coding/scripts/ready_check.py")
+PROJECT_CHANGE_CHECK = Path("scripts/quality/check_change_completion.py")
 PR_REQUIREMENT_SOURCE_CHECK = Path("scripts/quality/check_pr_requirement_source.py")
 WORKFLOW_DIR = Path(".github/workflows")
 FORBIDDEN_WORKFLOW_FRAGMENTS = (
@@ -156,7 +157,11 @@ def check_repository(root: Path = ROOT) -> list[str]:
 
     ready_check = root / READY_CHECK
     if not ready_check.is_file():
-        errors.append(f"GOV004 {READY_CHECK.as_posix()}: AIMA Change Ready 机器门禁入口不存在")
+        errors.append(f"GOV004 {READY_CHECK.as_posix()}: 项目适配所需 installed validator 不存在")
+
+    project_change_check = root / PROJECT_CHANGE_CHECK
+    if not project_change_check.is_file():
+        errors.append(f"GOV007 {PROJECT_CHANGE_CHECK.as_posix()}: AIMA 顶层 Change 门禁入口不存在")
 
     pr_requirement_source_check = root / PR_REQUIREMENT_SOURCE_CHECK
     if not pr_requirement_source_check.is_file():
@@ -179,9 +184,18 @@ def check_repository(root: Path = ROOT) -> list[str]:
         errors.append(f"GOV006 {COMPLETION_GATE.as_posix()}: Change Completion Gate 不存在")
     else:
         gate_text = _read_text(completion_gate)
-        if "ready_check.py" not in gate_text:
+        project_check_command = f"python {PROJECT_CHANGE_CHECK.as_posix()}"
+        if project_check_command not in gate_text:
+            errors.append(f"GOV007 {COMPLETION_GATE.as_posix()}: 必须执行 AIMA 顶层 Change 门禁")
+        if f"python {READY_CHECK.as_posix()}" in gate_text:
             errors.append(
-                f"GOV007 {COMPLETION_GATE.as_posix()}: 必须继续执行 AIMA Change Ready Check"
+                f"GOV016 {COMPLETION_GATE.as_posix()}: "
+                "Workflow 不得绕过项目 carrier 直接调用 generic ready-check"
+            )
+        if "--changed-since" not in gate_text or "--require-active-ready" not in gate_text:
+            errors.append(
+                f"GOV016 {COMPLETION_GATE.as_posix()}: "
+                "PR changed-since 与 main active-ready 模式必须同时保留"
             )
         if "check_agent_governance.py" not in gate_text:
             errors.append(f"GOV008 {COMPLETION_GATE.as_posix()}: 必须先执行 AIMA 项目治理接线检查")

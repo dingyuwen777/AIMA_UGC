@@ -3,14 +3,24 @@ schema: coding-change/v1
 id: CHG-20260902-u3-admin-identity-config
 title: U3 Principal 权限与管理员配置中心
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
-depends_on: [CHG-20260902-u1-vehicle-catalog]
-affected_areas: [identity, system, vehicles, analysis, api, contracts, frontend, figma-design-to-code, documentation]
+depends_on:
+  - CHG-20260902-u1-vehicle-catalog
+affected_areas:
+  - identity
+  - system
+  - vehicles
+  - analysis
+  - api
+  - contracts
+  - frontend
+  - figma-design-to-code
+  - documentation
 affected_paths:
   - backend/src/aima_ugc/modules/identity/
   - backend/src/aima_ugc/modules/system/
@@ -59,12 +69,12 @@ data_changes: []
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read：已重新读取角色、飞书预留、审计决定、正式路线、实现与最终验证事实。
+- [x] change_coverage：Principal、两类角色、后端权限、管理员页面、审计和 Figma 基线均有证据。
+- [x] reverse_audit：已从管理员与普通用户入口反查后端守卫、事务审计和真实全栈结果。
+- [x] unresolved_cleared：飞书真实认证按确认范围延期，其余 Required 项均已满足，无 `not_satisfied`。
 
-当前无语义未决项：本地 required 验证与独立 Review 已完成，飞书真实认证按已确认范围延期，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
+当前无语义未决项：本地 required 验证与独立 Review 已完成，飞书真实认证按已确认范围延期。
 
 # 本轮验证证据
 
@@ -72,3 +82,9 @@ data_changes: []
 - 管理员独立路由、普通用户导航隐藏、Principal Inbox 和配置四个 Tab 已反向审计，前端 ESLint/typecheck、`67 passed`、production build 通过；
 - Figma 管理员车型、Scheme、状态板节点及 37 个公共组件实例已完成结构/溢出/字体/复用 QA，状态记录在 `figma-state.json`；
 - 飞书只有 Provider-neutral Adapter Port，没有虚构登录、回调、Session 或生产认证；PostgreSQL 管理操作审计事务已通过 Integration，管理员创建车型→读取审计已通过 Real Full-stack。
+
+# 交付完成证据
+
+- PR #289 已把 U1–U5 前端与文档接线合并到 `main`（merge commit `b5622e2308193da4bb6878672944f38938bf46d5`）；PR #295 又完成恢复验证与基线修复（merge commit `f60f598c84e0696873cc01fc30f4d817ed51ae52`）；
+- `main` 的 CI run #33589659720 与 Runtime Acceptance run #33589659537 均成功，覆盖产品、PostgreSQL、真实浏览器和 Compose 门禁；
+- 本 Change 的实现、验证、Review、合并与 main 新鲜验证已闭环，因此转为 `done` 并归档。

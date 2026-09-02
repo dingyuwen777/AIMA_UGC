@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260901-voice-plaza-page-closure
 title: 声音广场页面动作与 VP5 验收收口
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-01
@@ -83,14 +83,21 @@ Excluded：新 Schema/Migration、管理员配置页、车型、总数页码、�
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read：已重新读取声音广场正式设计、路线、当前实现与最终 PR/main 验证事实。
+- [x] change_coverage：页面动作、状态、筛选、公共组件与 VP5 验收均已映射到实现、测试和文档证据。
+- [x] reverse_audit：已从用户可见列表、详情、分析、导出和复核结果反查后端与真实全栈支持。
+- [x] unresolved_cleared：所有 Required 项均有证据，延期项保持在正式路线中，无 `not_satisfied`。
 
 # 当前验证边界
 
-Unit/Component、Contract/generated、43 条 Browser Mock、Build、Figma Conformance、186 条 PostgreSQL Integration 与 9 条 Real Full-stack Golden Path 已有本轮证据。当前无语义未决项，Change 进入 `ready_for_review`；Browser Mock 与真实全栈证据继续分开记录，PR CI、合并与 main 新鲜验证仍是外部交付门禁。
+Unit/Component、Contract/generated、43 条 Browser Mock、Build、Figma Conformance、186 条 PostgreSQL Integration 与 9 条 Real Full-stack Golden Path 已有实现轮次证据。当前无语义未决项；Browser Mock 与真实全栈证据继续分开记录。
+
+# 交付完成证据
+
+- PR #289 已把 U1–U5 前端、声音广场和文档接线合并到 `main`（merge commit `b5622e2308193da4bb6878672944f38938bf46d5`）；PR #295 又完成恢复验证与基线修复（merge commit `f60f598c84e0696873cc01fc30f4d817ed51ae52`）；
+- `main` 的 CI run #33589659720 成功，包含 Repository Quality、Docs and Governance、PostgreSQL Integration、Real Full-stack Golden Path 与 CI Gate；
+- `main` 的 Runtime Acceptance run #33589659537 成功，Compose Golden Path 完成；
+- 本 Change 的实现、验证、Review、合并与 main 新鲜验证已闭环，因此转为 `done` 并归档。
 
 # 独立 Review 记录
 

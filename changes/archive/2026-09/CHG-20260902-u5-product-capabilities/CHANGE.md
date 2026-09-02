@@ -3,14 +3,25 @@ schema: coding-change/v1
 id: CHG-20260902-u5-product-capabilities
 title: U5 可用状态、计数、导出列与站内通知
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
-depends_on: [CHG-20260902-u2-content-vehicle-evidence, CHG-20260902-u3-admin-identity-config, CHG-20260902-u4-analysis-scheme]
-affected_areas: [content, reporting, notification, identity, api, contracts, frontend, documentation]
+depends_on:
+  - CHG-20260902-u2-content-vehicle-evidence
+  - CHG-20260902-u3-admin-identity-config
+  - CHG-20260902-u4-analysis-scheme
+affected_areas:
+  - content
+  - reporting
+  - notification
+  - identity
+  - api
+  - contracts
+  - frontend
+  - documentation
 affected_paths:
   - backend/src/aima_ugc/modules/content/
   - backend/src/aima_ugc/modules/reporting/
@@ -66,12 +77,12 @@ U5 增加四个独立 Owner 的能力，不建万能任务表：Content 保存�
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read：已重新读取可用状态、计数、导出列、通知决定、路线、实现与最终验证事实。
+- [x] change_coverage：状态证据、计数模式、列白名单快照和 Principal Inbox 均有实现与测试证据。
+- [x] reverse_audit：已从声音广场、导出与消息入口反查 API、Worker、数据库及下载授权链路。
+- [x] unresolved_cleared：后续 Provider 自动观察与个人列 Profile 保持正式延期，其余 Required 项均满足，无 `not_satisfied`。
 
-当前无语义未决项：本地 required 验证与独立 Review 已完成，逐 Provider 自动观察、生产估算源和个人列 Profile 按路线延期，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
+当前无语义未决项：本地 required 验证与独立 Review 已完成，逐 Provider 自动观察、生产估算源和个人列 Profile 按路线延期。
 
 # 本轮验证证据
 
@@ -80,3 +91,9 @@ U5 增加四个独立 Owner 的能力，不建万能任务表：Content 保存�
 - 声音广场 Count/Availability/导出列和 AppShell 通知入口已反向审计，前端 ESLint/typecheck、`67 passed` 与 production build 通过；
 - PostgreSQL Integration 已覆盖 Availability 历史、Count、Export Snapshot 与 Inbox Principal 隔离；
 - Real Full-stack 已通过“导出 Worker 终态→当前 Principal 通知→真实 XLSX 下载”。
+
+# 交付完成证据
+
+- PR #289 已把 U1–U5 前端与文档接线合并到 `main`（merge commit `b5622e2308193da4bb6878672944f38938bf46d5`）；PR #295 又完成恢复验证与基线修复（merge commit `f60f598c84e0696873cc01fc30f4d817ed51ae52`）；
+- `main` 的 CI run #33589659720 与 Runtime Acceptance run #33589659537 均成功，覆盖产品、PostgreSQL、真实浏览器和 Compose 门禁；
+- 本 Change 的实现、验证、Review、合并与 main 新鲜验证已闭环，因此转为 `done` 并归档。

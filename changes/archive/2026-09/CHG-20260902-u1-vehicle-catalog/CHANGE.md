@@ -3,14 +3,22 @@ schema: coding-change/v1
 id: CHG-20260902-u1-vehicle-catalog
 title: U1 车型目录与词包资源统一
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
 depends_on: []
-affected_areas: [vehicles, system, collection, ingestion, api, contracts, frontend, documentation]
+affected_areas:
+  - vehicles
+  - system
+  - collection
+  - ingestion
+  - api
+  - contracts
+  - frontend
+  - documentation
 affected_paths:
   - backend/src/aima_ugc/modules/vehicles/
   - backend/src/aima_ugc/modules/system/
@@ -77,12 +85,12 @@ data_changes:
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read：已重新读取车型与词包用户决定、路线、Contract、Schema、实现和最终验证事实。
+- [x] change_coverage：车型目录、别名、版本、冲突、删除资格和词包选择快照均有实现与测试证据。
+- [x] reverse_audit：已从管理员车型和词包工作流反查 API、持久化约束及真实全栈闭环。
+- [x] unresolved_cleared：所有 Required 项均有证据，无未决语义或 `not_satisfied`。
 
-当前无语义未决项：本地 required 验证与独立 Review 已完成，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
+当前无语义未决项：本地 required 验证与独立 Review 已完成。
 
 # 本轮验证证据
 
@@ -92,3 +100,9 @@ data_changes:
 - 变更集 Ruff、全后端 Mypy、六项架构/Owner/Secret/Docs/Governance 门禁通过；
 - PostgreSQL 18.4 空库真实升级到 `20260902_0038` 且 `alembic check` 无漂移；既有 `0037` 开发库保留 1 条 Scheme Version 升级到 `0038`；
 - PostgreSQL Integration `186 passed`；Real Full-stack 中“新建车型→关联词包→重新读取”通过。
+
+# 交付完成证据
+
+- PR #289 已把 U1–U5 前端与文档接线合并到 `main`（merge commit `b5622e2308193da4bb6878672944f38938bf46d5`）；PR #295 又完成恢复验证与基线修复（merge commit `f60f598c84e0696873cc01fc30f4d817ed51ae52`）；
+- `main` 的 CI run #33589659720 与 Runtime Acceptance run #33589659537 均成功，覆盖产品、PostgreSQL、真实浏览器和 Compose 门禁；
+- 本 Change 的实现、验证、Review、合并与 main 新鲜验证已闭环，因此转为 `done` 并归档。

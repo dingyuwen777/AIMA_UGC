@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260902-work-initialization-gate
 title: 建立本地分支优先的研发开工门禁
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: chore/290-work-initialization-gate
 created: 2026-09-02
@@ -108,8 +108,8 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 - [x] 运行项目治理、文档、架构、Owner 与 Secret 门禁
 - [x] 对当前顶层 Change 运行同一 ready_check metadata/traceability/completion 语义校验；正式 carrier CI 延期至 #292
 - [x] 执行独立 Standard Review 与 re-review，最终 diff 无剩余 Finding
-- [x] 取得 PR #291 当前规则-only HEAD CI，并确认当前没有 merge 授权
-- [ ] 获 merge 授权后执行 main fresh 验证；当前不 merge、不关闭 Issue、不删除分支
+- [x] 取得 PR #291 当前规则-only HEAD CI
+- [x] PR #291 已合并，并在后续 `main` 提交上取得 Completion Gate、产品 CI 与 Runtime Acceptance 新鲜成功证据
 
 # 验证
 
@@ -128,6 +128,7 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 - Standard Review：最终范围仅为 `AGENTS.md`、Blueprint 06 与当前 Change；两处规则顺序一致，未改变产品 Contract/Schema/Runtime。早期发现的标点问题已由 `1c0affed` 修复，re-review 无剩余 Finding。
 - PR CI：head `3e2448ba` 共 5 项成功，Repository Quality、PostgreSQL、Full-stack 3 项按 governance-only scope 跳过；这不作为 #292 或 #293 已完成的证据。
 - Change 语义：直接调用正式 `ready_check.py` 的 `_metadata` 与 `_validate_ready_document` 校验顶层当前 Change → `status=ready_for_review; errors=0`；正式 carrier 自动选择仍由 #292 延期处理。
+- 合并与 main fresh：PR #291 已合并为 `309aa9ced2d645971f2ab5d08e260764b8895b5a`；后续当前 `main` 提交 `f60f598c84e0696873cc01fc30f4d817ed51ae52` 的 Change Completion Gate run #33589659411、CI run #33589659720 和 Runtime Acceptance run #33589659537 均成功。
 
 # 文档影响
 
@@ -135,6 +136,6 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 
 # 交付
 
-- 提交：`1b3f3a5b`（Change）、`f23f1f38`（规则初稿）、`1c0affed`（Review 修复）；checker/单测试验将在最终 diff 中撤回，本文件收口提交待生成
+- 提交：`1b3f3a5b`（Change）、`f23f1f38`（规则初稿）、`1c0affed`（Review 修复）
 - 拉取请求：https://github.com/dingyuwen777/AIMA_UGC/pull/291（Requirement-Source: #290）
 - 发布：不适用

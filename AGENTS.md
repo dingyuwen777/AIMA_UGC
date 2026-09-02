@@ -138,7 +138,7 @@
 
 硬规则：
 
-1. 新 Change 模板默认 `completion_gate: required`；机制引入前没有该标记的历史/既有 `rvc-change/v1` 作为 legacy 保持兼容，不批量改写历史；
+1. 新 Change 模板默认 `completion_gate: required`；既有 `rvc-change/v1` 和 schema 机制引入前的未版本化记录只允许作为不可变 legacy archive 保留，不进入 Active、不批量改写；
 2. 当前 Change 是施工契约，**不能作为自身的上游需求全集**；编码前从本轮用户明确决定和仓库正式上游事实源逐条建立 `Requirement Traceability`；
 3. 每条 Requirement 只能是 `satisfied / explicitly_deferred / not_applicable / not_satisfied`；Ready 前 `not_satisfied` 必须清零，延期/不适用必须有正式依据；
 4. 进入 `ready_for_review` 前必须重新读取上游事实源，独立重建完成定义，再比较“上游要求 → Change”和“Change → 实现/测试/文档”；不能因为当前 Change checkbox、测试或 CI 全绿就跳过这一步；
@@ -147,10 +147,10 @@
 7. Ready 前运行：
 
 ```bash
-python .agents/skills/coding/scripts/ready_check.py --root . --require-active-ready
+python scripts/quality/check_change_completion.py --root . --require-active-ready
 ```
 
-机器 Ready Check 只验证可机器判断的结构、状态、Source 路径、占位符和 Completion Audit checkbox；它不能证明业务语义完整，因此不能替代 Requirement Traceability 和语义 Review。
+AIMA 的机器入口由 [`scripts/quality/check_change_completion.py`](scripts/quality/check_change_completion.py) 维护：它显式检查顶层 `changes/`，对当前 `coding-change/v1` 复用已安装 validator 的 metadata、Requirement Traceability 和 Completion Audit 语义，同时只把未改动 legacy 作为历史归档保留。机器检查不能证明业务语义完整，因此不能替代 Requirement Traceability 和语义 Review。
 
 对应完整规则通过上方项目研发治理入口按当前任务取得。
 
@@ -510,6 +510,7 @@ uv run python scripts/quality/check_table_ownership.py
 uv run python scripts/quality/scan_secrets.py
 uv run python scripts/quality/check_docs.py
 uv run python scripts/quality/check_agent_governance.py
+python scripts/quality/check_change_completion.py --root . --require-active-ready
 ```
 
 门禁失败修根因，不能修改门禁放行违规实现。失败输出应让开发者知道规则、文件/位置、原因和修复方向。
@@ -679,7 +680,7 @@ revert/
 
 复杂任务先执行上游 Requirement Completeness Review，再检查当前 Change 的需求符合性，最后检查代码质量。严重和重要问题未解决不得合并。
 
-对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Validation Matrix、Completion Audit，并取得 [`.agents/skills/coding/scripts/ready_check.py`](.agents/skills/coding/scripts/ready_check.py) 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成；某一测试层绿色也不能替代另一层独立风险的验证。
+对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Validation Matrix、Completion Audit，并取得 [`scripts/quality/check_change_completion.py`](scripts/quality/check_change_completion.py) 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成；某一测试层绿色也不能替代另一层独立风险的验证。
 
 完成结论必须有本轮实际证据。交付至少报告：
 
