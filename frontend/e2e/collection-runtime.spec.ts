@@ -130,7 +130,7 @@ test('centralizes runtime facts, opens Batch detail, and creates a local Campaig
 test('creates a one-time TikHub discovery Run from multiple Keyword Packs', async ({ page }) => {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '新建辅助补采' }).click()
-  const drawer = page.getByRole('dialog', { name: '新建 TikHub 辅助补采' })
+  const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
   await expect(drawer).toContainText('创建辅助补采任务')
   await drawer.getByLabel(/爱玛品牌词包/).check()
   await drawer.getByLabel(/产品车型词包/).check()
@@ -146,13 +146,13 @@ test('creates a one-time TikHub discovery Run from multiple Keyword Packs', asyn
       search_config: { sort_mode: 'latest', published_within: '1d', content_type: 'all' },
     }],
   })
-  await expect(page.getByText('TikHub Collection Run / Job 已创建，将由 Worker 在后台执行。')).toBeVisible()
+  await expect(page.getByText('辅助补采任务已创建，将在后台执行。')).toBeVisible()
 })
 
 test('creates a TikHub supplement Run only for a platform that exists in the Batch', async ({ page }) => {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '新建辅助补采' }).click()
-  const drawer = page.getByRole('dialog', { name: '新建 TikHub 辅助补采' })
+  const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
   await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
   await drawer.getByLabel('数据导入批次').selectOption(batchId)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
@@ -172,7 +172,7 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
 test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '新建辅助补采' }).click()
-  const drawer = page.getByRole('dialog', { name: '新建 TikHub 辅助补采' })
+  const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
   await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
 
   await drawer.getByLabel('数据导入批次').selectOption(batchId)
