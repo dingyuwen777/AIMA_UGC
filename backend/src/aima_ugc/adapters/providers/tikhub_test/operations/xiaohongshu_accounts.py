@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -30,7 +30,6 @@ from .runner import (
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 _ACCOUNT_CACHE_SCHEMA = "tikhub-test-account-cache.v1"
-_ALL_FETCH_SOFT_TARGET = 2_147_483_647
 CommentMode = Literal["limited", "all"]
 ResolutionReason = Literal["not_found", "ambiguous", "incomplete", "identity_mismatch"]
 
@@ -578,7 +577,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         keyword: str,
         content: CanonicalContentV1,
         action: str,
-        target: int,
+        target: int | None,
     ) -> tuple[list[UnifiedDataExcelCommentV1], str]:
         """all 模式忽略评论数量软目标和增量已知边界，只由 Provider 耗尽或硬页数保护停止。"""
         if self.comment_mode != "all":
@@ -594,7 +593,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
             keyword=keyword,
             content=content,
             action="refresh_controlled",
-            target=_ALL_FETCH_SOFT_TARGET,
+            target=None,
         )
 
     def _fetch_replies(
@@ -604,6 +603,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         keyword: str,
         content: CanonicalContentV1,
         root: CanonicalCommentV1,
+        fetch_all: bool = False,
     ) -> list[UnifiedDataExcelCommentV1]:
         """all 模式忽略正数/未知 reply_count 软目标，并保守识别回复硬页数边界。"""
         expected = root.metrics.reply_count
@@ -613,32 +613,22 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
                 keyword=keyword,
                 content=content,
                 root=root,
+                fetch_all=fetch_all,
             )
 
-        original_limits = self.limits
         request_no_before = self._request_no
-        self.limits = replace(
-            original_limits,
-            max_replies_per_root=_ALL_FETCH_SOFT_TARGET,
+        max_reply_pages = self.limits.max_reply_pages_per_root
+        rows = super()._fetch_replies(
+            transport,
+            keyword=keyword,
+            content=content,
+            root=root,
+            fetch_all=True,
         )
-        effective_root = root.model_copy(
-            update={
-                "metrics": root.metrics.model_copy(update={"reply_count": _ALL_FETCH_SOFT_TARGET})
-            }
-        )
-        try:
-            rows = super()._fetch_replies(
-                transport,
-                keyword=keyword,
-                content=content,
-                root=effective_root,
-            )
-        finally:
-            self.limits = original_limits
 
         reply_pages_used = self._request_no - request_no_before
         warning: dict[str, object] | None = None
-        if reply_pages_used >= original_limits.max_reply_pages_per_root:
+        if reply_pages_used >= max_reply_pages:
             warning = {
                 "stage": "replies",
                 "external_content_id": content.external_content_id,
