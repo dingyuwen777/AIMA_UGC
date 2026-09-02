@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from openpyxl import load_workbook
-
 from aima_ugc.adapters.providers.tikhub_test import (
     XiaohongshuAccountTarget,
     run_xiaohongshu_accounts,
@@ -21,6 +19,7 @@ from aima_ugc.modules.collection.providers.transport import (
     ProviderTransportRequest,
     ProviderTransportResponse,
 )
+from openpyxl import load_workbook
 
 
 def _write_env(path: Path) -> None:
