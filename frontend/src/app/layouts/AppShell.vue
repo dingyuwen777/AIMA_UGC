@@ -20,6 +20,12 @@ const navigation = computed<{ label: string; icon: AimaIconName; to: string }[]>
     : []),
 ])
 
+const principalRoleLabel = computed(() => {
+  if (identity.principalError) return '身份不可用'
+  if (!identity.principal) return '身份加载中'
+  return identity.principal.role === 'administrator' ? '管理员' : '普通用户'
+})
+
 onMounted(() => void identity.ensurePrincipal())
 </script>
 
@@ -59,10 +65,25 @@ onMounted(() => void identity.ensurePrincipal())
           业务工作台 <span>/</span> <strong>{{ sectionTitle }}</strong>
         </div>
         <div class="account-area">
+          <div
+            v-if="identity.principalError"
+            class="principal-error"
+            role="alert"
+          >
+            <span>身份读取失败</span>
+            <button
+              type="button"
+              :disabled="identity.loading"
+              :title="identity.principalError"
+              @click="identity.retryPrincipal()"
+            >
+              {{ identity.loading ? '重试中…' : '重试' }}
+            </button>
+          </div>
           <NotificationInbox />
           <div class="principal">
-            <strong>{{ identity.principal?.display_name ?? '身份加载中' }}</strong>
-            <span>{{ identity.principal?.role === 'administrator' ? '管理员' : '普通用户' }}</span>
+            <strong>{{ identity.principal?.display_name ?? (identity.principalError ? '身份不可用' : '身份加载中') }}</strong>
+            <span>{{ principalRoleLabel }}</span>
           </div>
           <span
             class="avatar"
@@ -203,6 +224,9 @@ nav {
 }
 
 .account-area { display: flex; align-items: center; gap: 10px; }
+.principal-error { display: flex; align-items: center; gap: 7px; color: var(--aima-danger); font-size: 10px; }
+.principal-error button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 10px; }
+.principal-error button:disabled { cursor: wait; opacity: .6; }
 .principal { display: grid; gap: 2px; text-align: right; }
 .principal strong { color: var(--aima-text); font-size: 11px; }
 .principal span { color: var(--aima-text-disabled); font-size: 9px; }
