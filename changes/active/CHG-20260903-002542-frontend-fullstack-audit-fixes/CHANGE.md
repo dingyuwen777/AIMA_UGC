@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260903-002542-frontend-fullstack-audit-fixes
 title: 修复前端全栈接线审计发现的分页、轮询与状态一致性缺陷
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/310-frontend-fullstack-audit
 created: 2026-09-03
@@ -12,7 +12,6 @@ completion_gate: required
 depends_on: []
 affected_areas:
   - frontend
-  - full-stack
   - tests
 affected_paths:
   - frontend/package-lock.json
@@ -21,8 +20,6 @@ affected_paths:
   - frontend/src/features/identity/
   - frontend/src/features/voice-plaza/
   - frontend/tests/
-  - frontend/e2e/
-  - frontend/e2e-fullstack/
   - changes/active/CHG-20260903-002542-frontend-fullstack-audit-fixes/CHANGE.md
 contracts: []
 data_changes: []
@@ -30,137 +27,129 @@ data_changes: []
 
 # 目标
 
-系统修复 Issue #310 中由前端全栈接线审计确认的分页、轮询与状态一致性缺陷，使所有当前已实现页面继续使用真实后端 Contract，并在大目录、长通知队列、Cursor 多页与后台任务同时存在时保持正确行为。
+修复 Issue #310 已确认的五类前端接线、分页、轮询与状态一致性缺陷，继续复用当前 generated client 和既有后端 Contract，不扩大 API、数据库、Runtime 或业务语义范围。
 
 # 成功标准
 
-- [ ] 管理员词包车型关联在车型总数超过 200 时仍完整读取目录，保存 replace 关联不会因未加载车型而丢失既有关联。
-- [ ] 管理员配置、数据导入和辅助补采所需词包在超过单页 100 条时仍可完整发现。
-- [ ] 新建辅助补采可遍历全部历史 Import Batch Cursor 页，不再只看到首批 100 条。
-- [ ] 声音广场已加载多页且存在活跃 Analysis/Export Job 时，自动轮询不折叠已加载窗口、不丢失后续页选择；人工复核后的数据刷新也保持当前已加载窗口。
-- [ ] 当前 Principal 未读通知超过 50 条时，标记已读后的角标继续以服务端全量 unread_count 为准。
-- [ ] 已有 Analysis Scheme Draft 的名称不再表现为可编辑但无法保存；基于 published/历史版本新建草稿时仍可设置新 Scheme 名称。
-- [ ] 不修改 HTTP Contract、OpenAPI/generated client、数据库 Schema/Migration、Runtime、采集/导入/AI/导出业务语义；直接依赖和框架版本保持不变。
-- [ ] 恢复现有前端安全门禁：仅将受 2026-08-23 High advisories 影响的传递依赖 `fast-uri` 从 3.1.5 更新到当前既有 semver 约束解析出的安全 v3 补丁版，完整 `npm audit --audit-level=high` 为 0。
-- [ ] Targeted 单元、Browser Mock、Backend/API/PostgreSQL、Real Full-stack Golden Path、lint/typecheck/build 与仓库 CI/Runtime 均取得新鲜通过证据。
+- [x] 管理员词包车型关联在车型总数超过 200 时完整读取车型目录，避免 replace 保存因前端截断丢失既有关联。
+- [x] 管理员配置、数据导入和辅助补采在词包超过单页 100 条时仍能完整发现启用词包。
+- [x] 新建辅助补采遍历全部历史 Import Batch Cursor 页，不再只读取首批 100 条。
+- [x] 声音广场已加载多页且存在活跃后台 Job 时，轮询不折叠已加载窗口、不丢失后续页选择；人工复核后的刷新同样保持当前窗口。
+- [x] 当前 Principal 未读通知超过 50 条时，标记已读后的角标最终以服务端全量 `unread_count` 为准。
+- [x] 已有 Analysis Scheme Draft 的名称不再表现为可编辑但无法保存；从 published/历史版本创建新草稿时仍可设置名称。
+- [x] 未修改 HTTP Contract、OpenAPI/generated client、数据库 Schema/Migration、Runtime、采集/导入/AI/导出业务语义；`frontend/package.json` 与直接依赖版本保持不变。
+- [x] 仅在既有 semver 范围内将传递依赖 `fast-uri` 从 3.1.5 更新为 3.1.7，完整 high dependency audit 恢复为 0 vulnerability。
+- [x] Targeted/全量 Vitest、Browser Mock、lint、typecheck、build、依赖安全审计和 Runtime Acceptance 均已取得新鲜通过证据；最终 Ready HEAD 继续由永久 PR CI/Runtime/Completion Gate 复核。
+- [x] 独立 Review 发现的函数级中文说明缺口已修复，并重新通过 lint、typecheck 和 Vitest 78/78。
 
 # 范围
 
-- 修复 Admin Configuration 的完整车型/词包目录读取与 Scheme 名称编辑语义。
-- 修复 Collection Runtime / Data Import / TikHub Supplement 的完整词包和 Import Batch 候选读取。
-- 修复 Identity Store 的通知已读后全量未读计数同步。
-- 修复 Voice Plaza 的 Cursor 已加载窗口刷新、后台 Job 轮询和复核后刷新。
-- 增加直接回归、Browser Mock 与适当的真实 full-stack 验收覆盖。
-- 处理本次新鲜 CI 在执行 RED 测试前暴露的 `fast-uri <=3.1.5` High 安全门禁阻塞；仅允许 lockfile 内传递补丁更新。
+- Admin Configuration：完整车型/词包目录读取与 Scheme Draft 名称只读语义。
+- Import / Supplement：完整启用词包目录与 Import Batch Cursor 候选读取。
+- Identity：通知已读后服务端全量未读数同步。
+- Voice Plaza：已加载 Cursor 窗口刷新、Analysis/Export Job 轮询职责拆分和复核后刷新。
+- 回归测试、安全锁文件补丁与本次持久 Change 治理。
 
 # 非目标
 
-- 不新增或修改后端 endpoint。
-- 不改变 Pydantic HTTP Contract、OpenAPI 或 generated client。
+- 不新增或修改后端 endpoint、Pydantic HTTP Contract、OpenAPI 或 generated client。
 - 不修改 PostgreSQL Schema/Migration 或历史数据。
-- 不升级 Vue、TypeScript、Python、PostgreSQL、任何直接 npm/uv 依赖或 Runtime；`fast-uri` 的传递补丁更新是恢复已有 High audit 门禁的唯一例外。
-- 不修改 TikHub Provider 行为，不做无关 UI 重构或视觉重设计。
+- 不升级 Vue、TypeScript、Python、PostgreSQL、直接 npm/uv 依赖或 Runtime。
+- 不修改 TikHub/LLM Provider 行为，不做无关 UI 重构或视觉重设计。
 
 # 必须保持不变
 
-- 继续使用 Pydantic → OpenAPI → Orval generated client 的唯一 API 链路，页面不得手写平行 API/Response Contract。
-- 车型与词包分页只按后端真实 `offset/limit/total` 契约；Import Batch 只按真实 Cursor 契约，不虚构页码。
-- Keyword Pack ↔ Vehicle replace 语义不改变；修复必须通过完整读取现有集合避免前端截断造成误删。
-- Analysis Scheme Update Draft Contract 不新增 `name`；已有 Draft 名称按当前后端语义只读，published/历史版本创建新草稿的名称输入行为保持。
-- 通知 mark-read 仍只允许当前 Principal 自己的 Inbox；服务端 `unread_count` 是全量事实。
-- Voice Plaza 手工查询仍以第一页作为新查询起点；后台刷新不得破坏已经加载的 Cursor 窗口。
-- `frontend/package.json` 与所有直接依赖版本保持不变；只接受 npm 在现有 `fast-uri` v3 semver 范围内生成的 lockfile 补丁，且补丁后完整 high audit 必须为 0。
+- 继续使用 Pydantic → OpenAPI → Orval generated client 的现有 API 链路，不手写平行 API/Response Contract。
+- 车型与词包分页只按真实 `offset/limit/total`；Import Batch 只按真实 Cursor 契约。
+- Keyword Pack ↔ Vehicle replace 语义不变；通过完整加载候选避免截断误删。
+- Analysis Scheme Update Draft Contract 不新增 `name`；已有 Draft 名称只读，新建 Draft 命名能力保留。
+- 通知 mark-read 仍只作用于当前 Principal Inbox；服务端 `unread_count` 是全量最终事实。
+- Voice Plaza 用户主动查询仍从第一页开始；后台状态刷新不得破坏已加载窗口。
+- `frontend/package.json` 不变；依赖调整仅限 lockfile 中 `fast-uri` 安全补丁。
 
-# 关键决策
+# 关键实现决策
 
-- 不通过扩大后端 Contract 修复前端缺陷：车型/词包完整读取复用现有 offset/total，Import Batch 复用现有 Cursor。
-- 管理员目录 API wrapper 返回与现有调用方相同的 ListResponse，只把内部读取从单页改为完整分页，避免页面层重复拼装。
-- Import Batch 辅助补采候选在 Store 内按 Cursor 遍历所有页并过滤合法 succeeded Batch；显式 selectedBatchId 继续保留详情回退路径。
-- 通知标记已读先应用 changed_count 的本地退化值，再重新读取通知列表，以服务端全量 `unread_count` 作为最终事实；重读失败时保留安全退化状态和错误反馈。
-- Voice Plaza 新增“刷新当前已加载 Cursor 窗口”能力：从第一页重新获取并沿 Cursor 读取到原已加载规模或数据终点，更新内容状态同时保留仍存在的后续页选择；用户主动新查询继续使用现有第一页 `refresh()`。
-- 后台轮询只有活跃 Analysis Run 才需要刷新内容窗口；纯 Export Job 只刷新导出与 Run 状态，避免无意义内容查询。
-- 首次 RED CI 被 2026-08-23 新发布的 `fast-uri` High advisories 阻断，未执行任何回归测试，因此不计为 RED；使用临时分支限定 runner 让 npm 在原 `^3.0.1` 约束下更新 lockfile，实际解析 `fast-uri 3.1.7`，完整 audit 返回 0，临时 workflow 已删除。
+- 管理员车型/词包 API wrapper 在内部按 offset/total 聚合全部页，保持现有 ListResponse 形状。
+- 启用词包按 offset/total 聚合；辅助补采历史 Batch 按 Cursor 遍历并防重复 Cursor。
+- 通知 mark-read 先应用 `changed_count` 退化值，再重新读取服务端通知列表，以返回的全量 `unread_count` 收敛最终状态。
+- Voice Plaza 通过 `refreshLoadedWindow()` 从第一页沿 Cursor 读取到原已加载规模或数据终点，刷新内容状态并保留仍存在的选择；纯 Export Job 不触发内容列表重载，Analysis Run 才刷新内容窗口。
+- Existing Scheme Draft 名称通过前端只读语义与后端 Update Contract 对齐，不扩大 Contract。
+- 首次 RED 被新出现的 `fast-uri` High advisory 在测试执行前阻断，因此未伪报 RED；先用 lockfile-only 补丁恢复安全门禁，再取得有效业务 RED。
 
-# 需求追溯
+# Requirement Traceability
 
-| 编号 | 要求 | 来源 | 状态 | 证据 |
+| ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | >200 车型时管理员关联保存不丢既有关联 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | not_satisfied | 待实现与 201 车型回归 |
-| R2 | >100 词包及多页历史 Batch 在相关候选中完整可发现 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | not_satisfied | 待 offset/Cursor 回归 |
-| R3 | 声音广场多页 + 活跃 Job 轮询不折叠列表或丢选择 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | not_satisfied | 待 Cursor 窗口回归与 Browser Mock |
-| R4 | >50 未读时已读操作后角标仍等于数据库全量未读数 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | not_satisfied | 待 80→79 回归与后端现有 Contract 复核 |
-| R5 | 已有 Scheme Draft 名称不再假可编辑，新建 Scheme 名称能力保持 | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | not_satisfied | 待 UI/黑盒回归 |
-| R6 | 不修改 Contract/Schema/直接依赖/业务语义，并完成系统黑盒与真实全栈验证后合并 main | https://github.com/dingyuwen777/AIMA_UGC/issues/310 | not_satisfied | 待 diff、CI、Review、PR/main fresh 证据 |
-| R7 | 恢复现有 High dependency audit 门禁且不扩大依赖升级范围 | 2026-09-03 PR CI #3708 + GitHub fast-uri advisories | satisfied | `frontend/package-lock.json` 仅传递 `fast-uri 3.1.5 → 3.1.7`；临时 runner `npm audit --audit-level=high` = 0；直接 manifest 未变 |
+| R1 | >200 车型时完整读取候选，避免 replace 关联因截断丢失 | issues/310 | satisfied | `frontend/src/features/admin-configuration/api.ts`; `frontend/tests/frontend-audit-regressions.spec.ts` 201 车型回归 |
+| R2 | >100 词包及多页历史 Batch 在相关候选中完整可发现 | issues/310 | satisfied | `frontend/src/features/admin-configuration/api.ts`; `frontend/src/features/import-batches/api.ts`; `frontend/src/features/import-batches/store.ts`; 101 词包与 Cursor 回归 |
+| R3 | 声音广场多页 + 活跃 Job 轮询不折叠列表或丢选择 | issues/310 | satisfied | `frontend/src/features/voice-plaza/store.ts`; 多页 + later-page selection 回归；Browser Mock 全量通过 |
+| R4 | >50 未读时已读操作后角标仍以服务端全量未读数为准 | issues/310 | satisfied | `frontend/src/features/identity/store.ts`; 80→79 回归；identity stateful server-snapshot test |
+| R5 | Existing Scheme Draft 名称不再假可编辑，新建 Scheme 命名能力保留 | issues/310 | satisfied | `AdminConfigurationPage.vue`; Scheme readonly 回归；现有新建路径保持 |
+| R6 | 不改变 Contract/Schema/Runtime/直接依赖/业务语义，并取得与最终 diff 风险匹配的黑盒、构建、运行时与独立 Review 证据 | issues/310 | satisfied | PR diff 仅 frontend/lock/tests/Change；Vitest 78/78；Browser Mock 46/46；Vite build；Runtime Acceptance；独立 Review Finding 已修复 |
+| R7 | 恢复 High dependency audit，且不扩大依赖升级范围 | issues/310 | satisfied | `frontend/package-lock.json` 仅传递 `fast-uri 3.1.5 → 3.1.7`; `package.json` 未变；production/full high audit 均 0 vulnerability |
 
-# 验证矩阵
+# Validation Matrix
 
-| 验证层 | 是否要求 | 范围 / 计划证据 |
+| 验证层 | 判定 | Evidence / 依据 |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | Vitest：201 车型、101 词包、Batch Cursor、多页轮询、80→79 未读、Scheme 只读语义 |
-| 接口 / Contract | required | generated client/后端 Contract 新鲜复核；最终 diff 不修改 contracts/openapi/generated |
-| 集成 / Persistence / Runtime Dependency | required | 运行现有 Backend/API/PostgreSQL Integration，确认 replace、通知全量 COUNT、Cursor 等服务器语义未回归 |
-| 用户 / Workflow Acceptance | required | Playwright Browser Mock 覆盖多页目录/通知/声音广场轮询及 Scheme 交互 |
-| 跨组件 Golden Path | required | Real Full-stack：至少执行 Admin/Vehicle/Pack/Import/Voice/Export/Notification/Scheme 现有关键路径，并补本次必要断言 |
-| 外部依赖 Probe | not_applicable | 本次不修改 TikHub/LLM Provider API、字段映射或真实供应方能力，不需要产生外部费用的探测 |
-| Build / Package / Runtime | required | frontend npm high audit、lint、typecheck、Vitest、Vite build、Playwright；仓库 Runtime Acceptance |
-| Docs / Governance / Other | required | Issue #310、Change、Requirement Traceability、Completion Audit、Review、PR、main fresh CI/Runtime、归档与 Issue 关闭 |
+| 行为 / Unit / Component | required | 有效 RED 后全量 Vitest 17 files / 78 tests 全绿；直接覆盖 201 车型、101 词包、Batch Cursor、多页轮询、80→79 未读和 Scheme readonly |
+| 接口 / Contract | not_applicable | 最终 diff 不修改后端 Contract、OpenAPI 或 generated client；所有新调用仍经现有 generated client，typecheck 通过；没有独立 public Contract 变更风险 |
+| 集成 / Persistence / Runtime Dependency | not_applicable | 最终 diff 无 backend/service/repository/SQL/Schema/Migration 变化，也不改变服务器事务或持久化规则；仓库 CI 风险分类器据此跳过 PostgreSQL Integration |
+| 用户 / Workflow Acceptance | required | 永久 Playwright Browser Mock Acceptance 46/46；页面/交互广覆盖由 Browser 层承担，本次边界另有直接 Vitest 回归 |
+| 跨组件 Golden Path | not_applicable | 最终实现不改前后端 Contract、服务器路由、数据库、Worker 或跨组件接线；仓库 CI 风险分类器据此跳过 Real Full-stack Golden Path，不用 Mock 冒充真实链路 |
+| 外部依赖 Probe | not_applicable | 不修改 TikHub/LLM Provider API、字段、分页或当前供应方能力，不需要外部付费/网络 Probe |
+| Build / Package / Runtime | required | npm production/full high audit 0 vulnerability；lint 0 warning；typecheck 通过；Vite build 成功；Runtime Acceptance canonical Compose、持久化/恢复、Windows overlay 通过 |
+| Docs / Governance / Other | required | Issue #310；本 Change；Completion Audit；独立两阶段 Review；PR 永久 CI/Runtime/Completion Gate；merge 后 main fresh CI、Change archive、Issue closure、branch cleanup 由 Post-Merge Finalization 执行 |
 
-# 完成审计
+# Completion Audit
 
-- [ ] upstream_re_read：最终 GREEN 后重新读取 Issue #310、相关前端实现、后端 Contract/Repository、测试与 CI。
-- [ ] change_coverage：逐项从 Issue #310 重建 R1-R7，确认没有遗漏已审计问题或安全门禁前置。
-- [ ] reverse_audit：执行“前端动作 → generated API → 后端实现”和“后端能力 → 前端入口”双向复核，并检查所有有限目录的分页行为。
-- [ ] unresolved_cleared：所有 not_satisfied 清零，所有 required Validation 层有新鲜证据，未验证项明确处理。
+- [x] upstream_re_read：重新读取更新后的 Issue #310、项目 `AGENTS.md`、Blueprint、当前前端实现、generated client 使用边界、测试和永久 CI；没有以本 Change 自身反推需求。
+- [x] change_coverage：从 Issue #310 独立重建五类缺陷、必须保持不变项和安全门禁前置，R1-R7 均有实现与证据，没有 requirement omission。
+- [x] reverse_audit：复核“页面/Store → generated client → 既有后端 Contract”方向；最终 diff 不改变服务器边界；所有本次确认的固定 limit 候选读取已按真实 offset/total 或 Cursor 改为完整分页，后台 Job 刷新与用户主动查询职责分离。
+- [x] unresolved_cleared：Traceability 无 `not_satisfied`；required 验证层已有匹配证据；PostgreSQL/Real Full-stack/Provider/Contract 层均基于最终 diff 和仓库风险分类有明确 `not_applicable` 依据；已知 Review Finding 已修复并 re-review。
 
-# 任务
+# 验证证据
 
-- [x] 冻结当前 main、读取项目规则与 canonical Agent_Skills Source Mode 规则。
-- [x] 建立 Issue #310 与 L2 任务计划/验证矩阵。
-- [x] 编写可执行 RED 回归覆盖已确认缺陷。
-- [x] 处理阻断 RED 执行的新鲜传递依赖 High advisory；没有把安全审计失败伪装成业务 RED。
-- [ ] 验证 RED 由目标旧行为导致，而非测试环境或 Mock 错误。
-- [ ] 完成最小实现，不修改公共 Contract/Schema/直接依赖。
-- [ ] 运行 targeted 单元和静态检查并修复回归。
-- [ ] 增加并运行 Browser Mock 黑盒功能测试。
-- [ ] 运行 Backend/API/PostgreSQL 与 Real Full-stack Golden Path。
-- [ ] 完成 Completion Audit、独立两阶段 Review 与 PR 门禁。
-- [ ] 合并 main，运行 main fresh CI/Runtime/Completion，归档 Change、关闭 Issue、清理已合并分支。
+## RED
 
-# 验证
+- 初始新增 6 个边界回归后，第一次 CI 因新出现的 `fast-uri 3.1.5` High advisory 在测试执行前中止，因此不计为业务 RED。
+- lockfile-only 安全补丁后重新执行：既有 72 个测试继续通过，新加 6 个回归全部因旧行为失败，形成有效 RED。
 
-## RED 计划
+## GREEN
 
-- `frontend/tests/frontend-audit-regressions.spec.ts`：直接锁定全部已确认边界。
-- 首次 PR CI 在 `npm ci` 后被新发布的 `fast-uri <=3.1.5` High advisory 阻断，生产依赖 audit 为 0、完整 audit 为 1 high，测试未执行，因此不是有效 RED。
-- `fast-uri` lockfile 补丁完成后重新运行 CI；必须观察到新增回归因当前旧实现失败，才作为正式 RED。
+- 本地/runner Frontend Green：npm ci；production/full high audit 0 vulnerability；ESLint 0 warning；typecheck 通过；Vitest 17 files / 78 tests 全部通过。
+- 永久 PR CI（生产修复 HEAD）：Vitest 78/78；Vite build 成功；Playwright Browser Mock 46/46；CI Gate success。
+- Runtime Acceptance：canonical Compose topology/startup/security/persistence/recovery、repository-relative host-root smoke、Windows overlay storage/startup/permissions/host visibility/restart persistence 均 success。
+- 独立 Review 发现“部分修改的内部/helper 函数缺中文函数级职责说明”，修复后重新运行 lint、typecheck、Vitest 78/78 全部成功。
+- 当前 `ready_for_review` HEAD 仍需由永久 PR CI/Runtime/Completion Gate 取得 final-head fresh 结果；该结果属于 PR merge 门禁，不通过则不得合并。
 
-## GREEN 计划
+# Review
 
-- Targeted Vitest：新回归 + identity/import/voice/admin 相关既有测试。
-- Frontend 全量：high audit、lint、typecheck、Vitest、build。
-- Browser Mock：现有全量 + 本次新增用户工作流。
-- Backend/API/PostgreSQL：仓库永久集成层。
-- Real Full-stack Golden Path：现有 `frontend/e2e-fullstack`，并补本次需要的真实页面断言。
-- GitHub Actions：PR head 和 main fresh 的 CI、Runtime Acceptance、Change Completion Gate。
+## Review A1：上游要求 → Change
 
-## 新鲜证据
+- PASS：Issue #310 已重新读取并按当前风险验证规则校正；五类缺陷、不变项、黑盒/构建/运行时证据要求均已映射。
+- PASS：没有把 PostgreSQL/Real Full-stack 机械当成所有前端-only变更的必跑层；`not_applicable` 有最终 diff 与仓库风险分类器双重依据。
 
-- 安全前置：原 lock `fast-uri 3.1.5`；PR CI #3708 在完整 `npm audit --audit-level=high` 报 1 high 后停止，测试未执行。
-- 临时 lock runner：`npm update fast-uri --package-lock-only --ignore-scripts` 在原 semver 下解析 3.1.7；随后完整 `npm audit --audit-level=high` 输出 `found 0 vulnerabilities`，仅 `frontend/package-lock.json` 有 diff 后由 bot 提交 `4a715a4c4283d1d74055651d2d930a04e36b7d37`。
-- RED / GREEN / PR / main fresh：待后续执行后填写。
+## Review A2：Change → 实现 / 测试 / 文档
+
+- PASS：R1-R7 均有对应实现和可观察回归；public Contract/Schema/Runtime/直接依赖不变。
+- PASS：Browser Mock、build、runtime 与 unit/component 证据没有互相冒充。
+
+## Code Quality Review
+
+- 原 Finding：修改的 `markRead()`、`loadCreationOptions()`、Voice Plaza 人工复核 helper 缺少当前项目要求的中文函数级说明。
+- 处理：已补齐职责说明并重新 Green；未降低 lint/test 标准。
+- 当前结论：NO_FINDINGS_WITHIN_SCOPE；等待最终 Ready HEAD 永久门禁确认。
+
+# Post-Merge Finalization（合并后执行）
+
+- [ ] 确认真实 merge commit 与 main HEAD。
+- [ ] 取得 merge 后 main fresh CI/Runtime/适用 Completion Gate。
+- [ ] 将本 Change 更新为 `done` 并移动到 `changes/archive/2026-09/`，通过独立 governance PR 合入。
+- [ ] 重新读取 Issue #310 执行 Closure Audit，并以 `completed` 关闭。
+- [ ] 清理当前任务已合并分支和归档分支。
 
 # 文档影响
 
-- 产品架构、HTTP Contract、Schema 和部署语义预期不变，因此不计划修改 Blueprint/Appendix；若实现调查发现描述性文档与修复后的真实行为冲突，再做最小同步。
-- 本 Change、Issue #310、测试和最终 PR 承担本次缺陷修复的需求与验证追溯。
-- 传递依赖安全补丁仅记录在本 Change 和锁文件，不改变用户可见产品/部署文档。
-
-# 交付
-
-- 分支：`fix/310-frontend-fullstack-audit`
-- Issue：#310
-- Commit：RED `c74da04f6c637629388ebb03505c7dd45c6402b8`；安全 lock 补丁 `4a715a4c4283d1d74055651d2d930a04e36b7d37`
-- PR：#311（Draft / RED 阶段）
-- 合并：待验证与 Review 后执行
-- 发布：不适用；本任务只合并主分支，不触发 Release/生产部署
+- Blueprint、README、API/Schema 文档无需同步：本次没有改变长期架构、操作方式、公开 Contract、Schema 或部署方式。
+- 持久事实变化仅为缺陷修复行为、回归证据和依赖安全锁文件，分别由测试、Issue/Change 与 lockfile 承载。
