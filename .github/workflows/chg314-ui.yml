@@ -1,0 +1,64 @@
+name: CHG314 Apply UI Reliability
+
+on:
+  push:
+    branches:
+      - fix/314-frontend-fullstack-reliability
+    paths:
+      - .github/workflows/chg314-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout change branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/314-frontend-fullstack-reliability
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked frontend environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(npm --version)" = "11.17.0"
+          npm ci --prefix frontend
+
+      - name: Apply exact UI and full-stack patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/dev/apply_chg314_ui.py
+          python scripts/dev/apply_chg314_fullstack.py
+
+      - name: Run frontend Green and fail-closed Browser Mock
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run test -- --run tests/identity-store.spec.ts tests/frontend-audit-regressions.spec.ts tests/admin-configuration-design.spec.ts
+          npm --prefix frontend run test:e2e
+
+      - name: Commit UI and black-box implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend
+          if git diff --cached --quiet; then
+            echo "No UI reliability changes found" >&2
+            exit 1
+          fi
+          git commit -m "fix: 完善前端错误恢复与功能黑盒" -m "Requirement-Source: #314"
+          git push origin HEAD:fix/314-frontend-fullstack-reliability
