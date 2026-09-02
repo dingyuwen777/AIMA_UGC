@@ -1,0 +1,36 @@
+name: CHG314 AI All Scope RED
+
+on:
+  push:
+    branches:
+      - fix/314-frontend-fullstack-reliability
+    paths:
+      - .github/workflows/chg314-ai-red.yml
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout change branch
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked frontend environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(npm --version)" = "11.17.0"
+          npm ci --prefix frontend
+
+      - name: Verify AI all-scope RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run test -- --run tests/analysis-all-scope.spec.ts
