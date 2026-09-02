@@ -258,7 +258,9 @@ async function startCampaign(): Promise<void> {
 }
 
 async function cancelCampaign(): Promise<void> {
-  if (await store.actOnHistoricalCampaign('cancel')) notice.value = '已请求取消导入任务。'
+  if (!await store.actOnHistoricalCampaign('cancel')) return
+  notice.value = '已请求取消导入任务。'
+  await pollCampaign()
 }
 
 async function retryCampaign(): Promise<void> {
