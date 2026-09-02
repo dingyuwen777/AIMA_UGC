@@ -6,6 +6,7 @@ on:
       - fix/314-frontend-fullstack-reliability
     paths:
       - .github/workflows/chg314-apply.yml
+      - scripts/dev/run_chg314_patch.py
 
 permissions:
   contents: write
