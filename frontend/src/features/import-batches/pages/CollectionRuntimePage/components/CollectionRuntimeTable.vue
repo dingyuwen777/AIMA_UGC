@@ -61,7 +61,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
           {{ runtimeStatusLabels[item.status] }} · {{ item.progress }}%
         </div>
         <div class="progress-track">
-          <span :style="{ width: `${item.progress}%` }}" />
+          <span :style="{ width: `${item.progress}%` }" />
         </div>
       </div>
       <div class="stage-cell">
