@@ -30,6 +30,7 @@ from .runner import (
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 _ACCOUNT_CACHE_SCHEMA = "tikhub-test-account-cache.v1"
+_NORMAL_PAGINATION_STOP_REASONS = frozenset({"provider_exhausted", "empty_page"})
 CommentMode = Literal["limited", "all"]
 ResolutionReason = Literal["not_found", "ambiguous", "incomplete", "identity_mismatch"]
 
@@ -419,6 +420,13 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
 
             advance = account_runtime.advance_user_search(state=pagination, body=body)
             if not advance.should_continue:
+                stop_reason = advance.stop_reason
+                if not _pagination_completed_normally(stop_reason):
+                    reason = stop_reason or "pagination_stop_reason_unavailable"
+                    raise XiaohongshuAccountResolutionError(
+                        f"搜索 {query} 分页未完整结束（{reason}），无法确认账号唯一性",
+                        reason="incomplete",
+                    )
                 return resolve_account_candidate(target, candidates)
             pagination = cast(dict[str, object], advance.next_state)
 
@@ -534,10 +542,12 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
 
             advance = account_runtime.advance_user_notes(state=pagination, body=body)
             if not advance.should_continue:
-                stop_reason = advance.stop_reason or "provider_exhausted"
+                stop_reason = advance.stop_reason or "pagination_stop_reason_unavailable"
                 summary["note_stop_reason"] = stop_reason
                 self._search_stop_reasons[account_key] = stop_reason
-                if _account_has_partial_results(summary):
+                if not _pagination_completed_normally(stop_reason) or _account_has_partial_results(
+                    summary
+                ):
                     summary["status"] = "partial"
                 return
             pagination = cast(dict[str, object], advance.next_state)
@@ -873,6 +883,11 @@ def _new_account_summary(target: XiaohongshuAccountTarget) -> dict[str, object]:
         "error_type": None,
         "error_summary": None,
     }
+
+
+def _pagination_completed_normally(stop_reason: str | None) -> bool:
+    """只有 Provider 明确耗尽或真实空页才能支持“已遍历完整”结论。"""
+    return stop_reason in _NORMAL_PAGINATION_STOP_REASONS
 
 
 def _account_has_partial_results(summary: dict[str, object]) -> bool:
