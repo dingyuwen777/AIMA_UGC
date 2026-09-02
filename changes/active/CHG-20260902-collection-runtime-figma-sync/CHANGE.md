@@ -45,7 +45,7 @@ Excluded：后端 API/Contract/Schema/Migration、generated Client、数据库�
 - Pydantic → FastAPI → OpenAPI → Orval → `frontend/src/generated/api` 的 Contract 链不变，generated Client 不手工修改。
 - `GET /api/v1/collection-runtime/runs` 的 cursor + limit 与 `next_cursor + has_more` 分页语义不变。
 - `GET /api/v1/collection-runtime/summary` 的 KPI 及后端 `Asia/Shanghai` 自然日口径不变。
-- 活跃任务仅在页面可见时约每 5 秒静默刷新，不改轮询频率或后台执行模型。
+- 活跃任务仅在页面可见时约每 5 秒静默刷新；Data Import Dialog 也使用同一约 5 秒前台轮询节奏，后台持久任务模型不变。
 - Batch Supplement 平台资格继续以后端 Eligibility 为最终事实，不在前端写死平台资格。
 - 不升级 Vue、Vite、Pinia、TypeScript、Vitest、Playwright 或任何依赖。
 
@@ -56,7 +56,7 @@ Excluded：后端 API/Contract/Schema/Migration、generated Client、数据库�
 | R1 | 主表固定 7 列，不单独展示“关联对象” | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | Red/Green 回归直接渲染表头并检查正式 7 列 |
 | R2 | Campaign 只有 `can_start=true` 才渲染“开始导入” | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | 回归检查 DataImportDialog 模板条件与禁用占位逻辑 |
 | R3 | 辅助补采产品/可访问文案保持 Provider-neutral | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | 回归检查 Drawer aria-label 与页面创建成功提示 |
-| R4 | cursor、北京时间 KPI、Capability/Eligibility 和条件轮询语义保持不变 | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | 既有 Store/API/设计基线回归及完整前端验证 |
+| R4 | cursor、北京时间 KPI、Capability/Eligibility 和约 5 秒条件轮询语义保持一致 | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | 既有 Store/API 回归 + Data Import Dialog 轮询节奏回归 + 完整前端验证 |
 | R5 | 正式 Figma 与真实后端状态/动作一致且无已知几何重叠 | https://github.com/dingyuwen777/AIMA_UGC/issues/302 | not_satisfied | Figma 结构、几何、状态与 Design Context 复核 |
 
 # Validation Matrix
@@ -77,7 +77,7 @@ Excluded：后端 API/Contract/Schema/Migration、generated Client、数据库�
 - [x] 重新读取目标项目规则、当前实现、真实后端 Contract 与 Agent_Skills canonical Source Mode 规则。
 - [x] 审查并修正 Figma 的 Provider-neutral 命名、Campaign 动作矩阵、KPI/轮询注释和几何重叠。
 - [x] Red：增加 7 列、Campaign Start 条件和 Provider-neutral 文案回归；首轮 CI 新增 7 列测试按预期暴露断言脆弱性，其他新增断言通过。
-- [x] Green：最小修改现有 Vue 页面/组件，不重写 Store/API，不升级依赖。
+- [x] Green：最小修改现有 Vue 页面/组件，不重写 Store/API，不升级依赖；同时把 Data Import Dialog 的 1 秒轮询收敛到页面既定 5 秒节奏。
 - [ ] 执行前端目标测试、lint、typecheck、build 与永久 CI。
 - [ ] 重新读取上游，完成 Completion Audit 与两阶段独立 Review。
 - [ ] Ready 后受保护合并，执行 main fresh 验证并独立归档本 Change。
