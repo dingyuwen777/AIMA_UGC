@@ -23,9 +23,9 @@ from aima_ugc.platform.time import beijing_now
 
 from .runner import (
     _DEFAULT_OUTPUT_ROOT,
+    TikHubTestRunResult,
     _RunLimits,
     _TikHubDebugRunner,
-    TikHubTestRunResult,
 )
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
