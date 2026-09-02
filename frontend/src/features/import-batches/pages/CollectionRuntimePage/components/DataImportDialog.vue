@@ -694,7 +694,7 @@ function viewCampaignContents(): void {
               :disabled="store.actingHistorical"
               @click="cancelCampaign"
             >
-              取消
+              取消任务
             </AimaButton>
             <AimaButton
               v-if="canRetry"
