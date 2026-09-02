@@ -149,9 +149,12 @@ test('matches the approved Figma workspace and resolves historical vehicle scope
 
   await page.getByRole('button', { name: '关键词包' }).click()
   const packHeader = page.locator('.table-head')
+  const packDetail = page.locator('.detail-card')
   await expect(packHeader.getByText('共 2 个')).toBeVisible()
   await expect(packHeader.getByRole('button', { name: /新建词包/ })).toBeVisible()
   await expect(page.locator('.aima-page-actions').getByRole('button', { name: /新建词包/ })).toHaveCount(0)
+  await expect(packDetail.getByText('爱玛 Q7', { exact: true })).toBeVisible()
+  await expect(packDetail.getByText('全部平台', { exact: true })).toHaveCount(0)
   await packHeader.getByRole('button', { name: /新建词包/ }).click()
   await expect(page.getByRole('dialog', { name: '新建关键词包' })).toBeVisible()
 })
