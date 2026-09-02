@@ -132,6 +132,14 @@ describe('采集运行中心正式 Figma 基线', () => {
     )
   })
 
+  it('导入任务详情沿用采集运行中心约 5 秒的条件轮询节奏', async () => {
+    const source = await readCollectionRuntimeSource('components/DataImportDialog.vue')
+
+    expect(source).toContain('const campaignPollIntervalMs = 5_000')
+    expect(source).toContain('setInterval(() => void pollCampaign(), campaignPollIntervalMs)')
+    expect(source).not.toContain('setInterval(() => void pollCampaign(), 1_000)')
+  })
+
   it('辅助补采产品与可访问文案不绑定具体 Provider 或后台实现名', async () => {
     const [drawerSource, pageSource] = await Promise.all([
       readCollectionRuntimeSource('components/TikHubSupplementDrawer.vue'),
