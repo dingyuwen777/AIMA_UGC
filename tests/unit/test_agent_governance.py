@@ -44,6 +44,7 @@ def _minimal_repository(root: Path) -> None:
         "# 文档规则\n\n先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则。\n",
     )
     _write(root / ".agents/skills/coding/scripts/ready_check.py", "# 测试夹具\n")
+    _write(root / "scripts/quality/check_change_completion.py", "# 测试夹具\n")
     _write(root / "scripts/quality/check_pr_requirement_source.py", "# 测试夹具\n")
     _write(
         root / ".github/workflows/change-completion-gate.yml",
@@ -57,7 +58,8 @@ def _minimal_repository(root: Path) -> None:
         "permissions:\n  contents: read\n  issues: read\n"
         "python scripts/quality/check_agent_governance.py\n"
         "python scripts/quality/check_pr_requirement_source.py --event event.json --root .\n"
-        "python .agents/skills/coding/scripts/ready_check.py --root .\n",
+        "python scripts/quality/check_change_completion.py --root . --changed-since base\n"
+        "python scripts/quality/check_change_completion.py --root . --require-active-ready\n",
     )
     _write(
         root / ".github/ISSUE_TEMPLATE/01-requirement.yml",
@@ -244,6 +246,7 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
     """AIMA Completion Gate 必须继续保留项目 Ready Check 证明责任。"""
     _minimal_repository(tmp_path)
     (tmp_path / ".agents/skills/coding/scripts/ready_check.py").unlink()
+    (tmp_path / "scripts/quality/check_change_completion.py").unlink()
     _write(
         tmp_path / ".github/workflows/change-completion-gate.yml",
         "permissions:\n  issues: read\n"
@@ -257,6 +260,22 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
     assert any(error.startswith("GOV007") for error in errors)
 
 
+def test_checker_rejects_workflow_bypassing_project_change_carrier(tmp_path: Path) -> None:
+    """Completion Gate 不得回退为直接调用无法识别 mixed carrier 的 generic checker。"""
+    _minimal_repository(tmp_path)
+    workflow_path = tmp_path / ".github/workflows/change-completion-gate.yml"
+    workflow = workflow_path.read_text(encoding="utf-8").replace(
+        "python scripts/quality/check_change_completion.py",
+        "python .agents/skills/coding/scripts/ready_check.py",
+    )
+    _write(workflow_path, workflow)
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert any(error.startswith("GOV007") for error in errors)
+    assert any(error.startswith("GOV016") and "generic" in error for error in errors)
+
+
 def test_checker_requires_pr_requirement_source_gate_wiring(tmp_path: Path) -> None:
     """真实 PR Requirement Source checker、Workflow 调用和最小 Issues 权限必须同时存在。"""
     _minimal_repository(tmp_path)
@@ -264,7 +283,8 @@ def test_checker_requires_pr_requirement_source_gate_wiring(tmp_path: Path) -> N
     _write(
         tmp_path / ".github/workflows/change-completion-gate.yml",
         "python scripts/quality/check_agent_governance.py\n"
-        "python .agents/skills/coding/scripts/ready_check.py --root .\n",
+        "python scripts/quality/check_change_completion.py --root . --changed-since base\n"
+        "python scripts/quality/check_change_completion.py --root . --require-active-ready\n",
     )
 
     errors = CHECK_REPOSITORY(tmp_path)

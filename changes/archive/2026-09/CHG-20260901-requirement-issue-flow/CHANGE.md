@@ -81,8 +81,8 @@ data_changes: []
 | R1 | 先跑通 Issue → PR → Agent_Skills Review 的最小流程，不做复杂 | user:current-request | satisfied | 两个 Issue Form、chooser config、PR `Requirement-Source:`、checker/回归均已合入 main；PR #280 |
 | R2 | Issue 给 Review 提供明确需求和验收依据 | user:current-request | satisfied | Requirement Form 与 Bug Form 均固定必要的需求/验收/证据字段 |
 | R3 | 通用能力由 Agent_Skills 提供，项目只落项目级模板/接线 | user:previous-request | satisfied | Agent_Skills main `e5a147f08fb4d501e1e28a71c35bf7a100bc7057` 已提供 Requirement Source / PR revision / Review fail-closed；AIMA 未复制通用规则 |
-| R4 | 不重复修改已经满足要求的 Agent_Skills canonical | current-repository-fact | satisfied | 本任务 Agent_Skills diff 为 0 |
-| R5 | 功能 PR 合并、main fresh CI 与独立 Change 归档 | project-delivery | satisfied | PR #280 merge `bd0c6c25e121f02efb1bcfefa28cfdee9eda94f2`；main CI `33476510999`、Completion `33476511019`、Runtime `33476510993`、Full-stack `33476510996` 全部 success；本记录进入独立 archive PR |
+| R4 | 不重复修改已经满足要求的 Agent_Skills canonical | https://github.com/dingyuwen777/Agent_Skills/commit/e5a147f08fb4d501e1e28a71c35bf7a100bc7057 | satisfied | 本任务 Agent_Skills diff 为 0 |
+| R5 | 功能 PR 合并、main fresh CI 与独立 Change 归档 | https://github.com/dingyuwen777/AIMA_UGC/pull/280 | satisfied | PR #280 merge `bd0c6c25e121f02efb1bcfefa28cfdee9eda94f2`；main CI `33476510999`、Completion `33476511019`、Runtime `33476510993`、Full-stack `33476510996` 全部 success；本记录进入独立 archive PR |
 
 # Validation Matrix
 
