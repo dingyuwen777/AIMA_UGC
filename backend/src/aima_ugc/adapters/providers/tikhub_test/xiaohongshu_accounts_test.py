@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from aima_ugc.adapters.providers.tikhub_test import (
     XiaohongshuAccountTarget,
     run_xiaohongshu_accounts,
@@ -21,7 +23,7 @@ END_DATE = beijing_now().date().isoformat()
 
 INCLUDE_COMMENTS = True
 INCLUDE_REPLIES = True
-COMMENT_MODE = "all"
+COMMENT_MODE: Literal["limited", "all"] = "all"
 
 MAX_ACCOUNT_SEARCH_PAGES = 5
 MAX_NOTE_PAGES_PER_ACCOUNT = 100
