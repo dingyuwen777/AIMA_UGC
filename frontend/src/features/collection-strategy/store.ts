@@ -9,6 +9,7 @@ import type {
   GlobalRelevanceConfigResponse,
   KeywordPackResponse,
   KeywordPackSummaryResponse,
+  VehicleModelResponse,
 } from '../../generated/api/client'
 import {
   CollectionStrategyApiError,
@@ -20,6 +21,7 @@ import {
   fetchKeywordPacks,
   fetchPack,
   fetchPlans,
+  fetchVehicleModels,
   setGlobalRelevance,
   setPackEnabled,
   setPlanEnabled,
@@ -46,6 +48,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const activeTab = ref<StrategyTab>('plans')
   const packs = ref<KeywordPackSummaryResponse[]>([])
   const packCatalog = ref<KeywordPackSummaryResponse[]>([])
+  const vehicleCatalog = ref<VehicleModelResponse[]>([])
   const packTotal = ref(0)
   const packOffset = ref(0)
   const packLimit = 20
@@ -76,6 +79,21 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     let offset = 0
     while (true) {
       const page = await fetchKeywordPacks({ offset, limit: 100 })
+      result.push(...page.items)
+      offset += page.items.length
+      if (offset >= page.total || page.items.length === 0) return result
+    }
+  }
+
+  /**
+   * 分页读取完整车型目录供计划历史引用展示。
+   * 不传 status，避免把 active-only 创建候选语义错误复用到 deprecated/merged 历史计划。
+   */
+  async function fetchAllVehicleModels(): Promise<VehicleModelResponse[]> {
+    const result: VehicleModelResponse[] = []
+    let offset = 0
+    while (true) {
+      const page = await fetchVehicleModels({ offset, limit: 200 })
       result.push(...page.items)
       offset += page.items.length
       if (offset >= page.total || page.items.length === 0) return result
@@ -117,9 +135,10 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
         if (reason instanceof CollectionStrategyApiError && reason.status === 409) return null
         throw reason
       })
-      const [packPage, allPacks, currentRelevance, providerCapabilities, planPage, enabledPlans] = await Promise.all([
+      const [packPage, allPacks, allVehicles, currentRelevance, providerCapabilities, planPage, enabledPlans] = await Promise.all([
         fetchKeywordPacks({ offset: packOffset.value, limit: packLimit }),
         fetchAllKeywordPacks(),
+        fetchAllVehicleModels(),
         relevancePromise,
         fetchCapabilities(),
         fetchPlans({
@@ -133,6 +152,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       ])
       packs.value = packPage.items
       packCatalog.value = allPacks
+      vehicleCatalog.value = allVehicles
       packTotal.value = packPage.total
       relevance.value = currentRelevance
       capabilities.value = providerCapabilities
@@ -383,6 +403,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     activeTab,
     packs,
     packCatalog,
+    vehicleCatalog,
     packTotal,
     packOffset,
     packLimit,

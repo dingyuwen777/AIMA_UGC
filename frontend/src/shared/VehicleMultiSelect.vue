@@ -19,18 +19,27 @@ const selected = computed(() => new Set(props.modelValue))
 
 onMounted(load)
 
+/** 按后端 offset/limit 契约读取完整车型目录；默认只暴露 active 创建候选。 */
 async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const response = unwrapResponse(await listVehicleModels({
-      status: props.includeDeprecated ? undefined : 'active',
-      limit: 200,
-    }))
-    if (!Array.isArray(response.items)) {
-      throw new Error('车型目录响应无效，请稍后重试。')
+    const items: VehicleModelResponse[] = []
+    let offset = 0
+    while (true) {
+      const response = unwrapResponse(await listVehicleModels({
+        status: props.includeDeprecated ? undefined : 'active',
+        offset,
+        limit: 200,
+      }))
+      if (!Array.isArray(response.items)) {
+        throw new Error('车型目录响应无效，请稍后重试。')
+      }
+      items.push(...response.items)
+      offset += response.items.length
+      if (offset >= response.total || response.items.length === 0) break
     }
-    options.value = response.items
+    options.value = items
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {

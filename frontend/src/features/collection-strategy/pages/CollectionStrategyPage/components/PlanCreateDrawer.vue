@@ -168,7 +168,7 @@ function submit(): void {
       aria-modal="true"
     >
       <header>
-        <div><h2>新建采集计划</h2><p>保存关键词包与周期采集配置</p></div><AimaButton
+        <div><h2>新建采集计划</h2><p>保存发现范围与周期采集配置</p></div><AimaButton
           variant="text"
           aria-label="关闭"
           @click="open = false"
@@ -200,7 +200,7 @@ function submit(): void {
           label="3. 车型（可单独选择，也可与词包组合）"
         />
         <fieldset>
-          <legend>4. 采集平台与 Provider</legend><div class="platforms">
+          <legend>4. 目标平台与采集渠道</legend><div class="platforms">
             <div
               v-for="option in platformOptions"
               :key="option.value"
@@ -230,7 +230,7 @@ function submit(): void {
                 >
                   {{ config.display_name }}
                 </option>
-              </select><small v-else>{{ configsFor(option.value).length ? '点击添加' : '暂无可用配置' }}</small>
+              </select><small v-else>{{ configsFor(option.value).length ? '点击选择' : '暂无可用配置' }}</small>
               <div
                 v-if="providerByPlatform[option.value] && searchCapability(option.value)"
                 class="platform-search"
@@ -247,23 +247,23 @@ function submit(): void {
             </div>
           </div>
         </fieldset>
-        <label><strong>5. 执行周期</strong><span class="schedule-field"><select
+        <label><strong>5. 执行频率</strong><span class="schedule-field"><select
           v-model="scheduleExpr"
-          aria-label="执行周期"
+          aria-label="执行频率"
         ><option
           v-for="preset in COLLECTION_SCHEDULE_PRESETS"
           :key="preset.value"
           :value="preset.value"
-        >{{ preset.label }}</option></select><em>北京时间</em></span><small>按北京时间周期执行；一次性采集请前往采集运行中心。</small></label>
+        >{{ preset.label }}</option></select><em>北京时间</em></span><small>按北京时间执行；选择频率后系统自动生成调度规则。</small></label>
         <label class="switch"><strong>6. 创建后启用计划</strong><input
           v-model="enabled"
           type="checkbox"
         ></label>
         <div class="policy">
-          <strong>固定执行规则</strong><div><span>内容详情<b>变化时采集</b></span><span>评论数据<b>自适应采集</b></span></div>
+          <strong>系统固定规则</strong><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
         </div>
         <AimaFeedbackBanner :tone="enabled && !relevanceAvailable ? 'error' : 'success'">
-          <strong>全局相关性（系统唯一，不可覆盖）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>创建启用计划前必须可用，后端仍会再次验证。</small>
+          <strong>全局规则相关性（系统全局）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>只读；启用计划前必须可用，执行时会冻结当时配置，单个计划不可覆盖。</small>
         </AimaFeedbackBanner>
         <div
           v-if="eligibilityReason && (selectedPacks.length || selectedVehicles.length) && platformOptions.some((item) => isPlatformSelected(item.value))"
@@ -273,7 +273,7 @@ function submit(): void {
           {{ loadingPackDetails ? '正在读取实时资格…' : eligibilityReason }}
         </div>
         <AimaFeedbackBanner tone="warning">
-          计划执行会发起真实 Provider 请求并可能产生费用；当前不提供预算或金额上限。
+          实际运行可能产生采集渠道费用；当前未配置预算或金额上限。
         </AimaFeedbackBanner>
       </div>
       <footer>
@@ -295,12 +295,13 @@ function submit(): void {
 <style scoped>
 .backdrop { position: fixed; z-index: 100; inset: 0; background: rgb(20 29 44 / 34%); }
 aside { position: fixed; top: 0; right: 0; bottom: 0; display: flex; width: 510px; height: 100vh; max-height: 100vh; flex-direction: column; overflow: hidden; background: #fff; box-shadow: -10px 0 30px rgb(20 29 44 / 12%); }
-header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; }header p { margin: 5px 0 0; color: #737e91; font-size: 12px; }
-.body { min-height: 0; flex: 1; overflow: auto; padding: 20px 24px; }label,fieldset,.policy { display: block; margin: 0 0 18px; }label strong,legend,.policy > strong { display: block; margin-bottom: 8px; color: #253044; font-size: 13px; }input:not([type='checkbox']),select { width: 100%; height: 38px; padding: 0 11px; border: 1px solid #d9dee8; border-radius: 6px; background: #fff; }fieldset { padding: 0; border: 0; }.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 22px 8px 0; padding: 0; border: 0; font-size: 12px; }
-.platforms { display: grid; gap: 8px; }.platform { min-height: 78px; padding: 10px; border: 1px solid #dfe4ec; border-radius: 7px; cursor: pointer; }.platform.active { border-color: var(--aima-primary); background: #fff5f8; }.platform.unavailable { cursor: not-allowed; opacity: .58; }.platform span,.platform small { display: block; }.platform span { color: #263146; font-size: 13px; font-weight: 600; }.platform small { margin-top: 8px; color: #818b9d; }.platform > select { height: 30px; margin-top: 7px; font-size: 11px; }.platform-search { margin-top: 10px; }
+header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; }header p { margin: 5px 0 0; color: #737e91; font-size: 13px; }
+.body { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding: 22px 24px; }label,fieldset,.policy { display: block; margin: 0 0 22px; }label strong,legend,.policy > strong { display: block; margin-bottom: 8px; color: #253044; font-size: 14px; font-weight: 600; }input:not([type='checkbox']),select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #d9dee8; border-radius: 6px; background: #fff; }fieldset { padding: 0; border: 0; }.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 22px 8px 0; padding: 0; border: 0; font-size: 12px; }
+:deep(.vehicle-select) { margin: 0 0 22px; padding: 0; border: 0; border-radius: 0; }:deep(.vehicle-select legend) { margin-bottom: 8px; padding: 0; color: #253044; font-size: 14px; font-weight: 600; }:deep(.vehicle-select__options) { gap: 12px; }:deep(.vehicle-select__options label) { min-width: 150px; min-height: 32px; height: 32px; padding: 0; border: 0; border-radius: 0; font-size: 12px; }:deep(.vehicle-select__options label:has(input:checked)) { border: 0; color: var(--aima-text-secondary); background: transparent; }:deep(.vehicle-select__options input) { width: 16px; height: 16px; }:deep(.vehicle-select__options small) { color: var(--aima-text-secondary); font-size: 12px; }:deep(.vehicle-select__options small::before) { content: '· '; }
+.platforms { display: grid; gap: 8px; }.platform { min-height: 68px; padding: 10px; border: 1px solid #dfe4ec; border-radius: 7px; cursor: pointer; }.platform.active { border-color: var(--aima-primary); background: #fff5f8; }.platform.unavailable { cursor: not-allowed; opacity: .58; }.platform span,.platform small { display: block; }.platform span { color: #263146; font-size: 13px; font-weight: 600; }.platform small { margin-top: 8px; color: #818b9d; }.platform > select { height: 30px; margin-top: 7px; font-size: 11px; }.platform-search { margin-top: 10px; }
 .schedule-field { display: flex; align-items: center; border: 1px solid #d9dee8; border-radius: 6px; }.schedule-field select { border: 0; }.schedule-field em { padding: 0 10px; color: #576276; font-size: 12px; font-style: normal; white-space: nowrap; }label > small,.aima-feedback small { display: block; margin-top: 4px; color: inherit; opacity: .74; }
 .policy > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.policy span { padding: 10px; border: 1px solid #e0e4eb; border-radius: 7px; color: #6a7588; font-size: 12px; }.policy b { display: block; margin-top: 4px; color: #263146; }
 .aima-feedback { margin-bottom: 14px; }.aima-feedback strong,.aima-feedback span { display: block; }.aima-feedback span { margin-top: 3px; font-weight: 600; }
 .switch { display: flex; align-items: center; justify-content: space-between; }.switch strong { margin: 0; }.switch input { width: 20px; height: 20px; accent-color: var(--aima-primary); }.eligibility { margin: -4px 0 14px; padding: 10px 11px; border: 1px solid #ffc7cc; border-radius: 7px; color: #b4232d; background: #fff5f6; font-size: 12px; }
-footer { display: flex; flex: none; gap: 12px; padding: 14px 24px; border-top: 1px solid var(--aima-border); background: #fff; }footer :deep(.aima-button) { height: 40px; flex: 1; }
+footer { display: flex; width: 100%; height: 74px; flex: none; gap: 12px; padding: 16px 24px 17px; border-top: 1px solid var(--aima-border); background: #fff; }footer :deep(.aima-button) { height: 40px; flex: 1; }
 </style>

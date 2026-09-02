@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { CollectionPlanResponse, CollectionProviderConfigResponse, KeywordPackSummaryResponse } from '../../../../../generated/api/client'
+import type {
+  CollectionPlanResponse,
+  CollectionProviderConfigResponse,
+  KeywordPackSummaryResponse,
+  VehicleModelResponse,
+} from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { collectionPlatformLabel, collectionScheduleLabel, formatBeijingDateTime } from '../../../presentation'
@@ -7,6 +12,7 @@ import { collectionPlatformLabel, collectionScheduleLabel, formatBeijingDateTime
 defineProps<{
   plans: CollectionPlanResponse[]
   packs: KeywordPackSummaryResponse[]
+  vehicles: VehicleModelResponse[]
   providers: CollectionProviderConfigResponse[]
   total: number
   offset: number
@@ -22,19 +28,51 @@ const emit = defineEmits<{
   next: []
 }>()
 
-/** 使用完整 API 目录解析计划的词包名称，缺失项保留原始 ID。 */
-function packNames(plan: CollectionPlanResponse, packs: KeywordPackSummaryResponse[]): string {
-  return plan.keyword_pack_ids.map((id) => packs.find((pack) => pack.id === id)?.name ?? id.slice(0, 8)).join('、')
+/**
+ * 按 Figma 列表密度组合真实词包与车型范围。
+ * 两类同时存在时优先各展示一项，避免车型被第二个词包挤出可见范围；缺失目录项保留原始 ID。
+ */
+function discoveryScopeLines(
+  plan: CollectionPlanResponse,
+  packs: KeywordPackSummaryResponse[],
+  vehicles: VehicleModelResponse[],
+): string[] {
+  const packLines = plan.keyword_pack_ids.map((id) => packs.find((pack) => pack.id === id)?.name ?? id)
+  const vehicleLines = (plan.vehicle_model_ids ?? []).map((id) => {
+    const vehicle = vehicles.find((item) => item.id === id)
+    return `车型：${vehicle?.display_name ?? id}`
+  })
+  const visible: string[] = []
+  if (packLines[0]) visible.push(packLines[0])
+  if (vehicleLines[0]) visible.push(vehicleLines[0])
+  for (const line of [...packLines.slice(1), ...vehicleLines.slice(1)]) {
+    if (visible.length >= 2) break
+    visible.push(line)
+  }
+  const remaining = packLines.length + vehicleLines.length - visible.length
+  return remaining > 0 ? [...visible, `另有 ${remaining} 项范围`] : visible
 }
 
-/** 把 Provider 配置 ID 转为后端返回的展示名称。 */
+/** 把 Provider 配置 ID 转为后端返回的展示名称，缺失映射保留原始 ID。 */
 function providerName(id: string, providers: CollectionProviderConfigResponse[]): string {
-  return providers.find((provider) => provider.id === id)?.display_name ?? id.slice(0, 8)
+  return providers.find((provider) => provider.id === id)?.display_name ?? id
 }
 
-/** 用北京时间展示下一运行时间，未初始化时保留正式调度状态。 */
+/** 按 Figma 表格密度展示前两个真实平台/Provider，剩余平台做数量汇总。 */
+function channelLines(
+  plan: CollectionPlanResponse,
+  providers: CollectionProviderConfigResponse[],
+): string[] {
+  const lines = plan.platforms.map(
+    (item) => `${collectionPlatformLabel(item.platform)} · ${providerName(item.provider_config_id, providers)}`,
+  )
+  if (lines.length <= 2) return lines
+  return [...lines.slice(0, 2), `另有 ${lines.length - 2} 个平台`]
+}
+
+/** 用 Figma 约定的北京时间分钟粒度展示下一运行时间，未初始化时显示调度状态。 */
 function nextRun(value?: string | null): string {
-  return value ? formatBeijingDateTime(value) : '等待 Scheduler 初始化'
+  return value ? formatBeijingDateTime(value) : '等待调度系统初始化'
 }
 </script>
 
@@ -47,8 +85,8 @@ function nextRun(value?: string | null): string {
       <strong>找到 {{ total }} 条采集计划</strong>
     </div>
     <div class="table-wrap">
-      <table>
-        <thead><tr><th>计划 / 编号</th><th>状态</th><th>关键词包</th><th>目标平台 / 采集渠道</th><th>调度与下次运行</th><th>操作</th></tr></thead>
+      <table class="plan-table">
+        <thead><tr><th>计划 / 编号</th><th>状态</th><th>词包 / 车型</th><th>目标平台 / 采集渠道</th><th>调度与下次运行</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-if="loading">
             <td
@@ -71,20 +109,26 @@ function nextRun(value?: string | null): string {
             v-else
             :key="plan.id"
           >
-            <td><strong>{{ plan.name }}</strong><small>Plan ID: {{ plan.id }}</small></td>
+            <td><strong>{{ plan.name }}</strong><small>计划编号： {{ plan.id }}</small></td>
             <td><span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span></td>
-            <td>{{ packNames(plan, packs) }}</td>
-            <td>
+            <td class="scope-lines">
               <span
-                v-for="item in plan.platforms"
-                :key="item.platform"
-                class="channel"
-              >{{ collectionPlatformLabel(item.platform) }}<small>{{ providerName(item.provider_config_id, providers) }}</small></span>
+                v-for="(line, index) in discoveryScopeLines(plan, packs, vehicles)"
+                :key="`${plan.id}-scope-${index}`"
+                :title="line"
+              >{{ line }}</span>
             </td>
-            <td><strong>{{ collectionScheduleLabel(plan.schedule_expr) }}</strong><small>下次：{{ nextRun(plan.next_run_at) }}</small></td>
+            <td class="channel-lines">
+              <span
+                v-for="(line, index) in channelLines(plan, providers)"
+                :key="`${plan.id}-channel-${index}`"
+                :title="line"
+              >{{ line }}</span>
+            </td>
+            <td><strong>{{ collectionScheduleLabel(plan.schedule_expr) }}</strong><small>{{ nextRun(plan.next_run_at) }}</small></td>
             <td class="actions">
               <AimaButton
-                variant="text"
+                variant="secondary"
                 size="small"
                 @click="emit('open', plan)"
               >
@@ -126,11 +170,12 @@ function nextRun(value?: string | null): string {
 </template>
 
 <style scoped>
-.table-heading { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 14px; }.table-heading strong { font-size: 13px; }
-.table-wrap { overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }th { height: 42px; color: #596579; background: #fafbfc; font-weight: 500; text-align: left; }th,td { padding: 11px 12px; border-bottom: 1px solid #edf0f4; vertical-align: middle; }th:first-child { width: 23%; }th:nth-child(2) { width: 9%; }th:nth-child(3) { width: 17%; }th:nth-child(4) { width: 19%; }th:nth-child(5) { width: 20%; }th:last-child { width: 12%; }td strong,td small { display: block; }td small { max-width: 210px; margin-top: 4px; overflow: hidden; color: #7f899b; text-overflow: ellipsis; white-space: nowrap; }
-.status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }.status::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ''; }.enabled { color: #118852; }.disabled { color: #657084; }
-.channel { display: block; }.channel + .channel { margin-top: 6px; }
-.actions :deep(.aima-button) { display: flex; width: 78px; margin: 4px 0; }
+.plan-card > :deep(.aima-feedback) { min-height: 44px; align-items: center; padding: 10px 13px; }
+.table-heading { display: flex; align-items: center; justify-content: space-between; margin: 25px 0 15px; }.table-heading strong { font-size: 14px; line-height: 22px; }
+.table-wrap { min-height: 227px; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }th { height: 45px; color: #596579; background: #fafbfc; font-weight: 500; text-align: left; }th,td { padding: 10px 12px; border-bottom: 1px solid #edf0f4; vertical-align: middle; }tbody tr { height: 82px; }th:first-child { width: 18%; }th:nth-child(2) { width: 8%; }th:nth-child(3) { width: 18%; }th:nth-child(4) { width: 23%; }th:nth-child(5) { width: 21%; }th:last-child { width: 12%; }td strong,td small { display: block; }td small { max-width: 210px; margin-top: 4px; overflow: hidden; color: #7f899b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }.status::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ''; }.enabled { color: #118852; }.disabled { color: #657084; }
+.scope-lines span,.channel-lines span { display: block; overflow: hidden; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }.scope-lines span:nth-child(3),.channel-lines span:nth-child(3) { color: #7f899b; font-size: 12px; }
+.actions :deep(.aima-button) { display: flex; width: 78px; height: 32px; margin: 3px 0; }
 .state { height: 180px; color: #8993a4; text-align: center; }
-.pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 14px; color: #6f7a8d; font-size: 13px; }.pagination button { height: 34px; padding: 0 14px; border: 1px solid #d8dee8; border-radius: 6px; color: #526075; background: #fff; cursor: pointer; }.pagination button:disabled { opacity: .45; cursor: default; }
+.pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 14px; color: #6f7a8d; font-size: 12px; }.pagination button { height: 32px; padding: 0 12px; border: 1px solid #d8dee8; border-radius: 6px; color: #526075; background: #fff; cursor: pointer; }.pagination button:disabled { opacity: .45; cursor: default; }
 </style>
