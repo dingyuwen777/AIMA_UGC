@@ -9,7 +9,7 @@ from pydantic import TypeAdapter
 from aima_ugc.contracts.provider import JsonObject
 
 from . import runtime as shared_runtime
-from .operations import xiaohongshu
+from .operations import xiaohongshu_accounts
 
 _JSON_OBJECT_ADAPTER = TypeAdapter(JsonObject)
 
@@ -25,7 +25,7 @@ def build_user_search_call(
 ) -> TikHubAccountOperationCall:
     """把账号搜索输入映射为正式 App V2 `search_users` 调用。"""
     paging = state or {}
-    request = xiaohongshu.build_search_users_request(
+    request = xiaohongshu_accounts.build_search_users_request(
         keyword=keyword,
         page=_int_state(paging, "page", default=1),
         search_id=_optional_str_state(paging, "search_id"),
@@ -48,7 +48,7 @@ def advance_user_search(
 ) -> shared_runtime.TikHubPageAdvance:
     """按正式用户搜索分页状态推进下一页。"""
     current = state or {}
-    result = xiaohongshu.XiaohongshuUserSearchPagination.from_response(
+    result = xiaohongshu_accounts.XiaohongshuUserSearchPagination.from_response(
         current_page=_int_state(current, "page", default=1),
         body=body,
         previous_item_ids=tuple(_string_list(current.get("item_ids"))),
@@ -69,12 +69,12 @@ def advance_user_search(
 
 def extract_user_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """通过生产 Operation Extractor 读取用户搜索候选。"""
-    return xiaohongshu.extract_user_search_items(body)
+    return xiaohongshu_accounts.extract_user_search_items(body)
 
 
 def build_user_info_call(*, user_id: str) -> TikHubAccountOperationCall:
     """构造已解析稳定 user_id 的用户详情调用。"""
-    request = xiaohongshu.build_user_info_request(user_id=user_id)
+    request = xiaohongshu_accounts.build_user_info_request(user_id=user_id)
     return TikHubAccountOperationCall(
         platform="xiaohongshu",
         business_operation=cast(Any, "account_info"),
@@ -87,7 +87,7 @@ def build_user_info_call(*, user_id: str) -> TikHubAccountOperationCall:
 
 def extract_user_info_item(body: dict[str, Any]) -> dict[str, Any] | None:
     """通过生产 Operation Extractor 读取用户详情。"""
-    return xiaohongshu.extract_user_info_item(body)
+    return xiaohongshu_accounts.extract_user_info_item(body)
 
 
 def build_user_notes_call(
@@ -97,7 +97,7 @@ def build_user_notes_call(
 ) -> TikHubAccountOperationCall:
     """构造指定稳定 user_id 的已发布笔记 cursor 调用。"""
     paging = state or {}
-    request = xiaohongshu.build_user_posted_notes_request(
+    request = xiaohongshu_accounts.build_user_posted_notes_request(
         user_id=user_id,
         cursor=_str_state(paging, "cursor", default=""),
     )
@@ -119,7 +119,7 @@ def advance_user_notes(
 ) -> shared_runtime.TikHubPageAdvance:
     """按用户笔记最后一项 cursor 推进下一页，并保留重复页保护。"""
     current = state or {}
-    result = xiaohongshu.XiaohongshuUserNotesPagination.from_response(
+    result = xiaohongshu_accounts.XiaohongshuUserNotesPagination.from_response(
         previous_cursor=_str_state(current, "cursor", default=""),
         body=body,
         previous_item_ids=tuple(_string_list(current.get("item_ids"))),
@@ -140,7 +140,7 @@ def advance_user_notes(
 
 def extract_user_note_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """通过生产 Operation Extractor 读取用户已发布笔记。"""
-    return xiaohongshu.extract_user_posted_note_items(body)
+    return xiaohongshu_accounts.extract_user_posted_note_items(body)
 
 
 def _json_object(value: dict[str, object]) -> JsonObject:

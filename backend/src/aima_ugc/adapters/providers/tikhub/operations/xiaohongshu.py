@@ -57,7 +57,6 @@ class XiaohongshuSearchPagination:
         body: dict[str, Any],
         previous_item_ids: tuple[str, ...] = (),
     ) -> XiaohongshuSearchPagination:
-        """从笔记搜索响应构造下一页状态，并拒绝空页、重复页和停滞页。"""
         metadata = _find_mapping(body, required_any=("search_id", "search_session_id", "next_page"))
         page_data = _find_mapping(body, required_any=("items",))
         items = page_data.get("items")
@@ -103,85 +102,6 @@ class XiaohongshuSearchPagination:
 
 
 @dataclass(frozen=True, slots=True)
-class XiaohongshuUserSearchPagination:
-    """用户搜索下一页状态和停止原因。"""
-
-    next_page: int
-    search_id: str | None
-    item_ids: tuple[str, ...]
-    should_continue: bool
-    stop_reason: str | None = None
-
-    @classmethod
-    def from_response(
-        cls,
-        *,
-        current_page: int,
-        body: dict[str, Any],
-        previous_item_ids: tuple[str, ...] = (),
-    ) -> XiaohongshuUserSearchPagination:
-        """按 search_id 推进用户搜索，避免缺失会话状态后继续产生无效付费请求。"""
-        metadata = _find_mapping(body, required_any=("search_id", "next_page"))
-        items = extract_user_search_items(body)
-        search_id = _string(metadata.get("search_id"))
-        next_page = _integer(metadata.get("next_page"), default=current_page + 1)
-        if not items:
-            return cls(next_page, search_id, (), False, "empty_page")
-
-        item_ids = tuple(filter(None, (_user_item_id(item) for item in items)))
-        if item_ids and item_ids == previous_item_ids:
-            return cls(next_page, search_id, item_ids, False, "duplicate_page")
-
-        page_data = _find_mapping(body, required_any=("users", "items", "has_more"))
-        has_more = _first_value((page_data, metadata), "has_more")
-        if has_more is False:
-            return cls(next_page, search_id, item_ids, False, "provider_exhausted")
-        if next_page <= current_page:
-            return cls(next_page, search_id, item_ids, False, "pagination_not_advanced")
-        if not search_id:
-            return cls(next_page, None, item_ids, False, "search_id_unavailable")
-        return cls(next_page, search_id, item_ids, True)
-
-
-@dataclass(frozen=True, slots=True)
-class XiaohongshuUserNotesPagination:
-    """用户已发布笔记 cursor 分页状态和停止原因。"""
-
-    next_cursor: str | None
-    item_ids: tuple[str, ...]
-    should_continue: bool
-    stop_reason: str | None = None
-
-    @classmethod
-    def from_response(
-        cls,
-        *,
-        previous_cursor: str,
-        body: dict[str, Any],
-        previous_item_ids: tuple[str, ...] = (),
-    ) -> XiaohongshuUserNotesPagination:
-        """从用户笔记列表最后一条笔记推进 cursor，并拒绝重复页和停滞 cursor。"""
-        items = extract_user_posted_note_items(body)
-        if not items:
-            return cls(None, (), False, "empty_page")
-
-        item_ids = tuple(filter(None, (_posted_note_item_id(item) for item in items)))
-        if item_ids and item_ids == previous_item_ids:
-            return cls(None, item_ids, False, "duplicate_page")
-
-        page_data = _find_mapping(body, required_any=("notes", "has_more"))
-        if page_data.get("has_more") is False:
-            return cls(None, item_ids, False, "provider_exhausted")
-
-        next_cursor = _posted_note_cursor(items[-1])
-        if not next_cursor:
-            return cls(None, item_ids, False, "cursor_unavailable")
-        if next_cursor == previous_cursor:
-            return cls(next_cursor, item_ids, False, "pagination_not_advanced")
-        return cls(next_cursor, item_ids, True)
-
-
-@dataclass(frozen=True, slots=True)
 class XiaohongshuCommentPagination:
     """评论下一页状态和停止原因。"""
 
@@ -200,7 +120,6 @@ class XiaohongshuCommentPagination:
         page_area: str,
         body: dict[str, Any],
     ) -> XiaohongshuCommentPagination:
-        """从一级/二级评论响应推进 cursor/index/pageArea。"""
         data = _find_mapping(body, required_any=("comments", "cursor", "index", "pageArea"))
         comments = data.get("comments")
         if not isinstance(comments, list) or not comments:
@@ -256,53 +175,6 @@ def build_search_notes_request(
     return XiaohongshuRequest(f"{_BASE}/search_notes", params)
 
 
-def build_search_users_request(
-    *,
-    keyword: str,
-    page: int = 1,
-    search_id: str | None = None,
-    source: str = "explore_feed",
-) -> XiaohongshuRequest:
-    """构造 App V2 用户搜索；翻页只复用首次响应的 search_id。"""
-    normalized_keyword = keyword.strip()
-    if not normalized_keyword:
-        raise ValueError("keyword 不能为空")
-    if page < 1:
-        raise ValueError("page 必须从 1 开始")
-    params: dict[str, object] = {
-        "keyword": normalized_keyword,
-        "page": page,
-        "source": source,
-    }
-    if search_id:
-        params["search_id"] = search_id
-    return XiaohongshuRequest(f"{_BASE}/search_users", params)
-
-
-def build_user_info_request(
-    *,
-    user_id: str | None = None,
-    share_text: str | None = None,
-) -> XiaohongshuRequest:
-    """构造 App V2 用户详情；优先稳定 user_id，缺失时才接受分享文本。"""
-    return XiaohongshuRequest(
-        f"{_BASE}/get_user_info",
-        _user_lookup_params(user_id=user_id, share_text=share_text),
-    )
-
-
-def build_user_posted_notes_request(
-    *,
-    user_id: str | None = None,
-    share_text: str | None = None,
-    cursor: str = "",
-) -> XiaohongshuRequest:
-    """构造 App V2 用户已发布笔记请求；cursor 为空表示第一页。"""
-    params = _user_lookup_params(user_id=user_id, share_text=share_text)
-    params["cursor"] = cursor
-    return XiaohongshuRequest(f"{_BASE}/get_user_posted_notes", params)
-
-
 def build_app_v1_search_candidate_request(
     *,
     keyword: str,
@@ -349,12 +221,10 @@ def build_web_v3_search_candidate_request(
 
 
 def build_image_detail_request(*, note_id: str) -> XiaohongshuRequest:
-    """构造图文笔记详情请求。"""
     return XiaohongshuRequest(f"{_BASE}/get_image_note_detail", {"note_id": note_id})
 
 
 def build_video_detail_request(*, note_id: str) -> XiaohongshuRequest:
-    """构造视频笔记详情请求。"""
     return XiaohongshuRequest(f"{_BASE}/get_video_note_detail", {"note_id": note_id})
 
 
@@ -374,7 +244,6 @@ def build_web_v3_detail_candidate_request(*, note_id: str, xsec_token: str) -> X
 def build_note_comments_request(
     *, note_id: str, cursor: str = "", index: int = 0, page_area: str = "UNFOLDED"
 ) -> XiaohongshuRequest:
-    """构造当前正式 App V2 一级评论请求。"""
     return XiaohongshuRequest(
         f"{_BASE}/get_note_comments",
         {
@@ -410,7 +279,6 @@ def build_web_v3_comments_candidate_request(
 def build_sub_comments_request(
     *, note_id: str, comment_id: str, cursor: str = "", index: int = 1
 ) -> XiaohongshuRequest:
-    """构造当前正式 App V2 二级评论请求。"""
     return XiaohongshuRequest(
         f"{_BASE}/get_note_sub_comments",
         {
@@ -464,36 +332,6 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(item for item in items if isinstance(item, dict))
 
 
-def extract_user_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从 App V2 用户搜索响应提取用户候选，兼容 users/items 两种 Envelope。"""
-    page_data = _find_mapping(body, required_any=("users", "items"))
-    values = page_data.get("users")
-    if not isinstance(values, list):
-        values = page_data.get("items")
-    if not isinstance(values, list):
-        return ()
-    return tuple(item for item in values if isinstance(item, dict))
-
-
-def extract_user_info_item(body: dict[str, Any]) -> dict[str, Any] | None:
-    """从 App V2 用户详情响应提取用户对象，不把 Provider Envelope 泄露给调用方。"""
-    data = _find_mapping(
-        body,
-        required_any=("user", "user_info", "profile", "user_id", "userid", "red_id", "nickname"),
-    )
-    unwrapped = _unwrap_user(data)
-    return unwrapped if unwrapped else None
-
-
-def extract_user_posted_note_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从 App V2 用户发布笔记响应提取 notes 列表。"""
-    page_data = _find_mapping(body, required_any=("notes",))
-    values = page_data.get("notes")
-    if not isinstance(values, list):
-        return ()
-    return tuple(item for item in values if isinstance(item, dict))
-
-
 def extract_detail_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """统一提取图文 detail 的 note_list 与视频 detail 的直接 note item。"""
     outer = body.get("data")
@@ -523,23 +361,7 @@ def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(item for item in items if isinstance(item, dict))
 
 
-def _user_lookup_params(
-    *,
-    user_id: str | None,
-    share_text: str | None,
-) -> dict[str, object]:
-    """规范化用户定位参数；不允许空定位产生仍会计费的 Provider 请求。"""
-    normalized_user_id = user_id.strip() if isinstance(user_id, str) else ""
-    normalized_share_text = share_text.strip() if isinstance(share_text, str) else ""
-    if normalized_user_id:
-        return {"user_id": normalized_user_id}
-    if normalized_share_text:
-        return {"share_text": normalized_share_text}
-    raise ValueError("user_id 与 share_text 至少提供一个")
-
-
 def _mapped_or_provider_value(mapping: dict[str, str], value: str, field_name: str) -> str:
-    """把规范化业务枚举映射为 Provider 原值。"""
     normalized = value.strip()
     if normalized in mapping:
         return mapping[normalized]
@@ -549,7 +371,6 @@ def _mapped_or_provider_value(mapping: dict[str, str], value: str, field_name: s
 
 
 def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dict[str, Any]:
-    """沿常见 data Envelope 向内寻找包含目标字段的映射。"""
     current: object = body
     fallback = body
     for _ in range(5):
@@ -566,7 +387,6 @@ def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dic
 
 
 def _first_value(mappings: tuple[dict[str, Any], ...], key: str) -> object:
-    """按候选映射顺序返回第一个存在的字段值。"""
     for mapping in mappings:
         if key in mapping:
             return mapping[key]
@@ -574,7 +394,6 @@ def _first_value(mappings: tuple[dict[str, Any], ...], key: str) -> object:
 
 
 def _search_item_id(item: object) -> str:
-    """提取搜索卡片中的稳定 note_id。"""
     if not isinstance(item, dict):
         return ""
     note = item.get("note")
@@ -583,61 +402,11 @@ def _search_item_id(item: object) -> str:
     return _string(item.get("id") or item.get("note_id")) or ""
 
 
-def _user_item_id(item: object) -> str:
-    """提取用户搜索候选中的稳定 user_id。"""
-    if not isinstance(item, dict):
-        return ""
-    user = _unwrap_user(item)
-    return _string(
-        user.get("user_id") or user.get("userid") or user.get("userId") or user.get("id")
-    ) or ""
-
-
-def _unwrap_user(raw: dict[str, Any]) -> dict[str, Any]:
-    """兼容用户搜索/详情中的常见 user wrapper。"""
-    for key in ("user", "user_info", "userInfo", "profile"):
-        value = raw.get(key)
-        if isinstance(value, dict):
-            return value
-    return raw
-
-
-def _posted_note_payload(raw: dict[str, Any]) -> dict[str, Any]:
-    """兼容用户笔记列表中的直接 note 与 wrapper 结构。"""
-    for key in ("note", "note_card", "noteCard"):
-        value = raw.get(key)
-        if isinstance(value, dict):
-            return value
-    return raw
-
-
-def _posted_note_item_id(item: object) -> str:
-    """提取用户笔记列表中的稳定 note_id。"""
-    if not isinstance(item, dict):
-        return ""
-    note = _posted_note_payload(item)
-    return _string(note.get("note_id") or note.get("id")) or ""
-
-
-def _posted_note_cursor(item: object) -> str | None:
-    """提取用户笔记项 cursor；缺失时按官方说明回退到 note_id。"""
-    if not isinstance(item, dict):
-        return None
-    note = _posted_note_payload(item)
-    return (
-        _string(note.get("cursor"))
-        or _string(item.get("cursor"))
-        or _string(note.get("note_id") or note.get("id"))
-    )
-
-
 def _string(value: object) -> str | None:
-    """把非空 Provider 标量规范化为字符串。"""
     return str(value) if value is not None and str(value) else None
 
 
 def _integer(value: object, *, default: int) -> int:
-    """把 Provider 数字字段安全规范化为整数。"""
     if isinstance(value, bool):
         return default
     if isinstance(value, int):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
+from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu_accounts import (
     XiaohongshuUserNotesPagination,
     XiaohongshuUserSearchPagination,
     build_search_users_request,
