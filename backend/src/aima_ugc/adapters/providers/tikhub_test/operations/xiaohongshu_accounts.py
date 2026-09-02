@@ -30,6 +30,7 @@ from .runner import (
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 _ACCOUNT_CACHE_SCHEMA = "tikhub-test-account-cache.v1"
+_ALL_FETCH_SOFT_TARGET = 2_147_483_647
 CommentMode = Literal["limited", "all"]
 ResolutionReason = Literal["not_found", "ambiguous", "incomplete", "identity_mismatch"]
 
@@ -570,6 +571,32 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
             return decision
         return decision.model_copy(update={"comment_target": comment_count})
 
+    def _fetch_comments(
+        self,
+        transport: TikHubHttpTransport,
+        *,
+        keyword: str,
+        content: CanonicalContentV1,
+        action: str,
+        target: int,
+    ) -> tuple[list[UnifiedDataExcelCommentV1], str]:
+        """all 模式忽略评论数量软目标和增量已知边界，只由 Provider 耗尽或硬页数保护停止。"""
+        if self.comment_mode != "all":
+            return super()._fetch_comments(
+                transport,
+                keyword=keyword,
+                content=content,
+                action=action,
+                target=target,
+            )
+        return super()._fetch_comments(
+            transport,
+            keyword=keyword,
+            content=content,
+            action="refresh_controlled",
+            target=_ALL_FETCH_SOFT_TARGET,
+        )
+
     def _fetch_replies(
         self,
         transport: TikHubHttpTransport,
@@ -578,9 +605,9 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         content: CanonicalContentV1,
         root: CanonicalCommentV1,
     ) -> list[UnifiedDataExcelCommentV1]:
-        """all 模式用真实 reply_count 替换回复软目标，仍保留现有硬页数和 Provider 终止条件。"""
+        """all 模式忽略正数/未知 reply_count 软目标，仍保留显式零值和硬页数保护。"""
         expected = root.metrics.reply_count
-        if self.comment_mode != "all" or expected is None or expected < 1:
+        if self.comment_mode != "all" or expected == 0:
             return super()._fetch_replies(
                 transport,
                 keyword=keyword,
@@ -591,19 +618,26 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         original_limits = self.limits
         self.limits = replace(
             original_limits,
-            max_replies_per_root=max(original_limits.max_replies_per_root, expected),
+            max_replies_per_root=_ALL_FETCH_SOFT_TARGET,
+        )
+        effective_root = root.model_copy(
+            update={
+                "metrics": root.metrics.model_copy(
+                    update={"reply_count": _ALL_FETCH_SOFT_TARGET}
+                )
+            }
         )
         try:
             rows = super()._fetch_replies(
                 transport,
                 keyword=keyword,
                 content=content,
-                root=root,
+                root=effective_root,
             )
         finally:
             self.limits = original_limits
 
-        if len(rows) < expected:
+        if expected is not None and len(rows) < expected:
             summary = self._current_account_summary()
             if summary is not None:
                 cast(list[object], summary["warnings"]).append(
