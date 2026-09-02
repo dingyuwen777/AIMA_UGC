@@ -613,11 +613,7 @@ class _TikHubDebugRunner:
         )
         if reply_decision.action == "skip":
             return []
-        target = (
-            None
-            if fetch_all
-            else (reply_decision.target or self.limits.max_replies_per_root)
-        )
+        target = None if fetch_all else (reply_decision.target or self.limits.max_replies_per_root)
         pagination: dict[str, object] | None = None
         mapped_rows: list[UnifiedDataExcelCommentV1] = []
         mapped_count = 0
@@ -687,9 +683,7 @@ class _TikHubDebugRunner:
                 state=pagination,
                 body=body,
             )
-            if not advance.should_continue or (
-                target is not None and mapped_count >= target
-            ):
+            if not advance.should_continue or (target is not None and mapped_count >= target):
                 break
             pagination = cast(dict[str, object], advance.next_state)
         return mapped_rows
