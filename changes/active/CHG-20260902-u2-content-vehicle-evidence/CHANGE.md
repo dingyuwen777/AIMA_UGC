@@ -3,9 +3,9 @@ schema: coding-change/v1
 id: CHG-20260902-u2-content-vehicle-evidence
 title: U2 内容车型证据与查询增强
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
-branch: main
+branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
@@ -68,13 +68,14 @@ U2 把车型从选择资源升级为可追溯的内容匹配事实。每条内�
 - [x] upstream_re_read
 - [x] change_coverage
 - [x] reverse_audit
-- [ ] unresolved_cleared
+- [x] unresolved_cleared
 
-当前未清零项：真实 PostgreSQL 下的当前版本证据、合并后查询/导出和 Full-stack 路径仍受本机 Docker/PostgreSQL 不可用阻塞；本 Change 保持 `in_progress`。
+当前无语义未决项：本地 required 验证与独立 Review 已完成，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
 
 # 本轮验证证据
 
 - API/Contract/Unit 受支持范围：`866 passed, 8 skipped, 0 failed`；U1–U5 目标 Contract/API/Schema 测试包含车型当前版本、人工锁和查询投影；
 - 前端车型筛选、列表、详情、人工复核、导入和采集计划入口已做反向能力审计，ESLint/typecheck、`67 passed`、production build 通过；
 - 变更集 Ruff、全后端 Mypy、六项质量门禁与 `git diff --check` 通过；
-- PostgreSQL 查询、合并聚合和冻结版本导出已建立 Integration 测试，但当前环境未执行，不能据静态测试宣称闭环。
+- PostgreSQL Integration `186 passed`，覆盖车型 FK、证据、人工锁、查询和导出投影；
+- Real Full-stack 已通过“Excel 导入→车型别名匹配→车型筛选→详情证据”闭环。

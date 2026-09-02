@@ -3,9 +3,9 @@ schema: coding-change/v1
 id: CHG-20260902-u4-analysis-scheme
 title: U4 Analysis Scheme 原子版本与生产切换
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
-branch: main
+branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
@@ -62,13 +62,14 @@ data_changes:
 - [x] upstream_re_read
 - [x] change_coverage
 - [x] reverse_audit
-- [ ] unresolved_cleared
+- [x] unresolved_cleared
 
-当前未清零项：Scheme 编译/Contract/前端已验证，但真实 PostgreSQL 下的 bootstrap、并发发布、Migration、Worker 冻结与 Real Full-stack 仍受本机 Docker/PostgreSQL 不可用阻塞；Gold Set、双人审批不在第一版范围。本 Change 保持 `in_progress`。
+当前无语义未决项：本地 required 验证与独立 Review 已完成，Gold Set、双人审批不在第一版范围，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
 
 # 本轮验证证据
 
 - API/Contract/Unit 受支持范围：`866 passed, 8 skipped, 0 failed`；生成后 Contract 专项 `101 passed`；
 - Scheme 编译、受控 Taxonomy、显式 unknown、发布/回滚 Contract、Run 冻结身份和人工分维度锁的代码/测试/文档已反向核对；
 - 管理员 Scheme 草稿、发布、回滚和审计 UI 已通过 ESLint/typecheck、前端 `67 passed` 与 production build；
-- Alembic 静态 head 是 `20260902_0036`；并发 active 唯一性、审计事务和 Worker 真实冻结执行仍须 PostgreSQL/Full-stack 证据。
+- PostgreSQL 18.4 空库及既有 `0037` 开发库均真实升级到 `0038`；Schema 重编译生命周期测试、单一 active、审计事务和 Worker Run 冻结均已通过；
+- Real Full-stack 已证明“发布 Scheme→新 Run 冻结新版本→旧 Run 身份与终态不变”；只使用本机假 LLM，不把它写成真实模型质量证据。
