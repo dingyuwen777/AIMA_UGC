@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const generated = vi.hoisted(() => ({
+  addKeywordToPack: vi.fn(),
   cancelContentAnalysisRun: vi.fn(),
   cancelDataImportCampaign: vi.fn(),
   countContents: vi.fn(),
@@ -77,9 +78,11 @@ const generated = vi.hoisted(() => ({
 vi.mock('../src/generated/api/client', () => generated)
 
 import {
+  fetchAuditEvents,
   fetchKeywordPacksForAdmin,
   fetchVehicles,
 } from '../src/features/admin-configuration/api'
+import { useCollectionStrategyStore } from '../src/features/collection-strategy/store'
 import { fetchEnabledKeywordPacks } from '../src/features/import-batches/api'
 import { useImportBatchesStore } from '../src/features/import-batches/store'
 import { useIdentityStore } from '../src/features/identity/store'
@@ -182,6 +185,46 @@ describe('frontend full-stack audit regressions', () => {
     expect(generated.listNotifications).toHaveBeenLastCalledWith({ limit: 50 })
   })
 
+  it('creates a keyword pack and its initial keywords through one atomic request', async () => {
+    const created = {
+      id: 'pack-1',
+      name: '原子词包',
+      description: '一次保存',
+      enabled: true,
+      version: 3,
+      keywords: [
+        { id: 'kw-1', text: '爱玛', enabled: true, priority: 100, note: '' },
+        { id: 'kw-2', text: '电动车', enabled: true, priority: 100, note: '' },
+      ],
+    }
+    generated.createKeywordPack.mockResolvedValue(created)
+    generated.addKeywordToPack.mockResolvedValue(created)
+    const store = useCollectionStrategyStore()
+
+    const saved = await store.savePack('原子词包', '一次保存', ['爱玛', '电动车'])
+
+    expect(saved).toBe(true)
+    expect(generated.createKeywordPack).toHaveBeenCalledTimes(1)
+    expect(generated.createKeywordPack).toHaveBeenCalledWith({
+      name: '原子词包',
+      description: '一次保存',
+      keywords: [
+        { text: '爱玛', priority: 100, enabled: true },
+        { text: '电动车', priority: 100, enabled: true },
+      ],
+    })
+    expect(generated.addKeywordToPack).not.toHaveBeenCalled()
+  })
+
+  it('requests audit history by explicit offset and limit instead of a fixed recent slice', async () => {
+    generated.listAuditEvents.mockResolvedValue({ items: [], total: 250, offset: 100, limit: 100 })
+    const fetchPage = fetchAuditEvents as unknown as (offset: number, limit: number) => Promise<unknown>
+
+    await fetchPage(100, 100)
+
+    expect(generated.listAuditEvents).toHaveBeenCalledWith({ offset: 100, limit: 100 })
+  })
+
   it('preserves loaded cursor pages and later-page selection while active jobs poll', async () => {
     vi.useFakeTimers()
     vi.stubGlobal('document', { visibilityState: 'visible' })
@@ -221,5 +264,32 @@ describe('frontend full-stack audit regressions', () => {
 
     expect(source).toContain(':readonly="selectedSchemeVersion?.version.status === \'draft\'"')
     expect(source).toContain('已有草稿保存时不会修改 Scheme 名称')
+  })
+
+  it('derives historical retry action from campaign-level failed chunk facts', async () => {
+    const source = await readFile(
+      new URL('../src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue', import.meta.url),
+      'utf8',
+    )
+
+    expect(source).toContain('failed_chunk_count')
+    expect(source).not.toContain("item.item_kind === 'chunk' && item.status === 'failed'")
+  })
+
+  it('offers a retry control when the shared vehicle catalog fails to load', async () => {
+    const source = await readFile(new URL('../src/shared/VehicleMultiSelect.vue', import.meta.url), 'utf8')
+
+    expect(source).toContain('重试')
+    expect(source).toContain('@click="load"')
+  })
+
+  it('prevents an empty vehicle form from becoming a silent save click', async () => {
+    const source = await readFile(
+      new URL('../src/features/admin-configuration/pages/AdminConfigurationPage.vue', import.meta.url),
+      'utf8',
+    )
+
+    expect(source).toContain('vehicleFormValid')
+    expect(source).toContain(':disabled="saving || !vehicleFormValid"')
   })
 })
