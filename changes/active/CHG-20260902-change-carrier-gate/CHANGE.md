@@ -112,7 +112,7 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 - [x] Red：建立 carrier、状态、legacy、未知 schema 与删除绕过测试；沙箱外目标 pytest 为 `6 failed`，共同失败于项目 checker 尚不存在。
 - [ ] 首个本地提交后首次 push，并创建早期 PR；逻辑未就绪时禁止 merge。
 - [x] Green：实现项目 checker、Workflow/治理静态接线和当前归档兼容修正。
-- [ ] 同步项目规则和 Blueprint，执行 targeted Docs review。
+- [x] 同步项目规则和 Blueprint，执行 targeted Docs review。
 - [ ] 运行目标/模块/质量门禁与 Workflow 真实失败→成功证据。
 - [ ] 重新读取上游，完成 Completion Audit、独立 Review 和 PR current-head CI。
 - [ ] 获授权后受保护合并，执行 main fresh，再用独立归档 PR 收尾并关闭 Issue。
