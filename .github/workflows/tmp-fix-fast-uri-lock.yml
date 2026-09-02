@@ -39,10 +39,16 @@ jobs:
           node - <<'NODE'
           const lock = require('./frontend/package-lock.json')
           const pkg = lock.packages['node_modules/fast-uri']
-          if (!pkg || pkg.version !== '3.1.6') {
-            throw new Error(`expected fast-uri 3.1.6, got ${pkg?.version}`)
+          const parts = String(pkg?.version ?? '').split('.').map(Number)
+          const patched = parts[0] === 3 && (parts[1] > 1 || (parts[1] === 1 && parts[2] >= 6))
+          if (!patched) {
+            throw new Error(`expected patched fast-uri v3 >= 3.1.6, got ${pkg?.version}`)
           }
+          console.log(`resolved fast-uri ${pkg.version}`)
           NODE
+          cd frontend
+          npm audit --audit-level=high
+          cd ..
           git diff -- frontend/package-lock.json
 
       - name: Commit generated lockfile
@@ -52,5 +58,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add frontend/package-lock.json
-          git commit -m "chore: patch fast-uri transitive dependency to 3.1.6" -m "Requirement-Source: #310"
+          git commit -m "chore: patch fast-uri transitive dependency" -m "Requirement-Source: #310"
           git push origin HEAD:fix/310-frontend-fullstack-audit
