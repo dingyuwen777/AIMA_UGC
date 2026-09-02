@@ -555,7 +555,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         previous_count: int | None,
         after_detail: bool,
     ) -> CollectionDecisionV1:
-        """all 模式只把评论软目标提升为 Provider 已观察的真实评论总数。"""
+        """all 沿用正式 Decision 的零值/Probe 语义；正数计数只用于启动抓取，不作为完成边界。"""
         decision = super()._decide(
             content=content,
             previous_exists=previous_exists,
@@ -605,7 +605,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         content: CanonicalContentV1,
         root: CanonicalCommentV1,
     ) -> list[UnifiedDataExcelCommentV1]:
-        """all 模式忽略正数/未知 reply_count 软目标，仍保留显式零值和硬页数保护。"""
+        """all 模式忽略正数/未知 reply_count 软目标，并保守识别回复硬页数边界。"""
         expected = root.metrics.reply_count
         if self.comment_mode != "all" or expected == 0:
             return super()._fetch_replies(
@@ -616,6 +616,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
             )
 
         original_limits = self.limits
+        request_no_before = self._request_no
         self.limits = replace(
             original_limits,
             max_replies_per_root=_ALL_FETCH_SOFT_TARGET,
@@ -635,19 +636,30 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         finally:
             self.limits = original_limits
 
-        if expected is not None and len(rows) < expected:
+        reply_pages_used = self._request_no - request_no_before
+        warning: dict[str, object] | None = None
+        if reply_pages_used >= original_limits.max_reply_pages_per_root:
+            warning = {
+                "stage": "replies",
+                "external_content_id": content.external_content_id,
+                "root_comment_id": root.external_comment_id,
+                "observed": len(rows),
+                "expected": expected,
+                "reason": "reply_page_limit_boundary",
+            }
+        elif expected is not None and len(rows) < expected:
+            warning = {
+                "stage": "replies",
+                "external_content_id": content.external_content_id,
+                "root_comment_id": root.external_comment_id,
+                "observed": len(rows),
+                "expected": expected,
+                "reason": "hard_page_limit_or_provider_shape",
+            }
+        if warning is not None:
             summary = self._current_account_summary()
             if summary is not None:
-                cast(list[object], summary["warnings"]).append(
-                    {
-                        "stage": "replies",
-                        "external_content_id": content.external_content_id,
-                        "root_comment_id": root.external_comment_id,
-                        "observed": len(rows),
-                        "expected": expected,
-                        "reason": "hard_page_limit_or_provider_shape",
-                    }
-                )
+                cast(list[object], summary["warnings"]).append(warning)
                 summary["status"] = "partial"
         return rows
 
