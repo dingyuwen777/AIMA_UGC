@@ -213,7 +213,7 @@ test('allows an interrupted local upload Campaign to be cancelled', async ({ pag
 
   const dialog = await openImportDialog(page)
   await dialog.getByRole('button', { name: `打开 Campaign ${campaignId}` }).click()
-  const cancelButton = dialog.getByRole('button', { name: '取消', exact: true })
+  const cancelButton = dialog.getByRole('button', { name: '取消任务', exact: true })
   await expect(cancelButton).toBeEnabled()
   await cancelButton.click()
 

@@ -30,6 +30,7 @@ const notice = ref<string | null>(null)
 const recursive = ref(false)
 const maxFiles = 1_000
 const maxBytes = 500 * 1024 * 1024
+const campaignPollIntervalMs = 5_000
 let pollHandle: ReturnType<typeof setInterval> | undefined
 let pollInFlight = false
 const activeStatuses = [
@@ -119,9 +120,10 @@ async function pollCampaign(): Promise<void> {
   }
 }
 
+/** 按页面统一的约 5 秒节奏启动导入任务状态轮询。 */
 function startPolling(): void {
   stopPolling()
-  pollHandle = setInterval(() => void pollCampaign(), 1_000)
+  pollHandle = setInterval(() => void pollCampaign(), campaignPollIntervalMs)
 }
 
 watch(
@@ -256,7 +258,9 @@ async function startCampaign(): Promise<void> {
 }
 
 async function cancelCampaign(): Promise<void> {
-  if (await store.actOnHistoricalCampaign('cancel')) notice.value = '已请求取消导入任务。'
+  if (!await store.actOnHistoricalCampaign('cancel')) return
+  notice.value = '已请求取消导入任务。'
+  await pollCampaign()
 }
 
 async function retryCampaign(): Promise<void> {
@@ -690,7 +694,7 @@ function viewCampaignContents(): void {
               :disabled="store.actingHistorical"
               @click="cancelCampaign"
             >
-              取消
+              取消任务
             </AimaButton>
             <AimaButton
               v-if="canRetry"
@@ -710,8 +714,9 @@ function viewCampaignContents(): void {
               查看导入内容
             </AimaButton>
             <AimaButton
+              v-if="store.selectedHistoricalCampaign.can_start"
               variant="primary"
-              :disabled="!store.selectedHistoricalCampaign.can_start || store.actingHistorical"
+              :disabled="store.actingHistorical"
               @click="startCampaign"
             >
               开始导入

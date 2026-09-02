@@ -333,9 +333,11 @@ test('keeps polling a cancelling campaign until it reaches cancelled', async ({ 
   await dialog.getByRole('button', { name: '服务器目录' }).click()
   await dialog.getByRole('button', { name: new RegExp(`打开 Campaign ${campaignId}`) }).click()
   await expect(dialog.getByText('状态：running')).toBeVisible()
-  await dialog.getByRole('button', { name: '取消' }).click()
+  await dialog.getByRole('button', { name: '取消任务', exact: true }).click()
 
-  await expect(dialog.getByText('状态：cancelled')).toBeVisible({ timeout: 5_000 })
+  // 取消动作会先立即刷新到 cancelling，最终 cancelled 由下一次约 5 秒轮询取得。
+  await expect(dialog.getByText('状态：cancelling')).toBeVisible()
+  await expect(dialog.getByText('状态：cancelled')).toBeVisible({ timeout: 10_000 })
   expect(postCancelReadCount).toBeGreaterThanOrEqual(2)
 })
 

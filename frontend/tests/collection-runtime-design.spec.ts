@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises'
+
 import { createPinia } from 'pinia'
 import { createSSRApp, h, type Component } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -7,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import CollectionRuntimePage from '../src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue'
 import CollectionRuntimeFilters from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeFilters.vue'
 import CollectionRuntimeKpiCards from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeKpiCards.vue'
+import CollectionRuntimeTable from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeTable.vue'
 
 const blankRoute = { render: () => h('div') }
 
@@ -26,6 +29,16 @@ async function renderComponent(component: Component, props: Record<string, unkno
   await router.push('/collection-runtime')
   await router.isReady()
   return renderToString(app)
+}
+
+async function readCollectionRuntimeSource(filename: string): Promise<string> {
+  return readFile(
+    new URL(
+      `../src/features/import-batches/pages/CollectionRuntimePage/${filename}`,
+      import.meta.url,
+    ),
+    'utf8',
+  )
 }
 
 describe('采集运行中心正式 Figma 基线', () => {
@@ -88,5 +101,54 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(html).toContain('时间按北京时间解释')
     expect(html).not.toContain('Cursor')
     expect(html.match(/class="aima-button/g)).toHaveLength(2)
+  })
+
+  it('运行记录表按正式 Figma 固定为 7 列且不单独展示关联对象', async () => {
+    const html = await renderComponent(CollectionRuntimeTable, {
+      items: [],
+      loading: false,
+    })
+    const headMatch = html.match(/<div[^>]*class="table-head"[^>]*>([\s\S]*?)<\/div>/)
+    const tableHead = headMatch?.[1] ?? ''
+
+    expect(headMatch).not.toBeNull()
+    expect(tableHead.match(/<span(?:\s[^>]*)?>/g)).toHaveLength(7)
+    expect(tableHead).toContain('任务 / 执行编号')
+    expect(tableHead).toContain('类型')
+    expect(tableHead).toContain('状态与进度')
+    expect(tableHead).toContain('当前阶段')
+    expect(tableHead).toContain('处理统计')
+    expect(tableHead).toContain('创建时间')
+    expect(tableHead).toContain('操作')
+    expect(tableHead).not.toContain('关联对象')
+  })
+
+  it('Data Import Campaign 只在后端 can_start 为真时渲染开始导入动作', async () => {
+    const source = await readCollectionRuntimeSource('components/DataImportDialog.vue')
+
+    expect(source).toContain('v-if="store.selectedHistoricalCampaign.can_start"')
+    expect(source).not.toContain(
+      ':disabled="!store.selectedHistoricalCampaign.can_start || store.actingHistorical"',
+    )
+  })
+
+  it('导入任务详情沿用采集运行中心约 5 秒的条件轮询节奏', async () => {
+    const source = await readCollectionRuntimeSource('components/DataImportDialog.vue')
+
+    expect(source).toContain('const campaignPollIntervalMs = 5_000')
+    expect(source).toContain('setInterval(() => void pollCampaign(), campaignPollIntervalMs)')
+    expect(source).not.toContain('setInterval(() => void pollCampaign(), 1_000)')
+  })
+
+  it('辅助补采产品与可访问文案不绑定具体 Provider 或后台实现名', async () => {
+    const [drawerSource, pageSource] = await Promise.all([
+      readCollectionRuntimeSource('components/TikHubSupplementDrawer.vue'),
+      readCollectionRuntimeSource('CollectionRuntimePage.vue'),
+    ])
+
+    expect(drawerSource).toContain('aria-label="新建辅助补采"')
+    expect(drawerSource).not.toContain('aria-label="新建 TikHub 辅助补采"')
+    expect(pageSource).not.toContain('TikHub Collection Run / Job 已创建')
+    expect(pageSource).not.toContain('Worker 在后台执行')
   })
 })

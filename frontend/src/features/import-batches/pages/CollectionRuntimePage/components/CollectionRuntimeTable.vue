@@ -6,7 +6,6 @@ import {
   elapsed,
   formatDateTime,
   formatNumber,
-  platformLabels,
   recordTypeLabels,
   runtimeStageLabel,
   runtimeStatusLabels,
@@ -30,7 +29,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
     aria-label="采集运行记录"
   >
     <div class="table-head">
-      <span>任务 / 执行编号</span><span>类型</span><span>状态与进度</span><span>当前阶段</span><span>处理统计</span><span>关联对象</span><span>创建时间</span><span>操作</span>
+      <span>任务 / 执行编号</span><span>类型</span><span>状态与进度</span><span>当前阶段</span><span>处理统计</span><span>创建时间</span><span>操作</span>
     </div>
     <div
       v-if="loading && items.length === 0"
@@ -82,14 +81,6 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
         <span>请求 {{ formatNumber(item.collection_stats?.requested_count) }} · 成功 {{ formatNumber(item.collection_stats?.succeeded_count) }}</span>
         <span>内容 {{ formatNumber(item.collection_stats?.content_count) }} · 评论 {{ formatNumber(item.collection_stats?.comment_count) }}</span>
       </div>
-      <div class="related">
-        <template v-if="item.import_batch_id">
-          <span>批次</span><strong>{{ shortId(item.import_batch_id) }}</strong>
-        </template>
-        <template v-else>
-          <span>平台</span><strong>{{ item.platforms?.map((platform) => platformLabels[platform]).join(' / ') || '—' }}</strong>
-        </template>
-      </div>
       <div class="time-cell">
         <span>{{ formatDateTime(item.created_at) }}</span><span>{{ elapsed(item.started_at, item.finished_at) }}</span>
       </div>
@@ -124,9 +115,9 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
 
 <style scoped>
 .runtime-list { overflow: hidden; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
-.table-head, .table-row { display: grid; grid-template-columns: minmax(190px, 1.45fr) minmax(82px, .7fr) minmax(120px, .9fr) minmax(90px, .7fr) minmax(190px, 1.55fr) minmax(120px, 1fr) minmax(112px, .9fr) minmax(108px, .9fr); align-items: center; }
-.table-head { min-height: 44px; padding: 0 12px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-muted); background: #fafbfc; font-size: 12px; font-weight: 500; }
-.table-row { position: relative; min-height: 78px; padding: 14px 12px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-secondary); font-size: 12px; }
+.table-head, .table-row { display: grid; grid-template-columns: 180px 120px 235px 134px 175px 130px 110px; align-items: center; column-gap: 16px; }
+.table-head { min-height: 44px; padding: 0 16px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-muted); background: #fafbfc; font-size: 12px; font-weight: 500; }
+.table-row { position: relative; min-height: 78px; padding: 16px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-secondary); font-size: 12px; }
 .table-row:nth-of-type(odd) { background: #f8fafc; }
 .table-row:last-child { border-bottom: 0; }
 .identity strong, .identity span { display: block; }
@@ -142,14 +133,11 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
 .progress-track { width: min(100%, 108px); height: 4px; margin-top: 7px; overflow: hidden; border-radius: 4px; background: #edf0f5; }
 .progress-track span { display: block; height: 100%; border-radius: inherit; background: #1677ff; }
 .stats-cell { display: flex; flex-direction: column; gap: 4px; color: var(--aima-text-secondary); line-height: 18px; }
-.related span, .related strong, .time-cell span { display: block; font-size: 11px; }
-.related span, .time-cell span + span { color: var(--aima-text-muted); }
-.related strong { margin-top: 4px; color: var(--aima-text-secondary); font-weight: 500; }
-.time-cell span { color: var(--aima-text-secondary); }
-.time-cell span + span { margin-top: 4px; }
-.actions { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.time-cell span { display: block; color: var(--aima-text-secondary); font-size: 11px; }
+.time-cell span + span { margin-top: 4px; color: var(--aima-text-muted); }
+.actions { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .row-error { grid-column: 1 / -1; margin-top: 12px; }
 .table-state { display: flex; min-height: 240px; flex-direction: column; align-items: center; justify-content: center; color: var(--aima-text-muted); }
 .table-state strong { margin-bottom: 8px; color: var(--aima-text-secondary); }
-@media (max-width: 1120px) { .runtime-list { overflow-x: auto; } .table-head, .table-row { min-width: 1050px; } }
+@media (max-width: 1120px) { .runtime-list { overflow-x: auto; } .table-head, .table-row { min-width: 1212px; } }
 </style>
