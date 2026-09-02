@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260902-work-initialization-gate
 title: 建立本地分支优先的研发开工门禁
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: chore/290-work-initialization-gate
 created: 2026-09-02
@@ -91,10 +91,10 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 
 # Completion Audit
 
-- [ ] upstream_re_read：重新读取 Issue #290、用户决定、项目 AGENTS/Blueprint 及当前 Git/CI 事实。
-- [ ] change_coverage：确认项目 Overlay 与机器回归覆盖本地优先顺序、追溯链和授权边界。
-- [ ] reverse_audit：反查直接在 main 开工、远程空分支先行、无 Requirement Source PR、把 AIMA 本地 Skill 当 canonical 等错误路径。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零，Required Evidence 新鲜且完整。
+- [x] upstream_re_read：已重新读取 Issue #290、用户决定、项目 AGENTS/Blueprint、PR #291 与当前 CI 事实。
+- [x] change_coverage：项目 Overlay 覆盖本地分支、首次 push、远程跟踪分支、早期 PR、追溯链和授权边界；机器 carrier 明确延期至 #292。
+- [x] reverse_audit：已反查直接在 main 开工、远程空分支先行、无 Requirement Source PR、把 AIMA 本地 Skill 当 canonical 等错误路径。
+- [x] unresolved_cleared：所有 `not_satisfied` 已清零；R5 按 #292 正式 `explicitly_deferred`，其余 Required 证据新鲜完整。
 
 # 任务
 
@@ -106,8 +106,10 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 - [x] 调查 Completion Gate carrier 与 U1–U5 CI 基线，分别建立 Issue #292、#293 和 Agent_Skills #158
 - [x] 撤回与本 PR 目标无关的 checker/单测改动，避免把既有产品基线修复混入治理规则 PR
 - [x] 运行项目治理、文档、架构、Owner 与 Secret 门禁
-- [ ] 运行 Ready Check
-- [ ] 执行独立 Review、PR CI、merge 授权检查和 main fresh 验证
+- [x] 对当前顶层 Change 运行同一 ready_check metadata/traceability/completion 语义校验；正式 carrier CI 延期至 #292
+- [x] 执行独立 Standard Review 与 re-review，最终 diff 无剩余 Finding
+- [x] 取得 PR #291 当前规则-only HEAD CI，并确认当前没有 merge 授权
+- [ ] 获 merge 授权后执行 main fresh 验证；当前不 merge、不关闭 Issue、不删除分支
 
 # 验证
 
@@ -123,6 +125,9 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 - 真实工作流：本地分支与首个本地提交 `1b3f3a5b` 先于首次 push；随后创建远程跟踪分支和早期 PR #291。
 - 托管调查：PR #291 Completion Gate 错误报告 `carrier=.agents/changes, gated=0`；AIMA #292 / Agent_Skills #158 已记录修复边界。
 - 基线调查：当前 PR 触发 backend full 后发现 U1–U5 Ruff 与 Alembic drift；AIMA #293 独立承载，不跳过、不在本治理 PR 顺手格式化产品代码。
+- Standard Review：最终范围仅为 `AGENTS.md`、Blueprint 06 与当前 Change；两处规则顺序一致，未改变产品 Contract/Schema/Runtime。早期发现的标点问题已由 `1c0affed` 修复，re-review 无剩余 Finding。
+- PR CI：head `3e2448ba` 共 5 项成功，Repository Quality、PostgreSQL、Full-stack 3 项按 governance-only scope 跳过；这不作为 #292 或 #293 已完成的证据。
+- Change 语义：直接调用正式 `ready_check.py` 的 `_metadata` 与 `_validate_ready_document` 校验顶层当前 Change → `status=ready_for_review; errors=0`；正式 carrier 自动选择仍由 #292 延期处理。
 
 # 文档影响
 
