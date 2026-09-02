@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260903-002542-frontend-fullstack-audit-fixes
 title: 修复前端全栈接线审计发现的分页、轮询与状态一致性缺陷
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/310-frontend-fullstack-audit
 created: 2026-09-03
@@ -39,7 +39,7 @@ data_changes: []
 - [x] 已有 Analysis Scheme Draft 的名称不再表现为可编辑但无法保存；从 published/历史版本创建新草稿时仍可设置名称。
 - [x] 未修改 HTTP Contract、OpenAPI/generated client、数据库 Schema/Migration、Runtime、采集/导入/AI/导出业务语义；`frontend/package.json` 与直接依赖版本保持不变。
 - [x] 仅在既有 semver 范围内将传递依赖 `fast-uri` 从 3.1.5 更新为 3.1.7，完整 high dependency audit 恢复为 0 vulnerability。
-- [x] Targeted/全量 Vitest、Browser Mock、lint、typecheck、build、依赖安全审计和 Runtime Acceptance 均已取得新鲜通过证据；最终 Ready HEAD 继续由永久 PR CI/Runtime/Completion Gate 复核。
+- [x] Targeted/全量 Vitest、Browser Mock、lint、typecheck、build、依赖安全审计和 Runtime Acceptance 均取得新鲜通过证据；最终实现 HEAD 与 merge 后 main fresh CI/Runtime/Completion Gate 均已成功。
 - [x] 独立 Review 发现的函数级中文说明缺口已修复，并重新通过 lint、typecheck 和 Vitest 78/78。
 
 # 范围
@@ -121,7 +121,7 @@ data_changes: []
 - 永久 PR CI（生产修复 HEAD）：Vitest 78/78；Vite build 成功；Playwright Browser Mock 46/46；CI Gate success。
 - Runtime Acceptance：canonical Compose topology/startup/security/persistence/recovery、repository-relative host-root smoke、Windows overlay storage/startup/permissions/host visibility/restart persistence 均 success。
 - 独立 Review 发现“部分修改的内部/helper 函数缺中文函数级职责说明”，修复后重新运行 lint、typecheck、Vitest 78/78 全部成功。
-- 当前 `ready_for_review` HEAD 仍需由永久 PR CI/Runtime/Completion Gate 取得 final-head fresh 结果；该结果属于 PR merge 门禁，不通过则不得合并。
+- 最终实现 HEAD `628cfd9817d757335a5e80b5efaaae9a47c8c969` 在 PR #312 上取得 CI #3734、Runtime Acceptance #855、Change Completion #1594 与 Tooling #255 success；guarded merge 后 `main@b4556cc3f3102a749c323a1053e3b7a9c5f6c3a6` 的 CI #3736、Runtime Acceptance #857、Change Completion #1596 与 Tooling #257 也全部 success。
 
 # Review
 
@@ -139,15 +139,24 @@ data_changes: []
 
 - 原 Finding：修改的 `markRead()`、`loadCreationOptions()`、Voice Plaza 人工复核 helper 缺少当前项目要求的中文函数级说明。
 - 处理：已补齐职责说明并重新 Green；未降低 lint/test 标准。
-- 当前结论：NO_FINDINGS_WITHIN_SCOPE；等待最终 Ready HEAD 永久门禁确认。
+- 当前结论：NO_FINDINGS_WITHIN_SCOPE；最终实现 HEAD 与 merge 后 main fresh 门禁均已确认通过。
 
-# Post-Merge Finalization（合并后执行）
+# Post-Merge Finalization
 
-- [ ] 确认真实 merge commit 与 main HEAD。
-- [ ] 取得 merge 后 main fresh CI/Runtime/适用 Completion Gate。
-- [ ] 将本 Change 更新为 `done` 并移动到 `changes/archive/2026-09/`，通过独立 governance PR 合入。
-- [ ] 重新读取 Issue #310 执行 Closure Audit，并以 `completed` 关闭。
-- [ ] 清理当前任务已合并分支和归档分支。
+- implementation PR：#312 已 merge；原 Draft #311 因宿主 Draft→Ready GraphQL 包装器字段兼容错误关闭未合并，保留为过程证据。
+- merge revision：`b4556cc3f3102a749c323a1053e3b7a9c5f6c3a6`，已重新确认是 `main` 当前实现合入 revision。
+- main fresh：CI #3736、Runtime Acceptance #857、Change Completion #1596、Developer Tooling #257 全部 success。
+- archive：本文件由独立 governance-only 归档分支以同一 ID 从 `changes/active/` 移至 `changes/archive/2026-09/` 并设置 `status: done`。
+- Requirement Source：Issue #310 保持 open，待归档 PR 合入并取得最终 main 治理验证后执行 Closure Audit，再显式 close；没有使用 closing keyword 绕过 post-merge evidence。
+
+# 交付
+
+- 实现 HEAD：`628cfd9817d757335a5e80b5efaaae9a47c8c969`。
+- 实现拉取请求：#312 已合并；#311 关闭未合并，仅因宿主 Draft→Ready 连接器兼容错误被替代。
+- 合并：merge revision `b4556cc3f3102a749c323a1053e3b7a9c5f6c3a6`。
+- main fresh：CI #3736、Runtime #857、Change Completion #1596、Tooling #257 全绿。
+- 归档：独立治理 PR 承载本文件 active→archive 同 ID 移动；归档合并并验证后关闭 Issue #310。
+- 发布：不适用；本次没有 Release 或生产部署变更。
 
 # 文档影响
 
