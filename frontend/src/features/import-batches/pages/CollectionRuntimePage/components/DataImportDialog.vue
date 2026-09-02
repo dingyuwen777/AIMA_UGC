@@ -30,6 +30,7 @@ const notice = ref<string | null>(null)
 const recursive = ref(false)
 const maxFiles = 1_000
 const maxBytes = 500 * 1024 * 1024
+const campaignPollIntervalMs = 5_000
 let pollHandle: ReturnType<typeof setInterval> | undefined
 let pollInFlight = false
 const activeStatuses = [
@@ -93,11 +94,13 @@ const localUploadPercent = computed(() => {
   return Math.floor(store.localUploadCompleted * 100 / store.localUploadTotal)
 })
 
+/** 停止导入任务详情的前台轮询，不影响后台持久任务继续执行。 */
 function stopPolling(): void {
   if (pollHandle !== undefined) clearInterval(pollHandle)
   pollHandle = undefined
 }
 
+/** 在弹窗可见且任务仍活跃时静默刷新 Campaign 状态。 */
 async function pollCampaign(): Promise<void> {
   const campaign = store.selectedHistoricalCampaign
   if (
@@ -119,9 +122,10 @@ async function pollCampaign(): Promise<void> {
   }
 }
 
+/** 按页面统一的约 5 秒节奏启动导入任务状态轮询。 */
 function startPolling(): void {
   stopPolling()
-  pollHandle = setInterval(() => void pollCampaign(), 1_000)
+  pollHandle = setInterval(() => void pollCampaign(), campaignPollIntervalMs)
 }
 
 watch(
@@ -146,6 +150,7 @@ watch(
 
 onBeforeUnmount(stopPolling)
 
+/** 切换导入来源，并按来源恢复对应的默认写入策略。 */
 async function chooseSource(value: SourceKind): Promise<void> {
   sourceKind.value = value
   ingestionPolicy.value = value === 'local_upload'
@@ -157,6 +162,7 @@ async function chooseSource(value: SourceKind): Promise<void> {
   }
 }
 
+/** 读取浏览器文件选择并建立安全、去重的本地上传清单。 */
 function selectLocalFiles(event: Event): void {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
@@ -207,24 +213,28 @@ function selectLocalFiles(event: Event): void {
   if (ignored > 0) notice.value = `已忽略 ${ignored} 个非 .xlsx 文件。`
 }
 
+/** 返回当前服务器目录的父级相对路径。 */
 function parentPath(): string {
   const parts = store.historicalDirectoryPath.split('/').filter(Boolean)
   parts.pop()
   return parts.join('/')
 }
 
+/** 切换服务器端批准路径的选中状态。 */
 function togglePath(path: string): void {
   selectedPaths.value = selectedPaths.value.includes(path)
     ? selectedPaths.value.filter((item) => item !== path)
     : [...selectedPaths.value, path]
 }
 
+/** 切换关键词包的选中状态。 */
 function togglePack(packId: string): void {
   selectedPackIds.value = selectedPackIds.value.includes(packId)
     ? selectedPackIds.value.filter((item) => item !== packId)
     : [...selectedPackIds.value, packId]
 }
 
+/** 按当前来源和筛选条件创建并启动预检 Campaign。 */
 async function createCampaign(): Promise<void> {
   if (!canCreate.value) return
   validationError.value = null
@@ -250,19 +260,23 @@ async function createCampaign(): Promise<void> {
   if (created) notice.value = '导入任务已创建，服务器正在完成不可变快照与预检。'
 }
 
+/** 在后端返回 can_start=true 时提交开始导入动作。 */
 async function startCampaign(): Promise<void> {
   if (!store.selectedHistoricalCampaign?.can_start) return
   if (await store.actOnHistoricalCampaign('start')) notice.value = '导入任务已进入队列。'
 }
 
+/** 请求取消当前导入任务。 */
 async function cancelCampaign(): Promise<void> {
   if (await store.actOnHistoricalCampaign('cancel')) notice.value = '已请求取消导入任务。'
 }
 
+/** 将当前失败项重新提交到导入队列。 */
 async function retryCampaign(): Promise<void> {
   if (await store.actOnHistoricalCampaign('retry')) notice.value = '失败项已重新进入导入队列。'
 }
 
+/** 关闭弹窗并跳转到当前 Campaign 已导入内容。 */
 function viewCampaignContents(): void {
   const campaignId = store.selectedHistoricalCampaign?.id
   if (!campaignId || !canViewContents.value) return
