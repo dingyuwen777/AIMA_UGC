@@ -215,3 +215,23 @@ test('matches the formal keyword modal and collection plan drawer geometry', asy
   await expect(vehicleSelect.locator('.vehicle-select__options label').first()).toHaveCSS('border-top-width', '0px')
   await expectBox(vehicleSelect.locator('.vehicle-select__options label').first(), { height: 32 })
 })
+
+test('matches the formal relevance workspace and plan detail drawer geometry', async ({ page }) => {
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '全局相关性' }).click()
+
+  await expectBox(page.locator('.relevance-layout'), { x: 204, y: 346, width: 1212 })
+  await expectBox(page.locator('.relevance-layout > article'), { x: 204, width: 790, height: 322 })
+  await expectBox(page.locator('.relevance-layout > aside'), { x: 1016, width: 400, height: 322 })
+
+  await page.getByRole('button', { name: '采集计划' }).click()
+  const planRow = page.locator('.plan-table tbody tr').filter({ hasText: '爱玛新品口碑追踪' })
+  await planRow.getByRole('button', { name: '查看详情' }).click()
+
+  const detail = page.getByRole('dialog', { name: '采集计划详情' })
+  await expectBox(detail, { x: 990, y: 0, width: 450, height: 900 })
+  await expectBox(detail.locator('header'), { height: 84 })
+  await expectBox(detail.locator('.body'), { y: 84, height: 816 })
+  await expectBox(detail.locator('dl > div').first(), { width: 196 })
+  await expectBox(detail.locator('dl > div').nth(1), { width: 196 })
+})
