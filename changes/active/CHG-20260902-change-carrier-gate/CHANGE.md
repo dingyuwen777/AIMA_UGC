@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260902-change-carrier-gate
 title: 修复顶层 Change carrier 完成门禁漏检
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/292-change-carrier-gate
 created: 2026-09-02
@@ -47,7 +47,7 @@ Agent_Skills #158 已明确 canonical 不提供 mixed legacy/current 兼容；�
 
 Included：AIMA 项目自有 checker、回归测试、Completion Gate 接线、静态治理自检、项目规则与开发 Blueprint；同时修正三份当前 schema 归档中已被后续仓库演进破坏的 Source/表头，使新门禁能真实检查全部当前记录。
 
-Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 125 份 legacy Change、产品 Contract/Schema/Migration/依赖/运行时行为、Branch Protection 规则变更。
+Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 125 份 `rvc-change/v1` 与 3 份未版本化历史 Change、产品 Contract/Schema/Migration/依赖/运行时行为、Branch Protection 规则变更。
 
 # 必须保持不变
 
@@ -70,8 +70,8 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 | R1 | PR 必须拦截新增或修改后仍为 in_progress 的顶层当前 Change | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | 目标回归验证 changed-since 返回失败并包含 ready_for_review 诊断 |
 | R2 | Ready 且追溯/审计完整的当前 Change 必须通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | 目标回归验证当前 Ready Change 与未改动 legacy 共存时通过 |
 | R3 | rvc 与未版本化 legacy 仅允许未改动归档；修改、Active、未知 schema 与删除规避失败 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | Unit 覆盖 rvc/未版本化兼容、legacy 修改/Active、未知 schema、删除和合法归档移动 |
-| R4 | main 输出 carrier=changes 且 gated/strict 非零 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | not_satisfied | CLI/CI 证据待建立 |
-| R5 | 保持 required check 身份及 Ruleset 消费者不变 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | not_satisfied | Workflow Responsibility Audit 待完成 |
+| R4 | main 输出 carrier=changes 且 gated/strict 非零 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | 当前 head 的 main 模式 CLI 通过并输出 `carrier=changes, gated=14, strict=14, legacy=128`；合并后仍以 main fresh Workflow 作为 Issue 关闭门禁 |
+| R5 | 保持 required check 身份及 Ruleset 消费者不变 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | Workflow/job 名未变；Ruleset 21909651 于 Ready 前复核仍消费 `Requirement Traceability and Completion Audit`、`CI Gate`、`Compose Golden Path` |
 | R6 | canonical 不提供 mixed carrier 兼容，AIMA 不修改 managed Skill 或创建替代 Skill | https://github.com/dingyuwen777/Agent_Skills/issues/158 | satisfied | 方案限定在项目自有 scripts/tests/workflow/docs |
 
 # Validation Matrix
@@ -101,20 +101,21 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 | --- | --- | --- | --- |
 | 当前 schema/frontmatter 严格解析 | installed ready-check validator | adapter 动态加载并调用同一 metadata 解析 | Unit 已通过 |
 | Requirement Traceability / Completion Audit | installed ready-check validator | adapter 调用同一文档校验函数 | Unit 已通过 |
-| PR changed-since Active Ready | project checker + Completion Gate | Unit Red/Green + PR 真实日志 | Unit 已通过；PR 真实日志待取得 |
-| main 全 Active Ready 与 Archive done | project checker + Completion Gate | Unit + main fresh 日志 | Unit 已通过；main fresh 待取得 |
+| PR changed-since Active Ready | project checker + Completion Gate | Unit Red/Green + PR 真实日志 | Unit 已通过；PR run 33596440533 已证明 in_progress 失败，Ready 成功待 current-head CI |
+| main 全 Active Ready 与 Archive done | project checker + Completion Gate | Unit + main fresh 日志 | main 模式 CLI 已通过；合并后补 main fresh Workflow 证据 |
 | legacy 历史兼容与不可变 | project checker | unchanged/modified/active/delete 回归 | Unit 已通过 |
-| Branch Protection 消费 | 既有 Ruleset | check 名不变 + Ruleset/PR checks 复核 | 待验证 |
+| Branch Protection 消费 | 既有 Ruleset | check 名不变 + Ruleset/PR checks 复核 | Ruleset 21909651 已复核；required status 上下文未变 |
 
 # 实施步骤
 
 - [x] 更新 Issue #292，使范围与 Agent_Skills #158 当前决定一致。
 - [x] Red：建立 carrier、状态、legacy、未知 schema 与删除绕过测试；沙箱外目标 pytest 为 `6 failed`，共同失败于项目 checker 尚不存在。
-- [ ] 首个本地提交后首次 push，并创建早期 PR；逻辑未就绪时禁止 merge。
+- [x] 首个本地提交后首次 push，并创建早期 PR；逻辑未就绪时禁止 merge。
 - [x] Green：实现项目 checker、Workflow/治理静态接线和当前归档兼容修正。
 - [x] 同步项目规则和 Blueprint，执行 targeted Docs review。
-- [ ] 运行目标/模块/质量门禁与 Workflow 真实失败→成功证据。
-- [ ] 重新读取上游，完成 Completion Audit、独立 Review 和 PR current-head CI。
+- [x] 运行目标回归与质量门禁，并取得 Workflow 真实失败证据。
+- [x] 重新读取上游，完成 Completion Audit。
+- [ ] 完成独立 Review、PR current-head CI 与 Workflow 成功证据。
 - [ ] 获授权后受保护合并，执行 main fresh，再用独立归档 PR 收尾并关闭 Issue。
 
 # 当前新鲜证据
@@ -122,14 +123,17 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 - Red：项目 checker 不存在时，目标 pytest `6 failed`；每个失败均为 `FileNotFoundError` 指向预期生产入口。
 - Green：`tests/unit/test_change_completion.py` 与 `tests/unit/test_agent_governance.py` 共 `21 passed`。
 - 静态质量：变更集 Ruff format/check 和项目 checker Mypy 均 exit 0。
-- 真实工作树 CLI 已输出 `carrier=changes, gated=14, strict=8, legacy=128` 并失败，诊断包含当前 Change 的 `in_progress` 以及 7 个待由 PR #297 归档修正的既有 Active Change；这证明新入口已停止回退到空 `.agents/changes`，但当前状态按设计尚不可合并。
+- 治理/文档/架构/表所有权/Secret 检查均 exit 0；首次沙箱执行只因用户级 uv 缓存拒绝访问而未进入测试，沙箱外相同命令形成上述真实结果。
+- PR run 33596440533 在最新 main 基线 `cdb76a26` 上按预期失败，唯一诊断是当前 Change 为 `in_progress`；日志输出 `carrier=changes, gated=14, strict=13, legacy=128`。
+- Ready 前重新读取 Issue #292、Agent_Skills #158、Workflow 与 Ruleset 21909651；后者仍要求 `CI Gate`、`Requirement Traceability and Completion Audit`、`Compose Golden Path`，未发生检查身份漂移。
+- 当前 head 的 `--changed-since origin/main` 与 `--require-active-ready` 均通过并输出 `carrier=changes, gated=14, strict=14, legacy=128`；PR current-head 与 main fresh 仍按外部交付顺序补证。
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重新读取 Issue #292、Agent_Skills #158、Ruleset、Workflow 与项目事实。
-- [ ] change_coverage：R1–R6 尚未全部形成实现与验证证据。
-- [ ] reverse_audit：待从 CI 日志与 Ruleset required check 反查真实消费链。
-- [ ] unresolved_cleared：R1–R5 尚为 `not_satisfied`，当前不得 Ready。
+- [x] upstream_re_read：Ready 前已重新读取 Issue #292、Agent_Skills #158、Ruleset 21909651、Workflow 与项目实现/测试事实。
+- [x] change_coverage：R1–R6 均已映射到实现、目标回归、真实失败日志、main 模式 CLI 或 Ruleset 证据；PR 成功与 main fresh 作为后续交付门禁继续执行。
+- [x] reverse_audit：从 Ruleset required status 反查到未改名的 Workflow job，再反查 project checker 的 changed-since/main 两种真实命令；没有丢失消费者。
+- [x] unresolved_cleared：无 `not_satisfied` 需求；128 份 legacy 的不可变边界、3 份未版本化记录和合并后 main fresh 均已显式记录。
 
 # 兼容、部署与回滚
 
