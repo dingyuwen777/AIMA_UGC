@@ -21,6 +21,7 @@ onMounted(load)
 
 /** 按后端 offset/limit 契约读取完整车型目录；默认只暴露 active 创建候选。 */
 async function load(): Promise<void> {
+  if (loading.value) return
   loading.value = true
   error.value = null
   try {
@@ -47,6 +48,7 @@ async function load(): Promise<void> {
   }
 }
 
+/** 切换一个车型选择，只修改当前组件的选择集合。 */
 function toggle(id: string): void {
   const next = new Set(selected.value)
   if (next.has(id)) next.delete(id)
@@ -64,12 +66,19 @@ function toggle(id: string): void {
     <p v-if="loading">
       车型目录加载中…
     </p>
-    <p
+    <div
       v-else-if="error"
       class="vehicle-select__error"
+      role="alert"
     >
-      {{ error }}
-    </p>
+      <span>{{ error }}</span>
+      <button
+        type="button"
+        @click="load"
+      >
+        重试
+      </button>
+    </div>
     <div
       v-else
       class="vehicle-select__options"
@@ -96,7 +105,8 @@ function toggle(id: string): void {
 .vehicle-select legend { padding: 0 5px; color: var(--aima-text-muted); font-size: 11px; }
 .vehicle-select p,
 .vehicle-select em { margin: 0; color: var(--aima-text-disabled); font-size: 11px; font-style: normal; }
-.vehicle-select__error { color: var(--aima-danger) !important; }
+.vehicle-select__error { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--aima-danger); font-size: 11px; }
+.vehicle-select__error button { flex: none; padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }
 .vehicle-select__options { display: flex; max-height: 116px; flex-wrap: wrap; gap: 7px; overflow: auto; }
 .vehicle-select__options label { display: inline-flex; min-height: 28px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--aima-border); border-radius: 5px; color: var(--aima-text-secondary); cursor: pointer; font-size: 11px; }
 .vehicle-select__options label:has(input:checked) { border-color: var(--aima-primary); color: var(--aima-primary); background: var(--aima-primary-soft); }
