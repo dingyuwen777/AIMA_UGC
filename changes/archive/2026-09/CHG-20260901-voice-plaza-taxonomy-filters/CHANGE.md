@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260901-voice-plaza-taxonomy-filters
 title: 声音广场文件 Taxonomy 与筛选一致性
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-01
@@ -97,14 +97,21 @@ Excluded：管理员配置页、可写 Scheme API/数据库、车型、动态内
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read：已重新读取 Taxonomy、声音广场设计、当前 Contract、实现与最终 PR/main 验证事实。
+- [x] change_coverage：动态筛选、错误语义、平台显示与北京时间边界均已落到实现、测试和文档证据。
+- [x] reverse_audit：已从前端筛选与错误状态反查 Taxonomy API、生成 Client 和后端正式投影。
+- [x] unresolved_cleared：所有 Required 项均有证据，无未决业务语义或 `not_satisfied`。
 
 # 当前验证边界
 
-Contract/API、前端 Unit、43 条 Browser Mock、类型检查、Build、Figma、186 条 PostgreSQL Integration 与 9 条 Real Full-stack Golden Path 已有本轮新鲜证据。当前无语义未决项，Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
+Contract/API、前端 Unit、43 条 Browser Mock、类型检查、Build、Figma、186 条 PostgreSQL Integration 与 9 条 Real Full-stack Golden Path 已有实现轮次证据。当前无语义未决项。
+
+# 交付完成证据
+
+- PR #289 已把 U1–U5 前端、声音广场和文档接线合并到 `main`（merge commit `b5622e2308193da4bb6878672944f38938bf46d5`）；PR #295 又完成恢复验证与基线修复（merge commit `f60f598c84e0696873cc01fc30f4d817ed51ae52`）；
+- `main` 的 CI run #33589659720 成功，包含 Repository Quality、Docs and Governance、PostgreSQL Integration、Real Full-stack Golden Path 与 CI Gate；
+- `main` 的 Runtime Acceptance run #33589659537 成功，Compose Golden Path 完成；
+- 本 Change 的实现、验证、Review、合并与 main 新鲜验证已闭环，因此转为 `done` 并归档。
 
 # 独立 Review 记录
 

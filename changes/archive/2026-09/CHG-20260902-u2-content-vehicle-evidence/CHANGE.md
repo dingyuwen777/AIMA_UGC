@@ -3,14 +3,24 @@ schema: coding-change/v1
 id: CHG-20260902-u2-content-vehicle-evidence
 title: U2 内容车型证据与查询增强
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
-depends_on: [CHG-20260902-u1-vehicle-catalog]
-affected_areas: [vehicles, content, analysis, ingestion, api, contracts, frontend, reporting, documentation]
+depends_on:
+  - CHG-20260902-u1-vehicle-catalog
+affected_areas:
+  - vehicles
+  - content
+  - analysis
+  - ingestion
+  - api
+  - contracts
+  - frontend
+  - reporting
+  - documentation
 affected_paths:
   - backend/src/aima_ugc/modules/vehicles/
   - backend/src/aima_ugc/modules/content/
@@ -27,7 +37,8 @@ affected_paths:
 contracts:
   - Content vehicle evidence projection
   - Content vehicle filters and facets
-data_changes: [content_vehicle_evidence]
+data_changes:
+  - content_vehicle_evidence
 ---
 
 # 背景、目标与边界
@@ -65,12 +76,12 @@ U2 把车型从选择资源升级为可追溯的内容匹配事实。每条内�
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read：已重新读取内容车型证据需求、路线、Contract、Schema、实现和最终验证事实。
+- [x] change_coverage：别名匹配、歧义、人工锁定、证据排序、筛选和导出投影均有实现与测试证据。
+- [x] reverse_audit：已从内容列表、详情、人工修正和导出反查 API、数据库与统一导入链路。
+- [x] unresolved_cleared：所有 Required 项均有证据，无未决语义或 `not_satisfied`。
 
-当前无语义未决项：本地 required 验证与独立 Review 已完成，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
+当前无语义未决项：本地 required 验证与独立 Review 已完成。
 
 # 本轮验证证据
 
@@ -79,3 +90,9 @@ U2 把车型从选择资源升级为可追溯的内容匹配事实。每条内�
 - 变更集 Ruff、全后端 Mypy、六项质量门禁与 `git diff --check` 通过；
 - PostgreSQL Integration `186 passed`，覆盖车型 FK、证据、人工锁、查询和导出投影；
 - Real Full-stack 已通过“Excel 导入→车型别名匹配→车型筛选→详情证据”闭环。
+
+# 交付完成证据
+
+- PR #289 已把 U1–U5 前端与文档接线合并到 `main`（merge commit `b5622e2308193da4bb6878672944f38938bf46d5`）；PR #295 又完成恢复验证与基线修复（merge commit `f60f598c84e0696873cc01fc30f4d817ed51ae52`）；
+- `main` 的 CI run #33589659720 与 Runtime Acceptance run #33589659537 均成功，覆盖产品、PostgreSQL、真实浏览器和 Compose 门禁；
+- 本 Change 的实现、验证、Review、合并与 main 新鲜验证已闭环，因此转为 `done` 并归档。
