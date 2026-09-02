@@ -54,7 +54,7 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 如果只是改人工入口的默认参数/输出路径，才优先改 `tikhub_test`；如果要改 endpoint、分页、Mapper 或 Capability，应先改生产 TikHub 代码和测试，再让本目录继续复用。
 
-小红书指定账号 Discovery 的 Provider endpoint、Extractor 和分页也不写在 [`xiaohongshu_accounts_test.py`](xiaohongshu_accounts_test.py) 里，而由以下生产适配层统一维护：
+小红书指定账号 Discovery 的 Provider endpoint、Extractor 和分页也不写在 [`backend/src/aima_ugc/adapters/providers/tikhub_test/xiaohongshu_accounts_test.py`](xiaohongshu_accounts_test.py) 里，而由以下生产适配层统一维护：
 
 - [`backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu_accounts.py`](../tikhub/operations/xiaohongshu_accounts.py)
 - [`backend/src/aima_ugc/adapters/providers/tikhub/account_runtime.py`](../tikhub/account_runtime.py)
