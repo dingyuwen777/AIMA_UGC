@@ -123,7 +123,7 @@ def _user_notes_response() -> dict[str, Any]:
 
 
 def _detail_response() -> dict[str, Any]:
-    """返回目标八月笔记详情，并明确总评论数为 2。"""
+    """详情只声明 1 条评论，用于证明 all 不以计数软目标终止。"""
     return {
         "data": {
             "data": [
@@ -135,7 +135,7 @@ def _detail_response() -> dict[str, Any]:
                             "title": "八月笔记",
                             "desc": "脱敏正文",
                             "time": 1786334400,
-                            "comments_count": 2,
+                            "comments_count": 1,
                             "user": {
                                 "userid": "user-aima",
                                 "red_id": "49328786266",
