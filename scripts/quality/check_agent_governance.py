@@ -48,6 +48,16 @@ BUG_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "02-bug.yml"
 TECHNICAL_CHANGE_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "03-technical-change.yml"
 ISSUE_TEMPLATE_CONFIG = ISSUE_TEMPLATE_DIR / "config.yml"
 PR_TEMPLATE = Path(".github/PULL_REQUEST_TEMPLATE.md")
+DEV_WORKFLOW_BLUEPRINT = Path("docs/blueprint/06_开发约束与分阶段实施.md")
+WORK_INITIALIZATION_MARKERS = (
+    "本地任务分支",
+    "首个本地提交",
+    "首次 push",
+    "远程跟踪分支",
+    "早期 PR",
+    "不得先创建远程空分支",
+    "Issue ↔ Change ↔ branch ↔ PR",
+)
 REQUIREMENT_FORM_FIELDS = (
     "id: objective",
     "id: scope",
@@ -141,8 +151,22 @@ def check_repository(root: Path = ROOT) -> list[str]:
                     errors.append(
                         f"GOV011 AGENTS.md: 项目自有 Overlay 不应保存通用治理实现说明 {fragment}"
                     )
+            for marker in WORK_INITIALIZATION_MARKERS:
+                if marker not in project_owned:
+                    errors.append(f"GOV016 AGENTS.md: 缺少本地开工顺序门禁 {marker}")
         if agents.count(PROJECT_GOVERNANCE_MARKER) != 1:
             errors.append("GOV003 AGENTS.md: 项目治理校准区 marker 必须且只能存在一次")
+
+    workflow_blueprint = root / DEV_WORKFLOW_BLUEPRINT
+    if not workflow_blueprint.is_file():
+        errors.append(f"GOV016 {DEV_WORKFLOW_BLUEPRINT.as_posix()}: 项目长期研发流程不存在")
+    else:
+        workflow_text = _read_text(workflow_blueprint)
+        for marker in WORK_INITIALIZATION_MARKERS:
+            if marker not in workflow_text:
+                errors.append(
+                    f"GOV016 {DEV_WORKFLOW_BLUEPRINT.as_posix()}: 缺少本地开工顺序门禁 {marker}"
+                )
 
     project_docs = root / PROJECT_DOC_RULES
     if project_docs.is_file():
