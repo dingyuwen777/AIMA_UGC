@@ -271,9 +271,7 @@ def test_account_run_filters_date_and_all_mode_crosses_soft_comment_target(
     ]
 
     content_lines = (
-        (result.run_dir / "canonical" / "contents.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
+        (result.run_dir / "canonical" / "contents.jsonl").read_text(encoding="utf-8").splitlines()
     )
     assert len(content_lines) == 2
     discovery = json.loads(content_lines[0])
