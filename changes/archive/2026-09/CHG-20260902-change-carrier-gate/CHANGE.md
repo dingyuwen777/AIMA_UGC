@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260902-change-carrier-gate
 title: 修复顶层 Change carrier 完成门禁漏检
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/292-change-carrier-gate
 created: 2026-09-02
@@ -70,7 +70,7 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 | R1 | PR 必须拦截新增或修改后仍为 in_progress 的顶层当前 Change | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | 目标回归验证 changed-since 返回失败并包含 ready_for_review 诊断 |
 | R2 | Ready 且追溯/审计完整的当前 Change 必须通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | 目标回归验证当前 Ready Change 与未改动 legacy 共存时通过 |
 | R3 | rvc 与未版本化 legacy 仅允许未改动归档；修改、Active、未知 schema 与删除规避失败 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | Unit 覆盖 rvc/未版本化兼容、legacy 修改/Active、未知 schema、删除和合法归档移动 |
-| R4 | main 输出 carrier=changes 且 gated/strict 非零 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | 当前 head 的 main 模式 CLI 通过并输出 `carrier=changes, gated=14, strict=14, legacy=128`；合并后仍以 main fresh Workflow 作为 Issue 关闭门禁 |
+| R4 | main 输出 carrier=changes 且 gated/strict 非零 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | main fresh Change Completion Gate run 33597529998 在 merge commit `c2664f0c` 成功；PR/main CLI 均输出 `carrier=changes` 且 gated/strict 非零 |
 | R5 | 保持 required check 身份及 Ruleset 消费者不变 | https://github.com/dingyuwen777/AIMA_UGC/issues/292 | satisfied | Workflow/job 名未变；Ruleset 21909651 于 Ready 前复核仍消费 `Requirement Traceability and Completion Audit`、`CI Gate`、`Compose Golden Path` |
 | R6 | canonical 不提供 mixed carrier 兼容，AIMA 不修改 managed Skill 或创建替代 Skill | https://github.com/dingyuwen777/Agent_Skills/issues/158 | satisfied | 方案限定在项目自有 scripts/tests/workflow/docs |
 
@@ -101,8 +101,8 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 | --- | --- | --- | --- |
 | 当前 schema/frontmatter 严格解析 | installed ready-check validator | adapter 动态加载并调用同一 metadata 解析 | Unit 已通过 |
 | Requirement Traceability / Completion Audit | installed ready-check validator | adapter 调用同一文档校验函数 | Unit 已通过 |
-| PR changed-since Active Ready | project checker + Completion Gate | Unit Red/Green + PR 真实日志 | Unit 已通过；PR run 33596440533 已证明 in_progress 失败，Ready 成功待 current-head CI |
-| main 全 Active Ready 与 Archive done | project checker + Completion Gate | Unit + main fresh 日志 | main 模式 CLI 已通过；合并后补 main fresh Workflow 证据 |
+| PR changed-since Active Ready | project checker + Completion Gate | Unit Red/Green + PR 真实日志 | PR run 33596440533 已证明 in_progress 失败；final-head run 33596647829 已证明 Ready 成功 |
+| main 全 Active Ready 与 Archive done | project checker + Completion Gate | Unit + main fresh 日志 | merge commit `c2664f0c` 的 main fresh run 33597529998 成功；本归档 PR 再验证 archive done |
 | legacy 历史兼容与不可变 | project checker | unchanged/modified/active/delete 回归 | Unit 已通过 |
 | Branch Protection 消费 | 既有 Ruleset | check 名不变 + Ruleset/PR checks 复核 | Ruleset 21909651 已复核；required status 上下文未变 |
 
@@ -115,8 +115,9 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 - [x] 同步项目规则和 Blueprint，执行 targeted Docs review。
 - [x] 运行目标回归与质量门禁，并取得 Workflow 真实失败证据。
 - [x] 重新读取上游，完成 Completion Audit。
-- [ ] 完成独立 Review、PR current-head CI 与 Workflow 成功证据。
-- [ ] 获授权后受保护合并，执行 main fresh，再用独立归档 PR 收尾并关闭 Issue。
+- [x] 完成独立 Review、PR current-head CI 与 Workflow 成功证据。
+- [x] 获授权后受保护合并并执行 main fresh。
+- [ ] 用独立归档 PR 收尾并关闭 Issue。
 
 # 当前新鲜证据
 
@@ -126,7 +127,10 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 - 治理/文档/架构/表所有权/Secret 检查均 exit 0；首次沙箱执行只因用户级 uv 缓存拒绝访问而未进入测试，沙箱外相同命令形成上述真实结果。
 - PR run 33596440533 在最新 main 基线 `cdb76a26` 上按预期失败，唯一诊断是当前 Change 为 `in_progress`；日志输出 `carrier=changes, gated=14, strict=13, legacy=128`。
 - Ready 前重新读取 Issue #292、Agent_Skills #158、Workflow 与 Ruleset 21909651；后者仍要求 `CI Gate`、`Requirement Traceability and Completion Audit`、`Compose Golden Path`，未发生检查身份漂移。
-- 当前 head 的 `--changed-since origin/main` 与 `--require-active-ready` 均通过并输出 `carrier=changes, gated=14, strict=14, legacy=128`；PR current-head 与 main fresh 仍按外部交付顺序补证。
+- 实现分支 final head `3a1fb629` 的 PR run 33596647829、Runtime 33596625892 与完整 CI 33596626086 全部成功；两阶段独立 Review 无 findings。
+- PR #299 已按用户对该 PR 的明确授权使用管理员权限合并；merge commit 为 `c2664f0c0e5e85506bedf36de6caa0e8a39c3b72`。
+- merge commit 的 main fresh Change Completion Gate 33597529998、Runtime Acceptance 33597530035 与完整 CI 33597530173 全部成功；Repository Quality、PostgreSQL Integration、Real Full-stack、Docs/Governance 和 CI Gate 均实际执行并通过。
+- 本归档 PR 只把已完成记录从 Active 移入 Archive，不改变产品、治理实现或 required check 身份。
 
 # Completion Audit
 
