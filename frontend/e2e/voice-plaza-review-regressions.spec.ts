@@ -93,6 +93,32 @@ test('辅助能力失败时保留成功加载的空内容状态', async ({ page 
   await expect(page.locator('.page-error')).toContainText('req_voice_plaza_capability_failure')
 })
 
+test('车型目录响应缺少 items 时显示错误且不中断页面渲染', async ({ page }) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+  await stubStableAuxiliaryRoutes(page)
+  await page.route('**/api/v1/vehicle-models**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({}) })
+  })
+  await page.route('**/api/v1/analysis/content-runs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/analysis/content-runs') return route.fallback()
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
+  })
+  await page.route('**/api/v1/contents**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], next_cursor: null, has_more: false }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+
+  await expect(page.getByText('车型目录响应无效，请稍后重试。')).toBeVisible()
+  await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
+  expect(pageErrors).toEqual([])
+})
+
 test('Failed Analysis Run 保留后端 error_code', async ({ page }) => {
   await stubStableAuxiliaryRoutes(page)
   await page.route('**/api/v1/contents**', async (route) => {

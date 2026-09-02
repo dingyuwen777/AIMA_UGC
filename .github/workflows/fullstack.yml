@@ -101,11 +101,13 @@ jobs:
           uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-fullstack.xlsx" success
           uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-worker-failure.xlsx" worker-failure
           uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-manual-review.xlsx" manual-review
+          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/admin-product.xlsx" admin-product
           uv run python tests/fullstack/create_stage12_historical_fixture.py \
             "${RUNNER_TEMP}/stage12-current.xlsx" "${AIMA_HISTORICAL_IMPORT_ROOT}"
           test -s "${RUNNER_TEMP}/stage8f-fullstack.xlsx"
           test -s "${RUNNER_TEMP}/stage8f-worker-failure.xlsx"
           test -s "${RUNNER_TEMP}/stage8f-manual-review.xlsx"
+          test -s "${RUNNER_TEMP}/admin-product.xlsx"
           test -s "${RUNNER_TEMP}/stage12-current.xlsx"
           test -s "${AIMA_HISTORICAL_IMPORT_ROOT}/history.xlsx"
 
@@ -159,6 +161,7 @@ jobs:
           AIMA_STAGE8F_EXCEL_FIXTURE: ${{ runner.temp }}/stage8f-fullstack.xlsx
           AIMA_STAGE8F_FAILURE_EXCEL_FIXTURE: ${{ runner.temp }}/stage8f-worker-failure.xlsx
           AIMA_STAGE12_ORDINARY_FIXTURE: ${{ runner.temp }}/stage12-current.xlsx
+          AIMA_ADMIN_PRODUCT_EXCEL_FIXTURE: ${{ runner.temp }}/admin-product.xlsx
           AIMA_FULLSTACK_SEED: 1
           REQUESTED_SPECS: ${{ inputs.specs }}
         run: |
@@ -171,7 +174,7 @@ jobs:
           read -r -a specs <<< "${REQUESTED_SPECS}"
           for spec in "${specs[@]}"; do
             case "${spec}" in
-              collection-plan-search-config.spec.ts|excel-import.spec.ts|manual-relevance-review.spec.ts|stage12-historical-analysis.spec.ts)
+              admin-product-capabilities.spec.ts|collection-plan-search-config.spec.ts|excel-import.spec.ts|manual-relevance-review.spec.ts|stage12-historical-analysis.spec.ts)
                 ;;
               *)
                 echo "Unknown full-stack spec: ${spec}" >&2
