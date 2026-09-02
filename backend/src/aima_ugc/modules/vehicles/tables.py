@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Table,
     Text,
@@ -113,6 +114,12 @@ content_vehicle_evidence_table = Table(
     CheckConstraint(
         "confidence is null or (confidence >= 0 and confidence <= 1)",
         name="confidence_range",
+    ),
+    Index(
+        "ix_content_vehicle_evidence_active_vehicle",
+        "vehicle_model_id",
+        "content_id",
+        postgresql_where=text("is_active"),
     ),
     info={"owner": "vehicles"},
 )

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ALL_FULLSTACK_SPECS = (
+    "admin-product-capabilities.spec.ts",
     "collection-plan-search-config.spec.ts",
     "excel-import.spec.ts",
     "manual-relevance-review.spec.ts",
@@ -130,8 +131,27 @@ def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
     collection_markers = ("/collection/", "collection-plan", "collection_strategy")
     ingestion_markers = ("/ingestion/", "import", "historical")
     analysis_markers = ("/analysis/", "analysis")
+    analysis_scheme_markers = (
+        "analysis_scheme",
+        "/analysis/schemes.py",
+        "/analysis/scheme_tables.py",
+    )
     content_markers = ("/content/", "relevance")
+    administration_markers = (
+        "/administration",
+        "/vehicles/",
+        "admin-configuration",
+        "notification",
+        "reporting",
+    )
 
+    if any(marker in path for marker in analysis_scheme_markers):
+        return (
+            "admin-product-capabilities.spec.ts",
+            "stage12-historical-analysis.spec.ts",
+        )
+    if any(marker in path for marker in administration_markers):
+        return ("admin-product-capabilities.spec.ts",)
     if any(marker in path for marker in collection_markers):
         return ("collection-plan-search-config.spec.ts",)
     if any(marker in path for marker in ingestion_markers):

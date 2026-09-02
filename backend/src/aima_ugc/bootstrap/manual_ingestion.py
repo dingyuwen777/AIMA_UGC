@@ -321,8 +321,7 @@ def ingest_unified_content_batch(
     rows_ingested = 0
     request_count = 0
     vehicle_by_alias = {
-        normalize_vehicle_text(alias): model_id
-        for model_id, alias in vehicle_alias_bindings
+        normalize_vehicle_text(alias): model_id for model_id, alias in vehicle_alias_bindings
     }
     vehicle_repository = PostgresVehicleCatalogRepository(session)
 

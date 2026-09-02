@@ -49,9 +49,7 @@ class ProductHttpService(Protocol):
 
         ...
 
-    def list_notifications(
-        self, principal: Principal, *, limit: int
-    ) -> NotificationListResponse:
+    def list_notifications(self, principal: Principal, *, limit: int) -> NotificationListResponse:
         """读取当前 Principal 的 Inbox。"""
 
         ...

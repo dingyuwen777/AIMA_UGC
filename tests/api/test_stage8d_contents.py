@@ -95,7 +95,11 @@ class _ReportingService:
         self.job_id = uuid4()
 
     def create_export(
-        self, request, *, request_id, actor_ref  # type: ignore[no-untyped-def]
+        self,
+        request,
+        *,
+        request_id,
+        actor_ref,  # type: ignore[no-untyped-def]
     ):
         del actor_ref
         return DataExportCreatedResponse(

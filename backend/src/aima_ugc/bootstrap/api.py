@@ -1153,9 +1153,7 @@ def create_app(
         request: Request,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
     ) -> NotificationListResponse:
-        return current_product_service().list_notifications(
-            current_principal(request), limit=limit
-        )
+        return current_product_service().list_notifications(current_principal(request), limit=limit)
 
     @application.put(
         "/api/v1/notifications/read",
@@ -1167,9 +1165,7 @@ def create_app(
         body: NotificationMarkReadRequest,
         request: Request,
     ) -> NotificationMarkReadResponse:
-        return current_product_service().mark_notifications_read(
-            current_principal(request), body
-        )
+        return current_product_service().mark_notifications_read(current_principal(request), body)
 
     @application.post(
         "/api/v1/content-relevance-reviews",
@@ -1769,9 +1765,7 @@ def create_app(
                         "msg": "multipart 必须包含一个 file，并至少选择词包或车型",
                         "input": None,
                         "ctx": {
-                            "error": ValueError(
-                                "multipart 必须包含一个 file，并至少选择词包或车型"
-                            )
+                            "error": ValueError("multipart 必须包含一个 file，并至少选择词包或车型")
                         },
                     }
                 ]

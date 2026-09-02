@@ -67,9 +67,7 @@ class PostgresReportingHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 target_request = request.targets
                 content_queries = PostgresContentQueryRepository(
                     session,

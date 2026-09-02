@@ -42,12 +42,11 @@ content_availability_observations_table = Table(
         "status <> 'unavailable_confirmed' or "
         "(evidence_kind = 'provider_explicit' and "
         "(provider_attempt_id is not null or raw_artifact_id is not null))",
-        name="confirmed_requires_explicit_evidence",
+        name="confirmed_evidence",
     ),
     CheckConstraint(
-        "evidence_kind <> 'technical_failure' or "
-        "status in ('unknown','unavailable_suspected')",
-        name="technical_failure_status_limited",
+        "evidence_kind <> 'technical_failure' or status in ('unknown','unavailable_suspected')",
+        name="technical_status",
     ),
     CheckConstraint("content_version > 0", name="content_version_positive"),
     info={"owner": "content"},

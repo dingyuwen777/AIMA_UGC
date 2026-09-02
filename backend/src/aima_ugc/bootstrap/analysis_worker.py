@@ -109,12 +109,10 @@ class PostgresContentAnalysisJobExecutor:
                 if service is None:
                     try:
                         if self._service_factory is None:
-                            service, close_service = self._default_service(
-                                work[0].analysis_run_id
-                            )
+                            service, close_service = self._default_service(work[0].analysis_run_id)
                         else:
                             service, close_service = self._service_factory()
-                    except (OSError, SecretFileError, ValueError):
+                    except OSError, SecretFileError, ValueError:
                         return JobHandlerResult.failed("analysis_configuration_unavailable")
                 if not _matches_frozen_configuration(work[0], service):
                     return JobHandlerResult.failed("analysis_run_configuration_changed")

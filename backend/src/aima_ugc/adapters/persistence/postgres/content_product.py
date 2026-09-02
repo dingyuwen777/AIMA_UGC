@@ -33,9 +33,7 @@ class PostgresContentProductRepository:
         """绑定 Content 查询事务与当前 Analysis 身份。"""
 
         self._session = session
-        self._queries = PostgresContentQueryRepository(
-            session, analysis_identity=analysis_identity
-        )
+        self._queries = PostgresContentQueryRepository(session, analysis_identity=analysis_identity)
 
     def exact_count(self, filters: ContentFilterSnapshot, *, limit: int) -> tuple[int, bool]:
         """扫描至上限加一，返回范围内数量和是否被截断。"""
@@ -51,8 +49,7 @@ class PostgresContentProductRepository:
             return None
         value = self._session.scalar(
             text(
-                "SELECT GREATEST(reltuples::bigint, 0) "
-                "FROM pg_class WHERE oid='contents'::regclass"
+                "SELECT GREATEST(reltuples::bigint, 0) FROM pg_class WHERE oid='contents'::regclass"
             )
         )
         return None if value is None else max(int(value), 0)

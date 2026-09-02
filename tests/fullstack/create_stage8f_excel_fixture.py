@@ -12,19 +12,19 @@ def main() -> int:
     if len(sys.argv) not in {2, 3}:
         raise SystemExit(
             "用法: python tests/fullstack/create_stage8f_excel_fixture.py "
-            "<output.xlsx> [success|worker-failure|manual-review]"
+            "<output.xlsx> [success|worker-failure|manual-review|admin-product]"
         )
 
     output = Path(sys.argv[1])
     scenario = sys.argv[2] if len(sys.argv) == 3 else "success"
-    if scenario not in {"success", "worker-failure", "manual-review"}:
-        raise SystemExit("scenario 只支持 success、worker-failure 或 manual-review")
+    if scenario not in {"success", "worker-failure", "manual-review", "admin-product"}:
+        raise SystemExit("scenario 只支持 success、worker-failure、manual-review 或 admin-product")
     output.parent.mkdir(parents=True, exist_ok=True)
 
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "文章"
-    if scenario in {"success", "manual-review"}:
+    if scenario in {"success", "manual-review", "admin-product"}:
         sheet.append(
             [
                 "媒体名称（中文）",
@@ -46,7 +46,7 @@ def main() -> int:
                     "https://www.xiaohongshu.com/explore/stage8f-fullstack-content-1",
                 ]
             )
-        else:
+        elif scenario == "manual-review":
             sheet.append(
                 [
                     "小红书",
@@ -65,6 +65,17 @@ def main() -> int:
                     "Stage8F 双向复核账号",
                     "2026-08-23 13:00:00",
                     "https://www.xiaohongshu.com/explore/stage8f-manual-review-content-2",
+                ]
+            )
+        else:
+            sheet.append(
+                [
+                    "小红书",
+                    "爱玛 U2 车型证据全栈导入",
+                    "验证车型目录、词包关联、Excel 车型匹配、筛选和详情证据闭环",
+                    "U2 全栈测试账号",
+                    "2026-09-02 12:00:00",
+                    "https://www.xiaohongshu.com/explore/u2-vehicle-fullstack-content-1",
                 ]
             )
     else:

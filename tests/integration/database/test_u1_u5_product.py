@@ -290,9 +290,12 @@ def test_availability_history_and_notification_inbox_preserve_evidence_and_princ
                     },
                 ],
             )
-            assert session.scalar(
-                select(func.count()).select_from(content_availability_observations_table)
-            ) == 2
+            assert (
+                session.scalar(
+                    select(func.count()).select_from(content_availability_observations_table)
+                )
+                == 2
+            )
 
             notifications = PostgresNotificationRepository(session)
             event_id = notifications.publish_to_principal(

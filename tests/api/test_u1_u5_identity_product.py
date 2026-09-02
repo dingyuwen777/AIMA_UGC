@@ -32,9 +32,7 @@ class _RecordingProductService:
         self.principal_ids: list[str] = []
         self.item_id = uuid4()
 
-    def list_notifications(
-        self, principal: Principal, *, limit: int
-    ) -> NotificationListResponse:
+    def list_notifications(self, principal: Principal, *, limit: int) -> NotificationListResponse:
         assert limit == 50
         self.principal_ids.append(principal.principal_id)
         return NotificationListResponse(
@@ -167,8 +165,7 @@ def test_ordinary_user_cannot_mutate_keyword_relevance_or_plan_configuration() -
 
     assert all(response.status_code == 403 for response in responses)
     assert all(
-        response.json()["errors"][0]["code"] == "administrator_required"
-        for response in responses
+        response.json()["errors"][0]["code"] == "administrator_required" for response in responses
     )
 
 

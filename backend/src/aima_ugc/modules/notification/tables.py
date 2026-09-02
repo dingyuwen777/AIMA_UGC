@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Table,
     Text,
     UniqueConstraint,
@@ -50,6 +51,11 @@ notification_inbox_items_table = Table(
     CheckConstraint(
         "(is_read and read_at is not null) or (not is_read and read_at is null)",
         name="read_state_consistent",
+    ),
+    Index(
+        "ix_notification_inbox_principal_created",
+        "principal_id",
+        "created_at",
     ),
     info={"owner": "notification"},
 )

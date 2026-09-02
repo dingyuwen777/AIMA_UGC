@@ -180,9 +180,7 @@ class PostgresCollectionHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 reader = PostgresCollectionTargetReader(
                     session,
                     analysis_identity=configuration.identity,

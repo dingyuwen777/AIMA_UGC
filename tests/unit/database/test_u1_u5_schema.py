@@ -47,9 +47,7 @@ def test_u1_u5_query_indexes_are_registered_in_metadata() -> None:
     assert "ix_content_vehicle_evidence_active_vehicle" in {
         index.name for index in evidence.indexes
     }
-    assert "ix_notification_inbox_principal_created" in {
-        index.name for index in inbox.indexes
-    }
+    assert "ix_notification_inbox_principal_created" in {index.name for index in inbox.indexes}
 
 
 def test_confirmed_unavailable_requires_linked_provider_evidence_constraint() -> None:
@@ -61,9 +59,7 @@ def test_confirmed_unavailable_requires_linked_provider_evidence_constraint() ->
         for constraint in availability.constraints
         if hasattr(constraint, "sqltext")
     }
-    expression = checks[
-        "ck_content_availability_observations_confirmed_evidence"
-    ]
+    expression = checks["ck_content_availability_observations_confirmed_evidence"]
 
     assert "provider_attempt_id is not null" in expression
     assert "raw_artifact_id is not null" in expression

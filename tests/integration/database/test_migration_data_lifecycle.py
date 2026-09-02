@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -10,6 +12,8 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
+from aima_ugc.modules.analysis.schemes import compile_analysis_scheme
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.security import read_secret_file
 from alembic import command
@@ -20,6 +24,36 @@ from sqlalchemy.exc import IntegrityError
 
 _ROOT = Path(__file__).resolve().parents[3]
 _NOW = datetime(2026, 8, 17, 8, 30, tzinfo=UTC)
+
+
+def _legacy_analysis_snapshot(definition: dict[str, object]) -> tuple[str, str, str]:
+    """复现 0038 之前依赖 labels 插入顺序的编译行为。"""
+
+    taxonomy_payload = {
+        "schema_version": "aima-content-taxonomy.v2",
+        "sentiments": list(definition["sentiments"]),  # type: ignore[arg-type]
+        "voice_types": list(definition["voice_types"]),  # type: ignore[arg-type]
+        "labels": {
+            key: list(values)
+            for key, values in definition["labels"].items()  # type: ignore[union-attr]
+        },
+    }
+    readable_json = json.dumps(taxonomy_payload, ensure_ascii=False, indent=2)
+    normalized_json = json.dumps(
+        taxonomy_payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    block = (
+        f"<!-- AIMA_TAXONOMY_START -->\n```json\n{readable_json}\n```\n<!-- AIMA_TAXONOMY_END -->"
+    )
+    prompt_text = str(definition["prompt_template"]).replace("{{AIMA_TAXONOMY_JSON}}", block)
+    return (
+        prompt_text,
+        hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
+        hashlib.sha256(normalized_json).hexdigest(),
+    )
 
 
 def _database_url(database: str) -> URL:
@@ -945,6 +979,7 @@ def test_0029_repairs_stage12_development_schema_names_and_index(
         engine.dispose()
 
     _upgrade(migration_database, "20260827_0029")
+
     engine = _engine(migration_database)
     try:
         inspector = inspect(engine)
@@ -981,3 +1016,111 @@ def test_0029_repairs_stage12_development_schema_names_and_index(
         engine.dispose()
 
     _upgrade(migration_database, "20260827_0029")
+
+
+def test_0038_recompiles_existing_analysis_scheme_snapshots(
+    migration_database: str,
+) -> None:
+    """历史 Scheme 经 0038 后可恢复，downgrade 后也兼容旧编译算法。"""
+
+    _upgrade(migration_database, "20260902_0037")
+    scheme_id, version_id = uuid4(), uuid4()
+    definition: dict[str, object] = {
+        "prompt_template": "请按以下分类输出：\n{{AIMA_TAXONOMY_JSON}}",
+        "sentiments": ["正面", "无法判断"],
+        "voice_types": ["真实用户发声", "无法判断"],
+        # 特意使用与 PostgreSQL JSONB 返回顺序不同的插入顺序。
+        "labels": {
+            "无法分类": ["无法判断"],
+            "产品体验": ["续航表现"],
+        },
+    }
+    legacy_prompt, legacy_prompt_sha, legacy_taxonomy_sha = _legacy_analysis_snapshot(definition)
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO analysis_schemes"
+                    "(id, name, active_version_id, is_active, created_at, updated_at) "
+                    "VALUES (:id, '历史方案', NULL, FALSE, :now, :now)"
+                ),
+                {"id": scheme_id, "now": _NOW},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO analysis_scheme_versions"
+                    "(id, scheme_id, version, status, description, definition, "
+                    "compiled_prompt, prompt_sha256, taxonomy_sha256, created_by, "
+                    "created_at, published_at) VALUES "
+                    "(:id, :scheme_id, 1, 'published', '', CAST(:definition AS jsonb), "
+                    ":compiled_prompt, :prompt_sha256, :taxonomy_sha256, "
+                    "'migration-test', :now, :now)"
+                ),
+                {
+                    "id": version_id,
+                    "scheme_id": scheme_id,
+                    "definition": json.dumps(definition, ensure_ascii=False),
+                    "compiled_prompt": legacy_prompt,
+                    "prompt_sha256": legacy_prompt_sha,
+                    "taxonomy_sha256": legacy_taxonomy_sha,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "UPDATE analysis_schemes SET active_version_id = :version_id, "
+                    "is_active = TRUE WHERE id = :scheme_id"
+                ),
+                {"version_id": version_id, "scheme_id": scheme_id},
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260902_0038")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            row = (
+                connection.execute(
+                    text(
+                        "SELECT definition, compiled_prompt, prompt_sha256, taxonomy_sha256 "
+                        "FROM analysis_scheme_versions WHERE id = :id"
+                    ),
+                    {"id": version_id},
+                )
+                .mappings()
+                .one()
+            )
+        compiled = compile_analysis_scheme(
+            AnalysisSchemeDefinitionRequest.model_validate(row["definition"])
+        )
+        assert row["compiled_prompt"] == compiled.prompt_text
+        assert row["prompt_sha256"] == compiled.prompt_sha256
+        assert row["taxonomy_sha256"] == compiled.taxonomy_sha256
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260902_0037")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            row = (
+                connection.execute(
+                    text(
+                        "SELECT definition, compiled_prompt, prompt_sha256, taxonomy_sha256 "
+                        "FROM analysis_scheme_versions WHERE id = :id"
+                    ),
+                    {"id": version_id},
+                )
+                .mappings()
+                .one()
+            )
+        legacy = _legacy_analysis_snapshot(row["definition"])
+        assert row["compiled_prompt"] == legacy[0]
+        assert row["prompt_sha256"] == legacy[1]
+        assert row["taxonomy_sha256"] == legacy[2]
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260902_0038")

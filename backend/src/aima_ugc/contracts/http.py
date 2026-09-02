@@ -728,9 +728,7 @@ class ContentAnalysisResponse(BaseModel):
     model: str | None = None
     latest_run_id: UUID | None = None
     latest_run_status: str | None = None
-    manual_locked_dimensions: tuple[
-        Literal["voice_type", "sentiment", "labels"], ...
-    ] = ()
+    manual_locked_dimensions: tuple[Literal["voice_type", "sentiment", "labels"], ...] = ()
 
     @model_validator(mode="after")
     def validate_completed_shape(self) -> ContentAnalysisResponse:

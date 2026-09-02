@@ -112,9 +112,7 @@ _COMMENT_CONTENT_HEADERS = tuple(
     header for header in _CONTENT_AVAILABLE_HEADERS if header not in _COMMENT_HEADERS
 )
 _COMMENT_AVAILABLE_HEADERS = _COMMENT_HEADERS + _COMMENT_CONTENT_HEADERS
-_CONTENT_HEADER_INDEX = {
-    header: index for index, header in enumerate(_CONTENT_AVAILABLE_HEADERS)
-}
+_CONTENT_HEADER_INDEX = {header: index for index, header in enumerate(_CONTENT_AVAILABLE_HEADERS)}
 _LABEL_HEADER_INDEX = {header: index for index, header in enumerate(_LABEL_AVAILABLE_HEADERS)}
 _COMMENT_HEADER_INDEX = {header: index for index, header in enumerate(_COMMENT_AVAILABLE_HEADERS)}
 _HEADER_FONT = Font(name="Calibri", size=11, bold=True, color="FF000000")

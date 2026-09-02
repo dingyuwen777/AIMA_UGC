@@ -50,9 +50,7 @@ class PostgresProductHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 repository = PostgresContentProductRepository(
                     session,
                     analysis_identity=configuration.identity,
@@ -99,9 +97,7 @@ class PostgresProductHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 try:
                     content_version, observed_at = PostgresContentProductRepository(
                         session,
@@ -152,9 +148,7 @@ class PostgresProductHttpService:
             ),
         )
 
-    def list_notifications(
-        self, principal: Principal, *, limit: int
-    ) -> NotificationListResponse:
+    def list_notifications(self, principal: Principal, *, limit: int) -> NotificationListResponse:
         """读取当前 Principal 自己的 Inbox。"""
 
         session = self._runtime.database.new_session()

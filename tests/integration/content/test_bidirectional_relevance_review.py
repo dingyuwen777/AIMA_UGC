@@ -7,6 +7,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
+    PostgresAnalysisSchemeRepository,
+)
 from aima_ugc.bootstrap.analysis_worker import (
     PostgresContentAnalysisJobExecutor,
     PostgresContentAnalysisPlanJobExecutor,
@@ -27,11 +30,9 @@ from aima_ugc.contracts.http import (
 )
 from aima_ugc.contracts.relevance_review import ContentRelevanceReviewRequest
 from aima_ugc.modules.analysis import (
-    CONTENT_LABELING_PROMPT_PATH,
     ContentLabelingService,
     FakeContentLabelingLLM,
     FrozenPromptTaxonomyLoader,
-    PromptTaxonomyLoader,
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
@@ -42,6 +43,7 @@ from aima_ugc.modules.analysis.relevance_review import ContentRelevanceReviewCon
 from aima_ugc.modules.analysis.relevance_review_tables import (
     analysis_content_relevance_reviews_table,
 )
+from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.platform.config import load_settings
@@ -102,7 +104,14 @@ def _seed_import(client: TestClient) -> None:
 
 
 def _analysis_registry(runtime) -> JobRegistry:  # type: ignore[no-untyped-def]
-    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            version = PostgresAnalysisSchemeRepository(session).get_active_version()
+            assert version is not None
+            taxonomy = prompt_taxonomy_from_version(version)
+    finally:
+        session.close()
     service = ContentLabelingService(
         prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
         llm=FakeContentLabelingLLM(

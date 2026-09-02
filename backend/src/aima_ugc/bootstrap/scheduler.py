@@ -190,17 +190,14 @@ def run_scheduler_once(
                             vehicle_snapshot={
                                 "catalog_version": scope_snapshot.vehicles.catalog_version,
                                 "vehicle_model_ids": [
-                                    str(item)
-                                    for item in scope_snapshot.vehicles.vehicle_model_ids
+                                    str(item) for item in scope_snapshot.vehicles.vehicle_model_ids
                                 ],
-                                "resolved_aliases": list(
-                                    scope_snapshot.vehicles.resolved_aliases
-                                ),
+                                "resolved_aliases": list(scope_snapshot.vehicles.resolved_aliases),
                                 "vehicle_versions": [
                                     {"id": str(model_id), "version": version}
-                for model_id, version in (
-                    scope_snapshot.vehicles.vehicle_versions
-                )
+                                    for model_id, version in (
+                                        scope_snapshot.vehicles.vehicle_versions
+                                    )
                                 ],
                                 "alias_bindings": [
                                     {"vehicle_model_id": str(model_id), "text": text}
