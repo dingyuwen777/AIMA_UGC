@@ -479,7 +479,7 @@ class _TikHubDebugRunner:
         keyword: str,
         content: CanonicalContentV1,
         action: str,
-        target: int,
+        target: int | None,
     ) -> tuple[list[UnifiedDataExcelCommentV1], str]:
         content_id = content.external_content_id
         pagination: dict[str, object] | None = None
@@ -582,7 +582,7 @@ class _TikHubDebugRunner:
                     else "unknown"
                 )
                 return mapped_rows, f"partial {root_total}/{expected} (known_comment_reached)"
-            if root_total >= target:
+            if target is not None and root_total >= target:
                 break
             pagination = cast(dict[str, object], advance.next_state)
 
@@ -602,6 +602,7 @@ class _TikHubDebugRunner:
         keyword: str,
         content: CanonicalContentV1,
         root: CanonicalCommentV1,
+        fetch_all: bool = False,
     ) -> list[UnifiedDataExcelCommentV1]:
         reply_decision = self.decision_service.decide_reply(
             ReplyDecisionRequestV1(
@@ -612,7 +613,11 @@ class _TikHubDebugRunner:
         )
         if reply_decision.action == "skip":
             return []
-        target = reply_decision.target or self.limits.max_replies_per_root
+        target = (
+            None
+            if fetch_all
+            else (reply_decision.target or self.limits.max_replies_per_root)
+        )
         pagination: dict[str, object] | None = None
         mapped_rows: list[UnifiedDataExcelCommentV1] = []
         mapped_count = 0
@@ -682,7 +687,9 @@ class _TikHubDebugRunner:
                 state=pagination,
                 body=body,
             )
-            if not advance.should_continue or mapped_count >= target:
+            if not advance.should_continue or (
+                target is not None and mapped_count >= target
+            ):
                 break
             pagination = cast(dict[str, object], advance.next_state)
         return mapped_rows
