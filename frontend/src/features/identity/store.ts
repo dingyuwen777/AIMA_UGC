@@ -48,15 +48,17 @@ export const useIdentityStore = defineStore('identity', () => {
     }
   }
 
+  /** 标记当前 Principal 的通知已读，并以服务端全量未读计数作为最终事实。 */
   async function markRead(itemIds: string[]): Promise<void> {
     if (itemIds.length === 0) return
     try {
-      unwrapResponse(await markNotificationsRead({ item_ids: itemIds }))
+      const result = unwrapResponse(await markNotificationsRead({ item_ids: itemIds }))
       const readIds = new Set(itemIds)
       notifications.value = notifications.value.map((item) =>
         readIds.has(item.id) ? { ...item, is_read: true } : item,
       )
-      unreadCount.value = notifications.value.filter((item) => !item.is_read).length
+      unreadCount.value = Math.max(0, unreadCount.value - result.changed_count)
+      await refreshNotifications()
     } catch (reason) {
       error.value = apiErrorMessage(reason)
     }

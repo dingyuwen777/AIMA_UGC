@@ -103,9 +103,18 @@ export async function uploadImportBatch(
   }))
 }
 
+/** 分页读取全部已启用词包，供导入与补采流程选择。 */
 export async function fetchEnabledKeywordPacks(): Promise<KeywordPackSummaryResponse[]> {
-  const response = unwrap(await listKeywordPacks({ enabled: true, limit: 100 }))
-  return response.items
+  const first = unwrap(await listKeywordPacks({ enabled: true, offset: 0, limit: 100 }))
+  const items = [...first.items]
+  let offset = items.length
+  while (offset < first.total) {
+    const page = unwrap(await listKeywordPacks({ enabled: true, offset, limit: 100 }))
+    if (page.items.length === 0) break
+    items.push(...page.items)
+    offset += page.items.length
+  }
+  return items
 }
 
 export async function fetchCollectionRuntimeList(
