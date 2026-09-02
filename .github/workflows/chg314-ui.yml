@@ -6,6 +6,7 @@ on:
       - fix/314-frontend-fullstack-reliability
     paths:
       - .github/workflows/chg314-ui.yml
+      - scripts/dev/apply_chg314_ui_fix.py
 
 permissions:
   contents: write
@@ -38,6 +39,7 @@ jobs:
           set -euo pipefail
           python scripts/dev/apply_chg314_ui.py
           python scripts/dev/apply_chg314_fullstack.py
+          python scripts/dev/apply_chg314_ui_fix.py
 
       - name: Run frontend Green and fail-closed Browser Mock
         shell: bash
