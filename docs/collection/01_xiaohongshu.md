@@ -181,6 +181,8 @@ get_user_posted_notes
 
 两类分页都会防止空页、重复页、分页状态不推进，并以 Provider 耗尽或显式技术页数上限收口。
 
+`get_user_posted_notes` 翻页优先使用响应级下一页 `cursor`；只有响应未观察到该字段时，才兼容回退到列表最后一条笔记的 cursor/note_id。
+
 账号日期过滤不会基于“第一页出现旧笔记”推断后续一定更旧；在真实响应顺序得到充分证据前，仍遍历 Provider 分页后再按发布时间过滤，避免漏数。
 
 如果要改 xiaohongshu 分页，先改对应生产 Operation/Runtime 状态机和 Unit Test，不要在 [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../backend/src/aima_ugc/bootstrap/collection_scope.py) 或人工入口增加私有 cursor 逻辑。
@@ -261,8 +263,11 @@ parent_comment_id = null
 指定账号人工采集默认使用 `all`。它与生产日常增量策略不同：
 
 ```text
-comment_count / reply_count
-→ 只作为观察值，不作为“已经抓完”的停止证据
+正数或未知 comment_count / reply_count
+→ 一旦进入抓取，不把数量软目标当作“已经抓完”的停止证据
+
+显式 comment_count=0 / reply_count=0
+→ 沿用正式 Collection Decision，跳过对应评论/回复接口
 
 继续分页
 → Provider 明确耗尽
@@ -270,14 +275,14 @@ comment_count / reply_count
 → 技术硬页数上限触发
 ```
 
-原因是内容详情中的数量可能滞后于评论分页实际可返回的数据。测试明确覆盖“计数已经达到，但 Provider `has_more=true`”的一级评论和二级回复场景。
+原因是内容详情中的正数数量可能滞后于评论分页实际可返回的数据。测试明确覆盖“计数已经达到，但 Provider `has_more=true`”的一级评论和二级回复场景。
 
 仍保留两类安全边界：
 
 - Provider 分页状态不推进时停止；
 - `max_comment_pages_per_content` / `max_reply_pages_per_root` 是技术硬上限，触发时结果不能宣称完整。
 
-显式观察到 `reply_count=0` 时不主动发起二级回复 Probe，避免对每个零回复根评论增加付费请求。
+一级评论公共链能直接返回 coverage；二级回复公共链当前不暴露最终 Provider 停止原因，因此账号 `all` 在**触达回复硬页数边界**时保守标记账号为 `partial`，避免把可能仍有下一页的数据误报为完整。
 
 ## 9. 为什么 xiaohongshu 可以做最新评论增量
 
@@ -301,7 +306,7 @@ latest comments page
 
 不能遇到当前页第一条旧评论就立刻丢掉同页后续新评论。
 
-人工账号 `comment_mode="all"` 会显式禁用这类跨运行已知边界提前停止，只在这次受控人工采集中追到 Provider 耗尽；这不会改变共享关键词 Runner 或正式 Collection Decision 的默认语义。
+人工账号 `comment_mode="all"` 会在正数或未知计数进入抓取后禁用跨运行已知边界与数量软目标的提前停止，优先追到 Provider 耗尽；若技术硬页数上限先触发，则保守标记为部分完成。这不会改变共享关键词 Runner 或正式 Collection Decision 的默认语义。
 
 ## 10. 账号人工采集输出
 
