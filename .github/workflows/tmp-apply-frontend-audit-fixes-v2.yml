@@ -1,0 +1,283 @@
+name: Temporary apply frontend audit fixes v2
+
+on:
+  push:
+    branches:
+      - fix/310-frontend-fullstack-audit
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fixes:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/310-frontend-fullstack-audit
+          fetch-depth: 0
+
+      - name: Apply exact source fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, count: int = 1) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f'{path}: expected {count} exact matches, got {actual}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          replace_exact(
+              'frontend/src/features/admin-configuration/api.ts',
+              "export const fetchVehicles = async (): Promise<VehicleModelListResponse> =>\n  unwrapResponse(await listVehicleModels({ limit: 200 }))",
+              """export async function fetchVehicles(): Promise<VehicleModelListResponse> {
+            const first = unwrapResponse(await listVehicleModels({ offset: 0, limit: 200 }))
+            const items = [...first.items]
+            let offset = items.length
+            while (offset < first.total) {
+              const page = unwrapResponse(await listVehicleModels({ offset, limit: 200 }))
+              if (page.items.length === 0) break
+              items.push(...page.items)
+              offset += page.items.length
+            }
+            return { ...first, items, offset: 0 }
+          }""",
+          )
+          replace_exact(
+              'frontend/src/features/admin-configuration/api.ts',
+              "export const fetchKeywordPacksForAdmin = async (): Promise<KeywordPackListResponse> =>\n  unwrapResponse(await listKeywordPacks({ limit: 100 }))",
+              """export async function fetchKeywordPacksForAdmin(): Promise<KeywordPackListResponse> {
+            const first = unwrapResponse(await listKeywordPacks({ offset: 0, limit: 100 }))
+            const items = [...first.items]
+            let offset = items.length
+            while (offset < first.total) {
+              const page = unwrapResponse(await listKeywordPacks({ offset, limit: 100 }))
+              if (page.items.length === 0) break
+              items.push(...page.items)
+              offset += page.items.length
+            }
+            return { ...first, items, offset: 0 }
+          }""",
+          )
+
+          replace_exact(
+              'frontend/src/features/import-batches/api.ts',
+              """export async function fetchEnabledKeywordPacks(): Promise<KeywordPackSummaryResponse[]> {
+            const response = unwrap(await listKeywordPacks({ enabled: true, limit: 100 }))
+            return response.items
+          }""",
+              """export async function fetchEnabledKeywordPacks(): Promise<KeywordPackSummaryResponse[]> {
+            const first = unwrap(await listKeywordPacks({ enabled: true, offset: 0, limit: 100 }))
+            const items = [...first.items]
+            let offset = items.length
+            while (offset < first.total) {
+              const page = unwrap(await listKeywordPacks({ enabled: true, offset, limit: 100 }))
+              if (page.items.length === 0) break
+              items.push(...page.items)
+              offset += page.items.length
+            }
+            return items
+          }""",
+          )
+
+          replace_exact(
+              'frontend/src/features/identity/store.ts',
+              """      unwrapResponse(await markNotificationsRead({ item_ids: itemIds }))
+                const readIds = new Set(itemIds)
+                notifications.value = notifications.value.map((item) =>
+                  readIds.has(item.id) ? { ...item, is_read: true } : item,
+                )
+                unreadCount.value = notifications.value.filter((item) => !item.is_read).length""",
+              """      const result = unwrapResponse(await markNotificationsRead({ item_ids: itemIds }))
+                const readIds = new Set(itemIds)
+                notifications.value = notifications.value.map((item) =>
+                  readIds.has(item.id) ? { ...item, is_read: true } : item,
+                )
+                unreadCount.value = Math.max(0, unreadCount.value - result.changed_count)
+                await refreshNotifications()""",
+          )
+
+          helper = """  async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
+            const batches: ImportBatchResponse[] = []
+            const seenCursors = new Set<string>()
+            let cursor: string | undefined
+            while (true) {
+              const page = await fetchImportBatchList(cursor ? { limit: 100, cursor } : { limit: 100 })
+              batches.push(...page.items)
+              const next = page.next_cursor ?? undefined
+              if (!page.has_more || !next || seenCursors.has(next)) break
+              seenCursors.add(next)
+              cursor = next
+            }
+            return batches.filter(isSupplementBatch)
+          }
+
+          """
+          replace_exact(
+              'frontend/src/features/import-batches/store.ts',
+              '  async function loadCreationOptions(selectedBatchId?: string | null): Promise<void> {',
+              helper + '  async function loadCreationOptions(selectedBatchId?: string | null): Promise<void> {',
+          )
+          replace_exact(
+              'frontend/src/features/import-batches/store.ts',
+              '        fetchImportBatchList({ limit: 100 }),',
+              '        fetchAllSupplementBatches(),',
+          )
+          replace_exact(
+              'frontend/src/features/import-batches/store.ts',
+              '      batchOptions.value = batches.items.filter(isSupplementBatch)',
+              '      batchOptions.value = batches',
+          )
+
+          replace_exact(
+              'frontend/src/features/voice-plaza/store.ts',
+              """  const hasActiveJobs = computed(
+            () =>
+              analysisRuns.value.some((item) =>
+                item.status === 'queued' || item.status === 'running' || item.status === 'cancelling') ||
+              exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
+          )""",
+              """  const hasActiveAnalysisRuns = computed(() =>
+            analysisRuns.value.some((item) =>
+              item.status === 'queued' || item.status === 'running' || item.status === 'cancelling'),
+          )
+            const hasActiveExportJobs = computed(() =>
+              exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
+            )
+            const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExportJobs.value)""",
+          )
+          replace_exact(
+              'frontend/src/features/voice-plaza/store.ts',
+              '  async function refreshAnalysisCapabilities(): Promise<void> {',
+              """  /** 重新读取当前已加载的 Cursor 窗口，刷新内容状态但不把列表折叠回第一页。 */
+            async function refreshLoadedWindow(): Promise<void> {
+              const targetCount = Math.max(items.value.length, 20)
+              listError.value = null
+              error.value = null
+              try {
+                const refreshed: ContentListItemResponse[] = []
+                const seenIds = new Set<string>()
+                const seenCursors = new Set<string>()
+                let cursor: string | undefined
+                let pageHasMore = false
+                let pageNext: string | null = null
+                while (true) {
+                  const page = await fetchContents(listParams(cursor))
+                  for (const item of page.items) {
+                    if (seenIds.has(item.id)) continue
+                    seenIds.add(item.id)
+                    refreshed.push(item)
+                  }
+                  pageHasMore = page.has_more
+                  pageNext = page.next_cursor ?? null
+                  if (!pageHasMore || !pageNext || refreshed.length >= targetCount || seenCursors.has(pageNext)) break
+                  seenCursors.add(pageNext)
+                  cursor = pageNext
+                }
+                items.value = refreshed
+                nextCursor.value = pageNext
+                hasMore.value = pageHasMore
+                selectedIds.value = selectedIds.value.filter((id) => seenIds.has(id))
+                if (detail.value) detail.value = await fetchContentDetail(detail.value.id)
+              } catch (reason) {
+                const message = errorMessage(reason)
+                listError.value = message
+                error.value = message
+              }
+            }
+
+            async function refreshAnalysisCapabilities(): Promise<void> {""",
+          )
+          replace_exact(
+              'frontend/src/features/voice-plaza/store.ts',
+              '      await refresh(true)',
+              '      await refreshLoadedWindow()',
+              count=3,
+          )
+          replace_exact(
+              'frontend/src/features/voice-plaza/store.ts',
+              """  async function poll(): Promise<void> {
+            if (document.visibilityState === 'hidden' || !hasActiveJobs.value) return
+            try {
+              await Promise.all([refresh(true), refreshExports(), refreshAnalysisRuns()])
+            } catch (reason) {
+              error.value = errorMessage(reason)
+            }
+          }""",
+              """  async function poll(): Promise<void> {
+            if (document.visibilityState === 'hidden' || !hasActiveJobs.value) return
+            try {
+              const tasks: Promise<unknown>[] = [refreshExports(), refreshAnalysisRuns()]
+              if (hasActiveAnalysisRuns.value) tasks.push(refreshLoadedWindow())
+              await Promise.all(tasks)
+            } catch (reason) {
+              error.value = errorMessage(reason)
+            }
+          }""",
+          )
+
+          replace_exact(
+              'frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue',
+              '<header><div><h2>原子 Analysis Scheme</h2><p>Prompt、发声类型、情感和标签一次发布，避免耦合配置漂移。</p></div><span v-if="selectedSchemeVersion">{{ selectedSchemeVersion.version.status }}</span></header><label>Scheme 名称<input v-model="schemeDraft.schemeName"></label><label>说明<input v-model="schemeDraft.description"></label>',
+              """<header><div><h2>原子 Analysis Scheme</h2><p>Prompt、发声类型、情感和标签一次发布，避免耦合配置漂移。</p></div><span v-if="selectedSchemeVersion">{{ selectedSchemeVersion.version.status }}</span></header><label>Scheme 名称<input
+                    v-model="schemeDraft.schemeName"
+                    :readonly="selectedSchemeVersion?.version.status === 'draft'"
+                  ><small v-if="selectedSchemeVersion?.version.status === 'draft'">已有草稿保存时不会修改 Scheme 名称；如需新名称，请基于已发布或历史版本新建草稿。</small></label><label>说明<input v-model="schemeDraft.description"></label>""",
+          )
+          replace_exact(
+              'frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue',
+              '.form-card label { display: grid; gap: 6px; color: var(--aima-text-muted); font-size: 11px; }',
+              ".form-card label { display: grid; gap: 6px; color: var(--aima-text-muted); font-size: 11px; }\n.form-card label > small { color: var(--aima-text-disabled); font-size: 10px; line-height: 15px; }\ninput:read-only { cursor: not-allowed; color: var(--aima-text-muted); background: #f5f7fa; }",
+          )
+          PY
+
+      - name: Verify intended production scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          changed="$(git diff --name-only | sort | tr '\n' ' ')"
+          echo "$changed"
+          test "$changed" = "frontend/src/features/admin-configuration/api.ts frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue frontend/src/features/identity/store.ts frontend/src/features/import-batches/api.ts frontend/src/features/import-batches/store.ts frontend/src/features/voice-plaza/store.ts "
+
+      - name: Set up Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend environment
+        run: npm ci --prefix frontend
+
+      - name: Verify Green before commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend audit --omit=dev --audit-level=high
+          npm --prefix frontend audit --audit-level=high
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run test -- --run
+
+      - name: Commit production fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/features/admin-configuration/api.ts \
+                  frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue \
+                  frontend/src/features/identity/store.ts \
+                  frontend/src/features/import-batches/api.ts \
+                  frontend/src/features/import-batches/store.ts \
+                  frontend/src/features/voice-plaza/store.ts
+          git commit -m "fix: 修复前端分页轮询和状态一致性" -m "Requirement-Source: #310"
+          git push origin HEAD:fix/310-frontend-fullstack-audit
