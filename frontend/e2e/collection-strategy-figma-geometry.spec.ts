@@ -224,7 +224,7 @@ test('matches the formal relevance workspace and plan detail drawer geometry', a
   await expectBox(page.locator('.relevance-layout > article'), { x: 204, width: 790, height: 322 })
   await expectBox(page.locator('.relevance-layout > aside'), { x: 1016, width: 400, height: 322 })
 
-  await page.getByRole('button', { name: '采集计划' }).click()
+  await page.getByRole('button', { name: '采集计划', exact: true }).click()
   const planRow = page.locator('.plan-table tbody tr').filter({ hasText: '爱玛新品口碑追踪' })
   await planRow.getByRole('button', { name: '查看详情' }).click()
 
