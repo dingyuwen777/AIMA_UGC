@@ -237,9 +237,10 @@ function showNotice(message: string): void {
 </template>
 
 <style scoped>
+:deep(.aima-page-header) { margin-top: 4px; }
 :deep(.aima-page-actions) { gap: 12px; }
-.tabs { display: flex; gap: 28px; min-height: 46px; margin: 0 0 24px; border-bottom: 1px solid var(--aima-border); }.tabs button { height: 46px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #536075; background: transparent; cursor: pointer; font-size: 13px; }.tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 600; }
-.filters { display: grid; grid-template-columns: 420px 120px 172px 1fr auto auto; gap: 8px; margin-bottom: 20px; padding: 14px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }.filters input,.filters select { width: 100%; height: 40px; padding: 0 10px; border: 1px solid #d9dfe8; border-radius: 6px; color: var(--aima-text-secondary); background: #fff; font-size: 12px; }
+.tabs { display: flex; gap: 28px; min-height: 46px; margin: 0 0 20px; border-bottom: 1px solid var(--aima-border); }.tabs button { height: 46px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #536075; background: transparent; cursor: pointer; font-size: 13px; }.tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 600; }
+.filters { display: grid; grid-template-columns: 420px 120px 172px 1fr auto auto; gap: 12px; height: 72px; margin-bottom: 20px; padding: 15px 16px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }.filters input,.filters select { width: 100%; height: 40px; padding: 0 10px; border: 1px solid #d9dfe8; border-radius: 6px; color: var(--aima-text-secondary); background: #fff; font-size: 12px; }
 .page-error { margin-bottom: 14px; }.success-toast { position: fixed; z-index: 200; top: 8px; left: 50%; width: 360px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
 @media (max-width: 1260px) { .filters { grid-template-columns: minmax(240px, 1fr) 120px 150px auto auto; }.filters > span:nth-of-type(2) { display: none; } }
 </style>

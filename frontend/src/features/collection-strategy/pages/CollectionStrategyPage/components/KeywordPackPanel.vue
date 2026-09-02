@@ -146,17 +146,17 @@ function keywordScopeLabel(scope?: string): string {
 .panel-grid { display: grid; grid-template-columns: minmax(620px, 823px) minmax(320px, 373px); gap: 16px; }
 .list-column { min-width: 0; }
 .table-card,.detail-card { border: 1px solid var(--aima-border); border-radius: 9px; background: #fff; }
-.table-head { display: flex; height: 54px; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--aima-border); }
+.table-head { display: flex; height: 54px; align-items: center; justify-content: space-between; padding: 0 24px 0 18px; border-bottom: 1px solid var(--aima-border); }
 .table-head > strong { color: var(--aima-text); font-size: 16px; font-weight: 600; }
-.table-head-actions { display: flex; align-items: center; gap: 12px; }.table-head-actions > span { color: #758094; font-size: 12px; }
-.pack-row { display: grid; width: 100%; grid-template-columns: 1fr 72px 50px 72px 48px; align-items: center; gap: 10px; padding: 15px 18px; border: 0; border-bottom: 1px solid #edf0f4; color: #4e596d; background: #fff; text-align: left; cursor: pointer; }
+.table-head-actions { display: flex; align-items: center; gap: 16px; }.table-head-actions > span { color: #758094; font-size: 12px; }.table-head-actions :deep(.aima-button) { min-width: 92px; height: 32px; }
+.pack-row { display: grid; width: 100%; min-height: 74px; grid-template-columns: 1fr 55px 45px 70px 32px; align-items: center; gap: 10px; padding: 15px 18px; border: 0; border-bottom: 1px solid #edf0f4; color: #4e596d; background: #fff; text-align: left; cursor: pointer; }
 .pack-row.active { background: #fff7fa; box-shadow: inset 3px 0 var(--aima-primary); }
 .pack-row strong,.pack-row small { display: block; }.pack-row strong { color: #1e2838; }.pack-row small { margin-top: 5px; color: #818b9d; }
 .status { width: max-content; padding: 4px 8px; border-radius: 5px; font-size: 12px; }.enabled { color: #118852; background: #eaf8f1; }.disabled { color: #687386; background: #eef1f5; }
-.link-button { border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; }.link-button:disabled { color: #98a1b1; cursor: not-allowed; opacity: .75; }
+.link-button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; }.link-button:disabled { color: #98a1b1; cursor: not-allowed; opacity: .75; }
 .detail-card { padding: 18px; }.detail-title { display: flex; justify-content: space-between; }.detail-title span,.detail-title strong { display: block; }.detail-title span { color: #7b8598; font-size: 12px; }.detail-title strong { margin-top: 5px; color: var(--aima-text); font-size: 14px; }.version { color: var(--aima-primary) !important; }.detail-card p { color: #758094; font-size: 12px; }
-.keyword-list { display: flex; max-height: 330px; flex-wrap: wrap; gap: 8px; overflow: auto; margin: 18px 0; }.keyword-list > span { padding: 7px 9px; border: 1px solid #dce4f0; border-radius: 6px; color: #344258; background: #f8faff; font-size: 12px; }.keyword-list small { margin-left: 5px; color: #8993a3; }.keyword-list em { color: #929aaa; font-style: normal; }
-form { display: flex; gap: 8px; }input { min-width: 0; height: 40px; flex: 1; padding: 0 10px; border: 1px solid #dce1e9; border-radius: 6px; }form button { width: 62px; height: 40px; border: 0; border-radius: 6px; color: #fff; background: var(--aima-primary); cursor: pointer; }
+.keyword-list { display: flex; max-height: 330px; flex-wrap: wrap; gap: 8px; overflow: auto; margin: 18px 0; }.keyword-list > span { min-height: 33px; padding: 7px 9px; border: 1px solid #dce4f0; border-radius: 6px; color: #344258; background: #f8faff; font-size: 12px; }.keyword-list small { margin-left: 5px; color: #8993a3; }.keyword-list em { color: #929aaa; font-style: normal; }
+form { display: flex; width: 287px; margin: 18px auto 0; gap: 12px; }input { min-width: 0; width: 217px; height: 40px; flex: 1; padding: 0 10px; border: 1px solid #dce1e9; border-radius: 6px; }form button { width: 58px; height: 40px; flex: none; border: 0; border-radius: 6px; color: #fff; background: var(--aima-primary); cursor: pointer; }
 .state { display: grid; min-height: 190px; place-items: center; color: #8a93a3; }
 .pagination { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 18px; color: #6f7a8d; font-size: 12px; }.pager-actions { display: flex; gap: 34px; }
 </style>

@@ -29,7 +29,7 @@ defineProps<{
 </template>
 
 <style scoped>
-.strategy-summary { display: grid; min-height: 88px; grid-template-columns: repeat(3, 1fr); margin: 24px 0 16px; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }
+.strategy-summary { display: grid; min-height: 88px; grid-template-columns: repeat(3, 1fr); margin: 20px 0; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }
 .summary-item { display: flex; min-width: 0; align-items: center; gap: 14px; padding: 17px 24px; }
 .summary-item + .summary-item { border-left: 1px solid var(--aima-border); }
 .summary-icon { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 50%; color: #fff; }
