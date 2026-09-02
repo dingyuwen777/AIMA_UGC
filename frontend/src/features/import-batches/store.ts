@@ -302,18 +302,34 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
+  /** 读取全部可用于辅助补采的历史导入批次，避免固定首屏截断。 */
+async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
+  const batches: ImportBatchResponse[] = []
+  const seenCursors = new Set<string>()
+  let cursor: string | undefined
+  while (true) {
+    const page = await fetchImportBatchList(cursor ? { limit: 100, cursor } : { limit: 100 })
+    batches.push(...page.items)
+    const next = page.next_cursor ?? undefined
+    if (!page.has_more || !next || seenCursors.has(next)) break
+    seenCursors.add(next)
+    cursor = next
+  }
+  return batches.filter(isSupplementBatch)
+}
+
   async function loadCreationOptions(selectedBatchId?: string | null): Promise<void> {
     error.value = null
     batchContentPlatforms.value = []
     try {
       const [providerCapabilities, batches, packs] = await Promise.all([
         fetchCollectionCapabilities(),
-        fetchImportBatchList({ limit: 100 }),
+        fetchAllSupplementBatches(),
         fetchEnabledKeywordPacks(),
       ])
       capabilities.value = providerCapabilities
       keywordPackOptions.value = packs
-      batchOptions.value = batches.items.filter(isSupplementBatch)
+      batchOptions.value = batches
       if (
         selectedBatchId &&
         !batchOptions.value.some((batch) => batch.id === selectedBatchId)

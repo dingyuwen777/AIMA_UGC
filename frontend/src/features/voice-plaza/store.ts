@@ -133,12 +133,14 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const allVisibleSelected = computed(
     () => items.value.length > 0 && items.value.every((item) => selectedIds.value.includes(item.id)),
   )
-  const hasActiveJobs = computed(
-    () =>
-      analysisRuns.value.some((item) =>
-        item.status === 'queued' || item.status === 'running' || item.status === 'cancelling') ||
-      exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
-  )
+  const hasActiveAnalysisRuns = computed(() =>
+  analysisRuns.value.some((item) =>
+    item.status === 'queued' || item.status === 'running' || item.status === 'cancelling'),
+)
+const hasActiveExportJobs = computed(() =>
+  exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
+)
+const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExportJobs.value)
 
   function filterSnapshot(): ContentFilterSnapshot {
     return {
@@ -192,7 +194,44 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     }
   }
 
-  async function refreshAnalysisCapabilities(): Promise<void> {
+  /** 重新读取当前已加载的 Cursor 窗口，刷新内容状态但不把列表折叠回第一页。 */
+async function refreshLoadedWindow(): Promise<void> {
+  const targetCount = Math.max(items.value.length, 20)
+  listError.value = null
+  error.value = null
+  try {
+    const refreshed: ContentListItemResponse[] = []
+    const seenIds = new Set<string>()
+    const seenCursors = new Set<string>()
+    let cursor: string | undefined
+    let pageHasMore = false
+    let pageNext: string | null = null
+    while (true) {
+      const page = await fetchContents(listParams(cursor))
+      for (const item of page.items) {
+        if (seenIds.has(item.id)) continue
+        seenIds.add(item.id)
+        refreshed.push(item)
+      }
+      pageHasMore = page.has_more
+      pageNext = page.next_cursor ?? null
+      if (!pageHasMore || !pageNext || refreshed.length >= targetCount || seenCursors.has(pageNext)) break
+      seenCursors.add(pageNext)
+      cursor = pageNext
+    }
+    items.value = refreshed
+    nextCursor.value = pageNext
+    hasMore.value = pageHasMore
+    selectedIds.value = selectedIds.value.filter((id) => seenIds.has(id))
+    if (detail.value) detail.value = await fetchContentDetail(detail.value.id)
+  } catch (reason) {
+    const message = errorMessage(reason)
+    listError.value = message
+    error.value = message
+  }
+}
+
+async function refreshAnalysisCapabilities(): Promise<void> {
     try {
       const capability = await fetchContentAnalysisCapabilities()
       analysisConfigured.value = capability.configured
@@ -307,7 +346,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       })
       selectedIds.value = selectedIds.value.filter((id) => !contentIds.includes(id))
       notice.value = relevanceReviewNotice(decision, result)
-      await refresh(true)
+      await refreshLoadedWindow()
       return result
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -332,7 +371,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       })
       detail.value = await fetchContentDetail(detail.value.id)
       notice.value = '车型人工结论已保存；后续自动处理不会覆盖人工锁定。'
-      await refresh(true)
+      await refreshLoadedWindow()
       return true
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -355,7 +394,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       })
       detail.value = await fetchContentDetail(detail.value.id)
       notice.value = '分析人工纠正已保存；修改已锁定维度前必须显式解锁。'
-      await refresh(true)
+      await refreshLoadedWindow()
       return true
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -510,14 +549,17 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     notice.value = null
   }
 
-  async function poll(): Promise<void> {
-    if (document.visibilityState === 'hidden' || !hasActiveJobs.value) return
-    try {
-      await Promise.all([refresh(true), refreshExports(), refreshAnalysisRuns()])
-    } catch (reason) {
-      error.value = errorMessage(reason)
-    }
+  /** 刷新后台 Job 状态；仅分析任务需要同步内容窗口，纯导出任务不重载列表。 */
+async function poll(): Promise<void> {
+  if (document.visibilityState === 'hidden' || !hasActiveJobs.value) return
+  try {
+    const tasks: Promise<unknown>[] = [refreshExports(), refreshAnalysisRuns()]
+    if (hasActiveAnalysisRuns.value) tasks.push(refreshLoadedWindow())
+    await Promise.all(tasks)
+  } catch (reason) {
+    error.value = errorMessage(reason)
   }
+}
 
   function startPolling(intervalMilliseconds = 5000): void {
     stopPolling()

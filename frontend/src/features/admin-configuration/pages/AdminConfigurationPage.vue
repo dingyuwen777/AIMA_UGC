@@ -470,7 +470,10 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           </template>
         </section>
         <section class="card form-card scheme-editor">
-          <header><div><h2>原子 Analysis Scheme</h2><p>Prompt、发声类型、情感和标签一次发布，避免耦合配置漂移。</p></div><span v-if="selectedSchemeVersion">{{ selectedSchemeVersion.version.status }}</span></header><label>Scheme 名称<input v-model="schemeDraft.schemeName"></label><label>说明<input v-model="schemeDraft.description"></label><label>发声类型（每行一个）<textarea
+          <header><div><h2>原子 Analysis Scheme</h2><p>Prompt、发声类型、情感和标签一次发布，避免耦合配置漂移。</p></div><span v-if="selectedSchemeVersion">{{ selectedSchemeVersion.version.status }}</span></header><label>Scheme 名称<input
+            v-model="schemeDraft.schemeName"
+            :readonly="selectedSchemeVersion?.version.status === 'draft'"
+          ><small v-if="selectedSchemeVersion?.version.status === 'draft'">已有草稿保存时不会修改 Scheme 名称；如需新名称，请基于已发布或历史版本新建草稿。</small></label><label>说明<input v-model="schemeDraft.description"></label><label>发声类型（每行一个）<textarea
             v-model="schemeDraft.voiceTypes"
             rows="4"
           /></label><label>情感（每行一个）<textarea
@@ -560,6 +563,8 @@ td button:disabled { color: var(--aima-text-disabled); cursor: not-allowed; }
 .status--deprecated, .status--merged { color: var(--aima-text-muted); background: #f2f4f7; }
 .form-card { display: grid; align-content: start; gap: 12px; }
 .form-card label { display: grid; gap: 6px; color: var(--aima-text-muted); font-size: 11px; }
+.form-card label > small { color: var(--aima-text-disabled); font-size: 10px; line-height: 15px; }
+input:read-only { cursor: not-allowed; color: var(--aima-text-muted); background: #f5f7fa; }
 input, textarea, select { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); outline: none; color: var(--aima-text-secondary); background: var(--aima-surface); font: inherit; font-size: 12px; }
 input, select { height: 38px; }
 textarea { resize: vertical; line-height: 18px; }

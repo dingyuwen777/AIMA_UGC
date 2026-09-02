@@ -25,8 +25,19 @@ import {
 } from '../../generated/api/client'
 import { unwrapResponse } from '../../shared/api/http'
 
-export const fetchVehicles = async (): Promise<VehicleModelListResponse> =>
-  unwrapResponse(await listVehicleModels({ limit: 200 }))
+/** 分页读取全部车型，避免管理配置在车型超过单页上限时截断。 */
+export async function fetchVehicles(): Promise<VehicleModelListResponse> {
+  const first = unwrapResponse(await listVehicleModels({ offset: 0, limit: 200 }))
+  const items = [...first.items]
+  let offset = items.length
+  while (offset < first.total) {
+    const page = unwrapResponse(await listVehicleModels({ offset, limit: 200 }))
+    if (page.items.length === 0) break
+    items.push(...page.items)
+    offset += page.items.length
+  }
+  return { ...first, items, offset: 0 }
+}
 
 export const addVehicle = async (body: VehicleModelCreateRequest) =>
   unwrapResponse(await createVehicleModel(body))
@@ -40,8 +51,19 @@ export const removeVehicle = async (id: string): Promise<void> =>
 export const mergeVehicle = async (id: string, body: VehicleModelMergeRequest) =>
   unwrapResponse(await mergeVehicleModel(id, body))
 
-export const fetchKeywordPacksForAdmin = async (): Promise<KeywordPackListResponse> =>
-  unwrapResponse(await listKeywordPacks({ limit: 100 }))
+/** 分页读取全部词包，保证管理配置使用完整后端目录。 */
+export async function fetchKeywordPacksForAdmin(): Promise<KeywordPackListResponse> {
+  const first = unwrapResponse(await listKeywordPacks({ offset: 0, limit: 100 }))
+  const items = [...first.items]
+  let offset = items.length
+  while (offset < first.total) {
+    const page = unwrapResponse(await listKeywordPacks({ offset, limit: 100 }))
+    if (page.items.length === 0) break
+    items.push(...page.items)
+    offset += page.items.length
+  }
+  return { ...first, items, offset: 0 }
+}
 
 export const saveKeywordPackVehicles = async (packId: string, vehicleModelIds: string[]) =>
   unwrapResponse(await replaceKeywordPackVehicleModels(packId, { vehicle_model_ids: vehicleModelIds }))
