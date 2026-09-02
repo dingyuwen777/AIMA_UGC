@@ -128,6 +128,24 @@ def test_current_repository_governance_wiring_is_valid() -> None:
     assert CHECK_REPOSITORY(ROOT) == []
 
 
+def test_current_project_uses_local_branch_first_work_initialization() -> None:
+    """AIMA 项目规则必须固定本地分支、首次 push 与早期 PR 的真实顺序。"""
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    blueprint = (ROOT / "docs/blueprint/06_开发约束与分阶段实施.md").read_text(encoding="utf-8")
+    combined = agents + blueprint
+
+    for marker in (
+        "本地任务分支",
+        "首个本地提交",
+        "首次 push",
+        "远程跟踪分支",
+        "早期 PR",
+        "不得先创建远程空分支",
+        "Issue ↔ Change ↔ branch ↔ PR",
+    ):
+        assert marker in combined
+
+
 def test_current_managed_block_is_project_facing_without_runtime_internals() -> None:
     """正式安装后的根入口不得继续暴露旧 Runtime/MCP/路由加载实现。"""
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
@@ -298,3 +316,12 @@ def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) 
     assert len([error for error in errors if error.startswith("GOV012")]) >= 2
     assert any(error.startswith("GOV013") for error in errors)
     assert any(error.startswith("GOV014") for error in errors)
+
+
+def test_checker_requires_local_branch_first_work_initialization(tmp_path: Path) -> None:
+    """项目治理检查必须阻止本地开工顺序规则被静默删除。"""
+    _minimal_repository(tmp_path)
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert any(error.startswith("GOV016") for error in errors)
