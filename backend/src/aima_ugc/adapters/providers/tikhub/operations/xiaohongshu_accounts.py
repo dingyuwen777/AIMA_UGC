@@ -68,7 +68,7 @@ class XiaohongshuUserNotesPagination:
         body: dict[str, Any],
         previous_item_ids: tuple[str, ...] = (),
     ) -> XiaohongshuUserNotesPagination:
-        """按用户笔记最后一项 cursor 推进，并拒绝重复页和停滞 cursor。"""
+        """优先按响应级 cursor 推进用户笔记，并拒绝重复页和停滞 cursor。"""
         items = extract_user_posted_note_items(body)
         if not items:
             return cls(None, (), False, "empty_page")
@@ -77,11 +77,11 @@ class XiaohongshuUserNotesPagination:
         if item_ids and item_ids == previous_item_ids:
             return cls(None, item_ids, False, "duplicate_page")
 
-        page_data = _find_mapping(body, required_any=("notes", "has_more"))
+        page_data = _find_mapping(body, required_any=("notes", "has_more", "cursor"))
         if page_data.get("has_more") is False:
             return cls(None, item_ids, False, "provider_exhausted")
 
-        next_cursor = _posted_note_cursor(items[-1])
+        next_cursor = _string(page_data.get("cursor")) or _posted_note_cursor(items[-1])
         if not next_cursor:
             return cls(None, item_ids, False, "cursor_unavailable")
         if next_cursor == previous_cursor:
