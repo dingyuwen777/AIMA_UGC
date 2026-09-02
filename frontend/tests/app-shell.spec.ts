@@ -1,10 +1,12 @@
 import { createSSRApp, defineComponent, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
+import { createPinia } from 'pinia'
 import { describe, expect, it } from 'vitest'
 
 import AppShell from '../src/app/layouts/AppShell.vue'
+import { useIdentityStore } from '../src/features/identity/store'
 
-async function renderShell(): Promise<string> {
+async function renderShell(role: 'administrator' | 'user' = 'user'): Promise<string> {
   const routerLink = defineComponent({
     props: {
       to: { type: String, required: true },
@@ -14,6 +16,15 @@ async function renderShell(): Promise<string> {
     },
   })
   const app = createSSRApp({ render: () => h(AppShell) })
+  const pinia = createPinia()
+  app.use(pinia)
+  useIdentityStore(pinia).principal = {
+    principal_id: role === 'administrator' ? 'local-administrator' : 'ordinary-user',
+    display_name: role === 'administrator' ? '本地管理员' : '普通用户',
+    role,
+    source: 'development',
+    is_administrator: role === 'administrator',
+  }
   app.component('RouterLink', routerLink)
   return renderToString(app)
 }
@@ -38,6 +49,15 @@ describe('AppShell 内网 V1 导航', () => {
     for (const label of ['智能洞察', '销售漏斗', '热点捕捉', '管理员页面', '帮助与反馈']) {
       expect(html).not.toContain(label)
     }
+  })
+
+  it('只向管理员展示独立配置入口', async () => {
+    const ordinary = await renderShell('user')
+    const administrator = await renderShell('administrator')
+
+    expect(ordinary).not.toContain('href="/admin/configuration"')
+    expect(administrator).toContain('href="/admin/configuration"')
+    expect(administrator).toContain('管理员配置')
   })
 
   it('使用代码内 SVG 图标且页面壳尺寸对齐正式桌面基线', async () => {

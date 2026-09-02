@@ -4,6 +4,7 @@ import HomeView from '../views/HomeView.vue'
 import CollectionRuntimePage from '../features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue'
 import CollectionStrategyPage from '../features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue'
 import VoicePlazaPage from '../features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue'
+import AdminConfigurationPage from '../features/admin-configuration/pages/AdminConfigurationPage.vue'
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -25,5 +26,11 @@ export const routes: RouteRecordRaw[] = [
     path: '/collection-strategy',
     name: 'collection-strategy',
     component: CollectionStrategyPage,
+  },
+  {
+    path: '/admin/configuration',
+    name: 'admin-configuration',
+    component: AdminConfigurationPage,
+    meta: { requiresAdministrator: true },
   },
 ]

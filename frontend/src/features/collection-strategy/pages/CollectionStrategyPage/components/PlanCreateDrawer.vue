@@ -11,6 +11,7 @@ import type {
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
 import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
+import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import {
   fixedCollectionSearchConfig,
   isCollectionSearchConfigComplete,
@@ -41,6 +42,7 @@ const name = ref('')
 const scheduleExpr = ref('0 */6 * * *')
 const enabled = ref(true)
 const selectedPacks = ref<string[]>([])
+const selectedVehicles = ref<string[]>([])
 const providerByPlatform = reactive<Partial<Record<CollectionPlatform, string>>>({})
 const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 
@@ -69,6 +71,7 @@ const eligibilityReason = computed(() => {
 
   return planExecutionReason({
     keywordPackIds: selectedPacks.value,
+    vehicleModelIds: selectedVehicles.value,
     platforms: selectedPlatforms.value,
     requireRelevance: enabled.value,
     relevanceAvailable: props.relevanceAvailable,
@@ -83,6 +86,7 @@ watch(open, (value) => {
   scheduleExpr.value = '0 */6 * * *'
   enabled.value = true
   selectedPacks.value = []
+  selectedVehicles.value = []
   for (const option of platformOptions) {
     delete providerByPlatform[option.value]
     delete searchConfigByPlatform[option.value]
@@ -145,6 +149,7 @@ function submit(): void {
     name: name.value.trim(),
     schedule_expr: scheduleExpr.value,
     keyword_pack_ids: selectedPacks.value,
+    vehicle_model_ids: selectedVehicles.value,
     platforms: selectedPlatforms.value,
     enabled: enabled.value,
   })
@@ -190,8 +195,12 @@ function submit(): void {
             请先创建启用且非空的关键词包。
           </p>
         </fieldset>
+        <VehicleMultiSelect
+          v-model="selectedVehicles"
+          label="3. 车型（可单独选择，也可与词包组合）"
+        />
         <fieldset>
-          <legend>3. 采集平台与 Provider</legend><div class="platforms">
+          <legend>4. 采集平台与 Provider</legend><div class="platforms">
             <div
               v-for="option in platformOptions"
               :key="option.value"
@@ -238,7 +247,7 @@ function submit(): void {
             </div>
           </div>
         </fieldset>
-        <label><strong>4. 执行周期</strong><span class="schedule-field"><select
+        <label><strong>5. 执行周期</strong><span class="schedule-field"><select
           v-model="scheduleExpr"
           aria-label="执行周期"
         ><option
@@ -246,7 +255,7 @@ function submit(): void {
           :key="preset.value"
           :value="preset.value"
         >{{ preset.label }}</option></select><em>北京时间</em></span><small>按北京时间周期执行；一次性采集请前往采集运行中心。</small></label>
-        <label class="switch"><strong>5. 创建后启用计划</strong><input
+        <label class="switch"><strong>6. 创建后启用计划</strong><input
           v-model="enabled"
           type="checkbox"
         ></label>
@@ -257,7 +266,7 @@ function submit(): void {
           <strong>全局相关性（系统唯一，不可覆盖）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>创建启用计划前必须可用，后端仍会再次验证。</small>
         </AimaFeedbackBanner>
         <div
-          v-if="eligibilityReason && selectedPacks.length && platformOptions.some((item) => isPlatformSelected(item.value))"
+          v-if="eligibilityReason && (selectedPacks.length || selectedVehicles.length) && platformOptions.some((item) => isPlatformSelected(item.value))"
           class="eligibility"
           role="status"
         >

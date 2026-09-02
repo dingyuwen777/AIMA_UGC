@@ -257,11 +257,12 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   async function upload(
     file: File,
     keywordPackIds: string[],
+    vehicleModelIds: string[] = [],
   ): Promise<ImportBatchCreatedResponse | null> {
     uploading.value = true
     error.value = null
     try {
-      const created = await uploadImportBatch(file, keywordPackIds)
+      const created = await uploadImportBatch(file, keywordPackIds, vehicleModelIds)
       await refresh(true)
       return created
     } catch (reason) {
@@ -459,6 +460,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   async function submitLocalCampaign(
     files: DataImportLocalFileSelection[],
     keywordPackIds: string[],
+    vehicleModelIds: string[],
     ingestionPolicy: DataImportIngestionPolicy,
   ): Promise<HistoricalCampaignResponse | null> {
     creatingHistorical.value = true
@@ -474,6 +476,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
           byte_size: item.file.size,
         })),
         keyword_pack_ids: keywordPackIds,
+        vehicle_model_ids: vehicleModelIds,
         ingestion_policy: ingestionPolicy,
         profile: 'aima-monitoring-excel.v1',
       }

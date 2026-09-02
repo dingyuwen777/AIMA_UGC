@@ -1,5 +1,6 @@
 import {
   cancelContentAnalysisRun,
+  countContents,
   createContentAnalysisRun,
   createContentAnalysis,
   createContentRelevanceReview,
@@ -10,11 +11,14 @@ import {
   getContentAnalysisCapabilities,
   getContentAnalysisTaxonomy,
   getContentAnalysisJob,
+  getExportColumnCatalog,
   getDataExport,
   listContents,
   listContentAnalysisRuns,
   listDataExports,
   previewContentAnalysisRun,
+  reviewContentAnalysis,
+  reviewContentVehicles,
   type AnalysisContentRunCreateRequest,
   type AnalysisContentRunCreatedResponse,
   type AnalysisContentRunListResponse,
@@ -23,16 +27,23 @@ import {
   type AnalysisContentRunResponse,
   type ContentAnalysisCapabilitiesResponse,
   type ContentAnalysisTaxonomyResponse,
+  type ContentAnalysisManualReviewRequest,
+  type ContentAnalysisManualReviewResponse,
+  type ContentCountRequest,
+  type ContentCountResponse,
   type ContentAnalysisCreatedResponse,
   type ContentAnalysisSubmitRequest,
   type ContentDetailResponse,
   type ContentListResponse,
   type ContentRelevanceReviewRequest,
   type ContentRelevanceReviewResponse,
+  type ContentVehicleReviewRequest,
+  type ContentVehicleReviewResponse,
   type DataExportCreatedResponse,
   type DataExportListResponse,
   type DataExportResponse,
   type DataExportSubmitRequest,
+  type ExportColumnCatalogResponse,
   type HttpErrorResponse,
   type JobStatusResponse,
   type ListContentsParams,
@@ -75,6 +86,24 @@ export async function fetchContentDetail(contentId: string): Promise<ContentDeta
 
 export async function fetchContentAnalysisCapabilities(): Promise<ContentAnalysisCapabilitiesResponse> {
   return unwrap(await getContentAnalysisCapabilities())
+}
+
+export async function fetchContentCount(request: ContentCountRequest): Promise<ContentCountResponse> {
+  return unwrap(await countContents(request))
+}
+
+export async function reviewVehicles(
+  contentId: string,
+  request: ContentVehicleReviewRequest,
+): Promise<ContentVehicleReviewResponse> {
+  return unwrap(await reviewContentVehicles(contentId, request))
+}
+
+export async function reviewAnalysis(
+  contentId: string,
+  request: ContentAnalysisManualReviewRequest,
+): Promise<ContentAnalysisManualReviewResponse> {
+  return unwrap(await reviewContentAnalysis(contentId, request))
 }
 
 /** 通过生成 Client 读取当前 Prompt Taxonomy 的安全只读投影。 */
@@ -130,6 +159,10 @@ export async function submitDataExport(
   request: DataExportSubmitRequest,
 ): Promise<DataExportCreatedResponse> {
   return unwrap(await createDataExport(request))
+}
+
+export async function fetchExportColumnCatalog(): Promise<ExportColumnCatalogResponse> {
+  return unwrap(await getExportColumnCatalog())
 }
 
 export async function fetchDataExports(): Promise<DataExportListResponse> {

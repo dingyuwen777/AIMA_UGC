@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import type { DataImportIngestionPolicy } from '../../../../../generated/api/client'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
+import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import {
@@ -23,6 +24,7 @@ const ingestionPolicy = ref<DataImportIngestionPolicy>('standard_observation')
 const selectedLocalFiles = ref<DataImportLocalFileSelection[]>([])
 const selectedPaths = ref<string[]>([])
 const selectedPackIds = ref<string[]>([])
+const selectedVehicleIds = ref<string[]>([])
 const validationError = ref<string | null>(null)
 const notice = ref<string | null>(null)
 const recursive = ref(false)
@@ -50,7 +52,7 @@ const canCreate = computed(
     !store.loadingHistorical &&
     !store.creatingHistorical &&
     sourceSelectionReady.value &&
-    selectedPackIds.value.length > 0,
+    (selectedPackIds.value.length > 0 || selectedVehicleIds.value.length > 0),
 )
 const canCancel = computed(() =>
   ['uploading', 'queued', 'running', 'cancelling'].includes(
@@ -135,6 +137,7 @@ watch(
     selectedLocalFiles.value = []
     selectedPaths.value = []
     selectedPackIds.value = []
+    selectedVehicleIds.value = []
     recursive.value = false
     validationError.value = null
     notice.value = null
@@ -229,6 +232,7 @@ async function createCampaign(): Promise<void> {
     const campaign = await store.submitLocalCampaign(
       selectedLocalFiles.value,
       selectedPackIds.value,
+      selectedVehicleIds.value,
       ingestionPolicy.value,
     )
     if (campaign) notice.value = '文件上传完成，服务器正在执行不可变快照与预检。'
@@ -238,6 +242,7 @@ async function createCampaign(): Promise<void> {
     client_idempotency_key: crypto.randomUUID(),
     relative_paths: selectedPaths.value,
     keyword_pack_ids: selectedPackIds.value,
+    vehicle_model_ids: selectedVehicleIds.value,
     recursive: recursive.value,
     profile: 'aima-monitoring-excel.v1',
     ingestion_policy: ingestionPolicy.value,
@@ -503,7 +508,7 @@ function viewCampaignContents(): void {
             </section>
 
             <section class="pack-panel">
-              <strong>关键词包（至少选择 1 个）</strong>
+              <strong>关键词包（与车型至少选择一项）</strong>
               <p
                 v-if="store.loadingHistorical"
                 class="empty-state"
@@ -532,6 +537,12 @@ function viewCampaignContents(): void {
               </div>
               <small class="pack-help">选项只展示当前已启用且可用的词包</small>
             </section>
+
+            <VehicleMultiSelect
+              v-model="selectedVehicleIds"
+              label="车型（与词包统一筛选，可多选）"
+              :disabled="store.creatingHistorical"
+            />
 
             <AimaFeedbackBanner tone="info">
               创建后先完成来源确认、不可变快照与预检；AI 不会自动执行，智能分析需要在分析入口手动创建。

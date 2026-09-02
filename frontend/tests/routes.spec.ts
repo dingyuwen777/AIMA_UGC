@@ -35,6 +35,16 @@ describe('frontend bootstrap', () => {
     )
   })
 
+  it('registers administrator configuration as a guarded route', () => {
+    expect(routes).toContainEqual(
+      expect.objectContaining({
+        path: '/admin/configuration',
+        name: 'admin-configuration',
+        meta: { requiresAdministrator: true },
+      }),
+    )
+  })
+
   it('loads Vue Test Utils', () => {
     expect(config.global).toBeDefined()
   })

@@ -173,6 +173,7 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
         <strong>{{ contentSummary(item.title, item.text) }}</strong>
         <p>{{ item.text || '无正文' }}</p>
         <small>external_content_id: {{ item.external_content_id }}</small>
+        <small>车型：{{ (item.vehicles ?? []).map((vehicle) => vehicle.display_name).join('、') || '未关联' }}</small>
       </div>
       <div class="analysis-cell">
         <div class="analysis-badges">
@@ -188,6 +189,10 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
             v-else
             class="status-badge status-badge--neutral"
           >{{ item.analysis.status === 'stale' ? '需重新打标' : '未打标' }}</span>
+          <span
+            v-if="item.availability && item.availability.status !== 'available'"
+            class="status-badge status-badge--neutral"
+          >{{ item.availability.status }}</span>
         </div>
         <div
           data-testid="content-labels"

@@ -63,7 +63,7 @@ Change / changes/archive
 
 - [`docs/roadmap/02_生产上线实施路线.md`](02_生产上线实施路线.md)：Stage 0—12 的长期实施路线、完整 Production Go/No-Go、认证、Release、Backup/Restore、回滚和生产强化。
 - [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](03_4000万历史数据迁移实施方案.md)：当前 Stage 12 的自包含开发、测试、容量、部署和实际迁移执行门禁。
-- [`docs/roadmap/04_业务目录内容查询与AI配置中心实施路线.md`](04_业务目录内容查询与AI配置中心实施路线.md)：近期先依靠当前 Git Prompt/Taxonomy 文件完成声音广场的动态筛选、列表/详情、人工复核、AI Run、导出和正式验收；车型、管理员配置中心、Analysis Scheme、Facet、第三方状态和消息等作为后期升级路线。
+- [`docs/roadmap/04_业务目录内容查询与AI配置中心实施路线.md`](04_业务目录内容查询与AI配置中心实施路线.md)：维护声音广场 VP0–VP5 与业务配置 U1–U5 的当前状态；覆盖 Vehicle Catalog、Provider-neutral Principal/管理员配置、Analysis Scheme、内容车型证据、Count、Availability、导出列和 Principal Inbox，以及明确延期的 VP5/飞书接入/Gold Set 等边界。
 - [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)：当前开发环境能实际执行的命令，以及部署设计与当前实现差距。
 - [`docs/blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)：日志、安全、Secret、Artifact、备份/恢复和生产运行的长期边界。
 - [`docs/blueprint/06_开发约束与分阶段实施.md`](../blueprint/06_开发约束与分阶段实施.md)：每个阶段实际开发时必须遵守的工程流程和质量门禁。

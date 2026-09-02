@@ -1,17 +1,6 @@
 import type { ContentLabelPairResponse } from '../../generated/api/client'
 export { platformLabel } from '../../shared/domain/platform'
-
-export function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  return new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
-}
+export { formatDateTime } from '../../shared/domain/beijingTime'
 
 export function formatNumber(value: number | null | undefined): string {
   return value == null ? '—' : new Intl.NumberFormat('zh-CN').format(value)

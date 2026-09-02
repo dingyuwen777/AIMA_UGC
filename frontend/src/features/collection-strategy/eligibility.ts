@@ -11,6 +11,7 @@ export interface PlanPlatformSelection {
 
 export interface PlanExecutionEligibilityInput {
   keywordPackIds: readonly string[]
+  vehicleModelIds: readonly string[]
   platforms: readonly PlanPlatformSelection[]
   requireRelevance: boolean
   relevanceAvailable: boolean
@@ -20,7 +21,9 @@ export interface PlanExecutionEligibilityInput {
 
 /** 按当前后端 Capability、词包和全局相关性事实给出计划不可执行的首个原因。 */
 export function planExecutionReason(input: PlanExecutionEligibilityInput): string | null {
-  if (input.keywordPackIds.length === 0) return '请至少选择一个关键词包。'
+  if (input.keywordPackIds.length === 0 && input.vehicleModelIds.length === 0) {
+    return '请至少选择一个关键词包或车型。'
+  }
   if (input.platforms.length === 0) return '请至少选择一个采集平台。'
   if (input.requireRelevance && !input.relevanceAvailable) return '全局相关性尚未配置。'
 
@@ -33,7 +36,7 @@ export function planExecutionReason(input: PlanExecutionEligibilityInput): strin
   }
 
   for (const selection of input.platforms) {
-    const hasKeyword = details.some((pack) =>
+    const hasKeyword = input.vehicleModelIds.length > 0 || details.some((pack) =>
       pack.keywords.some(
         (keyword) =>
           keyword.enabled &&

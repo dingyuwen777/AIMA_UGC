@@ -100,6 +100,31 @@ const runningExport = {
 test.beforeEach(async ({ page }) => {
   await stubVoicePlazaTaxonomy(page)
 
+  await page.route('**/api/v1/export-columns', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        version: 1,
+        columns: [
+          { key: 'platform', label: '平台', sensitive: false, default_selected: true },
+        ],
+      }),
+    })
+  })
+
+  await page.route('**/api/v1/vehicle-models**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        total: 0,
+        catalog_version: 1,
+        offset: 0,
+        limit: 200,
+      }),
+    })
+  })
+
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -458,6 +483,7 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   expect(exportRequest).toMatchObject({
     format: 'xlsx',
     targets: { scope: 'selected', content_ids: [contentId] },
+    columns: ['platform'],
   })
 })
 

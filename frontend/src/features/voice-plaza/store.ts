@@ -5,8 +5,10 @@ import type {
   AnalysisContentRunPreviewResponse,
   AnalysisContentRunResponse,
   AnalysisRunTargetSelection,
+  ContentAnalysisManualReviewRequest,
   ContentAnalysisStatus,
   ContentAnalysisTaxonomyResponse,
+  ContentCountResponse,
   ContentDetailResponse,
   ContentFilterSnapshot,
   ContentListItemResponse,
@@ -15,6 +17,8 @@ import type {
   ContentRelevanceReviewResponse,
   ContentTargetSelection,
   DataExportResponse,
+  ExportColumnCatalogResponse,
+  ExportColumnKey,
   ListContentsParams,
   PlatformName,
 } from '../../generated/api/client'
@@ -26,12 +30,16 @@ import {
   fetchAnalysisRuns,
   fetchContentAnalysisCapabilities,
   fetchContentAnalysisTaxonomy,
+  fetchContentCount,
   fetchContentDetail,
   fetchContents,
   fetchDataExport,
   fetchDataExportFile,
   fetchDataExports,
+  fetchExportColumnCatalog,
   previewAnalysisRun,
+  reviewAnalysis,
+  reviewVehicles,
   submitAnalysisRun,
   submitContentRelevanceReview,
   submitDataExport,
@@ -50,6 +58,7 @@ export interface VoicePlazaFilters {
   publishedFrom: string
   publishedTo: string
   sourceIdentifier: string
+  vehicleModelIds: string[]
 }
 
 const EMPTY_FILTERS: VoicePlazaFilters = {
@@ -65,6 +74,7 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   publishedFrom: '',
   publishedTo: '',
   sourceIdentifier: '',
+  vehicleModelIds: [],
 }
 
 function errorMessage(error: unknown): string {
@@ -99,6 +109,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const taxonomy = ref<ContentAnalysisTaxonomyResponse | null>(null)
   const taxonomyLoading = ref(false)
   const taxonomyError = ref<string | null>(null)
+  const contentCount = ref<ContentCountResponse | null>(null)
+  const exportColumnCatalog = ref<ExportColumnCatalogResponse | null>(null)
   const loading = ref(false)
   const loadingNext = ref(false)
   const loadingDetail = ref(false)
@@ -107,6 +119,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const cancellingAnalysisRunId = ref<string | null>(null)
   const submittingExport = ref(false)
   const reviewingRelevance = ref(false)
+  const reviewingDetail = ref(false)
+  const countLoading = ref(false)
   const error = ref<string | null>(null)
   const listError = ref<string | null>(null)
   const notice = ref<string | null>(null)
@@ -140,6 +154,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       published_from: beijingDayBoundary(filters.publishedFrom, 'start'),
       published_to: beijingDayBoundary(filters.publishedTo, 'end'),
       source_identifier: filters.sourceIdentifier.trim() || undefined,
+      vehicle_model_ids: filters.vehicleModelIds.length ? [...filters.vehicleModelIds] : undefined,
     }
   }
 
@@ -231,6 +246,22 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     }
   }
 
+  async function refreshCount(mode: 'exact' | 'estimated'): Promise<void> {
+    countLoading.value = true
+    error.value = null
+    try {
+      contentCount.value = await fetchContentCount({
+        filters: filterSnapshot(),
+        count_mode: mode,
+        exact_limit: mode === 'exact' ? 100_000 : undefined,
+      })
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    } finally {
+      countLoading.value = false
+    }
+  }
+
   async function openDetail(contentId: string): Promise<void> {
     loadingDetail.value = true
     error.value = null
@@ -283,6 +314,54 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       return null
     } finally {
       reviewingRelevance.value = false
+    }
+  }
+
+  async function reviewDetailVehicles(
+    vehicleModelIds: string[],
+    unlockExisting: boolean,
+  ): Promise<boolean> {
+    if (!detail.value || reviewingDetail.value) return false
+    reviewingDetail.value = true
+    error.value = null
+    try {
+      await reviewVehicles(detail.value.id, {
+        content_version: detail.value.content_version,
+        vehicle_model_ids: vehicleModelIds,
+        unlock_existing: unlockExisting,
+      })
+      detail.value = await fetchContentDetail(detail.value.id)
+      notice.value = '车型人工结论已保存；后续自动处理不会覆盖人工锁定。'
+      await refresh(true)
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      reviewingDetail.value = false
+    }
+  }
+
+  async function reviewDetailAnalysis(
+    request: Omit<ContentAnalysisManualReviewRequest, 'content_version'>,
+  ): Promise<boolean> {
+    if (!detail.value || reviewingDetail.value) return false
+    reviewingDetail.value = true
+    error.value = null
+    try {
+      await reviewAnalysis(detail.value.id, {
+        ...request,
+        content_version: detail.value.content_version,
+      })
+      detail.value = await fetchContentDetail(detail.value.id)
+      notice.value = '分析人工纠正已保存；修改已锁定维度前必须显式解锁。'
+      await refresh(true)
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      reviewingDetail.value = false
     }
   }
 
@@ -378,14 +457,23 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   async function refreshExports(): Promise<void> {
     try {
-      const response = await fetchDataExports()
+      const [response, catalog] = await Promise.all([
+        fetchDataExports(),
+        exportColumnCatalog.value
+          ? Promise.resolve(exportColumnCatalog.value)
+          : fetchExportColumnCatalog(),
+      ])
       exports.value = response.items
+      exportColumnCatalog.value = catalog
     } catch (reason) {
       error.value = errorMessage(reason)
     }
   }
 
-  async function createExport(scope: 'query' | 'selected' | 'page'): Promise<number | null> {
+  async function createExport(
+    scope: 'query' | 'selected' | 'page',
+    columns?: ExportColumnKey[],
+  ): Promise<number | null> {
     if (scope === 'selected' && selectedIds.value.length === 0) return null
     if ((scope === 'page' || scope === 'query') && items.value.length === 0) return null
     submittingExport.value = true
@@ -394,7 +482,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       const targets = scope === 'page'
         ? { scope: 'selected' as const, content_ids: items.value.map((item) => item.id) }
         : targetSelection(scope)
-      const created = await submitDataExport({ targets, format: 'xlsx' })
+      const created = await submitDataExport({ targets, format: 'xlsx', columns })
       const record = await fetchDataExport(created.export_id)
       exports.value = [record, ...exports.value.filter((item) => item.id !== record.id)]
       return created.target_count
@@ -453,6 +541,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     taxonomy,
     taxonomyLoading,
     taxonomyError,
+    contentCount,
+    exportColumnCatalog,
     hasMore,
     allVisibleSelected,
     hasActiveJobs,
@@ -464,12 +554,15 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     cancellingAnalysisRunId,
     submittingExport,
     reviewingRelevance,
+    reviewingDetail,
+    countLoading,
     error,
     listError,
     notice,
     refresh,
     refreshAnalysisCapabilities,
     refreshTaxonomy,
+    refreshCount,
     loadNext,
     openDetail,
     closeDetail,
@@ -477,6 +570,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     toggleVisibleSelection,
     clearSelection,
     reviewRelevance,
+    reviewDetailVehicles,
+    reviewDetailAnalysis,
     previewAnalysis,
     confirmAnalysis,
     refreshAnalysisRuns,

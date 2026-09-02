@@ -94,8 +94,13 @@ export async function fetchImportBatchDetail(batchId: string): Promise<ImportBat
 export async function uploadImportBatch(
   file: File,
   keywordPackIds: string[],
+  vehicleModelIds: string[] = [],
 ): Promise<ImportBatchCreatedResponse> {
-  return unwrap(await createImportBatch({ file, keyword_pack_ids: keywordPackIds }))
+  return unwrap(await createImportBatch({
+    file,
+    keyword_pack_ids: keywordPackIds,
+    vehicle_model_ids: vehicleModelIds,
+  }))
 }
 
 export async function fetchEnabledKeywordPacks(): Promise<KeywordPackSummaryResponse[]> {

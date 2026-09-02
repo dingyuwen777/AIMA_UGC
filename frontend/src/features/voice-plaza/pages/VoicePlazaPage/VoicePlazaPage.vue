@@ -7,6 +7,7 @@ import type {
   AnalysisContentRunResponse,
   ContentRelevanceReviewResponse,
   DataExportResponse,
+  ExportColumnKey,
 } from '../../../../generated/api/client'
 import TaskProgressBar from '../../../../shared/TaskProgressBar.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
@@ -137,8 +138,11 @@ async function cancelAnalysis(runId: string): Promise<void> {
 }
 
 /** 创建 selected/page/query 三种既有范围之一的 Excel 导出。 */
-async function submitExport(scope: 'query' | 'selected' | 'page'): Promise<void> {
-  const count = await store.createExport(scope)
+async function submitExport(
+  scope: 'query' | 'selected' | 'page',
+  columns: ExportColumnKey[],
+): Promise<void> {
+  const count = await store.createExport(scope, columns)
   if (count === null) return
   showNotice(`已创建 Excel 导出 Job，冻结 ${count} 条内容。`)
 }
@@ -235,6 +239,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:published-from="store.filters.publishedFrom"
         v-model:published-to="store.filters.publishedTo"
         v-model:source-identifier="store.filters.sourceIdentifier"
+        v-model:vehicle-model-ids="store.filters.vehicleModelIds"
         :taxonomy="store.taxonomy"
         :taxonomy-loading="store.taxonomyLoading"
         @search="search"
@@ -379,7 +384,32 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-if="store.items.length > 0"
         class="pagination"
       >
-        <span>游标分页不会虚构总页数</span>
+        <div class="count-tools">
+          <span>游标分页不会虚构总页数</span>
+          <span v-if="store.contentCount?.count != null">
+            {{ store.contentCount.count_kind === 'estimated' ? '估算' : '精确' }} {{ store.contentCount.count }} 条
+          </span>
+          <span v-else-if="store.contentCount?.truncated">
+            当前范围超过有界精确计数上限
+          </span>
+          <span v-else-if="store.contentCount?.count_mode === 'estimated'">
+            当前筛选不提供可靠估算
+          </span>
+          <button
+            type="button"
+            :disabled="store.countLoading"
+            @click="store.refreshCount('exact')"
+          >
+            有界精确总数
+          </button>
+          <button
+            type="button"
+            :disabled="store.countLoading"
+            @click="store.refreshCount('estimated')"
+          >
+            快速估算
+          </button>
+        </div>
         <AimaButton
           size="small"
           :disabled="!store.hasMore || store.loadingNext"
@@ -393,6 +423,10 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model="detailOpen"
         :item="store.detail"
         :loading="store.loadingDetail"
+        :taxonomy="store.taxonomy"
+        :saving="store.reviewingDetail"
+        @review-vehicles="store.reviewDetailVehicles"
+        @review-analysis="store.reviewDetailAnalysis"
       />
       <AnalysisSubmitDialog
         v-model="analysisOpen"
@@ -408,6 +442,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         :selected-count="store.selectedIds.length"
         :page-count="store.items.length"
         :items="store.exports"
+        :column-catalog="store.exportColumnCatalog"
         :submitting="store.submittingExport"
         @submit="submitExport"
         @refresh="store.refreshExports"
@@ -472,6 +507,9 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .selected-count { color: var(--aima-primary); background: var(--aima-primary-soft); }
 .selection-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .pagination { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 20px; color: var(--aima-text-muted); font-size: 11px; }
+.count-tools { display: flex; align-items: center; gap: 8px; }
+.count-tools button { padding: 3px 7px; border: 1px solid var(--aima-border); border-radius: 4px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; font-size: 10px; }
+.count-tools button:disabled { cursor: wait; opacity: .55; }
 .pagination :deep(.aima-button) { height: 34px; }
 .notice { position: fixed; z-index: 200; top: 76px; left: 50%; min-width: 280px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
 @media (max-width: 1280px) {
