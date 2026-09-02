@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260902-xiaohongshu-account-collection
 title: 小红书指定账号按日期采集笔记与评论
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/296-xiaohongshu-account-collection
 created: 2026-09-02
@@ -96,7 +96,7 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/296
 | R2 | 账号消歧以 red_id 精确匹配，不猜同名账号 | https://github.com/dingyuwen777/AIMA_UGC/issues/296 | satisfied | `resolve_account_candidate` + 搜索分页完整性门禁；同名歧义、缺 `search_id`、异常响应结构均有 fail-closed Unit/Fake Transport 测试。 |
 | R3 | 取得 note_id 后复用现有详情/评论/回复/Canonical/Excel | https://github.com/dingyuwen777/AIMA_UGC/issues/296 | satisfied | Fake Transport 纵切验证 Account Discovery → 现有 `_process_content` → Detail/Comments/Replies → Canonical JSONL → 共享三 Sheet Excel；未新增第二套 Mapper/Exporter。 |
 | R4 | 完整评论模式不受数量软目标截断但保留硬保护 | https://github.com/dingyuwen777/AIMA_UGC/issues/296 | satisfied | 先在 `b87786b50a9f7fdb7a00dba1db5addac89325915` 得到“第 2 页未消费”的 Red，再改为共享 Runner `target=None/fetch_all=True`；一级评论、二级回复及硬页数 partial 均有回归测试。 |
-| R5 | 不改变数据库/API/前端/Canonical/Excel Contract | https://github.com/dingyuwen777/AIMA_UGC/issues/296 | satisfied | 最新 PR diff 仅 Provider Adapter、人工调试、文档和 Unit；CI Scope 正确跳过 PostgreSQL/Full-stack，Contract/API、Architecture/Ownership、Wheel 均通过；无 Migration/OpenAPI/Canonical/Excel Schema/依赖变更。 |
+| R5 | 不改变数据库/API/前端/Canonical/Excel Contract | https://github.com/dingyuwen777/AIMA_UGC/issues/296 | satisfied | 最终实现仅修改 Provider Adapter、人工调试、文档和 Unit；CI Scope 正确跳过 PostgreSQL/Full-stack，Contract/API、Architecture/Ownership、Wheel 均通过；无 Migration/OpenAPI/Canonical/Excel Schema/依赖变更。 |
 | R6 | TikHub 真实结构验证仅 GitHub Runner，且 Secret 不泄露 | https://github.com/dingyuwen777/AIMA_UGC/issues/296 | explicitly_deferred | 有界 Runner Probe `33604014094` / Job `100163797816` 仅引用 `secrets.TIKHUB_API_KEY`，因仓库未配置该 Secret 输出 `PROBE_SKIPPED` 并在网络请求前退出；临时 Workflow 已从 PR 移除。真实 Provider shape 因缺安全 Secret 未验证，聊天密钥未被写入或使用。 |
 
 # Validation Matrix
@@ -109,8 +109,8 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/296
 | 用户 / Workflow Acceptance | passed | 五账号薄入口、逐账号 summary、Canonical JSONL 和共享 Excel 路径已覆盖。 |
 | 跨组件 Golden Path | not_applicable | 本次不接前端/API/Worker/数据库，不新增跨进程产品链。 |
 | External Dependency / Provider Probe | explicitly_deferred | 官方 TikHub 文档于 2026-09-02 重新核验；真实 Runner Probe 因 Actions Secret 未配置在网络前安全跳过，因此不创建伪真实 Fixture。 |
-| Build / Package / Runtime | passed | 最新 Green 基线 `ac40fe409e50b674d3a06a1556416fe6ee43965e`：CI run `33605605511` 的 format/Ruff/Mypy、Unit/Contract/API、Architecture/Ownership、Wheel、CI Gate 全部通过；Runtime Acceptance run `33605605335` 通过。 |
-| Docs / Governance / Other | passed | README/小红书采集文档已同步，Docs and Governance/Secret scan 通过；临时 Probe Workflow 已清理。 |
+| Build / Package / Runtime | passed | PR 最终 HEAD `508ae9bb1213ab2515190f410494f6a26ad8271e` 的 CI `33606034733`、Runtime Acceptance `33606034487`、Change Completion Gate `33606259726` 全部成功；merge commit `066ff0b40dfe3fb693e5a80de6efcd11f6cee7f1` 的 main fresh CI `33606905199`、Runtime Acceptance `33606904924`、Change Completion Gate `33606904936` 也全部成功。 |
+| Docs / Governance / Other | passed | README/小红书采集文档已同步，Docs and Governance/Secret scan 通过；临时 Probe Workflow 已清理；PR #298 已按 `expected_head_sha` 正常合并。 |
 
 # Completion Audit
 
@@ -122,7 +122,7 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/296
 # 任务
 
 - [x] 创建 Requirement Source Issue #296。
-- [x] 建立任务分支和 Draft PR #298；在最终 Review 前同步最新 `main`，当前 merge-base 为 `03c13bc90f4917b8c992ce1584b61b86b4ee2aab`。
+- [x] 建立任务分支和 PR #298；在最终 Review 前同步最新 `main`，合并前 merge-base 为 `03c13bc90f4917b8c992ce1584b61b86b4ee2aab`。
 - [x] 建立用户 Operation、完整评论和异常分页失败测试，并在 GitHub Runner 获得干净 Red。
 - [x] 实现小红书用户 Operation/Account Runtime。
 - [x] 实现账号解析、日期窗口、稳定身份缓存和账号 Discovery。
@@ -132,7 +132,7 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/296
 - [x] 更新 `tikhub_test` README 与小红书采集文档。
 - [x] 执行受影响 CI、Runtime Acceptance、独立 Agent_Skills Review 和 Completion Audit；Review 发现的异常分页问题已修复。
 - [x] 尝试安全 GitHub Runner Provider Probe；因 Actions Secret 未配置在网络请求前安全跳过并清理临时 Workflow。
-- [ ] 合并由用户另行授权；merge 后再执行 main fresh CI、Issue Closure Audit 和分支清理。
+- [x] PR #298 已使用 `expected_head_sha=508ae9bb1213ab2515190f410494f6a26ad8271e` 正常合并，真实 merge commit 为 `066ff0b40dfe3fb693e5a80de6efcd11f6cee7f1`；main fresh CI/Runtime/Completion Gate 全部成功。
 
 # 验证
 
@@ -145,9 +145,9 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/296
 
 ## Green 证据
 
-- `ac40fe409e50b674d3a06a1556416fe6ee43965e`：CI run `33605605511` 完整成功，包括 Python format/Ruff/Mypy、Unit/Contract/API、Architecture/Ownership、Wheel 和 CI Gate；Docs and Governance/Secret scan 同轮成功。
-- `ac40fe409e50b674d3a06a1556416fe6ee43965e`：Runtime Acceptance run `33605605335` 成功。
-- CI Scope：PostgreSQL Integration、Real Full-stack Golden Path 正确为 skipped，因为本 Change 不涉及数据库/前端跨进程链。
+- PR 最终 HEAD `508ae9bb1213ab2515190f410494f6a26ad8271e`：CI `33606034733` 完整成功，包括 format/Ruff/Mypy、Unit/Contract/API、Architecture/Ownership、Wheel 和 CI Gate；Runtime Acceptance `33606034487`、Change Completion Gate `33606259726` 成功。
+- 合并后 `main` HEAD `066ff0b40dfe3fb693e5a80de6efcd11f6cee7f1`：fresh CI `33606905199` 成功，fresh Runtime Acceptance `33606904924` 成功，fresh Change Completion Gate `33606904936` 成功。
+- main fresh CI 的实际 scope 中，PostgreSQL Integration、Real Full-stack Golden Path 正确为 skipped，因为本 Change 不涉及数据库/前端跨进程链；Repository Quality、Docs/Governance、CI Gate 均 success。
 - 真实 Probe：run `33604014094` / job `100163797816` 在 `TIKHUB_API_KEY` Actions Secret 为空时输出 `PROBE_SKIPPED` 并退出，未发生 TikHub 网络请求；临时 Workflow 随后从分支恢复。
 
 ## 外部事实限制
@@ -171,10 +171,19 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/296
 - 兼容：现有关键词 `run_xiaohongshu` 和正式 Collection Decision 默认语义保持不变；共享 Runner 仅增加“无数量软目标”的可选内部能力。
 - 回滚：撤销本 Change 的账号 Operation/Runtime、人工账号 Runner/入口、共享 Runner 小扩展、测试和文档即可；现有关键词采集链无需数据迁移。
 
+# 交付完成证据
+
+- Requirement Source：Issue #296。
+- 实现 PR：#298，已合并到 `main`；merge commit `066ff0b40dfe3fb693e5a80de6efcd11f6cee7f1`。
+- 合并后 `main` fresh CI `33606905199`、Runtime Acceptance `33606904924`、Change Completion Gate `33606904936` 全部成功。
+- R1-R5 已由实现、Unit/Fake Transport、文件输出/Excel纵切和 main fresh 验证直接支持；R6 的真实 Provider shape 验证按安全条件明确延期，不影响本次人工入口代码交付，但仍不得宣称真实 shape 已验证。
+- 本 Change 的实现、Review、合并与 main 新鲜验证已闭环，因此转为 `done` 并归档。
+
 # 交付
 
 - Requirement Source：#296
-- 分支：`feature/296-xiaohongshu-account-collection`
-- PR：#298
-- 当前状态：代码与治理文档已达到 `ready_for_review`；是否 merge 由用户另行授权。
+- 原任务分支：`feature/296-xiaohongshu-account-collection`
+- 实现 PR：#298
+- merge commit：`066ff0b40dfe3fb693e5a80de6efcd11f6cee7f1`
+- 当前状态：`done`，进入 `changes/archive/2026-09/CHG-20260902-xiaohongshu-account-collection/`。
 - 发布：不适用
