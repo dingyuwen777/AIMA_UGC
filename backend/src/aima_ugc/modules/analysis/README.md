@@ -225,9 +225,10 @@ POST /api/v1/analysis/content-runs/preview
 → 用户显式确认
 POST /api/v1/analysis/content-runs
 → 短事务创建 analysis_content_runs + analysis.content-run-plan.v1 Planner
-→ Planner 用 INSERT ... SELECT 冻结 run_targets 的 Content ID + Version
-→ 校验 Preview 数量，变化时回滚并以可查询 error_code 失败关闭
-→ 有界创建 analysis.content-label.v1 Shard Job
+→ selected/query 继续用集合式冻结；公开 all 按稳定 Content UUID keyset 分批冻结 ID + Version
+→ all 每批独立短事务并从已提交 Target 续跑，全部冻结后再次核对 Preview 数量
+→ 数量变化时清理未开始 Shard 的部分 Target，并以可查询 error_code 失败关闭
+→ 校验通过后才有界创建 analysis.content-label.v1 Shard Job
 → Worker
 → 校验实际 Prompt/Taxonomy/Provider/Model/生成配置与 Run 冻结身份一致
 → ContentLabelingService
@@ -261,7 +262,7 @@ content/version
 analysis_content_runs.sequence_no
 ```
 
-兼容入口 `POST /api/v1/content-analysis-requests` 为保持既有 `request_id/job_id` Response，仍同步冻结目标并创建首个 Shard；新版 Run API 不在 HTTP 请求内扫描或冻结海量目标。Planner 的 Target 冻结与首批 Shard 创建在同一事务，Lease 重试复用已提交的 Target/Shard。
+兼容入口 `POST /api/v1/content-analysis-requests` 为保持既有 `request_id/job_id` Response，仍同步冻结 selected/query 目标并创建首个 Shard；新版 Run API 不在 HTTP 请求内扫描或冻结海量目标。公开 `all` 使用内部专用快照标记，与历史空筛选 `query` 明确区分；Planner 分批短事务冻结全部 Content Current（包含 irrelevant），全部目标校验完成后才创建首批 Shard。Lease 重试从已提交 Target 的最后 Content ID 续跑，避免重复扫描已冻结批次。
 
 不同 Run 的 Scheme Version、Prompt/Taxonomy/Model/生成配置身份仍完整保存在 Run/Result 中。发布新 Scheme 不会把已成功 Run 静默作废；Worker 使用 Run 自己冻结的 Scheme Version 和 Prompt 快照，不能用后来发布的配置覆盖旧 Run。最新 Run 失败或取消时，旧成功结果继续展示，API 另行返回最新 Run 状态。因此查询/声音广场可以区分：
 

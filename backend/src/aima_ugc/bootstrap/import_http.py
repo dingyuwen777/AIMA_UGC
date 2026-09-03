@@ -408,6 +408,9 @@ class PostgresImportHttpService:
                             note=keyword_request.note.strip(),
                         )
                     )
+                committed_pack = repository.get_pack(pack.id)
+                if committed_pack is None:  # pragma: no cover - 同事务父记录不会消失
+                    raise RuntimeError("创建后的 Keyword Pack 无法重读")
                 _audit_configuration(
                     session,
                     actor_ref=actor_ref,
@@ -416,12 +419,12 @@ class PostgresImportHttpService:
                     object_type="keyword_pack",
                     object_id=str(pack.id),
                     detail={
-                        "version": pack.version,
-                        "enabled": pack.enabled,
+                        "version": committed_pack.version,
+                        "enabled": committed_pack.enabled,
                         "initial_keyword_count": len(request.keywords),
                     },
                 )
-                return _pack_response(repository, pack)
+                return _pack_response(repository, committed_pack)
         except IntegrityError as exc:
             raise ImportConflict from exc
         finally:

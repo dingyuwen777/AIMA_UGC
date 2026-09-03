@@ -11,6 +11,7 @@ from sqlalchemy import (
     BigInteger,
     Integer,
     Uuid,
+    delete,
     func,
     insert,
     literal,
@@ -169,8 +170,57 @@ class PostgresAnalysisRepository:
             or 0,
         )
 
+    def append_run_targets(
+        self,
+        *,
+        run_id: UUID,
+        start_ordinal: int,
+        targets: tuple[ContentTarget, ...],
+    ) -> int:
+        """在调用方短事务内追加一批连续 Run Target。"""
+
+        if start_ordinal < 0:
+            raise ValueError("start_ordinal 不能为负数")
+        if not targets:
+            return 0
+        self._session.execute(
+            insert(analysis_content_run_targets_table),
+            [
+                {
+                    "run_id": run_id,
+                    "target_ordinal": start_ordinal + offset,
+                    "content_id": target.content_id,
+                    "content_version": target.content_version,
+                }
+                for offset, target in enumerate(targets)
+            ],
+        )
+        return len(targets)
+
+    def last_frozen_content_id(self, run_id: UUID) -> UUID | None:
+        """返回已提交 Target 的最后一个 Content ID，供 keyset Planner 续跑。"""
+
+        return cast(
+            UUID | None,
+            self._session.scalar(
+                select(analysis_content_run_targets_table.c.content_id)
+                .where(analysis_content_run_targets_table.c.run_id == run_id)
+                .order_by(analysis_content_run_targets_table.c.target_ordinal.desc())
+                .limit(1)
+            ),
+        )
+
+    def clear_run_targets(self, run_id: UUID) -> None:
+        """清理未开始 Shard 的部分冻结目标，用于 all Scope fail-closed。"""
+
+        self._session.execute(
+            delete(analysis_content_run_targets_table).where(
+                analysis_content_run_targets_table.c.run_id == run_id
+            )
+        )
+
     def frozen_target_count(self, run_id: UUID) -> int:
-        """返回已由 Planner 原子冻结的目标数，供 Lease 重试判定幂等状态。"""
+        """返回已经提交的冻结目标数，供 Planner Lease 重试续跑。"""
 
         return cast(
             int,

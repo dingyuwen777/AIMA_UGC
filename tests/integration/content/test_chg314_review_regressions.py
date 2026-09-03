@@ -149,7 +149,12 @@ def _seed_contents(client: TestClient, runtime) -> tuple[UUID, ...]:  # type: ig
         )
 
 
-def _analysis_registry(runtime, *, raw_response: str) -> JobRegistry:  # type: ignore[no-untyped-def]
+def _analysis_registry(
+    runtime,
+    *,
+    raw_response: str,
+    freeze_batch_size: int = 10_000,
+) -> JobRegistry:  # type: ignore[no-untyped-def]
     """构造复用正式 Planner/Sharding 的 Fake LLM Analysis Registry。"""
 
     session = runtime.database.new_session()
@@ -176,7 +181,10 @@ def _analysis_registry(runtime, *, raw_response: str) -> JobRegistry:  # type: i
         ),
         terminal_callback=callback,
         planner_handler=ContentAnalysisPlanJobHandler(
-            PostgresContentAnalysisPlanJobExecutor(runtime)
+            PostgresContentAnalysisPlanJobExecutor(
+                runtime,
+                freeze_batch_size=freeze_batch_size,
+            )
         ),
         planner_terminal_callback=callback,
     )
@@ -370,7 +378,11 @@ def test_all_scope_planner_does_not_use_unbounded_freeze(
         )
         worker = create_job_worker(
             runtime=runtime,
-            registry=_analysis_registry(runtime, raw_response=_relevant_response()),
+            registry=_analysis_registry(
+                runtime,
+                raw_response=_relevant_response(),
+                freeze_batch_size=2,
+            ),
             worker_id="chg314-review-all-bounded",
             lease_seconds=120,
             retry_delay_seconds=0,

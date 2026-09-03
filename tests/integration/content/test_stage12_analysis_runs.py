@@ -32,6 +32,7 @@ from aima_ugc.modules.analysis import (
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
     ContentAnalysisPlanJobHandler,
+    is_analysis_all_scope_filter_snapshot,
     register_content_analysis_job,
 )
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
@@ -368,7 +369,7 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
 def test_analysis_all_scope_reuses_query_storage_and_freezes_all_current_contents(
     tmp_path: Path,
 ) -> None:
-    """公开 all 不搬运 ID，并复用 query 存储语义冻结全部当前 Content。"""
+    """公开 all 不搬运 ID，用专用内部标记并冻结全部当前 Content。"""
 
     settings = load_settings().model_copy(
         update={
@@ -433,7 +434,7 @@ def test_analysis_all_scope_reuses_query_storage_and_freezes_all_current_content
                 ).where(analysis_content_runs_table.c.id == run_id)
             ).one()
             assert stored.scope == "query"
-            assert "content_ids" not in stored.filter_snapshot
+            assert is_analysis_all_scope_filter_snapshot(stored.filter_snapshot)
             assert (
                 connection.scalar(
                     select(func.count()).select_from(analysis_content_run_targets_table)

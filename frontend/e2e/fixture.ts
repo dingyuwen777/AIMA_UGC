@@ -36,7 +36,7 @@ export const test = base.extend<{ apiGuard: void }>({
           })
           return
         }
-        if (request.method() === 'POST' && url.pathname === '/api/v1/notifications/read') {
+        if (request.method() === 'PUT' && url.pathname === '/api/v1/notifications/read') {
           await route.fulfill({
             contentType: 'application/json',
             body: JSON.stringify({ requested_count: 0, changed_count: 0 }),

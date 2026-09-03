@@ -85,6 +85,8 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_PLAN_JOB_TYPE,
     ContentAnalysisJobPayload,
     ContentAnalysisPlanJobPayload,
+    analysis_all_scope_filter_snapshot,
+    is_analysis_all_scope_filter_snapshot,
 )
 from aima_ugc.modules.content.content_cursor import ContentCursorCodec, ContentCursorPosition
 from aima_ugc.modules.content.http import (
@@ -396,12 +398,20 @@ class PostgresContentHttpService:
                 identity = configuration.identity
                 if identity is None:
                     raise ContentAnalysisUnavailable
-                target_statement = self._analysis_target_statement(
-                    session,
-                    targets,
-                    analysis_identity=identity,
-                )
-                target_count = PostgresAnalysisRepository(session).count_targets(target_statement)
+                if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+                    target_count = PostgresContentQueryRepository(
+                        session,
+                        analysis_identity=None,
+                    ).count_all_analysis_targets()
+                else:
+                    target_statement = self._analysis_target_statement(
+                        session,
+                        targets,
+                        analysis_identity=identity,
+                    )
+                    target_count = PostgresAnalysisRepository(session).count_targets(
+                        target_statement
+                    )
                 if target_count == 0:
                     raise ContentSelectionEmpty
         finally:
@@ -733,7 +743,7 @@ class PostgresContentHttpService:
             analysis_identity=analysis_identity,
         )
         if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
-            return repository.freeze_target_statement(filters=ContentFilterSnapshot())
+            raise ValueError("all Scope 只能由 Planner 有界冻结")
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
             return repository.freeze_target_statement(
                 filters=targets.filters or ContentFilterSnapshot()
@@ -819,14 +829,14 @@ def _filters(query: ContentListQuery) -> ContentFilterSnapshot:
 
 def _analysis_filter_snapshot(targets: _AnalysisTargetSelection) -> dict[str, object]:
     if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
-        return ContentFilterSnapshot().model_dump(mode="json")
+        return analysis_all_scope_filter_snapshot()
     if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
         return (targets.filters or ContentFilterSnapshot()).model_dump(mode="json")
     return {"content_ids": [str(item) for item in targets.content_ids]}
 
 
 def _analysis_storage_scope(targets: _AnalysisTargetSelection) -> Literal["query", "selected"]:
-    """公开 all 复用数据库既有 query Scope，避免无意义 Schema Migration。"""
+    """公开 all 复用数据库既有 query Scope；内部快照负责区分语义。"""
 
     if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
         return "query"
@@ -834,12 +844,10 @@ def _analysis_storage_scope(targets: _AnalysisTargetSelection) -> Literal["query
 
 
 def _analysis_response_scope(row: RowMapping) -> Literal["all", "query", "selected"]:
-    """空过滤 query 等价于全部当前 Content；历史有过滤 query 继续原样返回。"""
+    """只有新 all 专用内部标记投影为 all；历史空 query 保持 query。"""
 
     stored_scope = cast(Literal["query", "selected"], row["scope"])
-    if stored_scope == "query" and row["filter_snapshot"] == ContentFilterSnapshot().model_dump(
-        mode="json"
-    ):
+    if stored_scope == "query" and is_analysis_all_scope_filter_snapshot(row["filter_snapshot"]):
         return "all"
     return stored_scope
 
