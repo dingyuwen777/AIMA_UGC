@@ -241,7 +241,7 @@ jobs:
           test "$(sudo stat -c '%u:%g:%a' "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/${ROTATED_SECRET_REF}")" = "10001:10001:600"
           test "$(sudo cat "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/${ROTATED_SECRET_REF}")" = "ci-rotated-provider-secret-not-real"
           compose exec -T worker sh -ec \
-            "test "\$(cat /run/provider-secrets/${ROTATED_SECRET_REF})" = "ci-rotated-provider-secret-not-real""
+            "test \"\$(cat /run/provider-secrets/${ROTATED_SECRET_REF})\" = \"ci-rotated-provider-secret-not-real\""
           PROVIDER_JSON_AFTER_ROTATION="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
             "SELECT row_to_json(p)::text FROM provider_configs p WHERE id = '${PROVIDER_ID}';")"
           if grep -Fq 'ci-rotated-provider-secret-not-real' <<<"${PROVIDER_JSON_AFTER_ROTATION}"; then
