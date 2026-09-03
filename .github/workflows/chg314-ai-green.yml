@@ -1,0 +1,100 @@
+name: CHG314 AI All Scope Green
+
+on:
+  push:
+    branches:
+      - fix/314-frontend-fullstack-reliability
+    paths:
+      - .github/workflows/chg314-ai-green.yml
+      - scripts/dev/apply_chg314_ai_all.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout change branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/314-frontend-fullstack-reliability
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(npm --version)" = "11.17.0"
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Apply AI all-scope implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/dev/apply_chg314_ai_all.py
+          uv run ruff format \
+            backend/src/aima_ugc/contracts/http.py \
+            backend/src/aima_ugc/bootstrap/content_http.py \
+            tests/api/test_frontend_reliability_contracts.py \
+            tests/integration/content/test_stage12_analysis_runs.py
+
+      - name: Regenerate canonical API contract and frontend client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          uv run python scripts/contracts/generate.py --check
+
+      - name: Verify targeted backend and frontend Green
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/api/test_frontend_reliability_contracts.py -q
+          npm --prefix frontend run test -- --run tests/analysis-all-scope.spec.ts
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
+          npm --prefix frontend exec playwright test e2e/analysis-all-scope.spec.ts
+
+      - name: Commit AI all-scope Green implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/src/aima_ugc/contracts/http.py \
+            backend/src/aima_ugc/bootstrap/content_http.py \
+            contracts/openapi/openapi.json \
+            frontend/src/generated/api/client.ts \
+            frontend/src/features/voice-plaza/store.ts \
+            frontend/src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue \
+            frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/AnalysisSubmitDialog.vue \
+            frontend/tests/analysis-all-scope.spec.ts \
+            frontend/e2e/analysis-all-scope.spec.ts \
+            tests/api/test_frontend_reliability_contracts.py \
+            tests/integration/content/test_stage12_analysis_runs.py \
+            docs/appendix/07_AI舆情打标与分析实现.md \
+            backend/src/aima_ugc/modules/analysis/README.md
+          if git diff --cached --quiet; then
+            echo "No AI all-scope implementation changes found" >&2
+            exit 1
+          fi
+          git commit -m "feat: 支持全部数据 AI 批量打标" -m "Requirement-Source: #314"
+          git push origin HEAD:fix/314-frontend-fullstack-reliability
