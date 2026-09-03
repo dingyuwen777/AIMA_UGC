@@ -161,6 +161,7 @@ def test_create_discovery_collection_run_returns_202() -> None:
         "job_id": str(JOB_ID),
         "mode": "discovery",
         "import_batch_id": None,
+        "data_import_campaign_id": None,
         "status": "queued",
     }
 
@@ -200,14 +201,19 @@ def test_request_validation_logs_safe_fields_with_matching_request_id(
 
     assert response.status_code == 422
     response_request_id = response.json()["request_id"]
-    matching = [record for record in caplog.records if response_request_id in record.getMessage()]
+    matching = [
+        record
+        for record in caplog.records
+        if getattr(record, "request_id", None) == response_request_id
+    ]
     assert len(matching) == 1
-    message = matching[0].getMessage()
-    assert "event=http_request_validation_failed" in message
-    assert "path=/api/v1/collection-runs" in message
-    assert "body.platforms" in message
-    assert "too_short" in message
-    assert "client-id-is-not-trusted" not in message
+    record = matching[0]
+    assert record.event == "http_request_validation_failed"  # type: ignore[attr-defined]
+    assert record.path == "/api/v1/collection-runs"  # type: ignore[attr-defined]
+    assert {tuple(item.values()) for item in record.validation_errors} >= {  # type: ignore[attr-defined]
+        ("body.platforms", "too_short")
+    }
+    assert "client-id-is-not-trusted" not in record.getMessage()
 
 
 def test_collection_run_detail_and_runtime_summary_are_queryable() -> None:

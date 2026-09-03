@@ -119,6 +119,11 @@ collection_runs_table = Table(
         Uuid(),
         ForeignKey("processing_import_batches.id"),
     ),
+    Column(
+        "data_import_campaign_id",
+        Uuid(),
+        ForeignKey("historical_import_campaigns.id"),
+    ),
     Column("trigger_type", Text(), nullable=False),
     Column("config_snapshot", JSONB(), nullable=False),
     Column("status", Text(), nullable=False),
@@ -146,6 +151,10 @@ collection_runs_table = Table(
         "requested_count >= 0 and succeeded_count >= 0 and failed_count >= 0 "
         "and content_count >= 0 and comment_count >= 0",
         name="counts_nonnegative",
+    ),
+    CheckConstraint(
+        "import_batch_id is null or data_import_campaign_id is null",
+        name="import_source_at_most_one",
     ),
     info={"owner": "collection"},
 )
@@ -349,6 +358,11 @@ Index(
 Index(
     "ix_collection_runs_import_batch_id_created_at",
     collection_runs_table.c.import_batch_id,
+    collection_runs_table.c.created_at.desc(),
+)
+Index(
+    "ix_collection_runs_campaign_id_created_at",
+    collection_runs_table.c.data_import_campaign_id,
     collection_runs_table.c.created_at.desc(),
 )
 Index(

@@ -6,10 +6,13 @@ const generated = vi.hoisted(() => ({
   getCollectionRuntimeSummary: vi.fn(),
   getCollectionCapabilities: vi.fn(),
   getCollectionBatchSupplementEligibility: vi.fn(),
+  getCollectionCampaignSupplementEligibility: vi.fn(),
   createCollectionRun: vi.fn(),
   getCollectionRun: vi.fn(),
   listImportBatches: vi.fn(),
   listKeywordPacks: vi.fn(),
+  listDataImportCampaigns: vi.fn(),
+  getDataImportCampaign: vi.fn(),
   getImportBatch: vi.fn(),
   createImportBatch: vi.fn(),
 }))
@@ -19,6 +22,7 @@ vi.mock('../src/generated/api/client', () => generated)
 import {
   createTikHubCollectionRun,
   fetchBatchContentPlatforms,
+  fetchCampaignContentPlatforms,
   fetchCollectionRuntimeList,
 } from '../src/features/import-batches/api'
 import { useImportBatchesStore } from '../src/features/import-batches/store'
@@ -66,6 +70,11 @@ describe('collection runtime feature', () => {
       batch_id: batchId,
       targets: [],
     }))
+    generated.getCollectionCampaignSupplementEligibility.mockImplementation(async (campaignId: string) => ({
+      campaign_id: campaignId,
+      targets: [],
+    }))
+    generated.listDataImportCampaigns.mockResolvedValue({ items: [] })
     generated.listKeywordPacks.mockResolvedValue({
       items: [],
       total: 0,
@@ -114,7 +123,7 @@ describe('collection runtime feature', () => {
     generated.listImportBatches.mockResolvedValue({ items: [], next_cursor: null, has_more: false })
     generated.getImportBatch.mockResolvedValue(batch('older-batch', 'succeeded', 1))
     const store = useImportBatchesStore()
-    await store.loadCreationOptions('older-batch')
+    await store.loadCreationOptions({ kind: 'batch', id: 'older-batch' })
     expect(generated.getImportBatch).toHaveBeenCalledWith('older-batch')
     expect(store.batchOptions.map((item) => item.id)).toEqual(['older-batch'])
   })
@@ -138,6 +147,33 @@ describe('collection runtime feature', () => {
 
     await expect(fetchBatchContentPlatforms('batch-1', ['xiaohongshu', 'douyin'])).resolves.toEqual(['xiaohongshu'])
     expect(generated.getCollectionBatchSupplementEligibility).toHaveBeenCalledWith('batch-1')
+  })
+
+  it('offers completed Data Import Campaigns and resolves unchanged rows through Campaign eligibility', async () => {
+    generated.getCollectionCapabilities.mockResolvedValue({ provider_configs: [], capabilities: [] })
+    generated.listImportBatches.mockResolvedValue({ items: [], next_cursor: null, has_more: false })
+    generated.listDataImportCampaigns.mockResolvedValue({
+      items: [{
+        id: 'campaign-1',
+        status: 'succeeded',
+        root_relative_path: 'campaign.xlsx',
+        stats: { unchanged: 2 },
+      }],
+    })
+    generated.getCollectionCampaignSupplementEligibility.mockResolvedValue({
+      campaign_id: 'campaign-1',
+      targets: [{ platform: 'douyin', target_count: 2 }],
+    })
+    const store = useImportBatchesStore()
+
+    await store.loadCreationOptions({ kind: 'campaign', id: 'campaign-1' })
+
+    expect(store.campaignOptions.map((item) => item.id)).toEqual(['campaign-1'])
+    expect(store.supplementContentPlatforms).toEqual(['douyin'])
+    await expect(
+      fetchCampaignContentPlatforms('campaign-1', ['xiaohongshu', 'douyin']),
+    ).resolves.toEqual(['douyin'])
+    expect(generated.getCollectionCampaignSupplementEligibility).toHaveBeenCalledWith('campaign-1')
   })
 
   it('does not offer a platform when backend eligibility excludes its current irrelevant content', async () => {

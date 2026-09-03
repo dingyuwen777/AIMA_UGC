@@ -31,6 +31,7 @@ import {
   createLocalCampaign,
   createHistoricalCampaign,
   fetchBatchContentPlatforms,
+  fetchCampaignContentPlatforms,
   fetchCollectionCapabilities,
   fetchCollectionRunDetail,
   fetchCollectionRuntimeList,
@@ -67,6 +68,13 @@ export interface DataImportLocalFileSelection {
   relativePath: string
 }
 
+export type SupplementSourceKind = 'campaign' | 'batch'
+
+export interface SupplementSourceSelection {
+  kind: SupplementSourceKind
+  id: string
+}
+
 const EMPTY_FILTERS: CollectionRuntimeFilters = {
   search: '',
   status: '',
@@ -96,6 +104,18 @@ function isSupplementBatch(batch: ImportBatchResponse): boolean {
   return batch.status === 'succeeded' && (batch.stats.rows_ingested ?? 0) > 0
 }
 
+function isSupplementCampaign(campaign: HistoricalCampaignResponse): boolean {
+  if (!['succeeded', 'partial_failed'].includes(campaign.status)) return false
+  const stats = campaign.stats
+  return (
+    (stats?.created ?? 0) +
+    (stats?.filled ?? 0) +
+    (stats?.updated ?? 0) +
+    (stats?.unchanged ?? 0) +
+    (stats?.conflict ?? 0)
+  ) > 0
+}
+
 export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const filters = reactive<CollectionRuntimeFilters>({ ...EMPTY_FILTERS })
   const activeTab = ref<CollectionRuntimeTab>('all')
@@ -104,9 +124,10 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const selectedBatch = ref<ImportBatchResponse | null>(null)
   const selectedRun = ref<CollectionRunResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
+  const campaignOptions = ref<HistoricalCampaignResponse[]>([])
   const batchOptions = ref<ImportBatchResponse[]>([])
   const keywordPackOptions = ref<KeywordPackSummaryResponse[]>([])
-  const batchContentPlatforms = ref<CollectionPlatform[]>([])
+  const supplementContentPlatforms = ref<CollectionPlatform[]>([])
   const historicalDirectoryPath = ref('')
   const historicalDirectoryEntries = ref<HistoricalDirectoryEntryResponse[]>([])
   const historicalDirectoryNextCursor = ref<string | null>(null)
@@ -123,7 +144,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const loadingNext = ref(false)
   const uploading = ref(false)
   const creating = ref(false)
-  const loadingBatchPlatforms = ref(false)
+  const loadingSupplementPlatforms = ref(false)
   const loadingKeywordPacks = ref(false)
   const loadingHistorical = ref(false)
   const creatingHistorical = ref(false)
@@ -134,7 +155,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollDocument: Document | undefined
   let refreshVersion = 0
-  let batchPlatformVersion = 0
+  let supplementPlatformVersion = 0
 
   const hasActiveJobs = computed(
     () =>
@@ -151,7 +172,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   )
 
   function selectedRecordTypes(): CollectionRuntimeRecordType[] | undefined {
-    if (activeTab.value === 'excel') return ['excel_import']
+    if (activeTab.value === 'excel') return ['excel_import', 'data_import_campaign']
     if (activeTab.value === 'tikhub') {
       if (
         filters.recordType === 'tikhub_discovery' ||
@@ -224,8 +245,15 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
 
   async function setTab(tab: CollectionRuntimeTab): Promise<void> {
     activeTab.value = tab
-    if (tab === 'excel' && filters.recordType !== 'excel_import') filters.recordType = ''
-    if (tab === 'tikhub' && filters.recordType === 'excel_import') filters.recordType = ''
+    if (
+      tab === 'excel' &&
+      filters.recordType !== 'excel_import' &&
+      filters.recordType !== 'data_import_campaign'
+    ) filters.recordType = ''
+    if (
+      tab === 'tikhub' &&
+      (filters.recordType === 'excel_import' || filters.recordType === 'data_import_campaign')
+    ) filters.recordType = ''
     await refresh()
   }
 
@@ -286,60 +314,78 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
-  async function loadBatchPlatforms(batchId: string): Promise<void> {
-    const version = ++batchPlatformVersion
-    batchContentPlatforms.value = []
-    if (!batchId) return
-    loadingBatchPlatforms.value = true
+  async function loadSupplementPlatforms(source: SupplementSourceSelection): Promise<void> {
+    const version = ++supplementPlatformVersion
+    supplementContentPlatforms.value = []
+    if (!source.id) return
+    loadingSupplementPlatforms.value = true
     error.value = null
     try {
-      const platforms = await fetchBatchContentPlatforms(batchId, SUPPORTED_PLATFORMS)
-      if (version === batchPlatformVersion) batchContentPlatforms.value = platforms
+      const platforms = source.kind === 'campaign'
+        ? await fetchCampaignContentPlatforms(source.id, SUPPORTED_PLATFORMS)
+        : await fetchBatchContentPlatforms(source.id, SUPPORTED_PLATFORMS)
+      if (version === supplementPlatformVersion) supplementContentPlatforms.value = platforms
     } catch (reason) {
-      if (version === batchPlatformVersion) error.value = errorMessage(reason)
+      if (version === supplementPlatformVersion) error.value = errorMessage(reason)
     } finally {
-      if (version === batchPlatformVersion) loadingBatchPlatforms.value = false
+      if (version === supplementPlatformVersion) loadingSupplementPlatforms.value = false
     }
   }
 
   /** 读取全部可用于辅助补采的历史导入批次，避免固定首屏截断。 */
-async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
-  const batches: ImportBatchResponse[] = []
-  const seenCursors = new Set<string>()
-  let cursor: string | undefined
-  while (true) {
-    const page = await fetchImportBatchList(cursor ? { limit: 100, cursor } : { limit: 100 })
-    batches.push(...page.items)
-    const next = page.next_cursor ?? undefined
-    if (!page.has_more || !next || seenCursors.has(next)) break
-    seenCursors.add(next)
-    cursor = next
+  async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
+    const batches: ImportBatchResponse[] = []
+    const seenCursors = new Set<string>()
+    let cursor: string | undefined
+    while (true) {
+      const page = await fetchImportBatchList(cursor ? { limit: 100, cursor } : { limit: 100 })
+      batches.push(...page.items)
+      const next = page.next_cursor ?? undefined
+      if (!page.has_more || !next || seenCursors.has(next)) break
+      seenCursors.add(next)
+      cursor = next
+    }
+    return batches.filter(isSupplementBatch)
   }
-  return batches.filter(isSupplementBatch)
-}
 
-  /** 加载新建补采所需能力、全部合法历史批次和完整启用词包目录。 */
-  async function loadCreationOptions(selectedBatchId?: string | null): Promise<void> {
+  /** 加载新建补采所需能力、Campaign、兼容批次和完整启用词包目录。 */
+  async function loadCreationOptions(
+    selectedSource?: SupplementSourceSelection | null,
+  ): Promise<void> {
     error.value = null
-    batchContentPlatforms.value = []
+    supplementContentPlatforms.value = []
     try {
-      const [providerCapabilities, batches, packs] = await Promise.all([
+      const [providerCapabilities, campaigns, batches, packs] = await Promise.all([
         fetchCollectionCapabilities(),
+        fetchHistoricalCampaigns(),
         fetchAllSupplementBatches(),
         fetchEnabledKeywordPacks(),
       ])
       capabilities.value = providerCapabilities
       keywordPackOptions.value = packs
+      campaignOptions.value = campaigns.items.filter(isSupplementCampaign)
       batchOptions.value = batches
       if (
-        selectedBatchId &&
-        !batchOptions.value.some((batch) => batch.id === selectedBatchId)
+        selectedSource?.kind === 'campaign' &&
+        !campaignOptions.value.some((campaign) => campaign.id === selectedSource.id)
       ) {
-        const selected = await fetchImportBatchDetail(selectedBatchId)
+        const selected = await fetchHistoricalCampaign(selectedSource.id)
+        if (isSupplementCampaign(selected)) {
+          campaignOptions.value = [selected, ...campaignOptions.value]
+        }
+      }
+      if (
+        selectedSource?.kind === 'batch' &&
+        !batchOptions.value.some((batch) => batch.id === selectedSource.id)
+      ) {
+        const selected = await fetchImportBatchDetail(selectedSource.id)
         if (isSupplementBatch(selected)) batchOptions.value = [selected, ...batchOptions.value]
       }
-      if (selectedBatchId && batchOptions.value.some((batch) => batch.id === selectedBatchId)) {
-        await loadBatchPlatforms(selectedBatchId)
+      const sourceExists = selectedSource?.kind === 'campaign'
+        ? campaignOptions.value.some((campaign) => campaign.id === selectedSource.id)
+        : batchOptions.value.some((batch) => batch.id === selectedSource?.id)
+      if (selectedSource && sourceExists) {
+        await loadSupplementPlatforms(selectedSource)
       }
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -594,9 +640,10 @@ async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
     selectedBatch,
     selectedRun,
     capabilities,
+    campaignOptions,
     batchOptions,
     keywordPackOptions,
-    batchContentPlatforms,
+    supplementContentPlatforms,
     historicalDirectoryPath,
     historicalDirectoryEntries,
     historicalDirectoryNextCursor,
@@ -612,7 +659,7 @@ async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
     loadingNext,
     uploading,
     creating,
-    loadingBatchPlatforms,
+    loadingSupplementPlatforms,
     loadingKeywordPacks,
     loadingHistorical,
     creatingHistorical,
@@ -629,7 +676,7 @@ async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
     closeDetail,
     upload,
     loadKeywordPacks,
-    loadBatchPlatforms,
+    loadSupplementPlatforms,
     loadCreationOptions,
     createRun,
     openHistoricalWorkspace,

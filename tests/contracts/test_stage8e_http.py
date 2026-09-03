@@ -18,6 +18,12 @@ def test_stage8e_openapi_exposes_collection_runtime_productization() -> None:
     assert paths["/api/v1/collection-runtime/summary"]["get"]["operationId"] == (
         "getCollectionRuntimeSummary"
     )
+    assert (
+        paths["/api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility"]["get"][
+            "operationId"
+        ]
+        == "getCollectionCampaignSupplementEligibility"
+    )
 
 
 def test_stage8e_create_contract_is_strict_and_discriminates_two_modes() -> None:
@@ -37,6 +43,7 @@ def test_stage8e_create_contract_is_strict_and_discriminates_two_modes() -> None
     assert keyword_pack_ids["type"] == "array"
     assert keyword_pack_ids["items"]["format"] == "uuid"
     assert request_schema["properties"]["platforms"]["maxItems"] == 5
+    assert request_schema["properties"]["data_import_campaign_id"]["anyOf"][0]["format"] == ("uuid")
 
     platform_request = schemas["CollectionRunPlatformRequest"]
     assert "search_config" in platform_request["properties"]
@@ -72,11 +79,22 @@ def test_stage8e_routes_keep_the_unified_error_contract() -> None:
         ("/api/v1/collection-runs", "post"),
         ("/api/v1/collection-runs/{run_id}", "get"),
         ("/api/v1/collection-runtime/runs", "get"),
+        (
+            "/api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility",
+            "get",
+        ),
     ):
         responses = spec["paths"][path][method]["responses"]
         assert responses["422"]["content"]["application/json"]["schema"] == {
             "$ref": "#/components/schemas/HttpErrorResponse"
         }
+
+    campaign_responses = spec["paths"][
+        "/api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility"
+    ]["get"]["responses"]
+    assert campaign_responses["409"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/HttpErrorResponse"
+    }
 
 
 def test_stage8e_run_detail_exposes_fixed_scope_status_without_provider_pagination() -> None:
@@ -96,3 +114,14 @@ def test_stage8e_run_detail_exposes_fixed_scope_status_without_provider_paginati
         "stats",
     } <= set(scope["required"])
     assert "pagination_state" not in scope["properties"]
+    assert "data_import_campaign_id" in run["properties"]
+
+
+def test_stage8e_runtime_contract_includes_campaign_without_requiring_a_synthetic_job() -> None:
+    schemas = create_app().openapi()["components"]["schemas"]
+    item = schemas["CollectionRuntimeItemResponse"]
+    record_type = schemas["CollectionRuntimeRecordType"]
+
+    assert "data_import_campaign" in record_type["enum"]
+    assert "data_import_campaign_id" in item["properties"]
+    assert "job_id" not in item["required"]

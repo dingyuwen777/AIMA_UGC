@@ -40,6 +40,7 @@ class PostgresCollectionRepository:
         manual_plan_id: UUID | None = None,
         occurrence_id: UUID | None = None,
         import_batch_id: UUID | None = None,
+        data_import_campaign_id: UUID | None = None,
     ) -> CollectionExecution:
         """在当前事务创建一个 queued Run 及其 queued Scopes。"""
         run_id = uuid4()
@@ -52,6 +53,7 @@ class PostgresCollectionRepository:
                     manual_plan_id=manual_plan_id,
                     occurrence_id=occurrence_id,
                     import_batch_id=import_batch_id,
+                    data_import_campaign_id=data_import_campaign_id,
                     trigger_type=trigger_type,
                     config_snapshot=config_snapshot,
                     status="queued",
@@ -331,6 +333,7 @@ def _row_to_run(row: RowMapping) -> CollectionRunRecord:
         error_summary=cast(str | None, row["error_summary"]),
         created_at=row["created_at"],
         import_batch_id=cast(UUID | None, row["import_batch_id"]),
+        data_import_campaign_id=cast(UUID | None, row["data_import_campaign_id"]),
     )
 
 

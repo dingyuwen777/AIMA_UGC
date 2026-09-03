@@ -611,6 +611,8 @@ historical_import_campaigns
 
 如果页面进度/终态异常，先看 Campaign/Item/Job 持久事实，不在前端猜状态。
 
+完成或部分完成的 Campaign 会作为父记录直接进入采集运行中心，并通过逐行账本成为辅助补采来源。不要把 Campaign 下的 Chunk Batch 再投影成独立导入记录；`unchanged` 行也必须沿 `processing_import_batch_items.content_id → historical_import_campaign_items.campaign_id` 保留查看与补采资格。旧单文件 Import Batch 仍按原 Provider Request/Attempt 来源链兼容。
+
 SQL：
 
 [`docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)

@@ -5,6 +5,7 @@ import {
   createServerDataImportCampaign,
   createImportBatch,
   finalizeLocalDataImportCampaign,
+  getCollectionCampaignSupplementEligibility,
   getCollectionBatchSupplementEligibility,
   getCollectionCapabilities,
   getCollectionRun,
@@ -31,6 +32,7 @@ import {
   type CollectionRuntimeListResponse,
   type CollectionRuntimeSummaryResponse,
   type HttpErrorResponse,
+  type HttpErrorItem,
   type HistoricalCampaignConflictListResponse,
   type HistoricalCampaignCreateRequest,
   type HistoricalCampaignCreatedResponse,
@@ -49,16 +51,19 @@ import {
   type ListImportBatchesParams,
   type ListCollectionRuntimeRunsParams,
 } from '../../generated/api/client'
+import { httpErrorDetail } from '../../shared/api/http'
 
 export class ImportApiError extends Error {
   readonly status: number
   readonly requestId: string
+  readonly errors: readonly HttpErrorItem[]
 
   constructor(response: HttpErrorResponse) {
-    super(response.detail)
+    super(httpErrorDetail(response))
     this.name = 'ImportApiError'
     this.status = response.status
     this.requestId = response.request_id
+    this.errors = response.errors ?? []
   }
 }
 
@@ -146,6 +151,15 @@ export async function fetchBatchContentPlatforms(
   platforms: readonly CollectionPlatform[],
 ): Promise<CollectionPlatform[]> {
   const eligibility = unwrap(await getCollectionBatchSupplementEligibility(batchId))
+  const eligible = new Set(eligibility.targets.map((item) => item.platform))
+  return platforms.filter((platform) => eligible.has(platform))
+}
+
+export async function fetchCampaignContentPlatforms(
+  campaignId: string,
+  platforms: readonly CollectionPlatform[],
+): Promise<CollectionPlatform[]> {
+  const eligibility = unwrap(await getCollectionCampaignSupplementEligibility(campaignId))
   const eligible = new Set(eligibility.targets.map((item) => item.platform))
   return platforms.filter((platform) => eligible.has(platform))
 }

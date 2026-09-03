@@ -2,6 +2,7 @@
 import type { CollectionRuntimeItemResponse } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
+import type { SupplementSourceSelection } from '../../../store'
 import {
   elapsed,
   formatDateTime,
@@ -15,7 +16,7 @@ import {
 defineProps<{ items: CollectionRuntimeItemResponse[]; loading: boolean }>()
 defineEmits<{
   select: [item: CollectionRuntimeItemResponse]
-  supplement: [batchId: string]
+  supplement: [source: SupplementSourceSelection]
 }>()
 
 function statusClass(item: CollectionRuntimeItemResponse): string {
@@ -51,7 +52,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
     >
       <div class="identity">
         <strong>{{ item.display_name }}</strong>
-        <span>{{ item.record_type === 'excel_import' ? '批次' : '运行' }} {{ shortId(item.record_id) }}</span>
+        <span>{{ ['excel_import', 'data_import_campaign'].includes(item.record_type) ? '导入' : '运行' }} {{ shortId(item.record_id) }}</span>
       </div>
       <div class="type-cell">
         {{ recordTypeLabels[item.record_type] }}
@@ -96,9 +97,17 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
           v-if="item.record_type === 'excel_import' && item.import_batch_id && item.status === 'succeeded' && (item.import_stats?.rows_ingested ?? 0) > 0"
           variant="text"
           size="small"
-          @click="$emit('supplement', item.import_batch_id)"
+          @click="$emit('supplement', { kind: 'batch', id: item.import_batch_id })"
         >
           基于批次补采
+        </AimaButton>
+        <AimaButton
+          v-if="item.record_type === 'data_import_campaign' && item.data_import_campaign_id && ['succeeded', 'partial_success'].includes(item.status) && (item.import_stats?.rows_matched ?? 0) > 0"
+          variant="text"
+          size="small"
+          @click="$emit('supplement', { kind: 'campaign', id: item.data_import_campaign_id })"
+        >
+          基于导入补采
         </AimaButton>
       </div>
       <AimaFeedbackBanner

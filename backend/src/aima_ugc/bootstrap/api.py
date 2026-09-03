@@ -53,6 +53,7 @@ from aima_ugc.contracts.http import (
     AnalysisContentRunPreviewResponse,
     AnalysisContentRunResponse,
     CollectionBatchSupplementEligibilityResponse,
+    CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
     CollectionPlanCreateRequest,
     CollectionPlanListQuery,
@@ -181,7 +182,7 @@ from aima_ugc.modules.reporting.http import (
     ReportingHttpService,
 )
 from aima_ugc.platform.health import ReadinessReport
-from aima_ugc.platform.logging import log_exception_event
+from aima_ugc.platform.logging import log_event, log_exception_event
 
 from .runtime import PlatformRuntime, create_platform_runtime
 
@@ -470,9 +471,20 @@ def create_app(
             )
             for error in exc.errors()
         )
+        request_id = _request_id(request)
+        log_event(
+            _LOGGER,
+            logging.WARNING,
+            "http_request_validation_failed",
+            "HTTP 请求未通过 Contract 校验。",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            validation_errors=[{"field": item.field, "code": item.code} for item in errors],
+        )
         return _error_response(
             status_code=422,
-            request_id=_request_id(request),
+            request_id=request_id,
             title="请求校验失败",
             detail="请求未通过 Contract 校验。",
             code="request_validation_error",
@@ -958,6 +970,23 @@ def create_app(
         batch_id: UUID,
     ) -> CollectionBatchSupplementEligibilityResponse:
         return current_collection_service().get_batch_supplement_eligibility(batch_id)
+
+    @application.get(
+        "/api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility",
+        operation_id="getCollectionCampaignSupplementEligibility",
+        response_model=CollectionCampaignSupplementEligibilityResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection"],
+    )
+    def get_collection_campaign_supplement_eligibility(
+        campaign_id: UUID,
+    ) -> CollectionCampaignSupplementEligibilityResponse:
+        return current_collection_service().get_campaign_supplement_eligibility(campaign_id)
 
     @application.post(
         "/api/v1/collection-runs",

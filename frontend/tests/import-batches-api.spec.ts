@@ -47,5 +47,22 @@ describe('import batch feature api', () => {
 
     expect(error).toBeInstanceOf(ImportApiError)
     expect(error).toMatchObject({ status: 500, requestId: 'request-stage8c' })
+    expect((error as ImportApiError).message).toContain('request: internal_error')
+  })
+
+  it('keeps Contract field and code while never echoing rejected values', async () => {
+    generated.getImportBatchSummary.mockResolvedValue({
+      type: 'about:blank',
+      title: '请求参数错误',
+      status: 422,
+      detail: '请求未通过 Contract 校验。',
+      request_id: 'request-contract',
+      errors: [{ code: 'extra_forbidden', field: 'query.legacy', message: '不允许额外字段' }],
+    })
+
+    const error = await fetchImportBatchSummary().catch((reason: unknown) => reason)
+
+    expect((error as ImportApiError).message).toContain('query.legacy: extra_forbidden')
+    expect((error as ImportApiError).message).not.toContain('secret-value')
   })
 })

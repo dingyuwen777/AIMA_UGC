@@ -17,6 +17,7 @@ from aima_ugc.platform.time import beijing_now
 
 type RuntimeRecordType = Literal[
     "excel_import",
+    "data_import_campaign",
     "tikhub_discovery",
     "tikhub_batch_supplement",
 ]
@@ -37,7 +38,14 @@ class CollectionRuntimeCursorCodec:
     """绑定查询条件并用 HMAC-SHA256 签名统一运行列表 Cursor。"""
 
     _VERSION = 1
-    _RECORD_TYPES = frozenset({"excel_import", "tikhub_discovery", "tikhub_batch_supplement"})
+    _RECORD_TYPES = frozenset(
+        {
+            "excel_import",
+            "data_import_campaign",
+            "tikhub_discovery",
+            "tikhub_batch_supplement",
+        }
+    )
 
     def __init__(
         self,
