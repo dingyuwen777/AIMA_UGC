@@ -42,6 +42,7 @@ analysis_content_runs_table = Table(
     Column("model", Text(), nullable=False),
     Column("generation_config", JSONB(), nullable=False),
     Column("generation_config_hash", Text(), nullable=False),
+    Column("runtime_config_snapshot", JSONB(), nullable=False, server_default=text("'{}'::jsonb")),
     Column("error_code", Text()),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("started_at", DateTime(timezone=True)),
@@ -62,6 +63,10 @@ analysis_content_runs_table = Table(
     CheckConstraint("shard_size > 0", name="shard_size_positive"),
     CheckConstraint("jsonb_typeof(filter_snapshot) = 'object'", name="filter_snapshot_object"),
     CheckConstraint("jsonb_typeof(generation_config) = 'object'", name="generation_config_object"),
+    CheckConstraint(
+        "jsonb_typeof(runtime_config_snapshot) = 'object'",
+        name="runtime_config_snapshot_object",
+    ),
     CheckConstraint("char_length(prompt_sha256) = 64", name="prompt_sha256_length"),
     CheckConstraint("char_length(taxonomy_sha256) = 64", name="taxonomy_sha256_length"),
     CheckConstraint(
@@ -89,11 +94,7 @@ analysis_content_run_targets_table = Table(
     Column("target_ordinal", BigInteger(), primary_key=True),
     Column("content_id", Uuid(), ForeignKey("contents.id"), nullable=False),
     Column("content_version", Integer(), nullable=False),
-    UniqueConstraint(
-        "run_id",
-        "content_id",
-        name="uq_analysis_content_run_targets_content",
-    ),
+    UniqueConstraint("run_id", "content_id", name="uq_analysis_content_run_targets_content"),
     CheckConstraint("target_ordinal >= 0", name="target_ordinal_nonnegative"),
     CheckConstraint("content_version >= 1", name="content_version_positive"),
     info={"owner": "analysis"},
@@ -111,12 +112,7 @@ analysis_content_results_table = Table(
     Column("id", Uuid(), primary_key=True),
     Column("content_id", Uuid(), ForeignKey("contents.id"), nullable=False),
     Column("content_version", Integer(), nullable=False),
-    Column(
-        "analysis_run_id",
-        Uuid(),
-        ForeignKey("analysis_content_runs.id"),
-        nullable=False,
-    ),
+    Column("analysis_run_id", Uuid(), ForeignKey("analysis_content_runs.id"), nullable=False),
     Column("job_id", Uuid(), ForeignKey("jobs.id"), nullable=False),
     Column("schema_version", Text(), nullable=False),
     Column("relevance", Text(), nullable=False),
@@ -132,10 +128,7 @@ analysis_content_results_table = Table(
     Column("analyzed_at", DateTime(timezone=True), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint(
-        "analysis_run_id",
-        "content_id",
-        "content_version",
-        name="uq_analysis_content_results_identity",
+        "analysis_run_id", "content_id", "content_version", name="uq_analysis_content_results_identity"
     ),
     CheckConstraint("content_version >= 1", name="content_version_positive"),
     CheckConstraint("relevance in ('relevant','irrelevant')", name="relevance_allowed"),
@@ -148,24 +141,15 @@ analysis_content_results_table = Table(
     CheckConstraint("char_length(input_hash) = 64", name="input_hash_sha256_length"),
     CheckConstraint("char_length(prompt_sha256) = 64", name="prompt_sha256_length"),
     CheckConstraint("char_length(taxonomy_sha256) = 64", name="taxonomy_sha256_length"),
-    CheckConstraint(
-        "char_length(generation_config_hash) = 64",
-        name="generation_config_hash_length",
-    ),
+    CheckConstraint("char_length(generation_config_hash) = 64", name="generation_config_hash_length"),
     info={"owner": "analysis"},
 )
-
 
 analysis_content_requests_table = Table(
     "analysis_content_requests",
     metadata,
     Column("id", Uuid(), primary_key=True),
-    Column(
-        "run_id",
-        Uuid(),
-        ForeignKey("analysis_content_runs.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
+    Column("run_id", Uuid(), ForeignKey("analysis_content_runs.id", ondelete="CASCADE"), nullable=False),
     Column("shard_no", Integer(), nullable=False),
     Column("job_id", Uuid(), ForeignKey("jobs.id"), nullable=False),
     Column("scope", Text(), nullable=False),
@@ -181,16 +165,10 @@ analysis_content_requests_table = Table(
     info={"owner": "analysis"},
 )
 
-
 analysis_content_request_items_table = Table(
     "analysis_content_request_items",
     metadata,
-    Column(
-        "request_id",
-        Uuid(),
-        ForeignKey("analysis_content_requests.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
+    Column("request_id", Uuid(), ForeignKey("analysis_content_requests.id", ondelete="CASCADE"), primary_key=True),
     Column("content_id", Uuid(), ForeignKey("contents.id"), primary_key=True),
     Column("content_version", Integer(), nullable=False),
     Column("ordinal", Integer(), nullable=False),
@@ -198,10 +176,7 @@ analysis_content_request_items_table = Table(
     Column("status", Text(), nullable=False, server_default=text("'pending'")),
     Column("error_code", Text()),
     UniqueConstraint("request_id", "ordinal", name="uq_analysis_content_request_items_ordinal"),
-    CheckConstraint(
-        "content_version >= 1",
-        name="content_version_positive",
-    ),
+    CheckConstraint("content_version >= 1", name="content_version_positive"),
     CheckConstraint("ordinal >= 0", name="ordinal_nonnegative"),
     CheckConstraint(
         "status in ('pending','succeeded','failed','stale','cancelled')",
@@ -210,23 +185,16 @@ analysis_content_request_items_table = Table(
     CheckConstraint(
         "(status = 'pending' and analysis_result_id is null and error_code is null) or "
         "(status = 'succeeded' and analysis_result_id is not null and error_code is null) or "
-        "(status in ('failed','stale','cancelled') and analysis_result_id is null "
-        "and error_code is not null)",
+        "(status in ('failed','stale','cancelled') and analysis_result_id is null and error_code is not null)",
         name="status_fields_consistent",
     ),
     info={"owner": "analysis"},
 )
 
-
 analysis_content_label_pairs_table = Table(
     "analysis_content_label_pairs",
     metadata,
-    Column(
-        "analysis_result_id",
-        Uuid(),
-        ForeignKey("analysis_content_results.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
+    Column("analysis_result_id", Uuid(), ForeignKey("analysis_content_results.id", ondelete="CASCADE"), primary_key=True),
     Column("ordinal", Integer(), primary_key=True),
     Column("primary_label", Text(), nullable=False),
     Column("secondary_label", Text(), nullable=False),
@@ -234,14 +202,10 @@ analysis_content_label_pairs_table = Table(
     CheckConstraint("char_length(primary_label) > 0", name="primary_label_nonempty"),
     CheckConstraint("char_length(secondary_label) > 0", name="secondary_label_nonempty"),
     UniqueConstraint(
-        "analysis_result_id",
-        "primary_label",
-        "secondary_label",
-        name="uq_analysis_content_label_pairs_value",
+        "analysis_result_id", "primary_label", "secondary_label", name="uq_analysis_content_label_pairs_value"
     ),
     info={"owner": "analysis"},
 )
-
 
 __all__ = [
     "analysis_content_label_pairs_table",
