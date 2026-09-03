@@ -192,6 +192,9 @@ jobs:
               '''                        if next_count > expected_target_count:\n                            jobs.lock_current_execution(fence)''',
               1,
           )
+          text = text.replace('repository.clear_run_targets(payload.run_id)\n', '')
+          if 'clear_run_targets' in text:
+              raise SystemExit('analysis_worker.py 仍存在 clear_run_targets 调用')
           path.write_text(text, encoding='utf-8')
 
           path = Path('backend/src/aima_ugc/adapters/persistence/postgres/analysis.py')
