@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260903-issue-328-data-import-runtime
 title: Data Import Campaign 运行中心与辅助补采闭环
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/issue-328-data-import-runtime
 created: 2026-09-03
@@ -131,16 +131,26 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/328
 
 # Pre-Merge 永久门禁
 
-PR #329 首轮实现 HEAD `038d73e76f27a948c6002dbc5ef8be2ea4f07ca1`：
+PR #329 最终 HEAD `e7bd5bb2273403abc4571c9204b3afd50f443c77`：
 
-- CI #3903 / run `33745640755`：success，覆盖 Repository Quality、Linux Unit/Contract/API、PostgreSQL Integration、Real Full-stack Golden Path、Docs/Governance；
-- Runtime Acceptance #1024 / run `33745640389`：success；
-- Developer Tooling Compatibility #389 / run `33745640382`：success；
-- Change Completion Gate #1768/#1769：因本 Change 按流程保持 `proposed` 等待上述证据而失败；本提交改为 `ready_for_review` 后重新触发最终 Gate，不把预期阶段失败写成通过。
+- CI #3905 / run `33746284393`：success，覆盖 Repository Quality、Linux Unit/Contract/API、PostgreSQL Integration、Real Full-stack Golden Path、Docs/Governance 与 CI Gate；
+- Runtime Acceptance #1026 / run `33746284097`：success；
+- Developer Tooling Compatibility #390 / run `33746284111`：success；
+- Change Completion Gate #1771 / run `33746284112`：success。
+
+# Implementation Main-Fresh 证据
+
+Implementation squash merge `1b08132227db105c765dcb8ac744c25433fd5e38` 已进入 `main`，同一 merge SHA 的 push 工作流全部成功：
+
+- CI run `33746741407`：success，Repository Quality、PostgreSQL Integration、Real Full-stack Golden Path 和 CI Gate 均通过；
+- Runtime Acceptance run `33746741235`：success；
+- Developer Tooling Compatibility run `33746741228`：success；
+- Change Completion Gate run `33746741238`：success；
+- success=4、failure=0、in_progress=0。
 
 # Completion Audit
 
 - [x] upstream_re_read：已重新读取 Issue #328、相关 Blueprint/Appendix、最终 Contract/Schema、最新 `origin/main` 与 PR #329 最终业务 diff，并独立重建 R1–R8 完成定义。
 - [x] change_coverage：Campaign Runtime/KPI、eligibility、逐行账本、Run 来源、旧 Batch 兼容、generated Client、422 诊断、Migration、测试与文档均有实现和新鲜证据。
 - [x] reverse_audit：已从 Campaign 反查运行中心/补采/Worker，从页面选择与详情动作反查后端真实 API/持久化支持，并确认 Campaign Chunk 不重复统计、旧 Batch 路径仍可用。
-- [x] unresolved_cleared：Requirement Traceability 无 `not_satisfied`；外部付费 Probe 的不适用依据明确；Review 发现已修复，首轮 CI/Runtime/Tooling 无失败。
+- [x] unresolved_cleared：Requirement Traceability 无 `not_satisfied`；外部付费 Probe 的不适用依据明确；Review 发现已修复，最终 pre-merge 与 implementation main-fresh 永久门禁均无失败。
