@@ -30,6 +30,12 @@ def test_analysis_run_selected_scope_keeps_existing_bounds() -> None:
     targets = AnalysisRunTargetSelection(scope="selected", content_ids=(content_id,))
     assert targets.content_ids == (content_id,)
 
+    max_selected = tuple(uuid4() for _ in range(1000))
+    assert (
+        AnalysisRunTargetSelection(scope="selected", content_ids=max_selected).content_ids
+        == max_selected
+    )
+
     with pytest.raises(ValidationError):
         AnalysisRunTargetSelection(scope="selected", content_ids=())
     with pytest.raises(ValidationError):
