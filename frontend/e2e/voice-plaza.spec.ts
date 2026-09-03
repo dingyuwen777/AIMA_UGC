@@ -393,7 +393,15 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   let exportRequest: unknown
   let previewRequest: unknown
   let analysisCreated = false
+  let analysisCancelled = false
   let cancelRequested = false
+  const cancelledRun = {
+    ...analysisRun,
+    status: 'cancelled',
+    stats: { pending: 0, succeeded: 0, failed: 0, cancelled: 20, stale: 0 },
+    finished_at: '2026-08-21T03:01:00Z',
+    shards: [],
+  }
   await page.route('**/api/v1/analysis/content-runs/preview', async (route) => {
     previewRequest = route.request().postDataJSON()
     await route.fallback()
@@ -402,7 +410,9 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
     if (route.request().method() !== 'POST') {
       await route.fulfill({
         contentType: 'application/json',
-        body: JSON.stringify({ items: analysisCreated ? [analysisRun] : [] }),
+        body: JSON.stringify({
+          items: analysisCancelled ? [cancelledRun] : analysisCreated ? [analysisRun] : [],
+        }),
       })
       return
     }
@@ -436,15 +446,10 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   })
   await page.route(`**/api/v1/analysis/content-runs/${analysisRunId}/cancel`, async (route) => {
     cancelRequested = true
+    analysisCancelled = true
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({
-        ...analysisRun,
-        status: 'cancelled',
-        stats: { pending: 0, succeeded: 0, failed: 0, cancelled: 20, stale: 0 },
-        finished_at: '2026-08-21T03:01:00Z',
-        shards: [],
-      }),
+      body: JSON.stringify(cancelledRun),
     })
   })
 
@@ -459,7 +464,8 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   await expect(page.getByText(/当前无法可靠估算费用/)).toBeVisible()
   await page.getByRole('button', { name: '确认并创建 Analysis Run' }).click()
   await expect(page.getByText(/已创建 AI Analysis Run/)).toBeVisible()
-  await expect(page.getByText('AI Analysis Run 历史')).toBeVisible()
+  await expect(page.getByText('AI Analysis Run 历史')).toHaveCount(0)
+  await expect(page.getByText('AI 打标任务')).toBeVisible()
   await expect(page.getByText('Run #1 · 处理中')).toBeVisible()
   await expect(page.getByRole('progressbar', { name: 'AI Run #1 进度' })).toHaveAttribute('aria-valuenow', '18')
   expect(previewRequest).toMatchObject({
@@ -472,8 +478,15 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
     run_intent: 'manual_reanalysis',
   })
   await page.getByRole('button', { name: '取消 Run' }).click()
-  await expect(page.getByText('Run #1 · 已取消')).toBeVisible()
+  await expect(page.getByText('Run #1 · 处理中')).toHaveCount(0)
   expect(cancelRequested).toBe(true)
+
+  await page.getByRole('button', { name: /任务中心/ }).click()
+  const taskCenter = page.getByRole('complementary', { name: '任务中心' })
+  await expect(taskCenter).toBeVisible()
+  await expect(taskCenter).toContainText('AI 打标 · Run #1')
+  await expect(taskCenter).toContainText('已取消')
+  await taskCenter.getByRole('button', { name: '关闭任务中心' }).click()
 
   await page.getByRole('button', { name: /导出记录/ }).click()
   await expect(page.getByText('未完成 AI 打标的内容不会被丢弃')).toBeVisible()
