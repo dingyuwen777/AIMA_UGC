@@ -10,6 +10,9 @@ from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepo
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
+from aima_ugc.adapters.persistence.postgres.content_queries import (
+    PostgresContentQueryRepository,
+)
 from aima_ugc.bootstrap.analysis_worker import (
     PostgresContentAnalysisJobExecutor,
     PostgresContentAnalysisPlanJobExecutor,
@@ -403,6 +406,85 @@ def test_all_scope_planner_does_not_use_unbounded_freeze(
                     select(func.count()).where(analysis_content_requests_table.c.run_id == run_id)
                 )
                 == 2
+            )
+    finally:
+        runtime.close()
+
+
+def test_all_scope_target_change_does_not_run_unbounded_cleanup(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """目标漂移失败时不得用一个 DELETE 事务清掉此前已分批冻结的海量 Target。"""
+
+    runtime = _runtime(tmp_path)
+    try:
+        client = _client(runtime)
+        assert len(_seed_contents(client, runtime)) == 3
+        preview = client.post(
+            "/api/v1/analysis/content-runs/preview",
+            json={"targets": {"scope": "all"}},
+        )
+        assert preview.status_code == 200
+        created = client.post(
+            "/api/v1/analysis/content-runs",
+            json={
+                "client_idempotency_key": f"chg314-review-all-drift-{uuid4()}",
+                "targets": {"scope": "all"},
+                "expected_target_count": 3,
+                "expected_configuration_hash": preview.json()["configuration_hash"],
+                "run_intent": "manual_reanalysis",
+            },
+        )
+        assert created.status_code == 202
+
+        monkeypatch.setattr(
+            PostgresContentQueryRepository,
+            "count_all_analysis_targets",
+            lambda self: 4,
+        )
+
+        def reject_unbounded_cleanup(self, run_id):  # type: ignore[no-untyped-def]
+            del self, run_id
+            raise AssertionError("all Scope 异常路径不得执行全量 clear_run_targets")
+
+        monkeypatch.setattr(
+            PostgresAnalysisRepository,
+            "clear_run_targets",
+            reject_unbounded_cleanup,
+            raising=False,
+        )
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=_analysis_registry(
+                runtime,
+                raw_response=_relevant_response(),
+                freeze_batch_size=2,
+            ),
+            worker_id="chg314-review-all-drift-green",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert worker.run_once() is True
+        run_id = UUID(created.json()["run_id"])
+        run = client.get(f"/api/v1/analysis/content-runs/{run_id}")
+        assert run.status_code == 200
+        assert run.json()["status"] == "failed"
+        assert run.json()["error_code"] == "content_analysis_target_changed"
+        with runtime.database.engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count()).where(
+                        analysis_content_run_targets_table.c.run_id == run_id
+                    )
+                )
+                == 3
+            )
+            assert (
+                connection.scalar(
+                    select(func.count()).where(analysis_content_requests_table.c.run_id == run_id)
+                )
+                == 0
             )
     finally:
         runtime.close()

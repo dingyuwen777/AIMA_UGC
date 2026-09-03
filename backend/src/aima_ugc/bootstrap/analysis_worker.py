@@ -279,8 +279,6 @@ class PostgresContentAnalysisPlanJobExecutor:
                             return JobHandlerResult.failed("analysis_run_not_found")
                         all_scope = is_analysis_all_scope_filter_snapshot(run["filter_snapshot"])
                         if run["cancel_requested_at"] is not None:
-                            if all_scope:
-                                repository.clear_run_targets(payload.run_id)
                             return JobHandlerResult.cancelled()
 
                         expected_target_count = cast(int, run["target_count"])
@@ -324,7 +322,6 @@ class PostgresContentAnalysisPlanJobExecutor:
                                 frozen_count != expected_target_count
                                 or current_target_count != expected_target_count
                             ):
-                                repository.clear_run_targets(payload.run_id)
                                 jobs.lock_current_execution(fence)
                                 return JobHandlerResult.failed("content_analysis_target_changed")
                             created = schedule_analysis_run_shards(
@@ -346,7 +343,6 @@ class PostgresContentAnalysisPlanJobExecutor:
 
                         next_count = frozen_count + len(batch)
                         if next_count > expected_target_count:
-                            repository.clear_run_targets(payload.run_id)
                             jobs.lock_current_execution(fence)
                             return JobHandlerResult.failed("content_analysis_target_changed")
                         repository.append_run_targets(

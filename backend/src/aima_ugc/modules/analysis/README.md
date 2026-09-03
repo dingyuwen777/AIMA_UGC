@@ -227,7 +227,7 @@ POST /api/v1/analysis/content-runs
 → 短事务创建 analysis_content_runs + analysis.content-run-plan.v1 Planner
 → selected/query 继续用集合式冻结；公开 all 按稳定 Content UUID keyset 分批冻结 ID + Version
 → all 每批独立短事务并从已提交 Target 续跑，全部冻结后再次核对 Preview 数量
-→ 数量变化时清理未开始 Shard 的部分 Target，并以可查询 error_code 失败关闭
+→ 数量变化时以可查询 error_code 失败关闭；已提交的部分 Target 留在终态 Run 中且不会被调度，避免异常路径进行海量同步清理
 → 校验通过后才有界创建 analysis.content-label.v1 Shard Job
 → Worker
 → 校验实际 Prompt/Taxonomy/Provider/Model/生成配置与 Run 冻结身份一致

@@ -11,7 +11,6 @@ from sqlalchemy import (
     BigInteger,
     Integer,
     Uuid,
-    delete,
     func,
     insert,
     literal,
@@ -208,15 +207,6 @@ class PostgresAnalysisRepository:
                 .order_by(analysis_content_run_targets_table.c.target_ordinal.desc())
                 .limit(1)
             ),
-        )
-
-    def clear_run_targets(self, run_id: UUID) -> None:
-        """清理未开始 Shard 的部分冻结目标，用于 all Scope fail-closed。"""
-
-        self._session.execute(
-            delete(analysis_content_run_targets_table).where(
-                analysis_content_run_targets_table.c.run_id == run_id
-            )
         )
 
     def frozen_target_count(self, run_id: UUID) -> int:
