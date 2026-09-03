@@ -7,7 +7,8 @@ Requirement-Source: #<Issue>
 - `#<Issue>`、空值、`TBD` / `TODO` / `待确认` / `无` 等占位值、已不存在的 Issue/路径或自由文本 ID 会被 `Requirement Traceability and Completion Audit` 拒绝。
 - 机器门禁只确认来源“存在、可解析、可访问”，不判断需求自然语言是否完整，也不替代 Completion Audit / Agent_Skills Review 的需求符合性审查。
 - 如果项目已有更强的正式需求源，可填写当前仓库内对应正式路径；仓库外 ID/URL 只有在项目后续为其建立明确机器解析规则后才可作为机器来源。
-- `Closes` / `Fixes` / `Resolves` 只在本 PR 合并后确实完成整个 Issue 时使用；不要用关闭关键字替代 `Requirement-Source:`。
+- `Closes` / `Fixes` / `Resolves` 只在不依赖 merge 后证据、且本 PR 合并本身已经足以完成整个 Issue 时使用；不要用关闭关键字替代 `Requirement-Source:`。
+- Requirement Source **需要 post-merge evidence**（例如 main fresh CI、迁移/部署后验证或 Change archive）时，merge 前**不得使用 `Closes` / `Fixes` / `Resolves`**；只保留 `Requirement-Source:`，由 Post-Merge Finalization / Closure Audit 取得充分直接 Evidence、回写 Acceptance 状态并重读确认后再关闭。
 
 ## 背景与现状
 
