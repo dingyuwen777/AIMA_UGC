@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/dev/runtime_config_hash_finalize.py
       - .github/workflows/runtime-config-hash-finalize.yml
+      - tests/unit/system/test_runtime_provider_config.py
 
 permissions:
   contents: write
