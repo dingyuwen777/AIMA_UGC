@@ -282,7 +282,7 @@ src/features/voice-plaza/
 - 创建正式 Excel Export；
 - 查询 Export 状态、真实进度和下载 Artifact。
 
-当前新版 Analysis Run 只开放显式选择 1—1000 条内容；query scope Run 没有作为当前页面能力开放。页面不负责 Planner/Shard/Current 选择规则，这些由后端 Analysis Domain、PostgreSQL 和 generated Contract 决定。
+当前新版 Analysis Run 正式开放 `selected` 与 `all` 两种范围。`selected` 保留显式选择 1—1000 条内容的上限；`all` 表示数据库当前全部 Content Current，即使页面没有勾选内容也可以发起，且不受当前筛选和已加载分页影响。前端对 `all` 只发送 `{ scope: 'all' }`，不会先翻页收集全部 ID。页面不负责 Planner/Shard/Current 选择规则，这些由后端 Analysis Domain、PostgreSQL 和 generated Contract 决定。
 
 人工相关性复核通过 generated Client 调当前正式 API；Feature `api.ts` 只提供页面语义薄封装，不在前端复制 `relevant / irrelevant / inherit_ai` 的后端状态机或数据库规则。完整业务语义看 Analysis README 与后端 Contract。
 
