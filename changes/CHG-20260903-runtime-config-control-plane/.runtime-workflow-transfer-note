@@ -1,1 +1,0 @@
-The validated runtime workflow is transferred by Git object in the next commit; this marker is removed atomically.
