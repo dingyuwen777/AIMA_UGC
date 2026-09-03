@@ -436,18 +436,22 @@ frontend/src/features/import-batches/
 frontend/src/features/collection-strategy/
 frontend/src/features/admin-configuration/
 frontend/src/features/identity/
+frontend/src/features/task-center/
 ```
 
 含义：
 
 - `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；“AI 相关性”可显式查看待复核 `irrelevant`，并支持单条/批量人工标记为相关；
+- `/voice-plaza`：Analysis Run 预检和显式创建仍由声音广场承担；正文只显示 `queued / running / cancelling` 活动 Run 的紧凑状态、加权进度和取消入口，终态 Run 不再作为历史大块持续占据声音记录上方；导出弹窗继续展示持久 Export Job 进度；
 - `/collection-runtime`：Excel/TikHub 统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；
-- `/voice-plaza`：Analysis Run 预检、显式创建、历史、加权进度与取消；导出弹窗同时展示持久 Export Job 进度；
+- 全局 `AppShell` 右上角提供任务中心 Drawer：通过现有 generated Client 聚合 Analysis Run、Collection Runtime 和 Data Export 三个既有 read model，显示活动任务数量、最近终态、进度/错误摘要和对应业务页入口；它没有独立路由，也不新增统一后端 Task API、Job 表或第二套状态机；
+- `frontend/src/features/task-center/index.ts` 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
+- Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
 - `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
 - `/admin/configuration`：管理员车型/关键词关系、Analysis Scheme 版本与审计；路由守卫只改善交互，后端仍独立鉴权；
 - `/`：当前 HomeView。
 
-后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。
+后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。全局任务中心同样只是前端聚合入口，不能据此把当前后端描述成已经有一个统一 Task/Job 公共资源。
 
 ---
 
@@ -470,6 +474,8 @@ Feature Page
 - Feature 直接导入另一个 Feature 的私有 Store；
 - 在页面代码里理解 PostgreSQL 表结构；
 - 直接读取 env.local、Secret 或复制后端配置规则来判断业务能力。
+
+如果确实需要跨 Feature 的全局前端能力，必须由对应 Feature 暴露稳定公共入口，例如任务中心通过 `features/task-center/index.ts` 暴露 `TaskCenter/useTaskCenterStore`；这不授权其它 Feature 深层导入其私有 `api.ts` 或复制业务状态机。
 
 如果设计稿字段和后端 Contract 不一致，先判断需求是否要改后端，不要在页面层“猜字段”。
 
@@ -718,6 +724,7 @@ Job Payload / Handler
 飞书企业登录/公网生产认证
 Word Report 的正式 PostgreSQL Job/API
 LLM 配置编辑/Secret 查询 API
+统一后端 Task/Job 公共 API 或万能任务表
 ```
 
 未来实现时再由实际 Contract、代码和测试更新本文。
