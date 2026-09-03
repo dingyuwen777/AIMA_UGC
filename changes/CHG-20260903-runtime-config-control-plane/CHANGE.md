@@ -29,7 +29,7 @@
 
 管理员提交 API Key 时，服务端把 Secret 原子写入批准的 Secret Root，并生成新的版本化 `secret_ref`。更新数据库后，旧 Secret 文件继续保留供既有 Run Snapshot 使用。任何读取接口不得返回 Secret 内容。
 
-首次部署使用独立的持久化 Provider Secret Store：Linux 默认 `${AIMA_HOST_ROOT}/shared/provider-secrets`，Windows Docker Desktop 使用 `windows_provider_secrets` named volume。`configure` 只在首次缺失时把部署 Secret 复制进去；数据库 Provider 记录存在后不再被 `.env` 启停/Base URL 覆盖。API 以读写方式挂载该 Store 用于密钥轮换，Worker 只读挂载并按 Run Snapshot 解析历史 Secret 引用。
+首次部署使用独立的持久化 Provider Secret Store：Linux 默认 `${AIMA_HOST_ROOT}/shared/provider-secrets`，Windows Docker Desktop 使用 `windows_provider_secrets` named volume。`configure` 只在数据库尚未接管对应 Provider 时复制部署 Secret；数据库 Provider 记录存在后不再被 `.env` 启停、Base URL 或旧 Secret 校验干扰。API 以读写方式挂载该 Store 用于密钥轮换，Worker 只读挂载并按 Run Snapshot 解析历史 Secret 引用。
 
 ## 验收
 
@@ -45,16 +45,24 @@
 
 ## 实现验证证据
 
-2026-09-03 在仓库 GitHub Runner 的一次性收尾验证中已通过：
+2026-09-03 在仓库 GitHub Runner 的收尾验证中已通过：
 
 - `scripts/contracts/generate.py` 生成后再次 `--check` 无漂移；
 - Orval 前端 API Client 重新生成成功；
 - 前端 TypeScript/Vue typecheck、ESLint、生产构建全部通过；
-- `tests/unit/system/test_runtime_provider_config.py`：4 项通过，覆盖 LLM dotted Provider 身份兼容、Collection Provider 约束、不可变 Secret 写入和 Collection Provider Run Snapshot；
+- `tests/unit/system/test_runtime_provider_config.py`：6 项回归覆盖 LLM Provider 身份兼容、Collection Provider 约束、不可变 Secret、Collection Run Provider Snapshot、DB 默认 LLM 覆盖 env、DB 已接管但无活动默认时禁止 env 回退；
+- `tests/unit/content/test_analysis_runtime_configuration_hash.py`：2 项通过，确认 Provider `revision` / `secret_ref` 变化会改变 Analysis 乐观锁哈希，同时历史空 Runtime Snapshot 保持旧哈希兼容；
 - `uv run mypy backend/src`：287 个源码文件无类型错误；
 - `docker compose config` 与 Windows overlay `docker compose -f compose.yaml -f compose.windows.yaml config` 均通过。
 
-正式 PR 全量 CI、Runtime Acceptance 与 L3 Review 仍以 GitHub 门禁结果为最终完成证据。
+## L3 Review 记录
+
+两阶段 Review 已按 Requirement 反查并修复以下重要 Finding：
+
+1. Secret 写入从“先检查后 replace”改为目标已存在即原子失败的 link-if-absent 发布，消除极窄并发窗口下覆盖历史 Secret 的可能性；
+2. `configure` 在 DB 接管 Provider 后停止使用旧 `.env` 覆盖或校验对应动态配置，避免重启时第二事实源重新干扰运行；
+3. Analysis `configuration_hash` 纳入冻结 Provider 安全快照，避免 Preview 后管理员轮换 Provider、Create 却仍接受旧乐观锁的竞态；
+4. PR 当前无未解决 Review thread；最终完成仍以最新 HEAD 的永久 CI、Runtime Acceptance 与 Release dry-run 全绿为准。
 
 ## 回滚
 
