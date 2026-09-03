@@ -53,20 +53,27 @@ from .runtime import PlatformRuntime, create_platform_runtime
 
 
 class _TikHubTransportPool:
-    """按冻结的 Base URL + timeout 复用进程级 httpx Client。"""
+    """按冻结的连接与限流参数复用进程级 httpx Client。"""
 
     def __init__(self) -> None:
-        self._transports: dict[tuple[str, int], TikHubHttpTransport] = {}
+        self._transports: dict[tuple[str, int, int, int | None], TikHubHttpTransport] = {}
         self._lock = Lock()
 
     def __call__(self, provider_config: ProviderConfig) -> ProviderTransport:
-        key = (provider_config.base_url, provider_config.timeout_seconds)
+        key = (
+            provider_config.base_url,
+            provider_config.timeout_seconds,
+            provider_config.max_concurrency,
+            provider_config.max_rps,
+        )
         with self._lock:
             transport = self._transports.get(key)
             if transport is None:
                 transport = TikHubHttpTransport(
                     base_url=provider_config.base_url,
                     timeout_seconds=provider_config.timeout_seconds,
+                    max_concurrency=provider_config.max_concurrency,
+                    max_rps=provider_config.max_rps,
                 )
                 self._transports[key] = transport
             return transport
