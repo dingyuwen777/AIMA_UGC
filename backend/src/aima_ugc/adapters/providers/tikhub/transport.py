@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping
+from threading import BoundedSemaphore, Lock
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -33,12 +35,18 @@ class TikHubHttpTransport:
         *,
         base_url: str = DEFAULT_TIKHUB_BASE_URL,
         timeout_seconds: float = DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
+        max_concurrency: int = 5,
+        max_rps: int | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
         normalized_base_url = _validate_tikhub_base_url(actual_base_url)
         if timeout_seconds <= 0:
             raise ValueError("TikHub timeout_seconds 必须大于 0")
+        if max_concurrency <= 0:
+            raise ValueError("TikHub max_concurrency 必须大于 0")
+        if max_rps is not None and max_rps <= 0:
+            raise ValueError("TikHub max_rps 必须大于 0")
         self._base_url = normalized_base_url
         self._owns_client = client is None
         self._client = client or httpx.Client(
@@ -47,6 +55,10 @@ class TikHubHttpTransport:
             follow_redirects=False,
             trust_env=False,
         )
+        self._concurrency = BoundedSemaphore(max_concurrency)
+        self._max_rps = max_rps
+        self._rate_lock = Lock()
+        self._next_request_at = 0.0
 
     def close(self) -> None:
         if self._owns_client:
@@ -77,39 +89,41 @@ class TikHubHttpTransport:
         headers.setdefault("Accept", "application/json")
         headers.setdefault("User-Agent", "AIMA_UGC/1.0")
 
-        try:
-            response = self._client.request(
-                request.method,
-                request.path,
-                params=_http_query_params(request.params),
-                headers=headers,
-                json=request.body,
-            )
-        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-            raise ProviderTransportFailure.not_sent(
-                code="tikhub_connect_failed",
-                safe_summary="TikHub 连接建立失败",
-            ) from exc
-        except (
-            httpx.ReadError,
-            httpx.ReadTimeout,
-            httpx.RemoteProtocolError,
-            httpx.WriteError,
-            httpx.WriteTimeout,
-        ) as exc:
-            raise ProviderTransportFailure.unknown(
-                code="tikhub_delivery_unknown",
-                safe_summary="TikHub 请求发送状态未知",
-                currency="USD",
-                unit="request",
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise ProviderTransportFailure.unknown(
-                code="tikhub_http_transport_failed",
-                safe_summary="TikHub HTTP Transport 失败且发送状态无法确认",
-                currency="USD",
-                unit="request",
-            ) from exc
+        with self._concurrency:
+            self._wait_for_rate_slot()
+            try:
+                response = self._client.request(
+                    request.method,
+                    request.path,
+                    params=_http_query_params(request.params),
+                    headers=headers,
+                    json=request.body,
+                )
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                raise ProviderTransportFailure.not_sent(
+                    code="tikhub_connect_failed",
+                    safe_summary="TikHub 连接建立失败",
+                ) from exc
+            except (
+                httpx.ReadError,
+                httpx.ReadTimeout,
+                httpx.RemoteProtocolError,
+                httpx.WriteError,
+                httpx.WriteTimeout,
+            ) as exc:
+                raise ProviderTransportFailure.unknown(
+                    code="tikhub_delivery_unknown",
+                    safe_summary="TikHub 请求发送状态未知",
+                    currency="USD",
+                    unit="request",
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise ProviderTransportFailure.unknown(
+                    code="tikhub_http_transport_failed",
+                    safe_summary="TikHub HTTP Transport 失败且发送状态无法确认",
+                    currency="USD",
+                    unit="request",
+                ) from exc
 
         try:
             body: Any = response.json()
@@ -121,6 +135,20 @@ class TikHubHttpTransport:
             external_request_id=_external_request_id(response.headers),
             body=body,
         )
+
+    def _wait_for_rate_slot(self) -> None:
+        """按进程级共享 Transport 实施保守 RPS 上限，不在 Transport 内偷偷重试请求。"""
+
+        if self._max_rps is None:
+            return
+        interval = 1.0 / self._max_rps
+        with self._rate_lock:
+            now = time.monotonic()
+            delay = self._next_request_at - now
+            if delay > 0:
+                time.sleep(delay)
+                now = time.monotonic()
+            self._next_request_at = max(now, self._next_request_at) + interval
 
 
 def build_tikhub_transport_request(
