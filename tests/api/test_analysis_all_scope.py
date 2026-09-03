@@ -24,7 +24,7 @@ def test_analysis_run_all_scope_rejects_explicit_content_ids() -> None:
 
 
 def test_analysis_run_selected_scope_keeps_existing_bounds() -> None:
-    """已选内容模式继续要求非空且去重，不因新增 all 放宽。"""
+    """已选内容模式继续要求 1—1000 条且去重，不因新增 all 放宽。"""
 
     content_id = uuid4()
     targets = AnalysisRunTargetSelection(scope="selected", content_ids=(content_id,))
@@ -34,3 +34,8 @@ def test_analysis_run_selected_scope_keeps_existing_bounds() -> None:
         AnalysisRunTargetSelection(scope="selected", content_ids=())
     with pytest.raises(ValidationError):
         AnalysisRunTargetSelection(scope="selected", content_ids=(content_id, content_id))
+    with pytest.raises(ValidationError):
+        AnalysisRunTargetSelection(
+            scope="selected",
+            content_ids=tuple(uuid4() for _ in range(1001)),
+        )
