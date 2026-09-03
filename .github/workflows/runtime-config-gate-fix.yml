@@ -5,8 +5,6 @@ on:
     branches:
       - feat/runtime-config-control-plane
     paths:
-      - scripts/dev/runtime_config_gate_fix.py
-      - scripts/dev/runtime_config_gate_fix_followup.py
       - .github/workflows/runtime-config-gate-fix.yml
 
 permissions:
@@ -17,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  fix-and-validate:
+  fix-staged-workflow:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout feature branch
@@ -26,58 +24,31 @@ jobs:
           ref: feat/runtime-config-control-plane
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.14.7'
-
-      - name: Install frozen Python environment
+      - name: Correct staged Runtime workflow quoting
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check 'uv==0.12.3'
-          uv sync --frozen
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Apply gate fixes and validate static contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/dev/runtime_config_gate_fix.py
-          uv run python scripts/dev/runtime_config_gate_fix_followup.py
-          rm -f \
-            scripts/dev/runtime_config_gate_fix.py \
-            scripts/dev/runtime_config_gate_fix_followup.py \
-            .github/workflows/runtime-config-gate-fix.yml
-          uv run ruff format \
-            backend tests scripts migrations/versions/20260903_0039_runtime_configuration_plane.py
-          uv run ruff format --check \
-            backend tests scripts \
-            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
-            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
-            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
-          uv run ruff check \
-            backend tests scripts \
-            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
-            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
-            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
-          python3 scripts/quality/check_docs.py
-          python3 scripts/quality/check_docs_facts.py
-          docker compose config >/dev/null
-          docker compose -f compose.yaml -f compose.windows.yaml config >/dev/null
-          uv run pytest tests/unit/system/test_runtime_provider_config.py -q
-
-      - name: Commit validated non-workflow changes
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp .github/workflows/runtime.yml \
+          path = Path('changes/CHG-20260903-runtime-config-control-plane/runtime-acceptance.final.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '''            "test "\\$(cat /run/provider-secrets/${ROTATED_SECRET_REF})" = "ci-rotated-provider-secret-not-real""\n'''
+          new = '''            "test \\\"\\$(cat /run/provider-secrets/${ROTATED_SECRET_REF})\\\" = \\\"ci-rotated-provider-secret-not-real\\\""\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one staged quoting defect, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          grep -F '"test \"\$(cat /run/provider-secrets/${ROTATED_SECRET_REF})\" = \"ci-rotated-provider-secret-not-real\""' \
             changes/CHG-20260903-runtime-config-control-plane/runtime-acceptance.final.yml
-          git checkout HEAD -- \
-            .github/workflows/runtime.yml \
-            .github/workflows/runtime-config-gate-fix.yml
+
+      - name: Commit corrected staged workflow
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name 'aima-runtime-gate-fixer'
           git config user.email 'actions@users.noreply.github.com'
-          git add -A
+          git add changes/CHG-20260903-runtime-config-control-plane/runtime-acceptance.final.yml
           git diff --cached --check
-          git commit -m 'test(runtime): 完善运行时配置黑盒验收'
+          git commit -m 'fix(runtime): 修正验收脚本密钥读取引号'
           git push origin HEAD:feat/runtime-config-control-plane
