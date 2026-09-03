@@ -85,6 +85,8 @@ class ProviderConfig:
             raise ValueError("Provider max_rps 必须大于 0")
         if self.revision <= 0:
             raise ValueError("Provider revision 必须大于 0")
+        if self.is_default and not self.enabled:
+            raise ValueError("默认 Provider 必须处于启用状态")
 
         if self.provider_kind == "collection":
             validated = ProviderConfigV1(
