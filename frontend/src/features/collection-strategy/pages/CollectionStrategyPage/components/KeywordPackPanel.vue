@@ -151,7 +151,7 @@ function keywordScopeLabel(scope?: string): string {
 .table-head-actions { display: flex; align-items: center; gap: 16px; }.table-head-actions > span { color: #758094; font-size: 12px; }.table-head-actions :deep(.aima-button) { min-width: 92px; height: 32px; }
 .pack-row { display: grid; width: 100%; min-height: 74px; grid-template-columns: 1fr 55px 45px 70px 32px; align-items: center; gap: 10px; padding: 15px 18px; border: 0; border-bottom: 1px solid #edf0f4; color: #4e596d; background: #fff; text-align: left; cursor: pointer; }
 .pack-row.active { background: #fff7fa; box-shadow: inset 3px 0 var(--aima-primary); }
-.pack-row strong,.pack-row small { display: block; }.pack-row strong { color: #1e2838; }.pack-row small { margin-top: 5px; color: #818b9d; }
+.pack-row strong,.pack-row small { display: block; }.pack-row strong { color: #1e2838; line-height: 20px; }.pack-row small { margin-top: 5px; color: #818b9d; line-height: 16px; }
 .status { width: max-content; padding: 4px 8px; border-radius: 5px; font-size: 12px; }.enabled { color: #118852; background: #eaf8f1; }.disabled { color: #687386; background: #eef1f5; }
 .link-button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; }.link-button:disabled { color: #98a1b1; cursor: not-allowed; opacity: .75; }
 .detail-card { padding: 18px; }.detail-title { display: flex; justify-content: space-between; }.detail-title span,.detail-title strong { display: block; }.detail-title span { color: #7b8598; font-size: 12px; }.detail-title strong { margin-top: 5px; color: var(--aima-text); font-size: 14px; }.version { color: var(--aima-primary) !important; }.detail-card p { color: #758094; font-size: 12px; }
