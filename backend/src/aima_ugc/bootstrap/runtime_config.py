@@ -58,6 +58,12 @@ def active_llm_provider(session: Session, settings: PlatformSettings) -> Provide
     )
 
 
+def is_legacy_llm_provider(config: ProviderConfig) -> bool:
+    """判断 Provider 是否来自数据库配置面启用前的 env bootstrap 兼容入口。"""
+
+    return config.id == _LEGACY_LLM_CONFIG_ID
+
+
 def provider_from_safe_snapshot(payload: object) -> ProviderConfig:
     """从持久化 Run Snapshot 恢复 Provider；Snapshot 不包含 Secret 值。"""
 
@@ -103,11 +109,15 @@ def new_secret_ref(config_id: UUID, revision_token: str) -> str:
 
 
 def _optional_str(data: dict[str, object], key: str) -> str | None:
+    """读取可选字符串字段。"""
+
     value = data.get(key)
     return value if isinstance(value, str) else None
 
 
 def _required_str(data: dict[str, object], key: str) -> str:
+    """读取非空字符串字段并拒绝损坏快照。"""
+
     value = data.get(key)
     if not isinstance(value, str) or not value:
         raise ValueError(f"Runtime Provider Snapshot 缺少 {key}")
@@ -115,6 +125,8 @@ def _required_str(data: dict[str, object], key: str) -> str:
 
 
 def _required_int(data: dict[str, object], key: str, *, minimum: int = 1) -> int:
+    """读取满足最小值的整数字段并拒绝布尔值。"""
+
     value = data.get(key)
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise ValueError(f"Runtime Provider Snapshot {key} 不合法")
@@ -123,6 +135,7 @@ def _required_int(data: dict[str, object], key: str, *, minimum: int = 1) -> int
 
 __all__ = [
     "active_llm_provider",
+    "is_legacy_llm_provider",
     "new_secret_ref",
     "provider_from_safe_snapshot",
     "resolve_provider_secret",
