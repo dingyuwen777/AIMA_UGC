@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260903-issue-328-data-import-runtime
 title: Data Import Campaign 运行中心与辅助补采闭环
 level: L3
-status: proposed
+status: ready_for_review
 owner: codex
 branch: fix/issue-328-data-import-runtime
 created: 2026-09-03
@@ -67,14 +67,14 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/328
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Campaign 在运行中心显示正确状态、阶段、进度和统计 | Issue #328 AC1 | not_satisfied | 待实现与验证 |
-| R2 | 运行中心 KPI 纳入 Campaign 且不重复计数 | Issue #328 AC2 | not_satisfied | 待实现与验证 |
-| R3 | Campaign 可在辅助补采中选择，并提供资格查询 | Issue #328 AC3 | not_satisfied | 待实现与验证 |
-| R4 | Campaign 逐行账本中已关联 Content 的 `unchanged` 等终态具备补采资格 | Issue #328 AC4 | not_satisfied | 待实现与验证 |
-| R5 | 新 Run 持久化 Campaign 来源，旧 `import_batch_id` 行为继续兼容 | Issue #328 AC5 | not_satisfied | 待实现与验证 |
-| R6 | 管理员配置与运行中心默认 generated Client 请求通过 Contract 校验 | Issue #328 AC6 | not_satisfied | 待实现与验证 |
-| R7 | 422 响应与安全日志可由同一 `request_id` 关联到字段和错误码 | Issue #328 AC7 | not_satisfied | 待实现与验证 |
-| R8 | Contract、PostgreSQL、Browser Mock、Full-stack、构建和治理门禁通过 | Issue #328 AC8 | not_satisfied | 待实现与验证 |
+| R1 | Campaign 在运行中心显示正确状态、阶段、进度和统计 | https://github.com/dingyuwen777/AIMA_UGC/issues/328 | satisfied | Runtime UNION 投影 Campaign 父记录且允许 `job_id=null`；PostgreSQL 集成覆盖 succeeded/ready 状态、进度与统计，Browser Mock 和 CI Full-stack 均重读成功 |
+| R2 | 运行中心 KPI 纳入 Campaign 且不重复计数 | https://github.com/dingyuwen777/AIMA_UGC/issues/328 | satisfied | KPI 分别统计旧 `ingestion.import-excel.v1` Batch、Campaign 父记录和 Collection Run；Campaign Chunk Batch 被 Job type 过滤，PostgreSQL 测试断言完成数与入库数只计一次 |
+| R3 | Campaign 可在辅助补采中选择，并提供资格查询 | https://github.com/dingyuwen777/AIMA_UGC/issues/328 | satisfied | 新增 Campaign eligibility API；前端选择器优先展示终态 Campaign 并保留旧 Batch，Browser Mock 验证请求只提交对应来源字段 |
+| R4 | Campaign 逐行账本中已关联 Content 的 `unchanged` 等终态具备补采资格 | https://github.com/dingyuwen777/AIMA_UGC/issues/328 | satisfied | Target Reader 由 `processing_import_batch_items → historical_import_campaign_items → contents` 读取并去重；PostgreSQL 测试以 `unchanged` 行验证资格与 Scope 冻结 |
+| R5 | 新 Run 持久化 Campaign 来源，旧 `import_batch_id` 行为继续兼容 | https://github.com/dingyuwen777/AIMA_UGC/issues/328 | satisfied | Migration 0040 新增 nullable Campaign 外键、索引和来源互斥约束；Service/Repository/Worker 全链路消费，旧 Batch API、Run 与浏览器验收继续通过 |
+| R6 | 管理员配置与运行中心默认 generated Client 请求通过 Contract 校验 | https://github.com/dingyuwen777/AIMA_UGC/issues/328 | satisfied | OpenAPI/Orval 重新生成且 compatibility gate 通过；CI #3903 的 Repository Quality 与真实 Full-stack 管理员/运行中心请求全部成功 |
+| R7 | 422 响应与安全日志可由同一 `request_id` 关联到字段和错误码 | https://github.com/dingyuwen777/AIMA_UGC/issues/328 | satisfied | FastAPI handler 只记录 `field/code` 并复用响应 `request_id`；API 日志测试和前端 shared/import error 测试验证可定位且不回显拒绝值 |
+| R8 | Contract、PostgreSQL、Browser Mock、Full-stack、构建和治理门禁通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/328 | satisfied | 本地缺陷矩阵 56 passed、Vitest 90 passed、Browser Mock 9 passed、build/mypy/gates 通过；远程 CI #3903、Runtime Acceptance #1024、Tooling #389 全部 success |
 
 # 实施计划
 
@@ -103,15 +103,15 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/328
 
 | 验证层 | 状态 | 范围 / 证据 |
 | --- | --- | --- |
-| Red | required | Campaign runtime/eligibility/source persistence/422/frontend workflow 回归 |
-| 行为 / Unit / Component | required | Contract validator、Cursor、前端 Store/组件 |
-| 接口 / Contract | required | OpenAPI、API routes、generated Client |
-| 集成 / Persistence / Runtime Dependency | required | PostgreSQL Runtime Query、Campaign ledger、Migration、Collection Worker |
-| 用户 / Workflow Acceptance | required | 浏览器 Mock：导入后可见、可选 Campaign 补采、错误表达 |
-| 跨组件 Golden Path | required | 真实 API + PostgreSQL + 浏览器 Full-stack |
+| Red | required | 首个治理提交冻结 Campaign eligibility 404、Campaign source Contract 拒绝和 422 无诊断三类预期失败；实现后全部转绿 |
+| 行为 / Unit / Component | required | 本地目标后端矩阵 56 passed；前端 Vitest 19 files / 90 tests passed；mypy 287 source files 无问题 |
+| 接口 / Contract | required | OpenAPI、API routes、generated Client 已同步；Contract generation 与 compatibility gate 成功 |
+| 集成 / Persistence / Runtime Dependency | required | 隔离 PostgreSQL 18 验证 Runtime Query、Campaign ledger、Migration 0039→0040→0039 和 Collection Run 来源；CI #3903 PostgreSQL Integration 成功 |
+| 用户 / Workflow Acceptance | required | `collection-runtime.spec.ts` 9 passed，覆盖导入后可见、Campaign/旧 Batch 补采和错误表达 |
+| 跨组件 Golden Path | required | CI #3903 Real Full-stack Golden Path 成功，真实 API、Worker、PostgreSQL 与浏览器重读 Campaign Runtime/eligibility |
 | 外部依赖 Probe | not_applicable | 不发送真实 TikHub/LLM 请求；使用现有 Fake Provider |
-| Build / Package / Runtime | required | Backend quality、Frontend lint/typecheck/test/build、Compose Runtime |
-| Docs / Governance / Other | required | Change Completion、Docs/Governance、两阶段 Review、PR/main fresh CI |
+| Build / Package / Runtime | required | 前端 lint/typecheck/build、本地后端静态检查成功；CI #3903 Repository Quality 与 Runtime Acceptance #1024 成功 |
+| Docs / Governance / Other | required | Docs/Fact/Architecture/Table Owner/Secret/Agent Governance 门禁成功；目标 Change Ready Check 待本证据提交触发最终复核 |
 
 # 兼容、迁移与回滚
 
@@ -119,9 +119,28 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/328
 - `collection_runs` 只新增 nullable Campaign 外键和互斥约束；既有行无需回填。
 - 回滚应用前应停止创建新的 Campaign 补采 Run；Migration downgrade 删除新增约束、索引和列，不修改 Campaign、Batch、Content 或 Job 历史事实。
 
+# 实现与 Review 证据
+
+2026-09-03 完成 L3 两阶段 Review。先按 Issue #328 的用户可见故障逐项复核，再从最终 diff 反查 Contract、Schema、Producer/Consumer、异步状态、前端入口和兼容路径。Review 期间发现并修复：
+
+1. 补采 API 不能只依赖前端隐藏运行中 Campaign，后端 eligibility 与 Run create 共同增加终态门禁并返回 409；
+2. `ready` Campaign 的公开状态为 queued，因此 KPI 也必须计入 processing；新增 PostgreSQL 回归后修正；
+3. 最新 `main` 已把受管 Runtime 重命名为 `agent-skills.exe`，旧治理测试仍要求整个 Runtime 目录被忽略；最小同步为“旧文件名不跟踪、当前文件名已跟踪”。
+
+最终结论：`NO_UNRESOLVED_FINDINGS_WITHIN_SCOPE`。原始请求提供的两个历史 `request_id` 未出现在当前保留日志中，无法追溯当次被拒字段；本修复确保今后同类 422 在响应与安全日志中保留同一 `request_id + field + code`。
+
+# Pre-Merge 永久门禁
+
+PR #329 首轮实现 HEAD `038d73e76f27a948c6002dbc5ef8be2ea4f07ca1`：
+
+- CI #3903 / run `33745640755`：success，覆盖 Repository Quality、Linux Unit/Contract/API、PostgreSQL Integration、Real Full-stack Golden Path、Docs/Governance；
+- Runtime Acceptance #1024 / run `33745640389`：success；
+- Developer Tooling Compatibility #389 / run `33745640382`：success；
+- Change Completion Gate #1768/#1769：因本 Change 按流程保持 `proposed` 等待上述证据而失败；本提交改为 `ready_for_review` 后重新触发最终 Gate，不把预期阶段失败写成通过。
+
 # Completion Audit
 
-- [ ] upstream_re_read：实现完成后重新读取 Issue #328、相关 Blueprint/Appendix、最终 Contract/Schema 与 diff。
-- [ ] change_coverage：逐项核对 R1–R8 的实现、测试、文档和运行证据。
-- [ ] reverse_audit：从 Campaign 反查运行中心/补采/Worker，从页面动作反查后端真实支持，并从最终 diff 反查无越权改动。
-- [ ] unresolved_cleared：清零未满足需求、未解决 Review 发现、失败门禁和兼容风险。
+- [x] upstream_re_read：已重新读取 Issue #328、相关 Blueprint/Appendix、最终 Contract/Schema、最新 `origin/main` 与 PR #329 最终业务 diff，并独立重建 R1–R8 完成定义。
+- [x] change_coverage：Campaign Runtime/KPI、eligibility、逐行账本、Run 来源、旧 Batch 兼容、generated Client、422 诊断、Migration、测试与文档均有实现和新鲜证据。
+- [x] reverse_audit：已从 Campaign 反查运行中心/补采/Worker，从页面选择与详情动作反查后端真实 API/持久化支持，并确认 Campaign Chunk 不重复统计、旧 Batch 路径仍可用。
+- [x] unresolved_cleared：Requirement Traceability 无 `not_satisfied`；外部付费 Probe 的不适用依据明确；Review 发现已修复，首轮 CI/Runtime/Tooling 无失败。
