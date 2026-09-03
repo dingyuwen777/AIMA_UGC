@@ -110,6 +110,29 @@ describe('全局任务中心聚合', () => {
     })
   })
 
+  it('把最新主线的 Data Import Campaign 映射为用户可读任务类型', () => {
+    const store = useTaskCenterStore()
+    store.collectionRuns = [{
+      ...collectionRun,
+      record_id: 'campaign-1',
+      record_type: 'data_import_campaign',
+      display_name: '8 月历史数据导入',
+      data_import_campaign_id: 'campaign-1',
+      collection_run_id: null,
+      platforms: [],
+      collection_stats: null,
+      import_stats: { rows_ingested: 320 },
+      stage: 'ingesting',
+    }]
+
+    expect(store.activeItems[0]).toMatchObject({
+      title: '8 月历史数据导入',
+      subtitle: '数据导入 · 平台未指定',
+      progressDetail: '320 行入库',
+      href: '/collection-runtime',
+    })
+  })
+
   it('终态任务不计入活动数量，并只保留最近 12 条作为界面历史', () => {
     const store = useTaskCenterStore()
     store.analysisRuns = Array.from({ length: 14 }, (_, index) => ({
