@@ -192,7 +192,7 @@ def test_compose_default_startup_declares_bootstrap_and_automatic_one_shots() ->
     assert "  bootstrap:" in content
     assert "service_completed_successfully" in content
     assert 'profiles: ["tools"]' not in content
-    assert "AIMA_EXTERNAL_SECRET_DIR=/run/secrets" in content
+    assert "AIMA_EXTERNAL_SECRET_DIR=/run/provider-secrets" in content
     assert "AIMA_SECRET_DIR=/run/internal-secrets" in content
     assert "environment: AIMA_TIKHUB_API_KEY" in content
     assert "environment: AIMA_LLM_API_KEY" in content
