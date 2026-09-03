@@ -69,7 +69,7 @@ def test_keyword_pack_create_accepts_initial_keywords_in_one_request() -> None:
 
     assert response.status_code == 201
     assert service.created_request is not None
-    keywords = getattr(service.created_request, "keywords")
+    keywords = service.created_request.keywords
     assert [item.text for item in keywords] == ["爱玛", "电动车"]
     assert [item.priority for item in keywords] == [100, 80]
 
