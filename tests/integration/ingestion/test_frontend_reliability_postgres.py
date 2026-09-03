@@ -62,8 +62,8 @@ def test_keyword_pack_initial_keywords_commit_atomically_and_roll_back_together(
         )
         assert created.status_code == 201
         assert [item["text"] for item in created.json()["keywords"]] == [
-            f"爱玛-{suffix}",
             f"电动车-{suffix}",
+            f"爱玛-{suffix}",
         ]
         pack_id = UUID(created.json()["id"])
         with runtime.database.engine.begin() as connection:

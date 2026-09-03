@@ -95,6 +95,6 @@ test('错误表头 Excel 由统一链路在预检阶段拒绝', async ({ page, r
   const detail = page.getByRole('dialog', { name: '导入数据' })
   await expect(detail.getByText('状态：failed')).toBeVisible({ timeout: 60_000 })
   await expect(detail.getByText('historical_snapshot_invalid')).toBeVisible()
-  await expect(detail.getByRole('button', { name: '开始导入' })).toBeDisabled()
+  await expect(detail.getByRole('button', { name: '开始导入' })).toHaveCount(0)
   await expect(detail.getByRole('button', { name: '查看导入内容' })).toHaveCount(0)
 })

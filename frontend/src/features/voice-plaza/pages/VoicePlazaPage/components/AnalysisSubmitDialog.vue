@@ -147,7 +147,7 @@ function selectScope(next: AnalysisScope): void {
 <style scoped>
 .modal-layer { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; }
 .backdrop { position: absolute; inset: 0; border: 0; background: rgb(25 32 45 / 46%); }
-.modal { position: relative; display: grid; width: min(560px, calc(100vw - 32px)); height: min(500px, calc(100vh - 32px)); overflow: hidden; border-radius: 11px; background: var(--aima-surface); box-shadow: 0 22px 58px rgb(20 28 42 / 22%); }
+.modal { position: relative; display: grid; width: min(540px, calc(100vw - 32px)); height: min(446px, calc(100vh - 32px)); overflow: hidden; border-radius: 11px; background: var(--aima-surface); box-shadow: 0 22px 58px rgb(20 28 42 / 22%); }
 header { display: flex; min-height: 82px; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid var(--aima-border); }
 h2 { margin: 0; color: var(--aima-text); font-size: 18px; line-height: 26px; }
 header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line-height: 16px; }

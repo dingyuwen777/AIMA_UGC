@@ -274,5 +274,5 @@ test('shows the stable unified Error Contract request_id', async ({ page }) => {
     await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: '分页服务暂不可用', status: 503, detail: '分页服务配置不可用，请使用 request_id 联系管理员。', request_id: 'req_stage8e_error', errors: [] }) })
   })
   await page.goto('/collection-runtime')
-  await expect(page.getByRole('alert')).toContainText('req_stage8e_error')
+  await expect(page.getByRole('alert').filter({ hasText: 'req_stage8e_error' })).toContainText('req_stage8e_error')
 })
