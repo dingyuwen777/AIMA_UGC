@@ -189,6 +189,42 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await migration.getByRole('button', { name: '重试失败项' }).click()
   await expect(migration.getByText('状态：succeeded')).toBeVisible({ timeout: 60_000 })
   await expect(migration.getByText('冲突 1', { exact: true })).toBeVisible()
+
+  const runtimeResponse = await request.get('/api/v1/collection-runtime/runs', {
+    params: { record_types: 'data_import_campaign' },
+  })
+  expect(runtimeResponse.status()).toBe(200)
+  const runtime = await runtimeResponse.json() as {
+    items: Array<{
+      record_id: string
+      record_type: string
+      job_id: string | null
+      status: string
+      progress: number
+    }>
+  }
+  expect(runtime.items).toContainEqual(expect.objectContaining({
+    record_id: campaignId,
+    record_type: 'data_import_campaign',
+    job_id: null,
+    status: 'succeeded',
+    progress: 100,
+  }))
+
+  const eligibilityResponse = await request.get(
+    `/api/v1/data-import-campaigns/${campaignId}/supplement-eligibility`,
+  )
+  expect(eligibilityResponse.status()).toBe(200)
+  const eligibility = await eligibilityResponse.json() as {
+    targets: Array<{ platform: string; target_count: number }>
+  }
+  expect(eligibility.targets).toContainEqual(expect.objectContaining({
+    platform: 'xiaohongshu',
+    target_count: expect.any(Number),
+  }))
+  expect(eligibility.targets.find((item) => item.platform === 'xiaohongshu')!.target_count)
+    .toBeGreaterThan(0)
+
   await migration.getByRole('button', { name: '查看导入内容' }).click()
 
   await expect(page).toHaveURL((url) =>

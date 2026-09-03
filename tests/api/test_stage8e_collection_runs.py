@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
+import pytest
 from aima_ugc.bootstrap.api import create_app
 from fastapi.testclient import TestClient
 
@@ -11,6 +13,7 @@ JOB_ID = UUID("22222222-2222-4222-8222-222222222222")
 CONFIG_ID = UUID("33333333-3333-4333-8333-333333333333")
 BATCH_ID = UUID("44444444-4444-4444-8444-444444444444")
 PACK_ID = UUID("55555555-5555-4555-8555-555555555555")
+CAMPAIGN_ID = UUID("66666666-6666-4666-8666-666666666666")
 
 
 class _FakeCollectionService:
@@ -34,6 +37,13 @@ class _FakeCollectionService:
                 {"platform": "xiaohongshu", "target_count": 2},
                 {"platform": "weibo", "target_count": 1},
             ],
+        }
+
+    def get_campaign_supplement_eligibility(self, campaign_id):  # type: ignore[no-untyped-def]
+        assert campaign_id == CAMPAIGN_ID
+        return {
+            "campaign_id": str(CAMPAIGN_ID),
+            "targets": [{"platform": "xiaohongshu", "target_count": 3}],
         }
 
     def create_run(self, request, *, request_id):  # type: ignore[no-untyped-def]
@@ -108,6 +118,18 @@ def test_batch_supplement_eligibility_is_queryable() -> None:
     }
 
 
+def test_campaign_supplement_eligibility_is_queryable() -> None:
+    client = TestClient(create_app(collection_service=_FakeCollectionService()))
+
+    response = client.get(f"/api/v1/data-import-campaigns/{CAMPAIGN_ID}/supplement-eligibility")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "campaign_id": str(CAMPAIGN_ID),
+        "targets": [{"platform": "xiaohongshu", "target_count": 3}],
+    }
+
+
 def test_create_discovery_collection_run_returns_202() -> None:
     client = TestClient(create_app(collection_service=_FakeCollectionService()))
 
@@ -139,6 +161,7 @@ def test_create_discovery_collection_run_returns_202() -> None:
         "job_id": str(JOB_ID),
         "mode": "discovery",
         "import_batch_id": None,
+        "data_import_campaign_id": None,
         "status": "queued",
     }
 
@@ -162,6 +185,35 @@ def test_create_collection_run_rejects_cross_mode_fields_with_request_id() -> No
     assert payload["request_id"] == response.headers["x-request-id"]
     assert payload["type"].endswith("/request_validation_error")
     assert payload["errors"]
+
+
+def test_request_validation_logs_safe_fields_with_matching_request_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = TestClient(create_app(collection_service=_FakeCollectionService()))
+
+    with caplog.at_level(logging.WARNING, logger="aima_ugc"):
+        response = client.post(
+            "/api/v1/collection-runs",
+            headers={"x-request-id": "client-id-is-not-trusted"},
+            json={"mode": "batch_supplement", "platforms": []},
+        )
+
+    assert response.status_code == 422
+    response_request_id = response.json()["request_id"]
+    matching = [
+        record
+        for record in caplog.records
+        if getattr(record, "request_id", None) == response_request_id
+    ]
+    assert len(matching) == 1
+    record = matching[0]
+    assert record.event == "http_request_validation_failed"  # type: ignore[attr-defined]
+    assert record.path == "/api/v1/collection-runs"  # type: ignore[attr-defined]
+    assert {tuple(item.values()) for item in record.validation_errors} >= {  # type: ignore[attr-defined]
+        ("body.platforms", "too_short")
+    }
+    assert "client-id-is-not-trusted" not in record.getMessage()
 
 
 def test_collection_run_detail_and_runtime_summary_are_queryable() -> None:

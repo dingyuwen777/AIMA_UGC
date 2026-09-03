@@ -10,7 +10,10 @@ import AppShell from '../../../../app/layouts/AppShell.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
-import { useImportBatchesStore } from '../../store'
+import {
+  type SupplementSourceSelection,
+  useImportBatchesStore,
+} from '../../store'
 import CollectionRunDetailDrawer from './components/CollectionRunDetailDrawer.vue'
 import CollectionRuntimeFilters from './components/CollectionRuntimeFilters.vue'
 import CollectionRuntimeKpiCards from './components/CollectionRuntimeKpiCards.vue'
@@ -23,7 +26,7 @@ const store = useImportBatchesStore()
 const router = useRouter()
 const dataImportOpen = ref(false)
 const supplementOpen = ref(false)
-const initialBatchId = ref<string | null>(null)
+const initialSupplementSource = ref<SupplementSourceSelection | null>(null)
 const notice = ref<string | null>(null)
 const batchDetailOpen = computed({
   get: () => store.selectedBatch !== null,
@@ -60,9 +63,9 @@ async function openDataImport(): Promise<void> {
   await store.openHistoricalWorkspace()
 }
 
-async function openCreate(batchId: string | null = null): Promise<void> {
-  initialBatchId.value = batchId
-  await store.loadCreationOptions(batchId)
+async function openCreate(source: SupplementSourceSelection | null = null): Promise<void> {
+  initialSupplementSource.value = source
+  await store.loadCreationOptions(source)
   supplementOpen.value = true
 }
 
@@ -76,6 +79,13 @@ async function createRun(request: CollectionRunCreateRequest): Promise<void> {
 async function selectItem(item: CollectionRuntimeItemResponse): Promise<void> {
   if (item.record_type === 'excel_import') {
     await store.openBatchDetail(item.import_batch_id ?? item.record_id)
+    return
+  }
+  if (item.record_type === 'data_import_campaign') {
+    store.selectedHistoricalCampaign = null
+    dataImportOpen.value = true
+    await store.openHistoricalWorkspace()
+    await store.refreshHistoricalCampaign(item.data_import_campaign_id ?? item.record_id)
     return
   }
   await store.openRunDetail(item.collection_run_id ?? item.record_id)
@@ -210,13 +220,14 @@ async function viewContents(batchId: string): Promise<void> {
     <TikHubSupplementDrawer
       v-model="supplementOpen"
       :capabilities="store.capabilities"
+      :campaigns="store.campaignOptions"
       :batches="store.batchOptions"
       :keyword-packs="store.keywordPackOptions"
-      :batch-content-platforms="store.batchContentPlatforms"
-      :loading-batch-platforms="store.loadingBatchPlatforms"
+      :supplement-content-platforms="store.supplementContentPlatforms"
+      :loading-supplement-platforms="store.loadingSupplementPlatforms"
       :creating="store.creating"
-      :initial-batch-id="initialBatchId"
-      @batch-change="store.loadBatchPlatforms"
+      :initial-source="initialSupplementSource"
+      @source-change="store.loadSupplementPlatforms"
       @submit="createRun"
     />
     <div

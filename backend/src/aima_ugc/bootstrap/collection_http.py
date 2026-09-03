@@ -41,6 +41,7 @@ from aima_ugc.contracts.collection.models import BusinessOperation
 from aima_ugc.contracts.http import (
     CollectionBatchSupplementEligibilityResponse,
     CollectionBatchSupplementTargetResponse,
+    CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
     CollectionCapabilityResponse,
     CollectionPlatform,
@@ -208,6 +209,43 @@ class PostgresCollectionHttpService:
         finally:
             session.close()
 
+    def get_campaign_supplement_eligibility(
+        self,
+        campaign_id: UUID,
+    ) -> CollectionCampaignSupplementEligibilityResponse:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                configuration = active_analysis_configuration(session, self._runtime.settings)
+                reader = PostgresCollectionTargetReader(
+                    session,
+                    analysis_identity=configuration.identity,
+                )
+                if not reader.campaign_exists(campaign_id):
+                    raise CollectionResourceNotFound
+                if not reader.campaign_is_supplement_ready(campaign_id):
+                    raise CollectionConflict
+                targets = reader.list_campaign_targets(
+                    campaign_id=campaign_id,
+                    platforms=_ALL_COLLECTION_PLATFORMS,
+                )
+                counts: dict[CollectionPlatform, int] = {}
+                for target in targets:
+                    counts[target.platform] = counts.get(target.platform, 0) + 1
+                return CollectionCampaignSupplementEligibilityResponse(
+                    campaign_id=campaign_id,
+                    targets=tuple(
+                        CollectionBatchSupplementTargetResponse(
+                            platform=platform,
+                            target_count=counts[platform],
+                        )
+                        for platform in _ALL_COLLECTION_PLATFORMS
+                        if platform in counts
+                    ),
+                )
+        finally:
+            session.close()
+
     def create_run(
         self,
         request: CollectionRunCreateRequest,
@@ -269,6 +307,11 @@ class PostgresCollectionHttpService:
                             if request.import_batch_id is not None
                             else None
                         ),
+                        "data_import_campaign_id": (
+                            str(request.data_import_campaign_id)
+                            if request.data_import_campaign_id is not None
+                            else None
+                        ),
                         "include_comments": request.include_comments,
                         "include_sub_comments": request.include_sub_comments,
                         "manual_deep_collection": True,
@@ -291,12 +334,14 @@ class PostgresCollectionHttpService:
                     },
                     scopes=scopes,
                     import_batch_id=request.import_batch_id,
+                    data_import_campaign_id=request.data_import_campaign_id,
                 )
                 return CollectionRunCreatedResponse(
                     run_id=execution.run.id,
                     job_id=job.id,
                     mode=request.mode,
                     import_batch_id=request.import_batch_id,
+                    data_import_campaign_id=request.data_import_campaign_id,
                 )
         finally:
             session.close()
@@ -325,6 +370,7 @@ class PostgresCollectionHttpService:
                     job_id=run.job_id,
                     mode=mode,
                     import_batch_id=run.import_batch_id,
+                    data_import_campaign_id=run.data_import_campaign_id,
                     status=_public_run_status(run, job.status),
                     stage=_run_stage(run),
                     progress=job.progress,
@@ -530,20 +576,30 @@ class PostgresCollectionHttpService:
                     "dimension_match": "keyword_or_x_vehicle_or",
                 },
             )
-        assert request.import_batch_id is not None
         reader = PostgresCollectionTargetReader(
             session,
             analysis_identity=active_analysis_configuration(
                 session, self._runtime.settings
             ).identity,
         )
-        if not reader.batch_exists(request.import_batch_id):
-            raise CollectionResourceNotFound
         selected_platforms = tuple(selection.platform for selection in request.platforms)
-        targets = reader.list_batch_targets(
-            batch_id=request.import_batch_id,
-            platforms=selected_platforms,
-        )
+        if request.data_import_campaign_id is not None:
+            if not reader.campaign_exists(request.data_import_campaign_id):
+                raise CollectionResourceNotFound
+            if not reader.campaign_is_supplement_ready(request.data_import_campaign_id):
+                raise CollectionConflict
+            targets = reader.list_campaign_targets(
+                campaign_id=request.data_import_campaign_id,
+                platforms=selected_platforms,
+            )
+        else:
+            assert request.import_batch_id is not None
+            if not reader.batch_exists(request.import_batch_id):
+                raise CollectionResourceNotFound
+            targets = reader.list_batch_targets(
+                batch_id=request.import_batch_id,
+                platforms=selected_platforms,
+            )
         actual_platforms = {target.platform for target in targets}
         if set(selected_platforms) != actual_platforms:
             raise CollectionConflict
@@ -712,6 +768,7 @@ def _runtime_item_response(
         progress=record.progress,
         stage=record.stage,
         import_batch_id=record.import_batch_id,
+        data_import_campaign_id=record.data_import_campaign_id,
         collection_run_id=record.collection_run_id,
         source_filename=record.source_filename,
         platforms=_runtime_platforms(record.config_snapshot),
@@ -729,6 +786,9 @@ def _runtime_item_response(
 def _runtime_display_name(record: CollectionRuntimeReadRecord) -> str:
     if record.record_type == "excel_import":
         return record.source_filename or "Excel 导入"
+    if record.record_type == "data_import_campaign":
+        suffix = f" · {record.source_filename}" if record.source_filename else ""
+        return f"数据导入{suffix}"
     if record.record_type == "tikhub_batch_supplement":
         suffix = f" · {record.source_filename}" if record.source_filename else ""
         return f"TikHub 批次补采{suffix}"

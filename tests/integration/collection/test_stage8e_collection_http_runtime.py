@@ -33,6 +33,12 @@ from aima_ugc.modules.content.extended_tables import (
     content_external_ids_table,
 )
 from aima_ugc.modules.content.tables import comments_table, content_versions_table, contents_table
+from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+    processing_import_batch_items_table,
+)
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_PAYLOAD_VERSION, IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.system.tables import (
@@ -60,7 +66,8 @@ def runtime():  # type: ignore[no-untyped-def]
         with value.database.engine.begin() as connection:
             connection.exec_driver_sql(
                 "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, "
-                "provider_configs, processing_import_batches RESTART IDENTITY CASCADE"
+                "provider_configs, processing_import_batches, historical_import_campaigns "
+                "RESTART IDENTITY CASCADE"
             )
 
     cleanup()
@@ -514,6 +521,228 @@ def _insert_import_content(
             )
         )
     return batch_id, content_id
+
+
+def _insert_campaign_content(
+    runtime,  # type: ignore[no-untyped-def]
+    *,
+    outcome: str = "unchanged",
+) -> tuple[UUID, UUID]:
+    batch_id, content_id = _insert_import_content(runtime)
+    campaign_id = uuid4()
+    source_item_id = uuid4()
+    chunk_item_id = uuid4()
+    now = datetime.now(UTC)
+    manifest_identity = "2" * 64
+    with runtime.database.engine.begin() as connection:
+        batch_job_id = connection.scalar(
+            select(processing_import_batches_table.c.job_id).where(
+                processing_import_batches_table.c.id == batch_id
+            )
+        )
+        assert batch_job_id is not None
+        connection.execute(
+            update(jobs_table)
+            .where(jobs_table.c.id == batch_job_id)
+            .values(job_type=HISTORICAL_IMPORT_CHUNK_JOB_TYPE)
+        )
+        connection.execute(
+            insert(historical_import_campaigns_table).values(
+                id=campaign_id,
+                client_idempotency_key=f"stage8e-campaign-{campaign_id}",
+                source_kind="local_upload",
+                ingestion_policy="standard_observation",
+                declared_file_count=1,
+                root_relative_path="campaign.xlsx",
+                recursive=False,
+                profile_snapshot={"schema_version": "stage8e-test"},
+                keyword_pack_snapshot={},
+                status="succeeded",
+                discovered_file_count=1,
+                ready_item_count=1,
+                total_rows=1,
+                stats={outcome: 1},
+                created_at=now,
+                started_at=now,
+                finished_at=now,
+            )
+        )
+        connection.execute(
+            insert(historical_import_campaign_items_table),
+            [
+                {
+                    "id": source_item_id,
+                    "campaign_id": campaign_id,
+                    "parent_item_id": None,
+                    "item_kind": "source_file",
+                    "relative_path": "campaign.xlsx",
+                    "manifest_identity": manifest_identity,
+                    "ordinal": None,
+                    "row_count": 1,
+                    "status": "succeeded",
+                    "created_at": now,
+                    "started_at": now,
+                    "finished_at": now,
+                },
+                {
+                    "id": chunk_item_id,
+                    "campaign_id": campaign_id,
+                    "parent_item_id": source_item_id,
+                    "item_kind": "chunk",
+                    "relative_path": "campaign.xlsx",
+                    "manifest_identity": manifest_identity,
+                    "ordinal": 0,
+                    "row_start": 1,
+                    "row_end": 1,
+                    "row_count": 1,
+                    "status": "succeeded",
+                    "created_at": now,
+                    "started_at": now,
+                    "finished_at": now,
+                },
+            ],
+        )
+        connection.execute(
+            insert(processing_import_batch_items_table).values(
+                id=uuid4(),
+                batch_id=batch_id,
+                campaign_item_id=chunk_item_id,
+                source_row_ordinal=1,
+                platform="xiaohongshu",
+                external_content_id_hash="3" * 64,
+                content_id=content_id,
+                outcome=outcome,
+                committed_chunk_ordinal=0,
+                created_at=now,
+            )
+        )
+    return campaign_id, content_id
+
+
+def test_campaign_runtime_projection_and_summary_use_campaign_parent_once(runtime) -> None:  # type: ignore[no-untyped-def]
+    _seed_config_and_relevance(runtime)
+    campaign_id, _ = _insert_campaign_content(runtime, outcome="updated")
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+
+    listing = service.list_runtime_runs(
+        CollectionRuntimeListQuery(record_types=("data_import_campaign",))
+    )
+    summary = service.get_runtime_summary()
+
+    assert len(listing.items) == 1
+    item = listing.items[0]
+    assert item.record_id == campaign_id
+    assert item.data_import_campaign_id == campaign_id
+    assert item.job_id is None
+    assert item.record_type == "data_import_campaign"
+    assert item.status == "succeeded"
+    assert item.progress == 100
+    assert item.import_stats is not None
+    assert item.import_stats.rows_seen == 1
+    assert item.import_stats.rows_ingested == 1
+    assert summary.completed_today_count == 1
+    assert summary.contents_ingested_today == 1
+
+
+def test_ready_campaign_is_reported_as_queued_and_processing(runtime) -> None:  # type: ignore[no-untyped-def]
+    _seed_config_and_relevance(runtime)
+    campaign_id, _ = _insert_campaign_content(runtime)
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            update(historical_import_campaigns_table)
+            .where(historical_import_campaigns_table.c.id == campaign_id)
+            .values(status="ready", finished_at=None)
+        )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+
+    listing = service.list_runtime_runs(
+        CollectionRuntimeListQuery(record_types=("data_import_campaign",))
+    )
+    summary = service.get_runtime_summary()
+
+    assert len(listing.items) == 1
+    assert listing.items[0].status == "queued"
+    assert listing.items[0].progress == 100
+    assert summary.processing_count == 1
+
+
+def test_campaign_unchanged_ledger_is_eligible_and_persisted_as_run_source(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    campaign_id, content_id = _insert_campaign_content(runtime)
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+
+    eligibility = service.get_campaign_supplement_eligibility(campaign_id)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            data_import_campaign_id=campaign_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu",
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=False,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-campaign-supplement",
+    )
+
+    with runtime.database.engine.begin() as connection:
+        run = (
+            connection.execute(
+                select(collection_runs_table).where(collection_runs_table.c.id == created.run_id)
+            )
+            .mappings()
+            .one()
+        )
+        scope = (
+            connection.execute(
+                select(collection_scopes_table).where(
+                    collection_scopes_table.c.run_id == created.run_id
+                )
+            )
+            .mappings()
+            .one()
+        )
+
+    assert [(item.platform, item.target_count) for item in eligibility.targets] == [
+        ("xiaohongshu", 1)
+    ]
+    assert created.data_import_campaign_id == campaign_id
+    assert created.import_batch_id is None
+    assert run["data_import_campaign_id"] == campaign_id
+    assert run["import_batch_id"] is None
+    assert scope["source_value"] == str(content_id)
+
+
+def test_running_campaign_cannot_be_used_as_supplement_source(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    campaign_id, _ = _insert_campaign_content(runtime)
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            update(historical_import_campaigns_table)
+            .where(historical_import_campaigns_table.c.id == campaign_id)
+            .values(status="running")
+        )
+
+    with pytest.raises(CollectionConflict):
+        service.get_campaign_supplement_eligibility(campaign_id)
+    with pytest.raises(CollectionConflict):
+        service.create_run(
+            CollectionRunCreateRequest(
+                mode="batch_supplement",
+                data_import_campaign_id=campaign_id,
+                platforms=(
+                    CollectionRunPlatformRequest(
+                        platform="xiaohongshu",
+                        provider_config_id=provider_config_id,
+                    ),
+                ),
+            ),
+            request_id="stage8e-running-campaign",
+        )
 
 
 def test_batch_supplement_targets_only_batch_lineage_and_links_run(runtime) -> None:  # type: ignore[no-untyped-def]

@@ -23,6 +23,11 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+    processing_import_batch_items_table,
+)
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 
 # 这里只列当前生产 Runtime 已验证可直接消费的 typed Provider lookup identity。
@@ -79,6 +84,37 @@ class PostgresCollectionTargetReader:
         rows = self._candidate_rows(batch_id=batch_id, platforms=platforms)
         return self._eligible_targets(rows, exclude_irrelevant=True)
 
+    def campaign_exists(self, campaign_id: UUID) -> bool:
+        return (
+            self._session.scalar(
+                select(historical_import_campaigns_table.c.id).where(
+                    historical_import_campaigns_table.c.id == campaign_id
+                )
+            )
+            is not None
+        )
+
+    def campaign_is_supplement_ready(self, campaign_id: UUID) -> bool:
+        """只有已经完成对账的 Campaign 才能冻结为补采来源。"""
+
+        return self._session.scalar(
+            select(historical_import_campaigns_table.c.status).where(
+                historical_import_campaigns_table.c.id == campaign_id
+            )
+        ) in {"succeeded", "partial_failed"}
+
+    def list_campaign_targets(
+        self,
+        *,
+        campaign_id: UUID,
+        platforms: tuple[PlatformName, ...],
+    ) -> tuple[CollectionEnrichmentTarget, ...]:
+        rows = self._campaign_candidate_rows(
+            campaign_id=campaign_id,
+            platforms=platforms,
+        )
+        return self._eligible_targets(rows, exclude_irrelevant=True)
+
     def get_batch_target(
         self,
         *,
@@ -91,6 +127,21 @@ class PostgresCollectionTargetReader:
         """
 
         rows = self._candidate_rows(batch_id=batch_id, content_id=content_id)
+        targets = self._eligible_targets(rows, exclude_irrelevant=False)
+        return targets[0] if targets else None
+
+    def get_campaign_target(
+        self,
+        *,
+        campaign_id: UUID,
+        content_id: UUID,
+    ) -> CollectionEnrichmentTarget | None:
+        """执行期复核 Scope 目标仍由 Campaign 逐行账本关联到同一 Content。"""
+
+        rows = self._campaign_candidate_rows(
+            campaign_id=campaign_id,
+            content_id=content_id,
+        )
         targets = self._eligible_targets(rows, exclude_irrelevant=False)
         return targets[0] if targets else None
 
@@ -123,6 +174,46 @@ class PostgresCollectionTargetReader:
                     content.join(version, version.c.content_id == content.c.id)
                     .join(attempt, attempt.c.id == version.c.provider_attempt_id)
                     .join(request, request.c.id == attempt.c.provider_request_id)
+                )
+                .where(*conditions)
+                .distinct()
+                .order_by(content.c.platform, content.c.id)
+            ).mappings()
+        )
+
+    def _campaign_candidate_rows(
+        self,
+        *,
+        campaign_id: UUID,
+        platforms: tuple[PlatformName, ...] | None = None,
+        content_id: UUID | None = None,
+    ) -> tuple[RowMapping, ...]:
+        """从 Campaign 逐行账本取目标，覆盖未产生新版本的 ``unchanged`` 行。"""
+
+        content = contents_table
+        ledger = processing_import_batch_items_table
+        item = historical_import_campaign_items_table
+        conditions = [
+            item.c.campaign_id == campaign_id,
+            ledger.c.content_id.is_not(None),
+        ]
+        if platforms is not None:
+            conditions.append(content.c.platform.in_(platforms))
+        if content_id is not None:
+            conditions.append(content.c.id == content_id)
+        return tuple(
+            self._session.execute(
+                select(
+                    content.c.id,
+                    content.c.platform,
+                    content.c.external_content_id,
+                    content.c.content_type,
+                    content.c.current_version,
+                )
+                .select_from(
+                    ledger.join(item, item.c.id == ledger.c.campaign_item_id).join(
+                        content, content.c.id == ledger.c.content_id
+                    )
                 )
                 .where(*conditions)
                 .distinct()

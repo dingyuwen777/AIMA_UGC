@@ -20,6 +20,12 @@ defineEmits<{ search: []; reset: [] }>()
 
 const stageOptions = [
   ['queued', '等待处理'],
+  ['uploading', '文件上传'],
+  ['discovering', '来源发现'],
+  ['snapshotting', '不可变快照'],
+  ['ready', '等待确认导入'],
+  ['running', '数据导入'],
+  ['cancelling', '正在取消'],
   ['reading', 'Excel 读取'],
   ['mapping', '字段映射'],
   ['filtering', '相关性过滤'],
@@ -83,7 +89,7 @@ const stageOptions = [
         </option>
         <option
           v-for="(label, value) in recordTypeLabels"
-          v-show="activeTab === 'all' || (activeTab === 'excel' ? value === 'excel_import' : value !== 'excel_import')"
+          v-show="activeTab === 'all' || (activeTab === 'excel' ? ['excel_import', 'data_import_campaign'].includes(value) : !['excel_import', 'data_import_campaign'].includes(value))"
           :key="value"
           :value="value"
         >

@@ -1,14 +1,29 @@
-import type { HttpErrorResponse } from '../../generated/api/client'
+import type { HttpErrorItem, HttpErrorResponse } from '../../generated/api/client'
+
+function contractErrorSummary(errors: readonly HttpErrorItem[] | undefined): string | null {
+  if (!errors?.length) return null
+  return errors
+    .slice(0, 3)
+    .map((item) => `${item.field || 'request'}: ${item.code}`)
+    .join('；')
+}
+
+export function httpErrorDetail(response: HttpErrorResponse): string {
+  const summary = contractErrorSummary(response.errors)
+  return summary ? `${response.detail}（${summary}）` : response.detail
+}
 
 export class AimaApiError extends Error {
   readonly status: number
   readonly requestId: string
+  readonly errors: readonly HttpErrorItem[]
 
   constructor(response: HttpErrorResponse) {
-    super(response.detail)
+    super(httpErrorDetail(response))
     this.name = 'AimaApiError'
     this.status = response.status
     this.requestId = response.request_id
+    this.errors = response.errors ?? []
   }
 }
 

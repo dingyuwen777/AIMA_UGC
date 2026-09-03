@@ -38,6 +38,7 @@ export const runtimeStatusLabels: Record<CollectionRuntimeStatus, string> = {
 
 export const recordTypeLabels: Record<CollectionRuntimeRecordType, string> = {
   excel_import: 'Excel 导入',
+  data_import_campaign: '数据导入',
   tikhub_discovery: 'TikHub 发现',
   tikhub_batch_supplement: '批次补采',
 }
@@ -46,6 +47,13 @@ export const platformLabels: Record<CollectionPlatform, string> = PLATFORM_LABEL
 
 const runtimeStageLabels: Record<string, string> = {
   queued: '等待处理',
+  uploading: '文件上传',
+  discovering: '来源发现',
+  snapshotting: '不可变快照',
+  ready: '等待确认导入',
+  running: '数据导入',
+  cancelling: '正在取消',
+  partial_failed: '部分失败',
   reading: 'Excel 读取',
   mapping: '字段映射',
   filtering: '相关性过滤',

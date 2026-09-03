@@ -371,6 +371,14 @@ export interface CollectionBatchSupplementEligibilityResponse {
   targets: CollectionBatchSupplementTargetResponse[];
 }
 
+/**
+ * 前端 Campaign Supplement 平台资格；目标来自逐行来源账本。
+ */
+export interface CollectionCampaignSupplementEligibilityResponse {
+  campaign_id: string;
+  targets: CollectionBatchSupplementTargetResponse[];
+}
+
 export type CollectionCapabilityResponseOperationsItem = typeof CollectionCapabilityResponseOperationsItem[keyof typeof CollectionCapabilityResponseOperationsItem];
 
 
@@ -517,6 +525,7 @@ export interface CollectionRunPlatformRequest {
  * 一次性发现从 Keyword Pack 冻结关键词；Batch Supplement 只补既有内容。
  */
 export interface CollectionRunCreateRequest {
+  data_import_campaign_id?: string | null;
   import_batch_id?: string | null;
   include_comments?: boolean;
   include_sub_comments?: boolean;
@@ -533,6 +542,7 @@ export interface CollectionRunCreateRequest {
 }
 
 export interface CollectionRunCreatedResponse {
+  data_import_campaign_id?: string | null;
   import_batch_id?: string | null;
   job_id: string;
   mode: CollectionRunMode;
@@ -591,6 +601,7 @@ export interface CollectionRunResponse {
   /** @minimum 0 */
   attempt: number;
   created_at: string;
+  data_import_campaign_id?: string | null;
   error_code?: string | null;
   error_summary?: string | null;
   finished_at?: string | null;
@@ -634,6 +645,7 @@ export type CollectionRuntimeRecordType = typeof CollectionRuntimeRecordType[key
 
 export const CollectionRuntimeRecordType = {
   excel_import: 'excel_import',
+  data_import_campaign: 'data_import_campaign',
   tikhub_discovery: 'tikhub_discovery',
   tikhub_batch_supplement: 'tikhub_batch_supplement',
 } as const;
@@ -642,13 +654,14 @@ export interface CollectionRuntimeItemResponse {
   collection_run_id?: string | null;
   collection_stats?: CollectionRunStatsResponse | null;
   created_at: string;
+  data_import_campaign_id?: string | null;
   display_name: string;
   error_code?: string | null;
   error_summary?: string | null;
   finished_at?: string | null;
   import_batch_id?: string | null;
   import_stats?: ImportStatsResponse | null;
-  job_id: string;
+  job_id?: string | null;
   keywords?: string[];
   platforms?: CollectionPlatform[];
   /**
@@ -2262,7 +2275,7 @@ limit?: number;
 export type ListCollectionRuntimeRunsParams = {
 search?: string | null;
 /**
- * @maxItems 3
+ * @maxItems 4
  */
 record_types?: CollectionRuntimeRecordType[];
 status?: CollectionRuntimeStatus | null;
@@ -3888,6 +3901,37 @@ export const startDataImportCampaign = async (campaignId: string, options?: Requ
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCollectionCampaignSupplementEligibilityUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/supplement-eligibility`
+}
+
+/**
+ * @summary Get Collection Campaign Supplement Eligibility
+ */
+export const getCollectionCampaignSupplementEligibility = async (campaignId: string, options?: RequestInit): Promise<CollectionCampaignSupplementEligibilityResponse> => {
+
+  const res = await fetch(getGetCollectionCampaignSupplementEligibilityUrl(campaignId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionCampaignSupplementEligibilityResponse = body ? JSON.parse(body) : {}
   return data
 }
 

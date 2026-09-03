@@ -1124,3 +1124,58 @@ def test_0038_recompiles_existing_analysis_scheme_snapshots(
         engine.dispose()
 
     _upgrade(migration_database, "20260902_0038")
+
+
+def test_0040_adds_and_reverses_collection_campaign_source(
+    migration_database: str,
+) -> None:
+    """0040 只扩展 Collection Run 来源；降级移除新增关联并恢复 0039 Schema。"""
+
+    _upgrade(migration_database, "20260903_0039")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "data_import_campaign_id" not in {
+            column["name"] for column in inspector.get_columns("collection_runs")
+        }
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260903_0040")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "data_import_campaign_id" in {
+            column["name"] for column in inspector.get_columns("collection_runs")
+        }
+        assert any(
+            foreign_key["constrained_columns"] == ["data_import_campaign_id"]
+            and foreign_key["referred_table"] == "historical_import_campaigns"
+            for foreign_key in inspector.get_foreign_keys("collection_runs")
+        )
+        assert "ck_collection_runs_import_source_at_most_one" in {
+            constraint["name"] for constraint in inspector.get_check_constraints("collection_runs")
+        }
+        assert "ix_collection_runs_campaign_id_created_at" in {
+            index["name"] for index in inspector.get_indexes("collection_runs")
+        }
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260903_0039")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "data_import_campaign_id" not in {
+            column["name"] for column in inspector.get_columns("collection_runs")
+        }
+        assert "ck_collection_runs_import_source_at_most_one" not in {
+            constraint["name"] for constraint in inspector.get_check_constraints("collection_runs")
+        }
+        assert "ix_collection_runs_campaign_id_created_at" not in {
+            index["name"] for index in inspector.get_indexes("collection_runs")
+        }
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260903_0040")
