@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import cast
 from uuid import UUID
 
@@ -11,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.llm import resolve_openai_compatible_provider_name
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
-from aima_ugc.modules.system.models import ProviderConfig
+from aima_ugc.modules.system.models import ProviderConfig, ProviderKind
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.security import read_secret_ref
 
@@ -19,11 +18,16 @@ _LEGACY_LLM_CONFIG_ID = UUID("00000000-0000-4000-8000-000000000001")
 
 
 def active_llm_provider(session: Session, settings: PlatformSettings) -> ProviderConfig | None:
-    """每次创建新 Analysis Run 都重新读取数据库默认 LLM；DB 一旦配置即覆盖 env。"""
+    """每次创建新 Analysis Run 都重读数据库；仅在 DB 尚无 LLM 配置时使用 env 兜底。"""
 
-    configured = PostgresProviderConfigRepository(session).get_default("llm")
+    repository = PostgresProviderConfigRepository(session)
+    configured = repository.get_default("llm")
     if configured is not None:
         return configured
+    # 一旦管理员写入过任意 LLM Provider，数据库就是唯一运行时事实源。
+    # 禁用或未指定默认项必须表现为“未配置”，不能悄悄回退到旧 env。
+    if repository.list_all(provider_kind="llm"):
+        return None
     if settings.llm_base_url is None or settings.llm_model is None:
         return None
     try:
@@ -64,10 +68,11 @@ def provider_from_safe_snapshot(payload: object) -> ProviderConfig:
     extra_config = data.get("extra_config", {})
     if not isinstance(extra_config, dict):
         raise ValueError("Runtime Provider Snapshot extra_config 必须为对象")
+    provider_kind = cast(ProviderKind, _required_str(data, "provider_kind"))
     return ProviderConfig(
         id=UUID(provider_config_id),
         provider=_required_str(data, "provider"),
-        provider_kind=cast(str, _required_str(data, "provider_kind")),  # type: ignore[arg-type]
+        provider_kind=provider_kind,
         display_name=f"run-snapshot:{provider_config_id}",
         base_url=_required_str(data, "base_url"),
         model=data.get("model") if isinstance(data.get("model"), str) else None,
