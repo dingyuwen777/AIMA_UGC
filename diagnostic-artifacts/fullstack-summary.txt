@@ -1,0 +1,61 @@
+===== admin-product-capabilities.spec.ts =====
+exit_code=0
+===== collection-plan-search-config.spec.ts =====
+exit_code=0
+===== excel-import.spec.ts =====
+exit_code=1
+
+> aima-ugc-frontend@0.1.0 test:e2e:fullstack
+> playwright test --config playwright.fullstack.config.ts excel-import.spec.ts
+
+
+Running 2 tests using 1 worker
+
+  ✓  1 e2e-fullstack/excel-import.spec.ts:68:1 › Excel 浏览器多选词包后经过真实 API、Worker 和 PostgreSQL 可在声音广场查看 (12.5s)
+  ✘  2 e2e-fullstack/excel-import.spec.ts:88:1 › 错误表头 Excel 由统一链路在预检阶段拒绝 (36.3s)
+
+
+  1) e2e-fullstack/excel-import.spec.ts:88:1 › 错误表头 Excel 由统一链路在预检阶段拒绝 ─────────────────────────────
+
+    Error: expect(locator).toBeDisabled() failed
+
+    Locator: getByRole('dialog', { name: '导入数据' }).getByRole('button', { name: '开始导入' })
+    Expected: disabled
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeDisabled" with timeout 30000ms
+      - waiting for getByRole('dialog', { name: '导入数据' }).getByRole('button', { name: '开始导入' })
+
+
+       96 |   await expect(detail.getByText('状态：failed')).toBeVisible({ timeout: 60_000 })
+       97 |   await expect(detail.getByText('historical_snapshot_invalid')).toBeVisible()
+    >  98 |   await expect(detail.getByRole('button', { name: '开始导入' })).toBeDisabled()
+          |                                                              ^
+       99 |   await expect(detail.getByRole('button', { name: '查看导入内容' })).toHaveCount(0)
+      100 | })
+      101 |
+        at /home/runner/work/AIMA_UGC/AIMA_UGC/frontend/e2e-fullstack/excel-import.spec.ts:98:62
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/excel-import-错误表头-Excel-由统一链路在预检阶段拒绝/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/excel-import-错误表头-Excel-由统一链路在预检阶段拒绝/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/excel-import-错误表头-Excel-由统一链路在预检阶段拒绝/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/excel-import-错误表头-Excel-由统一链路在预检阶段拒绝/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e-fullstack/excel-import.spec.ts:88:1 › 错误表头 Excel 由统一链路在预检阶段拒绝 ──────────────────────────────
+  1 passed (50.1s)
+===== manual-relevance-review.spec.ts =====
+exit_code=0
+===== stage12-historical-analysis.spec.ts =====
+exit_code=0
