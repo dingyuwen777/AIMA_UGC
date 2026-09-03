@@ -1,0 +1,257 @@
+name: CHG314 Review Cleanup Green V2
+
+on:
+  push:
+    branches:
+      - fix/314-frontend-fullstack-reliability
+    paths:
+      - .github/workflows/chg314-review-cleanup-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: ci-postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/chg314-cleanup-v2/data
+      AIMA_LOG_DIR: .runtime/chg314-cleanup-v2/logs
+      AIMA_SECRET_DIR: .runtime/chg314-cleanup-v2/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/314-frontend-fullstack-reliability
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked environment and database
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'ci-postgres' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+          uv run alembic upgrade head
+
+      - name: Add permanent regression and apply bounded fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >> tests/integration/content/test_chg314_review_regressions.py <<'PY'
+
+
+          def test_all_scope_target_change_does_not_run_unbounded_cleanup(
+              tmp_path: Path,
+              monkeypatch,
+          ) -> None:  # type: ignore[no-untyped-def]
+              """目标漂移失败时不得用一个 DELETE 事务清掉此前已分批冻结的海量 Target。"""
+
+              runtime = _runtime(tmp_path)
+              try:
+                  client = _client(runtime)
+                  assert len(_seed_contents(client, runtime)) == 3
+                  preview = client.post(
+                      "/api/v1/analysis/content-runs/preview",
+                      json={"targets": {"scope": "all"}},
+                  )
+                  assert preview.status_code == 200
+                  created = client.post(
+                      "/api/v1/analysis/content-runs",
+                      json={
+                          "client_idempotency_key": f"chg314-review-all-drift-{uuid4()}",
+                          "targets": {"scope": "all"},
+                          "expected_target_count": 3,
+                          "expected_configuration_hash": preview.json()["configuration_hash"],
+                          "run_intent": "manual_reanalysis",
+                      },
+                  )
+                  assert created.status_code == 202
+
+                  monkeypatch.setattr(
+                      PostgresContentQueryRepository,
+                      "count_all_analysis_targets",
+                      lambda self: 4,
+                  )
+
+                  def reject_unbounded_cleanup(self, run_id):  # type: ignore[no-untyped-def]
+                      del self, run_id
+                      raise AssertionError("all Scope 异常路径不得执行全量 clear_run_targets")
+
+                  monkeypatch.setattr(
+                      PostgresAnalysisRepository,
+                      "clear_run_targets",
+                      reject_unbounded_cleanup,
+                      raising=False,
+                  )
+                  worker = create_job_worker(
+                      runtime=runtime,
+                      registry=_analysis_registry(
+                          runtime,
+                          raw_response=_relevant_response(),
+                          freeze_batch_size=2,
+                      ),
+                      worker_id="chg314-review-all-drift-green",
+                      lease_seconds=120,
+                      retry_delay_seconds=0,
+                  )
+                  assert worker.run_once() is True
+                  run_id = UUID(created.json()["run_id"])
+                  run = client.get(f"/api/v1/analysis/content-runs/{run_id}")
+                  assert run.status_code == 200
+                  assert run.json()["status"] == "failed"
+                  assert run.json()["error_code"] == "content_analysis_target_changed"
+                  with runtime.database.engine.begin() as connection:
+                      assert (
+                          connection.scalar(
+                              select(func.count()).where(
+                                  analysis_content_run_targets_table.c.run_id == run_id
+                              )
+                          )
+                          == 3
+                      )
+                      assert (
+                          connection.scalar(
+                              select(func.count()).where(
+                                  analysis_content_requests_table.c.run_id == run_id
+                              )
+                          )
+                          == 0
+                      )
+              finally:
+                  runtime.close()
+          PY
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          test_path = Path('tests/integration/content/test_chg314_review_regressions.py')
+          test_text = test_path.read_text(encoding='utf-8')
+          test_text = test_text.replace(
+              'from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository\n',
+              'from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository\nfrom aima_ugc.adapters.persistence.postgres.content_queries import (\n    PostgresContentQueryRepository,\n)\n',
+              1,
+          )
+          test_path.write_text(test_text, encoding='utf-8')
+
+          worker_path = Path('backend/src/aima_ugc/bootstrap/analysis_worker.py')
+          worker_text = worker_path.read_text(encoding='utf-8')
+          worker_text = re.sub(
+              r'\n(?P<indent>\s*)if all_scope:\n(?P=indent)    repository\.clear_run_targets\(payload\.run_id\)',
+              '',
+              worker_text,
+          )
+          worker_text = re.sub(
+              r'^\s*repository\.clear_run_targets\(payload\.run_id\)\s*\n',
+              '',
+              worker_text,
+              flags=re.MULTILINE,
+          )
+          if 'clear_run_targets' in worker_text:
+              raise SystemExit('analysis_worker.py 仍存在 clear_run_targets 调用')
+          worker_path.write_text(worker_text, encoding='utf-8')
+
+          repository_path = Path('backend/src/aima_ugc/adapters/persistence/postgres/analysis.py')
+          repository_text = repository_path.read_text(encoding='utf-8')
+          repository_text = repository_text.replace('    delete,\n', '', 1)
+          repository_text, removed = re.subn(
+              r'    def clear_run_targets\(self, run_id: UUID\) -> None:\n'
+              r'        """清理未开始 Shard 的部分冻结目标，用于 all Scope fail-closed。"""\n\n'
+              r'        self\._session\.execute\(\n'
+              r'            delete\(analysis_content_run_targets_table\)\.where\(\n'
+              r'                analysis_content_run_targets_table\.c\.run_id == run_id\n'
+              r'            \)\n'
+              r'        \)\n\n',
+              '',
+              repository_text,
+              count=1,
+          )
+          if removed != 1:
+              raise SystemExit(f'clear_run_targets method removal count={removed}')
+          repository_path.write_text(repository_text, encoding='utf-8')
+
+          replacements = (
+              (
+                  '数量变化时清理部分冻结目标并以 `content_analysis_target_changed` 失败关闭',
+                  '数量变化时以 `content_analysis_target_changed` 失败关闭；已提交的部分 Target 保留在该终态 Run 下且不会创建 Shard，避免异常路径再触发一次海量 DELETE 事务',
+              ),
+              (
+                  '数量变化时清理未开始 Shard 的部分 Target，并以可查询 error_code 失败关闭',
+                  '数量变化时以可查询 error_code 失败关闭；已提交的部分 Target 留在终态 Run 中且不会被调度，避免异常路径进行海量同步清理',
+              ),
+              (
+                  '数量变化时在短事务内清理部分 Target 并以 `content_analysis_target_changed` 失败关闭',
+                  '数量变化时以 `content_analysis_target_changed` 失败关闭；已提交的部分 Target 保留为终态 Run-local 事实且不创建 Shard，避免同步海量 DELETE',
+              ),
+          )
+          for filename in (
+              'docs/blueprint/04_后端任务API与前端.md',
+              'backend/src/aima_ugc/modules/analysis/README.md',
+              'docs/appendix/07_AI舆情打标与分析实现.md',
+          ):
+              path = Path(filename)
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements:
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate Green
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            backend/src/aima_ugc/bootstrap/analysis_worker.py
+            backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
+            tests/integration/content/test_chg314_review_regressions.py
+          )
+          uv run ruff format "${files[@]}"
+          uv run ruff check --fix "${files[@]}"
+          uv run ruff format --check "${files[@]}"
+          uv run ruff check "${files[@]}"
+          uv run mypy backend/src/aima_ugc
+          git diff --check
+          uv run pytest \
+            tests/integration/content/test_chg314_review_regressions.py \
+            tests/integration/content/test_stage12_analysis_runs.py \
+            -q
+
+      - name: Commit Green and remove temporary workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/chg314-review-cleanup.yml
+          rm .github/workflows/chg314-review-cleanup-v2.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: 保持 all Scope 异常路径有界' -m 'Requirement-Source: #314'
+          git push origin HEAD:fix/314-frontend-fullstack-reliability
