@@ -284,7 +284,10 @@ class PostgresContentHttpService:
                 if record.analysis.status != "completed":
                     raise ContentAnalysisRunConflict
                 taxonomy = configuration.taxonomy
-                if request.voice_type is not None and request.voice_type not in taxonomy.voice_types:
+                if (
+                    request.voice_type is not None
+                    and request.voice_type not in taxonomy.voice_types
+                ):
                     raise ContentAnalysisRunConflict
                 if request.sentiment is not None and request.sentiment not in taxonomy.sentiments:
                     raise ContentAnalysisRunConflict
@@ -405,7 +408,9 @@ class PostgresContentHttpService:
                         targets,
                         analysis_identity=identity,
                     )
-                    target_count = PostgresAnalysisRepository(session).count_targets(target_statement)
+                    target_count = PostgresAnalysisRepository(session).count_targets(
+                        target_statement
+                    )
                 if target_count == 0:
                     raise ContentSelectionEmpty
         finally:
@@ -741,7 +746,9 @@ class PostgresContentHttpService:
         if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
             raise ValueError("all Scope 只能由 Planner 有界冻结")
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
-            return repository.freeze_target_statement(filters=targets.filters or ContentFilterSnapshot())
+            return repository.freeze_target_statement(
+                filters=targets.filters or ContentFilterSnapshot()
+            )
         return repository.freeze_target_statement(content_ids=targets.content_ids)
 
     def review_relevance(
@@ -920,7 +927,9 @@ def _analysis_run_response(
         generation_config=cast(dict[str, object], row["generation_config"]),
         generation_config_hash=cast(str, row["generation_config_hash"]),
         error_code=cast(str | None, row["error_code"]),
-        stats=AnalysisContentRunStatsResponse.model_validate(repository.run_stats(cast(UUID, row["id"]))),
+        stats=AnalysisContentRunStatsResponse.model_validate(
+            repository.run_stats(cast(UUID, row["id"]))
+        ),
         shards=tuple(
             AnalysisContentRunShardResponse(
                 request_id=cast(UUID, shard["request_id"]),

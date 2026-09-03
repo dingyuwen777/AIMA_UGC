@@ -141,9 +141,7 @@ class PostgresProviderConfigRepository:
         )
         if except_id is not None:
             statement = statement.where(provider_configs_table.c.id != except_id)
-        self._session.execute(
-            statement.values(is_default=False, updated_at=func.clock_timestamp())
-        )
+        self._session.execute(statement.values(is_default=False, updated_at=func.clock_timestamp()))
 
     def create(self, config: ProviderConfig) -> ProviderConfig:
         if config.is_default:
@@ -205,7 +203,9 @@ class PostgresProviderConfigRepository:
             base_url=base_url,
             model=current.model if model is None else model,
             secret_ref=secret_ref,
-            timeout_seconds=(current.timeout_seconds if timeout_seconds is None else timeout_seconds),
+            timeout_seconds=(
+                current.timeout_seconds if timeout_seconds is None else timeout_seconds
+            ),
             max_retries=current.max_retries if max_retries is None else max_retries,
             max_concurrency=(
                 current.max_concurrency if max_concurrency is None else max_concurrency

@@ -124,6 +124,32 @@ HttpErrorResponse
 - [`backend/src/aima_ugc/bootstrap/api.py`](../backend/src/aima_ugc/bootstrap/api.py)
 - [`backend/src/aima_ugc/platform/health.py`](../backend/src/aima_ugc/platform/health.py)
 
+
+---
+
+## 3.1 管理员 Provider 配置 API
+
+LLM 与采集 Provider 的运行时配置统一由管理员配置中心维护；Secret 明文只在写请求进入后端 Secret Store，读取响应、数据库审计和日志均不得返回 API Key 或内部 `secret_ref`。
+
+### `GET /api/v1/provider-configs`
+
+管理员读取 LLM/TikHub Provider 的安全投影。可按 `provider_kind=llm|collection` 筛选；响应通过 `secret_configured` 表示密钥是否已经配置。
+
+### `POST /api/v1/provider-configs`
+
+创建新的 Provider 配置。LLM 需要 `model`；Collection Provider 不使用 `model`。提交 `api_key` 时服务端创建不可变 Secret 引用，数据库仅保存该引用。
+
+### `PUT /api/v1/provider-configs/{provider_config_id}`
+
+完整更新可变 Provider 字段。省略 `api_key` 表示保持当前 Secret；提供新 `api_key` 表示轮换到新的不可变 Secret 版本。保存成功后**无需重启服务**：之后新建的 Analysis/Collection Run 读取当前数据库配置；已创建 Run 与同 Run 自动重试继续使用创建时冻结的运行时快照。
+
+实现边界：
+
+- [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py)
+- [`backend/src/aima_ugc/bootstrap/administration_http.py`](../backend/src/aima_ugc/bootstrap/administration_http.py)
+- [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../backend/src/aima_ugc/bootstrap/runtime_config.py)
+- [`backend/src/aima_ugc/platform/security/secrets.py`](../backend/src/aima_ugc/platform/security/secrets.py)
+
 ---
 
 # 4. Collection Runtime API

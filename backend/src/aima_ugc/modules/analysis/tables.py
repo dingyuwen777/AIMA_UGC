@@ -128,7 +128,10 @@ analysis_content_results_table = Table(
     Column("analyzed_at", DateTime(timezone=True), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint(
-        "analysis_run_id", "content_id", "content_version", name="uq_analysis_content_results_identity"
+        "analysis_run_id",
+        "content_id",
+        "content_version",
+        name="uq_analysis_content_results_identity",
     ),
     CheckConstraint("content_version >= 1", name="content_version_positive"),
     CheckConstraint("relevance in ('relevant','irrelevant')", name="relevance_allowed"),
@@ -141,7 +144,9 @@ analysis_content_results_table = Table(
     CheckConstraint("char_length(input_hash) = 64", name="input_hash_sha256_length"),
     CheckConstraint("char_length(prompt_sha256) = 64", name="prompt_sha256_length"),
     CheckConstraint("char_length(taxonomy_sha256) = 64", name="taxonomy_sha256_length"),
-    CheckConstraint("char_length(generation_config_hash) = 64", name="generation_config_hash_length"),
+    CheckConstraint(
+        "char_length(generation_config_hash) = 64", name="generation_config_hash_length"
+    ),
     info={"owner": "analysis"},
 )
 
@@ -149,7 +154,9 @@ analysis_content_requests_table = Table(
     "analysis_content_requests",
     metadata,
     Column("id", Uuid(), primary_key=True),
-    Column("run_id", Uuid(), ForeignKey("analysis_content_runs.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "run_id", Uuid(), ForeignKey("analysis_content_runs.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("shard_no", Integer(), nullable=False),
     Column("job_id", Uuid(), ForeignKey("jobs.id"), nullable=False),
     Column("scope", Text(), nullable=False),
@@ -168,7 +175,12 @@ analysis_content_requests_table = Table(
 analysis_content_request_items_table = Table(
     "analysis_content_request_items",
     metadata,
-    Column("request_id", Uuid(), ForeignKey("analysis_content_requests.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "request_id",
+        Uuid(),
+        ForeignKey("analysis_content_requests.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
     Column("content_id", Uuid(), ForeignKey("contents.id"), primary_key=True),
     Column("content_version", Integer(), nullable=False),
     Column("ordinal", Integer(), nullable=False),
@@ -185,7 +197,8 @@ analysis_content_request_items_table = Table(
     CheckConstraint(
         "(status = 'pending' and analysis_result_id is null and error_code is null) or "
         "(status = 'succeeded' and analysis_result_id is not null and error_code is null) or "
-        "(status in ('failed','stale','cancelled') and analysis_result_id is null and error_code is not null)",
+        "(status in ('failed','stale','cancelled') and analysis_result_id is null "
+        "and error_code is not null)",
         name="status_fields_consistent",
     ),
     info={"owner": "analysis"},
@@ -194,7 +207,12 @@ analysis_content_request_items_table = Table(
 analysis_content_label_pairs_table = Table(
     "analysis_content_label_pairs",
     metadata,
-    Column("analysis_result_id", Uuid(), ForeignKey("analysis_content_results.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "analysis_result_id",
+        Uuid(),
+        ForeignKey("analysis_content_results.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
     Column("ordinal", Integer(), primary_key=True),
     Column("primary_label", Text(), nullable=False),
     Column("secondary_label", Text(), nullable=False),
@@ -202,7 +220,10 @@ analysis_content_label_pairs_table = Table(
     CheckConstraint("char_length(primary_label) > 0", name="primary_label_nonempty"),
     CheckConstraint("char_length(secondary_label) > 0", name="secondary_label_nonempty"),
     UniqueConstraint(
-        "analysis_result_id", "primary_label", "secondary_label", name="uq_analysis_content_label_pairs_value"
+        "analysis_result_id",
+        "primary_label",
+        "secondary_label",
+        name="uq_analysis_content_label_pairs_value",
     ),
     info={"owner": "analysis"},
 )

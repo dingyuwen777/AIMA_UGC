@@ -117,7 +117,7 @@ class PostgresContentAnalysisJobExecutor:
                             )
                         else:
                             service, close_service = self._service_factory()
-                    except (OSError, SecretFileError, ValueError):
+                    except OSError, SecretFileError, ValueError:
                         return JobHandlerResult.failed("analysis_configuration_unavailable")
                 if not _matches_frozen_configuration(work[0], service):
                     return JobHandlerResult.failed("analysis_run_configuration_changed")
