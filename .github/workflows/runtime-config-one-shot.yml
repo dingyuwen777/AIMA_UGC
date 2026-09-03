@@ -1,0 +1,323 @@
+name: Runtime Config One Shot Patch
+
+on:
+  push:
+    branches:
+      - feat/runtime-config-control-plane
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'chore: bootstrap runtime config integration patch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feat/runtime-config-control-plane
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Patch large integration files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "backend/src/aima_ugc/bootstrap/content_http.py",
+              '''        configuration = self._load_active_analysis_configuration()
+                  identity = configuration.identity
+                  if identity is None:
+                      raise ContentAnalysisUnavailable
+                  generation_config, generation_hash = current_analysis_generation_config()
+          ''',
+              '''        configuration = self._load_active_analysis_configuration()
+                  identity = configuration.identity
+                  llm_provider = configuration.llm_provider
+                  if identity is None or llm_provider is None:
+                      raise ContentAnalysisUnavailable
+                  generation_config, generation_hash = current_analysis_generation_config()
+          ''',
+          )
+          replace_once(
+              "backend/src/aima_ugc/bootstrap/content_http.py",
+              '''                    generation_config=generation_config,
+                          generation_config_hash=generation_hash,
+                      )
+          ''',
+              '''                    generation_config=generation_config,
+                          generation_config_hash=generation_hash,
+                          runtime_config_snapshot=cast(
+                              dict[str, object],
+                              llm_provider.safe_runtime_snapshot(),
+                          ),
+                      )
+          ''',
+          )
+
+          replace_once(
+              "backend/src/aima_ugc/bootstrap/collection_scope.py",
+              '''class _PlatformRuntimeConfig:
+                  provider_config_id: UUID
+                  config: dict[str, object]
+                  provider: str | None = None
+                  base_url: str | None = None
+                  secret_ref: str | None = None
+          ''',
+              '''class _PlatformRuntimeConfig:
+                  provider_config_id: UUID
+                  config: dict[str, object]
+                  provider: str | None = None
+                  base_url: str | None = None
+                  secret_ref: str | None = None
+                  timeout_seconds: int | None = None
+                  max_retries: int | None = None
+                  max_concurrency: int | None = None
+                  max_rps: int | None = None
+                  revision: int | None = None
+          ''',
+          )
+          replace_once(
+              "backend/src/aima_ugc/bootstrap/collection_scope.py",
+              '''            return ProviderConfig(
+                          id=runtime_config.provider_config_id,
+                          provider=runtime_config.provider,
+                          display_name=f"run-snapshot:{runtime_config.provider_config_id}",
+                          base_url=runtime_config.base_url,
+                          secret_ref=runtime_config.secret_ref,
+                          enabled=True,
+                      )
+          ''',
+              '''            return ProviderConfig(
+                          id=runtime_config.provider_config_id,
+                          provider=runtime_config.provider,
+                          display_name=f"run-snapshot:{runtime_config.provider_config_id}",
+                          base_url=runtime_config.base_url,
+                          secret_ref=runtime_config.secret_ref,
+                          timeout_seconds=(
+                              45
+                              if runtime_config.timeout_seconds is None
+                              else runtime_config.timeout_seconds
+                          ),
+                          max_retries=(
+                              3
+                              if runtime_config.max_retries is None
+                              else runtime_config.max_retries
+                          ),
+                          max_concurrency=(
+                              5
+                              if runtime_config.max_concurrency is None
+                              else runtime_config.max_concurrency
+                          ),
+                          max_rps=runtime_config.max_rps,
+                          revision=1 if runtime_config.revision is None else runtime_config.revision,
+                          enabled=True,
+                      )
+          ''',
+          )
+          replace_once(
+              "backend/src/aima_ugc/bootstrap/collection_scope.py",
+              '''    return _PlatformRuntimeConfig(
+                  provider_config_id=parsed_config_id,
+                  config={str(key): value for key, value in config.items()},
+                  provider=provider if isinstance(provider, str) else None,
+                  base_url=base_url if isinstance(base_url, str) else None,
+                  secret_ref=(secret_ref if isinstance(secret_ref, str) else None),
+              )
+          ''',
+              '''    return _PlatformRuntimeConfig(
+                  provider_config_id=parsed_config_id,
+                  config={str(key): value for key, value in config.items()},
+                  provider=provider if isinstance(provider, str) else None,
+                  base_url=base_url if isinstance(base_url, str) else None,
+                  secret_ref=(secret_ref if isinstance(secret_ref, str) else None),
+                  timeout_seconds=_snapshot_runtime_int(item, "timeout_seconds", minimum=1),
+                  max_retries=_snapshot_runtime_int(item, "max_retries", minimum=0),
+                  max_concurrency=_snapshot_runtime_int(item, "max_concurrency", minimum=1),
+                  max_rps=_snapshot_runtime_int(item, "max_rps", minimum=1),
+                  revision=_snapshot_runtime_int(item, "revision", minimum=1),
+              )
+          ''',
+          )
+          replace_once(
+              "backend/src/aima_ugc/bootstrap/collection_scope.py",
+              '''def _decision_policy(
+                  run: CollectionRunRecord,
+              ) -> CollectionDecisionPolicyV1:
+          ''',
+              '''def _snapshot_runtime_int(
+                  payload: dict[str, object],
+                  name: str,
+                  *,
+                  minimum: int,
+              ) -> int | None:
+                  value = payload.get(name)
+                  if value is None:
+                      return None
+                  if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                      raise ValueError(f"Collection Run Snapshot {name} 不合法")
+                  return value
+
+
+              def _decision_policy(
+                  run: CollectionRunRecord,
+              ) -> CollectionDecisionPolicyV1:
+          ''',
+          )
+
+          replace_once(
+              "backend/src/aima_ugc/bootstrap/api.py",
+              '''    KeywordPackVehicleLinkRequest,
+                  KeywordPackVehicleLinksResponse,
+                  VehicleModelCreateRequest,
+          ''',
+              '''    KeywordPackVehicleLinkRequest,
+                  KeywordPackVehicleLinksResponse,
+                  ProviderConfigCreateRequest,
+                  ProviderConfigListResponse,
+                  ProviderConfigResponse,
+                  ProviderConfigUpdateRequest,
+                  ProviderKind,
+                  VehicleModelCreateRequest,
+          ''',
+          )
+          route_anchor = '''    @application.get(
+                  "/api/v1/audit-events",
+          '''
+          provider_routes = '''    @application.get(
+                  "/api/v1/provider-configs",
+                  operation_id="listProviderConfigs",
+                  response_model=ProviderConfigListResponse,
+                  responses={
+                      403: {"model": HttpErrorResponse},
+                      422: {"model": HttpErrorResponse},
+                      500: {"model": HttpErrorResponse},
+                  },
+                  tags=["administration", "provider-configs"],
+              )
+              def list_provider_configs(
+                  request: Request,
+                  provider_kind: ProviderKind | None = Query(default=None),
+              ) -> ProviderConfigListResponse:
+                  """管理员读取 LLM/TikHub Provider 的安全配置投影。"""
+
+                  current_principal(request).require_administrator()
+                  return current_administration_service().list_provider_configs(
+                      provider_kind=provider_kind
+                  )
+
+              @application.post(
+                  "/api/v1/provider-configs",
+                  operation_id="createProviderConfig",
+                  response_model=ProviderConfigResponse,
+                  status_code=status.HTTP_201_CREATED,
+                  responses={
+                      403: {"model": HttpErrorResponse},
+                      409: {"model": HttpErrorResponse},
+                      422: {"model": HttpErrorResponse},
+                      500: {"model": HttpErrorResponse},
+                  },
+                  tags=["administration", "provider-configs"],
+              )
+              def create_provider_config(
+                  body: ProviderConfigCreateRequest,
+                  request: Request,
+              ) -> ProviderConfigResponse:
+                  """管理员创建 Provider；API Key 只写外部 Secret Store。"""
+
+                  return current_administration_service().create_provider_config(
+                      body,
+                      principal=current_principal(request),
+                      request_id=_request_id(request),
+                  )
+
+              @application.put(
+                  "/api/v1/provider-configs/{provider_config_id}",
+                  operation_id="updateProviderConfig",
+                  response_model=ProviderConfigResponse,
+                  responses={
+                      403: {"model": HttpErrorResponse},
+                      404: {"model": HttpErrorResponse},
+                      409: {"model": HttpErrorResponse},
+                      422: {"model": HttpErrorResponse},
+                      500: {"model": HttpErrorResponse},
+                  },
+                  tags=["administration", "provider-configs"],
+              )
+              def update_provider_config(
+                  provider_config_id: UUID,
+                  body: ProviderConfigUpdateRequest,
+                  request: Request,
+              ) -> ProviderConfigResponse:
+                  """管理员更新 Provider；省略 API Key 时不轮换 Secret。"""
+
+                  return current_administration_service().update_provider_config(
+                      provider_config_id,
+                      body,
+                      principal=current_principal(request),
+                      request_id=_request_id(request),
+                  )
+
+          ''' + route_anchor
+          replace_once("backend/src/aima_ugc/bootstrap/api.py", route_anchor, provider_routes)
+          PY
+
+      - name: Install locked toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Format and regenerate contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format \
+            backend/src/aima_ugc/bootstrap/api.py \
+            backend/src/aima_ugc/bootstrap/content_http.py \
+            backend/src/aima_ugc/bootstrap/collection_scope.py \
+            backend/src/aima_ugc/bootstrap/analysis_worker.py \
+            backend/src/aima_ugc/bootstrap/administration_http.py \
+            backend/src/aima_ugc/bootstrap/runtime_config.py \
+            backend/src/aima_ugc/bootstrap/worker.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/analysis.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/transport.py \
+            backend/src/aima_ugc/contracts/administration.py \
+            backend/src/aima_ugc/modules/administration/http.py \
+            backend/src/aima_ugc/modules/collection/run_snapshot.py \
+            backend/src/aima_ugc/modules/system/models.py \
+            backend/src/aima_ugc/modules/system/tables.py
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+
+      - name: Commit integration patch and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/runtime-config-one-shot.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(runtime): wire provider control plane end to end"
+          git push origin HEAD:feat/runtime-config-control-plane
