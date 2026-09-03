@@ -59,6 +59,27 @@ export const test = base.extend<{ apiGuard: void }>({
           })
           return
         }
+        if (request.method() === 'GET' && url.pathname === '/api/v1/analysis/content-runs') {
+          await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ items: [] }),
+          })
+          return
+        }
+        if (request.method() === 'GET' && url.pathname === '/api/v1/collection-runtime/runs') {
+          await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ items: [], next_cursor: null, has_more: false }),
+          })
+          return
+        }
+        if (request.method() === 'GET' && url.pathname === '/api/v1/data-exports') {
+          await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ items: [] }),
+          })
+          return
+        }
 
         unexpected.push(key)
         await route.fulfill({
