@@ -51,6 +51,7 @@
 - Orval 前端 API Client 重新生成成功；
 - 前端 TypeScript/Vue typecheck、ESLint、生产构建全部通过；
 - `tests/unit/system/test_runtime_provider_config.py`：4 项通过，覆盖 LLM dotted Provider 身份兼容、Collection Provider 约束、不可变 Secret 写入和 Collection Provider Run Snapshot；
+- `uv run mypy backend/src`：287 个源码文件无类型错误；
 - `docker compose config` 与 Windows overlay `docker compose -f compose.yaml -f compose.windows.yaml config` 均通过。
 
 正式 PR 全量 CI、Runtime Acceptance 与 L3 Review 仍以 GitHub 门禁结果为最终完成证据。
