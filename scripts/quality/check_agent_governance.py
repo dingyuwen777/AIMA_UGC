@@ -139,13 +139,9 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
         chooser_name, title_prefix = profile
         first_lines = text.splitlines()[:4]
         if f"name: {chooser_name}" not in first_lines:
-            errors.append(
-                f"GOV017 {path.as_posix()}: chooser 名称必须精确为 {chooser_name}"
-            )
+            errors.append(f"GOV017 {path.as_posix()}: chooser 名称必须精确为 {chooser_name}")
         if f'title: "{title_prefix}"' not in first_lines:
-            errors.append(
-                f"GOV017 {path.as_posix()}: title prefix 必须精确为 {title_prefix!r}"
-            )
+            errors.append(f"GOV017 {path.as_posix()}: title prefix 必须精确为 {title_prefix!r}")
 
     acceptance = _issue_field_block(text, "acceptance_criteria")
     if acceptance is not None and (
@@ -157,9 +153,7 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
 
     validation = _issue_field_block(text, "validation_requirements")
     if validation is not None and "label: 验证要求" not in validation:
-        errors.append(
-            f"GOV017 {path.as_posix()}: validation_requirements 必须使用统一验证要求语义"
-        )
+        errors.append(f"GOV017 {path.as_posix()}: validation_requirements 必须使用统一验证要求语义")
     return errors
 
 
