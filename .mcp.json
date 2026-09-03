@@ -4,7 +4,7 @@
       "args": [
         "serve"
       ],
-      "command": "${CLAUDE_PROJECT_DIR:-.}/.agents/runtime/agent-skills-mcp.exe",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/.agents/runtime/agent-skills.exe",
       "type": "stdio"
     }
   }

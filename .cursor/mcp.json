@@ -4,7 +4,7 @@
       "args": [
         "serve"
       ],
-      "command": "${workspaceFolder}${pathSeparator}.agents${pathSeparator}runtime${pathSeparator}agent-skills-mcp.exe",
+      "command": "${workspaceFolder}${pathSeparator}.agents${pathSeparator}runtime${pathSeparator}agent-skills.exe",
       "type": "stdio"
     }
   }
