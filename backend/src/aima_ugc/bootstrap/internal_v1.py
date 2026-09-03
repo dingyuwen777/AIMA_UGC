@@ -40,6 +40,8 @@ class InternalV1ProviderSettings:
 
 
 def _parse_bool(value: str, *, key: str) -> bool:
+    """解析部署布尔值。"""
+
     normalized = value.strip().casefold()
     if normalized in {"1", "true", "yes", "on"}:
         return True
@@ -49,6 +51,8 @@ def _parse_bool(value: str, *, key: str) -> bool:
 
 
 def _required_nonempty(value: str, *, key: str) -> str:
+    """清洗并校验部署必填文本。"""
+
     normalized = value.strip()
     if not normalized:
         raise ValueError(f"{key} 不能为空")
@@ -89,25 +93,35 @@ def bootstrap_internal_v1_external_secrets(
     provider: InternalV1ProviderSettings,
     *,
     bootstrap_secret_dir: Path | None = None,
+    bootstrap_tikhub: bool = True,
+    bootstrap_llm: bool = True,
 ) -> None:
-    """把部署注入 Secret 首次复制到持久化 Provider Secret Store，之后禁止覆盖。"""
+    """只在数据库尚未接管对应 Provider 时复制部署 Secret。"""
 
-    source_root = (bootstrap_secret_dir or _DEFAULT_BOOTSTRAP_SECRET_DIR).resolve(strict=True)
-    if provider.enabled:
-        _copy_bootstrap_secret_once(
-            settings,
-            source_root=source_root,
-            source_name="tikhub_api_key",
-            target_ref=provider.secret_ref,
-        )
-    if any(
+    needs_tikhub = bootstrap_tikhub and provider.enabled
+    needs_llm = bootstrap_llm and any(
         value is not None
         for value in (
             settings.llm_base_url,
             settings.llm_provider_name,
             settings.llm_model,
         )
-    ):
+    )
+    if not needs_tikhub and not needs_llm:
+        return
+
+    try:
+        source_root = (bootstrap_secret_dir or _DEFAULT_BOOTSTRAP_SECRET_DIR).resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("Bootstrap Secret 目录不可访问") from exc
+    if needs_tikhub:
+        _copy_bootstrap_secret_once(
+            settings,
+            source_root=source_root,
+            source_name="tikhub_api_key",
+            target_ref=provider.secret_ref,
+        )
+    if needs_llm:
         _copy_bootstrap_secret_once(
             settings,
             source_root=source_root,
@@ -149,7 +163,7 @@ def validate_internal_v1_provider_secret(
 
 
 def validate_internal_v1_llm_settings(settings: PlatformSettings) -> bool:
-    """校验生产 LLM 配置是否完整；完整时要求既有 API Key Secret 可读。"""
+    """仅在 DB 尚未接管 LLM 时校验旧启动配置及其 Secret。"""
 
     supplied = (
         settings.llm_base_url is not None,
@@ -176,7 +190,7 @@ def provision_internal_v1_provider_config(
     settings: PlatformSettings,
     provider: InternalV1ProviderSettings,
 ) -> ProviderConfig | None:
-    """幂等维护 Internal V1 TikHub Provider Config；数据库永不保存 Secret 原值。"""
+    """只首次创建 TikHub Provider；已有 DB 记录以后完全由管理员控制面维护。"""
 
     repository = PostgresProviderConfigRepository(session)
     config_id = internal_v1_tikhub_provider_config_id()
@@ -184,7 +198,6 @@ def provision_internal_v1_provider_config(
     if current is not None:
         if current.provider != "tikhub":
             raise RuntimeError("Internal V1 稳定 Provider Config UUID 已被其他 Provider 占用")
-        # `.env` 只负责首次 bootstrap；数据库记录存在后由管理员控制面维护，启动不得回写。
         return current
     if not provider.enabled:
         return None
