@@ -53,7 +53,10 @@ const collectionRun: CollectionRuntimeItemResponse = {
   collection_stats: {
     content_count: 120,
     comment_count: 36,
-    sub_comment_count: 4,
+    requested_count: 160,
+    succeeded_count: 120,
+    failed_count: 4,
+    filtered_count: 36,
   },
 }
 
