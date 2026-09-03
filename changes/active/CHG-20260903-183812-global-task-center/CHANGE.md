@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260903-183812-global-task-center
 title: 全局任务中心与声音广场任务信息架构收口
 level: L2
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/330-global-task-center
 created: 2026-09-03
@@ -37,98 +37,101 @@ data_changes: []
 
 # 当前事实与已确认决定
 
-- `AppShell` 当前右上角已经承载消息中心、用户信息和头像，是跨业务页面稳定存在的全局 UI Owner。
-- 声音广场当前在筛选区和“声音记录”之间逐条渲染完整 `AI Analysis Run 历史`，终态 Run 会持续占据正文空间。
-- Analysis Run、Collection Runtime、Data Export 已分别存在正式 read API/generated client；Collection Runtime 本身已经统一投影 Excel Import 与 Collection Run，但不改变它们的物理业务 Owner。
-- 用户已确认采用“全局任务中心固定入口 + 页面仅显示与当前页面直接相关的活动任务”的信息架构。
-- 本 Change 不修改 Analysis Run 数据库保留期；不新增统一 Job 表或统一后端 Task API；不修改 Schema/Migration；不升级依赖或 Runtime。
+- `AppShell` 是跨业务页面稳定存在的全局 UI Owner，任务中心入口放在其右上角并使用右侧 Drawer。
+- 任务中心只聚合既有 Analysis Run、Collection Runtime、Data Export read model；没有新增统一 Job 表、Task API 或第二套状态机。
+- Collection Runtime 当前正式类型包括 `excel_import`、`data_import_campaign`、`tikhub_discovery`、`tikhub_batch_supplement`；任务中心已将它们转换为用户可读标签。
+- 声音广场只保留 `queued/running/cancelling` Analysis Run 的紧凑活动状态，终态 Run 不再长期占据正文。
+- Collection Runtime 继续承担完整运行管理，Notification Inbox 继续承担通知，任务中心只负责状态聚合和快速跳转。
+- 本 Change 不修改 Analysis Run 数据库保留期，不修改 Schema/Migration/API Contract/generated client，不升级依赖或 Runtime。
 
 # 范围
 
-1. 在 `AppShell` 右上角新增全局任务中心入口与右侧 Drawer。
-2. 任务中心通过现有 generated client 聚合 Analysis Run、Collection Runtime、Data Export 的只读状态，区分活动任务与最近完成任务。
-3. 声音广场移除完整历史 Run 大卡片，只保留 `queued/running/cancelling` Analysis Run 的紧凑状态条，并可打开任务中心。
-4. 保持采集运行中心作为 Collection Runtime 完整筛选、详情和业务管理页面。
-5. 保持消息中心负责通知，任务中心只负责后台任务状态、进度与快速跳转。
-6. 补齐目标组件/Store、Browser 用户工作流、构建和治理验证，并同步当前架构/前端说明。
+1. 在 `AppShell` 右上角新增全局任务中心入口、活动任务数量和右侧 Drawer。
+2. 通过现有 generated client 聚合 Analysis Run、Collection Runtime、Data Export，只读展示活动任务与最近终态。
+3. 声音广场移除完整历史 Run 大卡片，仅保留活动 Analysis Run 紧凑状态条并提供任务中心入口。
+4. 保持声音广场的 Analysis 创建/取消 Owner、Collection Runtime 专业运行管理 Owner 和 Notification Inbox 通知 Owner 不变。
+5. 补齐 Store/Component、Browser 用户旅程、正式 build、文档和治理证据。
 
 # 非目标
 
 - 不决定或实现 Analysis Run 自动清理/数据库保留周期。
 - 不新增或迁移数据库表、Migration、Job Runtime 或统一后台 Task Contract。
-- 不重做采集运行中心。
-- 不把消息通知与任务状态合并。
-- 不引入第二套 Router、State、UI Library、API Client 或测试框架。
-- 不做与本需求无关的页面视觉重构。
+- 不重做采集运行中心，不合并消息通知与任务状态。
+- 不引入新 Router、API Client、UI/Test Framework 或依赖升级。
+- 不做与本需求无关的视觉重构、Release 或 Deploy。
 
 # 必须保持不变
 
-- 现有 Analysis Run、Collection Runtime、Data Export API 语义与 generated client 事实源保持不变。
-- Voice Plaza 的 AI 打标创建、取消、内容刷新、导出和其他业务能力保持现有 Owner。
-- Collection Runtime 的完整运行列表、筛选、详情入口保持可用。
-- 当前 Vue/Pinia/Vue Router/Element Plus/npm/Node 版本和前端构建测试体系保持不变。
-- 任何新增/修改函数继续提供与复杂度匹配的中文函数级说明。
+- 现有 Analysis Run、Collection Runtime、Data Export API 语义与 generated client 事实源。
+- Voice Plaza 的 AI 打标创建、取消、内容刷新和导出业务 Owner。
+- Collection Runtime 的完整运行列表、筛选、详情与管理能力。
+- 当前 Vue/Pinia/Vue Router/Element Plus/npm/Node 版本与前端构建测试体系。
 
 # Requirement Traceability
 
-| Requirement | Source | Status | Evidence / 依据 |
-| --- | --- | --- | --- |
-| AC1 全局入口 | GitHub Issue #330 / AC1 | not_satisfied | 待实现 AppShell 全局入口、活动数量与右侧 Drawer，并由组件/Browser 验证。 |
-| AC2 统一聚合 | GitHub Issue #330 / AC2 | not_satisfied | 待复用三个现有 generated-client read model，验证活动/最近完成、进度、摘要、时间和业务跳转。 |
-| AC3 声音广场降噪 | GitHub Issue #330 / AC3 | not_satisfied | 待删除正文历史 Run 区，只保留活动 Analysis Run 紧凑状态。 |
-| AC4 职责保持 | GitHub Issue #330 / AC4 | not_satisfied | 待验证 Collection Runtime 仍是专业管理页、消息中心仍独立。 |
-| AC5 兼容边界 | GitHub Issue #330 / AC5 | not_satisfied | 待确认 diff 无 Schema/Migration/API Contract/依赖版本变化，并执行生成物/架构相关回归。 |
-| AC6 验证与文档 | GitHub Issue #330 / AC6 | not_satisfied | 待完成测试、build、docs、Completion Audit、Review、PR CI 与合并后验证。 |
+| ID | Requirement | Source | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| R1 | AC1：AppShell 全局任务中心入口、活动数和右侧 Drawer | https://github.com/dingyuwen777/AIMA_UGC/issues/330 | satisfied | `AppShell.vue` + `TaskCenter.vue`；`frontend/tests/app-shell.spec.ts`；CI #3929 Browser 场景。 |
+| R2 | AC2：复用既有 Analysis / Collection Runtime / Export read model 统一聚合，不复制后台任务系统 | https://github.com/dingyuwen777/AIMA_UGC/issues/330 | satisfied | `task-center/api.ts` 仅调用 generated client；`store.ts` 统一 ViewModel、活动/终态排序、单源失败保留上次成功快照；`task-center.spec.ts` 覆盖三类任务与 `data_import_campaign`；Browser 同 Drawer 验证三类活动任务。 |
+| R3 | AC3：声音广场移除完整历史 Run，只显示活动 Run 紧凑状态 | https://github.com/dingyuwen777/AIMA_UGC/issues/330 | satisfied | `VoicePlazaPage.vue` 仅过滤 `queued/running/cancelling`；`voice-plaza-design.spec.ts` 与 Browser 回归验证终态不占正文、活动 Run 可取消且终态转入任务中心。 |
+| R4 | AC4：Collection Runtime、Notification、Task Center 职责保持独立 | https://github.com/dingyuwen777/AIMA_UGC/issues/330 | satisfied | 任务中心仅提供状态/跳转；Collection 仍链接 `/collection-runtime`；Browser 场景分别打开任务中心与“站内通知”，验证两个面板独立。 |
+| R5 | AC5：无 Schema/Migration/Job/API/依赖/保留策略变化 | https://github.com/dingyuwen777/AIMA_UGC/issues/330 | satisfied | `main@3de5c431...` → feature 反向 diff 只有 18 个前端/测试/文档/Change 文件，behind=0；无 backend、contracts、generated client、Migration、manifest/lock 变化。 |
+| R6 | AC6：目标测试、用户可见回归、文档、required CI 和完成前复核 | https://github.com/dingyuwen777/AIMA_UGC/issues/330 | satisfied | CI #3929：Docs/Governance、Repository Quality、CI Gate 全绿；Vitest 20 files / 97 tests；Vite production build 成功；Playwright 51/51；Blueprint 与 frontend README 已同步；独立 A1/A2 Review 已执行。 |
 
 # Validation Matrix
 
-| Layer | Required | Scope / Evidence |
+| Layer | Required | Result / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | Task Center 聚合/排序/状态映射/活动计数；Voice Plaza 仅渲染活动 Run；AppShell 固定入口。 |
-| 接口 / Contract | not_applicable | 本 Change 不改变公共 API/Schema/generated client；完成前检查 generated client 未被手改且现有 Contract 回归保持。 |
-| 集成 / Persistence / Runtime Dependency | not_applicable | 不改变后端、数据库、Worker、Artifact 或持久化语义；任务中心只消费现有只读接口。 |
-| 用户 / Workflow Acceptance | required | Browser Mock：任意业务页可打开任务中心；可看到 Analysis/Collection/Export；Voice Plaza 不再展示终态历史大块；活动 Run 可查看/取消。 |
-| 跨组件 Golden Path | required | 使用仓库现有 Full-stack 运行链验证至少一个真实页面可通过真实前后端读取既有任务接口，不扩大为状态穷举。 |
-| External Dependency / Provider Probe | not_applicable | 不改变 TikHub、LLM 或其他外部 Provider 边界，不需要真实付费/外网 Probe。 |
-| Build / Package / Runtime | required | 前端 lint/typecheck/test/build；仓库现有受影响 CI/Browser/full-stack 门禁。 |
-| Docs / Governance / Other | required | CHANGE Ready、Issue/PR Traceability、Blueprint/frontend README 同步、架构/Secret/生成物等当前仓库门禁。 |
+| 行为 / Unit / Component | required | PASS：CI #3929 `npm --prefix frontend run test -- --run`，20 files / 97 tests。 |
+| 接口 / Contract | not_applicable | 本 Change 未修改 backend Contract/OpenAPI/generated client；任务中心消费既有 generated client。 |
+| 集成 / Persistence / Runtime Dependency | not_applicable | 未修改后端、数据库、Worker、Artifact 或持久化语义。 |
+| 用户 / Workflow Acceptance | required | PASS：CI #3929 `npm --prefix frontend run test:e2e`，Playwright 51/51；覆盖三类任务同 Drawer、通知独立、终态降噪、Analysis 创建/取消/终态迁移。 |
+| 跨组件 Golden Path | not_applicable | CI Scope 对当前 diff 判定 `profile=frontend_only`、`backend=False`、`contract=False`、`postgres=False`、`fullstack=False`；Real Full-stack Golden Path 因机器范围判定跳过，不把 skipped 伪称为通过。 |
+| External Dependency / Provider Probe | not_applicable | 不改变 TikHub、LLM 或其他 Provider 边界。 |
+| Build / Package / Runtime | required | PASS：CI #3929 lint、TS native typecheck、`vue-tsc --noEmit`、`npm --prefix frontend run build` 均成功；Vite 8.2.1 production build 完成。 |
+| Docs / Governance | required | PASS：CI #3929 Docs and Governance / CI Gate 成功；Runtime Acceptance #1050 fast-path 成功；Requirement-Source 已显式指向 #330。 |
 
 # User Journey / Black-box Matrix
 
-| 场景 | 用户目标 | 初始状态 | 操作 | 预期结果 | 证据层 |
-| --- | --- | --- | --- | --- | --- |
-| J1 全局查看任务 | 从任意业务页查看后台任务 | 同时存在活动 Analysis/Collection/Export | 点击右上角任务中心 | Drawer 打开；活动数正确；三类任务按统一信息层级显示，可跳转对应业务页 | Browser Mock |
-| J2 声音广场聚焦内容 | 浏览声音记录而不被历史任务挤占 | 存在终态 Analysis Run | 进入声音广场 | 不出现完整 `AI Analysis Run 历史`；终态 Run 不占正文 | Component + Browser Mock |
-| J3 活动 AI 任务 | 观察正在打标的进度并处理取消 | 存在 queued/running/cancelling Run | 进入声音广场/点击任务中心 | 正文只出现紧凑活动状态；任务中心显示完整摘要；可取消允许取消的 Run | Component + Browser Mock |
-| J4 专业运行管理 | 查看采集运行完整信息 | 存在 Collection Runtime 记录 | 从任务中心进入采集运行中心 | 专业页面仍提供原有完整列表/详情，不被任务中心替代 | Browser/Regression |
-| J5 通知职责独立 | 查看消息与任务状态 | 同时存在通知和活动任务 | 分别打开消息中心、任务中心 | 两个入口和面板独立，语义不混用 | Component + Browser Mock |
-
-# 实施步骤
-
-1. 先补目标测试和 Browser 断言，验证当前代码缺少全局任务中心且声音广场仍展示历史 Run（Red）。
-2. 新建 `task-center` Feature，直接复用 generated client，把三个既有 read model 规范化为前端只读 ViewModel；不复制后端业务状态机。
-3. 在 `AppShell` 接入全局入口/Drawer；在共享图标体系补任务图标。
-4. 将 Voice Plaza 历史 Run 卡片替换为活动 Run 紧凑状态条，并复用任务中心打开能力；不搬走 Voice Plaza 自己的创建/取消/轮询业务 Owner。
-5. 更新 Browser Mock 场景与受影响文档。
-6. 运行目标测试、前端全量测试、lint/typecheck/build、必要 full-stack/CI；修复真实回归。
-7. 重新读取 #330，执行 Completion Audit、独立 Review、Ready gate、PR CI；仅在证据充分且 `main` 基线仍满足交付门禁时合并。
+| 场景 | 结果 | 证据 |
+| --- | --- | --- |
+| J1 全局查看任务 | PASS：右上角显示 3 个活动任务；Drawer 同时展示 Analysis、Collection、Export 并提供业务页跳转 | `frontend/e2e/task-center.spec.ts`，CI #3929 |
+| J2 声音广场聚焦内容 | PASS：终态 Analysis Run 不再显示为正文历史大块 | `voice-plaza-design.spec.ts`，CI #3929 |
+| J3 活动 AI 任务 | PASS：活动 Run 显示紧凑状态；创建/运行/取消后正文消失且终态在任务中心可追溯 | `voice-plaza.spec.ts` / `voice-plaza-review-regressions.spec.ts`，CI #3929 |
+| J4 专业运行管理 | PASS：Collection 任务只跳转 `/collection-runtime`，未搬走专业列表/详情 Owner | Task Center ViewModel + Browser 回归 |
+| J5 通知职责独立 | PASS：任务中心关闭后可独立打开“站内通知”，任务 Drawer 不与消息中心共用 | `frontend/e2e/task-center.spec.ts`，CI #3929 |
 
 # Completion Audit
 
-- upstream_re_read: pending
-- change_coverage: pending
-- reverse_audit: pending
-- unresolved_cleared: pending
+- [x] upstream_re_read: 2026-09-03 在当前 feature HEAD 完成前重新读取 GitHub Issue #330；AC1—AC6 和非目标未发生变化，当前 `main` 仍为 `3de5c431b1df405e88efd71db164852176f47161`。
+- [x] change_coverage: AC1—AC6 已逐条映射到实现、目标单测/组件测试、Browser 用户工作流、文档和 CI #3929 证据；机器 CI Scope 明确把后端/PostgreSQL/Full-stack 判定为不适用。
+- [x] reverse_audit: `main@3de5c431...` 到 `5868c224...` 的最终实现 diff 为 18 个预期前端/测试/文档/Change 文件，behind=0；未发现 backend、Contract、generated client、Migration、依赖或无关视觉重构进入范围。
+- [x] unresolved_cleared: 独立 Review 发现的 `data_import_campaign` 用户可读映射缺口已修复并补单测；两次 Browser strict locator 缺陷已修正为精确断言；CI #3929 最终 51/51 Browser 通过，当前范围无未解决阻塞 Finding（NO_FINDINGS_WITHIN_SCOPE）。
 
 # Evidence Ledger
 
-当前仅建立需求、范围和验证计划；实现与验证证据将在本轮执行后更新，不以计划替代执行结果。
+- Red：初始 AppShell / Voice Plaza 目标测试在旧实现上 3 条按预期失败，证明缺少全局任务中心且终态历史仍占正文；不是环境失败。
+- Main concurrency：开发期间 `main` 前进后，以 `main@3de5c431...` 为基底创建非 force 双父同步提交；反向 diff `behind=0`，保留 #329/#333 的 Data Import Campaign/辅助补采/归档事实。
+- Review Finding：最新主线新增正式 `data_import_campaign` record type，任务中心初版缺少中文映射；已补 `数据导入` 映射及 `320 行入库` 单测。
+- Failed CI #3927/#3928：生产 lint/typecheck/unit/build 已通过，Browser 各 50/51；失败均为 Playwright strict selector 同时命中相近文案。修复测试 locator 后由最终 CI #3929 重新验证。
+- Final implementation CI #3929（run `33770061231`）：
+  - `npm audit --omit=dev --audit-level=high`：0 vulnerabilities；完整 audit：0 vulnerabilities。
+  - `npm --prefix frontend run lint`：PASS。
+  - `npm --prefix frontend run typecheck`：PASS（TS native + `vue-tsc --noEmit`）。
+  - `npm --prefix frontend run test -- --run`：PASS，20 files / 97 tests。
+  - `npm --prefix frontend run build`：PASS，Vite 8.2.1，150 modules transformed。
+  - `npm --prefix frontend run test:e2e`：PASS，Playwright 51/51。
+  - Docs and Governance：PASS；Repository Quality：PASS；CI Gate：PASS。
+  - PostgreSQL Integration / Real Full-stack Golden Path：SKIPPED by `frontend_only` CI Scope，明确记为 not_applicable，不作为通过证据。
+- Runtime Acceptance #1050：PASS fast-path；本 Change 未修改 runtime-owned path，因此仅证明运行时范围门禁没有被触发，不冒充真实 Full-stack。
+- Docs：`frontend/README.md` 与 `docs/blueprint/04_后端任务API与前端.md` 已同步任务中心 Owner/职责和 Voice Plaza 活动 Run 语义；DOC007 路径链接问题已修复并由最终 Docs/Governance 通过。
 
 # Git / Delivery 状态
 
-- Requirement Source: GitHub Issue #330
-- Base: `main@727eade486e32329d8d1c40cd9a15168ec121de0`
+- Requirement Source: https://github.com/dingyuwen777/AIMA_UGC/issues/330
+- Current Base: `main@3de5c431b1df405e88efd71db164852176f47161`
 - Branch: `feature/330-global-task-center`
-- PR: 未创建
-- Merge: 未执行
-- Release/Deploy: 不属于本 Change
+- Implementation PR: #332（进入 ready_for_review 前置状态，最终 Gate 需在本 Change 更新后的新 HEAD 再跑）
+- Merge: pending；只允许在最终 HEAD required CI、Completion Gate 和 Ready 状态全部满足后执行 exact-head protected merge。
+- Post-merge: pending；合并后必须对 main fresh CI、Change archive、Issue closure 和任务分支清理逐项收尾。
+- Release/Deploy: not_applicable；本次授权不包含发布或生产部署。
