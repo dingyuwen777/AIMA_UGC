@@ -1,4 +1,4 @@
-name: 缺陷 / Bug
+name: 缺陷
 description: 报告当前实际行为与已确认期望行为不一致的问题
 title: "[缺陷] "
 body:
@@ -78,12 +78,24 @@ body:
   - type: textarea
     id: acceptance_criteria
     attributes:
-      label: 修复验收标准
-      description: 什么证据可以证明缺陷已修复且关键相邻行为未回归？
+      label: 验收标准
+      description: 每条使用稳定 AC1/AC2/... 编号，定义缺陷修复和相邻回归的可观察完成条件；关闭 Issue 前按直接 Evidence 逐项回写。
       placeholder: |
-        - [ ] 原复现路径不再失败
-        - [ ] 回归测试通过
-        - [ ] 相邻关键路径保持正常
+        - [ ] AC1：原复现路径不再失败
+        - [ ] AC2：新增 / 补齐回归测试或等价直接 Evidence
+        - [ ] AC3：相邻关键路径验证通过
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation_requirements
+    attributes:
+      label: 验证要求
+      description: 需要哪些自动回归、Workflow / 真实调用路径、环境复验或其他直接 Evidence 才能证明 AC 完成？
+      placeholder: |
+        - 自动回归：……
+        - Workflow / 真实路径：……
+        - 其他证据：……
     validations:
       required: true
 
