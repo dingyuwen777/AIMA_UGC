@@ -59,7 +59,8 @@ def main() -> int:
     finally:
         runtime.dispose()
 
-    print(f"TikHub Internal V1: {'ENABLED' if persisted_tikhub and persisted_tikhub.enabled else 'DISABLED'}")
+    tikhub_enabled = persisted_tikhub is not None and persisted_tikhub.enabled
+    print(f"TikHub Internal V1: {'ENABLED' if tikhub_enabled else 'DISABLED'}")
     print(f"LLM Runtime: {'CONFIGURED' if llm_configured else 'DISABLED'}")
     return 0
 
