@@ -1,0 +1,71 @@
+name: Runtime Config Gate Fix (Temporary)
+
+on:
+  push:
+    branches:
+      - feat/runtime-config-control-plane
+    paths:
+      - scripts/dev/runtime_config_gate_fix.py
+      - .github/workflows/runtime-config-gate-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: runtime-config-gate-fix
+  cancel-in-progress: false
+
+jobs:
+  fix-and-validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feat/runtime-config-control-plane
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14.7'
+
+      - name: Install frozen Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check 'uv==0.12.3'
+          uv sync --frozen
+
+      - name: Apply gate fixes and validate static contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/dev/runtime_config_gate_fix.py
+          uv run ruff format backend tests scripts migrations/versions/20260903_0039_runtime_configuration_plane.py
+          uv run ruff format --check \
+            backend tests scripts \
+            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
+            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
+            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
+          uv run ruff check backend tests scripts \
+            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
+            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
+            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+          docker compose config >/dev/null
+          docker compose -f compose.yaml -f compose.windows.yaml config >/dev/null
+          uv run pytest tests/unit/system/test_runtime_provider_config.py -q
+
+      - name: Commit final gate fixes and remove temporary tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f scripts/dev/runtime_config_gate_fix.py .github/workflows/runtime-config-gate-fix.yml
+          git config user.name 'aima-runtime-gate-fixer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'test(runtime): 完善运行时配置黑盒验收'
+          git push origin HEAD:feat/runtime-config-control-plane
