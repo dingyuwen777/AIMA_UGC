@@ -20,6 +20,11 @@ from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRunConfigurationChanged,
     PostgresAnalysisRepository,
 )
+from aima_ugc.adapters.persistence.postgres.analysis_batch import (
+    AnalysisFailureWrite,
+    AnalysisSuccessWrite,
+    PostgresAnalysisBatchRepository,
+)
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
@@ -27,6 +32,7 @@ from aima_ugc.contracts.analysis import ContentLabelAnalysisV3
 from aima_ugc.modules.analysis import (
     CONTENT_LABELING_PROMPT_PATH,
     ContentLabelingBatchResult,
+    ContentLabelingLLMPort,
     ContentLabelingService,
     FrozenPromptTaxonomyLoader,
     PromptTaxonomyLoader,
@@ -46,7 +52,6 @@ from aima_ugc.platform.security import SecretFileError, read_secret_file
 from .runtime import PlatformRuntime
 from .runtime_config import provider_from_safe_snapshot, resolve_provider_secret
 
-_LOGGER = logging.getLogger("aima_ugc")
 _ANALYSIS_DB_WRITE_BATCH_SIZE = 200
 _ANALYSIS_WORK_WINDOW_MULTIPLIER = 2
 _ANALYSIS_MAX_WORK_WINDOW = 10_000
@@ -107,7 +112,9 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                             limit=_work_window_size(execution.max_concurrency),
                         )
                         if total_stats is None:
-                            total_stats = repository.stats(payload.request_id)
+                            total_stats = PostgresAnalysisBatchRepository(session).stats(
+                                payload.request_id
+                            )
                         if work:
                             repository.mark_run_running(work[0].analysis_run_id)
                 finally:
@@ -149,7 +156,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                         ConcurrentTaskOutcome[AnalysisWorkItem, ContentLabelingBatchResult]
                     ],
                 ) -> None:
-                    """在调度线程累积完成结果，达到阈值后用一个短事务批量提交并形成背压。"""
+                    """在调度线程累积完成结果，达到阈值后短事务落库并形成自然背压。"""
 
                     nonlocal cancel_seen
                     persistence_buffer.extend(outcomes)
@@ -276,7 +283,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
             pricing_catalog=load_llm_pricing(),
             request_audit=self._record_audit,
         )
-        llm = adapter
+        llm: ContentLabelingLLMPort = adapter
         if max_rps is not None:
             llm = RateLimitedContentLabelingLLM(inner=llm, max_rps=max_rps)
         # Retry 包在限流层外，确保每次物理 Retry 都重新取得 RPS 时隙。
@@ -298,64 +305,69 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
         fence: JobExecutionFence,
         outcomes: Sequence[ConcurrentTaskOutcome[AnalysisWorkItem, ContentLabelingBatchResult]],
     ) -> None:
-        """一个短事务提交一组已完成模型结果；已知 Transport 错误只失败当前 Content。"""
+        """一个短事务提交一组已完成模型结果；单条 Validation/Transport 失败彼此隔离。"""
 
         if not outcomes:
             return
+        successes: list[AnalysisSuccessWrite] = []
+        failures: list[AnalysisFailureWrite] = []
+        unexpected_error: BaseException | None = None
+        for outcome in outcomes:
+            if outcome.error is not None:
+                if isinstance(outcome.error, OpenAICompatibleLLMError):
+                    failures.append(
+                        AnalysisFailureWrite(
+                            work_item=outcome.item,
+                            error_code=f"llm_{outcome.error.error_code}",
+                        )
+                    )
+                    continue
+                unexpected_error = unexpected_error or outcome.error
+                continue
+            batch = outcome.result
+            if batch is None or len(batch.items) != 1:
+                raise RuntimeError("正式单条 Analysis Outcome 缺少唯一结果")
+            result = batch.items[0]
+            if result.analysis_status == "succeeded" and isinstance(
+                result.analysis, ContentLabelAnalysisV3
+            ):
+                successes.append(
+                    AnalysisSuccessWrite(work_item=outcome.item, analysis=result.analysis)
+                )
+            else:
+                failures.append(
+                    AnalysisFailureWrite(
+                        work_item=outcome.item,
+                        error_code=(
+                            result.validation_error_codes[0]
+                            if result.validation_error_codes
+                            else "validation_failed"
+                        ),
+                    )
+                )
+        if unexpected_error is not None:
+            raise unexpected_error
+
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                repository = PostgresAnalysisRepository(session)
-                unexpected_error: BaseException | None = None
-                for outcome in outcomes:
-                    if outcome.error is not None:
-                        if isinstance(outcome.error, OpenAICompatibleLLMError):
-                            repository.mark_failed(
-                                fence=fence,
-                                request_id=outcome.item.request_id,
-                                content_id=outcome.item.content_id,
-                                error_code=f"llm_{outcome.error.error_code}",
-                            )
-                            continue
-                        unexpected_error = unexpected_error or outcome.error
-                        continue
-                    batch = outcome.result
-                    if batch is None or len(batch.items) != 1:
-                        raise RuntimeError("正式单条 Analysis Outcome 缺少唯一结果")
-                    result = batch.items[0]
-                    if result.analysis_status == "succeeded" and isinstance(
-                        result.analysis, ContentLabelAnalysisV3
-                    ):
-                        repository.persist_success(
-                            fence=fence,
-                            work_item=outcome.item,
-                            analysis=result.analysis,
-                        )
-                    else:
-                        repository.mark_failed(
-                            fence=fence,
-                            request_id=outcome.item.request_id,
-                            content_id=outcome.item.content_id,
-                            error_code=(
-                                result.validation_error_codes[0]
-                                if result.validation_error_codes
-                                else "validation_failed"
-                            ),
-                        )
-                if unexpected_error is not None:
-                    raise unexpected_error
+                PostgresAnalysisBatchRepository(session).persist_batch(
+                    fence=fence,
+                    successes=successes,
+                    failures=failures,
+                )
         except LeaseLostError:
             raise
         finally:
             session.close()
 
     def _request_stats(self, request_id: UUID) -> dict[str, int]:
-        """在独立短事务读取一个 Shard 的最终统计。"""
+        """在独立短事务由 PostgreSQL 聚合一个 Shard 的最终统计。"""
 
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                return PostgresAnalysisRepository(session).stats(request_id)
+                return PostgresAnalysisBatchRepository(session).stats(request_id)
         finally:
             session.close()
 
