@@ -151,7 +151,9 @@ def test_audit_repository_and_service_page_complete_history(tmp_path) -> None:
         assert [item.id for item in response.items] == [event_ids[1], event_ids[0]]
     finally:
         with runtime.database.engine.begin() as connection:
-            connection.execute(delete(audit_events_table).where(audit_events_table.c.id.in_(event_ids)))
+            connection.execute(
+                delete(audit_events_table).where(audit_events_table.c.id.in_(event_ids))
+            )
         runtime.close()
 
 
