@@ -86,10 +86,23 @@ jobs:
           npm --prefix frontend run typecheck
 
       - name: Browser All-scope Green
+        id: browser
         shell: bash
         run: |
-          set -euo pipefail
-          npm --prefix frontend exec playwright test e2e/analysis-all-scope.spec.ts
+          set -o pipefail
+          cd frontend
+          npm run test:e2e -- e2e/analysis-all-scope.spec.ts 2>&1 | tee ../ai-all-browser.log
+
+      - name: Upload browser failure evidence
+        if: failure() && steps.browser.conclusion == 'failure'
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: ai-all-browser-failure
+          path: |
+            ai-all-browser.log
+            frontend/test-results/
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Commit AI all-scope Green implementation
         shell: bash
