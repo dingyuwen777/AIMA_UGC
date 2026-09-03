@@ -1,0 +1,98 @@
+name: CHG314 Geometry Font Stability
+
+on:
+  push:
+    branches:
+      - fix/314-frontend-fullstack-reliability
+    paths:
+      - .github/workflows/chg314-geometry-stability.yml
+
+permissions:
+  contents: write
+
+jobs:
+  geometry:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/314-frontend-fullstack-reliability
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Apply deterministic Figma typography metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'{path}: target CSS not found')
+              target.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace(
+              'frontend/src/features/collection-strategy/pages/CollectionStrategyPage/components/KeywordPackPanel.vue',
+              '.pack-row strong,.pack-row small { display: block; }.pack-row strong { color: #1e2838; }.pack-row small { margin-top: 5px; color: #818b9d; }',
+              '.pack-row strong,.pack-row small { display: block; }.pack-row strong { color: #1e2838; line-height: 20px; }.pack-row small { margin-top: 5px; color: #818b9d; line-height: 16px; }',
+          )
+          replace(
+              'frontend/src/features/collection-strategy/pages/CollectionStrategyPage/components/PlanCreateDrawer.vue',
+              'header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; }header p { margin: 5px 0 0; color: #737e91; font-size: 13px; }',
+              'header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; line-height: 24px; }header p { margin: 5px 0 0; color: #737e91; font-size: 13px; line-height: 18px; }',
+          )
+          replace(
+              'frontend/src/features/collection-strategy/pages/CollectionStrategyPage/components/PlanDetailDrawer.vue',
+              'header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--aima-border); background: #fff; }h2 { margin: 0; font-size: 19px; }header p { margin: 5px 0 0; color: #7a8496; font-size: 12px; }',
+              'header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--aima-border); background: #fff; }h2 { margin: 0; font-size: 19px; line-height: 24px; }header p { margin: 5px 0 0; color: #7a8496; font-size: 12px; line-height: 18px; }',
+          )
+          PY
+
+      - name: Install locked frontend environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(npm --version)" = "11.17.0"
+          npm ci --prefix frontend
+
+      - name: Verify geometry without added Noto CJK
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run test:e2e -- collection-strategy-figma-geometry.spec.ts
+
+      - name: Install the same CJK font as full Repository Quality
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-cache -f
+          fc-match 'Noto Sans SC'
+
+      - name: Verify geometry with Noto CJK installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run test:e2e -- collection-strategy-figma-geometry.spec.ts
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
+          git diff --check
+
+      - name: Commit typography stabilization and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/chg314-geometry-stability.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: 固化采集策略 Figma 字体几何' -m 'Requirement-Source: #314'
+          git push origin HEAD:fix/314-frontend-fullstack-reliability
