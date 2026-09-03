@@ -284,7 +284,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
         )
         if any(marker not in pr_text for marker in post_merge_markers):
             errors.append(
-                f"GOV014 {PR_TEMPLATE.as_posix()}: 必须保留 post-merge Evidence 与 Closure Audit 时序"
+                f"GOV014 {PR_TEMPLATE.as_posix()}: post-merge Evidence / Closure Audit 时序缺失"
             )
 
     return errors
