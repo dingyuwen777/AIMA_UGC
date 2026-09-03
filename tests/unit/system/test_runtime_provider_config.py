@@ -4,7 +4,6 @@ from typing import cast
 from uuid import uuid4
 
 import pytest
-
 from aima_ugc.bootstrap import runtime_config
 from aima_ugc.modules.collection.run_snapshot import provider_run_snapshot
 from aima_ugc.modules.system.models import ProviderConfig
