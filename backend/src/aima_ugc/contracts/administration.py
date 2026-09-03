@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import ConfigDict, Field, SecretStr, computed_field, field_validator, model_validator
 
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
 
@@ -14,6 +14,7 @@ PrincipalRole = Literal["administrator", "user"]
 PrincipalSource = Literal["development", "feishu"]
 VehicleModelStatus = Literal["active", "deprecated", "merged"]
 AnalysisSchemeVersionStatus = Literal["draft", "published", "retired"]
+ProviderKind = Literal["collection", "llm"]
 
 _TAXONOMY_PLACEHOLDER = "{{AIMA_TAXONOMY_JSON}}"
 
@@ -60,23 +61,17 @@ class VehicleModelCreateRequest(BaseModel):
     @field_validator("code", mode="before")
     @classmethod
     def normalize_code(cls, value: object) -> object:
-        """车型 code 使用去空白后的大写稳定身份。"""
-
         value = _trimmed(value)
         return value.upper() if isinstance(value, str) else value
 
     @field_validator("display_name", mode="before")
     @classmethod
     def normalize_display_name(cls, value: object) -> object:
-        """车型显示名去除无意义首尾空白。"""
-
         return _trimmed(value)
 
     @field_validator("aliases")
     @classmethod
     def validate_aliases(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        """车型内别名必须非空且规范化后不重复。"""
-
         cleaned = tuple(item.strip() for item in value)
         if any(not item for item in cleaned):
             raise ValueError("车型别名不能为空")
@@ -98,38 +93,28 @@ class VehicleModelUpdateRequest(BaseModel):
     @field_validator("display_name", mode="before")
     @classmethod
     def normalize_display_name(cls, value: object) -> object:
-        """显示名存在时去除首尾空白。"""
-
         return _trimmed(value)
 
     @field_validator("aliases")
     @classmethod
     def validate_aliases(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
-        """复用创建时的别名唯一规则。"""
-
         if value is None:
             return None
         return VehicleModelCreateRequest.validate_aliases(value)
 
     @model_validator(mode="after")
     def require_change(self) -> VehicleModelUpdateRequest:
-        """拒绝不包含任何修改的空请求。"""
-
         if self.display_name is None and self.aliases is None and self.status is None:
             raise ValueError("车型更新必须至少包含一个字段")
         return self
 
 
 class VehicleModelMergeRequest(BaseModel):
-    """把错误或重复车型重定向到稳定目标车型。"""
-
     model_config = ConfigDict(extra="forbid")
     target_vehicle_model_id: UUID
 
 
 class VehicleModelAliasResponse(BaseModel):
-    """车型当前有效别名。"""
-
     model_config = ConfigDict(extra="forbid")
     id: UUID
     text: str
@@ -137,8 +122,6 @@ class VehicleModelAliasResponse(BaseModel):
 
 
 class VehicleModelResponse(BaseModel):
-    """车型目录中的完整管理投影。"""
-
     model_config = ConfigDict(extra="forbid")
     id: UUID
     code: str
@@ -155,8 +138,6 @@ class VehicleModelResponse(BaseModel):
 
 
 class VehicleModelListQuery(BaseModel):
-    """管理员车型目录的有界 Offset 查询。"""
-
     model_config = ConfigDict(extra="forbid")
     search: str | None = Field(default=None, min_length=1, max_length=200)
     status: VehicleModelStatus | None = None
@@ -165,8 +146,6 @@ class VehicleModelListQuery(BaseModel):
 
 
 class VehicleModelListResponse(BaseModel):
-    """车型目录页响应。"""
-
     model_config = ConfigDict(extra="forbid")
     items: tuple[VehicleModelResponse, ...]
     total: int = Field(ge=0)
@@ -176,24 +155,18 @@ class VehicleModelListResponse(BaseModel):
 
 
 class KeywordPackVehicleLinkRequest(BaseModel):
-    """替换一个词包当前引用的车型集合。"""
-
     model_config = ConfigDict(extra="forbid")
     vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
 
     @field_validator("vehicle_model_ids")
     @classmethod
     def validate_unique_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
-        """词包内车型引用不得重复。"""
-
         if len(value) != len(set(value)):
             raise ValueError("vehicle_model_ids 不能重复")
         return value
 
 
 class KeywordPackVehicleLinksResponse(BaseModel):
-    """词包当前引用的车型 ID。"""
-
     model_config = ConfigDict(extra="forbid")
     pack_id: UUID
     vehicle_model_ids: tuple[UUID, ...]
@@ -211,8 +184,6 @@ class AnalysisSchemeDefinitionRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_definition(self) -> AnalysisSchemeDefinitionRequest:
-        """校验受控模板、显式未知值和无重复 Taxonomy。"""
-
         if self.prompt_template.count(_TAXONOMY_PLACEHOLDER) != 1:
             raise ValueError("prompt_template 必须且只能包含一个 Taxonomy 占位符")
         if "无法判断" not in self.sentiments or "无法判断" not in self.voice_types:
@@ -238,8 +209,6 @@ class AnalysisSchemeDefinitionRequest(BaseModel):
 
 
 class AnalysisSchemeCreateDraftRequest(BaseModel):
-    """基于当前发布版或新定义创建草稿。"""
-
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=2000)
@@ -247,8 +216,6 @@ class AnalysisSchemeCreateDraftRequest(BaseModel):
 
 
 class AnalysisSchemeUpdateDraftRequest(BaseModel):
-    """以当前草稿版本为并发前提，追加一个新的草稿 Version。"""
-
     model_config = ConfigDict(extra="forbid")
     description: str = Field(default="", max_length=2000)
     definition: AnalysisSchemeDefinitionRequest
@@ -256,15 +223,11 @@ class AnalysisSchemeUpdateDraftRequest(BaseModel):
 
 
 class AnalysisSchemePublishRequest(BaseModel):
-    """发布或回滚时的乐观锁请求。"""
-
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(gt=0)
 
 
 class AnalysisSchemeVersionResponse(BaseModel):
-    """管理员可见的 Scheme Version；不包含 Secret 或 LLM API 配置。"""
-
     model_config = ConfigDict(extra="forbid")
     id: UUID
     scheme_id: UUID
@@ -280,8 +243,6 @@ class AnalysisSchemeVersionResponse(BaseModel):
 
 
 class AnalysisSchemeResponse(BaseModel):
-    """Scheme 聚合及其版本列表。"""
-
     model_config = ConfigDict(extra="forbid")
     id: UUID
     name: str
@@ -293,23 +254,111 @@ class AnalysisSchemeResponse(BaseModel):
 
 
 class AnalysisSchemeListResponse(BaseModel):
-    """管理员 Scheme 目录响应。"""
-
     model_config = ConfigDict(extra="forbid")
     items: tuple[AnalysisSchemeResponse, ...]
 
 
-class AuditEventListQuery(BaseModel):
-    """管理员审计事件稳定 Offset 分页。"""
+class ProviderConfigCreateRequest(BaseModel):
+    """创建管理员可维护 Provider；API Key 仅用于本次写入，不进入响应/数据库。"""
 
+    model_config = ConfigDict(extra="forbid")
+    provider_kind: ProviderKind
+    provider: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")
+    display_name: str = Field(min_length=1, max_length=200)
+    base_url: str = Field(min_length=1, max_length=2000)
+    model: str | None = Field(default=None, min_length=1, max_length=300)
+    api_key: SecretStr
+    timeout_seconds: int = Field(default=45, ge=1, le=3600)
+    max_retries: int = Field(default=3, ge=0, le=20)
+    max_concurrency: int = Field(default=5, ge=1, le=500)
+    max_rps: int | None = Field(default=None, ge=1, le=10_000)
+    enabled: bool = True
+    is_default: bool = False
+
+    @field_validator("provider", "display_name", "base_url", "model", mode="before")
+    @classmethod
+    def trim_text(cls, value: object) -> object:
+        return _trimmed(value)
+
+    @model_validator(mode="after")
+    def validate_provider(self) -> ProviderConfigCreateRequest:
+        if not self.api_key.get_secret_value():
+            raise ValueError("api_key 不能为空")
+        if self.provider_kind == "llm" and not self.model:
+            raise ValueError("LLM Provider 必须配置 model")
+        if self.provider_kind == "collection" and self.model is not None:
+            raise ValueError("采集 Provider 不使用 model")
+        if self.is_default and not self.enabled:
+            raise ValueError("默认 Provider 必须启用")
+        return self
+
+
+class ProviderConfigUpdateRequest(BaseModel):
+    """完整替换可变 Provider 字段；api_key 留空表示不轮换 Secret。"""
+
+    model_config = ConfigDict(extra="forbid")
+    display_name: str = Field(min_length=1, max_length=200)
+    base_url: str = Field(min_length=1, max_length=2000)
+    model: str | None = Field(default=None, min_length=1, max_length=300)
+    api_key: SecretStr | None = None
+    timeout_seconds: int = Field(default=45, ge=1, le=3600)
+    max_retries: int = Field(default=3, ge=0, le=20)
+    max_concurrency: int = Field(default=5, ge=1, le=500)
+    max_rps: int | None = Field(default=None, ge=1, le=10_000)
+    enabled: bool = True
+    is_default: bool = False
+
+    @field_validator("display_name", "base_url", "model", mode="before")
+    @classmethod
+    def trim_text(cls, value: object) -> object:
+        return _trimmed(value)
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value():
+            raise ValueError("api_key 为空时请省略该字段")
+        return value
+
+    @model_validator(mode="after")
+    def validate_state(self) -> ProviderConfigUpdateRequest:
+        if self.is_default and not self.enabled:
+            raise ValueError("默认 Provider 必须启用")
+        return self
+
+
+class ProviderConfigResponse(BaseModel):
+    """Provider 管理安全投影：绝不返回 API Key 或内部 secret_ref。"""
+
+    model_config = ConfigDict(extra="forbid")
+    id: UUID
+    provider_kind: ProviderKind
+    provider: str
+    display_name: str
+    base_url: str
+    model: str | None = None
+    timeout_seconds: int = Field(gt=0)
+    max_retries: int = Field(ge=0)
+    max_concurrency: int = Field(gt=0)
+    max_rps: int | None = Field(default=None, gt=0)
+    enabled: bool
+    is_default: bool
+    revision: int = Field(gt=0)
+    secret_configured: bool
+
+
+class ProviderConfigListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: tuple[ProviderConfigResponse, ...]
+
+
+class AuditEventListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=200)
 
 
 class AuditEventResponse(BaseModel):
-    """安全审计事件投影。"""
-
     model_config = ConfigDict(extra="forbid")
     id: UUID
     actor_ref: str | None = None
@@ -322,8 +371,6 @@ class AuditEventResponse(BaseModel):
 
 
 class AuditEventListResponse(BaseModel):
-    """管理员审计事件分页响应。"""
-
     model_config = ConfigDict(extra="forbid")
     items: tuple[AuditEventResponse, ...]
     total: int = Field(ge=0)
@@ -347,6 +394,11 @@ __all__ = [
     "KeywordPackVehicleLinksResponse",
     "PrincipalRole",
     "PrincipalSource",
+    "ProviderConfigCreateRequest",
+    "ProviderConfigListResponse",
+    "ProviderConfigResponse",
+    "ProviderConfigUpdateRequest",
+    "ProviderKind",
     "VehicleModelAliasResponse",
     "VehicleModelCreateRequest",
     "VehicleModelListQuery",
