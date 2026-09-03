@@ -1,3 +1,49 @@
+---
+schema: coding-change/v1
+id: CHG-20260903-runtime-config-control-plane
+title: 管理员运行时配置中心与动态 Provider 快照
+level: L3
+status: done
+owner: chatgpt
+branch: feat/runtime-config-control-plane
+created: 2026-09-03
+updated: 2026-09-03
+completion_gate: required
+depends_on: []
+affected_areas:
+  - system
+  - administration
+  - analysis
+  - collection
+  - runtime
+  - security
+  - api
+  - frontend
+  - deployment
+affected_paths:
+  - backend/src/aima_ugc/modules/system/
+  - backend/src/aima_ugc/modules/administration/
+  - backend/src/aima_ugc/modules/analysis/
+  - backend/src/aima_ugc/modules/collection/
+  - backend/src/aima_ugc/bootstrap/
+  - backend/src/aima_ugc/platform/security/
+  - backend/src/aima_ugc/contracts/administration.py
+  - frontend/src/features/admin-configuration/
+  - migrations/versions/
+  - contracts/openapi/openapi.json
+  - compose.yaml
+  - compose.windows.yaml
+  - tests/
+  - docs/
+contracts:
+  - Admin Provider Configuration HTTP API
+  - Analysis Runtime Provider Snapshot
+  - Collection Provider Runtime Snapshot
+data_changes:
+  - provider_configs
+  - analysis_content_runs
+---
+
 # CHG-20260903-runtime-config-control-plane
 
 - Issue: #317
@@ -5,6 +51,21 @@
 - Status: done
 - Implementation PR: #318
 - Implementation merge: `b9387a731fe682c67c4eb974846a772069c5ba26`
+
+# Requirement Traceability
+
+| ID | Requirement | Source | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| R1 | 管理员可维护 LLM Base URL、Model、API Key、超时、重试和并发参数 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | PR #318 新增管理员 Provider API、AI 模型配置面板与 Provider Config 持久化；OpenAPI/Orval 和前端构建均通过 |
+| R2 | 管理员可维护 TikHub Base URL、API Key、超时、RPS 和并发参数 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | PR #318 将 TikHub 作为 collection Provider 接入同一 Provider Config 控制面，并扩展 Collection Run Provider Snapshot |
+| R3 | Prompt 继续由 Analysis Scheme 版本化管理，Draft 不影响 Runtime，Active 版本供新任务使用 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | 现有 Analysis Scheme 发布语义保持不变；新 Analysis Run 同时冻结 active Scheme 与 LLM Provider 安全快照 |
+| R4 | 车型等现有管理员业务配置继续以数据库为事实源，不新增重复硬编码真相 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | 车型目录与既有车型快照链路未复制为第二套配置；最终 L3 reverse audit 未发现重复 Runtime truth source |
+| R5 | 配置激活后无需重启 API、Worker 或容器，之后的新任务使用当前数据库配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | Analysis 创建时解析当前默认 LLM Provider，Collection 创建时冻结当前 Provider revision；Runtime Acceptance 与 main-fresh CI 均成功 |
+| R6 | 已创建或运行中的 Run 及同 Run 自动 Retry 保持原配置快照，新 Run 或手工重跑读取最新配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | `analysis_content_runs.runtime_config_snapshot` 与 Collection Provider Run Snapshot 固化 Provider revision、运行参数和不可变 Secret 引用；Worker 按 Run Snapshot 消费 |
+| R7 | Secret 不得明文进入数据库、源码、API、日志、Trace 或审计，只通过批准的 Secret Provider 解析 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | DB 只存 `secret_ref`，管理读取仅返回 `secret_configured`；Secret writer 使用不可变 link-if-absent 发布；Docs/Governance Secret gate 成功 |
+| R8 | TikHub 是 collection provider，不与 content platform 混为一个概念 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | Provider Config 与 Collection Run Snapshot 分离 provider/platform；TikHub Provider 可服务对应平台选择而不成为平台标识 |
+| R9 | `.env` 只允许作为尚未建立 DB Provider 配置时的 bootstrap 兼容来源，DB 接管后不得重新覆盖或阻断 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | `active_llm_provider` 与 Internal V1 configure 在 DB 有 Provider 配置后停止旧 env fallback、Secret 复制和旧 Secret 校验干扰 |
+| R10 | 变更完整覆盖 migration、backend、frontend、runtime consumer、测试和文档，并通过核心无重启验收 | https://github.com/dingyuwen777/AIMA_UGC/issues/317 | satisfied | PR #318 已合并；pre-merge 五类永久门禁全绿；implementation main-fresh CI、Runtime、Tooling、Change Gate 全部 success |
 
 ## 目标
 
@@ -77,6 +138,13 @@ Implementation squash merge `b9387a731fe682c67c4eb974846a772069c5ba26` 已进入
 - 同一 merge SHA 的 main push 工作流：success=4、failure=0、in_progress=0。
 
 因此实现、真实 PostgreSQL、真实浏览器链路、Compose Runtime、Windows/Linux 开发工具链和治理门禁均在合并后的 `main` 上得到 fresh evidence。
+
+# Completion Audit
+
+- [x] upstream_re_read: 已重新读取 Issue #317、PR #318 最终实现与 Review、最终 pre-merge 门禁，以及 implementation merge 后 main-fresh 工作流事实。
+- [x] change_coverage: Runtime Provider、Secret、Analysis/Collection Snapshot、Admin API/UI、Migration、OpenAPI/Orval、Compose/Windows Secret Store、测试与文档均完成并有验证证据。
+- [x] reverse_audit: 已从管理员保存配置反查新 Run 创建、运行时快照、Worker Provider 构造和 Secret 解析链路，并确认已有 Run/Retry 不随新配置漂移。
+- [x] unresolved_cleared: L3 Review 发现均已修复，PR 无未解决 Review thread，最终 pre-merge 与 implementation-main fresh 永久门禁均无失败。
 
 ## 归档与关闭时序
 
