@@ -37,8 +37,8 @@ from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
 from aima_ugc.platform.storage import ArtifactService
 
+from .analysis_concurrent_worker import ConcurrentPostgresContentAnalysisJobExecutor
 from .analysis_worker import (
-    PostgresContentAnalysisJobExecutor,
     PostgresContentAnalysisPlanJobExecutor,
     create_analysis_job_terminal_callback,
 )
@@ -87,7 +87,11 @@ class _TikHubTransportPool:
 
 
 def _default_secret_resolver(runtime: PlatformRuntime) -> Callable[[str], SecretStr]:
+    """解析正式外部 Provider Secret，保持 Secret 路径校验边界。"""
+
     def resolve(secret_ref: str) -> SecretStr:
+        """把已校验的 Secret 引用解析为内存 SecretStr。"""
+
         validated_ref = validate_secret_ref(secret_ref)
         secret_root = runtime.settings.external_secret_root
         return read_secret_file(
@@ -100,6 +104,7 @@ def _default_secret_resolver(runtime: PlatformRuntime) -> Callable[[str], Secret
 
 def create_worker_runtime(*, settings: PlatformSettings | None = None) -> PlatformRuntime:
     """创建 Worker 所需的业务无关 Platform runtime。"""
+
     return create_platform_runtime("worker", settings=settings)
 
 
@@ -109,7 +114,8 @@ def create_collection_job_registry(
     transport_factory: Callable[[ProviderConfig], ProviderTransport] | None = None,
     secret_resolver: Callable[[str], SecretStr] | None = None,
 ) -> JobRegistry:
-    """用既有 Collection/Provider/Raw 组件组装正式 collection.run.v1 Registry。"""
+    """组装包含 Collection、Ingestion、Analysis、Reporting 的正式 Job Registry。"""
+
     artifact_service = ArtifactService(
         metadata=PostgresArtifactMetadataGateway(runtime.database.new_session),
         store=runtime.artifact_store,
@@ -147,7 +153,7 @@ def create_collection_job_registry(
     )
     register_content_analysis_job(
         registry,
-        ContentAnalysisJobHandler(PostgresContentAnalysisJobExecutor(runtime)),
+        ContentAnalysisJobHandler(ConcurrentPostgresContentAnalysisJobExecutor(runtime)),
         terminal_callback=create_analysis_job_terminal_callback(runtime),
         planner_handler=ContentAnalysisPlanJobHandler(
             PostgresContentAnalysisPlanJobExecutor(runtime)
@@ -171,6 +177,7 @@ def create_job_worker(
     retry_delay_seconds: int,
 ) -> JobWorker:
     """用正式 DatabaseRuntime 组装一个 Job Worker。"""
+
     return JobWorker(
         session_factory=runtime.database.new_session,
         registry=registry,
@@ -187,6 +194,7 @@ def create_job_reaper(
     retry_delay_seconds: int,
 ) -> JobReaper:
     """用正式 DatabaseRuntime 组装 Platform Reaper。"""
+
     return JobReaper(
         session_factory=runtime.database.new_session,
         registry=registry,
