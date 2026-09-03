@@ -45,16 +45,17 @@ Router 只输出 Skill 选择、必需 当前场景所需完整约束、最低�
 ## 3. 每个研发任务的固定入口
 
 1. 恢复当前目标项目最少充分事实；
-2. 按项目形态、阶段、工具链、L1/L2/L3、意图、治理、能力和授权选择一个或多个 Skill；
-3. 实现/调试/TDD/CI/Git/Release 进入 Coding；测试策略、功能/黑盒/User Journey、探索式、系统性 Regression 或独立验证进入 Testing；Review 发现 Test Gap 时叠加 Testing；`能力=测试` 或项目形态本身不触发 Testing；
-4. 命中 完整约束 时必须在执行前取得其完整正式原文；
-5. 不机械读取全部 Skills/当前场景所需完整约束，也不从历史聊天猜当前实现。
+2. **先按各 Skill Core 的 Owner 选择语义选专业 Owner**；项目形态、风险、工具链、范围、治理和授权属于 refinement dimensions，只用于细化已命中的 Owner，不能仅凭这些事实把不相关专业 Skill 拉入任务；
+3. 实现/调试/TDD/CI/Git/Release 进入 Coding；测试策略、功能/黑盒/User Journey、探索式、系统性 Regression 或独立验证进入 Testing；Review 发现 Test Gap 时叠加 Testing；`能力=测试` 或项目形态本身不触发 Testing，项目形态/风险/授权本身也不构成 Coding 执行意图；
+4. Skill Owner 命中后，才在该 Owner 内按 完整约束 metadata 直接细化 required Context；显式 完整约束 dependency 可以跨 Skill 扩展，并把被依赖 完整约束 的 Owner 加入组合；
+5. 命中 完整约束 时必须在执行前取得其完整正式原文；
+6. 不机械读取全部 Skills/当前场景所需完整约束，也不从历史聊天猜当前实现。
 
 ## 4. 双模式同源路由与 完整约束 加载
 
 Source Mode 与 Runtime Mode 使用同一 canonical `SKILL.md + 当前场景所需完整约束`、中文路由 metadata、内部约束身份、依赖和风险下限，只改变 Context 取得通路。
 
-### 4.1 路由不是单选分类
+### 4.1 Owner-gated 路由不是单选分类
 
 稳定维度为：
 
@@ -63,13 +64,35 @@ Source Mode 与 Runtime Mode 使用同一 canonical `SKILL.md + 当前场景所�
 范围 / 意图 / 治理 / 能力 / 授权
 ```
 
-多个事实取 Skill/完整约束 **并集**并展开依赖闭包；未知项保守处理。`授权` 只是已确认事实，不能自行授予权限。
+Owner 选择阶段把以下维度视为 refinement，仅保留在公共 Task Route 词汇和后续 完整约束 匹配中：
+
+```text
+项目形态 / 风险 / 工具链 / 范围 / 治理 / 授权
+```
+
+因此正式 Skill Core metadata 中即使历史上存在这些 refinement 分支，它们也**不直接选择专业 Owner**；Owner 选择只使用其余可表达真实专业意图的维度（如执行模式、阶段、意图、能力）。Router 是始终存在的控制面，不受该专业 Owner gate 限制。这个规则避免为了保留公共路由词汇而让 `风险=L2`、`项目形态=前端Web` 或 `授权=允许只读` 机械拉入 Coding。
+
+路由按固定点求值：
+
+```text
+任务事实
+→ Skill Core triggers 的 Owner 投影取并集，得到专业 Owner
+→ 仅在已命中 Owner 内直接匹配 完整约束 triggers
+→ 展开 完整约束 dependency closure（dependency 可以跨 Skill）
+→ 被依赖 完整约束 的 Owner 加入组合
+→ 风险下限或 Owner 扩展后重复求值，直到稳定
+```
+
+这意味着 完整约束 的 `项目形态 / 风险 / 工具链 / 范围 / 治理 / 授权` 等信号是**Owner 内 refinement**，不能独立制造它自己的专业 Owner；真正需要跨 Skill 的场景必须由 Skill Core Owner 选择或显式 完整约束 dependency/Handoff 表达。多个真实 Owner 仍然取并集，不是单选分类。
+
+未知项使用三值逻辑保守扩大与未知维度真实相关的候选 Context，但仍遵守 Owner gate；未知 refinement 不能成为导出全部规则或机械激活无关 Skill 的理由。`授权` 只是已确认事实，不能自行授予权限。
 
 ### 4.2 Source Mode：直接读取 canonical 原文
 
 ```text
 任务事实
-→ canonical metadata 匹配/并集/依赖/风险
+→ canonical Skill metadata 的 Owner 投影选择专业 Owner
+→ Owner 内 完整约束 metadata 匹配 + dependency closure + risk fixed-point
 → 命中 Skill Core 与 required 当前场景所需完整约束
 → 读取当前完整原文
 ```
@@ -89,11 +112,11 @@ agent_skills_route_contract
 → agent_skills_checkpoint
 ```
 
-Task Route 是内部协议。`load_required_context` 只返回当前 required Context；`checkpoint` 不能冒充 Traceability、Completion、Review、Docs、测试或 CI。每个 Context 的 `SHA256`、字节数和**完整原文**必须通过当前 Bundle 校验。
+Task Route 是内部协议。Runtime evaluator 必须执行与 Source Mode 相同的 Owner-gated fixed-point；`load_required_context` 只返回当前 required Context；`checkpoint` 不能冒充 Traceability、Completion、Review、Docs、测试或 CI。每个 Context 的 `SHA256`、字节数和**完整原文**必须通过当前 Bundle 校验。
 
 ### 4.4 版本、失败与停止
 
-同一任务的 Router、Skill Core、Runtime、Bundle、routing identity 和 Project Payload 必须同源同版本。协议/digest、required Context 或完整性失败时停止，不得以旧记忆或摘要降级。
+同一任务的 Router、Skill Core、Runtime、Bundle、routing identity 和 Project Payload 必须同源同版本。协议/digest、Owner-gated routing、required Context 或完整性失败时停止，不得以旧记忆或摘要降级。
 
 ## 5. 低歧义组合示例
 
@@ -106,7 +129,7 @@ Task Route 是内部协议。`load_required_context` 只返回当前 required Co
 | Bug / Failure / Incident | 先复现根因；独立回归按需 Testing | Coding 根因；需要时 Testing Regression | `执行模式=诊断,实现；阶段=缺陷修复` |
 | Refactor / Performance | 证明行为不变或性能根因 | Coding + 基线/回归 | `执行模式=诊断,实现；阶段=重构/性能优化` |
 | Frontend | 前端实现归 Coding，独立 Journey 归 Testing | Coding Frontend；按需 Testing | `执行模式=实现；项目形态=前端Web；范围=前端；风险=L2` |
-| Testing only | 真实测试意图直接命中 Testing | Testing 当前命中 当前场景所需完整约束 | `意图=黑盒测试/功能测试/探索式测试/独立验证；能力=测试` |
+| Testing only | 真实测试意图直接命中 Testing；已知 Web/Backend/L2 等 facts 只细化 Testing，不凭自身增加 Coding | Testing 当前命中 当前场景所需完整约束 | `意图=黑盒测试/功能测试/探索式测试/独立验证；能力=测试`；可附真实项目形态/风险 |
 | Figma review-only | 只读设计审查 | Figma + 适用 Review | `执行模式=审查；意图=Figma review-only；能力=Figma；授权=允许只读` |
 | Figma review-and-fix | 授权修改设计 | Figma；存在生产实现再 Coding | `执行模式=实现；意图=Figma review-and-fix；能力=Figma；授权=允许修改项目` |
 | Figma baseline-ready | 正式设计基线 | Figma baseline-ready | `执行模式=方案；意图=Figma baseline-ready；能力=Figma；风险=L2/L3` |
@@ -120,7 +143,7 @@ Task Route 是内部协议。`load_required_context` 只返回当前 required Co
 | Runtime / Project Payload | Bundle/Route/MCP/安装分发 | Coding Bootstrap + Runtime 当前场景所需完整约束 | `执行模式=实现；风险=L3；范围=Runtime,MCP` |
 | Skill Mutation | Skill/完整约束/trigger/Owner 变化 | 根 AGENTS + Maintenance + Coding Mutation + 受影响 Skill | `执行模式=实现；意图=Skill Mutation；治理=要求完成门禁；风险=L2/L3` |
 | Greenfield | 无稳定工程事实 | Coding + 项目发现/Greenfield | `执行模式=方案；项目形态=Greenfield；阶段=仓库初始化；风险=L2` |
-| 复杂多 Skill 叠加 | 同时存在多类真实事实 | 所有真实命中 Skill/当前场景所需完整约束 并集 | 提交真实 `实现/审查/验证/Git` 与范围/意图/治理/授权 |
+| 复杂多 Skill 叠加 | 同时存在多类真实 Owner 事实 | 所有真实命中 Skill/当前场景所需完整约束 并集 | 提交真实 `实现/审查/验证/Git` 与范围/意图/治理/授权 |
 
 ## 6. Bootstrap / Runtime 专项路由
 
@@ -151,6 +174,7 @@ Task Route 是内部协议。`load_required_context` 只返回当前 required Co
 - 触发：真实测试意图，或 Review/Coding 识别独立 Test Gap。
 - 必须动作：读取 [`.agents/skills/testing/SKILL.md`](../testing/SKILL.md)。
 - 不适用：隔离 L1、普通开发期最小 TDD；**不为了“走完所有 Skill”机械叠加 Testing**。
+- Owner gate：项目形态、风险、工具链、范围、治理、授权等已知 facts 只细化 Testing 当前场景所需完整约束；没有真实 Coding 执行意图或显式跨 Skill dependency 时不得反向加载 Coding。
 - 交接：Coding/Review 提供 Requirement、Test Target 和 Evidence Gap。
 - 返回：生产缺陷 → Coding；修复后 → Testing Regression；合并判断 → Review。
 - 失败关闭：Testing/目标/required Context 不可得时不得冒充测试证据。
@@ -183,4 +207,4 @@ Task Route 是内部协议。`load_required_context` 只返回当前 required Co
 
 ## 12. Router 自身的维护边界
 
-Router 只拥有跨 Skill 的发现、入口、加载和 Handoff：Coding 的研发/TDD/验证治理归 Coding；Testing 的 Test Strategy/Black-box/User Journey/Exploratory/Integration/Regression 归 Testing；Review 的 Findings/充分性/re-review 归 Review；Docs、Figma、Runtime 细节分别归各自 Owner；Runtime 细节由 Coding 当前场景所需完整约束 + Runtime 实现承接。不能为了入口自包含把专业细则复制回 Router/ENTRY/managed block。
+Router 只拥有跨 Skill 的发现、入口、Owner-gated 加载和 Handoff：Coding 的研发/TDD/验证治理归 Coding；Testing 的 Test Strategy/Black-box/User Journey/Exploratory/Integration/Regression 归 Testing；Review 的 Findings/充分性/re-review 归 Review；Docs、Figma、Runtime 细节分别归各自 Owner；Runtime 细节由 Coding 当前场景所需完整约束 + Runtime 实现承接。不能为了入口自包含把专业细则复制回 Router/ENTRY/managed block。
