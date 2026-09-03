@@ -1016,6 +1016,30 @@
         "title": "CollectionBatchSupplementTargetResponse",
         "type": "object"
       },
+      "CollectionCampaignSupplementEligibilityResponse": {
+        "additionalProperties": false,
+        "description": "前端 Campaign Supplement 平台资格；目标来自逐行来源账本。",
+        "properties": {
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionBatchSupplementTargetResponse"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "targets"
+        ],
+        "title": "CollectionCampaignSupplementEligibilityResponse",
+        "type": "object"
+      },
       "CollectionCapabilitiesResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1388,6 +1412,18 @@
         "additionalProperties": false,
         "description": "一次性发现从 Keyword Pack 冻结关键词；Batch Supplement 只补既有内容。",
         "properties": {
+          "data_import_campaign_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Import Campaign Id"
+          },
           "import_batch_id": {
             "anyOf": [
               {
@@ -1453,6 +1489,18 @@
       "CollectionRunCreatedResponse": {
         "additionalProperties": false,
         "properties": {
+          "data_import_campaign_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Import Campaign Id"
+          },
           "import_batch_id": {
             "anyOf": [
               {
@@ -1542,6 +1590,18 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "data_import_campaign_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Import Campaign Id"
           },
           "error_code": {
             "anyOf": [
@@ -1750,6 +1810,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "data_import_campaign_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Import Campaign Id"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -1811,9 +1883,16 @@
             ]
           },
           "job_id": {
-            "format": "uuid",
-            "title": "Job Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
           },
           "keywords": {
             "default": [],
@@ -1878,7 +1957,6 @@
         },
         "required": [
           "record_id",
-          "job_id",
           "record_type",
           "display_name",
           "status",
@@ -1925,6 +2003,7 @@
       "CollectionRuntimeRecordType": {
         "enum": [
           "excel_import",
+          "data_import_campaign",
           "tikhub_discovery",
           "tikhub_batch_supplement"
         ],
@@ -8258,7 +8337,7 @@
               "items": {
                 "$ref": "#/components/schemas/CollectionRuntimeRecordType"
               },
-              "maxItems": 3,
+              "maxItems": 4,
               "title": "Record Types",
               "type": "array"
             }
@@ -10329,6 +10408,79 @@
         "summary": "Start Historical Import Campaign",
         "tags": [
           "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility": {
+      "get": {
+        "operationId": "getCollectionCampaignSupplementEligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionCampaignSupplementEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Collection Campaign Supplement Eligibility",
+        "tags": [
+          "collection"
         ]
       }
     },

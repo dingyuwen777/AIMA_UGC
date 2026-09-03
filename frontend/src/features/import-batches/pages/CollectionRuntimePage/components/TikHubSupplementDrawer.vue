@@ -9,6 +9,7 @@ import type {
   CollectionRunMode,
   CollectionSearchCapabilityResponse,
   CollectionSearchConfig,
+  HistoricalCampaignResponse,
   ImportBatchResponse,
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
@@ -18,21 +19,23 @@ import { isCollectionSearchConfigComplete } from '../../../../../shared/collecti
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { platformLabels, shortId } from '../../../format'
+import type { SupplementSourceSelection } from '../../../store'
 
 const props = defineProps<{
   modelValue: boolean
   capabilities: CollectionCapabilitiesResponse | null
+  campaigns: HistoricalCampaignResponse[]
   batches: ImportBatchResponse[]
   keywordPacks: KeywordPackSummaryResponse[]
-  batchContentPlatforms: CollectionPlatform[]
-  loadingBatchPlatforms: boolean
+  supplementContentPlatforms: CollectionPlatform[]
+  loadingSupplementPlatforms: boolean
   creating: boolean
-  initialBatchId?: string | null
+  initialSource?: SupplementSourceSelection | null
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   submit: [request: CollectionRunCreateRequest]
-  batchChange: [batchId: string]
+  sourceChange: [source: SupplementSourceSelection]
 }>()
 
 const mode = ref<CollectionRunMode>('discovery')
@@ -40,12 +43,12 @@ const selectedPackIds = ref<string[]>([])
 const selectedVehicleIds = ref<string[]>([])
 const platforms = ref<CollectionPlatform[]>([])
 const providerConfigId = ref('')
-const importBatchId = ref('')
+const supplementSourceValue = ref('')
 const includeComments = ref(true)
 const includeSubComments = ref(false)
 const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 const validation = ref<string | null>(null)
-const lastRequestedBatchId = ref('')
+const lastRequestedSourceValue = ref('')
 const supportedPlatforms: CollectionPlatform[] = [
   'xiaohongshu',
   'douyin',
@@ -53,6 +56,20 @@ const supportedPlatforms: CollectionPlatform[] = [
   'bilibili',
   'kuaishou',
 ]
+
+function encodeSource(source: SupplementSourceSelection | null | undefined): string {
+  return source ? `${source.kind}:${source.id}` : ''
+}
+
+function decodeSource(value: string): SupplementSourceSelection | null {
+  const separator = value.indexOf(':')
+  if (separator <= 0 || separator === value.length - 1) return null
+  const kind = value.slice(0, separator)
+  if (kind !== 'campaign' && kind !== 'batch') return null
+  return { kind, id: value.slice(separator + 1) }
+}
+
+const selectedSupplementSource = computed(() => decodeSource(supplementSourceValue.value))
 
 function isCollectionPlatform(value: string): value is CollectionPlatform {
   return supportedPlatforms.includes(value as CollectionPlatform)
@@ -79,7 +96,7 @@ const availablePlatforms = computed(() => {
       .filter((item) => requiredOperations.value.every((operation) => item.operations.includes(operation)))
       .map((item) => item.platform)
       .filter(isCollectionPlatform)
-      .filter((platform) => mode.value !== 'batch_supplement' || props.batchContentPlatforms.includes(platform))
+      .filter((platform) => mode.value !== 'batch_supplement' || props.supplementContentPlatforms.includes(platform))
       .filter((value, index, values) => values.indexOf(value) === index) ?? []
   )
 })
@@ -104,22 +121,23 @@ const canSubmit = computed(() => {
       return capability && isCollectionSearchConfigComplete(capability, searchConfigByPlatform[platform])
     })
   }
-  return !!importBatchId.value && !props.loadingBatchPlatforms
+  return selectedSupplementSource.value !== null && !props.loadingSupplementPlatforms
 })
 
-function requestBatchPlatforms(batchId: string): void {
-  if (!batchId || lastRequestedBatchId.value === batchId) return
-  lastRequestedBatchId.value = batchId
-  emit('batchChange', batchId)
+function requestSupplementPlatforms(value: string): void {
+  const source = decodeSource(value)
+  if (!source || lastRequestedSourceValue.value === value) return
+  lastRequestedSourceValue.value = value
+  emit('sourceChange', source)
 }
 
 watch(
   () => props.modelValue,
   (open) => {
     if (!open) return
-    lastRequestedBatchId.value = props.initialBatchId ?? ''
-    mode.value = props.initialBatchId ? 'batch_supplement' : 'discovery'
-    importBatchId.value = props.initialBatchId ?? ''
+    supplementSourceValue.value = encodeSource(props.initialSource)
+    lastRequestedSourceValue.value = supplementSourceValue.value
+    mode.value = props.initialSource ? 'batch_supplement' : 'discovery'
     selectedPackIds.value = []
     selectedVehicleIds.value = []
     platforms.value = []
@@ -139,18 +157,18 @@ watch(mode, () => {
   clearSearchConfigs()
   validation.value = null
   if (mode.value === 'batch_supplement') {
-    requestBatchPlatforms(importBatchId.value)
+    requestSupplementPlatforms(supplementSourceValue.value)
   } else {
-    lastRequestedBatchId.value = ''
+    lastRequestedSourceValue.value = ''
   }
 })
 
-watch(importBatchId, (batchId, previous) => {
+watch(supplementSourceValue, (sourceValue, previous) => {
   platforms.value = []
   clearSearchConfigs()
   validation.value = null
-  if (mode.value === 'batch_supplement' && batchId !== previous) {
-    requestBatchPlatforms(batchId)
+  if (mode.value === 'batch_supplement' && sourceValue !== previous) {
+    requestSupplementPlatforms(sourceValue)
   }
 })
 
@@ -196,8 +214,8 @@ function submit(): void {
     validation.value = '请选择本次运行使用的采集渠道配置。'
     return
   }
-  if (mode.value === 'batch_supplement' && props.loadingBatchPlatforms) {
-    validation.value = '正在核对该批次可补采的平台，请稍后。'
+  if (mode.value === 'batch_supplement' && props.loadingSupplementPlatforms) {
+    validation.value = '正在核对该导入来源可补采的平台，请稍后。'
     return
   }
   if (platforms.value.length === 0) {
@@ -208,16 +226,22 @@ function submit(): void {
     validation.value = '请至少选择一个关键词包或车型。'
     return
   }
-  if (mode.value === 'batch_supplement' && !importBatchId.value) {
-    validation.value = '请选择要补采的数据导入批次。'
+  if (mode.value === 'batch_supplement' && !selectedSupplementSource.value) {
+    validation.value = '请选择要补采的数据导入来源。'
     return
   }
   validation.value = null
+  const source = selectedSupplementSource.value
   emit('submit', {
     mode: mode.value,
     keyword_pack_ids: mode.value === 'discovery' ? selectedPackIds.value : [],
     vehicle_model_ids: mode.value === 'discovery' ? selectedVehicleIds.value : [],
-    import_batch_id: mode.value === 'batch_supplement' ? importBatchId.value : null,
+    import_batch_id: mode.value === 'batch_supplement' && source?.kind === 'batch'
+      ? source.id
+      : null,
+    data_import_campaign_id: mode.value === 'batch_supplement' && source?.kind === 'campaign'
+      ? source.id
+      : null,
     platforms: platforms.value.map((platform) => ({
       platform,
       provider_config_id: providerConfigId.value,
@@ -277,7 +301,7 @@ function submit(): void {
           <AimaFeedbackBanner tone="info">
             {{ mode === 'discovery'
               ? '选择关键词包或车型；系统会冻结两类版本与解析后的车型别名，并按统一发现语义采集。'
-              : '只允许选择已成功入库的批次；目标平台必须在该批次中真实存在，并满足当前采集渠道能力。' }}
+              : '优先选择统一数据导入任务；兼容旧 Excel 批次。目标平台必须在该来源中真实存在，并满足当前采集渠道能力。' }}
           </AimaFeedbackBanner>
 
           <section
@@ -315,21 +339,38 @@ function submit(): void {
             v-else
             class="form-card"
           >
-            <label for="batch-select">数据导入批次</label>
+            <label for="supplement-source-select">数据导入来源</label>
             <select
-              id="batch-select"
-              v-model="importBatchId"
+              id="supplement-source-select"
+              v-model="supplementSourceValue"
             >
               <option value="">
-                请选择已成功入库批次
+                请选择已完成的数据导入
               </option>
-              <option
-                v-for="batch in batches"
-                :key="batch.id"
-                :value="batch.id"
+              <optgroup
+                v-if="campaigns.length"
+                label="统一数据导入"
               >
-                {{ batch.source_filename || '未记录文件名' }} · {{ shortId(batch.id) }}
-              </option>
+                <option
+                  v-for="campaign in campaigns"
+                  :key="campaign.id"
+                  :value="`campaign:${campaign.id}`"
+                >
+                  {{ campaign.root_relative_path || '本地上传' }} · {{ shortId(campaign.id) }}
+                </option>
+              </optgroup>
+              <optgroup
+                v-if="batches.length"
+                label="兼容旧 Excel 批次"
+              >
+                <option
+                  v-for="batch in batches"
+                  :key="batch.id"
+                  :value="`batch:${batch.id}`"
+                >
+                  {{ batch.source_filename || '未记录文件名' }} · {{ shortId(batch.id) }}
+                </option>
+              </optgroup>
             </select>
           </section>
 
@@ -362,10 +403,10 @@ function submit(): void {
               <small>只显示当前采集渠道支持的平台</small>
             </div>
             <p
-              v-if="mode === 'batch_supplement' && loadingBatchPlatforms"
+              v-if="mode === 'batch_supplement' && loadingSupplementPlatforms"
               class="platform-state"
             >
-              正在核对该批次的真实内容平台…
+              正在核对该导入来源的真实内容平台…
             </p>
             <div
               v-else
@@ -384,10 +425,10 @@ function submit(): void {
               </button>
             </div>
             <p
-              v-if="!loadingBatchPlatforms && availablePlatforms.length === 0"
+              v-if="!loadingSupplementPlatforms && availablePlatforms.length === 0"
               class="platform-state"
             >
-              当前选择没有同时满足批次内容与采集渠道能力的平台。
+              当前选择没有同时满足导入内容与采集渠道能力的平台。
             </p>
           </section>
 

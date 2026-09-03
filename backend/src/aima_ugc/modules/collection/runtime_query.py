@@ -24,12 +24,13 @@ class CollectionRuntimeReadQuery:
 @dataclass(frozen=True, slots=True)
 class CollectionRuntimeReadRecord:
     record_id: UUID
-    job_id: UUID
+    job_id: UUID | None
     record_type: RuntimeRecordType
     status: str
     progress: int
     stage: str
     import_batch_id: UUID | None
+    data_import_campaign_id: UUID | None
     collection_run_id: UUID | None
     source_filename: str | None
     import_stats: dict[str, object] | None

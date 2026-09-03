@@ -69,6 +69,17 @@ const dataImportCampaign = {
   started_at: null,
   finished_at: null,
 }
+const completedDataImportCampaign = {
+  ...dataImportCampaign,
+  status: 'succeeded',
+  root_relative_path: '历史导入/campaign.xlsx',
+  discovered_file_count: 1,
+  ready_item_count: 1,
+  total_rows: 2,
+  progress: { preflight_completed_file_count: 1, preflight_percent: 100, migration_completed_row_count: 2, migration_percent: 100 },
+  stats: { unchanged: 2 },
+  finished_at: '2026-08-27T15:10:00+08:00',
+}
 const runDetail = {
   run_id: runId, job_id: collectionJobId, mode: 'discovery', import_batch_id: null, keywords: ['爱玛', 'Q7'], platforms: ['xiaohongshu'], status: 'queued', stage: 'queued', progress: 0, attempt: 0, max_attempts: 2,
   stats: { requested_count: 0, succeeded_count: 0, failed_count: 0, content_count: 0, comment_count: 0, filtered_count: 0 },
@@ -84,13 +95,14 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === '/api/v1/collection-runtime/runs') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [runtimeItem], next_cursor: null, has_more: false }) })
     if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: [], supported_content_types: ['all', 'video', 'image'], manual_default: { sort_mode: 'latest', published_within: '1d', content_type: 'all' } } }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: ['all', 'short', 'long'], supported_content_types: ['all', 'video'], manual_default: { sort_mode: 'latest', published_within: '1d', duration: 'all', content_type: 'all' } } }] }) })
     if (url.pathname === '/api/v1/keyword-packs' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(keywordPacks) })
-    if (url.pathname === '/api/v1/data-import-campaigns' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
+    if (url.pathname === '/api/v1/data-import-campaigns' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [completedDataImportCampaign] }) })
     if (url.pathname === '/api/v1/data-import-campaigns/local' && request.method() === 'POST') return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ campaign_id: dataImportCampaignId, upload_items: [{ item_id: dataImportItemId, relative_path: 'stage8e.xlsx' }] }) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(dataImportCampaign) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}/items`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], total_count: 0, has_more: false }) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}/conflicts`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], total_count: 0, has_more: false }) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}/items/${dataImportItemId}/content`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ campaign_id: dataImportCampaignId, item_id: dataImportItemId, artifact_id: 'c2345678-1234-4678-9234-567812345678', sha256: 'a'.repeat(64), byte_size: 7 }) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}/finalize`) return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ ...dataImportCampaign, status: 'snapshotting', discovered_file_count: 1 }) })
+    if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ campaign_id: dataImportCampaignId, targets: [{ platform: 'xiaohongshu', target_count: 2 }] }) })
     if (url.pathname === '/api/v1/collection-runs' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ run_id: runId, job_id: collectionJobId, mode: 'discovery', status: 'queued' }) })
     if (url.pathname === `/api/v1/collection-runs/${runId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runDetail) })
     if (url.pathname === '/api/v1/import-batches' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, job_id: importJobId, status: 'queued' }) })
@@ -154,7 +166,7 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
   await page.getByRole('button', { name: '新建辅助补采' }).click()
   const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
   await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
-  await drawer.getByLabel('数据导入批次').selectOption(batchId)
+  await drawer.getByLabel('数据导入来源').selectOption(`batch:${batchId}`)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
   await drawer.getByRole('button', { name: /小红书/ }).click()
@@ -163,6 +175,7 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
   expect((await requestPromise).postDataJSON()).toMatchObject({
     mode: 'batch_supplement',
     import_batch_id: batchId,
+    data_import_campaign_id: null,
     keyword_pack_ids: [],
     platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }],
   })
@@ -175,17 +188,75 @@ test('re-probes Batch platform eligibility when switching A to B and back to A',
   const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
   await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
 
-  await drawer.getByLabel('数据导入批次').selectOption(batchId)
+  await drawer.getByLabel('数据导入来源').selectOption(`batch:${batchId}`)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
 
-  await drawer.getByLabel('数据导入批次').selectOption(secondBatchId)
+  await drawer.getByLabel('数据导入来源').selectOption(`batch:${secondBatchId}`)
   await expect(drawer.getByRole('button', { name: /抖音/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /小红书/ })).toHaveCount(0)
 
-  await drawer.getByLabel('数据导入批次').selectOption(batchId)
+  await drawer.getByLabel('数据导入来源').selectOption(`batch:${batchId}`)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
+})
+
+test('shows a Data Import Campaign without a synthetic Job and opens its persisted detail', async ({ page }) => {
+  await page.route('**/api/v1/collection-runtime/runs*', async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      items: [{
+        record_id: dataImportCampaignId,
+        record_type: 'data_import_campaign',
+        display_name: '数据导入 · 历史导入/campaign.xlsx',
+        source_filename: '历史导入/campaign.xlsx',
+        data_import_campaign_id: dataImportCampaignId,
+        import_batch_id: null,
+        collection_run_id: null,
+        job_id: null,
+        status: 'succeeded',
+        stage: 'succeeded',
+        progress: 100,
+        import_stats: { rows_seen: 2, rows_matched: 2, rows_ingested: 0 },
+        collection_stats: null,
+        platforms: [],
+        keywords: [],
+        created_at: completedDataImportCampaign.created_at,
+        started_at: completedDataImportCampaign.started_at,
+        finished_at: completedDataImportCampaign.finished_at,
+        error_code: null,
+        error_summary: null,
+      }],
+      next_cursor: null,
+      has_more: false,
+    }),
+  }))
+
+  await page.goto('/collection-runtime')
+  await expect(page.getByText('数据导入 · 历史导入/campaign.xlsx')).toBeVisible()
+  await expect(page.getByText('命中 2')).toBeVisible()
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
+  await expect(dialog).toContainText(dataImportCampaignId)
+})
+
+test('creates a supplement Run from a completed Data Import Campaign ledger', async ({ page }) => {
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '新建辅助补采' }).click()
+  const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
+  await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
+  await drawer.getByLabel('数据导入来源').selectOption(`campaign:${dataImportCampaignId}`)
+  await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
+  await drawer.getByRole('button', { name: /小红书/ }).click()
+  const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
+  await drawer.getByRole('button', { name: '创建补采任务' }).click()
+
+  expect((await requestPromise).postDataJSON()).toMatchObject({
+    mode: 'batch_supplement',
+    import_batch_id: null,
+    data_import_campaign_id: dataImportCampaignId,
+    platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }],
+  })
 })
 
 test('explains failed Import terminal state without inventing pending stages', async ({ page }) => {

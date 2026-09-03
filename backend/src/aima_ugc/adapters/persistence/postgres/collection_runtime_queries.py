@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Text, and_, case, func, literal, or_, select, union_all
+from sqlalchemy import BigInteger, Integer, Text, and_, case, func, literal, or_, select, union_all
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import RowMapping
@@ -20,6 +20,10 @@ from aima_ugc.modules.collection.runtime_query import (
     CollectionRuntimeSummary,
 )
 from aima_ugc.modules.collection.tables import collection_runs_table, collection_scopes_table
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+)
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.platform.jobs.tables import jobs_table
@@ -32,6 +36,16 @@ _IMPORT_ACTIVE_STAGES = (
     "deduplicating",
     "ingesting",
 )
+_CAMPAIGN_ACTIVE_STATUSES = (
+    "uploading",
+    "discovering",
+    "snapshotting",
+    "ready",
+    "queued",
+    "running",
+    "cancelling",
+)
+_CAMPAIGN_COMPLETED_STATUSES = ("succeeded", "partial_failed")
 
 
 class PostgresCollectionRuntimeQueryRepository:
@@ -96,6 +110,7 @@ class PostgresCollectionRuntimeQueryRepository:
         tomorrow_start_utc: datetime,
     ) -> CollectionRuntimeSummary:
         import_batch = processing_import_batches_table
+        campaign = historical_import_campaigns_table
         collection_run = collection_runs_table
         job = jobs_table
 
@@ -130,6 +145,29 @@ class PostgresCollectionRuntimeQueryRepository:
             .one()
         )
 
+        campaign_rows_ingested = _campaign_rows_ingested(campaign.c.stats)
+        campaign_finished_today = and_(
+            campaign.c.status.in_(_CAMPAIGN_COMPLETED_STATUSES),
+            campaign.c.finished_at >= today_start_utc,
+            campaign.c.finished_at < tomorrow_start_utc,
+        )
+        campaign_summary = (
+            self._session.execute(
+                select(
+                    func.count()
+                    .filter(campaign.c.status.in_(_CAMPAIGN_ACTIVE_STATUSES))
+                    .label("processing"),
+                    func.count().filter(campaign_finished_today).label("completed"),
+                    func.coalesce(
+                        func.sum(campaign_rows_ingested).filter(campaign_finished_today),
+                        0,
+                    ).label("contents"),
+                ).select_from(campaign)
+            )
+            .mappings()
+            .one()
+        )
+
         collection_finished_today = and_(
             job.c.status == "succeeded",
             job.c.finished_at >= today_start_utc,
@@ -155,19 +193,24 @@ class PostgresCollectionRuntimeQueryRepository:
         )
         return CollectionRuntimeSummary(
             processing_count=cast(int, import_summary["processing"])
+            + cast(int, campaign_summary["processing"])
             + cast(int, collection_summary["processing"]),
             completed_today_count=cast(int, import_summary["completed"])
+            + cast(int, campaign_summary["completed"])
             + cast(int, collection_summary["completed"]),
             contents_ingested_today=cast(int, import_summary["contents"])
+            + cast(int, campaign_summary["contents"])
             + cast(int, collection_summary["contents"]),
         )
 
     @staticmethod
     def _union() -> Any:
         batch = processing_import_batches_table
+        campaign = historical_import_campaigns_table
         run = collection_runs_table
         job = jobs_table
         scope_filtered = _scope_filtered_subquery()
+        campaign_source_totals, campaign_chunk_totals = _campaign_progress_subqueries()
 
         import_stage_value = batch.c.stats["stage"].astext
         import_stage = case(
@@ -186,6 +229,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 job.c.progress,
                 import_stage.label("public_stage"),
                 batch.c.id.label("import_batch_id"),
+                literal(None).cast(campaign.c.id.type).label("data_import_campaign_id"),
                 literal(None).cast(run.c.id.type).label("collection_run_id"),
                 batch.c.stats["source_filename"].astext.label("source_filename"),
                 batch.c.stats.label("import_stats"),
@@ -210,6 +254,107 @@ class PostgresCollectionRuntimeQueryRepository:
             )
             .select_from(batch.join(job, batch.c.job_id == job.c.id))
             .where(job.c.job_type == IMPORT_JOB_TYPE)
+        )
+
+        campaign_preflight_percent = case(
+            (campaign.c.status == "ready", 100),
+            (
+                campaign.c.discovered_file_count > 0,
+                func.least(
+                    100,
+                    sql_cast(
+                        func.coalesce(campaign_source_totals.c.progress_points, 0)
+                        * 100
+                        / campaign.c.discovered_file_count,
+                        Integer,
+                    ),
+                ),
+            ),
+            else_=0,
+        )
+        campaign_migration_percent = case(
+            (
+                campaign.c.total_rows > 0,
+                func.least(
+                    100,
+                    sql_cast(
+                        func.coalesce(campaign_chunk_totals.c.completed_row_count, 0)
+                        * 100
+                        / campaign.c.total_rows,
+                        Integer,
+                    ),
+                ),
+            ),
+            (campaign.c.status.in_(_CAMPAIGN_COMPLETED_STATUSES), 100),
+            else_=0,
+        )
+        campaign_progress = case(
+            (
+                campaign.c.status.in_(("uploading", "discovering", "snapshotting", "ready")),
+                campaign_preflight_percent,
+            ),
+            else_=campaign_migration_percent,
+        )
+        campaign_status = case(
+            (campaign.c.status.in_(("uploading", "discovering", "snapshotting")), "running"),
+            (campaign.c.status.in_(("ready", "queued")), "queued"),
+            (campaign.c.status.in_(("running", "cancelling")), "running"),
+            (campaign.c.status == "partial_failed", "partial_success"),
+            else_=campaign.c.status,
+        )
+        campaign_import_stats = func.jsonb_build_object(
+            "rows_seen",
+            campaign.c.total_rows,
+            "rows_matched",
+            _campaign_rows_matched(campaign.c.stats),
+            "rows_filtered_out",
+            _safe_json_count(campaign.c.stats, "filtered"),
+            "duplicates_removed",
+            _safe_json_count(campaign.c.stats, "duplicate"),
+            "rows_ingested",
+            _campaign_rows_ingested(campaign.c.stats),
+            "rows_rejected",
+            _campaign_rows_rejected(campaign.c.stats),
+        )
+        campaign_select = select(
+            campaign.c.id.label("record_id"),
+            literal(None).cast(job.c.id.type).label("job_id"),
+            literal("data_import_campaign").label("record_type"),
+            campaign_status.label("public_status"),
+            campaign_progress.label("progress"),
+            campaign.c.status.label("public_stage"),
+            literal(None).cast(batch.c.id.type).label("import_batch_id"),
+            campaign.c.id.label("data_import_campaign_id"),
+            literal(None).cast(run.c.id.type).label("collection_run_id"),
+            campaign.c.root_relative_path.label("source_filename"),
+            campaign_import_stats.label("import_stats"),
+            literal(0).label("requested_count"),
+            literal(0).label("succeeded_count"),
+            literal(0).label("failed_count"),
+            literal(0).label("content_count"),
+            literal(0).label("comment_count"),
+            literal(0).label("filtered_count"),
+            literal(None).cast(JSONB).label("config_snapshot"),
+            campaign.c.error_summary,
+            literal(None).cast(Text).label("error_code"),
+            campaign.c.created_at,
+            campaign.c.started_at,
+            campaign.c.finished_at,
+            func.concat_ws(
+                " ",
+                campaign.c.root_relative_path,
+                campaign.c.source_kind,
+                campaign.c.ingestion_policy,
+                sql_cast(campaign.c.id, Text),
+            ).label("search_text"),
+        ).select_from(
+            campaign.outerjoin(
+                campaign_source_totals,
+                campaign_source_totals.c.campaign_id == campaign.c.id,
+            ).outerjoin(
+                campaign_chunk_totals,
+                campaign_chunk_totals.c.campaign_id == campaign.c.id,
+            )
         )
 
         collection_status = case(
@@ -240,8 +385,12 @@ class PostgresCollectionRuntimeQueryRepository:
                 job.c.progress,
                 collection_stage.label("public_stage"),
                 run.c.import_batch_id,
+                run.c.data_import_campaign_id,
                 run.c.id.label("collection_run_id"),
-                batch.c.stats["source_filename"].astext.label("source_filename"),
+                func.coalesce(
+                    batch.c.stats["source_filename"].astext,
+                    campaign.c.root_relative_path,
+                ).label("source_filename"),
                 literal(None).cast(JSONB).label("import_stats"),
                 run.c.requested_count,
                 run.c.succeeded_count,
@@ -258,6 +407,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 func.concat_ws(
                     " ",
                     batch.c.stats["source_filename"].astext,
+                    campaign.c.root_relative_path,
                     run.c.config_snapshot["keywords"].astext,
                     sql_cast(run.c.id, Text),
                     sql_cast(job.c.id, Text),
@@ -266,11 +416,84 @@ class PostgresCollectionRuntimeQueryRepository:
             .select_from(
                 run.join(job, run.c.job_id == job.c.id)
                 .outerjoin(batch, batch.c.id == run.c.import_batch_id)
+                .outerjoin(campaign, campaign.c.id == run.c.data_import_campaign_id)
                 .outerjoin(scope_filtered, scope_filtered.c.run_id == run.c.id)
             )
             .where(job.c.job_type == COLLECTION_RUN_JOB_TYPE)
         )
-        return union_all(import_select, collection_select)
+        return union_all(import_select, campaign_select, collection_select)
+
+
+def _safe_json_count(column: Any, key: str) -> Any:
+    value = column[key].astext
+    return case(
+        (value.op("~")(r"^[0-9]{1,18}$"), sql_cast(value, BigInteger)),
+        else_=0,
+    )
+
+
+def _campaign_rows_matched(stats: Any) -> Any:
+    return sum(
+        (
+            _safe_json_count(stats, key)
+            for key in ("created", "filled", "updated", "unchanged", "conflict")
+        ),
+        literal(0),
+    )
+
+
+def _campaign_rows_ingested(stats: Any) -> Any:
+    return sum(
+        (_safe_json_count(stats, key) for key in ("created", "filled", "updated")),
+        literal(0),
+    )
+
+
+def _campaign_rows_rejected(stats: Any) -> Any:
+    return sum(
+        (_safe_json_count(stats, key) for key in ("conflict", "invalid", "failed")),
+        literal(0),
+    )
+
+
+def _campaign_progress_subqueries() -> tuple[Any, Any]:
+    item = historical_import_campaign_items_table
+    source_progress = case(
+        (item.c.status == "discovered", 0),
+        (item.c.status == "snapshotting", func.coalesce(jobs_table.c.progress, 0)),
+        else_=100,
+    )
+    source_totals = (
+        select(
+            item.c.campaign_id.label("campaign_id"),
+            func.coalesce(func.sum(source_progress), 0).label("progress_points"),
+        )
+        .select_from(item.outerjoin(jobs_table, jobs_table.c.id == item.c.job_id))
+        .where(item.c.item_kind == "source_file")
+        .group_by(item.c.campaign_id)
+        .subquery("runtime_campaign_source_progress")
+    )
+    chunk_totals = (
+        select(
+            item.c.campaign_id.label("campaign_id"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            item.c.status.in_(("succeeded", "failed", "cancelled")),
+                            item.c.row_count,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("completed_row_count"),
+        )
+        .where(item.c.item_kind == "chunk")
+        .group_by(item.c.campaign_id)
+        .subquery("runtime_campaign_chunk_progress")
+    )
+    return source_totals, chunk_totals
 
 
 def _scope_filtered_subquery() -> Any:
@@ -295,12 +518,13 @@ def _scope_filtered_subquery() -> Any:
 def _row_to_record(row: RowMapping) -> CollectionRuntimeReadRecord:
     return CollectionRuntimeReadRecord(
         record_id=cast(UUID, row["record_id"]),
-        job_id=cast(UUID, row["job_id"]),
+        job_id=cast(UUID | None, row["job_id"]),
         record_type=cast(RuntimeRecordType, row["record_type"]),
         status=cast(str, row["public_status"]),
         progress=cast(int, row["progress"]),
         stage=cast(str, row["public_stage"]),
         import_batch_id=cast(UUID | None, row["import_batch_id"]),
+        data_import_campaign_id=cast(UUID | None, row["data_import_campaign_id"]),
         collection_run_id=cast(UUID | None, row["collection_run_id"]),
         source_filename=cast(str | None, row["source_filename"]),
         import_stats=cast(dict[str, object] | None, row["import_stats"]),

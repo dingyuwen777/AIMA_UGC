@@ -245,6 +245,8 @@ POST /api/v1/collection-runs
 GET  /api/v1/collection-runs/{run_id}
 GET  /api/v1/collection-runtime/runs
 GET  /api/v1/collection-runtime/summary
+GET  /api/v1/import-batches/{batch_id}/supplement-eligibility
+GET  /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility
 ```
 
 代码：
@@ -252,7 +254,9 @@ GET  /api/v1/collection-runtime/summary
 - [`backend/src/aima_ugc/bootstrap/collection_http.py`](../../backend/src/aima_ugc/bootstrap/collection_http.py)
 - [`backend/src/aima_ugc/modules/collection/http.py`](../../backend/src/aima_ugc/modules/collection/http.py)
 
-`collection-runtime/runs` 是统一只读投影，不意味着 Excel Import Batch 和 Collection Run 被合并成一张万能表。
+`collection-runtime/runs` 是统一只读投影，不意味着 Data Import Campaign、兼容 Excel Import Batch 和 Collection Run 被合并成一张万能表。当前页面导入主链以 Campaign 为父事实；运行中心直接投影 Campaign 的状态、持久进度和行统计，旧 Import Batch 仅继续承担兼容入口。汇总统计必须按父事实计数，不能再把 Campaign 下的物理 Chunk Batch 重复算作独立导入。
+
+辅助补采同样先选择真实导入父事实。新 Campaign 通过逐行来源账本反查已有 Content，所以 `unchanged` 等没有新建 Content Version 的行仍可进入资格判断；旧 Import Batch 继续沿用 Provider Request/Attempt 追溯。Collection Run 只保存其中一种来源 ID，二者不得同时出现。资格接口只返回当前分析配置下仍可补采的平台和数量，前端不能通过声音广场分页猜测。
 
 `GET /api/v1/collection-capabilities` 同时返回各 Provider/Platform 的可执行 Operation 和 Provider-neutral Search 选项。手工 Discovery 可以不传 `search_config`，后端会按 Capability 补齐并冻结“最新、一天内、不限内容”的可支持部分；新建周期 Plan 必须逐平台显式提交完整 `search_config`。平台不支持的维度不进入 Contract，前端不得自行维护另一套平台参数表。
 
@@ -385,6 +389,7 @@ GET  /api/v1/data-import-campaigns/{campaign_id}/conflicts
 POST /api/v1/data-import-campaigns/{campaign_id}/start
 POST /api/v1/data-import-campaigns/{campaign_id}/cancel
 POST /api/v1/data-import-campaigns/{campaign_id}/retry-failed
+GET  /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility
 ```
 
 页面以 `source_kind=local_upload / server_path` 区分文件怎样进入服务器，以 `ingestion_policy=standard_observation / historical_fill_only` 区分进入 Content Owner 后怎样写；两者相互独立并冻结在 Campaign。本地来源先提交安全相对路径和大小清单，再逐 Item 流式上传；服务器来源只收发管理员批准根目录内的相对路径。两者都必须先完成源文件 Artifact、SHA-256、流式预检和全部 Chunk 冻结，进入 `ready` 后页面才允许 start。Chunk 使用低优先级、有界窗口和逐行终态账本；导入不会自动创建 AI Job。
@@ -436,22 +441,18 @@ frontend/src/features/import-batches/
 frontend/src/features/collection-strategy/
 frontend/src/features/admin-configuration/
 frontend/src/features/identity/
-frontend/src/features/task-center/
 ```
 
 含义：
 
 - `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；“AI 相关性”可显式查看待复核 `irrelevant`，并支持单条/批量人工标记为相关；
-- `/voice-plaza`：Analysis Run 预检和显式创建仍由声音广场承担；正文只显示 `queued / running / cancelling` 活动 Run 的紧凑状态、加权进度和取消入口，终态 Run 不再作为历史大块持续占据声音记录上方；导出弹窗继续展示持久 Export Job 进度；
-- `/collection-runtime`：Excel/TikHub 统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；
-- 全局 `AppShell` 右上角提供任务中心 Drawer：通过现有 generated Client 聚合 Analysis Run、Collection Runtime 和 Data Export 三个既有 read model，显示活动任务数量、最近终态、进度/错误摘要和对应业务页入口；它没有独立路由，也不新增统一后端 Task API、Job 表或第二套状态机；
-- `frontend/src/features/task-center/index.ts` 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
-- Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
+- `/collection-runtime`：Data Import Campaign、兼容 Excel Import Batch 与辅助补采的统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；已完成 Campaign 可直接作为辅助补采来源，旧 Batch 仅作为兼容选项；
+- `/voice-plaza`：Analysis Run 预检、显式创建、历史、加权进度与取消；导出弹窗同时展示持久 Export Job 进度；
 - `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
 - `/admin/configuration`：管理员车型/关键词关系、Analysis Scheme 版本与审计；路由守卫只改善交互，后端仍独立鉴权；
 - `/`：当前 HomeView。
 
-后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。全局任务中心同样只是前端聚合入口，不能据此把当前后端描述成已经有一个统一 Task/Job 公共资源。
+后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。
 
 ---
 
@@ -474,8 +475,6 @@ Feature Page
 - Feature 直接导入另一个 Feature 的私有 Store；
 - 在页面代码里理解 PostgreSQL 表结构；
 - 直接读取 env.local、Secret 或复制后端配置规则来判断业务能力。
-
-如果确实需要跨 Feature 的全局前端能力，必须由对应 Feature 暴露稳定公共入口，例如任务中心通过 `features/task-center/index.ts` 暴露 `TaskCenter/useTaskCenterStore`；这不授权其它 Feature 深层导入其私有 `api.ts` 或复制业务状态机。
 
 如果设计稿字段和后端 Contract 不一致，先判断需求是否要改后端，不要在页面层“猜字段”。
 
@@ -647,6 +646,7 @@ HttpErrorResponse
 - 业务失败不返回 200；
 - 响应不暴露 SQL、文件路径、Secret、原始 traceback；
 - `request_id` 用于和日志关联；
+- 422 Contract 校验失败只记录请求方法、路由、`request_id` 以及安全的字段路径/错误码，不记录被拒绝的值或请求体；前端同时展示这些安全定位信息，管理员不必只凭通用提示猜测；
 - 未预期异常记录安全调用栈，用户只看到统一 500。
 
 ---
@@ -724,7 +724,6 @@ Job Payload / Handler
 飞书企业登录/公网生产认证
 Word Report 的正式 PostgreSQL Job/API
 LLM 配置编辑/Secret 查询 API
-统一后端 Task/Job 公共 API 或万能任务表
 ```
 
 未来实现时再由实际 Contract、代码和测试更新本文。

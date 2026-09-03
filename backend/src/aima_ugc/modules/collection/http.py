@@ -7,6 +7,7 @@ from uuid import UUID
 
 from aima_ugc.contracts.http import (
     CollectionBatchSupplementEligibilityResponse,
+    CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
     CollectionRunCreatedResponse,
     CollectionRunCreateRequest,
@@ -42,6 +43,11 @@ class CollectionHttpService(Protocol):
         self,
         batch_id: UUID,
     ) -> CollectionBatchSupplementEligibilityResponse: ...
+
+    def get_campaign_supplement_eligibility(
+        self,
+        campaign_id: UUID,
+    ) -> CollectionCampaignSupplementEligibilityResponse: ...
 
     def create_run(
         self,

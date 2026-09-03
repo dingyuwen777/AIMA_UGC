@@ -38,11 +38,18 @@ def test_current_schema_preserves_job_collection_and_provider_invariants() -> No
             for item in inspector.get_unique_constraints("collection_scopes")
         }
         run_indexes = {item["name"] for item in inspector.get_indexes("collection_runs")}
+        run_checks = {item["name"] for item in inspector.get_check_constraints("collection_runs")}
         scope_indexes = {item["name"] for item in inspector.get_indexes("collection_scopes")}
 
         assert any(
             item["constrained_columns"] == ["job_id"]
             and item["referred_table"] == "jobs"
+            and item["referred_columns"] == ["id"]
+            for item in run_foreign_keys
+        ), run_foreign_keys
+        assert any(
+            item["constrained_columns"] == ["data_import_campaign_id"]
+            and item["referred_table"] == "historical_import_campaigns"
             and item["referred_columns"] == ["id"]
             for item in run_foreign_keys
         ), run_foreign_keys
@@ -55,6 +62,8 @@ def test_current_schema_preserves_job_collection_and_provider_invariants() -> No
             "operation_group",
         ) in scope_uniques, scope_uniques
         assert "ix_collection_runs_status_created_at" in run_indexes, run_indexes
+        assert "ix_collection_runs_campaign_id_created_at" in run_indexes, run_indexes
+        assert "ck_collection_runs_import_source_at_most_one" in run_checks, run_checks
         assert "ix_collection_scopes_run_id_status" in scope_indexes, scope_indexes
 
         request_foreign_keys = inspector.get_foreign_keys("provider_requests")

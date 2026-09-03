@@ -25,6 +25,7 @@ const generated = vi.hoisted(() => ({
   downloadDataExport: vi.fn(),
   finalizeLocalDataImportCampaign: vi.fn(),
   getCollectionBatchSupplementEligibility: vi.fn(),
+  getCollectionCampaignSupplementEligibility: vi.fn(),
   getCollectionCapabilities: vi.fn(),
   getCollectionPlan: vi.fn(),
   getCollectionRun: vi.fn(),
@@ -142,6 +143,7 @@ describe('frontend full-stack audit regressions', () => {
   it('loads all cursor pages of successful import batches for supplement creation', async () => {
     generated.getCollectionCapabilities.mockResolvedValue({ capabilities: [], provider_configs: [] })
     generated.listKeywordPacks.mockResolvedValue({ items: [], total: 0, offset: 0, limit: 100 })
+    generated.listDataImportCampaigns.mockResolvedValue({ items: [] })
     generated.listImportBatches
       .mockResolvedValueOnce({
         items: [{ id: 'batch-1', status: 'succeeded', stats: { rows_ingested: 1 } }],

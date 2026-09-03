@@ -704,8 +704,8 @@ class TikHubCollectionScopeExecutor:
         run: CollectionRunRecord,
         scope: CollectionScopeRecord,
     ) -> CollectionEnrichmentTarget:
-        if run.import_batch_id is None:
-            raise ValueError("content_enrichment Run 缺少 import_batch_id")
+        if run.import_batch_id is None and run.data_import_campaign_id is None:
+            raise ValueError("content_enrichment Run 缺少数据导入来源")
         try:
             content_id = UUID(scope.source_value)
         except ValueError as exc:
@@ -713,14 +713,22 @@ class TikHubCollectionScopeExecutor:
         session = self._session_factory()
         try:
             with session.begin():
-                target = PostgresCollectionTargetReader(session).get_batch_target(
-                    batch_id=run.import_batch_id,
-                    content_id=content_id,
-                )
+                reader = PostgresCollectionTargetReader(session)
+                if run.data_import_campaign_id is not None:
+                    target = reader.get_campaign_target(
+                        campaign_id=run.data_import_campaign_id,
+                        content_id=content_id,
+                    )
+                else:
+                    assert run.import_batch_id is not None
+                    target = reader.get_batch_target(
+                        batch_id=run.import_batch_id,
+                        content_id=content_id,
+                    )
         finally:
             session.close()
         if target is None:
-            raise ValueError("补采目标不属于 Run 关联的 Import Batch")
+            raise ValueError("补采目标不属于 Run 关联的数据导入来源")
         return target
 
     def _refresh_counts(

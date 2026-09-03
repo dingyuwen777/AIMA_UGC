@@ -96,6 +96,7 @@ HttpErrorResponse
 - 未找到通常是 404；
 - 状态冲突/结果未就绪通常是 409；
 - 请求 Contract 不合法通常是 422；
+- 422 会用同一 `request_id` 记录安全的字段路径和错误码，响应/前端也可展示这些定位信息；日志不记录被拒绝的字段值或完整请求体；
 - 未预期异常返回安全 500，不暴露 SQL、Secret、内部路径或 traceback；
 - `request_id` 用来关联应用日志。
 
@@ -175,8 +176,10 @@ discovery
 → 一次性关键词发现
 
 batch_supplement
-→ 基于已有 Import Batch 做补采
+→ 基于 Data Import Campaign 或兼容 Import Batch 做补采
 ```
+
+补采请求必须且只能提交 `data_import_campaign_id` 或 `import_batch_id` 之一。新页面优先使用 Campaign；旧 Batch 字段继续保持兼容。
 
 HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Worker 完成。
 
@@ -186,7 +189,7 @@ HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Wor
 
 ## 4.4 `GET /api/v1/collection-runtime/runs`
 
-采集运行中心统一 Read Model，可投影兼容 Excel Import 与 TikHub Run。统一发生在 Query 层，不表示数据库把 Import Batch、Collection Run、Data Import Campaign 合成万能父表。
+采集运行中心统一 Read Model，可投影 Data Import Campaign、兼容 Excel Import 与 TikHub Run。统一发生在 Query 层，不表示数据库把三类父事实合成万能表。Campaign 下的物理 Chunk Batch 不再作为兼容 Excel Import 重复投影或计入 KPI。
 
 ## 4.5 `GET /api/v1/collection-runtime/summary`
 
@@ -291,6 +294,10 @@ ingestion.historical-import-chunk.v1
 物理名称沿用 `historical_*` 是兼容选择，不代表当前页面存在第二套“历史导入”业务入口。
 
 `historical_fill_only` 的长期规则是只补空值、不覆盖已有非空 Current、差异留冲突账本；`standard_observation` 继续使用普通字段新鲜度语义。导入不会自动创建 AI Job。
+
+## 5.8 `GET /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility`
+
+返回一个 Campaign 当前可用于辅助补采的平台和目标数量。目标从逐行来源账本反查 Content，因此 `unchanged` 行不需要伪造新 Content Version 也能保留补采资格；当前有效 AI 结果为不相关或缺少可执行 Provider locator 的内容不会进入结果。
 
 ---
 

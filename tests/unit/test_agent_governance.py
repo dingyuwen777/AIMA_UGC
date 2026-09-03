@@ -155,19 +155,26 @@ def test_project_docs_do_not_route_generic_governance_to_local_installed_skill_c
     assert "先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则" in docs_agents
 
 
-def test_repository_no_longer_tracks_legacy_runtime_or_install_manifest() -> None:
-    """正式升级后 legacy manifest 与项目内 Runtime binary 不再作为 Git 仓库资产。"""
+def test_repository_tracks_current_runtime_without_legacy_assets() -> None:
+    """受管 Runtime 只保留当前二进制，不恢复 legacy manifest 或旧文件名。"""
     assert not (ROOT / ".agents/agent-skills-install.json").exists()
 
-    tracked = subprocess.run(
+    legacy = subprocess.run(
         ["git", "ls-files", "--error-unmatch", ".agents/runtime/agent-skills-mcp.exe"],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
-    assert tracked.returncode != 0
-    assert "/.agents/runtime/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+    current = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", ".agents/runtime/agent-skills.exe"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert legacy.returncode != 0
+    assert current.returncode == 0
 
 
 def test_checker_rejects_supplier_internal_workflow_paths(tmp_path: Path) -> None:

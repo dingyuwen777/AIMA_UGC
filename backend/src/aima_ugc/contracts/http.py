@@ -200,6 +200,7 @@ def _normalize_platform_inputs(value: object) -> object:
 type CollectionRunMode = Literal["discovery", "batch_supplement"]
 type CollectionRuntimeRecordType = Literal[
     "excel_import",
+    "data_import_campaign",
     "tikhub_discovery",
     "tikhub_batch_supplement",
 ]
@@ -237,6 +238,7 @@ class CollectionRunCreateRequest(BaseModel):
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     import_batch_id: UUID | None = None
+    data_import_campaign_id: UUID | None = None
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
     include_comments: bool = True
     include_sub_comments: bool = False
@@ -253,11 +255,13 @@ class CollectionRunCreateRequest(BaseModel):
         if self.mode == "discovery":
             if not self.keyword_pack_ids and not self.vehicle_model_ids:
                 raise ValueError("主动发现必须至少选择一个 Keyword Pack 或车型")
-            if self.import_batch_id is not None:
-                raise ValueError("主动发现不能关联 Import Batch")
+            if self.import_batch_id is not None or self.data_import_campaign_id is not None:
+                raise ValueError("主动发现不能关联数据导入来源")
         else:
-            if self.import_batch_id is None:
-                raise ValueError("基于 Batch 补采必须提供 import_batch_id")
+            if (self.import_batch_id is None) == (self.data_import_campaign_id is None):
+                raise ValueError(
+                    "基于数据导入补采必须且只能提供 import_batch_id 或 data_import_campaign_id"
+                )
             if self.keyword_pack_ids:
                 raise ValueError("基于 Batch 补采不能提交 Keyword Pack")
             if self.vehicle_model_ids:
@@ -276,6 +280,7 @@ class CollectionRunCreatedResponse(BaseModel):
     job_id: UUID
     mode: CollectionRunMode
     import_batch_id: UUID | None = None
+    data_import_campaign_id: UUID | None = None
     status: Literal["queued"] = "queued"
 
 
@@ -314,6 +319,7 @@ class CollectionRunResponse(BaseModel):
     job_id: UUID
     mode: CollectionRunMode
     import_batch_id: UUID | None = None
+    data_import_campaign_id: UUID | None = None
     status: CollectionRuntimeStatus
     stage: str
     progress: int = Field(ge=0, le=100)
@@ -384,11 +390,20 @@ class CollectionBatchSupplementEligibilityResponse(BaseModel):
     targets: tuple[CollectionBatchSupplementTargetResponse, ...]
 
 
+class CollectionCampaignSupplementEligibilityResponse(BaseModel):
+    """前端 Campaign Supplement 平台资格；目标来自逐行来源账本。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    campaign_id: UUID
+    targets: tuple[CollectionBatchSupplementTargetResponse, ...]
+
+
 class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=3)
+    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=4)
     status: CollectionRuntimeStatus | None = None
     stage: str | None = Field(default=None, min_length=1, max_length=100)
     created_from: datetime | None = None
@@ -420,13 +435,14 @@ class CollectionRuntimeItemResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     record_id: UUID
-    job_id: UUID
+    job_id: UUID | None = None
     record_type: CollectionRuntimeRecordType
     display_name: str
     status: CollectionRuntimeStatus
     progress: int = Field(ge=0, le=100)
     stage: str
     import_batch_id: UUID | None = None
+    data_import_campaign_id: UUID | None = None
     collection_run_id: UUID | None = None
     source_filename: str | None = None
     platforms: tuple[CollectionPlatform, ...] = ()
@@ -1563,6 +1579,7 @@ __all__ = [
     "CommentCoverageResponse",
     "CollectionBatchSupplementEligibilityResponse",
     "CollectionBatchSupplementTargetResponse",
+    "CollectionCampaignSupplementEligibilityResponse",
     "CollectionCapabilitiesResponse",
     "CollectionCapabilityResponse",
     "CollectionPlanCreateRequest",
