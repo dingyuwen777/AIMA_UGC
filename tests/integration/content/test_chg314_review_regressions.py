@@ -262,9 +262,12 @@ def test_atomic_keyword_pack_create_returns_committed_version(tmp_path: Path) ->
         pack_id = UUID(created.json()["id"])
         assert created.json()["version"] == 3
         with runtime.database.engine.begin() as connection:
-            assert connection.scalar(
-                select(keyword_packs_table.c.version).where(keyword_packs_table.c.id == pack_id)
-            ) == created.json()["version"]
+            assert (
+                connection.scalar(
+                    select(keyword_packs_table.c.version).where(keyword_packs_table.c.id == pack_id)
+                )
+                == created.json()["version"]
+            )
             safe_detail = connection.scalar(
                 select(audit_events_table.c.safe_detail)
                 .where(
@@ -375,11 +378,19 @@ def test_all_scope_planner_does_not_use_unbounded_freeze(
         assert worker.run_once() is True
         run_id = UUID(created.json()["run_id"])
         with runtime.database.engine.begin() as connection:
-            assert connection.scalar(
-                select(func.count()).where(analysis_content_run_targets_table.c.run_id == run_id)
-            ) == 3
-            assert connection.scalar(
-                select(func.count()).where(analysis_content_requests_table.c.run_id == run_id)
-            ) == 2
+            assert (
+                connection.scalar(
+                    select(func.count()).where(
+                        analysis_content_run_targets_table.c.run_id == run_id
+                    )
+                )
+                == 3
+            )
+            assert (
+                connection.scalar(
+                    select(func.count()).where(analysis_content_requests_table.c.run_id == run_id)
+                )
+                == 2
+            )
     finally:
         runtime.close()
