@@ -52,8 +52,8 @@ from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 
-from .analysis_identity import current_analysis_generation_config
 from .runtime import PlatformRuntime
+from .runtime_config import provider_from_safe_snapshot, resolve_provider_secret
 
 _LOGGER = logging.getLogger("aima_ugc")
 _ANALYSIS_ALL_FREEZE_BATCH_SIZE = 10_000
@@ -80,6 +80,7 @@ class PostgresContentAnalysisJobExecutor:
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult:
         service: ContentLabelingService | None = None
+        validation_retries = self._runtime.settings.llm_validation_retries
 
         def close_service() -> None:
             return None
@@ -111,10 +112,12 @@ class PostgresContentAnalysisJobExecutor:
                 if service is None:
                     try:
                         if self._service_factory is None:
-                            service, close_service = self._default_service(work[0].analysis_run_id)
+                            service, close_service, validation_retries = self._default_service(
+                                work[0].analysis_run_id
+                            )
                         else:
                             service, close_service = self._service_factory()
-                    except OSError, SecretFileError, ValueError:
+                    except (OSError, SecretFileError, ValueError):
                         return JobHandlerResult.failed("analysis_configuration_unavailable")
                 if not _matches_frozen_configuration(work[0], service):
                     return JobHandlerResult.failed("analysis_run_configuration_changed")
@@ -124,7 +127,7 @@ class PostgresContentAnalysisJobExecutor:
                 try:
                     batch = service.label_contents(
                         tuple(item.content for item in work),
-                        max_validation_retries=self._runtime.settings.llm_validation_retries,
+                        max_validation_retries=validation_retries,
                     )
                 except OpenAICompatibleLLMError as exc:
                     return (
@@ -173,20 +176,43 @@ class PostgresContentAnalysisJobExecutor:
     def _default_service(
         self,
         analysis_run_id: UUID,
-    ) -> tuple[ContentLabelingService, Callable[[], None]]:
+    ) -> tuple[ContentLabelingService, Callable[[], None], int]:
+        """只从 Run 冻结配置组装 LLM；旧 Run 才兼容迁移前 env 配置。"""
+
         settings = self._runtime.settings
-        if settings.llm_base_url is None or settings.llm_model is None:
-            raise ValueError("正式 Analysis 缺少 LLM base URL 或 model")
-        api_key = read_secret_file(
-            settings.llm_api_key_file,
-            root=settings.external_secret_root,
-        )
         session = self._runtime.database.new_session()
         try:
             with session.begin():
                 run = PostgresAnalysisRepository(session).get_run(analysis_run_id)
                 if run is None:
                     raise ValueError("Analysis Run 不存在")
+                snapshot = run["runtime_config_snapshot"]
+                if isinstance(snapshot, dict) and snapshot:
+                    provider = provider_from_safe_snapshot(snapshot)
+                    if provider.provider_kind != "llm" or provider.model is None:
+                        raise ValueError("Analysis Run LLM Provider 快照不合法")
+                    base_url = provider.base_url
+                    model = provider.model
+                    provider_name = provider.provider
+                    timeout_seconds = provider.timeout_seconds
+                    max_connections = provider.max_concurrency
+                    validation_retries = provider.max_retries
+                    api_key = resolve_provider_secret(settings, provider)
+                else:
+                    # 迁移前 Run 没有 Provider Snapshot，只能使用原有 env 身份恢复。
+                    if settings.llm_base_url is None or settings.llm_model is None:
+                        raise ValueError("旧 Analysis Run 缺少兼容 LLM 配置")
+                    base_url = settings.llm_base_url
+                    model = settings.llm_model
+                    provider_name = settings.llm_provider_name
+                    timeout_seconds = settings.llm_timeout_seconds
+                    max_connections = settings.llm_max_connections
+                    validation_retries = settings.llm_validation_retries
+                    api_key = read_secret_file(
+                        settings.llm_api_key_file,
+                        root=settings.external_secret_root,
+                    )
+
                 scheme_version_id = cast(UUID | None, run["analysis_scheme_version_id"])
                 prompt_snapshot = cast(str | None, run["prompt_text_snapshot"])
                 if scheme_version_id is None or prompt_snapshot is None:
@@ -208,13 +234,14 @@ class PostgresContentAnalysisJobExecutor:
                     raise ValueError("Analysis Run 冻结身份与 Prompt 快照不一致")
         finally:
             session.close()
+
         adapter = OpenAICompatibleContentLabelingLLM(
-            base_url=settings.llm_base_url,
+            base_url=base_url,
             api_key=api_key,
-            model=settings.llm_model,
-            provider_name=settings.llm_provider_name,
-            timeout_seconds=settings.llm_timeout_seconds,
-            max_connections=settings.llm_max_connections,
+            model=model,
+            provider_name=provider_name,
+            timeout_seconds=timeout_seconds,
+            max_connections=max_connections,
             pricing_catalog=load_llm_pricing(),
             request_audit=self._record_audit,
         )
@@ -224,6 +251,7 @@ class PostgresContentAnalysisJobExecutor:
                 llm=adapter,
             ),
             adapter.close,
+            validation_retries,
         )
 
     def _record_audit(self, audit: LLMHTTPRequestAudit) -> None:
@@ -369,8 +397,6 @@ class _AnalysisTargetSelectionChanged(RuntimeError):
 
 
 def _target_statement_from_run(session: Session, run: RowMapping) -> object:
-    """按 Run 中冻结的筛选与 Analysis 身份重建集合式目标查询。"""
-
     repository = PostgresContentQueryRepository(
         session,
         analysis_identity=AnalysisConfigurationIdentity(
@@ -399,8 +425,6 @@ def schedule_analysis_run_shards(
     max_in_flight: int,
     request_id: str | None,
 ) -> int:
-    """填满 Run 的有界在途窗口；每个 Job 与对应 Shard 在同一事务创建。"""
-
     repository = PostgresAnalysisRepository(session)
     available = max(max_in_flight - repository.active_shard_count(run_id), 0)
     shard_numbers = repository.next_unscheduled_shards(run_id, limit=available)
@@ -433,8 +457,6 @@ def schedule_analysis_run_shards(
 def create_analysis_job_terminal_callback(
     runtime: PlatformRuntime,
 ) -> Callable[[Session, JobRecord], None]:
-    """构造同时处理 Planner 与 Shard 的 Run 终态回调。"""
-
     def callback(session: Session, job: JobRecord) -> None:
         repository = PostgresAnalysisRepository(session)
         if job.job_type == CONTENT_ANALYSIS_PLAN_JOB_TYPE:
@@ -464,8 +486,6 @@ def create_analysis_job_terminal_callback(
 
 
 def analysis_job_terminal_callback(session: Session, job: JobRecord) -> None:
-    """兼容旧测试 Registry：只收敛 Shard，不继续扩大调度窗口。"""
-
     payload = ContentAnalysisJobPayload.model_validate(job.payload)
     PostgresAnalysisRepository(session).complete_request_terminal(
         request_id=payload.request_id,
@@ -485,15 +505,11 @@ def _matches_frozen_configuration(
     work_item: AnalysisWorkItem,
     service: ContentLabelingService,
 ) -> bool:
-    """防止部署或重启后的配置漂移污染已经冻结身份的 Run。"""
+    """只校验 Run 内部冻结身份；后续管理员配置变化不得使旧 Run 失效。"""
 
     if not work_item.configuration_enforced:
         return True
-    _, generation_config_hash = current_analysis_generation_config()
-    return (
-        work_item.configuration_identity == service.configuration_identity
-        and work_item.generation_config_hash == generation_config_hash
-    )
+    return work_item.configuration_identity == service.configuration_identity
 
 
 __all__ = [
