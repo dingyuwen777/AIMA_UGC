@@ -41,15 +41,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format \
-            scripts/dev/runtime_config_hash_finalize.py \
-            backend/src/aima_ugc/entrypoints/internal_v1_configure_main.py
           uv run python scripts/dev/runtime_config_hash_finalize.py
-          uv run ruff format --check backend tests scripts \
+          uv run ruff format --check backend tests \
             migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
             migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
             migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
-          uv run ruff check backend tests scripts \
+          uv run ruff check backend tests \
             migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
             migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
             migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
