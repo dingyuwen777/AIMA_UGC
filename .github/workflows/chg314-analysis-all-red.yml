@@ -1,0 +1,48 @@
+name: CHG314 AI All Scope RED
+
+on:
+  push:
+    branches:
+      - fix/314-frontend-fullstack-reliability
+    paths:
+      - .github/workflows/chg314-analysis-all-red.yml
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout change branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/314-frontend-fullstack-reliability
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Backend all-scope RED
+        shell: bash
+        run: uv run pytest tests/api/test_analysis_all_scope.py -q
+
+      - name: Frontend all-scope RED
+        if: always()
+        shell: bash
+        run: npm --prefix frontend run test -- --run tests/analysis-all-scope.spec.ts
