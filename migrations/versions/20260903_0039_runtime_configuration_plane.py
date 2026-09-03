@@ -87,6 +87,11 @@ def upgrade() -> None:
         "revision > 0",
     )
     op.create_check_constraint(
+        "default_provider_enabled",
+        "provider_configs",
+        "not is_default or enabled",
+    )
+    op.create_check_constraint(
         "llm_model_required",
         "provider_configs",
         "provider_kind <> 'llm' or (model is not null and char_length(model) > 0)",
@@ -127,6 +132,7 @@ def downgrade() -> None:
 
     op.drop_index("uq_provider_configs_default_llm", table_name="provider_configs")
     op.drop_constraint("llm_model_required", "provider_configs", type_="check")
+    op.drop_constraint("default_provider_enabled", "provider_configs", type_="check")
     op.drop_constraint("revision_positive", "provider_configs", type_="check")
     op.drop_constraint("max_rps_positive_or_null", "provider_configs", type_="check")
     op.drop_constraint("max_concurrency_positive", "provider_configs", type_="check")
