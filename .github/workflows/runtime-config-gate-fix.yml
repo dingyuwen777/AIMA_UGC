@@ -44,20 +44,18 @@ jobs:
           set -euo pipefail
           uv run python scripts/dev/runtime_config_gate_fix.py
           uv run python scripts/dev/runtime_config_gate_fix_followup.py
+          rm -f \
+            scripts/dev/runtime_config_gate_fix.py \
+            scripts/dev/runtime_config_gate_fix_followup.py \
+            .github/workflows/runtime-config-gate-fix.yml
           uv run ruff format \
-            --exclude scripts/dev/runtime_config_gate_fix.py \
-            --exclude scripts/dev/runtime_config_gate_fix_followup.py \
             backend tests scripts migrations/versions/20260903_0039_runtime_configuration_plane.py
           uv run ruff format --check \
-            --exclude scripts/dev/runtime_config_gate_fix.py \
-            --exclude scripts/dev/runtime_config_gate_fix_followup.py \
             backend tests scripts \
             migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
             migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
             migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
           uv run ruff check \
-            --exclude scripts/dev/runtime_config_gate_fix.py \
-            --exclude scripts/dev/runtime_config_gate_fix_followup.py \
             backend tests scripts \
             migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
             migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
@@ -68,14 +66,10 @@ jobs:
           docker compose -f compose.yaml -f compose.windows.yaml config >/dev/null
           uv run pytest tests/unit/system/test_runtime_provider_config.py -q
 
-      - name: Commit final gate fixes and remove temporary tooling
+      - name: Commit final gate fixes
         shell: bash
         run: |
           set -euo pipefail
-          rm -f \
-            scripts/dev/runtime_config_gate_fix.py \
-            scripts/dev/runtime_config_gate_fix_followup.py \
-            .github/workflows/runtime-config-gate-fix.yml
           git config user.name 'aima-runtime-gate-fixer'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
