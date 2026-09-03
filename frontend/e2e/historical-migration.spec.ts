@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixture'
 
 const campaignId = '11111111-2222-4333-8444-555555555555'
 const discoveryJobId = '21111111-2222-4333-8444-555555555555'
@@ -341,11 +341,12 @@ test('keeps polling a cancelling campaign until it reaches cancelled', async ({ 
   expect(postCancelReadCount).toBeGreaterThanOrEqual(2)
 })
 
-test('shows failed chunks and submits an explicit retry action', async ({ page }) => {
+test('uses campaign failed-chunk facts even when bounded detail omits failed chunks', async ({ page }) => {
   const partialCampaign = {
     ...readyCampaign,
     status: 'partial_failed',
     can_start: false,
+    failed_chunk_count: 1,
     stats: { ...readyCampaign.stats, created: 60, failed: 60 },
     started_at: '2026-08-26T10:01:00+08:00',
     finished_at: '2026-08-26T10:02:00+08:00',
@@ -357,25 +358,9 @@ test('shows failed chunks and submits an explicit retry action', async ({ page }
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: [{
-          id: '41111111-2222-4333-8444-555555555555',
-          parent_item_id: '51111111-2222-4333-8444-555555555555',
-          item_kind: 'chunk',
-          relative_path: '2025-archive/part-001.xlsx',
-          ordinal: 0,
-          artifact_id: '61111111-2222-4333-8444-555555555555',
-          sha256: 'a'.repeat(64),
-          row_start: 1,
-          row_end: 60,
-          row_count: 60,
-          status: 'failed',
-          attempt_count: 1,
-          stats: {},
-          error_code: 'historical_chunk_failed',
-          created_at: '2026-08-26T10:00:00+08:00',
-          started_at: '2026-08-26T10:01:00+08:00',
-          finished_at: '2026-08-26T10:02:00+08:00',
-        }],
+        items: [],
+        total_count: 201,
+        has_more: true,
       }),
     })
   })

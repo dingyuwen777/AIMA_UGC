@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixture'
 
 import { stubVoicePlazaTaxonomy, voicePlazaTaxonomyFixture } from './voicePlazaTaxonomy'
 
@@ -450,7 +450,7 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
 
   await page.goto('/voice-plaza')
   const analysisButton = page.getByRole('button', { name: /AI 打标/ })
-  await expect(analysisButton).toBeDisabled()
+  await expect(analysisButton).toBeEnabled()
   await page.getByLabel('选择当前已加载内容').check()
   await expect(analysisButton).toBeEnabled()
   await analysisButton.click()
@@ -487,6 +487,63 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   })
 })
 
+
+test('creates an all-data analysis run without browser-side content ids', async ({ page }) => {
+  let previewRequest: Record<string, unknown> | undefined
+  let createRequest: Record<string, unknown> | undefined
+  await page.route('**/api/v1/analysis/content-runs/preview', async (route) => {
+    previewRequest = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        target_count: 4200,
+        shard_count: 42,
+        shard_size: 100,
+        prompt_version: 'content_labeling_v3',
+        prompt_sha256: 'a'.repeat(64),
+        taxonomy_sha256: 'b'.repeat(64),
+        model_provider: 'openai-compatible',
+        model: 'fixture-model',
+        generation_config: { temperature: 0 },
+        generation_config_hash: 'c'.repeat(64),
+        configuration_hash: 'd'.repeat(64),
+        cost_estimate_available: false,
+        cost_estimate_note: '运行后以实际 token/cost 审计为准。',
+      }),
+    })
+  })
+  await page.route('**/api/v1/analysis/content-runs', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    createRequest = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        run_id: analysisRunId,
+        planner_job_id: analysisJobId,
+        target_count: 4200,
+        shard_count: 42,
+        status: 'queued',
+      }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  const analysisButton = page.getByRole('button', { name: /AI 打标/ })
+  await expect(analysisButton).toBeEnabled()
+  await analysisButton.click()
+  const dialog = page.getByRole('dialog', { name: '创建 AI Analysis Run' })
+  await expect(dialog.getByRole('radio', { name: /全部数据/ })).toBeChecked()
+  await expect(dialog.getByText('预检目标 4200 条，拆分 42 个 Shard')).toBeVisible()
+  expect(previewRequest).toEqual({ targets: { scope: 'all' } })
+  await dialog.getByRole('button', { name: '确认并创建 Analysis Run' }).click()
+  expect(createRequest).toMatchObject({
+    targets: { scope: 'all' },
+    expected_target_count: 4200,
+    expected_configuration_hash: 'd'.repeat(64),
+  })
+})
+
 test('keeps export history visible but disables empty query export creation', async ({ page }) => {
   await page.unroute('**/api/v1/contents**')
   await page.route('**/api/v1/contents**', async (route) => {
@@ -497,7 +554,7 @@ test('keeps export history visible but disables empty query export creation', as
   })
 
   await page.goto('/voice-plaza')
-  await expect(page.getByRole('button', { name: /AI 打标/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /AI 打标/ })).toBeEnabled()
   await page.getByRole('button', { name: /导出记录/ }).click()
   const dialog = page.getByRole('dialog', { name: '导出声音记录' })
   await expect(dialog.getByText('当前筛选没有可导出内容')).toBeVisible()

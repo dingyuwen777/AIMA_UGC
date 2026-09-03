@@ -1,7 +1,7 @@
 import { expect as playwrightExpect, test as base } from '@playwright/test'
 
 export { expect } from '@playwright/test'
-export type { Locator, Page, Request, Response, Route } from '@playwright/test'
+export type * from '@playwright/test'
 
 /**
  * Browser Mock 的全局 API 守卫。

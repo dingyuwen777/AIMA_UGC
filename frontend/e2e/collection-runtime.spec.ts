@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixture'
 
 const batchId = '12345678-1234-5678-1234-567812345678'
 const secondBatchId = '13345678-1234-5678-1234-567812345678'
@@ -99,7 +99,7 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === `/api/v1/import-batches/${secondBatchId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ batch_id: secondBatchId, targets: [{ platform: 'douyin', target_count: 1 }] }) })
     if (url.pathname === `/api/v1/import-batches/${batchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(importDetail) })
     if (url.pathname === `/api/v1/import-batches/${secondBatchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(secondUsableImport) })
-    await route.fulfill({ status: 404, body: 'not mocked' })
+    await route.fallback()
   })
 })
 

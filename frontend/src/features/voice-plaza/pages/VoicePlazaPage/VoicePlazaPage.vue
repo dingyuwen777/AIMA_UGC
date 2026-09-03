@@ -210,8 +210,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
           </AimaButton>
           <AimaButton
             icon="ai"
-            :disabled="store.selectedIds.length === 0 || store.selectedIds.length > 1000 || store.analysisConfigured !== true"
-            :title="store.analysisConfigured === false ? '当前环境尚未配置 AI 模型' : store.analysisConfigured === null ? '正在确认 AI 运行配置' : store.selectedIds.length === 0 ? '请先选择需要打标的内容' : store.selectedIds.length > 1000 ? '单次最多选择 1000 条内容' : undefined"
+            :disabled="store.analysisConfigured !== true"
+            :title="store.analysisConfigured === false ? '当前环境尚未配置 AI 模型' : store.analysisConfigured === null ? '正在确认 AI 运行配置' : '可选择已选内容或全部数据进行打标'"
             @click="analysisOpen = true"
           >
             AI 打标

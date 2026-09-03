@@ -294,6 +294,7 @@
           },
           "scope": {
             "enum": [
+              "all",
               "query",
               "selected"
             ],
@@ -509,28 +510,28 @@
       },
       "AnalysisRunTargetSelection": {
         "additionalProperties": false,
-        "description": "本轮只开放有容量上限的显式 Analysis Run 目标。",
+        "description": "Analysis Run 公开目标：显式选择或数据库当前全部 Content。",
         "properties": {
           "content_ids": {
+            "default": [],
             "items": {
               "format": "uuid",
               "type": "string"
             },
             "maxItems": 1000,
-            "minItems": 1,
             "title": "Content Ids",
             "type": "array"
           },
           "scope": {
-            "const": "selected",
             "default": "selected",
+            "enum": [
+              "selected",
+              "all"
+            ],
             "title": "Scope",
             "type": "string"
           }
         },
-        "required": [
-          "content_ids"
-        ],
         "title": "AnalysisRunTargetSelection",
         "type": "object"
       },

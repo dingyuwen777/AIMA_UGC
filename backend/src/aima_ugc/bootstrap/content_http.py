@@ -535,6 +535,7 @@ class PostgresContentHttpService:
             raise ContentAnalysisRunConflict
         shard_size = self._runtime.settings.analysis_run_shard_size
         filter_snapshot = _analysis_filter_snapshot(targets)
+        storage_scope = _analysis_storage_scope(targets)
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -546,7 +547,7 @@ class PostgresContentHttpService:
                         expected_target_count=expected_target_count,
                         expected_configuration_hash=expected_configuration_hash,
                         run_intent=run_intent,
-                        scope=targets.scope,
+                        scope=storage_scope,
                         filter_snapshot=filter_snapshot,
                     )
                     existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
@@ -580,7 +581,7 @@ class PostgresContentHttpService:
                     client_idempotency_key=client_idempotency_key,
                     planner_job_id=planner_job.id,
                     run_intent=run_intent,
-                    scope=targets.scope,
+                    scope=storage_scope,
                     filter_snapshot=filter_snapshot,
                     target_count=expected_target_count,
                     shard_count=shard_count,
@@ -600,7 +601,7 @@ class PostgresContentHttpService:
                         expected_target_count=expected_target_count,
                         expected_configuration_hash=expected_configuration_hash,
                         run_intent=run_intent,
-                        scope=targets.scope,
+                        scope=storage_scope,
                         filter_snapshot=filter_snapshot,
                     )
                     existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
@@ -731,6 +732,8 @@ class PostgresContentHttpService:
             session,
             analysis_identity=analysis_identity,
         )
+        if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+            return repository.freeze_target_statement(filters=ContentFilterSnapshot())
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
             return repository.freeze_target_statement(
                 filters=targets.filters or ContentFilterSnapshot()
@@ -815,9 +818,30 @@ def _filters(query: ContentListQuery) -> ContentFilterSnapshot:
 
 
 def _analysis_filter_snapshot(targets: _AnalysisTargetSelection) -> dict[str, object]:
+    if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+        return ContentFilterSnapshot().model_dump(mode="json")
     if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
         return (targets.filters or ContentFilterSnapshot()).model_dump(mode="json")
     return {"content_ids": [str(item) for item in targets.content_ids]}
+
+
+def _analysis_storage_scope(targets: _AnalysisTargetSelection) -> Literal["query", "selected"]:
+    """公开 all 复用数据库既有 query Scope，避免无意义 Schema Migration。"""
+
+    if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+        return "query"
+    return cast(Literal["query", "selected"], targets.scope)
+
+
+def _analysis_response_scope(row: RowMapping) -> Literal["all", "query", "selected"]:
+    """空过滤 query 等价于全部当前 Content；历史有过滤 query 继续原样返回。"""
+
+    stored_scope = cast(Literal["query", "selected"], row["scope"])
+    if stored_scope == "query" and row["filter_snapshot"] == ContentFilterSnapshot().model_dump(
+        mode="json"
+    ):
+        return "all"
+    return stored_scope
 
 
 def _analysis_configuration_hash(
@@ -881,7 +905,7 @@ def _analysis_run_response(
         sequence_no=cast(int, row["sequence_no"]),
         status=cast(AnalysisRunStatus, row["status"]),
         run_intent=cast(AnalysisRunIntent, row["run_intent"]),
-        scope=cast(Literal["query", "selected"], row["scope"]),
+        scope=_analysis_response_scope(row),
         target_count=cast(int, row["target_count"]),
         shard_count=cast(int, row["shard_count"]),
         shard_size=cast(int, row["shard_size"]),

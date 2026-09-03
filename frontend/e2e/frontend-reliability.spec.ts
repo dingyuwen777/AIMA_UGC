@@ -104,7 +104,7 @@ test('keeps healthy admin resources usable when audit fails and paginates audit 
   await expect(page.getByText('audit temporarily unavailable')).toBeVisible()
   await page.getByRole('button', { name: '重试当前数据' }).click()
   await expect(page.getByText('audit-event-0')).toBeVisible()
-  await expect(page.getByText('共 150 条')).toBeVisible()
+  await expect(page.getByText('第 1 / 2 页 · 共 150 条', { exact: true })).toBeVisible()
 
   const secondPage = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url())

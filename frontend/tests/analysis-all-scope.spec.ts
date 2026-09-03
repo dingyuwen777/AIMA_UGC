@@ -56,7 +56,7 @@ describe('AI Analysis Run all scope', () => {
     const store = useVoicePlazaStore()
     await store.refreshAnalysisCapabilities()
 
-    const preview = await store.previewAnalysis('all' as never)
+    const preview = await store.previewAnalysis('all')
 
     expect(preview?.target_count).toBe(4200)
     expect(api.previewAnalysisRun).toHaveBeenCalledWith({

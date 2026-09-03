@@ -13,13 +13,15 @@ interface KeywordPackFixture {
 
 async function createKeywordPack(request: APIRequestContext): Promise<KeywordPackFixture> {
   const name = `Stage12 Full-stack ${Date.now()}`
-  const created = await request.post('/api/v1/keyword-packs', { data: { name } })
-  expect(created.status()).toBe(201)
-  const pack = await created.json() as { id: string }
-  const keyword = await request.post(`/api/v1/keyword-packs/${pack.id}/keywords`, {
-    data: { text: '爱玛', priority: 10 },
+  const created = await request.post('/api/v1/keyword-packs', {
+    data: {
+      name,
+      keywords: [{ text: '爱玛', priority: 10, enabled: true }],
+    },
   })
-  expect(keyword.status()).toBe(201)
+  expect(created.status()).toBe(201)
+  const pack = await created.json() as { id: string; keywords: { text: string }[] }
+  expect(pack.keywords.map((item) => item.text)).toEqual(['爱玛'])
   return { id: pack.id, name }
 }
 

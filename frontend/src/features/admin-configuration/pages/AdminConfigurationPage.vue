@@ -35,7 +35,6 @@ import {
 type Tab = 'vehicles' | 'links' | 'scheme' | 'audit'
 
 const tab = ref<Tab>('vehicles')
-const loading = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const notice = ref<string | null>(null)
@@ -46,6 +45,17 @@ const auditEvents = ref<AuditEventResponse[]>([])
 const selectedPackId = ref('')
 const linkedVehicleIds = ref<string[]>([])
 const selectedSchemeVersionId = ref('')
+const vehicleLoading = ref(false)
+const packLoading = ref(false)
+const schemeLoading = ref(false)
+const auditLoading = ref(false)
+const vehicleError = ref<string | null>(null)
+const packError = ref<string | null>(null)
+const schemeError = ref<string | null>(null)
+const auditError = ref<string | null>(null)
+const auditTotal = ref(0)
+const auditOffset = ref(0)
+const auditLimit = 100
 
 const vehicleDraft = reactive({ id: '', code: '', displayName: '', aliases: '', status: 'active' as 'active' | 'deprecated' })
 const mergeTargetId = ref('')
@@ -61,6 +71,18 @@ const schemeDraft = reactive({
 const vehicleFormValid = computed(() => Boolean(
   vehicleDraft.code.trim() && vehicleDraft.displayName.trim(),
 ))
+const loading = computed(() => {
+  if (tab.value === 'vehicles') return vehicleLoading.value
+  if (tab.value === 'links') return vehicleLoading.value || packLoading.value
+  if (tab.value === 'scheme') return schemeLoading.value
+  return auditLoading.value
+})
+const activeResourceError = computed(() => {
+  if (tab.value === 'vehicles') return vehicleError.value
+  if (tab.value === 'links') return packError.value ?? vehicleError.value
+  if (tab.value === 'scheme') return schemeError.value
+  return auditError.value
+})
 const selectedPack = computed(() => packs.value.find((item) => item.id === selectedPackId.value) ?? null)
 const selectedSchemeVersion = computed(() => {
   for (const scheme of schemes.value) {
@@ -72,31 +94,105 @@ const selectedSchemeVersion = computed(() => {
 
 onMounted(refreshAll)
 
-async function refreshAll(): Promise<void> {
-  loading.value = true
-  error.value = null
+/** 独立读取车型目录；单个资源失败不能拖垮其他管理员配置。 */
+async function loadVehicles(): Promise<void> {
+  vehicleLoading.value = true
+  vehicleError.value = null
   try {
-    const [vehicleResponse, packResponse, schemeResponse, auditResponse] = await Promise.all([
-      fetchVehicles(),
-      fetchKeywordPacksForAdmin(),
-      fetchSchemes(),
-      fetchAuditEvents(),
-    ])
-    vehicles.value = vehicleResponse.items
-    packs.value = packResponse.items
-    schemes.value = schemeResponse.items
-    auditEvents.value = auditResponse.items
-    if (!selectedPackId.value && packs.value[0]) selectPack(packs.value[0].id)
-    if (!selectedSchemeVersionId.value) {
+    vehicles.value = (await fetchVehicles()).items
+    if (selectedPackId.value) selectPack(selectedPackId.value)
+  } catch (reason) {
+    vehicleError.value = apiErrorMessage(reason)
+  } finally {
+    vehicleLoading.value = false
+  }
+}
+
+/** 独立读取词包目录，并在目录变化后重新校准当前选择。 */
+async function loadPacks(): Promise<void> {
+  packLoading.value = true
+  packError.value = null
+  try {
+    packs.value = (await fetchKeywordPacksForAdmin()).items
+    if (!packs.value.some((item) => item.id === selectedPackId.value)) {
+      selectedPackId.value = packs.value[0]?.id ?? ''
+    }
+    if (selectedPackId.value) selectPack(selectedPackId.value)
+  } catch (reason) {
+    packError.value = apiErrorMessage(reason)
+  } finally {
+    packLoading.value = false
+  }
+}
+
+/** 独立读取 Analysis Scheme，失败时保留其它管理员资源。 */
+async function loadSchemes(): Promise<void> {
+  schemeLoading.value = true
+  schemeError.value = null
+  try {
+    schemes.value = (await fetchSchemes()).items
+    const knownVersion = schemes.value
+      .flatMap((item) => item.versions)
+      .some((item) => item.id === selectedSchemeVersionId.value)
+    if (!knownVersion) {
       const initial = schemes.value.flatMap((item) => item.versions).find((item) => item.status === 'draft')
         ?? schemes.value.flatMap((item) => item.versions)[0]
+      selectedSchemeVersionId.value = initial?.id ?? ''
       if (initial) selectSchemeVersion(initial.id)
     }
   } catch (reason) {
-    error.value = apiErrorMessage(reason)
+    schemeError.value = apiErrorMessage(reason)
   } finally {
-    loading.value = false
+    schemeLoading.value = false
   }
+}
+
+/** 按后端 offset/limit/total Contract 读取当前审计页。 */
+async function loadAudit(): Promise<void> {
+  auditLoading.value = true
+  auditError.value = null
+  try {
+    const response = await fetchAuditEvents(auditOffset.value, auditLimit)
+    auditEvents.value = response.items
+    auditTotal.value = response.total
+    if (auditOffset.value >= response.total && auditOffset.value > 0) {
+      auditOffset.value = Math.max(0, Math.floor(Math.max(0, response.total - 1) / auditLimit) * auditLimit)
+      const corrected = await fetchAuditEvents(auditOffset.value, auditLimit)
+      auditEvents.value = corrected.items
+      auditTotal.value = corrected.total
+    }
+  } catch (reason) {
+    auditError.value = apiErrorMessage(reason)
+  } finally {
+    auditLoading.value = false
+  }
+}
+
+/** 并发恢复所有资源，但每个 Loader 自己拥有错误边界。 */
+async function refreshAll(): Promise<void> {
+  await Promise.all([loadVehicles(), loadPacks(), loadSchemes(), loadAudit()])
+}
+
+/** 只重试当前 Tab 依赖的资源，避免一个接口错误触发无关全页刷新。 */
+async function retryActiveResource(): Promise<void> {
+  if (tab.value === 'vehicles') return loadVehicles()
+  if (tab.value === 'links') {
+    await Promise.all([loadVehicles(), loadPacks()])
+    return
+  }
+  if (tab.value === 'scheme') return loadSchemes()
+  await loadAudit()
+}
+
+async function previousAuditPage(): Promise<void> {
+  auditOffset.value = Math.max(0, auditOffset.value - auditLimit)
+  await loadAudit()
+}
+
+async function nextAuditPage(): Promise<void> {
+  if (auditOffset.value + auditLimit >= auditTotal.value) return
+  auditOffset.value += auditLimit
+  await loadAudit()
 }
 
 function splitLines(value: string): string[] {
@@ -321,6 +417,23 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         </button>
       </nav>
 
+      <AimaFeedbackBanner
+        v-if="activeResourceError"
+        tone="error"
+        role="alert"
+      >
+        <strong>当前数据加载失败</strong>
+        <span>{{ activeResourceError }}</span>
+        <button
+          class="retry-link"
+          type="button"
+          :disabled="loading"
+          @click="retryActiveResource"
+        >
+          {{ loading ? '重试中…' : '重试当前数据' }}
+        </button>
+      </AimaFeedbackBanner>
+
       <section
         v-if="loading"
         class="state-card"
@@ -519,9 +632,10 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         class="card audit-card"
       >
         <header>
-          <div><h2>审计记录</h2><p>发布、回滚、车型与配置修改的安全摘要；不记录 Secret 和 Prompt 正文。</p></div><AimaButton
+          <div><h2>审计记录</h2><p>发布、回滚、车型与配置修改的安全摘要；不记录 Secret 和 Prompt 正文。共 {{ auditTotal }} 条。</p></div><AimaButton
             size="small"
-            @click="refreshAll"
+            :disabled="auditLoading"
+            @click="loadAudit"
           >
             刷新
           </AimaButton>
@@ -535,6 +649,29 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
             </tr>
           </tbody>
         </table>
+        <nav
+          v-if="auditTotal > 0"
+          class="audit-pagination"
+          aria-label="审计记录分页"
+        >
+          <span>第 {{ Math.floor(auditOffset / auditLimit) + 1 }} / {{ Math.ceil(auditTotal / auditLimit) }} 页 · 共 {{ auditTotal }} 条</span>
+          <div>
+            <AimaButton
+              size="small"
+              :disabled="auditLoading || auditOffset === 0"
+              @click="previousAuditPage"
+            >
+              上一页
+            </AimaButton>
+            <AimaButton
+              size="small"
+              :disabled="auditLoading || auditOffset + auditLimit >= auditTotal"
+              @click="nextAuditPage"
+            >
+              下一页
+            </AimaButton>
+          </div>
+        </nav>
       </section>
     </div>
   </AppShell>
@@ -581,7 +718,11 @@ hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--aima-bor
 .list-card > button span { color: var(--aima-text-muted); font-size: 10px; }
 .scheme-editor > header > span { padding: 3px 8px; border-radius: 4px; color: var(--aima-primary); background: var(--aima-primary-soft); font-size: 10px; }
 .hint code { color: var(--aima-primary); }
+.retry-link { width: max-content; padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }
+.retry-link:disabled { cursor: wait; opacity: .6; }
 .audit-card { overflow: auto; }
 .audit-card code { display: block; max-width: 360px; overflow-wrap: anywhere; white-space: normal; font-size: 9px; }
+.audit-pagination { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 16px; padding-top: 10px; color: var(--aima-text-muted); font-size: 11px; }
+.audit-pagination > div { display: flex; gap: 8px; }
 @media (max-width: 1280px) { .two-column, .scheme-layout { grid-template-columns: 1fr; } }
 </style>

@@ -1007,17 +1007,21 @@ AnalysisRunStatus = Literal[
 
 
 class AnalysisRunTargetSelection(BaseModel):
-    """本轮只开放有容量上限的显式 Analysis Run 目标。"""
+    """Analysis Run 公开目标：显式选择或数据库当前全部 Content。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    scope: Literal["selected"] = "selected"
-    content_ids: tuple[UUID, ...] = Field(min_length=1, max_length=1000)
+    scope: Literal["selected", "all"] = "selected"
+    content_ids: tuple[UUID, ...] = Field(default=(), max_length=1000)
 
     @model_validator(mode="after")
-    def validate_unique_content_ids(self) -> AnalysisRunTargetSelection:
+    def validate_scope_and_content_ids(self) -> AnalysisRunTargetSelection:
         if len(self.content_ids) != len(set(self.content_ids)):
             raise ValueError("content_ids 不能重复")
+        if self.scope == "selected" and not self.content_ids:
+            raise ValueError("selected Scope 必须提供至少一个 content_id")
+        if self.scope == "all" and self.content_ids:
+            raise ValueError("all Scope 不能提交 content_ids")
         return self
 
 
@@ -1090,7 +1094,7 @@ class AnalysisContentRunResponse(BaseModel):
     sequence_no: int = Field(gt=0)
     status: AnalysisRunStatus
     run_intent: AnalysisRunIntent
-    scope: Literal["query", "selected"]
+    scope: Literal["all", "query", "selected"]
     target_count: int = Field(gt=0)
     shard_count: int = Field(gt=0)
     shard_size: int = Field(gt=0)

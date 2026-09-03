@@ -12,16 +12,21 @@ export const AnalysisContentRunCreateRequestRunIntent = {
   manual_reanalysis: 'manual_reanalysis',
 } as const;
 
+export type AnalysisRunTargetSelectionScope = typeof AnalysisRunTargetSelectionScope[keyof typeof AnalysisRunTargetSelectionScope];
+
+
+export const AnalysisRunTargetSelectionScope = {
+  selected: 'selected',
+  all: 'all',
+} as const;
+
 /**
- * 本轮只开放有容量上限的显式 Analysis Run 目标。
+ * Analysis Run 公开目标：显式选择或数据库当前全部 Content。
  */
 export interface AnalysisRunTargetSelection {
-  /**
-     * @minItems 1
-     * @maxItems 1000
-     */
-  content_ids: string[];
-  scope?: 'selected';
+  /** @maxItems 1000 */
+  content_ids?: string[];
+  scope?: AnalysisRunTargetSelectionScope;
 }
 
 export interface AnalysisContentRunCreateRequest {
@@ -61,6 +66,7 @@ export type AnalysisContentRunResponseScope = typeof AnalysisContentRunResponseS
 
 
 export const AnalysisContentRunResponseScope = {
+  all: 'all',
   query: 'query',
   selected: 'selected',
 } as const;
