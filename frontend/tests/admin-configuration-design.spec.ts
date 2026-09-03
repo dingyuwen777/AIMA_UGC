@@ -30,14 +30,21 @@ async function renderPage(): Promise<string> {
 }
 
 describe('administrator configuration baseline', () => {
-  it('keeps vehicle, pack relation, atomic scheme and audit in one guarded page', async () => {
+  it('keeps runtime providers, vehicle, pack relation, scheme and audit in one guarded page', async () => {
     const html = await renderPage()
 
-    for (const label of ['车型目录', '词包车型关联', 'Analysis Scheme', '审计记录']) {
+    for (const label of [
+      '车型目录',
+      '词包车型关联',
+      'AI 模型',
+      'TikHub',
+      'Analysis Scheme',
+      '审计记录',
+    ]) {
       expect(html).toContain(label)
     }
     expect(html).toContain('有引用的车型仅允许停用、改名或合并')
-    expect(html).toContain('所有修改、发布和回滚均写入审计')
+    expect(html).toContain('运行时配置保存后对新任务即时生效')
     expect(html).not.toContain('双人审批')
   })
 })
