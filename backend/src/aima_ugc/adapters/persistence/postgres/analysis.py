@@ -104,6 +104,7 @@ class PostgresAnalysisRepository:
         identity: AnalysisConfigurationIdentity,
         generation_config: dict[str, object],
         generation_config_hash: str,
+        runtime_config_snapshot: dict[str, object],
         analysis_scheme_version_id: UUID | None = None,
         prompt_text_snapshot: str | None = None,
     ) -> RowMapping | None:
@@ -130,6 +131,7 @@ class PostgresAnalysisRepository:
                     model=identity.model,
                     generation_config=generation_config,
                     generation_config_hash=generation_config_hash,
+                    runtime_config_snapshot=runtime_config_snapshot,
                     created_at=beijing_now(),
                 )
                 .on_conflict_do_nothing(
