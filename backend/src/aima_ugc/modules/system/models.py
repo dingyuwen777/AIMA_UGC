@@ -17,7 +17,7 @@ from aima_ugc.platform.security import validate_secret_ref
 
 ActorKind = Literal["system", "principal"]
 ProviderKind = Literal["collection", "llm"]
-_PROVIDER_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+_PROVIDER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 
 @dataclass(frozen=True, slots=True)

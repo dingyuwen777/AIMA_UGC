@@ -1954,6 +1954,132 @@ export interface NotificationMarkReadResponse {
   requested_count: number;
 }
 
+export type ProviderConfigCreateRequestProviderKind = typeof ProviderConfigCreateRequestProviderKind[keyof typeof ProviderConfigCreateRequestProviderKind];
+
+
+export const ProviderConfigCreateRequestProviderKind = {
+  collection: 'collection',
+  llm: 'llm',
+} as const;
+
+/**
+ * 创建管理员可维护 Provider；API Key 仅用于本次写入，不进入响应或数据库。
+ */
+export interface ProviderConfigCreateRequest {
+  api_key: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  base_url: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  display_name: string;
+  enabled?: boolean;
+  is_default?: boolean;
+  /**
+     * @minimum 1
+     * @maximum 500
+     */
+  max_concurrency?: number;
+  /**
+     * @minimum 0
+     * @maximum 20
+     */
+  max_retries?: number;
+  max_rps?: number | null;
+  model?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 64
+     * @pattern ^[a-z0-9][a-z0-9._-]{0,63}$
+     */
+  provider: string;
+  provider_kind: ProviderConfigCreateRequestProviderKind;
+  /**
+     * @minimum 1
+     * @maximum 3600
+     */
+  timeout_seconds?: number;
+}
+
+export type ProviderConfigResponseProviderKind = typeof ProviderConfigResponseProviderKind[keyof typeof ProviderConfigResponseProviderKind];
+
+
+export const ProviderConfigResponseProviderKind = {
+  collection: 'collection',
+  llm: 'llm',
+} as const;
+
+/**
+ * Provider 管理安全投影；绝不返回 API Key 或内部 secret_ref。
+ */
+export interface ProviderConfigResponse {
+  base_url: string;
+  display_name: string;
+  enabled: boolean;
+  id: string;
+  is_default: boolean;
+  /** @exclusiveMinimum 0 */
+  max_concurrency: number;
+  /** @minimum 0 */
+  max_retries: number;
+  max_rps?: number | null;
+  model?: string | null;
+  provider: string;
+  provider_kind: ProviderConfigResponseProviderKind;
+  /** @exclusiveMinimum 0 */
+  revision: number;
+  secret_configured: boolean;
+  /** @exclusiveMinimum 0 */
+  timeout_seconds: number;
+}
+
+/**
+ * 管理员 Provider 配置目录安全投影。
+ */
+export interface ProviderConfigListResponse {
+  items: ProviderConfigResponse[];
+}
+
+/**
+ * 完整替换可变 Provider 字段；省略 api_key 表示不轮换 Secret。
+ */
+export interface ProviderConfigUpdateRequest {
+  api_key?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  base_url: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  display_name: string;
+  enabled?: boolean;
+  is_default?: boolean;
+  /**
+     * @minimum 1
+     * @maximum 500
+     */
+  max_concurrency?: number;
+  /**
+     * @minimum 0
+     * @maximum 20
+     */
+  max_retries?: number;
+  max_rps?: number | null;
+  model?: string | null;
+  /**
+     * @minimum 1
+     * @maximum 3600
+     */
+  timeout_seconds?: number;
+}
+
 export type ReadinessChecksArtifactStore = typeof ReadinessChecksArtifactStore[keyof typeof ReadinessChecksArtifactStore];
 
 
@@ -2243,6 +2369,18 @@ export type ListNotificationsParams = {
  */
 limit?: number;
 };
+
+export type ListProviderConfigsParams = {
+provider_kind?: ListProviderConfigsProviderKind;
+};
+
+export type ListProviderConfigsProviderKind = typeof ListProviderConfigsProviderKind[keyof typeof ListProviderConfigsProviderKind] | null;
+
+
+export const ListProviderConfigsProviderKind = {
+  collection: 'collection',
+  llm: 'llm',
+} as const;
 
 export type ListVehicleModelsParams = {
 search?: string | null;
@@ -4604,6 +4742,110 @@ export const getCurrentPrincipal = async ( options?: RequestInit): Promise<Curre
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: CurrentPrincipalResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListProviderConfigsUrl = (params?: ListProviderConfigsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/provider-configs?${stringifiedParams}` : `/api/v1/provider-configs`
+}
+
+/**
+ * 管理员读取 Provider 安全投影；不返回 Secret 值或 secret_ref。
+ * @summary List Provider Configs
+ */
+export const listProviderConfigs = async (params?: ListProviderConfigsParams, options?: RequestInit): Promise<ProviderConfigListResponse> => {
+
+  const res = await fetch(getListProviderConfigsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ProviderConfigListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateProviderConfigUrl = () => {
+
+
+
+
+  return `/api/v1/provider-configs`
+}
+
+/**
+ * 管理员创建 Provider；API Key 仅进入后端 Secret Store 写入边界。
+ * @summary Create Provider Config
+ */
+export const createProviderConfig = async (providerConfigCreateRequest: ProviderConfigCreateRequest, options?: RequestInit): Promise<ProviderConfigResponse> => {
+
+  const res = await fetch(getCreateProviderConfigUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(providerConfigCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ProviderConfigResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUpdateProviderConfigUrl = (providerConfigId: string,) => {
+
+
+
+
+  return `/api/v1/provider-configs/${providerConfigId}`
+}
+
+/**
+ * 管理员更新 Provider；省略 API Key 时保持当前 Secret 引用。
+ * @summary Update Provider Config
+ */
+export const updateProviderConfig = async (providerConfigId: string,
+    providerConfigUpdateRequest: ProviderConfigUpdateRequest, options?: RequestInit): Promise<ProviderConfigResponse> => {
+
+  const res = await fetch(getUpdateProviderConfigUrl(providerConfigId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(providerConfigUpdateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ProviderConfigResponse = body ? JSON.parse(body) : {}
   return data
 }
 

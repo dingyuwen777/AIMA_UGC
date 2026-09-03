@@ -38,7 +38,7 @@ class AdministrationConflict(RuntimeError):
 
 
 class AdministrationHttpService(Protocol):
-    """车型、词包关系、Scheme、Provider 与审计的管理边界。"""
+    """车型、词包关系、Scheme 与审计的管理边界。"""
 
     def create_vehicle_model(
         self,
@@ -46,11 +46,20 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> VehicleModelResponse: ...
+    ) -> VehicleModelResponse:
+        """由管理员创建车型。"""
 
-    def list_vehicle_models(self, query: VehicleModelListQuery) -> VehicleModelListResponse: ...
+        ...
 
-    def get_vehicle_model(self, vehicle_model_id: UUID) -> VehicleModelResponse: ...
+    def list_vehicle_models(self, query: VehicleModelListQuery) -> VehicleModelListResponse:
+        """读取有界车型目录。"""
+
+        ...
+
+    def get_vehicle_model(self, vehicle_model_id: UUID) -> VehicleModelResponse:
+        """读取单个车型及引用摘要。"""
+
+        ...
 
     def update_vehicle_model(
         self,
@@ -59,7 +68,10 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> VehicleModelResponse: ...
+    ) -> VehicleModelResponse:
+        """由管理员更新未合并车型。"""
+
+        ...
 
     def delete_vehicle_model(
         self,
@@ -67,7 +79,10 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> None: ...
+    ) -> None:
+        """物理删除从未引用的车型。"""
+
+        ...
 
     def merge_vehicle_model(
         self,
@@ -76,7 +91,10 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> VehicleModelResponse: ...
+    ) -> VehicleModelResponse:
+        """把源车型合并到 active 目标车型。"""
+
+        ...
 
     def replace_keyword_pack_vehicles(
         self,
@@ -85,7 +103,10 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> KeywordPackVehicleLinksResponse: ...
+    ) -> KeywordPackVehicleLinksResponse:
+        """原子替换词包引用的车型集合。"""
+
+        ...
 
     def create_analysis_scheme_draft(
         self,
@@ -93,7 +114,10 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> AnalysisSchemeResponse: ...
+    ) -> AnalysisSchemeResponse:
+        """创建原子 Analysis Scheme 草稿。"""
+
+        ...
 
     def update_analysis_scheme_draft(
         self,
@@ -102,7 +126,10 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> AnalysisSchemeResponse: ...
+    ) -> AnalysisSchemeResponse:
+        """以旧草稿为并发前提追加一个新草稿版本。"""
+
+        ...
 
     def publish_analysis_scheme(
         self,
@@ -111,7 +138,10 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> AnalysisSchemeResponse: ...
+    ) -> AnalysisSchemeResponse:
+        """发布指定 Scheme Version。"""
+
+        ...
 
     def rollback_analysis_scheme(
         self,
@@ -120,16 +150,22 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> AnalysisSchemeResponse: ...
+    ) -> AnalysisSchemeResponse:
+        """把历史 Scheme Version 重新激活。"""
 
-    def list_analysis_schemes(self) -> AnalysisSchemeListResponse: ...
+        ...
+
+    def list_analysis_schemes(self) -> AnalysisSchemeListResponse:
+        """读取 Scheme 与完整版本历史。"""
+
+        ...
 
     def list_provider_configs(
         self,
         *,
         provider_kind: ProviderKind | None = None,
     ) -> ProviderConfigListResponse:
-        """读取 Provider 安全管理投影。"""
+        """管理员读取 LLM/TikHub Provider 安全投影。"""
 
         ...
 
@@ -140,7 +176,7 @@ class AdministrationHttpService(Protocol):
         principal: Principal,
         request_id: str,
     ) -> ProviderConfigResponse:
-        """创建 Provider 并把 API Key 写入不可变 Secret Store。"""
+        """管理员创建 Provider 与不可变 Secret 引用。"""
 
         ...
 
@@ -152,11 +188,14 @@ class AdministrationHttpService(Protocol):
         principal: Principal,
         request_id: str,
     ) -> ProviderConfigResponse:
-        """更新 Provider；仅在提供 api_key 时创建新的 Secret 引用。"""
+        """管理员修改 Provider；可选择轮换 Secret。"""
 
         ...
 
-    def list_audit_events(self, *, offset: int, limit: int) -> AuditEventListResponse: ...
+    def list_audit_events(self, *, offset: int, limit: int) -> AuditEventListResponse:
+        """分页读取管理员安全审计摘要。"""
+
+        ...
 
 
 __all__ = [

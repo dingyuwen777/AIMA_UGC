@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from aima_ugc.bootstrap.internal_v1 import (
+    bootstrap_internal_v1_external_secrets,
     load_internal_v1_provider_settings,
     provision_internal_v1_provider_config,
     validate_internal_v1_llm_settings,
@@ -16,6 +17,7 @@ def main() -> int:
 
     settings = load_settings()
     provider = load_internal_v1_provider_settings()
+    bootstrap_internal_v1_external_secrets(settings, provider)
     llm_configured = validate_internal_v1_llm_settings(settings)
     runtime = DatabaseRuntime(settings)
     try:

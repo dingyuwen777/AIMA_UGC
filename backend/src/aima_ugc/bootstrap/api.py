@@ -33,6 +33,11 @@ from aima_ugc.contracts.administration import (
     CurrentPrincipalResponse,
     KeywordPackVehicleLinkRequest,
     KeywordPackVehicleLinksResponse,
+    ProviderConfigCreateRequest,
+    ProviderConfigListResponse,
+    ProviderConfigResponse,
+    ProviderConfigUpdateRequest,
+    ProviderKind,
     VehicleModelCreateRequest,
     VehicleModelListQuery,
     VehicleModelListResponse,
@@ -1877,6 +1882,78 @@ def create_app(
             display_name=principal.display_name,
             role=principal.role,
             source=principal.source,
+        )
+
+    @application.get(
+        "/api/v1/provider-configs",
+        operation_id="listProviderConfigs",
+        response_model=ProviderConfigListResponse,
+        responses={
+            403: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["administration", "provider-configs"],
+    )
+    def list_provider_configs(
+        request: Request,
+        provider_kind: Annotated[ProviderKind | None, Query()] = None,
+    ) -> ProviderConfigListResponse:
+        """管理员读取 Provider 安全投影；不返回 Secret 值或 secret_ref。"""
+
+        current_principal(request).require_administrator()
+        return current_administration_service().list_provider_configs(provider_kind=provider_kind)
+
+    @application.post(
+        "/api/v1/provider-configs",
+        operation_id="createProviderConfig",
+        response_model=ProviderConfigResponse,
+        status_code=status.HTTP_201_CREATED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["administration", "provider-configs"],
+    )
+    def create_provider_config(
+        body: ProviderConfigCreateRequest,
+        request: Request,
+    ) -> ProviderConfigResponse:
+        """管理员创建 Provider；API Key 仅进入后端 Secret Store 写入边界。"""
+
+        return current_administration_service().create_provider_config(
+            body,
+            principal=current_principal(request),
+            request_id=_request_id(request),
+        )
+
+    @application.put(
+        "/api/v1/provider-configs/{provider_config_id}",
+        operation_id="updateProviderConfig",
+        response_model=ProviderConfigResponse,
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["administration", "provider-configs"],
+    )
+    def update_provider_config(
+        provider_config_id: UUID,
+        body: ProviderConfigUpdateRequest,
+        request: Request,
+    ) -> ProviderConfigResponse:
+        """管理员更新 Provider；省略 API Key 时保持当前 Secret 引用。"""
+
+        return current_administration_service().update_provider_config(
+            provider_config_id,
+            body,
+            principal=current_principal(request),
+            request_id=_request_id(request),
         )
 
     @application.post(

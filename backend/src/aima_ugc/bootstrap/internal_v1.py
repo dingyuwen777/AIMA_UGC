@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy.orm import Session
@@ -13,7 +14,12 @@ from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfig
 from aima_ugc.contracts.collection.provider_config import normalize_provider_base_url
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import PlatformSettings
-from aima_ugc.platform.security import read_secret_file, validate_secret_ref
+from aima_ugc.platform.security import (
+    read_secret_file,
+    read_secret_ref,
+    validate_secret_ref,
+    write_secret_ref,
+)
 
 _INTERNAL_TIKHUB_PROVIDER_CONFIG_ID = uuid5(
     NAMESPACE_URL,
@@ -21,6 +27,7 @@ _INTERNAL_TIKHUB_PROVIDER_CONFIG_ID = uuid5(
 )
 _DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io"
 _DEFAULT_TIKHUB_SECRET_REF = "tikhub_api_key"
+_DEFAULT_BOOTSTRAP_SECRET_DIR = Path("/run/secrets")
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +84,55 @@ def load_internal_v1_provider_settings(
     )
 
 
+def bootstrap_internal_v1_external_secrets(
+    settings: PlatformSettings,
+    provider: InternalV1ProviderSettings,
+    *,
+    bootstrap_secret_dir: Path | None = None,
+) -> None:
+    """把部署注入 Secret 首次复制到持久化 Provider Secret Store，之后禁止覆盖。"""
+
+    source_root = (bootstrap_secret_dir or _DEFAULT_BOOTSTRAP_SECRET_DIR).resolve(strict=True)
+    if provider.enabled:
+        _copy_bootstrap_secret_once(
+            settings,
+            source_root=source_root,
+            source_name="tikhub_api_key",
+            target_ref=provider.secret_ref,
+        )
+    if any(
+        value is not None
+        for value in (
+            settings.llm_base_url,
+            settings.llm_provider_name,
+            settings.llm_model,
+        )
+    ):
+        _copy_bootstrap_secret_once(
+            settings,
+            source_root=source_root,
+            source_name="llm_api_key",
+            target_ref="llm_api_key",
+        )
+
+
+def _copy_bootstrap_secret_once(
+    settings: PlatformSettings,
+    *,
+    source_root: Path,
+    source_name: str,
+    target_ref: str,
+) -> None:
+    """已有持久化 Secret 只校验不覆盖，避免重启把管理员轮换结果改回环境值。"""
+
+    target = settings.external_secret_root / target_ref
+    if target.exists() or target.is_symlink():
+        read_secret_ref(settings.external_secret_root, target_ref)
+        return
+    source = read_secret_file(source_root / source_name, root=source_root)
+    write_secret_ref(settings.external_secret_root, target_ref, source)
+
+
 def validate_internal_v1_provider_secret(
     settings: PlatformSettings,
     provider: InternalV1ProviderSettings,
@@ -122,16 +178,18 @@ def provision_internal_v1_provider_config(
 ) -> ProviderConfig | None:
     """幂等维护 Internal V1 TikHub Provider Config；数据库永不保存 Secret 原值。"""
 
-    validate_internal_v1_provider_secret(settings, provider)
     repository = PostgresProviderConfigRepository(session)
     config_id = internal_v1_tikhub_provider_config_id()
     current = repository.get(config_id)
-
-    if current is None and not provider.enabled:
+    if current is not None:
+        if current.provider != "tikhub":
+            raise RuntimeError("Internal V1 稳定 Provider Config UUID 已被其他 Provider 占用")
+        # `.env` 只负责首次 bootstrap；数据库记录存在后由管理员控制面维护，启动不得回写。
+        return current
+    if not provider.enabled:
         return None
-    if current is not None and current.provider != "tikhub":
-        raise RuntimeError("Internal V1 稳定 Provider Config UUID 已被其他 Provider 占用")
 
+    validate_internal_v1_provider_secret(settings, provider)
     desired = ProviderConfig(
         id=config_id,
         provider="tikhub",
@@ -140,21 +198,12 @@ def provision_internal_v1_provider_config(
         secret_ref=provider.secret_ref,
         enabled=provider.enabled,
     )
-    if current is None:
-        return repository.create(desired)
-    if current == desired:
-        return current
-    return repository.update_settings(
-        config_id,
-        display_name=desired.display_name,
-        base_url=desired.base_url,
-        secret_ref=desired.secret_ref,
-        enabled=desired.enabled,
-    )
+    return repository.create(desired)
 
 
 __all__ = [
     "InternalV1ProviderSettings",
+    "bootstrap_internal_v1_external_secrets",
     "internal_v1_tikhub_provider_config_id",
     "load_internal_v1_provider_settings",
     "provision_internal_v1_provider_config",

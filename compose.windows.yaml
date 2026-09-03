@@ -43,6 +43,9 @@ services:
       - type: volume
         source: windows_internal_secrets
         target: /host/shared/secrets
+      - type: volume
+        source: windows_provider_secrets
+        target: /host/shared/provider-secrets
 
   postgres:
     volumes:
@@ -58,13 +61,65 @@ services:
     volumes: *windows-backend-volumes
 
   configure:
-    volumes: *windows-backend-volumes
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
+        target: /app/data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
+        target: /app/logs
+      - type: volume
+        source: windows_internal_secrets
+        target: /run/internal-secrets
+        read_only: true
+      - type: bind
+        source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-./.runtime/historical-input}
+        target: /data/aima-historical-input
+        read_only: true
+      - type: volume
+        source: windows_provider_secrets
+        target: /run/provider-secrets
 
   api:
-    volumes: *windows-backend-volumes
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
+        target: /app/data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
+        target: /app/logs
+      - type: volume
+        source: windows_internal_secrets
+        target: /run/internal-secrets
+        read_only: true
+      - type: bind
+        source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-./.runtime/historical-input}
+        target: /data/aima-historical-input
+        read_only: true
+      - type: volume
+        source: windows_provider_secrets
+        target: /run/provider-secrets
 
   worker:
-    volumes: *windows-backend-volumes
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
+        target: /app/data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
+        target: /app/logs
+      - type: volume
+        source: windows_internal_secrets
+        target: /run/internal-secrets
+        read_only: true
+      - type: bind
+        source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-./.runtime/historical-input}
+        target: /data/aima-historical-input
+        read_only: true
+      - type: volume
+        source: windows_provider_secrets
+        target: /run/provider-secrets
+        read_only: true
 
   scheduler:
     volumes: *windows-backend-volumes
@@ -72,3 +127,4 @@ services:
 volumes:
   windows_postgres:
   windows_internal_secrets:
+  windows_provider_secrets:

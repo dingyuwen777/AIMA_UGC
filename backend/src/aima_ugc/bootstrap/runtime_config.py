@@ -31,10 +31,12 @@ def active_llm_provider(session: Session, settings: PlatformSettings) -> Provide
     if settings.llm_base_url is None or settings.llm_model is None:
         return None
     try:
-        secret_ref = settings.llm_api_key_file.resolve().relative_to(
-            settings.external_secret_root.resolve()
-        ).as_posix()
-    except (OSError, ValueError):
+        secret_ref = (
+            settings.llm_api_key_file.resolve()
+            .relative_to(settings.external_secret_root.resolve())
+            .as_posix()
+        )
+    except OSError, ValueError:
         return None
     return ProviderConfig(
         id=_LEGACY_LLM_CONFIG_ID,
@@ -80,9 +82,7 @@ def provider_from_safe_snapshot(payload: object) -> ProviderConfig:
         timeout_seconds=_required_int(data, "timeout_seconds"),
         max_retries=_required_int(data, "max_retries", minimum=0),
         max_concurrency=_required_int(data, "max_concurrency"),
-        max_rps=(
-            _required_int(data, "max_rps") if data.get("max_rps") is not None else None
-        ),
+        max_rps=(_required_int(data, "max_rps") if data.get("max_rps") is not None else None),
         extra_config=cast(dict[str, JsonValue], extra_config),
         is_default=True,
         revision=_required_int(data, "revision"),
