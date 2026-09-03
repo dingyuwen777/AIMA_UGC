@@ -1,0 +1,37 @@
+name: Temporary Frozen Issue Profile Red Evidence
+
+on:
+  push:
+    branches:
+      - chore/issue-acceptance-closure-profile
+
+permissions:
+  contents: read
+
+jobs:
+  prove-red:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9ebd0883d5efb5ba1a71bfbaa1de424f87330c63
+          fetch-depth: 0
+      - name: Prove frozen pre-implementation Profile fails new contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          import runpy
+
+          tests = runpy.run_path('tests/unit/test_issue_acceptance_profile.py')
+          cases = (
+              'test_current_issue_profiles_share_title_acceptance_and_validation_contract',
+              'test_current_pr_template_delays_auto_close_when_post_merge_evidence_is_required',
+          )
+          for name in cases:
+              try:
+                  tests[name]()
+              except AssertionError as exc:
+                  print(f'EXPECTED_RED {name}: {exc}')
+              else:
+                  raise SystemExit(f'{name} unexpectedly passed on frozen Red revision')
+          PY
