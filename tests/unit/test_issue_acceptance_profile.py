@@ -64,7 +64,4 @@ def test_checker_rejects_missing_post_merge_closure_contract(tmp_path: Path) -> 
     """项目 checker 必须阻止 PR Template 丢失 post-merge Closure 时序。"""
     MINIMAL_REPOSITORY(tmp_path)
     errors = CHECK_REPOSITORY(tmp_path)
-    assert any(
-        error.startswith("GOV014") and "post-merge" in error
-        for error in errors
-    )
+    assert any(error.startswith("GOV014") and "post-merge" in error for error in errors)

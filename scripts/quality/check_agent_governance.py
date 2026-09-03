@@ -56,6 +56,7 @@ REQUIREMENT_FORM_FIELDS = (
     "id: acceptance_criteria",
     "id: invariants",
     "id: upstream_sources",
+    "id: validation_requirements",
 )
 BUG_FORM_FIELDS = (
     "id: actual_behavior",
@@ -66,6 +67,7 @@ BUG_FORM_FIELDS = (
     "id: regression_scope",
     "id: acceptance_criteria",
     "id: upstream_sources",
+    "id: validation_requirements",
 )
 TECHNICAL_CHANGE_FORM_FIELDS = (
     "id: motivation",
@@ -76,9 +78,14 @@ TECHNICAL_CHANGE_FORM_FIELDS = (
     "id: compatibility_migration",
     "id: risks_rollback",
     "id: acceptance_criteria",
-    "id: validation_plan",
+    "id: validation_requirements",
     "id: upstream_sources",
 )
+ISSUE_FORM_PROFILES = {
+    "01-requirement.yml": ("需求", "[需求] "),
+    "02-bug.yml": ("缺陷", "[缺陷] "),
+    "03-technical-change.yml": ("技术变更", "[技术变更] "),
+}
 
 
 def _read_text(path: Path) -> str:
@@ -104,8 +111,18 @@ def _managed_sections(text: str) -> tuple[str, str] | None:
     return managed, project_owned
 
 
+def _issue_field_block(text: str, field_id: str) -> str | None:
+    """提取 Issue Form 字段块，避免其他字段文字误满足公共 Profile。"""
+    marker = f"id: {field_id}"
+    if marker not in text:
+        return None
+    tail = text.split(marker, 1)[1]
+    next_field = tail.find("\n  - type:")
+    return tail if next_field < 0 else tail[:next_field]
+
+
 def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]:
-    """检查项目 Issue Form 存在且保留最小需求字段。"""
+    """检查项目 Issue Form 的专项字段与统一公共 Profile。"""
     if not path.is_file():
         return [f"GOV012 {path.as_posix()}: 多人协作所需 Issue Form 不存在"]
 
@@ -116,6 +133,33 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
             errors.append(f"GOV012 {path.as_posix()}: 缺少必需需求字段 {field}")
     if text.count("required: true") < len(required_fields):
         errors.append(f"GOV012 {path.as_posix()}: 必需需求字段未保持 required 约束")
+
+    profile = ISSUE_FORM_PROFILES.get(path.name)
+    if profile is not None:
+        chooser_name, title_prefix = profile
+        first_lines = text.splitlines()[:4]
+        if f"name: {chooser_name}" not in first_lines:
+            errors.append(
+                f"GOV017 {path.as_posix()}: chooser 名称必须精确为 {chooser_name}"
+            )
+        if f'title: "{title_prefix}"' not in first_lines:
+            errors.append(
+                f"GOV017 {path.as_posix()}: title prefix 必须精确为 {title_prefix!r}"
+            )
+
+    acceptance = _issue_field_block(text, "acceptance_criteria")
+    if acceptance is not None and (
+        "label: 验收标准" not in acceptance or "- [ ] AC1：" not in acceptance
+    ):
+        errors.append(
+            f"GOV017 {path.as_posix()}: acceptance_criteria 必须使用统一验收标准与 AC1 task list"
+        )
+
+    validation = _issue_field_block(text, "validation_requirements")
+    if validation is not None and "label: 验证要求" not in validation:
+        errors.append(
+            f"GOV017 {path.as_posix()}: validation_requirements 必须使用统一验证要求语义"
+        )
     return errors
 
 
@@ -238,6 +282,15 @@ def check_repository(root: Path = ROOT) -> list[str]:
         if "#123" not in pr_text or "仓库内真实存在" not in pr_text:
             errors.append(
                 f"GOV014 {PR_TEMPLATE.as_posix()}: 必须公开机器可验证的 Issue / 仓库路径来源格式"
+            )
+        post_merge_markers = (
+            "需要 post-merge evidence",
+            "不得使用 `Closes` / `Fixes` / `Resolves`",
+            "Closure Audit",
+        )
+        if any(marker not in pr_text for marker in post_merge_markers):
+            errors.append(
+                f"GOV014 {PR_TEMPLATE.as_posix()}: 必须保留 post-merge Evidence 与 Closure Audit 时序"
             )
 
     return errors
