@@ -18,25 +18,28 @@ from aima_ugc.modules.analysis.schemes import (
     AnalysisSchemeVersionRecord,
     prompt_taxonomy_from_version,
 )
-from aima_ugc.modules.system.models import AuditEvent
+from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.time import beijing_now
+
+from .runtime_config import active_llm_provider
 
 
 @dataclass(frozen=True, slots=True)
 class ActiveAnalysisConfiguration:
-    """数据库 active Scheme 与模型配置形成的原子运行快照。"""
+    """数据库 active Scheme 与 LLM Provider 形成的原子运行快照。"""
 
     scheme: AnalysisSchemeVersionRecord
     taxonomy: PromptTaxonomy
     identity: AnalysisConfigurationIdentity | None
+    llm_provider: ProviderConfig | None
 
 
 def active_analysis_configuration(
     session: Session,
     settings: PlatformSettings,
 ) -> ActiveAnalysisConfiguration:
-    """读取数据库 active Scheme；首次 bootstrap 与系统审计同事务提交。"""
+    """读取数据库 active Scheme + 默认 LLM；未迁移时才使用 bootstrap LLM 配置。"""
 
     repository = PostgresAnalysisSchemeRepository(session)
     scheme, created = repository.bootstrap_default(actor_ref="system:git-bootstrap")
@@ -60,22 +63,24 @@ def active_analysis_configuration(
             )
         )
     taxonomy = prompt_taxonomy_from_version(scheme)
+    llm_provider = active_llm_provider(session, settings)
     identity = None
-    if settings.llm_base_url is not None and settings.llm_model is not None:
+    if llm_provider is not None and llm_provider.model is not None:
         identity = AnalysisConfigurationIdentity(
             prompt_version=taxonomy.prompt_version,
             prompt_sha256=taxonomy.prompt_sha256,
             taxonomy_sha256=taxonomy.taxonomy_sha256,
             model_provider=resolve_openai_compatible_provider_name(
-                settings.llm_base_url,
-                provider_name=settings.llm_provider_name,
+                llm_provider.base_url,
+                provider_name=llm_provider.provider,
             ),
-            model=settings.llm_model,
+            model=llm_provider.model,
         )
     return ActiveAnalysisConfiguration(
         scheme=scheme,
         taxonomy=taxonomy,
         identity=identity,
+        llm_provider=llm_provider,
     )
 
 

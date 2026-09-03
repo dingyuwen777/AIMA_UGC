@@ -4,7 +4,7 @@ x-backend-environment: &backend-environment
   - AIMA_DATA_DIR=/app/data
   - AIMA_LOG_DIR=/app/logs
   - AIMA_SECRET_DIR=/run/internal-secrets
-  - AIMA_EXTERNAL_SECRET_DIR=/run/secrets
+  - AIMA_EXTERNAL_SECRET_DIR=/run/provider-secrets
   - AIMA_HISTORICAL_IMPORT_ROOT=/data/aima-historical-input
   - AIMA_HISTORICAL_CHUNK_ROWS=${AIMA_HISTORICAL_CHUNK_ROWS:-1000}
   - AIMA_HISTORICAL_MAX_SCAN_FILES=${AIMA_HISTORICAL_MAX_SCAN_FILES:-10000}
@@ -85,6 +85,9 @@ services:
       - type: bind
         source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
         target: /host/shared/secrets
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/provider-secrets
+        target: /host/shared/provider-secrets
     restart: "no"
     network_mode: none
 
@@ -132,6 +135,24 @@ services:
   configure:
     <<: *backend-service
     command: ["python", "-m", "aima_ugc.entrypoints.internal_v1_configure_main"]
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
+        target: /app/data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
+        target: /app/logs
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
+        target: /run/internal-secrets
+        read_only: true
+      - type: bind
+        source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-/data/aima-historical-input}
+        target: /data/aima-historical-input
+        read_only: true
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/provider-secrets
+        target: /run/provider-secrets
     secrets:
       - tikhub_api_key
       - llm_api_key
@@ -143,8 +164,24 @@ services:
   api:
     <<: *backend-service
     command: ["uvicorn", "aima_ugc.entrypoints.api_main:app", "--host", "0.0.0.0", "--port", "8090"]
-    secrets:
-      - llm_api_key
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
+        target: /app/data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
+        target: /app/logs
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
+        target: /run/internal-secrets
+        read_only: true
+      - type: bind
+        source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-/data/aima-historical-input}
+        target: /data/aima-historical-input
+        read_only: true
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/provider-secrets
+        target: /run/provider-secrets
     expose:
       - "8090"
     depends_on:
@@ -166,9 +203,25 @@ services:
   worker:
     <<: *backend-service
     command: ["python", "-m", "aima_ugc.entrypoints.worker_main"]
-    secrets:
-      - tikhub_api_key
-      - llm_api_key
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
+        target: /app/data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
+        target: /app/logs
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
+        target: /run/internal-secrets
+        read_only: true
+      - type: bind
+        source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-/data/aima-historical-input}
+        target: /data/aima-historical-input
+        read_only: true
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/provider-secrets
+        target: /run/provider-secrets
+        read_only: true
     depends_on:
       configure:
         condition: service_completed_successfully

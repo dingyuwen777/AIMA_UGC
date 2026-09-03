@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -139,9 +139,16 @@ _TECHNICAL_PARTIAL_STOP_REASONS = {
 class _PlatformRuntimeConfig:
     provider_config_id: UUID
     config: dict[str, object]
+    provider_kind: str | None = None
     provider: str | None = None
     base_url: str | None = None
     secret_ref: str | None = None
+    timeout_seconds: int | None = None
+    max_retries: int | None = None
+    max_concurrency: int | None = None
+    max_rps: int | None = None
+    extra_config: dict[str, object] | None = None
+    revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1832,14 +1839,25 @@ class TikHubCollectionScopeExecutor:
             and runtime_config.base_url is not None
             and runtime_config.secret_ref is not None
         ):
+            if runtime_config.provider_kind not in {None, "collection"}:
+                raise ValueError("TikHub Scope Runtime Snapshot provider_kind 必须为 collection")
             if runtime_config.provider != "tikhub":
                 raise ValueError("TikHub Scope Runtime 只接受 provider=tikhub")
             return ProviderConfig(
                 id=runtime_config.provider_config_id,
                 provider=runtime_config.provider,
+                provider_kind="collection",
                 display_name=f"run-snapshot:{runtime_config.provider_config_id}",
                 base_url=runtime_config.base_url,
                 secret_ref=runtime_config.secret_ref,
+                timeout_seconds=runtime_config.timeout_seconds or 45,
+                max_retries=(
+                    3 if runtime_config.max_retries is None else runtime_config.max_retries
+                ),
+                max_concurrency=runtime_config.max_concurrency or 5,
+                max_rps=runtime_config.max_rps,
+                extra_config=cast(dict[str, JsonValue], runtime_config.extra_config or {}),
+                revision=runtime_config.revision or 1,
                 enabled=True,
             )
 
@@ -2004,16 +2022,41 @@ def _platform_runtime_config(
     config = item.get("config", {})
     if not isinstance(config, dict):
         raise ValueError("Collection Run Snapshot platform config 必须为对象")
+    provider_kind = item.get("provider_kind")
     provider = item.get("provider")
     base_url = item.get("base_url")
     secret_ref = item.get("secret_ref")
+    extra_config = item.get("extra_config", {})
+    if not isinstance(extra_config, dict):
+        raise ValueError("Collection Run Snapshot extra_config 必须为对象")
     return _PlatformRuntimeConfig(
         provider_config_id=parsed_config_id,
         config={str(key): value for key, value in config.items()},
+        provider_kind=provider_kind if isinstance(provider_kind, str) else None,
         provider=provider if isinstance(provider, str) else None,
         base_url=base_url if isinstance(base_url, str) else None,
         secret_ref=(secret_ref if isinstance(secret_ref, str) else None),
+        timeout_seconds=_optional_snapshot_int(item, "timeout_seconds", minimum=1),
+        max_retries=_optional_snapshot_int(item, "max_retries", minimum=0),
+        max_concurrency=_optional_snapshot_int(item, "max_concurrency", minimum=1),
+        max_rps=_optional_snapshot_int(item, "max_rps", minimum=1),
+        extra_config={str(key): value for key, value in extra_config.items()},
+        revision=_optional_snapshot_int(item, "revision", minimum=1),
     )
+
+
+def _optional_snapshot_int(
+    payload: dict[str, object],
+    name: str,
+    *,
+    minimum: int,
+) -> int | None:
+    value = payload.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(f"Collection Run Snapshot {name} 不合法")
+    return value
 
 
 def _decision_policy(

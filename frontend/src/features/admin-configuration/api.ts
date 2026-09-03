@@ -1,16 +1,19 @@
 import {
   createAnalysisSchemeDraft,
+  createProviderConfig,
   createVehicleModel,
   deleteVehicleModel,
   listAnalysisSchemes,
   listAuditEvents,
   listKeywordPacks,
+  listProviderConfigs,
   listVehicleModels,
   mergeVehicleModel,
   publishAnalysisScheme,
   replaceKeywordPackVehicleModels,
   rollbackAnalysisScheme,
   updateAnalysisSchemeDraft,
+  updateProviderConfig,
   updateVehicleModel,
   type AnalysisSchemeCreateDraftRequest,
   type AnalysisSchemeListResponse,
@@ -18,6 +21,10 @@ import {
   type AnalysisSchemeUpdateDraftRequest,
   type AuditEventListResponse,
   type KeywordPackListResponse,
+  type ProviderConfigCreateRequest,
+  type ProviderConfigListResponse,
+  type ProviderConfigResponse,
+  type ProviderConfigUpdateRequest,
   type VehicleModelCreateRequest,
   type VehicleModelListResponse,
   type VehicleModelMergeRequest,
@@ -88,3 +95,25 @@ export const fetchAuditEvents = async (
   limit = 100,
 ): Promise<AuditEventListResponse> =>
   unwrapResponse(await listAuditEvents({ offset, limit }))
+
+export const fetchProviderConfigs = async (
+  providerKind: 'llm' | 'collection',
+): Promise<ProviderConfigListResponse> =>
+  unwrapResponse(await listProviderConfigs({ provider_kind: providerKind }))
+
+export const addProviderConfig = async (
+  body: ProviderConfigCreateRequest,
+): Promise<ProviderConfigResponse> =>
+  unwrapResponse(await createProviderConfig(body))
+
+export const editProviderConfig = async (
+  id: string,
+  body: ProviderConfigUpdateRequest,
+): Promise<ProviderConfigResponse> =>
+  unwrapResponse(await updateProviderConfig(id, body))
+
+export type {
+  ProviderConfigCreateRequest,
+  ProviderConfigResponse,
+  ProviderConfigUpdateRequest,
+}

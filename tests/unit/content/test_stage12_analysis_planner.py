@@ -78,6 +78,20 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
     )
     generation_config: dict[str, object] = {"response_format": {"type": "json_object"}}
     generation_hash = "3" * 64
+    runtime_config_snapshot: dict[str, object] = {
+        "provider_config_id": str(uuid4()),
+        "provider_kind": "llm",
+        "provider": "fake",
+        "base_url": "https://provider.example/v1",
+        "secret_ref": "providers/test/key-1.key",
+        "model": "fake-model",
+        "timeout_seconds": 45,
+        "max_retries": 1,
+        "max_concurrency": 5,
+        "max_rps": None,
+        "extra_config": {},
+        "revision": 1,
+    }
     configuration_hash = content_http._analysis_configuration_hash(
         prompt_version=identity.prompt_version,
         prompt_sha256=identity.prompt_sha256,
@@ -85,6 +99,7 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         model_provider=identity.model_provider,
         model=identity.model,
         generation_config_hash=generation_hash,
+        runtime_config_snapshot=runtime_config_snapshot,
     )
     monkeypatch.setattr(content_http, "PostgresAnalysisRepository", _AnalysisRepository)
     monkeypatch.setattr(content_http, "PostgresJobRepository", _JobRepository)
@@ -104,6 +119,9 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         "_load_active_analysis_configuration",
         lambda: SimpleNamespace(
             identity=identity,
+            llm_provider=SimpleNamespace(
+                safe_runtime_snapshot=lambda: runtime_config_snapshot,
+            ),
             scheme=SimpleNamespace(id=uuid4()),
             taxonomy=SimpleNamespace(prompt_text="frozen-prompt"),
         ),

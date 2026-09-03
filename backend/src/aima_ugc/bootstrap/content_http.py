@@ -280,7 +280,6 @@ class PostgresContentHttpService:
                     analysis_identity=configuration.identity,
                 ).get_content(content_id)
                 if record is None:
-                    # Content 已在当前事务确认存在；缺少可读 Analysis 投影属于不可纠正状态。
                     raise ContentAnalysisRunConflict
                 if record.analysis.status != "completed":
                     raise ContentAnalysisRunConflict
@@ -396,8 +395,12 @@ class PostgresContentHttpService:
             with session.begin():
                 configuration = active_analysis_configuration(session, self._runtime.settings)
                 identity = configuration.identity
-                if identity is None:
+                llm_provider = configuration.llm_provider
+                if identity is None or llm_provider is None:
                     raise ContentAnalysisUnavailable
+                runtime_config_snapshot = cast(
+                    dict[str, object], llm_provider.safe_runtime_snapshot()
+                )
                 if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
                     target_count = PostgresContentQueryRepository(
                         session,
@@ -436,6 +439,7 @@ class PostgresContentHttpService:
                 model_provider=identity.model_provider,
                 model=identity.model,
                 generation_config_hash=generation_hash,
+                runtime_config_snapshot=runtime_config_snapshot,
             ),
             cost_estimate_available=False,
             cost_estimate_note=(
@@ -530,8 +534,10 @@ class PostgresContentHttpService:
     ) -> tuple[AnalysisContentRunCreatedResponse, UUID | None, UUID | None]:
         configuration = self._load_active_analysis_configuration()
         identity = configuration.identity
-        if identity is None:
+        llm_provider = configuration.llm_provider
+        if identity is None or llm_provider is None:
             raise ContentAnalysisUnavailable
+        runtime_config_snapshot = cast(dict[str, object], llm_provider.safe_runtime_snapshot())
         generation_config, generation_hash = current_analysis_generation_config()
         configuration_hash = _analysis_configuration_hash(
             prompt_version=identity.prompt_version,
@@ -540,6 +546,7 @@ class PostgresContentHttpService:
             model_provider=identity.model_provider,
             model=identity.model,
             generation_config_hash=generation_hash,
+            runtime_config_snapshot=runtime_config_snapshot,
         )
         if configuration_hash != expected_configuration_hash:
             raise ContentAnalysisRunConflict
@@ -601,6 +608,7 @@ class PostgresContentHttpService:
                     prompt_text_snapshot=configuration.taxonomy.prompt_text,
                     generation_config=generation_config,
                     generation_config_hash=generation_hash,
+                    runtime_config_snapshot=runtime_config_snapshot,
                 )
                 if run is None:
                     existing = repository.get_run_by_client_key(client_idempotency_key)
@@ -738,10 +746,7 @@ class PostgresContentHttpService:
         *,
         analysis_identity: Any,
     ) -> Any:
-        repository = PostgresContentQueryRepository(
-            session,
-            analysis_identity=analysis_identity,
-        )
+        repository = PostgresContentQueryRepository(session, analysis_identity=analysis_identity)
         if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
             raise ValueError("all Scope 只能由 Planner 有界冻结")
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
@@ -860,8 +865,11 @@ def _analysis_configuration_hash(
     model_provider: str,
     model: str,
     generation_config_hash: str,
+    runtime_config_snapshot: dict[str, object] | None = None,
 ) -> str:
-    payload = {
+    """计算 Analysis 乐观锁；新 Run 纳入安全 Provider Snapshot，历史空快照保持旧值。"""
+
+    payload: dict[str, object] = {
         "generation_config_hash": generation_config_hash,
         "model": model,
         "model_provider": model_provider,
@@ -869,6 +877,8 @@ def _analysis_configuration_hash(
         "prompt_version": prompt_version,
         "taxonomy_sha256": taxonomy_sha256,
     }
+    if runtime_config_snapshot:
+        payload["runtime_config_snapshot"] = runtime_config_snapshot
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -889,6 +899,7 @@ def _assert_same_analysis_run_request(
         model_provider=cast(str, row["model_provider"]),
         model=cast(str, row["model"]),
         generation_config_hash=cast(str, row["generation_config_hash"]),
+        runtime_config_snapshot=cast(dict[str, object], row["runtime_config_snapshot"]),
     )
     if (
         row["target_count"] != expected_target_count

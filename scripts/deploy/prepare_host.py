@@ -42,6 +42,7 @@ _RUNTIME_DIRECTORY_SPECS = (
     DirectorySpec("postgres", POSTGRES_UID, POSTGRES_GID, 0o700),
     DirectorySpec("shared", 0, 0, 0o750),
     DirectorySpec("shared/secrets", 0, SECRET_GID, 0o750),
+    DirectorySpec("shared/provider-secrets", APP_UID, APP_GID, 0o700),
 )
 _DIRECTORY_SPECS = (
     *_RUNTIME_DIRECTORY_SPECS,

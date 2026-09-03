@@ -14,6 +14,11 @@ from aima_ugc.contracts.administration import (
     AuditEventListResponse,
     KeywordPackVehicleLinkRequest,
     KeywordPackVehicleLinksResponse,
+    ProviderConfigCreateRequest,
+    ProviderConfigListResponse,
+    ProviderConfigResponse,
+    ProviderConfigUpdateRequest,
+    ProviderKind,
     VehicleModelCreateRequest,
     VehicleModelListQuery,
     VehicleModelListResponse,
@@ -152,6 +157,38 @@ class AdministrationHttpService(Protocol):
 
     def list_analysis_schemes(self) -> AnalysisSchemeListResponse:
         """读取 Scheme 与完整版本历史。"""
+
+        ...
+
+    def list_provider_configs(
+        self,
+        *,
+        provider_kind: ProviderKind | None = None,
+    ) -> ProviderConfigListResponse:
+        """管理员读取 LLM/TikHub Provider 安全投影。"""
+
+        ...
+
+    def create_provider_config(
+        self,
+        body: ProviderConfigCreateRequest,
+        *,
+        principal: Principal,
+        request_id: str,
+    ) -> ProviderConfigResponse:
+        """管理员创建 Provider 与不可变 Secret 引用。"""
+
+        ...
+
+    def update_provider_config(
+        self,
+        provider_config_id: UUID,
+        body: ProviderConfigUpdateRequest,
+        *,
+        principal: Principal,
+        request_id: str,
+    ) -> ProviderConfigResponse:
+        """管理员修改 Provider；可选择轮换 Secret。"""
 
         ...
 

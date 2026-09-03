@@ -15,6 +15,7 @@ import AimaButton from '../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../shared/ui/AimaPageHeader.vue'
 import VehicleMultiSelect from '../../../shared/VehicleMultiSelect.vue'
+import ProviderConfigurationPanel from '../components/ProviderConfigurationPanel.vue'
 import { formatDateTime } from '../../../shared/domain/beijingTime'
 import {
   activateScheme,
@@ -32,7 +33,7 @@ import {
   saveKeywordPackVehicles,
 } from '../api'
 
-type Tab = 'vehicles' | 'links' | 'scheme' | 'audit'
+type Tab = 'vehicles' | 'links' | 'llm' | 'tikhub' | 'scheme' | 'audit'
 
 const tab = ref<Tab>('vehicles')
 const saving = ref(false)
@@ -75,12 +76,14 @@ const loading = computed(() => {
   if (tab.value === 'vehicles') return vehicleLoading.value
   if (tab.value === 'links') return vehicleLoading.value || packLoading.value
   if (tab.value === 'scheme') return schemeLoading.value
+  if (tab.value === 'llm' || tab.value === 'tikhub') return false
   return auditLoading.value
 })
 const activeResourceError = computed(() => {
   if (tab.value === 'vehicles') return vehicleError.value
   if (tab.value === 'links') return packError.value ?? vehicleError.value
   if (tab.value === 'scheme') return schemeError.value
+  if (tab.value === 'llm' || tab.value === 'tikhub') return null
   return auditError.value
 })
 const selectedPack = computed(() => packs.value.find((item) => item.id === selectedPackId.value) ?? null)
@@ -181,6 +184,7 @@ async function retryActiveResource(): Promise<void> {
     return
   }
   if (tab.value === 'scheme') return loadSchemes()
+  if (tab.value === 'llm' || tab.value === 'tikhub') return
   await loadAudit()
 }
 
@@ -386,7 +390,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
     <div class="admin-page">
       <AimaPageHeader
         title="管理员配置"
-        description="车型、词包关联与 Analysis Scheme 的唯一管理入口；所有修改、发布和回滚均写入审计。"
+        description="车型、词包、AI 模型、TikHub 与 Analysis Scheme 的统一管理入口；运行时配置保存后对新任务即时生效。"
       />
       <AimaFeedbackBanner
         v-if="error"
@@ -407,7 +411,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         aria-label="管理员配置分类"
       >
         <button
-          v-for="item in ([['vehicles', '车型目录'], ['links', '词包车型关联'], ['scheme', 'Analysis Scheme'], ['audit', '审计记录']] as const)"
+          v-for="item in ([['vehicles', '车型目录'], ['links', '词包车型关联'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'Analysis Scheme'], ['audit', '审计记录']] as const)"
           :key="item[0]"
           type="button"
           :class="{ active: tab === item[0] }"
@@ -626,6 +630,17 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           </div>
         </section>
       </div>
+
+
+      <ProviderConfigurationPanel
+        v-else-if="tab === 'llm'"
+        provider-kind="llm"
+      />
+
+      <ProviderConfigurationPanel
+        v-else-if="tab === 'tikhub'"
+        provider-kind="collection"
+      />
 
       <section
         v-else

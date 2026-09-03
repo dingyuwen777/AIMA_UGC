@@ -6,7 +6,14 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    SecretStr,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
 
@@ -14,6 +21,7 @@ PrincipalRole = Literal["administrator", "user"]
 PrincipalSource = Literal["development", "feishu"]
 VehicleModelStatus = Literal["active", "deprecated", "merged"]
 AnalysisSchemeVersionStatus = Literal["draft", "published", "retired"]
+ProviderKind = Literal["collection", "llm"]
 
 _TAXONOMY_PLACEHOLDER = "{{AIMA_TAXONOMY_JSON}}"
 
@@ -299,6 +307,118 @@ class AnalysisSchemeListResponse(BaseModel):
     items: tuple[AnalysisSchemeResponse, ...]
 
 
+class ProviderConfigCreateRequest(BaseModel):
+    """创建管理员可维护 Provider；API Key 仅用于本次写入，不进入响应或数据库。"""
+
+    model_config = ConfigDict(extra="forbid")
+    provider_kind: ProviderKind
+    provider: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$",
+    )
+    display_name: str = Field(min_length=1, max_length=200)
+    base_url: str = Field(min_length=1, max_length=2000)
+    model: str | None = Field(default=None, min_length=1, max_length=300)
+    api_key: SecretStr
+    timeout_seconds: int = Field(default=45, ge=1, le=3600)
+    max_retries: int = Field(default=3, ge=0, le=20)
+    max_concurrency: int = Field(default=5, ge=1, le=500)
+    max_rps: int | None = Field(default=None, ge=1, le=10_000)
+    enabled: bool = True
+    is_default: bool = False
+
+    @field_validator("provider", "display_name", "base_url", "model", mode="before")
+    @classmethod
+    def trim_text(cls, value: object) -> object:
+        """清理 Provider 管理文本字段。"""
+
+        return _trimmed(value)
+
+    @model_validator(mode="after")
+    def validate_provider(self) -> ProviderConfigCreateRequest:
+        """校验 Provider Kind 与模型/default 语义。"""
+
+        if not self.api_key.get_secret_value():
+            raise ValueError("api_key 不能为空")
+        if self.provider_kind == "llm" and not self.model:
+            raise ValueError("LLM Provider 必须配置 model")
+        if self.provider_kind == "collection" and self.model is not None:
+            raise ValueError("采集 Provider 不使用 model")
+        if self.provider_kind == "collection" and self.is_default:
+            raise ValueError("采集 Provider 由采集计划显式引用，不使用默认标记")
+        if self.is_default and not self.enabled:
+            raise ValueError("默认 Provider 必须启用")
+        return self
+
+
+class ProviderConfigUpdateRequest(BaseModel):
+    """完整替换可变 Provider 字段；省略 api_key 表示不轮换 Secret。"""
+
+    model_config = ConfigDict(extra="forbid")
+    display_name: str = Field(min_length=1, max_length=200)
+    base_url: str = Field(min_length=1, max_length=2000)
+    model: str | None = Field(default=None, min_length=1, max_length=300)
+    api_key: SecretStr | None = None
+    timeout_seconds: int = Field(default=45, ge=1, le=3600)
+    max_retries: int = Field(default=3, ge=0, le=20)
+    max_concurrency: int = Field(default=5, ge=1, le=500)
+    max_rps: int | None = Field(default=None, ge=1, le=10_000)
+    enabled: bool = True
+    is_default: bool = False
+
+    @field_validator("display_name", "base_url", "model", mode="before")
+    @classmethod
+    def trim_text(cls, value: object) -> object:
+        """清理 Provider 可变文本字段。"""
+
+        return _trimmed(value)
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        """显式空 API Key 不等价于“不轮换”。"""
+
+        if value is not None and not value.get_secret_value():
+            raise ValueError("api_key 为空时请省略该字段")
+        return value
+
+    @model_validator(mode="after")
+    def validate_state(self) -> ProviderConfigUpdateRequest:
+        """默认 Provider 必须处于启用状态。"""
+
+        if self.is_default and not self.enabled:
+            raise ValueError("默认 Provider 必须启用")
+        return self
+
+
+class ProviderConfigResponse(BaseModel):
+    """Provider 管理安全投影；绝不返回 API Key 或内部 secret_ref。"""
+
+    model_config = ConfigDict(extra="forbid")
+    id: UUID
+    provider_kind: ProviderKind
+    provider: str
+    display_name: str
+    base_url: str
+    model: str | None = None
+    timeout_seconds: int = Field(gt=0)
+    max_retries: int = Field(ge=0)
+    max_concurrency: int = Field(gt=0)
+    max_rps: int | None = Field(default=None, gt=0)
+    enabled: bool
+    is_default: bool
+    revision: int = Field(gt=0)
+    secret_configured: bool
+
+
+class ProviderConfigListResponse(BaseModel):
+    """管理员 Provider 配置目录安全投影。"""
+
+    model_config = ConfigDict(extra="forbid")
+    items: tuple[ProviderConfigResponse, ...]
+
+
 class AuditEventListQuery(BaseModel):
     """管理员审计事件稳定 Offset 分页。"""
 
@@ -346,6 +466,11 @@ __all__ = [
     "KeywordPackVehicleLinkRequest",
     "KeywordPackVehicleLinksResponse",
     "PrincipalRole",
+    "ProviderConfigCreateRequest",
+    "ProviderConfigListResponse",
+    "ProviderConfigResponse",
+    "ProviderConfigUpdateRequest",
+    "ProviderKind",
     "PrincipalSource",
     "VehicleModelAliasResponse",
     "VehicleModelCreateRequest",

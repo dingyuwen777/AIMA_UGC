@@ -53,18 +53,29 @@ from .runtime import PlatformRuntime, create_platform_runtime
 
 
 class _TikHubTransportPool:
-    """按已验证 Base URL 复用进程级 httpx Client，并由 PlatformRuntime 统一关闭。"""
+    """按冻结的连接与限流参数复用进程级 httpx Client。"""
 
     def __init__(self) -> None:
-        self._transports: dict[str, TikHubHttpTransport] = {}
+        self._transports: dict[tuple[str, int, int, int | None], TikHubHttpTransport] = {}
         self._lock = Lock()
 
     def __call__(self, provider_config: ProviderConfig) -> ProviderTransport:
+        key = (
+            provider_config.base_url,
+            provider_config.timeout_seconds,
+            provider_config.max_concurrency,
+            provider_config.max_rps,
+        )
         with self._lock:
-            transport = self._transports.get(provider_config.base_url)
+            transport = self._transports.get(key)
             if transport is None:
-                transport = TikHubHttpTransport(base_url=provider_config.base_url)
-                self._transports[provider_config.base_url] = transport
+                transport = TikHubHttpTransport(
+                    base_url=provider_config.base_url,
+                    timeout_seconds=provider_config.timeout_seconds,
+                    max_concurrency=provider_config.max_concurrency,
+                    max_rps=provider_config.max_rps,
+                )
+                self._transports[key] = transport
             return transport
 
     def close(self) -> None:

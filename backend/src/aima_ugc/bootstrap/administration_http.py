@@ -11,7 +11,10 @@ from sqlalchemy.exc import IntegrityError
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
-from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
+from aima_ugc.adapters.persistence.postgres.system import (
+    PostgresAuditRepository,
+    PostgresProviderConfigRepository,
+)
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.administration import (
     AnalysisSchemeCreateDraftRequest,
@@ -24,6 +27,11 @@ from aima_ugc.contracts.administration import (
     AuditEventResponse,
     KeywordPackVehicleLinkRequest,
     KeywordPackVehicleLinksResponse,
+    ProviderConfigCreateRequest,
+    ProviderConfigListResponse,
+    ProviderConfigResponse,
+    ProviderConfigUpdateRequest,
+    ProviderKind,
     VehicleModelAliasResponse,
     VehicleModelCreateRequest,
     VehicleModelListQuery,
@@ -38,12 +46,14 @@ from aima_ugc.modules.administration.http import (
 )
 from aima_ugc.modules.analysis.schemes import AnalysisSchemeVersionRecord
 from aima_ugc.modules.identity import Principal
-from aima_ugc.modules.system.models import AuditEvent
+from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
 from aima_ugc.modules.system.tables import keyword_packs_table
 from aima_ugc.modules.vehicles.models import VehicleModel
+from aima_ugc.platform.security import SecretFileError, write_secret_ref
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
+from .runtime_config import new_secret_ref
 
 
 class PostgresAdministrationHttpService:
@@ -431,6 +441,147 @@ class PostgresAdministrationHttpService:
         finally:
             session.close()
 
+    def list_provider_configs(
+        self,
+        *,
+        provider_kind: ProviderKind | None = None,
+    ) -> ProviderConfigListResponse:
+        """管理员只读取 Provider 安全投影，绝不暴露 API Key/secret_ref。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                configs = PostgresProviderConfigRepository(session).list_all(
+                    provider_kind=provider_kind
+                )
+                return ProviderConfigListResponse(
+                    items=tuple(_provider_response(item) for item in configs)
+                )
+        finally:
+            session.close()
+
+    def create_provider_config(
+        self,
+        body: ProviderConfigCreateRequest,
+        *,
+        principal: Principal,
+        request_id: str,
+    ) -> ProviderConfigResponse:
+        """创建 Provider；Secret 只写批准的持久化 Provider Secret Store。"""
+
+        principal.require_administrator()
+        config_id = uuid4()
+        secret_ref = new_secret_ref(config_id, uuid4().hex)
+        try:
+            candidate = ProviderConfig(
+                id=config_id,
+                provider=body.provider,
+                provider_kind=body.provider_kind,
+                display_name=body.display_name,
+                base_url=body.base_url,
+                model=body.model,
+                secret_ref=secret_ref,
+                timeout_seconds=body.timeout_seconds,
+                max_retries=body.max_retries,
+                max_concurrency=body.max_concurrency,
+                max_rps=body.max_rps,
+                is_default=body.is_default,
+                revision=1,
+                enabled=body.enabled,
+            )
+            write_secret_ref(
+                self._runtime.settings.external_secret_root,
+                secret_ref,
+                body.api_key,
+            )
+        except (ValueError, SecretFileError) as exc:
+            raise AdministrationConflict from exc
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                created = PostgresProviderConfigRepository(session).create(candidate)
+                _audit_provider(
+                    session,
+                    principal,
+                    request_id,
+                    "provider_config_created",
+                    created,
+                    secret_rotated=True,
+                )
+                return _provider_response(created)
+        except IntegrityError as exc:
+            raise AdministrationConflict from exc
+        finally:
+            session.close()
+
+    def update_provider_config(
+        self,
+        provider_config_id: UUID,
+        body: ProviderConfigUpdateRequest,
+        *,
+        principal: Principal,
+        request_id: str,
+    ) -> ProviderConfigResponse:
+        """更新 Provider；省略 API Key 时保持原不可变 Secret 引用。"""
+
+        principal.require_administrator()
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresProviderConfigRepository(session)
+                current = repository.get(provider_config_id)
+                if current is None:
+                    raise AdministrationResourceNotFound
+                if current.provider_kind == "llm" and not body.model:
+                    raise AdministrationConflict("LLM Provider 必须配置 model")
+                if current.provider_kind == "collection" and body.model is not None:
+                    raise AdministrationConflict("采集 Provider 不使用 model")
+                if current.provider_kind == "collection" and body.is_default:
+                    raise AdministrationConflict("采集 Provider 不使用默认标记")
+
+                secret_ref = current.secret_ref
+                secret_rotated = body.api_key is not None
+                if body.api_key is not None:
+                    secret_ref = new_secret_ref(provider_config_id, uuid4().hex)
+                    try:
+                        write_secret_ref(
+                            self._runtime.settings.external_secret_root,
+                            secret_ref,
+                            body.api_key,
+                        )
+                    except (ValueError, SecretFileError) as exc:
+                        raise AdministrationConflict from exc
+                try:
+                    updated = repository.update_settings(
+                        provider_config_id,
+                        display_name=body.display_name,
+                        base_url=body.base_url,
+                        model=body.model,
+                        secret_ref=secret_ref,
+                        timeout_seconds=body.timeout_seconds,
+                        max_retries=body.max_retries,
+                        max_concurrency=body.max_concurrency,
+                        max_rps=body.max_rps,
+                        enabled=body.enabled,
+                        is_default=body.is_default,
+                    )
+                except (KeyError, ValueError) as exc:
+                    raise AdministrationConflict from exc
+                _audit_provider(
+                    session,
+                    principal,
+                    request_id,
+                    "provider_config_updated",
+                    updated,
+                    secret_rotated=secret_rotated,
+                )
+                return _provider_response(updated)
+        except IntegrityError as exc:
+            raise AdministrationConflict from exc
+        finally:
+            session.close()
+
     def list_audit_events(self, *, offset: int, limit: int) -> AuditEventListResponse:
         """管理员分页读取完整审计历史。"""
 
@@ -490,6 +641,27 @@ def _vehicle_response(
     )
 
 
+def _provider_response(config: ProviderConfig) -> ProviderConfigResponse:
+    """投影不包含 API Key 或内部 Secret 路径。"""
+
+    return ProviderConfigResponse(
+        id=config.id,
+        provider_kind=config.provider_kind,
+        provider=config.provider,
+        display_name=config.display_name,
+        base_url=config.base_url,
+        model=config.model,
+        timeout_seconds=config.timeout_seconds,
+        max_retries=config.max_retries,
+        max_concurrency=config.max_concurrency,
+        max_rps=config.max_rps,
+        enabled=config.enabled,
+        is_default=config.is_default,
+        revision=config.revision,
+        secret_configured=bool(config.secret_ref),
+    )
+
+
 def _scheme_response(
     repository: PostgresAnalysisSchemeRepository,
     scheme_id: UUID,
@@ -534,6 +706,35 @@ def _scheme_version_response(version: AnalysisSchemeVersionRecord) -> AnalysisSc
         created_by=version.created_by,
         created_at=version.created_at,
         published_at=version.published_at,
+    )
+
+
+def _audit_provider(
+    session: Any,
+    principal: Principal,
+    request_id: str,
+    event_type: str,
+    config: ProviderConfig,
+    *,
+    secret_rotated: bool,
+) -> None:
+    """审计 Provider 非敏感事实，不记录 secret_ref 或 Secret 值。"""
+
+    _audit(
+        session,
+        principal=principal,
+        request_id=request_id,
+        event_type=event_type,
+        object_type="provider_config",
+        object_id=str(config.id),
+        detail={
+            "provider_kind": config.provider_kind,
+            "provider": config.provider,
+            "revision": config.revision,
+            "enabled": config.enabled,
+            "is_default": config.is_default,
+            "secret_rotated": secret_rotated,
+        },
     )
 
 

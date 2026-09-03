@@ -27,6 +27,20 @@
 - `global_relevance_config`：`system`；
 - `audit_events`：`system`。
 
+## Runtime Provider 配置控制面
+
+`provider_configs` 同时承载 Collection 与 LLM 的**非敏感运行配置**。管理员配置中心是人工维护入口；API Key 只写入持久化 Provider Secret Store，数据库、HTTP 响应、审计和日志都不保存 Secret 明文，也不向前端暴露内部 `secret_ref`。
+
+运行时采用“新任务读最新配置、已创建 Run 冻结快照”的规则：
+
+- 新 Analysis Run 每次创建时读取当前启用的默认 LLM Provider，并冻结 Provider revision、Base URL、model、timeout/concurrency/retry 与不可变 Secret 引用；
+- 新 Collection Run 冻结计划引用的 Provider 配置与相同运行参数；
+- 已创建 Run、运行中任务及同 Run 的自动重试继续使用原快照，不因管理员后续修改或密钥轮换发生漂移；
+- 新建/手工重跑重新读取当前数据库配置，不需要重启 API、Worker 或 Docker Compose；
+- `.env` / 部署 Secret 仅用于数据库尚无对应配置时的首次 bootstrap。Internal V1 TikHub Provider 一旦存在，后续启动不得再用 `.env` 覆盖数据库事实。
+
+持久化 Secret Store 与内部系统 Secret 分离：Linux 默认位于宿主 `${AIMA_HOST_ROOT}/shared/provider-secrets`；API 以读写方式挂载用于创建不可变 Secret 版本，Worker 只读挂载用于按 Run Snapshot 解析凭据。Windows Docker Desktop 使用独立 Docker-managed `windows_provider_secrets` volume 保持相同语义。
+
 `provider_configs.id` 是 Provider 配置实例的稳定 UUID。同一种 Provider 可以有多个配置实例；配置实例不绑定平台，Collection 的 Plan/平台策略通过 `provider_config_id` 选择它。Provider 类型不允许对同一稳定 UUID 原地改成另一 Provider；切换 Provider 时创建新配置并改引用。
 
 `keywords.normalized_text` 是关键词稳定去重字段，数据库保证唯一。正式 HTTP 写入只接收原始 `text`，

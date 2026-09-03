@@ -176,9 +176,83 @@ jobs:
 
           sudo test ! -e "${AIMA_RUNTIME_ROOT}/shared/secrets/tikhub_api_key"
           sudo test ! -e "${AIMA_RUNTIME_ROOT}/shared/secrets/llm_api_key"
+          sudo test -s "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/tikhub_api_key"
+          test "$(sudo stat -c '%u:%g:%a' "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/tikhub_api_key")" = "10001:10001:600"
           compose exec -T worker sh -ec \
-            'test "$(cat /run/secrets/tikhub_api_key)" = "ci-placeholder-not-a-real-provider-secret"'
+            'test "$(cat /run/provider-secrets/tikhub_api_key)" = "ci-placeholder-not-a-real-provider-secret"'
+          compose exec -T api sh -ec \
+            'test "$(cat /run/provider-secrets/tikhub_api_key)" = "ci-placeholder-not-a-real-provider-secret"'
+          compose exec -T worker test ! -e /run/secrets/tikhub_api_key
           compose exec -T api test ! -e /run/secrets/tikhub_api_key
+          PROVIDER_SECRET_HASH_BEFORE="$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/tikhub_api_key" | cut -d' ' -f1)"
+
+          # 通过正式管理员 API 轮换 TikHub 配置；新配置必须无需重启立即写入 DB/Secret Store。
+          PROVIDER_ID="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT id FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
+          cat > "${RUNNER_TEMP}/provider-update.json" <<'JSON'
+          {
+            "display_name": "TikHub Internal V1",
+            "base_url": "https://api.tikhub.dev",
+            "model": null,
+            "api_key": "ci-rotated-provider-secret-not-real",
+            "timeout_seconds": 52,
+            "max_retries": 4,
+            "max_concurrency": 6,
+            "max_rps": 2,
+            "enabled": true,
+            "is_default": false
+          }
+          JSON
+          curl -fsS \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            --data-binary @"${RUNNER_TEMP}/provider-update.json" \
+            "http://127.0.0.1:18080/api/v1/provider-configs/${PROVIDER_ID}" \
+            > "${RUNNER_TEMP}/provider-update-response.json"
+          python3 - "${RUNNER_TEMP}/provider-update-response.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert payload["provider_kind"] == "collection"
+          assert payload["provider"] == "tikhub"
+          assert payload["base_url"] == "https://api.tikhub.dev"
+          assert payload["timeout_seconds"] == 52
+          assert payload["max_retries"] == 4
+          assert payload["max_concurrency"] == 6
+          assert payload["max_rps"] == 2
+          assert payload["revision"] == 2
+          assert payload["secret_configured"] is True
+          assert "api_key" not in payload
+          assert "secret_ref" not in payload
+          PY
+          PROVIDER_RUNTIME_ROW="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT base_url || '|' || secret_ref || '|' || timeout_seconds || '|' || max_retries || '|' || max_concurrency || '|' || max_rps || '|' || revision FROM provider_configs WHERE id = '${PROVIDER_ID}';")"
+          IFS='|' read -r ROTATED_BASE_URL ROTATED_SECRET_REF ROTATED_TIMEOUT ROTATED_RETRIES ROTATED_CONCURRENCY ROTATED_RPS ROTATED_REVISION <<<"${PROVIDER_RUNTIME_ROW}"
+          test "${ROTATED_BASE_URL}" = "https://api.tikhub.dev"
+          test "${ROTATED_TIMEOUT}" = "52"
+          test "${ROTATED_RETRIES}" = "4"
+          test "${ROTATED_CONCURRENCY}" = "6"
+          test "${ROTATED_RPS}" = "2"
+          test "${ROTATED_REVISION}" = "2"
+          test "${ROTATED_SECRET_REF}" != "tikhub_api_key"
+          sudo test -s "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/${ROTATED_SECRET_REF}"
+          test "$(sudo stat -c '%u:%g:%a' "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/${ROTATED_SECRET_REF}")" = "10001:10001:600"
+          test "$(sudo cat "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/${ROTATED_SECRET_REF}")" = "ci-rotated-provider-secret-not-real"
+          compose exec -T worker sh -ec \
+            "test \"\$(cat /run/provider-secrets/${ROTATED_SECRET_REF})\" = \"ci-rotated-provider-secret-not-real\""
+          PROVIDER_JSON_AFTER_ROTATION="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT row_to_json(p)::text FROM provider_configs p WHERE id = '${PROVIDER_ID}';")"
+          if grep -Fq 'ci-rotated-provider-secret-not-real' <<<"${PROVIDER_JSON_AFTER_ROTATION}"; then
+            echo "Rotated Provider Secret leaked into provider_configs"
+            exit 1
+          fi
+          if grep -Fq 'ci-rotated-provider-secret-not-real' "${RUNNER_TEMP}/provider-update-response.json"; then
+            echo "Rotated Provider Secret leaked into API response"
+            exit 1
+          fi
+          ROTATED_SECRET_HASH_BEFORE="$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/${ROTATED_SECRET_REF}" | cut -d' ' -f1)"
 
           API_CONTAINER="$(compose ps -q api)"
           WORKER_CONTAINER="$(compose ps -q worker)"
@@ -211,12 +285,19 @@ jobs:
               "/app/logs": (root / "runtime/logs", True),
               "/run/internal-secrets": (root / "shared/secrets", False),
               "/data/aima-historical-input": (root / "historical-input", False),
+              "/run/provider-secrets": (root / "shared/provider-secrets", True),
           }
           for destination, (source, writable) in expected.items():
               actual = mounts[destination]
               assert actual["Type"] == "bind"
               assert Path(actual["Source"]).resolve() == source.resolve()
               assert actual["RW"] is writable
+
+          worker_mounts = {item["Destination"]: item for item in worker["Mounts"]}
+          worker_provider_secrets = worker_mounts["/run/provider-secrets"]
+          assert worker_provider_secrets["Type"] == "bind"
+          assert Path(worker_provider_secrets["Source"]).resolve() == (root / "shared/provider-secrets").resolve()
+          assert worker_provider_secrets["RW"] is False
 
           postgres_mounts = {item["Destination"]: item for item in inspect(postgres_id)["Mounts"]}
           postgres_secrets = postgres_mounts["/run/secrets"]
@@ -258,6 +339,12 @@ jobs:
           PROVIDER_COUNT="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
             "SELECT count(*) FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
           test "${PROVIDER_COUNT}" = "1"
+          # configure 再次执行也不得用 `.env` 把管理员保存的 DB Provider 配置覆盖回去。
+          PROVIDER_RUNTIME_ROW_AFTER_RESTART="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT base_url || '|' || secret_ref || '|' || timeout_seconds || '|' || max_retries || '|' || max_concurrency || '|' || max_rps || '|' || revision FROM provider_configs WHERE id = '${PROVIDER_ID}';")"
+          test "${PROVIDER_RUNTIME_ROW_AFTER_RESTART}" = "${PROVIDER_RUNTIME_ROW}"
+          test "$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/${ROTATED_SECRET_REF}" | cut -d' ' -f1)" = "${ROTATED_SECRET_HASH_BEFORE}"
+          test "$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/tikhub_api_key" | cut -d' ' -f1)" = "${PROVIDER_SECRET_HASH_BEFORE}"
           compose exec -T api sh -ec 'test "$(cat /app/data/compose-startup-marker)" = persistence'
 
           compose down --remove-orphans
@@ -283,6 +370,10 @@ jobs:
           PROVIDER_COUNT="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
             "SELECT count(*) FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
           test "${PROVIDER_COUNT}" = "1"
+          PROVIDER_RUNTIME_ROW_AFTER_RECOVERY="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT base_url || '|' || secret_ref || '|' || timeout_seconds || '|' || max_retries || '|' || max_concurrency || '|' || max_rps || '|' || revision FROM provider_configs WHERE id = '${PROVIDER_ID}';")"
+          test "${PROVIDER_RUNTIME_ROW_AFTER_RECOVERY}" = "${PROVIDER_RUNTIME_ROW}"
+          test "$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/provider-secrets/${ROTATED_SECRET_REF}" | cut -d' ' -f1)" = "${ROTATED_SECRET_HASH_BEFORE}"
           test "$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password" | cut -d' ' -f1)" = "${PASSWORD_HASH_BEFORE}"
           sudo test -s "${AIMA_RUNTIME_ROOT}/runtime/logs/api.log"
           sudo test -d "${AIMA_RUNTIME_ROOT}/postgres/18/docker"
@@ -432,6 +523,7 @@ jobs:
                   "/host/runtime/logs": "bind",
                   "/host/postgres": "volume",
                   "/host/shared/secrets": "volume",
+                  "/host/shared/provider-secrets": "volume",
               },
               "postgres": {
                   "/var/lib/postgresql": "volume",
@@ -448,18 +540,21 @@ jobs:
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
                   "/data/aima-historical-input": "bind",
+                  "/run/provider-secrets": "volume",
               },
               "api": {
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
                   "/data/aima-historical-input": "bind",
+                  "/run/provider-secrets": "volume",
               },
               "worker": {
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
                   "/data/aima-historical-input": "bind",
+                  "/run/provider-secrets": "volume",
               },
               "scheduler": {
                   "/app/data": "bind",
@@ -487,7 +582,7 @@ jobs:
           bootstrap_command = model["services"]["bootstrap"]["command"]
           assert "--runtime-only" in bootstrap_command
           assert "--runtime-bind-compatible" in bootstrap_command
-          assert {"windows_postgres", "windows_internal_secrets"}.issubset(model["volumes"])
+          assert {"windows_postgres", "windows_internal_secrets", "windows_provider_secrets"}.issubset(model["volumes"])
           assert "windows_runtime_data" not in model["volumes"]
           assert "windows_runtime_logs" not in model["volumes"]
           PY
@@ -520,14 +615,15 @@ jobs:
           curl -fsS http://127.0.0.1:18082/health/ready >/dev/null
 
           API_CONTAINER="$(compose ps -q api)"
+          WORKER_CONTAINER="$(compose ps -q worker)"
           POSTGRES_CONTAINER="$(compose ps -q postgres)"
-          python3 - "${API_CONTAINER}" "${POSTGRES_CONTAINER}" "${AIMA_WINDOWS_HOST_ROOT}" <<'PY'
+          python3 - "${API_CONTAINER}" "${WORKER_CONTAINER}" "${POSTGRES_CONTAINER}" "${AIMA_WINDOWS_HOST_ROOT}" <<'PY'
           import json
           import subprocess
           import sys
           from pathlib import Path
 
-          api_id, postgres_id, host_root_raw = sys.argv[1:]
+          api_id, worker_id, postgres_id, host_root_raw = sys.argv[1:]
           host_root = Path(host_root_raw).resolve()
 
           def mounts(container_id: str) -> dict[str, dict]:
@@ -543,6 +639,11 @@ jobs:
           assert Path(api_mounts["/app/logs"]["Source"]).resolve() == host_root / "runtime/logs"
           assert api_mounts["/run/internal-secrets"]["Type"] == "volume"
           assert api_mounts["/run/internal-secrets"]["RW"] is False
+          assert api_mounts["/run/provider-secrets"]["Type"] == "volume"
+          assert api_mounts["/run/provider-secrets"]["RW"] is True
+          worker_mounts = mounts(worker_id)
+          assert worker_mounts["/run/provider-secrets"]["Type"] == "volume"
+          assert worker_mounts["/run/provider-secrets"]["RW"] is False
 
           postgres_mounts = mounts(postgres_id)
           assert postgres_mounts["/var/lib/postgresql"]["Type"] == "volume"
