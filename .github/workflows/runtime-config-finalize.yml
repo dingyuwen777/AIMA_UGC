@@ -6,6 +6,7 @@ on:
       - feat/runtime-config-control-plane
     paths:
       - scripts/dev/runtime_config_finalize.py
+      - scripts/dev/runtime_config_finalize_fix.py
       - .github/workflows/runtime-config-finalize.yml
 
 permissions:
@@ -49,6 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python scripts/dev/runtime_config_finalize_fix.py
           uv run python scripts/dev/runtime_config_finalize.py
           uv run python scripts/contracts/generate.py --check
           npm --prefix frontend run typecheck
@@ -62,7 +64,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f scripts/dev/runtime_config_finalize.py .github/workflows/runtime-config-finalize.yml
+          rm -f scripts/dev/runtime_config_finalize.py scripts/dev/runtime_config_finalize_fix.py .github/workflows/runtime-config-finalize.yml
           git config user.name 'aima-runtime-finalizer'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
