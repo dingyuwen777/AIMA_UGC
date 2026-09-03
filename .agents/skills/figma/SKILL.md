@@ -675,6 +675,7 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 [ ] 用户输入和动作都有真实系统支持或明确 Future 标识
 [ ] 动态数据都有真实来源
 [ ] DESIGN_EXAMPLE 不冒充线上当前事实
+[ ] Capability Gap Inventory 已集中输出；无缺口时为 none
 [ ] Annotation Development Readiness 已完成，必要机器事实已校验
 [ ] 必要 Annotation 最少充分，无会误导实现的缺失/错误/无意义重复
 [ ] 页面尺寸与目标设备/Viewport 有依据
@@ -803,6 +804,10 @@ P0 → P1 → P2。
 ## System/Data Mapping
 
 重要 UI 字段、动作和动态数据的真实来源。
+
+## Capability Gap Inventory
+
+`baseline-ready / Design-to-Code` 强制输出；集中列出并去重系统能力缺口，无缺口时输出 `none`。详细格式由 当前场景所需完整约束 唯一维护。
 
 ## Component & Logic Reuse
 

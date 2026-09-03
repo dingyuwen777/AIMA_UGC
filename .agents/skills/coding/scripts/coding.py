@@ -32,7 +32,10 @@ GITIGNORE_FILENAME = ".gitignore"
 AGENTS_MANAGED_START = "<!-- agent-skills:managed:start -->"
 AGENTS_MANAGED_END = "<!-- agent-skills:managed:end -->"
 CACHE_IGNORE_RULE = ".agents/project-context.json"
-CHANGE_ID_PATTERN = re.compile(r"^CHG-\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*$")
+CHANGE_ID_PATTERN = re.compile(
+    r"^CHG-\d{8}(?:-\d{6})?-[a-z0-9]+(?:-[a-z0-9]+)*$"
+)
+CHANGE_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 CHANGE_STATUSES = {
     "approved",
     "blocked",
@@ -937,12 +940,24 @@ def bootstrap_project(root: str | Path) -> dict[str, str]:
 
 
 def _validate_change_id(change_id: str) -> None:
-    """校验 Coding Change ID 使用固定可排序格式。"""
+    """校验新秒级与历史日期级 Coding Change ID。"""
     if not CHANGE_ID_PATTERN.fullmatch(change_id):
         raise ValueError(
-            "change id 必须使用 CHG-YYYYMMDD-kebab-case 格式，例如 "
-            "CHG-20260813-report-export"
+            "change id 必须使用 CHG-YYYYMMDD-HHMMSS-kebab-case 新格式，"
+            "或历史兼容的 CHG-YYYYMMDD-kebab-case 格式，例如 "
+            "CHG-20260902-143527-report-export"
         )
+
+
+def generate_change_id(slug: str, *, now: datetime | None = None) -> str:
+    """使用北京时间秒级时间戳和 kebab-case slug 生成新 Change ID。"""
+    if not CHANGE_SLUG_PATTERN.fullmatch(slug):
+        raise ValueError("change slug 必须使用 kebab-case，例如 report-export")
+    timestamp = _beijing_now() if now is None else now
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise ValueError("Change ID 生成时间必须包含明确时区")
+    beijing_timestamp = timestamp.astimezone(BEIJING_TIMEZONE)
+    return f"CHG-{beijing_timestamp:%Y%m%d-%H%M%S}-{slug}"
 
 
 def _yaml_scalar(value: str) -> str:
@@ -1305,7 +1320,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     new_change = subparsers.add_parser("new-change", help="原子创建一个 coding-change/v1 L2/L3 Change")
     new_change.add_argument("--root", default=".")
-    new_change.add_argument("--id", required=True, dest="change_id")
+    change_identity = new_change.add_mutually_exclusive_group(required=True)
+    change_identity.add_argument(
+        "--slug",
+        help="使用 kebab-case 语义名自动生成北京时间秒级 Change ID",
+    )
+    change_identity.add_argument(
+        "--id",
+        dest="change_id",
+        help="显式指定旧日期级或新秒级 Change ID 的兼容入口",
+    )
     new_change.add_argument("--title", required=True)
     new_change.add_argument("--owner", required=True)
     new_change.add_argument("--branch", required=True)
@@ -1343,9 +1367,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"{mode}: {len(context['documents'])} 个事实入口")
             return 0
         if arguments.command == "new-change":
+            change_id = (
+                generate_change_id(arguments.slug)
+                if arguments.slug is not None
+                else arguments.change_id
+            )
             path = create_change(
                 root,
-                change_id=arguments.change_id,
+                change_id=change_id,
                 title=arguments.title,
                 owner=arguments.owner,
                 branch=arguments.branch,

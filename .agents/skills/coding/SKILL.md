@@ -112,6 +112,9 @@ CMakeLists.txt ≠ Linux-only
 14. **Git 提交信息统一中文。** 所有 Git 提交信息使用中文，包括普通提交、修复提交和合并提交的说明文本；命令、路径、标识符、版本号等必要技术内容可以保留原文。项目可以进一步规定提交格式或前缀，但不能把提交信息语言改为非中文。
 15. **所有时间相关默认采用北京时间。** Coding Skill、Agent 以及由其新增或默认解释的时间戳、日期、日志、缓存、Change 元数据、报告时间、脚本默认时间和用户可见时间统一使用北京时间 `Asia/Shanghai`（UTC+8），不得依赖宿主本地时区。外部协议、原始数据或既有机器 Contract 明确规定其他时区时保留原始事实语义，但在 Agent 输出、人类可读日志和展示边界明确转换为北京时间，不得把 UTC 值直接当作北京时间。
 16. **日志前缀统一且可定位。** 除非更高优先级的外部日志 wire-format Contract 强制其他序列化形式，所有人类可读日志记录统一使用 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；时间必须是北京时间，毫秒固定三位，`source.ext` 与 `L<line>` 来自真实调用点，`LEVEL` 使用大写。结构化日志若因平台 Contract 必须采用 JSON 等形式，仍必须提供等价的北京时间、source、line、level 字段。
+17. **系统级分析先于局部实现。** 先恢复任务相关能力边界，再决定局部修复、复用、公共抽象或能力归一；系统级不等于全仓扫描。详见 当前场景所需完整约束。
+18. **受影响代码域必须整洁收口。** 清理本次受影响域内确认失效、重复或无用实现，同时保护兼容、隐式引用和用户工作，禁止扩大无关重构。详见 当前场景所需完整约束。
+19. **Skill Mutation 先做 Mutation 目标解析。** 只改 canonical Owner；本地安装副本不得成为替代 Skill。无法读取或交付时失败关闭。详见 当前场景所需完整约束。
 
 ## 2. 四维任务路由
 
@@ -359,7 +362,7 @@ L3 必须有稳定的持久施工契约，并补充方案比较、公共兼容�
 
 ```text
 python <skill>/scripts/coding.py new-change --root <repo> \
-  --id CHG-YYYYMMDD-short-name --title <title> --owner <owner> \
+  --slug short-name --title <title> --owner <owner> \
   --branch <branch> --level L2 --area <area> --path <path>
 ```
 
