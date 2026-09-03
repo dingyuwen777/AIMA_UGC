@@ -19,9 +19,9 @@ from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfig
 from aima_ugc.bootstrap.analysis_concurrent_worker import (
     ConcurrentPostgresContentAnalysisJobExecutor,
 )
-from aima_ugc.bootstrap.analysis_worker import (
-    PostgresContentAnalysisPlanJobExecutor,
-    create_analysis_job_terminal_callback,
+from aima_ugc.bootstrap.analysis_high_throughput_planner import (
+    HighThroughputContentAnalysisPlanJobExecutor,
+    create_high_throughput_analysis_job_terminal_callback,
 )
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
@@ -153,8 +153,8 @@ def _runtime(tmp_path: Path):  # type: ignore[no-untyped-def]
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, audit_events "
-            "RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, audit_events, "
+            "provider_configs RESTART IDENTITY CASCADE"
         )
     return runtime
 
@@ -242,7 +242,7 @@ def _seed_contents(client: TestClient, runtime) -> tuple[UUID, ...]:  # type: ig
 
 
 def _analysis_registry(runtime, llm: _ConcurrentFakeLLM) -> JobRegistry:  # type: ignore[no-untyped-def]
-    """注册真实 Planner + 新并发 Executor，仅把外部 LLM Port 替换为线程安全 Fake。"""
+    """注册正式高吞吐 Planner + 并发 Executor，仅把外部 LLM Port 替换为线程安全 Fake。"""
 
     session = runtime.database.new_session()
     try:
@@ -257,7 +257,7 @@ def _analysis_registry(runtime, llm: _ConcurrentFakeLLM) -> JobRegistry:  # type
         llm=llm,
     )
     registry = JobRegistry()
-    callback = create_analysis_job_terminal_callback(runtime)
+    callback = create_high_throughput_analysis_job_terminal_callback(runtime)
     register_content_analysis_job(
         registry,
         ContentAnalysisJobHandler(
@@ -268,7 +268,7 @@ def _analysis_registry(runtime, llm: _ConcurrentFakeLLM) -> JobRegistry:  # type
         ),
         terminal_callback=callback,
         planner_handler=ContentAnalysisPlanJobHandler(
-            PostgresContentAnalysisPlanJobExecutor(runtime)
+            HighThroughputContentAnalysisPlanJobExecutor(runtime)
         ),
         planner_terminal_callback=callback,
     )
