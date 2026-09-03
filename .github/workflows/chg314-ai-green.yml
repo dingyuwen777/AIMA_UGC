@@ -61,14 +61,34 @@ jobs:
           npm --prefix frontend run generate:api
           uv run python scripts/contracts/generate.py --check
 
-      - name: Verify targeted backend and frontend Green
+      - name: Backend Contract Green
         shell: bash
         run: |
           set -euo pipefail
           uv run pytest tests/api/test_frontend_reliability_contracts.py -q
+
+      - name: Frontend Unit Green
+        shell: bash
+        run: |
+          set -euo pipefail
           npm --prefix frontend run test -- --run tests/analysis-all-scope.spec.ts
+
+      - name: Frontend Lint Green
+        shell: bash
+        run: |
+          set -euo pipefail
           npm --prefix frontend run lint
+
+      - name: Frontend Typecheck Green
+        shell: bash
+        run: |
+          set -euo pipefail
           npm --prefix frontend run typecheck
+
+      - name: Browser All-scope Green
+        shell: bash
+        run: |
+          set -euo pipefail
           npm --prefix frontend exec playwright test e2e/analysis-all-scope.spec.ts
 
       - name: Commit AI all-scope Green implementation
