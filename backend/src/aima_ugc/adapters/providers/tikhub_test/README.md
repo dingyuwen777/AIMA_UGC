@@ -65,11 +65,7 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 - [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env.example`](.env.example)
 
-为同目录：
-
-```text
-.env
-```
+为同目录下名为 .env 的本地环境变量文件。该文件由使用者自行创建，不属于 Git 仓库文件。
 
 当前示例：
 
@@ -79,7 +75,7 @@ TIKHUB_API_KEY=你的真实密钥
 TIKHUB_TIMEOUT_SECONDS=300
 ```
 
-`.env` 已被 Git 忽略。不要把真实 API Key 写进源码、README、Issue、日志或提交历史。
+.env 已被 Git 忽略。不要把真实 API Key 写进源码、README、Issue、日志或提交历史。
 
 生产 `TikHubHttpTransport` 当前允许的 HTTPS Host 以：
 
@@ -111,7 +107,7 @@ base_url 与当前调试 .env 一致
 
 ## 3. 关键词怎么传
 
-关键词是本次人工调试参数，不放在 `.env`。
+关键词是本次人工调试参数，不放在本地 .env 环境变量文件中。
 
 单关键词：
 
@@ -216,7 +212,7 @@ result = run_xiaohongshu_accounts(
 
 - [`backend/src/aima_ugc/adapters/providers/tikhub_test/xiaohongshu_accounts_test.py`](xiaohongshu_accounts_test.py)
 
-当前文件预置的五个目标账号是：
+当前文件预置并启用以下六个候选账号；需要缩小范围时，直接注释不需要的账号行：
 
 | 官号名称 | 小红书号 |
 | --- | --- |
@@ -225,16 +221,21 @@ result = run_xiaohongshu_accounts(
 | 爱玛东2楼 | `11132750536` |
 | 我是玛小爱 | `1092546221` |
 | 元宇宙女孩的实验室 | `6758835472` |
+| 爱玛黑翼BWG | `63025176363` |
 
 默认：
 
 ```text
 START_DATE = 2026-08-01
-END_DATE = 运行当天的北京时间日期
+END_DATE = 2026-08-31
 INCLUDE_COMMENTS = true
 INCLUDE_REPLIES = true
 COMMENT_MODE = all
+MAX_COMMENTS_PER_CONTENT = 1000
+MAX_REPLIES_PER_ROOT = 20
 ```
+
+`all` 表示评论和回复数量目标会被忽略，持续翻页到 Provider 明确耗尽或分页硬保护触发。全部常用参数集中在该文件顶部，每项旁边都有中文说明；如果改为 `COMMENT_MODE = "limited"`，当前 `MAX_COMMENTS_PER_CONTENT = 1000` 会限制每篇笔记的一级评论数量目标，`MAX_REPLIES_PER_ROOT = 20` 会限制每条一级评论的二级回复数量目标。
 
 账号身份规则：
 
@@ -250,11 +251,7 @@ COMMENT_MODE = all
 → get_user_posted_notes
 ```
 
-只有昵称且存在多个同名候选时会失败，不会默认选择第一条。已解析的稳定公开账号身份会缓存到：
-
-```text
-output/xiaohongshu/resolved_accounts.json
-```
+只有昵称且存在多个同名候选时会失败，不会默认选择第一条。已解析的稳定公开账号身份会写入运行时输出树中的 `resolved_accounts.json` 缓存；该缓存由程序生成，不属于 Git 仓库文件。
 
 缓存不保存 API Key。
 
@@ -470,7 +467,8 @@ output/
          │  ├─ contents.jsonl
          │  └─ comments.jsonl
          ├─ raw_data/
-         │  └─ xiaohongshu_raw_data.xlsx
+         │  ├─ xiaohongshu_raw_data.xlsx
+         │  └─ xiaohongshu_comments_for_labeling.xlsx  # 手动转换后才生成
          └─ run_summary.json
 ```
 
@@ -484,6 +482,28 @@ output/
 - `resolved_accounts.json`：账号模式的稳定公开身份解析缓存，不含 Secret。
 
 数据库模式不会删除这些本地文件。
+
+### 指定账号运行遇到单篇 HTTP 错误时怎么办
+
+指定账号人工采集把 Detail、Comments 和 SubComments 的 HTTP 错误隔离在当前笔记或当前分页，不让它中断整次运行：
+
+```text
+Detail 失败
+→ 保存失败 Raw 和关联信息
+→ 用账号笔记列表中已映射的内容生成 coverage=unavailable 的结果
+→ 继续下一篇笔记
+
+Comments 某页失败
+→ 保留笔记详情和此前成功的评论页
+→ 把评论 coverage 标记为 partial
+→ 继续下一篇笔记
+
+SubComments 某页失败
+→ 保留一级评论和此前成功的二级回复
+→ 继续其他评论及后续笔记
+```
+
+这里的“继续”不是把错误伪装成成功，也不会在一次调用里隐藏自动网络重试。运行结束后，`run_summary.json` 仍会把总状态记为 `completed_with_errors`、把账号记为 `partial`，并在 `content_failures` 与账号 `note_failures` 中保留失败阶段、HTTP 状态、请求关联 ID 和 Raw 文件位置。账号解析或账号笔记列表本身失败时只结束当前账号，配置了其他账号时仍继续后续账号。
 
 ### 本地 Raw 与正式 Raw Artifact 的区别
 
@@ -540,6 +560,51 @@ Canonical Content / Comment
 - [`backend/src/aima_ugc/platform/export/excel.py`](../../../platform/export/excel.py)
 
 Excel 不是 Raw，不作为数据库回灌事实源。
+
+### 把小红书评论转换为离线打标输入
+
+共享导出的三 Sheet 工作簿便于人工检查，但现有离线导入/打标入口读取的是
+`aima-monitoring-excel.v1` 的 `文章` Sheet。需要临时分析 TikHub 抓到的小红书评论时，调用
+[`backend/src/aima_ugc/adapters/providers/tikhub_test/excel.py`](excel.py) 中的转换函数：
+
+```python
+from pathlib import Path
+
+from aima_ugc.adapters.providers.tikhub_test.excel import (
+    convert_xiaohongshu_comments_to_labeling_excel,
+)
+
+summary = convert_xiaohongshu_comments_to_labeling_excel(
+    input_path=Path(
+        "backend/src/aima_ugc/adapters/providers/tikhub_test/output/"
+        "xiaohongshu/runs/<run-id>/raw_data/xiaohongshu_raw_data.xlsx"
+    )
+)
+print(summary.output_path)
+print(summary.comment_rows, summary.blank_comment_rows)
+```
+
+未传 `output_path` 时，结果写到源文件同目录的
+`xiaohongshu_comments_for_labeling.xlsx`。转换链是：
+
+```text
+评论 Sheet
+→ 按内容ID关联内容 Sheet 的原笔记标题
+→ 每条一级/二级评论各生成一行
+→ 文章 Sheet
+→ 现有 Excel 导入/离线打标入口
+```
+
+评论 ID 写入“文章编号”，评论正文写入“内文”，原笔记标题写入“标题”。“原文链接”故意留空：
+现有导入器会优先从小红书笔记 URL 解析身份，如果把同一笔记 URL 写给多条评论，它们会被误认成同一条记录。
+没有文本的评论不会导致整份文件失败，也不会被丢弃；目标“内文”保持为空，并计入
+`blank_comment_rows`。
+
+转换函数会先完整校验 Sheet、表头、平台、内容关联和评论 ID 唯一性，通过后才写临时文件，
+重新打开核对行数后再发布目标文件。生成结果可配置给
+[`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](../imports_test/test.py) 的
+`INPUT_XLSX_FILES`。这只是人工离线转换：当前正式 AI 运行仍以内容为分析对象，不代表评论打标已经进入
+数据库、Worker 或公共 API。
 
 ## 9. 显式 PostgreSQL 模式
 
@@ -685,6 +750,7 @@ Run / Scope
 | 改正式详情/评论是否继续抓 | Collection Decision，不在人工入口复制规则 |
 | 改账号人工 `limited/all` 策略 | [`backend/src/aima_ugc/adapters/providers/tikhub_test/operations/xiaohongshu_accounts.py`](operations/xiaohongshu_accounts.py)，不得修改正式 Decision Contract |
 | 改 Excel 列/安全/样式 | [`backend/src/aima_ugc/platform/export/excel.py`](../../../platform/export/excel.py) + Export Contract |
+| 把小红书评论转为离线打标输入 | [`backend/src/aima_ugc/adapters/providers/tikhub_test/excel.py`](excel.py)；不要在这里复制 AI 打标实现 |
 | 改数据库调试装配 | [`backend/src/aima_ugc/bootstrap/tikhub_test_database.py`](../../../bootstrap/tikhub_test_database.py)，同时保持正式来源链 |
 
 ## 12. 测试与真实 Probe
@@ -711,7 +777,8 @@ Fake Transport 纵切 / PostgreSQL integration
 - 账号 Discovery → Detail → Comments → Canonical JSONL → Excel；
 - `all` 在正数 `comment_count` 已达到但 Provider 仍 `has_more=true` 时继续翻一级评论；
 - `all` 在正数 `reply_count` 已达到但 Provider 仍 `has_more=true` 时继续翻二级回复；
-- 回复触达 `max_reply_pages_per_root` 边界时保守标记 `partial`，避免假完整。
+- 回复触达 `max_reply_pages_per_root` 边界时保守标记 `partial`，避免假完整；
+- Detail、Comments、SubComments 的 HTTP 错误保持局部，保留已成功数据并继续后续笔记，同时在摘要中留下部分完成证据。
 
 真实接口只在明确需要验证 Provider 当前行为时做受限 Probe：
 
@@ -736,6 +803,6 @@ Fake Transport 纵切 / PostgreSQL integration
 - 不把 Excel 当 Raw 或回灌格式；
 - 不实现自动 App/Web fallback；
 - 不把 `state.json` / `resolved_accounts.json` 当业务数据库；
-- 不提交真实 `.env`；
+- 不提交真实的本地 .env 环境变量文件；
 - 不把人工页数限制说成生产预算功能；
 - 不把指定账号人工文件入口直接描述成正式官号监控/调度能力。

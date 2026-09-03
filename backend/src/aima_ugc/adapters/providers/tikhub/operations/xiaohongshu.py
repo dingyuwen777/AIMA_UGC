@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -120,20 +121,25 @@ class XiaohongshuCommentPagination:
         page_area: str,
         body: dict[str, Any],
     ) -> XiaohongshuCommentPagination:
+        """解析评论分页状态，并兼容 Provider 返回的 JSON 字符串 cursor。"""
         data = _find_mapping(body, required_any=("comments", "cursor", "index", "pageArea"))
         comments = data.get("comments")
         if not isinstance(comments, list) or not comments:
             return cls(previous_cursor, previous_index, page_area, False, "empty_page")
 
         cursor_value = data.get("cursor")
-        cursor_mapping = cursor_value if isinstance(cursor_value, dict) else {}
+        cursor_mapping = _decode_cursor_mapping(cursor_value)
         cursor = _string(cursor_mapping.get("cursor")) or _string(cursor_value) or ""
         index = _integer(
             cursor_mapping.get("index"),
             default=_integer(data.get("index"), default=previous_index),
         )
         next_page_area = (
-            _string(data.get("pageArea")) or _string(data.get("page_area")) or page_area
+            _string(cursor_mapping.get("pageArea"))
+            or _string(cursor_mapping.get("page_area"))
+            or _string(data.get("pageArea"))
+            or _string(data.get("page_area"))
+            or page_area
         )
 
         if cursor == previous_cursor and index == previous_index:
@@ -400,6 +406,21 @@ def _search_item_id(item: object) -> str:
     if isinstance(note, dict):
         return _string(note.get("id") or note.get("note_id")) or ""
     return _string(item.get("id") or item.get("note_id")) or ""
+
+
+def _decode_cursor_mapping(value: object) -> dict[str, object]:
+    """兼容 Provider 把分页状态作为 JSON 字符串返回的响应形态。"""
+    if isinstance(value, dict):
+        return {key: item for key, item in value.items() if isinstance(key, str)}
+    if not isinstance(value, str):
+        return {}
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(decoded, dict):
+        return {}
+    return {key: item for key, item in decoded.items() if isinstance(key, str)}
 
 
 def _string(value: object) -> str | None:

@@ -234,6 +234,16 @@ GET /api/v1/xiaohongshu/app_v2/get_note_comments
 data.data.comments[]
 ```
 
+真实分页状态存在两种兼容形态：
+
+```text
+data.data.cursor + data.data.index + data.data.pageArea
+或
+data.data.cursor = {"cursor":"...","index":2,"pageArea":"ALL"} 的 JSON 字符串
+```
+
+后一种形态必须先解码，再把 `cursor`、`index`、`pageArea` 分别传入下一页 `get_note_comments` 请求。把整个 JSON 字符串原样作为 cursor、同时沿用旧 index/pageArea，会让续页错误地返回空列表。当前解析 Owner 是 [`backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu.py)，共享 Runtime 负责把解析后的状态构造成下一页请求。
+
 根评论可以观察到：
 
 - 评论 ID；
@@ -265,6 +275,8 @@ GET /api/v1/xiaohongshu/app_v2/get_note_sub_comments
 ```text
 data.data.comments[]
 ```
+
+二级回复复用同一个分页状态解析器；其 `data.data.cursor` 也可能是包含 `cursor` 与 `index` 的 JSON 字符串，下一页 `get_note_sub_comments` 必须拆分后传参。
 
 Fixture：
 

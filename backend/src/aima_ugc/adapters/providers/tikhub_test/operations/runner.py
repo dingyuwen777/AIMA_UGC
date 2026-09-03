@@ -102,6 +102,8 @@ class _TikHubHttpStatusError(RuntimeError):
 
 
 class _TikHubDebugRunner:
+    _continue_after_item_http_error = False
+
     def __init__(
         self,
         *,
@@ -297,6 +299,7 @@ class _TikHubDebugRunner:
         search_content: CanonicalContentV1,
         search_raw_locator: str,
     ) -> None:
+        """按正式决策链处理单条内容，并在允许时把局部 HTTP 失败降级为部分结果。"""
         content_id = search_content.external_content_id
         previous_exists = self.state.has_content(self.platform, content_id)
         previous_count = self.state.previous_comment_count(self.platform, content_id)
@@ -318,20 +321,15 @@ class _TikHubDebugRunner:
                     keyword=keyword,
                 )
             except _TikHubHttpStatusError as exc:
-                if (
+                if self._continue_after_item_http_error or (
                     self.platform == "douyin"
                     and detail_call.operation == "fetch_one_video_v3"
                     and exc.status_code == 400
                 ):
-                    self._content_failures.append(
-                        {
-                            "external_content_id": content_id,
-                            "stage": "detail",
-                            "operation": exc.operation,
-                            "status_code": exc.status_code,
-                            "external_request_id": exc.external_request_id,
-                            "raw_file": exc.raw_file,
-                        }
+                    self._record_content_http_failure(
+                        content_id=content_id,
+                        stage="detail",
+                        error=exc,
                     )
                     self._blocks.append(
                         UnifiedDataExcelV1(
@@ -481,6 +479,7 @@ class _TikHubDebugRunner:
         action: str,
         target: int | None,
     ) -> tuple[list[UnifiedDataExcelCommentV1], str]:
+        """分页采集一级评论，保留成功页并显式返回完整或部分覆盖状态。"""
         content_id = content.external_content_id
         pagination: dict[str, object] | None = None
         mapped_rows: list[UnifiedDataExcelCommentV1] = []
@@ -497,7 +496,22 @@ class _TikHubDebugRunner:
                 external_content_id=content_id,
                 state=pagination,
             )
-            body, raw_record = self._send(transport, call, keyword=keyword)
+            try:
+                body, raw_record = self._send(transport, call, keyword=keyword)
+            except _TikHubHttpStatusError as exc:
+                if not self._continue_after_item_http_error:
+                    raise
+                self._record_content_http_failure(
+                    content_id=content_id,
+                    stage="comments",
+                    error=exc,
+                )
+                expected = (
+                    str(content.metrics.comment_count)
+                    if content.metrics.comment_count is not None
+                    else "unknown"
+                )
+                return mapped_rows, f"partial {root_total}/{expected} (http_{exc.status_code})"
             items = tikhub_runtime.extract_comment_items(self.platform, body)
             mapped_roots: list[CanonicalCommentV1] = []
             page_comment_ids: list[str] = []
@@ -604,6 +618,7 @@ class _TikHubDebugRunner:
         root: CanonicalCommentV1,
         fetch_all: bool = False,
     ) -> list[UnifiedDataExcelCommentV1]:
+        """分页采集单条一级评论的回复，并在容错模式下保留已成功回复。"""
         reply_decision = self.decision_service.decide_reply(
             ReplyDecisionRequestV1(
                 reply_count=root.metrics.reply_count,
@@ -624,7 +639,17 @@ class _TikHubDebugRunner:
                 root_comment_id=root.external_comment_id,
                 state=pagination,
             )
-            body, raw_record = self._send(transport, call, keyword=keyword)
+            try:
+                body, raw_record = self._send(transport, call, keyword=keyword)
+            except _TikHubHttpStatusError as exc:
+                if not self._continue_after_item_http_error:
+                    raise
+                self._record_content_http_failure(
+                    content_id=content.external_content_id,
+                    stage="replies",
+                    error=exc,
+                )
+                return mapped_rows
             items = tikhub_runtime.extract_sub_comment_items(self.platform, body)
             for item_index, raw_item in enumerate(items):
                 item_locator = f"replies.page[{page_no}].items[{item_index}]"
@@ -695,6 +720,7 @@ class _TikHubDebugRunner:
         *,
         keyword: str,
     ) -> tuple[dict[str, Any], RawOutputRecord]:
+        """发送单次 Provider 请求、先落 Raw，再按调用方策略分类 HTTP 错误。"""
         self._request_no += 1
         if self._database is None:
             response = transport.send(call.transport_request(self.provider_config.api_key))
@@ -761,6 +787,9 @@ class _TikHubDebugRunner:
         if status_code is not None and status_code >= 400:
             message = f"TikHub {self.platform} {call.operation} 返回 HTTP {status_code}"
             if (
+                self._continue_after_item_http_error
+                and call.business_operation in {"content_detail", "comments", "sub_comments"}
+            ) or (
                 call.platform == "douyin"
                 and call.operation == "fetch_one_video_v3"
                 and status_code == 400
@@ -776,6 +805,25 @@ class _TikHubDebugRunner:
         if not isinstance(response.body, dict):
             raise RuntimeError(f"TikHub {self.platform} {call.operation} 返回 JSON 顶层不是对象")
         return cast(dict[str, Any], response.body), raw_record
+
+    def _record_content_http_failure(
+        self,
+        *,
+        content_id: str,
+        stage: Literal["detail", "comments", "replies"],
+        error: _TikHubHttpStatusError,
+    ) -> None:
+        """记录已落盘的内容级 HTTP 失败，供容错运行保留安全诊断信息。"""
+        self._content_failures.append(
+            {
+                "external_content_id": content_id,
+                "stage": stage,
+                "operation": error.operation,
+                "status_code": error.status_code,
+                "external_request_id": error.external_request_id,
+                "raw_file": error.raw_file,
+            }
+        )
 
     def _discover_candidate(
         self,

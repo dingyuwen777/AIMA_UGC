@@ -154,3 +154,68 @@ def test_comment_pagination_preserves_cursor_index_and_page_area() -> None:
     )
     assert stalled.should_continue is False
     assert stalled.stop_reason == "pagination_not_advanced"
+
+
+def test_comment_pagination_decodes_json_encoded_cursor_state() -> None:
+    """一级评论和二级回复都应拆解 JSON 字符串形式的 cursor 状态。"""
+    pagination = XiaohongshuCommentPagination.from_response(
+        previous_cursor="",
+        previous_index=0,
+        page_area="UNFOLDED",
+        body={
+            "data": {
+                "data": {
+                    "cursor": json.dumps(
+                        {
+                            "cursor": "comment-cursor-2",
+                            "index": 2,
+                            "pageArea": "ALL",
+                        }
+                    ),
+                    "has_more": True,
+                    "comments": [{"id": "comment-1"}],
+                }
+            }
+        },
+    )
+
+    assert pagination.should_continue is True
+    assert pagination.cursor == "comment-cursor-2"
+    assert pagination.index == 2
+    assert pagination.page_area == "ALL"
+    next_request = build_note_comments_request(
+        note_id="note-1",
+        cursor=pagination.cursor,
+        index=pagination.index,
+        page_area=pagination.page_area,
+    )
+    assert next_request.params["cursor"] == "comment-cursor-2"
+    assert next_request.params["index"] == 2
+    assert next_request.params["pageArea"] == "ALL"
+
+    sub_comment_pagination = XiaohongshuCommentPagination.from_response(
+        previous_cursor="",
+        previous_index=1,
+        page_area="UNFOLDED",
+        body={
+            "data": {
+                "data": {
+                    "cursor": json.dumps({"cursor": "sub-comment-cursor-2", "index": 3}),
+                    "has_more": True,
+                    "comments": [{"id": "sub-comment-1"}],
+                }
+            }
+        },
+    )
+
+    assert sub_comment_pagination.should_continue is True
+    assert sub_comment_pagination.cursor == "sub-comment-cursor-2"
+    assert sub_comment_pagination.index == 3
+    next_sub_request = build_sub_comments_request(
+        note_id="note-1",
+        comment_id="comment-1",
+        cursor=sub_comment_pagination.cursor,
+        index=sub_comment_pagination.index,
+    )
+    assert next_sub_request.params["cursor"] == "sub-comment-cursor-2"
+    assert next_sub_request.params["index"] == 3

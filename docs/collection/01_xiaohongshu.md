@@ -150,6 +150,8 @@ Operation 中的 Extractor 是生产字段事实；不要从本文复制一段 J
 
 账号 Discovery 同样由 `operations/xiaohongshu_accounts.py` 的 Extractor/Pagination 负责 Provider shape，人工入口不得手写 Provider JSON 路径或 cursor。
 
+当前 `get_user_posted_notes` 真实响应中的笔记发布时间字段为 `create_time`。共享小红书 Mapper 会把它归一化为 Canonical `published_at`，账号人工采集再用该时间执行日期过滤；不能因为账号列表字段名与关键词搜索不同就把发布时间当成缺失。
+
 ## 5. Search 与账号分页
 
 当前关键词 `XiaohongshuSearchPagination` 会维护：
@@ -249,6 +251,8 @@ data.data.comments[]
 data.data.comments[]
 ```
 
+一级评论和二级回复的下一页状态不能只取 `cursor` 字面值。真实 App V2 响应既可能分别返回 `cursor`、`index`、`pageArea`，也可能把这几个字段编码进一个 JSON 字符串形式的 `cursor`。生产 Operation 会先解码这一状态，再由 Runtime 把 `cursor`、`index`、`pageArea` 分别传给下一页请求；把整段 JSON 字符串直接当作 cursor 会造成第二页返回空列表。
+
 根评论 Canonical：
 
 ```text
@@ -258,9 +262,9 @@ parent_comment_id = null
 
 二级回复的 parent 只有 Provider 有明确直接父 ID 时才写，不能根据用户名/数组位置猜。
 
-### 人工账号 `comment_mode="all"`
+### 人工账号评论模式
 
-指定账号人工采集默认使用 `all`。它与生产日常增量策略不同：
+指定账号人工配置入口当前默认使用 `all`，评论和回复数量目标会被忽略，只由 Provider 耗尽或分页硬保护停止。需要限制单篇笔记的请求范围时可以显式改为 `limited`，再由 `MAX_COMMENTS_PER_CONTENT` 和 `MAX_REPLIES_PER_ROOT` 控制数量目标；它与生产日常增量策略不同：
 
 ```text
 正数或未知 comment_count / reply_count
