@@ -13,6 +13,7 @@ import TaskProgressBar from '../../../../shared/TaskProgressBar.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
+import { useTaskCenterStore } from '../../../task-center'
 import {
   relevanceReviewDecision,
   type RelevanceReviewDecision,
@@ -25,10 +26,14 @@ import VoicePlazaFilters from './components/VoicePlazaFilters.vue'
 import VoicePlazaTable from './components/VoicePlazaTable.vue'
 
 const store = useVoicePlazaStore()
+const taskCenter = useTaskCenterStore()
 const route = useRoute()
 const analysisOpen = ref(false)
 const exportOpen = ref(false)
 const notice = ref<string | null>(null)
+const activeAnalysisRuns = computed(() => store.analysisRuns.filter(
+  (run) => run.status === 'queued' || run.status === 'running' || run.status === 'cancelling',
+))
 const selectedReviewIds = computed<Record<RelevanceReviewDecision, string[]>>(() => {
   const grouped: Record<RelevanceReviewDecision, string[]> = {
     relevant: [],
@@ -83,6 +88,7 @@ async function refreshPage(): Promise<void> {
     store.refreshAnalysisCapabilities(),
     store.refreshAnalysisRuns(),
   ])
+  void taskCenter.refresh(true)
 }
 
 /** 提交当前筛选并清空旧选择，避免跨查询误操作。 */
@@ -124,17 +130,21 @@ async function reviewSelected(decision: RelevanceReviewDecision): Promise<void> 
   if (result) showNotice(relevanceNotice(decision, result))
 }
 
-/** 使用预检冻结信息确认创建 Analysis Run。 */
+/** 使用预检冻结信息确认创建 Analysis Run，并同步全局任务中心。 */
 async function submitAnalysis(): Promise<void> {
   const count = await store.confirmAnalysis()
   if (count === null) return
   analysisOpen.value = false
   showNotice(`已创建 AI Analysis Run，冻结 ${count} 条内容。`)
+  void taskCenter.refresh(true)
 }
 
-/** 请求取消仍处于可取消状态的 Analysis Run。 */
+/** 请求取消仍处于可取消状态的 Analysis Run，并同步全局任务中心。 */
 async function cancelAnalysis(runId: string): Promise<void> {
-  if (await store.cancelRun(runId)) showNotice('已请求取消 Analysis Run。')
+  if (await store.cancelRun(runId)) {
+    showNotice('已请求取消 Analysis Run。')
+    void taskCenter.refresh(true)
+  }
 }
 
 /** 创建 selected/page/query 三种既有范围之一的 Excel 导出。 */
@@ -145,6 +155,7 @@ async function submitExport(
   const count = await store.createExport(scope, columns)
   if (count === null) return
   showNotice(`已创建 Excel 导出 Job，冻结 ${count} 条内容。`)
+  void taskCenter.refresh(true)
 }
 
 /** 下载已经就绪且仍在保留期内的导出 Artifact。 */
@@ -281,16 +292,24 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </AimaFeedbackBanner>
 
       <section
-        v-if="store.analysisRuns.length && (!store.listError || store.items.length > 0)"
-        class="run-history"
-        aria-label="AI Analysis Run 历史"
+        v-if="activeAnalysisRuns.length && (!store.listError || store.items.length > 0)"
+        class="active-analysis-runs"
+        aria-label="AI 打标活动任务"
       >
-        <header>
-          <strong>AI Analysis Run 历史</strong>
-          <span>不同 Run 结果均保留；Current 按创建顺序选择</span>
+        <header class="active-analysis-heading">
+          <div>
+            <strong>AI 打标任务</strong>
+            <span>{{ activeAnalysisRuns.length }} 个活动 Run；历史与其它后台任务统一在任务中心查看。</span>
+          </div>
+          <button
+            type="button"
+            @click="taskCenter.openCenter()"
+          >
+            查看任务中心
+          </button>
         </header>
         <article
-          v-for="run in store.analysisRuns"
+          v-for="run in activeAnalysisRuns"
           :key="run.id"
         >
           <span
@@ -299,10 +318,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
           >{{ runStatusLabels[run.status] }}</span>
           <div class="run-info">
             <strong>Run #{{ run.sequence_no }} · {{ runStatusLabels[run.status] }}</strong>
-            <span>{{ run.target_count }} 条 · {{ run.shard_count }} Shard · {{ run.model }}</span>
-            <small>
-              {{ analysisRunProgressDetail(run) }}<template v-if="run.error_code"> · {{ run.error_code }}</template>
-            </small>
+            <small>{{ analysisRunProgressDetail(run) }}</small>
           </div>
           <TaskProgressBar
             compact
@@ -310,7 +326,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             :value="analysisRunProgress(run)"
             :detail="analysisRunProgressDetail(run)"
           />
-          <span class="run-counts">完成 {{ run.stats?.succeeded ?? 0 }} / 失败 {{ run.stats?.failed ?? 0 }} / 取消 {{ run.stats?.cancelled ?? 0 }}</span>
+          <span class="run-counts">成功 {{ run.stats?.succeeded ?? 0 }} · 失败 {{ run.stats?.failed ?? 0 }}</span>
           <AimaButton
             v-if="run.status === 'queued' || run.status === 'running'"
             size="small"
@@ -473,28 +489,24 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .capability-warning span,
 .taxonomy-warning span,
 .page-error span { font-size: 10px; }
-.run-history { display: grid; gap: 8px; padding: 12px 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); background: var(--aima-surface); }
-.run-history header { display: flex; min-height: 20px; align-items: center; justify-content: space-between; gap: 16px; }
-.run-history header strong { color: var(--aima-text); font-size: 13px; }
-.run-history header span { color: var(--aima-text-muted); font-size: 11px; }
-.run-history article { display: grid; min-height: 40px; grid-template-columns: auto minmax(240px, 315px) minmax(260px, 360px) auto auto; align-items: center; gap: 12px; }
+.active-analysis-runs { display: grid; gap: 7px; padding: 10px 14px; border: 1px solid #dbe7ff; border-radius: var(--aima-radius-control); background: #fbfdff; }
+.active-analysis-heading { display: flex; min-height: 22px; align-items: center; justify-content: space-between; gap: 16px; }
+.active-analysis-heading > div { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+.active-analysis-heading strong { color: var(--aima-text); font-size: 12px; }
+.active-analysis-heading span { overflow: hidden; color: var(--aima-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.active-analysis-heading button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 10px; white-space: nowrap; }
+.active-analysis-heading button:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: 2px; }
+.active-analysis-runs article { display: grid; min-height: 36px; grid-template-columns: auto minmax(180px, 250px) minmax(220px, 1fr) auto auto; align-items: center; gap: 10px; }
 .run-status { display: inline-flex; min-height: 20px; align-items: center; padding: 2px 8px; border-radius: 4px; color: #1677ff; background: #e8f3ff; font-size: 10px; font-weight: 500; }
-.run-status--succeeded { color: #12804b; background: #e8fff3; }
-.run-status--failed,
-.run-status--partial_failed { color: #f04438; background: #fff1f0; }
-.run-status--cancelled,
 .run-status--cancelling { color: var(--aima-text-muted); background: #f2f4f7; }
-.run-info { display: grid; min-width: 0; gap: 3px; }
+.run-info { display: grid; min-width: 0; gap: 2px; }
 .run-info strong,
-.run-info span,
 .run-info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-info strong { color: var(--aima-text); font-size: 11px; font-weight: 500; }
-.run-info span { color: var(--aima-text-secondary); font-size: 10px; }
 .run-info small { color: var(--aima-text-muted); font-size: 9px; }
-.run-history article :deep(.task-progress) { width: 100%; }
-.run-history article :deep(.task-progress__heading) { display: none; }
-.run-history article :deep(.task-progress__track) { height: 8px; }
-.run-history article :deep(.task-progress__fill) { background: var(--aima-primary); }
+.active-analysis-runs article :deep(.task-progress) { width: 100%; }
+.active-analysis-runs article :deep(.task-progress__heading) { display: none; }
+.active-analysis-runs article :deep(.task-progress__track) { height: 6px; }
 .run-counts { color: var(--aima-text-muted); font-size: 10px; white-space: nowrap; }
 .list-heading { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 16px; }
 .selection-actions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -513,7 +525,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .pagination :deep(.aima-button) { height: 34px; }
 .notice { position: fixed; z-index: 200; top: 76px; left: 50%; min-width: 280px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
 @media (max-width: 1280px) {
-  .run-history article { grid-template-columns: auto minmax(220px, 1fr) minmax(220px, 1fr); }
+  .active-analysis-runs article { grid-template-columns: auto minmax(180px, 1fr) minmax(180px, 1fr); }
   .run-counts { grid-column: 2; }
 }
 </style>

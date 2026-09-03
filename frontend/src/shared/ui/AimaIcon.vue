@@ -5,6 +5,7 @@ export type AimaIconName =
   | 'runtime'
   | 'strategy'
   | 'settings'
+  | 'task'
   | 'refresh'
   | 'plus'
   | 'search'
@@ -74,6 +75,19 @@ withDefaults(defineProps<{
         cy="12"
         r="3"
       /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+    </template>
+    <template v-else-if="name === 'task'">
+      <rect
+        x="4"
+        y="5"
+        width="16"
+        height="15"
+        rx="2"
+      /><path d="M8 3v4M16 3v4M8 11h8M8 15h5" /><circle
+        cx="17"
+        cy="15"
+        r="1.5"
+      />
     </template>
     <template v-else-if="name === 'refresh'">
       <path d="M20 7v5h-5" /><path d="M18.4 15A7.5 7.5 0 1 1 19 8.1L20 12" />

@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 
 import NotificationInbox from '../../features/identity/NotificationInbox.vue'
 import { useIdentityStore } from '../../features/identity/store'
+import { TaskCenter } from '../../features/task-center'
 import AimaIcon, { type AimaIconName } from '../../shared/ui/AimaIcon.vue'
 
 withDefaults(defineProps<{ sectionTitle?: string }>(), { sectionTitle: '采集运行中心' })
@@ -80,6 +81,7 @@ onMounted(() => void identity.ensurePrincipal())
               {{ identity.loading ? '重试中…' : '重试' }}
             </button>
           </div>
+          <TaskCenter />
           <NotificationInbox />
           <div class="principal">
             <strong>{{ identity.principal?.display_name ?? (identity.principalError ? '身份不可用' : '身份加载中') }}</strong>

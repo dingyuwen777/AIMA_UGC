@@ -72,7 +72,7 @@ settings/
 dashboard/
 ```
 
-页面。Analysis Run 当前在声音广场，Data Import Campaign 当前在采集运行中心；后端有对应 API/表不等于应该新建独立路由。
+页面。Analysis Run 的创建与取消仍由声音广场承担，Data Import Campaign 仍由采集运行中心承担；全局任务中心只是 `AppShell` 内的跨页面只读聚合入口，不新增独立 `/jobs` 路由，也不代表后端已经存在一个万能 Task/Job 业务资源。
 
 ---
 
@@ -178,7 +178,7 @@ Pydantic Request/Response
 
 ---
 
-## 5. 当前四个业务 Feature
+## 5. 当前业务与全局 Feature
 
 ### 5.1 `features/import-batches`：采集运行中心 + 统一数据导入
 
@@ -275,12 +275,14 @@ src/features/voice-plaza/
 - Analysis current/stale/pending；
 - 显式选择内容并做 Analysis Run Preview；
 - 创建手动 Analysis Run；
-- 查看 Run 历史、真实进度、成功/失败/取消状态并取消活动 Run；
+- 只在声音记录前显示 `queued / running / cancelling` Analysis Run 的紧凑活动状态、真实进度并允许取消；终态 Run 不再作为历史大卡片持续占据声音广场正文；
 - 同一 Content Version 多轮 Analysis 结果的当前投影；
 - 查看 AI 原判与查询层 `effective_relevance / relevance_source`；
 - 对当前 Content Version 提交人工相关性复核/撤销复核；
 - 创建正式 Excel Export；
 - 查询 Export 状态、真实进度和下载 Artifact。
+
+Analysis Run 的历史、终态和跨页面任务摘要由全局任务中心读取现有 read API 展示；这不改变声音广场对 Analysis Run 创建/取消的业务 Owner，也不改变后端 Analysis Run 的保留策略。
 
 当前新版 Analysis Run 正式开放 `selected` 与 `all` 两种范围。`selected` 保留显式选择 1—1000 条内容的上限；`all` 表示数据库当前全部 Content Current，即使页面没有勾选内容也可以发起，且不受当前筛选和已加载分页影响。前端对 `all` 只发送 `{ scope: 'all' }`，不会先翻页收集全部 ID。页面不负责 Planner/Shard/Current 选择规则，这些由后端 Analysis Domain、PostgreSQL 和 generated Contract 决定。
 
@@ -298,7 +300,30 @@ src/features/voice-plaza/
 
 前端不维护情感、发声类型或标签合法值。Taxonomy 暂不可用时，页面显示带 `request_id` 的独立警告并禁用这些筛选，不把分类错误升级成列表错误；平台、文本、时间等独立筛选和当前内容列表仍可使用。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。
 
-### 5.4 `features/admin-configuration`：管理员业务配置
+### 5.4 `features/task-center`：跨页面后台任务只读聚合
+
+任务中心不是一个新的后端 Job Domain，也没有独立路由。它挂在所有业务页面共同使用的 `AppShell` 右上角，用一个 Drawer 提供跨页面状态入口。
+
+主要文件：
+
+- [`frontend/src/features/task-center/TaskCenter.vue`](src/features/task-center/TaskCenter.vue)
+- [`frontend/src/features/task-center/store.ts`](src/features/task-center/store.ts)
+- [`frontend/src/features/task-center/api.ts`](src/features/task-center/api.ts)
+- [`frontend/src/features/task-center/index.ts`](src/features/task-center/index.ts)
+
+当前聚合三个已经存在的正式 read model：
+
+```text
+Analysis Run
+Collection Runtime
+Data Export Job
+```
+
+其中 Collection Runtime 本身已经是 Excel Import / Collection Run 等运行事实的统一只读投影；任务中心只消费这个投影，不把底层资源合并成新表或新业务状态机。活动任务和最近终态任务统一转换成前端只读 ViewModel，用于状态、进度、时间、错误摘要和业务页面跳转；单个来源暂时失败时保留其它来源与该来源上次成功快照，并显示降级提示。
+
+任务中心的公共跨 Feature 入口只从 [`frontend/src/features/task-center/index.ts`](src/features/task-center/index.ts) 暴露。业务页面可以通过该公共入口请求刷新或打开任务中心，但不能深层导入另一个 Feature 的私有 Store/API，也不能把 Analysis/Collection/Export 的创建与业务状态机搬进任务中心。
+
+### 5.5 `features/admin-configuration`：管理员业务配置
 
 该 Feature 消费 Principal、Vehicle Catalog、Keyword Pack↔车型、Analysis Scheme 和审计 Contract。角色只有 `administrator/user`；[`frontend/src/app/router.ts`](src/app/router.ts) 的守卫负责页面导航体验，真正权限由后端判断。车型选择跨 Collection、Import、声音广场和管理员页复用 [`frontend/src/shared/VehicleMultiSelect.vue`](src/shared/VehicleMultiSelect.vue)。
 
@@ -333,7 +358,7 @@ src/views/HomeView.vue
 src/shared/
 ```
 
-当前 App Shell 只展示已经有真实路由的入口：
+当前 App Shell 只展示已经有真实路由的左侧导航入口：
 
 ```text
 首页
@@ -342,6 +367,16 @@ src/shared/
 采集策略
 管理员配置（仅 administrator）
 ```
+
+右上角全局区域另外承载：
+
+```text
+任务中心
+通知中心
+当前用户
+```
+
+任务中心固定入口只占顶部工具区，不在每个页面正文重复一块“任务历史”；业务页面只在当前任务会直接影响本页操作时显示必要的 contextual 状态，例如声音广场的活动 Analysis Run。通知中心仍负责需要用户关注的消息，任务中心负责后台运行状态，两者不合并语义。
 
 未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
 
@@ -564,13 +599,18 @@ Content 当前版本
 
 ### Analysis Run / Export 一直处理中
 
+先在全局任务中心确认当前状态与业务入口，再进入对应专业页面和后端链路：
+
 ```text
-HTTP
+Task Center 只读摘要
+→ Voice Plaza / Collection Runtime
 → Run / Export 父事实
 → Planner/Shard/Export jobs
 → Worker
 → 对应模块 README / PostgreSQL Appendix
 ```
+
+任务中心不是排障事实源，精确状态仍以现有业务 API、Job 和数据库 Owner 为准。
 
 ---
 
@@ -661,8 +701,8 @@ npm --prefix frontend run test:e2e:fullstack
 当前没有：
 
 - 登录/认证闭环；
-- 独立 Analysis 管理中心（现有 Run 在声音广场）；
-- 独立 Job 管理中心；
+- 独立 Analysis 管理页面；
+- 独立统一 Job 管理页面或统一后端 Task/Job 业务域；全局任务中心只是现有 read model 的跨页 Drawer；
 - 独立 Excel Export 管理中心；
 - 正式 Word 报告中心；
 - Monitoring/Alert/VOC/Ticket/Dashboard 页面。

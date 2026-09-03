@@ -119,7 +119,7 @@ test('车型目录响应缺少 items 时显示错误且不中断页面渲染', a
   expect(pageErrors).toEqual([])
 })
 
-test('Failed Analysis Run 保留后端 error_code', async ({ page }) => {
+test('Failed Analysis Run 在全局任务中心保留后端 error_code', async ({ page }) => {
   await stubStableAuxiliaryRoutes(page)
   await page.route('**/api/v1/contents**', async (route) => {
     await route.fulfill({
@@ -163,7 +163,10 @@ test('Failed Analysis Run 保留后端 error_code', async ({ page }) => {
 
   await page.goto('/voice-plaza')
 
-  const history = page.getByLabel('AI Analysis Run 历史')
-  await expect(history).toBeVisible()
-  await expect(history).toContainText('analysis_shard_failed')
+  await expect(page.getByLabel('AI Analysis Run 历史')).toHaveCount(0)
+  await page.getByRole('button', { name: /任务中心/ }).click()
+  const taskCenter = page.getByRole('complementary', { name: '任务中心' })
+  await expect(taskCenter).toBeVisible()
+  await expect(taskCenter).toContainText('AI 打标 · Run #13')
+  await expect(taskCenter).toContainText('analysis_shard_failed')
 })

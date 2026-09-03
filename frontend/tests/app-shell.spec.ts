@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import AppShell from '../src/app/layouts/AppShell.vue'
 import { useIdentityStore } from '../src/features/identity/store'
 
+/** 渲染带真实 Pinia 身份状态的 AppShell，验证所有业务页共享的全局壳。 */
 async function renderShell(role: 'administrator' | 'user' = 'user'): Promise<string> {
   const routerLink = defineComponent({
     props: {
@@ -58,6 +59,14 @@ describe('AppShell 内网 V1 导航', () => {
     expect(ordinary).not.toContain('href="/admin/configuration"')
     expect(administrator).toContain('href="/admin/configuration"')
     expect(administrator).toContain('管理员配置')
+  })
+
+  it('在全局壳右上角提供独立任务中心入口，而不是要求各页面重复实现', async () => {
+    const html = await renderShell()
+
+    expect(html).toContain('aria-label="任务中心"')
+    expect(html).toContain('data-aima-icon="task"')
+    expect(html).toContain('任务中心')
   })
 
   it('使用代码内 SVG 图标且页面壳尺寸对齐正式桌面基线', async () => {
