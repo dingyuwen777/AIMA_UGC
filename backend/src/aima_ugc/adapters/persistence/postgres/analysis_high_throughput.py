@@ -98,10 +98,15 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
             scheduled_count += target_count
             result = row["result"]
             if row["status"] == "succeeded" and isinstance(result, dict):
-                succeeded = _result_count(result, "succeeded")
-                failed = _result_count(result, "failed")
-                stale = _result_count(result, "stale")
-                if succeeded + failed + stale == target_count:
+                succeeded = _optional_result_count(result, "succeeded")
+                failed = _optional_result_count(result, "failed")
+                stale = _optional_result_count(result, "stale")
+                if (
+                    succeeded is not None
+                    and failed is not None
+                    and stale is not None
+                    and succeeded + failed + stale == target_count
+                ):
                     counts["succeeded"] += succeeded
                     counts["failed"] += failed
                     counts["stale"] += stale
@@ -134,12 +139,12 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
         return counts
 
 
-def _result_count(result: dict[object, object], key: str) -> int:
-    """只接受非布尔、非负整数 Job Result 计数；损坏结果回退到 Item 扫描。"""
+def _optional_result_count(result: dict[object, object], key: str) -> int | None:
+    """读取非负 Job Result 计数；损坏或缺失值返回 None 触发精确 Item 回退扫描。"""
 
     value = result.get(key)
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        return -1_000_000_000
+        return None
     return value
 
 
