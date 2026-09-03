@@ -91,23 +91,24 @@ body:
     id: acceptance_criteria
     attributes:
       label: 验收标准
-      description: 写成可测试、可测量或可核验的完成条件。
+      description: 每条使用稳定 AC1/AC2/... 编号，用可观察、可验证条件定义技术变更完成；关闭 Issue 前按直接 Evidence 逐项回写。
       placeholder: |
-        - [ ] 当……时，应……
-        - [ ] 原有……保持不变
-        - [ ] CI / 运行证据……
+        - [ ] AC1：……行为保持兼容
+        - [ ] AC2：……指标达到……
+        - [ ] AC3：……旧路径安全移除 / 保留
     validations:
       required: true
 
   - type: textarea
-    id: validation_plan
+    id: validation_requirements
     attributes:
-      label: 验证计划
-      description: 计划用哪些最少充分证据验证改动，包括测试、CI、基准、运行验证或人工 Review。
+      label: 验证要求
+      description: 需要哪些单元 / 集成 / E2E、基准、迁移演练、安全检查、部署验证或人工验收才能直接证明 AC？
       placeholder: |
-        - Unit / 静态检查：……
-        - Integration / Runtime：……
-        - Review / CI：……
+        - 单元 / 集成：……
+        - 性能 / 安全：……
+        - 迁移 / 回滚演练：……
+        - 部署后验证：……
     validations:
       required: true
 
