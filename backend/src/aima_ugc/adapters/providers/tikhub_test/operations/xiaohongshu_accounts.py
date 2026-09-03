@@ -26,6 +26,7 @@ from .runner import (
     TikHubTestRunResult,
     _RunLimits,
     _TikHubDebugRunner,
+    _TikHubHttpStatusError,
 )
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
@@ -247,6 +248,8 @@ def resolve_account_candidate(
 
 class _XiaohongshuAccountRunner(_TikHubDebugRunner):
     """把账号 Discovery 接到既有 Detail/Comment/Reply/Canonical/Excel 调试主链。"""
+
+    _continue_after_item_http_error = True
 
     def __init__(
         self,
@@ -697,6 +700,23 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
             }
         )
         summary["status"] = "partial"
+
+    def _record_content_http_failure(
+        self,
+        *,
+        content_id: str,
+        stage: Literal["detail", "comments", "replies"],
+        error: _TikHubHttpStatusError,
+    ) -> None:
+        """同时记录运行级与账号级 HTTP 失败，并允许后续笔记继续执行。"""
+        super()._record_content_http_failure(
+            content_id=content_id,
+            stage=stage,
+            error=error,
+        )
+        summary = self._current_account_summary()
+        if summary is not None:
+            self._record_note_failure(summary, content_id, stage, error)
 
     def _record_partial_comment_coverage(
         self,

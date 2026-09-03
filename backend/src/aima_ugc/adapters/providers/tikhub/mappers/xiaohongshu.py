@@ -57,7 +57,7 @@ def map_content(
     metrics, metric_fields = _map_content_metrics(item)
     observed_fields.extend(f"metrics.{field}" for field in metric_fields)
 
-    published_at = _timestamp(item, "timestamp", "time", "publish_time")
+    published_at = _timestamp(item, "create_time", "timestamp", "time", "publish_time")
     if published_at is not None:
         observed_fields.append("published_at")
     source_updated_at = _timestamp(item, "last_update_time", "update_time", "source_updated_at")

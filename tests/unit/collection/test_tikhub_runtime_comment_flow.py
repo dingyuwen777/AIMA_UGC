@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 from aima_ugc.adapters.providers.tikhub.runtime import (
     advance_comments,
     advance_sub_comments,
+    build_comments_call,
     build_sub_comments_call,
     extract_sub_comment_items,
 )
@@ -73,6 +76,7 @@ def test_runtime_extracts_platform_specific_sub_comment_shapes() -> None:
 
 
 def test_comment_pagination_uses_existing_platform_state_models() -> None:
+    """共享 Runtime 应把解码后的分页状态原样带入下一次小红书请求。"""
     xiaohongshu = advance_comments(
         platform="xiaohongshu",
         state={"cursor": "before", "index": 0, "page_area": "UNFOLDED"},
@@ -80,15 +84,21 @@ def test_comment_pagination_uses_existing_platform_state_models() -> None:
             "data": {
                 "data": {
                     "comments": [{"id": "1"}],
-                    "cursor": "after",
-                    "index": 1,
-                    "pageArea": "UNFOLDED",
+                    "cursor": json.dumps({"cursor": "after", "index": 2, "pageArea": "ALL"}),
                     "has_more": True,
                 }
             }
         },
     )
-    assert xiaohongshu.next_state == {"cursor": "after", "index": 1, "page_area": "UNFOLDED"}
+    assert xiaohongshu.next_state == {"cursor": "after", "index": 2, "page_area": "ALL"}
+    next_xiaohongshu_call = build_comments_call(
+        platform="xiaohongshu",
+        external_content_id="note-1",
+        state=xiaohongshu.next_state,
+    )
+    assert next_xiaohongshu_call.params["cursor"] == "after"
+    assert next_xiaohongshu_call.params["index"] == 2
+    assert next_xiaohongshu_call.params["pageArea"] == "ALL"
 
     douyin = advance_comments(
         platform="douyin",
