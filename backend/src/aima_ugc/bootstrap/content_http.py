@@ -85,6 +85,8 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_PLAN_JOB_TYPE,
     ContentAnalysisJobPayload,
     ContentAnalysisPlanJobPayload,
+    analysis_all_scope_filter_snapshot,
+    is_analysis_all_scope_filter_snapshot,
 )
 from aima_ugc.modules.content.content_cursor import ContentCursorCodec, ContentCursorPosition
 from aima_ugc.modules.content.http import (
@@ -396,12 +398,20 @@ class PostgresContentHttpService:
                 identity = configuration.identity
                 if identity is None:
                     raise ContentAnalysisUnavailable
-                target_statement = self._analysis_target_statement(
-                    session,
-                    targets,
-                    analysis_identity=identity,
-                )
-                target_count = PostgresAnalysisRepository(session).count_targets(target_statement)
+                if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+                    target_count = PostgresContentQueryRepository(
+                        session,
+                        analysis_identity=None,
+                    ).count_all_analysis_targets()
+                else:
+                    target_statement = self._analysis_target_statement(
+                        session,
+                        targets,
+                        analysis_identity=identity,
+                    )
+                    target_count = PostgresAnalysisRepository(session).count_targets(
+                        target_statement
+                    )
                 if target_count == 0:
                     raise ContentSelectionEmpty
         finally:
@@ -535,6 +545,7 @@ class PostgresContentHttpService:
             raise ContentAnalysisRunConflict
         shard_size = self._runtime.settings.analysis_run_shard_size
         filter_snapshot = _analysis_filter_snapshot(targets)
+        storage_scope = _analysis_storage_scope(targets)
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -546,7 +557,7 @@ class PostgresContentHttpService:
                         expected_target_count=expected_target_count,
                         expected_configuration_hash=expected_configuration_hash,
                         run_intent=run_intent,
-                        scope=targets.scope,
+                        scope=storage_scope,
                         filter_snapshot=filter_snapshot,
                     )
                     existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
@@ -580,7 +591,7 @@ class PostgresContentHttpService:
                     client_idempotency_key=client_idempotency_key,
                     planner_job_id=planner_job.id,
                     run_intent=run_intent,
-                    scope=targets.scope,
+                    scope=storage_scope,
                     filter_snapshot=filter_snapshot,
                     target_count=expected_target_count,
                     shard_count=shard_count,
@@ -600,7 +611,7 @@ class PostgresContentHttpService:
                         expected_target_count=expected_target_count,
                         expected_configuration_hash=expected_configuration_hash,
                         run_intent=run_intent,
-                        scope=targets.scope,
+                        scope=storage_scope,
                         filter_snapshot=filter_snapshot,
                     )
                     existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
@@ -731,6 +742,8 @@ class PostgresContentHttpService:
             session,
             analysis_identity=analysis_identity,
         )
+        if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+            raise ValueError("all Scope 只能由 Planner 有界冻结")
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
             return repository.freeze_target_statement(
                 filters=targets.filters or ContentFilterSnapshot()
@@ -815,9 +828,28 @@ def _filters(query: ContentListQuery) -> ContentFilterSnapshot:
 
 
 def _analysis_filter_snapshot(targets: _AnalysisTargetSelection) -> dict[str, object]:
+    if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+        return analysis_all_scope_filter_snapshot()
     if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
         return (targets.filters or ContentFilterSnapshot()).model_dump(mode="json")
     return {"content_ids": [str(item) for item in targets.content_ids]}
+
+
+def _analysis_storage_scope(targets: _AnalysisTargetSelection) -> Literal["query", "selected"]:
+    """公开 all 复用数据库既有 query Scope；内部快照负责区分语义。"""
+
+    if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+        return "query"
+    return cast(Literal["query", "selected"], targets.scope)
+
+
+def _analysis_response_scope(row: RowMapping) -> Literal["all", "query", "selected"]:
+    """只有新 all 专用内部标记投影为 all；历史空 query 保持 query。"""
+
+    stored_scope = cast(Literal["query", "selected"], row["scope"])
+    if stored_scope == "query" and is_analysis_all_scope_filter_snapshot(row["filter_snapshot"]):
+        return "all"
+    return stored_scope
 
 
 def _analysis_configuration_hash(
@@ -881,7 +913,7 @@ def _analysis_run_response(
         sequence_no=cast(int, row["sequence_no"]),
         status=cast(AnalysisRunStatus, row["status"]),
         run_intent=cast(AnalysisRunIntent, row["run_intent"]),
-        scope=cast(Literal["query", "selected"], row["scope"]),
+        scope=_analysis_response_scope(row),
         target_count=cast(int, row["target_count"]),
         shard_count=cast(int, row["shard_count"]),
         shard_size=cast(int, row["shard_size"]),

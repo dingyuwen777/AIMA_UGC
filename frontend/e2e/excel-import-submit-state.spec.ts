@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixture'
 
 const keywordPackId = '82345678-1234-5678-1234-567812345678'
 const campaignId = '12345678-1234-4678-9234-567812345678'
@@ -117,7 +117,7 @@ test.beforeEach(async ({ page }) => {
         body: JSON.stringify({ ...campaign, status: 'snapshotting', discovered_file_count: 1 }),
       })
     }
-    await route.fulfill({ status: 404, body: 'not mocked' })
+    await route.fallback()
   })
 })
 

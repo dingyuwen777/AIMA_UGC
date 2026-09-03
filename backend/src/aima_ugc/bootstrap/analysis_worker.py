@@ -43,6 +43,7 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_PLAN_JOB_TYPE,
     ContentAnalysisJobPayload,
     ContentAnalysisPlanJobPayload,
+    is_analysis_all_scope_filter_snapshot,
 )
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity, AnalysisWorkItem
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
@@ -55,6 +56,7 @@ from .analysis_identity import current_analysis_generation_config
 from .runtime import PlatformRuntime
 
 _LOGGER = logging.getLogger("aima_ugc")
+_ANALYSIS_ALL_FREEZE_BATCH_SIZE = 10_000
 
 
 class PostgresContentAnalysisJobExecutor:
@@ -243,10 +245,18 @@ class PostgresContentAnalysisJobExecutor:
 
 
 class PostgresContentAnalysisPlanJobExecutor:
-    """在 Worker 中冻结 Run Target，并只调度允许的有界 Shard 窗口。"""
+    """冻结 Run Target；公开 all 使用可续跑的短事务批次，再启动 Shard。"""
 
-    def __init__(self, runtime: PlatformRuntime) -> None:
+    def __init__(
+        self,
+        runtime: PlatformRuntime,
+        *,
+        freeze_batch_size: int = _ANALYSIS_ALL_FREEZE_BATCH_SIZE,
+    ) -> None:
+        if freeze_batch_size <= 0:
+            raise ValueError("freeze_batch_size 必须大于 0")
         self._runtime = runtime
+        self._freeze_batch_size = freeze_batch_size
 
     def execute_plan(
         self,
@@ -255,45 +265,103 @@ class PostgresContentAnalysisPlanJobExecutor:
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult:
-        del context
-        session = self._runtime.database.new_session()
-        try:
+        while True:
+            progress: int | None = None
+            session = self._runtime.database.new_session()
             try:
-                with session.begin():
-                    PostgresJobRepository(session).lock_current_execution(fence)
-                    repository = PostgresAnalysisRepository(session)
-                    run = repository.get_run(payload.run_id, for_update=True)
-                    if run is None:
-                        return JobHandlerResult.failed("analysis_run_not_found")
-                    if run["cancel_requested_at"] is not None:
-                        return JobHandlerResult.cancelled()
-                    expected_target_count = cast(int, run["target_count"])
-                    frozen_count = repository.frozen_target_count(payload.run_id)
-                    if frozen_count == 0:
-                        frozen_count = repository.freeze_run_targets(
-                            run_id=payload.run_id,
-                            target_statement=_target_statement_from_run(session, run),
+                try:
+                    with session.begin():
+                        jobs = PostgresJobRepository(session)
+                        jobs.lock_current_execution(fence)
+                        repository = PostgresAnalysisRepository(session)
+                        run = repository.get_run(payload.run_id, for_update=True)
+                        if run is None:
+                            return JobHandlerResult.failed("analysis_run_not_found")
+                        all_scope = is_analysis_all_scope_filter_snapshot(run["filter_snapshot"])
+                        if run["cancel_requested_at"] is not None:
+                            return JobHandlerResult.cancelled()
+
+                        expected_target_count = cast(int, run["target_count"])
+                        frozen_count = repository.frozen_target_count(payload.run_id)
+                        if not all_scope:
+                            if frozen_count == 0:
+                                frozen_count = repository.freeze_run_targets(
+                                    run_id=payload.run_id,
+                                    target_statement=_target_statement_from_run(session, run),
+                                )
+                            if frozen_count != expected_target_count:
+                                raise _AnalysisTargetSelectionChanged
+                            created = schedule_analysis_run_shards(
+                                session,
+                                run_id=payload.run_id,
+                                max_in_flight=(
+                                    self._runtime.settings.analysis_run_max_in_flight_jobs
+                                ),
+                                request_id=None,
+                            )
+                            jobs.lock_current_execution(fence)
+                            return JobHandlerResult.succeeded(
+                                {
+                                    "run_id": str(payload.run_id),
+                                    "frozen_target_count": frozen_count,
+                                    "scheduled_shards": created,
+                                }
+                            )
+
+                        content_repository = PostgresContentQueryRepository(
+                            session,
+                            analysis_identity=None,
                         )
-                    if frozen_count != expected_target_count:
-                        raise _AnalysisTargetSelectionChanged
-                    created = schedule_analysis_run_shards(
-                        session,
-                        run_id=payload.run_id,
-                        max_in_flight=self._runtime.settings.analysis_run_max_in_flight_jobs,
-                        request_id=None,
-                    )
-                    PostgresJobRepository(session).lock_current_execution(fence)
-                    return JobHandlerResult.succeeded(
-                        {
-                            "run_id": str(payload.run_id),
-                            "frozen_target_count": frozen_count,
-                            "scheduled_shards": created,
-                        }
-                    )
-            except _AnalysisTargetSelectionChanged:
-                return JobHandlerResult.failed("content_analysis_target_changed")
-        finally:
-            session.close()
+                        batch = content_repository.list_all_analysis_targets(
+                            after_content_id=repository.last_frozen_content_id(payload.run_id),
+                            limit=self._freeze_batch_size,
+                        )
+                        if not batch:
+                            current_target_count = content_repository.count_all_analysis_targets()
+                            if (
+                                frozen_count != expected_target_count
+                                or current_target_count != expected_target_count
+                            ):
+                                jobs.lock_current_execution(fence)
+                                return JobHandlerResult.failed("content_analysis_target_changed")
+                            created = schedule_analysis_run_shards(
+                                session,
+                                run_id=payload.run_id,
+                                max_in_flight=(
+                                    self._runtime.settings.analysis_run_max_in_flight_jobs
+                                ),
+                                request_id=None,
+                            )
+                            jobs.lock_current_execution(fence)
+                            return JobHandlerResult.succeeded(
+                                {
+                                    "run_id": str(payload.run_id),
+                                    "frozen_target_count": frozen_count,
+                                    "scheduled_shards": created,
+                                }
+                            )
+
+                        next_count = frozen_count + len(batch)
+                        if next_count > expected_target_count:
+                            jobs.lock_current_execution(fence)
+                            return JobHandlerResult.failed("content_analysis_target_changed")
+                        repository.append_run_targets(
+                            run_id=payload.run_id,
+                            start_ordinal=frozen_count,
+                            targets=batch,
+                        )
+                        jobs.lock_current_execution(fence)
+                        progress = min(
+                            99,
+                            int(next_count * 100 / max(expected_target_count, 1)),
+                        )
+                except _AnalysisTargetSelectionChanged:
+                    return JobHandlerResult.failed("content_analysis_target_changed")
+            finally:
+                session.close()
+
+            if progress is not None:
+                context.heartbeat(progress=progress)
 
 
 class _AnalysisTargetSelectionChanged(RuntimeError):
@@ -313,6 +381,8 @@ def _target_statement_from_run(session: Session, run: RowMapping) -> object:
             model=cast(str, run["model"]),
         ),
     )
+    if is_analysis_all_scope_filter_snapshot(run["filter_snapshot"]):
+        raise ValueError("all Scope 必须走有界 Planner Target 冻结")
     if run["scope"] == "query":
         return repository.freeze_target_statement(
             filters=ContentFilterSnapshot.model_validate(run["filter_snapshot"])

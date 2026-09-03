@@ -155,8 +155,8 @@ class AdministrationHttpService(Protocol):
 
         ...
 
-    def list_audit_events(self, *, limit: int) -> AuditEventListResponse:
-        """读取最近管理员安全审计摘要。"""
+    def list_audit_events(self, *, offset: int, limit: int) -> AuditEventListResponse:
+        """分页读取管理员安全审计摘要。"""
 
         ...
 

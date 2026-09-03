@@ -468,22 +468,6 @@ class ContentSupplementStatusResponse(BaseModel):
     updated_at: datetime
 
 
-class KeywordPackCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=200)
-    description: str = Field(default="", max_length=2000)
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def validate_name(cls, value: object) -> object:
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                raise ValueError("Keyword Pack 名称不能为空")
-        return value
-
-
 class KeywordPackKeywordCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -499,6 +483,25 @@ class KeywordPackKeywordCreateRequest(BaseModel):
             value = value.strip()
             if not value:
                 raise ValueError("关键词不能为空")
+        return value
+
+
+class KeywordPackCreateRequest(BaseModel):
+    """创建词包；可在同一事务中携带初始关键词，旧客户端仍可省略。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    keywords: tuple[KeywordPackKeywordCreateRequest, ...] = Field(default=(), max_length=500)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def validate_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("Keyword Pack 名称不能为空")
         return value
 
 
@@ -1004,17 +1007,21 @@ AnalysisRunStatus = Literal[
 
 
 class AnalysisRunTargetSelection(BaseModel):
-    """本轮只开放有容量上限的显式 Analysis Run 目标。"""
+    """Analysis Run 公开目标：显式选择或数据库当前全部 Content。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    scope: Literal["selected"] = "selected"
-    content_ids: tuple[UUID, ...] = Field(min_length=1, max_length=1000)
+    scope: Literal["selected", "all"] = "selected"
+    content_ids: tuple[UUID, ...] = Field(default=(), max_length=1000)
 
     @model_validator(mode="after")
-    def validate_unique_content_ids(self) -> AnalysisRunTargetSelection:
+    def validate_scope_and_content_ids(self) -> AnalysisRunTargetSelection:
         if len(self.content_ids) != len(set(self.content_ids)):
             raise ValueError("content_ids 不能重复")
+        if self.scope == "selected" and not self.content_ids:
+            raise ValueError("selected Scope 必须提供至少一个 content_id")
+        if self.scope == "all" and self.content_ids:
+            raise ValueError("all Scope 不能提交 content_ids")
         return self
 
 
@@ -1087,7 +1094,7 @@ class AnalysisContentRunResponse(BaseModel):
     sequence_no: int = Field(gt=0)
     status: AnalysisRunStatus
     run_intent: AnalysisRunIntent
-    scope: Literal["query", "selected"]
+    scope: Literal["all", "query", "selected"]
     target_count: int = Field(gt=0)
     shard_count: int = Field(gt=0)
     shard_size: int = Field(gt=0)
@@ -1461,6 +1468,7 @@ class HistoricalCampaignResponse(BaseModel):
     discovered_file_count: int = Field(ge=0)
     ready_item_count: int = Field(ge=0)
     total_rows: int = Field(ge=0)
+    failed_chunk_count: int = Field(default=0, ge=0)
     progress: HistoricalCampaignProgressResponse
     stats: HistoricalCampaignStatsResponse = Field(default_factory=HistoricalCampaignStatsResponse)
     error_summary: str | None = None

@@ -225,9 +225,10 @@ POST /api/v1/analysis/content-runs/preview
 → 用户显式确认
 POST /api/v1/analysis/content-runs
 → 短事务创建 analysis_content_runs + analysis.content-run-plan.v1 Planner
-→ Planner 用 INSERT ... SELECT 冻结 run_targets 的 Content ID + Version
-→ 校验 Preview 数量，变化时回滚并以可查询 error_code 失败关闭
-→ 有界创建 analysis.content-label.v1 Shard Job
+→ selected/query 继续用集合式冻结；公开 all 按稳定 Content UUID keyset 分批冻结 ID + Version
+→ all 每批独立短事务并从已提交 Target 续跑，全部冻结后再次核对 Preview 数量
+→ 数量变化时以可查询 error_code 失败关闭；已提交的部分 Target 留在终态 Run 中且不会被调度，避免异常路径进行海量同步清理
+→ 校验通过后才有界创建 analysis.content-label.v1 Shard Job
 → Worker
 → 校验实际 Prompt/Taxonomy/Provider/Model/生成配置与 Run 冻结身份一致
 → ContentLabelingService
@@ -261,7 +262,7 @@ content/version
 analysis_content_runs.sequence_no
 ```
 
-兼容入口 `POST /api/v1/content-analysis-requests` 为保持既有 `request_id/job_id` Response，仍同步冻结目标并创建首个 Shard；新版 Run API 不在 HTTP 请求内扫描或冻结海量目标。Planner 的 Target 冻结与首批 Shard 创建在同一事务，Lease 重试复用已提交的 Target/Shard。
+兼容入口 `POST /api/v1/content-analysis-requests` 为保持既有 `request_id/job_id` Response，仍同步冻结 selected/query 目标并创建首个 Shard；新版 Run API 不在 HTTP 请求内扫描或冻结海量目标。公开 `all` 使用内部专用快照标记，与历史空筛选 `query` 明确区分；Planner 分批短事务冻结全部 Content Current（包含 irrelevant），全部目标校验完成后才创建首批 Shard。Lease 重试从已提交 Target 的最后 Content ID 续跑，避免重复扫描已冻结批次。
 
 不同 Run 的 Scheme Version、Prompt/Taxonomy/Model/生成配置身份仍完整保存在 Run/Result 中。发布新 Scheme 不会把已成功 Run 静默作废；Worker 使用 Run 自己冻结的 Scheme Version 和 Prompt 快照，不能用后来发布的配置覆盖旧 Run。最新 Run 失败或取消时，旧成功结果继续展示，API 另行返回最新 Run 状态。因此查询/声音广场可以区分：
 
@@ -460,3 +461,21 @@ SQL 排障见：
 [`docs/roadmap/02_生产上线实施路线.md`](../../../../../docs/roadmap/02_生产上线实施路线.md)
 
 当前声音广场已经提供 Analysis Run 预检、显式创建、历史列表和取消；这仍属于现有 voice-plaza Feature，不是独立管理中心。新版 Run 只接受显式选择的 1—1000 个 Content ID，查询范围 Run 暂不开放；兼容入口和历史数据仍可表达 query scope。默认 `AIMA_ANALYSIS_RUN_SHARD_SIZE=1` 与最大 1000 条边界都要等真实付费 Gold Set、费用和容量报告后才能重新决策。
+
+---
+
+## 12. Analysis Run 的 selected / all 范围
+
+声音广场正式 Run 的公共 Scope：
+
+```text
+selected
+→ 1—1000 个显式 Content ID
+
+all
+→ 数据库当前全部 Content Current
+→ 不受声音广场当前筛选或已加载分页影响
+→ HTTP 请求不携带全量 Content ID
+```
+
+`all` 在 HTTP Contract 中是独立语义；服务端持久化时复用既有 `analysis_content_runs.scope = query`，并保存默认空 `ContentFilterSnapshot`。Planner 再使用集合式 `INSERT ... SELECT` 冻结 `content_id + current_version`，按现有 Shard 大小与在途窗口有界执行，因此不新增表或 Migration。历史真正带筛选条件的 `query` Run 继续按 `query` 返回，不会被错误改写为 `all`。

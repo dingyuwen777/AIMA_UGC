@@ -32,6 +32,7 @@ from aima_ugc.modules.analysis import (
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
     ContentAnalysisPlanJobHandler,
+    is_analysis_all_scope_filter_snapshot,
     register_content_analysis_job,
 )
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
@@ -361,6 +362,99 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
         )
         assert conflict.status_code == 409
         assert conflict.json()["errors"][0]["code"] == "content_analysis_run_conflict"
+    finally:
+        runtime.close()
+
+
+def test_analysis_all_scope_reuses_query_storage_and_freezes_all_current_contents(
+    tmp_path: Path,
+) -> None:
+    """公开 all 不搬运 ID，用专用内部标记并冻结全部当前 Content。"""
+
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "llm_base_url": "https://fake.example/v1",
+            "llm_provider_name": "fake",
+            "llm_model": "fake-content-labeler-v1",
+            "analysis_run_shard_size": 1,
+            "analysis_run_max_in_flight_jobs": 2,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, audit_events "
+            "RESTART IDENTITY CASCADE"
+        )
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                content_service=PostgresContentHttpService(
+                    runtime,
+                    cursor_signing_secret=b"stage12-analysis-cursor-key-32-bytes",
+                ),
+            )
+        )
+        _seed_contents(client)
+        import_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage12-analysis-all-import",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert import_worker.run_once() is True
+
+        preview = client.post(
+            "/api/v1/analysis/content-runs/preview",
+            json={"targets": {"scope": "all"}},
+        )
+        assert preview.status_code == 200
+        assert preview.json()["target_count"] == 3
+        created = client.post(
+            "/api/v1/analysis/content-runs",
+            json={
+                "client_idempotency_key": "stage12-analysis-all",
+                "targets": {"scope": "all"},
+                "expected_target_count": 3,
+                "expected_configuration_hash": preview.json()["configuration_hash"],
+                "run_intent": "manual_reanalysis",
+            },
+        )
+        assert created.status_code == 202
+        run_id = UUID(created.json()["run_id"])
+        with runtime.database.engine.begin() as connection:
+            stored = connection.execute(
+                select(
+                    analysis_content_runs_table.c.scope,
+                    analysis_content_runs_table.c.filter_snapshot,
+                ).where(analysis_content_runs_table.c.id == run_id)
+            ).one()
+            assert stored.scope == "query"
+            assert is_analysis_all_scope_filter_snapshot(stored.filter_snapshot)
+            assert (
+                connection.scalar(
+                    select(func.count()).select_from(analysis_content_run_targets_table)
+                )
+                == 0
+            )
+
+        assert _drain_analysis(runtime, sentiment="中性", worker_id="stage12-analysis-all") == 4
+        run = client.get(f"/api/v1/analysis/content-runs/{run_id}")
+        assert run.status_code == 200
+        assert run.json()["scope"] == "all"
+        assert run.json()["status"] == "succeeded"
+        assert run.json()["stats"]["succeeded"] == 3
+        with runtime.database.engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count()).select_from(analysis_content_run_targets_table)
+                )
+                == 3
+            )
     finally:
         runtime.close()
 

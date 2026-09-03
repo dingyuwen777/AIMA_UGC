@@ -194,10 +194,11 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     saving.value = true
     error.value = null
     try {
-      let created = await createPack({ name, description })
-      for (const text of keywords) {
-        created = await addPackKeyword(created.id, { text, priority: 100, enabled: true })
-      }
+      const created = await createPack({
+        name,
+        description,
+        keywords: keywords.map((text) => ({ text, priority: 100, enabled: true })),
+      })
       selectedPack.value = created
       packDetails.value = { ...packDetails.value, [created.id]: created }
       await refresh()

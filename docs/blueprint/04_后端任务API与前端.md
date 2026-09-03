@@ -277,7 +277,7 @@ PUT  /api/v1/contents/{content_id}/analysis-review
 PUT  /api/v1/contents/{content_id}/vehicles
 POST /api/v1/content-availability-observations
 GET  /api/v1/notifications
-POST /api/v1/notifications/read
+PUT  /api/v1/notifications/read
 ```
 
 代码：
@@ -291,7 +291,7 @@ POST /api/v1/notifications/read
 
 `GET /api/v1/content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 env.local、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
-`POST /api/v1/content-analysis-requests` 是兼容入口，为保持既有 `request_id/job_id` Response，仍在 HTTP 短事务内冻结目标、创建首个 Shard 并建立 Analysis Run，并兼容历史 selected/query 语义。新页面只允许显式选择 1—1000 条内容：先调用 `/api/v1/analysis/content-runs/preview` 取得目标数、Shard 数和模型/Prompt/配置身份，再由用户确认创建 Run；新版 Preview/Create Contract 不接受 query scope。创建 HTTP 只保存 Run 头与 Planner Job。Planner 在 PostgreSQL 事务内用 `INSERT ... SELECT` 冻结 Content ID + `current_version`，复核 Preview 数量并维持有界 Shard Job 窗口；数量变化时整次冻结回滚，Run 返回 Planner `error_code` 供页面展示。查询范围 Run 要等真实付费模型 Gold Set、费用和容量报告后重新决策。不同 Run 结果全部保留，Current 按 Run 创建顺序选择，最新失败/取消不会抹掉旧成功结果。
+`POST /api/v1/content-analysis-requests` 是兼容入口，为保持既有 `request_id/job_id` Response，仍在 HTTP 短事务内冻结目标、创建首个 Shard 并建立 Analysis Run，并兼容历史 selected/query 语义。声音广场新版 Analysis Run 正式开放两种用户范围：`selected` 接收 1—1000 个显式 Content ID；`all` 表示数据库当前全部 Content Current，包括当前有效相关性为 irrelevant 的内容，不能携带 `content_ids`，也不受页面当前筛选或已加载分页影响。两种范围都先调用 `/api/v1/analysis/content-runs/preview` 取得目标数、Shard 数和模型/Prompt/配置身份，再由用户确认创建 Run。`all` 的数据库 `scope` 继续复用既有 `query` 值以避免 Schema/Migration，但 `filter_snapshot` 使用 Analysis 内部专用标记与历史 query 快照区分；历史空筛选或带筛选的 `query` Run 都继续返回 `query`。创建 HTTP 只保存 Run 头与 Planner Job，不把全量 Content ID 放进浏览器、HTTP Payload 或单个 Job。Planner 按稳定 Content UUID keyset 分批读取 `content_id + current_version`，每批在独立短事务追加 `run_targets` 并可从已提交目标续跑；全部冻结完成后再次核对数据库当前总数与 Preview `expected_target_count`，一致时才创建有界 Shard Job 窗口，数量变化时以 `content_analysis_target_changed` 失败关闭；已提交的部分 Target 保留在该终态 Run 下且不会创建 Shard，避免异常路径再触发一次海量 DELETE 事务。不同 Run 结果全部保留，Current 按 Run 创建顺序选择，最新失败/取消不会抹掉旧成功结果。
 
 `POST /api/v1/content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /api/v1/contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
 

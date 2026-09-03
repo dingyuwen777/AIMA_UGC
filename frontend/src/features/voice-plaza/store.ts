@@ -170,8 +170,10 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
       : { scope, content_ids: [...selectedIds.value] }
   }
 
-  function analysisTargetSelection(): AnalysisRunTargetSelection {
-    return { scope: 'selected', content_ids: [...selectedIds.value] }
+  function analysisTargetSelection(scope: 'selected' | 'all'): AnalysisRunTargetSelection {
+    return scope === 'all'
+      ? { scope: 'all' }
+      : { scope: 'selected', content_ids: [...selectedIds.value] }
   }
 
   async function refresh(silent = false): Promise<void> {
@@ -408,21 +410,21 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   async function previewAnalysis(
-    _scope: 'selected',
+    scope: 'selected' | 'all',
   ): Promise<AnalysisContentRunPreviewResponse | null> {
     if (analysisConfigured.value !== true) {
       error.value = '当前环境尚未配置可用的 AI 模型，请配置 LLM 后重启后端。'
       return null
     }
-    if (selectedIds.value.length === 0) return null
-    if (selectedIds.value.length > 1000) {
+    if (scope === 'selected' && selectedIds.value.length === 0) return null
+    if (scope === 'selected' && selectedIds.value.length > 1000) {
       error.value = '单次 AI Analysis Run 最多选择 1000 条内容。'
       return null
     }
     previewingAnalysis.value = true
     error.value = null
     analysisPreview.value = null
-    const targets = analysisTargetSelection()
+    const targets = analysisTargetSelection(scope)
     try {
       const preview = await previewAnalysisRun({ targets })
       analysisDraft = {

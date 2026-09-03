@@ -11,13 +11,15 @@ interface AnalysisRun {
 
 async function createKeywordPack(request: APIRequestContext, suffix: string): Promise<{ id: string; name: string }> {
   const name = `U1 词包车型关联 ${suffix}`
-  const created = await request.post('/api/v1/keyword-packs', { data: { name } })
-  expect(created.status()).toBe(201)
-  const pack = await created.json() as { id: string }
-  const keyword = await request.post(`/api/v1/keyword-packs/${pack.id}/keywords`, {
-    data: { text: '爱玛', priority: 10 },
+  const created = await request.post('/api/v1/keyword-packs', {
+    data: {
+      name,
+      keywords: [{ text: '爱玛', priority: 10, enabled: true }],
+    },
   })
-  expect(keyword.status()).toBe(201)
+  expect(created.status()).toBe(201)
+  const pack = await created.json() as { id: string; keywords: { text: string }[] }
+  expect(pack.keywords.map((item) => item.text)).toEqual(['爱玛'])
   return { id: pack.id, name }
 }
 
@@ -241,4 +243,25 @@ test('管理员发布原子 Scheme 后新 Run 冻结新版本且旧 Run 身份�
   const oldRunAfterPublish = await oldRunResponse.json() as AnalysisRun
   expect(oldRunAfterPublish.analysis_scheme_version_id).toBe(activeBefore!.id)
   expect(oldRunAfterPublish.status).toBe('succeeded')
+})
+
+
+test('真实审计历史翻到第二页', async ({ page, request }) => {
+  const suffix = Date.now().toString()
+  for (let index = 0; index < 105; index += 1) {
+    const response = await request.post('/api/v1/keyword-packs', {
+      data: { name: `audit-page-${suffix}-${index}` },
+    })
+    expect(response.status()).toBe(201)
+  }
+
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: '审计记录', exact: true }).click()
+  const secondPageRequest = page.waitForRequest((candidate) => {
+    const url = new URL(candidate.url())
+    return url.pathname === '/api/v1/audit-events' && url.searchParams.get('offset') === '100'
+  })
+  await page.getByRole('button', { name: '下一页', exact: true }).click()
+  await secondPageRequest
+  await expect(page.getByText(/第 2 \/ \d+ 页/)).toBeVisible()
 })

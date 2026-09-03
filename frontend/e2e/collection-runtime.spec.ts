@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixture'
 
 const batchId = '12345678-1234-5678-1234-567812345678'
 const secondBatchId = '13345678-1234-5678-1234-567812345678'
@@ -99,7 +99,7 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === `/api/v1/import-batches/${secondBatchId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ batch_id: secondBatchId, targets: [{ platform: 'douyin', target_count: 1 }] }) })
     if (url.pathname === `/api/v1/import-batches/${batchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(importDetail) })
     if (url.pathname === `/api/v1/import-batches/${secondBatchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(secondUsableImport) })
-    await route.fulfill({ status: 404, body: 'not mocked' })
+    await route.fallback()
   })
 })
 
@@ -274,5 +274,5 @@ test('shows the stable unified Error Contract request_id', async ({ page }) => {
     await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: '分页服务暂不可用', status: 503, detail: '分页服务配置不可用，请使用 request_id 联系管理员。', request_id: 'req_stage8e_error', errors: [] }) })
   })
   await page.goto('/collection-runtime')
-  await expect(page.getByRole('alert')).toContainText('req_stage8e_error')
+  await expect(page.getByRole('alert').filter({ hasText: 'req_stage8e_error' })).toContainText('req_stage8e_error')
 })

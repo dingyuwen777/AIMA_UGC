@@ -624,6 +624,7 @@ def _campaign_response(
         discovered_file_count=row["discovered_file_count"],
         ready_item_count=row["ready_item_count"],
         total_rows=row["total_rows"],
+        failed_chunk_count=progress.failed_chunk_count,
         progress=HistoricalCampaignProgressResponse(
             preflight_completed_file_count=progress.preflight_completed_file_count,
             preflight_percent=progress.preflight_percent,

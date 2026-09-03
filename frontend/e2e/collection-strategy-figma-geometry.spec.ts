@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './fixture'
 
 const packId = '11111111-1111-4111-8111-111111111111'
 const relevancePackId = '22222222-2222-4222-8222-222222222222'

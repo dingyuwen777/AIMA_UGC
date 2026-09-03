@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 import type { AnalysisContentRunPreviewResponse } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
+
+type AnalysisScope = 'selected' | 'all'
 
 const props = defineProps<{
   modelValue: boolean
@@ -13,15 +15,25 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   'update:modelValue': [open: boolean]
-  preview: [scope: 'selected']
+  preview: [scope: AnalysisScope]
   submit: []
 }>()
 
+const scope = ref<AnalysisScope>('all')
+
+/** 打开弹窗时优先使用有效显式选择，否则默认选择全部数据并立即预检。 */
 watch(() => props.modelValue, (open) => {
-  if (open && props.selectedCount > 0 && props.selectedCount <= 1000) {
-    emit('preview', 'selected')
-  }
+  if (!open) return
+  scope.value = props.selectedCount > 0 && props.selectedCount <= 1000 ? 'selected' : 'all'
+  emit('preview', scope.value)
 })
+
+/** 切换目标范围后重新预检，避免沿用另一范围的数量与配置确认。 */
+function selectScope(next: AnalysisScope): void {
+  if (scope.value === next) return
+  scope.value = next
+  emit('preview', next)
+}
 </script>
 
 <template>
@@ -47,7 +59,7 @@ watch(() => props.modelValue, (open) => {
             <h2 id="analysis-title">
               创建 AI Analysis Run
             </h2>
-            <p>先预检已选内容，再由后台冻结目标并拆分有界 Shard。</p>
+            <p>先预检目标，再由后台冻结当前内容版本并拆分有界 Shard。</p>
           </div>
           <button
             class="close-button"
@@ -62,15 +74,41 @@ watch(() => props.modelValue, (open) => {
           </button>
         </header>
         <div class="body">
-          <div class="selection-summary">
-            <strong>已选内容</strong>
-            <small>{{ selectedCount }} 条；按当前内容版本冻结目标，单次最多 1000 条</small>
-          </div>
+          <fieldset class="scope-picker">
+            <legend>打标范围</legend>
+            <label
+              class="scope-option"
+              :class="{ 'scope-option--disabled': selectedCount === 0 || selectedCount > 1000 }"
+            >
+              <input
+                type="radio"
+                name="analysis-scope"
+                value="selected"
+                :checked="scope === 'selected'"
+                :disabled="selectedCount === 0 || selectedCount > 1000"
+                @change="selectScope('selected')"
+              >
+              <span>
+                <strong>已选内容</strong>
+                <small>{{ selectedCount }} 条；显式选择单次最多 1000 条</small>
+              </span>
+            </label>
+            <label class="scope-option">
+              <input
+                type="radio"
+                name="analysis-scope"
+                value="all"
+                :checked="scope === 'all'"
+                @change="selectScope('all')"
+              >
+              <span>
+                <strong>全部数据</strong>
+                <small>对数据库当前全部 Content 数据打标，不受本页筛选或已加载分页限制</small>
+              </span>
+            </label>
+          </fieldset>
           <p class="scope-note">
-            查询范围 Run 暂未开放；待真实模型质量与容量验证完成后再评估。
-          </p>
-          <p class="cost-note">
-            此操作可能产生模型调用费用。只有点击确认后才会创建 Analysis Run；导入和采集不会自动触发付费分析。
+            “全部数据”不会把所有 Content ID 拉到浏览器；后端按当前数据库事实计数、冻结目标并分片执行。
           </p>
           <div
             v-if="previewing"
@@ -95,7 +133,7 @@ watch(() => props.modelValue, (open) => {
           </AimaButton>
           <AimaButton
             variant="primary"
-            :disabled="previewing || !preview || submitting || selectedCount === 0 || selectedCount > 1000"
+            :disabled="previewing || !preview || submitting"
             @click="emit('submit')"
           >
             {{ submitting ? '正在提交…' : '确认并创建 Analysis Run' }}
@@ -115,11 +153,16 @@ h2 { margin: 0; color: var(--aima-text); font-size: 18px; line-height: 26px; }
 header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line-height: 16px; }
 .close-button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; color: var(--aima-text-muted); background: transparent; cursor: pointer; }
 .body { display: grid; min-height: 0; align-content: start; gap: 10px; padding: 18px 22px 16px; overflow-y: auto; }
-.selection-summary { display: grid; min-height: 60px; align-content: center; gap: 4px; padding: 10px 14px; border: 1px solid var(--aima-primary); border-radius: 8px; background: var(--aima-primary-soft); }
-.selection-summary strong { color: var(--aima-text); font-size: 12px; }
-.selection-summary small { color: var(--aima-text-muted); font-size: 10px; }
+.scope-picker { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.scope-picker legend { margin-bottom: 2px; color: var(--aima-text); font-size: 11px; font-weight: 700; }
+.scope-option { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; min-height: 58px; padding: 9px 12px; border: 1px solid var(--aima-border); border-radius: 8px; cursor: pointer; }
+.scope-option:has(input:checked) { border-color: var(--aima-primary); background: var(--aima-primary-soft); }
+.scope-option input { margin: 0; accent-color: var(--aima-primary); }
+.scope-option span { display: grid; gap: 3px; }
+.scope-option strong { color: var(--aima-text); font-size: 11px; }
+.scope-option small { color: var(--aima-text-muted); font-size: 10px; line-height: 15px; }
+.scope-option--disabled { cursor: not-allowed; opacity: 0.55; }
 .scope-note { margin: 0; color: var(--aima-text-muted); font-size: 10px; line-height: 16px; }
-.cost-note { margin: 0; padding: 8px 12px; border: 1px solid #f2d48a; border-radius: 6px; color: #b7791f; background: #fff9e9; font-size: 10px; line-height: 17px; }
 .preview { display: grid; min-height: 88px; align-content: center; gap: 5px; padding: 10px 12px; border: 1px solid #bfd5f5; border-radius: 6px; color: #32618f; background: #f2f7fd; font-size: 10px; line-height: 14px; }
 .preview strong { font-size: 11px; }
 .preview small { color: var(--aima-text-disabled); font-size: 9px; }

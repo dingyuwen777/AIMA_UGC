@@ -61,4 +61,41 @@ describe('identity and principal inbox', () => {
     expect(store.notifications[0]?.is_read).toBe(true)
     expect(store.unreadCount).toBe(0)
   })
+
+  it('keeps principal failures separate from notification state and allows retry', async () => {
+    generated.getCurrentPrincipal
+      .mockRejectedValueOnce(new Error('principal unavailable'))
+      .mockResolvedValueOnce({
+        principal_id: 'local-administrator',
+        display_name: '本地管理员',
+        role: 'administrator',
+        source: 'development',
+        is_administrator: true,
+      })
+    const store = useIdentityStore()
+
+    expect(await store.ensurePrincipal()).toBeNull()
+    expect(store.principalError).toContain('principal unavailable')
+    expect(store.notificationError).toBeNull()
+
+    const retried = await store.retryPrincipal()
+    expect(retried?.role).toBe('administrator')
+    expect(store.principalError).toBeNull()
+    expect(generated.getCurrentPrincipal).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not present notification transport failure as an empty inbox', async () => {
+    generated.listNotifications
+      .mockRejectedValueOnce(new Error('notifications unavailable'))
+      .mockResolvedValueOnce({ items: [], unread_count: 0 })
+    const store = useIdentityStore()
+
+    await store.refreshNotifications()
+    expect(store.notificationError).toContain('notifications unavailable')
+    expect(store.principalError).toBeNull()
+
+    await store.refreshNotifications()
+    expect(store.notificationError).toBeNull()
+    expect(generated.listNotifications).toHaveBeenCalledTimes(2)
+  })
 })

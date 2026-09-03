@@ -184,6 +184,35 @@ class PostgresContentQueryRepository:
             .order_by(order)
         )
 
+    def count_all_analysis_targets(self) -> int:
+        """统计全部 Content Current；不继承声音广场默认相关性可见性。"""
+
+        return cast(
+            int,
+            self._session.scalar(select(func.count()).select_from(contents_table)) or 0,
+        )
+
+    def list_all_analysis_targets(
+        self,
+        *,
+        after_content_id: UUID | None,
+        limit: int,
+    ) -> tuple[ContentTarget, ...]:
+        """按 Content UUID 稳定 keyset 顺序读取一批全量 Analysis Target。"""
+
+        if limit <= 0:
+            raise ValueError("limit 必须大于 0")
+        statement = select(contents_table.c.id, contents_table.c.current_version)
+        if after_content_id is not None:
+            statement = statement.where(contents_table.c.id > after_content_id)
+        rows = self._session.execute(statement.order_by(contents_table.c.id).limit(limit)).all()
+        return tuple(
+            ContentTarget(
+                content_id=cast(UUID, row.id), content_version=cast(int, row.current_version)
+            )
+            for row in rows
+        )
+
     def list_media(self, content_id: UUID) -> tuple[ContentMediaResponse, ...]:
         rows = self._session.execute(
             select(content_media_table)

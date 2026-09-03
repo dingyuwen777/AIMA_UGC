@@ -13,13 +13,15 @@ interface KeywordPackFixture {
 
 async function createKeywordPack(request: APIRequestContext): Promise<KeywordPackFixture> {
   const name = `Stage12 Full-stack ${Date.now()}`
-  const created = await request.post('/api/v1/keyword-packs', { data: { name } })
-  expect(created.status()).toBe(201)
-  const pack = await created.json() as { id: string }
-  const keyword = await request.post(`/api/v1/keyword-packs/${pack.id}/keywords`, {
-    data: { text: '爱玛', priority: 10 },
+  const created = await request.post('/api/v1/keyword-packs', {
+    data: {
+      name,
+      keywords: [{ text: '爱玛', priority: 10, enabled: true }],
+    },
   })
-  expect(keyword.status()).toBe(201)
+  expect(created.status()).toBe(201)
+  const pack = await created.json() as { id: string; keywords: { text: string }[] }
+  expect(pack.keywords.map((item) => item.text)).toEqual(['爱玛'])
   return { id: pack.id, name }
 }
 
@@ -73,6 +75,77 @@ async function createAnalysisRun(
   return { id: created.run_id, sequenceNo }
 }
 
+async function createAllDataAnalysisRun(
+  page: Page,
+  request: APIRequestContext,
+): Promise<{ id: string; sequenceNo: number; targetCount: number }> {
+  await page.getByRole('button', { name: /AI 打标/ }).click()
+  const dialog = page.getByRole('dialog', { name: '创建 AI Analysis Run' })
+  const allPreviewPromise = page.waitForResponse((response) => {
+    if (
+      response.request().method() !== 'POST'
+      || new URL(response.url()).pathname !== '/api/v1/analysis/content-runs/preview'
+    ) return false
+    const payload = response.request().postDataJSON() as { targets?: { scope?: string } }
+    return payload.targets?.scope === 'all'
+  })
+  await dialog.getByRole('radio', { name: /全部数据/ }).check()
+  const previewResponse = await allPreviewPromise
+  expect(previewResponse.status()).toBe(200)
+  const previewRequest = previewResponse.request().postDataJSON() as {
+    targets: { scope: string; content_ids?: string[] }
+  }
+  expect(previewRequest).toEqual({ targets: { scope: 'all' } })
+  const preview = await previewResponse.json() as { target_count: number; shard_count: number }
+  expect(preview.target_count).toBeGreaterThan(1)
+  await expect(
+    dialog.getByText(
+      `预检目标 ${preview.target_count} 条，拆分 ${preview.shard_count} 个 Shard`,
+    ),
+  ).toBeVisible()
+
+  const createdResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
+  await dialog.getByRole('button', { name: '确认并创建 Analysis Run' }).click()
+  const createdResponse = await createdResponsePromise
+  expect(createdResponse.status()).toBe(202)
+  const createPayload = createdResponse.request().postDataJSON() as {
+    targets: { scope: string; content_ids?: string[] }
+    expected_target_count: number
+  }
+  expect(createPayload.targets).toEqual({ scope: 'all' })
+  expect(createPayload.expected_target_count).toBe(preview.target_count)
+  const created = await createdResponse.json() as { run_id: string; target_count: number }
+  expect(created.target_count).toBe(preview.target_count)
+
+  let sequenceNo = 0
+  let succeeded = 0
+  let observedTargetCount = 0
+  let observedScope = ''
+  await expect.poll(async () => {
+    const response = await request.get(`/api/v1/analysis/content-runs/${created.run_id}`)
+    if (response.status() !== 200) return `http-${response.status()}`
+    const run = await response.json() as {
+      sequence_no: number
+      status: string
+      scope: string
+      target_count: number
+      stats: { succeeded: number }
+    }
+    sequenceNo = run.sequence_no
+    observedScope = run.scope
+    observedTargetCount = run.target_count
+    succeeded = run.stats.succeeded
+    return run.status
+  }, { timeout: 60_000 }).toBe('succeeded')
+  expect(observedScope).toBe('all')
+  expect(observedTargetCount).toBe(preview.target_count)
+  expect(succeeded).toBe(preview.target_count)
+  await expect(page.getByText(`Run #${sequenceNo} · 已完成`)).toBeVisible()
+  return { id: created.run_id, sequenceNo, targetCount: preview.target_count }
+}
+
 async function injectPrewriteChunkFailure(campaignId: string): Promise<void> {
   await execFileAsync(
     'uv',
@@ -89,7 +162,7 @@ async function injectPrewriteChunkFailure(campaignId: string): Promise<void> {
   )
 }
 
-test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入库，并保留两轮 Analysis Run', async ({ page, request }) => {
+test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入库，并保留 selected/all Analysis Run', async ({ page, request }) => {
   const ordinaryFixture = process.env.AIMA_STAGE12_ORDINARY_FIXTURE
   expect(ordinaryFixture, 'AIMA_STAGE12_ORDINARY_FIXTURE 必须指向普通导入 Fixture').toBeTruthy()
   const pack = await createKeywordPack(request)
@@ -137,4 +210,10 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   expect(secondRun.sequenceNo).toBeGreaterThan(firstRun.sequenceNo)
   await expect(page.getByText(`Run #${firstRun.sequenceNo} · 已完成`)).toBeVisible()
   await expect(page.getByText(`Run #${secondRun.sequenceNo} · 已完成`)).toBeVisible()
+
+  const allRun = await createAllDataAnalysisRun(page, request)
+  expect(allRun.id).not.toBe(firstRun.id)
+  expect(allRun.id).not.toBe(secondRun.id)
+  expect(allRun.sequenceNo).toBeGreaterThan(secondRun.sequenceNo)
+  expect(allRun.targetCount).toBeGreaterThan(1)
 })

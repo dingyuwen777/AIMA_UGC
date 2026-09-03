@@ -374,7 +374,8 @@ class PostgresImportHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                pack = PostgresKeywordCatalogRepository(session).create_pack(
+                repository = PostgresKeywordCatalogRepository(session)
+                pack = repository.create_pack(
                     KeywordPack(
                         id=uuid4(),
                         name=name,
@@ -383,6 +384,33 @@ class PostgresImportHttpService:
                         version=1,
                     )
                 )
+                for keyword_request in request.keywords:
+                    text = keyword_request.text.strip()
+                    try:
+                        normalized = normalize_keyword_storage_text(text)
+                    except ValueError as exc:
+                        raise ValueError("关键词不能为空") from exc
+                    keyword = repository.get_or_create_keyword(
+                        Keyword(
+                            id=uuid4(),
+                            text=text,
+                            normalized_text=normalized,
+                            enabled=True,
+                        )
+                    )
+                    repository.add_item_if_missing(
+                        KeywordPackItem(
+                            pack_id=pack.id,
+                            keyword_id=keyword.id,
+                            platform_scope="all",
+                            priority=keyword_request.priority,
+                            enabled=keyword_request.enabled,
+                            note=keyword_request.note.strip(),
+                        )
+                    )
+                committed_pack = repository.get_pack(pack.id)
+                if committed_pack is None:  # pragma: no cover - 同事务父记录不会消失
+                    raise RuntimeError("创建后的 Keyword Pack 无法重读")
                 _audit_configuration(
                     session,
                     actor_ref=actor_ref,
@@ -390,9 +418,13 @@ class PostgresImportHttpService:
                     event_type="keyword_pack_created",
                     object_type="keyword_pack",
                     object_id=str(pack.id),
-                    detail={"version": pack.version, "enabled": pack.enabled},
+                    detail={
+                        "version": committed_pack.version,
+                        "enabled": committed_pack.enabled,
+                        "initial_keyword_count": len(request.keywords),
+                    },
                 )
-                return _pack_response(PostgresKeywordCatalogRepository(session), pack)
+                return _pack_response(repository, committed_pack)
         except IntegrityError as exc:
             raise ImportConflict from exc
         finally:

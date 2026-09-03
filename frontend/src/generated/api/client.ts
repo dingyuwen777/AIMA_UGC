@@ -12,16 +12,21 @@ export const AnalysisContentRunCreateRequestRunIntent = {
   manual_reanalysis: 'manual_reanalysis',
 } as const;
 
+export type AnalysisRunTargetSelectionScope = typeof AnalysisRunTargetSelectionScope[keyof typeof AnalysisRunTargetSelectionScope];
+
+
+export const AnalysisRunTargetSelectionScope = {
+  selected: 'selected',
+  all: 'all',
+} as const;
+
 /**
- * 本轮只开放有容量上限的显式 Analysis Run 目标。
+ * Analysis Run 公开目标：显式选择或数据库当前全部 Content。
  */
 export interface AnalysisRunTargetSelection {
-  /**
-     * @minItems 1
-     * @maxItems 1000
-     */
-  content_ids: string[];
-  scope?: 'selected';
+  /** @maxItems 1000 */
+  content_ids?: string[];
+  scope?: AnalysisRunTargetSelectionScope;
 }
 
 export interface AnalysisContentRunCreateRequest {
@@ -61,6 +66,7 @@ export type AnalysisContentRunResponseScope = typeof AnalysisContentRunResponseS
 
 
 export const AnalysisContentRunResponseScope = {
+  all: 'all',
   query: 'query',
   selected: 'selected',
 } as const;
@@ -312,10 +318,19 @@ export interface AuditEventResponse {
 }
 
 /**
- * 管理员最近审计事件列表。
+ * 管理员审计事件分页响应。
  */
 export interface AuditEventListResponse {
   items: AuditEventResponse[];
+  /**
+     * @minimum 1
+     * @maximum 200
+     */
+  limit: number;
+  /** @minimum 0 */
+  offset: number;
+  /** @minimum 0 */
+  total: number;
 }
 
 export interface BodyCreateImportBatch {
@@ -1601,6 +1616,8 @@ export interface HistoricalCampaignResponse {
   /** @minimum 0 */
   discovered_file_count: number;
   error_summary?: string | null;
+  /** @minimum 0 */
+  failed_chunk_count?: number;
   finished_at?: string | null;
   id: string;
   ingestion_policy?: DataImportIngestionPolicy;
@@ -1723,16 +1740,6 @@ export interface ImportBatchSummaryResponse {
   rows_ingested_today: number;
 }
 
-export interface KeywordPackCreateRequest {
-  /** @maxLength 2000 */
-  description?: string;
-  /**
-     * @minLength 1
-     * @maxLength 200
-     */
-  name: string;
-}
-
 export interface KeywordPackKeywordCreateRequest {
   enabled?: boolean;
   /** @maxLength 1000 */
@@ -1743,6 +1750,21 @@ export interface KeywordPackKeywordCreateRequest {
      * @maxLength 500
      */
   text: string;
+}
+
+/**
+ * 创建词包；可在同一事务中携带初始关键词，旧客户端仍可省略。
+ */
+export interface KeywordPackCreateRequest {
+  /** @maxLength 2000 */
+  description?: string;
+  /** @maxItems 500 */
+  keywords?: KeywordPackKeywordCreateRequest[];
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
 }
 
 export interface KeywordPackSummaryResponse {
@@ -2085,6 +2107,10 @@ export interface VehicleModelUpdateRequest {
 }
 
 export type ListAuditEventsParams = {
+/**
+ * @minimum 0
+ */
+offset?: number;
 /**
  * @minimum 1
  * @maximum 200
@@ -2575,7 +2601,7 @@ export const getListAuditEventsUrl = (params?: ListAuditEventsParams,) => {
 }
 
 /**
- * 管理员读取有界审计历史。
+ * 管理员分页读取完整审计历史。
  * @summary List Audit Events
  */
 export const listAuditEvents = async (params?: ListAuditEventsParams, options?: RequestInit): Promise<AuditEventListResponse> => {

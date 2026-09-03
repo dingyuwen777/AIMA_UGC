@@ -56,6 +56,7 @@ class HistoricalCampaignProgress:
     preflight_percent: int
     migration_completed_row_count: int
     migration_percent: int
+    failed_chunk_count: int
 
 
 class PostgresHistoricalImportRepository:
@@ -142,6 +143,7 @@ class PostgresHistoricalImportRepository:
                     ),
                     0,
                 ).label("completed_row_count"),
+                func.count().filter(item.c.status == "failed").label("failed_chunk_count"),
             )
             .where(
                 item.c.item_kind == "chunk",
@@ -160,6 +162,7 @@ class PostgresHistoricalImportRepository:
                 ),
                 func.coalesce(source_totals.c.progress_points, 0).label("progress_points"),
                 func.coalesce(chunk_totals.c.completed_row_count, 0).label("completed_row_count"),
+                func.coalesce(chunk_totals.c.failed_chunk_count, 0).label("failed_chunk_count"),
             )
             .outerjoin(
                 source_totals,
@@ -188,6 +191,7 @@ class PostgresHistoricalImportRepository:
                 ),
                 migration_completed_row_count=completed_row_count,
                 migration_percent=_bounded_percent(completed_row_count, total_rows),
+                failed_chunk_count=int(row["failed_chunk_count"]),
             )
         return result
 
