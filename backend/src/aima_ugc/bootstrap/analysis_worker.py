@@ -187,6 +187,12 @@ class PostgresContentAnalysisJobExecutor:
                 if run is None:
                     raise ValueError("Analysis Run 不存在")
                 snapshot = run["runtime_config_snapshot"]
+                base_url: str
+                model: str
+                provider_name: str | None
+                timeout_seconds: float
+                max_connections: int
+                validation_retries: int
                 if isinstance(snapshot, dict) and snapshot:
                     provider = provider_from_safe_snapshot(snapshot)
                     if provider.provider_kind != "llm" or provider.model is None:

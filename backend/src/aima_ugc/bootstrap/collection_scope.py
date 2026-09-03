@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -1856,7 +1856,7 @@ class TikHubCollectionScopeExecutor:
                 ),
                 max_concurrency=runtime_config.max_concurrency or 5,
                 max_rps=runtime_config.max_rps,
-                extra_config=runtime_config.extra_config or {},
+                extra_config=cast(dict[str, JsonValue], runtime_config.extra_config or {}),
                 revision=runtime_config.revision or 1,
                 enabled=True,
             )

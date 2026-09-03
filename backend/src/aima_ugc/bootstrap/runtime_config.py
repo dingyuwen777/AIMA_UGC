@@ -77,7 +77,7 @@ def provider_from_safe_snapshot(payload: object) -> ProviderConfig:
         provider_kind=provider_kind,
         display_name=f"run-snapshot:{provider_config_id}",
         base_url=_required_str(data, "base_url"),
-        model=data.get("model") if isinstance(data.get("model"), str) else None,
+        model=_optional_str(data, "model"),
         secret_ref=_required_str(data, "secret_ref"),
         timeout_seconds=_required_int(data, "timeout_seconds"),
         max_retries=_required_int(data, "max_retries", minimum=0),
@@ -100,6 +100,11 @@ def new_secret_ref(config_id: UUID, revision_token: str) -> str:
     """生成不可变 Secret 文件引用；token 必须由服务端生成。"""
 
     return f"providers/{config_id}/{revision_token}.key"
+
+
+def _optional_str(data: dict[str, object], key: str) -> str | None:
+    value = data.get(key)
+    return value if isinstance(value, str) else None
 
 
 def _required_str(data: dict[str, object], key: str) -> str:
