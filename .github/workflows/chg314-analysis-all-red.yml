@@ -1,6 +1,13 @@
 name: CHG314 AI All Scope RED
 
 on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
   push:
     branches:
       - fix/314-frontend-fullstack-reliability
