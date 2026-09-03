@@ -1,0 +1,128 @@
+name: CHG314 Review Green V2
+
+on:
+  push:
+    branches:
+      - fix/314-frontend-fullstack-reliability
+    paths:
+      - .github/workflows/chg314-review-green-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: ci-postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/chg314-green/data
+      AIMA_LOG_DIR: .runtime/chg314-green/logs
+      AIMA_SECRET_DIR: .runtime/chg314-green/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/314-frontend-fullstack-reliability
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Reuse reviewed patch script
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/chg314-review-green.yml')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          step = lines.index('      - name: Apply reviewed fixes')
+          run_line = next(index for index in range(step + 1, len(lines)) if lines[index] == '        run: |')
+          end = next(index for index in range(run_line + 1, len(lines)) if lines[index].startswith('      - name: '))
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines[run_line + 1:end]) + '\n'
+          Path('/tmp/chg314-apply.sh').write_text(script, encoding='utf-8')
+          PY
+          bash /tmp/chg314-apply.sh
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Prepare PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'ci-postgres' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+          uv run alembic upgrade head
+
+      - name: Format and validate target Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            backend/src/aima_ugc/modules/analysis/content_analysis_job.py
+            backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+            backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
+            backend/src/aima_ugc/bootstrap/import_http.py
+            backend/src/aima_ugc/bootstrap/content_http.py
+            backend/src/aima_ugc/bootstrap/analysis_worker.py
+            tests/integration/content/test_stage12_analysis_runs.py
+            tests/integration/content/test_chg314_review_regressions.py
+          )
+          uv run ruff format "${files[@]}"
+          uv run ruff check --fix "${files[@]}"
+          uv run ruff format --check "${files[@]}"
+          uv run ruff check "${files[@]}"
+          uv run mypy backend/src/aima_ugc
+          git diff --check
+
+      - name: Verify reviewed Green behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest \
+            tests/integration/content/test_chg314_review_regressions.py \
+            tests/integration/content/test_stage12_analysis_runs.py \
+            -q
+
+      - name: Commit Green and remove temporary workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/chg314-review-green.yml
+          rm .github/workflows/chg314-review-green-v2.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: 收口 CHG-314 L3 Review Findings' -m 'Requirement-Source: #314'
+          git push origin HEAD:fix/314-frontend-fullstack-reliability
