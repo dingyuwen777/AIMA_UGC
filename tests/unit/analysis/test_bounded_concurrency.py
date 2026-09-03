@@ -98,4 +98,13 @@ def test_bounded_executor_can_isolate_parallel_item_errors() -> None:
     )
 
     assert summary.completed == 8
-    assert sorted(received) == [(0, False), (1, False), (2, False), (3, True), (4, False), (5, False), (6, False), (7, False)]
+    assert sorted(received) == [
+        (0, False),
+        (1, False),
+        (2, False),
+        (3, True),
+        (4, False),
+        (5, False),
+        (6, False),
+        (7, False),
+    ]
