@@ -38,9 +38,9 @@ from aima_ugc.platform.security import read_secret_file, validate_secret_ref
 from aima_ugc.platform.storage import ArtifactService
 
 from .analysis_concurrent_worker import ConcurrentPostgresContentAnalysisJobExecutor
-from .analysis_worker import (
-    PostgresContentAnalysisPlanJobExecutor,
-    create_analysis_job_terminal_callback,
+from .analysis_high_throughput_planner import (
+    HighThroughputContentAnalysisPlanJobExecutor,
+    create_high_throughput_analysis_job_terminal_callback,
 )
 from .collection_scope import TikHubCollectionScopeExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
@@ -60,6 +60,8 @@ class _TikHubTransportPool:
         self._lock = Lock()
 
     def __call__(self, provider_config: ProviderConfig) -> ProviderTransport:
+        """返回与 Provider 运行参数匹配的进程级 TikHub Transport。"""
+
         key = (
             provider_config.base_url,
             provider_config.timeout_seconds,
@@ -79,6 +81,8 @@ class _TikHubTransportPool:
             return transport
 
     def close(self) -> None:
+        """关闭当前进程已创建的全部 TikHub Transport。"""
+
         with self._lock:
             transports = tuple(self._transports.values())
             self._transports.clear()
@@ -151,14 +155,17 @@ def create_collection_job_registry(
         PostgresHistoricalImportJobExecutor(runtime),
         terminal_callback=historical_job_terminal_callback,
     )
+    analysis_terminal_callback = create_high_throughput_analysis_job_terminal_callback(
+        runtime
+    )
     register_content_analysis_job(
         registry,
         ContentAnalysisJobHandler(ConcurrentPostgresContentAnalysisJobExecutor(runtime)),
-        terminal_callback=create_analysis_job_terminal_callback(runtime),
+        terminal_callback=analysis_terminal_callback,
         planner_handler=ContentAnalysisPlanJobHandler(
-            PostgresContentAnalysisPlanJobExecutor(runtime)
+            HighThroughputContentAnalysisPlanJobExecutor(runtime)
         ),
-        planner_terminal_callback=create_analysis_job_terminal_callback(runtime),
+        planner_terminal_callback=analysis_terminal_callback,
     )
     register_data_export_job(
         registry,
