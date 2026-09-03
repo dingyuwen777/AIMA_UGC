@@ -133,9 +133,12 @@ def write_secret_ref(root: Path, secret_ref: str, secret: SecretStr) -> Path:
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
-        if target.exists() or target.is_symlink():
-            raise SecretFileError("Secret 引用已存在，禁止覆盖历史 Secret")
-        os.replace(temporary, target)
+        # `link` 在目标已存在时原子失败；不能像 os.replace 那样覆盖并发创建的历史 Secret。
+        try:
+            os.link(temporary, target)
+        except FileExistsError as exc:
+            raise SecretFileError("Secret 引用已存在，禁止覆盖历史 Secret") from exc
+        temporary.unlink()
         target.chmod(0o600)
     except Exception:
         try:
