@@ -280,15 +280,11 @@ class PostgresContentHttpService:
                     analysis_identity=configuration.identity,
                 ).get_content(content_id)
                 if record is None:
-                    # Content 已在当前事务确认存在；缺少可读 Analysis 投影属于不可纠正状态。
                     raise ContentAnalysisRunConflict
                 if record.analysis.status != "completed":
                     raise ContentAnalysisRunConflict
                 taxonomy = configuration.taxonomy
-                if (
-                    request.voice_type is not None
-                    and request.voice_type not in taxonomy.voice_types
-                ):
+                if request.voice_type is not None and request.voice_type not in taxonomy.voice_types:
                     raise ContentAnalysisRunConflict
                 if request.sentiment is not None and request.sentiment not in taxonomy.sentiments:
                     raise ContentAnalysisRunConflict
@@ -409,9 +405,7 @@ class PostgresContentHttpService:
                         targets,
                         analysis_identity=identity,
                     )
-                    target_count = PostgresAnalysisRepository(session).count_targets(
-                        target_statement
-                    )
+                    target_count = PostgresAnalysisRepository(session).count_targets(target_statement)
                 if target_count == 0:
                     raise ContentSelectionEmpty
         finally:
@@ -530,7 +524,8 @@ class PostgresContentHttpService:
     ) -> tuple[AnalysisContentRunCreatedResponse, UUID | None, UUID | None]:
         configuration = self._load_active_analysis_configuration()
         identity = configuration.identity
-        if identity is None:
+        llm_provider = configuration.llm_provider
+        if identity is None or llm_provider is None:
             raise ContentAnalysisUnavailable
         generation_config, generation_hash = current_analysis_generation_config()
         configuration_hash = _analysis_configuration_hash(
@@ -601,6 +596,10 @@ class PostgresContentHttpService:
                     prompt_text_snapshot=configuration.taxonomy.prompt_text,
                     generation_config=generation_config,
                     generation_config_hash=generation_hash,
+                    runtime_config_snapshot=cast(
+                        dict[str, object],
+                        llm_provider.safe_runtime_snapshot(),
+                    ),
                 )
                 if run is None:
                     existing = repository.get_run_by_client_key(client_idempotency_key)
@@ -738,16 +737,11 @@ class PostgresContentHttpService:
         *,
         analysis_identity: Any,
     ) -> Any:
-        repository = PostgresContentQueryRepository(
-            session,
-            analysis_identity=analysis_identity,
-        )
+        repository = PostgresContentQueryRepository(session, analysis_identity=analysis_identity)
         if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
             raise ValueError("all Scope 只能由 Planner 有界冻结")
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
-            return repository.freeze_target_statement(
-                filters=targets.filters or ContentFilterSnapshot()
-            )
+            return repository.freeze_target_statement(filters=targets.filters or ContentFilterSnapshot())
         return repository.freeze_target_statement(content_ids=targets.content_ids)
 
     def review_relevance(
@@ -926,9 +920,7 @@ def _analysis_run_response(
         generation_config=cast(dict[str, object], row["generation_config"]),
         generation_config_hash=cast(str, row["generation_config_hash"]),
         error_code=cast(str | None, row["error_code"]),
-        stats=AnalysisContentRunStatsResponse.model_validate(
-            repository.run_stats(cast(UUID, row["id"]))
-        ),
+        stats=AnalysisContentRunStatsResponse.model_validate(repository.run_stats(cast(UUID, row["id"]))),
         shards=tuple(
             AnalysisContentRunShardResponse(
                 request_id=cast(UUID, shard["request_id"]),
