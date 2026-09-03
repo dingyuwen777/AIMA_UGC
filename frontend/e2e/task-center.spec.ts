@@ -112,7 +112,7 @@ test.beforeEach(async ({ page }) => {
 test('从声音广场打开全局任务中心并统一查看三类活动任务', async ({ page }) => {
   await page.goto('/voice-plaza')
 
-  const taskTrigger = page.getByRole('button', { name: /任务中心/ })
+  const taskTrigger = page.getByRole('button', { name: '任务中心', exact: true })
   await expect(taskTrigger).toBeVisible()
   await expect(taskTrigger).toContainText('3')
   await expect(page.getByRole('button', { name: '站内通知' })).toBeVisible()
