@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Table,
     Text,
@@ -65,11 +66,19 @@ provider_configs_table = Table(
     CheckConstraint("max_concurrency > 0", name="max_concurrency_positive"),
     CheckConstraint("max_rps is null or max_rps > 0", name="max_rps_positive_or_null"),
     CheckConstraint("revision > 0", name="revision_positive"),
+    CheckConstraint("not is_default or enabled", name="default_provider_enabled"),
     CheckConstraint(
         "provider_kind <> 'llm' or (model is not null and char_length(model) > 0)",
         name="llm_model_required",
     ),
     info={"owner": "system"},
+)
+
+Index(
+    "uq_provider_configs_default_llm",
+    provider_configs_table.c.provider_kind,
+    unique=True,
+    postgresql_where=text("provider_kind = 'llm' and is_default and enabled"),
 )
 
 keyword_packs_table = Table(
