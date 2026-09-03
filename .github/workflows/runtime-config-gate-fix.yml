@@ -66,10 +66,15 @@ jobs:
           docker compose -f compose.yaml -f compose.windows.yaml config >/dev/null
           uv run pytest tests/unit/system/test_runtime_provider_config.py -q
 
-      - name: Commit final gate fixes
+      - name: Commit validated non-workflow changes
         shell: bash
         run: |
           set -euo pipefail
+          cp .github/workflows/runtime.yml \
+            changes/CHG-20260903-runtime-config-control-plane/runtime-acceptance.final.yml
+          git checkout HEAD -- \
+            .github/workflows/runtime.yml \
+            .github/workflows/runtime-config-gate-fix.yml
           git config user.name 'aima-runtime-gate-fixer'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
