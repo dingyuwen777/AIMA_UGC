@@ -133,7 +133,7 @@ test.beforeEach(async ({ page }) => {
   await stubCommonRoutes(page)
 })
 
-test('matches the formal normal data composition with run history, table rows and cursor', async ({ page }) => {
+test('keeps terminal analysis history out of the formal data canvas and available in the task center', async ({ page }) => {
   await stubNormalContents(page)
   await page.route('**/api/v1/analysis/content-runs**', async (route) => {
     const url = new URL(route.request().url())
@@ -146,11 +146,18 @@ test('matches the formal normal data composition with run history, table rows an
 
   await page.goto('/voice-plaza')
   await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
-  await expect(page.getByLabel('AI Analysis Run 历史')).toBeVisible()
+  await expect(page.getByLabel('AI Analysis Run 历史')).toHaveCount(0)
+  await expect(page.getByText('Run #12')).toHaveCount(0)
   await expect(page.locator('.content-row')).toHaveCount(3)
   await expect(page.getByText('标题内容', { exact: true })).toBeVisible()
   await expect(page.getByText('游标分页不会虚构总页数')).toBeVisible()
   await expect(page.getByRole('button', { name: '加载更多 →' })).toBeEnabled()
+
+  await page.getByRole('button', { name: /任务中心/ }).click()
+  const taskCenter = page.getByRole('complementary', { name: '任务中心' })
+  await expect(taskCenter).toBeVisible()
+  await expect(taskCenter).toContainText('AI 打标 · Run #12')
+  await expect(taskCenter).toContainText('已完成')
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-normal.png', fullPage: true })
