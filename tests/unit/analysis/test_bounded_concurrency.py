@@ -9,10 +9,12 @@ import pytest
 from aima_ugc.modules.analysis.concurrent_labeling import run_bounded_concurrently
 
 
-def test_bounded_executor_reaches_and_never_exceeds_configured_concurrency() -> None:
-    """真实线程执行时峰值在途必须达到且不超过配置上限。"""
+@pytest.mark.parametrize("max_concurrency", [20, 250])
+def test_bounded_executor_reaches_and_never_exceeds_configured_concurrency(
+    max_concurrency: int,
+) -> None:
+    """真实线程执行时峰值在途必须达到且不超过配置上限，覆盖 DeepSeek 250 档。"""
 
-    max_concurrency = 20
     release = Event()
     lock = Lock()
     active = 0
@@ -28,13 +30,13 @@ def test_bounded_executor_reaches_and_never_exceeds_configured_concurrency() -> 
             peak = max(peak, active)
             if peak == max_concurrency:
                 release.set()
-        assert release.wait(timeout=2)
+        assert release.wait(timeout=10)
         with lock:
             active -= 1
         return value * 2
 
     summary = run_bounded_concurrently(
-        range(40),
+        range(max_concurrency * 2),
         task=task,
         max_concurrency=max_concurrency,
         on_completed=lambda outcomes: completed.extend(
@@ -46,8 +48,8 @@ def test_bounded_executor_reaches_and_never_exceeds_configured_concurrency() -> 
 
     assert peak == max_concurrency
     assert summary.peak_in_flight == max_concurrency
-    assert summary.completed == 40
-    assert sorted(completed) == [value * 2 for value in range(40)]
+    assert summary.completed == max_concurrency * 2
+    assert sorted(completed) == [value * 2 for value in range(max_concurrency * 2)]
 
 
 def test_bounded_executor_canary_failure_prevents_fanout() -> None:
