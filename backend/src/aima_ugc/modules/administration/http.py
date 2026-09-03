@@ -14,6 +14,11 @@ from aima_ugc.contracts.administration import (
     AuditEventListResponse,
     KeywordPackVehicleLinkRequest,
     KeywordPackVehicleLinksResponse,
+    ProviderConfigCreateRequest,
+    ProviderConfigListResponse,
+    ProviderConfigResponse,
+    ProviderConfigUpdateRequest,
+    ProviderKind,
     VehicleModelCreateRequest,
     VehicleModelListQuery,
     VehicleModelListResponse,
@@ -33,7 +38,7 @@ class AdministrationConflict(RuntimeError):
 
 
 class AdministrationHttpService(Protocol):
-    """车型、词包关系、Scheme 与审计的管理边界。"""
+    """车型、词包关系、Scheme、Provider 与审计的管理边界。"""
 
     def create_vehicle_model(
         self,
@@ -41,20 +46,11 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> VehicleModelResponse:
-        """由管理员创建车型。"""
+    ) -> VehicleModelResponse: ...
 
-        ...
+    def list_vehicle_models(self, query: VehicleModelListQuery) -> VehicleModelListResponse: ...
 
-    def list_vehicle_models(self, query: VehicleModelListQuery) -> VehicleModelListResponse:
-        """读取有界车型目录。"""
-
-        ...
-
-    def get_vehicle_model(self, vehicle_model_id: UUID) -> VehicleModelResponse:
-        """读取单个车型及引用摘要。"""
-
-        ...
+    def get_vehicle_model(self, vehicle_model_id: UUID) -> VehicleModelResponse: ...
 
     def update_vehicle_model(
         self,
@@ -63,10 +59,7 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> VehicleModelResponse:
-        """由管理员更新未合并车型。"""
-
-        ...
+    ) -> VehicleModelResponse: ...
 
     def delete_vehicle_model(
         self,
@@ -74,10 +67,7 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> None:
-        """物理删除从未引用的车型。"""
-
-        ...
+    ) -> None: ...
 
     def merge_vehicle_model(
         self,
@@ -86,10 +76,7 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> VehicleModelResponse:
-        """把源车型合并到 active 目标车型。"""
-
-        ...
+    ) -> VehicleModelResponse: ...
 
     def replace_keyword_pack_vehicles(
         self,
@@ -98,10 +85,7 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> KeywordPackVehicleLinksResponse:
-        """原子替换词包引用的车型集合。"""
-
-        ...
+    ) -> KeywordPackVehicleLinksResponse: ...
 
     def create_analysis_scheme_draft(
         self,
@@ -109,10 +93,7 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> AnalysisSchemeResponse:
-        """创建原子 Analysis Scheme 草稿。"""
-
-        ...
+    ) -> AnalysisSchemeResponse: ...
 
     def update_analysis_scheme_draft(
         self,
@@ -121,10 +102,7 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> AnalysisSchemeResponse:
-        """以旧草稿为并发前提追加一个新草稿版本。"""
-
-        ...
+    ) -> AnalysisSchemeResponse: ...
 
     def publish_analysis_scheme(
         self,
@@ -133,10 +111,7 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> AnalysisSchemeResponse:
-        """发布指定 Scheme Version。"""
-
-        ...
+    ) -> AnalysisSchemeResponse: ...
 
     def rollback_analysis_scheme(
         self,
@@ -145,20 +120,43 @@ class AdministrationHttpService(Protocol):
         *,
         principal: Principal,
         request_id: str,
-    ) -> AnalysisSchemeResponse:
-        """把历史 Scheme Version 重新激活。"""
+    ) -> AnalysisSchemeResponse: ...
+
+    def list_analysis_schemes(self) -> AnalysisSchemeListResponse: ...
+
+    def list_provider_configs(
+        self,
+        *,
+        provider_kind: ProviderKind | None = None,
+    ) -> ProviderConfigListResponse:
+        """读取 Provider 安全管理投影。"""
 
         ...
 
-    def list_analysis_schemes(self) -> AnalysisSchemeListResponse:
-        """读取 Scheme 与完整版本历史。"""
+    def create_provider_config(
+        self,
+        body: ProviderConfigCreateRequest,
+        *,
+        principal: Principal,
+        request_id: str,
+    ) -> ProviderConfigResponse:
+        """创建 Provider 并把 API Key 写入不可变 Secret Store。"""
 
         ...
 
-    def list_audit_events(self, *, offset: int, limit: int) -> AuditEventListResponse:
-        """分页读取管理员安全审计摘要。"""
+    def update_provider_config(
+        self,
+        provider_config_id: UUID,
+        body: ProviderConfigUpdateRequest,
+        *,
+        principal: Principal,
+        request_id: str,
+    ) -> ProviderConfigResponse:
+        """更新 Provider；仅在提供 api_key 时创建新的 Secret 引用。"""
 
         ...
+
+    def list_audit_events(self, *, offset: int, limit: int) -> AuditEventListResponse: ...
 
 
 __all__ = [
