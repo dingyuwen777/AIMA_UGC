@@ -67,6 +67,7 @@ const EXPORT_STATUS_LABELS: Record<string, string> = {
 
 const COLLECTION_TYPE_LABELS: Record<string, string> = {
   excel_import: 'Excel 导入',
+  data_import_campaign: '数据导入',
   tikhub_discovery: 'TikHub 采集',
   tikhub_batch_supplement: 'TikHub 补采',
 }
