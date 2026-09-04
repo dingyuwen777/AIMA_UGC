@@ -28,7 +28,23 @@ const icon = computed<AimaIconName>(() => props.tone === 'error' ? 'warning' : p
 </template>
 
 <style scoped>
-.aima-feedback { display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; border: 1px solid; border-radius: var(--aima-radius-control); font-size: 12px; line-height: 18px; }
+.aima-feedback {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid;
+  border-radius: var(--aima-radius-control);
+  font-size: var(--aima-font-size-body-small);
+  line-height: var(--aima-line-height-body);
+}
+
+.aima-feedback > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .aima-feedback svg { flex: none; margin-top: 1px; }
 .is-info { border-color: #1677ff; color: #1768c8; background: #eef7ff; }
 .is-success { border-color: #afe2c8; color: #14834f; background: #effaf4; }

@@ -41,11 +41,22 @@ withDefaults(defineProps<{
   cursor: pointer;
   transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
 }
-.is-medium { height: 40px; padding: 0 15px; font-size: 13px; }
-.is-small { height: 30px; padding: 0 10px; font-size: 12px; }
+
+.is-medium {
+  min-height: var(--aima-control-height-md);
+  padding: 0 15px;
+  font-size: var(--aima-font-size-control);
+}
+
+.is-small {
+  min-height: var(--aima-button-height-sm);
+  padding: 0 10px;
+  font-size: var(--aima-font-size-body-small);
+}
+
 .is-primary { border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); }
 .is-outline { border-color: var(--aima-primary); color: var(--aima-primary); }
-.is-text { height: auto; padding: 4px; border-color: transparent; color: var(--aima-primary); background: transparent; }
+.is-text { min-height: auto; padding: 4px; border-color: transparent; color: var(--aima-primary); background: transparent; }
 .aima-button:not(:disabled):hover { border-color: var(--aima-primary); color: var(--aima-primary); }
 .is-primary:not(:disabled):hover { color: #fff; background: var(--aima-primary-hover); }
 .aima-button:focus-visible { outline: 2px solid var(--aima-primary-soft-strong); outline-offset: 2px; }

@@ -1,0 +1,214 @@
+/*
+ * AIMA 桌面端响应式兼容层。
+ *
+ * 1440×900 继续作为正式视觉锚点；本文件只负责跨页面 reflow、overflow、
+ * semantic typography 消费和宽屏有界扩展。业务状态、数据 Contract 与页面 Owner
+ * 仍由各 Feature 自己负责。
+ */
+
+.app-shell :where(.voice-plaza-page, .admin-page, .filters, .table-wrap, .table-card, .panel-grid, .card),
+.app-shell :where(.filter-row, .list-heading, .pagination, .runtime-tabs, .tabs) {
+  min-width: 0;
+}
+
+/* 表格只允许自身容器横向滚动；#app 保证能覆盖旧 scoped overflow shorthand。 */
+#app .app-shell :where(.table-wrap, .table-card, .audit-card) {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+/* Overlay 使用首选设计宽度，但永远受当前 viewport safe margin 约束。 */
+:where([role='dialog'], .el-dialog, .el-drawer) {
+  max-width: calc(100vw - var(--aima-layout-safe-margin) - var(--aima-layout-safe-margin));
+}
+
+/*
+ * 以下旧页面 Typography 迁移规则显式挂到 #app。
+ * Vue scoped CSS 会给页面选择器追加 data-v 属性；这里用稳定的应用根作用域提高
+ * specificity，确保 semantic token 真正覆盖旧 9–10px 值，而不使用 !important。
+ */
+#app .app-shell .voice-plaza-page :where(.capability-warning strong, .taxonomy-warning strong, .page-error strong) {
+  font-size: var(--aima-font-size-body-small);
+}
+
+#app .app-shell .voice-plaza-page :where(
+  .capability-warning span,
+  .taxonomy-warning span,
+  .page-error span,
+  .active-analysis-heading span,
+  .active-analysis-heading button,
+  .run-status,
+  .run-counts,
+  .selection-actions button,
+  .count-tools button
+) {
+  font-size: var(--aima-font-size-caption);
+}
+
+#app .app-shell .voice-plaza-page .active-analysis-heading strong,
+#app .app-shell .voice-plaza-page .run-info strong,
+#app .app-shell .voice-plaza-page .list-heading span,
+#app .app-shell .voice-plaza-page .pagination,
+#app .app-shell .voice-plaza-page .filters .field,
+#app .app-shell .voice-plaza-page .filters .filter-footer p {
+  font-size: var(--aima-font-size-body-small);
+}
+
+#app .app-shell .voice-plaza-page .run-info small {
+  font-size: var(--aima-font-size-caption);
+}
+
+#app .app-shell .voice-plaza-page .list-heading strong {
+  font-size: var(--aima-font-size-card-title);
+}
+
+#app .app-shell .voice-plaza-page .filters :where(input, select) {
+  height: var(--aima-control-height-md);
+  font-size: var(--aima-font-size-control);
+}
+
+#app .app-shell .voice-plaza-page .filters .filter-actions .aima-button {
+  min-height: var(--aima-control-height-sm);
+  font-size: var(--aima-font-size-control);
+}
+
+/* Collection Strategy：保持 1440 geometry，文字与输入统一使用 semantic scale。 */
+#app .app-shell .workspace-main > .tabs button {
+  font-size: var(--aima-font-size-control);
+}
+
+#app .app-shell .workspace-main > .filters :where(input, select) {
+  font-size: var(--aima-font-size-control);
+}
+
+/* Collection Runtime。 */
+#app .app-shell .runtime-tabs button {
+  font-size: var(--aima-font-size-control);
+}
+
+.app-shell .runtime-tabs + * {
+  min-width: 0;
+}
+
+#app .app-shell .list-heading strong {
+  font-size: var(--aima-font-size-section-title);
+}
+
+#app .app-shell .pagination {
+  font-size: var(--aima-font-size-body-small);
+}
+
+/* Admin Configuration：标题、正文和表格不能因语义迁移反而小于原始 1440 基线。 */
+#app .app-shell .admin-page h2 {
+  font-size: var(--aima-font-size-section-title);
+}
+
+#app .app-shell .admin-page h3,
+#app .app-shell .admin-page .card p,
+#app .app-shell .admin-page table,
+#app .app-shell .admin-page td button,
+#app .app-shell .admin-page .form-card label,
+#app .app-shell .admin-page .retry-link,
+#app .app-shell .admin-page .audit-pagination,
+#app .app-shell .admin-page :where(
+  .runtime-rule strong,
+  .security-note strong,
+  .provider-item strong,
+  .empty-state,
+  .form-grid label,
+  .check-row strong
+) {
+  font-size: var(--aima-font-size-body-small);
+}
+
+#app .app-shell .admin-page :where(
+  .form-card label > small,
+  .list-card > button span,
+  .scheme-editor > header > span,
+  .audit-card code,
+  .runtime-rule span,
+  .security-note span,
+  .provider-item > span:not(.provider-item__head),
+  .provider-item small,
+  .badges em,
+  .form-grid label > small,
+  .check-row small
+) {
+  font-size: var(--aima-font-size-caption);
+}
+
+#app .app-shell .admin-page .list-card > button strong {
+  font-size: var(--aima-font-size-body-small);
+}
+
+#app .app-shell .admin-page :where(input, textarea, select) {
+  font-size: var(--aima-font-size-control);
+}
+
+.app-shell .admin-page .tabs {
+  max-width: 100%;
+}
+
+@media (max-width: 1279px) {
+  /* 小桌面通过 reflow 解决空间，不继续缩小字体。 */
+  .app-shell .workspace-main > .filters {
+    height: auto;
+    grid-template-columns: minmax(220px, 1fr) minmax(120px, 160px) minmax(140px, 180px) auto auto;
+    align-items: center;
+  }
+
+  .app-shell .voice-plaza-page .filter-row {
+    flex-wrap: wrap;
+  }
+
+  .app-shell .voice-plaza-page .filters .field--search {
+    flex: 1 1 280px;
+  }
+
+  .app-shell .voice-plaza-page .filters .field:not(.field--search) {
+    flex: 1 1 150px;
+  }
+
+  .app-shell .voice-plaza-page :where(.active-analysis-heading, .list-heading, .pagination),
+  .app-shell .admin-page .card > header,
+  .app-shell .admin-page .audit-pagination {
+    flex-wrap: wrap;
+  }
+
+  #app .app-shell .admin-page :where(.two-column, .scheme-layout) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell .admin-page .tabs,
+  .app-shell .runtime-tabs {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .app-shell .admin-page .tabs button,
+  .app-shell .runtime-tabs button {
+    flex: none;
+  }
+}
+
+@media (max-width: 960px) {
+  /* 不宣称完整 Mobile；只保证窄窗口和高浏览器缩放下仍能访问核心内容。 */
+  .app-shell .workspace-main > .filters {
+    grid-template-columns: minmax(0, 1fr) minmax(120px, 0.6fr);
+  }
+
+  .app-shell .workspace-main > .filters > span:nth-of-type(2) {
+    display: none;
+  }
+
+  .app-shell .voice-plaza-page .active-analysis-runs article {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .app-shell .voice-plaza-page .run-counts {
+    grid-column: auto;
+  }
+}

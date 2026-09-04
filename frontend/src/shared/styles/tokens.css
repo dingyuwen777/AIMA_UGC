@@ -55,16 +55,38 @@
   --aima-radius-xl: 12px;
   --aima-radius-full: 999px;
 
-  /* Figma `Layout Tokens` collection. */
+  /*
+   * Semantic Typography：1440px 是正式视觉锚点；更宽桌面只做有边界的渐进放大。
+   * 小桌面不继续缩字，而由布局 reflow 解决空间不足，避免牺牲可读性。
+   */
+  --aima-font-size-page-title: clamp(24px, calc(18px + 0.416667vw), 28px);
+  --aima-font-size-section-title: clamp(16px, calc(12px + 0.277778vw), 18px);
+  --aima-font-size-card-title: clamp(14px, calc(10px + 0.277778vw), 16px);
+  --aima-font-size-body: clamp(13px, calc(11px + 0.138889vw), 14px);
+  --aima-font-size-control: clamp(13px, calc(11px + 0.138889vw), 14px);
+  --aima-font-size-body-small: clamp(12px, calc(10px + 0.138889vw), 13px);
+  --aima-font-size-caption: clamp(11px, calc(9px + 0.138889vw), 12px);
+  --aima-line-height-heading: 1.3;
+  --aima-line-height-body: 1.5;
+  --aima-line-height-compact: 1.4;
+
+  /* Figma `Layout Tokens` collection。响应式值均以 1440px 保持现有正式基线。 */
   --aima-layout-sidebar-width: 180px;
   --aima-layout-topbar-height: 60px;
-  --aima-layout-page-padding-x: 24px;
-  --aima-layout-page-padding-y: 28px;
-  --aima-layout-content-max-width: 1400px;
+  --aima-layout-topbar-padding-x: clamp(24px, calc(18px + 0.555556vw), 32px);
+  --aima-layout-page-padding-x: clamp(20px, calc(12px + 0.833333vw), 32px);
+  --aima-layout-page-padding-y: clamp(24px, calc(18px + 0.416667vw), 30px);
+  --aima-layout-content-max-width: clamp(1400px, 88vw, 1760px);
   --aima-layout-drawer-width: 510px;
   --aima-layout-detail-drawer-width: 450px;
-  --aima-control-height-sm: 32px;
-  --aima-control-height-md: 40px;
+  --aima-layout-safe-margin: 16px;
+
+  /* Density：标准桌面保持现有关键几何，大屏只做有限增加，不做整页缩放。 */
+  --aima-control-height-sm: clamp(32px, calc(29px + 0.208333vw), 34px);
+  --aima-control-height-md: clamp(40px, calc(37px + 0.208333vw), 42px);
+  --aima-button-height-sm: clamp(30px, calc(27px + 0.208333vw), 32px);
+  --aima-density-card-padding: clamp(16px, calc(10px + 0.416667vw), 20px);
+  --aima-density-section-gap: clamp(24px, calc(18px + 0.416667vw), 28px);
   --aima-border-width-default: 1px;
   --aima-border-width-focus: 2px;
   --aima-control-height-toggle: 24px;
@@ -102,8 +124,14 @@
 html,
 body,
 #app {
+  min-width: 0;
   min-height: 100%;
   margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -112,6 +140,7 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }

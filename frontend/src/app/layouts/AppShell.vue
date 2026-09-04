@@ -103,7 +103,7 @@ onMounted(() => void identity.ensurePrincipal())
 <style scoped>
 .app-shell {
   display: flex;
-  min-width: 1180px;
+  min-width: 0;
   min-height: 100vh;
   background: #f7f8fb;
 }
@@ -136,7 +136,7 @@ onMounted(() => void identity.ensurePrincipal())
   color: #fff;
   background: linear-gradient(145deg, #ff377b, #e90050);
   box-shadow: 0 8px 18px rgb(245 0 87 / 22%);
-  font-size: 16px;
+  font-size: var(--aima-font-size-section-title);
 }
 
 .brand strong,
@@ -146,14 +146,14 @@ onMounted(() => void identity.ensurePrincipal())
 
 .brand strong {
   white-space: nowrap;
-  font-size: 14px;
+  font-size: var(--aima-font-size-card-title);
 }
 
 .brand span {
   margin-top: 4px;
   color: #8b93a5;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--aima-font-size-caption);
 }
 
 nav {
@@ -164,7 +164,7 @@ nav {
   display: block;
   margin-bottom: 4px;
   color: var(--aima-text-disabled);
-  font-size: 11px;
+  font-size: var(--aima-font-size-caption);
   line-height: 16px;
 }
 
@@ -179,7 +179,7 @@ nav {
   border-radius: 8px;
   color: #3e4658;
   text-decoration: none;
-  font-size: 14px;
+  font-size: var(--aima-font-size-card-title);
 }
 
 .nav-item.router-link-active {
@@ -211,30 +211,60 @@ nav {
 
 .workspace {
   width: calc(100% - var(--aima-sidebar-width));
+  min-width: 0;
   min-height: 100vh;
   margin-left: var(--aima-sidebar-width);
 }
 
 .topbar {
   display: flex;
-  height: var(--aima-topbar-height);
+  min-width: 0;
+  min-height: var(--aima-topbar-height);
   align-items: center;
   justify-content: space-between;
-  padding: 0 26px;
+  gap: 16px;
+  padding: 0 var(--aima-layout-topbar-padding-x);
   border-bottom: 1px solid var(--aima-border);
   background: rgb(255 255 255 / 88%);
 }
 
-.account-area { display: flex; align-items: center; gap: 10px; }
-.principal-error { display: flex; align-items: center; gap: 7px; color: var(--aima-danger); font-size: 10px; }
-.principal-error button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 10px; }
+.account-area {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.principal-error {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--aima-danger);
+  font-size: var(--aima-font-size-caption);
+}
+
+.principal-error button {
+  padding: 0;
+  border: 0;
+  color: var(--aima-primary);
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--aima-font-size-caption);
+}
+
 .principal-error button:disabled { cursor: wait; opacity: .6; }
 .principal { display: grid; gap: 2px; text-align: right; }
-.principal strong { color: var(--aima-text); font-size: 11px; }
-.principal span { color: var(--aima-text-disabled); font-size: 9px; }
+.principal strong { color: var(--aima-text); font-size: var(--aima-font-size-body-small); }
+.principal span { color: var(--aima-text-disabled); font-size: var(--aima-font-size-caption); }
 
 .breadcrumb {
+  min-width: 0;
+  overflow: hidden;
   color: #626b7c;
+  font-size: var(--aima-font-size-section-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .breadcrumb span {
@@ -250,14 +280,51 @@ nav {
   display: grid;
   width: 32px;
   height: 32px;
+  flex: none;
   place-items: center;
   border-radius: 50%;
   color: #fff;
   background: var(--aima-primary);
-  font-size: 15px;
+  font-size: var(--aima-font-size-section-title);
 }
 
 .workspace-main {
-  padding: 24px 24px 40px;
+  width: min(100%, calc(var(--aima-layout-content-max-width) + var(--aima-layout-page-padding-x) + var(--aima-layout-page-padding-x)));
+  min-width: 0;
+  margin: 0 auto;
+  padding: var(--aima-layout-page-padding-y) var(--aima-layout-page-padding-x) 40px;
+}
+
+@media (max-width: 1279px) {
+  .topbar {
+    flex-wrap: wrap;
+    align-content: center;
+    padding-block: 8px;
+  }
+
+  .account-area {
+    gap: 7px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .principal {
+    display: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    --aima-sidebar-width: 160px;
+  }
+
+  .brand span,
+  .breadcrumb {
+    display: none;
+  }
+
+  .nav-item {
+    padding-inline: 12px;
+  }
 }
 </style>
