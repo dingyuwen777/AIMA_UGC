@@ -1,4 +1,4 @@
-name: Verify RPS shard red once
+name: Fix and verify RPS shard once
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
       - .github/workflows/verify-rps-shard-red-once.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  red:
+  green:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout feature branch
@@ -33,12 +33,54 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv sync --locked
 
-      - name: Verify new regression is red
+      - name: Pass frozen Provider RPS into shard sizing
         shell: bash
         run: |
           set -euo pipefail
-          if uv run pytest tests/unit/analysis/test_analysis_sharding.py -q; then
-            echo "Expected RPS shard regression to fail before production fix."
-            exit 1
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/src/aima_ugc/bootstrap/content_http.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''def _analysis_shard_size(provider: ProviderConfig, *, legacy_shard_size: int) -> int:
+              """数据库 Provider 自动推导 Shard；仅旧 env bootstrap Provider 沿用历史静态值。"""
+
+              if is_legacy_llm_provider(provider):
+                  return legacy_shard_size
+              return calculate_analysis_shard_size(provider.max_concurrency)
+          '''
+          new = '''def _analysis_shard_size(provider: ProviderConfig, *, legacy_shard_size: int) -> int:
+              """数据库 Provider 按并发/RPS 推导 Shard；旧 env bootstrap 沿用历史静态值。"""
+
+              if is_legacy_llm_provider(provider):
+                  return legacy_shard_size
+              return calculate_analysis_shard_size(
+                  provider.max_concurrency,
+                  max_rps=provider.max_rps,
+              )
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f"Unexpected _analysis_shard_size shape: {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          uv run ruff format backend/src/aima_ugc/bootstrap/content_http.py backend/src/aima_ugc/modules/analysis/sharding.py tests/unit/analysis/test_analysis_sharding.py
+          uv run ruff check backend/src/aima_ugc/bootstrap/content_http.py backend/src/aima_ugc/modules/analysis/sharding.py tests/unit/analysis/test_analysis_sharding.py
+          uv run mypy backend/src/aima_ugc/bootstrap/content_http.py backend/src/aima_ugc/modules/analysis/sharding.py
+          uv run pytest tests/unit/analysis/test_analysis_sharding.py tests/unit/content/test_stage12_analysis_planner.py -q
+          git diff --check
+
+      - name: Commit production fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/src/aima_ugc/bootstrap/content_http.py
+          if git diff --cached --quiet; then
+            echo "RPS shard production fix already present."
+            exit 0
           fi
-          echo "RPS shard regression is red as expected."
+          git commit -m "让 Analysis Shard 同时遵守 Provider RPS"
+          git fetch origin feature/335-analysis-provider-concurrency
+          git rebase origin/feature/335-analysis-provider-concurrency
+          git push origin HEAD:feature/335-analysis-provider-concurrency
