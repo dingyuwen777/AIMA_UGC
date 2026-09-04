@@ -1,9 +1,8 @@
 """管理员 LLM Provider 并发 Contract 回归。"""
 
 import pytest
-from pydantic import ValidationError
-
 from aima_ugc.contracts.administration import ProviderConfigCreateRequest
+from pydantic import ValidationError
 
 
 def _request(*, max_concurrency: int) -> ProviderConfigCreateRequest:

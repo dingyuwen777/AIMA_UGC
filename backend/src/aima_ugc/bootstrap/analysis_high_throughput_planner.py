@@ -113,17 +113,13 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                             limit=self._freeze_batch_size,
                         )
                         if not batch:
-                            current_target_count = (
-                                content_repository.count_all_analysis_targets()
-                            )
+                            current_target_count = content_repository.count_all_analysis_targets()
                             if (
                                 frozen_count != expected_target_count
                                 or current_target_count != expected_target_count
                             ):
                                 jobs.lock_current_execution(fence)
-                                return JobHandlerResult.failed(
-                                    "content_analysis_target_changed"
-                                )
+                                return JobHandlerResult.failed("content_analysis_target_changed")
                             created = schedule_high_throughput_analysis_run_shards(
                                 session,
                                 run_id=payload.run_id,
@@ -144,9 +140,7 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                         next_count = frozen_count + len(batch)
                         if next_count > expected_target_count:
                             jobs.lock_current_execution(fence)
-                            return JobHandlerResult.failed(
-                                "content_analysis_target_changed"
-                            )
+                            return JobHandlerResult.failed("content_analysis_target_changed")
                         repository.append_run_targets(
                             run_id=payload.run_id,
                             start_ordinal=frozen_count,
@@ -190,9 +184,7 @@ def _target_statement_from_run(session: Session, run: RowMapping) -> object:
             filters=ContentFilterSnapshot.model_validate(run["filter_snapshot"])
         )
     snapshot = cast(dict[str, object], run["filter_snapshot"])
-    content_ids = tuple(
-        UUID(str(value)) for value in cast(list[object], snapshot["content_ids"])
-    )
+    content_ids = tuple(UUID(str(value)) for value in cast(list[object], snapshot["content_ids"]))
     return repository.freeze_target_statement(content_ids=content_ids)
 
 

@@ -7,10 +7,6 @@ from pathlib import Path
 from threading import Event, Lock
 from uuid import UUID, uuid4
 
-from fastapi.testclient import TestClient
-from openpyxl import Workbook
-from sqlalchemy import func, select
-
 from aima_ugc.adapters.llm.openai_compatible import OpenAICompatibleLLMError
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
@@ -51,6 +47,9 @@ from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobRegistry
+from fastapi.testclient import TestClient
+from openpyxl import Workbook
+from sqlalchemy import func, select
 
 
 class _ConcurrentFakeLLM:
@@ -161,9 +160,7 @@ def _runtime(tmp_path: Path):  # type: ignore[no-untyped-def]
         """测试结束时清除正式 Provider，避免污染同一 CI 数据库的 legacy 回归。"""
 
         with runtime.database.engine.begin() as connection:
-            connection.exec_driver_sql(
-                "TRUNCATE TABLE provider_configs RESTART IDENTITY CASCADE"
-            )
+            connection.exec_driver_sql("TRUNCATE TABLE provider_configs RESTART IDENTITY CASCADE")
 
     runtime.add_resource_closer(cleanup_provider_configs)
     return runtime
@@ -354,9 +351,7 @@ def test_db_provider_drives_concurrency_shard_and_batch_persistence(tmp_path: Pa
         }
         with runtime.database.engine.begin() as connection:
             assert (
-                connection.scalar(
-                    select(func.count()).select_from(analysis_content_results_table)
-                )
+                connection.scalar(select(func.count()).select_from(analysis_content_results_table))
                 == 8
             )
             snapshot = connection.execute(
@@ -396,9 +391,7 @@ def test_parallel_transport_error_only_fails_one_content(tmp_path: Path) -> None
         }
         with runtime.database.engine.begin() as connection:
             assert (
-                connection.scalar(
-                    select(func.count()).select_from(analysis_content_results_table)
-                )
+                connection.scalar(select(func.count()).select_from(analysis_content_results_table))
                 == 7
             )
     finally:

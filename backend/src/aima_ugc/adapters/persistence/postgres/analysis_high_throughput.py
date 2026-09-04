@@ -70,10 +70,7 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
         run = self.get_run(run_id)
         if run is None:
             raise AnalysisRequestNotFound
-        counts = {
-            status: 0
-            for status in ("pending", "succeeded", "failed", "stale", "cancelled")
-        }
+        counts = {status: 0 for status in ("pending", "succeeded", "failed", "stale", "cancelled")}
         request_rows = tuple(
             self._session.execute(
                 select(
@@ -119,11 +116,7 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
                     analysis_content_request_items_table.c.status,
                     func.count().label("count"),
                 )
-                .where(
-                    analysis_content_request_items_table.c.request_id.in_(
-                        item_scan_request_ids
-                    )
-                )
+                .where(analysis_content_request_items_table.c.request_id.in_(item_scan_request_ids))
                 .group_by(analysis_content_request_items_table.c.status)
             )
             for status, count in rows:

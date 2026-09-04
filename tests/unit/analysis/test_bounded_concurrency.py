@@ -5,7 +5,6 @@ from __future__ import annotations
 from threading import Event, Lock
 
 import pytest
-
 from aima_ugc.modules.analysis.concurrent_labeling import run_bounded_concurrently
 
 

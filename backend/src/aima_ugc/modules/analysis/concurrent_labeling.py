@@ -5,18 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
-from typing import Generic, TypeVar
-
-_ItemT = TypeVar("_ItemT")
-_ResultT = TypeVar("_ResultT")
 
 
 @dataclass(frozen=True, slots=True)
-class ConcurrentTaskOutcome(Generic[_ItemT, _ResultT]):
+class ConcurrentTaskOutcome[ItemT, ResultT]:
     """一条已提交任务的成功结果或异常。"""
 
-    item: _ItemT
-    result: _ResultT | None = None
+    item: ItemT
+    result: ResultT | None = None
     error: BaseException | None = None
 
     def __post_init__(self) -> None:
@@ -35,12 +31,12 @@ class BoundedConcurrencySummary:
     stopped: bool
 
 
-def run_bounded_concurrently(
-    items: Iterable[_ItemT],
+def run_bounded_concurrently[ItemT, ResultT](
+    items: Iterable[ItemT],
     *,
-    task: Callable[[_ItemT], _ResultT],
+    task: Callable[[ItemT], ResultT],
     max_concurrency: int,
-    on_completed: Callable[[tuple[ConcurrentTaskOutcome[_ItemT, _ResultT], ...]], None],
+    on_completed: Callable[[tuple[ConcurrentTaskOutcome[ItemT, ResultT], ...]], None],
     canary: bool = True,
     fail_fast: bool = True,
     stop_requested: Callable[[], bool] | None = None,
@@ -79,7 +75,7 @@ def run_bounded_concurrently(
         max_workers=max_concurrency,
         thread_name_prefix="aima-analysis",
     ) as executor:
-        in_flight: dict[Future[_ResultT], _ItemT] = {}
+        in_flight: dict[Future[ResultT], ItemT] = {}
         exhausted = False
 
         def fill_capacity() -> None:
@@ -135,13 +131,13 @@ def run_bounded_concurrently(
     )
 
 
-def _collect_completed(
-    in_flight: dict[Future[_ResultT], _ItemT],
-    done: set[Future[_ResultT]],
-) -> tuple[ConcurrentTaskOutcome[_ItemT, _ResultT], ...]:
+def _collect_completed[ItemT, ResultT](
+    in_flight: dict[Future[ResultT], ItemT],
+    done: set[Future[ResultT]],
+) -> tuple[ConcurrentTaskOutcome[ItemT, ResultT], ...]:
     """收割已完成 Future，并把异常保留为可由调用方解释的 Outcome。"""
 
-    outcomes: list[ConcurrentTaskOutcome[_ItemT, _ResultT]] = []
+    outcomes: list[ConcurrentTaskOutcome[ItemT, ResultT]] = []
     for future in done:
         item = in_flight.pop(future)
         if future.cancelled():
@@ -153,9 +149,9 @@ def _collect_completed(
     return tuple(outcomes)
 
 
-def _cancel_and_collect(
-    in_flight: dict[Future[_ResultT], _ItemT],
-) -> tuple[ConcurrentTaskOutcome[_ItemT, _ResultT], ...]:
+def _cancel_and_collect[ItemT, ResultT](
+    in_flight: dict[Future[ResultT], ItemT],
+) -> tuple[ConcurrentTaskOutcome[ItemT, ResultT], ...]:
     """取消尚未开始的任务，并等待已经运行的请求收敛后统一收割。"""
 
     futures = tuple(in_flight)

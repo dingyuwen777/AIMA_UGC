@@ -140,7 +140,7 @@ class PostgresAnalysisBatchRepository:
             created_identities=created_identities,
         )
 
-        succeeded_rows = [
+        succeeded_rows: list[dict[str, object]] = [
             {
                 "p_request_id": item.work_item.request_id,
                 "p_content_id": item.work_item.content_id,
@@ -284,10 +284,7 @@ class PostgresAnalysisBatchRepository:
                 )
             ).mappings()
         )
-        persisted_ids = {
-            _row_identity(row): cast(UUID, row["id"])
-            for row in created_rows
-        }
+        persisted_ids = {_row_identity(row): cast(UUID, row["id"]) for row in created_rows}
         created_identities = set(persisted_ids)
 
         missing = {
@@ -357,15 +354,11 @@ class PostgresAnalysisBatchRepository:
         """批量复核冲突 Result 的业务值和标签，保持原有幂等冲突 fail-closed 语义。"""
 
         conflicted = [
-            item
-            for item in prepared
-            if _result_identity(item.work_item) not in created_identities
+            item for item in prepared if _result_identity(item.work_item) not in created_identities
         ]
         if not conflicted:
             return
-        result_ids = tuple(
-            persisted_ids[_result_identity(item.work_item)] for item in conflicted
-        )
+        result_ids = tuple(persisted_ids[_result_identity(item.work_item)] for item in conflicted)
         result_rows = {
             cast(UUID, row["id"]): row
             for row in self._session.execute(
@@ -378,7 +371,9 @@ class PostgresAnalysisBatchRepository:
                 ).where(analysis_content_results_table.c.id.in_(result_ids))
             ).mappings()
         }
-        labels_by_result: dict[UUID, list[tuple[str, str]]] = {result_id: [] for result_id in result_ids}
+        labels_by_result: dict[UUID, list[tuple[str, str]]] = {
+            result_id: [] for result_id in result_ids
+        }
         for result_id, primary_label, secondary_label in self._session.execute(
             select(
                 analysis_content_label_pairs_table.c.analysis_result_id,

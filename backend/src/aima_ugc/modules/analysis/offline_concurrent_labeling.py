@@ -10,9 +10,8 @@ from .content_labeling import ContentLabelingService
 from .offline_labeling import (
     DEFAULT_OFFLINE_LLM_CONCURRENCY,
     OfflineContentLabelingSummary,
-    _ItemOutcome,
-    _SourceRow,
     _flush_and_sync,
+    _ItemOutcome,
     _iter_pending_rows,
     _label_one,
     _load_checkpoint_index,
@@ -20,6 +19,7 @@ from .offline_labeling import (
     _preflight_source,
     _resolve_concurrency,
     _rewrite_source_in_original_order,
+    _SourceRow,
 )
 from .prompt_taxonomy import PromptTaxonomy
 

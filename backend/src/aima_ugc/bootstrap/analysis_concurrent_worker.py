@@ -74,9 +74,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
         self,
         runtime: PlatformRuntime,
         *,
-        service_factory: Callable[
-            [], tuple[ContentLabelingService, Callable[[], None], int, int]
-        ]
+        service_factory: Callable[[], tuple[ContentLabelingService, Callable[[], None], int, int]]
         | None = None,
     ) -> None:
         """创建正式执行器；测试可注入显式 Service/并发而不复制生产调度逻辑。"""
@@ -138,7 +136,10 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                 persistence_buffer: list[
                     ConcurrentTaskOutcome[AnalysisWorkItem, ContentLabelingBatchResult]
                 ] = []
-                cancel_seen = False
+                cancel_state = [False]
+
+                def stop_requested(cancel_state: list[bool] = cancel_state) -> bool:
+                    return cancel_state[0]
 
                 def label_one(work_item: AnalysisWorkItem) -> ContentLabelingBatchResult:
                     """保持一条 Content 一次独立逻辑模型请求。"""
@@ -155,16 +156,19 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                     outcomes: Sequence[
                         ConcurrentTaskOutcome[AnalysisWorkItem, ContentLabelingBatchResult]
                     ],
+                    persistence_buffer: list[
+                        ConcurrentTaskOutcome[AnalysisWorkItem, ContentLabelingBatchResult]
+                    ] = persistence_buffer,
+                    cancel_state: list[bool] = cancel_state,
                 ) -> None:
                     """在调度线程累积完成结果，达到阈值后短事务落库并形成自然背压。"""
 
-                    nonlocal cancel_seen
                     persistence_buffer.extend(outcomes)
                     while len(persistence_buffer) >= _ANALYSIS_DB_WRITE_BATCH_SIZE:
                         chunk = tuple(persistence_buffer[:_ANALYSIS_DB_WRITE_BATCH_SIZE])
                         del persistence_buffer[:_ANALYSIS_DB_WRITE_BATCH_SIZE]
                         self._persist_outcomes(fence=fence, outcomes=chunk)
-                        cancel_seen = context.cancel_requested()
+                        cancel_state[0] = context.cancel_requested()
 
                 try:
                     summary = run_bounded_concurrently(
@@ -174,7 +178,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                         on_completed=persist_completed,
                         canary=use_canary,
                         fail_fast=False,
-                        stop_requested=lambda: cancel_seen,
+                        stop_requested=stop_requested,
                     )
                 except OpenAICompatibleLLMError as exc:
                     # 只有 Canary 在并发放大前抛到这里；之后单条 Transport 错误由 Outcome 隔离。
@@ -203,7 +207,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
         finally:
             execution.close()
 
-    def _create_service_runtime(self, analysis_run_id: UUID) -> _AnalysisServiceRuntime:
+    def _create_service_runtime(self, analysis_run_id: UUID | None) -> _AnalysisServiceRuntime:
         """从 Run 冻结 Provider/Scheme 装配共享 HTTP Client、RPS、Transport Retry 与并发容量。"""
 
         if self._service_factory is not None:
@@ -214,6 +218,9 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                 validation_retries=validation_retries,
                 max_concurrency=max_concurrency,
             )
+
+        if analysis_run_id is None:
+            raise ValueError("Analysis Run ID 缺失")
 
         settings = self._runtime.settings
         session = self._runtime.database.new_session()

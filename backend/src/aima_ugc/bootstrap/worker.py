@@ -155,9 +155,7 @@ def create_collection_job_registry(
         PostgresHistoricalImportJobExecutor(runtime),
         terminal_callback=historical_job_terminal_callback,
     )
-    analysis_terminal_callback = create_high_throughput_analysis_job_terminal_callback(
-        runtime
-    )
+    analysis_terminal_callback = create_high_throughput_analysis_job_terminal_callback(runtime)
     register_content_analysis_job(
         registry,
         ContentAnalysisJobHandler(ConcurrentPostgresContentAnalysisJobExecutor(runtime)),
