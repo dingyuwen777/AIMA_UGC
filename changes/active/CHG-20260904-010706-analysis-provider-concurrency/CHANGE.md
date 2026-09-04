@@ -187,7 +187,7 @@ Review Target：PR #336，base `59edfe793b913d11283952567f4e1a6e0003c6df` → �
 
 审查覆盖：Provider 配置事实源、Preview/Create shard 冻结、bounded executor、Formal Worker、RPS/Transport Retry、PostgreSQL batch persistence、Planner/Shard 补调度、Run stats、旧 Run/legacy env 兼容、前端配置、generated contract、Stage12 用户可见历史语义、测试证据等级及受控吞吐 benchmark。
 
-当前 Verdict：`NO_FINDINGS_WITHIN_SCOPE`。Review 过程中暴露的 generated drift、Stage12 旧验收语义、Ruff/mypy 和过期 Unit Fake 均已修复并重新进入回归链；没有通过降低生产断言或跳过真实 PostgreSQL/Full-stack 边界换取绿色。
+当前 Verdict：`NO_FINDINGS_WITHIN_SCOPE`（re-review）。首次 Ready 后独立 Review 发现 HIGH：合法的高并发/低 RPS 配置可能生成理论必超 1,800 秒 Job timeout 的大 Shard。已先建立失败回归证明 `max_concurrency=1000, max_rps=1` 的原公式会得到 20,000 条 Shard，再以 `max_rps × 900 秒` 物理 Attempt 启动预算收紧并完成 targeted Ruff/mypy/pytest Green；修复后 `_analysis_shard_size()` 已把冻结 Provider `max_rps` 传入正式 Preview/Create。re-review 未发现新的 BLOCKER/HIGH/MEDIUM Finding。异常 Validation/Transport Retry 仍可能触发 Job timeout，已作为显式残余边界写入 README/Appendix，不冒充真实 Provider 容量保证。此前 generated drift、Stage12 旧验收语义、Ruff/mypy 和过期 Unit Fake 也均已修复，没有通过降低生产断言或跳过真实 PostgreSQL/Full-stack 边界换取绿色。
 
 证据边界：真实 Provider 的并发配额、429 行为、网络、GPU/推理服务吞吐和服务器线程资源没有进行付费/外部 Probe；部署前仍应按实际 Provider/机器从低到高做容量 ramp，并以错误率、p95 延迟、CPU/内存/FD 和 Provider 限流为准确定生产值。
 
@@ -195,12 +195,13 @@ Review Target：PR #336，base `59edfe793b913d11283952567f4e1a6e0003c6df` → �
 
 - [x] upstream_re_read: 重新读取 Issue #335、项目 AGENTS/架构门禁、Analysis 正式说明及最终关键调用链；没有以 PR 描述或本 Change 自身替代上游需求。
 - [x] change_coverage: R1-R8 均映射到代码、Contract、Unit、真实 PostgreSQL/Full-stack 或受控基准证据；R9 的 merge/main-fresh/archive 明确按时序 `explicitly_deferred`，未伪造完成。
-- [x] reverse_audit: 从最终 PR changed files 反查公开入口、Worker registry、Provider snapshot、DB writer、tests/docs/generated consumer；一次性生成/静态修复/吞吐 benchmark workflow 与脚本均已从最终 diff 清理。
-- [x] unresolved_cleared: 当前独立 Review 无 BLOCKER/HIGH/MEDIUM Finding；真实 Provider 容量和合并后归档属于明确证据边界/后续门禁，不作为已验证事实隐藏。
+- [x] reverse_audit: 从最终 PR changed files 反查公开入口、Worker registry、Provider snapshot、DB writer、tests/docs/generated consumer；一次性生成/静态修复/吞吐 benchmark 及低 RPS Red-Green workflow/script 均在取证后清理，不进入最终 PR diff。
+- [x] unresolved_cleared: 低 RPS Shard timeout HIGH Finding 已完成 Red → Green → re-review 并关闭；当前无未解决 BLOCKER/HIGH/MEDIUM Finding。真实 Provider 容量和合并后归档属于明确证据边界/后续门禁，不作为已验证事实隐藏。
 
 # 当前状态
 
 - Issue #335 为唯一上游需求来源，PR #336 已声明 `Requirement-Source: #335`。
 - 功能实现、测试资产、文档和 generated artifacts 已完成；受控 Formal/Offline 吞吐比为 98.86%。
+- 独立 Review 曾发现并已修复低 RPS Shard timeout HIGH Finding；re-review 当前无未解决 BLOCKER/HIGH/MEDIUM Finding。
 - Change 已进入 `ready_for_review`。最终合并仍要求该最终候选 HEAD 的永久 CI/Completion Gate 全绿；不得用更早 HEAD 的绿色结果替代。
 - 真实 Provider 容量 Probe 未执行，不能从当前 Fake/受控证据推断某个实际模型部署一定能承受 250/1000 并发。
