@@ -70,7 +70,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add changes/active/CHG-20260904-010706-analysis-provider-concurrency/CHANGE.md
-          git add -u .github/workflows/verify-rps-shard-red-once.yml
           git commit -m "完成 Analysis RPS Shard re-review 并清理临时 workflow"
           git fetch origin feature/335-analysis-provider-concurrency
           git rebase origin/feature/335-analysis-provider-concurrency
