@@ -55,8 +55,8 @@ data_changes: []
 2. AppShell 去除强制整页最小宽度，改为可收缩 Workspace、受控内容最大宽度、窄桌面 reflow 与大屏有界留白。
 3. AimaPageHeader、AimaButton、AimaFeedbackBanner 等 Shared UI 消费 Semantic Token。
 4. 当前正式页面的主要 9–10px 文本、Filter/Toolbar、Table 容器、Drawer/Dialog 通过统一规则收口，不创建第二套页面级响应式体系。
-5. 复用现有 Playwright，增加 1180/1280/1440/1600/1920/2560 代表性 viewport 的 overflow/reflow 回归；保留 1440 正式几何测试。
-6. 同步 `frontend/README.md` 与 Figma/前端开发 Guide 的长期响应式规则。
+5. 复用现有 Playwright，增加 1180/1280/1440/1600/1920/2560 代表性 viewport 的 overflow/reflow 回归；保留 1440 正式几何测试，并对 Voice Plaza、Collection Runtime、Admin Configuration 做 Compact Desktop 黑盒回归。
+6. 由 `frontend/src/shared/styles/README.md` 维护精确响应式代码规则；对 `frontend/README.md` 与 `docs/guides/01_Figma与前端设计开发工作流.md` 做 targeted re-review，只有当前说明与实现冲突时才修改，避免复制第二套 breakpoint/字号事实。
 
 # 非目标
 
@@ -96,7 +96,7 @@ data_changes: []
 | 跨组件 Golden Path | not_applicable | CSS/Layout 不改变前后端真实接线；保留现有 Golden Path，不把 skipped 冒充通过 |
 | External Dependency / Provider Probe | not_applicable | 不改变 TikHub、LLM 或其他外部 Provider |
 | Build / Package / Runtime | required | lint、typecheck、unit、production build、相关/全量 frontend e2e |
-| Docs / Governance | required | frontend README、Figma/前端 Guide、Change/Requirement/Completion Gate 与 CI |
+| Docs / Governance | required | Shared Styles 当前规则 README + frontend README/Figma Guide targeted re-review + Change/Requirement/Completion Gate 与 CI |
 
 # User Journey / Black-box Matrix
 
@@ -107,6 +107,14 @@ data_changes: []
 | J3 大屏 1920/2560 | Semantic 字号/留白适度增加且达到上限，内容不无限拉宽 | 待 computed style + Browser geometry |
 | J4 表格/Overlay | 表格必要时局部横滚；Drawer/Dialog 宽度不超过 viewport safe margin | 待 Playwright |
 | J5 功能回归 | Voice Plaza / Collection Strategy / Collection Runtime / Admin 功能与状态语义不变 | 现有 e2e + CI |
+
+# Docs Impact
+
+Docs Impact：targeted。
+
+- `frontend/src/shared/styles/README.md` 是本次新增的响应式代码规则 Owner，解释 token、viewport 档位、reflow/overflow/Overlay 与验证责任。
+- `frontend/README.md` 当前仍正确描述 Page/Store/API/generated client 和前端修改导航，不应复制第二套字号或 breakpoint 数值。
+- `docs/guides/01_Figma与前端设计开发工作流.md` 已明确 Shared Styles/Shared UI 的视觉 Owner，以及 `1440×900` 只是桌面参考 Viewport、生产代码不得写死页面宽高；本次没有改变该职责边界，因此 targeted re-review 后无需为了产生文档 diff 重写现有 Guide。
 
 # Completion Audit
 
