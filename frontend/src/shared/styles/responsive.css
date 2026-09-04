@@ -95,9 +95,9 @@
   font-size: var(--aima-font-size-body-small);
 }
 
-/* Admin Configuration：消除极小业务文字，同时保持表格信息密度。 */
+/* Admin Configuration：标题、正文和表格不能因语义迁移反而小于原始 1440 基线。 */
 .app-shell .admin-page h2 {
-  font-size: var(--aima-font-size-card-title);
+  font-size: var(--aima-font-size-section-title);
 }
 
 .app-shell .admin-page h3,
@@ -107,7 +107,7 @@
 .app-shell .admin-page .form-card label,
 .app-shell .admin-page .retry-link,
 .app-shell .admin-page .audit-pagination {
-  font-size: var(--aima-font-size-caption);
+  font-size: var(--aima-font-size-body-small);
 }
 
 .app-shell .admin-page :where(
