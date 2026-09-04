@@ -71,11 +71,11 @@ const detailOpen = computed({
   set: (open: boolean) => { if (!open) store.closeDetail() },
 })
 
-onMounted(async () => {
+onMounted(() => {
   const sourceIdentifier = route.query.source_identifier
   if (typeof sourceIdentifier === 'string') store.filters.sourceIdentifier = sourceIdentifier
-  await refreshPage()
-  store.startPolling(5000)
+  store.startPolling()
+  void refreshPage()
 })
 onBeforeUnmount(() => store.stopPolling())
 
@@ -88,7 +88,6 @@ async function refreshPage(): Promise<void> {
     store.refreshAnalysisCapabilities(),
     store.refreshAnalysisRuns(),
   ])
-  void taskCenter.refresh(true)
 }
 
 /** 提交当前筛选并清空旧选择，避免跨查询误操作。 */
@@ -136,14 +135,12 @@ async function submitAnalysis(): Promise<void> {
   if (count === null) return
   analysisOpen.value = false
   showNotice(`已创建 AI Analysis Run，冻结 ${count} 条内容。`)
-  void taskCenter.refresh(true)
 }
 
 /** 请求取消仍处于可取消状态的 Analysis Run，并同步全局任务中心。 */
 async function cancelAnalysis(runId: string): Promise<void> {
   if (await store.cancelRun(runId)) {
     showNotice('已请求取消 Analysis Run。')
-    void taskCenter.refresh(true)
   }
 }
 
@@ -179,17 +176,9 @@ function showNotice(message: string): void {
   window.setTimeout(() => { if (notice.value === message) notice.value = null }, 2800)
 }
 
-/** 按每个 Shard 冻结目标数加权，避免大小不同的 Shard 被等权计算。 */
+/** 按已持久化终态数量显示进度，与明细计数保持一致。 */
 function analysisRunProgress(run: AnalysisContentRunResponse): number {
-  const shards = run.shards ?? []
-  if (run.target_count > 0 && shards.length > 0) {
-    const weightedProgress = shards.reduce(
-      (total, shard) => total + shard.target_count * shard.progress,
-      0,
-    )
-    // 尚未进入有界调度窗口的目标视为 0%，避免新 Shard 创建后总进度倒退。
-    return Math.max(0, Math.min(100, Math.round(weightedProgress / run.target_count)))
-  }
+  if (run.target_count <= 0) return 0
   const stats = run.stats
   const terminal = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
     (stats?.cancelled ?? 0) + (stats?.stale ?? 0)

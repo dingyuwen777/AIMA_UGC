@@ -11,6 +11,7 @@ const generated = vi.hoisted(() => ({
   previewContentAnalysisRun: vi.fn(),
   createContentAnalysisRun: vi.fn(),
   listContentAnalysisRuns: vi.fn(),
+  listCollectionRuntimeRuns: vi.fn(),
   getContentAnalysisRun: vi.fn(),
   cancelContentAnalysisRun: vi.fn(),
   createContentRelevanceReview: vi.fn(),
@@ -27,6 +28,7 @@ import VoicePlazaFilters from '../src/features/voice-plaza/pages/VoicePlazaPage/
 import VoicePlazaTable from '../src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaTable.vue'
 import { VoicePlazaApiError, fetchContents, fetchDataExportFile } from '../src/features/voice-plaza/api'
 import { useVoicePlazaStore } from '../src/features/voice-plaza/store'
+import { useTaskCenterStore } from '../src/features/task-center/store'
 
 const item = {
   id: '01991f80-6d5d-7dc8-95cb-c67c12345678',
@@ -70,6 +72,100 @@ const taxonomy = {
 }
 
 describe('voice plaza', () => {
+  it('慢 AI 查询不叠加，停止轮询后旧响应不会再触发内容请求', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('document', { visibilityState: 'visible' })
+    const run = { id: 'run-1', status: 'running', stats: { pending: 2 } }
+    generated.listContentAnalysisRuns.mockResolvedValueOnce({ items: [run] })
+    const plaza = useVoicePlazaStore()
+    const center = useTaskCenterStore()
+    await plaza.refreshAnalysisRuns()
+    let finishAnalysis!: (value: unknown) => void
+    generated.listContentAnalysisRuns.mockReturnValue(new Promise((resolve) => { finishAnalysis = resolve }))
+    plaza.startPolling()
+    center.startPolling()
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(generated.listContentAnalysisRuns).toHaveBeenCalledTimes(2)
+    plaza.stopPolling()
+    center.stopPolling()
+    const beforeStop = generated.listContents.mock.calls.length
+    finishAnalysis({ items: [{ ...run, status: 'succeeded', stats: { pending: 0, succeeded: 2 } }] })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(generated.listContents).toHaveBeenCalledTimes(beforeStop)
+  })
+
+  it('任务结束后的内容刷新失败仍会重试，不再轮询已完成任务', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('document', { visibilityState: 'visible' })
+    generated.listContentAnalysisRuns
+      .mockResolvedValueOnce({ items: [{ id: 'run-1', status: 'running', stats: { pending: 1 } }] })
+      .mockResolvedValue({ items: [{ id: 'run-1', status: 'succeeded', stats: { succeeded: 1 } }] })
+    generated.listContents
+      .mockRejectedValueOnce(new Error('内容读取暂时失败'))
+      .mockResolvedValue({ items: [{ ...item, title: '最终内容' }], has_more: false })
+    const plaza = useVoicePlazaStore()
+    await plaza.refreshAnalysisRuns()
+    plaza.startPolling()
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(plaza.listError).toBe('内容读取暂时失败')
+      expect(plaza.analysisRuns[0]?.status).toBe('succeeded')
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(plaza.items[0]?.title).toBe('最终内容')
+      expect(plaza.listError).toBeNull()
+      expect(generated.listContentAnalysisRuns).toHaveBeenCalledTimes(2)
+      expect(generated.listContents).toHaveBeenCalledTimes(2)
+    } finally {
+      plaza.stopPolling()
+    }
+  })
+
+  it('两个页面共享 AI 查询，进度未变不重读内容，终态后也补齐慢查询遗漏的最后结果', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('document', { visibilityState: 'visible' })
+    const run = { id: 'run-1', status: 'running', target_count: 2,
+      stats: { pending: 2, succeeded: 0, failed: 0, stale: 0, cancelled: 0 }, shards: [] }
+    generated.listContentAnalysisRuns.mockResolvedValue({ items: [run] })
+    generated.listCollectionRuntimeRuns.mockResolvedValue({ items: [], has_more: false })
+    generated.listDataExports.mockResolvedValue({ items: [], has_more: false })
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    const plaza = useVoicePlazaStore()
+    const center = useTaskCenterStore()
+    await Promise.all([plaza.refreshAnalysisRuns(), center.refresh()])
+    expect(generated.listContentAnalysisRuns).toHaveBeenCalledTimes(1)
+    plaza.startPolling()
+    center.startPolling()
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      const initialContentReads = generated.listContents.mock.calls.length
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(generated.listContents).toHaveBeenCalledTimes(initialContentReads)
+      expect(generated.listContentAnalysisRuns).toHaveBeenCalledTimes(4)
+      let finishOldWindow!: (value: unknown) => void
+      generated.listContents.mockReturnValueOnce(new Promise((resolve) => { finishOldWindow = resolve }))
+      generated.listContentAnalysisRuns.mockResolvedValue({ items: [{ ...run,
+        stats: { ...run.stats, pending: 1, succeeded: 1 } }] })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(generated.listContents).toHaveBeenCalledTimes(initialContentReads + 1)
+      generated.listContentAnalysisRuns.mockResolvedValue({ items: [{ ...run, status: 'succeeded',
+        stats: { ...run.stats, pending: 0, succeeded: 2 } }] })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(plaza.analysisRuns[0]?.status).toBe('succeeded')
+      expect(center.analysisRuns[0]?.status).toBe('succeeded')
+      finishOldWindow({ items: [{ ...item, title: '旧内容' }], has_more: false })
+      generated.listContents.mockResolvedValue({ items: [{ ...item, title: '最后完成的内容' }], has_more: false })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(plaza.items[0]?.title).toBe('最后完成的内容')
+      const finalReads = generated.listContents.mock.calls.length
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(generated.listContents).toHaveBeenCalledTimes(finalReads)
+      expect(generated.listDataExports).toHaveBeenCalledTimes(1)
+    } finally {
+      plaza.stopPolling()
+      center.stopPolling()
+    }
+  })
+
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
@@ -327,14 +423,22 @@ describe('voice plaza', () => {
       shard_count: 1,
       status: 'queued',
     })
-    generated.listContentAnalysisRuns.mockResolvedValue({ items: [] })
+    let finishOldPoll!: (value: unknown) => void
+    generated.listContentAnalysisRuns
+      .mockReturnValueOnce(new Promise((resolve) => { finishOldPoll = resolve }))
+      .mockResolvedValue({ items: [{ id: 'run-1', status: 'queued', stats: { pending: 1 } }] })
     const store = useVoicePlazaStore()
     store.selectedIds = [item.id]
+    const oldPoll = store.refreshAnalysisRuns()
 
     await store.refreshAnalysisCapabilities()
     const preview = await store.previewAnalysis('selected')
     store.selectedIds = []
     const created = await store.confirmAnalysis()
+    expect(store.analysisRuns[0]?.id).toBe('run-1')
+    finishOldPoll({ items: [] })
+    await oldPoll
+    expect(store.analysisRuns[0]?.id).toBe('run-1')
 
     expect(preview?.configuration_hash).toBe('d'.repeat(64))
     expect(created).toBe(1)
@@ -375,12 +479,13 @@ describe('voice plaza', () => {
     store.stopPolling()
   })
 
-  it('loads shard progress for active runs omitted by the list response', async () => {
+  it('uses persisted list statistics without issuing another request per active run', async () => {
     const listedRun = {
       id: 'run-1',
       status: 'running',
       target_count: 20,
       shards: [],
+      stats: { pending: 15, succeeded: 5, failed: 0, stale: 0, cancelled: 0 },
     }
     generated.listContentAnalysisRuns.mockResolvedValue({ items: [listedRun] })
     generated.getContentAnalysisRun.mockResolvedValue({
@@ -391,8 +496,25 @@ describe('voice plaza', () => {
 
     await store.refreshAnalysisRuns()
 
-    expect(generated.getContentAnalysisRun).toHaveBeenCalledWith('run-1')
-    expect(store.analysisRuns[0]?.shards).toHaveLength(1)
+    expect(generated.getContentAnalysisRun).not.toHaveBeenCalled()
+    expect(store.analysisRuns[0]?.stats?.succeeded).toBe(5)
+  })
+
+  it('deduplicates polling and rejects a stale response after cancellation', async () => {
+    const run = { id: 'run-1', status: 'running', stats: { pending: 1 } }
+    generated.listContentAnalysisRuns.mockResolvedValueOnce({ items: [run] })
+    const store = useVoicePlazaStore()
+    await store.refreshAnalysisRuns()
+    let resolve!: (value: unknown) => void
+    generated.listContentAnalysisRuns.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    const pending = store.refreshAnalysisRuns()
+    await store.refreshAnalysisRuns()
+    expect(generated.listContentAnalysisRuns).toHaveBeenCalledTimes(2)
+    generated.cancelContentAnalysisRun.mockResolvedValue({ ...run, status: 'cancelling' })
+    expect(await store.cancelRun(run.id)).toBe(true)
+    resolve({ items: [run] })
+    await pending
+    expect(store.analysisRuns[0]?.status).toBe('cancelling')
   })
 
   it('keeps an empty run list when the server response is malformed', async () => {

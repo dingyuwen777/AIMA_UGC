@@ -25,7 +25,7 @@ const analysisRun = {
   model: 'fixture-model',
   generation_config: { temperature: 0 },
   generation_config_hash: 'c'.repeat(64),
-  stats: { pending: 20, succeeded: 0, failed: 0, cancelled: 0, stale: 0 },
+  stats: { pending: 16, succeeded: 4, failed: 0, cancelled: 0, stale: 0 },
   shards: [
     { request_id: '63345678-1234-5678-1234-567812345678', job_id: '64345678-1234-5678-1234-567812345678', shard_no: 0, target_count: 4, status: 'running', progress: 50, error_code: null },
     { request_id: '65345678-1234-5678-1234-567812345678', job_id: '66345678-1234-5678-1234-567812345678', shard_no: 1, target_count: 6, status: 'running', progress: 25, error_code: null },
@@ -388,6 +388,31 @@ test('shows AI unavailable and disables analysis when runtime is not configured'
   await expect(page.getByRole('button', { name: /AI 打标/ })).toBeDisabled()
 })
 
+test('慢导出初始化不阻塞活动 AI 的自动刷新', async ({ page }) => {
+  let succeeded = 4
+  let releaseExport!: () => void
+  const exportReady = new Promise<void>((resolve) => { releaseExport = resolve })
+  await page.route('**/api/v1/data-exports', async (route) => {
+    await exportReady
+    await route.fulfill({ json: { items: [], has_more: false } })
+  })
+  await page.route('**/api/v1/analysis/content-runs', async (route) => {
+    await route.fulfill({ json: { items: [{ ...analysisRun,
+      stats: { ...analysisRun.stats, pending: 20 - succeeded, succeeded } }] } })
+  })
+  try {
+    await page.goto('/voice-plaza')
+    const progress = page.getByRole('progressbar', { name: 'AI Run #1 进度' })
+    await expect(progress).toHaveAttribute('aria-valuenow', '20')
+    succeeded = 10
+    await expect(progress).toHaveAttribute('aria-valuenow', '50', { timeout: 2500 })
+    await page.getByRole('button', { name: '任务中心', exact: true }).click()
+    await expect(page.getByRole('complementary', { name: '任务中心' })).toContainText('10 / 20 条已取得终态')
+  } finally {
+    releaseExport()
+  }
+})
+
 test('creates explicit analysis and durable Excel export jobs', async ({ page }) => {
   let analysisRequest: unknown
   let exportRequest: unknown
@@ -467,7 +492,7 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   await expect(page.getByText('AI Analysis Run 历史')).toHaveCount(0)
   await expect(page.getByText('AI 打标任务')).toBeVisible()
   await expect(page.getByText('Run #1 · 处理中')).toBeVisible()
-  await expect(page.getByRole('progressbar', { name: 'AI Run #1 进度' })).toHaveAttribute('aria-valuenow', '18')
+  await expect(page.getByRole('progressbar', { name: 'AI Run #1 进度' })).toHaveAttribute('aria-valuenow', '20')
   expect(previewRequest).toMatchObject({
     targets: { scope: 'selected', content_ids: [contentId] },
   })

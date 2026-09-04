@@ -78,16 +78,8 @@ function errorMessage(error: unknown): string {
   return '请求失败，请稍后重试。'
 }
 
-/** 计算 Analysis Run 的 Shard 加权进度；没有 Shard 时退回终态数量。 */
+/** 按已持久化终态数量显示进度，不依赖滞后的 Job Heartbeat。 */
 export function analysisRunProgress(run: AnalysisContentRunResponse): number {
-  const shards = run.shards ?? []
-  if (run.target_count > 0 && shards.length > 0) {
-    const weighted = shards.reduce(
-      (total, shard) => total + shard.target_count * shard.progress,
-      0,
-    )
-    return Math.max(0, Math.min(100, Math.round(weighted / run.target_count)))
-  }
   if (run.target_count <= 0) return 0
   const stats = run.stats
   const terminal = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
@@ -185,9 +177,16 @@ export const useTaskCenterStore = defineStore('task-center', () => {
   const collectionRuns = ref<CollectionRuntimeItemResponse[]>([])
   const dataExports = ref<DataExportResponse[]>([])
   const warning = ref<string | null>(null)
+  const analysisError = ref<string | null>(null)
   const cancellingAnalysisRunId = ref<string | null>(null)
-  let refreshInFlight = false
+  const refreshInFlight = new Set<string>()
+  const refreshErrors = new Map<string, string>()
+  let analysisRevision = 0
+  let analysisRefreshInFlight = 0
+  let lastAnalysisPollAt = Number.NEGATIVE_INFINITY
   let pollHandle: ReturnType<typeof setInterval> | undefined
+  const hasActiveAnalysisRuns = computed(() =>
+    analysisRuns.value.some((run) => ACTIVE_ANALYSIS_STATUSES.has(run.status)))
 
   const items = computed(() => [
     ...analysisRuns.value.map(analysisTask),
@@ -203,29 +202,66 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     .slice(0, 12))
   const activeCount = computed(() => activeItems.value.length)
 
+  function updateWarning(): void {
+    warning.value = refreshErrors.size
+      ? `部分任务状态暂不可更新，继续显示上次成功结果。${[...refreshErrors].map(([name, error]) => `${name}：${error}`).join('；')}`
+      : null
+  }
+
+  /** 两个页面共用唯一快照；创建后的读取可替换旧请求，普通轮询不叠加。 */
+  async function refreshAnalysisRuns(afterMutation = false): Promise<void> {
+    if (analysisRefreshInFlight && !afterMutation) return
+    const revision = ++analysisRevision
+    analysisRefreshInFlight = revision
+    lastAnalysisPollAt = Date.now()
+    try {
+      const runs = await fetchTaskCenterAnalysisRuns()
+      if (revision !== analysisRevision) return
+      analysisRuns.value = runs
+      analysisError.value = null
+      refreshErrors.delete('AI 打标')
+    } catch (error) {
+      if (revision !== analysisRevision) return
+      analysisError.value = errorMessage(error)
+      refreshErrors.set('AI 打标', analysisError.value)
+    } finally {
+      if (analysisRefreshInFlight === revision) analysisRefreshInFlight = 0
+      updateWarning()
+    }
+  }
+
+  /** 跨页面合并一秒内的轮询，终态只保留低频历史发现。 */
+  async function pollAnalysisRuns(): Promise<void> {
+    if (!hasActiveAnalysisRuns.value || Date.now() - lastAnalysisPollAt < 1000) return
+    await refreshAnalysisRuns()
+  }
+
+  async function updateSource<T>(
+    key: string, fetch: () => Promise<T>, apply: (result: T) => void,
+  ): Promise<void> {
+    if (refreshInFlight.has(key)) return
+    refreshInFlight.add(key)
+    try {
+      apply(await fetch())
+      refreshErrors.delete(key)
+    } catch (error) {
+      refreshErrors.set(key, errorMessage(error))
+    } finally {
+      refreshInFlight.delete(key)
+      updateWarning()
+    }
+  }
+
   /** 独立刷新三个既有 read model；单一来源失败时保留上次成功快照并明确提示。 */
   async function refresh(silent = false): Promise<void> {
-    if (refreshInFlight) return
-    refreshInFlight = true
     if (!silent) loading.value = true
-    const failures: string[] = []
     try {
-      const [analysisResult, collectionResult, exportResult] = await Promise.allSettled([
-        fetchTaskCenterAnalysisRuns(),
-        fetchTaskCenterCollectionRuns(),
-        fetchTaskCenterDataExports(),
+      await Promise.all([
+        refreshAnalysisRuns(),
+        updateSource('采集运行', fetchTaskCenterCollectionRuns, (runs) => { collectionRuns.value = runs }),
+        updateSource('数据导出', fetchTaskCenterDataExports, (runs) => { dataExports.value = runs }),
       ])
-      if (analysisResult.status === 'fulfilled') analysisRuns.value = analysisResult.value
-      else failures.push(`AI 打标：${errorMessage(analysisResult.reason)}`)
-      if (collectionResult.status === 'fulfilled') collectionRuns.value = collectionResult.value
-      else failures.push(`采集运行：${errorMessage(collectionResult.reason)}`)
-      if (exportResult.status === 'fulfilled') dataExports.value = exportResult.value
-      else failures.push(`数据导出：${errorMessage(exportResult.reason)}`)
-      warning.value = failures.length
-        ? `部分任务状态暂不可更新，继续显示上次成功结果。${failures.join('；')}`
-        : null
     } finally {
-      refreshInFlight = false
       if (!silent) loading.value = false
     }
   }
@@ -247,8 +283,9 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     cancellingAnalysisRunId.value = runId
     try {
       const cancelled = await cancelTaskCenterAnalysisRun(runId)
+      analysisRevision += 1
+      analysisRefreshInFlight = 0
       analysisRuns.value = analysisRuns.value.map((run) => run.id === runId ? cancelled : run)
-      await refresh(true)
       return true
     } catch (error) {
       warning.value = `AI 打标取消失败：${errorMessage(error)}`
@@ -258,14 +295,20 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     }
   }
 
-  /** 启动全局只读轮询；后台标签页不发请求，避免无意义网络噪声。 */
+  /** AI 活动状态快速刷新；其他来源和历史发现保留原频率，后台标签页暂停。 */
   function startPolling(intervalMs = 15_000): void {
     stopPolling()
     if (typeof document === 'undefined') return
+    let lastBackgroundPollAt = Date.now()
     pollHandle = setInterval(() => {
       if (document.visibilityState === 'hidden') return
-      void refresh(true)
-    }, intervalMs)
+      if (Date.now() - lastBackgroundPollAt >= intervalMs) {
+        lastBackgroundPollAt = Date.now()
+        void refresh(true)
+      } else {
+        void pollAnalysisRuns()
+      }
+    }, Math.min(1000, intervalMs))
   }
 
   /** 停止全局任务轮询。 */
@@ -279,7 +322,9 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     open,
     loading,
     warning,
+    analysisError,
     analysisRuns,
+    hasActiveAnalysisRuns,
     collectionRuns,
     dataExports,
     cancellingAnalysisRunId,
@@ -288,6 +333,8 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     recentItems,
     activeCount,
     refresh,
+    refreshAnalysisRuns,
+    pollAnalysisRuns,
     openCenter,
     closeCenter,
     cancelAnalysisRun,

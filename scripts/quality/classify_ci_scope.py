@@ -10,6 +10,7 @@ from pathlib import Path
 
 ALL_FULLSTACK_SPECS = (
     "admin-product-capabilities.spec.ts",
+    "analysis-streaming.spec.ts",
     "collection-plan-search-config.spec.ts",
     "excel-import.spec.ts",
     "manual-relevance-review.spec.ts",
@@ -157,7 +158,7 @@ def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
     if any(marker in path for marker in ingestion_markers):
         return ("excel-import.spec.ts", "stage12-historical-analysis.spec.ts")
     if any(marker in path for marker in analysis_markers):
-        return ("stage12-historical-analysis.spec.ts",)
+        return ("analysis-streaming.spec.ts", "stage12-historical-analysis.spec.ts")
     if any(marker in path for marker in content_markers):
         return ("manual-relevance-review.spec.ts",)
     return FULLSTACK_ALL
