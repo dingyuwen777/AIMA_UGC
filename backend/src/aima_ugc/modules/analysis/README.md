@@ -235,7 +235,7 @@ analysis.content-label.v1
 
 - [`backend/src/aima_ugc/modules/analysis/offline_concurrent_labeling.py`](offline_concurrent_labeling.py)：公共离线入口，复用 [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py) 并保留原 preflight/checkpoint/attempt/failed/rewrite 语义。
 - [`backend/src/aima_ugc/modules/analysis/offline_labeling.py`](offline_labeling.py)：保留文件预检、checkpoint、原子回写和恢复 helper；旧独立调度循环已删除，离线入口只接受 `max_concurrency`，不再提供 `batch_size` 别名。
-- [`../../adapters/providers/imports_test/`](../../adapters/providers/imports_test/)：人工/离线入口；DeepSeek 示例仍可配置 250。`label_sentiment()` 直接读取本地 `env.local`（由 [`env.local.example`](../../../../../env.local.example) 创建）和 Git Prompt，调用共用的并发核心并写入 JSONL/Excel，不初始化数据库；`WRITE_TO_DATABASE=False` 时整条离线流程保持无数据库运行。
+- [`../../adapters/providers/imports_test/`](../../adapters/providers/imports_test/)：人工/离线入口；DeepSeek 示例仍可配置 250。`label_sentiment()` 直接读取本地环境配置（由 [`env.local.example`](../../../../../env.local.example) 创建）和 Git Prompt，调用共用的并发核心并写入 JSONL/Excel，不初始化数据库；`WRITE_TO_DATABASE=False` 时整条离线流程保持无数据库运行。
 
 ---
 
