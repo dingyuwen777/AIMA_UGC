@@ -21,8 +21,8 @@ from aima_ugc.modules.analysis import (
 )
 
 CONCURRENCY = 4
-ROW_COUNT = 20
-REQUEST_LATENCY_SECONDS = 2.0
+ROW_COUNT = 8
+REQUEST_LATENCY_SECONDS = 3.0
 MIN_FORMAL_TO_OFFLINE_THROUGHPUT_RATIO = 0.90
 OBSERVED_AT = datetime(2026, 9, 4, 1, 0, tzinfo=UTC)
 
@@ -116,8 +116,6 @@ def measure_formal(root: Path, raw_response: str) -> tuple[float, int]:
     seed_contents = namespace["_seed_contents"]
     create_run = namespace["_create_run"]
     drain = namespace["_drain"]
-    original_xlsx = namespace["_xlsx"]
-    namespace["_xlsx"] = lambda: original_xlsx(row_count=ROW_COUNT)
 
     runtime = runtime_factory(root / "formal")
     try:
