@@ -77,8 +77,8 @@ Excluded：产品 API/Schema/Migration/业务行为、依赖或 Runtime 版本�
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 日常普通代码 PR runner Job 数至少下降 50% | https://github.com/dingyuwen777/AIMA_UGC/issues/352 | explicitly_deferred | 新 DAG 的普通 frontend/backend 路径静态上界为 CI Core + CI Gate + Runtime fast-path = 3，对比原 6；最终必须由实现 merge 后的真实 backend-only PR Actions 统计回填。 |
-| R2 | 独立高价值测试责任与 fail-closed scope 不下降 | https://github.com/dingyuwen777/AIMA_UGC/issues/352 | satisfied | CI-self pre-review head `52e00918a957f2e0eb5dd77db65e9b210ae8729b` 的 run `33890912145` completed/success：Core、PostgreSQL Integration、Real Full-stack Golden Path、CI Gate 全部真实成功；同 HEAD Runtime Acceptance `33890911933` success。classifier 未放宽，Workflow 自身变化仍走 full。 |
-| R3 | 三个 required context 保持并能阻塞失败 | https://github.com/dingyuwen777/AIMA_UGC/issues/352 | explicitly_deferred | `Requirement Traceability and Completion Audit` 迁入 CI Core，`CI Gate` 与独立 `Compose Golden Path` 保持；Ruleset 未修改。`52e00918...` 已证明三个责任正常成功，最终仍以本治理收口后的 exact final-head required checks 作为 Review/merge 证据。 |
+| R2 | 独立高价值测试责任与 fail-closed scope 不下降 | https://github.com/dingyuwen777/AIMA_UGC/issues/352 | satisfied | CI-self pre-review head `52e00918a957f2e0eb5dd77db65e9b210ae8729b` 的 run `33890912145` completed/success：Core、PostgreSQL Integration、Real Full-stack Golden Path、CI Gate 全部真实成功；同 HEAD Runtime Acceptance `33890911933` required context success，但因本 PR 未修改 Runtime 风险面而走 fast-path。`runtime.yml` 本 PR 无 diff；最近一次 runtime-risk PR #350 的 run `33864457072` 真实执行 canonical/Windows Compose startup、security、persistence、recovery 并全部 success。classifier 未放宽，Workflow 自身变化仍走 full。 |
+| R3 | 三个 required context 保持并能阻塞失败 | https://github.com/dingyuwen777/AIMA_UGC/issues/352 | explicitly_deferred | `Requirement Traceability and Completion Audit` 迁入 CI Core，`CI Gate` 与独立 `Compose Golden Path` 保持；Ruleset 未修改。`52e00918...` 已证明三个 required context 正常成功，最终仍以本治理收口后的 exact final-head required checks 作为 Review/merge 证据。 |
 | R4 | 消除重复 runner 和重复 npm audit | https://github.com/dingyuwen777/AIMA_UGC/issues/352 | satisfied | Scope + Docs/Governance + Completion + Repository Quality 已收敛为一个 Ubuntu Core；独立 Completion Workflow 删除；前端只保留一次同阈值完整 `npm audit --audit-level=high`。 |
 | R5 | Workflow 结构有永久回归并保持 fail-safe Gate | https://github.com/dingyuwen777/AIMA_UGC/issues/352 | satisfied | `tests/unit/test_ci_workflow_structure.py` 锁定 required context、旧独立 Job/Workflow 删除、edited metadata-only、audit 去重、高价值 Owner 与 6→3 普通代码 PR runner 模型；现有 `test_ci_scope.py` 继续覆盖 fail-closed classifier。`33890912145` 中这些回归包含在 820 个 Unit 测试内并成功。 |
 | R6 | Review、merge、main fresh、archive、Closure | https://github.com/dingyuwen777/AIMA_UGC/issues/352 | explicitly_deferred | 这些属于 exact final-head CI 后的 L3/Post-Merge 生命周期，按仓库顺序执行，不提前伪造完成。 |
@@ -92,7 +92,7 @@ Excluded：产品 API/Schema/Migration/业务行为、依赖或 Runtime 版本�
 | Contract / Governance | required | `33890912145`：Requirement Source、Change readiness、Secret/Docs、生成 Contract/Client、Architecture/Table Ownership 全部 success。 |
 | PostgreSQL | required_when_scoped | `33890912145`：Migration、Platform、Database、Jobs、Collection、Content、Ingestion PostgreSQL Integration 全部 success。 |
 | Full-stack | required_when_scoped | `33890912145`：Real Full-stack browser acceptance success。 |
-| Runtime | required | 同 HEAD Runtime Acceptance `33890911933` completed/success，真实 Compose startup/security/persistence/recovery 通过。 |
+| Runtime | required | 本 PR 未修改 `runtime.yml` 或 Runtime 风险面；同 HEAD Runtime Acceptance `33890911933` required context 走 fast-path 并 success。最近一次 runtime-risk PR #350 的 run `33864457072` 真实执行 canonical Compose 与 Windows overlay 的 startup/security/persistence/recovery，全步骤 success。 |
 | Build / Frontend | required | `33890912145`：Wheel、Frontend lint/type/unit/build、Browser Mock Acceptance 全部 success。 |
 | GitHub PR / main | required | exact final-head required checks、L3 Review、guarded merge、main fresh 尚按顺序执行。 |
 
@@ -105,7 +105,7 @@ Excluded：产品 API/Schema/Migration/业务行为、依赖或 Runtime 版本�
 - [x] 删除失去独立 Owner 的 Change Completion Workflow，并消除重复 npm audit。
 - [x] 增加 Workflow responsibility / runner budget 永久回归。
 - [x] 用真实 Red `33886825990` 定位旧 Workflow 删除后历史 archive Source 的当前路径漂移，并在 AIMA carrier wrapper 增加历史 revision `blob` 验真，不改写归档正文。
-- [x] 用 `33890912145` / `33890911933` 取得一次完整 full-scope pre-review Green，证明 Core、PostgreSQL、Real Full-stack、Compose Runtime 责任均保留。
+- [x] 用 `33890912145` 取得 CI full-scope pre-review Green，证明 Core、PostgreSQL、Real Full-stack 责任保留；同 HEAD Runtime `33890911933` required context fast-path success，真实 Runtime 全量责任由未改动的 `runtime.yml` 与最近 runtime-risk run `33864457072` 交叉证明。
 - [ ] 当前治理记录/测试说明收口后的 exact final-head CI、独立 L3 Review、Completion Audit。
 - [ ] guarded merge、main fresh、独立 backend-only 测量/归档 PR、Issue Closure Audit 与分支清理。
 
@@ -121,8 +121,8 @@ Excluded：产品 API/Schema/Migration/业务行为、依赖或 Runtime 版本�
 - `33885551012`：旧 governance wiring 仍把独立 Completion Workflow 当唯一 Owner，Core 失败；Runtime `33885550801` success。
 - `33886825990`：governance/Requirement Source 已通过，但历史 archive 的旧 Workflow Requirement Source 在当前 HEAD 消失，Change readiness 正确失败；高成本 Postgres/Full-stack 未继续启动。
 - `33888070627` / `33888934097` / `33889320240`：依次暴露并修复纯 Ruff format/lint 问题，没有放宽规则。
-- `33889779024`：Ruff/mypy、820 Unit、104 Contract、53 API success；Architecture checker 正确暴露长期 REQUIRED 中仍引用旧 Completion Workflow 的过期机器事实。
-- `33890912145`：同步 Architecture Owner 后 full-scope completed/success；Core、PostgreSQL、Real Full-stack、CI Gate 全绿。Runtime Acceptance `33890911933` 同 HEAD success。
+- `33889779024`：Ruff/mypy、820 Unit、104 Contract、53 API success；Architecture checker正确暴露长期 REQUIRED 中仍引用旧 Completion Workflow 的过期机器事实。
+- `33890912145`：同步 Architecture Owner 后 CI full-scope completed/success；Core、PostgreSQL、Real Full-stack、CI Gate 全绿。Runtime Acceptance `33890911933` 同 HEAD required context fast-path success；真实 Compose 全量基线为未改动 Runtime Workflow 的最近 runtime-risk run `33864457072`。
 
 # 回滚
 
