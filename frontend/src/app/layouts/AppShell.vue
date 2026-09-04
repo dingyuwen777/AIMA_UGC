@@ -290,7 +290,7 @@ nav {
 }
 
 .workspace-main {
-  width: min(100%, calc(var(--aima-layout-content-max-width) + (var(--aima-layout-page-padding-x) * 2)));
+  width: min(100%, calc(var(--aima-layout-content-max-width) + var(--aima-layout-page-padding-x) + var(--aima-layout-page-padding-x)));
   min-width: 0;
   margin: 0 auto;
   padding: var(--aima-layout-page-padding-y) var(--aima-layout-page-padding-x) 40px;
