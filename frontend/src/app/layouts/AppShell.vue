@@ -105,7 +105,6 @@ onMounted(() => void identity.ensurePrincipal())
   display: flex;
   min-width: 0;
   min-height: 100vh;
-  overflow-x: clip;
   background: #f7f8fb;
 }
 
