@@ -45,7 +45,8 @@ def _minimal_repository(root: Path) -> None:
     _write(root / "scripts/quality/check_pr_requirement_source.py", "# 测试夹具\n")
     _write(
         root / ".github/workflows/ci.yml",
-        "on:\n  pull_request:\n    types:\n      - opened\n      - synchronize\n      - reopened\n      - edited\n"
+        "on:\n  pull_request:\n    types:\n      - opened\n      - synchronize\n"
+        "      - reopened\n      - edited\n"
         "permissions:\n  contents: read\n  issues: read\n"
         "python scripts/quality/check_agent_governance.py\n"
         "python scripts/quality/check_pr_requirement_source.py --event event.json --root .\n"
@@ -100,7 +101,9 @@ def _minimal_repository(root: Path) -> None:
     _write(root / ".github/ISSUE_TEMPLATE/config.yml", "blank_issues_enabled: false\n")
     _write(
         root / ".github/PULL_REQUEST_TEMPLATE.md",
-        "Requirement-Source: #123\n仓库内真实存在的正式文件也可以作为 Requirement Source。\n不要用关闭关键字替代 Requirement-Source。\n",
+        "Requirement-Source: #123\n"
+        "仓库内真实存在的正式文件也可以作为 Requirement Source。\n"
+        "不要用关闭关键字替代 Requirement-Source。\n",
     )
 
 
@@ -159,7 +162,8 @@ def test_checker_rejects_supplier_internal_workflow_paths(tmp_path: Path) -> Non
     _minimal_repository(tmp_path)
     _write(
         tmp_path / ".github/workflows/extra.yml",
-        "python -m unittest discover .agents/skills/coding/tests -v\ncat .agents/skills/coding/references/08_example.md\n",
+        "python -m unittest discover .agents/skills/coding/tests -v\n"
+        "cat .agents/skills/coding/references/08_example.md\n",
     )
     errors = CHECK_REPOSITORY(tmp_path)
     assert len([error for error in errors if error.startswith("GOV005")]) == 2
@@ -218,7 +222,9 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
     (tmp_path / "scripts/quality/check_change_completion.py").unlink()
     _write(
         tmp_path / ".github/workflows/ci.yml",
-        "permissions:\n  issues: read\npython scripts/quality/check_agent_governance.py\npython scripts/quality/check_pr_requirement_source.py\n",
+        "permissions:\n  issues: read\n"
+        "python scripts/quality/check_agent_governance.py\n"
+        "python scripts/quality/check_pr_requirement_source.py\n",
     )
     errors = CHECK_REPOSITORY(tmp_path)
     assert any(error.startswith("GOV004") for error in errors)
@@ -243,7 +249,9 @@ def test_checker_requires_pr_requirement_source_gate_wiring(tmp_path: Path) -> N
     (tmp_path / "scripts/quality/check_pr_requirement_source.py").unlink()
     _write(
         tmp_path / ".github/workflows/ci.yml",
-        "python scripts/quality/check_agent_governance.py\npython scripts/quality/check_change_completion.py --root . --changed-since base\npython scripts/quality/check_change_completion.py --root . --require-active-ready\n",
+        "python scripts/quality/check_agent_governance.py\n"
+        "python scripts/quality/check_change_completion.py --root . --changed-since base\n"
+        "python scripts/quality/check_change_completion.py --root . --require-active-ready\n",
     )
     errors = CHECK_REPOSITORY(tmp_path)
     assert len([error for error in errors if error.startswith("GOV015")]) == 4

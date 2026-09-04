@@ -177,7 +177,8 @@ def check_repository(root: Path = ROOT) -> list[str]:
         for fragment in FORBIDDEN_PROJECT_DOC_GOVERNANCE:
             if fragment in docs_text:
                 errors.append(
-                    f"GOV010 {PROJECT_DOC_RULES.as_posix()}: 项目文档规则不得把本地通用治理安装资产当规则入口 {fragment}"
+                    f"GOV010 {PROJECT_DOC_RULES.as_posix()}: "
+                    f"项目文档规则不得把本地通用治理安装资产当规则入口 {fragment}"
                 )
 
     if not (root / READY_CHECK).is_file():
@@ -195,7 +196,8 @@ def check_repository(root: Path = ROOT) -> list[str]:
         for fragment in FORBIDDEN_WORKFLOW_FRAGMENTS:
             if fragment in text:
                 errors.append(
-                    f"GOV005 {relative}: 永久 CI 不得依赖 Agent_Skills canonical 内部路径 {fragment}"
+                    f"GOV005 {relative}: 永久 CI 不得依赖 Agent_Skills canonical "
+                    f"内部路径 {fragment}"
                 )
 
     completion_owner = root / COMPLETION_OWNER
@@ -210,11 +212,13 @@ def check_repository(root: Path = ROOT) -> list[str]:
             errors.append(f"GOV007 {COMPLETION_OWNER.as_posix()}: 必须执行 AIMA 顶层 Change 门禁")
         if f"python {READY_CHECK.as_posix()}" in gate_text:
             errors.append(
-                f"GOV016 {COMPLETION_OWNER.as_posix()}: Workflow 不得绕过项目 carrier 直接调用 generic ready-check"
+                f"GOV016 {COMPLETION_OWNER.as_posix()}: "
+                "Workflow 不得绕过项目 carrier 直接调用 generic ready-check"
             )
         if "--changed-since" not in gate_text or "--require-active-ready" not in gate_text:
             errors.append(
-                f"GOV016 {COMPLETION_OWNER.as_posix()}: PR changed-since 与 main active-ready 模式必须同时保留"
+                f"GOV016 {COMPLETION_OWNER.as_posix()}: "
+                "PR changed-since 与 main active-ready 模式必须同时保留"
             )
         if "check_agent_governance.py" not in gate_text:
             errors.append(f"GOV008 {COMPLETION_OWNER.as_posix()}: 必须先执行 AIMA 项目治理接线检查")
@@ -224,11 +228,13 @@ def check_repository(root: Path = ROOT) -> list[str]:
             )
         if "issues: read" not in gate_text:
             errors.append(
-                f"GOV015 {COMPLETION_OWNER.as_posix()}: PR Requirement Source 校验需要最小 issues: read 权限"
+                f"GOV015 {COMPLETION_OWNER.as_posix()}: "
+                "PR Requirement Source 校验需要最小 issues: read 权限"
             )
         if "types:" not in gate_text or "- edited" not in gate_text:
             errors.append(
-                f"GOV015 {COMPLETION_OWNER.as_posix()}: PR 正文 edited 后必须重新执行 Requirement Source 校验"
+                f"GOV015 {COMPLETION_OWNER.as_posix()}: "
+                "PR 正文 edited 后必须重新执行 Requirement Source 校验"
             )
 
     errors.extend(_check_issue_form(root / REQUIREMENT_ISSUE_FORM, REQUIREMENT_FORM_FIELDS))
