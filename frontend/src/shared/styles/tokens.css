@@ -73,6 +73,7 @@
   /* Figma `Layout Tokens` collection。响应式值均以 1440px 保持现有正式基线。 */
   --aima-layout-sidebar-width: 180px;
   --aima-layout-topbar-height: 60px;
+  --aima-layout-topbar-padding-x: clamp(24px, calc(18px + 0.555556vw), 32px);
   --aima-layout-page-padding-x: clamp(20px, calc(12px + 0.833333vw), 32px);
   --aima-layout-page-padding-y: clamp(24px, calc(18px + 0.416667vw), 30px);
   --aima-layout-content-max-width: clamp(1400px, 88vw, 1760px);
