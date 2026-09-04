@@ -53,3 +53,30 @@
 2. Deadline 场景测试构造用三个 `clock_timestamp()` 调用；CI 中租约比截止时间晚 1 微秒，被 `lease_expires_at <= attempt_deadline_at` 约束正确拒绝。测试统一用 `statement_timestamp()` 建立同一语句时刻，仍模拟过期 Deadline 并保留“不重试、不越权写入”断言；不修改生产代码或数据库约束。[PostgreSQL 18 官方时间函数说明](https://www.postgresql.org/docs/18/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT) 明确区分这两种时间语义。
 
 修正后在新建的独立 PostgreSQL 容器重跑同一模块：14 项通过，用时 16.61 秒。首轮远程真实全栈与 Compose Golden Path 已通过，但仍须由包含修正的最新提交取得完整 CI，不能复用旧 SHA 的成功状态替代。
+
+## 最终候选与实现主分支检查
+
+最终候选 `47dbc0ca4ac002726ba894733f070cea9eca7553` 的 [CI run 33852345558](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33852345558) 已成功。其第一次 npm 审计遇到官方 endpoint HTTP 503，第二次遇到网络 timeout；第三次对同一 SHA 重跑，生产及全依赖审计均为零已知漏洞，随后所有质量门禁通过。未关闭审计、改变依赖或降低测试要求。
+
+已读取该 run 的实际日志：Python 单元 807、Contract 104、API 53，共 964 项通过；前端单元 107 项、Browser Mock 60 项通过；PostgreSQL 各层共 214 项 pytest 通过；真实全栈 11 项通过（58.5 秒，AI streaming 场景 2.2 秒）。静态检查、Contract/Client 无漂移、Wheel 安装、前端构建和启动检查均通过。
+
+同一候选的 [Runtime Acceptance](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33852345288)、[Linux/Windows Tooling](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33852345280)、[Release dry-run](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33852345408) 和 [需求完成检查](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33852451473) 全部成功。Release 仅构建并实际回放离线包，正式发布按 PR 模式跳过。
+
+PR #345 于北京时间 2026-09-04 16:50:53 合并，实际 merge SHA 为 `42ab2c9e538187c29bd7a6987b0a7801e22302e7`。合并前重新核对 head、base、全部检查和实际仓库规则；使用 expected head 约束普通 PR merge。没有修改保护规则、使用管理员 merge 参数或强制推送。合并后本地 fast-forward 至 main，`git diff --quiet 47dbc0ca HEAD` 证明文件树与最终候选一致。
+
+以下工作流均针对上述实际合并 SHA 的 main push，全部 success：
+
+| 主分支检查 | 实际结果 |
+| --- | --- |
+| [CI 33855410461](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33855410461) | Repository Quality、PostgreSQL Integration、Docs and Governance、Real Full-stack、CI Gate 全部成功。 |
+| [Runtime Acceptance 33855410237](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33855410237) | Compose Golden Path，包括启动、安全、持久化、恢复及 Windows overlay 场景成功。 |
+| [Change Completion 33855410163](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33855410163) | 需求追溯与完成审计成功。 |
+| [Developer Tooling 33855410156](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33855410156) | Linux 和 Windows 工具检查均成功。 |
+
+## 本地 Windows 全量补跑的限制
+
+本地完整 Python 补跑得到 947 passed、8 skipped、9 failed（49.16 秒）。失败的原有工具源码与测试对 main 无差异：6 项文档测试使用固定 `/` 断言，而 Windows 实际错误路径为 `docs\\guide.md`；3 项 Linux 权限测试直接替换 Windows 不存在的 `os.geteuid` / `os.chown`。将文档测试移到仓库外系统临时目录重跑仍有相同 6 项失败，并直接检查返回文本确认分隔符差异。未修改这些无关用例，未把本地全量称为全绿。上述最终候选和实现 main 的 Linux 完整 CI 均已通过；平台工具兼容检查也单独通过。
+
+## 归档交接
+
+在实现 main 四项检查全部成功后，才把当前 Change 改为 done 并移入同 ID archive。当前归档仅更新这两份记录。归档 PR 仍按实际文档范围运行 CI，合并后再取得 archive main 新鲜结果，随后更新并关闭 Issue #344、清理当前任务分支。最终收尾状态由 Issue #344 的实际回写记录承载，本文不预填尚未产生的归档 merge SHA 或检查结果。
