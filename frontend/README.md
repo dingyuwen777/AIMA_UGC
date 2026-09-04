@@ -48,7 +48,7 @@ src/main.ts
 
 | 路径 | 页面 | 代码入口 |
 | --- | --- | --- |
-| `/` | 首页兼容入口 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue)，复用 `CollectionRuntimePage` |
+| `/` | 工作台 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue)，当前仅展示“开发中”图片，功能后续实现 |
 | `/collection-runtime` | 采集运行中心 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue`](src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue) |
 | `/collection-strategy` | 采集策略 | [`frontend/src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue`](src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue) |
 | `/voice-plaza` | 声音广场 | [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue`](src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue) |
@@ -361,7 +361,7 @@ src/shared/
 当前 App Shell 只展示已经有真实路由的左侧导航入口：
 
 ```text
-首页
+工作台
 声音广场
 采集运行中心
 采集策略
@@ -378,7 +378,7 @@ src/shared/
 
 任务中心固定入口只占顶部工具区，不在每个页面正文重复一块“任务历史”；业务页面只在当前任务会直接影响本页操作时显示必要的 contextual 状态，例如声音广场的活动 Analysis Run。通知中心仍负责需要用户关注的消息，任务中心负责后台运行状态，两者不合并语义。
 
-未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
+工作台当前按用户确认展示静态“开发中”图片，图片内的示意数据和控件没有接入业务功能；采集操作仍从采集运行中心进入。除此以外，未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
 
 全局样式只放真正跨页面 Token/reset。当前 `src/shared/ui/` 提供页面头、按钮、代码内 SVG 图标和反馈 Banner；采集策略 KPI、表格、弹窗、抽屉和业务表单仍留在 Feature 内，不把业务规则塞进万能公共组件。
 

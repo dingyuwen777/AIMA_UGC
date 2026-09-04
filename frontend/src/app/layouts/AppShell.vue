@@ -12,7 +12,7 @@ withDefaults(defineProps<{ sectionTitle?: string }>(), { sectionTitle: '采集�
 const identity = useIdentityStore()
 
 const navigation = computed<{ label: string; icon: AimaIconName; to: string }[]>(() => [
-  { label: '首页', icon: 'home', to: '/' },
+  { label: '工作台', icon: 'home', to: '/' },
   { label: '声音广场', icon: 'voice', to: '/voice-plaza' },
   { label: '采集运行中心', icon: 'runtime', to: '/collection-runtime' },
   { label: '采集策略', icon: 'strategy', to: '/collection-strategy' },

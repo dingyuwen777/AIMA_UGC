@@ -38,13 +38,13 @@ Mock Browser E2E 用于页面和交互回归，不能单独证明真实后端业
 
 | 业务入口 | Router | App Shell | 当前状态 | 验证 |
 | --- | --- | --- | --- | --- |
-| 首页兼容入口 | `/` | `首页` 可导航 | 已完整闭环 | [`frontend/tests/app-shell.spec.ts`](../../frontend/tests/app-shell.spec.ts)、[`frontend/tests/routes.spec.ts`](../../frontend/tests/routes.spec.ts) |
+| 工作台 | `/` | `工作台` 可导航 | 当前仅展示开发中图片，业务功能待实现 | [`frontend/tests/app-shell.spec.ts`](../../frontend/tests/app-shell.spec.ts)、[`frontend/tests/routes.spec.ts`](../../frontend/tests/routes.spec.ts) |
 | 声音广场 | `/voice-plaza` | 可导航 | 已完整闭环 | Routes / Voice Plaza Unit / Browser E2E |
 | 采集运行中心 | `/collection-runtime` | 可导航 | 已完整闭环 | Routes / Runtime Unit / Browser E2E |
 | 采集策略 | `/collection-strategy` | 可导航 | 已完整闭环 | Routes / Strategy Unit / Browser E2E |
 | 智能洞察、销售漏斗、热点捕捉、管理员、帮助反馈 | 当前无正式 Route | 不显示为死按钮 | 明确不属于当前首版页面 | App Shell Unit |
 
-`/` 继续是兼容入口并复用采集运行中心；当前不为了目录或路由美观再造独立 Dashboard。
+`/` 由 [`frontend/src/views/HomeView.vue`](../../frontend/src/views/HomeView.vue) 展示用户确认的“开发中”图片，图片内示意数据与控件尚未接入业务功能；采集运行中心继续使用 `/collection-runtime`。
 
 ---
 
