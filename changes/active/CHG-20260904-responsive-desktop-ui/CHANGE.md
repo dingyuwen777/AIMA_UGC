@@ -78,26 +78,26 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | #337 验收标准 1：1440×900 正式关键页面与已批准几何基线继续成立 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | PR #338 保留既有 1440 Figma geometry/design tests；final-head CI run `33834448112` 中相关 1440 geometry 与 `baseline-1440` Browser 回归均通过。 |
+| R1 | #337 验收标准 1：1440×900 正式关键页面与已批准几何基线继续成立 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | PR #338 保留既有 1440 Figma geometry/design tests；final-head CI run `33835268320` 中相关 1440 geometry 与 `baseline-1440` Browser 回归均通过。 |
 | R2 | #337 验收标准 2：六个指定桌面 viewport 下正式页面无非预期整页横向溢出、关键操作遮挡或文字裁切 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `responsive-layout.spec.ts` 在 1180/1280/1440/1600/1920/2560 逐页检查 AppShell/workspace/document overflow、Filter reflow、表格局部滚动与 Admin/Provider 布局；final-head CI 全部通过。 |
 | R3 | #337 验收标准 3：Page title / section title / body / control / caption 等统一通过 semantic token 表达 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `tokens.css` 建立 semantic typography/density/layout token；`AppShell.vue`、`AimaPageHeader.vue`、`AimaButton.vue`、`AimaFeedbackBanner.vue` 与 `responsive.css` 统一消费；final-head lint/typecheck/unit/build 全绿。 |
 | R4 | #337 验收标准 4：Voice Plaza、Admin、Collection Strategy、Collection Runtime 的主要 9–10px 业务文本提升到可读 semantic scale | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | Browser computed-style 断言覆盖 Voice Plaza 告警、Admin 词包/Provider 辅助文本；final-head Playwright 59/59 通过。 |
 | R5 | #337 验收标准 5：Drawer/Dialog 有 viewport 上限，窄桌面 filter/toolbars 正确 wrap/reflow，表格在自身容器滚动 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `.table-wrap overflow-x:auto`、1180 Admin/Provider 单列、filters reflow 与 560px 真实关键词包 Dialog safe-margin 均有 Browser 直接断言并通过。 |
-| R6 | #337 验收标准 6：lint、typecheck、unit、相关 Playwright、production build 新鲜通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | final-head CI run `33834448112`：npm production/full audit 均 `0 vulnerabilities`；lint exit 0；TS7 + vue-tsc exit 0；Vitest `22 files / 100 tests passed`；Vite 8.2.1 build 成功；Playwright 1.62.1 `59 passed`；CI Gate success。 |
-| R7 | #337 验收标准 7：Backend Contract/OpenAPI/generated client/Schema/Migration/依赖无变化 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `main@cb8ef5645eed38036bdaabd56b9229c1d45f2e03...c0721eab11627e33eb4bf9d8c19a9f022cdffc3c` 仅 10 个预期 Change/Frontend 文件；无 backend、contracts/openapi、frontend/generated、Schema/Migration、manifest 或 lockfile 变化。 |
+| R6 | #337 验收标准 6：lint、typecheck、unit、相关 Playwright、production build 新鲜通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | final-head CI run `33835268320`：npm production/full audit 均 `0 vulnerabilities`；lint exit 0；TS7 + vue-tsc exit 0；Vitest `22 files / 100 tests passed`；Vite 8.2.1 build 成功；Playwright 1.62.1 `59 passed`；CI Gate success。 |
+| R7 | #337 验收标准 7：Backend Contract/OpenAPI/generated client/Schema/Migration/依赖无变化 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `main@cb8ef5645eed38036bdaabd56b9229c1d45f2e03...71adc03c00738292696afaad8c16d0ba5e9e582a` 仅 10 个预期 Change/Frontend 文件；无 backend、contracts/openapi、frontend/generated、Schema/Migration、manifest 或 lockfile 变化。 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | final-head CI run `33834448112`：Vitest `22 files / 100 tests passed`；Shared UI 与现有 Feature 行为回归未失败。 |
+| 行为 / Unit / Component | required | final-head CI run `33835268320`：Vitest `22 files / 100 tests passed`；Shared UI 与现有 Feature 行为回归未失败。 |
 | 接口 / Contract | not_applicable | 本 Change 不改变 HTTP/OpenAPI/generated client/public data contract；final compare 未包含对应路径。 |
-| 集成 / Persistence / Runtime Dependency | not_applicable | 不改变 Backend、PostgreSQL、Worker 或持久化语义；CI 按 frontend-only 正确跳过 PostgreSQL Integration。Runtime Acceptance run `33834447876` 额外成功，仅作为运行时非回归证据。 |
-| 用户 / Workflow Acceptance | required | final-head CI run `33834448112`：Playwright `59 passed`，其中六档 viewport + 560px Dialog + typography bounds 八个响应式用例全部通过。Browser Mock 只证明 UI/请求边界，不宣称真实 Backend/DB。 |
+| 集成 / Persistence / Runtime Dependency | not_applicable | 不改变 Backend、PostgreSQL、Worker 或持久化语义；CI 按 frontend-only 正确跳过 PostgreSQL Integration。Runtime Acceptance run `33835268177` 成功，仅作为运行时非回归证据。 |
+| 用户 / Workflow Acceptance | required | final-head CI run `33835268320`：Playwright `59 passed`，其中六档 viewport + 560px Dialog + typography bounds 八个响应式用例全部通过。Browser Mock 只证明 UI/请求边界，不宣称真实 Backend/DB。 |
 | 跨组件 Golden Path | not_applicable | CSS/Layout 不改变前后端真实接线；Real Full-stack Golden Path 在 frontend-only scope 正确跳过。 |
 | External Dependency / Provider Probe | not_applicable | 不改变 TikHub、LLM 或其他外部 Provider；未执行 Provider Probe。 |
 | Build / Package / Runtime | required | final-head npm audit `0 vulnerabilities`；lint、TS7/vue-tsc、production build 全部成功；Node 24.19.0 / npm 11.17.0 保持仓库锁定事实。 |
-| Docs / Governance | required | `frontend/src/shared/styles/README.md` 成为精确规则 Owner；frontend README/Figma Guide targeted re-review 后保持现有职责；Docs/Governance、Change Completion Gate 与 CI Gate 均通过。 |
+| Docs / Governance | required | `frontend/src/shared/styles/README.md` 成为精确规则 Owner；frontend README/Figma Guide targeted re-review 后保持现有职责；Docs/Governance、Change Completion Gate `33835268095` 与 CI Gate 均通过。 |
 
 # User Journey / Black-box Matrix
 
@@ -121,10 +121,10 @@ Docs Impact：targeted。
 
 - Requirement Source：GitHub Issue #337；merge 前重新读取，7 条验收标准语义未漂移。
 - reviewed_base_sha / current_base_sha：`cb8ef5645eed38036bdaabd56b9229c1d45f2e03`。
-- reviewed_head_sha：`c0721eab11627e33eb4bf9d8c19a9f022cdffc3c`。
-- final-head CI：run `33834448112`，Repository Quality、Docs and Governance、CI Gate 均 success。
-- Change Completion Gate：run `33834447886` success。
-- Runtime Acceptance：run `33834447876` success。
+- reviewed_head_sha：`71adc03c00738292696afaad8c16d0ba5e9e582a`。
+- final-head CI：run `33835268320`，Repository Quality、Docs and Governance、CI Gate 均 success。
+- Change Completion Gate：run `33835268095` success。
+- Runtime Acceptance：run `33835268177` success。
 - Unit/Component：Vitest `22 files / 100 tests passed`。
 - Browser Mock Acceptance：Playwright `59 passed`；本 Change 八个 responsive/browser 用例全部通过。
 - Build：lint、TS7/vue-tsc、Vite production build 成功。
@@ -136,5 +136,5 @@ Docs Impact：targeted。
 
 - [x] upstream_re_read：重新读取 Issue #337、最终 PR #338 与 `main@cb8ef5645eed38036bdaabd56b9229c1d45f2e03`，独立重建完成定义。
 - [x] change_coverage：#337 七条验收标准一一映射为 R1—R7，并由 final-head 直接 Browser/Unit/Build/diff Evidence 支撑。
-- [x] reverse_audit：`main@cb8ef564…` → `c0721ea…` 仅 10 个预期 frontend/Change 文件；Backend/Contract/OpenAPI/generated/Schema/Migration/依赖未进入 diff，Browser Mock 未冒充真实 Backend/DB。
+- [x] reverse_audit：`main@cb8ef564…` → `71adc03…` 仅 10 个预期 frontend/Change 文件；Backend/Contract/OpenAPI/generated/Schema/Migration/依赖未进入 diff，Browser Mock 未冒充真实 Backend/DB。
 - [x] unresolved_cleared：所有 Review/Testing Findings 已修复并在 final head 回归；Standard Review PASS，当前无阻塞 Finding、无 `not_satisfied` Requirement。
