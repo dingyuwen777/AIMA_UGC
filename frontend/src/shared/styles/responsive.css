@@ -23,12 +23,16 @@
   max-width: calc(100vw - var(--aima-layout-safe-margin) - var(--aima-layout-safe-margin));
 }
 
-/* Voice Plaza：把 9–10px 业务/操作文字收敛到 semantic caption。 */
-.app-shell .voice-plaza-page :where(.capability-warning strong, .taxonomy-warning strong, .page-error strong) {
+/*
+ * 以下旧页面 Typography 迁移规则显式挂到 #app。
+ * Vue scoped CSS 会给页面选择器追加 data-v 属性；这里用稳定的应用根作用域提高
+ * specificity，确保 semantic token 真正覆盖旧 9–10px 值，而不使用 !important。
+ */
+#app .app-shell .voice-plaza-page :where(.capability-warning strong, .taxonomy-warning strong, .page-error strong) {
   font-size: var(--aima-font-size-body-small);
 }
 
-.app-shell .voice-plaza-page :where(
+#app .app-shell .voice-plaza-page :where(
   .capability-warning span,
   .taxonomy-warning span,
   .page-error span,
@@ -42,44 +46,44 @@
   font-size: var(--aima-font-size-caption);
 }
 
-.app-shell .voice-plaza-page .active-analysis-heading strong,
-.app-shell .voice-plaza-page .run-info strong,
-.app-shell .voice-plaza-page .list-heading span,
-.app-shell .voice-plaza-page .pagination,
-.app-shell .voice-plaza-page .filters .field,
-.app-shell .voice-plaza-page .filters .filter-footer p {
+#app .app-shell .voice-plaza-page .active-analysis-heading strong,
+#app .app-shell .voice-plaza-page .run-info strong,
+#app .app-shell .voice-plaza-page .list-heading span,
+#app .app-shell .voice-plaza-page .pagination,
+#app .app-shell .voice-plaza-page .filters .field,
+#app .app-shell .voice-plaza-page .filters .filter-footer p {
   font-size: var(--aima-font-size-body-small);
 }
 
-.app-shell .voice-plaza-page .run-info small {
+#app .app-shell .voice-plaza-page .run-info small {
   font-size: var(--aima-font-size-caption);
 }
 
-.app-shell .voice-plaza-page .list-heading strong {
+#app .app-shell .voice-plaza-page .list-heading strong {
   font-size: var(--aima-font-size-card-title);
 }
 
-.app-shell .voice-plaza-page .filters :where(input, select) {
+#app .app-shell .voice-plaza-page .filters :where(input, select) {
   height: var(--aima-control-height-md);
   font-size: var(--aima-font-size-control);
 }
 
-.app-shell .voice-plaza-page .filters .filter-actions .aima-button {
+#app .app-shell .voice-plaza-page .filters .filter-actions .aima-button {
   min-height: var(--aima-control-height-sm);
   font-size: var(--aima-font-size-control);
 }
 
 /* Collection Strategy：保持 1440 geometry，文字与输入统一使用 semantic scale。 */
-.app-shell .workspace-main > .tabs button {
+#app .app-shell .workspace-main > .tabs button {
   font-size: var(--aima-font-size-control);
 }
 
-.app-shell .workspace-main > .filters :where(input, select) {
+#app .app-shell .workspace-main > .filters :where(input, select) {
   font-size: var(--aima-font-size-control);
 }
 
 /* Collection Runtime。 */
-.app-shell .runtime-tabs button {
+#app .app-shell .runtime-tabs button {
   font-size: var(--aima-font-size-control);
 }
 
@@ -87,30 +91,30 @@
   min-width: 0;
 }
 
-.app-shell .list-heading strong {
+#app .app-shell .list-heading strong {
   font-size: var(--aima-font-size-section-title);
 }
 
-.app-shell .pagination {
+#app .app-shell .pagination {
   font-size: var(--aima-font-size-body-small);
 }
 
 /* Admin Configuration：标题、正文和表格不能因语义迁移反而小于原始 1440 基线。 */
-.app-shell .admin-page h2 {
+#app .app-shell .admin-page h2 {
   font-size: var(--aima-font-size-section-title);
 }
 
-.app-shell .admin-page h3,
-.app-shell .admin-page .card p,
-.app-shell .admin-page table,
-.app-shell .admin-page td button,
-.app-shell .admin-page .form-card label,
-.app-shell .admin-page .retry-link,
-.app-shell .admin-page .audit-pagination {
+#app .app-shell .admin-page h3,
+#app .app-shell .admin-page .card p,
+#app .app-shell .admin-page table,
+#app .app-shell .admin-page td button,
+#app .app-shell .admin-page .form-card label,
+#app .app-shell .admin-page .retry-link,
+#app .app-shell .admin-page .audit-pagination {
   font-size: var(--aima-font-size-body-small);
 }
 
-.app-shell .admin-page :where(
+#app .app-shell .admin-page :where(
   .form-card label > small,
   .list-card > button span,
   .scheme-editor > header > span,
@@ -119,11 +123,11 @@
   font-size: var(--aima-font-size-caption);
 }
 
-.app-shell .admin-page .list-card > button strong {
+#app .app-shell .admin-page .list-card > button strong {
   font-size: var(--aima-font-size-body-small);
 }
 
-.app-shell .admin-page :where(input, textarea, select) {
+#app .app-shell .admin-page :where(input, textarea, select) {
   font-size: var(--aima-font-size-control);
 }
 
