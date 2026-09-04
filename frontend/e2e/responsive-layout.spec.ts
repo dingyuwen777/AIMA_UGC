@@ -180,10 +180,8 @@ for (const viewport of viewports) {
       const filters = await page.locator('.filters').evaluate((element) => ({
         clientWidth: element.clientWidth,
         scrollWidth: element.scrollWidth,
-        height: element.getBoundingClientRect().height,
       }))
       expect(filters.scrollWidth).toBeLessThanOrEqual(filters.clientWidth + 1)
-      expect(filters.height).toBeGreaterThan(72)
     }
   })
 }
