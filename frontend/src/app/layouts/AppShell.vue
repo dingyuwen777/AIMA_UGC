@@ -136,7 +136,7 @@ onMounted(() => void identity.ensurePrincipal())
   color: #fff;
   background: linear-gradient(145deg, #ff377b, #e90050);
   box-shadow: 0 8px 18px rgb(245 0 87 / 22%);
-  font-size: var(--aima-font-size-card-title);
+  font-size: var(--aima-font-size-section-title);
 }
 
 .brand strong,
@@ -179,7 +179,7 @@ nav {
   border-radius: 8px;
   color: #3e4658;
   text-decoration: none;
-  font-size: var(--aima-font-size-body);
+  font-size: var(--aima-font-size-card-title);
 }
 
 .nav-item.router-link-active {
@@ -223,7 +223,7 @@ nav {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 var(--aima-layout-page-padding-x);
+  padding: 0 var(--aima-layout-topbar-padding-x);
   border-bottom: 1px solid var(--aima-border);
   background: rgb(255 255 255 / 88%);
 }
@@ -262,7 +262,7 @@ nav {
   min-width: 0;
   overflow: hidden;
   color: #626b7c;
-  font-size: var(--aima-font-size-body-small);
+  font-size: var(--aima-font-size-section-title);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -285,7 +285,7 @@ nav {
   border-radius: 50%;
   color: #fff;
   background: var(--aima-primary);
-  font-size: var(--aima-font-size-card-title);
+  font-size: var(--aima-font-size-section-title);
 }
 
 .workspace-main {
