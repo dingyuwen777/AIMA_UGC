@@ -47,14 +47,9 @@ def _minimal_repository(root: Path) -> None:
     _write(root / "scripts/quality/check_change_completion.py", "# 测试夹具\n")
     _write(root / "scripts/quality/check_pr_requirement_source.py", "# 测试夹具\n")
     _write(
-        root / ".github/workflows/change-completion-gate.yml",
-        "on:\n"
-        "  pull_request:\n"
-        "    types:\n"
-        "      - opened\n"
-        "      - synchronize\n"
-        "      - reopened\n"
-        "      - edited\n"
+        root / ".github/workflows/ci.yml",
+        "on:\n  pull_request:\n    types:\n      - opened\n      - synchronize\n"
+        "      - reopened\n      - edited\n"
         "permissions:\n  contents: read\n  issues: read\n"
         "python scripts/quality/check_agent_governance.py\n"
         "python scripts/quality/check_pr_requirement_source.py --event event.json --root .\n"
@@ -106,10 +101,7 @@ def _minimal_repository(root: Path) -> None:
             )
         ),
     )
-    _write(
-        root / ".github/ISSUE_TEMPLATE/config.yml",
-        "blank_issues_enabled: false\n",
-    )
+    _write(root / ".github/ISSUE_TEMPLATE/config.yml", "blank_issues_enabled: false\n")
     _write(
         root / ".github/PULL_REQUEST_TEMPLATE.md",
         "Requirement-Source: #123\n"
@@ -134,7 +126,6 @@ def test_current_managed_block_is_project_facing_without_runtime_internals() -> 
     """正式安装后的根入口不得继续暴露旧 Runtime/MCP/路由加载实现。"""
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     managed = _managed_block(agents)
-
     assert "治理能力自身的运行与实现细节不属于项目进度或交付内容" in managed
     for forbidden in (
         "Runtime Mode",
@@ -150,7 +141,6 @@ def test_current_managed_block_is_project_facing_without_runtime_internals() -> 
 def test_project_docs_do_not_route_generic_governance_to_local_installed_skill_core() -> None:
     """项目文档规则不得把本地 Agent_Skills 安装副本当通用治理入口。"""
     docs_agents = (ROOT / "docs/AGENTS.md").read_text(encoding="utf-8")
-
     assert ".agents/skills/coding/" not in docs_agents
     assert "先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则" in docs_agents
 
@@ -158,7 +148,6 @@ def test_project_docs_do_not_route_generic_governance_to_local_installed_skill_c
 def test_repository_tracks_current_runtime_without_legacy_assets() -> None:
     """受管 Runtime 只保留当前二进制，不恢复 legacy manifest 或旧文件名。"""
     assert not (ROOT / ".agents/agent-skills-install.json").exists()
-
     legacy = subprocess.run(
         ["git", "ls-files", "--error-unmatch", ".agents/runtime/agent-skills-mcp.exe"],
         cwd=ROOT,
@@ -181,30 +170,28 @@ def test_checker_rejects_supplier_internal_workflow_paths(tmp_path: Path) -> Non
     """永久 CI 不得重新依赖 Agent_Skills canonical tests 或 References。"""
     _minimal_repository(tmp_path)
     _write(
-        tmp_path / ".github/workflows/ci.yml",
+        tmp_path / ".github/workflows/extra.yml",
         "python -m unittest discover .agents/skills/coding/tests -v\n"
         "cat .agents/skills/coding/references/08_example.md\n",
     )
-
     errors = CHECK_REPOSITORY(tmp_path)
-
     assert len([error for error in errors if error.startswith("GOV005")]) == 2
 
 
 def test_checker_rejects_internal_runtime_terms_in_managed_block(tmp_path: Path) -> None:
     """目标项目根 managed block 不得重新生长旧 Runtime/MCP 实现说明。"""
     _minimal_repository(tmp_path)
-    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-    agents = agents.replace(
-        MANAGED_END,
-        "Runtime Mode 使用研发治理 MCP，并输出路由映射与加载明细。\n" + MANAGED_END,
+    agents = (
+        (tmp_path / "AGENTS.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            MANAGED_END,
+            "Runtime Mode 使用研发治理 MCP，并输出路由映射与加载明细。\n" + MANAGED_END,
+        )
     )
     _write(tmp_path / "AGENTS.md", agents)
-
     errors = CHECK_REPOSITORY(tmp_path)
-
-    managed_errors = [error for error in errors if error.startswith("GOV009")]
-    assert len(managed_errors) >= 4
+    assert len([error for error in errors if error.startswith("GOV009")]) >= 4
 
 
 def test_checker_rejects_local_installed_skill_as_project_docs_governance_source(
@@ -216,11 +203,8 @@ def test_checker_rejects_local_installed_skill_as_project_docs_governance_source
         tmp_path / "docs/AGENTS.md",
         "先遵守根 `AGENTS.md` 与 `.agents/skills/coding/` 的 Coding Skill。\n",
     )
-
     errors = CHECK_REPOSITORY(tmp_path)
-
-    docs_errors = [error for error in errors if error.startswith("GOV010")]
-    assert len(docs_errors) == 2
+    assert len([error for error in errors if error.startswith("GOV010")]) == 2
 
 
 def test_checker_rejects_generic_governance_implementation_in_project_overlay(
@@ -228,14 +212,12 @@ def test_checker_rejects_generic_governance_implementation_in_project_overlay(
 ) -> None:
     """marker 外 AIMA Overlay 只能描述项目规则和事实，不保存通用治理实现。"""
     _minimal_repository(tmp_path)
-    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-    agents += "\nSource Mode 从 Project Payload 读取 canonical Reference。\n"
+    agents = (tmp_path / "AGENTS.md").read_text(
+        encoding="utf-8"
+    ) + "\nSource Mode 从 Project Payload 读取 canonical Reference。\n"
     _write(tmp_path / "AGENTS.md", agents)
-
     errors = CHECK_REPOSITORY(tmp_path)
-
-    overlay_errors = [error for error in errors if error.startswith("GOV011")]
-    assert len(overlay_errors) == 3
+    assert len([error for error in errors if error.startswith("GOV011")]) == 3
 
 
 def test_checker_requires_unique_governance_markers(tmp_path: Path) -> None:
@@ -243,9 +225,7 @@ def test_checker_requires_unique_governance_markers(tmp_path: Path) -> None:
     _minimal_repository(tmp_path)
     agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
     _write(tmp_path / "AGENTS.md", agents + "\n<!-- agent-skills:managed:start -->\n")
-
     errors = CHECK_REPOSITORY(tmp_path)
-
     assert any(error.startswith("GOV002") for error in errors)
 
 
@@ -255,14 +235,12 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
     (tmp_path / ".agents/skills/coding/scripts/ready_check.py").unlink()
     (tmp_path / "scripts/quality/check_change_completion.py").unlink()
     _write(
-        tmp_path / ".github/workflows/change-completion-gate.yml",
+        tmp_path / ".github/workflows/ci.yml",
         "permissions:\n  issues: read\n"
         "python scripts/quality/check_agent_governance.py\n"
         "python scripts/quality/check_pr_requirement_source.py\n",
     )
-
     errors = CHECK_REPOSITORY(tmp_path)
-
     assert any(error.startswith("GOV004") for error in errors)
     assert any(error.startswith("GOV007") for error in errors)
 
@@ -270,15 +248,13 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
 def test_checker_rejects_workflow_bypassing_project_change_carrier(tmp_path: Path) -> None:
     """Completion Gate 不得回退为直接调用无法识别 mixed carrier 的 generic checker。"""
     _minimal_repository(tmp_path)
-    workflow_path = tmp_path / ".github/workflows/change-completion-gate.yml"
+    workflow_path = tmp_path / ".github/workflows/ci.yml"
     workflow = workflow_path.read_text(encoding="utf-8").replace(
         "python scripts/quality/check_change_completion.py",
         "python .agents/skills/coding/scripts/ready_check.py",
     )
     _write(workflow_path, workflow)
-
     errors = CHECK_REPOSITORY(tmp_path)
-
     assert any(error.startswith("GOV007") for error in errors)
     assert any(error.startswith("GOV016") and "generic" in error for error in errors)
 
@@ -288,27 +264,22 @@ def test_checker_requires_pr_requirement_source_gate_wiring(tmp_path: Path) -> N
     _minimal_repository(tmp_path)
     (tmp_path / "scripts/quality/check_pr_requirement_source.py").unlink()
     _write(
-        tmp_path / ".github/workflows/change-completion-gate.yml",
+        tmp_path / ".github/workflows/ci.yml",
         "python scripts/quality/check_agent_governance.py\n"
         "python scripts/quality/check_change_completion.py --root . --changed-since base\n"
         "python scripts/quality/check_change_completion.py --root . --require-active-ready\n",
     )
-
     errors = CHECK_REPOSITORY(tmp_path)
-
-    source_errors = [error for error in errors if error.startswith("GOV015")]
-    assert len(source_errors) == 4
+    assert len([error for error in errors if error.startswith("GOV015")]) == 4
 
 
 def test_checker_requires_pr_body_edit_revalidation(tmp_path: Path) -> None:
     """治理回归必须阻止 Requirement Source 的 `edited` 重验触发被删除。"""
     _minimal_repository(tmp_path)
-    workflow_path = tmp_path / ".github/workflows/change-completion-gate.yml"
+    workflow_path = tmp_path / ".github/workflows/ci.yml"
     workflow = workflow_path.read_text(encoding="utf-8").replace("      - edited\n", "")
     _write(workflow_path, workflow)
-
     errors = CHECK_REPOSITORY(tmp_path)
-
     assert any(error.startswith("GOV015") and "正文 edited" in error for error in errors)
 
 
@@ -319,9 +290,7 @@ def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) 
     (tmp_path / ".github/ISSUE_TEMPLATE/03-technical-change.yml").unlink()
     (tmp_path / ".github/ISSUE_TEMPLATE/config.yml").unlink()
     _write(tmp_path / ".github/PULL_REQUEST_TEMPLATE.md", "# PR\n")
-
     errors = CHECK_REPOSITORY(tmp_path)
-
     assert len([error for error in errors if error.startswith("GOV012")]) >= 2
     assert any(error.startswith("GOV013") for error in errors)
     assert any(error.startswith("GOV014") for error in errors)
