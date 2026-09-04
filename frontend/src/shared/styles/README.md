@@ -4,8 +4,8 @@
 
 ## 文件职责
 
-- `tokens.css`：颜色、间距、圆角、Semantic Typography、Density 与 Layout Token。
-- `responsive.css`：跨页面桌面端 reflow、overflow、Overlay 安全边界，以及历史页面 raw px 向 semantic token 收口的兼容层。
+- [`tokens.css`](tokens.css)：颜色、间距、圆角、Semantic Typography、Density 与 Layout Token。
+- [`responsive.css`](responsive.css)：跨页面桌面端 reflow、overflow、Overlay 安全边界，以及历史页面 raw px 向 semantic token 收口的兼容层。
 
 ## 桌面端响应式基线
 
@@ -26,7 +26,7 @@ AIMA 当前正式桌面视觉以 `1440×900` 为锚点，但生产代码不得�
 3. 空间不足优先由 `flex/grid` reflow、wrap、`minmax()` 和局部横向滚动解决，不继续缩小文字。
 4. 普通页面不应产生整页横向滚动；具有真实二维语义的数据表可以在自己的容器内横向滚动。
 5. Drawer/Dialog 使用设计首选宽度，但必须受当前 viewport safe margin 约束。
-6. Shared UI 和新页面优先直接消费 semantic token。`responsive.css` 中针对旧页面 class 的规则只承担迁移兼容，不应成为新页面继续写 raw `9px/10px` 的理由。
+6. Shared UI 和新页面优先直接消费 semantic token。[`responsive.css`](responsive.css) 中针对旧页面 class 的规则只承担迁移兼容，不应成为新页面继续写 raw `9px/10px` 的理由。
 7. Browser Zoom、系统缩放和 CSS viewport 是不同概念；不要使用 `devicePixelRatio` 决定字体大小。
 
 ## Semantic Typography
