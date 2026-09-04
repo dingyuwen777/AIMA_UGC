@@ -132,9 +132,7 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
         if f"name: {chooser_name}" not in first_lines:
             errors.append(f"GOV017 {path.as_posix()}: chooser 名称必须精确为 {chooser_name}")
         if f'title: "{title_prefix}"' not in first_lines:
-            errors.append(
-                f"GOV017 {path.as_posix()}: title prefix 必须精确为 {title_prefix!r}"
-            )
+            errors.append(f"GOV017 {path.as_posix()}: title prefix 必须精确为 {title_prefix!r}")
     acceptance = _issue_field_block(text, "acceptance_criteria")
     if acceptance is not None and (
         "label: 验收标准" not in acceptance or "- [ ] AC1：" not in acceptance
@@ -144,9 +142,7 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
         )
     validation = _issue_field_block(text, "validation_requirements")
     if validation is not None and "label: 验证要求" not in validation:
-        errors.append(
-            f"GOV017 {path.as_posix()}: validation_requirements 必须使用统一验证要求语义"
-        )
+        errors.append(f"GOV017 {path.as_posix()}: validation_requirements 必须使用统一验证要求语义")
     return errors
 
 
@@ -185,13 +181,9 @@ def check_repository(root: Path = ROOT) -> list[str]:
                 )
 
     if not (root / READY_CHECK).is_file():
-        errors.append(
-            f"GOV004 {READY_CHECK.as_posix()}: 项目适配所需 installed validator 不存在"
-        )
+        errors.append(f"GOV004 {READY_CHECK.as_posix()}: 项目适配所需 installed validator 不存在")
     if not (root / PROJECT_CHANGE_CHECK).is_file():
-        errors.append(
-            f"GOV007 {PROJECT_CHANGE_CHECK.as_posix()}: AIMA 顶层 Change 门禁入口不存在"
-        )
+        errors.append(f"GOV007 {PROJECT_CHANGE_CHECK.as_posix()}: AIMA 顶层 Change 门禁入口不存在")
     if not (root / PR_REQUIREMENT_SOURCE_CHECK).is_file():
         errors.append(
             f"GOV015 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: PR Requirement Source 机器门禁不存在"
@@ -215,9 +207,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
         gate_text = _read_text(completion_owner)
         project_check_command = f"python {PROJECT_CHANGE_CHECK.as_posix()}"
         if project_check_command not in gate_text:
-            errors.append(
-                f"GOV007 {COMPLETION_OWNER.as_posix()}: 必须执行 AIMA 顶层 Change 门禁"
-            )
+            errors.append(f"GOV007 {COMPLETION_OWNER.as_posix()}: 必须执行 AIMA 顶层 Change 门禁")
         if f"python {READY_CHECK.as_posix()}" in gate_text:
             errors.append(
                 f"GOV016 {COMPLETION_OWNER.as_posix()}: Workflow 不得绕过项目 carrier 直接调用 generic ready-check"
@@ -227,9 +217,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
                 f"GOV016 {COMPLETION_OWNER.as_posix()}: PR changed-since 与 main active-ready 模式必须同时保留"
             )
         if "check_agent_governance.py" not in gate_text:
-            errors.append(
-                f"GOV008 {COMPLETION_OWNER.as_posix()}: 必须先执行 AIMA 项目治理接线检查"
-            )
+            errors.append(f"GOV008 {COMPLETION_OWNER.as_posix()}: 必须先执行 AIMA 项目治理接线检查")
         if "check_pr_requirement_source.py" not in gate_text:
             errors.append(
                 f"GOV015 {COMPLETION_OWNER.as_posix()}: 必须继续执行真实 PR Requirement Source 校验"
@@ -252,9 +240,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
     if not issue_config.is_file():
         errors.append(f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: Issue chooser 配置不存在")
     elif "blank_issues_enabled: false" not in _read_text(issue_config):
-        errors.append(
-            f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: 必须关闭 blank issue 普通入口"
-        )
+        errors.append(f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: 必须关闭 blank issue 普通入口")
     pr_template = root / PR_TEMPLATE
     if not pr_template.is_file():
         errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: PR 模板不存在")
@@ -263,9 +249,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
         if "Requirement-Source:" not in pr_text:
             errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 缺少 Requirement-Source 追溯字段")
         if "不要用关闭关键字替代" not in pr_text:
-            errors.append(
-                f"GOV014 {PR_TEMPLATE.as_posix()}: 必须区分需求追溯与 Issue 关闭语义"
-            )
+            errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 必须区分需求追溯与 Issue 关闭语义")
         if "#123" not in pr_text or "仓库内真实存在" not in pr_text:
             errors.append(
                 f"GOV014 {PR_TEMPLATE.as_posix()}: 必须公开机器可验证的 Issue / 仓库路径来源格式"
