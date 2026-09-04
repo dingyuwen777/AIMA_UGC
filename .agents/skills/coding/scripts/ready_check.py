@@ -46,6 +46,11 @@ PLACEHOLDERS = {
 }
 REQUIREMENT_ID_PATTERN = re.compile(r"^R[1-9][0-9]*$")
 AUDIT_LINE_PATTERN = re.compile(r"^- \[([ xX])\]\s+([a-z_]+)[：:]\s*(.+)$")
+ISSUE_REFERENCE_PATTERN = re.compile(r"^#[1-9][0-9]*$")
+ACCEPTANCE_BINDING_PATTERN = re.compile(
+    r"^(?P<owner>.+?)(?:\s*/\s*|#)(?P<acceptance>AC[1-9][0-9]*)$",
+    re.IGNORECASE,
+)
 
 
 def _load_coding_module() -> Any:
@@ -85,6 +90,18 @@ def _is_placeholder(value: str) -> bool:
     """判断文本是否为空或仍是 Ready 阶段禁止保留的占位值。"""
     normalised = value.strip().strip("`").casefold()
     return not normalised or normalised in PLACEHOLDERS
+
+
+def _split_acceptance_binding(value: str) -> tuple[str, str] | None:
+    """解析 `上游 Owner / AC1` 或 `上游Owner#AC1` 稳定 Acceptance 绑定。"""
+    match = ACCEPTANCE_BINDING_PATTERN.fullmatch(value.strip().strip("`"))
+    if match is None:
+        return None
+    owner = match.group("owner").strip()
+    acceptance = match.group("acceptance").upper()
+    if not owner:
+        return None
+    return owner, acceptance
 
 
 def _body_after_frontmatter(path: Path) -> str:
@@ -165,14 +182,23 @@ def _validate_source(root: Path, change_path: Path, source: str) -> str | None:
     value = source.strip().strip("`")
     if _is_placeholder(value):
         return f"Requirement Source 不能是占位值：{source}"
-    if value.startswith(("user:", "external:")):
-        prefix, _, payload = value.partition(":")
+
+    binding = _split_acceptance_binding(value)
+    owner_value = binding[0] if binding is not None else value
+
+    if ISSUE_REFERENCE_PATTERN.fullmatch(owner_value):
+        # Ready validator 只负责稳定引用的机器形状；Issue 的真实存在性由 PR/项目 Requirement Source gate 验证。
+        return None
+
+    if owner_value.startswith(("user:", "external:")):
+        prefix, _, payload = owner_value.partition(":")
         if not payload.strip():
             return f"Requirement Source {prefix}: 后必须包含可识别来源"
         return None
-    if value.startswith(("https://", "http://")):
+    if owner_value.startswith(("https://", "http://")):
         return None
-    path_value = value.split("#", 1)[0].strip()
+
+    path_value = owner_value.split("#", 1)[0].strip()
     path_value = _normalise_relative_path(path_value)
     if not _is_safe_relative_path(path_value):
         return f"Requirement Source 必须是安全仓库相对路径或显式 user/external 来源：{source}"
@@ -187,8 +213,14 @@ def _validate_source(root: Path, change_path: Path, source: str) -> str | None:
     return None
 
 
-def _validate_traceability(root: Path, change_path: Path, body: str) -> list[str]:
-    """校验需求追溯的 ID、状态、来源和 Evidence。"""
+def _validate_traceability(
+    root: Path,
+    change_path: Path,
+    body: str,
+    *,
+    require_acceptance_binding: bool = False,
+) -> list[str]:
+    """校验需求追溯的 ID、状态、来源、稳定 Acceptance 绑定和 Evidence。"""
     section = _section(body, TRACEABILITY_HEADINGS)
     if section is None:
         return ["缺少 # 需求追溯（历史 Change 兼容 # Requirement Traceability）"]
@@ -215,9 +247,15 @@ def _validate_traceability(root: Path, change_path: Path, body: str) -> list[str
         elif status == "not_satisfied":
             errors.append(f"{requirement_id} 仍为 not_satisfied，不能进入 Ready/归档")
 
-        source_error = _validate_source(root, change_path, row["Source"])
+        source_value = row["Source"].strip().strip("`")
+        source_error = _validate_source(root, change_path, source_value)
         if source_error:
             errors.append(f"{requirement_id} {source_error}")
+        elif require_acceptance_binding and _split_acceptance_binding(source_value) is None:
+            errors.append(
+                f"{requirement_id} Source 必须绑定稳定 Acceptance，例如 `#123 / AC1`、"
+                "`specs/feature.md#AC1` 或项目等价稳定标识"
+            )
 
         evidence = row["Evidence"]
         if _is_placeholder(evidence):
@@ -258,11 +296,21 @@ def _metadata(path: Path) -> dict[str, Any]:
     return CODING.read_change_metadata(path)
 
 
-def _validate_ready_document(root: Path, path: Path) -> list[str]:
+def _validate_ready_document(
+    root: Path,
+    path: Path,
+    *,
+    require_acceptance_binding: bool = False,
+) -> list[str]:
     """校验一个 Ready/Archive Change 的需求追溯表和完成审计正文。"""
     body = _body_after_frontmatter(path)
     return [
-        *_validate_traceability(root, path, body),
+        *_validate_traceability(
+            root,
+            path,
+            body,
+            require_acceptance_binding=require_acceptance_binding,
+        ),
         *_validate_completion_audit(body),
     ]
 
@@ -353,6 +401,8 @@ def check_repository(
                 )
                 continue
             must_validate = True
+            # 历史 untouched archive 不因新稳定 Acceptance 语法被强制迁移；当前变更触及的 archive 才进入新门禁。
+            require_acceptance_binding = bool(changed_since and relative in changed)
         else:
             if not active:
                 errors.append({"path": relative, "message": "Change 不位于 active 或 archive 目录"})
@@ -374,11 +424,16 @@ def check_repository(
                 )
                 continue
             must_validate = status == "ready_for_review" or must_be_ready
+            require_acceptance_binding = must_validate
 
         if must_validate:
             strict += 1
             try:
-                document_errors = _validate_ready_document(root, path)
+                document_errors = _validate_ready_document(
+                    root,
+                    path,
+                    require_acceptance_binding=require_acceptance_binding,
+                )
             except (OSError, ValueError) as exc:
                 document_errors = [str(exc)]
             errors.extend({"path": relative, "message": message} for message in document_errors)

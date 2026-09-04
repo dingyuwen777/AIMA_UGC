@@ -1,0 +1,160 @@
+name: Change Archive
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 已合并到 main 的 Implementation PR 编号
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: change-archive-main
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    name: Archive merged Change
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main') }}
+    runs-on: ubuntu-24.04
+    environment: change-archive-main
+    steps:
+      - name: Detect archive App configuration
+        id: configured
+        env:
+          APP_ID: ${{ secrets.CHANGE_ARCHIVE_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.CHANGE_ARCHIVE_APP_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${APP_ID}" && -n "${APP_PRIVATE_KEY}" ]]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Change Archive 尚未配置专用 GitHub App；本次安全 no-op。配置 change-archive-main Environment 后可用 workflow_dispatch 按 merged PR 重跑。"
+          fi
+
+      - name: Mint narrow archive App token
+        if: steps.configured.outputs.configured == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CHANGE_ARCHIVE_APP_ID }}
+          private-key: ${{ secrets.CHANGE_ARCHIVE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Checkout current main
+        if: steps.configured.outputs.configured == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
+
+      - name: Resolve merged PR facts
+        if: steps.configured.outputs.configured == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${EVENT_PR_NUMBER:-${INPUT_PR_NUMBER:-}}"
+          if [[ -z "${PR_NUMBER}" ]]; then
+            echo "缺少 merged PR 编号" >&2
+            exit 1
+          fi
+
+          PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          MERGED="$(jq -r '.merged' <<<"${PR_JSON}")"
+          BASE_REF="$(jq -r '.base.ref' <<<"${PR_JSON}")"
+          MERGED_AT="$(jq -r '.merged_at // empty' <<<"${PR_JSON}")"
+          MERGE_SHA="$(jq -r '.merge_commit_sha // empty' <<<"${PR_JSON}")"
+          if [[ "${MERGED}" != "true" || "${BASE_REF}" != "main" || -z "${MERGED_AT}" || -z "${MERGE_SHA}" ]]; then
+            echo "PR #${PR_NUMBER} 不是可唯一绑定 revision 的已合并 main Implementation PR" >&2
+            exit 1
+          fi
+
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
+            --jq '.[].filename' > "${RUNNER_TEMP}/change-archive-paths.txt"
+
+          echo "number=${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "merged_at=${MERGED_AT}" >> "${GITHUB_OUTPUT}"
+          echo "merge_sha=${MERGE_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Archive Change deterministically
+        if: steps.configured.outputs.configured == 'true'
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/archive_change_after_merge.py \
+            --root . \
+            --pr-number "${{ steps.pr.outputs.number }}" \
+            --merged-at "${{ steps.pr.outputs.merged_at }}" \
+            --merged-revision "${{ steps.pr.outputs.merge_sha }}" \
+            --changed-paths-file "${RUNNER_TEMP}/change-archive-paths.txt" \
+            --json | tee "${RUNNER_TEMP}/change-archive-result.json"
+
+          echo "changed=$(jq -r '.changed' "${RUNNER_TEMP}/change-archive-result.json")" >> "${GITHUB_OUTPUT}"
+          echo "change_id=$(jq -r '.change_id // empty' "${RUNNER_TEMP}/change-archive-result.json")" >> "${GITHUB_OUTPUT}"
+          echo "source=$(jq -r '.source // empty' "${RUNNER_TEMP}/change-archive-result.json")" >> "${GITHUB_OUTPUT}"
+          echo "target=$(jq -r '.target // empty' "${RUNNER_TEMP}/change-archive-result.json")" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify archive gate and exact diff allowlist
+        if: steps.configured.outputs.configured == 'true' && steps.archive.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_change_completion.py --root .
+
+          git add -A -- changes
+          mapfile -t ACTUAL < <(git diff --cached --name-only --no-renames | sort)
+          mapfile -t EXPECTED < <(printf '%s\n%s\n' \
+            "${{ steps.archive.outputs.source }}" \
+            "${{ steps.archive.outputs.target }}" | sort)
+
+          if [[ "${#ACTUAL[@]}" -ne 2 || "${ACTUAL[*]}" != "${EXPECTED[*]}" ]]; then
+            echo "归档 staged diff 超出单一 Change allowlist" >&2
+            printf 'actual: %s\n' "${ACTUAL[@]}" >&2
+            printf 'expected: %s\n' "${EXPECTED[@]}" >&2
+            exit 1
+          fi
+
+          if git diff --cached --name-only --no-renames | grep -Ev '^changes/(active|archive)/' >/dev/null; then
+            echo "归档 diff 出现 changes/ 之外路径" >&2
+            exit 1
+          fi
+
+      - name: Commit and push archive to main
+        if: steps.configured.outputs.configured == 'true' && steps.archive.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "AIMA Change Archivist"
+          git config user.email "aima-change-archivist@users.noreply.github.com"
+          git commit -m "归档 Change：${{ steps.archive.outputs.change_id }}"
+
+          ARCHIVE_PARENT="$(git rev-parse HEAD^)"
+          git fetch origin main
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          if [[ "${ARCHIVE_PARENT}" != "${CURRENT_MAIN}" ]]; then
+            echo "main 在归档期间发生漂移；停止 push，请重跑 Change Archive" >&2
+            exit 1
+          fi
+
+          git push origin HEAD:main
