@@ -112,14 +112,8 @@ async function mockRuntimeApi(page: Page): Promise<void> {
   })
 }
 
-/** 为管理员页面初始 Tab 提供最小目录响应，避免把响应式测试变成业务 Fixture 镜像。 */
+/** 为管理员页面初始 Tab 提供最小独有响应；词包目录复用采集策略 Mock 的同一正式 Contract。 */
 async function mockAdminApi(page: Page): Promise<void> {
-  await page.route('**/api/v1/keyword-packs**', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ items: [], total: 0, offset: 0, limit: 100 }),
-    })
-  })
   await page.route('**/api/v1/analysis-schemes', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
   })
