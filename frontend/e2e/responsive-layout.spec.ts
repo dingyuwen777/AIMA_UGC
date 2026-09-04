@@ -1,5 +1,7 @@
 import { expect, test, type Page } from './fixture'
 
+import { stubVoicePlazaTaxonomy } from './voicePlazaTaxonomy'
+
 const providerId = '44444444-4444-4444-8444-444444444444'
 
 /** 为响应式 Browser Mock 提供采集策略页面最小稳定数据，不复制后端业务规则。 */
@@ -78,6 +80,57 @@ async function mockStrategyApi(page: Page): Promise<void> {
   })
 }
 
+/** 为声音广场窄桌面验收提供最小只读响应，业务状态仍使用正式页面入口。 */
+async function mockVoicePlazaApi(page: Page): Promise<void> {
+  await stubVoicePlazaTaxonomy(page)
+  await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: true }),
+    })
+  })
+  await page.route('**/api/v1/contents**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], next_cursor: null, has_more: false }),
+    })
+  })
+}
+
+/** 为采集运行中心响应式验收补充当前首页所需的 KPI 摘要。 */
+async function mockRuntimeApi(page: Page): Promise<void> {
+  await page.route('**/api/v1/collection-runtime/summary', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        processing_count: 0,
+        completed_today_count: 0,
+        contents_ingested_today: 0,
+        as_of: '2026-09-04T00:00:00Z',
+      }),
+    })
+  })
+}
+
+/** 为管理员页面初始 Tab 提供最小目录响应，避免把响应式测试变成业务 Fixture 镜像。 */
+async function mockAdminApi(page: Page): Promise<void> {
+  await page.route('**/api/v1/keyword-packs**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], total: 0, offset: 0, limit: 100 }),
+    })
+  })
+  await page.route('**/api/v1/analysis-schemes', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
+  })
+  await page.route('**/api/v1/audit-events**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], total: 0, offset: 0, limit: 100 }),
+    })
+  })
+}
+
 /** 读取 CSS px 数值，用于验证 fluid typography 的锚点与上限。 */
 async function fontSize(page: Page, selector: string): Promise<number> {
   return page.locator(selector).evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
@@ -90,6 +143,17 @@ async function expectNoPageHorizontalOverflow(page: Page): Promise<void> {
     scrollWidth: document.documentElement.scrollWidth,
   }))
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
+}
+
+/** 验证 AppShell 与真实内容区都被约束在当前 viewport 内。 */
+async function expectWorkspaceInsideViewport(page: Page, viewportWidth: number): Promise<void> {
+  const shell = await page.locator('.app-shell').boundingBox()
+  const workspace = await page.locator('.workspace-main').boundingBox()
+  expect(shell).not.toBeNull()
+  expect(workspace).not.toBeNull()
+  expect((shell?.x ?? 0) + (shell?.width ?? 0)).toBeLessThanOrEqual(viewportWidth + 1)
+  expect((workspace?.x ?? 0) + (workspace?.width ?? 0)).toBeLessThanOrEqual(viewportWidth + 1)
+  await expectNoPageHorizontalOverflow(page)
 }
 
 const viewports = [
@@ -110,12 +174,7 @@ for (const viewport of viewports) {
     await expect(page.getByRole('heading', { name: '采集策略' })).toBeVisible()
     await page.getByRole('button', { name: '采集计划' }).click()
     await expect(page.locator('.filters')).toBeVisible()
-    await expectNoPageHorizontalOverflow(page)
-
-    const shell = await page.locator('.app-shell').boundingBox()
-    const workspace = await page.locator('.workspace-main').boundingBox()
-    expect(shell?.width).toBeLessThanOrEqual(viewport.width + 1)
-    expect(workspace?.width).toBeLessThanOrEqual(viewport.width + 1)
+    await expectWorkspaceInsideViewport(page, viewport.width)
 
     if (viewport.width <= 1279) {
       const filters = await page.locator('.filters').evaluate((element) => ({
@@ -128,6 +187,61 @@ for (const viewport of viewports) {
     }
   })
 }
+
+test('keeps voice plaza readable and bounded on compact desktop', async ({ page }) => {
+  const viewport = { width: 1180, height: 800 }
+  await page.setViewportSize(viewport)
+  await mockVoicePlazaApi(page)
+  await page.goto('/voice-plaza')
+
+  await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
+  await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
+  await expectWorkspaceInsideViewport(page, viewport.width)
+  const filters = await page.locator('.filters').evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
+  expect(filters.scrollWidth).toBeLessThanOrEqual(filters.clientWidth + 1)
+  expect(await fontSize(page, '.filters .field')).toBeGreaterThanOrEqual(12)
+})
+
+test('keeps collection runtime bounded on compact desktop', async ({ page }) => {
+  const viewport = { width: 1180, height: 800 }
+  await page.setViewportSize(viewport)
+  await mockRuntimeApi(page)
+  await page.goto('/collection-runtime')
+
+  await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
+  await expectWorkspaceInsideViewport(page, viewport.width)
+  await expect(page.locator('.runtime-tabs')).toBeVisible()
+})
+
+test('keeps administrator configuration bounded on compact desktop', async ({ page }) => {
+  const viewport = { width: 1180, height: 800 }
+  await page.setViewportSize(viewport)
+  await mockAdminApi(page)
+  await page.goto('/admin/configuration')
+
+  await expect(page.getByRole('heading', { name: '管理员配置' })).toBeVisible()
+  await expectWorkspaceInsideViewport(page, viewport.width)
+  await expect(page.getByRole('navigation', { name: '管理员配置分类' })).toBeVisible()
+})
+
+test('constrains a real dialog to the viewport safe margin in a narrow window', async ({ page }) => {
+  const viewport = { width: 560, height: 800 }
+  await page.setViewportSize(viewport)
+  await mockStrategyApi(page)
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '关键词包' }).click()
+  await page.locator('.table-head').getByRole('button', { name: /新建词包/ }).click()
+
+  const dialog = page.getByRole('dialog', { name: '新建关键词包' })
+  await expect(dialog).toBeVisible()
+  const box = await dialog.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box?.x).toBeGreaterThanOrEqual(15)
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(viewport.width - 15)
+})
 
 test('anchors typography at 1440 and grows it only within the approved desktop bounds', async ({ page }) => {
   await mockStrategyApi(page)
