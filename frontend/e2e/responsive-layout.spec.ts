@@ -2,6 +2,8 @@ import { expect, test, type Page } from './fixture'
 
 import { stubVoicePlazaTaxonomy } from './voicePlazaTaxonomy'
 
+const packId = '11111111-1111-4111-8111-111111111111'
+const keywordId = '55555555-5555-4555-8555-555555555555'
 const providerId = '44444444-4444-4444-8444-444444444444'
 
 /** 为响应式 Browser Mock 提供采集策略页面最小稳定数据，不复制后端业务规则。 */
@@ -16,7 +18,7 @@ async function mockStrategyApi(page: Page): Promise<void> {
         body: JSON.stringify({
           items: [
             {
-              id: '11111111-1111-4111-8111-111111111111',
+              id: packId,
               name: '爱玛品牌词包',
               description: '响应式布局测试',
               enabled: true,
@@ -32,11 +34,50 @@ async function mockStrategyApi(page: Page): Promise<void> {
       return
     }
 
+    if (request.method() === 'GET' && url.pathname === `/api/v1/keyword-packs/${packId}`) {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: packId,
+          name: '爱玛品牌词包',
+          description: '响应式布局测试',
+          enabled: true,
+          version: 4,
+          keyword_count: 28,
+          keywords: [
+            {
+              id: keywordId,
+              text: '爱玛 Q7',
+              platform_scope: 'all',
+              enabled: true,
+              priority: 10,
+              note: '',
+            },
+          ],
+        }),
+      })
+      return
+    }
+
+    if (request.method() === 'GET' && url.pathname === '/api/v1/vehicle-models') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [],
+          total: 0,
+          catalog_version: 1,
+          offset: Number(url.searchParams.get('offset') ?? '0'),
+          limit: Number(url.searchParams.get('limit') ?? '200'),
+        }),
+      })
+      return
+    }
+
     if (request.method() === 'GET' && url.pathname === '/api/v1/relevance-config') {
       await route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
-          keyword_pack_id: '11111111-1111-4111-8111-111111111111',
+          keyword_pack_id: packId,
           keyword_pack_version: 4,
           version: 3,
           effective_keywords: ['爱玛 Q7'],
@@ -178,7 +219,7 @@ for (const viewport of viewports) {
 
     await page.goto('/collection-strategy')
     await expect(page.getByRole('heading', { name: '采集策略' })).toBeVisible()
-    await page.getByRole('button', { name: '采集计划' }).click()
+    await page.getByRole('button', { name: '采集计划', exact: true }).click()
     await expect(page.locator('.filters')).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
     await expect(page.locator('.table-wrap')).toHaveCSS('overflow-x', 'auto')
