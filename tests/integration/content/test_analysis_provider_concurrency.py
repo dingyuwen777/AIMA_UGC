@@ -650,15 +650,18 @@ def test_stop_during_http_prevents_retries_and_stale_writes(
                                 if stop_kind == "lease"
                                 else "attempt_deadline_at"
                             )
-                            expiration = {column: text("clock_timestamp() - interval '1 second'")}
+                            # 同一语句共用时刻，保证模拟租约不晚于 Attempt Deadline。
+                            expiration = {
+                                column: text("statement_timestamp() - interval '1 second'")
+                            }
                             if stop_kind == "deadline":
                                 expiration.update(
                                     {
                                         "attempt_started_at": text(
-                                            "clock_timestamp() - interval '2 seconds'"
+                                            "statement_timestamp() - interval '2 seconds'"
                                         ),
                                         "lease_expires_at": text(
-                                            "clock_timestamp() - interval '1 second'"
+                                            "statement_timestamp() - interval '1 second'"
                                         ),
                                     }
                                 )

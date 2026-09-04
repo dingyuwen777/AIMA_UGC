@@ -44,3 +44,12 @@
 ## 交付门禁
 
 最终候选 SHA 的 CI、Requirement Traceability and Completion Audit、Compose Golden Path 和其他触发的质量检查均成功后，方可按主分支规则合并。之后验证 implementation main；再归档 Change 并验证 archive main，回写 Issue 验收证据后关闭并清理本任务已合并分支。远程结果在实际发生后追加，当前不预填成功。
+
+## 首轮远程 CI 反馈与修正
+
+候选 `ce2f844baeadf3b14fb304d4de0b33ab80c7ffa5` 的 [CI run 33851750335](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/33851750335) 暴露两项本地目标检查未识别的问题：
+
+1. Analysis README 链接到了 Git 忽略的 `env.local`，本机有该文件而干净 CI checkout 没有。改为说明本地文件并链接已跟踪的 `env.local.example`；不提交运行 Secret。
+2. Deadline 场景测试构造用三个 `clock_timestamp()` 调用；CI 中租约比截止时间晚 1 微秒，被 `lease_expires_at <= attempt_deadline_at` 约束正确拒绝。测试统一用 `statement_timestamp()` 建立同一语句时刻，仍模拟过期 Deadline 并保留“不重试、不越权写入”断言；不修改生产代码或数据库约束。[PostgreSQL 18 官方时间函数说明](https://www.postgresql.org/docs/18/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT) 明确区分这两种时间语义。
+
+修正后在新建的独立 PostgreSQL 容器重跑同一模块：14 项通过，用时 16.61 秒。首轮远程真实全栈与 Compose Golden Path 已通过，但仍须由包含修正的最新提交取得完整 CI，不能复用旧 SHA 的成功状态替代。
