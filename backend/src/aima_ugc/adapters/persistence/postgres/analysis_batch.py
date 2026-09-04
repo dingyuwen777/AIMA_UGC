@@ -191,14 +191,15 @@ class PostgresAnalysisBatchRepository:
         """一次查询验证本批所有 Request 都属于当前 Fence 的 Job。"""
 
         request_ids = tuple(dict.fromkeys(item.request_id for item in work_items))
-        rows = dict(
-            self._session.execute(
+        rows = {
+            cast(UUID, request_id): cast(UUID, request_job_id)
+            for request_id, request_job_id in self._session.execute(
                 select(
                     analysis_content_requests_table.c.id,
                     analysis_content_requests_table.c.job_id,
                 ).where(analysis_content_requests_table.c.id.in_(request_ids))
             )
-        )
+        }
         if len(rows) != len(request_ids):
             raise AnalysisRequestNotFound
         if any(rows[request_id] != job_id for request_id in request_ids):
