@@ -42,9 +42,9 @@ data_changes: []
 
 # 当前事实与已确认决定
 
-- 当前全局 `tokens.css` 已有 Color/Spacing/Layout Token，但没有 Semantic Typography / Responsive Density Token。
-- `AppShell.vue` 当前存在 `min-width: 1180px`，Sidebar/Topbar/Workspace 大量使用固定 px。
-- Voice Plaza、Admin Configuration 等当前存在 9–10px 的辅助或操作文本；主要页面只存在零散 layout breakpoint，没有统一字体缩放策略。
+- 原全局 `tokens.css` 已有 Color/Spacing/Layout Token，但没有 Semantic Typography / Responsive Density Token。
+- 原 `AppShell.vue` 存在 `min-width: 1180px`，Sidebar/Topbar/Workspace 大量使用固定 px。
+- Voice Plaza、Admin Configuration 等存在 9–10px 的辅助或操作文本；主要页面只有零散 layout breakpoint，没有统一字体缩放策略。
 - Voice Plaza 与 Collection Strategy 已有 1440×900 正式 Figma/Playwright 几何基线；1440 继续作为视觉锚点，生产实现不能写死整页宽高。
 - 本 Change 只做桌面端自适应，不扩展成完整 Mobile 重构。
 - 不修改 Backend、PostgreSQL、Schema/Migration、HTTP Contract、OpenAPI/generated client、业务 Store/API 语义，不升级或新增前端依赖。
@@ -78,47 +78,63 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 1440 保持正式视觉锚点，同时建立桌面端统一响应式规则 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | PR #338 当前实现保留既有 1440 Figma geometry/design tests；CI run 33832938209 的 Repository Quality job 100901820665 中相关 1440 geometry 与新 baseline-1440 Browser 回归均通过。 |
-| R2 | 建立 Semantic Typography / Density / Layout Token，并由 AppShell/Shared UI 消费 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `tokens.css` 新增 semantic typography/density/layout tokens，`AppShell.vue`、`AimaPageHeader.vue`、`AimaButton.vue`、`AimaFeedbackBanner.vue` 与 `responsive.css` 统一消费；同一 CI 的 lint/typecheck/unit/build 全部通过。 |
-| R3 | 1180/1280 不通过缩小字体解决空间问题，使用 reflow/wrap/local scroll；普通页面无非预期整页横滚 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `responsive-layout.spec.ts` 的 compact-1180 与 compact-1280 用例在四个正式页面检查 AppShell/workspace/整页 overflow、Filter reflow、表格局部滚动与 Admin 单列；CI run 33832938209 通过。 |
-| R4 | 1600/1920/2560 适度增加字号/留白并有最大值，超宽页面控制内容宽度 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | large-1600、wide-1920、wide-2560 Browser 回归通过；独立 typography 用例验证 1440 标题锚点、1920 增长、2560 上限及超宽 workspace 约束。 |
-| R5 | 主要 9–10px 业务/操作文字提升到 semantic caption/body-small，Drawer/Dialog 不超 viewport | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | Browser computed-style 断言覆盖 Voice Plaza 告警、Admin 词包/Provider 辅助文本；真实关键词包 Dialog 在 560px 窄窗口验证 viewport safe margin；CI run 33832938209 全部通过。 |
-| R6 | 无 Backend/Contract/Schema/Migration/generated/依赖变化，现有功能回归、Build、Docs/CI 完整通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `main@cb8ef5645eed38036bdaabd56b9229c1d45f2e03...427533449b3986f877c175d34a50134d00c684ee` 反向 diff 仅包含 10 个 Change/Frontend 文件；Runtime Acceptance run 33832937916 成功；CI run 33832938209 中 Docs/Governance、npm audit、lint、typecheck、22 files/100 Vitest、production build、59/59 Playwright 与 CI Gate 全部通过。 |
+| R1 | #337 验收标准 1：1440×900 正式关键页面与已批准几何基线继续成立 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | PR #338 保留既有 1440 Figma geometry/design tests；final-head CI run `33834448112` 中相关 1440 geometry 与 `baseline-1440` Browser 回归均通过。 |
+| R2 | #337 验收标准 2：六个指定桌面 viewport 下正式页面无非预期整页横向溢出、关键操作遮挡或文字裁切 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `responsive-layout.spec.ts` 在 1180/1280/1440/1600/1920/2560 逐页检查 AppShell/workspace/document overflow、Filter reflow、表格局部滚动与 Admin/Provider 布局；final-head CI 全部通过。 |
+| R3 | #337 验收标准 3：Page title / section title / body / control / caption 等统一通过 semantic token 表达 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `tokens.css` 建立 semantic typography/density/layout token；`AppShell.vue`、`AimaPageHeader.vue`、`AimaButton.vue`、`AimaFeedbackBanner.vue` 与 `responsive.css` 统一消费；final-head lint/typecheck/unit/build 全绿。 |
+| R4 | #337 验收标准 4：Voice Plaza、Admin、Collection Strategy、Collection Runtime 的主要 9–10px 业务文本提升到可读 semantic scale | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | Browser computed-style 断言覆盖 Voice Plaza 告警、Admin 词包/Provider 辅助文本；final-head Playwright 59/59 通过。 |
+| R5 | #337 验收标准 5：Drawer/Dialog 有 viewport 上限，窄桌面 filter/toolbars 正确 wrap/reflow，表格在自身容器滚动 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `.table-wrap overflow-x:auto`、1180 Admin/Provider 单列、filters reflow 与 560px 真实关键词包 Dialog safe-margin 均有 Browser 直接断言并通过。 |
+| R6 | #337 验收标准 6：lint、typecheck、unit、相关 Playwright、production build 新鲜通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | final-head CI run `33834448112`：npm production/full audit 均 `0 vulnerabilities`；lint exit 0；TS7 + vue-tsc exit 0；Vitest `22 files / 100 tests passed`；Vite 8.2.1 build 成功；Playwright 1.62.1 `59 passed`；CI Gate success。 |
+| R7 | #337 验收标准 7：Backend Contract/OpenAPI/generated client/Schema/Migration/依赖无变化 | https://github.com/dingyuwen777/AIMA_UGC/issues/337 | satisfied | `main@cb8ef5645eed38036bdaabd56b9229c1d45f2e03...c0721eab11627e33eb4bf9d8c19a9f022cdffc3c` 仅 10 个预期 Change/Frontend 文件；无 backend、contracts/openapi、frontend/generated、Schema/Migration、manifest 或 lockfile 变化。 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | CI run 33832938209：22 个 Vitest 文件、100 个测试全部通过；Shared UI 与现有 Feature 行为回归未失败。 |
-| 接口 / Contract | not_applicable | 本 Change 不改变 HTTP/OpenAPI/generated client/public data contract；反向 diff 未包含对应路径。 |
-| 集成 / Persistence / Runtime Dependency | not_applicable | 不改变 Backend、PostgreSQL、Worker 或持久化语义；CI 按 frontend-only 正确跳过 PostgreSQL Integration。 |
-| 用户 / Workflow Acceptance | required | CI run 33832938209：59/59 Playwright 通过，新增六档 viewport、四正式页面、局部滚动、Admin reflow、Dialog safe margin、Typography computed-style 回归。 |
-| 跨组件 Golden Path | not_applicable | CSS/Layout 不改变前后端真实接线；Real Full-stack Golden Path 在 frontend-only scope 正确跳过，不把 skipped 冒充通过。 |
+| 行为 / Unit / Component | required | final-head CI run `33834448112`：Vitest `22 files / 100 tests passed`；Shared UI 与现有 Feature 行为回归未失败。 |
+| 接口 / Contract | not_applicable | 本 Change 不改变 HTTP/OpenAPI/generated client/public data contract；final compare 未包含对应路径。 |
+| 集成 / Persistence / Runtime Dependency | not_applicable | 不改变 Backend、PostgreSQL、Worker 或持久化语义；CI 按 frontend-only 正确跳过 PostgreSQL Integration。Runtime Acceptance run `33834447876` 额外成功，仅作为运行时非回归证据。 |
+| 用户 / Workflow Acceptance | required | final-head CI run `33834448112`：Playwright `59 passed`，其中六档 viewport + 560px Dialog + typography bounds 八个响应式用例全部通过。Browser Mock 只证明 UI/请求边界，不宣称真实 Backend/DB。 |
+| 跨组件 Golden Path | not_applicable | CSS/Layout 不改变前后端真实接线；Real Full-stack Golden Path 在 frontend-only scope 正确跳过。 |
 | External Dependency / Provider Probe | not_applicable | 不改变 TikHub、LLM 或其他外部 Provider；未执行 Provider Probe。 |
-| Build / Package / Runtime | required | npm audit 0 vulnerabilities；lint、typecheck、production build、Playwright 在 CI run 33832938209 当前实现 HEAD 上新鲜通过；Runtime Acceptance run 33832937916 成功。 |
-| Docs / Governance | required | `frontend/src/shared/styles/README.md` 成为精确规则 Owner；frontend README/Figma Guide targeted re-review 后保持现有职责；Docs/Governance 与 CI Gate 均通过。 |
+| Build / Package / Runtime | required | final-head npm audit `0 vulnerabilities`；lint、TS7/vue-tsc、production build 全部成功；Node 24.19.0 / npm 11.17.0 保持仓库锁定事实。 |
+| Docs / Governance | required | `frontend/src/shared/styles/README.md` 成为精确规则 Owner；frontend README/Figma Guide targeted re-review 后保持现有职责；Docs/Governance、Change Completion Gate 与 CI Gate 均通过。 |
 
 # User Journey / Black-box Matrix
 
 | 场景 | 预期 | 证据 |
 | --- | --- | --- |
-| J1 小桌面 1180/1280 | 页面不靠缩小文字塞内容；筛选/工具栏可换行，普通页面无整页横滚 | `responsive-layout.spec.ts` compact-1180/compact-1280 在 CI run 33832938209 通过。 |
-| J2 标准 1440 | 正式设计关键 geometry 与用户任务保持 | 既有 Collection Strategy/Voice Plaza Figma geometry/design specs 与新 baseline-1440 回归同时通过。 |
-| J3 大屏 1920/2560 | Semantic 字号/留白适度增加且达到上限，内容不无限拉宽 | wide-1920/wide-2560 与 typography bounds 用例通过。 |
-| J4 表格/Overlay | 表格必要时局部横滚；Drawer/Dialog 宽度不超过 viewport safe margin | 表格 `overflow-x:auto` 断言与 560px 真实 Dialog safe-margin 用例通过。 |
-| J5 功能回归 | Voice Plaza / Collection Strategy / Collection Runtime / Admin 功能与状态语义不变 | 全量 59/59 Playwright、100/100 Vitest、production build 通过；现有 1440 设计测试保持绿色。 |
+| J1 小桌面 1180/1280 | 页面不靠缩小文字塞内容；筛选/工具栏可换行，普通页面无整页横滚 | `compact-1180` / `compact-1280` final-head Browser 用例通过。 |
+| J2 标准 1440 | 正式设计关键 geometry 与用户任务保持 | 既有 Collection Strategy/Voice Plaza Figma geometry/design specs 与 `baseline-1440` 同时通过。 |
+| J3 大屏 1920/2560 | Semantic 字号/留白适度增加且达到上限，内容不无限拉宽 | `wide-1920` / `wide-2560` 与 typography bounds 用例通过。 |
+| J4 表格/Overlay | 表格必要时局部横滚；Drawer/Dialog 宽度不超过 viewport safe margin | 表格 `overflow-x:auto` 与 560px Dialog safe-margin 用例通过。 |
+| J5 功能回归 | Voice Plaza / Collection Strategy / Collection Runtime / Admin 功能与状态语义不变 | final-head Vitest `100 passed`、Playwright `59 passed`、production build 成功。 |
 
 # Docs Impact
 
 Docs Impact：targeted。
 
-- `frontend/src/shared/styles/README.md` 是本次新增的响应式代码规则 Owner，解释 token、viewport 档位、reflow/overflow/Overlay 与验证责任。
-- `frontend/README.md` 当前仍正确描述 Page/Store/API/generated client 和前端修改导航，不应复制第二套字号或 breakpoint 数值。
+- `frontend/src/shared/styles/README.md` 是响应式代码规则 Owner，解释 token、viewport 档位、reflow/overflow/Overlay 与验证责任。
+- `frontend/README.md` 当前仍正确描述 Page/Store/API/generated client 和前端修改导航，不复制第二套字号或 breakpoint 数值。
 - `docs/guides/01_Figma与前端设计开发工作流.md` 已明确 Shared Styles/Shared UI 的视觉 Owner，以及 `1440×900` 只是桌面参考 Viewport、生产代码不得写死页面宽高；本次没有改变该职责边界，因此 targeted re-review 后无需为了产生文档 diff 重写现有 Guide。
+
+# Review / CI Evidence
+
+- Requirement Source：GitHub Issue #337；merge 前重新读取，7 条验收标准语义未漂移。
+- reviewed_base_sha / current_base_sha：`cb8ef5645eed38036bdaabd56b9229c1d45f2e03`。
+- reviewed_head_sha：`c0721eab11627e33eb4bf9d8c19a9f022cdffc3c`。
+- final-head CI：run `33834448112`，Repository Quality、Docs and Governance、CI Gate 均 success。
+- Change Completion Gate：run `33834447886` success。
+- Runtime Acceptance：run `33834447876` success。
+- Unit/Component：Vitest `22 files / 100 tests passed`。
+- Browser Mock Acceptance：Playwright `59 passed`；本 Change 八个 responsive/browser 用例全部通过。
+- Build：lint、TS7/vue-tsc、Vite production build 成功。
+- Security audit：final-head production/full npm audit 均 `0 vulnerabilities`；此前失败来自 npm Registry advisories endpoint 的 503，未通过修改依赖、lockfile 或 CI 降级门禁。
+- Standard Review A1：从 #337 独立重建七条验收标准，与 R1—R7 一一对应，无 requirement omission。
+- Standard Review A2 / Code Quality：最终 10-file diff 无 Backend/Contract/Schema/Migration/依赖变化；前序 scoped specificity、Admin reflow、table local scroll、1440 small-button geometry、Provider 小字号与 Browser fixture/locator Findings 均已修复；当前无 BLOCKER/HIGH/重要 MEDIUM Finding。
 
 # Completion Audit
 
-- [x] upstream_re_read：完成前重新读取 Issue #337，并确认当前 `main` 仍为 `cb8ef5645eed38036bdaabd56b9229c1d45f2e03`。
-- [x] change_coverage：R1—R6 已全部映射到当前实现与 CI run 33832938209 / Runtime Acceptance run 33832937916 的新鲜证据。
-- [x] reverse_audit：确认 `main@cb8ef5645eed38036bdaabd56b9229c1d45f2e03...427533449b3986f877c175d34a50134d00c684ee` 仅含 10 个 Change/Frontend 文件，无 Backend/Contract/Schema/Migration/generated/依赖或无关重构进入 diff。
-- [x] unresolved_cleared：已修复 scoped CSS specificity、Admin reflow、table overflow、small-button 1440 baseline、Provider 新增小字号与响应式测试夹具问题；最终 Standard re-review 在当前范围内无 BLOCKER/HIGH/重要 MEDIUM Finding。
+- [x] upstream_re_read：重新读取 Issue #337、最终 PR #338 与 `main@cb8ef5645eed38036bdaabd56b9229c1d45f2e03`，独立重建完成定义。
+- [x] change_coverage：#337 七条验收标准一一映射为 R1—R7，并由 final-head 直接 Browser/Unit/Build/diff Evidence 支撑。
+- [x] reverse_audit：`main@cb8ef564…` → `c0721ea…` 仅 10 个预期 frontend/Change 文件；Backend/Contract/OpenAPI/generated/Schema/Migration/依赖未进入 diff，Browser Mock 未冒充真实 Backend/DB。
+- [x] unresolved_cleared：所有 Review/Testing Findings 已修复并在 final head 回归；Standard Review PASS，当前无阻塞 Finding、无 `not_satisfied` Requirement。
