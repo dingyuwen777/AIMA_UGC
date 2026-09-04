@@ -139,7 +139,7 @@ async function mockResponsivePages(page: Page): Promise<void> {
 
 /** 读取 CSS px 数值，用于验证 fluid typography 的锚点、下限和上限。 */
 async function fontSize(page: Page, selector: string): Promise<number> {
-  return page.locator(selector).evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  return page.locator(selector).first().evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
 }
 
 /** 验证当前页面没有被普通布局撑出 viewport。 */
@@ -233,7 +233,7 @@ for (const viewport of viewports) {
     await expect(page.locator('.provider-layout')).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
     expect(await fontSize(page, '.runtime-rule span')).toBeGreaterThanOrEqual(11)
-    expect(await fontSize(page, '.form-grid label > small').first()).toBeGreaterThanOrEqual(11)
+    expect(await fontSize(page, '.form-grid label > small')).toBeGreaterThanOrEqual(11)
     if (viewport.width <= 1280) {
       const providerColumns = await page.locator('.provider-layout').evaluate(
         (element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length,
