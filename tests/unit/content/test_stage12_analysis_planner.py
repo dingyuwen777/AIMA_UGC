@@ -78,8 +78,9 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
     )
     generation_config: dict[str, object] = {"response_format": {"type": "json_object"}}
     generation_hash = "3" * 64
+    provider_config_id = uuid4()
     runtime_config_snapshot: dict[str, object] = {
-        "provider_config_id": str(uuid4()),
+        "provider_config_id": str(provider_config_id),
         "provider_kind": "llm",
         "provider": "fake",
         "base_url": "https://provider.example/v1",
@@ -120,6 +121,7 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         lambda: SimpleNamespace(
             identity=identity,
             llm_provider=SimpleNamespace(
+                id=provider_config_id,
                 safe_runtime_snapshot=lambda: runtime_config_snapshot,
             ),
             scheme=SimpleNamespace(id=uuid4()),
