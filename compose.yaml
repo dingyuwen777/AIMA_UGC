@@ -270,3 +270,8 @@ secrets:
 networks:
   app:
     driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${AIMA_DOCKER_SUBNET:-10.1.1.0/24}
+          gateway: ${AIMA_DOCKER_GATEWAY:-10.1.1.1}
