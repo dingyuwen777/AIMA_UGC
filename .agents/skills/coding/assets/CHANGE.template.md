@@ -51,11 +51,20 @@ data_changes: $data_changes
 - `not_applicable`：有明确事实证明不适用；
 - `not_satisfied`：尚未满足，进入 `ready_for_review` 前必须清零。
 
-`来源` 优先写仓库相对事实源路径；本轮用户明确决定可写 `user:<简短标识>`；外部正式资料可写 `external:<可识别来源>` 或链接。`证据` 必须写实际实现、测试、运行或正式延期、不适用依据，就绪时不得保留占位内容。
+对于存在稳定 Acceptance Criteria / 完成定义单元的持久 gated Change，每一条 `R1/R2/...` 都必须显式绑定**上游稳定 Acceptance**，而不是只引用整个 Issue/Spec 后再由 Change 自己形成第二套完成定义。GitHub Issue 的默认机器可读格式为：
+
+```text
+#123 / AC1
+#123 / AC2
+```
+
+仓库正式文件可以使用稳定 fragment，例如 `specs/feature.md#AC1`；`user:` / `external:` 来源也必须在确有稳定 Acceptance 单元时保留对应 `#AC1` 或项目等价稳定标识。目标项目已有更强 Requirement/Acceptance ID Contract 时遵守项目 Owner，不强制使用 GitHub 字面格式。
+
+`来源` 必须写真实上游事实源；`证据` 必须写实际实现、测试、运行或正式延期、不适用依据，就绪时不得保留占位内容。普通开发中可以暂时 `not_satisfied`，但不能为了通过 Ready Gate 把泛化来源或整个 Issue URL 冒充单条 AC 映射。
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 写明第一条上游要求 | user:current-request | not_satisfied | 尚未验证 |
+| R1 | 写明对应上游 AC1 的第一条要求 | #123 / AC1 | not_satisfied | 尚未验证 |
 
 # 验证矩阵
 

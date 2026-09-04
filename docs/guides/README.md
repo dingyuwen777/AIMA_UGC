@@ -6,6 +6,7 @@
 
 - [`docs/guides/01_Figma与前端设计开发工作流.md`](01_Figma与前端设计开发工作流.md)：Figma/原型怎样进入 Vue 代码、设计资产怎样组织、哪些内容可以自动化、哪些边界必须由当前 Contract 和代码决定。
 - [`docs/guides/02_AIMA持续开发与内网上线通用提示词.md`](02_AIMA持续开发与内网上线通用提示词.md)：用于新的 ChatGPT/GitHub Coding Agent 会话；固定提示词本身不保存 SHA、PR 或当前 Stage 状态，而是要求每次从当前 `main`、Active Change、Roadmap 和机器事实重新判断下一最小正式单元，持续推进 Stage 8F、内网 V1 和后续 Production Hardening。
+- [`docs/guides/05_多人协作与Change自动归档.md`](05_多人协作与Change自动归档.md)：说明团队成员开发到 PR Ready、Maintainer Review/merge、Implementation merge 后 repository-native Change 自动归档，以及 archive 与 Requirement Closure 的职责边界。
 
 如果目标不是“设计页面”，而是“我应该改哪个代码文件”，先读：
 

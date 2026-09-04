@@ -54,7 +54,7 @@ def _current_change(
     change_id: str,
     *,
     status: str = "ready_for_review",
-    source: str = "requirements.md",
+    source: str = "requirements.md#AC1",
 ) -> str:
     """返回可通过 installed validator 的最小当前 Change。"""
     return f"""---
@@ -72,7 +72,7 @@ depends_on: []
 affected_areas:
   - governance
 affected_paths:
-  - {source}
+  - requirements.md
 contracts: []
 data_changes: []
 ---
@@ -171,6 +171,22 @@ def test_ready_current_change_and_unchanged_legacy_archive_pass(tmp_path: Path) 
         "legacy": 2,
         "errors": [],
     }
+
+
+def test_ready_current_change_requires_stable_acceptance_binding(tmp_path: Path) -> None:
+    """Ready Change 只引用整个需求文件而未绑定 AC 时必须失败。"""
+    _init_repository(tmp_path)
+    base = _commit(tmp_path, "初始化")
+    _write(
+        tmp_path / "changes/active/CHG-20260902-current/CHANGE.md",
+        _current_change("CHG-20260902-current", source="requirements.md"),
+    )
+    _commit(tmp_path, "新增泛化需求来源")
+
+    result = _check(tmp_path, changed_since=base)
+
+    assert result["ok"] is False
+    assert any("稳定 Acceptance" in error["message"] for error in result["errors"])
 
 
 def test_archived_current_change_preserves_source_that_existed_at_archive_revision(
@@ -323,8 +339,8 @@ def test_deleted_current_change_fails_changed_since(tmp_path: Path) -> None:
     assert any("删除" in error["message"] for error in result["errors"])
 
 
-def test_current_change_can_move_from_active_to_archive(tmp_path: Path) -> None:
-    """同一当前 Change 完成后允许从 Active 原子移动到 Archive。"""
+def test_current_change_cannot_move_from_active_to_archive_in_pr(tmp_path: Path) -> None:
+    """普通 PR 即使同一 ID/合法 done，也不能提前从 Active 归档。"""
     _init_repository(tmp_path)
     active = tmp_path / "changes/active/CHG-20260902-current/CHANGE.md"
     _write(active, _current_change("CHG-20260902-current"))
@@ -338,10 +354,9 @@ def test_current_change_can_move_from_active_to_archive(tmp_path: Path) -> None:
         ),
     )
     active.unlink()
-    _commit(tmp_path, "归档当前变更")
+    _commit(tmp_path, "尝试提前归档当前变更")
 
     result = _check(tmp_path, changed_since=base)
 
-    assert result["ok"] is True
-    assert result["gated"] == 1
-    assert result["strict_checked"] == 1
+    assert result["ok"] is False
+    assert any("Change Archive Automation" in error["message"] for error in result["errors"])

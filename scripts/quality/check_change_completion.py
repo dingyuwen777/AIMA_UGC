@@ -239,7 +239,7 @@ def _changed_paths_and_errors(
     root: Path,
     base: str,
 ) -> tuple[set[str], list[dict[str, str]]]:
-    """计算 PR 严格检查路径，并阻止删除或非法改名绕过。"""
+    """计算 PR 严格检查路径，并阻止删除、提前归档或非法改名绕过。"""
     changed: set[str] = set()
     errors: list[dict[str, str]] = []
     for entry in _git_diff_entries(root, base):
@@ -266,14 +266,22 @@ def _changed_paths_and_errors(
                 and new_identity[0] == "archive"
                 and old_identity[1] == new_identity[1]
             )
-            if not is_archive_transition:
+            if is_archive_transition:
                 errors.append(
                     {
                         "path": entry.old_path,
                         "message": (
-                            "只允许当前 Change 以同一 ID 从 active 移入 archive；"
-                            "legacy 与其他改名不可变"
+                            "普通 Implementation PR 不得提前把 Change 从 active 归档；"
+                            "Change 必须保持 ready_for_review，并由 merge 后的 "
+                            "Change Archive Automation 归档"
                         ),
+                    }
+                )
+            else:
+                errors.append(
+                    {
+                        "path": entry.old_path,
+                        "message": "Change 不得通过任意改名/移动绕过 carrier 生命周期门禁",
                     }
                 )
             if _is_change_document(entry.new_path):
@@ -370,6 +378,7 @@ def check_repository(
                 errors.append({"path": relative, "message": "归档 Coding Change 必须为 done"})
                 continue
             must_validate = True
+            require_acceptance_binding = bool(changed_since and relative in changed)
         else:
             if status == "done":
                 errors.append({"path": relative, "message": "done Change 不得继续留在 active/"})
@@ -386,18 +395,23 @@ def check_repository(
                 )
                 continue
             must_validate = status == "ready_for_review" or must_be_ready
+            require_acceptance_binding = must_validate
 
         if must_validate:
             strict += 1
             try:
-                document_errors = validator._validate_ready_document(root, path)
+                document_errors = validator._validate_ready_document(
+                    root,
+                    path,
+                    require_acceptance_binding=require_acceptance_binding,
+                )
                 if location == "archive":
                     document_errors = _preserve_historical_archive_sources(
                         root,
                         path,
                         document_errors,
                     )
-            except (OSError, ValueError) as exc:
+            except (OSError, TypeError, ValueError) as exc:
                 document_errors = [str(exc)]
             errors.extend({"path": relative, "message": message} for message in document_errors)
 
