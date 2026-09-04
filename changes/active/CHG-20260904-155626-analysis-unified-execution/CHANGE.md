@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260904-155626-analysis-unified-execution
 title: 统一 AI 打标执行与结果刷新
 level: L2
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: fix/analysis-unified-concurrent-execution
 created: 2026-09-04
@@ -96,23 +96,23 @@ data_changes: []
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取 Issue #344、用户已确认决定、AGENTS、Analysis 正式说明并独立重建要求。
-- [ ] change_coverage：逐项比较要求与全部变更，核对正式、离线、前端、取消和可观测性均覆盖。
-- [ ] reverse_audit：从前端创建/取消/刷新反查 API/Worker/数据库，从模型结果反查终态内容展示，并核对 CI 实际选择新验收。
-- [ ] unresolved_cleared：检查全部需求状态和两阶段 Review，没有未解决的阻断问题。
+- [x] upstream_re_read：重新读取 Issue #344、用户已确认决定、AGENTS、Analysis 正式说明并独立重建要求。
+- [x] change_coverage：逐项比较要求与全部变更，核对正式、离线、前端、取消和可观测性均覆盖。
+- [x] reverse_audit：从前端创建/取消/刷新反查 API/Worker/数据库，从模型结果反查终态内容展示，并核对 CI 实际选择新验收。
+- [x] unresolved_cleared：检查全部需求状态和两阶段 Review，没有未解决的阻断问题。
 
 # 任务
 
 - [x] 恢复调用链、真实运行日志及已有改动。
 - [x] 建立失败回归并完成最小实现、清理失效代码。
 - [x] 完成局部单元、真实 PostgreSQL、Browser Mock、真实全栈和构建验证。
-- [ ] 完成最终变更与证据 Review，标记 Ready。
+- [x] 完成最终变更与证据 Review，标记 Ready。
 - [ ] PR 必需 CI 通过后受保护合并，再验证 implementation main。
 - [ ] 单独归档并验证 archive main，关闭 Issue，清理本任务分支。
 
 # 验证
 
-本地已有 211 项后端相关回归证据；最后刷新优化覆盖 26 项前端单测、14 项真实 PostgreSQL、9 项 Browser Mock、1 项真实全栈、前端构建和目标静态检查。合并前新增 CI 选场回归 Red 证明遗漏，修复后 19 项通过。详细证据在最终文档提交中归集。
+本地已有 211 项后端相关回归证据；最后刷新优化覆盖 26 项前端单测、14 项真实 PostgreSQL、9 项 Browser Mock、1 项真实全栈、前端构建和目标静态检查。合并前新增 CI 选场回归 Red 证明遗漏，修复后 19 项通过。详细结果见同目录 EVIDENCE.md。
 
 合并门禁：运行 `python scripts/quality/check_change_completion.py --root . --require-active-ready`，在最终候选 SHA 上取得 PR 完整检查，再执行主分支新鲜检查。中间工作提交不代表 Ready。
 
@@ -122,4 +122,4 @@ data_changes: []
 
 # 交付
 
-三个工作提交分别归集后端执行、前端刷新与验收、文档与审计。Issue #344 保持 open；PR、合并 SHA、main CI 和归档结果在实际发生后记录。不提交忽略的运行日志、Secret 或业务数据。
+三个工作提交分别归集后端执行、前端刷新与验收、文档与审计。Issue #344 保持 open；PR #345 已建立；合并 SHA、main CI 和归档结果在实际发生后记录。不提交忽略的运行日志、Secret 或业务数据。
