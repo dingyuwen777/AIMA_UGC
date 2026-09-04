@@ -91,7 +91,7 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('>⇩ 导出记录<')
   })
 
-  it('筛选区保留真实字段并明确示例不是服务器事实', async () => {
+  it('筛选区保留业务字段，但不向用户暴露内部来源 UUID 输入框', async () => {
     const html = await renderComponent(VoicePlazaPage)
 
     for (const label of [
@@ -104,11 +104,12 @@ describe('声音广场正式 Figma 基线', () => {
       '内容类型',
       '一级标签',
       '二级标签',
-      '来源 Batch / Run ID',
       '发布开始',
       '发布结束',
     ]) expect(html).toContain(label)
 
+    expect(html).not.toContain('来源 Batch / Run ID')
+    expect(html).not.toContain('UUID / 来源标识')
     expect(html).toContain('分类来自当前发布的 Analysis Scheme')
     expect(html).toContain('车型来自版本化目录')
     expect(html).toContain('歧义别名不会自动选择')
