@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260904-010706-analysis-provider-concurrency
 title: AI Analysis Provider 并发、动态 Shard 与批量持久化
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/335-analysis-provider-concurrency
 created: 2026-09-04
@@ -135,7 +135,7 @@ data_changes: []
 | R6 | LLM 并发与 DB 连接解耦，批量短事务/背压避免逐条 Session 写放大 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | Worker threads 只执行 LLM；scheduler 回调按最多 200 条调用 `PostgresAnalysisBatchRepository.persist_batch()`；每批短事务一次 Fence，PostgreSQL Integration 全链验证持久化。 |
 | R7 | Fence、版本、配置身份、幂等、标签、取消/失败隔离不回归 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | Batch Repository 保留 Fence/version/config/idempotency/label 校验；PostgreSQL Integration、Job Runtime regression 与 `test_parallel_transport_error_only_fails_one_content` 验证单条失败隔离，公共 executor 单测验证取消停止补调度。 |
 | R8 | 20/250/1000 受控并发边界有证据；正式链目标达到离线链 90%，目标 95%+ | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | 公共 executor 真实线程回归覆盖 20/250，1000 档验证 bounded in-flight；零付费同源基准在同一 runner、8 条、并发 4、固定 3 秒 LLM 延迟下测得 Offline 0.888 item/s、Formal 0.877 item/s、Formal/Offline=98.86%（门槛 90%）。真实 Provider 250/1000 的额度、网络/GPU 容量仍属于未授权的外部 Probe，不由该结果冒充。 |
-| R9 | 不引入新中间件/Schema/依赖升级，文档/CI/Review/归档完整 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | explicitly_deferred | 当前 PR 未新增 Migration/中间件/依赖升级，文档、Contract 与独立 Review 已同步；永久 CI、guarded merge、main-fresh 校验、Issue 自动关闭、分支清理和 Change archive 属于合并门禁/合并后动作，不能在 Active Change 的 Ready 阶段提前伪造完成。 |
+| R9 | 不引入新中间件/Schema/依赖升级，文档/CI/Review/归档完整 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | explicitly_deferred | PR #336 已以最终 HEAD `b569c65427d1bed6d2b3456f221c606cd8415168` 通过永久门禁后 guarded squash merge 为 `main@571049dda1a2bd1683fe01c14023cd417e62ec66`；implementation main-fresh CI #4027 / run `33828574894` attempt 2、Runtime Acceptance #1148 / run `33828574738`、Developer Tooling #461 / run `33828574714`、Change Completion Gate #1903 / run `33828574717` 均 success。CI #4027 attempt 1 的 Repository Quality 唯一失败为 npm registry advisory endpoint 网络超时，同一 main SHA 的 attempt 2 已重新完成 npm audit 与 CI Gate。归档 PR 合并、archive-main fresh、Issue #335 关闭和已合并任务分支清理仍按时序在本归档 PR 合并后完成。 |
 
 # Validation Matrix
 
@@ -194,14 +194,27 @@ Review Target：PR #336，base `59edfe793b913d11283952567f4e1a6e0003c6df` → �
 # Completion Audit
 
 - [x] upstream_re_read: 重新读取 Issue #335、项目 AGENTS/架构门禁、Analysis 正式说明及最终关键调用链；没有以 PR 描述或本 Change 自身替代上游需求。
-- [x] change_coverage: R1-R8 均映射到代码、Contract、Unit、真实 PostgreSQL/Full-stack 或受控基准证据；R9 的 merge/main-fresh/archive 明确按时序 `explicitly_deferred`，未伪造完成。
+- [x] change_coverage: R1-R8 已映射到代码、Contract、Unit、真实 PostgreSQL/Full-stack 或受控基准证据；R9 中 implementation merge 与 main-fresh 已完成并固化证据，归档 PR 合并、archive-main fresh、Issue #335 关闭与分支清理继续作为时序后置动作显式保留。
 - [x] reverse_audit: 从最终 PR changed files 反查公开入口、Worker registry、Provider snapshot、DB writer、tests/docs/generated consumer；一次性生成/静态修复/吞吐 benchmark 及低 RPS Red-Green workflow/script 均在取证后清理，不进入最终 PR diff。
 - [x] unresolved_cleared: 低 RPS Shard timeout HIGH Finding 已完成 Red → Green → re-review 并关闭；当前无未解决 BLOCKER/HIGH/MEDIUM Finding。真实 Provider 容量和合并后归档属于明确证据边界/后续门禁，不作为已验证事实隐藏。
 
+# Implementation Main-Fresh 证据
+
+Implementation PR #336 在最终候选 HEAD `b569c65427d1bed6d2b3456f221c606cd8415168` 上完成 required CI、Runtime、Tooling、Release dry-run、Completion Gate 与独立 re-review 后，以 `expected_head_sha` guarded squash merge 进入 `main`，实际 merge SHA 为 `571049dda1a2bd1683fe01c14023cd417e62ec66`。
+
+同一 implementation main SHA 的 push 证据：
+
+- CI #4027 / run `33828574894`：attempt 2 `success`；Docs/Governance、PostgreSQL Integration、Real Full-stack、Repository Quality 与 CI Gate 全绿。attempt 1 的唯一失败是 `npm audit` 调用 npm registry advisory endpoint 发生网络 timeout；`npm ci` 当时已报告 0 vulnerabilities，同一 SHA 的 attempt 2 重新执行 advisory audit 及完整 Repository Quality 后成功，因此记录为基础设施重试而非代码/依赖漏洞修复。
+- Runtime Acceptance #1148 / run `33828574738`：`success`；canonical Compose、宿主目录、Windows overlay、权限与重启持久化全部通过。
+- Developer Tooling Compatibility #461 / run `33828574714`：`success`；Linux/Windows 本地开发、Compose、Secret 与 PostgreSQL bootstrap 全部通过。
+- Change Completion Gate #1903 / run `33828574717`：`success`。
+- implementation main-fresh 汇总：代码与文档 HEAD 保持 `571049dda1a2bd1683fe01c14023cd417e62ec66`，未通过新增提交规避失败；Issue #335 故意保持 open，等待独立归档 PR 合并并取得 archive-main fresh 后再关闭。
+
 # 当前状态
 
-- Issue #335 为唯一上游需求来源，PR #336 已声明 `Requirement-Source: #335`。
-- 功能实现、测试资产、文档和 generated artifacts 已完成；受控 Formal/Offline 吞吐比为 98.86%。
-- 独立 Review 曾发现并已修复低 RPS Shard timeout HIGH Finding；re-review 当前无未解决 BLOCKER/HIGH/MEDIUM Finding。
-- Change 已进入 `ready_for_review`。最终合并仍要求该最终候选 HEAD 的永久 CI/Completion Gate 全绿；不得用更早 HEAD 的绿色结果替代。
-- 真实 Provider 容量 Probe 未执行，不能从当前 Fake/受控证据推断某个实际模型部署一定能承受 250/1000 并发。
+- Issue #335 是唯一上游需求来源；Implementation PR #336 已 guarded squash merge 到 `main@571049dda1a2bd1683fe01c14023cd417e62ec66`。
+- implementation main-fresh CI、Runtime Acceptance、Developer Tooling 与 Change Completion Gate 已全部成功；首次 main CI 的 npm advisory 网络 timeout 已由同 SHA attempt 2 重试证明为外部基础设施瞬时故障。
+- 功能实现、测试资产、文档、generated artifacts 与受控 Formal/Offline 98.86% 吞吐证据均已固化；独立 re-review 当前无未解决 BLOCKER/HIGH/MEDIUM Finding。
+- Change 已完成实现阶段并进入独立归档；本文件随归档分支从 `changes/active/` 移入 `changes/archive/2026-09/`，状态更新为 `done`。
+- 真实 Provider 250/1000 容量 Probe 仍未执行，不能从 Fake/受控证据推断任意实际模型部署一定承受该并发。
+- 本归档 PR 合并后仍需验证 archive-main fresh、关闭 Issue #335，并清理已合并的 implementation/归档任务分支；这些后置动作不得在归档合并前伪造为已完成。
