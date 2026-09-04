@@ -81,3 +81,5 @@ jobs:
           git fetch origin feature/335-analysis-provider-concurrency
           git rebase origin/feature/335-analysis-provider-concurrency
           git push origin HEAD:feature/335-analysis-provider-concurrency
+
+# run: mypy-fixes-v2
