@@ -131,11 +131,6 @@ function updatePrimaryLabel(event: Event): void {
         :key="item"
         :value="item"
       >{{ item }}</option></select></label>
-      <label class="field field--source"><span>来源 Batch / Run ID</span><input
-        :value="sourceIdentifier"
-        placeholder="UUID / 来源标识"
-        @input="emit('update:sourceIdentifier', value($event))"
-      ></label>
       <label class="field field--date"><span>发布开始</span><input
         type="date"
         :value="publishedFrom"
@@ -196,7 +191,6 @@ function updatePrimaryLabel(event: Event): void {
 .field--status { flex: 0 1 130px; }
 .field--content-type { flex: 0 1 130px; }
 .field--label { flex: 0 1 170px; }
-.field--source { flex: 0 1 280px; }
 .field--date { flex: 0 1 190px; }
 input,
 select {
