@@ -35,92 +35,34 @@ jobs:
               target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
           readme = "backend/src/aima_ugc/modules/analysis/README.md"
-          replace_once(
-              readme,
-              "根据 Run 冻结 Provider `max_concurrency` 自动计算 Shard Size。",
-              "根据 Run 冻结 Provider `max_concurrency / max_rps` 自动计算 Shard Size。",
-              "README capacity description",
-          )
-          replace_once(
-              readme,
-              "shard_size = clamp(max_concurrency × 20, 20, 50_000)",
-              "shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)",
-              "README shard formula",
-          )
-          replace_once(
-              readme,
-              "max_concurrency = 250  → shard_size = 5,000\nmax_concurrency = 1000 → shard_size = 20,000",
-              "max_concurrency = 250,  max_rps = null → shard_size = 5,000\nmax_concurrency = 1000, max_rps = null → shard_size = 20,000\nmax_concurrency = 1000, max_rps = 1    → shard_size = 900\nmax_concurrency = 250,  max_rps = 5    → shard_size = 4,500",
-              "README shard examples",
-          )
-          replace_once(
-              readme,
-              "Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。",
-              "Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。未配置 `max_rps` 时仍以 20 个并发波次为基线；配置 `max_rps` 时再用 900 秒物理 Attempt 启动预算收紧，低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，为 Retry、数据库批量提交、Heartbeat 和取消留出余量。异常高重试仍可能触发 Job timeout，因此该预算不是吞吐承诺。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。",
-              "README shard explanation",
-          )
+          replace_once(readme, "根据 Run 冻结 Provider `max_concurrency` 自动计算 Shard Size。", "根据 Run 冻结 Provider `max_concurrency / max_rps` 自动计算 Shard Size。", "README capacity description")
+          replace_once(readme, "shard_size = clamp(max_concurrency × 20, 20, 50_000)", "shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)", "README shard formula")
+          replace_once(readme, "max_concurrency = 250  → shard_size = 5,000\nmax_concurrency = 1000 → shard_size = 20,000", "max_concurrency = 250,  max_rps = null → shard_size = 5,000\nmax_concurrency = 1000, max_rps = null → shard_size = 20,000\nmax_concurrency = 1000, max_rps = 1    → shard_size = 900\nmax_concurrency = 250,  max_rps = 5    → shard_size = 4,500", "README shard examples")
+          replace_once(readme, "Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。", "Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。未配置 `max_rps` 时仍以 20 个并发波次为基线；配置 `max_rps` 时再用 900 秒物理 Attempt 启动预算收紧，低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，为 Retry、数据库批量提交、Heartbeat 和取消留出余量。异常高重试仍可能触发 Job timeout，因此该预算不是吞吐承诺。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。", "README shard explanation")
 
           appendix = "docs/appendix/07_AI舆情打标与分析实现.md"
-          replace_once(
-              appendix,
-              "shard_size = clamp(max_concurrency × 20, 20, 50_000)",
-              "shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)",
-              "Appendix shard formula",
-          )
-          replace_once(
-              appendix,
-              "250  并发 → 5,000 Content / Shard\n1000 并发 → 20,000 Content / Shard",
-              "250  并发、未配置 max_rps → 5,000 Content / Shard\n1000 并发、未配置 max_rps → 20,000 Content / Shard\n1000 并发、max_rps=1 → 900 Content / Shard\n250  并发、max_rps=5 → 4,500 Content / Shard",
-              "Appendix shard examples",
-          )
-          replace_once(
-              appendix,
-              "Shard Size **不由管理员配置**。Create 把计算结果冻结到 `analysis_content_runs.shard_size`；之后修改 Provider concurrency 只影响新 Run。",
-              "Shard Size **不由管理员配置**。未配置 `max_rps` 时按 20 个并发波次计算；配置 `max_rps` 时再以 900 秒物理 Attempt 启动预算收紧。900 秒低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，用于给 Retry、数据库批量提交、Heartbeat 和取消预留余量；异常高重试仍可能触发 Job timeout。Create 把计算结果冻结到 `analysis_content_runs.shard_size`；之后修改 Provider concurrency / RPS 只影响新 Run。",
-              "Appendix shard explanation",
-          )
+          replace_once(appendix, "shard_size = clamp(max_concurrency × 20, 20, 50_000)", "shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)", "Appendix shard formula")
+          replace_once(appendix, "250  并发 → 5,000 Content / Shard\n1000 并发 → 20,000 Content / Shard", "250  并发、未配置 max_rps → 5,000 Content / Shard\n1000 并发、未配置 max_rps → 20,000 Content / Shard\n1000 并发、max_rps=1 → 900 Content / Shard\n250  并发、max_rps=5 → 4,500 Content / Shard", "Appendix shard examples")
+          replace_once(appendix, "Shard Size **不由管理员配置**。Create 把计算结果冻结到 `analysis_content_runs.shard_size`；之后修改 Provider concurrency 只影响新 Run。", "Shard Size **不由管理员配置**。未配置 `max_rps` 时按 20 个并发波次计算；配置 `max_rps` 时再以 900 秒物理 Attempt 启动预算收紧。900 秒低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，用于给 Retry、数据库批量提交、Heartbeat 和取消预留余量；异常高重试仍可能触发 Job timeout。Create 把计算结果冻结到 `analysis_content_runs.shard_size`；之后修改 Provider concurrency / RPS 只影响新 Run。", "Appendix shard explanation")
 
           change = "changes/active/CHG-20260904-010706-analysis-provider-concurrency/CHANGE.md"
-          replace_once(
-              change,
-              "2. Shard Size 不由管理员配置；新数据库 Provider Run 根据冻结 Provider concurrency 自动计算并冻结。迁移前 legacy env bootstrap 路径保留历史静态 shard 兼容，旧 Run 始终读取自己已冻结的 shard_size。",
-              "2. Shard Size 不由管理员配置；新数据库 Provider Run 根据冻结 Provider `max_concurrency / max_rps` 自动计算并冻结。迁移前 legacy env bootstrap 路径保留历史静态 shard 兼容，旧 Run 始终读取自己已冻结的 shard_size。",
-              "Change decision 2",
-          )
-          replace_once(
-              change,
-              "3. 初始自动 Shard 目标为 `max_concurrency × 20 waves`，并使用内部安全上下限；250 约 5,000，1000 约 20,000。",
-              "3. 初始自动 Shard 目标为 `max_concurrency × 20 waves`，并使用 20/50,000 内部上下限；若配置 `max_rps`，再以 `max_rps × 900 秒` 收紧，使正常单 Attempt/Content 的 RPS 启动预算低于 1800 秒 Job timeout。未配置 RPS 时 250 约 5,000、1000 约 20,000。",
-              "Change decision 3",
-          )
-          replace_once(
-              change,
-              "8. 新数据库 Provider 的 Preview/Create 使用 `calculate_analysis_shard_size(max_concurrency)` 冻结 Shard Size；legacy env bootstrap 保持历史静态 shard 兼容。",
-              "8. 新数据库 Provider 的 Preview/Create 使用 `calculate_analysis_shard_size(max_concurrency, max_rps=...)` 冻结 Shard Size；未配置 RPS 时保持 20 waves 基线，低 RPS 时受 900 秒安全预算约束；legacy env bootstrap 保持历史静态 shard 兼容。",
-              "Change implementation 8",
-          )
-          replace_once(
-              change,
-              "| R5 | Shard 自动按 Provider concurrency 计算并冻结；250≈5000、1000≈20000；管理员不配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `calculate_analysis_shard_size()` 采用 20 waves + 20/50000 内部边界；`test_analysis_sharding.py` 断言 250→5000、1000→20000；真实 PostgreSQL Integration 验证 Run snapshot/shard 冻结。 |",
-              "| R5 | Shard 自动按 Provider concurrency 计算并冻结；低 RPS 时必须受 Job timeout 安全预算约束；管理员不配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `calculate_analysis_shard_size()` 采用 20 waves + 20/50000 内部边界，并在配置 `max_rps` 时取 `max_rps × 900 秒` 的更小预算；`test_analysis_sharding.py` 同时覆盖 250→5000、1000→20000、1000/RPS1→900、250/RPS5→4500 以及 HTTP Preview/Create helper 透传 RPS；真实 PostgreSQL Integration 验证 Run snapshot/shard 冻结。 |",
-              "Change R5",
-          )
+          replace_once(change, "2. Shard Size 不由管理员配置；新数据库 Provider Run 根据冻结 Provider concurrency 自动计算并冻结。迁移前 legacy env bootstrap 路径保留历史静态 shard 兼容，旧 Run 始终读取自己已冻结的 shard_size。", "2. Shard Size 不由管理员配置；新数据库 Provider Run 根据冻结 Provider `max_concurrency / max_rps` 自动计算并冻结。迁移前 legacy env bootstrap 路径保留历史静态 shard 兼容，旧 Run 始终读取自己已冻结的 shard_size。", "Change decision 2")
+          replace_once(change, "3. 初始自动 Shard 目标为 `max_concurrency × 20 waves`，并使用内部安全上下限；250 约 5,000，1000 约 20,000。", "3. 初始自动 Shard 目标为 `max_concurrency × 20 waves`，并使用 20/50,000 内部上下限；若配置 `max_rps`，再以 `max_rps × 900 秒` 收紧，使正常单 Attempt/Content 的 RPS 启动预算低于 1800 秒 Job timeout。未配置 RPS 时 250 约 5,000、1000 约 20,000。", "Change decision 3")
+          replace_once(change, "8. 新数据库 Provider 的 Preview/Create 使用 `calculate_analysis_shard_size(max_concurrency)` 冻结 Shard Size；legacy env bootstrap 保持历史静态 shard 兼容。", "8. 新数据库 Provider 的 Preview/Create 使用 `calculate_analysis_shard_size(max_concurrency, max_rps=...)` 冻结 Shard Size；未配置 RPS 时保持 20 waves 基线，低 RPS 时受 900 秒安全预算约束；legacy env bootstrap 保持历史静态 shard 兼容。", "Change implementation 8")
+          replace_once(change, "| R5 | Shard 自动按 Provider concurrency 计算并冻结；250≈5000、1000≈20000；管理员不配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `calculate_analysis_shard_size()` 采用 20 waves + 20/50000 内部边界；`test_analysis_sharding.py` 断言 250→5000、1000→20000；真实 PostgreSQL Integration 验证 Run snapshot/shard 冻结。 |", "| R5 | Shard 自动按 Provider concurrency 计算并冻结；低 RPS 时必须受 Job timeout 安全预算约束；管理员不配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `calculate_analysis_shard_size()` 采用 20 waves + 20/50000 内部边界，并在配置 `max_rps` 时取 `max_rps × 900 秒` 的更小预算；`test_analysis_sharding.py` 同时覆盖 250→5000、1000→20000、1000/RPS1→900、250/RPS5→4500 以及 HTTP Preview/Create helper 透传 RPS；真实 PostgreSQL Integration 验证 Run snapshot/shard 冻结。 |", "Change R5")
           PY
+          rm -f .github/workflows/verify-rps-shard-red-once.yml
           git diff --check
           python3 scripts/quality/check_docs.py
           python3 scripts/quality/check_docs_facts.py
 
-      - name: Commit documentation sync
+      - name: Commit documentation sync and cleanup
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/src/aima_ugc/modules/analysis/README.md docs/appendix/07_AI舆情打标与分析实现.md changes/active/CHG-20260904-010706-analysis-provider-concurrency/CHANGE.md
-          if git diff --cached --quiet; then
-            echo "RPS shard documentation already synchronized."
-            exit 0
-          fi
+          git add -A backend/src/aima_ugc/modules/analysis/README.md docs/appendix/07_AI舆情打标与分析实现.md changes/active/CHG-20260904-010706-analysis-provider-concurrency/CHANGE.md .github/workflows/verify-rps-shard-red-once.yml
           git commit -m "同步 Analysis RPS Shard 安全预算文档"
           git fetch origin feature/335-analysis-provider-concurrency
           git rebase origin/feature/335-analysis-provider-concurrency
