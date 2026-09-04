@@ -84,6 +84,7 @@
   /* Density：标准桌面保持现有关键几何，大屏只做有限增加，不做整页缩放。 */
   --aima-control-height-sm: clamp(32px, calc(29px + 0.208333vw), 34px);
   --aima-control-height-md: clamp(40px, calc(37px + 0.208333vw), 42px);
+  --aima-button-height-sm: clamp(30px, calc(27px + 0.208333vw), 32px);
   --aima-density-card-padding: clamp(16px, calc(10px + 0.416667vw), 20px);
   --aima-density-section-gap: clamp(24px, calc(18px + 0.416667vw), 28px);
   --aima-border-width-default: 1px;
