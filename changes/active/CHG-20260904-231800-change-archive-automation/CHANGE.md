@@ -76,6 +76,7 @@ data_changes: []
 - `status` 只从 `ready_for_review` 变为 `done`，`updated` 按 merge 时间的北京时间日期更新；其他 Change 正文逐字保持。
 - AIMA 项目 wrapper 仍复用 installed Agent_Skills validator；本次只同步项目实际依赖的模板/validator 契约，并由 wrapper 显式打开稳定 Acceptance binding，不在项目脚本复制第二套解析规则。
 - PR #353 已把 Requirement Traceability / Completion Audit 收敛进 `ci.yml`；本 Change 复用最新 CI Core，不恢复已删除的独立 Completion Workflow。
+- PR current-head CI、独立 Review、guarded merge、main-fresh 和 archive governance fresh 由 GitHub PR / Actions / Requirement Closure Owner 持有；repository-native archive 只冻结 `status/updated`，不为这些平台事实再次改写 Change 正文。
 
 # 需求追溯
 
@@ -109,7 +110,7 @@ data_changes: []
 - [x] upstream_re_read：已重读 #354 最新 AC1–AC9，并在 main 漂移后重读 #353 合并后的 CI Owner 事实。
 - [x] change_coverage：R1–R9 一一映射当前 AC，没有把 Change 自身当需求全集。
 - [x] reverse_audit：已从普通 PR、merged PR、稳定 AC binding、重复执行、active/archive 歧义、merged revision 内容漂移、越界修改、main push 漂移、App 未配置和 archive failure 反向审计。
-- [x] unresolved_cleared：所有 R 均已有当前实现/永久回归或明确平台配置边界；远程 current-head CI 仍由 PR 提供，不伪造未来 Run。
+- [x] unresolved_cleared：所有 R 均已有当前实现/永久回归或明确平台配置边界；PR/Actions 与 post-merge 平台证据由其真实 Owner 持有，不通过归档正文回写伪造完成事实。
 
 # 任务
 
@@ -122,7 +123,7 @@ data_changes: []
 - [x] 同步正式 Guide、永久 Workflow 事实与导航。
 - [x] 对齐 #353 合并后的 CI Core，不恢复已删除 Completion Workflow。
 - [x] 完成 Requirement Traceability / Completion Audit。
-- [ ] PR current-head CI / 独立 Review / guarded merge / main-fresh。
+- [x] 明确 PR current-head CI / 独立 Review / guarded merge / main-fresh 属于 PR、Actions 与 Requirement Closure 外部证据，不由归档自动化回写 Change 正文。
 
 # 验证
 
@@ -134,7 +135,7 @@ data_changes: []
 
 ## 新鲜证据
 
-- current branch 已包含脚本、Workflow、项目 gate、稳定 Acceptance validator/template、永久回归与正式 Guide；已按 #353 最新 main 对齐 CI Owner，PR current-head Actions 待最终 head 执行。
+- current branch 已包含脚本、Workflow、项目 gate、稳定 Acceptance validator/template、merged revision 防竞态回归与正式 Guide，并已按 #353/#357 最新 main 对齐 CI Owner；PR current-head CI/Review 与 post-merge evidence 由 GitHub 的真实 revision/Actions/Closure Owner 持有，Change 不预写未来 Run/SHA。
 
 # 文档影响
 
