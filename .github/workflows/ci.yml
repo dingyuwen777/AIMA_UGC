@@ -10,14 +10,16 @@ on:
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  scope:
-    name: CI Scope
+  quality-core:
+    name: Requirement Traceability and Completion Audit
     runs-on: ubuntu-24.04
     outputs:
       profile: ${{ steps.classify.outputs.profile }}
@@ -36,6 +38,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
       - name: Classify changed scope
         id: classify
         shell: bash
@@ -48,50 +55,62 @@ jobs:
             BASE_SHA="${{ github.event.before }}"
             HEAD_SHA="${GITHUB_SHA}"
           fi
-          python3 scripts/quality/classify_ci_scope.py \
+          python scripts/quality/classify_ci_scope.py \
             --base "${BASE_SHA}" \
             --head "${HEAD_SHA}" \
             --github-output "${GITHUB_OUTPUT}"
 
-  docs-governance:
-    name: Docs and Governance
-    needs: scope
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
+      - name: Verify AIMA project governance wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_agent_governance.py
+
+      - name: Verify PR Requirement Source
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_pr_requirement_source.py \
+            --event "${GITHUB_EVENT_PATH}" \
+            --root .
+
+      - name: Enforce changed PR Change readiness
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_change_completion.py \
+            --root . \
+            --changed-since "${{ github.event.pull_request.base.sha }}"
+
+      - name: Enforce main Active Change readiness
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_change_completion.py \
+            --root . \
+            --require-active-ready
 
       - name: Secret and docs gates
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/quality/scan_secrets.py
-          python3 scripts/quality/check_docs.py
-          python3 scripts/quality/check_docs_facts.py
-
-  repository-quality:
-    name: Repository Quality
-    needs: scope
-    if: needs.scope.outputs.repository_required == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-
-      - name: Setup Python
-        if: needs.scope.outputs.backend_required == 'true'
-        uses: actions/setup-python@v6.2.0
-        with:
-          python-version: 3.14.7
+          python scripts/quality/scan_secrets.py
+          python scripts/quality/check_docs.py
+          python scripts/quality/check_docs_facts.py
 
       - name: Setup Node
-        if: needs.scope.outputs.frontend_required == 'true'
+        if: steps.classify.outputs.frontend_required == 'true'
         uses: actions/setup-node@v6.4.0
         with:
           node-version: 24.19.0
 
       - name: Install report validation CJK font
-        if: needs.scope.outputs.backend_required == 'true'
+        if: steps.classify.outputs.backend_required == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
@@ -99,8 +118,8 @@ jobs:
       - name: Verify required runtime versions
         shell: bash
         env:
-          BACKEND_REQUIRED: ${{ needs.scope.outputs.backend_required }}
-          FRONTEND_REQUIRED: ${{ needs.scope.outputs.frontend_required }}
+          BACKEND_REQUIRED: ${{ steps.classify.outputs.backend_required }}
+          FRONTEND_REQUIRED: ${{ steps.classify.outputs.frontend_required }}
         run: |
           set -euo pipefail
           if [[ "${BACKEND_REQUIRED}" == "true" ]]; then
@@ -112,7 +131,7 @@ jobs:
           fi
 
       - name: Install frozen Python environment
-        if: needs.scope.outputs.backend_required == 'true'
+        if: steps.classify.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -124,19 +143,18 @@ jobs:
           uv run python -c "import aima_ugc"
 
       - name: Install locked frontend environment
-        if: needs.scope.outputs.frontend_required == 'true'
+        if: steps.classify.outputs.frontend_required == 'true'
         run: npm ci --prefix frontend
 
       - name: Audit frontend dependencies
-        if: needs.scope.outputs.frontend_required == 'true'
+        if: steps.classify.outputs.frontend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          npm --prefix frontend audit --omit=dev --audit-level=high
           npm --prefix frontend audit --audit-level=high
 
       - name: Source API and frontend startup smoke
-        if: needs.scope.outputs.stack_smoke_required == 'true'
+        if: steps.classify.outputs.stack_smoke_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -173,7 +191,7 @@ jobs:
           fi
 
       - name: Verify generated contracts and client
-        if: needs.scope.outputs.contract_required == 'true'
+        if: steps.classify.outputs.contract_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -190,7 +208,7 @@ jobs:
           uv run python scripts/contracts/check_compatibility.py
 
       - name: Python format, lint and type gates
-        if: needs.scope.outputs.backend_required == 'true'
+        if: steps.classify.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -207,7 +225,7 @@ jobs:
           uv run mypy backend/src
 
       - name: Unit, Contract and API tests
-        if: needs.scope.outputs.backend_required == 'true'
+        if: steps.classify.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -216,7 +234,7 @@ jobs:
           uv run pytest tests/api -q
 
       - name: Architecture and ownership gates
-        if: needs.scope.outputs.backend_required == 'true'
+        if: steps.classify.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -224,7 +242,7 @@ jobs:
           uv run python scripts/quality/check_table_ownership.py
 
       - name: Build and verify Wheel
-        if: needs.scope.outputs.backend_required == 'true'
+        if: steps.classify.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -234,7 +252,7 @@ jobs:
           .wheel-venv/bin/python -c "import aima_ugc; print(aima_ugc.__version__)"
 
       - name: Frontend unit, build and Browser Mock Acceptance
-        if: needs.scope.outputs.frontend_required == 'true'
+        if: steps.classify.outputs.frontend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -247,8 +265,8 @@ jobs:
 
   postgres-integration:
     name: PostgreSQL Integration
-    needs: scope
-    if: needs.scope.outputs.postgres_required == 'true'
+    needs: quality-core
+    if: needs.quality-core.outputs.postgres_required == 'true'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -403,19 +421,17 @@ jobs:
 
   real-fullstack:
     name: Real Full-stack Golden Path
-    needs: scope
-    if: needs.scope.outputs.fullstack_required == 'true'
+    needs: quality-core
+    if: needs.quality-core.outputs.fullstack_required == 'true'
     uses: ./.github/workflows/fullstack.yml
     with:
-      specs: ${{ needs.scope.outputs.fullstack_specs }}
+      specs: ${{ needs.quality-core.outputs.fullstack_specs }}
 
   ci-gate:
     name: CI Gate
     if: always()
     needs:
-      - scope
-      - docs-governance
-      - repository-quality
+      - quality-core
       - postgres-integration
       - real-fullstack
     runs-on: ubuntu-24.04
@@ -423,18 +439,14 @@ jobs:
       - name: Verify required CI layers
         shell: bash
         env:
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          DOCS_GOVERNANCE_RESULT: ${{ needs.docs-governance.result }}
-          REPOSITORY_REQUIRED: ${{ needs.scope.outputs.repository_required }}
-          REPOSITORY_QUALITY_RESULT: ${{ needs.repository-quality.result }}
-          POSTGRES_REQUIRED: ${{ needs.scope.outputs.postgres_required }}
+          CORE_RESULT: ${{ needs.quality-core.result }}
+          POSTGRES_REQUIRED: ${{ needs.quality-core.outputs.postgres_required }}
           POSTGRES_INTEGRATION_RESULT: ${{ needs.postgres-integration.result }}
-          FULLSTACK_REQUIRED: ${{ needs.scope.outputs.fullstack_required }}
+          FULLSTACK_REQUIRED: ${{ needs.quality-core.outputs.fullstack_required }}
           FULLSTACK_RESULT: ${{ needs.real-fullstack.result }}
         run: |
           set -euo pipefail
-          test "${SCOPE_RESULT}" = "success"
-          test "${DOCS_GOVERNANCE_RESULT}" = "success"
+          test "${CORE_RESULT}" = "success"
 
           require_or_skip() {
             local required="$1"
@@ -451,6 +463,5 @@ jobs:
             fi
           }
 
-          require_or_skip "${REPOSITORY_REQUIRED}" "${REPOSITORY_QUALITY_RESULT}" "Repository Quality"
           require_or_skip "${POSTGRES_REQUIRED}" "${POSTGRES_INTEGRATION_RESULT}" "PostgreSQL Integration"
           require_or_skip "${FULLSTACK_REQUIRED}" "${FULLSTACK_RESULT}" "Real Full-stack Golden Path"
