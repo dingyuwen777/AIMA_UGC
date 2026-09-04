@@ -110,7 +110,15 @@
 #app .app-shell .admin-page td button,
 #app .app-shell .admin-page .form-card label,
 #app .app-shell .admin-page .retry-link,
-#app .app-shell .admin-page .audit-pagination {
+#app .app-shell .admin-page .audit-pagination,
+#app .app-shell .admin-page :where(
+  .runtime-rule strong,
+  .security-note strong,
+  .provider-item strong,
+  .empty-state,
+  .form-grid label,
+  .check-row strong
+) {
   font-size: var(--aima-font-size-body-small);
 }
 
@@ -118,7 +126,14 @@
   .form-card label > small,
   .list-card > button span,
   .scheme-editor > header > span,
-  .audit-card code
+  .audit-card code,
+  .runtime-rule span,
+  .security-note span,
+  .provider-item > span:not(.provider-item__head),
+  .provider-item small,
+  .badges em,
+  .form-grid label > small,
+  .check-row small
 ) {
   font-size: var(--aima-font-size-caption);
 }
