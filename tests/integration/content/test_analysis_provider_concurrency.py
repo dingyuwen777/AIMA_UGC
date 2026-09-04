@@ -156,6 +156,16 @@ def _runtime(tmp_path: Path):  # type: ignore[no-untyped-def]
             "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, audit_events, "
             "provider_configs RESTART IDENTITY CASCADE"
         )
+
+    def cleanup_provider_configs() -> None:
+        """测试结束时清除正式 Provider，避免污染同一 CI 数据库的 legacy 回归。"""
+
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE provider_configs RESTART IDENTITY CASCADE"
+            )
+
+    runtime.add_resource_closer(cleanup_provider_configs)
     return runtime
 
 
