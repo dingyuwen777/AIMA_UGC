@@ -19,6 +19,7 @@ from .content_labeling import (
     RuntimeTaxonomyValidator,
     content_labeling_input_hash,
 )
+from .offline_concurrent_labeling import label_unified_content_jsonl
 from .offline_content import (
     ContentDeduplicationConflictError,
     ContentDeduplicationSummary,
@@ -29,7 +30,6 @@ from .offline_content import (
 from .offline_labeling import (
     DEFAULT_OFFLINE_LLM_CONCURRENCY,
     OfflineContentLabelingSummary,
-    label_unified_content_jsonl,
 )
 from .prompt_snapshot import FrozenPromptTaxonomyLoader
 from .relevance import (

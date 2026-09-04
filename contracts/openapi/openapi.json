@@ -6381,7 +6381,7 @@
           },
           "max_concurrency": {
             "default": 5,
-            "maximum": 500.0,
+            "maximum": 5000.0,
             "minimum": 1.0,
             "title": "Max Concurrency",
             "type": "integer"
@@ -6613,7 +6613,7 @@
           },
           "max_concurrency": {
             "default": 5,
-            "maximum": 500.0,
+            "maximum": 5000.0,
             "minimum": 1.0,
             "title": "Max Concurrency",
             "type": "integer"

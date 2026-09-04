@@ -16,6 +16,7 @@ from .pricing import (
     LLMTokenUsage,
     load_llm_pricing,
 )
+from .rate_limited import RateLimitedContentLabelingLLM
 from .request_audit import (
     LLMHTTPRequestAudit,
     LLMRequestAuditSummary,
@@ -32,6 +33,7 @@ __all__ = [
     "DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS",
     "OpenAICompatibleContentLabelingLLM",
     "OpenAICompatibleLLMError",
+    "RateLimitedContentLabelingLLM",
     "resolve_openai_compatible_provider_name",
     "RetryingContentLabelingLLM",
     "LLMCostCalculation",

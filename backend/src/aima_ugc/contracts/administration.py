@@ -323,7 +323,7 @@ class ProviderConfigCreateRequest(BaseModel):
     api_key: SecretStr
     timeout_seconds: int = Field(default=45, ge=1, le=3600)
     max_retries: int = Field(default=3, ge=0, le=20)
-    max_concurrency: int = Field(default=5, ge=1, le=500)
+    max_concurrency: int = Field(default=5, ge=1, le=5_000)
     max_rps: int | None = Field(default=None, ge=1, le=10_000)
     enabled: bool = True
     is_default: bool = False
@@ -362,7 +362,7 @@ class ProviderConfigUpdateRequest(BaseModel):
     api_key: SecretStr | None = None
     timeout_seconds: int = Field(default=45, ge=1, le=3600)
     max_retries: int = Field(default=3, ge=0, le=20)
-    max_concurrency: int = Field(default=5, ge=1, le=500)
+    max_concurrency: int = Field(default=5, ge=1, le=5_000)
     max_rps: int | None = Field(default=None, ge=1, le=10_000)
     enabled: bool = True
     is_default: bool = False
