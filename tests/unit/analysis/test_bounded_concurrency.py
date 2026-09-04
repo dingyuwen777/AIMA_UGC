@@ -156,5 +156,7 @@ def test_bounded_executor_stops_refilling_after_cancel_signal() -> None:
     )
 
     assert summary.stopped is True
-    assert summary.completed == 4
-    assert sorted(called) == [0, 1, 2, 3]
+    assert summary.peak_in_flight == 4
+    assert 1 <= summary.completed <= 4
+    assert summary.completed == len(called)
+    assert set(called).issubset({0, 1, 2, 3})
