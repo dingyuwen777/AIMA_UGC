@@ -192,8 +192,4 @@
   .app-shell .voice-plaza-page .run-counts {
     grid-column: auto;
   }
-
-  :where([role='dialog'], .el-dialog, .el-drawer) {
-    max-width: calc(100vw - 16px);
-  }
 }
