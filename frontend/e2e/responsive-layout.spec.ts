@@ -80,13 +80,13 @@ async function mockStrategyApi(page: Page): Promise<void> {
   })
 }
 
-/** 为声音广场响应式验收提供最小只读响应，业务状态仍使用正式页面入口。 */
+/** 为声音广场响应式验收提供最小只读响应，并暴露旧 10px 告警文本用于 computed-style 回归。 */
 async function mockVoicePlazaApi(page: Page): Promise<void> {
   await stubVoicePlazaTaxonomy(page)
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ configured: true }),
+      body: JSON.stringify({ configured: false }),
     })
   })
   await page.route('**/api/v1/contents**', async (route) => {
@@ -133,7 +133,7 @@ async function mockResponsivePages(page: Page): Promise<void> {
   await mockAdminApi(page)
 }
 
-/** 读取 CSS px 数值，用于验证 fluid typography 的锚点与上限。 */
+/** 读取 CSS px 数值，用于验证 fluid typography 的锚点、下限和上限。 */
 async function fontSize(page: Page, selector: string): Promise<number> {
   return page.locator(selector).evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
 }
@@ -188,12 +188,14 @@ for (const viewport of viewports) {
     await page.goto('/voice-plaza')
     await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
     await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
+    await expect(page.locator('.capability-warning span')).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
     const voiceFilters = await page.locator('.filters').evaluate((element) => ({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
     }))
     expect(voiceFilters.scrollWidth).toBeLessThanOrEqual(voiceFilters.clientWidth + 1)
+    expect(await fontSize(page, '.capability-warning span')).toBeGreaterThanOrEqual(11)
     if (viewport.width <= 1280) {
       expect(await fontSize(page, '.filters .field')).toBeGreaterThanOrEqual(12)
     }
@@ -207,6 +209,9 @@ for (const viewport of viewports) {
     await expect(page.getByRole('heading', { name: '管理员配置' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: '管理员配置分类' })).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
+    await page.getByRole('button', { name: '词包车型关联' }).click()
+    await expect(page.locator('.list-card > button span').first()).toBeVisible()
+    expect(await fontSize(page, '.list-card > button span')).toBeGreaterThanOrEqual(11)
   })
 }
 
