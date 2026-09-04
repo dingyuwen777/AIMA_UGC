@@ -177,6 +177,7 @@ for (const viewport of viewports) {
     await page.getByRole('button', { name: '采集计划' }).click()
     await expect(page.locator('.filters')).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
+    await expect(page.locator('.table-wrap')).toHaveCSS('overflow-x', 'auto')
     if (viewport.width <= 1279) {
       const filters = await page.locator('.filters').evaluate((element) => ({
         clientWidth: element.clientWidth,
@@ -209,6 +210,17 @@ for (const viewport of viewports) {
     await expect(page.getByRole('heading', { name: '管理员配置' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: '管理员配置分类' })).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
+    if (viewport.width <= 1279) {
+      const adminColumns = await page.locator('.two-column').evaluate(
+        (element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length,
+      )
+      expect(adminColumns).toBe(1)
+    }
+    if (viewport.width === 1440) {
+      const smallButton = await page.getByRole('button', { name: '新增车型' }).boundingBox()
+      expect(smallButton).not.toBeNull()
+      expect(Math.abs((smallButton?.height ?? 0) - 30)).toBeLessThanOrEqual(1)
+    }
     await page.getByRole('button', { name: '词包车型关联' }).click()
     await expect(page.locator('.list-card > button span').first()).toBeVisible()
     expect(await fontSize(page, '.list-card > button span')).toBeGreaterThanOrEqual(11)
