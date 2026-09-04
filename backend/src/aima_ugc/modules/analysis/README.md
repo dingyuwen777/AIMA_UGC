@@ -163,22 +163,24 @@ ContentLabelingLLMResponse
 ### 公共有界并发与自动 Shard
 
 - [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py)：Offline / Formal 共用 Canary、bounded in-flight、`FIRST_COMPLETED`、停止调度和 backpressure。
-- [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py)：根据 Run 冻结 Provider `max_concurrency` 自动计算 Shard Size。
+- [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py)：根据 Run 冻结 Provider `max_concurrency / max_rps` 自动计算 Shard Size。
 
 当前数据库 Provider 的默认计算规则：
 
 ```text
-shard_size = clamp(max_concurrency × 20, 20, 50_000)
+shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)
 ```
 
 例如：
 
 ```text
-max_concurrency = 250  → shard_size = 5,000
-max_concurrency = 1000 → shard_size = 20,000
+max_concurrency = 250,  max_rps = null → shard_size = 5,000
+max_concurrency = 1000, max_rps = null → shard_size = 20,000
+max_concurrency = 1000, max_rps = 1    → shard_size = 900
+max_concurrency = 250,  max_rps = 5    → shard_size = 4,500
 ```
 
-Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。
+Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。未配置 `max_rps` 时仍以 20 个并发波次为基线；配置 `max_rps` 时再用 900 秒物理 Attempt 启动预算收紧，低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，为 Retry、数据库批量提交、Heartbeat 和取消留出余量。异常高重试仍可能触发 Job timeout，因此该预算不是吞吐承诺。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。
 
 只有数据库 Provider 配置面启用前的 legacy env bootstrap LLM 继续读取 `AIMA_ANALYSIS_RUN_SHARD_SIZE`，作为旧部署兼容；一旦管理员创建过正式 LLM Provider，新 Run 不再使用这个旧静态值。
 

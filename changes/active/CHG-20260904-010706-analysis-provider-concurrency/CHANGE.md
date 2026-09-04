@@ -65,8 +65,8 @@ data_changes: []
 # 已确认关键决定
 
 1. `max_concurrency` 是 LLM Provider 级容量，由管理员维护，不写死 DeepSeek 250；至少支持配置 1000。
-2. Shard Size 不由管理员配置；新数据库 Provider Run 根据冻结 Provider concurrency 自动计算并冻结。迁移前 legacy env bootstrap 路径保留历史静态 shard 兼容，旧 Run 始终读取自己已冻结的 shard_size。
-3. 初始自动 Shard 目标为 `max_concurrency × 20 waves`，并使用内部安全上下限；250 约 5,000，1000 约 20,000。
+2. Shard Size 不由管理员配置；新数据库 Provider Run 根据冻结 Provider `max_concurrency / max_rps` 自动计算并冻结。迁移前 legacy env bootstrap 路径保留历史静态 shard 兼容，旧 Run 始终读取自己已冻结的 shard_size。
+3. 初始自动 Shard 目标为 `max_concurrency × 20 waves`，并使用 20/50,000 内部上下限；若配置 `max_rps`，再以 `max_rps × 900 秒` 收紧，使正常单 Attempt/Content 的 RPS 启动预算低于 1800 秒 Job timeout。未配置 RPS 时 250 约 5,000、1000 约 20,000。
 4. 保持“一条 Content = 一个独立逻辑 LLM 请求”。
 5. 离线和正式模式复用同一有界并发调度核心；不复制两套并发算法。
 6. `max_rps` 限制每次物理 HTTP Attempt，包括 Transport Retry；Validation Retry 与 Transport Retry 分层。
@@ -102,7 +102,7 @@ data_changes: []
 5. 完成结果以 200 条为有界批次写入 `PostgresAnalysisBatchRepository`；每批一次 Fence，批量校验 Content Version/配置身份、幂等 Result/Label，并用 executemany 更新 Request Item。
 6. 高吞吐 Run 统计优先读取已完成 Job 的 result 计数，仅对少量非成功/活动 Shard 扫 Request Item，避免随大 Run 重复做 Python O(n) 聚合。
 7. `HighThroughputContentAnalysisPlanJobExecutor` 对 all scope 以 10,000 条 UUID keyset 批次冻结目标，并只维持配置允许的少量 Shard Job in-flight；Shard 终态回调继续补调度。
-8. 新数据库 Provider 的 Preview/Create 使用 `calculate_analysis_shard_size(max_concurrency)` 冻结 Shard Size；legacy env bootstrap 保持历史静态 shard 兼容。
+8. 新数据库 Provider 的 Preview/Create 使用 `calculate_analysis_shard_size(max_concurrency, max_rps=...)` 冻结 Shard Size；未配置 RPS 时保持 20 waves 基线，低 RPS 时受 900 秒安全预算约束；legacy env bootstrap 保持历史静态 shard 兼容。
 9. Provider 管理 Contract/UI/generated client 已同步至 `max_concurrency <= 5000`，界面明确为“模型并发上限”；`max_retries` 明确为 Validation Retry；Shard 不对管理员暴露编辑入口。
 10. Stage12 声音广场验收已同步当前产品语义：活动 Run 留在声音广场；快速结束的历史 Run 在全局任务中心“最近完成”验证终态。
 
@@ -131,7 +131,7 @@ data_changes: []
 | R2 | Formal Worker 真正按冻结 `max_concurrency` 有界并发且一条 Content 一次逻辑请求 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `analysis_concurrent_worker.py` 使用 Run snapshot concurrency 调用公共 executor；`tests/integration/content/test_analysis_provider_concurrency.py` 在真实 PostgreSQL Job 链断言 peak_active=4 且 `item_sizes == [1] * 8`。 |
 | R3 | Offline/Formal 复用同一个并发核心，Canary/收割/停止调度机制同源 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `modules/analysis/__init__.py` 的 Offline 公开入口切到 `offline_concurrent_labeling.py`，与 Formal 同用 `run_bounded_concurrently`；`test_bounded_concurrency.py` 覆盖 Canary、错误隔离和取消后停止补调度。 |
 | R4 | `max_rps` 约束物理 Attempt，Transport Retry 与 Validation Retry 分层 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `RateLimitedContentLabelingLLM` 位于 Transport Retry 内层；`tests/unit/analysis/test_llm_rate_limit.py` 用虚拟时钟证明 2 RPS 下 3 次物理 Attempt 分别从 0.0/0.5/1.0 秒启动。 |
-| R5 | Shard 自动按 Provider concurrency 计算并冻结；250≈5000、1000≈20000；管理员不配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `calculate_analysis_shard_size()` 采用 20 waves + 20/50000 内部边界；`test_analysis_sharding.py` 断言 250→5000、1000→20000；真实 PostgreSQL Integration 验证 Run snapshot/shard 冻结。 |
+| R5 | Shard 自动按 Provider concurrency 计算并冻结；低 RPS 时必须受 Job timeout 安全预算约束；管理员不配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `calculate_analysis_shard_size()` 采用 20 waves + 20/50000 内部边界，并在配置 `max_rps` 时取 `max_rps × 900 秒` 的更小预算；`test_analysis_sharding.py` 同时覆盖 250→5000、1000→20000、1000/RPS1→900、250/RPS5→4500 以及 HTTP Preview/Create helper 透传 RPS；真实 PostgreSQL Integration 验证 Run snapshot/shard 冻结。 |
 | R6 | LLM 并发与 DB 连接解耦，批量短事务/背压避免逐条 Session 写放大 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | Worker threads 只执行 LLM；scheduler 回调按最多 200 条调用 `PostgresAnalysisBatchRepository.persist_batch()`；每批短事务一次 Fence，PostgreSQL Integration 全链验证持久化。 |
 | R7 | Fence、版本、配置身份、幂等、标签、取消/失败隔离不回归 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | Batch Repository 保留 Fence/version/config/idempotency/label 校验；PostgreSQL Integration、Job Runtime regression 与 `test_parallel_transport_error_only_fails_one_content` 验证单条失败隔离，公共 executor 单测验证取消停止补调度。 |
 | R8 | 20/250/1000 受控并发边界有证据；正式链目标达到离线链 90%，目标 95%+ | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | 公共 executor 真实线程回归覆盖 20/250，1000 档验证 bounded in-flight；零付费同源基准在同一 runner、8 条、并发 4、固定 3 秒 LLM 延迟下测得 Offline 0.888 item/s、Formal 0.877 item/s、Formal/Offline=98.86%（门槛 90%）。真实 Provider 250/1000 的额度、网络/GPU 容量仍属于未授权的外部 Probe，不由该结果冒充。 |
