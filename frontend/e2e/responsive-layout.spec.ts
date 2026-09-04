@@ -80,7 +80,7 @@ async function mockStrategyApi(page: Page): Promise<void> {
   })
 }
 
-/** 为声音广场窄桌面验收提供最小只读响应，业务状态仍使用正式页面入口。 */
+/** 为声音广场响应式验收提供最小只读响应，业务状态仍使用正式页面入口。 */
 async function mockVoicePlazaApi(page: Page): Promise<void> {
   await stubVoicePlazaTaxonomy(page)
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
@@ -131,6 +131,14 @@ async function mockAdminApi(page: Page): Promise<void> {
   })
 }
 
+/** 一次安装当前四个正式页面所需的最小 Browser Mock。 */
+async function mockResponsivePages(page: Page): Promise<void> {
+  await mockStrategyApi(page)
+  await mockVoicePlazaApi(page)
+  await mockRuntimeApi(page)
+  await mockAdminApi(page)
+}
+
 /** 读取 CSS px 数值，用于验证 fluid typography 的锚点与上限。 */
 async function fontSize(page: Page, selector: string): Promise<number> {
   return page.locator(selector).evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
@@ -166,16 +174,15 @@ const viewports = [
 ] as const
 
 for (const viewport of viewports) {
-  test(`keeps collection strategy usable without page overflow at ${viewport.name}`, async ({ page }) => {
+  test(`keeps all formal pages bounded at ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
-    await mockStrategyApi(page)
-    await page.goto('/collection-strategy')
+    await mockResponsivePages(page)
 
+    await page.goto('/collection-strategy')
     await expect(page.getByRole('heading', { name: '采集策略' })).toBeVisible()
     await page.getByRole('button', { name: '采集计划' }).click()
     await expect(page.locator('.filters')).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
-
     if (viewport.width <= 1279) {
       const filters = await page.locator('.filters').evaluate((element) => ({
         clientWidth: element.clientWidth,
@@ -183,47 +190,31 @@ for (const viewport of viewports) {
       }))
       expect(filters.scrollWidth).toBeLessThanOrEqual(filters.clientWidth + 1)
     }
+
+    await page.goto('/voice-plaza')
+    await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
+    await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
+    await expectWorkspaceInsideViewport(page, viewport.width)
+    const voiceFilters = await page.locator('.filters').evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }))
+    expect(voiceFilters.scrollWidth).toBeLessThanOrEqual(voiceFilters.clientWidth + 1)
+    if (viewport.width <= 1280) {
+      expect(await fontSize(page, '.filters .field')).toBeGreaterThanOrEqual(12)
+    }
+
+    await page.goto('/collection-runtime')
+    await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
+    await expect(page.locator('.runtime-tabs')).toBeVisible()
+    await expectWorkspaceInsideViewport(page, viewport.width)
+
+    await page.goto('/admin/configuration')
+    await expect(page.getByRole('heading', { name: '管理员配置' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '管理员配置分类' })).toBeVisible()
+    await expectWorkspaceInsideViewport(page, viewport.width)
   })
 }
-
-test('keeps voice plaza readable and bounded on compact desktop', async ({ page }) => {
-  const viewport = { width: 1180, height: 800 }
-  await page.setViewportSize(viewport)
-  await mockVoicePlazaApi(page)
-  await page.goto('/voice-plaza')
-
-  await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
-  await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
-  await expectWorkspaceInsideViewport(page, viewport.width)
-  const filters = await page.locator('.filters').evaluate((element) => ({
-    clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth,
-  }))
-  expect(filters.scrollWidth).toBeLessThanOrEqual(filters.clientWidth + 1)
-  expect(await fontSize(page, '.filters .field')).toBeGreaterThanOrEqual(12)
-})
-
-test('keeps collection runtime bounded on compact desktop', async ({ page }) => {
-  const viewport = { width: 1180, height: 800 }
-  await page.setViewportSize(viewport)
-  await mockRuntimeApi(page)
-  await page.goto('/collection-runtime')
-
-  await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
-  await expectWorkspaceInsideViewport(page, viewport.width)
-  await expect(page.locator('.runtime-tabs')).toBeVisible()
-})
-
-test('keeps administrator configuration bounded on compact desktop', async ({ page }) => {
-  const viewport = { width: 1180, height: 800 }
-  await page.setViewportSize(viewport)
-  await mockAdminApi(page)
-  await page.goto('/admin/configuration')
-
-  await expect(page.getByRole('heading', { name: '管理员配置' })).toBeVisible()
-  await expectWorkspaceInsideViewport(page, viewport.width)
-  await expect(page.getByRole('navigation', { name: '管理员配置分类' })).toBeVisible()
-})
 
 test('constrains a real dialog to the viewport safe margin in a narrow window', async ({ page }) => {
   const viewport = { width: 560, height: 800 }
