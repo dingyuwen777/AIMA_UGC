@@ -51,6 +51,26 @@ def test_bounded_executor_reaches_and_never_exceeds_configured_concurrency(
     assert sorted(completed) == [value * 2 for value in range(max_concurrency * 2)]
 
 
+def test_bounded_executor_supports_1000_configured_in_flight() -> None:
+    """1000 档只提交一个有界窗口，不需要把整个输入预先塞进线程池队列。"""
+
+    completed: list[int] = []
+    summary = run_bounded_concurrently(
+        range(1_000),
+        task=lambda value: value,
+        max_concurrency=1_000,
+        on_completed=lambda outcomes: completed.extend(
+            outcome.result for outcome in outcomes if outcome.result is not None
+        ),
+        canary=False,
+        fail_fast=True,
+    )
+
+    assert summary.peak_in_flight == 1_000
+    assert summary.completed == 1_000
+    assert len(completed) == 1_000
+
+
 def test_bounded_executor_canary_failure_prevents_fanout() -> None:
     """Canary 失败时不得继续提交其余 Provider 请求。"""
 
@@ -109,3 +129,32 @@ def test_bounded_executor_can_isolate_parallel_item_errors() -> None:
         (6, False),
         (7, False),
     ]
+
+
+def test_bounded_executor_stops_refilling_after_cancel_signal() -> None:
+    """完成回调观察到取消后不得继续从输入迭代器补提交新的请求。"""
+
+    called: list[int] = []
+    stop = False
+
+    def task(value: int) -> int:
+        called.append(value)
+        return value
+
+    def on_completed(_outcomes: object) -> None:
+        nonlocal stop
+        stop = True
+
+    summary = run_bounded_concurrently(
+        range(100),
+        task=task,
+        max_concurrency=4,
+        on_completed=on_completed,
+        canary=False,
+        fail_fast=False,
+        stop_requested=lambda: stop,
+    )
+
+    assert summary.stopped is True
+    assert summary.completed == 4
+    assert sorted(called) == [0, 1, 2, 3]
