@@ -89,16 +89,19 @@ ISSUE_FORM_PROFILES = {
 
 
 def _read_text(path: Path) -> str:
+    """以 UTF-8 读取治理检查需要的文本文件。"""
     return path.read_text(encoding="utf-8")
 
 
 def _workflow_paths(root: Path) -> tuple[Path, ...]:
+    """返回项目永久 Workflow 文件，保持稳定排序便于诊断。"""
     workflow_dir = root / WORKFLOW_DIR
     paths = [*workflow_dir.glob("*.yml"), *workflow_dir.glob("*.yaml")]
     return tuple(sorted(paths))
 
 
 def _managed_sections(text: str) -> tuple[str, str] | None:
+    """在 marker 唯一时返回 managed block 与 marker 外项目文本。"""
     if text.count(MANAGED_START) != 1 or text.count(MANAGED_END) != 1:
         return None
     start = text.index(MANAGED_START)
@@ -107,6 +110,7 @@ def _managed_sections(text: str) -> tuple[str, str] | None:
 
 
 def _issue_field_block(text: str, field_id: str) -> str | None:
+    """提取 Issue Form 字段块，避免其他字段文字误满足公共 Profile。"""
     marker = f"id: {field_id}"
     if marker not in text:
         return None
@@ -116,6 +120,7 @@ def _issue_field_block(text: str, field_id: str) -> str | None:
 
 
 def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]:
+    """检查项目 Issue Form 的专项字段与统一公共 Profile。"""
     if not path.is_file():
         return [f"GOV012 {path.as_posix()}: 多人协作所需 Issue Form 不存在"]
     text = _read_text(path)
@@ -147,6 +152,7 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
 
 
 def check_repository(root: Path = ROOT) -> list[str]:
+    """返回 AIMA 项目治理接线错误；空列表表示当前静态约束满足。"""
     errors: list[str] = []
     agents_path = root / "AGENTS.md"
     if not agents_path.is_file():
@@ -273,6 +279,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
 
 
 def main() -> int:
+    """执行项目治理静态检查并返回适合 CI 的退出码。"""
     errors = check_repository()
     if errors:
         print("\n".join(errors))

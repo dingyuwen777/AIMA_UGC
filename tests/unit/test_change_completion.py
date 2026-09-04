@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import runpy
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -214,6 +215,32 @@ def test_archived_current_change_rejects_source_that_never_existed_in_archive_re
 
     assert result["ok"] is False
     assert any("never-existed.md" in error["message"] for error in result["errors"])
+
+
+def test_archived_current_change_rejects_directory_source_at_archive_revision(
+    tmp_path: Path,
+) -> None:
+    """历史来源即使曾是 Git tree 也不能冒充 validator 所要求的仓库文件。"""
+    _init_repository(tmp_path)
+    source_dir = tmp_path / "historical-source"
+    _write(source_dir / "proof.md", "# directory fixture\n")
+    archived = tmp_path / "changes/archive/2026-09/CHG-20260902-current/CHANGE.md"
+    _write(
+        archived,
+        _current_change(
+            "CHG-20260902-current",
+            status="done",
+            source="historical-source",
+        ),
+    )
+    _commit(tmp_path, "归档目录来源反例")
+    shutil.rmtree(source_dir)
+    _commit(tmp_path, "后续删除目录")
+
+    result = _check(tmp_path)
+
+    assert result["ok"] is False
+    assert any("historical-source" in error["message"] for error in result["errors"])
 
 
 def test_active_current_change_still_requires_source_in_current_head(tmp_path: Path) -> None:

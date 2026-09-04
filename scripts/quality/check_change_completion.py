@@ -198,13 +198,16 @@ def _git_last_path_revision(root: Path, relative: str) -> str | None:
 
 
 def _git_path_exists_at_revision(root: Path, revision: str, relative: str) -> bool:
-    """确认仓库相对路径在给定历史 revision 中真实存在，不从当前 HEAD 猜测。"""
+    """确认历史 Requirement Source 在给定 revision 中仍是文件 blob，而非目录等对象。"""
     result = subprocess.run(
-        ["git", "-C", str(root), "cat-file", "-e", f"{revision}:{relative}"],
+        ["git", "-C", str(root), "cat-file", "-t", f"{revision}:{relative}"],
         check=False,
         capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
-    return result.returncode == 0
+    return result.returncode == 0 and result.stdout.strip() == "blob"
 
 
 def _preserve_historical_archive_sources(
@@ -212,7 +215,7 @@ def _preserve_historical_archive_sources(
     change_path: Path,
     document_errors: Sequence[str],
 ) -> list[str]:
-    """仅对已归档 Change 接受在其归档 revision 真实存在、后来才删除的来源。"""
+    """仅对已归档 Change 接受在其归档 revision 真实存在、后来才删除的文件来源。"""
     if not document_errors:
         return []
     change_relative = _normalise_relative_path(change_path.relative_to(root))
