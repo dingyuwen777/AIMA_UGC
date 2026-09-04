@@ -39,8 +39,6 @@ class PlatformSettings(BaseModel):
     llm_timeout_seconds: float = Field(default=60.0, gt=0, le=1800)
     llm_max_connections: int = Field(default=10, ge=1, le=100)
     llm_validation_retries: int = Field(default=1, ge=0, le=3)
-    analysis_batch_size: int = Field(default=20, ge=1, le=100)
-    analysis_run_shard_size: int = Field(default=1, ge=1, le=20)
     analysis_run_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)
 
     @property
@@ -104,8 +102,6 @@ _ENV_TO_FIELD = {
     "AIMA_LLM_TIMEOUT_SECONDS": "llm_timeout_seconds",
     "AIMA_LLM_MAX_CONNECTIONS": "llm_max_connections",
     "AIMA_LLM_VALIDATION_RETRIES": "llm_validation_retries",
-    "AIMA_ANALYSIS_BATCH_SIZE": "analysis_batch_size",
-    "AIMA_ANALYSIS_RUN_SHARD_SIZE": "analysis_run_shard_size",
     "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS": "analysis_run_max_in_flight_jobs",
 }
 

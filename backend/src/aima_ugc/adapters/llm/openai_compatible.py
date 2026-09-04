@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import datetime
+from threading import Lock
+from time import monotonic
 from typing import Any, Self
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -15,6 +17,7 @@ from pydantic import SecretStr
 from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMRequest,
     ContentLabelingLLMResponse,
+    ensure_labeling_running,
 )
 from aima_ugc.platform.time import beijing_now
 
@@ -104,6 +107,11 @@ class OpenAICompatibleContentLabelingLLM:
         ):
             self._pricing_unavailable_reason = "model_price_not_configured"
         self._owns_client = client is None
+        self._metrics_lock = Lock()
+        self._http_requests = 0
+        self._http_active = 0
+        self._http_peak = 0
+        self._http_seconds = 0.0
         self._client = client or httpx.Client(
             base_url=normalized_base_url,
             timeout=httpx.Timeout(timeout_seconds),
@@ -133,6 +141,16 @@ class OpenAICompatibleContentLabelingLLM:
         if self._owns_client:
             self._client.close()
 
+    def request_metrics(self) -> dict[str, int]:
+        """返回实际 HTTP 调用统计；累计耗时包含并发重叠，不能当作总墙钟耗时。"""
+
+        with self._metrics_lock:
+            return {
+                "http_requests": self._http_requests,
+                "http_peak_active": self._http_peak,
+                "http_total_ms": round(self._http_seconds * 1000),
+            }
+
     def __enter__(self) -> Self:
         return self
 
@@ -142,6 +160,7 @@ class OpenAICompatibleContentLabelingLLM:
     def complete(self, request: ContentLabelingLLMRequest) -> ContentLabelingLLMResponse:
         """发送一次 Chat Completions 请求；Transport Retry 由更外层显式策略负责。"""
 
+        ensure_labeling_running(request.stop_event)
         started_at = beijing_now()
         http_request_id = uuid4().hex
         logical_request_id = request.logical_request_id or http_request_id
@@ -171,6 +190,12 @@ class OpenAICompatibleContentLabelingLLM:
         if self._use_json_mode:
             body["response_format"] = {"type": "json_object"}
 
+        ensure_labeling_running(request.stop_event)
+        http_started = monotonic()
+        with self._metrics_lock:
+            self._http_requests += 1
+            self._http_active += 1
+            self._http_peak = max(self._http_peak, self._http_active)
         try:
             try:
                 response = self._client.post(
@@ -189,6 +214,10 @@ class OpenAICompatibleContentLabelingLLM:
                     error_code="network_error",
                     retryable=True,
                 ) from exc
+            finally:
+                with self._metrics_lock:
+                    self._http_active -= 1
+                    self._http_seconds += monotonic() - http_started
 
             status_code = response.status_code
             if status_code < 200 or status_code >= 300:

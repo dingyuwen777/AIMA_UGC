@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Event, Lock
 from typing import Any
 
 
 class _Handler(BaseHTTPRequestHandler):
     request_no = 0
+    streaming_lock = Lock()
+    streaming_arrived = Event()
+    streaming_requests = 0
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path != "/health":
@@ -23,6 +27,15 @@ class _Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length", "0"))
         request = json.loads(self.rfile.read(length))
         user_payload = json.loads(request["messages"][1]["content"])
+        if any(item["title"].startswith("爱玛 并发验收") for item in user_payload["items"]):
+            # 两条验收请求都到达才回包，串行发送会明确失败而非得到虚假的并发通过。
+            with type(self).streaming_lock:
+                type(self).streaming_requests += 1
+                if type(self).streaming_requests >= 2:
+                    type(self).streaming_arrived.set()
+            if not type(self).streaming_arrived.wait(5):
+                self.send_error(500, "concurrent requests did not arrive")
+                return
         type(self).request_no += 1
         sentiment = "正面" if type(self).request_no % 2 else "负面"
         items = [

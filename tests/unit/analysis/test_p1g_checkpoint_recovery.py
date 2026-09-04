@@ -92,7 +92,7 @@ def test_p1g_recovers_successful_checkpoint_without_second_llm_call(
                 analysis_dir=analysis_dir,
                 service=first_service,
                 max_validation_retries=0,
-                batch_size=1,
+                max_concurrency=1,
                 recovery_taxonomy=recovery_taxonomy,
             )
 
@@ -108,7 +108,7 @@ def test_p1g_recovers_successful_checkpoint_without_second_llm_call(
             llm=second_fake,
         ),
         max_validation_retries=0,
-        batch_size=1,
+        max_concurrency=1,
         recovery_taxonomy=recovery_taxonomy,
     )
 
@@ -150,7 +150,7 @@ def test_p1g_does_not_recover_checkpoint_from_different_prompt(
                 analysis_dir=analysis_dir,
                 service=first_service,
                 max_validation_retries=0,
-                batch_size=1,
+                max_concurrency=1,
                 recovery_taxonomy=first_taxonomy,
             )
 
@@ -168,7 +168,7 @@ def test_p1g_does_not_recover_checkpoint_from_different_prompt(
         analysis_dir=analysis_dir,
         service=ContentLabelingService(prompt_loader=second_loader, llm=second_fake),
         max_validation_retries=0,
-        batch_size=1,
+        max_concurrency=1,
         recovery_taxonomy=second_taxonomy,
     )
 
@@ -219,7 +219,7 @@ def test_p1g_does_not_recover_checkpoint_from_different_model_identity(
                 analysis_dir=analysis_dir,
                 service=first_service,
                 max_validation_retries=0,
-                batch_size=1,
+                max_concurrency=1,
                 recovery_taxonomy=recovery_taxonomy,
             )
 
@@ -233,7 +233,7 @@ def test_p1g_does_not_recover_checkpoint_from_different_model_identity(
         analysis_dir=analysis_dir,
         service=ContentLabelingService(prompt_loader=prompt_loader, llm=second_fake),
         max_validation_retries=0,
-        batch_size=1,
+        max_concurrency=1,
         recovery_taxonomy=recovery_taxonomy,
     )
 

@@ -17,6 +17,9 @@ from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRunStateConflict,
     PostgresAnalysisRepository,
 )
+from aima_ugc.adapters.persistence.postgres.analysis_high_throughput import (
+    PostgresHighThroughputAnalysisRepository,
+)
 from aima_ugc.adapters.persistence.postgres.analysis_manual_reviews import (
     PostgresAnalysisManualReviewRepository,
 )
@@ -112,7 +115,6 @@ from .analysis_identity import (
 )
 from .analysis_taxonomy_http import content_analysis_taxonomy_projection
 from .runtime import PlatformRuntime
-from .runtime_config import is_legacy_llm_provider
 
 _ANALYSIS_RUN_ID_NAMESPACE = UUID("d9c7fe38-1a46-4ef9-b9d3-bb87dd7d8301")
 _AnalysisTargetSelection = ContentTargetSelection | AnalysisRunTargetSelection
@@ -423,10 +425,7 @@ class PostgresContentHttpService:
                     raise ContentSelectionEmpty
         finally:
             session.close()
-        shard_size = _analysis_shard_size(
-            llm_provider,
-            legacy_shard_size=self._runtime.settings.analysis_run_shard_size,
-        )
+        shard_size = _analysis_shard_size(llm_provider)
         return AnalysisContentRunPreviewResponse(
             target_count=target_count,
             shard_count=ceil(target_count / shard_size),
@@ -476,7 +475,7 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                repository = PostgresAnalysisRepository(session)
+                repository = PostgresHighThroughputAnalysisRepository(session)
                 return AnalysisContentRunListResponse(
                     items=tuple(
                         _analysis_run_response(repository, row, include_shards=False)
@@ -490,7 +489,7 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                repository = PostgresAnalysisRepository(session)
+                repository = PostgresHighThroughputAnalysisRepository(session)
                 run = repository.get_run(run_id)
                 if run is None:
                     raise ContentResourceNotFound
@@ -507,7 +506,7 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                repository = PostgresAnalysisRepository(session)
+                repository = PostgresHighThroughputAnalysisRepository(session)
                 try:
                     repository.request_run_cancel(run_id)
                 except AnalysisRequestNotFound as exc:
@@ -559,10 +558,7 @@ class PostgresContentHttpService:
         )
         if configuration_hash != expected_configuration_hash:
             raise ContentAnalysisRunConflict
-        shard_size = _analysis_shard_size(
-            llm_provider,
-            legacy_shard_size=self._runtime.settings.analysis_run_shard_size,
-        )
+        shard_size = _analysis_shard_size(llm_provider)
         filter_snapshot = _analysis_filter_snapshot(targets)
         storage_scope = _analysis_storage_scope(targets)
         session = self._runtime.database.new_session()
@@ -860,11 +856,8 @@ def _analysis_storage_scope(targets: _AnalysisTargetSelection) -> Literal["query
     return cast(Literal["query", "selected"], targets.scope)
 
 
-def _analysis_shard_size(provider: ProviderConfig, *, legacy_shard_size: int) -> int:
-    """数据库 Provider 按并发/RPS 推导 Shard；旧 env bootstrap 沿用历史静态值。"""
-
-    if is_legacy_llm_provider(provider):
-        return legacy_shard_size
+def _analysis_shard_size(provider: ProviderConfig) -> int:
+    """所有 Provider 统一按并发/RPS 推导 Shard，不让配置来源改变执行策略。"""
     return calculate_analysis_shard_size(
         provider.max_concurrency,
         max_rps=provider.max_rps,

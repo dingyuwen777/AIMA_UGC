@@ -1,4 +1,4 @@
-"""运行时 Provider 配置解析；数据库优先，进程设置只作未迁移兼容兜底。"""
+"""运行时 Provider 配置解析；数据库与环境输入统一形成冻结 Provider 快照。"""
 
 from __future__ import annotations
 
@@ -14,18 +14,18 @@ from aima_ugc.modules.system.models import ProviderConfig, ProviderKind
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.security import read_secret_ref
 
-_LEGACY_LLM_CONFIG_ID = UUID("00000000-0000-4000-8000-000000000001")
+_ENV_LLM_CONFIG_ID = UUID("00000000-0000-4000-8000-000000000001")
 
 
 def active_llm_provider(session: Session, settings: PlatformSettings) -> ProviderConfig | None:
-    """每次创建新 Analysis Run 都重读数据库；仅在 DB 尚无 LLM 配置时使用 env 兜底。"""
+    """优先重读数据库配置；未配置数据库 Provider 时从环境输入建立同一种 Provider。"""
 
     repository = PostgresProviderConfigRepository(session)
     configured = repository.get_default("llm")
     if configured is not None:
         return configured
     # 一旦管理员写入过任意 LLM Provider，数据库就是唯一运行时事实源。
-    # 禁用或未指定默认项必须表现为“未配置”，不能悄悄回退到旧 env。
+    # 禁用或未指定默认项必须表现为“未配置”，不能悄悄回退到环境配置。
     if repository.list_all(provider_kind="llm"):
         return None
     if settings.llm_base_url is None or settings.llm_model is None:
@@ -39,13 +39,13 @@ def active_llm_provider(session: Session, settings: PlatformSettings) -> Provide
     except OSError, ValueError:
         return None
     return ProviderConfig(
-        id=_LEGACY_LLM_CONFIG_ID,
+        id=_ENV_LLM_CONFIG_ID,
         provider=resolve_openai_compatible_provider_name(
             settings.llm_base_url,
             provider_name=settings.llm_provider_name,
         ),
         provider_kind="llm",
-        display_name="Legacy bootstrap LLM",
+        display_name="Environment LLM",
         base_url=settings.llm_base_url,
         model=settings.llm_model,
         secret_ref=secret_ref,
@@ -56,12 +56,6 @@ def active_llm_provider(session: Session, settings: PlatformSettings) -> Provide
         revision=1,
         enabled=True,
     )
-
-
-def is_legacy_llm_provider(config: ProviderConfig) -> bool:
-    """判断 Provider 是否来自数据库配置面启用前的 env bootstrap 兼容入口。"""
-
-    return config.id == _LEGACY_LLM_CONFIG_ID
 
 
 def provider_from_safe_snapshot(payload: object) -> ProviderConfig:
@@ -135,7 +129,6 @@ def _required_int(data: dict[str, object], key: str, *, minimum: int = 1) -> int
 
 __all__ = [
     "active_llm_provider",
-    "is_legacy_llm_provider",
     "new_secret_ref",
     "provider_from_safe_snapshot",
     "resolve_provider_secret",

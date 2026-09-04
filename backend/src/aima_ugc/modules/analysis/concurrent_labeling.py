@@ -6,6 +6,8 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 
+_CONTROL_POLL_SECONDS = 0.1
+
 
 @dataclass(frozen=True, slots=True)
 class ConcurrentTaskOutcome[ItemT, ResultT]:
@@ -37,11 +39,12 @@ def run_bounded_concurrently[ItemT, ResultT](
     task: Callable[[ItemT], ResultT],
     max_concurrency: int,
     on_completed: Callable[[tuple[ConcurrentTaskOutcome[ItemT, ResultT], ...]], None],
-    canary: bool = True,
     fail_fast: bool = True,
     stop_requested: Callable[[], bool] | None = None,
+    request_stop: Callable[[], None] | None = None,
+    on_tick: Callable[[], None] | None = None,
 ) -> BoundedConcurrencySummary:
-    """先可选 Canary，再以不超过 `max_concurrency` 的线程并发执行任务。
+    """从首批开始并发，并在等待期间持续执行取消和持久化控制检查。
 
     `on_completed` 始终在调度线程调用，因此调用方可以在回调中做短事务批量落库；
     回调变慢时调度器不会继续无界提交新任务，从而自然形成背压。
@@ -55,21 +58,6 @@ def run_bounded_concurrently[ItemT, ResultT](
 
     if _should_stop(stop_requested):
         return BoundedConcurrencySummary(completed=0, peak_in_flight=0, stopped=True)
-
-    if canary:
-        first_item = next(iterator, None)
-        if first_item is None:
-            return BoundedConcurrencySummary(completed=0, peak_in_flight=0, stopped=False)
-        first_result = task(first_item)
-        on_completed((ConcurrentTaskOutcome(item=first_item, result=first_result),))
-        completed = 1
-        peak_in_flight = 1
-        if _should_stop(stop_requested):
-            return BoundedConcurrencySummary(
-                completed=completed,
-                peak_in_flight=peak_in_flight,
-                stopped=True,
-            )
 
     with ThreadPoolExecutor(
         max_workers=max_concurrency,
@@ -91,38 +79,58 @@ def run_bounded_concurrently[ItemT, ResultT](
                 except StopIteration:
                     exhausted = True
                     return
+                if _should_stop(stop_requested):
+                    stopped = True
+                    return
                 in_flight[executor.submit(task, item)] = item
                 peak_in_flight = max(peak_in_flight, len(in_flight))
 
-        fill_capacity()
-        while in_flight:
-            done, _ = wait(tuple(in_flight), return_when=FIRST_COMPLETED)
-            done.update(future for future in in_flight if future.done())
-            outcomes = _collect_completed(in_flight, done)
-            if outcomes:
-                on_completed(outcomes)
-                completed += len(outcomes)
-
-            first_error = next(
-                (outcome.error for outcome in outcomes if outcome.error is not None),
-                None,
-            )
-            if first_error is not None and fail_fast:
-                trailing = _cancel_and_collect(in_flight)
-                if trailing:
-                    on_completed(trailing)
-                    completed += len(trailing)
-                raise first_error
-
-            if _should_stop(stop_requested):
-                stopped = True
-                trailing = _cancel_and_collect(in_flight)
-                if trailing:
-                    on_completed(trailing)
-                    completed += len(trailing)
-                break
-
+        try:
+            if on_tick is not None:
+                on_tick()
             fill_capacity()
+            while in_flight:
+                if on_tick is not None:
+                    on_tick()
+                if _should_stop(stop_requested):
+                    stopped = True
+                    if request_stop is not None:
+                        request_stop()
+                    for future in in_flight:
+                        future.cancel()
+
+                done, _ = wait(
+                    tuple(in_flight),
+                    timeout=_CONTROL_POLL_SECONDS,
+                    return_when=FIRST_COMPLETED,
+                )
+                done.update(future for future in in_flight if future.done())
+                outcomes = _collect_completed(in_flight, done)
+                if outcomes:
+                    on_completed(outcomes)
+                    completed += len(outcomes)
+
+                first_error = next(
+                    (outcome.error for outcome in outcomes if outcome.error is not None),
+                    None,
+                )
+                if first_error is not None and fail_fast:
+                    raise first_error
+                if _should_stop(stop_requested):
+                    stopped = True
+                if not stopped:
+                    fill_capacity()
+        except BaseException as error:
+            # 主线程中断和输入/回调异常同样停止补充；仍收割已发请求供调用方恢复。
+            if request_stop is not None:
+                request_stop()
+            trailing = _cancel_and_collect(in_flight)
+            if trailing:
+                try:
+                    on_completed(trailing)
+                except BaseException as cleanup_error:
+                    raise error from cleanup_error
+            raise
 
     return BoundedConcurrencySummary(
         completed=completed,

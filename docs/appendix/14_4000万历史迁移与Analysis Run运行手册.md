@@ -171,12 +171,12 @@ Worker 每批调用 LLM 前会把实际 Service 的 Prompt/Taxonomy/Provider/Mod
 当前配置：
 
 ```text
-AIMA_ANALYSIS_RUN_SHARD_SIZE=1
+Shard Size 按 Provider 并发容量与可选 RPS 自动计算
 AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS=2
 新版 Run 最大显式选择数=1000（Pydantic/OpenAPI Contract）
 ```
 
-Shard=1 和“仅显式选择最多 1000 条”都是尚未执行真实付费 Gold Set 批量质量/费用/容量基准前的保守门禁。不得只为吞吐静默放大，也不得绕过页面直接提交 query scope；固定模型/Prompt/生成配置的真实质量、跨条污染、JSON 有效率、延迟、token 和成本报告完成后才能重新决策。
+Shard 已统一为自动计算，每次模型请求仍只有一条内容，不采用多条内容拼接的模型批次。显式选择仍最多 1000 条，不得绕过页面直接提交 query scope；固定模型/Prompt/生成配置的真实质量、跨条污染、JSON 有效率、延迟、token 和成本报告完成后才能重新决策。
 
 ---
 
@@ -269,7 +269,7 @@ Worker / Repository
 → bootstrap/historical_import_worker.py
 → adapters/persistence/postgres/historical_import.py
 → adapters/persistence/postgres/historical_content.py
-→ bootstrap/analysis_worker.py
+→ bootstrap/analysis_concurrent_worker.py
 → adapters/persistence/postgres/analysis.py
 
 测试

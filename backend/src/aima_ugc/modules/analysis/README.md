@@ -162,7 +162,7 @@ ContentLabelingLLMResponse
 
 ### 公共有界并发与自动 Shard
 
-- [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py)：Offline / Formal 共用 Canary、bounded in-flight、`FIRST_COMPLETED`、停止调度和 backpressure。
+- [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py)：Offline / Formal 共用首批并发、bounded in-flight、`FIRST_COMPLETED`、停止调度和 backpressure。
 - [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py)：根据 Run 冻结 Provider `max_concurrency / max_rps` 自动计算 Shard Size。
 
 当前数据库 Provider 的默认计算规则：
@@ -182,7 +182,7 @@ max_concurrency = 250,  max_rps = 5    → shard_size = 4,500
 
 Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。未配置 `max_rps` 时仍以 20 个并发波次为基线；配置 `max_rps` 时再用 900 秒物理 Attempt 启动预算收紧，低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，为 Retry、数据库批量提交、Heartbeat 和取消留出余量。异常高重试仍可能触发 Job timeout，因此该预算不是吞吐承诺。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。
 
-只有数据库 Provider 配置面启用前的 legacy env bootstrap LLM 继续读取 `AIMA_ANALYSIS_RUN_SHARD_SIZE`，作为旧部署兼容；一旦管理员创建过正式 LLM Provider，新 Run 不再使用这个旧静态值。
+环境配置与数据库配置都使用同一自动分片公式和并发执行器。旧静态 `AIMA_ANALYSIS_RUN_SHARD_SIZE` / `AIMA_ANALYSIS_BATCH_SIZE` 已移除；环境配置的容量来自 `AIMA_LLM_MAX_CONNECTIONS`。
 
 ### 正式 Job
 
@@ -200,9 +200,8 @@ analysis.content-label.v1
 
 ### 正式 Worker / Planner
 
-- [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py)：Provider `max_concurrency` 真正控制同时在途的单内容模型请求；Canary 成功后才放大；LLM worker thread 不持有数据库事务；完成结果在调度线程有界缓冲并短事务批量提交。
+- [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py)：Provider `max_concurrency` 真正控制同时在途的单内容模型请求；首批即按容量并发；LLM worker thread 不持有数据库事务；完成结果在调度线程有界缓冲并短事务批量提交。
 - [`backend/src/aima_ugc/bootstrap/analysis_high_throughput_planner.py`](../../bootstrap/analysis_high_throughput_planner.py)：`all` Scope 用连续 ordinal 恢复，下一 Shard 从 Run `shard_count` + 已调度 Request 序号推导，Terminal Callback 使用高吞吐 Run 统计。
-- [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py)：保留旧同步 Executor/Planner 的历史兼容与既有测试入口，不再是正式 Worker Registry 的 Analysis 生产装配。
 
 正式 Registry 以 [`backend/src/aima_ugc/bootstrap/worker.py`](../../bootstrap/worker.py) 为准。
 
@@ -235,8 +234,8 @@ analysis.content-label.v1
 ### 离线执行
 
 - [`backend/src/aima_ugc/modules/analysis/offline_concurrent_labeling.py`](offline_concurrent_labeling.py)：公共离线入口，复用 [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py) 并保留原 preflight/checkpoint/attempt/failed/rewrite 语义。
-- [`backend/src/aima_ugc/modules/analysis/offline_labeling.py`](offline_labeling.py)：旧内部实现与 checkpoint helper，继续作为兼容事实，不再独占并发调度。
-- [`../../adapters/providers/imports_test/`](../../adapters/providers/imports_test/)：人工/离线入口；DeepSeek 示例仍可配置 250。
+- [`backend/src/aima_ugc/modules/analysis/offline_labeling.py`](offline_labeling.py)：保留文件预检、checkpoint、原子回写和恢复 helper；旧独立调度循环已删除，离线入口只接受 `max_concurrency`，不再提供 `batch_size` 别名。
+- [`../../adapters/providers/imports_test/`](../../adapters/providers/imports_test/)：人工/离线入口；DeepSeek 示例仍可配置 250。`label_sentiment()` 直接读取本地环境配置（由 [`env.local.example`](../../../../../env.local.example) 创建）和 Git Prompt，调用共用的并发核心并写入 JSONL/Excel，不初始化数据库；`WRITE_TO_DATABASE=False` 时整条离线流程保持无数据库运行。
 
 ---
 
@@ -265,16 +264,19 @@ Planner
 Analysis Shard Worker
 → 加载 Run 冻结 Provider/Scheme
 → 校验 Prompt/Taxonomy/Provider/Model 身份
-→ Canary 1 条
+→ 本地预检后首批并发，不串行等待第一条
 → bounded concurrency，最大 in-flight = Provider.max_concurrency
 → 每条 Content 独立 ContentLabelingService 调用
 → max_rps 对每个物理 HTTP Attempt 生效
 → Transport Retry 仅重发当前 Content 的物理请求
 → Validation Retry 仍由 ContentLabelingService 处理当前 Content
 → 完成结果有界缓冲
-→ PostgreSQL 约 200 条/短事务批量写入
+→ 小任务或大任务尾部：已取完全部工作项且剩余未完成数不超过 max_concurrency，立即短事务提交
+→ 其他阶段：满 200 条或首个结果等待约 1 秒即短事务提交
 → Heartbeat / Cancel / Job Fence
 ```
+
+声音广场与任务中心共享 Analysis Run 状态和在途请求，活动 AI 每秒刷新，其他任务保持原周期。内容仅在状态或落库统计变化后刷新；终态后的最后结果和失败重试仍会补齐，不依赖人工点击刷新。
 
 正式 `analysis_content_results` 仍只保存可复现 Analysis 身份和业务结果，没有新增 token/cost 列，也没有本次 Migration。
 
@@ -476,7 +478,7 @@ Job error / Request Item error_code
 
 ### 页面提示 LLM Runtime 未配置
 
-先检查 `GET /api/v1/content-analysis-capabilities` 的 `configured`，再检查管理员默认 LLM Provider 的 Base URL、Model 和不可变 Secret 引用。旧 env bootstrap 只作为数据库尚未创建过任何 LLM Provider 时的兼容兜底。
+先检查 `GET /api/v1/content-analysis-capabilities` 的 `configured`，再检查管理员默认 LLM Provider 的 Base URL、Model 和不可变 Secret 引用。数据库尚未创建过任何 LLM Provider 时，也可以由环境配置提供同一种 Provider；配置来源不改变分片和执行策略。
 
 ### Excel/Word 少数据
 
@@ -511,7 +513,7 @@ all
 
 `all` 在 HTTP Contract 中是独立语义；服务端持久化时复用既有 `analysis_content_runs.scope = query`，并保存内部 all 快照标记。Planner 按稳定 Content UUID keyset、连续 `target_ordinal` 分批冻结 `content_id + current_version`。
 
-正式数据库 Provider 下，Shard Size 不由用户配置，而由 Run 创建时冻结的 `max_concurrency` 自动推导；`analysis_content_runs.shard_size` 保存最终值，后续 Provider 修改不影响旧 Run。只有 legacy env bootstrap LLM 继续读取历史 `AIMA_ANALYSIS_RUN_SHARD_SIZE`。
+所有配置来源的 Provider 下，Shard Size 不由用户配置，而由 Run 创建时冻结的 `max_concurrency` 自动推导；`analysis_content_runs.shard_size` 保存最终值，后续 Provider 修改不影响旧 Run。环境配置同样遵守上述规则。
 
 ---
 

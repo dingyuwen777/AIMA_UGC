@@ -13,10 +13,12 @@ from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
-from aima_ugc.bootstrap.analysis_worker import (
-    PostgresContentAnalysisJobExecutor,
-    PostgresContentAnalysisPlanJobExecutor,
-    create_analysis_job_terminal_callback,
+from aima_ugc.bootstrap.analysis_concurrent_worker import (
+    ConcurrentPostgresContentAnalysisJobExecutor,
+)
+from aima_ugc.bootstrap.analysis_high_throughput_planner import (
+    HighThroughputContentAnalysisPlanJobExecutor,
+    create_high_throughput_analysis_job_terminal_callback,
 )
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
@@ -84,7 +86,6 @@ def _runtime(tmp_path: Path):  # type: ignore[no-untyped-def]
             "llm_base_url": "https://fake.example/v1",
             "llm_provider_name": "fake",
             "llm_model": "fake-content-labeler-v1",
-            "analysis_run_shard_size": 1,
             "analysis_run_max_in_flight_jobs": 2,
         }
     )
@@ -173,18 +174,18 @@ def _analysis_registry(
         llm=FakeContentLabelingLLM(responses=[raw_response] * 8),
     )
     registry = JobRegistry()
-    callback = create_analysis_job_terminal_callback(runtime)
+    callback = create_high_throughput_analysis_job_terminal_callback(runtime)
     register_content_analysis_job(
         registry,
         ContentAnalysisJobHandler(
-            PostgresContentAnalysisJobExecutor(
+            ConcurrentPostgresContentAnalysisJobExecutor(
                 runtime,
-                service_factory=lambda: (service, lambda: None),
+                service_factory=lambda: (service, lambda: None, 1, 1),
             )
         ),
         terminal_callback=callback,
         planner_handler=ContentAnalysisPlanJobHandler(
-            PostgresContentAnalysisPlanJobExecutor(
+            HighThroughputContentAnalysisPlanJobExecutor(
                 runtime,
                 freeze_batch_size=freeze_batch_size,
             )
@@ -405,7 +406,7 @@ def test_all_scope_planner_does_not_use_unbounded_freeze(
                 connection.scalar(
                     select(func.count()).where(analysis_content_requests_table.c.run_id == run_id)
                 )
-                == 2
+                == 1
             )
     finally:
         runtime.close()

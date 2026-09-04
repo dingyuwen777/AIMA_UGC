@@ -39,7 +39,7 @@ def active_analysis_configuration(
     session: Session,
     settings: PlatformSettings,
 ) -> ActiveAnalysisConfiguration:
-    """读取数据库 active Scheme + 默认 LLM；未迁移时才使用 bootstrap LLM 配置。"""
+    """读取数据库 active Scheme + 默认 LLM；无数据库 LLM 配置时使用环境配置形成同一身份。"""
 
     repository = PostgresAnalysisSchemeRepository(session)
     scheme, created = repository.bootstrap_default(actor_ref="system:git-bootstrap")

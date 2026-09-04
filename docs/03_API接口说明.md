@@ -431,7 +431,7 @@ Count 用独立 `none/exact/estimated` 语义，不替换 Cursor。车型与 Ana
 - [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
 - [`backend/src/aima_ugc/bootstrap/analysis_taxonomy_http.py`](../backend/src/aima_ugc/bootstrap/analysis_taxonomy_http.py)
 - [`backend/src/aima_ugc/bootstrap/content_http.py`](../backend/src/aima_ugc/bootstrap/content_http.py)
-- [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../backend/src/aima_ugc/bootstrap/analysis_worker.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py)
 - [`backend/src/aima_ugc/modules/analysis/content_analysis_job.py`](../backend/src/aima_ugc/modules/analysis/content_analysis_job.py)
 - [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../backend/src/aima_ugc/adapters/persistence/postgres/analysis.py)
 

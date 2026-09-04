@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -14,6 +15,7 @@ from sqlalchemy import (
     func,
     insert,
     literal,
+    or_,
     select,
     update,
 )
@@ -66,6 +68,15 @@ class AnalysisRunStateConflict(RuntimeError):
 
 class AnalysisRunConfigurationChanged(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisPendingPage:
+    """以扫描位置而非有效条数判断页尾，避免整页过期导致提前完成。"""
+
+    items: tuple[AnalysisWorkItem, ...]
+    last_ordinal: int
+    exhausted: bool
 
 
 class PostgresAnalysisRepository:
@@ -374,6 +385,19 @@ class PostgresAnalysisRepository:
         )
 
     def load_pending(self, request_id: UUID, *, limit: int) -> tuple[AnalysisWorkItem, ...]:
+        """读取首批待处理条目，供人工调试入口使用。"""
+
+        return self.load_pending_page(request_id, limit=limit).items
+
+    def load_pending_page(
+        self,
+        request_id: UUID,
+        *,
+        limit: int,
+        after_ordinal: int = -1,
+    ) -> AnalysisPendingPage:
+        """按冻结 ordinal 前进；调用方在同一事务验证 Fence 后处理过期项。"""
+
         if limit <= 0:
             raise ValueError("limit 必须大于 0")
         request = analysis_content_requests_table
@@ -437,6 +461,7 @@ class PostgresAnalysisRepository:
                 .where(
                     request.c.id == request_id,
                     item.c.status == "pending",
+                    item.c.ordinal > after_ordinal,
                 )
                 .order_by(item.c.ordinal)
                 .limit(limit)
@@ -448,7 +473,7 @@ class PostgresAnalysisRepository:
             )
             if request_exists is None:
                 raise AnalysisRequestNotFound
-            return ()
+            return AnalysisPendingPage((), after_ordinal, True)
 
         work: list[AnalysisWorkItem] = []
         for row in rows:
@@ -464,7 +489,7 @@ class PostgresAnalysisRepository:
                 )
                 continue
             work.append(_row_to_work_item(row))
-        return tuple(work)
+        return AnalysisPendingPage(tuple(work), rows[-1]["ordinal"], len(rows) < limit)
 
     def persist_success(
         self,
@@ -635,11 +660,22 @@ class PostgresAnalysisRepository:
         return self._session.execute(statement).mappings().one_or_none()
 
     def list_runs(self, *, limit: int = 50) -> tuple[RowMapping, ...]:
+        """返回最近任务并保留全部活动任务，避免长任务被新历史挤出轮询。"""
+
+        run = analysis_content_runs_table
+        recent_ids = select(run.c.id).order_by(run.c.sequence_no.desc()).limit(limit)
         return tuple(
             self._session.execute(
-                select(analysis_content_runs_table)
-                .order_by(analysis_content_runs_table.c.sequence_no.desc())
-                .limit(limit)
+                select(run)
+                .where(
+                    or_(
+                        run.c.id.in_(recent_ids),
+                        run.c.status.in_(
+                            ("queued", "running", "cancelling"),
+                        ),
+                    )
+                )
+                .order_by(run.c.sequence_no.desc())
             ).mappings()
         )
 

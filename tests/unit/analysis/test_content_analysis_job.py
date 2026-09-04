@@ -2,7 +2,7 @@
 
 from uuid import uuid4
 
-from aima_ugc.bootstrap.analysis_worker import _progress_after_batch
+from aima_ugc.bootstrap.analysis_concurrent_worker import _progress_after_processed
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
     CONTENT_ANALYSIS_JOB_TIMEOUT_SECONDS,
@@ -46,7 +46,7 @@ def test_content_analysis_job_contract_and_registration() -> None:
 
 def test_analysis_batch_progress_does_not_count_the_current_batch_twice() -> None:
     assert (
-        _progress_after_batch(
+        _progress_after_processed(
             {"pending": 2, "succeeded": 0, "failed": 0, "stale": 0},
             processed_count=2,
         )

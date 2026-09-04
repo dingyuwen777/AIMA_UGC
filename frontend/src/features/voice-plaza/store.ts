@@ -1,9 +1,8 @@
 import { computed, reactive, ref } from 'vue'
-import { defineStore } from 'pinia'
+import { defineStore, storeToRefs } from 'pinia'
 
 import type {
   AnalysisContentRunPreviewResponse,
-  AnalysisContentRunResponse,
   AnalysisRunTargetSelection,
   ContentAnalysisManualReviewRequest,
   ContentAnalysisStatus,
@@ -23,11 +22,9 @@ import type {
   PlatformName,
 } from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
+import { useTaskCenterStore } from '../task-center/store'
 import {
   VoicePlazaApiError,
-  cancelAnalysisRun,
-  fetchAnalysisRun,
-  fetchAnalysisRuns,
   fetchContentAnalysisCapabilities,
   fetchContentAnalysisTaxonomy,
   fetchContentCount,
@@ -96,6 +93,8 @@ function relevanceReviewNotice(
 }
 
 export const useVoicePlazaStore = defineStore('voice-plaza', () => {
+  const taskCenter = useTaskCenterStore()
+  const { analysisRuns, hasActiveAnalysisRuns, cancellingAnalysisRunId } = storeToRefs(taskCenter)
   const filters = reactive<VoicePlazaFilters>({ ...EMPTY_FILTERS })
   const items = ref<ContentListItemResponse[]>([])
   const detail = ref<ContentDetailResponse | null>(null)
@@ -103,7 +102,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const nextCursor = ref<string | null>(null)
   const hasMore = ref(false)
   const exports = ref<DataExportResponse[]>([])
-  const analysisRuns = ref<AnalysisContentRunResponse[]>([])
   const analysisPreview = ref<AnalysisContentRunPreviewResponse | null>(null)
   const analysisConfigured = ref<boolean | null>(null)
   const taxonomy = ref<ContentAnalysisTaxonomyResponse | null>(null)
@@ -116,7 +114,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const loadingDetail = ref(false)
   const submittingAnalysis = ref(false)
   const previewingAnalysis = ref(false)
-  const cancellingAnalysisRunId = ref<string | null>(null)
   const submittingExport = ref(false)
   const reviewingRelevance = ref(false)
   const reviewingDetail = ref(false)
@@ -128,15 +125,20 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     targets: AnalysisRunTargetSelection
     clientIdempotencyKey: string
   } | null = null
+  let windowRefreshInFlight = false
+  let exportsRefreshInFlight = false
   let pollHandle: ReturnType<typeof setInterval> | undefined
+  let pollRevision = 0
+  let lastExportPollAt = 0
+  let displayedAnalysisSignature = '[]'
+  const analysisSignature = computed(() => JSON.stringify(analysisRuns.value.map((run) => [
+    run.id, run.status, run.stats?.succeeded, run.stats?.failed, run.stats?.stale,
+    run.stats?.cancelled,
+  ]).sort(([left], [right]) => String(left).localeCompare(String(right)))))
 
   const allVisibleSelected = computed(
     () => items.value.length > 0 && items.value.every((item) => selectedIds.value.includes(item.id)),
   )
-  const hasActiveAnalysisRuns = computed(() =>
-  analysisRuns.value.some((item) =>
-    item.status === 'queued' || item.status === 'running' || item.status === 'cancelling'),
-)
 const hasActiveExportJobs = computed(() =>
   exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
 )
@@ -197,7 +199,10 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
   }
 
   /** 重新读取当前已加载的 Cursor 窗口，刷新内容状态但不把列表折叠回第一页。 */
-async function refreshLoadedWindow(): Promise<void> {
+async function refreshLoadedWindow(): Promise<boolean> {
+  if (windowRefreshInFlight) return false
+  windowRefreshInFlight = true
+  const filtersAtStart = JSON.stringify(filterSnapshot())
   const targetCount = Math.max(items.value.length, 20)
   listError.value = null
   error.value = null
@@ -221,15 +226,20 @@ async function refreshLoadedWindow(): Promise<void> {
       seenCursors.add(pageNext)
       cursor = pageNext
     }
+    if (filtersAtStart !== JSON.stringify(filterSnapshot())) return false
     items.value = refreshed
     nextCursor.value = pageNext
     hasMore.value = pageHasMore
     selectedIds.value = selectedIds.value.filter((id) => seenIds.has(id))
     if (detail.value) detail.value = await fetchContentDetail(detail.value.id)
+    return true
   } catch (reason) {
     const message = errorMessage(reason)
     listError.value = message
     error.value = message
+    return false
+  } finally {
+    windowRefreshInFlight = false
   }
 }
 
@@ -454,7 +464,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         run_intent: 'manual_reanalysis',
         targets: analysisDraft.targets,
       })
-      await refreshAnalysisRuns()
+      await refreshAnalysisRuns(true)
       analysisDraft = null
       analysisPreview.value = null
       return created.target_count
@@ -466,40 +476,21 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
-  async function refreshAnalysisRuns(): Promise<void> {
-    try {
-      const listedRuns = (await fetchAnalysisRuns()).items
-      analysisRuns.value = await Promise.all(
-        listedRuns.map((run) =>
-          ['queued', 'running', 'cancelling'].includes(run.status)
-            ? fetchAnalysisRun(run.id)
-            : run,
-        ),
-      )
-    } catch (reason) {
-      error.value = errorMessage(reason)
-    }
+  async function refreshAnalysisRuns(afterCreation = false): Promise<void> {
+    await taskCenter.refreshAnalysisRuns(afterCreation)
+    if (taskCenter.analysisError) error.value = taskCenter.analysisError
   }
 
   async function cancelRun(runId: string): Promise<boolean> {
-    if (cancellingAnalysisRunId.value) return false
-    cancellingAnalysisRunId.value = runId
     error.value = null
-    try {
-      const cancelled = await cancelAnalysisRun(runId)
-      analysisRuns.value = analysisRuns.value.map((item) =>
-        item.id === cancelled.id ? cancelled : item,
-      )
-      return true
-    } catch (reason) {
-      error.value = errorMessage(reason)
-      return false
-    } finally {
-      cancellingAnalysisRunId.value = null
-    }
+    const cancelled = await taskCenter.cancelAnalysisRun(runId)
+    if (!cancelled && taskCenter.warning) error.value = taskCenter.warning
+    return cancelled
   }
 
   async function refreshExports(): Promise<void> {
+    if (exportsRefreshInFlight) return
+    exportsRefreshInFlight = true
     try {
       const [response, catalog] = await Promise.all([
         fetchDataExports(),
@@ -511,6 +502,8 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       exportColumnCatalog.value = catalog
     } catch (reason) {
       error.value = errorMessage(reason)
+    } finally {
+      exportsRefreshInFlight = false
     }
   }
 
@@ -554,24 +547,36 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     notice.value = null
   }
 
-  /** 刷新后台 Job 状态；仅分析任务需要同步内容窗口，纯导出任务不重载列表。 */
-async function poll(): Promise<void> {
-  if (document.visibilityState === 'hidden' || !hasActiveJobs.value) return
-  try {
-    const tasks: Promise<unknown>[] = [refreshExports(), refreshAnalysisRuns()]
-    if (hasActiveAnalysisRuns.value) tasks.push(refreshLoadedWindow())
-    await Promise.all(tasks)
-  } catch (reason) {
-    error.value = errorMessage(reason)
+  /** 先读落库进度再刷新内容；慢窗口未包含的新进度留到下一次，终态也不丢刷新。 */
+  async function poll(): Promise<void> {
+    if (pageIsHidden()) return
+    const revision = pollRevision
+    if (hasActiveExportJobs.value && Date.now() - lastExportPollAt >= 5000) {
+      lastExportPollAt = Date.now()
+      void refreshExports()
+    }
+    await taskCenter.pollAnalysisRuns()
+    if (revision !== pollRevision || pageIsHidden()) return
+    const signature = analysisSignature.value
+    if (signature !== displayedAnalysisSignature && !loading.value && !loadingNext.value &&
+      !taxonomyLoading.value && await refreshLoadedWindow()) {
+      displayedAnalysisSignature = signature
+    }
+    if (taskCenter.analysisError) error.value = taskCenter.analysisError
   }
-}
 
-  function startPolling(intervalMilliseconds = 5000): void {
+  function pageIsHidden(): boolean {
+    return document.visibilityState === 'hidden'
+  }
+
+  function startPolling(intervalMilliseconds = 1000): void {
     stopPolling()
+    lastExportPollAt = Date.now()
     pollHandle = setInterval(() => void poll(), intervalMilliseconds)
   }
 
   function stopPolling(): void {
+    pollRevision += 1
     if (pollHandle !== undefined) clearInterval(pollHandle)
     pollHandle = undefined
   }

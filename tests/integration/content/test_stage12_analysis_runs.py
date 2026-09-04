@@ -11,10 +11,12 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
-from aima_ugc.bootstrap.analysis_worker import (
-    PostgresContentAnalysisJobExecutor,
-    PostgresContentAnalysisPlanJobExecutor,
-    create_analysis_job_terminal_callback,
+from aima_ugc.bootstrap.analysis_concurrent_worker import (
+    ConcurrentPostgresContentAnalysisJobExecutor,
+)
+from aima_ugc.bootstrap.analysis_high_throughput_planner import (
+    HighThroughputContentAnalysisPlanJobExecutor,
+    create_high_throughput_analysis_job_terminal_callback,
 )
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
@@ -123,18 +125,18 @@ def _analysis_registry(runtime, *, sentiment: str) -> JobRegistry:  # type: igno
         llm=FakeContentLabelingLLM(responses=[_response(sentiment)] * 3),
     )
     registry = JobRegistry()
-    callback = create_analysis_job_terminal_callback(runtime)
+    callback = create_high_throughput_analysis_job_terminal_callback(runtime)
     register_content_analysis_job(
         registry,
         ContentAnalysisJobHandler(
-            PostgresContentAnalysisJobExecutor(
+            ConcurrentPostgresContentAnalysisJobExecutor(
                 runtime,
-                service_factory=lambda: (service, lambda: None),
+                service_factory=lambda: (service, lambda: None, 1, 1),
             )
         ),
         terminal_callback=callback,
         planner_handler=ContentAnalysisPlanJobHandler(
-            PostgresContentAnalysisPlanJobExecutor(runtime)
+            HighThroughputContentAnalysisPlanJobExecutor(runtime)
         ),
         planner_terminal_callback=callback,
     )
@@ -167,7 +169,6 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
             "llm_base_url": "https://fake.example/v1",
             "llm_provider_name": "fake",
             "llm_model": "fake-content-labeler-v1",
-            "analysis_run_shard_size": 1,
             "analysis_run_max_in_flight_jobs": 2,
         }
     )
@@ -212,8 +213,8 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
         )
         assert preview.status_code == 200
         assert preview.json()["target_count"] == 3
-        assert preview.json()["shard_count"] == 3
-        assert preview.json()["shard_size"] == 1
+        assert preview.json()["shard_count"] == 1
+        assert preview.json()["shard_size"] == 200
         assert preview.json()["cost_estimate_available"] is False
 
         create_body = {
@@ -265,7 +266,7 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
                 == 1
             )
 
-        assert _drain_analysis(runtime, sentiment="负面", worker_id="stage12-run-1") == 4
+        assert _drain_analysis(runtime, sentiment="负面", worker_id="stage12-run-1") == 2
         run = client.get(f"/api/v1/analysis/content-runs/{run_id}")
         assert run.status_code == 200
         assert run.json()["status"] == "succeeded"
@@ -276,7 +277,7 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
             "stale": 0,
             "cancelled": 0,
         }
-        assert len(run.json()["shards"]) == 3
+        assert len(run.json()["shards"]) == 1
         with runtime.database.engine.begin() as connection:
             assert (
                 connection.scalar(
@@ -298,7 +299,7 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
             },
         )
         assert created_2.status_code == 202
-        assert _drain_analysis(runtime, sentiment="正面", worker_id="stage12-run-2") == 4
+        assert _drain_analysis(runtime, sentiment="正面", worker_id="stage12-run-2") == 2
         with runtime.database.engine.begin() as connection:
             assert (
                 connection.scalar(select(func.count()).select_from(analysis_content_results_table))
@@ -378,7 +379,6 @@ def test_analysis_all_scope_reuses_query_storage_and_freezes_all_current_content
             "llm_base_url": "https://fake.example/v1",
             "llm_provider_name": "fake",
             "llm_model": "fake-content-labeler-v1",
-            "analysis_run_shard_size": 1,
             "analysis_run_max_in_flight_jobs": 2,
         }
     )
@@ -442,7 +442,7 @@ def test_analysis_all_scope_reuses_query_storage_and_freezes_all_current_content
                 == 0
             )
 
-        assert _drain_analysis(runtime, sentiment="中性", worker_id="stage12-analysis-all") == 4
+        assert _drain_analysis(runtime, sentiment="中性", worker_id="stage12-analysis-all") == 2
         run = client.get(f"/api/v1/analysis/content-runs/{run_id}")
         assert run.status_code == 200
         assert run.json()["scope"] == "all"
@@ -469,7 +469,6 @@ def test_analysis_planner_rolls_back_when_frozen_selection_count_changed(tmp_pat
             "llm_base_url": "https://fake.example/v1",
             "llm_provider_name": "fake",
             "llm_model": "fake-content-labeler-v1",
-            "analysis_run_shard_size": 1,
             "analysis_run_max_in_flight_jobs": 2,
         }
     )
@@ -567,7 +566,6 @@ def test_analysis_run_runtime_configuration_policy(
             "llm_base_url": "https://fake.example/v1",
             "llm_provider_name": "fake",
             "llm_model": "fake-content-labeler-v1",
-            "analysis_run_shard_size": 1,
             "analysis_run_max_in_flight_jobs": 1,
         }
     )
@@ -647,19 +645,19 @@ def test_analysis_run_runtime_configuration_policy(
             prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
             llm=fake_llm,
         )
-        callback = create_analysis_job_terminal_callback(drifted_runtime)
+        callback = create_high_throughput_analysis_job_terminal_callback(drifted_runtime)
         registry = JobRegistry()
         register_content_analysis_job(
             registry,
             ContentAnalysisJobHandler(
-                PostgresContentAnalysisJobExecutor(
+                ConcurrentPostgresContentAnalysisJobExecutor(
                     drifted_runtime,
-                    service_factory=lambda: (service, lambda: None),
+                    service_factory=lambda: (service, lambda: None, 1, 1),
                 )
             ),
             terminal_callback=callback,
             planner_handler=ContentAnalysisPlanJobHandler(
-                PostgresContentAnalysisPlanJobExecutor(drifted_runtime)
+                HighThroughputContentAnalysisPlanJobExecutor(drifted_runtime)
             ),
             planner_terminal_callback=callback,
         )

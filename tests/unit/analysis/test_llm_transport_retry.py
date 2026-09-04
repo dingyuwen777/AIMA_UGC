@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+
 import pytest
 from aima_ugc.adapters.llm import (
     OpenAICompatibleLLMError,
+    RateLimitedContentLabelingLLM,
     RetryingContentLabelingLLM,
 )
 from aima_ugc.modules.analysis import ContentLabelingLLMRequest, ContentLabelingLLMResponse
+from aima_ugc.modules.analysis.content_labeling import ContentLabelingStopped
 
 
 class _InnerLLM:
@@ -110,3 +115,41 @@ def test_transport_retry_stops_after_configured_retry_limit(
     assert inner.calls == 3
     assert wrapper.total_requests == 3
     assert wrapper.total_retries == 2
+
+
+class _ObservedStop(Event):
+    """在进入可中断等待时通知测试线程，避免依赖任意 sleep。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.waiting = Event()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.waiting.set()
+        return super().wait(timeout)
+
+
+@pytest.mark.parametrize("stage", ["before_start", "backoff", "rate_limit"])
+def test_stop_prevents_sends_and_interrupts_waits(
+    stage: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stop = _ObservedStop()
+    inner = _InnerLLM([_transient()] if stage == "backoff" else [ContentLabelingLLMResponse("ok")])
+    request = ContentLabelingLLMRequest(prompt="prompt", items=(), stop_event=stop)
+    limited = RateLimitedContentLabelingLLM(inner=inner, max_rps=1)
+    wrapper = RetryingContentLabelingLLM(inner=limited)
+    monkeypatch.setattr("aima_ugc.adapters.llm.retrying._retry_delay_seconds", lambda _: 30)
+    if stage == "before_start":
+        stop.set()
+    elif stage == "rate_limit":
+        assert wrapper.complete(request).raw_text == "ok"
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(wrapper.complete, request)
+        if stage != "before_start":
+            assert stop.waiting.wait(1)
+            stop.set()
+        with pytest.raises(ContentLabelingStopped):
+            future.result(timeout=1)
+    assert inner.calls == (0 if stage == "before_start" else 1)
+    assert wrapper.total_requests == inner.calls
+    assert wrapper.total_retries == 0
