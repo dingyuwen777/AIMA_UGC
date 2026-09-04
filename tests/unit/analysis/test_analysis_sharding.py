@@ -21,6 +21,7 @@ def _provider(*, max_concurrency: int, max_rps: int | None) -> ProviderConfig:
         display_name="RPS Shard Fake",
         base_url="https://fake.example/v1",
         secret_ref="providers/tests/fake-rps.key",
+        model="fake-model",
         enabled=True,
         max_concurrency=max_concurrency,
         max_rps=max_rps,
