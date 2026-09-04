@@ -122,6 +122,7 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
             identity=identity,
             llm_provider=SimpleNamespace(
                 id=provider_config_id,
+                max_concurrency=5,
                 safe_runtime_snapshot=lambda: runtime_config_snapshot,
             ),
             scheme=SimpleNamespace(id=uuid4()),
