@@ -49,7 +49,7 @@ withDefaults(defineProps<{
 }
 
 .is-small {
-  min-height: var(--aima-control-height-sm);
+  min-height: var(--aima-button-height-sm);
   padding: 0 10px;
   font-size: var(--aima-font-size-body-small);
 }
