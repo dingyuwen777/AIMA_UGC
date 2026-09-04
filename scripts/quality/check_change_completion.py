@@ -20,6 +20,9 @@ READY_CHECK = Path(".agents/skills/coding/scripts/ready_check.py")
 CURRENT_SCHEMA = "coding-change/v1"
 LEGACY_SCHEMA = "rvc-change/v1"
 SCHEMA_PATTERN = re.compile(r"^schema:\s*([^#]+?)\s*$")
+MISSING_ARCHIVE_SOURCE_PATTERN = re.compile(
+    r"^R[1-9][0-9]* Requirement Source 仓库文件不存在：(.+)$"
+)
 
 
 @dataclass(frozen=True)
@@ -178,6 +181,57 @@ def _git_show(root: Path, revision: str, relative: str) -> str:
     return result.stdout
 
 
+def _git_last_path_revision(root: Path, relative: str) -> str | None:
+    """返回当前路径最后一次被提交修改的 revision，供不可变归档恢复历史事实。"""
+    result = subprocess.run(
+        ["git", "-C", str(root), "log", "-1", "--format=%H", "--", relative],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        return None
+    revision = result.stdout.strip()
+    return revision or None
+
+
+def _git_path_exists_at_revision(root: Path, revision: str, relative: str) -> bool:
+    """确认仓库相对路径在给定历史 revision 中真实存在，不从当前 HEAD 猜测。"""
+    result = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "-e", f"{revision}:{relative}"],
+        check=False,
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def _preserve_historical_archive_sources(
+    root: Path,
+    change_path: Path,
+    document_errors: Sequence[str],
+) -> list[str]:
+    """仅对已归档 Change 接受在其归档 revision 真实存在、后来才删除的来源。"""
+    if not document_errors:
+        return []
+    change_relative = _normalise_relative_path(change_path.relative_to(root))
+    archive_revision = _git_last_path_revision(root, change_relative)
+    if archive_revision is None:
+        return list(document_errors)
+
+    preserved: list[str] = []
+    for message in document_errors:
+        match = MISSING_ARCHIVE_SOURCE_PATTERN.fullmatch(message)
+        if match is None:
+            preserved.append(message)
+            continue
+        source_relative = _normalise_relative_path(match.group(1))
+        if not _git_path_exists_at_revision(root, archive_revision, source_relative):
+            preserved.append(message)
+    return preserved
+
+
 def _changed_paths_and_errors(
     root: Path,
     base: str,
@@ -334,6 +388,12 @@ def check_repository(
             strict += 1
             try:
                 document_errors = validator._validate_ready_document(root, path)
+                if location == "archive":
+                    document_errors = _preserve_historical_archive_sources(
+                        root,
+                        path,
+                        document_errors,
+                    )
             except (OSError, ValueError) as exc:
                 document_errors = [str(exc)]
             errors.extend({"path": relative, "message": message} for message in document_errors)

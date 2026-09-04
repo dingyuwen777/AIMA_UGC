@@ -49,7 +49,12 @@ def _commit(root: Path, message: str) -> str:
     return _run_git(root, "rev-parse", "HEAD")
 
 
-def _current_change(change_id: str, *, status: str = "ready_for_review") -> str:
+def _current_change(
+    change_id: str,
+    *,
+    status: str = "ready_for_review",
+    source: str = "requirements.md",
+) -> str:
     """返回可通过 installed validator 的最小当前 Change。"""
     return f"""---
 schema: coding-change/v1
@@ -66,7 +71,7 @@ depends_on: []
 affected_areas:
   - governance
 affected_paths:
-  - requirements.md
+  - {source}
 contracts: []
 data_changes: []
 ---
@@ -75,7 +80,7 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Test requirement | requirements.md | satisfied | Test evidence |
+| R1 | Test requirement | {source} | satisfied | Test evidence |
 
 # Completion Audit
 
@@ -165,6 +170,65 @@ def test_ready_current_change_and_unchanged_legacy_archive_pass(tmp_path: Path) 
         "legacy": 2,
         "errors": [],
     }
+
+
+def test_archived_current_change_preserves_source_that_existed_at_archive_revision(
+    tmp_path: Path,
+) -> None:
+    """归档后正常删除旧 Owner 文件时，历史 Source 必须按归档 revision 验真而不是改写历史。"""
+    _init_repository(tmp_path)
+    archived = tmp_path / "changes/archive/2026-09/CHG-20260902-current/CHANGE.md"
+    _write(
+        archived,
+        _current_change("CHG-20260902-current", status="done"),
+    )
+    _commit(tmp_path, "归档当前变更")
+    (tmp_path / "requirements.md").unlink()
+    _commit(tmp_path, "后续删除旧来源文件")
+
+    result = _check(tmp_path)
+
+    assert result["ok"] is True
+    assert result["gated"] == 1
+    assert result["strict_checked"] == 1
+    assert result["errors"] == []
+
+
+def test_archived_current_change_rejects_source_that_never_existed_in_archive_revision(
+    tmp_path: Path,
+) -> None:
+    """archive fast path 只接受历史 revision 的真实来源，不能让虚构路径借归档绕过。"""
+    _init_repository(tmp_path)
+    archived = tmp_path / "changes/archive/2026-09/CHG-20260902-current/CHANGE.md"
+    _write(
+        archived,
+        _current_change(
+            "CHG-20260902-current",
+            status="done",
+            source="never-existed.md",
+        ),
+    )
+    _commit(tmp_path, "归档带无效来源的变更")
+
+    result = _check(tmp_path)
+
+    assert result["ok"] is False
+    assert any("never-existed.md" in error["message"] for error in result["errors"])
+
+
+def test_active_current_change_still_requires_source_in_current_head(tmp_path: Path) -> None:
+    """历史兼容只属于 archive；Active Change 的 Requirement Source 仍必须当前可访问。"""
+    _init_repository(tmp_path)
+    active = tmp_path / "changes/active/CHG-20260902-current/CHANGE.md"
+    _write(active, _current_change("CHG-20260902-current"))
+    _commit(tmp_path, "新增当前变更")
+    (tmp_path / "requirements.md").unlink()
+    _commit(tmp_path, "删除当前来源文件")
+
+    result = _check(tmp_path, require_active_ready=True)
+
+    assert result["ok"] is False
+    assert any("requirements.md" in error["message"] for error in result["errors"])
 
 
 def test_modified_legacy_archive_fails(tmp_path: Path) -> None:
