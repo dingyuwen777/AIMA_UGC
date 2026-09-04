@@ -11,8 +11,8 @@
   min-width: 0;
 }
 
-/* 表格只允许自身容器横向滚动，不把整个 App Shell 撑出 viewport。 */
-.app-shell :where(.table-wrap, .table-card, .audit-card) {
+/* 表格只允许自身容器横向滚动；#app 保证能覆盖旧 scoped overflow shorthand。 */
+#app .app-shell :where(.table-wrap, .table-card, .audit-card) {
   max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
@@ -161,7 +161,7 @@
     flex-wrap: wrap;
   }
 
-  .app-shell .admin-page :where(.two-column, .scheme-layout) {
+  #app .app-shell .admin-page :where(.two-column, .scheme-layout) {
     grid-template-columns: minmax(0, 1fr);
   }
 
