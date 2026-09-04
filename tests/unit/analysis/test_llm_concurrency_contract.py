@@ -5,7 +5,7 @@ import inspect
 
 from aima_ugc.adapters.llm.openai_compatible import OpenAICompatibleContentLabelingLLM
 from aima_ugc.adapters.providers.imports_test import test as imports_test
-from aima_ugc.modules.analysis.offline_labeling import label_unified_content_jsonl
+from aima_ugc.modules.analysis import label_unified_content_jsonl
 
 
 def test_imports_test_defaults_to_250_single_item_concurrency() -> None:
@@ -18,6 +18,7 @@ def test_offline_labeling_exposes_concurrency_not_model_batch_size() -> None:
     parameters = inspect.signature(label_unified_content_jsonl).parameters
     assert "max_concurrency" in parameters
     assert parameters["max_concurrency"].default == 250
+    assert "batch_size" not in parameters
 
 
 def test_openai_compatible_adapter_can_size_connection_pool_for_concurrency() -> None:

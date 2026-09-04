@@ -28,10 +28,10 @@ function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && store.open) store.closeCenter()
 }
 
-onMounted(async () => {
+onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
-  await store.refresh()
   store.startPolling()
+  void store.refresh()
 })
 
 onBeforeUnmount(() => {

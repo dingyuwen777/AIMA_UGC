@@ -174,7 +174,7 @@ jobs:
           read -r -a specs <<< "${REQUESTED_SPECS}"
           for spec in "${specs[@]}"; do
             case "${spec}" in
-              admin-product-capabilities.spec.ts|collection-plan-search-config.spec.ts|excel-import.spec.ts|manual-relevance-review.spec.ts|stage12-historical-analysis.spec.ts)
+              admin-product-capabilities.spec.ts|analysis-streaming.spec.ts|collection-plan-search-config.spec.ts|excel-import.spec.ts|manual-relevance-review.spec.ts|stage12-historical-analysis.spec.ts)
                 ;;
               *)
                 echo "Unknown full-stack spec: ${spec}" >&2

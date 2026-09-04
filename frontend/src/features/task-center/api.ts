@@ -1,6 +1,5 @@
 import {
   cancelContentAnalysisRun,
-  getContentAnalysisRun,
   listCollectionRuntimeRuns,
   listContentAnalysisRuns,
   listDataExports,
@@ -32,18 +31,13 @@ function unwrap<T>(value: T): T {
   return value
 }
 
-/** 读取 Analysis Run，并对活动 Run 尽量补齐 Shard 级详情；详情失败时保留列表事实。 */
+/** 列表已包含精确落库统计，无需为每个活动 Run 重复请求详情。 */
 export async function fetchTaskCenterAnalysisRuns(): Promise<AnalysisContentRunResponse[]> {
   const response = unwrap(await listContentAnalysisRuns())
-  const activeStatuses = new Set(['queued', 'running', 'cancelling'])
-  return Promise.all(response.items.map(async (run) => {
-    if (!activeStatuses.has(run.status)) return run
-    try {
-      return unwrap(await getContentAnalysisRun(run.id))
-    } catch {
-      return run
-    }
-  }))
+  if (!response || !Array.isArray(response.items)) {
+    throw new Error('AI Analysis Run 历史响应格式无效。')
+  }
+  return response.items
 }
 
 /** 按单一活动状态翻完 Collection Runtime，避免较早但仍活动的任务被历史记录挤出首屏。 */

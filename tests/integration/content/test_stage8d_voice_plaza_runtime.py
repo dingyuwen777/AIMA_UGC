@@ -11,10 +11,12 @@ from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
 from aima_ugc.adapters.persistence.postgres.reporting import PostgresDataExportRepository
-from aima_ugc.bootstrap.analysis_worker import (
-    PostgresContentAnalysisJobExecutor,
-    PostgresContentAnalysisPlanJobExecutor,
-    create_analysis_job_terminal_callback,
+from aima_ugc.bootstrap.analysis_concurrent_worker import (
+    ConcurrentPostgresContentAnalysisJobExecutor,
+)
+from aima_ugc.bootstrap.analysis_high_throughput_planner import (
+    HighThroughputContentAnalysisPlanJobExecutor,
+    create_high_throughput_analysis_job_terminal_callback,
 )
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
@@ -144,18 +146,18 @@ def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[n
         prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
         llm=FakeContentLabelingLLM(responses=[response]),
     )
-    executor = PostgresContentAnalysisJobExecutor(
+    executor = ConcurrentPostgresContentAnalysisJobExecutor(
         runtime,
-        service_factory=lambda: (service, lambda: None),
+        service_factory=lambda: (service, lambda: None, 1, 1),
     )
     registry = JobRegistry()
-    callback = create_analysis_job_terminal_callback(runtime)
+    callback = create_high_throughput_analysis_job_terminal_callback(runtime)
     register_content_analysis_job(
         registry,
         ContentAnalysisJobHandler(executor),
         terminal_callback=callback,
         planner_handler=ContentAnalysisPlanJobHandler(
-            PostgresContentAnalysisPlanJobExecutor(runtime)
+            HighThroughputContentAnalysisPlanJobExecutor(runtime)
         ),
         planner_terminal_callback=callback,
     )
@@ -192,10 +194,17 @@ class _VersionChangingLabelingService:
     def configuration_identity(self):  # type: ignore[no-untyped-def]
         return self._delegate.configuration_identity
 
-    def label_contents(self, contents, *, max_validation_retries):  # type: ignore[no-untyped-def]
+    def label_contents(  # type: ignore[no-untyped-def]
+        self,
+        contents,
+        *,
+        max_validation_retries,
+        stop_event=None,
+    ):
         result = self._delegate.label_contents(
             contents,
             max_validation_retries=max_validation_retries,
+            stop_event=stop_event,
         )
         with self._runtime.database.engine.begin() as connection:
             connection.execute(
@@ -572,21 +581,23 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
                 ]
             ),
         )
-        executor = PostgresContentAnalysisJobExecutor(
+        executor = ConcurrentPostgresContentAnalysisJobExecutor(
             runtime,
             service_factory=lambda: (
                 _VersionChangingLabelingService(runtime, delegate, content_id),
                 lambda: None,
+                1,
+                1,
             ),
         )
         registry = JobRegistry()
-        callback = create_analysis_job_terminal_callback(runtime)
+        callback = create_high_throughput_analysis_job_terminal_callback(runtime)
         register_content_analysis_job(
             registry,
             ContentAnalysisJobHandler(executor),
             terminal_callback=callback,
             planner_handler=ContentAnalysisPlanJobHandler(
-                PostgresContentAnalysisPlanJobExecutor(runtime)
+                HighThroughputContentAnalysisPlanJobExecutor(runtime)
             ),
             planner_terminal_callback=callback,
         )

@@ -11,10 +11,12 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
-from aima_ugc.bootstrap.analysis_worker import (
-    PostgresContentAnalysisJobExecutor,
-    PostgresContentAnalysisPlanJobExecutor,
-    create_analysis_job_terminal_callback,
+from aima_ugc.bootstrap.analysis_concurrent_worker import (
+    ConcurrentPostgresContentAnalysisJobExecutor,
+)
+from aima_ugc.bootstrap.analysis_high_throughput_planner import (
+    HighThroughputContentAnalysisPlanJobExecutor,
+    create_high_throughput_analysis_job_terminal_callback,
 )
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
@@ -130,18 +132,18 @@ def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[n
         prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
         llm=FakeContentLabelingLLM(responses=[response]),
     )
-    executor = PostgresContentAnalysisJobExecutor(
+    executor = ConcurrentPostgresContentAnalysisJobExecutor(
         runtime,
-        service_factory=lambda: (service, lambda: None),
+        service_factory=lambda: (service, lambda: None, 1, 1),
     )
     registry = JobRegistry()
-    callback = create_analysis_job_terminal_callback(runtime)
+    callback = create_high_throughput_analysis_job_terminal_callback(runtime)
     register_content_analysis_job(
         registry,
         ContentAnalysisJobHandler(executor),
         terminal_callback=callback,
         planner_handler=ContentAnalysisPlanJobHandler(
-            PostgresContentAnalysisPlanJobExecutor(runtime)
+            HighThroughputContentAnalysisPlanJobExecutor(runtime)
         ),
         planner_terminal_callback=callback,
     )

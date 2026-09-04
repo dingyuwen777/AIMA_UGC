@@ -12,6 +12,8 @@ from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMPort,
     ContentLabelingLLMRequest,
     ContentLabelingLLMResponse,
+    ContentLabelingStopped,
+    ensure_labeling_running,
 )
 
 from .openai_compatible import OpenAICompatibleLLMError
@@ -37,6 +39,8 @@ class RetryingContentLabelingLLM:
         self._metrics_lock = Lock()
         self._total_requests = 0
         self._total_retries = 0
+        self._logical_requests = 0
+        self._backoff_seconds = 0.0
 
     @property
     def provider_name(self) -> str:
@@ -56,23 +60,53 @@ class RetryingContentLabelingLLM:
         with self._metrics_lock:
             return self._total_retries
 
+    def request_metrics(self) -> dict[str, int]:
+        """区分逻辑调用、实际重试和累计退避时间，避免混进模型处理耗时。"""
+
+        with self._metrics_lock:
+            return {
+                "logical_requests": self._logical_requests,
+                "transport_retries": self._total_retries,
+                "retry_wait_ms": round(self._backoff_seconds * 1000),
+            }
+
     def complete(self, request: ContentLabelingLLMRequest) -> ContentLabelingLLMResponse:
         """完成一个逻辑 Validation Attempt；Transient Transport 失败才重试。"""
 
+        ensure_labeling_running(request.stop_event)
+        with self._metrics_lock:
+            self._logical_requests += 1
         actual_request = (
             request
             if request.logical_request_id is not None
             else replace(request, logical_request_id=uuid4().hex)
         )
         for transport_attempt in range(1, self._max_retries + 2):
-            self._record_request()
+            ensure_labeling_running(actual_request.stop_event)
             try:
-                return self._inner.complete(actual_request)
+                response = self._inner.complete(actual_request)
+            except ContentLabelingStopped:
+                raise
             except OpenAICompatibleLLMError as exc:
+                self._record_request()
                 if not exc.retryable or transport_attempt > self._max_retries:
                     raise
+                ensure_labeling_running(actual_request.stop_event)
+                delay = _retry_delay_seconds(transport_attempt)
+                before = time.monotonic()
+                try:
+                    if actual_request.stop_event is None:
+                        time.sleep(delay)
+                    else:
+                        actual_request.stop_event.wait(delay)
+                        ensure_labeling_running(actual_request.stop_event)
+                finally:
+                    with self._metrics_lock:
+                        self._backoff_seconds += time.monotonic() - before
                 self._record_retry()
-                time.sleep(_retry_delay_seconds(transport_attempt))
+            else:
+                self._record_request()
+                return response
 
         raise RuntimeError("LLM Transport Retry 状态异常")
 

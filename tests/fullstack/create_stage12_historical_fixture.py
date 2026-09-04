@@ -38,6 +38,20 @@ def main() -> int:
     historical_root = Path(sys.argv[2])
     common = ("小红书", "Stage12 Full-stack 作者", "2025-01-02 10:00:00")
     _write_xlsx(
+        ordinary_path.with_name("analysis-streaming.xlsx"),
+        tuple(
+            (
+                "小红书",
+                f"爱玛 并发验收 {name}",
+                "爱玛通勤舒适性验收",
+                "验收用户",
+                "2026-09-04 01:00:00",
+                f"https://www.xiaohongshu.com/explore/streaming-{name}",
+            )
+            for name in ("A", "B")
+        ),
+    )
+    _write_xlsx(
         ordinary_path,
         (
             (

@@ -43,7 +43,7 @@ HTTP、usage、费用、Transport Retry、请求审计
 POST /api/v1/content-analysis-requests
 → analysis_content_requests / items
 → analysis.content-label.v1 Job
-→ bootstrap/analysis_worker.py
+→ bootstrap/analysis_concurrent_worker.py
 → ContentLabelingService
 → OpenAICompatibleContentLabelingLLM
 → Analysis Repository
@@ -51,7 +51,7 @@ POST /api/v1/content-analysis-requests
 
 正式装配位置：
 
-- [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py)
 
 它从 `PlatformSettings` 读取非敏感模型配置，从：
 
@@ -340,7 +340,7 @@ pricing.toml
 ```text
 PlatformSettings 的 LLM base_url/provider/model
 → <AIMA_SECRET_DIR>/llm_api_key
-→ bootstrap/analysis_worker.py
+→ bootstrap/analysis_concurrent_worker.py
 → openai_compatible.py 错误分类
 → worker.log 中 analysis.llm_request_completed / Job 终态
 ```

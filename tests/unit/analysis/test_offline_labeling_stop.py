@@ -63,7 +63,7 @@ def _record(content_id: str) -> UnifiedContentRecordV1:
     )
 
 
-def test_fatal_canary_error_stops_before_expanding_to_250_requests(tmp_path: Path) -> None:
+def test_fatal_error_stops_after_initial_window(tmp_path: Path) -> None:
     input_path = tmp_path / "deduplicated" / "contents.jsonl"
     input_path.parent.mkdir(parents=True)
     input_path.write_text(
@@ -83,9 +83,9 @@ def test_fatal_canary_error_stops_before_expanding_to_250_requests(tmp_path: Pat
             analysis_dir=tmp_path / "analysis",
             service=service,
             max_validation_retries=2,
-            max_concurrency=250,
+            max_concurrency=4,
             recovery_taxonomy=taxonomy,
         )
 
     assert exc_info.value.status_code == 401
-    assert llm.calls == 1
+    assert 1 <= llm.calls <= 4

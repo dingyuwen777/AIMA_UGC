@@ -123,6 +123,23 @@ def test_fullstack_spec_change_runs_only_that_real_golden_path() -> None:
     assert requirements.fullstack_specs == ("manual-relevance-review.spec.ts",)
 
 
+def test_analysis_streaming_spec_is_selected_independently() -> None:
+    requirements = _requirements("frontend/e2e-fullstack/analysis-streaming.spec.ts")
+
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("analysis-streaming.spec.ts",)
+
+
+def test_analysis_persistence_keeps_streaming_and_historical_golden_paths() -> None:
+    requirements = _requirements("backend/src/aima_ugc/adapters/persistence/postgres/analysis.py")
+
+    assert requirements.postgres_required is True
+    assert requirements.fullstack_specs == (
+        "analysis-streaming.spec.ts",
+        "stage12-historical-analysis.spec.ts",
+    )
+
+
 def test_administration_persistence_runs_admin_product_golden_path() -> None:
     requirements = _requirements(
         "backend/src/aima_ugc/adapters/persistence/postgres/notifications.py"

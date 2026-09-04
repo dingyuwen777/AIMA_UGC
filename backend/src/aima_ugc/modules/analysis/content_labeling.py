@@ -6,9 +6,10 @@ import hashlib
 import json
 from collections import OrderedDict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+from threading import Event
 from typing import Any, Literal, Protocol, cast
 from uuid import uuid4
 
@@ -31,6 +32,17 @@ from .prompt_taxonomy import (
     PromptTaxonomyError,
     PromptTaxonomyLoader,
 )
+
+
+class ContentLabelingStopped(RuntimeError):
+    """执行已停止，不能再发送模型请求；不属于内容分类失败。"""
+
+
+def ensure_labeling_running(stop_event: Event | None) -> None:
+    """在每次发送或重试前检查同一次执行共享的停止信号。"""
+
+    if stop_event is not None and stop_event.is_set():
+        raise ContentLabelingStopped("Analysis 执行已停止")
 
 
 class ContentLabelingValidationError(ValueError):
@@ -78,6 +90,7 @@ class ContentLabelingLLMRequest:
     items: tuple[ContentLabelingModelItem, ...]
     previous_validation_error_codes: tuple[str, ...] = ()
     logical_request_id: str | None = None
+    stop_event: Event | None = field(default=None, repr=False, compare=False)
 
     def model_payload(self) -> list[dict[str, object]]:
         """返回批次中只含允许业务字段的 JSON-ready 列表。"""
@@ -455,6 +468,7 @@ class ContentLabelingService:
         contents: Sequence[CanonicalContentV1],
         *,
         max_validation_retries: int,
+        stop_event: Event | None = None,
     ) -> ContentLabelingBatchResult:
         """分析一个批次；Validation Retry 只重新请求当前尚未成功的 item。"""
 
@@ -487,12 +501,14 @@ class ContentLabelingService:
         for attempt_no in range(1, total_requests + 1):
             if not unresolved:
                 break
+            ensure_labeling_running(stop_event)
 
             request = ContentLabelingLLMRequest(
                 prompt=taxonomy.prompt_text,
                 items=tuple(unresolved.values()),
                 previous_validation_error_codes=previous_errors,
                 logical_request_id=uuid4().hex,
+                stop_event=stop_event,
             )
             started_at = beijing_now()
             response = self._llm.complete(request)
