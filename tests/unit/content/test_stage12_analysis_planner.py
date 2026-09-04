@@ -112,7 +112,7 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
     )
     runtime = SimpleNamespace(
         database=_Database(),
-        settings=SimpleNamespace(analysis_run_shard_size=100),
+        settings=SimpleNamespace(),
     )
     service = PostgresContentHttpService(runtime)  # type: ignore[arg-type]
     monkeypatch.setattr(

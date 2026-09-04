@@ -8,6 +8,69 @@ import pytest
 from aima_ugc.modules.analysis.concurrent_labeling import run_bounded_concurrently
 
 
+def test_two_items_start_together_without_waiting_for_first_result() -> None:
+    """两条内容必须在第一条完成前同时进入执行，避免少量任务退化成串行。"""
+
+    release = Event()
+    lock = Lock()
+    started: list[int] = []
+
+    def task(value: int) -> int:
+        """只有两条请求都已进入才解除屏障。"""
+
+        with lock:
+            started.append(value)
+            if len(started) == 2:
+                release.set()
+        assert release.wait(0.5), "第二条请求未能在第一条完成前开始"
+        return value
+
+    summary = run_bounded_concurrently(
+        range(2),
+        task=task,
+        max_concurrency=10,
+        on_completed=lambda outcomes: None,
+    )
+    assert summary.completed == 2
+    assert summary.peak_in_flight == 2
+
+
+def test_scheduler_checks_stop_while_all_requests_are_waiting() -> None:
+    """没有完成结果时也必须执行控制检查，取消不能等待模型返回。"""
+
+    entered = Event()
+    release = Event()
+    stop = Event()
+    called: list[int] = []
+
+    def task(value: int) -> int:
+        """模拟等待远端响应的唯一在途请求。"""
+
+        called.append(value)
+        entered.set()
+        assert release.wait(2)
+        return value
+
+    def tick() -> None:
+        """模型仍在等待时发出停止信号，并让测试请求收敛。"""
+
+        if entered.is_set():
+            stop.set()
+            release.set()
+
+    summary = run_bounded_concurrently(
+        range(3),
+        task=task,
+        max_concurrency=1,
+        on_completed=lambda outcomes: None,
+        stop_requested=stop.is_set,
+        on_tick=tick,
+    )
+    assert summary.stopped
+    assert 1 <= len(called) <= 50
+    assert all(value < 50 for value in called)
+
+
 @pytest.mark.parametrize("max_concurrency", [20, 250])
 def test_bounded_executor_reaches_and_never_exceeds_configured_concurrency(
     max_concurrency: int,
@@ -41,7 +104,6 @@ def test_bounded_executor_reaches_and_never_exceeds_configured_concurrency(
         on_completed=lambda outcomes: completed.extend(
             outcome.result for outcome in outcomes if outcome.result is not None
         ),
-        canary=False,
         fail_fast=True,
     )
 
@@ -62,7 +124,6 @@ def test_bounded_executor_supports_1000_configured_in_flight() -> None:
         on_completed=lambda outcomes: completed.extend(
             outcome.result for outcome in outcomes if outcome.result is not None
         ),
-        canary=False,
         fail_fast=True,
     )
 
@@ -71,8 +132,8 @@ def test_bounded_executor_supports_1000_configured_in_flight() -> None:
     assert len(completed) == 1_000
 
 
-def test_bounded_executor_canary_failure_prevents_fanout() -> None:
-    """Canary 失败时不得继续提交其余 Provider 请求。"""
+def test_bounded_executor_failure_stops_refilling() -> None:
+    """初始窗口发生错误后不得继续补充剩余请求。"""
 
     called: list[int] = []
 
@@ -88,11 +149,11 @@ def test_bounded_executor_canary_failure_prevents_fanout() -> None:
             task=task,
             max_concurrency=50,
             on_completed=lambda _outcomes: None,
-            canary=True,
-            fail_fast=False,
+            fail_fast=True,
         )
 
-    assert called == [0]
+    assert 1 <= len(called) <= 50
+    assert all(value < 50 for value in called)
 
 
 def test_bounded_executor_can_isolate_parallel_item_errors() -> None:
@@ -114,7 +175,6 @@ def test_bounded_executor_can_isolate_parallel_item_errors() -> None:
         on_completed=lambda outcomes: received.extend(
             (outcome.item, outcome.error is not None) for outcome in outcomes
         ),
-        canary=False,
         fail_fast=False,
     )
 
@@ -150,7 +210,6 @@ def test_bounded_executor_stops_refilling_after_cancel_signal() -> None:
         task=task,
         max_concurrency=4,
         on_completed=on_completed,
-        canary=False,
         fail_fast=False,
         stop_requested=lambda: stop,
     )

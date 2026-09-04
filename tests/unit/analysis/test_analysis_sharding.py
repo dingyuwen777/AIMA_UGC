@@ -1,6 +1,7 @@
 """Analysis Run 自动 Shard 策略回归。"""
 
-from uuid import uuid4
+from dataclasses import replace
+from uuid import UUID, uuid4
 
 from aima_ugc.bootstrap.content_http import _analysis_shard_size
 from aima_ugc.modules.analysis.content_analysis_job import CONTENT_ANALYSIS_JOB_TIMEOUT_SECONDS
@@ -54,15 +55,16 @@ def test_shard_size_respects_rps_budget_below_job_timeout() -> None:
 def test_content_http_shard_size_uses_provider_rps() -> None:
     """Preview/Create 的正式数据库 Provider helper 必须把 max_rps 传入 Shard 计算。"""
 
-    assert (
-        _analysis_shard_size(_provider(max_concurrency=1_000, max_rps=1), legacy_shard_size=7)
-        == 900
+    assert _analysis_shard_size(_provider(max_concurrency=1_000, max_rps=1)) == 900
+    assert _analysis_shard_size(_provider(max_concurrency=250, max_rps=5)) == 4_500
+    assert _analysis_shard_size(_provider(max_concurrency=250, max_rps=None)) == 5_000
+
+
+def test_environment_provider_uses_the_same_automatic_shards() -> None:
+    """本地环境产生的 Provider 也按容量分片，不能退回逐条串行执行。"""
+
+    provider = replace(
+        _provider(max_concurrency=10, max_rps=None),
+        id=UUID("00000000-0000-4000-8000-000000000001"),
     )
-    assert (
-        _analysis_shard_size(_provider(max_concurrency=250, max_rps=5), legacy_shard_size=7)
-        == 4_500
-    )
-    assert (
-        _analysis_shard_size(_provider(max_concurrency=250, max_rps=None), legacy_shard_size=7)
-        == 5_000
-    )
+    assert _analysis_shard_size(provider) == 200

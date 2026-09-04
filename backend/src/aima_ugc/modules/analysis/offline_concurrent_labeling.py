@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from threading import Event
 
 from .concurrent_labeling import ConcurrentTaskOutcome, run_bounded_concurrently
 from .content_labeling import ContentLabelingService
@@ -17,9 +18,9 @@ from .offline_labeling import (
     _load_checkpoint_index,
     _persist_outcomes,
     _preflight_source,
-    _resolve_concurrency,
     _rewrite_source_in_original_order,
     _SourceRow,
+    _validate_max_concurrency,
 )
 from .prompt_taxonomy import PromptTaxonomy
 
@@ -32,14 +33,10 @@ def label_unified_content_jsonl(
     max_validation_retries: int,
     max_concurrency: int = DEFAULT_OFFLINE_LLM_CONCURRENCY,
     recovery_taxonomy: PromptTaxonomy | None = None,
-    batch_size: int | None = None,
 ) -> OfflineContentLabelingSummary:
     """以公共 bounded executor 执行离线单内容请求，同时保持原 checkpoint/恢复语义。"""
 
-    actual_concurrency = _resolve_concurrency(
-        max_concurrency=max_concurrency,
-        legacy_batch_size=batch_size,
-    )
+    _validate_max_concurrency(max_concurrency)
     source_path = Path(input_path)
     audit_dir = Path(analysis_dir)
     audit_dir.mkdir(parents=True, exist_ok=True)
@@ -63,6 +60,7 @@ def label_unified_content_jsonl(
     peak_in_flight = 0
 
     if pending_count:
+        stop_event = Event()
         with (
             checkpoint_path.open("a", encoding="utf-8", newline="\n") as checkpoint_file,
             attempt_path.open("a", encoding="utf-8", newline="\n") as attempt_file,
@@ -76,6 +74,7 @@ def label_unified_content_jsonl(
                     source,
                     service=service,
                     max_validation_retries=max_validation_retries,
+                    stop_event=stop_event,
                 )
 
             def persist_completed(
@@ -100,19 +99,20 @@ def label_unified_content_jsonl(
                 rows_failed += failed
                 llm_attempts += attempts
 
-            concurrency_summary = run_bounded_concurrently(
-                _iter_pending_rows(source_path, checkpoint_index=checkpoint_index),
-                task=task,
-                max_concurrency=actual_concurrency,
-                on_completed=persist_completed,
-                canary=True,
-                fail_fast=True,
-            )
-            peak_in_flight = concurrency_summary.peak_in_flight
-
-            # attempts/failed 不是恢复事实源，正常收尾时一次 durable，避免每条额外 fsync。
-            _flush_and_sync(attempt_file)
-            _flush_and_sync(failed_file)
+            try:
+                concurrency_summary = run_bounded_concurrently(
+                    _iter_pending_rows(source_path, checkpoint_index=checkpoint_index),
+                    task=task,
+                    max_concurrency=max_concurrency,
+                    on_completed=persist_completed,
+                    request_stop=stop_event.set,
+                    fail_fast=True,
+                )
+                peak_in_flight = concurrency_summary.peak_in_flight
+            finally:
+                # 中断也保留已收割审计；checkpoint 仍是恢复事实源。
+                _flush_and_sync(attempt_file)
+                _flush_and_sync(failed_file)
 
     rows_irrelevant_removed = (
         _rewrite_source_in_original_order(

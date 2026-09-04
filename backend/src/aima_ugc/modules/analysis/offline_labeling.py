@@ -1,14 +1,14 @@
-"""离线 JSONL 舆情打标编排；单条请求、有界并发、checkpoint 优先与崩溃恢复。"""
+"""离线 JSONL 打标的文件预检、checkpoint 持久化、原子回写与恢复。"""
 
 from __future__ import annotations
 
 import json
 import os
 from collections.abc import Iterable, Iterator
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from threading import Event
 from typing import TextIO
 
 from pydantic import TypeAdapter, ValidationError
@@ -74,152 +74,6 @@ class _ItemOutcome:
 _CheckpointKey = tuple[str, str, str]
 _StableContentKey = tuple[str, str]
 _ANALYSIS_ADAPTER: TypeAdapter[ContentLabelAnalysis] = TypeAdapter(ContentLabelAnalysis)
-
-
-def label_unified_content_jsonl(
-    *,
-    input_path: Path,
-    analysis_dir: Path,
-    service: ContentLabelingService,
-    max_validation_retries: int,
-    max_concurrency: int = DEFAULT_OFFLINE_LLM_CONCURRENCY,
-    recovery_taxonomy: PromptTaxonomy | None = None,
-    batch_size: int | None = None,
-) -> OfflineContentLabelingSummary:
-    """单条内容独立请求；先预检，再有界并发，最后按原始顺序原子回写。
-
-    `batch_size` 仅兼容旧内部调用，解释为并发上限；任何情况下每次模型请求都只有一条内容。
-    """
-
-    actual_concurrency = _resolve_concurrency(
-        max_concurrency=max_concurrency,
-        legacy_batch_size=batch_size,
-    )
-    source_path = Path(input_path)
-    audit_dir = Path(analysis_dir)
-    audit_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_path = audit_dir / "checkpoints.jsonl"
-    attempt_path = audit_dir / "attempts.jsonl"
-    failed_path = audit_dir / "failed.jsonl"
-    checkpoint_index = _load_checkpoint_index(
-        checkpoint_path,
-        recovery_taxonomy=recovery_taxonomy,
-        recovery_model_provider=service.provider_name,
-        recovery_model=service.model_name,
-    )
-
-    rows_seen, rows_already_labeled, rows_recovered, pending_count = _preflight_source(
-        source_path,
-        checkpoint_index=checkpoint_index,
-    )
-    rows_succeeded = 0
-    rows_failed = 0
-    llm_attempts = 0
-    peak_in_flight = 0
-
-    if pending_count:
-        with (
-            checkpoint_path.open("a", encoding="utf-8", newline="\n") as checkpoint_file,
-            attempt_path.open("a", encoding="utf-8", newline="\n") as attempt_file,
-            failed_path.open("a", encoding="utf-8", newline="\n") as failed_file,
-        ):
-            pending_rows = _iter_pending_rows(source_path, checkpoint_index=checkpoint_index)
-            first_pending = next(pending_rows, None)
-            if first_pending is None:
-                raise RuntimeError("预检存在待打标记录，但二次扫描未找到待打标记录")
-
-            # Canary 先验证真实 Provider/认证/余额/请求链；失败时避免一次性放大到 250 请求。
-            canary = _label_one(
-                first_pending,
-                service=service,
-                max_validation_retries=max_validation_retries,
-            )
-            succeeded, failed, attempts = _persist_outcomes(
-                (canary,),
-                checkpoint_file=checkpoint_file,
-                attempt_file=attempt_file,
-                failed_file=failed_file,
-                checkpoint_index=checkpoint_index,
-            )
-            rows_succeeded += succeeded
-            rows_failed += failed
-            llm_attempts += attempts
-
-            with ThreadPoolExecutor(
-                max_workers=actual_concurrency,
-                thread_name_prefix="aima-content-label",
-            ) as executor:
-                in_flight: dict[Future[_ItemOutcome], _SourceRow] = {}
-                for source in pending_rows:
-                    future = executor.submit(
-                        _label_one,
-                        source,
-                        service=service,
-                        max_validation_retries=max_validation_retries,
-                    )
-                    in_flight[future] = source
-                    peak_in_flight = max(peak_in_flight, len(in_flight))
-                    if len(in_flight) < actual_concurrency:
-                        continue
-
-                    succeeded, failed, attempts = _drain_completed(
-                        in_flight,
-                        checkpoint_file=checkpoint_file,
-                        attempt_file=attempt_file,
-                        failed_file=failed_file,
-                        checkpoint_index=checkpoint_index,
-                    )
-                    rows_succeeded += succeeded
-                    rows_failed += failed
-                    llm_attempts += attempts
-
-                while in_flight:
-                    succeeded, failed, attempts = _drain_completed(
-                        in_flight,
-                        checkpoint_file=checkpoint_file,
-                        attempt_file=attempt_file,
-                        failed_file=failed_file,
-                        checkpoint_index=checkpoint_index,
-                    )
-                    rows_succeeded += succeeded
-                    rows_failed += failed
-                    llm_attempts += attempts
-
-            # attempts/failed 不是恢复事实源，正常收尾时一次性 durable，避免每条都做额外 fsync。
-            _flush_and_sync(attempt_file)
-            _flush_and_sync(failed_file)
-
-    rows_irrelevant_removed = (
-        _rewrite_source_in_original_order(
-            source_path,
-            checkpoint_index=checkpoint_index,
-        )
-        if rows_seen
-        else 0
-    )
-
-    return OfflineContentLabelingSummary(
-        input_path=source_path,
-        analysis_dir=audit_dir,
-        rows_seen=rows_seen,
-        rows_already_labeled=rows_already_labeled,
-        rows_recovered=rows_recovered,
-        rows_succeeded=rows_succeeded,
-        rows_failed=rows_failed,
-        llm_attempts=llm_attempts,
-        rows_irrelevant_removed=rows_irrelevant_removed,
-        peak_in_flight=peak_in_flight,
-    )
-
-
-def _resolve_concurrency(*, max_concurrency: int, legacy_batch_size: int | None) -> int:
-    _validate_max_concurrency(max_concurrency)
-    if legacy_batch_size is None:
-        return max_concurrency
-    _validate_max_concurrency(legacy_batch_size)
-    if max_concurrency != DEFAULT_OFFLINE_LLM_CONCURRENCY and max_concurrency != legacy_batch_size:
-        raise ValueError("max_concurrency 与兼容 batch_size 不能配置为不同值")
-    return legacy_batch_size
 
 
 def _validate_max_concurrency(value: int) -> None:
@@ -288,91 +142,18 @@ def _label_one(
     *,
     service: ContentLabelingService,
     max_validation_retries: int,
+    stop_event: Event | None = None,
 ) -> _ItemOutcome:
     result = service.label_contents(
         [source.record.content],
         max_validation_retries=max_validation_retries,
+        stop_event=stop_event,
     )
     if len(result.items) != 1 or result.items[0].item_no != 1:
         raise RuntimeError("单条 ContentLabelingService 调用必须且只能返回 item_no=1")
     if result.items[0].input_hash != source.input_hash:
         raise RuntimeError("ContentLabelingService 单条结果 input_hash 与预检不一致")
     return _ItemOutcome(source=source, result=result)
-
-
-def _drain_completed(
-    in_flight: dict[Future[_ItemOutcome], _SourceRow],
-    *,
-    checkpoint_file: TextIO,
-    attempt_file: TextIO,
-    failed_file: TextIO,
-    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
-) -> tuple[int, int, int]:
-    first_done, _ = wait(tuple(in_flight), return_when=FIRST_COMPLETED)
-    # FIRST_COMPLETED 返回时把已经同时完成的 Future 一并收割，减少协调/磁盘同步开销。
-    done = set(first_done)
-    done.update(future for future in in_flight if future.done())
-    outcomes: list[_ItemOutcome] = []
-    first_error: BaseException | None = None
-    for future in done:
-        in_flight.pop(future, None)
-        try:
-            outcomes.append(future.result())
-        except BaseException as exc:
-            if first_error is None:
-                first_error = exc
-
-    succeeded, failed, attempts = _persist_outcomes(
-        outcomes,
-        checkpoint_file=checkpoint_file,
-        attempt_file=attempt_file,
-        failed_file=failed_file,
-        checkpoint_index=checkpoint_index,
-    )
-    if first_error is not None:
-        _finish_in_flight_before_raise(
-            in_flight,
-            checkpoint_file=checkpoint_file,
-            attempt_file=attempt_file,
-            failed_file=failed_file,
-            checkpoint_index=checkpoint_index,
-        )
-        _flush_and_sync(attempt_file)
-        _flush_and_sync(failed_file)
-        raise first_error
-    return succeeded, failed, attempts
-
-
-def _finish_in_flight_before_raise(
-    in_flight: dict[Future[_ItemOutcome], _SourceRow],
-    *,
-    checkpoint_file: TextIO,
-    attempt_file: TextIO,
-    failed_file: TextIO,
-    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
-) -> None:
-    """Fatal 错误后不再调度新记录，但持久化已提交请求中仍成功的结果。"""
-
-    pending_futures = tuple(in_flight)
-    for future in pending_futures:
-        future.cancel()
-
-    outcomes: list[_ItemOutcome] = []
-    for future in pending_futures:
-        if future.cancelled():
-            continue
-        try:
-            outcomes.append(future.result())
-        except BaseException:
-            continue
-    in_flight.clear()
-    _persist_outcomes(
-        outcomes,
-        checkpoint_file=checkpoint_file,
-        attempt_file=attempt_file,
-        failed_file=failed_file,
-        checkpoint_index=checkpoint_index,
-    )
 
 
 def _persist_outcomes(
@@ -638,5 +419,4 @@ def _flush_and_sync(output_file: TextIO) -> None:
 __all__ = [
     "DEFAULT_OFFLINE_LLM_CONCURRENCY",
     "OfflineContentLabelingSummary",
-    "label_unified_content_jsonl",
 ]
