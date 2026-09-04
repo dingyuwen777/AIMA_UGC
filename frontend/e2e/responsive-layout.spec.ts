@@ -112,7 +112,7 @@ async function mockRuntimeApi(page: Page): Promise<void> {
   })
 }
 
-/** 为管理员页面初始 Tab 提供最小独有响应；词包目录复用采集策略 Mock 的同一正式 Contract。 */
+/** 为管理员页面提供最小独有响应；词包目录复用采集策略 Mock 的同一正式 Contract。 */
 async function mockAdminApi(page: Page): Promise<void> {
   await page.route('**/api/v1/analysis-schemes', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
@@ -122,6 +122,10 @@ async function mockAdminApi(page: Page): Promise<void> {
       contentType: 'application/json',
       body: JSON.stringify({ items: [], total: 0, offset: 0, limit: 100 }),
     })
+  })
+  await page.route('**/api/v1/provider-configs**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
   })
 }
 
@@ -224,6 +228,18 @@ for (const viewport of viewports) {
     await page.getByRole('button', { name: '词包车型关联' }).click()
     await expect(page.locator('.list-card > button span').first()).toBeVisible()
     expect(await fontSize(page, '.list-card > button span')).toBeGreaterThanOrEqual(11)
+
+    await page.getByRole('button', { name: 'AI 模型' }).click()
+    await expect(page.locator('.provider-layout')).toBeVisible()
+    await expectWorkspaceInsideViewport(page, viewport.width)
+    expect(await fontSize(page, '.runtime-rule span')).toBeGreaterThanOrEqual(11)
+    expect(await fontSize(page, '.form-grid label > small').first()).toBeGreaterThanOrEqual(11)
+    if (viewport.width <= 1280) {
+      const providerColumns = await page.locator('.provider-layout').evaluate(
+        (element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length,
+      )
+      expect(providerColumns).toBe(1)
+    }
   })
 }
 
