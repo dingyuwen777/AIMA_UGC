@@ -48,6 +48,28 @@ async function uploadBaseline(
   }, { timeout: 60_000 }).toBe('succeeded')
 }
 
+async function assertCompletedRunRetained(
+  page: Page,
+  request: APIRequestContext,
+  runId: string,
+  sequenceNo: number,
+): Promise<void> {
+  const listedResponse = await request.get('/api/v1/analysis/content-runs')
+  expect(listedResponse.status()).toBe(200)
+  const listed = await listedResponse.json() as {
+    items: Array<{ id: string; sequence_no: number; status: string }>
+  }
+  expect(listed.items).toContainEqual(expect.objectContaining({
+    id: runId,
+    sequence_no: sequenceNo,
+    status: 'succeeded',
+  }))
+
+  // 声音广场只展示 queued/running/cancelling 活动 Run；终态历史统一进入任务中心。
+  await page.getByRole('button', { name: '刷新数据' }).click()
+  await expect(page.getByText(`Run #${sequenceNo} · 已完成`)).toHaveCount(0)
+}
+
 async function createAnalysisRun(
   page: Page,
   request: APIRequestContext,
@@ -71,7 +93,7 @@ async function createAnalysisRun(
     sequenceNo = run.sequence_no
     return run.status
   }, { timeout: 60_000 }).toBe('succeeded')
-  await expect(page.getByText(`Run #${sequenceNo} · 已完成`)).toBeVisible()
+  await assertCompletedRunRetained(page, request, created.run_id, sequenceNo)
   return { id: created.run_id, sequenceNo }
 }
 
@@ -142,7 +164,7 @@ async function createAllDataAnalysisRun(
   expect(observedScope).toBe('all')
   expect(observedTargetCount).toBe(preview.target_count)
   expect(succeeded).toBe(preview.target_count)
-  await expect(page.getByText(`Run #${sequenceNo} · 已完成`)).toBeVisible()
+  await assertCompletedRunRetained(page, request, created.run_id, sequenceNo)
   return { id: created.run_id, sequenceNo, targetCount: preview.target_count }
 }
 
@@ -236,16 +258,12 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await expect(page.getByText('爱玛 Stage12 历史冲突标题', { exact: true })).toHaveCount(0)
 
   const firstRun = await createAnalysisRun(page, request)
-  await page.getByRole('button', { name: '刷新数据' }).click()
   const contentList = page.getByRole('region', { name: '声音广场内容列表' })
   await expect(contentList.getByText('正面', { exact: true })).toBeVisible()
   const secondRun = await createAnalysisRun(page, request)
-  await page.getByRole('button', { name: '刷新数据' }).click()
   await expect(contentList.getByText('负面', { exact: true })).toBeVisible()
   expect(secondRun.id).not.toBe(firstRun.id)
   expect(secondRun.sequenceNo).toBeGreaterThan(firstRun.sequenceNo)
-  await expect(page.getByText(`Run #${firstRun.sequenceNo} · 已完成`)).toBeVisible()
-  await expect(page.getByText(`Run #${secondRun.sequenceNo} · 已完成`)).toBeVisible()
 
   const allRun = await createAllDataAnalysisRun(page, request)
   expect(allRun.id).not.toBe(firstRun.id)
