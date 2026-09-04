@@ -74,9 +74,9 @@ voice_type == "真实用户发声"
 
 相关代码：
 
-- [`prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels 机器 Taxonomy JSON，计算 `taxonomy_sha256`。
-- [`schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
-- [`../../bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
+- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels 机器 Taxonomy JSON，计算 `taxonomy_sha256`。
+- [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
+- [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
 
 Python、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
 
@@ -126,7 +126,7 @@ author.verification_label
 
 核心代码：
 
-- [`content_labeling.py`](content_labeling.py)：`ContentLabelingModelItem.model_payload()`
+- [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py)：`ContentLabelingModelItem.model_payload()`
 
 任何正式或离线高并发路径都继续保持：
 
@@ -148,7 +148,7 @@ author.verification_label
 
 ### Service / Validator
 
-- [`content_labeling.py`](content_labeling.py)
+- [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py)
 
 核心：
 
@@ -162,8 +162,8 @@ ContentLabelingLLMResponse
 
 ### 公共有界并发与自动 Shard
 
-- [`concurrent_labeling.py`](concurrent_labeling.py)：Offline / Formal 共用 Canary、bounded in-flight、`FIRST_COMPLETED`、停止调度和 backpressure。
-- [`sharding.py`](sharding.py)：根据 Run 冻结 Provider `max_concurrency` 自动计算 Shard Size。
+- [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py)：Offline / Formal 共用 Canary、bounded in-flight、`FIRST_COMPLETED`、停止调度和 backpressure。
+- [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py)：根据 Run 冻结 Provider `max_concurrency` 自动计算 Shard Size。
 
 当前数据库 Provider 的默认计算规则：
 
@@ -184,7 +184,7 @@ Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。�
 
 ### 正式 Job
 
-- [`content_analysis_job.py`](content_analysis_job.py)
+- [`backend/src/aima_ugc/modules/analysis/content_analysis_job.py`](content_analysis_job.py)
 
 当前 Job 类型：
 
@@ -198,18 +198,18 @@ analysis.content-label.v1
 
 ### 正式 Worker / Planner
 
-- [`../../bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py)：Provider `max_concurrency` 真正控制同时在途的单内容模型请求；Canary 成功后才放大；LLM worker thread 不持有数据库事务；完成结果在调度线程有界缓冲并短事务批量提交。
-- [`../../bootstrap/analysis_high_throughput_planner.py`](../../bootstrap/analysis_high_throughput_planner.py)：`all` Scope 用连续 ordinal 恢复，下一 Shard 从 Run `shard_count` + 已调度 Request 序号推导，Terminal Callback 使用高吞吐 Run 统计。
-- [`../../bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py)：保留旧同步 Executor/Planner 的历史兼容与既有测试入口，不再是正式 Worker Registry 的 Analysis 生产装配。
+- [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py)：Provider `max_concurrency` 真正控制同时在途的单内容模型请求；Canary 成功后才放大；LLM worker thread 不持有数据库事务；完成结果在调度线程有界缓冲并短事务批量提交。
+- [`backend/src/aima_ugc/bootstrap/analysis_high_throughput_planner.py`](../../bootstrap/analysis_high_throughput_planner.py)：`all` Scope 用连续 ordinal 恢复，下一 Shard 从 Run `shard_count` + 已调度 Request 序号推导，Terminal Callback 使用高吞吐 Run 统计。
+- [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py)：保留旧同步 Executor/Planner 的历史兼容与既有测试入口，不再是正式 Worker Registry 的 Analysis 生产装配。
 
-正式 Registry 以 [`../../bootstrap/worker.py`](../../bootstrap/worker.py) 为准。
+正式 Registry 以 [`backend/src/aima_ugc/bootstrap/worker.py`](../../bootstrap/worker.py) 为准。
 
 ### PostgreSQL 表 / Repository
 
-- [`tables.py`](tables.py)
-- [`../../adapters/persistence/postgres/analysis.py`](../../adapters/persistence/postgres/analysis.py)
-- [`../../adapters/persistence/postgres/analysis_batch.py`](../../adapters/persistence/postgres/analysis_batch.py)
-- [`../../adapters/persistence/postgres/analysis_high_throughput.py`](../../adapters/persistence/postgres/analysis_high_throughput.py)
+- [`backend/src/aima_ugc/modules/analysis/tables.py`](tables.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../../adapters/persistence/postgres/analysis.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_batch.py`](../../adapters/persistence/postgres/analysis_batch.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_high_throughput.py`](../../adapters/persistence/postgres/analysis_high_throughput.py)
 
 批量路径一个短事务内：
 
@@ -226,14 +226,14 @@ analysis.content-label.v1
 
 ### LLM Adapter
 
-- [`../../adapters/llm/openai_compatible.py`](../../adapters/llm/openai_compatible.py)：一次 `complete()` 恰好一次物理 HTTP 发送。
-- [`../../adapters/llm/rate_limited.py`](../../adapters/llm/rate_limited.py)：`max_rps` 限制物理 HTTP Attempt 的启动速率。
-- [`../../adapters/llm/retrying.py`](../../adapters/llm/retrying.py)：显式 Transport Retry；每次 Retry 重新经过 RPS limiter。
+- [`backend/src/aima_ugc/adapters/llm/openai_compatible.py`](../../adapters/llm/openai_compatible.py)：一次 `complete()` 恰好一次物理 HTTP 发送。
+- [`backend/src/aima_ugc/adapters/llm/rate_limited.py`](../../adapters/llm/rate_limited.py)：`max_rps` 限制物理 HTTP Attempt 的启动速率。
+- [`backend/src/aima_ugc/adapters/llm/retrying.py`](../../adapters/llm/retrying.py)：显式 Transport Retry；每次 Retry 重新经过 RPS limiter。
 
 ### 离线执行
 
-- [`offline_concurrent_labeling.py`](offline_concurrent_labeling.py)：公共离线入口，复用 [`concurrent_labeling.py`](concurrent_labeling.py) 并保留原 preflight/checkpoint/attempt/failed/rewrite 语义。
-- [`offline_labeling.py`](offline_labeling.py)：旧内部实现与 checkpoint helper，继续作为兼容事实，不再独占并发调度。
+- [`backend/src/aima_ugc/modules/analysis/offline_concurrent_labeling.py`](offline_concurrent_labeling.py)：公共离线入口，复用 [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py) 并保留原 preflight/checkpoint/attempt/failed/rewrite 语义。
+- [`backend/src/aima_ugc/modules/analysis/offline_labeling.py`](offline_labeling.py)：旧内部实现与 checkpoint helper，继续作为兼容事实，不再独占并发调度。
 - [`../../adapters/providers/imports_test/`](../../adapters/providers/imports_test/)：人工/离线入口；DeepSeek 示例仍可配置 250。
 
 ---
@@ -308,8 +308,8 @@ pending
 
 相关查询：
 
-- [`../../adapters/persistence/postgres/content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
-- [`../../bootstrap/content_http.py`](../../bootstrap/content_http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 ---
 
@@ -419,17 +419,17 @@ Unified JSONL
 | 需求 | 正确入口 |
 | --- | --- |
 | 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 管理员 Analysis Scheme 草稿 → 校验 → 发布；Git Prompt 只在要改变新环境 bootstrap 基线时同步 |
-| 改 Scheme 编译、发布或回滚 | [`schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
+| 改 Scheme 编译、发布或回滚 | [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
 | 改 V3 输出结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
-| 改模型/Base URL/API Key/模型并发/RPS | 管理员 Provider 配置 + [`../../contracts/administration.py`](../../contracts/administration.py) + [`../../bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) + `adapters/llm` |
-| 改自动 Shard 策略 | [`sharding.py`](sharding.py) + Preview/Create + Planner tests |
-| 改网络 Retry | [`../../adapters/llm/retrying.py`](../../adapters/llm/retrying.py) + [`../../adapters/llm/rate_limited.py`](../../adapters/llm/rate_limited.py) + audit/retry tests |
-| 改 Validation Retry | [`content_labeling.py`](content_labeling.py) + Analysis tests |
-| 改正式 LLM 并发 | [`concurrent_labeling.py`](concurrent_labeling.py) + [`../../bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py) |
-| 改正式 Planner/Run 统计 | [`../../bootstrap/analysis_high_throughput_planner.py`](../../bootstrap/analysis_high_throughput_planner.py) + [`../../adapters/persistence/postgres/analysis_high_throughput.py`](../../adapters/persistence/postgres/analysis_high_throughput.py) |
-| 改批量数据库写 | [`../../adapters/persistence/postgres/analysis_batch.py`](../../adapters/persistence/postgres/analysis_batch.py) + PostgreSQL integration |
-| 改离线并发/Checkpoint | [`offline_concurrent_labeling.py`](offline_concurrent_labeling.py) / [`offline_labeling.py`](offline_labeling.py) + offline tests |
-| 改数据库字段 | [`tables.py`](tables.py) + 新 Alembic Migration + Repository + integration |
+| 改模型/Base URL/API Key/模型并发/RPS | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) + `adapters/llm` |
+| 改自动 Shard 策略 | [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) + Preview/Create + Planner tests |
+| 改网络 Retry | [`backend/src/aima_ugc/adapters/llm/retrying.py`](../../adapters/llm/retrying.py) + [`backend/src/aima_ugc/adapters/llm/rate_limited.py`](../../adapters/llm/rate_limited.py) + audit/retry tests |
+| 改 Validation Retry | [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + Analysis tests |
+| 改正式 LLM 并发 | [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py) + [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py) |
+| 改正式 Planner/Run 统计 | [`backend/src/aima_ugc/bootstrap/analysis_high_throughput_planner.py`](../../bootstrap/analysis_high_throughput_planner.py) + [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_high_throughput.py`](../../adapters/persistence/postgres/analysis_high_throughput.py) |
+| 改批量数据库写 | [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_batch.py`](../../adapters/persistence/postgres/analysis_batch.py) + PostgreSQL integration |
+| 改离线并发/Checkpoint | [`backend/src/aima_ugc/modules/analysis/offline_concurrent_labeling.py`](offline_concurrent_labeling.py) / [`backend/src/aima_ugc/modules/analysis/offline_labeling.py`](offline_labeling.py) + offline tests |
+| 改数据库字段 | [`backend/src/aima_ugc/modules/analysis/tables.py`](tables.py) + 新 Alembic Migration + Repository + integration |
 
 ---
 
