@@ -31,11 +31,12 @@ async function renderShell(role: 'administrator' | 'user' = 'user'): Promise<str
 }
 
 describe('AppShell 内网 V1 导航', () => {
-  it('首页和三个首版业务页面都是可导航入口', async () => {
+  it('工作台和三个首版业务页面都是可导航入口', async () => {
     const html = await renderShell()
 
     expect(html).toContain('href="/"')
-    expect(html).toContain('首页')
+    expect(html).toContain('工作台')
+    expect(html).not.toContain('首页')
     expect(html).toContain('href="/voice-plaza"')
     expect(html).toContain('声音广场')
     expect(html).toContain('href="/collection-runtime"')
