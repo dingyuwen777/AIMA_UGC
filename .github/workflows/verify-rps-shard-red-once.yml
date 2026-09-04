@@ -1,0 +1,44 @@
+name: Verify RPS shard red once
+
+on:
+  push:
+    branches:
+      - feature/335-analysis-provider-concurrency
+    paths:
+      - .github/workflows/verify-rps-shard-red-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/335-analysis-provider-concurrency
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+
+      - name: Verify new regression is red
+        shell: bash
+        run: |
+          set -euo pipefail
+          if uv run pytest tests/unit/analysis/test_analysis_sharding.py -q; then
+            echo "Expected RPS shard regression to fail before production fix."
+            exit 1
+          fi
+          echo "RPS shard regression is red as expected."
