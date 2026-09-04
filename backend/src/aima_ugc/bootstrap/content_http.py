@@ -88,6 +88,7 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     analysis_all_scope_filter_snapshot,
     is_analysis_all_scope_filter_snapshot,
 )
+from aima_ugc.modules.analysis.sharding import calculate_analysis_shard_size
 from aima_ugc.modules.content.content_cursor import ContentCursorCodec, ContentCursorPosition
 from aima_ugc.modules.content.http import (
     ContentAnalysisRunConflict,
@@ -99,7 +100,7 @@ from aima_ugc.modules.content.http import (
 )
 from aima_ugc.modules.content.query import ContentReadQuery, ContentReadRecord
 from aima_ugc.modules.content.tables import contents_table
-from aima_ugc.modules.system.models import AuditEvent
+from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
 from aima_ugc.platform.jobs import JobRecord
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.time import beijing_now
@@ -111,6 +112,7 @@ from .analysis_identity import (
 )
 from .analysis_taxonomy_http import content_analysis_taxonomy_projection
 from .runtime import PlatformRuntime
+from .runtime_config import is_legacy_llm_provider
 
 _ANALYSIS_RUN_ID_NAMESPACE = UUID("d9c7fe38-1a46-4ef9-b9d3-bb87dd7d8301")
 _AnalysisTargetSelection = ContentTargetSelection | AnalysisRunTargetSelection
@@ -389,6 +391,8 @@ class PostgresContentHttpService:
         self,
         targets: _AnalysisTargetSelection,
     ) -> AnalysisContentRunPreviewResponse:
+        """预览目标并按当前 LLM Provider 并发推导该 Run 将冻结的 Shard 大小。"""
+
         generation_config, generation_hash = current_analysis_generation_config()
         session = self._runtime.database.new_session()
         try:
@@ -419,7 +423,10 @@ class PostgresContentHttpService:
                     raise ContentSelectionEmpty
         finally:
             session.close()
-        shard_size = self._runtime.settings.analysis_run_shard_size
+        shard_size = _analysis_shard_size(
+            llm_provider,
+            legacy_shard_size=self._runtime.settings.analysis_run_shard_size,
+        )
         return AnalysisContentRunPreviewResponse(
             target_count=target_count,
             shard_count=ceil(target_count / shard_size),
@@ -532,6 +539,8 @@ class PostgresContentHttpService:
         request_id: str,
         freeze_in_http: bool,
     ) -> tuple[AnalysisContentRunCreatedResponse, UUID | None, UUID | None]:
+        """创建并冻结 Analysis Run；Shard 只由本次冻结 Provider 并发自动推导。"""
+
         configuration = self._load_active_analysis_configuration()
         identity = configuration.identity
         llm_provider = configuration.llm_provider
@@ -550,7 +559,10 @@ class PostgresContentHttpService:
         )
         if configuration_hash != expected_configuration_hash:
             raise ContentAnalysisRunConflict
-        shard_size = self._runtime.settings.analysis_run_shard_size
+        shard_size = _analysis_shard_size(
+            llm_provider,
+            legacy_shard_size=self._runtime.settings.analysis_run_shard_size,
+        )
         filter_snapshot = _analysis_filter_snapshot(targets)
         storage_scope = _analysis_storage_scope(targets)
         session = self._runtime.database.new_session()
@@ -846,6 +858,17 @@ def _analysis_storage_scope(targets: _AnalysisTargetSelection) -> Literal["query
     if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
         return "query"
     return cast(Literal["query", "selected"], targets.scope)
+
+
+def _analysis_shard_size(provider: ProviderConfig, *, legacy_shard_size: int) -> int:
+    """数据库 Provider 按并发/RPS 推导 Shard；旧 env bootstrap 沿用历史静态值。"""
+
+    if is_legacy_llm_provider(provider):
+        return legacy_shard_size
+    return calculate_analysis_shard_size(
+        provider.max_concurrency,
+        max_rps=provider.max_rps,
+    )
 
 
 def _analysis_response_scope(row: RowMapping) -> Literal["all", "query", "selected"]:

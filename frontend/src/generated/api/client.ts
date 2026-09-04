@@ -1994,7 +1994,7 @@ export interface ProviderConfigCreateRequest {
   is_default?: boolean;
   /**
      * @minimum 1
-     * @maximum 500
+     * @maximum 5000
      */
   max_concurrency?: number;
   /**
@@ -2076,7 +2076,7 @@ export interface ProviderConfigUpdateRequest {
   is_default?: boolean;
   /**
      * @minimum 1
-     * @maximum 500
+     * @maximum 5000
      */
   max_concurrency?: number;
   /**

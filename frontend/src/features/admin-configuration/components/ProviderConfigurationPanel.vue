@@ -52,8 +52,10 @@ const formValid = computed(() => {
   if (!draft.id && !draft.apiKey.trim()) return false
   return draft.timeoutSeconds > 0
     && draft.maxRetries >= 0
+    && draft.maxRetries <= 20
     && draft.maxConcurrency > 0
-    && (!draft.maxRps || Number(draft.maxRps) > 0)
+    && draft.maxConcurrency <= 5000
+    && (!draft.maxRps || (Number(draft.maxRps) > 0 && Number(draft.maxRps) <= 10000))
 })
 
 onMounted(async () => {
@@ -305,22 +307,24 @@ async function save(): Promise<void> {
           >
         </label>
         <label>
-          <span>最大重试/校验次数</span>
+          <span>{{ isLlm ? '最大校验重试次数' : '最大重试次数' }}</span>
           <input
             v-model.number="draft.maxRetries"
             type="number"
             min="0"
             max="20"
           >
+          <small v-if="isLlm">仅用于模型输出未通过 Taxonomy/结构校验后的 Validation Retry；网络重试由运行时独立控制。</small>
         </label>
         <label>
-          <span>最大并发</span>
+          <span>{{ isLlm ? '模型并发上限' : '最大并发' }}</span>
           <input
             v-model.number="draft.maxConcurrency"
             type="number"
             min="1"
-            max="500"
+            max="5000"
           >
+          <small v-if="isLlm">表示同时在途的单内容逻辑模型请求；新 Analysis Run 会冻结此值并自动计算 Shard Size，无需单独配置 Shard。</small>
         </label>
         <label>
           <span>最大 RPS</span>
@@ -331,6 +335,7 @@ async function save(): Promise<void> {
             max="10000"
             placeholder="留空表示不额外限速"
           >
+          <small v-if="isLlm">限制物理 HTTP Attempt 的启动速率，包含 Transport Retry，用于抑制 429/5xx 时的请求风暴。</small>
         </label>
       </div>
 
