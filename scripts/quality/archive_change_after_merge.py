@@ -10,15 +10,25 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 CHANGE_ROOT = Path("changes")
 CURRENT_SCHEMA = "coding-change/v1"
 ACTIVE_CHANGE_PATTERN = re.compile(r"^changes/active/(?P<change_id>CHG-[^/]+)/CHANGE\.md$")
 FRONTMATTER_FIELD_PATTERN = re.compile(r"^(?P<key>[A-Za-z_]+):(?P<rest>.*)$")
-BEIJING = ZoneInfo("Asia/Shanghai")
+
+
+def _beijing_timezone() -> tzinfo:
+    """优先使用 IANA 北京时区；无系统 tzdata 时为现代归档日期退化到 UTC+08:00。"""
+    try:
+        return ZoneInfo("Asia/Shanghai")
+    except ZoneInfoNotFoundError:
+        return timezone(timedelta(hours=8), name="Asia/Shanghai")
+
+
+BEIJING = _beijing_timezone()
 
 
 class ArchiveChangeError(ValueError):
