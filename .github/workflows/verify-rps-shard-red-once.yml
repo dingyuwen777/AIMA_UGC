@@ -1,4 +1,4 @@
-name: Sync RPS shard docs once
+name: Finalize RPS shard re-review once
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  docs:
+  finalize:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout feature branch
@@ -20,122 +20,58 @@ jobs:
           ref: feature/335-analysis-provider-concurrency
           fetch-depth: 1
 
-      - name: Sync RPS-aware shard documentation
+      - name: Record re-review and remove one-time workflow
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str, label: str) -> None:
-              target = Path(path)
-              text = target.read_text(encoding="utf-8")
+          path = Path("changes/active/CHG-20260904-010706-analysis-provider-concurrency/CHANGE.md")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = {
+              "当前 Verdict：`NO_FINDINGS_WITHIN_SCOPE`。Review 过程中暴露的 generated drift、Stage12 旧验收语义、Ruff/mypy 和过期 Unit Fake 均已修复并重新进入回归链；没有通过降低生产断言或跳过真实 PostgreSQL/Full-stack 边界换取绿色。":
+              "当前 Verdict：`NO_FINDINGS_WITHIN_SCOPE`（re-review）。首次 Ready 后独立 Review 发现 HIGH：合法的高并发/低 RPS 配置可能生成理论必超 1,800 秒 Job timeout 的大 Shard。已先建立失败回归证明 `max_concurrency=1000, max_rps=1` 的原公式会得到 20,000 条 Shard，再以 `max_rps × 900 秒` 物理 Attempt 启动预算收紧并完成 targeted Ruff/mypy/pytest Green；修复后 `_analysis_shard_size()` 已把冻结 Provider `max_rps` 传入正式 Preview/Create。re-review 未发现新的 BLOCKER/HIGH/MEDIUM Finding。异常 Validation/Transport Retry 仍可能触发 Job timeout，已作为显式残余边界写入 README/Appendix，不冒充真实 Provider 容量保证。此前 generated drift、Stage12 旧验收语义、Ruff/mypy 和过期 Unit Fake 也均已修复，没有通过降低生产断言或跳过真实 PostgreSQL/Full-stack 边界换取绿色。",
+              "- [x] unresolved_cleared: 当前独立 Review 无 BLOCKER/HIGH/MEDIUM Finding；真实 Provider 容量和合并后归档属于明确证据边界/后续门禁，不作为已验证事实隐藏。":
+              "- [x] unresolved_cleared: 低 RPS Shard timeout HIGH Finding 已完成 Red → Green → re-review 并关闭；当前无未解决 BLOCKER/HIGH/MEDIUM Finding。真实 Provider 容量和合并后归档属于明确证据边界/后续门禁，不作为已验证事实隐藏。",
+              "- [x] reverse_audit: 从最终 PR changed files 反查公开入口、Worker registry、Provider snapshot、DB writer、tests/docs/generated consumer；一次性生成/静态修复/吞吐 benchmark workflow 与脚本均已从最终 diff 清理。":
+              "- [x] reverse_audit: 从最终 PR changed files 反查公开入口、Worker registry、Provider snapshot、DB writer、tests/docs/generated consumer；一次性生成/静态修复/吞吐 benchmark 及低 RPS Red-Green workflow/script 均在取证后清理，不进入最终 PR diff。",
+              "- 功能实现、测试资产、文档和 generated artifacts 已完成；受控 Formal/Offline 吞吐比为 98.86%。":
+              "- 功能实现、测试资产、文档和 generated artifacts 已完成；受控 Formal/Offline 吞吐比为 98.86%。\n- 独立 Review 曾发现并已修复低 RPS Shard timeout HIGH Finding；re-review 当前无未解决 BLOCKER/HIGH/MEDIUM Finding。",
+          }
+          for old, new in replacements.items():
               if text.count(old) != 1:
-                  raise SystemExit(f"Unexpected {label} shape in {path}: {text.count(old)}")
-              target.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-          readme = "backend/src/aima_ugc/modules/analysis/README.md"
-          replace_once(
-              readme,
-              "根据 Run 冻结 Provider `max_concurrency` 自动计算 Shard Size。",
-              "根据 Run 冻结 Provider `max_concurrency / max_rps` 自动计算 Shard Size。",
-              "README capacity description",
-          )
-          replace_once(
-              readme,
-              "shard_size = clamp(max_concurrency × 20, 20, 50_000)",
-              "shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)",
-              "README shard formula",
-          )
-          replace_once(
-              readme,
-              "max_concurrency = 250  → shard_size = 5,000\nmax_concurrency = 1000 → shard_size = 20,000",
-              "max_concurrency = 250,  max_rps = null → shard_size = 5,000\nmax_concurrency = 1000, max_rps = null → shard_size = 20,000\nmax_concurrency = 1000, max_rps = 1    → shard_size = 900\nmax_concurrency = 250,  max_rps = 5    → shard_size = 4,500",
-              "README shard examples",
-          )
-          replace_once(
-              readme,
-              "Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。",
-              "Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。未配置 `max_rps` 时仍以 20 个并发波次为基线；配置 `max_rps` 时再用 900 秒物理 Attempt 启动预算收紧，低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，为 Retry、数据库批量提交、Heartbeat 和取消留出余量。异常高重试仍可能触发 Job timeout，因此该预算不是吞吐承诺。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。",
-              "README shard explanation",
-          )
-
-          appendix = "docs/appendix/07_AI舆情打标与分析实现.md"
-          replace_once(
-              appendix,
-              "shard_size = clamp(max_concurrency × 20, 20, 50_000)",
-              "shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)",
-              "Appendix shard formula",
-          )
-          replace_once(
-              appendix,
-              "250  并发 → 5,000 Content / Shard\n1000 并发 → 20,000 Content / Shard",
-              "250  并发、未配置 max_rps → 5,000 Content / Shard\n1000 并发、未配置 max_rps → 20,000 Content / Shard\n1000 并发、max_rps=1 → 900 Content / Shard\n250  并发、max_rps=5 → 4,500 Content / Shard",
-              "Appendix shard examples",
-          )
-          replace_once(
-              appendix,
-              "Shard Size **不由管理员配置**。Create 把计算结果冻结到 `analysis_content_runs.shard_size`；之后修改 Provider concurrency 只影响新 Run。",
-              "Shard Size **不由管理员配置**。未配置 `max_rps` 时按 20 个并发波次计算；配置 `max_rps` 时再以 900 秒物理 Attempt 启动预算收紧。900 秒低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，用于给 Retry、数据库批量提交、Heartbeat 和取消预留余量；异常高重试仍可能触发 Job timeout。Create 把计算结果冻结到 `analysis_content_runs.shard_size`；之后修改 Provider concurrency / RPS 只影响新 Run。",
-              "Appendix shard explanation",
-          )
-
-          change = "changes/active/CHG-20260904-010706-analysis-provider-concurrency/CHANGE.md"
-          replace_once(change, "status: ready_for_review", "status: in_progress", "Change status")
-          replace_once(
-              change,
-              "2. Shard Size 不由管理员配置；新数据库 Provider Run 根据冻结 Provider concurrency 自动计算并冻结。迁移前 legacy env bootstrap 路径保留历史静态 shard 兼容，旧 Run 始终读取自己已冻结的 shard_size。",
-              "2. Shard Size 不由管理员配置；新数据库 Provider Run 根据冻结 Provider `max_concurrency / max_rps` 自动计算并冻结。迁移前 legacy env bootstrap 路径保留历史静态 shard 兼容，旧 Run 始终读取自己已冻结的 shard_size。",
-              "Change decision 2",
-          )
-          replace_once(
-              change,
-              "3. 初始自动 Shard 目标为 `max_concurrency × 20 waves`，并使用内部安全上下限；250 约 5,000，1000 约 20,000。",
-              "3. 初始自动 Shard 目标为 `max_concurrency × 20 waves`，并使用 20/50,000 内部上下限；若配置 `max_rps`，再以 `max_rps × 900 秒` 收紧，使正常单 Attempt/Content 的 RPS 启动预算低于 1800 秒 Job timeout。未配置 RPS 时 250 约 5,000、1000 约 20,000。",
-              "Change decision 3",
-          )
-          replace_once(
-              change,
-              "8. 新数据库 Provider 的 Preview/Create 使用 `calculate_analysis_shard_size(max_concurrency)` 冻结 Shard Size；legacy env bootstrap 保持历史静态 shard 兼容。",
-              "8. 新数据库 Provider 的 Preview/Create 使用 `calculate_analysis_shard_size(max_concurrency, max_rps=...)` 冻结 Shard Size；未配置 RPS 时保持 20 waves 基线，低 RPS 时受 900 秒安全预算约束；legacy env bootstrap 保持历史静态 shard 兼容。",
-              "Change implementation 8",
-          )
-          replace_once(
-              change,
-              "| R5 | Shard 自动按 Provider concurrency 计算并冻结；250≈5000、1000≈20000；管理员不配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `calculate_analysis_shard_size()` 采用 20 waves + 20/50000 内部边界；`test_analysis_sharding.py` 断言 250→5000、1000→20000；真实 PostgreSQL Integration 验证 Run snapshot/shard 冻结。 |",
-              "| R5 | Shard 自动按 Provider concurrency 计算并冻结；低 RPS 时必须受 Job timeout 安全预算约束；管理员不配置 | https://github.com/dingyuwen777/AIMA_UGC/issues/335 | satisfied | `calculate_analysis_shard_size()` 采用 20 waves + 20/50000 内部边界，并在配置 `max_rps` 时取 `max_rps × 900 秒` 的更小预算；`test_analysis_sharding.py` 同时覆盖 250→5000、1000→20000、1000/RPS1→900、250/RPS5→4500 以及 HTTP Preview/Create helper 透传 RPS；真实 PostgreSQL Integration 验证 Run snapshot/shard 冻结。 |",
-              "Change R5",
-          )
-          replace_once(
-              change,
-              "当前 Verdict：`NO_FINDINGS_WITHIN_SCOPE`。Review 过程中暴露的 generated drift、Stage12 旧验收语义、Ruff/mypy 和过期 Unit Fake 均已修复并重新进入回归链；没有通过降低生产断言或跳过真实 PostgreSQL/Full-stack 边界换取绿色。",
-              "当前 Verdict：`FINDING_FIXED_PENDING_RE_REVIEW`。首次 Ready 后的独立 Review 发现 HIGH：合法的高并发/低 RPS 配置可能生成理论必超 1,800 秒 Job timeout 的大 Shard。已用失败回归确认 `1000 concurrency + 1 RPS` 原路径不满足 timeout 边界，并以 `max_rps × 900 秒` 安全预算完成 Green 修复；待最终永久 CI 与 re-review 后才能恢复 `NO_FINDINGS_WITHIN_SCOPE`。此前 generated drift、Stage12 旧验收语义、Ruff/mypy 和过期 Unit Fake 也均已修复，没有通过降低生产断言或跳过真实 PostgreSQL/Full-stack 边界换取绿色。",
-              "Change review verdict",
-          )
-          replace_once(
-              change,
-              "- [x] unresolved_cleared: 当前独立 Review 无 BLOCKER/HIGH/MEDIUM Finding；真实 Provider 容量和合并后归档属于明确证据边界/后续门禁，不作为已验证事实隐藏。",
-              "- [ ] unresolved_cleared: HIGH 低 RPS Shard timeout Finding 已完成 Red-Green 修复；等待最终永久 CI 与独立 re-review 后再关闭。",
-              "Change unresolved audit",
-          )
-          replace_once(
-              change,
-              "- Change 已进入 `ready_for_review`。最终合并仍要求该最终候选 HEAD 的永久 CI/Completion Gate 全绿；不得用更早 HEAD 的绿色结果替代。",
-              "- LOW-RPS Shard HIGH Finding 已完成 Red-Green 修复，Change 暂回 `in_progress`；待最终永久 CI 与独立 re-review 通过后重新进入 `ready_for_review`。",
-              "Change current status",
-          )
+                  raise SystemExit(f"Unexpected Change re-review shape: {old[:80]!r} -> {text.count(old)}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
           PY
+
+          git rm .github/workflows/verify-rps-shard-red-once.yml
           git diff --check
           python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
 
-      - name: Commit documentation sync
+      - name: Re-run targeted coding regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          uv run ruff check backend/src/aima_ugc/modules/analysis/sharding.py backend/src/aima_ugc/bootstrap/content_http.py tests/unit/analysis/test_analysis_sharding.py tests/unit/content/test_stage12_analysis_planner.py
+          uv run mypy backend/src/aima_ugc/modules/analysis/sharding.py backend/src/aima_ugc/bootstrap/content_http.py
+          uv run pytest tests/unit/analysis/test_analysis_sharding.py tests/unit/content/test_stage12_analysis_planner.py -q
+
+      - name: Commit final re-review cleanup
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/src/aima_ugc/modules/analysis/README.md docs/appendix/07_AI舆情打标与分析实现.md changes/active/CHG-20260904-010706-analysis-provider-concurrency/CHANGE.md
-          git commit -m "同步 Analysis RPS Shard 安全预算文档"
+          git add changes/active/CHG-20260904-010706-analysis-provider-concurrency/CHANGE.md
+          git add -u .github/workflows/verify-rps-shard-red-once.yml
+          git commit -m "完成 Analysis RPS Shard re-review 并清理临时 workflow"
           git fetch origin feature/335-analysis-provider-concurrency
           git rebase origin/feature/335-analysis-provider-concurrency
           git push origin HEAD:feature/335-analysis-provider-concurrency
