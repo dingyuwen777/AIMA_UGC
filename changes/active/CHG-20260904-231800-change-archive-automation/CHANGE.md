@@ -22,6 +22,7 @@ affected_paths:
   - scripts/quality/check_change_completion.py
   - .github/workflows/change-archive.yml
   - tests/unit/test_change_archive_automation.py
+  - tests/unit/test_change_archive_timezone.py
   - tests/unit/test_change_completion.py
   - docs/04_测试与调试说明.md
   - docs/guides/05_多人协作与Change自动归档.md
@@ -74,6 +75,7 @@ data_changes: []
 - 归档按 PR changed files 唯一定位 current-schema active Change；0 个为 N/A，>1 个或歧义 fail closed。
 - 归档还绑定 merged PR 的 `merge_commit_sha`：该 revision 必须属于当前 main 历史，当前 Active Change 必须与 merged revision 原文一致；幂等 archive 也必须能由同一 merged revision 精确重建，避免多人先后修改同一 Change 时冻结错误版本。
 - `status` 只从 `ready_for_review` 变为 `done`，`updated` 按 merge 时间的北京时间日期更新；其他 Change 正文逐字保持。
+- 北京时间优先使用 IANA `Asia/Shanghai`；Windows 等无系统 IANA tzdata 环境为现代 GitHub merge 时间退化到 UTC+08:00，不为该治理脚本新增全项目 `tzdata` 依赖。
 - AIMA 项目 wrapper 仍复用 installed Agent_Skills validator；本次只同步项目实际依赖的模板/validator 契约，并由 wrapper 显式打开稳定 Acceptance binding，不在项目脚本复制第二套解析规则。
 - PR #353 已把 Requirement Traceability / Completion Audit 收敛进 `ci.yml`；本 Change 复用最新 CI Core，不恢复已删除的独立 Completion Workflow。
 - PR current-head CI、独立 Review、guarded merge、main-fresh 和 archive governance fresh 由 GitHub PR / Actions / Requirement Closure Owner 持有；repository-native archive 只冻结 `status/updated`，不为这些平台事实再次改写 Change 正文。
@@ -90,13 +92,13 @@ data_changes: []
 | R6 | implementation main-fresh 与 archive governance fresh 分离，archive 不等价 Closure | external:https://github.com/dingyuwen777/AIMA_UGC/issues/354#AC6 | satisfied | 正式指南明确两类 revision Evidence 与 Closure 边界；archive commit 仍触发现有 main push governance/CI，Implementation merge 的 main-fresh 不被归档动作替代。 |
 | R7 | 继续复用 installed Ready validator，新 Change 使用稳定 AC 引用，历史 archive 不迁移 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/354#AC7 | satisfied | AIMA 同步 Agent_Skills 当前 `CHANGE.template.md` / `ready_check.py`；项目 wrapper 动态加载该 validator 并对 Active Ready 显式启用 `require_acceptance_binding`，未复制解析规则；`test_ready_current_change_requires_stable_acceptance_binding` 固化泛化来源失败，legacy untouched archive 仍兼容。 |
 | R8 | 正式开发指南同步单 PR + repository archive automation 生命周期 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/354#AC8 | satisfied | 新增 `docs/guides/05_多人协作与Change自动归档.md` 并加入 Guide 导航；按 #353 最新事实把 Requirement/Completion Owner 指向 `.github/workflows/ci.yml`，`docs/04_测试与调试说明.md` 同步 6 个永久 Workflow，正常路径无第二归档 PR。 |
-| R9 | 永久测试覆盖归档、幂等、allowlist、workflow 与现有 required responsibilities | external:https://github.com/dingyuwen777/AIMA_UGC/issues/354#AC9 | satisfied | `test_change_archive_automation.py` 覆盖成功归档、精确同源幂等、当前 Active/既有 archive 与 merged revision 不一致的并发归属反例、歧义、窄权限/触发/concurrency/main push 漂移约束；`test_change_completion.py` 保留历史兼容与提前归档拒绝；required responsibilities 不被删除。 |
+| R9 | 永久测试覆盖归档、幂等、allowlist、workflow 与现有 required responsibilities | external:https://github.com/dingyuwen777/AIMA_UGC/issues/354#AC9 | satisfied | `test_change_archive_automation.py` 覆盖成功归档、精确同源幂等、当前 Active/既有 archive 与 merged revision 不一致的并发归属反例、歧义、窄权限/触发/concurrency/main push 漂移约束；`test_change_archive_timezone.py` 覆盖无系统 IANA tzdata 的 UTC+08:00 fallback；`test_change_completion.py` 保留历史兼容与提前归档拒绝；required responsibilities 不被删除。 |
 
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | archive helper、PR transition gate、稳定 AC binding、精确同源幂等、并发归属失败路径永久单元回归已加入 current head。 |
+| 行为 / 单元 / 组件 | required | archive helper、PR transition gate、稳定 AC binding、精确同源幂等、并发归属失败路径和无系统 tzdata 的北京时间 fallback 永久单元回归已加入 current head。 |
 | 接口 / 契约 | required | workflow merged PR/dispatch input、`merge_commit_sha` revision binding、专用 App token、Change path/status contract 与 installed Ready validator acceptance-binding contract 有明确机器实现和回归。 |
 | 集成 / 持久化 / 运行依赖 | required | Workflow 在真实 Git checkout 上把 merged revision Source 与当前 main Change 绑定，stage、validate、commit，push 前重新 fetch main 并用 parent==current-main 防二次漂移。 |
 | 用户 / 工作流验收 | required | 正式指南覆盖 developer PR → maintainer merge → archive automation → Closure pending。 |
@@ -109,7 +111,7 @@ data_changes: []
 
 - [x] upstream_re_read：已重读 #354 最新 AC1–AC9，并在 main 漂移后重读 #353 合并后的 CI Owner 事实。
 - [x] change_coverage：R1–R9 一一映射当前 AC，没有把 Change 自身当需求全集。
-- [x] reverse_audit：已从普通 PR、merged PR、稳定 AC binding、重复执行、active/archive 歧义、merged revision 内容漂移、越界修改、main push 漂移、App 未配置和 archive failure 反向审计。
+- [x] reverse_audit：已从普通 PR、merged PR、稳定 AC binding、重复执行、active/archive 歧义、merged revision 内容漂移、越界修改、main push 漂移、App 未配置、无系统 tzdata 和 archive failure 反向审计。
 - [x] unresolved_cleared：所有 R 均已有当前实现/永久回归或明确平台配置边界；PR/Actions 与 post-merge 平台证据由其真实 Owner 持有，不通过归档正文回写伪造完成事实。
 
 # 任务
@@ -123,19 +125,20 @@ data_changes: []
 - [x] 同步正式 Guide、永久 Workflow 事实与导航。
 - [x] 对齐 #353 合并后的 CI Core，不恢复已删除 Completion Workflow。
 - [x] 完成 Requirement Traceability / Completion Audit。
+- [x] 补齐 Windows/无系统 IANA tzdata 的北京时间归档日期兼容与回归。
 - [x] 明确 PR current-head CI / 独立 Review / guarded merge / main-fresh 属于 PR、Actions 与 Requirement Closure 外部证据，不由归档自动化回写 Change 正文。
 
 # 验证
 
 ## 计划
 
-- targeted：`tests/unit/test_change_archive_automation.py`、`tests/unit/test_change_completion.py`。
+- targeted：`tests/unit/test_change_archive_automation.py`、`tests/unit/test_change_archive_timezone.py`、`tests/unit/test_change_completion.py`。
 - governance：Requirement Traceability and Completion Audit。
 - CI responsibility：确认不新增重复业务测试，归档 Workflow 只负责 lifecycle write。
 
 ## 新鲜证据
 
-- current branch 已包含脚本、Workflow、项目 gate、稳定 Acceptance validator/template、merged revision 防竞态回归与正式 Guide，并已按 #353/#357 最新 main 对齐 CI Owner；PR current-head CI/Review 与 post-merge evidence 由 GitHub 的真实 revision/Actions/Closure Owner 持有，Change 不预写未来 Run/SHA。
+- current branch 已包含脚本、Workflow、项目 gate、稳定 Acceptance validator/template、merged revision 防竞态回归、无系统 tzdata fallback 回归与正式 Guide，并已按 #353/#357 最新 main 对齐 CI Owner；PR current-head CI/Review 与 post-merge evidence 由 GitHub 的真实 revision/Actions/Closure Owner 持有，Change 不预写未来 Run/SHA。
 
 # 文档影响
 
