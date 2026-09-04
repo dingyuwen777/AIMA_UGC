@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260904-155626-analysis-unified-execution
 title: 统一 AI 打标执行与结果刷新
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/analysis-unified-concurrent-execution
 created: 2026-09-04
@@ -79,7 +79,7 @@ data_changes: []
 | R5 | 无数据库 imports_test 与 Ctrl+C checkpoint 恢复 | https://github.com/dingyuwen777/AIMA_UGC/issues/344 | satisfied | test_offline_labeling_concurrency.py 禁用数据库后调用生产打标及导出，test_offline_labeling_stop.py 保留认证失败边界。 |
 | R6 | 活动每秒共享刷新、终态显示结果、无重复查询及旧响应倒退 | https://github.com/dingyuwen777/AIMA_UGC/issues/344 | satisfied | task-center/voice-plaza Store、26 项前端单测、9 项 Browser Mock 和 analysis-streaming.spec.ts 真实全栈验收。 |
 | R7 | 保持质量语义与冻结身份，不升级依赖/Schema | https://github.com/dingyuwen777/AIMA_UGC/issues/344 | satisfied | Prompt/Validator/Contract/lock/Migration 无差异；人工复核、旧 Run 身份与结果完整性回归；不将受控测试称为准确率评测。 |
-| R8 | 文档、分层验收、PR/主分支验证与归档交付 | https://github.com/dingyuwen777/AIMA_UGC/issues/344 | satisfied | 本 Change 跟踪已完成的本地验证；正式文档与 CI 接线随三个工作提交进入 PR。PR/main CI、归档、Issue 关闭属于下方明确时序门禁，完成前不宣称已合并。 |
+| R8 | 文档、分层验收、PR/主分支验证与归档交付 | https://github.com/dingyuwen777/AIMA_UGC/issues/344 | satisfied | PR #345 已合并为 42ab2c9e，最终候选完整 CI 与实现 main 四项工作流全部通过，结果见 EVIDENCE.md；当前为独立归档提交。归档 main、Issue 关闭和分支清理按下方时序继续，结果回写 Issue。 |
 
 # 验证矩阵
 
@@ -107,7 +107,8 @@ data_changes: []
 - [x] 建立失败回归并完成最小实现、清理失效代码。
 - [x] 完成局部单元、真实 PostgreSQL、Browser Mock、真实全栈和构建验证。
 - [x] 完成最终变更与证据 Review，标记 Ready。
-- [ ] PR 必需 CI 通过后受保护合并，再验证 implementation main。
+- [x] PR 必需 CI 通过后按主分支规则合并，再验证 implementation main。
+- [x] 同一 Change ID 移入归档并记录实现主分支的新鲜检查。
 - [ ] 单独归档并验证 archive main，关闭 Issue，清理本任务分支。
 
 # 验证
@@ -122,4 +123,8 @@ data_changes: []
 
 # 交付
 
-三个工作提交分别归集后端执行、前端刷新与验收、文档与审计。Issue #344 保持 open；PR #345 已建立；合并 SHA、main CI 和归档结果在实际发生后记录。不提交忽略的运行日志、Secret 或业务数据。
+五个工作提交分别归集后端执行、前端刷新与验收、文档审计及 CI 发现的测试/链接修正。PR #345 已合并，候选为 `47dbc0ca4ac002726ba894733f070cea9eca7553`，合并提交为 `42ab2c9e538187c29bd7a6987b0a7801e22302e7`；两者文件树一致。
+
+该实现 main 的 CI `33855410461`、Runtime Acceptance `33855410237`、Change Completion Gate `33855410163` 和 Developer Tooling Compatibility `33855410156` 均 success。当前独立归档分支为 `docs/archive-analysis-unified-execution`，只移动和更新本 Change，不修改产品代码。
+
+Issue #344 在归档 main 的检查通过前保持 open；随后逐项回写验收、写后重读、关闭并重读，再清理本任务已合并分支。归档提交不能预填自己的合并结果，最终证据记录于 Issue #344。不提交忽略的运行日志、Secret 或业务数据；本次没有发布或部署。
