@@ -861,11 +861,14 @@ def _analysis_storage_scope(targets: _AnalysisTargetSelection) -> Literal["query
 
 
 def _analysis_shard_size(provider: ProviderConfig, *, legacy_shard_size: int) -> int:
-    """数据库 Provider 自动推导 Shard；仅旧 env bootstrap Provider 沿用历史静态值。"""
+    """数据库 Provider 按并发/RPS 推导 Shard；旧 env bootstrap 沿用历史静态值。"""
 
     if is_legacy_llm_provider(provider):
         return legacy_shard_size
-    return calculate_analysis_shard_size(provider.max_concurrency)
+    return calculate_analysis_shard_size(
+        provider.max_concurrency,
+        max_rps=provider.max_rps,
+    )
 
 
 def _analysis_response_scope(row: RowMapping) -> Literal["all", "query", "selected"]:
