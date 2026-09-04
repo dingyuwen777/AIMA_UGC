@@ -33,19 +33,98 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv sync --locked
 
-      - name: Format affected Python files
+      - name: Fix Python source quality findings
         shell: bash
         run: |
           set -euo pipefail
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          concurrency_path = Path("backend/src/aima_ugc/modules/analysis/concurrent_labeling.py")
+          text = concurrency_path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  'from typing import Generic, TypeVar\n\n_ItemT = TypeVar("_ItemT")\n_ResultT = TypeVar("_ResultT")\n\n\n',
+                  '',
+              ),
+              ('class ConcurrentTaskOutcome(Generic[_ItemT, _ResultT]):', 'class ConcurrentTaskOutcome[_ItemT, _ResultT]:'),
+              ('def run_bounded_concurrently(\n', 'def run_bounded_concurrently[_ItemT, _ResultT](\n'),
+              ('def _collect_completed(\n', 'def _collect_completed[_ItemT, _ResultT](\n'),
+              ('def _cancel_and_collect(\n', 'def _cancel_and_collect[_ItemT, _ResultT](\n'),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"Unexpected concurrent_labeling source shape for: {old!r}")
+              text = text.replace(old, new, 1)
+          concurrency_path.write_text(text, encoding="utf-8")
+
+          worker_path = Path("backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py")
+          text = worker_path.read_text(encoding="utf-8")
+          if text.count("                cancel_seen = False\n") != 1:
+              raise SystemExit("Unexpected cancel_seen declaration shape")
+          text = text.replace(
+              "                cancel_seen = False\n",
+              "                cancel_state = [False]\n",
+              1,
+          )
+          old_signature = '''                def persist_completed(
+                    outcomes: Sequence[
+                        ConcurrentTaskOutcome[AnalysisWorkItem, ContentLabelingBatchResult]
+                    ],
+                ) -> None:
+                    """在调度线程累积完成结果，达到阈值后短事务落库并形成自然背压。"""
+
+                    nonlocal cancel_seen
+                    persistence_buffer.extend(outcomes)
+'''
+          new_signature = '''                def persist_completed(
+                    outcomes: Sequence[
+                        ConcurrentTaskOutcome[AnalysisWorkItem, ContentLabelingBatchResult]
+                    ],
+                    persistence_buffer: list[
+                        ConcurrentTaskOutcome[AnalysisWorkItem, ContentLabelingBatchResult]
+                    ] = persistence_buffer,
+                    cancel_state: list[bool] = cancel_state,
+                ) -> None:
+                    """在调度线程累积完成结果，达到阈值后短事务落库并形成自然背压。"""
+
+                    persistence_buffer.extend(outcomes)
+'''
+          if text.count(old_signature) != 1:
+              raise SystemExit("Unexpected persist_completed source shape")
+          text = text.replace(old_signature, new_signature, 1)
+          if text.count("                        cancel_seen = context.cancel_requested()\n") != 1:
+              raise SystemExit("Unexpected cancel_seen assignment shape")
+          text = text.replace(
+              "                        cancel_seen = context.cancel_requested()\n",
+              "                        cancel_state[0] = context.cancel_requested()\n",
+              1,
+          )
+          if text.count("                        stop_requested=lambda: cancel_seen,\n") != 1:
+              raise SystemExit("Unexpected stop_requested source shape")
+          text = text.replace(
+              "                        stop_requested=lambda: cancel_seen,\n",
+              "                        stop_requested=lambda cancel_state=cancel_state: cancel_state[0],\n",
+              1,
+          )
+          worker_path.write_text(text, encoding="utf-8")
+          PY
+
           uv run ruff format \
-            backend/src/aima_ugc/adapters/persistence/postgres/analysis_batch.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/analysis_high_throughput.py \
-            backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py \
-            backend/src/aima_ugc/bootstrap/analysis_high_throughput_planner.py \
-            backend/src/aima_ugc/bootstrap/content_http.py \
-            backend/src/aima_ugc/bootstrap/worker.py \
-            tests/integration/content/test_analysis_provider_concurrency.py \
-            tests/unit/analysis/test_bounded_concurrency.py
+            backend tests scripts \
+            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
+            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
+            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
+          uv run ruff check --fix \
+            backend tests scripts \
+            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
+            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
+            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
+          uv run ruff format \
+            backend tests scripts \
+            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
+            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
+            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
           git diff --check
 
       - name: Run repository Python static gates
@@ -64,7 +143,7 @@ jobs:
             migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
           uv run mypy backend/src
 
-      - name: Commit formatting only
+      - name: Commit quality fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -77,13 +156,16 @@ jobs:
             backend/src/aima_ugc/bootstrap/analysis_high_throughput_planner.py \
             backend/src/aima_ugc/bootstrap/content_http.py \
             backend/src/aima_ugc/bootstrap/worker.py \
+            backend/src/aima_ugc/modules/analysis/concurrent_labeling.py \
+            backend/src/aima_ugc/modules/analysis/offline_concurrent_labeling.py \
             tests/integration/content/test_analysis_provider_concurrency.py \
-            tests/unit/analysis/test_bounded_concurrency.py
+            tests/unit/analysis/test_bounded_concurrency.py \
+            tests/unit/analysis/test_provider_concurrency_contract.py
           if git diff --cached --quiet; then
-            echo "Python files already formatted."
+            echo "Python quality findings already resolved."
             exit 0
           fi
-          git commit -m "格式化 Analysis 高吞吐实现"
+          git commit -m "修复 Analysis Python 静态门禁"
           git fetch origin feature/335-analysis-provider-concurrency
           git rebase origin/feature/335-analysis-provider-concurrency
           git push origin HEAD:feature/335-analysis-provider-concurrency
