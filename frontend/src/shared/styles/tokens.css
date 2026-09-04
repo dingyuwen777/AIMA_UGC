@@ -80,11 +80,11 @@
   --aima-layout-detail-drawer-width: 450px;
   --aima-layout-safe-margin: 16px;
 
-  /* Density：控件在 1440 保持基线，只在大屏小幅增加，不做整页缩放。 */
+  /* Density：标准桌面保持现有关键几何，大屏只做有限增加，不做整页缩放。 */
   --aima-control-height-sm: clamp(32px, calc(29px + 0.208333vw), 34px);
   --aima-control-height-md: clamp(40px, calc(37px + 0.208333vw), 42px);
   --aima-density-card-padding: clamp(16px, calc(10px + 0.416667vw), 20px);
-  --aima-density-section-gap: clamp(16px, calc(10px + 0.416667vw), 20px);
+  --aima-density-section-gap: clamp(24px, calc(18px + 0.416667vw), 28px);
   --aima-border-width-default: 1px;
   --aima-border-width-focus: 2px;
   --aima-control-height-toggle: 24px;
