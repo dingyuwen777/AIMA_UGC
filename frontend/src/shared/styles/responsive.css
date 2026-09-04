@@ -20,7 +20,7 @@
 
 /* Overlay 使用首选设计宽度，但永远受当前 viewport safe margin 约束。 */
 :where([role='dialog'], .el-dialog, .el-drawer) {
-  max-width: calc(100vw - (var(--aima-layout-safe-margin) * 2));
+  max-width: calc(100vw - var(--aima-layout-safe-margin) - var(--aima-layout-safe-margin));
 }
 
 /* Voice Plaza：把 9–10px 业务/操作文字收敛到 semantic caption。 */
