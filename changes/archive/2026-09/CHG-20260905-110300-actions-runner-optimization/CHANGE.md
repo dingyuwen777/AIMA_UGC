@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260905-110300-actions-runner-optimization
 title: 收敛 Actions 触发与风险分层以降低 Runner 消耗
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: chg/20260905-actions-runner-optimization
 created: 2026-09-05
