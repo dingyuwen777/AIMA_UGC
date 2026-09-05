@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260905-192745-env-compose-config-contract
 title: 统一本地与生产 env / Compose 配置契约
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/env-compose-config-contract
 created: 2026-09-05
