@@ -49,6 +49,7 @@ jobs:
       AIMA_HISTORICAL_IMPORT_ROOT: .runtime/ci-stage12/history
       AIMA_HISTORICAL_CHUNK_ROWS: 100
       AIMA_LLM_BASE_URL: http://127.0.0.1:8091/v1
+      # 价格目录身份使用仓库已锁定条目；Base URL 仍只指向本机假服务，不会出网。
       AIMA_LLM_PROVIDER_NAME: api.deepseek.com
       AIMA_LLM_MODEL: deepseek-v4-pro
 
