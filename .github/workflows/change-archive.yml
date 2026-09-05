@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [main]
     types: [closed]
+    paths: ["changes/active/**"]
   workflow_dispatch:
     inputs:
       pr_number:
