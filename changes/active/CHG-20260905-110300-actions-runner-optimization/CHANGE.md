@@ -25,6 +25,7 @@ affected_paths:
   - tests/unit/test_ci_workflow_structure.py
   - tests/unit/test_actions_runner_optimization.py
   - tests/unit/test_release_workflow.py
+  - docs/04_测试与调试说明.md
 contracts:
   - AIMA CI Evidence Preservation Contract
   - AIMA Required Check Identity Contract
@@ -48,7 +49,7 @@ data_changes: []
 
 - 调整 AIMA CI、Runtime、Tooling、Release、Full-stack、Change Archive 的事件、Draft fast-path、path scope 与依赖缓存。
 - 更新永久回归，锁定 Evidence Preservation Mapping、required check identity、Draft→Ready 与 Runtime 证明责任守恒。
-- 对照 `docs/04_测试与调试说明.md` 当前长期 CI 说明，确认细粒度 event/cache 规则无需复制进长期文档。
+- 同步 `docs/04_测试与调试说明.md` 的长期 Runner 优化边界，不复制易漂移的低层 Workflow 实现细节。
 
 # 非目标
 
@@ -74,8 +75,8 @@ data_changes: []
 - Metadata edit 继续实时重验 Requirement Source；只有同一 HEAD 已有 `CI Gate` + `Compose Golden Path` 成功基线才允许 metadata-only run 变绿，防止 PR 文本编辑覆盖失败的完整 CI。
 - `Compose Golden Path` 的 Runtime risk classifier 与真实 Compose 验证正文保持原 Owner；本次只把 Draft 的昂贵运行延后到 Ready。
 - Cache 只缓存包管理器下载内容，当前源码、构建产物、数据库状态和测试结果仍由本 SHA 重新生成。
-- `docs/04` 当前只维护长期职责与 Runtime fast-path，不复制易漂移的具体 Draft/event/cache 矩阵，因此保持不改比追加第二份细节更符合文档事实源边界。
-- 回滚只需恢复 Workflow/测试；无数据 Migration 或运行时迁移。
+- `docs/04` 只记录长期可维护边界：Draft/Ready、metadata 同 SHA 基线、Runtime required fast-path、Tooling/Release 延后、Archive path scope、dependency cache 与 current-head evidence；具体 YAML 条件仍由 Workflow + 回归持有。
+- 回滚只需恢复 Workflow/测试/文档；无数据 Migration 或运行时迁移。
 
 # 需求追溯
 
@@ -88,7 +89,7 @@ data_changes: []
 | R5 | Change Archive 增加 active Change path scope，dispatch 保留 | #360 / AC5 | satisfied | `change-archive.yml` 增加 `changes/active/**` path filter；dispatch/App/allowlist/drift guard 不变；永久回归覆盖。 |
 | R6 | 依赖缓存不缓存测试/产品产物 | #360 / AC6 | satisfied | CI/PostgreSQL/Full-stack/Tooling 增加 uv/npm 下载 cache，key 绑定 lock/version；未缓存 `dist`、数据库、`.runtime-dist` 或测试结论，永久回归覆盖。 |
 | R7 | 永久回归证明 Evidence Preservation 和 required contexts | #360 / AC7 | satisfied | `test_ci_workflow_structure.py`、`test_actions_runner_optimization.py`、`test_release_workflow.py` 锁定 required identity、Runtime Draft/Ready、Archive filter、cache 和 Release/Tooling Owner。 |
-| R8 | 长期测试文档不复制易漂移事件细节，现有职责说明继续正确 | #360 / AC8 | satisfied | `docs/04` 继续准确描述长期 Owner、Runtime fast-path 和 current-head evidence；新回归显式对照这些长期事实，低层 event/cache 由 Workflow+tests 持有。 |
+| R8 | 正式测试文档同步长期 Runner 优化边界 | #360 / AC8 | satisfied | `docs/04_测试与调试说明.md` 已同步 Draft/Ready、metadata baseline、Runtime fast-path、Tooling/Release、Archive filter、cache 与 current-head 证据边界，并由新回归反向校验。 |
 
 # 验证矩阵
 
@@ -116,7 +117,7 @@ data_changes: []
 - [x] 建立 Workflow Responsibility Audit / Evidence Preservation 方案。
 - [x] 增加永久回归锁定目标触发和证据责任。
 - [x] 实现 Draft/metadata/path/cache 优化，包括 Runtime Draft early-fail。
-- [x] 对照正式测试文档，确认长期职责描述继续准确且无需复制低层 event/cache 矩阵。
+- [x] 同步正式测试文档的长期 Runner 优化边界。
 - [x] 完成 Requirement Traceability / Completion Audit，达到 ready_for_review。
 - [ ] 取得最终 Draft fail-closed、Ready current-head、metadata-only fresh Actions evidence 与独立 Review。
 
@@ -124,13 +125,13 @@ data_changes: []
 
 ## 计划
 
-- Draft：当前最终 HEAD 的 synchronize 在 Draft 状态下必须确认 CI/Runtime early-fail，Tooling/Release heavy jobs skipped。
-- Ready：标记 Ready 后必须取得同一 current HEAD 的完整 CI、Runtime、Tooling 与 Release dry-run fresh evidence。
+- Draft：最终实现已验证 CI/Runtime early-fail，Tooling/Release heavy jobs skipped。
+- Ready：最终 HEAD 必须取得完整 CI、Runtime、Tooling 与 Release dry-run fresh evidence。
 - Metadata：完整 Ready evidence 成功后编辑 PR body，确认 metadata-only CI 在同 SHA 基线绿时成功且不进入产品重路径。
 
 # 文档影响
 
-- `docs/04_测试与调试说明.md` 当前长期职责和 Runtime fast-path 说明继续准确；不复制具体 Draft/event/cache 细节，避免形成第二份易漂移 Workflow 实现说明。
+- `docs/04_测试与调试说明.md` 已同步长期 Runner 优化边界；具体 YAML 事件条件仍以 Workflow + 永久回归为机器事实源。
 
 # 交付
 
