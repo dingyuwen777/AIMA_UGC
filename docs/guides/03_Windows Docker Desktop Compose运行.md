@@ -79,45 +79,49 @@ docker info
 
 ---
 
-## 3. 第一次创建 `env.production`
+## 3. 第一次创建 `env.local`
 
 仓库提交：
 
-- [`env.production.example`](../../env.production.example)
+- [`env.local.example`](../../env.local.example)
 
 本机真实文件：
 
 ```text
-env.production
+env.local
 ```
 
-它被 [`.gitignore`](../../.gitignore) 忽略，可能包含 TikHub / LLM API Key，不能提交 Git。
+它被 [`.gitignore`](../../.gitignore) 忽略，可能包含 TikHub / LLM API Key，不能提交 Git。同一份 `env.local` 同时服务本地源码 launcher 和本地 Docker Compose；公司服务器 / Production 才使用 `env.production`。
 
 CMD：
 
 ```cmd
-copy env.production.example env.production
+copy env.local.example env.local
 ```
 
 PowerShell：
 
 ```powershell
-Copy-Item env.production.example env.production
+Copy-Item env.local.example env.local
 ```
 
-Windows 本地推荐把：
+Windows 本地模板默认：
 
 ```dotenv
-AIMA_HOST_ROOT=./.runtime
+AIMA_HOST_ROOT=./.runtime/compose
+AIMA_HISTORICAL_IMPORT_HOST_ROOT=./.runtime/historical-input
+AIMA_HISTORICAL_IMPORT_ROOT=/data/aima-historical-input
 ```
 
-写入 `env.production`。相对路径以执行 Compose 命令时的项目目录为基准；从仓库根运行本文命令时，宿主可见文件位于：
+`AIMA_HISTORICAL_IMPORT_HOST_ROOT` 是 Windows 宿主 source；`AIMA_HISTORICAL_IMPORT_ROOT` 是 API/Worker 容器内看到的只读 bind target。Compose 会把同一个 runtime root 同时传给 backend environment 和 bind target，避免页面枚举根与真实挂载根漂移。
+
+`AIMA_HOST_ROOT` 相对路径以执行 Compose 命令时的项目目录为基准；从仓库根运行本文命令时，宿主可见文件位于：
 
 ```text
-.runtime/
-└─ runtime/
-   ├─ data/
-   └─ logs/
+.runtime\compose\
+└─ runtime\
+   ├─ data\
+   └─ logs\
 ```
 
 PostgreSQL 和内部 Secret 不进入这个目录，仍由 Docker named volume 管理。
@@ -129,7 +133,7 @@ PostgreSQL 和内部 Secret 不进入这个目录，仍由 Docker named volume �
 CMD 和 PowerShell 使用同一条命令：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local up -d --build --wait
 ```
 
 当前基础镜像固定为：
@@ -164,7 +168,7 @@ curl.exe -f http://127.0.0.1:8080/health/ready
 ## 5. 日常停止命令
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local down
 ```
 
 `down` 会停止并删除本项目容器和 Compose 网络，但不会删除：
@@ -181,7 +185,7 @@ windows_internal_secrets named volume
 如果只想临时停止容器而保留容器对象：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production stop
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local stop
 ```
 
 ---
@@ -191,22 +195,22 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 查看服务：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production ps
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local ps
 ```
 
-如果使用推荐配置：
+如果使用模板默认配置：
 
 ```dotenv
-AIMA_HOST_ROOT=./.runtime
+AIMA_HOST_ROOT=./.runtime/compose
 ```
 
 可以直接从 Windows 文件系统查看：
 
 ```text
-.runtime\runtime\data\
-.runtime\runtime\logs\api.log
-.runtime\runtime\logs\worker.log
-.runtime\runtime\logs\scheduler.log
+.runtime\compose\runtime\data\
+.runtime\compose\runtime\logs\api.log
+.runtime\compose\runtime\logs\worker.log
+.runtime\compose\runtime\logs\scheduler.log
 ```
 
 其中 `runtime/data` 保存 Local ArtifactStore 的文件字节，例如 Excel Input、Raw、Excel Export、Markdown/Word Report 等实际 Artifact；具体业务父事实和 metadata 仍以 PostgreSQL 为准。
@@ -214,28 +218,29 @@ AIMA_HOST_ROOT=./.runtime
 应用 `.log` 是人工排障主入口。Docker stdout/stderr 仍可以辅助查看：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production logs -f api
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local logs -f api
 ```
 
 查看所有服务 stdout/stderr：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production logs -f
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local logs -f
 ```
 
 ---
 
-## 7. `env.production` 的边界
+## 7. `env.local` 与 `env.production` 的边界
 
-Windows 不新增第二套业务配置文件：
+Windows 不新增第二套本地业务配置文件：
 
 ```text
 env.local
-→ 源码开发 launcher
+→ 本地源码开发 launcher
+→ Linux / WSL 本地完整 Docker Runtime
+→ Windows Docker Desktop 本地完整 Docker Runtime
 
 env.production
-→ 完整 Docker Runtime
-→ Linux / WSL / Windows Docker Desktop / 公司服务器共用同一业务配置字段
+→ 公司 Linux 服务器 / Production Runtime
 ```
 
 Windows 原生模式只改变持久 storage 的宿主实现：
@@ -248,9 +253,9 @@ PostgreSQL / 内部 Secret
 → Windows 下由 compose.windows.yaml 改为 named volume
 ```
 
-TikHub / LLM API Key 仍由 `env.production` 输入 Compose Secret。
+本地 TikHub / LLM API Key 从 `env.local` 输入 Compose Secret；服务器对应 Key 从 `env.production` 输入。源码 launcher 读取同一个 env.local 时只消费源码运行真正需要的字段，并不会把合法 Docker-only 字段误报为 unknown 或透传到正式源码子进程。
 
-`env.production` 不选择 Python/Node/Nginx/PostgreSQL 的 Docker registry 或镜像名称。Debian/PyPI/npm 构建期包源可以按机器覆盖，具体见 [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
+两套 env 都不选择 Python/Node/Nginx/PostgreSQL 的 Docker registry 或镜像名称。Debian/PyPI/npm 构建期包源可以按机器覆盖，具体见 [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
 
 ---
 
@@ -298,27 +303,27 @@ windows_runtime_logs
 先删除容器、网络、PostgreSQL/internal-secret named volume 与项目镜像：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down -v --remove-orphans --rmi all
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local down -v --remove-orphans --rmi all
 ```
 
-这里的 `-v` **不会删除 bind-mounted 的 Artifact 和应用日志**。如果也要清空这些宿主文件，需要根据 `env.production` 中实际 `AIMA_HOST_ROOT` 显式删除：
+这里的 `-v` **不会删除 bind-mounted 的 Artifact 和应用日志**。如果也要清空这些宿主文件，需要根据 `env.local` 中实际 `AIMA_HOST_ROOT` 显式删除：
 
 ```text
 ${AIMA_HOST_ROOT}/runtime/data
 ${AIMA_HOST_ROOT}/runtime/logs
 ```
 
-例如使用推荐的：
+例如使用模板默认：
 
 ```dotenv
-AIMA_HOST_ROOT=./.runtime
+AIMA_HOST_ROOT=./.runtime/compose
 ```
 
 且当前 PowerShell 位于仓库根时，可以执行：
 
 ```powershell
-Remove-Item -Recurse -Force .\.runtime\runtime\data -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force .\.runtime\runtime\logs -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .\.runtime\compose\runtime\data -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .\.runtime\compose\runtime\logs -ErrorAction SilentlyContinue
 ```
 
 这是显式破坏性操作；不要把它加入日常停止流程。
@@ -335,14 +340,16 @@ docker system prune -a --volumes
 
 ## 10. WSL2 模式
 
-如果仓库位于 WSL2 Linux 文件系统并从 WSL shell 运行 Compose，可直接使用根 [`compose.yaml`](../../compose.yaml)：
+如果仓库位于 WSL2 Linux 文件系统并从 WSL shell 运行 Compose，可直接使用根 [`compose.yaml`](../../compose.yaml)。同样先使用 `env.local`，模板默认：
 
 ```dotenv
 AIMA_HOST_ROOT=./.runtime/compose
 ```
 
+启动：
+
 ```bash
-docker compose --env-file env.production up -d --build --wait
+docker compose --env-file env.local up -d --build --wait
 ```
 
 这是 Linux bind-mount 模型，包括 PostgreSQL、Artifact、日志和内部 Secret 都位于该 Linux Host Root 下。
@@ -359,10 +366,18 @@ Windows 路线只有 Artifact/日志使用 Host Root；PostgreSQL/内部 Secret 
 
 ## 11. 公司服务器
 
-公司服务器和完整 Production 使用宿主可见、可备份、可恢复且与 Release 解耦的数据根：
+公司服务器和完整 Production 使用独立 `env.production` 与宿主可见、可备份、可恢复且与 Release 解耦的数据根：
 
 ```dotenv
 AIMA_HOST_ROOT=/data/AIMA_UGC
+AIMA_HISTORICAL_IMPORT_HOST_ROOT=/data/aima-historical-input
+AIMA_HISTORICAL_IMPORT_ROOT=/data/aima-historical-input
+```
+
+服务器启动仍是：
+
+```bash
+docker compose --env-file env.production up -d --build --wait
 ```
 
 服务器继续使用 Linux bind mount：
@@ -382,7 +397,7 @@ Windows 混合存储 override 只属于开发机存储适配，不改变 Product
 
 永久 CI 验证：
 
-1. Windows GitHub Runner 可从 CMD / PowerShell 解析 `compose.yaml + compose.windows.yaml + env.production`；
+1. Windows GitHub Runner 可从 CMD / PowerShell 解析 `compose.yaml + compose.windows.yaml + env.local`；
 2. Linux Docker Engine 实际运行 Windows merged hybrid Runtime model，验证 bootstrap、PostgreSQL、Migration、Readiness、Artifact/日志 bind mount、宿主文件可见性、Secret mode 和重启持久化；
 3. `down -v` 后宿主 Artifact/日志仍保留，而 PostgreSQL/内部 Secret 继续属于 named-volume 生命周期；
 4. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束；
@@ -397,7 +412,7 @@ GitHub Hosted Windows Runner 本身不提供当前仓库可依赖的 Docker Desk
 随后：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local up -d --build --wait
 curl.exe -f http://127.0.0.1:8080/health/ready
 ```
 

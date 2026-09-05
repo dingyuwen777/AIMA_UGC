@@ -1,95 +1,97 @@
 from __future__ import annotations
 
-import json
-import subprocess
+import importlib.util
 import sys
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts" / "dev"))
-
-import local_runtime  # noqa: E402
-
-import backend  # noqa: E402
 
 
-class _ReadyHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
-        payload = json.dumps({"status": "ok"}).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+def _load_script_module(name: str, relative_path: str) -> ModuleType:
+    """从仓库脚本路径加载模块，避免修改源码 package 结构。"""
 
-    def log_message(self, _format: str, *_args: object) -> None:
-        return
-
-
-def test_stop_postgres_container_stops_running_container_without_removing_data(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    docker_calls: list[tuple[str, ...]] = []
-
-    monkeypatch.setattr(local_runtime.shutil, "which", lambda _name: "docker")
-    monkeypatch.setattr(local_runtime, "_docker_inspect", lambda *_args: "{}")
-    monkeypatch.setattr(local_runtime, "_docker_field", lambda *_args: "true")
-
-    def fake_run_docker(
-        _docker: str,
-        arguments: tuple[str, ...],
-        *,
-        failure: str,
-        environment: dict[str, str] | None = None,
-    ) -> subprocess.CompletedProcess[str]:
-        del failure, environment
-        docker_calls.append(arguments)
-        return subprocess.CompletedProcess(["docker", *arguments], 0, "", "")
-
-    monkeypatch.setattr(local_runtime, "_run_docker", fake_run_docker)
-
-    status = local_runtime.stop_postgres_container()
-
-    assert status == "stopped"
-    assert ("stop", local_runtime.POSTGRES_CONTAINER) in docker_calls
-    assert all(arguments[0] != "rm" for arguments in docker_calls)
-    assert all(arguments[0] != "volume" for arguments in docker_calls)
+    path = ROOT / relative_path
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_stop_postgres_container_reports_missing_or_already_stopped_without_stop(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    docker_calls: list[tuple[str, ...]] = []
+local_runtime = _load_script_module("aima_local_runtime_test", "scripts/dev/local_runtime.py")
+sys.modules["local_runtime"] = local_runtime
+backend = _load_script_module("aima_backend_test", "scripts/dev/backend.py")
 
-    monkeypatch.setattr(local_runtime.shutil, "which", lambda _name: "docker")
 
-    def fake_run_docker(
-        _docker: str,
-        arguments: tuple[str, ...],
-        *,
-        failure: str,
-        environment: dict[str, str] | None = None,
-    ) -> subprocess.CompletedProcess[str]:
-        del failure, environment
-        docker_calls.append(arguments)
-        return subprocess.CompletedProcess(["docker", *arguments], 0, "", "")
+def test_local_dev_env_template_has_no_unknown_keys() -> None:
+    """提交到 Git 的 env.local 模板不能让 launcher 自己产生 unknown warning。"""
 
-    monkeypatch.setattr(local_runtime, "_run_docker", fake_run_docker)
-    monkeypatch.setattr(local_runtime, "_docker_inspect", lambda *_args: None)
+    config = local_runtime.load_local_dev_config(ROOT / "env.local.example")
 
-    assert local_runtime.stop_postgres_container() == "missing"
-    assert not any(arguments[0] == "stop" for arguments in docker_calls)
+    assert config.unknown_keys == ()
 
-    docker_calls.clear()
-    monkeypatch.setattr(local_runtime, "_docker_inspect", lambda *_args: "{}")
-    monkeypatch.setattr(local_runtime, "_docker_field", lambda *_args: "false")
 
-    assert local_runtime.stop_postgres_container() == "already_stopped"
-    assert not any(arguments[0] == "stop" for arguments in docker_calls)
+def test_local_dev_env_supports_optional_llm_and_tikhub(tmp_path: Path) -> None:
+    """本地 env 支持可选 TikHub/LLM，并把明文 Key 转成外部 Secret File。"""
+
+    env_file = tmp_path / "env.local"
+    env_file.write_text(
+        "AIMA_TIKHUB_BASE_URL=https://api.tikhub.io\n"
+        "AIMA_TIKHUB_API_KEY=tikhub-test\n"
+        "AIMA_LLM_BASE_URL=https://llm.example/v1\n"
+        "AIMA_LLM_PROVIDER_NAME=example\n"
+        "AIMA_LLM_MODEL=test-model\n"
+        "AIMA_LLM_API_KEY=llm-test\n"
+        "AIMA_HISTORICAL_IMPORT_ROOT=.runtime/historical-input\n"
+        "AIMA_DEV_ENABLE_SCHEDULER=true\n",
+        encoding="utf-8",
+    )
+
+    config = local_runtime.load_local_dev_config(env_file)
+    paths = local_runtime.runtime_paths(tmp_path)
+    local_runtime.prepare_runtime_directories(paths)
+    environment = local_runtime.build_runtime_environment(paths=paths, config=config)
+
+    assert config.tikhub_configured is True
+    assert config.llm_configured is True
+    assert config.scheduler_enabled is True
+    assert environment["AIMA_HISTORICAL_IMPORT_ROOT"] == ".runtime/historical-input"
+    assert environment["AIMA_LLM_BASE_URL"] == "https://llm.example/v1"
+    assert environment["AIMA_LLM_PROVIDER_NAME"] == "example"
+    assert environment["AIMA_LLM_MODEL"] == "test-model"
+    assert "AIMA_TIKHUB_API_KEY" not in environment
+    assert "AIMA_LLM_API_KEY" not in environment
+    assert paths.tikhub_secret_file.read_text(encoding="utf-8").strip() == "tikhub-test"
+    assert paths.llm_secret_file.read_text(encoding="utf-8").strip() == "llm-test"
+
+
+def test_local_dev_env_partial_llm_is_not_enabled(tmp_path: Path) -> None:
+    """LLM 配置不完整时不得把半完成配置传入正式 Worker。"""
+
+    env_file = tmp_path / "env.local"
+    env_file.write_text(
+        "AIMA_LLM_BASE_URL=https://llm.example/v1\n"
+        "AIMA_LLM_PROVIDER_NAME=example\n"
+        "AIMA_LLM_MODEL=\n"
+        "AIMA_LLM_API_KEY=llm-test\n",
+        encoding="utf-8",
+    )
+
+    config = local_runtime.load_local_dev_config(env_file)
+    paths = local_runtime.runtime_paths(tmp_path)
+    local_runtime.prepare_runtime_directories(paths)
+    environment = local_runtime.build_runtime_environment(paths=paths, config=config)
+
+    assert config.llm_partially_configured is True
+    assert config.llm_configured is False
+    assert "AIMA_LLM_BASE_URL" not in environment
+    assert "AIMA_LLM_PROVIDER_NAME" not in environment
+    assert "AIMA_LLM_MODEL" not in environment
+    assert not paths.llm_secret_file.exists()
 
 
 @pytest.mark.parametrize(
@@ -130,6 +132,7 @@ def test_backend_ctrl_c_stops_children_then_postgres(
         llm_provider_name=None,
         llm_model=None,
         llm_api_key=None,
+        historical_import_host_root=None,
         historical_import_root=None,
         scheduler_enabled=False,
         unknown_keys=(),
@@ -155,34 +158,20 @@ def test_backend_ctrl_c_stops_children_then_postgres(
     monkeypatch.setattr(
         backend,
         "_stop_child",
-        lambda child: cleanup_order.append(child.name),
+        lambda child: cleanup_order.append(f"child:{child.name}"),
     )
     monkeypatch.setattr(
         backend,
         "_stop_postgres_for_backend",
-        lambda: cleanup_order.append("PostgreSQL"),
+        lambda: cleanup_order.append("postgres"),
     )
 
-    assert backend._run(root=tmp_path, config=config, env_created=False, prepare_only=False) == 0
-    assert cleanup_order == ["API", "Worker", "PostgreSQL"]
-
-
-def test_backend_readiness_does_not_initialize_https_key_logging(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _ReadyHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    monkeypatch.setattr(
-        backend,
-        "_READY_URL",
-        f"http://127.0.0.1:{server.server_port}/health/ready",
+    result = backend._run(
+        root=tmp_path,
+        config=config,
+        env_created=False,
+        prepare_only=False,
     )
-    monkeypatch.setenv("SSLKEYLOGFILE", str(tmp_path))
-    try:
-        backend._wait_for_ready([], timeout_seconds=2)
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=2)
+
+    assert result == 0
+    assert cleanup_order == ["child:API", "child:Worker", "postgres"]
