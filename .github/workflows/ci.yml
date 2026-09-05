@@ -12,11 +12,13 @@ on:
       - synchronize
       - reopened
       - edited
+      - ready_for_review
 
 permissions:
   contents: read
   issues: read
   pull-requests: read
+  checks: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -43,11 +45,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v6.2.0
-        with:
-          python-version: 3.14.7
-
       - name: Classify changed scope
         id: classify
         shell: bash
@@ -66,7 +63,7 @@ jobs:
               echo "fullstack_specs=[]"
               echo "changed_count=0"
             } >> "${GITHUB_OUTPUT}"
-            echo "PR metadata edit detected; rerun traceability/governance only."
+            echo "PR metadata edit detected; revalidate metadata against the already-green same-SHA baseline."
             exit 0
           fi
 
@@ -77,16 +74,10 @@ jobs:
             BASE_SHA="${{ github.event.before }}"
             HEAD_SHA="${GITHUB_SHA}"
           fi
-          python scripts/quality/classify_ci_scope.py \
+          python3 scripts/quality/classify_ci_scope.py \
             --base "${BASE_SHA}" \
             --head "${HEAD_SHA}" \
             --github-output "${GITHUB_OUTPUT}"
-
-      - name: Verify AIMA project governance wiring
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/quality/check_agent_governance.py
 
       - name: Verify PR Requirement Source
         if: github.event_name == 'pull_request'
@@ -95,12 +86,76 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/quality/check_pr_requirement_source.py \
+          python3 scripts/quality/check_pr_requirement_source.py \
             --event "${GITHUB_EVENT_PATH}" \
             --root .
 
+      - name: Verify metadata edit baseline evidence
+        if: github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.pull_request.draft == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100" \
+            > "${RUNNER_TEMP}/metadata-baseline-checks.json"
+          python3 - "${RUNNER_TEMP}/metadata-baseline-checks.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          required = {"CI Gate", "Compose Golden Path"}
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          latest: dict[str, tuple[str, str | None, str | None]] = {}
+          for check in payload.get("check_runs", []):
+              name = check.get("name")
+              if name not in required:
+                  continue
+              timestamp = check.get("completed_at") or check.get("started_at") or ""
+              previous = latest.get(name)
+              if previous is None or timestamp > previous[0]:
+                  latest[name] = (timestamp, check.get("status"), check.get("conclusion"))
+
+          failures: list[str] = []
+          for name in sorted(required):
+              if name not in latest:
+                  failures.append(f"{name}: missing")
+                  continue
+              _, status, conclusion = latest[name]
+              if status != "completed" or conclusion != "success":
+                  failures.append(f"{name}: status={status}, conclusion={conclusion}")
+          if failures:
+              raise SystemExit(
+                  "Metadata edit requires an already-green full evidence baseline on the same SHA:\n- "
+                  + "\n- ".join(failures)
+              )
+          print("Metadata edit baseline is green for the current SHA.")
+          PY
+
+      - name: Defer full CI while PR is Draft
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft
+        shell: bash
+        run: |
+          echo "Draft PR only validates Requirement Source. Mark it Ready for review to run the full risk-related CI profile." >&2
+          exit 1
+
+      - name: Setup Python
+        if: github.event_name != 'pull_request' || github.event.action != 'edited'
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Verify AIMA project governance wiring
+        if: github.event_name != 'pull_request' || github.event.action != 'edited'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_agent_governance.py
+
       - name: Enforce changed PR Change readiness
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.action != 'edited'
         shell: bash
         run: |
           set -euo pipefail
@@ -118,6 +173,7 @@ jobs:
             --require-active-ready
 
       - name: Secret and docs gates
+        if: github.event_name != 'pull_request' || github.event.action != 'edited'
         shell: bash
         run: |
           set -euo pipefail
@@ -125,11 +181,20 @@ jobs:
           python scripts/quality/check_docs.py
           python scripts/quality/check_docs_facts.py
 
+      - name: Cache uv downloads
+        if: steps.classify.outputs.backend_required == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('.uv-version', 'uv.lock') }}
+
       - name: Setup Node
         if: steps.classify.outputs.frontend_required == 'true'
         uses: actions/setup-node@v6.4.0
         with:
           node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install report validation CJK font
         if: steps.classify.outputs.backend_required == 'true'
@@ -138,6 +203,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
 
       - name: Verify required runtime versions
+        if: github.event_name != 'pull_request' || github.event.action != 'edited'
         shell: bash
         env:
           BACKEND_REQUIRED: ${{ steps.classify.outputs.backend_required }}
@@ -297,6 +363,11 @@ jobs:
         uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('.uv-version', 'uv.lock') }}
       - name: Install report validation CJK font
         run: |
           sudo apt-get update -qq
