@@ -52,7 +52,9 @@ def test_draft_pr_is_fail_closed_before_expensive_product_setup() -> None:
     assert "github.event.pull_request.draft" in text
     assert "Mark it Ready for review" in text
     assert text.index("Defer full CI while PR is Draft") < text.index("Setup Python")
-    assert text.index("Verify PR Requirement Source") < text.index("Defer full CI while PR is Draft")
+    assert text.index("Verify PR Requirement Source") < text.index(
+        "Defer full CI while PR is Draft"
+    )
 
 
 def test_frontend_audit_runs_once_at_the_same_high_threshold() -> None:
