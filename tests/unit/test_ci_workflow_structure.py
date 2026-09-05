@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,6 +37,10 @@ def test_pr_body_edit_revalidates_metadata_without_overwriting_failed_full_evide
     text = CI.read_text(encoding="utf-8")
     assert "- edited" in text
     assert "profile=metadata_only" in text
+    assert "types:" in text
+    assert "repository_required=false" in text
+    assert "postgres_required=false" in text
+    assert "fullstack_required=false" in text
     assert "Verify metadata edit baseline evidence" in text
     assert '"CI Gate"' in text
     assert '"Compose Golden Path"' in text
@@ -125,3 +130,13 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     assert "needs: quality-core" in ci
     assert "Defer full CI while PR is Draft" in ci
     assert "Defer Runtime Acceptance while PR is Draft" in runtime
+
+
+def test_frontend_typechecks_once_through_build() -> None:
+    """构建统一执行 TS 与 Vue 类型检查，CI 不重复支付相同验证成本。"""
+    text = CI.read_text(encoding="utf-8")
+    scripts = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))["scripts"]
+    assert scripts["build"] == "npm run typecheck && vite build"
+    assert scripts["typecheck"] == "npm run typecheck:ts7 && npm run typecheck:vue"
+    assert text.count("npm --prefix frontend run build\n") == 1
+    assert "npm --prefix frontend run typecheck\n" not in text
