@@ -72,12 +72,14 @@ def test_expensive_independent_evidence_keeps_its_owner() -> None:
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
-def test_runtime_draft_is_fail_closed_and_ready_runs_same_owner() -> None:
+def test_runtime_required_check_keeps_cheap_unchanged_fast_path() -> None:
+    """Compose Golden Path 是 required context；普通改动继续用现有 runner 内 fast-path，避免缺失 check。"""
     runtime = RUNTIME.read_text(encoding="utf-8")
-    assert "- ready_for_review" in runtime
-    assert "Defer Runtime acceptance while PR is Draft" in runtime
-    assert runtime.index("Defer Runtime acceptance while PR is Draft") < runtime.index("Checkout")
-    assert "exit 1" in runtime.split("Defer Runtime acceptance while PR is Draft", 1)[1].split("- name: Checkout", 1)[0]
+    assert "name: Compose Golden Path" in runtime
+    assert "Detect Runtime risk changes" in runtime
+    assert "Fast-path unchanged Runtime" in runtime
+    assert "No Runtime-relevant changes detected" in runtime
+    assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
 def test_tooling_skips_draft_jobs_and_reenters_on_ready_event() -> None:
@@ -101,11 +103,11 @@ def test_dependency_caches_only_cover_package_downloads() -> None:
 
 
 def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_heavy_jobs() -> None:
-    """普通 Ready 仍保留独立证据 Owner；Draft 不预付产品/Runtime/Tooling 重工作。"""
+    """普通 Ready 仍保留独立证据 Owner；Draft 不预付产品/Tooling/Release 重工作。"""
     ci = CI.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
     assert ci.count("runs-on: ubuntu-24.04") == 3
     assert runtime.count("runs-on: ubuntu-24.04") == 1
     assert "needs: quality-core" in ci
     assert "Defer full CI while PR is Draft" in ci
-    assert "Defer Runtime acceptance while PR is Draft" in runtime
+    assert "Fast-path unchanged Runtime" in runtime
