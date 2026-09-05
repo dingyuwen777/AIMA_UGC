@@ -22,7 +22,7 @@ POSTGRES_USER = "aima_ugc"
 LOCAL_TIKHUB_SECRET_REF = "tikhub_api_key"
 LOCAL_LLM_SECRET_REF = "llm_api_key"
 
-_ALLOWED_LOCAL_KEYS = frozenset(
+_SOURCE_LOCAL_KEYS = frozenset(
     {
         "AIMA_TIKHUB_BASE_URL",
         "AIMA_TIKHUB_API_KEY",
@@ -30,10 +30,48 @@ _ALLOWED_LOCAL_KEYS = frozenset(
         "AIMA_LLM_PROVIDER_NAME",
         "AIMA_LLM_MODEL",
         "AIMA_LLM_API_KEY",
+        "AIMA_HISTORICAL_IMPORT_HOST_ROOT",
         "AIMA_HISTORICAL_IMPORT_ROOT",
         "AIMA_DEV_ENABLE_SCHEDULER",
     }
 )
+_COMPOSE_LOCAL_KEYS = frozenset(
+    {
+        "AIMA_IMAGE_TAG",
+        "AIMA_HTTP_BIND_IP",
+        "AIMA_HTTP_PORT",
+        "AIMA_DOCKER_SUBNET",
+        "AIMA_DOCKER_GATEWAY",
+        "AIMA_BUILD_DEBIAN_MIRROR",
+        "AIMA_BUILD_DEBIAN_SECURITY_MIRROR",
+        "AIMA_BUILD_PYPI_INDEX",
+        "AIMA_BUILD_NPM_REGISTRY",
+        "AIMA_HOST_ROOT",
+        "AIMA_HISTORICAL_IMPORT_HOST_ROOT",
+        "AIMA_HISTORICAL_IMPORT_ROOT",
+        "AIMA_HISTORICAL_CHUNK_ROWS",
+        "AIMA_HISTORICAL_MAX_SCAN_FILES",
+        "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH",
+        "AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS",
+        "AIMA_ANALYSIS_RUN_SHARD_SIZE",
+        "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS",
+        "AIMA_DB_NAME",
+        "AIMA_DB_USER",
+        "AIMA_DB_CONNECT_TIMEOUT_SECONDS",
+        "AIMA_LOG_LEVEL",
+        "AIMA_LOG_MAX_BYTES",
+        "AIMA_LOG_BACKUP_COUNT",
+        "AIMA_LOG_COMPRESS",
+        "AIMA_TIKHUB_ENABLED",
+        "AIMA_TIKHUB_BASE_URL",
+        "AIMA_TIKHUB_API_KEY",
+        "AIMA_LLM_BASE_URL",
+        "AIMA_LLM_PROVIDER_NAME",
+        "AIMA_LLM_MODEL",
+        "AIMA_LLM_API_KEY",
+    }
+)
+_KNOWN_LOCAL_KEYS = _SOURCE_LOCAL_KEYS | _COMPOSE_LOCAL_KEYS
 _RUNTIME_LLM_KEYS = (
     "AIMA_LLM_BASE_URL",
     "AIMA_LLM_PROVIDER_NAME",
@@ -47,7 +85,7 @@ class LocalDevError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class LocalDevConfig:
-    """开发者真正需要决定的可选本地能力。"""
+    """源码 launcher 从共享 env.local 中实际消费的本地能力配置。"""
 
     tikhub_base_url: str
     tikhub_api_key: str | None
@@ -55,6 +93,7 @@ class LocalDevConfig:
     llm_provider_name: str | None
     llm_model: str | None
     llm_api_key: str | None
+    historical_import_host_root: str | None
     historical_import_root: str | None
     scheduler_enabled: bool
     unknown_keys: tuple[str, ...]
@@ -75,6 +114,12 @@ class LocalDevConfig:
     def llm_partially_configured(self) -> bool:
         supplied = (self.llm_base_url, self.llm_provider_name, self.llm_model, self.llm_api_key)
         return any(value is not None for value in supplied) and not self.llm_configured
+
+    @property
+    def source_historical_import_root(self) -> str | None:
+        """返回源码进程可访问的历史根；优先宿主路径，并兼容旧 runtime-root 配置。"""
+
+        return self.historical_import_host_root or self.historical_import_root
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,10 +228,10 @@ def parse_env_file(path: Path) -> dict[str, str]:
 
 
 def load_local_dev_config(path: Path) -> LocalDevConfig:
-    """从简化的 `env.local` 加载允许传入源码开发进程的配置。"""
+    """从共享 `env.local` 加载源码配置，并只把真正未知的字段返回给调用方告警。"""
 
     values = parse_env_file(path)
-    unknown = tuple(sorted(key for key in values if key not in _ALLOWED_LOCAL_KEYS))
+    unknown = tuple(sorted(key for key in values if key not in _KNOWN_LOCAL_KEYS))
     return LocalDevConfig(
         tikhub_base_url=_clean(values.get("AIMA_TIKHUB_BASE_URL")) or "https://api.tikhub.io",
         tikhub_api_key=_clean(values.get("AIMA_TIKHUB_API_KEY")),
@@ -194,6 +239,7 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
         llm_provider_name=_clean(values.get("AIMA_LLM_PROVIDER_NAME")),
         llm_model=_clean(values.get("AIMA_LLM_MODEL")),
         llm_api_key=_clean(values.get("AIMA_LLM_API_KEY")),
+        historical_import_host_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_HOST_ROOT")),
         historical_import_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_ROOT")),
         scheduler_enabled=_parse_bool(
             values.get("AIMA_DEV_ENABLE_SCHEDULER", "false"),
@@ -248,13 +294,13 @@ def build_runtime_environment(
     paths: RuntimePaths,
     config: LocalDevConfig,
 ) -> dict[str, str]:
-    """把简化 `env.local` 转换为正式进程已有的 AIMA_* + Secret File。"""
+    """把共享 `env.local` 中的源码配置转换为正式进程 AIMA_* + Secret File。"""
 
     environment = dict(os.environ)
     # Windows 安全软件可能注入不可写的全局 keylog 路径；只从本地子进程环境移除，
     # 避免 Python 初始化 TLS 时因写权限失败而让 API/Worker 意外退出。
     environment.pop("SSLKEYLOGFILE", None)
-    for key in _ALLOWED_LOCAL_KEYS:
+    for key in _KNOWN_LOCAL_KEYS:
         environment.pop(key, None)
     environment.update(
         {
@@ -272,8 +318,9 @@ def build_runtime_environment(
     for key in _RUNTIME_LLM_KEYS:
         environment.pop(key, None)
 
-    if config.historical_import_root is not None:
-        environment["AIMA_HISTORICAL_IMPORT_ROOT"] = config.historical_import_root
+    source_historical_import_root = config.source_historical_import_root
+    if source_historical_import_root is not None:
+        environment["AIMA_HISTORICAL_IMPORT_ROOT"] = source_historical_import_root
 
     if config.llm_configured:
         assert config.llm_base_url is not None
