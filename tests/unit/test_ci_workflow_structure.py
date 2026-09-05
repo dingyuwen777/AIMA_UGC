@@ -50,7 +50,7 @@ def test_draft_pr_is_fail_closed_before_expensive_product_setup() -> None:
     assert "- ready_for_review" in text
     assert "Defer full CI while PR is Draft" in text
     assert "github.event.pull_request.draft" in text
-    assert "mark it Ready for review" in text
+    assert "Mark it Ready for review" in text
     assert text.index("Defer full CI while PR is Draft") < text.index("Setup Python")
     assert text.index("Verify PR Requirement Source") < text.index("Defer full CI while PR is Draft")
 
@@ -72,8 +72,19 @@ def test_expensive_independent_evidence_keeps_its_owner() -> None:
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
+def test_runtime_required_check_is_fail_closed_in_draft_and_reenters_on_ready() -> None:
+    """Draft Runtime 不预付 Compose；required check 先失败，Ready 后同一 HEAD 重新取完整证据。"""
+    runtime = RUNTIME.read_text(encoding="utf-8")
+    assert "- ready_for_review" in runtime
+    assert "Defer Runtime Acceptance while PR is Draft" in runtime
+    assert "github.event.pull_request.draft" in runtime
+    assert "Mark it Ready for review" in runtime
+    assert runtime.index("Defer Runtime Acceptance while PR is Draft") < runtime.index("Checkout")
+    assert "Canonical Compose startup, security, persistence, and recovery" in runtime
+
+
 def test_runtime_required_check_keeps_cheap_unchanged_fast_path() -> None:
-    """Compose Golden Path 是 required context；普通改动继续用现有 runner 内 fast-path，避免缺失 check。"""
+    """Ready/main 上 Compose Golden Path 保持稳定；普通非 Runtime 改动走 runner 内解释性 fast-path。"""
     runtime = RUNTIME.read_text(encoding="utf-8")
     assert "name: Compose Golden Path" in runtime
     assert "Detect Runtime risk changes" in runtime
@@ -83,6 +94,7 @@ def test_runtime_required_check_keeps_cheap_unchanged_fast_path() -> None:
 
 
 def test_tooling_skips_draft_jobs_and_reenters_on_ready_event() -> None:
+    """Tooling 不是 required context；Draft 不启动昂贵 Linux/Windows Job，Ready 恢复原验证。"""
     tooling = TOOLING.read_text(encoding="utf-8")
     assert "- ready_for_review" in tooling
     assert tooling.count("github.event.pull_request.draft == false") >= 2
@@ -103,11 +115,11 @@ def test_dependency_caches_only_cover_package_downloads() -> None:
 
 
 def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_heavy_jobs() -> None:
-    """普通 Ready 仍保留独立证据 Owner；Draft 不预付产品/Tooling/Release 重工作。"""
+    """普通 Ready 仍保留独立证据 Owner；Draft 不预付产品/Runtime/Tooling/Release 重工作。"""
     ci = CI.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
     assert ci.count("runs-on: ubuntu-24.04") == 3
     assert runtime.count("runs-on: ubuntu-24.04") == 1
     assert "needs: quality-core" in ci
     assert "Defer full CI while PR is Draft" in ci
-    assert "Fast-path unchanged Runtime" in runtime
+    assert "Defer Runtime Acceptance while PR is Draft" in runtime
