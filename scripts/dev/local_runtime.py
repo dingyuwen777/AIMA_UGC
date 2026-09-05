@@ -238,7 +238,9 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
         llm_provider_name=_clean(values.get("AIMA_LLM_PROVIDER_NAME")),
         llm_model=_clean(values.get("AIMA_LLM_MODEL")),
         llm_api_key=_clean(values.get("AIMA_LLM_API_KEY")),
-        historical_import_host_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_HOST_ROOT")),
+        historical_import_host_root=_clean(
+            values.get("AIMA_HISTORICAL_IMPORT_HOST_ROOT")
+        ),
         historical_import_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_ROOT")),
         scheduler_enabled=_parse_bool(
             values.get("AIMA_DEV_ENABLE_SCHEDULER", "false"),
@@ -299,7 +301,7 @@ def build_runtime_environment(
     # Windows 安全软件可能注入不可写的全局 keylog 路径；只从本地子进程环境移除，
     # 避免 Python 初始化 TLS 时因写权限失败而让 API/Worker 意外退出。
     environment.pop("SSLKEYLOGFILE", None)
-    for key in _KNOWN_LOCAL_KEYS:
+    for key in _SOURCE_LOCAL_KEYS:
         environment.pop(key, None)
     environment.update(
         {
