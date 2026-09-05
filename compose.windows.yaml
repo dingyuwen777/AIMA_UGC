@@ -18,7 +18,7 @@ x-windows-backend-volumes: &windows-backend-volumes
     read_only: true
   - type: bind
     source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-./.runtime/historical-input}
-    target: /data/aima-historical-input
+    target: ${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}
     read_only: true
 
 services:
@@ -74,7 +74,7 @@ services:
         read_only: true
       - type: bind
         source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-./.runtime/historical-input}
-        target: /data/aima-historical-input
+        target: ${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}
         read_only: true
       - type: volume
         source: windows_provider_secrets
@@ -94,7 +94,7 @@ services:
         read_only: true
       - type: bind
         source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-./.runtime/historical-input}
-        target: /data/aima-historical-input
+        target: ${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}
         read_only: true
       - type: volume
         source: windows_provider_secrets
@@ -114,7 +114,7 @@ services:
         read_only: true
       - type: bind
         source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-./.runtime/historical-input}
-        target: /data/aima-historical-input
+        target: ${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}
         read_only: true
       - type: volume
         source: windows_provider_secrets
