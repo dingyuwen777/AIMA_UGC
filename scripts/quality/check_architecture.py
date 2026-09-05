@@ -36,7 +36,6 @@ REQUIRED = [
     _path(".github/workflows/fullstack.yml"),
     _path(".github/workflows/runtime.yml"),
     _path(".github/workflows/tooling.yml"),
-    _path(".github/workflows/change-completion-gate.yml"),
     _path(".github/workflows/release.yml"),
     _path("backend/src/aima_ugc/__init__.py"),
     _path("backend/src/aima_ugc/database_schema.py"),

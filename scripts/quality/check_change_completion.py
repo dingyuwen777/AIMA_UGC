@@ -20,6 +20,9 @@ READY_CHECK = Path(".agents/skills/coding/scripts/ready_check.py")
 CURRENT_SCHEMA = "coding-change/v1"
 LEGACY_SCHEMA = "rvc-change/v1"
 SCHEMA_PATTERN = re.compile(r"^schema:\s*([^#]+?)\s*$")
+MISSING_ARCHIVE_SOURCE_PATTERN = re.compile(
+    r"^R[1-9][0-9]* Requirement Source 仓库文件不存在：(.+)$"
+)
 
 
 @dataclass(frozen=True)
@@ -178,11 +181,65 @@ def _git_show(root: Path, revision: str, relative: str) -> str:
     return result.stdout
 
 
+def _git_last_path_revision(root: Path, relative: str) -> str | None:
+    """返回当前路径最后一次被提交修改的 revision，供不可变归档恢复历史事实。"""
+    result = subprocess.run(
+        ["git", "-C", str(root), "log", "-1", "--format=%H", "--", relative],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        return None
+    revision = result.stdout.strip()
+    return revision or None
+
+
+def _git_path_exists_at_revision(root: Path, revision: str, relative: str) -> bool:
+    """确认历史 Requirement Source 在给定 revision 中仍是文件 blob，而非目录等对象。"""
+    result = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "-t", f"{revision}:{relative}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return result.returncode == 0 and result.stdout.strip() == "blob"
+
+
+def _preserve_historical_archive_sources(
+    root: Path,
+    change_path: Path,
+    document_errors: Sequence[str],
+) -> list[str]:
+    """仅对已归档 Change 接受在其归档 revision 真实存在、后来才删除的文件来源。"""
+    if not document_errors:
+        return []
+    change_relative = _normalise_relative_path(change_path.relative_to(root))
+    archive_revision = _git_last_path_revision(root, change_relative)
+    if archive_revision is None:
+        return list(document_errors)
+
+    preserved: list[str] = []
+    for message in document_errors:
+        match = MISSING_ARCHIVE_SOURCE_PATTERN.fullmatch(message)
+        if match is None:
+            preserved.append(message)
+            continue
+        source_relative = _normalise_relative_path(match.group(1))
+        if not _git_path_exists_at_revision(root, archive_revision, source_relative):
+            preserved.append(message)
+    return preserved
+
+
 def _changed_paths_and_errors(
     root: Path,
     base: str,
 ) -> tuple[set[str], list[dict[str, str]]]:
-    """计算 PR 严格检查路径，并阻止删除或非法改名绕过。"""
+    """计算 PR 严格检查路径，并阻止删除、提前归档或非法改名绕过。"""
     changed: set[str] = set()
     errors: list[dict[str, str]] = []
     for entry in _git_diff_entries(root, base):
@@ -209,14 +266,22 @@ def _changed_paths_and_errors(
                 and new_identity[0] == "archive"
                 and old_identity[1] == new_identity[1]
             )
-            if not is_archive_transition:
+            if is_archive_transition:
                 errors.append(
                     {
                         "path": entry.old_path,
                         "message": (
-                            "只允许当前 Change 以同一 ID 从 active 移入 archive；"
-                            "legacy 与其他改名不可变"
+                            "普通 Implementation PR 不得提前把 Change 从 active 归档；"
+                            "Change 必须保持 ready_for_review，并由 merge 后的 "
+                            "Change Archive Automation 归档"
                         ),
+                    }
+                )
+            else:
+                errors.append(
+                    {
+                        "path": entry.old_path,
+                        "message": "Change 不得通过任意改名/移动绕过 carrier 生命周期门禁",
                     }
                 )
             if _is_change_document(entry.new_path):
@@ -313,6 +378,7 @@ def check_repository(
                 errors.append({"path": relative, "message": "归档 Coding Change 必须为 done"})
                 continue
             must_validate = True
+            require_acceptance_binding = bool(changed_since and relative in changed)
         else:
             if status == "done":
                 errors.append({"path": relative, "message": "done Change 不得继续留在 active/"})
@@ -329,12 +395,23 @@ def check_repository(
                 )
                 continue
             must_validate = status == "ready_for_review" or must_be_ready
+            require_acceptance_binding = must_validate
 
         if must_validate:
             strict += 1
             try:
-                document_errors = validator._validate_ready_document(root, path)
-            except (OSError, ValueError) as exc:
+                document_errors = validator._validate_ready_document(
+                    root,
+                    path,
+                    require_acceptance_binding=require_acceptance_binding,
+                )
+                if location == "archive":
+                    document_errors = _preserve_historical_archive_sources(
+                        root,
+                        path,
+                        document_errors,
+                    )
+            except (OSError, TypeError, ValueError) as exc:
                 document_errors = [str(exc)]
             errors.extend({"path": relative, "message": message} for message in document_errors)
 

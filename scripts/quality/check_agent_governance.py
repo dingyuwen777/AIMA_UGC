@@ -42,7 +42,7 @@ FORBIDDEN_PROJECT_DOC_GOVERNANCE = (
     "Source Mode",
     "研发治理 MCP",
 )
-COMPLETION_GATE = Path(".github/workflows/change-completion-gate.yml")
+COMPLETION_OWNER = Path(".github/workflows/ci.yml")
 ISSUE_TEMPLATE_DIR = Path(".github/ISSUE_TEMPLATE")
 REQUIREMENT_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "01-requirement.yml"
 BUG_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "02-bug.yml"
@@ -106,9 +106,7 @@ def _managed_sections(text: str) -> tuple[str, str] | None:
         return None
     start = text.index(MANAGED_START)
     end = text.index(MANAGED_END, start) + len(MANAGED_END)
-    managed = text[start:end]
-    project_owned = text[:start] + text[end:]
-    return managed, project_owned
+    return text[start:end], text[:start] + text[end:]
 
 
 def _issue_field_block(text: str, field_id: str) -> str | None:
@@ -125,7 +123,6 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
     """检查项目 Issue Form 的专项字段与统一公共 Profile。"""
     if not path.is_file():
         return [f"GOV012 {path.as_posix()}: 多人协作所需 Issue Form 不存在"]
-
     text = _read_text(path)
     errors: list[str] = []
     for field in required_fields:
@@ -133,7 +130,6 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
             errors.append(f"GOV012 {path.as_posix()}: 缺少必需需求字段 {field}")
     if text.count("required: true") < len(required_fields):
         errors.append(f"GOV012 {path.as_posix()}: 必需需求字段未保持 required 约束")
-
     profile = ISSUE_FORM_PROFILES.get(path.name)
     if profile is not None:
         chooser_name, title_prefix = profile
@@ -142,7 +138,6 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
             errors.append(f"GOV017 {path.as_posix()}: chooser 名称必须精确为 {chooser_name}")
         if f'title: "{title_prefix}"' not in first_lines:
             errors.append(f"GOV017 {path.as_posix()}: title prefix 必须精确为 {title_prefix!r}")
-
     acceptance = _issue_field_block(text, "acceptance_criteria")
     if acceptance is not None and (
         "label: 验收标准" not in acceptance or "- [ ] AC1：" not in acceptance
@@ -150,7 +145,6 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
         errors.append(
             f"GOV017 {path.as_posix()}: acceptance_criteria 必须使用统一验收标准与 AC1 task list"
         )
-
     validation = _issue_field_block(text, "validation_requirements")
     if validation is not None and "label: 验证要求" not in validation:
         errors.append(f"GOV017 {path.as_posix()}: validation_requirements 必须使用统一验证要求语义")
@@ -193,16 +187,11 @@ def check_repository(root: Path = ROOT) -> list[str]:
                     f"项目文档规则不得把本地通用治理安装资产当规则入口 {fragment}"
                 )
 
-    ready_check = root / READY_CHECK
-    if not ready_check.is_file():
+    if not (root / READY_CHECK).is_file():
         errors.append(f"GOV004 {READY_CHECK.as_posix()}: 项目适配所需 installed validator 不存在")
-
-    project_change_check = root / PROJECT_CHANGE_CHECK
-    if not project_change_check.is_file():
+    if not (root / PROJECT_CHANGE_CHECK).is_file():
         errors.append(f"GOV007 {PROJECT_CHANGE_CHECK.as_posix()}: AIMA 顶层 Change 门禁入口不存在")
-
-    pr_requirement_source_check = root / PR_REQUIREMENT_SOURCE_CHECK
-    if not pr_requirement_source_check.is_file():
+    if not (root / PR_REQUIREMENT_SOURCE_CHECK).is_file():
         errors.append(
             f"GOV015 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: PR Requirement Source 机器门禁不存在"
         )
@@ -217,38 +206,40 @@ def check_repository(root: Path = ROOT) -> list[str]:
                     f"内部路径 {fragment}"
                 )
 
-    completion_gate = root / COMPLETION_GATE
-    if not completion_gate.is_file():
-        errors.append(f"GOV006 {COMPLETION_GATE.as_posix()}: Change Completion Gate 不存在")
+    completion_owner = root / COMPLETION_OWNER
+    if not completion_owner.is_file():
+        errors.append(
+            f"GOV006 {COMPLETION_OWNER.as_posix()}: Change Completion / Requirement CI Owner 不存在"
+        )
     else:
-        gate_text = _read_text(completion_gate)
+        gate_text = _read_text(completion_owner)
         project_check_command = f"python {PROJECT_CHANGE_CHECK.as_posix()}"
         if project_check_command not in gate_text:
-            errors.append(f"GOV007 {COMPLETION_GATE.as_posix()}: 必须执行 AIMA 顶层 Change 门禁")
+            errors.append(f"GOV007 {COMPLETION_OWNER.as_posix()}: 必须执行 AIMA 顶层 Change 门禁")
         if f"python {READY_CHECK.as_posix()}" in gate_text:
             errors.append(
-                f"GOV016 {COMPLETION_GATE.as_posix()}: "
+                f"GOV016 {COMPLETION_OWNER.as_posix()}: "
                 "Workflow 不得绕过项目 carrier 直接调用 generic ready-check"
             )
         if "--changed-since" not in gate_text or "--require-active-ready" not in gate_text:
             errors.append(
-                f"GOV016 {COMPLETION_GATE.as_posix()}: "
+                f"GOV016 {COMPLETION_OWNER.as_posix()}: "
                 "PR changed-since 与 main active-ready 模式必须同时保留"
             )
         if "check_agent_governance.py" not in gate_text:
-            errors.append(f"GOV008 {COMPLETION_GATE.as_posix()}: 必须先执行 AIMA 项目治理接线检查")
+            errors.append(f"GOV008 {COMPLETION_OWNER.as_posix()}: 必须先执行 AIMA 项目治理接线检查")
         if "check_pr_requirement_source.py" not in gate_text:
             errors.append(
-                f"GOV015 {COMPLETION_GATE.as_posix()}: 必须继续执行真实 PR Requirement Source 校验"
+                f"GOV015 {COMPLETION_OWNER.as_posix()}: 必须继续执行真实 PR Requirement Source 校验"
             )
         if "issues: read" not in gate_text:
             errors.append(
-                f"GOV015 {COMPLETION_GATE.as_posix()}: "
+                f"GOV015 {COMPLETION_OWNER.as_posix()}: "
                 "PR Requirement Source 校验需要最小 issues: read 权限"
             )
         if "types:" not in gate_text or "- edited" not in gate_text:
             errors.append(
-                f"GOV015 {COMPLETION_GATE.as_posix()}: "
+                f"GOV015 {COMPLETION_OWNER.as_posix()}: "
                 "PR 正文 edited 后必须重新执行 Requirement Source 校验"
             )
 
@@ -257,13 +248,11 @@ def check_repository(root: Path = ROOT) -> list[str]:
     errors.extend(
         _check_issue_form(root / TECHNICAL_CHANGE_ISSUE_FORM, TECHNICAL_CHANGE_FORM_FIELDS)
     )
-
     issue_config = root / ISSUE_TEMPLATE_CONFIG
     if not issue_config.is_file():
         errors.append(f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: Issue chooser 配置不存在")
     elif "blank_issues_enabled: false" not in _read_text(issue_config):
         errors.append(f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: 必须关闭 blank issue 普通入口")
-
     pr_template = root / PR_TEMPLATE
     if not pr_template.is_file():
         errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: PR 模板不存在")
@@ -286,7 +275,6 @@ def check_repository(root: Path = ROOT) -> list[str]:
             errors.append(
                 f"GOV014 {PR_TEMPLATE.as_posix()}: post-merge Evidence / Closure Audit 时序缺失"
             )
-
     return errors
 
 
