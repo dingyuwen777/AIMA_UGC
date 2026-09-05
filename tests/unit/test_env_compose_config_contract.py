@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 DEV_SCRIPTS = ROOT / "scripts" / "dev"
@@ -20,6 +23,20 @@ from local_runtime import (  # noqa: E402
 HISTORICAL_RUNTIME_INTERPOLATION = (
     "${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}"
 )
+_COMPOSE_INTERPOLATION_PATTERN = re.compile(r"\$\{(AIMA_[A-Z0-9_]+)(?::-[^}]*)?\}")
+
+
+def _env_keys(path: Path) -> set[str]:
+    """返回 example env 中显式声明的配置键。"""
+
+    keys: set[str] = set()
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _value = line.split("=", 1)
+        keys.add(key.strip())
+    return keys
 
 
 def test_shared_env_local_is_valid_for_source_launcher(tmp_path: Path) -> None:
@@ -52,6 +69,22 @@ def test_source_launcher_keeps_legacy_historical_root_compatible(tmp_path: Path)
     assert environment["AIMA_HISTORICAL_IMPORT_ROOT"] == ".runtime/legacy-historical-input"
 
 
+def test_source_launcher_preserves_inherited_runtime_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """共享 env 分类不得误删原本由父进程显式提供的高级源码运行参数。"""
+
+    monkeypatch.setenv("AIMA_LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("AIMA_HISTORICAL_CHUNK_ROWS", "777")
+    config = load_local_dev_config(ROOT / "env.local.example")
+
+    environment = build_runtime_environment(paths=runtime_paths(tmp_path), config=config)
+
+    assert environment["AIMA_LOG_LEVEL"] == "DEBUG"
+    assert environment["AIMA_HISTORICAL_CHUNK_ROWS"] == "777"
+
+
 def test_removed_analysis_shard_env_is_rejected_as_unknown(tmp_path: Path) -> None:
     """已失效的 Shard Size 环境变量不得继续被 launcher 静默接受。"""
 
@@ -61,6 +94,18 @@ def test_removed_analysis_shard_env_is_rejected_as_unknown(tmp_path: Path) -> No
     config = load_local_dev_config(env_file)
 
     assert config.unknown_keys == ("AIMA_ANALYSIS_RUN_SHARD_SIZE",)
+
+
+def test_env_examples_cover_all_public_compose_interpolations() -> None:
+    """Compose 新增公开 AIMA 插值时，本地和生产 example env 都必须同步声明。"""
+
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    interpolated = set(_COMPOSE_INTERPOLATION_PATTERN.findall(compose))
+    local_keys = _env_keys(ROOT / "env.local.example")
+    production_keys = _env_keys(ROOT / "env.production.example")
+
+    assert interpolated <= local_keys
+    assert interpolated <= production_keys
 
 
 def test_compose_uses_one_configurable_historical_runtime_root() -> None:
