@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260904-231800-change-archive-automation
 title: 落地 Change 合并后自动归档与多人交付权限模型
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: chg/20260904-change-archive-automation
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-05
 completion_gate: required
 depends_on: []
 affected_areas:
