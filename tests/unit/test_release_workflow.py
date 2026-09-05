@@ -25,7 +25,10 @@ def test_formal_release_is_manual_and_pr_mode_is_dry_run_only() -> None:
     assert "permissions:\n  contents: read" in header
 
     build_job = jobs.split("publish-release:", 1)[0]
-    assert "github.event_name != 'pull_request' || github.event.pull_request.draft == false" in build_job
+    assert (
+        "github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+        in build_job
+    )
 
     publish_job = _publish_job(jobs)
     assert "if: github.event_name == 'workflow_dispatch'" in publish_job
