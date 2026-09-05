@@ -97,7 +97,7 @@ def test_local_dev_env_partial_llm_is_not_enabled(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
-        ("stopped", "[STOP] PostgreSQL Docker container: aima-ugc-postgres-dev"),
+        ("stopped", "[STOP] PostgreSQL Docker container stopped: aima-ugc-postgres-dev"),
         (
             "already_stopped",
             "[SKIP] PostgreSQL Docker container already stopped: aima-ugc-postgres-dev",
@@ -174,4 +174,4 @@ def test_backend_ctrl_c_stops_children_then_postgres(
     )
 
     assert result == 0
-    assert cleanup_order == ["child:Worker", "postgres"]
+    assert cleanup_order == ["child:API", "child:Worker", "postgres"]
