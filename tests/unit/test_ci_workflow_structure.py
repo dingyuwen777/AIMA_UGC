@@ -86,7 +86,7 @@ def test_runtime_required_check_is_fail_closed_in_draft_and_reenters_on_ready() 
 
 
 def test_runtime_required_check_keeps_cheap_unchanged_fast_path() -> None:
-    """Ready/main 上 Compose Golden Path 保持稳定；普通非 Runtime 改动走 runner 内解释性 fast-path。"""
+    """Ready/main 保持 Runtime fast-path；普通非 Runtime 改动不重建整套 Compose。"""
     runtime = RUNTIME.read_text(encoding="utf-8")
     assert "name: Compose Golden Path" in runtime
     assert "Detect Runtime risk changes" in runtime
