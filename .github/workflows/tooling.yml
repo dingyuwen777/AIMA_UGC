@@ -492,12 +492,12 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          Copy-Item env.production.example env.production
-          $services = & docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production config --services
+          Copy-Item env.local.example env.local
+          $services = & docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local config --services
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $expected = @("bootstrap", "postgres", "migrate", "configure", "api", "worker", "scheduler", "frontend")
           foreach ($service in $expected) {
               if ($services -notcontains $service) { throw "Missing Compose service: $service" }
           }
-          cmd /c "docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production config --services > %RUNNER_TEMP%\compose-cmd-services.txt"
+          cmd /c "docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local config --services > %RUNNER_TEMP%\compose-cmd-services.txt"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
