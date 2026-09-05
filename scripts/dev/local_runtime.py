@@ -238,9 +238,7 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
         llm_provider_name=_clean(values.get("AIMA_LLM_PROVIDER_NAME")),
         llm_model=_clean(values.get("AIMA_LLM_MODEL")),
         llm_api_key=_clean(values.get("AIMA_LLM_API_KEY")),
-        historical_import_host_root=_clean(
-            values.get("AIMA_HISTORICAL_IMPORT_HOST_ROOT")
-        ),
+        historical_import_host_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_HOST_ROOT")),
         historical_import_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_ROOT")),
         scheduler_enabled=_parse_bool(
             values.get("AIMA_DEV_ENABLE_SCHEDULER", "false"),
