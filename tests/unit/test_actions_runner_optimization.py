@@ -17,7 +17,7 @@ def test_change_archive_only_auto_triggers_for_persistent_change_carrier() -> No
 
 
 def test_runtime_required_context_is_draft_fail_closed_then_ready_scoped() -> None:
-    """Draft 不预付 Compose 重工作；Ready/main 继续按 Runtime changed-scope 取得 required context。"""
+    """Draft 不预付 Compose；Ready/main 继续按 changed-scope 取得 Runtime 证据。"""
     workflow = RUNTIME.read_text(encoding="utf-8")
     assert "name: Compose Golden Path" in workflow
     assert "- ready_for_review" in workflow
