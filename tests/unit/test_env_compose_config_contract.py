@@ -13,9 +13,7 @@ if str(DEV_SCRIPTS) not in sys.path:
 from local_runtime import build_runtime_environment, load_local_dev_config, runtime_paths  # noqa: E402
 
 
-HISTORICAL_RUNTIME_INTERPOLATION = (
-    "${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}"
-)
+HISTORICAL_RUNTIME_INTERPOLATION = "${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}"
 
 
 def test_shared_env_local_is_valid_for_source_launcher(tmp_path: Path) -> None:
