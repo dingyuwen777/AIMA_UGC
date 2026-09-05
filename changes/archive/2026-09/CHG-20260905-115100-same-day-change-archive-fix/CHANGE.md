@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260905-115100-same-day-change-archive-fix
 title: 修复 same-day Change Archive 冻结误判
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/362-same-day-change-archive
 created: 2026-09-05
