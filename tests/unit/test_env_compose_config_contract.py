@@ -2,26 +2,32 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-DEV_SCRIPTS = ROOT / "scripts" / "dev"
-if str(DEV_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(DEV_SCRIPTS))
-
-from local_runtime import (  # noqa: E402
-    build_runtime_environment,
-    load_local_dev_config,
-    runtime_paths,
-)
-
-
 HISTORICAL_RUNTIME_INTERPOLATION = "${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}"
 _COMPOSE_INTERPOLATION_PATTERN = re.compile(r"\$\{(AIMA_[A-Z0-9_]+)(?::-[^}]*)?\}")
+
+
+def _load_local_runtime() -> ModuleType:
+    """按真实脚本路径加载 local_runtime，避免测试修改全局 import path。"""
+
+    path = ROOT / "scripts" / "dev" / "local_runtime.py"
+    spec = importlib.util.spec_from_file_location("aima_env_contract_local_runtime", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+LOCAL_RUNTIME = _load_local_runtime()
 
 
 def _env_keys(path: Path) -> set[str]:
@@ -40,13 +46,16 @@ def _env_keys(path: Path) -> set[str]:
 def test_shared_env_local_is_valid_for_source_launcher(tmp_path: Path) -> None:
     """共享 env.local 的 Docker 字段不应被源码 launcher 误报，源码应使用宿主历史路径。"""
 
-    config = load_local_dev_config(ROOT / "env.local.example")
+    config = LOCAL_RUNTIME.load_local_dev_config(ROOT / "env.local.example")
 
     assert config.unknown_keys == ()
     assert config.historical_import_host_root == "./.runtime/historical-input"
     assert config.historical_import_root == "/data/aima-historical-input"
 
-    environment = build_runtime_environment(paths=runtime_paths(tmp_path), config=config)
+    environment = LOCAL_RUNTIME.build_runtime_environment(
+        paths=LOCAL_RUNTIME.runtime_paths(tmp_path),
+        config=config,
+    )
     assert environment["AIMA_HISTORICAL_IMPORT_ROOT"] == "./.runtime/historical-input"
 
 
@@ -60,8 +69,11 @@ def test_source_launcher_keeps_legacy_historical_root_compatible(tmp_path: Path)
         encoding="utf-8",
     )
 
-    config = load_local_dev_config(env_file)
-    environment = build_runtime_environment(paths=runtime_paths(tmp_path), config=config)
+    config = LOCAL_RUNTIME.load_local_dev_config(env_file)
+    environment = LOCAL_RUNTIME.build_runtime_environment(
+        paths=LOCAL_RUNTIME.runtime_paths(tmp_path),
+        config=config,
+    )
 
     assert config.unknown_keys == ()
     assert environment["AIMA_HISTORICAL_IMPORT_ROOT"] == ".runtime/legacy-historical-input"
@@ -75,9 +87,12 @@ def test_source_launcher_preserves_inherited_runtime_overrides(
 
     monkeypatch.setenv("AIMA_LOG_LEVEL", "DEBUG")
     monkeypatch.setenv("AIMA_HISTORICAL_CHUNK_ROWS", "777")
-    config = load_local_dev_config(ROOT / "env.local.example")
+    config = LOCAL_RUNTIME.load_local_dev_config(ROOT / "env.local.example")
 
-    environment = build_runtime_environment(paths=runtime_paths(tmp_path), config=config)
+    environment = LOCAL_RUNTIME.build_runtime_environment(
+        paths=LOCAL_RUNTIME.runtime_paths(tmp_path),
+        config=config,
+    )
 
     assert environment["AIMA_LOG_LEVEL"] == "DEBUG"
     assert environment["AIMA_HISTORICAL_CHUNK_ROWS"] == "777"
@@ -89,7 +104,7 @@ def test_removed_analysis_shard_env_is_rejected_as_unknown(tmp_path: Path) -> No
     env_file = tmp_path / "env.local"
     env_file.write_text("AIMA_ANALYSIS_RUN_SHARD_SIZE=1\n", encoding="utf-8")
 
-    config = load_local_dev_config(env_file)
+    config = LOCAL_RUNTIME.load_local_dev_config(env_file)
 
     assert config.unknown_keys == ("AIMA_ANALYSIS_RUN_SHARD_SIZE",)
 
@@ -125,7 +140,7 @@ def test_env_examples_expose_only_real_runtime_boundaries() -> None:
     """本地模板覆盖源码+Compose，生产模板暴露真实服务器配置且不保留假配置。"""
 
     local_text = (ROOT / "env.local.example").read_text(encoding="utf-8")
-    local_config = load_local_dev_config(ROOT / "env.local.example")
+    local_config = LOCAL_RUNTIME.load_local_dev_config(ROOT / "env.local.example")
     production = (ROOT / "env.production.example").read_text(encoding="utf-8")
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
 
