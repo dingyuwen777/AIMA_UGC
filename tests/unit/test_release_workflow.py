@@ -20,8 +20,15 @@ def test_formal_release_is_manual_and_pr_mode_is_dry_run_only() -> None:
 
     assert "workflow_dispatch:" in header
     assert "pull_request:" in header
+    assert "ready_for_review" in header
     assert "push:" not in header
     assert "permissions:\n  contents: read" in header
+
+    build_job = jobs.split("publish-release:", 1)[0]
+    assert (
+        "github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+        in build_job
+    )
 
     publish_job = _publish_job(jobs)
     assert "if: github.event_name == 'workflow_dispatch'" in publish_job
@@ -46,7 +53,7 @@ def test_public_repository_release_keeps_downloadable_offline_images() -> None:
     workflow = _workflow_text()
     publish_job = _publish_job(workflow)
 
-    # 当前源码仓库是 public；用户明确要求正式 GitHub Release 仍附带完整离线部署包。
+    # 当前源码仓库是 public；正式 GitHub Release 仍附带完整离线部署包。
     # GHCR application packages 保持 private，但 Release asset 中的 images.tar 会随 public
     # GitHub Release 对外可下载，这是已确认的交付边界。
     assert "docker save -o release-bundle/images.tar" in workflow
