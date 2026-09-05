@@ -198,7 +198,7 @@ def freeze_lifecycle(text: str, *, merged_date: str) -> str:
 
 
 def _verify_lifecycle_only(original: str, frozen: str, *, merged_date: str) -> None:
-    """证明归档内容只改变 status 和 updated 两个 frontmatter 字段。"""
+    """证明归档只可能改变 status/updated；同日 updated 可不产生文本差异。"""
     original_lines = original.splitlines()
     frozen_lines = frozen.splitlines()
     if len(original_lines) != len(frozen_lines):
@@ -219,9 +219,10 @@ def _verify_lifecycle_only(original: str, frozen: str, *, merged_date: str) -> N
         if key != after_match.group("key") or key not in allowed_changed:
             raise ArchiveChangeError(f"归档冻结出现未授权字段修改：{key}")
         changed_keys.add(key)
-    if changed_keys != allowed_changed:
+    if "status" not in changed_keys:
         raise ArchiveChangeError(
-            f"归档冻结必须且只能更新 status/updated；实际修改：{sorted(changed_keys)}"
+            "归档冻结必须实际更新 status；updated 已等于 merge date 时可不产生文本修改；"
+            f"实际修改：{sorted(changed_keys)}"
         )
     if "status: done" not in frozen_lines:
         raise ArchiveChangeError("归档冻结结果缺少 status: done")
