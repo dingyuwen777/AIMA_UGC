@@ -10,10 +10,16 @@ DEV_SCRIPTS = ROOT / "scripts" / "dev"
 if str(DEV_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(DEV_SCRIPTS))
 
-from local_runtime import build_runtime_environment, load_local_dev_config, runtime_paths  # noqa: E402
+from local_runtime import (  # noqa: E402
+    build_runtime_environment,
+    load_local_dev_config,
+    runtime_paths,
+)
 
 
-HISTORICAL_RUNTIME_INTERPOLATION = "${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}"
+HISTORICAL_RUNTIME_INTERPOLATION = (
+    "${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}"
+)
 
 
 def test_shared_env_local_is_valid_for_source_launcher(tmp_path: Path) -> None:
@@ -93,7 +99,9 @@ def test_env_examples_expose_only_real_runtime_boundaries() -> None:
 def test_runtime_documentation_uses_env_local_for_local_compose() -> None:
     """长期运行文档必须把本地源码、本地 Compose 与服务器 Compose 的 env 入口写清楚。"""
 
-    documentation = (ROOT / "docs" / "02_环境运行与部署.md").read_text(encoding="utf-8")
+    documentation = (ROOT / "docs" / "02_环境运行与部署.md").read_text(
+        encoding="utf-8"
+    )
     windows_guide = (
         ROOT / "docs" / "guides" / "03_Windows Docker Desktop Compose运行.md"
     ).read_text(encoding="utf-8")
@@ -119,7 +127,9 @@ def test_runtime_documentation_uses_env_local_for_local_compose() -> None:
 def test_windows_tooling_validates_the_local_compose_env() -> None:
     """Windows Tooling 的真实 Compose CLI 校验必须使用正式本地 env.local 入口。"""
 
-    tooling = (ROOT / ".github" / "workflows" / "tooling.yml").read_text(encoding="utf-8")
+    tooling = (ROOT / ".github" / "workflows" / "tooling.yml").read_text(
+        encoding="utf-8"
+    )
 
     assert "Copy-Item env.local.example env.local" in tooling
     assert (
