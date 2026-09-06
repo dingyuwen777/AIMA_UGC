@@ -45,6 +45,23 @@ def test_repository_quality_test_family_stays_out_of_product_backend() -> None:
         assert requirements.backend_required is False
 
 
+def test_repository_quality_scripts_use_an_explicit_allowlist() -> None:
+    lightweight = CLASSIFY_REQUIREMENTS(("scripts/quality/scan_secrets.py",))
+    assert lightweight.profile == "repository_quality"
+    assert lightweight.repository_quality_required is True
+    assert lightweight.backend_required is False
+
+    for path in (
+        "scripts/quality/check_architecture.py",
+        "scripts/quality/check_table_ownership.py",
+    ):
+        requirements = CLASSIFY_REQUIREMENTS((path,))
+        assert requirements.profile == "full"
+        assert requirements.backend_required is True
+        assert requirements.postgres_suites == ("all",)
+        assert requirements.fullstack_specs == ("all",)
+
+
 def test_ci_impact_regression_is_itself_fail_closed_to_full() -> None:
     requirements = CLASSIFY_REQUIREMENTS(("tests/unit/test_ci_test_impact_optimization.py",))
 
@@ -59,6 +76,17 @@ def test_persistence_leaf_selects_only_owned_postgres_suite() -> None:
     assert requirements.postgres_required is True
     assert requirements.postgres_suites == ("collection",)
     assert requirements.fullstack_specs == ("collection-plan-search-config.spec.ts",)
+
+
+def test_migration_compatibility_verifier_selects_migration_suite() -> None:
+    requirements = CLASSIFY_REQUIREMENTS(
+        ("tests/integration/database/verify_migration_compatibility.py",)
+    )
+
+    assert requirements.profile == "persistence"
+    assert requirements.postgres_required is True
+    assert requirements.postgres_suites == ("migration",)
+    assert requirements.fullstack_required is False
 
 
 def test_unknown_persistence_and_ci_self_fail_closed() -> None:
