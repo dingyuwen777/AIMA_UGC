@@ -40,6 +40,7 @@ CI_SELF_EXACT = {
     ".github/workflows/fullstack.yml",
     "scripts/quality/classify_ci_scope.py",
     "tests/unit/test_ci_scope.py",
+    "tests/unit/test_ci_test_impact_optimization.py",
     "tests/unit/test_actions_runner_optimization.py",
 }
 FULL_EXACT = {
@@ -76,6 +77,8 @@ REPOSITORY_QUALITY_TEST_MARKERS = (
     "change_archive",
     "change_completion",
     "docs_facts",
+    "docs_navigation",
+    "issue_acceptance",
     "pr_requirement",
 )
 
