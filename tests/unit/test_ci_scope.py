@@ -257,6 +257,7 @@ def test_ci_self_change_and_unknown_path_fail_closed_to_full() -> None:
         ".github/workflows/ci.yml",
         "scripts/quality/classify_ci_scope.py",
         "tests/unit/test_actions_runner_optimization.py",
+        "tests/unit/test_ci_workflow_structure.py",
         "tools/unclassified.machine",
     ):
         requirements = _requirements(path)

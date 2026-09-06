@@ -19,8 +19,10 @@ affected_paths:
   - .github/workflows/
   - scripts/quality/classify_ci_scope.py
   - scripts/quality/check_agent_governance.py
+  - tests/unit/test_actions_runner_optimization.py
   - tests/unit/test_ci_scope.py
   - tests/unit/test_ci_test_impact_optimization.py
+  - tests/unit/test_ci_workflow_structure.py
   - tests/unit/test_agent_governance.py
   - docs/blueprint/06_开发约束与分阶段实施.md
 contracts: []
@@ -71,7 +73,7 @@ Issue #370 要求在不降低仓库整体准入质量的前提下减少 GitHub A
 
 # 不变量
 
-- selector 自身、CI Workflow、selector 回归发生变化时必须 `full`；
+- selector 自身、CI Workflow、selector/Workflow 结构回归发生变化时必须 `full`；
 - 未识别机器路径必须 `full`；
 - Contract/shared/cross-component 风险只能单调扩大，不允许因为优化成本降级；
 - Migration 源码、公共 DB 基础设施或无法唯一映射的 persistence 风险必须扩大到完整 PostgreSQL 证据；
@@ -95,10 +97,10 @@ Issue #370 要求在不降低仓库整体准入质量的前提下减少 GitHub A
 | R3 | 受控 Change Archive 不再触发后续业务 CI/Runtime | #370 / AC3 | satisfied | `change-archive.yml` 在 completion gate、exact two-path allowlist、当前 main 防漂移之后才提交带 `[skip ci]` 的机械 archive commit；静态回归验证执行顺序与 allowlist |
 | R4 | Release dry-run 只由 Release 机器实现变化触发 | #370 / AC4 | satisfied | `release.yml` PR paths 只保留 Release Workflow、Dockerfile、Compose、生产 env 示例和两项直接回归；PR stale run 可取消，手工 Release 不取消 |
 | R5 | CJK 字体只在报告渲染需要时安装 | #370 / AC5 | satisfied | 主 CI 使用 `report_font_required`；PostgreSQL Integration 删除 CJK 安装；静态回归锁定该条件 |
-| R6 | Draft PR 不再主动失败消耗 Runner | #370 / AC6 | satisfied | CI `quality-core/ci-gate` 与 Runtime `compose-golden-path` 在 Job 分配前按 Draft 状态跳过，旧主动 `exit 1` 步骤已删除；Release build-verify 继续使用 Job-level Draft skip |
+| R6 | Draft PR 不再主动失败消耗 Runner | #370 / AC6 | satisfied | CI `quality-core/ci-gate` 与 Runtime `compose-golden-path` 在 Job 分配前按 Draft 状态跳过，旧主动 `exit 1` 步骤已删除；Release build-verify 继续使用 Job-level Draft skip；`test_actions_runner_optimization.py`、`test_ci_workflow_structure.py` 同步锁定该正式语义 |
 | R7 | Persistence 可选择最小充分 PostgreSQL suite | #370 / AC7 | satisfied | 新增 `postgres_suites`；collection/content/ingestion/jobs/system 与 integration suite 可按边界选择，`verify_migration_compatibility.py` 精确选择 `migration`，Migration 源码/共享/未知 persistence 仍升级为 `all` |
 | R8 | 技术栈执行保持相关性，shared/unknown 单调扩大 | #370 / AC8 | satisfied | selector 按 backend/frontend/contract/persistence/cross-component 合并 Evidence；CI-self、Workflow、Migration、依赖、Compose/Docker、共享或未知机器路径直接 `full` |
-| R9 | 自动化测试锁定关键 selector/workflow/治理不变量 | #370 / AC9 | satisfied | `test_ci_scope.py` + `test_ci_test_impact_optimization.py` 覆盖 docs/governance/repository-quality 白名单、非白名单 quality fail-closed、CI-self、unknown、PostgreSQL suite/migration verifier、font、Draft、Release、Archive；`test_agent_governance.py` 锁定真实 `python3` Change gate 仍被 GOV007 识别 |
+| R9 | 自动化测试锁定关键 selector/workflow/治理不变量 | #370 / AC9 | satisfied | `test_ci_scope.py`、`test_ci_test_impact_optimization.py`、`test_actions_runner_optimization.py`、`test_ci_workflow_structure.py` 覆盖 docs/governance/repository-quality 白名单、非白名单 quality fail-closed、CI-self、unknown、PostgreSQL suite/migration verifier、font、Draft、Release、Archive 与 Workflow 结构；`test_agent_governance.py` 锁定真实 `python3` Change gate 仍被 GOV007 识别 |
 
 AC10 是 current-head CI、L3 Deep Review、guarded merge、implementation main-fresh、repository-native Change Archive、Issue closure 与分支清理的交付/关闭门禁，由 PR、Commit、Actions、Review、Archive 和 Issue 状态持有，不伪造为 Ready 前已经完成。
 
@@ -126,15 +128,16 @@ AC10 是 current-head CI、L3 Deep Review、guarded merge、implementation main-
 - [x] 清理所有一次性 Workflow/脚本施工资产，最终 PR 只保留长期实现、测试、文档和 Change。
 - [x] L3 静态 Review 已在最终动态取证前反向发现并修复两处降级空洞：`scripts/quality/**` 过宽白名单、Migration compatibility verifier suite 选择错误。
 - [x] Ready 动态门禁进一步发现并修复 GOV007：真实 `python3 check_change_completion.py` 被治理检查器旧的单一字符串规则误判为未接线；现已兼容 `python`/`python3` 并补回归，不降低 Change gate 要求。
+- [x] current-head full CI 进一步发现并修复两类测试治理漂移：Workflow 回归对未锁定 PyYAML 的非必要依赖，以及 `test_ci_workflow_structure.py` 仍锁定旧 Draft 主动失败语义；同时将该 Workflow 结构回归本身纳入 CI-self `full` 白名单。
 - [ ] 完成最终 PR current-head full CI、Runtime Acceptance、Release dry-run 与最终 L3 Deep Review。
 - [ ] guarded merge、implementation main-fresh、repository-native Change Archive、Issue closure、分支清理。
 
 # Completion Audit
 
 - [x] upstream_re_read：重新读取 Issue #370、当前 main、AIMA `AGENTS.md` / Blueprint 06、canonical Agent_Skills Coding/Testing/Review/Delivery 规则，并把 main 在任务期间的治理升级合入任务分支。
-- [x] change_coverage：从 AC1–AC9 逐项回查 selector、四个永久 Workflow、治理 checker、回归测试和长期文档；AC10 明确保留为交付门禁，没有把 Actions 绿色伪装成施工事实。
-- [x] reverse_audit：从 selector/Workflow 所有降级路径反向检查证明责任；先修复 selector 回归自身未纳入 CI-self、`docs_navigation/issue_acceptance` 测试未归 repository-quality、长期文档仍要求 archive revision 重复 CI；Ready 后继续发现并修复“整个 `scripts/quality/**` 被错误视为轻量”和 `verify_migration_compatibility.py` 只选 database、不执行 migration verifier 两个空洞；动态 GOV007 又证明真实 Change gate 入口的静态识别需兼容 `python3`。最终只有显式治理/文档质量白名单可降级，非白名单 quality、CI-self、共享/未知路径均 fail-closed，顶层 Change gate 仍必须真实执行。
-- [x] unresolved_cleared：临时 Patcher/文档同步/治理兼容 Workflow 与一次性脚本已全部删除；Release/Runtime 使用正式 GitHub 写路径落地；无未决 Contract/Schema/数据/依赖/生产变化。剩余事项仅为最终 HEAD 的动态 CI/Review/merge/closure 证据。
+- [x] change_coverage：从 AC1–AC9 逐项回查 selector、四个永久 Workflow、治理 checker、所有相关 Workflow/selector 回归测试和长期文档；AC10 明确保留为交付门禁，没有把 Actions 绿色伪装成施工事实。
+- [x] reverse_audit：从 selector/Workflow 所有降级路径反向检查证明责任；先修复 selector 回归自身未纳入 CI-self、`docs_navigation/issue_acceptance` 测试未归 repository-quality、长期文档仍要求 archive revision 重复 CI；Ready 后继续发现并修复“整个 `scripts/quality/**` 被错误视为轻量”和 `verify_migration_compatibility.py` 只选 database、不执行 migration verifier 两个空洞；动态 GOV007 又证明真实 Change gate 入口的静态识别需兼容 `python3`；后续 full CI 再暴露 `test_ci_workflow_structure.py` 仍锁定旧 Draft 主动失败且自身未纳入 CI-self，现已同步为 Job-level skip 语义并加入 CI-self fail-closed 白名单。最终只有显式治理/文档质量白名单可降级，CI/Workflow 结构回归、非白名单 quality、共享/未知路径均 fail-closed，顶层 Change gate 仍必须真实执行。
+- [x] unresolved_cleared：临时 Patcher/文档同步/治理兼容 Workflow 与一次性脚本已全部删除；Workflow 静态回归不新增 PyYAML 等非必要依赖；Release/Runtime 使用正式 GitHub 写路径落地；无未决 Contract/Schema/数据/依赖/生产变化。剩余事项仅为最终 HEAD 的动态 CI/Review/merge/closure 证据。
 
 `ready_for_review` 表示施工范围、需求覆盖、长期文档和完成定义已经闭环；下一步必须以 PR 最新 HEAD 取得新的 full CI、Runtime、Release dry-run 与最终 L3 Review，才能进入 merge。
 

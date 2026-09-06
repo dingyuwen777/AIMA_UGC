@@ -41,6 +41,7 @@ CI_SELF_EXACT = {
     "scripts/quality/classify_ci_scope.py",
     "tests/unit/test_ci_scope.py",
     "tests/unit/test_ci_test_impact_optimization.py",
+    "tests/unit/test_ci_workflow_structure.py",
     "tests/unit/test_actions_runner_optimization.py",
 }
 REPOSITORY_QUALITY_EXACT = {
