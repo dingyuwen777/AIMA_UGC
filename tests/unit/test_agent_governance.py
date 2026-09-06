@@ -256,10 +256,7 @@ def test_checker_accepts_python3_project_change_gate_command(tmp_path: Path) -> 
     )
     _write(workflow_path, workflow)
     errors = CHECK_REPOSITORY(tmp_path)
-    assert not any(
-        error.startswith("GOV007 .github/workflows/ci.yml")
-        for error in errors
-    )
+    assert not any(error.startswith("GOV007 .github/workflows/ci.yml") for error in errors)
 
 
 def test_checker_rejects_workflow_bypassing_project_change_carrier(tmp_path: Path) -> None:

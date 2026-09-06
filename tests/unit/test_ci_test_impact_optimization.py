@@ -116,7 +116,9 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     assert "fonts-noto-cjk" not in postgres_text
 
     quality_steps = workflow["jobs"]["quality-core"]["steps"]
-    font_step = next(step for step in quality_steps if step.get("name") == "Install report validation CJK font")
+    font_step = next(
+        step for step in quality_steps if step.get("name") == "Install report validation CJK font"
+    )
     assert font_step["if"] == "steps.classify.outputs.report_font_required == 'true'"
 
 
@@ -156,7 +158,10 @@ def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
         "tests/unit/test_docker_build_sources.py",
         "tests/unit/test_release_workflow.py",
     ]
-    assert workflow["concurrency"]["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
+    assert (
+        workflow["concurrency"]["cancel-in-progress"]
+        == "${{ github.event_name == 'pull_request' }}"
+    )
 
 
 def test_change_archivist_skip_is_after_exact_archive_allowlist() -> None:

@@ -102,7 +102,9 @@ def test_http_producer_change_requires_contract_drift_and_real_cross_component_p
     assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
-def test_collection_persistence_change_runs_only_collection_postgres_and_relevant_golden_path() -> None:
+def test_collection_persistence_change_runs_only_collection_postgres_and_relevant_golden_path() -> (
+    None
+):
     requirements = _requirements("backend/src/aima_ugc/modules/collection/tables.py")
 
     assert requirements.profile == "persistence"

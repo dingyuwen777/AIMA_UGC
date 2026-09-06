@@ -196,7 +196,10 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
     markers: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
         (("/modules/collection/", "/postgres/collection"), ("collection",)),
         (("/modules/content/", "/postgres/content"), ("content",)),
-        (("/modules/ingestion/", "/postgres/ingestion", "/postgres/import"), ("content", "ingestion")),
+        (
+            ("/modules/ingestion/", "/postgres/ingestion", "/postgres/import"),
+            ("content", "ingestion"),
+        ),
         (("/modules/system/", "/postgres/system"), ("platform", "readiness", "database")),
         (("/jobs/", "/postgres/jobs"), ("jobs",)),
     )
