@@ -688,9 +688,9 @@ npm --prefix frontend run test:e2e
 npm --prefix frontend run test:e2e:fullstack
 ```
 
-永久 CI 通过 [`.github/workflows/fullstack.yml`](../.github/workflows/fullstack.yml) 建立隔离环境并执行真实链。完整能力矩阵和边界见：
+永久 CI 通过 [`.github/workflows/fullstack.yml`](../.github/workflows/fullstack.yml) 建立隔离环境并执行真实链。完整测试分层、证据边界和调试方法见：
 
-[`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md)
+[`docs/04_测试与调试说明.md`](../docs/04_测试与调试说明.md)
 
 这些前端测试仍不能替代 Job Fencing、Provider、Migration、容量或其他后端专项集成测试；各层验证继续各自证明真实边界。
 
@@ -723,5 +723,5 @@ npm --prefix frontend run test:e2e:fullstack
 - Data Import：[`docs/appendix/08_数据入口与统一入库实现.md`](../docs/appendix/08_数据入口与统一入库实现.md)
 - Stage 12 软件与生产门禁：[`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../docs/roadmap/03_4000万历史数据迁移实施方案.md)
 - Excel Export：[`docs/appendix/06_Excel统一数据导出与离线调试.md`](../docs/appendix/06_Excel统一数据导出与离线调试.md)
-- Stage 8F 能力矩阵与真实验收：[`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md)
+- 测试分层与真实验收边界：[`docs/04_测试与调试说明.md`](../docs/04_测试与调试说明.md)
 - 后续阶段/Production Go-Live：[`docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)

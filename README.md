@@ -51,7 +51,7 @@ TikHub / 文件导入
 
 只保留两条已经批准且尚未完成的工作：
 
-1. [`完整 Production Go-Live`](docs/roadmap/02_生产上线实施路线.md)
-2. [`4000 万历史数据生产迁移`](docs/roadmap/03_4000万历史数据迁移实施方案.md)
+1. [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)
+2. [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](docs/roadmap/03_4000万历史数据迁移实施方案.md)
 
 已完成 Stage 的历史设计、PR/CI 和验收证据保留在 [`changes/archive/`](changes/archive/) 与 Git 历史，不继续占用当前 Roadmap。

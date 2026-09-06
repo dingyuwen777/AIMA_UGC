@@ -28,6 +28,7 @@ TABLE_PATTERNS = (
 )
 JOB_TYPE_RE = re.compile(r'^[A-Z0-9_]+_JOB_TYPE\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 ROUTE_RE = re.compile(r"\bpath:\s*['\"]([^'\"]+)['\"]")
+FACT_LINK_RE = re.compile(r"^-\s+\[`([^`]+)`\]\([^)]+\)$")
 WORKER_BOOTSTRAP = Path("backend/src/aima_ugc/bootstrap/worker.py")
 
 PROVIDER_DOCS = {
@@ -317,7 +318,7 @@ def _require_all(
 
 
 def _fact_block_values(owner_doc: str, key: str) -> tuple[str, ...]:
-    """解析受控 docs-facts 块，返回代码围栏中的逐行事实。"""
+    """解析受控 docs-facts 块，返回逐行事实；导航型事实允许使用 Markdown 链接。"""
     start = f"<!-- docs-facts:{key}:start -->"
     end = f"<!-- docs-facts:{key}:end -->"
     text = _read(owner_doc)
@@ -330,6 +331,9 @@ def _fact_block_values(owner_doc: str, key: str) -> tuple[str, ...]:
         value = line.strip()
         if not value or value.startswith("```"):
             continue
+        link_match = FACT_LINK_RE.fullmatch(value)
+        if link_match is not None:
+            value = link_match.group(1)
         values.append(value)
     return tuple(values)
 

@@ -6,7 +6,7 @@
 
 - [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)
 - [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
-- [`docs/appendix/11_生产部署与离线Release方案.md`](../appendix/11_生产部署与离线Release方案.md)
+- [`docs/operations/01_生产部署与离线Release方案.md`](../operations/01_生产部署与离线Release方案.md)
 
 为准。
 

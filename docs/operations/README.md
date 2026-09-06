@@ -19,7 +19,7 @@ Roadmap
 
 ## 当前部署结论
 
-当前仓库已经具备 Internal V1 的 Docker/Compose 运行基线和 GitHub 离线 Release 基础。不能再把 `Dockerfile`、`compose.yaml`、`env.production.example`、`images.tar`、manifest、`SHA256SUMS`、`DEPLOY.md` 或 no-build/no-pull 回放整体描述成“尚未实现”。
+当前仓库已经具备 Internal V1 的 Docker/Compose 运行基线和 GitHub 离线 Release 基础。不能再把 [`Dockerfile`](../../Dockerfile)、[`compose.yaml`](../../compose.yaml)、[`env.production.example`](../../env.production.example)、`images.tar`、manifest、`SHA256SUMS`、`DEPLOY.md` 或 no-build/no-pull 回放整体描述成“尚未实现”。
 
 完整 Production 仍是 No-Go。未完成事项由 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md) 维护，Operations 文档不能把未来 Backup/Restore、企业认证、供应链强化或生产实机验收写成已经完成的命令。
 

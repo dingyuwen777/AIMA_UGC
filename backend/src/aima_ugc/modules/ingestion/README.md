@@ -75,7 +75,6 @@ ingestion_policy
 - [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py)
 - [`backend/src/aima_ugc/modules/ingestion/historical_tables.py`](historical_tables.py)
 
-
 当前 PostgreSQL：
 
 - [`backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py`](../../adapters/persistence/postgres/historical_import.py)
@@ -572,7 +571,7 @@ historical_content.py（历史批量补空专用实现）
 
 ```text
 docs/roadmap/03_4000万历史数据迁移实施方案.md
-docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md
+docs/operations/02_4000万历史迁移与Analysis Run运行手册.md
 ```
 
 当前 Stage 12 **软件能力已完成**；公司服务器 500 万或经批准等效比例容量门禁、生产 4000 万实际执行/对账尚未完成。不能把代码修改和生产授权混在一起。
@@ -661,7 +660,7 @@ frontend/e2e-fullstack/stage12-historical-analysis.spec.ts
 
 - [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
 - [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
-- [`docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md`](../../../../../docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md)
+- [`docs/operations/02_4000万历史迁移与Analysis Run运行手册.md`](../../../../../docs/operations/02_4000万历史迁移与Analysis%20Run运行手册.md)
 - [`docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
 - [`docs/blueprint/02_采集系统与数据标准化.md`](../../../../../docs/blueprint/02_采集系统与数据标准化.md)
 - [`docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)

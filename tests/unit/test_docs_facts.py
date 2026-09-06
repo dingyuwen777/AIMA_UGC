@@ -86,6 +86,34 @@ legacy
     assert any("存在已失效示例事实 legacy" in error for error in errors)
 
 
+def test_exact_fact_block_accepts_markdown_link_values(tmp_path: Path) -> None:
+    """导航型事实可以写成可点击 Markdown 链接，同时仍按链接标题做 exact-set。"""
+    _write(
+        tmp_path / "docs/facts.md",
+        """# Facts
+
+<!-- docs-facts:example:start -->
+- [`alpha.yml`](../.github/workflows/alpha.yml)
+- [`beta.yml`](../.github/workflows/beta.yml)
+<!-- docs-facts:example:end -->
+""",
+    )
+    errors: list[str] = []
+
+    _with_root(
+        REQUIRE_EXACT_BLOCK,
+        tmp_path,
+        errors,
+        code="TEST",
+        owner_doc="docs/facts.md",
+        key="example",
+        values={"alpha.yml", "beta.yml"},
+        label="示例",
+    )
+
+    assert errors == []
+
+
 def test_exact_fact_block_rejects_duplicate_values(tmp_path: Path) -> None:
     """受控事实块中的重复值不能被 set 比较静默吞掉。"""
     _write(
