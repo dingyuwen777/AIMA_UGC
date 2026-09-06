@@ -23,6 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import re
           from pathlib import Path
 
           release = Path('.github/workflows/release.yml')
@@ -36,7 +37,7 @@ jobs:
                   raise SystemExit(f'release trigger baseline missing: {line.strip()}')
               text = text.replace(line, '', 1)
           old = '  cancel-in-progress: false\n'
-          new = "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n"
+          new = "  cancel-in-progress: $" + "{{ github.event_name == 'pull_request' }}\n"
           if old not in text:
               raise SystemExit('release concurrency baseline missing')
           text = text.replace(old, new, 1)
@@ -54,17 +55,17 @@ jobs:
           if marker not in text:
               raise SystemExit('runtime job baseline missing')
           text = text.replace(marker, replacement, 1)
-          draft_block = '''      - name: Defer Runtime Acceptance while PR is Draft
-                if: github.event_name == 'pull_request' && github.event.pull_request.draft
-                shell: bash
-                run: |
-                  echo "Draft PR does not run the expensive Compose acceptance. Mark it Ready for review to obtain fresh Runtime evidence." >&2
-                  exit 1
-
-          '''.replace('        ', '')
-          if draft_block not in text:
+          pattern = re.compile(
+              r"      - name: Defer Runtime Acceptance while PR is Draft\n"
+              r"        if: github\.event_name == 'pull_request' && github\.event\.pull_request\.draft\n"
+              r"        shell: bash\n"
+              r"        run: \|\n"
+              r"          echo \"Draft PR does not run the expensive Compose acceptance\. Mark it Ready for review to obtain fresh Runtime evidence\.\" >&2\n"
+              r"          exit 1\n\n"
+          )
+          text, count = pattern.subn('', text, count=1)
+          if count != 1:
               raise SystemExit('runtime draft baseline missing')
-          text = text.replace(draft_block, '', 1)
           runtime.write_text(text, encoding='utf-8')
           PY
 
