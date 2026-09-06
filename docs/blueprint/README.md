@@ -1,326 +1,73 @@
 # AIMA_UGC Blueprint 导航
 
-`docs/blueprint/` 只维护**长期有效的系统架构、边界、关键技术方向和跨模块决定**。
+`docs/blueprint/` 只维护**长期有效的系统架构、跨模块边界和已经拍板的技术决策**。它不维护动态 Stage、单次 PR/CI、已完成施工历史，也不承担 Production 操作手册。
 
-它不是实现手册，也不是 Stage 施工记录。
+## 当前 Blueprint
 
-如果第一次接触仓库，建议先读：
+1. [`docs/blueprint/01_总体架构与技术选型.md`](01_总体架构与技术选型.md)：总体架构、进程、模块、Job、前端类型链和技术基线；
+2. [`docs/blueprint/02_采集系统与数据标准化.md`](02_采集系统与数据标准化.md)：Provider、Raw、Candidate、Mapper、Canonical 和统一入库边界；
+3. [`docs/blueprint/03_数据库与文件存储.md`](03_数据库与文件存储.md)：PostgreSQL、表 Owner、Artifact、Migration 与存储语义；
+4. [`docs/blueprint/04_后端任务API与前端.md`](04_后端任务API与前端.md)：HTTP、持久 Job、前后端 Contract 和长任务交互；
+5. [`docs/blueprint/05_日志安全部署与运维.md`](05_日志安全部署与运维.md)：日志、Secret、安全、持久化、Backup/Restore 和 Production 长期边界；
+6. [`docs/blueprint/06_开发约束与分阶段实施.md`](06_开发约束与分阶段实施.md)：长期开发/验证/Change/CI 约束，不维护 Stage 完成状态；
+7. [`docs/blueprint/07_技术决策与实施门禁.md`](07_技术决策与实施门禁.md)：普通任务不能静默改变的长期决定；
+8. [`docs/blueprint/08_采集策略与平台能力.md`](08_采集策略与平台能力.md)：词包、Plan、Capability、Scheduler 和平台采集能力边界。
 
-1. [`AGENTS.md`](../../AGENTS.md)
-2. [`docs/01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)
-3. 本文
-4. [`docs/blueprint/07_技术决策与实施门禁.md`](07_技术决策与实施门禁.md)
-5. [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
-6. 再按当前任务下钻对应 Appendix、Guide、模块 README、Contract、Migration、代码和测试
+核心 Blueprint 固定 01—08。Scheduler/TikHub/Excel/AI/Word 等具体实现细节继续放模块 README 或 [`docs/appendix/`](../appendix/)；生产操作放 [`docs/operations/`](../operations/)；不会继续用 Blueprint 09、10、11……记录施工阶段。
 
----
-
-## 1. Blueprint 和其他文档分别负责什么
+## 文档层级
 
 ```text
+Product
+→ 用户现在能做什么
+
 Blueprint
-→ 系统为什么这样设计
-→ 哪些边界长期不能随便改
-→ 主要技术方向是什么
+→ 系统为什么这样设计、长期边界是什么
+
+代码结构导航 / 模块 README
+→ 当前改代码从哪里开始
+
+Appendix / Collection
+→ 专题实现和 Provider 细节
+
+Operations
+→ 当前能力怎样部署、运行、恢复、迁移
 
 Roadmap
-→ 当前做到哪里
-→ 下一阶段做什么
-→ 哪些能力尚未完成
-→ 怎样一直做到生产服务器上线
+→ 已批准且尚未完成的目标
 
-模块 README
-→ 当前模块代码怎样实现
-→ Owner、入口、调用链、修改位置
-
-Appendix
-→ Scheduler、TikHub、Excel、AI、PostgreSQL、Word、Production Release 等大篇幅技术细节和调试
-
-Guide
-→ Figma 等开发过程工作流
-
-代码 / Contract / Migration / generated / tests / locks
-→ 精确机器事实
-
-changes/archive
-→ 某次变更为什么发生、当时怎样验证
+Change / Git
+→ 历史施工和验收证据
 ```
 
-原则：
+完整分层和事实源矩阵见 [`docs/README.md`](../README.md)。
 
-> Blueprint 控制“方向和边界”，Appendix/README 解释“具体怎样实现”，Roadmap 保证“后续开发路线不丢”。
+## 读 Blueprint 的正确方式
 
----
+### 准备修改业务代码
 
-## 2. 当前核心 Blueprint
+先读根 [`AGENTS.md`](../../AGENTS.md) 和 [`docs/01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)，再按影响面读对应 Blueprint/模块 README。不要从 Blueprint 猜精确 API/表字段。
 
-当前仓库此刻存在以下核心 Blueprint。这个列表描述**当前实际文档集合**，以本目录实际文件、[`docs/AGENTS.md`](../AGENTS.md) 和本文为准；**不设置固定数量、不设置固定文件名，也不设置固定编号上限**。
+### 准备修改架构边界
 
-| 文档 | 解决的问题 | 关键结论 |
-| --- | --- | --- |
-| [`docs/blueprint/01_总体架构与技术选型.md`](01_总体架构与技术选型.md) | 整个系统怎样拆？ | 模块化单体、API/Worker/Scheduler/Migration 分进程、当前技术栈和依赖方向 |
-| [`docs/blueprint/02_采集系统与数据标准化.md`](02_采集系统与数据标准化.md) | 不同数据来源怎样进入同一体系？ | Provider/File → Raw/Input → Mapper → Canonical → Relevance → Ingestion → PostgreSQL |
-| [`docs/blueprint/03_数据库与文件存储.md`](03_数据库与文件存储.md) | 什么放数据库，什么放文件？ | PostgreSQL 唯一业务事实库、Current/Version/Metric、Artifact、表 Owner、Migration |
-| [`docs/blueprint/04_后端任务API与前端.md`](04_后端任务API与前端.md) | API、Job、Worker、Scheduler、前端怎样协作？ | 长任务 durable Job、OpenAPI generated Client、前后端边界 |
-| [`docs/blueprint/05_日志安全部署与运维.md`](05_日志安全部署与运维.md) | 日志、安全、Secret、生产运行怎么定？ | 日志/Secret/Health/Artifact/部署恢复长期边界 |
-| [`docs/blueprint/06_开发约束与分阶段实施.md`](06_开发约束与分阶段实施.md) | 怎么可靠开发和交付？ | Change、TDD、CI、Git、文档同步、验收方法；阶段进度不在这里维护 |
-| [`docs/blueprint/07_技术决策与实施门禁.md`](07_技术决策与实施门禁.md) | 哪些跨模块决定已经拍板？ | 普通任务不能静默改变的技术决定和门禁 |
-| [`docs/blueprint/08_采集策略与平台能力.md`](08_采集策略与平台能力.md) | Collection Plan 怎样决定抓什么？ | Capability、Decision、Detail/Comment、Provider Billing、采集策略 |
+先读 [`docs/blueprint/07_技术决策与实施门禁.md`](07_技术决策与实施门禁.md)。如果任务会改变模块拆分、Canonical、Content 身份、表 Owner、Job Runtime、Scheduler、认证、Backup/Restore 等长期决定，必须按高风险 Change 处理。
 
-新增一个具体业务场景或某个 Provider 细节时，仍优先放 Appendix/模块 README；不要仅为了延续编号就新增 Blueprint，也不要因为当前列表恰好到 `08_` 就禁止未来出现 `09_` 或更大的编号。
+### 准备部署或生产迁移
 
-只有真正出现**新的长期架构领域**，且无法合理归入现有核心 Blueprint 时，才通过新的文档治理 Change 新增或调整核心结构。新增、插入、重命名或重新编号时遵守 [`docs/AGENTS.md`](../AGENTS.md)：按上游依赖排序，保留当前稳定编号，必要迁移时同步所有实时引用。
+- 当前操作：[`docs/operations/`](../operations/)；
+- 尚未完成的 Production 门禁：[`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)；
+- 尚未完成的 4000 万生产执行：[`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../roadmap/03_4000万历史数据迁移实施方案.md)。
 
----
+## 精确机器事实不在 Blueprint 复制第二份
 
-## 3. 原 Blueprint 09—17 去哪里了
+以下内容直接回到机器事实：
 
-原 `09—17` 主要是在 Stage 7、P1、Stage 8 开发过程中形成的详细实现/验证材料。对应阶段已经完成后，这些内容不再继续占用核心 Blueprint。
+- 精确依赖版本 → lock/version 文件；
+- HTTP 字段和路径 → Pydantic/FastAPI/OpenAPI；
+- 数据库列/约束 → SQLAlchemy/Migration；
+- 前端 Route → [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)；
+- generated Client → OpenAPI/Orval 生成链；
+- Worker Registry → [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py)；
+- Provider JSON → Sanitized Fixture/Operation/Mapper。
 
-当前有效事实已经迁移到：
-
-| 原主题 | 当前正式入口 |
-| --- | --- |
-| Scheduler 运行、Cron、`latest_only`、并发、防重、停机恢复 | [`docs/appendix/05_Scheduler调度执行与停机恢复.md`](../appendix/05_Scheduler调度执行与停机恢复.md) + Collection README + 04/07/08 |
-| TikHub 五平台真实响应、JSON 路径、Mapper、Fixture | [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md) + [`docs/collection/README.md`](../collection/README.md) |
-| TikHub App/Web/V1/V2/V3 验证和备用接口 | [`docs/appendix/03_TikHub多接口验证与备用策略.md`](../appendix/03_TikHub多接口验证与备用策略.md) |
-| TikHub 真实 Probe/接口选型台账 | [`docs/appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md) |
-| 统一 Excel 数据导出/离线调试 | [`docs/appendix/06_Excel统一数据导出与离线调试.md`](../appendix/06_Excel统一数据导出与离线调试.md) |
-| AI 打标、相关性、发声类型、Validator、Retry、持久化 | [`docs/appendix/07_AI舆情打标与分析实现.md`](../appendix/07_AI舆情打标与分析实现.md) + [`backend/src/aima_ugc/modules/analysis/README.md`](../../backend/src/aima_ugc/modules/analysis/README.md) + 当前 Prompt |
-| 前端页面结构、Figma/Design-to-Code | [`docs/guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md) + [`frontend/README.md`](../../frontend/README.md) |
-| Stage 8 Excel/TikHub 统一入库、Import Batch、页面/API/Job | [`docs/appendix/08_数据入口与统一入库实现.md`](../appendix/08_数据入口与统一入库实现.md) + API/Frontend README + Roadmap |
-
-历史阶段为什么这样拆、当时哪些能力尚未实现、当时的验收证据，继续由：
-
-```text
-changes/archive/
-```
-
-保存。
-
----
-
-## 4. 未完成阶段去哪看
-
-[`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
-
-这是后续持续开发的正式导航，不因 Blueprint 清理而消失。
-
-它必须持续回答：
-
-```text
-已经完成什么
-部分完成什么
-仍待实现什么
-哪些旧方案已被后续决定替代
-下一最小正式单元是什么
-生产 Go-Live 还差什么
-```
-
-当前尤其要保留：
-
-- 企业认证 / 后端 Authorization；
-- Stage 9 Monitoring / Alert / VOC / Ticket（按产品目标确认）；
-- Stage 10 Word 报告是否正式产品化；
-- Stage 11 Production Hardening：完整 provenance/SBOM/独立签名、协调 Backup/Restore、正式 Deploy/Rollback 与真实生产验收；
-- Stage 12 已完成的软件基线，以及公司服务器 500 万/批准等效比例容量门禁和生产 4000 万执行/对账的独立授权边界。
-
-删除已完成阶段的详细 Blueprint **不能**删除这些未来目标或仍未完成的生产门禁。
-
----
-
-## 5. 按专题去哪看
-
-### PostgreSQL / SQL
-
-[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)
-
-用于：
-
-- 查 Content/Comment Current；
-- 查 Version/Metric/Coverage；
-- 查 Run/Scope/Request/Attempt；
-- 查 Job/Import Batch/Analysis/Export；
-- `EXPLAIN`；
-- Alembic；
-- 安全事务调试。
-
-### Scheduler
-
-[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](../appendix/05_Scheduler调度执行与停机恢复.md)
-
-### TikHub
-
-- [`docs/collection/README.md`](../collection/README.md)
-- [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
-- [`docs/appendix/03_TikHub多接口验证与备用策略.md`](../appendix/03_TikHub多接口验证与备用策略.md)
-- [`docs/appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
-
-### Excel / 数据入口
-
-- [`docs/appendix/08_数据入口与统一入库实现.md`](../appendix/08_数据入口与统一入库实现.md)
-- [`docs/appendix/06_Excel统一数据导出与离线调试.md`](../appendix/06_Excel统一数据导出与离线调试.md)
-
-### AI
-
-- [`docs/appendix/07_AI舆情打标与分析实现.md`](../appendix/07_AI舆情打标与分析实现.md)
-- [`backend/src/aima_ugc/modules/analysis/README.md`](../../backend/src/aima_ugc/modules/analysis/README.md)
-
-完整 Prompt / taxonomy 唯一业务事实源：
-
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](../../backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md)
-
-### Word Report
-
-[`docs/appendix/10_Word舆情报告生成与排版实现.md`](../appendix/10_Word舆情报告生成与排版实现.md)
-
-### Figma / Frontend
-
-- [`docs/guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md)
-- [`frontend/README.md`](../../frontend/README.md)
-
-### Production Release
-
-- [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
-- [`docs/appendix/11_生产部署与离线Release方案.md`](../appendix/11_生产部署与离线Release方案.md)
-- [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)
-- [`docs/blueprint/05_日志安全部署与运维.md`](05_日志安全部署与运维.md)
-
----
-
-## 6. 事实优先级
-
-发生冲突时按内容类型判断，不机械“代码优先”或“文档优先”。
-
-```text
-本轮用户明确批准决定 / 正式 Change
-→ 当前代码、Contract、Migration、generated、tests、locks
-→ Blueprint 07 已确认跨模块决定
-→ 对应当前核心 Blueprint
-→ 模块 README / Appendix / Guide / Roadmap
-→ 根 README 摘要
-→ 历史 Change / 旧聊天
-```
-
-两种事实要分开：
-
-```text
-当前已经实现什么
-→ 必须由机器事实证明
-
-已批准但尚未实现什么
-→ Roadmap/正式设计必须保留，不能因为代码还没有就删除
-```
-
-如果旧方案已经被后续正式决定替代，例如 Provider Budget Account / Reservation Ledger，则保留历史原因，但当前开发不得从旧 Change 自动恢复该方案。
-
----
-
-## 7. 当前系统实现边界
-
-### 后端业务模块
-
-```text
-system
-collection
-content
-ingestion
-analysis
-reporting
-```
-
-当前没有正式：
-
-```text
-monitoring
-alerts
-voc
-tickets
-dashboard
-```
-
-### Worker 当前持久 Job
-
-真实 Registry：
-
-- [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py)
-
-当前：
-
-```text
-collection.run.v1
-ingestion.import-excel.v1
-ingestion.historical-discover.v1
-ingestion.historical-snapshot.v1
-ingestion.historical-import-chunk.v1
-analysis.content-run-plan.v1
-analysis.content-label.v1
-reporting.content-export-excel.v1
-```
-
-其中三个 `ingestion.historical-*` 是统一 Data Import Campaign 仍沿用的 Stage 12 物理 Job type；`analysis.content-run-plan.v1` 是新版手动 Analysis Run 的 Planner。物理名称保留兼容，不代表页面存在第二套导入或 Analysis 入口。
-
-### 当前前端路由
-
-真实 Router：
-
-- [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)
-
-当前：
-
-```text
-/
-/voice-plaza
-/collection-runtime
-/collection-strategy
-```
-
-### 当前生产 Release
-
-仓库当前根目录已经有：
-
-- [`Dockerfile`](../../Dockerfile)
-- [`compose.yaml`](../../compose.yaml)
-- [`env.production.example`](../../env.production.example)
-- [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
-
-Internal V1-A 已提供最小可部署容器栈并把管理员入口收敛为 `env.production` + 一条 Docker Compose 启动命令；GitHub Release Workflow 已能构建 Linux/AMD64 Backend/Frontend、固定 `postgres:18.4`，生成 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`，并从删除候选镜像后的 Bundle 以 `--no-build --pull never` 完成离线回放。正式手工发布路径还能推送 GHCR、记录应用 digest、创建 Git Tag/GitHub Release。
-
-当前仍没有完整 Stage 11 Production Go-Live 所需的全部能力，例如：
-
-```text
-SBOM / 独立签名 / 完整 provenance 治理
-协调 PostgreSQL + Artifact Backup / Restore
-企业认证 / 授权 / HTTPS 正式入口
-生产服务器 preflight / backup / migrate / start / smoke / rollback 完整自动化
-真实生产服务器完整容量 / 安全 / 恢复验收
-```
-
-因此“Internal V1-A / Release Workflow 基础已可用”不能写成“完整 Production Go-Live 已完成”。
-
----
-
-## 8. Blueprint 写作规则
-
-Blueprint 只回答长期问题：
-
-```text
-为什么这样设计？
-模块边界是什么？
-谁拥有哪类事实？
-哪些跨模块机制不能随便改变？
-未来实现必须满足什么不变量？
-```
-
-不要在 Blueprint 复制：
-
-- 五个平台完整 Provider JSON；
-- 39 个 AI 标签表；
-- 完整数据库 DDL；
-- 完整 HTTP OpenAPI；
-- 某次 Stage 的施工顺序和 PR 过程；
-- 某个调试脚本的逐行使用说明。
-
-这些内容应分别进入 Appendix、模块 README、Contract/Migration、Guide 或 `changes/archive/`。
-
-文档结构服务于开发，不以“文件少”为目的；也不允许 Blueprint 随每个业务功能无边界增长。是否新增 Blueprint 由“是否形成新的长期架构领域”决定，而不是由当前文档数量、编号是否已到某个值决定。
+Blueprint 负责解释**边界和原因**，机器事实负责精确值。
