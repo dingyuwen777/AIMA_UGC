@@ -246,6 +246,22 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
     assert any(error.startswith("GOV007") for error in errors)
 
 
+def test_checker_accepts_python3_project_change_gate_command(tmp_path: Path) -> None:
+    """项目门禁通过系统 python3 执行时仍应被识别为真实接线，而不是 GOV007 缺失。"""
+    _minimal_repository(tmp_path)
+    workflow_path = tmp_path / ".github/workflows/ci.yml"
+    workflow = workflow_path.read_text(encoding="utf-8").replace(
+        "python scripts/quality/check_change_completion.py",
+        "python3 scripts/quality/check_change_completion.py",
+    )
+    _write(workflow_path, workflow)
+    errors = CHECK_REPOSITORY(tmp_path)
+    assert not any(
+        error.startswith("GOV007 .github/workflows/ci.yml")
+        for error in errors
+    )
+
+
 def test_checker_rejects_workflow_bypassing_project_change_carrier(tmp_path: Path) -> None:
     """Completion Gate 不得回退为直接调用无法识别 mixed carrier 的 generic checker。"""
     _minimal_repository(tmp_path)
