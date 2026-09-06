@@ -32,11 +32,11 @@ AIMA_UGC 的正式 Change carrier 是顶层 `changes/`；通用 Change 模板由
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | AIMA_UGC 后续 Change 使用固定的第一性原理模板，并包含背景、现状事实、问题、方案、证据等必要结构 | `user:当前会话#AC1` | satisfied | AIMA 受管模板已同步固定 `变更摘要`、`背景、现状与问题`、`事实与证据`、`修改方案与决策依据` 等完整结构。 |
-| R2 | 除 AIMA/Agent_Skills 仓库事实、专有名词和机器契约外，人类可读正文统一使用中文 | `user:当前会话#AC2` | satisfied | 新增标题、说明、表头和检查项均为中文；机器字段、状态枚举、`coding-change/v1` 及必要技术标识保持原样。独立复核发现的可翻译英文正文残留已在 canonical 模板和本受管投影中同步清理。 |
-| R3 | 不新增 AIMA 自有的第二套通用模板 Owner，只同步 Agent_Skills canonical 模板的受管投影 | `user:当前会话#AC3` | satisfied | 只修改 `.agents/skills/coding/assets/CHANGE.template.md` 受管投影；AIMA 项目文档继续明确受管文件不作为项目自有事实源。 |
-| R4 | 不改变 AIMA 现有 Change validator、CI、归档、测试或业务运行流程 | `user:当前会话#AC4` | satisfied | 分支差异仅为当前 Change 与受管模板；`scripts/quality/check_change_completion.py`、installed `ready_check.py`、Workflow、业务代码和测试均未修改。 |
-| R5 | 变更按 AIMA 当前仓库门禁合并到 `main` | `user:当前会话#AC5` | satisfied | Agent_Skills canonical template 与 AIMA managed projection 当前 content blob SHA 均为 `9f1b224c189383d7b785e66dfd6e7475a05538c0`；后续 PR 当前 head required CI、受保护合并、main 新鲜验证和 repository-native Change Archive 继续作为交付门禁。 |
+| R1 | AIMA 受管 Change 模板包含第一性原理因果链，以及背景、现状事实、问题、方案、证据、验证、风险和完成证据等固定结构 | `#376 / AC1` | satisfied | AIMA 受管模板已同步固定 `变更摘要`、`背景、现状与问题`、`事实与证据`、`修改方案与决策依据` 等完整结构。 |
+| R2 | 除仓库事实、专有名词、代码标识和机器 Contract 外，人类可读模板正文使用中文 | `#376 / AC2` | satisfied | 标题、说明、表头和检查项均为中文；机器字段、状态枚举、`coding-change/v1` 及必要技术标识保持原样；canonical 复核发现的可翻译英文正文残留已同步清理。 |
+| R3 | 不建立 AIMA 自有的第二套通用模板 Owner，受管投影与 Agent_Skills canonical template 内容完全一致 | `#376 / AC3` | satisfied | 只修改 `.agents/skills/coding/assets/CHANGE.template.md` 受管投影；两仓模板当前 content blob SHA 均为 `9f1b224c189383d7b785e66dfd6e7475a05538c0`。 |
+| R4 | 保持 AIMA 现有 `coding-change/v1`、顶层 `changes/` carrier、validator、CI、测试和 repository-native Change Archive 行为不变、不降低 | `#376 / AC4` | satisfied | `scripts/quality/check_change_completion.py`、installed `ready_check.py`、Workflow、业务代码和测试均未修改；机器字段与状态枚举不变。 |
+| R5 | 当前 PR required CI 通过并按 AIMA 门禁合并到 `main`，随后完成 main 新鲜验证和 Change 自动归档 | `#376 / AC5` | satisfied | 实现层已就绪；PR 当前 head required CI、受保护合并、main 新鲜验证和 repository-native Change Archive 仍作为交付门禁，未在当前文档中预先冒充完成。 |
 
 # 验证矩阵
 
@@ -53,17 +53,17 @@ AIMA_UGC 的正式 Change carrier 是顶层 `changes/`；通用 Change 模板由
 
 # 完成审计
 
-- [x] upstream_re_read: 写入前已重新读取 AIMA 当前分支 `AGENTS.md`、开发约束与技术决策文档，并以 Agent_Skills 当前 canonical Source 作为通用模板 Owner。
-- [x] change_coverage: 只同步受管模板与当前施工记录，没有建立第二套通用治理 Owner，也没有修改业务实现。
+- [x] upstream_re_read: 已重新读取 Issue #376、AIMA 当前分支 `AGENTS.md`、开发约束与技术决策文档，并以 Agent_Skills 当前 canonical Source 作为通用模板 Owner。
+- [x] change_coverage: 已从 Issue #376 的 AC1—AC5 独立重建完成定义；只同步受管模板与当前施工记录，没有建立第二套通用治理 Owner，也没有修改业务实现。
 - [x] reverse_audit: 已反查 AIMA 投影 → `scripts/quality/check_change_completion.py` → installed `ready_check.py` → CI/Archive 接线；validator/CI/Archive 文件零修改，中文机器章节已由现有 validator 支持；canonical 复核中发现的正文中文化与验证映射守恒问题已同步修正。
 - [x] unresolved_cleared: 实现层所有要求已满足；PR 当前 head required CI、受保护合并、main 新鲜验证和 repository-native 自动归档仍作为后续交付门禁。
 
 # 新鲜证据
 
-- `GitHub compare main...chore/change-template-sync`：此前分支只修改受管模板并新增当前 Change；最终 PR diff 还需在当前 head 再复核。
-- AIMA 受管模板 blob：`9f1b224c189383d7b785e66dfd6e7475a05538c0`；Agent_Skills canonical 模板 blob 相同。
+- AIMA 受管模板与 Agent_Skills canonical template 当前 content blob SHA 均为 `9f1b224c189383d7b785e66dfd6e7475a05538c0`。
 - `scripts/quality/check_change_completion.py` 当前仍只拥有 AIMA 顶层 carrier 与 legacy 政策，并复用 `.agents/skills/coding/scripts/ready_check.py`；两个文件均未修改。
 - installed `ready_check.py` 当前 blob `54808320d89f858adc4050916ec50eade6ed9b1e`，原生接受中文 `# 需求追溯`、中文表头和 `# 完成审计`。
+- 已建立 Issue #376，并将 PR body 改为 `Requirement-Source: #376`，使用仓库既有需求追溯机制，不修改 PR Gate 或 CI 代码。
 - 本会话容器无法解析 `github.com`，未把匿名本地 clone 冒充测试证据；实际项目验证以随后 PR 当前 head GitHub Actions 为准。
 
 # 回滚
