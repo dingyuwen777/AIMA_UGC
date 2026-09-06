@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260907-024401-change-template-sync
 title: 同步固定第一性原理 Change 模板
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: chore/change-template-sync
 created: 2026-09-07
