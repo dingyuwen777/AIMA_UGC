@@ -7,6 +7,11 @@ description: 面向不同项目形态、语言和工具链的独立测试策略�
 {"协议":"Agent Skills Skill路由/v1","Skill":"testing","触发":{"包含":{"维度":"意图","取值":["测试策略","功能测试","黑盒测试","用户场景验收","探索式测试","回归测试","测试充分性验证","Review-and-test","独立验证"]}}}
 -->
 
+## 用户可见表达边界
+
+用户关于目标项目的正常事实、解释、建议、风险、验证、状态和交付照常回答；描述 Agent 自身的进度、分工或执行过程时，对用户只描述项目实际动作、风险、证据和交付状态。不得把内部能力名称或标签转写成用户可见任务分工，也不得播报内部发现、选择、加载、路由、交接或约束取得过程。限制只针对内部身份转写，不限制正常工程解释；内部能力身份继续用于路由、约束加载和专业执行，不得为了用户可见隐藏而删除内部执行上下文。
+
+
 # Testing
 
 Testing 回答的核心问题是：
@@ -100,7 +105,7 @@ Testing 自身不维护生产修复流程。发现确定生产缺陷后：
 → 需要独立判断时返回 Review
 ```
 
-只有用户明确授权完整修复链时才允许跨 Skill 继续；权限不会因为 Testing 发现 Bug 自动扩大。
+只有用户明确授权完整修复链时才允许跨 Skill 继续；权限不会因为 Testing 发现 Bug 自动扩大。已经在同一任务中明确授予、且目标/范围/副作用等级没有变化的授权按 Router 的 Authorization Continuity 沿 Handoff 继续有效，不要求重复索要同一批准；进入更高副作用等级仍必须已有对应授权。
 
 ## 3. Test Target 必须明确
 
@@ -116,13 +121,17 @@ Requirement Source / 预期可观察行为
 允许执行哪些真实依赖/外部 Probe
 ```
 
+这些是事实恢复项，不是逐项向用户提问。能从当前 Requirement、实现、测试、配置、环境和已确认授权恢复的事实先自行取得；未达到 Router 决策门槛的局部歧义按其 Non-material Ambiguity Default 继续。
+
 不能只看测试文件名称推断测试对象，也不能从 Mock 反向发明生产 Contract。
 
 ## 4. 先从用户/调用者行为出发
 
-对用户可见 L2/L3 Feature 或 Bug，只要存在真实公开入口且没有明确不适用依据，应优先建立至少一个从真实入口出发的 Workflow/Black-box 证据。
+对用户可见 L2/L3 Feature 或 Bug，当**本次变化真实改变用户工作流、当前交付结论需要证明公开入口，或存在独立 Workflow 风险**时，只要存在真实公开入口且没有明确不适用依据，应优先建立至少一个从真实入口出发的 Workflow/Black-box 证据。
 
-Testing 先问：
+如果用户工作流没有改变，并且已有绑定当前 revision / Contract、**仍有效的公开入口 Evidence** 足以支持当前结论，则**不机械重复**完整 User Journey；先复用该 Evidence，并只在失败、证据失效、Validation Matrix / Review 暴露新的独立 Workflow 风险或正式 gate 要求时增加下一层测试。Fresh Evidence 的复用与失效条件由 Router 的 Fresh Evidence Contract 统一定义；具体测试层、场景与测试工程方法仍由 Testing 按当前风险选择。
+
+Testing 先建立以下问题模型：
 
 ```text
 谁在使用？
@@ -132,6 +141,8 @@ Testing 先问：
 最终能观察到什么？
 失败、空状态、重试、返回、刷新、重复操作时应怎样？
 ```
+
+上述问题模型先从 Requirement、项目和当前 Evidence 恢复，不默认逐项抛给用户；只有 Router 的用户/Owner 决策门槛真实命中时才提请决定。
 
 不要先从内部 class/function 调用顺序生成所谓“用户测试”。
 
@@ -153,7 +164,7 @@ External Dependency Probe
 Build / Package / Runtime
 ```
 
-不是每个任务都必须具备所有层；任一层只允许声明它实际运行过的边界。
+不是每个任务都必须具备所有层；任一层只允许声明它实际运行过的边界。测试层、场景或工具已经足够证明当前 Test Target 后，不因为宿主还有更强能力就继续追求更远 Completion Scope；没有新改动、新失败、新独立风险或未解决疑点时，遵守通用 Validation Stop Rule，不重复同一 Journey/Regression。
 
 ## 6. 缺陷、回归与回程
 
@@ -168,6 +179,8 @@ Testing 的高价值结果不是“跑了很多 case”，而是：
 - Evidence 不夸大。
 
 ## 7. 完成输出
+
+`test-only` 的 Requested Outcome / Completion Scope 是当前 Test Target 的证据、缺陷、风险和未验证边界；没有生产修复/交付授权时，到这里结束，不因为已经发现下一步可能工作就自动进入 Coding、Git 或交付。
 
 至少说明：
 

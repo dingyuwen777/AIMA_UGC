@@ -9,24 +9,21 @@
 <!-- agent-skills:managed:start -->
 ## 项目研发治理入口
 
-本项目已接入项目级研发治理能力。项目自己的 `AGENTS.md`、`CONTRIBUTING`、正式需求、Contract、Schema/Migration、CI、代码、测试和设计事实负责说明“这个项目是什么”；已配置的治理能力负责提供通用研发约束。
-
 处理本项目研发任务时：
 
 1. **无论采用哪种通用治理执行方式，都必须先读取并遵守当前目录及上级适用的项目规则**，再依据当前真实文件恢复本任务所需的技术栈、架构、Contract、Schema/Migration、CI、部署、设计和运行事实；不得用通用示例、历史聊天、缓存或猜测覆盖项目事实。
 2. 默认使用项目已配置的治理能力取得当前任务需要的通用约束。系统、开发者或用户级更高优先级指令若明确指定其他执行方式，**只改变通用治理约束的取得和呈现方式**；不得因此跳过、替代或降低目标项目自身规则、Contract、Schema/Migration、CI、正式设计、部署和验收边界。
-3. 对用户正常说明项目调查、需求与风险、代码修改、测试、文档同步、复核、Git、CI、Release 和交付状态即可；**治理能力自身的运行与实现细节不属于项目进度或交付内容**。需要解释原因时，说明工程步骤本身的必要性、风险或证据。
-4. 首次接入、项目治理状态尚未校准，或长期项目事实疑似漂移时，在实质性生产代码修改前执行有界的项目治理校准：调查当前仓库真实实现，只维护本区块外的项目自有 Overlay；完成后重新读取最终 `AGENTS.md`，再继续用户原始任务。
-5. 必需治理约束无法可靠取得、完整性无法确认，或与更高优先级规则存在无法安全解决的冲突时，停止依赖对应约束并如实说明；不得用旧记忆、摘要或自行猜测替代。
-6. 本区块由安装/升级流程维护。项目自己的长期规则继续写在本区块外；受管运行资产只服务治理能力运行，不作为项目自有长期规则直接手工维护。
+3. 首次接入、项目治理状态尚未校准，或长期项目事实疑似漂移时，在实质性生产代码修改前执行有界的项目治理校准：调查当前仓库真实实现，只维护本区块外的项目自有 Overlay；完成后重新读取最终 `AGENTS.md`，再继续用户原始任务。
+4. 必需治理约束无法可靠取得、完整性无法确认，或与更高优先级规则存在无法安全解决的冲突时，停止依赖对应约束并如实说明；不得用旧记忆、摘要或自行猜测替代。
+5. 本区块由安装/升级流程维护。项目自己的长期规则继续写在本区块外；受管运行资产只服务当前项目的研发治理，不作为项目自有长期规则直接手工维护。
 
 <!-- agent-skills:managed:end -->
 
 <!-- agent-skills:project-governance:v1 -->
 ## 项目治理校准状态
 
-- 状态：已校准（2026-09-01）。后续只在长期规则或项目事实发生实际变化时做有证据的定向修正，不用普通功能任务重写整份文件。
-- 本次校准依据：当前 `AGENTS.md`、根与模块 README、`docs/blueprint/`、`docs/roadmap/`、`docs/appendix/`、`docs/guides/`、Manifest/lock/版本文件、真实入口与模块实现、Pydantic Contract、生成 OpenAPI/JSON Schema、[`backend/src/aima_ugc/database_schema.py`](backend/src/aima_ugc/database_schema.py)、Alembic Migration、后端/前端测试、GitHub Actions、Dockerfile、Compose 和 Release 配置。
+- 状态：已校准。首次校准日期为 2026-09-01；最近一次有证据的定向复核日期为 2026-09-06。后续只在长期规则或项目事实发生实际变化时做有证据的定向修正，不用普通功能任务重写整份文件。
+- 校准与定向复核依据：当前 `AGENTS.md`、根与模块 README、`docs/product/`、`docs/blueprint/`、`docs/roadmap/`、`docs/operations/`、`docs/appendix/`、`docs/guides/`、Manifest/lock/版本文件、真实入口与模块实现、Pydantic Contract、生成 OpenAPI/JSON Schema、[`backend/src/aima_ugc/database_schema.py`](backend/src/aima_ugc/database_schema.py)、Alembic Migration、后端/前端测试、GitHub Actions、Dockerfile、Compose 和 Release 配置。
 - 当前仓库未发现 `CONTRIBUTING*`、独立 RFC/ADR/PRD/Spec 目录或 `openspec/`；是否存在并行施工单元只以 `changes/active/` 当前真实内容为准，不在本文件复制易失效列表。
 
 ## 规则、事实和未确认事项的边界
@@ -46,7 +43,7 @@
 ### 未确认事项
 
 - 仓库外的实际生产服务器状态、已部署 Commit/镜像、运行时 Secret 与账号权限、真实数据量和性能、当前备份可恢复性、Provider/模型账户额度，以及托管平台上的实时保护规则，必须在相关任务中查询对应环境后才能下结论。
-- 完整 Production Go-Live 仍未确认；认证授权、HTTPS、协调 Backup/Restore、正式 Deploy/Rollback、SBOM/签名/provenance、容量与完整生产验收等缺口继续以 Roadmap 和真实环境证据为准。
+- 完整 Production Go-Live 仍未确认；企业认证与正式授权验收、HTTPS/浏览器安全、协调 Backup/Restore、正式 Deploy/Rollback、SBOM/签名/provenance、容量与完整生产验收等缺口继续以 Roadmap 和真实环境证据为准。
 
 ## 治理校准后的项目边界
 
@@ -170,7 +167,7 @@ AIMA 的机器入口由 [`scripts/quality/check_change_completion.py`](scripts/q
 - PostgreSQL 持久化 Job；
 - Local ArtifactStore 默认实现，可在真实需要时替换 S3；
 - 应用 `.log` 为主要人工排障日志，Docker stdout/stderr 为辅助；
-- Docker Compose 离线 Release 是长期部署方向。Internal V1-A 已提供根 [`Dockerfile`](Dockerfile)、[`compose.yaml`](compose.yaml) 与最小可部署容器基础；当前 [`.github/workflows/release.yml`](.github/workflows/release.yml) 已建立 Linux/AMD64 Backend/Frontend + 固定 PostgreSQL 的离线 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`、no-build/no-pull 回放以及正式 GHCR digest/Tag/GitHub Release 基础；完整 Production 仍缺 SBOM/独立签名/完整 provenance、协调 Backup-Restore、正式服务器 Deploy/Rollback、认证授权/HTTPS 和完整生产验收。
+- Docker Compose 离线 Release 是长期部署方向。Internal V1-A 已提供根 [`Dockerfile`](Dockerfile)、[`compose.yaml`](compose.yaml) 与最小可部署容器基础；当前 [`.github/workflows/release.yml`](.github/workflows/release.yml) 已建立 Linux/AMD64 Backend/Frontend + 固定 PostgreSQL 的离线 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`、no-build/no-pull 回放以及正式 GHCR digest/Tag/GitHub Release 基础；完整 Production 仍缺 SBOM/独立签名/完整 provenance、协调 Backup-Restore、正式服务器 Deploy/Rollback、企业认证与正式授权验收、HTTPS/浏览器安全和完整生产验收。
 
 采用方案 A：仓库根目录是唯一 Python/uv 工程根，保存 [`pyproject.toml`](pyproject.toml)、[`uv.lock`](uv.lock)、[`.python-version`](.python-version)、`tests/`、`scripts/` 和 `migrations/`；源码在 `backend/src/aima_ugc/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或用 `uv --project backend` 形成第二套命令。
 
