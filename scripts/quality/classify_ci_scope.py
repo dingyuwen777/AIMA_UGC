@@ -43,6 +43,15 @@ CI_SELF_EXACT = {
     "tests/unit/test_ci_test_impact_optimization.py",
     "tests/unit/test_actions_runner_optimization.py",
 }
+REPOSITORY_QUALITY_EXACT = {
+    "scripts/quality/archive_change_after_merge.py",
+    "scripts/quality/check_agent_governance.py",
+    "scripts/quality/check_change_completion.py",
+    "scripts/quality/check_docs.py",
+    "scripts/quality/check_docs_facts.py",
+    "scripts/quality/check_pr_requirement_source.py",
+    "scripts/quality/scan_secrets.py",
+}
 FULL_EXACT = {
     "pyproject.toml",
     "uv.lock",
@@ -81,6 +90,7 @@ REPOSITORY_QUALITY_TEST_MARKERS = (
     "issue_acceptance",
     "pr_requirement",
 )
+MIGRATION_COMPATIBILITY_TEST = "tests/integration/database/verify_migration_compatibility.py"
 
 
 @dataclass(frozen=True)
@@ -131,8 +141,8 @@ def _is_ci_self_path(path: str) -> bool:
 
 
 def _is_repository_quality_path(path: str) -> bool:
-    """识别只改变仓库质量/治理检查器、不会改变产品运行实现的机器代码。"""
-    if path.startswith("scripts/quality/"):
+    """只对白名单中的仓库治理/文档质量检查器及其专属测试启用轻量质量证据。"""
+    if path in REPOSITORY_QUALITY_EXACT:
         return True
     if not path.startswith("tests/unit/test_"):
         return False
@@ -173,6 +183,8 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
     """把明确 persistence 叶子变化映射到最小充分 PostgreSQL suite；未知边界返回 all。"""
     if path in PERSISTENCE_EXACT:
         return POSTGRES_ALL
+    if path == MIGRATION_COMPATIBILITY_TEST:
+        return ("migration",)
 
     if path.startswith("tests/integration/"):
         relative = path.removeprefix("tests/integration/")
