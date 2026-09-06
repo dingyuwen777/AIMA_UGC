@@ -28,6 +28,7 @@ TABLE_PATTERNS = (
 )
 JOB_TYPE_RE = re.compile(r'^[A-Z0-9_]+_JOB_TYPE\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 ROUTE_RE = re.compile(r"\bpath:\s*['\"]([^'\"]+)['\"]")
+FACT_LINK_RE = re.compile(r"^-\s+\[`([^`]+)`\]\([^)]+\)$")
 WORKER_BOOTSTRAP = Path("backend/src/aima_ugc/bootstrap/worker.py")
 
 PROVIDER_DOCS = {
@@ -38,12 +39,23 @@ PROVIDER_DOCS = {
     "kuaishou": Path("docs/collection/05_kuaishou.md"),
 }
 
+RETIRED_LIVE_DOCS = {
+    Path("docs/roadmap/01_内网V1上线实施计划.md"),
+    Path("docs/roadmap/04_业务目录内容查询与AI配置中心实施路线.md"),
+    Path("docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md"),
+    Path("docs/appendix/11_生产部署与离线Release方案.md"),
+    Path("docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md"),
+    Path("docs/guides/02_AIMA持续开发与内网上线通用提示词.md"),
+}
+
 
 def _read(relative: str | Path) -> str:
+    """读取仓库相对 UTF-8 文本。"""
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
 def _tracked_markdown() -> tuple[Path, ...]:
+    """返回需要校验版本声明的当前 Markdown，排除安装资产与历史 Change。"""
     result = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "-z", "*.md"],
         check=True,
@@ -69,6 +81,7 @@ def _tracked_markdown() -> tuple[Path, ...]:
 
 
 def _package_manager_version() -> str:
+    """读取前端 packageManager 中锁定的 npm 版本。"""
     package = json.loads(_read("frontend/package.json"))
     name, version = package["packageManager"].split("@", 1)
     if name != "npm":
@@ -77,6 +90,7 @@ def _package_manager_version() -> str:
 
 
 def _image_version(image: str) -> str:
+    """从正式 Dockerfile/Compose 读取指定镜像版本。"""
     pattern = re.compile(rf"(?:FROM\s+|image:\s*){re.escape(image)}:(\d+(?:\.\d+){{0,2}})")
     for relative in ("Dockerfile", "compose.yaml"):
         match = pattern.search(_read(relative))
@@ -86,6 +100,7 @@ def _image_version(image: str) -> str:
 
 
 def _versions() -> dict[str, str]:
+    """汇总文档允许声明的当前 Runtime/镜像版本事实。"""
     return {
         "python": _read(".python-version").strip(),
         "python-image": _image_version("python"),
@@ -100,21 +115,34 @@ def _versions() -> dict[str, str]:
 
 
 def _compatible_claim(claim: str, current: str) -> bool:
+    """允许文档声明与当前精确版本一致的 major/minor 前缀。"""
     return claim == current or current.startswith(f"{claim}.")
 
 
 def _openapi_paths() -> set[str]:
+    """返回当前生成 OpenAPI 的全部 HTTP path。"""
     payload = json.loads(_read("contracts/openapi/openapi.json"))
     return set(payload.get("paths", {}))
 
 
 def _current_table_names() -> set[str]:
+    """从生产 Python 源码发现当前 SQLAlchemy 表名。"""
     names: set[str] = set()
     for path in (ROOT / "backend/src/aima_ugc").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for pattern in TABLE_PATTERNS:
             names.update(pattern.findall(text))
     return names
+
+
+def _current_backend_modules() -> set[str]:
+    """返回当前正式 backend modules package 的一级业务模块集合。"""
+    modules_root = ROOT / "backend/src/aima_ugc/modules"
+    return {
+        path.name
+        for path in modules_root.iterdir()
+        if path.is_dir() and not path.name.startswith(".") and (path / "__init__.py").is_file()
+    }
 
 
 def _module_file(module_name: str) -> Path:
@@ -211,18 +239,21 @@ def _current_job_types() -> set[str]:
 
 
 def _permanent_workflows() -> set[str]:
+    """返回当前永久 GitHub Actions Workflow 的仓库相对路径集合。"""
     return {
-        path.name
+        path.relative_to(ROOT).as_posix()
         for path in (ROOT / ".github/workflows").glob("*.yml")
         if not path.name.startswith("tmp-")
     }
 
 
 def _frontend_routes() -> set[str]:
+    """返回当前 Vue Router 的正式 route path 集合。"""
     return set(ROUTE_RE.findall(_read("frontend/src/app/routes.ts")))
 
 
 def _literal_keyword(call: ast.Call, name: str) -> object | None:
+    """读取 AST Call 中可安全 literal_eval 的指定关键字。"""
     for keyword in call.keywords:
         if keyword.arg == name:
             return ast.literal_eval(keyword.value)
@@ -230,6 +261,7 @@ def _literal_keyword(call: ast.Call, name: str) -> object | None:
 
 
 def _provider_operations() -> dict[str, set[str]]:
+    """返回 TikHub Capability 中每个平台当前公开的 Provider Operation 集合。"""
     tree = ast.parse(_read("backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py"))
     result: dict[str, set[str]] = {}
     for node in tree.body:
@@ -259,6 +291,7 @@ def _provider_operations() -> dict[str, set[str]]:
 
 
 def _analysis_concurrency() -> int:
+    """读取离线 LLM 当前默认并发。"""
     match = re.search(
         r"^DEFAULT_OFFLINE_LLM_CONCURRENCY\s*=\s*(\d+)$",
         _read("backend/src/aima_ugc/modules/analysis/offline_labeling.py"),
@@ -277,13 +310,80 @@ def _require_all(
     values: set[str],
     label: str,
 ) -> None:
+    """要求 Owner 文档至少包含全部当前机器事实。"""
     text = _read(owner_doc)
     for value in sorted(values):
         if value not in text:
             errors.append(f"{code} {owner_doc}: 缺少当前{label}事实 {value}")
 
 
+def _fact_block_values(owner_doc: str, key: str) -> tuple[str, ...]:
+    """解析受控 docs-facts 块，返回逐行事实；导航型事实允许使用 Markdown 链接。"""
+    start = f"<!-- docs-facts:{key}:start -->"
+    end = f"<!-- docs-facts:{key}:end -->"
+    text = _read(owner_doc)
+    if text.count(start) != 1 or text.count(end) != 1:
+        raise RuntimeError(f"docs-facts:{key} 标记必须且只能出现一次")
+    start_index = text.index(start) + len(start)
+    end_index = text.index(end, start_index)
+    values: list[str] = []
+    for line in text[start_index:end_index].splitlines():
+        value = line.strip()
+        if not value or value.startswith("```"):
+            continue
+        link_match = FACT_LINK_RE.fullmatch(value)
+        if link_match is not None:
+            value = link_match.group(1)
+        values.append(value)
+    return tuple(values)
+
+
+def _require_exact_block(
+    errors: list[str],
+    *,
+    code: str,
+    owner_doc: str,
+    key: str,
+    values: set[str],
+    label: str,
+) -> None:
+    """要求小型高漂移事实块与当前机器事实 exact-set 一致。"""
+    try:
+        actual_values = _fact_block_values(owner_doc, key)
+    except RuntimeError as exc:
+        errors.append(f"{code} {owner_doc}: {exc}")
+        return
+
+    actual = set(actual_values)
+    for value in sorted(values - actual):
+        errors.append(f"{code} {owner_doc}: 缺少当前{label}事实 {value}")
+    for value in sorted(actual - values):
+        errors.append(f"{code} {owner_doc}: 存在已失效{label}事实 {value}")
+
+    duplicates = sorted({value for value in actual_values if actual_values.count(value) > 1})
+    for value in duplicates:
+        errors.append(f"{code} {owner_doc}: 重复{label}事实 {value}")
+
+
+def _check_retired_live_docs(errors: list[str]) -> None:
+    """阻止已完成或已迁移文档重新进入当前 live docs。"""
+    for relative in sorted(RETIRED_LIVE_DOCS):
+        if (ROOT / relative).exists():
+            errors.append(f"DOCF014 {relative}: 已退役文档不得重新进入 live docs")
+
+
+def _check_roadmap_lifecycle(errors: list[str]) -> None:
+    """要求每篇 live Roadmap 显式声明 Active，避免完成阶段长期滞留。"""
+    roadmap_root = ROOT / "docs/roadmap"
+    for path in sorted(roadmap_root.glob("[0-9][0-9]_*.md")):
+        head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:20])
+        if "- 状态：Active" not in head:
+            relative = path.relative_to(ROOT)
+            errors.append(f"DOCF015 {relative}: live Roadmap 必须在前 20 行声明 `- 状态：Active`")
+
+
 def check_repository() -> list[str]:
+    """执行当前文档与机器事实、生命周期的一致性检查。"""
     errors: list[str] = []
 
     _require_all(
@@ -307,10 +407,11 @@ def check_repository() -> list[str]:
         values=_current_job_types(),
         label="Worker Job type",
     )
-    _require_all(
+    _require_exact_block(
         errors,
         code="DOCF004",
-        owner_doc="docs/04_测试与调试说明.md",
+        owner_doc="docs/README.md",
+        key="permanent-workflows",
         values=_permanent_workflows(),
         label="永久 Workflow",
     )
@@ -321,10 +422,27 @@ def check_repository() -> list[str]:
         values=_frontend_routes(),
         label="前端 Route",
     )
-    _require_all(
+    _require_exact_block(
         errors,
         code="DOCF006",
         owner_doc="docs/blueprint/01_总体架构与技术选型.md",
+        key="frontend-routes",
+        values=_frontend_routes(),
+        label="前端 Route",
+    )
+    _require_exact_block(
+        errors,
+        code="DOCF012",
+        owner_doc="docs/blueprint/01_总体架构与技术选型.md",
+        key="backend-modules",
+        values=_current_backend_modules(),
+        label="后端业务模块",
+    )
+    _require_exact_block(
+        errors,
+        code="DOCF013",
+        owner_doc="docs/blueprint/07_技术决策与实施门禁.md",
+        key="frontend-routes",
         values=_frontend_routes(),
         label="前端 Route",
     )
@@ -373,7 +491,7 @@ def check_repository() -> list[str]:
         )
 
     release = _read(".github/workflows/release.yml")
-    release_doc = _read("docs/appendix/11_生产部署与离线Release方案.md")
+    release_doc = _read("docs/operations/01_生产部署与离线Release方案.md")
     postgres_match = re.search(
         r"^\s*POSTGRES_IMAGE:\s*(postgres:[^\s]+)\s*$", release, re.MULTILINE
     )
@@ -381,7 +499,7 @@ def check_repository() -> list[str]:
         errors.append("DOCF011 .github/workflows/release.yml: 无法解析 POSTGRES_IMAGE")
     elif postgres_match.group(1) not in release_doc:
         errors.append(
-            "DOCF011 docs/appendix/11_生产部署与离线Release方案.md: "
+            "DOCF011 docs/operations/01_生产部署与离线Release方案.md: "
             f"缺少 Release PostgreSQL 镜像事实 {postgres_match.group(1)}"
         )
     release_facts = {
@@ -396,21 +514,24 @@ def check_repository() -> list[str]:
     for fact in sorted(release_facts):
         if fact not in release_doc:
             errors.append(
-                "DOCF011 docs/appendix/11_生产部署与离线Release方案.md: "
+                "DOCF011 docs/operations/01_生产部署与离线Release方案.md: "
                 f"缺少当前 Release 事实 {fact}"
             )
 
+    _check_retired_live_docs(errors)
+    _check_roadmap_lifecycle(errors)
     return errors
 
 
 def main() -> int:
+    """运行文档事实门禁并返回标准进程退出码。"""
     errors = check_repository()
     if errors:
         print("\n".join(errors))
         return 1
     print(
-        "当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、Provider、"
-        "版本、Analysis、Release 机器事实一致。"
+        "当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、模块、Provider、"
+        "版本、Analysis、Release 和 Roadmap 生命周期机器事实一致。"
     )
     return 0
 

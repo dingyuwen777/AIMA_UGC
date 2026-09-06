@@ -4,7 +4,7 @@
 
 先记住一条原则：**不要从聊天、历史 Stage 或旧文档猜当前实现。先找到当前机器事实，再做最小、可验证的修改。**
 
-精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；长期架构由 `docs/blueprint/` 维护；未完成阶段与生产上线顺序由 `docs/roadmap/` 维护；专题实现和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护；历史阶段原因和验收证据由 `changes/archive/` 维护。
+精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；当前产品边界与用户能力由 `docs/product/` 维护；长期架构由 `docs/blueprint/` 维护；已批准且未完成的工作由 `docs/roadmap/` 维护；生产部署、Release 与迁移运行手册由 `docs/operations/` 维护；专题实现和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护；历史阶段原因和验收证据由 `changes/archive/` 维护。
 
 <!-- agent-skills:managed:start -->
 ## 项目研发治理入口
@@ -51,7 +51,7 @@
 ## 治理校准后的项目边界
 
 - Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；当前正式架构文档已经同步八种 Job，不再保留旧四项摘要。
-- 当前正式项目文档只维护 AIMA 自己的架构、Contract、Schema、测试、CI、部署和开发导航；不在 AIMA 文档树复制外部通用治理规则或其安装、运行实现说明。
+- 当前正式项目文档只维护 AIMA 自己的产品、架构、Contract、Schema、测试、CI、部署和开发导航；不在 AIMA 文档树复制外部通用治理规则或其安装、运行实现说明。
 - 永久 CI 只验证 AIMA 自己可维护的项目治理接线、文档/Secret、Change Ready 和产品质量；外部通用治理能力自身的源码回归不复制到业务仓库。
 - 项目中由安装流程维护的受管文件不作为 AIMA 项目事实源；普通业务开发不直接改写，版本更新通过正式安装/升级流程完成。
 
@@ -64,7 +64,7 @@
 3. 再读 [`docs/blueprint/README.md`](docs/blueprint/README.md) 和 [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md)；
 4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)；
 5. 如果需要快速找到真实代码入口，读 [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)；
-6. 按任务读取对应 Blueprint、Roadmap、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
+6. 按任务读取对应 Product、Blueprint、Roadmap、Operations、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
 7. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
 8. 能从仓库确认的事实先自行确认；
 9. 文档与机器事实冲突时，先判断是实现缺陷、文档过期、待实现设计还是新决策，再在同一任务修正正确的一方；
@@ -81,7 +81,7 @@
 | API、Job、Worker、前端 | [`docs/blueprint/04_后端任务API与前端.md`](docs/blueprint/04_后端任务API与前端.md) |
 | 日志、安全、运行边界 | [`docs/blueprint/05_日志安全部署与运维.md`](docs/blueprint/05_日志安全部署与运维.md) |
 | 当前开发环境怎么运行 | [`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md) |
-| 下一阶段、生产上线、Release/Backup/回滚 | [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md) + [`docs/appendix/11_生产部署与离线Release方案.md`](docs/appendix/11_生产部署与离线Release方案.md) |
+| 下一阶段、生产上线、Release/Backup/回滚 | [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md) + [`docs/operations/01_生产部署与离线Release方案.md`](docs/operations/01_生产部署与离线Release方案.md) |
 | 开发/测试/CI/Git | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) |
 | 用户可见行为/前后端/Full-stack/Provider 测试分层 | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) + 当前实际测试与 CI 配置 |
 | 重大跨模块决定 | [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md) |
@@ -554,20 +554,26 @@ python scripts/quality/check_change_completion.py --root . --require-active-read
 文档职责：
 
 ```text
+docs/product/
+→ 当前产品边界、用户能力、流程、角色与产品状态
+
 docs/blueprint/
 → README + 当前实际编号的核心长期架构、为什么这样设计、稳定门禁
 
 docs/roadmap/
-→ 当前阶段状态、未完成开发、生产上线顺序和 Go/No-Go
+→ 已批准且尚未完成的正式目标、退出条件和依赖
+
+docs/operations/
+→ 当前部署、Release、迁移、恢复等运行方法与生产操作边界
 
 模块 README
 → 当前代码具体实现、Owner、入口、常见修改点
 
 docs/appendix/
-→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word 报告、生产 Release 等专题实现和调试
+→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word 报告等深入专题实现和调试
 
 docs/guides/
-→ Figma 等开发过程指南
+→ Figma、本地 Compose、协作等开发过程指南
 
 docs/collection/
 → 五个平台当前采集实现
@@ -582,9 +588,9 @@ changes/archive/
 → 历史为什么改过、已完成阶段/Change 的当时验证证据
 ```
 
-核心 Blueprint 的数量、文件名和编号范围不在本规则写死；以 `docs/blueprint/` 当前实际文件集合、[`docs/blueprint/README.md`](docs/blueprint/README.md) 和 [`docs/AGENTS.md`](docs/AGENTS.md) 为准。当前已有稳定编号不得为了插入新主题静默重排。新增主题先判断应该进入现有核心 Blueprint、Roadmap、Appendix、Guide 还是模块 README；只有确实形成新的核心长期领域时才新增 Blueprint，避免把阶段性实现说明无限堆进核心长期架构目录。
+核心 Blueprint 的数量、文件名和编号范围不在本规则写死；以 `docs/blueprint/` 当前实际文件集合、[`docs/blueprint/README.md`](docs/blueprint/README.md) 和 [`docs/AGENTS.md`](docs/AGENTS.md) 为准。当前已有稳定编号不得为了插入新主题静默重排。新增主题先判断应该进入现有 Product、核心 Blueprint、Roadmap、Operations、Appendix、Guide 还是模块 README；只有确实形成新的核心长期领域时才新增 Blueprint，避免把阶段性实现说明无限堆进核心长期架构目录。
 
-未完成但仍批准的 Stage/生产设计不能因为当前代码不存在而删掉；必须放在 `docs/roadmap/` 或当前适用的核心长期设计中，并明确“待实现”。历史方案若被后续正式决策替代，则保留演进说明并明确“禁止照旧实现”。
+未完成但仍批准的生产/产品目标不能因为当前代码不存在而删掉；必须放在 `docs/roadmap/` 或当前适用的核心长期设计中，并明确“待实现”。已完成阶段退出 live Roadmap；历史原因由 `changes/archive/` 与 Git 追溯。历史方案若被后续正式决策替代，则保留必要演进说明并明确“禁止照旧实现”。
 
 迁移/删除旧详细文档前，必须证明：
 
@@ -635,7 +641,7 @@ changes/archive/
 - 能不用术语就不要为了显得专业而堆术语；
 - 是否引用代码、表名、类名、命令，以是否帮助理解/调试为判断标准；
 - 允许给短、真实、可验证的例子；
-- Provider 真实 JSON 路径、状态机、执行流程、关键 SQL、恢复边界、部署/回滚机制等理解实现必须知道的内容可以在 Appendix 直接展开；
+- Provider 真实 JSON 路径、状态机、执行流程、关键 SQL、恢复边界、部署/回滚机制等理解实现必须知道的内容可以在 Appendix/Operations 直接展开；
 - 固定且精确的数据结构优先导航到 `tables.py`、Contract、Prompt、Migration，避免复制第二套会漂移的 Schema；
 - 不复制第二套完整 OpenAPI、Prompt taxonomy 或 Migration SQL；
 - 不用“企业级、先进、高可用”等空泛词替代具体机制；
