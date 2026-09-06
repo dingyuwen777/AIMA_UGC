@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260906-145000-documentation-governance
 title: 收敛当前文档体系并强化事实漂移门禁
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: docs/368-documentation-governance
 created: 2026-09-06
