@@ -1,0 +1,33 @@
+name: CI Documentation Sync
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.head_ref == 'ci/370-test-impact-optimization'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply durable documentation update
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/sync_ci_governance_docs_once.py
+          git diff --check
+          if git diff --quiet -- docs/blueprint/06_开发约束与分阶段实施.md; then
+            exit 0
+          fi
+          git config user.name "AIMA CI Documentation Sync"
+          git config user.email "aima-ci-doc-sync@users.noreply.github.com"
+          git add docs/blueprint/06_开发约束与分阶段实施.md
+          git commit -m "同步风险驱动 CI 与归档治理文档"
+          git push origin HEAD:${GITHUB_HEAD_REF}
