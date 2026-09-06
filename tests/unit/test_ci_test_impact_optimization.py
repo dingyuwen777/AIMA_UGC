@@ -110,12 +110,13 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
 
     postgres_job = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
     assert "fonts-noto-cjk" not in postgres_job
-    assert "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
+    assert (
+        "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
+    )
 
     assert (
         "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.report_font_required == 'true'\n"
-        in text
+        "        if: steps.classify.outputs.report_font_required == 'true'\n" in text
     )
 
 
@@ -170,8 +171,7 @@ def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
         "      - compose.yaml\n"
         "      - env.production.example\n"
         "      - tests/unit/test_docker_build_sources.py\n"
-        "      - tests/unit/test_release_workflow.py\n"
-        in trigger_block
+        "      - tests/unit/test_release_workflow.py\n" in trigger_block
     )
     for retired_path in (
         "docs/02_环境运行与部署.md",
