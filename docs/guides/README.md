@@ -1,38 +1,42 @@
 # AIMA_UGC 开发指南
 
-`docs/guides/` 放**开发过程中怎么操作**的说明，不承担数据库 Schema、API 字段或业务表的精确机器事实。
+`docs/guides/` 只放**开发或协作过程中怎么操作**的说明，不承担当前 Stage、数据库 Schema、API 字段或业务状态的事实源职责。
 
-当前指南：
+## 当前指南
 
-- [`docs/guides/01_Figma与前端设计开发工作流.md`](01_Figma与前端设计开发工作流.md)：Figma/原型怎样进入 Vue 代码、设计资产怎样组织、哪些内容可以自动化、哪些边界必须由当前 Contract 和代码决定。
-- [`docs/guides/02_AIMA持续开发与内网上线通用提示词.md`](02_AIMA持续开发与内网上线通用提示词.md)：用于新的 ChatGPT/GitHub Coding Agent 会话；固定提示词本身不保存 SHA、PR 或当前 Stage 状态，而是要求每次从当前 `main`、Active Change、Roadmap 和机器事实重新判断下一最小正式单元，持续推进 Stage 8F、内网 V1 和后续 Production Hardening。
-- [`docs/guides/05_多人协作与Change自动归档.md`](05_多人协作与Change自动归档.md)：说明团队成员开发到 PR Ready、Maintainer Review/merge、Implementation merge 后 repository-native Change 自动归档，以及 archive 与 Requirement Closure 的职责边界。
+- [`docs/guides/01_Figma与前端设计开发工作流.md`](01_Figma与前端设计开发工作流.md)：Figma/原型如何与当前 Vue、真实后端 Contract、公共组件和设计系统协作；
+- [`docs/guides/03_Windows Docker Desktop Compose运行.md`](03_Windows%20Docker%20Desktop%20Compose运行.md)：Windows Docker Desktop 如何运行 canonical Compose + storage-only override；
+- [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)：网络受限环境的构建源和开发机重置边界；
+- [`docs/guides/05_多人协作与Change自动归档.md`](05_多人协作与Change自动归档.md)：多人协作、Requirement/Change、PR、Review、合并和自动归档的仓库工作流。
 
-如果目标不是“设计页面”，而是“我应该改哪个代码文件”，先读：
+## 不再维护“固定持续开发提示词”
 
-- [`docs/01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)
+公司内网 V1 已完成，继续保存一份写死“Stage 8F → V1-A → V1-B → 上线”的通用提示词会把历史路线重新带回新会话。
 
-如果目标是“在新会话继续当前开发并最终推进到内网上线”，直接复制：
-
-- [`docs/guides/02_AIMA持续开发与内网上线通用提示词.md`](02_AIMA持续开发与内网上线通用提示词.md)
-
-提示词只是**启动工作流的入口**，不替代当前仓库事实。真正的阶段状态和下一步仍由：
-
-- [`docs/roadmap/01_内网V1上线实施计划.md`](../roadmap/01_内网V1上线实施计划.md)
-- [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
-- 当前代码 / Contract / Migration / generated / tests / locks
-
-共同决定。
-
-文档分工：
+新的开发任务统一从当前事实恢复：
 
 ```text
+根 AGENTS.md
+→ Agent_Skills 当前 canonical Source Mode
+→ docs/README.md
+→ 当前代码 / Contract / Migration / tests / locks
+→ 仅在任务确实涉及未完成目标时读取 docs/roadmap/
+```
+
+因此新的 Agent 会话不需要复制一份仓库内固定大提示词。全局/团队使用方式由 Agent_Skills 与项目 `AGENTS.md` 治理，项目文档只维护当前项目事实和开发导航。
+
+## 文档分工
+
+```text
+产品当前能做什么       → docs/product/
 为什么系统这样设计       → docs/blueprint/
 当前模块具体怎么实现       → 模块 README
 专题实现、排障和深挖       → docs/appendix/
 开发过程中怎么操作         → docs/guides/
+生产部署/运行/迁移          → docs/operations/
+已批准且未完成目标          → docs/roadmap/
 历史为什么改过             → changes/archive/
 精确字段/Schema/接口        → 代码、Migration、Contract、生成物、测试
 ```
 
-指南同样遵守“先问题、再流程、再工具”的写法。工具名称本身不是设计理由；例如是否用 Figma，要由页面复杂度、长期维护、设计资产复用和当前前端代码结构决定。
+如果目标是“我应该改哪个代码文件”，先读 [`docs/01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)；总文档导航见 [`docs/README.md`](../README.md)。
