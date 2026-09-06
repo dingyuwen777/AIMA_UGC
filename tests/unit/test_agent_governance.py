@@ -126,7 +126,8 @@ def test_current_managed_block_is_project_facing_without_runtime_internals() -> 
     """正式安装后的根入口不得继续暴露旧 Runtime/MCP/路由加载实现。"""
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     managed = _managed_block(agents)
-    assert "治理能力自身的运行与实现细节不属于项目进度或交付内容" in managed
+    assert "只维护本区块外的项目自有 Overlay" in managed
+    assert "受管运行资产只服务当前项目的研发治理" in managed
     for forbidden in (
         "Runtime Mode",
         "研发治理 MCP",

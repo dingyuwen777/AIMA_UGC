@@ -1,210 +1,183 @@
 ---
 name: router
-description: Agent_Skills 的唯一跨 Skill 控制面。每个使用 Agent_Skills 的任务都必须先进入本 Skill，再按当前项目事实选择专业 Skill 与必需 References；只负责路由、上下文和 Handoff，不制定项目执行计划或执行专业工作。Use before every other Agent_Skills skill for all tasks, in both Source Mode and Runtime Mode.
+description: Agent_Skills 的唯一跨 Skill 控制面。每个任务先进入本 Skill，再按当前项目事实选择专业 Skill 与必需 References；Router 只负责路由、上下文和 Handoff。Use before every other Agent_Skills skill in Source Mode and Runtime Mode.
 ---
 
 <!-- agent-routing:v1
 {"协议":"Agent Skills Skill路由/v1","Skill":"router","触发":{"包含":{"维度":"风险","取值":["L1","L2","L3"]}}}
 -->
 
+## 用户可见表达边界
+
+用户关于目标项目的正常事实、解释、建议、风险、验证、状态和交付照常回答；描述 Agent 自身的进度、分工或执行过程时，对用户只描述项目实际动作、风险、证据和交付状态。不得把内部能力名称或标签转写成用户可见任务分工，也不得播报内部发现、选择、加载、路由、交接或约束取得过程。限制只针对内部身份转写，不限制正常工程解释；内部能力身份继续用于路由、约束加载和专业执行，不得为了用户可见隐藏而删除内部执行上下文。
+
+
 # Agent Skills Router
 
-本 Skill 是 Agent_Skills **唯一的跨 Skill Catalog / Router 事实源**。它负责恢复任务事实、选择正式 Skill、加载 required 当前场景所需完整约束 和定义 Handoff；专业方法留在各 Skill，项目自己的规则与真实文件负责说明项目事实。
+本 Skill 是 Agent_Skills **唯一的跨 Skill Catalog / Router 事实源**。项目事实归目标项目，专业方法归各 Skill；Router **只输出** Skill、required 当前场景所需完整约束、最低风险、Handoff 和失败边界。
 
 ## Anti-Agent Boundary
 
-Router 只输出 Skill 选择、必需 当前场景所需完整约束、最低风险、Handoff 和失败边界；不生成项目级执行计划，不创建子 Agent，不拆分或调度开发任务，不接管专业 Skill，也不执行代码/设计/文档/测试/Git/CI/发布/部署。组合多个 Skill 时只声明并集、顺序与交接条件。
+Router **不生成项目级执行计划**，不创建子 Agent，**不拆分或调度开发任务**，不维护任务队列/Worker，**不接管专业 Skill**，也不执行代码/设计/文档/测试/Git/CI/发布/部署；多 Skill 只声明并集、顺序与交接。
 
-## 1. 先建立目标项目事实
+## 1. 项目事实与确定性执行边界
 
-先读取目标项目当前目录及上级适用的 `AGENTS.md`、`CONTRIBUTING` 或同等规则，再按任务需要读取真实代码、Manifest/lock、Contract、Schema/Migration、配置、测试、CI、正式文档和设计事实。
+先读目标项目及上级适用的 `AGENTS.md`、`CONTRIBUTING` 等规则，再按需读真实代码、Manifest/lock、Contract、Schema/Migration、配置、测试、CI、正式文档和设计事实。**项目自己的**事实优先；语言、Runtime、框架、数据库、Owner、API/ABI/CLI、Schema、Provider、部署、Design Token/业务字段不得猜，**不能单凭文件名推出 React、FastAPI、PostgreSQL**。
 
-项目自己的事实优先于通用示例。语言、Runtime、框架、数据库、模块 Owner、API/ABI/CLI、Schema、Migration、Provider、部署、设计 Token/组件/业务字段等都必须来自当前事实或 Owner 决定；**不能单凭文件名推出 React、FastAPI、PostgreSQL**。Greenfield 则以已确认目标、硬约束和运行环境建立最小基线。
+### 1.1 核验、决策、授权、证据与完成
 
-## 2. 正式 Skill Catalog 与动态发现
+- **事实恢复 / 核验**：默认由 Agent 自行查；能查出的不问。只有条款明确要求“提请用户 / Owner 决策 / 批准”且答案会实质改变业务/public Contract、Schema/数据、安全/权限、不可逆动作或重大技术路线时才问；已固化决定**不重复确认**。
+- **Non-material Ambiguity Default**：未达到上述门槛时不阻塞、不提问；按“**项目既有模式 → 最小范围 → 最小副作用 → 最可逆 → 最少新机制**”自行决定，证据推翻后局部 re-plan。
+- **Authorization Continuity**：已明确且未撤销的授权仅在**同目标、同范围、同副作用等级**跨 Handoff 延续，不重复确认。只读 < 测试资产写 < 生产代码写 < commit/push/PR < merge < Release < Deploy/生产变更；更高等级**不得继承升级**，必须已有对应 Requested Action + Effective Authorization。
+- **Fresh Evidence Contract**：Evidence 绑定当前 **environment / Contract / Scope 与被验证的相关实现 revision**，未发生影响结论的变化即可复用；**不是由当前 Agent 启动**本身**不构成重新执行理由**。只有相关实现/Contract/输入/依赖/配置/环境/外部事实变化、现有证据不覆盖结论，或 **required gate** 明确要求 current-head/current-revision 时才重跑对应层；Change/Issue/PR 描述、Evidence 记录、排版等**不影响已验证边界的载体变化**不使开发侧 Evidence 失效。
+- `完整验证证据 / 完整命令 / 完整输出` 只表示完整执行并检查**已选择的风险匹配 Evidence**，**不表示运行全仓测试、全部测试层或所有平台验证**；仍按 targeted-first 单调升级。
+- **阻塞按依赖边界传播**：单一路径失败先回读结果并核验宿主等价能力，不直接判定仓库不可写；Git 细则归 Coding 交付 完整约束。仅阻塞确实缺少事实/Context/工具/环境/权限的依赖动作及声明，其他已授权工作继续；不绕过权限或质量门禁。required gate 受阻时整体才 `blocked/incomplete`。
+- **Requested Outcome = Completion Scope**：**能力存在不等于继续追求更远阶段**。只读审查/测试/Mutation Audit 止于结论；提 PR→`允许开发并提交PR`（PR Ready）；合并主分支→`允许端到端交付`；审查后合并→`允许审查后交付`。先按真实命令归一化再路由，commit/push、引述或否定不升级授权；完整范围与收尾归当前场景所需完整约束。
+- **Task-owned Cleanup**：Completion Scope 结束前删除本任务创建且无后续用途的临时/scratch/debug 产物；保留预存在/用户所有/仍作证据、交付物或输入的内容。未改变交付状态/运行输入时，不使既有 Green Evidence 失效。
 
-正式 Skill 始终从：
+## 2. 正式 Skill Catalog
 
-```text
-.agents/skills/*/SKILL.md
-```
+正式 Skill 从 `.agents/skills/*/SKILL.md` 动态发现；下表只作导航，**不是分发白名单**。
 
-动态发现。当前仓库存在：
-
-| Skill | 当前职责 | 正式入口 |
+| Skill | 职责 | 入口 |
 | --- | --- | --- |
-| `router` | 无条件入口、动态 Catalog、跨 Skill 选择与 Handoff | [`.agents/skills/router/SKILL.md`](SKILL.md) |
-| `coding` | 通用研发、调试、验证治理、Change、Git/CI 与交付 | [`.agents/skills/coding/SKILL.md`](../coding/SKILL.md) |
-| `testing` | 测试策略、黑盒/User Journey、探索式、Integration/Workflow/Regression | [`.agents/skills/testing/SKILL.md`](../testing/SKILL.md) |
-| `review` | 独立 Review、Findings、测试充分性/Evidence 与 re-review | [`.agents/skills/review/SKILL.md`](../review/SKILL.md) |
-| `docs` | 技术文档事实同步、审查、编写与更新 | [`.agents/skills/docs/SKILL.md`](../docs/SKILL.md) |
-| `figma` | Figma 事实、Canvas/Prototype、设计系统与 Ready | [`.agents/skills/figma/SKILL.md`](../figma/SKILL.md) |
+| `router` | 路由 | [`.agents/skills/router/SKILL.md`](SKILL.md) |
+| `coding` | 研发/Git | [`.agents/skills/coding/SKILL.md`](../coding/SKILL.md) |
+| `testing` | 测试 | [`.agents/skills/testing/SKILL.md`](../testing/SKILL.md) |
+| `review` | 审查 | [`.agents/skills/review/SKILL.md`](../review/SKILL.md) |
+| `docs` | 文档 | [`.agents/skills/docs/SKILL.md`](../docs/SKILL.md) |
+| `figma` | 设计 | [`.agents/skills/figma/SKILL.md`](../figma/SKILL.md) |
 
-这些名称**不是分发白名单**；Runtime、Project Payload、manifest、测试和 Release 必须继续动态发现。Review 只审测试充分性/Evidence，测试工程方法由 Testing 负责。
+Runtime/Project Payload/manifest/测试/Release 也动态发现；Review 判充分性，测试方法归 Testing。
 
-## 3. 每个研发任务的固定入口
+## 3. Owner-gated 固定入口
 
-1. 恢复当前目标项目最少充分事实；
-2. **先按各 Skill Core 的 Owner 选择语义选专业 Owner**；项目形态、风险、工具链、范围、治理和授权属于 refinement dimensions，只用于细化已命中的 Owner，不能仅凭这些事实把不相关专业 Skill 拉入任务；
-3. 实现/调试/TDD/CI/Git/Release 进入 Coding；测试策略、功能/黑盒/User Journey、探索式、系统性 Regression 或独立验证进入 Testing；Review 发现 Test Gap 时叠加 Testing；`能力=测试` 或项目形态本身不触发 Testing，项目形态/风险/授权本身也不构成 Coding 执行意图；
-4. Skill Owner 命中后，才在该 Owner 内按 完整约束 metadata 直接细化 required Context；显式 完整约束 dependency 可以跨 Skill 扩展，并把被依赖 完整约束 的 Owner 加入组合；
-5. 命中 完整约束 时必须在执行前取得其完整正式原文；
-6. 不机械读取全部 Skills/当前场景所需完整约束，也不从历史聊天猜当前实现。
+1. 恢复最少充分事实；
+2. 按任务对象/专业意图选 Owner；其余维度只细化已命中 Owner；
+3. 实现/调试/TDD/CI/Git/Release → Coding；测试策略/功能/黑盒/Journey/探索式/Regression/独立验证 → Testing；源码/PR/diff 审查 → Coding + Review；Figma → Figma；技术文档 → Docs。共享 `审查/验证`、`能力=测试/Figma/Git` 不制造无关 Owner；
+4. 仅在已命中 Owner 内匹配 完整约束；显式 dependency 可跨 Skill；
+5. 命中 完整约束 必须在执行前取得**完整原文**；
+6. 不机械读全部 Skills/当前场景所需完整约束。
 
-## 4. 双模式同源路由与 完整约束 加载
+## 4. 双模式同源路由
 
-Source Mode 与 Runtime Mode 使用同一 canonical `SKILL.md + 当前场景所需完整约束`、中文路由 metadata、内部约束身份、依赖和风险下限，只改变 Context 取得通路。
+Source/Runtime 使用同一 canonical metadata、内部约束身份、依赖和风险下限，只改变 Context 取得通路。
 
-### 4.1 Owner-gated 路由不是单选分类
-
-稳定维度为：
-
-```text
-执行模式 / 项目形态 / 阶段 / 风险 / 工具链
-范围 / 意图 / 治理 / 能力 / 授权
-```
-
-Owner 选择阶段把以下维度视为 refinement，仅保留在公共 Task Route 词汇和后续 完整约束 匹配中：
-
-```text
-项目形态 / 风险 / 工具链 / 范围 / 治理 / 授权
-```
-
-因此正式 Skill Core metadata 中即使历史上存在这些 refinement 分支，它们也**不直接选择专业 Owner**；Owner 选择只使用其余可表达真实专业意图的维度（如执行模式、阶段、意图、能力）。Router 是始终存在的控制面，不受该专业 Owner gate 限制。这个规则避免为了保留公共路由词汇而让 `风险=L2`、`项目形态=前端Web` 或 `授权=允许只读` 机械拉入 Coding。
-
-路由按固定点求值：
+Owner 选择时 `项目形态 / 风险 / 工具链 / 范围 / 治理 / 授权` 是 refinement，不独立制造 Owner。固定点：
 
 ```text
 任务事实
-→ Skill Core triggers 的 Owner 投影取并集，得到专业 Owner
-→ 仅在已命中 Owner 内直接匹配 完整约束 triggers
-→ 展开 完整约束 dependency closure（dependency 可以跨 Skill）
-→ 被依赖 完整约束 的 Owner 加入组合
-→ 风险下限或 Owner 扩展后重复求值，直到稳定
+→ Skill Core Owner 投影取并集
+→ Owner 内 完整约束 匹配
+→ dependency closure
+→ 风险/Owner 扩展后重复至稳定
 ```
 
-这意味着 完整约束 的 `项目形态 / 风险 / 工具链 / 范围 / 治理 / 授权` 等信号是**Owner 内 refinement**，不能独立制造它自己的专业 Owner；真正需要跨 Skill 的场景必须由 Skill Core Owner 选择或显式 完整约束 dependency/Handoff 表达。多个真实 Owner 仍然取并集，不是单选分类。
+未知项只扩大相关候选，不导出全库；授权只是事实，不授予权限。
 
-未知项使用三值逻辑保守扩大与未知维度真实相关的候选 Context，但仍遵守 Owner gate；未知 refinement 不能成为导出全部规则或机械激活无关 Skill 的理由。`授权` 只是已确认事实，不能自行授予权限。
-
-### 4.2 Source Mode：直接读取 canonical 原文
+### 4.1 Source Mode
 
 ```text
-任务事实
-→ canonical Skill metadata 的 Owner 投影选择专业 Owner
-→ Owner 内 完整约束 metadata 匹配 + dependency closure + risk fixed-point
-→ 命中 Skill Core 与 required 当前场景所需完整约束
-→ 读取当前完整原文
+任务事实 → canonical Owner → required 当前场景所需完整约束 → 读取当前完整原文
 ```
 
-不得用历史聊天、摘要、旧缓存替代 canonical Source；**目标项目中的安装副本**（含 managed block）**不作为当前通用治理语义来源**，项目自有规则仍必须读取。Source Mode 不调用本地 Runtime MCP。
+不得用历史聊天/摘要/旧缓存替代 canonical Source；**目标项目中的安装副本**（含 managed block）**不作为当前通用治理语义来源**，项目自有规则仍读取。Source Mode 不调用本地 Runtime MCP。
 
-### 4.3 Runtime Mode：Task Route → required Context
-
-Project Payload 不含 canonical `当前场景所需完整约束/` 或 Stub。宿主按顺序调用：
+### 4.2 Runtime Mode
 
 ```text
 agent_skills_route_contract
 → agent_skills_start_task
 → agent_skills_submit_route
 → agent_skills_load_required_context(路由令牌)
-→ 事实变化时追加 submit_route / load
+→ 事实变化时追加 submit/load
 → agent_skills_checkpoint
 ```
 
-Task Route 是内部协议。Runtime evaluator 必须执行与 Source Mode 相同的 Owner-gated fixed-point；`load_required_context` 只返回当前 required Context；`checkpoint` 不能冒充 Traceability、Completion、Review、Docs、测试或 CI。每个 Context 的 `SHA256`、字节数和**完整原文**必须通过当前 Bundle 校验。
+Runtime evaluator 执行同一 fixed-point；`load_required_context` 只返回 required Context；`checkpoint` 不冒充 Traceability/Completion/Review/Docs/测试/CI。每个 Context 校验 **SHA256**、字节数和完整原文。
 
-### 4.4 版本、失败与停止
-
-同一任务的 Router、Skill Core、Runtime、Bundle、routing identity 和 Project Payload 必须同源同版本。协议/digest、Owner-gated routing、required Context 或完整性失败时停止，不得以旧记忆或摘要降级。
+Router/Core/Runtime/Bundle/routing identity/Project Payload 必须同源同版本；协议/digest/路由/完整性失败时不得用旧记忆冒充，按第 1.1 节传播 blocker。
 
 ## 5. 低歧义组合示例
 
 | 案例 | 命中原因与叠加 | Source Mode 读取 | Runtime Mode 任务信号 |
 | --- | --- | --- | --- |
-| L1 机械修改 | 行为/接口/数据不变 | Coding Core + L1 路由 | `执行模式=实现；风险=L1` |
-| L2 Feature | 新增可观察行为；先建立最小充分任务契约，持久治理按事实升级 | Coding + 验证；独立用户场景按需 Testing | `执行模式=实现；阶段=功能开发；风险=L2`；需要时加测试意图 |
-| L3 public API | 公共消费者 Contract 变化 | Coding + Contract/兼容/完成；按门禁 Review | `执行模式=方案,实现；风险=L3；范围=公共契约,API` |
-| Schema Migration | writer/reader/历史数据受影响 | Coding + Schema/Migration/回滚 | `执行模式=方案,实现；风险=L3；范围=Schema,Migration` |
-| Bug / Failure / Incident | 先复现根因；独立回归按需 Testing | Coding 根因；需要时 Testing Regression | `执行模式=诊断,实现；阶段=缺陷修复` |
-| Refactor / Performance | 证明行为不变或性能根因 | Coding + 基线/回归 | `执行模式=诊断,实现；阶段=重构/性能优化` |
-| Frontend | 前端实现归 Coding，独立 Journey 归 Testing | Coding Frontend；按需 Testing | `执行模式=实现；项目形态=前端Web；范围=前端；风险=L2` |
-| Testing only | 真实测试意图直接命中 Testing；已知 Web/Backend/L2 等 facts 只细化 Testing，不凭自身增加 Coding | Testing 当前命中 当前场景所需完整约束 | `意图=黑盒测试/功能测试/探索式测试/独立验证；能力=测试`；可附真实项目形态/风险 |
-| Figma review-only | 只读设计审查 | Figma + 适用 Review | `执行模式=审查；意图=Figma review-only；能力=Figma；授权=允许只读` |
-| Figma review-and-fix | 授权修改设计 | Figma；存在生产实现再 Coding | `执行模式=实现；意图=Figma review-and-fix；能力=Figma；授权=允许修改项目` |
-| Figma baseline-ready | 正式设计基线 | Figma baseline-ready | `执行模式=方案；意图=Figma baseline-ready；能力=Figma；风险=L2/L3` |
-| Figma → Code | Figma Ready 后实现；独立验收按需 Testing | Figma + Coding Frontend；按需 Testing/Review | `执行模式=实现；范围=前端；意图=设计转代码；能力=Figma,测试` |
-| Docs not_applicable | 已证明无文档影响 | 当前专业 Skill | 不提交 Docs 意图 |
-| Docs targeted | 局部正式文档受影响 | Coding + Docs targeted | `执行模式=实现；意图=Docs targeted` |
-| Docs full | 架构/公开 Contract/多文档变化 | Coding + Docs full | `执行模式=实现；意图=Docs full；风险=L2/L3` |
-| Code Review / Audit | Review 独立审实现和测试充分性 | Coding 研发规范 + Review；Test Gap 时 Testing | `执行模式=审查；意图=代码审查`；补测加 `Review-and-test` |
-| Dependency / Runtime Upgrade | 版本/锁/Runtime 变化 | Coding 工具链；Runtime 时加安装/分发 Owner | `执行模式=实现；意图=依赖升级/Runtime 升级` |
-| Git / PR / Release | 交付且真实授权已确认 | Coding 完成/Git/交付；按需 Review | `执行模式=Git,验证；阶段=交付；意图=Git 交付；能力=Git` |
-| Runtime / Project Payload | Bundle/Route/MCP/安装分发 | Coding Bootstrap + Runtime 当前场景所需完整约束 | `执行模式=实现；风险=L3；范围=Runtime,MCP` |
-| Skill Mutation | Skill/完整约束/trigger/Owner 变化 | 根 AGENTS + Maintenance + Coding Mutation + 受影响 Skill | `执行模式=实现；意图=Skill Mutation；治理=要求完成门禁；风险=L2/L3` |
-| Greenfield | 无稳定工程事实 | Coding + 项目发现/Greenfield | `执行模式=方案；项目形态=Greenfield；阶段=仓库初始化；风险=L2` |
-| 复杂多 Skill 叠加 | 同时存在多类真实 Owner 事实 | 所有真实命中 Skill/当前场景所需完整约束 并集 | 提交真实 `实现/审查/验证/Git` 与范围/意图/治理/授权 |
+| L1 机械修改 | — | Coding | `执行模式=实现；风险=L1` |
+| L2 Feature | 最小充分任务契约 | Coding | `执行模式=实现；阶段=功能开发；风险=L2` |
+| L3 public API | — | Coding | `执行模式=方案,实现；风险=L3；范围=公共契约,API` |
+| Schema Migration | — | Coding | `执行模式=方案,实现；风险=L3；范围=Schema,Migration` |
+| Bug / Failure / Incident | — | Coding | `执行模式=诊断,实现；阶段=缺陷修复` |
+| Refactor / Performance | — | Coding | `执行模式=诊断,实现；阶段=重构/性能优化` |
+| Frontend | — | Coding | `执行模式=实现；项目形态=前端Web；范围=前端；风险=L2` |
+| Testing only | — | Testing | `意图=黑盒测试/功能测试/探索式测试/独立验证；能力=测试` |
+| Figma review-only | — | Figma | `执行模式=审查；意图=Figma review-only；授权=允许只读` |
+| Figma review-and-fix | — | Figma | `执行模式=实现；意图=Figma review-and-fix；授权=允许修改项目` |
+| Figma baseline-ready | — | Figma | `执行模式=方案；意图=Figma baseline-ready；风险=L2/L3` |
+| Figma → Code | — | Figma + Coding | `执行模式=实现；意图=设计转代码；范围=前端` |
+| Docs not_applicable | — | 当前 Owner | 不提交 Docs 意图 |
+| Docs targeted | — | Coding + Docs | `执行模式=实现；意图=Docs targeted` |
+| Docs full | — | Coding + Docs | `执行模式=实现；意图=Docs full；风险=L2/L3` |
+| 文档 Review | — | Docs | `执行模式=审查；意图=文档审查` |
+| Code Review / Audit | — | Coding + Review | `执行模式=审查；意图=代码审查` |
+| Dependency / Runtime Upgrade | — | Coding | `执行模式=实现；意图=依赖升级/Runtime 升级` |
+| Git / PR / Release | — | Coding | `执行模式=Git,验证；阶段=交付；意图=Git 交付` |
+| Runtime / Project Payload | — | Coding | `执行模式=实现；风险=L3；范围=Runtime,MCP` |
+| Skill Mutation Audit / Proposal | 只读 | 根 AGENTS + Mutation | `执行模式=只读分析；意图=Skill Mutation Audit；授权=允许只读`；宽泛 `Skill Mutation` 无写入事实→Audit-compatible |
+| Skill Mutation Apply | 写入 | Maintenance + Mutation | `执行模式=实现；意图=Skill Mutation Apply；治理=要求完成门禁；风险=L2/L3` |
+| Greenfield | — | Coding | `执行模式=方案；项目形态=Greenfield；阶段=仓库初始化；风险=L2` |
+| 复杂多 Skill 叠加 | 多 Owner | 命中并集 | 提交真实模式/范围/意图/治理/授权 |
 
 ## 6. Bootstrap / Runtime 专项路由
 
-- 触发：首次安装/升级 Agent_Skills、`AGENTS.md` Bootstrap/managed block，或 Bundle/Routing/MCP/Project Payload/安装分发变化。
-- 必须动作：恢复 installation/ownership/schema/宿主配置事实并读取对应完整 canonical 完整约束。
-- 不适用：普通业务任务未触及这些边界。
-- 交接：Bootstrap/managed block 进入 Coding 当前场景所需完整约束；Runtime/分发边界在此基础上进入 Coding 当前场景所需完整约束。
-- 返回：真实 smoke 后回 Coding 验证/Review/Git。
-- 失败关闭：关键事实不可验证时停止写入/交付。
-
-当前场景所需完整约束
-
-涉及 Runtime/Project Payload/Task Route/MCP 时还必须读取：
-
-当前场景所需完整约束
+- 触发：安装/升级、AGENTS Bootstrap/managed block、Bundle/Routing/MCP/Project Payload/分发。
+- 必须动作：恢复 installation/ownership/schema/宿主事实；读完整 canonical 完整约束。
+- 不适用：普通业务。
+- 交接：当前场景所需完整约束（`当前场景所需完整约束`）→ Runtime 再读 当前场景所需完整约束（`当前场景所需完整约束`）。
+- 返回：smoke → Coding 验证/Review/Git。
+- 失败关闭：关键事实**无法读取**/验证→阻塞依赖动作，**不得假装**完成。
 
 ## 7. Figma 路由
 
-- 触发：Figma 创建、修改、审查、设计系统、Prototype、正式基线或 Design-to-Code。
-- 必须动作：读取并执行 Figma Skill，输出 `READY / READY_WITH_NOTES / NOT_READY`。
-- 不适用：无 Figma/design-to-code 事实。
-- 交接：设计交给 [`.agents/skills/figma/SKILL.md`](../figma/SKILL.md)；生产实现再 Coding。
-- 返回：Ready 后按真实需要进入 Coding/Testing/Review。
-- 失败关闭：Figma/required 完整约束 不可得时不得冒充 Ready。
+- 触发：Figma 创建/修改/审查/Prototype/基线/Design-to-Code。
+- 必须动作：读 [`.agents/skills/figma/SKILL.md`](../figma/SKILL.md)；review-only 不要求 `READY`，baseline-ready 输出 **READY / READY_WITH_NOTES / NOT_READY**。
+- 不适用：无 Figma 事实。
+- 交接：设计 → Figma；生产实现 → Coding。
+- 返回：Review → Findings；Ready 后按需 Coding/Testing/Review。
+- 失败关闭：缺 Figma/required Context→不冒充审查/Ready；其他继续。
 
 ## 8. Testing 路由
 
-- 触发：真实测试意图，或 Review/Coding 识别独立 Test Gap。
-- 必须动作：读取 [`.agents/skills/testing/SKILL.md`](../testing/SKILL.md)。
-- 不适用：隔离 L1、普通开发期最小 TDD；**不为了“走完所有 Skill”机械叠加 Testing**。
-- Owner gate：项目形态、风险、工具链、范围、治理、授权等已知 facts 只细化 Testing 当前场景所需完整约束；没有真实 Coding 执行意图或显式跨 Skill dependency 时不得反向加载 Coding。
-- 交接：Coding/Review 提供 Requirement、Test Target 和 Evidence Gap。
-- 返回：生产缺陷 → Coding；修复后 → Testing Regression；合并判断 → Review。
-- 失败关闭：Testing/目标/required Context 不可得时不得冒充测试证据。
+- 触发：测试意图或独立 Test Gap。
+- 必须动作：读 Testing。
+- 不适用：隔离 L1/开发期最小 TDD；**不为了“走完所有 Skill”机械叠加 Testing**。
+- 交接：Coding/Review → Requirement、Test Target、Gap。
+- 返回：生产缺陷 → Coding；回归 → Testing；合并判断 → Review。
+- 失败关闭：缺 Testing Context→不冒充测试证据；其他继续。
 
 ## 9. Review 路由
 
-- 触发：显式 Code Review/Audit、专业 Skill 请求独立 Review 或 L2/L3 门禁要求。
-- 必须动作：读取 Review，独立重建上游要求，审 Findings 与测试充分性/Evidence。
-- 不适用：无审查请求/门禁的纯事实恢复或隔离 L1。
-- 交接：Review Target、base/head、上游事实交给 [`.agents/skills/review/SKILL.md`](../review/SKILL.md)；Test Gap → Testing。
-- 返回：生产 Finding → Coding；独立 Regression → Testing；随后 re-review。
-- 失败关闭：Review/目标 diff/关键事实不可得时不得声称可合并。
+- 触发：Code Review/Audit、独立 Review 或项目门禁；Figma/Docs“审查”不自动成为 Code Review。
+- 必须动作：读 [`.agents/skills/review/SKILL.md`](../review/SKILL.md)，独立重建要求并审 Findings/Evidence。
+- 不适用：无源码/PR/diff Review 或独立门禁。
+- 交接：Review Target/base/head/上游事实 → Review；Test Gap → Testing。
+- 返回：Finding → Coding；Regression → Testing；再 re-review。
+- 失败关闭：缺目标/关键事实→不宣称 Review 完成/可合并。
 
 ## 10. Docs 路由
 
-- 触发：专业 Skill 判断有文档影响，或用户显式要求文档审查/同步/编写。
-- 必须动作：读取 Docs，判断 `not_applicable / targeted / full` 后同步。
-- 不适用：已证明行为/接口/配置/架构/用户操作无文档影响。
-- 交接：实现事实和 Docs Impact 交给 [`.agents/skills/docs/SKILL.md`](../docs/SKILL.md)。
-- 返回：完成后回原专业 Skill；发现实现缺陷则回 Coding。
-- 失败关闭：Docs/实现事实不可得时不得写推测性说明。
+- 触发：文档影响或显式文档任务。
+- 必须动作：读 [`.agents/skills/docs/SKILL.md`](../docs/SKILL.md)，判断 not_applicable/targeted/full。
+- 不适用：已证明无文档事实变化。
+- 交接：实现事实/Docs Impact → Docs。
+- 返回：完成回原 Skill；实现缺陷 → Coding。
+- 失败关闭：缺事实→不写推测文档。
 
-## 11. 失败、冲突与权限边界
+## 11. 失败、冲突与权限
 
-- 必需 Skill/Router/完整约束 **无法读取**时明确阻塞，**不得假装**已遵守；
-- 冲突时遵守更高优先级和更具体规则；
-- 不绕过 CI、**Branch Protection**、PR、Release、Migration 或安全门禁；
-- **没有相应授权**时不获得修改、Git、发布、部署等副作用权限；
-- 不用强制推送、历史重写或破坏性清理制造“干净状态”。
+- 必需 Skill/Router/完整约束 **无法读取**时只阻塞依赖动作，**不得假装**已遵守；
+- 冲突遵守更高优先级/更具体规则；不绕过 CI、**Branch Protection**、PR、Release、Migration、安全门禁；
+- **没有相应授权**时不获得修改、Git、发布、部署权限；不强推、重写共享历史或破坏性清理。
 
-## 12. Router 自身的维护边界
+## 12. Router 维护边界
 
-Router 只拥有跨 Skill 的发现、入口、Owner-gated 加载和 Handoff：Coding 的研发/TDD/验证治理归 Coding；Testing 的 Test Strategy/Black-box/User Journey/Exploratory/Integration/Regression 归 Testing；Review 的 Findings/充分性/re-review 归 Review；Docs、Figma、Runtime 细节分别归各自 Owner；Runtime 细节由 Coding 当前场景所需完整约束 + Runtime 实现承接。不能为了入口自包含把专业细则复制回 Router/ENTRY/managed block。
+Router 只拥有发现、Owner-gated 加载和 Handoff；专业细节归各 Owner，不复制回 Router/ENTRY/managed block。

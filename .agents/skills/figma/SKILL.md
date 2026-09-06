@@ -4,8 +4,13 @@ description: 面向任意项目的 Figma 产品原型、设计系统、页面可
 ---
 
 <!-- agent-routing:v1
-{"协议":"Agent Skills Skill路由/v1","Skill":"figma","触发":{"任一":[{"包含":{"维度":"能力","取值":["Figma"]}},{"包含":{"维度":"意图","取值":["Figma review-only","Figma review-and-fix","Figma baseline-ready","设计转代码"]}}]}}
+{"协议":"Agent Skills Skill路由/v1","Skill":"figma","触发":{"包含":{"维度":"意图","取值":["Figma review-only","Figma review-and-fix","Figma baseline-ready","设计转代码"]}}}
 -->
+
+## 用户可见表达边界
+
+用户关于目标项目的正常事实、解释、建议、风险、验证、状态和交付照常回答；描述 Agent 自身的进度、分工或执行过程时，对用户只描述项目实际动作、风险、证据和交付状态。不得把内部能力名称或标签转写成用户可见任务分工，也不得播报内部发现、选择、加载、路由、交接或约束取得过程。限制只针对内部身份转写，不限制正常工程解释；内部能力身份继续用于路由、约束加载和专业执行，不得为了用户可见隐藏而删除内部执行上下文。
+
 
 # Figma
 
@@ -26,7 +31,9 @@ Prototype 点击之后是否仍然正确？
 实现方能否无歧义地把设计接到当前项目？
 ```
 
-核心流程：
+`能力=Figma` 只表示宿主具备 Figma 能力，**不能单独触发本 Skill**；必须存在真实 Figma 专业意图。通用 `执行模式=审查` 也不能把 Figma 设计审查机械叠加成 Code Review。
+
+核心流程按模式收敛：
 
 ```text
 识别项目形态和目标用户
@@ -39,12 +46,12 @@ Prototype 点击之后是否仍然正确？
 → 审查系统能力、动态数据和状态来源
 → 审查 Prototype Variable / Reaction / Flow
 → Figma 写操作后执行 Canvas-level Review
-→ Fresh Screenshot / Machine Audit
+→ Fresh Screenshot / Machine Audit（模式要求时）
 → Design Context / 实现视角复核（适用时）
 → Findings
 → review-and-fix 时修最小 Owner
 → re-review
-→ READY / READY_WITH_NOTES / NOT_READY
+→ 只有 baseline-ready 才输出 READY / READY_WITH_NOTES / NOT_READY
 ```
 
 详细方法位于 `当前场景所需完整约束/`。命中对应场景时必须读取相关 完整约束；不能只读本文件后凭经验完成审查。
@@ -125,7 +132,7 @@ code_issue_detected
 → 再按本 Skill 决定读什么、查什么、怎样判定 Ready
 ```
 
-如果环境只有读权限，`review-and-fix` 必须明确阻塞，不能假装已经改过设计。
+如果环境只有读权限，`review-and-fix` 的**写动作**必须明确阻塞，不能假装已经改过设计；但只要读取能力可用，仍应完成不依赖写权限的 review-only 审查、Findings 和证据边界，不把写权限缺口扩大成整个调查停止。
 
 详见 当前场景所需完整约束。
 
@@ -135,7 +142,7 @@ code_issue_detected
 
 ## `review-only`
 
-在没有更具体的正式开发基线验收意图时，用于普通设计审查；Design-only 且没有目标实现事实时通常默认此模式。
+在没有更具体的正式开发基线验收意图时，用于普通设计审查；无论是否存在对应代码仓库，**普通“全面检查 / 审查 / 找问题”默认 `review-only`**。有仓库时照样读取必要实现/Contract/状态事实来判断设计是否合理，但不因为“仓库存在”自动升级成正式基线验收。
 
 允许读取 Figma、仓库/需求事实、截图、Metadata、Prototype、Design Context，并输出 Findings。
 
@@ -146,7 +153,7 @@ code_issue_detected
 - 修改文档；
 - commit / PR / merge / release 权限。
 
-“只检查、不修改”首先是写权限限制，不自动把用户已经明确要求的 `baseline-ready` 验收降级成 `review-only`。
+“只检查、不修改”首先是写权限限制；如果用户另外明确要求“是否可交付开发 / 正式基线 / READY / 对照代码全面验收”等 baseline-ready 目标，仍执行只读的正式基线验收。
 
 ## `review-and-fix`
 
@@ -166,6 +173,8 @@ code_issue_detected
 → Prototype / Machine Audit
 → Design Context re-review（适用时）
 ```
+
+这里的“确认 Finding 和根因”表示先自行从 Figma、系统事实和工具证据核验；普通局部设计修复不要求用户逐项批准。只有修复会改变业务语义、真实系统能力、公共 Contract 或其他上游决策时才提请 Owner 决策。
 
 禁止逐页打补丁掩盖公共根因，也禁止只把当前 Frame 改正确却留下由本次修改造成的相邻画板、注释或说明拥挤问题。
 
@@ -192,9 +201,11 @@ NOT_READY
 ```text
 用户显式指定模式 / 正式验收目标
 → 自然语言任务意图
-→ 独立判断用户授予的 Figma / 代码 / Git 权限
+→ 独立核验用户已经授予的 Figma / 代码 / Git 权限
 → 无法确认写权限时保持只读，不擅自写入
 ```
+
+“核验授权”不是重新向用户索要已经明确给出的同一批准；当前请求已经明确授予的范围直接沿用，宿主/项目权限另行事实核验。
 
 ### A. “全面检查 / 审查 / 看看这个 Figma 有没有问题”
 
@@ -204,28 +215,42 @@ NOT_READY
 全面检查这个 Figma 页面
 看看是否美观、好用、符合用户习惯
 看看是否符合当前仓库代码
-这个页面能不能直接交给开发
+找出这个页面的问题和改进点
 ```
 
-如果同时存在目标仓库或当前实现，需要判断设计与真实系统是否一致：
+这类普通审查无论是否存在目标仓库，都按：
 
 ```text
-→ 默认 baseline-ready
-→ 恢复当前仓库事实
-→ 执行视觉 / 可用性 / Prototype / 系统能力 / Design Context 全量适用门禁
+→ 默认 `review-only`
+→ 有仓库时恢复当前系统/Contract/实现的最少充分事实
+→ 审查设计、Prototype、设计系统、可用性和与真实系统的一致性
+→ 输出 Findings、证据与未验证边界
+→ 不为了“更全面”自动执行 baseline-ready 的完整开发交付门禁
+```
+
+没有实现仓库、只是 Design-only 原型时，当前尚不存在的实现边界标记 `implementation_required`，不伪造 API / Route / 数据库等系统事实。
+
+### A2. “是否可交付开发 / 正式基线 / READY / 对照代码全面验收”
+
+当用户明确询问：
+
+```text
+这个页面能不能直接交给开发
+是否达到正式开发基线
+这个 Figma 是否 READY
+对照当前仓库全面验收这个 Figma
+```
+
+这类目标明确要求实现前完成正式基线判断：
+
+```text
+→ 默认 `baseline-ready`
+→ 恢复当前仓库/Contract/实现事实（存在时）
+→ 执行视觉 / 可用性 / Prototype / 系统能力 / Annotation / Design Context 等全部适用门禁
 → 输出 Findings + READY / READY_WITH_NOTES / NOT_READY
 ```
 
-如果没有实现仓库、只是 Design-only 原型：
-
-```text
-→ 默认 review-only
-→ 审查设计、Prototype、设计系统和可实施性
-→ 当前尚不存在的实现边界标记 implementation_required
-→ 不伪造 API / Route / 数据库等系统事实
-```
-
-用户说“只检查、不修改”时，只表示本轮不获得 Figma 写权限；如果任务本身是在问“是否可作为正式开发基线”，仍执行只读的 `baseline-ready`。
+用户说“只检查、不修改”只表示不获得 Figma 写权限，不会把已经明确的 baseline-ready 验收降级成普通 review-only。
 
 ### B. “全面检查并修复 / 帮我改好 / 有问题直接改”
 
@@ -233,15 +258,17 @@ NOT_READY
 
 ```text
 → review-and-fix
-→ 先确认 Finding / 根因
+→ 先核验 Finding / 根因
 → 修改最小真实 Owner
 → 验证公共消费者
 → Canvas-level Review
 → Fresh Screenshot + Prototype / Machine Audit + Design Context（适用时）
-→ 再执行 baseline-ready 判定
+→ re-review
 ```
 
-如果宿主没有写权限，必须明确阻塞；不能把“给修改建议”描述成已经修复。
+**review-and-fix 不因为“已经修完”自动升级成 baseline-ready。** 如果用户同时要求正式开发基线、READY 或 Design-to-Code，再在修复后执行 `baseline-ready`；否则在当前 Review Target 的 Findings 与写后验证闭环后结束。
+
+如果宿主没有写权限，写入部分明确阻塞；不能把“给修改建议”描述成已经修复，但仍完成可以执行的只读审查。
 
 ### C. “按这个 Figma 替换 / 实现当前页面”
 
@@ -261,7 +288,7 @@ NOT_READY
 → 对正式 Figma 目标执行 baseline-ready
 → NOT_READY：
    - 已明确授权修改 Figma → review-and-fix 后重新 baseline-ready
-   - 未授权修改 Figma → 报告阻塞，不把已知设计缺陷写入生产代码
+   - 未授权修改 Figma → 报告基线阻塞，不把已知设计缺陷写入生产代码；其他不依赖该缺陷的只读事实仍可继续
 → READY / 可实施的 READY_WITH_NOTES
 → 如果已有对应页面：先执行 Existing Implementation Delta Gate
 → handoff 到目标项目 Coding 工作流
@@ -283,9 +310,16 @@ NOT_READY
 
 ```text
 全面检查这个 Figma：<link>
+→ review-only
+
 全面检查并修好这个 Figma：<link>
+→ review-and-fix
+
 对照当前仓库全面验收这个 Figma：<link>
+→ baseline-ready
+
 按这个 Figma 替换当前对应页面：<link>
+→ baseline-ready → Coding handoff
 ```
 
 这些短句只负责选择已有流程，**不在本节复制页面尺寸、组件复用、Prototype、动态数据、真实系统映射等详细规则**；详细规则继续由后续章节和 当前场景所需完整约束 单一维护。
@@ -306,6 +340,8 @@ Prototype Starting Point
 对应实现入口（有代码时）
 模式与授权范围
 ```
+
+这里的“确定”默认由 Agent 从当前链接、Figma metadata、Prototype、仓库和当前请求自行核验；只有多个正式基线/目标 Frame 在业务语义上无法从事实消歧时才提请上游决定。
 
 如果同一文件中同时有：
 
@@ -346,7 +382,7 @@ CMS
 服务端数据库（经正式 Service/API 消费）
 ```
 
-关键字段如果不知道来源、默认值、错误行为或真实系统支持方式，不能宣布基线闭环。
+关键字段如果不知道来源、默认值、错误行为或真实系统支持方式，不能宣布基线闭环；普通 review-only 则把该项作为 Finding/未验证边界，不因为缺失一个基线事实停止其他可审查内容。
 
 详细规则见 当前场景所需完整约束。
 
@@ -394,9 +430,9 @@ Database
 
 凡是任务涉及 Figma 页面/Canvas 的视觉审查、创建、修改、整理、状态稿维护或 `baseline-ready`，都必须读取 当前场景所需完整约束。这既是页面布局规则，也是 Canvas/Section/Annotation 可读性的唯一详细设计事实源。
 
-`baseline-ready` 时这是硬审查域；`review-and-fix` 时也是所有视觉写操作的写后复核规则。
+`baseline-ready` 时这是硬审查域；`review-and-fix` 时也是所有视觉写操作的写后复核规则。普通 `review-only` 只检查当前 Review Target 与直接相关邻近上下文，不为了“更全面”把正式基线的全部交付门禁机械前置。
 
-至少检查：
+至少检查当前模式真实适用的：
 
 ```text
 目标设备 / 浏览器与 Frame 基准
@@ -656,6 +692,8 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 → 当前项目实现入口
 ```
 
+这里的“确认/重新确认”遵循事实核验语义，默认自行读取当前仓库、Manifest/lock、Contract、Figma 和工具结果；不存在真实上游取舍时不要求用户重复批准。
+
 如果当前项目已经有目标 Page/Screen，必须先执行 Existing Implementation Delta Gate：以现有正确实现为基线，只实现新 Figma 经 Requirement/Contract/Owner 确认的真实差异，**不默认整页重写**。
 
 生产实现由 Coding 工作流完成后，还必须执行 **Implementation ↔ Figma Conformance**，对实际页面、正式 Figma 与真实 Contract/Backend/SDK/Store 的 Visual、Interaction、State、Data/Contract、Responsive、Component/Owner 六个域做 targeted re-review；代码验证通过本身不等于 Design-to-Code 已闭环。
@@ -665,6 +703,8 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 ---
 
 # 14. Baseline Ready 硬门禁
+
+本节**只在 `baseline-ready` 或 Design-to-Code 正式基线门禁命中时使用**。普通 `review-only` 不为了形式执行完整 Ready checklist，也不能输出 `READY`。
 
 一个页面只有通过适用项才能判定 `READY`：
 
@@ -781,13 +821,18 @@ Canvas-level Review 不是无边界重排整个文件。最小修复范围是：
 本次修改直接造成的相邻布局/可读性问题
 ```
 
-如果页面内部已经正确，但整个 Canvas 仍然拥挤、贴边、遮挡、难以判断 Annotation 归属或正式稿与历史稿混杂，**不得声明 Figma 修改完成**。
+本次修改之前已经存在、又不阻塞当前 Finding/正确性/基线目标的相邻设计技术债，默认记录为 Finding，不因为“已经打开这个 Canvas”顺手扩大当前修改范围。
+
+如果页面内部已经正确，但整个 Canvas 仍然拥挤、贴边、遮挡、难以判断 Annotation 归属或正式稿与历史稿混杂：
+
+- `review-and-fix`：如问题属于本次修改直接影响，继续修复；如属于预先存在且不在当前授权 Scope，记录 Finding；
+- `baseline-ready`：若问题阻塞正式实施，则不得给 `READY`。
 
 ---
 
 # 17. 正式输出
 
-至少包含：
+至少包含当前模式适用的：
 
 ## Review Target
 
@@ -807,7 +852,7 @@ P0 → P1 → P2。
 
 ## Capability Gap Inventory
 
-`baseline-ready / Design-to-Code` 强制输出；集中列出并去重系统能力缺口，无缺口时输出 `none`。详细格式由 当前场景所需完整约束 唯一维护。
+仅 `baseline-ready / Design-to-Code` 强制输出；集中列出并去重系统能力缺口，无缺口时输出 `none`。详细格式由 当前场景所需完整约束 唯一维护。普通 review-only 发现能力缺口时作为 Finding/未验证边界报告，不机械生成完整基线清单。
 
 ## Component & Logic Reuse
 
@@ -823,7 +868,7 @@ Variables / Reactions / Flow / Overlay / Scroll / Hidden State。
 
 ## Readiness
 
-`READY / READY_WITH_NOTES / NOT_READY`。
+只在 `baseline-ready / Design-to-Code` 时输出 `READY / READY_WITH_NOTES / NOT_READY`。普通 `review-only` 输出 Findings、证据范围和未验证项，不为了形式追加 Ready 结论。
 
 ## Figma Sync & Human Review
 
@@ -858,8 +903,9 @@ Variables / Reactions / Flow / Overlay / Scroll / Hidden State。
 19. 让客户端绕过正式架构直接访问数据库；
 20. 把 MCP 参考代码直接当目标项目实现；
 21. 因为演示好看伪造系统执行成功；
-22. 未执行必要验证就宣称“可以交给实现方”；
+22. 未执行 baseline-ready 必要验证就宣称“可以交给实现方”；
 23. 已有公共组件时 Detach、复制或重画制造第二 Owner；
 24. 代码实现完成后跳过 Implementation ↔ Figma Conformance，让设计与生产实现长期漂移；
 25. 把未批准的实现 Bug、临时 workaround 或偶然像素偏移自动回写成 Figma 长期事实；
-26. 实际修改过 Figma 后只说“已同步”，却不输出 `Figma Sync & Human Review` 供人工复核。
+26. 实际修改过 Figma 后只说“已同步”，却不输出 `Figma Sync & Human Review` 供人工复核；
+27. 因为宿主具备 Figma 能力或任务使用“审查”一词，就机械叠加本 Skill、Code Review 或完整 baseline-ready 门禁。
