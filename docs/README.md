@@ -1,16 +1,13 @@
 # AIMA_UGC 文档总入口
 
-本页是仓库当前文档体系的总导航。它的目标不是再复制一份系统说明，而是回答两个问题：
-
-1. **某类事实应该去哪里找？**
-2. **哪些文档描述现在，哪些描述未来，哪些只属于历史？**
+本页是仓库当前文档体系的总导航。它不复制第二套系统说明，而是回答：某类事实去哪里找，以及哪些文档描述现在、未来或历史。
 
 ## 1. 当前状态
 
 - 公司内网 V1：**已完成**；
-- 当前产品页面和业务闭环：以代码、前端路由和 Product 文档描述；
+- 当前产品页面和业务闭环：以代码、前端路由和 Product 文档为准；
 - 完整 Production Go-Live：**No-Go，仍有明确未完成门禁**；
-- 4000 万历史数据：软件能力已完成，**真实公司服务器容量门禁、生产写授权、正式执行和全量对账仍未完成**。
+- 4000 万历史数据：软件能力已完成，**公司服务器容量门禁、生产写授权、正式执行和全量对账仍未完成**。
 
 已完成阶段不继续留在 `docs/roadmap/`。历史施工过程、当时的 PR/CI/SHA 和完成证据统一由 [`changes/archive/`](../changes/archive/) 与 Git 历史承载。
 
@@ -46,16 +43,33 @@
 | Release 事实 | [`.github/workflows/release.yml`](../.github/workflows/release.yml) + Compose/Dockerfile | [`docs/operations/01_生产部署与离线Release方案.md`](operations/01_生产部署与离线Release方案.md) |
 | 当前未完成计划 | 已批准需求 + 当前代码状态 | [`docs/roadmap/`](roadmap/) |
 
-当文档与机器事实冲突时，先修正判断，再更新承担该事实的 Owner；不要为了让两份文字一致而复制第三份。
+当文档与机器事实冲突时，先判断哪个 Owner 落后，再更新承担该事实的 Owner；不要为了让两份文字一致而复制第三份。
 
-## 4. 当前只保留两条 Active Roadmap
+## 4. 当前永久 Workflow
+
+以下小型集合由文档事实门禁与 [`.github/workflows/`](../.github/workflows/) 做 **exact-set** 校验。新增、删除或重命名永久 Workflow 时必须同步此块；旧 Workflow 名残留同样会失败。
+
+<!-- docs-facts:permanent-workflows:start -->
+```text
+change-archive.yml
+ci.yml
+fullstack.yml
+release.yml
+runtime.yml
+tooling.yml
+```
+<!-- docs-facts:permanent-workflows:end -->
+
+Workflow 的职责、验证层和调试方法见 [`docs/04_测试与调试说明.md`](04_测试与调试说明.md)。本块只维护文件集合，不复制 Workflow 实现。
+
+## 5. 当前只保留两条 Active Roadmap
 
 1. [`docs/roadmap/02_生产上线实施路线.md`](roadmap/02_生产上线实施路线.md)：完整 Production Hardening / Go-Live；
 2. [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)：公司服务器容量门禁、生产授权、正式执行和全量对账。
 
 Monitoring/Alert/VOC/Ticket、Web Report Center、Dashboard、Gold Set、双人审批等候选方向只有在被业务明确批准后才进入 Roadmap。此前 Stage 文档提到它们，不等于它们现在是施工计划。
 
-## 5. 文档生命周期
+## 6. 文档生命周期
 
 ### Current
 
@@ -71,10 +85,18 @@ Monitoring/Alert/VOC/Ticket、Web Report Center、Dashboard、Gold Set、双人�
 - 有可观察退出条件；
 - 依赖和授权边界清楚。
 
+每篇 live Roadmap 必须在文档前 20 行声明：
+
+```text
+- 状态：Active
+```
+
+完成后先迁移仍有效知识，再从 `docs/roadmap/` 退出。
+
 ### History
 
-完成后从 live Roadmap 退出。若仍有长期技术语义，先迁移到 Blueprint / Operations / Appendix / Module README；施工证据留在 Change Archive 和 Git。
+施工证据、完成阶段、当时的 PR/CI/SHA 和被替代方案由 `changes/archive/` 与 Git 历史承载，不新增第二套 `docs/archive` / `docs/history`。
 
-## 6. 修改文档时
+## 7. 修改文档时
 
 先读 [`docs/AGENTS.md`](AGENTS.md)。不要机械扫描/改写所有 Markdown；先确定受影响文档域和事实 Owner。涉及移动或删除时必须先完成知识迁移和链接迁移，再删除旧文件。
