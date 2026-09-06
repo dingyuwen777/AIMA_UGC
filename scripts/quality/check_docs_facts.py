@@ -239,9 +239,9 @@ def _current_job_types() -> set[str]:
 
 
 def _permanent_workflows() -> set[str]:
-    """返回当前永久 GitHub Actions Workflow 文件名集合。"""
+    """返回当前永久 GitHub Actions Workflow 的仓库相对路径集合。"""
     return {
-        path.name
+        path.relative_to(ROOT).as_posix()
         for path in (ROOT / ".github/workflows").glob("*.yml")
         if not path.name.startswith("tmp-")
     }

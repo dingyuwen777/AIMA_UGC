@@ -47,15 +47,15 @@
 
 ## 4. 当前永久 Workflow
 
-以下小型集合由文档事实门禁与 [`.github/workflows/`](../.github/workflows/) 做 **exact-set** 校验。新增、删除或重命名永久 Workflow 时必须同步此块；旧 Workflow 名残留同样会失败。
+以下小型集合由文档事实门禁与 [`.github/workflows/`](../.github/workflows/) 做 **exact-set** 校验。新增、删除或重命名永久 Workflow 时必须同步此块；旧 Workflow 路径残留同样会失败。
 
 <!-- docs-facts:permanent-workflows:start -->
-- [`change-archive.yml`](../.github/workflows/change-archive.yml)
-- [`ci.yml`](../.github/workflows/ci.yml)
-- [`fullstack.yml`](../.github/workflows/fullstack.yml)
-- [`release.yml`](../.github/workflows/release.yml)
-- [`runtime.yml`](../.github/workflows/runtime.yml)
-- [`tooling.yml`](../.github/workflows/tooling.yml)
+- [`.github/workflows/change-archive.yml`](../.github/workflows/change-archive.yml)
+- [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+- [`.github/workflows/fullstack.yml`](../.github/workflows/fullstack.yml)
+- [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+- [`.github/workflows/runtime.yml`](../.github/workflows/runtime.yml)
+- [`.github/workflows/tooling.yml`](../.github/workflows/tooling.yml)
 <!-- docs-facts:permanent-workflows:end -->
 
 Workflow 的职责、验证层和调试方法见 [`docs/04_测试与调试说明.md`](04_测试与调试说明.md)。本块只维护文件集合，不复制 Workflow 实现。
