@@ -15,12 +15,16 @@ def test_change_archive_only_auto_triggers_for_persistent_change_carrier() -> No
     assert "git push origin HEAD:main" in workflow
 
 
-def test_runtime_required_context_is_draft_fail_closed_then_ready_scoped() -> None:
-    """Draft 不预付 Compose；Ready/main 继续按 changed-scope 取得 Runtime 证据。"""
+def test_runtime_draft_skips_job_then_ready_uses_changed_scope() -> None:
+    """Draft 在分配 Compose Runner 前跳过；Ready/main 继续按 changed-scope 取得 Runtime 证据。"""
     workflow = RUNTIME.read_text(encoding="utf-8")
     assert "name: Compose Golden Path" in workflow
     assert "- ready_for_review" in workflow
-    assert "Defer Runtime Acceptance while PR is Draft" in workflow
+    assert (
+        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
+        in workflow
+    )
+    assert "Defer Runtime Acceptance while PR is Draft" not in workflow
     assert "Fast-path unchanged Runtime" in workflow
     assert "Detect Runtime risk changes" in workflow
     assert "Canonical Compose startup, security, persistence, and recovery" in workflow
