@@ -176,7 +176,7 @@ PostgreSQL / 内部 Secret
 
 API、Worker、Scheduler、Migration、Health、网络、端口、外部 Secret 和业务配置仍来自 canonical Compose。
 
-因此 Windows mixed storage 是**开发机存储适配**，不是 Production Host Root、Backup/Restore 或服务器 Release 模型。Production Bundle 不携带 `compose.windows.yaml`。
+因此 Windows mixed storage 是**开发机存储适配**，不是 Production Host Root、Backup/Restore 或服务器 Release 模型。Production Bundle 不携带 [`compose.windows.yaml`](../../compose.windows.yaml)。
 
 ---
 
