@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260906-183500-ci-test-impact-optimization
 title: 收敛 CI/Test Impact 与 Actions 重复执行
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: ci/370-test-impact-optimization
 created: 2026-09-06
