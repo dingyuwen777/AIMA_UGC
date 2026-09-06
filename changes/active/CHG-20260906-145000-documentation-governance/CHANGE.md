@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260906-145000-documentation-governance
 title: 收敛当前文档体系并强化事实漂移门禁
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: docs/368-documentation-governance
 created: 2026-09-06
@@ -25,7 +25,7 @@ data_changes: []
 
 # 背景与当前事实
 
-Issue #368 已确认当前 live docs 同时混入当前事实、已完成 Stage、运行手册和候选未来能力，并存在后端模块、前端路由、Release 状态等过时声明。当前 `check_docs_facts.py` 主要做包含检查，能发现“新事实没有写进去”，但不能稳定发现“旧事实仍然留在当前文档里”。
+Issue #368 确认当前 live docs 同时混入当前事实、已完成 Stage、运行手册和候选未来能力，并存在后端模块、前端路由、Release/认证状态等过时声明。原 `check_docs_facts.py` 主要做包含检查，能发现“新事实没有写进去”，但不能稳定发现“旧事实仍然留在当前文档里”。
 
 本 Change 只治理文档、文档质量门禁和对应最小测试；不修改业务代码、HTTP Contract、数据库 Schema/Migration、依赖或生产环境。
 
@@ -65,61 +65,85 @@ Issue #368 已确认当前 live docs 同时混入当前事实、已完成 Stage�
 - 不新增 `docs/archive` / `docs/history` 等第二套历史事实源；
 - 不通过删除/放宽质量门禁获得绿色。
 
-# 方案
+# 方案比较
 
-采用“职责收敛 + exact machine-fact block”方案：
+- 方案 A（采用）：建立中央 Source of Truth 导航、Product/Operations 职责层，并只对小型高漂移集合做 exact-set；解释性架构继续人工维护。这样既能抓“少写/多写旧事实”，又不把整份架构文档生成化。
+- 方案 B（不采用）：只修现有过时段落，不调整职责。短期 diff 小，但 Stage/Runbook/Roadmap 继续混杂，后续仍会重复漂移。
+- 方案 C（不采用）：把全部当前文档自动生成。会丢失设计原因、运维解释和业务语义，并把机器输出误当技术文档。
 
-- `docs/README.md` 作为总导航和 Source of Truth 矩阵；
-- `docs/product/` 只讲产品边界、当前能力、用户流程、角色和产品状态；
-- `docs/operations/` 承载部署/Release 与 4000 万运行手册；
-- `docs/roadmap/` 只保留 Production Hardening 与 4000 万生产执行两条 Active 路线；
-- 完成态 Stage 文档从 live docs 删除，不复制到新的 archive；
-- Blueprint 的后端模块/前端路由使用标记块与代码事实做 exact set 校验；
-- Roadmap 文件必须声明 Active、目标、退出条件和依赖。
+# 当前文档结构
+
+```text
+docs/README.md
+→ 总导航 / Source of Truth / 文档生命周期
+
+docs/product/
+→ 产品边界、当前能力、用户流程、角色与产品状态
+
+docs/blueprint/
+→ 长期架构和跨模块决定
+
+docs/operations/
+→ 生产部署/Release 与 4000 万运行手册
+
+docs/roadmap/
+→ 只保留 Production Hardening 与 4000 万生产执行
+
+docs/appendix/ / docs/collection/ / docs/guides/
+→ 深入专题、平台实现和开发操作
+
+changes/archive/ + Git
+→ 已完成 Stage 和历史施工证据
+```
 
 # Requirement Traceability
 
-| Requirement | Source | Implementation | Validation | Status |
+| ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 当前模块/路由/状态与机器事实一致 | #368 | README、Blueprint、代码导航 | docs facts + docs navigation | in_progress |
-| R2 建立总导航、Product、Operations | #368 | `docs/README.md`、`docs/product/`、`docs/operations/` | docs checker | in_progress |
-| R3 已完成 Stage 退出 live docs 且知识不丢 | #368 | Roadmap/Appendix/Guide 重组 | links + review | in_progress |
-| R4 Roadmap 只保留已批准未完成事项 | #368 | Roadmap README/02/03 | roadmap lifecycle gate | in_progress |
-| R5 exact fact block 能抓缺失与过时值 | #368 | `check_docs_facts.py` | `tests/unit/test_docs_facts.py` | in_progress |
-| R6 当前 Release/4000万边界准确 | #368 | Operations + Roadmap | docs facts + review | in_progress |
+| R1 | 当前模块、前端路由和系统状态与机器事实一致 | https://github.com/dingyuwen777/AIMA_UGC/issues/368 | satisfied | `docs/blueprint/01_总体架构与技术选型.md` 的 backend-modules/frontend-routes exact block 来自当前模块目录和 `frontend/src/app/routes.ts`；Blueprint 07 与代码导航同步 |
+| R2 | 建立总导航、Product 和 Operations 文档层 | https://github.com/dingyuwen777/AIMA_UGC/issues/368 | satisfied | `docs/README.md`、`docs/product/01_产品概述与边界.md`、`02_当前产品能力与用户流程.md`、`03_角色权限与产品状态.md`、`docs/operations/README.md` 与两篇运行手册均已在当前分支建立 |
+| R3 | 已完成 Stage 退出 live docs 且有效知识有新承载 | https://github.com/dingyuwen777/AIMA_UGC/issues/368 | satisfied | 内网 V1/Stage8F/业务配置建设路线/旧持续提示词已删除；Release 与 4000 万运行知识迁入 Operations；测试分层原则保留在 `docs/04_测试与调试说明.md`；历史仍由 `changes/archive/` 与 Git 追溯 |
+| R4 | Roadmap 只保留已批准且尚未完成事项 | https://github.com/dingyuwen777/AIMA_UGC/issues/368 | satisfied | `docs/roadmap/` 当前只保留 README、02 Production Hardening、03 4000 万生产执行；两篇 live Roadmap 均声明 `- 状态：Active` 并有退出条件/依赖 |
+| R5 | 文档事实门禁能发现小型关键集合的缺失、旧值和生命周期回归 | https://github.com/dingyuwen777/AIMA_UGC/issues/368 | satisfied | `check_docs_facts.py` 新增 backend modules / frontend routes / permanent workflows exact-set、duplicate、retired-path 与 Roadmap Active 检查；`tests/unit/test_docs_facts.py` 增加对应隔离夹具回归 |
+| R6 | Release、认证和 4000 万当前边界表述准确 | https://github.com/dingyuwen777/AIMA_UGC/issues/368 | satisfied | Operations 01 保留已实现离线 Release；Blueprint 05/Operations 02 明确已有 Principal/后端授权但企业 Authentication 未接入；Operations 02 同步 Analysis Run `selected/all` Contract；Roadmap 03 只保留容量/授权/生产执行/全量对账 |
 
 # Validation Matrix
 
-| Profile | Command / Evidence | Status |
+| Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| syntax | `python -m py_compile scripts/quality/check_docs_facts.py` | pending |
-| targeted | `uv run pytest tests/unit/test_docs_facts.py tests/unit/test_docs_navigation.py -q` | pending |
-| docs | `python scripts/quality/check_docs.py` | pending |
-| facts | `python scripts/quality/check_docs_facts.py` | pending |
-| governance | `python scripts/quality/check_agent_governance.py` | pending |
-| PR current HEAD CI | GitHub Actions on implementation PR | pending |
-| independent review | L3 independent review of PR diff/evidence | pending |
-| product runtime | 文档/质量门禁变更，不改变业务 Runtime | not_applicable |
-| persistence | 无 Schema/Migration/数据写入变更 | not_applicable |
-| provider live | 不修改 Provider 且不需要付费外部调用 | not_applicable |
+| 行为 / Unit / Component | required | `tests/unit/test_docs_facts.py` 覆盖 exact-set 缺失/旧值/重复、Roadmap lifecycle、退役路径；正式执行绑定 PR #369 当前 HEAD CI |
+| 接口 / Contract | not_applicable | 不修改 HTTP、Pydantic、OpenAPI、Schema 或其他公共机器 Contract；只读取它们校准文档 |
+| 集成 / Persistence / Runtime Dependency | not_applicable | 不修改 PostgreSQL、文件运行时或持久化行为 |
+| 用户 / Workflow Acceptance | not_applicable | 不修改产品 UI/业务工作流；Product 文档只描述当前机器事实 |
+| 跨组件 Golden Path | not_applicable | 无产品接线变化；Runtime Acceptance 已在首轮 PR HEAD 正确识别 Runtime unchanged 并 fast-path 通过 |
+| External Dependency / Provider Probe | not_applicable | 不改变 Provider/LLM 真实外部边界，不需要付费 Probe |
+| Build / Package / Runtime | required | Python checker 语法/静态质量与仓库 CI 负责；首轮 Runtime Acceptance run 34020812065 的 `Compose Golden Path` 已按 unchanged fast-path 成功 |
+| Docs / Governance / Other | required | `check_docs.py`、`check_docs_facts.py`、`check_agent_governance.py`、PR Requirement Source、Change Completion Gate 与 current-head CI；首轮 run 34020812190 已证明 Requirement Source/治理接线通过且仅因本 Change 尚为 in_progress 被预期阻塞 |
 
-# 任务
+# 实施状态
 
 - [x] 恢复 Agent_Skills canonical 与 AIMA 当前规则、主分支和机器事实。
 - [x] 建立 Issue #368 并完成重复项/Active Change 检查。
-- [ ] 重组文档职责并迁移有效知识。
-- [ ] 强化文档事实与 Roadmap 生命周期门禁。
-- [ ] 补最小回归测试。
-- [ ] 运行当前 HEAD 相关 CI 并修复回归。
-- [ ] 完成独立复核与 Completion Audit。
-- [ ] 合并 main，验证 main fresh、Change 归档，最后关闭 Issue。
+- [x] 重组文档职责并迁移有效知识。
+- [x] 校准后端模块、前端路由、Release、Principal/Authentication 与 Analysis Run 当前事实。
+- [x] 强化文档事实与 Roadmap 生命周期门禁。
+- [x] 补 exact-set / lifecycle 最小回归测试。
+- [x] 创建 PR #369；首轮治理门禁准确因 Change `in_progress` 阻止后续 CI，Requirement Source 与治理接线已通过。
+- [ ] 取得 ready_for_review 新 HEAD 的完整相关 CI 证据并修复实际回归。
+- [ ] 完成独立 Review；如发现问题，修复后重新 Review/CI。
+- [ ] 合并 main，验证 main fresh、Change 自动归档，最后关闭 Issue #368。
 
 # Completion Audit
 
-当前状态：施工中。Completion Gate 只有在实现、验证、独立 Review 和 PR current-head CI 都形成新鲜证据后才会切换到 `ready_for_review`。
+- [x] upstream_re_read：重新读取 Issue #368、当前 AIMA `AGENTS.md` / `docs/AGENTS.md`、canonical Docs/Coding/Review 规则，以及当前模块、Route、Release、Identity/Analysis Contract 等机器事实。
+- [x] change_coverage：R1–R6 已逐项映射到当前文档结构、事实块、迁移/删除路径、质量脚本和回归资产；没有把候选产品愿望重新塞入 Active Roadmap。
+- [x] reverse_audit：从当前模块/Route/Workflow/Release/Identity/Analysis Contract 反查对应文档 Owner；再从 Product/Blueprint/Operations/Roadmap 声明反查机器事实或批准的未完成目标。Stage 历史由 Change/Git 承载，不需要 live 文档继续复制。
+- [x] unresolved_cleared：本 Change 无 Contract/Schema/数据/依赖/Runtime 变化；Production Hardening 与 4000 万生产操作保持明确未完成，未把它们伪造为本次交付完成项。
+
+`ready_for_review` 表示当前施工范围和完成定义已闭环，可以进入正式 CI/独立 Review；不表示 CI、Review、merge 或 main fresh 已经通过。
 
 # 兼容、部署与回滚
 
-- 兼容：业务 API、Schema、数据和 Runtime 不变；文档路径变化会同步修复 live links。
+- 兼容：业务 API、Schema、数据、依赖和 Runtime 不变；文档路径变化由当前文档导航/链接门禁验证。
 - 部署：无需生产部署；合并后仅改变仓库文档与质量门禁。
-- 回滚：如治理结构或门禁误报影响维护，可 revert 本 PR；不得通过放宽现有业务门禁回滚。
+- 回滚：如治理结构或门禁存在错误，可 revert 实现 PR；不得通过放宽业务/安全门禁来制造绿色。
