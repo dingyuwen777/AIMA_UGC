@@ -8,6 +8,7 @@ SCRIPT = runpy.run_path(str(ROOT / "scripts" / "quality" / "classify_ci_scope.py
 CLASSIFY_REQUIREMENTS = SCRIPT["classify_requirements"]
 WRITE_GITHUB_OUTPUT = SCRIPT["_write_github_output"]
 FULLSTACK_ALL = SCRIPT["FULLSTACK_ALL"]
+POSTGRES_ALL = SCRIPT["POSTGRES_ALL"]
 
 
 def _requirements(*paths: str):  # type: ignore[no-untyped-def]
@@ -23,13 +24,34 @@ def test_docs_and_governance_only_do_not_request_product_layers() -> None:
     assert governance.profile == "governance_only"
     for requirements in (docs, governance):
         assert requirements.repository_required is False
+        assert requirements.repository_quality_required is False
         assert requirements.backend_required is False
         assert requirements.frontend_required is False
         assert requirements.contract_required is False
         assert requirements.postgres_required is False
         assert requirements.fullstack_required is False
         assert requirements.stack_smoke_required is False
+        assert requirements.report_font_required is False
+        assert requirements.postgres_suites == ()
         assert requirements.fullstack_specs == ()
+
+
+def test_repository_quality_change_does_not_promote_to_product_full() -> None:
+    requirements = _requirements(
+        "docs/README.md",
+        "scripts/quality/check_docs_facts.py",
+        "tests/unit/test_docs_facts.py",
+    )
+
+    assert requirements.profile == "repository_quality"
+    assert requirements.repository_required is True
+    assert requirements.repository_quality_required is True
+    assert requirements.backend_required is False
+    assert requirements.frontend_required is False
+    assert requirements.contract_required is False
+    assert requirements.postgres_required is False
+    assert requirements.fullstack_required is False
+    assert requirements.report_font_required is False
 
 
 def test_frontend_only_keeps_browser_quality_without_postgres_or_real_fullstack() -> None:
@@ -60,6 +82,14 @@ def test_backend_non_persistence_change_can_skip_postgres_and_real_fullstack() -
     assert requirements.fullstack_required is False
 
 
+def test_reporting_change_marks_font_evidence_required() -> None:
+    requirements = _requirements("backend/src/aima_ugc/modules/reporting/column_catalog.py")
+
+    assert requirements.profile == "backend_only"
+    assert requirements.backend_required is True
+    assert requirements.report_font_required is True
+
+
 def test_http_producer_change_requires_contract_drift_and_real_cross_component_proof() -> None:
     requirements = _requirements("backend/src/aima_ugc/entrypoints/api_main.py")
 
@@ -72,24 +102,56 @@ def test_http_producer_change_requires_contract_drift_and_real_cross_component_p
     assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
-def test_collection_persistence_change_runs_postgres_and_relevant_golden_path() -> None:
+def test_collection_persistence_change_runs_only_collection_postgres_and_relevant_golden_path() -> None:
     requirements = _requirements("backend/src/aima_ugc/modules/collection/tables.py")
 
     assert requirements.profile == "persistence"
     assert requirements.backend_required is True
     assert requirements.postgres_required is True
+    assert requirements.postgres_suites == ("collection",)
     assert requirements.fullstack_required is True
     assert requirements.fullstack_specs == ("collection-plan-search-config.spec.ts",)
 
 
-def test_integration_test_change_runs_postgres_without_promoting_itself_to_real_fullstack() -> None:
+def test_content_integration_test_change_runs_only_content_postgres_without_fullstack() -> None:
     requirements = _requirements("tests/integration/content/test_postgres_ingestion.py")
 
     assert requirements.profile == "persistence"
     assert requirements.backend_required is True
     assert requirements.postgres_required is True
+    assert requirements.postgres_suites == ("content",)
     assert requirements.fullstack_required is False
     assert requirements.fullstack_specs == ()
+
+
+def test_ingestion_persistence_runs_content_and_ingestion_postgres_suites() -> None:
+    requirements = _requirements("backend/src/aima_ugc/modules/ingestion/imports.py")
+
+    assert requirements.profile == "persistence"
+    assert requirements.postgres_required is True
+    assert requirements.postgres_suites == ("content", "ingestion")
+    assert requirements.fullstack_specs == (
+        "excel-import.spec.ts",
+        "stage12-historical-analysis.spec.ts",
+    )
+
+
+def test_unknown_persistence_adapter_fails_closed_to_all_postgres_suites() -> None:
+    requirements = _requirements("backend/src/aima_ugc/adapters/persistence/postgres/analysis.py")
+
+    assert requirements.postgres_required is True
+    assert requirements.postgres_suites == POSTGRES_ALL
+    assert requirements.fullstack_specs == (
+        "analysis-streaming.spec.ts",
+        "stage12-historical-analysis.spec.ts",
+    )
+
+
+def test_integration_shared_conftest_fails_closed_to_all_postgres_suites() -> None:
+    requirements = _requirements("tests/integration/conftest.py")
+
+    assert requirements.postgres_required is True
+    assert requirements.postgres_suites == POSTGRES_ALL
 
 
 def test_contract_change_runs_producer_consumer_and_all_real_golden_paths() -> None:
@@ -130,23 +192,14 @@ def test_analysis_streaming_spec_is_selected_independently() -> None:
     assert requirements.fullstack_specs == ("analysis-streaming.spec.ts",)
 
 
-def test_analysis_persistence_keeps_streaming_and_historical_golden_paths() -> None:
-    requirements = _requirements("backend/src/aima_ugc/adapters/persistence/postgres/analysis.py")
-
-    assert requirements.postgres_required is True
-    assert requirements.fullstack_specs == (
-        "analysis-streaming.spec.ts",
-        "stage12-historical-analysis.spec.ts",
-    )
-
-
-def test_administration_persistence_runs_admin_product_golden_path() -> None:
+def test_administration_persistence_runs_admin_product_golden_path_and_all_postgres() -> None:
     requirements = _requirements(
         "backend/src/aima_ugc/adapters/persistence/postgres/notifications.py"
     )
 
     assert requirements.backend_required is True
     assert requirements.postgres_required is True
+    assert requirements.postgres_suites == POSTGRES_ALL
     assert requirements.fullstack_required is True
     assert requirements.fullstack_specs == ("admin-product-capabilities.spec.ts",)
 
@@ -158,6 +211,7 @@ def test_analysis_scheme_persistence_runs_admin_and_frozen_run_golden_paths() ->
 
     assert requirements.backend_required is True
     assert requirements.postgres_required is True
+    assert requirements.postgres_suites == POSTGRES_ALL
     assert requirements.fullstack_required is True
     assert requirements.fullstack_specs == (
         "admin-product-capabilities.spec.ts",
@@ -170,6 +224,7 @@ def test_fullstack_control_plane_change_runs_entire_real_suite() -> None:
 
     assert requirements.profile == "full"
     assert requirements.postgres_required is True
+    assert requirements.postgres_suites == POSTGRES_ALL
     assert requirements.fullstack_required is True
     assert requirements.fullstack_specs == FULLSTACK_ALL
 
@@ -196,17 +251,25 @@ def test_mixed_frontend_and_backend_change_requires_cross_component_proof() -> N
 
 
 def test_ci_self_change_and_unknown_path_fail_closed_to_full() -> None:
-    for path in (".github/workflows/ci.yml", "tools/unclassified.machine"):
+    for path in (
+        ".github/workflows/ci.yml",
+        "scripts/quality/classify_ci_scope.py",
+        "tests/unit/test_actions_runner_optimization.py",
+        "tools/unclassified.machine",
+    ):
         requirements = _requirements(path)
 
         assert requirements.profile == "full"
         assert requirements.repository_required is True
+        assert requirements.repository_quality_required is True
         assert requirements.backend_required is True
         assert requirements.frontend_required is True
         assert requirements.contract_required is True
         assert requirements.postgres_required is True
+        assert requirements.postgres_suites == POSTGRES_ALL
         assert requirements.fullstack_required is True
         assert requirements.stack_smoke_required is True
+        assert requirements.report_font_required is True
         assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
@@ -223,7 +286,20 @@ def test_mixed_docs_and_frontend_use_the_product_scope_instead_of_falling_back_f
     assert requirements.fullstack_required is False
 
 
-def test_github_output_exposes_each_required_layer_and_selected_specs(tmp_path: Path) -> None:
+def test_repository_quality_can_mix_with_backend_without_promoting_to_full() -> None:
+    requirements = _requirements(
+        "scripts/quality/check_docs_facts.py",
+        "backend/src/aima_ugc/platform/time.py",
+    )
+
+    assert requirements.profile == "backend_only"
+    assert requirements.repository_quality_required is True
+    assert requirements.backend_required is True
+    assert requirements.frontend_required is False
+    assert requirements.postgres_required is False
+
+
+def test_github_output_exposes_each_required_layer_and_selected_suites(tmp_path: Path) -> None:
     output = tmp_path / "github-output"
     requirements = _requirements("backend/src/aima_ugc/modules/ingestion/imports.py")
 
@@ -234,11 +310,14 @@ def test_github_output_exposes_each_required_layer_and_selected_specs(tmp_path: 
     )
     assert values["profile"] == "persistence"
     assert values["repository_required"] == "true"
+    assert values["repository_quality_required"] == "false"
     assert values["backend_required"] == "true"
     assert values["frontend_required"] == "false"
     assert values["contract_required"] == "false"
     assert values["postgres_required"] == "true"
+    assert values["postgres_suites"] == "content ingestion"
     assert values["fullstack_required"] == "true"
     assert values["stack_smoke_required"] == "false"
+    assert values["report_font_required"] == "false"
     assert values["fullstack_specs"] == "excel-import.spec.ts stage12-historical-analysis.spec.ts"
     assert values["changed_count"] == "1"
