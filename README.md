@@ -1,69 +1,57 @@
 # AIMA_UGC
 
-AIMA_UGC 是面向企业内部 UGC 舆情工作的采集、统一入库、内容查询、AI 分析和数据导出系统。当前产品已经完成公司内网 V1 部署；仓库继续维护两类明确未完成事项：**完整 Production Hardening** 与 **4000 万历史数据的生产容量/授权/执行闭环**。
+AIMA_UGC 是爱玛 UGC 舆情采集、数据导入、AI 分析、查询、导出和离线报告的一体化应用仓库。
 
-## 当前产品入口
+## 使用者先看什么
 
-当前 Vue 路由以 [`frontend/src/app/routes.ts`](frontend/src/app/routes.ts) 为唯一机器事实。面向业务使用者的主要页面是：
+- 产品边界与当前能力：[`docs/product/`](docs/product/)
+- 当前页面入口：声音广场、采集运行中心、采集策略、管理员配置；精确路由以 [`frontend/src/app/routes.ts`](frontend/src/app/routes.ts) 为准。
+- 公司内网 V1：已完成；完整 Production Go-Live 仍有认证、备份恢复、供应链与生产验收等门禁。
 
-- **声音广场**：内容查询、筛选、详情、人工相关性复核、手动 AI Analysis Run、Excel 导出；
-- **采集运行中心**：采集运行、统一数据导入、运行状态与详情；
-- **采集策略**：词包、全局相关性、周期采集计划；
-- **管理员配置**：运行配置、业务目录和管理员专属配置入口；
-- **工作台**：当前仍是开发中占位页，不应被描述成已经完成的业务 Dashboard。
+## 开发者入口
 
-产品层说明见 [`docs/product/README.md`](docs/product/README.md)。
+1. 先读 [`AGENTS.md`](AGENTS.md)。
+2. 文档总导航和事实源：[`docs/README.md`](docs/README.md)。
+3. 改代码定位：[`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)。
+4. 长期架构与技术边界：[`docs/blueprint/README.md`](docs/blueprint/README.md)。
+5. 当前尚未完成的正式工作：[`docs/roadmap/README.md`](docs/roadmap/README.md)。
 
-## 系统主链
+精确机器事实不要从 README 复制：
+
+- HTTP：Pydantic / FastAPI / [`contracts/openapi/openapi.json`](contracts/openapi/openapi.json)
+- 数据库：SQLAlchemy Table / [`migrations/versions/`](migrations/versions/)
+- 前端路由：[`frontend/src/app/routes.ts`](frontend/src/app/routes.ts)
+- Worker Job：[`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py)
+- 依赖版本：根/前端 Manifest、lock 和 version 文件
+
+## 当前系统主链
 
 ```text
 TikHub / 文件导入
 → Raw / Source Artifact
-→ Reader / Operation / Mapper
+→ Operation / Reader / Mapper
 → Canonical
 → Relevance / Decision
 → Content Owner
 → PostgreSQL Current / Version / Metric / Coverage
-→ Query / Analysis / Export / 离线报告
-→ Vue
+→ Query / Analysis / Export / Report
+→ Vue 产品页面
 ```
 
-采集、数据导入、AI 分析和导出等长任务使用 PostgreSQL Durable Job Runtime，由 API / Worker / Scheduler / Migration 四个正式 Python 进程承担不同职责。架构说明见 [`docs/blueprint/01_总体架构与技术选型.md`](docs/blueprint/01_总体架构与技术选型.md)。
+系统采用模块化单体；API、Worker、Scheduler、Migration 分进程；耗时任务统一进入 PostgreSQL Durable Job Runtime。
 
-## 文档从哪里开始
+## 运行与运维
 
-- [`docs/README.md`](docs/README.md)：**总入口**。先判断你需要产品、开发、架构、运维、Roadmap 还是专题资料；
-- [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)：准备改代码时按业务问题找真实实现；
-- [`docs/03_API接口说明.md`](docs/03_API接口说明.md)：HTTP API 使用与实现导航；
-- [`docs/04_测试与调试说明.md`](docs/04_测试与调试说明.md)：测试分层、质量门禁和调试；
-- [`docs/blueprint/README.md`](docs/blueprint/README.md)：长期架构与技术决策；
-- [`docs/operations/README.md`](docs/operations/README.md)：部署、Release、生产运行和历史迁移操作；
-- [`docs/roadmap/README.md`](docs/roadmap/README.md)：**只看当前已批准且尚未完成的工作**。
+- 开发/本地运行：[`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md)
+- 生产部署与离线 Release：[`docs/operations/01_生产部署与离线Release方案.md`](docs/operations/01_生产部署与离线Release方案.md)
+- 4000 万历史迁移运行：[`docs/operations/02_4000万历史迁移与Analysis Run运行手册.md`](docs/operations/02_4000万历史迁移与Analysis%20Run运行手册.md)
+- 测试与调试：[`docs/04_测试与调试说明.md`](docs/04_测试与调试说明.md)
 
-历史 Stage、已完成 Change、当时的决策和验收证据不继续堆在当前文档树：统一回到 [`changes/archive/`](changes/archive/) 与 Git 历史。
+## 当前 Active Roadmap
 
-## 当前开发基线
+只保留两条已经批准且尚未完成的工作：
 
-后端是单仓模块化单体，前后端分离但共享同一仓库；精确依赖版本分别看 [`pyproject.toml`](pyproject.toml)、[`uv.lock`](uv.lock)、[`frontend/package.json`](frontend/package.json) 和 [`frontend/package-lock.json`](frontend/package-lock.json)。HTTP 类型链固定为：
+1. [`完整 Production Go-Live`](docs/roadmap/02_生产上线实施路线.md)
+2. [`4000 万历史数据生产迁移`](docs/roadmap/03_4000万历史数据迁移实施方案.md)
 
-```text
-Pydantic HTTP Contract
-→ FastAPI OpenAPI
-→ contracts/openapi/openapi.json
-→ Orval generated client
-→ Vue Feature
-```
-
-生成的前端 Client 禁止手改。数据库结构只通过 Alembic Migration 演进。
-
-源码开发与 Compose 运行命令见 [`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md)。
-
-## 部署状态
-
-当前已具备 Docker/Compose Internal V1 基线和 GitHub 离线 Release 基础，包括 `images.tar`、manifest、`SHA256SUMS`、`DEPLOY.md` 以及 `--no-build --pull never` 的离线回放链。完整 Production 仍不能宣称 Go-Live，剩余生产门禁见 [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)。
-
-4000 万历史导入的软件能力已经完成；尚未完成的是公司服务器容量门禁、生产写授权、正式 Campaign 和全量对账。执行边界见 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](docs/roadmap/03_4000万历史数据迁移实施方案.md)。
-
-## 修改项目时
-
-先遵守根目录 [`AGENTS.md`](AGENTS.md) 及目标目录更具体的规则。不要从历史聊天、旧 Stage 文档或截图推断当前机器事实；需要精确字段、路由、表、Job、版本或 Workflow 时，回到当前代码、Contract、Migration、生成物、测试和锁文件。
+已完成 Stage 的历史设计、PR/CI 和验收证据保留在 [`changes/archive/`](changes/archive/) 与 Git 历史，不继续占用当前 Roadmap。
