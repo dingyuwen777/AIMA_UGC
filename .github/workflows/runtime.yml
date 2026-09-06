@@ -23,15 +23,9 @@ concurrency:
 jobs:
   compose-golden-path:
     name: Compose Golden Path
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
-      - name: Defer Runtime Acceptance while PR is Draft
-        if: github.event_name == 'pull_request' && github.event.pull_request.draft
-        shell: bash
-        run: |
-          echo "Draft PR does not run the expensive Compose acceptance. Mark it Ready for review to obtain fresh Runtime evidence." >&2
-          exit 1
-
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:

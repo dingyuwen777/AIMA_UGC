@@ -49,17 +49,25 @@ def test_pr_body_edit_revalidates_metadata_without_overwriting_failed_full_evide
     assert "github.event.action != 'edited'" in text
 
 
-def test_draft_pr_is_fail_closed_before_expensive_product_setup() -> None:
-    """Draft 只验证追溯并明确失败；Ready event 会重新运行完整 profile。"""
+def test_draft_pr_skips_ci_jobs_before_expensive_product_setup() -> None:
+    """Draft 在分配 CI Runner 前跳过；Ready event 再运行完整 profile。"""
     text = CI.read_text(encoding="utf-8")
     assert "- ready_for_review" in text
-    assert "Defer full CI while PR is Draft" in text
-    assert "github.event.pull_request.draft" in text
-    assert "Mark it Ready for review" in text
-    assert text.index("Defer full CI while PR is Draft") < text.index("Setup Python")
-    assert text.index("Verify PR Requirement Source") < text.index(
-        "Defer full CI while PR is Draft"
+    assert (
+        "  quality-core:\n"
+        "    name: Requirement Traceability and Completion Audit\n"
+        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
+        in text
     )
+    assert (
+        "  ci-gate:\n"
+        "    name: CI Gate\n"
+        "    if: >-\n"
+        "      always() &&\n"
+        "      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)\n"
+        in text
+    )
+    assert "Defer full CI while PR is Draft" not in text
 
 
 def test_frontend_audit_runs_once_at_the_same_high_threshold() -> None:
@@ -79,14 +87,17 @@ def test_expensive_independent_evidence_keeps_its_owner() -> None:
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
-def test_runtime_required_check_is_fail_closed_in_draft_and_reenters_on_ready() -> None:
-    """Draft Runtime 不预付 Compose；required check 先失败，Ready 后同一 HEAD 重新取完整证据。"""
+def test_runtime_required_check_skips_draft_job_and_reenters_on_ready() -> None:
+    """Draft Runtime 在分配 Compose Runner 前跳过；Ready 后同一 HEAD 重新取完整证据。"""
     runtime = RUNTIME.read_text(encoding="utf-8")
     assert "- ready_for_review" in runtime
-    assert "Defer Runtime Acceptance while PR is Draft" in runtime
-    assert "github.event.pull_request.draft" in runtime
-    assert "Mark it Ready for review" in runtime
-    assert runtime.index("Defer Runtime Acceptance while PR is Draft") < runtime.index("Checkout")
+    assert (
+        "  compose-golden-path:\n"
+        "    name: Compose Golden Path\n"
+        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
+        in runtime
+    )
+    assert "Defer Runtime Acceptance while PR is Draft" not in runtime
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
@@ -128,8 +139,10 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     assert ci.count("runs-on: ubuntu-24.04") == 3
     assert runtime.count("runs-on: ubuntu-24.04") == 1
     assert "needs: quality-core" in ci
-    assert "Defer full CI while PR is Draft" in ci
-    assert "Defer Runtime Acceptance while PR is Draft" in runtime
+    assert "github.event.pull_request.draft == false" in ci
+    assert "github.event.pull_request.draft == false" in runtime
+    assert "Defer full CI while PR is Draft" not in ci
+    assert "Defer Runtime Acceptance while PR is Draft" not in runtime
 
 
 def test_frontend_typechecks_once_through_build() -> None:

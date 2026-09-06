@@ -213,8 +213,11 @@ def check_repository(root: Path = ROOT) -> list[str]:
         )
     else:
         gate_text = _read_text(completion_owner)
-        project_check_command = f"python {PROJECT_CHANGE_CHECK.as_posix()}"
-        if project_check_command not in gate_text:
+        project_check_commands = (
+            f"python {PROJECT_CHANGE_CHECK.as_posix()}",
+            f"python3 {PROJECT_CHANGE_CHECK.as_posix()}",
+        )
+        if not any(command in gate_text for command in project_check_commands):
             errors.append(f"GOV007 {COMPLETION_OWNER.as_posix()}: 必须执行 AIMA 顶层 Change 门禁")
         if f"python {READY_CHECK.as_posix()}" in gate_text:
             errors.append(

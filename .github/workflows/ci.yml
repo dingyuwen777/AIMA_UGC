@@ -27,16 +27,20 @@ concurrency:
 jobs:
   quality-core:
     name: Requirement Traceability and Completion Audit
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     outputs:
       profile: ${{ steps.classify.outputs.profile }}
       repository_required: ${{ steps.classify.outputs.repository_required }}
+      repository_quality_required: ${{ steps.classify.outputs.repository_quality_required }}
       backend_required: ${{ steps.classify.outputs.backend_required }}
       frontend_required: ${{ steps.classify.outputs.frontend_required }}
       contract_required: ${{ steps.classify.outputs.contract_required }}
       postgres_required: ${{ steps.classify.outputs.postgres_required }}
+      postgres_suites: ${{ steps.classify.outputs.postgres_suites }}
       fullstack_required: ${{ steps.classify.outputs.fullstack_required }}
       stack_smoke_required: ${{ steps.classify.outputs.stack_smoke_required }}
+      report_font_required: ${{ steps.classify.outputs.report_font_required }}
       fullstack_specs: ${{ steps.classify.outputs.fullstack_specs }}
       changed_count: ${{ steps.classify.outputs.changed_count }}
     steps:
@@ -54,13 +58,16 @@ jobs:
             {
               echo "profile=metadata_only"
               echo "repository_required=false"
+              echo "repository_quality_required=false"
               echo "backend_required=false"
               echo "frontend_required=false"
               echo "contract_required=false"
               echo "postgres_required=false"
+              echo "postgres_suites="
               echo "fullstack_required=false"
               echo "stack_smoke_required=false"
-              echo "fullstack_specs=[]"
+              echo "report_font_required=false"
+              echo "fullstack_specs="
               echo "changed_count=0"
             } >> "${GITHUB_OUTPUT}"
             echo "PR metadata edit detected; revalidate metadata against the already-green same-SHA baseline."
@@ -91,7 +98,7 @@ jobs:
             --root .
 
       - name: Verify metadata edit baseline evidence
-        if: github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.pull_request.draft == false
+        if: github.event_name == 'pull_request' && github.event.action == 'edited'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -134,32 +141,19 @@ jobs:
           print("Metadata edit baseline is green for the current SHA.")
           PY
 
-      - name: Defer full CI while PR is Draft
-        if: github.event_name == 'pull_request' && github.event.pull_request.draft
-        shell: bash
-        run: |
-          echo "Draft PR only validates Requirement Source. Mark it Ready for review to run the full risk-related CI profile." >&2
-          exit 1
-
-      - name: Setup Python
-        if: github.event_name != 'pull_request' || github.event.action != 'edited'
-        uses: actions/setup-python@v6.2.0
-        with:
-          python-version: 3.14.7
-
       - name: Verify AIMA project governance wiring
         if: github.event_name != 'pull_request' || github.event.action != 'edited'
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/quality/check_agent_governance.py
+          python3 scripts/quality/check_agent_governance.py
 
       - name: Enforce changed PR Change readiness
         if: github.event_name == 'pull_request' && github.event.action != 'edited'
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/quality/check_change_completion.py \
+          python3 scripts/quality/check_change_completion.py \
             --root . \
             --changed-since "${{ github.event.pull_request.base.sha }}"
 
@@ -168,7 +162,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/quality/check_change_completion.py \
+          python3 scripts/quality/check_change_completion.py \
             --root . \
             --require-active-ready
 
@@ -177,12 +171,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/quality/scan_secrets.py
-          python scripts/quality/check_docs.py
-          python scripts/quality/check_docs_facts.py
+          python3 scripts/quality/scan_secrets.py
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+
+      - name: Setup Python
+        if: >-
+          (github.event_name != 'pull_request' || github.event.action != 'edited') &&
+          (steps.classify.outputs.backend_required == 'true' || steps.classify.outputs.repository_quality_required == 'true')
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
 
       - name: Cache uv downloads
-        if: steps.classify.outputs.backend_required == 'true'
+        if: steps.classify.outputs.backend_required == 'true' || steps.classify.outputs.repository_quality_required == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
@@ -197,7 +199,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install report validation CJK font
-        if: steps.classify.outputs.backend_required == 'true'
+        if: steps.classify.outputs.report_font_required == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
@@ -206,11 +208,11 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.action != 'edited'
         shell: bash
         env:
-          BACKEND_REQUIRED: ${{ steps.classify.outputs.backend_required }}
+          PYTHON_REQUIRED: ${{ steps.classify.outputs.backend_required == 'true' || steps.classify.outputs.repository_quality_required == 'true' }}
           FRONTEND_REQUIRED: ${{ steps.classify.outputs.frontend_required }}
         run: |
           set -euo pipefail
-          if [[ "${BACKEND_REQUIRED}" == "true" ]]; then
+          if [[ "${PYTHON_REQUIRED}" == "true" ]]; then
             test "$(python --version)" = "Python 3.14.7"
           fi
           if [[ "${FRONTEND_REQUIRED}" == "true" ]]; then
@@ -219,7 +221,7 @@ jobs:
           fi
 
       - name: Install frozen Python environment
-        if: steps.classify.outputs.backend_required == 'true'
+        if: steps.classify.outputs.backend_required == 'true' || steps.classify.outputs.repository_quality_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -229,6 +231,24 @@ jobs:
           uv lock --check
           uv sync --locked
           uv run python -c "import aima_ugc"
+
+      - name: Repository quality static and targeted regression
+        if: steps.classify.outputs.repository_quality_required == 'true' && steps.classify.outputs.backend_required != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check scripts/quality tests/unit/test_agent_governance.py tests/unit/test_change_archive_same_day.py tests/unit/test_change_archive_timezone.py tests/unit/test_change_completion.py tests/unit/test_docs_facts.py tests/unit/test_docs_navigation.py tests/unit/test_issue_acceptance_profile.py tests/unit/test_pr_requirement_source.py
+          uv run ruff check scripts/quality tests/unit/test_agent_governance.py tests/unit/test_change_archive_same_day.py tests/unit/test_change_archive_timezone.py tests/unit/test_change_completion.py tests/unit/test_docs_facts.py tests/unit/test_docs_navigation.py tests/unit/test_issue_acceptance_profile.py tests/unit/test_pr_requirement_source.py
+          uv run pytest \
+            tests/unit/test_agent_governance.py \
+            tests/unit/test_change_archive_same_day.py \
+            tests/unit/test_change_archive_timezone.py \
+            tests/unit/test_change_completion.py \
+            tests/unit/test_docs_facts.py \
+            tests/unit/test_docs_navigation.py \
+            tests/unit/test_issue_acceptance_profile.py \
+            tests/unit/test_pr_requirement_source.py \
+            -q
 
       - name: Install locked frontend environment
         if: steps.classify.outputs.frontend_required == 'true'
@@ -355,6 +375,7 @@ jobs:
       AIMA_DB_NAME: aima_ugc
       AIMA_DB_USER: aima_ugc
       AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -367,10 +388,6 @@ jobs:
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ hashFiles('.uv-version', 'uv.lock') }}
-      - name: Install report validation CJK font
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: Install frozen Python environment
         shell: bash
         run: |
@@ -393,49 +410,49 @@ jobs:
           uv run alembic upgrade head
           uv run alembic current
           uv run alembic check
-      - name: Historical Migration compatibility
+      - name: Selected PostgreSQL integration evidence
         shell: bash
         run: |
           set -euo pipefail
-          uv run python tests/integration/database/verify_migration_compatibility.py
-      - name: Platform PostgreSQL integration
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run pytest tests/integration/platform -q
-      - name: Real readiness HTTP smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          API_STDOUT="${RUNNER_TEMP}/aima-postgres-integration-api.stdout"
-          cleanup() { if [[ -n "${API_PID:-}" ]]; then kill "${API_PID}" 2>/dev/null || true; fi; }
-          trap cleanup EXIT
-          uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8091 >"${API_STDOUT}" 2>&1 &
-          API_PID=$!
-          for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8091/health/ready > "${RUNNER_TEMP}/aima-ready.json"; then break; fi
-            if ! kill -0 "${API_PID}" 2>/dev/null; then cat "${API_STDOUT}"; exit 1; fi
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:8091/health/ready > "${RUNNER_TEMP}/aima-ready.json"
-          uv run python - "${RUNNER_TEMP}/aima-ready.json" <<'PY'
+          selected() {
+            local suite="$1"
+            [[ " ${POSTGRES_SUITES} " == *" all "* || " ${POSTGRES_SUITES} " == *" ${suite} "* ]]
+          }
+
+          if selected migration; then
+            uv run python tests/integration/database/verify_migration_compatibility.py
+          fi
+          if selected platform; then
+            uv run pytest tests/integration/platform -q
+          fi
+          if selected readiness; then
+            API_STDOUT="${RUNNER_TEMP}/aima-postgres-integration-api.stdout"
+            cleanup() { if [[ -n "${API_PID:-}" ]]; then kill "${API_PID}" 2>/dev/null || true; fi; }
+            trap cleanup EXIT
+            uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8091 >"${API_STDOUT}" 2>&1 &
+            API_PID=$!
+            for _ in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8091/health/ready > "${RUNNER_TEMP}/aima-ready.json"; then break; fi
+              if ! kill -0 "${API_PID}" 2>/dev/null; then cat "${API_STDOUT}"; exit 1; fi
+              sleep 1
+            done
+            curl -fsS http://127.0.0.1:8091/health/ready > "${RUNNER_TEMP}/aima-ready.json"
+            uv run python - "${RUNNER_TEMP}/aima-ready.json" <<'PY'
           import json, sys
           from pathlib import Path
           payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           assert payload == {"status": "ok", "checks": {"database": "ok", "artifact_store": "ok", "log_directory": "ok"}}
           PY
-          test -f "${AIMA_LOG_DIR}/api.log"
-          if grep -Fq 'ci-postgres' "${AIMA_LOG_DIR}/api.log"; then echo "Database test password leaked into api.log"; exit 1; fi
-      - name: Database PostgreSQL integration
-        run: uv run pytest tests/integration/database -q
-      - name: Job Runtime PostgreSQL integration
-        run: uv run pytest tests/integration/jobs -q
-      - name: Collection PostgreSQL integration
-        run: uv run pytest tests/integration/collection -q
-      - name: Content PostgreSQL integration
-        run: uv run pytest tests/integration/content -q
-      - name: Ingestion PostgreSQL integration
-        run: uv run pytest tests/integration/ingestion -q
+            test -f "${AIMA_LOG_DIR}/api.log"
+            if grep -Fq 'ci-postgres' "${AIMA_LOG_DIR}/api.log"; then echo "Database test password leaked into api.log"; exit 1; fi
+            cleanup
+            trap - EXIT
+          fi
+          if selected database; then uv run pytest tests/integration/database -q; fi
+          if selected jobs; then uv run pytest tests/integration/jobs -q; fi
+          if selected collection; then uv run pytest tests/integration/collection -q; fi
+          if selected content; then uv run pytest tests/integration/content -q; fi
+          if selected ingestion; then uv run pytest tests/integration/ingestion -q; fi
 
   real-fullstack:
     name: Real Full-stack Golden Path
@@ -447,7 +464,9 @@ jobs:
 
   ci-gate:
     name: CI Gate
-    if: always()
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     needs:
       - quality-core
       - postgres-integration
