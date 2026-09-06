@@ -148,7 +148,11 @@ jobs:
           set -euo pipefail
           git config user.name "AIMA Change Archivist"
           git config user.email "aima-change-archivist@users.noreply.github.com"
-          git commit -m "归档 Change：${{ steps.archive.outputs.change_id }}"
+
+          # 只有上一步已证明 staged diff 恰好是同一 Change 的 active→archive 两路径时，
+          # repository-native Archivist 才允许跳过随后由该机械归档 commit 触发的 push CI。
+          # Implementation revision 的产品/Runtime 证据仍由原 merge revision 持有。
+          git commit -m "归档 Change：${{ steps.archive.outputs.change_id }} [skip ci]"
 
           ARCHIVE_PARENT="$(git rev-parse HEAD^)"
           git fetch origin main

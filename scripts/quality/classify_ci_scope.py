@@ -17,6 +17,17 @@ ALL_FULLSTACK_SPECS = (
     "stage12-historical-analysis.spec.ts",
 )
 FULLSTACK_ALL = ("all",)
+ALL_POSTGRES_SUITES = (
+    "migration",
+    "platform",
+    "readiness",
+    "database",
+    "jobs",
+    "collection",
+    "content",
+    "ingestion",
+)
+POSTGRES_ALL = ("all",)
 
 DOCS_ONLY_EXACT = {"README.md"}
 GOVERNANCE_ONLY_EXACT = {"AGENTS.md"}
@@ -29,6 +40,18 @@ CI_SELF_EXACT = {
     ".github/workflows/fullstack.yml",
     "scripts/quality/classify_ci_scope.py",
     "tests/unit/test_ci_scope.py",
+    "tests/unit/test_ci_test_impact_optimization.py",
+    "tests/unit/test_ci_workflow_structure.py",
+    "tests/unit/test_actions_runner_optimization.py",
+}
+REPOSITORY_QUALITY_EXACT = {
+    "scripts/quality/archive_change_after_merge.py",
+    "scripts/quality/check_agent_governance.py",
+    "scripts/quality/check_change_completion.py",
+    "scripts/quality/check_docs.py",
+    "scripts/quality/check_docs_facts.py",
+    "scripts/quality/check_pr_requirement_source.py",
+    "scripts/quality/scan_secrets.py",
 }
 FULL_EXACT = {
     "pyproject.toml",
@@ -59,20 +82,33 @@ PERSISTENCE_EXACT = {"backend/src/aima_ugc/database_schema.py"}
 FRONTEND_PREFIXES = ("frontend/",)
 BACKEND_PREFIXES = ("backend/", "tests/unit/", "tests/api/", "tests/contracts/")
 API_CONTRACT_EXACT = {"backend/src/aima_ugc/entrypoints/api_main.py"}
+REPOSITORY_QUALITY_TEST_MARKERS = (
+    "agent_governance",
+    "change_archive",
+    "change_completion",
+    "docs_facts",
+    "docs_navigation",
+    "issue_acceptance",
+    "pr_requirement",
+)
+MIGRATION_COMPATIBILITY_TEST = "tests/integration/database/verify_migration_compatibility.py"
 
 
 @dataclass(frozen=True)
 class CiRequirements:
-    """描述一次变更必须运行的 CI 层和 Real Full-stack Golden Path。"""
+    """描述一次变更必须运行的 CI 层和专项证据。"""
 
     profile: str
     repository_required: bool
+    repository_quality_required: bool
     backend_required: bool
     frontend_required: bool
     contract_required: bool
     postgres_required: bool
     fullstack_required: bool
     stack_smoke_required: bool
+    report_font_required: bool
+    postgres_suites: tuple[str, ...]
     fullstack_specs: tuple[str, ...]
 
 
@@ -105,6 +141,16 @@ def _is_ci_self_path(path: str) -> bool:
     return path in CI_SELF_EXACT or path.startswith(".github/workflows/")
 
 
+def _is_repository_quality_path(path: str) -> bool:
+    """只对白名单中的仓库治理/文档质量检查器及其专属测试启用轻量质量证据。"""
+    if path in REPOSITORY_QUALITY_EXACT:
+        return True
+    if not path.startswith("tests/unit/test_"):
+        return False
+    filename = Path(path).name
+    return any(marker in filename for marker in REPOSITORY_QUALITY_TEST_MARKERS)
+
+
 def _is_contract_path(path: str) -> bool:
     """识别公共机器 Contract 及直接 HTTP 生产者，确保生成物漂移检查不会被跳过。"""
     if path in API_CONTRACT_EXACT or path.startswith(CONTRACT_PREFIXES):
@@ -121,6 +167,47 @@ def _is_persistence_path(path: str) -> bool:
     if not path.startswith("backend/src/aima_ugc/"):
         return False
     return path.endswith("/tables.py") or "/tables/" in path
+
+
+def _is_report_font_path(path: str) -> bool:
+    """判断本次 Python 证据是否真实覆盖 Word/DOCX/Reporting 渲染能力。"""
+    lowered = path.lower()
+    return (
+        "/reporting/" in lowered
+        or lowered.startswith("tests/unit/reporting/")
+        or "word" in Path(lowered).name
+        or "docx" in Path(lowered).name
+    )
+
+
+def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
+    """把明确 persistence 叶子变化映射到最小充分 PostgreSQL suite；未知边界返回 all。"""
+    if path in PERSISTENCE_EXACT:
+        return POSTGRES_ALL
+    if path == MIGRATION_COMPATIBILITY_TEST:
+        return ("migration",)
+
+    if path.startswith("tests/integration/"):
+        relative = path.removeprefix("tests/integration/")
+        suite = relative.split("/", 1)[0]
+        if suite in {"platform", "database", "jobs", "collection", "content", "ingestion"}:
+            return (suite,)
+        return POSTGRES_ALL
+
+    markers: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+        (("/modules/collection/", "/postgres/collection"), ("collection",)),
+        (("/modules/content/", "/postgres/content"), ("content",)),
+        (
+            ("/modules/ingestion/", "/postgres/ingestion", "/postgres/import"),
+            ("content", "ingestion"),
+        ),
+        (("/modules/system/", "/postgres/system"), ("platform", "readiness", "database")),
+        (("/jobs/", "/postgres/jobs"), ("jobs",)),
+    )
+    for path_markers, suites in markers:
+        if any(marker in path for marker in path_markers):
+            return suites
+    return POSTGRES_ALL
 
 
 def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
@@ -171,17 +258,27 @@ def _ordered_specs(specs: set[str]) -> tuple[str, ...]:
     return tuple(spec for spec in ALL_FULLSTACK_SPECS if spec in specs)
 
 
+def _ordered_postgres_suites(suites: set[str]) -> tuple[str, ...]:
+    """按 PostgreSQL Job 固定顺序输出 suite；`all` 表示不可安全收窄。"""
+    if "all" in suites:
+        return POSTGRES_ALL
+    return tuple(suite for suite in ALL_POSTGRES_SUITES if suite in suites)
+
+
 def _full_requirements() -> CiRequirements:
     """返回 fail-closed 的完整 CI 责任，用于未知路径、CI 自身和高风险基础设施变化。"""
     return CiRequirements(
         profile="full",
         repository_required=True,
+        repository_quality_required=True,
         backend_required=True,
         frontend_required=True,
         contract_required=True,
         postgres_required=True,
         fullstack_required=True,
         stack_smoke_required=True,
+        report_font_required=True,
+        postgres_suites=POSTGRES_ALL,
         fullstack_specs=FULLSTACK_ALL,
     )
 
@@ -204,25 +301,38 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         return CiRequirements(
             profile=profile,
             repository_required=False,
+            repository_quality_required=False,
             backend_required=False,
             frontend_required=False,
             contract_required=False,
             postgres_required=False,
             fullstack_required=False,
             stack_smoke_required=False,
+            report_font_required=False,
+            postgres_suites=(),
             fullstack_specs=(),
         )
 
+    repository_quality_required = False
     backend_required = False
     frontend_required = False
     contract_required = False
     postgres_required = False
+    report_font_required = False
+    postgres_suites: set[str] = set()
     fullstack_specs: set[str] = set()
     kinds: set[str] = set()
 
     for path in product_paths:
         if _is_ci_self_path(path) or path in FULL_EXACT or path.startswith(FULL_PREFIXES):
             return _full_requirements()
+
+        if _is_repository_quality_path(path):
+            repository_quality_required = True
+            kinds.add("repository_quality")
+            continue
+
+        report_font_required = report_font_required or _is_report_font_path(path)
 
         if path.startswith("frontend/e2e-fullstack/") and path.endswith(".spec.ts"):
             frontend_required = True
@@ -247,12 +357,14 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         if path.startswith("tests/integration/"):
             backend_required = True
             postgres_required = True
+            postgres_suites.update(_postgres_suites_for_path(path))
             kinds.add("persistence")
             continue
 
         if _is_persistence_path(path):
             backend_required = True
             postgres_required = True
+            postgres_suites.update(_postgres_suites_for_path(path))
             fullstack_specs.update(_fullstack_specs_for_path(path))
             kinds.add("persistence")
             continue
@@ -271,11 +383,13 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
 
     if "contract" in kinds:
         profile = "contract"
-    elif "persistence" in kinds and "frontend" not in kinds:
+    elif "persistence" in kinds and kinds <= {"persistence", "repository_quality"}:
         profile = "persistence"
-    elif kinds == {"frontend"}:
+    elif kinds == {"repository_quality"}:
+        profile = "repository_quality"
+    elif kinds <= {"frontend", "repository_quality"} and "frontend" in kinds:
         profile = "frontend_only"
-    elif kinds == {"backend"}:
+    elif kinds <= {"backend", "repository_quality"} and "backend" in kinds:
         profile = "backend_only"
     else:
         profile = "cross_component"
@@ -283,16 +397,22 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
     if frontend_required and backend_required and not contract_required:
         fullstack_specs.update(FULLSTACK_ALL)
 
+    selected_postgres_suites = _ordered_postgres_suites(postgres_suites)
+    if postgres_required and not selected_postgres_suites:
+        selected_postgres_suites = POSTGRES_ALL
     selected_specs = _ordered_specs(fullstack_specs)
     return CiRequirements(
         profile=profile,
         repository_required=True,
+        repository_quality_required=repository_quality_required,
         backend_required=backend_required,
         frontend_required=frontend_required,
         contract_required=contract_required,
         postgres_required=postgres_required,
         fullstack_required=bool(selected_specs),
         stack_smoke_required=False,
+        report_font_required=report_font_required,
+        postgres_suites=selected_postgres_suites,
         fullstack_specs=selected_specs,
     )
 
@@ -327,16 +447,19 @@ def _bool_output(value: bool) -> str:
 
 
 def _write_github_output(path: Path, requirements: CiRequirements, changed_count: int) -> None:
-    """把风险层和 selected Full-stack specs 写入 GitHub Actions 输出文件。"""
+    """把风险层、PostgreSQL suites 和 selected Full-stack specs 写入 Actions 输出。"""
     values = {
         "profile": requirements.profile,
         "repository_required": _bool_output(requirements.repository_required),
+        "repository_quality_required": _bool_output(requirements.repository_quality_required),
         "backend_required": _bool_output(requirements.backend_required),
         "frontend_required": _bool_output(requirements.frontend_required),
         "contract_required": _bool_output(requirements.contract_required),
         "postgres_required": _bool_output(requirements.postgres_required),
         "fullstack_required": _bool_output(requirements.fullstack_required),
         "stack_smoke_required": _bool_output(requirements.stack_smoke_required),
+        "report_font_required": _bool_output(requirements.report_font_required),
+        "postgres_suites": " ".join(requirements.postgres_suites),
         "fullstack_specs": " ".join(requirements.fullstack_specs),
         "changed_count": str(changed_count),
     }
@@ -364,6 +487,7 @@ def main() -> int:
         print(
             "CI profile="
             f"{requirements.profile}; changed_count={changed_count}; "
+            f"repository_quality={requirements.repository_quality_required}; "
             f"backend={requirements.backend_required}; frontend={requirements.frontend_required}; "
             f"contract={requirements.contract_required}; "
             f"postgres={requirements.postgres_required}; "
@@ -371,6 +495,8 @@ def main() -> int:
         )
         for changed_path in changed_paths:
             print(f"- {changed_path}")
+        if requirements.postgres_suites:
+            print("PostgreSQL suites: " + " ".join(requirements.postgres_suites))
         if requirements.fullstack_specs:
             print("Full-stack specs: " + " ".join(requirements.fullstack_specs))
 

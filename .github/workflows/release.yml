@@ -34,16 +34,13 @@ on:
       - env.production.example
       - tests/unit/test_docker_build_sources.py
       - tests/unit/test_release_workflow.py
-      - docs/02_环境运行与部署.md
-      - docs/roadmap/02_生产上线实施路线.md
-      - docs/appendix/11_生产部署与离线Release方案.md
 
 permissions:
   contents: read
 
 concurrency:
   group: aima-ugc-release-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   AIMA_BUILD_DEBIAN_MIRROR: http://deb.debian.org/debian
@@ -643,14 +640,10 @@ jobs:
           set -euo pipefail
           for package_name in "${BACKEND_PACKAGE}" "${FRONTEND_PACKAGE}"; do
             visibility="$(
-              gh api \
-                -H "Accept: application/vnd.github+json" \
-                "/users/${PACKAGE_OWNER}/packages/container/${package_name}" \
-                --jq '.visibility'
+              gh api "/users/${PACKAGE_OWNER}/packages/container/${package_name}" --jq '.visibility'
             )"
-            echo "GHCR ${PACKAGE_OWNER}/${package_name}: visibility=${visibility}"
             if [[ "${visibility}" != "private" ]]; then
-              echo "Safety gate: refuse to publish a non-private GHCR package: ${package_name} visibility=${visibility}" >&2
+              echo "Published GHCR package is no longer private: ${package_name} visibility=${visibility}" >&2
               exit 1
             fi
           done
