@@ -10,6 +10,13 @@ CLASSIFIER = runpy.run_path(str(ROOT / "scripts" / "quality" / "classify_ci_scop
 CLASSIFY_REQUIREMENTS = CLASSIFIER["classify_requirements"]
 
 
+def _workflow_triggers(workflow: dict[object, object]) -> dict[str, object]:
+    """兼容 PyYAML 1.1 把顶层 `on` 解析成布尔值 True 的行为。"""
+    triggers = workflow.get("on") or workflow.get(True)
+    assert isinstance(triggers, dict)
+    return triggers
+
+
 def test_repository_quality_isolated_from_product_stacks() -> None:
     requirements = CLASSIFY_REQUIREMENTS(
         (
@@ -25,6 +32,25 @@ def test_repository_quality_isolated_from_product_stacks() -> None:
     assert requirements.frontend_required is False
     assert requirements.postgres_required is False
     assert requirements.fullstack_required is False
+
+
+def test_repository_quality_test_family_stays_out_of_product_backend() -> None:
+    for path in (
+        "tests/unit/test_docs_navigation.py",
+        "tests/unit/test_issue_acceptance_profile.py",
+    ):
+        requirements = CLASSIFY_REQUIREMENTS((path,))
+        assert requirements.profile == "repository_quality"
+        assert requirements.repository_quality_required is True
+        assert requirements.backend_required is False
+
+
+def test_ci_impact_regression_is_itself_fail_closed_to_full() -> None:
+    requirements = CLASSIFY_REQUIREMENTS(("tests/unit/test_ci_test_impact_optimization.py",))
+
+    assert requirements.profile == "full"
+    assert requirements.postgres_suites == ("all",)
+    assert requirements.fullstack_specs == ("all",)
 
 
 def test_persistence_leaf_selects_only_owned_postgres_suite() -> None:
@@ -61,6 +87,10 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     postgres_text = yaml.safe_dump(postgres_job, allow_unicode=True)
     assert "fonts-noto-cjk" not in postgres_text
 
+    quality_steps = workflow["jobs"]["quality-core"]["steps"]
+    font_step = next(step for step in quality_steps if step.get("name") == "Install report validation CJK font")
+    assert font_step["if"] == "steps.classify.outputs.report_font_required == 'true'"
+
 
 def test_draft_prs_are_skipped_at_job_level_instead_of_failed_inside_ci() -> None:
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -71,6 +101,34 @@ def test_draft_prs_are_skipped_at_job_level_instead_of_failed_inside_ci() -> Non
     assert "draft == false" in str(quality_core["if"])
     assert "draft == false" in str(ci_gate["if"])
     assert "Defer full CI while PR is Draft" not in text
+
+
+def test_runtime_draft_pr_is_skipped_before_allocating_compose_work() -> None:
+    text = (ROOT / ".github" / "workflows" / "runtime.yml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load(text)
+
+    compose = workflow["jobs"]["compose-golden-path"]
+    assert "draft == false" in str(compose["if"])
+    assert "Defer Runtime Acceptance while PR is Draft" not in text
+
+
+def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
+    text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load(text)
+    triggers = _workflow_triggers(workflow)
+    pull_request = triggers["pull_request"]
+    assert isinstance(pull_request, dict)
+    paths = pull_request["paths"]
+
+    assert paths == [
+        ".github/workflows/release.yml",
+        "Dockerfile",
+        "compose.yaml",
+        "env.production.example",
+        "tests/unit/test_docker_build_sources.py",
+        "tests/unit/test_release_workflow.py",
+    ]
+    assert workflow["concurrency"]["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
 
 
 def test_change_archivist_skip_is_after_exact_archive_allowlist() -> None:
