@@ -95,14 +95,19 @@ def _looks_like_file_reference(value: str) -> bool:
     return "." in name or name in SPECIAL_FILENAMES
 
 
-def _add_if_repo_file(root: Path, candidate: Path, valid: set[Path]) -> None:
-    """只把解析后仍位于仓库内的真实文件加入候选集合。"""
+def _add_if_repo_file(
+    root: Path,
+    candidate: Path,
+    valid: set[Path],
+    repository_file_index: frozenset[Path],
+) -> None:
+    """只把解析后仍位于仓库内且受 Git 管理的真实文件加入候选集合。"""
     resolved = candidate.resolve()
     try:
         resolved.relative_to(root)
     except ValueError:
         return
-    if resolved.is_file():
+    if resolved.is_file() and resolved in repository_file_index:
         valid.add(resolved)
 
 
@@ -121,6 +126,7 @@ def _resolve_file_reference(
     doc: Path,
     value: str,
     repository_files: tuple[Path, ...],
+    repository_file_index: frozenset[Path],
 ) -> Path | None:
     """优先按文档上下文解析文件；无直接目标时再做全仓唯一后缀回退。"""
     if not _looks_like_file_reference(value):
@@ -129,10 +135,10 @@ def _resolve_file_reference(
     normalized = value.replace("\\", "/")
     direct: set[Path] = set()
     if normalized.startswith(("./", "../")):
-        _add_if_repo_file(root, doc.parent / normalized, direct)
+        _add_if_repo_file(root, doc.parent / normalized, direct, repository_file_index)
     else:
-        _add_if_repo_file(root, root / normalized, direct)
-        _add_if_repo_file(root, doc.parent / normalized, direct)
+        _add_if_repo_file(root, root / normalized, direct, repository_file_index)
+        _add_if_repo_file(root, doc.parent / normalized, direct, repository_file_index)
 
     direct_target = _unique_non_self_target(doc, direct)
     if direct_target is not None:
@@ -150,7 +156,7 @@ def _resolve_file_reference(
         relative = candidate.relative_to(root).as_posix()
         if relative != suffix and not relative.endswith(suffix_marker):
             continue
-        _add_if_repo_file(root, candidate, fallback)
+        _add_if_repo_file(root, candidate, fallback, repository_file_index)
     return _unique_non_self_target(doc, fallback)
 
 
@@ -170,7 +176,7 @@ def _navigation_error(root: Path, doc: Path, line_number: int, value: str, targe
     """生成代码块文件导航未链接的统一错误。"""
     suggestion = _suggest_link(doc, target, value)
     return (
-        f"DOC008 {doc.relative_to(root)}:{line_number}: "
+        f"DOC008 {doc.relative_to(root).as_posix()}:{line_number}: "
         f"代码块中的真实仓库文件导航不可点击 {value}；"
         f"改为代码块外链接，例如 {suggestion}"
     )
@@ -181,6 +187,7 @@ def _check_pure_file_fence(
     doc: Path,
     fence_lines: list[tuple[int, str]],
     repository_files: tuple[Path, ...],
+    repository_file_index: frozenset[Path],
 ) -> list[str]:
     """只有整个代码块都是文件路径时，才把它视为不可点击的导航清单。"""
     entries = [(line_number, line.strip()) for line_number, line in fence_lines if line.strip()]
@@ -189,7 +196,13 @@ def _check_pure_file_fence(
 
     resolved: list[tuple[int, str, Path]] = []
     for line_number, value in entries:
-        target = _resolve_file_reference(root, doc, value, repository_files)
+        target = _resolve_file_reference(
+            root,
+            doc,
+            value,
+            repository_files,
+            repository_file_index,
+        )
         if target is None:
             return []
         resolved.append((line_number, value, target))
@@ -205,6 +218,7 @@ def _check_file_description_fence(
     doc: Path,
     fence_lines: list[tuple[int, str]],
     repository_files: tuple[Path, ...],
+    repository_file_index: frozenset[Path],
 ) -> list[str]:
     """识别“文件路径 → 职责”导航块，同时避免误伤命令、目录树和流程图。"""
     entries = [(line_number, line.strip()) for line_number, line in fence_lines if line.strip()]
@@ -215,7 +229,13 @@ def _check_file_description_fence(
     for index in range(0, len(entries), 2):
         line_number, value = entries[index]
         _, description = entries[index + 1]
-        target = _resolve_file_reference(root, doc, value, repository_files)
+        target = _resolve_file_reference(
+            root,
+            doc,
+            value,
+            repository_files,
+            repository_file_index,
+        )
         if target is None or not description.startswith("→"):
             return []
         resolved.append((line_number, value, target))
@@ -231,6 +251,7 @@ def _check_repository_file_navigation(
     doc: Path,
     text: str,
     repository_files: tuple[Path, ...],
+    repository_file_index: frozenset[Path],
 ) -> list[str]:
     """检查导航语义明确的真实仓库文件引用是否保持可点击。"""
     errors: list[str] = []
@@ -240,10 +261,20 @@ def _check_repository_file_navigation(
     for line_number, line in enumerate(text.splitlines(), start=1):
         if FENCE_RE.match(line):
             if in_fence:
-                fence_errors = _check_pure_file_fence(root, doc, fence_lines, repository_files)
+                fence_errors = _check_pure_file_fence(
+                    root,
+                    doc,
+                    fence_lines,
+                    repository_files,
+                    repository_file_index,
+                )
                 if not fence_errors:
                     fence_errors = _check_file_description_fence(
-                        root, doc, fence_lines, repository_files
+                        root,
+                        doc,
+                        fence_lines,
+                        repository_files,
+                        repository_file_index,
                     )
                 errors.extend(fence_errors)
                 fence_lines = []
@@ -258,12 +289,18 @@ def _check_repository_file_navigation(
             value = match.group(1)
             if _is_inline_code_linked(line, match.start(), match.end()):
                 continue
-            target = _resolve_file_reference(root, doc, value, repository_files)
+            target = _resolve_file_reference(
+                root,
+                doc,
+                value,
+                repository_files,
+                repository_file_index,
+            )
             if target is None:
                 continue
             suggestion = _suggest_link(doc, target, value)
             errors.append(
-                f"DOC007 {doc.relative_to(root)}:{line_number}: "
+                f"DOC007 {doc.relative_to(root).as_posix()}:{line_number}: "
                 f"真实仓库文件引用未使用 Markdown 链接 {value}；建议 {suggestion}"
             )
 
@@ -290,7 +327,7 @@ def _check_repository_file_link_labels(root: Path, doc: Path, text: str) -> list
             normalized_label = label.replace("\\", "/").removeprefix("./")
             if normalized_label != expected:
                 errors.append(
-                    f"DOC009 {doc.relative_to(root)}:{line_number}: "
+                    f"DOC009 {doc.relative_to(root).as_posix()}:{line_number}: "
                     f"仓库文件链接显示路径应为 {expected}，当前为 {label}"
                 )
     return errors
@@ -301,12 +338,13 @@ def check_repository(root: Path = ROOT) -> list[str]:
     root = root.resolve()
     errors: list[str] = []
     repository_files = _repository_files(root)
+    repository_file_index = frozenset(path.resolve() for path in repository_files)
     documents = _iter_current_docs(root, repository_files)
 
     for relative in ENTRY_DOCS:
         doc = root / relative
         if not doc.exists():
-            errors.append(f"DOC001 {relative}: 固定文档入口不存在")
+            errors.append(f"DOC001 {relative.as_posix()}: 固定文档入口不存在")
 
     for doc in documents:
         text = doc.read_text(encoding="utf-8")
@@ -320,17 +358,18 @@ def check_repository(root: Path = ROOT) -> list[str]:
             try:
                 resolved.relative_to(root)
             except ValueError:
-                errors.append(f"DOC002 {doc.relative_to(root)}: 链接逃出仓库 {target}")
+                errors.append(f"DOC002 {doc.relative_to(root).as_posix()}: 链接逃出仓库 {target}")
                 continue
             if not resolved.exists():
-                errors.append(f"DOC003 {doc.relative_to(root)}: 本地链接不存在 {target}")
+                errors.append(f"DOC003 {doc.relative_to(root).as_posix()}: 本地链接不存在 {target}")
 
         if STANDALONE_MANIFEST_RE.search(text):
             errors.append(
-                f"DOC004 {doc.relative_to(root)}: 禁止恢复已删除的独立 manifest.json 引用"
+                f"DOC004 {doc.relative_to(root).as_posix()}: "
+                "禁止恢复已删除的独立 manifest.json 引用"
             )
         if "R0–R3" in text or "R0-R3" in text:
-            errors.append(f"DOC005 {doc.relative_to(root)}: 任务等级必须使用 L1–L3")
+            errors.append(f"DOC005 {doc.relative_to(root).as_posix()}: 任务等级必须使用 L1–L3")
         try:
             doc.relative_to(root / "docs")
         except ValueError:
@@ -338,11 +377,19 @@ def check_repository(root: Path = ROOT) -> list[str]:
         else:
             if AGENT_REFERENCE_RE.search(text):
                 errors.append(
-                    f"DOC006 {doc.relative_to(root)}: "
+                    f"DOC006 {doc.relative_to(root).as_posix()}: "
                     "当前项目文档不得把 Agent_Skills canonical Reference 路径当作本地事实源"
                 )
 
-        errors.extend(_check_repository_file_navigation(root, doc, text, repository_files))
+        errors.extend(
+            _check_repository_file_navigation(
+                root,
+                doc,
+                text,
+                repository_files,
+                repository_file_index,
+            )
+        )
         errors.extend(_check_repository_file_link_labels(root, doc, text))
 
     return errors

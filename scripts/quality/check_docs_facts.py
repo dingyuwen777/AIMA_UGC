@@ -378,7 +378,7 @@ def _check_roadmap_lifecycle(errors: list[str]) -> None:
     for path in sorted(roadmap_root.glob("[0-9][0-9]_*.md")):
         head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:20])
         if "- 状态：Active" not in head:
-            relative = path.relative_to(ROOT)
+            relative = path.relative_to(ROOT).as_posix()
             errors.append(f"DOCF015 {relative}: live Roadmap 必须在前 20 行声明 `- 状态：Active`")
 
 

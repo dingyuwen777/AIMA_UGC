@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CHECKER_PATH = ROOT / "scripts" / "quality" / "check_docs.py"
 CHECKER = runpy.run_path(str(CHECKER_PATH))
 CHECK_REPOSITORY = CHECKER["check_repository"]
+RESOLVE_FILE_REFERENCE = CHECKER["_resolve_file_reference"]
 
 
 def _write(path: Path, content: str) -> None:
@@ -152,3 +153,31 @@ def test_checker_does_not_treat_timezone_identifier_as_file_navigation(tmp_path:
     errors = CHECK_REPOSITORY(tmp_path)
 
     assert not any(error.startswith(("DOC007", "DOC008")) for error in errors)
+
+
+def test_checker_ignores_untracked_local_file_for_navigation(tmp_path: Path) -> None:
+    """被 Git 忽略的本地配置不能改变受控文档导航检查结果。"""
+    _minimal_repository(tmp_path)
+    doc = tmp_path / "docs/guide.md"
+    _write(doc, "本地配置文件是 `env.local`。\n")
+    _write(tmp_path / "env.local", "AIMA_TIKHUB_API_KEY=test-only\n")
+    repository_files = tuple(
+        path.resolve()
+        for path in (
+            tmp_path / "README.md",
+            tmp_path / "docs/blueprint/README.md",
+            tmp_path / "docs/guide.md",
+            tmp_path / "backend/src/example.py",
+            tmp_path / "scripts/check.py",
+        )
+    )
+
+    target = RESOLVE_FILE_REFERENCE(
+        tmp_path.resolve(),
+        doc.resolve(),
+        "env.local",
+        repository_files,
+        frozenset(repository_files),
+    )
+
+    assert target is None
