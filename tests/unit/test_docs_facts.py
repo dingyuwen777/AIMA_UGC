@@ -159,10 +159,7 @@ def test_roadmap_lifecycle_requires_active_status(tmp_path: Path) -> None:
     _with_root(CHECK_ROADMAP_LIFECYCLE, tmp_path, errors)
 
     assert not any("01_active.md" in error for error in errors)
-    assert any(
-        error.startswith("DOCF015 docs/roadmap/02_completed.md")
-        for error in errors
-    )
+    assert any(error.startswith("DOCF015 docs/roadmap/02_completed.md") for error in errors)
 
 
 def test_retired_live_doc_cannot_be_reintroduced(tmp_path: Path) -> None:
@@ -181,12 +178,8 @@ def test_long_term_collection_docs_do_not_regress_to_historical_stage_claims() -
     collection_readme = (ROOT / "backend/src/aima_ugc/modules/collection/README.md").read_text(
         encoding="utf-8"
     )
-    blueprint_02 = (ROOT / "docs/blueprint/02_采集系统与数据标准化.md").read_text(
-        encoding="utf-8"
-    )
-    blueprint_08 = (ROOT / "docs/blueprint/08_采集策略与平台能力.md").read_text(
-        encoding="utf-8"
-    )
+    blueprint_02 = (ROOT / "docs/blueprint/02_采集系统与数据标准化.md").read_text(encoding="utf-8")
+    blueprint_08 = (ROOT / "docs/blueprint/08_采集策略与平台能力.md").read_text(encoding="utf-8")
     scheduler_appendix = (ROOT / "docs/appendix/05_Scheduler调度执行与停机恢复.md").read_text(
         encoding="utf-8"
     )
