@@ -3,18 +3,16 @@ from __future__ import annotations
 import runpy
 from pathlib import Path
 
-import yaml
-
 ROOT = Path(__file__).resolve().parents[2]
 CLASSIFIER = runpy.run_path(str(ROOT / "scripts" / "quality" / "classify_ci_scope.py"))
 CLASSIFY_REQUIREMENTS = CLASSIFIER["classify_requirements"]
 
 
-def _workflow_triggers(workflow: dict[object, object]) -> dict[str, object]:
-    """兼容 PyYAML 1.1 把顶层 `on` 解析成布尔值 True 的行为。"""
-    triggers = workflow.get("on") or workflow.get(True)
-    assert isinstance(triggers, dict)
-    return triggers
+def _section(text: str, start: str, end: str) -> str:
+    """从受版本控制的 Workflow 文本中提取唯一结构段，避免引入 YAML 解析依赖。"""
+    start_index = text.index(start)
+    end_index = text.index(end, start_index)
+    return text[start_index:end_index]
 
 
 def test_repository_quality_isolated_from_product_stacks() -> None:
@@ -103,7 +101,6 @@ def test_unknown_persistence_and_ci_self_fail_closed() -> None:
 
 def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install() -> None:
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    workflow = yaml.safe_load(text)
 
     assert "postgres_suites" in text
     assert "POSTGRES_SUITES" in text
@@ -111,67 +108,85 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     assert "repository_quality_required" in text
     assert "Repository quality static and targeted regression" in text
 
-    postgres_job = workflow["jobs"]["postgres-integration"]
-    postgres_text = yaml.safe_dump(postgres_job, allow_unicode=True)
-    assert "fonts-noto-cjk" not in postgres_text
+    postgres_job = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
+    assert "fonts-noto-cjk" not in postgres_job
+    assert "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
 
-    quality_steps = workflow["jobs"]["quality-core"]["steps"]
-    font_step = next(
-        step for step in quality_steps if step.get("name") == "Install report validation CJK font"
+    assert (
+        "      - name: Install report validation CJK font\n"
+        "        if: steps.classify.outputs.report_font_required == 'true'\n"
+        in text
     )
-    assert font_step["if"] == "steps.classify.outputs.report_font_required == 'true'"
 
 
 def test_draft_prs_are_skipped_at_job_level_instead_of_failed_inside_ci() -> None:
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    workflow = yaml.safe_load(text)
 
-    quality_core = workflow["jobs"]["quality-core"]
-    ci_gate = workflow["jobs"]["ci-gate"]
-    assert "draft == false" in str(quality_core["if"])
-    assert "draft == false" in str(ci_gate["if"])
+    assert (
+        "  quality-core:\n"
+        "    name: Requirement Traceability and Completion Audit\n"
+        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
+        in text
+    )
+    assert (
+        "  ci-gate:\n"
+        "    name: CI Gate\n"
+        "    if: >-\n"
+        "      always() &&\n"
+        "      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)\n"
+        in text
+    )
     assert "Defer full CI while PR is Draft" not in text
 
 
 def test_runtime_draft_pr_is_skipped_before_allocating_compose_work() -> None:
     text = (ROOT / ".github" / "workflows" / "runtime.yml").read_text(encoding="utf-8")
-    workflow = yaml.safe_load(text)
 
-    compose = workflow["jobs"]["compose-golden-path"]
-    assert "draft == false" in str(compose["if"])
+    assert (
+        "  compose-golden-path:\n"
+        "    name: Compose Golden Path\n"
+        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
+        in text
+    )
     assert "Defer Runtime Acceptance while PR is Draft" not in text
 
 
 def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
     text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    workflow = yaml.safe_load(text)
-    triggers = _workflow_triggers(workflow)
-    pull_request = triggers["pull_request"]
-    assert isinstance(pull_request, dict)
-    paths = pull_request["paths"]
+    trigger_block = _section(text, "on:\n", "permissions:\n")
 
-    assert paths == [
-        ".github/workflows/release.yml",
-        "Dockerfile",
-        "compose.yaml",
-        "env.production.example",
-        "tests/unit/test_docker_build_sources.py",
-        "tests/unit/test_release_workflow.py",
-    ]
     assert (
-        workflow["concurrency"]["cancel-in-progress"]
-        == "${{ github.event_name == 'pull_request' }}"
+        "  pull_request:\n"
+        "    branches:\n"
+        "      - main\n"
+        "    types:\n"
+        "      - opened\n"
+        "      - synchronize\n"
+        "      - reopened\n"
+        "      - ready_for_review\n"
+        "    paths:\n"
+        "      - .github/workflows/release.yml\n"
+        "      - Dockerfile\n"
+        "      - compose.yaml\n"
+        "      - env.production.example\n"
+        "      - tests/unit/test_docker_build_sources.py\n"
+        "      - tests/unit/test_release_workflow.py\n"
+        in trigger_block
     )
+    for retired_path in (
+        "docs/02_环境运行与部署.md",
+        "docs/roadmap/02_生产上线实施路线.md",
+        "docs/appendix/11_生产部署与离线Release方案.md",
+    ):
+        assert retired_path not in trigger_block
+    assert "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n" in text
 
 
 def test_change_archivist_skip_is_after_exact_archive_allowlist() -> None:
     text = (ROOT / ".github" / "workflows" / "change-archive.yml").read_text(encoding="utf-8")
-    workflow = yaml.safe_load(text)
-    archive_job = workflow["jobs"]["archive"]
-    names = [step.get("name") for step in archive_job["steps"]]
 
-    verify_index = names.index("Verify archive gate and exact diff allowlist")
-    commit_index = names.index("Commit and push archive to main")
+    verify_index = text.index("      - name: Verify archive gate and exact diff allowlist")
+    commit_index = text.index("      - name: Commit and push archive to main")
     assert verify_index < commit_index
     assert "[skip ci]" in text
     assert "git diff --cached --name-only --no-renames" in text
