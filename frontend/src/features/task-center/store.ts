@@ -30,7 +30,8 @@ export interface TaskCenterItem {
   cancelable: boolean
   createdAt: string
   finishedAt: string | null
-  href: '/voice-plaza' | '/collection-runtime'
+  href: string
+  actionLabel: string
   errorCode: string | null
 }
 
@@ -68,8 +69,28 @@ const EXPORT_STATUS_LABELS: Record<string, string> = {
 const COLLECTION_TYPE_LABELS: Record<string, string> = {
   excel_import: 'Excel 导入',
   data_import_campaign: '数据导入',
-  tikhub_discovery: 'TikHub 采集',
-  tikhub_batch_supplement: 'TikHub 补采',
+  tikhub_discovery: '主动采集',
+  tikhub_batch_supplement: '辅助补采',
+}
+
+const COLLECTION_STAGE_LABELS: Record<string, string> = {
+  queued: '等待处理',
+  uploading: '正在上传文件',
+  discovering: '正在确认数据来源',
+  snapshotting: '正在准备导入',
+  ready: '等待确认导入',
+  running: '正在处理',
+  cancelling: '正在取消',
+  reading: '正在读取数据',
+  mapping: '正在整理字段',
+  filtering: '正在过滤数据',
+  deduplicating: '正在去重',
+  ingesting: '正在写入数据',
+  content_discovery: '正在采集内容',
+  content_enrichment: '正在补充内容',
+  succeeded: '处理完成',
+  failed: '处理失败',
+  cancelled: '已取消',
 }
 
 /** 把未知异常转换为不会泄露请求正文的任务中心提示。 */
@@ -78,42 +99,43 @@ function errorMessage(error: unknown): string {
   return '请求失败，请稍后重试。'
 }
 
-/** 按已持久化终态数量显示进度，不依赖滞后的 Job Heartbeat。 */
+/** 按已持久化完成/失败/取消数量显示真实处理进度，不依赖滞后的后台心跳。 */
 export function analysisRunProgress(run: AnalysisContentRunResponse): number {
   if (run.target_count <= 0) return 0
   const stats = run.stats
-  const terminal = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
+  const processed = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
     (stats?.cancelled ?? 0) + (stats?.stale ?? 0)
-  return Math.max(0, Math.min(100, Math.round(terminal * 100 / run.target_count)))
+  return Math.max(0, Math.min(100, Math.round(processed * 100 / run.target_count)))
 }
 
-/** 将 Analysis Run 转成全局任务中心只读 ViewModel。 */
+/** 将 AI 打标运行转换为普通用户可理解的任务视图；模型/Provider/Run ID 不进入默认层。 */
 function analysisTask(run: AnalysisContentRunResponse): TaskCenterItem {
   const stats = run.stats
-  const terminal = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
+  const processed = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
     (stats?.cancelled ?? 0) + (stats?.stale ?? 0)
   return {
     key: `analysis:${run.id}`,
     sourceId: run.id,
     kind: 'analysis',
-    title: `AI 打标 · Run #${run.sequence_no}`,
-    subtitle: `${run.target_count} 条 · ${run.model_provider} / ${run.model}`,
+    title: `AI 打标任务 ${run.sequence_no}`,
+    subtitle: `${run.target_count} 条内容`,
     status: run.status,
-    statusLabel: ANALYSIS_STATUS_LABELS[run.status] ?? run.status,
+    statusLabel: ANALYSIS_STATUS_LABELS[run.status] ?? '状态待确认',
     progress: analysisRunProgress(run),
-    progressDetail: `${terminal} / ${run.target_count} 条已取得终态`,
+    progressDetail: `${processed} / ${run.target_count} 条已处理`,
     active: ACTIVE_ANALYSIS_STATUSES.has(run.status),
     cancelable: run.status === 'queued' || run.status === 'running',
     createdAt: run.created_at,
     finishedAt: run.finished_at ?? null,
     href: '/voice-plaza',
+    actionLabel: '查看',
     errorCode: run.error_code ?? null,
   }
 }
 
-/** 将 Collection Runtime read model 转成全局任务中心只读 ViewModel。 */
+/** 将采集/导入只读模型转换为业务任务；失败的数据导入可深链到已有恢复入口。 */
 function collectionTask(run: CollectionRuntimeItemResponse): TaskCenterItem {
-  const typeLabel = COLLECTION_TYPE_LABELS[run.record_type] ?? run.record_type
+  const typeLabel = COLLECTION_TYPE_LABELS[run.record_type] ?? '数据处理'
   const platformText = run.platforms?.length
     ? run.platforms.map((platform) => platformLabel(platform)).join(' / ')
     : '平台未指定'
@@ -123,7 +145,12 @@ function collectionTask(run: CollectionRuntimeItemResponse): TaskCenterItem {
     ? `${contentCount} 条内容`
     : typeof rowsIngested === 'number'
       ? `${rowsIngested} 行入库`
-      : run.stage
+      : COLLECTION_STAGE_LABELS[run.stage] ?? '正在处理'
+  const campaignId = run.record_type === 'data_import_campaign'
+    ? run.data_import_campaign_id ?? run.record_id
+    : null
+  const hasImportFailure = run.record_type === 'data_import_campaign'
+    && (run.status === 'failed' || run.status === 'partial_success')
   return {
     key: `collection:${run.record_id}`,
     sourceId: run.record_id,
@@ -131,19 +158,22 @@ function collectionTask(run: CollectionRuntimeItemResponse): TaskCenterItem {
     title: run.display_name || typeLabel,
     subtitle: `${typeLabel} · ${platformText}`,
     status: run.status,
-    statusLabel: COLLECTION_STATUS_LABELS[run.status] ?? run.status,
+    statusLabel: COLLECTION_STATUS_LABELS[run.status] ?? '状态待确认',
     progress: run.progress,
     progressDetail: resultText,
     active: ACTIVE_COLLECTION_STATUSES.has(run.status),
     cancelable: false,
     createdAt: run.created_at,
     finishedAt: run.finished_at ?? null,
-    href: '/collection-runtime',
+    href: campaignId
+      ? `/collection-runtime?data_import_campaign_id=${encodeURIComponent(campaignId)}`
+      : '/collection-runtime',
+    actionLabel: hasImportFailure ? '处理失败项' : '查看',
     errorCode: run.error_code ?? null,
   }
 }
 
-/** 将 Data Export Job 转成全局任务中心只读 ViewModel。 */
+/** 将数据导出转换为业务任务；底层 Job 标识与错误码不进入默认文案。 */
 function exportTask(item: DataExportResponse): TaskCenterItem {
   const contentCount = item.stats?.content_count
   return {
@@ -153,7 +183,7 @@ function exportTask(item: DataExportResponse): TaskCenterItem {
     title: 'Excel 导出',
     subtitle: item.filename || (typeof contentCount === 'number' ? `${contentCount} 条声音记录` : '声音广场导出'),
     status: item.job.status,
-    statusLabel: EXPORT_STATUS_LABELS[item.job.status] ?? item.job.status,
+    statusLabel: EXPORT_STATUS_LABELS[item.job.status] ?? '状态待确认',
     progress: item.job.progress,
     progressDetail: typeof contentCount === 'number' ? `${contentCount} 条内容` : `${item.job.progress}%`,
     active: ACTIVE_EXPORT_STATUSES.has(item.job.status),
@@ -161,6 +191,7 @@ function exportTask(item: DataExportResponse): TaskCenterItem {
     createdAt: item.created_at,
     finishedAt: item.completed_at ?? item.job.finished_at ?? null,
     href: '/voice-plaza',
+    actionLabel: '查看',
     errorCode: item.job.error_code ?? null,
   }
 }
@@ -230,7 +261,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     }
   }
 
-  /** 跨页面合并一秒内的轮询，终态只保留低频历史发现。 */
+  /** 跨页面合并一秒内的轮询，处理完成后只保留低频历史发现。 */
   async function pollAnalysisRuns(): Promise<void> {
     if (!hasActiveAnalysisRuns.value || Date.now() - lastAnalysisPollAt < 1000) return
     await refreshAnalysisRuns()
@@ -277,7 +308,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     open.value = false
   }
 
-  /** 取消活动 Analysis Run，并同步全局任务列表。 */
+  /** 取消活动 AI 打标任务，并同步全局任务列表。 */
   async function cancelAnalysisRun(runId: string): Promise<boolean> {
     if (cancellingAnalysisRunId.value) return false
     cancellingAnalysisRunId.value = runId
