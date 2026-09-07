@@ -1,4 +1,4 @@
-"""增加 Data Import Campaign 可审计撤销事实。
+"""增加 Content 来源贡献与 Data Import Campaign 可审计撤销事实。
 
 Revision ID: 20260907_0041
 Revises: 20260903_0040
@@ -10,6 +10,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "20260907_0041"
 down_revision: str | Sequence[str] | None = "20260903_0040"
@@ -18,7 +19,59 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """新增独立撤销事实，不改写 Campaign 终态或 Content 历史。"""
+    """新增不可变来源 Delta、撤销事实与撤销生成 Version 追溯，不删除历史数据。"""
+
+    op.create_table(
+        "content_source_contributions",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("source_item_key", sa.Text(), nullable=False),
+        sa.Column("content_id", sa.Uuid(), nullable=False),
+        sa.Column("provider_attempt_id", sa.Uuid(), nullable=False),
+        sa.Column("raw_artifact_id", sa.Uuid(), nullable=False),
+        sa.Column("version_before", sa.Integer(), nullable=True),
+        sa.Column("version_after", sa.Integer(), nullable=False),
+        sa.Column("delta", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "char_length(source_item_key) = 64",
+            name=op.f("ck_content_source_contributions_source_item_key_sha256"),
+        ),
+        sa.CheckConstraint(
+            "version_before is null or version_before >= 1",
+            name=op.f("ck_content_source_contributions_version_before_positive"),
+        ),
+        sa.CheckConstraint(
+            "version_after >= 1",
+            name=op.f("ck_content_source_contributions_version_after_positive"),
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(delta) = 'object'",
+            name=op.f("ck_content_source_contributions_delta_object"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["content_id"],
+            ["contents.id"],
+            name=op.f("fk_content_source_contributions_content_id_contents"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["provider_attempt_id"],
+            ["provider_request_attempts.id"],
+            name=op.f(
+                "fk_content_source_contributions_provider_attempt_id_provider_request_attempts"
+            ),
+        ),
+        sa.ForeignKeyConstraint(
+            ["raw_artifact_id"],
+            ["artifacts.id"],
+            name=op.f("fk_content_source_contributions_raw_artifact_id_artifacts"),
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_content_source_contributions")),
+        sa.UniqueConstraint(
+            "source_item_key",
+            name=op.f("uq_content_source_contributions_source_item_key"),
+        ),
+    )
 
     op.create_table(
         "historical_import_campaign_revocations",
@@ -30,7 +83,10 @@ def upgrade() -> None:
         sa.Column("hidden_content_count", sa.Integer(), nullable=False),
         sa.Column("retained_shared_content_count", sa.Integer(), nullable=False),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint("char_length(actor_ref) > 0", name=op.f("ck_historical_import_campaign_revocations_actor_ref_nonempty")),
+        sa.CheckConstraint(
+            "char_length(actor_ref) > 0",
+            name=op.f("ck_historical_import_campaign_revocations_actor_ref_nonempty"),
+        ),
         sa.CheckConstraint(
             "reason is null or char_length(reason) > 0",
             name=op.f("ck_historical_import_campaign_revocations_reason_nonempty"),
@@ -47,7 +103,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["campaign_id"],
             ["historical_import_campaigns.id"],
-            name=op.f("fk_historical_import_campaign_revocations_campaign_id_historical_import_campaigns"),
+            name=op.f(
+                "fk_historical_import_campaign_revocations_campaign_id_historical_import_campaigns"
+            ),
         ),
         sa.PrimaryKeyConstraint(
             "campaign_id",
@@ -55,8 +113,44 @@ def upgrade() -> None:
         ),
     )
 
+    op.create_table(
+        "historical_import_revocation_content_versions",
+        sa.Column("campaign_id", sa.Uuid(), nullable=False),
+        sa.Column("content_id", sa.Uuid(), nullable=False),
+        sa.Column("version_no", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "version_no >= 1",
+            name=op.f("ck_historical_import_revocation_content_versions_version_no_positive"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["campaign_id"],
+            ["historical_import_campaign_revocations.campaign_id"],
+            name=op.f(
+                "fk_historical_import_revocation_content_versions_campaign_id_historical_import_campaign_revocations"
+            ),
+        ),
+        sa.ForeignKeyConstraint(
+            ["content_id"],
+            ["contents.id"],
+            name=op.f("fk_historical_import_revocation_content_versions_content_id_contents"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["content_id", "version_no"],
+            ["content_versions.content_id", "content_versions.version_no"],
+            name=op.f("fk_import_revocation_content_version"),
+        ),
+        sa.PrimaryKeyConstraint(
+            "campaign_id",
+            "content_id",
+            name=op.f("pk_historical_import_revocation_content_versions"),
+        ),
+    )
+
 
 def downgrade() -> None:
-    """只移除撤销投影事实，不删除任何历史导入或 Content 数据。"""
+    """移除生命周期新表；既有 Content/Raw/历史版本保持不变。"""
 
+    op.drop_table("historical_import_revocation_content_versions")
     op.drop_table("historical_import_campaign_revocations")
+    op.drop_table("content_source_contributions")
