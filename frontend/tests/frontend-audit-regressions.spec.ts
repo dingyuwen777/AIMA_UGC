@@ -265,7 +265,7 @@ describe('frontend full-stack audit regressions', () => {
     )
 
     expect(source).toContain(':readonly="selectedSchemeVersion?.version.status === \'draft\'"')
-    expect(source).toContain('已有草稿保存时不会修改 Scheme 名称')
+    expect(source).toContain('编辑现有草稿时名称保持不变')
   })
 
   it('derives historical retry action from campaign-level failed chunk facts', async () => {
