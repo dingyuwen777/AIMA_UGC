@@ -1,0 +1,115 @@
+name: Temporary Product Lifecycle Docs Sync V4
+
+on:
+  push:
+    branches:
+      - feature/product-resource-lifecycle
+    paths:
+      - .github/workflows/tmp-product-lifecycle-docs-sync-v4.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Reuse verified targeted docs patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 319aa76f19300359075d478d4337bac8e182da52:.github/tmp_product_lifecycle_docs_patch_v2.py > "${RUNNER_TEMP}/product_lifecycle_docs_patch.py"
+          python "${RUNNER_TEMP}/product_lifecycle_docs_patch.py"
+
+      - name: Normalize Appendix repository links and API facts
+        shell: python
+        run: |
+          from pathlib import Path
+
+          appendix_path = Path('docs/appendix/11_业务资源生命周期与数据撤销实现.md')
+          appendix = appendix_path.read_text(encoding='utf-8')
+          targets = [
+              'backend/src/aima_ugc/adapters/persistence/postgres/keyword_lifecycle.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/keywords.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/scheduled_keywords.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/collection_plan_lifecycle.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/collection_planning.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/provider_lifecycle.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/system.py',
+              'backend/src/aima_ugc/bootstrap/runtime_config.py',
+              'backend/src/aima_ugc/adapters/providers/connectivity.py',
+              'backend/src/aima_ugc/bootstrap/provider_lifecycle_http.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/analysis_schemes.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/analysis_scheme_lifecycle.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/content_contributions.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/content_lifecycle.py',
+              'backend/src/aima_ugc/adapters/persistence/postgres/historical_revocation.py',
+              'backend/src/aima_ugc/modules/ingestion/revocation.py',
+              'backend/src/aima_ugc/bootstrap/import_revocation_http.py',
+              'backend/src/aima_ugc/database_schema.py',
+          ]
+          for target in targets:
+              old = f'`{target}`'
+              link = f'[`{target}`](../../{target})'
+              count = appendix.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{target}: expected one inline repository path, got {count}')
+              appendix = appendix.replace(old, link, 1)
+          appendix_path.write_text(appendix, encoding='utf-8')
+
+          api_path = Path('docs/03_API接口说明.md')
+          api = api_path.read_text(encoding='utf-8')
+          marker = '# 17. 资源生命周期与导入撤销扩展 API'
+          if marker not in api:
+              api += '''\n\n---\n\n# 17. 资源生命周期与导入撤销扩展 API\n\n本节只做当前 OpenAPI 的导航和业务边界说明；精确 Request/Response 字段继续以生成 OpenAPI 为唯一机器事实。归档与永久删除是不同动作：归档用于日常目录整理，永久删除始终由服务端引用资格判断。\n\n## 17.1 Data Import Campaign 撤销\n\n- `GET /api/v1/data-import-campaigns/{campaign_id}/revocation-preview`：只读评估可撤销性和影响；不写撤销事实。\n- `POST /api/v1/data-import-campaigns/{campaign_id}/revoke`：在资格允许时提交可审计撤销；共享来源数据继续保留。\n\n## 17.2 Keyword Pack 生命周期\n\n- `POST /api/v1/keyword-packs/{pack_id}/copy`\n- `POST /api/v1/keyword-packs/{pack_id}/archive`\n- `POST /api/v1/keyword-packs/{pack_id}/restore`\n- `GET /api/v1/keyword-packs/{pack_id}/delete-eligibility`\n- `PUT /api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}`\n- `POST /api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}/remove`\n- `GET /api/v1/resource-lifecycle/keyword-packs/archived`\n\n关键词成员文本修改只替换当前 Pack 的关系，不会修改其它 Pack 共享的 Keyword 实体。\n\n## 17.3 Collection Plan 生命周期\n\n- `POST /api/v1/collection-plans/{plan_id}/copy`\n- `POST /api/v1/collection-plans/{plan_id}/archive`\n- `POST /api/v1/collection-plans/{plan_id}/restore`\n- `GET /api/v1/collection-plans/{plan_id}/delete-eligibility`\n- `GET /api/v1/resource-lifecycle/collection-plans/archived`\n\n计划主体仍通过现有更新 Contract 编辑并提升 `schedule_version`；恢复后保持停用。\n\n## 17.4 Provider Config 生命周期与连接测试\n\n- `GET /api/v1/provider-configs/lifecycle/archived`\n- `POST /api/v1/provider-configs/{provider_config_id}/test-connection`\n- `POST /api/v1/provider-configs/{provider_config_id}/archive`\n- `POST /api/v1/provider-configs/{provider_config_id}/restore`\n- `GET /api/v1/provider-configs/{provider_config_id}/delete-eligibility`\n\n连接测试只返回安全状态、用户可读说明和延迟，不回显 Secret 或第三方原始响应。\n\n## 17.5 Analysis Scheme 生命周期\n\n- `GET /api/v1/analysis-schemes/lifecycle/archived`\n- `POST /api/v1/analysis-schemes/{scheme_id}/copy`\n- `POST /api/v1/analysis-schemes/{scheme_id}/archive`\n- `POST /api/v1/analysis-schemes/{scheme_id}/restore`\n- `GET /api/v1/analysis-schemes/{scheme_id}/delete-eligibility`\n- `DELETE /api/v1/analysis-schemes/{scheme_id}`\n\n当前生效 Scheme 不能归档；曾发布或进入 Analysis Run 历史的 Scheme 不能永久删除。\n'''
+          api_path.write_text(api, encoding='utf-8')
+
+          blueprint_path = Path('docs/blueprint/03_数据库与文件存储.md')
+          blueprint = blueprint_path.read_text(encoding='utf-8')
+          anchor = 'Data Import Campaign 撤销另外保存来源 Contribution、Campaign 撤销事实和撤销生成 Version 的追溯。撤销不改写原 Campaign 终态，也不删除输入 Artifact、逐行账本或历史 Version；只有精确可逆证据完整的 Campaign 才能提交撤销。'
+          addition = '''\n\n对应持久事实按 Owner 分为：\n\n```text\ncontent_source_contributions\nhistorical_import_campaign_revocations\nhistorical_import_revocation_content_versions\n```\n\n这里列出表名只用于数据库职责导航；精确列、索引与约束仍以当前 SQLAlchemy metadata 和 Alembic Migration 为机器事实。'''
+          if addition.strip() not in blueprint:
+              if blueprint.count(anchor) != 1:
+                  raise RuntimeError(f'blueprint revoke anchor count={blueprint.count(anchor)}')
+              blueprint = blueprint.replace(anchor, anchor + addition, 1)
+          blueprint_path.write_text(blueprint, encoding='utf-8')
+
+      - name: Docs gates
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+
+      - name: Commit docs and remove temporary workflow
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ job.status }}" != "success" ]]; then
+            git reset --hard HEAD
+          fi
+          git rm .github/workflows/tmp-product-lifecycle-docs-sync-v4.yml
+          if [[ "${{ job.status }}" == "success" ]]; then
+            git add \
+              docs/03_API接口说明.md \
+              docs/blueprint/03_数据库与文件存储.md \
+              docs/blueprint/04_后端任务API与前端.md \
+              docs/blueprint/08_采集策略与平台能力.md \
+              docs/collection/README.md \
+              docs/appendix/11_业务资源生命周期与数据撤销实现.md \
+              backend/src/aima_ugc/modules/ingestion/README.md \
+              backend/src/aima_ugc/modules/content/README.md \
+              backend/src/aima_ugc/modules/analysis/README.md
+          fi
+          git config user.name "AIMA Temporary Validator"
+          git config user.email "aima-validator@users.noreply.github.com"
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "同步产品资源生命周期文档事实 [skip ci]"
+          git push origin HEAD:feature/product-resource-lifecycle
