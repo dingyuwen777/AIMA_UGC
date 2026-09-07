@@ -11,6 +11,9 @@ from fastapi import FastAPI
 from aima_ugc.bootstrap.analysis_capability_http import (
     install_content_analysis_capability_route,
 )
+from aima_ugc.bootstrap.analysis_scheme_lifecycle_http import (
+    install_analysis_scheme_lifecycle_routes,
+)
 from aima_ugc.bootstrap.api import HealthResponse, ReadinessChecks, ReadinessResponse
 from aima_ugc.bootstrap.api import create_app as _create_app
 from aima_ugc.bootstrap.import_revocation_http import install_import_revocation_routes
@@ -43,6 +46,10 @@ def _with_product_extension_routes[**P](
             identity_resolver=resolved_identity,
         )
         install_provider_lifecycle_routes(
+            application,
+            identity_resolver=resolved_identity,
+        )
+        install_analysis_scheme_lifecycle_routes(
             application,
             identity_resolver=resolved_identity,
         )
