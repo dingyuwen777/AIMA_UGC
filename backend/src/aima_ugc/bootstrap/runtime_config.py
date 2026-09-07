@@ -18,15 +18,15 @@ _ENV_LLM_CONFIG_ID = UUID("00000000-0000-4000-8000-000000000001")
 
 
 def active_llm_provider(session: Session, settings: PlatformSettings) -> ProviderConfig | None:
-    """优先重读数据库配置；未配置数据库 Provider 时从环境输入建立同一种 Provider。"""
+    """优先重读数据库当前配置；数据库一旦接管过 LLM 配置就不回退环境输入。"""
 
     repository = PostgresProviderConfigRepository(session)
     configured = repository.get_default("llm")
     if configured is not None:
         return configured
-    # 一旦管理员写入过任意 LLM Provider，数据库就是唯一运行时事实源。
-    # 禁用或未指定默认项必须表现为“未配置”，不能悄悄回退到环境配置。
-    if repository.list_all(provider_kind="llm"):
+    # 一旦管理员写入过任意 LLM Provider（包括后来归档的历史项），数据库就是唯一运行时事实源。
+    # 禁用、归档或未指定默认项必须表现为“未配置”，不能悄悄回退到环境配置。
+    if repository.list_all(provider_kind="llm", include_archived=True):
         return None
     if settings.llm_base_url is None or settings.llm_model is None:
         return None
