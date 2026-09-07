@@ -20,7 +20,9 @@ import {
   listDataImportServerDirectories,
   listImportBatches,
   listKeywordPacks,
+  previewDataImportCampaignRevocation,
   retryDataImportCampaignFailedItems,
+  revokeDataImportCampaign,
   startDataImportCampaign,
   uploadLocalDataImportFile,
   type CollectionCapabilitiesResponse,
@@ -30,6 +32,9 @@ import {
   type CollectionRunResponse,
   type CollectionRuntimeListResponse,
   type CollectionRuntimeSummaryResponse,
+  type DataImportRevocationPreviewResponse,
+  type DataImportRevocationResponse,
+  type DataImportRevokeRequest,
   type HttpErrorResponse,
   type HttpErrorItem,
   type HistoricalCampaignConflictListResponse,
@@ -238,4 +243,17 @@ export async function retryHistoricalCampaign(
   campaignId: string,
 ): Promise<HistoricalCampaignResponse> {
   return unwrap(await retryDataImportCampaignFailedItems(campaignId))
+}
+
+export async function previewHistoricalCampaignRevocation(
+  campaignId: string,
+): Promise<DataImportRevocationPreviewResponse> {
+  return unwrap(await previewDataImportCampaignRevocation(campaignId))
+}
+
+export async function revokeHistoricalCampaign(
+  campaignId: string,
+  request: DataImportRevokeRequest = {},
+): Promise<DataImportRevocationResponse> {
+  return unwrap(await revokeDataImportCampaign(campaignId, request))
 }

@@ -94,10 +94,10 @@ function canDownload(item: DataExportResponse): boolean {
             <h2 id="export-title">
               导出声音记录
             </h2>
-            <p>复用正式 Excel 导出链路，后台生成可下载 Artifact。</p>
+            <p>选择导出范围和字段，系统将在后台生成可下载的 Excel 文件。</p>
           </div>
           <section class="column-picker">
-            <header><strong>导出列</strong><span>后端白名单 v{{ columnCatalog?.version ?? '—' }}</span></header>
+            <header><strong>导出列</strong><span>{{ columnCatalog?.columns.length ?? '—' }} 个可选字段</span></header>
             <div>
               <label
                 v-for="column in columnCatalog?.columns ?? []"
@@ -195,11 +195,18 @@ function canDownload(item: DataExportResponse): boolean {
                 <span
                   v-else-if="item.job.status !== 'succeeded'"
                   class="pending-artifact"
-                >Artifact 尚未就绪</span>
+                >文件尚未生成</span>
                 <span
                   v-if="item.job.error_code"
                   class="error"
-                >{{ item.job.error_code }}</span>
+                >导出遇到问题，请重试；如持续失败，请联系管理员查看技术详情。</span>
+                <details
+                  v-if="item.job.error_code"
+                  class="technical-details"
+                >
+                  <summary>技术详情</summary>
+                  <code>{{ item.job.error_code }}</code>
+                </details>
               </div>
               <AimaButton
                 size="small"
@@ -284,6 +291,9 @@ header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line
 .records :deep(.task-progress__track) { height: 7px; }
 .records .error,
 .records .expired { color: var(--aima-danger); }
+.technical-details { color: var(--aima-text-muted); font-size: 9px; }
+.technical-details summary { cursor: pointer; }
+.technical-details code { display: block; margin-top: 4px; color: var(--aima-text-secondary); white-space: normal; }
 .pending-artifact { color: var(--aima-text-disabled) !important; }
 .empty { padding: 24px; color: var(--aima-text-disabled); text-align: center; }
 footer { display: flex; min-height: 68px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); }

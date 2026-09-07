@@ -106,6 +106,46 @@ function supplementMessage(status: string): string {
   }
   return '正在补充完整详情与评论，当前先展示已入库内容。'
 }
+
+/** 将标准化内容类型映射为业务文案，未知旧值不直接暴露内部枚举。 */
+function contentTypeLabel(value: string): string {
+  if (value === 'image') return '图文 / 图片'
+  if (value === 'video') return '视频'
+  if (value === 'text') return '纯文本'
+  return '未识别'
+}
+
+/** 将内部 Provider 名称归一为用户可理解的来源类别。 */
+function sourceLabel(providerName: string): string {
+  const normalized = providerName.toLowerCase()
+  if (normalized.includes('import') || normalized.includes('excel')) return '数据导入'
+  if (normalized.includes('tikhub')) return 'TikHub 采集'
+  if (normalized.includes('manual')) return '人工维护'
+  return '平台采集'
+}
+
+/** 将第三方可用状态映射为业务状态，原始 code 仅在技术详情保留。 */
+function availabilityLabel(status: string): string {
+  if (status === 'available') return '当前可访问'
+  if (status === 'unavailable_confirmed') return '已确认不可访问'
+  if (status === 'unavailable_suspected') return '可能不可访问'
+  return '状态待确认'
+}
+
+/** 将车型证据来源归一为用户语义；内部 source/catalog version 下沉技术详情。 */
+function vehicleEvidenceLabel(source: string): string {
+  const normalized = source.toLowerCase()
+  if (normalized.includes('manual')) return '人工确认'
+  if (normalized.includes('keyword') || normalized.includes('alias')) return '词包 / 别名识别'
+  return '系统识别'
+}
+
+/** 将评论覆盖枚举转换为用户可读状态。 */
+function commentCoverageLabel(value: string): string {
+  if (value === 'complete') return '完整'
+  if (value === 'partial') return '部分'
+  return '待确认'
+}
 </script>
 
 <template>
@@ -127,7 +167,7 @@ function supplementMessage(status: string): string {
         <header>
           <div>
             <h2>内容详情</h2>
-            <small v-if="item">Content ID: {{ item.id }}</small>
+            <small v-if="item">{{ platformLabel(item.platform) }} · {{ item.author_display_name || '未知作者' }}</small>
           </div>
           <button
             class="close-button"
@@ -188,7 +228,7 @@ function supplementMessage(status: string): string {
               >{{ labelPairText(label).replace(' / ', ' ／ ') }}</span>
               <em v-if="(item.analysis.labels ?? []).length === 0">暂无 AI 标签</em>
             </div>
-            <small v-if="item.analysis.analyzed_at">分析时间：{{ formatDateTime(item.analysis.analyzed_at) }} · {{ item.analysis.model_provider }} / {{ item.analysis.model }}</small>
+            <small v-if="item.analysis.analyzed_at">分析时间：{{ formatDateTime(item.analysis.analyzed_at) }}</small>
           </section>
 
           <section class="manual-review">
@@ -213,7 +253,7 @@ function supplementMessage(status: string): string {
                   v-for="(evidence, index) in vehicle.evidences"
                   :key="`${evidence.source}:${index}`"
                 >
-                  {{ evidence.source }}<template v-if="evidence.matched_text"> · “{{ evidence.matched_text }}”</template> · catalog v{{ evidence.catalog_version }}<template v-if="evidence.is_manual_locked"> · 人工锁定</template>
+                  {{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.is_manual_locked"> · 已人工确认</template>
                 </span>
               </article>
             </div>
@@ -244,7 +284,7 @@ function supplementMessage(status: string): string {
 
           <section class="manual-review">
             <header class="section-heading">
-              <div><h4>发声类型、情感与标签人工纠正</h4><small>合法值来自当前发布的原子 Analysis Scheme。</small></div>
+              <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析规则。</small></div>
               <span v-if="lockedDimensions.length">锁定 {{ lockedDimensions.join('、') }}</span>
             </header>
             <p
@@ -340,12 +380,12 @@ function supplementMessage(status: string): string {
           </section>
 
           <section>
-            <h4>第三方可用状态</h4>
+            <h4>内容可用状态</h4>
             <p v-if="item.availability">
-              {{ item.availability.status }} · {{ item.availability.reason_code }} · {{ item.availability.evidence_kind }} · {{ formatDateTime(item.availability.observed_at) }}
+              {{ availabilityLabel(item.availability.status) }} · 更新于 {{ formatDateTime(item.availability.observed_at) }}
             </p>
             <p v-else>
-              unknown · 尚无明确 Provider 证据。技术失败不会直接标记为确认下架。
+              状态待确认 · 暂无明确的平台可用性证据。
             </p>
           </section>
 
@@ -374,11 +414,56 @@ function supplementMessage(status: string): string {
             <dl>
               <div><dt>平台</dt><dd>{{ platformLabel(item.platform) }}</dd></div>
               <div><dt>作者</dt><dd>{{ item.author_display_name || '未知' }}</dd></div>
-              <div><dt>内容类型</dt><dd>{{ item.content_type }}</dd></div>
+              <div><dt>内容类型</dt><dd>{{ contentTypeLabel(item.content_type) }}</dd></div>
               <div><dt>发布时间</dt><dd>{{ formatDateTime(item.published_at) }}</dd></div>
-              <div><dt>外部内容 ID</dt><dd>{{ item.external_content_id }}</dd></div>
-              <div><dt>来源</dt><dd>{{ item.source.provider_name }}</dd></div>
+              <div><dt>来源</dt><dd>{{ sourceLabel(item.source.provider_name) }}</dd></div>
             </dl>
+          </section>
+
+          <section class="technical-section">
+            <details class="technical-details">
+              <summary>技术详情</summary>
+              <dl>
+                <div><dt>Content ID</dt><dd>{{ item.id }}</dd></div>
+                <div><dt>外部内容 ID</dt><dd>{{ item.external_content_id }}</dd></div>
+                <div><dt>当前来源 Provider</dt><dd>{{ item.source.provider_name }}</dd></div>
+                <div><dt>Provider Attempt</dt><dd>{{ item.source.provider_attempt_id || '—' }}</dd></div>
+                <div><dt>Raw Artifact</dt><dd>{{ item.source.raw_artifact_id || '—' }}</dd></div>
+                <div><dt>Import Batch</dt><dd>{{ item.source.import_batch_id || '—' }}</dd></div>
+                <div><dt>Collection Run</dt><dd>{{ item.source.collection_run_id || '—' }}</dd></div>
+                <div><dt>AI 模型</dt><dd>{{ item.analysis.model_provider }} / {{ item.analysis.model }}</dd></div>
+                <div v-if="item.availability">
+                  <dt>可用状态原始证据</dt><dd>{{ item.availability.status }} · {{ item.availability.reason_code }} · {{ item.availability.evidence_kind }}</dd>
+                </div>
+              </dl>
+              <div
+                v-if="(item.source_records ?? []).length"
+                class="technical-list"
+              >
+                <strong>来源追溯</strong>
+                <span
+                  v-for="(source, index) in item.source_records ?? []"
+                  :key="`${source.provider_attempt_id ?? source.raw_artifact_id ?? index}`"
+                >
+                  {{ source.provider_name }}<template v-if="source.import_batch_id"> · Import {{ source.import_batch_id }}</template><template v-if="source.collection_run_id"> · Run {{ source.collection_run_id }}</template><template v-if="source.provider_attempt_id"> · Attempt {{ source.provider_attempt_id }}</template><template v-if="source.raw_artifact_id"> · Artifact {{ source.raw_artifact_id }}</template>
+                </span>
+              </div>
+              <div
+                v-if="(item.vehicles ?? []).some((vehicle) => vehicle.evidences.length)"
+                class="technical-list"
+              >
+                <strong>车型证据追溯</strong>
+                <template
+                  v-for="vehicle in item.vehicles ?? []"
+                  :key="vehicle.vehicle_model_id"
+                >
+                  <span
+                    v-for="(evidence, index) in vehicle.evidences"
+                    :key="`${vehicle.vehicle_model_id}:${index}`"
+                  >{{ vehicle.display_name }} · {{ evidence.source }} · catalog v{{ evidence.catalog_version }}<template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+                </template>
+              </div>
+            </details>
           </section>
 
           <section>
@@ -399,7 +484,7 @@ function supplementMessage(status: string): string {
               v-if="item.comment_coverage"
               class="coverage"
             >
-              已采集 {{ formatNumber(item.comment_coverage.collected_count) }} / {{ formatNumber(item.comment_coverage.reported_total) }}，覆盖状态：{{ item.comment_coverage.coverage }}
+              已采集 {{ formatNumber(item.comment_coverage.collected_count) }} / {{ formatNumber(item.comment_coverage.reported_total) }}，覆盖状态：{{ commentCoverageLabel(item.comment_coverage.coverage) }}
             </p>
             <div
               v-if="(item.comments ?? []).length"
@@ -480,6 +565,13 @@ h4 { margin: 0 0 9px; color: var(--aima-text); font-size: 13px; line-height: 18p
 .manual-labels { display: flex; flex-wrap: wrap; gap: 6px; }
 .manual-labels button { padding: 3px 7px; border: 0; border-radius: 4px; color: #396b9e; background: #e8f3ff; cursor: pointer; font-size: 9px; }
 .review-warning { padding: 8px 10px; border-radius: 5px; color: #8a641d !important; background: #fff9ec; }
+.technical-section { padding: 0 !important; border: 0 !important; background: transparent !important; }
+.technical-details { padding: 10px 12px; border: 1px dashed var(--aima-border-strong); border-radius: 7px; color: var(--aima-text-muted); background: #fafbfc; font-size: 10px; }
+.technical-details summary { cursor: pointer; color: var(--aima-text-secondary); font-weight: 600; }
+.technical-details dl { margin-top: 10px; }
+.technical-list { display: grid; gap: 4px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--aima-border); }
+.technical-list strong { color: var(--aima-text-secondary); font-size: 10px; }
+.technical-list span { overflow-wrap: anywhere; color: var(--aima-text-muted); font-size: 9px; line-height: 15px; }
 dl { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 8px; margin: 0; }
 dl div { display: flex; min-height: 28px; align-items: flex-start; justify-content: space-between; gap: 10px; }
 dt { color: var(--aima-text-disabled); font-size: 10px; }

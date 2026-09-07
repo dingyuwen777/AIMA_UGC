@@ -25,6 +25,7 @@
 | AI 打标、Validator、Retry、Analysis 持久化 | [`docs/appendix/07_AI舆情打标与分析实现.md`](07_AI舆情打标与分析实现.md) | Analysis 模块、当前 Scheme/Prompt、Repository |
 | TikHub/File Import 如何进入统一 Content | [`docs/appendix/08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md) | Reader/Mapper/Canonical/Ingestion/Content Owner |
 | Markdown/Word 报告生成与排版 | [`docs/appendix/10_Word舆情报告生成与排版实现.md`](10_Word舆情报告生成与排版实现.md) | Reporting Platform、报告生成入口 |
+| 业务配置归档、恢复、安全删除与数据导入撤销 | [`docs/appendix/11_业务资源生命周期与数据撤销实现.md`](11_业务资源生命周期与数据撤销实现.md) | Lifecycle Repository、Revocation、HTTP Contract、Migration |
 | Artifact 生命周期、引用与清理 | [`docs/appendix/12_Artifact生命周期与保留策略.md`](12_Artifact生命周期与保留策略.md) | ArtifactService/Store、清理任务 |
 | 数千万级 AI 打标成本与吞吐优化 | [`docs/appendix/13_AI大规模打标与成本优化方案.md`](13_AI大规模打标与成本优化方案.md) | Analysis 模块、LLM Adapter、当前 Analysis Identity |
 

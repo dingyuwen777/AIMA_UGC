@@ -60,7 +60,7 @@ async function uploadExcel(
   expect(createdResponse.status()).toBe(201)
   const created = await createdResponse.json() as { campaign_id: string }
   if (options.startImport === false) return created.campaign_id
-  await expect(dialog.getByText('预检完成，可开始导入')).toBeVisible({ timeout: 60_000 })
+  await expect(dialog.locator('.campaign-status')).toHaveText('预检完成', { timeout: 60_000 })
   await dialog.getByRole('button', { name: '开始导入' }).click()
   return created.campaign_id
 }
@@ -74,7 +74,7 @@ test('Excel 浏览器多选词包后经过真实 API、Worker 和 PostgreSQL 可
   const campaignId = await uploadExcel(page, fixturePath!, [brandPack, modelPack])
 
   const detail = page.getByRole('dialog', { name: '导入数据' })
-  await expect(detail.getByText('状态：succeeded')).toBeVisible({ timeout: 60_000 })
+  await expect(detail.locator('.campaign-status')).toHaveText('导入完成', { timeout: 60_000 })
   await expect(detail.getByText('新建 1', { exact: true })).toBeVisible()
   const viewContents = detail.getByRole('button', { name: '查看导入内容' })
   await expect(viewContents).toBeEnabled()
@@ -93,7 +93,8 @@ test('错误表头 Excel 由统一链路在预检阶段拒绝', async ({ page, r
   await uploadExcel(page, fixturePath!, [pack], { startImport: false })
 
   const detail = page.getByRole('dialog', { name: '导入数据' })
-  await expect(detail.getByText('状态：failed')).toBeVisible({ timeout: 60_000 })
+  await expect(detail.locator('.campaign-status')).toHaveText('导入失败', { timeout: 60_000 })
+  await detail.locator('details.technical-details summary').click()
   await expect(detail.getByText('historical_snapshot_invalid')).toBeVisible()
   await expect(detail.getByRole('button', { name: '开始导入' })).toHaveCount(0)
   await expect(detail.getByRole('button', { name: '查看导入内容' })).toHaveCount(0)

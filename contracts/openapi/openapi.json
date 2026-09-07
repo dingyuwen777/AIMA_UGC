@@ -535,6 +535,23 @@
         "title": "AnalysisRunTargetSelection",
         "type": "object"
       },
+      "AnalysisSchemeCopyRequest": {
+        "additionalProperties": false,
+        "description": "复制分析方案时创建全新的未发布 Scheme 草稿。",
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AnalysisSchemeCopyRequest",
+        "type": "object"
+      },
       "AnalysisSchemeCreateDraftRequest": {
         "additionalProperties": false,
         "description": "基于当前发布版或新定义创建草稿。",
@@ -1109,6 +1126,23 @@
         "title": "CollectionCapabilityResponse",
         "type": "object"
       },
+      "CollectionPlanCopyRequest": {
+        "additionalProperties": false,
+        "description": "复制计划只要求新名称；副本默认停用并重新进入人工启用流程。",
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CollectionPlanCopyRequest",
+        "type": "object"
+      },
       "CollectionPlanCreateRequest": {
         "additionalProperties": false,
         "description": "Stage 8F 周期 Plan 创建 Contract；一次性运行继续使用 Stage 8E。",
@@ -1371,6 +1405,71 @@
           "updated_at"
         ],
         "title": "CollectionPlanResponse",
+        "type": "object"
+      },
+      "CollectionPlanUpdateRequest": {
+        "additionalProperties": false,
+        "description": "完整替换一个计划的下一版本配置；历史 Run/Occurrence 继续保留旧版本事实。",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "keyword_pack_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Keyword Pack Ids",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionPlanPlatformRequest"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Platforms",
+            "type": "array"
+          },
+          "schedule_expr": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Schedule Expr",
+            "type": "string"
+          },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version",
+          "name",
+          "schedule_expr",
+          "platforms",
+          "enabled"
+        ],
+        "title": "CollectionPlanUpdateRequest",
         "type": "object"
       },
       "CollectionPlatform": {
@@ -4394,6 +4493,136 @@
         ],
         "type": "string"
       },
+      "DataImportRevocationImpactResponse": {
+        "additionalProperties": false,
+        "description": "撤销一次数据导入对当前业务可见内容的影响。",
+        "properties": {
+          "affected_content_count": {
+            "minimum": 0.0,
+            "title": "Affected Content Count",
+            "type": "integer"
+          },
+          "hidden_content_count": {
+            "minimum": 0.0,
+            "title": "Hidden Content Count",
+            "type": "integer"
+          },
+          "retained_shared_content_count": {
+            "minimum": 0.0,
+            "title": "Retained Shared Content Count",
+            "type": "integer"
+          },
+          "unreversible_content_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unreversible Content Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "affected_content_count",
+          "hidden_content_count",
+          "retained_shared_content_count"
+        ],
+        "title": "DataImportRevocationImpactResponse",
+        "type": "object"
+      },
+      "DataImportRevocationPreviewResponse": {
+        "additionalProperties": false,
+        "description": "执行撤销前的只读影响预览。",
+        "properties": {
+          "already_revoked": {
+            "title": "Already Revoked",
+            "type": "boolean"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/DataImportRevocationImpactResponse"
+          },
+          "ineligible_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "campaign_not_completed",
+                  "reversible_evidence_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ineligible Reason"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "eligible",
+          "already_revoked",
+          "impact"
+        ],
+        "title": "DataImportRevocationPreviewResponse",
+        "type": "object"
+      },
+      "DataImportRevocationResponse": {
+        "additionalProperties": false,
+        "description": "已经提交的不可变撤销事实。",
+        "properties": {
+          "already_revoked": {
+            "title": "Already Revoked",
+            "type": "boolean"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/DataImportRevocationImpactResponse"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "title": "Revoked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "already_revoked",
+          "impact",
+          "revoked_at"
+        ],
+        "title": "DataImportRevocationResponse",
+        "type": "object"
+      },
+      "DataImportRevokeRequest": {
+        "additionalProperties": false,
+        "description": "执行撤销时允许记录一段非敏感原因。",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "DataImportRevokeRequest",
+        "type": "object"
+      },
       "DataImportSourceKind": {
         "enum": [
           "local_upload",
@@ -5747,6 +5976,23 @@
         "title": "JobStatusResponse",
         "type": "object"
       },
+      "KeywordPackCopyRequest": {
+        "additionalProperties": false,
+        "description": "复制词包时只要求新名称；副本默认停用，避免意外进入运行链。",
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "KeywordPackCopyRequest",
+        "type": "object"
+      },
       "KeywordPackCreateRequest": {
         "additionalProperties": false,
         "description": "创建词包；可在同一事务中携带初始关键词，旧客户端仍可省略。",
@@ -5777,6 +6023,73 @@
           "name"
         ],
         "title": "KeywordPackCreateRequest",
+        "type": "object"
+      },
+      "KeywordPackItemRemoveRequest": {
+        "additionalProperties": false,
+        "description": "删除一个词包成员；共享 Keyword 实体本身不会被级联删除。",
+        "properties": {
+          "expected_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "platform_scope": {
+            "$ref": "#/components/schemas/PlatformScope",
+            "default": "all"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "KeywordPackItemRemoveRequest",
+        "type": "object"
+      },
+      "KeywordPackItemUpdateRequest": {
+        "additionalProperties": false,
+        "description": "修改一个词包成员；共享 Keyword 通过关系替换避免影响其它词包。",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Note",
+            "type": "string"
+          },
+          "platform_scope": {
+            "$ref": "#/components/schemas/PlatformScope",
+            "default": "all"
+          },
+          "priority": {
+            "default": 100,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "source_platform_scope": {
+            "$ref": "#/components/schemas/PlatformScope",
+            "default": "all"
+          },
+          "text": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "text"
+        ],
+        "title": "KeywordPackItemUpdateRequest",
         "type": "object"
       },
       "KeywordPackKeywordCreateRequest": {
@@ -5931,6 +6244,35 @@
           "keyword_count"
         ],
         "title": "KeywordPackSummaryResponse",
+        "type": "object"
+      },
+      "KeywordPackUpdateRequest": {
+        "additionalProperties": false,
+        "description": "编辑词包的业务元数据；关键词成员使用独立操作维护。",
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "name"
+        ],
+        "title": "KeywordPackUpdateRequest",
         "type": "object"
       },
       "KeywordPackVehicleLinkRequest": {
@@ -6666,6 +7008,38 @@
         "title": "ProviderConfigUpdateRequest",
         "type": "object"
       },
+      "ProviderConnectionTestResponse": {
+        "additionalProperties": false,
+        "description": "连接测试只返回业务可理解结果，不返回 Secret、原始响应体或内部请求 ID。",
+        "properties": {
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "message"
+        ],
+        "title": "ProviderConnectionTestResponse",
+        "type": "object"
+      },
       "ReadinessChecks": {
         "additionalProperties": false,
         "description": "readiness 子检查，不包含异常详情。",
@@ -6726,6 +7100,35 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "ResourceDeleteEligibilityResponse": {
+        "additionalProperties": false,
+        "description": "物理删除前的只读资格；有历史引用时只允许归档。",
+        "properties": {
+          "blocking_reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocking Reasons",
+            "type": "array"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "eligible"
+        ],
+        "title": "ResourceDeleteEligibilityResponse",
+        "type": "object"
+      },
       "ResourceEnabledRequest": {
         "additionalProperties": false,
         "properties": {
@@ -6738,6 +7141,62 @@
           "enabled"
         ],
         "title": "ResourceEnabledRequest",
+        "type": "object"
+      },
+      "ResourceLifecycleListResponse": {
+        "additionalProperties": false,
+        "description": "一个资源类型的已归档列表。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResourceLifecycleResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ResourceLifecycleListResponse",
+        "type": "object"
+      },
+      "ResourceLifecycleResponse": {
+        "additionalProperties": false,
+        "description": "归档资源的最小业务投影，不暴露内部版本/关系实现。",
+        "properties": {
+          "archived_at": {
+            "format": "date-time",
+            "title": "Archived At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "keyword_pack",
+              "collection_plan",
+              "provider_config",
+              "analysis_scheme"
+            ],
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "resource_type",
+          "name",
+          "archived_at"
+        ],
+        "title": "ResourceLifecycleResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -7416,6 +7875,388 @@
         ]
       }
     },
+    "/api/v1/analysis-schemes/lifecycle/archived": {
+      "get": {
+        "operationId": "listArchivedAnalysisSchemes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLifecycleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "List Archived Analysis Schemes",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
+    "/api/v1/analysis-schemes/{scheme_id}": {
+      "delete": {
+        "operationId": "deleteAnalysisScheme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scheme_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scheme Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Analysis Scheme",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
+    "/api/v1/analysis-schemes/{scheme_id}/archive": {
+      "post": {
+        "operationId": "archiveAnalysisScheme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scheme_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scheme Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Analysis Scheme",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
+    "/api/v1/analysis-schemes/{scheme_id}/copy": {
+      "post": {
+        "operationId": "copyAnalysisScheme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scheme_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scheme Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisSchemeCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSchemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Copy Analysis Scheme",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
+    "/api/v1/analysis-schemes/{scheme_id}/delete-eligibility": {
+      "get": {
+        "operationId": "getAnalysisSchemeDeleteEligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scheme_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scheme Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceDeleteEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis Scheme Delete Eligibility",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
+    "/api/v1/analysis-schemes/{scheme_id}/restore": {
+      "post": {
+        "operationId": "restoreAnalysisScheme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scheme_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scheme Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Analysis Scheme",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
     "/api/v1/analysis/content-runs": {
       "get": {
         "operationId": "listContentAnalysisRuns",
@@ -8017,6 +8858,70 @@
       }
     },
     "/api/v1/collection-plans/{plan_id}": {
+      "delete": {
+        "operationId": "deleteCollectionPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Collection Plan",
+        "tags": [
+          "collection-strategy"
+        ]
+      },
       "get": {
         "operationId": "getCollectionPlan",
         "parameters": [
@@ -8074,6 +8979,286 @@
           }
         },
         "summary": "Get Collection Plan",
+        "tags": [
+          "collection-strategy"
+        ]
+      },
+      "put": {
+        "operationId": "updateCollectionPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionPlanUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update Collection Plan",
+        "tags": [
+          "collection-strategy"
+        ]
+      }
+    },
+    "/api/v1/collection-plans/{plan_id}/archive": {
+      "post": {
+        "operationId": "archiveCollectionPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Collection Plan",
+        "tags": [
+          "collection-strategy"
+        ]
+      }
+    },
+    "/api/v1/collection-plans/{plan_id}/copy": {
+      "post": {
+        "operationId": "copyCollectionPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionPlanCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Copy Collection Plan",
+        "tags": [
+          "collection-strategy"
+        ]
+      }
+    },
+    "/api/v1/collection-plans/{plan_id}/delete-eligibility": {
+      "get": {
+        "operationId": "getCollectionPlanDeleteEligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceDeleteEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Collection Plan Delete Eligibility",
         "tags": [
           "collection-strategy"
         ]
@@ -8167,6 +9352,69 @@
           }
         },
         "summary": "Update Collection Plan Enabled",
+        "tags": [
+          "collection-strategy"
+        ]
+      }
+    },
+    "/api/v1/collection-plans/{plan_id}/restore": {
+      "post": {
+        "operationId": "restoreCollectionPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Collection Plan",
         "tags": [
           "collection-strategy"
         ]
@@ -10338,6 +11586,154 @@
         ]
       }
     },
+    "/api/v1/data-import-campaigns/{campaign_id}/revocation-preview": {
+      "get": {
+        "description": "在用户确认前返回撤销影响；不会修改 Campaign 或 Content。",
+        "operationId": "previewDataImportCampaignRevocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataImportRevocationPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Preview Data Import Campaign Revocation",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/revoke": {
+      "post": {
+        "description": "撤销已完成导入的来源贡献；权限沿用当前统一导入能力，不新增平行 RBAC。",
+        "operationId": "revokeDataImportCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataImportRevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataImportRevocationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Revoke Data Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
     "/api/v1/data-import-campaigns/{campaign_id}/start": {
       "post": {
         "operationId": "startDataImportCampaign",
@@ -11844,6 +13240,70 @@
       }
     },
     "/api/v1/keyword-packs/{pack_id}": {
+      "delete": {
+        "operationId": "deleteKeywordPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Keyword Pack",
+        "tags": [
+          "keywords"
+        ]
+      },
       "get": {
         "operationId": "getKeywordPack",
         "parameters": [
@@ -11901,6 +13361,296 @@
           }
         },
         "summary": "Get Keyword Pack",
+        "tags": [
+          "keywords"
+        ]
+      },
+      "put": {
+        "operationId": "updateKeywordPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordPackUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update Keyword Pack",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/archive": {
+      "post": {
+        "operationId": "archiveKeywordPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Keyword Pack",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/copy": {
+      "post": {
+        "operationId": "copyKeywordPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordPackCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Copy Keyword Pack",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/delete-eligibility": {
+      "get": {
+        "operationId": "getKeywordPackDeleteEligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceDeleteEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Keyword Pack Delete Eligibility",
         "tags": [
           "keywords"
         ]
@@ -12077,6 +13827,265 @@
           }
         },
         "summary": "Add Keyword",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}": {
+      "put": {
+        "operationId": "updateKeywordInPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "keyword_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Keyword Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordPackItemUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update Keyword In Pack",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}/remove": {
+      "post": {
+        "operationId": "removeKeywordFromPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "keyword_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Keyword Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordPackItemRemoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Remove Keyword From Pack",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/restore": {
+      "post": {
+        "operationId": "restoreKeywordPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Keyword Pack",
         "tags": [
           "keywords"
         ]
@@ -12441,7 +14450,104 @@
         ]
       }
     },
+    "/api/v1/provider-configs/lifecycle/archived": {
+      "get": {
+        "operationId": "listArchivedProviderConfigs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLifecycleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "List Archived Provider Configs",
+        "tags": [
+          "administration",
+          "provider-configs"
+        ]
+      }
+    },
     "/api/v1/provider-configs/{provider_config_id}": {
+      "delete": {
+        "operationId": "deleteProviderConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provider Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Provider Config",
+        "tags": [
+          "administration",
+          "provider-configs"
+        ]
+      },
       "put": {
         "description": "管理员更新 Provider；省略 API Key 时保持当前 Secret 引用。",
         "operationId": "updateProviderConfig",
@@ -12530,6 +14636,285 @@
           }
         },
         "summary": "Update Provider Config",
+        "tags": [
+          "administration",
+          "provider-configs"
+        ]
+      }
+    },
+    "/api/v1/provider-configs/{provider_config_id}/archive": {
+      "post": {
+        "operationId": "archiveProviderConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provider Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Provider Config",
+        "tags": [
+          "administration",
+          "provider-configs"
+        ]
+      }
+    },
+    "/api/v1/provider-configs/{provider_config_id}/delete-eligibility": {
+      "get": {
+        "operationId": "getProviderConfigDeleteEligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provider Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceDeleteEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Provider Config Delete Eligibility",
+        "tags": [
+          "administration",
+          "provider-configs"
+        ]
+      }
+    },
+    "/api/v1/provider-configs/{provider_config_id}/restore": {
+      "post": {
+        "operationId": "restoreProviderConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provider Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Provider Config",
+        "tags": [
+          "administration",
+          "provider-configs"
+        ]
+      }
+    },
+    "/api/v1/provider-configs/{provider_config_id}/test-connection": {
+      "post": {
+        "operationId": "testProviderConfigConnection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provider Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnectionTestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Test Provider Config Connection",
         "tags": [
           "administration",
           "provider-configs"
@@ -12653,6 +15038,68 @@
         "summary": "Set Global Relevance",
         "tags": [
           "relevance"
+        ]
+      }
+    },
+    "/api/v1/resource-lifecycle/collection-plans/archived": {
+      "get": {
+        "operationId": "listArchivedCollectionPlans",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLifecycleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "List Archived Collection Plans",
+        "tags": [
+          "collection-strategy"
+        ]
+      }
+    },
+    "/api/v1/resource-lifecycle/keyword-packs/archived": {
+      "get": {
+        "operationId": "listArchivedKeywordPacks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLifecycleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "List Archived Keyword Packs",
+        "tags": [
+          "keywords"
         ]
       }
     },

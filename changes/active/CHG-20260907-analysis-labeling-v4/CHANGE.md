@@ -174,7 +174,7 @@ data_changes: []
 | R4 | 只有冲突/歧义内容进入 Judge，正常内容保持单次调用 | #388 / AC4 | satisfied | partial/mixed batch 测试证明清晰项不重试、结构项进 repair、语义项进 judge；Judge payload 不携带旧响应 |
 | R5 | relevance、voice_type、targeted sentiment、多标签形成统一且兼容的 V4 链 | #388 / AC5 | satisfied | Analysis 单元、Contract/API、PostgreSQL Content 全套与冻结 V3 Scheme 回归共同覆盖；公共 `ContentLabelAnalysisV3` 未扩字段 |
 | R6 | 暂不建立 Gold Set，参数调优与量化准确率评测随之延期 | #388 / AC6 | explicitly_deferred | 用户本轮明确“先不建立 Gold Set”；不把少量固定样例冒充 Gold Set |
-| R7 | 完成后同步最新 main，通过门禁后合并到主分支 | #388 / AC7 | satisfied | 2026-09-07 已通过 SSH fetch；`origin/main=e6475474` 且任务分支包含该基线；实现、Review 与本地门禁完成，远程 CI/merge 继续作为交付硬门禁 |
+| R7 | 完成后同步最新 main，通过门禁后合并到主分支 | #388 / AC7 | satisfied | 2026-09-07 最终 SSH fetch 取得 `origin/main=57e8e1e0`；该基线已合并进任务分支，唯一冲突按最新管理员配置产品行为解决；合并态本地验证通过，远程 current-head CI/merge 继续作为交付硬门禁 |
 
 # 计划改动
 
@@ -228,7 +228,7 @@ Docs Impact 为 `targeted`：更新 Analysis 模块 README、AI 实现 Appendix 
 
 # 完成审计
 
-- [x] upstream_re_read：已重新读取用户 AC1-AC7、Analysis Blueprint/Appendix、V3/V4 Prompt、Scheme/Result Contract、Worker 调用链及 `e6475474..71a53786` 最终实现 diff。
+- [x] upstream_re_read：已重新读取用户 AC1-AC7、Analysis Blueprint/Appendix、V3/V4 Prompt、Scheme/Result Contract、Worker 调用链，并复核共同基线 `e6475474`、最新 main `57e8e1e0` 与功能 head `9064d4bd` 的三方差异。
 - [x] change_coverage：已逐条反查五字段、个人交易、证据校验、Judge 分流、公共结果兼容、Gold Set 延期和 Git 同步；没有用 Change 自身替代上游要求。
 - [x] reverse_audit：已从公共 `ContentLabelAnalysisV3`、数据库冻结 Scheme、Analysis Worker、动态 Taxonomy、真实用户精确过滤、离线 Checkpoint 和 Wheel 包反向核对消费者边界。
 - [x] unresolved_cleared：实现范围内无 `not_satisfied`；Gold Set 与模型参数调优按用户决定保留 `explicitly_deferred`，不声称量化效果。
@@ -243,7 +243,8 @@ Docs Impact 为 `targeted`：更新 Analysis 模块 README、AI 实现 Appendix 
 | V2 | `71a53786` / PostgreSQL 18.4 隔离容器 | `uv run pytest tests/integration/content -q`；Scheme 发布/回滚与 voice_type Schema 专项 | 53 passed；专项 2 passed | 新空库 V4、Analysis Worker/Job、持久结果、旧 Schema 与版本发布回滚链 |
 | V3 | `71a53786` / 当前锁定依赖 | Contract 104 tests；API 53 tests；CI 精确 Ruff、mypy、架构、Owner、Docs、Contract 生成、治理、Secret | 全部通过；mypy 294 source files；Ruff 609 files formatted / lint passed | 公共边界未漂移、静态质量、架构与文档一致性 |
 | V4 | `71a53786` / uv build | `uv build --wheel`；Zip 打开与包内容检查 | 构建 `aima_ugc-0.1.0-py3-none-any.whl` 成功，366 entries，包含 `content_labeling_v4.md` | 部署包可携带新默认 Prompt |
-| V5 | 当前修复工作区 / Node 24.19.0 / npm 11.17.0 | `npm run lint`；`npm run build` | lint 通过；TS7、Vue 类型检查与 Vite 生产构建通过，155 modules transformed | Full-stack E2E 选择器同步未引入前端静态或构建回归 |
+| V5 | `origin/main=57e8e1e0` 合并态 / Node 24.19.0 / npm 11.17.0 | `npm run lint`；`npm run build` | lint 通过；TS7、Vue 类型检查与 Vite 生产构建通过，158 modules transformed | 冲突解决保留最新 main 的资源生命周期前端能力，Full-stack E2E 同步未引入静态或构建回归 |
+| V6 | `origin/main=57e8e1e0` 合并态 / Python 3.14.7 / Windows | `uv run pytest tests/unit/analysis -q` | 166 passed，60 个既有 Pydantic deprecation warnings | 最新 main 的 Analysis Scheme 生命周期能力与 V4 协议、Validator、Fake LLM 单元链兼容 |
 
 ## 未验证内容与剩余风险
 
@@ -252,14 +253,14 @@ Docs Impact 为 `targeted`：更新 Analysis 模块 README、AI 实现 Appendix 
 
 ## 交付状态
 
-- 提交：治理提交 `bac37351`、失败测试提交 `d9f7a55f`、实现提交 `71a53786`。
+- 提交：治理 `bac37351`、失败测试 `d9f7a55f`、实现 `71a53786`、完成证据 `3bab2c46`/`f371d8f3`、Full-stack Fake `bd651550`、E2E 文案同步 `9064d4bd`；最新 main 合并提交随本轮冲突解决形成。
 - 需求与拉取请求：GitHub Issue #388；PR #387。
-- CI：本地同实现提交门禁已完成；GitHub 同-SHA CI 仍是合并硬门禁。
-- 合并：最新 `origin/main=e6475474` 已同步且无新提交；仅在 PR 检查通过后合并。
+- CI：`9064d4bd` 的 GitHub Requirement/Completion、Compose、PostgreSQL、真实 Full-stack 与 CI Gate 已全部成功；合并最新 main 后的 current-head CI 仍是最终硬门禁。
+- 合并：最新 `origin/main=57e8e1e0` 已进入任务分支；唯一 E2E 冲突已按最新产品行为解决，待 current-head CI 全绿后合并 PR。
 - Change 归档：合并后由既有流程处理。
 - 发布 / 部署：不在本次请求范围；既有数据库 Scheme 仍需显式发布。
 
 # 两阶段 Review
 
 - **阶段 1：需求与风险重建**：不依赖 Change checkbox，重新以用户五字段/个人交易/Judge/兼容/延期决定与现有 Scheme/Worker/Result Contract 为完成定义；最高风险是把结构错误错误送入 Judge、语义规则可折叠个人交易、旧 V3 active Scheme 失效、证据超出输入和公共结果扩张。
-- **阶段 2：实现与证据对照**：发现并修复“混合未解决批次整体进 Judge”“个人交易映射可与真实用户相同/主体映射可缺失”“真实 Full-stack Fake 仍返回 V3 结构”以及“管理员配置 Full-stack E2E 仍使用页面旧文案”四项阻塞问题；前三项均先取得本地失败证据再转绿，第四项以 GitHub Fullstack 同-SHA 失败和当前页面实现的逐项对照为 Red 证据。复查最终生产 diff、测试、文档和 Wheel，未发现剩余本地合并阻塞 Finding；远程 Fullstack 复验仍是 merge 硬门禁。真实 LLM 准确率仍明确属于 Gold Set 延期边界。
+- **阶段 2：实现与证据对照**：发现并修复“混合未解决批次整体进 Judge”“个人交易映射可与真实用户相同/主体映射可缺失”“真实 Full-stack Fake 仍返回 V3 结构”以及“管理员配置 Full-stack E2E 仍使用页面旧文案”四项阻塞问题；前三项均先取得本地失败证据再转绿，第四项以 GitHub Fullstack 同-SHA 失败和当前页面实现的逐项对照为 Red 证据。最终同步 main 时仅审计行定位发生冲突，已保留 main 的业务文案与折叠技术详情行为，并在合并态通过 Analysis 166 项、前端 lint/typecheck/build。复查最终生产 diff、测试、文档和 Wheel，未发现剩余本地合并阻塞 Finding；远程 current-head Fullstack 复验仍是 merge 硬门禁。真实 LLM 准确率仍明确属于 Gold Set 延期边界。

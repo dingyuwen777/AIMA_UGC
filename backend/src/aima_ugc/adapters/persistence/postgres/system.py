@@ -8,12 +8,15 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
 from aima_ugc.modules.system.models import AuditEvent, ProviderConfig, ProviderKind, SystemSetting
 from aima_ugc.modules.system.tables import (
     audit_events_table,
     provider_configs_table,
     system_settings_table,
 )
+
+register_system_lifecycle_schema()
 
 
 def _setting_from_row(row: RowMapping) -> SystemSetting:
@@ -89,18 +92,31 @@ class PostgresProviderConfigRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get(self, config_id: UUID) -> ProviderConfig | None:
-        row = (
-            self._session.execute(
-                select(provider_configs_table).where(provider_configs_table.c.id == config_id)
-            )
-            .mappings()
-            .one_or_none()
-        )
+    def get(
+        self,
+        config_id: UUID,
+        *,
+        include_archived: bool = False,
+    ) -> ProviderConfig | None:
+        """默认只读取当前配置；历史/生命周期审计可显式包含归档项。"""
+
+        statement = select(provider_configs_table).where(provider_configs_table.c.id == config_id)
+        if not include_archived:
+            statement = statement.where(provider_configs_table.c.archived_at.is_(None))
+        row = self._session.execute(statement).mappings().one_or_none()
         return None if row is None else _provider_config_from_row(row)
 
-    def list_all(self, *, provider_kind: ProviderKind | None = None) -> tuple[ProviderConfig, ...]:
+    def list_all(
+        self,
+        *,
+        provider_kind: ProviderKind | None = None,
+        include_archived: bool = False,
+    ) -> tuple[ProviderConfig, ...]:
+        """产品目录默认排除归档；Runtime 可显式包含归档以判断 DB 是否已接管配置。"""
+
         statement = select(provider_configs_table)
+        if not include_archived:
+            statement = statement.where(provider_configs_table.c.archived_at.is_(None))
         if provider_kind is not None:
             statement = statement.where(provider_configs_table.c.provider_kind == provider_kind)
         rows = self._session.execute(
@@ -115,7 +131,10 @@ class PostgresProviderConfigRepository:
     def list_enabled(self) -> tuple[ProviderConfig, ...]:
         rows = self._session.execute(
             select(provider_configs_table)
-            .where(provider_configs_table.c.enabled.is_(True))
+            .where(
+                provider_configs_table.c.enabled.is_(True),
+                provider_configs_table.c.archived_at.is_(None),
+            )
             .order_by(provider_configs_table.c.display_name, provider_configs_table.c.id)
         ).mappings()
         return tuple(_provider_config_from_row(row) for row in rows)
@@ -127,6 +146,7 @@ class PostgresProviderConfigRepository:
                     provider_configs_table.c.provider_kind == provider_kind,
                     provider_configs_table.c.enabled.is_(True),
                     provider_configs_table.c.is_default.is_(True),
+                    provider_configs_table.c.archived_at.is_(None),
                 )
             )
             .mappings()
@@ -166,6 +186,7 @@ class PostgresProviderConfigRepository:
                     is_default=config.is_default,
                     revision=config.revision,
                     enabled=config.enabled,
+                    archived_at=None,
                     created_at=now,
                     updated_at=now,
                 )
@@ -192,9 +213,11 @@ class PostgresProviderConfigRepository:
         extra_config: dict[str, JsonValue] | None = None,
         is_default: bool | None = None,
     ) -> ProviderConfig:
+        """只允许更新未归档 Provider；归档项必须先恢复。"""
+
         current = self.get(config_id)
         if current is None:
-            raise KeyError(f"Provider Config 不存在: {config_id}")
+            raise KeyError(f"Provider Config 不存在或已归档: {config_id}")
         validated = ProviderConfig(
             id=current.id,
             provider=current.provider,
@@ -221,7 +244,10 @@ class PostgresProviderConfigRepository:
         row = (
             self._session.execute(
                 update(provider_configs_table)
-                .where(provider_configs_table.c.id == config_id)
+                .where(
+                    provider_configs_table.c.id == config_id,
+                    provider_configs_table.c.archived_at.is_(None),
+                )
                 .values(
                     display_name=validated.display_name,
                     base_url=validated.base_url,

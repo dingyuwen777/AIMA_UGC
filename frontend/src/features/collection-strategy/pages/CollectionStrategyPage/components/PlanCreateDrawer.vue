@@ -4,6 +4,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import type {
   CollectionCapabilitiesResponse,
   CollectionPlanCreateRequest,
+  CollectionPlanResponse,
+  CollectionPlanUpdateRequest,
   CollectionPlatform,
   CollectionSearchCapabilityResponse,
   CollectionSearchConfig,
@@ -30,10 +32,12 @@ const props = defineProps<{
   relevanceAvailable: boolean
   saving: boolean
   loadingPackDetails: boolean
+  initialPlan?: CollectionPlanResponse | null
 }>()
 const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{
-  submit: [request: CollectionPlanCreateRequest]
+  submitCreate: [request: CollectionPlanCreateRequest]
+  submitUpdate: [request: CollectionPlanUpdateRequest]
   loadPackDetails: [packIds: string[]]
 }>()
 
@@ -45,6 +49,7 @@ const selectedPacks = ref<string[]>([])
 const selectedVehicles = ref<string[]>([])
 const providerByPlatform = reactive<Partial<Record<CollectionPlatform, string>>>({})
 const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
+const editing = computed(() => props.initialPlan !== null && props.initialPlan !== undefined)
 
 const selectedPlatforms = computed(() =>
   platformOptions
@@ -60,7 +65,7 @@ const eligibilityReason = computed(() => {
   const pendingProvider = platformOptions.find(
     (item) => isPlatformSelected(item.value) && !providerByPlatform[item.value],
   )
-  if (pendingProvider) return `请选择${pendingProvider.label}的 Provider 配置。`
+  if (pendingProvider) return `请选择${pendingProvider.label}的采集服务配置。`
 
   const incompletePlatform = platformOptions.find((item) => {
     if (!providerByPlatform[item.value]) return false
@@ -82,15 +87,21 @@ const eligibilityReason = computed(() => {
 
 watch(open, (value) => {
   if (!value) return
-  name.value = ''
-  scheduleExpr.value = '0 */6 * * *'
-  enabled.value = true
-  selectedPacks.value = []
-  selectedVehicles.value = []
+  const plan = props.initialPlan
+  name.value = plan?.name ?? ''
+  scheduleExpr.value = plan?.schedule_expr ?? '0 */6 * * *'
+  enabled.value = plan?.enabled ?? true
+  selectedPacks.value = [...(plan?.keyword_pack_ids ?? [])]
+  selectedVehicles.value = [...(plan?.vehicle_model_ids ?? [])]
   for (const option of platformOptions) {
     delete providerByPlatform[option.value]
     delete searchConfigByPlatform[option.value]
   }
+  for (const platform of plan?.platforms ?? []) {
+    providerByPlatform[platform.platform] = platform.provider_config_id
+    searchConfigByPlatform[platform.platform] = { ...platform.search_config }
+  }
+  if (selectedPacks.value.length) emit('loadPackDetails', [...selectedPacks.value])
 })
 
 watch(selectedPacks, (packIds) => {
@@ -142,17 +153,25 @@ function togglePlatform(platform: CollectionPlatform): void {
   if (providerByPlatform[platform]) resetSearchConfig(platform)
 }
 
-/** 资格完整时组装现有 Contract 并提交，不引入计划级相关性覆盖。 */
+/** 资格完整时提交创建或下一版本更新；历史运行的冻结配置不会被重写。 */
 function submit(): void {
   if (!name.value.trim() || eligibilityReason.value) return
-  emit('submit', {
+  const common = {
     name: name.value.trim(),
     schedule_expr: scheduleExpr.value,
     keyword_pack_ids: selectedPacks.value,
     vehicle_model_ids: selectedVehicles.value,
     platforms: selectedPlatforms.value,
     enabled: enabled.value,
-  })
+  }
+  if (props.initialPlan) {
+    emit('submitUpdate', {
+      ...common,
+      expected_version: props.initialPlan.schedule_version,
+    })
+    return
+  }
+  emit('submitCreate', common)
 }
 </script>
 
@@ -164,11 +183,11 @@ function submit(): void {
   >
     <aside
       role="dialog"
-      aria-label="新建采集计划"
+      :aria-label="editing ? '编辑采集计划' : '新建采集计划'"
       aria-modal="true"
     >
       <header>
-        <div><h2>新建采集计划</h2><p>保存发现范围与周期采集配置</p></div><AimaButton
+        <div><h2>{{ editing ? '编辑采集计划' : '新建采集计划' }}</h2><p>{{ editing ? '修改只影响之后的新运行，历史运行保持原冻结配置' : '保存发现范围与周期采集配置' }}</p></div><AimaButton
           variant="text"
           aria-label="关闭"
           @click="open = false"
@@ -191,8 +210,8 @@ function submit(): void {
             v-model="selectedPacks"
             type="checkbox"
             :value="pack.id"
-          >{{ pack.name }} · v{{ pack.version }}</label><p v-if="packs.length === 0">
-            请先创建启用且非空的关键词包。
+          >{{ pack.name }} · v{{ pack.version }}{{ pack.enabled ? '' : ' · 已停用' }}</label><p v-if="packs.length === 0">
+            请先创建可用的关键词包，或选择车型作为发现范围。
           </p>
         </fieldset>
         <VehicleMultiSelect
@@ -213,7 +232,7 @@ function submit(): void {
               <span>{{ option.label }}</span><select
                 v-if="isPlatformSelected(option.value)"
                 v-model="providerByPlatform[option.value]"
-                :aria-label="`${option.label} Provider`"
+                :aria-label="`${option.label}采集服务`"
                 @click.stop
                 @change="resetSearchConfig(option.value)"
               >
@@ -221,7 +240,7 @@ function submit(): void {
                   value=""
                   disabled
                 >
-                  请选择 Provider
+                  请选择采集服务
                 </option>
                 <option
                   v-for="config in configsFor(option.value)"
@@ -255,7 +274,7 @@ function submit(): void {
           :key="preset.value"
           :value="preset.value"
         >{{ preset.label }}</option></select><em>北京时间</em></span><small>按北京时间执行；选择频率后系统自动生成调度规则。</small></label>
-        <label class="switch"><strong>6. 创建后启用计划</strong><input
+        <label class="switch"><strong>6. {{ editing ? '保存后启用计划' : '创建后启用计划' }}</strong><input
           v-model="enabled"
           type="checkbox"
         ></label>
@@ -285,7 +304,7 @@ function submit(): void {
           :title="eligibilityReason || undefined"
           @click="submit"
         >
-          {{ saving ? '保存中…' : '保存采集计划' }}
+          {{ saving ? '保存中…' : editing ? '保存计划修改' : '保存采集计划' }}
         </AimaButton>
       </footer>
     </aside>
@@ -293,7 +312,7 @@ function submit(): void {
 </template>
 
 <style scoped>
-.backdrop { position: fixed; z-index: 100; inset: 0; background: rgb(20 29 44 / 34%); }
+.backdrop { position: fixed; z-index: 110; inset: 0; background: rgb(20 29 44 / 34%); }
 aside { position: fixed; top: 0; right: 0; bottom: 0; display: flex; width: 510px; height: 100vh; max-height: 100vh; flex-direction: column; overflow: hidden; background: #fff; box-shadow: -10px 0 30px rgb(20 29 44 / 12%); }
 header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; line-height: 24px; }header p { margin: 5px 0 0; color: #737e91; font-size: 13px; line-height: 18px; }
 .body { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding: 22px 24px; }label,fieldset,.policy { display: block; margin: 0 0 22px; }label strong,legend,.policy > strong { display: block; margin-bottom: 8px; color: #253044; font-size: 14px; font-weight: 600; }input:not([type='checkbox']),select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #d9dee8; border-radius: 6px; background: #fff; }fieldset { padding: 0; border: 0; }.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 22px 8px 0; padding: 0; border: 0; font-size: 12px; }

@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-import type { CollectionPlanCreateRequest, CollectionPlanResponse } from '../../../../generated/api/client'
+import type {
+  CollectionPlanCreateRequest,
+  CollectionPlanResponse,
+  CollectionPlanUpdateRequest,
+  KeywordPackItemUpdateRequest,
+} from '../../../../generated/api/client'
 import AppShell from '../../../../app/layouts/AppShell.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
@@ -19,6 +24,7 @@ import StrategyKpiCards from './components/StrategyKpiCards.vue'
 const store = useCollectionStrategyStore()
 const packDialogOpen = ref(false)
 const planDrawerOpen = ref(false)
+const planEditorPlan = ref<CollectionPlanResponse | null>(null)
 const planDetailOpen = computed({
   get: () => store.selectedPlan !== null,
   set: (value: boolean) => { if (!value) store.selectedPlan = null },
@@ -39,14 +45,51 @@ async function savePack(name: string, description: string, keywords: string[]): 
   }
 }
 
+async function savePackMetadata(name: string, description: string): Promise<void> {
+  if (await store.savePackMetadata(name, description)) showNotice('词包名称与说明已更新。')
+}
+
 /** 追加关键词并清空详情侧栏的输入值。 */
 async function addKeyword(packId: string, text: string): Promise<void> {
   if (await store.addKeyword(packId, text)) showNotice('关键词已加入词包。')
 }
 
+async function updateKeyword(
+  keywordId: string,
+  request: Omit<KeywordPackItemUpdateRequest, 'expected_version'>,
+): Promise<void> {
+  if (await store.updateKeyword(keywordId, request)) showNotice('关键词已更新。')
+}
+
+async function removeKeyword(keywordId: string, platformScope: string): Promise<void> {
+  if (await store.removeKeyword(keywordId, platformScope)) showNotice('关键词已从当前词包移除。')
+}
+
+async function copyPack(name: string): Promise<void> {
+  if (await store.copySelectedPack(name)) showNotice('词包副本已创建，当前保持停用。')
+}
+
+async function archivePack(): Promise<void> {
+  if (await store.archiveSelectedPack()) showNotice('词包已归档。')
+}
+
+async function restoreArchivedPack(packId: string): Promise<void> {
+  if (await store.restoreArchivedPack(packId)) showNotice('词包已恢复，当前保持停用。')
+}
+
+async function deleteArchivedPack(packId: string): Promise<void> {
+  if (await store.deleteArchivedPack(packId)) showNotice('未被业务引用的归档词包已永久删除。')
+}
+
 /** 保存唯一全局相关性配置并显示成功反馈。 */
 async function saveRelevance(packId: string): Promise<void> {
   if (await store.saveRelevance(packId)) showNotice('系统全局相关性已更新。')
+}
+
+function openNewPlan(): void {
+  planEditorPlan.value = null
+  store.selectedPlan = null
+  planDrawerOpen.value = true
 }
 
 /** 保存周期采集计划成功后关闭抽屉并提示调度语义。 */
@@ -57,9 +100,41 @@ async function savePlan(request: CollectionPlanCreateRequest): Promise<void> {
   }
 }
 
+async function updatePlan(request: CollectionPlanUpdateRequest): Promise<void> {
+  if (await store.updateExistingPlan(request)) {
+    planDrawerOpen.value = false
+    planEditorPlan.value = null
+    showNotice('采集计划已更新；历史运行保持原配置。')
+  }
+}
+
 /** 选择当前计划并打开详情抽屉。 */
 function openPlan(plan: CollectionPlanResponse): void {
   store.selectedPlan = plan
+}
+
+function editPlan(plan: CollectionPlanResponse): void {
+  store.selectedPlan = plan
+  planEditorPlan.value = plan
+  planDrawerOpen.value = true
+}
+
+async function copyPlan(plan: CollectionPlanResponse, name: string): Promise<void> {
+  store.selectedPlan = plan
+  if (await store.copySelectedPlan(name)) showNotice('采集计划副本已创建，当前保持停用。')
+}
+
+async function archivePlan(plan: CollectionPlanResponse): Promise<void> {
+  store.selectedPlan = plan
+  if (await store.archiveSelectedPlan()) showNotice('采集计划已归档；已经创建的运行不受影响。')
+}
+
+async function restoreArchivedPlan(planId: string): Promise<void> {
+  if (await store.restoreArchivedPlan(planId)) showNotice('采集计划已恢复，当前保持停用。')
+}
+
+async function deleteArchivedPlan(planId: string): Promise<void> {
+  if (await store.deleteArchivedPlan(planId)) showNotice('从未执行且无历史引用的归档计划已永久删除。')
 }
 
 /** 显示会自动消失的页面级成功反馈。 */
@@ -84,7 +159,7 @@ function showNotice(message: string): void {
         </AimaButton><AimaButton
           variant="primary"
           icon="plus"
-          @click="planDrawerOpen = true"
+          @click="openNewPlan"
         >
           新建采集计划
         </AimaButton>
@@ -127,16 +202,26 @@ function showNotice(message: string): void {
       v-if="store.activeTab === 'keywords'"
       :packs="store.packs"
       :selected="store.selectedPack"
+      :archived="store.archivedPacks"
       :total="store.packTotal"
       :offset="store.packOffset"
       :limit="store.packLimit"
       :loading="store.loading"
+      :loading-archived="store.loadingArchived"
       :saving="store.saving"
       :toggle-reason="store.packToggleReason"
       @create="packDialogOpen = true"
       @open="store.openPack"
       @toggle="store.togglePack"
       @add-keyword="addKeyword"
+      @save-metadata="savePackMetadata"
+      @update-keyword="updateKeyword"
+      @remove-keyword="removeKeyword"
+      @copy="copyPack"
+      @archive="archivePack"
+      @load-archived="store.loadArchivedPacks"
+      @restore-archived="restoreArchivedPack"
+      @delete-archived="deleteArchivedPack"
       @previous="store.previousPackPage"
       @next="store.nextPackPage"
     />
@@ -153,7 +238,7 @@ function showNotice(message: string): void {
       <section class="filters">
         <span class="search-field"><input
           v-model="store.filters.search"
-          placeholder="搜索计划名称、计划编号"
+          placeholder="搜索计划名称"
         ></span><select v-model="store.filters.enabled">
           <option value="">
             全部状态
@@ -185,6 +270,7 @@ function showNotice(message: string): void {
       </section>
       <PlanPanel
         :plans="store.plans"
+        :archived="store.archivedPlans"
         :packs="store.packCatalog"
         :vehicles="store.vehicleCatalog"
         :providers="providers"
@@ -192,10 +278,14 @@ function showNotice(message: string): void {
         :offset="store.planOffset"
         :limit="store.planLimit"
         :loading="store.loading"
+        :loading-archived="store.loadingArchived"
         :saving="store.saving"
         :toggle-reason="store.planToggleReason"
         @open="openPlan"
         @toggle="store.togglePlan"
+        @load-archived="store.loadArchivedPlans"
+        @restore-archived="restoreArchivedPlan"
+        @delete-archived="deleteArchivedPlan"
         @previous="store.previousPlanPage"
         @next="store.nextPlanPage"
       />
@@ -208,15 +298,17 @@ function showNotice(message: string): void {
     />
     <PlanCreateDrawer
       v-model="planDrawerOpen"
-      :packs="store.enabledPacks"
+      :packs="planEditorPlan ? store.packCatalog : store.enabledPacks"
       :pack-details="store.packDetails"
       :capabilities="store.capabilities"
       :relevance-name="relevancePackName"
       :relevance-available="store.relevance !== null"
       :saving="store.saving"
       :loading-pack-details="store.loadingPackDetails"
+      :initial-plan="planEditorPlan"
       @load-pack-details="store.loadPackDetails"
-      @submit="savePlan"
+      @submit-create="savePlan"
+      @submit-update="updatePlan"
     />
     <PlanDetailDrawer
       v-model="planDetailOpen"
@@ -224,6 +316,10 @@ function showNotice(message: string): void {
       :packs="store.packCatalog"
       :vehicles="store.vehicleCatalog"
       :providers="providers"
+      :saving="store.saving"
+      @edit="editPlan"
+      @copy="copyPlan"
+      @archive="archivePlan"
     />
     <AimaFeedbackBanner
       v-if="notice"

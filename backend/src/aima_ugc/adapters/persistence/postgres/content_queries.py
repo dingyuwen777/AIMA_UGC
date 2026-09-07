@@ -73,6 +73,8 @@ from aima_ugc.modules.vehicles.tables import (
     vehicle_models_table,
 )
 
+from .content_visibility import content_has_active_source
+
 register_ingestion_schema()
 
 
@@ -180,16 +182,24 @@ class PostgresContentQueryRepository:
                 content.c.current_version.label("content_version"),
                 order.label("target_ordinal"),
             )
-            .where(content.c.id.in_(content_ids))
+            .where(
+                content.c.id.in_(content_ids),
+                content_has_active_source(content.c.id),
+            )
             .order_by(order)
         )
 
     def count_all_analysis_targets(self) -> int:
-        """统计全部 Content Current；不继承声音广场默认相关性可见性。"""
+        """统计全部仍有有效来源的 Content Current，不继承相关性筛选。"""
 
         return cast(
             int,
-            self._session.scalar(select(func.count()).select_from(contents_table)) or 0,
+            self._session.scalar(
+                select(func.count())
+                .select_from(contents_table)
+                .where(content_has_active_source(contents_table.c.id))
+            )
+            or 0,
         )
 
     def list_all_analysis_targets(
@@ -198,11 +208,13 @@ class PostgresContentQueryRepository:
         after_content_id: UUID | None,
         limit: int,
     ) -> tuple[ContentTarget, ...]:
-        """按 Content UUID 稳定 keyset 顺序读取一批全量 Analysis Target。"""
+        """按 Content UUID 稳定读取仍有有效来源的一批全量 Analysis Target。"""
 
         if limit <= 0:
             raise ValueError("limit 必须大于 0")
-        statement = select(contents_table.c.id, contents_table.c.current_version)
+        statement = select(contents_table.c.id, contents_table.c.current_version).where(
+            content_has_active_source(contents_table.c.id)
+        )
         if after_content_id is not None:
             statement = statement.where(contents_table.c.id > after_content_id)
         rows = self._session.execute(statement.order_by(contents_table.c.id).limit(limit)).all()
@@ -485,7 +497,11 @@ class PostgresContentQueryRepository:
                 request.c.import_batch_id,
                 scope.c.run_id.label("collection_run_id"),
             )
-        statement = select(*selected).select_from(source_join)
+        statement = (
+            select(*selected)
+            .select_from(source_join)
+            .where(content_has_active_source(content.c.id))
+        )
         statement = _apply_filters(
             statement,
             filters=filters,

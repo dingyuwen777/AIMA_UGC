@@ -3,14 +3,16 @@ import type {
   CollectionPlanResponse,
   CollectionProviderConfigResponse,
   KeywordPackSummaryResponse,
+  ResourceLifecycleResponse,
   VehicleModelResponse,
 } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { collectionPlatformLabel, collectionScheduleLabel, formatBeijingDateTime } from '../../../presentation'
 
-defineProps<{
+withDefaults(defineProps<{
   plans: CollectionPlanResponse[]
+  archived?: ResourceLifecycleResponse[]
   packs: KeywordPackSummaryResponse[]
   vehicles: VehicleModelResponse[]
   providers: CollectionProviderConfigResponse[]
@@ -18,29 +20,38 @@ defineProps<{
   offset: number
   limit: number
   loading: boolean
+  loadingArchived?: boolean
   saving: boolean
   toggleReason: (plan: CollectionPlanResponse) => string | null
-}>()
+}>(), {
+  archived: () => [],
+  loadingArchived: false,
+})
 const emit = defineEmits<{
   open: [plan: CollectionPlanResponse]
   toggle: [plan: CollectionPlanResponse]
+  loadArchived: []
+  restoreArchived: [planId: string]
+  deleteArchived: [planId: string]
   previous: []
   next: []
 }>()
 
 /**
- * 按 Figma 列表密度组合真实词包与车型范围。
- * 两类同时存在时优先各展示一项，避免车型被第二个词包挤出可见范围；缺失目录项保留原始 ID。
+ * 按列表密度组合真实词包与车型范围。
+ * 目录缺失只说明这是历史引用，不把内部 UUID 暴露到普通视图。
  */
 function discoveryScopeLines(
   plan: CollectionPlanResponse,
   packs: KeywordPackSummaryResponse[],
   vehicles: VehicleModelResponse[],
 ): string[] {
-  const packLines = plan.keyword_pack_ids.map((id) => packs.find((pack) => pack.id === id)?.name ?? id)
+  const packLines = plan.keyword_pack_ids.map((id) =>
+    packs.find((pack) => pack.id === id)?.name ?? '历史词包（当前目录不可用）',
+  )
   const vehicleLines = (plan.vehicle_model_ids ?? []).map((id) => {
     const vehicle = vehicles.find((item) => item.id === id)
-    return `车型：${vehicle?.display_name ?? id}`
+    return `车型：${vehicle?.display_name ?? '历史车型（当前目录不可用）'}`
   })
   const visible: string[] = []
   if (packLines[0]) visible.push(packLines[0])
@@ -53,12 +64,12 @@ function discoveryScopeLines(
   return remaining > 0 ? [...visible, `另有 ${remaining} 项范围`] : visible
 }
 
-/** 把 Provider 配置 ID 转为后端返回的展示名称，缺失映射保留原始 ID。 */
+/** Provider 配置缺失时只显示历史配置提示；原始 ID 留在技术详情。 */
 function providerName(id: string, providers: CollectionProviderConfigResponse[]): string {
-  return providers.find((provider) => provider.id === id)?.display_name ?? id
+  return providers.find((provider) => provider.id === id)?.display_name ?? '历史采集配置'
 }
 
-/** 按 Figma 表格密度展示前两个真实平台/Provider，剩余平台做数量汇总。 */
+/** 按列表密度展示前两个真实平台/Provider，剩余平台做数量汇总。 */
 function channelLines(
   plan: CollectionPlanResponse,
   providers: CollectionProviderConfigResponse[],
@@ -70,9 +81,18 @@ function channelLines(
   return [...lines.slice(0, 2), `另有 ${lines.length - 2} 个平台`]
 }
 
-/** 用 Figma 约定的北京时间分钟粒度展示下一运行时间，未初始化时显示调度状态。 */
+/** 用北京时间分钟粒度展示下一运行时间，未初始化时显示业务状态。 */
 function nextRun(value?: string | null): string {
-  return value ? formatBeijingDateTime(value) : '等待调度系统初始化'
+  return value ? formatBeijingDateTime(value) : '等待调度初始化'
+}
+
+function onArchivedToggle(event: Event): void {
+  if ((event.currentTarget as HTMLDetailsElement).open) emit('loadArchived')
+}
+
+function deleteArchived(item: ResourceLifecycleResponse): void {
+  if (!window.confirm(`确认永久删除已归档采集计划“${item.name}”吗？只有从未执行且没有历史引用的计划才会被服务端允许删除。`)) return
+  emit('deleteArchived', item.id)
 }
 </script>
 
@@ -86,7 +106,7 @@ function nextRun(value?: string | null): string {
     </div>
     <div class="table-wrap">
       <table class="plan-table">
-        <thead><tr><th>计划 / 编号</th><th>状态</th><th>词包 / 车型</th><th>目标平台 / 采集渠道</th><th>调度与下次运行</th><th>操作</th></tr></thead>
+        <thead><tr><th>计划</th><th>状态</th><th>词包 / 车型</th><th>目标平台 / 采集渠道</th><th>调度与下次运行</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-if="loading">
             <td
@@ -109,7 +129,7 @@ function nextRun(value?: string | null): string {
             v-else
             :key="plan.id"
           >
-            <td><strong>{{ plan.name }}</strong><small>计划编号： {{ plan.id }}</small></td>
+            <td><strong>{{ plan.name }}</strong><small>更新于 {{ formatBeijingDateTime(plan.updated_at) }}</small></td>
             <td><span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span></td>
             <td class="scope-lines">
               <span
@@ -166,6 +186,49 @@ function nextRun(value?: string | null): string {
         下一页
       </button>
     </nav>
+
+    <details
+      class="archived-plans"
+      @toggle="onArchivedToggle"
+    >
+      <summary>已归档采集计划</summary>
+      <div
+        v-if="loadingArchived"
+        class="archived-state"
+      >
+        正在读取…
+      </div>
+      <div
+        v-else-if="archived.length === 0"
+        class="archived-state"
+      >
+        暂无已归档计划。
+      </div>
+      <div
+        v-for="item in archived"
+        v-else
+        :key="item.id"
+        class="archived-row"
+      >
+        <span><strong>{{ item.name }}</strong><small>归档于 {{ formatBeijingDateTime(item.archived_at) }}</small></span>
+        <AimaButton
+          variant="text"
+          size="small"
+          :disabled="saving"
+          @click="emit('restoreArchived', item.id)"
+        >
+          恢复
+        </AimaButton>
+        <AimaButton
+          variant="text"
+          size="small"
+          :disabled="saving"
+          @click="deleteArchived(item)"
+        >
+          永久删除
+        </AimaButton>
+      </div>
+    </details>
   </section>
 </template>
 
@@ -178,4 +241,5 @@ function nextRun(value?: string | null): string {
 .actions :deep(.aima-button) { display: flex; width: 78px; height: 32px; margin: 3px 0; }
 .state { height: 180px; color: #8993a4; text-align: center; }
 .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 14px; color: #6f7a8d; font-size: 12px; }.pagination button { height: 32px; padding: 0 12px; border: 1px solid #d8dee8; border-radius: 6px; color: #526075; background: #fff; cursor: pointer; }.pagination button:disabled { opacity: .45; cursor: default; }
+.archived-plans { margin-top: 14px; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }.archived-plans summary { padding: 12px 16px; cursor: pointer; color: #536075; font-size: 12px; font-weight: 600; }.archived-state { padding: 16px; color: #8993a4; font-size: 12px; }.archived-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid #edf0f4; }.archived-row strong,.archived-row small { display: block; }.archived-row strong { color: #313c4f; font-size: 12px; }.archived-row small { margin-top: 3px; color: #929baa; font-size: 10px; }
 </style>

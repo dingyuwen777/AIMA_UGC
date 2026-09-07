@@ -396,7 +396,7 @@ describe('voice plaza', () => {
 
     expect(store.analysisConfigured).toBe(false)
     expect(preview).toBeNull()
-    expect(store.error).toContain('当前环境尚未配置可用的 AI 模型')
+    expect(store.error).toContain('AI 模型未配置')
     expect(generated.previewContentAnalysisRun).not.toHaveBeenCalled()
   })
 
@@ -524,7 +524,7 @@ describe('voice plaza', () => {
     await store.refreshAnalysisRuns()
 
     expect(store.analysisRuns).toEqual([])
-    expect(store.error).toBe('AI Analysis Run 历史响应格式无效。')
+    expect(store.error).toBe('AI 打标任务历史响应格式无效。')
   })
 
   it('does not create a query export when the current query has no content', async () => {

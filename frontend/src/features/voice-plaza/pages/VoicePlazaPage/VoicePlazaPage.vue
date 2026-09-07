@@ -134,13 +134,13 @@ async function submitAnalysis(): Promise<void> {
   const count = await store.confirmAnalysis()
   if (count === null) return
   analysisOpen.value = false
-  showNotice(`已创建 AI Analysis Run，冻结 ${count} 条内容。`)
+  showNotice(`已创建 AI 打标任务，将处理 ${count} 条内容。`)
 }
 
 /** 请求取消仍处于可取消状态的 Analysis Run，并同步全局任务中心。 */
 async function cancelAnalysis(runId: string): Promise<void> {
   if (await store.cancelRun(runId)) {
-    showNotice('已请求取消 Analysis Run。')
+    showNotice('已请求取消 AI 打标任务。')
   }
 }
 
@@ -151,7 +151,7 @@ async function submitExport(
 ): Promise<void> {
   const count = await store.createExport(scope, columns)
   if (count === null) return
-  showNotice(`已创建 Excel 导出 Job，冻结 ${count} 条内容。`)
+  showNotice(`已创建 Excel 导出任务，将导出 ${count} 条内容。`)
   void taskCenter.refresh(true)
 }
 
@@ -185,12 +185,12 @@ function analysisRunProgress(run: AnalysisContentRunResponse): number {
   return Math.max(0, Math.min(100, Math.round(terminal * 100 / run.target_count)))
 }
 
-/** 用 Run 终态统计解释百分比，不把失败或取消伪装成成功。 */
+/** 用运行统计生成业务可读进度，不把失败或取消伪装成成功。 */
 function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
   const stats = run.stats
   const terminal = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
     (stats?.cancelled ?? 0) + (stats?.stale ?? 0)
-  return `${terminal} / ${run.target_count} 条已取得终态`
+  return `已处理 ${terminal} / ${run.target_count} 条`
 }
 </script>
 
@@ -211,7 +211,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
           <AimaButton
             icon="ai"
             :disabled="store.analysisConfigured !== true"
-            :title="store.analysisConfigured === false ? '当前环境尚未配置 AI 模型' : store.analysisConfigured === null ? '正在确认 AI 运行配置' : '可选择已选内容或全部数据进行打标'"
+            :title="store.analysisConfigured === false ? 'AI 模型尚未配置' : store.analysisConfigured === null ? '正在检查 AI 打标是否可用' : '可选择已选内容或全部数据进行打标'"
             @click="analysisOpen = true"
           >
             AI 打标
@@ -251,8 +251,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         class="capability-warning"
         tone="warning"
       >
-        <strong>AI 打标暂不可用：当前环境尚未配置可用的 LLM Runtime。</strong>
-        <span>能力状态来自 GET /api/v1/content-analysis-capabilities；前端不读取 Secret、Base URL 或模型配置文件。</span>
+        <strong>AI 打标暂不可用：管理员尚未完成 AI 模型配置。</strong>
+        <span>请联系管理员完成模型配置后重试；内容浏览、筛选和人工复核不受影响。</span>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="store.taxonomyError"
@@ -261,7 +261,11 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         role="alert"
       >
         <strong>分类配置暂不可用</strong>
-        <span>{{ store.taxonomyError }}；依赖分类配置的筛选已禁用，内容列表和独立操作仍可使用。</span>
+        <span>依赖分类配置的筛选已暂时停用；内容浏览和其它操作仍可使用。</span>
+        <details class="warning-details">
+          <summary>技术详情</summary>
+          <span>{{ store.taxonomyError }}</span>
+        </details>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="reviewNote"
@@ -288,7 +292,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         <header class="active-analysis-heading">
           <div>
             <strong>AI 打标任务</strong>
-            <span>{{ activeAnalysisRuns.length }} 个活动 Run；历史与其它后台任务统一在任务中心查看。</span>
+            <span>{{ activeAnalysisRuns.length }} 个任务正在处理；历史任务统一在任务中心查看。</span>
           </div>
           <button
             type="button"
@@ -306,12 +310,12 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             :class="`run-status--${run.status}`"
           >{{ runStatusLabels[run.status] }}</span>
           <div class="run-info">
-            <strong>Run #{{ run.sequence_no }} · {{ runStatusLabels[run.status] }}</strong>
+            <strong>AI 打标 · {{ runStatusLabels[run.status] }}</strong>
             <small>{{ analysisRunProgressDetail(run) }}</small>
           </div>
           <TaskProgressBar
             compact
-            :label="`AI Run #${run.sequence_no} 进度`"
+            label="AI 打标进度"
             :value="analysisRunProgress(run)"
             :detail="analysisRunProgressDetail(run)"
           />
@@ -322,7 +326,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             :disabled="store.cancellingAnalysisRunId === run.id"
             @click="cancelAnalysis(run.id)"
           >
-            {{ store.cancellingAnalysisRunId === run.id ? '取消中…' : '取消 Run' }}
+            {{ store.cancellingAnalysisRunId === run.id ? '取消中…' : '取消任务' }}
           </AimaButton>
         </article>
       </section>
@@ -390,29 +394,29 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         class="pagination"
       >
         <div class="count-tools">
-          <span>游标分页不会虚构总页数</span>
+          <span>当前列表按发布时间连续加载，不显示不准确的总页数</span>
           <span v-if="store.contentCount?.count != null">
-            {{ store.contentCount.count_kind === 'estimated' ? '估算' : '精确' }} {{ store.contentCount.count }} 条
+            {{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} {{ store.contentCount.count }} 条
           </span>
           <span v-else-if="store.contentCount?.truncated">
-            当前范围超过有界精确计数上限
+            当前结果较多，暂不显示精确总数
           </span>
           <span v-else-if="store.contentCount?.count_mode === 'estimated'">
-            当前筛选不提供可靠估算
+            当前条件暂无法快速估算数量
           </span>
           <button
             type="button"
             :disabled="store.countLoading"
             @click="store.refreshCount('exact')"
           >
-            有界精确总数
+            统计准确数量
           </button>
           <button
             type="button"
             :disabled="store.countLoading"
             @click="store.refreshCount('estimated')"
           >
-            快速估算
+            快速估算数量
           </button>
         </div>
         <AimaButton

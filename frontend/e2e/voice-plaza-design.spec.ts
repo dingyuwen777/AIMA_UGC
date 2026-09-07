@@ -150,13 +150,13 @@ test('keeps terminal analysis history out of the formal data canvas and availabl
   await expect(page.getByText('Run #12')).toHaveCount(0)
   await expect(page.locator('.content-row')).toHaveCount(3)
   await expect(page.getByText('标题内容', { exact: true })).toBeVisible()
-  await expect(page.getByText('游标分页不会虚构总页数')).toBeVisible()
+  await expect(page.getByText('当前列表按发布时间连续加载，不显示不准确的总页数')).toBeVisible()
   await expect(page.getByRole('button', { name: '加载更多 →' })).toBeEnabled()
 
   await page.getByRole('button', { name: /任务中心/ }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
-  await expect(taskCenter).toContainText('AI 打标 · Run #12')
+  await expect(taskCenter).toContainText('AI 打标任务 12')
   await expect(taskCenter).toContainText('已完成')
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
@@ -260,7 +260,7 @@ test('keeps the formal runtime-unavailable warning while the content list stays 
 
   await page.goto('/voice-plaza')
   const warning = page.locator('.capability-warning')
-  await expect(warning).toContainText('AI 打标暂不可用：当前环境尚未配置可用的 LLM Runtime。')
+  await expect(warning).toContainText('AI 打标暂不可用：管理员尚未完成 AI 模型配置。')
   await expect(page.getByRole('button', { name: 'AI 打标' })).toBeDisabled()
   await expect(page.locator('.content-row')).toHaveCount(3)
   await expect(page.getByRole('button', { name: '查看详情' }).first()).toBeEnabled()
@@ -334,10 +334,10 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
   const analysisButton = page.getByRole('button', { name: 'AI 打标' })
   await expect(analysisButton).toBeEnabled()
   await analysisButton.click()
-  const analysisDialog = page.getByRole('dialog', { name: '创建 AI Analysis Run' })
+  const analysisDialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
   await expect(analysisDialog).toBeVisible()
-  await expect(analysisDialog.getByText('预检目标 1 条，拆分 1 个 Shard')).toBeVisible()
-  await expect(analysisDialog.getByRole('button', { name: '确认并创建 Analysis Run' })).toBeEnabled()
+  await expect(analysisDialog.getByText('预计处理 1 条，系统将分 1 批完成')).toBeVisible()
+  await expect(analysisDialog.getByRole('button', { name: '确认并创建任务' })).toBeEnabled()
   const analysisBox = await analysisDialog.boundingBox()
   expectNear(analysisBox?.x, 450)
   expectNear(analysisBox?.y, 210)

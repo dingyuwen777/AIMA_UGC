@@ -144,6 +144,8 @@ capabilities.py
 
 手工 Discovery 默认选择 Capability 可支持的 `latest + 1d + all`，并允许逐平台修改；缺少原生时间筛选等能力的平台不会显示或发送对应字段。新建周期 Plan 必须显式完成每个平台的所有受支持维度。已有 Plan 的空配置继续沿用历史 Adapter 默认行为，不做静默迁移。
 
+Keyword Pack / Collection Plan / Provider Config 现在都有独立归档生命周期。归档资源不会进入新的冻结快照、Scheduler 或 Provider 选择；恢复后保持停用。历史 Run/Occurrence/Provider Request 继续引用原身份和冻结配置，因此有历史引用的资源只允许归档，不能为了目录整洁物理删除。详细实现见 [`docs/appendix/11_业务资源生命周期与数据撤销实现.md`](../appendix/11_业务资源生命周期与数据撤销实现.md)。
+
 ---
 
 ## 5. Provider Request/Attempt 和 Raw

@@ -125,7 +125,7 @@ test('matches the approved Figma workspace and resolves historical vehicle scope
   await expect(page.getByText('爱玛口碑周期采集')).toBeVisible()
   const headers = page.locator('.plan-table thead th')
   await expect(headers).toHaveCount(6)
-  await expect(headers.nth(0)).toHaveText('计划 / 编号')
+  await expect(headers.nth(0)).toHaveText('计划')
   await expect(headers.nth(1)).toHaveText('状态')
   await expect(headers.nth(2)).toHaveText('词包 / 车型')
   await expect(headers.nth(3)).toHaveText('目标平台 / 采集渠道')
@@ -133,7 +133,7 @@ test('matches the approved Figma workspace and resolves historical vehicle scope
   await expect(headers.nth(5)).toHaveText('操作')
 
   const planRow = page.locator('.plan-table tbody tr').filter({ hasText: '爱玛口碑周期采集' })
-  await expect(planRow.getByText(`计划编号： ${planId}`)).toBeVisible()
+  await expect(planRow.getByText(planId)).toHaveCount(0)
   await expect(planRow.getByText('爱玛新品发现')).toBeVisible()
   await expect(planRow.getByText('车型：爱玛 A7')).toBeVisible()
   await expect(page.getByText('智能洞察')).toHaveCount(0)
@@ -145,6 +145,9 @@ test('matches the approved Figma workspace and resolves historical vehicle scope
   await expect(detail.getByRole('heading', { name: '车型' })).toBeVisible()
   await expect(detail.getByText('爱玛 A7 · A7')).toBeVisible()
   await expect(detail.getByText('历史计划：沿用兼容默认（不限时间）')).toBeVisible()
+  await expect(detail.getByText(planId)).not.toBeVisible()
+  await detail.getByText('技术详情', { exact: true }).click()
+  await expect(detail.getByText(planId)).toBeVisible()
   await detail.getByRole('button', { name: '关闭详情' }).click()
 
   await page.getByRole('button', { name: '关键词包' }).click()
