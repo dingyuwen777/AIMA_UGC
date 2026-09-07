@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
+from pydantic import JsonValue
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,7 @@ from aima_ugc.modules.collection.tables import (
     provider_requests_table,
 )
 from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
-from aima_ugc.modules.system.models import ProviderConfig
+from aima_ugc.modules.system.models import ProviderConfig, ProviderKind
 from aima_ugc.modules.system.tables import provider_configs_table
 
 register_system_lifecycle_schema()
@@ -212,7 +213,7 @@ def _provider(row) -> ProviderConfig:
     return ProviderConfig(
         id=cast(UUID, row["id"]),
         provider=cast(str, row["provider"]),
-        provider_kind=cast(str, row["provider_kind"]),
+        provider_kind=cast(ProviderKind, row["provider_kind"]),
         display_name=cast(str, row["display_name"]),
         base_url=cast(str, row["base_url"]),
         model=cast(str | None, row["model"]),
@@ -221,7 +222,7 @@ def _provider(row) -> ProviderConfig:
         max_retries=cast(int, row["max_retries"]),
         max_concurrency=cast(int, row["max_concurrency"]),
         max_rps=cast(int | None, row["max_rps"]),
-        extra_config=cast(dict, row["extra_config"]),
+        extra_config=cast(dict[str, JsonValue], row["extra_config"]),
         enabled=cast(bool, row["enabled"]),
         is_default=cast(bool, row["is_default"]),
         revision=cast(int, row["revision"]),
