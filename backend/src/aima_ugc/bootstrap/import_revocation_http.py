@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
@@ -137,7 +138,8 @@ def install_import_revocation_routes(
         return PostgresImportRevocationHttpService(database.new_session)
 
     if service is None:
-        original_lifespan = application.router.lifespan_context
+        router = cast(Any, application.router)
+        original_lifespan = router.lifespan_context
 
         @asynccontextmanager
         async def lifecycle_lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -150,7 +152,7 @@ def install_import_revocation_routes(
                     if database is not None:
                         database.dispose()
 
-        application.router.lifespan_context = lifecycle_lifespan
+        router.lifespan_context = lifecycle_lifespan
 
     @application.get(
         "/api/v1/data-import-campaigns/{campaign_id}/revocation-preview",
@@ -205,7 +207,9 @@ def _request_id(request: Request) -> str:
     return str(value) if value is not None else str(uuid4())
 
 
-def _impact_response(record: ImportCampaignRevocationRecord | ImportCampaignRevocationPreview):
+def _impact_response(
+    record: ImportCampaignRevocationRecord | ImportCampaignRevocationPreview,
+) -> DataImportRevocationImpactResponse:
     """把领域影响映射到不暴露来源账本细节的公共响应。"""
 
     return DataImportRevocationImpactResponse(
