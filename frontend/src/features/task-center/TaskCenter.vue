@@ -8,7 +8,7 @@ import { useTaskCenterStore, type TaskCenterItem } from './store'
 
 const store = useTaskCenterStore()
 
-/** 将任务终态映射到既有进度条语义色，不把颜色作为唯一状态表达。 */
+/** 将任务结果映射到既有进度条语义色，不把颜色作为唯一状态表达。 */
 function progressTone(item: TaskCenterItem): 'primary' | 'success' | 'warning' | 'danger' {
   if (item.status === 'failed') return 'danger'
   if (item.status === 'partial_failed' || item.status === 'partial_success') return 'warning'
@@ -19,7 +19,7 @@ function progressTone(item: TaskCenterItem): 'primary' | 'success' | 'warning' |
 /** 将任务来源映射为用户可理解的业务分类名称。 */
 function kindLabel(kind: TaskCenterItem['kind']): string {
   if (kind === 'analysis') return 'AI 打标'
-  if (kind === 'collection') return '采集运行'
+  if (kind === 'collection') return '采集与导入'
   return '数据导出'
 }
 
@@ -144,6 +144,13 @@ onBeforeUnmount(() => {
                   :detail="item.progressDetail"
                   :tone="progressTone(item)"
                 />
+                <details
+                  v-if="item.errorCode"
+                  class="task-technical-details"
+                >
+                  <summary>技术详情</summary>
+                  <span>错误码：{{ item.errorCode }}</span>
+                </details>
                 <footer class="task-card-footer">
                   <span>{{ formatDateTime(item.createdAt) }}</span>
                   <div class="task-card-actions">
@@ -159,7 +166,7 @@ onBeforeUnmount(() => {
                       :to="item.href"
                       @click="store.closeCenter()"
                     >
-                      查看
+                      {{ item.actionLabel }}
                     </RouterLink>
                   </div>
                 </footer>
@@ -195,15 +202,21 @@ onBeforeUnmount(() => {
                 <p>{{ item.subtitle }}</p>
                 <div class="task-result">
                   <span>{{ item.progressDetail }}</span>
-                  <span v-if="item.errorCode">{{ item.errorCode }}</span>
                 </div>
+                <details
+                  v-if="item.errorCode"
+                  class="task-technical-details"
+                >
+                  <summary>技术详情</summary>
+                  <span>错误码：{{ item.errorCode }}</span>
+                </details>
                 <footer class="task-card-footer">
                   <span>{{ formatDateTime(item.finishedAt ?? item.createdAt) }}</span>
                   <RouterLink
                     :to="item.href"
                     @click="store.closeCenter()"
                   >
-                    查看详情
+                    {{ item.actionLabel }}
                   </RouterLink>
                 </footer>
               </article>
@@ -302,6 +315,9 @@ onBeforeUnmount(() => {
 .task-card p { overflow: hidden; margin: 0; color: var(--aima-text-secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .task-result { display: flex; min-width: 0; justify-content: space-between; gap: 12px; color: var(--aima-text-muted); font-size: 10px; }
 .task-result span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-technical-details { padding: 6px 8px; border: 1px dashed var(--aima-border); border-radius: 6px; color: var(--aima-text-muted); font-size: 9px; }
+.task-technical-details summary { cursor: pointer; color: var(--aima-text-secondary); font-weight: 500; }
+.task-technical-details span { display: block; margin-top: 5px; overflow-wrap: anywhere; }
 .task-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--aima-text-muted); font-size: 9px; }
 .task-card-actions { display: flex; align-items: center; gap: 9px; }
 .task-card-actions button,
