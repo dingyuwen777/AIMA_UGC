@@ -195,6 +195,17 @@ export interface AnalysisManualLabelRequest {
   secondary_label: string;
 }
 
+/**
+ * 复制分析方案时创建全新的未发布 Scheme 草稿。
+ */
+export interface AnalysisSchemeCopyRequest {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+}
+
 export type AnalysisSchemeDefinitionRequestLabels = {[key: string]: string[]};
 
 /**
@@ -430,6 +441,17 @@ export interface CollectionCapabilitiesResponse {
 }
 
 /**
+ * 复制计划只要求新名称；副本默认停用并重新进入人工启用流程。
+ */
+export interface CollectionPlanCopyRequest {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+}
+
+/**
  * Plan 逐平台提交 Provider-neutral 搜索配置，不接收 Provider 私有参数。
  */
 export interface CollectionPlanPlatformRequest {
@@ -502,6 +524,34 @@ export interface CollectionPlanListResponse {
   offset: number;
   /** @minimum 0 */
   total: number;
+}
+
+/**
+ * 完整替换一个计划的下一版本配置；历史 Run/Occurrence 继续保留旧版本事实。
+ */
+export interface CollectionPlanUpdateRequest {
+  enabled: boolean;
+  /** @exclusiveMinimum 0 */
+  expected_version: number;
+  /** @maxItems 20 */
+  keyword_pack_ids?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+  /**
+     * @minItems 1
+     * @maxItems 5
+     */
+  platforms: CollectionPlanPlatformRequest[];
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  schedule_expr: string;
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
 }
 
 export type CollectionRunMode = typeof CollectionRunMode[keyof typeof CollectionRunMode];
@@ -1400,6 +1450,56 @@ export const DataImportIngestionPolicy = {
   historical_fill_only: 'historical_fill_only',
 } as const;
 
+/**
+ * 撤销一次数据导入对当前业务可见内容的影响。
+ */
+export interface DataImportRevocationImpactResponse {
+  /** @minimum 0 */
+  affected_content_count: number;
+  /** @minimum 0 */
+  hidden_content_count: number;
+  /** @minimum 0 */
+  retained_shared_content_count: number;
+  /** @minimum 0 */
+  unreversible_content_count?: number;
+}
+
+export type DataImportRevocationPreviewResponseIneligibleReason = typeof DataImportRevocationPreviewResponseIneligibleReason[keyof typeof DataImportRevocationPreviewResponseIneligibleReason] | null;
+
+
+export const DataImportRevocationPreviewResponseIneligibleReason = {
+  campaign_not_completed: 'campaign_not_completed',
+  reversible_evidence_missing: 'reversible_evidence_missing',
+} as const;
+
+/**
+ * 执行撤销前的只读影响预览。
+ */
+export interface DataImportRevocationPreviewResponse {
+  already_revoked: boolean;
+  campaign_id: string;
+  eligible: boolean;
+  impact: DataImportRevocationImpactResponse;
+  ineligible_reason?: DataImportRevocationPreviewResponseIneligibleReason;
+}
+
+/**
+ * 已经提交的不可变撤销事实。
+ */
+export interface DataImportRevocationResponse {
+  already_revoked: boolean;
+  campaign_id: string;
+  impact: DataImportRevocationImpactResponse;
+  revoked_at: string;
+}
+
+/**
+ * 执行撤销时允许记录一段非敏感原因。
+ */
+export interface DataImportRevokeRequest {
+  reason?: string | null;
+}
+
 export type DataImportSourceKind = typeof DataImportSourceKind[keyof typeof DataImportSourceKind];
 
 
@@ -1753,6 +1853,17 @@ export interface ImportBatchSummaryResponse {
   rows_ingested_today: number;
 }
 
+/**
+ * 复制词包时只要求新名称；副本默认停用，避免意外进入运行链。
+ */
+export interface KeywordPackCopyRequest {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+}
+
 export interface KeywordPackKeywordCreateRequest {
   enabled?: boolean;
   /** @maxLength 1000 */
@@ -1780,6 +1891,46 @@ export interface KeywordPackCreateRequest {
   name: string;
 }
 
+export type PlatformScope = typeof PlatformScope[keyof typeof PlatformScope];
+
+
+export const PlatformScope = {
+  all: 'all',
+  xiaohongshu: 'xiaohongshu',
+  douyin: 'douyin',
+  weibo: 'weibo',
+  bilibili: 'bilibili',
+  kuaishou: 'kuaishou',
+} as const;
+
+/**
+ * 删除一个词包成员；共享 Keyword 实体本身不会被级联删除。
+ */
+export interface KeywordPackItemRemoveRequest {
+  /** @exclusiveMinimum 0 */
+  expected_version: number;
+  platform_scope?: PlatformScope;
+}
+
+/**
+ * 修改一个词包成员；共享 Keyword 通过关系替换避免影响其它词包。
+ */
+export interface KeywordPackItemUpdateRequest {
+  enabled?: boolean;
+  /** @exclusiveMinimum 0 */
+  expected_version: number;
+  /** @maxLength 1000 */
+  note?: string;
+  platform_scope?: PlatformScope;
+  priority?: number;
+  source_platform_scope?: PlatformScope;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  text: string;
+}
+
 export interface KeywordPackSummaryResponse {
   description: string;
   enabled: boolean;
@@ -1804,18 +1955,6 @@ export interface KeywordPackListResponse {
   total: number;
 }
 
-export type PlatformScope = typeof PlatformScope[keyof typeof PlatformScope];
-
-
-export const PlatformScope = {
-  all: 'all',
-  xiaohongshu: 'xiaohongshu',
-  douyin: 'douyin',
-  weibo: 'weibo',
-  bilibili: 'bilibili',
-  kuaishou: 'kuaishou',
-} as const;
-
 export interface KeywordResponse {
   enabled: boolean;
   id: string;
@@ -1833,6 +1972,21 @@ export interface KeywordPackResponse {
   name: string;
   /** @exclusiveMinimum 0 */
   version: number;
+}
+
+/**
+ * 编辑词包的业务元数据；关键词成员使用独立操作维护。
+ */
+export interface KeywordPackUpdateRequest {
+  /** @maxLength 2000 */
+  description?: string;
+  /** @exclusiveMinimum 0 */
+  expected_version: number;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
 }
 
 /**
@@ -2093,6 +2247,15 @@ export interface ProviderConfigUpdateRequest {
   timeout_seconds?: number;
 }
 
+/**
+ * 连接测试只返回业务可理解结果，不返回 Secret、原始响应体或内部请求 ID。
+ */
+export interface ProviderConnectionTestResponse {
+  latency_ms?: number | null;
+  message: string;
+  ok: boolean;
+}
+
 export type ReadinessChecksArtifactStore = typeof ReadinessChecksArtifactStore[keyof typeof ReadinessChecksArtifactStore];
 
 
@@ -2142,8 +2305,44 @@ export interface ReadinessResponse {
   status: ReadinessResponseStatus;
 }
 
+/**
+ * 物理删除前的只读资格；有历史引用时只允许归档。
+ */
+export interface ResourceDeleteEligibilityResponse {
+  blocking_reasons?: string[];
+  eligible: boolean;
+  id: string;
+}
+
 export interface ResourceEnabledRequest {
   enabled: boolean;
+}
+
+export type ResourceLifecycleResponseResourceType = typeof ResourceLifecycleResponseResourceType[keyof typeof ResourceLifecycleResponseResourceType];
+
+
+export const ResourceLifecycleResponseResourceType = {
+  keyword_pack: 'keyword_pack',
+  collection_plan: 'collection_plan',
+  provider_config: 'provider_config',
+  analysis_scheme: 'analysis_scheme',
+} as const;
+
+/**
+ * 归档资源的最小业务投影，不暴露内部版本/关系实现。
+ */
+export interface ResourceLifecycleResponse {
+  archived_at: string;
+  id: string;
+  name: string;
+  resource_type: ResourceLifecycleResponseResourceType;
+}
+
+/**
+ * 一个资源类型的已归档列表。
+ */
+export interface ResourceLifecycleListResponse {
+  items: ResourceLifecycleResponse[];
 }
 
 /**
@@ -2581,6 +2780,193 @@ export const createAnalysisSchemeDraft = async (analysisSchemeCreateDraftRequest
 
 
 
+export const getListArchivedAnalysisSchemesUrl = () => {
+
+
+
+
+  return `/api/v1/analysis-schemes/lifecycle/archived`
+}
+
+/**
+ * @summary List Archived Analysis Schemes
+ */
+export const listArchivedAnalysisSchemes = async ( options?: RequestInit): Promise<ResourceLifecycleListResponse> => {
+
+  const res = await fetch(getListArchivedAnalysisSchemesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getDeleteAnalysisSchemeUrl = (schemeId: string,) => {
+
+
+
+
+  return `/api/v1/analysis-schemes/${schemeId}`
+}
+
+/**
+ * @summary Delete Analysis Scheme
+ */
+export const deleteAnalysisScheme = async (schemeId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getDeleteAnalysisSchemeUrl(schemeId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
+export const getArchiveAnalysisSchemeUrl = (schemeId: string,) => {
+
+
+
+
+  return `/api/v1/analysis-schemes/${schemeId}/archive`
+}
+
+/**
+ * @summary Archive Analysis Scheme
+ */
+export const archiveAnalysisScheme = async (schemeId: string, options?: RequestInit): Promise<ResourceLifecycleResponse> => {
+
+  const res = await fetch(getArchiveAnalysisSchemeUrl(schemeId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceLifecycleResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCopyAnalysisSchemeUrl = (schemeId: string,) => {
+
+
+
+
+  return `/api/v1/analysis-schemes/${schemeId}/copy`
+}
+
+/**
+ * @summary Copy Analysis Scheme
+ */
+export const copyAnalysisScheme = async (schemeId: string,
+    analysisSchemeCopyRequest: AnalysisSchemeCopyRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+
+  const res = await fetch(getCopyAnalysisSchemeUrl(schemeId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analysisSchemeCopyRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetAnalysisSchemeDeleteEligibilityUrl = (schemeId: string,) => {
+
+
+
+
+  return `/api/v1/analysis-schemes/${schemeId}/delete-eligibility`
+}
+
+/**
+ * @summary Get Analysis Scheme Delete Eligibility
+ */
+export const getAnalysisSchemeDeleteEligibility = async (schemeId: string, options?: RequestInit): Promise<ResourceDeleteEligibilityResponse> => {
+
+  const res = await fetch(getGetAnalysisSchemeDeleteEligibilityUrl(schemeId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceDeleteEligibilityResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRestoreAnalysisSchemeUrl = (schemeId: string,) => {
+
+
+
+
+  return `/api/v1/analysis-schemes/${schemeId}/restore`
+}
+
+/**
+ * @summary Restore Analysis Scheme
+ */
+export const restoreAnalysisScheme = async (schemeId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getRestoreAnalysisSchemeUrl(schemeId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
 export const getListContentAnalysisRunsUrl = () => {
 
 
@@ -2875,6 +3261,37 @@ export const createCollectionPlan = async (collectionPlanCreateRequest: Collecti
 
 
 
+export const getDeleteCollectionPlanUrl = (planId: string,) => {
+
+
+
+
+  return `/api/v1/collection-plans/${planId}`
+}
+
+/**
+ * @summary Delete Collection Plan
+ */
+export const deleteCollectionPlan = async (planId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getDeleteCollectionPlanUrl(planId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
 export const getGetCollectionPlanUrl = (planId: string,) => {
 
 
@@ -2906,6 +3323,132 @@ export const getCollectionPlan = async (planId: string, options?: RequestInit): 
 
 
 
+export const getUpdateCollectionPlanUrl = (planId: string,) => {
+
+
+
+
+  return `/api/v1/collection-plans/${planId}`
+}
+
+/**
+ * @summary Update Collection Plan
+ */
+export const updateCollectionPlan = async (planId: string,
+    collectionPlanUpdateRequest: CollectionPlanUpdateRequest, options?: RequestInit): Promise<CollectionPlanResponse> => {
+
+  const res = await fetch(getUpdateCollectionPlanUrl(planId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(collectionPlanUpdateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getArchiveCollectionPlanUrl = (planId: string,) => {
+
+
+
+
+  return `/api/v1/collection-plans/${planId}/archive`
+}
+
+/**
+ * @summary Archive Collection Plan
+ */
+export const archiveCollectionPlan = async (planId: string, options?: RequestInit): Promise<ResourceLifecycleResponse> => {
+
+  const res = await fetch(getArchiveCollectionPlanUrl(planId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceLifecycleResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCopyCollectionPlanUrl = (planId: string,) => {
+
+
+
+
+  return `/api/v1/collection-plans/${planId}/copy`
+}
+
+/**
+ * @summary Copy Collection Plan
+ */
+export const copyCollectionPlan = async (planId: string,
+    collectionPlanCopyRequest: CollectionPlanCopyRequest, options?: RequestInit): Promise<CollectionPlanResponse> => {
+
+  const res = await fetch(getCopyCollectionPlanUrl(planId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(collectionPlanCopyRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCollectionPlanDeleteEligibilityUrl = (planId: string,) => {
+
+
+
+
+  return `/api/v1/collection-plans/${planId}/delete-eligibility`
+}
+
+/**
+ * @summary Get Collection Plan Delete Eligibility
+ */
+export const getCollectionPlanDeleteEligibility = async (planId: string, options?: RequestInit): Promise<ResourceDeleteEligibilityResponse> => {
+
+  const res = await fetch(getGetCollectionPlanDeleteEligibilityUrl(planId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceDeleteEligibilityResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getUpdateCollectionPlanEnabledUrl = (planId: string,) => {
 
 
@@ -2926,6 +3469,37 @@ export const updateCollectionPlanEnabled = async (planId: string,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(resourceEnabledRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRestoreCollectionPlanUrl = (planId: string,) => {
+
+
+
+
+  return `/api/v1/collection-plans/${planId}/restore`
+}
+
+/**
+ * @summary Restore Collection Plan
+ */
+export const restoreCollectionPlan = async (planId: string, options?: RequestInit): Promise<CollectionPlanResponse> => {
+
+  const res = await fetch(getRestoreCollectionPlanUrl(planId),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 )
 
@@ -3875,6 +4449,71 @@ export const retryDataImportCampaignFailedItems = async (campaignId: string, opt
 
 
 
+export const getPreviewDataImportCampaignRevocationUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/revocation-preview`
+}
+
+/**
+ * 在用户确认前返回撤销影响；不会修改 Campaign 或 Content。
+ * @summary Preview Data Import Campaign Revocation
+ */
+export const previewDataImportCampaignRevocation = async (campaignId: string, options?: RequestInit): Promise<DataImportRevocationPreviewResponse> => {
+
+  const res = await fetch(getPreviewDataImportCampaignRevocationUrl(campaignId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: DataImportRevocationPreviewResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRevokeDataImportCampaignUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/revoke`
+}
+
+/**
+ * 撤销已完成导入的来源贡献；权限沿用当前统一导入能力，不新增平行 RBAC。
+ * @summary Revoke Data Import Campaign
+ */
+export const revokeDataImportCampaign = async (campaignId: string,
+    dataImportRevokeRequest: DataImportRevokeRequest, options?: RequestInit): Promise<DataImportRevocationResponse> => {
+
+  const res = await fetch(getRevokeDataImportCampaignUrl(campaignId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dataImportRevokeRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: DataImportRevocationResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getStartDataImportCampaignUrl = (campaignId: string,) => {
 
 
@@ -4562,6 +5201,37 @@ export const createKeywordPack = async (keywordPackCreateRequest: KeywordPackCre
 
 
 
+export const getDeleteKeywordPackUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}`
+}
+
+/**
+ * @summary Delete Keyword Pack
+ */
+export const deleteKeywordPack = async (packId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getDeleteKeywordPackUrl(packId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
 export const getGetKeywordPackUrl = (packId: string,) => {
 
 
@@ -4588,6 +5258,132 @@ export const getKeywordPack = async (packId: string, options?: RequestInit): Pro
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUpdateKeywordPackUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}`
+}
+
+/**
+ * @summary Update Keyword Pack
+ */
+export const updateKeywordPack = async (packId: string,
+    keywordPackUpdateRequest: KeywordPackUpdateRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+
+  const res = await fetch(getUpdateKeywordPackUrl(packId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(keywordPackUpdateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getArchiveKeywordPackUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/archive`
+}
+
+/**
+ * @summary Archive Keyword Pack
+ */
+export const archiveKeywordPack = async (packId: string, options?: RequestInit): Promise<ResourceLifecycleResponse> => {
+
+  const res = await fetch(getArchiveKeywordPackUrl(packId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceLifecycleResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCopyKeywordPackUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/copy`
+}
+
+/**
+ * @summary Copy Keyword Pack
+ */
+export const copyKeywordPack = async (packId: string,
+    keywordPackCopyRequest: KeywordPackCopyRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+
+  const res = await fetch(getCopyKeywordPackUrl(packId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(keywordPackCopyRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetKeywordPackDeleteEligibilityUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/delete-eligibility`
+}
+
+/**
+ * @summary Get Keyword Pack Delete Eligibility
+ */
+export const getKeywordPackDeleteEligibility = async (packId: string, options?: RequestInit): Promise<ResourceDeleteEligibilityResponse> => {
+
+  const res = await fetch(getGetKeywordPackDeleteEligibilityUrl(packId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceDeleteEligibilityResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -4645,6 +5441,105 @@ export const addKeywordToPack = async (packId: string,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(keywordPackKeywordCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUpdateKeywordInPackUrl = (packId: string,
+    keywordId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/keywords/${keywordId}`
+}
+
+/**
+ * @summary Update Keyword In Pack
+ */
+export const updateKeywordInPack = async (packId: string,
+    keywordId: string,
+    keywordPackItemUpdateRequest: KeywordPackItemUpdateRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+
+  const res = await fetch(getUpdateKeywordInPackUrl(packId,keywordId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(keywordPackItemUpdateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRemoveKeywordFromPackUrl = (packId: string,
+    keywordId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/keywords/${keywordId}/remove`
+}
+
+/**
+ * @summary Remove Keyword From Pack
+ */
+export const removeKeywordFromPack = async (packId: string,
+    keywordId: string,
+    keywordPackItemRemoveRequest: KeywordPackItemRemoveRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+
+  const res = await fetch(getRemoveKeywordFromPackUrl(packId,keywordId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(keywordPackItemRemoveRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRestoreKeywordPackUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/restore`
+}
+
+/**
+ * @summary Restore Keyword Pack
+ */
+export const restoreKeywordPack = async (packId: string, options?: RequestInit): Promise<KeywordPackResponse> => {
+
+  const res = await fetch(getRestoreKeywordPackUrl(packId),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 )
 
@@ -4862,6 +5757,68 @@ export const createProviderConfig = async (providerConfigCreateRequest: Provider
 
 
 
+export const getListArchivedProviderConfigsUrl = () => {
+
+
+
+
+  return `/api/v1/provider-configs/lifecycle/archived`
+}
+
+/**
+ * @summary List Archived Provider Configs
+ */
+export const listArchivedProviderConfigs = async ( options?: RequestInit): Promise<ResourceLifecycleListResponse> => {
+
+  const res = await fetch(getListArchivedProviderConfigsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getDeleteProviderConfigUrl = (providerConfigId: string,) => {
+
+
+
+
+  return `/api/v1/provider-configs/${providerConfigId}`
+}
+
+/**
+ * @summary Delete Provider Config
+ */
+export const deleteProviderConfig = async (providerConfigId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getDeleteProviderConfigUrl(providerConfigId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
 export const getUpdateProviderConfigUrl = (providerConfigId: string,) => {
 
 
@@ -4890,6 +5847,130 @@ export const updateProviderConfig = async (providerConfigId: string,
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ProviderConfigResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getArchiveProviderConfigUrl = (providerConfigId: string,) => {
+
+
+
+
+  return `/api/v1/provider-configs/${providerConfigId}/archive`
+}
+
+/**
+ * @summary Archive Provider Config
+ */
+export const archiveProviderConfig = async (providerConfigId: string, options?: RequestInit): Promise<ResourceLifecycleResponse> => {
+
+  const res = await fetch(getArchiveProviderConfigUrl(providerConfigId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceLifecycleResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetProviderConfigDeleteEligibilityUrl = (providerConfigId: string,) => {
+
+
+
+
+  return `/api/v1/provider-configs/${providerConfigId}/delete-eligibility`
+}
+
+/**
+ * @summary Get Provider Config Delete Eligibility
+ */
+export const getProviderConfigDeleteEligibility = async (providerConfigId: string, options?: RequestInit): Promise<ResourceDeleteEligibilityResponse> => {
+
+  const res = await fetch(getGetProviderConfigDeleteEligibilityUrl(providerConfigId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceDeleteEligibilityResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRestoreProviderConfigUrl = (providerConfigId: string,) => {
+
+
+
+
+  return `/api/v1/provider-configs/${providerConfigId}/restore`
+}
+
+/**
+ * @summary Restore Provider Config
+ */
+export const restoreProviderConfig = async (providerConfigId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getRestoreProviderConfigUrl(providerConfigId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
+export const getTestProviderConfigConnectionUrl = (providerConfigId: string,) => {
+
+
+
+
+  return `/api/v1/provider-configs/${providerConfigId}/test-connection`
+}
+
+/**
+ * @summary Test Provider Config Connection
+ */
+export const testProviderConfigConnection = async (providerConfigId: string, options?: RequestInit): Promise<ProviderConnectionTestResponse> => {
+
+  const res = await fetch(getTestProviderConfigConnectionUrl(providerConfigId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ProviderConnectionTestResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -4952,6 +6033,68 @@ export const setGlobalRelevanceConfig = async (globalRelevanceConfigRequest: Glo
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: GlobalRelevanceConfigResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListArchivedCollectionPlansUrl = () => {
+
+
+
+
+  return `/api/v1/resource-lifecycle/collection-plans/archived`
+}
+
+/**
+ * @summary List Archived Collection Plans
+ */
+export const listArchivedCollectionPlans = async ( options?: RequestInit): Promise<ResourceLifecycleListResponse> => {
+
+  const res = await fetch(getListArchivedCollectionPlansUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListArchivedKeywordPacksUrl = () => {
+
+
+
+
+  return `/api/v1/resource-lifecycle/keyword-packs/archived`
+}
+
+/**
+ * @summary List Archived Keyword Packs
+ */
+export const listArchivedKeywordPacks = async ( options?: RequestInit): Promise<ResourceLifecycleListResponse> => {
+
+  const res = await fetch(getListArchivedKeywordPacksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
   return data
 }
 
