@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
 from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.modules.collection.corrective_tables import collection_plan_decision_policies_table
+from aima_ugc.modules.collection.lifecycle_schema import register_collection_lifecycle_schema
 from aima_ugc.modules.collection.planning import (
     CollectionOccurrenceStatus,
     CollectionPlanDefinition,
@@ -28,9 +29,11 @@ from aima_ugc.modules.collection.tables import (
     collection_schedule_occurrences_table,
 )
 
+register_collection_lifecycle_schema()
+
 
 class StaleCollectionPlanError(RuntimeError):
-    """Scheduler 锁定后发现 Plan 版本已变化或已消失。"""
+    """Scheduler 锁定后发现 Plan 版本已变化、已归档或已消失。"""
 
 
 class PostgresCollectionPlanningRepository:
@@ -40,7 +43,7 @@ class PostgresCollectionPlanningRepository:
         self._session = session
 
     def create_plan(self, definition: CollectionPlanDefinition) -> CollectionPlanRecord:
-        """在当前事务创建 Plan 及其平台/词包关系。"""
+        """在当前事务创建未归档 Plan 及其平台/词包关系。"""
         plan_id = uuid4()
         now = func.clock_timestamp()
         self._session.execute(
@@ -58,6 +61,7 @@ class PostgresCollectionPlanningRepository:
                 detail_policy=definition.detail_policy,
                 comment_policy=definition.comment_policy,
                 created_by=definition.created_by,
+                archived_at=None,
                 created_at=now,
                 updated_at=now,
             )
@@ -111,7 +115,7 @@ class PostgresCollectionPlanningRepository:
         return created
 
     def get_plan(self, plan_id: UUID) -> CollectionPlanRecord | None:
-        """读取 Plan 聚合快照，不修改事务状态。"""
+        """读取未归档 Plan 聚合快照，不修改事务状态。"""
         return self._get_plan(plan_id, for_update=False)
 
     def list_plans(
@@ -123,9 +127,10 @@ class PostgresCollectionPlanningRepository:
         offset: int,
         limit: int,
     ) -> tuple[CollectionPlanRecord, ...]:
-        """按更新时间稳定分页读取 Plan 聚合。"""
+        """按更新时间稳定分页读取未归档 Plan 聚合。"""
         statement = select(collection_plans_table.c.id).where(
-            collection_plans_table.c.schedule_expr.is_not(None)
+            collection_plans_table.c.schedule_expr.is_not(None),
+            collection_plans_table.c.archived_at.is_(None),
         )
         if search is not None:
             pattern = f"%{search.strip()}%"
@@ -173,7 +178,10 @@ class PostgresCollectionPlanningRepository:
         statement = (
             select(func.count())
             .select_from(collection_plans_table)
-            .where(collection_plans_table.c.schedule_expr.is_not(None))
+            .where(
+                collection_plans_table.c.schedule_expr.is_not(None),
+                collection_plans_table.c.archived_at.is_(None),
+            )
         )
         if search is not None:
             pattern = f"%{search.strip()}%"
@@ -203,13 +211,14 @@ class PostgresCollectionPlanningRepository:
                 .where(
                     collection_plans_table.c.enabled.is_(True),
                     collection_plans_table.c.schedule_expr.is_not(None),
+                    collection_plans_table.c.archived_at.is_(None),
                 )
             )
             or 0
         )
 
     def has_enabled_plan_for_keyword_pack(self, pack_id: UUID) -> bool:
-        """判断词包是否仍被启用 Plan 引用。"""
+        """判断词包是否仍被未归档且启用的 Plan 引用。"""
         return (
             self._session.scalar(
                 select(collection_plans_table.c.id)
@@ -220,6 +229,7 @@ class PostgresCollectionPlanningRepository:
                 .where(
                     collection_plan_keyword_packs_table.c.keyword_pack_id == pack_id,
                     collection_plans_table.c.enabled.is_(True),
+                    collection_plans_table.c.archived_at.is_(None),
                 )
                 .limit(1)
             )
@@ -227,7 +237,7 @@ class PostgresCollectionPlanningRepository:
         )
 
     def list_schedulable_plan_ids(self, *, now: datetime, limit: int = 100) -> tuple[UUID, ...]:
-        """短事务预扫需要初始化或已经到期的 Plan ID，不在此处抢锁。"""
+        """短事务预扫未归档且到期/待初始化的 Plan ID，不在此处抢锁。"""
         if now.utcoffset() is None:
             raise ValueError("Scheduler scan now 必须包含时区")
         if limit < 1:
@@ -237,6 +247,7 @@ class PostgresCollectionPlanningRepository:
             .where(
                 collection_plans_table.c.enabled.is_(True),
                 collection_plans_table.c.schedule_expr.is_not(None),
+                collection_plans_table.c.archived_at.is_(None),
                 or_(
                     collection_plans_table.c.next_run_at.is_(None),
                     collection_plans_table.c.next_run_at <= now,
@@ -251,7 +262,7 @@ class PostgresCollectionPlanningRepository:
         return tuple(cast(UUID, value) for value in values)
 
     def get_plan_for_update(self, plan_id: UUID) -> CollectionPlanRecord | None:
-        """在当前事务锁定一个 Plan，并重新读取最新调度事实。"""
+        """在当前事务锁定一个未归档 Plan，并重新读取最新调度事实。"""
         return self._get_plan(plan_id, for_update=True)
 
     def set_plan_enabled(
@@ -260,7 +271,7 @@ class PostgresCollectionPlanningRepository:
         *,
         enabled: bool,
     ) -> CollectionPlanRecord | None:
-        """串行切换 Plan；新版本清空 cursor，重新启用不补跑停用期间 slot。"""
+        """串行切换未归档 Plan；新版本清空 cursor，重新启用不补跑停用期间 slot。"""
         current = self.get_plan_for_update(plan_id)
         if current is None:
             return None
@@ -271,6 +282,7 @@ class PostgresCollectionPlanningRepository:
             .where(
                 collection_plans_table.c.id == plan_id,
                 collection_plans_table.c.schedule_version == current.schedule_version,
+                collection_plans_table.c.archived_at.is_(None),
             )
             .values(
                 enabled=enabled,
@@ -289,7 +301,7 @@ class PostgresCollectionPlanningRepository:
         next_run_at: datetime,
         last_scheduled_at: datetime | None,
     ) -> None:
-        """推进当前 Plan 版本的 Scheduler cursor；版本漂移时 fail closed。"""
+        """推进当前未归档 Plan 版本的 Scheduler cursor；版本或生命周期漂移时 fail closed。"""
         if next_run_at.utcoffset() is None:
             raise ValueError("next_run_at 必须包含时区")
         updated_plan_id = self._session.execute(
@@ -297,6 +309,7 @@ class PostgresCollectionPlanningRepository:
             .where(
                 collection_plans_table.c.id == plan_id,
                 collection_plans_table.c.schedule_version == schedule_version,
+                collection_plans_table.c.archived_at.is_(None),
             )
             .values(
                 next_run_at=next_run_at,
@@ -306,7 +319,7 @@ class PostgresCollectionPlanningRepository:
             .returning(collection_plans_table.c.id)
         ).scalar_one_or_none()
         if updated_plan_id != plan_id:
-            raise StaleCollectionPlanError("Scheduler cursor 更新时 Plan 版本已变化")
+            raise StaleCollectionPlanError("Scheduler cursor 更新时 Plan 版本/生命周期已变化")
 
     def create_occurrence(
         self,
@@ -340,7 +353,10 @@ class PostgresCollectionPlanningRepository:
         return _row_to_occurrence(row)
 
     def _get_plan(self, plan_id: UUID, *, for_update: bool) -> CollectionPlanRecord | None:
-        statement = select(collection_plans_table).where(collection_plans_table.c.id == plan_id)
+        statement = select(collection_plans_table).where(
+            collection_plans_table.c.id == plan_id,
+            collection_plans_table.c.archived_at.is_(None),
+        )
         if for_update:
             statement = statement.with_for_update()
         row = self._session.execute(statement).mappings().one_or_none()
