@@ -11,7 +11,12 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
 from aima_ugc.contracts.http import CollectionPlanPlatformRequest
 
-ResourceLifecycleKind = Literal["keyword_pack", "collection_plan", "provider_config"]
+ResourceLifecycleKind = Literal[
+    "keyword_pack",
+    "collection_plan",
+    "provider_config",
+    "analysis_scheme",
+]
 
 
 class ResourceLifecycleResponse(BaseModel):
@@ -160,7 +165,25 @@ class ProviderConnectionTestResponse(BaseModel):
     latency_ms: int | None = Field(default=None, ge=0)
 
 
+class AnalysisSchemeCopyRequest(BaseModel):
+    """复制分析方案时创建全新的未发布 Scheme 草稿。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("分析方案名称不能为空")
+        return value
+
+
 __all__ = [
+    "AnalysisSchemeCopyRequest",
     "CollectionPlanCopyRequest",
     "CollectionPlanUpdateRequest",
     "KeywordPackCopyRequest",
