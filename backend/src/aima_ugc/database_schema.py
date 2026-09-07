@@ -26,6 +26,7 @@ from aima_ugc.modules.collection.corrective_tables import (
     collection_content_actions_table,
     collection_plan_decision_policies_table,
 )
+from aima_ugc.modules.collection.lifecycle_schema import register_collection_lifecycle_schema
 from aima_ugc.modules.collection.scheduler_schema import register_scheduler_schema
 from aima_ugc.modules.collection.tables import (
     collection_plan_keyword_packs_table,
@@ -88,6 +89,7 @@ from aima_ugc.modules.reporting.tables import (
     reporting_data_export_items_table,
     reporting_data_exports_table,
 )
+from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
 from aima_ugc.modules.system.tables import (
     audit_events_table,
     global_relevance_config_table,
@@ -110,6 +112,8 @@ from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
 
 register_scheduler_schema()
+register_collection_lifecycle_schema()
+register_system_lifecycle_schema()
 register_content_source_constraints()
 register_ingestion_schema()
 
