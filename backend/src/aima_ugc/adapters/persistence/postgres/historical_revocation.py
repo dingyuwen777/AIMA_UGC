@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, insert, literal, select, union
+from sqlalchemy import func, insert, select, union
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -102,7 +103,7 @@ class PostgresImportCampaignRevocationRepository:
         request_id: str | None,
         reason: str | None,
         impact: ImportCampaignRevocationImpact,
-        revoked_at: object,
+        revoked_at: datetime,
     ) -> ImportCampaignRevocationRecord:
         """追加唯一撤销事实；父 Campaign 已由上层服务在同事务锁定。"""
 
@@ -181,7 +182,7 @@ def _record(row: RowMapping) -> ImportCampaignRevocationRecord:
             hidden_content_count=cast(int, row["hidden_content_count"]),
             retained_shared_content_count=cast(int, row["retained_shared_content_count"]),
         ),
-        revoked_at=row["revoked_at"],
+        revoked_at=cast(datetime, row["revoked_at"]),
     )
 
 
