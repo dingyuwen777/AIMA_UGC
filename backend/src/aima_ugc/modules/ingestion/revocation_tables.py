@@ -1,6 +1,16 @@
-"""Data Import Campaign 撤销事实表。"""
+"""Data Import Campaign 撤销事实与 Content Version 追溯表。"""
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, Table, Text, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    Table,
+    Text,
+    Uuid,
+)
 
 from aima_ugc.platform.database.metadata import metadata
 
@@ -35,5 +45,29 @@ historical_import_campaign_revocations_table = Table(
     info={"owner": "ingestion"},
 )
 
+historical_import_revocation_content_versions_table = Table(
+    "historical_import_revocation_content_versions",
+    metadata,
+    Column(
+        "campaign_id",
+        Uuid(),
+        ForeignKey("historical_import_campaign_revocations.campaign_id"),
+        primary_key=True,
+    ),
+    Column("content_id", Uuid(), ForeignKey("contents.id"), primary_key=True),
+    Column("version_no", Integer(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    ForeignKeyConstraint(
+        ["content_id", "version_no"],
+        ["content_versions.content_id", "content_versions.version_no"],
+        name="fk_import_revocation_content_version",
+    ),
+    CheckConstraint("version_no >= 1", name="version_no_positive"),
+    info={"owner": "ingestion"},
+)
 
-__all__ = ["historical_import_campaign_revocations_table"]
+
+__all__ = [
+    "historical_import_campaign_revocations_table",
+    "historical_import_revocation_content_versions_table",
+]
