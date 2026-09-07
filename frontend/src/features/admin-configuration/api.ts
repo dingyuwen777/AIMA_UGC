@@ -1,9 +1,18 @@
 import {
+  archiveAnalysisScheme,
+  archiveProviderConfig,
+  copyAnalysisScheme,
   createAnalysisSchemeDraft,
   createProviderConfig,
   createVehicleModel,
+  deleteAnalysisScheme,
+  deleteProviderConfig,
   deleteVehicleModel,
+  getAnalysisSchemeDeleteEligibility,
+  getProviderConfigDeleteEligibility,
   listAnalysisSchemes,
+  listArchivedAnalysisSchemes,
+  listArchivedProviderConfigs,
   listAuditEvents,
   listKeywordPacks,
   listProviderConfigs,
@@ -11,10 +20,14 @@ import {
   mergeVehicleModel,
   publishAnalysisScheme,
   replaceKeywordPackVehicleModels,
+  restoreAnalysisScheme,
+  restoreProviderConfig,
   rollbackAnalysisScheme,
+  testProviderConfigConnection,
   updateAnalysisSchemeDraft,
   updateProviderConfig,
   updateVehicleModel,
+  type AnalysisSchemeCopyRequest,
   type AnalysisSchemeCreateDraftRequest,
   type AnalysisSchemeListResponse,
   type AnalysisSchemeResponse,
@@ -25,6 +38,9 @@ import {
   type ProviderConfigListResponse,
   type ProviderConfigResponse,
   type ProviderConfigUpdateRequest,
+  type ProviderConnectionTestResponse,
+  type ResourceDeleteEligibilityResponse,
+  type ResourceLifecycleListResponse,
   type VehicleModelCreateRequest,
   type VehicleModelListResponse,
   type VehicleModelMergeRequest,
@@ -90,6 +106,29 @@ export const activateScheme = async (id: string, expectedVersion: number): Promi
 export const restoreScheme = async (id: string, expectedVersion: number): Promise<AnalysisSchemeResponse> =>
   unwrapResponse(await rollbackAnalysisScheme(id, { expected_version: expectedVersion }))
 
+export const copyScheme = async (
+  schemeId: string,
+  body: AnalysisSchemeCopyRequest,
+): Promise<AnalysisSchemeResponse> =>
+  unwrapResponse(await copyAnalysisScheme(schemeId, body))
+
+export const archiveScheme = async (schemeId: string): Promise<void> =>
+  unwrapResponse(await archiveAnalysisScheme(schemeId))
+
+export const fetchArchivedSchemes = async (): Promise<ResourceLifecycleListResponse> =>
+  unwrapResponse(await listArchivedAnalysisSchemes())
+
+export const restoreArchivedScheme = async (schemeId: string): Promise<void> =>
+  unwrapResponse(await restoreAnalysisScheme(schemeId))
+
+export const fetchSchemeDeleteEligibility = async (
+  schemeId: string,
+): Promise<ResourceDeleteEligibilityResponse> =>
+  unwrapResponse(await getAnalysisSchemeDeleteEligibility(schemeId))
+
+export const deleteArchivedScheme = async (schemeId: string): Promise<void> =>
+  unwrapResponse(await deleteAnalysisScheme(schemeId))
+
 export const fetchAuditEvents = async (
   offset = 0,
   limit = 100,
@@ -112,8 +151,31 @@ export const editProviderConfig = async (
 ): Promise<ProviderConfigResponse> =>
   unwrapResponse(await updateProviderConfig(id, body))
 
+export const testProviderConnection = async (
+  id: string,
+): Promise<ProviderConnectionTestResponse> =>
+  unwrapResponse(await testProviderConfigConnection(id))
+
+export const archiveProvider = async (id: string): Promise<void> =>
+  unwrapResponse(await archiveProviderConfig(id))
+
+export const fetchArchivedProviders = async (): Promise<ResourceLifecycleListResponse> =>
+  unwrapResponse(await listArchivedProviderConfigs())
+
+export const restoreArchivedProvider = async (id: string): Promise<void> =>
+  unwrapResponse(await restoreProviderConfig(id))
+
+export const fetchProviderDeleteEligibility = async (
+  id: string,
+): Promise<ResourceDeleteEligibilityResponse> =>
+  unwrapResponse(await getProviderConfigDeleteEligibility(id))
+
+export const deleteArchivedProvider = async (id: string): Promise<void> =>
+  unwrapResponse(await deleteProviderConfig(id))
+
 export type {
   ProviderConfigCreateRequest,
   ProviderConfigResponse,
   ProviderConfigUpdateRequest,
+  ProviderConnectionTestResponse,
 }
