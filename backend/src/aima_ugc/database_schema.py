@@ -42,6 +42,7 @@ from aima_ugc.modules.content.account_tables import account_external_ids_table
 from aima_ugc.modules.content.availability_tables import (
     content_availability_observations_table,
 )
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.extended_tables import (
     comment_locations_table,
     comment_media_table,
@@ -73,6 +74,7 @@ from aima_ugc.modules.ingestion.historical_tables import (
 )
 from aima_ugc.modules.ingestion.revocation_tables import (
     historical_import_campaign_revocations_table,
+    historical_import_revocation_content_versions_table,
 )
 from aima_ugc.modules.ingestion.tables import (
     processing_import_batches_table,
@@ -129,6 +131,7 @@ __all__ = [
     "global_relevance_config_table",
     "historical_import_campaign_items_table",
     "historical_import_campaign_revocations_table",
+    "historical_import_revocation_content_versions_table",
     "historical_import_campaigns_table",
     "collection_candidate_ingestions_table",
     "collection_candidates_table",
@@ -154,6 +157,7 @@ __all__ = [
     "content_media_table",
     "content_mentions_table",
     "content_metric_observations_table",
+    "content_source_contributions_table",
     "content_availability_observations_table",
     "content_topics_table",
     "content_versions_table",
