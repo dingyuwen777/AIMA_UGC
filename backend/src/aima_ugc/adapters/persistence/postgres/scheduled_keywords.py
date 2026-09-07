@@ -12,11 +12,14 @@ from aima_ugc.modules.collection.scheduled_scopes import (
     ScheduledKeywordEntry,
     ScheduledKeywordPackSnapshot,
 )
+from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
 from aima_ugc.modules.system.tables import (
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
 )
+
+register_system_lifecycle_schema()
 
 
 class MissingScheduledKeywordPackError(RuntimeError):
@@ -32,7 +35,7 @@ class ScheduledKeywordCatalogSnapshot:
 
 
 class PostgresScheduledKeywordSnapshotReader:
-    """只读 System 词包表，在一个 statement snapshot 内冻结 Run 输入。"""
+    """只读当前未归档 System 词包，在一个 statement snapshot 内冻结 Run 输入。"""
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -67,7 +70,10 @@ class PostgresScheduledKeywordSnapshotReader:
                         keywords_table.c.id == keyword_pack_items_table.c.keyword_id,
                     )
                 )
-                .where(keyword_packs_table.c.id.in_(pack_ids))
+                .where(
+                    keyword_packs_table.c.id.in_(pack_ids),
+                    keyword_packs_table.c.archived_at.is_(None),
+                )
                 .order_by(
                     keyword_packs_table.c.id,
                     keyword_pack_items_table.c.priority,
