@@ -4,6 +4,8 @@ import { defineStore } from 'pinia'
 import type {
   CollectionCapabilitiesResponse,
   DataImportIngestionPolicy,
+  DataImportRevocationPreviewResponse,
+  DataImportRevocationResponse,
   CollectionPlatform,
   CollectionRunCreateRequest,
   CollectionRunCreatedResponse,
@@ -47,7 +49,9 @@ import {
   fetchHistoricalDirectory,
   finalizeLocalCampaign,
   ImportApiError,
+  previewHistoricalCampaignRevocation,
   retryHistoricalCampaign,
+  revokeHistoricalCampaign,
   startHistoricalCampaign,
   uploadLocalCampaignFile,
   uploadImportBatch,
@@ -94,9 +98,7 @@ const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
 ]
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ImportApiError) {
-    return `${error.message}（request_id: ${error.requestId}）`
-  }
+  if (error instanceof ImportApiError) return error.message
   if (error instanceof Error && error.message) return error.message
   return '请求失败，请稍后重试。'
 }
@@ -139,6 +141,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const historicalCampaignConflicts = ref<HistoricalCampaignConflictResponse[]>([])
   const historicalCampaignItemsHasMore = ref(false)
   const historicalCampaignConflictsHasMore = ref(false)
+  const historicalRevocationPreview = ref<DataImportRevocationPreviewResponse | null>(null)
+  const historicalRevocation = ref<DataImportRevocationResponse | null>(null)
   const nextCursor = ref<string | null>(null)
   const hasMore = ref(false)
   const loading = ref(false)
@@ -150,6 +154,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const loadingHistorical = ref(false)
   const creatingHistorical = ref(false)
   const actingHistorical = ref(false)
+  const previewingHistoricalRevocation = ref(false)
+  const revokingHistorical = ref(false)
   const localUploadCompleted = ref(0)
   const localUploadTotal = ref(0)
   const error = ref<string | null>(null)
@@ -479,6 +485,10 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   }
 
   async function refreshHistoricalCampaign(campaignId: string): Promise<void> {
+    if (selectedHistoricalCampaign.value?.id !== campaignId) {
+      historicalRevocationPreview.value = null
+      historicalRevocation.value = null
+    }
     const [campaign, campaignItems, conflicts] = await Promise.all([
       fetchHistoricalCampaign(campaignId),
       fetchHistoricalCampaignItems(campaignId),
@@ -603,6 +613,43 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
+  async function previewHistoricalRevocation(): Promise<DataImportRevocationPreviewResponse | null> {
+    const campaignId = selectedHistoricalCampaign.value?.id
+    if (!campaignId) return null
+    previewingHistoricalRevocation.value = true
+    error.value = null
+    try {
+      historicalRevocationPreview.value = await previewHistoricalCampaignRevocation(campaignId)
+      return historicalRevocationPreview.value
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return null
+    } finally {
+      previewingHistoricalRevocation.value = false
+    }
+  }
+
+  async function revokeHistoricalImport(reason?: string): Promise<DataImportRevocationResponse | null> {
+    const campaignId = selectedHistoricalCampaign.value?.id
+    if (!campaignId) return null
+    revokingHistorical.value = true
+    error.value = null
+    try {
+      const result = await revokeHistoricalCampaign(campaignId, {
+        reason: reason?.trim() || null,
+      })
+      historicalRevocation.value = result
+      historicalRevocationPreview.value = await previewHistoricalCampaignRevocation(campaignId)
+      await refresh(true)
+      return result
+    } catch (reasonValue) {
+      error.value = errorMessage(reasonValue)
+      return null
+    } finally {
+      revokingHistorical.value = false
+    }
+  }
+
   function resetFilters(): void {
     Object.assign(filters, EMPTY_FILTERS)
   }
@@ -655,6 +702,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     historicalCampaignConflicts,
     historicalCampaignItemsHasMore,
     historicalCampaignConflictsHasMore,
+    historicalRevocationPreview,
+    historicalRevocation,
     hasMore,
     loading,
     loadingNext,
@@ -665,6 +714,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     loadingHistorical,
     creatingHistorical,
     actingHistorical,
+    previewingHistoricalRevocation,
+    revokingHistorical,
     localUploadCompleted,
     localUploadTotal,
     error,
@@ -689,6 +740,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     submitHistoricalCampaign,
     submitLocalCampaign,
     actOnHistoricalCampaign,
+    previewHistoricalRevocation,
+    revokeHistoricalImport,
     resetFilters,
     startPolling,
     stopPolling,
