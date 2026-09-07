@@ -36,17 +36,25 @@ def _content(external_content_id: str) -> CanonicalContentV1:
 
 def _label_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
     primary = taxonomy.primary_labels[0]
+    assert taxonomy.semantic_rules is not None
     return {
         "item_no": item_no,
         "relevance": "relevant",
-        "voice_type": "无法判断",
+        "relevance_evidence": ["爱玛体验"],
+        "source_type": "unknown",
+        "content_intent": "unknown",
+        "voice_type": taxonomy.semantic_rules.unknown_voice_type,
+        "voice_evidence": [],
         "sentiment": taxonomy.sentiments[0],
+        "sentiment_evidence": ["正文"],
         "labels": [
             {
                 "primary_label": primary,
                 "secondary_label": taxonomy.labels[primary][0],
+                "evidence": ["正文"],
             }
         ],
+        "decision_status": "clear",
     }
 
 

@@ -24,6 +24,7 @@ from aima_ugc.modules.analysis.content_labeling import (
 OBSERVED_AT = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 CURRENT_VOICE_TYPES = (
     "真实用户发声",
+    "个人交易发声",
     "品牌官方发声",
     "门店经销商发声",
     "营销推广发声",
@@ -52,7 +53,11 @@ def _content() -> CanonicalContentV1:
     )
 
 
-def _mutated_prompt(tmp_path: Path, mutate: Any) -> Path:
+def _mutated_prompt(
+    tmp_path: Path,
+    mutate: Any,
+    mutate_semantic_rules: Any | None = None,
+) -> Path:
     """只替换 Prompt 中机器 Taxonomy JSON，保留全部自然语言判断规则。"""
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
@@ -65,10 +70,26 @@ def _mutated_prompt(tmp_path: Path, mutate: Any) -> Path:
     payload: dict[str, Any] = json.loads(match.group(2))
     mutate(payload)
     replacement = json.dumps(payload, ensure_ascii=False, indent=2)
+    mutated_prompt = prompt[: match.start(2)] + replacement + prompt[match.end(2) :]
+    if mutate_semantic_rules is not None:
+        semantic_match = re.search(
+            r"(<!-- AIMA_SEMANTIC_RULES_START -->\s*```json\s*)"
+            r"(.*?)"
+            r"(\s*```\s*<!-- AIMA_SEMANTIC_RULES_END -->)",
+            mutated_prompt,
+            flags=re.DOTALL,
+        )
+        assert semantic_match is not None
+        semantic_payload: dict[str, Any] = json.loads(semantic_match.group(2))
+        mutate_semantic_rules(semantic_payload)
+        semantic_replacement = json.dumps(semantic_payload, ensure_ascii=False, indent=2)
+        mutated_prompt = (
+            mutated_prompt[: semantic_match.start(2)]
+            + semantic_replacement
+            + mutated_prompt[semantic_match.end(2) :]
+        )
     path = tmp_path / "content_labeling_voice_type_test.md"
-    path.write_text(
-        prompt[: match.start(2)] + replacement + prompt[match.end(2) :], encoding="utf-8"
-    )
+    path.write_text(mutated_prompt, encoding="utf-8")
     return path
 
 
@@ -81,14 +102,21 @@ def _response(*, voice_type: str, sentiment: str, primary: str, secondary: str) 
                 {
                     "item_no": 1,
                     "relevance": "relevant",
+                    "relevance_evidence": ["爱玛"],
+                    "source_type": "unknown",
+                    "content_intent": "unknown",
                     "voice_type": voice_type,
+                    "voice_evidence": [],
                     "sentiment": sentiment,
+                    "sentiment_evidence": ["骑了一年"],
                     "labels": [
                         {
                             "primary_label": primary,
                             "secondary_label": secondary,
+                            "evidence": ["骑了一年"],
                         }
                     ],
+                    "decision_status": "clear",
                 }
             ]
         },
@@ -97,7 +125,7 @@ def _response(*, voice_type: str, sentiment: str, primary: str, secondary: str) 
 
 
 def test_prompt_uses_business_defined_voice_type_taxonomy() -> None:
-    """当前 Prompt 必须使用本轮确认的七类发声类型机器集合。"""
+    """当前 Prompt 必须使用本轮确认的八类发声类型机器集合。"""
 
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
 
@@ -106,7 +134,6 @@ def test_prompt_uses_business_defined_voice_type_taxonomy() -> None:
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     for legacy_value in (
         "user_voice",
-        "brand_official",
         "dealer_promotion",
         "creator_marketing",
         "industry_professional",
@@ -126,11 +153,12 @@ def test_prompt_judgment_sections_use_tables_with_examples_and_confusion_cases()
     assert "### 语义相关性高混淆场景" in prompt
     assert "### 语义相关性示例" in prompt
 
-    assert "## 内容发声类型判断标准" in prompt
-    assert "| 发声类型 | 核心定义 | 说明 |" in prompt
-    assert "### 先组合两层证据，再分类" in prompt
-    assert "### 发声类型高混淆场景" in prompt
-    assert "### 发声类型示例" in prompt
+    assert "## 主体、内容意图与发声类型判断标准" in prompt
+    assert "### source_type：主体类型" in prompt
+    assert "### content_intent：当前内容意图" in prompt
+    assert "### voice_type：确定性派生顺序" in prompt
+    assert "### 证据与歧义处理" in prompt
+    assert "### 发声类型最小对比例" in prompt
 
     assert "## 情感判断标准" in prompt
     assert "| 情感 | 核心定义 | 判断说明 |" in prompt
@@ -149,6 +177,7 @@ def test_prompt_retains_voice_type_business_boundaries_and_learning_examples() -
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
 
     assert "真实用户发声" in prompt
+    assert "个人交易发声" in prompt
     assert "品牌官方发声" in prompt
     assert "门店经销商发声" in prompt
     assert "营销推广发声" in prompt
@@ -174,9 +203,18 @@ def test_prompt_voice_type_changes_are_runtime_driven_without_python_changes(
 
     def add_future_voice_type(payload: dict[str, Any]) -> None:
         payload["schema_version"] = "aima-content-taxonomy.v2"
-        payload["voice_types"] = ["无法判断", future_voice_type]
+        payload["voice_types"].append(future_voice_type)
 
-    loader = PromptTaxonomyLoader(_mutated_prompt(tmp_path, add_future_voice_type))
+    def use_future_as_unknown_voice_type(payload: dict[str, Any]) -> None:
+        payload["unknown_voice_type"] = future_voice_type
+
+    loader = PromptTaxonomyLoader(
+        _mutated_prompt(
+            tmp_path,
+            add_future_voice_type,
+            use_future_as_unknown_voice_type,
+        )
+    )
     taxonomy = loader.load()
     primary = taxonomy.primary_labels[0]
     fake = FakeContentLabelingLLM(
@@ -195,7 +233,7 @@ def test_prompt_voice_type_changes_are_runtime_driven_without_python_changes(
         max_validation_retries=0,
     )
 
-    assert taxonomy.voice_types == ("无法判断", future_voice_type)
+    assert taxonomy.voice_types == (*CURRENT_VOICE_TYPES, future_voice_type)
     assert result.items[0].analysis_status == "succeeded"
     assert result.items[0].analysis is not None
     assert result.items[0].analysis.voice_type == future_voice_type
@@ -207,7 +245,8 @@ def test_unknown_voice_type_uses_taxonomy_validation_retry() -> None:
     loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
     taxonomy = loader.load()
     primary = taxonomy.primary_labels[0]
-    valid_voice_type = taxonomy.voice_types[0]
+    assert taxonomy.semantic_rules is not None
+    valid_voice_type = taxonomy.semantic_rules.unknown_voice_type
     fake = FakeContentLabelingLLM(
         responses=[
             _response(
@@ -284,6 +323,53 @@ def test_duplicate_voice_type_in_prompt_taxonomy_fails_closed_before_llm(
         )
 
     assert fake.calls == []
+
+
+def test_v4_semantic_voice_mapping_and_taxonomy_must_change_atomically(
+    tmp_path: Path,
+) -> None:
+    """V4 语义映射引用的发声类型不能脱离同一 Scheme Taxonomy 单独修改。"""
+
+    def remove_personal_transaction_voice_type(payload: dict[str, Any]) -> None:
+        payload["voice_types"].remove("个人交易发声")
+
+    loader = PromptTaxonomyLoader(_mutated_prompt(tmp_path, remove_personal_transaction_voice_type))
+    fake = FakeContentLabelingLLM(responses=["{}"])
+
+    with pytest.raises(PromptTaxonomyError):
+        ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
+            [_content()],
+            max_validation_retries=0,
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize("mutation", ["collapse_personal_transaction", "drop_source_mapping"])
+def test_v4_semantic_rules_preserve_complete_distinct_voice_derivation(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    """个人交易不得回落到真实用户，已声明的非普通主体也不得缺少映射。"""
+
+    def mutate_semantic_rules(payload: dict[str, Any]) -> None:
+        if mutation == "collapse_personal_transaction":
+            payload["personal_transaction_voice_type"] = payload[
+                "ordinary_consumer_organic_voice_type"
+            ]
+        else:
+            payload["source_voice_types"].pop("media_org")
+
+    loader = PromptTaxonomyLoader(
+        _mutated_prompt(
+            tmp_path,
+            lambda _payload: None,
+            mutate_semantic_rules,
+        )
+    )
+
+    with pytest.raises(PromptTaxonomyError):
+        loader.load()
 
 
 def test_production_python_does_not_copy_concrete_voice_type_values() -> None:

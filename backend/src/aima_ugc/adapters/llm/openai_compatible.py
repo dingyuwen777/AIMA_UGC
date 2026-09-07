@@ -349,9 +349,17 @@ def _user_message(request: ContentLabelingLLMRequest) -> str:
     payload: dict[str, object] = {"items": request.model_payload()}
     if request.previous_validation_error_codes:
         payload["previous_validation_error_codes"] = list(request.previous_validation_error_codes)
-        payload["retry_instruction"] = (
-            "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
-        )
+        if request.request_kind == "judge":
+            payload["decision_mode"] = "judge"
+            payload["retry_instruction"] = (
+                "上一响应存在证据、主体、意图或发声类型歧义。"
+                "请只基于本次 items 的五个文本字段独立重新判断，"
+                "逐项引用原文证据；不要沿用上一结论。证据不足时使用显式未知值并返回 clear。"
+            )
+        else:
+            payload["retry_instruction"] = (
+                "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
+            )
     return json.dumps(
         payload,
         ensure_ascii=False,

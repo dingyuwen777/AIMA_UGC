@@ -104,10 +104,13 @@ def _seed_contents(client: TestClient) -> None:
 def _response(sentiment: str) -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"relevant",'
-        '"voice_type":"真实用户发声","sentiment":"'
+        '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
+        '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+        '"voice_evidence":["爱玛"],"sentiment":"'
         + sentiment
-        + '","labels":[{"primary_label":"骑行性能",'
-        '"secondary_label":"舒适性"}]}]}'
+        + '","sentiment_evidence":["爱玛"],"labels":[{"primary_label":"骑行性能",'
+        '"secondary_label":"舒适性","evidence":["爱玛"]}],'
+        '"decision_status":"clear"}]}'
     )
 
 

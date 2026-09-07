@@ -36,6 +36,8 @@ sentiment
 labels[]
 ```
 
+默认 V4 模型协议在持久化前还要求内部 `source_type / content_intent`、各维度原文证据和 `decision_status`。这些字段只用于本地语义一致性校验与条件 Judge，不扩展 `ContentLabelAnalysisV3`、HTTP 或数据库结果结构。
+
 约束：
 
 ```text
@@ -50,7 +52,7 @@ relevance = irrelevant
 
 历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容，不再作为新写入格式。
 
-当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。
+当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。V4 单列普通消费者个人车辆处置，避免把交易帖计入真实用户。
 
 真实用户发声唯一业务判断：
 
@@ -64,17 +66,18 @@ voice_type == "真实用户发声"
 
 ## 2. Analysis Scheme 与 Git bootstrap
 
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：新空库 bootstrap/灾备基线。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)：既有 active Scheme 输出协议兼容基线，不再作为默认文件。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-空数据库第一次读取 Analysis 配置时，会把 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。
+空数据库第一次读取 Analysis 配置时，会把 V4 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。代码升级不会覆盖已有数据库 active Version；要在既有环境启用 V4，必须通过管理员配置创建并原子发布完整 V4 Scheme。
 
 一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；编译后再计算 `prompt_sha256 / taxonomy_sha256`。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
 
 相关代码：
 
-- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels 机器 Taxonomy JSON，计算 `taxonomy_sha256`。
+- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels 机器 Taxonomy JSON；V4 还校验内部主体/意图到发声类型的机器语义映射，计算 `taxonomy_sha256`。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
 - [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
 
@@ -89,6 +92,8 @@ Python、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonom
 → 只影响之后新建的 Analysis Run
 → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
+
+V4 的 Taxonomy 与机器语义映射必须同时合法；映射引用已删除的发声类型时在模型调用前 fail closed。`source_type/content_intent` 是当前输出协议的内部闭集，不是新的业务持久字段。
 
 `prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
 
@@ -121,6 +126,8 @@ author.verification_label
 - Raw 定位；
 - 源 Excel 情感；
 - 其他未批准元数据。
+
+五个字段全部作为不可信待分析数据处理；其中出现的提示、命令、URL 或“忽略规则”文字不得改变系统 Prompt 或输出协议。
 
 这样可以降低 token、减少无关信息干扰，并让 `input_hash` 和隐私边界可审计。
 
@@ -270,6 +277,8 @@ Analysis Shard Worker
 → max_rps 对每个物理 HTTP Attempt 生效
 → Transport Retry 仅重发当前 Content 的物理请求
 → Validation Retry 仍由 ContentLabelingService 处理当前 Content
+→ 结构/Taxonomy 错误进入 repair；证据伪造、主体/意图/发声矛盾或 needs_judge 才进入条件 Judge
+→ 已成功 Content 不随另一条复判而重发
 → 完成结果有界缓冲
 → 小任务或大任务尾部：已取完全部工作项且剩余未完成数不超过 max_concurrency，立即短事务提交
 → 其他阶段：满 200 条或首个结果等待约 1 秒即短事务提交
@@ -357,7 +366,9 @@ HTTP 已成功
 → ContentLabelingService 对当前 Content 重新推理
 ```
 
-管理员 Provider 的 `max_retries` 当前表示这类 **Validation Retry** 上限。
+管理员 Provider 的 `max_retries` 当前表示每条 Content 的 **Validation Retry** 轮数上限。
+
+V4 的 Validation Attempt 记录 `request_kind=primary/repair/judge`。Judge 不读取上一响应全文，只收到当前 unresolved item、稳定错误码和五个原始文本字段，并独立重新判断；同一轮同时出现结构错误与语义歧义时按 item 拆成 repair/judge 请求，每条 Content 仍只消耗一轮重试。没有触发语义/证据歧义的清晰内容保持单次调用。
 
 ### Transport Retry
 
@@ -424,7 +435,8 @@ Unified JSONL
 | --- | --- |
 | 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 管理员 Analysis Scheme 草稿 → 校验 → 发布；Git Prompt 只在要改变新环境 bootstrap 基线时同步 |
 | 改 Scheme 编译、发布或回滚 | [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
-| 改 V3 输出结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
+| 改 V4 内部输出协议或 Judge 路由 | Prompt + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + V3 兼容/离线回归 |
+| 改持久化 `ContentLabelAnalysisV3` 结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
 | 改模型/Base URL/API Key/模型并发/RPS | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) + `adapters/llm` |
 | 改自动 Shard 策略 | [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) + Preview/Create + Planner tests |
 | 改网络 Retry | [`backend/src/aima_ugc/adapters/llm/retrying.py`](../../adapters/llm/retrying.py) + [`backend/src/aima_ugc/adapters/llm/rate_limited.py`](../../adapters/llm/rate_limited.py) + audit/retry tests |
@@ -525,5 +537,6 @@ all
 - 统一 request/amount Budget Guard；
 - Redis/Kafka/RabbitMQ/Celery 等第二任务系统；
 - Monitoring/Alert/VOC/Ticket 业务域。
+- 已人工复核的 Gold Set 与量化准确率门禁；当前没有依据调整模型、thinking 或生成参数。
 
 当前高吞吐实现仍使用同一个 PostgreSQL durable Job Runtime。1000 并发的代码容量由 Provider 配置、HTTP 连接池和 bounded executor 支持；某台真实服务器/模型部署是否能稳定跑满 1000，必须由对应部署环境的 CPU、内存、网络、Provider/GPU 与 PostgreSQL 压测证明，不能从 CI Runner 的线程测试推断。

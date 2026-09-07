@@ -61,14 +61,16 @@ def test_excel_analysis_uses_voice_type_as_the_only_user_voice_fact() -> None:
         )
 
 
-def test_prompt_v3_focuses_voice_classification_on_combined_visible_evidence() -> None:
-    assert PROMPT_VERSION == "content-labeling.v3"
-    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v3.md"
+def test_prompt_v4_separates_source_intent_and_evidence_without_parallel_user_flag() -> None:
+    assert PROMPT_VERSION == "content-labeling.v4"
+    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v4.md"
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     assert "is_user_voice" not in prompt
-    assert "主体证据" in prompt
-    assert "表达目的证据" in prompt
+    assert "source_type" in prompt
+    assert "content_intent" in prompt
+    assert "voice_evidence" in prompt
+    assert "个人交易发声" in prompt
     assert "作者展示名" in prompt
     assert "公开简介" in prompt
     assert "认证文案" in prompt

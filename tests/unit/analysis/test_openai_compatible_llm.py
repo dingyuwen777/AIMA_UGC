@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 import httpx
 import pytest
@@ -23,7 +24,11 @@ from aima_ugc.platform.time import BEIJING_TIMEZONE
 from pydantic import SecretStr
 
 
-def _request(*, previous_errors: tuple[str, ...] = ()) -> ContentLabelingLLMRequest:
+def _request(
+    *,
+    previous_errors: tuple[str, ...] = (),
+    request_kind: Literal["primary", "repair", "judge"] = "primary",
+) -> ContentLabelingLLMRequest:
     return ContentLabelingLLMRequest(
         prompt="PROMPT-TEXT",
         items=(
@@ -36,6 +41,7 @@ def _request(*, previous_errors: tuple[str, ...] = ()) -> ContentLabelingLLMRequ
                 author_verification_label="",
             ),
         ),
+        request_kind=request_kind,
         previous_validation_error_codes=previous_errors,
     )
 
@@ -169,6 +175,49 @@ def test_openai_compatible_adapter_retry_request_only_adds_validation_errors() -
     ]
     assert set(user_payload) == {
         "items",
+        "previous_validation_error_codes",
+        "retry_instruction",
+    }
+
+
+def test_openai_compatible_adapter_judge_recomputes_from_current_items() -> None:
+    captured_body: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_body.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"items":[]}'}}]},
+        )
+
+    client = httpx.Client(
+        base_url="https://llm.example/v1/",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        adapter = OpenAICompatibleContentLabelingLLM(
+            base_url="https://llm.example/v1",
+            api_key=SecretStr("secret"),
+            model="model-a",
+            provider_name="provider-a",
+            client=client,
+        )
+        adapter.complete(
+            _request(
+                previous_errors=("voice_type_semantic_conflict",),
+                request_kind="judge",
+            )
+        )
+    finally:
+        client.close()
+
+    user_payload = json.loads(captured_body["messages"][1]["content"])
+    assert user_payload["decision_mode"] == "judge"
+    assert user_payload["items"] == _request().model_payload()
+    assert "独立重新判断" in user_payload["retry_instruction"]
+    assert set(user_payload) == {
+        "items",
+        "decision_mode",
         "previous_validation_error_codes",
         "retry_instruction",
     }

@@ -58,9 +58,12 @@ class _TaxonomyBenchmarkLLM:
     model_name = "taxonomy-derived-fake"
 
     def __init__(self, taxonomy: PromptTaxonomy) -> None:
+        if taxonomy.semantic_rules is None:
+            raise ValueError("性能测试要求 V4 Semantic Rules")
         self._sentiment = taxonomy.sentiments[0]
         self._primary = taxonomy.primary_labels[0]
         self._secondary = taxonomy.labels[self._primary][0]
+        self._voice_type = taxonomy.semantic_rules.unknown_voice_type
 
     def complete(self, request: ContentLabelingLLMRequest) -> ContentLabelingLLMResponse:
         payload = {
@@ -68,14 +71,21 @@ class _TaxonomyBenchmarkLLM:
                 {
                     "item_no": item.item_no,
                     "relevance": "relevant",
-                    "voice_type": "真实用户发声",
+                    "relevance_evidence": ["爱玛"],
+                    "source_type": "unknown",
+                    "content_intent": "unknown",
+                    "voice_type": self._voice_type,
+                    "voice_evidence": [],
                     "sentiment": self._sentiment,
+                    "sentiment_evidence": ["爱玛"],
                     "labels": [
                         {
                             "primary_label": self._primary,
                             "secondary_label": self._secondary,
+                            "evidence": ["爱玛"],
                         }
                     ],
+                    "decision_status": "clear",
                 }
                 for item in request.items
             ]

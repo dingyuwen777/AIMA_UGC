@@ -16,6 +16,7 @@ from aima_ugc.modules.analysis import (
     CONTENT_LABELING_PROMPT_PATH,
     ContentLabelingService,
     FakeContentLabelingLLM,
+    PromptTaxonomy,
     PromptTaxonomyLoader,
 )
 from pydantic import ValidationError
@@ -81,6 +82,27 @@ def _analysis_v2() -> ContentLabelAnalysisV2:
     )
 
 
+def _model_item(
+    taxonomy: PromptTaxonomy,
+    *,
+    labels: list[dict[str, object]],
+) -> dict[str, object]:
+    assert taxonomy.semantic_rules is not None
+    return {
+        "item_no": 1,
+        "relevance": "relevant",
+        "relevance_evidence": ["爱玛"],
+        "source_type": "ordinary_consumer",
+        "content_intent": "organic_experience",
+        "voice_type": taxonomy.semantic_rules.ordinary_consumer_organic_voice_type,
+        "voice_evidence": ["动力不错"],
+        "sentiment": taxonomy.sentiments[0],
+        "sentiment_evidence": ["动力不错"],
+        "labels": labels,
+        "decision_status": "clear",
+    }
+
+
 def test_content_label_analysis_v2_preserves_label_pairs_and_rejects_duplicates() -> None:
     analysis = _analysis_v2()
 
@@ -131,22 +153,21 @@ def test_service_returns_v2_with_multiple_valid_label_pairs() -> None:
     response = json.dumps(
         {
             "items": [
-                {
-                    "item_no": 1,
-                    "relevance": "relevant",
-                    "voice_type": "无法判断",
-                    "sentiment": taxonomy.sentiments[0],
-                    "labels": [
+                _model_item(
+                    taxonomy,
+                    labels=[
                         {
                             "primary_label": first_primary,
                             "secondary_label": taxonomy.labels[first_primary][0],
+                            "evidence": ["动力不错"],
                         },
                         {
                             "primary_label": second_primary,
                             "secondary_label": taxonomy.labels[second_primary][0],
+                            "evidence": ["售后客服态度很差"],
                         },
                     ],
-                }
+                )
             ]
         },
         ensure_ascii=False,
@@ -175,33 +196,14 @@ def test_duplicate_label_pair_is_retryable_and_not_silently_deduplicated() -> No
     pair = {
         "primary_label": primary,
         "secondary_label": taxonomy.labels[primary][0],
+        "evidence": ["动力不错"],
     }
     bad = json.dumps(
-        {
-            "items": [
-                {
-                    "item_no": 1,
-                    "relevance": "relevant",
-                    "voice_type": "无法判断",
-                    "sentiment": taxonomy.sentiments[0],
-                    "labels": [pair, pair],
-                }
-            ]
-        },
+        {"items": [_model_item(taxonomy, labels=[pair, pair])]},
         ensure_ascii=False,
     )
     good = json.dumps(
-        {
-            "items": [
-                {
-                    "item_no": 1,
-                    "relevance": "relevant",
-                    "voice_type": "无法判断",
-                    "sentiment": taxonomy.sentiments[0],
-                    "labels": [pair],
-                }
-            ]
-        },
+        {"items": [_model_item(taxonomy, labels=[pair])]},
         ensure_ascii=False,
     )
     fake = FakeContentLabelingLLM(responses=[bad, good])

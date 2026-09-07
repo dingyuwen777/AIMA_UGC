@@ -350,7 +350,7 @@ PostgreSQL
 
 生成目录禁止手工修改。Contract 删除字段、改名、改类型、改语义、可选变必填、改默认排序或错误都按破坏性变化处理。
 
-AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；运行时唯一业务事实源是数据库中唯一 active Analysis Scheme Version，[`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md) 只负责空库 bootstrap/灾备基线。Prompt 模板、`relevance` 规则、情感、`voice_type`、标签和 Validator 所需 Taxonomy 必须作为同一 Scheme Version 原子发布或回滚。
+AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；运行时唯一业务事实源是数据库中唯一 active Analysis Scheme Version，[`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md) 只负责新空库 bootstrap/灾备基线，V3 Prompt 只保留既有 Scheme 输出协议兼容。Prompt 模板、`relevance` 规则、内部 `source_type/content_intent`、情感、`voice_type`、证据规则、标签和 Validator 所需 Taxonomy/语义映射必须作为同一 Scheme Version 原子发布或回滚；升级代码不得自动覆盖现有数据库 active Version。
 
 ## 9. Job、Scheduler 与 Provider 恢复
 

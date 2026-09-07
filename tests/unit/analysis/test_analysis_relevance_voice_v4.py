@@ -18,6 +18,11 @@ from aima_ugc.modules.analysis.content_labeling import (
     PromptTaxonomy,
     PromptTaxonomyLoader,
 )
+from aima_ugc.modules.analysis.prompt_snapshot import FrozenPromptTaxonomyLoader
+from aima_ugc.modules.analysis.schemes import (
+    bootstrap_definition_from_prompt,
+    compile_analysis_scheme,
+)
 
 OBSERVED_AT = datetime(2026, 9, 7, 10, 0, tzinfo=UTC)
 
@@ -202,9 +207,7 @@ def test_v4_semantic_conflict_routes_only_the_item_to_judge() -> None:
     assert result.items[0].analysis.voice_type == "个人交易发声"
     assert result.attempts[0].validation_error_codes == ("voice_type_semantic_conflict",)
     assert [call.request_kind for call in fake.calls] == ["primary", "judge"]
-    assert fake.calls[1].previous_validation_error_codes == (
-        "voice_type_semantic_conflict",
-    )
+    assert fake.calls[1].previous_validation_error_codes == ("voice_type_semantic_conflict",)
 
 
 def test_v4_fabricated_evidence_routes_to_judge() -> None:
@@ -213,9 +216,7 @@ def test_v4_fabricated_evidence_routes_to_judge() -> None:
     loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
     taxonomy = loader.load()
     fabricated = _v4_item(taxonomy, voice_evidence=["售价 1999 元"])
-    fake = FakeContentLabelingLLM(
-        responses=[_response(fabricated), _response(_v4_item(taxonomy))]
-    )
+    fake = FakeContentLabelingLLM(responses=[_response(fabricated), _response(_v4_item(taxonomy))])
 
     result = ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
         [_content()],
@@ -254,9 +255,7 @@ def test_v4_partial_batch_judges_only_the_unresolved_item() -> None:
     clear = _v4_item(taxonomy, item_no=1)
     unclear = _v4_item(taxonomy, item_no=2, decision_status="needs_judge")
     resolved = _v4_item(taxonomy, item_no=2)
-    fake = FakeContentLabelingLLM(
-        responses=[_response(clear, unclear), _response(resolved)]
-    )
+    fake = FakeContentLabelingLLM(responses=[_response(clear, unclear), _response(resolved)])
 
     result = ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
         [
@@ -272,12 +271,50 @@ def test_v4_partial_batch_judges_only_the_unresolved_item() -> None:
     assert fake.calls[1].request_kind == "judge"
 
 
+def test_v4_mixed_retry_batch_separates_repair_items_from_judge_items() -> None:
+    """同轮结构错误与语义歧义必须分别进入 repair 和 judge 请求。"""
+
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    taxonomy = loader.load()
+    malformed = _v4_item(taxonomy, item_no=1)
+    malformed.pop("source_type")
+    unclear = _v4_item(taxonomy, item_no=2, decision_status="needs_judge")
+    repaired = _v4_item(taxonomy, item_no=1)
+    judged = _v4_item(taxonomy, item_no=2)
+    fake = FakeContentLabelingLLM(
+        responses=[
+            _response(malformed, unclear),
+            _response(repaired),
+            _response(judged),
+        ]
+    )
+
+    result = ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
+        [
+            _content(external_content_id="repair-1"),
+            _content(external_content_id="judge-2"),
+        ],
+        max_validation_retries=1,
+    )
+
+    assert [item.analysis_status for item in result.items] == ["succeeded", "succeeded"]
+    assert [call.request_kind for call in fake.calls] == ["primary", "repair", "judge"]
+    assert [item.item_no for item in fake.calls[1].items] == [1]
+    assert fake.calls[1].previous_validation_error_codes == ("invalid_item_structure",)
+    assert [item.item_no for item in fake.calls[2].items] == [2]
+    assert fake.calls[2].previous_validation_error_codes == ("decision_needs_judge",)
+
+
 def test_v3_scheme_response_remains_accepted_without_v4_internal_fields() -> None:
     """旧 active Scheme 在代码升级后仍按 V3 输出协议执行。"""
 
     v3_path = CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v3.md")
-    loader = PromptTaxonomyLoader(v3_path)
-    taxonomy = loader.load()
+    compiled = compile_analysis_scheme(
+        bootstrap_definition_from_prompt(v3_path.read_text(encoding="utf-8"))
+    )
+    taxonomy = compiled.to_prompt_taxonomy(prompt_version="analysis-scheme:legacy-v3")
+    loader = FrozenPromptTaxonomyLoader(taxonomy)
+    assert taxonomy.output_protocol_version == "content-labeling.v3"
     primary = taxonomy.primary_labels[0]
     response = json.dumps(
         {

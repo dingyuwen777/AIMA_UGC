@@ -166,21 +166,28 @@ def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[n
 
 def _relevant_response(*, sentiment: str = "负面", voice_type: str = "真实用户发声") -> str:
     return (
-        '{"items":[{"item_no":1,"relevance":"relevant","voice_type":"'
+        '{"items":[{"item_no":1,"relevance":"relevant",'
+        '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
+        '"content_intent":"organic_experience","voice_type":"'
         + voice_type
-        + '","sentiment":"'
+        + '","voice_evidence":["爱玛"],"sentiment":"'
         + sentiment
-        + '","labels":['
-        '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现"},'
-        '{"primary_label":"售后服务","secondary_label":"客服与服务态度"}]}]}'
+        + '","sentiment_evidence":["爱玛"],"labels":['
+        '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现",'
+        '"evidence":["爱玛"]},{"primary_label":"售后服务",'
+        '"secondary_label":"客服与服务态度","evidence":["爱玛"]}],'
+        '"decision_status":"clear"}]}'
     )
 
 
 def _irrelevant_response(*, voice_type: str = "媒体机构发声") -> str:
     return (
-        '{"items":[{"item_no":1,"relevance":"irrelevant","voice_type":"'
+        '{"items":[{"item_no":1,"relevance":"irrelevant",'
+        '"relevance_evidence":["爱玛"],"source_type":"media_org",'
+        '"content_intent":"news_information","voice_type":"'
         + voice_type
-        + '","sentiment":null,"labels":[]}]}'
+        + '","voice_evidence":["爱玛"],"sentiment":null,'
+        '"sentiment_evidence":[],"labels":[],"decision_status":"clear"}]}'
     )
 
 
@@ -576,8 +583,13 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
             llm=FakeContentLabelingLLM(
                 responses=[
                     '{"items":[{"item_no":1,"relevance":"relevant",'
-                    '"voice_type":"真实用户发声","sentiment":"中性","labels":['
-                    '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现"}]}]}'
+                    '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
+                    '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+                    '"voice_evidence":["爱玛"],"sentiment":"中性",'
+                    '"sentiment_evidence":["爱玛"],"labels":['
+                    '{"primary_label":"电池、续航与充电",'
+                    '"secondary_label":"实际续航表现","evidence":["爱玛"]}],'
+                    '"decision_status":"clear"}]}'
                 ]
             ),
         )
