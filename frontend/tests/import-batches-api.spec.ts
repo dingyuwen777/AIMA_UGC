@@ -5,6 +5,8 @@ const generated = vi.hoisted(() => ({
   getImportBatchSummary: vi.fn(),
   getImportBatch: vi.fn(),
   createImportBatch: vi.fn(),
+  previewDataImportCampaignRevocation: vi.fn(),
+  revokeDataImportCampaign: vi.fn(),
 }))
 
 vi.mock('../src/generated/api/client', () => generated)
@@ -13,6 +15,8 @@ import {
   ImportApiError,
   fetchImportBatchList,
   fetchImportBatchSummary,
+  previewHistoricalCampaignRevocation,
+  revokeHistoricalCampaign,
 } from '../src/features/import-batches/api'
 
 describe('import batch feature api', () => {
@@ -31,6 +35,34 @@ describe('import batch feature api', () => {
       next_cursor: null,
     })
     expect(generated.listImportBatches).toHaveBeenCalledWith({ status: 'running', limit: 20 })
+  })
+
+  it('uses the generated two-step revocation contract without inventing a parallel HTTP client', async () => {
+    const preview = {
+      campaign_id: 'campaign-1',
+      eligible: true,
+      already_revoked: false,
+      impact: {
+        affected_content_count: 8,
+        hidden_content_count: 5,
+        retained_shared_content_count: 3,
+        unreversible_content_count: 0,
+      },
+    }
+    const revoked = {
+      campaign_id: 'campaign-1',
+      already_revoked: false,
+      impact: preview.impact,
+      revoked_at: '2026-09-07T14:00:00+08:00',
+    }
+    generated.previewDataImportCampaignRevocation.mockResolvedValue(preview)
+    generated.revokeDataImportCampaign.mockResolvedValue(revoked)
+
+    await expect(previewHistoricalCampaignRevocation('campaign-1')).resolves.toEqual(preview)
+    await expect(revokeHistoricalCampaign('campaign-1', { reason: '误选目录' })).resolves.toEqual(revoked)
+
+    expect(generated.previewDataImportCampaignRevocation).toHaveBeenCalledWith('campaign-1')
+    expect(generated.revokeDataImportCampaign).toHaveBeenCalledWith('campaign-1', { reason: '误选目录' })
   })
 
   it('turns the shared HTTP error contract into a feature error', async () => {
