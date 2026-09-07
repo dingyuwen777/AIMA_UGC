@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request, Response, status
@@ -19,6 +21,7 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
 from aima_ugc.adapters.persistence.postgres.keyword_lifecycle import (
     PostgresKeywordPackLifecycleRepository,
 )
+from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatalogRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.bootstrap.collection_strategy_http import (
     PostgresCollectionStrategyHttpService,
@@ -35,11 +38,13 @@ from aima_ugc.contracts.resource_lifecycle import (
     CollectionPlanUpdateRequest,
     KeywordPackCopyRequest,
     KeywordPackItemRemoveRequest,
+    KeywordPackItemUpdateRequest,
     KeywordPackUpdateRequest,
     ResourceDeleteEligibilityResponse,
     ResourceLifecycleListResponse,
     ResourceLifecycleResponse,
 )
+from aima_ugc.modules.analysis import normalize_keyword_storage_text
 from aima_ugc.modules.collection.planning import (
     CollectionPlanDefinition,
     CollectionPlanningService,
@@ -52,7 +57,7 @@ from aima_ugc.modules.collection.strategy_http import (
     CollectionStrategyResourceNotFound,
 )
 from aima_ugc.modules.identity import DevelopmentIdentityResolver, IdentityResolver, Principal
-from aima_ugc.modules.system.models import AuditEvent
+from aima_ugc.modules.system.models import AuditEvent, Keyword
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime, create_platform_runtime
@@ -101,6 +106,74 @@ class PostgresResourceLifecycleHttpService:
                     )
             except IntegrityError as exc:
                 raise CollectionStrategyConflict("同名词包已经存在") from exc
+        finally:
+            session.close()
+        return PostgresImportHttpService(self._runtime).get_keyword_pack(pack_id)
+
+    def update_keyword_pack_item(
+        self,
+        pack_id: UUID,
+        keyword_id: UUID,
+        body: KeywordPackItemUpdateRequest,
+        *,
+        principal: Principal,
+        request_id: str,
+    ) -> KeywordPackResponse:
+        """安全替换当前词包成员；共享 Keyword 不做原地文本修改。"""
+
+        principal.require_administrator()
+        try:
+            normalized = normalize_keyword_storage_text(body.text)
+        except ValueError as exc:
+            raise CollectionStrategyInvalid("关键词不合法") from exc
+        session = self._runtime.database.new_session()
+        try:
+            try:
+                with session.begin():
+                    catalog = PostgresKeywordCatalogRepository(session)
+                    replacement = catalog.get_or_create_keyword(
+                        Keyword(
+                            id=uuid4(),
+                            text=body.text,
+                            normalized_text=normalized,
+                            enabled=True,
+                        )
+                    )
+                    repository = PostgresKeywordPackLifecycleRepository(session)
+                    try:
+                        updated = repository.replace_item(
+                            pack_id,
+                            keyword_id,
+                            source_platform_scope=body.source_platform_scope,
+                            replacement_keyword_id=replacement.id,
+                            platform_scope=body.platform_scope,
+                            priority=body.priority,
+                            enabled=body.enabled,
+                            note=body.note,
+                            expected_version=body.expected_version,
+                        )
+                    except LookupError as exc:
+                        raise CollectionStrategyResourceNotFound from exc
+                    except RuntimeError as exc:
+                        raise CollectionStrategyConflict(str(exc)) from exc
+                    if updated is None:
+                        raise CollectionStrategyResourceNotFound
+                    _audit(
+                        session,
+                        principal=principal,
+                        request_id=request_id,
+                        event_type="keyword_pack_keyword_updated",
+                        object_type="keyword_pack",
+                        object_id=str(pack_id),
+                        detail={
+                            "version": updated.version,
+                            "platform_scope": body.platform_scope,
+                            "priority": body.priority,
+                            "enabled": body.enabled,
+                        },
+                    )
+            except IntegrityError as exc:
+                raise CollectionStrategyConflict("修改后的关键词与现有配置冲突") from exc
         finally:
             session.close()
         return PostgresImportHttpService(self._runtime).get_keyword_pack(pack_id)
@@ -252,9 +325,14 @@ class PostgresResourceLifecycleHttpService:
             session.close()
         return PostgresImportHttpService(self._runtime).get_keyword_pack(pack_id)
 
-    def list_archived_keyword_packs(self) -> ResourceLifecycleListResponse:
+    def list_archived_keyword_packs(
+        self,
+        *,
+        principal: Principal,
+    ) -> ResourceLifecycleListResponse:
         """列出已归档词包供“已归档”视图恢复。"""
 
+        principal.require_administrator()
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -276,9 +354,12 @@ class PostgresResourceLifecycleHttpService:
     def keyword_pack_delete_eligibility(
         self,
         pack_id: UUID,
+        *,
+        principal: Principal,
     ) -> ResourceDeleteEligibilityResponse:
         """只读返回永久删除阻塞原因。"""
 
+        principal.require_administrator()
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -517,9 +598,14 @@ class PostgresResourceLifecycleHttpService:
             session.close()
         return PostgresCollectionStrategyHttpService(self._runtime).get_plan(plan_id)
 
-    def list_archived_collection_plans(self) -> ResourceLifecycleListResponse:
+    def list_archived_collection_plans(
+        self,
+        *,
+        principal: Principal,
+    ) -> ResourceLifecycleListResponse:
         """列出已归档计划供恢复入口消费。"""
 
+        principal.require_administrator()
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -541,9 +627,12 @@ class PostgresResourceLifecycleHttpService:
     def collection_plan_delete_eligibility(
         self,
         plan_id: UUID,
+        *,
+        principal: Principal,
     ) -> ResourceDeleteEligibilityResponse:
         """返回采集计划的永久删除资格。"""
 
+        principal.require_administrator()
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -608,6 +697,20 @@ def install_resource_lifecycle_routes(
             runtime = create_platform_runtime("api")
         return PostgresResourceLifecycleHttpService(runtime)
 
+    router = cast(Any, application.router)
+    original_lifespan = router.lifespan_context
+
+    @asynccontextmanager
+    async def lifecycle_lifespan(app: FastAPI) -> AsyncIterator[None]:
+        async with original_lifespan(app):
+            try:
+                yield
+            finally:
+                if runtime is not None:
+                    runtime.close()
+
+    router.lifespan_context = lifecycle_lifespan
+
     def principal(request: Request) -> Principal:
         """使用与主 API 相同的 Provider-neutral 身份解析器。"""
 
@@ -622,6 +725,27 @@ def install_resource_lifecycle_routes(
     )
     def update_keyword_pack(pack_id: UUID, body: KeywordPackUpdateRequest, request: Request) -> KeywordPackResponse:
         return service().update_keyword_pack(pack_id, body, principal=principal(request), request_id=_request_id(request))
+
+    @application.put(
+        "/api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}",
+        operation_id="updateKeywordInPack",
+        response_model=KeywordPackResponse,
+        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}, 422: {"model": HttpErrorResponse}},
+        tags=["keywords"],
+    )
+    def update_keyword_in_pack(
+        pack_id: UUID,
+        keyword_id: UUID,
+        body: KeywordPackItemUpdateRequest,
+        request: Request,
+    ) -> KeywordPackResponse:
+        return service().update_keyword_pack_item(
+            pack_id,
+            keyword_id,
+            body,
+            principal=principal(request),
+            request_id=_request_id(request),
+        )
 
     @application.post(
         "/api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}/remove",
@@ -668,19 +792,21 @@ def install_resource_lifecycle_routes(
         "/api/v1/resource-lifecycle/keyword-packs/archived",
         operation_id="listArchivedKeywordPacks",
         response_model=ResourceLifecycleListResponse,
+        responses={403: {"model": HttpErrorResponse}},
         tags=["keywords"],
     )
-    def list_archived_keyword_packs() -> ResourceLifecycleListResponse:
-        return service().list_archived_keyword_packs()
+    def list_archived_keyword_packs(request: Request) -> ResourceLifecycleListResponse:
+        return service().list_archived_keyword_packs(principal=principal(request))
 
     @application.get(
         "/api/v1/keyword-packs/{pack_id}/delete-eligibility",
         operation_id="getKeywordPackDeleteEligibility",
         response_model=ResourceDeleteEligibilityResponse,
+        responses={403: {"model": HttpErrorResponse}},
         tags=["keywords"],
     )
-    def get_keyword_pack_delete_eligibility(pack_id: UUID) -> ResourceDeleteEligibilityResponse:
-        return service().keyword_pack_delete_eligibility(pack_id)
+    def get_keyword_pack_delete_eligibility(pack_id: UUID, request: Request) -> ResourceDeleteEligibilityResponse:
+        return service().keyword_pack_delete_eligibility(pack_id, principal=principal(request))
 
     @application.delete(
         "/api/v1/keyword-packs/{pack_id}",
@@ -738,19 +864,21 @@ def install_resource_lifecycle_routes(
         "/api/v1/resource-lifecycle/collection-plans/archived",
         operation_id="listArchivedCollectionPlans",
         response_model=ResourceLifecycleListResponse,
+        responses={403: {"model": HttpErrorResponse}},
         tags=["collection-strategy"],
     )
-    def list_archived_collection_plans() -> ResourceLifecycleListResponse:
-        return service().list_archived_collection_plans()
+    def list_archived_collection_plans(request: Request) -> ResourceLifecycleListResponse:
+        return service().list_archived_collection_plans(principal=principal(request))
 
     @application.get(
         "/api/v1/collection-plans/{plan_id}/delete-eligibility",
         operation_id="getCollectionPlanDeleteEligibility",
         response_model=ResourceDeleteEligibilityResponse,
+        responses={403: {"model": HttpErrorResponse}},
         tags=["collection-strategy"],
     )
-    def get_collection_plan_delete_eligibility(plan_id: UUID) -> ResourceDeleteEligibilityResponse:
-        return service().collection_plan_delete_eligibility(plan_id)
+    def get_collection_plan_delete_eligibility(plan_id: UUID, request: Request) -> ResourceDeleteEligibilityResponse:
+        return service().collection_plan_delete_eligibility(plan_id, principal=principal(request))
 
     @application.delete(
         "/api/v1/collection-plans/{plan_id}",
