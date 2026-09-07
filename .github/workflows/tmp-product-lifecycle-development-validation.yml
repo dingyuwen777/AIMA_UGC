@@ -1,0 +1,222 @@
+name: Temporary Product Lifecycle Development Validation
+
+on:
+  push:
+    branches:
+      - feature/product-resource-lifecycle
+    paths:
+      - .github/workflows/tmp-product-lifecycle-development-validation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  core:
+    name: Core Contract and Frontend
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('.uv-version', 'uv.lock') }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          test "$(uv --version | awk '{print $2}')" = "${UV_VERSION}"
+          test "$(python --version)" = "Python 3.14.7"
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Contract generation and compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          git diff --exit-code -- contracts frontend/src/generated/api
+          test -z "$(git ls-files --others --exclude-standard -- contracts frontend/src/generated/api)"
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/contracts/check_compatibility.py
+          uv run pytest tests/unit/contracts/test_product_resource_lifecycle_openapi.py -q
+
+      - name: Backend static and targeted behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check \
+            backend tests scripts \
+            migrations/versions/20260907_0041_import_campaign_revocation.py \
+            migrations/versions/20260907_0042_product_resource_lifecycle.py
+          uv run ruff check \
+            backend tests scripts \
+            migrations/versions/20260907_0041_import_campaign_revocation.py \
+            migrations/versions/20260907_0042_product_resource_lifecycle.py
+          uv run mypy backend/src
+          uv run pytest \
+            tests/unit/ingestion/test_import_campaign_revocation.py \
+            tests/unit/system/test_provider_connectivity.py \
+            tests/unit/system/test_runtime_provider_config.py \
+            tests/api \
+            -q
+          uv run python scripts/quality/check_architecture.py
+          uv run python scripts/quality/check_table_ownership.py
+
+      - name: Frontend product regression and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend audit --audit-level=high
+          npm --prefix frontend run lint
+          npm --prefix frontend test -- --run \
+            tests/import-batches-api.spec.ts \
+            tests/collection-strategy.spec.ts \
+            tests/collection-strategy-design.spec.ts \
+            tests/collection-runtime.spec.ts \
+            tests/collection-runtime-design.spec.ts \
+            tests/frontend-audit-regressions.spec.ts \
+            tests/admin-configuration-design.spec.ts \
+            tests/admin-configuration-presentation.spec.ts \
+            tests/voice-plaza-design.spec.ts
+          npm --prefix frontend run build
+
+  postgres:
+    name: PostgreSQL Lifecycle Evidence
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: ci-postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-postgres/data
+      AIMA_LOG_DIR: .runtime/ci-postgres/logs
+      AIMA_SECRET_DIR: .runtime/ci-postgres/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('.uv-version', 'uv.lock') }}
+
+      - name: Install locked Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Prepare isolated runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'ci-postgres' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+
+      - name: Migration and lifecycle integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic upgrade head
+          uv run alembic current
+          uv run alembic check
+          uv run python tests/integration/database/verify_migration_compatibility.py
+          uv run pytest \
+            tests/integration/database/test_archived_keyword_snapshot.py \
+            tests/integration/database/test_keyword_pack_item_lifecycle.py \
+            tests/integration/database/test_product_resource_lifecycle.py \
+            tests/integration/ingestion/test_import_campaign_revocation_postgres.py \
+            -q
+
+  fullstack:
+    name: Lifecycle Golden Paths
+    uses: ./.github/workflows/fullstack.yml
+    with:
+      specs: "stage12-historical-analysis.spec.ts admin-product-capabilities.spec.ts"
+
+  cleanup:
+    name: Cleanup temporary validation workflow
+    if: always()
+    needs:
+      - core
+      - postgres
+      - fullstack
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout latest feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/product-resource-lifecycle
+          fetch-depth: 0
+
+      - name: Remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/tmp-product-lifecycle-development-validation.yml
+          git config user.name "AIMA Temporary Validator"
+          git config user.email "aima-validator@users.noreply.github.com"
+          git commit -m "清理临时产品生命周期综合验证 [skip ci]"
+          git push origin HEAD:feature/product-resource-lifecycle
+
+      - name: Preserve validation result
+        shell: bash
+        env:
+          CORE_RESULT: ${{ needs.core.result }}
+          POSTGRES_RESULT: ${{ needs.postgres.result }}
+          FULLSTACK_RESULT: ${{ needs.fullstack.result }}
+        run: |
+          set -euo pipefail
+          echo "core=${CORE_RESULT} postgres=${POSTGRES_RESULT} fullstack=${FULLSTACK_RESULT}"
+          test "${CORE_RESULT}" = "success"
+          test "${POSTGRES_RESULT}" = "success"
+          test "${FULLSTACK_RESULT}" = "success"
