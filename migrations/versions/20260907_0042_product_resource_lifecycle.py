@@ -18,7 +18,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """为词包、采集计划和 Provider 增加独立归档状态。"""
+    """为词包、采集计划、Provider 与 Analysis Scheme 增加独立归档状态。"""
 
     op.add_column(
         "keyword_packs",
@@ -50,9 +50,26 @@ def upgrade() -> None:
         "archived_at is null or (not enabled and not is_default)",
     )
 
+    op.add_column(
+        "analysis_schemes",
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.create_check_constraint(
+        op.f("ck_analysis_schemes_archived_analysis_scheme_inactive"),
+        "analysis_schemes",
+        "archived_at is null or not is_active",
+    )
+
 
 def downgrade() -> None:
-    """移除归档列；不改写任何资源的原有 enabled/configuration 历史。"""
+    """移除归档列；不改写任何资源的原有 enabled/active/configuration 历史。"""
+
+    op.drop_constraint(
+        op.f("ck_analysis_schemes_archived_analysis_scheme_inactive"),
+        "analysis_schemes",
+        type_="check",
+    )
+    op.drop_column("analysis_schemes", "archived_at")
 
     op.drop_constraint(
         op.f("ck_provider_configs_archived_provider_inactive"),
