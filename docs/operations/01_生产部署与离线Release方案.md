@@ -146,7 +146,7 @@ Provider Config 保存适用的非敏感运行配置，并以 `secret_ref` 引�
 
 `env.production` 是**容器启动/首次装配输入，不是热更新控制面**。修改后需要重新创建/启动受影响服务；已经冻结到 Campaign 或 Analysis Run 的事实不会被 env 反向改写。
 
-[`env.production.example`](../../env.production.example) 默认真正关闭 LLM：Base URL / Provider Name / Model 都保持注释，只保留空的 API Key 输入。需要在一个尚未由数据库接管 LLM 的新环境中使用 env bootstrap 时，必须显式取消 Base URL 与 Model 的注释、填写 API Key，再用 canonical Compose 重新创建服务。
+[`env.production.example`](../../env.production.example) 当前默认启用 TikHub，并默认定义 LLM Base URL / Provider Name / Model；模板仍故意把两个 API Key 留空，避免把真实 Secret 提交到仓库。对于数据库尚未接管对应 Provider 的新环境，第一次启动完整 Compose 前必须先在真实 `env.production` 填写 `AIMA_TIKHUB_API_KEY` 与 `AIMA_LLM_API_KEY`。任一所需 Key 为空时，`configure` 会 fail closed，而不是把“默认启用但没有凭据”静默当成可用。
 
 当前 LLM 所有权固定为：
 
@@ -274,10 +274,13 @@ Bundle **不得包含**：
 校验 SHA256SUMS
 → docker load -i images.tar
 → 使用服务器自己的受保护 env.production
+→ 对新环境填写模板默认启用的 TikHub / LLM API Key
 → docker compose config --quiet
 → docker compose up --no-build --pull never --wait
 → health / business smoke
 ```
+
+对于数据库已经存在对应 Provider 的升级环境，env 不覆盖数据库中的管理员配置；是否仍需要修改 env Key 取决于当前数据库 Provider/Secret Store 的真实状态，不应为了模板默认值强制回写已由数据库接管的配置。
 
 禁止把正式 Release 变成：
 
@@ -299,7 +302,7 @@ Bundle **不得包含**：
 2. Bundle `SHA256SUMS` 校验通过；
 3. `release-manifest.json` 与目标平台、镜像身份一致；
 4. `migration-manifest.json` 与当前数据库升级路径一致；
-5. `env.production` 与 Secret 文件已在目标机按权限准备；
+5. `env.production` 与 Secret 文件已在目标机按权限准备；新环境若使用模板默认启用的 TikHub/LLM bootstrap，两个 API Key 均已填写；
 6. Host Root、磁盘和数据库状态满足本次操作要求；
 7. 若本次 Migration/写操作存在不可逆风险，已经具备本次批准的恢复边界；
 8. 当前 Production Roadmap 中与本次部署相关的认证、安全、Backup/Restore 或验收前置条件没有被跳过。

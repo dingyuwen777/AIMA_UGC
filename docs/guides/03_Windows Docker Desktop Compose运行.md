@@ -105,6 +105,15 @@ PowerShell：
 Copy-Item env.local.example env.local
 ```
 
+当前模板默认把 TikHub 开关设为启用，并默认定义 LLM Base URL / Provider / Model；模板本身**不会保存真实 API Key**。因此在一个数据库尚未接管对应 Provider 的新环境中，执行完整 Compose 前必须先在本机 `env.local` 填写：
+
+```dotenv
+AIMA_TIKHUB_API_KEY=<你的本地调试 Key>
+AIMA_LLM_API_KEY=<你的本地调试 Key>
+```
+
+Key 为空时，首次 Compose `configure` 会按现有安全边界 fail closed，不会把“默认启用但没有凭据”静默当成可用。这个要求只针对完整 Compose 首次装配；源码 launcher 仍以 Key 是否非空判断 Provider 是否配置，空 Key 时可以启动并显示 `NOT CONFIGURED`。
+
 Windows 本地模板默认：
 
 ```dotenv
