@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { DataImportIngestionPolicy } from '../../../../../generated/api/client'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
+import { createClientIdempotencyKey } from '../../../../../shared/idempotency'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import {
@@ -239,7 +240,7 @@ async function createCampaign(): Promise<void> {
     return
   }
   const created = await store.submitHistoricalCampaign({
-    client_idempotency_key: crypto.randomUUID(),
+    client_idempotency_key: createClientIdempotencyKey(),
     relative_paths: selectedPaths.value,
     keyword_pack_ids: selectedPackIds.value,
     vehicle_model_ids: selectedVehicleIds.value,

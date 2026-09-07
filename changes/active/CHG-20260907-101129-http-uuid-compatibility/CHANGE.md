@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260907-101129-http-uuid-compatibility
 title: 修复 HTTP 部署环境下前端 UUID 生成兼容问题
 level: L2
-status: proposed
+status: in_progress
 owner: dingyuwen777
 branch: fix/http-uuid-compatibility
 created: 2026-09-07
@@ -142,9 +142,9 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 缺少 `randomUUID()` 但存在 `getRandomValues()` 时，本地 Excel 导入仍生成 UUID v4 并调用创建接口 | #385 / AC1 | not_satisfied | 待 Red → Green 浏览器工作流证据 |
-| R2 | 服务器目录导入和手动 Analysis Run 统一复用同一实现 | #385 / AC2 | not_satisfied | 待实现与消费者回归 |
-| R3 | 安全上下文继续优先使用原生 `randomUUID()` | #385 / AC3 | not_satisfied | 待 Vitest 原生路径证据 |
+| R1 | 缺少 `randomUUID()` 但存在 `getRandomValues()` 时，本地 Excel 导入仍生成 UUID v4 并调用创建接口 | #385 / AC1 | satisfied | `createClientIdempotencyKey()` fallback；定向 Playwright 4/4 通过并断言创建请求中的 UUID v4 |
+| R2 | 服务器目录导入和手动 Analysis Run 统一复用同一实现 | #385 / AC2 | satisfied | 3 个消费者全部改用共享入口；相关 `historical-migration` 与 `voice-plaza` Browser Mock 场景在全量执行中通过 |
+| R3 | 安全上下文继续优先使用原生 `randomUUID()` | #385 / AC3 | satisfied | `shared-domain.spec.ts` 原生优先与 fallback 确定字节测试 4/4 通过 |
 | R4 | Contract/Schema/依赖/部署不变，相关前端验证和 PR CI 通过 | #385 / AC4 | not_satisfied | 待最终 diff 与验证证据 |
 
 # 计划改动
@@ -163,9 +163,9 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 - [x] 调查当前实现和事实源；新建项目则确认现有资料、目标和硬约束
 - [x] 建立与风险相称的任务路由和验证矩阵
 - [x] 行为变化建立失败证据或说明测试例外
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档或明确不适用依据
+- [x] 取得仍覆盖当前版本的验证证据
 - [ ] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
@@ -221,15 +221,23 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | `main@40e489c2` + 新增失败测试；Windows / Chromium / Playwright | `npm --prefix frontend run test:e2e -- excel-import-submit-state.spec.ts` | 退出码 1；3 个既有场景通过，新增场景失败；页面错误快照明确显示 `crypto.randomUUID is not a function` | 在真实“导入数据 → 本地文件 → 创建并预检”前端入口稳定复现用户报告，且请求未能进入成功上传流程 |
+| V2 | 当前工作树；Windows / Chromium / Playwright | `npm --prefix frontend run test:e2e -- excel-import-submit-state.spec.ts` | 退出码 0；4/4 通过 | 同一入口在缺少 `randomUUID()` 时完成 Campaign 创建，且请求键符合 UUID v4 |
+| V3 | 当前工作树；Node 24.19.0 / Vitest 4.1.10 | `npm --prefix frontend run test -- --run tests/shared-domain.spec.ts` | 退出码 0；1 file / 4 tests 通过 | 原生优先与安全随机字节 fallback 算法正确 |
+| V4 | 当前工作树；Node 24.19.0 | `npm --prefix frontend run lint` | 退出码 0；0 warnings | 修改符合当前 ESLint 门禁 |
+| V5 | 当前工作树；TypeScript 7 native + vue-tsc | `npm --prefix frontend run typecheck` | 退出码 0 | TS/Vue 消费者与共享函数类型正确 |
+| V6 | 当前工作树；Vitest 4.1.10 | `npm --prefix frontend run test -- --run` | 退出码 0；22 files / 109 tests 通过 | 全量前端单元/组件回归通过 |
+| V7 | 当前工作树；Vite 8.2.1 | `npm --prefix frontend run build` | 退出码 0；154 modules transformed | 正式前端静态产物成功构建 |
+| V8 | 当前工作树；项目质量脚本 | `check_architecture.py`、`check_table_ownership.py`、`scan_secrets.py`、`check_docs.py`、`check_agent_governance.py` | 均退出码 0 | 架构、Owner、Secret、文档和治理边界未发生违规漂移 |
 
 ## 未验证内容与剩余风险
 
-- 尚未在用户实际 Windows 浏览器与 Linux 部署地址上复测；本地会用浏览器能力降级模型稳定覆盖相同 API 暴露条件。
+- 尚未在用户实际 Windows 浏览器与 Linux 部署地址上复测；本地已用浏览器能力降级模型稳定覆盖相同 API 暴露条件。
+- 全量 Browser Mock 本地执行 61 个场景时，本次相关场景均通过，但未修改的 `manual-relevance-review.spec.ts` 有 1 个既有时序断言在成功提示已经出现时仍提前读取请求捕获变量，结果为 60/61；单独重跑仍复现。该失败与本次 diff 无文件/调用链关联，不以修改无关测试掩盖，最终以 PR 当前 HEAD CI 判断是否阻塞合并。
 
 ## 交付状态
 
-- 提交：待创建
-- 拉取请求：待创建
+- 提交：Red/治理提交 `4cbbf83f`
+- 拉取请求：Draft PR #386
 - CI：待执行
 - 合并：待执行
 - Change 归档：待合并后自动流程

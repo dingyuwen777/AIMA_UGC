@@ -22,6 +22,7 @@ import type {
   PlatformName,
 } from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
+import { createClientIdempotencyKey } from '../../shared/idempotency'
 import { useTaskCenterStore } from '../task-center/store'
 import {
   VoicePlazaApiError,
@@ -439,7 +440,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const preview = await previewAnalysisRun({ targets })
       analysisDraft = {
         targets,
-        clientIdempotencyKey: crypto.randomUUID(),
+        clientIdempotencyKey: createClientIdempotencyKey(),
       }
       analysisPreview.value = preview
       return preview
