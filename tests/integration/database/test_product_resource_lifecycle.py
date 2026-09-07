@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
+
+from sqlalchemy import delete, update
 
 from aima_ugc.adapters.persistence.postgres.analysis_scheme_lifecycle import (
     PostgresAnalysisSchemeLifecycleRepository,
@@ -26,8 +28,21 @@ from aima_ugc.adapters.persistence.postgres.provider_lifecycle import (
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
+from aima_ugc.modules.analysis.scheme_tables import (
+    analysis_scheme_versions_table,
+    analysis_schemes_table,
+)
+from aima_ugc.modules.collection.corrective_tables import (
+    collection_plan_decision_policies_table,
+)
 from aima_ugc.modules.collection.planning import CollectionPlanDefinition, PlanPlatformDefinition
+from aima_ugc.modules.collection.tables import (
+    collection_plan_keyword_packs_table,
+    collection_plan_platforms_table,
+    collection_plans_table,
+)
 from aima_ugc.modules.system.models import KeywordPack, ProviderConfig
+from aima_ugc.modules.system.tables import keyword_packs_table, provider_configs_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.time import beijing_now
@@ -40,6 +55,15 @@ def _analysis_definition() -> AnalysisSchemeDefinitionRequest:
         voice_types=("用户发声", "营销内容", "无法判断"),
         labels={"产品体验": ("质量",), "无法分类": ("无法判断",)},
     )
+
+
+def _delete_keyword_pack(session, pack_id: UUID) -> None:
+    session.execute(
+        delete(collection_plan_keyword_packs_table).where(
+            collection_plan_keyword_packs_table.c.keyword_pack_id == pack_id
+        )
+    )
+    session.execute(delete(keyword_packs_table).where(keyword_packs_table.c.id == pack_id))
 
 
 def test_keyword_pack_archive_exits_current_catalog_and_restore_stays_disabled() -> None:
@@ -63,7 +87,7 @@ def test_keyword_pack_archive_exits_current_catalog_and_restore_stays_disabled()
             assert archived is not None
             assert archived.enabled is False
             assert catalog.get_pack(pack_id) is None
-            assert [item.id for item in lifecycle.list_archived()] == [pack_id]
+            assert pack_id in {item.id for item in lifecycle.list_archived()}
 
         with session.begin():
             restored = PostgresKeywordPackLifecycleRepository(session).restore(pack_id)
@@ -72,20 +96,7 @@ def test_keyword_pack_archive_exits_current_catalog_and_restore_stays_disabled()
             assert PostgresKeywordCatalogRepository(session).get_pack(pack_id) is not None
     finally:
         with session.begin():
-            session.execute(
-                __import__("sqlalchemy").delete(
-                    __import__(
-                        "aima_ugc.modules.system.tables",
-                        fromlist=["keyword_packs_table"],
-                    ).keyword_packs_table
-                ).where(
-                    __import__(
-                        "aima_ugc.modules.system.tables",
-                        fromlist=["keyword_packs_table"],
-                    ).keyword_packs_table.c.id
-                    == pack_id
-                )
-            )
+            _delete_keyword_pack(session, pack_id)
         session.close()
         runtime.dispose()
 
@@ -94,7 +105,8 @@ def test_archived_collection_plan_is_not_schedulable_and_restores_disabled() -> 
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()
     provider_id = uuid4()
-    plan_id = None
+    pack_id = uuid4()
+    plan_id: UUID | None = None
     try:
         with session.begin():
             PostgresProviderConfigRepository(session).create(
@@ -105,6 +117,15 @@ def test_archived_collection_plan_is_not_schedulable_and_restores_disabled() -> 
                     base_url="https://api.tikhub.io",
                     secret_ref=f"providers/{provider_id}/test.key",
                     enabled=True,
+                )
+            )
+            PostgresKeywordCatalogRepository(session).create_pack(
+                KeywordPack(
+                    id=pack_id,
+                    name=f"计划词包-{pack_id}",
+                    description="",
+                    enabled=True,
+                    version=1,
                 )
             )
             planning = PostgresCollectionPlanningRepository(session)
@@ -127,8 +148,7 @@ def test_archived_collection_plan_is_not_schedulable_and_restores_disabled() -> 
                             config={},
                         ),
                     ),
-                    keyword_pack_ids=(),
-                    vehicle_model_ids=(uuid4(),),
+                    keyword_pack_ids=(pack_id,),
                 )
             )
             plan_id = created.id
@@ -145,31 +165,22 @@ def test_archived_collection_plan_is_not_schedulable_and_restores_disabled() -> 
             )
 
         with session.begin():
+            assert plan_id is not None
             assert PostgresCollectionPlanLifecycleRepository(session).restore(plan_id)
             restored = PostgresCollectionPlanningRepository(session).get_plan(plan_id)
             assert restored is not None
             assert restored.enabled is False
     finally:
-        if plan_id is not None:
-            from aima_ugc.modules.collection.corrective_tables import (
-                collection_plan_decision_policies_table,
-            )
-            from aima_ugc.modules.collection.tables import (
-                collection_plan_platforms_table,
-                collection_plan_vehicle_models_table,
-                collection_plans_table,
-            )
-            from sqlalchemy import delete
-
-            with session.begin():
+        with session.begin():
+            if plan_id is not None:
                 session.execute(
                     delete(collection_plan_platforms_table).where(
                         collection_plan_platforms_table.c.plan_id == plan_id
                     )
                 )
                 session.execute(
-                    delete(collection_plan_vehicle_models_table).where(
-                        collection_plan_vehicle_models_table.c.plan_id == plan_id
+                    delete(collection_plan_keyword_packs_table).where(
+                        collection_plan_keyword_packs_table.c.plan_id == plan_id
                     )
                 )
                 session.execute(
@@ -180,20 +191,10 @@ def test_archived_collection_plan_is_not_schedulable_and_restores_disabled() -> 
                 session.execute(
                     delete(collection_plans_table).where(collection_plans_table.c.id == plan_id)
                 )
-                session.execute(
-                    __import__("sqlalchemy").delete(
-                        __import__(
-                            "aima_ugc.modules.system.tables",
-                            fromlist=["provider_configs_table"],
-                        ).provider_configs_table
-                    ).where(
-                        __import__(
-                            "aima_ugc.modules.system.tables",
-                            fromlist=["provider_configs_table"],
-                        ).provider_configs_table.c.id
-                        == provider_id
-                    )
-                )
+            _delete_keyword_pack(session, pack_id)
+            session.execute(
+                delete(provider_configs_table).where(provider_configs_table.c.id == provider_id)
+            )
         session.close()
         runtime.dispose()
 
@@ -224,68 +225,48 @@ def test_unused_provider_can_archive_and_delete_but_disappears_from_current_dire
             assert lifecycle.delete_archived(provider_id) is True
             assert current.get(provider_id, include_archived=True) is None
     finally:
+        with session.begin():
+            session.execute(
+                delete(provider_configs_table).where(provider_configs_table.c.id == provider_id)
+            )
         session.close()
         runtime.dispose()
 
 
-def test_published_analysis_scheme_can_archive_after_switch_but_cannot_hard_delete() -> None:
+def test_published_analysis_scheme_can_archive_but_cannot_hard_delete() -> None:
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()
-    first_scheme_id = None
-    second_scheme_id = None
+    scheme_id: UUID | None = None
     try:
         with session.begin():
             schemes = PostgresAnalysisSchemeRepository(session)
-            first = schemes.create_draft(
-                name=f"已发布方案-{uuid4()}",
-                description="first",
+            version = schemes.create_draft(
+                name=f"历史发布方案-{uuid4()}",
+                description="published history",
                 definition=_analysis_definition(),
                 actor_ref="integration-test",
             )
-            first_scheme_id = first.scheme_id
-            schemes.activate_version(first.id, expected_version=first.version)
-            second = schemes.create_draft(
-                name=f"替代方案-{uuid4()}",
-                description="second",
-                definition=_analysis_definition(),
-                actor_ref="integration-test",
+            scheme_id = version.scheme_id
+            # 只建立“曾发布”的持久化历史事实，不切换全局 active，避免污染其他套件。
+            session.execute(
+                update(analysis_scheme_versions_table)
+                .where(analysis_scheme_versions_table.c.id == version.id)
+                .values(status="retired", published_at=beijing_now())
             )
-            second_scheme_id = second.scheme_id
-            schemes.activate_version(second.id, expected_version=second.version)
-
             lifecycle = PostgresAnalysisSchemeLifecycleRepository(session)
-            assert lifecycle.archive_blockers(first_scheme_id) == ()
-            assert lifecycle.archive(first_scheme_id, archived_at=beijing_now()) is True
-            assert all(
-                scheme["id"] != first_scheme_id
-                for scheme, _ in schemes.list_schemes()
-            )
-            blockers = lifecycle.delete_blockers(first_scheme_id)
+            assert lifecycle.archive_blockers(scheme_id) == ()
+            assert lifecycle.archive(scheme_id, archived_at=beijing_now()) is True
+            assert all(scheme["id"] != scheme_id for scheme, _ in schemes.list_schemes())
+            blockers = lifecycle.delete_blockers(scheme_id)
             assert "该分析方案已有发布历史，只允许归档" in blockers
-            assert lifecycle.delete_archived(first_scheme_id) is False if not blockers else True
     finally:
-        from aima_ugc.modules.analysis.scheme_tables import (
-            analysis_scheme_versions_table,
-            analysis_schemes_table,
-        )
-        from sqlalchemy import delete, update
-
         with session.begin():
-            if second_scheme_id is not None:
+            if scheme_id is not None:
                 session.execute(
                     update(analysis_schemes_table)
-                    .where(analysis_schemes_table.c.id == second_scheme_id)
+                    .where(analysis_schemes_table.c.id == scheme_id)
                     .values(active_version_id=None, is_active=False)
                 )
-            if first_scheme_id is not None:
-                session.execute(
-                    update(analysis_schemes_table)
-                    .where(analysis_schemes_table.c.id == first_scheme_id)
-                    .values(active_version_id=None, is_active=False)
-                )
-            for scheme_id in (first_scheme_id, second_scheme_id):
-                if scheme_id is None:
-                    continue
                 session.execute(
                     delete(analysis_scheme_versions_table).where(
                         analysis_scheme_versions_table.c.scheme_id == scheme_id
