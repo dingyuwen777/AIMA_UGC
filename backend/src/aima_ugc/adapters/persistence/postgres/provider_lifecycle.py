@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
+from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.modules.collection.tables import (
     collection_plan_platforms_table,
     collection_plans_table,
@@ -32,7 +33,7 @@ class ArchivedProviderConfigRecord:
 
 
 class PostgresProviderConfigLifecycleRepository:
-    """Provider 生命周期写入 System Owner 表；Collection 表仅用于引用守卫。"""
+    """Provider 生命周期写入 System Owner 表；跨 Owner 表仅用于引用守卫。"""
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -63,6 +64,8 @@ class PostgresProviderConfigLifecycleRepository:
         if row is None:
             return ("资源不存在",)
         blockers: list[str] = []
+        if row["archived_at"] is not None:
+            blockers.append("Provider 已归档")
         if row["is_default"]:
             blockers.append("默认 AI Provider 不能直接归档，请先切换默认配置")
         if self._session.scalar(
@@ -150,7 +153,7 @@ class PostgresProviderConfigLifecycleRepository:
         )
 
     def delete_blockers(self, provider_config_id: UUID) -> tuple[str, ...]:
-        """Provider 一旦进入计划或 Provider Request 历史就永久保留配置事实。"""
+        """Provider 一旦进入 Plan、Provider Request 或 AI Run 历史就永久保留配置事实。"""
 
         row = self._session.execute(
             select(provider_configs_table.c.id, provider_configs_table.c.archived_at).where(
@@ -174,11 +177,24 @@ class PostgresProviderConfigLifecycleRepository:
             .limit(1)
         ) is not None:
             blockers.append("Provider 请求历史引用了该配置")
-        return tuple(blockers)
+        if self._session.scalar(
+            select(analysis_content_runs_table.c.id)
+            .where(
+                analysis_content_runs_table.c.runtime_config_snapshot.contains(
+                    {"provider_config_id": str(provider_config_id)}
+                )
+            )
+            .limit(1)
+        ) is not None:
+            blockers.append("AI 分析运行历史引用了该 Provider")
+        return tuple(dict.fromkeys(blockers))
 
     def delete_archived(self, provider_config_id: UUID) -> bool:
         """永久删除从未进入业务历史的归档 Provider Config。"""
 
+        blockers = self.delete_blockers(provider_config_id)
+        if blockers:
+            raise RuntimeError("；".join(blockers))
         deleted = self._session.execute(
             delete(provider_configs_table)
             .where(
