@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from threading import Event
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -31,6 +31,16 @@ from .prompt_taxonomy import (
     PromptTaxonomy,
     PromptTaxonomyError,
     PromptTaxonomyLoader,
+)
+
+ContentLabelingRequestKind = Literal["primary", "repair", "judge"]
+_JUDGE_ERROR_CODES = frozenset(
+    {
+        "decision_needs_judge",
+        "fabricated_evidence",
+        "missing_evidence",
+        "voice_type_semantic_conflict",
+    }
 )
 
 
@@ -88,6 +98,7 @@ class ContentLabelingLLMRequest:
 
     prompt: str
     items: tuple[ContentLabelingModelItem, ...]
+    request_kind: ContentLabelingRequestKind = "primary"
     previous_validation_error_codes: tuple[str, ...] = ()
     logical_request_id: str | None = None
     stop_event: Event | None = field(default=None, repr=False, compare=False)
@@ -144,6 +155,7 @@ class ContentLabelingAttempt:
     taxonomy_sha256: str
     started_at: datetime
     completed_at: datetime
+    request_kind: ContentLabelingRequestKind = "primary"
     logical_request_id: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
@@ -181,6 +193,10 @@ class _ModelLabelPair(BaseModel):
     secondary_label: str = Field(min_length=1)
 
 
+class _ModelEvidenceLabelPair(_ModelLabelPair):
+    evidence: list[str] = Field(min_length=1)
+
+
 class _ModelLabelItemV3(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -191,21 +207,82 @@ class _ModelLabelItemV3(BaseModel):
     labels: list[_ModelLabelPair] = Field(default_factory=list)
 
 
-def _parse_model_label_item(
+class _ModelLabelItemV4(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    item_no: int = Field(ge=1)
+    relevance: Literal["relevant", "irrelevant"]
+    relevance_evidence: list[str] = Field(min_length=1)
+    source_type: str = Field(min_length=1)
+    content_intent: str = Field(min_length=1)
+    voice_type: ContentVoiceType
+    voice_evidence: list[str] = Field(default_factory=list)
+    sentiment: str | None = None
+    sentiment_evidence: list[str] = Field(default_factory=list)
+    labels: list[_ModelEvidenceLabelPair] = Field(default_factory=list)
+    decision_status: Literal["clear", "needs_judge"]
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedModelLabel:
+    relevance: Literal["relevant", "irrelevant"]
+    relevance_evidence: tuple[str, ...]
+    source_type: str | None
+    content_intent: str | None
+    voice_type: ContentVoiceType
+    voice_evidence: tuple[str, ...]
+    sentiment: str | None
+    sentiment_evidence: tuple[str, ...]
+    labels: tuple[ContentLabelPairV2, ...]
+    label_evidence: tuple[tuple[str, ...], ...]
+    decision_status: Literal["clear", "needs_judge"] | None
+
+
+def _parse_model_label_item_v3(
     value: dict[str, Any],
-) -> tuple[str, ContentVoiceType, str | None, tuple[ContentLabelPairV2, ...]]:
+) -> _ParsedModelLabel:
     parsed = _ModelLabelItemV3.model_validate(value)
-    return (
-        parsed.relevance,
-        parsed.voice_type,
-        parsed.sentiment,
-        tuple(
+    return _ParsedModelLabel(
+        relevance=parsed.relevance,
+        relevance_evidence=(),
+        source_type=None,
+        content_intent=None,
+        voice_type=parsed.voice_type,
+        voice_evidence=(),
+        sentiment=parsed.sentiment,
+        sentiment_evidence=(),
+        labels=tuple(
             ContentLabelPairV2(
                 primary_label=pair.primary_label,
                 secondary_label=pair.secondary_label,
             )
             for pair in parsed.labels
         ),
+        label_evidence=tuple(() for _ in parsed.labels),
+        decision_status=None,
+    )
+
+
+def _parse_model_label_item_v4(value: dict[str, Any]) -> _ParsedModelLabel:
+    parsed = _ModelLabelItemV4.model_validate(value)
+    return _ParsedModelLabel(
+        relevance=parsed.relevance,
+        relevance_evidence=tuple(parsed.relevance_evidence),
+        source_type=parsed.source_type,
+        content_intent=parsed.content_intent,
+        voice_type=parsed.voice_type,
+        voice_evidence=tuple(parsed.voice_evidence),
+        sentiment=parsed.sentiment,
+        sentiment_evidence=tuple(parsed.sentiment_evidence),
+        labels=tuple(
+            ContentLabelPairV2(
+                primary_label=pair.primary_label,
+                secondary_label=pair.secondary_label,
+            )
+            for pair in parsed.labels
+        ),
+        label_evidence=tuple(tuple(pair.evidence) for pair in parsed.labels),
+        decision_status=parsed.decision_status,
     )
 
 
@@ -279,16 +356,109 @@ class RuntimeTaxonomyValidator:
         if errors:
             raise ContentLabelingValidationError(errors)
 
+    @staticmethod
+    def _evidence_errors(
+        evidence: tuple[str, ...],
+        *,
+        item: ContentLabelingModelItem,
+        required: bool,
+    ) -> tuple[str, ...]:
+        """确认模型证据逐项来自五个输入字段，不做关键词分类。"""
+
+        errors: list[str] = []
+        if required and not evidence:
+            errors.append("missing_evidence")
+        source_texts = (
+            item.title,
+            item.text,
+            item.author_display_name,
+            item.author_bio,
+            item.author_verification_label,
+        )
+        seen: set[str] = set()
+        for fragment in evidence:
+            if fragment in seen:
+                errors.append("duplicate_evidence")
+            seen.add(fragment)
+            if (
+                not fragment
+                or fragment != fragment.strip()
+                or not any(fragment in source_text for source_text in source_texts)
+            ):
+                errors.append("fabricated_evidence")
+        return _unique_error_codes(errors)
+
+    def _v4_semantic_errors(
+        self,
+        parsed: _ParsedModelLabel,
+        *,
+        item: ContentLabelingModelItem,
+    ) -> tuple[str, ...]:
+        """校验 V4 主体、意图、证据和发声类型之间的确定性一致性。"""
+
+        rules = self._taxonomy.semantic_rules
+        if rules is None:
+            return ("missing_semantic_rules",)
+
+        errors: list[str] = []
+        errors.extend(self._evidence_errors(parsed.relevance_evidence, item=item, required=True))
+        if parsed.source_type not in rules.source_types:
+            errors.append("unknown_source_type")
+        if parsed.content_intent not in rules.content_intents:
+            errors.append("unknown_content_intent")
+
+        derived_voice_type: str | None = None
+        if (
+            parsed.source_type in rules.source_types
+            and parsed.content_intent in rules.content_intents
+        ):
+            derived_voice_type = rules.derive_voice_type(
+                source_type=parsed.source_type,
+                content_intent=parsed.content_intent,
+            )
+            if parsed.voice_type != derived_voice_type:
+                errors.append("voice_type_semantic_conflict")
+        errors.extend(
+            self._evidence_errors(
+                parsed.voice_evidence,
+                item=item,
+                required=derived_voice_type != rules.unknown_voice_type,
+            )
+        )
+
+        if parsed.relevance == "relevant":
+            errors.extend(
+                self._evidence_errors(
+                    parsed.sentiment_evidence,
+                    item=item,
+                    required=True,
+                )
+            )
+            for label_evidence in parsed.label_evidence:
+                errors.extend(self._evidence_errors(label_evidence, item=item, required=True))
+        elif parsed.sentiment_evidence:
+            errors.append("irrelevant_has_sentiment_evidence")
+
+        if parsed.decision_status == "needs_judge":
+            errors.append("decision_needs_judge")
+        return _unique_error_codes(errors)
+
     def validate_response(
         self,
         raw_text: str,
         *,
         expected_item_nos: Sequence[int],
+        expected_items: Sequence[ContentLabelingModelItem] = (),
     ) -> _ValidationResult:
         """严格校验固定输出结构，并保留同批中已经合法的 item。"""
 
         expected = tuple(expected_item_nos)
         expected_set = set(expected)
+        validation_inputs = {item.item_no: item for item in expected_items}
+        if self._taxonomy.output_protocol_version == "content-labeling.v4" and (
+            tuple(validation_inputs) != expected
+        ):
+            return _all_invalid(expected, "missing_validation_input")
         try:
             payload = json.loads(raw_text)
         except json.JSONDecodeError:
@@ -341,9 +511,10 @@ class RuntimeTaxonomyValidator:
                 continue
 
             try:
-                relevance, voice_type, sentiment, label_pairs = _parse_model_label_item(
-                    candidates[0]
-                )
+                if self._taxonomy.output_protocol_version == "content-labeling.v4":
+                    parsed = _parse_model_label_item_v4(candidates[0])
+                else:
+                    parsed = _parse_model_label_item_v3(candidates[0])
             except ValidationError:
                 item_errors[item_no] = ("invalid_item_structure",)
                 aggregate_errors.append("invalid_item_structure")
@@ -351,28 +522,35 @@ class RuntimeTaxonomyValidator:
 
             shape_errors: list[str] = []
             try:
-                self.validate_voice_type(voice_type=voice_type)
+                self.validate_voice_type(voice_type=parsed.voice_type)
             except ContentLabelingValidationError as exc:
                 shape_errors.extend(exc.error_codes)
 
-            if relevance == "relevant":
-                if sentiment is None:
+            if parsed.relevance == "relevant":
+                if parsed.sentiment is None:
                     shape_errors.append("relevant_missing_sentiment")
-                if not label_pairs:
+                if not parsed.labels:
                     shape_errors.append("relevant_missing_labels")
-                if sentiment is not None and label_pairs:
+                if parsed.sentiment is not None and parsed.labels:
                     try:
                         self.validate_label_pairs(
-                            sentiment=sentiment,
-                            labels=label_pairs,
+                            sentiment=parsed.sentiment,
+                            labels=parsed.labels,
                         )
                     except ContentLabelingValidationError as exc:
                         shape_errors.extend(exc.error_codes)
             else:
-                if sentiment is not None:
+                if parsed.sentiment is not None:
                     shape_errors.append("irrelevant_has_sentiment")
-                if label_pairs:
+                if parsed.labels:
                     shape_errors.append("irrelevant_has_labels")
+            if self._taxonomy.output_protocol_version == "content-labeling.v4":
+                shape_errors.extend(
+                    self._v4_semantic_errors(
+                        parsed,
+                        item=validation_inputs[item_no],
+                    )
+                )
             if shape_errors:
                 codes = _unique_error_codes(shape_errors)
                 item_errors[item_no] = codes
@@ -380,10 +558,10 @@ class RuntimeTaxonomyValidator:
                 continue
 
             valid_items[item_no] = _ValidatedLabel(
-                relevance=cast(Literal["relevant", "irrelevant"], relevance),
-                voice_type=voice_type,
-                sentiment=sentiment,
-                labels=label_pairs,
+                relevance=parsed.relevance,
+                voice_type=parsed.voice_type,
+                sentiment=parsed.sentiment,
+                labels=parsed.labels,
             )
 
         return _ValidationResult(
@@ -495,74 +673,104 @@ class ContentLabelingService:
         successful: dict[int, ContentLabelAnalysis] = {}
         latest_errors: dict[int, tuple[str, ...]] = {}
         attempts: list[ContentLabelingAttempt] = []
-        previous_errors: tuple[str, ...] = ()
 
-        total_requests = max_validation_retries + 1
-        for attempt_no in range(1, total_requests + 1):
+        total_rounds = max_validation_retries + 1
+        for retry_round in range(total_rounds):
             if not unresolved:
                 break
-            ensure_labeling_running(stop_event)
+            request_groups: tuple[
+                tuple[ContentLabelingRequestKind, tuple[ContentLabelingModelItem, ...]], ...
+            ]
+            if retry_round == 0:
+                request_groups = (("primary", tuple(unresolved.values())),)
+            else:
+                repair_items: list[ContentLabelingModelItem] = []
+                judge_items: list[ContentLabelingModelItem] = []
+                for item_no, item in unresolved.items():
+                    target = (
+                        judge_items
+                        if _JUDGE_ERROR_CODES.intersection(latest_errors.get(item_no, ()))
+                        else repair_items
+                    )
+                    target.append(item)
+                grouped_retries: list[
+                    tuple[ContentLabelingRequestKind, tuple[ContentLabelingModelItem, ...]]
+                ] = []
+                if repair_items:
+                    grouped_retries.append(("repair", tuple(repair_items)))
+                if judge_items:
+                    grouped_retries.append(("judge", tuple(judge_items)))
+                request_groups = tuple(grouped_retries)
 
-            request = ContentLabelingLLMRequest(
-                prompt=taxonomy.prompt_text,
-                items=tuple(unresolved.values()),
-                previous_validation_error_codes=previous_errors,
-                logical_request_id=uuid4().hex,
-                stop_event=stop_event,
-            )
-            started_at = beijing_now()
-            response = self._llm.complete(request)
-            completed_at = beijing_now()
-
-            validation = validator.validate_response(
-                response.raw_text,
-                expected_item_nos=tuple(unresolved),
-            )
-            attempts.append(
-                ContentLabelingAttempt(
-                    attempt_no=attempt_no,
-                    item_nos=tuple(unresolved),
-                    validation_error_codes=validation.error_codes,
-                    model_provider=self._llm.provider_name,
-                    model=self._llm.model_name,
-                    prompt_sha256=taxonomy.prompt_sha256,
-                    taxonomy_sha256=taxonomy.taxonomy_sha256,
-                    started_at=started_at,
-                    completed_at=completed_at,
-                    logical_request_id=request.logical_request_id,
-                    input_tokens=response.input_tokens,
-                    output_tokens=response.output_tokens,
-                    input_cache_hit_tokens=response.input_cache_hit_tokens,
-                    input_cache_miss_tokens=response.input_cache_miss_tokens,
-                    cost_amount=response.cost_amount,
-                    cost_currency=response.cost_currency,
-                    pricing_snapshot_sha256=response.pricing_snapshot_sha256,
-                    pricing_source_url=response.pricing_source_url,
+            for request_kind, request_items in request_groups:
+                ensure_labeling_running(stop_event)
+                request_item_nos = tuple(item.item_no for item in request_items)
+                previous_errors = _unique_error_codes(
+                    error_code
+                    for item_no in request_item_nos
+                    for error_code in latest_errors.get(item_no, ())
                 )
-            )
-
-            for item_no, validated in validation.valid_items.items():
-                successful[item_no] = ContentLabelAnalysisV3(
-                    relevance=validated.relevance,
-                    voice_type=validated.voice_type,
-                    sentiment=validated.sentiment,
-                    labels=validated.labels,
-                    prompt_version=taxonomy.prompt_version,
-                    prompt_sha256=taxonomy.prompt_sha256,
-                    taxonomy_sha256=taxonomy.taxonomy_sha256,
-                    model_provider=self._llm.provider_name,
-                    model=self._llm.model_name,
-                    input_hash=input_hashes[item_no],
-                    analyzed_at=completed_at,
+                request = ContentLabelingLLMRequest(
+                    prompt=taxonomy.prompt_text,
+                    items=request_items,
+                    request_kind=request_kind,
+                    previous_validation_error_codes=previous_errors,
+                    logical_request_id=uuid4().hex,
+                    stop_event=stop_event,
                 )
-                unresolved.pop(item_no, None)
-                latest_errors.pop(item_no, None)
+                started_at = beijing_now()
+                response = self._llm.complete(request)
+                completed_at = beijing_now()
 
-            for item_no, error_codes in validation.item_errors.items():
-                if item_no in unresolved:
-                    latest_errors[item_no] = error_codes
+                validation = validator.validate_response(
+                    response.raw_text,
+                    expected_item_nos=request_item_nos,
+                    expected_items=request_items,
+                )
+                attempts.append(
+                    ContentLabelingAttempt(
+                        attempt_no=len(attempts) + 1,
+                        item_nos=request_item_nos,
+                        validation_error_codes=validation.error_codes,
+                        model_provider=self._llm.provider_name,
+                        model=self._llm.model_name,
+                        prompt_sha256=taxonomy.prompt_sha256,
+                        taxonomy_sha256=taxonomy.taxonomy_sha256,
+                        started_at=started_at,
+                        completed_at=completed_at,
+                        request_kind=request.request_kind,
+                        logical_request_id=request.logical_request_id,
+                        input_tokens=response.input_tokens,
+                        output_tokens=response.output_tokens,
+                        input_cache_hit_tokens=response.input_cache_hit_tokens,
+                        input_cache_miss_tokens=response.input_cache_miss_tokens,
+                        cost_amount=response.cost_amount,
+                        cost_currency=response.cost_currency,
+                        pricing_snapshot_sha256=response.pricing_snapshot_sha256,
+                        pricing_source_url=response.pricing_source_url,
+                    )
+                )
 
-            previous_errors = validation.error_codes
+                for item_no, validated in validation.valid_items.items():
+                    successful[item_no] = ContentLabelAnalysisV3(
+                        relevance=validated.relevance,
+                        voice_type=validated.voice_type,
+                        sentiment=validated.sentiment,
+                        labels=validated.labels,
+                        prompt_version=taxonomy.prompt_version,
+                        prompt_sha256=taxonomy.prompt_sha256,
+                        taxonomy_sha256=taxonomy.taxonomy_sha256,
+                        model_provider=self._llm.provider_name,
+                        model=self._llm.model_name,
+                        input_hash=input_hashes[item_no],
+                        analyzed_at=completed_at,
+                    )
+                    unresolved.pop(item_no, None)
+                    latest_errors.pop(item_no, None)
+
+                for item_no, error_codes in validation.item_errors.items():
+                    if item_no in unresolved:
+                        latest_errors[item_no] = error_codes
 
         item_results: list[ContentLabelingItemResult] = []
         for item in model_items:
@@ -583,10 +791,7 @@ class ContentLabelingService:
                     input_hash=input_hashes[item.item_no],
                     analysis_status="failed",
                     analysis=None,
-                    validation_error_codes=latest_errors.get(
-                        item.item_no,
-                        previous_errors or ("validation_failed",),
-                    ),
+                    validation_error_codes=latest_errors.get(item.item_no, ("validation_failed",)),
                 )
             )
 

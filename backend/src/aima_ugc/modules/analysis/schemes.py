@@ -7,13 +7,13 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from types import MappingProxyType
 from uuid import UUID
 
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
 from aima_ugc.modules.analysis.prompt_taxonomy import (
     PROMPT_VERSION,
     PromptTaxonomy,
+    PromptTaxonomyLoader,
 )
 
 TAXONOMY_PLACEHOLDER = "{{AIMA_TAXONOMY_JSON}}"
@@ -37,16 +37,19 @@ class CompiledAnalysisScheme:
     def to_prompt_taxonomy(self, *, prompt_version: str = PROMPT_VERSION) -> PromptTaxonomy:
         """构造 ContentLabelingService 可直接消费的冻结 Taxonomy。"""
 
-        return PromptTaxonomy(
+        taxonomy = PromptTaxonomyLoader.load_text(
+            self.prompt_text,
             prompt_version=prompt_version,
-            prompt_text=self.prompt_text,
-            schema_version="aima-content-taxonomy.v2",
-            sentiments=self.definition.sentiments,
-            voice_types=self.definition.voice_types,
-            labels=MappingProxyType(dict(self.definition.labels)),
-            taxonomy_sha256=self.taxonomy_sha256,
-            prompt_sha256=self.prompt_sha256,
         )
+        if (
+            taxonomy.sentiments != self.definition.sentiments
+            or taxonomy.voice_types != self.definition.voice_types
+            or dict(taxonomy.labels) != dict(self.definition.labels)
+            or taxonomy.taxonomy_sha256 != self.taxonomy_sha256
+            or taxonomy.prompt_sha256 != self.prompt_sha256
+        ):
+            raise ValueError("Analysis Scheme 编译后的 Prompt Taxonomy 不一致")
+        return taxonomy
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,9 +115,7 @@ def prompt_taxonomy_from_version(version: AnalysisSchemeVersionRecord) -> Prompt
 def bootstrap_definition_from_prompt(prompt_text: str) -> AnalysisSchemeDefinitionRequest:
     """把 Git Prompt 转为一次性 bootstrap 模板，避免数据库与文件双写。"""
 
-    from aima_ugc.modules.analysis.prompt_taxonomy import PromptTaxonomyLoader
-
-    taxonomy = PromptTaxonomyLoader().load()
+    taxonomy = PromptTaxonomyLoader.load_text(prompt_text)
     template, substitutions = _BLOCK_PATTERN.subn(TAXONOMY_PLACEHOLDER, prompt_text)
     if substitutions != 1:
         raise ValueError("Bootstrap Prompt 必须且只能包含一个 Taxonomy 区块")

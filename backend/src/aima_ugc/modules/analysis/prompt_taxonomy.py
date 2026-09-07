@@ -13,9 +13,17 @@ from typing import Any
 
 _TAXONOMY_START = "<!-- AIMA_TAXONOMY_START -->"
 _TAXONOMY_END = "<!-- AIMA_TAXONOMY_END -->"
+_SEMANTIC_RULES_START = "<!-- AIMA_SEMANTIC_RULES_START -->"
+_SEMANTIC_RULES_END = "<!-- AIMA_SEMANTIC_RULES_END -->"
 _TAXONOMY_SCHEMA_VERSION = "aima-content-taxonomy.v2"
-PROMPT_VERSION = "content-labeling.v3"
-CONTENT_LABELING_PROMPT_PATH = Path(__file__).with_name("prompts") / "content_labeling_v3.md"
+_SEMANTIC_RULES_SCHEMA_VERSION = "aima-content-semantic-rules.v1"
+_SUPPORTED_OUTPUT_PROTOCOLS = frozenset({"content-labeling.v3", "content-labeling.v4"})
+_PROMPT_VERSION_PATTERN = re.compile(r"Prompt Version：`(?P<version>content-labeling\.v\d+)`")
+_OUTPUT_PROTOCOL_PATTERN = re.compile(
+    r"<!-- AIMA_OUTPUT_PROTOCOL: (?P<version>content-labeling\.v\d+) -->"
+)
+PROMPT_VERSION = "content-labeling.v4"
+CONTENT_LABELING_PROMPT_PATH = Path(__file__).with_name("prompts") / "content_labeling_v4.md"
 
 
 class PromptTaxonomyError(ValueError):
@@ -23,15 +31,45 @@ class PromptTaxonomyError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class PromptSemanticRules:
+    """V4 Prompt 内部主体/意图到发声类型的不可变映射。"""
+
+    source_types: tuple[str, ...]
+    content_intents: tuple[str, ...]
+    organic_intents: tuple[str, ...]
+    source_voice_types: Mapping[str, str]
+    ordinary_consumer_organic_voice_type: str
+    personal_transaction_voice_type: str
+    campaign_voice_type: str
+    unknown_voice_type: str
+
+    def derive_voice_type(self, *, source_type: str, content_intent: str) -> str:
+        """按 Prompt 声明的优先级确定最终发声类型，不复制业务枚举。"""
+
+        source_voice_type = self.source_voice_types.get(source_type)
+        if source_voice_type is not None:
+            return source_voice_type
+        if content_intent == "personal_transaction":
+            return self.personal_transaction_voice_type
+        if content_intent in {"commercial_sales", "organized_campaign"}:
+            return self.campaign_voice_type
+        if source_type == "ordinary_consumer" and content_intent in self.organic_intents:
+            return self.ordinary_consumer_organic_voice_type
+        return self.unknown_voice_type
+
+
+@dataclass(frozen=True, slots=True)
 class PromptTaxonomy:
     """从同一 Markdown Prompt 解析出的不可变运行时 Taxonomy。"""
 
     prompt_version: str
+    output_protocol_version: str
     prompt_text: str
     schema_version: str
     sentiments: tuple[str, ...]
     voice_types: tuple[str, ...]
     labels: Mapping[str, tuple[str, ...]]
+    semantic_rules: PromptSemanticRules | None
     taxonomy_sha256: str
     prompt_sha256: str
 
@@ -70,7 +108,22 @@ class PromptTaxonomyLoader:
         except OSError as exc:
             raise PromptTaxonomyError(f"无法读取 Prompt: {self._prompt_path}") from exc
 
-        taxonomy_json = _extract_taxonomy_json(prompt_text)
+        return self.load_text(prompt_text)
+
+    @staticmethod
+    def load_text(
+        prompt_text: str,
+        *,
+        prompt_version: str | None = None,
+    ) -> PromptTaxonomy:
+        """从已给定的完整 Prompt 文本恢复运行时协议与 Taxonomy。"""
+
+        taxonomy_json = _extract_marked_json(
+            prompt_text,
+            start_marker=_TAXONOMY_START,
+            end_marker=_TAXONOMY_END,
+            block_name="Taxonomy",
+        )
         try:
             payload = json.loads(taxonomy_json, object_pairs_hook=_reject_duplicate_object_keys)
         except (json.JSONDecodeError, PromptTaxonomyError) as exc:
@@ -128,32 +181,178 @@ class PromptTaxonomyLoader:
             separators=(",", ":"),
         ).encode("utf-8")
 
+        resolved_prompt_version = prompt_version or _prompt_version_from_text(prompt_text)
+        output_protocol_version = _output_protocol_from_text(prompt_text)
+        semantic_rules = _parse_semantic_rules(
+            prompt_text,
+            output_protocol_version=output_protocol_version,
+            voice_types=voice_types,
+        )
+
         return PromptTaxonomy(
-            prompt_version=PROMPT_VERSION,
+            prompt_version=resolved_prompt_version,
+            output_protocol_version=output_protocol_version,
             prompt_text=prompt_text,
             schema_version=schema_version,
             sentiments=sentiments,
             voice_types=voice_types,
             labels=MappingProxyType(labels),
+            semantic_rules=semantic_rules,
             taxonomy_sha256=hashlib.sha256(normalized_taxonomy).hexdigest(),
             prompt_sha256=hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
         )
 
 
-def _extract_taxonomy_json(prompt_text: str) -> str:
-    if prompt_text.count(_TAXONOMY_START) != 1 or prompt_text.count(_TAXONOMY_END) != 1:
-        raise PromptTaxonomyError("Prompt 必须且只能包含一组 Taxonomy 标记")
+def _extract_marked_json(
+    prompt_text: str,
+    *,
+    start_marker: str,
+    end_marker: str,
+    block_name: str,
+) -> str:
+    if prompt_text.count(start_marker) != 1 or prompt_text.count(end_marker) != 1:
+        raise PromptTaxonomyError(f"Prompt 必须且只能包含一组 {block_name} 标记")
 
-    start_index = prompt_text.index(_TAXONOMY_START) + len(_TAXONOMY_START)
-    end_index = prompt_text.index(_TAXONOMY_END)
+    start_index = prompt_text.index(start_marker) + len(start_marker)
+    end_index = prompt_text.index(end_marker)
     if end_index <= start_index:
-        raise PromptTaxonomyError("Prompt Taxonomy 标记顺序不合法")
+        raise PromptTaxonomyError(f"Prompt {block_name} 标记顺序不合法")
 
     between = prompt_text[start_index:end_index].strip()
     match = re.fullmatch(r"```json\s*\n(?P<payload>.*?)\n```", between, flags=re.DOTALL)
     if match is None:
-        raise PromptTaxonomyError("Taxonomy 标记之间必须且只能包含一个 ```json 代码块")
-    return match.group("payload")
+        raise PromptTaxonomyError(f"{block_name} 标记之间必须且只能包含一个 ```json 代码块")
+    return str(match.group("payload"))
+
+
+def _prompt_version_from_text(prompt_text: str) -> str:
+    matches = _PROMPT_VERSION_PATTERN.findall(prompt_text)
+    if len(matches) != 1 or matches[0] not in _SUPPORTED_OUTPUT_PROTOCOLS:
+        raise PromptTaxonomyError("Prompt 必须声明一个受支持的 Prompt Version")
+    return str(matches[0])
+
+
+def _output_protocol_from_text(prompt_text: str) -> str:
+    matches = _OUTPUT_PROTOCOL_PATTERN.findall(prompt_text)
+    if len(matches) > 1:
+        raise PromptTaxonomyError("Prompt 最多声明一个 Output Protocol")
+    declared_prompt_version = _prompt_version_from_text(prompt_text)
+    version = matches[0] if matches else declared_prompt_version
+    if version not in _SUPPORTED_OUTPUT_PROTOCOLS:
+        raise PromptTaxonomyError("Prompt Output Protocol 不受支持")
+    if version != declared_prompt_version:
+        raise PromptTaxonomyError("Prompt Version 与 Output Protocol 不一致")
+    return version
+
+
+def _parse_semantic_rules(
+    prompt_text: str,
+    *,
+    output_protocol_version: str,
+    voice_types: tuple[str, ...],
+) -> PromptSemanticRules | None:
+    if output_protocol_version == "content-labeling.v3":
+        if _SEMANTIC_RULES_START in prompt_text or _SEMANTIC_RULES_END in prompt_text:
+            raise PromptTaxonomyError("V3 Prompt 不能声明 V4 Semantic Rules")
+        return None
+
+    raw_json = _extract_marked_json(
+        prompt_text,
+        start_marker=_SEMANTIC_RULES_START,
+        end_marker=_SEMANTIC_RULES_END,
+        block_name="Semantic Rules",
+    )
+    try:
+        payload = json.loads(raw_json, object_pairs_hook=_reject_duplicate_object_keys)
+    except (json.JSONDecodeError, PromptTaxonomyError) as exc:
+        raise PromptTaxonomyError("Prompt Semantic Rules JSON 不合法") from exc
+    if not isinstance(payload, dict):
+        raise PromptTaxonomyError("Prompt Semantic Rules 根节点必须是 JSON object")
+
+    expected_keys = {
+        "schema_version",
+        "source_types",
+        "content_intents",
+        "organic_intents",
+        "source_voice_types",
+        "ordinary_consumer_organic_voice_type",
+        "personal_transaction_voice_type",
+        "campaign_voice_type",
+        "unknown_voice_type",
+    }
+    if set(payload) != expected_keys:
+        raise PromptTaxonomyError("Prompt Semantic Rules 根节点字段不完整或存在额外字段")
+    if payload["schema_version"] != _SEMANTIC_RULES_SCHEMA_VERSION:
+        raise PromptTaxonomyError(
+            f"Prompt Semantic Rules schema_version 必须为 {_SEMANTIC_RULES_SCHEMA_VERSION}"
+        )
+
+    source_types = _clean_string_list(payload["source_types"], field_name="source_types")
+    content_intents = _clean_string_list(
+        payload["content_intents"],
+        field_name="content_intents",
+    )
+    organic_intents = _clean_string_list(
+        payload["organic_intents"],
+        field_name="organic_intents",
+    )
+    required_sources = {"ordinary_consumer", "unknown"}
+    required_intents = {
+        "personal_transaction",
+        "commercial_sales",
+        "organized_campaign",
+        "unknown",
+    }
+    if not required_sources.issubset(source_types):
+        raise PromptTaxonomyError("Semantic Rules 缺少必要 source_type")
+    if not required_intents.issubset(content_intents):
+        raise PromptTaxonomyError("Semantic Rules 缺少必要 content_intent")
+    if not set(organic_intents).issubset(content_intents):
+        raise PromptTaxonomyError("organic_intents 必须属于 content_intents")
+
+    raw_source_voice_types = payload["source_voice_types"]
+    if not isinstance(raw_source_voice_types, dict) or not raw_source_voice_types:
+        raise PromptTaxonomyError("source_voice_types 必须是非空 JSON object")
+    source_voice_types: dict[str, str] = {}
+    for source_type, voice_type in raw_source_voice_types.items():
+        if source_type not in source_types or source_type in required_sources:
+            raise PromptTaxonomyError("source_voice_types 包含非法 source_type")
+        if not isinstance(voice_type, str) or voice_type not in voice_types:
+            raise PromptTaxonomyError("source_voice_types 包含非法 voice_type")
+        source_voice_types[source_type] = voice_type
+    if set(source_voice_types) != set(source_types) - required_sources:
+        raise PromptTaxonomyError("每个非普通、非未知 source_type 都必须声明 voice_type 映射")
+
+    voice_fields = (
+        "ordinary_consumer_organic_voice_type",
+        "personal_transaction_voice_type",
+        "campaign_voice_type",
+        "unknown_voice_type",
+    )
+    resolved_voice_types: dict[str, str] = {}
+    for field_name in voice_fields:
+        value = payload[field_name]
+        if not isinstance(value, str) or value not in voice_types:
+            raise PromptTaxonomyError(f"{field_name} 必须属于 voice_types")
+        resolved_voice_types[field_name] = value
+    if (
+        resolved_voice_types["personal_transaction_voice_type"]
+        == resolved_voice_types["ordinary_consumer_organic_voice_type"]
+    ):
+        raise PromptTaxonomyError("个人交易与普通消费者自然发声必须使用不同 voice_type")
+
+    return PromptSemanticRules(
+        source_types=source_types,
+        content_intents=content_intents,
+        organic_intents=organic_intents,
+        source_voice_types=MappingProxyType(source_voice_types),
+        ordinary_consumer_organic_voice_type=resolved_voice_types[
+            "ordinary_consumer_organic_voice_type"
+        ],
+        personal_transaction_voice_type=resolved_voice_types["personal_transaction_voice_type"],
+        campaign_voice_type=resolved_voice_types["campaign_voice_type"],
+        unknown_voice_type=resolved_voice_types["unknown_voice_type"],
+    )
 
 
 def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

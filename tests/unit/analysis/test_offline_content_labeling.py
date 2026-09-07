@@ -59,20 +59,28 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
 def _valid_response() -> str:
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     primary = taxonomy.primary_labels[0]
+    assert taxonomy.semantic_rules is not None
     return json.dumps(
         {
             "items": [
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "真实用户发声",
+                    "relevance_evidence": ["爱玛"],
+                    "source_type": "unknown",
+                    "content_intent": "unknown",
+                    "voice_type": taxonomy.semantic_rules.unknown_voice_type,
+                    "voice_evidence": [],
                     "sentiment": taxonomy.sentiments[0],
+                    "sentiment_evidence": ["正文"],
                     "labels": [
                         {
                             "primary_label": primary,
                             "secondary_label": taxonomy.labels[primary][0],
+                            "evidence": ["正文"],
                         }
                     ],
+                    "decision_status": "clear",
                 }
             ]
         },
@@ -83,20 +91,28 @@ def _valid_response() -> str:
 def _invalid_response() -> str:
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     primary = taxonomy.primary_labels[0]
+    assert taxonomy.semantic_rules is not None
     return json.dumps(
         {
             "items": [
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "真实用户发声",
+                    "relevance_evidence": ["爱玛"],
+                    "source_type": "unknown",
+                    "content_intent": "unknown",
+                    "voice_type": taxonomy.semantic_rules.unknown_voice_type,
+                    "voice_evidence": [],
                     "sentiment": "不存在的情感",
+                    "sentiment_evidence": ["正文"],
                     "labels": [
                         {
                             "primary_label": primary,
                             "secondary_label": taxonomy.labels[primary][0],
+                            "evidence": ["正文"],
                         }
                     ],
+                    "decision_status": "clear",
                 }
             ]
         },
@@ -264,6 +280,7 @@ def test_offline_labeling_attempt_keeps_usage_and_pricing_snapshot(tmp_path: Pat
 
     attempt = _read_jsonl(analysis_dir / "attempts.jsonl")[0]
     assert attempt["schema_version"] == "content-label-attempt.v2"
+    assert attempt["request_kind"] == "primary"
     assert attempt["logical_request_id"]
     assert attempt["input_tokens"] == 31
     assert attempt["input_cache_hit_tokens"] == 20

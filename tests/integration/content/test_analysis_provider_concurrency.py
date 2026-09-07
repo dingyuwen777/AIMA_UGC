@@ -102,12 +102,15 @@ class _ConcurrentFakeLLM:
 
 
 def _valid_response() -> str:
-    """返回当前测试 Scheme 已有的稳定 V3 合法结果。"""
+    """返回当前测试 Scheme 已有的稳定 V4 合法结果。"""
 
     return (
         '{"items":[{"item_no":1,"relevance":"relevant",'
-        '"voice_type":"真实用户发声","sentiment":"负面",'
-        '"labels":[{"primary_label":"骑行性能","secondary_label":"舒适性"}]}]}'
+        '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
+        '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+        '"voice_evidence":["爱玛"],"sentiment":"负面",'
+        '"sentiment_evidence":["爱玛"],"labels":[{"primary_label":"骑行性能",'
+        '"secondary_label":"舒适性","evidence":["爱玛"]}],"decision_status":"clear"}]}'
     )
 
 

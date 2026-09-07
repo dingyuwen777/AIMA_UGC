@@ -14,7 +14,6 @@ from aima_ugc.contracts.analysis import (
 from aima_ugc.contracts.canonical import CanonicalAuthorV1, CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.modules.analysis import (
     CONTENT_LABELING_PROMPT_PATH,
-    PROMPT_VERSION,
     ContentLabelingService,
     FakeContentLabelingLLM,
     PromptTaxonomyLoader,
@@ -26,6 +25,7 @@ OBSERVED_AT = datetime(2026, 8, 21, 11, 30, tzinfo=UTC)
 HASH_A = "a" * 64
 HASH_B = "b" * 64
 HASH_C = "c" * 64
+V3_PROMPT_PATH = CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v3.md")
 
 
 def _content(
@@ -177,7 +177,7 @@ def test_v3_contract_enforces_relevance_dependent_shape_and_voice_type() -> None
 
 
 def test_service_returns_v3_and_sends_only_approved_public_author_context() -> None:
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(V3_PROMPT_PATH)
     taxonomy = loader.load()
     primary = taxonomy.primary_labels[0]
     secondary = taxonomy.labels[primary][0]
@@ -203,8 +203,8 @@ def test_service_returns_v3_and_sends_only_approved_public_author_context() -> N
     assert isinstance(analysis, ContentLabelAnalysisV3)
     assert analysis.relevance == "relevant"
     assert analysis.voice_type == "真实用户发声"
-    assert PROMPT_VERSION == "content-labeling.v3"
-    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v3.md"
+    assert taxonomy.prompt_version == "content-labeling.v3"
+    assert loader.prompt_path.name == "content_labeling_v3.md"
 
     payload = fake.calls[0].model_payload()[0]
     assert payload == {
@@ -220,7 +220,7 @@ def test_service_returns_v3_and_sends_only_approved_public_author_context() -> N
 
 
 def test_service_accepts_irrelevant_without_forcing_sentiment_or_labels() -> None:
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(V3_PROMPT_PATH)
     fake = FakeContentLabelingLLM(
         responses=[
             _model_response(
@@ -245,7 +245,7 @@ def test_service_accepts_irrelevant_without_forcing_sentiment_or_labels() -> Non
 
 
 def test_offline_labeling_removes_irrelevant_rows_after_durable_checkpoint(tmp_path: Path) -> None:
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(V3_PROMPT_PATH)
     taxonomy = loader.load()
     primary = taxonomy.primary_labels[0]
     secondary = taxonomy.labels[primary][0]
@@ -318,7 +318,7 @@ def test_irrelevant_checkpoint_recovers_without_second_llm_call_after_atomic_rew
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(V3_PROMPT_PATH)
     taxonomy = loader.load()
     primary = taxonomy.primary_labels[0]
     secondary = taxonomy.labels[primary][0]

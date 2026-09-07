@@ -260,6 +260,7 @@ def _attempt_payload(
         "schema_version": "content-label-attempt.v2",
         "batch_no": source.line_number,
         "attempt_no": attempt.attempt_no,
+        "request_kind": attempt.request_kind,
         "item_nos": [1],
         "items": [
             {

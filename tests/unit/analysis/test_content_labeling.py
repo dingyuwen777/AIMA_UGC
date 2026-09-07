@@ -54,23 +54,35 @@ def _prompt_with_taxonomy_mutation(
     return path
 
 
-def _valid_response(taxonomy: PromptTaxonomy, item_nos: tuple[int, ...]) -> str:
+def _valid_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
     primary = taxonomy.primary_labels[0]
     secondary = taxonomy.labels[primary][0]
     sentiment = taxonomy.sentiments[0]
+    assert taxonomy.semantic_rules is not None
+    return {
+        "item_no": item_no,
+        "relevance": "relevant",
+        "relevance_evidence": ["爱玛体验"],
+        "source_type": "unknown",
+        "content_intent": "unknown",
+        "voice_type": taxonomy.semantic_rules.unknown_voice_type,
+        "voice_evidence": [],
+        "sentiment": sentiment,
+        "sentiment_evidence": ["正文"],
+        "labels": [
+            {
+                "primary_label": primary,
+                "secondary_label": secondary,
+                "evidence": ["正文"],
+            }
+        ],
+        "decision_status": "clear",
+    }
+
+
+def _valid_response(taxonomy: PromptTaxonomy, item_nos: tuple[int, ...]) -> str:
     return json.dumps(
-        {
-            "items": [
-                {
-                    "item_no": item_no,
-                    "relevance": "relevant",
-                    "voice_type": "无法判断",
-                    "sentiment": sentiment,
-                    "labels": [{"primary_label": primary, "secondary_label": secondary}],
-                }
-                for item_no in item_nos
-            ]
-        },
+        {"items": [_valid_item(taxonomy, item_no=item_no) for item_no in item_nos]},
         ensure_ascii=False,
     )
 
@@ -133,7 +145,7 @@ def test_prompt_taxonomy_has_expected_baseline_and_documented_bootstrap_source()
 
     assert len(taxonomy.primary_labels) == 10
     assert len(taxonomy.all_secondary_labels) == 40
-    assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md" in docs
+    assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md" in docs
     assert "active Analysis Scheme Version" in docs
     assert "bootstrap/灾备基线" in docs
 
@@ -278,7 +290,8 @@ def test_model_request_only_contains_approved_business_fields_and_fills_missing_
         max_validation_retries=0,
     )
 
-    assert result.items[0].analysis_status == "succeeded"
+    assert result.items[0].analysis_status == "failed"
+    assert result.items[0].validation_error_codes == ("fabricated_evidence",)
     assert fake.calls[0].model_payload() == [
         {
             "item_no": 1,
@@ -332,18 +345,8 @@ def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Pat
                 {
                     "items": [
                         {
-                            "item_no": 1,
-                            "relevance": "relevant",
-                            "voice_type": "无法判断",
+                            **_valid_item(taxonomy, item_no=1),
                             "sentiment": "不存在的情感",
-                            "labels": [
-                                {
-                                    "primary_label": taxonomy.primary_labels[0],
-                                    "secondary_label": taxonomy.labels[taxonomy.primary_labels[0]][
-                                        0
-                                    ],
-                                }
-                            ],
                         }
                     ]
                 },
@@ -356,16 +359,14 @@ def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Pat
                 {
                     "items": [
                         {
-                            "item_no": 1,
-                            "relevance": "relevant",
-                            "voice_type": "无法判断",
-                            "sentiment": taxonomy.sentiments[0],
+                            **_valid_item(taxonomy, item_no=1),
                             "labels": [
                                 {
                                     "primary_label": taxonomy.primary_labels[0],
                                     "secondary_label": taxonomy.labels[taxonomy.primary_labels[1]][
                                         0
                                     ],
+                                    "evidence": ["正文"],
                                 }
                             ],
                         }
@@ -401,6 +402,7 @@ def test_fake_invalid_responses_trigger_validation_retry(
     assert len(fake.calls) == 2
     assert expected_code in result.attempts[0].validation_error_codes
     assert expected_code in fake.calls[1].previous_validation_error_codes
+    assert fake.calls[1].request_kind == "repair"
 
 
 @pytest.mark.parametrize("max_validation_retries", [0, 1, 2])
@@ -428,28 +430,13 @@ def test_validation_retry_limit_has_exact_total_request_semantics(
 def test_successful_item_is_not_retried_when_another_item_needs_validation_retry() -> None:
     loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
     taxonomy = loader.load()
-    primary = taxonomy.primary_labels[0]
-    secondary = taxonomy.labels[primary][0]
     sentiment = taxonomy.sentiments[0]
+    first_item = _valid_item(taxonomy, item_no=1)
+    first_item["sentiment"] = sentiment
+    second_item = _valid_item(taxonomy, item_no=2)
+    second_item["sentiment"] = "不存在的情感"
     first_response = json.dumps(
-        {
-            "items": [
-                {
-                    "item_no": 1,
-                    "relevance": "relevant",
-                    "voice_type": "无法判断",
-                    "sentiment": sentiment,
-                    "labels": [{"primary_label": primary, "secondary_label": secondary}],
-                },
-                {
-                    "item_no": 2,
-                    "relevance": "relevant",
-                    "voice_type": "无法判断",
-                    "sentiment": "不存在的情感",
-                    "labels": [{"primary_label": primary, "secondary_label": secondary}],
-                },
-            ]
-        },
+        {"items": [first_item, second_item]},
         ensure_ascii=False,
     )
     fake = FakeContentLabelingLLM(

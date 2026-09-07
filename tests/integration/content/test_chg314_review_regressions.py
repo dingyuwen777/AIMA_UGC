@@ -196,11 +196,14 @@ def _analysis_registry(
 
 
 def _irrelevant_response() -> str:
-    """返回符合 V3 Contract 的固定“不相关”模型结果。"""
+    """返回符合 V4 Contract 的固定“不相关”模型结果。"""
 
     return (
         '{"items":[{"item_no":1,"relevance":"irrelevant",'
-        '"voice_type":"真实用户发声","sentiment":null,"labels":[]}]}'
+        '"relevance_evidence":["固定测试内容"],"source_type":"ordinary_consumer",'
+        '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+        '"voice_evidence":["固定测试内容"],"sentiment":null,'
+        '"sentiment_evidence":[],"labels":[],"decision_status":"clear"}]}'
     )
 
 
@@ -209,8 +212,12 @@ def _relevant_response() -> str:
 
     return (
         '{"items":[{"item_no":1,"relevance":"relevant",'
-        '"voice_type":"真实用户发声","sentiment":"负面",'
-        '"labels":[{"primary_label":"骑行性能","secondary_label":"舒适性"}]}]}'
+        '"relevance_evidence":["固定测试内容"],"source_type":"ordinary_consumer",'
+        '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+        '"voice_evidence":["固定测试内容"],"sentiment":"负面",'
+        '"sentiment_evidence":["固定测试内容"],"labels":[{"primary_label":"骑行性能",'
+        '"secondary_label":"舒适性","evidence":["固定测试内容"]}],'
+        '"decision_status":"clear"}]}'
     )
 
 
