@@ -140,7 +140,29 @@ env.production
 → Secret resolver
 ```
 
-Provider Config 只保存 `secret_ref`。业务容器普通环境变量、日志、Raw、Job Payload、Export 和 Release Bundle 都不能包含 Secret 原值。
+Provider Config 保存适用的非敏感运行配置，并以 `secret_ref` 引用 Secret；真实 Key 不进入 PostgreSQL。业务容器普通环境变量、日志、Raw、Job Payload、Export 和 Release Bundle 都不能包含 Secret 原值。
+
+### 4.3 Provider bootstrap 与运行时配置所有权
+
+`env.production` 是**容器启动/首次装配输入，不是热更新控制面**。修改后需要重新创建/启动受影响服务；已经冻结到 Campaign 或 Analysis Run 的事实不会被 env 反向改写。
+
+[`env.production.example`](../../env.production.example) 默认真正关闭 LLM：Base URL / Provider Name / Model 都保持注释，只保留空的 API Key 输入。需要在一个尚未由数据库接管 LLM 的新环境中使用 env bootstrap 时，必须显式取消 Base URL 与 Model 的注释、填写 API Key，再用 canonical Compose 重新创建服务。
+
+当前 LLM 所有权固定为：
+
+```text
+PostgreSQL 尚无任何 LLM Provider
+→ env 的完整 Base URL + Model + Secret 可以作为 bootstrap / 兼容 fallback
+
+PostgreSQL 已存在任意 LLM Provider
+→ 数据库 Provider Config 是唯一运行时事实源
+→ 没有默认 Provider或 Provider 被禁用时也不回退 env
+→ configure 不用 env 覆盖管理员配置
+```
+
+正式 LLM 容量由数据库 Provider 的 `max_concurrency / max_rps` 管理；环境兼容设置 `AIMA_LLM_MAX_CONNECTIONS` 仍由 Settings 支持，但两个 env 模板故意不把它暴露成平行的生产调优入口。
+
+TikHub 的 Internal V1 `configure` 也只负责首次创建稳定 Provider Config；数据库中该稳定 Provider 已存在后，后续启动不会用 env 覆盖它，启停和非敏感配置由管理员控制面维护。TikHub/LLM Key 始终走前述 Secret File 边界。
 
 ---
 
