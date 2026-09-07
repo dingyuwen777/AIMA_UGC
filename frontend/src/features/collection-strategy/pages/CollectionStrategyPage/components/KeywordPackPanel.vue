@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 
 import type {
   KeywordPackItemUpdateRequest,
@@ -58,20 +58,6 @@ const keywordDraft = ref({
 })
 const copyName = ref('')
 const archivedOpen = ref(false)
-
-const selectedSummary = computed(() =>
-  props.packs.find((pack) => pack.id === props.selected?.id)
-    ?? props.selected && props.selected.id
-      ? {
-          id: props.selected.id,
-          name: props.selected.name,
-          description: props.selected.description,
-          enabled: props.selected.enabled,
-          version: props.selected.version,
-          keyword_count: props.selected.keywords.length,
-        }
-      : null,
-)
 
 watch(
   () => props.selected?.id,
