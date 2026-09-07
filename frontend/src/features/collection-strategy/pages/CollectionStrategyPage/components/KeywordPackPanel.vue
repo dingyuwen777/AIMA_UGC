@@ -148,6 +148,10 @@ function toggleArchived(open: boolean): void {
   if (open) emit('loadArchived')
 }
 
+function onArchivedToggle(event: Event): void {
+  toggleArchived((event.currentTarget as HTMLDetailsElement).open)
+}
+
 function deleteArchived(item: ResourceLifecycleResponse): void {
   if (!window.confirm(`确认永久删除已归档词包“${item.name}”吗？只有从未产生业务引用的资源才会被服务端允许删除。`)) return
   emit('deleteArchived', item.id)
@@ -228,7 +232,7 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
       <details
         class="archived-card"
         :open="archivedOpen"
-        @toggle="toggleArchived(($event.currentTarget as HTMLDetailsElement).open)"
+        @toggle="onArchivedToggle"
       >
         <summary>已归档词包</summary>
         <div v-if="loadingArchived" class="archived-state">正在读取…</div>

@@ -418,7 +418,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     try {
       const eligibility = await fetchPackDeleteEligibility(packId)
       if (!eligibility.eligible) {
-        error.value = eligibility.blocking_reasons.join('；') || '该词包已有业务引用，只能保留归档记录。'
+        error.value = (eligibility.blocking_reasons ?? []).join('；') || '该词包已有业务引用，只能保留归档记录。'
         return false
       }
       await deletePack(packId)
@@ -618,7 +618,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     try {
       const eligibility = await fetchPlanDeleteEligibility(planId)
       if (!eligibility.eligible) {
-        error.value = eligibility.blocking_reasons.join('；') || '该采集计划已有历史记录，只能保留归档记录。'
+        error.value = (eligibility.blocking_reasons ?? []).join('；') || '该采集计划已有历史记录，只能保留归档记录。'
         return false
       }
       await deletePlan(planId)

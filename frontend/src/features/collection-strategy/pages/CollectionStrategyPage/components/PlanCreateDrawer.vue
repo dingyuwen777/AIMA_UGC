@@ -312,7 +312,7 @@ function submit(): void {
 </template>
 
 <style scoped>
-.backdrop { position: fixed; z-index: 100; inset: 0; background: rgb(20 29 44 / 34%); }
+.backdrop { position: fixed; z-index: 110; inset: 0; background: rgb(20 29 44 / 34%); }
 aside { position: fixed; top: 0; right: 0; bottom: 0; display: flex; width: 510px; height: 100vh; max-height: 100vh; flex-direction: column; overflow: hidden; background: #fff; box-shadow: -10px 0 30px rgb(20 29 44 / 12%); }
 header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; line-height: 24px; }header p { margin: 5px 0 0; color: #737e91; font-size: 13px; line-height: 18px; }
 .body { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding: 22px 24px; }label,fieldset,.policy { display: block; margin: 0 0 22px; }label strong,legend,.policy > strong { display: block; margin-bottom: 8px; color: #253044; font-size: 14px; font-weight: 600; }input:not([type='checkbox']),select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #d9dee8; border-radius: 6px; background: #fff; }fieldset { padding: 0; border: 0; }.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 22px 8px 0; padding: 0; border: 0; font-size: 12px; }
