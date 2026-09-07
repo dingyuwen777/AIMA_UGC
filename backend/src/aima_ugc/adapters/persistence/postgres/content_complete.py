@@ -31,6 +31,10 @@ from aima_ugc.modules.content.tables import (
 )
 
 from .content import PostgresContentRepository, PostgresIngestionResult
+from .content_contributions import (
+    commit_content_contribution,
+    prepare_content_contribution,
+)
 
 _CONTENT_COLLECTION_FIELDS = {
     "alternate_ids": content_external_ids_table,
@@ -47,15 +51,18 @@ _COMMENT_COLLECTION_FIELDS = {
 
 
 class PostgresCompleteContentRepository:
-    """调用方拥有事务；核心与子实体在同一 Session 原子提交。"""
+    """调用方拥有事务；核心、子实体与来源贡献在同一 Session 原子提交。"""
 
     def __init__(self, session: Session) -> None:
         self._session = session
         self._core = PostgresContentRepository(session)
 
     def ingest_content(self, observation: CanonicalContentV1) -> PostgresIngestionResult:
+        """完整写入 Content，并冻结同一来源实际施加的可逆 before/after Delta。"""
+
         attempt_id, raw_id = _source_ids(observation)
         _require_attempt_raw_pair(self._session, attempt_id=attempt_id, raw_id=raw_id)
+        contribution = prepare_content_contribution(self._session, observation)
         result = self._core.ingest_content(observation)
         result = self._apply_content_null_author(observation, result, attempt_id, raw_id)
         self._sync_content_extensions(
@@ -63,6 +70,12 @@ class PostgresCompleteContentRepository:
             observation,
             attempt_id=attempt_id,
             raw_id=raw_id,
+        )
+        commit_content_contribution(
+            self._session,
+            draft=contribution,
+            observation=observation,
+            content_id=result.target_id,
         )
         return result
 
