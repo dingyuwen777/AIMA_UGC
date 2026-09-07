@@ -143,7 +143,7 @@ function updatePrimaryLabel(event: Event): void {
     </div>
 
     <div
-      v-if="advancedOpen"
+      v-show="advancedOpen"
       class="advanced-filters"
     >
       <div class="filter-row filter-row--secondary">
