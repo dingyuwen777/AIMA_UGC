@@ -7,11 +7,12 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import Text, delete, func, insert, select, update
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.collection.tables import (
     collection_plan_keyword_packs_table,
+    collection_plans_table,
     collection_runs_table,
 )
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaigns_table
@@ -277,8 +278,6 @@ class PostgresKeywordPackLifecycleRepository:
             )
         ) is not None:
             blockers.append("当前全局相关性正在使用该词包")
-        from aima_ugc.modules.collection.tables import collection_plans_table
-
         if self._session.scalar(
             select(collection_plan_keyword_packs_table.c.plan_id)
             .join(
@@ -298,12 +297,14 @@ class PostgresKeywordPackLifecycleRepository:
         """保守检查当前关系与历史冻结快照；存在任何业务历史就只允许归档。"""
 
         blockers = list(self.archive_blockers(pack_id))
-        pack = self._session.execute(
-            select(keyword_packs_table.c.archived_at).where(keyword_packs_table.c.id == pack_id)
-        ).scalar_one_or_none()
-        if pack is None:
+        row = self._session.execute(
+            select(keyword_packs_table.c.id, keyword_packs_table.c.archived_at).where(
+                keyword_packs_table.c.id == pack_id
+            )
+        ).mappings().one_or_none()
+        if row is None:
             return ("资源不存在",)
-        if pack is None or not isinstance(pack, datetime):
+        if row["archived_at"] is None:
             blockers.append("请先归档词包再执行永久删除")
         if self._session.scalar(
             select(collection_plan_keyword_packs_table.c.plan_id)
@@ -330,7 +331,7 @@ class PostgresKeywordPackLifecycleRepository:
             blockers.append("导入任务历史引用了该词包")
         if self._session.scalar(
             select(collection_runs_table.c.id)
-            .where(collection_runs_table.c.config_snapshot.cast(str).contains(str(pack_id)))
+            .where(collection_runs_table.c.config_snapshot.cast(Text).contains(str(pack_id)))
             .limit(1)
         ) is not None:
             blockers.append("采集运行历史引用了该词包")
