@@ -1,0 +1,51 @@
+name: Temporary Content Detail Test Fix
+
+on:
+  push:
+    branches:
+      - feature/product-resource-lifecycle
+    paths:
+      - .github/workflows/tmp-content-detail-test-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact test fix
+        run: python .github/tmp_fix_content_detail_test.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend environment
+        run: npm ci --prefix frontend
+
+      - name: Run content-detail regression
+        run: npm --prefix frontend test -- --run tests/frontend-audit-regressions.spec.ts
+
+      - name: Commit test fix and remove temporary files
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/tmp-content-detail-test-fix.yml .github/tmp_fix_content_detail_test.py
+          git add frontend/tests/frontend-audit-regressions.spec.ts
+          git config user.name "AIMA Temporary Validator"
+          git config user.email "aima-validator@users.noreply.github.com"
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "修正声音详情技术层回归断言 [skip ci]"
+          git push origin HEAD:feature/product-resource-lifecycle
