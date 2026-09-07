@@ -76,6 +76,117 @@ class PostgresKeywordPackLifecycleRepository:
         )
         return None if row is None else _pack(row)
 
+    def replace_item(
+        self,
+        pack_id: UUID,
+        keyword_id: UUID,
+        *,
+        source_platform_scope: str,
+        replacement_keyword_id: UUID,
+        platform_scope: str,
+        priority: int,
+        enabled: bool,
+        note: str,
+        expected_version: int,
+    ) -> KeywordPack | None:
+        """替换词包成员指向/属性，不原地修改可能被其它词包共享的 Keyword。"""
+
+        parent = (
+            self._session.execute(
+                select(keyword_packs_table)
+                .where(keyword_packs_table.c.id == pack_id)
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if parent is None:
+            return None
+        if parent["archived_at"] is not None:
+            raise RuntimeError("已归档词包不能修改关键词")
+        if parent["enabled"]:
+            raise RuntimeError("请先停用词包，再修改已有关键词")
+        if parent["version"] != expected_version:
+            raise RuntimeError("词包版本已经变化，请刷新后重试")
+
+        current = (
+            self._session.execute(
+                select(keyword_pack_items_table).where(
+                    keyword_pack_items_table.c.pack_id == pack_id,
+                    keyword_pack_items_table.c.keyword_id == keyword_id,
+                    keyword_pack_items_table.c.platform_scope == source_platform_scope,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if current is None:
+            raise LookupError("词包中不存在该关键词")
+
+        same_identity = (
+            replacement_keyword_id == keyword_id and platform_scope == source_platform_scope
+        )
+        if same_identity:
+            self._session.execute(
+                update(keyword_pack_items_table)
+                .where(
+                    keyword_pack_items_table.c.pack_id == pack_id,
+                    keyword_pack_items_table.c.keyword_id == keyword_id,
+                    keyword_pack_items_table.c.platform_scope == source_platform_scope,
+                )
+                .values(priority=priority, enabled=enabled, note=note)
+            )
+        else:
+            existing_target = self._session.scalar(
+                select(keyword_pack_items_table.c.keyword_id)
+                .where(
+                    keyword_pack_items_table.c.pack_id == pack_id,
+                    keyword_pack_items_table.c.keyword_id == replacement_keyword_id,
+                    keyword_pack_items_table.c.platform_scope == platform_scope,
+                )
+                .limit(1)
+            )
+            if existing_target is not None:
+                raise RuntimeError("修改后的关键词已经存在于当前词包")
+            self._session.execute(
+                delete(keyword_pack_items_table).where(
+                    keyword_pack_items_table.c.pack_id == pack_id,
+                    keyword_pack_items_table.c.keyword_id == keyword_id,
+                    keyword_pack_items_table.c.platform_scope == source_platform_scope,
+                )
+            )
+            self._session.execute(
+                insert(keyword_pack_items_table).values(
+                    pack_id=pack_id,
+                    keyword_id=replacement_keyword_id,
+                    platform_scope=platform_scope,
+                    priority=priority,
+                    enabled=enabled,
+                    note=note,
+                )
+            )
+
+        self._session.execute(
+            update(keyword_packs_table)
+            .where(keyword_packs_table.c.id == pack_id)
+            .values(
+                version=keyword_packs_table.c.version + 1,
+                updated_at=func.clock_timestamp(),
+            )
+        )
+        if replacement_keyword_id != keyword_id:
+            still_referenced = self._session.scalar(
+                select(keyword_pack_items_table.c.keyword_id)
+                .where(keyword_pack_items_table.c.keyword_id == keyword_id)
+                .limit(1)
+            )
+            if still_referenced is None:
+                self._session.execute(delete(keywords_table).where(keywords_table.c.id == keyword_id))
+        updated = self._session.execute(
+            select(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
+        ).mappings().one()
+        return _pack(updated)
+
     def remove_item(
         self,
         pack_id: UUID,
