@@ -9,6 +9,7 @@ from urllib.parse import urljoin
 import httpx
 from pydantic import SecretStr
 
+from aima_ugc.adapters.providers.tikhub.transport import _validate_tikhub_base_url
 from aima_ugc.modules.system.models import ProviderConfig
 
 
@@ -38,16 +39,22 @@ def test_provider_connection(
             raise ProviderConnectionTestUnsupported(
                 "该采集 Provider 尚未定义无业务副作用的连接测试"
             )
+        try:
+            safe_base_url = _validate_tikhub_base_url(config.base_url)
+        except ValueError as exc:
+            raise ProviderConnectionTestUnsupported("TikHub 服务地址不在允许范围内") from exc
         path = "/api/v1/tikhub/user/get_user_info"
+        url = urljoin(safe_base_url.rstrip("/") + "/", path.lstrip("/"))
     elif config.provider_kind == "llm":
-        path = "models"
+        # OpenAI-compatible Base URL 已由 ProviderConfig 拒绝 credential/query/fragment；
+        # 通常包含 /v1，因此这里只在既有路径后拼接 metadata-only /models。
+        url = f"{config.base_url.rstrip('/')}/models"
     else:  # pragma: no cover - ProviderConfig Literal/领域校验双保险
         raise ProviderConnectionTestUnsupported("Provider 类型不支持连接测试")
 
-    url = _test_url(config, path)
     owns_client = client is None
     actual_client = client or httpx.Client(
-        timeout=httpx.Timeout(min(float(config.timeout_seconds), 30.0)),
+        timeout=httpx.Timeout(min(float(config.timeout_seconds), 15.0)),
         follow_redirects=False,
         trust_env=False,
     )
@@ -88,17 +95,6 @@ def test_provider_connection(
     finally:
         if owns_client:
             actual_client.close()
-
-
-def _test_url(config: ProviderConfig, path: str) -> str:
-    """按 Provider 的正式 Base URL 语义构造无副作用测试地址。"""
-
-    base = config.base_url.rstrip("/") + "/"
-    if config.provider_kind == "collection":
-        parsed_path = path.lstrip("/")
-        return urljoin(base, parsed_path)
-    # OpenAI-compatible Base URL 通常已经包含 /v1，因此保留其路径再拼 /models。
-    return f"{config.base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
 __all__ = [
