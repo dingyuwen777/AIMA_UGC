@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -10,10 +11,18 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, Request
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
+    PostgresArtifactMetadataGateway,
+    PostgresArtifactMetadataRepository,
+)
 from aima_ugc.adapters.persistence.postgres.historical_revocation import (
     PostgresImportCampaignRevocationRepository,
 )
+from aima_ugc.adapters.persistence.postgres.import_revocation_lifecycle import (
+    PostgresImportRevocationLifecycleRepository,
+)
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
+from aima_ugc.adapters.storage.local import LocalArtifactStore
 from aima_ugc.contracts.http import HttpErrorResponse
 from aima_ugc.contracts.lifecycle import (
     DataImportRevokeRequest,
@@ -37,19 +46,26 @@ from aima_ugc.modules.ingestion.revocation_http import ImportRevocationHttpServi
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from aima_ugc.platform.storage import ArtifactService
+from aima_ugc.platform.storage.ports import ArtifactStore
 from aima_ugc.platform.time import beijing_now
 
 SessionFactory = Callable[[], Session]
 
 
 class PostgresImportRevocationHttpService:
-    """以短事务协调撤销领域服务和审计追加，不直接改写 Content。"""
+    """以短事务协调撤销资格、Content 重组、来源追溯和安全审计。"""
 
-    def __init__(self, session_factory: SessionFactory) -> None:
+    def __init__(
+        self,
+        session_factory: SessionFactory,
+        artifact_store: ArtifactStore,
+    ) -> None:
         self._session_factory = session_factory
+        self._artifact_store = artifact_store
 
     def preview(self, campaign_id: UUID) -> DataImportRevocationPreviewResponse:
-        """只读计算撤销影响，不创建撤销事实或审计记录。"""
+        """只读计算撤销影响与可逆证据，不创建撤销事实或审计记录。"""
 
         session = self._session_factory()
         try:
@@ -72,48 +88,132 @@ class PostgresImportRevocationHttpService:
         actor_ref: str,
         request_id: str,
     ) -> DataImportRevocationResponse:
-        """提交一次幂等撤销；首次提交和安全审计在同一数据库事务完成。"""
+        """提交一次幂等撤销；缺可逆证据时在产生 Artifact 前直接拒绝。"""
 
+        initial = self.preview(campaign_id)
+        if initial.already_revoked:
+            return self._load_existing_response(campaign_id)
+        if not initial.eligible:
+            raise HistoricalCampaignStateConflict("当前导入无法安全自动撤销")
+
+        platforms = self._campaign_contribution_platforms(campaign_id)
+        revocation_artifact = (
+            self._store_revocation_artifact(campaign_id) if platforms else None
+        )
+        revoked_at = beijing_now()
         session = self._session_factory()
         try:
             with session.begin():
+                repository = PostgresImportCampaignRevocationRepository(session)
                 try:
-                    record, created = ImportCampaignRevocationService(
-                        PostgresImportCampaignRevocationRepository(session)
-                    ).revoke(
+                    record, created = ImportCampaignRevocationService(repository).revoke(
                         campaign_id,
                         actor_ref=actor_ref,
                         request_id=request_id,
                         reason=body.reason,
-                        revoked_at=beijing_now(),
+                        revoked_at=revoked_at,
                     )
                 except ImportCampaignRevocationNotFound as exc:
                     raise HistoricalCampaignNotFound from exc
                 except ImportCampaignRevocationConflict as exc:
                     raise HistoricalCampaignStateConflict from exc
-                if created:
-                    PostgresAuditRepository(session).append(
-                        AuditEvent(
-                            id=uuid4(),
-                            actor_kind="principal",
-                            actor_ref=actor_ref,
-                            event_type="data_import_campaign_revoked",
-                            object_type="data_import_campaign",
-                            object_id=str(campaign_id),
-                            request_id=request_id,
-                            safe_detail={
-                                "affected_content_count": record.impact.affected_content_count,
-                                "hidden_content_count": record.impact.hidden_content_count,
-                                "retained_shared_content_count": (
-                                    record.impact.retained_shared_content_count
-                                ),
-                            },
-                            created_at=record.revoked_at,
-                        )
+                if not created:
+                    return _revocation_response(record, already_revoked=True)
+
+                lifecycle = PostgresImportRevocationLifecycleRepository(session)
+                lifecycle_sources: dict[str, tuple[UUID, UUID]] = {}
+                if platforms:
+                    if revocation_artifact is None:
+                        raise RuntimeError("撤销生命周期缺少不可变来源 Artifact")
+                    lifecycle_sources = lifecycle.create_lifecycle_sources(
+                        campaign_id=campaign_id,
+                        raw_artifact_id=revocation_artifact.id,
+                        revoked_at=revoked_at,
                     )
-                return _revocation_response(record, already_revoked=not created)
+                versions = lifecycle.apply_campaign_revocation_with_sources(
+                    campaign_id,
+                    revoked_at=revoked_at,
+                    lifecycle_sources=lifecycle_sources,
+                )
+                if revocation_artifact is not None:
+                    PostgresArtifactMetadataRepository(session).mark_linked(
+                        revocation_artifact.id,
+                        linked_at=revoked_at,
+                    )
+                PostgresAuditRepository(session).append(
+                    AuditEvent(
+                        id=uuid4(),
+                        actor_kind="principal",
+                        actor_ref=actor_ref,
+                        event_type="data_import_campaign_revoked",
+                        object_type="data_import_campaign",
+                        object_id=str(campaign_id),
+                        request_id=request_id,
+                        safe_detail={
+                            "affected_content_count": record.impact.affected_content_count,
+                            "hidden_content_count": record.impact.hidden_content_count,
+                            "retained_shared_content_count": (
+                                record.impact.retained_shared_content_count
+                            ),
+                            "recomputed_content_count": len(versions),
+                        },
+                        created_at=record.revoked_at,
+                    )
+                )
+                return _revocation_response(record, already_revoked=False)
         finally:
             session.close()
+
+    def _load_existing_response(self, campaign_id: UUID) -> DataImportRevocationResponse:
+        """重复点击时读取已提交事实，不创建新的 Artifact、Version 或审计。"""
+
+        session = self._session_factory()
+        try:
+            with session.begin():
+                record = PostgresImportCampaignRevocationRepository(session).get_revocation(
+                    campaign_id
+                )
+                if record is None:
+                    raise HistoricalCampaignNotFound
+                return _revocation_response(record, already_revoked=True)
+        finally:
+            session.close()
+
+    def _campaign_contribution_platforms(self, campaign_id: UUID) -> tuple[str, ...]:
+        """在写 Artifact 前确认本次是否真的需要生成 Content 生命周期 Version。"""
+
+        session = self._session_factory()
+        try:
+            with session.begin():
+                return PostgresImportRevocationLifecycleRepository(
+                    session
+                ).campaign_contribution_platforms(campaign_id)
+        finally:
+            session.close()
+
+    def _store_revocation_artifact(self, campaign_id: UUID):
+        """保存不含 Secret/用户原因的最小撤销证据，作为内部 imports 来源 Raw。"""
+
+        payload = json.dumps(
+            {
+                "schema_version": "data-import-revocation.v1",
+                "campaign_id": str(campaign_id),
+                "action": "revoke_source_contributions",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return ArtifactService(
+            metadata=PostgresArtifactMetadataGateway(self._session_factory),
+            store=self._artifact_store,
+        ).store_bytes(
+            kind="provider-raw",
+            content_type="application/json",
+            retention_class="raw",
+            data=payload,
+            encoding="utf-8",
+        )
 
 
 def install_import_revocation_routes(
@@ -126,16 +226,22 @@ def install_import_revocation_routes(
 
     resolved_identity = identity_resolver or DevelopmentIdentityResolver()
     database: DatabaseRuntime | None = None
+    artifact_store: LocalArtifactStore | None = None
 
     def current_service() -> ImportRevocationHttpService:
-        """测试可注入 Service；生产首次请求时惰性建立生命周期数据库连接池。"""
+        """测试可注入 Service；生产首次请求时惰性建立数据库与 Artifact Store。"""
 
-        nonlocal database
+        nonlocal artifact_store, database
         if service is not None:
             return service
-        if database is None:
-            database = DatabaseRuntime(load_settings())
-        return PostgresImportRevocationHttpService(database.new_session)
+        if database is None or artifact_store is None:
+            settings = load_settings()
+            database = DatabaseRuntime(settings)
+            artifact_store = LocalArtifactStore(settings.artifact_dir)
+        return PostgresImportRevocationHttpService(
+            database.new_session,
+            artifact_store,
+        )
 
     if service is None:
         router = cast(Any, application.router)
@@ -216,6 +322,7 @@ def _impact_response(
         affected_content_count=record.impact.affected_content_count,
         hidden_content_count=record.impact.hidden_content_count,
         retained_shared_content_count=record.impact.retained_shared_content_count,
+        unreversible_content_count=record.impact.unreversible_content_count,
     )
 
 
@@ -228,6 +335,7 @@ def _preview_response(
         campaign_id=preview.campaign_id,
         eligible=preview.eligible,
         already_revoked=preview.already_revoked,
+        ineligible_reason=preview.ineligible_reason,
         impact=_impact_response(preview),
     )
 
