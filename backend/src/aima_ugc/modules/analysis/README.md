@@ -80,6 +80,8 @@ voice_type == "真实用户发声"
 
 Python、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
 
+Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但不改变既有 Version 状态机：当前 active Scheme 不能归档；恢复后仍保持非 active；曾发布或进入 Analysis Run 历史的 Scheme 只允许归档；只有从未发布、从未使用的纯草稿 Scheme 才能在归档后永久删除。管理员页面以结构化发声类型、情感和标签编辑为主路径，Prompt 只在高级设置维护。
+
 修改情感、发声类型、一级/二级标签、判断边界或学习示例时：
 
 ```text

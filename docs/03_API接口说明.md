@@ -745,3 +745,58 @@ LLM 配置编辑 / Secret 查询 API
 - Excel Export：[`docs/appendix/06_Excel统一数据导出与离线调试.md`](appendix/06_Excel统一数据导出与离线调试.md)
 - PostgreSQL：[`docs/appendix/01_PostgreSQL查询与调试实战.md`](appendix/01_PostgreSQL查询与调试实战.md)
 - 代码修改导航：[`docs/01_代码结构与修改导航.md`](01_代码结构与修改导航.md)
+
+
+---
+
+# 17. 资源生命周期与导入撤销扩展 API
+
+本节只做当前 OpenAPI 的导航和业务边界说明；精确 Request/Response 字段继续以生成 OpenAPI 为唯一机器事实。归档与永久删除是不同动作：归档用于日常目录整理，永久删除始终由服务端引用资格判断。
+
+## 17.1 Data Import Campaign 撤销
+
+- `GET /api/v1/data-import-campaigns/{campaign_id}/revocation-preview`：只读评估可撤销性和影响；不写撤销事实。
+- `POST /api/v1/data-import-campaigns/{campaign_id}/revoke`：在资格允许时提交可审计撤销；共享来源数据继续保留。
+
+## 17.2 Keyword Pack 生命周期
+
+- `POST /api/v1/keyword-packs/{pack_id}/copy`
+- `POST /api/v1/keyword-packs/{pack_id}/archive`
+- `POST /api/v1/keyword-packs/{pack_id}/restore`
+- `GET /api/v1/keyword-packs/{pack_id}/delete-eligibility`
+- `PUT /api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}`
+- `POST /api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}/remove`
+- `GET /api/v1/resource-lifecycle/keyword-packs/archived`
+
+关键词成员文本修改只替换当前 Pack 的关系，不会修改其它 Pack 共享的 Keyword 实体。
+
+## 17.3 Collection Plan 生命周期
+
+- `POST /api/v1/collection-plans/{plan_id}/copy`
+- `POST /api/v1/collection-plans/{plan_id}/archive`
+- `POST /api/v1/collection-plans/{plan_id}/restore`
+- `GET /api/v1/collection-plans/{plan_id}/delete-eligibility`
+- `GET /api/v1/resource-lifecycle/collection-plans/archived`
+
+计划主体仍通过现有更新 Contract 编辑并提升 `schedule_version`；恢复后保持停用。
+
+## 17.4 Provider Config 生命周期与连接测试
+
+- `GET /api/v1/provider-configs/lifecycle/archived`
+- `POST /api/v1/provider-configs/{provider_config_id}/test-connection`
+- `POST /api/v1/provider-configs/{provider_config_id}/archive`
+- `POST /api/v1/provider-configs/{provider_config_id}/restore`
+- `GET /api/v1/provider-configs/{provider_config_id}/delete-eligibility`
+
+连接测试只返回安全状态、用户可读说明和延迟，不回显 Secret 或第三方原始响应。
+
+## 17.5 Analysis Scheme 生命周期
+
+- `GET /api/v1/analysis-schemes/lifecycle/archived`
+- `POST /api/v1/analysis-schemes/{scheme_id}/copy`
+- `POST /api/v1/analysis-schemes/{scheme_id}/archive`
+- `POST /api/v1/analysis-schemes/{scheme_id}/restore`
+- `GET /api/v1/analysis-schemes/{scheme_id}/delete-eligibility`
+- `DELETE /api/v1/analysis-schemes/{scheme_id}`
+
+当前生效 Scheme 不能归档；曾发布或进入 Analysis Run 历史的 Scheme 不能永久删除。

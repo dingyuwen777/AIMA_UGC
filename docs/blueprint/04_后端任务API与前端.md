@@ -107,6 +107,10 @@ reporting.content-export-excel.v1
 
 - [`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py)
 - [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/bootstrap/import_revocation_http.py`](../../backend/src/aima_ugc/bootstrap/import_revocation_http.py)
+- [`backend/src/aima_ugc/bootstrap/resource_lifecycle_http.py`](../../backend/src/aima_ugc/bootstrap/resource_lifecycle_http.py)
+- [`backend/src/aima_ugc/bootstrap/provider_lifecycle_http.py`](../../backend/src/aima_ugc/bootstrap/provider_lifecycle_http.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_scheme_lifecycle_http.py`](../../backend/src/aima_ugc/bootstrap/analysis_scheme_lifecycle_http.py)
 - [`backend/src/aima_ugc/entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py)
 
 Router 负责：
@@ -135,10 +139,12 @@ Service 表达一个业务动作，例如：
 创建一次 Collection Run
 列出采集运行中心记录
 创建/预检/启动 Data Import Campaign
+预览并安全撤销已完成 Data Import Campaign
 兼容上传单个 Excel Import Batch
 预检并创建 Content Analysis Run
 创建 Excel Export
-创建/启停 Collection Plan
+创建/编辑/复制/启停/归档 Collection Plan
+维护 Keyword Pack / Provider / Analysis Scheme 生命周期与连接测试
 ```
 
 真实生产 Service 主要在：
@@ -220,6 +226,8 @@ frontend/src/generated/api/
 - 后端 Contract 变化后必须重新生成并验证前端 Client；
 - 前端不能维护另一套平行 Request/Response Type 来“暂时对齐”。
 
+产品页面默认层同时遵守“业务语义上浮、工程语义下沉”：用户主要看到文件/来源、业务状态、处理结果、配置名称和可执行动作；Batch/Campaign/Job/Run/UUID、Provider Attempt、Raw Artifact、原始 error/reason code 等继续保留，但只在技术详情或审计追溯层出现。
+
 时间 Contract 统一规则：AIMA 自有 HTTP `datetime` 以带 `+08:00` 偏移的 ISO-8601 北京时间序列化；带时区的时间筛选进入 Contract 后先归一到 `Asia/Shanghai` 再解释。第三方 Raw 或外部协议必须保持原始 timestamp/epoch/timezone 语义的事实层不改写，只有进入 AIMA 自有展示/序列化边界时才按该边界规则转换。前端 generated Client 不维护第二套 UTC 假设。
 
 ---
@@ -255,6 +263,8 @@ GET  /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility
 - [`backend/src/aima_ugc/modules/collection/http.py`](../../backend/src/aima_ugc/modules/collection/http.py)
 
 `collection-runtime/runs` 是统一只读投影，不意味着 Data Import Campaign、兼容 Excel Import Batch 和 Collection Run 被合并成一张万能表。当前页面导入主链以 Campaign 为父事实；运行中心直接投影 Campaign 的状态、持久进度和行统计，旧 Import Batch 仅继续承担兼容入口。汇总统计必须按父事实计数，不能再把 Campaign 下的物理 Chunk Batch 重复算作独立导入。
+
+“取消任务”和“撤销已完成导入”是两个不同动作：取消只终止尚未完成的执行；撤销先计算来源贡献影响，再在资格允许时撤回该 Campaign 的当前业务贡献。撤销不会按 Campaign 粗暴 DELETE Content，也不会改写共享来源仍需要的数据。
 
 辅助补采同样先选择真实导入父事实。新 Campaign 通过逐行来源账本反查已有 Content，所以 `unchanged` 等没有新建 Content Version 的行仍可进入资格判断；旧 Import Batch 继续沿用 Provider Request/Attempt 追溯。Collection Run 只保存其中一种来源 ID，二者不得同时出现。资格接口只返回当前分析配置下仍可补采的平台和数量，前端不能通过声音广场分页猜测。
 
