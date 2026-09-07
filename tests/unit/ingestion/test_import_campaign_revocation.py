@@ -93,7 +93,32 @@ def test_preview_does_not_calculate_running_campaign_impact() -> None:
 
     assert preview.eligible is False
     assert preview.already_revoked is False
+    assert preview.ineligible_reason == "campaign_not_completed"
     assert preview.impact == ImportCampaignRevocationImpact(0, 0, 0)
+
+
+def test_preview_fails_closed_when_reversible_evidence_is_missing() -> None:
+    """已完成 Campaign 只要存在缺失 Delta 的写入，也不能进入自动撤销。"""
+
+    repository = _FakeRepository(
+        status="succeeded",
+        impact=ImportCampaignRevocationImpact(5, 3, 2, 1),
+    )
+    preview = ImportCampaignRevocationService(repository).preview(uuid4())
+
+    assert preview.eligible is False
+    assert preview.ineligible_reason == "reversible_evidence_missing"
+    assert preview.impact.unreversible_content_count == 1
+
+    with pytest.raises(ImportCampaignRevocationConflict):
+        ImportCampaignRevocationService(repository).revoke(
+            uuid4(),
+            actor_ref="admin",
+            request_id="request-unsafe",
+            reason=None,
+            revoked_at=_NOW,
+        )
+    assert repository.create_count == 0
 
 
 def test_revoke_locks_campaign_and_persists_normalized_fact() -> None:
