@@ -12,14 +12,14 @@ async function renderLlmPanel(): Promise<string> {
 }
 
 describe('LLM provider concurrency configuration', () => {
-  it('exposes provider concurrency and RPS without exposing a shard-size input', async () => {
+  it('keeps concurrency and rate controls while hiding implementation terminology', async () => {
     const html = await renderLlmPanel()
 
-    expect(html).toContain('模型并发上限')
+    expect(html).toContain('同时请求数上限')
     expect(html).toContain('max="5000"')
-    expect(html).toContain('最大 RPS')
-    expect(html).toContain('自动计算 Shard Size')
-    expect(html).toContain('最大校验重试次数')
-    expect(html).not.toContain('Shard Size</span><input')
+    expect(html).toContain('每秒请求启动上限')
+    expect(html).toContain('自动安排任务分片')
+    expect(html).toContain('结果校验失败重试次数')
+    expect(html).not.toContain('Shard Size')
   })
 })

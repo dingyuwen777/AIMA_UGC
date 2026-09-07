@@ -117,6 +117,10 @@
   .provider-item strong,
   .empty-state,
   .form-grid label,
+  .advanced-grid label,
+  .advanced-settings > summary,
+  .technical-details > summary,
+  .advanced-editor > summary,
   .check-row strong
 ) {
   font-size: var(--aima-font-size-body-small);
@@ -133,6 +137,15 @@
   .provider-item small,
   .badges em,
   .form-grid label > small,
+  .advanced-grid label > small,
+  .advanced-settings > p,
+  .technical-details dt,
+  .technical-details dd,
+  .technical-note,
+  .audit-details dt,
+  .audit-details dd,
+  .raw-detail > strong,
+  .raw-detail pre,
   .check-row small
 ) {
   font-size: var(--aima-font-size-caption);

@@ -100,9 +100,12 @@ test('keeps healthy admin resources usable when audit fails and paginates audit 
   await expect(page.getByText('爱玛 Q7')).toBeVisible()
   await expect(page.getByRole('button', { name: '新增车型' })).toBeEnabled()
 
-  await page.getByRole('button', { name: '审计记录' }).click()
+  await page.getByRole('button', { name: '操作记录' }).click()
   await expect(page.getByText('audit temporarily unavailable')).toBeVisible()
   await page.getByRole('button', { name: '重试当前数据' }).click()
+  await expect(page.getByText('配置操作', { exact: true })).toBeVisible()
+  await expect(page.getByText('audit-event-0')).not.toBeVisible()
+  await page.getByText('技术详情', { exact: true }).click()
   await expect(page.getByText('audit-event-0')).toBeVisible()
   await expect(page.getByText('第 1 / 2 页 · 共 150 条', { exact: true })).toBeVisible()
 
@@ -112,6 +115,8 @@ test('keeps healthy admin resources usable when audit fails and paginates audit 
   })
   await page.getByRole('button', { name: '下一页' }).click()
   await secondPage
+  await expect(page.getByText('配置操作', { exact: true })).toBeVisible()
+  await page.getByText('技术详情', { exact: true }).click()
   await expect(page.getByText('audit-event-100')).toBeVisible()
   await expect(page.getByText('第 2 / 2 页')).toBeVisible()
 })

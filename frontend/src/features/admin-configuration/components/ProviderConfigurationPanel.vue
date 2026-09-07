@@ -40,12 +40,13 @@ const draft = reactive({
 })
 
 const isLlm = computed(() => props.providerKind === 'llm')
-const panelTitle = computed(() => (isLlm.value ? 'AI 模型运行配置' : 'TikHub 运行配置'))
+const panelTitle = computed(() => (isLlm.value ? 'AI 模型服务' : 'TikHub 采集服务'))
 const panelDescription = computed(() => (
   isLlm.value
-    ? '配置 OpenAI-compatible 模型连接、模型名和运行参数。默认配置会被新建 Analysis Run 立即读取。'
-    : '配置 TikHub 连接与请求限制。采集 Run 创建后会冻结对应 Provider 版本，后续修改只影响新 Run。'
+    ? '管理 AI 模型的服务地址、模型和访问密钥。保存后，新建的 AI 分析任务会使用最新配置。'
+    : '管理 TikHub 的服务地址、访问密钥和请求限制。保存后，新建的采集任务会使用最新配置。'
 ))
+const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
 const formValid = computed(() => {
   if (!draft.displayName.trim() || !draft.provider.trim() || !draft.baseUrl.trim()) return false
   if (isLlm.value && !draft.model.trim()) return false
@@ -145,8 +146,8 @@ async function save(): Promise<void> {
       }
       const updated = await editProviderConfig(draft.id, body)
       notice.value = draft.apiKey.trim()
-        ? '配置已保存，密钥已轮换为新的不可变版本；新任务立即使用新配置。'
-        : '配置已保存；新任务立即使用新配置，当前运行任务保持原快照。'
+        ? '配置已保存，访问密钥已更新；新任务将使用新配置。'
+        : '配置已保存；新任务将使用新配置，正在运行的任务不受影响。'
       await load()
       const refreshed = items.value.find((item) => item.id === updated.id)
       if (refreshed) selectItem(refreshed)
@@ -166,7 +167,7 @@ async function save(): Promise<void> {
         is_default: isLlm.value ? draft.isDefault : false,
       }
       const created = await addProviderConfig(body)
-      notice.value = '配置已创建并写入 Secret Store；新任务无需重启服务即可使用。'
+      notice.value = '配置已创建；新任务无需重启服务即可使用。'
       await load()
       const refreshed = items.value.find((item) => item.id === created.id)
       if (refreshed) selectItem(refreshed)
@@ -211,8 +212,8 @@ async function save(): Promise<void> {
       </AimaFeedbackBanner>
 
       <div class="runtime-rule">
-        <strong>生效规则</strong>
-        <span>保存后，新建任务读取最新配置；已创建/运行中的任务及其自动重试继续使用原运行时快照。</span>
+        <strong>什么时候生效</strong>
+        <span>保存后只影响新建任务；已经创建或正在运行的任务继续使用原配置，不会被中途改变。</span>
       </div>
 
       <div
@@ -225,7 +226,7 @@ async function save(): Promise<void> {
         v-else-if="items.length === 0"
         class="empty-state"
       >
-        尚未创建{{ isLlm ? ' AI 模型' : ' TikHub' }}配置。右侧填写后即可启用运行时配置中心。
+        尚未创建{{ isLlm ? ' AI 模型' : ' TikHub' }}配置。填写右侧信息后即可使用。
       </div>
       <button
         v-for="item in items"
@@ -240,19 +241,19 @@ async function save(): Promise<void> {
           <strong>{{ item.display_name }}</strong>
           <span class="badges">
             <em v-if="item.is_default">默认</em>
-            <em :class="{ muted: !item.enabled }">{{ item.enabled ? '启用' : '停用' }}</em>
+            <em :class="{ muted: !item.enabled }">{{ item.enabled ? '已启用' : '已停用' }}</em>
           </span>
         </span>
-        <span>{{ item.provider }}<template v-if="item.model"> · {{ item.model }}</template></span>
-        <small>revision {{ item.revision }} · {{ item.secret_configured ? '密钥已配置' : '密钥未配置' }}</small>
+        <span v-if="item.model">模型：{{ item.model }}</span>
+        <small>{{ item.secret_configured ? '访问密钥已配置' : '访问密钥未配置' }}</small>
       </button>
     </section>
 
     <section class="card provider-form">
       <header>
         <div>
-          <h2>{{ draft.id ? '编辑运行配置' : '新增运行配置' }}</h2>
-          <p>API Key 不会回显。编辑时留空表示沿用当前密钥；填写新值会创建新的不可变 Secret 版本。</p>
+          <h2>{{ draft.id ? '编辑服务配置' : '新增服务配置' }}</h2>
+          <p>访问密钥不会回显。编辑已有配置时留空表示继续使用当前密钥。</p>
         </div>
       </header>
 
@@ -261,83 +262,81 @@ async function save(): Promise<void> {
           <span>配置名称</span>
           <input
             v-model="draft.displayName"
-            placeholder="便于管理员识别"
+            placeholder="例如：默认 AI 模型"
           >
         </label>
-        <label>
-          <span>Provider 标识</span>
+        <label v-if="isLlm">
+          <span>模型标识</span>
           <input
-            v-model="draft.provider"
-            :readonly="Boolean(draft.id) || !isLlm"
-            :placeholder="isLlm ? 'openai_compatible' : 'tikhub'"
+            v-model="draft.model"
+            placeholder="填写服务商提供的模型标识"
           >
-          <small>稳定身份创建后不可修改。平台类型与 Provider 是两个不同概念。</small>
         </label>
         <label class="span-2">
-          <span>Base URL</span>
+          <span>服务地址</span>
           <input
             v-model="draft.baseUrl"
             :placeholder="isLlm ? 'https://provider.example/v1' : 'https://api.tikhub.dev'"
           >
         </label>
-        <label v-if="isLlm">
-          <span>模型</span>
-          <input
-            v-model="draft.model"
-            placeholder="例如 provider 的正式 model id"
-          >
-        </label>
-        <label :class="{ 'span-2': !isLlm }">
-          <span>API Key</span>
+        <label class="span-2">
+          <span>访问密钥</span>
           <input
             v-model="draft.apiKey"
             type="password"
             autocomplete="new-password"
-            :placeholder="draft.id ? '留空保持当前密钥' : '创建配置时必填'"
+            :placeholder="draft.id ? '留空表示保持不变' : '创建配置时必填'"
           >
-          <small v-if="draft.id">当前密钥不会从后端返回到浏览器。</small>
-        </label>
-        <label>
-          <span>请求超时（秒）</span>
-          <input
-            v-model.number="draft.timeoutSeconds"
-            type="number"
-            min="1"
-            max="3600"
-          >
-        </label>
-        <label>
-          <span>{{ isLlm ? '最大校验重试次数' : '最大重试次数' }}</span>
-          <input
-            v-model.number="draft.maxRetries"
-            type="number"
-            min="0"
-            max="20"
-          >
-          <small v-if="isLlm">仅用于模型输出未通过 Taxonomy/结构校验后的 Validation Retry；网络重试由运行时独立控制。</small>
-        </label>
-        <label>
-          <span>{{ isLlm ? '模型并发上限' : '最大并发' }}</span>
-          <input
-            v-model.number="draft.maxConcurrency"
-            type="number"
-            min="1"
-            max="5000"
-          >
-          <small v-if="isLlm">表示同时在途的单内容逻辑模型请求；新 Analysis Run 会冻结此值并自动计算 Shard Size，无需单独配置 Shard。</small>
-        </label>
-        <label>
-          <span>最大 RPS</span>
-          <input
-            v-model="draft.maxRps"
-            type="number"
-            min="1"
-            max="10000"
-            placeholder="留空表示不额外限速"
-          >
-          <small v-if="isLlm">限制物理 HTTP Attempt 的启动速率，包含 Transport Retry，用于抑制 429/5xx 时的请求风暴。</small>
+          <small v-if="draft.id">为安全起见，系统不会把当前密钥返回到浏览器。</small>
         </label>
       </div>
+
+      <details class="advanced-settings">
+        <summary>高级设置</summary>
+        <p>通常保持默认值即可；只有服务商限流、响应较慢或需要控制并发时才需要调整。</p>
+        <div class="advanced-grid">
+          <label>
+            <span>单次请求最长等待时间（秒）</span>
+            <input
+              v-model.number="draft.timeoutSeconds"
+              type="number"
+              min="1"
+              max="3600"
+            >
+          </label>
+          <label>
+            <span>{{ isLlm ? '结果校验失败重试次数' : '请求失败重试次数' }}</span>
+            <input
+              v-model.number="draft.maxRetries"
+              type="number"
+              min="0"
+              max="20"
+            >
+            <small v-if="isLlm">仅在模型返回结果不符合系统要求时重试。</small>
+          </label>
+          <label>
+            <span>同时请求数上限</span>
+            <input
+              v-model.number="draft.maxConcurrency"
+              type="number"
+              min="1"
+              max="5000"
+            >
+            <small>控制同一时间最多发起多少个请求；系统会据此自动安排任务分片，无需单独设置分片大小。</small>
+          </label>
+          <label>
+            <span>每秒请求启动上限</span>
+            <input
+              v-model="draft.maxRps"
+              type="number"
+              min="1"
+              max="10000"
+              placeholder="留空表示不额外限速"
+            >
+            <small>服务商存在每秒请求限制时填写；留空表示不额外限速。</small>
+          </label>
+        </div>
+      </details>
 
       <div class="switches">
         <label class="check-row">
@@ -345,7 +344,7 @@ async function save(): Promise<void> {
             v-model="draft.enabled"
             type="checkbox"
           >
-          <span><strong>启用配置</strong><small>停用后不会被新的运行选择。</small></span>
+          <span><strong>启用配置</strong><small>停用后，新任务不会再选择这项配置。</small></span>
         </label>
         <label
           v-if="isLlm"
@@ -355,14 +354,38 @@ async function save(): Promise<void> {
             v-model="draft.isDefault"
             type="checkbox"
           >
-          <span><strong>设为默认 AI 模型</strong><small>新 Analysis Run 只读取启用的默认 LLM 配置。</small></span>
+          <span><strong>设为默认 AI 模型</strong><small>没有特别指定时，新 AI 分析任务使用这项配置。</small></span>
         </label>
       </div>
 
       <div class="security-note">
-        <strong>密钥边界</strong>
-        <span>数据库、接口响应、审计和运行日志都不保存 API Key 明文。Run 仅冻结不可变 Secret 引用，确保密钥轮换后旧任务仍可安全重试。</span>
+        <strong>密钥保护</strong>
+        <span>访问密钥不会在页面、审计记录或运行日志中显示明文；更新密钥也不会影响已经开始执行的任务。</span>
       </div>
+
+      <details class="technical-details">
+        <summary>技术信息</summary>
+        <dl>
+          <div>
+            <dt>服务类型标识</dt>
+            <dd>
+              <input
+                v-model="draft.provider"
+                :readonly="Boolean(draft.id) || !isLlm"
+                :placeholder="isLlm ? 'openai_compatible' : 'tikhub'"
+              >
+            </dd>
+          </div>
+          <div v-if="selectedItem">
+            <dt>配置标识</dt>
+            <dd>{{ selectedItem.id }}</dd>
+          </div>
+          <div v-if="selectedItem">
+            <dt>配置修订号</dt>
+            <dd>{{ selectedItem.revision }}</dd>
+          </div>
+        </dl>
+      </details>
 
       <div class="actions">
         <AimaButton
@@ -408,13 +431,26 @@ h2 { color: var(--aima-text); font-size: 15px; }
 .badges em.muted { color: var(--aima-text-muted); background: #f2f4f7; }
 .empty-state { padding: 28px 14px; color: var(--aima-text-muted); background: #fafbfc; text-align: center; font-size: 11px; line-height: 18px; }
 .provider-form { display: grid; align-content: start; gap: 14px; }
-.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.form-grid label { display: grid; gap: 6px; color: var(--aima-text-muted); font-size: 11px; }
-.form-grid label > small { color: var(--aima-text-disabled); font-size: 10px; line-height: 15px; }
+.form-grid,
+.advanced-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.form-grid label,
+.advanced-grid label { display: grid; gap: 6px; color: var(--aima-text-muted); font-size: 11px; }
+.form-grid label > small,
+.advanced-grid label > small { color: var(--aima-text-disabled); font-size: 10px; line-height: 15px; }
 .span-2 { grid-column: span 2; }
 input { width: 100%; height: 38px; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); outline: none; color: var(--aima-text-secondary); background: var(--aima-surface); font: inherit; font-size: 12px; }
 input:read-only { cursor: not-allowed; color: var(--aima-text-muted); background: #f5f7fa; }
 input:focus { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-primary-soft); }
+.advanced-settings,
+.technical-details { border: 1px solid var(--aima-border); border-radius: 7px; background: #fafbfc; }
+.advanced-settings > summary,
+.technical-details > summary { padding: 10px 12px; color: var(--aima-text-secondary); cursor: pointer; font-size: 11px; font-weight: 600; }
+.advanced-settings > p { margin: 0; padding: 0 12px 10px; }
+.advanced-grid { padding: 0 12px 12px; }
+.technical-details dl { display: grid; gap: 8px; margin: 0; padding: 0 12px 12px; }
+.technical-details dl > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; align-items: center; }
+.technical-details dt { color: var(--aima-text-muted); font-size: 10px; }
+.technical-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--aima-text-secondary); font-size: 10px; }
 .switches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .check-row { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border: 1px solid var(--aima-border); border-radius: 7px; }
 .check-row > input { flex: 0 0 auto; width: 15px; height: 15px; margin-top: 2px; }
@@ -423,5 +459,5 @@ input:focus { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aim
 .check-row small { color: var(--aima-text-muted); font-size: 10px; line-height: 15px; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 1280px) { .provider-layout { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { .form-grid, .switches { grid-template-columns: 1fr; } .span-2 { grid-column: auto; } }
+@media (max-width: 760px) { .form-grid, .advanced-grid, .switches { grid-template-columns: 1fr; } .span-2 { grid-column: auto; } }
 </style>
