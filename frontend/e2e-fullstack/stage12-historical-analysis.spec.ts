@@ -184,6 +184,92 @@ async function injectPrewriteChunkFailure(campaignId: string): Promise<void> {
   )
 }
 
+
+async function revokeHistoricalCampaign(
+  page: Page,
+  request: APIRequestContext,
+  campaignId: string,
+): Promise<void> {
+  await page.goto(`/collection-runtime?data_import_campaign_id=${campaignId}`)
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
+  await expect(dialog).toBeVisible({ timeout: 60_000 })
+
+  const previewResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === 'GET'
+      && new URL(response.url()).pathname
+        === `/api/v1/data-import-campaigns/${campaignId}/revocation-preview`,
+  )
+  await dialog.getByRole('button', { name: '评估撤销', exact: true }).click()
+  const previewResponse = await previewResponsePromise
+  expect(previewResponse.status()).toBe(200)
+  const preview = await previewResponse.json() as {
+    eligible: boolean
+    already_revoked: boolean
+    impact: {
+      affected_content_count: number
+      hidden_content_count: number
+      retained_shared_content_count: number
+      unreversible_content_count: number
+    }
+  }
+  expect(preview.eligible).toBe(true)
+  expect(preview.already_revoked).toBe(false)
+  expect(preview.impact.affected_content_count).toBeGreaterThan(0)
+  expect(preview.impact.hidden_content_count).toBeGreaterThan(0)
+  expect(preview.impact.retained_shared_content_count).toBeGreaterThan(0)
+  expect(preview.impact.unreversible_content_count).toBe(0)
+  await expect(dialog.getByText('撤销影响', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('其它来源保留', { exact: true })).toBeVisible()
+
+  page.once('dialog', (confirmation) => confirmation.accept())
+  const revokeResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname === `/api/v1/data-import-campaigns/${campaignId}/revoke`,
+  )
+  await dialog.getByRole('button', { name: '撤销本次导入', exact: true }).click()
+  const revokeResponse = await revokeResponsePromise
+  expect(revokeResponse.status()).toBe(200)
+  const revoked = await revokeResponse.json() as {
+    already_revoked: boolean
+    impact: {
+      affected_content_count: number
+      hidden_content_count: number
+      retained_shared_content_count: number
+    }
+  }
+  expect(revoked.already_revoked).toBe(false)
+  expect(revoked.impact).toMatchObject({
+    affected_content_count: preview.impact.affected_content_count,
+    hidden_content_count: preview.impact.hidden_content_count,
+    retained_shared_content_count: preview.impact.retained_shared_content_count,
+  })
+  await expect(dialog.getByText(/撤销完成：影响 \d+ 条内容/)).toBeVisible()
+
+  const repeated = await request.post(`/api/v1/data-import-campaigns/${campaignId}/revoke`, {
+    data: { reason: 'full-stack idempotency check' },
+  })
+  expect(repeated.status()).toBe(200)
+  expect((await repeated.json() as { already_revoked: boolean }).already_revoked).toBe(true)
+
+  const hiddenResponse = await request.get(
+    `/api/v1/contents?search=${encodeURIComponent('爱玛 Stage12 历史新建')}&limit=10`,
+  )
+  expect(hiddenResponse.status()).toBe(200)
+  const hiddenItems = await hiddenResponse.json() as { items: Array<{ title: string | null }> }
+  expect(hiddenItems.items.some((item) => item.title === '爱玛 Stage12 历史新建')).toBe(false)
+
+  const retainedResponse = await request.get(
+    `/api/v1/contents?search=${encodeURIComponent('爱玛 Stage12 当前标题')}&limit=10`,
+  )
+  expect(retainedResponse.status()).toBe(200)
+  const retainedItems = await retainedResponse.json() as { items: Array<{ title: string | null }> }
+  expect(retainedItems.items.some((item) => item.title === '爱玛 Stage12 当前标题')).toBe(true)
+
+  await page.goto('/voice-plaza')
+  await expect(page.getByText('爱玛 Stage12 当前标题', { exact: true })).toBeVisible()
+  await expect(page.getByText('爱玛 Stage12 历史新建', { exact: true })).toHaveCount(0)
+}
+
 test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入库，并保留 selected/all Analysis Run', async ({ page, request }) => {
   const ordinaryFixture = process.env.AIMA_STAGE12_ORDINARY_FIXTURE
   expect(ordinaryFixture, 'AIMA_STAGE12_ORDINARY_FIXTURE 必须指向普通导入 Fixture').toBeTruthy()
@@ -270,4 +356,6 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   expect(allRun.id).not.toBe(secondRun.id)
   expect(allRun.sequenceNo).toBeGreaterThan(secondRun.sequenceNo)
   expect(allRun.targetCount).toBeGreaterThan(1)
+
+  await revokeHistoricalCampaign(page, request, campaignId)
 })
