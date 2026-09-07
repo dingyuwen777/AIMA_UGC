@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260907-admin-config-business-view
 title: 管理员配置业务化展示与技术详情收敛
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feat/admin-config-business-view
 created: 2026-09-07
