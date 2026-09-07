@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_validator
 
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
+
+DataImportRevocationIneligibleReason = Literal[
+    "campaign_not_completed",
+    "reversible_evidence_missing",
+]
 
 
 class DataImportRevocationImpactResponse(BaseModel):
@@ -18,6 +24,7 @@ class DataImportRevocationImpactResponse(BaseModel):
     affected_content_count: int = Field(ge=0)
     hidden_content_count: int = Field(ge=0)
     retained_shared_content_count: int = Field(ge=0)
+    unreversible_content_count: int = Field(default=0, ge=0)
 
 
 class DataImportRevocationPreviewResponse(BaseModel):
@@ -28,6 +35,7 @@ class DataImportRevocationPreviewResponse(BaseModel):
     campaign_id: UUID
     eligible: bool
     already_revoked: bool
+    ineligible_reason: DataImportRevocationIneligibleReason | None = None
     impact: DataImportRevocationImpactResponse
 
 
@@ -63,6 +71,7 @@ class DataImportRevocationResponse(BaseModel):
 __all__ = [
     "DataImportRevokeRequest",
     "DataImportRevocationImpactResponse",
+    "DataImportRevocationIneligibleReason",
     "DataImportRevocationPreviewResponse",
     "DataImportRevocationResponse",
 ]
