@@ -30,21 +30,23 @@ async function renderPage(): Promise<string> {
 }
 
 describe('administrator configuration baseline', () => {
-  it('keeps runtime providers, vehicle, pack relation, scheme and audit in one guarded page', async () => {
+  it('keeps all administrator capabilities while presenting business-readable navigation', async () => {
     const html = await renderPage()
 
     for (const label of [
-      '车型目录',
-      '词包车型关联',
+      '车型管理',
+      '词包关联',
       'AI 模型',
       'TikHub',
-      'Analysis Scheme',
-      '审计记录',
+      'AI 分析规则',
+      '操作记录',
     ]) {
       expect(html).toContain(label)
     }
-    expect(html).toContain('有引用的车型仅允许停用、改名或合并')
-    expect(html).toContain('运行时配置保存后对新任务即时生效')
+    expect(html).toContain('车型编码创建后保持不变')
+    expect(html).toContain('技术标识与原始审计数据仅在需要时展开查看')
+    expect(html).not.toContain('Analysis Scheme')
+    expect(html).not.toContain('审计记录')
     expect(html).not.toContain('双人审批')
   })
 })

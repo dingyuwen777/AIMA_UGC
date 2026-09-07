@@ -25,6 +25,7 @@ import type {
   LocalDataImportCampaignCreateRequest,
 } from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
+import { createClientIdempotencyKey } from '../../shared/idempotency'
 import {
   createTikHubCollectionRun,
   cancelHistoricalCampaign,
@@ -533,7 +534,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     let campaignId: string | null = null
     try {
       const request: LocalDataImportCampaignCreateRequest = {
-        client_idempotency_key: crypto.randomUUID(),
+        client_idempotency_key: createClientIdempotencyKey(),
         files: files.map((item) => ({
           relative_path: item.relativePath,
           byte_size: item.file.size,

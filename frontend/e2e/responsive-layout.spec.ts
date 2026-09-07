@@ -266,7 +266,7 @@ for (const viewport of viewports) {
       expect(smallButton).not.toBeNull()
       expect(Math.abs((smallButton?.height ?? 0) - 30)).toBeLessThanOrEqual(1)
     }
-    await page.getByRole('button', { name: '词包车型关联' }).click()
+    await page.getByRole('button', { name: '词包关联' }).click()
     await expect(page.locator('.list-card > button span').first()).toBeVisible()
     expect(await fontSize(page, '.list-card > button span')).toBeGreaterThanOrEqual(11)
 
@@ -274,7 +274,9 @@ for (const viewport of viewports) {
     await expect(page.locator('.provider-layout')).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
     expect(await fontSize(page, '.runtime-rule span')).toBeGreaterThanOrEqual(11)
-    expect(await fontSize(page, '.form-grid label > small')).toBeGreaterThanOrEqual(11)
+    await page.locator('.advanced-settings > summary').click()
+    await expect(page.locator('.advanced-grid label > small').first()).toBeVisible()
+    expect(await fontSize(page, '.advanced-grid label > small')).toBeGreaterThanOrEqual(11)
     if (viewport.width <= 1280) {
       const providerColumns = await page.locator('.provider-layout').evaluate(
         (element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length,
