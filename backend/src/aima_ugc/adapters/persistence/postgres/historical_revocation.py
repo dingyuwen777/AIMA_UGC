@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import func, insert, select, union
@@ -128,7 +128,7 @@ class PostgresImportCampaignRevocationRepository:
         return _record(row)
 
 
-def _affected_content_ids(campaign_id: UUID):
+def _affected_content_ids(campaign_id: UUID) -> Any:
     """合并直接文件导入与基于 Campaign 的在线补采贡献，按 Content 去重。"""
 
     direct = (
