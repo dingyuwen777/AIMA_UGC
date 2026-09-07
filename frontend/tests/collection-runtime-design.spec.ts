@@ -188,6 +188,20 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(source).not.toContain('setInterval(() => void pollCampaign(), 1_000)')
   })
 
+  it('任务中心失败导入深链会定位到对应导入任务，而不是只打开运行中心首页', async () => {
+    const pageSource = await readCollectionRuntimeSource('CollectionRuntimePage.vue')
+    const taskCenterSource = await readFile(
+      new URL('../src/features/task-center/store.ts', import.meta.url),
+      'utf8',
+    )
+
+    expect(taskCenterSource).toContain('/collection-runtime?data_import_campaign_id=')
+    expect(taskCenterSource).toContain("actionLabel: hasImportFailure ? '处理失败项' : '查看'")
+    expect(pageSource).toContain('route.query.data_import_campaign_id')
+    expect(pageSource).toContain('await store.refreshHistoricalCampaign(campaignId)')
+    expect(pageSource).toContain('指定导入任务暂不可打开，请从列表重新选择。')
+  })
+
   it('辅助补采产品与可访问文案不绑定具体 Provider 或后台实现名', async () => {
     const [drawerSource, pageSource] = await Promise.all([
       readCollectionRuntimeSource('components/TikHubSupplementDrawer.vue'),
