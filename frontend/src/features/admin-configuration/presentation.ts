@@ -39,6 +39,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   keyword_pack_copied: '复制词包',
   keyword_pack_deleted: '删除词包',
   keyword_pack_keyword_removed: '移除词包关键词',
+  keyword_pack_keyword_updated: '修改词包关键词',
   keyword_pack_restored: '恢复词包',
   keyword_pack_updated: '更新词包',
   keyword_pack_vehicle_links_updated: '更新词包车型关联',
