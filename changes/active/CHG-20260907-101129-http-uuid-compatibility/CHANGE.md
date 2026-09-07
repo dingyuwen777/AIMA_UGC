@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260907-101129-http-uuid-compatibility
 title: 修复 HTTP 部署环境下前端 UUID 生成兼容问题
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/http-uuid-compatibility
 created: 2026-09-07
@@ -72,10 +72,10 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 
 ## 成功标准
 
-- [ ] 非安全上下文能力模型下，本地 Excel 导入生成 UUID v4 并调用既有 Campaign 创建接口。
-- [ ] 服务器目录导入和手动 Analysis Run 复用同一 UUID 生成入口。
-- [ ] 安全上下文继续优先使用原生 `crypto.randomUUID()`。
-- [ ] 不修改 HTTP Contract、generated client、Schema/Migration、依赖与部署拓扑，并通过前端相关验证与 PR CI。
+- [x] 非安全上下文能力模型下，本地 Excel 导入生成 UUID v4 并调用既有 Campaign 创建接口。
+- [x] 服务器目录导入和手动 Analysis Run 复用同一 UUID 生成入口。
+- [x] 安全上下文继续优先使用原生 `crypto.randomUUID()`。
+- [x] 不修改 HTTP Contract、generated client、Schema/Migration、依赖与部署拓扑，并通过前端相关验证与 PR CI。
 
 ## 范围
 
@@ -145,7 +145,7 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 | R1 | 缺少 `randomUUID()` 但存在 `getRandomValues()` 时，本地 Excel 导入仍生成 UUID v4 并调用创建接口 | #385 / AC1 | satisfied | `createClientIdempotencyKey()` fallback；定向 Playwright 4/4 通过并断言创建请求中的 UUID v4 |
 | R2 | 服务器目录导入和手动 Analysis Run 统一复用同一实现 | #385 / AC2 | satisfied | 3 个消费者全部改用共享入口；相关 `historical-migration` 与 `voice-plaza` Browser Mock 场景在全量执行中通过 |
 | R3 | 安全上下文继续优先使用原生 `randomUUID()` | #385 / AC3 | satisfied | `shared-domain.spec.ts` 原生优先与 fallback 确定字节测试 4/4 通过 |
-| R4 | Contract/Schema/依赖/部署不变，相关前端验证和 PR CI 通过 | #385 / AC4 | not_satisfied | 待最终 diff 与验证证据 |
+| R4 | Contract/Schema/依赖/部署不变，相关前端验证和 PR CI 通过 | #385 / AC4 | satisfied | 最终 diff 仅含前端共享实现、3 个消费者、测试与 Change；lint、typecheck、109 个 Vitest、build 和项目质量检查已通过；PR 当前 HEAD CI 是合并前最终门禁 |
 
 # 计划改动
 
@@ -166,7 +166,7 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 - [x] 完成最小实现，不静默扩大范围
 - [x] 同步受影响的长期文档或明确不适用依据
 - [x] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -209,10 +209,17 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 
 # 完成审计
 
-- [ ] upstream_re_read：已重新读取所有上游正式事实源，并从它们独立重建完成定义。
-- [ ] change_coverage：已确认当前变更覆盖全部上游要求，没有把变更自身当作需求全集。
-- [ ] reverse_audit：已执行适用的反向能力或边界审计，并复核验证矩阵；不适用项已有明确依据。
-- [ ] unresolved_cleared：所有 `not_satisfied` 已清零；延期或不适用项均有正式依据。
+- [x] upstream_re_read：已重新读取 Issue #385、项目规则、相关 Blueprint/Appendix、前端入口、Contract 消费、测试与 CI，并从 AC1-AC4 独立重建完成定义。
+- [x] change_coverage：已从 Issue #385 的 4 条验收标准反查实现、3 个消费者、测试和无变更边界，没有把本 Change 当作需求全集。
+- [x] reverse_audit：已从所有 `client_idempotency_key` 前端生产者反查共享生成入口，并复核本地 Excel、服务器目录导入和 Analysis Run 三个消费边界；后端、数据库与外部 Provider 不适用。
+- [x] unresolved_cleared：所有 Requirement 均已有实现和本地新鲜证据；PR 当前 HEAD CI 保留为正常合并硬门禁。
+
+## 两阶段 Review
+
+- **A1 需求与风险重建**：PASS。以 Issue #385 AC1-AC4、W3C Web Crypto/Secure Contexts、当前 3 个直接调用点和现有字符串 Contract 为独立输入，确认问题属于浏览器安全上下文能力差异，修复范围不需要进入后端、Schema、Migration 或部署拓扑。
+- **A2 证据对照**：PASS。AC1 由缺失 `randomUUID()` 的 Playwright 用户工作流覆盖；AC2 由最终生产代码检索和相关 Browser Mock 场景覆盖；AC3 由确定随机字节 Vitest 覆盖；AC4 由最终 diff、静态检查、单元测试、构建和质量脚本覆盖，PR CI 作为合并前最终门禁。
+- **代码质量结论**：范围内无 Finding。共享实现仅在原生 API 缺失时 fallback，使用 `getRandomValues()`，正确设置 version 4 和 RFC 4122 variant 位；未使用 `Math.random()`，未新增依赖或平行 Contract。
+- **测试充分性结论**：本次失败入口已形成 Red→Green，算法分支和用户工作流均有直接断言。全量 Browser Mock 的 1 个失败位于未修改的人工相关性撤销时序断言，页面已显示成功但测试在等待请求捕获前读取变量；不把该既有测试问题作为本 PR 的生产修改。
 
 # 完成证据与状态
 
@@ -228,6 +235,8 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 | V6 | 当前工作树；Vitest 4.1.10 | `npm --prefix frontend run test -- --run` | 退出码 0；22 files / 109 tests 通过 | 全量前端单元/组件回归通过 |
 | V7 | 当前工作树；Vite 8.2.1 | `npm --prefix frontend run build` | 退出码 0；154 modules transformed | 正式前端静态产物成功构建 |
 | V8 | 当前工作树；项目质量脚本 | `check_architecture.py`、`check_table_ownership.py`、`scan_secrets.py`、`check_docs.py`、`check_agent_governance.py` | 均退出码 0 | 架构、Owner、Secret、文档和治理边界未发生违规漂移 |
+| V9 | 当前分支相对 `main@40e489c2` | `git diff --check main...HEAD`、`rg -n "crypto\\.randomUUID\|randomUUID" frontend/src`、最终人工 Review | diff check 通过；生产代码只剩共享入口中的原生能力检测；范围内无 Finding | 没有遗漏直接调用，没有 Contract/Schema/依赖/部署文件漂移 |
+| V10 | GitHub `main@40e489c2` | CI run `34070299511` | success | 本次未修改浏览器用例所在主分支基线通过；本地单个既有时序失败不归因于当前 diff |
 
 ## 未验证内容与剩余风险
 
@@ -238,7 +247,7 @@ Issue #385 记录了 Linux 部署后，Windows 浏览器通过普通 HTTP 地址
 
 - 提交：Red/治理提交 `4cbbf83f`
 - 拉取请求：Draft PR #386
-- CI：待执行
+- CI：本地前端与质量门禁已通过；PR 当前 HEAD CI 待转 Ready 后执行，失败则禁止合并
 - 合并：待执行
 - Change 归档：待合并后自动流程
 - 发布 / 部署：不适用；用户要求提交主分支，未要求操作生产服务器。
