@@ -165,13 +165,13 @@ data_changes: []
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 模型输入严格限于五个既有业务字段 | user:优化真实用户判定 / AC1 | satisfied | V4 Prompt 输入契约、`ContentLabelingModelItem.model_payload()` 与 `test_v4_model_payload_still_contains_only_the_five_approved_business_fields` 共同验证 |
-| R2 | 实施 V4 Prompt、主体/意图拆分、证据输出和个人交易类别 | user:优化真实用户判定 / AC2 | satisfied | `content_labeling_v4.md`、Semantic Rules 与个人交易回归测试；实现提交 `71a53786` |
-| R3 | 增加本地语义一致性 Validator，不写关键词分类器 | user:优化真实用户判定 / AC3 | satisfied | `RuntimeTaxonomyValidator` 只校验证据原文归属、闭集和 source/intent→voice 映射；伪造证据、映射冲突和规则原子性红绿测试通过 |
-| R4 | 只有冲突/歧义内容进入 Judge，正常内容保持单次调用 | user:优化真实用户判定 / AC4 | satisfied | partial/mixed batch 测试证明清晰项不重试、结构项进 repair、语义项进 judge；Judge payload 不携带旧响应 |
-| R5 | relevance、voice_type、targeted sentiment、多标签形成统一且兼容的 V4 链 | user:优化真实用户判定 / AC5 | satisfied | Analysis 单元、Contract/API、PostgreSQL Content 全套与冻结 V3 Scheme 回归共同覆盖；公共 `ContentLabelAnalysisV3` 未扩字段 |
-| R6 | 暂不建立 Gold Set，参数调优与量化准确率评测随之延期 | user:优化真实用户判定 / AC6 | explicitly_deferred | 用户本轮明确“先不建立 Gold Set”；不把少量固定样例冒充 Gold Set |
-| R7 | 完成后同步最新 main，通过门禁后合并到主分支 | user:优化真实用户判定 / AC7 | satisfied | 2026-09-07 已通过 SSH fetch；`origin/main=e6475474` 且任务分支包含该基线；实现、Review 与本地门禁完成，远程 CI/merge 继续作为交付硬门禁 |
+| R1 | 模型输入严格限于五个既有业务字段 | #388 / AC1 | satisfied | V4 Prompt 输入契约、`ContentLabelingModelItem.model_payload()` 与 `test_v4_model_payload_still_contains_only_the_five_approved_business_fields` 共同验证 |
+| R2 | 实施 V4 Prompt、主体/意图拆分、证据输出和个人交易类别 | #388 / AC2 | satisfied | `content_labeling_v4.md`、Semantic Rules 与个人交易回归测试；实现提交 `71a53786` |
+| R3 | 增加本地语义一致性 Validator，不写关键词分类器 | #388 / AC3 | satisfied | `RuntimeTaxonomyValidator` 只校验证据原文归属、闭集和 source/intent→voice 映射；伪造证据、映射冲突和规则原子性红绿测试通过 |
+| R4 | 只有冲突/歧义内容进入 Judge，正常内容保持单次调用 | #388 / AC4 | satisfied | partial/mixed batch 测试证明清晰项不重试、结构项进 repair、语义项进 judge；Judge payload 不携带旧响应 |
+| R5 | relevance、voice_type、targeted sentiment、多标签形成统一且兼容的 V4 链 | #388 / AC5 | satisfied | Analysis 单元、Contract/API、PostgreSQL Content 全套与冻结 V3 Scheme 回归共同覆盖；公共 `ContentLabelAnalysisV3` 未扩字段 |
+| R6 | 暂不建立 Gold Set，参数调优与量化准确率评测随之延期 | #388 / AC6 | explicitly_deferred | 用户本轮明确“先不建立 Gold Set”；不把少量固定样例冒充 Gold Set |
+| R7 | 完成后同步最新 main，通过门禁后合并到主分支 | #388 / AC7 | satisfied | 2026-09-07 已通过 SSH fetch；`origin/main=e6475474` 且任务分支包含该基线；实现、Review 与本地门禁完成，远程 CI/merge 继续作为交付硬门禁 |
 
 # 计划改动
 
@@ -248,7 +248,7 @@ Docs Impact 为 `targeted`：更新 Analysis 模块 README、AI 实现 Appendix 
 ## 交付状态
 
 - 提交：治理提交 `bac37351`、失败测试提交 `d9f7a55f`、实现提交 `71a53786`。
-- 拉取请求：任务分支已建立远程跟踪；本 Change Ready 提交推送后创建 PR。
+- 需求与拉取请求：GitHub Issue #388；PR #387。
 - CI：本地同实现提交门禁已完成；GitHub 同-SHA CI 仍是合并硬门禁。
 - 合并：最新 `origin/main=e6475474` 已同步且无新提交；仅在 PR 检查通过后合并。
 - Change 归档：合并后由既有流程处理。
