@@ -71,6 +71,9 @@ from aima_ugc.modules.ingestion.historical_tables import (
     processing_import_batch_item_conflicts_table,
     processing_import_batch_items_table,
 )
+from aima_ugc.modules.ingestion.revocation_tables import (
+    historical_import_campaign_revocations_table,
+)
 from aima_ugc.modules.ingestion.tables import (
     processing_import_batches_table,
     register_ingestion_schema,
@@ -125,6 +128,7 @@ __all__ = [
     "audit_events_table",
     "global_relevance_config_table",
     "historical_import_campaign_items_table",
+    "historical_import_campaign_revocations_table",
     "historical_import_campaigns_table",
     "collection_candidate_ingestions_table",
     "collection_candidates_table",
