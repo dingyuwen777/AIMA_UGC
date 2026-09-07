@@ -112,7 +112,7 @@ export const copyScheme = async (
 ): Promise<AnalysisSchemeResponse> =>
   unwrapResponse(await copyAnalysisScheme(schemeId, body))
 
-export const archiveScheme = async (schemeId: string): Promise<void> =>
+export const archiveScheme = async (schemeId: string) =>
   unwrapResponse(await archiveAnalysisScheme(schemeId))
 
 export const fetchArchivedSchemes = async (): Promise<ResourceLifecycleListResponse> =>
@@ -156,7 +156,7 @@ export const testProviderConnection = async (
 ): Promise<ProviderConnectionTestResponse> =>
   unwrapResponse(await testProviderConfigConnection(id))
 
-export const archiveProvider = async (id: string): Promise<void> =>
+export const archiveProvider = async (id: string) =>
   unwrapResponse(await archiveProviderConfig(id))
 
 export const fetchArchivedProviders = async (): Promise<ResourceLifecycleListResponse> =>
