@@ -11,12 +11,11 @@ import type {
 } from '../../../generated/api/client'
 import AppShell from '../../../app/layouts/AppShell.vue'
 import { apiErrorMessage } from '../../../shared/api/http'
+import { formatDateTime } from '../../../shared/domain/beijingTime'
 import AimaButton from '../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../shared/ui/AimaPageHeader.vue'
 import VehicleMultiSelect from '../../../shared/VehicleMultiSelect.vue'
-import ProviderConfigurationPanel from '../components/ProviderConfigurationPanel.vue'
-import { formatDateTime } from '../../../shared/domain/beijingTime'
 import {
   activateScheme,
   addSchemeDraft,
@@ -32,6 +31,14 @@ import {
   restoreScheme,
   saveKeywordPackVehicles,
 } from '../api'
+import ProviderConfigurationPanel from '../components/ProviderConfigurationPanel.vue'
+import {
+  auditActionLabel,
+  auditActorLabel,
+  auditObjectLabel,
+  auditSummaryText,
+  formatRuntimeStatus,
+} from '../presentation'
 
 type Tab = 'vehicles' | 'links' | 'llm' | 'tikhub' | 'scheme' | 'audit'
 
@@ -97,7 +104,6 @@ const selectedSchemeVersion = computed(() => {
 
 onMounted(refreshAll)
 
-/** 独立读取车型目录；单个资源失败不能拖垮其他管理员配置。 */
 async function loadVehicles(): Promise<void> {
   vehicleLoading.value = true
   vehicleError.value = null
@@ -111,7 +117,6 @@ async function loadVehicles(): Promise<void> {
   }
 }
 
-/** 独立读取词包目录，并在目录变化后重新校准当前选择。 */
 async function loadPacks(): Promise<void> {
   packLoading.value = true
   packError.value = null
@@ -128,7 +133,6 @@ async function loadPacks(): Promise<void> {
   }
 }
 
-/** 独立读取 Analysis Scheme，失败时保留其它管理员资源。 */
 async function loadSchemes(): Promise<void> {
   schemeLoading.value = true
   schemeError.value = null
@@ -150,7 +154,6 @@ async function loadSchemes(): Promise<void> {
   }
 }
 
-/** 按后端 offset/limit/total Contract 读取当前审计页。 */
 async function loadAudit(): Promise<void> {
   auditLoading.value = true
   auditError.value = null
@@ -171,12 +174,10 @@ async function loadAudit(): Promise<void> {
   }
 }
 
-/** 并发恢复所有资源，但每个 Loader 自己拥有错误边界。 */
 async function refreshAll(): Promise<void> {
   await Promise.all([loadVehicles(), loadPacks(), loadSchemes(), loadAudit()])
 }
 
-/** 只重试当前 Tab 依赖的资源，避免一个接口错误触发无关全页刷新。 */
 async function retryActiveResource(): Promise<void> {
   if (tab.value === 'vehicles') return loadVehicles()
   if (tab.value === 'links') {
@@ -236,7 +237,7 @@ async function saveVehicle(): Promise<void> {
         aliases: splitLines(vehicleDraft.aliases),
       })
     }
-    notice.value = vehicleDraft.id ? '车型已更新并写入审计。' : '车型已创建并写入审计。'
+    notice.value = vehicleDraft.id ? '车型已更新并记录操作。' : '车型已创建并记录操作。'
     resetVehicleDraft()
     await refreshAll()
   } catch (reason) {
@@ -248,13 +249,13 @@ async function saveVehicle(): Promise<void> {
 
 async function deleteVehicle(item: VehicleModelResponse): Promise<void> {
   if (item.referenced) {
-    error.value = '该车型已被业务数据引用，不能物理删除；请停用、改名或合并。'
+    error.value = '该车型已被业务数据引用，不能直接删除；请停用、改名或合并。'
     return
   }
-  if (!window.confirm(`确定删除未引用车型“${item.display_name}”吗？此操作会写入审计。`)) return
+  if (!window.confirm(`确定删除未引用车型“${item.display_name}”吗？系统会保留本次操作记录。`)) return
   try {
     await removeVehicle(item.id)
-    notice.value = '未引用车型已删除并写入审计。'
+    notice.value = '未引用车型已删除并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -263,10 +264,10 @@ async function deleteVehicle(item: VehicleModelResponse): Promise<void> {
 
 async function mergeSelectedVehicle(): Promise<void> {
   if (!vehicleDraft.id || !mergeTargetId.value) return
-  if (!window.confirm('合并会保留历史证据并把后续选择重定向到目标车型，是否继续？')) return
+  if (!window.confirm('合并后历史数据仍会保留，后续选择会统一到目标车型。是否继续？')) return
   try {
     await mergeVehicle(vehicleDraft.id, { target_vehicle_model_id: mergeTargetId.value })
-    notice.value = '车型已合并并写入审计。'
+    notice.value = '车型已合并并记录操作。'
     resetVehicleDraft()
     await refreshAll()
   } catch (reason) {
@@ -286,7 +287,7 @@ async function savePackLinks(): Promise<void> {
   saving.value = true
   try {
     await saveKeywordPackVehicles(selectedPack.value.id, linkedVehicleIds.value)
-    notice.value = '词包与车型关联已更新并写入审计。'
+    notice.value = '词包与车型关联已更新并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -324,7 +325,7 @@ function schemeDefinition(): AnalysisSchemeDefinitionRequest {
 
 function validateSchemeDefinition(definition: AnalysisSchemeDefinitionRequest): void {
   if (!definition.prompt_template.includes('{{AIMA_TAXONOMY_JSON}}')) {
-    throw new Error('Prompt 模板必须且只能通过 {{AIMA_TAXONOMY_JSON}} 注入当前 Taxonomy。')
+    throw new Error('提示词模板必须包含标签规则占位符 {{AIMA_TAXONOMY_JSON}}。')
   }
   if (!definition.voice_types.length || !definition.sentiments.length || !Object.keys(definition.labels).length) {
     throw new Error('发声类型、情感和标签都不能为空。')
@@ -347,13 +348,13 @@ async function saveSchemeDraft(): Promise<void> {
       })
     } else {
       saved = await addSchemeDraft({
-        name: schemeDraft.schemeName || `${selected?.scheme.name ?? 'Analysis Scheme'} 草稿`,
+        name: schemeDraft.schemeName || `${selected?.scheme.name ?? 'AI 分析规则'} 草稿`,
         description: schemeDraft.description,
         definition,
       })
     }
     selectedSchemeVersionId.value = saved.versions.find((item) => item.status === 'draft')?.id ?? ''
-    notice.value = 'Analysis Scheme 草稿已保存并写入审计。'
+    notice.value = 'AI 分析规则草稿已保存并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -363,10 +364,10 @@ async function saveSchemeDraft(): Promise<void> {
 }
 
 async function publishVersion(version: AnalysisSchemeVersionResponse): Promise<void> {
-  if (!window.confirm('发布后，新 Analysis Run 将冻结使用此版本；当前运行中的任务不受影响。是否发布？')) return
+  if (!window.confirm('发布后，新建的 AI 分析任务会使用此版本；正在运行的任务不受影响。是否发布？')) return
   try {
     await activateScheme(version.id, version.version)
-    notice.value = 'Analysis Scheme 已发布并写入审计。'
+    notice.value = 'AI 分析规则已发布并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -374,14 +375,18 @@ async function publishVersion(version: AnalysisSchemeVersionResponse): Promise<v
 }
 
 async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<void> {
-  if (!window.confirm(`确认回滚到版本 v${version.version}？该操作无需双人审批，但会完整审计。`)) return
+  if (!window.confirm(`确认恢复到版本 ${version.version}？系统会完整记录本次操作。`)) return
   try {
     await restoreScheme(version.id, version.version)
-    notice.value = `已回滚到 v${version.version} 并写入审计。`
+    notice.value = `已恢复到版本 ${version.version} 并记录操作。`
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   }
+}
+
+function safeJson(value: Record<string, unknown>): string {
+  return JSON.stringify(value, null, 2)
 }
 </script>
 
@@ -390,7 +395,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
     <div class="admin-page">
       <AimaPageHeader
         title="管理员配置"
-        description="车型、词包、AI 模型、TikHub 与 Analysis Scheme 的统一管理入口；运行时配置保存后对新任务即时生效。"
+        description="统一管理车型、词包、AI 模型、采集服务和 AI 分析规则。技术标识与原始审计数据仅在需要时展开查看。"
       />
       <AimaFeedbackBanner
         v-if="error"
@@ -411,7 +416,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         aria-label="管理员配置分类"
       >
         <button
-          v-for="item in ([['vehicles', '车型目录'], ['links', '词包车型关联'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'Analysis Scheme'], ['audit', '审计记录']] as const)"
+          v-for="item in ([['vehicles', '车型管理'], ['links', '词包关联'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'AI 分析规则'], ['audit', '操作记录']] as const)"
           :key="item[0]"
           type="button"
           :class="{ active: tab === item[0] }"
@@ -451,7 +456,11 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
       >
         <section class="card">
           <header>
-            <div><h2>车型目录</h2><p>稳定 code 不改写；有引用的车型仅允许停用、改名或合并。</p></div><AimaButton
+            <div>
+              <h2>车型目录</h2>
+              <p>车型编码创建后保持不变；已被业务数据引用的车型只能停用、改名或合并。</p>
+            </div>
+            <AimaButton
               size="small"
               @click="resetVehicleDraft"
             >
@@ -459,30 +468,19 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
             </AimaButton>
           </header>
           <table>
-            <thead><tr><th>车型</th><th>别名</th><th>状态</th><th>引用</th><th>操作</th></tr></thead>
+            <thead><tr><th>车型</th><th>别名</th><th>状态</th><th>使用情况</th><th>操作</th></tr></thead>
             <tbody>
               <tr
                 v-for="item in vehicles"
                 :key="item.id"
               >
-                <td><strong>{{ item.display_name }}</strong><small>{{ item.code }} · v{{ item.version }}</small></td><td>{{ (item.aliases ?? []).map((alias) => alias.text).join('、') || '—' }}</td><td>
-                  <span
-                    class="status"
-                    :class="`status--${item.status}`"
-                  >{{ item.status }}</span>
-                </td><td>{{ item.referenced ? '已引用' : '未引用' }}</td><td>
-                  <button
-                    type="button"
-                    @click="editVehicleDraft(item)"
-                  >
-                    编辑
-                  </button><button
-                    type="button"
-                    :disabled="item.status === 'merged'"
-                    @click="deleteVehicle(item)"
-                  >
-                    删除
-                  </button>
+                <td><strong>{{ item.display_name }}</strong><small>编码 {{ item.code }}</small></td>
+                <td>{{ (item.aliases ?? []).map((alias) => alias.text).join('、') || '—' }}</td>
+                <td><span class="status" :class="`status--${item.status}`">{{ formatRuntimeStatus(item.status) }}</span></td>
+                <td>{{ item.referenced ? '已被使用' : '暂未使用' }}</td>
+                <td>
+                  <button type="button" @click="editVehicleDraft(item)">编辑</button>
+                  <button type="button" :disabled="item.status === 'merged'" @click="deleteVehicle(item)">删除</button>
                 </td>
               </tr>
             </tbody>
@@ -490,11 +488,11 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         </section>
         <section class="card form-card">
           <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
-          <label>稳定 code<input
+          <label>车型编码<input
             v-model="vehicleDraft.code"
             :disabled="Boolean(vehicleDraft.id)"
             placeholder="例如 AIMA-Q7"
-          ></label>
+          ><small>用于稳定识别车型，创建后不可修改。</small></label>
           <label>显示名称<input
             v-model="vehicleDraft.displayName"
             placeholder="例如 爱玛 Q7"
@@ -504,23 +502,17 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
             rows="6"
             placeholder="Q7&#10;爱玛Q7"
           /></label>
-          <label v-if="vehicleDraft.id">状态<select v-model="vehicleDraft.status"><option value="active">active</option><option value="deprecated">deprecated</option></select></label>
+          <label v-if="vehicleDraft.id">状态<select v-model="vehicleDraft.status"><option value="active">正常使用</option><option value="deprecated">停用</option></select></label>
           <div class="actions">
-            <AimaButton @click="resetVehicleDraft">
-              取消
-            </AimaButton><AimaButton
-              variant="primary"
-              :disabled="saving || !vehicleFormValid"
-              @click="saveVehicle"
-            >
-              保存
-            </AimaButton>
+            <AimaButton @click="resetVehicleDraft">取消</AimaButton>
+            <AimaButton variant="primary" :disabled="saving || !vehicleFormValid" @click="saveVehicle">保存</AimaButton>
           </div>
           <template v-if="vehicleDraft.id">
-            <hr><h3>合并重复车型</h3><select v-model="mergeTargetId">
-              <option value="">
-                选择目标车型
-              </option><option
+            <hr>
+            <h3>合并重复车型</h3>
+            <select v-model="mergeTargetId">
+              <option value="">选择目标车型</option>
+              <option
                 v-for="item in vehicles.filter((vehicle) => vehicle.id !== vehicleDraft.id && vehicle.status === 'active')"
                 :key="item.id"
                 :value="item.id"
@@ -528,12 +520,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
                 {{ item.display_name }}（{{ item.code }}）
               </option>
             </select>
-            <AimaButton
-              :disabled="!mergeTargetId"
-              @click="mergeSelectedVehicle"
-            >
-              合并到目标车型
-            </AimaButton>
+            <AimaButton :disabled="!mergeTargetId" @click="mergeSelectedVehicle">合并到目标车型</AimaButton>
           </template>
         </section>
       </div>
@@ -543,28 +530,26 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         class="two-column"
       >
         <section class="card list-card">
-          <h2>选择词包</h2><button
+          <h2>选择词包</h2>
+          <button
             v-for="pack in packs"
             :key="pack.id"
             type="button"
             :class="{ active: selectedPackId === pack.id }"
             @click="selectPack(pack.id)"
           >
-            <strong>{{ pack.name }}</strong><span>v{{ pack.version }} · {{ pack.enabled ? '启用' : '停用' }}</span>
+            <strong>{{ pack.name }}</strong><span>版本 {{ pack.version }} · {{ pack.enabled ? '已启用' : '已停用' }}</span>
           </button>
         </section>
         <section class="card form-card">
-          <h2>{{ selectedPack?.name ?? '词包车型关联' }}</h2><p>同一维度内车型按 OR；与词包关键词维度按 AND。保存时冻结关联版本。</p><VehicleMultiSelect
+          <h2>{{ selectedPack?.name ?? '词包车型关联' }}</h2>
+          <p>选择这个词包适用的车型。多选车型时满足其中任一车型即可，随后再与词包关键词共同筛选。</p>
+          <VehicleMultiSelect
             v-model="linkedVehicleIds"
             label="关联车型（可多选）"
-          /><div class="actions">
-            <AimaButton
-              variant="primary"
-              :disabled="!selectedPack || saving"
-              @click="savePackLinks"
-            >
-              保存关联
-            </AimaButton>
+          />
+          <div class="actions">
+            <AimaButton variant="primary" :disabled="!selectedPack || saving" @click="savePackLinks">保存关联</AimaButton>
           </div>
         </section>
       </div>
@@ -574,63 +559,66 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         class="scheme-layout"
       >
         <section class="card list-card">
-          <h2>版本历史</h2><template
-            v-for="scheme in schemes"
-            :key="scheme.id"
-          >
-            <h3>{{ scheme.name }}</h3><button
+          <h2>版本历史</h2>
+          <template v-for="scheme in schemes" :key="scheme.id">
+            <h3>{{ scheme.name }}</h3>
+            <button
               v-for="version in scheme.versions"
               :key="version.id"
               type="button"
               :class="{ active: selectedSchemeVersionId === version.id }"
               @click="selectSchemeVersion(version.id)"
             >
-              <strong>v{{ version.version }} · {{ version.status }}</strong><span>{{ formatDateTime(version.created_at) }}</span>
+              <strong>版本 {{ version.version }} · {{ formatRuntimeStatus(version.status) }}</strong>
+              <span>{{ formatDateTime(version.created_at) }}</span>
             </button>
           </template>
         </section>
         <section class="card form-card scheme-editor">
-          <header><div><h2>原子 Analysis Scheme</h2><p>Prompt、发声类型、情感和标签一次发布，避免耦合配置漂移。</p></div><span v-if="selectedSchemeVersion">{{ selectedSchemeVersion.version.status }}</span></header><label>Scheme 名称<input
+          <header>
+            <div>
+              <h2>AI 分析规则</h2>
+              <p>提示词、发声类型、情感和标签作为一个完整版本保存与发布，避免不同配置之间出现不一致。</p>
+            </div>
+            <span v-if="selectedSchemeVersion">{{ formatRuntimeStatus(selectedSchemeVersion.version.status) }}</span>
+          </header>
+          <label>规则名称<input
             v-model="schemeDraft.schemeName"
             :readonly="selectedSchemeVersion?.version.status === 'draft'"
-          ><small v-if="selectedSchemeVersion?.version.status === 'draft'">已有草稿保存时不会修改 Scheme 名称；如需新名称，请基于已发布或历史版本新建草稿。</small></label><label>说明<input v-model="schemeDraft.description"></label><label>发声类型（每行一个）<textarea
-            v-model="schemeDraft.voiceTypes"
-            rows="4"
-          /></label><label>情感（每行一个）<textarea
-            v-model="schemeDraft.sentiments"
-            rows="4"
-          /></label><label>标签 JSON<textarea
+          ><small v-if="selectedSchemeVersion?.version.status === 'draft'">编辑现有草稿时名称保持不变；需要新名称时，请基于已发布或历史版本新建草稿。</small></label>
+          <label>说明<input v-model="schemeDraft.description"></label>
+          <label>发声类型（每行一个）<textarea v-model="schemeDraft.voiceTypes" rows="4" /></label>
+          <label>情感（每行一个）<textarea v-model="schemeDraft.sentiments" rows="4" /></label>
+          <label>标签规则（JSON，高级）<textarea
             v-model="schemeDraft.labelsJson"
             rows="10"
             spellcheck="false"
-          /></label><label>Prompt 模板<textarea
+          /><small>这里维护结构化标签；普通业务调整无需关注底层版本标识。</small></label>
+          <label>提示词模板<textarea
             v-model="schemeDraft.promptTemplate"
             rows="14"
             spellcheck="false"
-          /></label><p class="hint">
-            必须包含占位符 <code v-pre>{{AIMA_TAXONOMY_JSON}}</code>；后端发布时重新校验并计算 Hash。
-          </p><div class="actions">
-            <AimaButton
-              :disabled="saving"
-              @click="saveSchemeDraft"
-            >
+          /></label>
+          <details class="technical-details scheme-technical">
+            <summary>模板技术要求</summary>
+            <p>提示词必须包含标签规则占位符 <code v-pre>{{AIMA_TAXONOMY_JSON}}</code>，发布时由后端再次校验。</p>
+          </details>
+          <div class="actions">
+            <AimaButton :disabled="saving" @click="saveSchemeDraft">
               {{ selectedSchemeVersion?.version.status === 'draft' ? '保存草稿' : '基于此版本新建草稿' }}
-            </AimaButton><AimaButton
+            </AimaButton>
+            <AimaButton
               v-if="selectedSchemeVersion?.version.status === 'draft'"
               variant="primary"
               @click="publishVersion(selectedSchemeVersion.version)"
-            >
-              发布
-            </AimaButton><AimaButton
+            >发布</AimaButton>
+            <AimaButton
               v-else-if="selectedSchemeVersion && selectedSchemeVersion.scheme.active_version_id !== selectedSchemeVersion.version.id"
               @click="rollbackVersion(selectedSchemeVersion.version)"
-            >
-              回滚到此版本
-            </AimaButton>
+            >恢复到此版本</AimaButton>
           </div>
         </section>
       </div>
-
 
       <ProviderConfigurationPanel
         v-else-if="tab === 'llm'"
@@ -647,44 +635,51 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         class="card audit-card"
       >
         <header>
-          <div><h2>审计记录</h2><p>发布、回滚、车型与配置修改的安全摘要；不记录 Secret 和 Prompt 正文。共 {{ auditTotal }} 条。</p></div><AimaButton
-            size="small"
-            :disabled="auditLoading"
-            @click="loadAudit"
-          >
-            刷新
-          </AimaButton>
-        </header><table>
-          <thead><tr><th>时间</th><th>操作</th><th>操作者</th><th>对象</th><th>request_id</th><th>安全摘要</th></tr></thead><tbody>
+          <div>
+            <h2>操作记录</h2>
+            <p>默认只展示“谁在什么时候做了什么、影响了什么”。系统仍保留可追溯的技术信息，但不会把原始字段和 JSON 直接暴露在主视图。共 {{ auditTotal }} 条。</p>
+          </div>
+          <AimaButton size="small" :disabled="auditLoading" @click="loadAudit">刷新</AimaButton>
+        </header>
+        <table>
+          <thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>影响对象</th><th>操作说明</th><th>详情</th></tr></thead>
+          <tbody>
             <tr
               v-for="event in auditEvents"
               :key="event.id"
             >
-              <td>{{ formatDateTime(event.created_at) }}</td><td>{{ event.event_type }}</td><td>{{ event.actor_ref ?? 'system' }}</td><td>{{ event.object_type ?? '—' }} / {{ event.object_id ?? '—' }}</td><td>{{ event.request_id ?? '—' }}</td><td><code>{{ JSON.stringify(event.safe_detail) }}</code></td>
+              <td>{{ formatDateTime(event.created_at) }}</td>
+              <td>{{ auditActorLabel(event.actor_ref) }}</td>
+              <td><strong>{{ auditActionLabel(event.event_type) }}</strong></td>
+              <td>{{ auditObjectLabel(event.object_type, event.object_id) }}</td>
+              <td>{{ auditSummaryText(event) }}</td>
+              <td>
+                <details class="technical-details audit-details">
+                  <summary>技术详情</summary>
+                  <dl>
+                    <div><dt>事件类型</dt><dd>{{ event.event_type }}</dd></div>
+                    <div><dt>对象类型</dt><dd>{{ event.object_type ?? '—' }}</dd></div>
+                    <div><dt>对象标识</dt><dd>{{ event.object_id ?? '—' }}</dd></div>
+                    <div><dt>请求标识</dt><dd>{{ event.request_id ?? '—' }}</dd></div>
+                  </dl>
+                  <div class="raw-detail">
+                    <strong>安全审计数据</strong>
+                    <pre>{{ safeJson(event.safe_detail) }}</pre>
+                  </div>
+                </details>
+              </td>
             </tr>
           </tbody>
         </table>
         <nav
           v-if="auditTotal > 0"
           class="audit-pagination"
-          aria-label="审计记录分页"
+          aria-label="操作记录分页"
         >
           <span>第 {{ Math.floor(auditOffset / auditLimit) + 1 }} / {{ Math.ceil(auditTotal / auditLimit) }} 页 · 共 {{ auditTotal }} 条</span>
           <div>
-            <AimaButton
-              size="small"
-              :disabled="auditLoading || auditOffset === 0"
-              @click="previousAuditPage"
-            >
-              上一页
-            </AimaButton>
-            <AimaButton
-              size="small"
-              :disabled="auditLoading || auditOffset + auditLimit >= auditTotal"
-              @click="nextAuditPage"
-            >
-              下一页
-            </AimaButton>
+            <AimaButton size="small" :disabled="auditLoading || auditOffset === 0" @click="previousAuditPage">上一页</AimaButton>
+            <AimaButton size="small" :disabled="auditLoading || auditOffset + auditLimit >= auditTotal" @click="nextAuditPage">下一页</AimaButton>
           </div>
         </nav>
       </section>
@@ -719,7 +714,7 @@ td button:disabled { color: var(--aima-text-disabled); cursor: not-allowed; }
 .form-card { display: grid; align-content: start; gap: 12px; }
 .form-card label { display: grid; gap: 6px; color: var(--aima-text-muted); font-size: 11px; }
 .form-card label > small { color: var(--aima-text-disabled); font-size: 10px; line-height: 15px; }
-input:read-only { cursor: not-allowed; color: var(--aima-text-muted); background: #f5f7fa; }
+input:read-only, input:disabled { cursor: not-allowed; color: var(--aima-text-muted); background: #f5f7fa; }
 input, textarea, select { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); outline: none; color: var(--aima-text-secondary); background: var(--aima-surface); font: inherit; font-size: 12px; }
 input, select { height: 38px; }
 textarea { resize: vertical; line-height: 18px; }
@@ -732,11 +727,22 @@ hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--aima-bor
 .list-card > button strong { font-size: 12px; }
 .list-card > button span { color: var(--aima-text-muted); font-size: 10px; }
 .scheme-editor > header > span { padding: 3px 8px; border-radius: 4px; color: var(--aima-primary); background: var(--aima-primary-soft); font-size: 10px; }
-.hint code { color: var(--aima-primary); }
 .retry-link { width: max-content; padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }
 .retry-link:disabled { cursor: wait; opacity: .6; }
+.technical-details { border: 1px solid var(--aima-border); border-radius: 7px; background: #fafbfc; }
+.technical-details > summary { padding: 8px 10px; color: var(--aima-primary); cursor: pointer; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.scheme-technical > p { margin: 0; padding: 0 10px 10px; }
+.scheme-technical code { color: var(--aima-primary); }
 .audit-card { overflow: auto; }
-.audit-card code { display: block; max-width: 360px; overflow-wrap: anywhere; white-space: normal; font-size: 9px; }
+.audit-card table { min-width: 940px; }
+.audit-details { min-width: 120px; }
+.audit-details dl { display: grid; gap: 6px; margin: 0; padding: 0 10px 10px; }
+.audit-details dl > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; }
+.audit-details dt { color: var(--aima-text-muted); font-size: 9px; }
+.audit-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--aima-text-secondary); font-size: 9px; }
+.raw-detail { display: grid; gap: 5px; padding: 0 10px 10px; }
+.raw-detail > strong { color: var(--aima-text-muted); font-size: 9px; }
+.raw-detail pre { max-width: 420px; max-height: 220px; margin: 0; overflow: auto; padding: 8px; border-radius: 5px; color: var(--aima-text-secondary); background: var(--aima-surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 9px; line-height: 14px; }
 .audit-pagination { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 16px; padding-top: 10px; color: var(--aima-text-muted); font-size: 11px; }
 .audit-pagination > div { display: flex; gap: 8px; }
 @media (max-width: 1280px) { .two-column, .scheme-layout { grid-template-columns: 1fr; } }
