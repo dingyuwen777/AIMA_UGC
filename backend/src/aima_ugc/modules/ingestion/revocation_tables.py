@@ -30,17 +30,26 @@ historical_import_campaign_revocations_table = Table(
     Column("affected_content_count", Integer(), nullable=False),
     Column("hidden_content_count", Integer(), nullable=False),
     Column("retained_shared_content_count", Integer(), nullable=False),
+    Column("unreversible_content_count", Integer(), nullable=False, server_default="0"),
     Column("revoked_at", DateTime(timezone=True), nullable=False),
     CheckConstraint("char_length(actor_ref) > 0", name="actor_ref_nonempty"),
     CheckConstraint("reason is null or char_length(reason) > 0", name="reason_nonempty"),
     CheckConstraint(
         "affected_content_count >= 0 and hidden_content_count >= 0 "
-        "and retained_shared_content_count >= 0",
+        "and retained_shared_content_count >= 0 and unreversible_content_count >= 0",
         name="counts_nonnegative",
     ),
     CheckConstraint(
         "hidden_content_count + retained_shared_content_count = affected_content_count",
         name="impact_counts_consistent",
+    ),
+    CheckConstraint(
+        "unreversible_content_count <= affected_content_count",
+        name="unreversible_within_affected",
+    ),
+    CheckConstraint(
+        "unreversible_content_count = 0",
+        name="committed_revocation_fully_reversible",
     ),
     info={"owner": "ingestion"},
 )
