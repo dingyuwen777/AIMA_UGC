@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import wraps
+from typing import cast
 
 from fastapi import FastAPI
 
@@ -12,23 +13,34 @@ from aima_ugc.bootstrap.analysis_capability_http import (
 )
 from aima_ugc.bootstrap.api import HealthResponse, ReadinessChecks, ReadinessResponse
 from aima_ugc.bootstrap.api import create_app as _create_app
+from aima_ugc.bootstrap.import_revocation_http import install_import_revocation_routes
+from aima_ugc.modules.identity import DevelopmentIdentityResolver, IdentityResolver
 
 
-def _with_content_analysis_read_routes[**P](
+def _with_product_extension_routes[**P](
     factory: Callable[P, FastAPI],
 ) -> Callable[P, FastAPI]:
-    """在最终 API assembly 中增加安全的 Analysis 只读投影。"""
+    """在最终 API assembly 中安装安全的产品扩展路由。"""
 
     @wraps(factory)
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> FastAPI:
         application = factory(*args, **kwargs)
         install_content_analysis_capability_route(application)
+        raw_kwargs = cast(dict[str, object], kwargs)
+        identity_resolver = cast(
+            IdentityResolver | None,
+            raw_kwargs.get("identity_resolver"),
+        )
+        install_import_revocation_routes(
+            application,
+            identity_resolver=identity_resolver or DevelopmentIdentityResolver(),
+        )
         return application
 
     return wrapped
 
 
-create_app = _with_content_analysis_read_routes(_create_app)
+create_app = _with_product_extension_routes(_create_app)
 
 __all__ = [
     "HealthResponse",
