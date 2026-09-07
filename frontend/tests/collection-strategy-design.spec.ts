@@ -92,7 +92,7 @@ describe('采集策略正式 Figma 组件基线', () => {
 
     expect(html.match(/<th[ >]/g)).toHaveLength(6)
     expect(html).not.toContain('>采集策略</th>')
-    expect(html).toContain('<th>计划</th>')
+    expect(html).toMatch(/<th[^>]*>计划<\/th>/)
     expect(html).toContain('词包 / 车型')
     expect(html).toContain('目标平台 / 采集渠道')
     expect(html).toContain('新品词包')
