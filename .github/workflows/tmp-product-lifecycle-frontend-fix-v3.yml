@@ -1,0 +1,202 @@
+name: Temporary Product Lifecycle Frontend Fix V3
+
+on:
+  push:
+    branches:
+      - feature/product-resource-lifecycle
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    runs-on: ubuntu-24.04
+    env:
+      EXPECTED_PARENT: 737c025329c1223d8309e58e1b65fe522f08b4a2
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify workflow parent revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+          npm ci --prefix frontend
+
+      - name: Apply exact product UI and acceptance fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected exactly one anchor, got {count}: {old!r}')
+              file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          dialog = 'frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/AnalysisSubmitDialog.vue'
+          replace_once(dialog, '              创建 AI Analysis Run\n', '              创建 AI 打标任务\n')
+          replace_once(dialog, '            <p>先预检目标，再由后台冻结当前内容版本并拆分有界 Shard。</p>\n', '            <p>确认打标范围与预计处理数量后，提交后台执行。</p>\n')
+          replace_once(dialog, '                <small>对数据库当前全部 Content 数据打标，不受本页筛选或已加载分页限制</small>\n', '                <small>对当前全部声音记录进行打标，不受本页筛选或已加载分页限制</small>\n')
+          replace_once(dialog, '            “全部数据”不会把所有 Content ID 拉到浏览器；后端按当前数据库事实计数、冻结目标并分片执行。\n', '            提交后会按当前数据库状态冻结本次任务范围；后续新增内容不会自动加入本次任务。\n')
+          replace_once(
+              dialog,
+              '''            <strong>预检目标 {{ preview.target_count }} 条，拆分 {{ preview.shard_count }} 个 Shard</strong>\n            <span>每个 Shard {{ preview.shard_size }} 条 · {{ preview.model_provider }} / {{ preview.model }}</span>\n            <span>Prompt {{ preview.prompt_version }} · 配置哈希 {{ preview.configuration_hash.slice(0, 12) }}…</span>\n            <small>{{ preview.cost_estimate_note }}</small>\n''',
+              '''            <strong>预计处理 {{ preview.target_count }} 条内容，共 {{ preview.shard_count }} 个处理批次</strong>\n            <span>每批最多 {{ preview.shard_size }} 条</span>\n            <small>{{ preview.cost_estimate_note }}</small>\n            <details class="technical-details">\n              <summary>技术详情</summary>\n              <span>模型：{{ preview.model_provider }} / {{ preview.model }}</span>\n              <span>Prompt 版本：{{ preview.prompt_version }}</span>\n              <span>配置哈希：{{ preview.configuration_hash }}</span>\n            </details>\n''',
+          )
+          replace_once(dialog, "            {{ submitting ? '正在提交…' : '确认并创建 Analysis Run' }}\n", "            {{ submitting ? '正在提交…' : '确认并创建任务' }}\n")
+          replace_once(dialog, '.preview small { color: var(--aima-text-disabled); font-size: 9px; }\n', '.preview small { color: var(--aima-text-disabled); font-size: 9px; }\n.technical-details { display: grid; gap: 3px; color: var(--aima-text-muted); }\n.technical-details summary { width: max-content; cursor: pointer; font-size: 10px; }\n')
+
+          admin = 'frontend/e2e-fullstack/admin-product-capabilities.spec.ts'
+          replace_once(admin, "import { expect, test, type APIRequestContext } from '@playwright/test'\n", "import { expect, test, type APIRequestContext, type Page } from '@playwright/test'\n")
+          content_helper = '''async function contentIdBySearch(request: APIRequestContext, search: string): Promise<string> {\n  const response = await request.get(`/api/v1/contents?search=${encodeURIComponent(search)}&limit=10`)\n  expect(response.status()).toBe(200)\n  const body = await response.json() as { items: { id: string; title: string | null }[] }\n  const item = body.items.find((candidate) => candidate.title === search)\n  expect(item, `必须能按标题重读本用例创建的内容：${search}`).toBeTruthy()\n  return item!.id\n}\n\n'''
+          replace_once(admin, content_helper, '')
+          helper = '''async function openKeywordPackByName(page: Page, name: string): Promise<void> {\n  const pagination = page.getByRole('navigation', { name: '关键词包分页' })\n  await expect(pagination).toBeVisible()\n  for (let pageNumber = 1; pageNumber <= 50; pageNumber += 1) {\n    const row = page.locator('.pack-row').filter({ hasText: name })\n    if (await row.count() > 0) {\n      await expect(row).toBeVisible()\n      await row.click()\n      return\n    }\n    const next = pagination.getByRole('button', { name: '下一页', exact: true })\n    if (await next.isDisabled()) break\n    const before = await pagination.textContent()\n    await next.click()\n    await expect.poll(async () => pagination.textContent()).not.toBe(before)\n  }\n  throw new Error(`关键词包分页中未找到：${name}`)\n}\n\n'''
+          marker = "test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实闭环'"
+          text = Path(admin).read_text(encoding='utf-8')
+          if text.count(marker) != 1:
+              raise RuntimeError('admin test insertion marker mismatch')
+          Path(admin).write_text(text.replace(marker, helper + marker, 1), encoding='utf-8')
+          replace_once(admin, "  await page.getByLabel('稳定 code').fill(code)\n", "  await page.getByLabel('车型编码').fill(code)\n")
+          replace_once(admin, '  const contentId = await contentIdBySearch(request, vehicleContentTitle)\n', '  const contentId = await firstRelevantContentId(request)\n')
+          replace_once(
+              admin,
+              '''  await page.goto('/collection-strategy')\n  let packRow = page.locator('.pack-row').filter({ hasText: pack.name })\n  await expect(packRow).toBeVisible()\n  await packRow.click()\n''',
+              '''  await page.goto('/collection-strategy')\n  await openKeywordPackByName(page, pack.name)\n''',
+          )
+          replace_once(
+              admin,
+              '''  packRow = page.locator('.pack-row').filter({ hasText: pack.name })\n  await expect(packRow).toBeVisible()\n  await expect(packRow).toContainText('已停用')\n  await packRow.click()\n''',
+              '''  await openKeywordPackByName(page, pack.name)\n  const restoredPackRow = page.locator('.pack-row').filter({ hasText: pack.name })\n  await expect(restoredPackRow).toContainText('已停用')\n''',
+          )
+
+          stage12 = 'frontend/e2e-fullstack/stage12-historical-analysis.spec.ts'
+          text = Path(stage12).read_text(encoding='utf-8')
+          changes = {
+              "page.getByRole('dialog', { name: '创建 AI Analysis Run' })": "page.getByRole('dialog', { name: '创建 AI 打标任务' })",
+              "dialog.getByText('预检目标 1 条，拆分 1 个 Shard')": "dialog.getByText('预计处理 1 条内容，共 1 个处理批次')",
+              "dialog.getByRole('button', { name: '确认并创建 Analysis Run' })": "dialog.getByRole('button', { name: '确认并创建任务' })",
+              "`预检目标 ${preview.target_count} 条，拆分 ${preview.shard_count} 个 Shard`": "`预计处理 ${preview.target_count} 条内容，共 ${preview.shard_count} 个处理批次`",
+              "migration.getByText('预检完成，可开始导入')": "migration.locator('.campaign-status').filter({ hasText: '预检完成' })",
+              "migration.getByText('状态：partial_failed')": "migration.locator('.campaign-status').filter({ hasText: '部分导入失败' })",
+              "migration.getByText('状态：succeeded')": "migration.locator('.campaign-status').filter({ hasText: '导入完成' })",
+          }
+          for old, new in changes.items():
+              if old not in text:
+                  raise RuntimeError(f'stage12 anchor missing: {old}')
+              text = text.replace(old, new)
+          Path(stage12).write_text(text, encoding='utf-8')
+
+          task_center = 'frontend/tests/task-center.spec.ts'
+          replacements = {
+              "title: 'AI 打标 · Run #12'": "title: 'AI 打标任务 12'",
+              "subtitle: 'TikHub 采集 · 小红书'": "subtitle: '主动采集 · 小红书'",
+              "href: '/collection-runtime',\n    })\n  })\n\n  it('终态任务不计入活动数量": "href: '/collection-runtime?data_import_campaign_id=campaign-1',\n    })\n  })\n\n  it('终态任务不计入活动数量",
+              "toBe('AI 打标 · Run #14')": "toBe('AI 打标任务 14')",
+              "toBe('AI 打标 · Run #3')": "toBe('AI 打标任务 3')",
+          }
+          text = Path(task_center).read_text(encoding='utf-8')
+          for old, new in replacements.items():
+              if old not in text:
+                  raise RuntimeError(f'task-center anchor missing: {old}')
+              text = text.replace(old, new, 1)
+          Path(task_center).write_text(text, encoding='utf-8')
+          PY
+
+      - name: Auto-fix lint only in PR-changed frontend source and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t FRONTEND_FILES < <(
+            git diff --name-only origin/main...HEAD \
+              | grep '^frontend/' \
+              | grep -E '\.(ts|vue)$' \
+              | grep -v '^frontend/src/generated/' \
+              | sed 's#^frontend/##' \
+              || true
+          )
+          test "${#FRONTEND_FILES[@]}" -gt 0
+          cd frontend
+          npx eslint --fix "${FRONTEND_FILES[@]}"
+
+      - name: Frontend quality gates
+        id: quality
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run lint
+          npm --prefix frontend run test -- --run
+          npm --prefix frontend run build
+          npm --prefix frontend exec -- playwright --version
+          npm --prefix frontend run test:e2e
+
+      - name: Verify write scope
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          unexpected = [path for path in changed if not path.startswith('frontend/')]
+          if unexpected:
+              raise RuntimeError(f'unexpected frontend-fix paths: {unexpected}')
+          required = {
+              'frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/AnalysisSubmitDialog.vue',
+              'frontend/e2e-fullstack/admin-product-capabilities.spec.ts',
+              'frontend/e2e-fullstack/stage12-historical-analysis.spec.ts',
+              'frontend/tests/task-center.spec.ts',
+          }
+          missing = required - set(changed)
+          if missing:
+              raise RuntimeError(f'required frontend-fix paths missing: {sorted(missing)}')
+          print('frontend fix paths:', *changed, sep='\n- ')
+          PY
+
+      - name: Commit green frontend fix or clean failed workflow
+        if: always()
+        env:
+          QUALITY_OUTCOME: ${{ steps.quality.outcome }}
+          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SUCCESS=false
+          if [[ "${QUALITY_OUTCOME}" == "success" && "${SCOPE_OUTCOME}" == "success" ]]; then
+            SUCCESS=true
+          fi
+          if [[ "${SUCCESS}" != "true" ]]; then
+            git reset --hard HEAD
+          fi
+          git rm .github/workflows/tmp-product-lifecycle-frontend-fix-v3.yml
+          git config user.name "AIMA Temporary Validator"
+          git config user.email "aima-validator@users.noreply.github.com"
+          if [[ "${SUCCESS}" == "true" ]]; then
+            git add -u
+            git commit -m "统一产品前端文案并修复全栈验收"
+          else
+            git commit -m "清理失败的临时产品前端修复 V3"
+          fi
+          git push origin HEAD:feature/product-resource-lifecycle
+          test "${SUCCESS}" = "true"
