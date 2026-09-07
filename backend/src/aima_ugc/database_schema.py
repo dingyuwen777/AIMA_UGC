@@ -1,5 +1,6 @@
 """当前应用 Schema 的机器注册入口。"""
 
+from aima_ugc.modules.analysis.lifecycle_schema import register_analysis_lifecycle_schema
 from aima_ugc.modules.analysis.manual_override_tables import (
     analysis_content_manual_overrides_table,
 )
@@ -114,6 +115,7 @@ from aima_ugc.platform.storage.tables import artifacts_table
 register_scheduler_schema()
 register_collection_lifecycle_schema()
 register_system_lifecycle_schema()
+register_analysis_lifecycle_schema()
 register_content_source_constraints()
 register_ingestion_schema()
 
