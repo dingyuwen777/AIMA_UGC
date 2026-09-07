@@ -146,6 +146,35 @@ test('does not present an incomplete local Campaign form as a busy operation', a
   await expect(submitButton).toHaveCSS('cursor', 'pointer')
 })
 
+test('creates a local Campaign when randomUUID is unavailable', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      value: undefined,
+    })
+  })
+  let createRequestBody: Record<string, unknown> | undefined
+  await page.route('**/api/v1/data-import-campaigns/local', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    createRequestBody = route.request().postDataJSON() as Record<string, unknown>
+    await route.fallback()
+  })
+
+  const dialog = await openImportDialog(page)
+  await dialog.locator('input[type="file"]').first().setInputFiles({
+    name: 'aima.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from('aima'),
+  })
+  await dialog.getByLabel(/爱玛品牌词包/).check()
+  await dialog.locator('.create-button').click()
+
+  await expect(dialog.getByText('文件上传完成，服务器正在执行不可变快照与预检。')).toBeVisible()
+  expect(createRequestBody?.client_idempotency_key).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  )
+})
+
 test('stages local files through Campaign upload and restores a visible error', async ({ page }) => {
   let releaseCreate!: () => void
   const createGate = new Promise<void>((resolve) => {
