@@ -70,7 +70,7 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(html).not.toContain('今日入库 Content')
   })
 
-  it('筛选区按 Figma 顺序排列并隐藏 Cursor 实现细节', async () => {
+  it('筛选区按业务条件排列，不诱导用户输入 Batch、Run 或 Cursor 等工程身份', async () => {
     const html = await renderComponent(CollectionRuntimeFilters, {
       activeTab: 'all',
       search: '',
@@ -87,7 +87,7 @@ describe('采集运行中心正式 Figma 基线', () => {
       'onUpdate:createdTo': () => undefined,
     })
 
-    const searchIndex = html.indexOf('搜索批次名称、批次编号、运行编号')
+    const searchIndex = html.indexOf('搜索来源文件或采集关键词')
     const dateIndex = html.indexOf('aria-label="开始日期"')
     const statusIndex = html.indexOf('aria-label="状态"')
     const typeIndex = html.indexOf('aria-label="类型"')
@@ -98,14 +98,38 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(statusIndex).toBeGreaterThan(dateIndex)
     expect(typeIndex).toBeGreaterThan(statusIndex)
     expect(stageIndex).toBeGreaterThan(typeIndex)
-    expect(html).toContain('时间按北京时间解释')
+    expect(html).toContain('时间按北京时间显示')
+    expect(html).not.toContain('批次编号')
+    expect(html).not.toContain('运行编号')
     expect(html).not.toContain('Cursor')
+    expect(html).not.toContain('TikHub 采集中')
+    expect(html).not.toContain('不可变快照')
     expect(html.match(/class="aima-button/g)).toHaveLength(2)
   })
 
-  it('运行记录表按正式 Figma 固定为 7 列且不单独展示关联对象', async () => {
+  it('运行记录表固定为 7 列，只展示业务任务身份而不显示内部 UUID', async () => {
+    const recordId = '52345678-1234-5678-1234-567812345678'
     const html = await renderComponent(CollectionRuntimeTable, {
-      items: [],
+      items: [{
+        record_id: recordId,
+        record_type: 'tikhub_discovery',
+        display_name: '爱玛品牌内容发现',
+        job_id: '62345678-1234-5678-1234-567812345678',
+        status: 'running',
+        stage: 'content_discovery',
+        progress: 50,
+        collection_stats: {
+          requested_count: 20,
+          succeeded_count: 10,
+          failed_count: 0,
+          content_count: 8,
+          comment_count: 12,
+          filtered_count: 2,
+        },
+        created_at: '2026-09-07T08:00:00+08:00',
+        started_at: '2026-09-07T08:00:10+08:00',
+        finished_at: null,
+      }],
       loading: false,
     })
     const headMatch = html.match(/<div[^>]*class="table-head"[^>]*>([\s\S]*?)<\/div>/)
@@ -113,14 +137,38 @@ describe('采集运行中心正式 Figma 基线', () => {
 
     expect(headMatch).not.toBeNull()
     expect(tableHead.match(/<span(?:\s[^>]*)?>/g)).toHaveLength(7)
-    expect(tableHead).toContain('任务 / 执行编号')
+    expect(tableHead).toContain('任务')
     expect(tableHead).toContain('类型')
     expect(tableHead).toContain('状态与进度')
     expect(tableHead).toContain('当前阶段')
-    expect(tableHead).toContain('处理统计')
+    expect(tableHead).toContain('处理结果')
     expect(tableHead).toContain('创建时间')
     expect(tableHead).toContain('操作')
+    expect(tableHead).not.toContain('任务 / 执行编号')
     expect(tableHead).not.toContain('关联对象')
+    expect(html).toContain('爱玛品牌内容发现')
+    expect(html).toContain('平台采集')
+    expect(html).not.toContain(recordId)
+    expect(html).not.toContain('TikHub 发现')
+  })
+
+  it('导入和补采详情把内部 ID、错误码与后台任务信息下沉到技术详情', async () => {
+    const [importSource, runSource] = await Promise.all([
+      readCollectionRuntimeSource('components/ImportBatchDetailDrawer.vue'),
+      readCollectionRuntimeSource('components/CollectionRunDetailDrawer.vue'),
+    ])
+
+    expect(importSource).toContain('aria-label="数据导入详情"')
+    expect(importSource).toContain('<summary>技术详情</summary>')
+    expect(importSource).toContain('导入 ID')
+    expect(importSource).not.toContain('后台任务状态')
+    expect(importSource).not.toContain('上传与 Artifact')
+    expect(importSource).not.toContain('Worker 持续执行')
+    expect(runSource).toContain('aria-label="辅助补采详情"')
+    expect(runSource).toContain('<summary>技术详情</summary>')
+    expect(runSource).toContain('运行 ID')
+    expect(runSource).not.toContain('TikHub 运行详情')
+    expect(runSource).not.toContain('基于已有批次补采')
   })
 
   it('Data Import Campaign 只在后端 can_start 为真时渲染开始导入动作', async () => {
