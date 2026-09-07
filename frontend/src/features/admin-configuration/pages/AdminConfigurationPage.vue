@@ -7,6 +7,7 @@ import type {
   AnalysisSchemeVersionResponse,
   AuditEventResponse,
   KeywordPackSummaryResponse,
+  ResourceLifecycleResponse,
   VehicleModelResponse,
 } from '../../../generated/api/client'
 import AppShell from '../../../app/layouts/AppShell.vue'
@@ -20,17 +21,24 @@ import {
   activateScheme,
   addSchemeDraft,
   addVehicle,
+  archiveScheme,
+  copyScheme,
+  deleteArchivedScheme,
   editSchemeDraft,
   editVehicle,
+  fetchArchivedSchemes,
   fetchAuditEvents,
   fetchKeywordPacksForAdmin,
+  fetchSchemeDeleteEligibility,
   fetchSchemes,
   fetchVehicles,
   mergeVehicle,
   removeVehicle,
+  restoreArchivedScheme,
   restoreScheme,
   saveKeywordPackVehicles,
 } from '../api'
+import AnalysisLabelsEditor from '../components/AnalysisLabelsEditor.vue'
 import ProviderConfigurationPanel from '../components/ProviderConfigurationPanel.vue'
 import {
   auditActionLabel,
@@ -49,6 +57,7 @@ const notice = ref<string | null>(null)
 const vehicles = ref<VehicleModelResponse[]>([])
 const packs = ref<KeywordPackSummaryResponse[]>([])
 const schemes = ref<AnalysisSchemeResponse[]>([])
+const archivedSchemes = ref<ResourceLifecycleResponse[]>([])
 const auditEvents = ref<AuditEventResponse[]>([])
 const selectedPackId = ref('')
 const linkedVehicleIds = ref<string[]>([])
@@ -56,6 +65,9 @@ const selectedSchemeVersionId = ref('')
 const vehicleLoading = ref(false)
 const packLoading = ref(false)
 const schemeLoading = ref(false)
+const archivedSchemeLoading = ref(false)
+const schemeLabelsValid = ref(true)
+const schemeCopyName = ref('')
 const auditLoading = ref(false)
 const vehicleError = ref<string | null>(null)
 const packError = ref<string | null>(null)
@@ -152,6 +164,22 @@ async function loadSchemes(): Promise<void> {
   } finally {
     schemeLoading.value = false
   }
+}
+
+async function loadArchivedSchemes(): Promise<void> {
+  archivedSchemeLoading.value = true
+  schemeError.value = null
+  try {
+    archivedSchemes.value = (await fetchArchivedSchemes()).items
+  } catch (reason) {
+    schemeError.value = apiErrorMessage(reason)
+  } finally {
+    archivedSchemeLoading.value = false
+  }
+}
+
+function onArchivedSchemesToggle(event: Event): void {
+  if ((event.currentTarget as HTMLDetailsElement).open) void loadArchivedSchemes()
 }
 
 async function loadAudit(): Promise<void> {
@@ -324,6 +352,7 @@ function schemeDefinition(): AnalysisSchemeDefinitionRequest {
 }
 
 function validateSchemeDefinition(definition: AnalysisSchemeDefinitionRequest): void {
+  if (!schemeLabelsValid.value) throw new Error('请先修正结构化标签规则。')
   if (!definition.prompt_template.includes('{{AIMA_TAXONOMY_JSON}}')) {
     throw new Error('提示词模板必须包含标签规则占位符 {{AIMA_TAXONOMY_JSON}}。')
   }
@@ -356,6 +385,86 @@ async function saveSchemeDraft(): Promise<void> {
     selectedSchemeVersionId.value = saved.versions.find((item) => item.status === 'draft')?.id ?? ''
     notice.value = 'AI 分析规则草稿已保存并记录操作。'
     await refreshAll()
+  } catch (reason) {
+    error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
+  }
+}
+
+function startSchemeCopy(): void {
+  const selected = selectedSchemeVersion.value
+  if (!selected) return
+  schemeCopyName.value = `${selected.scheme.name} 副本`
+}
+
+async function copySelectedScheme(): Promise<void> {
+  const selected = selectedSchemeVersion.value
+  if (!selected || !schemeCopyName.value.trim()) return
+  saving.value = true
+  error.value = null
+  try {
+    const copied = await copyScheme(selected.scheme.id, { name: schemeCopyName.value.trim() })
+    schemeCopyName.value = ''
+    await loadSchemes()
+    const draft = copied.versions.find((item) => item.status === 'draft') ?? copied.versions[0]
+    if (draft) selectSchemeVersion(draft.id)
+    notice.value = 'AI 分析规则副本已创建为草稿。'
+  } catch (reason) {
+    error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function archiveSelectedScheme(): Promise<void> {
+  const selected = selectedSchemeVersion.value
+  if (!selected) return
+  if (!window.confirm(`确认归档 AI 分析规则“${selected.scheme.name}”吗？当前生效规则会被服务端阻止归档，历史版本和历史分析任务不会被删除。`)) return
+  saving.value = true
+  error.value = null
+  try {
+    await archiveScheme(selected.scheme.id)
+    selectedSchemeVersionId.value = ''
+    await Promise.all([loadSchemes(), loadArchivedSchemes()])
+    notice.value = 'AI 分析规则已归档。'
+  } catch (reason) {
+    error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function restoreArchivedAnalysisScheme(item: ResourceLifecycleResponse): Promise<void> {
+  saving.value = true
+  error.value = null
+  try {
+    await restoreArchivedScheme(item.id)
+    await Promise.all([loadSchemes(), loadArchivedSchemes()])
+    const restored = schemes.value.find((scheme) => scheme.id === item.id)
+    const version = restored?.versions.find((entry) => entry.status === 'draft') ?? restored?.versions[0]
+    if (version) selectSchemeVersion(version.id)
+    notice.value = 'AI 分析规则已恢复；恢复后不会自动发布或生效。'
+  } catch (reason) {
+    error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Promise<void> {
+  saving.value = true
+  error.value = null
+  try {
+    const eligibility = await fetchSchemeDeleteEligibility(item.id)
+    if (!eligibility.eligible) {
+      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析规则已有发布或运行历史，只能保留归档记录。'
+      return
+    }
+    if (!window.confirm(`确认永久删除已归档 AI 分析规则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿规则才允许删除。`)) return
+    await deleteArchivedScheme(item.id)
+    await loadArchivedSchemes()
+    notice.value = '未发布且未使用的归档 AI 分析规则已永久删除。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -647,17 +756,36 @@ function safeJson(value: Record<string, unknown>): string {
               <span>{{ formatDateTime(version.created_at) }}</span>
             </button>
           </template>
+          <details class="archived-schemes" @toggle="onArchivedSchemesToggle">
+            <summary>已归档规则</summary>
+            <div v-if="archivedSchemeLoading" class="archived-scheme-state">正在读取…</div>
+            <div v-else-if="archivedSchemes.length === 0" class="archived-scheme-state">暂无已归档规则。</div>
+            <div v-for="item in archivedSchemes" v-else :key="item.id" class="archived-scheme-row">
+              <span><strong>{{ item.name }}</strong><small>{{ formatDateTime(item.archived_at) }}</small></span>
+              <AimaButton variant="text" size="small" :disabled="saving" @click="restoreArchivedAnalysisScheme(item)">恢复</AimaButton>
+              <AimaButton variant="text" size="small" :disabled="saving" @click="deleteArchivedAnalysisScheme(item)">永久删除</AimaButton>
+            </div>
+          </details>
         </section>
         <section class="card form-card scheme-editor">
           <header>
             <div>
               <h2>AI 分析规则</h2>
-              <p>默认只维护业务含义；提示词与结构化标签作为高级规则按需展开。</p>
+              <p>发声类型、情感和标签结构直接按业务含义维护；提示词仅在需要时进入高级设置。</p>
             </div>
             <span v-if="selectedSchemeVersion">
               {{ formatRuntimeStatus(selectedSchemeVersion.version.status) }}
             </span>
           </header>
+          <div v-if="selectedSchemeVersion" class="scheme-resource-actions">
+            <AimaButton size="small" :disabled="saving" @click="startSchemeCopy">复制规则</AimaButton>
+            <AimaButton size="small" :disabled="saving" @click="archiveSelectedScheme">归档规则</AimaButton>
+          </div>
+          <div v-if="schemeCopyName" class="scheme-copy-editor">
+            <label>副本名称<input v-model="schemeCopyName" maxlength="200"></label>
+            <small>复制的是该规则当前最新版本；副本只创建草稿，不会自动发布。</small>
+            <div><AimaButton size="small" @click="schemeCopyName = ''">取消</AimaButton><AimaButton variant="primary" size="small" :disabled="saving || !schemeCopyName.trim()" @click="copySelectedScheme">创建副本</AimaButton></div>
+          </div>
           <label>
             规则名称
             <input
@@ -684,18 +812,18 @@ function safeJson(value: Record<string, unknown>): string {
               rows="4"
             />
           </label>
+          <AnalysisLabelsEditor
+            v-model="schemeDraft.labelsJson"
+            @validity="schemeLabelsValid = $event"
+          />
           <details class="advanced-editor">
             <summary>高级规则编辑</summary>
-            <p>只有需要直接维护结构化标签或提示词时才展开。保存和发布仍会按同一个完整版本处理。</p>
+            <p>这里只维护提示词与查看机器结构；业务标签请在上方结构化编辑器修改。</p>
             <div class="advanced-editor__fields">
-              <label>
-                标签规则（JSON）
-                <textarea
-                  v-model="schemeDraft.labelsJson"
-                  rows="10"
-                  spellcheck="false"
-                />
-              </label>
+              <div class="technical-note taxonomy-preview">
+                <strong>标签结构预览（只读）</strong>
+                <pre>{{ schemeDraft.labelsJson }}</pre>
+              </div>
               <label>
                 提示词模板
                 <textarea
@@ -711,7 +839,7 @@ function safeJson(value: Record<string, unknown>): string {
           </details>
           <div class="actions">
             <AimaButton
-              :disabled="saving"
+              :disabled="saving || !schemeLabelsValid"
               @click="saveSchemeDraft"
             >
               {{ selectedSchemeVersion?.version.status === 'draft' ? '保存草稿' : '基于此版本新建草稿' }}
@@ -880,6 +1008,10 @@ hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--aima-bor
 .list-card > button strong { font-size: 12px; }
 .list-card > button span { color: var(--aima-text-muted); font-size: 10px; }
 .scheme-editor > header > span { padding: 3px 8px; border-radius: 4px; color: var(--aima-primary); background: var(--aima-primary-soft); font-size: 10px; }
+.scheme-resource-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.scheme-copy-editor { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--aima-border); border-radius: 7px; background: #fafbfc; }.scheme-copy-editor small { color: var(--aima-text-muted); font-size: 10px; }.scheme-copy-editor > div { display: flex; justify-content: flex-end; gap: 8px; }
+.archived-schemes { margin-top: 10px; border: 1px solid var(--aima-border); border-radius: 7px; overflow: hidden; }.archived-schemes summary { padding: 9px 10px; cursor: pointer; color: var(--aima-text-secondary); font-size: 11px; font-weight: 600; }.archived-scheme-state { padding: 12px 10px; color: var(--aima-text-muted); font-size: 10px; }.archived-scheme-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 5px; padding: 8px 9px; border-top: 1px solid var(--aima-border); }.archived-scheme-row span strong,.archived-scheme-row span small { display: block; }.archived-scheme-row span strong { color: var(--aima-text); font-size: 10px; }.archived-scheme-row span small { margin-top: 2px; color: var(--aima-text-disabled); font-size: 9px; }
+.taxonomy-preview pre { max-height: 180px; overflow: auto; margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--aima-text-secondary); font-size: 10px; line-height: 15px; }
 .retry-link { width: max-content; padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }
 .retry-link:disabled { cursor: wait; opacity: .6; }
 .advanced-editor,
