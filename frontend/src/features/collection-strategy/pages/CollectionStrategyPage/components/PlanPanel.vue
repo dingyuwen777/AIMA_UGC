@@ -10,9 +10,9 @@ import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { collectionPlatformLabel, collectionScheduleLabel, formatBeijingDateTime } from '../../../presentation'
 
-defineProps<{
+withDefaults(defineProps<{
   plans: CollectionPlanResponse[]
-  archived: ResourceLifecycleResponse[]
+  archived?: ResourceLifecycleResponse[]
   packs: KeywordPackSummaryResponse[]
   vehicles: VehicleModelResponse[]
   providers: CollectionProviderConfigResponse[]
@@ -20,10 +20,13 @@ defineProps<{
   offset: number
   limit: number
   loading: boolean
-  loadingArchived: boolean
+  loadingArchived?: boolean
   saving: boolean
   toggleReason: (plan: CollectionPlanResponse) => string | null
-}>()
+}>(), {
+  archived: () => [],
+  loadingArchived: false,
+})
 const emit = defineEmits<{
   open: [plan: CollectionPlanResponse]
   toggle: [plan: CollectionPlanResponse]
