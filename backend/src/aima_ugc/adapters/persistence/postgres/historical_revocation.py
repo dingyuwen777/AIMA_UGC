@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, insert, select, union
+from sqlalchemy import exists, func, insert, literal, select, union
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
     historical_import_campaigns_table,
@@ -68,14 +69,14 @@ class PostgresImportCampaignRevocationRepository:
         return None if row is None else _record(row)
 
     def calculate_impact(self, campaign_id: UUID) -> ImportCampaignRevocationImpact:
-        """按来源关系计算撤销后隐藏与共享保留数量，不修改业务数据。"""
+        """计算可见性影响与可逆证据缺口；这里只读，不修改业务数据。"""
 
         affected = _affected_content_ids(campaign_id).subquery("revocation_affected_contents")
         affected_count = int(
             self._session.scalar(select(func.count()).select_from(affected)) or 0
         )
         if affected_count == 0:
-            return ImportCampaignRevocationImpact(0, 0, 0)
+            return ImportCampaignRevocationImpact(0, 0, 0, 0)
         retained = int(
             self._session.scalar(
                 select(func.count())
@@ -89,10 +90,17 @@ class PostgresImportCampaignRevocationRepository:
             )
             or 0
         )
+        unreversible = _unreversible_content_ids(campaign_id).subquery(
+            "revocation_unreversible_contents"
+        )
+        unreversible_count = int(
+            self._session.scalar(select(func.count()).select_from(unreversible)) or 0
+        )
         return ImportCampaignRevocationImpact(
             affected_content_count=affected_count,
             hidden_content_count=affected_count - retained,
             retained_shared_content_count=retained,
+            unreversible_content_count=unreversible_count,
         )
 
     def create_revocation(
@@ -107,6 +115,8 @@ class PostgresImportCampaignRevocationRepository:
     ) -> ImportCampaignRevocationRecord:
         """追加唯一撤销事实；父 Campaign 已由上层服务在同事务锁定。"""
 
+        if not impact.safely_reversible:
+            raise ValueError("不可安全回退的 Campaign 不能创建撤销事实")
         row = (
             self._session.execute(
                 insert(historical_import_campaign_revocations_table)
@@ -118,6 +128,7 @@ class PostgresImportCampaignRevocationRepository:
                     affected_content_count=impact.affected_content_count,
                     hidden_content_count=impact.hidden_content_count,
                     retained_shared_content_count=impact.retained_shared_content_count,
+                    unreversible_content_count=impact.unreversible_content_count,
                     revoked_at=revoked_at,
                 )
                 .returning(historical_import_campaign_revocations_table)
@@ -169,6 +180,76 @@ def _affected_content_ids(campaign_id: UUID) -> Any:
     return union(direct, supplemented)
 
 
+def _unreversible_content_ids(campaign_id: UUID) -> Any:
+    """找出发生过业务写入、但缺少精确 Contribution Delta 的 Content。"""
+
+    ledger = processing_import_batch_items_table.alias("revocation_ledger")
+    campaign_item = historical_import_campaign_items_table.alias("revocation_campaign_item")
+    contribution = content_source_contributions_table.alias("revocation_direct_contribution")
+    attempt = provider_request_attempts_table.alias("revocation_direct_attempt")
+    request = provider_requests_table.alias("revocation_direct_request")
+    direct_contribution_exists = exists(
+        select(literal(1))
+        .select_from(
+            contribution.join(attempt, attempt.c.id == contribution.c.provider_attempt_id).join(
+                request,
+                request.c.id == attempt.c.provider_request_id,
+            )
+        )
+        .where(
+            contribution.c.content_id == ledger.c.content_id,
+            request.c.import_batch_id == ledger.c.batch_id,
+        )
+    )
+    direct_missing = (
+        select(ledger.c.content_id.label("content_id"))
+        .select_from(
+            ledger.join(
+                campaign_item,
+                campaign_item.c.id == ledger.c.campaign_item_id,
+            )
+        )
+        .where(
+            campaign_item.c.campaign_id == campaign_id,
+            ledger.c.content_id.is_not(None),
+            ledger.c.outcome.in_(("created", "filled", "updated")),
+            ~direct_contribution_exists,
+        )
+    )
+
+    ingestion = collection_candidate_ingestions_table.alias("revocation_missing_ingestion")
+    candidate = collection_candidates_table.alias("revocation_missing_candidate")
+    source_attempt = provider_request_attempts_table.alias("revocation_missing_source_attempt")
+    source_request = provider_requests_table.alias("revocation_missing_source_request")
+    scope = collection_scopes_table.alias("revocation_missing_scope")
+    run = collection_runs_table.alias("revocation_missing_run")
+    supplement_contribution = content_source_contributions_table.alias(
+        "revocation_supplement_contribution"
+    )
+    supplement_contribution_exists = exists(
+        select(literal(1)).where(
+            supplement_contribution.c.content_id == ingestion.c.content_id,
+            supplement_contribution.c.provider_attempt_id == candidate.c.provider_request_attempt_id,
+        )
+    )
+    supplemented_missing = (
+        select(ingestion.c.content_id.label("content_id"))
+        .select_from(
+            ingestion.join(candidate, candidate.c.id == ingestion.c.candidate_id)
+            .join(source_attempt, source_attempt.c.id == candidate.c.provider_request_attempt_id)
+            .join(source_request, source_request.c.id == source_attempt.c.provider_request_id)
+            .join(scope, scope.c.id == source_request.c.scope_id)
+            .join(run, run.c.id == scope.c.run_id)
+        )
+        .where(
+            run.c.data_import_campaign_id == campaign_id,
+            ingestion.c.content_id.is_not(None),
+            ~supplement_contribution_exists,
+        )
+    )
+    return union(direct_missing, supplemented_missing)
+
+
 def _record(row: RowMapping) -> ImportCampaignRevocationRecord:
     """把数据库行转换成稳定领域记录。"""
 
@@ -181,6 +262,7 @@ def _record(row: RowMapping) -> ImportCampaignRevocationRecord:
             affected_content_count=cast(int, row["affected_content_count"]),
             hidden_content_count=cast(int, row["hidden_content_count"]),
             retained_shared_content_count=cast(int, row["retained_shared_content_count"]),
+            unreversible_content_count=cast(int, row["unreversible_content_count"]),
         ),
         revoked_at=cast(datetime, row["revoked_at"]),
     )
