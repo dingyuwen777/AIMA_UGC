@@ -22,6 +22,7 @@ def test_product_resource_lifecycle_routes_are_in_final_openapi() -> None:
         "previewDataImportCampaignRevocation",
         "revokeDataImportCampaign",
         "updateKeywordPack",
+        "updateKeywordInPack",
         "removeKeywordFromPack",
         "copyKeywordPack",
         "archiveKeywordPack",
