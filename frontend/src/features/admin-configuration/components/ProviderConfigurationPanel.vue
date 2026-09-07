@@ -322,7 +322,7 @@ async function save(): Promise<void> {
               min="1"
               max="5000"
             >
-            <small>控制同一时间最多发起多少个请求。</small>
+            <small>控制同一时间最多发起多少个请求；系统会据此自动安排任务分片，无需单独设置分片大小。</small>
           </label>
           <label>
             <span>每秒请求启动上限</span>
