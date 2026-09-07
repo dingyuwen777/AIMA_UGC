@@ -8,12 +8,15 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
 from aima_ugc.modules.system.models import Keyword, KeywordPack, KeywordPackItem
 from aima_ugc.modules.system.tables import (
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
 )
+
+register_system_lifecycle_schema()
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +66,10 @@ class PostgresKeywordCatalogRepository:
     def get_pack(self, pack_id: UUID) -> KeywordPack | None:
         row = (
             self._session.execute(
-                select(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
+                select(keyword_packs_table).where(
+                    keyword_packs_table.c.id == pack_id,
+                    keyword_packs_table.c.archived_at.is_(None),
+                )
             )
             .mappings()
             .one_or_none()
@@ -71,11 +77,14 @@ class PostgresKeywordCatalogRepository:
         return None if row is None else _pack_from_row(row)
 
     def get_pack_for_update(self, pack_id: UUID) -> KeywordPack | None:
-        """锁定词包父记录，串行化启停、Relevance 与 Plan 保存。"""
+        """锁定未归档词包父记录，串行化启停、Relevance 与 Plan 保存。"""
         row = (
             self._session.execute(
                 select(keyword_packs_table)
-                .where(keyword_packs_table.c.id == pack_id)
+                .where(
+                    keyword_packs_table.c.id == pack_id,
+                    keyword_packs_table.c.archived_at.is_(None),
+                )
                 .with_for_update()
             )
             .mappings()
@@ -91,8 +100,8 @@ class PostgresKeywordCatalogRepository:
         offset: int,
         limit: int,
     ) -> tuple[KeywordPackSummaryRecord, ...]:
-        """按更新时间稳定读取配置页摘要。"""
-        conditions = []
+        """按更新时间稳定读取未归档配置页摘要。"""
+        conditions = [keyword_packs_table.c.archived_at.is_(None)]
         if search is not None:
             pattern = f"%{search.strip()}%"
             conditions.append(keyword_packs_table.c.name.ilike(pattern))
@@ -126,7 +135,7 @@ class PostgresKeywordCatalogRepository:
         )
 
     def count_packs(self, *, search: str | None, enabled: bool | None) -> int:
-        conditions = []
+        conditions = [keyword_packs_table.c.archived_at.is_(None)]
         if search is not None:
             conditions.append(keyword_packs_table.c.name.ilike(f"%{search.strip()}%"))
         if enabled is not None:
@@ -139,7 +148,7 @@ class PostgresKeywordCatalogRepository:
         )
 
     def set_pack_enabled(self, pack_id: UUID, *, enabled: bool) -> KeywordPack | None:
-        """切换词包状态并提升版本；无变化时保持版本稳定。"""
+        """切换未归档词包状态并提升版本；无变化时保持版本稳定。"""
         current = self.get_pack_for_update(pack_id)
         if current is None:
             return None
@@ -148,7 +157,10 @@ class PostgresKeywordCatalogRepository:
         row = (
             self._session.execute(
                 update(keyword_packs_table)
-                .where(keyword_packs_table.c.id == pack_id)
+                .where(
+                    keyword_packs_table.c.id == pack_id,
+                    keyword_packs_table.c.archived_at.is_(None),
+                )
                 .values(
                     enabled=enabled,
                     version=keyword_packs_table.c.version + 1,
@@ -172,6 +184,7 @@ class PostgresKeywordCatalogRepository:
                     description=pack.description,
                     enabled=pack.enabled,
                     version=pack.version,
+                    archived_at=None,
                     created_at=now,
                     updated_at=now,
                 )
@@ -265,7 +278,10 @@ class PostgresKeywordCatalogRepository:
         )
         updated_pack = self._session.execute(
             update(keyword_packs_table)
-            .where(keyword_packs_table.c.id == item.pack_id)
+            .where(
+                keyword_packs_table.c.id == item.pack_id,
+                keyword_packs_table.c.archived_at.is_(None),
+            )
             .values(
                 version=keyword_packs_table.c.version + 1,
                 updated_at=func.clock_timestamp(),
@@ -315,7 +331,10 @@ class PostgresKeywordCatalogRepository:
             return _item_from_row(existing)
         updated_pack = self._session.execute(
             update(keyword_packs_table)
-            .where(keyword_packs_table.c.id == item.pack_id)
+            .where(
+                keyword_packs_table.c.id == item.pack_id,
+                keyword_packs_table.c.archived_at.is_(None),
+            )
             .values(
                 version=keyword_packs_table.c.version + 1,
                 updated_at=func.clock_timestamp(),
