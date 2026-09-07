@@ -24,6 +24,7 @@ from aima_ugc.modules.ingestion.historical_tables import (
 from aima_ugc.platform.time import beijing_now
 
 from .content_complete import PostgresCompleteContentRepository
+from .content_contributions import commit_content_contribution, prepare_content_contribution
 
 _POLICY_VERSION = "historical-fill-only.v1"
 _MAX_BATCH_ROWS = 2_000
@@ -132,7 +133,7 @@ class PostgresHistoricalContentRepository:
         chunk_ordinal: int,
         rows: tuple[HistoricalBatchRow, ...],
     ) -> HistoricalBatchSummary:
-        """以固定上限处理一个 Chunk；一次事务提交业务变化、行账本和冲突。"""
+        """以固定上限处理一个 Chunk；一次事务提交业务变化、贡献 Delta、行账本和冲突。"""
 
         if chunk_ordinal < 0:
             raise ValueError("chunk_ordinal 不能为负数")
@@ -176,8 +177,25 @@ class PostgresHistoricalContentRepository:
         winners = [
             item for item in planned if item.outcome not in {"duplicate", "filtered", "invalid"}
         ]
+        contribution_drafts = {
+            item.source_row_ordinal: prepare_content_contribution(
+                self._session,
+                cast(CanonicalContentV1, item.content),
+            )
+            for item in winners
+        }
         self._upsert_authors(winners)
         self._plan_and_write_contents(winners)
+        for item in winners:
+            if item.content_id is None:
+                raise RuntimeError("历史导入写入后缺少 Content ID")
+            content = cast(CanonicalContentV1, item.row.content)
+            commit_content_contribution(
+                self._session,
+                draft=contribution_drafts[item.row.source_row_ordinal],
+                observation=content,
+                content_id=item.content_id,
+            )
         self._write_ledgers(
             batch_id=batch_id,
             campaign_item_id=campaign_item_id,
