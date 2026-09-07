@@ -22,6 +22,7 @@ describe('admin configuration presentation helpers', () => {
     expect(auditActionLabel('provider_config_updated')).toBe('更新服务配置')
     expect(auditActionLabel('provider_connection_tested')).toBe('测试服务连接')
     expect(auditActionLabel('keyword_pack_archived')).toBe('归档词包')
+    expect(auditActionLabel('keyword_pack_keyword_updated')).toBe('修改词包关键词')
     expect(auditActionLabel('collection_plan_restored')).toBe('恢复采集计划')
     expect(auditActionLabel('analysis_scheme_copied')).toBe('复制 AI 分析规则')
     expect(auditActionLabel('data_import_campaign_revoked')).toBe('撤销数据导入')
