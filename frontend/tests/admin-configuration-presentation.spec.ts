@@ -22,12 +22,14 @@ describe('admin configuration presentation helpers', () => {
     expect(auditActionLabel('provider_config_updated')).toBe('更新模型服务配置')
     expect(auditActionLabel('provider_config_test_succeeded')).toBe('模型服务测试通过')
     expect(auditActionLabel('taxonomy_runtime_created')).toBe('新建标签规则')
+    expect(auditActionLabel('analysis_scheme_published')).toBe('发布 AI 分析规则')
     expect(auditActionLabel('unknown_event')).toBe('配置操作')
   })
 
   it('keeps technical object identifiers out of the default business label', () => {
     expect(auditObjectLabel('provider_config', 'provider-openai')).toBe('模型服务')
     expect(auditObjectLabel('taxonomy_runtime', 'taxonomy-v2')).toBe('标签规则')
+    expect(auditObjectLabel('analysis_scheme', 'analysis-v2')).toBe('AI 分析规则')
     expect(auditObjectLabel('unknown_type', 'opaque-id')).toBe('配置对象')
   })
 
