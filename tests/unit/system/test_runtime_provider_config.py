@@ -102,7 +102,8 @@ def test_database_default_llm_provider_wins_over_legacy_environment(
     _install_fake_provider_repository(
         monkeypatch,
         default=database_config,
-        configs=(database_config,),
+        current_configs=(database_config,),
+        all_configs=(database_config,),
     )
 
     resolved = runtime_config.active_llm_provider(
@@ -135,7 +136,41 @@ def test_existing_database_llm_configs_disable_legacy_environment_fallback(
     _install_fake_provider_repository(
         monkeypatch,
         default=None,
-        configs=(non_default,),
+        current_configs=(non_default,),
+        all_configs=(non_default,),
+    )
+
+    assert (
+        runtime_config.active_llm_provider(
+            cast(Session, object()),
+            _legacy_llm_settings(tmp_path),
+        )
+        is None
+    )
+
+
+def test_archived_database_llm_config_still_blocks_legacy_environment_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """所有 DB LLM 都归档后仍保持数据库事实源，不把旧 env 配置静默重新启用。"""
+
+    archived = ProviderConfig(
+        id=uuid4(),
+        provider="api.deepseek.com",
+        provider_kind="llm",
+        display_name="Archived LLM",
+        base_url="https://api.deepseek.com/v1",
+        model="db-model",
+        secret_ref="providers/llm/archived.key",
+        enabled=False,
+        is_default=False,
+    )
+    _install_fake_provider_repository(
+        monkeypatch,
+        default=None,
+        current_configs=(),
+        all_configs=(archived,),
     )
 
     assert (
@@ -151,9 +186,10 @@ def _install_fake_provider_repository(
     monkeypatch: pytest.MonkeyPatch,
     *,
     default: ProviderConfig | None,
-    configs: tuple[ProviderConfig, ...],
+    current_configs: tuple[ProviderConfig, ...],
+    all_configs: tuple[ProviderConfig, ...],
 ) -> None:
-    """替换运行时 Repository，以最小单测锁定 DB/env 优先级语义。"""
+    """替换运行时 Repository，以最小单测锁定 DB/env 优先级与归档语义。"""
 
     class FakeProviderRepository:
         def __init__(self, _session: object) -> None:
@@ -163,9 +199,14 @@ def _install_fake_provider_repository(
             assert provider_kind == "llm"
             return default
 
-        def list_all(self, *, provider_kind: str | None = None) -> tuple[ProviderConfig, ...]:
+        def list_all(
+            self,
+            *,
+            provider_kind: str | None = None,
+            include_archived: bool = False,
+        ) -> tuple[ProviderConfig, ...]:
             assert provider_kind == "llm"
-            return configs
+            return all_configs if include_archived else current_configs
 
     monkeypatch.setattr(
         runtime_config,
