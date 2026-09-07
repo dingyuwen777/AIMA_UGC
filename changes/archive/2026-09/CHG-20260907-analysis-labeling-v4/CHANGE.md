@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260907-analysis-labeling-v4
 title: 内容打标 V4 与真实用户语义校验
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/analysis-labeling-v4
 created: 2026-09-07
