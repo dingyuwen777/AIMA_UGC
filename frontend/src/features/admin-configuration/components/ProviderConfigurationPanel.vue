@@ -366,15 +366,24 @@ async function save(): Promise<void> {
       <details class="technical-details">
         <summary>技术信息</summary>
         <dl>
-          <div><dt>服务类型标识</dt><dd>
-            <input
-              v-model="draft.provider"
-              :readonly="Boolean(draft.id) || !isLlm"
-              :placeholder="isLlm ? 'openai_compatible' : 'tikhub'"
-            >
-          </dd></div>
-          <div v-if="selectedItem"><dt>配置标识</dt><dd>{{ selectedItem.id }}</dd></div>
-          <div v-if="selectedItem"><dt>配置修订号</dt><dd>{{ selectedItem.revision }}</dd></div>
+          <div>
+            <dt>服务类型标识</dt>
+            <dd>
+              <input
+                v-model="draft.provider"
+                :readonly="Boolean(draft.id) || !isLlm"
+                :placeholder="isLlm ? 'openai_compatible' : 'tikhub'"
+              >
+            </dd>
+          </div>
+          <div v-if="selectedItem">
+            <dt>配置标识</dt>
+            <dd>{{ selectedItem.id }}</dd>
+          </div>
+          <div v-if="selectedItem">
+            <dt>配置修订号</dt>
+            <dd>{{ selectedItem.revision }}</dd>
+          </div>
         </dl>
       </details>
 
