@@ -115,11 +115,11 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
 
   await page.goto('/admin/configuration')
   await expect(page.getByRole('heading', { name: '管理员配置', exact: true })).toBeVisible()
-  await page.getByLabel('稳定 code').fill(code)
+  await page.getByLabel('车型编码').fill(code)
   await page.getByLabel('显示名称').fill(displayName)
   await page.getByLabel(/别名/).fill(alias)
   await page.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByText('车型已创建并写入审计。', { exact: true })).toBeVisible()
+  await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
   await expect(page.getByRole('row').filter({ hasText: displayName })).toBeVisible()
 
   const vehiclesResponse = await request.get('/api/v1/vehicle-models?limit=200')
@@ -128,14 +128,14 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
   const vehicle = vehicles.items.find((item) => item.code === code)
   expect(vehicle, '浏览器创建的车型必须能从正式目录 API 重读').toBeTruthy()
 
-  await page.getByRole('button', { name: '词包车型关联', exact: true }).click()
+  await page.getByRole('button', { name: '词包关联', exact: true }).click()
   await page.getByRole('button', { name: new RegExp(pack.name) }).click()
   await page.getByRole('group', { name: /关联车型/ }).getByLabel(new RegExp(displayName)).check()
   await page.getByRole('button', { name: '保存关联', exact: true }).click()
-  await expect(page.getByText('词包与车型关联已更新并写入审计。', { exact: true })).toBeVisible()
+  await expect(page.getByText('词包与车型关联已更新并记录操作。', { exact: true })).toBeVisible()
 
   await page.reload()
-  await page.getByRole('button', { name: '词包车型关联', exact: true }).click()
+  await page.getByRole('button', { name: '词包关联', exact: true }).click()
   await page.getByRole('button', { name: new RegExp(pack.name) }).click()
   await expect(
     page.getByRole('group', { name: /关联车型/ }).getByLabel(new RegExp(displayName)),
@@ -143,13 +143,18 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
 
   await uploadVehicleContent(request, fixturePath!, pack.id, vehicle!.id)
 
-  await page.getByRole('button', { name: '审计记录', exact: true }).click()
-  const auditRow = page.getByRole('row').filter({ hasText: code })
-  await expect(auditRow).toContainText('vehicle_model_created')
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+  const auditRow = page.getByRole('row').filter({ hasText: '新增车型' }).first()
+  await expect(auditRow).toContainText('车型')
   await expect(auditRow).toContainText('local-administrator')
+  const auditTechnicalDetails = auditRow.locator('details')
+  await expect(auditTechnicalDetails).not.toHaveAttribute('open', '')
+  await expect(
+    auditTechnicalDetails.getByText('vehicle_model_created', { exact: true }),
+  ).not.toBeVisible()
 
   await page.goto('/voice-plaza')
-  const vehicleFilter = page.getByRole('group', { name: /车型筛选/ })
+  const vehicleFilter = page.getByRole('group', { name: '车型', exact: true })
   await vehicleFilter.getByLabel(new RegExp(displayName)).check()
   await page.getByRole('button', { name: '查询', exact: true }).click()
   const contentRow = page.locator('article.content-row').filter({ hasText: vehicleContentTitle })
@@ -158,7 +163,9 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
   const detail = page.getByRole('complementary', { name: '内容详情' })
   const vehicleEvidence = detail.locator('article').filter({ hasText: displayName })
   await expect(vehicleEvidence.getByRole('strong').filter({ hasText: displayName })).toBeVisible()
-  await expect(vehicleEvidence.getByText(`import · “${alias}” · catalog v`, { exact: false })).toBeVisible()
+  await expect(vehicleEvidence).toContainText('系统识别')
+  await expect(vehicleEvidence).toContainText(`命中“${alias}”`)
+  await expect(vehicleEvidence).not.toContainText('catalog v')
 })
 
 test('导出 Worker 终态进入当前 Principal 通知并可从声音广场下载', async ({ page, request }) => {
@@ -216,16 +223,16 @@ test('管理员发布原子 Scheme 后新 Run 冻结新版本且旧 Run 身份�
   expect(oldRun.analysis_scheme_version_id).toBe(activeBefore!.id)
 
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'Analysis Scheme', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
   await page.getByRole('button', {
-    name: new RegExp(`v${activeBefore!.version} · published`),
+    name: new RegExp(`版本 ${activeBefore!.version} · 已发布`),
   }).click()
   await page.getByLabel('说明').fill(`U4 全栈发布 ${Date.now()}`)
   await page.getByRole('button', { name: '基于此版本新建草稿', exact: true }).click()
-  await expect(page.getByText('Analysis Scheme 草稿已保存并写入审计。', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析规则草稿已保存并记录操作。', { exact: true })).toBeVisible()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '发布', exact: true }).click()
-  await expect(page.getByText('Analysis Scheme 已发布并写入审计。', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析规则已发布并记录操作。', { exact: true })).toBeVisible()
 
   const schemesAfterResponse = await request.get('/api/v1/analysis-schemes')
   expect(schemesAfterResponse.status()).toBe(200)
@@ -256,7 +263,7 @@ test('真实审计历史翻到第二页', async ({ page, request }) => {
   }
 
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: '审计记录', exact: true }).click()
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
   const secondPageRequest = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url())
     return url.pathname === '/api/v1/audit-events' && url.searchParams.get('offset') === '100'
@@ -264,4 +271,47 @@ test('真实审计历史翻到第二页', async ({ page, request }) => {
   await page.getByRole('button', { name: '下一页', exact: true }).click()
   await secondPageRequest
   await expect(page.getByText(/第 2 \/ \d+ 页/)).toBeVisible()
+})
+
+test('未引用关键词包可以从业务界面归档、恢复并安全永久删除', async ({ page, request }) => {
+  const pack = await createKeywordPack(request, `lifecycle-${Date.now()}`)
+
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '关键词包', exact: true }).click()
+  let packRow = page.locator('.pack-row').filter({ hasText: pack.name })
+  await expect(packRow).toBeVisible()
+  await packRow.click()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '归档', exact: true }).click()
+  await expect(page.getByText('词包已归档。', { exact: true })).toBeVisible()
+  await expect(page.locator('.pack-row').filter({ hasText: pack.name })).toHaveCount(0)
+
+  const archivedDetails = page.locator('details.archived-card')
+  if (!await archivedDetails.evaluate((element) => (element as HTMLDetailsElement).open)) {
+    await archivedDetails.locator('summary').click()
+  }
+  let archivedRow = archivedDetails.locator('.archived-row').filter({ hasText: pack.name })
+  await expect(archivedRow).toBeVisible()
+  await archivedRow.getByRole('button', { name: '恢复', exact: true }).click()
+  await expect(page.getByText('词包已恢复，当前保持停用。', { exact: true })).toBeVisible()
+
+  packRow = page.locator('.pack-row').filter({ hasText: pack.name })
+  await expect(packRow).toBeVisible()
+  await expect(packRow).toContainText('已停用')
+  await packRow.click()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '归档', exact: true }).click()
+  await expect(page.getByText('词包已归档。', { exact: true })).toBeVisible()
+  archivedRow = archivedDetails.locator('.archived-row').filter({ hasText: pack.name })
+  await expect(archivedRow).toBeVisible()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await archivedRow.getByRole('button', { name: '永久删除', exact: true }).click()
+  await expect(page.getByText('未被业务引用的归档词包已永久删除。', { exact: true })).toBeVisible()
+  await expect(archivedDetails.locator('.archived-row').filter({ hasText: pack.name })).toHaveCount(0)
+
+  const deleted = await request.get(`/api/v1/keyword-packs/${pack.id}`)
+  expect(deleted.status()).toBe(404)
 })

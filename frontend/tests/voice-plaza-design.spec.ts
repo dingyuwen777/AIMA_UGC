@@ -91,16 +91,16 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('>⇩ 导出记录<')
   })
 
-  it('筛选区保留业务字段，但不向用户暴露内部来源 UUID 输入框', async () => {
+  it('常用筛选直达，低频条件默认折叠，内容类型使用真实标准化选项', async () => {
     const html = await renderComponent(VoicePlazaPage)
 
     for (const label of [
       '搜索内容',
       '平台',
-      'AI 相关性',
+      '相关性',
       '发声类型',
-      'AI 情感',
-      'AI 状态',
+      '情感',
+      '分析状态',
       '内容类型',
       '一级标签',
       '二级标签',
@@ -108,11 +108,21 @@ describe('声音广场正式 Figma 基线', () => {
       '发布结束',
     ]) expect(html).toContain(label)
 
+    expect(html).toContain('更多筛选')
+    expect(html).toContain('aria-expanded="false"')
+    for (const [value, label] of [
+      ['image', '图文 / 图片'],
+      ['video', '视频'],
+      ['text', '纯文本'],
+      ['unknown', '未识别'],
+    ]) {
+      expect(html).toContain(`value="${value}"`)
+      expect(html).toContain(label)
+    }
     expect(html).not.toContain('来源 Batch / Run ID')
     expect(html).not.toContain('UUID / 来源标识')
-    expect(html).toContain('分类来自当前发布的 Analysis Scheme')
-    expect(html).toContain('车型来自版本化目录')
-    expect(html).toContain('歧义别名不会自动选择')
+    expect(html).not.toContain('Analysis Scheme')
+    expect(html).not.toContain('版本化目录')
   })
 
   it('终态 Analysis Run 不再作为历史大卡片占据声音广场正文', async () => {
@@ -131,16 +141,19 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('Run #9')
   })
 
-  it('仅对活动 Analysis Run 展示紧凑状态，并提供进入全局任务中心的入口', async () => {
+  it('仅对活动 AI 打标任务展示业务进度，并提供进入全局任务中心的入口', async () => {
     const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
       useVoicePlazaStore(pinia).analysisRuns = [baseAnalysisRun]
     })
 
     expect(html).toContain('AI 打标任务')
-    expect(html).toContain('Run #8 · 处理中')
-    expect(html).toContain('50 / 100 条已取得终态')
+    expect(html).toContain('AI 打标 · 处理中')
+    expect(html).toContain('已处理 50 / 100 条')
     expect(html).toContain('查看任务中心')
-    expect(html).not.toContain('AI Analysis Run 历史')
+    expect(html).not.toContain('Run #8')
+    expect(html).not.toContain('取消 Run')
+    expect(html).not.toContain('LLM Runtime')
+    expect(html).not.toContain('/api/v1/')
   })
 
   it('Empty 与 Error 使用正式状态文案，不虚构分页结果', async () => {

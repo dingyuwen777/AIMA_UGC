@@ -1,31 +1,55 @@
 import {
   addKeywordToPack,
+  archiveCollectionPlan,
+  archiveKeywordPack,
+  copyCollectionPlan,
+  copyKeywordPack,
   createCollectionPlan,
   createKeywordPack,
+  deleteCollectionPlan,
+  deleteKeywordPack,
   getCollectionCapabilities,
   getCollectionPlan,
+  getCollectionPlanDeleteEligibility,
   getGlobalRelevanceConfig,
   getKeywordPack,
+  getKeywordPackDeleteEligibility,
+  listArchivedCollectionPlans,
+  listArchivedKeywordPacks,
   listCollectionPlans,
   listKeywordPacks,
   listVehicleModels,
+  removeKeywordFromPack,
+  restoreCollectionPlan,
+  restoreKeywordPack,
   setGlobalRelevanceConfig,
+  updateCollectionPlan,
   updateCollectionPlanEnabled,
+  updateKeywordInPack,
+  updateKeywordPack,
   updateKeywordPackEnabled,
   type CollectionCapabilitiesResponse,
+  type CollectionPlanCopyRequest,
   type CollectionPlanCreateRequest,
   type CollectionPlanListResponse,
   type CollectionPlanResponse,
+  type CollectionPlanUpdateRequest,
   type GlobalRelevanceConfigResponse,
   type HttpErrorResponse,
+  type KeywordPackCopyRequest,
   type KeywordPackCreateRequest,
+  type KeywordPackItemRemoveRequest,
+  type KeywordPackItemUpdateRequest,
   type KeywordPackKeywordCreateRequest,
   type KeywordPackListResponse,
   type KeywordPackResponse,
   type KeywordPackSummaryResponse,
+  type KeywordPackUpdateRequest,
   type ListCollectionPlansParams,
   type ListKeywordPacksParams,
   type ListVehicleModelsParams,
+  type ResourceDeleteEligibilityResponse,
+  type ResourceLifecycleListResponse,
   type VehicleModelListResponse,
 } from '../../generated/api/client'
 
@@ -76,11 +100,63 @@ export async function fetchPack(packId: string): Promise<KeywordPackResponse> {
   return unwrap(await getKeywordPack(packId))
 }
 
+export async function updatePack(
+  packId: string,
+  request: KeywordPackUpdateRequest,
+): Promise<KeywordPackResponse> {
+  return unwrap(await updateKeywordPack(packId, request))
+}
+
 export async function addPackKeyword(
   packId: string,
   request: KeywordPackKeywordCreateRequest,
 ): Promise<KeywordPackResponse> {
   return unwrap(await addKeywordToPack(packId, request))
+}
+
+export async function updatePackKeyword(
+  packId: string,
+  keywordId: string,
+  request: KeywordPackItemUpdateRequest,
+): Promise<KeywordPackResponse> {
+  return unwrap(await updateKeywordInPack(packId, keywordId, request))
+}
+
+export async function removePackKeyword(
+  packId: string,
+  keywordId: string,
+  request: KeywordPackItemRemoveRequest,
+): Promise<KeywordPackResponse> {
+  return unwrap(await removeKeywordFromPack(packId, keywordId, request))
+}
+
+export async function copyPack(
+  packId: string,
+  request: KeywordPackCopyRequest,
+): Promise<KeywordPackResponse> {
+  return unwrap(await copyKeywordPack(packId, request))
+}
+
+export async function archivePack(packId: string): Promise<void> {
+  unwrap(await archiveKeywordPack(packId))
+}
+
+export async function fetchArchivedPacks(): Promise<ResourceLifecycleListResponse> {
+  return unwrap(await listArchivedKeywordPacks())
+}
+
+export async function restorePack(packId: string): Promise<KeywordPackResponse> {
+  return unwrap(await restoreKeywordPack(packId))
+}
+
+export async function fetchPackDeleteEligibility(
+  packId: string,
+): Promise<ResourceDeleteEligibilityResponse> {
+  return unwrap(await getKeywordPackDeleteEligibility(packId))
+}
+
+export async function deletePack(packId: string): Promise<void> {
+  unwrap(await deleteKeywordPack(packId))
 }
 
 export async function setPackEnabled(
@@ -118,6 +194,42 @@ export async function createPlan(
 
 export async function fetchPlan(planId: string): Promise<CollectionPlanResponse> {
   return unwrap(await getCollectionPlan(planId))
+}
+
+export async function updatePlan(
+  planId: string,
+  request: CollectionPlanUpdateRequest,
+): Promise<CollectionPlanResponse> {
+  return unwrap(await updateCollectionPlan(planId, request))
+}
+
+export async function copyPlan(
+  planId: string,
+  request: CollectionPlanCopyRequest,
+): Promise<CollectionPlanResponse> {
+  return unwrap(await copyCollectionPlan(planId, request))
+}
+
+export async function archivePlan(planId: string): Promise<void> {
+  unwrap(await archiveCollectionPlan(planId))
+}
+
+export async function fetchArchivedPlans(): Promise<ResourceLifecycleListResponse> {
+  return unwrap(await listArchivedCollectionPlans())
+}
+
+export async function restorePlan(planId: string): Promise<CollectionPlanResponse> {
+  return unwrap(await restoreCollectionPlan(planId))
+}
+
+export async function fetchPlanDeleteEligibility(
+  planId: string,
+): Promise<ResourceDeleteEligibilityResponse> {
+  return unwrap(await getCollectionPlanDeleteEligibility(planId))
+}
+
+export async function deletePlan(planId: string): Promise<void> {
+  unwrap(await deleteCollectionPlan(planId))
 }
 
 export async function setPlanEnabled(

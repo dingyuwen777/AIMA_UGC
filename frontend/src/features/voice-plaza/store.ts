@@ -424,12 +424,12 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     scope: 'selected' | 'all',
   ): Promise<AnalysisContentRunPreviewResponse | null> {
     if (analysisConfigured.value !== true) {
-      error.value = '当前环境尚未配置可用的 AI 模型，请配置 LLM 后重启后端。'
+      error.value = 'AI 模型未配置，请先在管理台配置可用模型。'
       return null
     }
     if (scope === 'selected' && selectedIds.value.length === 0) return null
     if (scope === 'selected' && selectedIds.value.length > 1000) {
-      error.value = '单次 AI Analysis Run 最多选择 1000 条内容。'
+      error.value = '单次 AI 打标任务最多选择 1000 条内容。'
       return null
     }
     previewingAnalysis.value = true

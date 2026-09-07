@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
-import type { DataImportIngestionPolicy } from '../../../../../generated/api/client'
+import type {
+  DataImportIngestionPolicy,
+  HistoricalCampaignItemStatus,
+  HistoricalCampaignResponse,
+  HistoricalCampaignStatus,
+} from '../../../../../generated/api/client'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import { createClientIdempotencyKey } from '../../../../../shared/idempotency'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
+import { formatDateTime } from '../../../format'
 import {
   type DataImportLocalFileSelection,
   useImportBatchesStore,
@@ -28,6 +34,7 @@ const selectedPackIds = ref<string[]>([])
 const selectedVehicleIds = ref<string[]>([])
 const validationError = ref<string | null>(null)
 const notice = ref<string | null>(null)
+const revocationReason = ref('')
 const recursive = ref(false)
 const maxFiles = 1_000
 const maxBytes = 500 * 1024 * 1024
@@ -42,6 +49,31 @@ const activeStatuses = [
   'running',
   'cancelling',
 ]
+
+const historicalCampaignStatusLabels: Record<HistoricalCampaignStatus, string> = {
+  uploading: '正在上传文件',
+  discovering: '正在确认数据来源',
+  snapshotting: '正在准备导入',
+  ready: '预检完成',
+  queued: '等待导入',
+  running: '正在导入',
+  cancelling: '正在取消',
+  cancelled: '已取消',
+  succeeded: '导入完成',
+  partial_failed: '部分导入失败',
+  failed: '导入失败',
+}
+
+const historicalItemStatusLabels: Record<HistoricalCampaignItemStatus, string> = {
+  discovered: '已发现',
+  snapshotting: '准备中',
+  ready: '等待导入',
+  queued: '排队中',
+  running: '处理中',
+  succeeded: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+}
 
 const currentPathLabel = computed(() => store.historicalDirectoryPath || '批准根目录')
 const sourceSelectionReady = computed(() =>
@@ -77,6 +109,9 @@ const canViewContents = computed(() => {
     (stats?.conflict ?? 0)
   ) > 0
 })
+const canPreviewRevocation = computed(() =>
+  ['succeeded', 'partial_failed'].includes(store.selectedHistoricalCampaign?.status ?? ''),
+)
 const preflightIndeterminate = computed(
   () => store.selectedHistoricalCampaign?.status === 'discovering',
 )
@@ -92,6 +127,21 @@ const localUploadPercent = computed(() => {
   if (store.localUploadTotal <= 0) return 0
   return Math.floor(store.localUploadCompleted * 100 / store.localUploadTotal)
 })
+const revocationUnavailableMessage = computed(() => {
+  const reason = store.historicalRevocationPreview?.ineligible_reason
+  if (reason === 'campaign_not_completed') return '导入尚未完成，当前不能撤销。'
+  if (reason === 'reversible_evidence_missing') {
+    return '缺少足够的可逆来源证据，系统已阻止自动撤销，避免误删其它来源仍需要的数据。'
+  }
+  return '当前导入不满足安全撤销条件。'
+})
+
+function campaignDisplayName(campaign: HistoricalCampaignResponse): string {
+  const path = campaign.root_relative_path.replaceAll('\\', '/').replace(/\/$/, '')
+  const leaf = path.split('/').filter(Boolean).at(-1)
+  if (leaf) return leaf
+  return campaign.source_kind === 'local_upload' ? '本地文件导入' : '服务器目录导入'
+}
 
 function stopPolling(): void {
   if (pollHandle !== undefined) clearInterval(pollHandle)
@@ -139,6 +189,7 @@ watch(
     selectedPaths.value = []
     selectedPackIds.value = []
     selectedVehicleIds.value = []
+    revocationReason.value = ''
     recursive.value = false
     validationError.value = null
     notice.value = null
@@ -149,9 +200,6 @@ onBeforeUnmount(stopPolling)
 
 async function chooseSource(value: SourceKind): Promise<void> {
   sourceKind.value = value
-  ingestionPolicy.value = value === 'local_upload'
-    ? 'standard_observation'
-    : 'historical_fill_only'
   validationError.value = null
   if (value === 'server_path' && store.historicalDirectoryEntries.length === 0) {
     await store.openServerImportSource()
@@ -236,7 +284,7 @@ async function createCampaign(): Promise<void> {
       selectedVehicleIds.value,
       ingestionPolicy.value,
     )
-    if (campaign) notice.value = '文件上传完成，服务器正在执行不可变快照与预检。'
+    if (campaign) notice.value = '文件上传完成，服务器正在准备并预检数据。'
     return
   }
   const created = await store.submitHistoricalCampaign({
@@ -248,12 +296,12 @@ async function createCampaign(): Promise<void> {
     profile: 'aima-monitoring-excel.v1',
     ingestion_policy: ingestionPolicy.value,
   })
-  if (created) notice.value = '导入任务已创建，服务器正在完成不可变快照与预检。'
+  if (created) notice.value = '导入任务已创建，服务器正在准备并预检数据。'
 }
 
 async function startCampaign(): Promise<void> {
   if (!store.selectedHistoricalCampaign?.can_start) return
-  if (await store.actOnHistoricalCampaign('start')) notice.value = '导入任务已进入队列。'
+  if (await store.actOnHistoricalCampaign('start')) notice.value = '导入任务已进入处理队列。'
 }
 
 async function cancelCampaign(): Promise<void> {
@@ -263,7 +311,26 @@ async function cancelCampaign(): Promise<void> {
 }
 
 async function retryCampaign(): Promise<void> {
-  if (await store.actOnHistoricalCampaign('retry')) notice.value = '失败项已重新进入导入队列。'
+  if (await store.actOnHistoricalCampaign('retry')) notice.value = '失败数据已重新进入处理队列。'
+}
+
+async function previewRevocation(): Promise<void> {
+  const preview = await store.previewHistoricalRevocation()
+  if (preview?.already_revoked) notice.value = '这次导入已经撤销，无需重复操作。'
+}
+
+async function revokeImport(): Promise<void> {
+  const preview = store.historicalRevocationPreview
+  if (!preview?.eligible || preview.already_revoked) return
+  const { affected_content_count: affected, hidden_content_count: hidden, retained_shared_content_count: retained } = preview.impact
+  if (!window.confirm(
+    `确认撤销这次导入吗？将重新计算 ${affected} 条受影响内容，其中 ${hidden} 条会从当前业务视图隐藏，${retained} 条因仍有其他来源会继续保留。导入记录和审计证据不会删除。`,
+  )) return
+  const result = await store.revokeHistoricalImport(revocationReason.value)
+  if (!result) return
+  notice.value = result.already_revoked
+    ? '这次导入此前已经撤销。'
+    : `撤销完成：影响 ${result.impact.affected_content_count} 条内容，共享来源仍保留 ${result.impact.retained_shared_content_count} 条。`
 }
 
 function viewCampaignContents(): void {
@@ -292,7 +359,7 @@ function viewCampaignContents(): void {
             <h2 id="data-import-title">
               导入数据
             </h2>
-            <p>从本地电脑或服务器批准目录创建导入任务，并按词包规则完成预检；预检通过后再确认开始入库。</p>
+            <p>从本地电脑或服务器批准目录创建导入任务，并按词包与车型规则完成预检；预检通过后再确认开始入库。</p>
           </div>
           <AimaButton
             variant="text"
@@ -316,11 +383,11 @@ function viewCampaignContents(): void {
                 v-for="campaign in store.historicalCampaigns"
                 :key="campaign.id"
                 type="button"
-                :aria-label="`打开 Campaign ${campaign.id}`"
+                :aria-label="`打开导入任务 ${campaignDisplayName(campaign)}`"
                 @click="store.refreshHistoricalCampaign(campaign.id)"
               >
-                <code>{{ campaign.id }}</code>
-                <span>{{ campaign.source_kind === 'local_upload' ? '本机' : '服务器' }} · {{ campaign.status }}</span>
+                <span class="campaign-name"><b>{{ campaignDisplayName(campaign) }}</b><small>{{ formatDateTime(campaign.created_at) }}</small></span>
+                <span>{{ campaign.source_kind === 'local_upload' ? '本地电脑' : '服务器目录' }} · {{ historicalCampaignStatusLabels[campaign.status] }}</span>
               </button>
             </div>
           </section>
@@ -443,7 +510,7 @@ function viewCampaignContents(): void {
                 </AimaButton>
               </div>
               <p class="source-help">
-                只浏览管理员批准的只读根目录；HTTP 仅提交相对路径，不提供文件管理能力。
+                只浏览管理员批准的只读根目录；页面只选择数据来源，不提供服务器文件管理能力。
               </p>
               <p
                 v-if="store.loadingHistorical"
@@ -548,7 +615,7 @@ function viewCampaignContents(): void {
             />
 
             <AimaFeedbackBanner tone="info">
-              创建后先完成来源确认、不可变快照与预检；AI 不会自动执行，智能分析需要在分析入口手动创建。
+              创建后先完成来源确认、数据快照与预检；AI 不会自动执行，智能分析需要在分析入口手动创建。
             </AimaFeedbackBanner>
           </template>
 
@@ -563,25 +630,25 @@ function viewCampaignContents(): void {
                   v-for="campaign in store.historicalCampaigns"
                   :key="campaign.id"
                   type="button"
-                  :aria-label="`打开 Campaign ${campaign.id}`"
+                  :aria-label="`打开导入任务 ${campaignDisplayName(campaign)}`"
                   :class="{ selected: store.selectedHistoricalCampaign?.id === campaign.id }"
                   @click="store.refreshHistoricalCampaign(campaign.id)"
                 >
-                  <code>{{ campaign.id }}</code>
-                  <span>{{ campaign.source_kind === 'local_upload' ? '本机' : '服务器' }} · {{ campaign.status }}</span>
+                  <span class="campaign-name"><b>{{ campaignDisplayName(campaign) }}</b><small>{{ formatDateTime(campaign.created_at) }}</small></span>
+                  <span>{{ historicalCampaignStatusLabels[campaign.status] }}</span>
                 </button>
               </div>
             </section>
 
             <section class="campaign-panel">
               <div class="section-heading">
-                <strong>当前导入任务</strong><code>{{ store.selectedHistoricalCampaign.id }}</code>
+                <strong>{{ campaignDisplayName(store.selectedHistoricalCampaign) }}</strong><span>{{ formatDateTime(store.selectedHistoricalCampaign.created_at) }}</span>
               </div>
               <div
                 class="campaign-status"
                 :class="`campaign-status--${store.selectedHistoricalCampaign.status}`"
               >
-                {{ store.selectedHistoricalCampaign.status === 'ready' ? '预检完成，可开始导入' : `状态：${store.selectedHistoricalCampaign.status}` }}
+                {{ historicalCampaignStatusLabels[store.selectedHistoricalCampaign.status] }}
               </div>
               <div class="campaign-facts">
                 <span>来源<b>{{ store.selectedHistoricalCampaign.source_kind === 'local_upload' ? '本地电脑' : '服务器目录' }}</b></span>
@@ -603,9 +670,16 @@ function viewCampaignContents(): void {
                   v-if="showImportProgress"
                   label="数据导入进度"
                   :value="store.selectedHistoricalCampaign.progress.migration_percent"
-                  :detail="`${store.selectedHistoricalCampaign.progress.migration_completed_row_count} / ${store.selectedHistoricalCampaign.total_rows} 行已取得终态`"
+                  :detail="`${store.selectedHistoricalCampaign.progress.migration_completed_row_count} / ${store.selectedHistoricalCampaign.total_rows} 行已处理`"
                 />
               </div>
+              <AimaFeedbackBanner
+                v-if="store.selectedHistoricalCampaign.error_summary"
+                tone="error"
+                role="alert"
+              >
+                {{ store.selectedHistoricalCampaign.error_summary }}
+              </AimaFeedbackBanner>
               <AimaFeedbackBanner tone="info">
                 预检只准备导入任务；AI 不会自动执行，智能分析仍需在分析入口显式创建。
               </AimaFeedbackBanner>
@@ -626,6 +700,45 @@ function viewCampaignContents(): void {
               </div>
             </section>
 
+            <section
+              v-if="store.historicalRevocationPreview"
+              class="revocation-panel"
+            >
+              <div class="section-heading">
+                <strong>撤销影响</strong><span>{{ store.historicalRevocationPreview.already_revoked ? '已经撤销' : '仅影响本次导入的来源贡献' }}</span>
+              </div>
+              <div class="revocation-facts">
+                <span>受影响内容<b>{{ store.historicalRevocationPreview.impact.affected_content_count }}</b></span>
+                <span>撤销后隐藏<b>{{ store.historicalRevocationPreview.impact.hidden_content_count }}</b></span>
+                <span>其它来源保留<b>{{ store.historicalRevocationPreview.impact.retained_shared_content_count }}</b></span>
+                <span>无法自动恢复<b>{{ store.historicalRevocationPreview.impact.unreversible_content_count ?? 0 }}</b></span>
+              </div>
+              <AimaFeedbackBanner
+                v-if="store.historicalRevocationPreview.already_revoked"
+                tone="info"
+              >
+                这次导入已经撤销；导入记录、来源证据和审计历史仍会保留。
+              </AimaFeedbackBanner>
+              <AimaFeedbackBanner
+                v-else-if="!store.historicalRevocationPreview.eligible"
+                tone="warning"
+              >
+                {{ revocationUnavailableMessage }}
+              </AimaFeedbackBanner>
+              <label
+                v-else
+                class="revocation-reason"
+              >
+                <span>撤销原因（可选）</span>
+                <textarea
+                  v-model="revocationReason"
+                  rows="2"
+                  maxlength="2000"
+                  placeholder="例如：误选了错误的数据目录"
+                />
+              </label>
+            </section>
+
             <div
               v-if="store.historicalCampaignItems.length"
               class="campaign-items"
@@ -634,12 +747,32 @@ function viewCampaignContents(): void {
                 v-for="item in store.historicalCampaignItems"
                 :key="item.id"
               >
-                <span>{{ item.item_kind === 'source_file' ? '文件' : `Chunk ${item.ordinal}` }} · {{ item.relative_path }}</span>
-                <b>{{ item.status }}</b><small v-if="item.error_code">{{ item.error_code }}</small>
+                <span>{{ item.item_kind === 'source_file' ? '文件' : `数据分段 ${item.ordinal ?? ''}` }} · {{ item.relative_path }}</span>
+                <b>{{ historicalItemStatusLabels[item.status] }}</b>
+                <small v-if="item.status === 'failed'">处理失败；技术原因可在下方技术详情中查看。</small>
               </div>
             </div>
             <small v-if="store.historicalCampaignItemsHasMore">明细按失败和运行状态优先，当前仅展示前 200 条。</small>
             <small v-if="store.historicalCampaignConflictsHasMore">冲突明细当前仅展示前 500 条；总数以导入任务统计为准。</small>
+
+            <details class="technical-details">
+              <summary>技术详情</summary>
+              <dl>
+                <div><dt>导入任务标识</dt><dd>{{ store.selectedHistoricalCampaign.id }}</dd></div>
+                <div><dt>原始状态</dt><dd>{{ store.selectedHistoricalCampaign.status }}</dd></div>
+                <div><dt>来源路径</dt><dd>{{ store.selectedHistoricalCampaign.root_relative_path || '—' }}</dd></div>
+              </dl>
+              <div
+                v-if="store.historicalCampaignItems.some((item) => item.error_code)"
+                class="technical-errors"
+              >
+                <strong>失败项技术信息</strong>
+                <span
+                  v-for="item in store.historicalCampaignItems.filter((entry) => entry.error_code)"
+                  :key="`technical-${item.id}`"
+                >{{ item.relative_path }} · {{ item.error_code }}</span>
+              </div>
+            </details>
           </template>
 
           <AimaFeedbackBanner
@@ -705,6 +838,25 @@ function viewCampaignContents(): void {
               重试失败项
             </AimaButton>
             <AimaButton
+              v-if="canPreviewRevocation && !store.historicalRevocationPreview"
+              variant="secondary"
+              size="small"
+              :disabled="store.previewingHistoricalRevocation"
+              @click="previewRevocation"
+            >
+              {{ store.previewingHistoricalRevocation ? '正在评估…' : '评估撤销' }}
+            </AimaButton>
+            <AimaButton
+              v-if="store.historicalRevocationPreview?.eligible && !store.historicalRevocationPreview.already_revoked"
+              class="danger-action"
+              variant="secondary"
+              size="small"
+              :disabled="store.revokingHistorical"
+              @click="revokeImport"
+            >
+              {{ store.revokingHistorical ? '正在撤销…' : '撤销本次导入' }}
+            </AimaButton>
+            <AimaButton
               v-if="canViewContents"
               variant="secondary"
               size="small"
@@ -737,7 +889,7 @@ header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); fon
 .source-tabs { display: flex; min-height: 40px; gap: 8px; }
 .source-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; }
 .source-tabs button.selected { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
-.policy-panel, .source-panel, .pack-panel, .campaign-panel, .campaign-history, .campaign-stats { padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.policy-panel, .source-panel, .pack-panel, .campaign-panel, .campaign-history, .campaign-stats, .revocation-panel { padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
 .policy-panel > strong, .pack-panel > strong, .campaign-history > strong, .campaign-stats > strong { color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }
 .policy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
 .policy-grid label { position: relative; display: block; min-height: 58px; padding: 9px 11px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); cursor: pointer; }
@@ -748,7 +900,7 @@ header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); fon
 .policy-grid label.selected b { color: var(--aima-primary); }
 .policy-grid small, .source-help { margin: 0; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
 .section-heading { display: flex; align-items: center; gap: 16px; }
-.section-heading strong { color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.section-heading strong { min-width: 0; overflow: hidden; color: var(--aima-text); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .section-heading > span, .section-heading code { min-width: 0; flex: 1; overflow: hidden; color: var(--aima-text-disabled); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .source-help { margin-top: 4px; }
 .local-actions { display: flex; gap: 12px; margin-top: 10px; }
@@ -773,9 +925,12 @@ header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); fon
 .pack-help { display: block; margin-top: 8px; color: var(--aima-text-disabled); font-size: 11px; }
 .empty-state { margin: 10px 0 0; color: var(--aima-text-muted); font-size: 12px; }
 .campaign-history > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 10px; }
-.campaign-history button { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border: 0; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 11px; text-align: left; }
+.campaign-history button { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border: 0; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 11px; text-align: left; }
 .campaign-history button.selected { color: var(--aima-primary); }
-.campaign-history code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campaign-name { display: grid; min-width: 0; gap: 2px; }
+.campaign-name b, .campaign-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campaign-name b { color: var(--aima-text-secondary); font-size: 12px; font-weight: 500; }
+.campaign-name small { color: var(--aima-text-disabled); font-size: 10px; }
 .campaign-status { margin-top: 10px; padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); color: var(--aima-text-muted); background: #f8fafc; font-size: 11px; }
 .campaign-status--ready, .campaign-status--succeeded { border-color: var(--aima-success); }
 .campaign-status--failed, .campaign-status--partial_failed { border-color: var(--aima-danger); }
@@ -783,15 +938,27 @@ header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); fon
 .campaign-facts span { display: flex; gap: 6px; color: var(--aima-text-disabled); font-size: 11px; }
 .campaign-facts b { color: var(--aima-text-secondary); font-weight: 500; }
 .campaign-progresses { display: grid; gap: 12px; margin: 18px 0; }
-.campaign-stats > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
-.campaign-stats span { display: grid; gap: 4px; padding: 9px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); color: var(--aima-text-disabled); font-size: 11px; }
-.campaign-stats b { color: var(--aima-primary); font-size: 16px; }
+.campaign-stats > div, .revocation-facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.campaign-stats span, .revocation-facts span { display: grid; gap: 4px; padding: 9px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); color: var(--aima-text-disabled); font-size: 11px; }
+.campaign-stats b, .revocation-facts b { color: var(--aima-primary); font-size: 16px; }
+.revocation-panel { display: grid; gap: 10px; }
+.revocation-reason { display: grid; gap: 6px; color: var(--aima-text-muted); font-size: 11px; }
+.revocation-reason textarea { resize: vertical; padding: 8px 10px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); color: var(--aima-text-secondary); font: inherit; font-size: 12px; }
 .campaign-items { display: grid; gap: 6px; max-height: 150px; overflow: auto; }
 .campaign-items > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 7px 9px; border-radius: var(--aima-radius-control); background: #f8fafc; font-size: 11px; }
 .campaign-items span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .campaign-items small { grid-column: 1 / -1; color: var(--aima-danger); }
+.technical-details { padding: 10px 12px; border: 1px dashed var(--aima-border-strong); border-radius: var(--aima-radius-control); color: var(--aima-text-muted); font-size: 11px; }
+.technical-details summary { cursor: pointer; color: var(--aima-text-secondary); font-weight: 500; }
+.technical-details dl { display: grid; gap: 7px; margin: 10px 0 0; }
+.technical-details dl div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; }
+.technical-details dt { color: var(--aima-text-disabled); }
+.technical-details dd { margin: 0; overflow-wrap: anywhere; color: var(--aima-text-secondary); }
+.technical-errors { display: grid; gap: 5px; margin-top: 12px; }
+.technical-errors span { overflow-wrap: anywhere; color: var(--aima-danger); }
 footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
 footer :deep(.aima-button.is-primary) { min-width: 88px; }
+.danger-action { border-color: var(--aima-danger) !important; color: var(--aima-danger) !important; }
 button:disabled { cursor: not-allowed; opacity: .55; }
-@media (max-width: 760px) { .policy-grid, .pack-list, .campaign-history > div, .campaign-facts, .campaign-stats > div { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .policy-grid, .pack-list, .campaign-history > div, .campaign-facts, .campaign-stats > div, .revocation-facts { grid-template-columns: 1fr; } }
 </style>

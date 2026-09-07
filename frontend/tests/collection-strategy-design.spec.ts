@@ -62,7 +62,7 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).not.toContain('Discovery')
   })
 
-  it('计划列表只保留六列，并像 Figma 一样优先各展示一个词包和车型后汇总剩余范围', async () => {
+  it('计划列表只保留六列，优先展示业务范围且不暴露计划编号', async () => {
     const html = await renderComponent(PlanPanel, {
       plans: [plan],
       packs: [
@@ -92,7 +92,7 @@ describe('采集策略正式 Figma 组件基线', () => {
 
     expect(html.match(/<th[ >]/g)).toHaveLength(6)
     expect(html).not.toContain('>采集策略</th>')
-    expect(html).toContain('计划 / 编号')
+    expect(html).toMatch(/<th[^>]*>计划<\/th>/)
     expect(html).toContain('词包 / 车型')
     expect(html).toContain('目标平台 / 采集渠道')
     expect(html).toContain('新品词包')
@@ -100,7 +100,8 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).toContain('另有 2 项范围')
     expect(html).not.toContain('次要词包')
     expect(html).not.toContain('车型：爱玛 B9')
-    expect(html).toContain('计划编号： 33333333-3333-4333-8333-333333333333')
+    expect(html).not.toContain('计划编号：')
+    expect(html).not.toContain('33333333-3333-4333-8333-333333333333')
     expect(html).toContain('每6小时')
   })
 

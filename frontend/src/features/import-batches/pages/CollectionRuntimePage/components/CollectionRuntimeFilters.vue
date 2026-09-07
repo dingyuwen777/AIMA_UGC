@@ -6,7 +6,7 @@ import type {
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 import type { CollectionRuntimeTab } from '../../../store'
-import { recordTypeLabels, runtimeStatusLabels } from '../../../format'
+import { recordTypeLabels, runtimeStageLabel, runtimeStatusLabels } from '../../../format'
 
 defineProps<{ activeTab: CollectionRuntimeTab }>()
 const search = defineModel<string>('search', { required: true })
@@ -19,20 +19,20 @@ const createdTo = defineModel<string>('createdTo', { required: true })
 defineEmits<{ search: []; reset: [] }>()
 
 const stageOptions = [
-  ['queued', '等待处理'],
-  ['uploading', '文件上传'],
-  ['discovering', '来源发现'],
-  ['snapshotting', '不可变快照'],
-  ['ready', '等待确认导入'],
-  ['running', '数据导入'],
-  ['cancelling', '正在取消'],
-  ['reading', 'Excel 读取'],
-  ['mapping', '字段映射'],
-  ['filtering', '相关性过滤'],
-  ['deduplicating', '去重'],
-  ['ingesting', '内容入库'],
-  ['content_discovery', 'TikHub 采集中'],
-  ['content_enrichment', '内容补采'],
+  'queued',
+  'uploading',
+  'discovering',
+  'snapshotting',
+  'ready',
+  'running',
+  'cancelling',
+  'reading',
+  'mapping',
+  'filtering',
+  'deduplicating',
+  'ingesting',
+  'content_discovery',
+  'content_enrichment',
 ] as const
 </script>
 
@@ -49,7 +49,7 @@ const stageOptions = [
         />
         <input
           v-model="search"
-          placeholder="搜索批次名称、批次编号、运行编号"
+          placeholder="搜索来源文件或采集关键词"
         >
       </label>
       <div class="date-range">
@@ -104,16 +104,16 @@ const stageOptions = [
           全部阶段
         </option>
         <option
-          v-for="option in stageOptions"
-          :key="option[0]"
-          :value="option[0]"
+          v-for="value in stageOptions"
+          :key="value"
+          :value="value"
         >
-          {{ option[1] }}
+          {{ runtimeStageLabel(value) }}
         </option>
       </select>
     </div>
     <div class="filter-actions">
-      <span>时间按北京时间解释</span>
+      <span>时间按北京时间显示</span>
       <div>
         <AimaButton
           variant="secondary"

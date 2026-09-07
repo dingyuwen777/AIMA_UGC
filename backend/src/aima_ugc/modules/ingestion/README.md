@@ -358,6 +358,23 @@ keyword_pack_items
 
 AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动创建 AI Job。
 
+### 8.1 已完成 Campaign 怎样安全撤销
+
+撤销不是取消 Job，也不是按 Campaign 删除 `contents`：
+
+```text
+先预览影响
+→ 检查该 Campaign 对每个 Content 是否有精确可逆 Contribution
+→ 证据不足：fail closed，不允许自动撤销
+→ 证据完整：提交 Campaign 撤销事实
+→ Content Owner 回退仍属于该来源且未被后续来源覆盖的字段
+→ 只有该 Campaign 支撑的 Content 退出当前业务可见视图
+→ 仍有其它有效来源的共享 Content 保留
+→ 追加可审计的撤销 Version 与追溯
+```
+
+原 Campaign、Source/Chunk Artifact、逐行 outcome、Raw、旧 Content Version 和审计继续保留；同一 Campaign 重复撤销幂等。`standard_observation` 与 `historical_fill_only` 都在各自业务写事务中记录 Contribution，因此机制上线后的新导入进入同一可撤销模型。
+
 ---
 
 ## 9. 兼容单文件 Import：`/api/v1/import-batches`

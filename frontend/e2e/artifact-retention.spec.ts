@@ -155,10 +155,10 @@ test('shows Excel import source retention from terminal Job time when Batch time
 
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '查看详情' }).click()
-  const detail = page.getByRole('dialog', { name: '批次详情' })
+  const detail = page.getByRole('dialog', { name: '数据导入详情' })
 
   await expect(detail.getByText(/源 Excel 保留至/)).toBeVisible()
-  await expect(detail.getByText(/到期后只清理文件字节/)).toBeVisible()
+  await expect(detail.getByText(/到期后只清理文件本身/)).toBeVisible()
 })
 
 test('shows the seven-day Excel export window in the existing export dialog', async ({ page }) => {

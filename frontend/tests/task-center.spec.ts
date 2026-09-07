@@ -190,14 +190,14 @@ describe('全局任务中心聚合', () => {
     expect(store.activeCount).toBe(3)
     expect(store.activeItems.map((item) => item.kind)).toEqual(['analysis', 'collection', 'export'])
     expect(store.activeItems[0]).toMatchObject({
-      title: 'AI 打标 · Run #12',
+      title: 'AI 打标任务 12',
       statusLabel: '处理中',
       progress: 50,
       href: '/voice-plaza',
     })
     expect(store.activeItems[1]).toMatchObject({
       title: '爱玛关键词采集',
-      subtitle: 'TikHub 采集 · 小红书',
+      subtitle: '主动采集 · 小红书',
       href: '/collection-runtime',
     })
   })
@@ -221,7 +221,7 @@ describe('全局任务中心聚合', () => {
       title: '8 月历史数据导入',
       subtitle: '数据导入 · 平台未指定',
       progressDetail: '320 行入库',
-      href: '/collection-runtime',
+      href: '/collection-runtime?data_import_campaign_id=campaign-1',
     })
   })
 
@@ -239,7 +239,7 @@ describe('全局任务中心聚合', () => {
 
     expect(store.activeCount).toBe(0)
     expect(store.recentItems).toHaveLength(12)
-    expect(store.recentItems[0].title).toBe('AI 打标 · Run #14')
-    expect(store.recentItems.at(-1)?.title).toBe('AI 打标 · Run #3')
+    expect(store.recentItems[0].title).toBe('AI 打标任务 14')
+    expect(store.recentItems.at(-1)?.title).toBe('AI 打标任务 3')
   })
 })

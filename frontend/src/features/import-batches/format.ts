@@ -17,11 +17,11 @@ export const statusLabels: Record<ImportBatchStatus, string> = {
 
 export const stageLabels: Record<ImportStage, string> = {
   queued: '等待处理',
-  reading: 'Excel 读取',
-  mapping: '字段映射',
-  filtering: '相关性过滤',
-  deduplicating: '去重',
-  ingesting: '内容入库',
+  reading: '读取数据',
+  mapping: '整理字段',
+  filtering: '筛选相关内容',
+  deduplicating: '检查重复内容',
+  ingesting: '保存内容',
   succeeded: '已完成',
   failed: '处理失败',
   cancelled: '已取消',
@@ -30,7 +30,7 @@ export const stageLabels: Record<ImportStage, string> = {
 export const runtimeStatusLabels: Record<CollectionRuntimeStatus, string> = {
   queued: '排队中',
   running: '运行中',
-  partial_success: '部分成功',
+  partial_success: '部分完成',
   succeeded: '已完成',
   failed: '失败',
   cancelled: '已取消',
@@ -39,45 +39,45 @@ export const runtimeStatusLabels: Record<CollectionRuntimeStatus, string> = {
 export const recordTypeLabels: Record<CollectionRuntimeRecordType, string> = {
   excel_import: 'Excel 导入',
   data_import_campaign: '数据导入',
-  tikhub_discovery: 'TikHub 发现',
-  tikhub_batch_supplement: '批次补采',
+  tikhub_discovery: '平台采集',
+  tikhub_batch_supplement: '辅助补采',
 }
 
 export const platformLabels: Record<CollectionPlatform, string> = PLATFORM_LABELS
 
 const runtimeStageLabels: Record<string, string> = {
   queued: '等待处理',
-  uploading: '文件上传',
-  discovering: '来源发现',
-  snapshotting: '不可变快照',
+  uploading: '接收文件',
+  discovering: '发现数据来源',
+  snapshotting: '准备导入数据',
   ready: '等待确认导入',
   running: '数据导入',
   cancelling: '正在取消',
   partial_failed: '部分失败',
-  reading: 'Excel 读取',
-  mapping: '字段映射',
-  filtering: '相关性过滤',
-  deduplicating: '去重',
-  ingesting: '内容入库',
-  content_discovery: 'TikHub 采集中',
-  content_enrichment: '内容补采',
+  reading: '读取数据',
+  mapping: '整理字段',
+  filtering: '筛选相关内容',
+  deduplicating: '检查重复内容',
+  ingesting: '保存内容',
+  content_discovery: '平台采集中',
+  content_enrichment: '补充内容信息',
   succeeded: '已完成',
   failed: '处理失败',
   cancelled: '已取消',
 }
 
 const runtimeFailureMessages: Record<string, string> = {
-  provider_secret_unavailable: 'Provider Secret 不可用，请联系管理员检查运行配置。',
+  provider_secret_unavailable: '采集服务授权信息不可用，请联系管理员检查服务配置。',
 }
 
 export function runtimeStageLabel(value: string): string {
-  return runtimeStageLabels[value] ?? value
+  return runtimeStageLabels[value] ?? '处理中'
 }
 
-/** 将后端稳定错误码转换为安全、可操作的用户提示；未知值保持可审计原文。 */
+/** 将稳定错误码转换为可操作提示；未知机器错误不直接暴露到业务主视图。 */
 export function runtimeFailureMessage(value: string | null | undefined): string | null {
   if (!value) return null
-  return runtimeFailureMessages[value] ?? value
+  return runtimeFailureMessages[value] ?? '任务执行遇到问题，请重试；如持续失败，请联系管理员查看技术详情。'
 }
 
 export function formatNumber(value: number | undefined): string {

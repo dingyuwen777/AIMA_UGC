@@ -639,3 +639,21 @@ contents
 
 
 该入口每次最多处理一个有界 Chunk，并在同一事务提交业务变化、逐行 outcome 和冲突。普通 Excel/TikHub 继续使用既有字段新鲜度规则，不受历史策略影响。
+
+---
+
+## 18. 导入撤销怎样影响 Content Current 与可见性
+
+Data Import Campaign 撤销由 Ingestion 表达用户动作，但实际 Current 重组继续通过 Content Owner 完成。新导入写入时会保存来源对 Current 的精确 Contribution；撤销只回退仍属于该来源、且没有被后续来源覆盖的字段。
+
+查询可见性按有效来源判断：
+
+```text
+仍有至少一个未撤销来源
+→ Content 继续进入声音广场 / 新 Analysis Target / 新 Export Target
+
+只剩已撤销来源
+→ 退出新的业务查询与处理目标
+```
+
+这不等于删除历史。Content 身份、Raw Artifact、旧 Version、来源追溯和撤销生成的 Version 都继续保留；共享 Content 不会因为其中一个导入 Campaign 被撤销而误删其它来源贡献。完整边界见 [`docs/appendix/11_业务资源生命周期与数据撤销实现.md`](../../../../../docs/appendix/11_业务资源生命周期与数据撤销实现.md)。

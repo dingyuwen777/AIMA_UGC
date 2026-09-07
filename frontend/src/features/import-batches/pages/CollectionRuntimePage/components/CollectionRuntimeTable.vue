@@ -8,9 +8,9 @@ import {
   formatDateTime,
   formatNumber,
   recordTypeLabels,
+  runtimeFailureMessage,
   runtimeStageLabel,
   runtimeStatusLabels,
-  shortId,
 } from '../../../format'
 
 defineProps<{ items: CollectionRuntimeItemResponse[]; loading: boolean }>()
@@ -30,7 +30,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
     aria-label="采集运行记录"
   >
     <div class="table-head">
-      <span>任务 / 执行编号</span><span>类型</span><span>状态与进度</span><span>当前阶段</span><span>处理统计</span><span>创建时间</span><span>操作</span>
+      <span>任务</span><span>类型</span><span>状态与进度</span><span>当前阶段</span><span>处理结果</span><span>创建时间</span><span>操作</span>
     </div>
     <div
       v-if="loading && items.length === 0"
@@ -52,7 +52,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
     >
       <div class="identity">
         <strong>{{ item.display_name }}</strong>
-        <span>{{ ['excel_import', 'data_import_campaign'].includes(item.record_type) ? '导入' : '运行' }} {{ shortId(item.record_id) }}</span>
+        <span>{{ recordTypeLabels[item.record_type] }}</span>
       </div>
       <div class="type-cell">
         {{ recordTypeLabels[item.record_type] }}
@@ -72,14 +72,14 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
         v-if="item.import_stats"
         class="stats-cell"
       >
-        <span>已读 {{ formatNumber(item.import_stats.rows_seen) }} · 命中 {{ formatNumber(item.import_stats.rows_matched) }}</span>
+        <span>读取 {{ formatNumber(item.import_stats.rows_seen) }} · 相关 {{ formatNumber(item.import_stats.rows_matched) }}</span>
         <span>过滤 {{ formatNumber(item.import_stats.rows_filtered_out) }} · 入库 {{ formatNumber(item.import_stats.rows_ingested) }}</span>
       </div>
       <div
         v-else
         class="stats-cell"
       >
-        <span>请求 {{ formatNumber(item.collection_stats?.requested_count) }} · 成功 {{ formatNumber(item.collection_stats?.succeeded_count) }}</span>
+        <span>处理 {{ formatNumber(item.collection_stats?.requested_count) }} · 成功 {{ formatNumber(item.collection_stats?.succeeded_count) }}</span>
         <span>内容 {{ formatNumber(item.collection_stats?.content_count) }} · 评论 {{ formatNumber(item.collection_stats?.comment_count) }}</span>
       </div>
       <div class="time-cell">
@@ -99,7 +99,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
           size="small"
           @click="$emit('supplement', { kind: 'batch', id: item.import_batch_id })"
         >
-          基于批次补采
+          基于本次导入补采
         </AimaButton>
         <AimaButton
           v-if="item.record_type === 'data_import_campaign' && item.data_import_campaign_id && ['succeeded', 'partial_success'].includes(item.status) && (item.import_stats?.rows_matched ?? 0) > 0"
@@ -107,7 +107,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
           size="small"
           @click="$emit('supplement', { kind: 'campaign', id: item.data_import_campaign_id })"
         >
-          基于导入补采
+          基于本次导入补采
         </AimaButton>
       </div>
       <AimaFeedbackBanner
@@ -116,7 +116,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
         tone="error"
         role="alert"
       >
-        {{ item.error_summary }}
+        {{ runtimeFailureMessage(item.error_summary) }}
       </AimaFeedbackBanner>
     </article>
   </section>

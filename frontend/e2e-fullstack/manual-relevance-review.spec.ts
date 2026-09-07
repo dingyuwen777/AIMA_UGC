@@ -8,7 +8,7 @@ test('AI irrelevant 内容可在真实声音广场人工纳入并进入默认业
   await page.goto('/voice-plaza')
   await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
 
-  await page.getByLabel('AI 相关性').selectOption('irrelevant')
+  await page.locator('.field--relevance select').selectOption('irrelevant')
   await page.getByRole('button', { name: '查询' }).click()
   const contentRow = page.locator('article.content-row').filter({ hasText: manualIncludeTitle })
   await expect(contentRow.getByText(manualIncludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
@@ -30,7 +30,7 @@ test('AI irrelevant 内容可在真实声音广场人工纳入并进入默认业
   await expect(page.getByText(/已人工标记 1 条内容为相关/)).toBeVisible()
   await expect(page.getByText(manualIncludeTitle, { exact: true })).toHaveCount(0)
 
-  await page.getByLabel('AI 相关性').selectOption('')
+  await page.locator('.field--relevance select').selectOption('')
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(manualIncludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('人工复核相关', { exact: true })).toBeVisible()
@@ -38,7 +38,7 @@ test('AI irrelevant 内容可在真实声音广场人工纳入并进入默认业
 
 test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', async ({ page }) => {
   await page.goto('/voice-plaza')
-  await page.getByLabel('AI 相关性').selectOption('relevant')
+  await page.locator('.field--relevance select').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
   const contentRow = page.locator('article.content-row').filter({ hasText: manualExcludeTitle })
   await expect(contentRow.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
@@ -59,7 +59,7 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
   await expect(page.getByText(/已人工标记 1 条内容为不相关/)).toBeVisible()
   await expect(page.getByText(manualExcludeTitle, { exact: true })).toHaveCount(0)
 
-  await page.getByLabel('AI 相关性').selectOption('irrelevant')
+  await page.locator('.field--relevance select').selectOption('irrelevant')
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('人工复核不相关', { exact: true })).toBeVisible()
@@ -81,7 +81,7 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
   await expect(page.getByText(/已撤销 1 条人工相关性判断/)).toBeVisible()
   await expect(page.getByText(manualExcludeTitle, { exact: true })).toHaveCount(0)
 
-  await page.getByLabel('AI 相关性').selectOption('relevant')
+  await page.locator('.field--relevance select').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
   await expect(contentRow.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(contentRow.getByText('中性', { exact: true })).toBeVisible()

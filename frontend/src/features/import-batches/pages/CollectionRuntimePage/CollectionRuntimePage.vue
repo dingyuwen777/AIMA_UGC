@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import type {
   CollectionRunCreateRequest,
@@ -23,6 +23,7 @@ import ImportBatchDetailDrawer from './components/ImportBatchDetailDrawer.vue'
 import TikHubSupplementDrawer from './components/TikHubSupplementDrawer.vue'
 
 const store = useImportBatchesStore()
+const route = useRoute()
 const router = useRouter()
 const dataImportOpen = ref(false)
 const supplementOpen = ref(false)
@@ -43,10 +44,25 @@ const runDetailOpen = computed({
 
 onMounted(async () => {
   await store.refresh()
+  await openCampaignFromRoute()
   store.startPolling(5000)
 })
 
 onBeforeUnmount(() => store.stopPolling())
+
+/** 处理任务中心的失败导入深链；无效链接只提示，不阻塞运行中心普通使用。 */
+async function openCampaignFromRoute(): Promise<void> {
+  const campaignId = route.query.data_import_campaign_id
+  if (typeof campaignId !== 'string' || !campaignId) return
+  store.selectedHistoricalCampaign = null
+  dataImportOpen.value = true
+  await store.openHistoricalWorkspace()
+  try {
+    await store.refreshHistoricalCampaign(campaignId)
+  } catch {
+    showNotice('指定导入任务暂不可打开，请从列表重新选择。')
+  }
+}
 
 async function search(): Promise<void> {
   await store.refresh()

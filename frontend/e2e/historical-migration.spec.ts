@@ -151,7 +151,7 @@ test('selects only server-relative files, preflights, and explicitly starts a ca
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录' }).click()
+  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
 
   await expect(dialog.getByText('只浏览管理员批准的只读根目录')).toBeVisible()
   await dialog.getByRole('button', { name: /2025-archive/ }).click()
@@ -169,7 +169,7 @@ test('selects only server-relative files, preflights, and explicitly starts a ca
     recursive: false,
   })
 
-  await expect(dialog.getByText('预检完成，可开始导入')).toBeVisible()
+  await expect(dialog.locator('.campaign-status')).toHaveText('预检完成')
   await expect(dialog.getByRole('progressbar', { name: '导入预检进度' })).toHaveAttribute('aria-valuenow', '100')
   await expect(dialog.getByRole('progressbar', { name: '数据导入进度' })).toHaveAttribute('aria-valuenow', '0')
   await expect(dialog.getByText('AI 不会自动执行')).toBeVisible()
@@ -179,7 +179,7 @@ test('selects only server-relative files, preflights, and explicitly starts a ca
   })
   await dialog.getByRole('button', { name: '开始导入' }).click()
   await startRequest
-  await expect(dialog.getByText('导入任务已进入队列。')).toBeVisible()
+  await expect(dialog.getByText('导入任务已进入处理队列。')).toBeVisible()
 
   await page.route(`**/api/v1/data-import-campaigns/${campaignId}`, async (route) => {
     await route.fulfill({
@@ -209,7 +209,7 @@ test('selects a server directory for bounded recursive discovery', async ({ page
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录' }).click()
+  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
 
   await dialog.getByLabel('选择目录 2025-archive').check()
   await dialog.getByLabel(/选择目录时递归发现/).check()
@@ -230,7 +230,7 @@ test('continues directory enumeration with the server cursor', async ({ page }) 
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录' }).click()
+  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
 
   await dialog.getByRole('button', { name: '加载更多目录项' }).click()
   await expect(dialog.getByLabel('选择 late-file.xlsx')).toBeVisible()
@@ -240,10 +240,10 @@ test('reopens an existing campaign after a page reload', async ({ page }) => {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录' }).click()
+  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
 
-  await dialog.getByRole('button', { name: new RegExp(`打开 Campaign ${campaignId}`) }).click()
-  await expect(dialog.getByText('预检完成，可开始导入')).toBeVisible()
+  await dialog.getByRole('button', { name: '打开导入任务 服务器目录导入' }).click()
+  await expect(dialog.locator('.campaign-status')).toHaveText('预检完成')
 })
 
 test('does not invent a percentage while directory discovery has no total', async ({ page }) => {
@@ -278,8 +278,8 @@ test('does not invent a percentage while directory discovery has no total', asyn
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录' }).click()
-  await dialog.getByRole('button', { name: new RegExp(`打开 Campaign ${campaignId}`) }).click()
+  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
+  await dialog.getByRole('button', { name: '打开导入任务 服务器目录导入' }).click()
 
   const progress = dialog.getByRole('progressbar', { name: '导入预检进度' })
   await expect(progress).not.toHaveAttribute('aria-valuenow')
@@ -330,14 +330,14 @@ test('keeps polling a cancelling campaign until it reaches cancelled', async ({ 
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录' }).click()
-  await dialog.getByRole('button', { name: new RegExp(`打开 Campaign ${campaignId}`) }).click()
-  await expect(dialog.getByText('状态：running')).toBeVisible()
+  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
+  await dialog.getByRole('button', { name: '打开导入任务 服务器目录导入' }).click()
+  await expect(dialog.locator('.campaign-status')).toHaveText('正在导入')
   await dialog.getByRole('button', { name: '取消任务', exact: true }).click()
 
   // 取消动作会先立即刷新到 cancelling，最终 cancelled 由下一次约 5 秒轮询取得。
-  await expect(dialog.getByText('状态：cancelling')).toBeVisible()
-  await expect(dialog.getByText('状态：cancelled')).toBeVisible({ timeout: 10_000 })
+  await expect(dialog.locator('.campaign-status')).toHaveText('正在取消')
+  await expect(dialog.locator('.campaign-status')).toHaveText('已取消', { timeout: 10_000 })
   expect(postCancelReadCount).toBeGreaterThanOrEqual(2)
 })
 
@@ -378,17 +378,17 @@ test('uses campaign failed-chunk facts even when bounded detail omits failed chu
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录' }).click()
+  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
   await dialog.getByRole('button', { name: /2025-archive/ }).click()
   await dialog.getByLabel('选择 part-001.xlsx').check()
   await dialog.getByLabel(/爱玛品牌词包/).check()
   await dialog.getByRole('button', { name: '创建并预检' }).click()
-  await expect(dialog.getByText('状态：partial_failed')).toBeVisible()
+  await expect(dialog.locator('.campaign-status')).toHaveText('部分导入失败')
   const retryRequest = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url())
     return url.pathname === `/api/v1/data-import-campaigns/${campaignId}/retry-failed`
   })
   await dialog.getByRole('button', { name: '重试失败项' }).click()
   await retryRequest
-  await expect(dialog.getByText('失败项已重新进入导入队列。')).toBeVisible()
+  await expect(dialog.getByText('失败数据已重新进入处理队列。')).toBeVisible()
 })

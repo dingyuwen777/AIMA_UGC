@@ -10,7 +10,6 @@ import {
   runtimeFailureMessage,
   runtimeStageLabel,
   runtimeStatusLabels,
-  shortId,
 } from '../../../format'
 
 defineProps<{ modelValue: boolean; item: CollectionRunResponse | null }>()
@@ -32,11 +31,11 @@ const emit = defineEmits<{
         class="drawer"
         role="dialog"
         aria-modal="true"
-        aria-label="TikHub 运行详情"
+        aria-label="辅助补采详情"
       >
         <template v-if="item">
           <header>
-            <strong>辅助补采运行详情</strong>
+            <strong>辅助补采详情</strong>
             <AimaButton
               variant="text"
               size="small"
@@ -50,16 +49,14 @@ const emit = defineEmits<{
           <div class="drawer-body">
             <div class="title-row">
               <div>
-                <span>{{ item.mode === 'discovery' ? '独立发现新内容' : '基于已有批次补采' }}</span><h2>{{ item.keywords?.length ? item.keywords.join(' / ') : '批次内容补采' }}</h2>
+                <span>{{ item.mode === 'discovery' ? '独立发现新内容' : '基于已有导入数据补采' }}</span><h2>{{ item.keywords?.length ? item.keywords.join(' / ') : '内容补采' }}</h2>
               </div>
               <b :class="`status status--${item.status}`">{{ runtimeStatusLabels[item.status] }}</b>
             </div>
             <section class="facts">
-              <div><span>运行编号</span><strong>{{ shortId(item.run_id) }}</strong></div>
-              <div><span>后台任务编号</span><strong>{{ shortId(item.job_id) }}</strong></div>
               <div><span>目标平台</span><strong>{{ item.platforms.map((platform) => platformLabels[platform]).join(' / ') }}</strong></div>
-              <div><span>关联批次</span><strong>{{ item.import_batch_id ? shortId(item.import_batch_id) : '—' }}</strong></div>
-              <div><span>尝试次数</span><strong>{{ item.attempt }} / {{ item.max_attempts }}</strong></div>
+              <div><span>创建时间</span><strong>{{ formatDateTime(item.created_at) }}</strong></div>
+              <div><span>开始时间</span><strong>{{ formatDateTime(item.started_at) }}</strong></div>
               <div><span>总耗时</span><strong>{{ elapsed(item.started_at, item.finished_at) }}</strong></div>
             </section>
             <section class="progress-panel">
@@ -68,18 +65,18 @@ const emit = defineEmits<{
                 <span :style="{ width: `${item.progress}%` }" />
               </div>
             </section>
-            <h3>处理统计</h3>
+            <h3>处理结果</h3>
             <section class="stats">
-              <div><span>请求</span><strong>{{ formatNumber(item.stats.requested_count) }}</strong></div>
+              <div><span>处理</span><strong>{{ formatNumber(item.stats.requested_count) }}</strong></div>
               <div><span>成功</span><strong>{{ formatNumber(item.stats.succeeded_count) }}</strong></div>
               <div class="stat-error">
                 <span>失败</span><strong>{{ formatNumber(item.stats.failed_count) }}</strong>
               </div>
               <div><span>内容</span><strong>{{ formatNumber(item.stats.content_count) }}</strong></div>
               <div><span>评论</span><strong>{{ formatNumber(item.stats.comment_count) }}</strong></div>
-              <div><span>相关性过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
+              <div><span>过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
             </section>
-            <h3>执行范围状态</h3>
+            <h3>各平台处理状态</h3>
             <section class="scopes">
               <div
                 v-for="scope in item.scopes"
@@ -91,23 +88,72 @@ const emit = defineEmits<{
               </div>
             </section>
             <AimaFeedbackBanner
-              v-if="item.error_summary"
+              v-if="item.error_summary || item.error_code"
               class="error-card"
               :tone="item.status === 'partial_success' ? 'warning' : 'error'"
               role="alert"
             >
-              {{ item.error_code || 'collection_run_failed' }} · {{ runtimeFailureMessage(item.error_summary) }}
+              {{ runtimeFailureMessage(item.error_code ?? item.error_summary) }}
             </AimaFeedbackBanner>
             <AimaFeedbackBanner
               v-else-if="item.status === 'partial_success'"
               class="error-card"
               tone="warning"
             >
-              部分执行范围未完成；错误摘要和停止原因以系统提供的安全错误信息为准。
+              部分平台未完成处理，可稍后重试；如持续失败，请联系管理员查看技术详情。
             </AimaFeedbackBanner>
+
+            <details class="technical-details">
+              <summary>技术详情</summary>
+              <div class="technical-grid">
+                <div>
+                  <span>运行 ID</span><code>{{ item.run_id }}</code><button
+                    type="button"
+                    @click="emit('copy', item.run_id)"
+                  >
+                    复制
+                  </button>
+                </div>
+                <div>
+                  <span>后台任务 ID</span><code>{{ item.job_id }}</code><button
+                    type="button"
+                    @click="emit('copy', item.job_id)"
+                  >
+                    复制
+                  </button>
+                </div>
+                <div v-if="item.import_batch_id">
+                  <span>关联导入 ID</span><code>{{ item.import_batch_id }}</code><button
+                    type="button"
+                    @click="emit('copy', item.import_batch_id)"
+                  >
+                    复制
+                  </button>
+                </div>
+                <div><span>执行尝试</span><code>{{ item.attempt }} / {{ item.max_attempts }}</code></div>
+                <div v-if="item.error_code">
+                  <span>错误码</span><code>{{ item.error_code }}</code>
+                </div>
+                <div v-if="item.error_summary">
+                  <span>错误摘要</span><code>{{ item.error_summary }}</code>
+                </div>
+              </div>
+              <div
+                v-if="item.scopes.some((scope) => scope.stop_reason)"
+                class="technical-scopes"
+              >
+                <strong>平台停止原因</strong>
+                <p
+                  v-for="scope in item.scopes.filter((value) => value.stop_reason)"
+                  :key="scope.id"
+                >
+                  {{ platformLabels[scope.platform] }}：<code>{{ scope.stop_reason }}</code>
+                </p>
+              </div>
+            </details>
           </div>
           <footer>
-            <span>创建于 {{ formatDateTime(item.created_at) }}</span>
+            <span>完成时间 {{ formatDateTime(item.finished_at) }}</span>
             <AimaButton
               variant="primary"
               @click="emit('refresh')"
@@ -165,6 +211,14 @@ h3 { margin: 18px 0 10px; color: var(--aima-text); font-size: 14px; line-height:
 .scope-state--running, .scope-state--queued { color: #1677ff; }
 .scope-state--succeeded { color: var(--aima-success); }
 .scope-state--failed { color: var(--aima-danger); }
-.error-card { margin-top: 32px; }
+.error-card { margin-top: 20px; }
+.technical-details { margin-top: 22px; border-top: 1px solid var(--aima-border); padding-top: 14px; color: var(--aima-text-muted); font-size: 11px; }
+.technical-details summary { width: max-content; color: var(--aima-text-muted); cursor: pointer; font-size: 12px; font-weight: 500; }
+.technical-grid { display: grid; gap: 8px; margin-top: 12px; }
+.technical-grid > div { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.technical-grid code, .technical-scopes code { overflow-wrap: anywhere; color: var(--aima-text-secondary); font-size: 10px; }
+.technical-grid button { border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 10px; }
+.technical-scopes { margin-top: 12px; }
+.technical-scopes p { margin: 6px 0 0; }
 footer { display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); color: var(--aima-text-disabled); font-size: 11px; }
 </style>

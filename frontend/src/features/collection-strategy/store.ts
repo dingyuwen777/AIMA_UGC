@@ -5,26 +5,45 @@ import type {
   CollectionCapabilitiesResponse,
   CollectionPlanCreateRequest,
   CollectionPlanResponse,
+  CollectionPlanUpdateRequest,
   CollectionPlatform,
   GlobalRelevanceConfigResponse,
+  KeywordPackItemUpdateRequest,
   KeywordPackResponse,
   KeywordPackSummaryResponse,
+  ResourceLifecycleResponse,
   VehicleModelResponse,
 } from '../../generated/api/client'
 import {
   CollectionStrategyApiError,
   addPackKeyword,
+  archivePack,
+  archivePlan,
+  copyPack,
+  copyPlan,
   createPack,
   createPlan,
+  deletePack,
+  deletePlan,
+  fetchArchivedPacks,
+  fetchArchivedPlans,
   fetchCapabilities,
   fetchGlobalRelevance,
   fetchKeywordPacks,
   fetchPack,
+  fetchPackDeleteEligibility,
+  fetchPlanDeleteEligibility,
   fetchPlans,
   fetchVehicleModels,
+  removePackKeyword,
+  restorePack,
+  restorePlan,
   setGlobalRelevance,
   setPackEnabled,
   setPlanEnabled,
+  updatePack,
+  updatePackKeyword,
+  updatePlan,
 } from './api'
 import { planExecutionReason } from './eligibility'
 
@@ -37,9 +56,7 @@ interface PlanFilters {
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof CollectionStrategyApiError) {
-    return `${error.message}（request_id: ${error.requestId}）`
-  }
+  if (error instanceof CollectionStrategyApiError) return error.message
   if (error instanceof Error && error.message) return error.message
   return '请求失败，请稍后重试。'
 }
@@ -48,6 +65,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const activeTab = ref<StrategyTab>('plans')
   const packs = ref<KeywordPackSummaryResponse[]>([])
   const packCatalog = ref<KeywordPackSummaryResponse[]>([])
+  const archivedPacks = ref<ResourceLifecycleResponse[]>([])
   const vehicleCatalog = ref<VehicleModelResponse[]>([])
   const packTotal = ref(0)
   const packOffset = ref(0)
@@ -55,6 +73,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const relevance = ref<GlobalRelevanceConfigResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
   const plans = ref<CollectionPlanResponse[]>([])
+  const archivedPlans = ref<ResourceLifecycleResponse[]>([])
   const planTotal = ref(0)
   const enabledPlanCount = ref(0)
   const planOffset = ref(0)
@@ -64,6 +83,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const packDetails = ref<Record<string, KeywordPackResponse>>({})
   const enabledPlanPackIds = ref<string[]>([])
   const loadingPackDetails = ref(false)
+  const loadingArchived = ref(false)
   const filters = reactive<PlanFilters>({ search: '', enabled: '', platform: '' })
   const loading = ref(false)
   const saving = ref(false)
@@ -172,6 +192,9 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       } else {
         selectedPack.value = null
       }
+      if (selectedPlan.value) {
+        selectedPlan.value = planPage.items.find((plan) => plan.id === selectedPlan.value?.id) ?? null
+      }
     } catch (reason) {
       error.value = errorMessage(reason)
     } finally {
@@ -211,11 +234,81 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
+  async function savePackMetadata(name: string, description: string): Promise<boolean> {
+    const pack = selectedPack.value
+    if (!pack) return false
+    saving.value = true
+    error.value = null
+    try {
+      const updated = await updatePack(pack.id, {
+        expected_version: pack.version,
+        name: name.trim(),
+        description: description.trim(),
+      })
+      selectedPack.value = updated
+      packDetails.value = { ...packDetails.value, [updated.id]: updated }
+      await refresh()
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
   async function addKeyword(packId: string, text: string): Promise<boolean> {
     saving.value = true
     error.value = null
     try {
       const updated = await addPackKeyword(packId, { text, priority: 100, enabled: true })
+      selectedPack.value = updated
+      packDetails.value = { ...packDetails.value, [updated.id]: updated }
+      await refresh()
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function updateKeyword(
+    keywordId: string,
+    request: Omit<KeywordPackItemUpdateRequest, 'expected_version'>,
+  ): Promise<boolean> {
+    const pack = selectedPack.value
+    if (!pack) return false
+    saving.value = true
+    error.value = null
+    try {
+      const updated = await updatePackKeyword(pack.id, keywordId, {
+        ...request,
+        expected_version: pack.version,
+      })
+      selectedPack.value = updated
+      packDetails.value = { ...packDetails.value, [updated.id]: updated }
+      await refresh()
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function removeKeyword(keywordId: string, platformScope: string): Promise<boolean> {
+    const pack = selectedPack.value
+    if (!pack) return false
+    saving.value = true
+    error.value = null
+    try {
+      const updated = await removePackKeyword(pack.id, keywordId, {
+        expected_version: pack.version,
+        platform_scope: platformScope as KeywordPackItemUpdateRequest['platform_scope'],
+      })
       selectedPack.value = updated
       packDetails.value = { ...packDetails.value, [updated.id]: updated }
       await refresh()
@@ -249,6 +342,91 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       await refresh()
     } catch (reason) {
       error.value = errorMessage(reason)
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function copySelectedPack(name: string): Promise<boolean> {
+    const pack = selectedPack.value
+    if (!pack) return false
+    saving.value = true
+    error.value = null
+    try {
+      const copied = await copyPack(pack.id, { name: name.trim() })
+      packOffset.value = 0
+      await refresh()
+      await openPack(copied.id)
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function archiveSelectedPack(): Promise<boolean> {
+    const pack = selectedPack.value
+    if (!pack) return false
+    saving.value = true
+    error.value = null
+    try {
+      await archivePack(pack.id)
+      selectedPack.value = null
+      await Promise.all([refresh(), loadArchivedPacks()])
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function loadArchivedPacks(): Promise<void> {
+    loadingArchived.value = true
+    error.value = null
+    try {
+      archivedPacks.value = (await fetchArchivedPacks()).items
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    } finally {
+      loadingArchived.value = false
+    }
+  }
+
+  async function restoreArchivedPack(packId: string): Promise<boolean> {
+    saving.value = true
+    error.value = null
+    try {
+      const restored = await restorePack(packId)
+      await Promise.all([refresh(), loadArchivedPacks()])
+      await openPack(restored.id)
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function deleteArchivedPack(packId: string): Promise<boolean> {
+    saving.value = true
+    error.value = null
+    try {
+      const eligibility = await fetchPackDeleteEligibility(packId)
+      if (!eligibility.eligible) {
+        error.value = (eligibility.blocking_reasons ?? []).join('；') || '该词包已有业务引用，只能保留归档记录。'
+        return false
+      }
+      await deletePack(packId)
+      await loadArchivedPacks()
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
     } finally {
       saving.value = false
     }
@@ -302,6 +480,29 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
+  async function updateExistingPlan(request: CollectionPlanUpdateRequest): Promise<boolean> {
+    const plan = selectedPlan.value
+    if (!plan) return false
+    saving.value = true
+    error.value = null
+    try {
+      await loadPackDetails(request.keyword_pack_ids ?? [])
+      const reason = planReason(request)
+      if (reason) {
+        error.value = reason
+        return false
+      }
+      selectedPlan.value = await updatePlan(plan.id, request)
+      await refresh()
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
   async function openPlan(planId: string): Promise<void> {
     error.value = null
     selectedPlan.value = plans.value.find((plan) => plan.id === planId) ?? null
@@ -341,6 +542,91 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       await refresh()
     } catch (reason) {
       error.value = errorMessage(reason)
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function copySelectedPlan(name: string): Promise<boolean> {
+    const plan = selectedPlan.value
+    if (!plan) return false
+    saving.value = true
+    error.value = null
+    try {
+      const copied = await copyPlan(plan.id, { name: name.trim() })
+      planOffset.value = 0
+      await refresh()
+      selectedPlan.value = copied
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function archiveSelectedPlan(): Promise<boolean> {
+    const plan = selectedPlan.value
+    if (!plan) return false
+    saving.value = true
+    error.value = null
+    try {
+      await archivePlan(plan.id)
+      selectedPlan.value = null
+      await Promise.all([refresh(), loadArchivedPlans()])
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function loadArchivedPlans(): Promise<void> {
+    loadingArchived.value = true
+    error.value = null
+    try {
+      archivedPlans.value = (await fetchArchivedPlans()).items
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    } finally {
+      loadingArchived.value = false
+    }
+  }
+
+  async function restoreArchivedPlan(planId: string): Promise<boolean> {
+    saving.value = true
+    error.value = null
+    try {
+      const restored = await restorePlan(planId)
+      await Promise.all([refresh(), loadArchivedPlans()])
+      selectedPlan.value = restored
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function deleteArchivedPlan(planId: string): Promise<boolean> {
+    saving.value = true
+    error.value = null
+    try {
+      const eligibility = await fetchPlanDeleteEligibility(planId)
+      if (!eligibility.eligible) {
+        error.value = (eligibility.blocking_reasons ?? []).join('；') || '该采集计划已有历史记录，只能保留归档记录。'
+        return false
+      }
+      await deletePlan(planId)
+      await loadArchivedPlans()
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
     } finally {
       saving.value = false
     }
@@ -404,6 +690,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     activeTab,
     packs,
     packCatalog,
+    archivedPacks,
     vehicleCatalog,
     packTotal,
     packOffset,
@@ -412,6 +699,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     relevance,
     capabilities,
     plans,
+    archivedPlans,
     planTotal,
     enabledPlanCount,
     planOffset,
@@ -420,6 +708,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     selectedPlan,
     packDetails,
     loadingPackDetails,
+    loadingArchived,
     filters,
     loading,
     saving,
@@ -427,16 +716,30 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     refresh,
     openPack,
     savePack,
+    savePackMetadata,
     addKeyword,
+    updateKeyword,
+    removeKeyword,
     packToggleReason,
     togglePack,
+    copySelectedPack,
+    archiveSelectedPack,
+    loadArchivedPacks,
+    restoreArchivedPack,
+    deleteArchivedPack,
     saveRelevance,
     loadPackDetails,
     planReason,
     savePlan,
+    updateExistingPlan,
     openPlan,
     planToggleReason,
     togglePlan,
+    copySelectedPlan,
+    archiveSelectedPlan,
+    loadArchivedPlans,
+    restoreArchivedPlan,
+    deleteArchivedPlan,
     resetPlanFilters,
     firstPlanPage,
     previousPlanPage,

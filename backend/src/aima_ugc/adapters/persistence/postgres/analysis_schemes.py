@@ -11,6 +11,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
+from aima_ugc.modules.analysis.lifecycle_schema import register_analysis_lifecycle_schema
 from aima_ugc.modules.analysis.prompt_taxonomy import CONTENT_LABELING_PROMPT_PATH
 from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,
@@ -22,6 +23,8 @@ from aima_ugc.modules.analysis.schemes import (
     compile_analysis_scheme,
 )
 from aima_ugc.platform.time import beijing_now
+
+register_analysis_lifecycle_schema()
 
 _ANALYSIS_SCHEME_ADVISORY_LOCK = 4_270_116_503_129_227_117
 
@@ -82,6 +85,7 @@ class PostgresAnalysisSchemeRepository:
                 name="默认内容舆情分析方案",
                 active_version_id=None,
                 is_active=False,
+                archived_at=None,
                 created_at=now,
                 updated_at=now,
             )
@@ -123,7 +127,7 @@ class PostgresAnalysisSchemeRepository:
         definition: AnalysisSchemeDefinitionRequest,
         actor_ref: str,
     ) -> AnalysisSchemeVersionRecord:
-        """为现有同名 Scheme 追加版本，或创建新的 Scheme 草稿。"""
+        """为现有同名未归档 Scheme 追加版本，或创建新的 Scheme 草稿。"""
 
         _lock_scheme_registry(self._session)
         compiled = compile_analysis_scheme(definition)
@@ -145,12 +149,15 @@ class PostgresAnalysisSchemeRepository:
                     name=name,
                     active_version_id=None,
                     is_active=False,
+                    archived_at=None,
                     created_at=now,
                     updated_at=now,
                 )
             )
             version = 1
         else:
+            if scheme["archived_at"] is not None:
+                raise RuntimeError("已归档 Analysis Scheme 不能追加草稿，请先恢复")
             scheme_id = cast(UUID, scheme["id"])
             latest = self._session.scalar(
                 select(func.max(analysis_scheme_versions_table.c.version)).where(
@@ -190,17 +197,22 @@ class PostgresAnalysisSchemeRepository:
         definition: AnalysisSchemeDefinitionRequest,
         actor_ref: str,
     ) -> AnalysisSchemeVersionRecord:
-        """以追加新版本的方式保存草稿，并用旧版本身份防止并发覆盖。"""
+        """以追加新版本的方式保存草稿，并拒绝修改已归档父 Scheme。"""
 
         _lock_scheme_registry(self._session)
         compiled = compile_analysis_scheme(definition)
         target_row = (
             self._session.execute(
                 select(analysis_scheme_versions_table)
+                .join(
+                    analysis_schemes_table,
+                    analysis_schemes_table.c.id == analysis_scheme_versions_table.c.scheme_id,
+                )
                 .where(
                     analysis_scheme_versions_table.c.id == version_id,
                     analysis_scheme_versions_table.c.version == expected_version,
                     analysis_scheme_versions_table.c.status == "draft",
+                    analysis_schemes_table.c.archived_at.is_(None),
                 )
                 .with_for_update()
             )
@@ -208,7 +220,7 @@ class PostgresAnalysisSchemeRepository:
             .one_or_none()
         )
         if target_row is None:
-            raise RuntimeError("Scheme 草稿不存在、已发布或版本冲突")
+            raise RuntimeError("Scheme 草稿不存在、已发布/归档或版本冲突")
 
         target = _version_from_row(target_row)
         next_version = (
@@ -262,15 +274,20 @@ class PostgresAnalysisSchemeRepository:
         *,
         expected_version: int,
     ) -> AnalysisSchemeVersionRecord:
-        """原子发布草稿或回滚历史版本，并退役旧 active。"""
+        """原子发布草稿或回滚历史版本，并拒绝激活已归档 Scheme。"""
 
         _lock_scheme_registry(self._session)
         target_row = (
             self._session.execute(
                 select(analysis_scheme_versions_table)
+                .join(
+                    analysis_schemes_table,
+                    analysis_schemes_table.c.id == analysis_scheme_versions_table.c.scheme_id,
+                )
                 .where(
                     analysis_scheme_versions_table.c.id == version_id,
                     analysis_scheme_versions_table.c.version == expected_version,
+                    analysis_schemes_table.c.archived_at.is_(None),
                 )
                 .with_for_update()
             )
@@ -278,7 +295,7 @@ class PostgresAnalysisSchemeRepository:
             .one_or_none()
         )
         if target_row is None:
-            raise RuntimeError("Scheme Version 不存在或版本冲突")
+            raise RuntimeError("Scheme Version 不存在、父方案已归档或版本冲突")
         target = _version_from_row(target_row)
         now = beijing_now()
         self._session.execute(
@@ -319,7 +336,7 @@ class PostgresAnalysisSchemeRepository:
         return None if row is None else _version_from_row(row)
 
     def get_active_version(self) -> AnalysisSchemeVersionRecord | None:
-        """读取唯一 active Scheme Version。"""
+        """读取唯一未归档 active Scheme Version。"""
 
         row = (
             self._session.execute(
@@ -329,7 +346,10 @@ class PostgresAnalysisSchemeRepository:
                     analysis_schemes_table.c.active_version_id
                     == analysis_scheme_versions_table.c.id,
                 )
-                .where(analysis_schemes_table.c.is_active.is_(True))
+                .where(
+                    analysis_schemes_table.c.is_active.is_(True),
+                    analysis_schemes_table.c.archived_at.is_(None),
+                )
             )
             .mappings()
             .one_or_none()
@@ -339,11 +359,13 @@ class PostgresAnalysisSchemeRepository:
     def list_schemes(
         self,
     ) -> tuple[tuple[RowMapping, tuple[AnalysisSchemeVersionRecord, ...]], ...]:
-        """返回 Scheme 及其按版本倒序排列的完整版本。"""
+        """返回未归档 Scheme 及其按版本倒序排列的完整版本。"""
 
         schemes = tuple(
             self._session.execute(
-                select(analysis_schemes_table).order_by(
+                select(analysis_schemes_table)
+                .where(analysis_schemes_table.c.archived_at.is_(None))
+                .order_by(
                     analysis_schemes_table.c.is_active.desc(),
                     analysis_schemes_table.c.name,
                 )
