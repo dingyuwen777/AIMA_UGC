@@ -235,7 +235,7 @@ Docs Impact 为 `targeted`：更新 Analysis 模块 README、AI 实现 Appendix 
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | `71a53786` / Python 3.14.7 / Windows | `uv run pytest tests/unit/analysis -q`；最终完整 unit | Analysis 专项 165 passed；完整 unit 为 878 passed、8 skipped，另有 3 个 POSIX-only 测试在 Windows 因 `os.geteuid/os.chown` 不存在失败 | V4 协议、Validator、repair/judge 分流、V3 Scheme 兼容及平台证据边界 |
+| V1 | 当前 PR 修复工作区 / Python 3.14.7 / Windows | `uv run pytest tests/unit/analysis -q`；最终完整 unit | Analysis 专项 166 passed；完整 unit 基线为 878 passed、8 skipped，另有 3 个 POSIX-only 测试在 Windows 因 `os.geteuid/os.chown` 不存在失败 | V4 协议、Validator、repair/judge 分流、V3 Scheme 兼容、Full-stack Fake V4 一致性及平台证据边界 |
 | V2 | `71a53786` / PostgreSQL 18.4 隔离容器 | `uv run pytest tests/integration/content -q`；Scheme 发布/回滚与 voice_type Schema 专项 | 53 passed；专项 2 passed | 新空库 V4、Analysis Worker/Job、持久结果、旧 Schema 与版本发布回滚链 |
 | V3 | `71a53786` / 当前锁定依赖 | Contract 104 tests；API 53 tests；CI 精确 Ruff、mypy、架构、Owner、Docs、Contract 生成、治理、Secret | 全部通过；mypy 294 source files；Ruff 609 files formatted / lint passed | 公共边界未漂移、静态质量、架构与文档一致性 |
 | V4 | `71a53786` / uv build | `uv build --wheel`；Zip 打开与包内容检查 | 构建 `aima_ugc-0.1.0-py3-none-any.whl` 成功，366 entries，包含 `content_labeling_v4.md` | 部署包可携带新默认 Prompt |
@@ -257,4 +257,4 @@ Docs Impact 为 `targeted`：更新 Analysis 模块 README、AI 实现 Appendix 
 # 两阶段 Review
 
 - **阶段 1：需求与风险重建**：不依赖 Change checkbox，重新以用户五字段/个人交易/Judge/兼容/延期决定与现有 Scheme/Worker/Result Contract 为完成定义；最高风险是把结构错误错误送入 Judge、语义规则可折叠个人交易、旧 V3 active Scheme 失效、证据超出输入和公共结果扩张。
-- **阶段 2：实现与证据对照**：发现并修复“混合未解决批次整体进 Judge”和“个人交易映射可与真实用户相同/主体映射可缺失”两项阻塞问题；补充失败测试后转绿。复查最终生产 diff、测试、文档和 Wheel，未发现剩余合并阻塞 Finding。真实 LLM 准确率仍明确属于 Gold Set 延期边界。
+- **阶段 2：实现与证据对照**：发现并修复“混合未解决批次整体进 Judge”“个人交易映射可与真实用户相同/主体映射可缺失”以及“真实 Full-stack Fake 仍返回 V3 结构”三项阻塞问题；均先取得失败证据再转绿。复查最终生产 diff、测试、文档和 Wheel，未发现剩余合并阻塞 Finding。真实 LLM 准确率仍明确属于 Gold Set 延期边界。

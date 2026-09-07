@@ -8,6 +8,48 @@ from threading import Event, Lock
 from typing import Any
 
 
+def _build_v4_label_item(item: dict[str, Any], *, sentiment: str) -> dict[str, object]:
+    """按当前 V4 协议生成可由正式 Validator 核验的确定性结果。"""
+
+    author = item.get("author")
+    author_fields = author if isinstance(author, dict) else {}
+    evidence = next(
+        (
+            value.strip()
+            for value in (
+                item.get("title"),
+                item.get("text"),
+                author_fields.get("display_name"),
+                author_fields.get("bio"),
+                author_fields.get("verification_label"),
+            )
+            if isinstance(value, str) and value.strip()
+        ),
+        None,
+    )
+    if evidence is None:
+        raise ValueError("Full-stack Fake LLM 需要至少一个非空业务文本字段")
+    return {
+        "item_no": item["item_no"],
+        "relevance": "relevant",
+        "relevance_evidence": [evidence],
+        "source_type": "ordinary_consumer",
+        "content_intent": "organic_experience",
+        "voice_type": "真实用户发声",
+        "voice_evidence": [evidence],
+        "sentiment": sentiment,
+        "sentiment_evidence": [evidence],
+        "labels": [
+            {
+                "primary_label": "骑行性能",
+                "secondary_label": "舒适性",
+                "evidence": [evidence],
+            }
+        ],
+        "decision_status": "clear",
+    }
+
+
 class _Handler(BaseHTTPRequestHandler):
     request_no = 0
     streaming_lock = Lock()
@@ -38,21 +80,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
         type(self).request_no += 1
         sentiment = "正面" if type(self).request_no % 2 else "负面"
-        items = [
-            {
-                "item_no": item["item_no"],
-                "relevance": "relevant",
-                "voice_type": "真实用户发声",
-                "sentiment": sentiment,
-                "labels": [
-                    {
-                        "primary_label": "骑行性能",
-                        "secondary_label": "舒适性",
-                    }
-                ],
-            }
-            for item in user_payload["items"]
-        ]
+        items = [_build_v4_label_item(item, sentiment=sentiment) for item in user_payload["items"]]
         self._send_json(
             {
                 "choices": [
