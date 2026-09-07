@@ -20,11 +20,11 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
-  analysis_scheme_created: '新建 AI 分析方案',
-  analysis_scheme_draft_created: '新建 AI 分析方案草稿',
-  analysis_scheme_draft_updated: '更新 AI 分析方案草稿',
-  analysis_scheme_published: '发布 AI 分析方案',
-  analysis_scheme_rolled_back: '回滚 AI 分析方案',
+  analysis_scheme_created: '新建 AI 分析规则',
+  analysis_scheme_draft_created: '新建 AI 分析规则草稿',
+  analysis_scheme_draft_updated: '更新 AI 分析规则草稿',
+  analysis_scheme_published: '发布 AI 分析规则',
+  analysis_scheme_rolled_back: '回滚 AI 分析规则',
   keyword_pack_vehicle_links_updated: '更新词包车型关联',
   provider_config_created: '新建模型服务配置',
   provider_config_test_failed: '模型服务测试失败',
@@ -40,7 +40,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
 }
 
 const AUDIT_OBJECT_LABELS: Record<string, string> = {
-  analysis_scheme: 'AI 分析方案',
+  analysis_scheme: 'AI 分析规则',
   collection_provider_config: '采集服务',
   keyword_pack: '词包',
   keyword_pack_vehicle_links: '词包车型关联',
