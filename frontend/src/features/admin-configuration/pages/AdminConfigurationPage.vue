@@ -397,83 +397,39 @@ function safeJson(value: Record<string, unknown>): string {
         title="管理员配置"
         description="统一管理车型、词包、AI 模型、采集服务和 AI 分析规则。技术标识与原始审计数据仅在需要时展开查看。"
       />
-      <AimaFeedbackBanner
-        v-if="error"
-        tone="error"
-        role="alert"
-      >
-        {{ error }}
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="notice"
-        tone="success"
-      >
-        {{ notice }}
-      </AimaFeedbackBanner>
+      <AimaFeedbackBanner v-if="error" tone="error" role="alert">{{ error }}</AimaFeedbackBanner>
+      <AimaFeedbackBanner v-if="notice" tone="success">{{ notice }}</AimaFeedbackBanner>
 
-      <nav
-        class="tabs"
-        aria-label="管理员配置分类"
-      >
+      <nav class="tabs" aria-label="管理员配置分类">
         <button
           v-for="item in ([['vehicles', '车型管理'], ['links', '词包关联'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'AI 分析规则'], ['audit', '操作记录']] as const)"
           :key="item[0]"
           type="button"
           :class="{ active: tab === item[0] }"
           @click="tab = item[0]"
-        >
-          {{ item[1] }}
-        </button>
+        >{{ item[1] }}</button>
       </nav>
 
-      <AimaFeedbackBanner
-        v-if="activeResourceError"
-        tone="error"
-        role="alert"
-      >
+      <AimaFeedbackBanner v-if="activeResourceError" tone="error" role="alert">
         <strong>当前数据加载失败</strong>
         <span>{{ activeResourceError }}</span>
-        <button
-          class="retry-link"
-          type="button"
-          :disabled="loading"
-          @click="retryActiveResource"
-        >
+        <button class="retry-link" type="button" :disabled="loading" @click="retryActiveResource">
           {{ loading ? '重试中…' : '重试当前数据' }}
         </button>
       </AimaFeedbackBanner>
 
-      <section
-        v-if="loading"
-        class="state-card"
-      >
-        正在加载管理员配置…
-      </section>
+      <section v-if="loading" class="state-card">正在加载管理员配置…</section>
 
-      <div
-        v-else-if="tab === 'vehicles'"
-        class="two-column"
-      >
+      <div v-else-if="tab === 'vehicles'" class="two-column">
         <section class="card">
           <header>
-            <div>
-              <h2>车型目录</h2>
-              <p>车型编码创建后保持不变；已被业务数据引用的车型只能停用、改名或合并。</p>
-            </div>
-            <AimaButton
-              size="small"
-              @click="resetVehicleDraft"
-            >
-              新增车型
-            </AimaButton>
+            <div><h2>车型目录</h2><p>车型编码创建后保持不变；已被业务数据引用的车型只能停用、改名或合并。</p></div>
+            <AimaButton size="small" @click="resetVehicleDraft">新增车型</AimaButton>
           </header>
           <table>
             <thead><tr><th>车型</th><th>别名</th><th>状态</th><th>使用情况</th><th>操作</th></tr></thead>
             <tbody>
-              <tr
-                v-for="item in vehicles"
-                :key="item.id"
-              >
+              <tr v-for="item in vehicles" :key="item.id">
                 <td><strong>{{ item.display_name }}</strong><small>编码 {{ item.code }}</small></td>
                 <td>{{ (item.aliases ?? []).map((alias) => alias.text).join('、') || '—' }}</td>
                 <td><span class="status" :class="`status--${item.status}`">{{ formatRuntimeStatus(item.status) }}</span></td>
@@ -488,87 +444,46 @@ function safeJson(value: Record<string, unknown>): string {
         </section>
         <section class="card form-card">
           <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
-          <label>车型编码<input
-            v-model="vehicleDraft.code"
-            :disabled="Boolean(vehicleDraft.id)"
-            placeholder="例如 AIMA-Q7"
-          ><small>用于稳定识别车型，创建后不可修改。</small></label>
-          <label>显示名称<input
-            v-model="vehicleDraft.displayName"
-            placeholder="例如 爱玛 Q7"
-          ></label>
-          <label>别名（每行一个）<textarea
-            v-model="vehicleDraft.aliases"
-            rows="6"
-            placeholder="Q7&#10;爱玛Q7"
-          /></label>
+          <label>车型编码<input v-model="vehicleDraft.code" :disabled="Boolean(vehicleDraft.id)" placeholder="例如 AIMA-Q7"><small>用于稳定识别车型，创建后不可修改。</small></label>
+          <label>显示名称<input v-model="vehicleDraft.displayName" placeholder="例如 爱玛 Q7"></label>
+          <label>别名（每行一个）<textarea v-model="vehicleDraft.aliases" rows="6" placeholder="Q7&#10;爱玛Q7" /></label>
           <label v-if="vehicleDraft.id">状态<select v-model="vehicleDraft.status"><option value="active">正常使用</option><option value="deprecated">停用</option></select></label>
           <div class="actions">
             <AimaButton @click="resetVehicleDraft">取消</AimaButton>
             <AimaButton variant="primary" :disabled="saving || !vehicleFormValid" @click="saveVehicle">保存</AimaButton>
           </div>
           <template v-if="vehicleDraft.id">
-            <hr>
-            <h3>合并重复车型</h3>
+            <hr><h3>合并重复车型</h3>
             <select v-model="mergeTargetId">
               <option value="">选择目标车型</option>
-              <option
-                v-for="item in vehicles.filter((vehicle) => vehicle.id !== vehicleDraft.id && vehicle.status === 'active')"
-                :key="item.id"
-                :value="item.id"
-              >
-                {{ item.display_name }}（{{ item.code }}）
-              </option>
+              <option v-for="item in vehicles.filter((vehicle) => vehicle.id !== vehicleDraft.id && vehicle.status === 'active')" :key="item.id" :value="item.id">{{ item.display_name }}（{{ item.code }}）</option>
             </select>
             <AimaButton :disabled="!mergeTargetId" @click="mergeSelectedVehicle">合并到目标车型</AimaButton>
           </template>
         </section>
       </div>
 
-      <div
-        v-else-if="tab === 'links'"
-        class="two-column"
-      >
+      <div v-else-if="tab === 'links'" class="two-column">
         <section class="card list-card">
           <h2>选择词包</h2>
-          <button
-            v-for="pack in packs"
-            :key="pack.id"
-            type="button"
-            :class="{ active: selectedPackId === pack.id }"
-            @click="selectPack(pack.id)"
-          >
+          <button v-for="pack in packs" :key="pack.id" type="button" :class="{ active: selectedPackId === pack.id }" @click="selectPack(pack.id)">
             <strong>{{ pack.name }}</strong><span>版本 {{ pack.version }} · {{ pack.enabled ? '已启用' : '已停用' }}</span>
           </button>
         </section>
         <section class="card form-card">
           <h2>{{ selectedPack?.name ?? '词包车型关联' }}</h2>
           <p>选择这个词包适用的车型。多选车型时满足其中任一车型即可，随后再与词包关键词共同筛选。</p>
-          <VehicleMultiSelect
-            v-model="linkedVehicleIds"
-            label="关联车型（可多选）"
-          />
-          <div class="actions">
-            <AimaButton variant="primary" :disabled="!selectedPack || saving" @click="savePackLinks">保存关联</AimaButton>
-          </div>
+          <VehicleMultiSelect v-model="linkedVehicleIds" label="关联车型（可多选）" />
+          <div class="actions"><AimaButton variant="primary" :disabled="!selectedPack || saving" @click="savePackLinks">保存关联</AimaButton></div>
         </section>
       </div>
 
-      <div
-        v-else-if="tab === 'scheme'"
-        class="scheme-layout"
-      >
+      <div v-else-if="tab === 'scheme'" class="scheme-layout">
         <section class="card list-card">
           <h2>版本历史</h2>
           <template v-for="scheme in schemes" :key="scheme.id">
             <h3>{{ scheme.name }}</h3>
-            <button
-              v-for="version in scheme.versions"
-              :key="version.id"
-              type="button"
-              :class="{ active: selectedSchemeVersionId === version.id }"
-              @click="selectSchemeVersion(version.id)"
-            >
+            <button v-for="version in scheme.versions" :key="version.id" type="button" :class="{ active: selectedSchemeVersionId === version.id }" @click="selectSchemeVersion(version.id)">
               <strong>版本 {{ version.version }} · {{ formatRuntimeStatus(version.status) }}</strong>
               <span>{{ formatDateTime(version.created_at) }}</span>
             </button>
@@ -576,78 +491,42 @@ function safeJson(value: Record<string, unknown>): string {
         </section>
         <section class="card form-card scheme-editor">
           <header>
-            <div>
-              <h2>AI 分析规则</h2>
-              <p>提示词、发声类型、情感和标签作为一个完整版本保存与发布，避免不同配置之间出现不一致。</p>
-            </div>
+            <div><h2>AI 分析规则</h2><p>默认只维护业务含义；提示词与结构化标签作为高级规则按需展开。</p></div>
             <span v-if="selectedSchemeVersion">{{ formatRuntimeStatus(selectedSchemeVersion.version.status) }}</span>
           </header>
-          <label>规则名称<input
-            v-model="schemeDraft.schemeName"
-            :readonly="selectedSchemeVersion?.version.status === 'draft'"
-          ><small v-if="selectedSchemeVersion?.version.status === 'draft'">编辑现有草稿时名称保持不变；需要新名称时，请基于已发布或历史版本新建草稿。</small></label>
+          <label>规则名称<input v-model="schemeDraft.schemeName" :readonly="selectedSchemeVersion?.version.status === 'draft'"><small v-if="selectedSchemeVersion?.version.status === 'draft'">编辑现有草稿时名称保持不变；需要新名称时，请基于已发布或历史版本新建草稿。</small></label>
           <label>说明<input v-model="schemeDraft.description"></label>
           <label>发声类型（每行一个）<textarea v-model="schemeDraft.voiceTypes" rows="4" /></label>
           <label>情感（每行一个）<textarea v-model="schemeDraft.sentiments" rows="4" /></label>
-          <label>标签规则（JSON，高级）<textarea
-            v-model="schemeDraft.labelsJson"
-            rows="10"
-            spellcheck="false"
-          /><small>这里维护结构化标签；普通业务调整无需关注底层版本标识。</small></label>
-          <label>提示词模板<textarea
-            v-model="schemeDraft.promptTemplate"
-            rows="14"
-            spellcheck="false"
-          /></label>
-          <details class="technical-details scheme-technical">
-            <summary>模板技术要求</summary>
-            <p>提示词必须包含标签规则占位符 <code v-pre>{{AIMA_TAXONOMY_JSON}}</code>，发布时由后端再次校验。</p>
+          <details class="advanced-editor">
+            <summary>高级规则编辑</summary>
+            <p>只有需要直接维护结构化标签或提示词时才展开。保存和发布仍会按同一个完整版本处理。</p>
+            <div class="advanced-editor__fields">
+              <label>标签规则（JSON）<textarea v-model="schemeDraft.labelsJson" rows="10" spellcheck="false" /></label>
+              <label>提示词模板<textarea v-model="schemeDraft.promptTemplate" rows="14" spellcheck="false" /></label>
+              <div class="technical-note">提示词必须包含标签规则占位符 <code v-pre>{{AIMA_TAXONOMY_JSON}}</code>，发布时由后端再次校验。</div>
+            </div>
           </details>
           <div class="actions">
-            <AimaButton :disabled="saving" @click="saveSchemeDraft">
-              {{ selectedSchemeVersion?.version.status === 'draft' ? '保存草稿' : '基于此版本新建草稿' }}
-            </AimaButton>
-            <AimaButton
-              v-if="selectedSchemeVersion?.version.status === 'draft'"
-              variant="primary"
-              @click="publishVersion(selectedSchemeVersion.version)"
-            >发布</AimaButton>
-            <AimaButton
-              v-else-if="selectedSchemeVersion && selectedSchemeVersion.scheme.active_version_id !== selectedSchemeVersion.version.id"
-              @click="rollbackVersion(selectedSchemeVersion.version)"
-            >恢复到此版本</AimaButton>
+            <AimaButton :disabled="saving" @click="saveSchemeDraft">{{ selectedSchemeVersion?.version.status === 'draft' ? '保存草稿' : '基于此版本新建草稿' }}</AimaButton>
+            <AimaButton v-if="selectedSchemeVersion?.version.status === 'draft'" variant="primary" @click="publishVersion(selectedSchemeVersion.version)">发布</AimaButton>
+            <AimaButton v-else-if="selectedSchemeVersion && selectedSchemeVersion.scheme.active_version_id !== selectedSchemeVersion.version.id" @click="rollbackVersion(selectedSchemeVersion.version)">恢复到此版本</AimaButton>
           </div>
         </section>
       </div>
 
-      <ProviderConfigurationPanel
-        v-else-if="tab === 'llm'"
-        provider-kind="llm"
-      />
+      <ProviderConfigurationPanel v-else-if="tab === 'llm'" provider-kind="llm" />
+      <ProviderConfigurationPanel v-else-if="tab === 'tikhub'" provider-kind="collection" />
 
-      <ProviderConfigurationPanel
-        v-else-if="tab === 'tikhub'"
-        provider-kind="collection"
-      />
-
-      <section
-        v-else
-        class="card audit-card"
-      >
+      <section v-else class="card audit-card">
         <header>
-          <div>
-            <h2>操作记录</h2>
-            <p>默认只展示“谁在什么时候做了什么、影响了什么”。系统仍保留可追溯的技术信息，但不会把原始字段和 JSON 直接暴露在主视图。共 {{ auditTotal }} 条。</p>
-          </div>
+          <div><h2>操作记录</h2><p>默认只展示“谁在什么时候做了什么、影响了什么”。系统仍保留可追溯的技术信息，但不会把原始字段和 JSON 直接暴露在主视图。共 {{ auditTotal }} 条。</p></div>
           <AimaButton size="small" :disabled="auditLoading" @click="loadAudit">刷新</AimaButton>
         </header>
         <table>
           <thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>影响对象</th><th>操作说明</th><th>详情</th></tr></thead>
           <tbody>
-            <tr
-              v-for="event in auditEvents"
-              :key="event.id"
-            >
+            <tr v-for="event in auditEvents" :key="event.id">
               <td>{{ formatDateTime(event.created_at) }}</td>
               <td>{{ auditActorLabel(event.actor_ref) }}</td>
               <td><strong>{{ auditActionLabel(event.event_type) }}</strong></td>
@@ -662,20 +541,13 @@ function safeJson(value: Record<string, unknown>): string {
                     <div><dt>对象标识</dt><dd>{{ event.object_id ?? '—' }}</dd></div>
                     <div><dt>请求标识</dt><dd>{{ event.request_id ?? '—' }}</dd></div>
                   </dl>
-                  <div class="raw-detail">
-                    <strong>安全审计数据</strong>
-                    <pre>{{ safeJson(event.safe_detail) }}</pre>
-                  </div>
+                  <div class="raw-detail"><strong>安全审计数据</strong><pre>{{ safeJson(event.safe_detail) }}</pre></div>
                 </details>
               </td>
             </tr>
           </tbody>
         </table>
-        <nav
-          v-if="auditTotal > 0"
-          class="audit-pagination"
-          aria-label="操作记录分页"
-        >
+        <nav v-if="auditTotal > 0" class="audit-pagination" aria-label="操作记录分页">
           <span>第 {{ Math.floor(auditOffset / auditLimit) + 1 }} / {{ Math.ceil(auditTotal / auditLimit) }} 页 · 共 {{ auditTotal }} 条</span>
           <div>
             <AimaButton size="small" :disabled="auditLoading || auditOffset === 0" @click="previousAuditPage">上一页</AimaButton>
@@ -729,10 +601,14 @@ hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--aima-bor
 .scheme-editor > header > span { padding: 3px 8px; border-radius: 4px; color: var(--aima-primary); background: var(--aima-primary-soft); font-size: 10px; }
 .retry-link { width: max-content; padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }
 .retry-link:disabled { cursor: wait; opacity: .6; }
+.advanced-editor,
 .technical-details { border: 1px solid var(--aima-border); border-radius: 7px; background: #fafbfc; }
-.technical-details > summary { padding: 8px 10px; color: var(--aima-primary); cursor: pointer; font-size: 10px; font-weight: 600; white-space: nowrap; }
-.scheme-technical > p { margin: 0; padding: 0 10px 10px; }
-.scheme-technical code { color: var(--aima-primary); }
+.advanced-editor > summary,
+.technical-details > summary { padding: 9px 10px; color: var(--aima-primary); cursor: pointer; font-size: 10px; font-weight: 600; }
+.advanced-editor > p { margin: 0; padding: 0 10px 10px; }
+.advanced-editor__fields { display: grid; gap: 12px; padding: 0 10px 10px; }
+.technical-note { padding: 9px 10px; border-radius: 5px; color: var(--aima-text-muted); background: var(--aima-surface); font-size: 10px; line-height: 16px; }
+.technical-note code { color: var(--aima-primary); }
 .audit-card { overflow: auto; }
 .audit-card table { min-width: 940px; }
 .audit-details { min-width: 120px; }
