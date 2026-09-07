@@ -10,6 +10,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
 from aima_ugc.contracts.http import CollectionPlanPlatformRequest
+from aima_ugc.contracts.platform import PlatformScope
 
 ResourceLifecycleKind = Literal[
     "keyword_pack",
@@ -93,10 +94,30 @@ class KeywordPackCopyRequest(BaseModel):
         return value
 
 
+class KeywordPackItemUpdateRequest(ResourceExpectedVersionRequest):
+    """修改一个词包成员；共享 Keyword 通过关系替换避免影响其它词包。"""
+
+    text: str = Field(min_length=1, max_length=500)
+    source_platform_scope: PlatformScope = "all"
+    platform_scope: PlatformScope = "all"
+    priority: int = 100
+    enabled: bool = True
+    note: str = Field(default="", max_length=1000)
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def normalize_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("关键词不能为空")
+        return value
+
+
 class KeywordPackItemRemoveRequest(ResourceExpectedVersionRequest):
     """删除一个词包成员；共享 Keyword 实体本身不会被级联删除。"""
 
-    platform_scope: str = Field(default="all", min_length=1, max_length=32)
+    platform_scope: PlatformScope = "all"
 
 
 class CollectionPlanUpdateRequest(ResourceExpectedVersionRequest):
@@ -188,6 +209,7 @@ __all__ = [
     "CollectionPlanUpdateRequest",
     "KeywordPackCopyRequest",
     "KeywordPackItemRemoveRequest",
+    "KeywordPackItemUpdateRequest",
     "KeywordPackUpdateRequest",
     "ProviderConnectionTestResponse",
     "ResourceDeleteEligibilityResponse",
