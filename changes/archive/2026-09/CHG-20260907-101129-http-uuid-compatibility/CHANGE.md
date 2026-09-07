@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260907-101129-http-uuid-compatibility
 title: 修复 HTTP 部署环境下前端 UUID 生成兼容问题
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/http-uuid-compatibility
 created: 2026-09-07
