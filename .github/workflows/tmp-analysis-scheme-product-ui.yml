@@ -1,0 +1,52 @@
+name: Temporary Analysis Scheme Product UI
+
+on:
+  push:
+    branches:
+      - feature/product-resource-lifecycle
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact patch
+        run: python .github/tmp_analysis_scheme_patch.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend environment
+        run: npm ci --prefix frontend
+
+      - name: Typecheck
+        run: npm --prefix frontend run typecheck
+
+      - name: Admin configuration tests
+        run: npm --prefix frontend test -- --run tests/admin-configuration-design.spec.ts tests/admin-configuration-presentation.spec.ts tests/frontend-audit-regressions.spec.ts
+
+      - name: Commit patch and remove temporary files
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/tmp-analysis-scheme-product-ui.yml .github/tmp_analysis_scheme_patch.py
+          git add frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue
+          git config user.name "AIMA Temporary Validator"
+          git config user.email "aima-validator@users.noreply.github.com"
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "产品化AI分析规则配置与生命周期 [skip ci]"
+          git push origin HEAD:feature/product-resource-lifecycle
