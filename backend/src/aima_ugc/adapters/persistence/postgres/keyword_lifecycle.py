@@ -8,6 +8,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import Text, delete, func, insert, select, update
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.collection.tables import (
@@ -181,10 +182,16 @@ class PostgresKeywordPackLifecycleRepository:
                 .limit(1)
             )
             if still_referenced is None:
-                self._session.execute(delete(keywords_table).where(keywords_table.c.id == keyword_id))
-        updated = self._session.execute(
-            select(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
-        ).mappings().one()
+                self._session.execute(
+                    delete(keywords_table).where(keywords_table.c.id == keyword_id)
+                )
+        updated = (
+            self._session.execute(
+                select(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
+            )
+            .mappings()
+            .one()
+        )
         return _pack(updated)
 
     def remove_item(
@@ -240,17 +247,25 @@ class PostgresKeywordPackLifecycleRepository:
         )
         if still_referenced is None:
             self._session.execute(delete(keywords_table).where(keywords_table.c.id == keyword_id))
-        updated = self._session.execute(
-            select(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
-        ).mappings().one()
+        updated = (
+            self._session.execute(
+                select(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
+            )
+            .mappings()
+            .one()
+        )
         return _pack(updated)
 
     def copy_pack(self, pack_id: UUID, *, name: str) -> KeywordPack | None:
         """复制词包内容与车型关系；副本固定从停用、未归档状态开始。"""
 
-        source = self._session.execute(
-            select(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
-        ).mappings().one_or_none()
+        source = (
+            self._session.execute(
+                select(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
         if source is None:
             return None
         new_id = uuid4()
@@ -383,24 +398,30 @@ class PostgresKeywordPackLifecycleRepository:
         """返回会被立即破坏的活动业务引用。"""
 
         blockers: list[str] = []
-        if self._session.scalar(
-            select(global_relevance_config_table.c.keyword_pack_id).where(
-                global_relevance_config_table.c.keyword_pack_id == pack_id
+        if (
+            self._session.scalar(
+                select(global_relevance_config_table.c.keyword_pack_id).where(
+                    global_relevance_config_table.c.keyword_pack_id == pack_id
+                )
             )
-        ) is not None:
+            is not None
+        ):
             blockers.append("当前全局相关性正在使用该词包")
-        if self._session.scalar(
-            select(collection_plan_keyword_packs_table.c.plan_id)
-            .join(
-                collection_plans_table,
-                collection_plans_table.c.id == collection_plan_keyword_packs_table.c.plan_id,
+        if (
+            self._session.scalar(
+                select(collection_plan_keyword_packs_table.c.plan_id)
+                .join(
+                    collection_plans_table,
+                    collection_plans_table.c.id == collection_plan_keyword_packs_table.c.plan_id,
+                )
+                .where(
+                    collection_plan_keyword_packs_table.c.keyword_pack_id == pack_id,
+                    collection_plans_table.c.enabled.is_(True),
+                )
+                .limit(1)
             )
-            .where(
-                collection_plan_keyword_packs_table.c.keyword_pack_id == pack_id,
-                collection_plans_table.c.enabled.is_(True),
-            )
-            .limit(1)
-        ) is not None:
+            is not None
+        ):
             blockers.append("启用中的采集计划正在使用该词包")
         return tuple(blockers)
 
@@ -408,43 +429,61 @@ class PostgresKeywordPackLifecycleRepository:
         """保守检查当前关系与历史冻结快照；存在任何业务历史就只允许归档。"""
 
         blockers = list(self.archive_blockers(pack_id))
-        row = self._session.execute(
-            select(keyword_packs_table.c.id, keyword_packs_table.c.archived_at).where(
-                keyword_packs_table.c.id == pack_id
+        row = (
+            self._session.execute(
+                select(keyword_packs_table.c.id, keyword_packs_table.c.archived_at).where(
+                    keyword_packs_table.c.id == pack_id
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             return ("资源不存在",)
         if row["archived_at"] is None:
             blockers.append("请先归档词包再执行永久删除")
-        if self._session.scalar(
-            select(collection_plan_keyword_packs_table.c.plan_id)
-            .where(collection_plan_keyword_packs_table.c.keyword_pack_id == pack_id)
-            .limit(1)
-        ) is not None:
+        if (
+            self._session.scalar(
+                select(collection_plan_keyword_packs_table.c.plan_id)
+                .where(collection_plan_keyword_packs_table.c.keyword_pack_id == pack_id)
+                .limit(1)
+            )
+            is not None
+        ):
             blockers.append("采集计划历史引用了该词包")
         pack_marker = [{"id": str(pack_id)}]
-        if self._session.scalar(
-            select(historical_import_campaigns_table.c.id)
-            .where(
-                historical_import_campaigns_table.c.keyword_pack_snapshot["keyword_packs"].contains(
-                    pack_marker
+        if (
+            self._session.scalar(
+                select(historical_import_campaigns_table.c.id)
+                .where(
+                    historical_import_campaigns_table.c.keyword_pack_snapshot[
+                        "keyword_packs"
+                    ].contains(pack_marker)
                 )
+                .limit(1)
             )
-            .limit(1)
-        ) is not None:
+            is not None
+        ):
             blockers.append("数据导入历史引用了该词包")
-        if self._session.scalar(
-            select(jobs_table.c.id)
-            .where(jobs_table.c.payload["keyword_selection"]["keyword_packs"].contains(pack_marker))
-            .limit(1)
-        ) is not None:
+        if (
+            self._session.scalar(
+                select(jobs_table.c.id)
+                .where(
+                    jobs_table.c.payload["keyword_selection"]["keyword_packs"].contains(pack_marker)
+                )
+                .limit(1)
+            )
+            is not None
+        ):
             blockers.append("导入任务历史引用了该词包")
-        if self._session.scalar(
-            select(collection_runs_table.c.id)
-            .where(collection_runs_table.c.config_snapshot.cast(Text).contains(str(pack_id)))
-            .limit(1)
-        ) is not None:
+        if (
+            self._session.scalar(
+                select(collection_runs_table.c.id)
+                .where(collection_runs_table.c.config_snapshot.cast(Text).contains(str(pack_id)))
+                .limit(1)
+            )
+            is not None
+        ):
             blockers.append("采集运行历史引用了该词包")
         return tuple(dict.fromkeys(blockers))
 
@@ -489,7 +528,7 @@ class PostgresKeywordPackLifecycleRepository:
         return True
 
 
-def _pack(row) -> KeywordPack:
+def _pack(row: RowMapping) -> KeywordPack:
     """把词包表行映射为现有领域对象。"""
 
     return KeywordPack(

@@ -32,14 +32,20 @@ class ImportCampaignRevocationImpact:
     unreversible_content_count: int = 0
 
     def __post_init__(self) -> None:
-        if min(
-            self.affected_content_count,
-            self.hidden_content_count,
-            self.retained_shared_content_count,
-            self.unreversible_content_count,
-        ) < 0:
+        if (
+            min(
+                self.affected_content_count,
+                self.hidden_content_count,
+                self.retained_shared_content_count,
+                self.unreversible_content_count,
+            )
+            < 0
+        ):
             raise ValueError("撤销影响计数不能为负数")
-        if self.hidden_content_count + self.retained_shared_content_count != self.affected_content_count:
+        if (
+            self.hidden_content_count + self.retained_shared_content_count
+            != self.affected_content_count
+        ):
             raise ValueError("撤销影响计数不一致")
         if self.unreversible_content_count > self.affected_content_count:
             raise ValueError("不可逆 Content 数不能大于受影响 Content 数")
@@ -145,9 +151,7 @@ class ImportCampaignRevocationService:
             eligible=impact.safely_reversible,
             already_revoked=False,
             impact=impact,
-            ineligible_reason=(
-                None if impact.safely_reversible else "reversible_evidence_missing"
-            ),
+            ineligible_reason=(None if impact.safely_reversible else "reversible_evidence_missing"),
         )
 
     def revoke(
@@ -175,9 +179,7 @@ class ImportCampaignRevocationService:
         if existing is not None:
             return existing, False
         if status not in _REVOCABLE_STATUSES:
-            raise ImportCampaignRevocationConflict(
-                "只有成功或部分成功的数据导入可以撤销"
-            )
+            raise ImportCampaignRevocationConflict("只有成功或部分成功的数据导入可以撤销")
         impact = self._repository.calculate_impact(campaign_id)
         if not impact.safely_reversible:
             raise ImportCampaignRevocationConflict(

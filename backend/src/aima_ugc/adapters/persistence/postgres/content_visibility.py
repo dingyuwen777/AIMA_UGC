@@ -59,9 +59,7 @@ def content_has_active_source(
     campaign_item = historical_import_campaign_items_table.alias("visibility_campaign_item")
     direct_import_source = exists(
         select(literal(1))
-        .select_from(
-            ledger.join(campaign_item, campaign_item.c.id == ledger.c.campaign_item_id)
-        )
+        .select_from(ledger.join(campaign_item, campaign_item.c.id == ledger.c.campaign_item_id))
         .where(
             ledger.c.content_id == content_id,
             _campaign_available(

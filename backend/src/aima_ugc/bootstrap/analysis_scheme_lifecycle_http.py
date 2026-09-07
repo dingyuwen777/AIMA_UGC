@@ -319,7 +319,11 @@ def install_analysis_scheme_lifecycle_routes(
         operation_id="copyAnalysisScheme",
         response_model=AnalysisSchemeResponse,
         status_code=status.HTTP_201_CREATED,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["analysis-schemes"],
     )
     def copy_analysis_scheme(
@@ -338,7 +342,11 @@ def install_analysis_scheme_lifecycle_routes(
         "/api/v1/analysis-schemes/{scheme_id}/archive",
         operation_id="archiveAnalysisScheme",
         response_model=ResourceLifecycleResponse,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["analysis-schemes"],
     )
     def archive_analysis_scheme(
@@ -355,7 +363,11 @@ def install_analysis_scheme_lifecycle_routes(
         "/api/v1/analysis-schemes/{scheme_id}/restore",
         operation_id="restoreAnalysisScheme",
         status_code=status.HTTP_204_NO_CONTENT,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["analysis-schemes"],
     )
     def restore_analysis_scheme(scheme_id: UUID, request: Request) -> Response:
@@ -396,7 +408,11 @@ def install_analysis_scheme_lifecycle_routes(
         "/api/v1/analysis-schemes/{scheme_id}",
         operation_id="deleteAnalysisScheme",
         status_code=status.HTTP_204_NO_CONTENT,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["analysis-schemes"],
     )
     def delete_analysis_scheme(scheme_id: UUID, request: Request) -> Response:

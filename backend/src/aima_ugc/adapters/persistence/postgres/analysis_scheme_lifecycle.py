@@ -63,12 +63,16 @@ class PostgresAnalysisSchemeLifecycleRepository:
     def archive_blockers(self, scheme_id: UUID) -> tuple[str, ...]:
         """当前唯一 active Scheme 不能直接归档，避免让 AI 能力失去正式配置。"""
 
-        row = self._session.execute(
-            select(
-                analysis_schemes_table.c.is_active,
-                analysis_schemes_table.c.archived_at,
-            ).where(analysis_schemes_table.c.id == scheme_id)
-        ).mappings().one_or_none()
+        row = (
+            self._session.execute(
+                select(
+                    analysis_schemes_table.c.is_active,
+                    analysis_schemes_table.c.archived_at,
+                ).where(analysis_schemes_table.c.id == scheme_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             return ("资源不存在",)
         blockers: list[str] = []
@@ -132,12 +136,16 @@ class PostgresAnalysisSchemeLifecycleRepository:
     def delete_blockers(self, scheme_id: UUID) -> tuple[str, ...]:
         """只有从未发布、从未进入 Analysis Run 历史的归档 Scheme 才能硬删。"""
 
-        row = self._session.execute(
-            select(
-                analysis_schemes_table.c.is_active,
-                analysis_schemes_table.c.archived_at,
-            ).where(analysis_schemes_table.c.id == scheme_id)
-        ).mappings().one_or_none()
+        row = (
+            self._session.execute(
+                select(
+                    analysis_schemes_table.c.is_active,
+                    analysis_schemes_table.c.archived_at,
+                ).where(analysis_schemes_table.c.id == scheme_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             return ("资源不存在",)
         blockers: list[str] = []
@@ -145,25 +153,31 @@ class PostgresAnalysisSchemeLifecycleRepository:
             blockers.append("请先归档分析方案再执行永久删除")
         if bool(row["is_active"]):
             blockers.append("当前生效的分析方案不能永久删除")
-        if self._session.scalar(
-            select(analysis_scheme_versions_table.c.id)
-            .where(
-                analysis_scheme_versions_table.c.scheme_id == scheme_id,
-                analysis_scheme_versions_table.c.published_at.is_not(None),
+        if (
+            self._session.scalar(
+                select(analysis_scheme_versions_table.c.id)
+                .where(
+                    analysis_scheme_versions_table.c.scheme_id == scheme_id,
+                    analysis_scheme_versions_table.c.published_at.is_not(None),
+                )
+                .limit(1)
             )
-            .limit(1)
-        ) is not None:
+            is not None
+        ):
             blockers.append("该分析方案已有发布历史，只允许归档")
-        if self._session.scalar(
-            select(analysis_content_runs_table.c.id)
-            .join(
-                analysis_scheme_versions_table,
-                analysis_scheme_versions_table.c.id
-                == analysis_content_runs_table.c.analysis_scheme_version_id,
+        if (
+            self._session.scalar(
+                select(analysis_content_runs_table.c.id)
+                .join(
+                    analysis_scheme_versions_table,
+                    analysis_scheme_versions_table.c.id
+                    == analysis_content_runs_table.c.analysis_scheme_version_id,
+                )
+                .where(analysis_scheme_versions_table.c.scheme_id == scheme_id)
+                .limit(1)
             )
-            .where(analysis_scheme_versions_table.c.scheme_id == scheme_id)
-            .limit(1)
-        ) is not None:
+            is not None
+        ):
             blockers.append("AI 分析运行历史引用了该方案，只允许归档")
         return tuple(dict.fromkeys(blockers))
 

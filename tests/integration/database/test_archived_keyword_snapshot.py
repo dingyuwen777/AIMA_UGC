@@ -5,8 +5,6 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import delete
-
 from aima_ugc.adapters.persistence.postgres.keyword_lifecycle import (
     PostgresKeywordPackLifecycleRepository,
 )
@@ -20,6 +18,7 @@ from aima_ugc.modules.system.tables import keyword_packs_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.time import beijing_now
+from sqlalchemy import delete
 
 
 def test_archived_keyword_pack_is_missing_from_runtime_snapshot() -> None:
@@ -37,10 +36,13 @@ def test_archived_keyword_pack_is_missing_from_runtime_snapshot() -> None:
                     version=1,
                 )
             )
-            assert PostgresKeywordPackLifecycleRepository(session).archive(
-                pack_id,
-                archived_at=beijing_now(),
-            ) is not None
+            assert (
+                PostgresKeywordPackLifecycleRepository(session).archive(
+                    pack_id,
+                    archived_at=beijing_now(),
+                )
+                is not None
+            )
             with pytest.raises(MissingScheduledKeywordPackError):
                 PostgresScheduledKeywordSnapshotReader(session).read((pack_id,))
     finally:

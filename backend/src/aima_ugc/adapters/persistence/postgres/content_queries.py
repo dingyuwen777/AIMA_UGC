@@ -497,8 +497,10 @@ class PostgresContentQueryRepository:
                 request.c.import_batch_id,
                 scope.c.run_id.label("collection_run_id"),
             )
-        statement = select(*selected).select_from(source_join).where(
-            content_has_active_source(content.c.id)
+        statement = (
+            select(*selected)
+            .select_from(source_join)
+            .where(content_has_active_source(content.c.id))
         )
         statement = _apply_filters(
             statement,

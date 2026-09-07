@@ -99,17 +99,15 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "hidden_content_count + retained_shared_content_count = affected_content_count",
-            name=op.f("ck_historical_import_campaign_revocations_impact_counts_consistent"),
+            name=op.f("ck_historical_import_campaign_revocations_impact_balanced"),
         ),
         sa.CheckConstraint(
             "unreversible_content_count <= affected_content_count",
-            name=op.f("ck_historical_import_campaign_revocations_unreversible_within_affected"),
+            name=op.f("ck_historical_import_campaign_revocations_unrev_le_affected"),
         ),
         sa.CheckConstraint(
             "unreversible_content_count = 0",
-            name=op.f(
-                "ck_historical_import_campaign_revocations_committed_revocation_fully_reversible"
-            ),
+            name=op.f("ck_historical_import_campaign_revocations_fully_reversible"),
         ),
         sa.ForeignKeyConstraint(
             ["campaign_id"],
@@ -132,7 +130,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
             "version_no >= 1",
-            name=op.f("ck_historical_import_revocation_content_versions_version_no_positive"),
+            name=op.f("ck_historical_import_revocation_content_versions_version_ge_1"),
         ),
         sa.ForeignKeyConstraint(
             ["campaign_id"],

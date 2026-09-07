@@ -8,7 +8,6 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
-
 from aima_ugc.modules.ingestion.revocation import (
     ImportCampaignRevocationConflict,
     ImportCampaignRevocationImpact,

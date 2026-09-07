@@ -5,7 +5,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from aima_ugc.platform.database.metadata import metadata
 
-
 content_source_contributions_table = Table(
     "content_source_contributions",
     metadata,

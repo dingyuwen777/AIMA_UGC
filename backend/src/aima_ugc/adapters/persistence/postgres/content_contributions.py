@@ -131,7 +131,7 @@ def commit_content_contribution(
         return
     attempt_raw = _source_ids(observation)
     after = _capture_snapshot(session, observation, content_id=content_id)
-    if after.content_id != content_id or after.version_no is None:
+    if after is None or after.content_id != content_id or after.version_no is None:
         raise RuntimeError("Content 来源贡献写入后无法读取 Current 投影")
     delta = _build_delta(observation, draft.before, after)
     values = {
@@ -149,7 +149,9 @@ def commit_content_contribution(
     created = session.scalar(
         pg_insert(content_source_contributions_table)
         .values(**values)
-        .on_conflict_do_nothing(index_elements=[content_source_contributions_table.c.source_item_key])
+        .on_conflict_do_nothing(
+            index_elements=[content_source_contributions_table.c.source_item_key]
+        )
         .returning(content_source_contributions_table.c.id)
     )
     if created is None:
@@ -309,12 +311,7 @@ def _collection_rows(
         select(table).where(table.c.content_id == content_id).order_by(*order_columns)
     ).mappings()
     return tuple(
-        {
-            str(key): value
-            for key, value in row.items()
-            if key != "content_id"
-        }
-        for row in rows
+        {str(key): value for key, value in row.items() if key != "content_id"} for row in rows
     )
 
 

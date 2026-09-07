@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import JsonValue
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.analysis.tables import analysis_content_runs_table
@@ -56,12 +57,16 @@ class PostgresProviderConfigLifecycleRepository:
     def archive_blockers(self, provider_config_id: UUID) -> tuple[str, ...]:
         """默认 Provider 或未归档计划当前引用时不能归档。"""
 
-        row = self._session.execute(
-            select(
-                provider_configs_table.c.is_default,
-                provider_configs_table.c.archived_at,
-            ).where(provider_configs_table.c.id == provider_config_id)
-        ).mappings().one_or_none()
+        row = (
+            self._session.execute(
+                select(
+                    provider_configs_table.c.is_default,
+                    provider_configs_table.c.archived_at,
+                ).where(provider_configs_table.c.id == provider_config_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             return ("资源不存在",)
         blockers: list[str] = []
@@ -69,18 +74,21 @@ class PostgresProviderConfigLifecycleRepository:
             blockers.append("Provider 已归档")
         if row["is_default"]:
             blockers.append("默认 AI Provider 不能直接归档，请先切换默认配置")
-        if self._session.scalar(
-            select(collection_plan_platforms_table.c.plan_id)
-            .join(
-                collection_plans_table,
-                collection_plans_table.c.id == collection_plan_platforms_table.c.plan_id,
+        if (
+            self._session.scalar(
+                select(collection_plan_platforms_table.c.plan_id)
+                .join(
+                    collection_plans_table,
+                    collection_plans_table.c.id == collection_plan_platforms_table.c.plan_id,
+                )
+                .where(
+                    collection_plan_platforms_table.c.provider_config_id == provider_config_id,
+                    collection_plans_table.c.archived_at.is_(None),
+                )
+                .limit(1)
             )
-            .where(
-                collection_plan_platforms_table.c.provider_config_id == provider_config_id,
-                collection_plans_table.c.archived_at.is_(None),
-            )
-            .limit(1)
-        ) is not None:
+            is not None
+        ):
             blockers.append("未归档的采集计划仍在引用该 Provider")
         return tuple(blockers)
 
@@ -156,37 +164,50 @@ class PostgresProviderConfigLifecycleRepository:
     def delete_blockers(self, provider_config_id: UUID) -> tuple[str, ...]:
         """Provider 一旦进入 Plan、Provider Request 或 AI Run 历史就永久保留配置事实。"""
 
-        row = self._session.execute(
-            select(provider_configs_table.c.id, provider_configs_table.c.archived_at).where(
-                provider_configs_table.c.id == provider_config_id
+        row = (
+            self._session.execute(
+                select(provider_configs_table.c.id, provider_configs_table.c.archived_at).where(
+                    provider_configs_table.c.id == provider_config_id
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             return ("资源不存在",)
         blockers: list[str] = []
         if row["archived_at"] is None:
             blockers.append("请先归档 Provider 再执行永久删除")
-        if self._session.scalar(
-            select(collection_plan_platforms_table.c.plan_id)
-            .where(collection_plan_platforms_table.c.provider_config_id == provider_config_id)
-            .limit(1)
-        ) is not None:
-            blockers.append("采集计划历史引用了该 Provider")
-        if self._session.scalar(
-            select(provider_requests_table.c.id)
-            .where(provider_requests_table.c.provider_config_id == provider_config_id)
-            .limit(1)
-        ) is not None:
-            blockers.append("Provider 请求历史引用了该配置")
-        if self._session.scalar(
-            select(analysis_content_runs_table.c.id)
-            .where(
-                analysis_content_runs_table.c.runtime_config_snapshot.contains(
-                    {"provider_config_id": str(provider_config_id)}
-                )
+        if (
+            self._session.scalar(
+                select(collection_plan_platforms_table.c.plan_id)
+                .where(collection_plan_platforms_table.c.provider_config_id == provider_config_id)
+                .limit(1)
             )
-            .limit(1)
-        ) is not None:
+            is not None
+        ):
+            blockers.append("采集计划历史引用了该 Provider")
+        if (
+            self._session.scalar(
+                select(provider_requests_table.c.id)
+                .where(provider_requests_table.c.provider_config_id == provider_config_id)
+                .limit(1)
+            )
+            is not None
+        ):
+            blockers.append("Provider 请求历史引用了该配置")
+        if (
+            self._session.scalar(
+                select(analysis_content_runs_table.c.id)
+                .where(
+                    analysis_content_runs_table.c.runtime_config_snapshot.contains(
+                        {"provider_config_id": str(provider_config_id)}
+                    )
+                )
+                .limit(1)
+            )
+            is not None
+        ):
             blockers.append("AI 分析运行历史引用了该 Provider")
         return tuple(dict.fromkeys(blockers))
 
@@ -207,7 +228,7 @@ class PostgresProviderConfigLifecycleRepository:
         return deleted == provider_config_id
 
 
-def _provider(row) -> ProviderConfig:
+def _provider(row: RowMapping) -> ProviderConfig:
     """把 Provider 配置行映射为现有领域对象，不暴露 Secret 值。"""
 
     return ProviderConfig(

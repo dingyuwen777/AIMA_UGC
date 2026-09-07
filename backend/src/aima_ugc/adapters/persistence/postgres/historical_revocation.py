@@ -72,9 +72,7 @@ class PostgresImportCampaignRevocationRepository:
         """计算可见性影响与可逆证据缺口；这里只读，不修改业务数据。"""
 
         affected = _affected_content_ids(campaign_id).subquery("revocation_affected_contents")
-        affected_count = int(
-            self._session.scalar(select(func.count()).select_from(affected)) or 0
-        )
+        affected_count = int(self._session.scalar(select(func.count()).select_from(affected)) or 0)
         if affected_count == 0:
             return ImportCampaignRevocationImpact(0, 0, 0, 0)
         retained = int(
@@ -229,7 +227,8 @@ def _unreversible_content_ids(campaign_id: UUID) -> Any:
     supplement_contribution_exists = exists(
         select(literal(1)).where(
             supplement_contribution.c.content_id == ingestion.c.content_id,
-            supplement_contribution.c.provider_attempt_id == candidate.c.provider_request_attempt_id,
+            supplement_contribution.c.provider_attempt_id
+            == candidate.c.provider_request_attempt_id,
         )
     )
     supplemented_missing = (

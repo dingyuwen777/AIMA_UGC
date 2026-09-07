@@ -120,10 +120,7 @@ class PostgresCollectionPlanLifecycleRepository:
         if keyword_pack_ids:
             self._session.execute(
                 insert(collection_plan_keyword_packs_table),
-                [
-                    {"plan_id": plan_id, "keyword_pack_id": pack_id}
-                    for pack_id in keyword_pack_ids
-                ],
+                [{"plan_id": plan_id, "keyword_pack_id": pack_id} for pack_id in keyword_pack_ids],
             )
         if vehicle_model_ids:
             self._session.execute(
@@ -199,27 +196,37 @@ class PostgresCollectionPlanLifecycleRepository:
     def delete_blockers(self, plan_id: UUID) -> tuple[str, ...]:
         """只有已归档且从未形成 Occurrence/Run 的计划允许物理删除。"""
 
-        row = self._session.execute(
-            select(collection_plans_table.c.id, collection_plans_table.c.archived_at).where(
-                collection_plans_table.c.id == plan_id
+        row = (
+            self._session.execute(
+                select(collection_plans_table.c.id, collection_plans_table.c.archived_at).where(
+                    collection_plans_table.c.id == plan_id
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             return ("资源不存在",)
         blockers: list[str] = []
         if row["archived_at"] is None:
             blockers.append("请先归档采集计划再执行永久删除")
-        if self._session.scalar(
-            select(collection_schedule_occurrences_table.c.id)
-            .where(collection_schedule_occurrences_table.c.plan_id == plan_id)
-            .limit(1)
-        ) is not None:
+        if (
+            self._session.scalar(
+                select(collection_schedule_occurrences_table.c.id)
+                .where(collection_schedule_occurrences_table.c.plan_id == plan_id)
+                .limit(1)
+            )
+            is not None
+        ):
             blockers.append("该计划已经产生调度历史")
-        if self._session.scalar(
-            select(collection_runs_table.c.id)
-            .where(collection_runs_table.c.manual_plan_id == plan_id)
-            .limit(1)
-        ) is not None:
+        if (
+            self._session.scalar(
+                select(collection_runs_table.c.id)
+                .where(collection_runs_table.c.manual_plan_id == plan_id)
+                .limit(1)
+            )
+            is not None
+        ):
             blockers.append("该计划已经产生采集运行历史")
         return tuple(blockers)
 

@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, update
-
 from aima_ugc.adapters.persistence.postgres.analysis_scheme_lifecycle import (
     PostgresAnalysisSchemeLifecycleRepository,
 )
@@ -46,6 +44,7 @@ from aima_ugc.modules.system.tables import keyword_packs_table, provider_configs
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.time import beijing_now
+from sqlalchemy import delete, update
 
 
 def _analysis_definition() -> AnalysisSchemeDefinitionRequest:

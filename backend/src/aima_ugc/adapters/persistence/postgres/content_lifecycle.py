@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, delete, insert, select, update
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -168,7 +168,10 @@ class PostgresContentLifecycleRepository:
             )
             for contribution in ordered:
                 delta = contribution["delta"]
-                if not isinstance(delta, dict) or delta.get("schema_version") != "content-source-contribution.v1":
+                if (
+                    not isinstance(delta, dict)
+                    or delta.get("schema_version") != "content-source-contribution.v1"
+                ):
                     raise ValueError("Content 来源贡献 Delta 版本不受支持")
                 author_snapshot = self._apply_delta(
                     content_id=content_id,
@@ -253,9 +256,7 @@ class PostgresContentLifecycleRepository:
             if author_snapshot == after_author:
                 before_author = decode_contribution_value(author_change.get("before"))
                 author_snapshot = (
-                    cast(dict[str, Any], before_author)
-                    if isinstance(before_author, dict)
-                    else None
+                    cast(dict[str, Any], before_author) if isinstance(before_author, dict) else None
                 )
 
         collections = delta.get("collections") or {}
@@ -300,9 +301,7 @@ class PostgresContentLifecycleRepository:
         account_id = UUID(str(account_id_raw))
         row = dict(
             self._session.execute(
-                select(accounts_table)
-                .where(accounts_table.c.id == account_id)
-                .with_for_update()
+                select(accounts_table).where(accounts_table.c.id == account_id).with_for_update()
             )
             .mappings()
             .one()
@@ -341,12 +340,7 @@ class PostgresContentLifecycleRepository:
             select(table).where(table.c.content_id == content_id).order_by(*order_columns)
         ).mappings()
         return tuple(
-            {
-                str(key): value
-                for key, value in row.items()
-                if key != "content_id"
-            }
-            for row in rows
+            {str(key): value for key, value in row.items() if key != "content_id"} for row in rows
         )
 
 

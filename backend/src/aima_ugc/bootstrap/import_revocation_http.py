@@ -25,10 +25,10 @@ from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepositor
 from aima_ugc.adapters.storage.local import LocalArtifactStore
 from aima_ugc.contracts.http import HttpErrorResponse
 from aima_ugc.contracts.lifecycle import (
-    DataImportRevokeRequest,
     DataImportRevocationImpactResponse,
     DataImportRevocationPreviewResponse,
     DataImportRevocationResponse,
+    DataImportRevokeRequest,
 )
 from aima_ugc.modules.identity import DevelopmentIdentityResolver, IdentityResolver
 from aima_ugc.modules.ingestion.historical_http import (
@@ -46,7 +46,7 @@ from aima_ugc.modules.ingestion.revocation_http import ImportRevocationHttpServi
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
-from aima_ugc.platform.storage import ArtifactService
+from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
 from aima_ugc.platform.storage.ports import ArtifactStore
 from aima_ugc.platform.time import beijing_now
 
@@ -97,9 +97,7 @@ class PostgresImportRevocationHttpService:
             raise HistoricalCampaignStateConflict("当前导入无法安全自动撤销")
 
         platforms = self._campaign_contribution_platforms(campaign_id)
-        revocation_artifact = (
-            self._store_revocation_artifact(campaign_id) if platforms else None
-        )
+        revocation_artifact = self._store_revocation_artifact(campaign_id) if platforms else None
         revoked_at = beijing_now()
         session = self._session_factory()
         try:
@@ -191,7 +189,7 @@ class PostgresImportRevocationHttpService:
         finally:
             session.close()
 
-    def _store_revocation_artifact(self, campaign_id: UUID):
+    def _store_revocation_artifact(self, campaign_id: UUID) -> ArtifactRecord:
         """保存不含 Secret/用户原因的最小撤销证据，作为内部 imports 来源 Raw。"""
 
         payload = json.dumps(

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from uuid import UUID, uuid4
-
-from sqlalchemy import delete
+from uuid import uuid4
 
 from aima_ugc.adapters.persistence.postgres.keyword_lifecycle import (
     PostgresKeywordPackLifecycleRepository,
@@ -18,6 +16,7 @@ from aima_ugc.modules.system.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from sqlalchemy import delete
 
 
 def test_replacing_shared_keyword_only_changes_target_pack() -> None:
@@ -86,9 +85,10 @@ def test_replacing_shared_keyword_only_changes_target_pack() -> None:
 
             pack_a_keywords = catalog.list_keywords_for_pack(pack_a)
             pack_b_keywords = catalog.list_keywords_for_pack(pack_b)
-            assert [(keyword.text, item.platform_scope, item.priority, item.enabled) for keyword, item in pack_a_keywords] == [
-                ("新的关键词", "xiaohongshu", 50, False)
-            ]
+            assert [
+                (keyword.text, item.platform_scope, item.priority, item.enabled)
+                for keyword, item in pack_a_keywords
+            ] == [("新的关键词", "xiaohongshu", 50, False)]
             assert [(keyword.text, item.platform_scope) for keyword, item in pack_b_keywords] == [
                 ("共享关键词", "all")
             ]

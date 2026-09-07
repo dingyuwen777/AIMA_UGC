@@ -195,9 +195,10 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
         assert created.status_code == 202
         campaign_id = UUID(created.json()["campaign_id"])
         assert _drain(worker) == 2
-        assert client.post(
-            f"/api/v1/historical-import-campaigns/{campaign_id}/start"
-        ).status_code == 200
+        assert (
+            client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/start").status_code
+            == 200
+        )
         assert _drain(worker) == 1
         completed = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()
         assert completed["status"] == "succeeded"
@@ -272,9 +273,7 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
                 assert after_repository.get_content(shared_id) is not None
                 assert after_repository.get_content(exclusive_id) is None
                 assert after_repository.count_all_analysis_targets() == 1
-                selected = after_repository.freeze_targets(
-                    content_ids=(shared_id, exclusive_id)
-                )
+                selected = after_repository.freeze_targets(content_ids=(shared_id, exclusive_id))
                 assert [target.content_id for target in selected] == [shared_id]
                 assert (
                     after_session.scalar(
@@ -387,9 +386,10 @@ def test_revocation_restores_field_filled_by_historical_fill_only(tmp_path: Path
         )
         campaign_id = UUID(created.json()["campaign_id"])
         assert _drain(worker) == 2
-        assert client.post(
-            f"/api/v1/historical-import-campaigns/{campaign_id}/start"
-        ).status_code == 200
+        assert (
+            client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/start").status_code
+            == 200
+        )
         assert _drain(worker) == 1
 
         session = runtime.database.new_session()

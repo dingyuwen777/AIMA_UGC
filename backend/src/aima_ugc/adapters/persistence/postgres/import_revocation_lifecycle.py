@@ -9,7 +9,6 @@ from uuid import UUID, uuid5
 
 from sqlalchemy import insert, select, update
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
@@ -21,7 +20,7 @@ from aima_ugc.modules.ingestion.revocation_tables import (
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.platform.time import beijing_now
 
-from .content_lifecycle import PostgresContentLifecycleRepository, _CONTENT_FIELD_COLUMNS
+from .content_lifecycle import _CONTENT_FIELD_COLUMNS, PostgresContentLifecycleRepository
 from .provider import PostgresProviderRepository
 
 
@@ -106,16 +105,18 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
                 attempt_id=attempt_id,
             )
             dispatching = repository.mark_dispatching(prepared.attempt.id)
-            if dispatching.dispatch_started_at is None:
+            dispatch_started_at = dispatching.dispatch_started_at
+            if dispatch_started_at is None:
                 raise RuntimeError("撤销生命周期 Attempt 未进入 dispatching")
+            completed_at = max(beijing_now(), dispatching.created_at, dispatch_started_at)
             finalized = repository.finalize_dispatch(
                 attempt=ProviderAttemptV1(
                     attempt_id=dispatching.id,
                     provider_request_id=prepared.request.id,
                     attempt_no=dispatching.attempt_no,
                     dispatch_status="completed",
-                    dispatch_started_at=dispatching.dispatch_started_at,
-                    completed_at=revoked_at,
+                    dispatch_started_at=dispatch_started_at,
+                    completed_at=completed_at,
                     raw_artifact_id=raw_artifact_id,
                     billing=ProviderBillingV1(status="not_billable"),
                     created_at=dispatching.created_at,

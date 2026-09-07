@@ -178,9 +178,9 @@ class PostgresHistoricalContentRepository:
             item for item in planned if item.outcome not in {"duplicate", "filtered", "invalid"}
         ]
         contribution_drafts = {
-            item.source_row_ordinal: prepare_content_contribution(
+            item.row.source_row_ordinal: prepare_content_contribution(
                 self._session,
-                cast(CanonicalContentV1, item.content),
+                cast(CanonicalContentV1, item.row.content),
             )
             for item in winners
         }

@@ -6,9 +6,9 @@ from typing import Protocol
 from uuid import UUID
 
 from aima_ugc.contracts.lifecycle import (
-    DataImportRevokeRequest,
     DataImportRevocationPreviewResponse,
     DataImportRevocationResponse,
+    DataImportRevokeRequest,
 )
 
 

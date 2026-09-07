@@ -108,7 +108,8 @@ class PostgresProviderLifecycleHttpService:
                 if config is None:
                     raise AdministrationResourceNotFound
                 archived_ids = {
-                    item.id for item in PostgresProviderConfigLifecycleRepository(session).list_archived()
+                    item.id
+                    for item in PostgresProviderConfigLifecycleRepository(session).list_archived()
                 }
                 if provider_config_id in archived_ids:
                     raise AdministrationConflict("已归档 Provider 不能执行连接测试")
@@ -347,7 +348,11 @@ def install_provider_lifecycle_routes(
         "/api/v1/provider-configs/{provider_config_id}/archive",
         operation_id="archiveProviderConfig",
         response_model=ResourceLifecycleResponse,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["administration", "provider-configs"],
     )
     def archive_provider_config(
@@ -405,7 +410,11 @@ def install_provider_lifecycle_routes(
         "/api/v1/provider-configs/{provider_config_id}",
         operation_id="deleteProviderConfig",
         status_code=status.HTTP_204_NO_CONTENT,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["administration", "provider-configs"],
     )
     def delete_provider_config(provider_config_id: UUID, request: Request) -> Response:

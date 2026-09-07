@@ -69,7 +69,7 @@ def test_provider_connection(
                     "User-Agent": "AIMA_UGC/1.0",
                 },
             )
-        except (httpx.ConnectError, httpx.ConnectTimeout):
+        except httpx.ConnectError, httpx.ConnectTimeout:
             return ProviderConnectionTestResult(False, "无法连接服务地址", None)
         except httpx.TimeoutException:
             return ProviderConnectionTestResult(False, "服务响应超时", None)
@@ -90,7 +90,9 @@ def test_provider_connection(
             except ValueError:
                 return ProviderConnectionTestResult(False, "服务响应格式不正确", latency_ms)
             if not isinstance(payload, dict) or payload.get("code") != 200:
-                return ProviderConnectionTestResult(False, "TikHub 未确认当前 API Key 可用", latency_ms)
+                return ProviderConnectionTestResult(
+                    False, "TikHub 未确认当前 API Key 可用", latency_ms
+                )
         return ProviderConnectionTestResult(True, "连接成功", latency_ms)
     finally:
         if owns_client:

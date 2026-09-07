@@ -14,7 +14,6 @@ from sqlalchemy import (
 
 from aima_ugc.platform.database.metadata import metadata
 
-
 historical_import_campaign_revocations_table = Table(
     "historical_import_campaign_revocations",
     metadata,
@@ -41,15 +40,15 @@ historical_import_campaign_revocations_table = Table(
     ),
     CheckConstraint(
         "hidden_content_count + retained_shared_content_count = affected_content_count",
-        name="impact_counts_consistent",
+        name="impact_balanced",
     ),
     CheckConstraint(
         "unreversible_content_count <= affected_content_count",
-        name="unreversible_within_affected",
+        name="unrev_le_affected",
     ),
     CheckConstraint(
         "unreversible_content_count = 0",
-        name="committed_revocation_fully_reversible",
+        name="fully_reversible",
     ),
     info={"owner": "ingestion"},
 )
@@ -71,7 +70,7 @@ historical_import_revocation_content_versions_table = Table(
         ["content_versions.content_id", "content_versions.version_no"],
         name="fk_import_revocation_content_version",
     ),
-    CheckConstraint("version_no >= 1", name="version_no_positive"),
+    CheckConstraint("version_no >= 1", name="version_ge_1"),
     info={"owner": "ingestion"},
 )
 

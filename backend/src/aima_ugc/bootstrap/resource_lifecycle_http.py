@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, Request, Response, status
 from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.collection_plan_lifecycle import (
     PostgresCollectionPlanLifecycleRepository,
@@ -636,7 +637,9 @@ class PostgresResourceLifecycleHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                blockers = PostgresCollectionPlanLifecycleRepository(session).delete_blockers(plan_id)
+                blockers = PostgresCollectionPlanLifecycleRepository(session).delete_blockers(
+                    plan_id
+                )
                 return ResourceDeleteEligibilityResponse(
                     id=plan_id,
                     eligible=not blockers,
@@ -720,17 +723,31 @@ def install_resource_lifecycle_routes(
         "/api/v1/keyword-packs/{pack_id}",
         operation_id="updateKeywordPack",
         response_model=KeywordPackResponse,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}, 422: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+        },
         tags=["keywords"],
     )
-    def update_keyword_pack(pack_id: UUID, body: KeywordPackUpdateRequest, request: Request) -> KeywordPackResponse:
-        return service().update_keyword_pack(pack_id, body, principal=principal(request), request_id=_request_id(request))
+    def update_keyword_pack(
+        pack_id: UUID, body: KeywordPackUpdateRequest, request: Request
+    ) -> KeywordPackResponse:
+        return service().update_keyword_pack(
+            pack_id, body, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.put(
         "/api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}",
         operation_id="updateKeywordInPack",
         response_model=KeywordPackResponse,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}, 422: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+        },
         tags=["keywords"],
     )
     def update_keyword_in_pack(
@@ -751,42 +768,72 @@ def install_resource_lifecycle_routes(
         "/api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}/remove",
         operation_id="removeKeywordFromPack",
         response_model=KeywordPackResponse,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}, 422: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+        },
         tags=["keywords"],
     )
-    def remove_keyword_from_pack(pack_id: UUID, keyword_id: UUID, body: KeywordPackItemRemoveRequest, request: Request) -> KeywordPackResponse:
-        return service().remove_keyword_pack_item(pack_id, keyword_id, body, principal=principal(request), request_id=_request_id(request))
+    def remove_keyword_from_pack(
+        pack_id: UUID, keyword_id: UUID, body: KeywordPackItemRemoveRequest, request: Request
+    ) -> KeywordPackResponse:
+        return service().remove_keyword_pack_item(
+            pack_id, keyword_id, body, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.post(
         "/api/v1/keyword-packs/{pack_id}/copy",
         operation_id="copyKeywordPack",
         response_model=KeywordPackResponse,
         status_code=status.HTTP_201_CREATED,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}, 422: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+        },
         tags=["keywords"],
     )
-    def copy_keyword_pack(pack_id: UUID, body: KeywordPackCopyRequest, request: Request) -> KeywordPackResponse:
-        return service().copy_keyword_pack(pack_id, body, principal=principal(request), request_id=_request_id(request))
+    def copy_keyword_pack(
+        pack_id: UUID, body: KeywordPackCopyRequest, request: Request
+    ) -> KeywordPackResponse:
+        return service().copy_keyword_pack(
+            pack_id, body, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.post(
         "/api/v1/keyword-packs/{pack_id}/archive",
         operation_id="archiveKeywordPack",
         response_model=ResourceLifecycleResponse,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["keywords"],
     )
     def archive_keyword_pack(pack_id: UUID, request: Request) -> ResourceLifecycleResponse:
-        return service().archive_keyword_pack(pack_id, principal=principal(request), request_id=_request_id(request))
+        return service().archive_keyword_pack(
+            pack_id, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.post(
         "/api/v1/keyword-packs/{pack_id}/restore",
         operation_id="restoreKeywordPack",
         response_model=KeywordPackResponse,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["keywords"],
     )
     def restore_keyword_pack(pack_id: UUID, request: Request) -> KeywordPackResponse:
-        return service().restore_keyword_pack(pack_id, principal=principal(request), request_id=_request_id(request))
+        return service().restore_keyword_pack(
+            pack_id, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.get(
         "/api/v1/resource-lifecycle/keyword-packs/archived",
@@ -805,40 +852,66 @@ def install_resource_lifecycle_routes(
         responses={403: {"model": HttpErrorResponse}},
         tags=["keywords"],
     )
-    def get_keyword_pack_delete_eligibility(pack_id: UUID, request: Request) -> ResourceDeleteEligibilityResponse:
+    def get_keyword_pack_delete_eligibility(
+        pack_id: UUID, request: Request
+    ) -> ResourceDeleteEligibilityResponse:
         return service().keyword_pack_delete_eligibility(pack_id, principal=principal(request))
 
     @application.delete(
         "/api/v1/keyword-packs/{pack_id}",
         operation_id="deleteKeywordPack",
         status_code=status.HTTP_204_NO_CONTENT,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["keywords"],
     )
     def delete_keyword_pack(pack_id: UUID, request: Request) -> Response:
-        service().delete_keyword_pack(pack_id, principal=principal(request), request_id=_request_id(request))
+        service().delete_keyword_pack(
+            pack_id, principal=principal(request), request_id=_request_id(request)
+        )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @application.put(
         "/api/v1/collection-plans/{plan_id}",
         operation_id="updateCollectionPlan",
         response_model=CollectionPlanResponse,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}, 422: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+        },
         tags=["collection-strategy"],
     )
-    def update_collection_plan(plan_id: UUID, body: CollectionPlanUpdateRequest, request: Request) -> CollectionPlanResponse:
-        return service().update_collection_plan(plan_id, body, principal=principal(request), request_id=_request_id(request))
+    def update_collection_plan(
+        plan_id: UUID, body: CollectionPlanUpdateRequest, request: Request
+    ) -> CollectionPlanResponse:
+        return service().update_collection_plan(
+            plan_id, body, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.post(
         "/api/v1/collection-plans/{plan_id}/copy",
         operation_id="copyCollectionPlan",
         response_model=CollectionPlanResponse,
         status_code=status.HTTP_201_CREATED,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}, 422: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+        },
         tags=["collection-strategy"],
     )
-    def copy_collection_plan(plan_id: UUID, body: CollectionPlanCopyRequest, request: Request) -> CollectionPlanResponse:
-        return service().copy_collection_plan(plan_id, body, principal=principal(request), request_id=_request_id(request))
+    def copy_collection_plan(
+        plan_id: UUID, body: CollectionPlanCopyRequest, request: Request
+    ) -> CollectionPlanResponse:
+        return service().copy_collection_plan(
+            plan_id, body, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.post(
         "/api/v1/collection-plans/{plan_id}/archive",
@@ -848,7 +921,9 @@ def install_resource_lifecycle_routes(
         tags=["collection-strategy"],
     )
     def archive_collection_plan(plan_id: UUID, request: Request) -> ResourceLifecycleResponse:
-        return service().archive_collection_plan(plan_id, principal=principal(request), request_id=_request_id(request))
+        return service().archive_collection_plan(
+            plan_id, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.post(
         "/api/v1/collection-plans/{plan_id}/restore",
@@ -858,7 +933,9 @@ def install_resource_lifecycle_routes(
         tags=["collection-strategy"],
     )
     def restore_collection_plan(plan_id: UUID, request: Request) -> CollectionPlanResponse:
-        return service().restore_collection_plan(plan_id, principal=principal(request), request_id=_request_id(request))
+        return service().restore_collection_plan(
+            plan_id, principal=principal(request), request_id=_request_id(request)
+        )
 
     @application.get(
         "/api/v1/resource-lifecycle/collection-plans/archived",
@@ -877,18 +954,26 @@ def install_resource_lifecycle_routes(
         responses={403: {"model": HttpErrorResponse}},
         tags=["collection-strategy"],
     )
-    def get_collection_plan_delete_eligibility(plan_id: UUID, request: Request) -> ResourceDeleteEligibilityResponse:
+    def get_collection_plan_delete_eligibility(
+        plan_id: UUID, request: Request
+    ) -> ResourceDeleteEligibilityResponse:
         return service().collection_plan_delete_eligibility(plan_id, principal=principal(request))
 
     @application.delete(
         "/api/v1/collection-plans/{plan_id}",
         operation_id="deleteCollectionPlan",
         status_code=status.HTTP_204_NO_CONTENT,
-        responses={403: {"model": HttpErrorResponse}, 404: {"model": HttpErrorResponse}, 409: {"model": HttpErrorResponse}},
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+        },
         tags=["collection-strategy"],
     )
     def delete_collection_plan(plan_id: UUID, request: Request) -> Response:
-        service().delete_collection_plan(plan_id, principal=principal(request), request_id=_request_id(request))
+        service().delete_collection_plan(
+            plan_id, principal=principal(request), request_id=_request_id(request)
+        )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -923,7 +1008,7 @@ def _plan_definition_from_update(
 
 
 def _audit(
-    session,
+    session: Session,
     *,
     principal: Principal,
     request_id: str,

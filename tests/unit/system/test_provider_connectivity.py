@@ -6,16 +6,19 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from pydantic import SecretStr
-
 from aima_ugc.adapters.providers.connectivity import (
     ProviderConnectionTestUnsupported,
+)
+from aima_ugc.adapters.providers.connectivity import (
     test_provider_connection as run_provider_connection,
 )
 from aima_ugc.modules.system.models import ProviderConfig
+from pydantic import SecretStr
 
 
-def _config(*, provider_kind: str, provider: str, base_url: str, model: str | None = None) -> ProviderConfig:
+def _config(
+    *, provider_kind: str, provider: str, base_url: str, model: str | None = None
+) -> ProviderConfig:
     return ProviderConfig(
         id=uuid4(),
         provider=provider,
