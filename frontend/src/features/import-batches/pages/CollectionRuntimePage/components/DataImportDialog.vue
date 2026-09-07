@@ -149,9 +149,6 @@ onBeforeUnmount(stopPolling)
 
 async function chooseSource(value: SourceKind): Promise<void> {
   sourceKind.value = value
-  ingestionPolicy.value = value === 'local_upload'
-    ? 'standard_observation'
-    : 'historical_fill_only'
   validationError.value = null
   if (value === 'server_path' && store.historicalDirectoryEntries.length === 0) {
     await store.openServerImportSource()
