@@ -15,6 +15,7 @@ affected_areas:
   - llm-adapter
   - contracts
   - tests
+  - frontend-tests
   - docs
 affected_paths:
   - backend/src/aima_ugc/modules/analysis/
@@ -23,6 +24,7 @@ affected_paths:
   - tests/contracts/
   - tests/api/
   - tests/integration/content/
+  - frontend/e2e-fullstack/admin-product-capabilities.spec.ts
   - docs/appendix/07_AI舆情打标与分析实现.md
   - docs/blueprint/03_数据库与文件存储.md
   - docs/04_测试与调试说明.md
@@ -99,6 +101,7 @@ data_changes: []
 - V4 Prompt、输出协议识别、V3 兼容解析、V4 Semantic Validator、条件 Judge 请求元数据。
 - 当前 Taxonomy 的“个人交易发声”值及对应下游动态 Taxonomy 验证。
 - 分析模块、LLM Adapter 的 targeted tests，以及当前实现文档同步。
+- 同步因管理员配置页面既有中文业务文案演进而失效的 Full-stack E2E 选择器，不修改页面生产行为。
 
 ## 非目标
 
@@ -140,10 +143,10 @@ data_changes: []
    → 修改范围：`content_labeling.py`、`openai_compatible.py`  
    → 预期结果：清晰项一次完成，冲突项独立复判且仍只传五个字段。  
    → 验证方式：批次部分成功、请求 payload、Attempt 审计和停止/次数回归测试。
-4. 同步受影响的当前文档和引用，完成分层验证、Completion Audit 与 Review。  
-   → 修改范围：Analysis README、AI Appendix、相关 Blueprint/测试文档和当前 Prompt 导航。  
-   → 预期结果：开发者知道 V4 如何工作、如何发布到既有库及当前限制。  
-   → 验证方式：文档链接/事实检查、目标测试、完整后端门禁和 Change Ready Check。
+4. 同步受影响的当前文档、引用及因页面既有中文文案演进而失效的 Full-stack E2E 选择器，完成分层验证、Completion Audit 与 Review。
+   → 修改范围：Analysis README、AI Appendix、相关 Blueprint/测试文档、当前 Prompt 导航和管理员配置 Full-stack E2E。
+   → 预期结果：开发者知道 V4 如何工作、如何发布到既有库及当前限制，既有全栈验收继续按当前用户可见文案定位页面。
+   → 验证方式：文档链接/事实检查、前端 lint/typecheck/build、目标测试、完整后端门禁和 Change Ready Check。
 
 ## 证据到决策
 
@@ -182,6 +185,7 @@ data_changes: []
 | `content_labeling.py` | V4 解析、证据和语义一致性 Validator、Judge 路由 | 拒绝结构合法但业务矛盾结果 | R3-R5 / E3-E4 |
 | `openai_compatible.py` | 区分 primary/repair/judge 指令 | 条件复判且保持五字段输入 | R1、R4 / E1、E4 |
 | Analysis/Contract/API/Integration tests | Red-Green 与兼容回归 | 证明协议、分类、重试和消费者边界 | R1-R5 |
+| `frontend/e2e-fullstack/admin-product-capabilities.spec.ts` | 同步管理员配置现行中文标签、按钮与提示文案 | 修复既有 E2E 对已变更页面文案的陈旧定位，恢复真实全栈门禁 | R7 |
 | Analysis README、AI Appendix、相关导航 | 定向同步当前行为与发布边界 | 防止文档继续把 V3 写成当前默认 | R2、R5-R7 |
 
 执行过程中保持最小闭环：
@@ -201,7 +205,7 @@ data_changes: []
 | 行为 / 单元 / 组件 | required | V4 loader/parser、五字段、个人交易、证据来源、跨字段一致性、条件 Judge、V3 兼容 |
 | 接口 / 契约 | required | 公共 Analysis Result 不扩字段；动态 Taxonomy 暴露新值；旧消费者与生成边界保持 |
 | 集成 / 持久化 / 运行依赖 | required | frozen Scheme V3/V4、Analysis Worker/Job 通过 Fake LLM 写入既有 Result 结构 |
-| 用户 / 工作流验收 | not_applicable | 不新增或修改页面操作流程；分类值由现有 Taxonomy API 动态消费，API/Contract 层承担验证 |
+| 用户 / 工作流验收 | required | 既有 Full-stack Analysis Streaming、Stage12 Historical Analysis 验证 V4 Fake 与真实异步链；管理员配置验收按当前中文页面文案定位，不修改生产流程 |
 | 跨组件关键路径 | required | Canonical 五字段 → Service → primary/judge → Validator → Analysis Result 的少量 Fake golden path |
 | 外部依赖 / 供应方探测 | not_applicable | 用户延期 Gold Set，真实 LLM Probe 付费且无法证明总体准确率；本次不发送真实内容 |
 | 构建 / 打包 / 运行 | required | Ruff、mypy、目标 pytest、相关后端测试与既有 CI |
@@ -239,6 +243,7 @@ Docs Impact 为 `targeted`：更新 Analysis 模块 README、AI 实现 Appendix 
 | V2 | `71a53786` / PostgreSQL 18.4 隔离容器 | `uv run pytest tests/integration/content -q`；Scheme 发布/回滚与 voice_type Schema 专项 | 53 passed；专项 2 passed | 新空库 V4、Analysis Worker/Job、持久结果、旧 Schema 与版本发布回滚链 |
 | V3 | `71a53786` / 当前锁定依赖 | Contract 104 tests；API 53 tests；CI 精确 Ruff、mypy、架构、Owner、Docs、Contract 生成、治理、Secret | 全部通过；mypy 294 source files；Ruff 609 files formatted / lint passed | 公共边界未漂移、静态质量、架构与文档一致性 |
 | V4 | `71a53786` / uv build | `uv build --wheel`；Zip 打开与包内容检查 | 构建 `aima_ugc-0.1.0-py3-none-any.whl` 成功，366 entries，包含 `content_labeling_v4.md` | 部署包可携带新默认 Prompt |
+| V5 | 当前修复工作区 / Node 24.19.0 / npm 11.17.0 | `npm run lint`；`npm run build` | lint 通过；TS7、Vue 类型检查与 Vite 生产构建通过，155 modules transformed | Full-stack E2E 选择器同步未引入前端静态或构建回归 |
 
 ## 未验证内容与剩余风险
 
@@ -257,4 +262,4 @@ Docs Impact 为 `targeted`：更新 Analysis 模块 README、AI 实现 Appendix 
 # 两阶段 Review
 
 - **阶段 1：需求与风险重建**：不依赖 Change checkbox，重新以用户五字段/个人交易/Judge/兼容/延期决定与现有 Scheme/Worker/Result Contract 为完成定义；最高风险是把结构错误错误送入 Judge、语义规则可折叠个人交易、旧 V3 active Scheme 失效、证据超出输入和公共结果扩张。
-- **阶段 2：实现与证据对照**：发现并修复“混合未解决批次整体进 Judge”“个人交易映射可与真实用户相同/主体映射可缺失”以及“真实 Full-stack Fake 仍返回 V3 结构”三项阻塞问题；均先取得失败证据再转绿。复查最终生产 diff、测试、文档和 Wheel，未发现剩余合并阻塞 Finding。真实 LLM 准确率仍明确属于 Gold Set 延期边界。
+- **阶段 2：实现与证据对照**：发现并修复“混合未解决批次整体进 Judge”“个人交易映射可与真实用户相同/主体映射可缺失”“真实 Full-stack Fake 仍返回 V3 结构”以及“管理员配置 Full-stack E2E 仍使用页面旧文案”四项阻塞问题；前三项均先取得本地失败证据再转绿，第四项以 GitHub Fullstack 同-SHA 失败和当前页面实现的逐项对照为 Red 证据。复查最终生产 diff、测试、文档和 Wheel，未发现剩余本地合并阻塞 Finding；远程 Fullstack 复验仍是 merge 硬门禁。真实 LLM 准确率仍明确属于 Gold Set 延期边界。
