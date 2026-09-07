@@ -119,9 +119,16 @@ test('centralizes runtime facts, opens Batch detail, and creates a local Campaig
   await page.goto('/collection-runtime')
   await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
   await expect(page.getByText('3,284')).toBeVisible()
+  await expect(page.getByText('采集运行记录', { exact: true })).toBeVisible()
+  await expect(page.getByPlaceholder('搜索来源文件或采集关键词')).toBeVisible()
+  await expect(page.getByText('Batch ID:', { exact: false })).toHaveCount(0)
+  await expect(page.getByText('Campaign', { exact: false })).toHaveCount(0)
   await page.getByRole('button', { name: '查看详情' }).click()
-  await expect(page.getByRole('dialog', { name: '批次详情' })).toBeVisible()
-  await expect(page.getByText('2 / 10')).toBeVisible()
+  const importDetailDialog = page.getByRole('dialog', { name: '数据导入详情' })
+  await expect(importDetailDialog).toBeVisible()
+  await importDetailDialog.getByRole('button', { name: '运行状态' }).click()
+  await importDetailDialog.getByText('技术详情', { exact: true }).click()
+  await expect(importDetailDialog.getByText('2 / 10')).toBeVisible()
   await page.getByRole('button', { name: '关闭详情' }).click()
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
@@ -136,7 +143,7 @@ test('centralizes runtime facts, opens Batch detail, and creates a local Campaig
     ingestion_policy: 'standard_observation',
     files: [{ relative_path: 'stage8e.xlsx', byte_size: 7 }],
   })
-  await expect(dialog.getByText('文件上传完成，服务器正在执行不可变快照与预检。')).toBeVisible()
+  await expect(dialog.getByText('文件上传完成，服务器正在准备并预检数据。')).toBeVisible()
 })
 
 test('creates a one-time TikHub discovery Run from multiple Keyword Packs', async ({ page }) => {
@@ -234,10 +241,12 @@ test('shows a Data Import Campaign without a synthetic Job and opens its persist
 
   await page.goto('/collection-runtime')
   await expect(page.getByText('数据导入 · 历史导入/campaign.xlsx')).toBeVisible()
-  await expect(page.getByText('命中 2')).toBeVisible()
+  await expect(page.getByText('相关 2')).toBeVisible()
   await page.getByRole('button', { name: '查看详情' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await expect(dialog).toContainText(dataImportCampaignId)
+  await expect(dialog.locator('.campaign-status')).toHaveText('正在上传文件')
+  await dialog.getByText('技术详情', { exact: true }).click()
+  await expect(dialog.getByText(dataImportCampaignId)).toBeVisible()
 })
 
 test('creates a supplement Run from a completed Data Import Campaign ledger', async ({ page }) => {
@@ -263,10 +272,10 @@ test('explains failed Import terminal state without inventing pending stages', a
   await page.route(`**/api/v1/import-batches/${batchId}`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(failedImport) }))
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '查看详情' }).click()
-  const detail = page.getByRole('dialog', { name: '批次详情' })
+  const detail = page.getByRole('dialog', { name: '数据导入详情' })
   await detail.getByRole('button', { name: '处理阶段' }).click()
-  await expect(detail.getByText('任务已失败。', { exact: false })).toBeVisible()
-  await expect(detail.getByText('失败前最后完成阶段', { exact: false })).toBeVisible()
+  await expect(detail.getByText('任务已失败', { exact: false })).toBeVisible()
+  await expect(detail.getByText('无法准确还原失败前最后完成的处理步骤', { exact: false })).toBeVisible()
   await expect(detail.locator('.stage-row')).toHaveCount(0)
 })
 
@@ -330,9 +339,9 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
 
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '查看详情' }).click()
-  const detail = page.getByRole('dialog', { name: 'TikHub 运行详情' })
-  await expect(detail).toContainText('Provider Secret 不可用，请联系管理员检查运行配置。')
-  await expect(detail).toContainText('小红书 · 内容补采')
+  const detail = page.getByRole('dialog', { name: '辅助补采详情' })
+  await expect(detail).toContainText('采集服务授权信息不可用，请联系管理员检查服务配置。')
+  await expect(detail).toContainText('小红书 · 补充内容信息')
   await expect(detail).toContainText('失败 · 100%')
   await expect(detail).not.toContainText('providers/tikhub')
 })

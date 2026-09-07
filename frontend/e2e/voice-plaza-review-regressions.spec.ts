@@ -114,6 +114,7 @@ test('车型目录响应缺少 items 时显示错误且不中断页面渲染', a
 
   await page.goto('/voice-plaza')
 
+  await page.getByRole('button', { name: '更多筛选' }).click()
   await expect(page.getByText('车型目录响应无效，请稍后重试。')).toBeVisible()
   await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
   expect(pageErrors).toEqual([])
@@ -167,6 +168,7 @@ test('Failed Analysis Run 在全局任务中心保留后端 error_code', async (
   await page.getByRole('button', { name: /任务中心/ }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
-  await expect(taskCenter).toContainText('AI 打标 · Run #13')
-  await expect(taskCenter).toContainText('analysis_shard_failed')
+  await expect(taskCenter).toContainText('AI 打标任务 13')
+  await taskCenter.getByText('技术详情', { exact: true }).click()
+  await expect(taskCenter.getByText(/analysis_shard_failed/)).toBeVisible()
 })

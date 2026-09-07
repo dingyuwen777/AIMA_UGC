@@ -76,12 +76,12 @@ async function createAnalysisRun(
 ): Promise<{ id: string; sequenceNo: number }> {
   await page.getByLabel(/选择 爱玛 Stage12 当前标题/).check()
   await page.getByRole('button', { name: /AI 打标/ }).click()
-  const dialog = page.getByRole('dialog', { name: '创建 AI Analysis Run' })
-  await expect(dialog.getByText('预检目标 1 条，拆分 1 个 Shard')).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
+  await expect(dialog.getByText('预计处理 1 条，系统将分 1 批完成')).toBeVisible()
   const createdResponsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
-  await dialog.getByRole('button', { name: '确认并创建 Analysis Run' }).click()
+  await dialog.getByRole('button', { name: '确认并创建任务' }).click()
   const createdResponse = await createdResponsePromise
   expect(createdResponse.status()).toBe(202)
   const created = await createdResponse.json() as { run_id: string }
@@ -102,7 +102,7 @@ async function createAllDataAnalysisRun(
   request: APIRequestContext,
 ): Promise<{ id: string; sequenceNo: number; targetCount: number }> {
   await page.getByRole('button', { name: /AI 打标/ }).click()
-  const dialog = page.getByRole('dialog', { name: '创建 AI Analysis Run' })
+  const dialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
   const allPreviewPromise = page.waitForResponse((response) => {
     if (
       response.request().method() !== 'POST'
@@ -122,14 +122,14 @@ async function createAllDataAnalysisRun(
   expect(preview.target_count).toBeGreaterThan(1)
   await expect(
     dialog.getByText(
-      `预检目标 ${preview.target_count} 条，拆分 ${preview.shard_count} 个 Shard`,
+      `预计处理 ${preview.target_count} 条，系统将分 ${preview.shard_count} 批完成`,
     ),
   ).toBeVisible()
 
   const createdResponsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
-  await dialog.getByRole('button', { name: '确认并创建 Analysis Run' }).click()
+  await dialog.getByRole('button', { name: '确认并创建任务' }).click()
   const createdResponse = await createdResponsePromise
   expect(createdResponse.status()).toBe(202)
   const createPayload = createdResponse.request().postDataJSON() as {
@@ -219,7 +219,9 @@ async function revokeHistoricalCampaign(
   expect(preview.impact.retained_shared_content_count).toBeGreaterThan(0)
   expect(preview.impact.unreversible_content_count).toBe(0)
   await expect(dialog.getByText('撤销影响', { exact: true })).toBeVisible()
-  await expect(dialog.getByText('其它来源保留', { exact: true })).toBeVisible()
+  await expect(
+    dialog.locator('.revocation-facts span').filter({ hasText: '其它来源保留' }),
+  ).toContainText(`其它来源保留${preview.impact.retained_shared_content_count}`)
 
   page.once('dialog', (confirmation) => confirmation.accept())
   const revokeResponsePromise = page.waitForResponse((response) =>
@@ -279,7 +281,8 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const migration = page.getByRole('dialog', { name: '导入数据' })
-  await migration.getByRole('button', { name: '服务器目录' }).click()
+  await migration.getByRole('button', { name: '服务器目录', exact: true }).click()
+  await migration.getByRole('radio', { name: /历史补空/ }).check()
   await migration.getByLabel('选择 history.xlsx').check()
   await migration.getByLabel(new RegExp(pack.name)).check()
   const campaignResponsePromise = page.waitForResponse((response) => {
@@ -290,12 +293,12 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await migration.getByRole('button', { name: '创建并预检' }).click()
   const campaignResponse = await campaignResponsePromise
   const { campaign_id: campaignId } = await campaignResponse.json() as { campaign_id: string }
-  await expect(migration.getByText('预检完成，可开始导入')).toBeVisible({ timeout: 60_000 })
+  await expect(migration.locator('.campaign-status')).toHaveText('预检完成', { timeout: 60_000 })
   await injectPrewriteChunkFailure(campaignId)
   await migration.getByRole('button', { name: '开始导入' }).click()
-  await expect(migration.getByText('状态：partial_failed')).toBeVisible({ timeout: 60_000 })
+  await expect(migration.locator('.campaign-status')).toHaveText('部分导入失败', { timeout: 60_000 })
   await migration.getByRole('button', { name: '重试失败项' }).click()
-  await expect(migration.getByText('状态：succeeded')).toBeVisible({ timeout: 60_000 })
+  await expect(migration.locator('.campaign-status')).toHaveText('导入完成', { timeout: 60_000 })
   await expect(migration.getByText('冲突 1', { exact: true })).toBeVisible()
 
   const runtimeResponse = await request.get('/api/v1/collection-runtime/runs', {

@@ -432,9 +432,14 @@ function commentCoverageLabel(value: string): string {
                 <div><dt>Import Batch</dt><dd>{{ item.source.import_batch_id || '—' }}</dd></div>
                 <div><dt>Collection Run</dt><dd>{{ item.source.collection_run_id || '—' }}</dd></div>
                 <div><dt>AI 模型</dt><dd>{{ item.analysis.model_provider }} / {{ item.analysis.model }}</dd></div>
-                <div v-if="item.availability"><dt>可用状态原始证据</dt><dd>{{ item.availability.status }} · {{ item.availability.reason_code }} · {{ item.availability.evidence_kind }}</dd></div>
+                <div v-if="item.availability">
+                  <dt>可用状态原始证据</dt><dd>{{ item.availability.status }} · {{ item.availability.reason_code }} · {{ item.availability.evidence_kind }}</dd>
+                </div>
               </dl>
-              <div v-if="(item.source_records ?? []).length" class="technical-list">
+              <div
+                v-if="(item.source_records ?? []).length"
+                class="technical-list"
+              >
                 <strong>来源追溯</strong>
                 <span
                   v-for="(source, index) in item.source_records ?? []"
@@ -443,9 +448,15 @@ function commentCoverageLabel(value: string): string {
                   {{ source.provider_name }}<template v-if="source.import_batch_id"> · Import {{ source.import_batch_id }}</template><template v-if="source.collection_run_id"> · Run {{ source.collection_run_id }}</template><template v-if="source.provider_attempt_id"> · Attempt {{ source.provider_attempt_id }}</template><template v-if="source.raw_artifact_id"> · Artifact {{ source.raw_artifact_id }}</template>
                 </span>
               </div>
-              <div v-if="(item.vehicles ?? []).some((vehicle) => vehicle.evidences.length)" class="technical-list">
+              <div
+                v-if="(item.vehicles ?? []).some((vehicle) => vehicle.evidences.length)"
+                class="technical-list"
+              >
                 <strong>车型证据追溯</strong>
-                <template v-for="vehicle in item.vehicles ?? []" :key="vehicle.vehicle_model_id">
+                <template
+                  v-for="vehicle in item.vehicles ?? []"
+                  :key="vehicle.vehicle_model_id"
+                >
                   <span
                     v-for="(evidence, index) in vehicle.evidences"
                     :key="`${vehicle.vehicle_model_id}:${index}`"

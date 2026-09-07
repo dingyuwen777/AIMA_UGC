@@ -98,7 +98,9 @@ const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
 ]
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ImportApiError) return error.message
+  if (error instanceof ImportApiError) {
+    return `${error.message}（request_id: ${error.requestId}）`
+  }
   if (error instanceof Error && error.message) return error.message
   return '请求失败，请稍后重试。'
 }

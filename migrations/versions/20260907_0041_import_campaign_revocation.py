@@ -155,11 +155,42 @@ def upgrade() -> None:
             name=op.f("pk_historical_import_revocation_content_versions"),
         ),
     )
+    op.execute(
+        """
+        CREATE FUNCTION reject_import_revocation_ledger_mutation() RETURNS trigger AS $$
+        BEGIN
+          RAISE EXCEPTION '% 是追加账本，禁止 %', TG_TABLE_NAME, TG_OP;
+        END; $$ LANGUAGE plpgsql;
+
+        CREATE TRIGGER trg_content_source_contributions_append_only
+        BEFORE UPDATE OR DELETE ON content_source_contributions
+        FOR EACH ROW EXECUTE FUNCTION reject_import_revocation_ledger_mutation();
+
+        CREATE TRIGGER trg_historical_import_campaign_revocations_append_only
+        BEFORE UPDATE OR DELETE ON historical_import_campaign_revocations
+        FOR EACH ROW EXECUTE FUNCTION reject_import_revocation_ledger_mutation();
+
+        CREATE TRIGGER trg_historical_import_revocation_content_versions_append_only
+        BEFORE UPDATE OR DELETE ON historical_import_revocation_content_versions
+        FOR EACH ROW EXECUTE FUNCTION reject_import_revocation_ledger_mutation();
+        """
+    )
 
 
 def downgrade() -> None:
     """移除生命周期新表；既有 Content/Raw/历史版本保持不变。"""
 
+    op.execute(
+        """
+        DROP TRIGGER IF EXISTS trg_historical_import_revocation_content_versions_append_only
+        ON historical_import_revocation_content_versions;
+        DROP TRIGGER IF EXISTS trg_historical_import_campaign_revocations_append_only
+        ON historical_import_campaign_revocations;
+        DROP TRIGGER IF EXISTS trg_content_source_contributions_append_only
+        ON content_source_contributions;
+        DROP FUNCTION IF EXISTS reject_import_revocation_ledger_mutation();
+        """
+    )
     op.drop_table("historical_import_revocation_content_versions")
     op.drop_table("historical_import_campaign_revocations")
     op.drop_table("content_source_contributions")

@@ -106,12 +106,37 @@ const emit = defineEmits<{
             <details class="technical-details">
               <summary>技术详情</summary>
               <div class="technical-grid">
-                <div><span>运行 ID</span><code>{{ item.run_id }}</code><button type="button" @click="emit('copy', item.run_id)">复制</button></div>
-                <div><span>后台任务 ID</span><code>{{ item.job_id }}</code><button type="button" @click="emit('copy', item.job_id)">复制</button></div>
-                <div v-if="item.import_batch_id"><span>关联导入 ID</span><code>{{ item.import_batch_id }}</code><button type="button" @click="emit('copy', item.import_batch_id)">复制</button></div>
+                <div>
+                  <span>运行 ID</span><code>{{ item.run_id }}</code><button
+                    type="button"
+                    @click="emit('copy', item.run_id)"
+                  >
+                    复制
+                  </button>
+                </div>
+                <div>
+                  <span>后台任务 ID</span><code>{{ item.job_id }}</code><button
+                    type="button"
+                    @click="emit('copy', item.job_id)"
+                  >
+                    复制
+                  </button>
+                </div>
+                <div v-if="item.import_batch_id">
+                  <span>关联导入 ID</span><code>{{ item.import_batch_id }}</code><button
+                    type="button"
+                    @click="emit('copy', item.import_batch_id)"
+                  >
+                    复制
+                  </button>
+                </div>
                 <div><span>执行尝试</span><code>{{ item.attempt }} / {{ item.max_attempts }}</code></div>
-                <div v-if="item.error_code"><span>错误码</span><code>{{ item.error_code }}</code></div>
-                <div v-if="item.error_summary"><span>错误摘要</span><code>{{ item.error_summary }}</code></div>
+                <div v-if="item.error_code">
+                  <span>错误码</span><code>{{ item.error_code }}</code>
+                </div>
+                <div v-if="item.error_summary">
+                  <span>错误摘要</span><code>{{ item.error_summary }}</code>
+                </div>
               </div>
               <div
                 v-if="item.scopes.some((scope) => scope.stop_reason)"
@@ -121,7 +146,9 @@ const emit = defineEmits<{
                 <p
                   v-for="scope in item.scopes.filter((value) => value.stop_reason)"
                   :key="scope.id"
-                >{{ platformLabels[scope.platform] }}：<code>{{ scope.stop_reason }}</code></p>
+                >
+                  {{ platformLabels[scope.platform] }}：<code>{{ scope.stop_reason }}</code>
+                </p>
               </div>
             </details>
           </div>

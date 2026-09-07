@@ -59,11 +59,12 @@ const secondaryLabels = computed(
     ?.secondary_labels ?? [],
 )
 const advancedFilterCount = computed(() => [
+  props.voiceType,
+  props.sentiment,
+  props.analysisStatus,
+  props.contentType,
   props.primaryLabel,
   props.secondaryLabel,
-  props.publishedFrom,
-  props.publishedTo,
-  ...props.vehicleModelIds,
 ].filter(Boolean).length)
 
 /** 从原生输入控件事件中读取字符串值，保持页面与 Store 的 v-model 边界单一。 */
@@ -98,37 +99,25 @@ function updatePrimaryLabel(event: Event): void {
         :value="relevance"
         @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
       ><option value="">默认业务数据</option><option value="relevant">相关</option><option value="irrelevant">不相关</option></select></label>
-      <label class="field field--voice-type"><span>发声类型</span><select
-        :value="voiceType"
-        :disabled="taxonomyLoading || !taxonomy"
-        @change="emit('update:voiceType', value($event))"
-      ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部发声类型' : '分类配置暂不可用' }}</option><option
-        v-for="item in taxonomy?.voice_types ?? []"
-        :key="item"
-        :value="item"
-      >{{ item }}</option></select></label>
-      <label class="field field--sentiment"><span>情感</span><select
-        :value="sentiment"
-        :disabled="taxonomyLoading || !taxonomy"
-        @change="emit('update:sentiment', value($event))"
-      ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部情感' : '分类配置暂不可用' }}</option><option
-        v-for="item in taxonomy?.sentiments ?? []"
-        :key="item"
-        :value="item"
-      >{{ item }}</option></select></label>
-      <label class="field field--status"><span>分析状态</span><select
-        :value="analysisStatus"
-        @change="emit('update:analysisStatus', value($event) as '' | ContentAnalysisStatus)"
-      ><option value="">全部状态</option><option value="completed">已分析</option><option value="pending">未分析</option><option value="stale">需重新分析</option></select></label>
-      <label class="field field--content-type"><span>内容类型</span><select
-        :value="contentType"
-        @change="emit('update:contentType', value($event))"
-      ><option value="">全部类型</option><option
-        v-for="item in contentTypeOptions"
-        :key="item.value"
-        :value="item.value"
-      >{{ item.label }}</option></select></label>
+      <label class="field field--date"><span>发布开始</span><input
+        type="date"
+        :value="publishedFrom"
+        aria-label="发布开始"
+        @input="emit('update:publishedFrom', value($event))"
+      ></label>
+      <label class="field field--date"><span>发布结束</span><input
+        type="date"
+        :value="publishedTo"
+        aria-label="发布结束"
+        @input="emit('update:publishedTo', value($event))"
+      ></label>
     </div>
+
+    <VehicleMultiSelect
+      :model-value="vehicleModelIds"
+      label="车型"
+      @update:model-value="emit('update:vehicleModelIds', $event)"
+    />
 
     <div class="filter-toolbar">
       <button
@@ -147,6 +136,36 @@ function updatePrimaryLabel(event: Event): void {
       class="advanced-filters"
     >
       <div class="filter-row filter-row--secondary">
+        <label class="field field--voice-type"><span>发声类型</span><select
+          :value="voiceType"
+          :disabled="taxonomyLoading || !taxonomy"
+          @change="emit('update:voiceType', value($event))"
+        ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部发声类型' : '分类配置暂不可用' }}</option><option
+          v-for="item in taxonomy?.voice_types ?? []"
+          :key="item"
+          :value="item"
+        >{{ item }}</option></select></label>
+        <label class="field field--sentiment"><span>情感</span><select
+          :value="sentiment"
+          :disabled="taxonomyLoading || !taxonomy"
+          @change="emit('update:sentiment', value($event))"
+        ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部情感' : '分类配置暂不可用' }}</option><option
+          v-for="item in taxonomy?.sentiments ?? []"
+          :key="item"
+          :value="item"
+        >{{ item }}</option></select></label>
+        <label class="field field--status"><span>分析状态</span><select
+          :value="analysisStatus"
+          @change="emit('update:analysisStatus', value($event) as '' | ContentAnalysisStatus)"
+        ><option value="">全部状态</option><option value="completed">已分析</option><option value="pending">未分析</option><option value="stale">需重新分析</option></select></label>
+        <label class="field field--content-type"><span>内容类型</span><select
+          :value="contentType"
+          @change="emit('update:contentType', value($event))"
+        ><option value="">全部类型</option><option
+          v-for="item in contentTypeOptions"
+          :key="item.value"
+          :value="item.value"
+        >{{ item.label }}</option></select></label>
         <label class="field field--label"><span>一级标签</span><select
           :value="primaryLabel"
           :disabled="taxonomyLoading || !taxonomy"
@@ -165,30 +184,14 @@ function updatePrimaryLabel(event: Event): void {
           :key="item"
           :value="item"
         >{{ item }}</option></select></label>
-        <label class="field field--date"><span>发布开始</span><input
-          type="date"
-          :value="publishedFrom"
-          aria-label="发布开始"
-          @input="emit('update:publishedFrom', value($event))"
-        ></label>
-        <label class="field field--date"><span>发布结束</span><input
-          type="date"
-          :value="publishedTo"
-          aria-label="发布结束"
-          @input="emit('update:publishedTo', value($event))"
-        ></label>
       </div>
-
-      <VehicleMultiSelect
-        :model-value="vehicleModelIds"
-        label="车型"
-        @update:model-value="emit('update:vehicleModelIds', $event)"
-      />
-      <p class="advanced-note">标签和发声类型随当前生效的 AI 分析方案更新；车型来自管理员维护的车型目录。</p>
+      <p class="advanced-note">
+        标签和发声类型随当前生效的 AI 分析方案更新；车型来自管理员维护的车型目录。
+      </p>
     </div>
 
     <footer class="filter-footer">
-      <p>常用条件直接筛选；标签、日期和车型收纳在“更多筛选”中。</p>
+      <p>搜索、平台、车型、相关性和发布时间直接筛选；AI 状态、情感、发声类型、标签和内容类型收纳在“更多筛选”中。</p>
       <div class="filter-actions">
         <AimaButton
           size="small"

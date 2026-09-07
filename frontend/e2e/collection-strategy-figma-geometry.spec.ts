@@ -186,8 +186,8 @@ test('matches the formal 1440×900 Figma geometry for the strategy workspace', a
   await expectBox(page.locator('.detail-card'), { x: 1043, y: 346, width: 373 })
   await expectBox(page.locator('.table-head'), { height: 54 })
   await expectBox(page.locator('.pack-row').first(), { height: 74 })
-  await expectBox(page.locator('.detail-card form'), { width: 287 })
-  await expectBox(page.locator('.detail-card form input'), { width: 217, height: 40 })
+  await expectBox(page.locator('.detail-card form'), { width: 335 })
+  await expectBox(page.locator('.detail-card form input'), { width: 267, height: 40 })
   await expectBox(page.locator('.detail-card form button'), { width: 58, height: 40 })
 })
 

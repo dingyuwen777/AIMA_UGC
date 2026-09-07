@@ -169,7 +169,7 @@ test('creates a local Campaign when randomUUID is unavailable', async ({ page })
   await dialog.getByLabel(/爱玛品牌词包/).check()
   await dialog.locator('.create-button').click()
 
-  await expect(dialog.getByText('文件上传完成，服务器正在执行不可变快照与预检。')).toBeVisible()
+  await expect(dialog.getByText('文件上传完成，服务器正在准备并预检数据。')).toBeVisible()
   expect(createRequestBody?.client_idempotency_key).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
   )
@@ -241,11 +241,13 @@ test('allows an interrupted local upload Campaign to be cancelled', async ({ pag
   })
 
   const dialog = await openImportDialog(page)
-  await dialog.getByRole('button', { name: `打开 Campaign ${campaignId}` }).click()
+  await dialog.getByRole('button', { name: '打开导入任务 本地文件导入' }).click()
   const cancelButton = dialog.getByRole('button', { name: '取消任务', exact: true })
   await expect(cancelButton).toBeEnabled()
   await cancelButton.click()
 
   expect(cancelRequested).toBe(true)
-  await expect(dialog.getByText('状态：cancelled')).toBeVisible()
+  await expect(dialog.locator('.campaign-status')).toHaveText('已取消')
+  await dialog.getByText('技术详情', { exact: true }).click()
+  await expect(dialog.getByText('cancelled', { exact: true })).toBeVisible()
 })

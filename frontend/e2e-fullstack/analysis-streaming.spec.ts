@@ -29,12 +29,12 @@ test('从页面提交两条内容并通过真实 Worker 保存两份合法打标
   await page.getByLabel('选择 爱玛 并发验收 A', { exact: true }).check()
   await page.getByLabel('选择 爱玛 并发验收 B', { exact: true }).check()
   await page.getByRole('button', { name: /AI 打标/ }).click()
-  const dialog = page.getByRole('dialog', { name: '创建 AI Analysis Run' })
-  await expect(dialog.getByText('预检目标 2 条，拆分 1 个 Shard')).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
+  await expect(dialog.getByText('预计处理 2 条，系统将分 1 批完成')).toBeVisible()
   const createdResponse = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
-  await dialog.getByRole('button', { name: '确认并创建 Analysis Run' }).click()
+  await dialog.getByRole('button', { name: '确认并创建任务' }).click()
   const response = await createdResponse
   expect(response.status()).toBe(202)
   const created = await response.json()

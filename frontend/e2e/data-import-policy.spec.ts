@@ -74,7 +74,7 @@ test('keeps the selected write policy when switching import sources', async ({ p
   await fillOnly.check()
   await expect(fillOnly).toBeChecked()
 
-  await dialog.getByRole('button', { name: '服务器目录' }).click()
+  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
   await expect(fillOnly).toBeChecked()
 
   await dialog.getByRole('button', { name: '本地电脑' }).click()

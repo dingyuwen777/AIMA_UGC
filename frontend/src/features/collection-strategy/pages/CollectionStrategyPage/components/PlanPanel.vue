@@ -187,14 +187,46 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
       </button>
     </nav>
 
-    <details class="archived-plans" @toggle="onArchivedToggle">
+    <details
+      class="archived-plans"
+      @toggle="onArchivedToggle"
+    >
       <summary>已归档采集计划</summary>
-      <div v-if="loadingArchived" class="archived-state">正在读取…</div>
-      <div v-else-if="archived.length === 0" class="archived-state">暂无已归档计划。</div>
-      <div v-for="item in archived" v-else :key="item.id" class="archived-row">
+      <div
+        v-if="loadingArchived"
+        class="archived-state"
+      >
+        正在读取…
+      </div>
+      <div
+        v-else-if="archived.length === 0"
+        class="archived-state"
+      >
+        暂无已归档计划。
+      </div>
+      <div
+        v-for="item in archived"
+        v-else
+        :key="item.id"
+        class="archived-row"
+      >
         <span><strong>{{ item.name }}</strong><small>归档于 {{ formatBeijingDateTime(item.archived_at) }}</small></span>
-        <AimaButton variant="text" size="small" :disabled="saving" @click="emit('restoreArchived', item.id)">恢复</AimaButton>
-        <AimaButton variant="text" size="small" :disabled="saving" @click="deleteArchived(item)">永久删除</AimaButton>
+        <AimaButton
+          variant="text"
+          size="small"
+          :disabled="saving"
+          @click="emit('restoreArchived', item.id)"
+        >
+          恢复
+        </AimaButton>
+        <AimaButton
+          variant="text"
+          size="small"
+          :disabled="saving"
+          @click="deleteArchived(item)"
+        >
+          永久删除
+        </AimaButton>
       </div>
     </details>
   </section>

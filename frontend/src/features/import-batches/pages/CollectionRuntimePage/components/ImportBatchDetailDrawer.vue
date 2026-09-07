@@ -193,8 +193,22 @@ function importFailureMessage(summary: string | null | undefined): string {
               <details class="technical-details">
                 <summary>技术详情</summary>
                 <div class="technical-grid">
-                  <div><span>导入 ID</span><code>{{ item.id }}</code><button type="button" @click="emit('copy', item.id)">复制</button></div>
-                  <div><span>后台任务 ID</span><code>{{ item.job.id }}</code><button type="button" @click="emit('copy', item.job.id)">复制</button></div>
+                  <div>
+                    <span>导入 ID</span><code>{{ item.id }}</code><button
+                      type="button"
+                      @click="emit('copy', item.id)"
+                    >
+                      复制
+                    </button>
+                  </div>
+                  <div>
+                    <span>后台任务 ID</span><code>{{ item.job.id }}</code><button
+                      type="button"
+                      @click="emit('copy', item.job.id)"
+                    >
+                      复制
+                    </button>
+                  </div>
                   <div><span>任务类型</span><code>{{ item.job.job_type }}</code></div>
                   <div><span>执行尝试</span><code>{{ item.job.attempt }} / {{ item.job.max_attempts }}</code></div>
                 </div>
@@ -225,8 +239,12 @@ function importFailureMessage(summary: string | null | undefined): string {
               >
                 <summary>技术详情</summary>
                 <div class="technical-grid">
-                  <div v-if="item.job.error_code"><span>错误码</span><code>{{ item.job.error_code }}</code></div>
-                  <div v-if="item.error_summary"><span>错误摘要</span><code>{{ item.error_summary }}</code></div>
+                  <div v-if="item.job.error_code">
+                    <span>错误码</span><code>{{ item.job.error_code }}</code>
+                  </div>
+                  <div v-if="item.error_summary">
+                    <span>错误摘要</span><code>{{ item.error_summary }}</code>
+                  </div>
                 </div>
               </details>
             </section>

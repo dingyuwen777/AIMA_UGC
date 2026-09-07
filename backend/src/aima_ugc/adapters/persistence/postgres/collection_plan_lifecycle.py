@@ -233,6 +233,16 @@ class PostgresCollectionPlanLifecycleRepository:
     def delete_archived(self, plan_id: UUID) -> bool:
         """永久删除从未运行过的归档计划及其当前配置关系。"""
 
+        archived = self._session.scalar(
+            select(collection_plans_table.c.id)
+            .where(
+                collection_plans_table.c.id == plan_id,
+                collection_plans_table.c.archived_at.is_not(None),
+            )
+            .with_for_update()
+        )
+        if archived is None:
+            return False
         self._session.execute(
             delete(collection_plan_platforms_table).where(
                 collection_plan_platforms_table.c.plan_id == plan_id

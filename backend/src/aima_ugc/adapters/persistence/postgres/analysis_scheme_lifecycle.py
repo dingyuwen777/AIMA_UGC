@@ -184,6 +184,16 @@ class PostgresAnalysisSchemeLifecycleRepository:
     def delete_archived(self, scheme_id: UUID) -> bool:
         """永久删除从未发布/使用的归档 Scheme 与其纯草稿历史。"""
 
+        archived = self._session.scalar(
+            select(analysis_schemes_table.c.id)
+            .where(
+                analysis_schemes_table.c.id == scheme_id,
+                analysis_schemes_table.c.archived_at.is_not(None),
+            )
+            .with_for_update()
+        )
+        if archived is None:
+            return False
         blockers = self.delete_blockers(scheme_id)
         if blockers:
             raise RuntimeError("；".join(blockers))

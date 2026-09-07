@@ -262,6 +262,10 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       >
         <strong>分类配置暂不可用</strong>
         <span>依赖分类配置的筛选已暂时停用；内容浏览和其它操作仍可使用。</span>
+        <details class="warning-details">
+          <summary>技术详情</summary>
+          <span>{{ store.taxonomyError }}</span>
+        </details>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="reviewNote"

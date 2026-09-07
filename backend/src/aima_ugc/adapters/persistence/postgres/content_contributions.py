@@ -229,7 +229,7 @@ def _capture_snapshot(
             )
         )
         .mappings()
-        .one()
+        .one_or_none()
     )
     raw_freshness = row["field_observed_at"] or {}
     if not isinstance(raw_freshness, dict):
@@ -245,7 +245,7 @@ def _capture_snapshot(
         field_observed_at={str(key): str(value) for key, value in raw_freshness.items()},
         author_snapshot=(
             dict(cast(dict[str, Any], version["author_snapshot"]))
-            if isinstance(version["author_snapshot"], dict)
+            if version is not None and isinstance(version["author_snapshot"], dict)
             else None
         ),
         collections={

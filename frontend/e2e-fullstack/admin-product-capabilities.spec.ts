@@ -115,7 +115,7 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
 
   await page.goto('/admin/configuration')
   await expect(page.getByRole('heading', { name: '管理员配置', exact: true })).toBeVisible()
-  await page.getByLabel('稳定 code').fill(code)
+  await page.getByLabel('车型编码').fill(code)
   await page.getByLabel('显示名称').fill(displayName)
   await page.getByLabel(/别名/).fill(alias)
   await page.getByRole('button', { name: '保存', exact: true }).click()
@@ -147,10 +147,14 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
   const auditRow = page.getByRole('row').filter({ hasText: '新增车型' }).first()
   await expect(auditRow).toContainText('车型')
   await expect(auditRow).toContainText('local-administrator')
-  await expect(auditRow).not.toContainText('vehicle_model_created')
+  const auditTechnicalDetails = auditRow.locator('details')
+  await expect(auditTechnicalDetails).not.toHaveAttribute('open', '')
+  await expect(
+    auditTechnicalDetails.getByText('vehicle_model_created', { exact: true }),
+  ).not.toBeVisible()
 
   await page.goto('/voice-plaza')
-  const vehicleFilter = page.getByRole('group', { name: /车型筛选/ })
+  const vehicleFilter = page.getByRole('group', { name: '车型', exact: true })
   await vehicleFilter.getByLabel(new RegExp(displayName)).check()
   await page.getByRole('button', { name: '查询', exact: true }).click()
   const contentRow = page.locator('article.content-row').filter({ hasText: vehicleContentTitle })
@@ -273,6 +277,7 @@ test('未引用关键词包可以从业务界面归档、恢复并安全永久�
   const pack = await createKeywordPack(request, `lifecycle-${Date.now()}`)
 
   await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '关键词包', exact: true }).click()
   let packRow = page.locator('.pack-row').filter({ hasText: pack.name })
   await expect(packRow).toBeVisible()
   await packRow.click()
@@ -310,4 +315,3 @@ test('未引用关键词包可以从业务界面归档、恢复并安全永久�
   const deleted = await request.get(`/api/v1/keyword-packs/${pack.id}`)
   expect(deleted.status()).toBe(404)
 })
-

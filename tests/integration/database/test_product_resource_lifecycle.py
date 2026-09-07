@@ -25,6 +25,7 @@ from aima_ugc.adapters.persistence.postgres.provider_lifecycle import (
     PostgresProviderConfigLifecycleRepository,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
 from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,
@@ -41,10 +42,11 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.system.models import KeywordPack, ProviderConfig
 from aima_ugc.modules.system.tables import keyword_packs_table, provider_configs_table
+from aima_ugc.modules.vehicles.tables import keyword_pack_vehicle_models_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.time import beijing_now
-from sqlalchemy import delete, update
+from sqlalchemy import delete, insert, select, update
 
 
 def _analysis_definition() -> AnalysisSchemeDefinitionRequest:
@@ -100,6 +102,79 @@ def test_keyword_pack_archive_exits_current_catalog_and_restore_stays_disabled()
         runtime.dispose()
 
 
+def test_keyword_pack_copy_and_delete_preserve_then_remove_vehicle_links() -> None:
+    """复制词包必须沿用车型关联，永久删除归档副本时必须清理该关联。"""
+
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    transaction = session.begin()
+    pack_id = uuid4()
+    now = beijing_now()
+    try:
+        PostgresKeywordCatalogRepository(session).create_pack(
+            KeywordPack(
+                id=pack_id,
+                name=f"车型关联词包-{pack_id}",
+                description="",
+                enabled=False,
+                version=1,
+            )
+        )
+        vehicle = PostgresVehicleCatalogRepository(session).create_model(
+            code=f"COPY-{pack_id}",
+            display_name="复制词包测试车型",
+            aliases=("复制词包测试车型",),
+            actor_ref="integration-test",
+        )
+        session.execute(
+            insert(keyword_pack_vehicle_models_table).values(
+                pack_id=pack_id,
+                vehicle_model_id=vehicle.id,
+                enabled=False,
+                created_at=now,
+            )
+        )
+
+        lifecycle = PostgresKeywordPackLifecycleRepository(session)
+        copied = lifecycle.copy_pack(pack_id, name=f"车型关联词包副本-{pack_id}")
+        assert copied is not None
+        assert copied.enabled is False
+        copied_link = (
+            session.execute(
+                select(keyword_pack_vehicle_models_table).where(
+                    keyword_pack_vehicle_models_table.c.pack_id == copied.id
+                )
+            )
+            .mappings()
+            .one()
+        )
+        assert copied_link["vehicle_model_id"] == vehicle.id
+        assert copied_link["enabled"] is False
+
+        assert lifecycle.delete_archived(copied.id) is False
+        assert (
+            session.scalar(
+                select(keyword_packs_table.c.id).where(keyword_packs_table.c.id == copied.id)
+            )
+            == copied.id
+        )
+        assert lifecycle.archive(copied.id, archived_at=beijing_now()) is not None
+        assert lifecycle.delete_blockers(copied.id) == ()
+        assert lifecycle.delete_archived(copied.id) is True
+        assert (
+            session.scalar(
+                select(keyword_pack_vehicle_models_table.c.pack_id).where(
+                    keyword_pack_vehicle_models_table.c.pack_id == copied.id
+                )
+            )
+            is None
+        )
+    finally:
+        transaction.rollback()
+        session.close()
+        runtime.dispose()
+
+
 def test_archived_collection_plan_is_not_schedulable_and_restores_disabled() -> None:
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()
@@ -151,10 +226,20 @@ def test_archived_collection_plan_is_not_schedulable_and_restores_disabled() -> 
                 )
             )
             plan_id = created.id
+            lifecycle = PostgresCollectionPlanLifecycleRepository(session)
+            assert lifecycle.delete_archived(plan_id) is False
+            assert (
+                session.scalar(
+                    select(collection_plans_table.c.id).where(
+                        collection_plans_table.c.id == plan_id
+                    )
+                )
+                == plan_id
+            )
             assert plan_id in planning.list_schedulable_plan_ids(
                 now=datetime(2026, 9, 7, tzinfo=UTC)
             )
-            assert PostgresCollectionPlanLifecycleRepository(session).archive(
+            assert lifecycle.archive(
                 plan_id,
                 archived_at=beijing_now(),
             )
@@ -246,13 +331,22 @@ def test_published_analysis_scheme_can_archive_but_cannot_hard_delete() -> None:
                 actor_ref="integration-test",
             )
             scheme_id = version.scheme_id
+            lifecycle = PostgresAnalysisSchemeLifecycleRepository(session)
+            assert lifecycle.delete_archived(scheme_id) is False
+            assert (
+                session.scalar(
+                    select(analysis_scheme_versions_table.c.id).where(
+                        analysis_scheme_versions_table.c.id == version.id
+                    )
+                )
+                == version.id
+            )
             # 只建立“曾发布”的持久化历史事实，不切换全局 active，避免污染其他套件。
             session.execute(
                 update(analysis_scheme_versions_table)
                 .where(analysis_scheme_versions_table.c.id == version.id)
                 .values(status="retired", published_at=beijing_now())
             )
-            lifecycle = PostgresAnalysisSchemeLifecycleRepository(session)
             assert lifecycle.archive_blockers(scheme_id) == ()
             assert lifecycle.archive(scheme_id, archived_at=beijing_now()) is True
             assert all(scheme["id"] != scheme_id for scheme, _ in schemes.list_schemes())

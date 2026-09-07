@@ -221,8 +221,18 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
         @toggle="onArchivedToggle"
       >
         <summary>已归档词包</summary>
-        <div v-if="loadingArchived" class="archived-state">正在读取…</div>
-        <div v-else-if="archived.length === 0" class="archived-state">暂无已归档词包。</div>
+        <div
+          v-if="loadingArchived"
+          class="archived-state"
+        >
+          正在读取…
+        </div>
+        <div
+          v-else-if="archived.length === 0"
+          class="archived-state"
+        >
+          暂无已归档词包。
+        </div>
         <div
           v-for="item in archived"
           v-else
@@ -235,13 +245,17 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
             size="small"
             :disabled="saving"
             @click="emit('restoreArchived', item.id)"
-          >恢复</AimaButton>
+          >
+            恢复
+          </AimaButton>
           <AimaButton
             variant="text"
             size="small"
             :disabled="saving"
             @click="deleteArchived(item)"
-          >永久删除</AimaButton>
+          >
+            永久删除
+          </AimaButton>
         </div>
       </details>
     </div>
@@ -254,24 +268,87 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
         <p>{{ selected.description || '暂无描述' }}</p>
 
         <div class="resource-actions">
-          <AimaButton size="small" @click="startMetadataEdit">编辑名称与说明</AimaButton>
-          <AimaButton size="small" @click="copyName = `${selected.name} 副本`">复制</AimaButton>
-          <AimaButton size="small" :disabled="saving" @click="archiveSelected">归档</AimaButton>
+          <AimaButton
+            size="small"
+            @click="startMetadataEdit"
+          >
+            编辑名称与说明
+          </AimaButton>
+          <AimaButton
+            size="small"
+            @click="copyName = `${selected.name} 副本`"
+          >
+            复制
+          </AimaButton>
+          <AimaButton
+            size="small"
+            :disabled="saving"
+            @click="archiveSelected"
+          >
+            归档
+          </AimaButton>
         </div>
 
-        <div v-if="metadataEditing" class="inline-editor">
-          <label><span>词包名称</span><input v-model="metadataName" maxlength="200"></label>
-          <label><span>说明</span><textarea v-model="metadataDescription" rows="2" maxlength="2000" /></label>
-          <div><AimaButton size="small" @click="metadataEditing = false">取消</AimaButton><AimaButton variant="primary" size="small" :disabled="saving || !metadataName.trim()" @click="saveMetadata">保存</AimaButton></div>
+        <div
+          v-if="metadataEditing"
+          class="inline-editor"
+        >
+          <label><span>词包名称</span><input
+            v-model="metadataName"
+            maxlength="200"
+          ></label>
+          <label><span>说明</span><textarea
+            v-model="metadataDescription"
+            rows="2"
+            maxlength="2000"
+          /></label>
+          <div>
+            <AimaButton
+              size="small"
+              @click="metadataEditing = false"
+            >
+              取消
+            </AimaButton><AimaButton
+              variant="primary"
+              size="small"
+              :disabled="saving || !metadataName.trim()"
+              @click="saveMetadata"
+            >
+              保存
+            </AimaButton>
+          </div>
         </div>
 
-        <div v-if="copyName" class="inline-editor">
-          <label><span>副本名称</span><input v-model="copyName" maxlength="200"></label>
+        <div
+          v-if="copyName"
+          class="inline-editor"
+        >
+          <label><span>副本名称</span><input
+            v-model="copyName"
+            maxlength="200"
+          ></label>
           <small>副本创建后默认停用，不会自动进入采集任务。</small>
-          <div><AimaButton size="small" @click="copyName = ''">取消</AimaButton><AimaButton variant="primary" size="small" :disabled="saving || !copyName.trim()" @click="copySelected">创建副本</AimaButton></div>
+          <div>
+            <AimaButton
+              size="small"
+              @click="copyName = ''"
+            >
+              取消
+            </AimaButton><AimaButton
+              variant="primary"
+              size="small"
+              :disabled="saving || !copyName.trim()"
+              @click="copySelected"
+            >
+              创建副本
+            </AimaButton>
+          </div>
         </div>
 
-        <AimaFeedbackBanner v-if="selected.enabled" tone="info">
+        <AimaFeedbackBanner
+          v-if="selected.enabled"
+          tone="info"
+        >
           需要修改或移除已有关键词时，请先停用词包。这样可避免正在使用的业务配置在编辑过程中漂移。
         </AimaFeedbackBanner>
 
@@ -283,23 +360,64 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
           >
             <span><b>{{ item.text }}</b><small v-if="keywordScopeLabel(item.platform_scope)">{{ keywordScopeLabel(item.platform_scope) }}</small></span>
             <span class="keyword-actions">
-              <button type="button" :disabled="selected.enabled || saving" @click="startKeywordEdit(item)">编辑</button>
-              <button type="button" :disabled="selected.enabled || saving" @click="removeKeyword(item)">移除</button>
+              <button
+                type="button"
+                :disabled="selected.enabled || saving"
+                @click="startKeywordEdit(item)"
+              >编辑</button>
+              <button
+                type="button"
+                :disabled="selected.enabled || saving"
+                @click="removeKeyword(item)"
+              >移除</button>
             </span>
           </div>
           <em v-if="selected.keywords.length === 0">当前词包还没有关键词。</em>
         </div>
 
-        <div v-if="editingKeywordId" class="keyword-editor">
-          <label><span>关键词</span><input v-model="keywordDraft.text" maxlength="500"></label>
+        <div
+          v-if="editingKeywordId"
+          class="keyword-editor"
+        >
+          <label><span>关键词</span><input
+            v-model="keywordDraft.text"
+            maxlength="500"
+          ></label>
           <label><span>适用平台</span><select v-model="keywordDraft.platformScope">
             <option value="all">全部平台</option>
-            <option v-for="option in COLLECTION_PLATFORM_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+            <option
+              v-for="option in COLLECTION_PLATFORM_OPTIONS"
+              :key="option.value"
+              :value="option.value"
+            >{{ option.label }}</option>
           </select></label>
-          <label><span>优先级</span><input v-model.number="keywordDraft.priority" type="number"></label>
-          <label class="keyword-enabled"><input v-model="keywordDraft.enabled" type="checkbox">启用该关键词</label>
-          <label class="span-2"><span>备注</span><input v-model="keywordDraft.note" maxlength="1000"></label>
-          <div class="span-2 editor-actions"><AimaButton size="small" @click="editingKeywordId = ''">取消</AimaButton><AimaButton variant="primary" size="small" :disabled="saving || !keywordDraft.text.trim()" @click="saveKeywordEdit">保存关键词</AimaButton></div>
+          <label><span>优先级</span><input
+            v-model.number="keywordDraft.priority"
+            type="number"
+          ></label>
+          <label class="keyword-enabled"><input
+            v-model="keywordDraft.enabled"
+            type="checkbox"
+          >启用该关键词</label>
+          <label class="span-2"><span>备注</span><input
+            v-model="keywordDraft.note"
+            maxlength="1000"
+          ></label>
+          <div class="span-2 editor-actions">
+            <AimaButton
+              size="small"
+              @click="editingKeywordId = ''"
+            >
+              取消
+            </AimaButton><AimaButton
+              variant="primary"
+              size="small"
+              :disabled="saving || !keywordDraft.text.trim()"
+              @click="saveKeywordEdit"
+            >
+              保存关键词
+            </AimaButton>
+          </div>
         </div>
 
         <form @submit.prevent="emit('addKeyword', selected.id, keyword.trim()); keyword = ''">
@@ -327,7 +445,7 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
 </template>
 
 <style scoped>
-.panel-grid { display: grid; grid-template-columns: minmax(620px, 823px) minmax(340px, 393px); gap: 16px; }
+.panel-grid { display: grid; grid-template-columns: minmax(620px, 823px) minmax(320px, 373px); gap: 16px; }
 .list-column { min-width: 0; }
 .table-card,.detail-card,.archived-card { border: 1px solid var(--aima-border); border-radius: 9px; background: #fff; }
 .table-head { display: flex; height: 54px; align-items: center; justify-content: space-between; padding: 0 24px 0 18px; border-bottom: 1px solid var(--aima-border); }

@@ -57,9 +57,9 @@ function selectScope(next: AnalysisScope): void {
         <header>
           <div>
             <h2 id="analysis-title">
-              创建 AI Analysis Run
+              创建 AI 打标任务
             </h2>
-            <p>先预检目标，再由后台冻结当前内容版本并拆分有界 Shard。</p>
+            <p>先预估待处理内容，再由后台分批完成 AI 打标。</p>
           </div>
           <button
             class="close-button"
@@ -103,28 +103,33 @@ function selectScope(next: AnalysisScope): void {
               >
               <span>
                 <strong>全部数据</strong>
-                <small>对数据库当前全部 Content 数据打标，不受本页筛选或已加载分页限制</small>
+                <small>对系统当前全部内容打标，不受本页筛选或已加载分页限制</small>
               </span>
             </label>
           </fieldset>
           <p class="scope-note">
-            “全部数据”不会把所有 Content ID 拉到浏览器；后端按当前数据库事实计数、冻结目标并分片执行。
+            “全部数据”由后台按当前数据范围处理，不需要浏览器加载全部内容。
           </p>
           <div
             v-if="previewing"
             class="preview"
             role="status"
           >
-            正在预检目标与模型配置…
+            正在预估处理范围并检查模型配置…
           </div>
           <div
             v-else-if="preview"
             class="preview"
           >
-            <strong>预检目标 {{ preview.target_count }} 条，拆分 {{ preview.shard_count }} 个 Shard</strong>
-            <span>每个 Shard {{ preview.shard_size }} 条 · {{ preview.model_provider }} / {{ preview.model }}</span>
-            <span>Prompt {{ preview.prompt_version }} · 配置哈希 {{ preview.configuration_hash.slice(0, 12) }}…</span>
+            <strong>预计处理 {{ preview.target_count }} 条，系统将分 {{ preview.shard_count }} 批完成</strong>
+            <span>每批最多 {{ preview.shard_size }} 条</span>
             <small>{{ preview.cost_estimate_note }}</small>
+            <details class="technical-details">
+              <summary>技术详情</summary>
+              <span>模型：{{ preview.model_provider }} / {{ preview.model }}</span>
+              <span>Prompt：{{ preview.prompt_version }}</span>
+              <span>配置哈希：{{ preview.configuration_hash.slice(0, 12) }}…</span>
+            </details>
           </div>
         </div>
         <footer>
@@ -136,7 +141,7 @@ function selectScope(next: AnalysisScope): void {
             :disabled="previewing || !preview || submitting"
             @click="emit('submit')"
           >
-            {{ submitting ? '正在提交…' : '确认并创建 Analysis Run' }}
+            {{ submitting ? '正在提交…' : '确认并创建任务' }}
           </AimaButton>
         </footer>
       </section>
@@ -166,6 +171,9 @@ header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line
 .preview { display: grid; min-height: 88px; align-content: center; gap: 5px; padding: 10px 12px; border: 1px solid #bfd5f5; border-radius: 6px; color: #32618f; background: #f2f7fd; font-size: 10px; line-height: 14px; }
 .preview strong { font-size: 11px; }
 .preview small { color: var(--aima-text-disabled); font-size: 9px; }
+.technical-details { color: #527293; }
+.technical-details summary { width: max-content; cursor: pointer; font-weight: 600; }
+.technical-details span { display: block; margin-top: 3px; overflow-wrap: anywhere; }
 footer { display: flex; min-height: 68px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); }
 footer :deep(.aima-button) { height: 38px; }
 @media (min-height: 500px) {

@@ -121,17 +121,30 @@ function removeSecondary(row: LabelRow, index: number): void {
 </script>
 
 <template>
-  <section class="labels-editor" aria-label="结构化标签规则">
+  <section
+    class="labels-editor"
+    aria-label="结构化标签规则"
+  >
     <header>
       <div>
         <strong>标签规则</strong>
         <p>直接维护一级标签和二级标签；系统会自动转换为正式结构化配置。</p>
       </div>
-      <AimaButton size="small" :disabled="rows.length >= 100" @click="addPrimary">新增一级标签</AimaButton>
+      <AimaButton
+        size="small"
+        :disabled="rows.length >= 100"
+        @click="addPrimary"
+      >
+        新增一级标签
+      </AimaButton>
     </header>
 
     <div class="label-groups">
-      <article v-for="row in rows" :key="row.id" class="label-group">
+      <article
+        v-for="row in rows"
+        :key="row.id"
+        class="label-group"
+      >
         <div class="primary-row">
           <label>
             <span>一级标签</span>
@@ -147,10 +160,15 @@ function removeSecondary(row: LabelRow, index: number): void {
             variant="text"
             size="small"
             @click="removePrimary(row)"
-          >移除一级标签</AimaButton>
+          >
+            移除一级标签
+          </AimaButton>
         </div>
         <div class="secondary-list">
-          <label v-for="(_, index) in row.secondaries" :key="`${row.id}-${index}`">
+          <label
+            v-for="(_, index) in row.secondaries"
+            :key="`${row.id}-${index}`"
+          >
             <span>二级标签 {{ index + 1 }}</span>
             <span class="secondary-control">
               <input
@@ -170,16 +188,25 @@ function removeSecondary(row: LabelRow, index: number): void {
             variant="text"
             size="small"
             @click="addSecondary(row)"
-          >新增二级标签</AimaButton>
+          >
+            新增二级标签
+          </AimaButton>
         </div>
       </article>
     </div>
 
-    <AimaFeedbackBanner v-if="errors.length" tone="error" role="alert">
+    <AimaFeedbackBanner
+      v-if="errors.length"
+      tone="error"
+      role="alert"
+    >
       <strong>标签规则还不能保存</strong>
       <span>{{ errors.join('；') }}</span>
     </AimaFeedbackBanner>
-    <AimaFeedbackBanner v-else tone="info">
+    <AimaFeedbackBanner
+      v-else
+      tone="info"
+    >
       “无法分类 / 无法判断”为系统必需兜底项，不允许删除或改名。
     </AimaFeedbackBanner>
   </section>

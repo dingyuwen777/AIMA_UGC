@@ -6,6 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import pytest
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
@@ -24,6 +25,7 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.query import ContentReadQuery
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.revocation_tables import (
@@ -34,7 +36,8 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.storage.tables import artifacts_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy.exc import DBAPIError
 
 
 def _xlsx(rows: tuple[tuple[str, str, str | None], ...]) -> bytes:
@@ -332,6 +335,26 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
                 assert {row["operation"] for row in lifecycle_rows} == {"data_import_revoke"}
                 assert {row["kind"] for row in lifecycle_rows} == {"provider-raw"}
                 assert {row["storage_status"] for row in lifecycle_rows} == {"linked"}
+
+                guarded_mutations = (
+                    update(content_source_contributions_table).values(
+                        observed_at=content_source_contributions_table.c.observed_at
+                    ),
+                    delete(historical_import_campaign_revocations_table).where(
+                        historical_import_campaign_revocations_table.c.campaign_id == campaign_id
+                    ),
+                    update(historical_import_revocation_content_versions_table)
+                    .where(
+                        historical_import_revocation_content_versions_table.c.campaign_id
+                        == campaign_id
+                    )
+                    .values(
+                        created_at=historical_import_revocation_content_versions_table.c.created_at
+                    ),
+                )
+                for mutation in guarded_mutations:
+                    with pytest.raises(DBAPIError), after_session.begin_nested():
+                        after_session.execute(mutation)
         finally:
             after_session.close()
     finally:

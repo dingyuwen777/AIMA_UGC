@@ -35,7 +35,7 @@ function unwrap<T>(value: T): T {
 export async function fetchTaskCenterAnalysisRuns(): Promise<AnalysisContentRunResponse[]> {
   const response = unwrap(await listContentAnalysisRuns())
   if (!response || !Array.isArray(response.items)) {
-    throw new Error('AI Analysis Run 历史响应格式无效。')
+    throw new Error('AI 打标任务历史响应格式无效。')
   }
   return response.items
 }

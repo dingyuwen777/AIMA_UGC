@@ -27,6 +27,7 @@ from aima_ugc.modules.system.tables import (
 )
 from aima_ugc.modules.vehicles.tables import keyword_pack_vehicle_models_table
 from aima_ugc.platform.jobs.tables import jobs_table
+from aima_ugc.platform.time import beijing_now
 
 register_system_lifecycle_schema()
 
@@ -269,7 +270,7 @@ class PostgresKeywordPackLifecycleRepository:
         if source is None:
             return None
         new_id = uuid4()
-        now = func.clock_timestamp()
+        now = beijing_now()
         row = (
             self._session.execute(
                 insert(keyword_packs_table)
@@ -310,19 +311,25 @@ class PostgresKeywordPackLifecycleRepository:
                     for item in items
                 ],
             )
-        vehicle_ids = tuple(
-            self._session.scalars(
-                select(keyword_pack_vehicle_models_table.c.vehicle_model_id).where(
-                    keyword_pack_vehicle_models_table.c.keyword_pack_id == pack_id
-                )
-            )
+        vehicle_links = tuple(
+            self._session.execute(
+                select(
+                    keyword_pack_vehicle_models_table.c.vehicle_model_id,
+                    keyword_pack_vehicle_models_table.c.enabled,
+                ).where(keyword_pack_vehicle_models_table.c.pack_id == pack_id)
+            ).mappings()
         )
-        if vehicle_ids:
+        if vehicle_links:
             self._session.execute(
                 insert(keyword_pack_vehicle_models_table),
                 [
-                    {"keyword_pack_id": new_id, "vehicle_model_id": vehicle_id}
-                    for vehicle_id in vehicle_ids
+                    {
+                        "pack_id": new_id,
+                        "vehicle_model_id": link["vehicle_model_id"],
+                        "enabled": link["enabled"],
+                        "created_at": now,
+                    }
+                    for link in vehicle_links
                 ],
             )
         return _pack(row)
@@ -490,6 +497,16 @@ class PostgresKeywordPackLifecycleRepository:
     def delete_archived(self, pack_id: UUID) -> bool:
         """永久删除已通过引用守卫的归档词包；共享 Keyword 只清理孤儿。"""
 
+        archived = self._session.scalar(
+            select(keyword_packs_table.c.id)
+            .where(
+                keyword_packs_table.c.id == pack_id,
+                keyword_packs_table.c.archived_at.is_not(None),
+            )
+            .with_for_update()
+        )
+        if archived is None:
+            return False
         keyword_ids = tuple(
             self._session.scalars(
                 select(keyword_pack_items_table.c.keyword_id).where(
@@ -499,7 +516,7 @@ class PostgresKeywordPackLifecycleRepository:
         )
         self._session.execute(
             delete(keyword_pack_vehicle_models_table).where(
-                keyword_pack_vehicle_models_table.c.keyword_pack_id == pack_id
+                keyword_pack_vehicle_models_table.c.pack_id == pack_id
             )
         )
         self._session.execute(

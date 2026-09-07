@@ -756,14 +756,46 @@ function safeJson(value: Record<string, unknown>): string {
               <span>{{ formatDateTime(version.created_at) }}</span>
             </button>
           </template>
-          <details class="archived-schemes" @toggle="onArchivedSchemesToggle">
+          <details
+            class="archived-schemes"
+            @toggle="onArchivedSchemesToggle"
+          >
             <summary>已归档规则</summary>
-            <div v-if="archivedSchemeLoading" class="archived-scheme-state">正在读取…</div>
-            <div v-else-if="archivedSchemes.length === 0" class="archived-scheme-state">暂无已归档规则。</div>
-            <div v-for="item in archivedSchemes" v-else :key="item.id" class="archived-scheme-row">
+            <div
+              v-if="archivedSchemeLoading"
+              class="archived-scheme-state"
+            >
+              正在读取…
+            </div>
+            <div
+              v-else-if="archivedSchemes.length === 0"
+              class="archived-scheme-state"
+            >
+              暂无已归档规则。
+            </div>
+            <div
+              v-for="item in archivedSchemes"
+              v-else
+              :key="item.id"
+              class="archived-scheme-row"
+            >
               <span><strong>{{ item.name }}</strong><small>{{ formatDateTime(item.archived_at) }}</small></span>
-              <AimaButton variant="text" size="small" :disabled="saving" @click="restoreArchivedAnalysisScheme(item)">恢复</AimaButton>
-              <AimaButton variant="text" size="small" :disabled="saving" @click="deleteArchivedAnalysisScheme(item)">永久删除</AimaButton>
+              <AimaButton
+                variant="text"
+                size="small"
+                :disabled="saving"
+                @click="restoreArchivedAnalysisScheme(item)"
+              >
+                恢复
+              </AimaButton>
+              <AimaButton
+                variant="text"
+                size="small"
+                :disabled="saving"
+                @click="deleteArchivedAnalysisScheme(item)"
+              >
+                永久删除
+              </AimaButton>
             </div>
           </details>
         </section>
@@ -777,14 +809,49 @@ function safeJson(value: Record<string, unknown>): string {
               {{ formatRuntimeStatus(selectedSchemeVersion.version.status) }}
             </span>
           </header>
-          <div v-if="selectedSchemeVersion" class="scheme-resource-actions">
-            <AimaButton size="small" :disabled="saving" @click="startSchemeCopy">复制规则</AimaButton>
-            <AimaButton size="small" :disabled="saving" @click="archiveSelectedScheme">归档规则</AimaButton>
+          <div
+            v-if="selectedSchemeVersion"
+            class="scheme-resource-actions"
+          >
+            <AimaButton
+              size="small"
+              :disabled="saving"
+              @click="startSchemeCopy"
+            >
+              复制规则
+            </AimaButton>
+            <AimaButton
+              size="small"
+              :disabled="saving"
+              @click="archiveSelectedScheme"
+            >
+              归档规则
+            </AimaButton>
           </div>
-          <div v-if="schemeCopyName" class="scheme-copy-editor">
-            <label>副本名称<input v-model="schemeCopyName" maxlength="200"></label>
+          <div
+            v-if="schemeCopyName"
+            class="scheme-copy-editor"
+          >
+            <label>副本名称<input
+              v-model="schemeCopyName"
+              maxlength="200"
+            ></label>
             <small>复制的是该规则当前最新版本；副本只创建草稿，不会自动发布。</small>
-            <div><AimaButton size="small" @click="schemeCopyName = ''">取消</AimaButton><AimaButton variant="primary" size="small" :disabled="saving || !schemeCopyName.trim()" @click="copySelectedScheme">创建副本</AimaButton></div>
+            <div>
+              <AimaButton
+                size="small"
+                @click="schemeCopyName = ''"
+              >
+                取消
+              </AimaButton><AimaButton
+                variant="primary"
+                size="small"
+                :disabled="saving || !schemeCopyName.trim()"
+                @click="copySelectedScheme"
+              >
+                创建副本
+              </AimaButton>
+            </div>
           </div>
           <label>
             规则名称

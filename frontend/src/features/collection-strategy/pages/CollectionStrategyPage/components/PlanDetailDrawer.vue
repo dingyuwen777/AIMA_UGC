@@ -91,14 +91,52 @@ function archivePlan(): void {
       <div class="body">
         <span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span><h3>{{ plan.name }}</h3>
         <div class="resource-actions">
-          <AimaButton size="small" :disabled="saving" @click="emit('edit', plan)">编辑计划</AimaButton>
-          <AimaButton size="small" :disabled="saving" @click="startCopy">复制</AimaButton>
-          <AimaButton size="small" :disabled="saving" @click="archivePlan">归档</AimaButton>
+          <AimaButton
+            size="small"
+            :disabled="saving"
+            @click="emit('edit', plan)"
+          >
+            编辑计划
+          </AimaButton>
+          <AimaButton
+            size="small"
+            :disabled="saving"
+            @click="startCopy"
+          >
+            复制
+          </AimaButton>
+          <AimaButton
+            size="small"
+            :disabled="saving"
+            @click="archivePlan"
+          >
+            归档
+          </AimaButton>
         </div>
-        <div v-if="copyName" class="copy-editor">
-          <label><span>副本名称</span><input v-model="copyName" maxlength="200"></label>
+        <div
+          v-if="copyName"
+          class="copy-editor"
+        >
+          <label><span>副本名称</span><input
+            v-model="copyName"
+            maxlength="200"
+          ></label>
           <small>副本默认停用，不会自动进入调度。</small>
-          <div><AimaButton size="small" @click="copyName = ''">取消</AimaButton><AimaButton variant="primary" size="small" :disabled="saving || !copyName.trim()" @click="submitCopy">创建副本</AimaButton></div>
+          <div>
+            <AimaButton
+              size="small"
+              @click="copyName = ''"
+            >
+              取消
+            </AimaButton><AimaButton
+              variant="primary"
+              size="small"
+              :disabled="saving || !copyName.trim()"
+              @click="submitCopy"
+            >
+              创建副本
+            </AimaButton>
+          </div>
         </div>
         <dl>
           <div><dt>执行周期</dt><dd>{{ collectionScheduleLabel(plan.schedule_expr) }}</dd></div>
@@ -129,20 +167,35 @@ function archivePlan(): void {
         <details class="technical-details">
           <summary>技术详情</summary>
           <dl class="technical-grid">
-            <div class="plan-id"><dt><span>计划标识</span><AimaButton
-              variant="text"
-              size="small"
-              icon="copy"
-              :aria-label="copied ? '计划标识已复制' : '复制计划标识'"
-              @click="copyPlanId(plan.id)"
-            >{{ copied ? '已复制' : '复制' }}</AimaButton></dt><dd>{{ plan.id }}</dd></div>
+            <div class="plan-id">
+              <dt>
+                <span>计划标识</span><AimaButton
+                  variant="text"
+                  size="small"
+                  icon="copy"
+                  :aria-label="copied ? '计划标识已复制' : '复制计划标识'"
+                  @click="copyPlanId(plan.id)"
+                >
+                  {{ copied ? '已复制' : '复制' }}
+                </AimaButton>
+              </dt><dd>{{ plan.id }}</dd>
+            </div>
             <div><dt>调度版本</dt><dd>{{ plan.schedule_version }}</dd></div>
           </dl>
           <div class="technical-relations">
             <strong>引用标识</strong>
-            <span v-for="id in plan.keyword_pack_ids" :key="`pack-${id}`">词包：{{ id }}</span>
-            <span v-for="id in plan.vehicle_model_ids ?? []" :key="`vehicle-${id}`">车型：{{ id }}</span>
-            <span v-for="item in plan.platforms" :key="`provider-${item.platform}`">{{ collectionPlatformLabel(item.platform) }} Provider：{{ item.provider_config_id }}</span>
+            <span
+              v-for="id in plan.keyword_pack_ids"
+              :key="`pack-${id}`"
+            >词包：{{ id }}</span>
+            <span
+              v-for="id in plan.vehicle_model_ids ?? []"
+              :key="`vehicle-${id}`"
+            >车型：{{ id }}</span>
+            <span
+              v-for="item in plan.platforms"
+              :key="`provider-${item.platform}`"
+            >{{ collectionPlatformLabel(item.platform) }} Provider：{{ item.provider_config_id }}</span>
           </div>
         </details>
       </div>
