@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260907-product-resource-lifecycle
 title: 产品资源生命周期与业务可读性整改
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/product-resource-lifecycle
 created: 2026-09-07
