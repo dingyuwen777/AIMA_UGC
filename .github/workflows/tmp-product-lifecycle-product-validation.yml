@@ -1,0 +1,93 @@
+name: Temporary Product Lifecycle Product Validation
+
+on:
+  push:
+    branches:
+      - feature/product-resource-lifecycle
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 2
+      - name: Verify validation parent
+        env:
+          EXPECTED_PARENT: 3fa4926e0238ffd73b67cb1fd9b55765aaa96ebe
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
+
+  product-quality:
+    needs: guard
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          test "$(uv --version | awk '{print $2}')" = "${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Secret and docs gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/quality/scan_secrets.py
+          uv run python scripts/quality/check_docs.py
+          uv run python scripts/quality/check_docs_facts.py
+
+      - name: Verify generated contracts and client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          git diff --exit-code -- contracts frontend/src/generated/api
+          UNTRACKED="$(git ls-files --others --exclude-standard -- contracts frontend/src/generated/api)"
+          if [[ -n "${UNTRACKED}" ]]; then echo "CONTRACT_UNTRACKED: ${UNTRACKED}"; exit 1; fi
+          test -f contracts/export/unified-data-excel.v1.schema.json
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/contracts/check_compatibility.py
+
+      - name: Frontend unit build and Browser Mock Acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run lint
+          npm --prefix frontend run test -- --run
+          npm --prefix frontend run build
+          npm --prefix frontend exec -- playwright --version
+          npm --prefix frontend run test:e2e
+
+  golden-paths:
+    needs: guard
+    uses: ./.github/workflows/fullstack.yml
+    with:
+      specs: "admin-product-capabilities.spec.ts stage12-historical-analysis.spec.ts"
