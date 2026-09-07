@@ -101,7 +101,10 @@ class PostgresProviderLifecycleHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                config = PostgresProviderConfigRepository(session).get(provider_config_id)
+                config = PostgresProviderConfigRepository(session).get(
+                    provider_config_id,
+                    include_archived=True,
+                )
                 if config is None:
                     raise AdministrationResourceNotFound
                 archived_ids = {
