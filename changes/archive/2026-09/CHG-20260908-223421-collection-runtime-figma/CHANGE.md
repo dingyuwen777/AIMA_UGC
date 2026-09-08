@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260908-223421-collection-runtime-figma
 title: 采集运行中心 Figma 补齐与增量实施
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: feature/collection-runtime-figma-20260908
 created: 2026-09-08
