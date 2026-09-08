@@ -132,6 +132,7 @@ async function viewContents(batchId: string): Promise<void> {
 <template>
   <AppShell>
     <AimaPageHeader
+      class="runtime-page-header"
       title="采集运行中心"
       description="统一查看数据导入与辅助补采运行"
     >
@@ -263,8 +264,12 @@ async function viewContents(batchId: string): Promise<void> {
 .runtime-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; }
 .runtime-tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
 .page-error { margin-top: 16px; }
-.list-heading { display: flex; min-height: 24px; align-items: center; margin: 24px 0 12px; }
+.list-heading { display: flex; min-height: 24px; align-items: center; margin: 34px 0 12px; }
 .list-heading strong { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24px; }
-.pagination { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 20px; color: var(--aima-text-muted); font-size: 12px; }
+.pagination { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: 20px; margin-top: 24px; color: var(--aima-text-muted); font-size: 12px; }
 .notice { position: fixed; z-index: 200; top: 76px; left: 50%; width: min(560px, calc(100vw - 48px)); transform: translateX(-50%); }
+@media (min-width: 981px) {
+  .runtime-page-header { margin-top: 4px; flex-wrap: nowrap; align-items: center; }
+  .runtime-page-header :deep(.aima-page-actions) { flex: none; justify-content: flex-end; }
+}
 </style>

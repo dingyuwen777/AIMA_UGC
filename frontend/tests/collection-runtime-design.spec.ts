@@ -45,7 +45,7 @@ describe('采集运行中心正式 Figma 基线', () => {
   it('复用与采集策略相同的页面标题和按钮组件，并使用正式业务文案', async () => {
     const html = await renderComponent(CollectionRuntimePage)
 
-    expect(html).toContain('class="aima-page-header"')
+    expect(html).toMatch(/class="[^"]*\baima-page-header\b[^"]*"/)
     expect(html.match(/class="aima-button/g)?.length ?? 0).toBeGreaterThanOrEqual(5)
     expect(html).toContain('统一查看数据导入与辅助补采运行')
     expect(html).toContain('新建辅助补采')
@@ -88,7 +88,7 @@ describe('采集运行中心正式 Figma 基线', () => {
     })
 
     const searchIndex = html.indexOf('搜索来源文件或采集关键词')
-    const dateIndex = html.indexOf('aria-label="开始日期"')
+    const dateIndex = html.indexOf('aria-label="创建时间范围"')
     const statusIndex = html.indexOf('aria-label="状态"')
     const typeIndex = html.indexOf('aria-label="类型"')
     const stageIndex = html.indexOf('aria-label="处理阶段"')
@@ -104,7 +104,8 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(html).not.toContain('Cursor')
     expect(html).not.toContain('TikHub 采集中')
     expect(html).not.toContain('不可变快照')
-    expect(html.match(/class="aima-button/g)).toHaveLength(2)
+    const filterActions = html.slice(html.indexOf('class="filter-actions"'))
+    expect(filterActions.match(/class="aima-button/g)).toHaveLength(2)
   })
 
   it('运行记录表固定为 7 列，只展示业务任务身份而不显示内部 UUID', async () => {

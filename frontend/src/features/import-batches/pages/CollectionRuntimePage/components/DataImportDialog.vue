@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import type {
   DataImportIngestionPolicy,
+  DataImportRevocationPreviewResponse,
   HistoricalCampaignItemStatus,
   HistoricalCampaignResponse,
   HistoricalCampaignStatus,
@@ -11,6 +12,7 @@ import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import { createClientIdempotencyKey } from '../../../../../shared/idempotency'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
+import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { formatDateTime } from '../../../format'
 import {
@@ -35,6 +37,10 @@ const selectedVehicleIds = ref<string[]>([])
 const validationError = ref<string | null>(null)
 const notice = ref<string | null>(null)
 const revocationReason = ref('')
+const dialogBody = ref<HTMLElement | null>(null)
+const revocationPanel = ref<HTMLElement | null>(null)
+const revocationConfirmationOpen = ref(false)
+const confirmedRevocationPreview = ref<DataImportRevocationPreviewResponse | null>(null)
 const recursive = ref(false)
 const maxFiles = 1_000
 const maxBytes = 500 * 1024 * 1024
@@ -190,6 +196,8 @@ watch(
     selectedPackIds.value = []
     selectedVehicleIds.value = []
     revocationReason.value = ''
+    revocationConfirmationOpen.value = false
+    confirmedRevocationPreview.value = null
     recursive.value = false
     validationError.value = null
     notice.value = null
@@ -197,6 +205,14 @@ watch(
 )
 
 onBeforeUnmount(stopPolling)
+
+/** 长表单内的操作错误需要滚入可见区域，不能只追加在滚动区底部。 */
+watch([validationError, () => store.error], async (messages) => {
+  if (!props.modelValue || !messages.some(Boolean)) return
+  await nextTick()
+  const alerts = dialogBody.value?.querySelectorAll('[role="alert"]')
+  alerts?.item(alerts.length - 1)?.scrollIntoView({ block: 'nearest' })
+})
 
 async function chooseSource(value: SourceKind): Promise<void> {
   sourceKind.value = value
@@ -317,15 +333,29 @@ async function retryCampaign(): Promise<void> {
 async function previewRevocation(): Promise<void> {
   const preview = await store.previewHistoricalRevocation()
   if (preview?.already_revoked) notice.value = '这次导入已经撤销，无需重复操作。'
+  if (preview) {
+    await nextTick()
+    revocationPanel.value?.scrollIntoView({ block: 'start' })
+  }
+}
+
+/** 确认弹窗固定本次展示的影响与任务身份，不能把旧预览用于另一个任务。 */
+function confirmRevocation(): void {
+  const preview = store.historicalRevocationPreview
+  if (!preview?.eligible || preview.already_revoked || store.revokingHistorical) return
+  if (preview.campaign_id !== store.selectedHistoricalCampaign?.id) return
+  confirmedRevocationPreview.value = preview
+  revocationConfirmationOpen.value = true
 }
 
 async function revokeImport(): Promise<void> {
-  const preview = store.historicalRevocationPreview
-  if (!preview?.eligible || preview.already_revoked) return
-  const { affected_content_count: affected, hidden_content_count: hidden, retained_shared_content_count: retained } = preview.impact
-  if (!window.confirm(
-    `确认撤销这次导入吗？将重新计算 ${affected} 条受影响内容，其中 ${hidden} 条会从当前业务视图隐藏，${retained} 条因仍有其他来源会继续保留。导入记录和审计证据不会删除。`,
-  )) return
+  revocationConfirmationOpen.value = false
+  const preview = confirmedRevocationPreview.value
+  if (!preview?.eligible || preview.already_revoked || store.revokingHistorical) return
+  if (preview.campaign_id !== store.selectedHistoricalCampaign?.id) {
+    validationError.value = '当前导入任务已变化，请重新评估撤销。'
+    return
+  }
   const result = await store.revokeHistoricalImport(revocationReason.value)
   if (!result) return
   notice.value = result.already_revoked
@@ -372,7 +402,10 @@ function viewCampaignContents(): void {
           </AimaButton>
         </header>
 
-        <div class="dialog-body">
+        <div
+          ref="dialogBody"
+          class="dialog-body"
+        >
           <section
             v-if="store.historicalCampaigns.length && !store.selectedHistoricalCampaign"
             class="campaign-history"
@@ -692,7 +725,7 @@ function viewCampaignContents(): void {
                 <span>补空 <b>{{ store.selectedHistoricalCampaign.stats?.filled ?? 0 }}</b></span>
                 <span>更新 <b>{{ store.selectedHistoricalCampaign.stats?.updated ?? 0 }}</b></span>
                 <span>未变 <b>{{ store.selectedHistoricalCampaign.stats?.unchanged ?? 0 }}</b></span>
-                <span>冲突 <b>{{ store.selectedHistoricalCampaign.stats?.conflict ?? 0 }}</b></span>
+                <span>冲突行数 <b>{{ store.selectedHistoricalCampaign.stats?.conflict ?? 0 }}</b></span>
                 <span>过滤 <b>{{ store.selectedHistoricalCampaign.stats?.filtered ?? 0 }}</b></span>
                 <span>重复 <b>{{ store.selectedHistoricalCampaign.stats?.duplicate ?? 0 }}</b></span>
                 <span>无效 <b>{{ store.selectedHistoricalCampaign.stats?.invalid ?? 0 }}</b></span>
@@ -702,6 +735,7 @@ function viewCampaignContents(): void {
 
             <section
               v-if="store.historicalRevocationPreview"
+              ref="revocationPanel"
               class="revocation-panel"
             >
               <div class="section-heading">
@@ -753,7 +787,59 @@ function viewCampaignContents(): void {
               </div>
             </div>
             <small v-if="store.historicalCampaignItemsHasMore">明细按失败和运行状态优先，当前仅展示前 200 条。</small>
-            <small v-if="store.historicalCampaignConflictsHasMore">冲突明细当前仅展示前 500 条；总数以导入任务统计为准。</small>
+
+            <section
+              v-if="store.historicalCampaignConflicts.length || (store.selectedHistoricalCampaign.stats?.conflict ?? 0) > 0"
+              class="conflict-panel"
+              aria-label="冲突字段明细"
+            >
+              <div class="section-heading">
+                <strong>冲突字段明细</strong>
+                <span>已展示 {{ store.historicalCampaignConflicts.length }}{{ store.historicalCampaignConflictTotal === null ? '' : ` / ${store.historicalCampaignConflictTotal}` }} 条冲突字段</span>
+              </div>
+              <p class="source-help">
+                当前值已保留；同一来源行可能有多个冲突字段，页面提供定位信息，不覆盖已有值。
+              </p>
+              <div class="conflict-table-scroll">
+                <table v-if="store.historicalCampaignConflicts.length">
+                  <thead><tr><th>来源行</th><th>字段</th><th>内容版本</th><th>记录时间</th></tr></thead>
+                  <tbody>
+                    <tr
+                      v-for="conflict in store.historicalCampaignConflicts"
+                      :key="`${conflict.batch_item_id}:${conflict.field_name}`"
+                    >
+                      <td>第 {{ conflict.source_row_ordinal }} 行</td>
+                      <td>{{ conflict.field_name }}</td>
+                      <td>{{ conflict.content_version }}</td>
+                      <td>{{ formatDateTime(conflict.created_at) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p
+                  v-else
+                  class="empty-state"
+                >
+                  当前未返回可展示的冲突字段明细。
+                </p>
+              </div>
+              <small v-if="store.historicalCampaignConflictsHasMore">明细显示上限为 500 条；当前返回条数与字段总数见上方。</small>
+              <details
+                v-if="store.historicalCampaignConflicts.length"
+                class="technical-details"
+              >
+                <summary>冲突技术详情</summary>
+                <dl
+                  v-for="conflict in store.historicalCampaignConflicts"
+                  :key="`${conflict.batch_item_id}:${conflict.field_name}`"
+                >
+                  <div><dt>来源行 / 字段</dt><dd>{{ conflict.source_row_ordinal }} / {{ conflict.field_name }}</dd></div>
+                  <div><dt>来源行标识</dt><dd>{{ conflict.batch_item_id }}</dd></div>
+                  <div><dt>内容 / 版本</dt><dd>{{ conflict.content_id }} / {{ conflict.content_version }}</dd></div>
+                  <div><dt>当前值哈希</dt><dd>{{ conflict.current_value_hash }}</dd></div>
+                  <div><dt>导入值哈希</dt><dd>{{ conflict.historical_value_hash }}</dd></div>
+                </dl>
+              </details>
+            </section>
 
             <details class="technical-details">
               <summary>技术详情</summary>
@@ -852,7 +938,7 @@ function viewCampaignContents(): void {
               variant="secondary"
               size="small"
               :disabled="store.revokingHistorical"
-              @click="revokeImport"
+              @click="confirmRevocation"
             >
               {{ store.revokingHistorical ? '正在撤销…' : '撤销本次导入' }}
             </AimaButton>
@@ -877,10 +963,41 @@ function viewCampaignContents(): void {
       </section>
     </div>
   </Teleport>
+  <AimaDialog
+    v-model="revocationConfirmationOpen"
+    class="revoke-confirm"
+    width="480px"
+    label="确认撤销这次导入"
+  >
+    <template #header>
+      <strong>确认撤销这次导入？</strong>
+    </template>
+    <template v-if="confirmedRevocationPreview">
+      <p>将重新计算 {{ confirmedRevocationPreview.impact.affected_content_count }} 条受影响内容，其中 {{ confirmedRevocationPreview.impact.hidden_content_count }} 条会从当前业务视图隐藏，{{ confirmedRevocationPreview.impact.retained_shared_content_count }} 条因仍有其它来源会继续保留。</p>
+      <p>导入记录、来源证据和审计历史不会删除。</p>
+    </template>
+    <template #footer>
+      <AimaButton
+        variant="secondary"
+        size="small"
+        @click="revocationConfirmationOpen = false"
+      >
+        取消
+      </AimaButton>
+      <AimaButton
+        class="danger-action"
+        variant="secondary"
+        size="small"
+        @click="revokeImport"
+      >
+        确认撤销
+      </AimaButton>
+    </template>
+  </AimaDialog>
 </template>
 
 <style scoped>
-.dialog-layer { position: fixed; z-index: 140; inset: 0; display: grid; place-items: center; background: rgb(17 22 37 / 94%); }
+.dialog-layer { position: fixed; z-index: 140; inset: 0; display: grid; place-items: center; background: rgb(17 22 37 / 50%); }
 .dialog { display: grid; width: min(840px, calc(100vw - 48px)); height: min(800px, calc(100vh - 48px)); grid-template-rows: 76px minmax(0, 1fr) 72px; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 11px; background: var(--aima-surface); box-shadow: 0 22px 60px rgb(22 29 43 / 22%); }
 header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 16px 22px 12px; border-bottom: 1px solid var(--aima-border); }
 header h2 { margin: 0; color: var(--aima-text); font-size: 19px; line-height: 26px; }
@@ -889,7 +1006,7 @@ header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); fon
 .source-tabs { display: flex; min-height: 40px; gap: 8px; }
 .source-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; }
 .source-tabs button.selected { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
-.policy-panel, .source-panel, .pack-panel, .campaign-panel, .campaign-history, .campaign-stats, .revocation-panel { padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.policy-panel, .source-panel, .pack-panel, .campaign-panel, .campaign-history, .campaign-stats, .revocation-panel, .conflict-panel { padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
 .policy-panel > strong, .pack-panel > strong, .campaign-history > strong, .campaign-stats > strong { color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }
 .policy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
 .policy-grid label { position: relative; display: block; min-height: 58px; padding: 9px 11px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); cursor: pointer; }
@@ -948,6 +1065,13 @@ header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); fon
 .campaign-items > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 7px 9px; border-radius: var(--aima-radius-control); background: #f8fafc; font-size: 11px; }
 .campaign-items span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .campaign-items small { grid-column: 1 / -1; color: var(--aima-danger); }
+.conflict-panel { display: grid; gap: 10px; }
+.conflict-table-scroll { max-height: 260px; overflow: auto; }
+.conflict-panel table { width: 100%; min-width: 580px; border-collapse: collapse; color: var(--aima-text-secondary); font-size: 12px; text-align: left; }
+.conflict-panel th, .conflict-panel td { padding: 9px 10px; border-bottom: 1px solid var(--aima-border); }
+.conflict-panel th { color: var(--aima-text-muted); background: var(--aima-color-bg-hover); font-weight: 500; }
+.conflict-panel td { overflow-wrap: anywhere; }
+.conflict-panel > small { color: var(--aima-text-muted); font-size: 11px; }
 .technical-details { padding: 10px 12px; border: 1px dashed var(--aima-border-strong); border-radius: var(--aima-radius-control); color: var(--aima-text-muted); font-size: 11px; }
 .technical-details summary { cursor: pointer; color: var(--aima-text-secondary); font-weight: 500; }
 .technical-details dl { display: grid; gap: 7px; margin: 10px 0 0; }
@@ -959,6 +1083,12 @@ header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); fon
 footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
 footer :deep(.aima-button.is-primary) { min-width: 88px; }
 .danger-action { border-color: var(--aima-danger) !important; color: var(--aima-danger) !important; }
+/* AimaDialog 的 Teleport 根节点不继承本组件 scope，使用专属类定位确认框。 */
+:global(.revoke-confirm) { height: 280px; }
+:global(.revoke-confirm .aima-dialog-header) { padding: 22px 22px 12px; font-size: 18px; line-height: 24px; }
+:global(.revoke-confirm .aima-dialog-body) { flex: 1; padding: 10px 22px; }
+.revoke-confirm p { margin: 0 0 12px; color: var(--aima-text-secondary); font-size: 13px; line-height: 21px; }
+:global(.revoke-confirm .aima-dialog-footer) { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 22px 24px; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 @media (max-width: 760px) { .policy-grid, .pack-list, .campaign-history > div, .campaign-facts, .campaign-stats > div, .revocation-facts { grid-template-columns: 1fr; } }
 </style>

@@ -94,6 +94,75 @@ describe('import batches store', () => {
     expect(store.error).toBe('Excel 导入创建失败')
   })
 
+  it('refreshes the loaded window without applying unfinished filter edits', async () => {
+    const first = { items: [{ record_id: 'batch-1', status: 'running' }], has_more: true, next_cursor: 'next-page' }
+    const second = { items: [{ record_id: 'batch-2' }], has_more: false, next_cursor: null }
+    featureApi.fetchCollectionRuntimeList
+      .mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+      .mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    const store = useImportBatchesStore()
+    store.filters.search = '已查询'
+    await store.refresh()
+    await store.loadNext()
+    store.filters.search = '尚未查询'
+
+    await store.refresh(true)
+
+    expect(store.items.map((item) => item.record_id)).toEqual(['batch-1', 'batch-2'])
+    expect(featureApi.fetchCollectionRuntimeList).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: '已查询', cursor: 'next-page' }),
+    )
+  })
+
+  it('honors the selected import record type inside the data import tab', async () => {
+    const store = useImportBatchesStore()
+    await store.setTab('excel')
+    store.filters.recordType = 'data_import_campaign'
+    await store.refresh()
+    expect(featureApi.fetchCollectionRuntimeList).toHaveBeenLastCalledWith(
+      expect.objectContaining({ record_types: ['data_import_campaign'] }),
+    )
+  })
+
+  it.each(['list', 'summary'] as const)('keeps the displayed cursor bound to its query when %s refresh fails', async (failedRequest) => {
+    const store = useImportBatchesStore()
+    featureApi.fetchCollectionRuntimeList.mockResolvedValueOnce({
+      items: [{ record_id: 'a-1' }], has_more: true, next_cursor: 'a-next',
+    })
+    store.filters.search = '查询 A'
+    await store.refresh()
+    store.filters.search = '查询 B'
+    if (failedRequest === 'list') featureApi.fetchCollectionRuntimeList.mockRejectedValueOnce(new Error('暂时失败'))
+    else featureApi.fetchCollectionRuntimeSummary.mockRejectedValueOnce(new Error('暂时失败'))
+    await store.refresh()
+    expect(store.error).toBe('暂时失败')
+    expect(store.items.map((item) => item.record_id)).toEqual(['a-1'])
+    featureApi.fetchCollectionRuntimeList.mockResolvedValueOnce({
+      items: [{ record_id: 'a-2' }], has_more: false, next_cursor: null,
+    })
+    await store.loadNext()
+    expect(featureApi.fetchCollectionRuntimeList).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: '查询 A', cursor: 'a-next' }),
+    )
+    expect(store.items.map((item) => item.record_id)).toEqual(['a-1', 'a-2'])
+  })
+
+  it('discards an old next page after the user submits a different query', async () => {
+    let resolveNext!: (value: unknown) => void
+    featureApi.fetchCollectionRuntimeList
+      .mockResolvedValueOnce({ items: [{ record_id: 'old-1' }], has_more: true, next_cursor: 'next-page' })
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNext = resolve }))
+      .mockResolvedValueOnce({ items: [{ record_id: 'new-1' }], has_more: false, next_cursor: null })
+    const store = useImportBatchesStore()
+    await store.refresh()
+    const pending = store.loadNext()
+    store.filters.search = '新查询'
+    await store.refresh()
+    resolveNext({ items: [{ record_id: 'old-2' }], has_more: false, next_cursor: null })
+    await pending
+    expect(store.items.map((item) => item.record_id)).toEqual(['new-1'])
+  })
+
   it('pauses polling while hidden and refreshes immediately when visible again', async () => {
     vi.useFakeTimers()
     const documentStub = Object.assign(new EventTarget(), {

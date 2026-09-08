@@ -2,7 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 import AimaButton from './AimaButton.vue'
 
-const props = defineProps<{ from: string; to: string }>()
+const props = withDefaults(defineProps<{ from: string; to: string; label?: string }>(), { label: '发布时间范围' })
 const emit = defineEmits<{ 'update:from': [value: string]; 'update:to': [value: string] }>()
 const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
@@ -109,7 +109,7 @@ function confirm(): void {
       ref="trigger"
       class="date-trigger"
       type="button"
-      aria-label="发布时间范围"
+      :aria-label="label"
       aria-haspopup="dialog"
       :aria-expanded="open"
       @click="show"
@@ -127,7 +127,7 @@ function confirm(): void {
       class="date-panel"
       :style="position"
       role="dialog"
-      aria-label="选择发布时间范围"
+      :aria-label="`选择${label}`"
       @toggle="open = $event.newState === 'open'"
     >
       <div class="month-nav">

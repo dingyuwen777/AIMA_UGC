@@ -300,8 +300,8 @@ function submit(): void {
 
           <AimaFeedbackBanner tone="info">
             {{ mode === 'discovery'
-              ? '选择关键词包或车型；系统会冻结两类版本与解析后的车型别名，并按统一发现语义采集。'
-              : '优先选择统一数据导入任务；兼容旧 Excel 批次。目标平台必须在该来源中真实存在，并满足当前采集渠道能力。' }}
+              ? '选择关键词包或车型后，按所选平台的搜索条件发现新内容。'
+              : '选择已有导入来源后，可补充其中已收录内容的信息和评论；可选平台以当前来源和采集渠道为准。' }}
           </AimaFeedbackBanner>
 
           <section
@@ -330,10 +330,6 @@ function submit(): void {
             >
               当前没有可用的已启用词包。
             </p>
-            <VehicleMultiSelect
-              v-model="selectedVehicleIds"
-              label="车型（可单独选择，也可与词包组合）"
-            />
           </section>
           <section
             v-else
@@ -375,6 +371,16 @@ function submit(): void {
           </section>
 
           <section
+            v-if="mode === 'discovery'"
+            class="form-card vehicle-card"
+          >
+            <VehicleMultiSelect
+              v-model="selectedVehicleIds"
+              label="车型（可单独选择，也可与词包组合）"
+            />
+          </section>
+
+          <section
             v-if="(capabilities?.provider_configs.length ?? 0) > 0"
             class="form-card"
           >
@@ -412,17 +418,29 @@ function submit(): void {
               v-else
               class="platform-grid"
             >
-              <button
+              <div
                 v-for="platform in availablePlatforms"
                 :key="platform"
-                type="button"
+                class="platform-option"
                 :class="{ selected: platforms.includes(platform) }"
-                :aria-pressed="platforms.includes(platform)"
-                @click="togglePlatform(platform)"
               >
-                <span class="check-box">{{ platforms.includes(platform) ? '✓' : '' }}</span>
-                {{ platformLabels[platform] }}
-              </button>
+                <button
+                  type="button"
+                  :aria-pressed="platforms.includes(platform)"
+                  @click="togglePlatform(platform)"
+                >
+                  <span><strong>{{ platformLabels[platform] }}</strong><small v-if="!platforms.includes(platform)">点击选择</small></span>
+                  <span v-if="platforms.includes(platform)">{{ selectedProvider?.display_name }} · 已选</span>
+                </button>
+                <CollectionSearchConfigFields
+                  v-if="mode === 'discovery' && platforms.includes(platform) && searchCapability(platform) && searchConfigByPlatform[platform]"
+                  class="platform-search-fields"
+                  :model-value="searchConfigByPlatform[platform]!"
+                  :capability="searchCapability(platform)!"
+                  :platform-label="platformLabels[platform]"
+                  @update:model-value="searchConfigByPlatform[platform] = $event"
+                />
+              </div>
             </div>
             <p
               v-if="!loadingSupplementPlatforms && availablePlatforms.length === 0"
@@ -430,27 +448,6 @@ function submit(): void {
             >
               当前选择没有同时满足导入内容与采集渠道能力的平台。
             </p>
-          </section>
-
-          <section
-            v-if="mode === 'discovery' && platforms.length"
-            class="search-config-section"
-          >
-            <div
-              v-for="platform in platforms"
-              :key="platform"
-              class="search-config-card"
-            >
-              <strong>逐平台发现参数 · {{ platformLabels[platform] }}</strong>
-              <small>实际字段、选项和默认值由当前采集渠道能力决定</small>
-              <CollectionSearchConfigFields
-                v-if="searchCapability(platform) && searchConfigByPlatform[platform]"
-                :model-value="searchConfigByPlatform[platform]!"
-                :capability="searchCapability(platform)!"
-                :platform-label="platformLabels[platform]"
-                @update:model-value="searchConfigByPlatform[platform] = $event"
-              />
-            </div>
           </section>
 
           <section class="form-card content-card">
@@ -519,7 +516,7 @@ function submit(): void {
 </template>
 
 <style scoped>
-.drawer-layer { position: fixed; inset: 0; z-index: 110; background: rgb(17 22 37 / 94%); }
+.drawer-layer { position: fixed; inset: 0; z-index: 110; background: rgb(17 22 37 / 50%); }
 .drawer { position: absolute; inset: 0 0 0 auto; display: grid; width: min(510px, 100vw); height: 100vh; grid-template-rows: 76px minmax(0, 1fr) 72px; overflow: hidden; border-left: 1px solid var(--aima-border); background: var(--aima-surface); box-shadow: -10px 0 30px rgb(23 32 51 / 12%); }
 header { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--aima-border); }
 header strong, header span { display: block; }
@@ -531,7 +528,7 @@ header span { margin-top: 4px; color: var(--aima-text-disabled); font-size: 12px
 .mode-tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
 .form-card { padding: 10px 11px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
 .form-card > label, .section-title-row > label { display: block; margin-bottom: 9px; color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }
-select { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); color: var(--aima-text-secondary); background: var(--aima-surface); font-size: 13px; }
+select { width: 100%; height: 32px; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); color: var(--aima-text-secondary); background: var(--aima-surface); font-size: 13px; }
 select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .pack-choice-list { display: grid; gap: 4px; }
 .pack-choice { display: grid; min-height: 32px; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; color: var(--aima-text-secondary); font-size: 13px; }
@@ -540,16 +537,19 @@ select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .section-title-row { display: flex; align-items: center; gap: 12px; }
 .section-title-row > label { margin-bottom: 0; }
 .section-title-row small { color: var(--aima-text-disabled); font-size: 11px; }
-.platform-card { min-height: 150px; }
-.platform-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 8px; }
-.platform-grid button { display: flex; min-height: 32px; align-items: center; gap: 8px; padding: 0; border: 0; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 13px; text-align: left; }
-.check-box { display: inline-flex; width: 16px; height: 16px; flex: none; align-items: center; justify-content: center; border: 1px solid var(--aima-border-strong); border-radius: 4px; color: #fff; font-size: 11px; }
-.platform-grid button.selected .check-box { border-color: var(--aima-primary); background: var(--aima-primary); }
+.platform-grid { display: grid; gap: 8px; margin-top: 12px; }
+.platform-option { padding: 12px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); }
+.platform-option.selected { border-color: var(--aima-primary); }
+.platform-option button { display: flex; width: 100%; min-height: 38px; align-items: center; justify-content: space-between; gap: 12px; padding: 0; border: 0; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 12px; text-align: left; }
+.platform-option strong, .platform-option small { display: block; }
+.platform-option strong { color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.platform-option small { margin-top: 5px; color: var(--aima-text-disabled); font-size: 11px; }
+.platform-option button > span + span { color: var(--aima-text-muted); font-size: 11px; }
+.platform-search-fields { margin-top: 12px; }
+.vehicle-card { min-height: 114px; }
+.vehicle-card :deep(.vehicle-select) { padding: 0; border: 0; }
+.vehicle-card :deep(legend) { padding: 0; margin-bottom: 10px; color: var(--aima-text); font-size: 13px; font-weight: 500; }
 .platform-state { margin: 8px 0 0; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
-.search-config-section { display: flex; flex-direction: column; gap: 12px; }
-.search-config-card { padding: 10px 11px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: #f8fafc; }
-.search-config-card > strong { display: block; color: var(--aima-text); font-size: 13px; font-weight: 500; }
-.search-config-card > small { display: block; margin: 4px 0 10px; color: var(--aima-text-disabled); font-size: 11px; line-height: 18px; }
 .content-options { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
 .content-option { display: grid; min-height: 32px; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; color: var(--aima-text-secondary); font-size: 13px; }
 .content-option small { color: var(--aima-text-disabled); font-size: 11px; }

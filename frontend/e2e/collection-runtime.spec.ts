@@ -115,6 +115,148 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
+test('keeps all runtime columns reachable at compact and wide Figma widths', async ({ page }) => {
+  await page.goto('/collection-runtime')
+  const table = page.getByRole('region', { name: '采集运行记录', exact: true })
+  const details = table.getByRole('button', { name: '查看详情', exact: true })
+  for (const width of [1180, 1200, 1100, 1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(details).toBeVisible()
+    const filterOverflow = await page.locator('.filter-row').evaluate(element => element.scrollWidth - element.clientWidth)
+    expect(filterOverflow, `筛选行在 ${width}px 下应保持可达`).toBeLessThanOrEqual(1)
+    const geometry = await table.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+      const rect = element.getBoundingClientRect()
+      const actions = element.querySelector('.actions')!.getBoundingClientRect()
+      return { right: rect.right, actionsRight: actions.right, scrollable: element.scrollWidth > element.clientWidth, overflow: getComputedStyle(element).overflowX }
+    })
+    expect(geometry.actionsRight).toBeLessThanOrEqual(geometry.right + 1)
+    if (width < 1440) {
+      expect(geometry.scrollable).toBe(true)
+      expect(geometry.overflow).toBe('auto')
+    } else {
+      expect(geometry.right - geometry.actionsRight).toBeLessThan(24)
+    }
+  }
+})
+
+test('shows returned conflict fields separately from conflicting row totals', async ({ page }) => {
+  await page.route(`**/api/v1/data-import-campaigns/${dataImportCampaignId}`, (route) => route.fulfill({
+    json: { ...completedDataImportCampaign, stats: { conflict: 1 } },
+  }))
+  await page.route(`**/api/v1/data-import-campaigns/${dataImportCampaignId}/conflicts`, (route) => route.fulfill({
+    json: {
+      items: [{ batch_item_id: dataImportItemId, content_id: runId, content_version: 2, source_row_ordinal: 17, field_name: 'title', current_value_hash: 'a'.repeat(64), historical_value_hash: 'b'.repeat(64), created_at: '2026-09-08T10:00:00+08:00' }],
+      total_count: 3,
+      has_more: true,
+    },
+  }))
+  await page.goto(`/collection-runtime?data_import_campaign_id=${dataImportCampaignId}`)
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
+  await expect(dialog.getByRole('region', { name: '冲突字段明细' })).toBeVisible()
+  await expect(dialog.getByText('已展示 1 / 3 条冲突字段')).toBeVisible()
+  await expect(dialog.getByText('第 17 行', { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('cell', { name: 'title', exact: true })).toBeVisible()
+  await expect(dialog.getByText('当前值已保留', { exact: false })).toBeVisible()
+  await expect(dialog.getByText('a'.repeat(64), { exact: true })).not.toBeVisible()
+  await dialog.getByRole('group').filter({ has: page.locator('summary', { hasText: '冲突技术详情' }) }).locator('summary').click()
+  await expect(dialog.getByText('a'.repeat(64), { exact: true })).toBeVisible()
+})
+
+test('confirms a Beijing date range before applying the runtime query', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-09-08T10:00:00+08:00') })
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '创建时间范围', exact: true }).click()
+  const calendar = page.getByRole('dialog', { name: '选择创建时间范围' })
+  await calendar.getByRole('button', { name: '2026-09-02', exact: true }).click()
+  await calendar.getByRole('button', { name: '2026-09-08', exact: true }).click()
+  await calendar.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(calendar).not.toBeVisible()
+  const query = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runtime/runs' && request.url().includes('created_from'))
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  const params = new URL((await query).url()).searchParams
+  // 既有传输格式使用 UTC，同一绝对时间对应所选北京时间自然日边界。
+  expect(params.get('created_from')).toBe('2026-09-01T16:00:00.000Z')
+  expect(params.get('created_to')).toBe('2026-09-08T15:59:59.999Z')
+})
+
+test('previews revocation, respects confirmation cancellation, and recovers from a failed submission', async ({ page }) => {
+  const impact = { affected_content_count: 3, hidden_content_count: 2, retained_shared_content_count: 1, unreversible_content_count: 0 }
+  let revoked = false
+  let submissions = 0
+  await page.route(`**/api/v1/data-import-campaigns/${dataImportCampaignId}`, (route) => route.fulfill({ json: completedDataImportCampaign }))
+  await page.route(`**/api/v1/data-import-campaigns/${dataImportCampaignId}/revocation-preview`, (route) => route.fulfill({
+    json: { campaign_id: dataImportCampaignId, eligible: !revoked, already_revoked: revoked, impact, ineligible_reason: null },
+  }))
+  await page.route(`**/api/v1/data-import-campaigns/${dataImportCampaignId}/revoke`, async (route) => {
+    submissions += 1
+    expect(route.request().postDataJSON()).toEqual({ reason: '误选目录' })
+    if (submissions === 1) return route.fulfill({ status: 503, json: { status: 503, detail: '撤销暂不可用，请稍后重试。', request_id: 'revoke-test' } })
+    revoked = true
+    return route.fulfill({ json: { campaign_id: dataImportCampaignId, already_revoked: false, impact, revoked_at: '2026-09-08T10:00:00+08:00' } })
+  })
+  await page.goto(`/collection-runtime?data_import_campaign_id=${dataImportCampaignId}`)
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
+  await expect(dialog.getByRole('button', { name: '撤销本次导入', exact: true })).toHaveCount(0)
+  await dialog.getByRole('button', { name: '评估撤销', exact: true }).click()
+  await expect(dialog.getByText('受影响内容', { exact: false })).toBeVisible()
+  await expect(dialog.locator('.revocation-panel')).toBeInViewport()
+  await dialog.getByRole('textbox', { name: '撤销原因（可选）' }).fill('误选目录')
+  await dialog.getByRole('button', { name: '撤销本次导入', exact: true }).click()
+  const confirmation = page.getByRole('dialog', { name: '确认撤销这次导入', exact: true })
+  await expect(confirmation).toHaveCSS('height', '280px')
+  await expect(confirmation.locator('.aima-dialog-footer')).toHaveCSS('justify-content', 'flex-end')
+  await expect(confirmation).toContainText('3 条受影响内容')
+  await expect(confirmation).toContainText('2 条会从当前业务视图隐藏')
+  await confirmation.getByRole('button', { name: '取消', exact: true }).click()
+  expect(submissions).toBe(0)
+  await dialog.getByRole('button', { name: '撤销本次导入', exact: true }).click()
+  await confirmation.getByRole('button', { name: '确认撤销', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('撤销暂不可用')
+  await expect(dialog.getByRole('alert')).toBeInViewport()
+  await dialog.getByRole('button', { name: '撤销本次导入', exact: true }).click()
+  await confirmation.getByRole('button', { name: '确认撤销', exact: true }).click()
+  await expect(dialog.getByText('这次导入已经撤销；导入记录、来源证据和审计历史仍会保留。')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '撤销本次导入', exact: true })).toHaveCount(0)
+  expect(submissions).toBe(2)
+})
+
+test('shows unavailable revocation evidence without offering a destructive action', async ({ page }) => {
+  await page.route(`**/api/v1/data-import-campaigns/${dataImportCampaignId}`, (route) => route.fulfill({ json: completedDataImportCampaign }))
+  await page.route(`**/api/v1/data-import-campaigns/${dataImportCampaignId}/revocation-preview`, (route) => route.fulfill({
+    json: { campaign_id: dataImportCampaignId, eligible: false, already_revoked: false, impact: { affected_content_count: 3, hidden_content_count: 0, retained_shared_content_count: 0, unreversible_content_count: 3 }, ineligible_reason: 'reversible_evidence_missing' },
+  }))
+  await page.goto(`/collection-runtime?data_import_campaign_id=${dataImportCampaignId}`)
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
+  await dialog.getByRole('button', { name: '评估撤销', exact: true }).click()
+  await expect(dialog.getByText('缺少足够的可逆来源证据', { exact: false })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '撤销本次导入', exact: true })).toHaveCount(0)
+})
+
+test('creates imports and discoveries using only selected vehicles', async ({ page }) => {
+  const vehicleId = 'c2345678-1234-4678-9234-567812345678'
+  await page.route('**/api/v1/vehicle-models**', (route) => route.fulfill({
+    json: { items: [{ id: vehicleId, code: 'Q7', display_name: '爱玛 Q7', status: 'active', series_name: 'Q 系列', aliases: [], active_version: 1 }], total: 1, offset: 0, limit: 200 },
+  }))
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '导入数据', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '导入数据', exact: true })
+  await dialog.locator('input[type="file"]').first().setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
+  await dialog.getByLabel(/爱玛 Q7/).check()
+  const create = page.waitForRequest((request) => request.url().endsWith('/data-import-campaigns/local') && request.method() === 'POST')
+  await dialog.getByRole('button', { name: '创建并预检', exact: true }).click()
+  expect((await create).postDataJSON()).toMatchObject({ keyword_pack_ids: [], vehicle_model_ids: [vehicleId] })
+  await dialog.getByRole('button', { name: '关闭导入数据', exact: true }).click()
+  await page.getByRole('button', { name: '新建辅助补采', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
+  await drawer.getByLabel(/爱玛 Q7/).check()
+  await drawer.getByRole('button', { name: /小红书/ }).click()
+  await drawer.getByLabel('小红书发布时间', { exact: true }).selectOption('7d')
+  const discovery = page.waitForRequest((request) => request.url().endsWith('/collection-runs') && request.method() === 'POST')
+  await drawer.getByRole('button', { name: '创建补采任务', exact: true }).click()
+  expect((await discovery).postDataJSON()).toMatchObject({ keyword_pack_ids: [], vehicle_model_ids: [vehicleId], platforms: [{ platform: 'xiaohongshu', search_config: { published_within: '7d' } }] })
+})
+
 test('centralizes runtime facts, opens Batch detail, and creates a local Campaign with selected packs', async ({ page }) => {
   await page.goto('/collection-runtime')
   await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
