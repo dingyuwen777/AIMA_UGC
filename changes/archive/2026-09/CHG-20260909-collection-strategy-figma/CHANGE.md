@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260909-collection-strategy-figma
 title: 采集策略 Figma 与代码增量同步
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: feature/collection-strategy-figma-20260909
 created: 2026-09-09
