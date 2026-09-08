@@ -1,15 +1,8 @@
 ---
 name: review
-description: 面向不同项目形态、编程语言和工具链的独立代码审查、测试充分性与 Evidence 复核工作流。Review 不维护第二套编码规范或测试工程方法；同仓存在 Coding/Testing Skill 时，分别以其作为研发规范与测试方法 Owner，再独立重建需求与风险、审查 diff/实现/测试/文档、判断 Evidence 是否充分并输出有证据的 Findings。支持 review-only、review-and-test、review-and-fix；测试缺口 Handoff Testing，生产修复 Handoff Coding，修复后 re-review。Use for code review, pull request review, audit, test adequacy analysis, independent verification assessment, regression-risk analysis, and review-driven fix loops across languages and project types.
+description: 面向不同项目形态、编程语言和工具链的独立代码审查、测试充分性与 Evidence 复核工作流。Review 不维护第二套编码规范或测试工程方法；同仓存在 开发/测试 规则 时，分别以其作为研发规范与测试方法 Owner，再独立重建需求与风险、审查 diff/实现/测试/文档、判断 Evidence 是否充分并输出有证据的 Findings。支持 review-only、review-and-test、review-and-fix；测试缺口 衔接 测试，生产修复 衔接 开发，修复后 re-review。Use for code review, pull request review, audit, test adequacy analysis, independent verification assessment, regression-risk analysis, and review-driven fix loops across languages and project types. 向用户说明计划或进度时保留用户明确提供的项目术语、计划和决定，并只描述当前项目工程动作；治理能力或规则的内部名称不写成用户任务步骤或分工。
 ---
 
-<!-- agent-routing:v1
-{"协议":"Agent Skills Skill路由/v1","Skill":"review","触发":{"包含":{"维度":"意图","取值":["代码审查","测试充分性审查","Review-only","Review-and-test","Review-and-fix","独立复核"]}}}
--->
-
-## 用户可见表达边界
-
-用户关于目标项目的正常事实、解释、建议、风险、验证、状态和交付照常回答；描述 Agent 自身的进度、分工或执行过程时，对用户只描述项目实际动作、风险、证据和交付状态。不得把内部能力名称或标签转写成用户可见任务分工，也不得播报内部发现、选择、加载、路由、交接或约束取得过程。限制只针对内部身份转写，不限制正常工程解释；内部能力身份继续用于路由、约束加载和专业执行，不得为了用户可见隐藏而删除内部执行上下文。
 
 
 # Review
@@ -25,38 +18,38 @@ Review 的职责不是再写一遍“怎样开发/怎样测试”，而是作为
 这些问题是否会阻塞合并、发布或交付？
 ```
 
-这里的 `Review` 专业 Owner 面向源码、PR/MR、diff、commit、已实现功能及其测试/Evidence。通用 `执行模式=审查` 只是动作事实，不能自行触发本 Skill；Figma 设计审查和技术文档审查分别由 Figma/Docs Owner 处理，除非又出现真实 Code Review/独立交付复核意图。
+这里的 `Review` 专业 Owner 面向源码、PR/MR、diff、commit、已实现功能及其测试/Evidence。通用 `执行模式=审查` 只是动作事实，不能自行触发本 规则；Figma 设计审查和技术文档审查分别由 Figma/Docs Owner 处理，除非又出现真实 Code Review/独立交付复核意图。
 
 核心链路：
 
 ```text
 恢复当前事实与 Review Target
 → 读取适用项目规则
-→ 同仓有 Coding 时读取 Coding 作为唯一研发规范源
-→ 同仓有 Testing 时把它作为测试工程方法 Owner
+→ 同仓有 开发 时读取 开发 作为唯一研发规范源
+→ 同仓有 测试 时把它作为测试工程方法 Owner
 → 独立重建需求、风险和应有证据
 → 审查实现 / diff / 测试 / 文档
 → 判断测试充分性与 Evidence boundary
-→ Test Gap 需要专业测试时 Handoff Testing
+→ Test Gap 需要专业测试时 衔接 测试
 → 输出 Findings 与证据边界
-→ 有修复授权时返回 Coding 修复
-→ Testing Regression（存在独立测试风险时）
+→ 有修复授权时返回 开发 修复
+→ 测试 Regression（存在独立测试风险时）
 → Review re-review
 ```
 
-Review **不复制** Coding 的编码、TDD、Git、兼容、安全、Contract、Schema/Migration、Validation Matrix、时间、日志或注释规范，也不复制 Testing 的 Test Strategy、Black-box、User Journey、Exploratory、Integration、Golden Path、Probe 或 Regression 详细方法。它只定义“怎样独立审、怎样判断测试/Evidence 是否充分、怎样报告问题”。
+Review **不复制** 开发 的编码、TDD、Git、兼容、安全、Contract、Schema/Migration、Validation Matrix、时间、日志或注释规范，也不复制 测试 的 Test Strategy、Black-box、User Journey、Exploratory、Integration、Golden Path、Probe 或 Regression 详细方法。它只定义“怎样独立审、怎样判断测试/Evidence 是否充分、怎样报告问题”。
 
 详细方法位于 `当前场景所需完整约束/`；命中对应场景时必须读取相关 完整约束。
 
 ## 1. 规则事实源与集成边界
 
-### 1.1 与 Coding Skill
+### 1.1 与 开发 规则
 
 如果存在：
 
-[`.agents/skills/coding/SKILL.md`](../coding/SKILL.md)
+相关工程规则
 
-必须在正式 Review 前读取，并把它及其按任务触发的 当前场景所需完整约束 作为**唯一研发规范源**。Review 不得把 Coding 的详细规则复制成第二份，也不得用 Review 自己的偏好覆盖项目事实。
+必须在正式 Review 前读取，并把它及其按任务触发的 当前场景所需完整约束 作为**唯一研发规范源**。Review 不得把 开发 的详细规则复制成第二份，也不得用 Review 自己的偏好覆盖项目事实。
 
 Review 负责增加：
 
@@ -67,28 +60,28 @@ Review 负责增加：
 - Review Only / Test / Fix 三种权限模式；
 - 修复后 re-review。
 
-如果 Coding 存在但无法读取，必须明确说明正式 Code Review 所依赖的研发规范不可得，**不得宣称已经按 Coding 规范完成 Review**。该 blocker 只阻塞依赖 Coding 规范的正式 Review/可合并结论；仍可继续不依赖该规范的事实恢复、目标 diff 读取和风险记录，不能把局部缺口无条件升级成整个任务停止。
+如果 开发 存在但无法读取，必须明确说明正式 Code Review 所依赖的研发规范不可得，**不得宣称已经按 开发 规范完成 Review**。该 blocker 只阻塞依赖 开发 规范的正式 Review/可合并结论；仍可继续不依赖该规范的事实恢复、目标 diff 读取和风险记录，不能把局部缺口无条件升级成整个任务停止。
 
-### 1.2 与 Testing Skill
+### 1.2 与 测试 规则
 
 如果存在：
 
-[`.agents/skills/testing/SKILL.md`](../testing/SKILL.md)
+相关工程规则
 
-Testing 是测试策略、黑盒/User Journey、探索式、Integration/Workflow/Golden Path/Probe、Regression 和测试资产方法的专业 Owner。
+测试 是测试策略、黑盒/User Journey、探索式、Integration/Workflow/Golden Path/Probe、Regression 和测试资产方法的专业 Owner。
 
 Review 保留：
 
 - Requirement/Risk → Existing Evidence 的独立反查；
 - Test Gap 是否存在、是否阻塞当前结论；
 - Mock/Fake/Integration/Golden Path/Probe 等 Evidence level 是否被夸大；
-- Testing 返回结果后的充分性判断。
+- 测试 返回结果后的充分性判断。
 
-需要新增/调整测试或系统性执行专业测试时 Handoff Testing；不能为了“Review 自包含”复制第二套测试方法。
+需要新增/调整测试或系统性执行专业测试时 衔接 测试；不能为了“Review 自包含”复制第二套测试方法。
 
-如果 Testing 存在但无法读取，Review 仍可审查已有测试和运行已有非破坏性验证，但涉及新增专业测试方法的结论必须明确受阻，不能用旧记忆冒充 Testing。
+如果 测试 存在但无法读取，Review 仍可审查已有测试和运行已有非破坏性验证，但涉及新增专业测试方法的结论必须明确受阻，不能用旧记忆冒充 测试。
 
-### 1.3 同仓没有 Coding / Testing Skill
+### 1.3 同仓没有 开发 / 测试 规则
 
 Review 仍可独立使用，但只能依据：
 
@@ -99,15 +92,15 @@ Review 仍可独立使用，但只能依据：
 → Review 自己的独立审查与 Evidence 判断方法
 ```
 
-此时不得发明不存在的 Coding/Testing 规则，也不得声称“符合对应 Skill”。
+此时不得发明不存在的 开发/测试 规则，也不得声称“符合对应 规则”。
 
-### 1.4 与 Docs Skill
+### 1.4 与 Docs 规则
 
 Review 发现技术文档缺陷时：
 
 - 只读 Review：作为 Finding 报告；
-- 已授权修文档且存在 [`.agents/skills/docs/SKILL.md`](../docs/SKILL.md)：按 Docs 的工作流处理，不由 Review 复制 Docs 写作规则；
-- Docs 发现实现问题后仍返回 Coding，不由 Review 越权直接改生产实现。
+- 已授权修文档且存在 相关工程规则：按 Docs 的工作流处理，不由 Review 复制 Docs 写作规则；
+- Docs 发现实现问题后仍返回 开发，不由 Review 越权直接改生产实现。
 
 ## 2. 三种工作模式
 
@@ -128,22 +121,22 @@ Review 发现技术文档缺陷时：
 
 ### `review-and-test`
 
-表示 Review 有权限针对 Test Gap 发起测试闭环，但**专业测试设计/新增/系统性执行交给 Testing**（存在 Testing 时）：
+表示 Review 有权限针对 Test Gap 发起测试闭环，但**专业测试设计/新增/系统性执行交给 测试**（存在 测试 时）：
 
 ```text
 Review 识别 Test Gap
-→ Handoff Testing
-→ Testing 在授权范围设计/新增/执行最小充分测试
-→ Testing 返回 Evidence / Defect
+→ 衔接 测试
+→ 测试 在授权范围设计/新增/执行最小充分测试
+→ 测试 返回 Evidence / Defect
 → Review 复核 Evidence
 ```
 
 规则：
 
 - Review 可以继续运行已有、非破坏性的 targeted validation；
-- 新增永久测试、Fixture/Harness 或系统性黑盒/探索式测试由 Testing 负责；
-- Testing 暴露生产实现缺陷后，停止把 Review/Testing 当生产修复 Owner，转入 Coding 修复链；
-- 没有 Testing Skill 时，Review 可以依据项目已有测试体系补最小测试，但不得建立一套新的通用测试方法规范。
+- 新增永久测试、Fixture/Harness 或系统性黑盒/探索式测试由 测试 负责；
+- 测试 暴露生产实现缺陷后，停止把 Review/测试 当生产修复 Owner，转入 开发 修复链；
+- 没有 测试 规则 时，Review 可以依据项目已有测试体系补最小测试，但不得建立一套新的通用测试方法规范。
 
 ### `review-and-fix`
 
@@ -153,12 +146,12 @@ Review 识别 Test Gap
 
 ```text
 先完成 Review 并形成 Finding
-→ 建立/确认失败证据（需要专业测试时由 Testing）
-→ 返回 Coding
-→ 重新读取 `.agents/skills/coding/SKILL.md`
-→ 按 Coding 的完整需求/TDD/调试/验证/Git 门禁修复
+→ 建立/确认失败证据（需要专业测试时由 测试）
+→ 返回 开发
+→ 重新读取 `相关工程规则`
+→ 按 开发 的完整需求/TDD/调试/验证/Git 门禁修复
 → 取得本轮新鲜 Green 证据
-→ 需要独立功能回归时返回 Testing
+→ 需要独立功能回归时返回 测试
 → 回到 Review
 → 对原 Finding 和受影响边界执行 re-review
 ```
@@ -187,8 +180,8 @@ Base / Head（适用时）
 上游需求/Change/Spec
 项目形态与实际工具链
 风险等级与影响边界
-需要读取的 Coding 当前场景所需完整约束（存在 Coding 时）
-Testing Handoff / 允许执行的测试与外部动作（适用时）
+需要读取的 开发 当前场景所需完整约束（存在 开发 时）
+测试 衔接 / 允许执行的测试与外部动作（适用时）
 ```
 
 上述“明确”是事实恢复要求，不是逐项向用户提问。能从 PR、diff、仓库和 Requirement Source 自行核验的内容先自行恢复；只有真实业务/Contract/数据/安全决策无法从正式事实确定时才提请上游决定。
@@ -204,7 +197,7 @@ A1 上游要求 → 当前 Change/实现
 A2 当前 Change/实现 → 测试/文档/运行证据
 ```
 
-同仓 Coding 已定义 Requirement Traceability / Completion Audit 时，Review 直接执行这些现有规则，不复制第二套。
+同仓 开发 已定义 Requirement Traceability / Completion Audit 时，Review 直接执行这些现有规则，不复制第二套。
 
 独立性要求：
 
@@ -229,12 +222,12 @@ Review 不是问：
 现有测试分别证明了哪些边界？
 哪些风险完全没有证据？
 哪些缺口会阻塞当前结论？
-是否需要 Handoff Testing 补最小充分验证？
+是否需要 衔接 测试 补最小充分验证？
 ```
 
 对用户可见 L2/L3 Feature/Bug，存在公开入口时尤其要复核用户/调用者 Workflow Evidence；不能用 private helper Unit 或手写 Mock 冒充“用户真能用”。
 
-Review 不设置固定测试数量配额，也不要求所有状态复制成昂贵 Real Full-stack。具体测试成本、场景和分层方法由 Testing 按风险和证据价值选择。
+Review 不设置固定测试数量配额，也不要求所有状态复制成昂贵 Real Full-stack。具体测试成本、场景和分层方法由 测试 按风险和证据价值选择。
 
 ## 6. Findings 必须可执行、可验证
 
@@ -280,11 +273,11 @@ Review 不设置固定测试数量配额，也不要求所有状态复制成昂�
 3. 独立重建上游要求
 4. 识别高风险不变量/失败模式
 5. 审查现有测试与证据等级
-6. 必要时运行已有验证 / Handoff Testing 补证据
+6. 必要时运行已有验证 / 衔接 测试 补证据
 7. 形成 Findings
 8. 复查误报和证据边界
-9. 按模式：报告 / Testing 补证据 / Coding 修复
-10. 修复后 Testing Regression（适用时）+ Review re-review
+9. 按模式：报告 / 测试 补证据 / 开发 修复
+10. 修复后 测试 Regression（适用时）+ Review re-review
 ```
 
 Review 应优先找“如果错了会造成什么”的高价值问题，不以发现数量作为质量指标。
@@ -320,11 +313,15 @@ Review Target / Base / Head
 读取的关键事实源
 Findings（按严重度）
 测试充分性结论
-Testing Handoff 与返回 Evidence（适用时）
+测试 衔接 与返回 Evidence（适用时）
 实际执行的验证与证据等级
 未验证项及原因
 是否阻塞合并/发布
-如果执行了修复：Coding 修复摘要 + Testing Regression（适用时）+ re-review 结果
+如果执行了修复：开发 修复摘要 + 测试 Regression（适用时）+ re-review 结果
 ```
 
 没有 Finding 时也不能只写 `LGTM`；应说明审查范围、实际证据和仍未覆盖的边界。
+
+## 面向用户的项目表达
+
+向用户说明当前任务计划、进展、分工或结果时，用户明确提供的项目术语、计划和决定照常保留，并直接描述当前项目事实、工程动作、验证与真实状态。治理能力或规则的内部名称只服务执行，不把这些名称转写成用户可见的任务步骤、分工或计划；需要说明过程时，使用对应的项目工程动作表达。

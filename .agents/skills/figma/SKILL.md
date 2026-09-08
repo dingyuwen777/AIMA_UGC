@@ -1,20 +1,13 @@
 ---
 name: figma
-description: 面向任意项目的 Figma 产品原型、设计系统、页面可用性和 Design-to-Code 正式开发基线的事实驱动审查、修复与实施交接工作流。支持从“全面检查这个 Figma”“检查并修复”“按这个 Figma 替换现有页面”等自然语言自动路由到 review-only、review-and-fix、baseline-ready 或 baseline-ready → Coding handoff。先识别项目形态和目标用户，再按实际边界读取需求、设计系统、代码、Contract/API/SDK/数据源/运行状态等事实；审查页面尺寸、布局、间距、Canvas 组织、图片与标注、公共组件与可复用业务逻辑、Prototype、状态覆盖、动态数据来源、用户习惯和实现可行性。禁止把 Figma 示例当生产事实、把截图当结构证据、机械暴露内部实现、复制可复用业务规则，或由设计稿创造系统不存在的能力。Use for Figma prototype review, design audit, design-system review, layout/usability QA, prototype QA, canvas readability, annotation hygiene, real-system capability alignment, Design-to-Code readiness, and handing a READY design to the target project's coding workflow for implementation across web, mobile, desktop, dashboards, admin tools, static sites, and other UI projects.
+description: 面向任意项目的 Figma 产品原型、设计系统、页面可用性和 Design-to-Code 正式开发基线的事实驱动审查、修复与实施交接工作流。支持从“全面检查这个 Figma”“检查并修复”“按这个 Figma 替换现有页面”等自然语言自动路由到 review-only、review-and-fix、baseline-ready 或 baseline-ready → 开发 handoff。先识别项目形态和目标用户，再按实际边界读取需求、设计系统、代码、Contract/API/SDK/数据源/运行状态等事实；审查页面尺寸、布局、间距、Canvas 组织、图片与标注、公共组件与可复用业务逻辑、Prototype、状态覆盖、动态数据来源、用户习惯和实现可行性。禁止把 Figma 示例当生产事实、把截图当结构证据、机械暴露内部实现、复制可复用业务规则，或由设计稿创造系统不存在的能力。Use for Figma prototype review, design audit, design-system review, layout/usability QA, prototype QA, canvas readability, annotation hygiene, real-system capability alignment, Design-to-Code readiness, and handing a READY design to the target project's 开发 workflow for implementation across web, mobile, desktop, dashboards, admin tools, static sites, and other UI projects. 向用户说明计划或进度时保留用户明确提供的项目术语、计划和决定，并只描述当前项目工程动作；治理能力或规则的内部名称不写成用户任务步骤或分工。
 ---
 
-<!-- agent-routing:v1
-{"协议":"Agent Skills Skill路由/v1","Skill":"figma","触发":{"包含":{"维度":"意图","取值":["Figma review-only","Figma review-and-fix","Figma baseline-ready","设计转代码"]}}}
--->
-
-## 用户可见表达边界
-
-用户关于目标项目的正常事实、解释、建议、风险、验证、状态和交付照常回答；描述 Agent 自身的进度、分工或执行过程时，对用户只描述项目实际动作、风险、证据和交付状态。不得把内部能力名称或标签转写成用户可见任务分工，也不得播报内部发现、选择、加载、路由、交接或约束取得过程。限制只针对内部身份转写，不限制正常工程解释；内部能力身份继续用于路由、约束加载和专业执行，不得为了用户可见隐藏而删除内部执行上下文。
 
 
 # Figma
 
-这个 Skill 不是“看起来好不好看”的主观点评器。
+这个 规则 不是“看起来好不好看”的主观点评器。
 
 它要判断：
 
@@ -31,7 +24,7 @@ Prototype 点击之后是否仍然正确？
 实现方能否无歧义地把设计接到当前项目？
 ```
 
-`能力=Figma` 只表示宿主具备 Figma 能力，**不能单独触发本 Skill**；必须存在真实 Figma 专业意图。通用 `执行模式=审查` 也不能把 Figma 设计审查机械叠加成 Code Review。
+`能力=Figma` 只表示宿主具备 Figma 能力，**不能单独触发本 规则**；必须存在真实 Figma 专业意图。通用 `执行模式=审查` 也不能把 Figma 设计审查机械叠加成 Code Review。
 
 核心流程按模式收敛：
 
@@ -60,7 +53,7 @@ Prototype 点击之后是否仍然正确？
 
 # 1. 通用适用性
 
-本 Skill 不绑定某个项目、某个页面或某一种技术栈。
+本 规则 不绑定某个项目、某个页面或某一种技术栈。
 
 适用于：
 
@@ -84,13 +77,13 @@ Design-only 原型
 硬规则：
 
 ```text
-Skill 提到了 API
+规则 提到了 API
 ≠ 每个项目都必须有 API
 
-Skill 提到了 Route
+规则 提到了 Route
 ≠ Mobile/Desktop 必须套 Web Route
 
-Skill 提到了数据库
+规则 提到了数据库
 ≠ 客户端应直接访问数据库
 ```
 
@@ -104,19 +97,19 @@ Skill 提到了数据库
 
 ```text
 适用 AGENTS / CONTRIBUTING / 项目规则
-→ 同仓 Coding Skill（存在时）
+→ 同仓 开发 规则（存在时）
 → 产品 / 设计 / 前端 / 平台 Guide
 → 当前任务直接相关的 Spec / Contract / Code / Test
-→ 本 Skill
+→ 本 规则
 ```
 
-本 Skill 不复制研发、Git、CI、文档或代码 Review 规则。
+本 规则 不复制研发、Git、CI、文档或代码 Review 规则。
 
 发现生产实现问题：
 
 ```text
 code_issue_detected
-→ 返回项目 Coding 工作流
+→ 返回项目 开发 工作流
 → 实现修复并验证
 → Figma targeted re-review
 ```
@@ -125,11 +118,11 @@ code_issue_detected
 
 ## 2.2 宿主 Figma 工具优先
 
-本 Skill 定义审查方法，不替代当前宿主的 Figma MCP、插件、写入 API、权限和前置技能。
+本 规则 定义审查方法，不替代当前宿主的 Figma MCP、插件、写入 API、权限和前置技能。
 
 ```text
 先遵守宿主工具规则
-→ 再按本 Skill 决定读什么、查什么、怎样判定 Ready
+→ 再按本 规则 决定读什么、查什么、怎样判定 Ready
 ```
 
 如果环境只有读权限，`review-and-fix` 的**写动作**必须明确阻塞，不能假装已经改过设计；但只要读取能力可用，仍应完成不依赖写权限的 review-only 审查、Findings 和证据边界，不把写权限缺口扩大成整个调查停止。
@@ -287,26 +280,26 @@ NOT_READY
 恢复目标项目当前事实
 → 对正式 Figma 目标执行 baseline-ready
 → NOT_READY：
-   - 已明确授权修改 Figma → review-and-fix 后重新 baseline-ready
-   - 未授权修改 Figma → 报告基线阻塞，不把已知设计缺陷写入生产代码；其他不依赖该缺陷的只读事实仍可继续
+ - 已明确授权修改 Figma → review-and-fix 后重新 baseline-ready
+ - 未授权修改 Figma → 报告基线阻塞，不把已知设计缺陷写入生产代码；其他不依赖该缺陷的只读事实仍可继续
 → READY / 可实施的 READY_WITH_NOTES
 → 如果已有对应页面：先执行 Existing Implementation Delta Gate
-→ handoff 到目标项目 Coding 工作流
-→ Coding 负责最小增量实现 / 测试 / Review / CI / Git / 交付
+→ handoff 到目标项目 开发 工作流
+→ 开发 负责最小增量实现 / 测试 / Review / CI / Git / 交付
 → 实现完成后执行 Implementation ↔ Figma Conformance
 → 正式长期 Drift + 有 Figma 写权限时执行授权 back-sync
 → 强制输出 Figma Sync & Human Review
 ```
 
-“替换 / 实现 / 重做现有页面”本身表示用户要求修改该目标实现；但 commit、PR、merge、release 等 Git/交付权限仍按目标项目 Coding 工作流和用户明确授权判断，不能从“实现页面”自动扩大。
+“替换 / 实现 / 重做现有页面”本身表示用户要求修改该目标实现；但 commit、PR、merge、release 等 Git/交付权限仍按目标项目 开发 工作流和用户明确授权判断，不能从“实现页面”自动扩大。
 
-进入 Coding handoff 后，本 Skill 只提供已经确认的设计事实、动态数据来源、Shared/Feature/Page Owner、Prototype 和状态规格；**不得复制或替代 Coding Skill 的 Change、TDD、验证、CI、Git、PR、Release 规则。**
+进入 开发 handoff 后，本 规则 只提供已经确认的设计事实、动态数据来源、Shared/Feature/Page Owner、Prototype 和状态规格；**不得复制或替代 开发 规则 的 Change、TDD、验证、CI、Git、PR、Release 规则。**
 
 详细 handoff、已有实现差异更新、back-sync 和人工复核输出见 当前场景所需完整约束。
 
 ### D. 短提示词应当足够
 
-安装本 Skill 后，以下输入应当可以直接工作：
+安装本 规则 后，以下输入应当可以直接工作：
 
 ```text
 全面检查这个 Figma：<link>
@@ -319,7 +312,7 @@ NOT_READY
 → baseline-ready
 
 按这个 Figma 替换当前对应页面：<link>
-→ baseline-ready → Coding handoff
+→ baseline-ready → 开发 handoff
 ```
 
 这些短句只负责选择已有流程，**不在本节复制页面尺寸、组件复用、Prototype、动态数据、真实系统映射等详细规则**；详细规则继续由后续章节和 当前场景所需完整约束 单一维护。
@@ -660,7 +653,7 @@ baseline-ready 必须执行 Annotation Sufficiency Review。只给实现无法�
 
 当真实 Backend/Contract 与前端/Figma Annotation 发生漂移时，先确认当前正式机器事实 Owner：符合正式 Contract 的后端/SDK/consumer 变化要同步前端并在有权限时同步 Figma Annotation；后端违反正式 Contract/已批准需求时修后端，不能让 Figma 迁就 Bug。无写权限时记录 `Pending Figma Sync`。详细分支由 当前场景所需完整约束 维护。
 
-开发 Annotation 不应压在正式 UI 上，也不能被实现方误读成产品文案。Annotation 与正式 Frame、相邻画板、说明容器之间的间距、归属、分区和 Canvas-level Review 统一由 当前场景所需完整约束 维护；本 Skill 不再维护第二套具体数值。
+开发 Annotation 不应压在正式 UI 上，也不能被实现方误读成产品文案。Annotation 与正式 Frame、相邻画板、说明容器之间的间距、归属、分区和 Canvas-level Review 统一由 当前场景所需完整约束 维护；本 规则 不再维护第二套具体数值。
 
 ---
 
@@ -696,7 +689,7 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 
 如果当前项目已经有目标 Page/Screen，必须先执行 Existing Implementation Delta Gate：以现有正确实现为基线，只实现新 Figma 经 Requirement/Contract/Owner 确认的真实差异，**不默认整页重写**。
 
-生产实现由 Coding 工作流完成后，还必须执行 **Implementation ↔ Figma Conformance**，对实际页面、正式 Figma 与真实 Contract/Backend/SDK/Store 的 Visual、Interaction、State、Data/Contract、Responsive、Component/Owner 六个域做 targeted re-review；代码验证通过本身不等于 Design-to-Code 已闭环。
+生产实现由 开发 工作流完成后，还必须执行 **Implementation ↔ Figma Conformance**，对实际页面、正式 Figma 与真实 Contract/Backend/SDK/Store 的 Visual、Interaction、State、Data/Contract、Responsive、Component/Owner 六个域做 targeted re-review；代码验证通过本身不等于 Design-to-Code 已闭环。
 
 发现 Figma 已经过期且差异已经被确认成长期正式事实时，在有 Figma 写权限的任务中按 **Bidirectional Design Sync Gate** 回写真实 Figma Owner；不能把偶然实现偏移或 Bug 自动设计化。任何自动回写完成后先标记 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`，并强制输出 `Figma Sync & Human Review`。详细 Drift Owner、back-sync 和人工复核规则由 当前场景所需完整约束 维护。
 
@@ -908,4 +901,8 @@ Variables / Reactions / Flow / Overlay / Scroll / Hidden State。
 24. 代码实现完成后跳过 Implementation ↔ Figma Conformance，让设计与生产实现长期漂移；
 25. 把未批准的实现 Bug、临时 workaround 或偶然像素偏移自动回写成 Figma 长期事实；
 26. 实际修改过 Figma 后只说“已同步”，却不输出 `Figma Sync & Human Review` 供人工复核；
-27. 因为宿主具备 Figma 能力或任务使用“审查”一词，就机械叠加本 Skill、Code Review 或完整 baseline-ready 门禁。
+27. 因为宿主具备 Figma 能力或任务使用“审查”一词，就机械叠加本 规则、Code Review 或完整 baseline-ready 门禁。
+
+## 面向用户的项目表达
+
+向用户说明当前任务计划、进展、分工或结果时，用户明确提供的项目术语、计划和决定照常保留，并直接描述当前项目事实、工程动作、验证与真实状态。治理能力或规则的内部名称只服务执行，不把这些名称转写成用户可见的任务步骤、分工或计划；需要说明过程时，使用对应的项目工程动作表达。
