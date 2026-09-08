@@ -131,9 +131,12 @@ class PostgresContentHttpService:
         self._cursor_signing_secret = cursor_signing_secret
 
     def list_contents(self, query: ContentListQuery) -> ContentListResponse:
+        """读取数据库排序的一页内容，并将排序身份绑定到 Cursor。"""
         codec = self._cursor_codec()
         filters = _filters(query)
-        query_hash = _query_hash(filters)
+        query_hash = _query_hash(
+            filters, sort_by=query.sort_by, sort_direction=query.sort_direction
+        )
         position = codec.decode(query.cursor, query_hash=query_hash) if query.cursor else None
         session = self._runtime.database.new_session()
         try:
@@ -147,6 +150,8 @@ class PostgresContentHttpService:
                         filters=filters,
                         position=position,
                         limit=query.limit + 1,
+                        sort_by=query.sort_by,
+                        sort_direction=query.sort_direction,
                     )
                 )
         finally:
@@ -157,7 +162,11 @@ class PostgresContentHttpService:
         if has_more and page:
             last = page[-1]
             next_cursor = codec.encode(
-                ContentCursorPosition(sort_at=last.sort_at, content_id=last.id),
+                ContentCursorPosition(
+                    sort_at=last.published_at if query.sort_by == "published_at" else last.sort_at,
+                    content_id=last.id,
+                    follower_count=last.author_follower_count,
+                ),
                 query_hash=query_hash,
             )
         return ContentListResponse(
@@ -837,7 +846,10 @@ class PostgresContentHttpService:
 
 
 def _filters(query: ContentListQuery) -> ContentFilterSnapshot:
-    return ContentFilterSnapshot.model_validate(query.model_dump(exclude={"cursor", "limit"}))
+    """排序只影响浏览次序，不改变分析和导出的目标筛选快照。"""
+    return ContentFilterSnapshot.model_validate(
+        query.model_dump(exclude={"cursor", "limit", "sort_by", "sort_direction"})
+    )
 
 
 def _analysis_filter_snapshot(targets: _AnalysisTargetSelection) -> dict[str, object]:
@@ -974,13 +986,22 @@ def _analysis_run_response(
     )
 
 
-def _query_hash(filters: ContentFilterSnapshot) -> str:
+def _query_hash(
+    filters: ContentFilterSnapshot,
+    *,
+    sort_by: Literal["published_at", "follower_count"] | None = None,
+    sort_direction: Literal["asc", "desc"] = "desc",
+) -> str:
+    """默认调用保留旧摘要；显式排序绑定字段和方向，阻止跨排序复用。"""
     payload = filters.model_dump(mode="json", exclude_none=True)
+    if sort_by is not None or sort_direction != "desc":
+        payload["list_sort"] = {"by": sort_by, "direction": sort_direction}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
 def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
+    """投影当前内容、作者粉丝数与已有分析结果。"""
     return ContentListItemResponse(
         id=record.id,
         content_version=record.current_version,
@@ -990,6 +1011,7 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
         title=record.title,
         text=record.text,
         author_display_name=record.author_display_name,
+        author_follower_count=record.author_follower_count,
         published_at=record.published_at,
         last_seen_at=record.last_seen_at,
         content_url=record.canonical_url or record.share_url,
@@ -1024,6 +1046,8 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
                 vehicle_model_id=vehicle.vehicle_model_id,
                 code=vehicle.code,
                 display_name=vehicle.display_name,
+                series_name=vehicle.series_name,
+                category_name=vehicle.category_name,
                 evidences=tuple(
                     ContentVehicleEvidenceResponse(
                         source=cast(Any, evidence.source),

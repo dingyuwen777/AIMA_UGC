@@ -35,8 +35,8 @@ describe('AppShell 内网 V1 导航', () => {
     const html = await renderShell()
 
     expect(html).toContain('href="/"')
-    expect(html).toContain('工作台')
-    expect(html).not.toContain('首页')
+    expect(html).toContain('首页')
+    expect(html).toContain('业务工作台')
     expect(html).toContain('href="/voice-plaza"')
     expect(html).toContain('声音广场')
     expect(html).toContain('href="/collection-runtime"')
@@ -62,12 +62,17 @@ describe('AppShell 内网 V1 导航', () => {
     expect(administrator).toContain('管理员配置')
   })
 
-  it('在全局壳右上角提供独立任务中心入口，而不是要求各页面重复实现', async () => {
+  it('在侧栏底部提供任务、消息与身份入口，不再保留顶栏', async () => {
     const html = await renderShell()
 
     expect(html).toContain('aria-label="任务中心"')
     expect(html).toContain('data-aima-icon="task"')
     expect(html).toContain('任务中心')
+    expect(html).not.toContain('class="topbar"')
+    const sidebar = html.split('</aside>')[0] ?? ''
+    expect(sidebar).toContain('aria-label="任务中心"')
+    expect(sidebar).toContain('aria-label="站内通知"')
+    expect(sidebar).toContain('普通用户')
   })
 
   it('使用代码内 SVG 图标且页面壳尺寸对齐正式桌面基线', async () => {

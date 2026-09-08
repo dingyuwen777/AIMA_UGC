@@ -28,13 +28,13 @@ test('从页面提交两条内容并通过真实 Worker 保存两份合法打标
   await page.getByRole('textbox', { name: '搜索内容' }).press('Enter')
   await page.getByLabel('选择 爱玛 并发验收 A', { exact: true }).check()
   await page.getByLabel('选择 爱玛 并发验收 B', { exact: true }).check()
-  await page.getByRole('button', { name: /AI 打标/ }).click()
-  const dialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
-  await expect(dialog.getByText('预计处理 2 条，系统将分 1 批完成')).toBeVisible()
+  await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
+  await expect(dialog.getByText(/预计分析 2 条内容 · 1 个分片 · 每片最多 \d+ 条/)).toBeVisible()
   const createdResponse = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
-  await dialog.getByRole('button', { name: '确认并创建任务' }).click()
+  await dialog.getByRole('button', { name: '确认开始分析' }).click()
   const response = await createdResponse
   expect(response.status()).toBe(202)
   const created = await response.json()
@@ -45,7 +45,7 @@ test('从页面提交两条内容并通过真实 Worker 保存两份合法打标
   }).toEqual({ pending: 0, succeeded: 2, failed: 0, stale: 0, cancelled: 0 })
   // 完成后必须自动展示最终标签，不能用人工刷新掩盖最后一次轮询丢失。
   await expect(page.getByRole('region', { name: '声音广场内容列表' })
-    .getByText('骑行性能 / 舒适性', { exact: true })).toHaveCount(2, { timeout: 2500 })
+    .getByTitle('骑行性能 / 舒适性', { exact: true })).toHaveCount(2, { timeout: 2500 })
   const contents = await request.get('/api/v1/contents', { params: { search: '并发验收' } })
   const items = (await contents.json()).items.filter((item: { title: string }) => item.title.startsWith('爱玛 并发验收'))
   expect(items).toHaveLength(2)

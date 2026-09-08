@@ -173,17 +173,17 @@ test.beforeEach(async ({ page }) => {
 test('matches the formal 1440×900 Figma geometry for the strategy workspace', async ({ page }) => {
   await page.goto('/collection-strategy')
 
-  await expectBox(page.locator('.aima-page-header'), { x: 204, y: 88, width: 1212, height: 64 })
-  await expectBox(page.locator('.strategy-summary'), { x: 204, y: 172, width: 1212, height: 88 })
-  await expectBox(page.locator('.tabs'), { x: 204, y: 280, width: 1212, height: 46 })
-  await expectBox(page.locator('.filters'), { x: 204, y: 346, width: 1212, height: 72 })
-  await expectBox(page.locator('.plan-card > .aima-feedback'), { x: 204, y: 438, width: 1212, height: 44 })
-  await expectBox(page.locator('.table-wrap'), { x: 204, y: 544, width: 1212, height: 227 })
+  await expectBox(page.locator('.aima-page-header'), { x: 204, y: 28, width: 1212, height: 64 })
+  await expectBox(page.locator('.strategy-summary'), { x: 204, y: 112, width: 1212, height: 88 })
+  await expectBox(page.locator('.tabs'), { x: 204, y: 220, width: 1212, height: 46 })
+  await expectBox(page.locator('.filters'), { x: 204, y: 286, width: 1212, height: 72 })
+  await expectBox(page.locator('.plan-card > .aima-feedback'), { x: 204, y: 378, width: 1212, height: 44 })
+  await expectBox(page.locator('.table-wrap'), { x: 204, y: 484, width: 1212, height: 227 })
 
   await page.getByRole('button', { name: '关键词包' }).click()
-  await expectBox(page.locator('.panel-grid'), { x: 204, y: 346, width: 1212 })
-  await expectBox(page.locator('.table-card'), { x: 204, y: 346, width: 823 })
-  await expectBox(page.locator('.detail-card'), { x: 1043, y: 346, width: 373 })
+  await expectBox(page.locator('.panel-grid'), { x: 204, y: 286, width: 1212 })
+  await expectBox(page.locator('.table-card'), { x: 204, y: 286, width: 823 })
+  await expectBox(page.locator('.detail-card'), { x: 1043, y: 286, width: 373 })
   await expectBox(page.locator('.table-head'), { height: 54 })
   await expectBox(page.locator('.pack-row').first(), { height: 74 })
   await expectBox(page.locator('.detail-card form'), { width: 335 })
@@ -220,7 +220,7 @@ test('matches the formal relevance workspace and plan detail drawer geometry', a
   await page.goto('/collection-strategy')
   await page.getByRole('button', { name: '全局相关性' }).click()
 
-  await expectBox(page.locator('.relevance-layout'), { x: 204, y: 346, width: 1212 })
+  await expectBox(page.locator('.relevance-layout'), { x: 204, y: 286, width: 1212 })
   await expectBox(page.locator('.relevance-layout > article'), { x: 204, width: 790, height: 322 })
   await expectBox(page.locator('.relevance-layout > aside'), { x: 1016, width: 400, height: 322 })
 

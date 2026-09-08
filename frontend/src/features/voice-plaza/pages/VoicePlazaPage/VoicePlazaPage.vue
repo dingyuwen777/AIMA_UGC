@@ -67,7 +67,7 @@ const runStatusLabels: Record<AnalysisContentRunResponse['status'], string> = {
   cancelled: '已取消',
 }
 const detailOpen = computed({
-  get: () => store.detail !== null || store.loadingDetail,
+  get: () => store.detailId !== null,
   set: (open: boolean) => { if (!open) store.closeDetail() },
 })
 
@@ -84,6 +84,7 @@ async function refreshPage(): Promise<void> {
   await store.refreshTaxonomy()
   await Promise.all([
     store.refresh(),
+    store.refreshCount('estimated'),
     store.refreshExports(),
     store.refreshAnalysisCapabilities(),
     store.refreshAnalysisRuns(),
@@ -93,13 +94,13 @@ async function refreshPage(): Promise<void> {
 /** 提交当前筛选并清空旧选择，避免跨查询误操作。 */
 async function search(): Promise<void> {
   store.clearSelection()
-  await store.refresh()
+  await Promise.all([store.refresh(), store.refreshCount('estimated')])
 }
 
 /** 恢复默认筛选并重新获取第一页。 */
 async function reset(): Promise<void> {
   store.resetFilters()
-  await store.refresh()
+  await Promise.all([store.refresh(), store.refreshCount('estimated')])
 }
 
 /** 把人工相关性复核结果转换为用户可读反馈。 */
@@ -199,26 +200,18 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
     <div class="voice-plaza-page">
       <AimaPageHeader
         title="声音广场"
-        description="浏览全部渠道入库的用户声音，查看 AI 情感与完整标签结果"
+        description="浏览全平台爱玛相关内容，定位值得关注的真实用户声音"
       >
         <template #actions>
           <AimaButton
-            icon="refresh"
-            @click="refreshPage"
-          >
-            刷新数据
-          </AimaButton>
-          <AimaButton
-            icon="ai"
             :disabled="store.analysisConfigured !== true"
             :title="store.analysisConfigured === false ? 'AI 模型尚未配置' : store.analysisConfigured === null ? '正在检查 AI 打标是否可用' : '可选择已选内容或全部数据进行打标'"
             @click="analysisOpen = true"
           >
-            AI 打标
+            AI 分析
           </AimaButton>
           <AimaButton
             variant="primary"
-            icon="download"
             @click="exportOpen = true"
           >
             导出记录
@@ -282,6 +275,12 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       >
         <strong>{{ store.listError && store.items.length === 0 ? '加载声音广场失败' : '声音广场操作失败' }}</strong>
         <span>{{ store.listError ?? store.error }}</span>
+        <AimaButton
+          size="small"
+          @click="refreshPage"
+        >
+          刷新数据
+        </AimaButton>
       </AimaFeedbackBanner>
 
       <section
@@ -336,8 +335,29 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         class="list-heading"
       >
         <div class="selection-actions">
-          <strong>声音记录</strong>
-          <span>已加载 {{ store.items.length }} 条</span>
+          <details class="count-options">
+            <summary><span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} <strong>{{ store.contentCount.count.toLocaleString('zh-CN') }} 条</strong></span><span v-else>已显示 <strong>{{ store.items.length }} 条</strong></span></summary>
+            <div class="count-menu">
+              <button
+                type="button"
+                :disabled="store.countLoading"
+                @click="store.refreshCount('exact')"
+              >
+                统计准确数量
+              </button><button
+                type="button"
+                :disabled="store.countLoading"
+                @click="store.refreshCount('estimated')"
+              >
+                快速估算数量
+              </button><button
+                type="button"
+                @click="refreshPage"
+              >
+                刷新数据
+              </button><small v-if="store.countError">{{ store.countError }}</small><small v-else-if="store.contentCount?.truncated">结果较多，暂不显示精确总数</small>
+            </div>
+          </details>
           <button
             v-if="selectedReviewIds.relevant.length"
             class="review-selected review-selected--relevant"
@@ -374,7 +394,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             已选 {{ store.selectedIds.length }} 条 · 清除
           </button>
         </div>
-        <span>发布时间：最新优先</span>
       </div>
 
       <VoicePlazaTable
@@ -383,6 +402,9 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         :error="store.listError"
         :selected-ids="store.selectedIds"
         :reviewing="store.reviewingRelevance"
+        :sort-by="store.sortBy"
+        :sort-direction="store.sortDirection"
+        @sort="store.changeSort"
         @detail="store.openDetail"
         @toggle="store.toggleSelection"
         @toggle-all="store.toggleVisibleSelection"
@@ -393,32 +415,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-if="store.items.length > 0"
         class="pagination"
       >
-        <div class="count-tools">
-          <span>当前列表按发布时间连续加载，不显示不准确的总页数</span>
-          <span v-if="store.contentCount?.count != null">
-            {{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} {{ store.contentCount.count }} 条
-          </span>
-          <span v-else-if="store.contentCount?.truncated">
-            当前结果较多，暂不显示精确总数
-          </span>
-          <span v-else-if="store.contentCount?.count_mode === 'estimated'">
-            当前条件暂无法快速估算数量
-          </span>
-          <button
-            type="button"
-            :disabled="store.countLoading"
-            @click="store.refreshCount('exact')"
-          >
-            统计准确数量
-          </button>
-          <button
-            type="button"
-            :disabled="store.countLoading"
-            @click="store.refreshCount('estimated')"
-          >
-            快速估算数量
-          </button>
-        </div>
+        <span>已显示 {{ store.items.length }} 条</span>
         <AimaButton
           size="small"
           :disabled="!store.hasMore || store.loadingNext"
@@ -432,8 +429,12 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model="detailOpen"
         :item="store.detail"
         :loading="store.loadingDetail"
+        :error="store.detailError"
+        :save-error="store.error"
         :taxonomy="store.taxonomy"
         :saving="store.reviewingDetail"
+        @retry="store.detailId && store.openDetail(store.detailId)"
+        @review="reviewSingle"
         @review-vehicles="store.reviewDetailVehicles"
         @review-analysis="store.reviewDetailAnalysis"
       />
@@ -442,6 +443,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         :selected-count="store.selectedIds.length"
         :preview="store.analysisPreview"
         :previewing="store.previewingAnalysis"
+        :error="store.error"
         :submitting="store.submittingAnalysis"
         @preview="store.previewAnalysis"
         @submit="submitAnalysis"
@@ -452,6 +454,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         :page-count="store.items.length"
         :items="store.exports"
         :column-catalog="store.exportColumnCatalog"
+        :error="store.error"
         :submitting="store.submittingExport"
         @submit="submitExport"
         @refresh="store.refreshExports"
@@ -469,7 +472,11 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 </template>
 
 <style scoped>
-.voice-plaza-page { display: grid; gap: 10px; }
+.voice-plaza-page { display: grid; gap: 16px; }
+.voice-plaza-page > :deep(.aima-page-header) { margin-bottom: 8px; }
+.voice-plaza-page :deep(.aima-page-header) { flex-wrap: nowrap; align-items: center; }
+.voice-plaza-page :deep(.aima-page-actions) { flex: none; }
+.count-options strong { color: var(--aima-primary); }
 .capability-warning strong,
 .capability-warning span,
 .taxonomy-warning strong,
@@ -521,4 +528,10 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
   .active-analysis-runs article { grid-template-columns: auto minmax(180px, 1fr) minmax(180px, 1fr); }
   .run-counts { grid-column: 2; }
 }
+.list-heading details { position: relative; }
+.list-heading summary { cursor: pointer; list-style: none; }
+.count-menu { position: absolute; z-index: 5; top: 28px; left: 0; display: grid; min-width: 180px; padding: 8px; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); box-shadow: var(--aima-shadow-floating); }
+.count-menu button { padding: 8px; border: 0; color: var(--aima-text); background: transparent; text-align: left; cursor: pointer; font-size: 12px; }
+.count-menu button:hover { background: var(--aima-primary-soft); }
+.count-menu small { padding: 8px; color: var(--aima-text-muted); }
 </style>

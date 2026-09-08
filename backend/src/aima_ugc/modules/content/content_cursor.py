@@ -21,12 +21,13 @@ class InvalidContentCursor(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class ContentCursorPosition:
-    sort_at: datetime
+    sort_at: datetime | None
     content_id: UUID
+    follower_count: int | None = None
 
 
 class ContentCursorCodec:
-    _VERSION = 1
+    _VERSION = 2
 
     def __init__(
         self,
@@ -44,11 +45,13 @@ class ContentCursorCodec:
         self._now = now or (lambda: beijing_now())
 
     def encode(self, position: ContentCursorPosition, *, query_hash: str) -> str:
-        sort_at = _aware_utc(position.sort_at)
+        """签名排序边界，保留缺失发布时间和粉丝数的空值语义。"""
+        sort_at = _aware_utc(position.sort_at) if position.sort_at is not None else None
         expires_at = _aware_utc(self._now()) + self._lifetime
         payload = {
             "content_id": str(position.content_id),
-            "sort_at": sort_at.isoformat(),
+            "sort_at": sort_at.isoformat() if sort_at is not None else None,
+            "follower_count": position.follower_count,
             "expires_at": int(expires_at.timestamp()),
             "query_hash": query_hash,
             "version": self._VERSION,
@@ -58,6 +61,7 @@ class ContentCursorCodec:
         return f"{_encode(raw)}.{_encode(signature)}"
 
     def decode(self, cursor: str, *, query_hash: str) -> ContentCursorPosition:
+        """校验签名与查询身份，并兼容有效期内的旧版 Cursor。"""
         try:
             encoded_payload, encoded_signature = cursor.split(".", 1)
             raw = _decode(encoded_payload)
@@ -69,21 +73,40 @@ class ContentCursorCodec:
             raise InvalidContentCursor
         try:
             payload = json.loads(raw)
-            if not isinstance(payload, dict) or set(payload) != {
+            if not isinstance(payload, dict):
+                raise ValueError
+            keys = {
                 "content_id",
                 "sort_at",
                 "expires_at",
                 "query_hash",
                 "version",
-            }:
+            }
+            version = payload.get("version")
+            if version == 2:
+                keys.add("follower_count")
+            if set(payload) != keys:
                 raise ValueError
-            if payload["version"] != self._VERSION or payload["query_hash"] != query_hash:
+            if version not in (1, self._VERSION) or payload["query_hash"] != query_hash:
                 raise ValueError
             if int(_aware_utc(self._now()).timestamp()) >= int(payload["expires_at"]):
                 raise ValueError
+            follower_count = payload.get("follower_count")
+            if follower_count is not None and (
+                type(follower_count) is not int or follower_count < 0
+            ):
+                raise ValueError
+            sort_at = payload["sort_at"]
+            if version == 1 and sort_at is None:
+                raise ValueError
             return ContentCursorPosition(
-                sort_at=_aware_utc(datetime.fromisoformat(str(payload["sort_at"]))),
+                sort_at=(
+                    _aware_utc(datetime.fromisoformat(str(sort_at)))
+                    if sort_at is not None
+                    else None
+                ),
                 content_id=UUID(str(payload["content_id"])),
+                follower_count=follower_count,
             )
         except (TypeError, ValueError, OverflowError, json.JSONDecodeError) as exc:
             raise InvalidContentCursor from exc

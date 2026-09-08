@@ -24,12 +24,15 @@ const props = defineProps<{
   error?: string | null
   selectedIds: string[]
   reviewing: boolean
+  sortBy?: 'published_at' | 'follower_count'
+  sortDirection?: 'asc' | 'desc'
 }>()
 const emit = defineEmits<{
   detail: [contentId: string]
   toggle: [contentId: string]
   toggleAll: []
   review: [contentId: string, decision: RelevanceReviewDecision]
+  sort: [field: 'published_at' | 'follower_count']
 }>()
 
 /** 将情感映射为表格中的稳定语义样式，不改变后端机器值。 */
@@ -103,10 +106,29 @@ function runReview(item: ContentListItemResponse): void {
 
 /** 将北京时间格式拆成日期和时间两行，匹配紧凑表格布局。 */
 function dateTimeParts(value: string | null | undefined): [string, string] {
-  const formatted = formatDateTime(value)
+  const formatted = formatDateTime(value).replaceAll('/', '-')
   if (formatted === '—') return ['—', '']
   const [date, ...time] = formatted.split(/\s+/)
   return [date ?? formatted, time.join(' ')]
+}
+
+/** 使用中文紧凑单位呈现粉丝数；未知与零值保持区别。 */
+function followers(value: number | null | undefined): string {
+  if (value == null) return '—'
+  if (value >= 100_000_000) return `${Number((value / 100_000_000).toFixed(1))}亿`
+  if (value >= 10_000) return `${Number((value / 10_000).toFixed(1))}万`
+  return formatNumber(value)
+}
+
+/** 只在当前排序列显示方向，点击动作由 Store 转换为服务端查询。 */
+function sortLabel(field: 'published_at' | 'follower_count'): 'none' | 'ascending' | 'descending' {
+  if (props.sortBy !== field) return 'none'
+  return props.sortDirection === 'asc' ? 'ascending' : 'descending'
+}
+
+/** 用既有平台名称展示原稿的单字平台标识。 */
+function platformMark(platform: ContentListItemResponse['platform']): string {
+  return ({ xiaohongshu: '书', douyin: '抖', weibo: '微', bilibili: 'B', kuaishou: '快' })[platform]
 }
 </script>
 
@@ -125,7 +147,42 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
         aria-label="选择当前已加载内容"
         @change="$emit('toggleAll')"
       ></label>
-      <span>标题内容</span><span>AI 情感 / 标签</span><span>互动</span><span>平台 / 作者</span><span>发布时间</span><span>操作</span>
+      <span>标题内容</span>
+      <span
+        role="columnheader"
+        :aria-sort="sortLabel('follower_count')"
+      >
+        <button
+          class="sort-button"
+          type="button"
+          aria-label="按粉丝数排序"
+          @click="emit('sort', 'follower_count')"
+        >粉丝数 <img
+          src="../../../../../shared/assets/sort.svg"
+          width="12"
+          height="16"
+          alt=""
+        ></button>
+      </span>
+      <span>AI 分析</span><span>车型</span>
+      <span
+        role="columnheader"
+        :aria-sort="sortLabel('published_at')"
+        class="date-heading"
+      >
+        <button
+          class="sort-button"
+          type="button"
+          aria-label="按发布时间排序"
+          @click="emit('sort', 'published_at')"
+        >日期 <img
+          src="../../../../../shared/assets/sort.svg"
+          width="12"
+          height="16"
+          alt=""
+        ></button>
+      </span>
+      <span class="actions-heading">操作</span>
     </div>
 
     <div
@@ -170,17 +227,38 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
         @change="$emit('toggle', item.id)"
       ></label>
       <div class="content-copy">
-        <strong>{{ contentSummary(item.title, item.text) }}</strong>
-        <p>{{ item.text || '无正文' }}</p>
-        <small>external_content_id: {{ item.external_content_id }}</small>
-        <small>车型：{{ (item.vehicles ?? []).map((vehicle) => vehicle.display_name).join('、') || '未关联' }}</small>
+        <div class="title-line">
+          <span
+            class="platform-mark"
+            :class="`platform-mark--${item.platform}`"
+            :title="platformLabel(item.platform)"
+          >{{ platformMark(item.platform) }}</span>
+          <button
+            type="button"
+            class="content-title"
+            :title="contentSummary(item.title, item.text)"
+            @click="emit('detail', item.id)"
+          >
+            {{ contentSummary(item.title, item.text) }}
+          </button>
+        </div>
+        <p :title="item.author_display_name || '未知作者'">
+          {{ item.author_display_name || '未知作者' }} · 赞 {{ formatNumber(item.metrics.like_count) }} · 评论 {{ formatNumber(item.metrics.comment_count) }} · 转发 {{ formatNumber(item.metrics.share_count ?? item.metrics.repost_count) }}
+        </p>
       </div>
-      <div class="analysis-cell">
+      <div class="fans-cell">
+        <strong :title="formatNumber(item.author_follower_count)">{{ followers(item.author_follower_count) }}</strong><span>{{ platformLabel(item.platform) }}</span>
+      </div>
+      <div
+        class="analysis-cell"
+        :title="analysisMeta(item)"
+      >
         <div class="analysis-badges">
           <span
             v-if="relevanceText(item)"
             :class="relevanceClass(item)"
-          >{{ relevanceText(item) }}</span>
+            :title="relevanceText(item) ?? undefined"
+          >{{ (item.effective_relevance ?? item.analysis.relevance) === 'relevant' ? '相关' : '不相关' }}</span>
           <span
             v-if="item.analysis.status === 'completed'"
             :class="sentimentClass(item.analysis.sentiment)"
@@ -190,6 +268,10 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
             class="status-badge status-badge--neutral"
           >{{ item.analysis.status === 'stale' ? '需重新打标' : '未打标' }}</span>
           <span
+            v-if="item.analysis.voice_type"
+            class="status-badge status-badge--voice"
+          >{{ item.analysis.voice_type }}</span>
+          <span
             v-if="item.availability && item.availability.status !== 'available'"
             class="status-badge status-badge--neutral"
           >{{ item.availability.status }}</span>
@@ -198,21 +280,27 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
           data-testid="content-labels"
           class="label-summary"
         >
-          <span v-if="labels(item).length">{{ labels(item).map(labelPairText).join(' · ') }}</span>
           <span
-            v-else
+            v-for="label in labels(item)"
+            :key="labelPairText(label)"
+            class="label-tag"
+            :title="labelPairText(label)"
+          >{{ label.primary_label }}</span>
+          <span
+            v-if="!labels(item).length"
             class="empty-label"
           >暂无 AI 标签</span>
         </div>
-        <small class="analysis-meta">{{ analysisMeta(item) }}</small>
       </div>
-      <div class="metrics">
-        <strong>{{ formatNumber(item.metrics.like_count) }} · {{ formatNumber(item.metrics.comment_count) }} · {{ formatNumber(item.metrics.share_count ?? item.metrics.repost_count) }}</strong>
-        <span>赞 · 评 · 转</span>
-      </div>
-      <div class="source">
-        <strong>{{ platformLabel(item.platform) }}</strong>
-        <span>{{ item.author_display_name || '未知作者' }}</span>
+      <div class="vehicle-cell">
+        <div
+          v-for="vehicle in item.vehicles ?? []"
+          :key="vehicle.vehicle_model_id"
+        >
+          <strong>{{ vehicle.display_name }}</strong>
+          <span v-if="vehicle.series_name || vehicle.category_name">{{ [vehicle.series_name, vehicle.category_name].filter(Boolean).join(' · ') }}</span>
+        </div>
+        <span v-if="!item.vehicles?.length">未关联</span>
       </div>
       <time>
         <strong>{{ dateTimeParts(item.published_at)[0] }}</strong>
@@ -241,54 +329,48 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
 </template>
 
 <style scoped>
-.content-list { overflow-x: auto; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); background: var(--aima-surface); }
-.table-head,
-.content-row { display: grid; min-width: 1166px; grid-template-columns: 28px 390px 245px 120px 130px 120px 85px; column-gap: 8px; align-items: center; }
-.table-head { min-height: 40px; padding: 0 10px; color: var(--aima-text-muted); background: #fafbfc; font-size: 11px; font-weight: 500; }
-.content-row { min-height: 74px; padding: 0 10px; border-top: 1px solid var(--aima-border); }
+.content-list { overflow-x: auto; border-radius: 4px; background: var(--aima-surface); box-shadow: inset 0 0 0 1px var(--aima-border); }
+.table-head, .content-row { display: grid; min-width: 1212px; grid-template-columns: 16px minmax(240px, 1fr) 80px 200px 150px 120px 120px; column-gap: 12px; align-items: center; }
+.table-head > :nth-child(2), .table-head > :nth-child(4), .table-head > :nth-child(5) { text-align: center; }
+.table-head { min-height: 40px; padding: 0 24px 0 8px; color: var(--aima-text-muted); background: var(--aima-color-bg-table-header); font-size: 12px; font-weight: 600; }
+.content-row { min-height: 76px; padding: 16px 24px 16px 8px; border-top: 1px solid var(--aima-border); }
 .check { display: grid; place-items: center; }
-.check input { width: 16px; height: 16px; accent-color: var(--aima-primary); }
-.content-copy,
-.analysis-cell,
-.source,
-time { min-width: 0; }
-.content-copy { display: grid; gap: 4px; padding-right: 12px; }
-.content-copy strong,
-.content-copy p,
-.content-copy small,
-.label-summary,
-.analysis-meta,
-.source span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.content-copy strong { color: var(--aima-text); font-size: 12px; font-weight: 500; }
-.content-copy p { margin: 0; color: var(--aima-text-muted); font-size: 10px; }
-.content-copy small { color: var(--aima-text-disabled); font-size: 9px; }
-.analysis-cell { display: grid; gap: 4px; padding-right: 8px; }
-.analysis-badges { display: flex; min-height: 20px; align-items: center; gap: 5px; }
-.status-badge { display: inline-flex; min-height: 20px; align-items: center; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 500; }
-.status-badge--positive { color: #12804b; background: #e8fff3; }
-.status-badge--negative { color: #f04438; background: #fff1f0; }
-.status-badge--neutral { color: var(--aima-text-muted); background: #f2f4f7; }
-.label-summary { color: var(--aima-text-muted); font-size: 10px; }
-.empty-label,
-.analysis-meta { color: var(--aima-text-disabled); font-size: 9px; }
-.metrics { display: grid; gap: 4px; font-size: 10px; }
-.metrics strong { color: var(--aima-text); font-weight: 500; }
-.metrics span { color: var(--aima-text-disabled); font-size: 9px; }
-.source { display: grid; gap: 4px; }
-.source strong { color: var(--aima-text); font-size: 10px; font-weight: 500; }
-.source span { color: var(--aima-text-muted); font-size: 9px; }
-time { display: grid; gap: 4px; color: var(--aima-text); font-size: 9px; font-style: normal; }
-time strong { font-size: 10px; font-weight: 500; }
-time span { color: var(--aima-text-muted); }
-.row-actions { display: grid; justify-items: start; gap: 7px; }
-.detail-button,
-.review-button { padding: 0; border: 0; background: transparent; cursor: pointer; font-size: 10px; line-height: 14px; text-align: left; }
-.detail-button { color: var(--aima-primary); font-weight: 500; }
-.review-button { color: var(--aima-text-muted); }
-.review-button--relevant { color: #12804b; }
-.review-button--irrelevant { color: #f04438; }
-.review-button--undo { color: var(--aima-text-muted); }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--aima-primary); }
+.content-copy, .analysis-cell, .fans-cell, .vehicle-cell, time { min-width: 0; }
+.content-copy { display: grid; gap: 4px; }
+.title-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.platform-mark { display: grid; flex: none; place-items: center; min-width: 22px; height: 22px; padding-inline: 4px; border-radius: 2px; color: #fff; background: var(--aima-primary); font-size: 12px; font-weight: 700; }
+.platform-mark--douyin, .platform-mark--weibo { background: var(--aima-info); }
+.platform-mark--kuaishou { background: #ff7a00; }
+.platform-mark--bilibili { background: #00a1d6; }
+.content-title { min-width: 0; padding: 0; border: 0; color: var(--aima-text); background: transparent; font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.content-copy p { margin: 0; overflow: hidden; color: var(--aima-text-muted); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.analysis-cell { display: grid; gap: 4px; }
+.analysis-badges, .label-summary { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.status-badge, .label-tag { display: inline-flex; max-width: 100%; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.label-tag { padding-block: 0; font-size: 11px; }
+.status-badge--positive { color: var(--aima-success); background: var(--aima-color-success-bg); }
+.status-badge--negative { color: var(--aima-danger); background: var(--aima-color-error-bg); }
+.status-badge--neutral, .label-tag { color: var(--aima-text-muted); background: var(--aima-color-bg-hover); }
+.status-badge--voice { color: var(--aima-info); background: var(--aima-color-info-bg); }
+.empty-label { color: var(--aima-text-disabled); font-size: 12px; }
+.fans-cell, .vehicle-cell, .vehicle-cell > div, time { display: grid; gap: 4px; }
+.fans-cell strong, .vehicle-cell strong, time strong { color: var(--aima-text); font-size: 13px; font-weight: 700; line-height: 18px; }
+.fans-cell span, .vehicle-cell span, time span { color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
+.vehicle-cell { overflow-wrap: anywhere; }
+time, .date-heading { text-align: right; }
+.row-actions { position: sticky; right: 0; display: grid; justify-items: end; align-self: stretch; align-content: center; gap: 4px; background: var(--aima-surface); }
+.actions-heading { position: sticky; right: 0; background: var(--aima-color-bg-table-header); text-align: right; }
+.detail-button, .review-button, .sort-button { padding: 0; border: 0; background: transparent; cursor: pointer; text-align: right; }
+.detail-button { color: var(--aima-text); font-size: 13px; font-weight: 700; line-height: 18px; }
+.review-button { color: var(--aima-text-muted); font-size: 11px; line-height: 16px; }
+.review-button--relevant { color: var(--aima-success); }
+.review-button--irrelevant { color: var(--aima-danger); }
 .review-button:disabled { cursor: not-allowed; opacity: .55; }
+.sort-button { display: inline-flex; align-items: center; gap: 6px; color: inherit; font: inherit; }
+.sort-button span { color: var(--aima-text-disabled); }
+[aria-sort=ascending] .sort-button, [aria-sort=descending] .sort-button { color: var(--aima-primary); }
+.content-title:focus-visible, .detail-button:focus-visible, .review-button:focus-visible, .sort-button:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: 3px; }
 .table-state { display: flex; min-height: 376px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--aima-text-muted); text-align: center; }
 .table-state--error { min-height: 306px; }
 .table-state strong { color: var(--aima-text); font-size: 16px; }

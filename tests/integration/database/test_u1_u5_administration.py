@@ -13,6 +13,7 @@ from aima_ugc.contracts.administration import (
     KeywordPackVehicleLinkRequest,
     VehicleModelCreateRequest,
     VehicleModelMergeRequest,
+    VehicleModelUpdateRequest,
 )
 from aima_ugc.modules.administration import (
     AdministrationConflict,
@@ -193,6 +194,48 @@ def test_vehicle_merge_redirects_future_references_and_audits_mutations(runtime)
             principal=principal,
             request_id="req-delete-referenced",
         )
+
+
+def test_vehicle_display_classification_persists_and_can_be_cleared(runtime) -> None:  # type: ignore[no-untyped-def]
+    """系列与类别复用车型 Owner；省略保持原值，显式 null 清空并推进目录版本。"""
+    service = PostgresAdministrationHttpService(runtime)
+    principal = Principal(
+        principal_id="classification-admin",
+        display_name="管理员",
+        role="administrator",
+        source="development",
+    )
+    created = service.create_vehicle_model(
+        VehicleModelCreateRequest(
+            code="CLASS-Q7",
+            display_name="爱玛 Q7",
+            series_name=" Q 系列 ",
+            category_name="电动两轮车",
+        ),
+        principal=principal,
+        request_id="classification-create",
+    )
+    stored = service.get_vehicle_model(created.id)
+    assert stored.series_name == "Q 系列"
+    assert stored.category_name == "电动两轮车"
+    renamed = service.update_vehicle_model(
+        created.id,
+        VehicleModelUpdateRequest(display_name="爱玛 Q7 新名称"),
+        principal=principal,
+        request_id="classification-rename",
+    )
+    assert renamed.series_name == "Q 系列"
+    assert renamed.category_name == "电动两轮车"
+    cleared = service.update_vehicle_model(
+        created.id,
+        VehicleModelUpdateRequest(series_name=None),
+        principal=principal,
+        request_id="classification-clear",
+    )
+    assert cleared.series_name is None
+    assert cleared.category_name == "电动两轮车"
+    assert cleared.catalog_version > renamed.catalog_version > created.catalog_version
+    assert service.get_vehicle_model(created.id).series_name is None
 
 
 def test_unreferenced_vehicle_can_be_physically_deleted(runtime) -> None:  # type: ignore[no-untyped-def]

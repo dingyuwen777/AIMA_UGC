@@ -171,7 +171,7 @@ test('undoes a manual relevant override without deleting the AI irrelevant fact'
   await page.goto('/voice-plaza')
   await page.getByLabel('相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
-  await expect(page.getByText('人工复核相关', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('人工复核相关', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '撤销人工判断' }).click()
 
   await expect.poll(() => reviewRequest).toEqual({ content_ids: [irrelevantContentId], decision: 'inherit_ai' })
@@ -203,7 +203,7 @@ test('keeps manual override undoable when the current AI result is stale', async
   await page.goto('/voice-plaza')
   await page.getByLabel('相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
-  await expect(page.getByText('人工复核相关', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('人工复核相关', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '撤销人工判断' }).click()
 
   await expect.poll(() => reviewRequest).toEqual({ content_ids: [irrelevantContentId], decision: 'inherit_ai' })

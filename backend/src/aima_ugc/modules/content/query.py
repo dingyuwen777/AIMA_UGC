@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from aima_ugc.contracts.http import ContentFilterSnapshot
@@ -23,6 +24,8 @@ class ContentReadQuery:
     filters: ContentFilterSnapshot
     position: ContentCursorPosition | None
     limit: int
+    sort_by: Literal["published_at", "follower_count"] | None = None
+    sort_direction: Literal["asc", "desc"] = "desc"
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +69,8 @@ class ContentVehicleRead:
     code: str
     display_name: str
     evidences: tuple[ContentVehicleEvidenceRead, ...]
+    series_name: str | None = None
+    category_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +103,7 @@ class ContentReadRecord:
     source: ContentSourceRead
     vehicles: tuple[ContentVehicleRead, ...] = ()
     availability: ContentAvailabilityRead | None = None
+    author_follower_count: int | None = None
 
 
 __all__ = [

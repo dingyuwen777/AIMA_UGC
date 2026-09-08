@@ -423,7 +423,7 @@ PUT/POST /api/v1/analysis-scheme-versions/{version_id}...
 GET  /api/v1/audit-events
 ```
 
-车型无引用时允许物理删除；有引用后只能废弃、改显示名或合并，合并迁移未来 Plan/Pack 引用但保留历史内容证据。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
+车型无引用时允许物理删除；有引用后只能废弃、改显示名或合并，合并迁移未来 Plan/Pack 引用但保留历史内容证据。车型目录可配置系列名和类别名，作为筛选分组及列表展示信息；这两个可空属性不创建新的业务实体，也不改变车型 ID、匹配或合并规则。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
 
 ---
 
@@ -515,7 +515,7 @@ Figma 到代码流程：
 - [`backend/src/aima_ugc/modules/content/content_cursor.py`](../../backend/src/aima_ugc/modules/content/content_cursor.py)
 - [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
 
-它会把查询过滤条件 Hash 绑定到 Cursor，防止把一个查询的 Cursor 拿去另一个查询继续翻页。
+它会把查询过滤条件和排序方式绑定到 Cursor，防止把一个查询的 Cursor 拿去另一个查询继续翻页。发布时间和作者最近已采集粉丝数均由 PostgreSQL 排序，升降序都将缺失值放在最后，同值使用 Content ID 稳定续页。声音广场显式采用发布时间降序；旧调用不传排序时保留原先以发布时间、缺失时以最近采集时间降序的语义，原查询下未过期的旧 Cursor 继续可用。粉丝数来自账号当前已采集值，不额外调用 Provider，也不是发帖时快照；分页期间数据变化时不承诺冻结结果集。
 
 Import Batch 和 Collection Runtime 也有各自独立 Cursor/Secret；不能复用数据库密码，也不能让前端解析并自行构造。
 

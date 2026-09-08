@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
@@ -50,7 +51,8 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_request_items_table,
     analysis_content_results_table,
 )
-from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.modules.content.content_cursor import InvalidContentCursor
+from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
     register_data_export_job,
@@ -59,7 +61,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, JobRegistry, LeaseLostError
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 
 
 def _xlsx(*, text_suffix: str = "") -> bytes:
@@ -93,7 +95,10 @@ def _xlsx(*, text_suffix: str = "") -> bytes:
     return output.getvalue()
 
 
-def _seed_import(client: TestClient, *, text_suffix: str = "") -> str:
+def _seed_import(
+    client: TestClient, *, text_suffix: str = "", workbook: bytes | None = None
+) -> str:
+    """通过正式导入入口建立列表测试来源。"""
     pack = client.post(
         "/api/v1/keyword-packs",
         json={"name": f"Stage8D 相关性 {uuid4()}"},
@@ -116,7 +121,7 @@ def _seed_import(client: TestClient, *, text_suffix: str = "") -> str:
                 "file",
                 (
                     "stage8d.xlsx",
-                    _xlsx(text_suffix=text_suffix),
+                    workbook if workbook is not None else _xlsx(text_suffix=text_suffix),
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
@@ -125,6 +130,121 @@ def _seed_import(client: TestClient, *, text_suffix: str = "") -> str:
     )
     assert uploaded.status_code == 202
     return str(uploaded.json()["batch_id"])
+
+
+@pytest.mark.parametrize("sort_by", ["published_at", "follower_count"])
+@pytest.mark.parametrize("direction", ["asc", "desc"])
+def test_voice_plaza_global_sort_pagination_and_nulls(
+    tmp_path: Path, sort_by: str, direction: str
+) -> None:
+    """真实导入后跨页校验同值、零值、缺失值与排序身份，防止只排序当前页。"""
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    try:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            )
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
+        for index in range(6):
+            sheet.append(
+                [
+                    "小红书",
+                    f"爱玛排序{index}",
+                    "爱玛体验",
+                    f"作者{index}",
+                    "2026-09-08 10:00:00",
+                    f"https://www.xiaohongshu.com/explore/sort-{index}",
+                ]
+            )
+        output = BytesIO()
+        workbook.save(output)
+        workbook.close()
+        client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
+        _seed_import(client, workbook=output.getvalue())
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="voice-sort-test",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert worker.run_once()
+        now = datetime(2026, 9, 8, tzinfo=UTC)
+        values = [None, 10, 0, 10, None, 30]
+        with runtime.database.engine.begin() as connection:
+            ids = list(
+                connection.execute(
+                    select(contents_table.c.id).order_by(contents_table.c.external_content_id)
+                ).scalars()
+            )
+            assert len(ids) == len(values)
+            for content_id, value in zip(ids, values, strict=True):
+                account_id = uuid4()
+                connection.execute(
+                    insert(accounts_table).values(
+                        id=account_id,
+                        platform="xiaohongshu",
+                        external_account_id=str(account_id),
+                        current_follower_count=value,
+                        first_seen_at=now,
+                        last_seen_at=now,
+                        updated_at=now,
+                    )
+                )
+                connection.execute(
+                    update(contents_table)
+                    .where(contents_table.c.id == content_id)
+                    .values(
+                        author_account_id=account_id,
+                        published_at=now + timedelta(days=value) if value is not None else None,
+                    )
+                )
+        service = PostgresContentHttpService(
+            runtime, cursor_signing_secret=b"sorting-integration-test-key-32-bytes-minimum"
+        )
+        ordered = sorted(
+            [
+                (value, content_id)
+                for value, content_id in zip(values, ids, strict=True)
+                if value is not None
+            ],
+            reverse=direction == "desc",
+        )
+        expected = [content_id for _, content_id in ordered] + sorted(
+            [content_id for value, content_id in zip(values, ids, strict=True) if value is None],
+            reverse=direction == "desc",
+        )
+        found = []
+        cursor = None
+        for page_index in range(3):
+            query = ContentListQuery.model_validate(
+                {"sort_by": sort_by, "sort_direction": direction, "limit": 2, "cursor": cursor}
+            )
+            page = service.list_contents(query)
+            found.extend(item.id for item in page.items)
+            for item in page.items:
+                assert item.author_follower_count == values[ids.index(item.id)]
+            assert page.has_more == (page_index < 2)
+            cursor = page.next_cursor
+            if page_index == 0:
+                with pytest.raises(InvalidContentCursor):
+                    service.list_contents(
+                        query.model_copy(
+                            update={
+                                "cursor": cursor,
+                                "sort_direction": "desc" if direction == "asc" else "asc",
+                            }
+                        )
+                    )
+        assert found == expected
+        assert cursor is None
+    finally:
+        runtime.close()
 
 
 def _active_taxonomy(runtime):  # type: ignore[no-untyped-def]

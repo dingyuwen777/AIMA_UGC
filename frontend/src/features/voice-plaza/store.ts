@@ -97,8 +97,15 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const taskCenter = useTaskCenterStore()
   const { analysisRuns, hasActiveAnalysisRuns, cancellingAnalysisRunId } = storeToRefs(taskCenter)
   const filters = reactive<VoicePlazaFilters>({ ...EMPTY_FILTERS })
+  const sortBy = ref<'published_at' | 'follower_count'>('published_at')
+  const sortDirection = ref<'asc' | 'desc'>('desc')
   const items = ref<ContentListItemResponse[]>([])
   const detail = ref<ContentDetailResponse | null>(null)
+  const detailId = ref<string | null>(null)
+  const detailError = ref<string | null>(null)
+  let detailRevision = 0
+  let listRevision = 0
+  let analysisPreviewRevision = 0
   const selectedIds = ref<string[]>([])
   const nextCursor = ref<string | null>(null)
   const hasMore = ref(false)
@@ -119,6 +126,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const reviewingRelevance = ref(false)
   const reviewingDetail = ref(false)
   const countLoading = ref(false)
+  const countError = ref<string | null>(null)
+  let countRevision = 0
   const error = ref<string | null>(null)
   const listError = ref<string | null>(null)
   const notice = ref<string | null>(null)
@@ -164,7 +173,19 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
   }
 
   function listParams(cursor?: string): ListContentsParams {
-    return { ...filterSnapshot(), cursor, limit: 20 }
+    // 排序参数仅用于列表，分析与导出继续使用既有筛选快照。
+    return { ...filterSnapshot(), sort_by: sortBy.value, sort_direction: sortDirection.value, cursor, limit: 20 }
+  }
+
+  /** 新字段首次按降序浏览，再次点击切换方向，并重置旧排序的分页边界。 */
+  async function changeSort(field: 'published_at' | 'follower_count'): Promise<void> {
+    sortDirection.value = sortBy.value === field && sortDirection.value === 'desc' ? 'asc' : 'desc'
+    sortBy.value = field
+    selectedIds.value = []
+    items.value = []
+    nextCursor.value = null
+    hasMore.value = false
+    await refresh()
   }
 
   function targetSelection(scope: 'query' | 'selected'): ContentTargetSelection {
@@ -180,22 +201,26 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
   }
 
   async function refresh(silent = false): Promise<void> {
+    // 新查询拥有列表提交权，迟到的旧筛选或排序请求不得覆盖当前画面。
+    const revision = ++listRevision
     if (!silent) loading.value = true
     listError.value = null
     error.value = null
     try {
       const page = await fetchContents(listParams())
+      if (revision !== listRevision) return
       items.value = page.items
       nextCursor.value = page.next_cursor ?? null
       hasMore.value = page.has_more
       selectedIds.value = selectedIds.value.filter((id) => page.items.some((item) => item.id === id))
-      if (detail.value) detail.value = await fetchContentDetail(detail.value.id)
+      if (detailId.value) await openDetail(detailId.value)
     } catch (reason) {
+      if (revision !== listRevision) return
       const message = errorMessage(reason)
       listError.value = message
       error.value = message
     } finally {
-      if (!silent) loading.value = false
+      if (!silent && revision === listRevision) loading.value = false
     }
   }
 
@@ -203,7 +228,8 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
 async function refreshLoadedWindow(): Promise<boolean> {
   if (windowRefreshInFlight) return false
   windowRefreshInFlight = true
-  const filtersAtStart = JSON.stringify(filterSnapshot())
+  const filtersAtStart = JSON.stringify(listParams())
+  const revision = listRevision
   const targetCount = Math.max(items.value.length, 20)
   listError.value = null
   error.value = null
@@ -227,14 +253,15 @@ async function refreshLoadedWindow(): Promise<boolean> {
       seenCursors.add(pageNext)
       cursor = pageNext
     }
-    if (filtersAtStart !== JSON.stringify(filterSnapshot())) return false
+    if (revision !== listRevision || filtersAtStart !== JSON.stringify(listParams())) return false
     items.value = refreshed
     nextCursor.value = pageNext
     hasMore.value = pageHasMore
     selectedIds.value = selectedIds.value.filter((id) => seenIds.has(id))
-    if (detail.value) detail.value = await fetchContentDetail(detail.value.id)
+    if (detailId.value) await openDetail(detailId.value)
     return true
   } catch (reason) {
+    if (revision !== listRevision || filtersAtStart !== JSON.stringify(listParams())) return false
     const message = errorMessage(reason)
     listError.value = message
     error.value = message
@@ -283,15 +310,19 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   async function loadNext(): Promise<void> {
-    if (!nextCursor.value || loadingNext.value) return
+    // 换序或重新查询期间不复用旧 Cursor；丢弃换序之前在途的下一页。
+    if (!nextCursor.value || loadingNext.value || loading.value) return
+    const revision = listRevision
     loadingNext.value = true
     error.value = null
     try {
       const page = await fetchContents(listParams(nextCursor.value))
+      if (revision !== listRevision) return
       items.value = [...items.value, ...page.items]
       nextCursor.value = page.next_cursor ?? null
       hasMore.value = page.has_more
     } catch (reason) {
+      if (revision !== listRevision) return
       error.value = errorMessage(reason)
     } finally {
       loadingNext.value = false
@@ -299,34 +330,50 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   async function refreshCount(mode: 'exact' | 'estimated'): Promise<void> {
+    // 数量读取失败独立反馈，不覆盖正常内容；筛选变化后旧计数不能回写。
+    const revision = ++countRevision
+    const snapshot = filterSnapshot()
     countLoading.value = true
-    error.value = null
+    countError.value = null
+    contentCount.value = null
     try {
-      contentCount.value = await fetchContentCount({
-        filters: filterSnapshot(),
+      const result = await fetchContentCount({
+        filters: snapshot,
         count_mode: mode,
         exact_limit: mode === 'exact' ? 100_000 : undefined,
       })
+      if (revision === countRevision && JSON.stringify(snapshot) === JSON.stringify(filterSnapshot())) contentCount.value = result
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (revision === countRevision) countError.value = errorMessage(reason)
     } finally {
-      countLoading.value = false
+      if (revision === countRevision) countLoading.value = false
     }
   }
 
   async function openDetail(contentId: string): Promise<void> {
+    // 抽屉开关独立于成功结果；请求失败保留原入口，关闭后忽略迟到响应。
+    const revision = ++detailRevision
+    if (detailId.value !== contentId) detail.value = null
+    detailId.value = contentId
+    detailError.value = null
     loadingDetail.value = true
     error.value = null
     try {
-      detail.value = await fetchContentDetail(contentId)
+      const result = await fetchContentDetail(contentId)
+      if (revision === detailRevision) detail.value = result
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (revision === detailRevision) detailError.value = errorMessage(reason)
     } finally {
-      loadingDetail.value = false
+      if (revision === detailRevision) loadingDetail.value = false
     }
   }
 
   function closeDetail(): void {
+    // 使当前请求失效，避免用户关闭后抽屉被网络回包重新打开。
+    detailRevision++
+    detailId.value = null
+    detailError.value = null
+    loadingDetail.value = false
     detail.value = null
   }
 
@@ -423,6 +470,10 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   async function previewAnalysis(
     scope: 'selected' | 'all',
   ): Promise<AnalysisContentRunPreviewResponse | null> {
+    const revision = ++analysisPreviewRevision
+    analysisDraft = null
+    analysisPreview.value = null
+    previewingAnalysis.value = false
     if (analysisConfigured.value !== true) {
       error.value = 'AI 模型未配置，请先在管理台配置可用模型。'
       return null
@@ -438,6 +489,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     const targets = analysisTargetSelection(scope)
     try {
       const preview = await previewAnalysisRun({ targets })
+      if (revision !== analysisPreviewRevision) return null
       analysisDraft = {
         targets,
         clientIdempotencyKey: createClientIdempotencyKey(),
@@ -445,16 +497,17 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       analysisPreview.value = preview
       return preview
     } catch (reason) {
+      if (revision !== analysisPreviewRevision) return null
       analysisDraft = null
       error.value = errorMessage(reason)
       return null
     } finally {
-      previewingAnalysis.value = false
+      if (revision === analysisPreviewRevision) previewingAnalysis.value = false
     }
   }
 
   async function confirmAnalysis(): Promise<number | null> {
-    if (!analysisDraft || !analysisPreview.value || submittingAnalysis.value) return null
+    if (!analysisDraft || !analysisPreview.value || previewingAnalysis.value || submittingAnalysis.value) return null
     submittingAnalysis.value = true
     error.value = null
     try {
@@ -584,6 +637,11 @@ async function refreshAnalysisCapabilities(): Promise<void> {
 
   return {
     filters,
+    sortBy,
+    sortDirection,
+    changeSort,
+    detailId,
+    detailError,
     items,
     detail,
     selectedIds,
@@ -595,6 +653,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     taxonomyLoading,
     taxonomyError,
     contentCount,
+    countError,
     exportColumnCatalog,
     hasMore,
     allVisibleSelected,

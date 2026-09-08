@@ -816,6 +816,8 @@ class ContentVehicleResponse(BaseModel):
     vehicle_model_id: UUID
     code: str
     display_name: str
+    series_name: str | None = None
+    category_name: str | None = None
     evidences: tuple[ContentVehicleEvidenceResponse, ...] = Field(min_length=1)
 
 
@@ -840,6 +842,7 @@ class ContentListItemResponse(BaseModel):
     title: str | None = None
     text: str | None = None
     author_display_name: str | None = None
+    author_follower_count: int | None = Field(default=None, ge=0)
     published_at: datetime | None = None
     last_seen_at: datetime
     content_url: str | None = None
@@ -912,6 +915,8 @@ class ContentListQuery(ContentFilterSnapshot):
 
     cursor: str | None = Field(default=None, min_length=1, max_length=4096)
     limit: int = Field(default=20, ge=1, le=100)
+    sort_by: Literal["published_at", "follower_count"] | None = None
+    sort_direction: Literal["asc", "desc"] = "desc"
 
 
 class ContentCountRequest(BaseModel):

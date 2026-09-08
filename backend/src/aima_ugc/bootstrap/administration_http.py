@@ -82,6 +82,8 @@ class PostgresAdministrationHttpService:
                     code=body.code,
                     display_name=body.display_name,
                     aliases=body.aliases,
+                    series_name=body.series_name,
+                    category_name=body.category_name,
                     actor_ref=principal.principal_id,
                 )
                 _audit(
@@ -157,6 +159,9 @@ class PostgresAdministrationHttpService:
                         display_name=body.display_name,
                         aliases=body.aliases,
                         status=body.status,
+                        classification=body.model_dump(
+                            include={"series_name", "category_name"}, exclude_unset=True
+                        ),
                         actor_ref=principal.principal_id,
                     )
                 except LookupError as exc:
@@ -622,6 +627,8 @@ def _vehicle_response(
         id=model.id,
         code=model.code,
         display_name=model.display_name,
+        series_name=model.series_name,
+        category_name=model.category_name,
         status=model.status,
         version=model.version,
         catalog_version=model.catalog_version,

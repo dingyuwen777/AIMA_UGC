@@ -3141,6 +3141,18 @@
             ],
             "title": "Author Display Name"
           },
+          "author_follower_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Follower Count"
+          },
           "availability": {
             "anyOf": [
               {
@@ -3505,6 +3517,18 @@
               }
             ],
             "title": "Author Display Name"
+          },
+          "author_follower_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Follower Count"
           },
           "availability": {
             "anyOf": [
@@ -4094,6 +4118,17 @@
         "additionalProperties": false,
         "description": "内容当前车型及其全部有效证据。",
         "properties": {
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -4109,6 +4144,17 @@
             "minItems": 1,
             "title": "Evidences",
             "type": "array"
+          },
+          "series_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Name"
           },
           "vehicle_model_id": {
             "format": "uuid",
@@ -7278,6 +7324,19 @@
             "title": "Aliases",
             "type": "array"
           },
+          "category_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
           "code": {
             "maxLength": 100,
             "minLength": 1,
@@ -7290,6 +7349,19 @@
             "minLength": 1,
             "title": "Display Name",
             "type": "string"
+          },
+          "series_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Name"
           }
         },
         "required": [
@@ -7375,6 +7447,17 @@
             "title": "Catalog Version",
             "type": "integer"
           },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -7418,6 +7501,17 @@
             "default": false,
             "title": "Referenced",
             "type": "boolean"
+          },
+          "series_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Name"
           },
           "status": {
             "enum": [
@@ -7471,6 +7565,19 @@
             ],
             "title": "Aliases"
           },
+          "category_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -7483,6 +7590,19 @@
               }
             ],
             "title": "Display Name"
+          },
+          "series_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Name"
           },
           "status": {
             "anyOf": [
@@ -10343,6 +10463,40 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "published_at",
+                    "follower_count"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_direction",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Sort Direction",
+              "type": "string"
             }
           }
         ],

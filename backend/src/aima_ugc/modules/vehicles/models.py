@@ -43,6 +43,8 @@ class VehicleModel:
     merged_into_id: UUID | None
     created_at: datetime
     updated_at: datetime
+    series_name: str | None = None
+    category_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -91,22 +91,42 @@ class PostgresContentQueryRepository:
         self._analysis_identity = analysis_identity
 
     def list_contents(self, query: ContentReadQuery) -> tuple[ContentReadRecord, ...]:
+        """在全量查询中排序分页；双向排序均将缺失值置后，以 ID 消除同值歧义。"""
         statement, columns = self._base_statement(query.filters)
-        sort_at = columns["sort_at"]
         content = contents_table
+        sort_column = (
+            accounts_table.c.current_follower_count
+            if query.sort_by == "follower_count"
+            else content.c.published_at
+            if query.sort_by == "published_at"
+            else columns["sort_at"]
+        )
+        ascending = query.sort_direction == "asc"
         if query.position is not None:
-            statement = statement.where(
-                or_(
-                    sort_at < query.position.sort_at,
-                    and_(
-                        sort_at == query.position.sort_at,
-                        content.c.id < query.position.content_id,
-                    ),
-                )
+            boundary = (
+                query.position.follower_count
+                if query.sort_by == "follower_count"
+                else query.position.sort_at
             )
+            id_after = (
+                content.c.id > query.position.content_id
+                if ascending
+                else content.c.id < query.position.content_id
+            )
+            if boundary is None:
+                after = and_(sort_column.is_(None), id_after)
+            else:
+                after = or_(
+                    sort_column > boundary if ascending else sort_column < boundary,
+                    and_(sort_column == boundary, id_after),
+                    sort_column.is_(None),
+                )
+            statement = statement.where(after)
+        order = sort_column.asc() if ascending else sort_column.desc()
+        id_order = content.c.id.asc() if ascending else content.c.id.desc()
         rows = tuple(
             self._session.execute(
-                statement.order_by(sort_at.desc(), content.c.id.desc()).limit(query.limit)
+                statement.order_by(order.nulls_last(), id_order).limit(query.limit)
             ).mappings()
         )
         return self._records(rows)
@@ -383,6 +403,7 @@ class PostgresContentQueryRepository:
         targets_only: bool = False,
         include_irrelevant: bool = False,
     ) -> tuple[Any, dict[str, Any]]:
+        """构造当前业务投影；作者关联为一对一，不扩大内容行数。"""
         content = contents_table
         version = content_versions_table
         attempt = provider_request_attempts_table
@@ -454,6 +475,9 @@ class PostgresContentQueryRepository:
         if targets_only:
             selected: tuple[Any, ...] = (content.c.id, content.c.current_version, sort_at)
         else:
+            source_join = source_join.outerjoin(
+                accounts_table, accounts_table.c.id == content.c.author_account_id
+            )
             selected = (
                 content.c.id,
                 content.c.current_version,
@@ -464,6 +488,7 @@ class PostgresContentQueryRepository:
                 content.c.title,
                 content.c.text,
                 version.c.author_snapshot["display_name"].astext.label("author_display_name"),
+                accounts_table.c.current_follower_count.label("author_follower_count"),
                 content.c.published_at,
                 content.c.last_seen_at,
                 content.c.canonical_url,
@@ -517,6 +542,7 @@ class PostgresContentQueryRepository:
         return statement, {"sort_at": sort_at}
 
     def _records(self, rows: tuple[RowMapping, ...]) -> tuple[ContentReadRecord, ...]:
+        """批量补充内容关系，并保留作者粉丝数的未知值。"""
         content_ids = tuple(cast(UUID, row["id"]) for row in rows)
         result_ids = tuple(
             cast(UUID, row["analysis_result_id"])
@@ -539,9 +565,10 @@ class PostgresContentQueryRepository:
                     )
                 )
 
-        vehicles: dict[UUID, dict[UUID, tuple[str, str, list[ContentVehicleEvidenceRead]]]] = (
-            defaultdict(dict)
-        )
+        vehicles: dict[
+            UUID,
+            dict[UUID, tuple[str, str, list[ContentVehicleEvidenceRead], str | None, str | None]],
+        ] = defaultdict(dict)
         if content_ids:
             effective_vehicle = vehicle_models_table.alias("effective_content_vehicle")
             vehicle_rows = self._session.execute(
@@ -559,6 +586,14 @@ class PostgresContentQueryRepository:
                         effective_vehicle.c.display_name,
                         vehicle_models_table.c.display_name,
                     ).label("effective_vehicle_display_name"),
+                    case(
+                        (effective_vehicle.c.id.is_not(None), effective_vehicle.c.series_name),
+                        else_=vehicle_models_table.c.series_name,
+                    ).label("effective_vehicle_series_name"),
+                    case(
+                        (effective_vehicle.c.id.is_not(None), effective_vehicle.c.category_name),
+                        else_=vehicle_models_table.c.category_name,
+                    ).label("effective_vehicle_category_name"),
                 )
                 .join(
                     vehicle_models_table,
@@ -593,6 +628,8 @@ class PostgresContentQueryRepository:
                         cast(str, vehicle_row["effective_vehicle_code"]),
                         cast(str, vehicle_row["effective_vehicle_display_name"]),
                         [],
+                        cast(str | None, vehicle_row["effective_vehicle_series_name"]),
+                        cast(str | None, vehicle_row["effective_vehicle_category_name"]),
                     ),
                 )
                 existing[2].append(
@@ -679,10 +716,13 @@ class PostgresContentQueryRepository:
                             code=value[0],
                             display_name=value[1],
                             evidences=tuple(value[2]),
+                            series_name=value[3],
+                            category_name=value[4],
                         )
                         for model_id, value in vehicles[content_id].items()
                     ),
                     availability=availability_by_content.get(content_id),
+                    author_follower_count=cast(int | None, row["author_follower_count"]),
                 )
             )
         return tuple(records)

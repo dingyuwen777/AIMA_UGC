@@ -320,6 +320,7 @@ test('anchors typography at 1440 and grows it only within the approved desktop b
   const workspace = await page.locator('.workspace-main').boundingBox()
   expect(wideTitle).toBeGreaterThanOrEqual(largeTitle)
   expect(wideTitle).toBeLessThanOrEqual(28)
-  expect(workspace?.width).toBeLessThan(1900)
+  expect(workspace?.x).toBe(180)
+  expect(workspace?.width).toBe(2560 - 180)
   await expectNoPageHorizontalOverflow(page)
 })

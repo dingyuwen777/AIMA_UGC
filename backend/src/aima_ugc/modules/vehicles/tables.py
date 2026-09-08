@@ -36,6 +36,8 @@ vehicle_models_table = Table(
     Column("id", Uuid(), primary_key=True),
     Column("code", Text(), nullable=False),
     Column("display_name", Text(), nullable=False),
+    Column("series_name", Text()),
+    Column("category_name", Text()),
     Column("status", Text(), nullable=False),
     Column("version", Integer(), nullable=False),
     Column(
@@ -47,6 +49,14 @@ vehicle_models_table = Table(
     UniqueConstraint("code"),
     CheckConstraint("char_length(code) > 0", name="code_nonempty"),
     CheckConstraint("char_length(display_name) > 0", name="display_name_nonempty"),
+    CheckConstraint(
+        "series_name is null or char_length(trim(series_name)) between 1 and 200",
+        name="series_name_valid",
+    ),
+    CheckConstraint(
+        "category_name is null or char_length(trim(category_name)) between 1 and 200",
+        name="category_name_valid",
+    ),
     CheckConstraint("status in ('active','deprecated','merged')", name="status_allowed"),
     CheckConstraint("version > 0", name="version_positive"),
     CheckConstraint(

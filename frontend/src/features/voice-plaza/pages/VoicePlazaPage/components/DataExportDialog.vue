@@ -8,6 +8,7 @@ import type {
 } from '../../../../../generated/api/client'
 import { exportArtifactRetention } from '../../../../../shared/artifactRetention'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
+import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 import { formatDateTime, formatNumber } from '../../../format'
@@ -19,6 +20,7 @@ const props = defineProps<{
   items: DataExportResponse[]
   columnCatalog: ExportColumnCatalogResponse | null
   submitting: boolean
+  error?: string | null
 }>()
 const emit = defineEmits<{
   'update:modelValue': [open: boolean]
@@ -28,13 +30,22 @@ const emit = defineEmits<{
 }>()
 const scope = ref<'query' | 'selected' | 'page'>('selected')
 const selectedColumns = ref<ExportColumnKey[]>([])
+const columnsEdited = ref(false)
 
 watch(() => props.modelValue, (open) => {
   if (open) {
+    columnsEdited.value = false
     scope.value = props.selectedCount > 0 ? 'selected' : props.pageCount > 0 ? 'page' : 'query'
     selectedColumns.value = (props.columnCatalog?.columns ?? [])
       .filter((item) => item.default_selected)
       .map((item) => item.key as ExportColumnKey)
+  }
+})
+
+/** 异步目录首次到达时补齐默认列；刷新目录不覆盖用户已修改的选择。 */
+watch(() => props.columnCatalog, (catalog) => {
+  if (props.modelValue && !columnsEdited.value && catalog) {
+    selectedColumns.value = catalog.columns.filter((column) => column.default_selected).map((column) => column.key as ExportColumnKey)
   }
 })
 
@@ -45,6 +56,7 @@ const canSubmit = computed(() => {
 })
 
 function toggleColumn(key: string): void {
+  columnsEdited.value = true
   const typedKey = key as ExportColumnKey
   selectedColumns.value = selectedColumns.value.includes(typedKey)
     ? selectedColumns.value.filter((item) => item !== typedKey)
@@ -72,181 +84,179 @@ function canDownload(item: DataExportResponse): boolean {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="modelValue"
-      class="modal-layer"
-    >
-      <button
-        class="backdrop"
-        type="button"
-        aria-label="关闭导出弹窗"
-        @click="emit('update:modelValue', false)"
-      />
-      <section
-        class="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="export-title"
-      >
-        <header>
-          <div>
-            <h2 id="export-title">
-              导出声音记录
-            </h2>
-            <p>选择导出范围和字段，系统将在后台生成可下载的 Excel 文件。</p>
-          </div>
-          <section class="column-picker">
-            <header><strong>导出列</strong><span>{{ columnCatalog?.columns.length ?? '—' }} 个可选字段</span></header>
-            <div>
-              <label
-                v-for="column in columnCatalog?.columns ?? []"
-                :key="column.key"
-              >
-                <input
-                  type="checkbox"
-                  :checked="selectedColumns.includes(column.key as ExportColumnKey)"
-                  @change="toggleColumn(column.key)"
-                >
-                <span>{{ column.label }}</span>
-                <small v-if="column.sensitive">敏感列</small>
-              </label>
-              <em v-if="!columnCatalog">列目录加载中…</em>
-            </div>
-          </section>
-          <button
-            class="close-button"
-            type="button"
-            aria-label="关闭"
-            @click="emit('update:modelValue', false)"
-          >
-            <AimaIcon
-              name="close"
-              :size="20"
-            />
-          </button>
-        </header>
-        <div class="body">
-          <div class="choice-grid">
-            <label :class="{ active: scope === 'selected', disabled: selectedCount === 0 }">
-              <input
-                v-model="scope"
-                type="radio"
-                value="selected"
-                :disabled="selectedCount === 0"
-              >
-              <span><strong>已选内容</strong><small>{{ selectedCount }} 条</small></span>
-            </label>
-            <label :class="{ active: scope === 'page', disabled: pageCount === 0 }">
-              <input
-                v-model="scope"
-                type="radio"
-                value="page"
-                :disabled="pageCount === 0"
-              >
-              <span><strong>当前页内容</strong><small>冻结已加载 {{ pageCount }} 条</small></span>
-            </label>
-            <label :class="{ active: scope === 'query', disabled: pageCount === 0 }">
-              <input
-                v-model="scope"
-                type="radio"
-                value="query"
-                :disabled="pageCount === 0"
-              >
-              <span><strong>全部查询结果</strong><small>{{ pageCount > 0 ? '按当前筛选条件冻结' : '当前筛选没有可导出内容' }}</small></span>
-            </label>
-          </div>
-          <p class="analysis-note">
-            未完成 AI 打标的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。
-          </p>
-          <p class="retention-note">
-            Excel 导出文件自生成完成后保留 7 天。过期后文件会自动清理，导出记录仍保留；需要时可重新创建导出。
-          </p>
-          <div class="records-title">
-            <strong>最近导出记录</strong>
-            <AimaButton
-              variant="text"
-              size="small"
-              icon="refresh"
-              @click="emit('refresh')"
-            >
-              刷新
-            </AimaButton>
-          </div>
-          <div class="records">
-            <article
-              v-for="item in items"
-              :key="item.id"
-            >
-              <div class="record-info">
-                <strong>{{ item.filename || `声音广场导出 ${item.id.slice(0, 8)}` }}</strong>
-                <small>{{ formatDateTime(item.created_at) }} · {{ statusLabels[item.job.status] }}</small>
-                <TaskProgressBar
-                  compact
-                  :label="`导出 ${item.id.slice(0, 8)} 进度`"
-                  :value="item.job.progress"
-                  :tone="item.job.status === 'succeeded' ? 'success' : item.job.status === 'failed' ? 'danger' : 'primary'"
-                />
-                <span v-if="item.stats">内容 {{ formatNumber(item.stats.content_count) }} · 已打标 {{ formatNumber(item.stats.analyzed_count) }} · 未打标 {{ formatNumber(item.stats.unanalyzed_count) }}</span>
-                <span
-                  v-if="retention(item).expiresAt"
-                  :class="{ expired: retention(item).expired }"
-                >{{ retention(item).expired ? '下载已过期' : `下载有效期至 ${formatDateTime(retention(item).expiresAt)}` }}</span>
-                <span
-                  v-else-if="item.job.status !== 'succeeded'"
-                  class="pending-artifact"
-                >文件尚未生成</span>
-                <span
-                  v-if="item.job.error_code"
-                  class="error"
-                >导出遇到问题，请重试；如持续失败，请联系管理员查看技术详情。</span>
-                <details
-                  v-if="item.job.error_code"
-                  class="technical-details"
-                >
-                  <summary>技术详情</summary>
-                  <code>{{ item.job.error_code }}</code>
-                </details>
-              </div>
-              <AimaButton
-                size="small"
-                variant="outline"
-                icon="download"
-                :disabled="!canDownload(item)"
-                @click="emit('download', item)"
-              >
-                {{ retention(item).expired ? '已过期' : item.job.status === 'running' || item.job.status === 'queued' ? '导出中' : '下载' }}
-              </AimaButton>
-            </article>
-            <p
-              v-if="items.length === 0"
-              class="empty"
-            >
-              暂无导出记录。
-            </p>
-          </div>
+  <AimaDialog
+    :model-value="modelValue"
+    label="导出声音记录"
+    width="560px"
+    class="voice-export-modal"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <template #header>
+      <header>
+        <div>
+          <h2 id="export-title">
+            导出声音记录
+          </h2>
+          <p>选择导出范围和字段，系统将在后台生成可下载的 Excel 文件。</p>
         </div>
-        <footer>
-          <AimaButton @click="emit('update:modelValue', false)">
-            关闭
-          </AimaButton>
-          <AimaButton
-            variant="primary"
-            :disabled="submitting || !canSubmit"
-            @click="emit('submit', scope, selectedColumns)"
+
+        <button
+          class="close-button"
+          type="button"
+          aria-label="关闭"
+          @click="emit('update:modelValue', false)"
+        >
+          <AimaIcon
+            name="close"
+            :size="20"
+          />
+        </button>
+      </header>
+    </template>
+    <div class="body">
+      <p
+        v-if="error"
+        role="alert"
+        class="request-error"
+      >
+        {{ error }}
+      </p>
+      <h3>导出范围</h3>
+      <div class="choice-grid">
+        <label :class="{ active: scope === 'selected', disabled: selectedCount === 0 }">
+          <input
+            v-model="scope"
+            type="radio"
+            value="selected"
+            :disabled="selectedCount === 0"
           >
-            {{ submitting ? '正在创建…' : '创建 Excel 导出' }}
-          </AimaButton>
-        </footer>
+          <span><strong>已选内容</strong><small>{{ selectedCount }} 条</small></span>
+        </label>
+        <label :class="{ active: scope === 'page', disabled: pageCount === 0 }">
+          <input
+            v-model="scope"
+            type="radio"
+            value="page"
+            :disabled="pageCount === 0"
+          >
+          <span><strong>当前页内容</strong><small>冻结已加载 {{ pageCount }} 条</small></span>
+        </label>
+        <label :class="{ active: scope === 'query', disabled: pageCount === 0 }">
+          <input
+            v-model="scope"
+            type="radio"
+            value="query"
+            :disabled="pageCount === 0"
+          >
+          <span><strong>全部查询结果</strong><small>{{ pageCount > 0 ? '按当前筛选条件冻结' : '当前筛选没有可导出内容' }}</small></span>
+        </label>
+      </div>
+      <section class="column-picker">
+        <header><strong>导出字段</strong><span>{{ columnCatalog?.columns.length ?? '—' }} 个可选字段</span></header>
+        <div>
+          <label
+            v-for="column in columnCatalog?.columns ?? []"
+            :key="column.key"
+          >
+            <input
+              type="checkbox"
+              :checked="selectedColumns.includes(column.key as ExportColumnKey)"
+              @change="toggleColumn(column.key)"
+            >
+            <span>{{ column.label }}</span>
+            <small v-if="column.sensitive">敏感列</small>
+          </label>
+          <em v-if="!columnCatalog">列目录加载中…</em>
+        </div>
       </section>
+      <p class="analysis-note">
+        未完成 AI 打标的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。
+      </p>
+      <p class="retention-note">
+        Excel 导出文件自生成完成后保留 7 天。过期后文件会自动清理，导出记录仍保留；需要时可重新创建导出。
+      </p>
+      <div class="records-title">
+        <strong>最近导出记录</strong>
+        <AimaButton
+          variant="text"
+          size="small"
+          icon="refresh"
+          @click="emit('refresh')"
+        >
+          刷新
+        </AimaButton>
+      </div>
+      <div class="records">
+        <article
+          v-for="item in items"
+          :key="item.id"
+        >
+          <div class="record-info">
+            <strong>{{ item.filename || `声音广场导出 ${item.id.slice(0, 8)}` }}</strong>
+            <small>{{ formatDateTime(item.created_at) }} · {{ statusLabels[item.job.status] }}</small>
+            <TaskProgressBar
+              compact
+              :label="`导出 ${item.id.slice(0, 8)} 进度`"
+              :value="item.job.progress"
+              :tone="item.job.status === 'succeeded' ? 'success' : item.job.status === 'failed' ? 'danger' : 'primary'"
+            />
+            <span v-if="item.stats">内容 {{ formatNumber(item.stats.content_count) }} · 已打标 {{ formatNumber(item.stats.analyzed_count) }} · 未打标 {{ formatNumber(item.stats.unanalyzed_count) }}</span>
+            <span
+              v-if="retention(item).expiresAt"
+              :class="{ expired: retention(item).expired }"
+            >{{ retention(item).expired ? '下载已过期' : `下载有效期至 ${formatDateTime(retention(item).expiresAt)}` }}</span>
+            <span
+              v-else-if="item.job.status !== 'succeeded'"
+              class="pending-artifact"
+            >文件尚未生成</span>
+            <span
+              v-if="item.job.error_code"
+              class="error"
+            >导出遇到问题，请重试；如持续失败，请联系管理员查看技术详情。</span>
+            <details
+              v-if="item.job.error_code"
+              class="technical-details"
+            >
+              <summary>技术详情</summary>
+              <code>{{ item.job.error_code }}</code>
+            </details>
+          </div>
+          <AimaButton
+            size="small"
+            variant="outline"
+            icon="download"
+            :disabled="!canDownload(item)"
+            @click="emit('download', item)"
+          >
+            {{ retention(item).expired ? '已过期' : item.job.status === 'running' || item.job.status === 'queued' ? '导出中' : '下载' }}
+          </AimaButton>
+        </article>
+        <p
+          v-if="items.length === 0"
+          class="empty"
+        >
+          暂无导出记录。
+        </p>
+      </div>
     </div>
-  </Teleport>
+    <template #footer>
+      <footer>
+        <AimaButton @click="emit('update:modelValue', false)">
+          取消
+        </AimaButton>
+        <AimaButton
+          variant="primary"
+          :disabled="submitting || !canSubmit"
+          @click="emit('submit', scope, selectedColumns)"
+        >
+          {{ submitting ? '正在创建…' : scope === 'query' ? '开始导出查询结果' : `开始导出 ${scope === 'selected' ? selectedCount : pageCount} 条` }}
+        </AimaButton>
+      </footer>
+    </template>
+  </AimaDialog>
 </template>
 
 <style scoped>
-.modal-layer { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; }
-.backdrop { position: absolute; inset: 0; border: 0; background: rgb(25 32 45 / 46%); }
-.modal { position: relative; display: grid; width: min(650px, calc(100vw - 32px)); height: min(690px, calc(100vh - 32px)); overflow: hidden; border-radius: 11px; background: var(--aima-surface); box-shadow: 0 22px 58px rgb(20 28 42 / 22%); }
 header { display: flex; min-height: 82px; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid var(--aima-border); }
 h2 { margin: 0; color: var(--aima-text); font-size: 18px; line-height: 26px; }
 header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line-height: 16px; }
@@ -298,4 +308,20 @@ header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line
 .empty { padding: 24px; color: var(--aima-text-disabled); text-align: center; }
 footer { display: flex; min-height: 68px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); }
 footer :deep(.aima-button) { height: 38px; }
+.request-error { color: var(--aima-danger); font-size: 12px; line-height: 18px; }
+header { min-height: 90px; padding: 24px 28px 12px; border: 0; }
+h2 { font-size: 16px; }
+.body { max-height: 490px; padding: 0 28px 20px; }
+h3 { margin: 0 0 12px; font-size: 13px; }
+.column-picker { margin: 24px 0; padding: 0; border: 0; }
+.column-picker header { padding: 0 0 12px; }
+.column-picker header strong { font-size: 13px; }
+.column-picker > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px; border-radius: 8px; background: #f7f9fb; }
+.column-picker label { min-height: 32px; padding: 0; border: 0; font-size: 12px; }
+.column-picker input { width: 16px; height: 16px; flex: none; }
+.retention-note { margin-top: 12px; padding: 14px 12px; font-size: 11px; }
+footer { padding: 18px 28px 28px; border: 0; }
+:global(.voice-export-modal) { height: 669px; }
+:global(.voice-export-modal > .aima-dialog-body) { flex: 1; }
+.body { min-height: 0; max-height: none; }
 </style>

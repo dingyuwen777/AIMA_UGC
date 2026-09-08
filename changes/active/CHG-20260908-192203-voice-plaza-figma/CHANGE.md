@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260908-192203-voice-plaza-figma
 title: 声音广场 Figma 实施与全量排序
 level: L3
-status: implementing
+status: ready_for_review
 owner: codex
 branch: feat/voice-plaza-figma-20260908
 created: 2026-09-08
@@ -41,23 +41,25 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 粉丝数和发布时间全量排序、空值置后、Cursor 绑定并兼容旧调用 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 | not_satisfied | 已新增失败的排序和 Cursor 测试 |
-| R2 | 复用管理员车型目录并补 Figma 系列分组 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 | not_satisfied | 尚未实现 |
-| R3 | 声音广场与无顶栏公共布局符合 Figma，保留现有业务与错误恢复 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 | not_satisfied | 前轮已完成有界差异审查 |
-| R4 | 有数据页面跨 1180 至 2560 宽度无异常留白、裁切，操作可达 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 | not_satisfied | 等待实际实现后验收 |
+| R1 | 粉丝数和发布时间全量排序、空值置后、Cursor 绑定并兼容旧调用 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC1 | satisfied | PostgreSQL 双字段、双方向、同值及空值分页集成通过；旧 v1 Cursor 回归通过；真实浏览器排序请求成功 |
+| R2 | 复用管理员车型目录并补 Figma 系列分组 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC2 | satisfied | 可空系列/类别 Migration、目录创建/缺省保留/显式清空集成通过；管理页面保存、内容列表读取和系列/别名选择全栈通过 |
+| R3 | 声音广场与无顶栏公共布局符合 Figma，保留现有业务与错误恢复 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC3 | satisfied | 122 项前端单元与 71 项 Browser Mock 通过；详情、人工纠正、AI、导出、任务/消息中心可达；Figma 正常页及详情/导出文案同步并截图核对 |
+| R4 | 有数据页面跨 1180 至 2560 宽度无异常留白、裁切，操作可达 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC5 | satisfied | 六种宽度逐列几何断言及视口检查通过；1440/2560 实际截图复核；窄屏表格局部滚动与固定操作列保留 |
+| R5 | 公共 AppShell 无顶栏、180px 侧栏及底部任务/消息/身份入口，其他路由与权限回归 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC4 | satisfied | AppShell/任务消息测试与全路由六种尺寸 Browser Mock 通过，其他页面几何随公共顶栏移除而验证 |
+| R6 | 分层验证、生成物、正式构建及真实结果报告 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC6 | satisfied | 下方 Validation Matrix 列明实际通过证据、Windows 三条既有 Linux 专属失败及待执行的正式 CI，不夸大模型 Fake 或本地证据 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | Cursor、筛选、选择、弹层与目录 |
-| 接口 / Contract | required | OpenAPI/生成 Client 与排序参数 |
-| Backend/API/PostgreSQL | required | 排序/空值/同值/分页、车型持久关系 |
-| Browser Mock Acceptance | required | 正常/加载/空/错、编辑/任务/导出与多尺寸 |
-| Real Full-stack Golden Path | required | 管理车型与内容列表真实读写接线 |
+| 行为 / Unit / Component | required | 前端 122 passed；后端目标 Cursor/车型及集成组合 18 passed；扩展 Python 结果和 Windows 限制见下文 |
+| 接口 / Contract | required | generate.py --check、check_compatibility.py 通过；Orval 再生成前后 Client SHA256 一致 |
+| Backend/API/PostgreSQL | required | PostgreSQL 18 隔离库执行排序与目录持久化测试；Alembic upgrade head/check 通过，无额外升级差异 |
+| Browser Mock Acceptance | required | 71 passed；五平台文字徽标、六种尺寸的补充检查复用相同页面与几何用例 |
+| Real Full-stack Golden Path | required | 管理能力 5 passed；AI streaming 和人工相关性 3 passed；真实 Browser/API/Worker/PostgreSQL，模型为本地 Fake |
 | External Provider Probe | not_applicable | 复用落库数据和既有业务；不需要付费外部调用 |
-| Build / Runtime | required | 类型检查和正式前端构建 |
-| Docs / Governance / Other | required | 当前行为、兼容和交付记录 |
+| Build / Runtime | required | npm run build、TS7/Vue 类型检查通过；mypy 317 文件通过；Ruff 全仓约定范围和前端全量 lint 通过 |
+| Docs / Governance / Other | required | 产品、API Blueprint、Content README 定向同步；文档、事实、Secret、架构/表 Owner、项目治理检查通过 |
 
 # 实施计划
 
@@ -72,11 +74,35 @@ data_changes:
 
 # Completion Audit
 
-- [ ] upstream_re_read：完成前重读 Issue 与用户目标。
-- [ ] change_coverage：逐项核对实现、测试和文档。
-- [ ] reverse_audit：检查已有能力未丢失，页面动作有真实支持。
-- [ ] unresolved_cleared：全部必需项满足后才进入 Ready。
+- [x] upstream_re_read：重新读取 Issue #389、Figma 正常页/三种浮层和用户关于整体页面、铃铛、列宽及多平台标识的决定；最新 origin/main 仍为 e93839959b7a57fd29b5344d6b7e39562a2671e8。
+- [x] change_coverage：逐项核对全量排序、旧调用兼容、真实车型目录、页面状态、多尺寸及文档，覆盖 R1–R6，无自行延期的需求。
+- [x] reverse_audit：生成 Client → API → Owner 查询/写入接线一致；现有相关性/标签/车型纠正与撤销、锁定/解锁、任务取消、导出下载入口保留；用户可见异步状态及错误由现有服务返回。未知粉丝数不伪造为零。
+- [x] unresolved_cleared：本次实现未发现未解决的阻塞缺陷。Windows 上既有 Linux 权限测试无法执行，保留真实失败并交由正式 Linux CI 验证；不据此宣称 CI 通过、合并或部署。
 
 # 验证记录
 
 - 初始 Red：tests/unit/content/test_content_cursor.py，4 failed / 1 passed。新增字段与排序身份尚不支持，失败符合预期；原签名防篡改用例通过。
+- 后端目标：`python -m pytest tests/unit/content/test_content_cursor.py tests/unit/content/test_vehicle_display_classification.py tests/integration/content/test_stage8d_voice_plaza_runtime.py tests/integration/database/test_u1_u5_administration.py -q`：18 passed。数据库只使用本任务隔离 PostgreSQL，不修改用户数据库。
+- 前端：`npm run test -- --run`：23 文件、122 passed；`npm run test:e2e`：71 passed；`npm run lint`、`npm run build`：exit 0。新增 AI 预检竞争回归经历失败后修复通过。
+- 全栈：现有 `admin-product-capabilities.spec.ts` 5 passed；`analysis-streaming.spec.ts` 与 `manual-relevance-review.spec.ts` 合计 3 passed。覆盖管理目录保存→列表/详情消费，以及真实 Worker 的分析和人工纠正。未调用真实付费模型或 TikHub。
+- 扩展 Python：`python -m pytest tests/unit tests/contracts tests/api -q` 在 Windows 得到 1055 passed、8 skipped、3 failed；三条失败均在未修改的 `test_prepare_host.py` 调用 Windows 不存在的 `os.geteuid/chown` 时发生。沙箱首次运行还出现临时目录 PermissionError，已在正常主机权限下复跑消除；没有删除、跳过或修改失败测试。
+- `python -m mypy backend/src/aima_ugc`：317 文件通过。与 CI 相同范围的 Ruff format/check：641 文件已格式化、检查通过。
+- `scripts/contracts/generate.py --check`、`scripts/contracts/check_compatibility.py`、`scripts/quality/check_architecture.py`、`scripts/quality/check_table_ownership.py`、`scripts/quality/check_docs.py`、`scripts/quality/check_docs_facts.py`、`scripts/quality/scan_secrets.py`、`scripts/quality/check_agent_governance.py` 均 exit 0。
+- 生成 Client 再生成前后 SHA256：`D7B2DBA3D5258740F277924F3C712A6171ADB204F96F5DEBE1BC138F1D25C6AF`；没有手改生成物或升级依赖。
+
+# 作者复核与独立审查状态
+
+- 独立审查：等待用户选择由只读审查 Agent 或用户本人执行。以下为作者复核，不冒充独立审查通过。
+
+- 需求复核：从用户决定、Issue 和正式 Figma 重建范围，再核对实现和证据。1440 基准侧栏 180、页面左右间距 24；表格复用 Figma 固定列宽，标题列承接剩余宽度。无顶栏布局也验证了采集策略、运行中心、管理及任务/通知入口。
+- 代码复核：检查 SQL 双向 NULLS LAST 和 ID 续页、作者一对一关联、旧摘要/旧 Cursor、车型省略与显式 null、合并后分类投影、请求迟到竞争、模态焦点/Escape、日期北京时间边界、导出字段初始化及旧任务行为。复核未发现需阻断本次提交的问题；这不替代托管平台 Review 和 CI。
+- 视觉：已实际检查正常页、1440/2560 截图及详情/AI/导出尺寸。平台标识保持 Figma 的书/抖/快/微/B 文字徽标，配合颜色和平台名称，不声称已使用官方品牌 Logo。实际数量、车型、标签和任务数据保持来自 API。
+- Figma 同步仅修改正常页及详情/导出的十处可用性文案：二级标签前置提示、人工复核明确措辞和导出已选范围；不改变整体页面结构、尺寸或示例数据。
+
+# 文件变更与交付边界
+
+- Content Contract、查询、Cursor、HTTP 投影：后端全量排序及作者粉丝数；车型 Contract、Owner、表及 Migration：可空系列/类别的管理与消费。对应 OpenAPI/TypeScript Client 由正式生成器同步。
+- AppShell、NotificationInbox：无顶栏布局与底部公共入口、Figma 铃铛资产。VoicePlazaPage、Filters、Table、Detail、Analysis、Export、Store：基准版式、真实状态和既有业务保留。
+- 新增 AimaDateRange/AimaDialog，扩展已有 VehicleMultiSelect 的 compact 模式；其他消费者保留原模式。新增 bell/calendar/sort 三个 SVG 均来自当前 Figma。
+- 前后端测试按行为及公共布局更新；产品说明、API Blueprint、Content README 只同步当前变化。预先存在的 Figma 工作流指南修改排除在本次提交外。
+- 分支 `feat/voice-plaza-figma-20260908`，PR #390 → main；用户授权到提交/推送/PR，不合并、不部署、不删除分支。正式 CI 结果以本 PR 当前 head 的 GitHub Actions 为准。

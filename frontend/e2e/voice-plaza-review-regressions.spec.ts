@@ -114,8 +114,10 @@ test('车型目录响应缺少 items 时显示错误且不中断页面渲染', a
 
   await page.goto('/voice-plaza')
 
-  await page.getByRole('button', { name: '更多筛选' }).click()
+  await expect(page.getByLabel('发声类型', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '选择车型', exact: true }).click()
   await expect(page.getByText('车型目录响应无效，请稍后重试。')).toBeVisible()
+  await page.keyboard.press('Escape')
   await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
   expect(pageErrors).toEqual([])
 })
