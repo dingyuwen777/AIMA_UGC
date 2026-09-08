@@ -85,6 +85,8 @@ data_changes:
 - 后端目标：`python -m pytest tests/unit/content/test_content_cursor.py tests/unit/content/test_vehicle_display_classification.py tests/integration/content/test_stage8d_voice_plaza_runtime.py tests/integration/database/test_u1_u5_administration.py -q`：18 passed。数据库只使用本任务隔离 PostgreSQL，不修改用户数据库。
 - 前端：`npm run test -- --run`：23 文件、122 passed；`npm run test:e2e`：71 passed；`npm run lint`、`npm run build`：exit 0。新增 AI 预检竞争回归经历失败后修复通过。
 - 独立审查补充：复用六种宽度用例加入五平台、长标题、三个标签和三个车型，`npm run test:e2e -- e2e/voice-plaza-design.spec.ts -g 'column geometry'`：6 passed（10.8s）；补充后 `npm run typecheck` 与 `npm run lint`：exit 0。截图已实际复核。
+- 正式 CI `a64b81f4`：Linux Python Unit/Contract/API 分别 909/104/53 passed，前端 122 单元及 71 Browser Mock 通过；PostgreSQL 集成各组共 228 passed，Compose 和 Linux/Windows Tooling 通过。真实全栈 11 passed / 1 failed：历史导入用例仍在新版列表中断言正文。依据正式列表/详情分工，将同一正文断言移入对应内容详情；保留标题冲突、历史补空及 selected/all Run 的业务断言。同时按独立复核改用数量菜单的完整刷新，并用真实活动任务区域替换已失效的旧文案负断言。修正后须以最终 head CI 为准。
+- 历史导入适配最终复跑：新的任务隔离 PostgreSQL 执行 `npm run test:e2e:fullstack -- e2e-fullstack/stage12-historical-analysis.spec.ts`，1 passed（27.7s）；正文补空、冲突、连续 selected/all 分析及撤销均通过。曾复现菜单未关闭导致后续刷新不可达，已补充关闭；失败用例遗留来源造成的后续冲突数量差异通过新隔离库恢复 CI 初始条件，不改原预期。独立增量复核无新增发现，Typecheck 与目标 ESLint 通过，无新增生产代码差异。
 - 全栈：现有 `admin-product-capabilities.spec.ts` 5 passed；`analysis-streaming.spec.ts` 与 `manual-relevance-review.spec.ts` 合计 3 passed。覆盖管理目录保存→列表/详情消费，以及真实 Worker 的分析和人工纠正。未调用真实付费模型或 TikHub。
 - 扩展 Python：`python -m pytest tests/unit tests/contracts tests/api -q` 在 Windows 得到 1055 passed、8 skipped、3 failed；三条失败均在未修改的 `test_prepare_host.py` 调用 Windows 不存在的 `os.geteuid/chown` 时发生。沙箱首次运行还出现临时目录 PermissionError，已在正常主机权限下复跑消除；没有删除、跳过或修改失败测试。
 - `python -m mypy backend/src/aima_ugc`：317 文件通过。与 CI 相同范围的 Ruff format/check：641 文件已格式化、检查通过。
