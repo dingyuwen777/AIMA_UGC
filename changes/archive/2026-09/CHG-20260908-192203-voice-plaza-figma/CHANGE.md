@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260908-192203-voice-plaza-figma
 title: 声音广场 Figma 实施与全量排序
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: feat/voice-plaza-figma-20260908
 created: 2026-09-08
