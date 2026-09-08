@@ -253,8 +253,8 @@ describe('frontend full-stack audit regressions', () => {
 
     expect(store.items.map((content) => content.id)).toEqual(['content-1', 'content-2'])
     expect(store.selectedIds).toEqual(['content-2'])
-    expect(generated.listContents).toHaveBeenNthCalledWith(3, { limit: 20 })
-    expect(generated.listContents).toHaveBeenNthCalledWith(4, { cursor: 'content-next', limit: 20 })
+    expect(generated.listContents).toHaveBeenNthCalledWith(3, expect.objectContaining({ cursor: undefined, limit: 20, sort_by: 'published_at', sort_direction: 'desc' }))
+    expect(generated.listContents).toHaveBeenNthCalledWith(4, expect.objectContaining({ cursor: 'content-next', limit: 20, sort_by: 'published_at', sort_direction: 'desc' }))
     store.stopPolling()
   })
 

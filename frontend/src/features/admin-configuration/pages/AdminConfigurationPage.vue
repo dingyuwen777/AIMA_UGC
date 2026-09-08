@@ -77,7 +77,7 @@ const auditTotal = ref(0)
 const auditOffset = ref(0)
 const auditLimit = 100
 
-const vehicleDraft = reactive({ id: '', code: '', displayName: '', aliases: '', status: 'active' as 'active' | 'deprecated' })
+const vehicleDraft = reactive({ id: '', code: '', displayName: '', seriesName: '', categoryName: '', aliases: '', status: 'active' as 'active' | 'deprecated' })
 const mergeTargetId = ref('')
 const schemeDraft = reactive({
   schemeName: '',
@@ -233,7 +233,8 @@ function splitLines(value: string): string[] {
 }
 
 function resetVehicleDraft(): void {
-  Object.assign(vehicleDraft, { id: '', code: '', displayName: '', aliases: '', status: 'active' })
+  // 创建新车型时清除上次编辑的展示分类。
+  Object.assign(vehicleDraft, { id: '', code: '', displayName: '', seriesName: '', categoryName: '', aliases: '', status: 'active' })
   mergeTargetId.value = ''
 }
 
@@ -242,12 +243,15 @@ function editVehicleDraft(item: VehicleModelResponse): void {
     id: item.id,
     code: item.code,
     displayName: item.display_name,
+    seriesName: item.series_name ?? '',
+    categoryName: item.category_name ?? '',
     aliases: (item.aliases ?? []).map((alias) => alias.text).join('\n'),
     status: item.status === 'deprecated' ? 'deprecated' : 'active',
   })
 }
 
 async function saveVehicle(): Promise<void> {
+  // 可空分类允许逐步补充，清空输入会显式清除旧分类。
   if (!vehicleDraft.code.trim() || !vehicleDraft.displayName.trim()) return
   saving.value = true
   error.value = null
@@ -255,6 +259,8 @@ async function saveVehicle(): Promise<void> {
     if (vehicleDraft.id) {
       await editVehicle(vehicleDraft.id, {
         display_name: vehicleDraft.displayName,
+        series_name: vehicleDraft.seriesName.trim() || null,
+        category_name: vehicleDraft.categoryName.trim() || null,
         aliases: splitLines(vehicleDraft.aliases),
         status: vehicleDraft.status,
       })
@@ -262,6 +268,8 @@ async function saveVehicle(): Promise<void> {
       await addVehicle({
         code: vehicleDraft.code,
         display_name: vehicleDraft.displayName,
+        series_name: vehicleDraft.seriesName.trim() || null,
+        category_name: vehicleDraft.categoryName.trim() || null,
         aliases: splitLines(vehicleDraft.aliases),
       })
     }
@@ -640,6 +648,22 @@ function safeJson(value: Record<string, unknown>): string {
             <input
               v-model="vehicleDraft.displayName"
               placeholder="例如 爱玛 Q7"
+            >
+          </label>
+          <label>
+            系列（可选）
+            <input
+              v-model="vehicleDraft.seriesName"
+              maxlength="200"
+              placeholder="用于车型筛选分组"
+            >
+          </label>
+          <label>
+            类别（可选）
+            <input
+              v-model="vehicleDraft.categoryName"
+              maxlength="200"
+              placeholder="用于车型信息展示"
             >
           </label>
           <label>

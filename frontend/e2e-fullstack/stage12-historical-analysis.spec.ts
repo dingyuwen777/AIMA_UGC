@@ -66,8 +66,10 @@ async function assertCompletedRunRetained(
   }))
 
   // 声音广场只展示 queued/running/cancelling 活动 Run；终态历史统一进入任务中心。
-  await page.getByRole('button', { name: '刷新数据' }).click()
-  await expect(page.getByText(`Run #${sequenceNo} · 已完成`)).toHaveCount(0)
+  await page.locator('.count-options > summary').click()
+  await page.locator('.count-options').getByRole('button', { name: '刷新数据', exact: true }).click()
+  await page.locator('.count-options > summary').click()
+  await expect(page.getByRole('region', { name: 'AI 打标活动任务' })).toHaveCount(0)
 }
 
 async function createAnalysisRun(
@@ -75,13 +77,13 @@ async function createAnalysisRun(
   request: APIRequestContext,
 ): Promise<{ id: string; sequenceNo: number }> {
   await page.getByLabel(/选择 爱玛 Stage12 当前标题/).check()
-  await page.getByRole('button', { name: /AI 打标/ }).click()
-  const dialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
-  await expect(dialog.getByText('预计处理 1 条，系统将分 1 批完成')).toBeVisible()
+  await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
+  await expect(dialog.getByText(/预计分析 1 条内容 · 1 个分片 · 每片最多 \d+ 条/)).toBeVisible()
   const createdResponsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
-  await dialog.getByRole('button', { name: '确认并创建任务' }).click()
+  await dialog.getByRole('button', { name: '确认开始分析' }).click()
   const createdResponse = await createdResponsePromise
   expect(createdResponse.status()).toBe(202)
   const created = await createdResponse.json() as { run_id: string }
@@ -101,8 +103,8 @@ async function createAllDataAnalysisRun(
   page: Page,
   request: APIRequestContext,
 ): Promise<{ id: string; sequenceNo: number; targetCount: number }> {
-  await page.getByRole('button', { name: /AI 打标/ }).click()
-  const dialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
+  await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
   const allPreviewPromise = page.waitForResponse((response) => {
     if (
       response.request().method() !== 'POST'
@@ -111,25 +113,25 @@ async function createAllDataAnalysisRun(
     const payload = response.request().postDataJSON() as { targets?: { scope?: string } }
     return payload.targets?.scope === 'all'
   })
-  await dialog.getByRole('radio', { name: /全部数据/ }).check()
+  await dialog.getByRole('radio', { name: /全部系统内容/ }).check()
   const previewResponse = await allPreviewPromise
   expect(previewResponse.status()).toBe(200)
   const previewRequest = previewResponse.request().postDataJSON() as {
     targets: { scope: string; content_ids?: string[] }
   }
   expect(previewRequest).toEqual({ targets: { scope: 'all' } })
-  const preview = await previewResponse.json() as { target_count: number; shard_count: number }
+  const preview = await previewResponse.json() as { target_count: number; shard_count: number; shard_size: number }
   expect(preview.target_count).toBeGreaterThan(1)
   await expect(
     dialog.getByText(
-      `预计处理 ${preview.target_count} 条，系统将分 ${preview.shard_count} 批完成`,
+      `预计分析 ${preview.target_count} 条内容 · ${preview.shard_count} 个分片 · 每片最多 ${preview.shard_size} 条`,
     ),
   ).toBeVisible()
 
   const createdResponsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
-  await dialog.getByRole('button', { name: '确认并创建任务' }).click()
+  await dialog.getByRole('button', { name: '确认开始分析' }).click()
   const createdResponse = await createdResponsePromise
   expect(createdResponse.status()).toBe(202)
   const createPayload = createdResponse.request().postDataJSON() as {
@@ -342,9 +344,13 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
     url.pathname === '/voice-plaza' && Boolean(url.searchParams.get('source_identifier')),
   )
   await expect(page.getByText('爱玛 Stage12 当前标题', { exact: true })).toBeVisible()
-  await expect(page.getByText('历史正文补空成功', { exact: true })).toBeVisible()
   await expect(page.getByText('爱玛 Stage12 历史新建', { exact: true })).toBeVisible()
   await expect(page.getByText('爱玛 Stage12 历史冲突标题', { exact: true })).toHaveCount(0)
+  await page.locator('.content-row').filter({ hasText: '爱玛 Stage12 当前标题' })
+    .getByRole('button', { name: '查看详情', exact: true }).click()
+  const contentDetail = page.getByRole('dialog', { name: '内容详情' })
+  await expect(contentDetail.getByText('历史正文补空成功', { exact: true })).toBeVisible()
+  await contentDetail.getByRole('button', { name: '关闭', exact: true }).click()
 
   const firstRun = await createAnalysisRun(page, request)
   const contentList = page.getByRole('region', { name: '声音广场内容列表' })

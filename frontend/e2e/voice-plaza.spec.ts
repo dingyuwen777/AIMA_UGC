@@ -285,19 +285,23 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   await page.goto('/voice-plaza')
 
   await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
-  await expect(page.getByText('电池、续航与充电 / 实际续航表现')).toBeVisible()
-  await expect(page.getByText('驾乘体验 / 坐垫舒适性')).toBeVisible()
-  await expect(page.getByText('售后服务 / 客服与服务态度')).toBeVisible()
+  await expect(page.getByTitle('电池、续航与充电 / 实际续航表现', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('驾乘体验 / 坐垫舒适性', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('售后服务 / 客服与服务态度', { exact: true })).toBeVisible()
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/stage8d-voice-plaza.png', fullPage: true })
   }
 
   await page.getByRole('button', { name: '查看详情' }).click()
-  await expect(page.getByRole('complementary', { name: '内容详情' })).toBeVisible()
-  await expect(page.getByText('AI 情感与全部标签')).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '内容详情' })).toBeVisible()
+  await expect(page.getByText('内容与 AI 信息')).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('电池、续航与充电 / 实际续航表现')
+  await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('驾乘体验 / 坐垫舒适性')
+  await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('售后服务 / 客服与服务态度')
+  await page.getByText('更多信息与评论', { exact: true }).click()
   await expect(page.getByText('我也关注冬季续航。')).toBeVisible()
-  await expect(page.getByText('发声类型：真实用户发声')).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('真实用户发声')
   await expect(page.getByText('原始内容媒体')).toHaveCount(0)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/stage8d-content-detail.png', fullPage: true })
@@ -307,7 +311,7 @@ test('renders every AI label and opens the text-first content detail', async ({ 
 test('loads taxonomy options and submits voice type with dependent labels', async ({ page }) => {
   await page.goto('/voice-plaza')
 
-  await page.getByRole('button', { name: '更多筛选' }).click()
+  await expect(page.getByLabel('发声类型', { exact: true })).toBeVisible()
   await page.locator('label.field--voice-type select').selectOption('真实用户发声')
   await page.locator('label.field--sentiment select').selectOption('负面')
   await page.locator('label.field--label select').nth(0).selectOption('电池、续航与充电')
@@ -388,7 +392,7 @@ test('shows AI unavailable and disables analysis when runtime is not configured'
   await page.goto('/voice-plaza')
 
   await expect(page.getByText(/AI 打标暂不可用：管理员尚未完成 AI 模型配置/)).toBeVisible()
-  await expect(page.getByRole('button', { name: /AI 打标/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'AI 分析', exact: true })).toBeDisabled()
 })
 
 test('慢导出初始化不阻塞活动 AI 的自动刷新', async ({ page }) => {
@@ -482,16 +486,15 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   })
 
   await page.goto('/voice-plaza')
-  const analysisButton = page.getByRole('button', { name: /AI 打标/ })
+  const analysisButton = page.getByRole('button', { name: 'AI 分析', exact: true })
   await expect(analysisButton).toBeEnabled()
   await page.getByLabel('选择当前已加载内容').check()
   await expect(analysisButton).toBeEnabled()
   await analysisButton.click()
-  await expect(page.getByText('预计处理 1 条，系统将分 1 批完成')).toBeVisible()
-  await expect(page.getByText('每批最多 1 条')).toBeVisible()
+  await expect(page.getByText('预计分析 1 条内容 · 1 个分片 · 每片最多 1 条')).toBeVisible()
   await expect(page.getByText('openai-compatible / fixture-model')).not.toBeVisible()
   await expect(page.getByText(/当前无法可靠估算费用/)).toBeVisible()
-  await page.getByRole('button', { name: '确认并创建任务' }).click()
+  await page.getByRole('button', { name: '确认开始分析' }).click()
   await expect(page.getByText(/已创建 AI 打标任务/)).toBeVisible()
   await expect(page.getByText('AI Analysis Run 历史')).toHaveCount(0)
   await expect(page.getByText('AI 打标任务', { exact: true })).toBeVisible()
@@ -520,7 +523,7 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   await page.getByRole('button', { name: /导出记录/ }).click()
   await expect(page.getByText('未完成 AI 打标的内容不会被丢弃')).toBeVisible()
   await page.getByText('当前页内容').click()
-  await page.getByRole('button', { name: '创建 Excel 导出' }).click()
+  await page.getByRole('button', { name: /开始导出/ }).click()
   await expect(page.getByText(/已创建 Excel 导出任务/)).toBeVisible()
   expect(exportRequest).toMatchObject({
     format: 'xlsx',
@@ -571,14 +574,14 @@ test('creates an all-data analysis run without browser-side content ids', async 
   })
 
   await page.goto('/voice-plaza')
-  const analysisButton = page.getByRole('button', { name: /AI 打标/ })
+  const analysisButton = page.getByRole('button', { name: 'AI 分析', exact: true })
   await expect(analysisButton).toBeEnabled()
   await analysisButton.click()
-  const dialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
-  await expect(dialog.getByRole('radio', { name: /全部数据/ })).toBeChecked()
-  await expect(dialog.getByText('预计处理 4200 条，系统将分 42 批完成')).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
+  await expect(dialog.getByRole('radio', { name: /全部系统内容/ })).toBeChecked()
+  await expect(dialog.getByText('预计分析 4200 条内容 · 42 个分片 · 每片最多 100 条')).toBeVisible()
   expect(previewRequest).toEqual({ targets: { scope: 'all' } })
-  await dialog.getByRole('button', { name: '确认并创建任务' }).click()
+  await dialog.getByRole('button', { name: '确认开始分析' }).click()
   expect(createRequest).toMatchObject({
     targets: { scope: 'all' },
     expected_target_count: 4200,
@@ -596,14 +599,14 @@ test('keeps export history visible but disables empty query export creation', as
   })
 
   await page.goto('/voice-plaza')
-  await expect(page.getByRole('button', { name: /AI 打标/ })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'AI 分析', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: /导出记录/ }).click()
   const dialog = page.getByRole('dialog', { name: '导出声音记录' })
   await expect(dialog).toContainText('系统将在后台生成可下载的 Excel 文件')
   await expect(dialog).not.toContainText('Artifact')
   await expect(dialog.getByText('当前筛选没有可导出内容')).toBeVisible()
   await expect(dialog.getByRole('radio', { name: /全部查询结果/ })).toBeDisabled()
-  await expect(dialog.getByRole('button', { name: '创建 Excel 导出' })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: /开始导出/ })).toBeDisabled()
   await expect(dialog.getByText('最近导出记录')).toBeVisible()
   await expect(dialog.getByRole('progressbar', { name: '导出 72345678 进度' })).toHaveAttribute('aria-valuenow', '64')
 })

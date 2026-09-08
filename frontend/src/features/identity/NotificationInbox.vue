@@ -26,7 +26,12 @@ async function toggle(): Promise<void> {
       aria-label="站内通知"
       @click="toggle"
     >
-      <span aria-hidden="true">铃</span>
+      <img
+        src="../../shared/assets/bell.svg"
+        width="18"
+        height="18"
+        alt=""
+      ><span>消息中心</span>
       <b v-if="store.unreadCount">{{ Math.min(store.unreadCount, 99) }}</b>
     </button>
     <section
@@ -84,9 +89,9 @@ async function toggle(): Promise<void> {
 
 <style scoped>
 .inbox { position: relative; }
-.inbox-trigger { position: relative; display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--aima-border); border-radius: 50%; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; font-size: 11px; }
+.inbox-trigger { position: relative; display: flex; width: 100%; height: 38px; align-items: center; gap: 10px; padding: 0 12px; border: 0; border-radius: 6px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; font-size: 13px; }
 .inbox-trigger b { position: absolute; top: -5px; right: -7px; min-width: 18px; height: 18px; padding: 0 4px; border: 2px solid #fff; border-radius: 9px; color: #fff; background: var(--aima-primary); font-size: 9px; line-height: 14px; }
-.inbox-panel { position: absolute; z-index: 80; top: 42px; right: 0; width: 360px; max-height: 480px; overflow: auto; border: 1px solid var(--aima-border); border-radius: 10px; background: var(--aima-surface); box-shadow: var(--aima-shadow-floating); }
+.inbox-panel { position: absolute; z-index: 80; bottom: 0; left: calc(100% + 12px); width: min(360px, calc(100vw - 200px)); max-height: min(480px, calc(100dvh - 100px)); overflow: auto; border: 1px solid var(--aima-border); border-radius: 10px; background: var(--aima-surface); box-shadow: var(--aima-shadow-floating); }
 .inbox-panel header { position: sticky; top: 0; display: flex; min-height: 58px; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--aima-border); background: var(--aima-surface); }
 .inbox-panel header div { display: grid; gap: 3px; }
 .inbox-panel header strong { color: var(--aima-text); font-size: 14px; }

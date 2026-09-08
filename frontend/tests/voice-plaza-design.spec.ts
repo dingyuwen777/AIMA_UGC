@@ -85,13 +85,13 @@ describe('声音广场正式 Figma 基线', () => {
 
     expect(html).toContain('class="aima-page-header"')
     expect(html.match(/class="aima-button/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
-    expect(html).toContain('浏览全部渠道入库的用户声音，查看 AI 情感与完整标签结果')
+    expect(html).toContain('浏览全平台爱玛相关内容，定位值得关注的真实用户声音')
     expect(html).not.toContain('>↻ 刷新<')
     expect(html).not.toContain('>◇ AI 打标<')
     expect(html).not.toContain('>⇩ 导出记录<')
   })
 
-  it('常用筛选直达，低频条件默认折叠，内容类型使用真实标准化选项', async () => {
+  it('Figma 两行筛选全部直达，内容类型使用真实标准化选项', async () => {
     const html = await renderComponent(VoicePlazaPage)
 
     for (const label of [
@@ -100,16 +100,16 @@ describe('声音广场正式 Figma 基线', () => {
       '相关性',
       '发声类型',
       '情感',
-      '分析状态',
+      'AI 状态',
       '内容类型',
       '一级标签',
       '二级标签',
-      '发布开始',
-      '发布结束',
+      '发布时间范围',
     ]) expect(html).toContain(label)
 
-    expect(html).toContain('更多筛选')
-    expect(html).toContain('aria-expanded="false"')
+    expect(html).not.toContain('更多筛选')
+    expect(html).toContain('filter-row--primary')
+    expect(html).toContain('filter-row--secondary')
     for (const [value, label] of [
       ['image', '图文 / 图片'],
       ['video', '视频'],

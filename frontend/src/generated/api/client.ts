@@ -1157,16 +1157,19 @@ export interface ContentVehicleEvidenceResponse {
  * 内容当前车型及其全部有效证据。
  */
 export interface ContentVehicleResponse {
+  category_name?: string | null;
   code: string;
   display_name: string;
   /** @minItems 1 */
   evidences: ContentVehicleEvidenceResponse[];
+  series_name?: string | null;
   vehicle_model_id: string;
 }
 
 export interface ContentDetailResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
+  author_follower_count?: number | null;
   availability?: ContentAvailabilityResponse | null;
   comment_coverage?: CommentCoverageResponse | null;
   comments?: ContentCommentResponse[];
@@ -1194,6 +1197,7 @@ export interface ContentDetailResponse {
 export interface ContentListItemResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
+  author_follower_count?: number | null;
   availability?: ContentAvailabilityResponse | null;
   content_type: string;
   content_url?: string | null;
@@ -2360,6 +2364,7 @@ export interface VehicleModelAliasResponse {
 export interface VehicleModelCreateRequest {
   /** @maxItems 100 */
   aliases?: string[];
+  category_name?: string | null;
   /**
      * @minLength 1
      * @maxLength 100
@@ -2371,6 +2376,7 @@ export interface VehicleModelCreateRequest {
      * @maxLength 200
      */
   display_name: string;
+  series_name?: string | null;
 }
 
 export type VehicleModelResponseStatus = typeof VehicleModelResponseStatus[keyof typeof VehicleModelResponseStatus];
@@ -2389,6 +2395,7 @@ export interface VehicleModelResponse {
   aliases?: VehicleModelAliasResponse[];
   /** @exclusiveMinimum 0 */
   catalog_version: number;
+  category_name?: string | null;
   code: string;
   created_at: string;
   display_name: string;
@@ -2396,6 +2403,7 @@ export interface VehicleModelResponse {
   keyword_pack_ids?: string[];
   merged_into_id?: string | null;
   referenced?: boolean;
+  series_name?: string | null;
   status: VehicleModelResponseStatus;
   updated_at: string;
   /** @exclusiveMinimum 0 */
@@ -2440,7 +2448,9 @@ export const VehicleModelUpdateRequestStatus = {
  */
 export interface VehicleModelUpdateRequest {
   aliases?: string[] | null;
+  category_name?: string | null;
   display_name?: string | null;
+  series_name?: string | null;
   status?: VehicleModelUpdateRequestStatus;
 }
 
@@ -2518,7 +2528,25 @@ cursor?: string | null;
  * @maximum 100
  */
 limit?: number;
+sort_by?: ListContentsSortBy;
+sort_direction?: ListContentsSortDirection;
 };
+
+export type ListContentsSortBy = typeof ListContentsSortBy[keyof typeof ListContentsSortBy] | null;
+
+
+export const ListContentsSortBy = {
+  published_at: 'published_at',
+  follower_count: 'follower_count',
+} as const;
+
+export type ListContentsSortDirection = typeof ListContentsSortDirection[keyof typeof ListContentsSortDirection];
+
+
+export const ListContentsSortDirection = {
+  asc: 'asc',
+  desc: 'desc',
+} as const;
 
 export type ListDataImportServerDirectoriesParams = {
 /**

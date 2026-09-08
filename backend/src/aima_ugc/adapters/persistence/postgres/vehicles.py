@@ -39,6 +39,8 @@ def _vehicle_from_row(row: RowMapping) -> VehicleModel:
         id=cast(UUID, row["id"]),
         code=cast(str, row["code"]),
         display_name=cast(str, row["display_name"]),
+        series_name=cast(str | None, row["series_name"]),
+        category_name=cast(str | None, row["category_name"]),
         status=cast(VehicleStatus, row["status"]),
         version=cast(int, row["version"]),
         catalog_version=cast(int, row["catalog_version"]),
@@ -93,6 +95,8 @@ class PostgresVehicleCatalogRepository:
         display_name: str,
         aliases: tuple[str, ...],
         actor_ref: str,
+        series_name: str | None = None,
+        category_name: str | None = None,
     ) -> VehicleModel:
         """创建车型并在同一事务追加目录版本和别名。"""
 
@@ -106,6 +110,8 @@ class PostgresVehicleCatalogRepository:
                     id=model_id,
                     code=code,
                     display_name=display_name,
+                    series_name=series_name,
+                    category_name=category_name,
                     status="active",
                     version=1,
                     catalog_version=catalog_version,
@@ -196,6 +202,7 @@ class PostgresVehicleCatalogRepository:
         aliases: tuple[str, ...] | None,
         status: str | None,
         actor_ref: str,
+        classification: dict[str, str | None] | None = None,
     ) -> VehicleModel:
         """更新车型并递增车型版本和全局目录版本。"""
 
@@ -214,6 +221,10 @@ class PostgresVehicleCatalogRepository:
             values["display_name"] = display_name
         if status is not None:
             values["status"] = status
+        # 仅显式传入的字段参与更新；null 用于清除，缺省保留原值。
+        for field in ("series_name", "category_name"):
+            if classification is not None and field in classification:
+                values[field] = classification[field]
         row = (
             self._session.execute(
                 update(vehicle_models_table)

@@ -64,6 +64,8 @@ class VehicleModelCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     display_name: str = Field(min_length=1, max_length=200)
     aliases: tuple[str, ...] = Field(default=(), max_length=100)
+    series_name: str | None = Field(default=None, min_length=1, max_length=200)
+    category_name: str | None = Field(default=None, min_length=1, max_length=200)
 
     @field_validator("code", mode="before")
     @classmethod
@@ -73,7 +75,7 @@ class VehicleModelCreateRequest(BaseModel):
         value = _trimmed(value)
         return value.upper() if isinstance(value, str) else value
 
-    @field_validator("display_name", mode="before")
+    @field_validator("display_name", "series_name", "category_name", mode="before")
     @classmethod
     def normalize_display_name(cls, value: object) -> object:
         """车型显示名去除无意义首尾空白。"""
@@ -102,8 +104,10 @@ class VehicleModelUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     aliases: tuple[str, ...] | None = Field(default=None, max_length=100)
     status: Literal["active", "deprecated"] | None = None
+    series_name: str | None = Field(default=None, min_length=1, max_length=200)
+    category_name: str | None = Field(default=None, min_length=1, max_length=200)
 
-    @field_validator("display_name", mode="before")
+    @field_validator("display_name", "series_name", "category_name", mode="before")
     @classmethod
     def normalize_display_name(cls, value: object) -> object:
         """显示名存在时去除首尾空白。"""
@@ -123,7 +127,12 @@ class VehicleModelUpdateRequest(BaseModel):
     def require_change(self) -> VehicleModelUpdateRequest:
         """拒绝不包含任何修改的空请求。"""
 
-        if self.display_name is None and self.aliases is None and self.status is None:
+        if (
+            self.display_name is None
+            and self.aliases is None
+            and self.status is None
+            and not self.model_fields_set.intersection({"series_name", "category_name"})
+        ):
             raise ValueError("车型更新必须至少包含一个字段")
         return self
 
@@ -151,6 +160,8 @@ class VehicleModelResponse(BaseModel):
     id: UUID
     code: str
     display_name: str
+    series_name: str | None = None
+    category_name: str | None = None
     status: VehicleModelStatus
     version: int = Field(gt=0)
     catalog_version: int = Field(gt=0)

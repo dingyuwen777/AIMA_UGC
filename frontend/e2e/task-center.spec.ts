@@ -131,6 +131,6 @@ test('从声音广场打开全局任务中心并统一查看三类活动任务',
 
   await drawer.getByRole('button', { name: '关闭任务中心' }).click()
   await page.getByRole('button', { name: '站内通知' }).click()
-  await expect(page.getByText('消息中心')).toBeVisible()
+  await expect(page.getByLabel('通知列表').getByText('消息中心')).toBeVisible()
   await expect(page.getByRole('complementary', { name: '任务中心' })).toHaveCount(0)
 })

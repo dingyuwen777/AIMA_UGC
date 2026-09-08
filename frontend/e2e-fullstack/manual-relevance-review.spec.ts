@@ -12,7 +12,7 @@ test('AI irrelevant 内容可在真实声音广场人工纳入并进入默认业
   await page.getByRole('button', { name: '查询' }).click()
   const contentRow = page.locator('article.content-row').filter({ hasText: manualIncludeTitle })
   await expect(contentRow.getByText(manualIncludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(contentRow.getByText('AI 判定不相关', { exact: true })).toBeVisible()
+  await expect(contentRow.getByTitle('AI 判定不相关', { exact: true })).toBeVisible()
 
   const reviewResponsePromise = page.waitForResponse(
     (response) =>
@@ -33,7 +33,7 @@ test('AI irrelevant 内容可在真实声音广场人工纳入并进入默认业
   await page.locator('.field--relevance select').selectOption('')
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(manualIncludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('人工复核相关', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('人工复核相关', { exact: true })).toBeVisible()
 })
 
 test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', async ({ page }) => {
@@ -62,8 +62,8 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
   await page.locator('.field--relevance select').selectOption('irrelevant')
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('人工复核不相关', { exact: true })).toBeVisible()
-  await expect(page.getByText(preservedAiLabel, { exact: true })).toBeVisible()
+  await expect(page.getByTitle('人工复核不相关', { exact: true })).toBeVisible()
+  await expect(page.getByTitle(preservedAiLabel, { exact: true })).toBeVisible()
 
   const undoResponsePromise = page.waitForResponse(
     (response) =>
@@ -85,5 +85,5 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
   await page.getByRole('button', { name: '查询' }).click()
   await expect(contentRow.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(contentRow.getByText('中性', { exact: true })).toBeVisible()
-  await expect(contentRow.getByText(preservedAiLabel, { exact: true })).toBeVisible()
+  await expect(contentRow.getByTitle(preservedAiLabel, { exact: true })).toBeVisible()
 })

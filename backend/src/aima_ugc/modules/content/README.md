@@ -410,6 +410,7 @@ comment_thread_coverage_observations
 ```text
 Content Current
 + Current Version author snapshot/source
++ Account Current follower count
 + Current Analysis Identity 对应 Analysis
 + Label Pairs
 + Provider/Raw/Run/Batch Source
@@ -418,6 +419,8 @@ Content Current
 列表 Application Service：
 
 - [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
+
+声音广场的粉丝数展示和排序读取作者账号当前已采集的粉丝数，缺失时保持未知，不用零替代，也不为排序重新请求 Provider。发布时间和粉丝数排序都由查询 Repository 在 PostgreSQL 中执行；空值置后，同值按 Content ID 续页。排序身份绑定到 Cursor，切换排序必须从第一页重新查询。未指定排序的旧调用和有效期内的旧 Cursor 保留原行为。
 
 ### 当前 Analysis 状态
 

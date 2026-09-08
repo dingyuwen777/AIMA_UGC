@@ -72,6 +72,38 @@ const taxonomy = {
 }
 
 describe('voice plaza', () => {
+  it('切换排序从第一页重新请求，粉丝升降序交给后端执行', async () => {
+    generated.listContents.mockResolvedValue({ items: [item], next_cursor: 'next-page', has_more: true })
+    const store = useVoicePlazaStore()
+    await store.refresh()
+    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ sort_by: 'published_at', sort_direction: 'desc' })
+    store.toggleSelection(item.id)
+    await store.changeSort('follower_count')
+    expect(store.selectedIds).toEqual([])
+    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ sort_by: 'follower_count', sort_direction: 'desc' })
+    expect(generated.listContents.mock.lastCall?.[0].cursor).toBeUndefined()
+    await store.changeSort('follower_count')
+    expect(generated.listContents.mock.lastCall?.[0].sort_direction).toBe('asc')
+    await store.loadNext()
+    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ cursor: 'next-page', sort_by: 'follower_count', sort_direction: 'asc' })
+  })
+
+  it('详情加载失败仍保留抽屉，关闭后迟到的响应不能重新打开', async () => {
+    const store = useVoicePlazaStore()
+    generated.getContent.mockRejectedValueOnce(new Error('详情暂不可用'))
+    await store.openDetail(item.id)
+    expect(store.detailId).toBe(item.id)
+    expect(store.detailError).toContain('详情暂不可用')
+    let resolve!: (value: unknown) => void
+    generated.getContent.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    const loading = store.openDetail(item.id)
+    store.closeDetail()
+    resolve(item)
+    await loading
+    expect(store.detailId).toBeNull()
+    expect(store.detail).toBeNull()
+  })
+
   it('慢 AI 查询不叠加，停止轮询后旧响应不会再触发内容请求', async () => {
     vi.useFakeTimers()
     vi.stubGlobal('document', { visibilityState: 'visible' })
@@ -450,6 +482,25 @@ describe('voice plaza', () => {
       expected_target_count: 1,
       expected_configuration_hash: 'd'.repeat(64),
       run_intent: 'manual_reanalysis',
+    }))
+  })
+
+  it('keeps the latest analysis scope when an older preview resolves last', async () => {
+    let finishOld!: (value: unknown) => void
+    generated.previewContentAnalysisRun.mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve }))
+      .mockResolvedValueOnce({ target_count: 20, shard_count: 1, shard_size: 100, configuration_hash: 'new-scope' })
+    generated.createContentAnalysisRun.mockResolvedValue({ run_id: 'run-new', target_count: 20 })
+    const store = useVoicePlazaStore()
+    await store.refreshAnalysisCapabilities()
+    store.selectedIds = [item.id]
+    const oldPreview = store.previewAnalysis('selected')
+    await store.previewAnalysis('all')
+    finishOld({ target_count: 1, shard_count: 1, shard_size: 100, configuration_hash: 'old-scope' })
+    await oldPreview
+    expect(store.analysisPreview?.target_count).toBe(20)
+    await store.confirmAnalysis()
+    expect(generated.createContentAnalysisRun).toHaveBeenCalledWith(expect.objectContaining({
+      targets: { scope: 'all' }, expected_target_count: 20, expected_configuration_hash: 'new-scope',
     }))
   })
 

@@ -119,18 +119,170 @@ function expectNear(actual: number | undefined, expected: number): void {
   expect(Math.abs((actual ?? 0) - expected)).toBeLessThanOrEqual(1)
 }
 
-/** 固定正式 Normal / Runtime 状态共用的三行内容列表。 */
-async function stubNormalContents(page: Page): Promise<void> {
+/** 默认使用三行内容；多屏幕检查可传入覆盖全部平台的同结构列表。 */
+async function stubNormalContents(page: Page, items = normalItems): Promise<void> {
   await page.route('**/api/v1/contents**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    if (path === `/api/v1/contents/${content.id}`) {
+      await route.fulfill({ json: { ...content, vehicles: [], media: [], comments: [] } })
+      return
+    }
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ items: normalItems, next_cursor: 'figma-next', has_more: true }),
+      body: JSON.stringify({ items, next_cursor: 'figma-next', has_more: true }),
     })
   })
 }
 
 test.beforeEach(async ({ page }) => {
   await stubCommonRoutes(page)
+})
+
+for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
+  test(`matches Figma column geometry and keeps the viewport usable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    const platforms = ['xiaohongshu', 'douyin', 'kuaishou', 'weibo', 'bilibili']
+    await stubNormalContents(page, platforms.map((platform, index) => ({
+      ...content,
+      id: index === 0 ? content.id : `42345678-1234-5678-1234-56781234567${index + 1}`,
+      platform,
+      author_follower_count: index === 0 ? null : (index + 1) * 12800,
+      ...(index === 0 ? {
+        title: '爱玛 Q7 长期通勤体验：坐垫舒适、低温续航与充电便利性如何，和爱玛露娜、爱玛探索者跨车型比较，再记录带人骑行与售后沟通中值得持续跟进的问题',
+        analysis: { ...content.analysis, labels: [
+          { primary_label: '电池、续航与充电', secondary_label: '实际续航表现' },
+          { primary_label: '驾乘体验', secondary_label: '坐垫舒适性' },
+          { primary_label: '售后服务', secondary_label: '客服与服务态度' },
+        ] },
+        vehicles: ['爱玛 Q7', '爱玛露娜', '爱玛探索者长续航特别版'].map((display_name, vehicleIndex) => ({
+          vehicle_model_id: `52345678-1234-5678-1234-56781234567${vehicleIndex}`,
+          display_name, code: `MODEL-${vehicleIndex}`, series_name: '通勤系列', category_name: '电动两轮车', evidences: [],
+        })),
+      } : {}),
+    })))
+    await page.goto('/voice-plaza')
+    await expect(page.locator('.content-row')).toHaveCount(5)
+    for (const [platform, label, mark] of [
+      ['xiaohongshu', '小红书', '书'], ['douyin', '抖音', '抖'], ['kuaishou', '快手', '快'],
+      ['weibo', '微博', '微'], ['bilibili', 'B站', 'B'],
+    ]) {
+      const badge = page.locator(`.platform-mark--${platform}`)
+      await expect(badge).toHaveText(mark)
+      await expect(badge).toHaveAttribute('title', label)
+    }
+    const table = await page.locator('.content-list').boundingBox()
+    expectNear(table?.x, 204)
+    expectNear(table?.width, width - 228)
+    const expected = [16, Math.max(1212, width - 228) - 790, 80, 200, 150, 120, 120]
+    const header = await page.locator('.table-head > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
+    const row = await page.locator('.content-row').first().locator(':scope > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
+    expected.forEach((size, index) => { expectNear(header[index], size); expectNear(row[index], size) })
+    const complexRow = page.locator('.content-row').first()
+    await expect(complexRow.locator('.label-tag')).toHaveCount(3)
+    await expect(complexRow.locator('.vehicle-cell > div')).toHaveCount(3)
+    const fits = await complexRow.evaluate((node) => {
+      const bounds = node.getBoundingClientRect()
+      return [...node.querySelectorAll<HTMLElement>('.content-title, .label-tag, .vehicle-cell, .row-actions')].every((child) => {
+        const box = child.getBoundingClientRect()
+        return child.scrollWidth <= child.clientWidth + 1 && box.top >= bounds.top && box.bottom <= bounds.bottom
+      })
+    })
+    expect(fits).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+    await expect(page.locator('.inbox-trigger img')).toHaveJSProperty('naturalWidth', 18)
+    await expect(page.locator('.inbox-trigger')).toContainText('消息中心')
+    if (width < 1440) {
+      await page.locator('.content-list').evaluate((node) => { node.scrollLeft = node.scrollWidth })
+      await page.locator('.content-row').first().getByRole('button', { name: '查看详情' }).click()
+      await expect(page.getByRole('dialog', { name: '内容详情' })).toBeVisible()
+      await page.keyboard.press('Escape')
+    }
+    if (process.env.AIMA_CAPTURE_VISUAL === '1') await page.screenshot({ path: `test-results/voice-plaza-${width}.png`, fullPage: true, animations: 'disabled' })
+  })
+}
+
+test('vehicle groups use catalog data and confirm drafts without losing keyboard focus', async ({ page }) => {
+  await stubNormalContents(page)
+  await page.route('**/api/v1/vehicle-models**', async (route) => route.fulfill({ json: {
+    items: [
+      { id: 'q7', code: 'Q7', display_name: '爱玛 Q7', series_name: 'Q 系列', category_name: '电动两轮车', aliases: [] },
+      { id: 'q8', code: 'Q8', display_name: '爱玛 Q8', series_name: 'Q 系列', category_name: '电动两轮车', aliases: [] },
+      { id: 'luna', code: 'LUNA', display_name: '爱玛露娜', series_name: '时尚系列', category_name: '电动两轮车', aliases: [{ text: '奶油白' }] },
+    ], total: 3, offset: 0, limit: 200, catalog_version: 2,
+  } }))
+  await page.goto('/voice-plaza')
+  const trigger = page.getByRole('button', { name: '选择车型', exact: true })
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: '选择车型', exact: true })
+  expectNear((await dialog.boundingBox())?.width, 620)
+  await dialog.getByRole('button', { name: /Q 系列/ }).click()
+  await dialog.getByRole('checkbox', { name: '爱玛 Q7', exact: true }).check()
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(trigger).toBeFocused()
+  await expect(trigger).toContainText('全部车型')
+  await trigger.click()
+  await dialog.getByLabel('搜索车型').fill('奶油白')
+  await expect(dialog.getByRole('checkbox')).toHaveCount(1)
+  await dialog.getByRole('checkbox', { name: '爱玛露娜' }).check()
+  await dialog.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(trigger).toContainText('爱玛露娜')
+  const query = page.waitForRequest((request) => new URL(request.url()).searchParams.getAll('vehicle_model_ids').includes('luna'))
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await query
+  await trigger.click()
+  await page.keyboard.press('Escape')
+  await expect(dialog).not.toBeVisible()
+  await expect(trigger).toBeFocused()
+})
+
+test('date range supports keyboard selection and sends Beijing boundaries only after confirmation', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-08T03:00:00Z'))
+  await stubNormalContents(page)
+  await page.goto('/voice-plaza')
+  const trigger = page.getByRole('button', { name: '发布时间范围', exact: true })
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: '选择发布时间范围' })
+  await expect(dialog.getByRole('button', { name: '2026-09-08', exact: true })).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('Enter')
+  await dialog.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(trigger).toContainText('2026-09-07')
+  await expect(trigger).toContainText('2026-09-08')
+  const query = page.waitForRequest((request) => new URL(request.url()).searchParams.has('published_from'))
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  const params = new URL((await query).url()).searchParams
+  expect(params.get('published_from')).toBe('2026-09-06T16:00:00.000Z')
+  expect(params.get('published_to')).toBe('2026-09-08T15:59:59.999Z')
+  await trigger.click()
+  await dialog.getByRole('button', { name: '近30天', exact: true }).click()
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(trigger).toContainText('2026-09-07')
+})
+
+test('late export catalog initializes defaults without replacing edited columns', async ({ page }) => {
+  await stubNormalContents(page)
+  let release!: () => void
+  const ready = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/v1/export-columns', async (route) => {
+    await ready
+    await route.fulfill({ json: { version: 1, columns: [{ key: 'platform', label: '平台', sensitive: false, default_selected: true }] } })
+  })
+  await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '导出记录', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '导出声音记录' })
+  await expect(dialog.getByText('列目录加载中…')).toBeVisible()
+  release()
+  await expect(dialog.getByRole('checkbox', { name: '平台' })).toBeChecked()
+  await expect(dialog.getByRole('button', { name: /开始导出/ })).toBeEnabled()
+  await dialog.getByRole('checkbox', { name: '平台' }).uncheck()
+  await expect(dialog.getByRole('button', { name: /开始导出/ })).toBeDisabled()
+  await dialog.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(dialog.getByRole('checkbox', { name: '平台' })).not.toBeChecked()
+  await page.keyboard.press('Escape')
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByRole('button', { name: '导出记录', exact: true })).toBeFocused()
 })
 
 test('keeps terminal analysis history out of the formal data canvas and available in the task center', async ({ page }) => {
@@ -150,7 +302,7 @@ test('keeps terminal analysis history out of the formal data canvas and availabl
   await expect(page.getByText('Run #12')).toHaveCount(0)
   await expect(page.locator('.content-row')).toHaveCount(3)
   await expect(page.getByText('标题内容', { exact: true })).toBeVisible()
-  await expect(page.getByText('当前列表按发布时间连续加载，不显示不准确的总页数')).toBeVisible()
+  await expect(page.locator('.pagination').getByText('已显示 3 条')).toBeVisible()
   await expect(page.getByRole('button', { name: '加载更多 →' })).toBeEnabled()
 
   await page.getByRole('button', { name: /任务中心/ }).click()
@@ -180,11 +332,13 @@ test('matches the formal 1440 desktop shell and empty-state composition', async 
   await expect(page.locator('[data-aima-icon="empty"]')).toBeVisible()
 
   const sidebar = await page.locator('.sidebar').boundingBox()
-  const topbar = await page.locator('.topbar').boundingBox()
+  await expect(page.locator('.topbar')).toHaveCount(0)
+  const pageHeader = await page.locator('.aima-page-header').boundingBox()
   const filters = await page.locator('.filters').boundingBox()
   const emptyState = await page.locator('.table-state--empty').boundingBox()
   expectNear(sidebar?.width, 180)
-  expectNear(topbar?.height, 60)
+  expectNear(pageHeader?.y, 24)
+  expectNear(pageHeader?.height, 64)
   expectNear(filters?.width, 1212)
   expectNear(emptyState?.height, 376)
 
@@ -261,7 +415,7 @@ test('keeps the formal runtime-unavailable warning while the content list stays 
   await page.goto('/voice-plaza')
   const warning = page.locator('.capability-warning')
   await expect(warning).toContainText('AI 打标暂不可用：管理员尚未完成 AI 模型配置。')
-  await expect(page.getByRole('button', { name: 'AI 打标' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'AI 分析', exact: true })).toBeDisabled()
   await expect(page.locator('.content-row')).toHaveCount(3)
   await expect(page.getByRole('button', { name: '查看详情' }).first()).toBeEnabled()
   await expect(page.getByRole('button', { name: '查询' })).toBeEnabled()
@@ -318,7 +472,7 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
   await expect(page.getByRole('button', { name: '查看详情' })).toBeVisible()
 
   await page.getByRole('button', { name: '查看详情' }).click()
-  const drawer = page.getByRole('complementary', { name: '内容详情' })
+  const drawer = page.getByRole('dialog', { name: '内容详情' })
   await expect(drawer).toBeVisible()
   const drawerBox = await drawer.boundingBox()
   expectNear(drawerBox?.x, 830)
@@ -331,18 +485,18 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
   await drawer.getByRole('button', { name: '关闭' }).click()
 
   await page.getByLabel('选择当前已加载内容').check()
-  const analysisButton = page.getByRole('button', { name: 'AI 打标' })
+  const analysisButton = page.getByRole('button', { name: 'AI 分析', exact: true })
   await expect(analysisButton).toBeEnabled()
   await analysisButton.click()
-  const analysisDialog = page.getByRole('dialog', { name: '创建 AI 打标任务' })
+  const analysisDialog = page.getByRole('dialog', { name: '开始 AI 分析' })
   await expect(analysisDialog).toBeVisible()
-  await expect(analysisDialog.getByText('预计处理 1 条，系统将分 1 批完成')).toBeVisible()
-  await expect(analysisDialog.getByRole('button', { name: '确认并创建任务' })).toBeEnabled()
+  await expect(analysisDialog.getByText('预计分析 1 条内容 · 1 个分片 · 每片最多 1 条')).toBeVisible()
+  await expect(analysisDialog.getByRole('button', { name: '确认开始分析' })).toBeEnabled()
   const analysisBox = await analysisDialog.boundingBox()
-  expectNear(analysisBox?.x, 450)
-  expectNear(analysisBox?.y, 210)
-  expectNear(analysisBox?.width, 540)
-  expectNear(analysisBox?.height, 446)
+  expectNear(analysisBox?.x, 410)
+  expectNear(analysisBox?.y, 195)
+  expectNear(analysisBox?.width, 620)
+  expectNear(analysisBox?.height, 510)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-analysis.png', fullPage: true })
   }
@@ -352,10 +506,10 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
   const exportDialog = page.getByRole('dialog', { name: '导出声音记录' })
   await expect(exportDialog).toBeVisible()
   const exportBox = await exportDialog.boundingBox()
-  expectNear(exportBox?.x, 395)
-  expectNear(exportBox?.y, 105)
-  expectNear(exportBox?.width, 650)
-  expectNear(exportBox?.height, 690)
+  expectNear(exportBox?.x, 440)
+  expectNear(exportBox?.y, 115.5)
+  expectNear(exportBox?.width, 560)
+  expectNear(exportBox?.height, 669)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-export.png', fullPage: true })
   }
