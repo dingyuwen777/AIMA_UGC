@@ -147,6 +147,18 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
       id: index === 0 ? content.id : `42345678-1234-5678-1234-56781234567${index + 1}`,
       platform,
       author_follower_count: index === 0 ? null : (index + 1) * 12800,
+      ...(index === 0 ? {
+        title: '爱玛 Q7 长期通勤体验：坐垫舒适、低温续航与充电便利性如何，和爱玛露娜、爱玛探索者跨车型比较，再记录带人骑行与售后沟通中值得持续跟进的问题',
+        analysis: { ...content.analysis, labels: [
+          { primary_label: '电池、续航与充电', secondary_label: '实际续航表现' },
+          { primary_label: '驾乘体验', secondary_label: '坐垫舒适性' },
+          { primary_label: '售后服务', secondary_label: '客服与服务态度' },
+        ] },
+        vehicles: ['爱玛 Q7', '爱玛露娜', '爱玛探索者长续航特别版'].map((display_name, vehicleIndex) => ({
+          vehicle_model_id: `52345678-1234-5678-1234-56781234567${vehicleIndex}`,
+          display_name, code: `MODEL-${vehicleIndex}`, series_name: '通勤系列', category_name: '电动两轮车', evidences: [],
+        })),
+      } : {}),
     })))
     await page.goto('/voice-plaza')
     await expect(page.locator('.content-row')).toHaveCount(5)
@@ -165,6 +177,17 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
     const header = await page.locator('.table-head > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
     const row = await page.locator('.content-row').first().locator(':scope > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
     expected.forEach((size, index) => { expectNear(header[index], size); expectNear(row[index], size) })
+    const complexRow = page.locator('.content-row').first()
+    await expect(complexRow.locator('.label-tag')).toHaveCount(3)
+    await expect(complexRow.locator('.vehicle-cell > div')).toHaveCount(3)
+    const fits = await complexRow.evaluate((node) => {
+      const bounds = node.getBoundingClientRect()
+      return [...node.querySelectorAll<HTMLElement>('.content-title, .label-tag, .vehicle-cell, .row-actions')].every((child) => {
+        const box = child.getBoundingClientRect()
+        return child.scrollWidth <= child.clientWidth + 1 && box.top >= bounds.top && box.bottom <= bounds.bottom
+      })
+    })
+    expect(fits).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
     await expect(page.locator('.inbox-trigger img')).toHaveJSProperty('naturalWidth', 18)
     await expect(page.locator('.inbox-trigger')).toContainText('消息中心')

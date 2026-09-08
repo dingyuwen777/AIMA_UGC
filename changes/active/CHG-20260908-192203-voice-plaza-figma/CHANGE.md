@@ -44,7 +44,7 @@ data_changes:
 | R1 | 粉丝数和发布时间全量排序、空值置后、Cursor 绑定并兼容旧调用 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC1 | satisfied | PostgreSQL 双字段、双方向、同值及空值分页集成通过；旧 v1 Cursor 回归通过；真实浏览器排序请求成功 |
 | R2 | 复用管理员车型目录并补 Figma 系列分组 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC2 | satisfied | 可空系列/类别 Migration、目录创建/缺省保留/显式清空集成通过；管理页面保存、内容列表读取和系列/别名选择全栈通过 |
 | R3 | 声音广场与无顶栏公共布局符合 Figma，保留现有业务与错误恢复 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC3 | satisfied | 122 项前端单元与 71 项 Browser Mock 通过；详情、人工纠正、AI、导出、任务/消息中心可达；Figma 正常页及详情/导出文案同步并截图核对 |
-| R4 | 有数据页面跨 1180 至 2560 宽度无异常留白、裁切，操作可达 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC5 | satisfied | 六种宽度逐列几何断言及视口检查通过；1440/2560 实际截图复核；窄屏表格局部滚动与固定操作列保留 |
+| R4 | 有数据页面跨 1180 至 2560 宽度无异常留白、裁切，操作可达 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC5 | satisfied | 五平台、长标题、三个标签和三个车型在六种宽度逐列几何及溢出检查通过；1180/1440/2560 实际截图复核；窄屏表格局部滚动与固定操作列保留 |
 | R5 | 公共 AppShell 无顶栏、180px 侧栏及底部任务/消息/身份入口，其他路由与权限回归 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC4 | satisfied | AppShell/任务消息测试与全路由六种尺寸 Browser Mock 通过，其他页面几何随公共顶栏移除而验证 |
 | R6 | 分层验证、生成物、正式构建及真实结果报告 | https://github.com/dingyuwen777/AIMA_UGC/issues/389 / AC6 | satisfied | 下方 Validation Matrix 列明实际通过证据、Windows 三条既有 Linux 专属失败及待执行的正式 CI，不夸大模型 Fake 或本地证据 |
 
@@ -84,6 +84,7 @@ data_changes:
 - 初始 Red：tests/unit/content/test_content_cursor.py，4 failed / 1 passed。新增字段与排序身份尚不支持，失败符合预期；原签名防篡改用例通过。
 - 后端目标：`python -m pytest tests/unit/content/test_content_cursor.py tests/unit/content/test_vehicle_display_classification.py tests/integration/content/test_stage8d_voice_plaza_runtime.py tests/integration/database/test_u1_u5_administration.py -q`：18 passed。数据库只使用本任务隔离 PostgreSQL，不修改用户数据库。
 - 前端：`npm run test -- --run`：23 文件、122 passed；`npm run test:e2e`：71 passed；`npm run lint`、`npm run build`：exit 0。新增 AI 预检竞争回归经历失败后修复通过。
+- 独立审查补充：复用六种宽度用例加入五平台、长标题、三个标签和三个车型，`npm run test:e2e -- e2e/voice-plaza-design.spec.ts -g 'column geometry'`：6 passed（10.8s）；补充后 `npm run typecheck` 与 `npm run lint`：exit 0。截图已实际复核。
 - 全栈：现有 `admin-product-capabilities.spec.ts` 5 passed；`analysis-streaming.spec.ts` 与 `manual-relevance-review.spec.ts` 合计 3 passed。覆盖管理目录保存→列表/详情消费，以及真实 Worker 的分析和人工纠正。未调用真实付费模型或 TikHub。
 - 扩展 Python：`python -m pytest tests/unit tests/contracts tests/api -q` 在 Windows 得到 1055 passed、8 skipped、3 failed；三条失败均在未修改的 `test_prepare_host.py` 调用 Windows 不存在的 `os.geteuid/chown` 时发生。沙箱首次运行还出现临时目录 PermissionError，已在正常主机权限下复跑消除；没有删除、跳过或修改失败测试。
 - `python -m mypy backend/src/aima_ugc`：317 文件通过。与 CI 相同范围的 Ruff format/check：641 文件已格式化、检查通过。
@@ -92,7 +93,8 @@ data_changes:
 
 # 作者复核与独立审查状态
 
-- 独立审查：等待用户选择由只读审查 Agent 或用户本人执行。以下为作者复核，不冒充独立审查通过。
+- 独立审查：用户明确授权一个只读审查 Agent。审查者重新读取 Issue #389 六项 AC，对照 `e938399 → 979f4e9` 及补充后的 AC5 测试完成需求和实现两阶段复核，结论为 `NO_FINDINGS_WITHIN_SCOPE`。原长标题/多标签/多车型的证据缺口经补充测试及截图复核关闭。审查者未重新运行全量测试；最终提交 head 的正式 CI 仍须通过，此结论不等于可合并。
+- 正式 CI：实现提交的 Compose Golden Path、Linux/Windows Developer Tooling 已通过；首次 CI 因 PR `Requirement-Source` 使用完整 URL 而非项目要求的 `#389` 失败，已修正 PR 字段。元数据编辑运行因同 SHA 尚无全绿基线失败，后续实际测试补充提交触发完整 CI；最终结果以 PR 当前 head 为准。
 
 - 需求复核：从用户决定、Issue 和正式 Figma 重建范围，再核对实现和证据。1440 基准侧栏 180、页面左右间距 24；表格复用 Figma 固定列宽，标题列承接剩余宽度。无顶栏布局也验证了采集策略、运行中心、管理及任务/通知入口。
 - 代码复核：检查 SQL 双向 NULLS LAST 和 ID 续页、作者一对一关联、旧摘要/旧 Cursor、车型省略与显式 null、合并后分类投影、请求迟到竞争、模态焦点/Escape、日期北京时间边界、导出字段初始化及旧任务行为。复核未发现需阻断本次提交的问题；这不替代托管平台 Review 和 CI。
