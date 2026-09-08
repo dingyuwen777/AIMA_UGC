@@ -209,7 +209,9 @@ src/features/import-batches/
 
 当前页面主导入工作流调用 `/api/v1/data-import-*`；旧 `/api/v1/import-batches` 和 `/api/v1/historical-import-*` 由后端保留兼容，不在页面建立第二套入口。页面不实现 Historical Fill-Only 业务规则，只展示后端 Contract/状态并把用户选择提交给 Campaign。
 
-TikHub Run 详情会读取生成 Client 中既有的 `scopes[].stop_reason`。当 Worker 返回 `provider_secret_unavailable` 时，页面显示固定的“Provider Secret 不可用，请联系管理员检查运行配置”提示；未知错误值保留机器原文以便结合 Run ID、Job ID 排障。页面不接收或展示 `secret_ref`、Secret 路径和 Secret 内容。
+运行列表的筛选草稿在点击“查询”后生效；日期弹层与声音广场共用组件和选择行为，先确认单日或范围，再由查询按钮提交查询。轮询沿用已应用条件并更新已加载的分页范围；查询失败时，旧列表与游标继续使用原条件。窄屏表格可以横向滚动到详情操作。导入详情分别展示冲突行数与接口返回的冲突字段明细，内部哈希只在技术详情展示；撤销先读取影响预览，再经确认对话框提交，失败后保留重试入口。
+
+TikHub Run 详情会读取生成 Client 中既有的 `scopes[].stop_reason`。当 Worker 返回 `provider_secret_unavailable` 时，页面显示“采集服务授权信息不可用，请联系管理员检查服务配置。”；机器错误和 Run/Job 标识在技术详情中追溯。页面不接收或展示 `secret_ref`、Secret 路径和 Secret 内容。
 
 修改导航：
 

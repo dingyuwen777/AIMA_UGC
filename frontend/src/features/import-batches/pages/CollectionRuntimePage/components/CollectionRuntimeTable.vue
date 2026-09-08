@@ -123,8 +123,8 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
 </template>
 
 <style scoped>
-.runtime-list { overflow: hidden; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
-.table-head, .table-row { display: grid; grid-template-columns: 180px 120px 235px 134px 175px 130px 110px; align-items: center; column-gap: 16px; }
+.runtime-list { overflow-x: auto; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.table-head, .table-row { display: grid; min-width: 1210px; grid-template-columns: minmax(178px, 1.4fr) 120px minmax(235px, 1fr) 134px minmax(175px, 1fr) 130px 110px; align-items: center; column-gap: 16px; }
 .table-head { min-height: 44px; padding: 0 16px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-muted); background: #fafbfc; font-size: 12px; font-weight: 500; }
 .table-row { position: relative; min-height: 78px; padding: 16px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-secondary); font-size: 12px; }
 .table-row:nth-of-type(odd) { background: #f8fafc; }
@@ -148,5 +148,4 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
 .row-error { grid-column: 1 / -1; margin-top: 12px; }
 .table-state { display: flex; min-height: 240px; flex-direction: column; align-items: center; justify-content: center; color: var(--aima-text-muted); }
 .table-state strong { margin-bottom: 8px; color: var(--aima-text-secondary); }
-@media (max-width: 1120px) { .runtime-list { overflow-x: auto; } .table-head, .table-row { min-width: 1212px; } }
 </style>

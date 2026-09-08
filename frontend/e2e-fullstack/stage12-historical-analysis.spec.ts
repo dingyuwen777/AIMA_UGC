@@ -225,12 +225,14 @@ async function revokeHistoricalCampaign(
     dialog.locator('.revocation-facts span').filter({ hasText: '其它来源保留' }),
   ).toContainText(`其它来源保留${preview.impact.retained_shared_content_count}`)
 
-  page.once('dialog', (confirmation) => confirmation.accept())
   const revokeResponsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === `/api/v1/data-import-campaigns/${campaignId}/revoke`,
   )
   await dialog.getByRole('button', { name: '撤销本次导入', exact: true }).click()
+  const confirmation = page.getByRole('dialog', { name: '确认撤销这次导入', exact: true })
+  await expect(confirmation).toContainText(String(preview.impact.affected_content_count))
+  await confirmation.getByRole('button', { name: '确认撤销', exact: true }).click()
   const revokeResponse = await revokeResponsePromise
   expect(revokeResponse.status()).toBe(200)
   const revoked = await revokeResponse.json() as {
@@ -301,7 +303,8 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await expect(migration.locator('.campaign-status')).toHaveText('部分导入失败', { timeout: 60_000 })
   await migration.getByRole('button', { name: '重试失败项' }).click()
   await expect(migration.locator('.campaign-status')).toHaveText('导入完成', { timeout: 60_000 })
-  await expect(migration.getByText('冲突 1', { exact: true })).toBeVisible()
+  await expect(migration.getByText('冲突行数 1', { exact: true })).toBeVisible()
+  await expect(migration.getByRole('region', { name: '冲突字段明细' })).toContainText('条冲突字段')
 
   const runtimeResponse = await request.get('/api/v1/collection-runtime/runs', {
     params: { record_types: 'data_import_campaign' },

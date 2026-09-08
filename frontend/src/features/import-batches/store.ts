@@ -141,6 +141,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const selectedHistoricalCampaign = ref<HistoricalCampaignResponse | null>(null)
   const historicalCampaignItems = ref<HistoricalCampaignItemResponse[]>([])
   const historicalCampaignConflicts = ref<HistoricalCampaignConflictResponse[]>([])
+  const historicalCampaignConflictTotal = ref<number | null>(null)
   const historicalCampaignItemsHasMore = ref(false)
   const historicalCampaignConflictsHasMore = ref(false)
   const historicalRevocationPreview = ref<DataImportRevocationPreviewResponse | null>(null)
@@ -164,6 +165,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollDocument: Document | undefined
   let refreshVersion = 0
+  let refreshInFlight = false
+  let appliedListParams: ListCollectionRuntimeRunsParams = { limit: 20 }
   let supplementPlatformVersion = 0
 
   const hasActiveJobs = computed(
@@ -181,7 +184,12 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   )
 
   function selectedRecordTypes(): CollectionRuntimeRecordType[] | undefined {
-    if (activeTab.value === 'excel') return ['excel_import', 'data_import_campaign']
+    if (activeTab.value === 'excel') {
+      if (filters.recordType === 'excel_import' || filters.recordType === 'data_import_campaign') {
+        return [filters.recordType]
+      }
+      return ['excel_import', 'data_import_campaign']
+    }
     if (activeTab.value === 'tikhub') {
       if (
         filters.recordType === 'tikhub_discovery' ||
@@ -207,13 +215,30 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
+  /** 重新取得已加载的游标窗口，轮询不丢弃后续页，也不提交尚未查询的筛选。 */
+  async function refreshWindow(version: number, expectedCount: number, params: ListCollectionRuntimeRunsParams) {
+    let page = await fetchCollectionRuntimeList(params)
+    const rows = [...page.items]
+    while (version === refreshVersion && page.has_more && page.next_cursor && rows.length < expectedCount) {
+      page = await fetchCollectionRuntimeList({ ...params, cursor: page.next_cursor })
+      rows.push(...page.items)
+    }
+    return { ...page, items: rows }
+  }
+
   async function refresh(silent = false): Promise<void> {
+    if (silent && (refreshInFlight || loadingNext.value)) return
     const version = ++refreshVersion
-    if (!silent) loading.value = true
+    const params = silent ? { ...appliedListParams } : listParams()
+    if (!silent) {
+      loading.value = true
+      loadingNext.value = false
+    }
+    refreshInFlight = true
     error.value = null
     try {
       const [page, kpis, batchDetail, runDetail] = await Promise.all([
-        fetchCollectionRuntimeList(listParams()),
+        refreshWindow(version, silent ? items.value.length : 0, params),
         fetchCollectionRuntimeSummary(),
         selectedBatch.value
           ? fetchImportBatchDetail(selectedBatch.value.id)
@@ -223,6 +248,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
           : Promise.resolve(null),
       ])
       if (version !== refreshVersion) return
+      // 只有窗口读取成功才应用参数，失败保留的旧游标继续绑定旧查询。
+      appliedListParams = params
       items.value = page.items
       nextCursor.value = page.next_cursor ?? null
       hasMore.value = page.has_more
@@ -232,23 +259,28 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     } catch (reason) {
       if (version === refreshVersion) error.value = errorMessage(reason)
     } finally {
-      if (version === refreshVersion) loading.value = false
+      if (version === refreshVersion) {
+        loading.value = false
+        refreshInFlight = false
+      }
     }
   }
 
   async function loadNext(): Promise<void> {
-    if (!nextCursor.value || loadingNext.value) return
+    if (!nextCursor.value || loadingNext.value || refreshInFlight) return
+    const version = refreshVersion
     loadingNext.value = true
     error.value = null
     try {
-      const page = await fetchCollectionRuntimeList(listParams(nextCursor.value))
+      const page = await fetchCollectionRuntimeList({ ...appliedListParams, cursor: nextCursor.value })
+      if (version !== refreshVersion) return
       items.value = [...items.value, ...page.items]
       nextCursor.value = page.next_cursor ?? null
       hasMore.value = page.has_more
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (version === refreshVersion) error.value = errorMessage(reason)
     } finally {
-      loadingNext.value = false
+      if (version === refreshVersion) loadingNext.value = false
     }
   }
 
@@ -499,6 +531,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedHistoricalCampaign.value = campaign
     historicalCampaignItems.value = campaignItems.items
     historicalCampaignConflicts.value = conflicts.items
+    historicalCampaignConflictTotal.value = conflicts.total_count ?? null
     historicalCampaignItemsHasMore.value = Boolean(campaignItems.has_more)
     historicalCampaignConflictsHasMore.value = Boolean(conflicts.has_more)
     historicalCampaigns.value = [
@@ -702,6 +735,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedHistoricalCampaign,
     historicalCampaignItems,
     historicalCampaignConflicts,
+    historicalCampaignConflictTotal,
     historicalCampaignItemsHasMore,
     historicalCampaignConflictsHasMore,
     historicalRevocationPreview,

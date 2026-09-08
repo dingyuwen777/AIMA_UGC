@@ -168,7 +168,7 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.drawer-layer { position: fixed; inset: 0; z-index: 100; background: rgb(17 22 37 / 94%); }
+.drawer-layer { position: fixed; inset: 0; z-index: 100; background: rgb(17 22 37 / 50%); }
 .drawer { position: absolute; inset: 0 0 0 auto; display: grid; width: min(510px, 100vw); height: 100vh; grid-template-rows: 60px minmax(0, 1fr) 72px; overflow: hidden; border-left: 1px solid var(--aima-border); background: var(--aima-surface); box-shadow: -10px 0 30px rgb(23 32 51 / 12%); }
 header { display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid var(--aima-border); }
 header strong { color: var(--aima-text); font-size: 17px; line-height: 24px; }
