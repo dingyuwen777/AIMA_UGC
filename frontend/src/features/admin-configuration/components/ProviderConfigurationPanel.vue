@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import type { ResourceLifecycleResponse } from '../../../generated/api/client'
 import { apiErrorMessage } from '../../../shared/api/http'
@@ -32,10 +32,12 @@ const selectedId = ref('')
 const loading = ref(false)
 const archivedLoading = ref(false)
 const saving = ref(false)
-const testing = ref(false)
+const pendingConnectionIds = reactive(new Set<string>())
 const error = ref<string | null>(null)
+const loadError = ref<string | null>(null)
 const notice = ref<string | null>(null)
 const connectionResult = ref<ProviderConnectionTestResponse | null>(null)
+let connectionRequestVersion = 0
 
 const draft = reactive({
   id: '',
@@ -52,6 +54,7 @@ const draft = reactive({
   isDefault: false,
 })
 
+const testing = computed(() => pendingConnectionIds.has(draft.id))
 const isLlm = computed(() => props.providerKind === 'llm')
 const panelTitle = computed(() => (isLlm.value ? 'AI 模型服务' : 'TikHub 采集服务'))
 const panelDescription = computed(() => (
@@ -60,6 +63,20 @@ const panelDescription = computed(() => (
     : '管理 TikHub 的服务地址、访问密钥和请求限制。保存后，新建的采集任务会使用最新配置。'
 ))
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
+const hasUnsavedChanges = computed(() => {
+  const item = selectedItem.value
+  if (!item) return true
+  return Boolean(draft.apiKey.trim())
+    || draft.displayName.trim() !== item.display_name
+    || draft.baseUrl.trim() !== item.base_url
+    || (isLlm.value && draft.model.trim() !== (item.model ?? ''))
+    || draft.timeoutSeconds !== item.timeout_seconds
+    || draft.maxRetries !== item.max_retries
+    || draft.maxConcurrency !== item.max_concurrency
+    || maxRpsValue() !== (item.max_rps ?? null)
+    || draft.enabled !== item.enabled
+    || (isLlm.value && draft.isDefault !== item.is_default)
+})
 const formValid = computed(() => {
   if (!draft.displayName.trim() || !draft.provider.trim() || !draft.baseUrl.trim()) return false
   if (isLlm.value && !draft.model.trim()) return false
@@ -74,8 +91,17 @@ const formValid = computed(() => {
 
 onMounted(load)
 
+/** 测试结果只属于发送时的已保存配置，草稿变化后不能继续显示为当前结果。 */
+function invalidateConnectionTest(): void {
+  connectionRequestVersion += 1
+  connectionResult.value = null
+}
+
+watch(draft, invalidateConnectionTest, { flush: 'sync' })
+
 async function load(preferredId?: string): Promise<void> {
   loading.value = true
+  loadError.value = null
   error.value = null
   try {
     items.value = (await fetchProviderConfigs(props.providerKind)).items
@@ -85,7 +111,7 @@ async function load(preferredId?: string): Promise<void> {
     if (selected) selectItem(selected, true)
     else resetDraft(true)
   } catch (reason) {
-    error.value = apiErrorMessage(reason)
+    loadError.value = apiErrorMessage(reason)
   } finally {
     loading.value = false
   }
@@ -108,6 +134,7 @@ function onArchivedToggle(event: Event): void {
 }
 
 function resetDraft(preserveFeedback = false): void {
+  invalidateConnectionTest()
   selectedId.value = ''
   Object.assign(draft, {
     id: '',
@@ -129,6 +156,7 @@ function resetDraft(preserveFeedback = false): void {
 }
 
 function selectItem(item: ProviderConfigResponse, preserveFeedback = false): void {
+  invalidateConnectionTest()
   selectedId.value = item.id
   Object.assign(draft, {
     id: item.id,
@@ -150,7 +178,8 @@ function selectItem(item: ProviderConfigResponse, preserveFeedback = false): voi
 }
 
 function maxRpsValue(): number | null {
-  const value = draft.maxRps.trim()
+  // 数值输入框的 v-model 会把非空值转换为 number，清空后仍为字符串。
+  const value = String(draft.maxRps).trim()
   return value ? Number(value) : null
 }
 
@@ -208,17 +237,20 @@ async function save(): Promise<void> {
 }
 
 async function testConnection(): Promise<void> {
-  if (!draft.id) return
-  testing.value = true
+  if (!draft.id || saving.value || testing.value || hasUnsavedChanges.value) return
+  const version = ++connectionRequestVersion
+  const providerId = draft.id
+  pendingConnectionIds.add(providerId)
   error.value = null
   notice.value = null
   connectionResult.value = null
   try {
-    connectionResult.value = await testProviderConnection(draft.id)
+    const result = await testProviderConnection(providerId)
+    if (version === connectionRequestVersion) connectionResult.value = result
   } catch (reason) {
-    error.value = apiErrorMessage(reason)
+    if (version === connectionRequestVersion) error.value = apiErrorMessage(reason)
   } finally {
-    testing.value = false
+    pendingConnectionIds.delete(providerId)
   }
 }
 
@@ -247,7 +279,7 @@ async function restoreArchived(item: ResourceLifecycleResponse): Promise<void> {
   try {
     await restoreArchivedProvider(item.id)
     await Promise.all([load(item.id), loadArchived()])
-    notice.value = '服务配置已恢复，当前保持停用且不会自动成为默认配置。'
+    notice.value = '服务配置已恢复，当前保持停用且不会自动成为默认配置。请在对应的 AI 模型或 TikHub 标签查看。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -287,12 +319,28 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         </div>
         <AimaButton
           size="small"
+          :disabled="loading || saving || Boolean(loadError)"
           @click="resetDraft()"
         >
           新增配置
         </AimaButton>
       </header>
 
+      <AimaFeedbackBanner
+        v-if="loadError"
+        tone="error"
+        role="alert"
+      >
+        {{ loadError }}
+        <AimaButton
+          variant="text"
+          size="small"
+          :disabled="loading || saving"
+          @click="load()"
+        >
+          重新读取配置
+        </AimaButton>
+      </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="error"
         tone="error"
@@ -319,7 +367,7 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         正在读取配置…
       </div>
       <div
-        v-else-if="items.length === 0"
+        v-else-if="!loadError && items.length === 0"
         class="empty-state"
       >
         尚未创建{{ isLlm ? ' AI 模型' : ' TikHub' }}配置。填写右侧信息后即可使用。
@@ -331,6 +379,7 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         type="button"
         class="provider-item"
         :class="{ active: selectedId === item.id }"
+        :disabled="saving"
         @click="selectItem(item)"
       >
         <span class="provider-item__head"><strong>{{ item.display_name }}</strong><span class="badges"><em v-if="item.is_default">默认</em><em :class="{ muted: !item.enabled }">{{ item.enabled ? '已启用' : '已停用' }}</em></span></span>
@@ -342,7 +391,7 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         class="archived-list"
         @toggle="onArchivedToggle"
       >
-        <summary>已归档配置</summary>
+        <summary>已归档配置（全部服务类型）</summary>
         <div
           v-if="archivedLoading"
           class="archived-state"
@@ -382,7 +431,11 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
       </details>
     </section>
 
-    <section class="card provider-form">
+    <fieldset
+      class="card provider-form"
+      :disabled="loading || saving || Boolean(loadError)"
+      aria-label="服务配置表单"
+    >
       <header><div><h2>{{ draft.id ? '编辑服务配置' : '新增服务配置' }}</h2><p>访问密钥不会回显。编辑已有配置时留空表示继续使用当前密钥。</p></div></header>
 
       <div class="form-grid">
@@ -461,9 +514,11 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         :tone="connectionResult.ok ? 'success' : 'warning'"
         role="status"
       >
-        <strong>{{ connectionResult.ok ? '连接测试通过' : '连接测试未通过' }}</strong>
-        <span>{{ connectionResult.message }}</span>
-        <small v-if="connectionResult.latency_ms != null">耗时 {{ connectionResult.latency_ms }} 毫秒</small>
+        <div class="connection-result-text">
+          <strong>{{ connectionResult.ok ? '连接测试通过' : '连接测试未通过' }}</strong>
+          <span>{{ connectionResult.message }}</span>
+          <small v-if="connectionResult.latency_ms != null">耗时 {{ connectionResult.latency_ms }} 毫秒</small>
+        </div>
       </AimaFeedbackBanner>
 
       <details class="technical-details">
@@ -487,6 +542,12 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         </dl>
       </details>
 
+      <p
+        v-if="draft.id && hasUnsavedChanges"
+        class="connection-hint"
+      >
+        配置有未保存修改，请先保存后再测试连接。
+      </p>
       <div class="actions">
         <AimaButton
           :disabled="saving"
@@ -496,7 +557,7 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         </AimaButton>
         <AimaButton
           v-if="draft.id"
-          :disabled="saving || testing"
+          :disabled="saving || testing || hasUnsavedChanges"
           @click="testConnection"
         >
           {{ testing ? '测试中…' : '测试连接' }}
@@ -510,18 +571,21 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         </AimaButton>
         <AimaButton
           variant="primary"
-          :disabled="saving || !formValid"
+          :disabled="saving || testing || !formValid"
           @click="save"
         >
           {{ saving ? '保存中…' : '保存并生效' }}
         </AimaButton>
       </div>
-    </section>
+    </fieldset>
   </div>
 </template>
 
 <style scoped>
-.provider-layout { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(0, 1.55fr); gap: 12px; }
+.provider-layout { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(0, 1.55fr); gap: 24px; align-items: start; }
+.provider-form { margin: 0; }
+.provider-list > header :deep(.aima-button) { flex-shrink: 0; white-space: nowrap; }
+.connection-result-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .card { min-width: 0; padding: 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); background: var(--aima-surface); }
 .card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 h2,p { margin: 0; } h2 { color: var(--aima-text); font-size: 15px; }.card p { margin-top: 4px; color: var(--aima-text-muted); font-size: 11px; line-height: 17px; }

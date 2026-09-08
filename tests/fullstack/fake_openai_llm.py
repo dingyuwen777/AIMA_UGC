@@ -57,6 +57,9 @@ class _Handler(BaseHTTPRequestHandler):
     streaming_requests = 0
 
     def do_GET(self) -> None:  # noqa: N802
+        if self.path == "/v1/models":
+            self._send_json({"object": "list", "data": [{"id": "deepseek-v4-pro"}]})
+            return
         if self.path != "/health":
             self.send_error(404)
             return
