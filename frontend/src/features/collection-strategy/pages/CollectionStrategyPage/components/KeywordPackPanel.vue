@@ -2,15 +2,11 @@
 import { ref, watch } from 'vue'
 
 import type {
-  KeywordPackItemUpdateRequest,
   KeywordPackResponse,
   KeywordPackSummaryResponse,
-  KeywordResponse,
-  PlatformScope,
   ResourceLifecycleResponse,
 } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
-import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { COLLECTION_PLATFORM_OPTIONS } from '../../../presentation'
 
 const props = defineProps<{
@@ -28,13 +24,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   create: []
+  edit: []
   open: [packId: string]
   toggle: [pack: KeywordPackSummaryResponse]
-  addKeyword: [packId: string, text: string]
-  saveMetadata: [name: string, description: string]
-  updateKeyword: [keywordId: string, request: Omit<KeywordPackItemUpdateRequest, 'expected_version'>]
-  removeKeyword: [keywordId: string, platformScope: string]
-  copy: [name: string]
+  copy: [name: string, onSaved: () => void]
   archive: []
   loadArchived: []
   restoreArchived: [packId: string]
@@ -43,28 +36,15 @@ const emit = defineEmits<{
   next: []
 }>()
 
-const keyword = ref('')
-const metadataEditing = ref(false)
-const metadataName = ref('')
-const metadataDescription = ref('')
-const editingKeywordId = ref('')
-const keywordDraft = ref({
-  text: '',
-  sourcePlatformScope: 'all' as PlatformScope,
-  platformScope: 'all' as PlatformScope,
-  priority: 100,
-  enabled: true,
-  note: '',
-})
 const copyName = ref('')
+const copyEditing = ref(false)
 const archivedOpen = ref(false)
 
 watch(
   () => props.selected?.id,
   () => {
-    metadataEditing.value = false
-    editingKeywordId.value = ''
     copyName.value = ''
+    copyEditing.value = false
   },
 )
 
@@ -74,53 +54,9 @@ function keywordScopeLabel(scope?: string): string {
   return COLLECTION_PLATFORM_OPTIONS.find((item) => item.value === scope)?.label ?? '指定平台'
 }
 
-function startMetadataEdit(): void {
-  if (!props.selected) return
-  metadataName.value = props.selected.name
-  metadataDescription.value = props.selected.description
-  metadataEditing.value = true
-}
-
-function saveMetadata(): void {
-  if (!metadataName.value.trim()) return
-  emit('saveMetadata', metadataName.value.trim(), metadataDescription.value.trim())
-  metadataEditing.value = false
-}
-
-function startKeywordEdit(item: KeywordResponse): void {
-  editingKeywordId.value = item.id
-  keywordDraft.value = {
-    text: item.text,
-    sourcePlatformScope: item.platform_scope ?? 'all',
-    platformScope: item.platform_scope ?? 'all',
-    priority: item.priority,
-    enabled: item.enabled,
-    note: item.note,
-  }
-}
-
-function saveKeywordEdit(): void {
-  if (!editingKeywordId.value || !keywordDraft.value.text.trim()) return
-  emit('updateKeyword', editingKeywordId.value, {
-    text: keywordDraft.value.text.trim(),
-    source_platform_scope: keywordDraft.value.sourcePlatformScope,
-    platform_scope: keywordDraft.value.platformScope,
-    priority: keywordDraft.value.priority,
-    enabled: keywordDraft.value.enabled,
-    note: keywordDraft.value.note.trim(),
-  })
-  editingKeywordId.value = ''
-}
-
-function removeKeyword(item: KeywordResponse): void {
-  if (!window.confirm(`确认从当前词包移除关键词“${item.text}”吗？其他词包若仍在使用该关键词不会受到影响。`)) return
-  emit('removeKeyword', item.id, item.platform_scope ?? 'all')
-}
-
 function copySelected(): void {
   if (!props.selected || !copyName.value.trim()) return
-  emit('copy', copyName.value.trim())
-  copyName.value = ''
+  emit('copy', copyName.value.trim(), () => { copyEditing.value = false })
 }
 
 function archiveSelected(): void {
@@ -178,8 +114,10 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
           :class="{ active: selected?.id === pack.id }"
           role="button"
           tabindex="0"
-          @click="emit('open', pack.id)"
-          @keydown.enter="emit('open', pack.id)"
+          :aria-disabled="saving"
+          @click="!saving && emit('open', pack.id)"
+          @keydown.enter="!saving && emit('open', pack.id)"
+          @keydown.space.prevent="!saving && emit('open', pack.id)"
         >
           <span><strong>{{ pack.name }}</strong><small>{{ pack.description || '暂无描述' }}</small></span>
           <span class="count">{{ pack.keyword_count }} 词</span><span>v{{ pack.version }}</span>
@@ -270,13 +208,15 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
         <div class="resource-actions">
           <AimaButton
             size="small"
-            @click="startMetadataEdit"
+            :disabled="saving"
+            @click="emit('edit')"
           >
-            编辑名称与说明
+            编辑
           </AimaButton>
           <AimaButton
             size="small"
-            @click="copyName = `${selected.name} 副本`"
+            :disabled="saving"
+            @click="copyName = `${selected.name} 副本`; copyEditing = true"
           >
             复制
           </AimaButton>
@@ -290,48 +230,20 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
         </div>
 
         <div
-          v-if="metadataEditing"
-          class="inline-editor"
-        >
-          <label><span>词包名称</span><input
-            v-model="metadataName"
-            maxlength="200"
-          ></label>
-          <label><span>说明</span><textarea
-            v-model="metadataDescription"
-            rows="2"
-            maxlength="2000"
-          /></label>
-          <div>
-            <AimaButton
-              size="small"
-              @click="metadataEditing = false"
-            >
-              取消
-            </AimaButton><AimaButton
-              variant="primary"
-              size="small"
-              :disabled="saving || !metadataName.trim()"
-              @click="saveMetadata"
-            >
-              保存
-            </AimaButton>
-          </div>
-        </div>
-
-        <div
-          v-if="copyName"
+          v-if="copyEditing"
           class="inline-editor"
         >
           <label><span>副本名称</span><input
             v-model="copyName"
+            :disabled="saving"
             maxlength="200"
           ></label>
           <small>副本创建后默认停用，不会自动进入采集任务。</small>
           <div>
             <AimaButton
               size="small"
-              @click="copyName = ''"
+              :disabled="saving"
+              @click="copyEditing = false"
             >
               取消
             </AimaButton><AimaButton
@@ -345,13 +257,6 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
           </div>
         </div>
 
-        <AimaFeedbackBanner
-          v-if="selected.enabled"
-          tone="info"
-        >
-          需要修改或移除已有关键词时，请先停用词包。这样可避免正在使用的业务配置在编辑过程中漂移。
-        </AimaFeedbackBanner>
-
         <div class="keyword-list">
           <div
             v-for="item in selected.keywords"
@@ -359,80 +264,9 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
             class="keyword-row"
           >
             <span><b>{{ item.text }}</b><small v-if="keywordScopeLabel(item.platform_scope)">{{ keywordScopeLabel(item.platform_scope) }}</small></span>
-            <span class="keyword-actions">
-              <button
-                type="button"
-                :disabled="selected.enabled || saving"
-                @click="startKeywordEdit(item)"
-              >编辑</button>
-              <button
-                type="button"
-                :disabled="selected.enabled || saving"
-                @click="removeKeyword(item)"
-              >移除</button>
-            </span>
           </div>
           <em v-if="selected.keywords.length === 0">当前词包还没有关键词。</em>
         </div>
-
-        <div
-          v-if="editingKeywordId"
-          class="keyword-editor"
-        >
-          <label><span>关键词</span><input
-            v-model="keywordDraft.text"
-            maxlength="500"
-          ></label>
-          <label><span>适用平台</span><select v-model="keywordDraft.platformScope">
-            <option value="all">全部平台</option>
-            <option
-              v-for="option in COLLECTION_PLATFORM_OPTIONS"
-              :key="option.value"
-              :value="option.value"
-            >{{ option.label }}</option>
-          </select></label>
-          <label><span>优先级</span><input
-            v-model.number="keywordDraft.priority"
-            type="number"
-          ></label>
-          <label class="keyword-enabled"><input
-            v-model="keywordDraft.enabled"
-            type="checkbox"
-          >启用该关键词</label>
-          <label class="span-2"><span>备注</span><input
-            v-model="keywordDraft.note"
-            maxlength="1000"
-          ></label>
-          <div class="span-2 editor-actions">
-            <AimaButton
-              size="small"
-              @click="editingKeywordId = ''"
-            >
-              取消
-            </AimaButton><AimaButton
-              variant="primary"
-              size="small"
-              :disabled="saving || !keywordDraft.text.trim()"
-              @click="saveKeywordEdit"
-            >
-              保存关键词
-            </AimaButton>
-          </div>
-        </div>
-
-        <form @submit.prevent="emit('addKeyword', selected.id, keyword.trim()); keyword = ''">
-          <input
-            v-model="keyword"
-            maxlength="500"
-            placeholder="新增关键词"
-            required
-          ><button
-            type="submit"
-            :disabled="saving || !keyword.trim()"
-          >
-            添加
-          </button>
-        </form>
       </template>
       <div
         v-else
@@ -445,7 +279,7 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
 </template>
 
 <style scoped>
-.panel-grid { display: grid; grid-template-columns: minmax(620px, 823px) minmax(320px, 373px); gap: 16px; }
+.panel-grid { display: grid; grid-template-columns: minmax(0, 1fr) 373px; gap: 16px; }
 .list-column { min-width: 0; }
 .table-card,.detail-card,.archived-card { border: 1px solid var(--aima-border); border-radius: 9px; background: #fff; }
 .table-head { display: flex; height: 54px; align-items: center; justify-content: space-between; padding: 0 24px 0 18px; border-bottom: 1px solid var(--aima-border); }
@@ -460,9 +294,10 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
 .resource-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }
 .inline-editor { display: grid; gap: 9px; margin: 12px 0; padding: 10px; border: 1px solid var(--aima-border); border-radius: 7px; background: #fafbfc; }.inline-editor label { display: grid; gap: 5px; color: #6d788a; font-size: 11px; }.inline-editor input,.inline-editor textarea { width: 100%; padding: 7px 9px; border: 1px solid #dce1e9; border-radius: 6px; font: inherit; }.inline-editor > div { display: flex; justify-content: flex-end; gap: 7px; }.inline-editor small { color: #7c8798; font-size: 11px; }
 .keyword-list { display: grid; gap: 6px; max-height: 290px; overflow: auto; margin: 14px 0; }.keyword-row { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; border: 1px solid #dce4f0; border-radius: 6px; background: #f8faff; }.keyword-row > span:first-child { min-width: 0; }.keyword-row b { color: #344258; font-size: 12px; font-weight: 500; }.keyword-row small { margin-left: 5px; color: #8993a3; }.keyword-actions { display: flex; gap: 7px; }.keyword-actions button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }.keyword-actions button:disabled { color: #a0a8b5; cursor: not-allowed; }.keyword-list em { color: #929aaa; font-style: normal; }
-.keyword-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; padding: 10px; border: 1px solid #ffd1dc; border-radius: 7px; background: #fff8fa; }.keyword-editor label { display: grid; gap: 4px; color: #6d788a; font-size: 11px; }.keyword-editor input:not([type='checkbox']),.keyword-editor select { width: 100%; height: 34px; padding: 0 8px; border: 1px solid #dce1e9; border-radius: 5px; background: #fff; }.keyword-enabled { display: flex !important; grid-auto-flow: column; align-items: center; justify-content: start; }.span-2 { grid-column: 1 / -1; }.editor-actions { display: flex; justify-content: flex-end; gap: 7px; }
-form { display: flex; width: 100%; margin: 14px auto 0; gap: 10px; }form input { min-width: 0; height: 40px; flex: 1; padding: 0 10px; border: 1px solid #dce1e9; border-radius: 6px; }form button { width: 58px; height: 40px; flex: none; border: 0; border-radius: 6px; color: #fff; background: var(--aima-primary); cursor: pointer; }
 .state { display: grid; min-height: 190px; place-items: center; color: #8a93a3; }.pagination { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 18px; color: #6f7a8d; font-size: 12px; }.pager-actions { display: flex; gap: 34px; }
 .archived-card { margin-top: 12px; overflow: hidden; }.archived-card summary { padding: 12px 16px; cursor: pointer; color: #536075; font-size: 12px; font-weight: 600; }.archived-state { padding: 16px; color: #8892a2; font-size: 12px; }.archived-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid #edf0f4; }.archived-row strong,.archived-row small { display: block; }.archived-row strong { color: #313c4f; font-size: 12px; }.archived-row small { margin-top: 3px; color: #929baa; font-size: 10px; }
-@media (max-width: 1100px) { .panel-grid { grid-template-columns: 1fr; }.detail-card { min-height: 260px; } }
+.pack-row > span:first-child,.detail-title > div { min-width: 0; overflow-wrap: anywhere; }
+.detail-card > p,.keyword-row b,.archived-row strong { overflow-wrap: anywhere; }
+.keyword-actions { flex: none; white-space: nowrap; }
+@media (max-width: 1260px) { .panel-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }.detail-card { width: min(100%, 373px); min-height: 260px; } }
 </style>

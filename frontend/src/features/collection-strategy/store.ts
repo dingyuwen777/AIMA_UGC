@@ -9,6 +9,8 @@ import type {
   CollectionPlatform,
   GlobalRelevanceConfigResponse,
   KeywordPackItemUpdateRequest,
+  KeywordPackKeywordCreateRequest,
+  KeywordPackUpdateRequest,
   KeywordPackResponse,
   KeywordPackSummaryResponse,
   ResourceLifecycleResponse,
@@ -88,6 +90,9 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const loading = ref(false)
   const saving = ref(false)
   const error = ref<string | null>(null)
+  let refreshVersion = 0
+  let packSelectionVersion = 0
+  let pendingPackDetails = 0
 
   const enabledPacks = computed(() =>
     packCatalog.value.filter((pack) => pack.enabled && pack.keyword_count > 0),
@@ -132,22 +137,34 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   }
 
   async function loadPackDetails(packIds: readonly string[]): Promise<void> {
+    const version = refreshVersion
     const missing = [...new Set(packIds)].filter((id) => !packDetails.value[id])
     if (missing.length === 0) return
+    pendingPackDetails += 1
     loadingPackDetails.value = true
     try {
       const loaded = await Promise.all(missing.map((id) => fetchPack(id)))
+      if (version !== refreshVersion) return
       packDetails.value = {
         ...packDetails.value,
-        ...Object.fromEntries(loaded.map((pack) => [pack.id, pack])),
+        ...Object.fromEntries(loaded.filter((pack) =>
+          !packDetails.value[pack.id] || packDetails.value[pack.id]!.version <= pack.version,
+        ).map((pack) => [pack.id, pack])),
       }
     } finally {
-      loadingPackDetails.value = false
+      if (version === refreshVersion) {
+        pendingPackDetails -= 1
+        loadingPackDetails.value = pendingPackDetails > 0
+      }
     }
   }
 
   /** 并行恢复策略工作区事实，并保持列表分页与跨页引用目录各自独立。 */
   async function refresh(): Promise<void> {
+    const version = ++refreshVersion
+    pendingPackDetails = 0
+    loadingPackDetails.value = false
+    const selectionVersion = packSelectionVersion
     loading.value = true
     error.value = null
     try {
@@ -170,6 +187,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
         }),
         fetchAllEnabledPlans(),
       ])
+      if (version !== refreshVersion) return
       packs.value = packPage.items
       packCatalog.value = allPacks
       vehicleCatalog.value = allVehicles
@@ -182,45 +200,49 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       enabledPlanPackIds.value = [...new Set(enabledPlans.flatMap((plan) => plan.keyword_pack_ids))]
       packDetails.value = {}
       await loadPackDetails(planPage.items.flatMap((plan) => plan.keyword_pack_ids))
+      if (version !== refreshVersion) return
       const selectedId = allPacks.some((pack) => pack.id === selectedPack.value?.id)
         ? selectedPack.value?.id
         : packPage.items[0]?.id
-      if (selectedId) {
+      if (selectedId && selectionVersion === packSelectionVersion) {
         const detail = packDetails.value[selectedId] ?? await fetchPack(selectedId)
+        if (version !== refreshVersion || selectionVersion !== packSelectionVersion) return
         selectedPack.value = detail
         packDetails.value = { ...packDetails.value, [detail.id]: detail }
-      } else {
+      } else if (selectionVersion === packSelectionVersion) {
         selectedPack.value = null
       }
       if (selectedPlan.value) {
         selectedPlan.value = planPage.items.find((plan) => plan.id === selectedPlan.value?.id) ?? null
       }
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (version === refreshVersion) error.value = errorMessage(reason)
     } finally {
-      loading.value = false
+      if (version === refreshVersion) loading.value = false
     }
   }
 
   async function openPack(packId: string): Promise<void> {
+    const version = ++packSelectionVersion
     error.value = null
     try {
       const pack = await fetchPack(packId)
+      if (version !== packSelectionVersion) return
       selectedPack.value = pack
       packDetails.value = { ...packDetails.value, [pack.id]: pack }
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (version === packSelectionVersion) error.value = errorMessage(reason)
     }
   }
 
-  async function savePack(name: string, description: string, keywords: string[]): Promise<boolean> {
+  async function savePack(name: string, description: string, keywords: KeywordPackKeywordCreateRequest[]): Promise<boolean> {
     saving.value = true
     error.value = null
     try {
       const created = await createPack({
         name,
         description,
-        keywords: keywords.map((text) => ({ text, priority: 100, enabled: true })),
+        keywords,
       })
       selectedPack.value = created
       packDetails.value = { ...packDetails.value, [created.id]: created }
@@ -234,17 +256,11 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
-  async function savePackMetadata(name: string, description: string): Promise<boolean> {
-    const pack = selectedPack.value
-    if (!pack) return false
+  async function savePackChanges(packId: string, request: KeywordPackUpdateRequest): Promise<boolean> {
     saving.value = true
     error.value = null
     try {
-      const updated = await updatePack(pack.id, {
-        expected_version: pack.version,
-        name: name.trim(),
-        description: description.trim(),
-      })
+      const updated = await updatePack(packId, request)
       selectedPack.value = updated
       packDetails.value = { ...packDetails.value, [updated.id]: updated }
       await refresh()
@@ -657,19 +673,30 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
 
   /** 仅刷新关键词包当前页，避免翻页时重复拉取无关的计划和 Capability。 */
   async function loadPackPage(): Promise<void> {
+    const version = ++refreshVersion
+    const selectionVersion = ++packSelectionVersion
+    pendingPackDetails = 0
+    loadingPackDetails.value = false
     loading.value = true
     error.value = null
     try {
       const page = await fetchKeywordPacks({ offset: packOffset.value, limit: packLimit })
+      if (version !== refreshVersion) return
       packs.value = page.items
       packTotal.value = page.total
       const first = page.items[0]
-      if (first) await openPack(first.id)
-      else selectedPack.value = null
+      if (selectionVersion === packSelectionVersion) {
+        if (first) {
+          const detail = await fetchPack(first.id)
+          if (version !== refreshVersion || selectionVersion !== packSelectionVersion) return
+          selectedPack.value = detail
+          packDetails.value = { ...packDetails.value, [detail.id]: detail }
+        } else selectedPack.value = null
+      }
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (version === refreshVersion) error.value = errorMessage(reason)
     } finally {
-      loading.value = false
+      if (version === refreshVersion) loading.value = false
     }
   }
 
@@ -716,7 +743,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     refresh,
     openPack,
     savePack,
-    savePackMetadata,
+    savePackChanges,
     addKeyword,
     updateKeyword,
     removeKeyword,

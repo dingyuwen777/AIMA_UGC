@@ -18,7 +18,7 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaigns_table
 from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
-from aima_ugc.modules.system.models import KeywordPack
+from aima_ugc.modules.system.models import KeywordPack, KeywordPackItem
 from aima_ugc.modules.system.tables import (
     global_relevance_config_table,
     keyword_pack_items_table,
@@ -54,8 +54,80 @@ class PostgresKeywordPackLifecycleRepository:
         expected_version: int,
         name: str,
         description: str,
+        members: tuple[KeywordPackItem, ...] | None = None,
     ) -> KeywordPack | None:
-        """按乐观版本更新词包元数据；归档资源拒绝原地编辑。"""
+        """按版本原子保存元数据和可选成员；启用词包只允许保留原成员并追加。"""
+
+        if members is not None:
+            parent = (
+                self._session.execute(
+                    select(keyword_packs_table)
+                    .where(keyword_packs_table.c.id == pack_id)
+                    .with_for_update()
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if (
+                parent is None
+                or parent["archived_at"] is not None
+                or parent["version"] != expected_version
+            ):
+                return None
+            identities = {(item.keyword_id, item.platform_scope) for item in members}
+            if len(identities) != len(members):
+                raise RuntimeError("同一平台范围的关键词不能重复")
+            current = (
+                self._session.execute(
+                    select(keyword_pack_items_table).where(
+                        keyword_pack_items_table.c.pack_id == pack_id
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            replacements = {
+                (item.keyword_id, item.platform_scope): (item.priority, item.enabled, item.note)
+                for item in members
+            }
+            if parent["enabled"] and any(
+                replacements.get((item["keyword_id"], item["platform_scope"]))
+                != (item["priority"], item["enabled"], item["note"])
+                for item in current
+            ):
+                raise RuntimeError("请先停用词包，再修改或移除已有关键词")
+            self._session.execute(
+                delete(keyword_pack_items_table).where(
+                    keyword_pack_items_table.c.pack_id == pack_id
+                )
+            )
+            if members:
+                self._session.execute(
+                    insert(keyword_pack_items_table),
+                    [
+                        {
+                            "pack_id": pack_id,
+                            "keyword_id": item.keyword_id,
+                            "platform_scope": item.platform_scope,
+                            "priority": item.priority,
+                            "enabled": item.enabled,
+                            "note": item.note,
+                        }
+                        for item in members
+                    ],
+                )
+            removed_ids = {item["keyword_id"] for item in current} - {
+                item.keyword_id for item in members
+            }
+            if removed_ids:
+                self._session.execute(
+                    delete(keywords_table).where(
+                        keywords_table.c.id.in_(removed_ids),
+                        ~select(keyword_pack_items_table.c.keyword_id)
+                        .where(keyword_pack_items_table.c.keyword_id == keywords_table.c.id)
+                        .exists(),
+                    )
+                )
 
         row = (
             self._session.execute(

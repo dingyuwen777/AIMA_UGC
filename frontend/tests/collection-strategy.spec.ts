@@ -205,4 +205,58 @@ describe('collection strategy feature', () => {
     expect(generated.updateCollectionPlanEnabled).not.toHaveBeenCalled()
     expect(store.error).toContain('全局相关性')
   })
+
+  it('keeps the latest selected pack when older detail requests finish later', async () => {
+    const store = useCollectionStrategyStore()
+    let finishOlder!: (value: typeof packDetail) => void
+    generated.getKeywordPack.mockReturnValueOnce(new Promise((resolve) => { finishOlder = resolve }))
+    const older = store.openPack('older')
+    generated.getKeywordPack.mockResolvedValueOnce({ ...packDetail, id: 'newer', name: '当前选择' })
+    await store.openPack('newer')
+    finishOlder({ ...packDetail, id: 'older', name: '旧选择' })
+    await older
+    expect(store.selectedPack?.id).toBe('newer')
+  })
+
+  it('does not overwrite a newer refresh with an older response', async () => {
+    const store = useCollectionStrategyStore()
+    let finishOlder!: (value: unknown) => void
+    generated.getGlobalRelevanceConfig.mockReturnValueOnce(new Promise((resolve) => { finishOlder = resolve }))
+    const older = store.refresh()
+    generated.getGlobalRelevanceConfig.mockResolvedValueOnce({
+      keyword_pack_id: 'latest', keyword_pack_version: 9, version: 4,
+      effective_keywords: ['当前规则'], updated_at: '2026-08-28T00:00:00Z',
+    })
+    await store.refresh()
+    finishOlder({ keyword_pack_id: 'older', keyword_pack_version: 8, version: 3, effective_keywords: ['旧规则'], updated_at: '2026-08-21T00:00:00Z' })
+    await older
+    expect(store.relevance?.keyword_pack_id).toBe('latest')
+  })
+
+  it('keeps refreshed pack details when an older cache request finishes later', async () => {
+    const store = useCollectionStrategyStore()
+    let finishOlder!: (value: typeof packDetail) => void
+    generated.getKeywordPack.mockReturnValueOnce(new Promise((resolve) => { finishOlder = resolve }))
+    const older = store.loadPackDetails([packDetail.id])
+    await store.refresh()
+    generated.getKeywordPack.mockResolvedValueOnce({ ...packDetail, version: 99 })
+    await store.loadPackDetails([packDetail.id])
+    finishOlder({ ...packDetail, version: 1 })
+    await older
+    expect(store.packDetails[packDetail.id]?.version).toBe(99)
+  })
+
+  it('ignores an older pack page after a workspace refresh', async () => {
+    const store = useCollectionStrategyStore()
+    store.packTotal = 25
+    let finishOlder!: (value: unknown) => void
+    generated.listKeywordPacks.mockReturnValueOnce(new Promise((resolve) => { finishOlder = resolve }))
+    const older = store.nextPackPage()
+    await store.refresh()
+    finishOlder({ items: [globalPack], total: 25, offset: 20, limit: 20 })
+    await older
+    expect(store.packs).toEqual([])
+    expect(store.packTotal).toBe(0)
+    expect(store.selectedPack).toBeNull()
+  })
 })

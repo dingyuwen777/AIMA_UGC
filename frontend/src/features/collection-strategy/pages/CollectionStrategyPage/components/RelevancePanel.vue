@@ -75,4 +75,8 @@ label { display: block; color: #344054; font-weight: 600; }select { display: blo
 .aima-feedback { margin: 18px 0; }
 .badge { padding: 5px 9px; border-radius: 5px; color: #158653; background: #e9f8f0; font-size: 12px; }aside h3 { margin: 18px 0 4px; }aside p,aside small { color: #758095; }.keywords { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 24px; }.keywords span { padding: 7px 10px; border: 1px solid #cfe2f8; border-radius: 6px; color: #315a87; background: #f5f9ff; }
 .empty { display: grid; min-height: 180px; place-items: center; color: #8a93a3; text-align: center; }
+article,aside { min-width: 0; min-height: 322px; height: auto; }
+.heading { gap: 12px; }.heading p { margin-bottom: 18px; }.heading > span { flex: none; white-space: nowrap; }
+.keywords { max-height: 180px; overflow-y: auto; }.keywords span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 1260px) { .relevance-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }aside { width: min(100%, 400px); } }
 </style>

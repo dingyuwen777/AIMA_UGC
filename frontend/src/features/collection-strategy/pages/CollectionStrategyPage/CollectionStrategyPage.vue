@@ -5,7 +5,8 @@ import type {
   CollectionPlanCreateRequest,
   CollectionPlanResponse,
   CollectionPlanUpdateRequest,
-  KeywordPackItemUpdateRequest,
+  KeywordPackKeywordCreateRequest,
+  KeywordPackResponse,
 } from '../../../../generated/api/client'
 import AppShell from '../../../../app/layouts/AppShell.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
@@ -23,10 +24,11 @@ import StrategyKpiCards from './components/StrategyKpiCards.vue'
 
 const store = useCollectionStrategyStore()
 const packDialogOpen = ref(false)
+const packEditorPack = ref<KeywordPackResponse | null>(null)
 const planDrawerOpen = ref(false)
 const planEditorPlan = ref<CollectionPlanResponse | null>(null)
 const planDetailOpen = computed({
-  get: () => store.selectedPlan !== null,
+  get: () => store.selectedPlan !== null && !planDrawerOpen.value,
   set: (value: boolean) => { if (!value) store.selectedPlan = null },
 })
 const notice = ref<string | null>(null)
@@ -38,35 +40,22 @@ const providers = computed(() => store.capabilities?.provider_configs ?? [])
 onMounted(() => store.refresh())
 
 /** 保存词包成功后关闭弹窗并给出用户反馈。 */
-async function savePack(name: string, description: string, keywords: string[]): Promise<void> {
-  if (await store.savePack(name, description, keywords)) {
+async function savePack(name: string, description: string, keywords: KeywordPackKeywordCreateRequest[]): Promise<void> {
+  const pack = packEditorPack.value
+  const saved = pack
+    ? await store.savePackChanges(pack.id, { expected_version: pack.version, name, description, keywords })
+    : await store.savePack(name, description, keywords)
+  if (saved) {
     packDialogOpen.value = false
     showNotice('关键词包已保存。')
   }
 }
 
-async function savePackMetadata(name: string, description: string): Promise<void> {
-  if (await store.savePackMetadata(name, description)) showNotice('词包名称与说明已更新。')
-}
-
-/** 追加关键词并清空详情侧栏的输入值。 */
-async function addKeyword(packId: string, text: string): Promise<void> {
-  if (await store.addKeyword(packId, text)) showNotice('关键词已加入词包。')
-}
-
-async function updateKeyword(
-  keywordId: string,
-  request: Omit<KeywordPackItemUpdateRequest, 'expected_version'>,
-): Promise<void> {
-  if (await store.updateKeyword(keywordId, request)) showNotice('关键词已更新。')
-}
-
-async function removeKeyword(keywordId: string, platformScope: string): Promise<void> {
-  if (await store.removeKeyword(keywordId, platformScope)) showNotice('关键词已从当前词包移除。')
-}
-
-async function copyPack(name: string): Promise<void> {
-  if (await store.copySelectedPack(name)) showNotice('词包副本已创建，当前保持停用。')
+async function copyPack(name: string, onSaved: () => void): Promise<void> {
+  if (await store.copySelectedPack(name)) {
+    onSaved()
+    showNotice('词包副本已创建，当前保持停用。')
+  }
 }
 
 async function archivePack(): Promise<void> {
@@ -87,6 +76,7 @@ async function saveRelevance(packId: string): Promise<void> {
 }
 
 function openNewPlan(): void {
+  store.error = null
   planEditorPlan.value = null
   store.selectedPlan = null
   planDrawerOpen.value = true
@@ -110,6 +100,7 @@ async function updatePlan(request: CollectionPlanUpdateRequest): Promise<void> {
 
 /** 选择当前计划并打开详情抽屉。 */
 function openPlan(plan: CollectionPlanResponse): void {
+  store.error = null
   store.selectedPlan = plan
 }
 
@@ -119,9 +110,12 @@ function editPlan(plan: CollectionPlanResponse): void {
   planDrawerOpen.value = true
 }
 
-async function copyPlan(plan: CollectionPlanResponse, name: string): Promise<void> {
+async function copyPlan(plan: CollectionPlanResponse, name: string, onSaved: () => void): Promise<void> {
   store.selectedPlan = plan
-  if (await store.copySelectedPlan(name)) showNotice('采集计划副本已创建，当前保持停用。')
+  if (await store.copySelectedPlan(name)) {
+    onSaved()
+    showNotice('采集计划副本已创建，当前保持停用。')
+  }
 }
 
 async function archivePlan(plan: CollectionPlanResponse): Promise<void> {
@@ -153,12 +147,14 @@ function showNotice(message: string): void {
       <template #actions>
         <AimaButton
           icon="refresh"
+          :disabled="store.loading || store.saving"
           @click="store.refresh()"
         >
           刷新数据
         </AimaButton><AimaButton
           variant="primary"
           icon="plus"
+          :disabled="store.loading || store.saving"
           @click="openNewPlan"
         >
           新建采集计划
@@ -210,13 +206,10 @@ function showNotice(message: string): void {
       :loading-archived="store.loadingArchived"
       :saving="store.saving"
       :toggle-reason="store.packToggleReason"
-      @create="packDialogOpen = true"
+      @create="store.error = null; packEditorPack = null; packDialogOpen = true"
+      @edit="store.error = null; packEditorPack = store.selectedPack; packDialogOpen = true"
       @open="store.openPack"
       @toggle="store.togglePack"
-      @add-keyword="addKeyword"
-      @save-metadata="savePackMetadata"
-      @update-keyword="updateKeyword"
-      @remove-keyword="removeKeyword"
       @copy="copyPack"
       @archive="archivePack"
       @load-archived="store.loadArchivedPacks"
@@ -293,11 +286,14 @@ function showNotice(message: string): void {
 
     <KeywordPackCreateDialog
       v-model="packDialogOpen"
+      :initial-pack="packEditorPack"
       :saving="store.saving"
+      :error="store.error"
       @submit="savePack"
     />
     <PlanCreateDrawer
       v-model="planDrawerOpen"
+      :error="store.error"
       :packs="planEditorPlan ? store.packCatalog : store.enabledPacks"
       :pack-details="store.packDetails"
       :capabilities="store.capabilities"
@@ -312,6 +308,7 @@ function showNotice(message: string): void {
     />
     <PlanDetailDrawer
       v-model="planDetailOpen"
+      :error="store.error"
       :plan="store.selectedPlan"
       :packs="store.packCatalog"
       :vehicles="store.vehicleCatalog"
@@ -335,6 +332,7 @@ function showNotice(message: string): void {
 <style scoped>
 :deep(.aima-page-header) { margin-top: 4px; }
 :deep(.aima-page-actions) { gap: 12px; }
+@media (min-width: 1100px) { :deep(.aima-page-header) { flex-wrap: nowrap; align-items: center; }:deep(.aima-page-actions) { flex: none; justify-content: flex-end; } }
 .tabs { display: flex; gap: 28px; min-height: 46px; margin: 0 0 20px; border-bottom: 1px solid var(--aima-border); }.tabs button { height: 46px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #536075; background: transparent; cursor: pointer; font-size: 13px; }.tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 600; }
 .filters { display: grid; grid-template-columns: 420px 120px 172px 1fr auto auto; gap: 12px; height: 72px; margin-bottom: 20px; padding: 15px 16px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }.filters input,.filters select { width: 100%; height: 40px; padding: 0 10px; border: 1px solid #d9dfe8; border-radius: 6px; color: var(--aima-text-secondary); background: #fff; font-size: 12px; }
 .page-error { margin-bottom: 14px; }.success-toast { position: fixed; z-index: 200; top: 8px; left: 50%; width: 360px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }

@@ -1868,10 +1868,23 @@ export interface KeywordPackCopyRequest {
   name: string;
 }
 
+export type PlatformScope = typeof PlatformScope[keyof typeof PlatformScope];
+
+
+export const PlatformScope = {
+  all: 'all',
+  xiaohongshu: 'xiaohongshu',
+  douyin: 'douyin',
+  weibo: 'weibo',
+  bilibili: 'bilibili',
+  kuaishou: 'kuaishou',
+} as const;
+
 export interface KeywordPackKeywordCreateRequest {
   enabled?: boolean;
   /** @maxLength 1000 */
   note?: string;
+  platform_scope?: PlatformScope;
   priority?: number;
   /**
      * @minLength 1
@@ -1894,18 +1907,6 @@ export interface KeywordPackCreateRequest {
      */
   name: string;
 }
-
-export type PlatformScope = typeof PlatformScope[keyof typeof PlatformScope];
-
-
-export const PlatformScope = {
-  all: 'all',
-  xiaohongshu: 'xiaohongshu',
-  douyin: 'douyin',
-  weibo: 'weibo',
-  bilibili: 'bilibili',
-  kuaishou: 'kuaishou',
-} as const;
 
 /**
  * 删除一个词包成员；共享 Keyword 实体本身不会被级联删除。
@@ -1979,13 +1980,14 @@ export interface KeywordPackResponse {
 }
 
 /**
- * 编辑词包的业务元数据；关键词成员使用独立操作维护。
+ * 原子编辑词包；省略 keywords 时兼容仅修改元数据的旧调用。
  */
 export interface KeywordPackUpdateRequest {
   /** @maxLength 2000 */
   description?: string;
   /** @exclusiveMinimum 0 */
   expected_version: number;
+  keywords?: KeywordPackKeywordCreateRequest[] | null;
   /**
      * @minLength 1
      * @maxLength 200

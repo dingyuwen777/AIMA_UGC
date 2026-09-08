@@ -402,7 +402,7 @@ class PostgresImportHttpService:
                         KeywordPackItem(
                             pack_id=pack.id,
                             keyword_id=keyword.id,
-                            platform_scope="all",
+                            platform_scope=keyword_request.platform_scope,
                             priority=keyword_request.priority,
                             enabled=keyword_request.enabled,
                             note=keyword_request.note.strip(),
@@ -461,7 +461,7 @@ class PostgresImportHttpService:
                     KeywordPackItem(
                         pack_id=pack_id,
                         keyword_id=keyword.id,
-                        platform_scope="all",
+                        platform_scope=request.platform_scope,
                         priority=request.priority,
                         enabled=request.enabled,
                         note=request.note.strip(),
