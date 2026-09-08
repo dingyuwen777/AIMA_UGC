@@ -186,9 +186,7 @@ test('matches the formal 1440×900 Figma geometry for the strategy workspace', a
   await expectBox(page.locator('.detail-card'), { x: 1043, y: 286, width: 373 })
   await expectBox(page.locator('.table-head'), { height: 54 })
   await expectBox(page.locator('.pack-row').first(), { height: 74 })
-  await expectBox(page.locator('.detail-card form'), { width: 335 })
-  await expectBox(page.locator('.detail-card form input'), { width: 267, height: 40 })
-  await expectBox(page.locator('.detail-card form button'), { width: 58, height: 40 })
+  await expect(page.locator('.detail-card').getByRole('button', { name: '编辑', exact: true })).toBeVisible()
 })
 
 test('matches the formal keyword modal and collection plan drawer geometry', async ({ page }) => {
@@ -234,4 +232,246 @@ test('matches the formal relevance workspace and plan detail drawer geometry', a
   await expectBox(detail.locator('.body'), { y: 84, height: 816 })
   await expectBox(detail.locator('dl > div').first(), { width: 196 })
   await expectBox(detail.locator('dl > div').nth(1), { width: 196 })
+})
+
+test('keeps compact strategy panels inside the workspace and long keywords inside their card', async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 900 })
+  await page.route('**/api/v1/relevance-config', async (route) => {
+    await route.fulfill({ json: {
+      keyword_pack_id: packId, keyword_pack_version: 4, version: 3,
+      effective_keywords: Array.from({ length: 45 }, (_, index) => `长关键词_${index}_${'A'.repeat(60)}`),
+      updated_at: '2026-08-27T15:20:00Z',
+    } })
+  })
+  await page.goto('/collection-strategy')
+  for (const tab of ['关键词包', '全局相关性']) {
+    await page.getByRole('button', { name: tab, exact: true }).click()
+    const card = page.locator(tab === '关键词包' ? '.detail-card' : '.relevance-layout > aside')
+    await expect(card).toBeVisible()
+    const box = await card.boundingBox()
+    expect(box!.x + box!.width).toBeLessThanOrEqual(1157)
+  }
+  const keywords = page.locator('.relevance-layout .keywords')
+  const metrics = await keywords.evaluate((node) => ({
+    clientWidth: node.clientWidth, scrollWidth: node.scrollWidth,
+    bottom: node.getBoundingClientRect().bottom,
+    cardBottom: node.parentElement!.getBoundingClientRect().bottom,
+  }))
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth)
+  expect(metrics.bottom).toBeLessThan(metrics.cardBottom)
+  await page.screenshot({ path: '../.runtime/strategy-figma-test/relevance-compact-long.png', fullPage: true })
+})
+
+test('preserves keyword pack edit, copy and add drafts after rejected requests', async ({ page }) => {
+  await page.route('**/api/v1/keyword-packs/**', async (route) => {
+    if (route.request().method() === 'GET') return route.fallback()
+    await route.fulfill({ status: 409, json: { status: 409, title: 'Conflict', detail: '测试保存冲突，请重试。', request_id: 'strategy-draft-conflict' } })
+  })
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '关键词包', exact: true }).click()
+  const detail = page.locator('.detail-card')
+  await detail.getByRole('button', { name: '编辑', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '编辑关键词包' })
+  await expect(editor.getByLabel('词包名称', { exact: true })).toHaveValue(packs[0]!.name)
+  await editor.getByLabel('词包名称', { exact: true }).fill('保留名称草稿')
+  await editor.getByRole('button', { name: '保存词包', exact: true }).click()
+  await expect(editor.getByRole('alert')).toBeVisible()
+  await expect(editor.getByLabel('词包名称', { exact: true })).toHaveValue('保留名称草稿')
+  await editor.getByRole('button', { name: '取消', exact: true }).click()
+  await detail.getByRole('button', { name: '复制', exact: true }).click()
+  await detail.getByLabel('副本名称').clear()
+  await expect(detail.getByLabel('副本名称')).toBeVisible()
+  await detail.getByLabel('副本名称').fill('保留副本草稿')
+  await detail.getByRole('button', { name: '创建副本' }).click()
+  await expect(detail.getByLabel('副本名称')).toHaveValue('保留副本草稿')
+  await detail.getByRole('button', { name: '取消', exact: true }).click()
+  await detail.getByRole('button', { name: '编辑', exact: true }).click()
+  await editor.getByLabel('关键词（每行一个）').fill('保留新增关键词')
+  await editor.getByRole('button', { name: '保存词包', exact: true }).click()
+  await expect(editor.getByRole('textbox', { name: /^关键词 \d+$/ }).last()).toHaveValue('保留新增关键词')
+})
+
+for (const memberCount of [1, 501]) {
+test(`edits a ${memberCount}-member existing pack in the shared dialog without changing original attributes`, async ({ page }) => {
+  const members = Array.from({ length: memberCount }, (_, i) => ({ text: `爱玛 Q7 ${i}`, platform_scope: 'all', enabled: true, priority: 100, note: '  保留备注  ' }))
+  const original = { ...packs[0]!, keywords: members.map((item, i) => ({ ...item, id: `kw-${i}` })) }
+  let current = original
+  let submitted: unknown
+  await page.route(`**/api/v1/keyword-packs/${packId}`, async (route) => {
+    if (route.request().method() === 'PUT') {
+      submitted = route.request().postDataJSON()
+      current = { ...original, name: '更新后的词包', description: '更新后的说明', version: 5 }
+    }
+    await route.fulfill({ json: current })
+  })
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '关键词包', exact: true }).click()
+  await page.locator('.detail-card').getByRole('button', { name: '编辑', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '编辑关键词包' })
+  await expectBox(editor, { x: 405, y: 187, width: 630, height: 526 })
+  await expect(editor.getByLabel('词包名称', { exact: true })).toHaveValue(original.name)
+  await expect(editor.getByLabel('描述', { exact: true })).toHaveValue(original.description)
+  await expect(editor.getByRole('textbox', { name: '关键词 1', exact: true })).toBeDisabled()
+  await expect(editor.getByRole('button', { name: '移除关键词 1', exact: true })).toBeDisabled()
+  await editor.getByLabel('词包名称', { exact: true }).fill('更新后的词包')
+  await editor.getByLabel('描述', { exact: true }).fill('更新后的说明')
+  await page.screenshot({ path: '../.runtime/strategy-figma-test/keyword-edit-modal.png', fullPage: true })
+  await editor.getByRole('button', { name: '保存词包', exact: true }).click()
+  await expect(editor).toBeHidden()
+  expect(submitted).toEqual({ expected_version: 4, name: '更新后的词包', description: '更新后的说明', keywords: members })
+  await expect(page.locator('.detail-card')).toContainText('更新后的词包')
+  await expect(page.locator('.detail-card')).toContainText('v5')
+})
+}
+
+test('opens complete current pack and vehicle details from plan references and returns to the plan', async ({ page }) => {
+  let rejectNextDetail = false
+  await page.route(`**/api/v1/keyword-packs/${packId}`, async (route) => {
+    if (rejectNextDetail) {
+      rejectNextDetail = false
+      return route.fulfill({ status: 503, json: { status: 503, title: 'Unavailable', detail: '资源详情暂时不可用，请重试。', request_id: 'resource-detail-retry' } })
+    }
+    await route.fulfill({ json: {
+      ...packs[0], keywords: Array.from({ length: 35 }, (_, index) => ({
+        id: `keyword-${index}`, text: `完整关键词 ${index + 1}`, platform_scope: 'xiaohongshu',
+        priority: index + 1, enabled: index !== 34, note: `完整备注 ${index + 1}`,
+      })),
+    } })
+  })
+  await page.route(`**/api/v1/vehicle-models/${historicalVehicleId}`, async (route) => {
+    await route.fulfill({ json: { ...historicalVehicle, series_name: '车型系列', category_name: '车型分类', aliases: [{ id: 'alias-1', text: '当下完整别名', normalized_text: '当下完整别名' }] } })
+  })
+  await page.goto('/collection-strategy')
+  await page.locator('.table-wrap').getByRole('button', { name: '查看' }).first().click()
+  const planDetail = page.getByRole('dialog', { name: '采集计划详情' })
+  const packLink = planDetail.getByRole('button', { name: '爱玛品牌词包 · v4' })
+  rejectNextDetail = true
+  await packLink.click()
+  const packDetail = page.getByRole('dialog', { name: '关键词包详情', exact: true })
+  await expect(packDetail.getByRole('alert')).toContainText('资源详情暂时不可用')
+  await packDetail.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(packDetail).toContainText('当前配置')
+  await expect(packDetail).toContainText('新品车型及用户讨论')
+  await expect(packDetail).toContainText('完整关键词 35')
+  await expect(packDetail).toContainText('完整备注 35')
+  await expect(packDetail.getByRole('row').last()).toContainText('已停用')
+  await page.keyboard.press('Escape')
+  await expect(packDetail).toBeHidden()
+  await expect(packLink).toBeFocused()
+  await planDetail.getByRole('button', { name: /示例车型 A/ }).click()
+  const vehicleDetail = page.getByRole('dialog', { name: '车型详情', exact: true })
+  await expect(vehicleDetail).toContainText('当下完整别名')
+  await expect(vehicleDetail).toContainText('车型系列')
+  await expect(vehicleDetail).toContainText('车型分类')
+  await expect(vehicleDetail).toContainText('v3')
+  await expect(vehicleDetail).toContainText('已停用')
+  await page.screenshot({ path: '../.runtime/strategy-figma-test/plan-vehicle-detail.png', fullPage: true })
+  await vehicleDetail.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(planDetail).toBeVisible()
+})
+
+test('preserves plan copy drafts and displays the failure inside the detail drawer', async ({ page }) => {
+  await page.route('**/api/v1/collection-plans/*/copy', async (route) => {
+    await route.fulfill({ status: 409, json: { status: 409, title: 'Conflict', detail: '计划名称冲突，请修改后重试。', request_id: 'plan-copy-conflict' } })
+  })
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const detail = page.getByRole('dialog', { name: '采集计划详情' })
+  await detail.getByRole('button', { name: '复制', exact: true }).click()
+  await detail.getByLabel('副本名称').clear()
+  await expect(detail.getByLabel('副本名称')).toBeVisible()
+  await detail.getByLabel('副本名称').fill('计划副本草稿')
+  await detail.getByRole('button', { name: '创建副本' }).click()
+  await expect(detail.getByRole('alert')).toContainText('计划名称冲突')
+  await expect(detail.getByLabel('副本名称')).toHaveValue('计划副本草稿')
+})
+
+test('supports Escape and returns keyboard focus for every strategy overlay', async ({ page }) => {
+  await page.goto('/collection-strategy')
+  const create = page.getByRole('button', { name: '新建采集计划', exact: true })
+  await create.click()
+  await expect(page.getByRole('dialog', { name: '新建采集计划', exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '新建采集计划', exact: true })).toHaveCount(0)
+  await expect(create).toBeFocused()
+  const detail = page.getByRole('button', { name: '查看详情' })
+  await detail.click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '采集计划详情' })).toHaveCount(0)
+  await expect(detail).toBeFocused()
+  await page.getByRole('button', { name: '关键词包', exact: true }).click()
+  const pack = page.getByRole('button', { name: '新建词包' })
+  await pack.click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '新建关键词包' })).toHaveCount(0)
+  await expect(pack).toBeFocused()
+})
+
+test('edits the selected plan through a single drawer and preserves its identity', async ({ page }) => {
+  await page.route(`**/api/v1/collection-plans/${planId}`, async (route) => {
+    await route.fulfill({ json: { ...plan, name: '编辑后的计划', schedule_version: 4 } })
+  })
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '查看详情' }).click()
+  await page.getByRole('button', { name: '编辑计划', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '编辑采集计划', exact: true })
+  await expect(editor).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await editor.getByPlaceholder('例如：爱玛新品口碑追踪').fill('编辑后的计划')
+  await editor.getByLabel('小红书排序').selectOption('latest')
+  await editor.getByLabel('小红书发布时间').selectOption('1d')
+  await editor.getByLabel('小红书内容类型').selectOption('all')
+  const request = page.waitForRequest((item) => new URL(item.url()).pathname === `/api/v1/collection-plans/${planId}` && item.method() === 'PUT')
+  await editor.getByRole('button', { name: '保存计划修改' }).click()
+  expect((await request).postDataJSON()).toMatchObject({ name: '编辑后的计划', expected_version: 3, vehicle_model_ids: [historicalVehicleId] })
+  await expect(editor).toHaveCount(0)
+})
+
+test('keeps long plan names and filters readable across supported desktop widths', async ({ page }) => {
+  await page.route('**/api/v1/collection-plans?*', async (route) => {
+    await route.fulfill({ json: { items: [{ ...plan, name: 'PlanLongName'.repeat(15) }], total: 1, enabled_count: 1, offset: 0, limit: 20 } })
+  })
+  await page.goto('/collection-strategy')
+  await expect(page.getByRole('button', { name: '查看详情' })).toBeVisible()
+  for (const width of [1100, 1180, 1200, 1260, 1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    const geometry = await page.locator('.plan-table tbody td').evaluateAll((cells) => cells.map((cell) => ({ scroll: cell.scrollWidth, client: cell.clientWidth })))
+    for (const cell of geometry) expect(cell.scroll).toBeLessThanOrEqual(cell.client + 1)
+    const overflow = await page.locator('.workspace-main').evaluate((node) => node.scrollWidth - node.clientWidth)
+    expect(overflow, `workspace at ${width}`).toBeLessThanOrEqual(1)
+    await expect(page.getByRole('button', { name: '查询', exact: true })).toBeInViewport()
+    await page.locator('.table-wrap').evaluate((node) => { node.scrollLeft = node.scrollWidth })
+    await expect(page.locator('.table-wrap').getByRole('button', { name: '查看详情', exact: true }).first()).toBeInViewport()
+  }
+})
+
+test('keeps keyword edits and creation inputs visible after server validation fails', async ({ page }) => {
+  await page.route('**/api/v1/keyword-packs/**', async (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({ json: { ...packs[0], enabled: false, keywords: [{ id: 'kw-1', text: '爱玛 Q7', platform_scope: 'all', enabled: true, priority: 100, note: '' }] } })
+    }
+    await route.fulfill({ status: 409, json: { status: 409, title: 'Conflict', detail: '词包版本已变化，请核对后重试。', request_id: 'keyword-edit-conflict' } })
+  })
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '关键词包', exact: true }).click()
+  const detail = page.locator('.detail-card')
+  await detail.getByRole('button', { name: '编辑', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '编辑关键词包' })
+  await editor.getByRole('textbox', { name: '关键词 1', exact: true }).fill('待保存关键词')
+  await editor.getByRole('button', { name: '保存词包', exact: true }).click()
+  await expect(editor.getByRole('alert')).toContainText('词包版本已变化')
+  await expect(editor.getByRole('textbox', { name: '关键词 1', exact: true })).toHaveValue('待保存关键词')
+  await editor.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.route('**/api/v1/keyword-packs', async (route) => {
+    if (route.request().method() === 'GET') return route.fallback()
+    await route.fulfill({ status: 409, json: { status: 409, title: 'Conflict', detail: '词包名称已存在。', request_id: 'pack-create-conflict' } })
+  })
+  await page.getByRole('button', { name: '新建词包' }).click()
+  const dialog = page.getByRole('dialog', { name: '新建关键词包' })
+  await dialog.getByLabel('词包名称', { exact: true }).fill('保留创建草稿')
+  await dialog.getByLabel('关键词（每行一个）').fill('爱玛')
+  await dialog.getByRole('button', { name: '保存词包' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('词包名称已存在')
+  await expect(dialog.getByLabel('词包名称', { exact: true })).toHaveValue('保留创建草稿')
+  await expect(dialog.getByRole('button', { name: '保存词包' })).toBeInViewport()
 })

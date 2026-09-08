@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
-from aima_ugc.contracts.http import CollectionPlanPlatformRequest
+from aima_ugc.contracts.http import CollectionPlanPlatformRequest, KeywordPackKeywordCreateRequest
 from aima_ugc.contracts.platform import PlatformScope
 
 ResourceLifecycleKind = Literal[
@@ -58,10 +58,11 @@ class ResourceExpectedVersionRequest(BaseModel):
 
 
 class KeywordPackUpdateRequest(ResourceExpectedVersionRequest):
-    """编辑词包的业务元数据；关键词成员使用独立操作维护。"""
+    """原子编辑词包；省略 keywords 时兼容仅修改元数据的旧调用。"""
 
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=2000)
+    keywords: tuple[KeywordPackKeywordCreateRequest, ...] | None = None
 
     @field_validator("name", mode="before")
     @classmethod

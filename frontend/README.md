@@ -242,11 +242,17 @@ src/features/collection-strategy/
 
 - 后端分页的 Keyword Pack 列表，以及供跨页配置引用的完整只读目录；
 - 系统唯一的全局 Relevance Config；
-- 周期 Collection Plan 的筛选、分页、创建、详情和启停；
+- 周期 Collection Plan 的筛选、分页、创建、编辑、复制、详情、启停和归档/恢复；
 - Capability 驱动的逐平台 Provider/Search Config，不在页面写死平台参数；
 - 历史 Plan 空 Search Config 的兼容说明。
 
 页面不直接运行 TikHub。保存 Plan/词包是修改配置事实，真正执行由 Scheduler 生成 Occurrence/Run/Job。
+
+词包新建与编辑使用同一表单，一次提交名称、说明和全部关键词的文本、平台、优先级、启停与备注。既有更新请求省略成员时仍只更新元数据；完整保存由同一事务执行版本及启用守卫，失败全部回滚。新建的单次500条限制不限制既有词包累计成员数。计划详情中的词包和车型入口每次重新读取完整当前配置，历史运行仍以原快照为准。
+
+词包表单、计划创建/编辑与详情复用 [`frontend/src/shared/ui/AimaDialog.vue`](src/shared/ui/AimaDialog.vue) 的模态焦点隔离、Escape 和焦点返回，业务表单与抽屉尺寸仍由 Feature 维护。保存失败在当前弹层显示原因，名称、关键词和副本输入保留；只有服务端成功后关闭编辑区或清空输入。刷新与词包选择只接收当前请求的结果，较早响应不能覆盖最新选择。
+
+紧凑桌面宽度下，词包列表与详情、相关性配置与有效关键词上下排列；长关键词换行并在明细区滚动，长计划名在本列内换行，计划表格可横向滚动至操作列。正式画板尺寸与这些边界由 [`frontend/e2e/collection-strategy-figma-geometry.spec.ts`](e2e/collection-strategy-figma-geometry.spec.ts) 验证。
 
 页面调用链保持为：
 
@@ -382,7 +388,7 @@ src/shared/
 
 工作台当前按用户确认展示静态“开发中”图片，图片内的示意数据和控件没有接入业务功能；采集操作仍从采集运行中心进入。除此以外，未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
 
-全局样式只放真正跨页面 Token/reset。当前 `src/shared/ui/` 提供页面头、按钮、代码内 SVG 图标和反馈 Banner；采集策略 KPI、表格、弹窗、抽屉和业务表单仍留在 Feature 内，不把业务规则塞进万能公共组件。
+全局样式只放真正跨页面 Token/reset。当前 `src/shared/ui/` 提供页面头、按钮、代码内 SVG 图标、反馈 Banner 和模态弹窗；采集策略 KPI、表格、弹窗/抽屉的业务内容和表单仍留在 Feature 内，不把业务规则塞进万能公共组件。
 
 页面私有视觉优先留在 Page/Component，避免改一处全局 CSS 把多个页面一起破坏。
 

@@ -6152,6 +6152,10 @@
             "title": "Note",
             "type": "string"
           },
+          "platform_scope": {
+            "$ref": "#/components/schemas/PlatformScope",
+            "default": "all"
+          },
           "priority": {
             "default": 100,
             "title": "Priority",
@@ -6294,7 +6298,7 @@
       },
       "KeywordPackUpdateRequest": {
         "additionalProperties": false,
-        "description": "编辑词包的业务元数据；关键词成员使用独立操作维护。",
+        "description": "原子编辑词包；省略 keywords 时兼容仅修改元数据的旧调用。",
         "properties": {
           "description": {
             "default": "",
@@ -6306,6 +6310,20 @@
             "exclusiveMinimum": 0.0,
             "title": "Expected Version",
             "type": "integer"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/KeywordPackKeywordCreateRequest"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
           },
           "name": {
             "maxLength": 200,

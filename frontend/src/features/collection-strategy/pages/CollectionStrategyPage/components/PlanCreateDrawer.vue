@@ -19,6 +19,7 @@ import {
   isCollectionSearchConfigComplete,
 } from '../../../../../shared/collectionSearchConfig'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
+import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 import { planExecutionReason } from '../../../eligibility'
@@ -31,6 +32,7 @@ const props = defineProps<{
   relevanceName: string
   relevanceAvailable: boolean
   saving: boolean
+  error?: string | null
   loadingPackDetails: boolean
   initialPlan?: CollectionPlanResponse | null
 }>()
@@ -176,144 +178,146 @@ function submit(): void {
 </script>
 
 <template>
-  <div
-    v-if="open"
-    class="backdrop"
-    @click.self="open = false"
+  <AimaDialog
+    v-model="open"
+    :label="editing ? '编辑采集计划' : '新建采集计划'"
+    width="510px"
+    class="plan-create-dialog"
   >
-    <aside
-      role="dialog"
-      :aria-label="editing ? '编辑采集计划' : '新建采集计划'"
-      aria-modal="true"
-    >
-      <header>
-        <div><h2>{{ editing ? '编辑采集计划' : '新建采集计划' }}</h2><p>{{ editing ? '修改只影响之后的新运行，历史运行保持原冻结配置' : '保存发现范围与周期采集配置' }}</p></div><AimaButton
-          variant="text"
-          aria-label="关闭"
-          @click="open = false"
-        >
-          <AimaIcon name="close" />
-        </AimaButton>
-      </header>
-      <div class="body">
-        <label><strong>1. 计划名称</strong><input
-          v-model="name"
-          maxlength="200"
-          placeholder="例如：爱玛新品口碑追踪"
-        ></label>
-        <fieldset>
-          <legend>2. 关键词包</legend><label
-            v-for="pack in packs"
-            :key="pack.id"
-            class="check"
-          ><input
-            v-model="selectedPacks"
-            type="checkbox"
-            :value="pack.id"
-          >{{ pack.name }} · v{{ pack.version }}{{ pack.enabled ? '' : ' · 已停用' }}</label><p v-if="packs.length === 0">
-            请先创建可用的关键词包，或选择车型作为发现范围。
-          </p>
-        </fieldset>
-        <VehicleMultiSelect
-          v-model="selectedVehicles"
-          label="3. 车型（可单独选择，也可与词包组合）"
-        />
-        <fieldset>
-          <legend>4. 目标平台与采集渠道</legend><div class="platforms">
-            <div
-              v-for="option in platformOptions"
-              :key="option.value"
-              :class="['platform', { active: isPlatformSelected(option.value), unavailable: configsFor(option.value).length === 0 }]"
-              role="button"
-              :tabindex="configsFor(option.value).length === 0 ? -1 : 0"
-              @click="togglePlatform(option.value)"
-              @keydown.enter="togglePlatform(option.value)"
+    <header>
+      <div><h2>{{ editing ? '编辑采集计划' : '新建采集计划' }}</h2><p>{{ editing ? '修改只影响之后的新运行，历史运行保持原冻结配置' : '保存发现范围与周期采集配置' }}</p></div><AimaButton
+        variant="text"
+        aria-label="关闭"
+        @click="open = false"
+      >
+        <AimaIcon name="close" />
+      </AimaButton>
+    </header>
+    <div class="body">
+      <AimaFeedbackBanner
+        v-if="error"
+        tone="error"
+        role="alert"
+      >
+        {{ error }}
+      </AimaFeedbackBanner>
+      <label><strong>1. 计划名称</strong><input
+        v-model="name"
+        maxlength="200"
+        placeholder="例如：爱玛新品口碑追踪"
+      ></label>
+      <fieldset>
+        <legend>2. 关键词包</legend><label
+          v-for="pack in packs"
+          :key="pack.id"
+          class="check"
+        ><input
+          v-model="selectedPacks"
+          type="checkbox"
+          :value="pack.id"
+        >{{ pack.name }} · v{{ pack.version }}{{ pack.enabled ? '' : ' · 已停用' }}</label><p v-if="packs.length === 0">
+          请先创建可用的关键词包，或选择车型作为发现范围。
+        </p>
+      </fieldset>
+      <VehicleMultiSelect
+        v-model="selectedVehicles"
+        label="3. 车型（可单独选择，也可与词包组合）"
+      />
+      <fieldset>
+        <legend>4. 目标平台与采集渠道</legend><div class="platforms">
+          <div
+            v-for="option in platformOptions"
+            :key="option.value"
+            :class="['platform', { active: isPlatformSelected(option.value), unavailable: configsFor(option.value).length === 0 }]"
+            role="button"
+            :tabindex="configsFor(option.value).length === 0 ? -1 : 0"
+            @click="togglePlatform(option.value)"
+            @keydown.enter="togglePlatform(option.value)"
+          >
+            <span>{{ option.label }}</span><select
+              v-if="isPlatformSelected(option.value)"
+              v-model="providerByPlatform[option.value]"
+              :aria-label="`${option.label}采集服务`"
+              @click.stop
+              @change="resetSearchConfig(option.value)"
             >
-              <span>{{ option.label }}</span><select
-                v-if="isPlatformSelected(option.value)"
-                v-model="providerByPlatform[option.value]"
-                :aria-label="`${option.label}采集服务`"
-                @click.stop
-                @change="resetSearchConfig(option.value)"
+              <option
+                value=""
+                disabled
               >
-                <option
-                  value=""
-                  disabled
-                >
-                  请选择采集服务
-                </option>
-                <option
-                  v-for="config in configsFor(option.value)"
-                  :key="config.id"
-                  :value="config.id"
-                >
-                  {{ config.display_name }}
-                </option>
-              </select><small v-else>{{ configsFor(option.value).length ? '点击选择' : '暂无可用配置' }}</small>
-              <div
-                v-if="providerByPlatform[option.value] && searchCapability(option.value)"
-                class="platform-search"
-                @click.stop
-                @keydown.stop
+                请选择采集服务
+              </option>
+              <option
+                v-for="config in configsFor(option.value)"
+                :key="config.id"
+                :value="config.id"
               >
-                <CollectionSearchConfigFields
-                  :model-value="searchConfigByPlatform[option.value] ?? {}"
-                  :capability="searchCapability(option.value)!"
-                  :platform-label="option.label"
-                  @update:model-value="searchConfigByPlatform[option.value] = $event"
-                />
-              </div>
+                {{ config.display_name }}
+              </option>
+            </select><small v-else>{{ configsFor(option.value).length ? '点击选择' : '暂无可用配置' }}</small>
+            <div
+              v-if="providerByPlatform[option.value] && searchCapability(option.value)"
+              class="platform-search"
+              @click.stop
+              @keydown.stop
+            >
+              <CollectionSearchConfigFields
+                :model-value="searchConfigByPlatform[option.value] ?? {}"
+                :capability="searchCapability(option.value)!"
+                :platform-label="option.label"
+                @update:model-value="searchConfigByPlatform[option.value] = $event"
+              />
             </div>
           </div>
-        </fieldset>
-        <label><strong>5. 执行频率</strong><span class="schedule-field"><select
-          v-model="scheduleExpr"
-          aria-label="执行频率"
-        ><option
-          v-for="preset in COLLECTION_SCHEDULE_PRESETS"
-          :key="preset.value"
-          :value="preset.value"
-        >{{ preset.label }}</option></select><em>北京时间</em></span><small>按北京时间执行；选择频率后系统自动生成调度规则。</small></label>
-        <label class="switch"><strong>6. {{ editing ? '保存后启用计划' : '创建后启用计划' }}</strong><input
-          v-model="enabled"
-          type="checkbox"
-        ></label>
-        <div class="policy">
-          <strong>系统固定规则</strong><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
         </div>
-        <AimaFeedbackBanner :tone="enabled && !relevanceAvailable ? 'error' : 'success'">
-          <strong>全局规则相关性（系统全局）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>只读；启用计划前必须可用，执行时会冻结当时配置，单个计划不可覆盖。</small>
-        </AimaFeedbackBanner>
-        <div
-          v-if="eligibilityReason && (selectedPacks.length || selectedVehicles.length) && platformOptions.some((item) => isPlatformSelected(item.value))"
-          class="eligibility"
-          role="status"
-        >
-          {{ loadingPackDetails ? '正在读取实时资格…' : eligibilityReason }}
-        </div>
-        <AimaFeedbackBanner tone="warning">
-          实际运行可能产生采集渠道费用；当前未配置预算或金额上限。
-        </AimaFeedbackBanner>
+      </fieldset>
+      <label><strong>5. 执行频率</strong><span class="schedule-field"><select
+        v-model="scheduleExpr"
+        aria-label="执行频率"
+      ><option
+        v-for="preset in COLLECTION_SCHEDULE_PRESETS"
+        :key="preset.value"
+        :value="preset.value"
+      >{{ preset.label }}</option></select><em>北京时间</em></span><small>按北京时间执行；选择频率后系统自动生成调度规则。</small></label>
+      <label class="switch"><strong>6. {{ editing ? '保存后启用计划' : '创建后启用计划' }}</strong><input
+        v-model="enabled"
+        type="checkbox"
+      ></label>
+      <div class="policy">
+        <strong>系统固定规则</strong><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
       </div>
-      <footer>
-        <AimaButton @click="open = false">
-          取消
-        </AimaButton><AimaButton
-          variant="primary"
-          :disabled="saving || loadingPackDetails || !name.trim() || !!eligibilityReason"
-          :title="eligibilityReason || undefined"
-          @click="submit"
-        >
-          {{ saving ? '保存中…' : editing ? '保存计划修改' : '保存采集计划' }}
-        </AimaButton>
-      </footer>
-    </aside>
-  </div>
+      <AimaFeedbackBanner :tone="enabled && !relevanceAvailable ? 'error' : 'success'">
+        <strong>全局规则相关性（系统全局）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>只读；启用计划前必须可用，执行时会冻结当时配置，单个计划不可覆盖。</small>
+      </AimaFeedbackBanner>
+      <div
+        v-if="eligibilityReason && (selectedPacks.length || selectedVehicles.length) && platformOptions.some((item) => isPlatformSelected(item.value))"
+        class="eligibility"
+        role="status"
+      >
+        {{ loadingPackDetails ? '正在读取实时资格…' : eligibilityReason }}
+      </div>
+      <AimaFeedbackBanner tone="warning">
+        实际运行可能产生采集渠道费用；当前未配置预算或金额上限。
+      </AimaFeedbackBanner>
+    </div>
+    <footer>
+      <AimaButton @click="open = false">
+        取消
+      </AimaButton><AimaButton
+        variant="primary"
+        :disabled="saving || loadingPackDetails || !name.trim() || !!eligibilityReason"
+        :title="eligibilityReason || undefined"
+        @click="submit"
+      >
+        {{ saving ? '保存中…' : editing ? '保存计划修改' : '保存采集计划' }}
+      </AimaButton>
+    </footer>
+  </AimaDialog>
 </template>
 
 <style scoped>
-.backdrop { position: fixed; z-index: 110; inset: 0; background: rgb(20 29 44 / 34%); }
-aside { position: fixed; top: 0; right: 0; bottom: 0; display: flex; width: 510px; height: 100vh; max-height: 100vh; flex-direction: column; overflow: hidden; background: #fff; box-shadow: -10px 0 30px rgb(20 29 44 / 12%); }
+:global(.plan-create-dialog) { margin: 0 0 0 auto; height: 100dvh; max-height: 100dvh; max-width: 100vw; overflow: hidden; border: 0; border-radius: 0; box-shadow: -10px 0 30px rgb(20 29 44 / 12%); }
+:global(.plan-create-dialog > .aima-dialog-body) { display: contents; }
 header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; line-height: 24px; }header p { margin: 5px 0 0; color: #737e91; font-size: 13px; line-height: 18px; }
 .body { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding: 22px 24px; }label,fieldset,.policy { display: block; margin: 0 0 22px; }label strong,legend,.policy > strong { display: block; margin-bottom: 8px; color: #253044; font-size: 14px; font-weight: 600; }input:not([type='checkbox']),select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #d9dee8; border-radius: 6px; background: #fff; }fieldset { padding: 0; border: 0; }.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 22px 8px 0; padding: 0; border: 0; font-size: 12px; }
 :deep(.vehicle-select) { margin: 0 0 22px; padding: 0; border: 0; border-radius: 0; }:deep(.vehicle-select legend) { margin-bottom: 8px; padding: 0; color: #253044; font-size: 14px; font-weight: 600; }:deep(.vehicle-select__options) { gap: 12px; }:deep(.vehicle-select__options label) { min-width: 150px; min-height: 32px; height: 32px; padding: 0; border: 0; border-radius: 0; font-size: 12px; }:deep(.vehicle-select__options label:has(input:checked)) { border: 0; color: var(--aima-text-secondary); background: transparent; }:deep(.vehicle-select__options input) { width: 16px; height: 16px; }:deep(.vehicle-select__options small) { color: var(--aima-text-secondary); font-size: 12px; }:deep(.vehicle-select__options small::before) { content: '· '; }

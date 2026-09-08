@@ -203,7 +203,10 @@ describe('frontend full-stack audit regressions', () => {
     generated.addKeywordToPack.mockResolvedValue(created)
     const store = useCollectionStrategyStore()
 
-    const saved = await store.savePack('原子词包', '一次保存', ['爱玛', '电动车'])
+    const saved = await store.savePack('原子词包', '一次保存', [
+      { text: '爱玛', priority: 100, enabled: true },
+      { text: '电动车', priority: 100, enabled: true },
+    ])
 
     expect(saved).toBe(true)
     expect(generated.createKeywordPack).toHaveBeenCalledTimes(1)

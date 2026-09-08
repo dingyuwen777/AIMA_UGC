@@ -58,7 +58,7 @@ from aima_ugc.modules.collection.strategy_http import (
     CollectionStrategyResourceNotFound,
 )
 from aima_ugc.modules.identity import DevelopmentIdentityResolver, IdentityResolver, Principal
-from aima_ugc.modules.system.models import AuditEvent, Keyword
+from aima_ugc.modules.system.models import AuditEvent, Keyword, KeywordPackItem
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime, create_platform_runtime
@@ -78,7 +78,7 @@ class PostgresResourceLifecycleHttpService:
         principal: Principal,
         request_id: str,
     ) -> KeywordPackResponse:
-        """编辑词包名称/说明，使用现有 version 做乐观并发控制。"""
+        """在同一事务保存名称、说明与可选完整成员，复用当前版本及启用守卫。"""
 
         principal.require_administrator()
         session = self._runtime.database.new_session()
@@ -86,12 +86,48 @@ class PostgresResourceLifecycleHttpService:
             try:
                 with session.begin():
                     repository = PostgresKeywordPackLifecycleRepository(session)
-                    updated = repository.update_metadata(
-                        pack_id,
-                        expected_version=body.expected_version,
-                        name=body.name,
-                        description=body.description,
-                    )
+                    members: tuple[KeywordPackItem, ...] | None = None
+                    if body.keywords is not None:
+                        catalog = PostgresKeywordCatalogRepository(session)
+                        items: list[KeywordPackItem] = []
+                        try:
+                            normalized_items = [
+                                (normalize_keyword_storage_text(item.text), item)
+                                for item in body.keywords
+                            ]
+                        except ValueError as exc:
+                            raise CollectionStrategyInvalid("关键词不合法") from exc
+                        # 共用新词按唯一键顺序取得锁，避免不同词包以相反词序保存时死锁。
+                        for normalized, item in sorted(normalized_items, key=lambda pair: pair[0]):
+                            keyword = catalog.get_or_create_keyword(
+                                Keyword(
+                                    id=uuid4(),
+                                    text=item.text,
+                                    normalized_text=normalized,
+                                    enabled=True,
+                                )
+                            )
+                            items.append(
+                                KeywordPackItem(
+                                    pack_id=pack_id,
+                                    keyword_id=keyword.id,
+                                    platform_scope=item.platform_scope,
+                                    priority=item.priority,
+                                    enabled=item.enabled,
+                                    note=item.note,
+                                )
+                            )
+                        members = tuple(items)
+                    try:
+                        updated = repository.update_metadata(
+                            pack_id,
+                            expected_version=body.expected_version,
+                            name=body.name,
+                            description=body.description,
+                            members=members,
+                        )
+                    except RuntimeError as exc:
+                        raise CollectionStrategyConflict(str(exc)) from exc
                     if updated is None:
                         if repository.delete_blockers(pack_id) == ("资源不存在",):
                             raise CollectionStrategyResourceNotFound

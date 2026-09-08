@@ -38,7 +38,9 @@ const plan: CollectionPlanResponse = {
 }
 
 async function renderComponent(component: Component, props: Record<string, unknown>): Promise<string> {
-  return renderToString(createSSRApp({ render: () => h(component, props) }))
+  const context: { teleports?: Record<string, string> } = {}
+  const html = await renderToString(createSSRApp({ render: () => h(component, props) }), context)
+  return html + Object.values(context.teleports ?? {}).join('')
 }
 
 describe('采集策略正式 Figma 组件基线', () => {
