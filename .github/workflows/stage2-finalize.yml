@@ -57,7 +57,27 @@ jobs:
           uv sync --locked
           npm ci --prefix frontend
       - name: Apply exact finalization patch
-        run: uv run python scripts/dev/stage2_finalize.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/dev/stage2_finalize.py")
+          text = path.read_text(encoding="utf-8")
+          old = "    if new in text:\n        return\n    count = text.count(old)\n    if count != 1:\n"
+          new = (
+              "    count = text.count(old)\n"
+              "    if count == 0:\n"
+              "        if new in text:\n"
+              "            return\n"
+              "        raise RuntimeError(f\"{path}: expected one match, got 0: {old[:100]!r}\")\n"
+              "    if count != 1:\n"
+          )
+          if old not in text:
+              raise SystemExit("stage2_finalize helper shape drifted")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          uv run python scripts/dev/stage2_finalize.py
       - name: Format and static-check touched Python
         shell: bash
         run: |
