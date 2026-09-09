@@ -45,11 +45,6 @@ replace_once(
 )
 replace_once(
     path,
-    "from aima_ugc.contracts.administration import (\n",
-    "from aima_ugc.contracts.administration import (\n",
-)
-replace_once(
-    path,
     ")\nfrom aima_ugc.modules.administration import (\n",
     ")\nfrom aima_ugc.contracts.brand_vehicle import BrandCreateRequest\nfrom aima_ugc.modules.administration import (\n",
 )
@@ -87,6 +82,40 @@ replace_once(
     path,
     "    )\n    created = service.create_vehicle_model(\n        VehicleModelCreateRequest(code=\"LUNA\", display_name=\"爱玛露娜\", aliases=(\"露娜\",)),\n",
     "    )\n    brand = _create_owned_brand(runtime, principal, code=\"U1-DELETE\")\n    created = service.create_vehicle_model(\n        VehicleModelCreateRequest(\n            code=\"LUNA\", display_name=\"爱玛露娜\", brand_id=brand.id, aliases=(\"露娜\",)\n        ),\n",
+)
+
+# Static quality: use Annotated Query metadata and deterministic import ordering.
+path = "backend/src/aima_ugc/bootstrap/brand_vehicle_http.py"
+replace_once(path, "from typing import Any, cast\n", "from typing import Annotated, Any, cast\n")
+replace_once(
+    path,
+    "    BrandAliasResponse,\n    BrandFilterScope,\n",
+    "    BrandAliasResponse,\n    BrandCreateRequest,\n    BrandFilterScope,\n",
+)
+replace_once(path, "    BrandVehicleCatalogSnapshotResponse,\n    BrandCreateRequest,\n", "    BrandVehicleCatalogSnapshotResponse,\n")
+replace_once(
+    path,
+    "        search: str | None = Query(default=None, min_length=1, max_length=200),\n        status_value: BrandStatus | None = Query(default=None, alias=\"status\"),\n        role: BrandRole | None = None,\n        offset: int = Query(default=0, ge=0),\n        limit: int = Query(default=50, ge=1, le=200),\n",
+    "        search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,\n        status_value: Annotated[BrandStatus | None, Query(alias=\"status\")] = None,\n        role: BrandRole | None = None,\n        offset: Annotated[int, Query(ge=0)] = 0,\n        limit: Annotated[int, Query(ge=1, le=200)] = 50,\n",
+)
+replace_once(
+    path,
+    "        brand_id: list[UUID] | None = Query(default=None),\n",
+    "        brand_id: Annotated[list[UUID] | None, Query()] = None,\n",
+)
+
+path = "backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py"
+replace_once(
+    path,
+    "    vehicle_catalog_versions_table,\n    vehicle_brands_table,\n",
+    "    vehicle_brands_table,\n    vehicle_catalog_versions_table,\n",
+)
+
+path = "tests/integration/database/test_brand_vehicle_stage2_repository.py"
+replace_once(
+    path,
+    "            # 该用例只验证 Evidence/Lock Owner 语义；临时关闭 FK trigger，避免构造无关 Content 聚合。\n",
+    "            # 这里只验证 Evidence/Lock Owner 语义；关闭 FK trigger，\n            # 避免为该独立持久化测试构造无关 Content 聚合。\n",
 )
 
 # Fact doc: Stage 2 now has a formal management/readiness/snapshot boundary; runtime filtering is still Stage 3/4.
