@@ -15,6 +15,9 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.historical_cancellation import (
+    PostgresHistoricalCancellationRepository,
+)
 from aima_ugc.adapters.persistence.postgres.historical_import import (
     HistoricalCampaignConflict,
     HistoricalCampaignProgress,
@@ -505,11 +508,48 @@ class PostgresHistoricalImportHttpService:
         *,
         request_id: str | None = None,
     ) -> HistoricalCampaignResponse:
-        return self._change_campaign(
-            campaign_id,
-            action="cancel",
-            request_id=request_id,
-        )
+        """三段短事务取消 Campaign，避免 Campaign → Job 与 Worker Job → Campaign 互锁。"""
+
+        try:
+            session = self._runtime.database.new_session()
+            try:
+                with session.begin():
+                    PostgresHistoricalCancellationRepository(session).begin_cancel(campaign_id)
+            finally:
+                session.close()
+
+            session = self._runtime.database.new_session()
+            try:
+                with session.begin():
+                    PostgresHistoricalCancellationRepository(session).request_job_cancellations(
+                        campaign_id
+                    )
+            finally:
+                session.close()
+
+            session = self._runtime.database.new_session()
+            try:
+                with session.begin():
+                    repository = PostgresHistoricalCancellationRepository(session)
+                    repository.settle_cancel(campaign_id)
+                    self._audit(
+                        session,
+                        event_type="historical_campaign_cancel",
+                        campaign_id=campaign_id,
+                        request_id=request_id,
+                        detail={},
+                    )
+                    row = repository.get_campaign(campaign_id)
+                    if row is None:
+                        raise HistoricalCampaignNotFound
+                    progress = repository.campaign_progresses((campaign_id,))[campaign_id]
+                    return _campaign_response(row, progress)
+            finally:
+                session.close()
+        except RepositoryCampaignNotFound as exc:
+            raise HistoricalCampaignNotFound from exc
+        except HistoricalCampaignConflict as exc:
+            raise HistoricalCampaignStateConflict from exc
 
     def retry_failed(
         self,
@@ -543,8 +583,6 @@ class PostgresHistoricalImportHttpService:
                     )
                     if scheduled == 0:
                         raise HistoricalCampaignConflict("Campaign 没有可执行 Chunk")
-                elif action == "cancel":
-                    repository.request_cancel(campaign_id)
                 elif action == "retry":
                     batches = repository.prepare_failed_retry(campaign_id)
                     scheduled = repository.schedule_import_jobs(

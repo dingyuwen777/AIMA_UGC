@@ -95,7 +95,7 @@ const canCreate = computed(
     (selectedPackIds.value.length > 0 || selectedVehicleIds.value.length > 0),
 )
 const canCancel = computed(() =>
-  ['uploading', 'queued', 'running', 'cancelling'].includes(
+  ['uploading', 'discovering', 'snapshotting', 'ready', 'queued', 'running', 'cancelling'].includes(
     store.selectedHistoricalCampaign?.status ?? '',
   ),
 )

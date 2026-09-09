@@ -215,11 +215,15 @@ class JobWorker:
             lease_seconds=self._lease_seconds,
             initial_progress=job.progress,
         )
+        result: JobHandlerResult | None = None
+        handler_lease_loss: LeaseLostError | None = None
         heartbeat_loop = _HeartbeatLoop(context, lease_seconds=self._lease_seconds)
         heartbeat_loop.start()
         try:
             try:
                 result = definition.handler(payload, context)
+            except LeaseLostError as exc:
+                handler_lease_loss = exc
             except Exception as exc:
                 log_exception_event(
                     logger,
@@ -236,8 +240,54 @@ class JobWorker:
                 raise
         finally:
             heartbeat_loop.stop()
-        context._raise_heartbeat_error()
-        persisted = self._apply_result(job_id=job.id, lease_token=job.lease_token, result=result)
+
+        if handler_lease_loss is not None:
+            cancelled = self._converge_cancelled_lease_loss(
+                job_id=job.id,
+                lease_token=job.lease_token,
+            )
+            if cancelled is None:
+                log_exception_event(
+                    logger,
+                    logging.ERROR,
+                    "job.execution_failed",
+                    "Job Handler 因非取消原因失去 Lease。",
+                    handler_lease_loss,
+                    job_id=str(job.id),
+                    job_type=job.job_type,
+                    worker_id=self._worker_id,
+                    attempt=job.attempt,
+                    duration_ms=_elapsed_ms(started),
+                )
+                raise handler_lease_loss
+            _log_job_terminal(
+                cancelled,
+                event="job.cancelled",
+                worker_id=self._worker_id,
+                error_code="cancel_requested",
+                duration_ms=_elapsed_ms(started),
+            )
+            return True
+
+        if result is None:
+            raise RuntimeError("Job Handler 未返回执行结果")
+        try:
+            context._raise_heartbeat_error()
+            persisted = self._apply_result(
+                job_id=job.id,
+                lease_token=job.lease_token,
+                result=result,
+            )
+        except LeaseLostError:
+            cancelled = self._converge_cancelled_lease_loss(
+                job_id=job.id,
+                lease_token=job.lease_token,
+            )
+            if cancelled is None:
+                raise
+            persisted = cancelled
+            result = JobHandlerResult.cancelled()
+
         event = {
             "succeeded": "job.completed",
             "retry": "job.retry_scheduled",
@@ -252,6 +302,44 @@ class JobWorker:
             duration_ms=_elapsed_ms(started),
         )
         return True
+
+    def _converge_cancelled_lease_loss(
+        self,
+        *,
+        job_id: UUID,
+        lease_token: str,
+    ) -> JobRecord | None:
+        """外部取消恰好抢在 Handler/结果落库前时，把合法竞态收敛为 cancelled。"""
+
+        session = self._session_factory()
+        try:
+            with session.begin():
+                repository = _repository(session)
+                current = repository.get(job_id)
+                if current is None:
+                    return None
+                if current.status == "cancelled":
+                    return current
+                if (
+                    current.status != "running"
+                    or current.lease_token != lease_token
+                    or current.cancel_requested_at is None
+                ):
+                    return None
+                try:
+                    cancelled = repository.mark_cancelled(
+                        job_id=job_id,
+                        lease_token=lease_token,
+                    )
+                except LeaseLostError:
+                    latest = repository.get(job_id)
+                    if latest is not None and latest.status == "cancelled":
+                        return latest
+                    return None
+                self._notify_terminal(session, cancelled)
+                return cancelled
+        finally:
+            session.close()
 
     def _fail_invalid_payload(self, job_id: UUID, lease_token: str) -> JobRecord:
         session = self._session_factory()
