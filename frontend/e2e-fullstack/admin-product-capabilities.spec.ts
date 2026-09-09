@@ -9,6 +9,22 @@ interface AnalysisRun {
   status: string
 }
 
+async function createVehicleBrand(request: APIRequestContext, suffix: string): Promise<{ id: string; name: string }> {
+  const name = `全栈品牌 ${suffix}`
+  const created = await request.post('/api/v1/vehicle-brands', {
+    data: {
+      code: `FS-BRAND-${suffix}`,
+      display_name: name,
+      role: 'owned',
+      aliases: [`全栈品牌${suffix}`],
+    },
+  })
+  expect(created.status()).toBe(201)
+  const brand = await created.json() as { id: string; display_name: string }
+  expect(brand.display_name).toBe(name)
+  return { id: brand.id, name }
+}
+
 async function createKeywordPack(request: APIRequestContext, suffix: string): Promise<{ id: string; name: string }> {
   const name = `U1 词包车型关联 ${suffix}`
   const created = await request.post('/api/v1/keyword-packs', {
@@ -111,12 +127,14 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
   const code = `FS-${suffix}`
   const displayName = `全栈车型 ${suffix}`
   const alias = '爱玛 U2 车型证据全栈导入'
+  const brand = await createVehicleBrand(request, suffix)
   const pack = await createKeywordPack(request, suffix)
 
   await page.goto('/admin/configuration')
   await expect(page.getByRole('heading', { name: '管理员配置', exact: true })).toBeVisible()
   await page.getByLabel('车型编码').fill(code)
   await page.getByLabel('显示名称').fill(displayName)
+  await page.getByLabel('品牌', { exact: true }).selectOption(brand.id)
   await page.getByLabel('系列（可选）').fill('全栈系列')
   await page.getByLabel('类别（可选）').fill('电动两轮车')
   await page.getByLabel(/别名/).fill(alias)
@@ -126,9 +144,10 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
 
   const vehiclesResponse = await request.get('/api/v1/vehicle-models?limit=200')
   expect(vehiclesResponse.status()).toBe(200)
-  const vehicles = await vehiclesResponse.json() as { items: { id: string; code: string; series_name: string; category_name: string }[] }
+  const vehicles = await vehiclesResponse.json() as { items: { id: string; code: string; brand_id: string | null; series_name: string; category_name: string }[] }
   const vehicle = vehicles.items.find((item) => item.code === code)
   expect(vehicle, '浏览器创建的车型必须能从正式目录 API 重读').toBeTruthy()
+  expect(vehicle?.brand_id).toBe(brand.id)
   expect(vehicle?.series_name).toBe('全栈系列')
   expect(vehicle?.category_name).toBe('电动两轮车')
 
