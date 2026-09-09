@@ -42,7 +42,8 @@ class PostgresHistoricalImportHttpService(_base.PostgresHistoricalImportHttpServ
             "chunk_rows": self._runtime.settings.historical_chunk_rows,
             "max_in_flight_jobs": self._runtime.settings.historical_max_in_flight_jobs,
         }
-        # 兼容期复用既有 JSONB 列承载版本化 Snapshot；schema_version 决定语义，Stage 7 再清理旧列名。
+        # 兼容期复用既有 JSONB 列承载版本化 Snapshot；schema_version 决定语义。
+        # Stage 7 再清理旧列名。
         filter_snapshot_json = cast(
             dict[str, object],
             filter_snapshot.model_dump(mode="json"),
