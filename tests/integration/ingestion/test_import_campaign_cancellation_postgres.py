@@ -193,7 +193,7 @@ def test_running_import_cancel_does_not_deadlock_worker(
             original_mark_chunk_running(self, item_id)
 
         def coordinated_request_cancel(self, job_id: UUID):
-            """记录取消事务已持有 Campaign 且即将申请 Job 锁的时点。"""
+            """记录取消事务即将申请 Job 锁的时点。"""
 
             cancel_reached_job.set()
             return original_request_cancel(self, job_id)
@@ -212,6 +212,7 @@ def test_running_import_cancel_does_not_deadlock_worker(
         worker_errors: list[BaseException] = []
         cancel_errors: list[BaseException] = []
         cancel_status: list[int] = []
+        cancel_states: list[str] = []
 
         def run_worker() -> None:
             """在独立线程执行真实 Import Chunk Worker。"""
@@ -227,6 +228,7 @@ def test_running_import_cancel_does_not_deadlock_worker(
             try:
                 response = client.post(f"/api/v1/data-import-campaigns/{campaign_id}/cancel")
                 cancel_status.append(response.status_code)
+                cancel_states.append(response.json()["status"])
             except BaseException as exc:  # pragma: no cover - 失败内容由断言统一报告
                 cancel_errors.append(exc)
 
@@ -243,6 +245,7 @@ def test_running_import_cancel_does_not_deadlock_worker(
         assert worker_errors == []
         assert cancel_errors == []
         assert cancel_status == [200]
+        assert cancel_states == ["cancelling"]
 
         campaign = client.get(f"/api/v1/data-import-campaigns/{campaign_id}").json()
         assert campaign["status"] == "cancelled"
