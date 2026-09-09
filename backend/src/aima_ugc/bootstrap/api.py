@@ -10,8 +10,10 @@ from fastapi import APIRouter, File, Form, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 
 from aima_ugc.contracts.stage3_import import (
-    HistoricalCampaignCreateRequest,
-    LocalDataImportCampaignCreateRequest,
+    HistoricalCampaignCreateRequest as Stage3HistoricalCampaignCreateRequest,
+)
+from aima_ugc.contracts.stage3_import import (
+    LocalDataImportCampaignCreateRequest as Stage3LocalDataImportCampaignCreateRequest,
 )
 
 from . import _api_base as _base
@@ -165,7 +167,7 @@ def create_app(
         tags=["imports"],
     )
     def create_historical_import_campaign(
-        body: HistoricalCampaignCreateRequest,
+        body: Stage3HistoricalCampaignCreateRequest,
         request: Request,
     ) -> _base.HistoricalCampaignCreatedResponse:
         """创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。"""
@@ -189,7 +191,7 @@ def create_app(
         tags=["imports"],
     )
     def create_local_data_import_campaign(
-        body: LocalDataImportCampaignCreateRequest,
+        body: Stage3LocalDataImportCampaignCreateRequest,
         request: Request,
     ) -> _base.LocalDataImportCampaignCreatedResponse:
         """创建本地上传 Campaign；不接受 Keyword Pack/Vehicle Model 过滤字段。"""
