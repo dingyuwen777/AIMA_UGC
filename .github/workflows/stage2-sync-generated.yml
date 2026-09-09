@@ -34,34 +34,15 @@ jobs:
           npm ci --prefix frontend
       - name: Apply Stage 2 owner patch
         run: uv run python scripts/dev/stage2_apply_patch.py
-      - name: Format and fix touched Python
+      - name: Format and lint touched Python
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff check --fix \
-            backend/src/aima_ugc/contracts/administration.py \
-            backend/src/aima_ugc/contracts/brand_vehicle.py \
-            backend/src/aima_ugc/modules/vehicles/models.py \
-            backend/src/aima_ugc/modules/vehicles/resolver.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py \
-            backend/src/aima_ugc/bootstrap/administration_http.py \
-            backend/src/aima_ugc/bootstrap/brand_vehicle_http.py \
-            backend/src/aima_ugc/bootstrap/brand_vehicle_routes.py \
-            tests/unit/vehicles/test_brand_vehicle_resolver.py \
-            tests/integration/database/test_brand_vehicle_stage2.py
-          uv run ruff format \
-            backend/src/aima_ugc/contracts/administration.py \
-            backend/src/aima_ugc/contracts/brand_vehicle.py \
-            backend/src/aima_ugc/modules/vehicles/models.py \
-            backend/src/aima_ugc/modules/vehicles/resolver.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py \
-            backend/src/aima_ugc/bootstrap/administration_http.py \
-            backend/src/aima_ugc/bootstrap/brand_vehicle_http.py \
-            backend/src/aima_ugc/bootstrap/brand_vehicle_routes.py \
-            tests/unit/vehicles/test_brand_vehicle_resolver.py \
-            tests/integration/database/test_brand_vehicle_stage2.py
+          FILES="backend/src/aima_ugc/contracts/administration.py backend/src/aima_ugc/contracts/brand_vehicle.py backend/src/aima_ugc/modules/vehicles/models.py backend/src/aima_ugc/modules/vehicles/resolver.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/bootstrap/administration_http.py backend/src/aima_ugc/bootstrap/brand_vehicle_http.py backend/src/aima_ugc/bootstrap/brand_vehicle_routes.py tests/unit/vehicles/test_brand_vehicle_resolver.py tests/integration/database/test_brand_vehicle_stage2.py"
+          uv run ruff format ${FILES}
+          uv run ruff check --fix ${FILES}
+          uv run ruff format ${FILES}
+          uv run ruff check ${FILES}
       - name: Generate OpenAPI and client
         shell: bash
         run: |
