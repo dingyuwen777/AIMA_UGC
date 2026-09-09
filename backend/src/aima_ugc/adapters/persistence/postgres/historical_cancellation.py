@@ -50,9 +50,7 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                 update(historical_import_campaign_items_table)
                 .where(
                     historical_import_campaign_items_table.c.campaign_id == campaign_id,
-                    historical_import_campaign_items_table.c.status.in_(
-                        _NONTERMINAL_ITEM_STATUSES
-                    ),
+                    historical_import_campaign_items_table.c.status.in_(_NONTERMINAL_ITEM_STATUSES),
                 )
                 .values(status="cancelled", finished_at=func.clock_timestamp())
             )
@@ -92,9 +90,7 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                 ).where(
                     historical_import_campaign_items_table.c.campaign_id == campaign_id,
                     historical_import_campaign_items_table.c.job_id.is_not(None),
-                    historical_import_campaign_items_table.c.status.in_(
-                        _ACTIVE_JOB_ITEM_STATUSES
-                    ),
+                    historical_import_campaign_items_table.c.status.in_(_ACTIVE_JOB_ITEM_STATUSES),
                 )
             )
         )
@@ -124,9 +120,7 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                 update(historical_import_campaign_items_table)
                 .where(
                     historical_import_campaign_items_table.c.id.in_(tuple(item_ids)),
-                    historical_import_campaign_items_table.c.status.in_(
-                        _NONTERMINAL_ITEM_STATUSES
-                    ),
+                    historical_import_campaign_items_table.c.status.in_(_NONTERMINAL_ITEM_STATUSES),
                 )
                 .values(status="cancelled", finished_at=func.clock_timestamp())
             )
@@ -140,9 +134,7 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
             update(historical_import_campaign_items_table)
             .where(
                 historical_import_campaign_items_table.c.campaign_id == campaign_id,
-                historical_import_campaign_items_table.c.status.in_(
-                    _NONTERMINAL_ITEM_STATUSES
-                ),
+                historical_import_campaign_items_table.c.status.in_(_NONTERMINAL_ITEM_STATUSES),
             )
             .values(status="cancelled", finished_at=func.clock_timestamp())
         )
