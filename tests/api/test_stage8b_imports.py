@@ -35,8 +35,9 @@ class _FakeImportService:
         self.job_id = uuid4()
         self.artifact_id = uuid4()
         self.pack_id = uuid4()
+        self.brand_id = uuid4()
         self.created_file = b""
-        self.created_keyword_pack_ids: tuple[UUID, ...] = ()
+        self.created_brand_ids: tuple[UUID, ...] = ()
         self.invalid = False
 
     def create_import(
@@ -45,12 +46,11 @@ class _FakeImportService:
         filename: str,
         content_type: str | None,
         source: BytesIO,
-        keyword_pack_ids: tuple[UUID, ...],
-        vehicle_model_ids: tuple[UUID, ...] = (),
+        brand_ids: tuple[UUID, ...],
         request_id: str,
     ) -> ImportBatchCreatedResponse:
-        del filename, content_type, request_id, vehicle_model_ids
-        self.created_keyword_pack_ids = keyword_pack_ids
+        del filename, content_type, request_id
+        self.created_brand_ids = brand_ids
         if self.invalid:
             raise InvalidImportFile("坏文件")
         self.created_file = source.read()
@@ -72,7 +72,7 @@ class _FakeImportService:
         assert job_id == self.job_id
         return JobStatusResponse(
             id=self.job_id,
-            job_type="ingestion.import-excel.v1",
+            job_type="ingestion.import-excel.v2",
             status="queued",
             attempt=0,
             max_attempts=10,
@@ -166,7 +166,7 @@ def test_create_import_is_multipart_202_and_status_queries_are_stable() -> None:
         "/api/v1/import-batches",
         files=[
             ("file", ("input.xlsx", b"xlsx", "application/octet-stream")),
-            ("keyword_pack_ids", (None, str(service.pack_id))),
+            ("brand_ids", (None, str(service.brand_id))),
         ],
     )
     batch = client.get(f"/api/v1/import-batches/{service.batch_id}")
@@ -179,7 +179,7 @@ def test_create_import_is_multipart_202_and_status_queries_are_stable() -> None:
         "status": "queued",
     }
     assert service.created_file == b"xlsx"
-    assert service.created_keyword_pack_ids == (service.pack_id,)
+    assert service.created_brand_ids == (service.brand_id,)
     assert batch.status_code == job.status_code == 200
     assert batch.json()["job"]["id"] == str(service.job_id)
     assert job.json()["max_attempts"] == 10
@@ -194,7 +194,7 @@ def test_invalid_import_and_validation_errors_use_request_id_error_contract() ->
         "/api/v1/import-batches",
         files=[
             ("file", ("bad.xlsx", b"bad", "application/octet-stream")),
-            ("keyword_pack_ids", (None, str(service.pack_id))),
+            ("brand_ids", (None, str(service.brand_id))),
         ],
     )
     missing = client.post("/api/v1/import-batches")
