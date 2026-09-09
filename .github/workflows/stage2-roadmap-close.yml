@@ -1,0 +1,45 @@
+name: Stage2 Roadmap Close
+
+on:
+  push:
+    branches:
+      - docs/stage2-roadmap-completion
+    paths:
+      - .github/workflows/stage2-roadmap-close.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/stage2-roadmap-completion
+          fetch-depth: 0
+      - name: Update exactly Stage 2 and Stage 3 status
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('docs/roadmap/04_搜索与品牌车型过滤实施路线.md')
+          text = path.read_text(encoding='utf-8')
+          old2 = '| Stage 2 品牌车型管理与统一 Resolver | planned | Stage 1 | Brand 主数据、Vehicle 归属、Snapshot、Resolver、管理后端 |'
+          new2 = '| Stage 2 品牌车型管理与统一 Resolver | completed | Stage 1 | Brand 主数据、Vehicle 归属、Snapshot、Resolver、管理后端 |'
+          old3 = '| Stage 3 Excel 统一过滤 | blocked | Stage 2 | Excel/Historical 不再用 Keyword Pack 过滤，统一 Brand/Vehicle Filter |'
+          new3 = '| Stage 3 Excel 统一过滤 | planned | Stage 2 | Excel/Historical 不再用 Keyword Pack 过滤，统一 Brand/Vehicle Filter |'
+          assert text.count(old2) == 1, text.count(old2)
+          assert text.count(old3) == 1, text.count(old3)
+          text = text.replace(old2, new2, 1).replace(old3, new3, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit permanent Roadmap-only change
+        shell: bash
+        run: |
+          git rm .github/workflows/stage2-roadmap-close.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/roadmap/04_搜索与品牌车型过滤实施路线.md
+          git commit -m "文档：收口搜索与品牌车型过滤 Stage 2 状态"
+          git push origin HEAD:docs/stage2-roadmap-completion
