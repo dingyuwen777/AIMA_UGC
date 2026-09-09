@@ -28,6 +28,7 @@ _CANCELLABLE_STATUSES = frozenset(
 )
 _NONTERMINAL_ITEM_STATUSES = ("discovered", "snapshotting", "ready", "queued", "running")
 _ACTIVE_JOB_ITEM_STATUSES = ("snapshotting", "queued", "running")
+_ACTIVE_JOB_STATUSES = ("queued", "running")
 
 
 class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepository):
@@ -80,17 +81,18 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
         )
 
     def request_job_cancellations(self, campaign_id: UUID) -> None:
-        """只按 Job 行加锁发取消请求；不持有 Campaign 行锁。"""
+        """只按仍活动的 Job 行加锁；Item 上遗留的历史终态 Job 不参与取消。"""
 
+        item = historical_import_campaign_items_table
         item_rows = tuple(
             self._session.execute(
-                select(
-                    historical_import_campaign_items_table.c.id,
-                    historical_import_campaign_items_table.c.job_id,
-                ).where(
-                    historical_import_campaign_items_table.c.campaign_id == campaign_id,
-                    historical_import_campaign_items_table.c.job_id.is_not(None),
-                    historical_import_campaign_items_table.c.status.in_(_ACTIVE_JOB_ITEM_STATUSES),
+                select(item.c.id, item.c.job_id)
+                .join(jobs_table, jobs_table.c.id == item.c.job_id)
+                .where(
+                    item.c.campaign_id == campaign_id,
+                    item.c.job_id.is_not(None),
+                    item.c.status.in_(_ACTIVE_JOB_ITEM_STATUSES),
+                    jobs_table.c.status.in_(_ACTIVE_JOB_STATUSES),
                 )
             )
         )
@@ -101,7 +103,8 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
 
         discovery_job_id = self._session.scalar(
             select(jobs_table.c.id).where(
-                jobs_table.c.internal_idempotency_key == f"historical-discover:{campaign_id}"
+                jobs_table.c.internal_idempotency_key == f"historical-discover:{campaign_id}",
+                jobs_table.c.status.in_(_ACTIVE_JOB_STATUSES),
             )
         )
         job_ids = set(job_items)
@@ -147,7 +150,7 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                 select(func.count())
                 .select_from(jobs_table)
                 .where(
-                    jobs_table.c.status.in_(("queued", "running")),
+                    jobs_table.c.status.in_(_ACTIVE_JOB_STATUSES),
                     or_(
                         jobs_table.c.id.in_(item_job_ids),
                         jobs_table.c.internal_idempotency_key
