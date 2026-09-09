@@ -19,7 +19,6 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
-from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
 from aima_ugc.platform.config import load_settings
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
