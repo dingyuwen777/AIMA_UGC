@@ -179,29 +179,29 @@ def test_running_import_cancel_does_not_deadlock_worker(
         assert started.status_code == 200
         assert started.json()["status"] == "queued"
 
-        complete_entered = Event()
+        campaign_lock_window = Event()
         cancel_reached_job = Event()
-        original_complete_chunk = PostgresHistoricalImportRepository.complete_chunk
+        original_mark_chunk_running = PostgresHistoricalImportRepository.mark_chunk_running
         original_request_cancel = PostgresJobRepository.request_cancel
 
-        def coordinated_complete_chunk(self, item_id: UUID, *, stats: dict[str, object]) -> None:
-            """暂停在 Worker 已持有 Job 锁、即将更新子 Item 的真实死锁窗口。"""
+        def coordinated_mark_chunk_running(self, item_id: UUID) -> None:
+            """暂停在 Worker 已锁 Job、尚未申请 Item/Campaign 锁的反向锁序窗口。"""
 
-            complete_entered.set()
+            campaign_lock_window.set()
             if not cancel_reached_job.wait(timeout=10):
                 raise AssertionError("取消请求未进入 Job 锁阶段")
-            original_complete_chunk(self, item_id, stats=stats)
+            original_mark_chunk_running(self, item_id)
 
         def coordinated_request_cancel(self, job_id: UUID):
-            """记录取消事务即将申请 Job 锁的时点，建立确定性并发顺序。"""
+            """记录取消事务已持有 Campaign 且即将申请 Job 锁的时点。"""
 
             cancel_reached_job.set()
             return original_request_cancel(self, job_id)
 
         monkeypatch.setattr(
             PostgresHistoricalImportRepository,
-            "complete_chunk",
-            coordinated_complete_chunk,
+            "mark_chunk_running",
+            coordinated_mark_chunk_running,
         )
         monkeypatch.setattr(
             PostgresJobRepository,
@@ -232,7 +232,7 @@ def test_running_import_cancel_does_not_deadlock_worker(
 
         worker_thread = Thread(target=run_worker, name="cancel-regression-worker-thread")
         worker_thread.start()
-        assert complete_entered.wait(timeout=10)
+        assert campaign_lock_window.wait(timeout=10)
         cancel_thread = Thread(target=request_cancel, name="cancel-regression-http-thread")
         cancel_thread.start()
 
