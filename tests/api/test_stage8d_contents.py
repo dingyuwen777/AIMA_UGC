@@ -79,9 +79,7 @@ class _ContentService:
                 ContentFilterValueOptionResponse(value="正面", source="active"),
                 ContentFilterValueOptionResponse(value="旧情感", source="historical"),
             ),
-            voice_types=(
-                ContentFilterValueOptionResponse(value="真实用户发声", source="active"),
-            ),
+            voice_types=(ContentFilterValueOptionResponse(value="真实用户发声", source="active"),),
             labels=(
                 ContentFilterLabelOptionResponse(
                     primary_label="产品体验",

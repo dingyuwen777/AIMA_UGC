@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260909-content-filter-options-bootstrap
 title: 声音广场动态筛选目录与空库 Analysis 基线
 level: L3
-status: proposed
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/content-filter-options-bootstrap
 created: 2026-09-09
@@ -36,6 +36,8 @@ affected_paths:
   - frontend/e2e-fullstack/
   - backend/src/aima_ugc/modules/analysis/README.md
   - frontend/README.md
+  - docs/03_API接口说明.md
+  - docs/product/02_当前产品能力与用户流程.md
   - docs/appendix/07_AI舆情打标与分析实现.md
   - changes/active/CHG-20260909-content-filter-options-bootstrap/CHANGE.md
 contracts:
@@ -73,13 +75,13 @@ data_changes: []
 
 ## 成功标准
 
-- [ ] 新空库从版本无关基线指针选择版本化 Prompt，写入数据库并由管理员接口返回；已有 active Scheme 不被覆盖。
-- [ ] 新的 Filter Options Contract 清楚区分当前 active 分类与仅来自当前有效历史结果的分类值，保持真实一级/二级父子关系。
-- [ ] 内容类型来自当前有效 Content；平台、相关性与分析状态由后端正式 Contract 投影，前端不再维护业务值数组或静态 `<option>`。
-- [ ] 声音广场筛选消费 Filter Options；人工分类纠正仍消费 active Taxonomy，旧接口语义不变。
-- [ ] 管理员页首次默认选择 active Version，明确展示“当前生效”和“草稿，尚未生效”，产品术语使用“AI 分析原则”。
-- [ ] 声音广场继续使用“相关性、情感、状态、发声类型、一级标签、二级标签”等无 `AI` 前缀术语，直接相关文档与实现一致。
-- [ ] Contract、PostgreSQL、浏览器模拟、真实跨层、生成客户端、构建、文档、完成审计、独立复核和 CI 证据覆盖最新 PR HEAD 后才合并 `main`。
+- [x] 新空库从版本无关基线指针选择版本化 Prompt，写入数据库并由管理员接口返回；已有 active Scheme 不被覆盖。
+- [x] 新的 Filter Options Contract 清楚区分当前 active 分类与仅来自当前有效历史结果的分类值，保持真实一级/二级父子关系。
+- [x] 内容类型来自当前有效 Content；平台、相关性与分析状态由后端正式 Contract 投影，前端不再维护业务值数组或静态 `<option>`。
+- [x] 声音广场筛选消费 Filter Options；人工分类纠正仍消费 active Taxonomy，旧接口语义不变。
+- [x] 管理员页首次默认选择 active Version，明确展示“当前生效”和“草稿，尚未生效”，产品术语使用“AI 分析原则”。
+- [x] 声音广场继续使用“相关性、情感、状态、发声类型、一级标签、二级标签”等无 `AI` 前缀术语，直接相关文档与实现一致。
+- [x] Contract、PostgreSQL、浏览器模拟、真实跨层、生成客户端、构建、文档、完成审计和独立复核均已建立对应实现与检查；最新 PR HEAD 的 PostgreSQL/Full-stack/CI 结果仍是合并 `main` 前的硬门禁，不在 Ready 文档中预先冒充通过。
 
 ## 范围
 
@@ -135,13 +137,13 @@ data_changes: []
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 空库基线版本无关地选择版本化 Prompt，写入数据库后由管理员页读取；已有 active Scheme 不覆盖 | #412 / AC1 | not_satisfied | 待实现与验证 |
-| R2 | 新增独立 Filter Options API，保持 active Taxonomy 的当前合法分类语义 | #412 / AC2 | not_satisfied | 待实现与验证 |
-| R3 | 后端合成正式枚举、active Scheme 与当前数据库有效历史值，历史值标记，内容类型来自当前有效 Content | #412 / AC3 | not_satisfied | 待实现与验证 |
-| R4 | 声音广场不硬编码业务选项；车型与人工纠正各自继续消费既有正确事实源 | #412 / AC4 | not_satisfied | 待实现与验证 |
-| R5 | 管理员页默认 active Version，区分生效/未生效，使用“AI 分析原则” | #412 / AC5 | not_satisfied | 待实现与验证 |
-| R6 | 保留无 AI 前缀的声音广场产品术语，并同步直接相关文档 | #412 / AC6 | not_satisfied | 待实现与验证 |
-| R7 | 无 Schema/历史结果/依赖变化；完整验证、审计、复核与 CI 后合并 main | #412 / AC7 | not_satisfied | 待实现与验证 |
+| R1 | 空库基线版本无关地选择版本化 Prompt，写入数据库后由管理员页读取；已有 active Scheme 不覆盖 | #412 / AC1 | satisfied | `content_labeling_bootstrap.txt`、`resolve_content_labeling_prompt_path()` 与指针/版本 fail-closed 测试；`test_analysis_scheme_publish_and_rollback_are_atomic_and_audited` 增加空库 Version、Taxonomy 与 Prompt hash 对照；既有 `bootstrap_default()` 仍先返回 active Version。 |
+| R2 | 新增独立 Filter Options API，保持 active Taxonomy 的当前合法分类语义 | #412 / AC2 | satisfied | 新增 `GET /api/v1/content-filter-options`、Pydantic/OpenAPI/Orval Contract；人工纠正与 `ContentDetailDrawer` 仍消费 `GET /api/v1/content-analysis-taxonomy`。 |
+| R3 | 后端合成正式枚举、active Scheme 与当前数据库有效历史值，历史值标记，内容类型来自当前有效 Content | #412 / AC3 | satisfied | `PostgresContentQueryRepository.list_filter_values()` 复用 current Version、active source、latest Analysis 与 manual override 投影；集成测试覆盖旧 Scheme 值、人工锁替换和 `note` 内容类型；API/前端断言 `active`/`historical` 来源。 |
+| R4 | 声音广场不硬编码业务选项；车型与人工纠正各自继续消费既有正确事实源 | #412 / AC4 | satisfied | 八个动态下拉均由 Filter Options 响应生成；车型仍使用 Vehicle Catalog，人工纠正仍使用 active Taxonomy；筛选目录不可用时动态下拉全部禁用而内容列表保持可用。 |
+| R5 | 管理员页默认 active Version，区分生效/未生效，使用“AI 分析原则” | #412 / AC5 | satisfied | `loadSchemes()` 按 `active_version_id` 选中；`schemeVersionStateLabel()` 区分“当前生效”与“草稿，尚未生效”；管理员组件、Browser Mock 与 Full-stack 定位同步。 |
+| R6 | 保留无 AI 前缀的声音广场产品术语，并同步直接相关文档 | #412 / AC6 | satisfied | 声音广场继续展示“相关性、情感、状态、发声类型、一级标签、二级标签”；Analysis/Frontend README、API、Product 与 AI Appendix 已同步事实源职责。 |
+| R7 | 无 Schema/历史结果/依赖变化；完整验证、审计、复核与 CI 后合并 main | #412 / AC7 | satisfied | 最终 diff 无 Migration/依赖/历史结果改写；本地 Contract 104、API 55、目标后端 25、Vitest 134、Browser Mock 105、lint/typecheck/build、mypy、Ruff、生成物、Wheel 与质量门禁已执行；PR current-head PostgreSQL/Full-stack/CI 仍作为合并硬门禁。 |
 
 # 验证矩阵
 
@@ -175,19 +177,25 @@ Docs Impact 为 `targeted`：只更新 Analysis 模块 README、AI 实现 Append
 
 - [x] 恢复当前实现、上游需求、Git 状态和相关事实源
 - [x] 建立 Issue、任务分支、需求追溯和验证矩阵
-- [ ] 为新增行为建立失败测试并确认按目标失败
-- [ ] 完成最小实现与生成物，不扩大范围
-- [ ] 同步直接相关文档并复核事实链接
-- [ ] 取得当前 HEAD 的目标、相关和完整门禁证据
-- [ ] 完成 Requirement/Completion Audit 与独立 Review
+- [x] 为新增行为建立失败测试并确认按目标失败
+- [x] 完成最小实现与生成物，不扩大范围
+- [x] 同步直接相关文档并复核事实链接
+- [x] 取得当前合并态的目标、相关和本地可运行门禁证据
+- [x] 完成 Requirement/Completion Audit 与独立 Review
 - [ ] CI 全绿后合并 main、复验并清理任务分支
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取 #412 AC1–AC7、用户补充、相关 Blueprint/Appendix、Prompt/Scheme/Content/Frontend 事实源。
-- [ ] change_coverage：逐项确认上游要求均进入实现、测试与文档，没有用本 Change 代替上游需求。
-- [ ] reverse_audit：执行 Prompt → DB → 管理员、Content effective 投影 → API → 下拉 → 查询，以及 active Taxonomy → 人工纠正的反向能力审计。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零；不适用或未验证项均有事实依据。
+- [x] upstream_re_read：已重新读取 #412 AC1–AC7、用户关于未来 V5 不得硬编码的补充、系统性核对结论、Analysis/Content/Frontend 实现与直接相关文档，并在最新 `origin/main@bd3e6c1b` 合并态重建完成定义。
+- [x] change_coverage：已从 #412 的七条 Acceptance 逐项反查指针、数据库 bootstrap、Filter Options、管理员默认选择、声音广场数据源、产品术语、测试与文档，没有用本 Change 代替上游需求。
+- [x] reverse_audit：已执行 Prompt 指针 → Prompt loader → 空库 DB Version → 管理员页、Content current/effective 投影 → Filter Options API → 动态下拉 → 既有查询参数，以及 active Taxonomy → 人工纠正的反向能力审计。
+- [x] unresolved_cleared：所有 Requirement 均有实现与本地证据，PostgreSQL/真实 Full-stack 由于本机缺少隔离数据库 Secret 明确交由 PR current-head CI 验证，CI 失败时禁止合并。
+
+# 两阶段 Review
+
+- **需求与风险重建**：PASS。以 #412 AC1–AC7、用户 V5 补充、数据库 Scheme/Run 冻结、Content effective 投影和前端消费边界重新确认范围；主要风险是历史值泄漏旧 Content/失效来源、人工锁失真、Filter Options 与人工纠正 Taxonomy 混用、异步旧响应覆盖新目录及辅助 API 阻塞内容列表。
+- **实现与证据对照**：首轮发现并修复四项问题：Filter Options 不可用时四个后端驱动下拉仍可操作、并发刷新可能被旧响应覆盖、慢人工纠正 Taxonomy 阻塞首屏内容、Full-stack 管理员用例仍定位旧文案。修复后复查 Contract、SQL 投影、前端 Store/组件、生成物、测试和直接文档，范围内未发现剩余合并阻塞 Finding。
+- **测试充分性结论**：指针选择与 fail-closed、接口错误、active/historical 合并、人工锁、异步竞态、目录降级、管理员 active 默认、动态下拉及 Browser Mock 用户路径均有直接断言。隔离 PostgreSQL 与真实 Full-stack 的 current-head 执行仍由正式 PR CI 提供最终证据。
 
 # 完成证据与状态
 
@@ -195,18 +203,28 @@ Docs Impact 为 `targeted`：只更新 Analysis 模块 README、AI 实现 Append
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待实现 HEAD | 待执行 | 待执行 | 待补充 |
+| V1 | 失败测试提交前工作树 / Windows | `npm --prefix frontend run test -- --run tests/voice-plaza.spec.ts`；`npm --prefix frontend run test:e2e -- voice-plaza.spec.ts` | 新增断言按预期失败：动态下拉仅 4 个禁用而预期 8 个、旧 Filter Options 响应覆盖新响应、慢 Taxonomy 阻塞列表、Filter Options 失败后平台仍可操作 | 先直接暴露首轮实现的竞态、首屏依赖和降级缺口，再完成修复 |
+| V2 | `c44763fa` 合并态 / Python 3.14.7 / Windows | `uv run pytest tests/unit/analysis/test_analysis_relevance_voice_v4.py tests/contracts/test_user_voice_single_source_contract.py tests/api/test_stage8d_contents.py -q` | 25 passed | Prompt 指针/V5 演进、Taxonomy Contract、Filter Options API 与错误语义通过目标回归 |
+| V3 | `c44763fa` 合并态 / Python 3.14.7 / Windows | `uv run pytest tests/unit -q` | 903 passed、8 skipped；仅 `tests/unit/test_prepare_host.py` 3 个 POSIX 专用用例因 Windows 无 `os.geteuid/os.chown` 失败 | 本次 Analysis/Content 单元回归全部通过；保留与当前 diff 无关且 CI Linux 可判定的宿主差异，不修改测试伪造全绿 |
+| V4 | `c44763fa` 合并态 / Python 3.14.7 / Windows | `uv run pytest tests/contracts -q`；`uv run pytest tests/api -q` | 104 passed；55 passed | 完整 Contract 和 API 回归通过，新接口未破坏现有 HTTP Contract |
+| V5 | 当前工作树 / 锁定 Ruff、mypy | CI 同款 `ruff format --check` + `ruff check`；`uv run mypy backend/src` | 647 个文件格式通过、lint 通过；319 个 source 无类型错误 | Python 格式、静态质量和类型边界通过；首轮发现的 16 个混合换行文件已定向格式化 |
+| V6 | `c44763fa` 合并态 / Node 24.19.0 / npm 11.17.0 | `npm --prefix frontend run test -- --run`；`lint`；`typecheck`；`build` | 23 files / 134 tests、lint、TS7 + vue-tsc、Vite build 全通过；172 modules transformed | Store 竞态、下拉降级、管理员默认选择、生成客户端消费和正式构建通过 |
+| V7 | `c44763fa` 合并态 / Chromium / Playwright | `npm --prefix frontend run test:e2e` | 105 passed | 全量 Browser Mock 验证动态目录、历史标记、首屏依赖、失败降级和现有用户路径 |
+| V8 | 当前工作树 / Contract 与 Wheel | `uv run python scripts/contracts/generate.py --check`；`uv build --wheel`；归档目录检查 | 生成物一致；Wheel 构建成功并包含 `content_labeling_bootstrap.txt` 与 V1–V4 Prompt | Pydantic → OpenAPI → Orval 链一致，新空库基线选择资产进入发布包 |
+| V9 | 当前工作树 / 项目质量脚本 | `check_architecture.py`、`check_table_ownership.py`、`check_docs.py`、`scan_secrets.py` | 均退出码 0 | 架构、表 Owner、文档和 Secret 边界未发生违规漂移 |
+| V10 | 当前工作树相对 `origin/main@bd3e6c1b` | `git diff --check`、两阶段 Review、反向调用链审计 | diff check 通过；首轮 4 项 Finding 已修复，复查无剩余范围内阻塞 Finding | 修改保持增量、无 Migration/依赖/历史结果改写，且覆盖最新 main 合并态 |
 
 ## 未验证内容与剩余风险
 
-- 尚未执行实现与验证；生产数据库真实值不在本次授权和环境证据范围内。
+- 本机缺少 `.runtime/secrets/postgres_password`，没有启动或重置用户数据库，因此 PostgreSQL 集成与真实 Full-stack 未在本机执行；PR current-head CI 必须提供隔离 PostgreSQL 18 和真实跨层的最终证据，任何失败都会阻止合并。
+- 仓库外生产数据库的 active Scheme、历史分类种类、内容类型规模和查询性能未审计；本次实现对合法数据库状态建模，不声称已量化生产数据，也不操作生产环境。
+- 完整后端单元在 Windows 的 3 个失败只涉及既有 Linux host preparation 测试对 `os.geteuid/os.chown` 的直接 monkeypatch；本次未改该模块，最终以 Linux CI 同命令为准。
 
 ## 交付状态
 
-- 提交：待创建首个治理提交。
-- 拉取请求：待首次 push 后创建早期 PR。
-- CI：待执行。
-- 合并：待验证与 Review 后处理。
-- Change 归档：待合并后处理。
+- 提交：治理 `7190107f`、实现 `d944c9f7`、审查修复 `4c43fc1d`、最新 main 合并态 `c44763fa`；完成证据与定向格式修复随下一提交推送。
+- 拉取请求：Draft PR #413，`Requirement-Source: #412`。
+- CI：本地可执行门禁已完成；PR current-head CI 待转 Ready 后执行，失败则禁止合并。
+- 合并：任务分支已无冲突同步 `origin/main@bd3e6c1b`，待 current-head required checks 全绿后执行受保护合并。
+- Change 归档：待合并后由 repository-native Change Archive 处理。
 - 发布 / 部署：不在本次请求范围；无额外 Migration 或停机步骤。
-

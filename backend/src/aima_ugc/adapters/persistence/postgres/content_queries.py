@@ -177,9 +177,7 @@ class PostgresContentQueryRepository:
                         label_pair.c.analysis_result_id == current.c.analysis_result_id,
                     )
                 )
-                .where(
-                    or_(current.c.labels_locked.is_(False), current.c.labels_locked.is_(None))
-                )
+                .where(or_(current.c.labels_locked.is_(False), current.c.labels_locked.is_(None)))
                 .distinct()
             )
         }
