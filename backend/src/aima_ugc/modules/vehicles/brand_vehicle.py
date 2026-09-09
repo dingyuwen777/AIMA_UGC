@@ -160,6 +160,7 @@ class BrandVehicleResolver:
             brand_ids, brand_evidence = self._resolve_brands(
                 snapshot,
                 vehicle_ids=vehicle_ids,
+                vehicle_evidence=vehicle_evidence,
                 texts=texts,
                 active_brands=active_brands,
                 active_vehicles=active_vehicles,
@@ -240,6 +241,7 @@ class BrandVehicleResolver:
         snapshot: BrandVehicleCatalogSnapshot,
         *,
         vehicle_ids: tuple[UUID, ...],
+        vehicle_evidence: tuple[ResolverEvidence, ...],
         texts: dict[str, str | None],
         active_brands: dict[UUID, BrandRecord],
         active_vehicles: dict[UUID, VehicleRecord],
@@ -253,12 +255,16 @@ class BrandVehicleResolver:
                 conflicts.append(f"vehicle_brand_unresolved:{vehicle_id}")
                 continue
             resolved.add(vehicle.brand_id)
+            provenance = next(
+                (item for item in vehicle_evidence if item.entity_id == vehicle_id),
+                None,
+            )
             evidence.append(
                 ResolverEvidence(
                     entity_id=vehicle.brand_id,
                     source="vehicle_match",
-                    matched_text=None,
-                    source_field=None,
+                    matched_text=None if provenance is None else provenance.matched_text,
+                    source_field=None if provenance is None else provenance.source_field,
                     derived_vehicle_model_id=vehicle_id,
                 )
             )

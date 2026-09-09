@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Query, Request, Response, status
@@ -15,6 +15,7 @@ from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepositor
 from aima_ugc.contracts.brand_vehicle import (
     BrandAliasCreateRequest,
     BrandAliasResponse,
+    BrandCreateRequest,
     BrandFilterScope,
     BrandListResponse,
     BrandResponse,
@@ -23,7 +24,6 @@ from aima_ugc.contracts.brand_vehicle import (
     BrandUpdateRequest,
     BrandVehicleCatalogReadinessResponse,
     BrandVehicleCatalogSnapshotResponse,
-    BrandCreateRequest,
     CatalogBrandAliasSnapshotItem,
     CatalogBrandSnapshotItem,
     CatalogVehicleAliasSnapshotItem,
@@ -420,11 +420,11 @@ def install_brand_vehicle_routes(
         tags=["vehicle-catalog"],
     )
     def list_brands(
-        search: str | None = Query(default=None, min_length=1, max_length=200),
-        status_value: BrandStatus | None = Query(default=None, alias="status"),
+        search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
+        status_value: Annotated[BrandStatus | None, Query(alias="status")] = None,
         role: BrandRole | None = None,
-        offset: int = Query(default=0, ge=0),
-        limit: int = Query(default=50, ge=1, le=200),
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> BrandListResponse:
         return service().list_brands(
             search=search,
@@ -523,7 +523,7 @@ def install_brand_vehicle_routes(
     )
     def snapshot(
         scope: BrandFilterScope = "all_active",
-        brand_id: list[UUID] | None = Query(default=None),
+        brand_id: Annotated[list[UUID] | None, Query()] = None,
     ) -> BrandVehicleCatalogSnapshotResponse:
         return service().snapshot(scope=scope, brand_ids=tuple(brand_id or ()))
 

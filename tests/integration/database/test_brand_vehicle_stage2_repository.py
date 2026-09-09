@@ -160,7 +160,9 @@ def test_brand_vehicle_management_snapshot_and_readiness_use_one_catalog(runtime
     assert readiness.unresolved_active_vehicle_ids == ()
 
 
-def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_lock(runtime) -> None:  # type: ignore[no-untyped-def]
+def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_lock(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
     """Brand Review Lock 与 Vehicle Review Lock 独立；锁后自动证据不能覆盖。"""
 
     principal = _principal()
@@ -180,7 +182,8 @@ def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_l
     session = runtime.database.new_session()
     try:
         with session.begin():
-            # 该用例只验证 Evidence/Lock Owner 语义；临时关闭 FK trigger，避免构造无关 Content 聚合。
+            # 这里只验证 Evidence/Lock Owner 语义；关闭 FK trigger，
+            # 避免为该独立持久化测试构造无关 Content 聚合。
             session.execute(text("SET LOCAL session_replication_role = replica"))
             repository = PostgresBrandVehicleRepository(session)
             automatic = ResolverEvidence(
@@ -189,12 +192,15 @@ def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_l
                 matched_text="爱玛锁测试",
                 source_field="title",
             )
-            assert repository.replace_automatic_brand_evidence(
-                content_id=content_id,
-                content_version=3,
-                evidence=(automatic,),
-                catalog_version=repository.current_catalog_version(),
-            ) is True
+            assert (
+                repository.replace_automatic_brand_evidence(
+                    content_id=content_id,
+                    content_version=3,
+                    evidence=(automatic,),
+                    catalog_version=repository.current_catalog_version(),
+                )
+                is True
+            )
             repository.replace_manual_brand_evidence(
                 content_id=content_id,
                 content_version=3,
@@ -202,12 +208,15 @@ def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_l
                 unlock_existing=False,
                 actor_ref=principal.principal_id,
             )
-            assert repository.replace_automatic_brand_evidence(
-                content_id=content_id,
-                content_version=3,
-                evidence=(automatic,),
-                catalog_version=repository.current_catalog_version(),
-            ) is False
+            assert (
+                repository.replace_automatic_brand_evidence(
+                    content_id=content_id,
+                    content_version=3,
+                    evidence=(automatic,),
+                    catalog_version=repository.current_catalog_version(),
+                )
+                is False
+            )
 
             brand_lock = session.scalar(
                 select(content_brand_review_locks_table.c.is_locked).where(

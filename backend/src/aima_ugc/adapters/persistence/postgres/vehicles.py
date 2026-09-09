@@ -25,8 +25,8 @@ from aima_ugc.modules.vehicles.tables import (
     content_vehicle_evidence_table,
     content_vehicle_review_locks_table,
     keyword_pack_vehicle_models_table,
-    vehicle_catalog_versions_table,
     vehicle_brands_table,
+    vehicle_catalog_versions_table,
     vehicle_model_aliases_table,
     vehicle_models_table,
 )
