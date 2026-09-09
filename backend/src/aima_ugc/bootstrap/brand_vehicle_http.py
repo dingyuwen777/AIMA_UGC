@@ -20,6 +20,7 @@ from aima_ugc.contracts.brand_vehicle import (
     BrandRole,
     BrandStatus,
     BrandUpdateRequest,
+    BrandVehicleCatalogSnapshotQuery,
     BrandVehicleCatalogSnapshotResponse,
     CatalogBrandAliasResponse,
     CatalogVehicleAliasResponse,
@@ -69,6 +70,7 @@ class PostgresBrandVehicleHttpService:
                     principal=principal,
                     request_id=request_id,
                     event_type="vehicle_brand_created",
+                    object_type="vehicle_brand",
                     object_id=str(brand.id),
                     detail={"code": brand.code, "role": brand.role},
                 )
@@ -151,6 +153,7 @@ class PostgresBrandVehicleHttpService:
                     principal=principal,
                     request_id=request_id,
                     event_type="vehicle_brand_updated",
+                    object_type="vehicle_brand",
                     object_id=str(brand.id),
                     detail={
                         "version": brand.version,
@@ -179,7 +182,8 @@ class PostgresBrandVehicleHttpService:
                 repository = PostgresBrandVehicleCatalogRepository(session)
                 try:
                     deleted = repository.delete_unreferenced_brand(
-                        brand_id, actor_ref=principal.principal_id
+                        brand_id,
+                        actor_ref=principal.principal_id,
                     )
                 except RuntimeError as exc:
                     raise AdministrationConflict from exc
@@ -190,6 +194,7 @@ class PostgresBrandVehicleHttpService:
                     principal=principal,
                     request_id=request_id,
                     event_type="vehicle_brand_deleted",
+                    object_type="vehicle_brand",
                     object_id=str(brand_id),
                     detail={},
                 )
@@ -209,6 +214,9 @@ class PostgresBrandVehicleHttpService:
         try:
             with session.begin():
                 repository = PostgresBrandVehicleCatalogRepository(session)
+                before = repository.get_vehicle_model(vehicle_model_id)
+                if before is None:
+                    raise AdministrationResourceNotFound
                 try:
                     vehicle = repository.assign_vehicle_brand(
                         vehicle_model_id,
@@ -224,8 +232,15 @@ class PostgresBrandVehicleHttpService:
                     principal=principal,
                     request_id=request_id,
                     event_type="vehicle_model_brand_assigned",
+                    object_type="vehicle_model",
                     object_id=str(vehicle_model_id),
-                    detail={"brand_id": None if body.brand_id is None else str(body.brand_id)},
+                    detail={
+                        "previous_brand_id": (
+                            None if before.brand_id is None else str(before.brand_id)
+                        ),
+                        "brand_id": None if body.brand_id is None else str(body.brand_id),
+                        "catalog_version": vehicle.catalog_version,
+                    },
                 )
                 return VehicleBrandAssignmentResponse(
                     vehicle_model_id=vehicle.id,
@@ -251,12 +266,23 @@ class PostgresBrandVehicleHttpService:
         finally:
             session.close()
 
-    def get_catalog_snapshot(self) -> BrandVehicleCatalogSnapshotResponse:
+    def get_catalog_snapshot(
+        self,
+        query: BrandVehicleCatalogSnapshotQuery,
+    ) -> BrandVehicleCatalogSnapshotResponse:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
                 repository = PostgresBrandVehicleCatalogRepository(session)
-                snapshot = repository.catalog_snapshot()
+                try:
+                    snapshot = repository.catalog_snapshot(
+                        filter_mode=query.mode,
+                        selected_brand_ids=query.brand_ids,
+                    )
+                except LookupError as exc:
+                    raise AdministrationResourceNotFound from exc
+                except RuntimeError as exc:
+                    raise AdministrationConflict from exc
                 aliases_by_brand: dict[UUID, list[BrandAliasResponse]] = {}
                 for alias in snapshot.brand_aliases:
                     aliases_by_brand.setdefault(alias.brand_id, []).append(
@@ -268,6 +294,8 @@ class PostgresBrandVehicleHttpService:
                     )
                 return BrandVehicleCatalogSnapshotResponse(
                     catalog_version=snapshot.catalog_version,
+                    filter_mode=snapshot.filter_mode,
+                    selected_brand_ids=snapshot.selected_brand_ids,
                     brands=tuple(
                         BrandResponse(
                             id=brand.id,
@@ -278,7 +306,7 @@ class PostgresBrandVehicleHttpService:
                             version=brand.version,
                             catalog_version=brand.catalog_version,
                             aliases=tuple(aliases_by_brand.get(brand.id, ())),
-                            referenced=False,
+                            referenced=repository.is_brand_referenced(brand.id),
                             created_at=brand.created_at,
                             updated_at=brand.updated_at,
                         )
@@ -336,7 +364,7 @@ def _brand_response(
             )
             for alias in repository.list_brand_aliases(brand.id)
         ),
-        referenced=False,
+        referenced=repository.is_brand_referenced(brand.id),
         created_at=brand.created_at,
         updated_at=brand.updated_at,
     )
@@ -348,6 +376,7 @@ def _audit(
     principal: Principal,
     request_id: str,
     event_type: str,
+    object_type: str,
     object_id: str,
     detail: dict[str, object],
 ) -> None:
@@ -357,7 +386,7 @@ def _audit(
             actor_kind="principal",
             actor_ref=principal.principal_id,
             event_type=event_type,
-            object_type="vehicle_brand" if "brand" in event_type else "vehicle_model",
+            object_type=object_type,
             object_id=object_id,
             request_id=request_id,
             safe_detail=cast(Any, detail),
