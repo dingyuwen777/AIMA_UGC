@@ -21,51 +21,17 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          from base64 import b64decode
           from pathlib import Path
 
           path = Path("docs/03_API接口说明.md")
           text = path.read_text(encoding="utf-8")
           marker = "\n---\n\n# 4. Collection Runtime API\n"
-          section = r'''
----
-
-## 3.2 品牌 / 车型目录管理 API
-
-Stage 2 在 Stage 1 的 Brand/Vehicle Schema 上提供独立可用的目录管理、准备度与冻结 Snapshot 能力。精确 Request/Response、Method、operationId 仍以当前 OpenAPI 为机器事实；实现边界位于：
-
-- [`backend/src/aima_ugc/contracts/brand_vehicle.py`](../backend/src/aima_ugc/contracts/brand_vehicle.py)
-- [`backend/src/aima_ugc/bootstrap/brand_vehicle_http.py`](../backend/src/aima_ugc/bootstrap/brand_vehicle_http.py)
-- [`backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py`](../backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py)
-
-当前公开路径：
-
-```text
-GET    /api/v1/vehicle-brands
-POST   /api/v1/vehicle-brands
-GET    /api/v1/vehicle-brands/{brand_id}
-PUT    /api/v1/vehicle-brands/{brand_id}
-DELETE /api/v1/vehicle-brands/{brand_id}
-POST   /api/v1/vehicle-brands/{brand_id}/aliases
-DELETE /api/v1/vehicle-brands/{brand_id}/aliases/{alias_id}
-PUT    /api/v1/vehicle-models/{vehicle_model_id}/brand
-GET    /api/v1/vehicle-catalog/readiness
-GET    /api/v1/vehicle-catalog/snapshot
-```
-
-关键语义：
-
-- Brand CRUD、Alias 与 Vehicle 品牌归属变化共用唯一 `vehicle_catalog_versions`；
-- 新建 active Vehicle 必须显式绑定有效 active Brand；Stage 1 前遗留的未归属 active Vehicle 不会被名称或 Keyword Pack 猜测回填；
-- `GET /api/v1/vehicle-catalog/readiness` 面向管理员暴露尚未完成有效 Brand 归属的 active Vehicle；
-- Snapshot 支持 `all_active` 与 `selected` Brand Scope。选择 Brand 自动包含其全部 active Vehicle，并冻结 Brand/Vehicle/Alias、目录版本与全局 Alias 歧义上下文；
-- 跨 Brand/Vehicle 的同名 Alias 保留为冲突事实，Resolver fail-safe，不猜唯一实体；
-- 本阶段没有切换 Excel/TikHub Runtime，也没有改变 Collection Plan / Keyword Pack 的既有语义。
-
-'''
+          section = b64decode("LS0tCiMjIDMuMiDlk4HniYwgLyDovablnovnm67lvZXnrqHnkIYgQVBJCgpTdGFnZSAyIOWcqCBTdGFnZSAxIOeahCBCcmFuZC9WZWhpY2xlIFNjaGVtYSDkuIrmj5Dkvpvni6znq4vlj6/nlKjnmoTnm67lvZXnrqHnkIbjgIHlh4blpIfluqbkuI7lhrvnu5MgU25hcHNob3Qg6IO95Yqb44CC57K+56GuIFJlcXVlc3QvUmVzcG9uc2XjgIFNZXRob2TjgIFvcGVyYXRpb25JZCDku43ku6XlvZPliY0gT3BlbkFQSSDkuLrmnLrlmajkuovlrp7vvJvlrp7njrDovrnnlYzkvY3kuo7vvJoKCi0gW2BiYWNrZW5kL3NyYy9haW1hX3VnYy9jb250cmFjdHMvYnJhbmRfdmVoaWNsZS5weWBdKC4uL2JhY2tlbmQvc3JjL2FpbWFfdWdjL2NvbnRyYWN0cy9icmFuZF92ZWhpY2xlLnB5KQotIFtgYmFja2VuZC9zcmMvYWltYV91Z2MvYm9vdHN0cmFwL2JyYW5kX3ZlaGljbGVfaHR0cC5weWBdKC4uL2JhY2tlbmQvc3JjL2FpbWFfdWdjL2Jvb3RzdHJhcC9icmFuZF92ZWhpY2xlX2h0dHAucHkpCi0gW2BiYWNrZW5kL3NyYy9haW1hX3VnYy9hZGFwdGVycy9wZXJzaXN0ZW5jZS9wb3N0Z3Jlcy9icmFuZF92ZWhpY2xlLnB5YF0oLi4vYmFja2VuZC9zcmMvYWltYV91Z2MvYWRhcHRlcnMvcGVyc2lzdGVuY2UvcG9zdGdyZXMvYnJhbmRfdmVoaWNsZS5weSkKCuW9k+WJjeWFrOW8gOi3rzrvvJoKCmBgYHRleHQKR0VUICAgIC9hcGkvdjEvdmVoaWNsZS1icmFuZHMKUE9TVCAgIC9hcGkvdjEvdmVoaWNsZS1icmFuZHMKR0VUICAgIC9hcGkvdjEvdmVoaWNsZS1icmFuZHMve2JyYW5kX2lkfQpQVVQgICAgL2FwaS92MS92ZWhpY2xlLWJyYW5kcy97YnJhbmRfaWR9CkRFTEVURSAvaS92MS92ZWhpY2xlLWJyYW5kcy97YnJhbmRfaWR9ClBPU1QgICAvYXBpL3YxL3ZlaGljbGUtYnJhbmRzL3ticmFuZF9pZH0vYWxpYXNlcwpERUxFVEUgL2FwaS92MS92ZWhpY2xlLWJyYW5kcy97YnJhbmRfaWR9L2FsaWFzZXMve2FsaWFzX2lkfQpQVVQgICAgL2FwaS92MS92ZWhpY2xlLW1vZGVscy97dmVoaWNsZV9tb2RlbF9pZH0vYnJhbmQKR0VUICAgIC9hcGkvdjEvdmVoaWNsZS1jYXRhbG9nL3JlYWRpbmVzcwpHRVQgICAgL2FwaS92MS92ZWhpY2xlLWNhdGFsb2cvc25hcHNob3QKYGBgCgrlhbPplK7or63kuYnvvJoKCi0gQnJhbmQgQ1JVRLjgIEFsaWFzIOS4jiBWZWhpY2xlIOWTgeeJjOW9kuWxnuWPmOWMluWFsemDqOWUryBgdmVoaWNsZV9jYXRhbG9nX3ZlcnNpb25zYO+8mwotIOaWsOW7uiBhY3RpdmUgVmVoaWNsZSDlv4XpobvmnL7npLrnu5HlrprmnInmlYggYWN0aXZlIEJyYW5k77ybU3RhZ2UgMSDliY3pgZfpoYjnmoTmnKrlvZLlnoQgYWN0aXZlIFZlaGljbGUg5LiN5Lya6KKr5ZCN56ew5oiWIEtleXdvcmQgUGFjayDnjJzmtYvlm57loavvvJsKLSBgR0VUIC9hcGkvdjEvdmVoaWNsZS1jYXRhbG9nL3JlYWRpbmVzc2Dpn6LlkJHnrqHnkIblkZjmmoDpnLLlrZXov5jmnKrmtYvlj5HnlJ/mnInmlYggQnJhbmQg5b2S5bGe55qEIGFjdGl2ZSBWZWhpY2xl77ybCi0gU25hcHNob3Qg5pSv5oyBIGBhbGxfYWN0aXZlYCDkuI7gYHNlbGVjdGVkYCBCcmFuZCBTY29wZeOAguWJjeaLqSBCcmFuZCDoh6rliqjljIXlkKvlhbblhajpg6ggYWN0aXZlIFZlaGljbGXvvIzlubblhrvnu5MgQnJhbmQvVmVoaWNsZS9BbGlhc+OAgeebruW9leeJiOacrOS4juWFqOWxgCBBbGlhcyDmr5TkuYnlkJHlhrXvvJsKLSDot6ggQnJhbmQvVmVoaWNsZSDnmoTlkIzlkI0gQWxpYXMg5L+d55WZ5Li65Yay56qB5LqL5a6e77yMUmVzb2x2ZXIgZmFpbC1zYWZl77yM5LiN54yc5ZSv5LiA5a6e5L2T77ybCi0g5pys6Zi25q616LKh5pyJ5YiH5o2iIEV4Y2VsL1Rpa0h1YiBSdW50aW1l77yM5Lmf5rKh5pyJ5pS55YqoIENvbGxlY3Rpb24gUGxhbiAvIEtleXdvcmQgUGFjayDnmoTml6LmnInor63kuYnvvJoK").decode("utf-8")
           if "/api/v1/vehicle-catalog/snapshot" not in text:
               if marker not in text:
                   raise SystemExit("API docs insertion marker drifted")
-              text = text.replace(marker, "\n" + section + "# 4. Collection Runtime API\n", 1)
+              text = text.replace(marker, "\n" + section + "\n# 4. Collection Runtime API\n", 1)
               path.write_text(text, encoding="utf-8")
           PY
       - name: Commit only permanent docs change
