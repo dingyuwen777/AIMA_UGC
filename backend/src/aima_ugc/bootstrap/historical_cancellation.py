@@ -44,11 +44,11 @@ def _campaign_id_for_job(session: Session, job: JobRecord) -> UUID | None:
 
     repository = PostgresHistoricalImportRepository(session)
     if job.job_type == HISTORICAL_SNAPSHOT_JOB_TYPE:
-        payload = HistoricalSnapshotJobPayload.model_validate(job.payload)
-        item = repository.get_item(payload.campaign_item_id)
+        snapshot_payload = HistoricalSnapshotJobPayload.model_validate(job.payload)
+        item = repository.get_item(snapshot_payload.campaign_item_id)
     elif job.job_type == HISTORICAL_IMPORT_CHUNK_JOB_TYPE:
-        payload = HistoricalImportChunkJobPayload.model_validate(job.payload)
-        item = repository.get_item(payload.chunk_item_id)
+        import_payload = HistoricalImportChunkJobPayload.model_validate(job.payload)
+        item = repository.get_item(import_payload.chunk_item_id)
     else:
         return None
     return cast(UUID, item["campaign_id"]) if item is not None else None
