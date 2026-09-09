@@ -12,6 +12,7 @@ from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpServic
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.contracts.administration import VehicleModelCreateRequest, VehicleModelUpdateRequest
 from aima_ugc.contracts.brand_vehicle import (
+    BrandAliasCreateRequest,
     BrandCreateRequest,
     BrandUpdateRequest,
     VehicleBrandAssignmentRequest,
@@ -85,10 +86,16 @@ def test_brand_vehicle_management_snapshot_and_readiness_use_one_catalog(runtime
             code="competitor-b",
             display_name="竞品 B",
             role="competitor",
-            aliases=("竞品B",),
+            aliases=("竞品B", "共享品牌词"),
         ),
         principal=principal,
         request_id="stage2-brand-competitor",
+    )
+    brand_service.add_alias(
+        owned.id,
+        BrandAliasCreateRequest(text="共享品牌词"),
+        principal=principal,
+        request_id="stage2-brand-owned-shared-alias",
     )
     vehicle = vehicle_service.create_vehicle_model(
         VehicleModelCreateRequest(
@@ -126,7 +133,8 @@ def test_brand_vehicle_management_snapshot_and_readiness_use_one_catalog(runtime
     assert selected.selected_brand_ids == (competitor.id,)
     assert {item.id for item in selected.brands} == {competitor.id}
     assert {item.id for item in selected.vehicles} == {vehicle.id}
-    assert {item.text for item in selected.brand_aliases} == {"竞品B"}
+    assert {item.text for item in selected.brand_aliases} == {"竞品B", "共享品牌词"}
+    assert "共享品牌词" in selected.ambiguous_brand_aliases
     assert {item.text for item in selected.vehicle_aliases} == {"露娜Air"}
     assert selected.catalog_version == moved.catalog_version
 

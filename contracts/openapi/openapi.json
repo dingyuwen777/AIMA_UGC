@@ -1287,6 +1287,20 @@
         "additionalProperties": false,
         "description": "冻结的 Filter Scope；selected Brand 自动包含其全部 active Vehicle。",
         "properties": {
+          "ambiguous_brand_aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ambiguous Brand Aliases",
+            "type": "array"
+          },
+          "ambiguous_vehicle_aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ambiguous Vehicle Aliases",
+            "type": "array"
+          },
           "brand_aliases": {
             "items": {
               "$ref": "#/components/schemas/CatalogBrandAliasSnapshotItem"
@@ -1353,6 +1367,8 @@
           "brand_aliases",
           "vehicles",
           "vehicle_aliases",
+          "ambiguous_brand_aliases",
+          "ambiguous_vehicle_aliases",
           "unresolved_active_vehicle_ids"
         ],
         "title": "BrandVehicleCatalogSnapshotResponse",

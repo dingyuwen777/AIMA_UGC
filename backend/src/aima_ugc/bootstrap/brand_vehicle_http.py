@@ -603,6 +603,8 @@ def _snapshot_response(
             )
             for item in snapshot.vehicle_aliases
         ),
+        ambiguous_brand_aliases=snapshot.ambiguous_brand_aliases,
+        ambiguous_vehicle_aliases=snapshot.ambiguous_vehicle_aliases,
         unresolved_active_vehicle_ids=snapshot.unresolved_active_vehicle_ids,
     )
 

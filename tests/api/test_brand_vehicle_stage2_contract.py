@@ -43,5 +43,7 @@ def test_vehicle_contract_exposes_brand_id_and_snapshot_has_stage2_scope() -> No
         "brand_aliases",
         "vehicles",
         "vehicle_aliases",
+        "ambiguous_brand_aliases",
+        "ambiguous_vehicle_aliases",
         "unresolved_active_vehicle_ids",
     } <= set(snapshot["properties"])

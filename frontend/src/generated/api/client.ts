@@ -540,6 +540,8 @@ export interface CatalogVehicleSnapshotItem {
  * 冻结的 Filter Scope；selected Brand 自动包含其全部 active Vehicle。
  */
 export interface BrandVehicleCatalogSnapshotResponse {
+  ambiguous_brand_aliases: string[];
+  ambiguous_vehicle_aliases: string[];
   brand_aliases: CatalogBrandAliasSnapshotItem[];
   brands: CatalogBrandSnapshotItem[];
   /** @exclusiveMinimum 0 */

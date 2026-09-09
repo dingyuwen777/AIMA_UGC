@@ -77,6 +77,8 @@ class BrandVehicleCatalogSnapshot:
     brand_aliases: tuple[BrandAliasRecord, ...]
     vehicles: tuple[VehicleRecord, ...]
     vehicle_aliases: tuple[VehicleAliasRecord, ...]
+    ambiguous_brand_aliases: tuple[str, ...] = ()
+    ambiguous_vehicle_aliases: tuple[str, ...] = ()
     unresolved_active_vehicle_ids: tuple[UUID, ...] = ()
 
 
@@ -217,6 +219,9 @@ class BrandVehicleResolver:
             evidence: list[ResolverEvidence] = []
             resolved: set[UUID] = set()
             for normalized_alias in sorted(matched, key=lambda item: (-len(item), item)):
+                if normalized_alias in snapshot.ambiguous_vehicle_aliases:
+                    conflicts.append(f"ambiguous_vehicle_alias:{normalized_alias}")
+                    continue
                 aliases = aliases_by_text[normalized_alias]
                 candidates = {item.vehicle_model_id for item in aliases}
                 if len(candidates) != 1:
@@ -281,6 +286,9 @@ class BrandVehicleResolver:
             if not matched:
                 continue
             for normalized_alias in sorted(matched, key=lambda item: (-len(item), item)):
+                if normalized_alias in snapshot.ambiguous_brand_aliases:
+                    conflicts.append(f"ambiguous_brand_alias:{normalized_alias}")
+                    continue
                 aliases = aliases_by_text[normalized_alias]
                 candidates = {item.brand_id for item in aliases}
                 if len(candidates) != 1:

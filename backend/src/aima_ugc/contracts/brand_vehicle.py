@@ -170,6 +170,8 @@ class BrandVehicleCatalogSnapshotResponse(BaseModel):
     brand_aliases: tuple[CatalogBrandAliasSnapshotItem, ...]
     vehicles: tuple[CatalogVehicleSnapshotItem, ...]
     vehicle_aliases: tuple[CatalogVehicleAliasSnapshotItem, ...]
+    ambiguous_brand_aliases: tuple[str, ...]
+    ambiguous_vehicle_aliases: tuple[str, ...]
     unresolved_active_vehicle_ids: tuple[UUID, ...]
 
 

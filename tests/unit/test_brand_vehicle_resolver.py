@@ -163,6 +163,31 @@ def test_title_has_priority_over_lower_fields() -> None:
     assert brand_alias_evidence.source_field == "title"
 
 
+def test_selected_scope_does_not_hide_global_brand_alias_ambiguity() -> None:
+    snapshot = _snapshot()
+    snapshot = BrandVehicleCatalogSnapshot(
+        catalog_version=snapshot.catalog_version,
+        filter_scope="selected",
+        selected_brand_ids=(BRAND_A,),
+        brands=(snapshot.brands[0],),
+        brand_aliases=(snapshot.brand_aliases[0],),
+        vehicles=snapshot.vehicles,
+        vehicle_aliases=snapshot.vehicle_aliases,
+        ambiguous_brand_aliases=("爱玛",),
+    )
+
+    resolution = BrandVehicleResolver().resolve(
+        snapshot,
+        title="爱玛新品",
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert resolution.matched is False
+    assert resolution.brand_matches == ()
+    assert resolution.conflicts == ("ambiguous_brand_alias:爱玛",)
+
+
 def test_manual_brand_lock_is_independent_from_vehicle_resolution() -> None:
     resolution = BrandVehicleResolver().resolve(
         _snapshot(),

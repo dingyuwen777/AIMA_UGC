@@ -223,9 +223,9 @@ class PostgresVehicleCatalogRepository:
             if requested_brand_id is None:
                 raise RuntimeError("active 车型必须绑定 active 品牌")
             brand_status = self._session.scalar(
-                select(vehicle_brands_table.c.status).where(
-                    vehicle_brands_table.c.id == requested_brand_id
-                )
+                select(vehicle_brands_table.c.status)
+                .where(vehicle_brands_table.c.id == requested_brand_id)
+                .with_for_update()
             )
             if brand_status != "active":
                 raise RuntimeError("active 车型只能绑定有效 active 品牌")

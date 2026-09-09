@@ -168,6 +168,9 @@ class PostgresAdministrationHttpService:
         try:
             with session.begin():
                 repository = PostgresVehicleCatalogRepository(session)
+                previous = repository.get_model(vehicle_model_id, for_update=True)
+                if previous is None:
+                    raise AdministrationResourceNotFound
                 try:
                     model = repository.update_model(
                         vehicle_model_id,
@@ -191,7 +194,14 @@ class PostgresAdministrationHttpService:
                     event_type="vehicle_model_updated",
                     object_type="vehicle_model",
                     object_id=str(model.id),
-                    detail={"version": model.version, "catalog_version": model.catalog_version},
+                    detail={
+                        "version": model.version,
+                        "catalog_version": model.catalog_version,
+                        "brand_id_before": (
+                            None if previous.brand_id is None else str(previous.brand_id)
+                        ),
+                        "brand_id_after": None if model.brand_id is None else str(model.brand_id),
+                    },
                 )
                 return _vehicle_response(repository, model)
         except IntegrityError as exc:

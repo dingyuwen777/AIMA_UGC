@@ -326,7 +326,8 @@ class PostgresBrandVehicleRepository:
         return True
 
     def require_active_brand(self, brand_id: UUID) -> BrandRecord:
-        brand = self.get_brand(brand_id)
+        # 与 Brand 停用/删除串行化，避免并发产生 active Vehicle -> deprecated Brand。
+        brand = self.get_brand(brand_id, for_update=True)
         if brand is None:
             raise LookupError(brand_id)
         if brand.status != "active":
@@ -469,6 +470,8 @@ class PostgresBrandVehicleRepository:
             )
         else:
             vehicle_alias_rows = ()
+        ambiguous_brand_aliases = self._ambiguous_active_brand_aliases()
+        ambiguous_vehicle_aliases = self._ambiguous_active_vehicle_aliases()
         return BrandVehicleCatalogSnapshot(
             catalog_version=self.current_catalog_version(),
             filter_scope=scope,
@@ -477,8 +480,46 @@ class PostgresBrandVehicleRepository:
             brand_aliases=tuple(_brand_alias_from_row(row) for row in brand_alias_rows),
             vehicles=tuple(_vehicle_from_row(row) for row in vehicle_rows),
             vehicle_aliases=tuple(_vehicle_alias_from_row(row) for row in vehicle_alias_rows),
+            ambiguous_brand_aliases=ambiguous_brand_aliases,
+            ambiguous_vehicle_aliases=ambiguous_vehicle_aliases,
             unresolved_active_vehicle_ids=self.unresolved_active_vehicle_ids(),
         )
+
+    def _ambiguous_active_brand_aliases(self) -> tuple[str, ...]:
+        rows = self._session.execute(
+            select(
+                vehicle_brand_aliases_table.c.normalized_text,
+                vehicle_brand_aliases_table.c.brand_id,
+            )
+            .join(
+                vehicle_brands_table,
+                vehicle_brands_table.c.id == vehicle_brand_aliases_table.c.brand_id,
+            )
+            .where(vehicle_brands_table.c.status == "active")
+        )
+        candidates: dict[str, set[UUID]] = {}
+        for normalized_text, brand_id in rows:
+            candidates.setdefault(cast(str, normalized_text), set()).add(cast(UUID, brand_id))
+        return tuple(sorted(alias for alias, ids in candidates.items() if len(ids) > 1))
+
+    def _ambiguous_active_vehicle_aliases(self) -> tuple[str, ...]:
+        rows = self._session.execute(
+            select(
+                vehicle_model_aliases_table.c.normalized_text,
+                vehicle_model_aliases_table.c.vehicle_model_id,
+            )
+            .join(
+                vehicle_models_table,
+                vehicle_models_table.c.id == vehicle_model_aliases_table.c.vehicle_model_id,
+            )
+            .where(vehicle_models_table.c.status == "active")
+        )
+        candidates: dict[str, set[UUID]] = {}
+        for normalized_text, vehicle_model_id in rows:
+            candidates.setdefault(cast(str, normalized_text), set()).add(
+                cast(UUID, vehicle_model_id)
+            )
+        return tuple(sorted(alias for alias, ids in candidates.items() if len(ids) > 1))
 
     def replace_automatic_brand_evidence(
         self,
