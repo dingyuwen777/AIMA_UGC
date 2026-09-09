@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from sqlalchemy import update
-
 from aima_ugc.adapters.persistence.postgres.historical_cancellation import (
     PostgresHistoricalCancellationRepository,
 )
@@ -23,6 +21,7 @@ from aima_ugc.modules.ingestion.historical_jobs import (
 )
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
 from aima_ugc.platform.config import load_settings
+from sqlalchemy import update
 
 
 def test_cancel_requests_running_snapshot_after_item_becomes_ready(tmp_path) -> None:
