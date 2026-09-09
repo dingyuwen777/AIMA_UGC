@@ -1194,6 +1194,53 @@ export interface ContentDetailResponse {
   vehicles?: ContentVehicleResponse[];
 }
 
+export type ContentFilterOptionSource = typeof ContentFilterOptionSource[keyof typeof ContentFilterOptionSource];
+
+
+export const ContentFilterOptionSource = {
+  active: 'active',
+  historical: 'historical',
+} as const;
+
+/**
+ * 一个可筛选业务值及其相对当前 active Scheme 的来源。
+ */
+export interface ContentFilterValueOptionResponse {
+  source: ContentFilterOptionSource;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  value: string;
+}
+
+/**
+ * 一级标签及当前可见内容中仍需保留的二级标签。
+ */
+export interface ContentFilterLabelOptionResponse {
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  primary_label: string;
+  /** @minItems 1 */
+  secondary_labels: ContentFilterValueOptionResponse[];
+  source: ContentFilterOptionSource;
+}
+
+/**
+ * 声音广场下拉选项；历史值不改变 active Taxonomy。
+ */
+export interface ContentFilterOptionsResponse {
+  analysis_statuses: ContentAnalysisStatus[];
+  content_types: string[];
+  labels: ContentFilterLabelOptionResponse[];
+  platforms: PlatformName[];
+  relevances: ContentRelevance[];
+  sentiments: ContentFilterValueOptionResponse[];
+  voice_types: ContentFilterValueOptionResponse[];
+}
+
 export interface ContentListItemResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
@@ -3832,6 +3879,38 @@ export const createContentAvailabilityObservation = async (contentAvailabilityOb
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentAvailabilityResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetContentFilterOptionsUrl = () => {
+
+
+
+
+  return `/api/v1/content-filter-options`
+}
+
+/**
+ * 读取 active Taxonomy 与当前可见历史值合并后的筛选目录。
+ * @summary Get Content Filter Options
+ */
+export const getContentFilterOptions = async ( options?: RequestInit): Promise<ContentFilterOptionsResponse> => {
+
+  const res = await fetch(getGetContentFilterOptionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentFilterOptionsResponse = body ? JSON.parse(body) : {}
   return data
 }
 

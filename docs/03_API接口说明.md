@@ -449,17 +449,23 @@ Count 用独立 `none/exact/estimated` 语义，不替换 Cursor。车型与 Ana
 
 ## 8.2 `GET /api/v1/content-analysis-taxonomy`
 
-声音广场需要合法的情感、发声类型和两级标签选项，但浏览器不能直接读取 Prompt 文件，也不能再维护一份平行枚举。这个只读接口复用当前 `PromptTaxonomyLoader`，只投影 Prompt/Taxonomy 版本 Hash 和安全分类目录；不会返回 Prompt 正文、判断规则、模型配置、Secret 路径或 API Key。
+声音广场的人工纠正需要当前合法的情感、发声类型和两级标签，但浏览器不能直接读取 Prompt 文件，也不能再维护一份平行枚举。这个只读接口只投影数据库 active Analysis Scheme 的 Prompt/Taxonomy 版本 Hash 和安全分类目录；不会返回 Prompt 正文、判断规则、模型配置、Secret 路径或 API Key，也不会混入历史 Scheme 值。
 
-Taxonomy 文件读取或校验失败时，接口使用统一 Problem Response 返回 `503 content_analysis_taxonomy_unavailable`。前端必须禁用依赖 Taxonomy 的筛选并显示错误和 `request_id`，不能回退到旧硬编码；内容列表和其他不依赖分类目录的操作仍可继续使用。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
+Taxonomy 读取或校验失败时，接口使用统一 Problem Response 返回 `503 content_analysis_taxonomy_unavailable`。前端必须禁用依赖 active Taxonomy 的人工纠正并显示错误和 `request_id`，不能回退到旧硬编码；内容列表和筛选目录仍可独立使用。
 
-## 8.3 `POST /api/v1/analysis/content-runs/preview`
+## 8.3 `GET /api/v1/content-filter-options`
+
+声音广场下拉选项的唯一后端目录。平台、相关性和分析状态来自正式 Contract，内容类型来自当前可见 Content Current；情感、发声类型和两级标签按 active Taxonomy 顺序优先，再追加当前可见最新 Analysis/人工覆盖中仍存在的历史值。历史项明确返回 `source=historical`，但不会写回或扩大 active Taxonomy。
+
+历史值查询复用内容列表的当前版本、有效来源、最新 Analysis、人工维度锁和有效相关性投影，不从旧 Content Version、失效来源或全表原始结果做无边界 `DISTINCT`。读取失败不阻断内容列表；前端禁用动态下拉并显示统一错误，不回退到业务值硬编码。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
+
+## 8.4 `POST /api/v1/analysis/content-runs/preview`
 
 新版页面先预检用户显式选择的 Content，返回冻结目标数、预计 Shard 等创建 Run 前所需信息/身份。
 
 当前新版 Run 只开放显式选择的 **1—1000 个 Content ID**；query scope 暂不作为新版页面 Contract 开放。
 
-## 8.4 `POST /api/v1/analysis/content-runs`
+## 8.5 `POST /api/v1/analysis/content-runs`
 
 创建 Analysis Run Header + `analysis.content-run-plan.v1` Planner Job。
 
@@ -473,7 +479,7 @@ Planner 在 PostgreSQL 中：
 
 HTTP 不扫描/物化百万级目标，也不直接执行 LLM。
 
-## 8.5 Run 查询/取消
+## 8.6 Run 查询/取消
 
 ```text
 GET  /api/v1/analysis/content-runs
@@ -483,13 +489,13 @@ POST /api/v1/analysis/content-runs/{run_id}/cancel
 
 不同 Run 对同一 Content Version 的结果全部保留；Current 按 Run 创建顺序选择，较新 Run 失败/取消不会删除旧成功结果。页面进度使用冻结 `target_count` 和持久 Shard 进度，不从前端猜测。
 
-## 8.6 `POST /api/v1/content-analysis-requests`
+## 8.7 `POST /api/v1/content-analysis-requests`
 
 这是兼容入口，不是新版页面主入口。它继续兼容既有 selected/query 语义和既有 `request_id/job_id` Response，但当前后台也会纳入 Analysis Run/Shard 模型并保持冻结 Content Version 的语义。
 
 不要再把它描述成“当前新版 Analysis 唯一入口”或“直接创建一个覆盖全部目标的单一 Analysis Job”。
 
-## 8.7 `GET /api/v1/content-analysis-jobs/{job_id}`
+## 8.8 `GET /api/v1/content-analysis-jobs/{job_id}`
 
 兼容读取 Analysis Job 状态/Result。新版页面主要以 Analysis Run 资源展示一轮用户任务的历史和进度。
 

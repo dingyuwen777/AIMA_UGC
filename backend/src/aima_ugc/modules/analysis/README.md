@@ -66,12 +66,13 @@ voice_type == "真实用户发声"
 
 ## 2. Analysis Scheme 与 Git bootstrap
 
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：新空库 bootstrap/灾备基线。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_bootstrap.txt`](prompts/content_labeling_bootstrap.txt)：新空库 bootstrap 的显式版本中立指针，当前选择 V4。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：当前新空库 bootstrap/灾备资产。
 - [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)：既有 active Scheme 输出协议兼容基线，不再作为默认文件。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-空数据库第一次读取 Analysis 配置时，会把 V4 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。代码升级不会覆盖已有数据库 active Version；要在既有环境启用 V4，必须通过管理员配置创建并原子发布完整 V4 Scheme。
+空数据库第一次读取 Analysis 配置时，会解析受限指针，把其明确选择的版本化 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。指针只允许引用同目录 `content_labeling_vN.md`，不会因目录里新增实验文件而自动切换。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。代码升级不会覆盖已有数据库 active Version；要在既有环境启用新原则，必须通过管理员配置创建并原子发布完整 Scheme。
 
 一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；编译后再计算 `prompt_sha256 / taxonomy_sha256`。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
 
@@ -99,7 +100,7 @@ V4 的 Taxonomy 与机器语义映射必须同时合法；映射引用已删除�
 
 `prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
 
-声音广场通过 `GET /api/v1/content-analysis-taxonomy` 读取 active Scheme 的安全只读投影。生产装配在 [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)，投影函数在 [`backend/src/aima_ugc/bootstrap/analysis_taxonomy_http.py`](../../bootstrap/analysis_taxonomy_http.py)，Response 机器事实在 [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)。该接口不返回 Prompt 正文、自然语言规则、模型配置或 Secret；加载失败时返回统一 `503`，前端不会退回平行硬编码。
+声音广场人工纠正通过 `GET /api/v1/content-analysis-taxonomy` 读取 active Scheme 的安全只读投影；筛选下拉通过 `GET /api/v1/content-filter-options` 读取 active 分类与当前可见历史值的合并目录。历史值只用于检索，不进入 active Taxonomy。生产装配在 [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)，Response 机器事实在 [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)。接口不返回 Prompt 正文、自然语言规则、模型配置或 Secret；加载失败时返回统一 `503`，前端不会退回平行业务枚举。
 
 人工 `voice_type`、情感和标签只纠正当前 Content Version 已完成的 AI Result；无当前结果时不能创建平行人工分类。人工值按维度锁定并用于声音广场筛选/详情及后续导出，原始 `analysis_content_results` 始终不改写。
 

@@ -12,7 +12,14 @@ import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import { relevanceReviewActionLabel, relevanceReviewDecision, type RelevanceReviewDecision } from '../../../relevanceReview'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
-import { contentSummary, formatDateTime, formatNumber, labelPairText, platformLabel } from '../../../format'
+import {
+  contentSummary,
+  contentTypeLabel,
+  formatDateTime,
+  formatNumber,
+  labelPairText,
+  platformLabel,
+} from '../../../format'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -117,14 +124,6 @@ function supplementMessage(status: string): string {
     return '内容补充已取消，当前展示已入库内容。可在采集中心重新发起补充。'
   }
   return '正在补充完整详情与评论，当前先展示已入库内容。'
-}
-
-/** 将标准化内容类型映射为业务文案，未知旧值不直接暴露内部枚举。 */
-function contentTypeLabel(value: string): string {
-  if (value === 'image') return '图文 / 图片'
-  if (value === 'video') return '视频'
-  if (value === 'text') return '纯文本'
-  return '未识别'
 }
 
 /** 将内部 Provider 名称归一为用户可理解的来源类别。 */
@@ -364,7 +363,7 @@ function commentCoverageLabel(value: string): string {
         class="manual-review"
       >
         <header class="section-heading">
-          <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析规则。</small></div>
+          <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析原则。</small></div>
           <span v-if="lockedDimensions.length">锁定 {{ lockedDimensions.join('、') }}</span>
         </header>
         <p

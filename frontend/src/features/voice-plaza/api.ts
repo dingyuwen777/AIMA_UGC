@@ -8,6 +8,7 @@ import {
   getContent,
   getContentAnalysisCapabilities,
   getContentAnalysisTaxonomy,
+  getContentFilterOptions,
   getContentAnalysisJob,
   getExportColumnCatalog,
   getDataExport,
@@ -29,6 +30,7 @@ import {
   type ContentAnalysisCreatedResponse,
   type ContentAnalysisSubmitRequest,
   type ContentDetailResponse,
+  type ContentFilterOptionsResponse,
   type ContentListResponse,
   type ContentRelevanceReviewRequest,
   type ContentRelevanceReviewResponse,
@@ -104,6 +106,11 @@ export async function reviewAnalysis(
 /** 通过生成 Client 读取当前 Prompt Taxonomy 的安全只读投影。 */
 export async function fetchContentAnalysisTaxonomy(): Promise<ContentAnalysisTaxonomyResponse> {
   return unwrap(await getContentAnalysisTaxonomy())
+}
+
+/** 读取 active 分类与当前可见历史值合并后的声音广场筛选目录。 */
+export async function fetchContentFilterOptions(): Promise<ContentFilterOptionsResponse> {
+  return unwrap(await getContentFilterOptions())
 }
 
 export async function submitContentAnalysis(

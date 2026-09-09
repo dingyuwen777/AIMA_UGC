@@ -29,6 +29,16 @@ class ContentReadQuery:
 
 
 @dataclass(frozen=True, slots=True)
+class ContentFilterValues:
+    """当前可见 Content 投影中实际存在的动态筛选值。"""
+
+    content_types: tuple[str, ...]
+    sentiments: tuple[str, ...]
+    voice_types: tuple[str, ...]
+    label_pairs: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ContentAnalysisRead:
     result_id: UUID | None
     status: str
@@ -110,6 +120,7 @@ __all__ = [
     "ContentAnalysisRead",
     "ContentAvailabilityRead",
     "ContentReadQuery",
+    "ContentFilterValues",
     "ContentReadRecord",
     "ContentSourceRead",
     "ContentVehicleEvidenceRead",

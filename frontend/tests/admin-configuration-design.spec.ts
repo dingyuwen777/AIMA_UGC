@@ -38,7 +38,7 @@ describe('administrator configuration baseline', () => {
       '词包关联',
       'AI 模型',
       'TikHub',
-      'AI 分析规则',
+      'AI 分析原则',
       '操作记录',
     ]) {
       expect(html).toContain(label)

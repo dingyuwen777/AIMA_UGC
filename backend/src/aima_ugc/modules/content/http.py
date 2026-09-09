@@ -16,6 +16,7 @@ from aima_ugc.contracts.http import (
     ContentAnalysisSubmitRequest,
     ContentAnalysisTaxonomyResponse,
     ContentDetailResponse,
+    ContentFilterOptionsResponse,
     ContentListQuery,
     ContentListResponse,
     JobStatusResponse,
@@ -60,6 +61,11 @@ class ContentAnalysisRunConflict(RuntimeError):
 
 class ContentHttpService(Protocol):
     def list_contents(self, query: ContentListQuery) -> ContentListResponse: ...
+
+    def get_filter_options(self) -> ContentFilterOptionsResponse:
+        """读取 active Taxonomy 与当前可见历史值合并后的筛选目录。"""
+
+        ...
 
     def get_content(self, content_id: UUID) -> ContentDetailResponse: ...
 

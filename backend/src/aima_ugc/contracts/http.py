@@ -700,6 +700,11 @@ class CollectionPlanListResponse(BaseModel):
 
 
 type ContentAnalysisStatus = Literal["pending", "completed", "stale"]
+CONTENT_ANALYSIS_STATUSES: tuple[ContentAnalysisStatus, ...] = (
+    "completed",
+    "pending",
+    "stale",
+)
 type ContentRelevanceSource = Literal["ai", "manual_review"]
 
 
@@ -733,6 +738,42 @@ class ContentAnalysisTaxonomyResponse(BaseModel):
     sentiments: tuple[str, ...] = Field(min_length=1)
     voice_types: tuple[str, ...] = Field(min_length=1)
     labels: tuple[ContentAnalysisTaxonomyLabelResponse, ...] = Field(min_length=1)
+
+
+type ContentFilterOptionSource = Literal["active", "historical"]
+
+
+class ContentFilterValueOptionResponse(BaseModel):
+    """一个可筛选业务值及其相对当前 active Scheme 的来源。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str = Field(min_length=1, max_length=256)
+    source: ContentFilterOptionSource
+
+
+class ContentFilterLabelOptionResponse(BaseModel):
+    """一级标签及当前可见内容中仍需保留的二级标签。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    primary_label: str = Field(min_length=1, max_length=256)
+    source: ContentFilterOptionSource
+    secondary_labels: tuple[ContentFilterValueOptionResponse, ...] = Field(min_length=1)
+
+
+class ContentFilterOptionsResponse(BaseModel):
+    """声音广场下拉选项；历史值不改变 active Taxonomy。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platforms: tuple[PlatformName, ...]
+    relevances: tuple[ContentRelevance, ...]
+    analysis_statuses: tuple[ContentAnalysisStatus, ...]
+    content_types: tuple[str, ...]
+    sentiments: tuple[ContentFilterValueOptionResponse, ...]
+    voice_types: tuple[ContentFilterValueOptionResponse, ...]
+    labels: tuple[ContentFilterLabelOptionResponse, ...]
 
 
 class ContentAnalysisResponse(BaseModel):
@@ -1581,6 +1622,7 @@ def _historical_relative_path(value: str) -> str:
 
 
 __all__ = [
+    "CONTENT_ANALYSIS_STATUSES",
     "AnalysisRunTargetSelection",
     "CommentCoverageResponse",
     "CollectionBatchSupplementEligibilityResponse",
@@ -1622,6 +1664,10 @@ __all__ = [
     "ContentCountRequest",
     "ContentDetailResponse",
     "ContentFilterSnapshot",
+    "ContentFilterLabelOptionResponse",
+    "ContentFilterOptionsResponse",
+    "ContentFilterOptionSource",
+    "ContentFilterValueOptionResponse",
     "ContentLabelPairResponse",
     "ContentListItemResponse",
     "ContentListQuery",

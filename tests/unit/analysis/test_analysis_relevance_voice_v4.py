@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from aima_ugc.contracts.analysis import ContentLabelAnalysisV3
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
@@ -12,13 +13,16 @@ from aima_ugc.contracts.canonical import (
 )
 from aima_ugc.modules.analysis.content_labeling import (
     CONTENT_LABELING_PROMPT_PATH,
+    CONTENT_LABELING_PROMPT_POINTER_PATH,
     PROMPT_VERSION,
     ContentLabelingService,
     FakeContentLabelingLLM,
     PromptTaxonomy,
     PromptTaxonomyLoader,
+    resolve_content_labeling_prompt_path,
 )
 from aima_ugc.modules.analysis.prompt_snapshot import FrozenPromptTaxonomyLoader
+from aima_ugc.modules.analysis.prompt_taxonomy import PromptTaxonomyError
 from aima_ugc.modules.analysis.schemes import (
     bootstrap_definition_from_prompt,
     compile_analysis_scheme,
@@ -147,6 +151,61 @@ def test_v4_is_the_new_bootstrap_prompt_while_v3_remains_available() -> None:
     assert v3_taxonomy.output_protocol_version == "content-labeling.v3"
     assert "个人交易发声" in taxonomy.voice_types
     assert "个人交易发声" not in v3_taxonomy.voice_types
+
+
+def test_bootstrap_prompt_uses_a_version_neutral_checked_pointer(tmp_path: Path) -> None:
+    """新基线只改指针和 Prompt 资产，不再修改 Python 版本常量。"""
+
+    prompt_directory = tmp_path / "prompts"
+    prompt_directory.mkdir()
+    future_prompt = prompt_directory / "content_labeling_v5.md"
+    future_prompt.write_text(
+        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8").replace(
+            "Prompt Version：`content-labeling.v4`",
+            "Prompt Version：`content-labeling.v5`",
+        ),
+        encoding="utf-8",
+    )
+    pointer = prompt_directory / CONTENT_LABELING_PROMPT_POINTER_PATH.name
+    pointer.write_text(f"{future_prompt.name}\n", encoding="utf-8")
+
+    selected = resolve_content_labeling_prompt_path(pointer)
+    taxonomy = PromptTaxonomyLoader(selected).load()
+
+    assert selected == future_prompt
+    assert taxonomy.prompt_version == "content-labeling.v5"
+    assert taxonomy.output_protocol_version == "content-labeling.v4"
+
+
+@pytest.mark.parametrize("value", ["../content_labeling_v5.md", "content_labeling_current.md"])
+def test_bootstrap_prompt_pointer_rejects_unversioned_or_traversal_paths(
+    tmp_path: Path,
+    value: str,
+) -> None:
+    """基线指针只能选择同目录内明确版本化的 Prompt 文件。"""
+
+    pointer = tmp_path / "content_labeling_bootstrap.txt"
+    pointer.write_text(value, encoding="utf-8")
+
+    with pytest.raises(PromptTaxonomyError, match="基线指针"):
+        resolve_content_labeling_prompt_path(pointer)
+
+
+def test_bootstrap_prompt_pointer_rejects_filename_and_declared_version_mismatch(
+    tmp_path: Path,
+) -> None:
+    """指针文件名与 Prompt 内声明错配时必须在 bootstrap 前失败。"""
+
+    prompt = tmp_path / "content_labeling_v5.md"
+    prompt.write_text(
+        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    pointer = tmp_path / "content_labeling_bootstrap.txt"
+    pointer.write_text(f"{prompt.name}\n", encoding="utf-8")
+
+    with pytest.raises(PromptTaxonomyError, match="文件名.*Prompt Version"):
+        resolve_content_labeling_prompt_path(pointer)
 
 
 def test_v4_prompt_defines_decision_order_evidence_and_prompt_injection_boundary() -> None:

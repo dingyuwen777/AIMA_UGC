@@ -4,10 +4,23 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
 
-import type { AnalysisContentRunResponse } from '../src/generated/api/client'
+import type {
+  AnalysisContentRunResponse,
+  ContentFilterOptionsResponse,
+} from '../src/generated/api/client'
 import VoicePlazaPage from '../src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue'
 import VoicePlazaTable from '../src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaTable.vue'
 import { useVoicePlazaStore } from '../src/features/voice-plaza/store'
+
+const filterOptions: ContentFilterOptionsResponse = {
+  platforms: ['xiaohongshu', 'douyin', 'weibo', 'bilibili', 'kuaishou'],
+  relevances: ['relevant', 'irrelevant'],
+  analysis_statuses: ['completed', 'pending', 'stale'],
+  content_types: ['note', 'image', 'video', 'text', 'unknown'],
+  sentiments: [],
+  voice_types: [],
+  labels: [],
+}
 
 const blankRoute = { render: () => h('div') }
 
@@ -92,7 +105,9 @@ describe('声音广场正式 Figma 基线', () => {
   })
 
   it('Figma 两行筛选全部直达，内容类型使用真实标准化选项', async () => {
-    const html = await renderComponent(VoicePlazaPage)
+    const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
+      useVoicePlazaStore(pinia).filterOptions = filterOptions
+    })
 
     for (const label of [
       '搜索内容',
@@ -119,6 +134,7 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).toContain('filter-row--primary')
     expect(html).toContain('filter-row--secondary')
     for (const [value, label] of [
+      ['note', '笔记'],
       ['image', '图文 / 图片'],
       ['video', '视频'],
       ['text', '纯文本'],

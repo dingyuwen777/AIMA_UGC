@@ -32,8 +32,9 @@ from aima_ugc.adapters.persistence.postgres.relevance_reviews import (
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
-from aima_ugc.contracts.analysis import ContentRelevance
+from aima_ugc.contracts.analysis import CONTENT_RELEVANCES, ContentRelevance
 from aima_ugc.contracts.http import (
+    CONTENT_ANALYSIS_STATUSES,
     AnalysisContentRunCreatedResponse,
     AnalysisContentRunCreateRequest,
     AnalysisContentRunListResponse,
@@ -52,7 +53,10 @@ from aima_ugc.contracts.http import (
     ContentAnalysisSubmitRequest,
     ContentAnalysisTaxonomyResponse,
     ContentDetailResponse,
+    ContentFilterLabelOptionResponse,
+    ContentFilterOptionsResponse,
     ContentFilterSnapshot,
+    ContentFilterValueOptionResponse,
     ContentLabelPairResponse,
     ContentListItemResponse,
     ContentListQuery,
@@ -65,6 +69,7 @@ from aima_ugc.contracts.http import (
     ContentVehicleResponse,
     JobStatusResponse,
 )
+from aima_ugc.contracts.platform import PLATFORM_NAMES
 from aima_ugc.contracts.product import (
     AnalysisManualLabelRequest,
     ContentAnalysisManualReviewRequest,
@@ -113,7 +118,10 @@ from .analysis_identity import (
     active_analysis_configuration,
     current_analysis_generation_config,
 )
-from .analysis_taxonomy_http import content_analysis_taxonomy_projection
+from .analysis_taxonomy_http import (
+    ContentAnalysisTaxonomyUnavailable,
+    content_analysis_taxonomy_projection,
+)
 from .runtime import PlatformRuntime
 
 _ANALYSIS_RUN_ID_NAMESPACE = UUID("d9c7fe38-1a46-4ef9-b9d3-bb87dd7d8301")
@@ -180,6 +188,52 @@ class PostgresContentHttpService:
 
         configuration = self._load_active_analysis_configuration()
         return content_analysis_taxonomy_projection(configuration.taxonomy)
+
+    def get_filter_options(self) -> ContentFilterOptionsResponse:
+        """合并 active Taxonomy 与当前可见 Content 的历史筛选值。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                try:
+                    configuration = active_analysis_configuration(session, self._runtime.settings)
+                except (RuntimeError, ValueError) as exc:
+                    raise ContentAnalysisTaxonomyUnavailable from exc
+                values = PostgresContentQueryRepository(
+                    session,
+                    analysis_identity=configuration.identity,
+                ).list_filter_values()
+        finally:
+            session.close()
+
+        taxonomy = configuration.taxonomy
+        label_pairs: dict[str, set[str]] = {
+            primary: set(secondaries) for primary, secondaries in taxonomy.labels.items()
+        }
+        for primary, secondary in values.label_pairs:
+            label_pairs.setdefault(primary, set()).add(secondary)
+
+        primary_order = (*taxonomy.primary_labels, *sorted(set(label_pairs) - set(taxonomy.labels)))
+        labels = tuple(
+            ContentFilterLabelOptionResponse(
+                primary_label=primary,
+                source="active" if primary in taxonomy.labels else "historical",
+                secondary_labels=_filter_value_options(
+                    taxonomy.labels.get(primary, ()),
+                    label_pairs[primary],
+                ),
+            )
+            for primary in primary_order
+        )
+        return ContentFilterOptionsResponse(
+            platforms=PLATFORM_NAMES,
+            relevances=CONTENT_RELEVANCES,
+            analysis_statuses=CONTENT_ANALYSIS_STATUSES,
+            content_types=values.content_types,
+            sentiments=_filter_value_options(taxonomy.sentiments, values.sentiments),
+            voice_types=_filter_value_options(taxonomy.voice_types, values.voice_types),
+            labels=labels,
+        )
 
     def get_content(self, content_id: UUID) -> ContentDetailResponse:
         session = self._runtime.database.new_session()
@@ -804,7 +858,10 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                return active_analysis_configuration(session, self._runtime.settings)
+                try:
+                    return active_analysis_configuration(session, self._runtime.settings)
+                except (RuntimeError, ValueError) as exc:
+                    raise ContentAnalysisTaxonomyUnavailable from exc
         finally:
             session.close()
 
@@ -849,6 +906,25 @@ def _filters(query: ContentListQuery) -> ContentFilterSnapshot:
     """排序只影响浏览次序，不改变分析和导出的目标筛选快照。"""
     return ContentFilterSnapshot.model_validate(
         query.model_dump(exclude={"cursor", "limit", "sort_by", "sort_direction"})
+    )
+
+
+def _filter_value_options(
+    active_values: tuple[str, ...],
+    visible_values: tuple[str, ...] | set[str],
+) -> tuple[ContentFilterValueOptionResponse, ...]:
+    """保留 active 顺序，并在末尾稳定追加仍可筛选的历史值。"""
+
+    active_set = set(active_values)
+    return (
+        *(
+            ContentFilterValueOptionResponse(value=value, source="active")
+            for value in active_values
+        ),
+        *(
+            ContentFilterValueOptionResponse(value=value, source="historical")
+            for value in sorted(set(visible_values) - active_set)
+        ),
     )
 
 

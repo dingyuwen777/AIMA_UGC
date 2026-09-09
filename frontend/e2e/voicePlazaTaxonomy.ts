@@ -14,12 +14,33 @@ export const voicePlazaTaxonomyFixture = {
     { primary_label: '售后服务', secondary_labels: ['客服与服务态度'] },
   ],
 }
+
+export const voicePlazaFilterOptionsFixture = {
+  platforms: ['xiaohongshu', 'douyin', 'weibo', 'bilibili', 'kuaishou'],
+  relevances: ['relevant', 'irrelevant'],
+  analysis_statuses: ['completed', 'pending', 'stale'],
+  content_types: ['note', 'image', 'video', 'text', 'unknown'],
+  sentiments: voicePlazaTaxonomyFixture.sentiments.map((value) => ({ value, source: 'active' })),
+  voice_types: voicePlazaTaxonomyFixture.voice_types.map((value) => ({ value, source: 'active' })),
+  labels: voicePlazaTaxonomyFixture.labels.map((item) => ({
+    primary_label: item.primary_label,
+    source: 'active',
+    secondary_labels: item.secondary_labels.map((value) => ({ value, source: 'active' })),
+  })),
+}
+
 /** 为声音广场 Browser Mock 固定来自正式只读 Contract 的分类目录。 */
 export async function stubVoicePlazaTaxonomy(page: Page): Promise<void> {
   await page.route('**/api/v1/content-analysis-taxonomy', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify(voicePlazaTaxonomyFixture),
+    })
+  })
+  await page.route('**/api/v1/content-filter-options', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(voicePlazaFilterOptionsFixture),
     })
   })
 }

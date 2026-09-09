@@ -279,7 +279,7 @@ src/features/voice-plaza/
 当前组合：
 
 - Content 列表/详情；
-- 平台/文本/时间/来源/Analysis 筛选；其中情感、发声类型和一级/二级标签从后端只读 Taxonomy Contract 动态加载；
+- 平台/文本/时间/来源/Analysis 筛选；除车型沿用车型目录外，业务下拉值从后端 Filter Options Contract 动态加载；
 - Analysis current/stale/pending；
 - 显式选择内容并做 Analysis Run Preview；
 - 创建手动 Analysis Run；
@@ -296,17 +296,22 @@ Analysis Run 的历史、终态和跨页面任务摘要由全局任务中心读�
 
 人工相关性复核通过 generated Client 调当前正式 API；Feature `api.ts` 只提供页面语义薄封装，不在前端复制 `relevant / irrelevant / inherit_ai` 的后端状态机或数据库规则。完整业务语义看 Analysis README 与后端 Contract。
 
-分类选项的调用链是：
+筛选目录与人工纠正合法值是两条独立调用链：
 
 ```text
+当前 active Analysis Scheme + 当前可见 Content 的历史有效值
+→ GET /api/v1/content-filter-options
+→ generated Client
+→ voice-plaza Store
+→ 平台 / 相关性 / 状态 / 内容类型 / 情感 / 发声类型 / 两级标签筛选
+
 当前 active Analysis Scheme Taxonomy
 → GET /api/v1/content-analysis-taxonomy
 → generated Client
-→ voice-plaza Store
-→ 发声类型 / 情感 / 两级标签筛选
+→ 详情人工纠正合法值
 ```
 
-前端不维护情感、发声类型或标签合法值。Taxonomy 暂不可用时，页面显示带 `request_id` 的独立警告并禁用这些筛选，不把分类错误升级成列表错误；平台、文本、时间等独立筛选和当前内容列表仍可使用。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。
+前端不维护这些下拉框的业务值。Filter Options 先保留 active Taxonomy 顺序，再追加当前可见最新结果或人工覆盖中的历史分类并标记“历史数据”；历史项只用于查询，不会成为当前人工纠正合法值。Filter Options 暂不可用时只禁用动态筛选，active Taxonomy 暂不可用时只禁用人工纠正；两类错误都不会阻断当前内容列表。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。
 
 ### 5.4 `features/task-center`：跨页面后台任务只读聚合
 
@@ -335,7 +340,7 @@ Data Export Job
 
 该 Feature 消费 Principal、Vehicle Catalog、Keyword Pack↔车型、Analysis Scheme 和审计 Contract。角色只有 `administrator/user`；[`frontend/src/app/router.ts`](src/app/router.ts) 的守卫负责页面导航体验，真正权限由后端判断。车型选择跨 Collection、Import、声音广场和管理员页复用 [`frontend/src/shared/VehicleMultiSelect.vue`](src/shared/VehicleMultiSelect.vue)。
 
-Scheme 草稿、发布、回滚和车型修改都通过 generated Client；页面不保存第二套 Taxonomy，不直接写数据库，不把 development Principal 当飞书生产登录。
+Scheme 草稿、发布、回滚和车型修改都通过 generated Client；页面默认打开服务端返回的 `active_version_id`，并明确区分“当前生效”和“草稿，尚未生效”。页面不保存第二套 Taxonomy，不直接写数据库，不把 development Principal 当飞书生产登录。
 
 注意三条不同能力：
 

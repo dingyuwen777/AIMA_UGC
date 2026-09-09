@@ -8,6 +8,7 @@ const generated = vi.hoisted(() => ({
   getContent: vi.fn(),
   getContentAnalysisCapabilities: vi.fn(),
   getContentAnalysisTaxonomy: vi.fn(),
+  getContentFilterOptions: vi.fn(),
   previewContentAnalysisRun: vi.fn(),
   createContentAnalysisRun: vi.fn(),
   listContentAnalysisRuns: vi.fn(),
@@ -24,6 +25,7 @@ const generated = vi.hoisted(() => ({
 
 vi.mock('../src/generated/api/client', () => generated)
 
+import type { ContentFilterOptionsResponse } from '../src/generated/api/client'
 import VoicePlazaFilters from '../src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue'
 import VoicePlazaTable from '../src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaTable.vue'
 import { VoicePlazaApiError, fetchContents, fetchDataExportFile } from '../src/features/voice-plaza/api'
@@ -69,6 +71,23 @@ const taxonomy = {
     { primary_label: '产品体验', secondary_labels: ['续航表现', '骑行舒适'] },
     { primary_label: '服务体验', secondary_labels: ['门店服务'] },
   ],
+}
+
+const filterOptions: ContentFilterOptionsResponse = {
+  platforms: ['xiaohongshu', 'douyin', 'weibo', 'bilibili', 'kuaishou'],
+  relevances: ['relevant', 'irrelevant'],
+  analysis_statuses: ['completed', 'pending', 'stale'],
+  content_types: ['note', 'image', 'video', 'text', 'unknown'],
+  sentiments: taxonomy.sentiments.map((value) => ({ value, source: 'active' as const })),
+  voice_types: taxonomy.voice_types.map((value) => ({ value, source: 'active' as const })),
+  labels: taxonomy.labels.map((group) => ({
+    primary_label: group.primary_label,
+    source: 'active' as const,
+    secondary_labels: group.secondary_labels.map((value) => ({
+      value,
+      source: 'active' as const,
+    })),
+  })),
 }
 
 describe('voice plaza', () => {
@@ -203,6 +222,7 @@ describe('voice plaza', () => {
     vi.resetAllMocks()
     generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
     generated.getContentAnalysisTaxonomy.mockResolvedValue(taxonomy)
+    generated.getContentFilterOptions.mockResolvedValue(filterOptions)
   })
 
   afterEach(() => {
@@ -235,8 +255,8 @@ describe('voice plaza', () => {
           publishedFrom: '',
           publishedTo: '',
           sourceIdentifier: '',
-          taxonomy,
-          taxonomyLoading: false,
+          filterOptions,
+          filterOptionsLoading: false,
         }),
       }),
     )
@@ -254,12 +274,16 @@ describe('voice plaza', () => {
     expect(html).not.toContain('value="file"')
   })
 
-  it('renders sentiments, voice types and dependent labels from the backend taxonomy', async () => {
-    const futureTaxonomy = {
-      ...taxonomy,
-      sentiments: ['混合情感'],
-      voice_types: ['社区活动发声'],
-      labels: [{ primary_label: '社区反馈', secondary_labels: ['活动体验'] }],
+  it('renders active and historical values from the backend filter options', async () => {
+    const futureFilterOptions = {
+      ...filterOptions,
+      sentiments: [{ value: '混合情感', source: 'active' as const }],
+      voice_types: [{ value: '社区活动发声', source: 'active' as const }],
+      labels: [{
+        primary_label: '社区反馈',
+        source: 'historical' as const,
+        secondary_labels: [{ value: '活动体验', source: 'historical' as const }],
+      }],
     }
     const html = await renderToString(
       createSSRApp({
@@ -276,8 +300,8 @@ describe('voice plaza', () => {
           publishedFrom: '',
           publishedTo: '',
           sourceIdentifier: '',
-          taxonomy: futureTaxonomy,
-          taxonomyLoading: false,
+          filterOptions: futureFilterOptions,
+          filterOptionsLoading: false,
         }),
       }),
     )
@@ -286,10 +310,11 @@ describe('voice plaza', () => {
     expect(html).toContain('社区活动发声')
     expect(html).toContain('社区反馈')
     expect(html).toContain('活动体验')
+    expect(html).toContain('历史数据')
     expect(html).not.toContain('value="正面"')
   })
 
-  it('disables taxonomy-dependent controls while a newer taxonomy is loading', async () => {
+  it('disables dynamic controls while newer filter options are loading', async () => {
     const html = await renderToString(
       createSSRApp({
         render: () => h(VoicePlazaFilters, {
@@ -305,8 +330,8 @@ describe('voice plaza', () => {
           publishedFrom: '',
           publishedTo: '',
           sourceIdentifier: '',
-          taxonomy,
-          taxonomyLoading: true,
+          filterOptions,
+          filterOptionsLoading: true,
         }),
       }),
     )
@@ -334,18 +359,18 @@ describe('voice plaza', () => {
     expect(labels).toContain('真实用户发声')
   })
 
-  it('loads taxonomy and sends voice type with the existing query filters', async () => {
+  it('loads filter options and sends voice type with the existing query filters', async () => {
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
     const store = useVoicePlazaStore()
 
-    await store.refreshTaxonomy()
+    await store.refreshFilterOptions()
     store.filters.voiceType = '真实用户发声'
     store.filters.sentiment = '负面'
     store.filters.primaryLabel = '产品体验'
     store.filters.secondaryLabel = '续航表现'
     await store.refresh()
 
-    expect(store.taxonomy?.taxonomy_sha256).toBe('b'.repeat(64))
+    expect(store.filterOptions?.voice_types[0]?.value).toBe('真实用户发声')
     expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
       voice_type: '真实用户发声',
       sentiment: '负面',
@@ -372,6 +397,44 @@ describe('voice plaza', () => {
 
     expect(store.taxonomy).toBeNull()
     expect(store.taxonomyError).toContain('request-taxonomy')
+    expect(store.items).toEqual([item])
+    expect(store.listError).toBeNull()
+  })
+
+  it('keeps historical filter values selected when they are absent from active taxonomy', async () => {
+    generated.getContentFilterOptions.mockResolvedValue({
+      ...filterOptions,
+      sentiments: [
+        ...filterOptions.sentiments,
+        { value: '旧情感', source: 'historical' },
+      ],
+    })
+    const store = useVoicePlazaStore()
+    store.filters.sentiment = '旧情感'
+
+    await Promise.all([store.refreshTaxonomy(), store.refreshFilterOptions()])
+
+    expect(store.filters.sentiment).toBe('旧情感')
+  })
+
+  it('keeps the content list usable when filter options are unavailable', async () => {
+    generated.getContentFilterOptions.mockRejectedValue(
+      new VoicePlazaApiError({
+        type: 'about:blank',
+        title: '筛选项暂不可用',
+        status: 503,
+        detail: '当前筛选目录无法读取。',
+        request_id: 'request-filter-options',
+        errors: [],
+      }),
+    )
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    const store = useVoicePlazaStore()
+
+    await Promise.all([store.refreshFilterOptions(), store.refresh()])
+
+    expect(store.filterOptions).toBeNull()
+    expect(store.filterOptionsError).toContain('request-filter-options')
     expect(store.items).toEqual([item])
     expect(store.listError).toBeNull()
   })

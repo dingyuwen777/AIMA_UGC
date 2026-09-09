@@ -79,9 +79,9 @@ onMounted(() => {
 })
 onBeforeUnmount(() => store.stopPolling())
 
-/** 先校准分类筛选，再并行刷新列表和独立业务资源。 */
+/** 先校准后端筛选目录，再并行刷新列表和独立业务资源。 */
 async function refreshPage(): Promise<void> {
-  await store.refreshTaxonomy()
+  await Promise.all([store.refreshFilterOptions(), store.refreshTaxonomy()])
   await Promise.all([
     store.refresh(),
     store.refreshCount('estimated'),
@@ -233,8 +233,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:published-to="store.filters.publishedTo"
         v-model:source-identifier="store.filters.sourceIdentifier"
         v-model:vehicle-model-ids="store.filters.vehicleModelIds"
-        :taxonomy="store.taxonomy"
-        :taxonomy-loading="store.taxonomyLoading"
+        :filter-options="store.filterOptions"
+        :filter-options-loading="store.filterOptionsLoading"
         @search="search"
         @reset="reset"
       />
@@ -248,13 +248,26 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         <span>请联系管理员完成模型配置后重试；内容浏览、筛选和人工复核不受影响。</span>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
+        v-if="store.filterOptionsError"
+        class="taxonomy-warning"
+        tone="warning"
+        role="alert"
+      >
+        <strong>筛选项暂不可用</strong>
+        <span>动态筛选已暂时停用；内容浏览和其它操作仍可使用。</span>
+        <details class="warning-details">
+          <summary>技术详情</summary>
+          <span>{{ store.filterOptionsError }}</span>
+        </details>
+      </AimaFeedbackBanner>
+      <AimaFeedbackBanner
         v-if="store.taxonomyError"
         class="taxonomy-warning"
         tone="warning"
         role="alert"
       >
-        <strong>分类配置暂不可用</strong>
-        <span>依赖分类配置的筛选已暂时停用；内容浏览和其它操作仍可使用。</span>
+        <strong>当前 AI 分析原则暂不可用</strong>
+        <span>分析结果人工纠正已暂时停用；内容浏览与筛选仍可使用。</span>
         <details class="warning-details">
           <summary>技术详情</summary>
           <span>{{ store.taxonomyError }}</span>

@@ -1,6 +1,9 @@
 import { expect, test } from './fixture'
 
-import { stubVoicePlazaTaxonomy, voicePlazaTaxonomyFixture } from './voicePlazaTaxonomy'
+import {
+  stubVoicePlazaTaxonomy,
+  voicePlazaFilterOptionsFixture,
+} from './voicePlazaTaxonomy'
 
 const contentId = '42345678-1234-5678-1234-567812345678'
 const analysisJobId = '52345678-1234-5678-1234-567812345678'
@@ -308,7 +311,7 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   }
 })
 
-test('loads taxonomy options and submits voice type with dependent labels', async ({ page }) => {
+test('loads backend filter options and submits voice type with dependent labels', async ({ page }) => {
   await page.goto('/voice-plaza')
 
   await expect(page.getByLabel('发声类型', { exact: true })).toBeVisible()
@@ -330,29 +333,31 @@ test('loads taxonomy options and submits voice type with dependent labels', asyn
   expect(params.get('secondary_label')).toBe('实际续航表现')
 })
 
-test('reconciles taxonomy before issuing the initial content query', async ({ page }) => {
-  await page.unroute('**/api/v1/content-analysis-taxonomy')
-  let taxonomyReady = false
-  let queriedBeforeTaxonomy = false
+test('reconciles filter options before issuing the initial content query', async ({ page }) => {
+  await page.unroute('**/api/v1/content-filter-options')
+  let filterOptionsReady = false
+  let queriedBeforeFilterOptions = false
   page.on('request', (request) => {
     const url = new URL(request.url())
-    if (url.pathname === '/api/v1/contents' && !taxonomyReady) queriedBeforeTaxonomy = true
+    if (url.pathname === '/api/v1/contents' && !filterOptionsReady) {
+      queriedBeforeFilterOptions = true
+    }
   })
-  await page.route('**/api/v1/content-analysis-taxonomy', async (route) => {
+  await page.route('**/api/v1/content-filter-options', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 100))
-    taxonomyReady = true
+    filterOptionsReady = true
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify(voicePlazaTaxonomyFixture),
+      body: JSON.stringify(voicePlazaFilterOptionsFixture),
     })
   })
 
   await page.goto('/voice-plaza')
   await expect(page.locator('label.field--voice-type select')).toBeEnabled()
-  expect(queriedBeforeTaxonomy).toBe(false)
+  expect(queriedBeforeFilterOptions).toBe(false)
 })
 
-test('keeps the content list usable when taxonomy is unavailable', async ({ page }) => {
+test('keeps filters and content usable when manual-edit taxonomy is unavailable', async ({ page }) => {
   await page.unroute('**/api/v1/content-analysis-taxonomy')
   await page.route('**/api/v1/content-analysis-taxonomy', async (route) => {
     await route.fulfill({
@@ -371,13 +376,37 @@ test('keeps the content list usable when taxonomy is unavailable', async ({ page
 
   await page.goto('/voice-plaza')
 
-  await expect(page.getByRole('alert').getByText('分类配置暂不可用', { exact: true })).toBeVisible()
+  await expect(page.getByRole('alert').getByText('当前 AI 分析原则暂不可用', { exact: true })).toBeVisible()
   const taxonomyWarning = page.locator('.taxonomy-warning')
   await taxonomyWarning.getByText('技术详情', { exact: true }).click()
   await expect(taxonomyWarning.getByText(/request-taxonomy/)).toBeVisible()
-  await expect(page.locator('label.field--voice-type select')).toBeDisabled()
+  await expect(page.locator('label.field--voice-type select')).toBeEnabled()
   await expect(page.getByText(item.title)).toBeVisible()
   await expect(page.getByRole('button', { name: /导出记录/ })).toBeEnabled()
+})
+
+test('keeps content usable when dynamic filter options are unavailable', async ({ page }) => {
+  await page.unroute('**/api/v1/content-filter-options')
+  await page.route('**/api/v1/content-filter-options', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'about:blank',
+        title: '筛选项暂不可用',
+        status: 503,
+        detail: '当前筛选目录无法读取。',
+        request_id: 'request-filter-options',
+        errors: [],
+      }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+
+  await expect(page.getByRole('alert').getByText('筛选项暂不可用', { exact: true })).toBeVisible()
+  await expect(page.locator('label.field--voice-type select')).toBeDisabled()
+  await expect(page.getByText(item.title)).toBeVisible()
 })
 
 test('shows AI unavailable and disables analysis when runtime is not configured', async ({ page }) => {
