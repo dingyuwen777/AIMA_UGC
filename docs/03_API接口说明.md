@@ -153,6 +153,38 @@ LLM 与采集 Provider 的运行时配置统一由管理员配置中心维护；
 
 ---
 
+## 3.2 品牌 / 车型目录管理 API
+
+Stage 2 在 Stage 1 的 Brand/Vehicle Schema 上提供独立可用的目录管理、准备度与冻结 Snapshot 能力。精确 Request/Response、Method、operationId 仍以当前 OpenAPI 为机器事实；实现边界位于：
+
+- [`backend/src/aima_ugc/contracts/brand_vehicle.py`](../backend/src/aima_ugc/contracts/brand_vehicle.py)
+- [`backend/src/aima_ugc/bootstrap/brand_vehicle_http.py`](../backend/src/aima_ugc/bootstrap/brand_vehicle_http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py`](../backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py)
+
+当前公开路径：
+
+```text
+GET    /api/v1/vehicle-brands
+POST   /api/v1/vehicle-brands
+GET    /api/v1/vehicle-brands/{brand_id}
+PUT    /api/v1/vehicle-brands/{brand_id}
+DELETE /api/v1/vehicle-brands/{brand_id}
+POST   /api/v1/vehicle-brands/{brand_id}/aliases
+DELETE /api/v1/vehicle-brands/{brand_id}/aliases/{alias_id}
+PUT    /api/v1/vehicle-models/{vehicle_model_id}/brand
+GET    /api/v1/vehicle-catalog/readiness
+GET    /api/v1/vehicle-catalog/snapshot
+```
+
+关键语义：
+
+- Brand CRUD、Alias 与 Vehicle 品牌归属变化共用唯一 `vehicle_catalog_versions`；
+- 新建 active Vehicle 必须显式绑定有效 active Brand；Stage 1 前遗留的未归属 active Vehicle 不会被名称或 Keyword Pack 猜测回填；
+- `GET /api/v1/vehicle-catalog/readiness` 面向管理员暴露尚未完成有效 Brand 归属的 active Vehicle；
+- Snapshot 支持 `all_active` 与 `selected` Brand Scope。选择 Brand 自动包含其全部 active Vehicle，并冻结 Brand/Vehicle/Alias、目录版本与全局 Alias 歧义上下文；
+- 跨 Brand/Vehicle 的同名 Alias 保留为冲突事实，Resolver fail-safe，不猜唯一实体；
+- 本阶段没有切换 Excel/TikHub Runtime，也没有改变 Collection Plan / Keyword Pack 的既有语义。
+
 # 4. Collection Runtime API
 
 代码：
