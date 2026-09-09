@@ -1,0 +1,45 @@
+name: Stage2 Brand Select Accessibility Fix
+
+on:
+  push:
+    branches:
+      - feature/stage2-brand-vehicle-management-resolver
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frozen frontend
+        run: npm ci --prefix frontend
+      - name: Apply accessible-name patch
+        run: python scripts/dev/stage2_brand_select_accessibility_fix.py
+      - name: Validate frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run lint
+          npm --prefix frontend run build
+          npm --prefix frontend test -- --run
+      - name: Commit only permanent UI fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/stage2-brand-select-accessibility-fix.yml scripts/dev/stage2_brand_select_accessibility_fix.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue
+          git diff --cached --check
+          git commit -m "修复：明确车型品牌选择控件名称"
+          git push origin HEAD:${GITHUB_REF_NAME}
