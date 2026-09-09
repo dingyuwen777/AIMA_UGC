@@ -53,7 +53,7 @@ def test_stage8b_openapi_exposes_stable_operations_and_error_contracts() -> None
             assert schema["$ref"].endswith("/HttpErrorResponse")
 
 
-def test_import_openapi_requires_file_and_exposes_optional_matching_resources() -> None:
+def test_import_openapi_requires_file_and_exposes_optional_brand_scope() -> None:
     spec = create_app().openapi()
     request_schema = spec["paths"]["/api/v1/import-batches"]["post"]["requestBody"]["content"][
         "multipart/form-data"
@@ -66,9 +66,8 @@ def test_import_openapi_requires_file_and_exposes_optional_matching_resources() 
         "title": "File",
         "type": "string",
     }
-    keyword_pack_ids = body_schema["properties"]["keyword_pack_ids"]
-    assert keyword_pack_ids["type"] == "array"
-    assert keyword_pack_ids["items"]["format"] == "uuid"
-    vehicle_model_ids = body_schema["properties"]["vehicle_model_ids"]
-    assert vehicle_model_ids["type"] == "array"
-    assert vehicle_model_ids["items"]["format"] == "uuid"
+    brand_ids = body_schema["properties"]["brand_ids"]
+    assert brand_ids["type"] == "array"
+    assert brand_ids["items"]["format"] == "uuid"
+    assert "keyword_pack_ids" not in body_schema["properties"]
+    assert "vehicle_model_ids" not in body_schema["properties"]
