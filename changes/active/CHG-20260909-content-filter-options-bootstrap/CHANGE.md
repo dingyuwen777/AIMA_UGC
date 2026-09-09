@@ -194,8 +194,8 @@ Docs Impact 为 `targeted`：只更新 Analysis 模块 README、AI 实现 Append
 # 两阶段 Review
 
 - **需求与风险重建**：PASS。以 #412 AC1–AC7、用户 V5 补充、数据库 Scheme/Run 冻结、Content effective 投影和前端消费边界重新确认范围；主要风险是历史值泄漏旧 Content/失效来源、人工锁失真、Filter Options 与人工纠正 Taxonomy 混用、异步旧响应覆盖新目录及辅助 API 阻塞内容列表。
-- **实现与证据对照**：首轮发现并修复四项问题：Filter Options 不可用时四个后端驱动下拉仍可操作、并发刷新可能被旧响应覆盖、慢人工纠正 Taxonomy 阻塞首屏内容、Full-stack 管理员用例仍定位旧文案。首次 Ready CI 又发现新增 PostgreSQL 测试错误地把原始 Prompt 文件 Hash 与生产编译快照 Hash 直接比较；第二轮进一步暴露管理员安全响应本就不包含内部 `compiled_prompt`。测试现已调用生产编译函数，通过管理员响应核对页面可见 definition/hash，并通过 Owner Repository 核对数据库内部 compiled prompt，未修改生产实现。
-- **测试充分性结论**：指针选择与 fail-closed、接口错误、active/historical 合并、人工锁、异步竞态、目录降级、管理员 active 默认、动态下拉及 Browser Mock 用户路径均有直接断言。修正后的隔离 PostgreSQL 与真实 Full-stack 仍由下一轮 PR current-head CI 提供最终证据。
+- **实现与证据对照**：首轮发现并修复四项问题：Filter Options 不可用时四个后端驱动下拉仍可操作、并发刷新可能被旧响应覆盖、慢人工纠正 Taxonomy 阻塞首屏内容、Full-stack 管理员用例仍定位旧文案。前两轮 Ready CI 又先后发现 raw/compiled Prompt Hash 混淆和管理员安全响应不暴露内部 `compiled_prompt` 的错误测试假设；第三轮已确认修正后的空库 PostgreSQL 断言 50/50 通过，随后 Content 套件暴露历史值场景发生在 Content 升版之后、临时 Scheme 未清理两项测试设计缺陷。最终修正只调整场景时序和测试隔离，生产实现不变。
+- **测试充分性结论**：指针选择与 fail-closed、接口错误、active/historical 合并、人工锁、异步竞态、目录降级、管理员 active 默认、动态下拉及 Browser Mock 用户路径均有直接断言。修正后的 Content PostgreSQL 场景和完整 current-head CI 仍由下一轮 PR 运行提供最终证据。
 
 # 完成证据与状态
 
@@ -213,7 +213,8 @@ Docs Impact 为 `targeted`：只更新 Analysis 模块 README、AI 实现 Append
 | V8 | 当前工作树 / Contract 与 Wheel | `uv run python scripts/contracts/generate.py --check`；`uv build --wheel`；归档目录检查 | 生成物一致；Wheel 构建成功并包含 `content_labeling_bootstrap.txt` 与 V1–V4 Prompt | Pydantic → OpenAPI → Orval 链一致，新空库基线选择资产进入发布包 |
 | V9 | 当前工作树 / 项目质量脚本 | `check_architecture.py`、`check_table_ownership.py`、`check_docs.py`、`scan_secrets.py` | 均退出码 0 | 架构、表 Owner、文档和 Secret 边界未发生违规漂移 |
 | V10 | 当前工作树相对 `origin/main@bd3e6c1b` | `git diff --check`、两阶段 Review、反向调用链审计 | diff check 通过；首轮 4 项 Finding 已修复，复查无剩余范围内阻塞 Finding | 修改保持增量、无 Migration/依赖/历史结果改写，且覆盖最新 main 合并态 |
-| V11 | PR heads `f462d692`、`639a015c` / GitHub Actions PostgreSQL 18.4 | CI runs `34331967733`、`34333368591` 的 PostgreSQL Integration | 两轮均 49 passed、1 failed；先后暴露 raw/compiled Prompt Hash 混淆，以及安全 HTTP Response 不暴露内部 `compiled_prompt` 的错误测试假设；首轮真实 Full-stack 已通过 | 生产空库 bootstrap 已执行，失败均位于本次新增断言；最终测试改为分别验证管理员安全投影与 Owner Repository 内部快照，等待下一轮 current-head CI |
+| V11 | PR heads `f462d692`、`639a015c`、`3bb79cbb` / GitHub Actions PostgreSQL 18.4 | CI runs `34331967733`、`34333368591`、`34334727691` 的 PostgreSQL Integration | 前两轮均 49 passed、1 failed，分别暴露 raw/compiled Prompt Hash 混淆和安全 Response 字段误用；第三轮 Database 50 passed，随后 Content 56 passed、2 failed，暴露历史值测试时序和临时 Scheme 隔离缺陷；第三轮真实 Full-stack 已通过 | 生产空库 bootstrap 与跨层断言已通过；最终修正把历史值核对放回当前 Content Version，并在场景结束清理临时 Scheme，等待下一轮 current-head CI |
+| V12 | 当前工作树 / 本地专用 PostgreSQL 18.4 临时容器 | 空库 `alembic upgrade head`；`uv run pytest tests/integration/content/test_stage8d_voice_plaza_runtime.py -q` | 7 passed；历史值、人工锁、Scheme 恢复及紧随的 stale 场景均通过 | 使用无持久卷、隔离端口和专用 CI 凭据，不接触本地既有数据库；远端完整套件仍以 current-head CI 为准 |
 
 ## 未验证内容与剩余风险
 
@@ -223,9 +224,9 @@ Docs Impact 为 `targeted`：只更新 Analysis 模块 README、AI 实现 Append
 
 ## 交付状态
 
-- 提交：治理 `7190107f`、实现 `d944c9f7`、审查修复 `4c43fc1d`、最新 main 合并态 `c44763fa`、完成证据 `f462d692`；PostgreSQL 测试期望修复随下一提交推送。
-- 拉取请求：Draft PR #413，`Requirement-Source: #412`。
-- CI：前两轮 Ready 的质量阶段、Compose 与开发工具链均通过；PostgreSQL 先后由新增 raw/compiled Prompt Hash 混淆及安全 Response 字段误用阻塞，均已按真实生产边界修正，等待下一轮 current-head 全量复验。
+- 提交：治理 `7190107f`、实现 `d944c9f7`、审查修复 `4c43fc1d`、最新 main 合并态 `c44763fa`、完成证据 `f462d692`、空库跨层断言 `3bb79cbb`；Content 测试时序与隔离修复随下一提交推送。
+- 拉取请求：PR #413 已进入 Ready，`Requirement-Source: #412`。
+- CI：第三轮 Ready 的质量阶段、Compose、开发工具链与真实 Full-stack 均通过，Database 子套件 50 passed；同一 PostgreSQL Job 随后的 Content 子套件因新增场景时序与隔离缺陷 56 passed、2 failed，已按当前 Content Version 语义和测试隔离边界修正，等待下一轮 current-head 全量复验。
 - 合并：任务分支已无冲突同步 `origin/main@bd3e6c1b`，待 current-head required checks 全绿后执行受保护合并。
 - Change 归档：待合并后由 repository-native Change Archive 处理。
 - 发布 / 部署：不在本次请求范围；无额外 Migration 或停机步骤。
