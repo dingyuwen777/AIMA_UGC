@@ -164,7 +164,7 @@ test('keeps vehicle and audit table scrolling separate from headings and page co
 test('locks the current analysis rule while publishing and keeps its draft after a conflict', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
   let release!: () => void
   const pending = new Promise<void>((resolve) => { release = resolve })
   await page.route(`**/analysis-scheme-versions/${versionId}/publish`, async (route) => {
@@ -182,6 +182,36 @@ test('locks the current analysis rule while publishing and keeps its draft after
   await expect(page.getByRole('alert')).toContainText('版本已被修改，请刷新')
   await expect(page.getByLabel('说明', { exact: true })).toHaveValue('保留业务规则')
   await expect(page.getByRole('button', { name: '发布', exact: true })).toBeEnabled()
+})
+
+test('opens the active analysis principle instead of a newer draft', async ({ page }) => {
+  await mockAdmin(page)
+  const activeVersionId = '73111111-1111-4111-8111-333333333333'
+  const activeScheme: AnalysisSchemeResponse = {
+    ...scheme,
+    is_active: true,
+    active_version_id: activeVersionId,
+    versions: [
+      scheme.versions[0]!,
+      {
+        ...scheme.versions[0]!,
+        id: activeVersionId,
+        version: 2,
+        status: 'published',
+        description: '当前线上生效原则',
+      },
+    ],
+  }
+  await page.route('**/api/v1/analysis-schemes', async (route) => {
+    await json(route, { items: [activeScheme] })
+  })
+
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
+
+  await expect(page.getByText('版本 2 · 当前生效', { exact: true })).toBeVisible()
+  await expect(page.getByText('版本 1 · 草稿，尚未生效', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('说明', { exact: true })).toHaveValue('当前线上生效原则')
 })
 
 
@@ -265,7 +295,7 @@ test('analysis rule must save visible changes before publishing its persisted ve
     await json(route, current)
   })
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
   await page.getByLabel('一级标签名称', { exact: true }).first().fill('')
   await expect(page.getByRole('button', { name: '发布', exact: true })).toBeDisabled()
   await page.getByLabel('一级标签名称', { exact: true }).first().fill('外观设计')
@@ -274,13 +304,13 @@ test('analysis rule must save visible changes before publishing its persisted ve
   await page.getByRole('textbox', { name: '二级标签 1', exact: true }).last().fill('起步响应')
   await page.getByLabel('说明', { exact: true }).fill('  必须发布已保存的新说明  ')
   await expect(page.getByRole('button', { name: '发布', exact: true })).toBeDisabled()
-  await expect(page.getByText('规则有未保存修改，请先保存草稿后再发布。', { exact: true })).toBeVisible()
+  await expect(page.getByText('原则有未保存修改，请先保存草稿后再发布。', { exact: true })).toBeVisible()
   expect(published).toBe(0)
   await page.getByRole('button', { name: '保存草稿', exact: true }).click()
   await expect(page.getByRole('button', { name: '发布', exact: true })).toBeEnabled()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '发布', exact: true }).click()
-  await expect(page.getByText('AI 分析规则已发布并记录操作。', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析原则已发布并记录操作。', { exact: true })).toBeVisible()
   await expect(page.getByLabel('说明', { exact: true })).toHaveValue('必须发布已保存的新说明')
   expect(published).toBe(1)
 })
@@ -289,8 +319,8 @@ test('analysis rule must save visible changes before publishing its persisted ve
 test('keeps the analysis-rule copy editor open while its name is cleared', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
-  await page.getByRole('button', { name: '复制规则', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
+  await page.getByRole('button', { name: '复制原则', exact: true }).click()
   await page.getByLabel('副本名称', { exact: true }).fill('')
   await expect(page.getByLabel('副本名称', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '创建副本', exact: true })).toBeDisabled()
@@ -305,7 +335,7 @@ test('six admin tabs keep their real controls and desktop layouts reachable', as
   const tabs = [
     ['车型管理', '车型目录', 'vehicles'], ['词包关联', '选择词包', 'links'],
     ['AI 模型', 'AI 模型服务', 'llm'], ['TikHub', 'TikHub 采集服务', 'tikhub'],
-    ['AI 分析规则', '版本历史', 'scheme'], ['操作记录', '操作记录', 'audit'],
+    ['AI 分析原则', '版本历史', 'scheme'], ['操作记录', '操作记录', 'audit'],
   ] as const
   for (const width of [1440, 1180]) {
     await page.setViewportSize({ width, height: 900 })

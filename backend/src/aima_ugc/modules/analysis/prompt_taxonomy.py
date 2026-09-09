@@ -22,17 +22,52 @@ _PROMPT_VERSION_PATTERN = re.compile(r"Prompt Version：`(?P<version>content-lab
 _OUTPUT_PROTOCOL_PATTERN = re.compile(
     r"<!-- AIMA_OUTPUT_PROTOCOL: (?P<version>content-labeling\.v\d+) -->"
 )
-PROMPT_VERSION = "content-labeling.v4"
-CONTENT_LABELING_PROMPT_PATH = Path(__file__).with_name("prompts") / "content_labeling_v4.md"
+_PROMPT_FILENAME_PATTERN = re.compile(r"content_labeling_v(?P<version>\d+)\.md")
+_PROMPT_DIRECTORY = Path(__file__).with_name("prompts")
+CONTENT_LABELING_PROMPT_POINTER_PATH = _PROMPT_DIRECTORY / "content_labeling_bootstrap.txt"
 
 
 class PromptTaxonomyError(ValueError):
     """Prompt 或其机器 Taxonomy 不满足 P1E fail-closed 约束。"""
 
 
+def resolve_content_labeling_prompt_path(pointer_path: Path) -> Path:
+    """从受限指针解析新空库使用的版本化 Prompt 资产。"""
+
+    pointer = Path(pointer_path)
+    try:
+        filename = pointer.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise PromptTaxonomyError(f"无法读取 Prompt 基线指针: {pointer}") from exc
+    filename_match = _PROMPT_FILENAME_PATTERN.fullmatch(filename)
+    if filename_match is None:
+        raise PromptTaxonomyError("Prompt 基线指针必须引用同目录内的版本化 Prompt 文件")
+
+    prompt_path = pointer.parent / filename
+    if not prompt_path.is_file():
+        raise PromptTaxonomyError(f"Prompt 基线指针引用的文件不存在: {filename}")
+    try:
+        prompt_text = prompt_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise PromptTaxonomyError(f"无法读取 Prompt 基线文件: {filename}") from exc
+    declared_versions = _PROMPT_VERSION_PATTERN.findall(prompt_text)
+    expected_version = f"content-labeling.v{filename_match.group('version')}"
+    if declared_versions != [expected_version]:
+        raise PromptTaxonomyError("Prompt 基线文件名与内部 Prompt Version 声明必须一致")
+    return prompt_path
+
+
+CONTENT_LABELING_PROMPT_PATH = resolve_content_labeling_prompt_path(
+    CONTENT_LABELING_PROMPT_POINTER_PATH
+)
+_PROMPT_FILENAME_MATCH = _PROMPT_FILENAME_PATTERN.fullmatch(CONTENT_LABELING_PROMPT_PATH.name)
+assert _PROMPT_FILENAME_MATCH is not None
+PROMPT_VERSION = f"content-labeling.v{_PROMPT_FILENAME_MATCH.group('version')}"
+
+
 @dataclass(frozen=True, slots=True)
 class PromptSemanticRules:
-    """V4 Prompt 内部主体/意图到发声类型的不可变映射。"""
+    """V4 Output Protocol 内部主体/意图到发声类型的不可变映射。"""
 
     source_types: tuple[str, ...]
     content_intents: tuple[str, ...]
@@ -227,8 +262,8 @@ def _extract_marked_json(
 
 def _prompt_version_from_text(prompt_text: str) -> str:
     matches = _PROMPT_VERSION_PATTERN.findall(prompt_text)
-    if len(matches) != 1 or matches[0] not in _SUPPORTED_OUTPUT_PROTOCOLS:
-        raise PromptTaxonomyError("Prompt 必须声明一个受支持的 Prompt Version")
+    if len(matches) != 1:
+        raise PromptTaxonomyError("Prompt 必须声明一个合法的 Prompt Version")
     return str(matches[0])
 
 
@@ -240,8 +275,6 @@ def _output_protocol_from_text(prompt_text: str) -> str:
     version = matches[0] if matches else declared_prompt_version
     if version not in _SUPPORTED_OUTPUT_PROTOCOLS:
         raise PromptTaxonomyError("Prompt Output Protocol 不受支持")
-    if version != declared_prompt_version:
-        raise PromptTaxonomyError("Prompt Version 与 Output Protocol 不一致")
     return version
 
 

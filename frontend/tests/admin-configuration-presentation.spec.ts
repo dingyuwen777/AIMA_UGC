@@ -24,10 +24,10 @@ describe('admin configuration presentation helpers', () => {
     expect(auditActionLabel('keyword_pack_archived')).toBe('归档词包')
     expect(auditActionLabel('keyword_pack_keyword_updated')).toBe('修改词包关键词')
     expect(auditActionLabel('collection_plan_restored')).toBe('恢复采集计划')
-    expect(auditActionLabel('analysis_scheme_copied')).toBe('复制 AI 分析规则')
+    expect(auditActionLabel('analysis_scheme_copied')).toBe('复制 AI 分析原则')
     expect(auditActionLabel('data_import_campaign_revoked')).toBe('撤销数据导入')
     expect(auditActionLabel('taxonomy_runtime_created')).toBe('新建标签规则')
-    expect(auditActionLabel('analysis_scheme_published')).toBe('发布 AI 分析规则')
+    expect(auditActionLabel('analysis_scheme_published')).toBe('发布 AI 分析原则')
     expect(auditActionLabel('unknown_event')).toBe('配置操作')
   })
 
@@ -36,7 +36,7 @@ describe('admin configuration presentation helpers', () => {
     expect(auditObjectLabel('collection_plan', 'plan-opaque')).toBe('采集计划')
     expect(auditObjectLabel('data_import_campaign', 'campaign-opaque')).toBe('数据导入')
     expect(auditObjectLabel('taxonomy_runtime', 'taxonomy-v2')).toBe('标签规则')
-    expect(auditObjectLabel('analysis_scheme', 'analysis-v2')).toBe('AI 分析规则')
+    expect(auditObjectLabel('analysis_scheme', 'analysis-v2')).toBe('AI 分析原则')
     expect(auditObjectLabel('unknown_type', 'opaque-id')).toBe('配置对象')
   })
 
@@ -119,6 +119,6 @@ describe('admin configuration presentation helpers', () => {
       event_type: 'analysis_scheme_restored',
       object_type: 'analysis_scheme',
       safe_detail: {},
-    })).toBe('已恢复 AI 分析规则，恢复后不会自动发布')
+    })).toBe('已恢复 AI 分析原则，恢复后不会自动发布')
   })
 })

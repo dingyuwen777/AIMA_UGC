@@ -35,6 +35,10 @@ from aima_ugc.contracts.http import (
     ContentTargetSelection,
     DataExportSubmitRequest,
 )
+from aima_ugc.contracts.product import (
+    AnalysisManualLabelRequest,
+    ContentAnalysisManualReviewRequest,
+)
 from aima_ugc.modules.analysis import (
     ContentLabelingService,
     FakeContentLabelingLLM,
@@ -44,6 +48,10 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
     ContentAnalysisPlanJobHandler,
     register_content_analysis_job,
+)
+from aima_ugc.modules.analysis.scheme_tables import (
+    analysis_scheme_versions_table,
+    analysis_schemes_table,
 )
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.modules.analysis.tables import (
@@ -61,7 +69,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, JobRegistry, LeaseLostError
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 
 
 def _xlsx(*, text_suffix: str = "") -> bytes:
@@ -353,6 +361,9 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         }
     )
     runtime = create_worker_runtime(settings=settings)
+    original_scheme_version_id = None
+    original_scheme_version = None
+    temporary_scheme_id = None
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
             "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
@@ -517,6 +528,67 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         finally:
             workbook.close()
 
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresAnalysisSchemeRepository(session)
+                active = repository.get_active_version()
+                assert active is not None
+                original_scheme_version_id = active.id
+                original_scheme_version = active.version
+                next_definition = active.definition.model_copy(
+                    update={
+                        "sentiments": ("新情感", "无法判断"),
+                        "labels": {
+                            "新分类": ("新标签",),
+                            "无法分类": ("无法判断",),
+                        },
+                    }
+                )
+                draft = repository.create_draft(
+                    name="Stage8D 筛选历史值测试方案",
+                    description="验证 active Taxonomy 与历史结果合并",
+                    definition=next_definition,
+                    actor_ref="user:stage8d",
+                )
+                temporary_scheme_id = draft.scheme_id
+                repository.activate_version(draft.id, expected_version=draft.version)
+        finally:
+            session.close()
+
+        options = content_service.get_filter_options()
+        assert [(item.value, item.source) for item in options.sentiments] == [
+            ("新情感", "active"),
+            ("无法判断", "active"),
+            ("负面", "historical"),
+        ]
+        labels = {item.primary_label: item for item in options.labels}
+        assert labels["新分类"].source == "active"
+        assert labels["电池、续航与充电"].source == "historical"
+        assert labels["售后服务"].source == "historical"
+
+        content_service.review_analysis(
+            content_ids[0],
+            ContentAnalysisManualReviewRequest(
+                content_version=1,
+                sentiment="新情感",
+                labels=(
+                    AnalysisManualLabelRequest(
+                        primary_label="新分类",
+                        secondary_label="新标签",
+                    ),
+                ),
+            ),
+            request_id="stage8d-filter-values-review",
+            actor_ref="user:stage8d",
+        )
+        reviewed_options = content_service.get_filter_options()
+        assert all(item.value != "负面" for item in reviewed_options.sentiments)
+        assert all(
+            item.primary_label not in {"电池、续航与充电", "售后服务"}
+            for item in reviewed_options.labels
+        )
+
         second_batch_id = _seed_import(import_client, text_suffix="，后续来源更新")
         assert second_batch_id != batch_id
         second_import_worker = create_job_worker(
@@ -536,6 +608,33 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             connection.exec_driver_sql(
                 "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
             )
+        if original_scheme_version_id is not None and original_scheme_version is not None:
+            session = runtime.database.new_session()
+            try:
+                with session.begin():
+                    repository = PostgresAnalysisSchemeRepository(session)
+                    repository.activate_version(
+                        original_scheme_version_id,
+                        expected_version=original_scheme_version,
+                    )
+                    if temporary_scheme_id is not None:
+                        session.execute(
+                            update(analysis_schemes_table)
+                            .where(analysis_schemes_table.c.id == temporary_scheme_id)
+                            .values(active_version_id=None)
+                        )
+                        session.execute(
+                            delete(analysis_scheme_versions_table).where(
+                                analysis_scheme_versions_table.c.scheme_id == temporary_scheme_id
+                            )
+                        )
+                        session.execute(
+                            delete(analysis_schemes_table).where(
+                                analysis_schemes_table.c.id == temporary_scheme_id
+                            )
+                        )
+            finally:
+                session.close()
         runtime.close()
 
 

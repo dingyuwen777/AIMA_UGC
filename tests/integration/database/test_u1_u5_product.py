@@ -9,6 +9,9 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_manual_reviews import (
     PostgresAnalysisManualReviewRepository,
 )
+from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
+    PostgresAnalysisSchemeRepository,
+)
 from aima_ugc.adapters.persistence.postgres.notifications import PostgresNotificationRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
@@ -21,6 +24,11 @@ from aima_ugc.contracts.administration import (
     AnalysisSchemeUpdateDraftRequest,
 )
 from aima_ugc.contracts.product import ContentAnalysisManualReviewRequest
+from aima_ugc.modules.analysis import PromptTaxonomyLoader
+from aima_ugc.modules.analysis.schemes import (
+    bootstrap_definition_from_prompt,
+    compile_analysis_scheme,
+)
 from aima_ugc.modules.content.availability_tables import (
     content_availability_observations_table,
 )
@@ -192,6 +200,26 @@ def test_analysis_scheme_publish_and_rollback_are_atomic_and_audited(runtime) ->
     )
     initial = service.list_analysis_schemes().items[0]
     initial_version = initial.versions[0]
+    bootstrap_taxonomy = PromptTaxonomyLoader().load()
+    expected_compiled = compile_analysis_scheme(
+        bootstrap_definition_from_prompt(bootstrap_taxonomy.prompt_text)
+    )
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            stored_version = PostgresAnalysisSchemeRepository(session).get_active_version()
+    finally:
+        session.close()
+    assert stored_version is not None
+    assert stored_version.id == initial_version.id
+    assert initial.active_version_id == initial_version.id
+    assert initial_version.definition == expected_compiled.definition
+    assert initial_version.prompt_sha256 == expected_compiled.prompt_sha256
+    assert initial_version.taxonomy_sha256 == expected_compiled.taxonomy_sha256
+    assert stored_version.definition == expected_compiled.definition
+    assert stored_version.compiled_prompt == expected_compiled.prompt_text
+    assert stored_version.prompt_sha256 == expected_compiled.prompt_sha256
+    assert stored_version.taxonomy_sha256 == expected_compiled.taxonomy_sha256
     created = service.create_analysis_scheme_draft(
         AnalysisSchemeCreateDraftRequest(
             name=initial.name,

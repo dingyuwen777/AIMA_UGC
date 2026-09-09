@@ -27,10 +27,12 @@ from aima_ugc.platform.time import beijing_now
 from .persistence import AnalysisConfigurationIdentity
 from .prompt_taxonomy import (
     CONTENT_LABELING_PROMPT_PATH,
+    CONTENT_LABELING_PROMPT_POINTER_PATH,
     PROMPT_VERSION,
     PromptTaxonomy,
     PromptTaxonomyError,
     PromptTaxonomyLoader,
+    resolve_content_labeling_prompt_path,
 )
 
 ContentLabelingRequestKind = Literal["primary", "repair", "judge"]
@@ -858,6 +860,7 @@ def _unique_error_codes(error_codes: Iterable[str]) -> tuple[str, ...]:
 
 
 __all__ = [
+    "CONTENT_LABELING_PROMPT_POINTER_PATH",
     "CONTENT_LABELING_PROMPT_PATH",
     "PROMPT_VERSION",
     "ContentLabelingAttempt",
@@ -874,5 +877,6 @@ __all__ = [
     "PromptTaxonomy",
     "PromptTaxonomyError",
     "PromptTaxonomyLoader",
+    "resolve_content_labeling_prompt_path",
     "RuntimeTaxonomyValidator",
 ]

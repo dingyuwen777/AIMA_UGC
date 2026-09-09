@@ -47,6 +47,7 @@ from aima_ugc.modules.content.extended_tables import content_media_table
 from aima_ugc.modules.content.query import (
     ContentAnalysisRead,
     ContentAvailabilityRead,
+    ContentFilterValues,
     ContentReadQuery,
     ContentReadRecord,
     ContentSourceRead,
@@ -144,6 +145,67 @@ class PostgresContentQueryRepository:
         if row is None:
             return None
         return self._records((row,))[0]
+
+    def list_filter_values(self) -> ContentFilterValues:
+        """读取当前可见 Content 的有效筛选值，避免旧版本或失效来源泄漏。"""
+
+        statement, _ = self._base_statement(
+            ContentFilterSnapshot(),
+            include_irrelevant=True,
+        )
+        current = statement.subquery("current_content_filter_values")
+
+        def distinct_strings(column: Any) -> tuple[str, ...]:
+            return tuple(
+                cast(str, value)
+                for value in self._session.scalars(
+                    select(column)
+                    .where(column.is_not(None), column != "")
+                    .distinct()
+                    .order_by(column)
+                )
+            )
+
+        label_pair = analysis_content_label_pairs_table
+        ai_pairs = {
+            (cast(str, row[0]), cast(str, row[1]))
+            for row in self._session.execute(
+                select(label_pair.c.primary_label, label_pair.c.secondary_label)
+                .select_from(
+                    current.join(
+                        label_pair,
+                        label_pair.c.analysis_result_id == current.c.analysis_result_id,
+                    )
+                )
+                .where(or_(current.c.labels_locked.is_(False), current.c.labels_locked.is_(None)))
+                .distinct()
+            )
+        }
+        manual_pairs: set[tuple[str, str]] = set()
+        for raw_labels in self._session.scalars(
+            select(current.c.manual_labels).where(current.c.labels_locked.is_(True))
+        ):
+            if not isinstance(raw_labels, list):
+                continue
+            for item in raw_labels:
+                if not isinstance(item, dict):
+                    continue
+                primary = item.get("primary_label")
+                secondary = item.get("secondary_label")
+                if (
+                    isinstance(primary, str)
+                    and primary
+                    and isinstance(secondary, str)
+                    and secondary
+                ):
+                    manual_pairs.add((primary, secondary))
+
+        return ContentFilterValues(
+            content_types=distinct_strings(current.c.content_type),
+            sentiments=distinct_strings(current.c.sentiment),
+            voice_types=distinct_strings(current.c.voice_type),
+            label_pairs=tuple(sorted(ai_pairs | manual_pairs)),
+        )
 
     def freeze_targets(
         self,

@@ -1,6 +1,7 @@
 """Provider-neutral 分析与离线处理公共契约。"""
 
 from .content_label import (
+    CONTENT_RELEVANCES,
     ContentLabelAnalysisV1,
     ContentLabelAnalysisV2,
     ContentLabelAnalysisV3,
@@ -12,6 +13,7 @@ from .content_record import ContentLabelAnalysis, UnifiedContentRecordV1
 from .relevance import RelevanceSnapshotV1
 
 __all__ = [
+    "CONTENT_RELEVANCES",
     "ContentLabelAnalysis",
     "ContentLabelAnalysisV1",
     "ContentLabelAnalysisV2",

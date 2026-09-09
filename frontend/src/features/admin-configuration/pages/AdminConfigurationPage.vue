@@ -173,7 +173,11 @@ async function loadSchemes(): Promise<void> {
       .flatMap((item) => item.versions)
       .some((item) => item.id === selectedSchemeVersionId.value)
     if (!knownVersion) {
-      const initial = schemes.value.flatMap((item) => item.versions).find((item) => item.status === 'draft')
+      const activeVersionIds = new Set(
+        schemes.value.flatMap((item) => item.active_version_id ? [item.active_version_id] : []),
+      )
+      const initial = schemes.value.flatMap((item) => item.versions)
+        .find((item) => activeVersionIds.has(item.id))
         ?? schemes.value.flatMap((item) => item.versions)[0]
       selectedSchemeVersionId.value = initial?.id ?? ''
       if (initial) selectSchemeVersion(initial.id)
@@ -374,6 +378,15 @@ function selectSchemeVersion(versionId: string): void {
   syncSchemeDraft(selection.scheme, selection.version)
 }
 
+function schemeVersionStateLabel(
+  scheme: AnalysisSchemeResponse,
+  version: AnalysisSchemeVersionResponse,
+): string {
+  if (scheme.active_version_id === version.id) return '当前生效'
+  if (version.status === 'draft') return '草稿，尚未生效'
+  return formatRuntimeStatus(version.status)
+}
+
 /** 用服务端规范化后的版本建立编辑基线，避免保存成功后仍被判为未保存。 */
 function syncSchemeDraft(scheme: AnalysisSchemeResponse, version: AnalysisSchemeResponse['versions'][number]): void {
   Object.assign(schemeDraft, {
@@ -422,7 +435,7 @@ async function saveSchemeDraft(): Promise<void> {
       })
     } else {
       saved = await addSchemeDraft({
-        name: schemeDraft.schemeName || `${selected?.scheme.name ?? 'AI 分析规则'} 草稿`,
+        name: schemeDraft.schemeName || `${selected?.scheme.name ?? 'AI 分析原则'} 草稿`,
         description: schemeDraft.description,
         definition,
       })
@@ -430,7 +443,7 @@ async function saveSchemeDraft(): Promise<void> {
     const draft = saved.versions.find((item) => item.status === 'draft')
     selectedSchemeVersionId.value = draft?.id ?? ''
     if (draft) syncSchemeDraft(saved, draft)
-    notice.value = 'AI 分析规则草稿已保存并记录操作。'
+    notice.value = 'AI 分析原则草稿已保存并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -458,7 +471,7 @@ async function copySelectedScheme(): Promise<void> {
     await loadSchemes()
     const draft = copied.versions.find((item) => item.status === 'draft') ?? copied.versions[0]
     if (draft) selectSchemeVersion(draft.id)
-    notice.value = 'AI 分析规则副本已创建为草稿。'
+    notice.value = 'AI 分析原则副本已创建为草稿。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -469,14 +482,14 @@ async function copySelectedScheme(): Promise<void> {
 async function archiveSelectedScheme(): Promise<void> {
   const selected = selectedSchemeVersion.value
   if (!selected) return
-  if (!window.confirm(`确认归档 AI 分析规则“${selected.scheme.name}”吗？当前生效规则会被服务端阻止归档，历史版本和历史分析任务不会被删除。`)) return
+  if (!window.confirm(`确认归档 AI 分析原则“${selected.scheme.name}”吗？当前生效原则会被服务端阻止归档，历史版本和历史分析任务不会被删除。`)) return
   saving.value = true
   error.value = null
   try {
     await archiveScheme(selected.scheme.id)
     selectedSchemeVersionId.value = ''
     await Promise.all([loadSchemes(), loadArchivedSchemes()])
-    notice.value = 'AI 分析规则已归档。'
+    notice.value = 'AI 分析原则已归档。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -493,7 +506,7 @@ async function restoreArchivedAnalysisScheme(item: ResourceLifecycleResponse): P
     const restored = schemes.value.find((scheme) => scheme.id === item.id)
     const version = restored?.versions.find((entry) => entry.status === 'draft') ?? restored?.versions[0]
     if (version) selectSchemeVersion(version.id)
-    notice.value = 'AI 分析规则已恢复；恢复后不会自动发布或生效。'
+    notice.value = 'AI 分析原则已恢复；恢复后不会自动发布或生效。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -507,13 +520,13 @@ async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Pr
   try {
     const eligibility = await fetchSchemeDeleteEligibility(item.id)
     if (!eligibility.eligible) {
-      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析规则已有发布或运行历史，只能保留归档记录。'
+      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析原则已有发布或运行历史，只能保留归档记录。'
       return
     }
-    if (!window.confirm(`确认永久删除已归档 AI 分析规则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿规则才允许删除。`)) return
+    if (!window.confirm(`确认永久删除已归档 AI 分析原则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿原则才允许删除。`)) return
     await deleteArchivedScheme(item.id)
     await loadArchivedSchemes()
-    notice.value = '未发布且未使用的归档 AI 分析规则已永久删除。'
+    notice.value = '未发布且未使用的归档 AI 分析原则已永久删除。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -529,7 +542,7 @@ async function publishVersion(version: AnalysisSchemeVersionResponse): Promise<v
   notice.value = null
   try {
     await activateScheme(version.id, version.version)
-    notice.value = 'AI 分析规则已发布并记录操作。'
+    notice.value = 'AI 分析原则已发布并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -569,7 +582,7 @@ function safeJson(value: Record<string, unknown>): string {
     >
       <AimaPageHeader
         title="管理员配置"
-        description="统一管理车型、词包、AI 模型、采集服务和 AI 分析规则。技术标识与原始审计数据仅在需要时展开查看。"
+        description="统一管理车型、词包、AI 模型、采集服务和 AI 分析原则。技术标识与原始审计数据仅在需要时展开查看。"
       />
       <AimaFeedbackBanner
         v-if="error"
@@ -590,7 +603,7 @@ function safeJson(value: Record<string, unknown>): string {
         aria-label="管理员配置分类"
       >
         <button
-          v-for="item in ([['vehicles', '车型管理'], ['links', '词包关联'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'AI 分析规则'], ['audit', '操作记录']] as const)"
+          v-for="item in ([['vehicles', '车型管理'], ['links', '词包关联'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'AI 分析原则'], ['audit', '操作记录']] as const)"
           :key="item[0]"
           type="button"
           :class="{ active: tab === item[0] }"
@@ -840,7 +853,7 @@ function safeJson(value: Record<string, unknown>): string {
               :class="{ active: selectedSchemeVersionId === version.id }"
               @click="selectSchemeVersion(version.id)"
             >
-              <strong>版本 {{ version.version }} · {{ formatRuntimeStatus(version.status) }}</strong>
+              <strong>版本 {{ version.version }} · {{ schemeVersionStateLabel(scheme, version) }}</strong>
               <span>{{ formatDateTime(version.created_at) }}</span>
             </button>
           </template>
@@ -848,7 +861,7 @@ function safeJson(value: Record<string, unknown>): string {
             class="archived-schemes"
             @toggle="onArchivedSchemesToggle"
           >
-            <summary>已归档规则</summary>
+            <summary>已归档原则</summary>
             <div
               v-if="archivedSchemeLoading"
               class="archived-scheme-state"
@@ -859,7 +872,7 @@ function safeJson(value: Record<string, unknown>): string {
               v-else-if="archivedSchemes.length === 0"
               class="archived-scheme-state"
             >
-              暂无已归档规则。
+              暂无已归档原则。
             </div>
             <div
               v-for="item in archivedSchemes"
@@ -890,11 +903,11 @@ function safeJson(value: Record<string, unknown>): string {
         <section class="card form-card scheme-editor">
           <header>
             <div>
-              <h2>AI 分析规则</h2>
+              <h2>AI 分析原则</h2>
               <p>发声类型、情感和标签结构直接按业务含义维护；提示词仅在需要时进入高级设置。</p>
             </div>
             <span v-if="selectedSchemeVersion">
-              {{ formatRuntimeStatus(selectedSchemeVersion.version.status) }}
+              {{ schemeVersionStateLabel(selectedSchemeVersion.scheme, selectedSchemeVersion.version) }}
             </span>
           </header>
           <div
@@ -906,14 +919,14 @@ function safeJson(value: Record<string, unknown>): string {
               :disabled="saving"
               @click="startSchemeCopy"
             >
-              复制规则
+              复制原则
             </AimaButton>
             <AimaButton
               size="small"
               :disabled="saving"
               @click="archiveSelectedScheme"
             >
-              归档规则
+              归档原则
             </AimaButton>
           </div>
           <div
@@ -924,7 +937,7 @@ function safeJson(value: Record<string, unknown>): string {
               v-model="schemeCopyName"
               maxlength="200"
             ></label>
-            <small>复制的是该规则当前最新版本；副本只创建草稿，不会自动发布。</small>
+            <small>复制的是该原则当前最新版本；副本只创建草稿，不会自动发布。</small>
             <div>
               <AimaButton
                 size="small"
@@ -942,7 +955,7 @@ function safeJson(value: Record<string, unknown>): string {
             </div>
           </div>
           <label>
-            规则名称
+            原则名称
             <input
               v-model="schemeDraft.schemeName"
               :readonly="selectedSchemeVersion?.version.status === 'draft'"
@@ -972,7 +985,7 @@ function safeJson(value: Record<string, unknown>): string {
             @validity="schemeLabelsValid = $event"
           />
           <details class="advanced-editor">
-            <summary>高级规则编辑</summary>
+            <summary>高级原则编辑</summary>
             <p>这里只维护提示词与查看机器结构；业务标签请在上方结构化编辑器修改。</p>
             <div class="advanced-editor__fields">
               <div class="technical-note taxonomy-preview">
@@ -993,7 +1006,7 @@ function safeJson(value: Record<string, unknown>): string {
             </div>
           </details>
           <p v-if="hasUnsavedSchemeChanges">
-            规则有未保存修改，请先保存草稿后再发布。
+            原则有未保存修改，请先保存草稿后再发布。
           </p>
           <div class="actions">
             <AimaButton

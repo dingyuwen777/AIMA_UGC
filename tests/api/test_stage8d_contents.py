@@ -3,11 +3,15 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from aima_ugc.bootstrap.analysis_taxonomy_http import ContentAnalysisTaxonomyUnavailable
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.contracts.http import (
     ContentAnalysisCreatedResponse,
     ContentAnalysisResponse,
     ContentDetailResponse,
+    ContentFilterLabelOptionResponse,
+    ContentFilterOptionsResponse,
+    ContentFilterValueOptionResponse,
     ContentLabelPairResponse,
     ContentListItemResponse,
     ContentListResponse,
@@ -62,6 +66,31 @@ class _ContentService:
         if query.cursor == "tampered":
             raise InvalidContentCursor
         return ContentListResponse(items=(self._item(),), has_more=False)
+
+    def get_filter_options(self) -> ContentFilterOptionsResponse:
+        """返回同时包含当前分类和历史可筛选值的固定 API 测试投影。"""
+
+        return ContentFilterOptionsResponse(
+            platforms=("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"),
+            relevances=("relevant", "irrelevant"),
+            analysis_statuses=("completed", "pending", "stale"),
+            content_types=("note",),
+            sentiments=(
+                ContentFilterValueOptionResponse(value="正面", source="active"),
+                ContentFilterValueOptionResponse(value="旧情感", source="historical"),
+            ),
+            voice_types=(ContentFilterValueOptionResponse(value="真实用户发声", source="active"),),
+            labels=(
+                ContentFilterLabelOptionResponse(
+                    primary_label="产品体验",
+                    source="active",
+                    secondary_labels=(
+                        ContentFilterValueOptionResponse(value="续航表现", source="active"),
+                        ContentFilterValueOptionResponse(value="旧续航", source="historical"),
+                    ),
+                ),
+            ),
+        )
 
     def get_content(self, content_id: UUID) -> ContentDetailResponse:
         if content_id != self.content_id:
@@ -179,6 +208,34 @@ def test_list_and_detail_return_every_ai_label_pair() -> None:
     ]
     assert detailed.status_code == 200
     assert len(detailed.json()["analysis"]["labels"]) == 2
+
+
+def test_filter_options_returns_backend_values_and_historical_sources() -> None:
+    """声音广场筛选目录通过独立 Contract 返回，不改变 active Taxonomy 语义。"""
+
+    response = _client(_ContentService()).get("/api/v1/content-filter-options")
+
+    assert response.status_code == 200
+    assert response.json()["content_types"] == ["note"]
+    assert response.json()["sentiments"][-1] == {
+        "value": "旧情感",
+        "source": "historical",
+    }
+    assert response.json()["labels"][0]["secondary_labels"][-1] == {
+        "value": "旧续航",
+        "source": "historical",
+    }
+
+
+def test_filter_options_uses_taxonomy_unavailable_problem_contract() -> None:
+    class _UnavailableContentService(_ContentService):
+        def get_filter_options(self) -> ContentFilterOptionsResponse:
+            raise ContentAnalysisTaxonomyUnavailable
+
+    response = _client(_UnavailableContentService()).get("/api/v1/content-filter-options")
+
+    assert response.status_code == 503
+    assert response.json()["errors"][0]["code"] == "content_analysis_taxonomy_unavailable"
 
 
 def test_submit_analysis_and_query_job() -> None:

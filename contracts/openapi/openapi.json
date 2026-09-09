@@ -3327,6 +3327,109 @@
         "title": "ContentDetailResponse",
         "type": "object"
       },
+      "ContentFilterLabelOptionResponse": {
+        "additionalProperties": false,
+        "description": "一级标签及当前可见内容中仍需保留的二级标签。",
+        "properties": {
+          "primary_label": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Primary Label",
+            "type": "string"
+          },
+          "secondary_labels": {
+            "items": {
+              "$ref": "#/components/schemas/ContentFilterValueOptionResponse"
+            },
+            "minItems": 1,
+            "title": "Secondary Labels",
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContentFilterOptionSource"
+          }
+        },
+        "required": [
+          "primary_label",
+          "source",
+          "secondary_labels"
+        ],
+        "title": "ContentFilterLabelOptionResponse",
+        "type": "object"
+      },
+      "ContentFilterOptionSource": {
+        "enum": [
+          "active",
+          "historical"
+        ],
+        "type": "string"
+      },
+      "ContentFilterOptionsResponse": {
+        "additionalProperties": false,
+        "description": "声音广场下拉选项；历史值不改变 active Taxonomy。",
+        "properties": {
+          "analysis_statuses": {
+            "items": {
+              "$ref": "#/components/schemas/ContentAnalysisStatus"
+            },
+            "title": "Analysis Statuses",
+            "type": "array"
+          },
+          "content_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/ContentFilterLabelOptionResponse"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/PlatformName"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "relevances": {
+            "items": {
+              "$ref": "#/components/schemas/ContentRelevance"
+            },
+            "title": "Relevances",
+            "type": "array"
+          },
+          "sentiments": {
+            "items": {
+              "$ref": "#/components/schemas/ContentFilterValueOptionResponse"
+            },
+            "title": "Sentiments",
+            "type": "array"
+          },
+          "voice_types": {
+            "items": {
+              "$ref": "#/components/schemas/ContentFilterValueOptionResponse"
+            },
+            "title": "Voice Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "platforms",
+          "relevances",
+          "analysis_statuses",
+          "content_types",
+          "sentiments",
+          "voice_types",
+          "labels"
+        ],
+        "title": "ContentFilterOptionsResponse",
+        "type": "object"
+      },
       "ContentFilterSnapshot": {
         "additionalProperties": false,
         "description": "可序列化并冻结到 Analysis/Export Request 的查询条件。",
@@ -3479,6 +3582,27 @@
           }
         },
         "title": "ContentFilterSnapshot",
+        "type": "object"
+      },
+      "ContentFilterValueOptionResponse": {
+        "additionalProperties": false,
+        "description": "一个可筛选业务值及其相对当前 active Scheme 的来源。",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/ContentFilterOptionSource"
+          },
+          "value": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "source"
+        ],
+        "title": "ContentFilterValueOptionResponse",
         "type": "object"
       },
       "ContentLabelPairResponse": {
@@ -10169,6 +10293,48 @@
           }
         },
         "summary": "Create Content Availability Observation",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/content-filter-options": {
+      "get": {
+        "description": "读取 active Taxonomy 与当前可见历史值合并后的筛选目录。",
+        "operationId": "getContentFilterOptions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentFilterOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Content Filter Options",
         "tags": [
           "contents"
         ]

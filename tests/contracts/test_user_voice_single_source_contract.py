@@ -6,7 +6,11 @@ from aima_ugc.contracts.http import (
     ContentAnalysisResponse,
     ContentLabelPairResponse,
 )
-from aima_ugc.modules.analysis import CONTENT_LABELING_PROMPT_PATH, PROMPT_VERSION
+from aima_ugc.modules.analysis import (
+    CONTENT_LABELING_PROMPT_PATH,
+    CONTENT_LABELING_PROMPT_POINTER_PATH,
+    PROMPT_VERSION,
+)
 from pydantic import ValidationError
 
 ANALYZED_AT = datetime(2026, 8, 21, 13, 35, tzinfo=UTC)
@@ -61,9 +65,13 @@ def test_excel_analysis_uses_voice_type_as_the_only_user_voice_fact() -> None:
         )
 
 
-def test_prompt_v4_separates_source_intent_and_evidence_without_parallel_user_flag() -> None:
-    assert PROMPT_VERSION == "content-labeling.v4"
-    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v4.md"
+def test_bootstrap_prompt_separates_source_intent_and_evidence_without_parallel_flag() -> None:
+    prompt_suffix = CONTENT_LABELING_PROMPT_PATH.stem.removeprefix("content_labeling_")
+    assert PROMPT_VERSION == f"content-labeling.{prompt_suffix}"
+    assert (
+        CONTENT_LABELING_PROMPT_POINTER_PATH.read_text(encoding="utf-8").strip()
+        == CONTENT_LABELING_PROMPT_PATH.name
+    )
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     assert "is_user_voice" not in prompt

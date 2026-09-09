@@ -9,6 +9,7 @@ import type {
   ContentAnalysisTaxonomyResponse,
   ContentCountResponse,
   ContentDetailResponse,
+  ContentFilterOptionsResponse,
   ContentFilterSnapshot,
   ContentListItemResponse,
   ContentRelevance,
@@ -30,6 +31,7 @@ import {
   fetchContentAnalysisTaxonomy,
   fetchContentCount,
   fetchContentDetail,
+  fetchContentFilterOptions,
   fetchContents,
   fetchDataExport,
   fetchDataExportFile,
@@ -115,6 +117,10 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const taxonomy = ref<ContentAnalysisTaxonomyResponse | null>(null)
   const taxonomyLoading = ref(false)
   const taxonomyError = ref<string | null>(null)
+  const filterOptions = ref<ContentFilterOptionsResponse | null>(null)
+  const filterOptionsLoading = ref(false)
+  const filterOptionsError = ref<string | null>(null)
+  let filterOptionsRevision = 0
   const contentCount = ref<ContentCountResponse | null>(null)
   const exportColumnCatalog = ref<ExportColumnCatalogResponse | null>(null)
   const loading = ref(false)
@@ -281,31 +287,51 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
-  /** 读取当前 Prompt Taxonomy，并清理部署切换后已经失效的分类筛选。 */
+  /** 读取当前 Prompt Taxonomy；该目录只供人工纠正，不决定历史结果筛选。 */
   async function refreshTaxonomy(): Promise<void> {
     taxonomyLoading.value = true
     taxonomyError.value = null
     try {
       const loaded = await fetchContentAnalysisTaxonomy()
       taxonomy.value = loaded
-      if (!loaded.sentiments.includes(filters.sentiment)) filters.sentiment = ''
-      if (!loaded.voice_types.includes(filters.voiceType)) filters.voiceType = ''
+    } catch (reason) {
+      taxonomy.value = null
+      taxonomyError.value = errorMessage(reason)
+    } finally {
+      taxonomyLoading.value = false
+    }
+  }
+
+  /** 读取后端筛选目录，并清理已不再能命中当前可见内容的选择。 */
+  async function refreshFilterOptions(): Promise<void> {
+    const revision = ++filterOptionsRevision
+    filterOptionsLoading.value = true
+    filterOptionsError.value = null
+    try {
+      const loaded = await fetchContentFilterOptions()
+      if (revision !== filterOptionsRevision) return
+      filterOptions.value = loaded
+      if (!loaded.platforms.includes(filters.platform as PlatformName)) filters.platform = ''
+      if (!loaded.content_types.includes(filters.contentType)) filters.contentType = ''
+      if (!loaded.analysis_statuses.includes(filters.analysisStatus as ContentAnalysisStatus)) {
+        filters.analysisStatus = ''
+      }
+      if (!loaded.relevances.includes(filters.relevance as ContentRelevance)) filters.relevance = ''
+      if (!loaded.sentiments.some((item) => item.value === filters.sentiment)) filters.sentiment = ''
+      if (!loaded.voice_types.some((item) => item.value === filters.voiceType)) filters.voiceType = ''
       const labelGroup = loaded.labels.find((item) => item.primary_label === filters.primaryLabel)
       if (!labelGroup) {
         filters.primaryLabel = ''
         filters.secondaryLabel = ''
-      } else if (!labelGroup.secondary_labels.includes(filters.secondaryLabel)) {
+      } else if (!labelGroup.secondary_labels.some((item) => item.value === filters.secondaryLabel)) {
         filters.secondaryLabel = ''
       }
     } catch (reason) {
-      taxonomy.value = null
-      filters.sentiment = ''
-      filters.voiceType = ''
-      filters.primaryLabel = ''
-      filters.secondaryLabel = ''
-      taxonomyError.value = errorMessage(reason)
+      if (revision !== filterOptionsRevision) return
+      filterOptions.value = null
+      filterOptionsError.value = errorMessage(reason)
     } finally {
-      taxonomyLoading.value = false
+      if (revision === filterOptionsRevision) filterOptionsLoading.value = false
     }
   }
 
@@ -458,6 +484,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       detail.value = await fetchContentDetail(detail.value.id)
       notice.value = '分析人工纠正已保存；修改已锁定维度前必须显式解锁。'
       await refreshLoadedWindow()
+      await refreshFilterOptions()
       return true
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -613,7 +640,8 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     if (revision !== pollRevision || pageIsHidden()) return
     const signature = analysisSignature.value
     if (signature !== displayedAnalysisSignature && !loading.value && !loadingNext.value &&
-      !taxonomyLoading.value && await refreshLoadedWindow()) {
+      !filterOptionsLoading.value && await refreshLoadedWindow()) {
+      await refreshFilterOptions()
       displayedAnalysisSignature = signature
     }
     if (taskCenter.analysisError) error.value = taskCenter.analysisError
@@ -652,6 +680,9 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     taxonomy,
     taxonomyLoading,
     taxonomyError,
+    filterOptions,
+    filterOptionsLoading,
+    filterOptionsError,
     contentCount,
     countError,
     exportColumnCatalog,
@@ -674,6 +705,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     refresh,
     refreshAnalysisCapabilities,
     refreshTaxonomy,
+    refreshFilterOptions,
     refreshCount,
     loadNext,
     openDetail,

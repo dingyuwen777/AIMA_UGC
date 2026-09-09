@@ -70,6 +70,7 @@ from aima_ugc.contracts.http import (
     ContentAnalysisTaxonomyResponse,
     ContentCountRequest,
     ContentDetailResponse,
+    ContentFilterOptionsResponse,
     ContentListQuery,
     ContentListResponse,
     DataExportCreatedResponse,
@@ -1894,6 +1895,18 @@ def create_app(
             except (PromptTaxonomyError, ValidationError) as exc:
                 raise ContentAnalysisTaxonomyUnavailable from exc
         return current_content_service().get_analysis_taxonomy()
+
+    @application.get(
+        "/api/v1/content-filter-options",
+        operation_id="getContentFilterOptions",
+        response_model=ContentFilterOptionsResponse,
+        responses={503: {"model": HttpErrorResponse}, 500: {"model": HttpErrorResponse}},
+        tags=["contents"],
+    )
+    def get_content_filter_options() -> ContentFilterOptionsResponse:
+        """读取 active Taxonomy 与当前可见历史值合并后的筛选目录。"""
+
+        return current_content_service().get_filter_options()
 
     @application.get(
         "/api/v1/principal",

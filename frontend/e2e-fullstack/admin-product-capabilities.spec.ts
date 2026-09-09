@@ -252,16 +252,17 @@ test('管理员发布原子 Scheme 后新 Run 冻结新版本且旧 Run 身份�
   expect(oldRun.analysis_scheme_version_id).toBe(activeBefore!.id)
 
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
-  await page.getByRole('button', {
-    name: new RegExp(`版本 ${activeBefore!.version} · 已发布`),
-  }).click()
+  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
+  const activeVersionButton = page.getByRole('button', {
+    name: new RegExp(`版本 ${activeBefore!.version} · 当前生效`),
+  })
+  await expect(activeVersionButton).toHaveClass(/active/)
   await page.getByLabel('说明').fill(`U4 全栈发布 ${Date.now()}`)
   await page.getByRole('button', { name: '基于此版本新建草稿', exact: true }).click()
-  await expect(page.getByText('AI 分析规则草稿已保存并记录操作。', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析原则草稿已保存并记录操作。', { exact: true })).toBeVisible()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '发布', exact: true }).click()
-  await expect(page.getByText('AI 分析规则已发布并记录操作。', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析原则已发布并记录操作。', { exact: true })).toBeVisible()
 
   const schemesAfterResponse = await request.get('/api/v1/analysis-schemes')
   expect(schemesAfterResponse.status()).toBe(200)

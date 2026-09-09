@@ -3,13 +3,18 @@ import { computed } from 'vue'
 
 import type {
   ContentAnalysisStatus,
-  ContentAnalysisTaxonomyResponse,
+  ContentFilterOptionsResponse,
   ContentRelevance,
   PlatformName,
 } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDateRange from '../../../../../shared/ui/AimaDateRange.vue'
-import { platformLabel } from '../../../format'
+import {
+  analysisStatusLabel,
+  contentTypeLabel,
+  platformLabel,
+  relevanceLabel,
+} from '../../../format'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 
 const props = withDefaults(defineProps<{
@@ -26,8 +31,8 @@ const props = withDefaults(defineProps<{
   publishedTo: string
   sourceIdentifier: string
   vehicleModelIds?: string[]
-  taxonomy: ContentAnalysisTaxonomyResponse | null
-  taxonomyLoading: boolean
+  filterOptions: ContentFilterOptionsResponse | null
+  filterOptionsLoading: boolean
 }>(), { vehicleModelIds: () => [] })
 
 const emit = defineEmits<{
@@ -48,17 +53,14 @@ const emit = defineEmits<{
   reset: []
 }>()
 
-const contentTypeOptions = [
-  { value: 'image', label: '图文 / 图片' },
-  { value: 'video', label: '视频' },
-  { value: 'text', label: '纯文本' },
-  { value: 'unknown', label: '未识别' },
-] as const
-
 const secondaryLabels = computed(
-  () => props.taxonomy?.labels.find((item) => item.primary_label === props.primaryLabel)
+  () => props.filterOptions?.labels.find((item) => item.primary_label === props.primaryLabel)
     ?.secondary_labels ?? [],
 )
+
+function optionLabel(value: string, source: 'active' | 'historical'): string {
+  return source === 'historical' ? `${value}（历史数据）` : value
+}
 /** 从原生输入控件事件中读取字符串值，保持页面与 Store 的 v-model 边界单一。 */
 function value(event: Event): string {
   return (event.target as HTMLInputElement | HTMLSelectElement).value
@@ -86,28 +88,43 @@ function updatePrimaryLabel(event: Event): void {
       <label class="field field--platform"><span>平台</span><select
         aria-label="平台"
         :value="platform"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:platform', value($event) as '' | PlatformName)"
-      ><option value="">全部平台</option><option value="xiaohongshu">小红书</option><option value="douyin">抖音</option><option value="weibo">微博</option><option value="bilibili">B站</option><option value="kuaishou">快手</option></select></label>
+      ><option value="">全部平台</option><option
+        v-for="item in filterOptions?.platforms ?? []"
+        :key="item"
+        :value="item"
+      >{{ platformLabel(item) }}</option></select></label>
       <label class="field field--relevance"><span>相关性</span><select
         aria-label="相关性"
         :value="relevance"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
-      ><option value="">默认业务数据</option><option value="relevant">相关</option><option value="irrelevant">不相关</option></select></label>
+      ><option value="">默认业务数据</option><option
+        v-for="item in filterOptions?.relevances ?? []"
+        :key="item"
+        :value="item"
+      >{{ relevanceLabel(item) }}</option></select></label>
       <label class="field field--sentiment"><span>情感</span><select
         aria-label="情感"
         :value="sentiment"
-        :disabled="taxonomyLoading || !taxonomy"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:sentiment', value($event))"
-      ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部情感' : '分类配置暂不可用' }}</option><option
-        v-for="item in taxonomy?.sentiments ?? []"
-        :key="item"
-        :value="item"
-      >{{ item }}</option></select></label>
+      ><option value="">{{ filterOptionsLoading ? '筛选项加载中' : filterOptions ? '全部情感' : '筛选项暂不可用' }}</option><option
+        v-for="item in filterOptions?.sentiments ?? []"
+        :key="item.value"
+        :value="item.value"
+      >{{ optionLabel(item.value, item.source) }}</option></select></label>
       <label class="field field--status"><span>状态</span><select
         aria-label="状态"
         :value="analysisStatus"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:analysisStatus', value($event) as '' | ContentAnalysisStatus)"
-      ><option value="">全部状态</option><option value="completed">已分析</option><option value="pending">未分析</option><option value="stale">需重新分析</option></select></label>
+      ><option value="">全部状态</option><option
+        v-for="item in filterOptions?.analysis_statuses ?? []"
+        :key="item"
+        :value="item"
+      >{{ analysisStatusLabel(item) }}</option></select></label>
       <div class="field field--date">
         <span>发布时间范围</span><AimaDateRange
           :from="publishedFrom"
@@ -130,42 +147,43 @@ function updatePrimaryLabel(event: Event): void {
       <label class="field field--voice-type"><span>发声类型</span><select
         aria-label="发声类型"
         :value="voiceType"
-        :disabled="taxonomyLoading || !taxonomy"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:voiceType', value($event))"
-      ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部发声类型' : '分类配置暂不可用' }}</option><option
-        v-for="item in taxonomy?.voice_types ?? []"
-        :key="item"
-        :value="item"
-      >{{ item }}</option></select></label>
+      ><option value="">{{ filterOptionsLoading ? '筛选项加载中' : filterOptions ? '全部发声类型' : '筛选项暂不可用' }}</option><option
+        v-for="item in filterOptions?.voice_types ?? []"
+        :key="item.value"
+        :value="item.value"
+      >{{ optionLabel(item.value, item.source) }}</option></select></label>
       <label class="field field--content-type"><span>内容类型</span><select
         aria-label="内容类型"
         :value="contentType"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:contentType', value($event))"
       ><option value="">全部类型</option><option
-        v-for="item in contentTypeOptions"
-        :key="item.value"
-        :value="item.value"
-      >{{ item.label }}</option></select></label>
+        v-for="item in filterOptions?.content_types ?? []"
+        :key="item"
+        :value="item"
+      >{{ contentTypeLabel(item) }}</option></select></label>
       <label class="field field--label"><span>一级标签</span><select
         aria-label="一级标签"
         :value="primaryLabel"
-        :disabled="taxonomyLoading || !taxonomy"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="updatePrimaryLabel"
-      ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部一级标签' : '分类配置暂不可用' }}</option><option
-        v-for="item in taxonomy?.labels ?? []"
+      ><option value="">{{ filterOptionsLoading ? '筛选项加载中' : filterOptions ? '全部一级标签' : '筛选项暂不可用' }}</option><option
+        v-for="item in filterOptions?.labels ?? []"
         :key="item.primary_label"
         :value="item.primary_label"
-      >{{ item.primary_label }}</option></select></label>
+      >{{ optionLabel(item.primary_label, item.source) }}</option></select></label>
       <label class="field field--label"><span>二级标签</span><select
         aria-label="二级标签"
         :value="secondaryLabel"
-        :disabled="taxonomyLoading || !taxonomy || !primaryLabel"
+        :disabled="filterOptionsLoading || !filterOptions || !primaryLabel"
         @change="emit('update:secondaryLabel', value($event))"
       ><option value="">{{ primaryLabel ? '全部二级标签' : '请先选择一级标签' }}</option><option
         v-for="item in secondaryLabels"
-        :key="item"
-        :value="item"
-      >{{ item }}</option></select></label>
+        :key="item.value"
+        :value="item.value"
+      >{{ optionLabel(item.value, item.source) }}</option></select></label>
     </div>
     <footer class="filter-footer">
       <div class="filter-summary">

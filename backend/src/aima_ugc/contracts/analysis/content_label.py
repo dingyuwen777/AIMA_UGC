@@ -8,6 +8,7 @@ _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
 type ContentRelevance = Literal["relevant", "irrelevant"]
 type ContentVoiceType = Annotated[str, Field(min_length=1, max_length=128)]
+CONTENT_RELEVANCES: tuple[ContentRelevance, ...] = ("relevant", "irrelevant")
 
 
 class ContentLabelPairV2(BaseModel):
