@@ -1,25 +1,36 @@
-"""Stage 2 品牌车型管理、统一快照与人工锁 PostgreSQL 集成回归。"""
+"""Stage 2 品牌车型管理、冻结 Scope 与人工锁 PostgreSQL 集成回归。"""
 
 from __future__ import annotations
 
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import insert, select
+
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
     PostgresBrandVehicleCatalogRepository,
 )
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
+from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.worker import create_worker_runtime
-from aima_ugc.contracts.brand_vehicle import BrandCreateRequest, VehicleBrandAssignmentRequest
+from aima_ugc.contracts.administration import VehicleModelCreateRequest
+from aima_ugc.contracts.brand_vehicle import (
+    BrandCreateRequest,
+    BrandUpdateRequest,
+    BrandVehicleCatalogSnapshotQuery,
+    VehicleBrandAssignmentRequest,
+)
 from aima_ugc.modules.administration import AdministrationConflict
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.vehicles.models import ContentBrandEvidence, ContentVehicleEvidence
-from aima_ugc.modules.vehicles.tables import content_brand_evidence_table
+from aima_ugc.modules.vehicles.tables import (
+    content_brand_evidence_table,
+    vehicle_models_table,
+)
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.time import beijing_now
-from sqlalchemy import insert, select
 
 
 @pytest.fixture
@@ -49,69 +60,211 @@ def _admin() -> Principal:
     )
 
 
-def test_brand_crud_vehicle_assignment_integrity_and_snapshot(runtime) -> None:  # type: ignore[no-untyped-def]
-    service = PostgresBrandVehicleHttpService(runtime)
-    principal = _admin()
-    brand = service.create_brand(
-        BrandCreateRequest(
-            code="aima",
-            display_name="爱玛",
-            role="owned",
-            aliases=("爱玛", "AIMA"),
+def _brand(
+    service: PostgresBrandVehicleHttpService,
+    principal: Principal,
+    *,
+    code: str,
+    name: str,
+    role: str,
+    aliases: tuple[str, ...],
+):  # type: ignore[no-untyped-def]
+    return service.create_brand(
+        BrandCreateRequest(code=code, display_name=name, role=role, aliases=aliases),  # type: ignore[arg-type]
+        principal=principal,
+        request_id=f"stage2-brand-{code}",
+    )
+
+
+def _vehicle(
+    service: PostgresAdministrationHttpService,
+    principal: Principal,
+    *,
+    code: str,
+    name: str,
+    brand_id,
+    aliases: tuple[str, ...],
+):  # type: ignore[no-untyped-def]
+    return service.create_vehicle_model(
+        VehicleModelCreateRequest(
+            code=code,
+            display_name=name,
+            brand_id=brand_id,
+            aliases=aliases,
         ),
         principal=principal,
-        request_id="stage2-brand-create",
+        request_id=f"stage2-vehicle-{code}",
     )
+
+
+def test_brand_vehicle_admin_invariant_and_snapshot_scopes(runtime) -> None:  # type: ignore[no-untyped-def]
+    brand_service = PostgresBrandVehicleHttpService(runtime)
+    vehicle_service = PostgresAdministrationHttpService(runtime)
+    principal = _admin()
+    aima = _brand(
+        brand_service,
+        principal,
+        code="AIMA",
+        name="爱玛",
+        role="owned",
+        aliases=("爱玛", "AIMA"),
+    )
+    niu = _brand(
+        brand_service,
+        principal,
+        code="NIU",
+        name="小牛",
+        role="competitor",
+        aliases=("小牛", "NIU"),
+    )
+    spare = _brand(
+        brand_service,
+        principal,
+        code="SPARE",
+        name="停用品牌",
+        role="other",
+        aliases=("停用品牌",),
+    )
+
+    luna = _vehicle(
+        vehicle_service,
+        principal,
+        code="LUNA-AIR",
+        name="爱玛露娜 Air",
+        brand_id=aima.id,
+        aliases=("露娜Air",),
+    )
+    q5 = _vehicle(
+        vehicle_service,
+        principal,
+        code="Q5",
+        name="爱玛 Q5",
+        brand_id=aima.id,
+        aliases=("爱玛Q5",),
+    )
+    uqi = _vehicle(
+        vehicle_service,
+        principal,
+        code="UQI",
+        name="小牛 UQi",
+        brand_id=niu.id,
+        aliases=("UQi",),
+    )
+
+    assert vehicle_service.get_vehicle_model(luna.id).brand_id == aima.id
+    assert brand_service.get_active_vehicle_brand_integrity().is_complete is True
+
+    all_snapshot = brand_service.get_catalog_snapshot(BrandVehicleCatalogSnapshotQuery())
+    assert all_snapshot.filter_mode == "all_active"
+    assert all_snapshot.selected_brand_ids == ()
+    assert {item.id for item in all_snapshot.brands} == {aima.id, niu.id, spare.id}
+    assert {item.id for item in all_snapshot.vehicles} == {luna.id, q5.id, uqi.id}
+    assert all_snapshot.catalog_version >= uqi.catalog_version
+
+    selected = brand_service.get_catalog_snapshot(
+        BrandVehicleCatalogSnapshotQuery(mode="selected", brand_ids=(aima.id,))
+    )
+    assert selected.filter_mode == "selected"
+    assert selected.selected_brand_ids == (aima.id,)
+    assert {item.id for item in selected.brands} == {aima.id}
+    assert {item.id for item in selected.vehicles} == {luna.id, q5.id}
+    assert {item.vehicle_model_id for item in selected.vehicle_aliases} == {luna.id, q5.id}
+    assert {item.brand_id for item in selected.brand_aliases} == {aima.id}
+
+    with pytest.raises(AdministrationConflict):
+        brand_service.update_brand(
+            aima.id,
+            BrandUpdateRequest(status="deprecated"),
+            principal=principal,
+            request_id="stage2-deprecate-brand-with-active-vehicles",
+        )
+    with pytest.raises(AdministrationConflict):
+        brand_service.assign_vehicle_brand(
+            luna.id,
+            VehicleBrandAssignmentRequest(brand_id=None),
+            principal=principal,
+            request_id="stage2-clear-active-brand",
+        )
+
+    deprecated = brand_service.update_brand(
+        spare.id,
+        BrandUpdateRequest(status="deprecated"),
+        principal=principal,
+        request_id="stage2-deprecate-unused-brand",
+    )
+    assert deprecated.status == "deprecated"
+    with pytest.raises(AdministrationConflict):
+        _vehicle(
+            vehicle_service,
+            principal,
+            code="INVALID-BRAND",
+            name="不能绑定停用品牌",
+            brand_id=spare.id,
+            aliases=("INVALID-BRAND",),
+        )
+
+
+def test_legacy_unassigned_active_vehicle_must_be_explicitly_repaired(runtime) -> None:  # type: ignore[no-untyped-def]
+    service = PostgresBrandVehicleHttpService(runtime)
+    principal = _admin()
+    brand = _brand(
+        service,
+        principal,
+        code="AIMA",
+        name="爱玛",
+        role="owned",
+        aliases=("爱玛",),
+    )
+    vehicle_id = uuid4()
+    now = beijing_now()
     session = runtime.database.new_session()
     try:
         with session.begin():
-            vehicle = PostgresVehicleCatalogRepository(session).create_model(
-                code="LUNA-AIR",
-                display_name="爱玛露娜 Air",
-                aliases=("露娜Air",),
-                actor_ref=principal.principal_id,
+            catalog_version = PostgresVehicleCatalogRepository(session).current_catalog_version()
+            session.execute(
+                insert(vehicle_models_table).values(
+                    id=vehicle_id,
+                    code="LEGACY-UNASSIGNED",
+                    display_name="历史未归属车型",
+                    brand_id=None,
+                    status="active",
+                    version=1,
+                    catalog_version=catalog_version,
+                    created_at=now,
+                    updated_at=now,
+                )
             )
     finally:
         session.close()
 
-    before = service.get_active_vehicle_brand_integrity()
-    assert before.is_complete is False
-    assert before.missing_brand_vehicle_model_ids == (vehicle.id,)
+    integrity = service.get_active_vehicle_brand_integrity()
+    assert integrity.is_complete is False
+    assert integrity.missing_brand_vehicle_model_ids == (vehicle_id,)
+    with pytest.raises(AdministrationConflict):
+        service.get_catalog_snapshot(BrandVehicleCatalogSnapshotQuery())
 
-    assigned = service.assign_vehicle_brand(
-        vehicle.id,
+    repaired = service.assign_vehicle_brand(
+        vehicle_id,
         VehicleBrandAssignmentRequest(brand_id=brand.id),
         principal=principal,
-        request_id="stage2-assign-brand",
+        request_id="stage2-explicit-legacy-repair",
     )
-    assert assigned.brand_id == brand.id
-    assert assigned.vehicle_version == vehicle.version + 1
-
-    after = service.get_active_vehicle_brand_integrity()
-    assert after.is_complete is True
-    assert after.missing_brand_vehicle_model_ids == ()
-    snapshot = service.get_catalog_snapshot()
-    assert snapshot.catalog_version == after.catalog_version
-    assert [(item.code, item.role) for item in snapshot.brands] == [("AIMA", "owned")]
-    assert snapshot.vehicles[0].brand_id == brand.id
-    assert {item.text for item in snapshot.brand_aliases} == {"爱玛", "AIMA"}
-    assert [item.text for item in snapshot.vehicle_aliases] == ["露娜Air"]
-
-    with pytest.raises(AdministrationConflict):
-        service.delete_brand(
-            brand.id,
-            principal=principal,
-            request_id="stage2-delete-referenced-brand",
-        )
+    assert repaired.brand_id == brand.id
+    assert service.get_active_vehicle_brand_integrity().is_complete is True
+    snapshot = service.get_catalog_snapshot(BrandVehicleCatalogSnapshotQuery())
+    assert {item.id for item in snapshot.vehicles} == {vehicle_id}
 
 
 def test_manual_brand_and_vehicle_locks_block_automatic_replacement(runtime) -> None:  # type: ignore[no-untyped-def]
     principal = _admin()
     service = PostgresBrandVehicleHttpService(runtime)
-    brand = service.create_brand(
-        BrandCreateRequest(code="AIMA", display_name="爱玛", role="owned", aliases=("爱玛",)),
-        principal=principal,
-        request_id="stage2-brand-create-lock",
+    brand = _brand(
+        service,
+        principal,
+        code="AIMA",
+        name="爱玛",
+        role="owned",
+        aliases=("爱玛",),
     )
     content_id = uuid4()
     now = beijing_now()
@@ -136,12 +289,10 @@ def test_manual_brand_and_vehicle_locks_block_automatic_replacement(runtime) -> 
                 code="LUNA-LOCK",
                 display_name="爱玛露娜",
                 aliases=("露娜",),
+                brand_id=brand.id,
                 actor_ref=principal.principal_id,
             )
             repository = PostgresBrandVehicleCatalogRepository(session)
-            vehicle = repository.assign_vehicle_brand(
-                vehicle.id, brand.id, actor_ref=principal.principal_id
-            )
             catalog_version = repository.current_catalog_version()
             assert repository.replace_automatic_brand_evidence(
                 content_id=content_id,
