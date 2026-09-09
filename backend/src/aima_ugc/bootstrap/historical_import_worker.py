@@ -352,8 +352,6 @@ def _append_historical_brand_vehicle_evidence(
     for ledger in ledgers:
         ordinal = cast(int, ledger["source_row_ordinal"])
         content = candidate_by_ordinal[ordinal]
-        if content is None:
-            continue
         resolution = resolve_canonical_brand_vehicle(filter_snapshot, content)
         if not resolution.matched:
             raise ValueError("Historical candidate 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
