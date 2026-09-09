@@ -63,6 +63,7 @@ class VehicleModelCreateRequest(BaseModel):
 
     code: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     display_name: str = Field(min_length=1, max_length=200)
+    brand_id: UUID | None = None
     aliases: tuple[str, ...] = Field(default=(), max_length=100)
     series_name: str | None = Field(default=None, min_length=1, max_length=200)
     category_name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -104,6 +105,7 @@ class VehicleModelUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     aliases: tuple[str, ...] | None = Field(default=None, max_length=100)
     status: Literal["active", "deprecated"] | None = None
+    brand_id: UUID | None = None
     series_name: str | None = Field(default=None, min_length=1, max_length=200)
     category_name: str | None = Field(default=None, min_length=1, max_length=200)
 
@@ -131,7 +133,7 @@ class VehicleModelUpdateRequest(BaseModel):
             self.display_name is None
             and self.aliases is None
             and self.status is None
-            and not self.model_fields_set.intersection({"series_name", "category_name"})
+            and not self.model_fields_set.intersection({"brand_id", "series_name", "category_name"})
         ):
             raise ValueError("车型更新必须至少包含一个字段")
         return self
@@ -160,6 +162,7 @@ class VehicleModelResponse(BaseModel):
     id: UUID
     code: str
     display_name: str
+    brand_id: UUID | None = None
     series_name: str | None = None
     category_name: str | None = None
     status: VehicleModelStatus

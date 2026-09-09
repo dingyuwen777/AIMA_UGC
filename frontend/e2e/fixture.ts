@@ -43,6 +43,15 @@ export const test = base.extend<{ apiGuard: void }>({
           })
           return
         }
+        if (request.method() === 'GET' && url.pathname === '/api/v1/vehicle-brands') {
+          const offset = Number(url.searchParams.get('offset') ?? '0')
+          const limit = Number(url.searchParams.get('limit') ?? '50')
+          await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ items: [], total: 0, catalog_version: 1, offset, limit }),
+          })
+          return
+        }
         if (request.method() === 'GET' && url.pathname === '/api/v1/vehicle-models') {
           const offset = Number(url.searchParams.get('offset') ?? '0')
           const limit = Number(url.searchParams.get('limit') ?? '50')

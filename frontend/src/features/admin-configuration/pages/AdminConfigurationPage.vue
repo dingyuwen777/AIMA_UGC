@@ -6,6 +6,7 @@ import type {
   AnalysisSchemeResponse,
   AnalysisSchemeVersionResponse,
   AuditEventResponse,
+  BrandResponse,
   KeywordPackSummaryResponse,
   ResourceLifecycleResponse,
   VehicleModelResponse,
@@ -29,6 +30,7 @@ import {
   fetchArchivedSchemes,
   fetchAuditEvents,
   fetchKeywordPacksForAdmin,
+  fetchVehicleBrandsForAdmin,
   fetchSchemeDeleteEligibility,
   fetchSchemes,
   fetchVehicles,
@@ -55,6 +57,7 @@ const saving = ref(false)
 const error = ref<string | null>(null)
 const notice = ref<string | null>(null)
 const vehicles = ref<VehicleModelResponse[]>([])
+const brands = ref<BrandResponse[]>([])
 const packs = ref<KeywordPackSummaryResponse[]>([])
 const schemes = ref<AnalysisSchemeResponse[]>([])
 const archivedSchemes = ref<ResourceLifecycleResponse[]>([])
@@ -63,6 +66,7 @@ const selectedPackId = ref('')
 const linkedVehicleIds = ref<string[]>([])
 const selectedSchemeVersionId = ref('')
 const vehicleLoading = ref(false)
+const brandLoading = ref(false)
 const packLoading = ref(false)
 const schemeLoading = ref(false)
 const archivedSchemeLoading = ref(false)
@@ -71,6 +75,7 @@ const schemeCopyName = ref('')
 const schemeCopyEditing = ref(false)
 const auditLoading = ref(false)
 const vehicleError = ref<string | null>(null)
+const brandError = ref<string | null>(null)
 const packError = ref<string | null>(null)
 const schemeError = ref<string | null>(null)
 const auditError = ref<string | null>(null)
@@ -78,7 +83,7 @@ const auditTotal = ref(0)
 const auditOffset = ref(0)
 const auditLimit = 100
 
-const vehicleDraft = reactive({ id: '', code: '', displayName: '', seriesName: '', categoryName: '', aliases: '', status: 'active' as 'active' | 'deprecated' })
+const vehicleDraft = reactive({ id: '', code: '', displayName: '', brandId: '', seriesName: '', categoryName: '', aliases: '', status: 'active' as 'active' | 'deprecated' })
 const mergeTargetId = ref('')
 const schemeDraft = reactive({
   schemeName: '',
@@ -90,17 +95,19 @@ const schemeDraft = reactive({
 })
 
 const vehicleFormValid = computed(() => Boolean(
-  vehicleDraft.code.trim() && vehicleDraft.displayName.trim(),
+  vehicleDraft.code.trim()
+    && vehicleDraft.displayName.trim()
+    && (vehicleDraft.status !== 'active' || vehicleDraft.brandId),
 ))
 const loading = computed(() => {
-  if (tab.value === 'vehicles') return vehicleLoading.value
+  if (tab.value === 'vehicles') return vehicleLoading.value || brandLoading.value
   if (tab.value === 'links') return vehicleLoading.value || packLoading.value
   if (tab.value === 'scheme') return schemeLoading.value
   if (tab.value === 'llm' || tab.value === 'tikhub') return false
   return auditLoading.value
 })
 const activeResourceError = computed(() => {
-  if (tab.value === 'vehicles') return vehicleError.value
+  if (tab.value === 'vehicles') return vehicleError.value ?? brandError.value
   if (tab.value === 'links') return packError.value ?? vehicleError.value
   if (tab.value === 'scheme') return schemeError.value
   if (tab.value === 'llm' || tab.value === 'tikhub') return null
@@ -145,6 +152,18 @@ async function loadVehicles(): Promise<void> {
     vehicleError.value = apiErrorMessage(reason)
   } finally {
     vehicleLoading.value = false
+  }
+}
+
+async function loadBrands(): Promise<void> {
+  brandLoading.value = true
+  brandError.value = null
+  try {
+    brands.value = (await fetchVehicleBrandsForAdmin()).items
+  } catch (reason) {
+    brandError.value = apiErrorMessage(reason)
+  } finally {
+    brandLoading.value = false
   }
 }
 
@@ -226,11 +245,14 @@ async function loadAudit(): Promise<void> {
 }
 
 async function refreshAll(): Promise<void> {
-  await Promise.all([loadVehicles(), loadPacks(), loadSchemes(), loadAudit()])
+  await Promise.all([loadVehicles(), loadBrands(), loadPacks(), loadSchemes(), loadAudit()])
 }
 
 async function retryActiveResource(): Promise<void> {
-  if (tab.value === 'vehicles') return loadVehicles()
+  if (tab.value === 'vehicles') {
+    await Promise.all([loadVehicles(), loadBrands()])
+    return
+  }
   if (tab.value === 'links') {
     await Promise.all([loadVehicles(), loadPacks()])
     return
@@ -257,7 +279,7 @@ function splitLines(value: string): string[] {
 
 function resetVehicleDraft(): void {
   // 创建新车型时清除上次编辑的展示分类。
-  Object.assign(vehicleDraft, { id: '', code: '', displayName: '', seriesName: '', categoryName: '', aliases: '', status: 'active' })
+  Object.assign(vehicleDraft, { id: '', code: '', displayName: '', brandId: '', seriesName: '', categoryName: '', aliases: '', status: 'active' })
   mergeTargetId.value = ''
 }
 
@@ -266,6 +288,7 @@ function editVehicleDraft(item: VehicleModelResponse): void {
     id: item.id,
     code: item.code,
     displayName: item.display_name,
+    brandId: item.brand_id ?? '',
     seriesName: item.series_name ?? '',
     categoryName: item.category_name ?? '',
     aliases: (item.aliases ?? []).map((alias) => alias.text).join('\n'),
@@ -275,13 +298,14 @@ function editVehicleDraft(item: VehicleModelResponse): void {
 
 async function saveVehicle(): Promise<void> {
   // 可空分类允许逐步补充，清空输入会显式清除旧分类。
-  if (!vehicleDraft.code.trim() || !vehicleDraft.displayName.trim()) return
+  if (!vehicleFormValid.value) return
   saving.value = true
   error.value = null
   try {
     if (vehicleDraft.id) {
       await editVehicle(vehicleDraft.id, {
         display_name: vehicleDraft.displayName,
+        brand_id: vehicleDraft.brandId || null,
         series_name: vehicleDraft.seriesName.trim() || null,
         category_name: vehicleDraft.categoryName.trim() || null,
         aliases: splitLines(vehicleDraft.aliases),
@@ -291,6 +315,7 @@ async function saveVehicle(): Promise<void> {
       await addVehicle({
         code: vehicleDraft.code,
         display_name: vehicleDraft.displayName,
+        brand_id: vehicleDraft.brandId,
         series_name: vehicleDraft.seriesName.trim() || null,
         category_name: vehicleDraft.categoryName.trim() || null,
         aliases: splitLines(vehicleDraft.aliases),
@@ -726,6 +751,26 @@ function safeJson(value: Record<string, unknown>): string {
               v-model="vehicleDraft.displayName"
               placeholder="例如 爱玛 Q7"
             >
+          </label>
+          <label>
+            品牌
+            <select
+              v-model="vehicleDraft.brandId"
+              aria-label="品牌"
+            >
+              <option value="">
+                请选择品牌
+              </option>
+              <option
+                v-for="brand in brands"
+                :key="brand.id"
+                :value="brand.id"
+              >
+                {{ brand.display_name }}
+              </option>
+            </select>
+            <small v-if="brands.length === 0">当前没有可用品牌；请先通过品牌目录管理 API 创建 active 品牌。</small>
+            <small v-else>active 车型必须显式绑定一个当前可用品牌。</small>
           </label>
           <label>
             系列（可选）

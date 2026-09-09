@@ -14,6 +14,7 @@ import {
   listArchivedAnalysisSchemes,
   listArchivedProviderConfigs,
   listAuditEvents,
+  listVehicleBrands,
   listKeywordPacks,
   listProviderConfigs,
   listVehicleModels,
@@ -33,6 +34,7 @@ import {
   type AnalysisSchemeResponse,
   type AnalysisSchemeUpdateDraftRequest,
   type AuditEventListResponse,
+  type BrandListResponse,
   type KeywordPackListResponse,
   type ProviderConfigCreateRequest,
   type ProviderConfigListResponse,
@@ -55,6 +57,19 @@ export async function fetchVehicles(): Promise<VehicleModelListResponse> {
   let offset = items.length
   while (offset < first.total) {
     const page = unwrapResponse(await listVehicleModels({ offset, limit: 200 }))
+    if (page.items.length === 0) break
+    items.push(...page.items)
+    offset += page.items.length
+  }
+  return { ...first, items, offset: 0 }
+}
+
+export async function fetchVehicleBrandsForAdmin(): Promise<BrandListResponse> {
+  const first = unwrapResponse(await listVehicleBrands({ status: 'active', offset: 0, limit: 200 }))
+  const items = [...first.items]
+  let offset = items.length
+  while (offset < first.total) {
+    const page = unwrapResponse(await listVehicleBrands({ status: 'active', offset, limit: 200 }))
     if (page.items.length === 0) break
     items.push(...page.items)
     offset += page.items.length
