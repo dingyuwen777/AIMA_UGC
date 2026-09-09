@@ -27,7 +27,6 @@ _CANCELLABLE_STATUSES = frozenset(
     {"discovering", "snapshotting", "ready", "queued", "running", "cancelling"}
 )
 _NONTERMINAL_ITEM_STATUSES = ("discovered", "snapshotting", "ready", "queued", "running")
-_ACTIVE_JOB_ITEM_STATUSES = ("snapshotting", "queued", "running")
 _ACTIVE_JOB_STATUSES = ("queued", "running")
 
 
@@ -107,7 +106,6 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                 .where(
                     item.c.campaign_id == campaign_id,
                     item.c.job_id.is_not(None),
-                    item.c.status.in_(_ACTIVE_JOB_ITEM_STATUSES),
                     jobs_table.c.status.in_(_ACTIVE_JOB_STATUSES),
                 )
             )
