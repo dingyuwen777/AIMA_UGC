@@ -18,6 +18,7 @@ affected_paths:
   - backend/src/aima_ugc/database_schema.py
   - migrations/versions/20260909_0044_brand_vehicle_filter_foundation.py
   - tests/integration/database/test_brand_vehicle_foundation_schema.py
+  - scripts/quality/check_table_ownership.py
   - docs/blueprint/03_数据库与文件存储.md
 contracts: []
 data_changes:
@@ -48,6 +49,11 @@ data_changes:
 这样既阻止相同证据重复写入，又允许同一品牌由不同车型分别产生可审计证据。有效证据分别按
 Content 与 Brand 提供 partial index。
 
+`content_brand_evidence` / `content_brand_review_locks` 与既有 `content_vehicle_*` 同属 Vehicles
+Domain 的内容匹配证据边界。由于表名使用稳定 `content_*` 前缀，Table Owner 门禁需要像既有
+`content_vehicle_*` 一样在 `_VEHICLE_TABLES` 中显式登记，防止被通用 Content 前缀规则误判。
+该登记只声明唯一写 Owner，不放宽未知表或其他 `content_*` 的默认 Content Owner 规则。
+
 不新增第二套 catalog version 表，不向 `contents` 写品牌/车型标量，不新增 Provider 调用，不做
 历史品牌猜测或海量回填。Migration 可逆：downgrade 只删除本次新增结构并移除 `brand_id`，
 不会改写旧 Migration。
@@ -61,7 +67,7 @@ Content 与 Brand 提供 partial index。
 | R3 | `vehicle_models.brand_id` 必须可空、FK 品牌且不回填，并具备品牌到 active 车型读取索引 | #416 / AC3 | satisfied | 0044 只 ADD nullable FK/Index，无 UPDATE/backfill；SQLAlchemy metadata 同步 |
 | R4 | 建立品牌追加式证据，来源/车型推导/置信度/锁定/active/查询索引与 NULL 幂等语义完整 | #416 / AC4 | satisfied | `content_brand_evidence` 字段、Check、两条 partial unique index 与 Content/Brand active index 已实现；真实 PostgreSQL 语义由 R7 验证 |
 | R5 | 新增按 content version 生效的品牌人工锁 | #416 / AC5 | satisfied | `content_brand_review_locks` 复用车型锁的复合主键与 actor/time 结构 |
-| R6 | 保持既有 legacy 关系及 Excel/TikHub/Collection Plan/API/前端业务语义不变，不做历史猜测 | #416 / AC6 | satisfied | Implementation diff 仅限 vehicles Schema 注册、0044 Migration、数据库集成测试、Blueprint 同步与本 Change |
+| R6 | 保持既有 legacy 关系及 Excel/TikHub/Collection Plan/API/前端业务语义不变，不做历史猜测 | #416 / AC6 | satisfied | Implementation diff 仅限 vehicles Schema 注册、0044 Migration、数据库集成测试、Table Owner 清单、Blueprint 同步与本 Change |
 | R7 | 真实 PostgreSQL upgrade/downgrade、metadata drift、FK/Check/Unique/Index/Owner 与既有回归必须通过 | #416 / AC7 | explicitly_deferred | 当前宿主无本地 PostgreSQL runner；由当前 PR HEAD 的正式 PostgreSQL 18.4 CI 运行，不豁免 |
 | R8 | L3 Completion Audit、独立两阶段 Review 与当前 PR HEAD CI 必须完成 | #416 / AC8 | explicitly_deferred | Implementation 完成后执行独立 Review；正式 CI 由 push/PR 触发，合并前必须成功 |
 | R9 | 合并 main 后完成 fresh main CI、repository-native Change 归档，并把 Stage 1 标 completed / Stage 2 保持 planned | #416 / AC9 | explicitly_deferred | 必须在 Implementation PR 合并后执行；不得在本 PR 提前修改 Roadmap 完成状态或手工归档 Change |
@@ -91,15 +97,16 @@ Content 与 Brand 提供 partial index。
 # Completion Audit
 
 - [x] upstream_re_read：已重读 Roadmap Stage 1/Exit/阶段状态规则、Issue #416 AC1-AC9、项目数据库/Owner/Migration 规则与当前 0043 head。
-- [x] change_coverage：品牌目录、别名、nullable 车型品牌 FK、品牌证据、品牌锁、真实 PostgreSQL 语义、Blueprint 当前事实同步与非目标均已映射到 R1-R9 / AC1-AC9。
-- [x] reverse_audit：按 writer/schema/reader/历史兼容路径反查；Stage 1 只有 Schema writer foundation，没有新 API/前端消费者，因此只要求真实 PostgreSQL/metadata/owner 与现有运行回归。
+- [x] change_coverage：品牌目录、别名、nullable 车型品牌 FK、品牌证据、品牌锁、真实 PostgreSQL 语义、Table Owner 稳定表族、Blueprint 当前事实同步与非目标均已映射到 R1-R9 / AC1-AC9。
+- [x] reverse_audit：按 writer/schema/reader/历史兼容路径反查；Brand Evidence 与既有 Vehicle Evidence 平行并继续由 Vehicles Domain 唯一写；Stage 1 没有新 API/前端消费者，因此只要求真实 PostgreSQL/metadata/owner 与现有运行回归。
 - [x] unresolved_cleared：当前设计无未决 Schema 决策；R7-R9 是受正式 PR/合并时序约束的生命周期后置门禁，未豁免且阻止提前宣称 Stage 完成。
 
 # 当前证据
 
 - `main` 基线为 `5e3bd0e2f0ff21e5cfca2e3271f7da2f842c3ab3`，开工时 Alembic head 为 `20260908_0043`，未发现开放 PR 或 Active Change。
-- 已核对 `vehicles/tables.py`、`database_schema.py`、0031/0032/0043 Migration、PostgreSQL integration 测试与 CI 分类器；品牌结构继续归 `vehicles` Owner。
-- 新增 PostgreSQL 测试直接覆盖：品牌别名“品牌内唯一/跨品牌可重复”、车型 `brand_id` nullable、两类 brand evidence partial unique index 的 NULL 幂等语义、`vehicle_match` 派生车型一致性、FK/Check/Index/Owner 注册。
+- 已核对 `vehicles/tables.py`、`database_schema.py`、0031/0032/0043 Migration、PostgreSQL integration 测试与 CI 分类器；品牌目录/车型及其内容匹配证据继续归 `vehicles` Owner。
+- 新增 PostgreSQL 测试直接覆盖：品牌别名“品牌内唯一/跨品牌可重复”、车型 `brand_id` nullable、两类 brand evidence partial unique index 的 NULL 幂等语义、`vehicle_match` 派生车型一致性、FK/Check/Index 注册；Table Owner 由正式 ownership gate 直接验证。
 - 当前宿主没有本地仓库 runner，真实 PostgreSQL 18.4、Alembic downgrade→head、全部既有回归、Wheel 与正式 CI 证据由当前 PR HEAD 执行；这些结果未取得前不得合并或宣称 Stage 1 完成。
 - PR #415 首次 CI 在 Change readiness 阶段发现 Source 包含章节说明而被误作仓库路径；第二次 CI 明确要求稳定 Acceptance 绑定。已建立 Issue #416，以 Roadmap Stage 1 原要求定义 AC1-AC9，并将本 Change 逐条绑定到真实 `#416 / ACn`，未改变生产 Schema/测试或 Roadmap 阶段状态。
 - 后续 full CI 的 `check_docs_facts.py` 发现 Blueprint 缺少四张新增 Schema 表；已按 Docs targeted 规则同步 `docs/blueprint/03_数据库与文件存储.md` 的 Owner/Vehicle Catalog 当前事实，不复制完整 DDL。
+- `53473fe5` full CI 已取得：Requirement/Change/Secret/docs/Contract/format/lint/mypy 全部成功，Unit 914/Contract 104/API 55 全通过；Architecture 骨架检查通过。唯一失败为 ownership checker 尚未把新增 `content_brand_*` 登记为与 `content_vehicle_*` 同域的 Vehicles 例外，导致 PostgreSQL job 被前置门禁阻断；已在当前分支补充 `_VEHICLE_TABLES` 精确两项登记，不改变其他表族默认 Owner 规则。
