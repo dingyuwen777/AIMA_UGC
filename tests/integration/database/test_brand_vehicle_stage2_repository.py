@@ -24,9 +24,11 @@ from aima_ugc.modules.vehicles.tables import (
     content_brand_evidence_table,
     content_brand_review_locks_table,
     content_vehicle_review_locks_table,
+    vehicle_catalog_versions_table,
 )
 from aima_ugc.platform.config import load_settings
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import OperationalError
 
 
 @pytest.fixture
@@ -168,6 +170,40 @@ def test_brand_vehicle_management_snapshot_and_readiness_use_one_catalog(runtime
     assert readiness.unresolved_active_vehicle_ids == ()
 
 
+def test_brand_vehicle_snapshot_holds_catalog_read_lock_until_transaction_end(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
+    """Snapshot 持有 seed 共享锁，目录写者不能在同一快照读取期间推进版本。"""
+
+    principal = _principal()
+    brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+        BrandCreateRequest(
+            code="SNAPSHOT-LOCK",
+            display_name="快照锁品牌",
+            role="other",
+            aliases=("快照锁品牌",),
+        ),
+        principal=principal,
+        request_id="stage2-snapshot-lock-brand",
+    )
+    reader = runtime.database.new_session()
+    writer_probe = runtime.database.new_session()
+    try:
+        with reader.begin():
+            snapshot = PostgresBrandVehicleRepository(reader).snapshot(brand_ids=(brand.id,))
+            assert snapshot.catalog_version >= brand.catalog_version
+            with pytest.raises(OperationalError, match="could not obtain lock"):
+                writer_probe.execute(
+                    select(vehicle_catalog_versions_table.c.version)
+                    .where(vehicle_catalog_versions_table.c.version == 1)
+                    .with_for_update(nowait=True)
+                )
+            writer_probe.rollback()
+    finally:
+        reader.close()
+        writer_probe.close()
+
+
 def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_lock(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -209,6 +245,20 @@ def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_l
                 )
                 is True
             )
+            probe = runtime.database.new_session()
+            try:
+                with probe.begin():
+                    lock_key = f"brand-review:{content_id}:3"
+                    assert (
+                        probe.scalar(
+                            select(
+                                func.pg_try_advisory_xact_lock(func.hashtextextended(lock_key, 0))
+                            )
+                        )
+                        is False
+                    )
+            finally:
+                probe.close()
             repository.replace_manual_brand_evidence(
                 content_id=content_id,
                 content_version=3,

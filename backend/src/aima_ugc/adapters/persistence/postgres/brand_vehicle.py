@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, insert, or_, select, update
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from aima_ugc.modules.vehicles.tables import (
     content_brand_review_locks_table,
     vehicle_brand_aliases_table,
     vehicle_brands_table,
+    vehicle_catalog_versions_table,
     vehicle_model_aliases_table,
     vehicle_models_table,
 )
@@ -89,6 +90,26 @@ class PostgresBrandVehicleRepository:
 
     def current_catalog_version(self) -> int:
         return self._vehicle_catalog.current_catalog_version()
+
+    def _lock_catalog_snapshot(self) -> int:
+        """持有 catalog seed 的共享锁，保证多表 Snapshot 对应同一目录版本。"""
+
+        seed = self._session.scalar(
+            select(vehicle_catalog_versions_table.c.version)
+            .where(vehicle_catalog_versions_table.c.version == 1)
+            .with_for_update(read=True)
+        )
+        if seed is None:
+            raise RuntimeError("Vehicle Catalog 尚未初始化")
+        return self.current_catalog_version()
+
+    def _lock_brand_review_write(self, *, content_id: UUID, content_version: int) -> None:
+        """串行化同一 Content Version 的自动/人工 Brand Evidence 写入，不新增持久锁行。"""
+
+        lock_key = f"brand-review:{content_id}:{content_version}"
+        self._session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+        )
 
     def create_brand(
         self,
@@ -404,6 +425,7 @@ class PostgresBrandVehicleRepository:
     def snapshot(self, *, brand_ids: tuple[UUID, ...] | None) -> BrandVehicleCatalogSnapshot:
         """冻结 all_active 或 selected Brand，并自动包含其全部 active Vehicle/Alias。"""
 
+        catalog_version = self._lock_catalog_snapshot()
         scope: FilterScope = "all_active" if brand_ids is None else "selected"
         if brand_ids is None:
             selected_brands = tuple(
@@ -473,7 +495,7 @@ class PostgresBrandVehicleRepository:
         ambiguous_brand_aliases = self._ambiguous_active_brand_aliases()
         ambiguous_vehicle_aliases = self._ambiguous_active_vehicle_aliases()
         return BrandVehicleCatalogSnapshot(
-            catalog_version=self.current_catalog_version(),
+            catalog_version=catalog_version,
             filter_scope=scope,
             selected_brand_ids=selected_ids,
             brands=tuple(_brand_from_row(row) for row in selected_brands),
@@ -531,6 +553,7 @@ class PostgresBrandVehicleRepository:
     ) -> bool:
         """替换当前 Content Version 的自动 Brand 证据；人工锁存在时完全不写。"""
 
+        self._lock_brand_review_write(content_id=content_id, content_version=content_version)
         locked = self._session.scalar(
             select(content_brand_review_locks_table.c.is_locked).where(
                 content_brand_review_locks_table.c.content_id == content_id,
@@ -574,6 +597,7 @@ class PostgresBrandVehicleRepository:
     ) -> None:
         """独立锁定 Brand 结论；不会改变 Vehicle Review Lock 或 Vehicle Evidence。"""
 
+        self._lock_brand_review_write(content_id=content_id, content_version=content_version)
         locked = self._session.scalar(
             select(content_brand_review_locks_table.c.is_locked)
             .where(
