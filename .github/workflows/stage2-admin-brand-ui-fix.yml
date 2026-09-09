@@ -1,0 +1,48 @@
+name: Stage2 Admin Brand UI Fix
+
+on:
+  push:
+    branches:
+      - feature/stage2-brand-vehicle-management-resolver
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frozen frontend
+        run: npm ci --prefix frontend
+      - name: Apply compatibility patch
+        run: python scripts/dev/stage2_admin_brand_ui_fix.py
+      - name: Validate frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run test -- --run
+          npm --prefix frontend run build
+      - name: Remove one-shot helpers and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f .github/workflows/stage2-admin-brand-ui-fix.yml scripts/dev/stage2_admin_brand_ui_fix.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/features/admin-configuration/api.ts \
+            frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue \
+            frontend/e2e-fullstack/admin-product-capabilities.spec.ts
+          git diff --cached --check
+          git commit -m "修复：让车型管理显式选择有效品牌"
+          git push origin HEAD:${GITHUB_REF_NAME}
