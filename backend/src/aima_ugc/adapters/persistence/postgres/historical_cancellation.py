@@ -31,15 +31,35 @@ _ACTIVE_JOB_ITEM_STATUSES = ("snapshotting", "queued", "running")
 _ACTIVE_JOB_STATUSES = ("queued", "running")
 
 
+def lock_historical_campaign_cancel_gate(
+    session: Session,
+    campaign_id: UUID,
+    *,
+    shared: bool,
+) -> None:
+    """用事务级 advisory 读写门线性化取消与业务写入，同时允许 Worker 共享并发。"""
+
+    key = campaign_id.int & ((1 << 64) - 1)
+    if key >= 1 << 63:
+        key -= 1 << 64
+    lock = (
+        func.pg_advisory_xact_lock_shared(key)
+        if shared
+        else func.pg_advisory_xact_lock(key)
+    )
+    session.execute(select(lock))
+
+
 class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepository):
-    """按 Campaign → Job → Item 三个短事务收敛取消，避免反向持锁。"""
+    """按取消门 → Campaign、Job、Item 的短事务收敛，避免反向持锁。"""
 
     def __init__(self, session: Session) -> None:
         super().__init__(session)
 
     def begin_cancel(self, campaign_id: UUID) -> None:
-        """只冻结 Campaign 与尚未调度的 Item；本阶段绝不申请 Job 锁。"""
+        """独占取消门后冻结 Campaign 与尚未调度的 Item；本阶段绝不申请 Job 锁。"""
 
+        lock_historical_campaign_cancel_gate(self._session, campaign_id, shared=False)
         campaign = self.get_campaign(campaign_id, for_update=True)
         if campaign is None:
             raise HistoricalCampaignNotFound
@@ -222,4 +242,7 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
         return True
 
 
-__all__ = ["PostgresHistoricalCancellationRepository"]
+__all__ = [
+    "PostgresHistoricalCancellationRepository",
+    "lock_historical_campaign_cancel_gate",
+]
