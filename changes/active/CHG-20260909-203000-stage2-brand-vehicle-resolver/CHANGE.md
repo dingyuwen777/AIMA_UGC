@@ -29,6 +29,7 @@ affected_paths:
   - contracts/openapi/openapi.json
   - frontend/src/generated/api/client.ts
   - docs/blueprint/03_数据库与文件存储.md
+  - docs/03_API接口说明.md
 contracts:
   - Brand / Brand Alias 管理 HTTP API
   - Vehicle Brand Assignment / Catalog Snapshot HTTP API
@@ -53,7 +54,7 @@ data_changes:
 | R5 | Brand Evidence/Review Lock 持久化且人工锁不被自动覆盖，Brand/Vehicle evidence 独立 | #418 / AC5 | satisfied | Brand automatic/manual evidence 持久化；人工 Brand Lock 阻止自动覆盖；Vehicle Lock 不受影响；证据保留 `matched_text/source_field/derived_vehicle_model_id/catalog_version`；真实 PostgreSQL 回归通过。 |
 | R6 | 真实 PostgreSQL 覆盖 CRUD/Alias/readiness/lock | #418 / AC6 | satisfied | Stage2 Review Fixes 使用 PostgreSQL 18.4：Stage2 repository 2 passed、existing administration 3 passed；`alembic upgrade head/check` 成功且无新 upgrade operations。 |
 | R7 | Collection/Keyword Pack/Excel/TikHub/声音广场非目标保持不变 | #418 / AC7 | satisfied | 反向审计当前 diff：未修改 Collection Runtime/Keyword Pack/Excel/TikHub/Voice Plaza；仅 Vehicle 管理契约、正式 API 接线、生成物、测试与事实文档变化。 |
-| R8 | OpenAPI/生成 Client/事实文档同步；resolver 关键语义有测试 | #418 / AC8 | satisfied | `scripts/contracts/generate.py` + Orval 成功；`contracts/openapi/openapi.json`、`frontend/src/generated/api/client.ts`、数据库事实文档同步；Unit/API Contract 回归通过。 |
+| R8 | OpenAPI/生成 Client/事实文档同步；resolver 关键语义有测试 | #418 / AC8 | satisfied | `scripts/contracts/generate.py` + Orval 成功；`contracts/openapi/openapi.json`、`frontend/src/generated/api/client.ts`、数据库事实文档与 `docs/03_API接口说明.md` 已同步；Unit/API Contract 回归通过。 |
 | R9 | Completion Audit、独立 Review、PR HEAD CI、expected HEAD merge、main fresh CI、原生归档与 Roadmap 收口 | #418 / AC9 | explicitly_deferred | Completion Audit 与独立实现 Review 已完成且两项发现已修复；最终 PR HEAD 全量 CI、最终 Review 提交、expected-head merge、main fresh CI、原生归档与 Roadmap 状态收口属于合并生命周期后置门禁。 |
 
 # Validation Matrix
@@ -67,7 +68,7 @@ data_changes:
 | Browser Mock | not_applicable | 本阶段无前端页面行为变化；正式 CI 仍按变更分类执行生成 Client 相关前端门禁。 |
 | Real Full-stack | required | 新公开 API 接线进入正式 `api_main`，正式 PR HEAD CI 验证既有主链路无回归。 |
 | External Provider Probe | not_applicable | 不改 TikHub/LLM Provider。 |
-| Docs / Governance | required | Issue #418 AC1-AC9、Change Completion Audit、数据库事实文档、独立 Review 与正式 CI Gate。 |
+| Docs / Governance | required | Issue #418 AC1-AC9、Change Completion Audit、数据库/API 事实文档、独立 Review 与正式 CI Gate。 |
 
 # 兼容、迁移与回滚
 
