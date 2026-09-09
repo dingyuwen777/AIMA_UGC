@@ -5603,7 +5603,18 @@
       },
       "HistoricalCampaignCreateRequest": {
         "additionalProperties": false,
+        "description": "服务端历史目录 Campaign；Keyword Pack/Search 与 Excel Filter 在此明确解耦。",
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "client_idempotency_key": {
             "maxLength": 128,
             "minLength": 1,
@@ -5614,16 +5625,6 @@
           "ingestion_policy": {
             "$ref": "#/components/schemas/DataImportIngestionPolicy",
             "default": "historical_fill_only"
-          },
-          "keyword_pack_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 20,
-            "title": "Keyword Pack Ids",
-            "type": "array"
           },
           "profile": {
             "const": "aima-monitoring-excel.v1",
@@ -5643,16 +5644,6 @@
             "maxItems": 1000,
             "minItems": 1,
             "title": "Relative Paths",
-            "type": "array"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
             "type": "array"
           }
         },
@@ -7085,8 +7076,18 @@
       },
       "LocalDataImportCampaignCreateRequest": {
         "additionalProperties": false,
-        "description": "建立本地文件暂存 Campaign；文件字节随后按 Item 分别流式上传。",
+        "description": "本地文件暂存 Campaign；过滤仅由 Brand Scope 决定。",
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "client_idempotency_key": {
             "maxLength": 128,
             "minLength": 1,
@@ -7107,31 +7108,11 @@
             "$ref": "#/components/schemas/DataImportIngestionPolicy",
             "default": "standard_observation"
           },
-          "keyword_pack_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 20,
-            "title": "Keyword Pack Ids",
-            "type": "array"
-          },
           "profile": {
             "const": "aima-monitoring-excel.v1",
             "default": "aima-monitoring-excel.v1",
             "title": "Profile",
             "type": "string"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [

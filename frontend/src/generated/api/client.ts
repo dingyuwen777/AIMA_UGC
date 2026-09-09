@@ -1833,7 +1833,12 @@ export interface HistoricalCampaignConflictListResponse {
   total_count?: number;
 }
 
+/**
+ * 服务端历史目录 Campaign；Keyword Pack/Search 与 Excel Filter 在此明确解耦。
+ */
 export interface HistoricalCampaignCreateRequest {
+  /** @maxItems 100 */
+  brand_ids?: string[];
   /**
      * @minLength 1
      * @maxLength 128
@@ -1841,8 +1846,6 @@ export interface HistoricalCampaignCreateRequest {
      */
   client_idempotency_key: string;
   ingestion_policy?: DataImportIngestionPolicy;
-  /** @maxItems 20 */
-  keyword_pack_ids?: string[];
   profile?: 'aima-monitoring-excel.v1';
   recursive?: boolean;
   /**
@@ -1850,8 +1853,6 @@ export interface HistoricalCampaignCreateRequest {
      * @maxItems 1000
      */
   relative_paths: string[];
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 export interface HistoricalCampaignCreatedResponse {
@@ -2273,9 +2274,11 @@ export interface LocalDataImportFileManifest {
 }
 
 /**
- * 建立本地文件暂存 Campaign；文件字节随后按 Item 分别流式上传。
+ * 本地文件暂存 Campaign；过滤仅由 Brand Scope 决定。
  */
 export interface LocalDataImportCampaignCreateRequest {
+  /** @maxItems 100 */
+  brand_ids?: string[];
   /**
      * @minLength 1
      * @maxLength 128
@@ -2288,11 +2291,7 @@ export interface LocalDataImportCampaignCreateRequest {
      */
   files: LocalDataImportFileManifest[];
   ingestion_policy?: DataImportIngestionPolicy;
-  /** @maxItems 20 */
-  keyword_pack_ids?: string[];
   profile?: 'aima-monitoring-excel.v1';
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 /**
