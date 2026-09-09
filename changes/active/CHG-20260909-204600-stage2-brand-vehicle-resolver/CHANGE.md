@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260909-204600-stage2-brand-vehicle-resolver
 title: 搜索与品牌车型过滤 Stage 2 管理面与统一解析器
 level: L3
-status: active
+status: ready_for_review
 owner: chatgpt
 branch: feature/stage2-brand-vehicle-resolver
 created: 2026-09-09
@@ -53,7 +53,7 @@ data_changes:
 | R5 | Brand Evidence/review lock 可持久化，自动替换尊重 Brand/Vehicle 人工锁 | #418 / AC5 | satisfied | `replace_automatic_*_evidence`、`replace_manual_*_evidence` + PostgreSQL integration test |
 | R6 | 真实 PostgreSQL 覆盖 Brand/Vehicle 管理、共享版本、active Brand 不变量、legacy 显式修复、两种 Snapshot 与人工锁 | #418 / AC6 | explicitly_deferred | 测试已补齐；等待当前最终 PR HEAD 正式 PostgreSQL CI，不豁免 |
 | R7 | Collection/Keyword Pack 现有 Contract/引用/运行行为不变，不实施 Runtime 自动过滤/UI/Legacy 删除 | #418 / AC7 | satisfied | 旧 `VehicleCatalogSnapshot`、Pack/Plan 关系与 Runtime 未切换；全量回归作为最终证据 |
-| R8 | OpenAPI/生成客户端/事实文档同步；Resolver 单测覆盖 Canonical 输入、多实体/歧义/unmatched/scope | #418 / AC8 | in_progress | OpenAPI/client 已重新生成、Resolver 定向测试已通过；事实文档正在收口，最终由 docs/generated-contract 门禁确认 |
+| R8 | OpenAPI/生成客户端/事实文档同步；Resolver 单测覆盖 Canonical 输入、多实体/歧义/unmatched/scope | #418 / AC8 | satisfied | OpenAPI/client 已重新生成；事实文档已同步；Resolver 定向测试覆盖 Canonical、多实体、歧义、unmatched 与冻结 scope，最终仍由正式 generated/docs gate 复核 |
 | R9 | Completion Audit、独立 Review、PR HEAD/main fresh CI、expected-head merge、原生归档和 Roadmap 收口 | #418 / AC9 | explicitly_deferred | 交付生命周期后置门禁，不豁免；Stage 2 未满足前不合并，不自动启动 Stage 3/4 |
 
 # Validation Matrix
@@ -82,7 +82,8 @@ data_changes:
 
 - [x] upstream_re_read：已重读最新 main、Roadmap Stage 2/Exit、Stage 1 Schema、现有 Vehicle Repository/Administration/API assembly 与 Agent_Skills Source Mode 约束。
 - [x] change_coverage：AC1-AC9 已映射到 Brand 管理、Vehicle 唯一 Owner、归属不变量、Snapshot、Resolver、证据锁、真实 PG、兼容、Contract/docs 与交付生命周期。
-- [x] reverse_audit：已从 `vehicle_models` 写路径、公共 Vehicle API、Brand 生命周期、Catalog Version 锁、Collection 旧 Snapshot、证据锁和 Stage 3 reader 反查；没有第二套 catalog version、第二个 Vehicle 写 Owner或旧词包反推品牌。
+- [x] reverse_audit：已从 `vehicle_models` 写路径、公共 Vehicle API、Brand 生命周期、Catalog Version 锁、Collection 旧 Snapshot、证据锁和 Stage 3 reader 反查；没有第二套 catalog version、第二个 Vehicle 写 Owner 或旧词包反推品牌。
+- [x] unresolved_cleared：实现决策、Owner 边界、Contract、Scope 和兼容策略均已收敛；剩余事项仅为 R6/R9 明示的正式 CI、独立 Review 和交付生命周期证据，不存在未决实现方案。
 - [ ] final_validation：等待最终 PR HEAD 全量 CI、真实 PostgreSQL/API、generated/docs gate 全绿。
 - [ ] independent_review：等待稳定最终 HEAD 后执行独立 Review，并清零阻断 P0/P1/P2。
 - [ ] delivery_closure：等待 expected-head merge、main fresh CI、Change 原生归档、Issue/Roadmap/branch 收口。
@@ -90,8 +91,10 @@ data_changes:
 # 当前证据
 
 - 开工基线 `main=ebecba7efaaab73ca0ecca30ce65b82bbc36bb4e`；Stage 1 completed、Stage 2 planned。
-- Issue #418 是本 Stage 稳定需求源；PR #419 是实现交付链，迭代期间曾临时关闭以避免中间提交反复触发全量 PR CI，正式验证前会重新打开同一 PR。
+- Issue #418 是本 Stage 稳定需求源；PR #419 是实现交付链。
 - 一次性 branch-only 同步 Run `34356450692` 已成功执行 frozen env、Ruff format/lint、OpenAPI/client 生成和 Resolver 定向测试，并提交 canonical generated outputs；临时 Workflow/patch script 均已从分支删除，不进入最终 diff。
+- 文档/格式预验证 Run `34357180710` 已成功执行事实文档补丁、最新 Python Ruff format/lint 与 Resolver 定向测试；临时 Workflow/patch script 同样已清理。
 - Resolver 事实源字段已校准为真实 `CanonicalContentV1.title/text`；不再使用不存在的 `raw_text/transcript_text`。
-- PostgreSQL 测试已补齐 active Vehicle→active Brand 不变量、`all_active/selected` Scope、历史未归属显式修复和 Brand/Vehicle 人工锁；正式结果以重新打开 #419 后当前 HEAD 的 CI 为准。
-- 本 Change 尚未完成：R6/R8/R9 与三个最终 Completion Audit 项必须在最终门禁后更新，当前不得合并。
+- PostgreSQL 测试已补齐 active Vehicle→active Brand 不变量、`all_active/selected` Scope、历史未归属显式修复和 Brand/Vehicle 人工锁；正式结果以当前 PR HEAD CI 为准。
+- 首次正式 PR run `34357304745` 已确认 Requirement Source 通过、CI profile=contract、PostgreSQL suites=all、Full-stack specs=all；其唯一前置失败是 Change 状态仍使用旧值 `active`，导致后续作业按门禁设计跳过。现已改为仓库当前支持的 `ready_for_review`，不把被跳过作业视为通过。
+- 本 Change 尚未完成：R6/R9 与三个最终交付项必须在最终门禁后更新，当前不得合并。
