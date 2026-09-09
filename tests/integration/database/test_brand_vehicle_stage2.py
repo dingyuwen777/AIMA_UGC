@@ -5,8 +5,6 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import insert, select
-
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
     PostgresBrandVehicleCatalogRepository,
 )
@@ -31,6 +29,7 @@ from aima_ugc.modules.vehicles.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.time import beijing_now
+from sqlalchemy import insert, select
 
 
 @pytest.fixture

@@ -72,7 +72,7 @@ def _vehicle_from_row(row: RowMapping) -> VehicleModel:
 
 
 class PostgresBrandVehicleCatalogRepository:
-    """Stage 2 Brand 管理、统一快照、车型品牌归属和证据写入 Owner。"""
+    """Brand 管理、统一快照和证据 Owner；Vehicle 写入委托唯一 Vehicle Owner。"""
 
     def __init__(self, session: Session) -> None:
         self._session = session
