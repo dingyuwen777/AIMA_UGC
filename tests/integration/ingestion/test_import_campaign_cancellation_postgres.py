@@ -184,7 +184,9 @@ def test_ready_campaign_can_cancel_before_import_start(tmp_path: Path) -> None:
             retry_delay_seconds=0,
         )
         assert worker.run_once() is True
-        assert client.get(f"/api/v1/data-import-campaigns/{campaign_id}").json()["status"] == "ready"
+        assert (
+            client.get(f"/api/v1/data-import-campaigns/{campaign_id}").json()["status"] == "ready"
+        )
 
         cancelled = client.post(f"/api/v1/data-import-campaigns/{campaign_id}/cancel")
 
