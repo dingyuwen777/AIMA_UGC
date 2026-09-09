@@ -754,7 +754,10 @@ function safeJson(value: Record<string, unknown>): string {
           </label>
           <label>
             品牌
-            <select v-model="vehicleDraft.brandId">
+            <select
+              v-model="vehicleDraft.brandId"
+              aria-label="品牌"
+            >
               <option value="">
                 请选择品牌
               </option>
