@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from aima_ugc.modules.vehicles.models import normalize_vehicle_text
 
 BrandRole = Literal["owned", "competitor", "other"]
 BrandStatus = Literal["active", "deprecated"]
+FilterScope = Literal["all_active", "selected"]
 ResolverSource = Literal["manual_review", "vehicle_match", "alias_match"]
 ResolverField = Literal["title", "raw_text", "transcript_text"]
 
@@ -25,6 +27,8 @@ class BrandRecord:
     status: BrandStatus
     version: int
     catalog_version: int
+    created_at: datetime
+    updated_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +39,7 @@ class BrandAliasRecord:
     brand_id: UUID
     text: str
     normalized_text: str
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,13 +63,16 @@ class VehicleAliasRecord:
     vehicle_model_id: UUID
     text: str
     normalized_text: str
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
 class BrandVehicleCatalogSnapshot:
-    """同一 catalog version 下供确定性解析消费的 Brand/Vehicle 快照。"""
+    """同一 catalog version 下供确定性过滤/解析消费的 Brand/Vehicle 快照。"""
 
     catalog_version: int
+    filter_scope: FilterScope
+    selected_brand_ids: tuple[UUID, ...]
     brands: tuple[BrandRecord, ...]
     brand_aliases: tuple[BrandAliasRecord, ...]
     vehicles: tuple[VehicleRecord, ...]
@@ -88,15 +96,18 @@ class BrandVehicleResolution:
     """Resolver 的稳定输出；冲突可观察但不会被猜成唯一答案。"""
 
     catalog_version: int
-    vehicle_ids: tuple[UUID, ...]
-    brand_ids: tuple[UUID, ...]
+    matched: bool
+    brand_matches: tuple[UUID, ...]
+    vehicle_matches: tuple[UUID, ...]
+    effective_brand_ids: tuple[UUID, ...]
+    effective_vehicle_model_ids: tuple[UUID, ...]
     vehicle_evidence: tuple[ResolverEvidence, ...]
     brand_evidence: tuple[ResolverEvidence, ...]
     conflicts: tuple[str, ...]
 
 
 class BrandVehicleResolver:
-    """只依赖冻结目录和请求文本的纯确定性 Brand/Vehicle Resolver。"""
+    """只依赖冻结目录和输入文本的纯确定性 Brand/Vehicle Resolver。"""
 
     _FIELDS: tuple[ResolverField, ...] = ("title", "raw_text", "transcript_text")
 
@@ -173,8 +184,11 @@ class BrandVehicleResolver:
 
         return BrandVehicleResolution(
             catalog_version=snapshot.catalog_version,
-            vehicle_ids=vehicle_ids,
-            brand_ids=brand_ids,
+            matched=bool(brand_ids or vehicle_ids),
+            brand_matches=brand_ids,
+            vehicle_matches=vehicle_ids,
+            effective_brand_ids=brand_ids,
+            effective_vehicle_model_ids=vehicle_ids,
             vehicle_evidence=vehicle_evidence,
             brand_evidence=brand_evidence,
             conflicts=tuple(dict.fromkeys(conflicts)),
@@ -310,6 +324,7 @@ __all__ = [
     "BrandVehicleCatalogSnapshot",
     "BrandVehicleResolution",
     "BrandVehicleResolver",
+    "FilterScope",
     "ResolverEvidence",
     "ResolverField",
     "ResolverSource",
