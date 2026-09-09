@@ -12,7 +12,9 @@ BrandStatus = Literal["active", "deprecated"]
 BrandEvidenceSource = Literal["alias_match", "vehicle_match", "manual_review", "import"]
 VehicleStatus = Literal["active", "deprecated", "merged"]
 VehicleEvidenceSource = Literal["alias_match", "ai_candidate", "manual_review", "import"]
+CatalogFilterMode = Literal["all_active", "selected"]
 ResolutionKind = Literal["brand", "vehicle"]
+ResolutionSourceField = Literal["title", "text"]
 
 
 def normalize_vehicle_text(value: str) -> str:
@@ -97,6 +99,8 @@ class CatalogSnapshot:
     brand_aliases: tuple[BrandAlias, ...]
     vehicles: tuple[VehicleModel, ...]
     vehicle_aliases: tuple[VehicleAlias, ...]
+    filter_mode: CatalogFilterMode = "all_active"
+    selected_brand_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,19 +148,19 @@ class ResolutionEvidence:
     target_id: UUID
     source: Literal["alias_match", "vehicle_match"]
     matched_text: str
-    source_field: Literal["title", "raw_text", "transcript_text"]
+    source_field: ResolutionSourceField
     derived_vehicle_model_id: UUID | None = None
     confidence: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
 class ResolutionConflict:
-    """无法确定唯一实体时保留的可观察冲突。"""
+    """单个别名无法确定唯一实体时保留的可观察冲突。"""
 
     kind: ResolutionKind
     normalized_text: str
     candidate_ids: tuple[UUID, ...]
-    source_field: Literal["title", "raw_text", "transcript_text"]
+    source_field: ResolutionSourceField
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,9 +168,24 @@ class BrandVehicleResolution:
     """Resolver 的确定性输出；冲突不会被折叠成猜测结论。"""
 
     catalog_version: int
-    brand_evidence: tuple[ResolutionEvidence, ...]
-    vehicle_evidence: tuple[ResolutionEvidence, ...]
+    matched: bool
+    brand_matches: tuple[ResolutionEvidence, ...]
+    vehicle_matches: tuple[ResolutionEvidence, ...]
+    effective_brand_ids: tuple[UUID, ...]
+    effective_vehicle_model_ids: tuple[UUID, ...]
     conflicts: tuple[ResolutionConflict, ...]
+
+    @property
+    def brand_evidence(self) -> tuple[ResolutionEvidence, ...]:
+        """兼容 Stage 2 早期内部命名；正式结果字段为 brand_matches。"""
+
+        return self.brand_matches
+
+    @property
+    def vehicle_evidence(self) -> tuple[ResolutionEvidence, ...]:
+        """兼容 Stage 2 早期内部命名；正式结果字段为 vehicle_matches。"""
+
+        return self.vehicle_matches
 
 
 __all__ = [
@@ -176,11 +195,14 @@ __all__ = [
     "BrandRole",
     "BrandStatus",
     "BrandVehicleResolution",
+    "CatalogFilterMode",
     "CatalogSnapshot",
     "ContentBrandEvidence",
     "ContentVehicleEvidence",
     "ResolutionConflict",
     "ResolutionEvidence",
+    "ResolutionKind",
+    "ResolutionSourceField",
     "VehicleAlias",
     "VehicleCatalogSnapshot",
     "VehicleEvidenceSource",
