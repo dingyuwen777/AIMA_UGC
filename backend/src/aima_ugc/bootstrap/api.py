@@ -6,7 +6,7 @@ import inspect
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, Request, UploadFile, status
+from fastapi import File, Form, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 
 from aima_ugc.contracts.stage3_import import (
@@ -82,9 +82,8 @@ def create_app(
             for path, method in _REPLACED_CREATE_ROUTES
         )
     ]
-    router = APIRouter()
 
-    @router.post(
+    @application.post(
         "/api/v1/import-batches",
         operation_id="createImportBatch",
         response_model=_base.ImportBatchCreatedResponse,
@@ -130,17 +129,19 @@ def create_app(
             )
         try:
             return await _base.run_in_threadpool(
-                current_import_service().create_import,
-                filename=file.filename or "",
-                content_type=file.content_type,
-                source=file.file,
-                brand_ids=tuple(brand_ids),
-                request_id=_base._request_id(request),
+                _base.partial(
+                    current_import_service().create_import,
+                    filename=file.filename or "",
+                    content_type=file.content_type,
+                    source=file.file,
+                    brand_ids=tuple(brand_ids),
+                    request_id=_base._request_id(request),
+                )
             )
         finally:
             await file.close()
 
-    @router.post(
+    @application.post(
         "/api/v1/data-import-campaigns/server",
         operation_id="createServerDataImportCampaign",
         response_model=_base.HistoricalCampaignCreatedResponse,
@@ -153,7 +154,7 @@ def create_app(
         },
         tags=["imports"],
     )
-    @router.post(
+    @application.post(
         "/api/v1/historical-import-campaigns",
         operation_id="createHistoricalImportCampaign",
         response_model=_base.HistoricalCampaignCreatedResponse,
@@ -177,7 +178,7 @@ def create_app(
             request_id=_base._request_id(request),
         )
 
-    @router.post(
+    @application.post(
         "/api/v1/data-import-campaigns/local",
         operation_id="createLocalDataImportCampaign",
         response_model=_base.LocalDataImportCampaignCreatedResponse,
@@ -201,7 +202,6 @@ def create_app(
             request_id=_base._request_id(request),
         )
 
-    application.include_router(router)
     application.openapi_schema = None
     return application
 
