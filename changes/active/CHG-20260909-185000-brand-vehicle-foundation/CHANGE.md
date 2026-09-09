@@ -55,15 +55,15 @@ Content 与 Brand 提供 partial index。
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 复用 `vehicle_catalog_versions`，新增 `vehicle_brands` 稳定身份、角色、生命周期和版本字段 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / Stage 1 | satisfied | `vehicles/tables.py` 与 0044 Migration 共用现有 catalog FK；未新增品牌版本表 |
-| R2 | 新增品牌别名，别名仅在品牌内部唯一，不做全局唯一 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / Stage 1 | satisfied | `vehicle_brand_aliases` 使用 `(brand_id, normalized_text)` 唯一约束；真实 PostgreSQL 语义由 R7 验证 |
-| R3 | `vehicle_models.brand_id` 必须可空、FK 品牌且不回填，并具备品牌到 active 车型读取索引 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / Stage 1 | satisfied | 0044 只 ADD nullable FK/Index，无 UPDATE/backfill；SQLAlchemy metadata 同步 |
-| R4 | 建立品牌追加式证据，来源/车型推导/置信度/锁定/active/查询索引与 NULL 幂等语义完整 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / Stage 1 | satisfied | `content_brand_evidence` 字段、Check、两条 partial unique index 与 Content/Brand active index 已实现；真实 PostgreSQL 语义由 R7 验证 |
-| R5 | 新增按 content version 生效的品牌人工锁 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / Stage 1 | satisfied | `content_brand_review_locks` 复用车型锁的复合主键与 actor/time 结构 |
-| R6 | 保持既有 legacy 关系及 Excel/TikHub/Collection Plan/API/前端业务语义不变，不做历史猜测 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / Stage 1 | satisfied | Implementation diff 仅限 vehicles Schema 注册、0044 Migration、数据库集成测试与本 Change |
-| R7 | 真实 PostgreSQL upgrade/downgrade、metadata drift、FK/Check/Unique/Index/Owner 与既有回归必须通过 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / Stage 1 Exit | explicitly_deferred | 当前宿主无本地 PostgreSQL runner；提交后由当前 PR HEAD 的正式 PostgreSQL 18.4 CI 运行，不豁免 |
-| R8 | L3 Completion Audit、独立两阶段 Review 与当前 PR HEAD CI 必须完成 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / Stage 1 Exit | explicitly_deferred | Implementation 完成后执行独立 Review；正式 CI 由 push/PR 触发，合并前必须成功 |
-| R9 | 合并 main 后完成 fresh main CI、repository-native Change 归档，并把 Stage 1 标 completed / Stage 2 保持 planned | docs/roadmap/04_搜索与品牌车型过滤实施路线.md / 阶段状态更新规则 | explicitly_deferred | 必须在 Implementation PR 合并后执行；不得在本 PR 提前修改 Roadmap 完成状态或手工归档 Change |
+| R1 | 复用 `vehicle_catalog_versions`，新增 `vehicle_brands` 稳定身份、角色、生命周期和版本字段 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | satisfied | `vehicles/tables.py` 与 0044 Migration 共用现有 catalog FK；未新增品牌版本表 |
+| R2 | 新增品牌别名，别名仅在品牌内部唯一，不做全局唯一 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | satisfied | `vehicle_brand_aliases` 使用 `(brand_id, normalized_text)` 唯一约束；真实 PostgreSQL 语义由 R7 验证 |
+| R3 | `vehicle_models.brand_id` 必须可空、FK 品牌且不回填，并具备品牌到 active 车型读取索引 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | satisfied | 0044 只 ADD nullable FK/Index，无 UPDATE/backfill；SQLAlchemy metadata 同步 |
+| R4 | 建立品牌追加式证据，来源/车型推导/置信度/锁定/active/查询索引与 NULL 幂等语义完整 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | satisfied | `content_brand_evidence` 字段、Check、两条 partial unique index 与 Content/Brand active index 已实现；真实 PostgreSQL 语义由 R7 验证 |
+| R5 | 新增按 content version 生效的品牌人工锁 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | satisfied | `content_brand_review_locks` 复用车型锁的复合主键与 actor/time 结构 |
+| R6 | 保持既有 legacy 关系及 Excel/TikHub/Collection Plan/API/前端业务语义不变，不做历史猜测 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | satisfied | Implementation diff 仅限 vehicles Schema 注册、0044 Migration、数据库集成测试与本 Change |
+| R7 | 真实 PostgreSQL upgrade/downgrade、metadata drift、FK/Check/Unique/Index/Owner 与既有回归必须通过 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | explicitly_deferred | 当前宿主无本地 PostgreSQL runner；提交后由当前 PR HEAD 的正式 PostgreSQL 18.4 CI 运行，不豁免 |
+| R8 | L3 Completion Audit、独立两阶段 Review 与当前 PR HEAD CI 必须完成 | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | explicitly_deferred | Implementation 完成后执行独立 Review；正式 CI 由 push/PR 触发，合并前必须成功 |
+| R9 | 合并 main 后完成 fresh main CI、repository-native Change 归档，并把 Stage 1 标 completed / Stage 2 保持 planned | docs/roadmap/04_搜索与品牌车型过滤实施路线.md | explicitly_deferred | 必须在 Implementation PR 合并后执行；不得在本 PR 提前修改 Roadmap 完成状态或手工归档 Change |
 
 # Validation Matrix
 
@@ -103,3 +103,4 @@ Content 与 Brand 提供 partial index。
   FK/Check/Index/Owner 注册。
 - 当前宿主没有本地仓库 runner，真实 PostgreSQL 18.4、Alembic downgrade→head、全部既有回归、
   Wheel 与正式 CI 证据将在当前 PR HEAD 上执行；这些结果未取得前不得合并或宣称 Stage 1 完成。
+- PR #415 首次 CI 在 Change readiness 阶段发现 Requirement Source 列包含章节说明，validator 将其视为路径；已按精确仓库路径修正，生产 Schema/测试未改动。
