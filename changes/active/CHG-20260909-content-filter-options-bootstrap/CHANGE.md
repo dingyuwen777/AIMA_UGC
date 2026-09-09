@@ -137,7 +137,7 @@ data_changes: []
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 空库基线版本无关地选择版本化 Prompt，写入数据库后由管理员页读取；已有 active Scheme 不覆盖 | #412 / AC1 | satisfied | `content_labeling_bootstrap.txt`、`resolve_content_labeling_prompt_path()` 与指针/版本 fail-closed 测试；`test_analysis_scheme_publish_and_rollback_are_atomic_and_audited` 增加空库 Version、Taxonomy 与 Prompt hash 对照；既有 `bootstrap_default()` 仍先返回 active Version。 |
+| R1 | 空库基线版本无关地选择版本化 Prompt，写入数据库后由管理员页读取；已有 active Scheme 不覆盖 | #412 / AC1 | satisfied | `content_labeling_bootstrap.txt`、`resolve_content_labeling_prompt_path()` 与指针/版本 fail-closed 测试；PostgreSQL 集成测试把指针所选 Prompt 按生产函数编译后与空库 Version 的 definition、compiled prompt 和两个 hash 完整对照；既有 `bootstrap_default()` 仍先返回 active Version。 |
 | R2 | 新增独立 Filter Options API，保持 active Taxonomy 的当前合法分类语义 | #412 / AC2 | satisfied | 新增 `GET /api/v1/content-filter-options`、Pydantic/OpenAPI/Orval Contract；人工纠正与 `ContentDetailDrawer` 仍消费 `GET /api/v1/content-analysis-taxonomy`。 |
 | R3 | 后端合成正式枚举、active Scheme 与当前数据库有效历史值，历史值标记，内容类型来自当前有效 Content | #412 / AC3 | satisfied | `PostgresContentQueryRepository.list_filter_values()` 复用 current Version、active source、latest Analysis 与 manual override 投影；集成测试覆盖旧 Scheme 值、人工锁替换和 `note` 内容类型；API/前端断言 `active`/`historical` 来源。 |
 | R4 | 声音广场不硬编码业务选项；车型与人工纠正各自继续消费既有正确事实源 | #412 / AC4 | satisfied | 八个动态下拉均由 Filter Options 响应生成；车型仍使用 Vehicle Catalog，人工纠正仍使用 active Taxonomy；筛选目录不可用时动态下拉全部禁用而内容列表保持可用。 |
@@ -194,8 +194,8 @@ Docs Impact 为 `targeted`：只更新 Analysis 模块 README、AI 实现 Append
 # 两阶段 Review
 
 - **需求与风险重建**：PASS。以 #412 AC1–AC7、用户 V5 补充、数据库 Scheme/Run 冻结、Content effective 投影和前端消费边界重新确认范围；主要风险是历史值泄漏旧 Content/失效来源、人工锁失真、Filter Options 与人工纠正 Taxonomy 混用、异步旧响应覆盖新目录及辅助 API 阻塞内容列表。
-- **实现与证据对照**：首轮发现并修复四项问题：Filter Options 不可用时四个后端驱动下拉仍可操作、并发刷新可能被旧响应覆盖、慢人工纠正 Taxonomy 阻塞首屏内容、Full-stack 管理员用例仍定位旧文案。修复后复查 Contract、SQL 投影、前端 Store/组件、生成物、测试和直接文档，范围内未发现剩余合并阻塞 Finding。
-- **测试充分性结论**：指针选择与 fail-closed、接口错误、active/historical 合并、人工锁、异步竞态、目录降级、管理员 active 默认、动态下拉及 Browser Mock 用户路径均有直接断言。隔离 PostgreSQL 与真实 Full-stack 的 current-head 执行仍由正式 PR CI 提供最终证据。
+- **实现与证据对照**：首轮发现并修复四项问题：Filter Options 不可用时四个后端驱动下拉仍可操作、并发刷新可能被旧响应覆盖、慢人工纠正 Taxonomy 阻塞首屏内容、Full-stack 管理员用例仍定位旧文案。首次 Ready CI 又发现新增 PostgreSQL 测试错误地把原始 Prompt 文件 Hash 与生产编译快照 Hash 直接比较；已改为调用生产编译函数，并对数据库 Version 的 definition、compiled prompt 与两个 Hash 做完整对照，未修改生产实现。
+- **测试充分性结论**：指针选择与 fail-closed、接口错误、active/historical 合并、人工锁、异步竞态、目录降级、管理员 active 默认、动态下拉及 Browser Mock 用户路径均有直接断言。修正后的隔离 PostgreSQL 与真实 Full-stack 仍由下一轮 PR current-head CI 提供最终证据。
 
 # 完成证据与状态
 
@@ -213,6 +213,7 @@ Docs Impact 为 `targeted`：只更新 Analysis 模块 README、AI 实现 Append
 | V8 | 当前工作树 / Contract 与 Wheel | `uv run python scripts/contracts/generate.py --check`；`uv build --wheel`；归档目录检查 | 生成物一致；Wheel 构建成功并包含 `content_labeling_bootstrap.txt` 与 V1–V4 Prompt | Pydantic → OpenAPI → Orval 链一致，新空库基线选择资产进入发布包 |
 | V9 | 当前工作树 / 项目质量脚本 | `check_architecture.py`、`check_table_ownership.py`、`check_docs.py`、`scan_secrets.py` | 均退出码 0 | 架构、表 Owner、文档和 Secret 边界未发生违规漂移 |
 | V10 | 当前工作树相对 `origin/main@bd3e6c1b` | `git diff --check`、两阶段 Review、反向调用链审计 | diff check 通过；首轮 4 项 Finding 已修复，复查无剩余范围内阻塞 Finding | 修改保持增量、无 Migration/依赖/历史结果改写，且覆盖最新 main 合并态 |
+| V11 | PR head `f462d692` / GitHub Actions PostgreSQL 18.4 | CI run `34331967733`，PostgreSQL Integration | 49 passed、1 failed；失败是新增测试比较 raw Prompt Hash 与生产 compiled Prompt Hash，Taxonomy 和持久 definition 已相等 | CI 成功执行了真实空库 bootstrap，并暴露测试期望错误；修复仅把断言改为与生产编译链对照，下一轮 current-head CI 为最终证据 |
 
 ## 未验证内容与剩余风险
 
@@ -222,9 +223,9 @@ Docs Impact 为 `targeted`：只更新 Analysis 模块 README、AI 实现 Append
 
 ## 交付状态
 
-- 提交：治理 `7190107f`、实现 `d944c9f7`、审查修复 `4c43fc1d`、最新 main 合并态 `c44763fa`；完成证据与定向格式修复随下一提交推送。
+- 提交：治理 `7190107f`、实现 `d944c9f7`、审查修复 `4c43fc1d`、最新 main 合并态 `c44763fa`、完成证据 `f462d692`；PostgreSQL 测试期望修复随下一提交推送。
 - 拉取请求：Draft PR #413，`Requirement-Source: #412`。
-- CI：本地可执行门禁已完成；PR current-head CI 待转 Ready 后执行，失败则禁止合并。
+- CI：首次 Ready run `34331967733` 的质量阶段、Compose 与开发工具链通过；PostgreSQL 由新增 raw/compiled Prompt Hash 错误断言阻塞，已修正并等待下一轮 current-head 全量复验。
 - 合并：任务分支已无冲突同步 `origin/main@bd3e6c1b`，待 current-head required checks 全绿后执行受保护合并。
 - Change 归档：待合并后由 repository-native Change Archive 处理。
 - 发布 / 部署：不在本次请求范围；无额外 Migration 或停机步骤。
