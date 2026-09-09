@@ -29,6 +29,8 @@ _SYSTEM_TABLES = {
 _INGESTION_TABLES = {"processing_import_batches"}
 _NOTIFICATION_TABLES = {"notification_events", "notification_inbox_items"}
 _VEHICLE_TABLES = {
+    "content_brand_evidence",
+    "content_brand_review_locks",
     "content_vehicle_evidence",
     "content_vehicle_review_locks",
     "keyword_pack_vehicle_models",
