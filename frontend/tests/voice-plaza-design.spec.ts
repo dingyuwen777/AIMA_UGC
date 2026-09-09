@@ -100,12 +100,20 @@ describe('声音广场正式 Figma 基线', () => {
       '相关性',
       '发声类型',
       '情感',
-      'AI 状态',
+      '状态',
       '内容类型',
       '一级标签',
       '二级标签',
       '发布时间范围',
     ]) expect(html).toContain(label)
+
+    for (const label of ['相关性', '情感', '状态']) {
+      expect(html).toContain(`aria-label="${label}"`)
+    }
+    for (const obsoleteLabel of ['AI 相关性', 'AI 情感', 'AI 状态']) {
+      expect(html).not.toContain(obsoleteLabel)
+    }
+    expect(html).toContain('AI 分析')
 
     expect(html).not.toContain('更多筛选')
     expect(html).toContain('filter-row--primary')
