@@ -42,11 +42,7 @@ def lock_historical_campaign_cancel_gate(
     key = campaign_id.int & ((1 << 64) - 1)
     if key >= 1 << 63:
         key -= 1 << 64
-    lock = (
-        func.pg_advisory_xact_lock_shared(key)
-        if shared
-        else func.pg_advisory_xact_lock(key)
-    )
+    lock = func.pg_advisory_xact_lock_shared(key) if shared else func.pg_advisory_xact_lock(key)
     session.execute(select(lock))
 
 
