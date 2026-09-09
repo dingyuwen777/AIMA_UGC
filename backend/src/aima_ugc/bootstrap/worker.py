@@ -44,10 +44,8 @@ from .analysis_high_throughput_planner import (
 )
 from .collection_scope import TikHubCollectionScopeExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
-from .historical_import_worker import (
-    PostgresHistoricalImportJobExecutor,
-    historical_job_terminal_callback,
-)
+from .historical_cancellation import historical_cancellation_terminal_callback
+from .historical_import_worker import PostgresHistoricalImportJobExecutor
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
 from .runtime import PlatformRuntime, create_platform_runtime
 
@@ -153,7 +151,7 @@ def create_collection_job_registry(
     register_historical_jobs(
         registry,
         PostgresHistoricalImportJobExecutor(runtime),
-        terminal_callback=historical_job_terminal_callback,
+        terminal_callback=historical_cancellation_terminal_callback,
     )
     analysis_terminal_callback = create_high_throughput_analysis_job_terminal_callback(runtime)
     register_content_analysis_job(
