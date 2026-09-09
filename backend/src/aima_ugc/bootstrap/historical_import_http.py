@@ -7,8 +7,8 @@ from uuid import UUID, uuid4
 
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.contracts.stage3_import import (
-    HistoricalCampaignCreateRequest,
-    LocalDataImportCampaignCreateRequest,
+    HistoricalCampaignCreateRequest as Stage3HistoricalCampaignCreateRequest,
+    LocalDataImportCampaignCreateRequest as Stage3LocalDataImportCampaignCreateRequest,
 )
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 
@@ -21,7 +21,7 @@ class PostgresHistoricalImportHttpService(_base.PostgresHistoricalImportHttpServ
 
     def create_campaign(
         self,
-        request: HistoricalCampaignCreateRequest,
+        request: Stage3HistoricalCampaignCreateRequest,
         *,
         request_id: str,
     ) -> _base.HistoricalCampaignCreatedResponse:
@@ -110,7 +110,7 @@ class PostgresHistoricalImportHttpService(_base.PostgresHistoricalImportHttpServ
 
     def create_local_campaign(
         self,
-        request: LocalDataImportCampaignCreateRequest,
+        request: Stage3LocalDataImportCampaignCreateRequest,
         *,
         request_id: str,
     ) -> _base.LocalDataImportCampaignCreatedResponse:
