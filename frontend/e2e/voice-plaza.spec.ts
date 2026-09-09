@@ -3,6 +3,7 @@ import { expect, test } from './fixture'
 import {
   stubVoicePlazaTaxonomy,
   voicePlazaFilterOptionsFixture,
+  voicePlazaTaxonomyFixture,
 } from './voicePlazaTaxonomy'
 
 const contentId = '42345678-1234-5678-1234-567812345678'
@@ -385,6 +386,25 @@ test('keeps filters and content usable when manual-edit taxonomy is unavailable'
   await expect(page.getByRole('button', { name: /导出记录/ })).toBeEnabled()
 })
 
+test('does not block the initial content list on a slow manual-edit taxonomy', async ({ page }) => {
+  await page.unroute('**/api/v1/content-analysis-taxonomy')
+  let releaseTaxonomy!: () => void
+  const taxonomyReady = new Promise<void>((resolve) => { releaseTaxonomy = resolve })
+  await page.route('**/api/v1/content-analysis-taxonomy', async (route) => {
+    await taxonomyReady
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(voicePlazaTaxonomyFixture),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  await expect(page.getByText(item.title), '内容列表只依赖已加载的筛选目录').toBeVisible({
+    timeout: 2_000,
+  })
+  releaseTaxonomy()
+})
+
 test('keeps content usable when dynamic filter options are unavailable', async ({ page }) => {
   await page.unroute('**/api/v1/content-filter-options')
   await page.route('**/api/v1/content-filter-options', async (route) => {
@@ -405,7 +425,10 @@ test('keeps content usable when dynamic filter options are unavailable', async (
   await page.goto('/voice-plaza')
 
   await expect(page.getByRole('alert').getByText('筛选项暂不可用', { exact: true })).toBeVisible()
-  await expect(page.locator('label.field--voice-type select')).toBeDisabled()
+  const filters = page.locator('section.filters')
+  for (const label of ['平台', '相关性', '情感', '状态', '发声类型', '内容类型', '一级标签', '二级标签']) {
+    await expect(filters.getByLabel(label, { exact: true })).toBeDisabled()
+  }
   await expect(page.getByText(item.title)).toBeVisible()
 })
 

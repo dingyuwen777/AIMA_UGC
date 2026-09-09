@@ -336,7 +336,7 @@ describe('voice plaza', () => {
       }),
     )
 
-    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBeGreaterThanOrEqual(4)
+    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(8)
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
@@ -415,6 +415,30 @@ describe('voice plaza', () => {
     await Promise.all([store.refreshTaxonomy(), store.refreshFilterOptions()])
 
     expect(store.filters.sentiment).toBe('旧情感')
+  })
+
+  it('ignores an older filter-options response after a newer refresh finishes', async () => {
+    let finishOld!: (value: ContentFilterOptionsResponse) => void
+    generated.getContentFilterOptions
+      .mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve }))
+      .mockResolvedValueOnce({
+        ...filterOptions,
+        sentiments: [{ value: '最新情感', source: 'active' }],
+      })
+    const store = useVoicePlazaStore()
+
+    const oldRefresh = store.refreshFilterOptions()
+    await store.refreshFilterOptions()
+    finishOld({
+      ...filterOptions,
+      sentiments: [{ value: '过期情感', source: 'active' }],
+    })
+    await oldRefresh
+
+    expect(store.filterOptions?.sentiments).toEqual([
+      { value: '最新情感', source: 'active' },
+    ])
+    expect(store.filterOptionsLoading).toBe(false)
   })
 
   it('keeps the content list usable when filter options are unavailable', async () => {

@@ -520,7 +520,7 @@ async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Pr
   try {
     const eligibility = await fetchSchemeDeleteEligibility(item.id)
     if (!eligibility.eligible) {
-      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析规则已有发布或运行历史，只能保留归档记录。'
+      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析原则已有发布或运行历史，只能保留归档记录。'
       return
     }
     if (!window.confirm(`确认永久删除已归档 AI 分析原则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿原则才允许删除。`)) return
@@ -861,7 +861,7 @@ function safeJson(value: Record<string, unknown>): string {
             class="archived-schemes"
             @toggle="onArchivedSchemesToggle"
           >
-            <summary>已归档规则</summary>
+            <summary>已归档原则</summary>
             <div
               v-if="archivedSchemeLoading"
               class="archived-scheme-state"
@@ -872,7 +872,7 @@ function safeJson(value: Record<string, unknown>): string {
               v-else-if="archivedSchemes.length === 0"
               class="archived-scheme-state"
             >
-              暂无已归档规则。
+              暂无已归档原则。
             </div>
             <div
               v-for="item in archivedSchemes"
@@ -919,14 +919,14 @@ function safeJson(value: Record<string, unknown>): string {
               :disabled="saving"
               @click="startSchemeCopy"
             >
-              复制规则
+              复制原则
             </AimaButton>
             <AimaButton
               size="small"
               :disabled="saving"
               @click="archiveSelectedScheme"
             >
-              归档规则
+              归档原则
             </AimaButton>
           </div>
           <div
@@ -937,7 +937,7 @@ function safeJson(value: Record<string, unknown>): string {
               v-model="schemeCopyName"
               maxlength="200"
             ></label>
-            <small>复制的是该规则当前最新版本；副本只创建草稿，不会自动发布。</small>
+            <small>复制的是该原则当前最新版本；副本只创建草稿，不会自动发布。</small>
             <div>
               <AimaButton
                 size="small"
@@ -955,7 +955,7 @@ function safeJson(value: Record<string, unknown>): string {
             </div>
           </div>
           <label>
-            规则名称
+            原则名称
             <input
               v-model="schemeDraft.schemeName"
               :readonly="selectedSchemeVersion?.version.status === 'draft'"
@@ -985,7 +985,7 @@ function safeJson(value: Record<string, unknown>): string {
             @validity="schemeLabelsValid = $event"
           />
           <details class="advanced-editor">
-            <summary>高级规则编辑</summary>
+            <summary>高级原则编辑</summary>
             <p>这里只维护提示词与查看机器结构；业务标签请在上方结构化编辑器修改。</p>
             <div class="advanced-editor__fields">
               <div class="technical-note taxonomy-preview">
@@ -1006,7 +1006,7 @@ function safeJson(value: Record<string, unknown>): string {
             </div>
           </details>
           <p v-if="hasUnsavedSchemeChanges">
-            规则有未保存修改，请先保存草稿后再发布。
+            原则有未保存修改，请先保存草稿后再发布。
           </p>
           <div class="actions">
             <AimaButton

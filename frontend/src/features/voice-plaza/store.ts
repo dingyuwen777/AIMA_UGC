@@ -120,6 +120,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const filterOptions = ref<ContentFilterOptionsResponse | null>(null)
   const filterOptionsLoading = ref(false)
   const filterOptionsError = ref<string | null>(null)
+  let filterOptionsRevision = 0
   const contentCount = ref<ContentCountResponse | null>(null)
   const exportColumnCatalog = ref<ExportColumnCatalogResponse | null>(null)
   const loading = ref(false)
@@ -303,10 +304,12 @@ async function refreshAnalysisCapabilities(): Promise<void> {
 
   /** 读取后端筛选目录，并清理已不再能命中当前可见内容的选择。 */
   async function refreshFilterOptions(): Promise<void> {
+    const revision = ++filterOptionsRevision
     filterOptionsLoading.value = true
     filterOptionsError.value = null
     try {
       const loaded = await fetchContentFilterOptions()
+      if (revision !== filterOptionsRevision) return
       filterOptions.value = loaded
       if (!loaded.platforms.includes(filters.platform as PlatformName)) filters.platform = ''
       if (!loaded.content_types.includes(filters.contentType)) filters.contentType = ''
@@ -324,10 +327,11 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         filters.secondaryLabel = ''
       }
     } catch (reason) {
+      if (revision !== filterOptionsRevision) return
       filterOptions.value = null
       filterOptionsError.value = errorMessage(reason)
     } finally {
-      filterOptionsLoading.value = false
+      if (revision === filterOptionsRevision) filterOptionsLoading.value = false
     }
   }
 

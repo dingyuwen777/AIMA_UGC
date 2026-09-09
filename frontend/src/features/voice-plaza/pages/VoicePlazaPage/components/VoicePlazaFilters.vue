@@ -88,6 +88,7 @@ function updatePrimaryLabel(event: Event): void {
       <label class="field field--platform"><span>平台</span><select
         aria-label="平台"
         :value="platform"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:platform', value($event) as '' | PlatformName)"
       ><option value="">全部平台</option><option
         v-for="item in filterOptions?.platforms ?? []"
@@ -97,6 +98,7 @@ function updatePrimaryLabel(event: Event): void {
       <label class="field field--relevance"><span>相关性</span><select
         aria-label="相关性"
         :value="relevance"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
       ><option value="">默认业务数据</option><option
         v-for="item in filterOptions?.relevances ?? []"
@@ -116,6 +118,7 @@ function updatePrimaryLabel(event: Event): void {
       <label class="field field--status"><span>状态</span><select
         aria-label="状态"
         :value="analysisStatus"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:analysisStatus', value($event) as '' | ContentAnalysisStatus)"
       ><option value="">全部状态</option><option
         v-for="item in filterOptions?.analysis_statuses ?? []"
@@ -154,6 +157,7 @@ function updatePrimaryLabel(event: Event): void {
       <label class="field field--content-type"><span>内容类型</span><select
         aria-label="内容类型"
         :value="contentType"
+        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:contentType', value($event))"
       ><option value="">全部类型</option><option
         v-for="item in filterOptions?.content_types ?? []"

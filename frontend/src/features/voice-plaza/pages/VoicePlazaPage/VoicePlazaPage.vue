@@ -81,8 +81,10 @@ onBeforeUnmount(() => store.stopPolling())
 
 /** 先校准后端筛选目录，再并行刷新列表和独立业务资源。 */
 async function refreshPage(): Promise<void> {
-  await Promise.all([store.refreshFilterOptions(), store.refreshTaxonomy()])
+  const taxonomyRequest = store.refreshTaxonomy()
+  await store.refreshFilterOptions()
   await Promise.all([
+    taxonomyRequest,
     store.refresh(),
     store.refreshCount('estimated'),
     store.refreshExports(),

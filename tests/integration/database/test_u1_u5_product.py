@@ -21,6 +21,7 @@ from aima_ugc.contracts.administration import (
     AnalysisSchemeUpdateDraftRequest,
 )
 from aima_ugc.contracts.product import ContentAnalysisManualReviewRequest
+from aima_ugc.modules.analysis import PromptTaxonomyLoader
 from aima_ugc.modules.content.availability_tables import (
     content_availability_observations_table,
 )
@@ -192,6 +193,13 @@ def test_analysis_scheme_publish_and_rollback_are_atomic_and_audited(runtime) ->
     )
     initial = service.list_analysis_schemes().items[0]
     initial_version = initial.versions[0]
+    bootstrap_taxonomy = PromptTaxonomyLoader().load()
+    assert initial.active_version_id == initial_version.id
+    assert initial_version.definition.sentiments == bootstrap_taxonomy.sentiments
+    assert initial_version.definition.voice_types == bootstrap_taxonomy.voice_types
+    assert dict(initial_version.definition.labels) == dict(bootstrap_taxonomy.labels)
+    assert initial_version.prompt_sha256 == bootstrap_taxonomy.prompt_sha256
+    assert initial_version.taxonomy_sha256 == bootstrap_taxonomy.taxonomy_sha256
     created = service.create_analysis_scheme_draft(
         AnalysisSchemeCreateDraftRequest(
             name=initial.name,
