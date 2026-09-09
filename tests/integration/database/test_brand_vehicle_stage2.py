@@ -171,11 +171,14 @@ def test_manual_brand_and_vehicle_locks_block_automatic_replacement(runtime) -> 
                 unlock_existing=False,
                 actor_ref=principal.principal_id,
             )
-            assert repository.replace_automatic_brand_evidence(
-                content_id=content_id,
-                content_version=1,
-                evidence=(),
-            ) is False
+            assert (
+                repository.replace_automatic_brand_evidence(
+                    content_id=content_id,
+                    content_version=1,
+                    evidence=(),
+                )
+                is False
+            )
             active_brand_rows = tuple(
                 session.execute(
                     select(content_brand_evidence_table).where(
@@ -196,25 +199,28 @@ def test_manual_brand_and_vehicle_locks_block_automatic_replacement(runtime) -> 
                 unlock_existing=False,
                 actor_ref=principal.principal_id,
             )
-            assert repository.replace_automatic_vehicle_evidence(
-                content_id=content_id,
-                content_version=1,
-                evidence=(
-                    ContentVehicleEvidence(
-                        id=uuid4(),
-                        content_id=content_id,
-                        content_version=1,
-                        vehicle_model_id=vehicle.id,
-                        source="alias_match",
-                        matched_text="露娜",
-                        source_field="title",
-                        catalog_version=repository.current_catalog_version(),
-                        confidence=1.0,
-                        is_manual_locked=False,
-                        is_active=True,
-                        created_at=now,
+            assert (
+                repository.replace_automatic_vehicle_evidence(
+                    content_id=content_id,
+                    content_version=1,
+                    evidence=(
+                        ContentVehicleEvidence(
+                            id=uuid4(),
+                            content_id=content_id,
+                            content_version=1,
+                            vehicle_model_id=vehicle.id,
+                            source="alias_match",
+                            matched_text="露娜",
+                            source_field="title",
+                            catalog_version=repository.current_catalog_version(),
+                            confidence=1.0,
+                            is_manual_locked=False,
+                            is_active=True,
+                            created_at=now,
+                        ),
                     ),
-                ),
-            ) is False
+                )
+                is False
+            )
     finally:
         session.close()

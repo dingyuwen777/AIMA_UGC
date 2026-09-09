@@ -4,6 +4,13 @@
  * AIMA_UGC API
  * OpenAPI spec version: 0.1.0
  */
+export interface ActiveVehicleBrandIntegrityResponse {
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  is_complete: boolean;
+  missing_brand_vehicle_model_ids: string[];
+}
+
 export type AnalysisContentRunCreateRequestRunIntent = typeof AnalysisContentRunCreateRequestRunIntent[keyof typeof AnalysisContentRunCreateRequestRunIntent];
 
 
@@ -352,6 +359,160 @@ export interface BodyCreateImportBatch {
 
 export interface BodyUploadLocalDataImportFile {
   file: Blob;
+}
+
+export interface BrandAliasResponse {
+  id: string;
+  normalized_text: string;
+  text: string;
+}
+
+export type BrandCreateRequestRole = typeof BrandCreateRequestRole[keyof typeof BrandCreateRequestRole];
+
+
+export const BrandCreateRequestRole = {
+  owned: 'owned',
+  competitor: 'competitor',
+  other: 'other',
+} as const;
+
+export interface BrandCreateRequest {
+  /** @maxItems 100 */
+  aliases?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 100
+     * @pattern ^[A-Za-z0-9][A-Za-z0-9._-]*$
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  display_name: string;
+  role: BrandCreateRequestRole;
+}
+
+export type BrandResponseRole = typeof BrandResponseRole[keyof typeof BrandResponseRole];
+
+
+export const BrandResponseRole = {
+  owned: 'owned',
+  competitor: 'competitor',
+  other: 'other',
+} as const;
+
+export type BrandResponseStatus = typeof BrandResponseStatus[keyof typeof BrandResponseStatus];
+
+
+export const BrandResponseStatus = {
+  active: 'active',
+  deprecated: 'deprecated',
+} as const;
+
+export interface BrandResponse {
+  aliases?: BrandAliasResponse[];
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  code: string;
+  created_at: string;
+  display_name: string;
+  id: string;
+  referenced?: boolean;
+  role: BrandResponseRole;
+  status: BrandResponseStatus;
+  updated_at: string;
+  /** @exclusiveMinimum 0 */
+  version: number;
+}
+
+export interface BrandListResponse {
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  items: BrandResponse[];
+  /**
+     * @minimum 1
+     * @maximum 200
+     */
+  limit: number;
+  /** @minimum 0 */
+  offset: number;
+  /** @minimum 0 */
+  total: number;
+}
+
+export type BrandUpdateRequestRole = typeof BrandUpdateRequestRole[keyof typeof BrandUpdateRequestRole] | null;
+
+
+export const BrandUpdateRequestRole = {
+  owned: 'owned',
+  competitor: 'competitor',
+  other: 'other',
+} as const;
+
+export type BrandUpdateRequestStatus = typeof BrandUpdateRequestStatus[keyof typeof BrandUpdateRequestStatus] | null;
+
+
+export const BrandUpdateRequestStatus = {
+  active: 'active',
+  deprecated: 'deprecated',
+} as const;
+
+export interface BrandUpdateRequest {
+  aliases?: string[] | null;
+  display_name?: string | null;
+  role?: BrandUpdateRequestRole;
+  status?: BrandUpdateRequestStatus;
+}
+
+export type BrandVehicleCatalogSnapshotResponseFilterMode = typeof BrandVehicleCatalogSnapshotResponseFilterMode[keyof typeof BrandVehicleCatalogSnapshotResponseFilterMode];
+
+
+export const BrandVehicleCatalogSnapshotResponseFilterMode = {
+  all_active: 'all_active',
+  selected: 'selected',
+} as const;
+
+export interface CatalogBrandAliasResponse {
+  brand_id: string;
+  normalized_text: string;
+  text: string;
+}
+
+export interface CatalogVehicleAliasResponse {
+  normalized_text: string;
+  text: string;
+  vehicle_model_id: string;
+}
+
+export type CatalogVehicleResponseStatus = typeof CatalogVehicleResponseStatus[keyof typeof CatalogVehicleResponseStatus];
+
+
+export const CatalogVehicleResponseStatus = {
+  active: 'active',
+  deprecated: 'deprecated',
+  merged: 'merged',
+} as const;
+
+export interface CatalogVehicleResponse {
+  brand_id: string | null;
+  code: string;
+  display_name: string;
+  id: string;
+  status: CatalogVehicleResponseStatus;
+  /** @exclusiveMinimum 0 */
+  version: number;
+}
+
+export interface BrandVehicleCatalogSnapshotResponse {
+  brand_aliases: CatalogBrandAliasResponse[];
+  brands: BrandResponse[];
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  filter_mode: BrandVehicleCatalogSnapshotResponseFilterMode;
+  selected_brand_ids: string[];
+  vehicle_aliases: CatalogVehicleAliasResponse[];
+  vehicles: CatalogVehicleResponse[];
 }
 
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
@@ -2399,6 +2560,32 @@ export interface ResourceLifecycleListResponse {
 }
 
 /**
+ * 显式设置 / 清除车型品牌归属；active 车型由 Repository fail closed。
+ */
+export interface VehicleBrandAssignmentRequest {
+  brand_id: string | null;
+}
+
+export type VehicleBrandAssignmentResponseVehicleStatus = typeof VehicleBrandAssignmentResponseVehicleStatus[keyof typeof VehicleBrandAssignmentResponseVehicleStatus];
+
+
+export const VehicleBrandAssignmentResponseVehicleStatus = {
+  active: 'active',
+  deprecated: 'deprecated',
+  merged: 'merged',
+} as const;
+
+export interface VehicleBrandAssignmentResponse {
+  brand_id: string | null;
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  vehicle_model_id: string;
+  vehicle_status: VehicleBrandAssignmentResponseVehicleStatus;
+  /** @exclusiveMinimum 0 */
+  vehicle_version: number;
+}
+
+/**
  * 车型当前有效别名。
  */
 export interface VehicleModelAliasResponse {
@@ -2413,6 +2600,7 @@ export interface VehicleModelAliasResponse {
 export interface VehicleModelCreateRequest {
   /** @maxItems 100 */
   aliases?: string[];
+  brand_id: string;
   category_name?: string | null;
   /**
      * @minLength 1
@@ -2442,6 +2630,7 @@ export const VehicleModelResponseStatus = {
  */
 export interface VehicleModelResponse {
   aliases?: VehicleModelAliasResponse[];
+  brand_id?: string | null;
   /** @exclusiveMinimum 0 */
   catalog_version: number;
   category_name?: string | null;
@@ -2497,6 +2686,7 @@ export const VehicleModelUpdateRequestStatus = {
  */
 export interface VehicleModelUpdateRequest {
   aliases?: string[] | null;
+  brand_id?: string | null;
   category_name?: string | null;
   display_name?: string | null;
   series_name?: string | null;
@@ -2514,6 +2704,22 @@ offset?: number;
  */
 limit?: number;
 };
+
+export type GetBrandVehicleCatalogSnapshotParams = {
+mode?: GetBrandVehicleCatalogSnapshotMode;
+/**
+ * @maxItems 200
+ */
+brand_ids?: string[];
+};
+
+export type GetBrandVehicleCatalogSnapshotMode = typeof GetBrandVehicleCatalogSnapshotMode[keyof typeof GetBrandVehicleCatalogSnapshotMode];
+
+
+export const GetBrandVehicleCatalogSnapshotMode = {
+  all_active: 'all_active',
+  selected: 'selected',
+} as const;
 
 export type ListCollectionPlansParams = {
 search?: string | null;
@@ -2669,6 +2875,38 @@ export type ListProviderConfigsProviderKind = typeof ListProviderConfigsProvider
 export const ListProviderConfigsProviderKind = {
   collection: 'collection',
   llm: 'llm',
+} as const;
+
+export type ListVehicleBrandsParams = {
+search?: string | null;
+role?: ListVehicleBrandsRole;
+status?: ListVehicleBrandsStatus;
+/**
+ * @minimum 0
+ */
+offset?: number;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
+
+export type ListVehicleBrandsRole = typeof ListVehicleBrandsRole[keyof typeof ListVehicleBrandsRole] | null;
+
+
+export const ListVehicleBrandsRole = {
+  owned: 'owned',
+  competitor: 'competitor',
+  other: 'other',
+} as const;
+
+export type ListVehicleBrandsStatus = typeof ListVehicleBrandsStatus[keyof typeof ListVehicleBrandsStatus] | null;
+
+
+export const ListVehicleBrandsStatus = {
+  active: 'active',
+  deprecated: 'deprecated',
 } as const;
 
 export type ListVehicleModelsParams = {
@@ -3233,6 +3471,83 @@ export const listAuditEvents = async (params?: ListAuditEventsParams, options?: 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: AuditEventListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetBrandVehicleCatalogIntegrityUrl = () => {
+
+
+
+
+  return `/api/v1/brand-vehicle-catalog/integrity`
+}
+
+/**
+ * @summary Get Brand Vehicle Catalog Integrity
+ */
+export const getBrandVehicleCatalogIntegrity = async ( options?: RequestInit): Promise<ActiveVehicleBrandIntegrityResponse> => {
+
+  const res = await fetch(getGetBrandVehicleCatalogIntegrityUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ActiveVehicleBrandIntegrityResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetBrandVehicleCatalogSnapshotUrl = (params?: GetBrandVehicleCatalogSnapshotParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const explodeParameters = ["brand_ids"];
+
+    if (Array.isArray(value) && explodeParameters.includes(key)) {
+      value.forEach((v) => {
+        normalizedParams.append(key, v === null ? 'null' : String(v));
+      });
+      return;
+    }
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/brand-vehicle-catalog/snapshot?${stringifiedParams}` : `/api/v1/brand-vehicle-catalog/snapshot`
+}
+
+/**
+ * @summary Get Brand Vehicle Catalog Snapshot
+ */
+export const getBrandVehicleCatalogSnapshot = async (params?: GetBrandVehicleCatalogSnapshotParams, options?: RequestInit): Promise<BrandVehicleCatalogSnapshotResponse> => {
+
+  const res = await fetch(getGetBrandVehicleCatalogSnapshotUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: BrandVehicleCatalogSnapshotResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -6209,6 +6524,169 @@ export const listArchivedKeywordPacks = async ( options?: RequestInit): Promise<
 
 
 
+export const getListVehicleBrandsUrl = (params?: ListVehicleBrandsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/vehicle-brands?${stringifiedParams}` : `/api/v1/vehicle-brands`
+}
+
+/**
+ * @summary List Vehicle Brands
+ */
+export const listVehicleBrands = async (params?: ListVehicleBrandsParams, options?: RequestInit): Promise<BrandListResponse> => {
+
+  const res = await fetch(getListVehicleBrandsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: BrandListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateVehicleBrandUrl = () => {
+
+
+
+
+  return `/api/v1/vehicle-brands`
+}
+
+/**
+ * @summary Create Vehicle Brand
+ */
+export const createVehicleBrand = async (brandCreateRequest: BrandCreateRequest, options?: RequestInit): Promise<BrandResponse> => {
+
+  const res = await fetch(getCreateVehicleBrandUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(brandCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: BrandResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getDeleteVehicleBrandUrl = (brandId: string,) => {
+
+
+
+
+  return `/api/v1/vehicle-brands/${brandId}`
+}
+
+/**
+ * @summary Delete Vehicle Brand
+ */
+export const deleteVehicleBrand = async (brandId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getDeleteVehicleBrandUrl(brandId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
+export const getGetVehicleBrandUrl = (brandId: string,) => {
+
+
+
+
+  return `/api/v1/vehicle-brands/${brandId}`
+}
+
+/**
+ * @summary Get Vehicle Brand
+ */
+export const getVehicleBrand = async (brandId: string, options?: RequestInit): Promise<BrandResponse> => {
+
+  const res = await fetch(getGetVehicleBrandUrl(brandId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: BrandResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUpdateVehicleBrandUrl = (brandId: string,) => {
+
+
+
+
+  return `/api/v1/vehicle-brands/${brandId}`
+}
+
+/**
+ * @summary Update Vehicle Brand
+ */
+export const updateVehicleBrand = async (brandId: string,
+    brandUpdateRequest: BrandUpdateRequest, options?: RequestInit): Promise<BrandResponse> => {
+
+  const res = await fetch(getUpdateVehicleBrandUrl(brandId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(brandUpdateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: BrandResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getListVehicleModelsUrl = (params?: ListVehicleModelsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -6372,6 +6850,38 @@ export const updateVehicleModel = async (vehicleModelId: string,
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: VehicleModelResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getAssignVehicleModelBrandUrl = (vehicleModelId: string,) => {
+
+
+
+
+  return `/api/v1/vehicle-models/${vehicleModelId}/brand`
+}
+
+/**
+ * @summary Assign Vehicle Model Brand
+ */
+export const assignVehicleModelBrand = async (vehicleModelId: string,
+    vehicleBrandAssignmentRequest: VehicleBrandAssignmentRequest, options?: RequestInit): Promise<VehicleBrandAssignmentResponse> => {
+
+  const res = await fetch(getAssignVehicleModelBrandUrl(vehicleModelId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(vehicleBrandAssignmentRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: VehicleBrandAssignmentResponse = body ? JSON.parse(body) : {}
   return data
 }
 

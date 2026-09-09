@@ -78,14 +78,20 @@ class PostgresAdministrationHttpService:
         try:
             with session.begin():
                 repository = PostgresVehicleCatalogRepository(session)
-                model = repository.create_model(
-                    code=body.code,
-                    display_name=body.display_name,
-                    aliases=body.aliases,
-                    series_name=body.series_name,
-                    category_name=body.category_name,
-                    actor_ref=principal.principal_id,
-                )
+                try:
+                    model = repository.create_model(
+                        code=body.code,
+                        display_name=body.display_name,
+                        aliases=body.aliases,
+                        brand_id=body.brand_id,
+                        series_name=body.series_name,
+                        category_name=body.category_name,
+                        actor_ref=principal.principal_id,
+                    )
+                except LookupError as exc:
+                    raise AdministrationResourceNotFound from exc
+                except RuntimeError as exc:
+                    raise AdministrationConflict from exc
                 _audit(
                     session,
                     principal=principal,
@@ -93,7 +99,11 @@ class PostgresAdministrationHttpService:
                     event_type="vehicle_model_created",
                     object_type="vehicle_model",
                     object_id=str(model.id),
-                    detail={"code": model.code, "catalog_version": model.catalog_version},
+                    detail={
+                        "code": model.code,
+                        "brand_id": str(model.brand_id),
+                        "catalog_version": model.catalog_version,
+                    },
                 )
                 return _vehicle_response(repository, model)
         except IntegrityError as exc:
@@ -162,6 +172,7 @@ class PostgresAdministrationHttpService:
                         classification=body.model_dump(
                             include={"series_name", "category_name"}, exclude_unset=True
                         ),
+                        ownership=body.model_dump(include={"brand_id"}, exclude_unset=True),
                         actor_ref=principal.principal_id,
                     )
                 except LookupError as exc:
@@ -175,7 +186,11 @@ class PostgresAdministrationHttpService:
                     event_type="vehicle_model_updated",
                     object_type="vehicle_model",
                     object_id=str(model.id),
-                    detail={"version": model.version, "catalog_version": model.catalog_version},
+                    detail={
+                        "version": model.version,
+                        "brand_id": None if model.brand_id is None else str(model.brand_id),
+                        "catalog_version": model.catalog_version,
+                    },
                 )
                 return _vehicle_response(repository, model)
         except IntegrityError as exc:
@@ -629,6 +644,7 @@ def _vehicle_response(
         display_name=model.display_name,
         series_name=model.series_name,
         category_name=model.category_name,
+        brand_id=model.brand_id,
         status=model.status,
         version=model.version,
         catalog_version=model.catalog_version,

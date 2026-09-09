@@ -6,9 +6,9 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.engine import CursorResult, RowMapping
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.vehicles.models import (
@@ -16,6 +16,7 @@ from aima_ugc.modules.vehicles.models import (
     BrandAlias,
     BrandRole,
     BrandStatus,
+    CatalogFilterMode,
     CatalogSnapshot,
     ContentBrandEvidence,
     ContentVehicleEvidence,
@@ -226,24 +227,41 @@ class PostgresBrandVehicleCatalogRepository:
             self._replace_brand_aliases(brand_id, aliases, created_at=beijing_now())
         return _brand_from_row(row)
 
+    def is_brand_referenced(self, brand_id: UUID) -> bool:
+        return (
+            self._session.scalar(
+                select(vehicle_models_table.c.id)
+                .where(vehicle_models_table.c.brand_id == brand_id)
+                .limit(1)
+            )
+            is not None
+            or self._session.scalar(
+                select(content_brand_evidence_table.c.id)
+                .where(content_brand_evidence_table.c.brand_id == brand_id)
+                .limit(1)
+            )
+            is not None
+        )
+
     def delete_unreferenced_brand(self, brand_id: UUID, *, actor_ref: str) -> bool:
         current = self.get_brand(brand_id, for_update=True)
         if current is None:
             return False
-        if self._session.scalar(
-            select(vehicle_models_table.c.id).where(vehicle_models_table.c.brand_id == brand_id).limit(1)
-        ) is not None or self._session.scalar(
-            select(content_brand_evidence_table.c.id)
-            .where(content_brand_evidence_table.c.brand_id == brand_id)
-            .limit(1)
-        ) is not None:
+        if self.is_brand_referenced(brand_id):
             raise RuntimeError("已被车型或内容证据引用的品牌不能物理删除")
         self._vehicle_catalog.next_catalog_version(reason="brand_deleted", actor_ref=actor_ref)
         self._session.execute(
-            delete(vehicle_brand_aliases_table).where(vehicle_brand_aliases_table.c.brand_id == brand_id)
+            delete(vehicle_brand_aliases_table).where(
+                vehicle_brand_aliases_table.c.brand_id == brand_id
+            )
         )
-        self._session.execute(delete(vehicle_brands_table).where(vehicle_brands_table.c.id == brand_id))
+        self._session.execute(
+            delete(vehicle_brands_table).where(vehicle_brands_table.c.id == brand_id)
+        )
         return True
+
+    def get_vehicle_model(self, vehicle_model_id: UUID) -> VehicleModel | None:
+        return self._vehicle_catalog.get_model(vehicle_model_id)
 
     def assign_vehicle_brand(
         self,
@@ -252,112 +270,142 @@ class PostgresBrandVehicleCatalogRepository:
         *,
         actor_ref: str,
     ) -> VehicleModel:
-        vehicle_row = (
-            self._session.execute(
-                select(vehicle_models_table)
-                .where(vehicle_models_table.c.id == vehicle_model_id)
-                .with_for_update()
-            )
-            .mappings()
-            .one_or_none()
+        """委托 Vehicle Catalog 唯一写 Owner 修改品牌归属。"""
+
+        return self._vehicle_catalog.assign_brand(
+            vehicle_model_id,
+            brand_id,
+            actor_ref=actor_ref,
         )
-        if vehicle_row is None:
-            raise LookupError(vehicle_model_id)
-        if cast(str, vehicle_row["status"]) == "merged":
-            raise RuntimeError("已合并车型不能修改品牌归属")
-        if brand_id is not None:
-            brand = self.get_brand(brand_id, for_update=True)
-            if brand is None or brand.status != "active":
-                raise LookupError("品牌不存在或已停用")
-        catalog_version = self._vehicle_catalog.next_catalog_version(
-            reason="vehicle_brand_assigned", actor_ref=actor_ref
-        )
-        row = (
-            self._session.execute(
-                update(vehicle_models_table)
-                .where(vehicle_models_table.c.id == vehicle_model_id)
-                .values(
-                    brand_id=brand_id,
-                    version=vehicle_models_table.c.version + 1,
-                    catalog_version=catalog_version,
-                    updated_at=beijing_now(),
-                )
-                .returning(vehicle_models_table)
-            )
-            .mappings()
-            .one()
-        )
-        return _vehicle_from_row(row)
 
     def active_vehicle_ids_missing_brand(self) -> tuple[UUID, ...]:
+        """返回品牌为空或所属 Brand 非 active 的 active Vehicle。"""
+
+        joined = vehicle_models_table.outerjoin(
+            vehicle_brands_table,
+            vehicle_brands_table.c.id == vehicle_models_table.c.brand_id,
+        )
         return tuple(
             self._session.scalars(
                 select(vehicle_models_table.c.id)
+                .select_from(joined)
                 .where(
                     vehicle_models_table.c.status == "active",
-                    vehicle_models_table.c.brand_id.is_(None),
+                    or_(
+                        vehicle_models_table.c.brand_id.is_(None),
+                        vehicle_brands_table.c.id.is_(None),
+                        vehicle_brands_table.c.status != "active",
+                    ),
                 )
                 .order_by(vehicle_models_table.c.id)
             )
         )
 
-    def catalog_snapshot(self) -> CatalogSnapshot:
+    def catalog_snapshot(
+        self,
+        *,
+        filter_mode: CatalogFilterMode = "all_active",
+        selected_brand_ids: tuple[UUID, ...] = (),
+    ) -> CatalogSnapshot:
+        """冻结 Brand/Vehicle/Alias scope；同一事务期间阻止目录版本写穿透。"""
+
+        if filter_mode == "selected":
+            if not selected_brand_ids:
+                raise ValueError("selected 模式必须至少选择一个品牌")
+            if len(selected_brand_ids) != len(set(selected_brand_ids)):
+                raise ValueError("selected_brand_ids 不能重复")
+        elif selected_brand_ids:
+            raise ValueError("all_active 模式不能同时传 selected_brand_ids")
+
+        catalog_version = self._vehicle_catalog.lock_catalog_version()
+        if filter_mode == "all_active" and self.active_vehicle_ids_missing_brand():
+            raise RuntimeError(
+                "仍有 active 车型缺少有效 active Brand，不能冻结 all_active Snapshot"
+            )
+
+        brand_statement = select(vehicle_brands_table).where(
+            vehicle_brands_table.c.status == "active"
+        )
+        if filter_mode == "selected":
+            brand_statement = brand_statement.where(
+                vehicle_brands_table.c.id.in_(selected_brand_ids)
+            )
         brands = tuple(
             _brand_from_row(row)
             for row in self._session.execute(
-                select(vehicle_brands_table)
-                .where(vehicle_brands_table.c.status == "active")
-                .order_by(vehicle_brands_table.c.code, vehicle_brands_table.c.id)
+                brand_statement.order_by(vehicle_brands_table.c.code, vehicle_brands_table.c.id)
             ).mappings()
         )
         brand_ids = {item.id for item in brands}
-        brand_aliases = tuple(
-            BrandAlias(
-                id=cast(UUID, row["id"]),
-                brand_id=cast(UUID, row["brand_id"]),
-                text=cast(str, row["text"]),
-                normalized_text=cast(str, row["normalized_text"]),
-            )
-            for row in self._session.execute(
-                select(vehicle_brand_aliases_table)
-                .where(vehicle_brand_aliases_table.c.brand_id.in_(brand_ids))
-                .order_by(
-                    vehicle_brand_aliases_table.c.brand_id,
-                    vehicle_brand_aliases_table.c.normalized_text,
+        if filter_mode == "selected" and brand_ids != set(selected_brand_ids):
+            raise LookupError("所选品牌不存在或已停用")
+
+        brand_aliases = (
+            tuple(
+                BrandAlias(
+                    id=cast(UUID, row["id"]),
+                    brand_id=cast(UUID, row["brand_id"]),
+                    text=cast(str, row["text"]),
+                    normalized_text=cast(str, row["normalized_text"]),
                 )
-            ).mappings()
-        ) if brand_ids else ()
-        vehicles = tuple(
-            _vehicle_from_row(row)
-            for row in self._session.execute(
-                select(vehicle_models_table)
-                .where(vehicle_models_table.c.status == "active")
-                .order_by(vehicle_models_table.c.code, vehicle_models_table.c.id)
-            ).mappings()
+                for row in self._session.execute(
+                    select(vehicle_brand_aliases_table)
+                    .where(vehicle_brand_aliases_table.c.brand_id.in_(brand_ids))
+                    .order_by(
+                        vehicle_brand_aliases_table.c.brand_id,
+                        vehicle_brand_aliases_table.c.normalized_text,
+                    )
+                ).mappings()
+            )
+            if brand_ids
+            else ()
+        )
+        vehicles = (
+            tuple(
+                _vehicle_from_row(row)
+                for row in self._session.execute(
+                    select(vehicle_models_table)
+                    .where(
+                        vehicle_models_table.c.status == "active",
+                        vehicle_models_table.c.brand_id.in_(brand_ids),
+                    )
+                    .order_by(vehicle_models_table.c.code, vehicle_models_table.c.id)
+                ).mappings()
+            )
+            if brand_ids
+            else ()
         )
         vehicle_ids = {item.id for item in vehicles}
-        vehicle_aliases = tuple(
-            VehicleAlias(
-                id=cast(UUID, row["id"]),
-                vehicle_model_id=cast(UUID, row["vehicle_model_id"]),
-                text=cast(str, row["text"]),
-                normalized_text=cast(str, row["normalized_text"]),
-            )
-            for row in self._session.execute(
-                select(vehicle_model_aliases_table)
-                .where(vehicle_model_aliases_table.c.vehicle_model_id.in_(vehicle_ids))
-                .order_by(
-                    vehicle_model_aliases_table.c.vehicle_model_id,
-                    vehicle_model_aliases_table.c.normalized_text,
+        vehicle_aliases = (
+            tuple(
+                VehicleAlias(
+                    id=cast(UUID, row["id"]),
+                    vehicle_model_id=cast(UUID, row["vehicle_model_id"]),
+                    text=cast(str, row["text"]),
+                    normalized_text=cast(str, row["normalized_text"]),
                 )
-            ).mappings()
-        ) if vehicle_ids else ()
+                for row in self._session.execute(
+                    select(vehicle_model_aliases_table)
+                    .where(vehicle_model_aliases_table.c.vehicle_model_id.in_(vehicle_ids))
+                    .order_by(
+                        vehicle_model_aliases_table.c.vehicle_model_id,
+                        vehicle_model_aliases_table.c.normalized_text,
+                    )
+                ).mappings()
+            )
+            if vehicle_ids
+            else ()
+        )
         return CatalogSnapshot(
-            catalog_version=self.current_catalog_version(),
+            catalog_version=catalog_version,
             brands=brands,
             brand_aliases=brand_aliases,
             vehicles=vehicles,
             vehicle_aliases=vehicle_aliases,
+            filter_mode=filter_mode,
+            selected_brand_ids=(
+                tuple(sorted(selected_brand_ids, key=str)) if filter_mode == "selected" else ()
+            ),
         )
 
     def replace_automatic_brand_evidence(
@@ -419,7 +467,9 @@ class PostgresBrandVehicleCatalogRepository:
                         content_brand_evidence_table.c.derived_vehicle_model_id,
                         content_brand_evidence_table.c.catalog_version,
                     ],
-                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(None),
+                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(
+                        None
+                    ),
                     set_={"is_active": True, "created_at": item.created_at},
                 )
             self._session.execute(statement)
@@ -447,22 +497,26 @@ class PostgresBrandVehicleCatalogRepository:
         for item in evidence:
             if item.is_manual_locked or item.source == "manual_review":
                 raise ValueError("自动车型证据不能伪装成人工锁定证据")
-            statement = pg_insert(content_vehicle_evidence_table).values(
-                id=item.id,
-                content_id=item.content_id,
-                content_version=item.content_version,
-                vehicle_model_id=item.vehicle_model_id,
-                source=item.source,
-                matched_text=item.matched_text,
-                source_field=item.source_field,
-                catalog_version=item.catalog_version,
-                confidence=item.confidence,
-                is_manual_locked=False,
-                is_active=True,
-                created_at=item.created_at,
-            ).on_conflict_do_update(
-                constraint="uq_content_vehicle_evidence_identity",
-                set_={"is_active": True, "created_at": item.created_at},
+            statement = (
+                pg_insert(content_vehicle_evidence_table)
+                .values(
+                    id=item.id,
+                    content_id=item.content_id,
+                    content_version=item.content_version,
+                    vehicle_model_id=item.vehicle_model_id,
+                    source=item.source,
+                    matched_text=item.matched_text,
+                    source_field=item.source_field,
+                    catalog_version=item.catalog_version,
+                    confidence=item.confidence,
+                    is_manual_locked=False,
+                    is_active=True,
+                    created_at=item.created_at,
+                )
+                .on_conflict_do_update(
+                    constraint="uq_content_vehicle_evidence_identity",
+                    set_={"is_active": True, "created_at": item.created_at},
+                )
             )
             self._session.execute(statement)
         return True
@@ -532,42 +586,49 @@ class PostgresBrandVehicleCatalogRepository:
         catalog_version = self.current_catalog_version()
         now = beijing_now()
         for brand_id in brand_ids:
-            statement = pg_insert(content_brand_evidence_table).values(
-                id=uuid4(),
-                content_id=content_id,
-                content_version=content_version,
-                brand_id=brand_id,
-                source="manual_review",
-                matched_text=None,
-                source_field=None,
-                derived_vehicle_model_id=None,
-                catalog_version=catalog_version,
-                confidence=1.0,
-                is_manual_locked=True,
-                is_active=True,
-                created_at=now,
-            ).on_conflict_do_update(
-                index_elements=[
-                    content_brand_evidence_table.c.content_id,
-                    content_brand_evidence_table.c.content_version,
-                    content_brand_evidence_table.c.brand_id,
-                    content_brand_evidence_table.c.source,
-                    content_brand_evidence_table.c.catalog_version,
-                ],
-                index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_(None),
-                set_={"is_active": True, "is_manual_locked": True, "created_at": now},
+            statement = (
+                pg_insert(content_brand_evidence_table)
+                .values(
+                    id=uuid4(),
+                    content_id=content_id,
+                    content_version=content_version,
+                    brand_id=brand_id,
+                    source="manual_review",
+                    matched_text=None,
+                    source_field=None,
+                    derived_vehicle_model_id=None,
+                    catalog_version=catalog_version,
+                    confidence=1.0,
+                    is_manual_locked=True,
+                    is_active=True,
+                    created_at=now,
+                )
+                .on_conflict_do_update(
+                    index_elements=[
+                        content_brand_evidence_table.c.content_id,
+                        content_brand_evidence_table.c.content_version,
+                        content_brand_evidence_table.c.brand_id,
+                        content_brand_evidence_table.c.source,
+                        content_brand_evidence_table.c.catalog_version,
+                    ],
+                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_(None),
+                    set_={"is_active": True, "is_manual_locked": True, "created_at": now},
+                )
             )
             self._session.execute(statement)
 
     def _has_active_vehicle(self, brand_id: UUID) -> bool:
-        return self._session.scalar(
-            select(vehicle_models_table.c.id)
-            .where(
-                vehicle_models_table.c.brand_id == brand_id,
-                vehicle_models_table.c.status == "active",
+        return (
+            self._session.scalar(
+                select(vehicle_models_table.c.id)
+                .where(
+                    vehicle_models_table.c.brand_id == brand_id,
+                    vehicle_models_table.c.status == "active",
+                )
+                .limit(1)
             )
-            .limit(1)
-        ) is not None
+            is not None
+        )
 
     @staticmethod
     def _lock_conditions(table: Any, content_id: UUID, content_version: int) -> tuple[Any, Any]:
@@ -575,7 +636,9 @@ class PostgresBrandVehicleCatalogRepository:
 
     def _is_locked(self, table: Any, content_id: UUID, content_version: int) -> bool:
         value = self._session.scalar(
-            select(table.c.is_locked).where(*self._lock_conditions(table, content_id, content_version))
+            select(table.c.is_locked).where(
+                *self._lock_conditions(table, content_id, content_version)
+            )
         )
         return value is True
 
@@ -587,7 +650,9 @@ class PostgresBrandVehicleCatalogRepository:
         created_at: datetime,
     ) -> None:
         self._session.execute(
-            delete(vehicle_brand_aliases_table).where(vehicle_brand_aliases_table.c.brand_id == brand_id)
+            delete(vehicle_brand_aliases_table).where(
+                vehicle_brand_aliases_table.c.brand_id == brand_id
+            )
         )
         if aliases:
             self._session.execute(

@@ -1,6 +1,35 @@
 {
   "components": {
     "schemas": {
+      "ActiveVehicleBrandIntegrityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "is_complete": {
+            "title": "Is Complete",
+            "type": "boolean"
+          },
+          "missing_brand_vehicle_model_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Missing Brand Vehicle Model Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "is_complete",
+          "missing_brand_vehicle_model_ids",
+          "catalog_version"
+        ],
+        "title": "ActiveVehicleBrandIntegrityResponse",
+        "type": "object"
+      },
       "AnalysisContentRunCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -987,6 +1016,432 @@
           "file"
         ],
         "title": "Body_uploadLocalDataImportFile",
+        "type": "object"
+      },
+      "BrandAliasResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "normalized_text": {
+            "title": "Normalized Text",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "normalized_text"
+        ],
+        "title": "BrandAliasResponse",
+        "type": "object"
+      },
+      "BrandCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Aliases",
+            "type": "array"
+          },
+          "code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owned",
+              "competitor",
+              "other"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "display_name",
+          "role"
+        ],
+        "title": "BrandCreateRequest",
+        "type": "object"
+      },
+      "BrandListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BrandResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "catalog_version",
+          "offset",
+          "limit"
+        ],
+        "title": "BrandListResponse",
+        "type": "object"
+      },
+      "BrandResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BrandAliasResponse"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "referenced": {
+            "default": false,
+            "title": "Referenced",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "owned",
+              "competitor",
+              "other"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "deprecated"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "display_name",
+          "role",
+          "status",
+          "version",
+          "catalog_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BrandResponse",
+        "type": "object"
+      },
+      "BrandUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "owned",
+                  "competitor",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "deprecated"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "BrandUpdateRequest",
+        "type": "object"
+      },
+      "BrandVehicleCatalogSnapshotResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "brand_aliases": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogBrandAliasResponse"
+            },
+            "title": "Brand Aliases",
+            "type": "array"
+          },
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/BrandResponse"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "filter_mode": {
+            "enum": [
+              "all_active",
+              "selected"
+            ],
+            "title": "Filter Mode",
+            "type": "string"
+          },
+          "selected_brand_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Selected Brand Ids",
+            "type": "array"
+          },
+          "vehicle_aliases": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogVehicleAliasResponse"
+            },
+            "title": "Vehicle Aliases",
+            "type": "array"
+          },
+          "vehicles": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogVehicleResponse"
+            },
+            "title": "Vehicles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "catalog_version",
+          "filter_mode",
+          "selected_brand_ids",
+          "brands",
+          "brand_aliases",
+          "vehicles",
+          "vehicle_aliases"
+        ],
+        "title": "BrandVehicleCatalogSnapshotResponse",
+        "type": "object"
+      },
+      "CatalogBrandAliasResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "brand_id": {
+            "format": "uuid",
+            "title": "Brand Id",
+            "type": "string"
+          },
+          "normalized_text": {
+            "title": "Normalized Text",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brand_id",
+          "text",
+          "normalized_text"
+        ],
+        "title": "CatalogBrandAliasResponse",
+        "type": "object"
+      },
+      "CatalogVehicleAliasResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "normalized_text": {
+            "title": "Normalized Text",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "vehicle_model_id": {
+            "format": "uuid",
+            "title": "Vehicle Model Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicle_model_id",
+          "text",
+          "normalized_text"
+        ],
+        "title": "CatalogVehicleAliasResponse",
+        "type": "object"
+      },
+      "CatalogVehicleResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "brand_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "deprecated",
+              "merged"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "display_name",
+          "brand_id",
+          "status",
+          "version"
+        ],
+        "title": "CatalogVehicleResponse",
         "type": "object"
       },
       "CollectionBatchSupplementEligibilityResponse": {
@@ -7427,6 +7882,79 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VehicleBrandAssignmentRequest": {
+        "additionalProperties": false,
+        "description": "显式设置 / 清除车型品牌归属；active 车型由 Repository fail closed。",
+        "properties": {
+          "brand_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          }
+        },
+        "required": [
+          "brand_id"
+        ],
+        "title": "VehicleBrandAssignmentRequest",
+        "type": "object"
+      },
+      "VehicleBrandAssignmentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "brand_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "vehicle_model_id": {
+            "format": "uuid",
+            "title": "Vehicle Model Id",
+            "type": "string"
+          },
+          "vehicle_status": {
+            "enum": [
+              "active",
+              "deprecated",
+              "merged"
+            ],
+            "title": "Vehicle Status",
+            "type": "string"
+          },
+          "vehicle_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Vehicle Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vehicle_model_id",
+          "brand_id",
+          "vehicle_status",
+          "vehicle_version",
+          "catalog_version"
+        ],
+        "title": "VehicleBrandAssignmentResponse",
+        "type": "object"
+      },
       "VehicleModelAliasResponse": {
         "additionalProperties": false,
         "description": "车型当前有效别名。",
@@ -7465,6 +7993,11 @@
             "maxItems": 100,
             "title": "Aliases",
             "type": "array"
+          },
+          "brand_id": {
+            "format": "uuid",
+            "title": "Brand Id",
+            "type": "string"
           },
           "category_name": {
             "anyOf": [
@@ -7508,7 +8041,8 @@
         },
         "required": [
           "code",
-          "display_name"
+          "display_name",
+          "brand_id"
         ],
         "title": "VehicleModelCreateRequest",
         "type": "object"
@@ -7583,6 +8117,18 @@
             },
             "title": "Aliases",
             "type": "array"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
           },
           "catalog_version": {
             "exclusiveMinimum": 0.0,
@@ -7706,6 +8252,18 @@
               }
             ],
             "title": "Aliases"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
           },
           "category_name": {
             "anyOf": [
@@ -8888,6 +9446,129 @@
           }
         },
         "summary": "List Audit Events",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/brand-vehicle-catalog/integrity": {
+      "get": {
+        "operationId": "getBrandVehicleCatalogIntegrity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveVehicleBrandIntegrityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Get Brand Vehicle Catalog Integrity",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/brand-vehicle-catalog/snapshot": {
+      "get": {
+        "operationId": "getBrandVehicleCatalogSnapshot",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "all_active",
+              "enum": [
+                "all_active",
+                "selected"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "Brand Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandVehicleCatalogSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Brand Vehicle Catalog Snapshot",
         "tags": [
           "administration"
         ]
@@ -15441,6 +16122,388 @@
         ]
       }
     },
+    "/api/v1/vehicle-brands": {
+      "get": {
+        "operationId": "listVehicleBrands",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "owned",
+                    "competitor",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "deprecated"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Vehicle Brands",
+        "tags": [
+          "administration"
+        ]
+      },
+      "post": {
+        "operationId": "createVehicleBrand",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Create Vehicle Brand",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/vehicle-brands/{brand_id}": {
+      "delete": {
+        "operationId": "deleteVehicleBrand",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Brand Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Vehicle Brand",
+        "tags": [
+          "administration"
+        ]
+      },
+      "get": {
+        "operationId": "getVehicleBrand",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Brand Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Vehicle Brand",
+        "tags": [
+          "administration"
+        ]
+      },
+      "patch": {
+        "operationId": "updateVehicleBrand",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Brand Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update Vehicle Brand",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
     "/api/v1/vehicle-models": {
       "get": {
         "description": "读取车型目录供选择器和管理员页面复用。",
@@ -15845,6 +16908,89 @@
         "summary": "Update Vehicle Model",
         "tags": [
           "vehicles"
+        ]
+      }
+    },
+    "/api/v1/vehicle-models/{vehicle_model_id}/brand": {
+      "put": {
+        "operationId": "assignVehicleModelBrand",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vehicle_model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vehicle Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleBrandAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleBrandAssignmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Assign Vehicle Model Brand",
+        "tags": [
+          "administration"
         ]
       }
     },

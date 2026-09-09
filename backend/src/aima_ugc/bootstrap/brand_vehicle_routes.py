@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Annotated, cast
+from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Query, Request, Response, status

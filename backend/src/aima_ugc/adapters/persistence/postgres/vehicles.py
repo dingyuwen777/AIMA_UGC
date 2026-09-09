@@ -25,6 +25,7 @@ from aima_ugc.modules.vehicles.tables import (
     content_vehicle_evidence_table,
     content_vehicle_review_locks_table,
     keyword_pack_vehicle_models_table,
+    vehicle_brands_table,
     vehicle_catalog_versions_table,
     vehicle_model_aliases_table,
     vehicle_models_table,
@@ -41,6 +42,7 @@ def _vehicle_from_row(row: RowMapping) -> VehicleModel:
         display_name=cast(str, row["display_name"]),
         series_name=cast(str | None, row["series_name"]),
         category_name=cast(str | None, row["category_name"]),
+        brand_id=cast(UUID | None, row["brand_id"]),
         status=cast(VehicleStatus, row["status"]),
         version=cast(int, row["version"]),
         catalog_version=cast(int, row["catalog_version"]),
@@ -65,6 +67,18 @@ class PostgresVehicleCatalogRepository:
         if value is None:
             raise RuntimeError("Vehicle Catalog 尚未初始化")
         return int(value)
+
+    def lock_catalog_version(self) -> int:
+        """以共享锁冻结当前目录版本，阻止并发目录写穿透 Snapshot。"""
+
+        seed = self._session.scalar(
+            select(vehicle_catalog_versions_table.c.version)
+            .where(vehicle_catalog_versions_table.c.version == 1)
+            .with_for_update(read=True)
+        )
+        if seed is None:
+            raise RuntimeError("Vehicle Catalog 尚未初始化")
+        return self.current_catalog_version()
 
     def next_catalog_version(self, *, reason: str, actor_ref: str) -> int:
         """锁定永久 seed 行后读取最大版本，串行化并发目录写入。"""
@@ -95,11 +109,15 @@ class PostgresVehicleCatalogRepository:
         display_name: str,
         aliases: tuple[str, ...],
         actor_ref: str,
+        brand_id: UUID | None = None,
         series_name: str | None = None,
         category_name: str | None = None,
     ) -> VehicleModel:
-        """创建车型并在同一事务追加目录版本和别名。"""
+        """创建 active 车型；Stage 2 起必须显式绑定有效 active Brand。"""
 
+        if brand_id is None:
+            raise RuntimeError("active 车型必须绑定有效品牌")
+        self._require_active_brand(brand_id)
         catalog_version = self.next_catalog_version(reason="vehicle_created", actor_ref=actor_ref)
         model_id = uuid4()
         now = beijing_now()
@@ -112,6 +130,7 @@ class PostgresVehicleCatalogRepository:
                     display_name=display_name,
                     series_name=series_name,
                     category_name=category_name,
+                    brand_id=brand_id,
                     status="active",
                     version=1,
                     catalog_version=catalog_version,
@@ -203,14 +222,26 @@ class PostgresVehicleCatalogRepository:
         status: str | None,
         actor_ref: str,
         classification: dict[str, str | None] | None = None,
+        ownership: dict[str, UUID | None] | None = None,
     ) -> VehicleModel:
-        """更新车型并递增车型版本和全局目录版本。"""
+        """更新车型；任何 active 结果都必须拥有有效 active Brand。"""
 
         current = self.get_model(model_id, for_update=True)
         if current is None:
             raise LookupError(model_id)
         if current.status == "merged":
             raise RuntimeError("已合并车型不能直接编辑")
+
+        target_status = cast(VehicleStatus, status or current.status)
+        brand_changed = ownership is not None and "brand_id" in ownership
+        target_brand_id = ownership["brand_id"] if brand_changed else current.brand_id
+        if target_status == "active":
+            if target_brand_id is None:
+                raise RuntimeError("active 车型必须绑定有效品牌")
+            self._require_active_brand(target_brand_id)
+        elif brand_changed and target_brand_id is not None:
+            self._require_active_brand(target_brand_id)
+
         catalog_version = self.next_catalog_version(reason="vehicle_updated", actor_ref=actor_ref)
         values: dict[str, object] = {
             "version": current.version + 1,
@@ -221,6 +252,8 @@ class PostgresVehicleCatalogRepository:
             values["display_name"] = display_name
         if status is not None:
             values["status"] = status
+        if brand_changed:
+            values["brand_id"] = target_brand_id
         # 仅显式传入的字段参与更新；null 用于清除，缺省保留原值。
         for field in ("series_name", "category_name"):
             if classification is not None and field in classification:
@@ -239,6 +272,45 @@ class PostgresVehicleCatalogRepository:
             self._replace_aliases(model_id, aliases, created_at=beijing_now())
         return _vehicle_from_row(row)
 
+    def assign_brand(
+        self,
+        model_id: UUID,
+        brand_id: UUID | None,
+        *,
+        actor_ref: str,
+    ) -> VehicleModel:
+        """显式修复 / 修改车型品牌归属；车型表写入仍由本 Repository 独占。"""
+
+        current = self.get_model(model_id, for_update=True)
+        if current is None:
+            raise LookupError(model_id)
+        if current.status == "merged":
+            raise RuntimeError("已合并车型不能修改品牌归属")
+        if current.status == "active" and brand_id is None:
+            raise RuntimeError("active 车型不能清空品牌归属")
+        if brand_id is not None:
+            self._require_active_brand(brand_id)
+        catalog_version = self.next_catalog_version(
+            reason="vehicle_brand_assigned",
+            actor_ref=actor_ref,
+        )
+        row = (
+            self._session.execute(
+                update(vehicle_models_table)
+                .where(vehicle_models_table.c.id == model_id)
+                .values(
+                    brand_id=brand_id,
+                    version=current.version + 1,
+                    catalog_version=catalog_version,
+                    updated_at=beijing_now(),
+                )
+                .returning(vehicle_models_table)
+            )
+            .mappings()
+            .one()
+        )
+        return _vehicle_from_row(row)
+
     def merge_model(self, source_id: UUID, target_id: UUID, *, actor_ref: str) -> VehicleModel:
         """把源车型重定向到目标；历史证据继续保留源身份。"""
 
@@ -250,6 +322,9 @@ class PostgresVehicleCatalogRepository:
             raise LookupError(source_id if source is None else target_id)
         if source.status == "merged" or target.status != "active":
             raise RuntimeError("合并源必须未合并且目标必须为 active")
+        if target.brand_id is None:
+            raise RuntimeError("active 合并目标必须绑定有效品牌")
+        self._require_active_brand(target.brand_id)
         catalog_version = self.next_catalog_version(reason="vehicle_merged", actor_ref=actor_ref)
         self._session.execute(
             pg_insert(keyword_pack_vehicle_models_table)
@@ -626,6 +701,15 @@ class PostgresVehicleCatalogRepository:
                     created_at=beijing_now(),
                 )
             )
+
+    def _require_active_brand(self, brand_id: UUID) -> None:
+        status = self._session.scalar(
+            select(vehicle_brands_table.c.status).where(vehicle_brands_table.c.id == brand_id)
+        )
+        if status is None:
+            raise LookupError("品牌不存在")
+        if status != "active":
+            raise RuntimeError("车型只能绑定 active 品牌")
 
     def _replace_aliases(
         self,
