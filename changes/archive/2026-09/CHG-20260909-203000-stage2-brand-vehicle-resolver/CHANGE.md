@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260909-203000-stage2-brand-vehicle-resolver
 title: 搜索与品牌车型过滤 Stage 2 品牌车型管理与解析器
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/stage2-brand-vehicle-management-resolver
 created: 2026-09-09
