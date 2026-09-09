@@ -9,15 +9,17 @@ from aima_ugc.bootstrap.api import create_app
 from aima_ugc.contracts.http import (
     HistoricalCampaignConflictListResponse,
     HistoricalCampaignCreatedResponse,
-    HistoricalCampaignCreateRequest,
     HistoricalCampaignItemListResponse,
     HistoricalCampaignListResponse,
     HistoricalCampaignResponse,
     HistoricalDirectoryListQuery,
     HistoricalDirectoryListResponse,
     LocalDataImportCampaignCreatedResponse,
-    LocalDataImportCampaignCreateRequest,
     LocalDataImportFileUploadedResponse,
+)
+from aima_ugc.contracts.stage3_import import (
+    HistoricalCampaignCreateRequest,
+    LocalDataImportCampaignCreateRequest,
 )
 from aima_ugc.modules.ingestion.historical_http import HistoricalCampaignStateConflict
 from fastapi.testclient import TestClient
@@ -168,7 +170,7 @@ def test_historical_import_routes_form_one_campaign_lifecycle() -> None:
             "client_idempotency_key": "campaign-1",
             "relative_paths": ["history"],
             "recursive": True,
-            "keyword_pack_ids": ["30000000-0000-0000-0000-000000000001"],
+            "brand_ids": ["30000000-0000-0000-0000-000000000001"],
         },
     )
     detail = client.get(f"/api/v1/historical-import-campaigns/{CAMPAIGN_ID}")
@@ -198,7 +200,7 @@ def test_unified_data_import_routes_stage_local_files_before_common_preflight() 
         json={
             "client_idempotency_key": "local-campaign-1",
             "files": [{"relative_path": "folder/a.xlsx", "byte_size": 4}],
-            "keyword_pack_ids": ["30000000-0000-0000-0000-000000000001"],
+            "brand_ids": ["30000000-0000-0000-0000-000000000001"],
             "ingestion_policy": "standard_observation",
         },
     )
