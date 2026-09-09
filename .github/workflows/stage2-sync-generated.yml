@@ -1,0 +1,85 @@
+name: Stage2 Sync Generated
+
+on:
+  push:
+    branches:
+      - feature/stage2-brand-vehicle-resolver
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frozen environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          npm ci --prefix frontend
+      - name: Apply Stage 2 owner patch
+        run: uv run python scripts/dev/stage2_apply_patch.py
+      - name: Format and fix touched Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check --fix \
+            backend/src/aima_ugc/contracts/administration.py \
+            backend/src/aima_ugc/contracts/brand_vehicle.py \
+            backend/src/aima_ugc/modules/vehicles/models.py \
+            backend/src/aima_ugc/modules/vehicles/resolver.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py \
+            backend/src/aima_ugc/bootstrap/administration_http.py \
+            backend/src/aima_ugc/bootstrap/brand_vehicle_http.py \
+            backend/src/aima_ugc/bootstrap/brand_vehicle_routes.py \
+            tests/unit/vehicles/test_brand_vehicle_resolver.py \
+            tests/integration/database/test_brand_vehicle_stage2.py
+          uv run ruff format \
+            backend/src/aima_ugc/contracts/administration.py \
+            backend/src/aima_ugc/contracts/brand_vehicle.py \
+            backend/src/aima_ugc/modules/vehicles/models.py \
+            backend/src/aima_ugc/modules/vehicles/resolver.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py \
+            backend/src/aima_ugc/bootstrap/administration_http.py \
+            backend/src/aima_ugc/bootstrap/brand_vehicle_http.py \
+            backend/src/aima_ugc/bootstrap/brand_vehicle_routes.py \
+            tests/unit/vehicles/test_brand_vehicle_resolver.py \
+            tests/integration/database/test_brand_vehicle_stage2.py
+      - name: Generate OpenAPI and client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+      - name: Targeted resolver test
+        run: uv run pytest -q tests/unit/vehicles/test_brand_vehicle_resolver.py
+      - name: Commit canonical outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend tests contracts frontend/src/generated/api
+          if git diff --cached --quiet; then
+            echo "No generated changes."
+            exit 0
+          fi
+          git commit -m "同步 Stage 2 唯一 Owner 与生成 Contract"
+          git push origin HEAD:${GITHUB_REF_NAME}
