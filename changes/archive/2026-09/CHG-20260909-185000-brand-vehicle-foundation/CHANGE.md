@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260909-185000-brand-vehicle-foundation
 title: 搜索与品牌车型过滤 Stage 1 数据模型基础
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: migration/stage1-brand-vehicle-foundation
 created: 2026-09-09
