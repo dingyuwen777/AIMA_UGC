@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260909-074535-frontend-security-patches
 title: 修复前端工具链已知安全漏洞
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/frontend-security-patches-20260909
 created: 2026-09-09
