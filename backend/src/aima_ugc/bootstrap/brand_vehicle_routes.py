@@ -17,6 +17,7 @@ from aima_ugc.contracts.brand_vehicle import (
     BrandRole,
     BrandStatus,
     BrandUpdateRequest,
+    BrandVehicleCatalogSnapshotQuery,
     BrandVehicleCatalogSnapshotResponse,
     VehicleBrandAssignmentRequest,
     VehicleBrandAssignmentResponse,
@@ -196,11 +197,18 @@ def install_brand_vehicle_routes(
         "/api/v1/brand-vehicle-catalog/snapshot",
         operation_id="getBrandVehicleCatalogSnapshot",
         response_model=BrandVehicleCatalogSnapshotResponse,
-        responses={500: {"model": HttpErrorResponse}},
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
         tags=["administration"],
     )
-    def get_brand_vehicle_catalog_snapshot() -> BrandVehicleCatalogSnapshotResponse:
-        return service().get_catalog_snapshot()
+    def get_brand_vehicle_catalog_snapshot(
+        query: Annotated[BrandVehicleCatalogSnapshotQuery, Query()],
+    ) -> BrandVehicleCatalogSnapshotResponse:
+        return service().get_catalog_snapshot(query)
 
 
 def _request_id(request: Request) -> str:
