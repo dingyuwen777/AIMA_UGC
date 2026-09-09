@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260909-content-filter-options-bootstrap
 title: 声音广场动态筛选目录与空库 Analysis 基线
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/content-filter-options-bootstrap
 created: 2026-09-09
