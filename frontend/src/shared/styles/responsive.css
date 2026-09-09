@@ -12,7 +12,7 @@
 }
 
 /* 表格只允许自身容器横向滚动；#app 保证能覆盖旧 scoped overflow shorthand。 */
-#app .app-shell :where(.table-wrap, .table-card, .audit-card) {
+#app .app-shell :where(.table-wrap, .table-card, .admin-table-scroll) {
   max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-inline: contain;

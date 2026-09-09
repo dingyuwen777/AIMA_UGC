@@ -392,6 +392,8 @@ src/shared/
 
 页面私有视觉优先留在 Page/Component，避免改一处全局 CSS 把多个页面一起破坏。
 
+管理员配置的 AI 模型与 TikHub 复用 `ProviderConfigurationPanel`，测试连接仅使用已保存配置；组件维护在途配置身份和响应归属，防止重复请求及旧结果串到其他配置。保存时锁定表单，失败保留草稿。分析规则保存后用服务端返回的新版本建立编辑基线，发布前要求当前修改已保存。车型与操作记录使用独立表格滚动区；对应 Browser 场景见 [`frontend/e2e/admin-configuration-figma.spec.ts`](e2e/admin-configuration-figma.spec.ts)，真实保存、连接测试和资源生命周期见 [`frontend/e2e-fullstack/admin-product-capabilities.spec.ts`](e2e-fullstack/admin-product-capabilities.spec.ts)。
+
 新增页面：
 
 ```text

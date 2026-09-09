@@ -68,6 +68,7 @@ const schemeLoading = ref(false)
 const archivedSchemeLoading = ref(false)
 const schemeLabelsValid = ref(true)
 const schemeCopyName = ref('')
+const schemeCopyEditing = ref(false)
 const auditLoading = ref(false)
 const vehicleError = ref<string | null>(null)
 const packError = ref<string | null>(null)
@@ -112,6 +113,24 @@ const selectedSchemeVersion = computed(() => {
     if (version) return { scheme, version }
   }
   return null
+})
+
+/** 发布使用服务端已保存版本，不能让未保存的表单内容冒充即将生效的规则。 */
+const hasUnsavedSchemeChanges = computed(() => {
+  const selected = selectedSchemeVersion.value
+  if (!selected || selected.version.status !== 'draft') return false
+  if (!schemeLabelsValid.value) return true
+  try {
+    const definition = schemeDefinition()
+    const saved = selected.version.definition
+    return schemeDraft.description !== selected.version.description
+      || definition.prompt_template !== saved.prompt_template
+      || JSON.stringify(definition.voice_types) !== JSON.stringify(saved.voice_types)
+      || JSON.stringify(definition.sentiments) !== JSON.stringify(saved.sentiments)
+      || JSON.stringify(definition.labels) !== JSON.stringify(saved.labels)
+  } catch {
+    return true
+  }
 })
 
 onMounted(refreshAll)
@@ -284,23 +303,33 @@ async function saveVehicle(): Promise<void> {
 }
 
 async function deleteVehicle(item: VehicleModelResponse): Promise<void> {
+  if (saving.value) return
   if (item.referenced) {
     error.value = '该车型已被业务数据引用，不能直接删除；请停用、改名或合并。'
     return
   }
   if (!window.confirm(`确定删除未引用车型“${item.display_name}”吗？系统会保留本次操作记录。`)) return
+  saving.value = true
+  error.value = null
+  notice.value = null
   try {
     await removeVehicle(item.id)
     notice.value = '未引用车型已删除并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
   }
 }
 
 async function mergeSelectedVehicle(): Promise<void> {
+  if (saving.value) return
   if (!vehicleDraft.id || !mergeTargetId.value) return
   if (!window.confirm('合并后历史数据仍会保留，后续选择会统一到目标车型。是否继续？')) return
+  saving.value = true
+  error.value = null
+  notice.value = null
   try {
     await mergeVehicle(vehicleDraft.id, { target_vehicle_model_id: mergeTargetId.value })
     notice.value = '车型已合并并记录操作。'
@@ -308,6 +337,8 @@ async function mergeSelectedVehicle(): Promise<void> {
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
   }
 }
 
@@ -333,12 +364,18 @@ async function savePackLinks(): Promise<void> {
 }
 
 function selectSchemeVersion(versionId: string): void {
+  schemeCopyEditing.value = false
+  schemeCopyName.value = ''
   selectedSchemeVersionId.value = versionId
   const selection = schemes.value
     .flatMap((scheme) => scheme.versions.map((version) => ({ scheme, version })))
     .find((item) => item.version.id === versionId)
   if (!selection) return
-  const { scheme, version } = selection
+  syncSchemeDraft(selection.scheme, selection.version)
+}
+
+/** 用服务端规范化后的版本建立编辑基线，避免保存成功后仍被判为未保存。 */
+function syncSchemeDraft(scheme: AnalysisSchemeResponse, version: AnalysisSchemeResponse['versions'][number]): void {
   Object.assign(schemeDraft, {
     schemeName: scheme.name,
     description: version.description,
@@ -390,7 +427,9 @@ async function saveSchemeDraft(): Promise<void> {
         definition,
       })
     }
-    selectedSchemeVersionId.value = saved.versions.find((item) => item.status === 'draft')?.id ?? ''
+    const draft = saved.versions.find((item) => item.status === 'draft')
+    selectedSchemeVersionId.value = draft?.id ?? ''
+    if (draft) syncSchemeDraft(saved, draft)
     notice.value = 'AI 分析规则草稿已保存并记录操作。'
     await refreshAll()
   } catch (reason) {
@@ -403,6 +442,7 @@ async function saveSchemeDraft(): Promise<void> {
 function startSchemeCopy(): void {
   const selected = selectedSchemeVersion.value
   if (!selected) return
+  schemeCopyEditing.value = true
   schemeCopyName.value = `${selected.scheme.name} 副本`
 }
 
@@ -414,6 +454,7 @@ async function copySelectedScheme(): Promise<void> {
   try {
     const copied = await copyScheme(selected.scheme.id, { name: schemeCopyName.value.trim() })
     schemeCopyName.value = ''
+    schemeCopyEditing.value = false
     await loadSchemes()
     const draft = copied.versions.find((item) => item.status === 'draft') ?? copied.versions[0]
     if (draft) selectSchemeVersion(draft.id)
@@ -481,24 +522,36 @@ async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Pr
 }
 
 async function publishVersion(version: AnalysisSchemeVersionResponse): Promise<void> {
+  if (saving.value || hasUnsavedSchemeChanges.value) return
   if (!window.confirm('发布后，新建的 AI 分析任务会使用此版本；正在运行的任务不受影响。是否发布？')) return
+  saving.value = true
+  error.value = null
+  notice.value = null
   try {
     await activateScheme(version.id, version.version)
     notice.value = 'AI 分析规则已发布并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
   }
 }
 
 async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<void> {
+  if (saving.value) return
   if (!window.confirm(`确认恢复到版本 ${version.version}？系统会完整记录本次操作。`)) return
+  saving.value = true
+  error.value = null
+  notice.value = null
   try {
     await restoreScheme(version.id, version.version)
     notice.value = `已恢复到版本 ${version.version} 并记录操作。`
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
   }
 }
 
@@ -509,7 +562,11 @@ function safeJson(value: Record<string, unknown>): string {
 
 <template>
   <AppShell section-title="管理员配置">
-    <div class="admin-page">
+    <fieldset
+      class="admin-page"
+      :disabled="saving"
+      aria-label="管理员配置内容"
+    >
       <AimaPageHeader
         title="管理员配置"
         description="统一管理车型、词包、AI 模型、采集服务和 AI 分析规则。技术标识与原始审计数据仅在需要时展开查看。"
@@ -584,53 +641,60 @@ function safeJson(value: Record<string, unknown>): string {
               新增车型
             </AimaButton>
           </header>
-          <table>
-            <thead>
-              <tr>
-                <th>车型</th>
-                <th>别名</th>
-                <th>状态</th>
-                <th>使用情况</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="item in vehicles"
-                :key="item.id"
-              >
-                <td>
-                  <strong>{{ item.display_name }}</strong>
-                  <small>编码 {{ item.code }}</small>
-                </td>
-                <td>{{ (item.aliases ?? []).map((alias) => alias.text).join('、') || '—' }}</td>
-                <td>
-                  <span
-                    class="status"
-                    :class="`status--${item.status}`"
-                  >
-                    {{ formatRuntimeStatus(item.status) }}
-                  </span>
-                </td>
-                <td>{{ item.referenced ? '已被使用' : '暂未使用' }}</td>
-                <td>
-                  <button
-                    type="button"
-                    @click="editVehicleDraft(item)"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    type="button"
-                    :disabled="item.status === 'merged'"
-                    @click="deleteVehicle(item)"
-                  >
-                    删除
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div
+            class="admin-table-scroll"
+            role="region"
+            aria-label="车型目录表格"
+            tabindex="0"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>车型</th>
+                  <th>别名</th>
+                  <th>状态</th>
+                  <th>使用情况</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in vehicles"
+                  :key="item.id"
+                >
+                  <td>
+                    <strong>{{ item.display_name }}</strong>
+                    <small>编码 {{ item.code }}</small>
+                  </td>
+                  <td>{{ (item.aliases ?? []).map((alias) => alias.text).join('、') || '—' }}</td>
+                  <td>
+                    <span
+                      class="status"
+                      :class="`status--${item.status}`"
+                    >
+                      {{ formatRuntimeStatus(item.status) }}
+                    </span>
+                  </td>
+                  <td>{{ item.referenced ? '已被使用' : '暂未使用' }}</td>
+                  <td>
+                    <button
+                      type="button"
+                      @click="editVehicleDraft(item)"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="item.status === 'merged'"
+                      @click="deleteVehicle(item)"
+                    >
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
         <section class="card form-card">
           <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
@@ -724,7 +788,7 @@ function safeJson(value: Record<string, unknown>): string {
 
       <div
         v-else-if="tab === 'links'"
-        class="two-column"
+        class="two-column links-layout"
       >
         <section class="card list-card">
           <h2>选择词包</h2>
@@ -736,7 +800,7 @@ function safeJson(value: Record<string, unknown>): string {
             @click="selectPack(pack.id)"
           >
             <strong>{{ pack.name }}</strong>
-            <span>版本 {{ pack.version }} · {{ pack.enabled ? '已启用' : '已停用' }}</span>
+            <span>{{ pack.enabled ? '已启用' : '已停用' }}</span>
           </button>
         </section>
         <section class="card form-card">
@@ -853,7 +917,7 @@ function safeJson(value: Record<string, unknown>): string {
             </AimaButton>
           </div>
           <div
-            v-if="schemeCopyName"
+            v-if="schemeCopyEditing"
             class="scheme-copy-editor"
           >
             <label>副本名称<input
@@ -864,7 +928,7 @@ function safeJson(value: Record<string, unknown>): string {
             <div>
               <AimaButton
                 size="small"
-                @click="schemeCopyName = ''"
+                @click="schemeCopyEditing = false"
               >
                 取消
               </AimaButton><AimaButton
@@ -928,6 +992,9 @@ function safeJson(value: Record<string, unknown>): string {
               </div>
             </div>
           </details>
+          <p v-if="hasUnsavedSchemeChanges">
+            规则有未保存修改，请先保存草稿后再发布。
+          </p>
           <div class="actions">
             <AimaButton
               :disabled="saving || !schemeLabelsValid"
@@ -938,6 +1005,7 @@ function safeJson(value: Record<string, unknown>): string {
             <AimaButton
               v-if="selectedSchemeVersion?.version.status === 'draft'"
               variant="primary"
+              :disabled="saving || hasUnsavedSchemeChanges"
               @click="publishVersion(selectedSchemeVersion.version)"
             >
               发布
@@ -978,59 +1046,66 @@ function safeJson(value: Record<string, unknown>): string {
             刷新
           </AimaButton>
         </header>
-        <table>
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>操作人</th>
-              <th>操作</th>
-              <th>影响对象</th>
-              <th>操作说明</th>
-              <th>详情</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="event in auditEvents"
-              :key="event.id"
-            >
-              <td>{{ formatDateTime(event.created_at) }}</td>
-              <td>{{ auditActorLabel(event.actor_ref) }}</td>
-              <td>
-                <strong>{{ auditActionLabel(event.event_type) }}</strong>
-              </td>
-              <td>{{ auditObjectLabel(event.object_type, event.object_id) }}</td>
-              <td>{{ auditSummaryText(event) }}</td>
-              <td>
-                <details class="technical-details audit-details">
-                  <summary>技术详情</summary>
-                  <dl>
-                    <div>
-                      <dt>事件类型</dt>
-                      <dd>{{ event.event_type }}</dd>
+        <div
+          class="admin-table-scroll"
+          role="region"
+          aria-label="操作记录表格"
+          tabindex="0"
+        >
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>操作人</th>
+                <th>操作</th>
+                <th>影响对象</th>
+                <th>操作说明</th>
+                <th>详情</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="event in auditEvents"
+                :key="event.id"
+              >
+                <td>{{ formatDateTime(event.created_at) }}</td>
+                <td>{{ auditActorLabel(event.actor_ref) }}</td>
+                <td>
+                  <strong>{{ auditActionLabel(event.event_type) }}</strong>
+                </td>
+                <td>{{ auditObjectLabel(event.object_type, event.object_id) }}</td>
+                <td>{{ auditSummaryText(event) }}</td>
+                <td>
+                  <details class="technical-details audit-details">
+                    <summary>技术详情</summary>
+                    <dl>
+                      <div>
+                        <dt>事件类型</dt>
+                        <dd>{{ event.event_type }}</dd>
+                      </div>
+                      <div>
+                        <dt>对象类型</dt>
+                        <dd>{{ event.object_type ?? '—' }}</dd>
+                      </div>
+                      <div>
+                        <dt>对象标识</dt>
+                        <dd>{{ event.object_id ?? '—' }}</dd>
+                      </div>
+                      <div>
+                        <dt>请求标识</dt>
+                        <dd>{{ event.request_id ?? '—' }}</dd>
+                      </div>
+                    </dl>
+                    <div class="raw-detail">
+                      <strong>安全审计数据</strong>
+                      <pre>{{ safeJson(event.safe_detail) }}</pre>
                     </div>
-                    <div>
-                      <dt>对象类型</dt>
-                      <dd>{{ event.object_type ?? '—' }}</dd>
-                    </div>
-                    <div>
-                      <dt>对象标识</dt>
-                      <dd>{{ event.object_id ?? '—' }}</dd>
-                    </div>
-                    <div>
-                      <dt>请求标识</dt>
-                      <dd>{{ event.request_id ?? '—' }}</dd>
-                    </div>
-                  </dl>
-                  <div class="raw-detail">
-                    <strong>安全审计数据</strong>
-                    <pre>{{ safeJson(event.safe_detail) }}</pre>
-                  </div>
-                </details>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                  </details>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <nav
           v-if="auditTotal > 0"
           class="audit-pagination"
@@ -1055,26 +1130,34 @@ function safeJson(value: Record<string, unknown>): string {
           </div>
         </nav>
       </section>
-    </div>
+    </fieldset>
   </AppShell>
 </template>
 
 <style scoped>
-.admin-page { display: grid; gap: 12px; }
-.tabs { display: flex; min-height: 44px; align-items: end; gap: 4px; border-bottom: 1px solid var(--aima-border); }
-.tabs button { height: 42px; padding: 0 18px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; }
+.admin-page { display: grid; min-width: 0; margin: 0; padding: 0; border: 0; gap: 12px; }
+.tabs { display: flex; min-height: 44px; margin-top: 12px; align-items: end; gap: 16px; border-bottom: 1px solid var(--aima-border); }
+.tabs button { height: 42px; padding: 0 4px; font-size: var(--aima-font-size-control); border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; }
 .tabs button.active { border-color: var(--aima-primary); color: var(--aima-primary); font-weight: 600; }
 .state-card,
 .card { min-width: 0; padding: 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); background: var(--aima-surface); }
 .state-card { color: var(--aima-text-muted); text-align: center; }
-.two-column { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: 12px; }
-.scheme-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 12px; }
+.two-column { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); align-items: start; gap: 24px; }
+.links-layout { grid-template-columns: minmax(280px, .78fr) minmax(0, 1.55fr); }
+.scheme-layout { display: grid; grid-template-columns: 268px minmax(0, 1fr); align-items: start; gap: 24px; }
 .card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 h2, h3, p { margin: 0; }
 h2 { color: var(--aima-text); font-size: 15px; }
 h3 { color: var(--aima-text-secondary); font-size: 12px; }
 .card p { margin-top: 4px; color: var(--aima-text-muted); font-size: 11px; line-height: 17px; }
-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11px; }
+.admin-table-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
+.admin-table-scroll table { min-width: 726px; }
+.two-column th:nth-child(3) { width: 86px; }
+.two-column td:last-child { white-space: nowrap; }
+.two-column th:nth-child(4), .two-column th:nth-child(5) { width: 100px; }
+th, td { overflow-wrap: anywhere; }
+.card > header > button { flex-shrink: 0; white-space: nowrap; }
 th, td { padding: 10px 8px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-secondary); text-align: left; vertical-align: top; }
 th { color: var(--aima-text-muted); background: #f8f9fb; font-weight: 500; }
 td strong, td small { display: block; }
@@ -1113,8 +1196,12 @@ hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--aima-bor
 .advanced-editor__fields { display: grid; gap: 12px; padding: 0 10px 10px; }
 .technical-note { padding: 9px 10px; border-radius: 5px; color: var(--aima-text-muted); background: var(--aima-surface); font-size: 10px; line-height: 16px; }
 .technical-note code { color: var(--aima-primary); }
-.audit-card { overflow: auto; }
-.audit-card table { min-width: 940px; }
+.audit-card table { min-width: 1176px; }
+.audit-card th:nth-child(1) { width: 160px; }
+.audit-card th:nth-child(2) { width: 110px; }
+.audit-card th:nth-child(3) { width: 160px; }
+.audit-card th:nth-child(4) { width: 210px; }
+.audit-card th:nth-child(6) { width: 210px; }
 .audit-details { min-width: 120px; }
 .audit-details dl { display: grid; gap: 6px; margin: 0; padding: 0 10px 10px; }
 .audit-details dl > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; }

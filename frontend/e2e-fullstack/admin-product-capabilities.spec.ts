@@ -217,7 +217,24 @@ test('导出 Worker 终态进入当前 Principal 通知并可从声音广场下�
   expect(await download.failure()).toBeNull()
 })
 
+/** 显式管理过 Provider 后不再回退环境默认值；各流程复用本机 Fake 的持久默认配置。 */
+async function ensureFullstackModel(request: APIRequestContext): Promise<void> {
+  const response = await request.get('/api/v1/provider-configs?provider_kind=llm')
+  expect(response.status()).toBe(200)
+  const { items } = await response.json() as { items: { enabled: boolean; is_default: boolean; base_url: string }[] }
+  if (items.some((item) => item.enabled && item.is_default && item.base_url === 'http://127.0.0.1:8091/v1')) return
+  const created = await request.post('/api/v1/provider-configs', {
+    data: {
+      provider_kind: 'llm', provider: 'openai_compatible', display_name: '本机全栈默认模型',
+      base_url: 'http://127.0.0.1:8091/v1', model: 'deepseek-v4-pro',
+      api_key: 'local-fake-provider-credential', enabled: true, is_default: true,
+    },
+  })
+  expect(created.status()).toBe(201)
+}
+
 test('管理员发布原子 Scheme 后新 Run 冻结新版本且旧 Run 身份不变', async ({ page, request }) => {
+  await ensureFullstackModel(request)
   const contentId = await contentIdBySearch(request, vehicleContentTitle)
   const schemesBeforeResponse = await request.get('/api/v1/analysis-schemes')
   expect(schemesBeforeResponse.status()).toBe(200)
@@ -326,4 +343,53 @@ test('未引用关键词包可以从业务界面归档、恢复并安全永久�
 
   const deleted = await request.get(`/api/v1/keyword-packs/${pack.id}`)
   expect(deleted.status()).toBe(404)
+})
+
+
+test('管理员服务配置通过真实 API 保存、测试连接、归档恢复及安全删除', async ({ page, request }) => {
+  await ensureFullstackModel(request)
+  const name = `管理员连接验收 ${Date.now()}`
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: 'AI 模型', exact: true }).click()
+  await page.getByRole('button', { name: '新增配置', exact: true }).click()
+  await page.getByLabel('配置名称', { exact: true }).fill(name)
+  await page.getByLabel('模型标识', { exact: true }).fill('deepseek-v4-pro')
+  await page.getByLabel('服务地址', { exact: true }).fill('http://127.0.0.1:8091/v1')
+  await page.getByLabel('访问密钥', { exact: true }).fill('local-fake-provider-credential')
+  await page.getByLabel('设为默认 AI 模型', { exact: false }).uncheck()
+  const createdResponse = page.waitForResponse((response) => response.url().endsWith('/provider-configs') && response.request().method() === 'POST')
+  await page.getByRole('button', { name: '保存并生效', exact: true }).click()
+  const created = await createdResponse
+  expect(created.status()).toBe(201)
+  const config = await created.json() as { id: string; revision: number; secret_configured: boolean }
+  expect(config.secret_configured).toBe(true)
+  expect(config).not.toHaveProperty('api_key')
+  await expect(page.getByLabel(/^访问密钥/)).toHaveValue('')
+  await page.getByRole('button', { name: '测试连接', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('连接测试通过')
+  await page.getByLabel('配置名称', { exact: true }).fill(`${name} 已更新`)
+  await expect(page.getByRole('button', { name: '测试连接', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: '保存并生效', exact: true }).click()
+  await expect(page.getByText('配置已保存；新任务将使用新配置，正在运行的任务不受影响。', { exact: true })).toBeVisible()
+  const read = await request.get('/api/v1/provider-configs?provider_kind=llm')
+  const saved = (await read.json() as { items: { id: string; display_name: string; revision: number; enabled: boolean; is_default: boolean }[] }).items.find((item) => item.id === config.id)
+  expect(saved).toMatchObject({ display_name: `${name} 已更新`, revision: config.revision + 1 })
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '归档', exact: true }).click()
+  await expect(page.getByText('服务配置已归档。', { exact: true })).toBeVisible()
+  await page.getByText('已归档配置（全部服务类型）', { exact: true }).click()
+  const archived = page.locator('.archived-item').filter({ hasText: `${name} 已更新` })
+  await archived.getByRole('button', { name: '恢复', exact: true }).click()
+  await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue(`${name} 已更新`)
+  await expect(page.getByLabel('启用配置', { exact: false })).not.toBeChecked()
+  await expect(page.getByLabel('设为默认 AI 模型', { exact: false })).not.toBeChecked()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '归档', exact: true }).click()
+  await expect(archived).toBeVisible()
+  page.once('dialog', (dialog) => dialog.accept())
+  await archived.getByRole('button', { name: '永久删除', exact: true }).click()
+  await expect(page.getByText('未进入业务历史的服务配置已永久删除。', { exact: true })).toBeVisible()
+  await expect(archived).not.toBeVisible()
+  const remaining = await request.get('/api/v1/provider-configs?provider_kind=llm')
+  expect((await remaining.json() as { items: { id: string }[] }).items.some((item) => item.id === config.id)).toBe(false)
 })
