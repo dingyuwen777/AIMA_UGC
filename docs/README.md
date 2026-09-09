@@ -7,7 +7,8 @@
 - 公司内网 V1：**已完成**；
 - 当前产品页面和业务闭环：以代码、前端路由和 Product 文档为准；
 - 完整 Production Go-Live：**No-Go，仍有明确未完成门禁**；
-- 4000 万历史数据：软件能力已完成，**公司服务器容量门禁、生产写授权、正式执行和全量对账仍未完成**。
+- 4000 万历史数据：软件能力已完成，**公司服务器容量门禁、生产写授权、正式执行和全量对账仍未完成**；
+- 搜索与品牌/车型过滤解耦：**已批准进入 Active Roadmap，尚未实施**；当前运行行为仍以代码、Contract、Migration 和 Product 文档为准。
 
 已完成阶段不继续留在 `docs/roadmap/`。历史施工过程、当时的 PR/CI/SHA 和完成证据统一由 [`changes/archive/`](../changes/archive/) 与 Git 历史承载。
 
@@ -60,10 +61,11 @@
 
 Workflow 的职责、验证层和调试方法见 [`docs/04_测试与调试说明.md`](04_测试与调试说明.md)。本块只维护文件集合，不复制 Workflow 实现。
 
-## 5. 当前只保留两条 Active Roadmap
+## 5. 当前保留三条 Active Roadmap
 
 1. [`docs/roadmap/02_生产上线实施路线.md`](roadmap/02_生产上线实施路线.md)：完整 Production Hardening / Go-Live；
-2. [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)：公司服务器容量门禁、生产授权、正式执行和全量对账。
+2. [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)：公司服务器容量门禁、生产授权、正式执行和全量对账；
+3. [`docs/roadmap/04_搜索与品牌车型过滤实施路线.md`](roadmap/04_搜索与品牌车型过滤实施路线.md)：Keyword Pack Search 与 Brand/Vehicle Filter 解耦，按 Stage 推进 Schema、Backend、Frontend、旧数据重分类和 Legacy Cleanup。
 
 Monitoring/Alert/VOC/Ticket、Web Report Center、Dashboard、Gold Set、双人审批等候选方向只有在被业务明确批准后才进入 Roadmap。此前 Stage 文档提到它们，不等于它们现在是施工计划。
 
