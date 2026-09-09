@@ -9,6 +9,9 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_manual_reviews import (
     PostgresAnalysisManualReviewRepository,
 )
+from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
+    PostgresAnalysisSchemeRepository,
+)
 from aima_ugc.adapters.persistence.postgres.notifications import PostgresNotificationRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
@@ -201,11 +204,22 @@ def test_analysis_scheme_publish_and_rollback_are_atomic_and_audited(runtime) ->
     expected_compiled = compile_analysis_scheme(
         bootstrap_definition_from_prompt(bootstrap_taxonomy.prompt_text)
     )
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            stored_version = PostgresAnalysisSchemeRepository(session).get_active_version()
+    finally:
+        session.close()
+    assert stored_version is not None
+    assert stored_version.id == initial_version.id
     assert initial.active_version_id == initial_version.id
     assert initial_version.definition == expected_compiled.definition
-    assert initial_version.compiled_prompt == expected_compiled.prompt_text
     assert initial_version.prompt_sha256 == expected_compiled.prompt_sha256
     assert initial_version.taxonomy_sha256 == expected_compiled.taxonomy_sha256
+    assert stored_version.definition == expected_compiled.definition
+    assert stored_version.compiled_prompt == expected_compiled.prompt_text
+    assert stored_version.prompt_sha256 == expected_compiled.prompt_sha256
+    assert stored_version.taxonomy_sha256 == expected_compiled.taxonomy_sha256
     created = service.create_analysis_scheme_draft(
         AnalysisSchemeCreateDraftRequest(
             name=initial.name,
