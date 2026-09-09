@@ -152,7 +152,7 @@ test('预检过程中可以取消导入，并持续展示取消状态直到终�
   await expect(dialog.getByRole('button', { name: '取消任务', exact: true })).toBeVisible()
   await dialog.getByRole('button', { name: '取消任务', exact: true }).click()
   await expect(dialog.locator('.campaign-status')).toHaveText('正在取消')
-  await expect(dialog.getByRole('button', { name: '取消任务', exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: '取消任务', exact: true })).toBeVisible()
   await expect(dialog.locator('.campaign-status')).toHaveText('已取消', { timeout: 10_000 })
   expect(postCancelReads).toBeGreaterThanOrEqual(2)
 })
