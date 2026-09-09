@@ -20,11 +20,6 @@ def replace_once(path: str, old: str, new: str) -> None:
 path = "frontend/src/features/admin-configuration/api.ts"
 replace_once(
     path,
-    "  archiveProviderConfig,\n  copyAnalysisScheme,\n",
-    "  archiveProviderConfig,\n  copyAnalysisScheme,\n",
-)
-replace_once(
-    path,
     "  listArchivedProviderConfigs,\n  listAuditEvents,\n",
     "  listArchivedProviderConfigs,\n  listAuditEvents,\n  listVehicleBrands,\n",
 )
@@ -144,13 +139,13 @@ replace_once(
 )
 replace_once(
     path,
-    "        display_name: vehicleDraft.displayName,\n        series_name: vehicleDraft.seriesName.trim() || null,\n",
-    "        display_name: vehicleDraft.displayName,\n        brand_id: vehicleDraft.brandId || null,\n        series_name: vehicleDraft.seriesName.trim() || null,\n",
+    "      await editVehicle(vehicleDraft.id, {\n        display_name: vehicleDraft.displayName,\n        series_name: vehicleDraft.seriesName.trim() || null,\n",
+    "      await editVehicle(vehicleDraft.id, {\n        display_name: vehicleDraft.displayName,\n        brand_id: vehicleDraft.brandId || null,\n        series_name: vehicleDraft.seriesName.trim() || null,\n",
 )
 replace_once(
     path,
-    "        code: vehicleDraft.code,\n        display_name: vehicleDraft.displayName,\n        series_name: vehicleDraft.seriesName.trim() || null,\n",
-    "        code: vehicleDraft.code,\n        display_name: vehicleDraft.displayName,\n        brand_id: vehicleDraft.brandId,\n        series_name: vehicleDraft.seriesName.trim() || null,\n",
+    "      await addVehicle({\n        code: vehicleDraft.code,\n        display_name: vehicleDraft.displayName,\n        series_name: vehicleDraft.seriesName.trim() || null,\n",
+    "      await addVehicle({\n        code: vehicleDraft.code,\n        display_name: vehicleDraft.displayName,\n        brand_id: vehicleDraft.brandId,\n        series_name: vehicleDraft.seriesName.trim() || null,\n",
 )
 replace_once(
     path,
