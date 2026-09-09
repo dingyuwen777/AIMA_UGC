@@ -97,7 +97,7 @@ def test_runtime_required_check_skips_draft_job_and_reenters_on_ready() -> None:
         "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
         in runtime
     )
-    assert "Defer full CI while PR is Draft" not in runtime
+    assert "Defer Runtime Acceptance while PR is Draft" not in runtime
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
