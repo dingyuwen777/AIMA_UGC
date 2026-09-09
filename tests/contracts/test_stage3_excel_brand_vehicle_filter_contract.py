@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 
 from aima_ugc.bootstrap.api import create_app
-from aima_ugc.contracts.http import (
+from aima_ugc.contracts.stage3_import import (
     HistoricalCampaignCreateRequest,
     LocalDataImportCampaignCreateRequest,
 )
@@ -42,9 +42,9 @@ def test_stage3_historical_contract_uses_brand_scope_only() -> None:
 
 
 def test_stage3_single_file_job_keeps_legacy_v1_and_creates_v2() -> None:
-    """新 Worker 必须显式区分新旧 Job Type，不能用同一 v1 Payload 静默换语义。"""
+    """新 Worker 显式区分新旧 Job Type，不能用同一 v1 Payload 静默换语义。"""
 
     assert import_job.LEGACY_IMPORT_JOB_TYPE == "ingestion.import-excel.v1"
-    assert import_job.IMPORT_JOB_TYPE == "ingestion.import-excel.v2"
-    assert "filter_snapshot" in import_job.ImportJobPayload.model_fields
-    assert "keyword_selection" in import_job.LegacyImportJobPayload.model_fields
+    assert import_job.BRAND_VEHICLE_IMPORT_JOB_TYPE == "ingestion.import-excel.v2"
+    assert "keyword_selection" in import_job.ImportJobPayload.model_fields
+    assert "filter_snapshot" in import_job.BrandVehicleImportJobPayload.model_fields
