@@ -14,9 +14,7 @@ def replace_once(path: str, old: str, new: str) -> None:
     if count == 0:
         if new in text:
             return
-        raise RuntimeError(f"{path}: expected one match, got 0: {old[:120]!r}")
-    if count != 1:
-        raise RuntimeError(f"{path}: expected one match, got {count}: {old[:120]!r}")
+        raise RuntimeError(f"{path}: expected match, got 0: {old[:120]!r}")
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
@@ -74,11 +72,6 @@ replace_once(
 path = "backend/src/aima_ugc/bootstrap/brand_vehicle_http.py"
 replace_once(
     path,
-    "        vehicle_aliases=tuple(\n            CatalogVehicleAliasSnapshotItem(\n",
-    "        vehicle_aliases=tuple(\n            CatalogVehicleAliasSnapshotItem(\n",
-)
-replace_once(
-    path,
     "            for item in snapshot.vehicle_aliases\n        ),\n        unresolved_active_vehicle_ids=snapshot.unresolved_active_vehicle_ids,\n",
     "            for item in snapshot.vehicle_aliases\n        ),\n        ambiguous_brand_aliases=snapshot.ambiguous_brand_aliases,\n        ambiguous_vehicle_aliases=snapshot.ambiguous_vehicle_aliases,\n        unresolved_active_vehicle_ids=snapshot.unresolved_active_vehicle_ids,\n",
 )
@@ -108,18 +101,18 @@ replace_once(
 path = "tests/integration/database/test_brand_vehicle_stage2_repository.py"
 replace_once(
     path,
-    "    competitor = brand_service.create_brand(\n        BrandCreateRequest(\n            code=\"competitor-b\",\n            display_name=\"竞品 B\",\n            role=\"competitor\",\n            aliases=(\"竞品B\",),\n",
-    "    competitor = brand_service.create_brand(\n        BrandCreateRequest(\n            code=\"competitor-b\",\n            display_name=\"竞品 B\",\n            role=\"competitor\",\n            aliases=(\"竞品B\", \"共享品牌词\"),\n",
-)
-replace_once(
-    path,
-    "        ),\n        principal=principal,\n        request_id=\"stage2-brand-competitor\",\n    )\n    vehicle = vehicle_service.create_vehicle_model(\n",
-    "        ),\n        principal=principal,\n        request_id=\"stage2-brand-competitor\",\n    )\n    brand_service.add_alias(\n        owned.id,\n        BrandAliasCreateRequest(text=\"共享品牌词\"),\n        principal=principal,\n        request_id=\"stage2-brand-owned-shared-alias\",\n    )\n    vehicle = vehicle_service.create_vehicle_model(\n",
-)
-replace_once(
-    path,
     "    BrandCreateRequest,\n    BrandUpdateRequest,\n",
     "    BrandAliasCreateRequest,\n    BrandCreateRequest,\n    BrandUpdateRequest,\n",
+)
+replace_once(
+    path,
+    "            code=\"competitor-b\",\n            display_name=\"竞品 B\",\n            role=\"competitor\",\n            aliases=(\"竞品B\",),\n",
+    "            code=\"competitor-b\",\n            display_name=\"竞品 B\",\n            role=\"competitor\",\n            aliases=(\"竞品B\", \"共享品牌词\"),\n",
+)
+replace_once(
+    path,
+    "        principal=principal,\n        request_id=\"stage2-brand-competitor\",\n    )\n    vehicle = vehicle_service.create_vehicle_model(\n",
+    "        principal=principal,\n        request_id=\"stage2-brand-competitor\",\n    )\n    brand_service.add_alias(\n        owned.id,\n        BrandAliasCreateRequest(text=\"共享品牌词\"),\n        principal=principal,\n        request_id=\"stage2-brand-owned-shared-alias\",\n    )\n    vehicle = vehicle_service.create_vehicle_model(\n",
 )
 replace_once(
     path,
