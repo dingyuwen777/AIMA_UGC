@@ -156,18 +156,21 @@ test('selects only server-relative files, preflights, and explicitly starts a ca
   await expect(dialog.getByText('只浏览管理员批准的只读根目录')).toBeVisible()
   await dialog.getByRole('button', { name: /2025-archive/ }).click()
   await dialog.getByLabel('选择 part-001.xlsx').check()
-  await dialog.getByLabel(/爱玛品牌词包/).check()
+  await expect(dialog).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
 
   const createRequest = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url())
     return url.pathname === '/api/v1/data-import-campaigns/server' && candidate.method() === 'POST'
   })
   await dialog.getByRole('button', { name: '创建并预检' }).click()
-  expect((await createRequest).postDataJSON()).toMatchObject({
+  const createBody = (await createRequest).postDataJSON()
+  expect(createBody).toMatchObject({
     relative_paths: ['2025-archive/part-001.xlsx'],
-    keyword_pack_ids: [keywordPackId],
+    brand_ids: [],
     recursive: false,
   })
+  expect(createBody).not.toHaveProperty('keyword_pack_ids')
+  expect(createBody).not.toHaveProperty('vehicle_model_ids')
 
   await expect(dialog.locator('.campaign-status')).toHaveText('预检完成')
   await expect(dialog.getByRole('progressbar', { name: '导入预检进度' })).toHaveAttribute('aria-valuenow', '100')
@@ -213,7 +216,6 @@ test('selects a server directory for bounded recursive discovery', async ({ page
 
   await dialog.getByLabel('选择目录 2025-archive').check()
   await dialog.getByLabel(/选择目录时递归发现/).check()
-  await dialog.getByLabel(/爱玛品牌词包/).check()
   const createRequest = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url())
     return url.pathname === '/api/v1/data-import-campaigns/server' && candidate.method() === 'POST'
@@ -222,6 +224,7 @@ test('selects a server directory for bounded recursive discovery', async ({ page
 
   expect((await createRequest).postDataJSON()).toMatchObject({
     relative_paths: ['2025-archive'],
+    brand_ids: [],
     recursive: true,
   })
 })
@@ -381,7 +384,6 @@ test('uses campaign failed-chunk facts even when bounded detail omits failed chu
   await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
   await dialog.getByRole('button', { name: /2025-archive/ }).click()
   await dialog.getByLabel('选择 part-001.xlsx').check()
-  await dialog.getByLabel(/爱玛品牌词包/).check()
   await dialog.getByRole('button', { name: '创建并预检' }).click()
   await expect(dialog.locator('.campaign-status')).toHaveText('部分导入失败')
   const retryRequest = page.waitForRequest((candidate) => {

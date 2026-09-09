@@ -127,7 +127,7 @@ async function openImportDialog(page: Page) {
   return page.getByRole('dialog', { name: '导入数据' })
 }
 
-test('does not present an incomplete local Campaign form as a busy operation', async ({ page }) => {
+test('requires a source file but not a legacy keyword or vehicle filter', async ({ page }) => {
   const dialog = await openImportDialog(page)
   const submitButton = dialog.locator('.create-button')
 
@@ -139,9 +139,7 @@ test('does not present an incomplete local Campaign form as a busy operation', a
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('aima'),
   })
-  await expect(submitButton).toBeDisabled()
-
-  await dialog.getByLabel(/爱玛品牌词包/).check()
+  await expect(dialog).toContainText('Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件')
   await expect(submitButton).toBeEnabled()
   await expect(submitButton).toHaveCSS('cursor', 'pointer')
 })
@@ -166,10 +164,12 @@ test('creates a local Campaign when randomUUID is unavailable', async ({ page })
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('aima'),
   })
-  await dialog.getByLabel(/爱玛品牌词包/).check()
   await dialog.locator('.create-button').click()
 
   await expect(dialog.getByText('文件上传完成，服务器正在准备并预检数据。')).toBeVisible()
+  expect(createRequestBody?.brand_ids).toEqual([])
+  expect(createRequestBody).not.toHaveProperty('keyword_pack_ids')
+  expect(createRequestBody).not.toHaveProperty('vehicle_model_ids')
   expect(createRequestBody?.client_idempotency_key).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
   )
@@ -202,7 +202,6 @@ test('stages local files through Campaign upload and restores a visible error', 
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('aima'),
   })
-  await dialog.getByLabel(/爱玛品牌词包/).check()
   const submitButton = dialog.locator('.create-button')
 
   await submitButton.click()

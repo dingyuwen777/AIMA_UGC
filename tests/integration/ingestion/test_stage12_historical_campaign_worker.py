@@ -14,16 +14,20 @@ from aima_ugc.adapters.persistence.postgres.content_queries import (
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap import historical_import_worker as historical_worker_module
 from aima_ugc.bootstrap.api import create_app
+from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
+from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.contracts.http import ContentFilterSnapshot
 from aima_ugc.modules.content.query import ContentReadQuery
 from aima_ugc.modules.content.tables import content_metric_observations_table, contents_table
+from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -102,19 +106,27 @@ def _xlsx_with_cross_chunk_duplicates(*, rows: int) -> bytes:
     return output.getvalue()
 
 
-def _keyword_pack(client: TestClient) -> str:
-    created = client.post(
-        "/api/v1/keyword-packs",
-        json={"name": f"Stage12 历史迁移 {uuid4()}"},
+def _principal() -> Principal:
+    return Principal(
+        principal_id="stage3-historical-admin",
+        display_name="Stage3 Historical 管理员",
+        role="administrator",
+        source="development",
     )
-    assert created.status_code == 201
-    pack_id = created.json()["id"]
-    added = client.post(
-        f"/api/v1/keyword-packs/{pack_id}/keywords",
-        json={"text": "爱玛", "priority": 10},
+
+
+def _brand(runtime: PlatformRuntime) -> str:
+    brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+        BrandCreateRequest(
+            code=f"AIMA-STAGE3-{uuid4()}",
+            display_name="爱玛",
+            role="owned",
+            aliases=("爱玛",),
+        ),
+        principal=_principal(),
+        request_id="stage3-historical-brand",
     )
-    assert added.status_code == 201
-    return pack_id
+    return str(brand.id)
 
 
 def _drain(worker, *, maximum: int = 20) -> int:
@@ -144,7 +156,8 @@ def test_source_manifest_identity_is_database_unique_when_ordinal_is_null(
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(
@@ -153,14 +166,14 @@ def test_source_manifest_identity_is_database_unique_when_ordinal_is_null(
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/historical-import-campaigns",
             json={
                 "client_idempotency_key": f"stage12-source-unique-{uuid4()}",
                 "relative_paths": ["unique.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         assert created.status_code == 202
@@ -191,7 +204,8 @@ def test_source_manifest_identity_is_database_unique_when_ordinal_is_null(
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -214,7 +228,8 @@ def test_historical_campaign_preflights_before_fill_only_import(tmp_path: Path) 
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         import_service = PostgresImportHttpService(runtime)
@@ -225,7 +240,7 @@ def test_historical_campaign_preflights_before_fill_only_import(tmp_path: Path) 
                 historical_import_service=historical_service,
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         baseline = client.post(
             "/api/v1/import-batches",
             files=[
@@ -237,7 +252,7 @@ def test_historical_campaign_preflights_before_fill_only_import(tmp_path: Path) 
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     ),
                 ),
-                ("keyword_pack_ids", (None, pack_id)),
+                ("brand_ids", (None, brand_id)),
             ],
         )
         assert baseline.status_code == 202
@@ -256,7 +271,7 @@ def test_historical_campaign_preflights_before_fill_only_import(tmp_path: Path) 
                 "client_idempotency_key": f"stage12-{uuid4()}",
                 "relative_paths": ["history.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         assert created.status_code == 202
@@ -354,7 +369,8 @@ def test_historical_campaign_preflights_before_fill_only_import(tmp_path: Path) 
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -375,7 +391,8 @@ def test_local_campaign_uploads_immutable_artifact_before_common_preflight(
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(
@@ -384,11 +401,11 @@ def test_local_campaign_uploads_immutable_artifact_before_common_preflight(
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         local_request = {
             "client_idempotency_key": f"stage12-local-{uuid4()}",
             "files": [{"relative_path": "picked/folder/local.xlsx", "byte_size": len(payload)}],
-            "keyword_pack_ids": [pack_id],
+            "brand_ids": [brand_id],
             "ingestion_policy": "standard_observation",
         }
         created = client.post("/api/v1/data-import-campaigns/local", json=local_request)
@@ -491,7 +508,7 @@ def test_local_campaign_uploads_immutable_artifact_before_common_preflight(
                         "byte_size": len(updated_payload),
                     }
                 ],
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
                 "ingestion_policy": "standard_observation",
             },
         ).json()
@@ -530,7 +547,8 @@ def test_local_campaign_uploads_immutable_artifact_before_common_preflight(
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -547,7 +565,8 @@ def test_local_campaign_can_be_cancelled_while_uploading(tmp_path: Path) -> None
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(
@@ -556,7 +575,7 @@ def test_local_campaign_can_be_cancelled_while_uploading(tmp_path: Path) -> None
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/data-import-campaigns/local",
             json={
@@ -567,7 +586,7 @@ def test_local_campaign_can_be_cancelled_while_uploading(tmp_path: Path) -> None
                         "byte_size": 1024,
                     }
                 ],
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
                 "ingestion_policy": "standard_observation",
             },
         )
@@ -604,7 +623,8 @@ def test_local_campaign_can_be_cancelled_while_uploading(tmp_path: Path) -> None
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -628,7 +648,8 @@ def test_historical_snapshot_fails_closed_when_source_changes_after_discovery(
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(
@@ -637,14 +658,14 @@ def test_historical_snapshot_fails_closed_when_source_changes_after_discovery(
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/historical-import-campaigns",
             json={
                 "client_idempotency_key": f"stage12-change-{uuid4()}",
                 "relative_paths": ["changing.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         assert created.status_code == 202
@@ -677,7 +698,8 @@ def test_historical_snapshot_fails_closed_when_source_changes_after_discovery(
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -703,7 +725,8 @@ def test_historical_snapshot_technical_retry_reuses_bound_source_artifact(
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     original_convert = historical_worker_module.convert_historical_excel_to_chunks
     convert_attempts = 0
@@ -727,14 +750,14 @@ def test_historical_snapshot_technical_retry_reuses_bound_source_artifact(
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/historical-import-campaigns",
             json={
                 "client_idempotency_key": f"stage12-snapshot-retry-{uuid4()}",
                 "relative_paths": ["retry.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         campaign_id = created.json()["campaign_id"]
@@ -785,7 +808,8 @@ def test_historical_snapshot_technical_retry_reuses_bound_source_artifact(
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -808,7 +832,8 @@ def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(
@@ -817,14 +842,14 @@ def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/historical-import-campaigns",
             json={
                 "client_idempotency_key": f"stage12-stable-first-{uuid4()}",
                 "relative_paths": ["duplicates.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         assert created.status_code == 202
@@ -875,7 +900,8 @@ def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -899,7 +925,8 @@ def test_historical_failed_chunk_range_is_included_in_campaign_accounting(
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(
@@ -908,14 +935,14 @@ def test_historical_failed_chunk_range_is_included_in_campaign_accounting(
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/historical-import-campaigns",
             json={
                 "client_idempotency_key": f"stage12-failed-range-{uuid4()}",
                 "relative_paths": ["failed-range.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         campaign_id = created.json()["campaign_id"]
@@ -952,7 +979,8 @@ def test_historical_failed_chunk_range_is_included_in_campaign_accounting(
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -978,7 +1006,8 @@ def test_historical_failed_retry_preserves_cross_chunk_duplicate_identity(
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     original_read_chunk = historical_worker_module.read_historical_chunk
     try:
@@ -988,14 +1017,14 @@ def test_historical_failed_retry_preserves_cross_chunk_duplicate_identity(
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/historical-import-campaigns",
             json={
                 "client_idempotency_key": f"stage12-retry-duplicate-{uuid4()}",
                 "relative_paths": ["retry-duplicate.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         campaign_id = created.json()["campaign_id"]
@@ -1064,7 +1093,8 @@ def test_historical_failed_retry_preserves_cross_chunk_duplicate_identity(
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -1087,7 +1117,8 @@ def test_historical_queued_cancel_reaches_terminal_without_business_writes(
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(
@@ -1096,14 +1127,14 @@ def test_historical_queued_cancel_reaches_terminal_without_business_writes(
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/historical-import-campaigns",
             json={
                 "client_idempotency_key": f"stage12-cancel-{uuid4()}",
                 "relative_paths": ["cancel.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         campaign_id = created.json()["campaign_id"]
@@ -1151,7 +1182,8 @@ def test_historical_queued_cancel_reaches_terminal_without_business_writes(
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
 
@@ -1176,7 +1208,8 @@ def test_historical_chunk_resumes_after_lease_takeover_without_duplicate_outcome
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(
@@ -1185,14 +1218,14 @@ def test_historical_chunk_resumes_after_lease_takeover_without_duplicate_outcome
                 import_service=PostgresImportHttpService(runtime),
             )
         )
-        pack_id = _keyword_pack(client)
+        brand_id = _brand(runtime)
         created = client.post(
             "/api/v1/historical-import-campaigns",
             json={
                 "client_idempotency_key": f"stage12-takeover-{uuid4()}",
                 "relative_paths": ["takeover.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         assert created.status_code == 202
@@ -1260,6 +1293,7 @@ def test_historical_chunk_resumes_after_lease_takeover_without_duplicate_outcome
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()

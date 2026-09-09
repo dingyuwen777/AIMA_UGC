@@ -233,7 +233,7 @@ test('shows unavailable revocation evidence without offering a destructive actio
   await expect(dialog.getByRole('button', { name: '撤销本次导入', exact: true })).toHaveCount(0)
 })
 
-test('creates imports and discoveries using only selected vehicles', async ({ page }) => {
+test('creates an all-active-brand Excel import and a vehicle-scoped discovery', async ({ page }) => {
   const vehicleId = 'c2345678-1234-4678-9234-567812345678'
   await page.route('**/api/v1/vehicle-models**', (route) => route.fulfill({
     json: { items: [{ id: vehicleId, code: 'Q7', display_name: '爱玛 Q7', status: 'active', series_name: 'Q 系列', aliases: [], active_version: 1 }], total: 1, offset: 0, limit: 200 },
@@ -242,10 +242,13 @@ test('creates imports and discoveries using only selected vehicles', async ({ pa
   await page.getByRole('button', { name: '导入数据', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据', exact: true })
   await dialog.locator('input[type="file"]').first().setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
-  await dialog.getByLabel(/爱玛 Q7/).check()
+  await expect(dialog).toContainText('Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件')
   const create = page.waitForRequest((request) => request.url().endsWith('/data-import-campaigns/local') && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建并预检', exact: true }).click()
-  expect((await create).postDataJSON()).toMatchObject({ keyword_pack_ids: [], vehicle_model_ids: [vehicleId] })
+  const importBody = (await create).postDataJSON()
+  expect(importBody).toMatchObject({ brand_ids: [], ingestion_policy: 'standard_observation' })
+  expect(importBody).not.toHaveProperty('keyword_pack_ids')
+  expect(importBody).not.toHaveProperty('vehicle_model_ids')
   await dialog.getByRole('button', { name: '关闭导入数据', exact: true }).click()
   await page.getByRole('button', { name: '新建辅助补采', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
@@ -257,7 +260,7 @@ test('creates imports and discoveries using only selected vehicles', async ({ pa
   expect((await discovery).postDataJSON()).toMatchObject({ keyword_pack_ids: [], vehicle_model_ids: [vehicleId], platforms: [{ platform: 'xiaohongshu', search_config: { published_within: '7d' } }] })
 })
 
-test('centralizes runtime facts, opens Batch detail, and creates a local Campaign with selected packs', async ({ page }) => {
+test('centralizes runtime facts, opens Batch detail, and creates a local Campaign with all-active brands', async ({ page }) => {
   await page.goto('/collection-runtime')
   await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
   await expect(page.getByText('3,284')).toBeVisible()
@@ -276,15 +279,17 @@ test('centralizes runtime facts, opens Batch detail, and creates a local Campaig
   const dialog = page.getByRole('dialog', { name: '导入数据' })
   await expect(dialog).toContainText('预检通过后再确认开始入库')
   await dialog.locator('input[type="file"]').first().setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
-  await dialog.getByLabel(/爱玛品牌词包/).check()
-  await dialog.getByLabel(/产品车型词包/).check()
+  await expect(dialog).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
   const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/data-import-campaigns/local' && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建并预检' }).click()
-  expect((await requestPromise).postDataJSON()).toMatchObject({
-    keyword_pack_ids: [brandPackId, modelPackId],
+  const importBody = (await requestPromise).postDataJSON()
+  expect(importBody).toMatchObject({
+    brand_ids: [],
     ingestion_policy: 'standard_observation',
     files: [{ relative_path: 'stage8e.xlsx', byte_size: 7 }],
   })
+  expect(importBody).not.toHaveProperty('keyword_pack_ids')
+  expect(importBody).not.toHaveProperty('vehicle_model_ids')
   await expect(dialog.getByText('文件上传完成，服务器正在准备并预检数据。')).toBeVisible()
 })
 
