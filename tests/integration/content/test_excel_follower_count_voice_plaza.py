@@ -120,14 +120,14 @@ def test_excel_follower_count_is_persisted_visible_sortable_and_account_current_
         with runtime.database.engine.begin() as connection:
             snapshots = dict(
                 connection.execute(
-                    select(contents_table.c.external_content_id, content_versions_table.c.author_snapshot)
+                    select(
+                        contents_table.c.external_content_id,
+                        content_versions_table.c.author_snapshot,
+                    )
                     .join(
                         content_versions_table,
                         (content_versions_table.c.content_id == contents_table.c.id)
-                        & (
-                            content_versions_table.c.version_no
-                            == contents_table.c.current_version
-                        ),
+                        & (content_versions_table.c.version_no == contents_table.c.current_version),
                     )
                     .order_by(contents_table.c.external_content_id)
                 ).all()
@@ -200,9 +200,9 @@ def test_excel_follower_count_is_persisted_visible_sortable_and_account_current_
         enriched = service.list_contents(
             ContentListQuery(sort_by="follower_count", sort_direction="desc", limit=10)
         )
-        assert [
-            (item.external_content_id, item.author_follower_count) for item in enriched.items
-        ][:2] == [
+        assert [(item.external_content_id, item.author_follower_count) for item in enriched.items][
+            :2
+        ] == [
             ("excel-fans-2", 30_000),
             ("excel-fans-1", 12_000),
         ]
