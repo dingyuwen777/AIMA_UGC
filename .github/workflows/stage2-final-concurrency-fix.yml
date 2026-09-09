@@ -1,0 +1,88 @@
+name: Stage2 Final Concurrency Fix
+
+on:
+  push:
+    branches:
+      - feature/stage2-brand-vehicle-management-resolver
+    paths:
+      - .github/workflows/stage2-final-concurrency-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/stage2-brand-vehicle-management-resolver
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - name: Apply concurrency fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          repo = Path('backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py')
+          text = repo.read_text(encoding='utf-8')
+          old = 'from sqlalchemy import delete, insert, or_, select, update\n'
+          new = 'from sqlalchemy import delete, func, insert, or_, select, update\nfrom sqlalchemy.dialects.postgresql import insert as pg_insert\n'
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = '    vehicle_brand_aliases_table,\n    vehicle_brands_table,\n    vehicle_model_aliases_table,\n'
+          new = '    vehicle_brand_aliases_table,\n    vehicle_brands_table,\n    vehicle_catalog_versions_table,\n    vehicle_model_aliases_table,\n'
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = '''    def current_catalog_version(self) -> int:\n        return self._vehicle_catalog.current_catalog_version()\n\n    def create_brand(\n'''
+          new = '''    def current_catalog_version(self) -> int:\n        return self._vehicle_catalog.current_catalog_version()\n\n    def _lock_catalog_snapshot(self) -> int:\n        \"\"\"持有 catalog seed 的共享锁，保证多表 Snapshot 对应同一目录版本。\"\"\"\n\n        seed = self._session.scalar(\n            select(vehicle_catalog_versions_table.c.version)\n            .where(vehicle_catalog_versions_table.c.version == 1)\n            .with_for_update(read=True)\n        )\n        if seed is None:\n            raise RuntimeError(\"Vehicle Catalog 尚未初始化\")\n        return self.current_catalog_version()\n\n    def _lock_brand_review_write(self, *, content_id: UUID, content_version: int) -> None:\n        \"\"\"串行化同一 Content Version 的自动/人工 Brand Evidence 写入，不新增持久锁行。\"\"\"\n\n        lock_key = f\"brand-review:{content_id}:{content_version}\"\n        self._session.execute(\n            select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))\n        )\n\n    def create_brand(\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = '''        scope: FilterScope = \"all_active\" if brand_ids is None else \"selected\"\n'''
+          new = '''        catalog_version = self._lock_catalog_snapshot()\n        scope: FilterScope = \"all_active\" if brand_ids is None else \"selected\"\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = '''            catalog_version=self.current_catalog_version(),\n            filter_scope=scope,\n'''
+          new = '''            catalog_version=catalog_version,\n            filter_scope=scope,\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = '''        locked = self._session.scalar(\n            select(content_brand_review_locks_table.c.is_locked).where(\n                content_brand_review_locks_table.c.content_id == content_id,\n                content_brand_review_locks_table.c.content_version == content_version,\n            )\n        )\n'''
+          new = '''        self._lock_brand_review_write(\n            content_id=content_id, content_version=content_version\n        )\n        locked = self._session.scalar(\n            select(content_brand_review_locks_table.c.is_locked).where(\n                content_brand_review_locks_table.c.content_id == content_id,\n                content_brand_review_locks_table.c.content_version == content_version,\n            )\n        )\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = '''        locked = self._session.scalar(\n            select(content_brand_review_locks_table.c.is_locked)\n            .where(\n                content_brand_review_locks_table.c.content_id == content_id,\n                content_brand_review_locks_table.c.content_version == content_version,\n            )\n            .with_for_update()\n        )\n'''
+          new = '''        self._lock_brand_review_write(\n            content_id=content_id, content_version=content_version\n        )\n        locked = self._session.scalar(\n            select(content_brand_review_locks_table.c.is_locked)\n            .where(\n                content_brand_review_locks_table.c.content_id == content_id,\n                content_brand_review_locks_table.c.content_version == content_version,\n            )\n            .with_for_update()\n        )\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          repo.write_text(text, encoding='utf-8')
+
+          test = Path('tests/integration/database/test_brand_vehicle_stage2_repository.py')
+          text = test.read_text(encoding='utf-8')
+          old = '''from aima_ugc.modules.vehicles.tables import (\n    content_brand_evidence_table,\n    content_brand_review_locks_table,\n    content_vehicle_review_locks_table,\n)\n'''
+          new = '''from aima_ugc.modules.vehicles.tables import (\n    content_brand_evidence_table,\n    content_brand_review_locks_table,\n    content_vehicle_review_locks_table,\n    vehicle_catalog_versions_table,\n)\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          marker = '''\n\ndef test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_lock(\n'''
+          inserted = '''\n\ndef test_brand_vehicle_snapshot_holds_catalog_read_lock_until_transaction_end(\n    runtime,\n) -> None:  # type: ignore[no-untyped-def]\n    \"\"\"Snapshot 持有 seed 共享锁，目录写者不能在同一快照读取期间推进版本。\"\"\"\n\n    principal = _principal()\n    brand = PostgresBrandVehicleHttpService(runtime).create_brand(\n        BrandCreateRequest(\n            code=\"SNAPSHOT-LOCK\",\n            display_name=\"快照锁品牌\",\n            role=\"other\",\n            aliases=(\"快照锁品牌\",),\n        ),\n        principal=principal,\n        request_id=\"stage2-snapshot-lock-brand\",\n    )\n    reader = runtime.database.new_session()\n    writer_probe = runtime.database.new_session()\n    try:\n        with reader.begin():\n            snapshot = PostgresBrandVehicleRepository(reader).snapshot(\n                brand_ids=(brand.id,)\n            )\n            assert snapshot.catalog_version >= brand.catalog_version\n            with writer_probe.begin():\n                locked = writer_probe.scalar(\n                    select(\n                        func.pg_try_advisory_xact_lock(\n                            func.hashtextextended(\"stage2-unrelated-probe\", 0)\n                        )\n                    )\n                )\n                assert locked is True\n                seed_locked = writer_probe.scalar(\n                    select(func.count())\n                    .select_from(vehicle_catalog_versions_table)\n                    .where(vehicle_catalog_versions_table.c.version == 1)\n                )\n                assert seed_locked == 1\n                try:\n                    writer_probe.execute(\n                        select(vehicle_catalog_versions_table.c.version)\n                        .where(vehicle_catalog_versions_table.c.version == 1)\n                        .with_for_update(nowait=True)\n                    )\n                except Exception as exc:\n                    assert \"could not obtain lock\" in str(exc).lower()\n                else:\n                    raise AssertionError(\"snapshot 未阻止 catalog writer 获取 seed FOR UPDATE\")\n    finally:\n        reader.close()\n        writer_probe.close()\n'''
+          assert marker in text
+          text = text.replace(marker, inserted + marker, 1)
+          old = '''            assert (\n                repository.replace_automatic_brand_evidence(\n                    content_id=content_id,\n                    content_version=3,\n                    evidence=(automatic,),\n                    catalog_version=repository.current_catalog_version(),\n                )\n                is True\n            )\n            repository.replace_manual_brand_evidence(\n'''
+          new = '''            assert (\n                repository.replace_automatic_brand_evidence(\n                    content_id=content_id,\n                    content_version=3,\n                    evidence=(automatic,),\n                    catalog_version=repository.current_catalog_version(),\n                )\n                is True\n            )\n            probe = runtime.database.new_session()\n            try:\n                with probe.begin():\n                    lock_key = f\"brand-review:{content_id}:3\"\n                    assert (\n                        probe.scalar(\n                            select(\n                                func.pg_try_advisory_xact_lock(\n                                    func.hashtextextended(lock_key, 0)\n                                )\n                            )\n                        )\n                        is False\n                    )\n            finally:\n                probe.close()\n            repository.replace_manual_brand_evidence(\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          test.write_text(text, encoding='utf-8')
+          PY
+      - name: Format and static verify
+        run: |
+          uvx ruff@0.12.12 format backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py tests/integration/database/test_brand_vehicle_stage2_repository.py
+          uvx ruff@0.12.12 check backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py tests/integration/database/test_brand_vehicle_stage2_repository.py
+      - name: Commit permanent fix and remove helper
+        shell: bash
+        run: |
+          git rm .github/workflows/stage2-final-concurrency-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py tests/integration/database/test_brand_vehicle_stage2_repository.py
+          git commit -m "修复：串行化 Stage 2 目录快照与品牌证据写入"
+          git push origin HEAD:feature/stage2-brand-vehicle-management-resolver
