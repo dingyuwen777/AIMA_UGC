@@ -185,9 +185,13 @@ class PostgresImportJobExecutor(_base.PostgresImportJobExecutor):
                 )
                 if batch is None:
                     return None
-                frozen = BrandVehicleFilterSnapshot.model_validate(batch.stats.get("filter_snapshot"))
+                frozen = BrandVehicleFilterSnapshot.model_validate(
+                    batch.stats.get("filter_snapshot")
+                )
                 if frozen != payload.filter_snapshot:
-                    raise ValueError("Import Job Payload 与 Batch Brand/Vehicle Filter Snapshot 不一致")
+                    raise ValueError(
+                        "Import Job Payload 与 Batch Brand/Vehicle Filter Snapshot 不一致"
+                    )
                 artifact = _base.PostgresArtifactMetadataRepository(session).get(
                     batch.input_artifact_id
                 )

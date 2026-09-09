@@ -12,9 +12,17 @@ from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.import_worker import PostgresImportJobExecutor
-from aima_ugc.bootstrap.worker import create_collection_job_registry, create_job_worker, create_worker_runtime
+from aima_ugc.bootstrap.worker import (
+    create_collection_job_registry,
+    create_job_worker,
+    create_worker_runtime,
+)
 from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
-from aima_ugc.modules.content.tables import content_metric_observations_table, content_versions_table, contents_table
+from aima_ugc.modules.content.tables import (
+    content_metric_observations_table,
+    content_versions_table,
+    contents_table,
+)
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.import_job import (
     BRAND_VEHICLE_IMPORT_JOB_TYPE,
@@ -51,14 +59,16 @@ def _xlsx() -> bytes:
     sheet = workbook.active
     sheet.title = "文章"
     sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
-    sheet.append([
-        "小红书",
-        "爱玛新品发布",
-        "与品牌无关的补充正文",
-        "官方账号",
-        "2026-08-20 10:00:00",
-        "https://www.xiaohongshu.com/explore/stage8b-content-1",
-    ])
+    sheet.append(
+        [
+            "小红书",
+            "爱玛新品发布",
+            "与品牌无关的补充正文",
+            "官方账号",
+            "2026-08-20 10:00:00",
+            "https://www.xiaohongshu.com/explore/stage8b-content-1",
+        ]
+    )
     output = BytesIO()
     workbook.save(output)
     workbook.close()
@@ -112,7 +122,9 @@ def _truncate(runtime) -> None:  # type: ignore[no-untyped-def]
 
 
 def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -> None:
-    settings = load_settings().model_copy(update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"})
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
     runtime = create_worker_runtime(settings=settings)
     _truncate(runtime)
     try:
@@ -154,8 +166,15 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
         with runtime.database.engine.begin() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
             assert connection.scalar(select(func.count()).select_from(content_versions_table)) == 1
-            assert connection.scalar(select(func.count()).select_from(content_metric_observations_table)) == 1
-            persisted_batch = connection.execute(select(processing_import_batches_table)).mappings().one()
+            assert (
+                connection.scalar(
+                    select(func.count()).select_from(content_metric_observations_table)
+                )
+                == 1
+            )
+            persisted_batch = (
+                connection.execute(select(processing_import_batches_table)).mappings().one()
+            )
             persisted_job = connection.execute(select(jobs_table)).mappings().one()
             persisted_artifact = connection.execute(select(artifacts_table)).mappings().one()
         assert persisted_batch["job_id"] == persisted_job["id"]
@@ -173,7 +192,9 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
 
 
 def test_unavailable_source_artifact_fails_job_and_batch_without_content(tmp_path) -> None:
-    settings = load_settings().model_copy(update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"})
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
     runtime = create_worker_runtime(settings=settings)
     _truncate(runtime)
     try:
@@ -203,8 +224,12 @@ def test_unavailable_source_artifact_fails_job_and_batch_without_content(tmp_pat
         runtime.close()
 
 
-def test_import_retry_after_business_commit_is_fenced_and_does_not_duplicate_content(tmp_path: Path) -> None:
-    settings = load_settings().model_copy(update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"})
+def test_import_retry_after_business_commit_is_fenced_and_does_not_duplicate_content(
+    tmp_path: Path,
+) -> None:
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
     runtime = create_worker_runtime(settings=settings)
     _truncate(runtime)
     try:

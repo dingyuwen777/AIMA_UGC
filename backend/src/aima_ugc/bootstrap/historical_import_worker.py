@@ -290,7 +290,7 @@ class PostgresHistoricalImportJobExecutor(_base.PostgresHistoricalImportJobExecu
             )
         except LeaseLostError:
             raise
-        except (ValueError, _base.InvalidXlsxError, _base.XlsxResourceLimitError):
+        except ValueError, _base.InvalidXlsxError, _base.XlsxResourceLimitError:
             return JobHandlerResult.failed("historical_chunk_invalid")
         except OSError:
             return JobHandlerResult.retry("historical_chunk_io_failed")
@@ -301,7 +301,9 @@ class PostgresHistoricalImportJobExecutor(_base.PostgresHistoricalImportJobExecu
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                campaign = _base.PostgresHistoricalImportRepository(session).get_campaign(campaign_id)
+                campaign = _base.PostgresHistoricalImportRepository(session).get_campaign(
+                    campaign_id
+                )
                 if campaign is None:
                     raise ValueError("Historical Campaign 不存在")
                 return cast(dict[str, object], campaign["keyword_pack_snapshot"])
@@ -334,8 +336,7 @@ def _append_historical_brand_vehicle_evidence(
             )
             .join(
                 _base.contents_table,
-                _base.contents_table.c.id
-                == _base.processing_import_batch_items_table.c.content_id,
+                _base.contents_table.c.id == _base.processing_import_batch_items_table.c.content_id,
             )
             .where(
                 _base.processing_import_batch_items_table.c.batch_id == batch_id,

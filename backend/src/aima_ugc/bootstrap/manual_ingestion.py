@@ -46,7 +46,9 @@ def ingest_unified_content_batch(
 
     provider_repository = _base.PostgresProviderRepository(session)
     provider_service = _base.ProviderPersistenceService(provider_repository)
-    content_service = _base.ContentIngestionService(_base.PostgresCompleteContentRepository(session))
+    content_service = _base.ContentIngestionService(
+        _base.PostgresCompleteContentRepository(session)
+    )
     lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
     rows_ingested = 0
     request_count = 0
@@ -65,7 +67,10 @@ def ingest_unified_content_batch(
             except Exception as exc:
                 raise ValueError(f"Unified Content JSONL 第 {line_number} 行无法解析") from exc
             content = record.content
-            if source_value_filter is not None and content.source.source_value != source_value_filter:
+            if (
+                source_value_filter is not None
+                and content.source.source_value != source_value_filter
+            ):
                 continue
             lineage = lineage_by_platform.get(content.platform)
             if lineage is None:

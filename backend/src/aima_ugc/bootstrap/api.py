@@ -76,8 +76,7 @@ def create_app(
         route
         for route in application.router.routes
         if not any(
-            getattr(route, "path", None) == path
-            and method in getattr(route, "methods", set())
+            getattr(route, "path", None) == path and method in getattr(route, "methods", set())
             for path, method in _REPLACED_CREATE_ROUTES
         )
     ]
