@@ -24,7 +24,10 @@ from aima_ugc.modules.analysis import (
     filter_canonical_content_jsonl,
 )
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
-from aima_ugc.modules.ingestion.import_job import ImportJobPayload, ImportKeywordSelectionSnapshot
+from aima_ugc.modules.ingestion.import_job import (
+    ImportJobPayload,
+    ImportKeywordSelectionSnapshot,
+)
 from aima_ugc.modules.ingestion.xlsx_security import (
     InvalidXlsxError,
     XlsxResourceLimitError,
