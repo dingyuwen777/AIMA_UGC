@@ -60,7 +60,7 @@ data_changes:
 | R5 | Brand Evidence/Review Lock 持久化且人工锁不被自动覆盖，Brand/Vehicle evidence 独立 | #418 / AC5 | satisfied | Brand automatic/manual evidence 持久化；人工 Brand Lock 阻止自动覆盖；Vehicle Lock 不受影响；证据保留 `matched_text/source_field/derived_vehicle_model_id/catalog_version`；真实 PostgreSQL 回归通过。 |
 | R6 | 真实 PostgreSQL 覆盖 CRUD/Alias/readiness/lock | #418 / AC6 | satisfied | Stage2 Review Fixes 使用 PostgreSQL 18.4：Stage2 repository 2 passed、existing administration 3 passed；正式 PR PostgreSQL Integration 已完成一次全绿；最终 HEAD 仍要求重新取得同等正式证据。 |
 | R7 | Collection/Keyword Pack/Excel/TikHub/声音广场非目标保持不变 | #418 / AC7 | satisfied | 反向审计当前 diff：未修改 Collection Runtime、Keyword Pack 语义、Excel/TikHub Runtime 或 Voice Plaza；仅为保持阶段性 main 可用，在既有管理员车型表单增加 Brand 明示选择，并更新对应真实 Full-stack 场景。 |
-| R8 | OpenAPI/生成 Client/事实文档同步；resolver 关键语义有测试 | #418 / AC8 | satisfied | `scripts/contracts/generate.py` + Orval 成功；`contracts/openapi/openapi.json`、`frontend/src/generated/api/client.ts`、数据库事实文档与 `docs/03_API接口说明.md` 已同步；Unit/API Contract 回归通过；管理页前端 lint/typecheck/Vitest/build 定向门禁通过；Browser Mock 全局 API 守卫已声明管理页初始化必读的共享 active Brand 目录，不再把正式目录读取误判为未声明业务请求。 |
+| R8 | OpenAPI/生成 Client/事实文档同步；resolver 关键语义有测试 | #418 / AC8 | satisfied | `scripts/contracts/generate.py` + Orval 成功；`contracts/openapi/openapi.json`、`frontend/src/generated/api/client.ts`、数据库事实文档与 `docs/03_API接口说明.md` 已同步；Unit/API Contract 回归通过；管理页前端 lint/typecheck/Vitest/build 定向门禁通过；Browser Mock 共享 fixture 已提供契约化 active Brand 目录响应；正式 Full-stack 进一步验证 Brand API 已 201/200 后发现选择控件缺少精确 accessible name，现已显式增加 `aria-label="品牌"`，不改变业务约束。 |
 | R9 | Completion Audit、独立 Review、PR HEAD CI、expected HEAD merge、main fresh CI、原生归档与 Roadmap 收口 | #418 / AC9 | explicitly_deferred | Completion Audit 与独立实现 Review 已完成；Review/正式 Full-stack/Browser Mock 暴露的问题均按强约束修复。最终 PR HEAD 全量 CI、最终 Review 提交、expected-head merge、main fresh CI、原生归档与 Roadmap 状态收口属于合并生命周期后置门禁。 |
 
 # Validation Matrix
@@ -71,9 +71,9 @@ data_changes:
 | Contract / Generated Client | required | OpenAPI 与 `frontend/src/generated/api/client.ts` 已由正式 generator 同步；正式 PR HEAD CI 再验证无 drift。 |
 | API | required | Brand CRUD/Alias、Vehicle brand assignment、snapshot/readiness、权限与错误语义；定向 API Contract 2 passed。 |
 | PostgreSQL Integration | required | Brand/Alias CRUD、共享 Catalog Version、assignment/readiness、selected snapshot、Evidence/lock；PostgreSQL 18.4 定向 Stage2 2 passed + existing administration 3 passed；正式 CI 再验证全量。 |
-| Frontend static/unit/build | required | 车型管理读取 active Brand、active Vehicle 保存时显式传 `brand_id`；one-shot 定向 `eslint + TS/Vue typecheck + Vitest + build` 全部通过。 |
-| Browser Mock | required | 管理页初始化新增共享 Brand 目录读取；第一轮正式 Browser Mock 由全局 guard 识别到 fixture 缺少 `GET /api/v1/vehicle-brands` 默认声明并连带 22 个管理/响应式用例失败。已在共享 fixture 补齐与现有 Vehicle 目录同级的最小空目录响应；最终 HEAD 必须重新全绿。 |
-| Real Full-stack | required | 第一轮正式 Full-stack 以 `POST /api/v1/vehicle-models -> 409` 捕获旧 UI 未传 Brand 的真实回归；修复后场景先创建真实 active Brand，再由管理页显式选择，并回读 `vehicle.brand_id`；最终 HEAD 必须重新全绿。 |
+| Frontend static/unit/build | required | 车型管理读取 active Brand、active Vehicle 保存时显式传 `brand_id`，Brand `select` 具备明确 accessible name；两轮 one-shot 定向 `eslint + TS/Vue typecheck + Vitest + build` 均通过。 |
+| Browser Mock | required | 管理页初始化新增共享 Brand 目录读取；第一轮正式 Browser Mock 由全局 guard 识别到 fixture 缺少 `GET /api/v1/vehicle-brands` 默认声明并连带 22 个管理/响应式用例失败。已在共享 fixture 补齐与现有 Vehicle 目录同级的最小契约化 active Brand `BrandListResponse`；后续正式 Browser Mock 已全绿，最终 HEAD 仍需再验证。 |
+| Real Full-stack | required | 第一轮正式 Full-stack 以 `POST /api/v1/vehicle-models -> 409` 捕获旧 UI 未传 Brand 的真实回归；修复后场景先创建真实 active Brand，再由管理页显式选择并回读 `vehicle.brand_id`。第二轮正式 Full-stack 中 Brand 创建与列表读取已分别返回 201/200，但 `getByLabel('品牌', exact: true)` 暴露 `<select>` accessible name 被外层说明文本污染；现已给控件显式 `aria-label="品牌"`，最终 HEAD 必须重新全绿。 |
 | External Provider Probe | not_applicable | 不改 TikHub/LLM Provider。 |
 | Docs / Governance | required | Issue #418 AC1-AC9、Change Completion Audit、数据库/API 事实文档、独立 Review 与正式 CI Gate。 |
 
@@ -83,7 +83,8 @@ data_changes:
 - 既有 Collection Vehicle snapshot、Pack/Plan 关系和 Excel/TikHub Runtime 保持不变；Stage 2 新增独立 Brand/Vehicle Snapshot，不替换 Collection Contract。
 - Stage 2 正式管理 API 对**新建 active Vehicle** 收紧为必须显式绑定有效 active Brand；这是路线要求的有意契约变化。Stage 1 前遗留的 nullable Brand Vehicle 不自动猜测回填，由 readiness 暴露并通过管理员显式修复。
 - 既有管理员车型页面同步新增 active Brand 下拉选择。无 active Brand 时保存 active Vehicle 不可用，并明确提示先建立品牌目录；不自动选择“爱玛”或任何默认 Brand。完整 Brand 前端 CRUD 仍留在 Stage 6 产品化范围。
-- Browser Mock 共享 fixture 仅对管理页初始化必读的 active Brand 目录提供最小空目录响应；具体 Brand CRUD/业务场景仍必须由各 spec 显式 mock，未放宽全局未声明 API 守卫。
+- Brand 选择控件使用显式 `aria-label="品牌"`，使真实浏览器、辅助技术和 Full-stack 测试使用同一稳定 accessible name；这不引入第二套前端业务状态。
+- Browser Mock 共享 fixture 仅对管理页初始化必读的 active Brand 目录提供最小契约化目录响应；具体 Brand CRUD/业务场景仍必须由各 spec 显式 mock，未放宽全局未声明 API 守卫。
 - Brand 停用与 Vehicle 新建/归属修改对 Brand 行串行化；仍有 active Vehicle 时 Brand 停用 fail-closed。
 - selected Snapshot 冻结全局 active Brand/Vehicle Alias 歧义集合，避免因 Scope 裁剪产生假唯一命中。
 - 回滚 Stage 2 代码不会删除 Stage 1 Schema 或历史数据；若回滚应用代码，新增 Brand/Vehicle 数据仍保留于 Stage 1 已存在表中。
@@ -93,5 +94,5 @@ data_changes:
 
 - [x] upstream_re_read：已重新读取 Stage 2、Exit Criteria、Non-goals、阶段状态规则和 Issue #418 AC1-AC9，并按最新实现复核；Roadmap 明确 Stage 6 才做完整前端产品化，当前仅修复 Stage 2 强约束造成的既有车型管理路径回归，未提前实施 Stage 3/4 Runtime 或 Stage 6 全量 UI。
 - [x] change_coverage：R1-R8 均有实现与定向测试/生成证据；R9 仅保留必须发生在最终 PR HEAD/合并后的生命周期证据，明确 `explicitly_deferred`。
-- [x] reverse_audit：已按 API→service→repository→Stage 1 schema→generated OpenAPI/client→admin Vehicle UI→Browser Mock shared catalog→facts docs 反查，并对 Collection/Keyword Pack/Excel/TikHub/Voice Plaza 做非目标反向核对；独立 Review 发现 selected Scope 隐藏全局 Alias 歧义及 Brand lifecycle 并发窗口，正式 Full-stack 发现现有管理 UI 未传 Brand，正式 Browser Mock 又发现共享目录 fixture 未同步；均按正式强约束/真实公共读取边界修复，不通过后端兼容放宽或关闭 API guard 规避。
+- [x] reverse_audit：已按 API→service→repository→Stage 1 schema→generated OpenAPI/client→admin Vehicle UI→Browser Mock shared catalog→facts docs 反查，并对 Collection/Keyword Pack/Excel/TikHub/Voice Plaza 做非目标反向核对；独立 Review 发现 selected Scope 隐藏全局 Alias 歧义及 Brand lifecycle 并发窗口，正式 Full-stack 先后发现现有管理 UI 未传 Brand及 Brand `<select>` accessible name 不精确，正式 Browser Mock 发现共享目录 fixture 未同步；均按正式强约束/真实公共读取/可访问性边界修复，不通过后端兼容放宽、隐式默认、关闭 API guard 或降低 Full-stack 断言规避。
 - [x] unresolved_cleared：当前实现 Review 无已知 P0/P1/P2 阻断；剩余最终 PR HEAD 全量 CI、最终 Review 提交、expected-head merge、main fresh CI、原生归档与 Roadmap 收口均为 R9 交付生命周期门禁，不属于未解决实现缺陷。
