@@ -1,0 +1,107 @@
+name: Stage 3 Temporary Frontend Plumbing
+
+on:
+  push:
+    branches:
+      - feature/stage3-excel-brand-vehicle-filter
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage3-excel-brand-vehicle-filter
+          fetch-depth: 0
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Apply Stage 3 contract plumbing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          api = Path('frontend/src/features/import-batches/api.ts')
+          text = api.read_text()
+          old = '''export async function uploadImportBatch(\n  file: File,\n  keywordPackIds: string[],\n  vehicleModelIds: string[] = [],\n): Promise<ImportBatchCreatedResponse> {\n  return unwrap(await createImportBatch({\n    file,\n    keyword_pack_ids: keywordPackIds,\n    vehicle_model_ids: vehicleModelIds,\n  }))\n}'''
+          new = '''export async function uploadImportBatch(\n  file: File,\n  brandIds: string[] = [],\n): Promise<ImportBatchCreatedResponse> {\n  return unwrap(await createImportBatch({\n    file,\n    brand_ids: brandIds,\n  }))\n}'''
+          assert old in text
+          api.write_text(text.replace(old, new))
+
+          store = Path('frontend/src/features/import-batches/store.ts')
+          text = store.read_text()
+          old = '''  async function upload(\n    file: File,\n    keywordPackIds: string[],\n    vehicleModelIds: string[] = [],\n  ): Promise<ImportBatchCreatedResponse | null> {\n    uploading.value = true\n    error.value = null\n    try {\n      const created = await uploadImportBatch(file, keywordPackIds, vehicleModelIds)'''
+          new = '''  async function upload(\n    file: File,\n    brandIds: string[] = [],\n  ): Promise<ImportBatchCreatedResponse | null> {\n    uploading.value = true\n    error.value = null\n    try {\n      const created = await uploadImportBatch(file, brandIds)'''
+          assert old in text
+          text = text.replace(old, new)
+          old = '''  async function submitLocalCampaign(\n    files: DataImportLocalFileSelection[],\n    keywordPackIds: string[],\n    vehicleModelIds: string[],\n    ingestionPolicy: DataImportIngestionPolicy,\n  ): Promise<HistoricalCampaignResponse | null> {'''
+          new = '''  async function submitLocalCampaign(\n    files: DataImportLocalFileSelection[],\n    ingestionPolicy: DataImportIngestionPolicy,\n  ): Promise<HistoricalCampaignResponse | null> {'''
+          assert old in text
+          text = text.replace(old, new)
+          text = text.replace(
+              '''        keyword_pack_ids: keywordPackIds,\n        vehicle_model_ids: vehicleModelIds,\n''',
+              '''        brand_ids: [],\n''',
+              1,
+          )
+          store.write_text(text)
+
+          dialog = Path('frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue')
+          text = dialog.read_text()
+          text = text.replace("import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'\n", '')
+          text = text.replace("const selectedPackIds = ref<string[]>([])\n", '')
+          text = text.replace("const selectedVehicleIds = ref<string[]>([])\n", '')
+          text = text.replace(
+              '''    sourceSelectionReady.value &&\n    (selectedPackIds.value.length > 0 || selectedVehicleIds.value.length > 0),''',
+              '''    sourceSelectionReady.value,''',
+          )
+          text = text.replace("    selectedPackIds.value = []\n", '')
+          text = text.replace("    selectedVehicleIds.value = []\n", '')
+          text = re.sub(
+              r'''\nfunction togglePack\(packId: string\): void \{.*?\n\}\n''',
+              '\n',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          text = text.replace(
+              '''      selectedLocalFiles.value,\n      selectedPackIds.value,\n      selectedVehicleIds.value,\n      ingestionPolicy.value,''',
+              '''      selectedLocalFiles.value,\n      ingestionPolicy.value,''',
+          )
+          text = text.replace(
+              '''    keyword_pack_ids: selectedPackIds.value,\n    vehicle_model_ids: selectedVehicleIds.value,''',
+              '''    brand_ids: [],''',
+          )
+          text = text.replace(
+              '从本地电脑或服务器批准目录创建导入任务，并按词包与车型规则完成预检；预检通过后再确认开始入库。',
+              '从本地电脑或服务器批准目录创建导入任务；Stage 3 按创建时冻结的全部已启用品牌目录完成预检，预检通过后再确认开始入库。',
+          )
+          pattern = r'''\n            <section class="pack-panel">.*?\n            <VehicleMultiSelect\n.*?\n            />'''
+          replacement = '''\n            <AimaFeedbackBanner tone="info">\n              Stage 3 的 Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件；当前按创建时全部已启用品牌冻结过滤范围。品牌范围选择器将在后续前端阶段补齐。\n            </AimaFeedbackBanner>'''
+          text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          assert count == 1
+          dialog.write_text(text)
+          PY
+      - name: Install and verify frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix frontend
+          npm --prefix frontend run lint
+          npm --prefix frontend run build
+      - name: Commit verified plumbing
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add frontend/src/features/import-batches
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "修复：收口 Stage 3 前端导入 Contract 接线"
+          git push origin HEAD:feature/stage3-excel-brand-vehicle-filter
