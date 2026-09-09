@@ -140,11 +140,22 @@ def test_excel_follower_count_is_persisted_visible_sortable_and_account_current_
             runtime,
             cursor_signing_secret=b"excel-follower-count-test-key-32-bytes-minimum",
         )
-        descending = service.list_contents(
-            ContentListQuery(sort_by="follower_count", sort_direction="desc", limit=10)
+        first_page = service.list_contents(
+            ContentListQuery(sort_by="follower_count", sort_direction="desc", limit=2)
         )
+        assert first_page.has_more is True
+        assert first_page.next_cursor is not None
+        second_page = service.list_contents(
+            ContentListQuery(
+                sort_by="follower_count",
+                sort_direction="desc",
+                limit=2,
+                cursor=first_page.next_cursor,
+            )
+        )
+        descending_items = (*first_page.items, *second_page.items)
         assert [
-            (item.external_content_id, item.author_follower_count) for item in descending.items
+            (item.external_content_id, item.author_follower_count) for item in descending_items
         ] == [
             ("excel-fans-1", 12_000),
             ("excel-fans-2", 0),
