@@ -100,6 +100,7 @@ def test_unknown_persistence_and_ci_self_fail_closed() -> None:
 
 
 def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install() -> None:
+    """完整后端单测所需字体留在 Core，PostgreSQL Job 不重复安装。"""
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "postgres_suites" in text
@@ -116,7 +117,7 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
 
     assert (
         "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.report_font_required == 'true'\n" in text
+        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
     )
 
 
