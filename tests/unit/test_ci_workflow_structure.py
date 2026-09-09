@@ -160,7 +160,8 @@ def test_backend_unit_suite_installs_cjk_font_prerequisite() -> None:
     text = CI.read_text(encoding="utf-8")
     assert (
         "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.backend_required == 'true'\n"
-        in text
+        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
     )
-    assert text.index("Install report validation CJK font") < text.index("Unit, Contract and API tests")
+    assert text.index("Install report validation CJK font") < text.index(
+        "Unit, Contract and API tests"
+    )
