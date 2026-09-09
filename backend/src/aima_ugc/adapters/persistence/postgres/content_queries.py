@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import and_, case, exists, func, literal, or_, select
+from sqlalchemy import BigInteger, and_, case, exists, func, literal, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -95,7 +95,7 @@ class PostgresContentQueryRepository:
         statement, columns = self._base_statement(query.filters)
         content = contents_table
         sort_column = (
-            accounts_table.c.current_follower_count
+            columns["author_follower_count"]
             if query.sort_by == "follower_count"
             else content.c.published_at
             if query.sort_by == "published_at"
@@ -472,12 +472,26 @@ class PostgresContentQueryRepository:
             .outerjoin(review, current_review)
             .outerjoin(manual, current_manual)
         )
+        columns: dict[str, Any] = {"sort_at": sort_at}
         if targets_only:
             selected: tuple[Any, ...] = (content.c.id, content.c.current_version, sort_at)
         else:
             source_join = source_join.outerjoin(
                 accounts_table, accounts_table.c.id == content.c.author_account_id
             )
+            snapshot_follower_count = case(
+                (
+                    func.jsonb_typeof(version.c.author_snapshot["follower_count"]) == "number",
+                    version.c.author_snapshot["follower_count"].astext.cast(BigInteger),
+                ),
+                else_=None,
+            )
+            # 稳定账号 Current 优先；无稳定账号或当前值缺失时回退当前 Content Version 快照。
+            author_follower_count = func.coalesce(
+                accounts_table.c.current_follower_count,
+                snapshot_follower_count,
+            )
+            columns["author_follower_count"] = author_follower_count
             selected = (
                 content.c.id,
                 content.c.current_version,
@@ -488,7 +502,7 @@ class PostgresContentQueryRepository:
                 content.c.title,
                 content.c.text,
                 version.c.author_snapshot["display_name"].astext.label("author_display_name"),
-                accounts_table.c.current_follower_count.label("author_follower_count"),
+                author_follower_count.label("author_follower_count"),
                 content.c.published_at,
                 content.c.last_seen_at,
                 content.c.canonical_url,
@@ -539,7 +553,7 @@ class PostgresContentQueryRepository:
             version=version,
             include_irrelevant=include_irrelevant,
         )
-        return statement, {"sort_at": sort_at}
+        return statement, columns
 
     def _records(self, rows: tuple[RowMapping, ...]) -> tuple[ContentReadRecord, ...]:
         """批量补充内容关系，并保留作者粉丝数的未知值。"""
