@@ -88,13 +88,13 @@ function updatePrimaryLabel(event: Event): void {
         :value="platform"
         @change="emit('update:platform', value($event) as '' | PlatformName)"
       ><option value="">全部平台</option><option value="xiaohongshu">小红书</option><option value="douyin">抖音</option><option value="weibo">微博</option><option value="bilibili">B站</option><option value="kuaishou">快手</option></select></label>
-      <label class="field field--relevance"><span>AI 相关性</span><select
-        aria-label="AI 相关性"
+      <label class="field field--relevance"><span>相关性</span><select
+        aria-label="相关性"
         :value="relevance"
         @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
       ><option value="">默认业务数据</option><option value="relevant">相关</option><option value="irrelevant">不相关</option></select></label>
-      <label class="field field--sentiment"><span>AI 情感</span><select
-        aria-label="AI 情感"
+      <label class="field field--sentiment"><span>情感</span><select
+        aria-label="情感"
         :value="sentiment"
         :disabled="taxonomyLoading || !taxonomy"
         @change="emit('update:sentiment', value($event))"
@@ -103,8 +103,8 @@ function updatePrimaryLabel(event: Event): void {
         :key="item"
         :value="item"
       >{{ item }}</option></select></label>
-      <label class="field field--status"><span>AI 状态</span><select
-        aria-label="AI 状态"
+      <label class="field field--status"><span>状态</span><select
+        aria-label="状态"
         :value="analysisStatus"
         @change="emit('update:analysisStatus', value($event) as '' | ContentAnalysisStatus)"
       ><option value="">全部状态</option><option value="completed">已分析</option><option value="pending">未分析</option><option value="stale">需重新分析</option></select></label>
