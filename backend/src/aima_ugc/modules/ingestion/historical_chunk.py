@@ -1,4 +1,4 @@
-"""历史 XLSX 到版本化有界 gzip JSONL Chunk 的流式转换。"""
+"""历史 XLSX 到版本化有界 gzip JSONL Chunk 的读取边界。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,12 @@ import gzip
 import json
 from pathlib import Path
 
-HISTORICAL_CHUNK_SCHEMA_VERSION = "historical-canonical-row.v1"
+LEGACY_HISTORICAL_CHUNK_SCHEMA_VERSION = "historical-canonical-row.v1"
+HISTORICAL_CHUNK_SCHEMA_VERSION = "historical-canonical-row.v2"
+_SUPPORTED_CHUNK_SCHEMA_VERSIONS = {
+    LEGACY_HISTORICAL_CHUNK_SCHEMA_VERSION,
+    HISTORICAL_CHUNK_SCHEMA_VERSION,
+}
 
 
 def read_historical_chunk(
@@ -14,7 +19,7 @@ def read_historical_chunk(
     *,
     max_rows: int = 2_000,
 ) -> tuple[dict[str, object], ...]:
-    """仅供单个有界 Chunk Worker 读取；调用方仍必须校验 chunk_rows 上限。"""
+    """读取单个有界 Chunk；v1/v2 仅负责兼容读取，Worker 必须再校验 Campaign 配对。"""
 
     if max_rows < 1 or max_rows > 2_000:
         raise ValueError("Historical Chunk max_rows 必须在 1 到 2000 之间")
@@ -24,15 +29,19 @@ def read_historical_chunk(
             payload = json.loads(line)
             if not isinstance(payload, dict):
                 raise ValueError("Historical Chunk 行必须是 JSON object")
-            if payload.get("schema_version") != HISTORICAL_CHUNK_SCHEMA_VERSION:
+            if payload.get("schema_version") not in _SUPPORTED_CHUNK_SCHEMA_VERSIONS:
                 raise ValueError("Historical Chunk schema_version 不受支持")
             records.append(payload)
             if len(records) > max_rows:
                 raise ValueError("Historical Chunk 行数超过冻结上限")
+    versions = {record.get("schema_version") for record in records}
+    if len(versions) > 1:
+        raise ValueError("同一 Historical Chunk 不能混合多个 schema_version")
     return tuple(records)
 
 
 __all__ = [
     "HISTORICAL_CHUNK_SCHEMA_VERSION",
+    "LEGACY_HISTORICAL_CHUNK_SCHEMA_VERSION",
     "read_historical_chunk",
 ]
