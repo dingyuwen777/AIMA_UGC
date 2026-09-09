@@ -1,0 +1,111 @@
+name: Stage2 Finalize
+
+on:
+  push:
+    branches:
+      - feature/stage2-brand-vehicle-management-resolver
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: ci-postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/stage2-finalize/data
+      AIMA_LOG_DIR: .runtime/stage2-finalize/logs
+      AIMA_SECRET_DIR: .runtime/stage2-finalize/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - uses: actions/setup-node@v6.0.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frozen environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+      - name: Apply exact finalization patch
+        run: uv run python scripts/dev/stage2_finalize.py
+      - name: Format and static-check touched Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format \
+            backend/src/aima_ugc/modules/vehicles/brand_vehicle.py \
+            tests/unit/test_brand_vehicle_resolver.py \
+            tests/api/test_brand_vehicle_stage2_contract.py \
+            tests/integration/database/test_brand_vehicle_stage2_repository.py \
+            tests/integration/database/test_u1_u5_administration.py
+          uv run ruff check backend/src tests/unit/test_brand_vehicle_resolver.py \
+            tests/api/test_brand_vehicle_stage2_contract.py \
+            tests/integration/database/test_brand_vehicle_stage2_repository.py \
+            tests/integration/database/test_u1_u5_administration.py
+          uv run mypy backend/src
+      - name: Unit contract and API targeted tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/unit/test_brand_vehicle_resolver.py -q
+          uv run pytest tests/contracts/test_u1_u5_contracts.py -q
+          uv run pytest tests/api/test_brand_vehicle_stage2_contract.py -q
+      - name: Prepare PostgreSQL and run Stage 2 evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'ci-postgres' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+          uv run alembic upgrade head
+          uv run alembic current
+          uv run alembic check
+          uv run pytest tests/integration/database/test_brand_vehicle_stage2_repository.py -q
+          uv run pytest tests/integration/database/test_u1_u5_administration.py -q
+      - name: Regenerate formal contracts and client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+      - name: Remove one-shot helper and commit finalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/stage2-finalize.yml scripts/dev/stage2_finalize.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend tests docs contracts frontend/src/generated/api
+          git diff --cached --check
+          git commit -m "修复：收口 Stage 2 品牌车型管理兼容与证据"
+          git push origin HEAD:${GITHUB_REF_NAME}
