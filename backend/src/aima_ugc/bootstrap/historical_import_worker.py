@@ -19,6 +19,9 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.historical_cancellation import (
+    lock_historical_campaign_cancel_gate,
+)
 from aima_ugc.adapters.persistence.postgres.historical_content import (
     HistoricalBatchRow,
     PostgresHistoricalContentRepository,
@@ -319,7 +322,14 @@ class PostgresHistoricalImportJobExecutor:
                 with session.begin():
                     jobs = PostgresJobRepository(session)
                     jobs.lock_current_execution(fence)
+                    lock_historical_campaign_cancel_gate(session, campaign_id, shared=True)
                     repository = PostgresHistoricalImportRepository(session)
+                    campaign = repository.get_campaign(campaign_id)
+                    if campaign is None:
+                        return JobHandlerResult.failed("historical_campaign_not_found")
+                    if campaign["status"] == "cancelling":
+                        jobs.request_cancel(fence.job_id)
+                        return JobHandlerResult.cancelled()
                     current = repository.get_item(payload.chunk_item_id, for_update=True)
                     if current is None:
                         return JobHandlerResult.failed("historical_chunk_not_found")
@@ -358,9 +368,6 @@ class PostgresHistoricalImportJobExecutor:
                         chunk_ordinal=cast(int, current["ordinal"]),
                         rows=rows,
                     )
-                    campaign = repository.get_campaign(campaign_id)
-                    if campaign is None:
-                        raise ValueError("Historical Campaign 不存在")
                     _append_historical_vehicle_evidence(
                         session,
                         batch_id=payload.batch_id,
