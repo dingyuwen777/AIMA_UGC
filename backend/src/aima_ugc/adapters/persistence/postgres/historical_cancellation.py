@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.ingestion.historical_tables import (
@@ -125,11 +125,41 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                 .values(status="cancelled", finished_at=func.clock_timestamp())
             )
 
-    def settle_cancel(self, campaign_id: UUID) -> None:
-        """Job 取消请求已提交后，再按 Item → Batch → Campaign 顺序落终态。"""
+    def settle_cancel(self, campaign_id: UUID) -> bool:
+        """只在相关 Job 全部终态后，把 Item、Batch 与 Campaign 收敛为 cancelled。"""
 
-        # request_job_cancellations() 取得每个相关 Job 行锁后才会返回；因此这里再取消
-        # non-terminal Item 时，不会与 Worker 的 Job → Item/Campaign 顺序形成环。
+        campaign = self.get_campaign(campaign_id)
+        if campaign is None:
+            raise HistoricalCampaignNotFound
+        status = cast(str, campaign["status"])
+        if status == "cancelled":
+            return True
+        if status != "cancelling":
+            return False
+
+        item_job_ids = select(historical_import_campaign_items_table.c.job_id).where(
+            historical_import_campaign_items_table.c.campaign_id == campaign_id,
+            historical_import_campaign_items_table.c.job_id.is_not(None),
+        )
+        active_jobs = cast(
+            int,
+            self._session.scalar(
+                select(func.count())
+                .select_from(jobs_table)
+                .where(
+                    jobs_table.c.status.in_(("queued", "running")),
+                    or_(
+                        jobs_table.c.id.in_(item_job_ids),
+                        jobs_table.c.internal_idempotency_key
+                        == f"historical-discover:{campaign_id}",
+                    ),
+                )
+            )
+            or 0,
+        )
+        if active_jobs:
+            return False
+
         self._session.execute(
             update(historical_import_campaign_items_table)
             .where(
@@ -173,9 +203,6 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                 )
             )
 
-        campaign = self.get_campaign(campaign_id)
-        if campaign is None:
-            raise HistoricalCampaignNotFound
         campaign_stats = self._campaign_accounting_counts(campaign_id)
         self._session.execute(
             update(historical_import_campaigns_table)
@@ -189,6 +216,7 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                 ),
             )
         )
+        return True
 
 
 __all__ = ["PostgresHistoricalCancellationRepository"]
