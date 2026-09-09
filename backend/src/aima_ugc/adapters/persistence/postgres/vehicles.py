@@ -26,6 +26,7 @@ from aima_ugc.modules.vehicles.tables import (
     content_vehicle_review_locks_table,
     keyword_pack_vehicle_models_table,
     vehicle_catalog_versions_table,
+    vehicle_brands_table,
     vehicle_model_aliases_table,
     vehicle_models_table,
 )
@@ -39,6 +40,7 @@ def _vehicle_from_row(row: RowMapping) -> VehicleModel:
         id=cast(UUID, row["id"]),
         code=cast(str, row["code"]),
         display_name=cast(str, row["display_name"]),
+        brand_id=cast(UUID | None, row["brand_id"]),
         series_name=cast(str | None, row["series_name"]),
         category_name=cast(str | None, row["category_name"]),
         status=cast(VehicleStatus, row["status"]),
@@ -95,6 +97,7 @@ class PostgresVehicleCatalogRepository:
         display_name: str,
         aliases: tuple[str, ...],
         actor_ref: str,
+        brand_id: UUID | None = None,
         series_name: str | None = None,
         category_name: str | None = None,
     ) -> VehicleModel:
@@ -110,6 +113,7 @@ class PostgresVehicleCatalogRepository:
                     id=model_id,
                     code=code,
                     display_name=display_name,
+                    brand_id=brand_id,
                     series_name=series_name,
                     category_name=category_name,
                     status="active",
@@ -202,7 +206,7 @@ class PostgresVehicleCatalogRepository:
         aliases: tuple[str, ...] | None,
         status: str | None,
         actor_ref: str,
-        classification: dict[str, str | None] | None = None,
+        classification: dict[str, object | None] | None = None,
     ) -> VehicleModel:
         """更新车型并递增车型版本和全局目录版本。"""
 
@@ -211,6 +215,20 @@ class PostgresVehicleCatalogRepository:
             raise LookupError(model_id)
         if current.status == "merged":
             raise RuntimeError("已合并车型不能直接编辑")
+        requested_brand_id = current.brand_id
+        if classification is not None and "brand_id" in classification:
+            requested_brand_id = cast(UUID | None, classification["brand_id"])
+        effective_status = status or current.status
+        if effective_status == "active":
+            if requested_brand_id is None:
+                raise RuntimeError("active 车型必须绑定 active 品牌")
+            brand_status = self._session.scalar(
+                select(vehicle_brands_table.c.status).where(
+                    vehicle_brands_table.c.id == requested_brand_id
+                )
+            )
+            if brand_status != "active":
+                raise RuntimeError("active 车型只能绑定有效 active 品牌")
         catalog_version = self.next_catalog_version(reason="vehicle_updated", actor_ref=actor_ref)
         values: dict[str, object] = {
             "version": current.version + 1,
@@ -222,7 +240,7 @@ class PostgresVehicleCatalogRepository:
         if status is not None:
             values["status"] = status
         # 仅显式传入的字段参与更新；null 用于清除，缺省保留原值。
-        for field in ("series_name", "category_name"):
+        for field in ("brand_id", "series_name", "category_name"):
             if classification is not None and field in classification:
                 values[field] = classification[field]
         row = (

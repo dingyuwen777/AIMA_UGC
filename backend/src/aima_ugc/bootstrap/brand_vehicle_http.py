@@ -472,9 +472,7 @@ def install_brand_vehicle_routes(
         response_model=BrandResponse,
         tags=["vehicle-catalog"],
     )
-    def add_alias(
-        brand_id: UUID, body: BrandAliasCreateRequest, request: Request
-    ) -> BrandResponse:
+    def add_alias(brand_id: UUID, body: BrandAliasCreateRequest, request: Request) -> BrandResponse:
         return service().add_alias(
             brand_id, body, principal=principal(request), request_id=_request_id(request)
         )
@@ -557,7 +555,9 @@ def _brand_response(
     )
 
 
-def _snapshot_response(snapshot: BrandVehicleCatalogSnapshot) -> BrandVehicleCatalogSnapshotResponse:
+def _snapshot_response(
+    snapshot: BrandVehicleCatalogSnapshot,
+) -> BrandVehicleCatalogSnapshotResponse:
     return BrandVehicleCatalogSnapshotResponse(
         catalog_version=snapshot.catalog_version,
         filter_scope=snapshot.filter_scope,

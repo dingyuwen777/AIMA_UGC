@@ -182,7 +182,9 @@ class PostgresBrandVehicleRepository:
         rows = self._session.execute(
             select(vehicle_brand_aliases_table)
             .where(vehicle_brand_aliases_table.c.brand_id == brand_id)
-            .order_by(vehicle_brand_aliases_table.c.normalized_text, vehicle_brand_aliases_table.c.id)
+            .order_by(
+                vehicle_brand_aliases_table.c.normalized_text, vehicle_brand_aliases_table.c.id
+            )
         ).mappings()
         return tuple(_brand_alias_from_row(row) for row in rows)
 
@@ -202,10 +204,12 @@ class PostgresBrandVehicleRepository:
             raise LookupError(brand_id)
         if status == "deprecated" and current.status != "deprecated":
             active_vehicle = self._session.scalar(
-                select(vehicle_models_table.c.id).where(
+                select(vehicle_models_table.c.id)
+                .where(
                     vehicle_models_table.c.brand_id == brand_id,
                     vehicle_models_table.c.status == "active",
-                ).limit(1)
+                )
+                .limit(1)
             )
             if active_vehicle is not None:
                 raise RuntimeError("品牌仍有 active 车型，必须先停用或迁移车型")
@@ -240,7 +244,9 @@ class PostgresBrandVehicleRepository:
         if current is None:
             return False
         referenced = self._session.scalar(
-            select(vehicle_models_table.c.id).where(vehicle_models_table.c.brand_id == brand_id).limit(1)
+            select(vehicle_models_table.c.id)
+            .where(vehicle_models_table.c.brand_id == brand_id)
+            .limit(1)
         )
         evidence = self._session.scalar(
             select(content_brand_evidence_table.c.id)
@@ -251,9 +257,13 @@ class PostgresBrandVehicleRepository:
             raise RuntimeError("已引用品牌不能物理删除")
         self._vehicle_catalog.next_catalog_version(reason="brand_deleted", actor_ref=actor_ref)
         self._session.execute(
-            delete(vehicle_brand_aliases_table).where(vehicle_brand_aliases_table.c.brand_id == brand_id)
+            delete(vehicle_brand_aliases_table).where(
+                vehicle_brand_aliases_table.c.brand_id == brand_id
+            )
         )
-        self._session.execute(delete(vehicle_brands_table).where(vehicle_brands_table.c.id == brand_id))
+        self._session.execute(
+            delete(vehicle_brands_table).where(vehicle_brands_table.c.id == brand_id)
+        )
         return True
 
     def add_brand_alias(
@@ -294,12 +304,16 @@ class PostgresBrandVehicleRepository:
         brand = self.get_brand(brand_id, for_update=True)
         if brand is None:
             raise LookupError(brand_id)
-        alias = self._session.execute(
-            select(vehicle_brand_aliases_table).where(
-                vehicle_brand_aliases_table.c.id == alias_id,
-                vehicle_brand_aliases_table.c.brand_id == brand_id,
+        alias = (
+            self._session.execute(
+                select(vehicle_brand_aliases_table).where(
+                    vehicle_brand_aliases_table.c.id == alias_id,
+                    vehicle_brand_aliases_table.c.brand_id == brand_id,
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if alias is None:
             return False
         catalog_version = self._vehicle_catalog.next_catalog_version(
@@ -328,11 +342,15 @@ class PostgresBrandVehicleRepository:
     ) -> VehicleRecord:
         """显式修改 Vehicle 品牌归属；active Vehicle 不允许清空或指向停用 Brand。"""
 
-        row = self._session.execute(
-            select(vehicle_models_table)
-            .where(vehicle_models_table.c.id == vehicle_model_id)
-            .with_for_update()
-        ).mappings().one_or_none()
+        row = (
+            self._session.execute(
+                select(vehicle_models_table)
+                .where(vehicle_models_table.c.id == vehicle_model_id)
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise LookupError(vehicle_model_id)
         status = cast(str, row["status"])
@@ -546,12 +564,16 @@ class PostgresBrandVehicleRepository:
             .values(is_active=False)
         )
         should_lock = not (unlock_existing and not unique_ids)
-        existing_lock = self._session.execute(
-            select(content_brand_review_locks_table).where(
-                content_brand_review_locks_table.c.content_id == content_id,
-                content_brand_review_locks_table.c.content_version == content_version,
+        existing_lock = (
+            self._session.execute(
+                select(content_brand_review_locks_table).where(
+                    content_brand_review_locks_table.c.content_id == content_id,
+                    content_brand_review_locks_table.c.content_version == content_version,
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         lock_values = {
             "is_locked": should_lock,
             "actor_ref": actor_ref,

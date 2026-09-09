@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.system import (
     PostgresAuditRepository,
     PostgresProviderConfigRepository,
@@ -78,10 +79,20 @@ class PostgresAdministrationHttpService:
         try:
             with session.begin():
                 repository = PostgresVehicleCatalogRepository(session)
+                brand_repository = PostgresBrandVehicleRepository(session)
+                if body.brand_id is None:
+                    raise AdministrationConflict("新建 active 车型必须绑定 active 品牌")
+                try:
+                    brand_repository.require_active_brand(body.brand_id)
+                except LookupError as exc:
+                    raise AdministrationResourceNotFound from exc
+                except RuntimeError as exc:
+                    raise AdministrationConflict(str(exc)) from exc
                 model = repository.create_model(
                     code=body.code,
                     display_name=body.display_name,
                     aliases=body.aliases,
+                    brand_id=body.brand_id,
                     series_name=body.series_name,
                     category_name=body.category_name,
                     actor_ref=principal.principal_id,
@@ -93,7 +104,11 @@ class PostgresAdministrationHttpService:
                     event_type="vehicle_model_created",
                     object_type="vehicle_model",
                     object_id=str(model.id),
-                    detail={"code": model.code, "catalog_version": model.catalog_version},
+                    detail={
+                        "code": model.code,
+                        "brand_id": str(model.brand_id),
+                        "catalog_version": model.catalog_version,
+                    },
                 )
                 return _vehicle_response(repository, model)
         except IntegrityError as exc:
@@ -160,7 +175,8 @@ class PostgresAdministrationHttpService:
                         aliases=body.aliases,
                         status=body.status,
                         classification=body.model_dump(
-                            include={"series_name", "category_name"}, exclude_unset=True
+                            include={"brand_id", "series_name", "category_name"},
+                            exclude_unset=True,
                         ),
                         actor_ref=principal.principal_id,
                     )
@@ -627,6 +643,7 @@ def _vehicle_response(
         id=model.id,
         code=model.code,
         display_name=model.display_name,
+        brand_id=model.brand_id,
         series_name=model.series_name,
         category_name=model.category_name,
         status=model.status,
