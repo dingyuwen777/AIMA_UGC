@@ -32,7 +32,7 @@ class VehicleAlias:
 
 @dataclass(frozen=True, slots=True)
 class VehicleModel:
-    """稳定车型概念；code 不随显示名变化。"""
+    """稳定车型概念；code 不随显示名变化，Brand 归属显式可追溯。"""
 
     id: UUID
     code: str
@@ -43,6 +43,7 @@ class VehicleModel:
     merged_into_id: UUID | None
     created_at: datetime
     updated_at: datetime
+    brand_id: UUID | None = None
     series_name: str | None = None
     category_name: str | None = None
 
