@@ -16,6 +16,7 @@ from aima_ugc.bootstrap.analysis_scheme_lifecycle_http import (
 )
 from aima_ugc.bootstrap.api import HealthResponse, ReadinessChecks, ReadinessResponse
 from aima_ugc.bootstrap.api import create_app as _create_app
+from aima_ugc.bootstrap.brand_vehicle_routes import install_brand_vehicle_routes
 from aima_ugc.bootstrap.import_revocation_http import install_import_revocation_routes
 from aima_ugc.bootstrap.provider_lifecycle_http import install_provider_lifecycle_routes
 from aima_ugc.bootstrap.resource_lifecycle_http import install_resource_lifecycle_routes
@@ -50,6 +51,10 @@ def _with_product_extension_routes[**P](
             identity_resolver=resolved_identity,
         )
         install_analysis_scheme_lifecycle_routes(
+            application,
+            identity_resolver=resolved_identity,
+        )
+        install_brand_vehicle_routes(
             application,
             identity_resolver=resolved_identity,
         )
