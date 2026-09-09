@@ -945,28 +945,19 @@
       },
       "Body_createImportBatch": {
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "file": {
             "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
-          },
-          "keyword_pack_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Keyword Pack Ids",
-            "type": "array"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -11918,6 +11909,7 @@
     },
     "/api/v1/data-import-campaigns/local": {
       "post": {
+        "description": "创建本地上传 Campaign；不接受 Keyword Pack/Vehicle Model 过滤字段。",
         "operationId": "createLocalDataImportCampaign",
         "requestBody": {
           "content": {
@@ -11989,6 +11981,7 @@
     },
     "/api/v1/data-import-campaigns/server": {
       "post": {
+        "description": "创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。",
         "operationId": "createServerDataImportCampaign",
         "requestBody": {
           "content": {
@@ -13008,6 +13001,7 @@
         ]
       },
       "post": {
+        "description": "创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。",
         "operationId": "createHistoricalImportCampaign",
         "requestBody": {
           "content": {
@@ -13754,6 +13748,7 @@
         ]
       },
       "post": {
+        "description": "Excel Search 不适用；空 Brand Scope 表示冻结全部 active Brand。",
         "operationId": "createImportBatch",
         "requestBody": {
           "content": {
