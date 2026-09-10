@@ -18,6 +18,7 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.import_batch_queries import (
     PostgresImportBatchQueryRepository,
 )
@@ -61,7 +62,9 @@ from aima_ugc.modules.analysis import (
     normalize_keyword_storage_text,
 )
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
+from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.http import (
+    BrandVehicleFilterUnavailable,
     ImportConflict,
     ImportCursorUnavailable,
     ImportResourceNotFound,
@@ -74,11 +77,12 @@ from aima_ugc.modules.ingestion.import_batch_cursor import (
     ImportBatchCursorPosition,
 )
 from aima_ugc.modules.ingestion.import_job import (
+    BRAND_VEHICLE_IMPORT_JOB_PAYLOAD_VERSION,
+    BRAND_VEHICLE_IMPORT_JOB_TYPE,
     IMPORT_JOB_MAX_ATTEMPTS,
-    IMPORT_JOB_PAYLOAD_VERSION,
     IMPORT_JOB_TIMEOUT_SECONDS,
-    IMPORT_JOB_TYPE,
-    ImportJobPayload,
+    LEGACY_IMPORT_JOB_TYPE,
+    BrandVehicleImportJobPayload,
     ImportKeywordPackSnapshot,
     ImportKeywordSelectionSnapshot,
     ImportVehicleModelSnapshot,
@@ -187,13 +191,16 @@ class PostgresImportHttpService:
         filename: str,
         content_type: str | None,
         source: BinaryIO,
-        keyword_pack_ids: tuple[UUID, ...],
-        vehicle_model_ids: tuple[UUID, ...] = (),
+        brand_ids: tuple[UUID, ...],
         request_id: str,
     ) -> ImportBatchCreatedResponse:
+        """创建 v2 Import；空 `brand_ids` 明确表示冻结全部 active Brand。"""
+
         del content_type
+        if len(brand_ids) > 100 or len(brand_ids) != len(set(brand_ids)):
+            raise BrandVehicleFilterUnavailable
         safe_name = _validate_upload_filename(filename)
-        selection = self._read_import_keyword_selection(keyword_pack_ids, vehicle_model_ids)
+        filter_snapshot = self._read_brand_vehicle_filter_snapshot(brand_ids)
         try:
             source.seek(0, 2)
             file_size = source.tell()
@@ -230,10 +237,10 @@ class PostgresImportHttpService:
         try:
             with session.begin():
                 job = PostgresJobRepository(session).enqueue(
-                    job_type=IMPORT_JOB_TYPE,
-                    payload_version=IMPORT_JOB_PAYLOAD_VERSION,
-                    payload=ImportJobPayload(
-                        keyword_selection=selection,
+                    job_type=BRAND_VEHICLE_IMPORT_JOB_TYPE,
+                    payload_version=BRAND_VEHICLE_IMPORT_JOB_PAYLOAD_VERSION,
+                    payload=BrandVehicleImportJobPayload(
+                        filter_snapshot=filter_snapshot,
                     ).model_dump(mode="json"),
                     internal_idempotency_key=f"import-batch:{batch_id}",
                     request_id=request_id,
@@ -249,7 +256,7 @@ class PostgresImportHttpService:
                         "stage": "queued",
                         "profile": _IMPORT_PROFILE,
                         "source_filename": safe_name,
-                        "keyword_selection": selection.model_dump(mode="json"),
+                        "filter_snapshot": filter_snapshot.model_dump(mode="json"),
                         "xlsx_member_count": archive.member_count,
                         "xlsx_total_uncompressed_bytes": archive.total_uncompressed_bytes,
                     },
@@ -351,11 +358,16 @@ class PostgresImportHttpService:
             raise ImportCursorUnavailable from exc
 
     def get_job(self, job_id: UUID) -> JobStatusResponse:
+        """查询接口同时承认升级前 v1 与 Stage 3 v2 Import Job。"""
+
         session = self._runtime.database.new_session()
         try:
             with session.begin():
                 job = PostgresJobRepository(session).get(job_id)
-                if job is None or job.job_type != IMPORT_JOB_TYPE:
+                if job is None or job.job_type not in {
+                    LEGACY_IMPORT_JOB_TYPE,
+                    BRAND_VEHICLE_IMPORT_JOB_TYPE,
+                }:
                     raise ImportResourceNotFound
                 return _job_response(job)
         finally:
@@ -536,6 +548,25 @@ class PostgresImportHttpService:
     def get_global_relevance(self) -> GlobalRelevanceConfigResponse:
         snapshot, updated_at = self._read_relevance_snapshot()
         return _relevance_response(snapshot, updated_at)
+
+    def _read_brand_vehicle_filter_snapshot(
+        self,
+        brand_ids: tuple[UUID, ...],
+    ) -> BrandVehicleFilterSnapshot:
+        """在独立短事务中读取 Stage 2 锁保护 Snapshot，并立刻冻结为 Job 数据。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                try:
+                    catalog = PostgresBrandVehicleRepository(session).snapshot(
+                        brand_ids=brand_ids or None
+                    )
+                except (LookupError, ValueError) as exc:
+                    raise BrandVehicleFilterUnavailable from exc
+                return BrandVehicleFilterSnapshot(catalog=catalog)
+        finally:
+            session.close()
 
     def _read_import_keyword_selection(
         self,

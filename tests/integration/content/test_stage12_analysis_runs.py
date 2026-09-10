@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from io import BytesIO
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
@@ -53,6 +53,10 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import func, select, update
 
+from tests.integration.stage3_brand_support import (
+    stage3_filter_brand_id as _stage3_filter_brand_id,
+)
+
 
 def _xlsx() -> bytes:
     workbook = Workbook()
@@ -76,14 +80,8 @@ def _xlsx() -> bytes:
     return output.getvalue()
 
 
-def _seed_contents(client: TestClient) -> None:
-    pack = client.post("/api/v1/keyword-packs", json={"name": f"Stage12 Run {uuid4()}"})
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert keyword.status_code == 201
+def _seed_contents(client: TestClient, runtime) -> None:  # type: ignore[no-untyped-def]
+    brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -95,7 +93,7 @@ def _seed_contents(client: TestClient) -> None:
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202
@@ -192,7 +190,7 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
                 content_service=content_service,
             )
         )
-        _seed_contents(client)
+        _seed_contents(client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -401,7 +399,7 @@ def test_analysis_all_scope_reuses_query_storage_and_freezes_all_current_content
                 ),
             )
         )
-        _seed_contents(client)
+        _seed_contents(client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -491,7 +489,7 @@ def test_analysis_planner_rolls_back_when_frozen_selection_count_changed(tmp_pat
                 ),
             )
         )
-        _seed_contents(client)
+        _seed_contents(client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -589,7 +587,7 @@ def test_analysis_run_runtime_configuration_policy(
                 ),
             )
         )
-        _seed_contents(client)
+        _seed_contents(client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),

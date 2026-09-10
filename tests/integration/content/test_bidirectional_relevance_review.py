@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
@@ -55,6 +54,10 @@ from openpyxl import Workbook
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import DatabaseError
 
+from tests.integration.stage3_brand_support import (
+    stage3_filter_brand_id as _stage3_filter_brand_id,
+)
+
 
 def _xlsx() -> bytes:
     workbook = Workbook()
@@ -77,17 +80,8 @@ def _xlsx() -> bytes:
     return output.getvalue()
 
 
-def _seed_import(client: TestClient) -> None:
-    pack = client.post(
-        "/api/v1/keyword-packs",
-        json={"name": f"双向人工复核 {uuid4()}"},
-    )
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert keyword.status_code == 201
+def _seed_import(client: TestClient, runtime) -> None:  # type: ignore[no-untyped-def]
+    brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -99,7 +93,7 @@ def _seed_import(client: TestClient) -> None:
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202
@@ -165,7 +159,7 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
         )
     try:
         import_client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _seed_import(import_client)
+        _seed_import(import_client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),

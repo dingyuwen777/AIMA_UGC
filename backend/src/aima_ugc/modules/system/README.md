@@ -57,27 +57,22 @@ System 负责长期关键词父事实：
 keyword_packs / keywords / keyword_pack_items
 ```
 
-确定性 Rule Relevance 发生在 Canonical 之后、Content Ingestion 之前，但不同入口的**选择方式不同**：
+Collection 的确定性 Rule Relevance 发生在 Canonical 之后、Content Ingestion 之前：
 
 ```text
 Collection
 → global_relevance_config
 → 当前全局 Relevance Keyword Pack
 → 创建 Run 时冻结 Relevance Snapshot
-
-Excel Import
-→ 用户创建 Import 时显式选择 1—20 个 Keyword Pack
-→ 合并启用关键词并按现有 Relevance 匹配规则归一/去重
-→ 冻结 ImportKeywordSelectionSnapshot 到 Batch + Job
 ```
 
-所以 `global_relevance_config` 仍是 System Owner 的正式父事实，但它当前服务 Collection 的全局入口选择；Excel Import 不读取它来决定本次筛选词包。Import 和 Collection 都使用同一关键词目录与确定性 Relevance 语义，并把本次实际 Pack/版本/有效关键词冻结后再异步执行，避免管理员后续修改词包改变已经排队的任务。
+正式 Excel Import 使用独立的 Brand/Vehicle Filter：创建 Import/Campaign 时提交 `brand_ids`，由 Stage 2 Brand/Vehicle Catalog 冻结 `BrandVehicleFilterSnapshot`；空集合表示全部 active Brand。它不读取 `global_relevance_config`，也不使用 Keyword Pack。升级前的 legacy Import/Campaign 仍按自己的旧 Snapshot 执行。
 
 `imports_test` 的离线相关性清洗继续复用现有 Relevance 匹配规则。数据库关键词身份与运行时匹配规范化仍是两个有意不同的概念：`keywords.normalized_text` 负责稳定数据库身份；Relevance 匹配可以进一步忽略空白和 `-/_/·`。同一选择范围内多个数据库关键词若收敛为同一匹配文本，运行时按稳定优先级/顺序保留第一个有效匹配项，数据库与管理 API 仍保留各自词条。
 
-正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护；Collection 全局 Relevance 由 `PostgresGlobalRelevanceRepository` 维护；Import 的多词包冻结在 [`backend/src/aima_ugc/bootstrap/import_http.py`](../../bootstrap/import_http.py) 与 [`backend/src/aima_ugc/modules/ingestion/import_job.py`](../ingestion/import_job.py)。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
+正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护；Collection 全局 Relevance 由 `PostgresGlobalRelevanceRepository` 维护。Excel Brand/Vehicle Snapshot 由 Brand/Vehicle Owner 提供，并在 [`backend/src/aima_ugc/bootstrap/import_http.py`](../../bootstrap/import_http.py) 与 [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](../ingestion/brand_vehicle_filter.py) 接入。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
 
-当前没有独立 Alias 表。业务别名先作为独立关键词加入词包；如果未来建立“标准词 → 多别名”正式关系，必须先明确它与 `keywords.normalized_text` 唯一身份、Keyword Pack 成员、Collection Run Snapshot、Import Keyword Selection 和前端编辑/去重的关系，再通过正式 Change 落到 Contract/Schema。
+Keyword 别名仍通过独立关键词表达；Brand/Vehicle 别名由各自 Catalog 与 Alias 表维护。两类父事实、唯一身份和运行 Snapshot 不互相替代。
 
 ## 外部依赖和 Port
 

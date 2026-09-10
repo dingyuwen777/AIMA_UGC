@@ -16,7 +16,14 @@ from aima_ugc.modules.analysis import (
     RelevanceService,
     normalize_keyword_match_text,
 )
-from aima_ugc.modules.ingestion.historical_chunk import HISTORICAL_CHUNK_SCHEMA_VERSION
+from aima_ugc.modules.ingestion.brand_vehicle_filter import (
+    BrandVehicleFilterSnapshot,
+    resolve_canonical_brand_vehicle,
+)
+from aima_ugc.modules.ingestion.historical_chunk import (
+    HISTORICAL_CHUNK_SCHEMA_VERSION,
+    LEGACY_HISTORICAL_CHUNK_SCHEMA_VERSION,
+)
 
 from .excel_profile import get_excel_import_profile
 from .excel_reader import iter_excel_rows
@@ -50,21 +57,29 @@ def convert_historical_excel_to_chunks(
     input_path: Path,
     output_dir: Path,
     profile_name: str,
-    effective_keywords: tuple[str, ...],
+    effective_keywords: tuple[str, ...] = (),
     vehicle_aliases: tuple[str, ...] = (),
+    filter_snapshot: BrandVehicleFilterSnapshot | None = None,
     observed_at: datetime,
     chunk_rows: int,
     publish: Callable[[HistoricalChunkDescriptor], None],
 ) -> HistoricalConversionSummary:
-    """流式映射并逐 Chunk 发布；不会把完整工作簿或全部 Canonical 放入内存。"""
+    """流式映射并逐 Chunk 发布；v1 保留旧过滤，v2 只用冻结 Brand/Vehicle Resolver。"""
 
     if chunk_rows < 1:
         raise ValueError("chunk_rows 必须为正数")
     if observed_at.utcoffset() is None:
         raise ValueError("observed_at 必须包含时区")
+    if filter_snapshot is None:
+        if not effective_keywords and not vehicle_aliases:
+            raise ValueError("legacy 历史导入至少需要关键词或车型别名")
+        chunk_schema_version = LEGACY_HISTORICAL_CHUNK_SCHEMA_VERSION
+    else:
+        if effective_keywords or vehicle_aliases:
+            raise ValueError("Stage 3 Historical Filter 不能混用 legacy 关键词/车型别名")
+        chunk_schema_version = HISTORICAL_CHUNK_SCHEMA_VERSION
+
     profile = get_excel_import_profile(profile_name)
-    if not effective_keywords and not vehicle_aliases:
-        raise ValueError("历史导入至少需要关键词或车型别名")
     relevance = (
         RelevanceService(
             tuple(
@@ -125,21 +140,26 @@ def convert_historical_excel_to_chunks(
                     sheet_name=row.sheet_name,
                     observed_at=observed_at,
                 )
-                decision = relevance.evaluate(content) if relevance is not None else None
-                searchable = normalize_keyword_match_text(
-                    " ".join(item for item in (content.title, content.text) if item)
-                )
-                matched_aliases = tuple(
-                    alias
-                    for alias in vehicle_aliases
-                    if normalize_keyword_match_text(alias) in searchable
-                )
-                keyword_matched = decision is None or decision.matched
-                vehicle_matched = not vehicle_aliases or bool(matched_aliases)
-                matched = keyword_matched and vehicle_matched
+                if filter_snapshot is not None:
+                    resolution = resolve_canonical_brand_vehicle(filter_snapshot, content)
+                    matched = resolution.matched
+                    matched_aliases: tuple[str, ...] = ()
+                else:
+                    decision = relevance.evaluate(content) if relevance is not None else None
+                    searchable = normalize_keyword_match_text(
+                        " ".join(item for item in (content.title, content.text) if item)
+                    )
+                    matched_aliases = tuple(
+                        alias
+                        for alias in vehicle_aliases
+                        if normalize_keyword_match_text(alias) in searchable
+                    )
+                    keyword_matched = decision is None or decision.matched
+                    vehicle_matched = not vehicle_aliases or bool(matched_aliases)
+                    matched = keyword_matched and vehicle_matched
                 outcome = "candidate" if matched else "filtered"
                 payload = {
-                    "schema_version": HISTORICAL_CHUNK_SCHEMA_VERSION,
+                    "schema_version": chunk_schema_version,
                     "source_row_ordinal": row.row_number,
                     "outcome": outcome,
                     "content": content.model_dump(mode="json"),
@@ -152,7 +172,7 @@ def convert_historical_excel_to_chunks(
                 descriptor_values[descriptor_name] += 1
             except ExcelImportRowError as exc:
                 payload = {
-                    "schema_version": HISTORICAL_CHUNK_SCHEMA_VERSION,
+                    "schema_version": chunk_schema_version,
                     "source_row_ordinal": row.row_number,
                     "outcome": "invalid",
                     "content": None,
@@ -162,7 +182,7 @@ def convert_historical_excel_to_chunks(
                 descriptor_values["invalid_count"] += 1
             except ValidationError:
                 payload = {
-                    "schema_version": HISTORICAL_CHUNK_SCHEMA_VERSION,
+                    "schema_version": chunk_schema_version,
                     "source_row_ordinal": row.row_number,
                     "outcome": "invalid",
                     "content": None,

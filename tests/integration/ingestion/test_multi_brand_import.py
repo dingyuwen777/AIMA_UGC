@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from io import BytesIO
-from uuid import uuid4
 
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -16,6 +15,8 @@ from aima_ugc.platform.config import load_settings
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import select
+
+from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
 
 def _xlsx() -> bytes:
@@ -68,34 +69,20 @@ def _xlsx() -> bytes:
     return output.getvalue()
 
 
-def _create_pack(client: TestClient, *, keyword: str) -> str:
-    response = client.post(
-        "/api/v1/keyword-packs",
-        json={"name": f"多词包导入 {keyword} {uuid4()}"},
-    )
-    assert response.status_code == 201
-    pack_id = response.json()["id"]
-    response = client.post(
-        f"/api/v1/keyword-packs/{pack_id}/keywords",
-        json={"text": keyword, "priority": 10},
-    )
-    assert response.status_code == 201
-    return pack_id
-
-
-def test_excel_import_uses_union_of_multiple_selected_keyword_packs(tmp_path) -> None:
+def test_excel_import_uses_union_of_multiple_selected_brands(tmp_path) -> None:
     settings = load_settings().model_copy(
         update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
     )
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
         )
     try:
         client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        brand_pack_id = _create_pack(client, keyword="爱玛")
-        model_pack_id = _create_pack(client, keyword="黑翼")
+        aima_brand_id = stage3_filter_brand_id(runtime, alias="爱玛")
+        black_wing_brand_id = stage3_filter_brand_id(runtime, alias="黑翼")
 
         created = client.post(
             "/api/v1/import-batches",
@@ -108,8 +95,8 @@ def test_excel_import_uses_union_of_multiple_selected_keyword_packs(tmp_path) ->
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     ),
                 ),
-                ("keyword_pack_ids", (None, brand_pack_id)),
-                ("keyword_pack_ids", (None, model_pack_id)),
+                ("brand_ids", (None, aima_brand_id)),
+                ("brand_ids", (None, black_wing_brand_id)),
             ],
         )
         assert created.status_code == 202
@@ -117,7 +104,7 @@ def test_excel_import_uses_union_of_multiple_selected_keyword_packs(tmp_path) ->
         worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
-            worker_id="multi-keyword-pack-import-worker",
+            worker_id="multi-brand-import-worker",
             lease_seconds=120,
             retry_delay_seconds=0,
         )
@@ -144,12 +131,16 @@ def test_excel_import_uses_union_of_multiple_selected_keyword_packs(tmp_path) ->
                 connection.execute(select(processing_import_batches_table)).mappings().one()
             )
         assert external_ids == {"multi-pack-1", "multi-pack-2"}
-        selection = persisted_batch["stats"]["keyword_selection"]
-        assert set(selection["effective_keywords"]) == {"爱玛", "黑翼"}
-        assert len(selection["keyword_packs"]) == 2
+        snapshot = persisted_batch["stats"]["filter_snapshot"]
+        assert snapshot["catalog"]["filter_scope"] == "selected"
+        assert set(snapshot["catalog"]["selected_brand_ids"]) == {
+            aima_brand_id,
+            black_wing_brand_id,
+        }
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+                "RESTART IDENTITY CASCADE"
             )
         runtime.close()

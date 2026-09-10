@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
 )
@@ -25,6 +26,10 @@ from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
 from aima_ugc.modules.content.ingestion import ContentIngestionService
+from aima_ugc.modules.ingestion.brand_vehicle_filter import (
+    BrandVehicleFilterSnapshot,
+    resolve_canonical_brand_vehicle,
+)
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence, normalize_vehicle_text
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
@@ -309,11 +314,17 @@ def ingest_unified_content_batch(
     source_value_filter: str | None = None,
     vehicle_catalog_version: int | None = None,
     vehicle_alias_bindings: tuple[tuple[UUID, str], ...] = (),
+    brand_vehicle_filter_snapshot: BrandVehicleFilterSnapshot | None = None,
 ) -> FileImportWriteSummary:
-    """在调用方事务中复用 Stage 8A 正式来源链与 Content Ingestion。"""
+    """在一个调用方事务中写 Content，并按冻结 Snapshot 协调 Brand/Vehicle Evidence。"""
 
     if input_artifact.sha256 is None:
         raise RuntimeError("File Import 输入 Artifact 缺少 SHA-256")
+    if brand_vehicle_filter_snapshot is not None and (
+        vehicle_catalog_version is not None or vehicle_alias_bindings
+    ):
+        raise ValueError("Stage 3 Brand/Vehicle Filter 与 legacy Vehicle Evidence 参数不能混用")
+
     provider_repository = PostgresProviderRepository(session)
     provider_service = ProviderPersistenceService(provider_repository)
     content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
@@ -324,6 +335,7 @@ def ingest_unified_content_batch(
         normalize_vehicle_text(alias): model_id for model_id, alias in vehicle_alias_bindings
     }
     vehicle_repository = PostgresVehicleCatalogRepository(session)
+    brand_repository = PostgresBrandVehicleRepository(session)
 
     with unified_content_path.open("rb") as handle:
         for line_number, raw_line in enumerate(handle, start=1):
@@ -392,7 +404,35 @@ def ingest_unified_content_batch(
                 }
             )
             result = content_service.ingest_content(content.model_copy(update={"source": source}))
-            if result.target_id is not None and vehicle_catalog_version is not None:
+            if result.target_id is not None and brand_vehicle_filter_snapshot is not None:
+                resolution = resolve_canonical_brand_vehicle(brand_vehicle_filter_snapshot, content)
+                if not resolution.matched:
+                    raise ValueError("过滤后 Content 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
+                for evidence in resolution.vehicle_evidence:
+                    vehicle_repository.append_evidence(
+                        ContentVehicleEvidence(
+                            id=uuid4(),
+                            content_id=result.target_id,
+                            content_version=result.version_no,
+                            vehicle_model_id=evidence.entity_id,
+                            source="import",
+                            matched_text=evidence.matched_text,
+                            source_field=evidence.source_field,
+                            catalog_version=brand_vehicle_filter_snapshot.catalog.catalog_version,
+                            confidence=1.0,
+                            is_manual_locked=False,
+                            is_active=True,
+                            created_at=beijing_now(),
+                        )
+                    )
+                brand_repository.replace_automatic_brand_evidence(
+                    content_id=result.target_id,
+                    content_version=result.version_no,
+                    evidence=resolution.brand_evidence,
+                    catalog_version=brand_vehicle_filter_snapshot.catalog.catalog_version,
+                    catalog_snapshot=brand_vehicle_filter_snapshot.catalog,
+                )
+            elif result.target_id is not None and vehicle_catalog_version is not None:
                 for alias in record.matched_vehicle_aliases:
                     model_id = vehicle_by_alias.get(normalize_vehicle_text(alias))
                     if model_id is None:

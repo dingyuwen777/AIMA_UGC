@@ -14,6 +14,7 @@ from aima_ugc.bootstrap.analysis_identity import (
     active_analysis_configuration,
     current_analysis_generation_config,
 )
+from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
@@ -21,7 +22,7 @@ from aima_ugc.bootstrap.worker import (
     create_worker_runtime,
 )
 from aima_ugc.contracts.analysis import ContentLabelAnalysisV3, ContentLabelPairV2
-from aima_ugc.contracts.http import KeywordPackCreateRequest, KeywordPackKeywordCreateRequest
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.modules.analysis import content_labeling_input_hash
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
@@ -33,6 +34,7 @@ from aima_ugc.modules.analysis.content_analysis_job import (
 from aima_ugc.modules.analysis.tables import analysis_content_run_targets_table
 from aima_ugc.modules.content.query import ContentTarget
 from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.modules.identity import Principal
 from aima_ugc.platform.jobs import JobExecutionFence
 from sqlalchemy import insert, select
 
@@ -92,18 +94,26 @@ def main() -> int:
     runtime = create_worker_runtime()
     try:
         import_service = PostgresImportHttpService(runtime)
-        pack = import_service.create_keyword_pack(
-            KeywordPackCreateRequest(name=f"Stage8F 人工复核 {uuid4()}")
-        )
-        import_service.add_keyword(
-            pack.id,
-            KeywordPackKeywordCreateRequest(text="爱玛", priority=10),
+        brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+            BrandCreateRequest(
+                code=f"AIMA-STAGE8F-{uuid4()}",
+                display_name="爱玛",
+                role="owned",
+                aliases=("爱玛",),
+            ),
+            principal=Principal(
+                principal_id="stage8f-fullstack-admin",
+                display_name="Stage8F Full-stack 管理员",
+                role="administrator",
+                source="development",
+            ),
+            request_id="stage8f-manual-review-brand",
         )
         created = import_service.create_import(
             filename=fixture.name,
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             source=BytesIO(fixture.read_bytes()),
-            keyword_pack_ids=(pack.id,),
+            brand_ids=(brand.id,),
             request_id="stage8f-manual-review-import",
         )
         import_worker = create_job_worker(

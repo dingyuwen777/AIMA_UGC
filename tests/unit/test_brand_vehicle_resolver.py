@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
+from aima_ugc.contracts.analysis import UnifiedContentRecordV1
+from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
+from aima_ugc.modules.ingestion.brand_vehicle_filter import (
+    BrandVehicleFilterSnapshot,
+    filter_canonical_content_by_brand_vehicle_jsonl,
+)
 from aima_ugc.modules.vehicles.brand_vehicle import (
     BrandAliasRecord,
     BrandRecord,
@@ -95,6 +102,25 @@ def _snapshot(*, ambiguous_brand_alias: bool = False) -> BrandVehicleCatalogSnap
                 normalized_text="露娜air",
                 created_at=NOW,
             ),
+        ),
+    )
+
+
+def _content(*, external_content_id: str, title: str) -> CanonicalContentV1:
+    return CanonicalContentV1(
+        platform="xiaohongshu",
+        external_content_id=external_content_id,
+        content_type="note",
+        title=title,
+        text=None,
+        observed_at=NOW,
+        observed_fields=("title",),
+        source=CanonicalSourceV1(
+            provider_name="imports",
+            operation="excel_import",
+            source_type="aima-monitoring-excel.v1",
+            source_value="input.xlsx",
+            observed_at=NOW,
         ),
     )
 
@@ -201,3 +227,43 @@ def test_manual_brand_lock_is_independent_from_vehicle_resolution() -> None:
     assert resolution.brand_matches == (BRAND_B,)
     assert resolution.brand_evidence[0].source == "manual_review"
     assert resolution.vehicle_evidence[0].source == "alias_match"
+
+
+def test_stage3_filter_snapshot_round_trip_preserves_frozen_catalog() -> None:
+    snapshot = BrandVehicleFilterSnapshot(catalog=_snapshot())
+
+    restored = BrandVehicleFilterSnapshot.model_validate_json(snapshot.model_dump_json())
+
+    assert restored == snapshot
+    assert restored.search_semantics == "not_applicable"
+    assert restored.catalog.filter_scope == "all_active"
+
+
+def test_stage3_jsonl_filter_uses_resolver_and_writes_only_matches(tmp_path: Path) -> None:
+    source = tmp_path / "canonical.jsonl"
+    output = tmp_path / "filtered.jsonl"
+    source.write_text(
+        "".join(
+            f"{content.model_dump_json()}\n"
+            for content in (
+                _content(external_content_id="matched", title="爱玛露娜Air 新品"),
+                _content(external_content_id="unmatched", title="普通行业资讯"),
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    summary = filter_canonical_content_by_brand_vehicle_jsonl(
+        input_path=source,
+        output_path=output,
+        snapshot=BrandVehicleFilterSnapshot(catalog=_snapshot()),
+    )
+    records = tuple(
+        UnifiedContentRecordV1.model_validate_json(line)
+        for line in output.read_text(encoding="utf-8").splitlines()
+    )
+
+    assert summary.rows_seen == 2
+    assert summary.rows_written == 1
+    assert summary.rows_filtered_out == 1
+    assert [record.content.external_content_id for record in records] == ["matched"]

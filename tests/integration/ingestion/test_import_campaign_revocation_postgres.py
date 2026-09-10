@@ -39,6 +39,8 @@ from openpyxl import Workbook
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.exc import DBAPIError
 
+from tests.integration.stage3_brand_support import stage3_filter_brand_id
+
 
 def _xlsx(rows: tuple[tuple[str, str, str | None], ...]) -> bytes:
     """生成最小 AIMA Excel；每行使用独立小红书 URL 作为稳定身份。"""
@@ -73,23 +75,6 @@ def _xlsx(rows: tuple[tuple[str, str, str | None], ...]) -> bytes:
     return output.getvalue()
 
 
-def _keyword_pack(client: TestClient) -> str:
-    """创建本测试专用词包并返回稳定 API ID。"""
-
-    created = client.post(
-        "/api/v1/keyword-packs",
-        json={"name": f"撤销集成测试 {uuid4()}"},
-    )
-    assert created.status_code == 201
-    pack_id = created.json()["id"]
-    added = client.post(
-        f"/api/v1/keyword-packs/{pack_id}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert added.status_code == 201
-    return pack_id
-
-
 def _drain(worker, *, maximum: int = 20) -> int:
     """同步执行当前测试已经入队的有限 Job，避免依赖后台调度时间。"""
 
@@ -116,7 +101,8 @@ def _runtime(tmp_path: Path, historical_root: Path):
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
         )
     return runtime
 
@@ -137,7 +123,8 @@ def _cleanup(runtime) -> None:
 
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
         )
     runtime.close()
 
@@ -160,7 +147,7 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
     runtime = _runtime(tmp_path, historical_root)
     try:
         client = _client(runtime)
-        pack_id = _keyword_pack(client)
+        brand_id = stage3_filter_brand_id(runtime)
         baseline = client.post(
             "/api/v1/import-batches",
             files=[
@@ -172,7 +159,7 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     ),
                 ),
-                ("keyword_pack_ids", (None, pack_id)),
+                ("brand_ids", (None, brand_id)),
             ],
         )
         assert baseline.status_code == 202
@@ -192,7 +179,7 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
                 "client_idempotency_key": f"revocation-{uuid4()}",
                 "relative_paths": ["campaign.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         assert created.status_code == 202
@@ -373,7 +360,7 @@ def test_revocation_restores_field_filled_by_historical_fill_only(tmp_path: Path
     runtime = _runtime(tmp_path, historical_root)
     try:
         client = _client(runtime)
-        pack_id = _keyword_pack(client)
+        brand_id = stage3_filter_brand_id(runtime)
         baseline = client.post(
             "/api/v1/import-batches",
             files=[
@@ -385,7 +372,7 @@ def test_revocation_restores_field_filled_by_historical_fill_only(tmp_path: Path
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     ),
                 ),
-                ("keyword_pack_ids", (None, pack_id)),
+                ("brand_ids", (None, brand_id)),
             ],
         )
         assert baseline.status_code == 202
@@ -404,7 +391,7 @@ def test_revocation_restores_field_filled_by_historical_fill_only(tmp_path: Path
                 "client_idempotency_key": f"revocation-fill-{uuid4()}",
                 "relative_paths": ["fill.xlsx"],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         campaign_id = UUID(created.json()["campaign_id"])

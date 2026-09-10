@@ -166,6 +166,7 @@ from aima_ugc.modules.ingestion.historical_http import (
     HistoricalImportHttpService,
 )
 from aima_ugc.modules.ingestion.http import (
+    BrandVehicleFilterUnavailable,
     ImportConflict,
     ImportCursorUnavailable,
     ImportHttpService,
@@ -583,6 +584,19 @@ def create_app(
             title="相关性配置不可用",
             detail="全局 Relevance 词包尚未配置或没有有效关键词。",
             code="relevance_config_unavailable",
+        )
+
+    @application.exception_handler(BrandVehicleFilterUnavailable)
+    async def brand_vehicle_filter_unavailable(
+        request: Request, _: BrandVehicleFilterUnavailable
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="品牌车型过滤范围不可用",
+            detail="所选品牌不存在、已停用，或其车型目录当前不可用。",
+            code="brand_vehicle_filter_unavailable",
+            field="body.brand_ids",
         )
 
     @application.exception_handler(InvalidImportCursor)
@@ -1474,6 +1488,8 @@ def create_app(
         body: HistoricalCampaignCreateRequest,
         request: Request,
     ) -> HistoricalCampaignCreatedResponse:
+        """创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。"""
+
         return current_historical_import_service().create_campaign(
             body,
             request_id=_request_id(request),
@@ -1496,6 +1512,8 @@ def create_app(
         body: LocalDataImportCampaignCreateRequest,
         request: Request,
     ) -> LocalDataImportCampaignCreatedResponse:
+        """创建本地上传 Campaign；不接受 Keyword Pack/Vehicle Model 过滤字段。"""
+
         return current_historical_import_service().create_local_campaign(
             body,
             request_id=_request_id(request),
@@ -1771,38 +1789,31 @@ def create_app(
     async def create_import_batch(
         request: Request,
         file: Annotated[UploadFile, File()],
-        keyword_pack_ids: Annotated[tuple[UUID, ...], Form()] = (),
-        vehicle_model_ids: Annotated[tuple[UUID, ...], Form()] = (),
+        brand_ids: Annotated[tuple[UUID, ...], Form()] = (),
     ) -> ImportBatchCreatedResponse:
+        """Excel Search 不适用；空 Brand Scope 表示冻结全部 active Brand。"""
+
         form = await request.form()
         items = list(form.multi_items())
-        allowed = {"file", "keyword_pack_ids", "vehicle_model_ids"}
+        allowed = {"file", "brand_ids"}
         file_items = [value for key, value in items if key == "file"]
-        pack_items = [value for key, value in items if key == "keyword_pack_ids"]
-        vehicle_items = [value for key, value in items if key == "vehicle_model_ids"]
+        brand_items = [value for key, value in items if key == "brand_ids"]
         if (
             any(key not in allowed for key, _ in items)
             or len(file_items) != 1
             or file_items[0] is not file
-            or len(pack_items) != len(keyword_pack_ids)
-            or len(vehicle_items) != len(vehicle_model_ids)
-            or not keyword_pack_ids
-            and not vehicle_model_ids
-            or len(keyword_pack_ids) > 20
-            or len(vehicle_model_ids) > 100
-            or len(keyword_pack_ids) != len(set(keyword_pack_ids))
-            or len(vehicle_model_ids) != len(set(vehicle_model_ids))
+            or len(brand_items) != len(brand_ids)
+            or len(brand_ids) > 100
+            or len(brand_ids) != len(set(brand_ids))
         ):
             raise RequestValidationError(
                 [
                     {
                         "type": "value_error",
-                        "loc": ("body", "keyword_pack_ids"),
-                        "msg": "multipart 必须包含一个 file，并至少选择词包或车型",
+                        "loc": ("body", "brand_ids"),
+                        "msg": "multipart 只允许一个 file 与不重复的 brand_ids",
                         "input": None,
-                        "ctx": {
-                            "error": ValueError("multipart 必须包含一个 file，并至少选择词包或车型")
-                        },
+                        "ctx": {"error": ValueError("非法 Excel Brand Filter")},
                     }
                 ]
             )
@@ -1813,8 +1824,7 @@ def create_app(
                     filename=file.filename or "",
                     content_type=file.content_type,
                     source=file.file,
-                    keyword_pack_ids=tuple(keyword_pack_ids),
-                    vehicle_model_ids=tuple(vehicle_model_ids),
+                    brand_ids=tuple(brand_ids),
                     request_id=_request_id(request),
                 )
             )

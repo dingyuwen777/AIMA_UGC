@@ -945,28 +945,19 @@
       },
       "Body_createImportBatch": {
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "file": {
             "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
-          },
-          "keyword_pack_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Keyword Pack Ids",
-            "type": "array"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -5613,6 +5604,16 @@
       "HistoricalCampaignCreateRequest": {
         "additionalProperties": false,
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "client_idempotency_key": {
             "maxLength": 128,
             "minLength": 1,
@@ -5623,16 +5624,6 @@
           "ingestion_policy": {
             "$ref": "#/components/schemas/DataImportIngestionPolicy",
             "default": "historical_fill_only"
-          },
-          "keyword_pack_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 20,
-            "title": "Keyword Pack Ids",
-            "type": "array"
           },
           "profile": {
             "const": "aima-monitoring-excel.v1",
@@ -5652,16 +5643,6 @@
             "maxItems": 1000,
             "minItems": 1,
             "title": "Relative Paths",
-            "type": "array"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
             "type": "array"
           }
         },
@@ -7096,6 +7077,16 @@
         "additionalProperties": false,
         "description": "建立本地文件暂存 Campaign；文件字节随后按 Item 分别流式上传。",
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "client_idempotency_key": {
             "maxLength": 128,
             "minLength": 1,
@@ -7116,31 +7107,11 @@
             "$ref": "#/components/schemas/DataImportIngestionPolicy",
             "default": "standard_observation"
           },
-          "keyword_pack_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 20,
-            "title": "Keyword Pack Ids",
-            "type": "array"
-          },
           "profile": {
             "const": "aima-monitoring-excel.v1",
             "default": "aima-monitoring-excel.v1",
             "title": "Profile",
             "type": "string"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -11918,6 +11889,7 @@
     },
     "/api/v1/data-import-campaigns/local": {
       "post": {
+        "description": "创建本地上传 Campaign；不接受 Keyword Pack/Vehicle Model 过滤字段。",
         "operationId": "createLocalDataImportCampaign",
         "requestBody": {
           "content": {
@@ -11989,6 +11961,7 @@
     },
     "/api/v1/data-import-campaigns/server": {
       "post": {
+        "description": "创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。",
         "operationId": "createServerDataImportCampaign",
         "requestBody": {
           "content": {
@@ -13008,6 +12981,7 @@
         ]
       },
       "post": {
+        "description": "创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。",
         "operationId": "createHistoricalImportCampaign",
         "requestBody": {
           "content": {
@@ -13754,6 +13728,7 @@
         ]
       },
       "post": {
+        "description": "Excel Search 不适用；空 Brand Scope 表示冻结全部 active Brand。",
         "operationId": "createImportBatch",
         "requestBody": {
           "content": {

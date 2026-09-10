@@ -9,7 +9,6 @@ import type {
   HistoricalCampaignStatus,
 } from '../../../../../generated/api/client'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
-import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import { createClientIdempotencyKey } from '../../../../../shared/idempotency'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
@@ -32,8 +31,6 @@ const sourceKind = ref<SourceKind>('local_upload')
 const ingestionPolicy = ref<DataImportIngestionPolicy>('standard_observation')
 const selectedLocalFiles = ref<DataImportLocalFileSelection[]>([])
 const selectedPaths = ref<string[]>([])
-const selectedPackIds = ref<string[]>([])
-const selectedVehicleIds = ref<string[]>([])
 const validationError = ref<string | null>(null)
 const notice = ref<string | null>(null)
 const revocationReason = ref('')
@@ -91,8 +88,7 @@ const canCreate = computed(
   () =>
     !store.loadingHistorical &&
     !store.creatingHistorical &&
-    sourceSelectionReady.value &&
-    (selectedPackIds.value.length > 0 || selectedVehicleIds.value.length > 0),
+    sourceSelectionReady.value,
 )
 const canCancel = computed(() =>
   ['uploading', 'discovering', 'snapshotting', 'ready', 'queued', 'running', 'cancelling'].includes(
@@ -193,8 +189,6 @@ watch(
     ingestionPolicy.value = 'standard_observation'
     selectedLocalFiles.value = []
     selectedPaths.value = []
-    selectedPackIds.value = []
-    selectedVehicleIds.value = []
     revocationReason.value = ''
     revocationConfirmationOpen.value = false
     confirmedRevocationPreview.value = null
@@ -284,11 +278,6 @@ function togglePath(path: string): void {
     : [...selectedPaths.value, path]
 }
 
-function togglePack(packId: string): void {
-  selectedPackIds.value = selectedPackIds.value.includes(packId)
-    ? selectedPackIds.value.filter((item) => item !== packId)
-    : [...selectedPackIds.value, packId]
-}
 
 async function createCampaign(): Promise<void> {
   if (!canCreate.value) return
@@ -296,8 +285,6 @@ async function createCampaign(): Promise<void> {
   if (sourceKind.value === 'local_upload') {
     const campaign = await store.submitLocalCampaign(
       selectedLocalFiles.value,
-      selectedPackIds.value,
-      selectedVehicleIds.value,
       ingestionPolicy.value,
     )
     if (campaign) notice.value = '文件上传完成，服务器正在准备并预检数据。'
@@ -306,8 +293,7 @@ async function createCampaign(): Promise<void> {
   const created = await store.submitHistoricalCampaign({
     client_idempotency_key: createClientIdempotencyKey(),
     relative_paths: selectedPaths.value,
-    keyword_pack_ids: selectedPackIds.value,
-    vehicle_model_ids: selectedVehicleIds.value,
+    brand_ids: [],
     recursive: recursive.value,
     profile: 'aima-monitoring-excel.v1',
     ingestion_policy: ingestionPolicy.value,
@@ -389,7 +375,7 @@ function viewCampaignContents(): void {
             <h2 id="data-import-title">
               导入数据
             </h2>
-            <p>从本地电脑或服务器批准目录创建导入任务，并按词包与车型规则完成预检；预检通过后再确认开始入库。</p>
+            <p>从本地电脑或服务器批准目录创建导入任务；当前按创建时冻结的全部已启用品牌目录完成预检，预检通过后再确认开始入库。</p>
           </div>
           <AimaButton
             variant="text"
@@ -610,42 +596,9 @@ function viewCampaignContents(): void {
               </label>
             </section>
 
-            <section class="pack-panel">
-              <strong>关键词包（与车型至少选择一项）</strong>
-              <p
-                v-if="store.loadingHistorical"
-                class="empty-state"
-              >
-                正在读取关键词包…
-              </p>
-              <p
-                v-else-if="store.keywordPackOptions.length === 0"
-                class="empty-state"
-              >
-                当前没有可用的关键词包，请先在采集策略中创建并启用。
-              </p>
-              <div class="pack-list">
-                <label
-                  v-for="pack in store.keywordPackOptions"
-                  :key="pack.id"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="selectedPackIds.includes(pack.id)"
-                    :disabled="store.creatingHistorical"
-                    @change="togglePack(pack.id)"
-                  >
-                  <span><b>{{ pack.name }}</b><small>{{ pack.keyword_count }} 个关键词 · v{{ pack.version }}</small></span>
-                </label>
-              </div>
-              <small class="pack-help">选项只展示当前已启用且可用的词包</small>
-            </section>
-
-            <VehicleMultiSelect
-              v-model="selectedVehicleIds"
-              label="车型（与词包统一筛选，可多选）"
-              :disabled="store.creatingHistorical"
-            />
+            <AimaFeedbackBanner tone="info">
+              Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件；当前按创建时全部已启用品牌冻结过滤范围。品牌范围选择器将在后续前端阶段补齐。
+            </AimaFeedbackBanner>
 
             <AimaFeedbackBanner tone="info">
               创建后先完成来源确认、数据快照与预检；AI 不会自动执行，智能分析需要在分析入口手动创建。

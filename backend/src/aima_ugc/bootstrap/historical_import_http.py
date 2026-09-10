@@ -15,6 +15,7 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.historical_cancellation import (
     PostgresHistoricalCancellationRepository,
 )
@@ -48,6 +49,7 @@ from aima_ugc.contracts.http import (
     LocalDataImportFileUploadedResponse,
     LocalDataImportUploadItemResponse,
 )
+from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.historical_directory import (
     HistoricalDirectoryBrowser,
     HistoricalDirectoryUnavailable,
@@ -66,13 +68,16 @@ from aima_ugc.modules.ingestion.historical_jobs import (
     HISTORICAL_JOB_PRIORITY,
     HistoricalDiscoverJobPayload,
 )
-from aima_ugc.modules.ingestion.http import ImportUploadTooLarge, InvalidImportFile
+from aima_ugc.modules.ingestion.http import (
+    BrandVehicleFilterUnavailable,
+    ImportUploadTooLarge,
+    InvalidImportFile,
+)
 from aima_ugc.modules.ingestion.xlsx_security import MAX_XLSX_FILE_BYTES
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactSizeLimitError
 from aima_ugc.platform.time import beijing_now
 
-from .import_http import read_import_keyword_selection
 from .runtime import PlatformRuntime
 
 
@@ -122,6 +127,8 @@ class PostgresHistoricalImportHttpService:
         *,
         request_id: str,
     ) -> HistoricalCampaignCreatedResponse:
+        """服务端目录 Campaign 冻结 Brand Scope；Excel Search 明确不适用。"""
+
         try:
             for relative_path in request.relative_paths:
                 self._browser.resolve(relative_path)
@@ -129,9 +136,7 @@ class PostgresHistoricalImportHttpService:
             raise HistoricalDirectoryRequestInvalid from exc
         except InvalidHistoricalRelativePath as exc:
             raise HistoricalDirectoryRequestInvalid from exc
-        selection = read_import_keyword_selection(
-            self._runtime, request.keyword_pack_ids, request.vehicle_model_ids
-        )
+        filter_snapshot = self._read_brand_vehicle_filter_snapshot(request.brand_ids)
         profile_snapshot: dict[str, object] = {
             "schema_version": "historical-import-profile.v1",
             "profile": request.profile,
@@ -139,9 +144,11 @@ class PostgresHistoricalImportHttpService:
             "chunk_rows": self._runtime.settings.historical_chunk_rows,
             "max_in_flight_jobs": self._runtime.settings.historical_max_in_flight_jobs,
         }
-        keyword_snapshot = cast(
+        # 兼容期复用既有 JSONB 列承载版本化 Snapshot；schema_version 决定语义。
+        # Stage 7 再清理旧列名。
+        filter_snapshot_json = cast(
             dict[str, object],
-            selection.model_dump(mode="json"),
+            filter_snapshot.model_dump(mode="json"),
         )
         campaign_id = uuid4()
         session = self._runtime.database.new_session()
@@ -156,13 +163,13 @@ class PostgresHistoricalImportHttpService:
                     ),
                     recursive=request.recursive,
                     profile_snapshot=profile_snapshot,
-                    keyword_pack_snapshot=keyword_snapshot,
+                    keyword_pack_snapshot=filter_snapshot_json,
                     source_kind="server_path",
                     ingestion_policy=request.ingestion_policy,
                 )
                 if (
                     campaign["profile_snapshot"] != profile_snapshot
-                    or campaign["keyword_pack_snapshot"] != keyword_snapshot
+                    or campaign["keyword_pack_snapshot"] != filter_snapshot_json
                     or campaign["recursive"] != request.recursive
                     or campaign["source_kind"] != "server_path"
                     or campaign["ingestion_policy"] != request.ingestion_policy
@@ -188,6 +195,8 @@ class PostgresHistoricalImportHttpService:
                     detail={
                         "path_count": len(request.relative_paths),
                         "recursive": request.recursive,
+                        "brand_filter_scope": filter_snapshot.catalog.filter_scope,
+                        "selected_brand_count": len(filter_snapshot.catalog.selected_brand_ids),
                     },
                 )
                 return HistoricalCampaignCreatedResponse(
@@ -205,9 +214,9 @@ class PostgresHistoricalImportHttpService:
         *,
         request_id: str,
     ) -> LocalDataImportCampaignCreatedResponse:
-        selection = read_import_keyword_selection(
-            self._runtime, request.keyword_pack_ids, request.vehicle_model_ids
-        )
+        """本地上传 Campaign 冻结同一 Brand Scope，不建立第二套过滤语义。"""
+
+        filter_snapshot = self._read_brand_vehicle_filter_snapshot(request.brand_ids)
         files = tuple((item.relative_path, item.byte_size) for item in request.files)
         profile_snapshot: dict[str, object] = {
             "schema_version": "data-import-profile.v2",
@@ -220,7 +229,10 @@ class PostgresHistoricalImportHttpService:
             "chunk_rows": self._runtime.settings.historical_chunk_rows,
             "max_in_flight_jobs": self._runtime.settings.historical_max_in_flight_jobs,
         }
-        keyword_snapshot = cast(dict[str, object], selection.model_dump(mode="json"))
+        filter_snapshot_json = cast(
+            dict[str, object],
+            filter_snapshot.model_dump(mode="json"),
+        )
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -231,7 +243,7 @@ class PostgresHistoricalImportHttpService:
                     root_relative_path="",
                     recursive=True,
                     profile_snapshot=profile_snapshot,
-                    keyword_pack_snapshot=keyword_snapshot,
+                    keyword_pack_snapshot=filter_snapshot_json,
                     source_kind="local_upload",
                     ingestion_policy=request.ingestion_policy,
                     declared_file_count=len(files),
@@ -239,7 +251,7 @@ class PostgresHistoricalImportHttpService:
                 )
                 if (
                     campaign["profile_snapshot"] != profile_snapshot
-                    or campaign["keyword_pack_snapshot"] != keyword_snapshot
+                    or campaign["keyword_pack_snapshot"] != filter_snapshot_json
                     or campaign["source_kind"] != "local_upload"
                     or campaign["ingestion_policy"] != request.ingestion_policy
                     or campaign["declared_file_count"] != len(files)
@@ -262,6 +274,8 @@ class PostgresHistoricalImportHttpService:
                     detail={
                         "file_count": len(files),
                         "ingestion_policy": request.ingestion_policy,
+                        "brand_filter_scope": filter_snapshot.catalog.filter_scope,
+                        "selected_brand_count": len(filter_snapshot.catalog.selected_brand_ids),
                     },
                 )
                 return LocalDataImportCampaignCreatedResponse(
@@ -276,6 +290,27 @@ class PostgresHistoricalImportHttpService:
                 )
         except HistoricalCampaignConflict as exc:
             raise HistoricalCampaignStateConflict from exc
+        finally:
+            session.close()
+
+    def _read_brand_vehicle_filter_snapshot(
+        self,
+        brand_ids: tuple[UUID, ...],
+    ) -> BrandVehicleFilterSnapshot:
+        """通过 Stage 2 Catalog Lock 读取并冻结 Filter Snapshot。"""
+
+        if len(brand_ids) > 100 or len(brand_ids) != len(set(brand_ids)):
+            raise BrandVehicleFilterUnavailable
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                try:
+                    catalog = PostgresBrandVehicleRepository(session).snapshot(
+                        brand_ids=brand_ids or None
+                    )
+                except (LookupError, ValueError) as exc:
+                    raise BrandVehicleFilterUnavailable from exc
+                return BrandVehicleFilterSnapshot(catalog=catalog)
         finally:
             session.close()
 

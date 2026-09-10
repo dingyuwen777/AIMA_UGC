@@ -102,13 +102,11 @@ export async function fetchImportBatchDetail(batchId: string): Promise<ImportBat
 
 export async function uploadImportBatch(
   file: File,
-  keywordPackIds: string[],
-  vehicleModelIds: string[] = [],
+  brandIds: string[] = [],
 ): Promise<ImportBatchCreatedResponse> {
   return unwrap(await createImportBatch({
     file,
-    keyword_pack_ids: keywordPackIds,
-    vehicle_model_ids: vehicleModelIds,
+    brand_ids: brandIds,
   }))
 }
 

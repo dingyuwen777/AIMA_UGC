@@ -20,6 +20,7 @@ from aima_ugc.contracts.http import (
     LocalDataImportFileUploadedResponse,
 )
 from aima_ugc.modules.ingestion.historical_http import HistoricalCampaignStateConflict
+from aima_ugc.modules.ingestion.http import BrandVehicleFilterUnavailable
 from fastapi.testclient import TestClient
 
 CAMPAIGN_ID = UUID("10000000-0000-0000-0000-000000000001")
@@ -168,7 +169,7 @@ def test_historical_import_routes_form_one_campaign_lifecycle() -> None:
             "client_idempotency_key": "campaign-1",
             "relative_paths": ["history"],
             "recursive": True,
-            "keyword_pack_ids": ["30000000-0000-0000-0000-000000000001"],
+            "brand_ids": ["30000000-0000-0000-0000-000000000001"],
         },
     )
     detail = client.get(f"/api/v1/historical-import-campaigns/{CAMPAIGN_ID}")
@@ -198,7 +199,7 @@ def test_unified_data_import_routes_stage_local_files_before_common_preflight() 
         json={
             "client_idempotency_key": "local-campaign-1",
             "files": [{"relative_path": "folder/a.xlsx", "byte_size": 4}],
-            "keyword_pack_ids": ["30000000-0000-0000-0000-000000000001"],
+            "brand_ids": ["30000000-0000-0000-0000-000000000001"],
             "ingestion_policy": "standard_observation",
         },
     )
@@ -239,6 +240,31 @@ def test_historical_start_conflict_is_stable_409() -> None:
 
     assert response.status_code == 409
     assert response.json()["errors"][0]["code"] == "historical_campaign_state_conflict"
+
+
+def test_historical_create_uses_brand_vehicle_filter_error_contract() -> None:
+    class ErrorService(_FakeHistoricalService):
+        def create_campaign(
+            self,
+            request: HistoricalCampaignCreateRequest,
+            *,
+            request_id: str,
+        ) -> HistoricalCampaignCreatedResponse:
+            del request, request_id
+            raise BrandVehicleFilterUnavailable
+
+    response = TestClient(create_app(historical_import_service=ErrorService())).post(
+        "/api/v1/historical-import-campaigns",
+        json={
+            "client_idempotency_key": "campaign-invalid-brand",
+            "relative_paths": ["history"],
+            "brand_ids": ["30000000-0000-0000-0000-000000000001"],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["errors"][0]["code"] == "brand_vehicle_filter_unavailable"
+    assert response.json()["errors"][0]["field"] == "body.brand_ids"
 
 
 def test_historical_paths_reject_escape_before_service() -> None:

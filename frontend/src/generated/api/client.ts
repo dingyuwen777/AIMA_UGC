@@ -345,9 +345,8 @@ export interface AuditEventListResponse {
 }
 
 export interface BodyCreateImportBatch {
+  brand_ids?: string[];
   file: Blob;
-  keyword_pack_ids?: string[];
-  vehicle_model_ids?: string[];
 }
 
 export interface BodyUploadLocalDataImportFile {
@@ -1835,6 +1834,8 @@ export interface HistoricalCampaignConflictListResponse {
 }
 
 export interface HistoricalCampaignCreateRequest {
+  /** @maxItems 100 */
+  brand_ids?: string[];
   /**
      * @minLength 1
      * @maxLength 128
@@ -1842,8 +1843,6 @@ export interface HistoricalCampaignCreateRequest {
      */
   client_idempotency_key: string;
   ingestion_policy?: DataImportIngestionPolicy;
-  /** @maxItems 20 */
-  keyword_pack_ids?: string[];
   profile?: 'aima-monitoring-excel.v1';
   recursive?: boolean;
   /**
@@ -1851,8 +1850,6 @@ export interface HistoricalCampaignCreateRequest {
      * @maxItems 1000
      */
   relative_paths: string[];
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 export interface HistoricalCampaignCreatedResponse {
@@ -2277,6 +2274,8 @@ export interface LocalDataImportFileManifest {
  * 建立本地文件暂存 Campaign；文件字节随后按 Item 分别流式上传。
  */
 export interface LocalDataImportCampaignCreateRequest {
+  /** @maxItems 100 */
+  brand_ids?: string[];
   /**
      * @minLength 1
      * @maxLength 128
@@ -2289,11 +2288,7 @@ export interface LocalDataImportCampaignCreateRequest {
      */
   files: LocalDataImportFileManifest[];
   ingestion_policy?: DataImportIngestionPolicy;
-  /** @maxItems 20 */
-  keyword_pack_ids?: string[];
   profile?: 'aima-monitoring-excel.v1';
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 /**
@@ -4543,6 +4538,7 @@ export const getCreateLocalDataImportCampaignUrl = () => {
 }
 
 /**
+ * 创建本地上传 Campaign；不接受 Keyword Pack/Vehicle Model 过滤字段。
  * @summary Create Local Data Import Campaign
  */
 export const createLocalDataImportCampaign = async (localDataImportCampaignCreateRequest: LocalDataImportCampaignCreateRequest, options?: RequestInit): Promise<LocalDataImportCampaignCreatedResponse> => {
@@ -4574,6 +4570,7 @@ export const getCreateServerDataImportCampaignUrl = () => {
 }
 
 /**
+ * 创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。
  * @summary Create Historical Import Campaign
  */
 export const createServerDataImportCampaign = async (historicalCampaignCreateRequest: HistoricalCampaignCreateRequest, options?: RequestInit): Promise<HistoricalCampaignCreatedResponse> => {
@@ -5054,6 +5051,7 @@ export const getCreateHistoricalImportCampaignUrl = () => {
 }
 
 /**
+ * 创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。
  * @summary Create Historical Import Campaign
  */
 export const createHistoricalImportCampaign = async (historicalCampaignCreateRequest: HistoricalCampaignCreateRequest, options?: RequestInit): Promise<HistoricalCampaignCreatedResponse> => {
@@ -5347,17 +5345,15 @@ export const getCreateImportBatchUrl = () => {
 }
 
 /**
+ * Excel Search 不适用；空 Brand Scope 表示冻结全部 active Brand。
  * @summary Create Import Batch
  */
 export const createImportBatch = async (bodyCreateImportBatch: BodyCreateImportBatch, options?: RequestInit): Promise<ImportBatchCreatedResponse> => {
     const formData = new FormData();
+if(bodyCreateImportBatch.brand_ids !== undefined) {
+ bodyCreateImportBatch.brand_ids.forEach(value => formData.append(`brand_ids`, value));
+ }
 formData.append(`file`, bodyCreateImportBatch.file);
-if(bodyCreateImportBatch.keyword_pack_ids !== undefined) {
- bodyCreateImportBatch.keyword_pack_ids.forEach(value => formData.append(`keyword_pack_ids`, value));
- }
-if(bodyCreateImportBatch.vehicle_model_ids !== undefined) {
- bodyCreateImportBatch.vehicle_model_ids.forEach(value => formData.append(`vehicle_model_ids`, value));
- }
 
   const res = await fetch(getCreateImportBatchUrl(),
   {

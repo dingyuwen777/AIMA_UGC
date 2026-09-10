@@ -51,6 +51,10 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import func, select
 
+from tests.integration.stage3_brand_support import (
+    stage3_filter_brand_id as _stage3_filter_brand_id,
+)
+
 
 def _xlsx() -> bytes:
     """生成三条固定 Content 的最小 Excel Fixture。"""
@@ -115,13 +119,7 @@ def _client(runtime) -> TestClient:  # type: ignore[no-untyped-def]
 def _seed_contents(client: TestClient, runtime) -> tuple[UUID, ...]:  # type: ignore[no-untyped-def]
     """通过正式 Excel Import + Worker 链写入三条 Content，并返回稳定排序后的 ID。"""
 
-    pack = client.post("/api/v1/keyword-packs", json={"name": f"CHG314 Review {uuid4()}"})
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "CHG314", "priority": 10},
-    )
-    assert keyword.status_code == 201
+    brand_id = _stage3_filter_brand_id(runtime, alias="CHG314")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -133,7 +131,7 @@ def _seed_contents(client: TestClient, runtime) -> tuple[UUID, ...]:  # type: ig
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202

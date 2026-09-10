@@ -3,32 +3,14 @@ import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
+import { ensureStage3FilterBrand } from './stage3-brand-support'
 
 const execFileAsync = promisify(execFile)
-
-interface KeywordPackFixture {
-  id: string
-  name: string
-}
-
-async function createKeywordPack(request: APIRequestContext): Promise<KeywordPackFixture> {
-  const name = `Stage12 Full-stack ${Date.now()}`
-  const created = await request.post('/api/v1/keyword-packs', {
-    data: {
-      name,
-      keywords: [{ text: '爱玛', priority: 10, enabled: true }],
-    },
-  })
-  expect(created.status()).toBe(201)
-  const pack = await created.json() as { id: string; keywords: { text: string }[] }
-  expect(pack.keywords.map((item) => item.text)).toEqual(['爱玛'])
-  return { id: pack.id, name }
-}
 
 async function uploadBaseline(
   request: APIRequestContext,
   fixturePath: string,
-  packId: string,
+  brandId: string,
 ): Promise<void> {
   const created = await request.post('/api/v1/import-batches', {
     multipart: {
@@ -37,7 +19,7 @@ async function uploadBaseline(
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         buffer: await readFile(fixturePath),
       },
-      keyword_pack_ids: packId,
+      brand_ids: brandId,
     },
   })
   expect(created.status()).toBe(202)
@@ -279,8 +261,8 @@ async function revokeHistoricalCampaign(
 test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入库，并保留 selected/all Analysis Run', async ({ page, request }) => {
   const ordinaryFixture = process.env.AIMA_STAGE12_ORDINARY_FIXTURE
   expect(ordinaryFixture, 'AIMA_STAGE12_ORDINARY_FIXTURE 必须指向普通导入 Fixture').toBeTruthy()
-  const pack = await createKeywordPack(request)
-  await uploadBaseline(request, ordinaryFixture!, pack.id)
+  const brand = await ensureStage3FilterBrand(request)
+  await uploadBaseline(request, ordinaryFixture!, brand.id)
 
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
@@ -288,7 +270,7 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await migration.getByRole('button', { name: '服务器目录', exact: true }).click()
   await migration.getByRole('radio', { name: /历史补空/ }).check()
   await migration.getByLabel('选择 history.xlsx').check()
-  await migration.getByLabel(new RegExp(pack.name)).check()
+  await expect(migration).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
   const campaignResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return url.pathname === '/api/v1/data-import-campaigns/server'

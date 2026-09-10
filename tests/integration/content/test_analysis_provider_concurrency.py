@@ -45,6 +45,10 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import func, select, text, update
 
+from tests.integration.stage3_brand_support import (
+    stage3_filter_brand_id as _stage3_filter_brand_id,
+)
+
 
 class _ConcurrentFakeLLM:
     """请求阻塞到指定并发峰值后统一释放。"""
@@ -219,13 +223,7 @@ def _client(runtime) -> TestClient:  # type: ignore[no-untyped-def]
 def _seed_contents(client: TestClient, runtime, *, row_count: int = 8) -> tuple[UUID, ...]:  # type: ignore[no-untyped-def]
     """通过正式 Excel Import + Worker 链写入指定数量的 Content。"""
 
-    pack = client.post("/api/v1/keyword-packs", json={"name": f"Concurrency {uuid4()}"})
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert keyword.status_code == 201
+    brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -237,7 +235,7 @@ def _seed_contents(client: TestClient, runtime, *, row_count: int = 8) -> tuple[
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202

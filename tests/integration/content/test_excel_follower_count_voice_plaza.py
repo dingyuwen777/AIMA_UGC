@@ -26,6 +26,10 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import insert, select, update
 
+from tests.integration.stage3_brand_support import (
+    stage3_filter_brand_id as _stage3_filter_brand_id,
+)
+
 
 def _follower_workbook() -> bytes:
     """构造包含粉丝数、零值和缺失值的正式 Excel Import 输入。"""
@@ -62,19 +66,10 @@ def _follower_workbook() -> bytes:
     return output.getvalue()
 
 
-def _import_workbook(client: TestClient) -> None:
-    """通过正式 HTTP Import 与冻结词包配置提交测试 Excel。"""
+def _import_workbook(client: TestClient, runtime) -> None:  # type: ignore[no-untyped-def]
+    """通过正式 HTTP Import 与冻结品牌过滤范围提交测试 Excel。"""
 
-    pack = client.post(
-        "/api/v1/keyword-packs",
-        json={"name": f"Excel 粉丝数 {uuid4()}"},
-    )
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert keyword.status_code == 201
+    brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -86,7 +81,7 @@ def _import_workbook(client: TestClient) -> None:
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202
@@ -107,7 +102,7 @@ def test_excel_follower_count_is_persisted_visible_sortable_and_account_current_
                 "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
             )
         client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _import_workbook(client)
+        _import_workbook(client, runtime)
         worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),

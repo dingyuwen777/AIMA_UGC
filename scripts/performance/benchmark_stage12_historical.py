@@ -17,13 +17,17 @@ from uuid import uuid4
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap.api import create_app
+from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
+from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
+from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.historical_jobs import (
     HISTORICAL_DISCOVER_JOB_TYPE,
     HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
@@ -141,7 +145,7 @@ def run_benchmark(
                 historical_import_service=PostgresHistoricalImportHttpService(runtime),
             )
         )
-        pack_id = _create_keyword_pack(client)
+        brand_id = _create_capacity_brand(runtime)
 
         benchmark_started = time.perf_counter()
         cpu_started = time.process_time()
@@ -151,7 +155,7 @@ def run_benchmark(
                 "client_idempotency_key": f"stage12-capacity-{uuid4()}",
                 "relative_paths": [path.name for path in source_files],
                 "recursive": False,
-                "keyword_pack_ids": [pack_id],
+                "brand_ids": [brand_id],
             },
         )
         _require_status(created, 202, "创建容量 Campaign")
@@ -336,19 +340,23 @@ def _write_fixture(root: Path, *, row_count: int, rows_per_file: int) -> tuple[P
     return tuple(files)
 
 
-def _create_keyword_pack(client: TestClient) -> str:
-    created = client.post(
-        "/api/v1/keyword-packs",
-        json={"name": f"Stage12 容量基准 {uuid4()}"},
+def _create_capacity_brand(runtime: PlatformRuntime) -> str:
+    brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+        BrandCreateRequest(
+            code=f"STAGE12-CAPACITY-{uuid4()}",
+            display_name="爱玛",
+            role="owned",
+            aliases=("爱玛",),
+        ),
+        principal=Principal(
+            principal_id="stage12-capacity",
+            display_name="Stage12 容量基准管理员",
+            role="administrator",
+            source="development",
+        ),
+        request_id=f"stage12-capacity-brand-{uuid4()}",
     )
-    _require_status(created, 201, "创建容量关键词包")
-    pack_id = created.json()["id"]
-    added = client.post(
-        f"/api/v1/keyword-packs/{pack_id}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    _require_status(added, 201, "创建容量关键词")
-    return str(pack_id)
+    return str(brand.id)
 
 
 def _drain_until(
@@ -526,7 +534,8 @@ def _reset_capacity_database(runtime: Any) -> None:
         raise RuntimeError("拒绝清理非专用容量数据库")
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, audit_events "
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts, "
+            "audit_events "
             "RESTART IDENTITY CASCADE"
         )
 

@@ -71,6 +71,10 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import delete, func, insert, select, update
 
+from tests.integration.stage3_brand_support import (
+    stage3_filter_brand_id as _stage3_filter_brand_id,
+)
+
 
 def _xlsx(*, text_suffix: str = "") -> bytes:
     workbook = Workbook()
@@ -104,8 +108,12 @@ def _xlsx(*, text_suffix: str = "") -> bytes:
 
 
 def _seed_import(
-    client: TestClient, *, text_suffix: str = "", workbook: bytes | None = None
-) -> str:
+    client: TestClient,
+    runtime,
+    *,
+    text_suffix: str = "",
+    workbook: bytes | None = None,
+) -> str:  # type: ignore[no-untyped-def]
     """通过正式导入入口建立列表测试来源。"""
     pack = client.post(
         "/api/v1/keyword-packs",
@@ -122,6 +130,7 @@ def _seed_import(
         json={"keyword_pack_id": pack.json()["id"]},
     )
     assert configured.status_code == 200
+    brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -133,7 +142,7 @@ def _seed_import(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202
@@ -173,7 +182,7 @@ def test_voice_plaza_global_sort_pagination_and_nulls(
         workbook.save(output)
         workbook.close()
         client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _seed_import(client, workbook=output.getvalue())
+        _seed_import(client, runtime, workbook=output.getvalue())
         worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -371,7 +380,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
     try:
         import_service = PostgresImportHttpService(runtime)
         import_client = TestClient(create_app(import_service=import_service))
-        batch_id = _seed_import(import_client)
+        batch_id = _seed_import(import_client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -589,7 +598,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             for item in reviewed_options.labels
         )
 
-        second_batch_id = _seed_import(import_client, text_suffix="，后续来源更新")
+        second_batch_id = _seed_import(import_client, runtime, text_suffix="，后续来源更新")
         assert second_batch_id != batch_id
         second_import_worker = create_job_worker(
             runtime=runtime,
@@ -657,7 +666,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
         )
     try:
         import_client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _seed_import(import_client)
+        _seed_import(import_client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -773,7 +782,7 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
         )
     try:
         client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _seed_import(client)
+        _seed_import(client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),

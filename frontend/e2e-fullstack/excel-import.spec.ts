@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { ensureStage3FilterBrand } from './stage3-brand-support'
 
 const importedTitle = '爱玛 Stage8F 浏览器真实导入'
 
@@ -38,7 +39,6 @@ async function configureGlobalRelevance(
 async function uploadExcel(
   page: Page,
   fixturePath: string,
-  packs: KeywordPackFixture[],
   options: { startImport?: boolean } = {},
 ): Promise<string> {
   await page.goto('/collection-runtime')
@@ -47,9 +47,7 @@ async function uploadExcel(
   const dialog = page.getByRole('dialog', { name: '导入数据' })
   await expect(dialog).toBeVisible()
   await dialog.locator('input[type="file"]').first().setInputFiles(fixturePath)
-  for (const pack of packs) {
-    await dialog.getByLabel(new RegExp(pack.name)).check()
-  }
+  await expect(dialog).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
   const createdResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
@@ -65,13 +63,13 @@ async function uploadExcel(
   return created.campaign_id
 }
 
-test('Excel 浏览器多选词包后经过真实 API、Worker 和 PostgreSQL 可在声音广场查看', async ({ page, request }) => {
+test('Excel 浏览器使用全部已启用品牌快照后经过真实 API、Worker 和 PostgreSQL 可在声音广场查看', async ({ page, request }) => {
   const fixturePath = process.env.AIMA_STAGE8F_EXCEL_FIXTURE
   expect(fixturePath, 'AIMA_STAGE8F_EXCEL_FIXTURE 必须指向测试 Excel fixture').toBeTruthy()
   const brandPack = await createKeywordPack(request, 'brand', '爱玛')
-  const modelPack = await createKeywordPack(request, 'model', '黑翼')
+  await ensureStage3FilterBrand(request)
   await configureGlobalRelevance(request, brandPack.id)
-  const campaignId = await uploadExcel(page, fixturePath!, [brandPack, modelPack])
+  const campaignId = await uploadExcel(page, fixturePath!)
 
   const detail = page.getByRole('dialog', { name: '导入数据' })
   await expect(detail.locator('.campaign-status')).toHaveText('导入完成', { timeout: 60_000 })
@@ -89,8 +87,9 @@ test('错误表头 Excel 由统一链路在预检阶段拒绝', async ({ page, r
   const fixturePath = process.env.AIMA_STAGE8F_FAILURE_EXCEL_FIXTURE
   expect(fixturePath, 'AIMA_STAGE8F_FAILURE_EXCEL_FIXTURE 必须指向失败测试 Excel fixture').toBeTruthy()
   const pack = await createKeywordPack(request, 'failure', '爱玛')
+  await ensureStage3FilterBrand(request)
   await configureGlobalRelevance(request, pack.id)
-  await uploadExcel(page, fixturePath!, [pack], { startImport: false })
+  await uploadExcel(page, fixturePath!, { startImport: false })
 
   const detail = page.getByRole('dialog', { name: '导入数据' })
   await expect(detail.locator('.campaign-status')).toHaveText('导入失败', { timeout: 60_000 })
