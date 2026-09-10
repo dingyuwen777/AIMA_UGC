@@ -10,6 +10,7 @@ const brandPackId = '82345678-1234-5678-1234-567812345678'
 const modelPackId = '92345678-1234-5678-1234-567812345678'
 const dataImportCampaignId = 'a2345678-1234-4678-9234-567812345678'
 const dataImportItemId = 'b2345678-1234-4678-9234-567812345678'
+const brandId = 'c2345678-1234-4678-9234-567812345678'
 
 const keywordPacks = {
   items: [
@@ -95,6 +96,7 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === '/api/v1/collection-runtime/runs') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [runtimeItem], next_cursor: null, has_more: false }) })
     if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: [], supported_content_types: ['all', 'video', 'image'], manual_default: { sort_mode: 'latest', published_within: '1d', content_type: 'all' } } }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: ['all', 'short', 'long'], supported_content_types: ['all', 'video'], manual_default: { sort_mode: 'latest', published_within: '1d', duration: 'all', content_type: 'all' } } }] }) })
     if (url.pathname === '/api/v1/keyword-packs' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(keywordPacks) })
+    if (url.pathname === '/api/v1/vehicle-brands' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ id: brandId, code: 'AIMA', display_name: '爱玛', role: 'owned', status: 'active', version: 1, catalog_version: 18, aliases: [], created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z' }], total: 1, catalog_version: 18, offset: 0, limit: 200 }) })
     if (url.pathname === '/api/v1/data-import-campaigns' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [completedDataImportCampaign] }) })
     if (url.pathname === '/api/v1/data-import-campaigns/local' && request.method() === 'POST') return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ campaign_id: dataImportCampaignId, upload_items: [{ item_id: dataImportItemId, relative_path: 'stage8e.xlsx' }] }) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(dataImportCampaign) })
@@ -233,16 +235,12 @@ test('shows unavailable revocation evidence without offering a destructive actio
   await expect(dialog.getByRole('button', { name: '撤销本次导入', exact: true })).toHaveCount(0)
 })
 
-test('creates an all-active-brand Excel import and converts a legacy vehicle discovery scope', async ({ page }) => {
-  const vehicleId = 'c2345678-1234-4678-9234-567812345678'
-  await page.route('**/api/v1/vehicle-models**', (route) => route.fulfill({
-    json: { items: [{ id: vehicleId, code: 'Q7', display_name: '爱玛 Q7', status: 'active', series_name: 'Q 系列', aliases: [], active_version: 1 }], total: 1, offset: 0, limit: 200 },
-  }))
+test('creates an all-active-brand Excel import and a selected-brand discovery Run', async ({ page }) => {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据', exact: true })
   await dialog.locator('input[type="file"]').first().setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
-  await expect(dialog).toContainText('Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件')
+  await expect(dialog.getByLabel('搜索条件不适用')).toHaveValue('不适用于 Excel 文件导入')
   const create = page.waitForRequest((request) => request.url().endsWith('/data-import-campaigns/local') && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建并预检', exact: true }).click()
   const importBody = (await create).postDataJSON()
@@ -253,12 +251,15 @@ test('creates an all-active-brand Excel import and converts a legacy vehicle dis
   await page.getByRole('button', { name: '新建辅助补采', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
   await drawer.getByLabel(/爱玛品牌词包/).check()
-  await drawer.getByLabel(/爱玛 Q7/).check()
+  await drawer.getByText('指定品牌', { exact: true }).click()
+  await drawer.getByRole('group', { name: '指定品牌（可多选）' }).getByRole('checkbox', { name: /爱玛/ }).check()
   await drawer.getByRole('button', { name: /小红书/ }).click()
   await drawer.getByLabel('小红书发布时间', { exact: true }).selectOption('7d')
   const discovery = page.waitForRequest((request) => request.url().endsWith('/collection-runs') && request.method() === 'POST')
   await drawer.getByRole('button', { name: '创建补采任务', exact: true }).click()
-  expect((await discovery).postDataJSON()).toMatchObject({ keyword_pack_ids: [brandPackId], vehicle_model_ids: [vehicleId], platforms: [{ platform: 'xiaohongshu', search_config: { published_within: '7d' } }] })
+  const discoveryBody = (await discovery).postDataJSON()
+  expect(discoveryBody).toMatchObject({ keyword_pack_ids: [brandPackId], brand_ids: [brandId], platforms: [{ platform: 'xiaohongshu', search_config: { published_within: '7d' } }] })
+  expect(discoveryBody).not.toHaveProperty('vehicle_model_ids')
 })
 
 test('centralizes runtime facts, opens Batch detail, and creates a local Campaign with all-active brands', async ({ page }) => {
@@ -280,7 +281,7 @@ test('centralizes runtime facts, opens Batch detail, and creates a local Campaig
   const dialog = page.getByRole('dialog', { name: '导入数据' })
   await expect(dialog).toContainText('预检通过后再确认开始入库')
   await dialog.locator('input[type="file"]').first().setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
-  await expect(dialog).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
+  await expect(dialog).toContainText('当前按创建时冻结的全部已启用品牌目录')
   const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/data-import-campaigns/local' && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建并预检' }).click()
   const importBody = (await requestPromise).postDataJSON()
@@ -307,6 +308,7 @@ test('creates a one-time TikHub discovery Run from multiple Keyword Packs', asyn
   expect((await requestPromise).postDataJSON()).toMatchObject({
     mode: 'discovery',
     keyword_pack_ids: [brandPackId, modelPackId],
+    brand_ids: [],
     platforms: [{
       platform: 'xiaohongshu',
       provider_config_id: providerConfigId,
@@ -332,9 +334,12 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
     import_batch_id: batchId,
     data_import_campaign_id: null,
     keyword_pack_ids: [],
+    brand_ids: [],
     platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }],
   })
-  expect((await requestPromise).postDataJSON().platforms[0]).not.toHaveProperty('search_config')
+  const supplementBody = (await requestPromise).postDataJSON()
+  expect(supplementBody.platforms[0]).not.toHaveProperty('search_config')
+  expect(supplementBody).not.toHaveProperty('vehicle_model_ids')
 })
 
 test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {

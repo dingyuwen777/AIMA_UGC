@@ -11,7 +11,6 @@ import {
   getCollectionCapabilities,
   getCollectionPlan,
   getCollectionPlanDeleteEligibility,
-  getGlobalRelevanceConfig,
   getKeywordPack,
   getKeywordPackDeleteEligibility,
   getVehicleModel,
@@ -19,23 +18,23 @@ import {
   listArchivedKeywordPacks,
   listCollectionPlans,
   listKeywordPacks,
+  listVehicleBrands,
   listVehicleModels,
   removeKeywordFromPack,
   restoreCollectionPlan,
   restoreKeywordPack,
-  setGlobalRelevanceConfig,
   updateCollectionPlan,
   updateCollectionPlanEnabled,
   updateKeywordInPack,
   updateKeywordPack,
   updateKeywordPackEnabled,
+  type BrandListResponse,
   type CollectionCapabilitiesResponse,
   type CollectionPlanCopyRequest,
   type CollectionPlanCreateRequest,
   type CollectionPlanListResponse,
   type CollectionPlanResponse,
   type CollectionPlanUpdateRequest,
-  type GlobalRelevanceConfigResponse,
   type HttpErrorResponse,
   type KeywordPackCopyRequest,
   type KeywordPackCreateRequest,
@@ -48,6 +47,7 @@ import {
   type KeywordPackUpdateRequest,
   type ListCollectionPlansParams,
   type ListKeywordPacksParams,
+  type ListVehicleBrandsParams,
   type ListVehicleModelsParams,
   type ResourceDeleteEligibilityResponse,
   type ResourceLifecycleListResponse,
@@ -97,6 +97,12 @@ export async function fetchVehicleModels(
   params?: ListVehicleModelsParams,
 ): Promise<VehicleModelListResponse> {
   return unwrap(await listVehicleModels(params))
+}
+
+export async function fetchBrands(
+  params?: ListVehicleBrandsParams,
+): Promise<BrandListResponse> {
+  return unwrap(await listVehicleBrands(params))
 }
 
 export async function createPack(request: KeywordPackCreateRequest): Promise<KeywordPackResponse> {
@@ -171,16 +177,6 @@ export async function setPackEnabled(
   enabled: boolean,
 ): Promise<KeywordPackSummaryResponse> {
   return unwrap(await updateKeywordPackEnabled(packId, { enabled }))
-}
-
-export async function fetchGlobalRelevance(): Promise<GlobalRelevanceConfigResponse> {
-  return unwrap(await getGlobalRelevanceConfig())
-}
-
-export async function setGlobalRelevance(
-  keywordPackId: string,
-): Promise<GlobalRelevanceConfigResponse> {
-  return unwrap(await setGlobalRelevanceConfig({ keyword_pack_id: keywordPackId }))
 }
 
 export async function fetchCapabilities(): Promise<CollectionCapabilitiesResponse> {

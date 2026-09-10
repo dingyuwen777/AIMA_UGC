@@ -20,15 +20,15 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
-  analysis_scheme_archived: '归档 AI 分析原则',
-  analysis_scheme_copied: '复制 AI 分析原则',
-  analysis_scheme_created: '新建 AI 分析原则',
-  analysis_scheme_deleted: '删除 AI 分析原则',
-  analysis_scheme_draft_created: '新建 AI 分析原则草稿',
-  analysis_scheme_draft_updated: '更新 AI 分析原则草稿',
-  analysis_scheme_published: '发布 AI 分析原则',
-  analysis_scheme_restored: '恢复 AI 分析原则',
-  analysis_scheme_rolled_back: '回滚 AI 分析原则',
+  analysis_scheme_archived: '归档 AI 分析规则',
+  analysis_scheme_copied: '复制 AI 分析规则',
+  analysis_scheme_created: '新建 AI 分析规则',
+  analysis_scheme_deleted: '删除 AI 分析规则',
+  analysis_scheme_draft_created: '新建 AI 分析规则草稿',
+  analysis_scheme_draft_updated: '更新 AI 分析规则草稿',
+  analysis_scheme_published: '发布 AI 分析规则',
+  analysis_scheme_restored: '恢复 AI 分析规则',
+  analysis_scheme_rolled_back: '回滚 AI 分析规则',
   collection_plan_archived: '归档采集计划',
   collection_plan_copied: '复制采集计划',
   collection_plan_deleted: '删除采集计划',
@@ -61,7 +61,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
 }
 
 const AUDIT_OBJECT_LABELS: Record<string, string> = {
-  analysis_scheme: 'AI 分析原则',
+  analysis_scheme: 'AI 分析规则',
   collection_plan: '采集计划',
   collection_provider_config: '采集服务',
   data_import_campaign: '数据导入',
@@ -148,11 +148,11 @@ export function auditSummaryText(event: AuditEventResponse): string {
 
   if (event.event_type === 'keyword_pack_copied') return '已创建词包副本，副本默认停用'
   if (event.event_type === 'collection_plan_copied') return '已创建采集计划副本，副本默认停用'
-  if (event.event_type === 'analysis_scheme_copied') return '已创建 AI 分析原则副本草稿'
+  if (event.event_type === 'analysis_scheme_copied') return '已创建 AI 分析规则副本草稿'
   if (event.event_type === 'keyword_pack_restored') return '已恢复词包，恢复后保持停用'
   if (event.event_type === 'collection_plan_restored') return '已恢复采集计划，恢复后保持停用'
   if (event.event_type === 'provider_config_restored') return '已恢复服务配置，恢复后保持停用'
-  if (event.event_type === 'analysis_scheme_restored') return '已恢复 AI 分析原则，恢复后不会自动发布'
+  if (event.event_type === 'analysis_scheme_restored') return '已恢复 AI 分析规则，恢复后不会自动发布'
 
   const objectLabel = auditObjectLabel(event.object_type, event.object_id)
   return `已记录本次${objectLabel}操作`

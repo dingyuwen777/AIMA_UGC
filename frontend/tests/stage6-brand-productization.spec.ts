@@ -32,7 +32,7 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
     expect(page).not.toContain("{ value: 'relevance', label: '全局相关性' }")
     expect(drawer).toContain('搜索条件：关键词包')
     expect(drawer).toContain('内容过滤条件：品牌')
-    expect(drawer).toContain('brand_ids: selectedBrands.value')
+    expect(drawer).toContain("brand_ids: brandScope.value === 'selected' ? selectedBrands.value : []")
     expect(drawer).not.toContain('vehicle_model_ids: selectedVehicles.value')
   })
 
@@ -43,8 +43,8 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
     ])
 
     expect(dataImport).toContain('不适用于 Excel 文件导入')
-    expect(dataImport).toContain('brand_ids: selectedBrandIds.value')
-    expect(discovery).toContain('brand_ids: mode.value === \'discovery\' ? selectedBrandIds.value : []')
+    expect(dataImport).toContain("brand_ids: brandScope.value === 'selected' ? selectedBrandIds.value : []")
+    expect(discovery).toContain("brand_ids: mode.value === 'discovery' && brandScope.value === 'selected' ? selectedBrandIds.value : []")
     expect(discovery).not.toContain('vehicle_model_ids: mode.value === \'discovery\'')
   })
 
@@ -55,8 +55,8 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
       readSource('features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue'),
     ])
 
-    expect(store).toContain('brand_ids: filters.brandIds')
-    expect(store).toContain('competition_scopes: filters.competitionScopes')
+    expect(store).toContain('brand_ids: filters.brandIds.length ? [...filters.brandIds] : undefined')
+    expect(store).toContain('competition_scopes: filters.competitionScopes.length ? [...filters.competitionScopes] : undefined')
     expect(filters).toContain('品牌')
     expect(filters).toContain('竞争范围')
     expect(detail).toContain('品牌识别证据')

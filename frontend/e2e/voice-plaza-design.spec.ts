@@ -173,7 +173,7 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
     const table = await page.locator('.content-list').boundingBox()
     expectNear(table?.x, 204)
     expectNear(table?.width, width - 228)
-    const expected = [16, Math.max(1212, width - 228) - 790, 80, 200, 150, 120, 120]
+    const expected = [16, Math.max(1212, width - 228) - 836, 76, 190, 230, 110, 110]
     const header = await page.locator('.table-head > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
     const row = await page.locator('.content-row').first().locator(':scope > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
     expected.forEach((size, index) => { expectNear(header[index], size); expectNear(row[index], size) })

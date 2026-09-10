@@ -568,6 +568,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   async function submitLocalCampaign(
     files: DataImportLocalFileSelection[],
     ingestionPolicy: DataImportIngestionPolicy,
+    brandIds: string[],
   ): Promise<HistoricalCampaignResponse | null> {
     creatingHistorical.value = true
     localUploadCompleted.value = 0
@@ -581,7 +582,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
           relative_path: item.relativePath,
           byte_size: item.file.size,
         })),
-        brand_ids: [],
+        brand_ids: brandIds,
         ingestion_policy: ingestionPolicy,
         profile: 'aima-monitoring-excel.v1',
       }

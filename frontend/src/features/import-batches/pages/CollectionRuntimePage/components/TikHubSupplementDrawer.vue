@@ -14,7 +14,7 @@ import type {
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
 import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
-import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
+import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
 import { isCollectionSearchConfigComplete } from '../../../../../shared/collectionSearchConfig'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
@@ -40,7 +40,8 @@ const emit = defineEmits<{
 
 const mode = ref<CollectionRunMode>('discovery')
 const selectedPackIds = ref<string[]>([])
-const selectedVehicleIds = ref<string[]>([])
+const brandScope = ref<'all_active' | 'selected'>('all_active')
+const selectedBrandIds = ref<string[]>([])
 const platforms = ref<CollectionPlatform[]>([])
 const providerConfigId = ref('')
 const supplementSourceValue = ref('')
@@ -116,10 +117,13 @@ function clearSearchConfigs(): void {
 const canSubmit = computed(() => {
   if (props.creating || !providerConfigId.value || platforms.value.length === 0) return false
   if (mode.value === 'discovery') {
-    return (selectedPackIds.value.length > 0 || selectedVehicleIds.value.length > 0) && platforms.value.every((platform) => {
+    return (
+      (brandScope.value === 'all_active' || selectedBrandIds.value.length > 0) &&
+      selectedPackIds.value.length > 0 && platforms.value.every((platform) => {
       const capability = searchCapability(platform)
       return capability && isCollectionSearchConfigComplete(capability, searchConfigByPlatform[platform])
-    })
+      })
+    )
   }
   return selectedSupplementSource.value !== null && !props.loadingSupplementPlatforms
 })
@@ -139,7 +143,8 @@ watch(
     lastRequestedSourceValue.value = supplementSourceValue.value
     mode.value = props.initialSource ? 'batch_supplement' : 'discovery'
     selectedPackIds.value = []
-    selectedVehicleIds.value = []
+    brandScope.value = 'all_active'
+    selectedBrandIds.value = []
     platforms.value = []
     includeComments.value = true
     includeSubComments.value = false
@@ -226,6 +231,10 @@ function submit(): void {
     validation.value = '请至少选择一个关键词包作为搜索条件。'
     return
   }
+  if (mode.value === 'discovery' && brandScope.value === 'selected' && selectedBrandIds.value.length === 0) {
+    validation.value = '请至少选择一个品牌，或改为全部启用品牌。'
+    return
+  }
   if (mode.value === 'batch_supplement' && !selectedSupplementSource.value) {
     validation.value = '请选择要补采的数据导入来源。'
     return
@@ -235,7 +244,7 @@ function submit(): void {
   emit('submit', {
     mode: mode.value,
     keyword_pack_ids: mode.value === 'discovery' ? selectedPackIds.value : [],
-    vehicle_model_ids: mode.value === 'discovery' ? selectedVehicleIds.value : [],
+    brand_ids: mode.value === 'discovery' && brandScope.value === 'selected' ? selectedBrandIds.value : [],
     import_batch_id: mode.value === 'batch_supplement' && source?.kind === 'batch'
       ? source.id
       : null,
@@ -300,7 +309,7 @@ function submit(): void {
 
           <AimaFeedbackBanner tone="info">
             {{ mode === 'discovery'
-              ? '关键词包提供搜索词；兼容车型选择会转换为所属品牌过滤范围。'
+              ? '关键词包提供 Provider Search Terms；品牌目录独立决定入库前过滤范围。'
               : '选择已有导入来源后，可补充其中已收录内容的信息和评论；可选平台以当前来源和采集渠道为准。' }}
           </AimaFeedbackBanner>
 
@@ -372,12 +381,32 @@ function submit(): void {
 
           <section
             v-if="mode === 'discovery'"
-            class="form-card vehicle-card"
+            class="form-card brand-card"
           >
-            <VehicleMultiSelect
-              v-model="selectedVehicleIds"
-              label="兼容车型范围（转换为所属品牌，且必须同时选择词包）"
+            <fieldset>
+              <legend>内容过滤条件 · 品牌</legend>
+              <label><input
+                v-model="brandScope"
+                type="radio"
+                value="all_active"
+              >全部启用品牌及车型</label>
+              <label><input
+                v-model="brandScope"
+                type="radio"
+                value="selected"
+              >指定品牌</label>
+            </fieldset>
+            <BrandMultiSelect
+              v-if="brandScope === 'selected'"
+              v-model="selectedBrandIds"
+              label="指定品牌（可多选）"
             />
+            <small
+              v-if="brandScope === 'selected' && selectedBrandIds.length === 0"
+              class="validation-inline"
+              role="status"
+            >请至少选择一个品牌，或改为全部启用品牌。</small>
+            <small>空 brand_ids 表示创建运行时冻结全部启用品牌。</small>
           </section>
 
           <section
@@ -546,9 +575,7 @@ select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .platform-option small { margin-top: 5px; color: var(--aima-text-disabled); font-size: 11px; }
 .platform-option button > span + span { color: var(--aima-text-muted); font-size: 11px; }
 .platform-search-fields { margin-top: 12px; }
-.vehicle-card { min-height: 114px; }
-.vehicle-card :deep(.vehicle-select) { padding: 0; border: 0; }
-.vehicle-card :deep(legend) { padding: 0; margin-bottom: 10px; color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.brand-card { min-height: 114px; }.brand-card fieldset { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; padding: 0; border: 0; }.brand-card legend { width: 100%; margin-bottom: 2px; color: var(--aima-text); font-size: 13px; font-weight: 500; }.brand-card fieldset label { display: inline-flex; align-items: center; gap: 5px; color: var(--aima-text-secondary); font-size: 12px; }.brand-card > small { display: block; margin-top: 8px; color: var(--aima-text-muted); font-size: 11px; }
 .platform-state { margin: 8px 0 0; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
 .content-options { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
 .content-option { display: grid; min-height: 32px; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; color: var(--aima-text-secondary); font-size: 13px; }

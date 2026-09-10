@@ -7,7 +7,6 @@ import type {
   AnalysisSchemeVersionResponse,
   AuditEventResponse,
   BrandResponse,
-  KeywordPackSummaryResponse,
   ResourceLifecycleResponse,
   VehicleModelResponse,
 } from '../../../generated/api/client'
@@ -17,28 +16,30 @@ import { formatDateTime } from '../../../shared/domain/beijingTime'
 import AimaButton from '../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../shared/ui/AimaPageHeader.vue'
-import VehicleMultiSelect from '../../../shared/VehicleMultiSelect.vue'
 import {
   activateScheme,
+  addBrand,
+  addBrandAlias,
   addSchemeDraft,
   addVehicle,
   archiveScheme,
   copyScheme,
   deleteArchivedScheme,
+  editBrand,
   editSchemeDraft,
   editVehicle,
   fetchArchivedSchemes,
   fetchAuditEvents,
-  fetchKeywordPacksForAdmin,
   fetchVehicleBrandsForAdmin,
   fetchSchemeDeleteEligibility,
   fetchSchemes,
   fetchVehicles,
   mergeVehicle,
+  removeBrand,
+  removeBrandAlias,
   removeVehicle,
   restoreArchivedScheme,
   restoreScheme,
-  saveKeywordPackVehicles,
 } from '../api'
 import AnalysisLabelsEditor from '../components/AnalysisLabelsEditor.vue'
 import ProviderConfigurationPanel from '../components/ProviderConfigurationPanel.vue'
@@ -50,24 +51,21 @@ import {
   formatRuntimeStatus,
 } from '../presentation'
 
-type Tab = 'vehicles' | 'links' | 'llm' | 'tikhub' | 'scheme' | 'audit'
+type Tab = 'catalog' | 'llm' | 'tikhub' | 'scheme' | 'audit'
 
-const tab = ref<Tab>('vehicles')
+const tab = ref<Tab>('catalog')
 const saving = ref(false)
 const error = ref<string | null>(null)
 const notice = ref<string | null>(null)
 const vehicles = ref<VehicleModelResponse[]>([])
 const brands = ref<BrandResponse[]>([])
-const packs = ref<KeywordPackSummaryResponse[]>([])
 const schemes = ref<AnalysisSchemeResponse[]>([])
 const archivedSchemes = ref<ResourceLifecycleResponse[]>([])
 const auditEvents = ref<AuditEventResponse[]>([])
-const selectedPackId = ref('')
-const linkedVehicleIds = ref<string[]>([])
+const selectedBrandId = ref('')
 const selectedSchemeVersionId = ref('')
 const vehicleLoading = ref(false)
 const brandLoading = ref(false)
-const packLoading = ref(false)
 const schemeLoading = ref(false)
 const archivedSchemeLoading = ref(false)
 const schemeLabelsValid = ref(true)
@@ -76,13 +74,20 @@ const schemeCopyEditing = ref(false)
 const auditLoading = ref(false)
 const vehicleError = ref<string | null>(null)
 const brandError = ref<string | null>(null)
-const packError = ref<string | null>(null)
 const schemeError = ref<string | null>(null)
 const auditError = ref<string | null>(null)
 const auditTotal = ref(0)
 const auditOffset = ref(0)
 const auditLimit = 100
 
+const brandDraft = reactive({
+  id: '',
+  code: '',
+  displayName: '',
+  role: 'owned' as 'owned' | 'competitor' | 'other',
+  aliases: '',
+  status: 'active' as 'active' | 'deprecated',
+})
 const vehicleDraft = reactive({ id: '', code: '', displayName: '', brandId: '', seriesName: '', categoryName: '', aliases: '', status: 'active' as 'active' | 'deprecated' })
 const mergeTargetId = ref('')
 const schemeDraft = reactive({
@@ -94,26 +99,28 @@ const schemeDraft = reactive({
   labelsJson: '{}',
 })
 
+const brandFormValid = computed(() => Boolean(
+  brandDraft.code.trim() && brandDraft.displayName.trim(),
+))
 const vehicleFormValid = computed(() => Boolean(
   vehicleDraft.code.trim()
     && vehicleDraft.displayName.trim()
     && (vehicleDraft.status !== 'active' || vehicleDraft.brandId),
 ))
 const loading = computed(() => {
-  if (tab.value === 'vehicles') return vehicleLoading.value || brandLoading.value
-  if (tab.value === 'links') return vehicleLoading.value || packLoading.value
+  if (tab.value === 'catalog') return vehicleLoading.value || brandLoading.value
   if (tab.value === 'scheme') return schemeLoading.value
   if (tab.value === 'llm' || tab.value === 'tikhub') return false
   return auditLoading.value
 })
 const activeResourceError = computed(() => {
-  if (tab.value === 'vehicles') return vehicleError.value ?? brandError.value
-  if (tab.value === 'links') return packError.value ?? vehicleError.value
+  if (tab.value === 'catalog') return vehicleError.value ?? brandError.value
   if (tab.value === 'scheme') return schemeError.value
   if (tab.value === 'llm' || tab.value === 'tikhub') return null
   return auditError.value
 })
-const selectedPack = computed(() => packs.value.find((item) => item.id === selectedPackId.value) ?? null)
+const selectedBrand = computed(() => brands.value.find((item) => item.id === selectedBrandId.value) ?? null)
+const selectedBrandVehicles = computed(() => vehicles.value.filter((item) => item.brand_id === selectedBrandId.value))
 const selectedSchemeVersion = computed(() => {
   for (const scheme of schemes.value) {
     const version = scheme.versions.find((item) => item.id === selectedSchemeVersionId.value)
@@ -147,7 +154,6 @@ async function loadVehicles(): Promise<void> {
   vehicleError.value = null
   try {
     vehicles.value = (await fetchVehicles()).items
-    if (selectedPackId.value) selectPack(selectedPackId.value)
   } catch (reason) {
     vehicleError.value = apiErrorMessage(reason)
   } finally {
@@ -160,26 +166,13 @@ async function loadBrands(): Promise<void> {
   brandError.value = null
   try {
     brands.value = (await fetchVehicleBrandsForAdmin()).items
+    const selected = brands.value.find((item) => item.id === selectedBrandId.value) ?? brands.value[0]
+    if (selected) selectBrand(selected)
+    else resetBrandDraft()
   } catch (reason) {
     brandError.value = apiErrorMessage(reason)
   } finally {
     brandLoading.value = false
-  }
-}
-
-async function loadPacks(): Promise<void> {
-  packLoading.value = true
-  packError.value = null
-  try {
-    packs.value = (await fetchKeywordPacksForAdmin()).items
-    if (!packs.value.some((item) => item.id === selectedPackId.value)) {
-      selectedPackId.value = packs.value[0]?.id ?? ''
-    }
-    if (selectedPackId.value) selectPack(selectedPackId.value)
-  } catch (reason) {
-    packError.value = apiErrorMessage(reason)
-  } finally {
-    packLoading.value = false
   }
 }
 
@@ -245,16 +238,12 @@ async function loadAudit(): Promise<void> {
 }
 
 async function refreshAll(): Promise<void> {
-  await Promise.all([loadVehicles(), loadBrands(), loadPacks(), loadSchemes(), loadAudit()])
+  await Promise.all([loadVehicles(), loadBrands(), loadSchemes(), loadAudit()])
 }
 
 async function retryActiveResource(): Promise<void> {
-  if (tab.value === 'vehicles') {
+  if (tab.value === 'catalog') {
     await Promise.all([loadVehicles(), loadBrands()])
-    return
-  }
-  if (tab.value === 'links') {
-    await Promise.all([loadVehicles(), loadPacks()])
     return
   }
   if (tab.value === 'scheme') return loadSchemes()
@@ -277,9 +266,90 @@ function splitLines(value: string): string[] {
   return [...new Set(value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean))]
 }
 
-function resetVehicleDraft(): void {
+function resetBrandDraft(): void {
+  selectedBrandId.value = ''
+  Object.assign(brandDraft, {
+    id: '', code: '', displayName: '', role: 'owned', aliases: '', status: 'active',
+  })
+  resetVehicleDraft()
+}
+
+function selectBrand(item: BrandResponse): void {
+  selectedBrandId.value = item.id
+  Object.assign(brandDraft, {
+    id: item.id,
+    code: item.code,
+    displayName: item.display_name,
+    role: item.role,
+    aliases: (item.aliases ?? []).map((alias) => alias.text).join('\n'),
+    status: item.status,
+  })
+  resetVehicleDraft(item.id)
+}
+
+/** 品牌基础字段与识别词分别走各自正式 API，避免在前端制造第二套别名 Contract。 */
+async function saveBrand(): Promise<void> {
+  if (!brandFormValid.value || saving.value) return
+  saving.value = true
+  error.value = null
+  try {
+    const requestedAliases = splitLines(brandDraft.aliases)
+    let brandId = brandDraft.id
+    if (!brandId) {
+      const created = await addBrand({
+        code: brandDraft.code.trim(),
+        display_name: brandDraft.displayName.trim(),
+        role: brandDraft.role,
+        aliases: requestedAliases,
+      })
+      brandId = created.id
+    } else {
+      const current = brands.value.find((item) => item.id === brandId)
+      await editBrand(brandId, {
+        display_name: brandDraft.displayName.trim(),
+        role: brandDraft.role,
+        status: brandDraft.status,
+      })
+      const currentAliases = current?.aliases ?? []
+      const requested = new Set(requestedAliases)
+      await Promise.all(currentAliases
+        .filter((alias) => !requested.has(alias.text))
+        .map((alias) => removeBrandAlias(brandId, alias.id)))
+      const existing = new Set(currentAliases.map((alias) => alias.text))
+      await Promise.all(requestedAliases
+        .filter((text) => !existing.has(text))
+        .map((text) => addBrandAlias(brandId, { text })))
+    }
+    selectedBrandId.value = brandId
+    notice.value = brandDraft.id ? '品牌与识别词已更新并记录操作。' : '品牌已创建并记录操作。'
+    await Promise.all([loadBrands(), loadVehicles()])
+  } catch (reason) {
+    error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteBrand(item: BrandResponse): Promise<void> {
+  if (saving.value) return
+  if (!window.confirm(`确定删除未被引用的品牌“${item.display_name}”吗？服务端会拒绝删除仍有关联的品牌。`)) return
+  saving.value = true
+  error.value = null
+  try {
+    await removeBrand(item.id)
+    notice.value = '未引用品牌已删除并记录操作。'
+    resetBrandDraft()
+    await Promise.all([loadBrands(), loadVehicles()])
+  } catch (reason) {
+    error.value = apiErrorMessage(reason)
+  } finally {
+    saving.value = false
+  }
+}
+
+function resetVehicleDraft(brandId = selectedBrandId.value): void {
   // 创建新车型时清除上次编辑的展示分类。
-  Object.assign(vehicleDraft, { id: '', code: '', displayName: '', brandId: '', seriesName: '', categoryName: '', aliases: '', status: 'active' })
+  Object.assign(vehicleDraft, { id: '', code: '', displayName: '', brandId, seriesName: '', categoryName: '', aliases: '', status: 'active' })
   mergeTargetId.value = ''
 }
 
@@ -371,27 +441,6 @@ async function mergeSelectedVehicle(): Promise<void> {
   }
 }
 
-function selectPack(packId: string): void {
-  selectedPackId.value = packId
-  linkedVehicleIds.value = vehicles.value
-    .filter((item) => (item.keyword_pack_ids ?? []).includes(packId))
-    .map((item) => item.id)
-}
-
-async function savePackLinks(): Promise<void> {
-  if (!selectedPack.value) return
-  saving.value = true
-  try {
-    await saveKeywordPackVehicles(selectedPack.value.id, linkedVehicleIds.value)
-    notice.value = '词包与车型关联已更新并记录操作。'
-    await refreshAll()
-  } catch (reason) {
-    error.value = apiErrorMessage(reason)
-  } finally {
-    saving.value = false
-  }
-}
-
 function selectSchemeVersion(versionId: string): void {
   schemeCopyEditing.value = false
   schemeCopyName.value = ''
@@ -460,7 +509,7 @@ async function saveSchemeDraft(): Promise<void> {
       })
     } else {
       saved = await addSchemeDraft({
-        name: schemeDraft.schemeName || `${selected?.scheme.name ?? 'AI 分析原则'} 草稿`,
+        name: schemeDraft.schemeName || `${selected?.scheme.name ?? 'AI 分析规则'} 草稿`,
         description: schemeDraft.description,
         definition,
       })
@@ -468,7 +517,7 @@ async function saveSchemeDraft(): Promise<void> {
     const draft = saved.versions.find((item) => item.status === 'draft')
     selectedSchemeVersionId.value = draft?.id ?? ''
     if (draft) syncSchemeDraft(saved, draft)
-    notice.value = 'AI 分析原则草稿已保存并记录操作。'
+    notice.value = 'AI 分析规则草稿已保存并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -496,7 +545,7 @@ async function copySelectedScheme(): Promise<void> {
     await loadSchemes()
     const draft = copied.versions.find((item) => item.status === 'draft') ?? copied.versions[0]
     if (draft) selectSchemeVersion(draft.id)
-    notice.value = 'AI 分析原则副本已创建为草稿。'
+    notice.value = 'AI 分析规则副本已创建为草稿。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -507,14 +556,14 @@ async function copySelectedScheme(): Promise<void> {
 async function archiveSelectedScheme(): Promise<void> {
   const selected = selectedSchemeVersion.value
   if (!selected) return
-  if (!window.confirm(`确认归档 AI 分析原则“${selected.scheme.name}”吗？当前生效原则会被服务端阻止归档，历史版本和历史分析任务不会被删除。`)) return
+  if (!window.confirm(`确认归档 AI 分析规则“${selected.scheme.name}”吗？当前生效规则会被服务端阻止归档，历史版本和历史分析任务不会被删除。`)) return
   saving.value = true
   error.value = null
   try {
     await archiveScheme(selected.scheme.id)
     selectedSchemeVersionId.value = ''
     await Promise.all([loadSchemes(), loadArchivedSchemes()])
-    notice.value = 'AI 分析原则已归档。'
+    notice.value = 'AI 分析规则已归档。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -531,7 +580,7 @@ async function restoreArchivedAnalysisScheme(item: ResourceLifecycleResponse): P
     const restored = schemes.value.find((scheme) => scheme.id === item.id)
     const version = restored?.versions.find((entry) => entry.status === 'draft') ?? restored?.versions[0]
     if (version) selectSchemeVersion(version.id)
-    notice.value = 'AI 分析原则已恢复；恢复后不会自动发布或生效。'
+    notice.value = 'AI 分析规则已恢复；恢复后不会自动发布或生效。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -545,13 +594,13 @@ async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Pr
   try {
     const eligibility = await fetchSchemeDeleteEligibility(item.id)
     if (!eligibility.eligible) {
-      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析原则已有发布或运行历史，只能保留归档记录。'
+      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析规则已有发布或运行历史，只能保留归档记录。'
       return
     }
-    if (!window.confirm(`确认永久删除已归档 AI 分析原则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿原则才允许删除。`)) return
+    if (!window.confirm(`确认永久删除已归档 AI 分析规则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿规则才允许删除。`)) return
     await deleteArchivedScheme(item.id)
     await loadArchivedSchemes()
-    notice.value = '未发布且未使用的归档 AI 分析原则已永久删除。'
+    notice.value = '未发布且未使用的归档 AI 分析规则已永久删除。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -567,7 +616,7 @@ async function publishVersion(version: AnalysisSchemeVersionResponse): Promise<v
   notice.value = null
   try {
     await activateScheme(version.id, version.version)
-    notice.value = 'AI 分析原则已发布并记录操作。'
+    notice.value = 'AI 分析规则已发布并记录操作。'
     await refreshAll()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -607,7 +656,7 @@ function safeJson(value: Record<string, unknown>): string {
     >
       <AimaPageHeader
         title="管理员配置"
-        description="统一管理车型、词包、AI 模型、采集服务和 AI 分析原则。技术标识与原始审计数据仅在需要时展开查看。"
+        description="统一管理品牌与车型目录、AI 模型、采集服务和 AI 分析规则。技术标识与原始审计数据仅在需要时展开查看。"
       />
       <AimaFeedbackBanner
         v-if="error"
@@ -628,7 +677,7 @@ function safeJson(value: Record<string, unknown>): string {
         aria-label="管理员配置分类"
       >
         <button
-          v-for="item in ([['vehicles', '车型管理'], ['links', '词包关联'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'AI 分析原则'], ['audit', '操作记录']] as const)"
+          v-for="item in ([['catalog', '品牌与车型'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'AI 分析规则'], ['audit', '操作记录']] as const)"
           :key="item[0]"
           type="button"
           :class="{ active: tab === item[0] }"
@@ -663,221 +712,260 @@ function safeJson(value: Record<string, unknown>): string {
       </section>
 
       <div
-        v-else-if="tab === 'vehicles'"
-        class="two-column"
+        v-else-if="tab === 'catalog'"
+        class="catalog-stack"
       >
-        <section class="card">
-          <header>
-            <div>
-              <h2>车型目录</h2>
-              <p>车型编码创建后保持不变；已被业务数据引用的车型只能停用、改名或合并。</p>
+        <div class="two-column brand-overview">
+          <section class="card list-card brand-list">
+            <header>
+              <div><h2>品牌目录</h2><p>品牌编码创建后保持不变；Role 决定竞争范围投影。</p></div>
+              <AimaButton
+                size="small"
+                @click="resetBrandDraft"
+              >
+                新增品牌
+              </AimaButton>
+            </header>
+            <button
+              v-for="item in brands"
+              :key="item.id"
+              type="button"
+              :class="{ active: selectedBrandId === item.id }"
+              @click="selectBrand(item)"
+            >
+              <strong>{{ item.display_name }}</strong>
+              <span>{{ item.code }} · {{ item.role === 'owned' ? '自有品牌' : item.role === 'competitor' ? '竞品品牌' : '其他品牌' }} · {{ formatRuntimeStatus(item.status) }}</span>
+            </button>
+            <p
+              v-if="brands.length === 0"
+              class="empty-state"
+            >
+              暂无品牌，请先新增品牌。
+            </p>
+          </section>
+          <section class="card form-card">
+            <h2>{{ brandDraft.id ? '品牌详情' : '新增品牌' }}</h2>
+            <label>品牌编码<input
+              v-model="brandDraft.code"
+              :disabled="Boolean(brandDraft.id)"
+              maxlength="100"
+              placeholder="例如 AIMA"
+            ><small>稳定机器身份，创建后不可修改。</small></label>
+            <label>显示名称<input
+              v-model="brandDraft.displayName"
+              maxlength="200"
+              placeholder="例如 爱玛"
+            ></label>
+            <label>品牌角色<select v-model="brandDraft.role"><option value="owned">自有品牌</option><option value="competitor">竞品品牌</option><option value="other">其他品牌</option></select><small>内容命中的品牌角色会派生竞争范围。</small></label>
+            <label>品牌识别词（每行一个）<textarea
+              v-model="brandDraft.aliases"
+              rows="5"
+              placeholder="爱玛&#10;AIMA"
+            /><small>保存时通过正式识别词 API 增删，不覆盖车型别名。</small></label>
+            <label v-if="brandDraft.id">状态<select v-model="brandDraft.status"><option value="active">正常使用</option><option value="deprecated">停用</option></select></label>
+            <div class="actions">
+              <AimaButton @click="resetBrandDraft">
+                取消
+              </AimaButton>
+              <AimaButton
+                variant="primary"
+                :disabled="saving || !brandFormValid"
+                @click="saveBrand"
+              >
+                保存品牌
+              </AimaButton>
+              <AimaButton
+                v-if="selectedBrand"
+                variant="text"
+                :disabled="saving"
+                @click="deleteBrand(selectedBrand)"
+              >
+                删除品牌
+              </AimaButton>
             </div>
-            <AimaButton
-              size="small"
-              @click="resetVehicleDraft"
+            <small v-if="selectedBrand">目录版本 v{{ selectedBrand.catalog_version }} · 旗下 {{ selectedBrandVehicles.length }} 个车型</small>
+          </section>
+        </div>
+        <div
+          v-if="selectedBrand"
+          class="two-column"
+        >
+          <section class="card">
+            <header>
+              <div>
+                <h2>{{ selectedBrand.display_name }}旗下车型</h2>
+                <p>车型归属由 Vehicle API 维护；已被业务数据引用的车型只能停用、改名或合并。</p>
+              </div>
+              <AimaButton
+                size="small"
+                @click="resetVehicleDraft()"
+              >
+                新增车型
+              </AimaButton>
+            </header>
+            <div
+              class="admin-table-scroll"
+              role="region"
+              aria-label="车型目录表格"
+              tabindex="0"
             >
-              新增车型
-            </AimaButton>
-          </header>
-          <div
-            class="admin-table-scroll"
-            role="region"
-            aria-label="车型目录表格"
-            tabindex="0"
-          >
-            <table>
-              <thead>
-                <tr>
-                  <th>车型</th>
-                  <th>别名</th>
-                  <th>状态</th>
-                  <th>使用情况</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="item in vehicles"
-                  :key="item.id"
+              <table>
+                <thead>
+                  <tr>
+                    <th>车型</th>
+                    <th>别名</th>
+                    <th>状态</th>
+                    <th>使用情况</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in selectedBrandVehicles"
+                    :key="item.id"
+                  >
+                    <td>
+                      <strong>{{ item.display_name }}</strong>
+                      <small>编码 {{ item.code }}</small>
+                    </td>
+                    <td>{{ (item.aliases ?? []).map((alias) => alias.text).join('、') || '—' }}</td>
+                    <td>
+                      <span
+                        class="status"
+                        :class="`status--${item.status}`"
+                      >
+                        {{ formatRuntimeStatus(item.status) }}
+                      </span>
+                    </td>
+                    <td>{{ item.referenced ? '已被使用' : '暂未使用' }}</td>
+                    <td>
+                      <button
+                        type="button"
+                        @click="editVehicleDraft(item)"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="item.status === 'merged'"
+                        @click="deleteVehicle(item)"
+                      >
+                        删除
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section class="card form-card">
+            <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
+            <label>
+              车型编码
+              <input
+                v-model="vehicleDraft.code"
+                :disabled="Boolean(vehicleDraft.id)"
+                placeholder="例如 AIMA-Q7"
+              >
+              <small>用于稳定识别车型，创建后不可修改。</small>
+            </label>
+            <label>
+              显示名称
+              <input
+                v-model="vehicleDraft.displayName"
+                placeholder="例如 爱玛 Q7"
+              >
+            </label>
+            <label>
+              品牌
+              <select
+                v-model="vehicleDraft.brandId"
+                aria-label="品牌"
+              >
+                <option value="">
+                  请选择品牌
+                </option>
+                <option
+                  v-for="brand in brands"
+                  :key="brand.id"
+                  :value="brand.id"
                 >
-                  <td>
-                    <strong>{{ item.display_name }}</strong>
-                    <small>编码 {{ item.code }}</small>
-                  </td>
-                  <td>{{ (item.aliases ?? []).map((alias) => alias.text).join('、') || '—' }}</td>
-                  <td>
-                    <span
-                      class="status"
-                      :class="`status--${item.status}`"
-                    >
-                      {{ formatRuntimeStatus(item.status) }}
-                    </span>
-                  </td>
-                  <td>{{ item.referenced ? '已被使用' : '暂未使用' }}</td>
-                  <td>
-                    <button
-                      type="button"
-                      @click="editVehicleDraft(item)"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      type="button"
-                      :disabled="item.status === 'merged'"
-                      @click="deleteVehicle(item)"
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section class="card form-card">
-          <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
-          <label>
-            车型编码
-            <input
-              v-model="vehicleDraft.code"
-              :disabled="Boolean(vehicleDraft.id)"
-              placeholder="例如 AIMA-Q7"
-            >
-            <small>用于稳定识别车型，创建后不可修改。</small>
-          </label>
-          <label>
-            显示名称
-            <input
-              v-model="vehicleDraft.displayName"
-              placeholder="例如 爱玛 Q7"
-            >
-          </label>
-          <label>
-            品牌
-            <select
-              v-model="vehicleDraft.brandId"
-              aria-label="品牌"
-            >
-              <option value="">
-                请选择品牌
-              </option>
-              <option
-                v-for="brand in brands"
-                :key="brand.id"
-                :value="brand.id"
+                  {{ brand.display_name }}
+                </option>
+              </select>
+              <small>active 车型必须显式绑定一个当前可用品牌；修改归属只通过 Vehicle API。</small>
+            </label>
+            <label>
+              系列（可选）
+              <input
+                v-model="vehicleDraft.seriesName"
+                maxlength="200"
+                placeholder="用于车型筛选分组"
               >
-                {{ brand.display_name }}
-              </option>
-            </select>
-            <small v-if="brands.length === 0">当前没有可用品牌；请先通过品牌目录管理 API 创建 active 品牌。</small>
-            <small v-else>active 车型必须显式绑定一个当前可用品牌。</small>
-          </label>
-          <label>
-            系列（可选）
-            <input
-              v-model="vehicleDraft.seriesName"
-              maxlength="200"
-              placeholder="用于车型筛选分组"
-            >
-          </label>
-          <label>
-            类别（可选）
-            <input
-              v-model="vehicleDraft.categoryName"
-              maxlength="200"
-              placeholder="用于车型信息展示"
-            >
-          </label>
-          <label>
-            别名（每行一个）
-            <textarea
-              v-model="vehicleDraft.aliases"
-              rows="6"
-              placeholder="Q7&#10;爱玛Q7"
-            />
-          </label>
-          <label v-if="vehicleDraft.id">
-            状态
-            <select v-model="vehicleDraft.status">
-              <option value="active">
-                正常使用
-              </option>
-              <option value="deprecated">
-                停用
-              </option>
-            </select>
-          </label>
-          <div class="actions">
-            <AimaButton @click="resetVehicleDraft">
-              取消
-            </AimaButton>
-            <AimaButton
-              variant="primary"
-              :disabled="saving || !vehicleFormValid"
-              @click="saveVehicle"
-            >
-              保存
-            </AimaButton>
-          </div>
-          <template v-if="vehicleDraft.id">
-            <hr>
-            <h3>合并重复车型</h3>
-            <select v-model="mergeTargetId">
-              <option value="">
-                选择目标车型
-              </option>
-              <option
-                v-for="item in vehicles.filter((vehicle) => vehicle.id !== vehicleDraft.id && vehicle.status === 'active')"
-                :key="item.id"
-                :value="item.id"
+            </label>
+            <label>
+              类别（可选）
+              <input
+                v-model="vehicleDraft.categoryName"
+                maxlength="200"
+                placeholder="用于车型信息展示"
               >
-                {{ item.display_name }}（{{ item.code }}）
-              </option>
-            </select>
-            <AimaButton
-              :disabled="!mergeTargetId"
-              @click="mergeSelectedVehicle"
-            >
-              合并到目标车型
-            </AimaButton>
-          </template>
-        </section>
-      </div>
-
-      <div
-        v-else-if="tab === 'links'"
-        class="two-column links-layout"
-      >
-        <section class="card list-card">
-          <h2>选择词包</h2>
-          <button
-            v-for="pack in packs"
-            :key="pack.id"
-            type="button"
-            :class="{ active: selectedPackId === pack.id }"
-            @click="selectPack(pack.id)"
-          >
-            <strong>{{ pack.name }}</strong>
-            <span>{{ pack.enabled ? '已启用' : '已停用' }}</span>
-          </button>
-        </section>
-        <section class="card form-card">
-          <h2>{{ selectedPack?.name ?? '词包车型关联' }}</h2>
-          <p>选择这个词包适用的车型。多选车型时满足其中任一车型即可，随后再与词包关键词共同筛选。</p>
-          <VehicleMultiSelect
-            v-model="linkedVehicleIds"
-            label="关联车型（可多选）"
-          />
-          <div class="actions">
-            <AimaButton
-              variant="primary"
-              :disabled="!selectedPack || saving"
-              @click="savePackLinks"
-            >
-              保存关联
-            </AimaButton>
-          </div>
-        </section>
+            </label>
+            <label>
+              别名（每行一个）
+              <textarea
+                v-model="vehicleDraft.aliases"
+                rows="6"
+                placeholder="Q7&#10;爱玛Q7"
+              />
+            </label>
+            <label v-if="vehicleDraft.id">
+              状态
+              <select v-model="vehicleDraft.status">
+                <option value="active">
+                  正常使用
+                </option>
+                <option value="deprecated">
+                  停用
+                </option>
+              </select>
+            </label>
+            <div class="actions">
+              <AimaButton @click="resetVehicleDraft()">
+                取消
+              </AimaButton>
+              <AimaButton
+                variant="primary"
+                :disabled="saving || !vehicleFormValid"
+                @click="saveVehicle"
+              >
+                保存
+              </AimaButton>
+            </div>
+            <template v-if="vehicleDraft.id">
+              <hr>
+              <h3>合并重复车型</h3>
+              <select v-model="mergeTargetId">
+                <option value="">
+                  选择目标车型
+                </option>
+                <option
+                  v-for="item in vehicles.filter((vehicle) => vehicle.id !== vehicleDraft.id && vehicle.status === 'active')"
+                  :key="item.id"
+                  :value="item.id"
+                >
+                  {{ item.display_name }}（{{ item.code }}）
+                </option>
+              </select>
+              <AimaButton
+                :disabled="!mergeTargetId"
+                @click="mergeSelectedVehicle"
+              >
+                合并到目标车型
+              </AimaButton>
+            </template>
+          </section>
+        </div>
       </div>
 
       <div
@@ -906,7 +994,7 @@ function safeJson(value: Record<string, unknown>): string {
             class="archived-schemes"
             @toggle="onArchivedSchemesToggle"
           >
-            <summary>已归档原则</summary>
+            <summary>已归档规则</summary>
             <div
               v-if="archivedSchemeLoading"
               class="archived-scheme-state"
@@ -917,7 +1005,7 @@ function safeJson(value: Record<string, unknown>): string {
               v-else-if="archivedSchemes.length === 0"
               class="archived-scheme-state"
             >
-              暂无已归档原则。
+              暂无已归档规则。
             </div>
             <div
               v-for="item in archivedSchemes"
@@ -948,7 +1036,7 @@ function safeJson(value: Record<string, unknown>): string {
         <section class="card form-card scheme-editor">
           <header>
             <div>
-              <h2>AI 分析原则</h2>
+              <h2>AI 分析规则</h2>
               <p>发声类型、情感和标签结构直接按业务含义维护；提示词仅在需要时进入高级设置。</p>
             </div>
             <span v-if="selectedSchemeVersion">
@@ -964,14 +1052,14 @@ function safeJson(value: Record<string, unknown>): string {
               :disabled="saving"
               @click="startSchemeCopy"
             >
-              复制原则
+              复制规则
             </AimaButton>
             <AimaButton
               size="small"
               :disabled="saving"
               @click="archiveSelectedScheme"
             >
-              归档原则
+              归档规则
             </AimaButton>
           </div>
           <div
@@ -982,7 +1070,7 @@ function safeJson(value: Record<string, unknown>): string {
               v-model="schemeCopyName"
               maxlength="200"
             ></label>
-            <small>复制的是该原则当前最新版本；副本只创建草稿，不会自动发布。</small>
+            <small>复制的是该规则当前最新版本；副本只创建草稿，不会自动发布。</small>
             <div>
               <AimaButton
                 size="small"
@@ -1000,7 +1088,7 @@ function safeJson(value: Record<string, unknown>): string {
             </div>
           </div>
           <label>
-            原则名称
+            规则名称
             <input
               v-model="schemeDraft.schemeName"
               :readonly="selectedSchemeVersion?.version.status === 'draft'"
@@ -1030,7 +1118,7 @@ function safeJson(value: Record<string, unknown>): string {
             @validity="schemeLabelsValid = $event"
           />
           <details class="advanced-editor">
-            <summary>高级原则编辑</summary>
+            <summary>高级规则编辑</summary>
             <p>这里只维护提示词与查看机器结构；业务标签请在上方结构化编辑器修改。</p>
             <div class="advanced-editor__fields">
               <div class="technical-note taxonomy-preview">
@@ -1051,7 +1139,7 @@ function safeJson(value: Record<string, unknown>): string {
             </div>
           </details>
           <p v-if="hasUnsavedSchemeChanges">
-            原则有未保存修改，请先保存草稿后再发布。
+            规则有未保存修改，请先保存草稿后再发布。
           </p>
           <div class="actions">
             <AimaButton
@@ -1200,8 +1288,11 @@ function safeJson(value: Record<string, unknown>): string {
 .state-card,
 .card { min-width: 0; padding: 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); background: var(--aima-surface); }
 .state-card { color: var(--aima-text-muted); text-align: center; }
+.catalog-stack { display: grid; gap: 24px; }
 .two-column { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); align-items: start; gap: 24px; }
-.links-layout { grid-template-columns: minmax(280px, .78fr) minmax(0, 1.55fr); }
+.brand-overview { grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr); }
+.brand-list { min-height: 100%; }
+.empty-state { padding: 20px 10px; color: var(--aima-text-muted); font-size: 12px; }
 .scheme-layout { display: grid; grid-template-columns: 268px minmax(0, 1fr); align-items: start; gap: 24px; }
 .card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 h2, h3, p { margin: 0; }
@@ -1238,7 +1329,7 @@ hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--aima-bor
 .list-card > button { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--aima-border); border-radius: 7px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; text-align: left; }
 .list-card > button.active { border-color: var(--aima-primary); background: var(--aima-primary-soft); }
 .list-card > button strong { font-size: 12px; }
-.list-card > button span { color: var(--aima-text-muted); font-size: 10px; }
+.list-card > button span { color: var(--aima-text-muted); font-size: 11px; }
 .scheme-editor > header > span { padding: 3px 8px; border-radius: 4px; color: var(--aima-primary); background: var(--aima-primary-soft); font-size: 10px; }
 .scheme-resource-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .scheme-copy-editor { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--aima-border); border-radius: 7px; background: #fafbfc; }.scheme-copy-editor small { color: var(--aima-text-muted); font-size: 10px; }.scheme-copy-editor > div { display: flex; justify-content: flex-end; gap: 8px; }

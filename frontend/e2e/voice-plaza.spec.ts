@@ -11,6 +11,8 @@ const analysisJobId = '52345678-1234-5678-1234-567812345678'
 const analysisRunId = '62345678-1234-5678-1234-567812345678'
 const exportId = '72345678-1234-5678-1234-567812345678'
 const exportJobId = '82345678-1234-5678-1234-567812345678'
+const brandId = '92345678-1234-4678-9234-567812345678'
+const vehicleId = 'a2345678-1234-4678-9234-567812345678'
 
 const analysisRun = {
   id: analysisRunId,
@@ -49,6 +51,17 @@ const item = {
   author_display_name: '小满的通勤日记',
   published_at: '2026-08-21T01:42:00Z',
   last_seen_at: '2026-08-21T02:00:00Z',
+  content_version: 1,
+  brands: [{
+    id: brandId, code: 'AIMA', display_name: '爱玛', role: 'owned',
+    evidences: [{ source: 'vehicle_match', matched_text: '爱玛 Q7', source_field: 'title', catalog_version: 18, derived_vehicle_model_id: vehicleId }],
+  }],
+  vehicles: [{
+    vehicle_model_id: vehicleId, code: 'AIMA-Q7', display_name: '爱玛 Q7', series_name: 'Q 系列', category_name: '通勤',
+    brand: { id: brandId, code: 'AIMA', display_name: '爱玛', role: 'owned' },
+    evidences: [{ source: 'alias_match', matched_text: 'Q7', source_field: 'title', catalog_version: 18 }],
+  }],
+  competition_scope: 'owned_only',
   content_url: 'https://example.com/note-stage8d-1',
   metrics: { like_count: 128, comment_count: 18, share_count: 6, favorite_count: 32 },
   analysis: {
@@ -123,6 +136,19 @@ test.beforeEach(async ({ page }) => {
         items: [],
         total: 0,
         catalog_version: 1,
+        offset: 0,
+        limit: 200,
+      }),
+    })
+  })
+
+  await page.route('**/api/v1/vehicle-brands**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [{ id: brandId, code: 'AIMA', display_name: '爱玛', role: 'owned', status: 'active', version: 1, catalog_version: 18, aliases: [], created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z' }],
+        total: 1,
+        catalog_version: 18,
         offset: 0,
         limit: 200,
       }),
@@ -292,6 +318,8 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   await expect(page.getByTitle('电池、续航与充电 / 实际续航表现', { exact: true })).toBeVisible()
   await expect(page.getByTitle('驾乘体验 / 坐垫舒适性', { exact: true })).toBeVisible()
   await expect(page.getByTitle('售后服务 / 客服与服务态度', { exact: true })).toBeVisible()
+  await expect(page.getByText('自有品牌', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.content-row .competition-scope')).toHaveText('仅自有品牌')
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/stage8d-voice-plaza.png', fullPage: true })
@@ -320,6 +348,12 @@ test('loads backend filter options and submits voice type with dependent labels'
   await page.locator('label.field--sentiment select').selectOption('负面')
   await page.locator('label.field--label select').nth(0).selectOption('电池、续航与充电')
   await page.locator('label.field--label select').nth(1).selectOption('实际续航表现')
+  await page.getByRole('button', { name: '选择品牌', exact: true }).click()
+  const brandDialog = page.getByRole('dialog', { name: '选择品牌', exact: true })
+  await brandDialog.getByLabel(/爱玛/).check()
+  await brandDialog.getByRole('button', { name: '确定', exact: true }).click()
+  await page.locator('.field--competition summary').click()
+  await page.getByLabel('仅自有品牌', { exact: true }).check()
   const requestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
     return url.pathname === '/api/v1/contents' && url.searchParams.has('voice_type')
@@ -332,6 +366,8 @@ test('loads backend filter options and submits voice type with dependent labels'
   expect(params.get('sentiment')).toBe('负面')
   expect(params.get('primary_label')).toBe('电池、续航与充电')
   expect(params.get('secondary_label')).toBe('实际续航表现')
+  expect(params.get('brand_ids')).toBe(brandId)
+  expect(params.get('competition_scopes')).toBe('owned_only')
 })
 
 test('reconciles filter options before issuing the initial content query', async ({ page }) => {
@@ -377,7 +413,7 @@ test('keeps filters and content usable when manual-edit taxonomy is unavailable'
 
   await page.goto('/voice-plaza')
 
-  await expect(page.getByRole('alert').getByText('当前 AI 分析原则暂不可用', { exact: true })).toBeVisible()
+  await expect(page.getByRole('alert').getByText('当前 AI 分析规则暂不可用', { exact: true })).toBeVisible()
   const taxonomyWarning = page.locator('.taxonomy-warning')
   await taxonomyWarning.getByText('技术详情', { exact: true }).click()
   await expect(taxonomyWarning.getByText(/request-taxonomy/)).toBeVisible()

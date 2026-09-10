@@ -56,6 +56,7 @@ const generated = vi.hoisted(() => ({
   listDataImportServerDirectories: vi.fn(),
   listImportBatches: vi.fn(),
   listKeywordPacks: vi.fn(),
+  listVehicleBrands: vi.fn(),
   listNotifications: vi.fn(),
   listVehicleModels: vi.fn(),
   markNotificationsRead: vi.fn(),
@@ -80,7 +81,7 @@ vi.mock('../src/generated/api/client', () => generated)
 
 import {
   fetchAuditEvents,
-  fetchKeywordPacksForAdmin,
+  fetchVehicleBrandsForAdmin,
   fetchVehicles,
 } from '../src/features/admin-configuration/api'
 import { useCollectionStrategyStore } from '../src/features/collection-strategy/store'
@@ -100,7 +101,7 @@ describe('frontend full-stack audit regressions', () => {
     vi.unstubAllGlobals()
   })
 
-  it('loads every vehicle and keyword pack page before admin replacement operations', async () => {
+  it('loads every vehicle and brand page before administrator catalog operations', async () => {
     const vehicles = Array.from({ length: 200 }, (_, index) => ({ id: `vehicle-${index}` }))
     generated.listVehicleModels
       .mockResolvedValueOnce({ items: vehicles, total: 201, catalog_version: 9, offset: 0, limit: 200 })
@@ -113,17 +114,17 @@ describe('frontend full-stack audit regressions', () => {
     expect(generated.listVehicleModels).toHaveBeenNthCalledWith(1, { offset: 0, limit: 200 })
     expect(generated.listVehicleModels).toHaveBeenNthCalledWith(2, { offset: 200, limit: 200 })
 
-    const packs = Array.from({ length: 100 }, (_, index) => ({ id: `pack-${index}` }))
-    generated.listKeywordPacks
-      .mockResolvedValueOnce({ items: packs, total: 101, offset: 0, limit: 100 })
-      .mockResolvedValueOnce({ items: [{ id: 'pack-100' }], total: 101, offset: 100, limit: 100 })
+    const brands = Array.from({ length: 200 }, (_, index) => ({ id: `brand-${index}` }))
+    generated.listVehicleBrands
+      .mockResolvedValueOnce({ items: brands, total: 201, catalog_version: 9, offset: 0, limit: 200 })
+      .mockResolvedValueOnce({ items: [{ id: 'brand-200' }], total: 201, catalog_version: 9, offset: 200, limit: 200 })
 
-    const packResponse = await fetchKeywordPacksForAdmin()
+    const brandResponse = await fetchVehicleBrandsForAdmin()
 
-    expect(packResponse.items).toHaveLength(101)
-    expect(packResponse.items.at(-1)?.id).toBe('pack-100')
-    expect(generated.listKeywordPacks).toHaveBeenNthCalledWith(1, { offset: 0, limit: 100 })
-    expect(generated.listKeywordPacks).toHaveBeenNthCalledWith(2, { offset: 100, limit: 100 })
+    expect(brandResponse.items).toHaveLength(201)
+    expect(brandResponse.items.at(-1)?.id).toBe('brand-200')
+    expect(generated.listVehicleBrands).toHaveBeenNthCalledWith(1, { offset: 0, limit: 200 })
+    expect(generated.listVehicleBrands).toHaveBeenNthCalledWith(2, { offset: 200, limit: 200 })
   })
 
   it('loads every enabled keyword pack page for import and supplement selectors', async () => {

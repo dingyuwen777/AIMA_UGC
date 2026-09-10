@@ -13,7 +13,7 @@ import type {
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
 import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
-import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
+import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
 import {
   fixedCollectionSearchConfig,
   isCollectionSearchConfigComplete,
@@ -29,7 +29,6 @@ const props = defineProps<{
   packs: KeywordPackSummaryResponse[]
   packDetails: Record<string, KeywordPackResponse>
   capabilities: CollectionCapabilitiesResponse | null
-  relevanceName: string
   saving: boolean
   error?: string | null
   loadingPackDetails: boolean
@@ -47,7 +46,8 @@ const name = ref('')
 const scheduleExpr = ref('0 */6 * * *')
 const enabled = ref(true)
 const selectedPacks = ref<string[]>([])
-const selectedVehicles = ref<string[]>([])
+const brandScope = ref<'all_active' | 'selected'>('all_active')
+const selectedBrands = ref<string[]>([])
 const providerByPlatform = reactive<Partial<Record<CollectionPlatform, string>>>({})
 const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 const editing = computed(() => props.initialPlan !== null && props.initialPlan !== undefined)
@@ -63,6 +63,10 @@ const selectedPlatforms = computed(() =>
 )
 
 const eligibilityReason = computed(() => {
+  if (brandScope.value === 'selected' && selectedBrands.value.length === 0) {
+    return '请至少选择一个品牌，或改为全部启用品牌。'
+  }
+
   const pendingProvider = platformOptions.find(
     (item) => isPlatformSelected(item.value) && !providerByPlatform[item.value],
   )
@@ -90,7 +94,8 @@ watch(open, (value) => {
   scheduleExpr.value = plan?.schedule_expr ?? '0 */6 * * *'
   enabled.value = plan?.enabled ?? true
   selectedPacks.value = [...(plan?.keyword_pack_ids ?? [])]
-  selectedVehicles.value = [...(plan?.vehicle_model_ids ?? [])]
+  selectedBrands.value = [...(plan?.brand_ids ?? [])]
+  brandScope.value = selectedBrands.value.length ? 'selected' : 'all_active'
   for (const option of platformOptions) {
     delete providerByPlatform[option.value]
     delete searchConfigByPlatform[option.value]
@@ -158,7 +163,7 @@ function submit(): void {
     name: name.value.trim(),
     schedule_expr: scheduleExpr.value,
     keyword_pack_ids: selectedPacks.value,
-    vehicle_model_ids: selectedVehicles.value,
+    brand_ids: brandScope.value === 'selected' ? selectedBrands.value : [],
     platforms: selectedPlatforms.value,
     enabled: enabled.value,
   }
@@ -203,7 +208,7 @@ function submit(): void {
         placeholder="例如：爱玛新品口碑追踪"
       ></label>
       <fieldset>
-        <legend>2. 关键词包</legend><label
+        <legend>2. 搜索条件：关键词包</legend><label
           v-for="pack in packs"
           :key="pack.id"
           class="check"
@@ -215,10 +220,25 @@ function submit(): void {
           请先创建可用的关键词包；TikHub Discovery 必须从词包取得搜索词。
         </p>
       </fieldset>
-      <VehicleMultiSelect
-        v-model="selectedVehicles"
-        label="3. 兼容车型范围（转换为所属品牌，且必须同时选择词包）"
-      />
+      <fieldset>
+        <legend>3. 内容过滤条件：品牌</legend>
+        <label class="check"><input
+          v-model="brandScope"
+          type="radio"
+          value="all_active"
+        >全部启用品牌及车型</label>
+        <label class="check"><input
+          v-model="brandScope"
+          type="radio"
+          value="selected"
+        >指定品牌</label>
+        <BrandMultiSelect
+          v-if="brandScope === 'selected'"
+          v-model="selectedBrands"
+          label="指定品牌（可多选）"
+        />
+        <p>运行创建时冻结品牌及其车型目录快照；空 brand_ids 表示全部启用品牌。</p>
+      </fieldset>
       <fieldset>
         <legend>4. 目标平台与采集渠道</legend><div class="platforms">
           <div
@@ -283,10 +303,10 @@ function submit(): void {
         <strong>系统固定规则</strong><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
       </div>
       <AimaFeedbackBanner tone="info">
-        <strong>兼容全局规则相关性</strong><span>{{ relevanceName || '尚未配置' }}</span><small>只用于升级前已创建的旧任务；新计划使用品牌车型过滤，不要求配置此项。</small>
+        <strong>搜索与过滤职责已分离</strong><span>Keyword Pack 提供 Provider Search Terms</span><small>品牌目录独立决定内容过滤范围；历史计划中的车型范围仅在详情中只读展示。</small>
       </AimaFeedbackBanner>
       <div
-        v-if="eligibilityReason && (selectedPacks.length || selectedVehicles.length) && platformOptions.some((item) => isPlatformSelected(item.value))"
+        v-if="eligibilityReason && selectedPacks.length && platformOptions.some((item) => isPlatformSelected(item.value))"
         class="eligibility"
         role="status"
       >
@@ -316,7 +336,7 @@ function submit(): void {
 :global(.plan-create-dialog > .aima-dialog-body) { display: contents; }
 header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; line-height: 24px; }header p { margin: 5px 0 0; color: #737e91; font-size: 13px; line-height: 18px; }
 .body { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding: 22px 24px; }label,fieldset,.policy { display: block; margin: 0 0 22px; }label strong,legend,.policy > strong { display: block; margin-bottom: 8px; color: #253044; font-size: 14px; font-weight: 600; }input:not([type='checkbox']),select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #d9dee8; border-radius: 6px; background: #fff; }fieldset { padding: 0; border: 0; }.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 22px 8px 0; padding: 0; border: 0; font-size: 12px; }
-:deep(.vehicle-select) { margin: 0 0 22px; padding: 0; border: 0; border-radius: 0; }:deep(.vehicle-select legend) { margin-bottom: 8px; padding: 0; color: #253044; font-size: 14px; font-weight: 600; }:deep(.vehicle-select__options) { gap: 12px; }:deep(.vehicle-select__options label) { min-width: 150px; min-height: 32px; height: 32px; padding: 0; border: 0; border-radius: 0; font-size: 12px; }:deep(.vehicle-select__options label:has(input:checked)) { border: 0; color: var(--aima-text-secondary); background: transparent; }:deep(.vehicle-select__options input) { width: 16px; height: 16px; }:deep(.vehicle-select__options small) { color: var(--aima-text-secondary); font-size: 12px; }:deep(.vehicle-select__options small::before) { content: '· '; }
+:deep(.brand-select) { margin: 0 0 22px; padding: 0; border: 0; border-radius: 0; }:deep(.brand-select legend) { margin-bottom: 8px; padding: 0; color: #253044; font-size: 14px; font-weight: 600; }:deep(.brand-select__options) { gap: 12px; }:deep(.brand-select__options label) { min-width: 150px; min-height: 32px; height: 32px; padding: 0; border: 0; border-radius: 0; font-size: 12px; }:deep(.brand-select__options label:has(input:checked)) { border: 0; color: var(--aima-text-secondary); background: transparent; }:deep(.brand-select__options input) { width: 16px; height: 16px; }:deep(.brand-select__options small) { color: var(--aima-text-secondary); font-size: 12px; }:deep(.brand-select__options small::before) { content: '· '; }
 .platforms { display: grid; gap: 8px; }.platform { min-height: 68px; padding: 10px; border: 1px solid #dfe4ec; border-radius: 7px; cursor: pointer; }.platform.active { border-color: var(--aima-primary); background: #fff5f8; }.platform.unavailable { cursor: not-allowed; opacity: .58; }.platform span,.platform small { display: block; }.platform span { color: #263146; font-size: 13px; font-weight: 600; }.platform small { margin-top: 8px; color: #818b9d; }.platform > select { height: 30px; margin-top: 7px; font-size: 11px; }.platform-search { margin-top: 10px; }
 .schedule-field { display: flex; align-items: center; border: 1px solid #d9dee8; border-radius: 6px; }.schedule-field select { border: 0; }.schedule-field em { padding: 0 10px; color: #576276; font-size: 12px; font-style: normal; white-space: nowrap; }label > small,.aima-feedback small { display: block; margin-top: 4px; color: inherit; opacity: .74; }
 .policy > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.policy span { padding: 10px; border: 1px solid #e0e4eb; border-radius: 7px; color: #6a7588; font-size: 12px; }.policy b { display: block; margin-top: 4px; color: #263146; }

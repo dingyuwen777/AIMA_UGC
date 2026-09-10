@@ -34,17 +34,18 @@ describe('administrator configuration baseline', () => {
     const html = await renderPage()
 
     for (const label of [
-      '车型管理',
-      '词包关联',
+      '品牌与车型',
       'AI 模型',
       'TikHub',
-      'AI 分析原则',
+      'AI 分析规则',
       '操作记录',
     ]) {
       expect(html).toContain(label)
     }
-    expect(html).toContain('车型编码创建后保持不变')
+    expect(html).toContain('品牌编码创建后保持不变')
+    expect(html).toContain('品牌识别词（每行一个）')
     expect(html).toContain('技术标识与原始审计数据仅在需要时展开查看')
+    expect(html).not.toContain('词包关联')
     expect(html).not.toContain('Analysis Scheme')
     expect(html).not.toContain('审计记录')
     expect(html).not.toContain('双人审批')
