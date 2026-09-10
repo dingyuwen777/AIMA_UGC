@@ -45,7 +45,8 @@ from aima_ugc.modules.vehicles.tables import (
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
-from aima_ugc.platform.storage.tables import artifacts_table
+from aima_ugc.platform.storage.canonical import CANONICAL_CONTENT_ARTIFACT_KIND
+from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from fastapi.testclient import TestClient
 from httpx import Response
 from openpyxl import Workbook
@@ -189,10 +190,19 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
                 connection.execute(select(processing_import_batches_table)).mappings().one()
             )
             persisted_job = connection.execute(select(jobs_table)).mappings().one()
-            persisted_artifact = connection.execute(select(artifacts_table)).mappings().one()
+            persisted_artifacts = connection.execute(select(artifacts_table)).mappings().all()
+            canonical_link = connection.execute(
+                select(canonical_artifact_links_table)
+            ).mappings().one()
         assert persisted_batch["job_id"] == persisted_job["id"]
         assert persisted_batch["status"] == "succeeded"
-        assert persisted_artifact["storage_status"] == "linked"
+        assert len(persisted_artifacts) == 2
+        assert {artifact["kind"] for artifact in persisted_artifacts} == {
+            "file-import.raw",
+            CANONICAL_CONTENT_ARTIFACT_KIND,
+        }
+        assert all(artifact["storage_status"] == "linked" for artifact in persisted_artifacts)
+        assert canonical_link["processing_import_batch_id"] == persisted_batch["id"]
         snapshot = persisted_batch["stats"]["filter_snapshot"]
         assert snapshot["schema_version"] == "brand-vehicle-filter.v1"
         assert snapshot["search_semantics"] == "not_applicable"
@@ -311,6 +321,18 @@ def test_import_retry_after_business_commit_is_fenced_and_does_not_duplicate_con
         with runtime.database.engine.begin() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
             assert connection.scalar(select(func.count()).select_from(content_versions_table)) == 1
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(artifacts_table)
+                    .where(artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND)
+                )
+                == 1
+            )
+            assert (
+                connection.scalar(select(func.count()).select_from(canonical_artifact_links_table))
+                == 1
+            )
             batch = connection.execute(select(processing_import_batches_table)).mappings().one()
             assert str(batch["id"]) == created.json()["batch_id"]
             assert batch["status"] == "succeeded"
