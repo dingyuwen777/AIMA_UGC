@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260910-194112-stage6-frontend-productization
 title: 搜索与品牌车型过滤 Stage 6 前端产品化
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/stage6-frontend-productization
 created: 2026-09-10
