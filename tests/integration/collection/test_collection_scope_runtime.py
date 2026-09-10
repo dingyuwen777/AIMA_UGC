@@ -132,9 +132,19 @@ def _raw_service(runtime: DatabaseRuntime, root: Path) -> RawArtifactService:
     )
 
 
-def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_content(
+@pytest.mark.parametrize(
+    ("filter_alias", "artifact_title", "artifact_uses_search_attempt"),
+    (
+        ("脱敏", "脱敏标题 A", True),
+        ("图文", "脱敏图文标题", False),
+    ),
+)
+def test_scope_runtime_persists_search_or_detail_final_canonical_before_filter(
     database_runtime: DatabaseRuntime,
     tmp_path: Path,
+    filter_alias: str,
+    artifact_title: str,
+    artifact_uses_search_attempt: bool,
 ) -> None:
     session = database_runtime.new_session()
     try:
@@ -163,7 +173,7 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
-                    **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
+                    **stage4_collection_config_snapshot(database_runtime, alias=filter_alias),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
                     "platforms": [
@@ -270,9 +280,11 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
         )
         assert len(canonical_rows) == 2
         assert all(row.external_content_id == "note-fixture-1" for row in canonical_rows)
-        assert all(row.title == "脱敏图文标题" for row in canonical_rows)
+        assert all(row.title == artifact_title for row in canonical_rows)
         assert all(
-            row.source.provider_attempt_id != str(search_attempt_id) for row in canonical_rows
+            (row.source.provider_attempt_id == str(search_attempt_id))
+            is artifact_uses_search_attempt
+            for row in canonical_rows
         )
         assert content["platform"] == "xiaohongshu"
         assert content["external_content_id"] == "note-fixture-1"
