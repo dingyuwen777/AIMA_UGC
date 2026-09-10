@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from aima_ugc.contracts.platform import PlatformScope
+from aima_ugc.modules.collection.resource_selection import build_collection_resource_snapshot
 from aima_ugc.modules.collection.scheduled_scopes import (
     ScheduledKeywordEntry,
     build_scheduled_scope_snapshot,
@@ -180,3 +181,30 @@ def test_scope_order_is_deterministic_by_priority_then_keyword_and_plan_platform
         ("weibo", "keyword_search", "电动车", "content_discovery"),
         ("xiaohongshu", "keyword_search", "电动车", "content_discovery"),
     ]
+
+
+def test_collection_resource_snapshot_uses_only_keyword_search_terms() -> None:
+    """Stage 4 Discovery 不再要求车型快照，也不把车型别名拼入搜索词。"""
+
+    snapshot = build_collection_resource_snapshot(
+        plan_platforms=("xiaohongshu",),
+        keyword_entries=(
+            _entry(
+                pack_id=_PACK_A,
+                pack_version=3,
+                keyword_id=_KEYWORD_AIMA,
+                text="爱玛",
+                normalized_text="爱玛",
+            ),
+            _entry(
+                pack_id=_PACK_A,
+                pack_version=3,
+                keyword_id=_KEYWORD_EV,
+                text="电动车",
+                normalized_text="电动车",
+            ),
+        ),
+        keyword_packs=(),
+    )
+
+    assert [scope.source_value for scope in snapshot.scopes] == ["爱玛", "电动车"]
