@@ -465,7 +465,6 @@ class PostgresResourceLifecycleHttpService:
                     _validate_execution_surface(
                         session,
                         candidate,
-                        require_relevance=body.enabled,
                         require_explicit_search_config=True,
                     )
                     try:
@@ -484,6 +483,7 @@ class PostgresResourceLifecycleHttpService:
                         enabled=body.enabled,
                         platforms=candidate.platforms,
                         keyword_pack_ids=body.keyword_pack_ids,
+                        brand_ids=body.brand_ids,
                         vehicle_model_ids=body.vehicle_model_ids,
                     )
                     _audit(
@@ -538,13 +538,13 @@ class PostgresResourceLifecycleHttpService:
                         created_by=source.created_by,
                         platforms=source.platforms,
                         keyword_pack_ids=source.keyword_pack_ids,
+                        brand_ids=source.brand_ids,
                         vehicle_model_ids=source.vehicle_model_ids,
                         decision_policy=source.decision_policy,
                     )
                     _validate_execution_surface(
                         session,
                         definition,
-                        require_relevance=False,
                         require_explicit_search_config=False,
                     )
                     copied = CollectionPlanningService(repository).create_plan(definition)
@@ -1039,6 +1039,7 @@ def _plan_definition_from_update(
             for item in body.platforms
         ),
         keyword_pack_ids=body.keyword_pack_ids,
+        brand_ids=body.brand_ids,
         vehicle_model_ids=body.vehicle_model_ids,
     )
 

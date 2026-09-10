@@ -11,6 +11,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
+from aima_ugc.modules.collection.tables import collection_plan_brands_table
 from aima_ugc.modules.vehicles.brand_vehicle import (
     BrandAliasRecord,
     BrandRecord,
@@ -261,6 +262,8 @@ class PostgresBrandVehicleRepository:
         return _brand_from_row(row)
 
     def delete_unreferenced_brand(self, brand_id: UUID, *, actor_ref: str) -> bool:
+        """仅物理删除未被车型、Plan 或内容证据引用的品牌。"""
+
         current = self.get_brand(brand_id, for_update=True)
         if current is None:
             return False
@@ -274,7 +277,12 @@ class PostgresBrandVehicleRepository:
             .where(content_brand_evidence_table.c.brand_id == brand_id)
             .limit(1)
         )
-        if referenced is not None or evidence is not None:
+        plan_reference = self._session.scalar(
+            select(collection_plan_brands_table.c.plan_id)
+            .where(collection_plan_brands_table.c.brand_id == brand_id)
+            .limit(1)
+        )
+        if referenced is not None or plan_reference is not None or evidence is not None:
             raise RuntimeError("已引用品牌不能物理删除")
         self._vehicle_catalog.next_catalog_version(reason="brand_deleted", actor_ref=actor_ref)
         self._session.execute(
@@ -421,6 +429,35 @@ class PostgresBrandVehicleRepository:
             .order_by(vehicle_models_table.c.id)
         )
         return tuple(rows)
+
+    def brand_ids_for_vehicle_models(
+        self,
+        vehicle_model_ids: tuple[UUID, ...],
+    ) -> tuple[UUID, ...]:
+        """把兼容期车型选择显式转换为有效 Brand Scope，拒绝悬空归属。"""
+
+        unique_ids = tuple(dict.fromkeys(vehicle_model_ids))
+        if not unique_ids:
+            return ()
+        self._lock_catalog_snapshot()
+        rows = tuple(
+            self._session.execute(
+                select(vehicle_models_table.c.id, vehicle_models_table.c.brand_id)
+                .join(
+                    vehicle_brands_table,
+                    vehicle_brands_table.c.id == vehicle_models_table.c.brand_id,
+                )
+                .where(
+                    vehicle_models_table.c.id.in_(unique_ids),
+                    vehicle_models_table.c.status == "active",
+                    vehicle_brands_table.c.status == "active",
+                )
+                .order_by(vehicle_models_table.c.id)
+            )
+        )
+        if {cast(UUID, row.id) for row in rows} != set(unique_ids):
+            raise LookupError("兼容车型不存在、已停用或缺少有效品牌归属")
+        return tuple(sorted({cast(UUID, row.brand_id) for row in rows}, key=str))
 
     def snapshot(self, *, brand_ids: tuple[UUID, ...] | None) -> BrandVehicleCatalogSnapshot:
         """冻结 all_active 或 selected Brand，并自动包含其全部 active Vehicle/Alias。"""

@@ -11,6 +11,9 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
+    PostgresBrandVehicleRepository,
+)
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_runtime_queries import (
     PostgresCollectionRuntimeQueryRepository,
@@ -19,16 +22,11 @@ from aima_ugc.adapters.persistence.postgres.collection_targets import (
     PostgresCollectionTargetReader,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
-from aima_ugc.adapters.persistence.postgres.relevance import (
-    GlobalRelevanceUnavailable,
-    PostgresGlobalRelevanceRepository,
-)
 from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     MissingScheduledKeywordPackError,
     PostgresScheduledKeywordSnapshotReader,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
-from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.adapters.providers.tikhub.transport import (
     DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
@@ -103,6 +101,7 @@ from aima_ugc.modules.collection.search_config import (
     normalize_search_config,
     search_config_choices,
 )
+from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.time import beijing_now
 
@@ -256,11 +255,7 @@ class PostgresCollectionHttpService:
         try:
             with session.begin():
                 provider_snapshots = self._resolve_provider_snapshots(session, request)
-                try:
-                    relevance_snapshot, _ = PostgresGlobalRelevanceRepository(session).snapshot()
-                except GlobalRelevanceUnavailable as exc:
-                    raise CollectionConflict from exc
-                scopes, keyword_pack_snapshot, vehicle_snapshot = self._build_scopes(
+                scopes, keyword_pack_snapshot, filter_snapshot = self._build_scopes(
                     session, request
                 )
                 if not scopes:
@@ -296,11 +291,20 @@ class PostgresCollectionHttpService:
                     job_id=job.id,
                     trigger_type="api",
                     config_snapshot={
-                        "schema_version": "collection-run-config.v1",
+                        "schema_version": "collection-run-config.v2",
                         "mode": request.mode,
                         "keyword_pack_ids": [str(item) for item in request.keyword_pack_ids],
                         "keyword_packs": list(keyword_pack_snapshot),
-                        "vehicle_selection": vehicle_snapshot,
+                        "search_snapshot": {
+                            "schema_version": "collection-search-snapshot.v1",
+                            "keyword_pack_ids": [str(item) for item in request.keyword_pack_ids],
+                            "keyword_packs": list(keyword_pack_snapshot),
+                            "terms": list(effective_keywords),
+                        },
+                        "brand_vehicle_filter": filter_snapshot,
+                        "legacy_vehicle_model_ids": [
+                            str(item) for item in request.vehicle_model_ids
+                        ],
                         "keywords": list(effective_keywords),
                         "import_batch_id": (
                             str(request.import_batch_id)
@@ -330,7 +334,6 @@ class PostgresCollectionHttpService:
                             "deadline_safety_percent": DEADLINE_SAFETY_PERCENT,
                         },
                         "platforms": list(provider_snapshots),
-                        "relevance": relevance_snapshot.model_dump(mode="json"),
                     },
                     scopes=scopes,
                     import_batch_id=request.import_batch_id,
@@ -380,6 +383,7 @@ class PostgresCollectionHttpService:
                         sorted({_collection_platform(scope.platform) for scope in scopes})
                     ),
                     keywords=_snapshot_keywords(snapshot),
+                    brand_ids=_snapshot_brand_ids(snapshot),
                     stats=_run_stats(run, scopes),
                     scopes=tuple(_scope_response(scope) for scope in scopes),
                     error_summary=run.error_summary,
@@ -542,15 +546,25 @@ class PostgresCollectionHttpService:
             if any(not pack.enabled for pack in catalog.keyword_packs):
                 raise CollectionConflict
             try:
-                vehicles = PostgresVehicleCatalogRepository(session).snapshot(
-                    request.vehicle_model_ids
+                brand_repository = PostgresBrandVehicleRepository(session)
+                selected_brand_ids = request.brand_ids or (
+                    brand_repository.brand_ids_for_vehicle_models(request.vehicle_model_ids)
                 )
+                filter_snapshot = BrandVehicleFilterSnapshot(
+                    search_semantics="keyword_pack",
+                    catalog=brand_repository.snapshot(brand_ids=selected_brand_ids or None),
+                )
+                if not filter_snapshot.catalog.brands:
+                    raise CollectionConflict("Brand Filter 当前没有可用 active Brand")
                 snapshot = build_collection_resource_snapshot(
                     plan_platforms=tuple(item.platform for item in request.platforms),
                     keyword_entries=catalog.entries,
                     keyword_packs=catalog.keyword_packs,
-                    vehicles=vehicles,
                 )
+                scope_platforms = {scope.platform for scope in snapshot.scopes}
+                requested_platforms = {item.platform for item in request.platforms}
+                if scope_platforms != requested_platforms:
+                    raise CollectionConflict("至少一个目标平台没有可用 Keyword Pack Search Term")
             except (LookupError, ValueError) as exc:
                 raise CollectionResourceNotFound from exc
             return (
@@ -559,22 +573,7 @@ class PostgresCollectionHttpService:
                     {"id": str(pack.pack_id), "version": pack.version}
                     for pack in snapshot.keyword_packs
                 ),
-                {
-                    "catalog_version": snapshot.vehicles.catalog_version,
-                    "vehicle_model_ids": [
-                        str(item) for item in snapshot.vehicles.vehicle_model_ids
-                    ],
-                    "resolved_aliases": list(snapshot.vehicles.resolved_aliases),
-                    "vehicle_versions": [
-                        {"id": str(model_id), "version": version}
-                        for model_id, version in snapshot.vehicles.vehicle_versions
-                    ],
-                    "alias_bindings": [
-                        {"vehicle_model_id": str(model_id), "text": text}
-                        for model_id, text in snapshot.vehicles.alias_bindings
-                    ],
-                    "dimension_match": "keyword_or_x_vehicle_or",
-                },
+                filter_snapshot.model_dump(mode="json"),
             )
         reader = PostgresCollectionTargetReader(
             session,
@@ -675,6 +674,24 @@ def _snapshot_keywords(snapshot: dict[str, object]) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         return ()
     return tuple(cast(list[str], value))
+
+
+def _snapshot_brand_ids(snapshot: dict[str, object]) -> tuple[UUID, ...]:
+    """从 v2 冻结 Filter 返回有效 Brand 范围；旧 Run 与补采保持空集合。"""
+
+    filter_value = snapshot.get("brand_vehicle_filter")
+    if not isinstance(filter_value, dict):
+        return ()
+    catalog = filter_value.get("catalog")
+    if not isinstance(catalog, dict):
+        return ()
+    selected = catalog.get("selected_brand_ids")
+    if not isinstance(selected, list) or not all(isinstance(item, str) for item in selected):
+        return ()
+    try:
+        return tuple(UUID(item) for item in cast(list[str], selected))
+    except ValueError:
+        return ()
 
 
 def _scope_stats(scope: CollectionScopeRecord) -> CollectionRunStatsResponse:

@@ -239,6 +239,18 @@ def test_stage3_filter_snapshot_round_trip_preserves_frozen_catalog() -> None:
     assert restored.catalog.filter_scope == "all_active"
 
 
+def test_stage4_filter_snapshot_marks_keyword_pack_search_semantics() -> None:
+    """TikHub Discovery 快照显式记录 Search Terms 来源，不与 Excel 语义混淆。"""
+
+    snapshot = BrandVehicleFilterSnapshot(
+        search_semantics="keyword_pack",
+        catalog=_snapshot(),
+    )
+
+    restored = BrandVehicleFilterSnapshot.model_validate_json(snapshot.model_dump_json())
+    assert restored.search_semantics == "keyword_pack"
+
+
 def test_stage3_jsonl_filter_uses_resolver_and_writes_only_matches(tmp_path: Path) -> None:
     source = tmp_path / "canonical.jsonl"
     output = tmp_path / "filtered.jsonl"

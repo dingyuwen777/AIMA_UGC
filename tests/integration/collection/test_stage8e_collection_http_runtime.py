@@ -53,7 +53,9 @@ from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.security import SecretFileError
 from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
+
+from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
 _XIAOHONGSHU_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
@@ -157,6 +159,7 @@ def _seed_config_and_relevance(runtime) -> tuple[UUID, UUID]:  # type: ignore[no
                 updated_at=now,
             )
         )
+    stage3_filter_brand_id(runtime, alias="爱玛")
     return provider_config_id, pack_id
 
 
@@ -164,6 +167,9 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    brand_id = UUID(stage3_filter_brand_id(runtime, alias="爱玛"))
+    with runtime.database.engine.begin() as connection:
+        connection.execute(delete(global_relevance_config_table))
     service = PostgresCollectionHttpService(
         runtime,
         cursor_signing_secret=b"r" * 32,
@@ -174,6 +180,7 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
         CollectionRunCreateRequest(
             mode="discovery",
             keyword_pack_ids=(pack_id,),
+            brand_ids=(brand_id,),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform="xiaohongshu",
@@ -229,8 +236,15 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
     assert job["max_attempts"] == 2
     assert run["import_batch_id"] is None
     assert run["trigger_type"] == "api"
+    assert run["config_snapshot"]["schema_version"] == "collection-run-config.v2"
     assert run["config_snapshot"]["mode"] == "discovery"
     assert run["config_snapshot"]["keywords"] == ["爱玛", "Q7"]
+    assert run["config_snapshot"]["search_snapshot"]["terms"] == ["爱玛", "Q7"]
+    assert run["config_snapshot"]["brand_vehicle_filter"]["search_semantics"] == ("keyword_pack")
+    assert run["config_snapshot"]["brand_vehicle_filter"]["catalog"]["selected_brand_ids"] == [
+        str(brand_id)
+    ]
+    assert "relevance" not in run["config_snapshot"]
     assert run["config_snapshot"]["include_comments"] is True
     assert run["config_snapshot"]["platforms"][0]["config"] == {
         "sort_mode": "latest",
@@ -238,11 +252,13 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
         "content_type": "all",
     }
     assert [scope["source_value"] for scope in scopes] == ["Q7", "爱玛"]
+    assert len(scopes) == 2
     assert all(scope["source_type"] == "keyword_search" for scope in scopes)
     assert all(scope["operation_group"] == "content_discovery" for scope in scopes)
     assert detail.run_id == created.run_id
     assert detail.job_id == created.job_id
     assert detail.stage == "queued"
+    assert detail.brand_ids == (brand_id,)
     assert len(detail.scopes) == 2
 
 
@@ -275,6 +291,40 @@ def test_collection_run_rejects_disabled_provider_config(runtime) -> None:  # ty
                 include_sub_comments=False,
             ),
             request_id="stage8e-disabled-provider",
+        )
+
+    with runtime.database.engine.begin() as connection:
+        assert connection.scalar(select(func.count()).select_from(jobs_table)) == 0
+        assert connection.scalar(select(func.count()).select_from(collection_runs_table)) == 0
+
+
+def test_discovery_run_rejects_target_platform_without_keyword_search_term(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
+    """目标平台不能因词包无适用词而被静默丢弃。"""
+
+    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            keyword_pack_items_table.update()
+            .where(keyword_pack_items_table.c.pack_id == pack_id)
+            .values(platform_scope="xiaohongshu")
+        )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+
+    with pytest.raises(CollectionConflict, match="目标平台"):
+        service.create_run(
+            CollectionRunCreateRequest(
+                mode="discovery",
+                keyword_pack_ids=(pack_id,),
+                platforms=(
+                    CollectionRunPlatformRequest(
+                        platform="douyin",
+                        provider_config_id=provider_config_id,
+                    ),
+                ),
+            ),
+            request_id="stage4-missing-platform-keyword",
         )
 
     with runtime.database.engine.begin() as connection:
@@ -864,7 +914,9 @@ def _batch_comments_response() -> dict[str, object]:
     return body
 
 
-def test_batch_supplement_worker_reuses_detail_mapper_relevance_and_ingestion(runtime) -> None:  # type: ignore[no-untyped-def]
+def test_batch_supplement_worker_reuses_detail_mapper_and_ingestion_without_refiltering(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)

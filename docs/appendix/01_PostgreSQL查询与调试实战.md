@@ -433,7 +433,7 @@ ORDER BY created_at DESC
 LIMIT 30;
 ```
 
-Import Batch 是文件导入父事实，不伪造 Collection Run/Scope。当前正式 HTTP Import 会把提交时冻结的多词包选择保存到 `stats.keyword_selection`；筛选异常时优先核对这里的 Pack 版本和 `effective_keywords`，不要用当前 `global_relevance_config` 反推历史 Import 的执行输入。
+Import Batch 是文件导入父事实，不伪造 Collection Run/Scope。当前正式 HTTP Import 会把提交时冻结的 Brand/Vehicle Filter Snapshot 保存到 Batch stats 与 Job Payload；筛选异常时优先核对这两处快照是否完全一致，不要用实时 Brand/Vehicle Catalog、Alias 或 `global_relevance_config` 反推历史 Import 的执行输入。升级前 legacy Import/Campaign 继续按自身旧 Snapshot 和 Job 版本执行。
 
 来源反查可以继续：
 
@@ -910,7 +910,7 @@ uv run alembic check
 4. provider_request_attempts / raw_artifact_id
 5. collection_candidates / candidate ingestions
 6. Mapper
-7. Rule Relevance / Decision
+7. BrandVehicleResolver / Decision（`collection-run-config.v1` 才检查旧 Rule Relevance）
 8. Content Ingestion
 ```
 

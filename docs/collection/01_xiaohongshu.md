@@ -445,7 +445,7 @@ Collection Run/Scope
 → xiaohongshu Operation Extractor
 → xiaohongshu Mapper
 → Canonical
-→ Rule Relevance / Decision
+→ BrandVehicleResolver / Decision
 → Content Ingestion
 ```
 

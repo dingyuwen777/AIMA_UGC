@@ -19,12 +19,12 @@ from aima_ugc.modules.vehicles.brand_vehicle import (
 
 
 class BrandVehicleFilterSnapshot(BaseModel):
-    """任务创建时冻结的 Brand/Vehicle Filter；Excel Search 明确不适用。"""
+    """任务创建时冻结的 Brand/Vehicle Filter，并标明数据入口的 Search 语义。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: Literal["brand-vehicle-filter.v1"] = "brand-vehicle-filter.v1"
-    search_semantics: Literal["not_applicable"] = "not_applicable"
+    search_semantics: Literal["not_applicable", "keyword_pack"] = "not_applicable"
     catalog: BrandVehicleCatalogSnapshot
 
 

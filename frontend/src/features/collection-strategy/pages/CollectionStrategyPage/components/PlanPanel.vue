@@ -99,7 +99,7 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
 <template>
   <section class="plan-card">
     <AimaFeedbackBanner tone="info">
-      采集计划执行时会冻结当时的全局相关性配置；重新启用后从下一调度周期开始执行，不补跑停用期间任务。
+      新采集计划执行时会冻结 Keyword Pack 搜索词与品牌车型过滤范围；重新启用后从下一调度周期开始执行，不补跑停用期间任务。
     </AimaFeedbackBanner>
     <div class="table-heading">
       <strong>找到 {{ total }} 条采集计划</strong>

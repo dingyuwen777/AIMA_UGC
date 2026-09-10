@@ -33,6 +33,7 @@ def _definition(
     max_catch_up_runs: int = 0,
     platforms: tuple[PlanPlatformDefinition, ...] | None = None,
     keyword_pack_ids: tuple[UUID, ...] | None = None,
+    brand_ids: tuple[UUID, ...] = (),
     vehicle_model_ids: tuple[UUID, ...] = (),
 ) -> CollectionPlanDefinition:
     """构造采集计划定义；显式空集合必须保留给校验逻辑，而不能回退默认值。"""
@@ -60,6 +61,7 @@ def _definition(
             else platforms
         ),
         keyword_pack_ids=(uuid4(),) if keyword_pack_ids is None else keyword_pack_ids,
+        brand_ids=brand_ids,
         vehicle_model_ids=vehicle_model_ids,
     )
 
@@ -109,6 +111,22 @@ def test_service_rejects_duplicate_keyword_pack_identity() -> None:
         )
 
 
+def test_service_rejects_duplicate_brand_identity() -> None:
+    brand_id = uuid4()
+
+    with pytest.raises(ValueError, match="brand"):
+        CollectionPlanningService(_RecordingPlanningRepository()).create_plan(
+            _definition(brand_ids=(brand_id, brand_id))
+        )
+
+
+def test_definition_rejects_brand_and_legacy_vehicle_scope_together() -> None:
+    """Domain 不能依赖 HTTP Contract 才维持范围互斥。"""
+
+    with pytest.raises(ValueError, match="不能同时存在"):
+        _definition(brand_ids=(uuid4(),), vehicle_model_ids=(uuid4(),))
+
+
 @pytest.mark.parametrize("secret_key", ("access-token", "refresh_token"))
 def test_plan_platform_config_rejects_secret_shaped_keys_recursively(secret_key: str) -> None:
     """计划快照不得把任何常见 Secret 形态持久化到嵌套平台配置。"""
@@ -124,10 +142,10 @@ def test_definition_rejects_empty_execution_surface() -> None:
     """没有平台或匹配资源的计划没有可执行面，必须在模型边界直接拒绝。"""
     with pytest.raises(ValueError, match="platform"):
         _definition(platforms=())
-    with pytest.raises(ValueError, match="词包或车型"):
+    with pytest.raises(ValueError, match="Keyword Pack"):
         _definition(keyword_pack_ids=())
-
-    assert _definition(keyword_pack_ids=(), vehicle_model_ids=(uuid4(),)).vehicle_model_ids
+    with pytest.raises(ValueError, match="Keyword Pack"):
+        _definition(keyword_pack_ids=(), vehicle_model_ids=(uuid4(),))
 
 
 def test_definition_rejects_invalid_stable_numeric_and_text_fields() -> None:

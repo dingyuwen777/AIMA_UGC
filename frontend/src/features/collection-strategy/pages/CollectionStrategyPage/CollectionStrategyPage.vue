@@ -298,7 +298,6 @@ function showNotice(message: string): void {
       :pack-details="store.packDetails"
       :capabilities="store.capabilities"
       :relevance-name="relevancePackName"
-      :relevance-available="store.relevance !== null"
       :saving="store.saving"
       :loading-pack-details="store.loadingPackDetails"
       :initial-plan="planEditorPlan"

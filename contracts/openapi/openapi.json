@@ -1683,8 +1683,18 @@
       },
       "CollectionPlanCreateRequest": {
         "additionalProperties": false,
-        "description": "Stage 8F 周期 Plan 创建 Contract；一次性运行继续使用 Stage 8E。",
+        "description": "周期 Plan 创建 Contract；Keyword Pack 搜索，Brand Scope 过滤。",
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "enabled": {
             "default": true,
             "title": "Enabled",
@@ -1832,6 +1842,15 @@
       "CollectionPlanResponse": {
         "additionalProperties": false,
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "comment_policy": {
             "const": "adaptive",
             "title": "Comment Policy",
@@ -1949,6 +1968,16 @@
         "additionalProperties": false,
         "description": "完整替换一个计划的下一版本配置；历史 Run/Occurrence 继续保留旧版本事实。",
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -2047,8 +2076,18 @@
       },
       "CollectionRunCreateRequest": {
         "additionalProperties": false,
-        "description": "一次性发现从 Keyword Pack 冻结关键词；Batch Supplement 只补既有内容。",
+        "description": "一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。",
         "properties": {
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
           "data_import_campaign_id": {
             "anyOf": [
               {
@@ -2222,6 +2261,15 @@
             "minimum": 0.0,
             "title": "Attempt",
             "type": "integer"
+          },
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Brand Ids",
+            "type": "array"
           },
           "created_at": {
             "format": "date-time",

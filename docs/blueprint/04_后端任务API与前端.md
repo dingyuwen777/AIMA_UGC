@@ -369,7 +369,7 @@ PUT  /api/v1/relevance-config
 GET  /api/v1/relevance-config
 ```
 
-规则 Relevance 是 Collection 入库前的关键词相关性能力；它和 AI Semantic Relevance、Excel Brand/Vehicle Filter 不是同一个字段，也不能混为一层。正式 Excel Import 不使用 Keyword Pack；升级前旧任务仍按其冻结的 legacy 词包快照执行。
+Keyword Pack 只提供 TikHub Discovery Search Terms。新建 Discovery Run 在 Canonical 后使用冻结 Brand/Vehicle Filter Snapshot；正式 Excel Import 不执行 Search，但复用同一个 Resolver。旧 Global Rule Relevance API 暂时保留到清理阶段，只有升级前的 legacy Run 按已冻结的旧快照继续执行。AI Semantic Relevance 与人工相关性复核仍由 Analysis/查询层维护。
 
 ### 5.7 Collection Plan
 

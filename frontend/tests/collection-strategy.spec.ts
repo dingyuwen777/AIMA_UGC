@@ -22,6 +22,7 @@ const generated = vi.hoisted(() => ({
 vi.mock('../src/generated/api/client', () => generated)
 
 import { createPlan, fetchKeywordPacks } from '../src/features/collection-strategy/api'
+import { planExecutionReason } from '../src/features/collection-strategy/eligibility'
 import { useCollectionStrategyStore } from '../src/features/collection-strategy/store'
 
 const globalPack = {
@@ -143,6 +144,15 @@ describe('collection strategy feature', () => {
     expect(payload).not.toHaveProperty('relevance_keyword_pack_id')
   })
 
+  it('requires Keyword Pack search terms even when a legacy vehicle scope exists', () => {
+    expect(planExecutionReason({
+      keywordPackIds: [],
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
+      packDetails: {},
+      capabilities: { provider_configs: [], capabilities: [] },
+    })).toBe('请至少选择一个关键词包作为搜索条件。')
+  })
+
   it('paginates the periodic Plan list through the formal offset contract', async () => {
     generated.listCollectionPlans.mockImplementation(async (params: { enabled?: boolean; offset?: number; limit?: number }) =>
       params.enabled === true
@@ -190,8 +200,14 @@ describe('collection strategy feature', () => {
     expect(store.error).toContain('全局相关性')
   })
 
-  it('does not enable a Plan when global relevance is unavailable', async () => {
-    generated.getGlobalRelevanceConfig.mockRejectedValue({ status: 409, detail: 'not configured', request_id: 'r1' })
+  it('enables a valid Plan when legacy global relevance is unavailable', async () => {
+    generated.getGlobalRelevanceConfig.mockResolvedValue({ status: 409, detail: 'not configured', request_id: 'r1' })
+    generated.getCollectionCapabilities.mockResolvedValue({
+      provider_configs: [{ id: 'provider-1', provider: 'tikhub', display_name: 'TikHub' }],
+      capabilities: [{
+        platform: 'xiaohongshu', provider: 'tikhub', operations: ['keyword_search'], search: null,
+      }],
+    })
     const store = useCollectionStrategyStore()
     await store.refresh()
     const plan: CollectionPlanResponse = {
@@ -202,8 +218,8 @@ describe('collection strategy feature', () => {
       keyword_pack_ids: [globalPack.id], created_at: '2026-08-22T00:00:00Z', updated_at: '2026-08-22T00:00:00Z',
     }
     await store.togglePlan(plan)
-    expect(generated.updateCollectionPlanEnabled).not.toHaveBeenCalled()
-    expect(store.error).toContain('全局相关性')
+    expect(generated.updateCollectionPlanEnabled).toHaveBeenCalledWith(plan.id, { enabled: true })
+    expect(store.error).toBeNull()
   })
 
   it('keeps the latest selected pack when older detail requests finish later', async () => {

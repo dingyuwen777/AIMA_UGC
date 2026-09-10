@@ -183,7 +183,7 @@ GET    /api/v1/vehicle-catalog/snapshot
 - `GET /api/v1/vehicle-catalog/readiness` 面向管理员暴露尚未完成有效 Brand 归属的 active Vehicle；
 - Snapshot 支持 `all_active` 与 `selected` Brand Scope。选择 Brand 自动包含其全部 active Vehicle，并冻结 Brand/Vehicle/Alias、目录版本与全局 Alias 歧义上下文；
 - 跨 Brand/Vehicle 的同名 Alias 保留为冲突事实，Resolver fail-safe，不猜唯一实体；
-- 本阶段没有切换 Excel/TikHub Runtime，也没有改变 Collection Plan / Keyword Pack 的既有语义。
+- 统一 Snapshot/Resolver 已由 Excel Import 与 TikHub Discovery 复用；精确运行语义分别见第 4、5 节。
 
 # 4. Collection Runtime API
 
@@ -205,13 +205,15 @@ GET    /api/v1/vehicle-catalog/snapshot
 
 ```text
 discovery
-→ 一次性关键词发现
+→ Keyword Pack 逐词搜索 + Brand Scope 入库前过滤
 
 batch_supplement
 → 基于 Data Import Campaign 或兼容 Import Batch 做补采
 ```
 
 补采请求必须且只能提交 `data_import_campaign_id` 或 `import_batch_id` 之一。新页面优先使用 Campaign；旧 Batch 字段继续保持兼容。
+
+Discovery 必须提交至少一个 `keyword_pack_ids`；`brand_ids` 为空表示冻结全部 active Brand，非空表示 selected Brand Scope。兼容期仍接收 `vehicle_model_ids`，但它只转换为对应 Brand Scope，不能替代 Keyword Pack，也不能与 `brand_ids` 同时提交。实际 Scope 数量只由平台和去重后的 Search Terms 决定，不按 Vehicle Alias 扩展。
 
 HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Worker 完成。
 
@@ -572,7 +574,7 @@ GET /api/v1/data-exports/{export_id}/download
 
 ---
 
-# 10. Keyword Pack / Relevance API
+# 10. Keyword Pack / legacy Relevance API
 
 当前 Route：
 
@@ -586,7 +588,7 @@ PUT  /api/v1/relevance-config
 GET  /api/v1/relevance-config
 ```
 
-规则 Relevance 是 Collection 的确定性关键词筛选，不是 AI Semantic Relevance。Collection Run 会冻结当前 `global_relevance_config` 指向的词包事实；正式 Excel/Data Import Campaign 改为冻结 Brand/Vehicle Filter Snapshot，不再接收 Keyword Pack。两者都不能让 Worker 执行时重新读取变化后的目录选择。
+Keyword Pack 是 TikHub Discovery 的 Search Terms 来源。新建 Discovery Run 使用 `collection-run-config.v2`，分别冻结 Search Snapshot 与 Brand/Vehicle Filter Snapshot，不再读取 `global_relevance_config`。`/api/v1/relevance-config` 在 Roadmap 清理阶段前继续保留，供旧配置管理和升级前 `collection-run-config.v1` 任务解释；它不是新任务的入库过滤器。正式 Excel/Data Import Campaign 不执行 Search，也不接收 Keyword Pack，只冻结 Brand/Vehicle Filter Snapshot。AI/人工 Relevance 继续属于 Analysis 与查询语义。
 
 ---
 
@@ -613,6 +615,8 @@ timezone = Asia/Shanghai
 misfire_policy = latest_only
 max_catch_up_runs = 0
 ```
+
+Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围；Plan 中空 `brand_ids` 表示 all-active。兼容 `vehicle_model_ids` 会在创建 Run 时转换为所属 Brand Scope，不能和 `brand_ids` 同时提交，也不能单独形成 Discovery Search。Plan Response 保留提交的 `brand_ids`；Run Response 返回任务创建时实际冻结的 Brand UUID，因而 all-active Run 也能显示当时纳入的具体 Brand。前端生成类型以当前 OpenAPI 为准。
 
 完整 Scheduler 语义：[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)。
 

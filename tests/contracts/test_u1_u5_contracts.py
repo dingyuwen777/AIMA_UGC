@@ -27,10 +27,11 @@ from aima_ugc.modules.reporting.column_catalog import (
 from pydantic import ValidationError
 
 
-def test_vehicle_only_collection_plan_is_additive_and_valid() -> None:
-    """新 Plan 可只选车型，旧 keyword_pack_ids 字段继续存在。"""
+def test_legacy_vehicle_scope_requires_keyword_search_terms() -> None:
+    """兼容车型范围仍可提交，但 Discovery Search Terms 必须来自 Keyword Pack。"""
 
     vehicle_id = uuid4()
+    keyword_pack_id = uuid4()
     request = CollectionPlanCreateRequest(
         name="Q7 监测",
         schedule_expr="0 8 * * *",
@@ -41,10 +42,11 @@ def test_vehicle_only_collection_plan_is_additive_and_valid() -> None:
                 "search_config": {},
             }
         ],
+        keyword_pack_ids=[keyword_pack_id],
         vehicle_model_ids=[vehicle_id],
     )
 
-    assert request.keyword_pack_ids == ()
+    assert request.keyword_pack_ids == (keyword_pack_id,)
     assert request.vehicle_model_ids == (vehicle_id,)
 
 

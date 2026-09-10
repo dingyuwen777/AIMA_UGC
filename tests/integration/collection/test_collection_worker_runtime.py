@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
@@ -24,12 +25,20 @@ from aima_ugc.modules.collection.planning import (
     PlanPlatformDefinition,
 )
 from aima_ugc.modules.collection.providers import ProviderTransportResponse
-from aima_ugc.modules.collection.tables import collection_runs_table, collection_scopes_table
+from aima_ugc.modules.collection.tables import (
+    collection_runs_table,
+    collection_scopes_table,
+    provider_request_attempts_table,
+    provider_requests_table,
+)
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.system.models import Keyword, KeywordPack, KeywordPackItem, ProviderConfig
+from aima_ugc.modules.vehicles.tables import content_brand_evidence_table
 from aima_ugc.platform.jobs.tables import jobs_table
 from pydantic import SecretStr
 from sqlalchemy import select
+
+from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
 _FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
@@ -77,9 +86,11 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
     runtime = create_scheduler_runtime()
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, collection_plans, keyword_packs, accounts, "
+            "provider_configs RESTART IDENTITY CASCADE"
         )
     try:
+        brand_id = UUID(stage3_filter_brand_id(runtime, alias="脱敏"))
         session = runtime.database.new_session()
         try:
             with session.begin():
@@ -148,6 +159,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
                             ),
                         ),
                         keyword_pack_ids=(pack.id,),
+                        brand_ids=(brand_id,),
                     )
                 )
                 planning_repository.update_schedule_cursor(
@@ -209,6 +221,22 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             run = session.execute(select(collection_runs_table)).mappings().one()
             scope = session.execute(select(collection_scopes_table)).mappings().one()
             content = session.execute(select(contents_table)).mappings().one()
+            brand_evidence = (
+                session.execute(
+                    select(content_brand_evidence_table).where(
+                        content_brand_evidence_table.c.content_id == content["id"],
+                        content_brand_evidence_table.c.content_version
+                        == content["current_version"],
+                        content_brand_evidence_table.c.is_active.is_(True),
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            provider_requests = session.execute(select(provider_requests_table)).mappings().all()
+            provider_attempts = (
+                session.execute(select(provider_request_attempts_table)).mappings().all()
+            )
         finally:
             session.close()
 
@@ -216,10 +244,29 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
         assert run["status"] == "succeeded"
         assert scope["status"] == "succeeded"
         assert content["external_content_id"] == "note-fixture-1"
+        assert run["config_snapshot"]["schema_version"] == "collection-run-config.v2"
+        assert run["config_snapshot"]["brand_vehicle_filter"]["catalog"]["selected_brand_ids"] == [
+            str(brand_id)
+        ]
+        assert "relevance" not in run["config_snapshot"]
+        assert brand_evidence["brand_id"] == brand_id
+        assert brand_evidence["source"] == "alias_match"
+        assert len(provider_requests) == len(provider_attempts) == 2
+        assert all(item["dispatch_status"] == "completed" for item in provider_attempts)
+        assert all(item["attempt_no"] == 1 for item in provider_attempts)
+        assert all(item["raw_artifact_id"] is not None for item in provider_attempts)
+        assert all(item["billing_status"] == "estimated" for item in provider_attempts)
+        assert all(item["cost_currency"] == "USD" for item in provider_attempts)
+        assert all(item["cost_unit"] == "request" for item in provider_attempts)
+        assert all(item["unit_price_snapshot"] == Decimal("0.010000") for item in provider_attempts)
+        assert all(item["estimated_cost"] == Decimal("0.010000") for item in provider_attempts)
+        assert all(item["actual_cost"] == Decimal("0") for item in provider_attempts)
+        assert all(item["potential_duplicate_charge"] is False for item in provider_attempts)
         assert "request_budget" not in run["config_snapshot"]
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, collection_plans, keyword_packs, accounts, "
+                "provider_configs RESTART IDENTITY CASCADE"
             )
         runtime.close()

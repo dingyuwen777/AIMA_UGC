@@ -9,6 +9,9 @@ from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
+    PostgresBrandVehicleRepository,
+)
 from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
@@ -16,10 +19,7 @@ from aima_ugc.adapters.persistence.postgres.keywords import (
     KeywordPackSummaryRecord,
     PostgresKeywordCatalogRepository,
 )
-from aima_ugc.adapters.persistence.postgres.relevance import (
-    GlobalRelevanceUnavailable,
-    PostgresGlobalRelevanceRepository,
-)
+from aima_ugc.adapters.persistence.postgres.relevance import PostgresGlobalRelevanceRepository
 from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     MissingScheduledKeywordPackError,
     PostgresScheduledKeywordSnapshotReader,
@@ -28,7 +28,6 @@ from aima_ugc.adapters.persistence.postgres.system import (
     PostgresAuditRepository,
     PostgresProviderConfigRepository,
 )
-from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.contracts.http import (
     CollectionPlanCreateRequest,
@@ -150,7 +149,6 @@ class PostgresCollectionStrategyHttpService:
                     _validate_execution_surface(
                         session,
                         definition,
-                        require_relevance=request.enabled,
                         require_explicit_search_config=True,
                     )
                     created = CollectionPlanningService(repository).create_plan(definition)
@@ -230,7 +228,6 @@ class PostgresCollectionStrategyHttpService:
                     _validate_execution_surface(
                         session,
                         current,
-                        require_relevance=True,
                         require_explicit_search_config=False,
                     )
                 updated = repository.set_plan_enabled(plan_id, enabled=request.enabled)
@@ -278,6 +275,7 @@ def _plan_definition(
             for item in request.platforms
         ),
         keyword_pack_ids=request.keyword_pack_ids,
+        brand_ids=request.brand_ids,
         vehicle_model_ids=request.vehicle_model_ids,
     )
 
@@ -313,9 +311,10 @@ def _validate_execution_surface(
     session: Session,
     plan: CollectionPlanDefinition | CollectionPlanRecord,
     *,
-    require_relevance: bool,
     require_explicit_search_config: bool,
 ) -> None:
+    if plan.brand_ids and plan.vehicle_model_ids:
+        raise CollectionStrategyConflict("Brand Scope 与兼容 Vehicle Scope 不能同时存在")
     keyword_repository = PostgresKeywordCatalogRepository(session)
     for pack_id in sorted(plan.keyword_pack_ids, key=str):
         pack = keyword_repository.get_pack_for_update(pack_id)
@@ -337,19 +336,22 @@ def _validate_execution_surface(
     else:
         keyword_entries = ()
     try:
-        vehicle_snapshot = PostgresVehicleCatalogRepository(session).snapshot(
+        brand_repository = PostgresBrandVehicleRepository(session)
+        selected_brand_ids = plan.brand_ids or brand_repository.brand_ids_for_vehicle_models(
             plan.vehicle_model_ids
         )
-    except LookupError as exc:
+        filter_snapshot = brand_repository.snapshot(brand_ids=selected_brand_ids or None)
+    except (LookupError, ValueError) as exc:
         raise CollectionStrategyResourceNotFound from exc
-    if not vehicle_snapshot.resolved_aliases:
-        for item in plan.platforms:
-            if not any(
-                entry.item_platform_scope in ("all", item.platform) for entry in keyword_entries
-            ):
-                raise CollectionStrategyConflict(
-                    f"目标平台 {item.platform} 没有可用 Discovery 关键词或车型别名"
-                )
+    if not filter_snapshot.brands:
+        raise CollectionStrategyConflict("Brand Filter 当前没有可用 active Brand")
+    for item in plan.platforms:
+        if not any(
+            entry.item_platform_scope in ("all", item.platform) for entry in keyword_entries
+        ):
+            raise CollectionStrategyConflict(
+                f"目标平台 {item.platform} 没有可用 Keyword Pack Search Term"
+            )
 
     providers = PostgresProviderConfigRepository(session)
     registry = build_default_provider_registry()
@@ -366,12 +368,6 @@ def _validate_execution_surface(
             )
         except ValueError as exc:
             raise CollectionStrategyConflict("Provider Config 当前不可执行") from exc
-
-    if require_relevance:
-        try:
-            PostgresGlobalRelevanceRepository(session).snapshot()
-        except GlobalRelevanceUnavailable as exc:
-            raise CollectionStrategyConflict("全局 Relevance 当前不可用") from exc
 
 
 def _keyword_pack_summary(record: KeywordPackSummaryRecord) -> KeywordPackSummaryResponse:
@@ -416,6 +412,7 @@ def _plan_response(record: CollectionPlanRecord) -> CollectionPlanResponse:
             for item in record.platforms
         ),
         keyword_pack_ids=record.keyword_pack_ids,
+        brand_ids=record.brand_ids,
         vehicle_model_ids=record.vehicle_model_ids,
         created_at=record.created_at,
         updated_at=record.updated_at,

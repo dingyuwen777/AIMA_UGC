@@ -22,6 +22,7 @@ from aima_ugc.modules.collection.planning import (
     PlanPlatformDefinition,
 )
 from aima_ugc.modules.collection.tables import (
+    collection_plan_brands_table,
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
     collection_plan_vehicle_models_table,
@@ -95,6 +96,16 @@ class PostgresCollectionPlanningRepository:
                     [
                         {"plan_id": plan_id, "keyword_pack_id": keyword_pack_id}
                         for keyword_pack_id in definition.keyword_pack_ids
+                    ]
+                )
+            )
+
+        if definition.brand_ids:
+            self._session.execute(
+                insert(collection_plan_brands_table).values(
+                    [
+                        {"plan_id": plan_id, "brand_id": brand_id}
+                        for brand_id in definition.brand_ids
                     ]
                 )
             )
@@ -380,6 +391,14 @@ class PostgresCollectionPlanningRepository:
                 .order_by(collection_plan_keyword_packs_table.c.keyword_pack_id)
             ).scalars()
         )
+        brand_ids = tuple(
+            cast(UUID, value)
+            for value in self._session.execute(
+                select(collection_plan_brands_table.c.brand_id)
+                .where(collection_plan_brands_table.c.plan_id == plan_id)
+                .order_by(collection_plan_brands_table.c.brand_id)
+            ).scalars()
+        )
         vehicle_model_ids = tuple(
             cast(UUID, value)
             for value in self._session.execute(
@@ -401,6 +420,7 @@ class PostgresCollectionPlanningRepository:
             row,
             platforms=platforms,
             keyword_pack_ids=keyword_pack_ids,
+            brand_ids=brand_ids,
             vehicle_model_ids=vehicle_model_ids,
             decision_policy=decision_policy,
         )
@@ -419,6 +439,7 @@ def _row_to_plan(
     *,
     platforms: tuple[PlanPlatformDefinition, ...],
     keyword_pack_ids: tuple[UUID, ...],
+    brand_ids: tuple[UUID, ...],
     vehicle_model_ids: tuple[UUID, ...],
     decision_policy: CollectionDecisionPolicyV1,
 ) -> CollectionPlanRecord:
@@ -440,6 +461,7 @@ def _row_to_plan(
         updated_at=row["updated_at"],
         platforms=platforms,
         keyword_pack_ids=keyword_pack_ids,
+        brand_ids=brand_ids,
         vehicle_model_ids=vehicle_model_ids,
         decision_policy=decision_policy,
     )

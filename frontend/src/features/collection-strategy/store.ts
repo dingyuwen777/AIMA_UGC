@@ -465,10 +465,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   function planReason(request: CollectionPlanCreateRequest): string | null {
     return planExecutionReason({
       keywordPackIds: request.keyword_pack_ids ?? [],
-      vehicleModelIds: request.vehicle_model_ids ?? [],
       platforms: request.platforms,
-      requireRelevance: request.enabled ?? true,
-      relevanceAvailable: relevance.value !== null,
       packDetails: packDetails.value,
       capabilities: capabilities.value,
     })
@@ -528,10 +525,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     if (plan.enabled) return null
     return planExecutionReason({
       keywordPackIds: plan.keyword_pack_ids ?? [],
-      vehicleModelIds: plan.vehicle_model_ids ?? [],
       platforms: plan.platforms,
-      requireRelevance: true,
-      relevanceAvailable: relevance.value !== null,
       packDetails: packDetails.value,
       capabilities: capabilities.value,
     })

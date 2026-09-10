@@ -128,6 +128,7 @@ class CollectionPlanUpdateRequest(ResourceExpectedVersionRequest):
     schedule_expr: str = Field(min_length=1, max_length=100)
     platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(min_length=1, max_length=5)
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
+    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     enabled: bool
 
@@ -151,10 +152,14 @@ class CollectionPlanUpdateRequest(ResourceExpectedVersionRequest):
             raise ValueError("同一计划的目标平台不得重复")
         if len(self.keyword_pack_ids) != len(set(self.keyword_pack_ids)):
             raise ValueError("同一计划的关键词包不得重复")
+        if len(self.brand_ids) != len(set(self.brand_ids)):
+            raise ValueError("同一计划的品牌不得重复")
         if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
             raise ValueError("同一计划的车型不得重复")
-        if not self.keyword_pack_ids and not self.vehicle_model_ids:
-            raise ValueError("计划必须至少选择一个关键词包或车型")
+        if self.brand_ids and self.vehicle_model_ids:
+            raise ValueError("品牌范围与兼容车型范围不能同时提交")
+        if not self.keyword_pack_ids:
+            raise ValueError("计划必须选择至少一个 Keyword Pack 作为 Search Terms")
         return self
 
 
