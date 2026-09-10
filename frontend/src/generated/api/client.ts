@@ -552,6 +552,177 @@ export interface BrandVehicleCatalogSnapshotResponse {
   vehicles: CatalogVehicleSnapshotItem[];
 }
 
+/**
+ * 创建 Replay 时显式冻结的输入选择。
+ */
+export interface CanonicalReplayCreateRequest {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  artifact_ids: string[];
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
+  batch_size?: number;
+  /** @maxItems 100 */
+  brand_ids?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  idempotency_key: string;
+}
+
+export type CanonicalReplayCreatedResponseStatus = typeof CanonicalReplayCreatedResponseStatus[keyof typeof CanonicalReplayCreatedResponseStatus];
+
+
+export const CanonicalReplayCreatedResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface CanonicalReplayCreatedResponse {
+  job_id: string;
+  run_id: string;
+  status: CanonicalReplayCreatedResponseStatus;
+}
+
+/**
+ * Canonical Replay 成功终态的安全统计。
+ */
+export interface CanonicalReplayJobResultResponse {
+  /** @minimum 1 */
+  artifact_count: number;
+  /** @minimum 0 */
+  duplicates_removed: number;
+  /** @minimum 0 */
+  existing_convergence: number;
+  invalid_artifact_rows?: 0;
+  /** @minimum 0 */
+  rows_filtered_out: number;
+  /** @minimum 0 */
+  rows_ingested: number;
+  /** @minimum 0 */
+  rows_matched: number;
+  /** @minimum 0 */
+  rows_seen: number;
+  run_id: string;
+}
+
+export type CanonicalReplayRunResponseFilterScope = typeof CanonicalReplayRunResponseFilterScope[keyof typeof CanonicalReplayRunResponseFilterScope];
+
+
+export const CanonicalReplayRunResponseFilterScope = {
+  all_active: 'all_active',
+  selected: 'selected',
+} as const;
+
+export interface ImportJobResultResponse {
+  batch_id: string;
+  /** @minimum 0 */
+  rows_ingested: number;
+}
+
+export interface ContentAnalysisJobResultResponse {
+  /** @minimum 0 */
+  failed: number;
+  request_id: string;
+  /** @minimum 0 */
+  stale: number;
+  /** @minimum 0 */
+  succeeded: number;
+}
+
+export interface DataExportJobResultResponse {
+  /** @minimum 0 */
+  analyzed_count: number;
+  artifact_id: string;
+  /** @minimum 0 */
+  comment_count: number;
+  /** @minimum 0 */
+  content_count: number;
+  export_id: string;
+  /** @minimum 0 */
+  unanalyzed_count: number;
+}
+
+export type JobStatusResponseStatus = typeof JobStatusResponseStatus[keyof typeof JobStatusResponseStatus];
+
+
+export const JobStatusResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface JobStatusResponse {
+  /** @minimum 0 */
+  attempt: number;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  job_type: string;
+  /** @exclusiveMinimum 0 */
+  max_attempts: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  result?: ImportJobResultResponse | ContentAnalysisJobResultResponse | DataExportJobResultResponse | CanonicalReplayJobResultResponse | null;
+  started_at?: string | null;
+  status: JobStatusResponseStatus;
+}
+
+export interface CanonicalReplayStatsResponse {
+  /** @minimum 0 */
+  duplicates_removed: number;
+  /** @minimum 0 */
+  existing_convergence: number;
+  invalid_artifact_rows?: 0;
+  /** @minimum 0 */
+  rows_filtered_out: number;
+  /** @minimum 0 */
+  rows_ingested: number;
+  /** @minimum 0 */
+  rows_matched: number;
+  /** @minimum 0 */
+  rows_seen: number;
+}
+
+export interface CanonicalReplayRunResponse {
+  /** @minimum 1 */
+  artifact_count: number;
+  artifact_ids: string[];
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
+  batch_size: number;
+  brand_ids: string[];
+  /** @minimum 1 */
+  catalog_version: number;
+  /** @minimum 0 */
+  checkpoint_artifact_ordinal: number;
+  /** @minimum 0 */
+  checkpoint_row_number: number;
+  created_at: string;
+  created_by: string;
+  filter_scope: CanonicalReplayRunResponseFilterScope;
+  id: string;
+  job: JobStatusResponse;
+  stats: CanonicalReplayStatsResponse;
+  updated_at: string;
+}
+
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
 
 
@@ -966,16 +1137,6 @@ export interface ContentAnalysisCreatedResponse {
   status?: 'queued';
   /** @exclusiveMinimum 0 */
   target_count: number;
-}
-
-export interface ContentAnalysisJobResultResponse {
-  /** @minimum 0 */
-  failed: number;
-  request_id: string;
-  /** @minimum 0 */
-  stale: number;
-  /** @minimum 0 */
-  succeeded: number;
 }
 
 export type ContentAnalysisManualReviewRequestUnlockDimensionsItem = typeof ContentAnalysisManualReviewRequestUnlockDimensionsItem[keyof typeof ContentAnalysisManualReviewRequestUnlockDimensionsItem];
@@ -1669,56 +1830,6 @@ export interface DataExportCreatedResponse {
   status?: 'queued';
   /** @exclusiveMinimum 0 */
   target_count: number;
-}
-
-export interface DataExportJobResultResponse {
-  /** @minimum 0 */
-  analyzed_count: number;
-  artifact_id: string;
-  /** @minimum 0 */
-  comment_count: number;
-  /** @minimum 0 */
-  content_count: number;
-  export_id: string;
-  /** @minimum 0 */
-  unanalyzed_count: number;
-}
-
-export interface ImportJobResultResponse {
-  batch_id: string;
-  /** @minimum 0 */
-  rows_ingested: number;
-}
-
-export type JobStatusResponseStatus = typeof JobStatusResponseStatus[keyof typeof JobStatusResponseStatus];
-
-
-export const JobStatusResponseStatus = {
-  queued: 'queued',
-  running: 'running',
-  succeeded: 'succeeded',
-  failed: 'failed',
-  cancelled: 'cancelled',
-} as const;
-
-export interface JobStatusResponse {
-  /** @minimum 0 */
-  attempt: number;
-  created_at: string;
-  error_code?: string | null;
-  finished_at?: string | null;
-  id: string;
-  job_type: string;
-  /** @exclusiveMinimum 0 */
-  max_attempts: number;
-  /**
-     * @minimum 0
-     * @maximum 100
-     */
-  progress: number;
-  result?: ImportJobResultResponse | ContentAnalysisJobResultResponse | DataExportJobResultResponse | null;
-  started_at?: string | null;
-  status: JobStatusResponseStatus;
 }
 
 export interface DataExportStatsResponse {
@@ -3586,6 +3697,99 @@ export const listAuditEvents = async (params?: ListAuditEventsParams, options?: 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: AuditEventListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateCanonicalReplayUrl = () => {
+
+
+
+
+  return `/api/v1/canonical-replays`
+}
+
+/**
+ * @summary Create Canonical Replay
+ */
+export const createCanonicalReplay = async (canonicalReplayCreateRequest: CanonicalReplayCreateRequest, options?: RequestInit): Promise<CanonicalReplayCreatedResponse> => {
+
+  const res = await fetch(getCreateCanonicalReplayUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(canonicalReplayCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCanonicalReplayUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/canonical-replays/${runId}`
+}
+
+/**
+ * @summary Get Canonical Replay
+ */
+export const getCanonicalReplay = async (runId: string, options?: RequestInit): Promise<CanonicalReplayRunResponse> => {
+
+  const res = await fetch(getGetCanonicalReplayUrl(runId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayRunResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelCanonicalReplayUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/canonical-replays/${runId}/cancel`
+}
+
+/**
+ * @summary Cancel Canonical Replay
+ */
+export const cancelCanonicalReplay = async (runId: string, options?: RequestInit): Promise<CanonicalReplayRunResponse> => {
+
+  const res = await fetch(getCancelCanonicalReplayUrl(runId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayRunResponse = body ? JSON.parse(body) : {}
   return data
 }
 

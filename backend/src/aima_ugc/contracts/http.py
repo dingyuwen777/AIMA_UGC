@@ -94,6 +94,22 @@ class DataExportJobResultResponse(BaseModel):
     comment_count: int = Field(ge=0)
 
 
+class CanonicalReplayJobResultResponse(BaseModel):
+    """Canonical Replay 成功终态的安全统计。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    artifact_count: int = Field(ge=1)
+    rows_seen: int = Field(ge=0)
+    rows_matched: int = Field(ge=0)
+    rows_filtered_out: int = Field(ge=0)
+    duplicates_removed: int = Field(ge=0)
+    rows_ingested: int = Field(ge=0)
+    existing_convergence: int = Field(ge=0)
+    invalid_artifact_rows: Literal[0] = 0
+
+
 class JobStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -108,6 +124,7 @@ class JobStatusResponse(BaseModel):
         ImportJobResultResponse
         | ContentAnalysisJobResultResponse
         | DataExportJobResultResponse
+        | CanonicalReplayJobResultResponse
         | None
     ) = None
     created_at: datetime
@@ -121,6 +138,76 @@ class ImportBatchCreatedResponse(BaseModel):
     batch_id: UUID
     job_id: UUID
     status: Literal["queued"] = "queued"
+
+
+class CanonicalReplayCreateRequest(BaseModel):
+    """创建 Replay 时显式冻结的输入选择。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    artifact_ids: tuple[UUID, ...] = Field(min_length=1, max_length=100)
+    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
+    batch_size: int = Field(default=500, ge=1, le=1000)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def normalize_idempotency_key(cls, value: str) -> str:
+        """去除调用方无意义空白，并拒绝纯空白幂等键。"""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("idempotency_key 不能为空")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_unique_selection(self) -> CanonicalReplayCreateRequest:
+        """冻结列表顺序，但拒绝同一 Artifact/Brand 被重复选择。"""
+
+        if len(set(self.artifact_ids)) != len(self.artifact_ids):
+            raise ValueError("artifact_ids 不能重复")
+        if len(set(self.brand_ids)) != len(self.brand_ids):
+            raise ValueError("brand_ids 不能重复")
+        return self
+
+
+class CanonicalReplayCreatedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    job_id: UUID
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+
+
+class CanonicalReplayStatsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rows_seen: int = Field(ge=0)
+    rows_matched: int = Field(ge=0)
+    rows_filtered_out: int = Field(ge=0)
+    duplicates_removed: int = Field(ge=0)
+    rows_ingested: int = Field(ge=0)
+    existing_convergence: int = Field(ge=0)
+    invalid_artifact_rows: Literal[0] = 0
+
+
+class CanonicalReplayRunResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    artifact_ids: tuple[UUID, ...]
+    filter_scope: Literal["all_active", "selected"]
+    brand_ids: tuple[UUID, ...]
+    catalog_version: int = Field(ge=1)
+    artifact_count: int = Field(ge=1)
+    checkpoint_artifact_ordinal: int = Field(ge=0)
+    checkpoint_row_number: int = Field(ge=0)
+    batch_size: int = Field(ge=1, le=1000)
+    stats: CanonicalReplayStatsResponse
+    job: JobStatusResponse
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class ImportBatchResponse(BaseModel):
@@ -1703,6 +1790,11 @@ __all__ = [
     "ContentSourceResponse",
     "ContentSupplementStatusResponse",
     "ContentTargetSelection",
+    "CanonicalReplayCreateRequest",
+    "CanonicalReplayCreatedResponse",
+    "CanonicalReplayJobResultResponse",
+    "CanonicalReplayRunResponse",
+    "CanonicalReplayStatsResponse",
     "DataExportCreatedResponse",
     "DataExportJobResultResponse",
     "DataExportListResponse",

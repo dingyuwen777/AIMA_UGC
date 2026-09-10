@@ -80,6 +80,7 @@ canonical_artifact_links_table = Table(
         "collection_scope_id, provider_attempt_id) = 1",
         name="source_parent_exactly_one",
     ),
+    CheckConstraint("collection_scope_id is null", name="scope_only_forbidden"),
     info={"owner": "platform"},
 )
 

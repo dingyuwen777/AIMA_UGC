@@ -24,6 +24,7 @@ def test_canonical_artifact_link_schema_has_one_owner_and_strong_parent_constrai
     )
     assert "num_nonnulls" in check_sql
     assert "= 1" in check_sql
+    assert "collection_scope_id is null" in check_sql
     indexes = {index.name: index for index in canonical_artifact_links_table.indexes}
     assert set(indexes) == {
         "ix_canonical_artifact_links_processing_import_batch_id",

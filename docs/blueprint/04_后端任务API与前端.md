@@ -92,9 +92,10 @@ analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
 vehicles.content-reclassification.v1
+ingestion.canonical-replay.v1
 ```
 
-`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
+`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
 注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
@@ -409,7 +410,33 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 
 当前正式 API 仍没有 `/alerts`、通用 Web Report Center 等未来占位路径。未来新增资源时以当时 Pydantic Contract 和 Route 为准，不提前在 Blueprint 冻结不存在的 URL。
 
-### 5.9 Principal、车型目录与管理员配置
+### 5.9 Persistent Canonical Replay
+
+```text
+POST /api/v1/canonical-replays
+GET  /api/v1/canonical-replays/{run_id}
+POST /api/v1/canonical-replays/{run_id}/cancel
+```
+
+这是管理员级恢复入口，不是通用文件扫描接口。创建请求显式提交 1—100 个已知 Canonical
+Artifact ID、客户端幂等键、可选 Brand ID 和批大小；空 Brand 集合表示在创建事务中冻结当时
+全部 active Brand。后端校验 Artifact 必须是当前 Excel v2、Data Import Pure Canonical Chunk
+v2 或 TikHub Discovery Search Attempt 的唯一 linked Canonical，随后原子创建 Replay Run 与
+`ingestion.canonical-replay.v1` Job。重复幂等键只有在 Artifact 顺序、Brand、批大小和创建者
+完全一致时返回原 Run；参数漂移返回 409。
+
+查询返回冻结目录版本、Artifact 顺序、checkpoint、Job 状态及对账统计。取消沿用统一 Job
+语义：排队任务立即进入取消终态，运行任务记录取消请求并由 Worker 在有界批次边界协作收敛。
+这三个路由都执行后端管理员角色检查并记录创建/取消审计；当前没有对应前端页面，不能写成
+采集运行中心已经提供的可视化操作。
+
+代码：
+
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_worker.py)
+- [`backend/src/aima_ugc/modules/ingestion/canonical_replay.py`](../../backend/src/aima_ugc/modules/ingestion/canonical_replay.py)
+
+### 5.10 Principal、车型目录与管理员配置
 
 管理员能力的精确 Route/字段仍以 [`backend/src/aima_ugc/contracts/administration.py`](../../backend/src/aima_ugc/contracts/administration.py)、[`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 和生成 OpenAPI 为机器事实。稳定资源边界包括：
 

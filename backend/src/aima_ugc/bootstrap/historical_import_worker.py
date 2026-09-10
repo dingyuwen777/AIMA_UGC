@@ -11,7 +11,7 @@ from itertools import zip_longest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import cast
-from uuid import UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -35,8 +35,10 @@ from aima_ugc.adapters.persistence.postgres.historical_content import (
 from aima_ugc.adapters.persistence.postgres.historical_import import (
     PostgresHistoricalImportRepository,
 )
+from aima_ugc.adapters.persistence.postgres.import_lineage import (
+    ensure_campaign_import_lineage,
+)
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
-from aima_ugc.adapters.persistence.postgres.provider import PostgresProviderRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.adapters.providers.imports.historical_chunk import (
     HistoricalChunkDescriptor,
@@ -44,8 +46,6 @@ from aima_ugc.adapters.providers.imports.historical_chunk import (
     convert_historical_excel_to_chunks,
 )
 from aima_ugc.contracts.canonical import CanonicalContentV1
-from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
-from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     BrandVehicleFilterSnapshot,
@@ -849,41 +849,13 @@ def _campaign_lineage(
     artifact: ArtifactRecord,
     operation: str,
 ) -> tuple[UUID, UUID]:
-    lineage_key = f"{platform}:{artifact.id}:{artifact.sha256}"
-    request_id = uuid5(batch_id, f"campaign-provider-request:{operation}:{lineage_key}")
-    attempt_id = uuid5(batch_id, f"campaign-provider-attempt:{operation}:{lineage_key}")
-    request = ProviderRequestV1.create_for_import(
-        request_id=request_id,
-        import_batch_id=batch_id,
-        provider="imports",
+    return ensure_campaign_import_lineage(
+        session=session,
+        batch_id=batch_id,
         platform=platform,
+        canonical_artifact=artifact,
         operation=operation,
-        request_params={"chunk_artifact_sha256": artifact.sha256},
-        pagination_input={},
     )
-    repository = PostgresProviderRepository(session)
-    prepared = ProviderPersistenceService(repository).prepare_non_billable_attempt(
-        request=request,
-        attempt_id=attempt_id,
-    )
-    dispatching = repository.mark_dispatching(prepared.attempt.id)
-    if dispatching.dispatch_started_at is None:
-        raise RuntimeError("Data Import Campaign Attempt 未进入 dispatching")
-    repository.finalize_dispatch(
-        attempt=ProviderAttemptV1(
-            attempt_id=dispatching.id,
-            provider_request_id=prepared.request.id,
-            attempt_no=dispatching.attempt_no,
-            dispatch_status="completed",
-            dispatch_started_at=dispatching.dispatch_started_at,
-            completed_at=beijing_now(),
-            raw_artifact_id=artifact.id,
-            billing=ProviderBillingV1(status="not_billable"),
-            created_at=dispatching.created_at,
-        ),
-        raw_artifact_id=artifact.id,
-    )
-    return prepared.request.id, dispatching.id
 
 
 def _source_entry(root: Path | None, path: Path) -> HistoricalDirectoryEntry:

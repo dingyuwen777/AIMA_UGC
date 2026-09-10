@@ -47,7 +47,7 @@
 
 ## 治理校准后的项目边界
 
-- Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；当前正式架构文档已经同步九种 Job，不再保留旧版本摘要。
+- Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；当前正式架构文档已经同步十种 Job，不再保留旧版本摘要。
 - 当前正式项目文档只维护 AIMA 自己的产品、架构、Contract、Schema、测试、CI、部署和开发导航；不在 AIMA 文档树复制外部通用治理规则或其安装、运行实现说明。
 - 永久 CI 只验证 AIMA 自己可维护的项目治理接线、文档/Secret、Change Ready 和产品质量；外部通用治理能力自身的源码回归不复制到业务仓库。
 - 项目中由安装流程维护的受管文件不作为 AIMA 项目事实源；普通业务开发不直接改写，版本更新通过正式安装/升级流程完成。
@@ -366,9 +366,10 @@ analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
 vehicles.content-reclassification.v1
+ingestion.canonical-replay.v1
 ```
 
-三个 `ingestion.historical-*` 是统一 Data Import Campaign 沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 负责按冻结目录对旧 Content 补齐 Brand/Vehicle Evidence。物理名称保留兼容，不构成平行任务系统。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 负责按冻结目录对旧 Content 补齐 Brand/Vehicle Evidence；`ingestion.canonical-replay.v1` 负责用任务创建时冻结的当前 Brand/Vehicle 目录重放已持久化 Canonical。物理名称保留兼容，不构成平行任务系统。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
 
 Job 必须支持：
 

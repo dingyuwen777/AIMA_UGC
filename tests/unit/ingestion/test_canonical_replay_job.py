@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from pydantic import BaseModel
-
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
     CANONICAL_REPLAY_JOB_TYPE,
@@ -12,6 +10,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     register_canonical_replay_job,
 )
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRegistry
+from pydantic import BaseModel
 
 
 class _Executor:
@@ -26,7 +25,7 @@ class _Executor:
 
 class _Context:
     def __init__(self, *, cancelled: bool = False) -> None:
-        self.fence = JobExecutionFence(job_id=uuid4(), worker_id="worker", fencing_token=3)
+        self.fence = JobExecutionFence(job_id=uuid4(), lease_token="lease-token")
         self._cancelled = cancelled
 
     def heartbeat(self, *, progress=None):  # type: ignore[no-untyped-def]
@@ -55,11 +54,11 @@ def test_replay_handler_delegates_with_current_fence_and_short_circuits_cancel()
 
     result = handler(payload, active)  # type: ignore[arg-type]
 
-    assert result.status == "succeeded"
+    assert result.outcome == "succeeded"
     assert executor.calls == [(payload, active.fence)]
 
     cancelled = handler(payload, _Context(cancelled=True))  # type: ignore[arg-type]
-    assert cancelled.status == "cancelled"
+    assert cancelled.outcome == "cancelled"
     assert len(executor.calls) == 1
 
 
@@ -70,7 +69,6 @@ def test_replay_job_registration_uses_current_payload_contract() -> None:
     register_canonical_replay_job(registry, handler)
 
     definition = registry.get(CANONICAL_REPLAY_JOB_TYPE)
-    assert definition is not None
     assert definition.payload_version == CANONICAL_REPLAY_JOB_PAYLOAD_VERSION
     assert definition.payload_model is CanonicalReplayJobPayload
     assert definition.retry_on_timeout is True

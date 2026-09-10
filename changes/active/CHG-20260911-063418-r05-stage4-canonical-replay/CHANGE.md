@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-063418-r05-stage4-canonical-replay
 title: Roadmap 05 Stage 4 Canonical Replay 与 clean break 收口
 level: L3
-status: active
+status: in_progress
 owner: dingyuwen777
 branch: feat/r05-stage4-canonical-replay
 created: 2026-09-11
@@ -28,9 +28,10 @@ affected_paths:
   - backend/src/aima_ugc/bootstrap/
   - backend/src/aima_ugc/contracts/http.py
   - backend/src/aima_ugc/database_schema.py
+  - backend/src/aima_ugc/platform/storage/tables.py
   - migrations/versions/
-  - api/openapi.json
-  - frontend/src/shared/api/generated/
+  - contracts/openapi/openapi.json
+  - frontend/src/generated/api/client.ts
   - tests/
   - docs/
   - changes/active/CHG-20260911-063418-r05-stage4-canonical-replay/CHANGE.md
@@ -39,7 +40,7 @@ contracts:
   - Canonical Replay Job payload/result
   - Canonical Replay persistent run/checkpoint
 data_changes:
-  - add canonical replay run and selected-artifact relations
+  - add canonical replay run, selected-artifact and per-run seen-content relations
   - reject unsupported legacy canonical lineage during migration
 ---
 
@@ -64,11 +65,11 @@ data_changes:
 
 ## 成功标准
 
-- [ ] 管理员可创建、读取、取消 Replay；幂等键稳定，全部选中 Artifact 与 Filter Snapshot 冻结。
-- [ ] 所有 Artifact 在首个 Content 写入前完成全量完整性/Contract 预检；任一坏输入零写入。
-- [ ] 有界批次、当前 Fence、可恢复 checkpoint、统计与 Content/Evidence 在同一事务推进。
-- [ ] 新 Alias/Brand/Vehicle 可从旧 Canonical 补入新命中；相同输入重跑无重复 Content。
-- [ ] 当前 Excel v2、Pure Canonical Campaign Chunk、TikHub Search Attempt 三类 lineage 均可用；旧结构 fail-closed。
+- [x] 管理员可创建、读取、取消 Replay；幂等键稳定，全部选中 Artifact 与 Filter Snapshot 冻结。
+- [x] 所有 Artifact 在首个 Content 写入前完成全量完整性/Contract 预检；任一坏输入零写入。
+- [x] 有界批次、当前 Fence、可恢复 checkpoint、统计与 Content/Evidence 在同一事务推进。
+- [x] 新 Alias/Brand/Vehicle 可从旧 Canonical 补入新命中；相同输入重跑无重复 Content。
+- [x] 当前 Excel v2、Pure Canonical Campaign Chunk、TikHub Search Attempt 三类 lineage 均可用；旧结构 fail-closed。
 - [ ] Contract/Schema/Migration/生成 Client、长期文档、测试、Review、CI、merge、main fresh、归档与 Roadmap/Issue/分支全部闭环。
 
 ## 非目标
@@ -107,18 +108,18 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 创建持久 Replay Run/Job、冻结有序 Artifact 与幂等请求 | #447 / AC1 | not_satisfied | Red/实现待完成 |
-| R2 | 冻结 all_active/selected BrandVehicleFilterSnapshot 并拒绝非法目录 | #447 / AC2 | not_satisfied | Red/实现待完成 |
-| R3 | 全部 Artifact 预检先于任何 Content 写入，坏输入零写入 | #447 / AC3 | not_satisfied | Red/实现待完成 |
-| R4 | 复用 Reader→当前 Resolver/Filter→Content identity/Owner | #447 / AC4 | not_satisfied | Red/实现待完成 |
-| R5 | 精确累计 seen/matched/filtered/dedup/ingested/existing 统计 | #447 / AC5 | not_satisfied | Red/实现待完成 |
-| R6 | 新目录补入、重跑幂等和冻结 Evidence | #447 / AC6 | not_satisfied | Red/实现待完成 |
-| R7 | 不删除旧 Content、不触发 AI/Export/Report | #447 / AC7 | not_satisfied | diff/测试待反查 |
-| R8 | Lease/Fence/Heartbeat/Deadline/Cancel/Retry/Recovery | #447 / AC8 | not_satisfied | Red/实现待完成 |
-| R9 | 当前三类 Artifact lineage 可用，任意/含糊父级拒绝 | #447 / AC9 | not_satisfied | Red/实现待完成 |
-| R10 | 零 legacy clean break；旧结构失败关闭且无外部重取/历史篡改 | #447 / AC10 | not_satisfied | Migration/证据待完成 |
-| R11 | 正式管理员 API 创建/查询/取消，无复杂页面 | #447 / AC11 | not_satisfied | Red/实现待完成 |
-| R12 | Schema/Contract/生成物/文档/容量恢复/兼容边界同步且不越界 | #447 / AC12 | not_satisfied | 实现/文档待完成 |
+| R1 | 创建持久 Replay Run/Job、冻结有序 Artifact 与幂等请求 | #447 / AC1 | satisfied | Repository enqueue、Run/Input 表、API 幂等漂移集成测试 |
+| R2 | 冻结 all_active/selected BrandVehicleFilterSnapshot 并拒绝非法目录 | #447 / AC2 | satisfied | enqueue snapshot；selected 精确快照集成测试；未归属 active 车型失败关闭 |
+| R3 | 全部 Artifact 预检先于任何 Content 写入，坏输入零写入 | #447 / AC3 | satisfied | Worker `_preflight_all`；损坏第二 Artifact 时 Content/seen 均为 0 的集成测试 |
+| R4 | 复用 Reader→当前 Resolver/Filter→Content identity/Owner | #447 / AC4 | satisfied | CanonicalArtifactReader、`resolve_canonical_brand_vehicle`、ContentIngestionService 调用链 |
+| R5 | 精确累计 seen/matched/filtered/dedup/ingested/existing 统计 | #447 / AC5 | satisfied | Run 对账约束、持久 seen identity、重复/重跑统计集成断言 |
+| R6 | 新目录补入、重跑幂等和冻结 Evidence | #447 / AC6 | satisfied | 新 Alias 后 Replay、二次 Replay、Brand Evidence/catalog_version 集成断言 |
+| R7 | 不删除旧 Content、不触发 AI/Export/Report | #447 / AC7 | satisfied | Replay Worker 只调用 Content/Evidence Owner；Job 无下游 enqueue；迁移无 Content 删除 |
+| R8 | Lease/Fence/Heartbeat/Deadline/Cancel/Retry/Recovery | #447 / AC8 | satisfied | 统一 Job Runtime；Replay handler/cancel API；首批提交后 takeover 续跑与 stale fence 集成测试 |
+| R9 | 当前三类 Artifact lineage 可用，任意/含糊父级拒绝 | #447 / AC9 | satisfied | Repository 三来源分类集成测试；TikHub Request/Attempt/Raw 同 Run 逐行预检 |
+| R10 | 零 legacy clean break；旧结构失败关闭且无外部重取/历史篡改 | #447 / AC10 | satisfied | Migration 0051 gate + Scope DB check；Replay 无 Provider transport；当前 lineage 创建/复用 |
+| R11 | 正式管理员 API 创建/查询/取消，无复杂页面 | #447 / AC11 | satisfied | FastAPI API/授权/404/409/422/审计测试；无页面变更 |
+| R12 | Schema/Contract/生成物/文档/容量恢复/兼容边界同步且不越界 | #447 / AC12 | satisfied | Migration/metadata、OpenAPI/Orval、Product/Blueprint/Appendix/README；本地生成/文档门禁通过 |
 | R13 | 分层验证、Completion Audit、独立 Review、exact-head CI/main fresh | #447 / AC13 | not_satisfied | 交付待完成 |
 | R14 | Change/Roadmap/Issue/分支完整收口 | #447 / AC14 | not_satisfied | merge 后完成 |
 
@@ -155,7 +156,7 @@ Docs Impact 为 `full`：Roadmap 05 总退出要求把 Replay、来源、失败�
 - [x] 读取项目规则、canonical Agent_Skills Source、Roadmap/Blueprint 与当前机器事实
 - [x] 创建并 live reread Issue #447、最新 main 与本地任务分支
 - [x] 建立 Change、Requirement Traceability、验证矩阵和 clean-break/迁移/回滚边界
-- [ ] Red 失败测试与首个本地提交/首次 push/早期 PR
+- [x] Red 失败测试与首个本地提交/首次 push/早期 PR（`45af1a57`，PR #448）
 - [ ] Green/Refactor、分层验证、Completion Audit 与独立 Review
 - [ ] exact-head CI、guarded merge、main fresh、归档、Roadmap/Issue/分支收口
 
@@ -173,4 +174,6 @@ Docs Impact 为 `full`：Roadmap 05 总退出要求把 Replay、来源、失败�
 
 # 完成证据与状态
 
-当前处于 Red 准备阶段；尚未声称实现、测试、PR、merge、Roadmap 或 Issue 完成。
+实现与长期文档已完成本地候选，Red commit 与早期 PR #448 已建立。R1—R12 已由代码和本地测试证据满足；PostgreSQL 18 集成、完整 CI、Completion Audit、独立 Review、merge/main fresh、native archive、Roadmap/Issue/分支收口仍待完成，因此 Change 继续保持 `in_progress`，R13—R14 不满足。
+
+本轮本地新鲜证据：Ruff format/check、mypy（332 个源码文件）、Unit（939 passed, 8 skipped；Windows 排除 3 个 POSIX-only host preparation case）、Contract（111 passed）、API（68 passed）、OpenAPI/Orval generate-check-compat、npm ci、文档/架构/表 Owner 门禁均通过；新 PostgreSQL 测试已成功 collect。本机缺少 `.runtime/secrets/postgres_password` 且 Docker daemon 不可用，未伪造 PostgreSQL 执行结果，交由 PR exact-head CI 验证。

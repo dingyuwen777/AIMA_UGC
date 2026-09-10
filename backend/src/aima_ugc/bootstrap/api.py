@@ -50,6 +50,9 @@ from aima_ugc.contracts.http import (
     AnalysisContentRunPreviewRequest,
     AnalysisContentRunPreviewResponse,
     AnalysisContentRunResponse,
+    CanonicalReplayCreatedResponse,
+    CanonicalReplayCreateRequest,
+    CanonicalReplayRunResponse,
     CollectionBatchSupplementEligibilityResponse,
     CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
@@ -154,6 +157,12 @@ from aima_ugc.modules.identity import (
     DevelopmentIdentityResolver,
     IdentityResolver,
     Principal,
+)
+from aima_ugc.modules.ingestion.canonical_replay_http import (
+    CanonicalReplayConflict,
+    CanonicalReplayHttpService,
+    CanonicalReplayInputInvalid,
+    CanonicalReplayResourceNotFound,
 )
 from aima_ugc.modules.ingestion.historical_http import (
     HistoricalCampaignNotFound,
@@ -314,6 +323,7 @@ def create_app(
     collection_service: CollectionHttpService | None = None,
     strategy_service: CollectionStrategyHttpService | None = None,
     historical_import_service: HistoricalImportHttpService | None = None,
+    canonical_replay_service: CanonicalReplayHttpService | None = None,
     administration_service: AdministrationHttpService | None = None,
     product_service: ProductHttpService | None = None,
     identity_resolver: IdentityResolver | None = None,
@@ -366,6 +376,18 @@ def create_app(
         )
 
         return PostgresHistoricalImportHttpService(resolved_runtime)
+
+    def current_canonical_replay_service() -> CanonicalReplayHttpService:
+        if canonical_replay_service is not None:
+            return canonical_replay_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Canonical Replay Service 依赖不可用")
+        from aima_ugc.bootstrap.canonical_replay_http import (
+            PostgresCanonicalReplayHttpService,
+        )
+
+        return PostgresCanonicalReplayHttpService(resolved_runtime)
 
     def current_content_service() -> ContentHttpService:
         if content_service is not None:
@@ -545,6 +567,46 @@ def create_app(
             title="资源冲突",
             detail="同名资源已经存在。",
             code="resource_conflict",
+        )
+
+    @application.exception_handler(CanonicalReplayResourceNotFound)
+    async def canonical_replay_not_found(
+        request: Request,
+        _: CanonicalReplayResourceNotFound,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=404,
+            request_id=_request_id(request),
+            title="Replay 任务不存在",
+            detail="请求的 Canonical Replay Run 不存在。",
+            code="canonical_replay_not_found",
+        )
+
+    @application.exception_handler(CanonicalReplayConflict)
+    async def canonical_replay_conflict(
+        request: Request,
+        _: CanonicalReplayConflict,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="Replay 请求冲突",
+            detail="幂等键、目录或当前任务状态不允许该操作。",
+            code="canonical_replay_conflict",
+        )
+
+    @application.exception_handler(CanonicalReplayInputInvalid)
+    async def canonical_replay_input_invalid(
+        request: Request,
+        _: CanonicalReplayInputInvalid,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=422,
+            request_id=_request_id(request),
+            title="Replay 输入不受支持",
+            detail="Artifact 不是当前支持且可证明来源的 Persistent Canonical。",
+            code="canonical_replay_input_invalid",
+            field="body.artifact_ids",
         )
 
     @application.exception_handler(ImportUploadTooLarge)
@@ -1755,6 +1817,73 @@ def create_app(
         request: Request,
     ) -> HistoricalCampaignResponse:
         return campaign_action(campaign_id, action="retry", request=request)
+
+    @application.post(
+        "/api/v1/canonical-replays",
+        operation_id="createCanonicalReplay",
+        response_model=CanonicalReplayCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def create_canonical_replay(
+        body: CanonicalReplayCreateRequest,
+        request: Request,
+    ) -> CanonicalReplayCreatedResponse:
+        principal = current_administrator(request)
+        return current_canonical_replay_service().create_replay(
+            body,
+            actor_ref=principal.principal_id,
+            request_id=_request_id(request),
+        )
+
+    @application.get(
+        "/api/v1/canonical-replays/{run_id}",
+        operation_id="getCanonicalReplay",
+        response_model=CanonicalReplayRunResponse,
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def get_canonical_replay(
+        run_id: UUID,
+        request: Request,
+    ) -> CanonicalReplayRunResponse:
+        current_administrator(request)
+        return current_canonical_replay_service().get_replay(run_id)
+
+    @application.post(
+        "/api/v1/canonical-replays/{run_id}/cancel",
+        operation_id="cancelCanonicalReplay",
+        response_model=CanonicalReplayRunResponse,
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def cancel_canonical_replay(
+        run_id: UUID,
+        request: Request,
+    ) -> CanonicalReplayRunResponse:
+        principal = current_administrator(request)
+        return current_canonical_replay_service().cancel_replay(
+            run_id,
+            actor_ref=principal.principal_id,
+            request_id=_request_id(request),
+        )
 
     @application.post(
         "/api/v1/import-batches",

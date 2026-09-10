@@ -1644,3 +1644,43 @@ def test_0050_refuses_ambiguous_provider_attempt_canonical_links(
             )
     finally:
         engine.dispose()
+
+
+def test_0051_creates_and_drops_canonical_replay_schema(
+    migration_database: str,
+) -> None:
+    """Stage 4 Replay 表从当前 0050 基线可升级、可回滚且版本一致。"""
+
+    _upgrade(migration_database, "20260911_0050")
+    _upgrade(migration_database, "20260911_0051")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert {
+            "canonical_replay_runs",
+            "canonical_replay_run_artifacts",
+            "canonical_replay_seen_content",
+        }.issubset(inspector.get_table_names())
+        assert inspector.get_pk_constraint("canonical_replay_seen_content")[
+            "constrained_columns"
+        ] == ["run_id", "platform", "external_content_id"]
+        assert "collection_scope_id is null" in " ".join(
+            str(item["sqltext"])
+            for item in inspector.get_check_constraints("canonical_artifact_links")
+        )
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260911_0051"
+            )
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260911_0050")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_runs" not in inspector.get_table_names()
+        assert "canonical_replay_run_artifacts" not in inspector.get_table_names()
+        assert "canonical_replay_seen_content" not in inspector.get_table_names()
+    finally:
+        engine.dispose()
