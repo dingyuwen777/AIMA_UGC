@@ -259,6 +259,9 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
             ("爱玛 Stage5", "owned"),
             ("竞品 Stage5", "competitor"),
         ]
+        assert {evidence.source for brand in mixed.brands for evidence in brand.evidences} == {
+            "alias_match"
+        }
         assert mixed.competition_scope == "mixed"
 
         shared_filter = ContentFilterSnapshot(
@@ -274,10 +277,8 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         assert projected.title == "爱玛舞台 旧车型舞台"
         assert projected.competition_scope == "owned_only"
         assert projected.brands[0].display_name == "爱玛 Stage5"
-        assert {evidence.source for evidence in projected.brands[0].evidences} == {
-            "alias_match",
-            "vehicle_match",
-        }
+        # Resolver 已由车型派生同一 Brand 时不会再写重复 alias_match Evidence。
+        assert {evidence.source for evidence in projected.brands[0].evidences} == {"vehicle_match"}
         assert projected.vehicles[0].vehicle_model_id == target_vehicle.id
         assert projected.vehicles[0].display_name == "新车型 Stage5"
         assert projected.vehicles[0].brand is not None
