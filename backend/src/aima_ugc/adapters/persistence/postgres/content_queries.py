@@ -11,6 +11,10 @@ from sqlalchemy import BigInteger, and_, case, exists, func, literal, or_, selec
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.contracts.brand_vehicle import (
+    BrandRole,
+    competition_scope_for_brand_roles,
+)
 from aima_ugc.contracts.http import (
     CollectionRuntimeStatus,
     CommentCoverageResponse,
@@ -47,6 +51,9 @@ from aima_ugc.modules.content.extended_tables import content_media_table
 from aima_ugc.modules.content.query import (
     ContentAnalysisRead,
     ContentAvailabilityRead,
+    ContentBrandEvidenceRead,
+    ContentBrandRead,
+    ContentBrandReferenceRead,
     ContentFilterValues,
     ContentReadQuery,
     ContentReadRecord,
@@ -70,7 +77,9 @@ from aima_ugc.modules.ingestion.tables import (
     register_ingestion_schema,
 )
 from aima_ugc.modules.vehicles.tables import (
+    content_brand_evidence_table,
     content_vehicle_evidence_table,
+    vehicle_brands_table,
     vehicle_models_table,
 )
 
@@ -641,12 +650,90 @@ class PostgresContentQueryRepository:
                     )
                 )
 
+        brands: dict[
+            UUID,
+            dict[
+                UUID,
+                tuple[str, str, BrandRole, list[ContentBrandEvidenceRead]],
+            ],
+        ] = defaultdict(dict)
+        if content_ids:
+            brand_rows = self._session.execute(
+                select(
+                    content_brand_evidence_table,
+                    vehicle_brands_table.c.code.label("brand_code"),
+                    vehicle_brands_table.c.display_name.label("brand_display_name"),
+                    vehicle_brands_table.c.role.label("brand_role"),
+                )
+                .join(
+                    vehicle_brands_table,
+                    vehicle_brands_table.c.id == content_brand_evidence_table.c.brand_id,
+                )
+                .join(
+                    contents_table,
+                    contents_table.c.id == content_brand_evidence_table.c.content_id,
+                )
+                .where(
+                    content_brand_evidence_table.c.content_id.in_(content_ids),
+                    content_brand_evidence_table.c.content_version
+                    == contents_table.c.current_version,
+                    content_brand_evidence_table.c.is_active.is_(True),
+                )
+                .order_by(
+                    content_brand_evidence_table.c.content_id,
+                    vehicle_brands_table.c.code,
+                    vehicle_brands_table.c.id,
+                    content_brand_evidence_table.c.created_at,
+                    content_brand_evidence_table.c.id,
+                )
+            ).mappings()
+            for brand_row in brand_rows:
+                content_id = cast(UUID, brand_row["content_id"])
+                brand_id = cast(UUID, brand_row["brand_id"])
+                existing_brand = brands[content_id].setdefault(
+                    brand_id,
+                    (
+                        cast(str, brand_row["brand_code"]),
+                        cast(str, brand_row["brand_display_name"]),
+                        cast(BrandRole, brand_row["brand_role"]),
+                        [],
+                    ),
+                )
+                existing_brand[3].append(
+                    ContentBrandEvidenceRead(
+                        source=cast(str, brand_row["source"]),
+                        matched_text=cast(str | None, brand_row["matched_text"]),
+                        source_field=cast(str | None, brand_row["source_field"]),
+                        derived_vehicle_model_id=cast(
+                            UUID | None, brand_row["derived_vehicle_model_id"]
+                        ),
+                        catalog_version=cast(int, brand_row["catalog_version"]),
+                        confidence=cast(float | None, brand_row["confidence"]),
+                        is_manual_locked=cast(bool, brand_row["is_manual_locked"]),
+                    )
+                )
+
         vehicles: dict[
             UUID,
-            dict[UUID, tuple[str, str, list[ContentVehicleEvidenceRead], str | None, str | None]],
+            dict[
+                UUID,
+                tuple[
+                    str,
+                    str,
+                    list[ContentVehicleEvidenceRead],
+                    str | None,
+                    str | None,
+                    ContentBrandReferenceRead | None,
+                ],
+            ],
         ] = defaultdict(dict)
         if content_ids:
             effective_vehicle = vehicle_models_table.alias("effective_content_vehicle")
+            effective_brand = vehicle_brands_table.alias("effective_content_vehicle_brand")
+            effective_brand_id = case(
+                (effective_vehicle.c.id.is_not(None), effective_vehicle.c.brand_id),
+                else_=vehicle_models_table.c.brand_id,
+            )
             vehicle_rows = self._session.execute(
                 select(
                     content_vehicle_evidence_table,
@@ -670,6 +757,10 @@ class PostgresContentQueryRepository:
                         (effective_vehicle.c.id.is_not(None), effective_vehicle.c.category_name),
                         else_=vehicle_models_table.c.category_name,
                     ).label("effective_vehicle_category_name"),
+                    effective_brand.c.id.label("effective_brand_id"),
+                    effective_brand.c.code.label("effective_brand_code"),
+                    effective_brand.c.display_name.label("effective_brand_display_name"),
+                    effective_brand.c.role.label("effective_brand_role"),
                 )
                 .join(
                     vehicle_models_table,
@@ -679,6 +770,7 @@ class PostgresContentQueryRepository:
                     effective_vehicle,
                     effective_vehicle.c.id == vehicle_models_table.c.merged_into_id,
                 )
+                .outerjoin(effective_brand, effective_brand.c.id == effective_brand_id)
                 .join(
                     contents_table,
                     contents_table.c.id == content_vehicle_evidence_table.c.content_id,
@@ -698,6 +790,17 @@ class PostgresContentQueryRepository:
             for vehicle_row in vehicle_rows:
                 content_id = cast(UUID, vehicle_row["content_id"])
                 model_id = cast(UUID, vehicle_row["effective_vehicle_model_id"])
+                vehicle_brand_id = cast(UUID | None, vehicle_row["effective_brand_id"])
+                vehicle_brand = (
+                    ContentBrandReferenceRead(
+                        id=vehicle_brand_id,
+                        code=cast(str, vehicle_row["effective_brand_code"]),
+                        display_name=cast(str, vehicle_row["effective_brand_display_name"]),
+                        role=cast(BrandRole, vehicle_row["effective_brand_role"]),
+                    )
+                    if vehicle_brand_id is not None
+                    else None
+                )
                 existing = vehicles[content_id].setdefault(
                     model_id,
                     (
@@ -706,6 +809,7 @@ class PostgresContentQueryRepository:
                         [],
                         cast(str | None, vehicle_row["effective_vehicle_series_name"]),
                         cast(str | None, vehicle_row["effective_vehicle_category_name"]),
+                        vehicle_brand,
                     ),
                 )
                 existing[2].append(
@@ -786,6 +890,16 @@ class PostgresContentQueryRepository:
                         import_batch_id=cast(UUID | None, row["import_batch_id"]),
                         collection_run_id=cast(UUID | None, row["collection_run_id"]),
                     ),
+                    brands=tuple(
+                        ContentBrandRead(
+                            id=brand_id,
+                            code=value[0],
+                            display_name=value[1],
+                            role=value[2],
+                            evidences=tuple(value[3]),
+                        )
+                        for brand_id, value in brands[content_id].items()
+                    ),
                     vehicles=tuple(
                         ContentVehicleRead(
                             vehicle_model_id=model_id,
@@ -794,8 +908,12 @@ class PostgresContentQueryRepository:
                             evidences=tuple(value[2]),
                             series_name=value[3],
                             category_name=value[4],
+                            brand=value[5],
                         )
                         for model_id, value in vehicles[content_id].items()
+                    ),
+                    competition_scope=competition_scope_for_brand_roles(
+                        value[2] for value in brands[content_id].values()
                     ),
                     availability=availability_by_content.get(content_id),
                     author_follower_count=cast(int | None, row["author_follower_count"]),
@@ -960,6 +1078,60 @@ def _apply_filters(
         statement = statement.where(content.c.platform.in_(filters.platforms))
     if filters.content_types:
         statement = statement.where(content.c.content_type.in_(filters.content_types))
+    if filters.brand_ids:
+        statement = statement.where(
+            exists(
+                select(content_brand_evidence_table.c.id).where(
+                    content_brand_evidence_table.c.content_id == content.c.id,
+                    content_brand_evidence_table.c.content_version == content.c.current_version,
+                    content_brand_evidence_table.c.brand_id.in_(filters.brand_ids),
+                    content_brand_evidence_table.c.is_active.is_(True),
+                )
+            )
+        )
+    if filters.competition_scopes:
+        competition_evidence = content_brand_evidence_table.alias("content_competition_evidence")
+        competition_brand = vehicle_brands_table.alias("content_competition_brand")
+        competition_source = competition_evidence.join(
+            competition_brand,
+            competition_brand.c.id == competition_evidence.c.brand_id,
+        )
+        role_count = (
+            select(func.count(func.distinct(competition_brand.c.role)))
+            .select_from(competition_source)
+            .where(
+                competition_evidence.c.content_id == content.c.id,
+                competition_evidence.c.content_version == content.c.current_version,
+                competition_evidence.c.is_active.is_(True),
+            )
+            .correlate(content)
+            .scalar_subquery()
+        )
+
+        def has_role(role: BrandRole) -> Any:
+            return exists(
+                select(literal(1))
+                .select_from(competition_source)
+                .where(
+                    competition_evidence.c.content_id == content.c.id,
+                    competition_evidence.c.content_version == content.c.current_version,
+                    competition_evidence.c.is_active.is_(True),
+                    competition_brand.c.role == role,
+                )
+            )
+
+        scope_predicates: list[Any] = []
+        if "none_detected" in filters.competition_scopes:
+            scope_predicates.append(role_count == 0)
+        if "mixed" in filters.competition_scopes:
+            scope_predicates.append(role_count > 1)
+        if "owned_only" in filters.competition_scopes:
+            scope_predicates.append(and_(role_count == 1, has_role("owned")))
+        if "competitor_only" in filters.competition_scopes:
+            scope_predicates.append(and_(role_count == 1, has_role("competitor")))
+        if "other_only" in filters.competition_scopes:
+            scope_predicates.append(and_(role_count == 1, has_role("other")))
+        statement = statement.where(or_(*scope_predicates))
     if filters.vehicle_model_ids:
         filter_vehicle = vehicle_models_table.alias("content_vehicle_filter_model")
         statement = statement.where(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
@@ -12,6 +13,11 @@ from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
+from aima_ugc.contracts.brand_vehicle import (
+    BrandCompetitionScope,
+    BrandRole,
+    competition_scope_for_brand_roles,
+)
 from aima_ugc.contracts.export import (
     UnifiedDataExcelAnalysisV1,
     UnifiedDataExcelCommentV1,
@@ -50,7 +56,9 @@ from aima_ugc.modules.reporting.tables import (
     reporting_data_exports_table,
 )
 from aima_ugc.modules.vehicles.tables import (
+    content_brand_evidence_table,
     content_vehicle_evidence_table,
+    vehicle_brands_table,
     vehicle_models_table,
 )
 from aima_ugc.platform.jobs import JobExecutionFence
@@ -59,6 +67,20 @@ from aima_ugc.platform.time import beijing_now
 
 class DataExportNotFound(LookupError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class _ExportBrandProjection:
+    names: tuple[str, ...]
+    roles: tuple[BrandRole, ...]
+    competition_scope: BrandCompetitionScope
+
+
+_EMPTY_BRAND_PROJECTION = _ExportBrandProjection(
+    names=(),
+    roles=(),
+    competition_scope="none_detected",
+)
 
 
 class PostgresDataExportRepository:
@@ -217,6 +239,7 @@ class PostgresDataExportRepository:
         analyses = self._analysis_by_content(versions)
         comments = self._comments_by_content(content_ids)
         coverage = self._coverage_by_content(content_ids)
+        brands = self._brands_by_content(versions)
         vehicles = self._vehicles_by_content(versions)
         availability = self._availability_by_content(content_ids)
         return tuple(
@@ -227,6 +250,9 @@ class PostgresDataExportRepository:
                         row,
                         analysis=analyses.get(cast(UUID, row["content_id"])),
                         coverage=coverage.get(cast(UUID, row["content_id"])),
+                        brand_projection=brands.get(
+                            cast(UUID, row["content_id"]), _EMPTY_BRAND_PROJECTION
+                        ),
                         vehicles=vehicles.get(cast(UUID, row["content_id"]), ()),
                         availability=availability.get(cast(UUID, row["content_id"])),
                     ),
@@ -507,6 +533,59 @@ class PostgresDataExportRepository:
                 values.append(name)
         return {key: tuple(value) for key, value in grouped.items()}
 
+    def _brands_by_content(
+        self,
+        versions: dict[UUID, int],
+    ) -> dict[UUID, _ExportBrandProjection]:
+        """按导出冻结的 Content Version 读取并稳定去重 Brand/Role。"""
+
+        conditions = tuple(
+            and_(
+                content_brand_evidence_table.c.content_id == content_id,
+                content_brand_evidence_table.c.content_version == version,
+            )
+            for content_id, version in versions.items()
+        )
+        rows = self._session.execute(
+            select(
+                content_brand_evidence_table.c.content_id,
+                vehicle_brands_table.c.id.label("brand_id"),
+                vehicle_brands_table.c.display_name,
+                vehicle_brands_table.c.role,
+            )
+            .join(
+                vehicle_brands_table,
+                vehicle_brands_table.c.id == content_brand_evidence_table.c.brand_id,
+            )
+            .where(
+                or_(*conditions),
+                content_brand_evidence_table.c.is_active.is_(True),
+            )
+            .order_by(
+                content_brand_evidence_table.c.content_id,
+                vehicle_brands_table.c.code,
+                vehicle_brands_table.c.id,
+            )
+        ).mappings()
+        grouped: dict[UUID, dict[UUID, tuple[str, BrandRole]]] = defaultdict(dict)
+        for row in rows:
+            grouped[cast(UUID, row["content_id"])].setdefault(
+                cast(UUID, row["brand_id"]),
+                (
+                    cast(str, row["display_name"]),
+                    cast(BrandRole, row["role"]),
+                ),
+            )
+        projections: dict[UUID, _ExportBrandProjection] = {}
+        for content_id, values in grouped.items():
+            roles = tuple(dict.fromkeys(value[1] for value in values.values()))
+            projections[content_id] = _ExportBrandProjection(
+                names=tuple(value[0] for value in values.values()),
+                roles=roles,
+                competition_scope=competition_scope_for_brand_roles(roles),
+            )
+        return projections
+
     def _availability_by_content(self, content_ids: tuple[UUID, ...]) -> dict[UUID, str]:
         """读取每个 Content 最新可用状态观察。"""
 
@@ -534,6 +613,7 @@ def _content_projection(
     *,
     analysis: UnifiedDataExcelAnalysisV1 | None,
     coverage: str | None,
+    brand_projection: _ExportBrandProjection,
     vehicles: tuple[str, ...],
     availability: str | None,
 ) -> UnifiedDataExcelContentV1:
@@ -566,6 +646,9 @@ def _content_projection(
         danmaku_count=cast(int | None, row["current_danmaku_count"]),
         coin_count=cast(int | None, row["current_coin_count"]),
         download_count=cast(int | None, row["current_download_count"]),
+        brands=brand_projection.names,
+        brand_roles=brand_projection.roles,
+        competition_scope=brand_projection.competition_scope,
         vehicles=vehicles,
         availability=availability,
         analysis=analysis,

@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
+from aima_ugc.contracts.brand_vehicle import BrandCompetitionScope, BrandRole
 from aima_ugc.contracts.platform import PlatformName
 
 
@@ -74,6 +75,9 @@ class UnifiedDataExcelContentV1(_ExportBaseModel):
     coin_count: int | None = Field(default=None, ge=0)
     download_count: int | None = Field(default=None, ge=0)
     matched_keywords: tuple[str, ...] = ()
+    brands: tuple[str, ...] = ()
+    brand_roles: tuple[BrandRole, ...] = ()
+    competition_scope: BrandCompetitionScope = "none_detected"
     vehicles: tuple[str, ...] = ()
     availability: str | None = Field(default=None, max_length=128)
     analysis: UnifiedDataExcelAnalysisV1 | None = None

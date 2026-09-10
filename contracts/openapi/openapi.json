@@ -3545,6 +3545,166 @@
         "title": "ContentAvailabilityResponse",
         "type": "object"
       },
+      "ContentBrandEvidenceResponse": {
+        "additionalProperties": false,
+        "description": "一个 Brand 关联的可追溯证据。",
+        "properties": {
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "derived_vehicle_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived Vehicle Model Id"
+          },
+          "is_manual_locked": {
+            "default": false,
+            "title": "Is Manual Locked",
+            "type": "boolean"
+          },
+          "matched_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Text"
+          },
+          "source": {
+            "enum": [
+              "alias_match",
+              "vehicle_match",
+              "manual_review",
+              "import"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Field"
+          }
+        },
+        "required": [
+          "source",
+          "catalog_version"
+        ],
+        "title": "ContentBrandEvidenceResponse",
+        "type": "object"
+      },
+      "ContentBrandReferenceResponse": {
+        "additionalProperties": false,
+        "description": "内容查询中的稳定 Brand 展示引用。",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owned",
+              "competitor",
+              "other"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "display_name",
+          "role"
+        ],
+        "title": "ContentBrandReferenceResponse",
+        "type": "object"
+      },
+      "ContentBrandResponse": {
+        "additionalProperties": false,
+        "description": "内容当前 Brand 及其全部有效证据。",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/components/schemas/ContentBrandEvidenceResponse"
+            },
+            "minItems": 1,
+            "title": "Evidences",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owned",
+              "competitor",
+              "other"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "display_name",
+          "role",
+          "evidences"
+        ],
+        "title": "ContentBrandResponse",
+        "type": "object"
+      },
       "ContentCommentResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3749,6 +3909,13 @@
               }
             ]
           },
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/ContentBrandResponse"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
           "comment_coverage": {
             "anyOf": [
               {
@@ -3766,6 +3933,17 @@
             },
             "title": "Comments",
             "type": "array"
+          },
+          "competition_scope": {
+            "enum": [
+              "owned_only",
+              "competitor_only",
+              "mixed",
+              "other_only",
+              "none_detected"
+            ],
+            "title": "Competition Scope",
+            "type": "string"
           },
           "content_type": {
             "title": "Content Type",
@@ -3908,7 +4086,9 @@
           "last_seen_at",
           "metrics",
           "analysis",
-          "source"
+          "source",
+          "brands",
+          "competition_scope"
         ],
         "title": "ContentDetailResponse",
         "type": "object"
@@ -4029,6 +4209,32 @@
                 "type": "null"
               }
             ]
+          },
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
+          "competition_scopes": {
+            "default": [],
+            "items": {
+              "enum": [
+                "owned_only",
+                "competitor_only",
+                "mixed",
+                "other_only",
+                "none_detected"
+              ],
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Competition Scopes",
+            "type": "array"
           },
           "content_types": {
             "default": [],
@@ -4250,6 +4456,24 @@
               }
             ]
           },
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/ContentBrandResponse"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "competition_scope": {
+            "enum": [
+              "owned_only",
+              "competitor_only",
+              "mixed",
+              "other_only",
+              "none_detected"
+            ],
+            "title": "Competition Scope",
+            "type": "string"
+          },
           "content_type": {
             "title": "Content Type",
             "type": "string"
@@ -4365,7 +4589,9 @@
           "last_seen_at",
           "metrics",
           "analysis",
-          "source"
+          "source",
+          "brands",
+          "competition_scope"
         ],
         "title": "ContentListItemResponse",
         "type": "object"
@@ -4828,6 +5054,16 @@
         "additionalProperties": false,
         "description": "内容当前车型及其全部有效证据。",
         "properties": {
+          "brand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentBrandReferenceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "category_name": {
             "anyOf": [
               {
@@ -4876,6 +5112,7 @@
           "vehicle_model_id",
           "code",
           "display_name",
+          "brand",
           "evidences"
         ],
         "title": "ContentVehicleResponse",
@@ -5430,6 +5667,9 @@
           "sentiment",
           "primary_label",
           "secondary_label",
+          "brands",
+          "brand_roles",
+          "competition_scope",
           "vehicles",
           "availability",
           "like_count",
@@ -11270,6 +11510,21 @@
           },
           {
             "in": "query",
+            "name": "brand_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Brand Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
             "name": "vehicle_model_ids",
             "required": false,
             "schema": {
@@ -11280,6 +11535,27 @@
               },
               "maxItems": 100,
               "title": "Vehicle Model Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "competition_scopes",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "enum": [
+                  "owned_only",
+                  "competitor_only",
+                  "mixed",
+                  "other_only",
+                  "none_detected"
+                ],
+                "type": "string"
+              },
+              "maxItems": 5,
+              "title": "Competition Scopes",
               "type": "array"
             }
           },

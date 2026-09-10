@@ -1083,6 +1083,17 @@ export interface ContentAnalysisResponse {
   voice_type?: ContentVoiceType | null;
 }
 
+export type ContentFilterSnapshotCompetitionScopesItem = typeof ContentFilterSnapshotCompetitionScopesItem[keyof typeof ContentFilterSnapshotCompetitionScopesItem];
+
+
+export const ContentFilterSnapshotCompetitionScopesItem = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
+
 export type PlatformName = typeof PlatformName[keyof typeof PlatformName];
 
 
@@ -1099,6 +1110,10 @@ export const PlatformName = {
  */
 export interface ContentFilterSnapshot {
   analysis_status?: ContentAnalysisStatus | null;
+  /** @maxItems 100 */
+  brand_ids?: string[];
+  /** @maxItems 5 */
+  competition_scopes?: ContentFilterSnapshotCompetitionScopesItem[];
   /** @maxItems 20 */
   content_types?: string[];
   /** @maxItems 5 */
@@ -1234,6 +1249,70 @@ export interface ContentAvailabilityResponse {
   status: ContentAvailabilityResponseStatus;
 }
 
+export type ContentBrandEvidenceResponseSource = typeof ContentBrandEvidenceResponseSource[keyof typeof ContentBrandEvidenceResponseSource];
+
+
+export const ContentBrandEvidenceResponseSource = {
+  alias_match: 'alias_match',
+  vehicle_match: 'vehicle_match',
+  manual_review: 'manual_review',
+  import: 'import',
+} as const;
+
+/**
+ * 一个 Brand 关联的可追溯证据。
+ */
+export interface ContentBrandEvidenceResponse {
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  confidence?: number | null;
+  derived_vehicle_model_id?: string | null;
+  is_manual_locked?: boolean;
+  matched_text?: string | null;
+  source: ContentBrandEvidenceResponseSource;
+  source_field?: string | null;
+}
+
+export type ContentBrandReferenceResponseRole = typeof ContentBrandReferenceResponseRole[keyof typeof ContentBrandReferenceResponseRole];
+
+
+export const ContentBrandReferenceResponseRole = {
+  owned: 'owned',
+  competitor: 'competitor',
+  other: 'other',
+} as const;
+
+/**
+ * 内容查询中的稳定 Brand 展示引用。
+ */
+export interface ContentBrandReferenceResponse {
+  code: string;
+  display_name: string;
+  id: string;
+  role: ContentBrandReferenceResponseRole;
+}
+
+export type ContentBrandResponseRole = typeof ContentBrandResponseRole[keyof typeof ContentBrandResponseRole];
+
+
+export const ContentBrandResponseRole = {
+  owned: 'owned',
+  competitor: 'competitor',
+  other: 'other',
+} as const;
+
+/**
+ * 内容当前 Brand 及其全部有效证据。
+ */
+export interface ContentBrandResponse {
+  code: string;
+  display_name: string;
+  /** @minItems 1 */
+  evidences: ContentBrandEvidenceResponse[];
+  id: string;
+  role: ContentBrandResponseRole;
+}
+
 export interface ContentCommentResponse {
   author_display_name?: string | null;
   external_comment_id: string;
@@ -1290,6 +1369,17 @@ export interface ContentCountResponse {
   count_mode: ContentCountResponseCountMode;
   truncated?: boolean;
 }
+
+export type ContentDetailResponseCompetitionScope = typeof ContentDetailResponseCompetitionScope[keyof typeof ContentDetailResponseCompetitionScope];
+
+
+export const ContentDetailResponseCompetitionScope = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
 
 export interface ContentMediaResponse {
   alt_text?: string | null;
@@ -1363,6 +1453,7 @@ export interface ContentVehicleEvidenceResponse {
  * 内容当前车型及其全部有效证据。
  */
 export interface ContentVehicleResponse {
+  brand: ContentBrandReferenceResponse | null;
   category_name?: string | null;
   code: string;
   display_name: string;
@@ -1377,8 +1468,10 @@ export interface ContentDetailResponse {
   author_display_name?: string | null;
   author_follower_count?: number | null;
   availability?: ContentAvailabilityResponse | null;
+  brands: ContentBrandResponse[];
   comment_coverage?: CommentCoverageResponse | null;
   comments?: ContentCommentResponse[];
+  competition_scope: ContentDetailResponseCompetitionScope;
   content_type: string;
   content_url?: string | null;
   /** @exclusiveMinimum 0 */
@@ -1447,11 +1540,24 @@ export interface ContentFilterOptionsResponse {
   voice_types: ContentFilterValueOptionResponse[];
 }
 
+export type ContentListItemResponseCompetitionScope = typeof ContentListItemResponseCompetitionScope[keyof typeof ContentListItemResponseCompetitionScope];
+
+
+export const ContentListItemResponseCompetitionScope = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
+
 export interface ContentListItemResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
   author_follower_count?: number | null;
   availability?: ContentAvailabilityResponse | null;
+  brands: ContentBrandResponse[];
+  competition_scope: ContentListItemResponseCompetitionScope;
   content_type: string;
   content_url?: string | null;
   /** @exclusiveMinimum 0 */
@@ -1671,6 +1777,9 @@ export const ExportColumnKey = {
   sentiment: 'sentiment',
   primary_label: 'primary_label',
   secondary_label: 'secondary_label',
+  brands: 'brands',
+  brand_roles: 'brand_roles',
+  competition_scope: 'competition_scope',
   vehicles: 'vehicles',
   availability: 'availability',
   like_count: 'like_count',
@@ -2788,7 +2897,15 @@ source_identifier?: string | null;
 /**
  * @maxItems 100
  */
+brand_ids?: string[];
+/**
+ * @maxItems 100
+ */
 vehicle_model_ids?: string[];
+/**
+ * @maxItems 5
+ */
+competition_scopes?: ListContentsCompetitionScopesItem[];
 cursor?: string | null;
 /**
  * @minimum 1
@@ -2798,6 +2915,17 @@ limit?: number;
 sort_by?: ListContentsSortBy;
 sort_direction?: ListContentsSortDirection;
 };
+
+export type ListContentsCompetitionScopesItem = typeof ListContentsCompetitionScopesItem[keyof typeof ListContentsCompetitionScopesItem];
+
+
+export const ListContentsCompetitionScopesItem = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
 
 export type ListContentsSortBy = typeof ListContentsSortBy[keyof typeof ListContentsSortBy] | null;
 
@@ -4214,7 +4342,7 @@ export const getListContentsUrl = (params?: ListContentsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-    const explodeParameters = ["platforms","content_types","vehicle_model_ids"];
+    const explodeParameters = ["platforms","content_types","brand_ids","vehicle_model_ids","competition_scopes"];
 
     if (Array.isArray(value) && explodeParameters.includes(key)) {
       value.forEach((v) => {

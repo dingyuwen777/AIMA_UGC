@@ -34,6 +34,7 @@ class _ContentService:
     def __init__(self) -> None:
         self.content_id = uuid4()
         self.job_id = uuid4()
+        self.last_query = None
 
     def _item(self) -> ContentListItemResponse:
         now = datetime(2026, 8, 21, tzinfo=UTC)
@@ -60,9 +61,12 @@ class _ContentService:
                 analyzed_at=now,
             ),
             source=ContentSourceResponse(provider_name="file-import"),
+            brands=(),
+            competition_scope="none_detected",
         )
 
     def list_contents(self, query):  # type: ignore[no-untyped-def]
+        self.last_query = query
         if query.cursor == "tampered":
             raise InvalidContentCursor
         return ContentListResponse(items=(self._item(),), has_more=False)
@@ -208,6 +212,27 @@ def test_list_and_detail_return_every_ai_label_pair() -> None:
     ]
     assert detailed.status_code == 200
     assert len(detailed.json()["analysis"]["labels"]) == 2
+
+
+def test_list_route_accepts_repeated_brand_and_competition_filters() -> None:
+    """FastAPI Query 边界保留新增多选条件，不把数组压成单值。"""
+
+    service = _ContentService()
+    first, second = uuid4(), uuid4()
+    response = _client(service).get(
+        "/api/v1/contents",
+        params=[
+            ("brand_ids", str(first)),
+            ("brand_ids", str(second)),
+            ("competition_scopes", "owned_only"),
+            ("competition_scopes", "mixed"),
+        ],
+    )
+
+    assert response.status_code == 200
+    assert service.last_query is not None
+    assert service.last_query.brand_ids == (first, second)
+    assert service.last_query.competition_scopes == ("owned_only", "mixed")
 
 
 def test_filter_options_returns_backend_values_and_historical_sources() -> None:
