@@ -208,7 +208,6 @@ def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental
         context=_Context(),  # type: ignore[arg-type]
         stats=SimpleNamespace(technical_partial_results=0),  # type: ignore[arg-type]
         filter_snapshot=_filter_snapshot(),
-        relevance=None,
     )
 
     assert detail_calls == ["detail"]
@@ -250,7 +249,6 @@ def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion
         context=_Context(),  # type: ignore[arg-type]
         stats=stats,  # type: ignore[arg-type]
         filter_snapshot=_filter_snapshot(),
-        relevance=None,
     )
 
     assert detail_calls == ["detail"]
@@ -312,7 +310,6 @@ def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
         context=_Context(),  # type: ignore[arg-type]
         stats=SimpleNamespace(technical_partial_results=0, filtered_content_count=0),  # type: ignore[arg-type]
         filter_snapshot=_filter_snapshot(),
-        relevance=None,
     )
 
     assert writer.ingested == [search_candidate_id, *detail_candidate_ids]

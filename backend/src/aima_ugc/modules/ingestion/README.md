@@ -355,7 +355,7 @@ vehicle_models / vehicle_model_aliases
 Vehicle → Brand 归属
 ```
 
-创建时提交 `brand_ids`；空集合表示冻结全部 active Brand。Worker 不在执行中途读取变化后的实时目录，过滤和 Evidence 写入都使用同一冻结 Snapshot。升级前的 legacy Campaign/Job 继续按旧 Snapshot 与旧行格式执行。
+创建时提交 `brand_ids`；空集合表示冻结全部 active Brand。Worker 不在执行中途读取变化后的实时目录，过滤和 Evidence 写入都使用同一冻结 Snapshot。Campaign、Job 和 Chunk Reader 只接受当前 Brand/Vehicle Snapshot 与 v2 行格式；旧格式会失败关闭。
 
 AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动创建 AI Job。
 
@@ -409,7 +409,7 @@ Job 领域入口：
 
 - [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py)
 
-`BrandVehicleFilterSnapshot` 冻结目录版本、所选 Brand、Vehicle 归属和 Alias。当前新任务使用 `ingestion.import-excel.v2` 与 `filter_snapshot`；Worker 校验 Batch `stats.filter_snapshot` 与 Job Payload 一致，不一致时关闭失败。`ingestion.import-excel.v1` 与 `ImportKeywordSelectionSnapshot` 只保留用于解释升级前已经 queued/running 的旧任务。
+`BrandVehicleFilterSnapshot` 冻结目录版本、所选 Brand、Vehicle 归属和 Alias。当前单文件任务只使用 `ingestion.import-excel.v2` 与 `filter_snapshot`；Worker 校验 Batch `stats.filter_snapshot` 与 Job Payload 一致，不一致时关闭失败。旧 v1 Payload 与关键词选择快照已退出注册和生产代码。
 
 当前兼容 HTTP：
 
@@ -518,7 +518,7 @@ Excel
 | 文件 | 作用 | 常见修改场景 |
 | --- | --- | --- |
 | [`backend/src/aima_ugc/modules/ingestion/tables.py`](tables.py) | 兼容 Import Batch 与 import-parent 关系 | 改 Batch Schema/来源父级约束 |
-| [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v1/v2` Payload/Handler | 改兼容 Import Job 版本与冻结输入语义 |
+| [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v2` Payload/Handler | 改 Import Job 版本与冻结输入语义 |
 | [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](brand_vehicle_filter.py) | Stage 3 Brand/Vehicle Filter Snapshot 与 JSONL 过滤 | 改统一品牌车型过滤语义 |
 | [`backend/src/aima_ugc/modules/ingestion/http.py`](http.py) | Import Batch HTTP Port/领域异常 | 改兼容入口应用层边界 |
 | [`backend/src/aima_ugc/modules/ingestion/query.py`](query.py) | Import Batch Read Model | 改兼容 Batch 列表/摘要 |
@@ -645,7 +645,7 @@ SQL：
 - 非 XLSX / 损坏 ZIP / Zip Bomb 关闭失败；
 - Input Artifact + Batch + Job 同事务；
 - Provider Request 父级约束；
-- `keyword_selection` 冻结与多词包 OR；
+- `filter_snapshot` 冻结、Brand Scope 与 Resolver 一致性；
 - Worker retry 不产生第二个业务 Content；
 - Cursor 与查询条件绑定。
 

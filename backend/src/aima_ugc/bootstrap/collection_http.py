@@ -302,9 +302,6 @@ class PostgresCollectionHttpService:
                             "terms": list(effective_keywords),
                         },
                         "brand_vehicle_filter": filter_snapshot,
-                        "legacy_vehicle_model_ids": [
-                            str(item) for item in request.vehicle_model_ids
-                        ],
                         "keywords": list(effective_keywords),
                         "import_batch_id": (
                             str(request.import_batch_id)
@@ -547,12 +544,9 @@ class PostgresCollectionHttpService:
                 raise CollectionConflict
             try:
                 brand_repository = PostgresBrandVehicleRepository(session)
-                selected_brand_ids = request.brand_ids or (
-                    brand_repository.brand_ids_for_vehicle_models(request.vehicle_model_ids)
-                )
                 filter_snapshot = BrandVehicleFilterSnapshot(
                     search_semantics="keyword_pack",
-                    catalog=brand_repository.snapshot(brand_ids=selected_brand_ids or None),
+                    catalog=brand_repository.snapshot(brand_ids=request.brand_ids or None),
                 )
                 if not filter_snapshot.catalog.brands:
                     raise CollectionConflict("Brand Filter 当前没有可用 active Brand")

@@ -42,7 +42,6 @@ from aima_ugc.modules.ingestion.historical_tables import (
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_PAYLOAD_VERSION, IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.system.tables import (
-    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
@@ -53,7 +52,7 @@ from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.security import SecretFileError
 from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import func, insert, select, update
 
 from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
@@ -80,7 +79,7 @@ def runtime():  # type: ignore[no-untyped-def]
         value.close()
 
 
-def _seed_config_and_relevance(runtime) -> tuple[UUID, UUID]:  # type: ignore[no-untyped-def]
+def _seed_config_and_search_pack(runtime) -> tuple[UUID, UUID]:  # type: ignore[no-untyped-def]
     provider_config_id = uuid4()
     pack_id = uuid4()
     keyword_id = uuid4()
@@ -150,15 +149,6 @@ def _seed_config_and_relevance(runtime) -> tuple[UUID, UUID]:  # type: ignore[no
                 note="stage8e",
             )
         )
-        connection.execute(
-            insert(global_relevance_config_table).values(
-                singleton_key="global",
-                keyword_pack_id=pack_id,
-                version=1,
-                created_at=now,
-                updated_at=now,
-            )
-        )
     stage3_filter_brand_id(runtime, alias="爱玛")
     return provider_config_id, pack_id
 
@@ -166,10 +156,8 @@ def _seed_config_and_relevance(runtime) -> tuple[UUID, UUID]:  # type: ignore[no
 def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomically(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, pack_id = _seed_config_and_search_pack(runtime)
     brand_id = UUID(stage3_filter_brand_id(runtime, alias="爱玛"))
-    with runtime.database.engine.begin() as connection:
-        connection.execute(delete(global_relevance_config_table))
     service = PostgresCollectionHttpService(
         runtime,
         cursor_signing_secret=b"r" * 32,
@@ -263,7 +251,7 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
 
 
 def test_collection_run_rejects_disabled_provider_config(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, pack_id = _seed_config_and_search_pack(runtime)
     with runtime.database.engine.begin() as connection:
         connection.execute(
             update(provider_configs_table)
@@ -303,7 +291,7 @@ def test_discovery_run_rejects_target_platform_without_keyword_search_term(
 ) -> None:  # type: ignore[no-untyped-def]
     """目标平台不能因词包无适用词而被静默丢弃。"""
 
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, pack_id = _seed_config_and_search_pack(runtime)
     with runtime.database.engine.begin() as connection:
         connection.execute(
             keyword_pack_items_table.update()
@@ -407,7 +395,7 @@ def _insert_succeeded_import(
 def test_unified_runtime_list_cursor_filters_and_summary_aggregate_both_owners(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, pack_id = _seed_config_and_search_pack(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     collection = service.create_run(
         CollectionRunCreateRequest(
@@ -670,7 +658,7 @@ def _insert_campaign_content(
 
 
 def test_campaign_runtime_projection_and_summary_use_campaign_parent_once(runtime) -> None:  # type: ignore[no-untyped-def]
-    _seed_config_and_relevance(runtime)
+    _seed_config_and_search_pack(runtime)
     campaign_id, _ = _insert_campaign_content(runtime, outcome="updated")
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
 
@@ -695,7 +683,7 @@ def test_campaign_runtime_projection_and_summary_use_campaign_parent_once(runtim
 
 
 def test_ready_campaign_is_reported_as_queued_and_processing(runtime) -> None:  # type: ignore[no-untyped-def]
-    _seed_config_and_relevance(runtime)
+    _seed_config_and_search_pack(runtime)
     campaign_id, _ = _insert_campaign_content(runtime)
     with runtime.database.engine.begin() as connection:
         connection.execute(
@@ -717,7 +705,7 @@ def test_ready_campaign_is_reported_as_queued_and_processing(runtime) -> None:  
 
 
 def test_campaign_unchanged_ledger_is_eligible_and_persisted_as_run_source(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
     campaign_id, content_id = _insert_campaign_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
 
@@ -767,7 +755,7 @@ def test_campaign_unchanged_ledger_is_eligible_and_persisted_as_run_source(runti
 
 
 def test_running_campaign_cannot_be_used_as_supplement_source(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
     campaign_id, _ = _insert_campaign_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     with runtime.database.engine.begin() as connection:
@@ -796,7 +784,7 @@ def test_running_campaign_cannot_be_used_as_supplement_source(runtime) -> None: 
 
 
 def test_batch_supplement_targets_only_batch_lineage_and_links_run(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
 
@@ -917,7 +905,7 @@ def _batch_comments_response() -> dict[str, object]:
 def test_batch_supplement_worker_reuses_detail_mapper_and_ingestion_without_refiltering(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
@@ -1004,7 +992,7 @@ def test_batch_supplement_persists_safe_error_when_provider_secret_is_unavailabl
     runtime,  # type: ignore[no-untyped-def]
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, _ = _insert_import_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
@@ -1084,7 +1072,7 @@ def test_batch_supplement_persists_safe_error_when_provider_secret_is_unavailabl
 def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, target_content_id = _insert_import_content(runtime)
     _, other_content_id = _insert_import_content(
         runtime,
@@ -1159,7 +1147,7 @@ def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
 
 
 def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     created = PostgresCollectionHttpService(
         runtime,
@@ -1221,7 +1209,7 @@ def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> No
 
 
 def test_batch_supplement_retries_provider_5xx_with_new_attempt(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     created = PostgresCollectionHttpService(
         runtime,

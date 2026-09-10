@@ -66,10 +66,6 @@ class DuplicatePlanBrandError(ValueError):
     """同一 Plan 重复绑定品牌。"""
 
 
-class DuplicatePlanVehicleModelError(ValueError):
-    """同一 Plan 重复绑定车型。"""
-
-
 class UnsafePlanConfigError(ValueError):
     """Plan 平台业务配置包含 Secret 形态字段。"""
 
@@ -115,7 +111,6 @@ class CollectionPlanDefinition:
     platforms: tuple[PlanPlatformDefinition, ...]
     keyword_pack_ids: tuple[UUID, ...]
     brand_ids: tuple[UUID, ...] = ()
-    vehicle_model_ids: tuple[UUID, ...] = ()
     decision_policy: CollectionDecisionPolicyV1 = field(default_factory=CollectionDecisionPolicyV1)
 
     def __post_init__(self) -> None:
@@ -139,8 +134,6 @@ class CollectionPlanDefinition:
             raise EmptyPlanExecutionSurfaceError("plan platform 至少需要一个")
         if not self.keyword_pack_ids:
             raise EmptyPlanExecutionSurfaceError("plan 至少需要一个 Keyword Pack Search Term")
-        if self.brand_ids and self.vehicle_model_ids:
-            raise ValueError("plan brand scope 与兼容 vehicle scope 不能同时存在")
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +158,6 @@ class CollectionPlanRecord:
     platforms: tuple[PlanPlatformDefinition, ...]
     keyword_pack_ids: tuple[UUID, ...]
     brand_ids: tuple[UUID, ...] = ()
-    vehicle_model_ids: tuple[UUID, ...] = ()
     decision_policy: CollectionDecisionPolicyV1 = field(default_factory=CollectionDecisionPolicyV1)
 
 
@@ -237,9 +229,6 @@ class CollectionPlanningService:
             raise DuplicatePlanKeywordPackError("plan keyword pack identity must be unique")
         if len(definition.brand_ids) != len(set(definition.brand_ids)):
             raise DuplicatePlanBrandError("plan brand identity must be unique")
-        if len(definition.vehicle_model_ids) != len(set(definition.vehicle_model_ids)):
-            raise DuplicatePlanVehicleModelError("plan vehicle model identity must be unique")
-
         if definition.schedule_expr is not None:
             # 延迟 import 避免 planning/scheduler 的领域类型循环；这里只做语法/时区可执行性验证。
             from .scheduler import next_schedule_time

@@ -33,9 +33,8 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
     expect(drawer).toContain('搜索条件：关键词包')
     expect(drawer).toContain('内容过滤条件：品牌')
     expect(drawer).toContain("brand_ids: brandScope.value === 'selected' ? [...selectedBrands.value] : []")
-    expect(drawer).toContain("? { vehicle_model_ids: [...legacyVehicleIds.value] }")
-    expect(drawer).toContain('保留历史车型范围')
-    expect(drawer).not.toContain('vehicle_model_ids: selectedVehicles.value')
+    expect(drawer).not.toContain('vehicle_model_ids')
+    expect(drawer).not.toContain('保留历史车型范围')
   })
 
   it('Excel 与 TikHub Discovery 都提交品牌过滤，补采不携带搜索或过滤范围', async () => {

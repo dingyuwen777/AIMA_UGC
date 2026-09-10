@@ -13,6 +13,9 @@ from pydantic import SecretStr
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
+    PostgresBrandVehicleRepository,
+)
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_content import (
     PostgresFencedCollectionIngestionWriter,
@@ -26,9 +29,6 @@ from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.provider_dispatch import (
     PostgresProviderDispatchPersistence,
-)
-from aima_ugc.adapters.persistence.postgres.relevance import (
-    PostgresGlobalRelevanceRepository,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
@@ -53,6 +53,7 @@ from aima_ugc.modules.collection.providers import (
     ProviderTransportResponse,
     RawArtifactService,
 )
+from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.security import read_secret_file
@@ -376,7 +377,10 @@ class TikHubDebugDatabaseSession:
         try:
             with session.begin():
                 jobs = PostgresJobRepository(session)
-                relevance_snapshot, _ = PostgresGlobalRelevanceRepository(session).snapshot()
+                filter_snapshot = BrandVehicleFilterSnapshot(
+                    search_semantics="keyword_pack",
+                    catalog=PostgresBrandVehicleRepository(session).snapshot(brand_ids=None),
+                )
                 job = jobs.enqueue(
                     job_type=debug_job_type,
                     payload_version="tikhub-debug-collection.v1",
@@ -397,11 +401,16 @@ class TikHubDebugDatabaseSession:
                     job_id=job.id,
                     trigger_type="manual",
                     config_snapshot={
-                        "schema_version": "collection-run-config.v1",
+                        "schema_version": "collection-run-config.v2",
                         "detail_policy": "on_change",
                         "comment_policy": "adaptive",
                         "decision_policy": policy.model_dump(mode="json"),
-                        "relevance": relevance_snapshot.model_dump(mode="json"),
+                        "keyword_scope": {
+                            "schema_version": "collection-keyword-snapshot.v1",
+                            "keyword_packs": [],
+                            "terms": list(keywords),
+                        },
+                        "brand_vehicle_filter": filter_snapshot.model_dump(mode="json"),
                         "platforms": [
                             {
                                 "platform": self._platform,

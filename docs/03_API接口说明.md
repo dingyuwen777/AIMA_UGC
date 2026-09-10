@@ -213,7 +213,7 @@ batch_supplement
 
 补采请求必须且只能提交 `data_import_campaign_id` 或 `import_batch_id` 之一。新页面优先使用 Campaign；旧 Batch 字段继续保持兼容。
 
-Discovery 必须提交至少一个 `keyword_pack_ids`；`brand_ids` 为空表示冻结全部 active Brand，非空表示 selected Brand Scope。兼容期仍接收 `vehicle_model_ids`，但它只转换为对应 Brand Scope，不能替代 Keyword Pack，也不能与 `brand_ids` 同时提交。实际 Scope 数量只由平台和去重后的 Search Terms 决定，不按 Vehicle Alias 扩展。
+Discovery 必须提交至少一个 `keyword_pack_ids`；`brand_ids` 为空表示冻结全部 active Brand，非空表示 selected Brand Scope。Collection 创建接口不再接收 `vehicle_model_ids`；车型通过所选 Brand 对应的 active Vehicle 与 Alias 进入冻结 Filter Snapshot。实际 Scope 数量只由平台和去重后的 Search Terms 决定，不按 Vehicle Alias 扩展。
 
 HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Worker 完成。
 
@@ -349,7 +349,7 @@ backend/src/aima_ugc/modules/ingestion/
 
 ## 6.1 `POST /api/v1/import-batches`
 
-接受一个 multipart `.xlsx` 和可选的重复字段 `brand_ids`；最多 100 个且不得重复，空集合表示在创建时冻结全部 active Brand。服务保存 Input Artifact，冻结 `BrandVehicleFilterSnapshot`，创建 `processing_import_batches + ingestion.import-excel.v2 Job`，真正处理由 Worker 完成。Excel Search 明确不适用，`keyword_pack_ids`、`vehicle_model_ids` 和其它未声明字段会被拒绝。`ingestion.import-excel.v1` 仅继续解释升级前已经 queued/running 的旧任务。
+接受一个 multipart `.xlsx` 和可选的重复字段 `brand_ids`；最多 100 个且不得重复，空集合表示在创建时冻结全部 active Brand。服务保存 Input Artifact，冻结 `BrandVehicleFilterSnapshot`，创建 `processing_import_batches + ingestion.import-excel.v2 Job`，真正处理由 Worker 完成。Excel Search 明确不适用，`keyword_pack_ids`、`vehicle_model_ids` 和其它未声明字段会被拒绝；旧 v1 Job 不再注册。
 
 ## 6.2 查询
 
@@ -581,7 +581,7 @@ GET /api/v1/data-exports/{export_id}/download
 
 ---
 
-# 10. Keyword Pack / legacy Relevance API
+# 10. Keyword Pack API
 
 当前 Route：
 
@@ -591,11 +591,9 @@ GET  /api/v1/keyword-packs
 POST /api/v1/keyword-packs/{pack_id}/keywords
 GET  /api/v1/keyword-packs/{pack_id}
 PUT  /api/v1/keyword-packs/{pack_id}/enabled
-PUT  /api/v1/relevance-config
-GET  /api/v1/relevance-config
 ```
 
-Keyword Pack 是 TikHub Discovery 的 Search Terms 来源。新建 Discovery Run 使用 `collection-run-config.v2`，分别冻结 Search Snapshot 与 Brand/Vehicle Filter Snapshot，不再读取 `global_relevance_config`。`/api/v1/relevance-config` 在 Roadmap 清理阶段前继续保留，供旧配置管理和升级前 `collection-run-config.v1` 任务解释；它不是新任务的入库过滤器。正式 Excel/Data Import Campaign 不执行 Search，也不接收 Keyword Pack，只冻结 Brand/Vehicle Filter Snapshot。AI/人工 Relevance 继续属于 Analysis 与查询语义。
+Keyword Pack 是 TikHub Discovery 的 Search Terms 来源。Discovery Run 使用 `collection-run-config.v2`，分别冻结 Search Snapshot 与 Brand/Vehicle Filter Snapshot；旧 Global Keyword Relevance 配置、`/api/v1/relevance-config` 和 v1 Run Contract 已删除。正式 Excel/Data Import Campaign 不执行 Search，也不接收 Keyword Pack，只冻结 Brand/Vehicle Filter Snapshot。AI/人工 Relevance 继续属于 Analysis 与查询语义。
 
 ---
 
@@ -623,7 +621,7 @@ misfire_policy = latest_only
 max_catch_up_runs = 0
 ```
 
-Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围；Plan 中空 `brand_ids` 表示 all-active。兼容 `vehicle_model_ids` 会在创建 Run 时转换为所属 Brand Scope，不能和 `brand_ids` 同时提交，也不能单独形成 Discovery Search。Plan Response 保留提交的 `brand_ids`；Run Response 返回任务创建时实际冻结的 Brand UUID，因而 all-active Run 也能显示当时纳入的具体 Brand。前端生成类型以当前 OpenAPI 为准。
+Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围；Plan 中空 `brand_ids` 表示 all-active。Plan/Run 不再接收 Discovery `vehicle_model_ids`。Plan Response 保留提交的 `brand_ids`；Run Response 返回任务创建时实际冻结的 Brand UUID，因而 all-active Run 也能显示当时纳入的具体 Brand。前端生成类型以当前 OpenAPI 为准。
 
 完整 Scheduler 语义：[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)。
 
@@ -637,7 +635,6 @@ GET    /api/v1/vehicle-models/{vehicle_model_id}
 PUT    /api/v1/vehicle-models/{vehicle_model_id}
 DELETE /api/v1/vehicle-models/{vehicle_model_id}
 POST   /api/v1/vehicle-models/{vehicle_model_id}/merge
-PUT    /api/v1/keyword-packs/{pack_id}/vehicle-models
 GET    /api/v1/analysis-schemes
 POST   /api/v1/analysis-schemes
 PUT    /api/v1/analysis-scheme-versions/{version_id}
@@ -647,7 +644,7 @@ GET    /api/v1/audit-events
 GET    /api/v1/export-columns
 ```
 
-Provider-neutral Principal 只允许 `administrator/user`。车型、词包等只读目录可供普通业务页面消费；车型修改/合并/删除、词包写入、全局相关性、采集计划写入、Scheme 管理和审计查询均由后端管理员守卫保护。第一版不强制双人审批，但配置修改、发布和回滚必须记录审计。完整字段以 [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py) 和当前 OpenAPI 为准。
+Provider-neutral Principal 只允许 `administrator/user`。车型、词包等只读目录可供普通业务页面消费；车型修改/合并/删除、词包写入、采集计划写入、Scheme 管理和审计查询均由后端管理员守卫保护。第一版不强制双人审批，但配置修改、发布和回滚必须记录审计。完整字段以 [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py) 和当前 OpenAPI 为准。
 
 ---
 
@@ -689,7 +686,7 @@ Data Import 目录/Campaign 的分页/游标以其当前 Pydantic Contract 和 `
 → import-batches 兼容运行事实
 
 /collection-strategy
-→ keyword-packs / relevance-config / collection-plans
+→ keyword-packs / collection-plans
 
 /voice-plaza
 → contents / content-relevance-reviews
@@ -698,7 +695,7 @@ Data Import 目录/Campaign 的分页/游标以其当前 Pydantic Contract 和 `
 → data-exports
 
 /admin/configuration
-→ principal / vehicle-models / keyword-pack vehicle links
+→ principal / brands / vehicle-models
 → analysis-schemes / audit-events
 ```
 

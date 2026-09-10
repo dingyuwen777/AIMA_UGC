@@ -45,7 +45,7 @@ function batch(id: string, status: 'succeeded' | 'failed', rowsIngested: number)
     created_at: '2026-08-21T00:00:00Z',
     job: {
       id: `job-${id}`,
-      job_type: 'ingestion.import-excel.v1',
+      job_type: 'ingestion.import-excel.v2',
       status,
       attempt: 1,
       max_attempts: 10,

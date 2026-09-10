@@ -10,7 +10,6 @@ def test_u1_u5_tables_are_registered_with_single_owner() -> None:
         "vehicle_catalog_versions": "vehicles",
         "vehicle_models": "vehicles",
         "vehicle_model_aliases": "vehicles",
-        "keyword_pack_vehicle_models": "vehicles",
         "content_vehicle_evidence": "vehicles",
         "content_vehicle_review_locks": "vehicles",
         "analysis_schemes": "analysis",

@@ -265,7 +265,7 @@ class PostgresResourceLifecycleHttpService:
         principal: Principal,
         request_id: str,
     ) -> KeywordPackResponse:
-        """复制词包与当前成员/车型关系，副本默认停用。"""
+        """复制词包与当前关键词成员，副本默认停用。"""
 
         principal.require_administrator()
         session = self._runtime.database.new_session()
@@ -484,7 +484,6 @@ class PostgresResourceLifecycleHttpService:
                         platforms=candidate.platforms,
                         keyword_pack_ids=body.keyword_pack_ids,
                         brand_ids=body.brand_ids,
-                        vehicle_model_ids=body.vehicle_model_ids,
                     )
                     _audit(
                         session,
@@ -539,7 +538,6 @@ class PostgresResourceLifecycleHttpService:
                         platforms=source.platforms,
                         keyword_pack_ids=source.keyword_pack_ids,
                         brand_ids=source.brand_ids,
-                        vehicle_model_ids=source.vehicle_model_ids,
                         decision_policy=source.decision_policy,
                     )
                     _validate_execution_surface(
@@ -1040,7 +1038,6 @@ def _plan_definition_from_update(
         ),
         keyword_pack_ids=body.keyword_pack_ids,
         brand_ids=body.brand_ids,
-        vehicle_model_ids=body.vehicle_model_ids,
     )
 
 

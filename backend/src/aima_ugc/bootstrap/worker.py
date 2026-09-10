@@ -32,6 +32,10 @@ from aima_ugc.modules.reporting.data_export_job import (
     register_data_export_job,
 )
 from aima_ugc.modules.system.models import ProviderConfig
+from aima_ugc.modules.vehicles.content_reclassification import (
+    ContentReclassificationJobHandler,
+    register_content_reclassification_job,
+)
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
@@ -43,6 +47,7 @@ from .analysis_high_throughput_planner import (
     create_high_throughput_analysis_job_terminal_callback,
 )
 from .collection_scope import TikHubCollectionScopeExecutor
+from .content_reclassification_worker import PostgresContentReclassificationJobExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
 from .historical_cancellation import historical_cancellation_terminal_callback
 from .historical_import_worker import PostgresHistoricalImportJobExecutor
@@ -167,6 +172,10 @@ def create_collection_job_registry(
         registry,
         DataExportJobHandler(PostgresDataExportJobExecutor(runtime)),
         terminal_callback=export_job_terminal_callback,
+    )
+    register_content_reclassification_job(
+        registry,
+        ContentReclassificationJobHandler(PostgresContentReclassificationJobExecutor(runtime)),
     )
     return registry
 

@@ -114,6 +114,7 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     assert (
         "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
     )
+    assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 
     assert (
         "      - name: Install report validation CJK font\n"

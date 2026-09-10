@@ -1,9 +1,8 @@
-"""车型目录、别名、词包引用与内容车型证据 Owner。"""
+"""品牌车型目录、别名、内容证据与重分类 Owner。"""
 
 from .models import (
     ContentVehicleEvidence,
     VehicleAlias,
-    VehicleCatalogSnapshot,
     VehicleModel,
     normalize_vehicle_text,
 )
@@ -11,7 +10,6 @@ from .models import (
 __all__ = [
     "ContentVehicleEvidence",
     "VehicleAlias",
-    "VehicleCatalogSnapshot",
     "VehicleModel",
     "normalize_vehicle_text",
 ]

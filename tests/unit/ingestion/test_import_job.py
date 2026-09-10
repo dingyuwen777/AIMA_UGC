@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 import pytest
+from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_MAX_ATTEMPTS,
     IMPORT_JOB_PAYLOAD_VERSION,
@@ -11,10 +12,9 @@ from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_TYPE,
     ImportJobHandler,
     ImportJobPayload,
-    ImportKeywordPackSnapshot,
-    ImportKeywordSelectionSnapshot,
     register_import_job,
 )
+from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleCatalogSnapshot
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRegistry
 from pydantic import ValidationError
 
@@ -54,27 +54,32 @@ class _Executor:
 
 def _payload() -> ImportJobPayload:
     return ImportJobPayload(
-        keyword_selection=ImportKeywordSelectionSnapshot(
-            keyword_packs=(ImportKeywordPackSnapshot(id=uuid4(), version=3),),
-            effective_keywords=("爱玛",),
+        filter_snapshot=BrandVehicleFilterSnapshot(
+            catalog=BrandVehicleCatalogSnapshot(
+                catalog_version=3,
+                filter_scope="all_active",
+                selected_brand_ids=(),
+                brands=(),
+                brand_aliases=(),
+                vehicles=(),
+                vehicle_aliases=(),
+            )
         ),
     )
 
 
-def test_import_job_contract_freezes_keyword_selection_snapshot() -> None:
-    assert IMPORT_JOB_TYPE == "ingestion.import-excel.v1"
-    assert IMPORT_JOB_PAYLOAD_VERSION == "ingestion.import-excel.v1"
+def test_import_job_contract_freezes_brand_vehicle_filter_snapshot() -> None:
+    assert IMPORT_JOB_TYPE == "ingestion.import-excel.v2"
+    assert IMPORT_JOB_PAYLOAD_VERSION == "ingestion.import-excel.v2"
     assert IMPORT_JOB_TIMEOUT_SECONDS == 1800
     assert IMPORT_JOB_MAX_ATTEMPTS == 10
     payload = _payload()
 
-    assert payload.schema_version == "ingestion.import-excel.v1"
-    assert payload.keyword_selection.effective_keywords == ("爱玛",)
-    assert len(payload.keyword_selection.keyword_packs) == 1
-    assert payload.keyword_selection.keyword_packs[0].version == 3
+    assert payload.schema_version == "ingestion.import-excel.v2"
+    assert payload.filter_snapshot.catalog.catalog_version == 3
 
 
-def test_import_job_contract_rejects_legacy_relevance_payload() -> None:
+def test_import_job_contract_rejects_legacy_v1_payload() -> None:
     with pytest.raises(ValidationError):
         ImportJobPayload.model_validate(
             {

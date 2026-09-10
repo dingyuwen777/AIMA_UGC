@@ -47,6 +47,8 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import select
 
+from tests.integration.stage3_brand_support import stage4_collection_config_snapshot
+
 _FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 17, 5, 0, tzinfo=UTC)
 
@@ -209,14 +211,7 @@ def _execute_reply_case(
                 timeout_seconds=300,
             )
             snapshot: dict[str, object] = {
-                "schema_version": "collection-run-config.v1",
-                "relevance": {
-                    "schema_version": "relevance-snapshot.v1",
-                    "keyword_pack_id": str(uuid4()),
-                    "keyword_pack_version": 1,
-                    "config_version": 1,
-                    "effective_keywords": ["脱敏"],
-                },
+                **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                 "detail_policy": "on_change",
                 "comment_policy": "adaptive",
                 "platforms": [

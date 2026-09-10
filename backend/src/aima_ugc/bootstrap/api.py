@@ -31,8 +31,6 @@ from aima_ugc.contracts.administration import (
     AuditEventListQuery,
     AuditEventListResponse,
     CurrentPrincipalResponse,
-    KeywordPackVehicleLinkRequest,
-    KeywordPackVehicleLinksResponse,
     ProviderConfigCreateRequest,
     ProviderConfigListResponse,
     ProviderConfigResponse,
@@ -77,8 +75,6 @@ from aima_ugc.contracts.http import (
     DataExportListResponse,
     DataExportResponse,
     DataExportSubmitRequest,
-    GlobalRelevanceConfigRequest,
-    GlobalRelevanceConfigResponse,
     HistoricalCampaignConflictListResponse,
     HistoricalCampaignCreatedResponse,
     HistoricalCampaignCreateRequest,
@@ -174,7 +170,6 @@ from aima_ugc.modules.ingestion.http import (
     ImportUploadTooLarge,
     InvalidImportCursor,
     InvalidImportFile,
-    RelevanceConfigurationError,
 )
 from aima_ugc.modules.ingestion.xlsx_security import MAX_MULTIPART_BODY_BYTES
 from aima_ugc.modules.product import ProductHttpService, ProductResourceNotFound
@@ -574,18 +569,6 @@ def create_app(
             field="body.file",
         )
 
-    @application.exception_handler(RelevanceConfigurationError)
-    async def relevance_unavailable(
-        request: Request, _: RelevanceConfigurationError
-    ) -> JSONResponse:
-        return _error_response(
-            status_code=409,
-            request_id=_request_id(request),
-            title="相关性配置不可用",
-            detail="全局 Relevance 词包尚未配置或没有有效关键词。",
-            code="relevance_config_unavailable",
-        )
-
     @application.exception_handler(BrandVehicleFilterUnavailable)
     async def brand_vehicle_filter_unavailable(
         request: Request, _: BrandVehicleFilterUnavailable
@@ -669,7 +652,7 @@ def create_app(
             status_code=404,
             request_id=_request_id(request),
             title="配置资源不存在",
-            detail="请求的车型、词包或 Analysis Scheme 不存在。",
+            detail="请求的品牌、车型、Provider 配置或 Analysis Scheme 不存在。",
             code="administration_resource_not_found",
         )
 
@@ -859,7 +842,7 @@ def create_app(
             status_code=409,
             request_id=_request_id(request),
             title="采集策略无法保存",
-            detail="当前词包、全局相关性、Provider 或计划状态不允许该操作。",
+            detail="当前词包、Provider 或计划状态不允许该操作。",
             code="collection_strategy_conflict",
         )
 
@@ -2143,33 +2126,6 @@ def create_app(
             request_id=_request_id(request),
         )
 
-    @application.put(
-        "/api/v1/keyword-packs/{pack_id}/vehicle-models",
-        operation_id="replaceKeywordPackVehicleModels",
-        response_model=KeywordPackVehicleLinksResponse,
-        responses={
-            403: {"model": HttpErrorResponse},
-            404: {"model": HttpErrorResponse},
-            409: {"model": HttpErrorResponse},
-            422: {"model": HttpErrorResponse},
-            500: {"model": HttpErrorResponse},
-        },
-        tags=["keywords", "vehicles"],
-    )
-    def replace_keyword_pack_vehicle_models(
-        pack_id: UUID,
-        body: KeywordPackVehicleLinkRequest,
-        request: Request,
-    ) -> KeywordPackVehicleLinksResponse:
-        """管理员原子替换一个词包引用的车型。"""
-
-        return current_administration_service().replace_keyword_pack_vehicles(
-            pack_id,
-            body,
-            principal=current_principal(request),
-            request_id=_request_id(request),
-        )
-
     @application.post(
         "/api/v1/analysis-schemes",
         operation_id="createAnalysisSchemeDraft",
@@ -2416,43 +2372,6 @@ def create_app(
             actor_ref=principal.principal_id,
             request_id=_request_id(request),
         )
-
-    @application.put(
-        "/api/v1/relevance-config",
-        operation_id="setGlobalRelevanceConfig",
-        response_model=GlobalRelevanceConfigResponse,
-        responses={
-            403: {"model": HttpErrorResponse},
-            404: {"model": HttpErrorResponse},
-            409: {"model": HttpErrorResponse},
-            422: {"model": HttpErrorResponse},
-            500: {"model": HttpErrorResponse},
-        },
-        tags=["relevance"],
-    )
-    def set_global_relevance(
-        body: GlobalRelevanceConfigRequest,
-        request: Request,
-    ) -> GlobalRelevanceConfigResponse:
-        principal = current_administrator(request)
-        return current_import_service().set_global_relevance(
-            body,
-            actor_ref=principal.principal_id,
-            request_id=_request_id(request),
-        )
-
-    @application.get(
-        "/api/v1/relevance-config",
-        operation_id="getGlobalRelevanceConfig",
-        response_model=GlobalRelevanceConfigResponse,
-        responses={
-            409: {"model": HttpErrorResponse},
-            500: {"model": HttpErrorResponse},
-        },
-        tags=["relevance"],
-    )
-    def get_global_relevance() -> GlobalRelevanceConfigResponse:
-        return current_import_service().get_global_relevance()
 
     @application.post(
         "/api/v1/collection-plans",

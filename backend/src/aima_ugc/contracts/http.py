@@ -242,7 +242,6 @@ class CollectionRunCreateRequest(BaseModel):
     mode: CollectionRunMode
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
@@ -258,10 +257,6 @@ class CollectionRunCreateRequest(BaseModel):
             raise ValueError("同一次 Collection Run 的词包不得重复")
         if len(self.brand_ids) != len(set(self.brand_ids)):
             raise ValueError("同一次 Collection Run 的品牌不得重复")
-        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
-            raise ValueError("同一次 Collection Run 的车型不得重复")
-        if self.brand_ids and self.vehicle_model_ids:
-            raise ValueError("品牌范围与兼容车型范围不能同时提交")
         if self.mode == "discovery":
             if not self.keyword_pack_ids:
                 raise ValueError("主动发现必须选择至少一个 Keyword Pack 作为 Search Terms")
@@ -276,8 +271,6 @@ class CollectionRunCreateRequest(BaseModel):
                 raise ValueError("基于 Batch 补采不能提交 Keyword Pack")
             if self.brand_ids:
                 raise ValueError("基于 Batch 补采不能提交品牌过滤范围")
-            if self.vehicle_model_ids:
-                raise ValueError("基于 Batch 补采不能提交车型")
             if any(item.search_config is not None for item in self.platforms):
                 raise ValueError("基于 Batch 补采不能提交关键词搜索配置")
         if self.include_sub_comments and not self.include_comments:
@@ -592,22 +585,6 @@ class ResourceEnabledRequest(BaseModel):
     enabled: bool
 
 
-class GlobalRelevanceConfigRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    keyword_pack_id: UUID
-
-
-class GlobalRelevanceConfigResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    keyword_pack_id: UUID
-    keyword_pack_version: int = Field(gt=0)
-    version: int = Field(gt=0)
-    effective_keywords: tuple[str, ...]
-    updated_at: datetime
-
-
 class CollectionPlanPlatformRequest(BaseModel):
     """Plan 逐平台提交 Provider-neutral 搜索配置，不接收 Provider 私有参数。"""
 
@@ -633,7 +610,6 @@ class CollectionPlanCreateRequest(BaseModel):
     platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(min_length=1, max_length=5)
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     enabled: bool = True
 
     @field_validator("name", "schedule_expr", mode="before")
@@ -654,10 +630,6 @@ class CollectionPlanCreateRequest(BaseModel):
             raise ValueError("同一 Plan 的 Discovery 词包不得重复")
         if len(self.brand_ids) != len(set(self.brand_ids)):
             raise ValueError("同一 Plan 的品牌不得重复")
-        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
-            raise ValueError("同一 Plan 的车型不得重复")
-        if self.brand_ids and self.vehicle_model_ids:
-            raise ValueError("品牌范围与兼容车型范围不能同时提交")
         if not self.keyword_pack_ids:
             raise ValueError("Plan 必须选择至少一个 Keyword Pack 作为 Search Terms")
         return self
@@ -687,7 +659,6 @@ class CollectionPlanResponse(BaseModel):
     platforms: tuple[CollectionPlanPlatformResponse, ...]
     keyword_pack_ids: tuple[UUID, ...]
     brand_ids: tuple[UUID, ...] = ()
-    vehicle_model_ids: tuple[UUID, ...] = ()
     created_at: datetime
     updated_at: datetime
 
@@ -1741,8 +1712,6 @@ __all__ = [
     "ExportColumnKey",
     "DataImportIngestionPolicy",
     "DataImportSourceKind",
-    "GlobalRelevanceConfigRequest",
-    "GlobalRelevanceConfigResponse",
     "HistoricalCampaignConflictListResponse",
     "HistoricalCampaignConflictResponse",
     "HistoricalCampaignCreateRequest",

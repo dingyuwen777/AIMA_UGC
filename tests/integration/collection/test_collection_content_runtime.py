@@ -93,7 +93,7 @@ def _create_live_source(runtime: DatabaseRuntime, *, source_value: str) -> _Live
             ).create_run(
                 job_id=job.id,
                 trigger_type="api",
-                config_snapshot={"schema_version": "collection-run-config.v1"},
+                config_snapshot={"schema_version": "collection-run-config.v2"},
                 scopes=(
                     CollectionScopeDefinition(
                         platform="xiaohongshu",

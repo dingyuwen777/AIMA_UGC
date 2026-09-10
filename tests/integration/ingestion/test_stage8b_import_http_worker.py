@@ -32,8 +32,8 @@ from aima_ugc.modules.content.tables import (
 )
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.import_job import (
-    BRAND_VEHICLE_IMPORT_JOB_TYPE,
-    BrandVehicleImportJobPayload,
+    IMPORT_JOB_TYPE,
+    ImportJobPayload,
 )
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.vehicles.tables import (
@@ -197,7 +197,7 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
         assert snapshot["schema_version"] == "brand-vehicle-filter.v1"
         assert snapshot["search_semantics"] == "not_applicable"
         assert persisted_job["payload"]["filter_snapshot"] == snapshot
-        assert persisted_job["job_type"] == BRAND_VEHICLE_IMPORT_JOB_TYPE
+        assert persisted_job["job_type"] == IMPORT_JOB_TYPE
         assert "keyword_selection" not in persisted_job["payload"]
     finally:
         _truncate(runtime)
@@ -252,7 +252,7 @@ def test_import_retry_after_business_commit_is_fenced_and_does_not_duplicate_con
         try:
             with session.begin():
                 first_job = PostgresJobRepository(session).claim_next(
-                    supported_job_types=(BRAND_VEHICLE_IMPORT_JOB_TYPE,),
+                    supported_job_types=(IMPORT_JOB_TYPE,),
                     worker_id="stage3-first-attempt",
                     lease_seconds=120,
                 )
@@ -261,7 +261,7 @@ def test_import_retry_after_business_commit_is_fenced_and_does_not_duplicate_con
         assert first_job is not None and first_job.lease_token is not None
         first_fence = JobExecutionFence(job_id=first_job.id, lease_token=first_job.lease_token)
         first_result = PostgresImportJobExecutor(runtime).execute(
-            payload=BrandVehicleImportJobPayload.model_validate(first_job.payload),
+            payload=ImportJobPayload.model_validate(first_job.payload),
             fence=first_fence,
             context=_ExecutionContext(first_fence),
         )
@@ -277,7 +277,7 @@ def test_import_retry_after_business_commit_is_fenced_and_does_not_duplicate_con
         try:
             with session.begin():
                 retry_job = PostgresJobRepository(session).claim_next(
-                    supported_job_types=(BRAND_VEHICLE_IMPORT_JOB_TYPE,),
+                    supported_job_types=(IMPORT_JOB_TYPE,),
                     worker_id="stage3-retry-attempt",
                     lease_seconds=120,
                 )
@@ -287,12 +287,12 @@ def test_import_retry_after_business_commit_is_fenced_and_does_not_duplicate_con
         retry_fence = JobExecutionFence(job_id=retry_job.id, lease_token=retry_job.lease_token)
         with pytest.raises(LeaseLostError):
             PostgresImportJobExecutor(runtime).execute(
-                payload=BrandVehicleImportJobPayload.model_validate(first_job.payload),
+                payload=ImportJobPayload.model_validate(first_job.payload),
                 fence=first_fence,
                 context=_ExecutionContext(first_fence),
             )
         retry_result = PostgresImportJobExecutor(runtime).execute(
-            payload=BrandVehicleImportJobPayload.model_validate(retry_job.payload),
+            payload=ImportJobPayload.model_validate(retry_job.payload),
             fence=retry_fence,
             context=_ExecutionContext(retry_fence),
         )

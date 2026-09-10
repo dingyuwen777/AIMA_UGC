@@ -133,15 +133,10 @@ def run_scheduler_once(
                     keyword_catalog = PostgresScheduledKeywordSnapshotReader(session).read(
                         plan.keyword_pack_ids
                     )
-                    if plan.brand_ids and plan.vehicle_model_ids:
-                        raise ValueError("Plan Brand Scope 与兼容 Vehicle Scope 不能同时存在")
                     brand_repository = PostgresBrandVehicleRepository(session)
-                    selected_brand_ids = plan.brand_ids or (
-                        brand_repository.brand_ids_for_vehicle_models(plan.vehicle_model_ids)
-                    )
                     filter_snapshot = BrandVehicleFilterSnapshot(
                         search_semantics="keyword_pack",
-                        catalog=brand_repository.snapshot(brand_ids=selected_brand_ids or None),
+                        catalog=brand_repository.snapshot(brand_ids=plan.brand_ids or None),
                     )
                     if not filter_snapshot.catalog.brands:
                         raise ValueError("Brand Filter 当前没有可用 active Brand")
@@ -350,6 +345,5 @@ def _scheduled_run_snapshot(
             "terms": list(dict.fromkeys(search_terms)),
         },
         "brand_vehicle_filter": filter_snapshot,
-        "legacy_vehicle_model_ids": [str(item) for item in plan.vehicle_model_ids],
         "keyword_scope_count": keyword_scope_count,
     }

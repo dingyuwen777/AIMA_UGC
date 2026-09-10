@@ -6,7 +6,6 @@ import type {
   CollectionPlanResponse,
   CollectionProviderConfigResponse,
   KeywordPackSummaryResponse,
-  VehicleModelResponse,
 } from '../../../../../generated/api/client'
 import { collectionSearchConfigSummary } from '../../../../../shared/collectionSearchConfig'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
@@ -20,7 +19,6 @@ const props = defineProps<{
   plan: CollectionPlanResponse | null
   packs: KeywordPackSummaryResponse[]
   brands: BrandResponse[]
-  vehicles: VehicleModelResponse[]
   providers: CollectionProviderConfigResponse[]
   saving: boolean
   error?: string | null
@@ -34,7 +32,7 @@ const emit = defineEmits<{
 const copied = ref(false)
 const copyName = ref('')
 const copyEditing = ref(false)
-const selectedResource = ref<{ kind: 'pack' | 'vehicle'; id: string } | null>(null)
+const selectedResource = ref<{ kind: 'pack'; id: string } | null>(null)
 
 watch(() => props.plan?.id, () => { copyEditing.value = false })
 watch(open, (value) => { if (!value) selectedResource.value = null })
@@ -50,11 +48,6 @@ async function copyPlanId(planId: string): Promise<void> {
 function packLabel(packId: string): string {
   const pack = props.packs.find((item) => item.id === packId)
   return pack ? `${pack.name} · v${pack.version}` : '历史词包（当前目录不可用）'
-}
-
-function vehicleLabel(vehicleId: string): string {
-  const vehicle = props.vehicles.find((item) => item.id === vehicleId)
-  return vehicle ? `${vehicle.display_name} · ${vehicle.code}` : '历史车型（当前目录不可用）'
 }
 
 function brandLabel(brandId: string): string {
@@ -175,24 +168,10 @@ function archivePlan(): void {
           {{ packLabel(id) }}
         </button><em v-if="plan.keyword_pack_ids.length === 0">未选择关键词包</em>
       </section><section class="brands">
-        <h4>内容过滤条件 · 品牌</h4><span v-if="(plan.brand_ids ?? []).length === 0 && (plan.vehicle_model_ids ?? []).length === 0">全部启用品牌及车型</span><span
-          v-else-if="(plan.brand_ids ?? []).length === 0"
-        >沿用下方历史车型范围，尚未迁移为品牌过滤</span><span
+        <h4>内容过滤条件 · 品牌</h4><span v-if="(plan.brand_ids ?? []).length === 0">全部启用品牌及车型</span><span
           v-for="id in plan.brand_ids ?? []"
           :key="id"
         >{{ brandLabel(id) }}</span>
-      </section><section
-        v-if="(plan.vehicle_model_ids ?? []).length"
-        class="vehicles"
-      >
-        <h4>历史车型范围 · 只读兼容</h4><button
-          v-for="id in plan.vehicle_model_ids ?? []"
-          :key="id"
-          type="button"
-          @click="selectedResource = { kind: 'vehicle', id }"
-        >
-          {{ vehicleLabel(id) }}
-        </button>
       </section><section class="channels">
         <h4>目标平台 / 采集渠道</h4><span
           v-for="item in plan.platforms"
@@ -229,10 +208,6 @@ function archivePlan(): void {
             :key="`pack-${id}`"
           >词包：{{ id }}</span>
           <span
-            v-for="id in plan.vehicle_model_ids ?? []"
-            :key="`vehicle-${id}`"
-          >车型：{{ id }}</span>
-          <span
             v-for="id in plan.brand_ids ?? []"
             :key="`brand-${id}`"
           >品牌：{{ id }}</span>
@@ -247,7 +222,6 @@ function archivePlan(): void {
   <PlanResourceDetailDialog
     :resource="selectedResource"
     :packs="packs"
-    :vehicles="vehicles"
     @close="selectedResource = null"
   />
 </template>

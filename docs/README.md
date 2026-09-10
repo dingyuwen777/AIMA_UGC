@@ -65,7 +65,7 @@ Workflow 的职责、验证层和调试方法见 [`docs/04_测试与调试说明
 
 1. [`docs/roadmap/02_生产上线实施路线.md`](roadmap/02_生产上线实施路线.md)：完整 Production Hardening / Go-Live；
 2. [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)：公司服务器容量门禁、生产授权、正式执行和全量对账；
-3. [`docs/roadmap/04_搜索与品牌车型过滤实施路线.md`](roadmap/04_搜索与品牌车型过滤实施路线.md)：Keyword Pack Search 与 Brand/Vehicle Filter 解耦，按 Stage 推进 Schema、Backend、Frontend、旧数据重分类和 Legacy Cleanup。
+3. [`docs/roadmap/05_可重放数据底座与监测重分类实施路线.md`](roadmap/05_可重放数据底座与监测重分类实施路线.md)：在已完成的 Brand/Vehicle Filter 主链中增加 Persistent Canonical Artifact 与 Replay。
 
 Monitoring/Alert/VOC/Ticket、Web Report Center、Dashboard、Gold Set、双人审批等候选方向只有在被业务明确批准后才进入 Roadmap。此前 Stage 文档提到它们，不等于它们现在是施工计划。
 

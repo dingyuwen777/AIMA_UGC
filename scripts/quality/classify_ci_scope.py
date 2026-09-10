@@ -26,6 +26,7 @@ ALL_POSTGRES_SUITES = (
     "collection",
     "content",
     "ingestion",
+    "vehicles",
 )
 POSTGRES_ALL = ("all",)
 
@@ -190,12 +191,29 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
     if path.startswith("tests/integration/"):
         relative = path.removeprefix("tests/integration/")
         suite = relative.split("/", 1)[0]
-        if suite in {"platform", "database", "jobs", "collection", "content", "ingestion"}:
+        if suite in {
+            "platform",
+            "database",
+            "jobs",
+            "collection",
+            "content",
+            "ingestion",
+            "vehicles",
+        }:
             return (suite,)
         return POSTGRES_ALL
 
     markers: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
         (("/modules/collection/", "/postgres/collection"), ("collection",)),
+        (
+            (
+                "/modules/vehicles/",
+                "/postgres/vehicles",
+                "/postgres/brand_vehicle",
+                "/postgres/content_reclassification",
+            ),
+            ("vehicles",),
+        ),
         (("/modules/content/", "/postgres/content"), ("content",)),
         (
             ("/modules/ingestion/", "/postgres/ingestion", "/postgres/import"),
