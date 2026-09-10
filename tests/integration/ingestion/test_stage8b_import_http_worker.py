@@ -320,12 +320,14 @@ def test_unmatched_single_import_is_retained_in_canonical_before_filter(tmp_path
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "文章"
-        sheet.append(["媒体名称（中文）", "标题", "内文", "原文链接"])
+        sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
         sheet.append(
             [
                 "小红书",
                 "完全无关的合法内容",
                 "不命中当前品牌车型目录",
+                "测试账号",
+                "2026-08-20 10:00:00",
                 "https://www.xiaohongshu.com/explore/stage2-filtered",
             ]
         )

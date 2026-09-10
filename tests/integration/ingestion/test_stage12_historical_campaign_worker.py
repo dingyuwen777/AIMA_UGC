@@ -132,12 +132,14 @@ def _xlsx_with_mixed_filter_outcomes() -> bytes:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "文章"
-    sheet.append(["媒体名称（中文）", "标题", "内文", "原文链接"])
+    sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
     sheet.append(
         [
             "小红书",
             "爱玛命中",
             "合法并命中当前目录",
+            "测试账号",
+            "2025-01-02 10:00:00",
             "https://www.xiaohongshu.com/explore/stage2-matched",
         ]
     )
@@ -146,10 +148,12 @@ def _xlsx_with_mixed_filter_outcomes() -> bytes:
             "小红书",
             "完全无关",
             "合法但不命中当前目录",
+            "测试账号",
+            "2025-01-02 10:00:00",
             "https://www.xiaohongshu.com/explore/stage2-filtered",
         ]
     )
-    sheet.append(["未知平台", "爱玛但平台非法", "invalid", None])
+    sheet.append(["未知平台", "爱玛但平台非法", "invalid", "测试账号", "2025-01-02 10:00:00", None])
     output = BytesIO()
     workbook.save(output)
     workbook.close()

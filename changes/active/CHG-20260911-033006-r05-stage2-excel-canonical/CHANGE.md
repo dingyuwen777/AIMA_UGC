@@ -164,7 +164,7 @@ Docs Impact 为 `targeted`：同步 Blueprint 02/03、Appendix 08、Ingestion RE
 # 两阶段 Review
 
 - **需求与风险重建**：Review Target 为 `ac0b66f8...1519275f`。从 Issue #441、Roadmap 05 Stage 2、当前 Excel/Artifact/Job/Content Owner 事实独立重建 R1–R7；没有使用本 Change 充当上游需求全集。
-- **实现与证据对照**：逐项审查单文件 Import、Historical Snapshot/Chunk、Artifact 父级唯一关系、Migration clean break、错误分类、文档和测试。复核中特别检查合法 filtered/duplicate 保留、invalid 行号对账、全文件预检、Snapshot 崩溃窗口、Batch 重试、取消/fence、旧 `.v1` 运行时残留；未发现剩余 blocker/high/medium Finding。
+- **实现与证据对照**：逐项审查单文件 Import、Historical Snapshot/Chunk、Artifact 父级唯一关系、Migration clean break、错误分类、文档和测试。复核中特别检查合法 filtered/duplicate 保留、invalid 行号对账、全文件预检、Snapshot 崩溃窗口、Batch 重试、取消/fence、旧 `.v1` 运行时残留。首轮 PostgreSQL CI 发现两份新增 XLSX 测试 Fixture 漏写 Profile 必需列“作者、出版日期”，导致 Mapper 前正确拒绝；已补齐 Fixture 并保留失败证据，生产实现无需绕过输入校验。修正后无剩余 blocker/high/medium Finding。
 - **测试充分性结论**：目标 16/16、Contract 111/111、API 60/60、Ruff/Mypy/Contract 生成兼容/Wheel/Docs/Architecture/Owner/Secret 均通过。完整 Unit 为 932 passed/8 skipped，另 3 个仅因 Windows 无 `os.geteuid/os.chown` 的既有 POSIX 测试失败；本机缺 PostgreSQL Secret/服务，28 failed + 24 errors 均为连接前置缺失，不能当作产品失败或成功。真实 Migration/PostgreSQL/跨组件工作流由 Ready exact-head PR CI 验证。
 
 # 完成证据与状态
