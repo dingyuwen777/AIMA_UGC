@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260910-171533-stage5-query-contract-export
 title: 搜索与品牌车型过滤 Stage 5 查询 Contract 与导出
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/stage5-query-contract-export
 created: 2026-09-10
