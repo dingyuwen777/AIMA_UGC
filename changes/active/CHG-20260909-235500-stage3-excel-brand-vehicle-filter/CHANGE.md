@@ -38,6 +38,7 @@ affected_paths:
   - frontend/e2e
   - tests/api
   - tests/contracts
+  - tests/integration/collection/test_collection_worker_runtime.py
   - tests/integration/ingestion
   - tests/fullstack/seed_stage8f_manual_relevance_review.py
   - docs/blueprint/01_总体架构与技术选型.md
@@ -63,7 +64,7 @@ Requirement Source：#422。
 | R1 | 新单文件 Import 与 Historical/Data Import 创建冻结 Brand/Vehicle Filter Snapshot；Excel Search 为 not applicable | #422 / AC1 | satisfied | `contracts/stage3_import.py`、`bootstrap/api.py`、`bootstrap/import_http.py`、`bootstrap/historical_import_http.py`；Contract/API 测试直接约束 `brand_ids` 与旧字段拒绝；Browser Mock 直接断言新请求不再携带 `keyword_pack_ids/vehicle_model_ids`。 |
 | R2 | 两条 Excel 链使用统一 Resolver，保留 mapping→filtering→dedup→ingestion，并覆盖 Brand/Vehicle/multi/unmatched | #422 / AC2 | satisfied | `modules/ingestion/brand_vehicle_filter.py` 是唯一 Stage 3 Filter；单文件 Worker 与 Historical converter 均调用该模块，旧 `offline_content` 仅由 legacy v1 路径消费。补充验收 Run `34383852063`：Stage 2 Resolver `6/6`、Historical PostgreSQL Worker `11/11`、目标 Browser Mock `26/26`。 |
 | R3 | Content 与 Brand/Vehicle Evidence 使用同一冻结 Snapshot 在现有事务边界协调写入，人工锁不被绕过 | #422 / AC3 | satisfied | `bootstrap/manual_ingestion.py` 与 `bootstrap/historical_import_worker.py` 在 Content 写事务内调用现有 Brand/Vehicle Repository；Brand 自动 Evidence 受 `review_lock` 拦截，Vehicle Evidence 受人工 Review Lock 约束；同一冻结 Snapshot 在过滤后再次解析并写 Evidence。 |
-| R4 | 新旧 Job/Campaign 显式版本兼容，升级前 queued/running 工作不被错读 | #422 / AC4 | satisfied | `ingestion.import-excel.v1/v2` 双注册；`PostgresImportJobExecutor` 在同一正式模块内保留 `_execute_v1` 与 v2 分支；Historical 在同一正式 Worker 内按 Snapshot schema + `historical-canonical-row.v1/v2` 强配对，不保留镜像 base/第二套 Worker。 |
+| R4 | 新旧 Job/Campaign 显式版本兼容，升级前 queued/running 工作不被错读 | #422 / AC4 | satisfied | `ingestion.import-excel.v1/v2` 双注册；`PostgresImportJobExecutor` 在同一正式模块内保留 `_execute_v1` 与 v2 分支；Historical 在同一正式 Worker 内按 Snapshot schema + `historical-canonical-row.v1/v2` 强配对；`test_collection_worker_runtime.py` 直接约束生产 Worker Registry 同时暴露 v1/v2，不保留镜像 base/第二套 Worker。 |
 | R5 | retry/replay 幂等、Snapshot 不漂移 | #422 / AC5 | satisfied | v2 Worker 每次从 Batch/Campaign 读取冻结 Snapshot；单文件回归覆盖 Lease fencing/retry 后 Content 不重复；Historical `11/11` 集成套件继续覆盖 source-change fail-closed、技术 retry、跨 chunk duplicate、取消、lease takeover 等原有任务级语义。 |
 | R6 | imports_test/debug 复用生产能力，无 TikHub Probe | #422 / AC6 | satisfied | 本变更未新增 Provider Probe、未复制 Resolver；调试导入继续从生产 converter/ingestion 模块进入，反向审计未发现第二套 Stage 3 Filter/Resolver。 |
 | R7 | Contract/文档同步且不越界 Stage 4/6、不升级依赖 | #422 / AC7 | satisfied | 变更集中于 Excel/Historical 创建与执行链；无 Manifest/lock/Migration/Provider Search 改动；前端只做新 Contract 的兼容接线，完整 Brand 范围产品化仍留 Stage 6。正式 CI 因 GitHub hosted runner 自带、与项目无关的 Chrome APT 源连续三次 `Hash Sum mismatch`，仅在字体安装 job 内隔离该第三方源并保留 `fonts-noto-cjk` 强制安装及失败阻断，不改变产品依赖或测试门禁。 |
@@ -73,7 +74,7 @@ Requirement Source：#422。
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Static / Contract | required | 一次性 GitHub runner `34379511703`：Ruff 全绿、mypy 325 source files 全绿、正式 OpenAPI generator 无漂移、Stage 3 Contract tests 通过；最终 PR HEAD 永久 CI 仍是合并门禁。 |
-| Resolver / PostgreSQL | required | 补充验收 Run `34383852063`：`tests/unit/test_brand_vehicle_resolver.py` `6/6`；PostgreSQL 18.4 + Alembic head `20260909_0044` / `alembic check` 无新操作；`test_stage12_historical_campaign_worker.py` `11/11`。单文件 Import v2 现有集成回归覆盖成功、Artifact 失败、retry/fencing。 |
+| Resolver / PostgreSQL | required | 补充验收 Run `34383852063`：`tests/unit/test_brand_vehicle_resolver.py` `6/6`；PostgreSQL 18.4 + Alembic head `20260909_0044` / `alembic check` 无新操作；`test_stage12_historical_campaign_worker.py` `11/11`。单文件 Import v2 现有集成回归覆盖成功、Artifact 失败、retry/fencing；正式 PostgreSQL 全量门禁还会验证生产 Worker Registry 的 v1/v2 注册。 |
 | Browser Mock Acceptance | required | Run `34383852063`：`collection-runtime`、`excel-import-submit-state`、`historical-migration` 共 `26/26`；请求级断言覆盖 `brand_ids`、旧字段不存在，且同页 TikHub Discovery 的既有 Keyword/Vehicle 语义未被 Stage 3 越界修改。 |
 | Real Full-stack | required | 既有 Stage 8F 人工相关性复核 seed 已迁移为真实 Stage 2 Brand Catalog + Stage 3 `brand_ids` 导入，不再直接调用已移除的 `keyword_pack_ids`；最终 PR HEAD `Real Full-stack Golden Path` 必须通过后方可合并。 |
 | Existing Regression | required | API/Contract 与 Import/Historical 原有取消、错误、容量、supplement 等套件保留；最终 PR HEAD 永久 CI 执行全量回归。 |
@@ -96,5 +97,5 @@ Requirement Source：#422。
 - [x] upstream_re_read：已重新核对 Roadmap Stage 3/Exit Criteria、Blueprint、Issue #422 与 Stage 2 Resolver/Snapshot/Evidence 事实源；本轮未改变 Stage 4/6 边界。
 - [x] change_coverage：R1-R7 均存在直接实现路径与 Contract/PostgreSQL/Browser/Full-stack 验证入口；合并后 main CI、归档与 Issue 关闭属于 PR 交付生命周期，不伪写进预合并 Requirement 结果。
 - [x] reverse_audit：已从 HTTP→Filter Snapshot→Job/Campaign→mapping→Resolver filtering→dedup→ingestion→Brand/Vehicle Evidence 反查；legacy v1 与新 v2 在同一正式模块内显式分流，临时镜像与临时 workflows 已从最终 diff 清理。
-- [x] two_stage_review：L3 Deep Review 已独立重建需求并检查 Contract、Snapshot、Resolver/Evidence、v1/v2 兼容、Historical chunk 配对、前端部署窗口及测试迁移；未发现尚未处理的生产代码 blocker，旧验收资产遗漏已在 Review 中发现并迁移。
+- [x] two_stage_review：L3 Deep Review 已独立重建需求并检查 Contract、Snapshot、Resolver/Evidence、v1/v2 兼容、Historical chunk 配对、前端部署窗口及测试迁移；未发现尚未处理的生产代码 blocker，旧验收资产与 Registry 期望遗漏已在 Review 中发现并迁移。
 - [x] unresolved_cleared：静态、Historical PostgreSQL 与目标 Browser 证据已有新鲜通过结果；最终 PR HEAD required checks、expected-head merge、main fresh CI、原生 Change 归档与 Issue #422 关闭仍按仓库门禁执行，不以本状态替代最终交付结论。
