@@ -270,7 +270,7 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await migration.getByRole('button', { name: '服务器目录', exact: true }).click()
   await migration.getByRole('radio', { name: /历史补空/ }).check()
   await migration.getByLabel('选择 history.xlsx').check()
-  await expect(migration).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
+  await expect(migration).toContainText('创建任务时冻结品牌与旗下车型目录快照；Excel 导入不会发起 Provider 搜索。')
   const campaignResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return url.pathname === '/api/v1/data-import-campaigns/server'

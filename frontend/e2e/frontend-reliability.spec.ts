@@ -1,7 +1,20 @@
 import { expect, test } from './fixture'
 
 const vehicleId = '71111111-2222-4333-8444-555555555555'
-const packId = '81111111-2222-4333-8444-555555555555'
+const brandId = '81111111-2222-4333-8444-555555555555'
+
+const brand = {
+  id: brandId,
+  code: 'AIMA',
+  display_name: '爱玛',
+  role: 'owned',
+  status: 'active',
+  version: 1,
+  catalog_version: 1,
+  aliases: [],
+  created_at: '2026-09-03T08:00:00+08:00',
+  updated_at: '2026-09-03T08:00:00+08:00',
+}
 
 const vehicle = {
   id: vehicleId,
@@ -10,6 +23,7 @@ const vehicle = {
   status: 'active',
   version: 1,
   catalog_version: 1,
+  brand_id: brandId,
   merged_into_id: null,
   aliases: [],
   keyword_pack_ids: [],
@@ -44,21 +58,15 @@ test('keeps healthy admin resources usable when audit fails and paginates audit 
         body: JSON.stringify({ items: [vehicle], total: 1, catalog_version: 1, offset, limit }),
       })
     }
-    if (request.method() === 'GET' && url.pathname === '/api/v1/keyword-packs') {
+    if (request.method() === 'GET' && url.pathname === '/api/v1/vehicle-brands') {
       const offset = Number(url.searchParams.get('offset') ?? '0')
       const limit = Number(url.searchParams.get('limit') ?? '100')
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
-          items: [{
-            id: packId,
-            name: '品牌词包',
-            description: '',
-            enabled: true,
-            version: 1,
-            keyword_count: 2,
-          }],
+          items: [brand],
           total: 1,
+          catalog_version: 1,
           offset,
           limit,
         }),

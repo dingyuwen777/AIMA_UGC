@@ -156,7 +156,7 @@ test('selects only server-relative files, preflights, and explicitly starts a ca
   await expect(dialog.getByText('只浏览管理员批准的只读根目录')).toBeVisible()
   await dialog.getByRole('button', { name: /2025-archive/ }).click()
   await dialog.getByLabel('选择 part-001.xlsx').check()
-  await expect(dialog).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
+  await expect(dialog).toContainText('创建任务时冻结品牌与旗下车型目录快照；Excel 导入不会发起 Provider 搜索。')
 
   const createRequest = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url())

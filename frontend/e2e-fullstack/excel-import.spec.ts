@@ -47,7 +47,7 @@ async function uploadExcel(
   const dialog = page.getByRole('dialog', { name: '导入数据' })
   await expect(dialog).toBeVisible()
   await dialog.locator('input[type="file"]').first().setInputFiles(fixturePath)
-  await expect(dialog).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
+  await expect(dialog).toContainText('创建任务时冻结品牌与旗下车型目录快照；Excel 导入不会发起 Provider 搜索。')
   const createdResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
