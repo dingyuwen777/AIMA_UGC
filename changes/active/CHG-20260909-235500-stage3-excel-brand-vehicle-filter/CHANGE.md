@@ -39,6 +39,7 @@ affected_paths:
   - tests/api
   - tests/contracts
   - tests/integration/ingestion
+  - tests/fullstack/seed_stage8f_manual_relevance_review.py
   - docs/blueprint/01_总体架构与技术选型.md
   - docs/roadmap/04_搜索与品牌车型过滤实施路线.md
 contracts:
@@ -74,6 +75,7 @@ Requirement Source：#422。
 | Static / Contract | required | 一次性 GitHub runner `34379511703`：Ruff 全绿、mypy 325 source files 全绿、正式 OpenAPI generator 无漂移、Stage 3 Contract tests 通过；最终 PR HEAD 永久 CI 仍是合并门禁。 |
 | Resolver / PostgreSQL | required | 补充验收 Run `34383852063`：`tests/unit/test_brand_vehicle_resolver.py` `6/6`；PostgreSQL 18.4 + Alembic head `20260909_0044` / `alembic check` 无新操作；`test_stage12_historical_campaign_worker.py` `11/11`。单文件 Import v2 现有集成回归覆盖成功、Artifact 失败、retry/fencing。 |
 | Browser Mock Acceptance | required | Run `34383852063`：`collection-runtime`、`excel-import-submit-state`、`historical-migration` 共 `26/26`；请求级断言覆盖 `brand_ids`、旧字段不存在，且同页 TikHub Discovery 的既有 Keyword/Vehicle 语义未被 Stage 3 越界修改。 |
+| Real Full-stack | required | 既有 Stage 8F 人工相关性复核 seed 已迁移为真实 Stage 2 Brand Catalog + Stage 3 `brand_ids` 导入，不再直接调用已移除的 `keyword_pack_ids`；最终 PR HEAD `Real Full-stack Golden Path` 必须通过后方可合并。 |
 | Existing Regression | required | API/Contract 与 Import/Historical 原有取消、错误、容量、supplement 等套件保留；最终 PR HEAD 永久 CI 执行全量回归。 |
 | CI Infrastructure | required | `ci.yml` 的 CJK 字体步骤只临时禁用 hosted runner 的 `dl.google.com/linux/chrome-stable/deb` 第三方源并为官方 APT 源增加有限重试；字体仍安装，后续所有质量/测试层仍必须成功。 |
 | External Provider Probe | not_applicable | Stage 3 不依赖真实 TikHub/LLM/Embedding，禁止用外部 Probe 作为验收条件。 |
@@ -92,7 +94,7 @@ Requirement Source：#422。
 # Completion Audit
 
 - [x] upstream_re_read：已重新核对 Roadmap Stage 3/Exit Criteria、Blueprint、Issue #422 与 Stage 2 Resolver/Snapshot/Evidence 事实源；本轮未改变 Stage 4/6 边界。
-- [x] change_coverage：R1-R7 均存在直接实现路径与 Contract/PostgreSQL/Browser 验证证据；合并后 main CI、归档与 Issue 关闭属于 PR 交付生命周期，不伪写进预合并 Requirement 结果。
+- [x] change_coverage：R1-R7 均存在直接实现路径与 Contract/PostgreSQL/Browser/Full-stack 验证入口；合并后 main CI、归档与 Issue 关闭属于 PR 交付生命周期，不伪写进预合并 Requirement 结果。
 - [x] reverse_audit：已从 HTTP→Filter Snapshot→Job/Campaign→mapping→Resolver filtering→dedup→ingestion→Brand/Vehicle Evidence 反查；legacy v1 与新 v2 在同一正式模块内显式分流，临时镜像与临时 workflows 已从最终 diff 清理。
 - [x] two_stage_review：L3 Deep Review 已独立重建需求并检查 Contract、Snapshot、Resolver/Evidence、v1/v2 兼容、Historical chunk 配对、前端部署窗口及测试迁移；未发现尚未处理的生产代码 blocker，旧验收资产遗漏已在 Review 中发现并迁移。
 - [x] unresolved_cleared：静态、Historical PostgreSQL 与目标 Browser 证据已有新鲜通过结果；最终 PR HEAD required checks、expected-head merge、main fresh CI、原生 Change 归档与 Issue #422 关闭仍按仓库门禁执行，不以本状态替代最终交付结论。
