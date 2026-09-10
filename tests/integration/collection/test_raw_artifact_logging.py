@@ -18,7 +18,11 @@ from aima_ugc.modules.collection.providers import (
     ProviderTransportResponse,
     RawArtifactService,
 )
-from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
+from aima_ugc.platform.storage import (
+    ArtifactRecord,
+    ArtifactService,
+    CanonicalArtifactParent,
+)
 
 
 class _Metadata:
@@ -54,6 +58,15 @@ class _Metadata:
         )
         self.records[artifact_id] = linked
         return linked
+
+    def link_canonical(
+        self,
+        artifact_id: UUID,
+        *,
+        parent: CanonicalArtifactParent,
+        linked_at: datetime,
+    ) -> ArtifactRecord:
+        raise AssertionError((artifact_id, parent, linked_at))
 
     def mark_error(self, artifact_id: UUID) -> ArtifactRecord:
         errored = replace(self.records[artifact_id], storage_status="error")

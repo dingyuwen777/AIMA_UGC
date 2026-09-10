@@ -4,7 +4,11 @@ from io import BytesIO
 from uuid import UUID
 
 from aima_ugc.adapters.storage.local import LocalArtifactStore
-from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
+from aima_ugc.platform.storage import (
+    ArtifactRecord,
+    ArtifactService,
+    CanonicalArtifactParent,
+)
 
 
 class FakeArtifactMetadata:
@@ -41,6 +45,15 @@ class FakeArtifactMetadata:
         updated = replace(current, storage_status="linked", linked_at=linked_at)
         self.records[artifact_id] = updated
         return updated
+
+    def link_canonical(
+        self,
+        artifact_id: UUID,
+        *,
+        parent: CanonicalArtifactParent,
+        linked_at: datetime,
+    ) -> ArtifactRecord:
+        raise AssertionError((artifact_id, parent, linked_at))
 
     def mark_error(self, artifact_id: UUID) -> ArtifactRecord:
         current = self.records[artifact_id]

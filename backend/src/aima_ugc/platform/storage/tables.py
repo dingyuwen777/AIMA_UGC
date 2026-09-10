@@ -5,6 +5,8 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
+    ForeignKey,
+    Index,
     Table,
     Text,
     UniqueConstraint,
@@ -51,3 +53,51 @@ artifacts_table = Table(
     ),
     info={"owner": "platform"},
 )
+
+canonical_artifact_links_table = Table(
+    "canonical_artifact_links",
+    metadata,
+    Column("artifact_id", Uuid(), ForeignKey("artifacts.id"), primary_key=True),
+    Column(
+        "processing_import_batch_id",
+        Uuid(),
+        ForeignKey("processing_import_batches.id"),
+    ),
+    Column(
+        "historical_import_campaign_item_id",
+        Uuid(),
+        ForeignKey("historical_import_campaign_items.id"),
+    ),
+    Column("collection_scope_id", Uuid(), ForeignKey("collection_scopes.id")),
+    Column(
+        "provider_attempt_id",
+        Uuid(),
+        ForeignKey("provider_request_attempts.id"),
+    ),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "num_nonnulls(processing_import_batch_id, historical_import_campaign_item_id, "
+        "collection_scope_id, provider_attempt_id) = 1",
+        name="source_parent_exactly_one",
+    ),
+    info={"owner": "platform"},
+)
+
+Index(
+    "ix_canonical_artifact_links_processing_import_batch_id",
+    canonical_artifact_links_table.c.processing_import_batch_id,
+)
+Index(
+    "ix_canonical_artifact_links_historical_import_campaign_item_id",
+    canonical_artifact_links_table.c.historical_import_campaign_item_id,
+)
+Index(
+    "ix_canonical_artifact_links_collection_scope_id",
+    canonical_artifact_links_table.c.collection_scope_id,
+)
+Index(
+    "ix_canonical_artifact_links_provider_attempt_id",
+    canonical_artifact_links_table.c.provider_attempt_id,
+)
+
+__all__ = ["artifacts_table", "canonical_artifact_links_table"]

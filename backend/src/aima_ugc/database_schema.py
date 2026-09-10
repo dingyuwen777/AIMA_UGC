@@ -113,7 +113,7 @@ from aima_ugc.modules.vehicles.tables import (
 )
 from aima_ugc.platform.database.metadata import metadata
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
-from aima_ugc.platform.storage.tables import artifacts_table
+from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 
 register_scheduler_schema()
 register_collection_lifecycle_schema()
@@ -136,6 +136,7 @@ __all__ = [
     "account_external_ids_table",
     "accounts_table",
     "artifacts_table",
+    "canonical_artifact_links_table",
     "audit_events_table",
     "historical_import_campaign_items_table",
     "historical_import_campaign_revocations_table",

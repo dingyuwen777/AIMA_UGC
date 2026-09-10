@@ -27,6 +27,7 @@ from aima_ugc.platform.storage.canonical import (
     CANONICAL_CONTENT_ARTIFACT_KIND,
     CanonicalArtifactParent,
 )
+from aima_ugc.platform.storage.models import ArtifactStateConflict
 from aima_ugc.platform.storage.tables import canonical_artifact_links_table
 from sqlalchemy import insert, select
 from sqlalchemy.exc import IntegrityError
@@ -250,6 +251,40 @@ def test_missing_parent_rolls_back_linked_state() -> None:
             current = PostgresArtifactMetadataRepository(session).get(artifact.id)
         assert current is not None
         assert current.storage_status == "stored"
+    finally:
+        session.close()
+        runtime.dispose()
+
+
+def test_canonical_artifact_cannot_bypass_parent_link_contract() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            artifact = _create_stored_canonical(session)
+            repository = PostgresArtifactMetadataRepository(session)
+            with pytest.raises(ArtifactStateConflict):
+                repository.mark_linked(artifact.id, linked_at=_NOW)
+
+            current = repository.get(artifact.id)
+            assert current is not None
+            assert current.storage_status == "stored"
+    finally:
+        session.close()
+        runtime.dispose()
+
+
+def test_canonical_artifact_rejects_duplicate_parent_binding() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            parent = _seed_real_parents(session)[0]
+            artifact = _create_stored_canonical(session)
+            repository = PostgresArtifactMetadataRepository(session)
+            repository.link_canonical(artifact.id, parent=parent, linked_at=_NOW)
+            with pytest.raises(ArtifactStateConflict):
+                repository.link_canonical(artifact.id, parent=parent, linked_at=_NOW)
     finally:
         session.close()
         runtime.dispose()

@@ -4,7 +4,12 @@ from uuid import UUID
 
 import pytest
 from aima_ugc.adapters.storage.local import LocalArtifactStore
-from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactStateConflict
+from aima_ugc.platform.storage import (
+    ArtifactRecord,
+    ArtifactService,
+    ArtifactStateConflict,
+    CanonicalArtifactParent,
+)
 
 
 class _AmbiguousMetadata:
@@ -35,6 +40,15 @@ class _AmbiguousMetadata:
 
     def mark_linked(self, artifact_id: UUID, *, linked_at: datetime) -> ArtifactRecord:
         raise AssertionError((artifact_id, linked_at))
+
+    def link_canonical(
+        self,
+        artifact_id: UUID,
+        *,
+        parent: CanonicalArtifactParent,
+        linked_at: datetime,
+    ) -> ArtifactRecord:
+        raise AssertionError((artifact_id, parent, linked_at))
 
     def mark_error(self, artifact_id: UUID) -> ArtifactRecord:
         current = self.records[artifact_id]

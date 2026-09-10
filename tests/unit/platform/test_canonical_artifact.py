@@ -150,7 +150,7 @@ def test_canonical_parent_requires_exactly_one_real_parent() -> None:
 def test_writer_store_reader_round_trip_preserves_current_contract(tmp_path: Path) -> None:
     metadata, store, artifacts = _runtime(tmp_path)
     records = (
-        _content("note-1", title="爱玛\ud83d\udef5", text="中文正文"),
+        _content("note-1", title="爱玛\U0001f6f5", text="中文正文"),
         _content("note-2", title=None, text="长文本" * 131_072),
         _content("note-3", title=None, text=None),
     )
@@ -199,8 +199,7 @@ def test_writer_memory_is_bounded_by_a_record_not_the_dataset(tmp_path: Path) ->
     _, _, artifacts = _runtime(tmp_path)
     base = _content("note-0", title=None, text="爱玛" * 32_768)
     records = (
-        base.model_copy(update={"external_content_id": f"note-{index}"})
-        for index in range(256)
+        base.model_copy(update={"external_content_id": f"note-{index}"}) for index in range(256)
     )
     writer = CanonicalArtifactWriter(artifacts=artifacts, temporary_directory=tmp_path)
 
@@ -235,6 +234,52 @@ def test_reader_rejects_integrity_mismatch_before_yielding(tmp_path: Path) -> No
 
     with pytest.raises(CanonicalArtifactIntegrityError, match="SHA-256"):
         for record in CanonicalArtifactReader(store=store).read(mismatched):
+            yielded.append(record)
+
+    assert yielded == []
+
+
+def test_reader_rejects_byte_size_mismatch_before_yielding(tmp_path: Path) -> None:
+    _, store, artifacts = _runtime(tmp_path)
+    artifact = CanonicalArtifactWriter(
+        artifacts=artifacts,
+        temporary_directory=tmp_path,
+    ).write(
+        [_content("note-1", title=None, text="正文")],
+        parent=CanonicalArtifactParent(collection_scope_id=uuid4()),
+        retention_class="canonical",
+        max_bytes=1024 * 1024,
+    )
+    assert artifact.byte_size is not None
+    mismatched = replace(artifact, byte_size=artifact.byte_size + 1)
+    yielded: list[CanonicalContentV1] = []
+
+    with pytest.raises(CanonicalArtifactIntegrityError, match="字节大小"):
+        for record in CanonicalArtifactReader(store=store).read(mismatched):
+            yielded.append(record)
+
+    assert yielded == []
+
+
+def test_reader_preflights_truncated_gzip_before_yielding_valid_prefix(tmp_path: Path) -> None:
+    _, store, artifacts = _runtime(tmp_path)
+    plain = (
+        b"\n".join(
+            [
+                _content("note-1", title=None, text="第一条").model_dump_json().encode(),
+                _content("note-2", title=None, text="第二条").model_dump_json().encode(),
+            ]
+        )
+        + b"\n"
+    )
+    artifact = _store_linked_payload(
+        artifacts=artifacts,
+        payload=gzip.compress(plain, mtime=0)[:-4],
+    )
+    yielded: list[CanonicalContentV1] = []
+
+    with pytest.raises(CanonicalArtifactIntegrityError, match="gzip"):
+        for record in CanonicalArtifactReader(store=store).read(artifact):
             yielded.append(record)
 
     assert yielded == []
