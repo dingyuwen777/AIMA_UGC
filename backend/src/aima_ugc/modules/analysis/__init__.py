@@ -41,6 +41,22 @@ from .relevance import (
     normalize_keyword_match_text,
     normalize_keyword_storage_text,
 )
+from .representative_selection import (
+    CandidatePool,
+    CandidatePoolSummary,
+    GroupSelectionAudit,
+    RepresentativeCandidate,
+    RepresentativeDecisionModel,
+    RepresentativeDecisionOutcome,
+    RepresentativeGroupSelection,
+    RepresentativePrompt,
+    RepresentativeSelectionRun,
+    RepresentativeSelectionService,
+    SelectedRepresentative,
+    build_candidate_pool,
+    choose_representative_contents,
+    validate_group_selection,
+)
 
 __all__ = [
     "CONTENT_LABELING_PROMPT_POINTER_PATH",
@@ -76,4 +92,18 @@ __all__ = [
     "normalize_keyword_match_text",
     "normalize_keyword_storage_text",
     "resolve_content_labeling_prompt_path",
+    "CandidatePool",
+    "CandidatePoolSummary",
+    "GroupSelectionAudit",
+    "RepresentativeCandidate",
+    "RepresentativeDecisionModel",
+    "RepresentativeDecisionOutcome",
+    "RepresentativeGroupSelection",
+    "RepresentativePrompt",
+    "RepresentativeSelectionRun",
+    "RepresentativeSelectionService",
+    "SelectedRepresentative",
+    "build_candidate_pool",
+    "choose_representative_contents",
+    "validate_group_selection",
 ]

@@ -18,6 +18,8 @@ from openpyxl import load_workbook
 from aima_ugc.contracts.platform import normalize_platform_name
 from aima_ugc.platform.presentation import platform_display_name
 
+from .chart_spec import ChartSpec
+from .chart_workbook import build_editable_chart_workbook
 from .markdown_word import WordConversionSummary, convert_markdown_to_docx
 from .visuals.wordcloud import render_wordcloud_png
 
@@ -55,6 +57,8 @@ def _report_platform_label(value: str) -> str:
 
 
 _SENTIMENT_PREFERRED_ORDER = ("正面", "中性", "负面", "混合")
+_VOICE_TYPE_HEADER = "发声类型"
+_REAL_USER_VOICE = "真实用户发声"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +78,8 @@ class ReportGenerationSummary:
     content_rows_excluded_by_period: int = 0
     label_rows_excluded_by_period: int = 0
     comment_rows_excluded_by_period: int = 0
+    chart_workbook_path: Path | None = None
+    chart_specs: tuple[ChartSpec, ...] = ()
 
 
 @dataclass(slots=True)
@@ -81,8 +87,10 @@ class _ReportStats:
     content_rows: int
     label_rows: int
     comment_rows: int
+    sentiment_scope_rows: int
     platform_counts: Counter[str]
     comment_platform_counts: Counter[str]
+    sentiment_platform_counts: Counter[str]
     sentiment_counts: Counter[str]
     primary_counts: Counter[str]
     secondary_counts: Counter[str]
@@ -117,10 +125,16 @@ def generate_excel_report(
     template_path: Path | None = None,
     markdown_name: str = "report.md",
     word_name: str = "report.docx",
+    chart_workbook_name: str | None = None,
     generated_at: datetime | None = None,
     report_date_range: tuple[date, date] | None = None,
+    previous_input_path: Path | None = None,
 ) -> ReportGenerationSummary:
-    """只读统一 Excel，按 Markdown 模板生成报告并转换为 Word。"""
+    """只读统一 Excel，按 Markdown 模板生成报告并转换为 Word。
+
+    ``previous_input_path`` 提供时，使用与本期等长、紧邻的上一周期生成 1.3 环比。
+    它不会修改任一输入 Workbook，也不会改变未提供上期数据时的其他报告章节。
+    """
 
     source_path = Path(input_path)
     template = DEFAULT_REPORT_TEMPLATE_PATH if template_path is None else Path(template_path)
@@ -137,9 +151,30 @@ def generate_excel_report(
         raise ValueError("markdown_name 必须是当前目录下的 .md 文件名")
     if Path(word_name).name != word_name or not word_name.lower().endswith(".docx"):
         raise ValueError("word_name 必须是当前目录下的 .docx 文件名")
+    if chart_workbook_name is not None and (
+        Path(chart_workbook_name).name != chart_workbook_name
+        or not chart_workbook_name.lower().endswith(".xlsx")
+    ):
+        raise ValueError("chart_workbook_name 必须是当前目录下的 .xlsx 文件名")
+    previous_source_path = None if previous_input_path is None else Path(previous_input_path)
+    if previous_source_path is not None:
+        if previous_source_path.suffix.lower() != ".xlsx":
+            raise ValueError("上期报告输入必须是 .xlsx 文件")
+        if not previous_source_path.is_file():
+            raise FileNotFoundError(previous_source_path)
 
     actual_date_range = _validate_report_date_range(report_date_range)
+    if previous_source_path is not None and actual_date_range is None:
+        raise ValueError("提供上期报告输入时必须同时指定本期 report_date_range")
     stats = _collect_stats(source_path, report_date_range=actual_date_range)
+    previous_stats = (
+        None
+        if previous_source_path is None
+        else _collect_stats(
+            previous_source_path,
+            report_date_range=_previous_period_range(actual_date_range),
+        )
+    )
     template_text = template.read_text(encoding="utf-8")
     visual_replacements = _build_visual_replacements(
         stats,
@@ -151,6 +186,7 @@ def generate_excel_report(
         stats,
         source_path=source_path,
         generated_at=actual_generated_at,
+        previous_stats=previous_stats,
     )
     replacements.update(visual_replacements)
     markdown = _render_template(template_text, replacements)
@@ -160,7 +196,10 @@ def generate_excel_report(
     word_path = target_dir / word_name
     _atomic_write_text(markdown_path, markdown)
     word_summary: WordConversionSummary = convert_markdown_to_docx(markdown_path, word_path)
-
+    chart_workbook_path: Path | None = None
+    if chart_workbook_name is not None and word_summary.chart_specs:
+        chart_workbook_path = target_dir / chart_workbook_name
+        build_editable_chart_workbook(word_summary.chart_specs, chart_workbook_path)
     return ReportGenerationSummary(
         source_excel_path=source_path,
         template_path=template,
@@ -177,6 +216,8 @@ def generate_excel_report(
         content_rows_excluded_by_period=stats.content_rows_excluded_by_period,
         label_rows_excluded_by_period=stats.label_rows_excluded_by_period,
         comment_rows_excluded_by_period=stats.comment_rows_excluded_by_period,
+        chart_workbook_path=chart_workbook_path,
+        chart_specs=word_summary.chart_specs,
     )
 
 
@@ -190,6 +231,7 @@ def _build_visual_replacements(
 
     replacements = {
         "PRIMARY_WORDCLOUD": "",
+        "SECONDARY_WORDCLOUD": "",
         "KEYWORD_WORDCLOUD": "",
     }
     assets_dir = target_dir / "assets"
@@ -205,6 +247,12 @@ def _build_visual_replacements(
             assets_dir / "keyword_wordcloud.png",
         )
         replacements["KEYWORD_WORDCLOUD"] = f"![热点关键词词云](assets/{keyword_path.name})"
+    if "{{SECONDARY_WORDCLOUD}}" in template_text:
+        secondary_path = render_wordcloud_png(
+            stats.secondary_counts,
+            assets_dir / "secondary_topics_wordcloud.png",
+        )
+        replacements["SECONDARY_WORDCLOUD"] = f"![二级议题词云](assets/{secondary_path.name})"
     return replacements
 
 
@@ -246,14 +294,18 @@ def _collect_stats(
         expected_secondary_counts: Counter[str] = Counter()
         expected_label_pair_counts: Counter[tuple[str, str]] = Counter()
         included_content_ids: set[str] = set()
+        content_voice_scope_by_id: dict[str, bool] = {}
         included_content_rows_without_id = 0
         content_rows_excluded_by_period = 0
         label_rows_excluded_by_period = 0
         comment_rows_excluded_by_period = 0
 
         content_rows = 0
+        sentiment_scope_rows = 0
         content_sheet = workbook[_CONTENT_SHEET]
         content_headers = _header_index(content_sheet, _REQUIRED_CONTENT_HEADERS)
+        content_has_voice_type = _VOICE_TYPE_HEADER in content_headers
+        sentiment_platform_counts: Counter[str] = Counter()
         for sheet_row_number, row in enumerate(
             content_sheet.iter_rows(min_row=2, values_only=True),
             start=2,
@@ -285,10 +337,20 @@ def _collect_stats(
                 platform = _report_platform_label(platform)
             platform_counts[platform] += 1
 
+            voice_type = (
+                _clean_text(_row_value(row, content_headers, _VOICE_TYPE_HEADER))
+                if content_has_voice_type
+                else None
+            )
+            is_real_user_voice = voice_type == _REAL_USER_VOICE if content_has_voice_type else True
+            if is_real_user_voice:
+                sentiment_scope_rows += 1
+                sentiment_platform_counts[platform] += 1
+
             sentiment = _clean_text(_row_value(row, content_headers, "情感标签"))
             if sentiment is None:
                 quality_counts["内容缺失情感标签"] += 1
-            else:
+            elif is_real_user_voice:
                 sentiment_counts[sentiment] += 1
                 platform_sentiment[platform][sentiment] += 1
                 if sentiment == "正面":
@@ -318,6 +380,7 @@ def _collect_stats(
                     included_content_rows_without_id += 1
                 else:
                     included_content_ids.add(content_id)
+                    content_voice_scope_by_id[content_id] = is_real_user_voice
 
             keywords = _split_keywords(_row_value(row, content_headers, "命中关键词"))
             if not keywords:
@@ -334,7 +397,7 @@ def _collect_stats(
 
             daily_content[published_date] += 1
             daily_platform[published_date][platform] += 1
-            if sentiment is not None:
+            if sentiment is not None and is_real_user_voice:
                 daily_sentiment[published_date][sentiment] += 1
             daily_primary[published_date].update(primary_labels)
             daily_secondary[published_date].update(secondary_labels)
@@ -343,6 +406,7 @@ def _collect_stats(
         label_sheet = workbook[_LABEL_SHEET]
         label_headers = _header_index(label_sheet, _REQUIRED_LABEL_HEADERS)
         label_has_period_date = "发布时间" in label_headers
+        label_has_voice_type = _VOICE_TYPE_HEADER in label_headers
         label_can_join_content = "内容ID" in label_headers and "内容ID" in content_headers
         if (
             report_date_range is not None
@@ -402,23 +466,30 @@ def _collect_stats(
             label_secondary = _clean_text(_row_value(row, label_headers, "二级标签"))
             label_platform_counts[platform] += 1
             label_sentiment_counts[sentiment or "（未填写）"] += 1
+            label_is_real_user_voice = _label_is_real_user_voice(
+                row,
+                label_headers,
+                label_has_voice_type=label_has_voice_type,
+                content_has_voice_type=content_has_voice_type,
+                content_voice_scope_by_id=content_voice_scope_by_id,
+            )
             if sentiment is None:
                 quality_counts["标签明细缺失情感标签"] += 1
             if label_primary is None:
                 quality_counts["标签明细缺失一级标签"] += 1
             else:
                 primary_counts[label_primary] += 1
-                if sentiment == "正面":
+                if label_is_real_user_voice and sentiment == "正面":
                     positive_primary_counts[label_primary] += 1
-                elif sentiment == "负面":
+                elif label_is_real_user_voice and sentiment == "负面":
                     negative_primary_counts[label_primary] += 1
             if label_secondary is None:
                 quality_counts["标签明细缺失二级标签"] += 1
             else:
                 secondary_counts[label_secondary] += 1
-                if sentiment == "正面":
+                if label_is_real_user_voice and sentiment == "正面":
                     positive_secondary_counts[label_secondary] += 1
-                elif sentiment == "负面":
+                elif label_is_real_user_voice and sentiment == "负面":
                     negative_secondary_counts[label_secondary] += 1
             if label_primary is not None and label_secondary is not None:
                 label_pair_counts[(label_primary, label_secondary)] += 1
@@ -488,8 +559,10 @@ def _collect_stats(
             content_rows=content_rows,
             label_rows=label_rows,
             comment_rows=comment_rows,
+            sentiment_scope_rows=sentiment_scope_rows,
             platform_counts=platform_counts,
             comment_platform_counts=comment_platform_counts,
+            sentiment_platform_counts=sentiment_platform_counts,
             sentiment_counts=sentiment_counts,
             primary_counts=primary_counts,
             secondary_counts=secondary_counts,
@@ -612,6 +685,28 @@ def _row_value(row: Sequence[Any], header_index: Mapping[str, int], name: str) -
     return row[position] if position < len(row) else None
 
 
+def _label_is_real_user_voice(
+    row: Sequence[Any],
+    label_headers: Mapping[str, int],
+    *,
+    label_has_voice_type: bool,
+    content_has_voice_type: bool,
+    content_voice_scope_by_id: Mapping[str, bool],
+) -> bool:
+    """返回标签明细是否属于真实用户发声的内容。"""
+
+    if label_has_voice_type:
+        return _clean_text(_row_value(row, label_headers, _VOICE_TYPE_HEADER)) == _REAL_USER_VOICE
+    if not content_has_voice_type:
+        # 兼容未导出“发声类型”的历史 Workbook；该列不存在时没有可用筛选条件。
+        return True
+    if "内容ID" in label_headers:
+        content_id = _clean_text(_row_value(row, label_headers, "内容ID"))
+        if content_id is not None:
+            return content_voice_scope_by_id.get(content_id, False)
+    return False
+
+
 def _row_is_empty(row: Sequence[Any]) -> bool:
     return all(value is None or (isinstance(value, str) and not value.strip()) for value in row)
 
@@ -666,6 +761,7 @@ def _build_template_replacements(
     *,
     source_path: Path,
     generated_at: datetime,
+    previous_stats: _ReportStats | None,
 ) -> dict[str, str]:
     start = (
         stats.period_start_date.isoformat() if stats.period_start_date is not None else "无有效日期"
@@ -710,7 +806,7 @@ def _build_template_replacements(
         for label, count in _sorted_counter(stats.secondary_counts)
     ]
     sentiment_rows = [
-        (label, count, _percentage(count, stats.content_rows))
+        (label, count, _percentage(count, stats.sentiment_scope_rows))
         for label, count in _sorted_counter(stats.sentiment_counts)
     ]
     keyword_rows = [
@@ -736,6 +832,7 @@ def _build_template_replacements(
     platform_sentiment_rows = _platform_sentiment_rows(stats, sentiment_series)
     platform_sentiment_chart = _platform_sentiment_chart(stats, sentiment_series)
     positive_total = stats.sentiment_counts.get("正面", 0)
+    neutral_total = stats.sentiment_counts.get("中性", 0)
     positive_label_total = sum(stats.positive_primary_counts.values())
     negative_total = stats.sentiment_counts.get("负面", 0)
     negative_label_total = sum(stats.negative_primary_counts.values())
@@ -744,36 +841,30 @@ def _build_template_replacements(
         (label, count, _percentage(count, positive_total))
         for label, count in _sorted_counter(stats.positive_platform_counts)
     ]
-    positive_primary_rows = [
-        (label, count, _percentage(count, positive_label_total))
-        for label, count in _sorted_counter(stats.positive_primary_counts)
-    ]
     positive_secondary_total = sum(stats.positive_secondary_counts.values())
-    positive_secondary_rows = [
-        (label, count, _percentage(count, positive_secondary_total))
-        for label, count in _sorted_counter(stats.positive_secondary_counts)
-    ]
     negative_platform_rows = [
         (label, count, _percentage(count, negative_total))
         for label, count in _sorted_counter(stats.negative_platform_counts)
     ]
-    negative_primary_rows = [
-        (label, count, _percentage(count, negative_label_total))
-        for label, count in _sorted_counter(stats.negative_primary_counts)
-    ]
     negative_secondary_total = sum(stats.negative_secondary_counts.values())
-    negative_secondary_rows = [
-        (label, count, _percentage(count, negative_secondary_total))
-        for label, count in _sorted_counter(stats.negative_secondary_counts)
-    ]
 
     executive_metrics = _markdown_table(
         ("关键指标", "本期表现"),
         (
             ("内容声量", stats.content_rows),
-            ("评论互动", stats.comment_rows),
             ("覆盖平台", len(stats.platform_counts)),
-            ("负面占比", _percentage(negative_total, stats.content_rows)),
+            (
+                "正面内容",
+                f"{positive_total}（{_percentage(positive_total, stats.sentiment_scope_rows)}）",
+            ),
+            (
+                "中性内容",
+                f"{neutral_total}（{_percentage(neutral_total, stats.sentiment_scope_rows)}）",
+            ),
+            (
+                "负面内容",
+                f"{negative_total}（{_percentage(negative_total, stats.sentiment_scope_rows)}）",
+            ),
         ),
     )
 
@@ -786,6 +877,7 @@ def _build_template_replacements(
         "REPORT_PERIOD": period,
         "EXECUTIVE_SUMMARY": _executive_summary(stats),
         "EXECUTIVE_METRICS_TABLE": executive_metrics,
+        "PERIOD_COMPARISON": _period_comparison_markdown(stats, previous_stats),
         "RISK_SUMMARY": _risk_summary(stats),
         "OVERVIEW_TABLE": overview,
         "DATA_QUALITY_TABLE": _markdown_table(("数据质量检查", "数量"), quality_rows),
@@ -805,9 +897,14 @@ def _build_template_replacements(
             platform_sentiment_rows,
         ),
         "PLATFORM_SENTIMENT_CHART": platform_sentiment_chart,
+        "PLATFORM_DAILY_CHARTS": _platform_daily_charts(
+            dates,
+            platform_series,
+            stats.daily_platform,
+        ),
+        # 保留自定义旧模板的占位符；默认模板使用复数 token 表达同一组分图。
         "PLATFORM_DAILY_LEGEND": _series_legend(platform_series),
-        "PLATFORM_DAILY_CHART": _mermaid_daily_lines(
-            "各平台每日内容量",
+        "PLATFORM_DAILY_CHART": _platform_daily_charts(
             dates,
             platform_series,
             stats.daily_platform,
@@ -815,9 +912,13 @@ def _build_template_replacements(
         "PLATFORM_DAILY_TABLE": _daily_long_table("平台", dates, stats.daily_platform),
         "SENTIMENT_TABLE": _markdown_table(("情感标签", "内容量", "内容占比"), sentiment_rows),
         "SENTIMENT_PIE_CHART": _mermaid_pie("情感结构", stats.sentiment_counts),
+        "SENTIMENT_DAILY_CHARTS": _sentiment_daily_charts(
+            dates,
+            sentiment_series,
+            stats.daily_sentiment,
+        ),
         "SENTIMENT_DAILY_LEGEND": _series_legend(sentiment_series),
-        "SENTIMENT_DAILY_CHART": _mermaid_daily_lines(
-            "情感每日趋势",
+        "SENTIMENT_DAILY_CHART": _sentiment_daily_charts(
             dates,
             sentiment_series,
             stats.daily_sentiment,
@@ -830,19 +931,15 @@ def _build_template_replacements(
             "正面内容平台分布",
             _top_counter(stats.positive_platform_counts, _POSITIVE_CHART_LIMIT),
         ),
-        "POSITIVE_PRIMARY_TABLE": _markdown_table(
-            ("一级议题", "正面标签量", "正面标签占比"), positive_primary_rows
-        ),
-        "POSITIVE_PRIMARY_BAR_CHART": _mermaid_bar(
-            "正面一级议题 Top 分布",
+        "POSITIVE_PRIMARY_RANKED_BAR_CHART": _mermaid_ranked_bar(
+            "正面一级议题分布（数量｜占比）",
             _top_counter(stats.positive_primary_counts, _POSITIVE_CHART_LIMIT),
+            positive_label_total,
         ),
-        "POSITIVE_SECONDARY_TABLE": _markdown_table(
-            ("二级议题", "正面标签量", "正面标签占比"), positive_secondary_rows
-        ),
-        "POSITIVE_SECONDARY_BAR_CHART": _mermaid_bar(
-            "正面二级议题 Top 分布",
+        "POSITIVE_SECONDARY_RANKED_BAR_CHART": _mermaid_ranked_bar(
+            "正面二级议题分布（数量｜占比）",
             _top_counter(stats.positive_secondary_counts, _POSITIVE_CHART_LIMIT),
+            positive_secondary_total,
         ),
         "NEGATIVE_PLATFORM_TABLE": _markdown_table(
             ("平台", "负面内容量", "占全部负面内容"), negative_platform_rows
@@ -851,19 +948,15 @@ def _build_template_replacements(
             "负面内容平台分布",
             _top_counter(stats.negative_platform_counts, _NEGATIVE_CHART_LIMIT),
         ),
-        "NEGATIVE_PRIMARY_TABLE": _markdown_table(
-            ("一级议题", "负面标签量", "负面标签占比"), negative_primary_rows
-        ),
-        "NEGATIVE_PRIMARY_BAR_CHART": _mermaid_bar(
-            "负面一级议题 Top 分布",
+        "NEGATIVE_PRIMARY_RANKED_BAR_CHART": _mermaid_ranked_bar(
+            "负面一级议题分布（数量｜占比）",
             _top_counter(stats.negative_primary_counts, _NEGATIVE_CHART_LIMIT),
+            negative_label_total,
         ),
-        "NEGATIVE_SECONDARY_TABLE": _markdown_table(
-            ("二级议题", "负面标签量", "负面标签占比"), negative_secondary_rows
-        ),
-        "NEGATIVE_SECONDARY_BAR_CHART": _mermaid_bar(
-            "负面二级议题 Top 分布",
+        "NEGATIVE_SECONDARY_RANKED_BAR_CHART": _mermaid_ranked_bar(
+            "负面二级议题分布（数量｜占比）",
             _top_counter(stats.negative_secondary_counts, _NEGATIVE_CHART_LIMIT),
+            negative_secondary_total,
         ),
         "PRIMARY_TABLE": _markdown_table(("一级标签", "标签对数量", "标签对占比"), primary_rows),
         "PRIMARY_BAR_CHART": _mermaid_bar(
@@ -904,6 +997,170 @@ def _build_template_replacements(
     }
 
 
+def _previous_period_range(current_range: tuple[date, date] | None) -> tuple[date, date]:
+    """返回与本期等长、且紧邻本期开始日的上一自然周期。"""
+
+    if current_range is None:
+        raise ValueError("计算上周期必须指定本期日期范围")
+    start, end = current_range
+    span_days = (end - start).days + 1
+    previous_end = start.fromordinal(start.toordinal() - 1)
+    previous_start = previous_end.fromordinal(previous_end.toordinal() - span_days + 1)
+    return previous_start, previous_end
+
+
+def _period_comparison_markdown(
+    current: _ReportStats,
+    previous: _ReportStats | None,
+) -> str:
+    """将两份统一统计投影为报告 1.3 的结论和固定对比表。"""
+
+    if previous is None:
+        return "> 未提供与本期等长的上期统一数据，暂无法生成环比结论。"
+
+    current_positive_rate = _rate(
+        current.sentiment_counts.get("正面", 0), current.sentiment_scope_rows
+    )
+    previous_positive_rate = _rate(
+        previous.sentiment_counts.get("正面", 0), previous.sentiment_scope_rows
+    )
+    current_negative_rate = _rate(
+        current.sentiment_counts.get("负面", 0), current.sentiment_scope_rows
+    )
+    previous_negative_rate = _rate(
+        previous.sentiment_counts.get("负面", 0), previous.sentiment_scope_rows
+    )
+    volume_change = _relative_change(current.content_rows, previous.content_rows)
+    positive_change = _percentage_point_change(current_positive_rate, previous_positive_rate)
+    negative_change = _percentage_point_change(current_negative_rate, previous_negative_rate)
+
+    current_positive_topic = _top_topic(current.positive_primary_counts)
+    previous_positive_topic = _top_topic(previous.positive_primary_counts)
+    current_negative_topic = _top_topic(current.negative_primary_counts)
+    previous_negative_topic = _top_topic(previous.negative_primary_counts)
+    platform_rows = tuple(
+        (
+            f"{platform}声量",
+            current.platform_counts.get(platform, 0),
+            previous.platform_counts.get(platform, 0),
+            _relative_change(
+                current.platform_counts.get(platform, 0),
+                previous.platform_counts.get(platform, 0),
+            ),
+        )
+        for platform in ("抖音", "小红书", "快手", "微博", "哔哩哔哩")
+    )
+    platform_summary = _platform_comparison_summary(current, previous)
+    conclusion = (
+        f"本期品牌总体声量较上期{volume_change}；正面率{positive_change}至"
+        f"{current_positive_rate * 100:.2f}%，负面率{negative_change}至"
+        f"{current_negative_rate * 100:.2f}%。{platform_summary}"
+        f"正面与负面 TOP1 议题均为“{current_positive_topic}”"
+        if current_positive_topic == current_negative_topic
+        else (
+            f"本期品牌总体声量较上期{volume_change}；正面率{positive_change}至"
+            f"{current_positive_rate * 100:.2f}%，负面率{negative_change}至"
+            f"{current_negative_rate * 100:.2f}%。{platform_summary}"
+            f"正面 TOP1 议题为“{current_positive_topic}”，"
+            f"负面 TOP1 议题为“{current_negative_topic}”。"
+        )
+    )
+    if current_positive_topic == current_negative_topic:
+        conclusion += "。"
+
+    rows = (
+        ("总声量", current.content_rows, previous.content_rows, volume_change),
+        (
+            "正面率",
+            _format_rate(current_positive_rate),
+            _format_rate(previous_positive_rate),
+            positive_change,
+        ),
+        (
+            "负面率",
+            _format_rate(current_negative_rate),
+            _format_rate(previous_negative_rate),
+            negative_change,
+        ),
+        *platform_rows,
+        (
+            "TOP1 正面议题",
+            current_positive_topic,
+            previous_positive_topic,
+            _topic_change(current_positive_topic, previous_positive_topic),
+        ),
+        (
+            "TOP1 负面议题",
+            current_negative_topic,
+            previous_negative_topic,
+            _topic_change(current_negative_topic, previous_negative_topic),
+        ),
+    )
+    return conclusion + "\n\n" + _markdown_table(("指标", "本期", "上期", "变化情况"), rows)
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    return numerator / denominator if denominator > 0 else 0.0
+
+
+def _format_rate(value: float) -> str:
+    return f"{value * 100:.2f}%"
+
+
+def _relative_change(current: int, previous: int) -> str:
+    if previous == 0:
+        return "持平" if current == 0 else "新增"
+    delta = (current - previous) / previous
+    if delta == 0:
+        return "持平"
+    direction = "上升" if delta > 0 else "下降"
+    return f"{direction} {abs(delta) * 100:.2f}%"
+
+
+def _percentage_point_change(current: float, previous: float) -> str:
+    delta = (current - previous) * 100
+    if delta == 0:
+        return "持平"
+    direction = "上升" if delta > 0 else "下降"
+    return f"{direction} {abs(delta):.2f} 个百分点"
+
+
+def _top_topic(counter: Counter[str]) -> str:
+    items = _sorted_counter(counter)
+    return items[0][0] if items else "暂无数据"
+
+
+def _topic_change(current: str, previous: str) -> str:
+    if current == "暂无数据" or previous == "暂无数据":
+        return "暂无可比数据"
+    return "保持第一" if current == previous else f"由“{previous}”变为“{current}”"
+
+
+def _platform_comparison_summary(current: _ReportStats, previous: _ReportStats) -> str:
+    """只概括实际存在的共同平台，避免把缺失平台误写成下降。"""
+
+    platforms = sorted(set(current.platform_counts) | set(previous.platform_counts))
+    if not platforms:
+        return "暂无可比的平台声量数据。"
+    decreased = [
+        platform
+        for platform in platforms
+        if current.platform_counts.get(platform, 0) < previous.platform_counts.get(platform, 0)
+    ]
+    increased = [
+        platform
+        for platform in platforms
+        if current.platform_counts.get(platform, 0) > previous.platform_counts.get(platform, 0)
+    ]
+    if len(decreased) == len(platforms):
+        return f"{len(platforms)} 个平台声量均较上期下降，"
+    if len(increased) == len(platforms):
+        return f"{len(platforms)} 个平台声量均较上期上升，"
+    if decreased:
+        return f"{('、'.join(decreased))}声量较上期下降，"
+    return "各平台声量与上期持平，"
+
+
 def _ordered_sentiments(counter: Counter[str]) -> list[str]:
     ordered = [label for label in _SENTIMENT_PREFERRED_ORDER if counter.get(label, 0) > 0]
     extras = sorted(label for label in counter if label not in _SENTIMENT_PREFERRED_ORDER)
@@ -915,15 +1172,16 @@ def _platform_sentiment_rows(
     sentiments: Sequence[str],
 ) -> list[tuple[object, ...]]:
     rows: list[tuple[object, ...]] = []
-    for platform, total in _sorted_counter(stats.platform_counts):
+    for platform, _ in _sorted_counter(stats.platform_counts):
         counts = stats.platform_sentiment.get(platform, Counter())
+        sentiment_total = stats.sentiment_platform_counts.get(platform, 0)
         negative = counts.get("负面", 0)
         rows.append(
             (
                 platform,
                 *(counts.get(sentiment, 0) for sentiment in sentiments),
-                total,
-                _percentage(negative, total),
+                sentiment_total,
+                _percentage(negative, sentiment_total),
             )
         )
     return rows
@@ -946,6 +1204,7 @@ def _platform_sentiment_chart(stats: _ReportStats, sentiments: Sequence[str]) ->
         series_values,
         kind="bar",
         series_names=tuple(sentiments),
+        bar_direction="vertical",
     )
 
 
@@ -966,9 +1225,9 @@ def _executive_summary(stats: _ReportStats) -> str:
         ),
         (
             f"- **情感结构：** 正面 **{positive}** 条（"
-            f"{_percentage(positive, stats.content_rows)}），中性 **{neutral}** 条（"
-            f"{_percentage(neutral, stats.content_rows)}），负面 **{negative}** 条（"
-            f"{_percentage(negative, stats.content_rows)}）。"
+            f"{_percentage(positive, stats.sentiment_scope_rows)}），中性 **{neutral}** 条（"
+            f"{_percentage(neutral, stats.sentiment_scope_rows)}），负面 **{negative}** 条（"
+            f"{_percentage(negative, stats.sentiment_scope_rows)}）。"
         ),
     ]
     if platform is not None:
@@ -997,9 +1256,9 @@ def _risk_summary(stats: _ReportStats) -> str:
     negative = stats.sentiment_counts.get("负面", 0)
     parts = [
         f"**客观概览：** 本期正面内容 **{positive}** 条（"
-        f"{_percentage(positive, stats.content_rows)}），中性内容 **{neutral}** 条（"
-        f"{_percentage(neutral, stats.content_rows)}），负面内容 **{negative}** 条（"
-        f"{_percentage(negative, stats.content_rows)}）。"
+        f"{_percentage(positive, stats.sentiment_scope_rows)}），中性内容 **{neutral}** 条（"
+        f"{_percentage(neutral, stats.sentiment_scope_rows)}），负面内容 **{negative}** 条（"
+        f"{_percentage(negative, stats.sentiment_scope_rows)}）。"
     ]
 
     positive_platform = _top_item(stats.positive_platform_counts)
@@ -1161,7 +1420,62 @@ def _mermaid_bar(title: str, counter: Counter[str]) -> str:
         [values],
         kind="bar",
         series_names=("数量",),
+        bar_direction="horizontal",
     )
+
+
+def _mermaid_ranked_bar(title: str, counter: Counter[str], denominator: int) -> str:
+    """生成单张横向排名图；类别标签承载排名和占比，图表数据标签承载数量。"""
+
+    items = _sorted_counter(counter)
+    if not items:
+        return "暂无可展示图表。"
+    labels = [
+        f"{index:02d}  {label}｜{_percentage(count, denominator)}"
+        for index, (label, count) in enumerate(items, start=1)
+    ]
+    return _mermaid_xychart(
+        title,
+        labels,
+        [[count for _, count in items]],
+        kind="bar",
+        series_names=("数量",),
+        bar_direction="horizontal",
+    )
+
+
+def _platform_daily_charts(
+    dates: Sequence[date],
+    series: Sequence[str],
+    values: Mapping[date, Counter[str]],
+) -> str:
+    """将抖音与其他平台分图，避免绝对量级差异掩盖其余平台变化。"""
+
+    douyin = [label for label in series if label == "抖音"]
+    other = [label for label in series if label != "抖音"]
+    charts = [
+        _mermaid_daily_lines("抖音平台每日内容量", dates, douyin, values),
+        _mermaid_daily_lines("其他平台每日内容量", dates, other, values),
+    ]
+    rendered = [chart for chart in charts if chart != "暂无可展示图表。"]
+    return "\n\n".join(rendered) or "暂无可展示图表。"
+
+
+def _sentiment_daily_charts(
+    dates: Sequence[date],
+    series: Sequence[str],
+    values: Mapping[date, Counter[str]],
+) -> str:
+    """按用户确认的主量级与低量级情感组分图，保留各组的真实绝对数量。"""
+
+    positive_neutral = [label for label in series if label in {"正面", "中性"}]
+    negative_mixed = [label for label in series if label in {"负面", "混合"}]
+    charts = [
+        _mermaid_daily_lines("正面、中性每日趋势", dates, positive_neutral, values),
+        _mermaid_daily_lines("负面、混合每日趋势", dates, negative_mixed, values),
+    ]
+    rendered = [chart for chart in charts if chart != "暂无可展示图表。"]
+    return "\n\n".join(rendered) or "暂无可展示图表。"
 
 
 def _mermaid_daily_lines(
@@ -1189,6 +1503,7 @@ def _mermaid_xychart(
     *,
     kind: str,
     series_names: Sequence[str] | None = None,
+    bar_direction: str | None = None,
 ) -> str:
     if kind not in {"bar", "line"}:
         raise ValueError(kind)
@@ -1196,6 +1511,10 @@ def _mermaid_xychart(
         return "暂无可展示图表。"
     if series_names is not None and len(series_names) != len(series_values):
         raise ValueError("图表系列名称数量与数据序列数量不一致")
+    if bar_direction is not None and (
+        kind != "bar" or bar_direction not in {"horizontal", "vertical"}
+    ):
+        raise ValueError("bar_direction 仅支持 bar 图的 horizontal 或 vertical")
     max_value = max((value for series in series_values for value in series), default=0)
     y_max = max(1, max_value + max(1, (max_value + 9) // 10))
     quoted_categories = ", ".join(f'"{_mermaid_text(label)}"' for label in categories)
@@ -1208,6 +1527,8 @@ def _mermaid_xychart(
         f"    x-axis [{quoted_categories}]",
         f'    y-axis "数量" 0 --> {y_max}',
     ]
+    if bar_direction is not None:
+        lines.insert(4, f"    %% bar-direction {bar_direction}")
     for values in series_values:
         serialized = ", ".join(str(value) for value in values)
         lines.append(f"    {kind} [{serialized}]")

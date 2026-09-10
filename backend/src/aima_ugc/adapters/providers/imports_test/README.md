@@ -941,7 +941,7 @@ print(result.word_path)
 `output_dir` 可以省略。省略时，显式 Excel 的报告默认写到该 Excel 同目录下的 `reports/`。
 `report_date_range` 是包含首尾日期的闭区间；传 `None` 时保持原有全量报告行为。
 
-如果使用本目录的 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](generate_report.py)，直接修改文件顶部的 `INPUT_EXCEL` 和
+如果使用本目录的 `generate_report.py`，直接修改文件顶部的 `INPUT_EXCEL` 和
 `REPORT_DATE_RANGE`。脚本按周期写入 `output/reports/YYYYMMDD-YYYYMMDD/`，避免不同周期
 报告互相覆盖；全量报告写入 `output/reports/all/`。
 
@@ -990,7 +990,9 @@ print(result.word_path)
 
 报告正文模板只有：
 
-- [`backend/src/aima_ugc/platform/reporting/report_template.md`](../../../platform/reporting/report_template.md)
+```text
+backend/src/aima_ugc/platform/reporting/report_template.md
+```
 
 固定链路：
 
@@ -1021,9 +1023,52 @@ Chart，并为每张图内嵌对应的 XLSX 数据；图表数据与 Markdown �
 
 - 报告使用只读方式打开输入 Excel；
 - 不对输入 Workbook 保存、修复或二次格式化；
+- `run_all()` 发现 `rows_failed > 0` 时在最终 Excel 前停止，不把缺失 Analysis 投影成空白单元格；
+- 共享导出器的 `require_complete_analysis=True` 会在临时文件提交前拒绝缺失 Analysis 的输入；
+- 失败项保留在 `analysis/failed.jsonl`，修复后可在同一 run 继续恢复；
 - 报告失败会向调用方抛错，不能把 `run_all()` 伪装成完整成功；
 - 已经成功生成的 `labeled_data.xlsx` 不会因报告失败被删除或回滚；
 - 修复模板或输入后，可以直接对同一个 Excel 重新调用 `generate_report(...)`。
+
+### 18.7 报告完成后发布到飞书
+
+飞书发布默认关闭。启用后，`run_all()` 和本目录 `generate_report.py` 会在 Word 完成后继续执行：
+
+```text
+report.docx
+→ 原字节上传为“原始Word下载”文件
+
+report.md + 同一组 ChartSpec + reports/assets 中的 PNG
+→ 创建空白飞书原生文档
+→ 依 Markdown 顺序创建正文块、原生表格/单元格、高清图表/词云图片块
+→ 文末追加原始 Word 下载入口
+```
+
+飞书正文和表格可直接编辑；图表与词云是完整高清 PNG，保留在与 Markdown 对应的章节和表格之后，不承诺与 Word 分页像素一致。启用飞书发布时，本地临时生成 `report-charts.xlsx` 并导入为飞书原生“可编辑图表”Sheet；每张报告图下都有对应的“编辑图表数据”入口。图表仍是在线文档中的静态图片：改完 Sheet 后由用户截图并手动替换图片；系统不提供同步按钮、同步脚本或自动回写，也不会修改本地 `report.docx`。导入成功后本地临时 XLSX 和飞书上传源文件都会清理，不作为用户交付物。
+
+离线报告入口以本目录 Git 忽略的 `.env` 为准；只有 `.env` 未写的项才回退到 PowerShell/系统环境变量。因此日常配置和交接都不需要依赖某次终端会话，旧终端残留值也不会覆盖新同事的文件夹：复制 `.env.example` 为 `.env`，填写以下非 Secret 项即可。
+
+```text
+AIMA_FEISHU_REPORT_ENABLED=false
+AIMA_FEISHU_APP_ID=cli_xxx
+AIMA_FEISHU_FOLDER_TOKEN=fld_xxx
+AIMA_FEISHU_APP_SECRET_REF=feishu/report_app_secret
+AIMA_EXTERNAL_SECRET_DIR=.runtime/secrets
+```
+
+首次实际发布时再把 `AIMA_FEISHU_REPORT_ENABLED` 改为 `true`。App Secret 不放进 `.env`，而是由飞书管理员通过企业密码库或受控方式交给接手同事，并写入 Git 忽略的文件：
+
+```text
+<AIMA_EXTERNAL_SECRET_DIR>/feishu/report_app_secret
+```
+
+不要把 App Secret 写进 `.env`、源码、运行摘要或日志。飞书应用至少要开通官方上传文件、
+创建/编辑新版文档、上传文档图片素材所需权限，并让调用身份拥有目标文件夹的编辑权限。
+
+关闭 `AIMA_FEISHU_REPORT_ENABLED` 时不会读取飞书 Secret，也不会发出
+任何飞书请求。真实飞书调用属于显式人工 Probe，不进入普通 CI。发布摘要会写入
+`run_summary.json` 的 `feishu_publication`，只保存 URL、file token 和本地 Word SHA-256，
+不保存 access token 或 App Secret。
 
 
 ## AI 语义相关性与发声类型
@@ -1035,3 +1080,79 @@ Chart，并为每张图内嵌对应的 XLSX 数据；图表数据与 Markdown �
 ## 最终 Excel 的身份列
 
 人工 `imports_test` 最终 Excel 默认保留 `内容ID`；评论视图同时保留 `内容ID/评论ID/根评论ID/父评论ID`。这些列用于审计、去重与后续补采定位，不应因为报告展示简化而从人工数据交付中默认删除。
+
+## 19. 代表性正负面内容筛选与飞书同步
+
+对已经完成打标的 Excel，不需要重新执行本目录的导入、清洗或 AI 打标流程。使用独立入口：
+
+```text
+backend/src/aima_ugc/entrypoints/representative_selection_main.py
+```
+
+该入口固定读取一个或多个已打标输入文件的 `内容` Sheet，按 `平台 + 内容ID` 跨文件去重，只处理抖音和小红书，并使用：
+
+```text
+backend/src/aima_ugc/modules/analysis/prompts/zhengfu_shaixuan.md
+```
+
+程序直接沿用 Excel 已有的 `发声类型` 和 `情感标签`，只从 `真实用户发声` 且已有情感为正面或负面的记录中建立四个分组，再分别选择抖音/小红书的正面/负面代表性内容，每组最多 10 条。不会重新打标或覆盖已有标签。筛选不足时保留实际符合要求的数量，不把信息不足或高度重复的内容硬凑进去。
+
+从仓库根目录运行 Dry Run（已有两个打标 Excel 时，重复传入 `--input-xlsx`）：
+
+```powershell
+uv run python -m aima_ugc.entrypoints.representative_selection_main `
+  --input-xlsx "C:\path\to\douyin_labeled.xlsx" `
+  --input-xlsx "C:\path\to\xiaohongshu_labeled.xlsx" `
+  --prompt "C:\Users\BOLL\Desktop\AIMA2\AIMA_UGC\backend\src\aima_ugc\modules\analysis\prompts\zhengfu_shaixuan.md" `
+  --dry-run
+```
+
+运行前需要准备现有 LLM 配置：`AIMA_LLM_BASE_URL`、`AIMA_LLM_MODEL` 和 API Key（环境变量或 `AIMA_EXTERNAL_SECRET_DIR/llm_api_key`）。LLM 只对每个非空平台/情感分组执行代表性选择，最多四次请求；Excel 已有标签不会再次提交给逐条打标逻辑。
+
+Dry Run 产物默认写在输入 Excel 同目录的 `representative_selection_时间戳/`，主要文件包括：
+
+- `candidates.jsonl`：通过已有平台、发声类型、情感标签和基本证据条件的候选；
+- `decisions.jsonl`：候选的已有标签包装结果，不是重新打标结果；
+- `selected_results.jsonl`：四组最终入选内容；
+- `failed.jsonl`：兼容保留的失败结果文件；分组选择失败时会在 `selection_summary.json` 的错误码中记录并使用本地兜底；
+- `llm_requests.jsonl`：不包含 Secret/原始响应的请求审计；
+- `selection_summary.json`：输入、Prompt Hash、模型、四组数量和不足组摘要。
+
+确认 `selected_results.jsonl` 后，配置本目录的 `.env` 中的飞书非敏感字段：
+
+```dotenv
+AIMA_FEISHU_BASE_URL=https://open.feishu.cn
+AIMA_FEISHU_APP_ID=cli_xxxxxxxxxxxxx
+AIMA_FEISHU_APP_TOKEN=app_xxxxxxxxxxxxx
+AIMA_FEISHU_TABLE_ID=tblxxxxxxxxxxxxxx
+AIMA_FEISHU_APP_SECRET_FILE=feishu_app_secret
+AIMA_EXTERNAL_SECRET_DIR=.runtime/secrets
+```
+
+`AIMA_FEISHU_REPORT_ENABLED`、`AIMA_FEISHU_FOLDER_TOKEN` 和
+`AIMA_FEISHU_APP_SECRET_REF` 属于报告发布流程，不是本次多维表同步入口读取的字段。
+本次入口默认读取 `imports_test/.env`；也可以用 `--env-file` 指定其他 `.env` 文件。
+直接使用多维表 `/base/` 链接时填写 `AIMA_FEISHU_APP_TOKEN`；如果使用 Wiki
+`/wiki/` 链接，则改为填写 `AIMA_FEISHU_WIKI_TOKEN`，二者至少配置一个。
+将飞书 App Secret 保存到 `AIMA_EXTERNAL_SECRET_DIR/AIMA_FEISHU_APP_SECRET_FILE`，再运行：
+
+```powershell
+uv run python -m aima_ugc.entrypoints.representative_selection_main `
+  --input-xlsx "C:\path\to\labeled_data.xlsx" `
+  --write-feishu
+```
+
+写入模式先把 `AIMA_FEISHU_TABLE_ID` 指向的数据表作为模板，在同一个 Base 内新建一个名称为本次生成时间（如 `20260909T120000.000000+0800`）的数据表，并复制模板中的可创建字段。随后只向新表写入本次结果；旧数据表、旧记录和旧字段值不会更新、删除或覆盖。写入前会保存 `feishu_new_table.json`、`feishu_before_update.jsonl`，写入后会回读并验证；关键字段缺失、权限/类型预检失败时不会开始批量写入。
+
+该入口不会修改原始 Excel，也不会改变本目录现有 `test.py` 的导入、打标和报告行为。
+
+### 19.1 只同步已有 Dry Run 结果
+
+如果已经完成 Dry Run 并检查过 `selected_results.jsonl`，可以只把已有结果同步到飞书，避免再次调用大模型。该模式同样会新建一个按生成时间命名的数据表，不会写入旧表：
+
+```powershell
+uv run python -m aima_ugc.entrypoints.representative_selection_main `
+  --write-feishu-from-run "C:\path\to\representative_selection_运行时间"
+```
+
+该模式只读取指定目录下的 `selected_results.jsonl`，会严格校验字段、目标平台、入选状态和每组最多 10 条的限制，然后新建数据表、执行字段预检、写入、写入前快照和回读核验。不需要 `--input-xlsx`、`--prompt` 或 LLM 配置，不会初始化大模型。飞书同步产物仍写回该运行目录，包括 `feishu_new_table.json`、`feishu_field_mapping.json`、`feishu_before_update.jsonl` 和 `feishu_sync_summary.json`。

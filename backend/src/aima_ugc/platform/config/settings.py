@@ -40,6 +40,14 @@ class PlatformSettings(BaseModel):
     llm_max_connections: int = Field(default=10, ge=1, le=100)
     llm_validation_retries: int = Field(default=1, ge=0, le=3)
     analysis_run_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)
+    feishu_base_url: str = Field(default="https://open.feishu.cn", min_length=1)
+    feishu_app_id: str | None = None
+    feishu_app_token: str | None = None
+    feishu_wiki_token: str | None = None
+    feishu_table_id: str | None = None
+    feishu_app_secret_file: str = Field(default="feishu_app_secret", min_length=1)
+    feishu_timeout_seconds: float = Field(default=30.0, gt=0, le=1800)
+    feishu_max_retries: int = Field(default=3, ge=0, le=8)
 
     @property
     def artifact_dir(self) -> Path:
@@ -76,6 +84,12 @@ class PlatformSettings(BaseModel):
         """返回正式 Analysis LLM API Key 文件，不读取 Secret 内容。"""
         return self.external_secret_root / "llm_api_key"
 
+    @property
+    def feishu_app_secret_path(self) -> Path:
+        """返回飞书 App Secret 文件路径，不读取 Secret 内容。"""
+
+        return self.external_secret_root / self.feishu_app_secret_file
+
 
 _ENV_TO_FIELD = {
     "AIMA_DATA_DIR": "data_dir",
@@ -103,6 +117,14 @@ _ENV_TO_FIELD = {
     "AIMA_LLM_MAX_CONNECTIONS": "llm_max_connections",
     "AIMA_LLM_VALIDATION_RETRIES": "llm_validation_retries",
     "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS": "analysis_run_max_in_flight_jobs",
+    "AIMA_FEISHU_BASE_URL": "feishu_base_url",
+    "AIMA_FEISHU_APP_ID": "feishu_app_id",
+    "AIMA_FEISHU_APP_TOKEN": "feishu_app_token",
+    "AIMA_FEISHU_WIKI_TOKEN": "feishu_wiki_token",
+    "AIMA_FEISHU_TABLE_ID": "feishu_table_id",
+    "AIMA_FEISHU_APP_SECRET_FILE": "feishu_app_secret_file",
+    "AIMA_FEISHU_TIMEOUT_SECONDS": "feishu_timeout_seconds",
+    "AIMA_FEISHU_MAX_RETRIES": "feishu_max_retries",
 }
 
 _DEFAULTS = {

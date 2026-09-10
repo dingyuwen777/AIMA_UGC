@@ -430,6 +430,35 @@ Unified JSONL
 
 差异只在输入、恢复事实源和结果持久化：正式模式使用 PostgreSQL Job/Fence，离线模式使用 JSONL Checkpoint。
 
+### 4.1 代表性正负面内容筛选
+
+代表性筛选是独立的离线入口，不改变正式 Analysis Result、数据库 Schema 或
+`imports_test/test.py` 的导入/打标/报告主流程：
+
+- 读取一个或多个已打标 Excel 的 `内容` Sheet，按 `平台 + 内容ID` 跨文件去重；
+- 只处理抖音和小红书，并且只从 `发声类型 = 真实用户发声` 且 `情感标签 = 正面/负面` 的记录中建立候选池；
+- 使用 [`prompts/zhengfu_shaixuan.md`](prompts/zhengfu_shaixuan.md) 在已有 `平台 + 发声类型 + 情感标签` 分组内选择代表性内容；不重新打标，不修改已有标签；
+- 分别形成抖音正面、抖音负面、小红书正面、小红书负面四组，每组最多 10 条；严格筛选不足时保留实际数量，不用低质量内容凑数；
+- 通过 [`adapters/feishu/bitable.py`](../../adapters/feishu/bitable.py) 以配置中的数据表作为模板，在同一 Base 内新建一个按生成时间命名的数据表，再写入本次结果；旧数据表和旧记录不更新、不删除。
+
+运行入口：[`entrypoints/representative_selection_main.py`](../../entrypoints/representative_selection_main.py)
+
+```powershell
+uv run python -m aima_ugc.entrypoints.representative_selection_main `
+  --input-xlsx "C:\path\to\douyin_labeled.xlsx" `
+  --input-xlsx "C:\path\to\xiaohongshu_labeled.xlsx" `
+  --prompt "backend\src\aima_ugc\modules\analysis\prompts\zhengfu_shaixuan.md" `
+  --dry-run
+```
+
+该入口直接消费已经完成打标的 Excel，不会调用 `imports_test/test.py` 的全量导入和打标流程。
+每个文件都只读取 `内容` Sheet；多个文件按传入顺序合并，重复的 `平台 + 内容ID` 保留第一条。
+合并后再按 `发声类型 = 真实用户发声` 且 `情感标签 = 正面/负面` 筛选，因此不会把其他发声类型或中性等非目标情感送入代表性筛选。
+
+Dry Run 会在输入 Excel 同目录生成带时间戳的运行目录，包含候选、已有标签包装结果、最终选择、分组选择失败项、LLM 请求审计和 `selection_summary.json`；它不会请求飞书，也不会修改输入 Excel。确认结果后，可以在 `adapters/providers/imports_test/.env` 配置 `AIMA_FEISHU_APP_ID`、`AIMA_FEISHU_APP_TOKEN`（或 `AIMA_FEISHU_WIKI_TOKEN`）、`AIMA_FEISHU_TABLE_ID` 和外部 Secret 文件，再使用 `--write-feishu-from-run` 指向该运行目录，只同步已有 `selected_results.jsonl`，不会再次调用大模型。入口默认读取该 `.env`，也支持 `--env-file` 指定其他配置文件。若需要重新执行代表性选择并立即同步，才使用 `--write-feishu`。
+
+飞书写入前会动态读取字段定义和已有记录，关键字段缺失、已有幂等键重复或字段类型无法安全转换时失败关闭；写入后会回读本次记录并核对写入字段。飞书字段不存在、类型不支持、原始数据为空或 URL/日期/单选值不合法时，该字段保持空白，其他可写字段仍按映射写入。写入前快照保存在本次运行目录中；程序不删除记录，也不清空未参与本次映射的字段。
+
 ---
 
 ## 10. 修改不同问题时改哪里

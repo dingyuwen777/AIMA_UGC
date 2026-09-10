@@ -63,7 +63,7 @@ def test_primary_overview_keeps_kpis_ranking_and_wordcloud_in_one_visual_group(
     )
 
 
-def test_ranking_chart_layout_limits_progress_rows_but_keeps_full_editable_detail(
+def test_ranking_chart_layout_does_not_emit_complete_detail_remainder(
     tmp_path: Path,
 ) -> None:
     markdown = tmp_path / "report.md"
@@ -98,9 +98,13 @@ def test_ranking_chart_layout_limits_progress_rows_but_keeps_full_editable_detai
 
     captions = [_table_caption(table) for table in document.findall(f".//{{{_W}}}tbl")]
     assert "AIMARankingChart" in captions
-    assert "AIMACompactRemainder" in captions
-    for index in range(1, 13):
+    assert "AIMACompactRemainder" not in captions
+    assert "AIMAProgress" not in captions
+    for index in range(1, 9):
         assert f"议题 {index:02d}" in text
+    for index in range(9, 13):
+        assert f"议题 {index:02d}" not in text
+    assert "完整明细" not in text
 
 
 def test_compact_daily_table_pivots_long_form_without_losing_values(tmp_path: Path) -> None:

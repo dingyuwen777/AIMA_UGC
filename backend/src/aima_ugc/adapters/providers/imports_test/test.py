@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, is_dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
@@ -13,11 +14,18 @@ from zoneinfo import ZoneInfo
 
 from pydantic import SecretStr
 
+from aima_ugc.adapters.feishu import (
+    FeishuPublicationSummary,
+    FeishuReportPublisher,
+    FeishuReportPublisherConfig,
+    load_feishu_report_publisher_config,
+)
 from aima_ugc.adapters.llm import (
     DEFAULT_LLM_TRANSPORT_MAX_RETRIES,
     DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
     LLMRequestAuditWriter,
     OpenAICompatibleContentLabelingLLM,
+    RateLimitedContentLabelingLLM,
     RetryingContentLabelingLLM,
     load_llm_pricing,
     recalculate_llm_request_costs,
@@ -41,6 +49,7 @@ from aima_ugc.modules.analysis import (
     filter_canonical_content_jsonl,
     label_unified_content_jsonl,
 )
+from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.export import (
     ExcelExportSummary,
     export_unified_content_jsonl_to_excel,
@@ -52,8 +61,9 @@ os.environ.pop("SSLKEYLOGFILE", None)
 
 # 配置一个 Path 走单文件转换；配置多个 Path 的有序元组合并到同一个 run。
 INPUT_XLSX_FILES: Path | tuple[Path, ...] = (
-    Path(r"E:\Desktop\08_18数据\惠科data(0813-0816).xlsx"),
-    Path(r"E:\Desktop\08_18数据\惠科data(0817-0819).xlsx"),
+    Path(r"C:\Users\BOLL\Desktop\惠科data(0903-0906).xlsx"),
+    Path(r"C:\Users\BOLL\Desktop\惠科data(0907-0908).xlsx"),
+    Path(r"C:\Users\BOLL\Desktop\惠科data(0909).xlsx"),
 )
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
@@ -66,8 +76,8 @@ WRITE_TO_DATABASE = False
 # 只限制报告统计，不影响转换、关键词过滤、去重、AI 打标或最终 Excel 全量数据。
 # None 表示报告使用 Excel 内全部日期；日期范围包含开始日和结束日。
 REPORT_DATE_RANGE: tuple[date, date] | None = (
-    date(2026, 8, 13),
-    date(2026, 8, 19),
+    date(2026, 9, 3),
+    date(2026, 9, 9),
 )
 
 # 最终 Excel 的“内容”Sheet 展示列；顺序就是导出顺序。
@@ -120,8 +130,10 @@ EXCEL_COMMENT_COLUMNS = (
 )
 
 ENABLE_REAL_LLM = True
-# 一条内容一次独立 LLM 请求；同时最多 250 个请求在飞。
-LLM_CONCURRENCY = 250
+# 一条内容一次独立 LLM 请求；同时最多 80 个请求在飞。
+LLM_CONCURRENCY = 80
+# Ark 对突发并发请求返回 HTTP 429；对每个物理请求（包括重试）做无 burst 限流。
+LLM_MAX_RPS = 5
 MAX_VALIDATION_RETRIES = 2
 MAX_TRANSPORT_RETRIES = DEFAULT_LLM_TRANSPORT_MAX_RETRIES
 
@@ -141,6 +153,9 @@ class P1RunSummary:
     labeled_excel_path: Path
     report_markdown_path: Path
     report_word_path: Path
+    feishu_native_document_url: str | None = None
+    feishu_word_file_token: str | None = None
+    feishu_editable_chart_sheet_url: str | None = None
 
 
 def prepare_run_dir(*, run_id: str | None = None) -> Path:
@@ -295,8 +310,13 @@ def label_sentiment(*, run_dir: Path | None = None) -> OfflineContentLabelingSum
             pricing_catalog=load_llm_pricing(),
             request_audit=audit_writer.record,
         ) as base_llm:
-            llm = RetryingContentLabelingLLM(
+            rate_limited_llm = RateLimitedContentLabelingLLM(
                 inner=base_llm,
+                max_rps=LLM_MAX_RPS,
+            )
+            llm = RetryingContentLabelingLLM(
+                # Retry 包在限流层外，确保每次物理重试都重新取得 RPS 时隙。
+                inner=rate_limited_llm,
                 max_retries=MAX_TRANSPORT_RETRIES,
             )
             service = ContentLabelingService(
@@ -368,6 +388,8 @@ def generate_report(
     run_dir: Path | None = None,
     output_dir: Path | None = None,
     report_date_range: tuple[date, date] | None = None,
+    previous_excel_path: Path | None = None,
+    prepare_feishu_publication: bool = False,
 ) -> ReportGenerationSummary:
     """从最终统一 Excel 独立生成 Markdown/Word 报告。"""
 
@@ -385,11 +407,63 @@ def generate_report(
         source_path = _labeled_output_path(actual_run_dir)
         target_dir = Path(output_dir) if output_dir is not None else actual_run_dir / "reports"
 
-    return generate_excel_report(
-        input_path=source_path,
-        output_dir=target_dir,
-        report_date_range=report_date_range,
+    report_kwargs: dict[str, Any] = {
+        "input_path": source_path,
+        "output_dir": target_dir,
+        "report_date_range": report_date_range,
+    }
+    if previous_excel_path is not None:
+        report_kwargs["previous_input_path"] = previous_excel_path
+    if prepare_feishu_publication:
+        report_kwargs["chart_workbook_name"] = "report-charts.xlsx"
+    return generate_excel_report(**report_kwargs)
+
+
+def load_feishu_publication_config(
+    environ: Mapping[str, str] | None = None,
+    *,
+    base_dir: Path | None = None,
+) -> FeishuReportPublisherConfig | None:
+    """从离线入口 `.env` 加载发布配置；仅在文件缺项时回退到进程环境。"""
+
+    source: Mapping[str, str]
+    if environ is None:
+        loaded: dict[str, str] = dict(os.environ)
+        if ENV_FILE.is_file():
+            loaded.update(_load_env_file(ENV_FILE))
+        source = loaded
+    else:
+        source = environ
+    settings = load_settings(source, base_dir=base_dir)
+    return load_feishu_report_publisher_config(
+        source,
+        secret_root=settings.external_secret_root,
     )
+
+
+def publish_generated_report_to_feishu(
+    report: ReportGenerationSummary,
+    *,
+    config: FeishuReportPublisherConfig,
+    title: str = "AIMA 舆情报告",
+) -> FeishuPublicationSummary:
+    """把同一报告发布为原生文档、原始 Word 下载件和可编辑图表 Sheet。"""
+
+    publication = FeishuReportPublisher(config).publish(
+        word_path=report.word_path,
+        markdown_path=report.markdown_path,
+        chart_specs=report.chart_specs,
+        chart_workbook_path=report.chart_workbook_path,
+        title=title,
+    )
+    chart_workbook_path = report.chart_workbook_path
+    if (
+        chart_workbook_path is not None
+        and chart_workbook_path.name == "report-charts.xlsx"
+        and chart_workbook_path.parent == report.word_path.parent
+    ):
+        chart_workbook_path.unlink(missing_ok=True)
+    return publication
 
 
 def run_all(
@@ -435,14 +509,26 @@ def run_all(
     )
     if not report_input_path.is_file():
         raise FileNotFoundError(f"报告 Excel 不存在: {report_input_path}")
-    report = generate_report(
-        excel_path=report_input_path,
-        output_dir=run_dir / "reports",
-        report_date_range=REPORT_DATE_RANGE,
-    )
+    feishu_config = load_feishu_publication_config()
+    report_kwargs: dict[str, Any] = {
+        "excel_path": report_input_path,
+        "output_dir": run_dir / "reports",
+        "report_date_range": REPORT_DATE_RANGE,
+    }
+    if feishu_config is not None:
+        report_kwargs["prepare_feishu_publication"] = True
+    report = generate_report(**report_kwargs)
     stages.append(_stage_payload("generate_report", report))
+    feishu_publication: FeishuPublicationSummary | None = None
+    if feishu_config is not None:
+        feishu_publication = publish_generated_report_to_feishu(
+            report,
+            config=feishu_config,
+        )
+        stages.append(_stage_payload("publish_report_to_feishu", feishu_publication))
 
     input_paths = _input_xlsx_files()
+    report_chart_workbook_path = getattr(report, "chart_workbook_path", None)
     run_payload: dict[str, object] = {
         "schema_version": "p1-run-summary.v2",
         "run_id": actual_run_id,
@@ -454,6 +540,9 @@ def run_all(
         "report_input_excel": str(report_input_path),
         "report_markdown": str(report.markdown_path),
         "report_word": str(report.word_path),
+        "report_chart_workbook": (
+            str(report_chart_workbook_path) if report_chart_workbook_path is not None else None
+        ),
         "report_date_range": (
             [day.isoformat() for day in REPORT_DATE_RANGE]
             if REPORT_DATE_RANGE is not None
@@ -463,6 +552,8 @@ def run_all(
     }
     if len(input_paths) == 1:
         run_payload["source_xlsx"] = str(input_paths[0])
+    if feishu_publication is not None:
+        run_payload["feishu_publication"] = _jsonable_summary(feishu_publication)
     _atomic_write_json(run_summary_path, run_payload)
     return P1RunSummary(
         run_id=actual_run_id,
@@ -471,6 +562,15 @@ def run_all(
         labeled_excel_path=labeled_excel_path,
         report_markdown_path=report.markdown_path,
         report_word_path=report.word_path,
+        feishu_native_document_url=(
+            None if feishu_publication is None else feishu_publication.native_document_url
+        ),
+        feishu_word_file_token=(
+            None if feishu_publication is None else feishu_publication.word_file_token
+        ),
+        feishu_editable_chart_sheet_url=(
+            None if feishu_publication is None else feishu_publication.editable_chart_sheet_url
+        ),
     )
 
 
