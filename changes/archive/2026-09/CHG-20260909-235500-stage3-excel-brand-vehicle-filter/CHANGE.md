@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260909-235500-stage3-excel-brand-vehicle-filter
 title: 搜索与品牌车型过滤 Stage 3 Excel 统一过滤
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/stage3-excel-brand-vehicle-filter
 created: 2026-09-09
