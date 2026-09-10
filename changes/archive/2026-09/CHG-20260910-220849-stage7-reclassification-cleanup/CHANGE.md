@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260910-220849-stage7-reclassification-cleanup
 title: 搜索与品牌车型过滤 Stage 7 旧数据回填与 Cleanup
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feat/stage7-reclassification-cleanup
 created: 2026-09-10
