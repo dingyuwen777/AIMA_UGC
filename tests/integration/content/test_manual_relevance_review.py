@@ -19,6 +19,7 @@ from aima_ugc.bootstrap.analysis_high_throughput_planner import (
     create_high_throughput_analysis_job_terminal_callback,
 )
 from aima_ugc.bootstrap.api import create_app
+from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.reporting_http import PostgresReportingHttpService
@@ -27,6 +28,7 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.contracts.http import (
     ContentAnalysisSubmitRequest,
     ContentFilterSnapshot,
@@ -52,11 +54,44 @@ from aima_ugc.modules.analysis.relevance_review_tables import (
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
 from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.modules.identity import Principal
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobRegistry
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import func, select
+
+
+def _stage3_filter_brand_id(runtime, *, alias: str = "爱玛") -> str:  # type: ignore[no-untyped-def]
+    """建立或复用当前测试 Runtime 的 Stage 3 品牌过滤事实。"""
+
+    service = PostgresBrandVehicleHttpService(runtime)
+    active = service.list_brands(
+        search=None,
+        status_value="active",
+        role=None,
+        offset=0,
+        limit=200,
+    )
+    for brand in active.items:
+        if brand.display_name == alias or any(item.text == alias for item in brand.aliases):
+            return str(brand.id)
+    brand = service.create_brand(
+        BrandCreateRequest(
+            code=f"STAGE3-CONTENT-{uuid4()}",
+            display_name=f"Stage3 {alias}",
+            role="owned",
+            aliases=(alias,),
+        ),
+        principal=Principal(
+            principal_id="stage3-content-integration",
+            display_name="Stage3 Content 集成测试管理员",
+            role="administrator",
+            source="development",
+        ),
+        request_id=f"stage3-content-brand-{uuid4()}",
+    )
+    return str(brand.id)
 
 
 def _xlsx(*, text_suffix: str = "") -> bytes:
@@ -90,17 +125,8 @@ def _xlsx(*, text_suffix: str = "") -> bytes:
     return output.getvalue()
 
 
-def _seed_import(client: TestClient, *, text_suffix: str = "") -> str:
-    pack = client.post(
-        "/api/v1/keyword-packs",
-        json={"name": f"人工复核相关性 {uuid4()}"},
-    )
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert keyword.status_code == 201
+def _seed_import(client: TestClient, runtime, *, text_suffix: str = "") -> str:  # type: ignore[no-untyped-def]
+    brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -112,7 +138,7 @@ def _seed_import(client: TestClient, *, text_suffix: str = "") -> str:
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202
@@ -179,7 +205,7 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
         )
     try:
         import_client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _seed_import(import_client)
+        _seed_import(import_client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -305,7 +331,7 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
         assert export.target_count == 1
 
         # 相同外部 Content 出现新正文版本后，旧人工判断继续留作审计但不套到 V2。
-        updated_batch_id = _seed_import(import_client, text_suffix="（更新）")
+        updated_batch_id = _seed_import(import_client, runtime, text_suffix="（更新）")
         for _ in range(10):
             batch = import_client.get(f"/api/v1/import-batches/{updated_batch_id}")
             assert batch.status_code == 200

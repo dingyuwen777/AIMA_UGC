@@ -21,6 +21,7 @@ from aima_ugc.bootstrap.analysis_high_throughput_planner import (
     create_high_throughput_analysis_job_terminal_callback,
 )
 from aima_ugc.bootstrap.api import create_app
+from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.worker import (
@@ -28,6 +29,7 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.modules.analysis import (
     ContentLabelingService,
     FakeContentLabelingLLM,
@@ -44,12 +46,45 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_run_targets_table,
 )
 from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.system.tables import audit_events_table, keyword_packs_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobRegistry
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import func, select
+
+
+def _stage3_filter_brand_id(runtime, *, alias: str = "爱玛") -> str:  # type: ignore[no-untyped-def]
+    """建立或复用当前测试 Runtime 的 Stage 3 品牌过滤事实。"""
+
+    service = PostgresBrandVehicleHttpService(runtime)
+    active = service.list_brands(
+        search=None,
+        status_value="active",
+        role=None,
+        offset=0,
+        limit=200,
+    )
+    for brand in active.items:
+        if brand.display_name == alias or any(item.text == alias for item in brand.aliases):
+            return str(brand.id)
+    brand = service.create_brand(
+        BrandCreateRequest(
+            code=f"STAGE3-CONTENT-{uuid4()}",
+            display_name=f"Stage3 {alias}",
+            role="owned",
+            aliases=(alias,),
+        ),
+        principal=Principal(
+            principal_id="stage3-content-integration",
+            display_name="Stage3 Content 集成测试管理员",
+            role="administrator",
+            source="development",
+        ),
+        request_id=f"stage3-content-brand-{uuid4()}",
+    )
+    return str(brand.id)
 
 
 def _xlsx() -> bytes:
@@ -115,13 +150,7 @@ def _client(runtime) -> TestClient:  # type: ignore[no-untyped-def]
 def _seed_contents(client: TestClient, runtime) -> tuple[UUID, ...]:  # type: ignore[no-untyped-def]
     """通过正式 Excel Import + Worker 链写入三条 Content，并返回稳定排序后的 ID。"""
 
-    pack = client.post("/api/v1/keyword-packs", json={"name": f"CHG314 Review {uuid4()}"})
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "CHG314", "priority": 10},
-    )
-    assert keyword.status_code == 201
+    brand_id = _stage3_filter_brand_id(runtime, alias="CHG314")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -133,7 +162,7 @@ def _seed_contents(client: TestClient, runtime) -> tuple[UUID, ...]:  # type: ig
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202

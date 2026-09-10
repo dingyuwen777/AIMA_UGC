@@ -18,6 +18,7 @@ from aima_ugc.adapters.llm.openai_compatible import OpenAICompatibleLLMError
 from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.bootstrap.api import create_app
+from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.worker import (
@@ -25,6 +26,7 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.modules.analysis import (
     ContentLabelingLLMRequest,
     ContentLabelingLLMResponse,
@@ -36,6 +38,7 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_runs_table,
 )
 from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import LeaseLostError
@@ -112,6 +115,38 @@ def _valid_response() -> str:
         '"sentiment_evidence":["爱玛"],"labels":[{"primary_label":"骑行性能",'
         '"secondary_label":"舒适性","evidence":["爱玛"]}],"decision_status":"clear"}]}'
     )
+
+
+def _stage3_filter_brand_id(runtime, *, alias: str = "爱玛") -> str:  # type: ignore[no-untyped-def]
+    """建立或复用当前测试 Runtime 的 Stage 3 品牌过滤事实。"""
+
+    service = PostgresBrandVehicleHttpService(runtime)
+    active = service.list_brands(
+        search=None,
+        status_value="active",
+        role=None,
+        offset=0,
+        limit=200,
+    )
+    for brand in active.items:
+        if brand.display_name == alias or any(item.text == alias for item in brand.aliases):
+            return str(brand.id)
+    brand = service.create_brand(
+        BrandCreateRequest(
+            code=f"STAGE3-CONTENT-{uuid4()}",
+            display_name=f"Stage3 {alias}",
+            role="owned",
+            aliases=(alias,),
+        ),
+        principal=Principal(
+            principal_id="stage3-content-integration",
+            display_name="Stage3 Content 集成测试管理员",
+            role="administrator",
+            source="development",
+        ),
+        request_id=f"stage3-content-brand-{uuid4()}",
+    )
+    return str(brand.id)
 
 
 def _xlsx(row_count: int = 8) -> bytes:
@@ -219,13 +254,7 @@ def _client(runtime) -> TestClient:  # type: ignore[no-untyped-def]
 def _seed_contents(client: TestClient, runtime, *, row_count: int = 8) -> tuple[UUID, ...]:  # type: ignore[no-untyped-def]
     """通过正式 Excel Import + Worker 链写入指定数量的 Content。"""
 
-    pack = client.post("/api/v1/keyword-packs", json={"name": f"Concurrency {uuid4()}"})
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert keyword.status_code == 201
+    brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -237,7 +266,7 @@ def _seed_contents(client: TestClient, runtime, *, row_count: int = 8) -> tuple[
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202

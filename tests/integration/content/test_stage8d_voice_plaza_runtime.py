@@ -20,6 +20,7 @@ from aima_ugc.bootstrap.analysis_high_throughput_planner import (
     create_high_throughput_analysis_job_terminal_callback,
 )
 from aima_ugc.bootstrap.api import create_app
+from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.export_worker import PostgresDataExportJobExecutor
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -29,6 +30,7 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.contracts.http import (
     ContentAnalysisSubmitRequest,
     ContentListQuery,
@@ -61,6 +63,7 @@ from aima_ugc.modules.analysis.tables import (
 )
 from aima_ugc.modules.content.content_cursor import InvalidContentCursor
 from aima_ugc.modules.content.tables import accounts_table, contents_table
+from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
     register_data_export_job,
@@ -70,6 +73,38 @@ from aima_ugc.platform.jobs import JobExecutionFence, JobRegistry, LeaseLostErro
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import delete, func, insert, select, update
+
+
+def _stage3_filter_brand_id(runtime, *, alias: str = "爱玛") -> str:  # type: ignore[no-untyped-def]
+    """建立或复用当前测试 Runtime 的 Stage 3 品牌过滤事实。"""
+
+    service = PostgresBrandVehicleHttpService(runtime)
+    active = service.list_brands(
+        search=None,
+        status_value="active",
+        role=None,
+        offset=0,
+        limit=200,
+    )
+    for brand in active.items:
+        if brand.display_name == alias or any(item.text == alias for item in brand.aliases):
+            return str(brand.id)
+    brand = service.create_brand(
+        BrandCreateRequest(
+            code=f"STAGE3-CONTENT-{uuid4()}",
+            display_name=f"Stage3 {alias}",
+            role="owned",
+            aliases=(alias,),
+        ),
+        principal=Principal(
+            principal_id="stage3-content-integration",
+            display_name="Stage3 Content 集成测试管理员",
+            role="administrator",
+            source="development",
+        ),
+        request_id=f"stage3-content-brand-{uuid4()}",
+    )
+    return str(brand.id)
 
 
 def _xlsx(*, text_suffix: str = "") -> bytes:
@@ -104,8 +139,12 @@ def _xlsx(*, text_suffix: str = "") -> bytes:
 
 
 def _seed_import(
-    client: TestClient, *, text_suffix: str = "", workbook: bytes | None = None
-) -> str:
+    client: TestClient,
+    runtime,
+    *,
+    text_suffix: str = "",
+    workbook: bytes | None = None,
+) -> str:  # type: ignore[no-untyped-def]
     """通过正式导入入口建立列表测试来源。"""
     pack = client.post(
         "/api/v1/keyword-packs",
@@ -122,6 +161,7 @@ def _seed_import(
         json={"keyword_pack_id": pack.json()["id"]},
     )
     assert configured.status_code == 200
+    brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",
         files=[
@@ -133,7 +173,7 @@ def _seed_import(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("keyword_pack_ids", (None, pack.json()["id"])),
+            ("brand_ids", (None, brand_id)),
         ],
     )
     assert uploaded.status_code == 202
@@ -173,7 +213,7 @@ def test_voice_plaza_global_sort_pagination_and_nulls(
         workbook.save(output)
         workbook.close()
         client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _seed_import(client, workbook=output.getvalue())
+        _seed_import(client, runtime, workbook=output.getvalue())
         worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -371,7 +411,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
     try:
         import_service = PostgresImportHttpService(runtime)
         import_client = TestClient(create_app(import_service=import_service))
-        batch_id = _seed_import(import_client)
+        batch_id = _seed_import(import_client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -589,7 +629,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             for item in reviewed_options.labels
         )
 
-        second_batch_id = _seed_import(import_client, text_suffix="，后续来源更新")
+        second_batch_id = _seed_import(import_client, runtime, text_suffix="，后续来源更新")
         assert second_batch_id != batch_id
         second_import_worker = create_job_worker(
             runtime=runtime,
@@ -657,7 +697,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
         )
     try:
         import_client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _seed_import(import_client)
+        _seed_import(import_client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -773,7 +813,7 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
         )
     try:
         client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
-        _seed_import(client)
+        _seed_import(client, runtime)
         import_worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
