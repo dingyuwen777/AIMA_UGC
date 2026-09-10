@@ -27,7 +27,7 @@ test('新 Plan 的逐平台 Search Config 经过真实 API 持久化到 PostgreS
   expect(provider).toBeTruthy()
 
   await page.goto('/collection-strategy')
-  await expect(page.getByRole('navigation', { name: '采集策略分类' })).not.toContainText('全局相关性')
+  await expect(page.getByRole('navigation', { name: '采集策略类型' })).not.toContainText('全局相关性')
   await page.getByRole('button', { name: /新建采集计划/ }).click()
   const drawer = page.getByRole('dialog', { name: '新建采集计划' })
   await drawer.getByPlaceholder('例如：爱玛新品口碑追踪').fill(`Plan Search ${suffix}`)
