@@ -1090,9 +1090,7 @@ def _apply_filters(
             )
         )
     if filters.competition_scopes:
-        competition_evidence = content_brand_evidence_table.alias(
-            "content_competition_evidence"
-        )
+        competition_evidence = content_brand_evidence_table.alias("content_competition_evidence")
         competition_brand = vehicle_brands_table.alias("content_competition_brand")
         competition_source = competition_evidence.join(
             competition_brand,

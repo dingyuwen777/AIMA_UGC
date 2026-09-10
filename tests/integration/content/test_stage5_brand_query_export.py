@@ -193,14 +193,10 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
 
         with runtime.database.engine.begin() as connection:
             title_rows = connection.execute(
-                select(contents_table.c.id, content_versions_table.c.title)
-                .join(
+                select(contents_table.c.id, content_versions_table.c.title).join(
                     content_versions_table,
                     (content_versions_table.c.content_id == contents_table.c.id)
-                    & (
-                        content_versions_table.c.version_no
-                        == contents_table.c.current_version
-                    ),
+                    & (content_versions_table.c.version_no == contents_table.c.current_version),
                 )
             ).all()
             content_by_title = {
