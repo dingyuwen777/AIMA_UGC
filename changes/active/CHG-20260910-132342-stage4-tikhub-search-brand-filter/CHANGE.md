@@ -99,7 +99,7 @@ Requirement Source：#426。
 | Contract / Generated Client | required | OpenAPI generate `--check` 与兼容校验均成功；Run/Plan `brand_ids`、兼容字段约束和 Lifecycle OpenAPI 有直接测试，Orval Client 已重新生成。 |
 | PostgreSQL Integration | required | 新增/更新测试覆盖 Plan Brand 关系及删除保护、Scheduler v2 Snapshot、无词平台拒绝、旧车型失效隔离、Worker Content/Brand Evidence 与 filtered Candidate。当前 Windows 没有可用 PostgreSQL Secret/Engine，交由最终 PR HEAD 的 PostgreSQL 18 门禁提供新鲜执行证据。 |
 | Provider trace / retry | required | 正式 Worker Fixture 直接断言 Search/Detail Request/Attempt、Raw、Candidate、计费与 Evidence；现有 Retry/Recovery/Fence 套件由最终 PR HEAD CI 全量复核。未调用真实付费 TikHub。 |
-| Browser Mock Acceptance | required | Vitest 23 files / 135 tests passed；兼容页面要求 Keyword Pack，不再受 Global Relevance 可用性阻断，车型文案明确只转换为 Brand Scope。 |
+| Browser Mock Acceptance | required | Vitest 23 files / 135 tests passed；PR CI 首轮发现一个旧 Playwright 旅程仍尝试 vehicle-only Discovery，修复后定向 Playwright 1 passed。兼容页面现在要求 Keyword Pack，不再受 Global Relevance 可用性阻断，车型只转换为 Brand Scope；最终 PR HEAD 重新执行 105 项 Browser Mock。 |
 | Real Full-stack Golden Path | required | 前端生产构建成功；涉及 PostgreSQL/浏览器服务的现有 Golden Path 由最终 PR HEAD CI 执行。 |
 | Build / Static / Governance | required | 变更 Python Ruff success；mypy 324 source files success；Alembic 单 head 为 `20260910_0045`；ESLint、TypeScript/Vue typecheck、Vite build、Contract compatibility、docs facts 与 `git diff --check` 均成功。完整 Linux CI 仍是合并门禁。 |
 | External Provider Probe | not_applicable | Stage 4 行为由冻结 Fixture/正式 Adapter 调用链证明，不需要付费 TikHub 实时可用性。 |
@@ -118,5 +118,5 @@ Requirement Source：#426。
 - [x] upstream_re_read：重新核对 Roadmap Stage 4/Exit Criteria、Issue #426、Stage 2 Resolver/Snapshot/Evidence、Stage 3 Import 过滤和当前 Collection Run/Plan/Scheduler/Worker/Batch 事实；未把 Stage 5 查询导出、Stage 6 Vue 产品化或 Stage 7 清理提前实现。
 - [x] change_coverage：R1-R7 均有实现、测试、生成物或文档证据；R8 只保留必须发生在最终 PR HEAD/合并后的交付生命周期证据并明确 `explicitly_deferred`。
 - [x] reverse_audit：按 Run/Plan 输入→Search/Filter Snapshot→Scheduler/Scope→Provider Request/Attempt/Raw/Candidate→Mapper/Canonical→Resolver→Decision/Ingestion/Evidence 反查，并核对 Batch Supplement、legacy v1、新 Contract、Plan Lifecycle、Brand 删除保护、Run 可观测字段和 Stage 6 前前端兼容入口。
-- [x] two_stage_review：A1 从 #426/Roadmap 独立重建 AC1-AC8 并检查搜索复杂度、冻结语义、三条 Resolver 分支、事务、兼容与分层测试；A2 以最终候选 diff 反向检查每个生产者/消费者和文档。Review 发现并修复目录转换并发漂移、目标平台 Search Term 静默缺失、Scheduler 单 Plan 异常中断、双 Scope 脏数据、Run 冻结 Brand 不可见、Plan→Brand 删除保护缺失及旧前端文案漂移。
+- [x] two_stage_review：A1 从 #426/Roadmap 独立重建 AC1-AC8 并检查搜索复杂度、冻结语义、三条 Resolver 分支、事务、兼容与分层测试；A2 以最终候选 diff 反向检查每个生产者/消费者和文档。Review 发现并修复目录转换并发漂移、目标平台 Search Term 静默缺失、Scheduler 单 Plan 异常中断、双 Scope 脏数据、Run 冻结 Brand 不可见、Plan→Brand 删除保护缺失及旧前端文案漂移；首轮 CI 另发现并修复一个仍提交 vehicle-only Discovery 的 Browser Mock 资产。
 - [x] unresolved_cleared：R1-R7 无 `not_satisfied`，当前无已知 P0/P1/P2 实现 Finding；本地 PostgreSQL 不可用由最终 PR HEAD PostgreSQL 18/Full-stack CI 补齐。R8 的 PR/main/归档/Roadmap/Issue 动作是交付生命周期，不属于未解决实现缺陷。

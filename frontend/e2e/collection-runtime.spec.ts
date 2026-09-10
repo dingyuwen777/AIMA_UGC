@@ -233,7 +233,7 @@ test('shows unavailable revocation evidence without offering a destructive actio
   await expect(dialog.getByRole('button', { name: '撤销本次导入', exact: true })).toHaveCount(0)
 })
 
-test('creates an all-active-brand Excel import and a vehicle-scoped discovery', async ({ page }) => {
+test('creates an all-active-brand Excel import and converts a legacy vehicle discovery scope', async ({ page }) => {
   const vehicleId = 'c2345678-1234-4678-9234-567812345678'
   await page.route('**/api/v1/vehicle-models**', (route) => route.fulfill({
     json: { items: [{ id: vehicleId, code: 'Q7', display_name: '爱玛 Q7', status: 'active', series_name: 'Q 系列', aliases: [], active_version: 1 }], total: 1, offset: 0, limit: 200 },
@@ -252,12 +252,13 @@ test('creates an all-active-brand Excel import and a vehicle-scoped discovery', 
   await dialog.getByRole('button', { name: '关闭导入数据', exact: true }).click()
   await page.getByRole('button', { name: '新建辅助补采', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
+  await drawer.getByLabel(/爱玛品牌词包/).check()
   await drawer.getByLabel(/爱玛 Q7/).check()
   await drawer.getByRole('button', { name: /小红书/ }).click()
   await drawer.getByLabel('小红书发布时间', { exact: true }).selectOption('7d')
   const discovery = page.waitForRequest((request) => request.url().endsWith('/collection-runs') && request.method() === 'POST')
   await drawer.getByRole('button', { name: '创建补采任务', exact: true }).click()
-  expect((await discovery).postDataJSON()).toMatchObject({ keyword_pack_ids: [], vehicle_model_ids: [vehicleId], platforms: [{ platform: 'xiaohongshu', search_config: { published_within: '7d' } }] })
+  expect((await discovery).postDataJSON()).toMatchObject({ keyword_pack_ids: [brandPackId], vehicle_model_ids: [vehicleId], platforms: [{ platform: 'xiaohongshu', search_config: { published_within: '7d' } }] })
 })
 
 test('centralizes runtime facts, opens Batch detail, and creates a local Campaign with all-active brands', async ({ page }) => {
