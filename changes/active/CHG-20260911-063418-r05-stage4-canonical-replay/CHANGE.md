@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-063418-r05-stage4-canonical-replay
 title: Roadmap 05 Stage 4 Canonical Replay 与 clean break 收口
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feat/r05-stage4-canonical-replay
 created: 2026-09-11
@@ -120,8 +120,8 @@ data_changes:
 | R10 | 零 legacy clean break；旧结构失败关闭且无外部重取/历史篡改 | #447 / AC10 | satisfied | Migration 0051 gate + Scope DB check；Replay 无 Provider transport；当前 lineage 创建/复用 |
 | R11 | 正式管理员 API 创建/查询/取消，无复杂页面 | #447 / AC11 | satisfied | FastAPI API/授权/404/409/422/审计测试；无页面变更 |
 | R12 | Schema/Contract/生成物/文档/容量恢复/兼容边界同步且不越界 | #447 / AC12 | satisfied | Migration/metadata、OpenAPI/Orval、Product/Blueprint/Appendix/Operations/README；线性读取与接管成本边界；本地生成/文档门禁通过 |
-| R13 | 分层验证、Completion Audit、独立 Review、exact-head CI/main fresh | #447 / AC13 | not_satisfied | 交付待完成 |
-| R14 | Change/Roadmap/Issue/分支完整收口 | #447 / AC14 | not_satisfied | merge 后完成 |
+| R13 | 分层验证、Completion Audit、独立 Review、exact-head CI/main fresh | #447 / AC13 | explicitly_deferred | 本地分层验证、Completion Audit 与独立 Review 已完成；真实 PostgreSQL 18、exact-head CI、guarded merge 与 main fresh 必须在本 Ready 提交后依次执行 |
+| R14 | Change/Roadmap/Issue/分支完整收口 | #447 / AC14 | explicitly_deferred | 原生归档、Roadmap 退出、Issue AC 写回/关闭和远程/本地分支清理只能在实现 PR 合并及 main fresh 后执行 |
 
 # 验证矩阵
 
@@ -157,23 +157,23 @@ Docs Impact 为 `full`：Roadmap 05 总退出要求把 Replay、来源、失败�
 - [x] 创建并 live reread Issue #447、最新 main 与本地任务分支
 - [x] 建立 Change、Requirement Traceability、验证矩阵和 clean-break/迁移/回滚边界
 - [x] Red 失败测试与首个本地提交/首次 push/早期 PR（`45af1a57`，PR #448）
-- [ ] Green/Refactor、分层验证、Completion Audit 与独立 Review
+- [x] Green/Refactor、本地分层验证、Completion Audit 与独立 Review
 - [ ] exact-head CI、guarded merge、main fresh、归档、Roadmap/Issue/分支收口
 
 # 完成审计
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read：2026-09-11 Ready 前重新读取 Issue #447、Roadmap 05 Stage 4/总退出条件、Blueprint 02/07、当前 Canonical/Artifact/Filter/Content/Evidence/Job/Schema/Migration/CI 事实；`origin/main@9f88537d` 未漂移，Issue/PR 仍 open。
+- [x] change_coverage：从 Issue AC1—AC14 与 Roadmap Stage 4/总退出条件逐项反查 Change、实现、测试和长期文档；R1—R12 有实现或测试证据，R13—R14 只剩必须发生在 Ready/merge 后的外部生命周期，`not_satisfied` 已清零。
+- [x] reverse_audit：从三类 Persistent Canonical 生产者反查 Replay 输入分类/来源预检，再从管理员 API→Run/Job→Reader→冻结 Resolver/Filter→Content/Evidence Owner→checkpoint/统计/取消/接管正向核对；又从 Voice Plaza、Analysis、Export、Report、车型组查询消费者反查，均继续只消费正式 Content，未形成第二套 Mapper/Filter/Writer 或下游自动触发。
+- [x] unresolved_cleared：首轮四项 P1/P2 与首次 re-review 的错误 `platform` 列均已修复并补 PostgreSQL 回归；最终独立 re-review 对 `81948282f74b835abdea198342533af1a2098805` 给出 APPROVED，无剩余 P0/P1/P2。PR 无 Conversation comment、inline review 或 submitted review；本机缺 PostgreSQL/Docker 的限制已明确转交 exact-head CI，未冒充通过。
 
 # 两阶段 Review
 
 - **需求与风险重建**：独立 Reviewer 已从 Issue #447、Roadmap 05 Stage 4/总退出与当前机器事实重建，未以本 Change 自证。
-- **实现与证据对照**：首轮审查发现四项阻断：每批从头 Reader 导致近似 O(N²)、并发同幂等键可能 409、selected Replay 覆盖范围外 Brand Evidence、TikHub 同 Run 跨 Scope 来源可混入；已分别改为每 Artifact 一次连续流式执行、事务 advisory lock、仅 merge 本次确认品牌证据、逐行同 Scope/Request/Attempt/Raw/platform/operation 校验。首次 re-review 确认前三项闭环，但发现 TikHub SQL 误从无 `platform` 列的 Provider Request 取值；现已改为真实 `Collection Scope.platform`，并新增同 Scope Search/Detail、字段漂移、未完成 Attempt、running cancel、同 Brand 旧证据替换与人工锁回归。最终 re-review 尚待执行。
+- **实现与证据对照**：首轮审查发现四项阻断：每批从头 Reader 导致近似 O(N²)、并发同幂等键可能 409、selected Replay 覆盖范围外 Brand Evidence、TikHub 同 Run 跨 Scope 来源可混入；已分别改为每 Artifact 一次连续流式执行、事务 advisory lock、仅 merge 本次确认品牌证据、逐行同 Scope/Request/Attempt/Raw/platform/operation 校验。首次 re-review 确认前三项闭环，但发现 TikHub SQL 误从无 `platform` 列的 Provider Request 取值；已改为真实 `Collection Scope.platform`，并新增同 Scope Search/Detail、字段漂移、未完成 Attempt、running cancel、同 Brand 旧证据替换与人工锁回归。最终独立 re-review 对实现候选 `81948282f74b835abdea198342533af1a2098805` 给出 APPROVED，未发现新的 P0/P1/P2。
 
 # 完成证据与状态
 
-实现与长期文档已完成第二轮修正候选，Red commit 与早期 PR #448 已建立。R1—R12 已由代码和本地测试证据满足；独立 Review 发现的四项原始阻断和首次 re-review 的错误列阻断均已修复，但最终 re-review 尚待执行。PostgreSQL 18 集成、完整 CI、Completion Audit、merge/main fresh、native archive、Roadmap/Issue/分支收口仍待完成，因此 Change 继续保持 `in_progress`，R13—R14 不满足。
+实现候选 `81948282f74b835abdea198342533af1a2098805` 已完成本地分层验证、Completion Audit 与独立两阶段 Review，最终结论 APPROVED。Change 现为 `ready_for_review`；R1—R12 satisfied，R13—R14 只对 Ready 后的 exact-head CI、merge/main fresh 和生命周期收口 explicitly deferred。生产部署、生产 Migration、TikHub/LLM 付费调用和真实业务写入均未执行。
 
-本轮本地新鲜证据：Ruff format/check、mypy（332 个源码文件）、Unit（939 passed, 8 skipped；Windows 排除 3 个 POSIX-only host preparation case）、Contract（111 passed）、API（68 passed）、OpenAPI/Orval generate-check-compat、npm ci、文档/架构/表 Owner 门禁均通过；新 PostgreSQL 测试已成功 collect。本机缺少 `.runtime/secrets/postgres_password` 且 Docker daemon 不可用，未伪造 PostgreSQL 执行结果，交由 PR exact-head CI 验证。
+本轮本地新鲜证据：Ruff format/check、mypy（332 个源码文件）、Unit（939 passed, 8 skipped；Windows 排除 3 个 POSIX-only host preparation case）、Contract（111 passed）、API（68 passed）、OpenAPI/Orval generate-check-compat、npm ci、文档/架构/表 Owner 门禁均通过；Replay 目标 12 passed，新 PostgreSQL 测试 14 collected。本机缺少 `.runtime/secrets/postgres_password` 且 Docker daemon 不可用，未伪造 PostgreSQL 执行结果，交由本 Ready HEAD 的 PR exact-head CI 验证。
