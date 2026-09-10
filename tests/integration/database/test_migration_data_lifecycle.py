@@ -1395,3 +1395,138 @@ def test_0047_refuses_incompatible_runtime_facts(
             )
     finally:
         engine.dispose()
+
+
+def test_0049_refuses_active_legacy_historical_chunk_job(
+    migration_database: str,
+) -> None:
+    """干净切换不能让新 Worker 错读已排队的旧 outcome Chunk。"""
+
+    _upgrade(migration_database, "20260911_0048")
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO jobs("
+                    "id, job_type, payload_version, payload, status, "
+                    "internal_idempotency_key, priority, attempt, max_attempts, "
+                    "timeout_seconds, progress, available_at, created_at, updated_at"
+                    ") VALUES ("
+                    ":id, 'ingestion.historical-import-chunk.v1', "
+                    "'ingestion.historical-import-chunk.v1', "
+                    '\'{"schema_version":"ingestion.historical-import-chunk.v1"}\'::jsonb, '
+                    "'queued', :key, -20, 0, 5, 3600, 0, :now, :now, :now)"
+                ),
+                {"id": uuid4(), "key": f"stage2-legacy-{uuid4().hex}", "now": _NOW},
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="活跃 ingestion.historical-import-chunk.v1 Job"):
+        _upgrade(migration_database, "20260911_0049")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260911_0048"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0049_refuses_retryable_legacy_historical_chunk(
+    migration_database: str,
+) -> None:
+    """没有活跃 Job 时也不能让可重试的旧 Chunk 穿过干净切换。"""
+
+    _upgrade(migration_database, "20260911_0048")
+    campaign_id = uuid4()
+    source_item_id = uuid4()
+    chunk_item_id = uuid4()
+    artifact_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO historical_import_campaigns("
+                    "id, client_idempotency_key, root_relative_path, recursive, "
+                    "profile_snapshot, keyword_pack_snapshot, status, created_at"
+                    ") VALUES ("
+                    ":id, :key, '.', FALSE, '{}'::jsonb, '{}'::jsonb, 'ready', :now)"
+                ),
+                {
+                    "id": campaign_id,
+                    "key": f"stage2-legacy-chunk-{campaign_id}",
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO artifacts("
+                    "id, kind, storage_backend, storage_key, content_type, encoding, "
+                    "sha256, byte_size, retention_class, storage_status, created_at, "
+                    "stored_at, linked_at"
+                    ") VALUES ("
+                    ":id, 'historical-import.chunk', 'local', :key, 'application/gzip', "
+                    "'gzip', :sha256, 1, 'raw', 'linked', :now, :now, :now)"
+                ),
+                {
+                    "id": artifact_id,
+                    "key": f"historical-import.chunk/{artifact_id}.gz",
+                    "sha256": "c" * 64,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO historical_import_campaign_items("
+                    "id, campaign_id, item_kind, relative_path, manifest_identity, "
+                    "file_size, file_mtime_ns, row_count, status, stats, created_at"
+                    ") VALUES ("
+                    ":id, :campaign_id, 'source_file', 'legacy.xlsx', :manifest, "
+                    "1, 1, 1, 'ready', '{}'::jsonb, :now)"
+                ),
+                {
+                    "id": source_item_id,
+                    "campaign_id": campaign_id,
+                    "manifest": "a" * 64,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO historical_import_campaign_items("
+                    "id, campaign_id, parent_item_id, item_kind, relative_path, "
+                    "manifest_identity, ordinal, artifact_id, sha256, row_start, row_end, "
+                    "row_count, status, stats, created_at"
+                    ") VALUES ("
+                    ":id, :campaign_id, :parent_id, 'chunk', 'legacy.xlsx', :manifest, "
+                    "0, :artifact_id, :sha256, 2, 2, 1, 'ready', '{}'::jsonb, :now)"
+                ),
+                {
+                    "id": chunk_item_id,
+                    "campaign_id": campaign_id,
+                    "parent_id": source_item_id,
+                    "artifact_id": artifact_id,
+                    "manifest": "a" * 64,
+                    "sha256": "c" * 64,
+                    "now": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="仍可执行或重试的旧 Historical Chunk"):
+        _upgrade(migration_database, "20260911_0049")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260911_0048"
+            )
+    finally:
+        engine.dispose()

@@ -39,8 +39,7 @@ def test_historical_converter_publishes_pure_canonical_and_separate_invalid_fact
     monkeypatch,
 ) -> None:
     rows = tuple(
-        ExcelImportRow(row_number=number, sheet_name="文章", values={})
-        for number in (2, 3, 4)
+        ExcelImportRow(row_number=number, sheet_name="文章", values={}) for number in (2, 3, 4)
     )
     monkeypatch.setattr(historical_chunk, "get_excel_import_profile", lambda name: object())
     monkeypatch.setattr(

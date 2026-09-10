@@ -5,6 +5,10 @@ from uuid import uuid4
 
 import pytest
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
+from aima_ugc.modules.ingestion.historical_jobs import (
+    HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
+    HistoricalImportChunkJobPayload,
+)
 from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_MAX_ATTEMPTS,
     IMPORT_JOB_PAYLOAD_VERSION,
@@ -13,10 +17,6 @@ from aima_ugc.modules.ingestion.import_job import (
     ImportJobHandler,
     ImportJobPayload,
     register_import_job,
-)
-from aima_ugc.modules.ingestion.historical_jobs import (
-    HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
-    HistoricalImportChunkJobPayload,
 )
 from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleCatalogSnapshot
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRegistry

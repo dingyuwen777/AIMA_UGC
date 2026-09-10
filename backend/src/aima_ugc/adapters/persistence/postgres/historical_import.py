@@ -486,18 +486,18 @@ class PostgresHistoricalImportRepository:
             )
         return len(rows)
 
-    def create_chunk(
+    def ensure_canonical_chunk(
         self,
         *,
         source_item: RowMapping,
-        artifact_id: UUID,
-        sha256: str,
         ordinal: int,
         row_start: int,
         row_end: int,
         row_count: int,
         stats: dict[str, object],
     ) -> UUID:
+        """先建立稳定 Chunk 父事实，允许 Canonical Writer 随后强外键绑定。"""
+
         existing = (
             self._session.execute(
                 select(historical_import_campaign_items_table).where(
@@ -511,12 +511,12 @@ class PostgresHistoricalImportRepository:
         )
         if existing is not None:
             if (
-                existing["sha256"] != sha256
-                or existing["row_start"] != row_start
+                existing["row_start"] != row_start
                 or existing["row_end"] != row_end
                 or existing["row_count"] != row_count
+                or existing["stats"] != stats
             ):
-                raise HistoricalCampaignConflict("同一 Chunk ordinal 已绑定到不同不可变内容")
+                raise HistoricalCampaignConflict("同一 Chunk ordinal 已绑定到不同来源行事实")
             return cast(UUID, existing["id"])
         item_id = uuid4()
         self._session.execute(
@@ -528,17 +528,51 @@ class PostgresHistoricalImportRepository:
                 relative_path=source_item["relative_path"],
                 manifest_identity=source_item["manifest_identity"],
                 ordinal=ordinal,
-                artifact_id=artifact_id,
-                sha256=sha256,
                 row_start=row_start,
                 row_end=row_end,
                 row_count=row_count,
-                status="ready",
+                status="snapshotting",
                 stats=stats,
                 created_at=func.clock_timestamp(),
             )
         )
         return item_id
+
+    def bind_chunk_canonical_artifact(
+        self,
+        *,
+        item_id: UUID,
+        artifact_id: UUID,
+        sha256: str,
+    ) -> None:
+        """把已 linked 的唯一 Canonical Artifact 收敛为可调度 Chunk。"""
+
+        bound = self._session.execute(
+            update(historical_import_campaign_items_table)
+            .where(
+                historical_import_campaign_items_table.c.id == item_id,
+                historical_import_campaign_items_table.c.item_kind == "chunk",
+                historical_import_campaign_items_table.c.status == "snapshotting",
+                historical_import_campaign_items_table.c.artifact_id.is_(None),
+            )
+            .values(
+                artifact_id=artifact_id,
+                sha256=sha256,
+                status="ready",
+            )
+            .returning(historical_import_campaign_items_table.c.id)
+        ).scalar_one_or_none()
+        if bound is not None:
+            return
+        current = self.get_item(item_id)
+        if (
+            current is not None
+            and current["artifact_id"] == artifact_id
+            and current["sha256"] == sha256
+            and current["status"] in {"ready", "queued", "running", "succeeded"}
+        ):
+            return
+        raise HistoricalCampaignConflict("Historical Chunk 已绑定到其他 Artifact 或状态不合法")
 
     def bind_source_artifact(
         self,

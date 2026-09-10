@@ -19,7 +19,7 @@ from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 
 HISTORICAL_DISCOVER_JOB_TYPE = "ingestion.historical-discover.v1"
 HISTORICAL_SNAPSHOT_JOB_TYPE = "ingestion.historical-snapshot.v1"
-HISTORICAL_IMPORT_CHUNK_JOB_TYPE = "ingestion.historical-import-chunk.v1"
+HISTORICAL_IMPORT_CHUNK_JOB_TYPE = "ingestion.historical-import-chunk.v2"
 HISTORICAL_JOB_PRIORITY = -20
 HISTORICAL_JOB_MAX_ATTEMPTS = 5
 HISTORICAL_DISCOVER_TIMEOUT_SECONDS = 1800
@@ -44,8 +44,8 @@ class HistoricalSnapshotJobPayload(BaseModel):
 class HistoricalImportChunkJobPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal["ingestion.historical-import-chunk.v1"] = (
-        "ingestion.historical-import-chunk.v1"
+    schema_version: Literal["ingestion.historical-import-chunk.v2"] = (
+        "ingestion.historical-import-chunk.v2"
     )
     batch_id: UUID
     chunk_item_id: UUID

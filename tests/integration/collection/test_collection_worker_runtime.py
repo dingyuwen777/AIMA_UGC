@@ -201,7 +201,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "ingestion.import-excel.v2",
             "ingestion.historical-discover.v1",
             "ingestion.historical-snapshot.v1",
-            "ingestion.historical-import-chunk.v1",
+            "ingestion.historical-import-chunk.v2",
             "analysis.content-label.v1",
             "analysis.content-run-plan.v1",
             "reporting.content-export-excel.v1",

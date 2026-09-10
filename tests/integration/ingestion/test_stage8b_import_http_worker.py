@@ -6,10 +6,14 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
+    PostgresArtifactMetadataRepository,
+)
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
+from aima_ugc.bootstrap import import_worker as import_worker_module
 from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
@@ -45,7 +49,12 @@ from aima_ugc.modules.vehicles.tables import (
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
-from aima_ugc.platform.storage.canonical import CANONICAL_CONTENT_ARTIFACT_KIND
+from aima_ugc.platform.storage import ArtifactSizeLimitError
+from aima_ugc.platform.storage.canonical import (
+    CANONICAL_CONTENT_ARTIFACT_KIND,
+    CanonicalArtifactParent,
+    CanonicalArtifactReader,
+)
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -191,9 +200,9 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
             )
             persisted_job = connection.execute(select(jobs_table)).mappings().one()
             persisted_artifacts = connection.execute(select(artifacts_table)).mappings().all()
-            canonical_link = connection.execute(
-                select(canonical_artifact_links_table)
-            ).mappings().one()
+            canonical_link = (
+                connection.execute(select(canonical_artifact_links_table)).mappings().one()
+            )
         assert persisted_batch["job_id"] == persisted_job["id"]
         assert persisted_batch["status"] == "succeeded"
         assert len(persisted_artifacts) == 2
@@ -242,6 +251,206 @@ def test_unavailable_source_artifact_fails_job_and_batch_without_content(tmp_pat
         assert job.json()["error_code"] == "invalid_import"
         with runtime.database.engine.begin() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == 0
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_oversized_canonical_fails_job_and_batch_without_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_oversized(
+        self: object,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        del self, args, kwargs
+        raise ArtifactSizeLimitError("fixture canonical size limit")
+
+    monkeypatch.setattr(import_worker_module.CanonicalArtifactWriter, "write", reject_oversized)
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    _truncate(runtime)
+    try:
+        client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
+        created = _configure_and_upload(client, runtime)
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage2-oversized-canonical",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+
+        assert worker.run_once() is True
+        batch = client.get(f"/api/v1/import-batches/{created.json()['batch_id']}")
+        job = client.get(f"/api/v1/jobs/{created.json()['job_id']}")
+        assert batch.json()["status"] == batch.json()["stage"] == "failed"
+        assert batch.json()["error_summary"] == "invalid_import"
+        assert job.json()["status"] == "failed"
+        assert job.json()["error_code"] == "invalid_import"
+        with runtime.database.engine.begin() as connection:
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 0
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_unmatched_single_import_is_retained_in_canonical_before_filter(tmp_path: Path) -> None:
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    _truncate(runtime)
+    try:
+        client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
+        brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+            BrandCreateRequest(
+                code="AIMA-STAGE2-FILTERED",
+                display_name="爱玛",
+                role="owned",
+                aliases=("爱玛",),
+            ),
+            principal=_principal(),
+            request_id="stage2-filtered-brand",
+        )
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "文章"
+        sheet.append(["媒体名称（中文）", "标题", "内文", "原文链接"])
+        sheet.append(
+            [
+                "小红书",
+                "完全无关的合法内容",
+                "不命中当前品牌车型目录",
+                "https://www.xiaohongshu.com/explore/stage2-filtered",
+            ]
+        )
+        payload = BytesIO()
+        workbook.save(payload)
+        workbook.close()
+        created = client.post(
+            "/api/v1/import-batches",
+            files=[
+                (
+                    "file",
+                    (
+                        "filtered.xlsx",
+                        payload.getvalue(),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ),
+                ),
+                ("brand_ids", (None, str(brand.id))),
+            ],
+        )
+        assert created.status_code == 202
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage2-filtered-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert worker.run_once() is True
+
+        batch_id = UUID(created.json()["batch_id"])
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                artifact = PostgresArtifactMetadataRepository(session).get_canonical_for_parent(
+                    CanonicalArtifactParent(processing_import_batch_id=batch_id)
+                )
+        finally:
+            session.close()
+        assert artifact is not None
+        retained = tuple(CanonicalArtifactReader(store=runtime.artifact_store).read(artifact))
+        assert [item.external_content_id for item in retained] == ["stage2-filtered"]
+        with runtime.database.engine.begin() as connection:
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 0
+            batch = (
+                connection.execute(
+                    select(processing_import_batches_table).where(
+                        processing_import_batches_table.c.id == batch_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        assert batch["stats"]["rows_seen"] == 1
+        assert batch["stats"]["rows_filtered_out"] == 1
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_import_retry_after_filter_io_failure_reuses_canonical(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    _truncate(runtime)
+    original_convert = import_worker_module.convert_excel_to_canonical_jsonl
+    original_filter = import_worker_module.filter_canonical_content_by_brand_vehicle_jsonl
+    conversion_calls = 0
+
+    def track_conversion(**kwargs):
+        nonlocal conversion_calls
+        conversion_calls += 1
+        return original_convert(**kwargs)
+
+    def fail_filter(**kwargs):
+        del kwargs
+        raise OSError("simulated filter I/O failure")
+
+    monkeypatch.setattr(
+        import_worker_module,
+        "convert_excel_to_canonical_jsonl",
+        track_conversion,
+    )
+    monkeypatch.setattr(
+        import_worker_module,
+        "filter_canonical_content_by_brand_vehicle_jsonl",
+        fail_filter,
+    )
+    try:
+        client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
+        created = _configure_and_upload(client, runtime)
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage2-canonical-retry-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert worker.run_once() is True
+        monkeypatch.setattr(
+            import_worker_module,
+            "filter_canonical_content_by_brand_vehicle_jsonl",
+            original_filter,
+        )
+        assert worker.run_once() is True
+
+        assert conversion_calls == 1
+        with runtime.database.engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(artifacts_table)
+                    .where(artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND)
+                )
+                == 1
+            )
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
+        assert (
+            client.get(f"/api/v1/import-batches/{created.json()['batch_id']}").json()["status"]
+            == "succeeded"
+        )
     finally:
         _truncate(runtime)
         runtime.close()
