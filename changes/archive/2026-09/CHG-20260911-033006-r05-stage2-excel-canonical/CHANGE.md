@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-033006-r05-stage2-excel-canonical
 title: Roadmap 05 Stage 2 Excel 持久 Canonical
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feat/r05-stage2-excel-canonical
 created: 2026-09-11
