@@ -78,19 +78,19 @@ Requirement Source：#431。
 | R4 | Cursor/query hash 包含新增完整筛选快照并拒绝跨筛选复用 | #431 / AC4 | satisfied | `_query_hash` 对完整 `ContentFilterSnapshot` 序列化；Contract 回归证明 Scope 改变后旧 Cursor 解码失败，FastAPI 测试证明重复多选参数完整进入 Query。 |
 | R5 | Export 独立输出 Brand/Role/Competition/Vehicle 且保留 `matched_keywords` 语义 | #431 / AC5 | satisfied | Column Catalog v2 新增四个独立可选列且默认列不变；Reporting 按冻结 Version 读取 Evidence；共享 Exporter 输出中文角色/竞品范围。Unit 与 PostgreSQL Workbook 测试分别覆盖字段值和版本推进后冻结结果。 |
 | R6 | OpenAPI/Orval 与兼容检查无漂移 | #431 / AC6 | satisfied | Pydantic、`openapi.json`、Export JSON Schema 与 generated TypeScript Client 已由正式 generator 同步；本轮 generate `--check` 与 compatibility 均退出 0。 |
-| R7 | owned/competitor/mixed/other/none、Brand/Vehicle 交集、merge 与版本冻结有直接证据 | #431 / AC7 | satisfied | `tests/integration/content/test_stage5_brand_query_export.py` 通过正式 Import/Owner 写入五类内容，构造 merged Vehicle 后验证交集、四消费者集合、冻结 v1 后推进 v2 及实际 Workbook；本机无 PostgreSQL/Docker，测试运行结果由当前 PR HEAD PostgreSQL 18 CI 补齐，未把本地静态审查写成运行成功。 |
-| R8 | L3 Completion Audit、Review、PR/main CI、归档、Roadmap 与 Issue 收口 | #431 / AC8 | explicitly_deferred | 上游重读、Completion Audit 与候选实现 Deep Review 已完成；PR HEAD PostgreSQL/Full-stack/CI、CI 后 re-review、expected-head merge、main fresh CI、原生归档、Roadmap 和 Issue 收口仍是交付生命周期后置门禁。 |
+| R7 | owned/competitor/mixed/other/none、Brand/Vehicle 交集、merge 与版本冻结有直接证据 | #431 / AC7 | satisfied | `tests/integration/content/test_stage5_brand_query_export.py` 通过正式 Import/Owner 写入五类内容，构造 merged Vehicle 后验证交集、四消费者集合、冻结 v1 后推进 v2 及实际 Workbook；PR Run `34464248342` 的 PostgreSQL 18 Content 套件 59 passed，完整五组 PostgreSQL 套件分别为 55/13/96/59/28 passed。 |
+| R8 | L3 Completion Audit、Review、PR/main CI、归档、Roadmap 与 Issue 收口 | #431 / AC8 | explicitly_deferred | 上游重读、Completion Audit、最终候选 Deep Review 与 PR Run `34464248342` 的 CI/Compose/Tooling 已完成；证据记录提交后的最终 PR HEAD CI、expected-head merge、main fresh CI、原生归档、Roadmap 和 Issue 收口仍是交付生命周期后置门禁。 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Contract / Unit | required | Red 提交 `1edcfd30` 的目标测试在收集期因缺少新 Contract 失败；Green 目标集 36 passed，完整 Contract 112 passed。完整 Unit 在 Windows 为 916 passed / 8 skipped，另 3 个既有 Linux host-preparation 用例因 `os.geteuid/os.chown` 不存在失败，交由 Linux CI 复核。 |
-| PostgreSQL Integration | required | 新测试直接覆盖当前版本 Evidence、五种 Scope、Brand/Vehicle AND、merged Vehicle、四消费者集合与 Export 冻结版本。当前 Windows 无 PostgreSQL Secret/Engine 且 Docker daemon 不可用；当前 PR HEAD PostgreSQL 18 CI 是运行证据门禁。 |
+| PostgreSQL Integration | required | 新测试直接覆盖当前版本 Evidence、五种 Scope、Brand/Vehicle AND、merged Vehicle、四消费者集合与 Export 冻结版本。PR Run `34464248342` 在 PostgreSQL 18.4 上迁移空库到 `20260910_0045`，migration probe 1 passed，database/jobs/collection/content/ingestion 分别 55/13/96/59/28 passed。 |
 | API / Generated Client | required | 完整 API 60 passed；OpenAPI generator `--check`、compatibility、TypeScript generated client、前端 typecheck 均成功。 |
-| Browser Mock Acceptance | required | Vitest 23 files / 135 tests passed；Stage 5 不提前实现 Vue 产品化，现有 Voice Plaza Mock 已同步新增 required response 字段。Playwright/真实服务回归由 PR CI 执行。 |
-| Real Full-stack Golden Path | required | Vite 生产构建成功；PR CI 在 PostgreSQL 18 与真实 API/前端组合上复核现有旅程。 |
-| Static / Build / Governance | required | Ruff check、全仓 Ruff format check、mypy 324 source files、ESLint、Vue/TypeScript typecheck、Vite build、docs facts/check、契约检查与 `git diff --check` 成功。Deep Review 发现的格式门禁已在 `9e867e61` 修复。 |
+| Browser Mock Acceptance | required | 本地 Vitest 23 files / 135 tests passed；Stage 5 不提前实现 Vue 产品化，现有 Voice Plaza Mock 已同步新增 required response 字段。PR Run `34464248342` 的完整前端 Unit/Build/Browser Mock 通过。 |
+| Real Full-stack Golden Path | required | 本地 Vite 生产构建成功；PR Run `34464248342` 在真实 API/Worker/PostgreSQL/浏览器组合上 14 passed。 |
+| Static / Build / Governance | required | Ruff check、全仓 Ruff format check、mypy 324 source files、ESLint、Vue/TypeScript typecheck、Vite build、docs facts/check、契约检查与 `git diff --check` 成功。Deep Review 发现的格式门禁已在 `9e867e61` 修复；PR Run `34464248342` 的 CI Gate、Compose Golden Path 与 Linux/Windows Tooling 全部成功。 |
 | External Provider Probe | not_applicable | Stage 5 只读现有 PostgreSQL 事实，不调用付费 Provider。 |
 | Docs / Delivery | required | 同步 API/导出长期事实；PR/main CI、原生归档、Roadmap 状态和 Issue Closure 后置完成。 |
 
@@ -107,5 +107,5 @@ Requirement Source：#431。
 - [x] upstream_re_read：重新读取 Issue #431、Roadmap Stage 5、Brand/Vehicle 表与 Owner、Content Query/HTTP、Analysis/Export 冻结入口、Reporting/Excel、生成物、测试和长期文档；未提前实施 Stage 6 Vue 或 Stage 7 重分类/清理。
 - [x] change_coverage：逐条核对 R1-R7 的实现、测试、生成物和文档证据；R8 只保留必须发生在 PR HEAD/合并后的生命周期动作。
 - [x] reverse_audit：按 Current Version Brand/Vehicle Evidence → List/Detail → Count → Analysis Query Target → Export Query Target → Frozen Version Reporting/Workbook，以及 Pydantic → OpenAPI/JSON Schema → generated Client 反查；确认 selected target、默认相关性、来源可见性、Vehicle merge 和默认 Export 列未漂移。
-- [x] two_stage_review：Deep Review Target 为 `7a44d3656c27a93c229d1e519a0d47e11cdbf3f1...9e867e61`。A1 从 #431/Roadmap 独立重建 AC1-AC8 与 Contract/兼容/冻结/证据风险；A2 沿四消费者与 Export 反查最终候选 diff、测试和文档。Review 发现全量 `ruff format --check` 会失败，已以机械格式提交修复；当前无已知 P0/P1/P2 实现 Finding。PR CI 后仍需基于最终 HEAD re-review。
-- [x] unresolved_cleared：R1-R7 无 `not_satisfied`；本机 PostgreSQL/Real Full-stack 未运行的环境边界已明确，并由当前 PR HEAD required CI 补证。R8 的 CI、合并、main 验证、归档、Roadmap 和 Issue 动作是后置交付门禁，不冒充已完成。
+- [x] two_stage_review：Deep Review Target 为 `7a44d3656c27a93c229d1e519a0d47e11cdbf3f1...c35fb8f056c872f76a578aca45ea73ca55bedc38`，current base 未漂移。A1 从 #431/Roadmap 独立重建 AC1-AC8 与 Contract/兼容/冻结/证据风险；A2 沿四消费者与 Export 反查最终候选 diff、测试和文档。Review 发现并修复全量 `ruff format --check` 失败；首轮 PostgreSQL CI 又证明测试错误地期望 Resolver 为同一 Brand 同时保留 Vehicle 派生与 Alias 重复 Evidence，已按生产去重语义修正并在直接 Alias 内容补断言。Run `34464248342` 复核全绿，当前无已知 P0/P1/P2 实现 Finding。
+- [x] unresolved_cleared：R1-R7 无 `not_satisfied`；本机 PostgreSQL 不可用的环境边界已由 PR Run `34464248342` 的 PostgreSQL 18 与 Real Full-stack 证据补齐。R8 的最终 HEAD CI、合并、main 验证、归档、Roadmap 和 Issue 动作是后置交付门禁，不冒充已完成。
