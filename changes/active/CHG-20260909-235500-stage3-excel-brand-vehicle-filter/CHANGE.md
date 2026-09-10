@@ -36,6 +36,7 @@ affected_paths:
   - frontend/src/features/import-batches
   - frontend/src/generated/api/client.ts
   - frontend/e2e
+  - frontend/e2e-fullstack
   - scripts/performance/benchmark_stage12_historical.py
   - tests/api
   - tests/contracts
@@ -73,7 +74,7 @@ Requirement Source：#422。
 | R4 | 新旧 Job/Campaign 显式版本兼容，升级前 queued/running 工作不被错读 | #422 / AC4 | satisfied | `ingestion.import-excel.v1/v2` 双注册；同一 `PostgresImportJobExecutor` 保留 legacy v1 与 v2 分支；Historical 按 Snapshot schema 和 `historical-canonical-row.v1/v2` 配对解释；Worker Registry 测试同时约束 v1/v2。 |
 | R5 | retry/replay 幂等，任务创建后目录变化不改变冻结解释 | #422 / AC5 | satisfied | v2 Worker 始终从 Batch/Campaign 读取冻结 Snapshot；单文件覆盖 Lease fencing/retry、目录 alias/车型归属漂移、重复内容与人工锁；Historical 覆盖 source-change fail-closed、技术 retry、跨 chunk duplicate、取消和 lease takeover。 |
 | R6 | imports_test/debug 继续复用生产能力，不复制 Resolver，不增加 Provider Probe | #422 / AC6 | satisfied | 本变更未新增 TikHub/LLM Probe，也未在调试目录复制 Resolver；`imports_test` 保留现有离线清洗用途，正式 Excel 创建、转换、Canonical、Ingestion 能力继续来自生产模块。 |
-| R7 | Contract、生成物和事实文档同步，不越界 Stage 4/6，不升级依赖 | #422 / AC7 | satisfied | 公共请求 Contract 在既有 `contracts/http.py` 单点维护，OpenAPI/TypeScript Client 由正式 generator 同步；Blueprint、API、Appendix 与模块 README 已改为 `brand_ids/all_active`、Search N/A、v2/legacy 和 Evidence 事实。取消、撤销、多范围与容量基准资产已从旧 `keyword_pack_ids` 迁移到真实 Brand Catalog + `brand_ids`。无 Manifest/lock/Migration/Provider Search 改动；前端只完成当前入口兼容接线并说明 Stage 6 才提供品牌范围选择 UI；最终候选没有 `.github` workflow 修改。 |
+| R7 | Contract、生成物和事实文档同步，不越界 Stage 4/6，不升级依赖 | #422 / AC7 | satisfied | 公共请求 Contract 在既有 `contracts/http.py` 单点维护，OpenAPI/TypeScript Client 由正式 generator 同步；Blueprint、API、Appendix 与模块 README 已改为 `brand_ids/all_active`、Search N/A、v2/legacy 和 Evidence 事实。取消、撤销、多范围、容量基准和真实全栈资产已从旧 `keyword_pack_ids/vehicle_model_ids` 迁移到真实 Brand Catalog + `brand_ids`；关键词包只保留相关性配置与既有产品关系验收。无 Manifest/lock/Migration/Provider Search 改动；前端只完成当前入口兼容接线并说明 Stage 6 才提供品牌范围选择 UI；最终候选没有 `.github` workflow 修改。 |
 | R8 | Completion Audit、两阶段 Review、PR HEAD CI、expected-head merge、main fresh CI、原生归档与 Roadmap/Issue 收口 | #422 / AC8 | explicitly_deferred | 上游重读、Completion Audit 与两阶段实现 Review 已完成，发现的重复 Contract、错误 409 表达、测试辅助重复及冻结证据 live 校验均已修复。最终 PR HEAD 全量 CI、expected-head merge、main fresh CI、Change Archive、Roadmap 状态提交与 Issue #422 关闭属于合并生命周期后置门禁。 |
 
 # Validation Matrix
@@ -82,10 +83,10 @@ Requirement Source：#422。
 | --- | --- | --- |
 | Unit | required | `tests/unit/test_brand_vehicle_resolver.py`：8 passed；覆盖 Resolver 原有语义、Filter Snapshot JSON round-trip、JSONL 生产 Filter。 |
 | Contract / API / Generated Client | required | 本轮 `tests/contracts` 107 passed、`tests/api` 59 passed；Stage 3 定向 Contract/API 33 passed；OpenAPI generate/check 和 compatibility 均成功，Orval Client 已重新生成。 |
-| PostgreSQL Integration | required | 前序正式 GitHub runner `34383852063`：Resolver 6/6、Historical Worker 11/11；Run `34425486728`：Content PostgreSQL 58/58。PR Run `34433881961` 提供迁移前 Red：21 passed / 7 failed，失败均来自取消、撤销、多词包和容量基准仍提交已删除的 `keyword_pack_ids`；本轮已统一改为真实 Brand Catalog + `brand_ids`，并新增共享测试目录夹具。当前 Windows 缺少 `.runtime/secrets/postgres_password`，本地 PostgreSQL 套件只到收集 41 tests；最终 PR HEAD 的 PostgreSQL 18 门禁必须提供新鲜 Green。 |
+| PostgreSQL Integration | required | 前序正式 GitHub runner `34383852063`：Resolver 6/6、Historical Worker 11/11；Run `34425486728`：Content PostgreSQL 58/58。PR Run `34433881961` 提供迁移前 Red：21 passed / 7 failed；修复旧请求资产后，Run `34435514442` 的 PostgreSQL Integration 已成功。当前 Windows 缺少 `.runtime/secrets/postgres_password`，本地 PostgreSQL 套件只到收集 41 tests；最终 PR HEAD 仍需重新通过 PostgreSQL 18 门禁。 |
 | Frontend static / unit / build | required | 本轮 ESLint success、Vue/TypeScript + Vite build success、Vitest 23 files / 134 tests passed。 |
 | Browser Mock Acceptance | required | 本轮 `collection-runtime`、`excel-import-submit-state`、`historical-migration` 共 26 passed；请求断言覆盖 `brand_ids`、旧字段不存在及 Stage 4 Collection Discovery 既有语义保持。 |
-| Real Full-stack | required | Stage 8F seed 已迁移为真实 Brand Catalog + Stage 3 `brand_ids` 导入；最终 PR HEAD `Real Full-stack Golden Path` 必须成功。 |
+| Real Full-stack | required | PR Run `34435514442` 提供迁移前 Red：8 passed / 6 failed，失败定位为四个 Playwright 文件仍提交 `keyword_pack_ids/vehicle_model_ids` 或选择已移除的关键词包控件。当前候选已统一改为 Brand Catalog + `brand_ids/all_active`，并以共享 helper 建立真实品牌前置；本轮 ESLint 与 14 个 Full-stack 用例发现成功，最终 PR HEAD `Real Full-stack Golden Path` 必须提供新鲜 Green。 |
 | Static / Architecture / Governance | required | Ruff、mypy 324 source files、architecture、table ownership、Secret scan、docs facts/navigation、Change/Issue/PR governance 均成功；完整 Unit 为 909 passed / 8 skipped，另 3 个 Linux host-preparation 用例因 Windows 无 `os.geteuid/os.chown` 失败，交由 Linux PR CI 验证。 |
 | External Provider Probe | not_applicable | Stage 3 不调用 TikHub、LLM 或 Embedding；真实 Provider 不是本 Stage 验收条件。 |
 | Docs / Delivery | required | Blueprint/API/Appendix/模块 README、#422、Completion Audit、PR/main CI、expected-head merge、原生 Change 归档与合并后 Roadmap 状态收口。 |

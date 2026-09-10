@@ -42,8 +42,7 @@ async function createKeywordPack(request: APIRequestContext, suffix: string): Pr
 async function uploadVehicleContent(
   request: APIRequestContext,
   fixturePath: string,
-  packId: string,
-  vehicleId: string,
+  brandId: string,
 ): Promise<void> {
   const created = await request.post('/api/v1/import-batches', {
     multipart: {
@@ -52,8 +51,7 @@ async function uploadVehicleContent(
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         buffer: await readFile(fixturePath),
       },
-      keyword_pack_ids: packId,
-      vehicle_model_ids: vehicleId,
+      brand_ids: brandId,
     },
   })
   expect(created.status()).toBe(202)
@@ -120,7 +118,7 @@ async function contentIdBySearch(request: APIRequestContext, search: string): Pr
   return item!.id
 }
 
-test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实闭环', async ({ page, request }) => {
+test('车型、词包关联、品牌范围 Excel 匹配、声音广场筛选与详情形成真实闭环', async ({ page, request }) => {
   const fixturePath = process.env.AIMA_ADMIN_PRODUCT_EXCEL_FIXTURE
   expect(fixturePath, 'AIMA_ADMIN_PRODUCT_EXCEL_FIXTURE 必须指向车型验收 Fixture').toBeTruthy()
   const suffix = Date.now().toString()
@@ -164,7 +162,7 @@ test('车型、词包、Excel 匹配、声音广场筛选与详情形成真实�
     page.getByRole('group', { name: /关联车型/ }).getByLabel(new RegExp(displayName)),
   ).toBeChecked()
 
-  await uploadVehicleContent(request, fixturePath!, pack.id, vehicle!.id)
+  await uploadVehicleContent(request, fixturePath!, brand.id)
 
   await page.getByRole('button', { name: '操作记录', exact: true }).click()
   const auditRow = page.getByRole('row').filter({ hasText: '新增车型' }).first()

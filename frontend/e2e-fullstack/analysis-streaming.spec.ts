@@ -1,19 +1,17 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
+import { ensureStage3FilterBrand } from './stage3-brand-support'
 
 test('从页面提交两条内容并通过真实 Worker 保存两份合法打标结果', async ({ page, request }) => {
   const ordinaryFixture = process.env.AIMA_STAGE12_ORDINARY_FIXTURE
   expect(ordinaryFixture, '需要既有 Full-stack Fixture 生成器的输出目录').toBeTruthy()
   const fixture = resolve(dirname(ordinaryFixture!), 'analysis-streaming.xlsx')
-  const pack = await request.post('/api/v1/keyword-packs', {
-    data: { name: `并发验收 ${Date.now()}`, keywords: [{ text: '爱玛', priority: 10, enabled: true }] },
-  })
-  expect(pack.status()).toBe(201)
+  const brand = await ensureStage3FilterBrand(request)
   const uploaded = await request.post('/api/v1/import-batches', {
     multipart: {
       file: { name: 'analysis-streaming.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: await readFile(fixture) },
-      keyword_pack_ids: (await pack.json()).id,
+      brand_ids: brand.id,
     },
   })
   expect(uploaded.status()).toBe(202)
