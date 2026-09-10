@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-015500-r05-stage1-canonical-artifact
 title: Roadmap 05 Stage 1 Canonical Artifact 基础
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feat/r05-stage1-canonical-artifact
 created: 2026-09-11
