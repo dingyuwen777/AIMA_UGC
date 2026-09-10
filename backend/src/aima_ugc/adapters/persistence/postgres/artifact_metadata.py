@@ -162,7 +162,7 @@ class PostgresArtifactMetadataRepository:
         self,
         parent: CanonicalArtifactParent,
     ) -> ArtifactRecord | None:
-        """读取一个 Stage 2 父级已经原子绑定的唯一 Canonical Artifact。"""
+        """读取一个已接入父级原子绑定的唯一 Canonical Artifact。"""
 
         parent_values = {
             "processing_import_batch_id": parent.processing_import_batch_id,

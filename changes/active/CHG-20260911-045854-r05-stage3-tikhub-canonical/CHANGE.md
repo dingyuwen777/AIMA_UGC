@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-045854-r05-stage3-tikhub-canonical
 title: Roadmap 05 Stage 3 TikHub 持久 Canonical
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feat/r05-stage3-tikhub-canonical
 created: 2026-09-11
@@ -102,14 +102,18 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | Discovery 固定为 Raw/Candidate/Mapper/Detail final→Artifact→Reader→Filter→Existing Ingestion | https://github.com/dingyuwen777/AIMA_UGC/issues/444#AC1 | not_satisfied | 待实现与测试 |
-| R2 | Search match 与 Detail match 保存正确 final Canonical | https://github.com/dingyuwen777/AIMA_UGC/issues/444#AC2,AC3 | not_satisfied | 待实现与测试 |
-| R3 | Detail miss filtered、重复 identity 与多 Brand/Vehicle 的合法 observation 仍保留 | https://github.com/dingyuwen777/AIMA_UGC/issues/444#AC4,AC5,AC6 | not_satisfied | 待实现与测试 |
-| R4 | retry/recovery/cancel/takeover 复用唯一 linked Artifact，保持 Fence 与 Content 幂等 | https://github.com/dingyuwen777/AIMA_UGC/issues/444#AC7 | not_satisfied | 待实现与测试 |
-| R5 | invalid 不伪造 Canonical，Raw/Candidate/error ledger 保持可追溯 | https://github.com/dingyuwen777/AIMA_UGC/issues/444#AC8 | not_satisfied | 待实现与测试 |
-| R6 | 不改变 Provider/费用/Raw/分页/Candidate/Detail 决策，且不增加真实请求 | https://github.com/dingyuwen777/AIMA_UGC/issues/444#AC9 | not_satisfied | 待实现与回归 |
-| R7 | 复用真实 Collection 父级、共享 Artifact 生命周期，不建立第二套系统 | https://github.com/dingyuwen777/AIMA_UGC/issues/444#AC10 | not_satisfied | 待实现、Schema/Migration 与架构审查 |
-| R8 | 分层验证、Review、PR/main/archive/Roadmap/Issue 完整闭环，且不执行非目标 | https://github.com/dingyuwen777/AIMA_UGC/issues/444#AC11,AC12 | not_satisfied | 待生命周期完成 |
+| R1 | Discovery 固定为 Raw/Candidate/Mapper/Detail final→Artifact→Reader→Filter→Existing Ingestion | #444 / AC1 | satisfied | `collection_scope.py` 先完成页面 Search Mapper 与必要 Detail fallback，再调用共享 Writer/Reader；`_process_search_content()` 只接收 Reader 返回且与确定性 Mapper 输出相等的 final Canonical。 |
+| R2 | Search match 保存 Search-derived final Canonical，Filter 消费 Reader 输出 | #444 / AC2 | satisfied | 参数化 PostgreSQL 工作流的“脱敏”场景断言两条重复行均保留 Search Attempt Source；目标 Unit 证明 Filter 输入来自 Writer 后的 Reader 返回值。 |
+| R3 | Search miss→Detail match 保存 Detail-derived final Canonical并保持 Content 收敛 | #444 / AC3 | satisfied | 参数化工作流的“图文”场景断言 Artifact 行保留实际 Detail Attempt Source；Decision Bridge 证明 Search 与全部 Detail Candidate 仍收敛为同一 Content。 |
+| R4 | Detail miss 的 final Canonical 仍持久化，随后 filtered 且不进入 Content | #444 / AC4 | satisfied | Detail miss Unit 证明 final Canonical 形成后才记录 Search/Detail Candidate filtered；同一 final 输入通过共用页面 Writer/Reader 边界。 |
+| R5 | 多 Brand/Vehicle Evidence 保持冻结 Snapshot、Brand role 与 Filter 语义 | #444 / AC5 | satisfied | 新层只序列化/反序列化同一 Canonical，仍把同一冻结 Snapshot 与完整 `BrandVehicleResolution` 交给 Content Owner；现有多品牌 Resolver 回归在完整 Unit 中通过。 |
+| R6 | 重复 Content identity 的合法 observation 保留，Existing Dedup 继续幂等收敛 | #444 / AC6 | satisfied | PostgreSQL 工作流为同一 Search identity 放入两行并断言 Artifact 两行都存在、最终 Content 只有一个。 |
+| R7 | retry/recovery/cancel/takeover 复用唯一 linked Artifact，保持 Fence 与 Content 幂等 | #444 / AC7 | satisfied | Provider Attempt partial unique index + 先查/竞争后重读；目标 Unit 证明匹配 Artifact 直接复用、漂移失败关闭；现有 Raw takeover、取消、Fence、Content 幂等回归保留且所有 Executor 装配已接入共享 Store。竞争产生的未绑定 stored 副本沿用既有 orphan cleanup。 |
+| R8 | Mapper invalid 不伪造 Canonical，Raw/Candidate/error ledger 保持可追溯 | #444 / AC8 | satisfied | Search/Detail Mapper 的 `record_candidate_failure(... result="invalid")` 边界未移动，Writer 只接受已构造的 `CanonicalContentV1`；既有 Mapper/Candidate 失败回归继续通过。 |
+| R9 | 不改变 Provider/费用/Raw/分页/Candidate/Detail 决策，且不增加真实请求 | #444 / AC9 | satisfied | 实现只拆分 prepare/process 并在两者间接入 Artifact；Provider dispatch/operation/pricing/Raw/pagination 未改。工作流固定断言 Search+Detail 仍为 2 次 Request/Attempt/Transport 调用，重复 Search identity 未增加 Detail 请求。 |
+| R10 | 复用真实 Collection 父级、共享 Artifact 生命周期，不建立第二套系统 | #444 / AC10 | satisfied | 复用 `CanonicalArtifactWriter/Reader`、`ArtifactService/Store` 和 `canonical_artifact_links`；Artifact 绑定真实 Search Provider Attempt，Migration `0050` 在含糊旧关系上失败关闭后建立唯一索引，无新 Run/Dataset/Filter/Ingestion。 |
+| R11 | 完成相称验证、两阶段 Review、Completion Audit、PR/main 交付且不执行非目标 | #444 / AC11 | explicitly_deferred | 本地分层验证、Completion Audit 与 Review 已完成；真实 PostgreSQL 18、exact-head CI、guarded merge 与 main fresh 必须在本 Ready 提交后依次执行。未调用付费 Provider、未部署或迁移生产、未升级依赖。 |
+| R12 | Change 原生归档、Roadmap Stage 3/4 状态收口并关闭 Issue | #444 / AC12 | explicitly_deferred | 原生归档、Roadmap closure PR/main fresh、Issue 验收关闭与分支清理只能在实现 PR 合并后执行，不能在当前记录预先冒充。 |
 
 # 验证矩阵
 
@@ -144,22 +148,24 @@ Docs Impact 为 `targeted`：同步 Blueprint 02/03 与 TikHub 实现 Appendix �
 - [x] 读取项目规则、canonical Agent_Skills Source、Roadmap/Blueprint 与当前机器事实
 - [x] 创建并复核 Issue #444、最新 main 与本地任务分支
 - [x] 建立 Change、Requirement Traceability、验证矩阵和迁移/回滚边界
-- [ ] Red 失败测试
-- [ ] Green/Refactor 实现与目标回归
-- [ ] 分层验证、Completion Audit 与独立 Review
+- [x] Red 失败测试
+- [x] Green/Refactor 实现与目标回归
+- [x] 分层验证、Completion Audit 与独立 Review
 - [ ] PR CI、guarded merge、main 新鲜验证、归档、Roadmap/Issue/分支收口
 
 # 完成审计
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read：2026-09-11 Ready 前重读 Issue #444、Roadmap 05 Stage 3、Blueprint 02/03、当前 TikHub Runtime、Canonical/Artifact Contract、Schema/Migration、CI 与 `origin/main@7ca035fc`；main 未漂移，Issue/PR 仍 open。
+- [x] change_coverage：从 Issue AC1–AC12 与 Roadmap Stage 3 必须完成/退出条件逐条反查 Change、实现、测试和文档；R1–R10 已有直接实现或测试证据，R11–R12 仅保留必须发生在 Ready 后的外部生命周期，`not_satisfied` 已清零。
+- [x] reverse_audit：从 Search/Detail final Canonical、Provider Attempt 父级、Artifact Reader、冻结 Resolver、Candidate/Decision、Content Owner 反向检查；又从 Worker 构造、全部 Scope Runtime 测试、唯一索引/Migration、orphan cleanup 与无新 HTTP/UI 消费者反查，未发现绕过完整性预检或第二套写入路径。
+- [x] unresolved_cleared：首轮 Review 发现集成测试把已命中 Search 的行误判为 Detail Source；已参数化为 Search/Detail 两条来源场景并 re-review。当前无 blocker/high/medium Finding；本机无 PostgreSQL/Docker 的限制明确交给 PR CI，未冒充通过。
 
 # 两阶段 Review
 
-- 待实现候选形成后独立重建 Issue/Roadmap 完成定义并审查 diff、测试、Migration、文档与恢复风险。
+- **需求与风险重建**：Review Target 为 `7ca035fc...e20f7b96`。从 Issue #444、Roadmap 05 Stage 3 与当前 Provider/Raw/Candidate/Mapper/Detail/Filter/Content/Artifact 事实独立重建 R1–R12，没有使用本 Change 充当上游需求全集。
+- **实现与证据对照**：逐项审查页面有界边界、Search/Detail final 选择、Reader 前置、重复与 filtered 保留、Provider 调用计数、Source lineage、唯一关系、Migration、竞争恢复、取消/Fence、invalid 和文档。发现一项测试证据错误：Search Fixture 已命中“脱敏”，原断言却要求 Detail Source；已改为参数化 Search match 与 Detail match 并 re-review，生产实现无需绕过正确来源。未发现剩余 blocker/high/medium Finding。
+- **测试充分性结论**：Red 为 3 个预期失败；Green 目标 357 passed，Contract/API 171 passed，完整 Unit 除既有 POSIX 专用文件外 935 passed/8 skipped；Ruff、mypy、Contract 生成/兼容、Wheel、Docs、Architecture、Owner、Secret 与 lock 均通过。本机完整 Unit 另 3 个测试仅因 Windows 没有 `os.geteuid/os.chown` 失败；本机无 PostgreSQL 18 服务且 Docker daemon 未运行，真实 Migration/PostgreSQL/Full-stack 由 Ready exact-head PR CI 验证。
 
 # 完成证据与状态
 
-当前为开工记录；尚未宣称实现、测试、Review 或交付完成。
+实现候选 `e20f7b9614bf0106cbdfa491c33ffa20bc23e710` 已完成本地验证、Completion Audit 与两阶段 Review，Change 进入 `ready_for_review`。PR #445 的早期 Completion Audit 失败是未 Ready 阶段的预期门禁；下一提交发布本记录后触发 exact-head CI。生产部署、生产 Migration、付费 Provider 和业务数据写入均未执行。
