@@ -49,7 +49,7 @@
 `(pack_id, keyword_id, platform)` 作为复合身份，`platform='all'` 只表示父事实中的全平台词；Collection
 创建 Run 时再按正式 Plan 关系展开并冻结为明确平台关键词列表。
 
-## Keyword Pack 与 Rule Relevance
+## Keyword Pack、Brand/Vehicle Filter 与 legacy Rule Relevance
 
 System 负责长期关键词父事实：
 
@@ -57,20 +57,23 @@ System 负责长期关键词父事实：
 keyword_packs / keywords / keyword_pack_items
 ```
 
-Collection 的确定性 Rule Relevance 发生在 Canonical 之后、Content Ingestion 之前：
+Keyword Pack 为新建 TikHub Discovery 提供 Search Terms。Collection 创建 `collection-run-config.v2` 时把 Search Snapshot 与 Brand/Vehicle Filter Snapshot 分别冻结；Candidate 映射为 Canonical 后，由共享 `BrandVehicleResolver` 决定是否进入 Content Ingestion：
 
 ```text
 Collection
-→ global_relevance_config
-→ 当前全局 Relevance Keyword Pack
-→ 创建 Run 时冻结 Relevance Snapshot
+→ Keyword Pack Search Terms
+→ Provider Search / 必要时 Detail
+→ BrandVehicleResolver
+→ Content Ingestion + Brand/Vehicle Evidence
 ```
 
-正式 Excel Import 使用独立的 Brand/Vehicle Filter：创建 Import/Campaign 时提交 `brand_ids`，由 Stage 2 Brand/Vehicle Catalog 冻结 `BrandVehicleFilterSnapshot`；空集合表示全部 active Brand。它不读取 `global_relevance_config`，也不使用 Keyword Pack。升级前的 legacy Import/Campaign 仍按自己的旧 Snapshot 执行。
+正式 Excel Import 不执行 Search，但使用同一个 Brand/Vehicle Filter：创建 Import/Campaign 时提交 `brand_ids`，由 Stage 2 Brand/Vehicle Catalog 冻结 `BrandVehicleFilterSnapshot`；空集合表示全部 active Brand。升级前的 legacy Import/Campaign 仍按自己的旧 Snapshot 执行。
+
+`global_relevance_config` 及其 API 在 Roadmap Stage 7 前保留兼容，只用于解释升级前已经创建的 `collection-run-config.v1`。新建 Discovery Run 不读取该配置。AI Semantic Relevance 与人工相关性复核仍由 Analysis 与查询层维护。
 
 `imports_test` 的离线相关性清洗继续复用现有 Relevance 匹配规则。数据库关键词身份与运行时匹配规范化仍是两个有意不同的概念：`keywords.normalized_text` 负责稳定数据库身份；Relevance 匹配可以进一步忽略空白和 `-/_/·`。同一选择范围内多个数据库关键词若收敛为同一匹配文本，运行时按稳定优先级/顺序保留第一个有效匹配项，数据库与管理 API 仍保留各自词条。
 
-正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护；Collection 全局 Relevance 由 `PostgresGlobalRelevanceRepository` 维护。Excel Brand/Vehicle Snapshot 由 Brand/Vehicle Owner 提供，并在 [`backend/src/aima_ugc/bootstrap/import_http.py`](../../bootstrap/import_http.py) 与 [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](../ingestion/brand_vehicle_filter.py) 接入。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
+正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护；legacy Collection 全局 Relevance 由 `PostgresGlobalRelevanceRepository` 维护。Brand/Vehicle Snapshot 由 Brand/Vehicle Owner 提供，并在 Import 与 Collection 创建入口接入 [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](../ingestion/brand_vehicle_filter.py)。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
 
 Keyword 别名仍通过独立关键词表达；Brand/Vehicle 别名由各自 Catalog 与 Alias 表维护。两类父事实、唯一身份和运行 Snapshot 不互相替代。
 

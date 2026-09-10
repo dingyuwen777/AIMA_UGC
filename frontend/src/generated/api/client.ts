@@ -659,9 +659,11 @@ export interface CollectionPlanPlatformRequest {
 }
 
 /**
- * Stage 8F 周期 Plan 创建 Contract；一次性运行继续使用 Stage 8E。
+ * 周期 Plan 创建 Contract；Keyword Pack 搜索，Brand Scope 过滤。
  */
 export interface CollectionPlanCreateRequest {
+  /** @maxItems 100 */
+  brand_ids?: string[];
   enabled?: boolean;
   /** @maxItems 20 */
   keyword_pack_ids?: string[];
@@ -691,6 +693,7 @@ export interface CollectionPlanPlatformResponse {
 }
 
 export interface CollectionPlanResponse {
+  brand_ids?: string[];
   comment_policy: 'adaptive';
   created_at: string;
   detail_policy: 'on_change';
@@ -728,6 +731,8 @@ export interface CollectionPlanListResponse {
  * 完整替换一个计划的下一版本配置；历史 Run/Occurrence 继续保留旧版本事实。
  */
 export interface CollectionPlanUpdateRequest {
+  /** @maxItems 100 */
+  brand_ids?: string[];
   enabled: boolean;
   /** @exclusiveMinimum 0 */
   expected_version: number;
@@ -770,9 +775,11 @@ export interface CollectionRunPlatformRequest {
 }
 
 /**
- * 一次性发现从 Keyword Pack 冻结关键词；Batch Supplement 只补既有内容。
+ * 一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。
  */
 export interface CollectionRunCreateRequest {
+  /** @maxItems 100 */
+  brand_ids?: string[];
   data_import_campaign_id?: string | null;
   import_batch_id?: string | null;
   include_comments?: boolean;
@@ -848,6 +855,7 @@ export interface CollectionScopeResponse {
 export interface CollectionRunResponse {
   /** @minimum 0 */
   attempt: number;
+  brand_ids?: string[];
   created_at: string;
   data_import_campaign_id?: string | null;
   error_code?: string | null;

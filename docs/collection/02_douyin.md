@@ -308,7 +308,7 @@ Collection Run / Scope
 → operations/douyin.py Extractor
 → mappers/douyin.py
 → Canonical
-→ Rule Relevance / Decision
+→ BrandVehicleResolver / Decision
 → Content / Comment Ingestion
 ```
 

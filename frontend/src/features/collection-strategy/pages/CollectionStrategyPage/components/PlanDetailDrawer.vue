@@ -182,7 +182,7 @@ function archivePlan(): void {
           :key="item.platform"
         ><b>{{ collectionPlatformLabel(item.platform) }} · {{ providerLabel(item.provider_config_id) }}</b><small>{{ collectionSearchConfigSummary(item.search_config) }}</small></span>
       </section><AimaFeedbackBanner tone="info">
-        全局相关性不保存在计划中；每次运行创建时会冻结当时的系统全局配置。修改计划只影响之后的新运行。
+        全局相关性只用于解释升级前创建的旧任务；新计划按 Keyword Pack 搜索，并在运行创建时冻结品牌车型过滤范围。修改计划只影响之后的新运行。
       </AimaFeedbackBanner><section class="policy">
         <h4>系统固定规则</h4><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
       </section>

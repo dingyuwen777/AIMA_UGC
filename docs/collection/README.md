@@ -193,7 +193,7 @@ dispatch_status=unknown
 
 ```text
 Search Candidate
-→ Rule Relevance
+→ BrandVehicleResolver
 → 已有 Content/Metric/Coverage
 → Decision
    ├─ fetch_detail?
@@ -211,7 +211,7 @@ Search Candidate
 
 - 避免同一个帖子跨关键词重复 Detail；
 - 评论数没变化且上次 Coverage 已完整时避免重复抓；
-- 已为 Relevance 获取的 Detail 后续直接复用；
+- 已为 Brand/Vehicle Filter 获取的 Detail 后续直接复用；
 - Worker takeover 后从持久 Action/Raw 恢复，而不是重新付费。
 
 ---
@@ -343,8 +343,8 @@ Raw Fixture
 
 ```text
 Candidate
-→ Rule Relevance
 → Mapper Contract
+→ BrandVehicleResolver
 → Decision
 → Content Ingestion
 ```

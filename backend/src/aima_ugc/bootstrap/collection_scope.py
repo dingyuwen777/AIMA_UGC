@@ -101,7 +101,12 @@ from aima_ugc.modules.collection.providers import (
     RawArtifactService,
     raw_storage_key,
 )
+from aima_ugc.modules.ingestion.brand_vehicle_filter import (
+    BrandVehicleFilterSnapshot,
+    resolve_canonical_brand_vehicle,
+)
 from aima_ugc.modules.system.models import ProviderConfig
+from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.security import SecretFileError
 from aima_ugc.platform.storage import ArtifactRecord
@@ -301,8 +306,6 @@ class TikHubCollectionScopeExecutor:
         capability = _capability(platform)
         _validate_decision_policy(run)
         policy = _decision_policy(run)
-        relevance = _relevance_service(run)
-
         if is_enrichment:
             return self._execute_content_enrichment(
                 run=run,
@@ -311,8 +314,9 @@ class TikHubCollectionScopeExecutor:
                 capability=capability,
                 policy=policy,
                 context=context,
-                relevance=relevance,
             )
+
+        filter_snapshot, relevance = _discovery_filter(run)
 
         stats = _ScopeStats.from_payload(scope.stats)
         self._refresh_counts(scope=scope, context=context, stats=stats)
@@ -410,6 +414,7 @@ class TikHubCollectionScopeExecutor:
                         policy=policy,
                         context=context,
                         stats=stats,
+                        filter_snapshot=filter_snapshot,
                         relevance=relevance,
                     )
 
@@ -497,7 +502,6 @@ class TikHubCollectionScopeExecutor:
         capability: ProviderPlatformCapabilityV1,
         policy: CollectionDecisionPolicyV1,
         context: JobExecutionContextProtocol,
-        relevance: RelevanceService,
     ) -> CollectionScopeExecutionResult:
         """以 Batch 来源账本中的 Content 身份执行详情、评论与回复补采。"""
 
@@ -541,22 +545,6 @@ class TikHubCollectionScopeExecutor:
             prior = self._content_state.evaluate(latest)
             if prior is None:
                 raise ValueError("补采目标 Content 在执行期不存在")
-            if not relevance.evaluate(latest).matched:
-                for candidate in details:
-                    self._content_writer.record_candidate_filtered(
-                        candidate_id=candidate.candidate_id,
-                        canonical=candidate.content,
-                        fence=context.fence,
-                    )
-                stats.filtered_content_count += 1
-                self._refresh_counts(scope=scope, context=context, stats=stats)
-                return _result(
-                    status="succeeded",
-                    stop_reason="relevance_filtered",
-                    pagination_state=pagination_state,
-                    stats=stats,
-                )
-
             decision = self._decision_service.decide(
                 CollectionDecisionRequestV1(
                     current=ContentObservationV1(
@@ -758,12 +746,24 @@ class TikHubCollectionScopeExecutor:
         policy: CollectionDecisionPolicyV1,
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
-        relevance: RelevanceService,
+        filter_snapshot: BrandVehicleFilterSnapshot | None,
+        relevance: RelevanceService | None,
     ) -> None:
         search_content = content
         prefetched_details: tuple[_DetailCandidate, ...] = ()
         detail_prefetched = False
-        if not relevance.evaluate(content).matched:
+        search_resolution = (
+            resolve_canonical_brand_vehicle(filter_snapshot, content)
+            if filter_snapshot is not None
+            else None
+        )
+        search_matched = (
+            search_resolution.matched
+            if search_resolution is not None
+            else _require_legacy_relevance(relevance).evaluate(content).matched
+        )
+        accepted_resolution = search_resolution
+        if not search_matched:
             details = self._fetch_detail_candidates(
                 run=run,
                 scope=scope,
@@ -773,7 +773,17 @@ class TikHubCollectionScopeExecutor:
                 stats=stats,
             )
             detail = details[-1]
-            if not relevance.evaluate(detail.content).matched:
+            detail_resolution = (
+                resolve_canonical_brand_vehicle(filter_snapshot, detail.content)
+                if filter_snapshot is not None
+                else None
+            )
+            detail_matched = (
+                detail_resolution.matched
+                if detail_resolution is not None
+                else _require_legacy_relevance(relevance).evaluate(detail.content).matched
+            )
+            if not detail_matched:
                 self._content_writer.record_candidate_filtered(
                     candidate_id=search_candidate_id,
                     canonical=content,
@@ -788,6 +798,7 @@ class TikHubCollectionScopeExecutor:
                 stats.filtered_content_count += 1
                 return
             content = detail.content
+            accepted_resolution = detail_resolution
             prefetched_details = details
             detail_prefetched = True
 
@@ -839,11 +850,26 @@ class TikHubCollectionScopeExecutor:
             else (_DetailCandidate(content, search_candidate_id),)
         )
         content_id: UUID | None = None
-        for candidate in candidates:
+        for candidate_index, candidate in enumerate(candidates):
+            candidate_resolution = accepted_resolution
+            if detail_prefetched:
+                candidate_resolution = (
+                    resolve_canonical_brand_vehicle(filter_snapshot, candidate.content)
+                    if filter_snapshot is not None and candidate_index > 0
+                    else None
+                )
+                if candidate_resolution is not None and not candidate_resolution.matched:
+                    candidate_resolution = None
             ingestion = self._content_writer.ingest_content(
                 canonical=candidate.content,
                 fence=context.fence,
                 candidate_id=candidate.candidate_id,
+                brand_vehicle_snapshot=(
+                    filter_snapshot.catalog
+                    if filter_snapshot is not None and candidate_resolution is not None
+                    else None
+                ),
+                brand_vehicle_resolution=candidate_resolution,
             )
             if content_id is not None and ingestion.target_id != content_id:
                 raise RuntimeError("Search/Detail 摄取未收敛到同一 Content")
@@ -891,6 +917,8 @@ class TikHubCollectionScopeExecutor:
                 provider_config=provider_config,
                 context=context,
                 stats=stats,
+                filter_snapshot=filter_snapshot,
+                accepted_resolution=accepted_resolution,
             )
             post_detail = self._decision_service.decide(
                 CollectionDecisionRequestV1(
@@ -960,7 +988,11 @@ class TikHubCollectionScopeExecutor:
         provider_config: ProviderConfig,
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
+        filter_snapshot: BrandVehicleFilterSnapshot | None = None,
+        accepted_resolution: BrandVehicleResolution | None = None,
     ) -> CanonicalContentV1:
+        """抓取并写入 Detail；v2 Run 把过滤证据延续到最终 Content Version。"""
+
         details = self._fetch_detail_candidates(
             run=run,
             scope=scope,
@@ -971,10 +1003,23 @@ class TikHubCollectionScopeExecutor:
         )
         latest_detail: CanonicalContentV1 | None = None
         for detail in details:
+            detail_resolution = (
+                resolve_canonical_brand_vehicle(filter_snapshot, detail.content)
+                if filter_snapshot is not None
+                else None
+            )
+            if detail_resolution is not None and not detail_resolution.matched:
+                detail_resolution = accepted_resolution
             detail_ingestion = self._content_writer.ingest_content(
                 canonical=detail.content,
                 fence=context.fence,
                 candidate_id=detail.candidate_id,
+                brand_vehicle_snapshot=(
+                    filter_snapshot.catalog
+                    if filter_snapshot is not None and detail_resolution is not None
+                    else None
+                ),
+                brand_vehicle_resolution=detail_resolution,
             )
             if detail_ingestion.target_id != content_id:
                 raise RuntimeError("Detail 与 Search 摄取未收敛到同一 Content")
@@ -2087,6 +2132,35 @@ def _relevance_service(run: CollectionRunRecord) -> RelevanceService:
             for priority, text in enumerate(snapshot.effective_keywords)
         )
     )
+
+
+def _discovery_filter(
+    run: CollectionRunRecord,
+) -> tuple[BrandVehicleFilterSnapshot | None, RelevanceService | None]:
+    """按 Run Snapshot 版本选择 Stage 4 品牌过滤或 legacy 全局相关性。"""
+
+    schema_version = run.config_snapshot.get(
+        "schema_version",
+        "collection-run-config.v1",
+    )
+    if schema_version == "collection-run-config.v2":
+        snapshot = BrandVehicleFilterSnapshot.model_validate(
+            run.config_snapshot.get("brand_vehicle_filter")
+        )
+        if snapshot.search_semantics != "keyword_pack":
+            raise ValueError("Collection Run v2 品牌车型过滤必须使用 keyword_pack 搜索语义")
+        return snapshot, None
+    if schema_version == "collection-run-config.v1":
+        return None, _relevance_service(run)
+    raise ValueError(f"Collection Run Snapshot 版本不受支持: {schema_version}")
+
+
+def _require_legacy_relevance(value: RelevanceService | None) -> RelevanceService:
+    """收窄 legacy v1 的相关性服务，避免 v2 分支误用旧过滤。"""
+
+    if value is None:
+        raise RuntimeError("Collection Run v1 缺少全局相关性服务")
+    return value
 
 
 def _manual_deep_collection(run: CollectionRunRecord) -> bool:

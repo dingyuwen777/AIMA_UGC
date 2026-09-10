@@ -40,6 +40,7 @@ Plan / API Run
 collection_plans
 collection_plan_platforms
 collection_plan_keyword_packs
+collection_plan_brands
 collection_plan_decision_policies
 collection_schedule_occurrences
 collection_runs
@@ -193,8 +194,8 @@ Run 创建时会冻结当前需要的执行事实，例如：
 
 - 目标平台；
 - Provider Config；
-- 一次性关键词或 Batch supplement 来源；
-- Relevance Snapshot；
+- Keyword Pack 逐词 Search Snapshot 或 Batch supplement 来源；
+- Brand/Vehicle Filter Snapshot（Discovery）；
 - Include Comments / Sub-comments；
 - 技术执行限制。
 
@@ -355,7 +356,7 @@ Candidate 解决一个审计问题：
 Raw → Mapper → Content
 ```
 
-Mapper 失败或 Relevance 过滤后，很难知道来源项在哪里丢失。
+Mapper 失败或 Brand/Vehicle Filter 未命中后，很难知道来源项在哪里丢失。
 
 所以当前：
 
@@ -364,7 +365,7 @@ Raw
 → Candidate（来源项身份）
 → Mapper
 → Canonical
-→ Decision / Relevance
+→ BrandVehicleResolver / Decision
 → Ingestion
 → Candidate Ingestion 结果
 ```

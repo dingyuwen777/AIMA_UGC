@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260910-132342-stage4-tikhub-search-brand-filter
 title: 搜索与品牌车型过滤 Stage 4 TikHub 搜索过滤解耦
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/stage4-tikhub-search-brand-filter
 created: 2026-09-10
@@ -26,16 +26,21 @@ affected_paths:
   - backend/src/aima_ugc/modules/collection
   - backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py
   - backend/src/aima_ugc/adapters/persistence/postgres/collection_planning.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/collection_plan_lifecycle.py
   - backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py
   - backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py
   - backend/src/aima_ugc/bootstrap/collection_http.py
   - backend/src/aima_ugc/bootstrap/collection_scope.py
   - backend/src/aima_ugc/bootstrap/collection_strategy_http.py
+  - backend/src/aima_ugc/bootstrap/resource_lifecycle_http.py
   - backend/src/aima_ugc/bootstrap/scheduler.py
   - backend/src/aima_ugc/contracts/http.py
+  - backend/src/aima_ugc/contracts/resource_lifecycle.py
   - backend/src/aima_ugc/database_schema.py
   - migrations/versions
   - contracts/openapi/openapi.json
+  - frontend/src/features/collection-strategy
+  - frontend/src/features/import-batches
   - frontend/src/generated/api/client.ts
   - tests/unit/collection
   - tests/api
@@ -45,6 +50,7 @@ affected_paths:
   - docs/blueprint
   - docs/collection
   - backend/src/aima_ugc/modules/collection/README.md
+  - backend/src/aima_ugc/modules/system/README.md
 contracts:
   - Collection Run/Plan Search Terms 与 Brand Filter Scope
   - collection-run-config.v1/v2 Job compatibility
@@ -76,28 +82,28 @@ Requirement Source：#426。
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Keyword Pack 每词独立产生 `platform × keyword` Scope，不再组合 Vehicle Alias | #426 / AC1-AC2 | not_satisfied | 计划修改 `resource_selection.py` 并补确定性 Red/Green 测试。 |
-| R2 | Run/Plan/Scheduler 冻结 Search Snapshot 与 all_active/selected Brand Filter Snapshot | #426 / AC3 | not_satisfied | 计划新增 Plan Brand Expand 表并升级 Run Snapshot v2。 |
-| R3 | Search match、Search miss→Detail match、Detail miss→filtered 复用统一 Resolver | #426 / AC4 | not_satisfied | 计划改 `collection_scope.py` 并补 Fixture/PostgreSQL 集成证据。 |
-| R4 | 新 Run 停止 Global Keyword Relevance 入库过滤，AI/人工 relevance 与旧表/API 保留 | #426 / AC5 | not_satisfied | 计划从新 Run/Scheduler/Worker 路径移除旧依赖，保留 v1 兼容分支。 |
-| R5 | Batch Supplement 不搜索且不重新过滤既有 Content | #426 / AC6 | not_satisfied | 计划删除 enrichment 的旧 Relevance 判断并补回归。 |
-| R6 | Provider Request/Attempt、Raw/Candidate、计费、重试与 Fence 边界不变 | #426 / AC7 | not_satisfied | 计划复用现有调用链并执行恢复/计费回归。 |
-| R7 | Contract、Migration、生成物和长期文档同步，不越界 Stage 5-7 | #426 / AC8 | not_satisfied | 计划执行 OpenAPI/Client、Migration、Schema、Docs 同步与校验。 |
-| R8 | Completion Audit、独立 Review、PR HEAD CI、expected-head merge、main fresh CI、原生归档、Roadmap 与 Issue 收口 | user:stage4-end-to-end-delivery | not_satisfied | 交付生命周期完成后回填。 |
+| R1 | Keyword Pack 每词独立产生 `platform × keyword` Scope，不再组合 Vehicle Alias | #426 / AC1 | satisfied | `resource_selection.py` 只返回 `build_scheduled_scope_snapshot` 的逐词 Scope；确定性测试约束两个词只产生两个 Scope，且函数不再接收 Vehicle Snapshot。创建入口还拒绝任一目标平台没有适用 Search Term，避免静默少跑平台。 |
+| R2 | Run/Plan/Scheduler 冻结 Search Snapshot 与 all_active/selected Brand Filter Snapshot | #426 / AC3 | satisfied | 一次性 Run 与 Scheduler 均创建 `collection-run-config.v2`，分别保存 `search_snapshot` 和 `brand_vehicle_filter`；0045 新增 `collection_plan_brands`，Create/Update/Copy/Archive 与 Response 全链持久化。兼容 `vehicle_model_ids` 在目录共享锁下转换为 active Brand，Run Response 返回实际冻结 Brand UUID。 |
+| R3 | Search match、Search miss→Detail match、Detail miss→filtered 复用统一 Resolver | #426 / AC4 | satisfied | `collection_scope.py` 在 Search Canonical 后调用 Stage 2 Resolver；Search 未命中时复用受控 Detail，Detail 仍未命中则把 Search/Detail Candidate 记为 filtered。Unit 覆盖三条分支；PostgreSQL Worker Fixture 覆盖 v2 Snapshot、Search 命中、Detail 复用、同事务 Content/Brand Evidence。 |
+| R4 | 新 Run 停止 Global Keyword Relevance 入库过滤，AI/人工 relevance 与旧表/API 保留 | #426 / AC5 | satisfied | HTTP/Scheduler 新 Run 不再读取或保存 `global_relevance_config`；Worker 仅对 `collection-run-config.v1` 构造 legacy `RelevanceService`，v2 缺失/错误 Filter Snapshot 时 fail closed。Global Relevance API/UI 兼容入口、AI 与人工 relevance 未删除，界面说明已同步为 legacy。 |
+| R5 | Batch Supplement 不搜索且不重新过滤既有 Content | #426 / AC6 | satisfied | enrichment 分支在 discovery filter 解析前返回，删除旧 Relevance 判断；Contract 拒绝补采提交 Keyword Pack/Brand/Vehicle/Search Config，现有 PostgreSQL Fixture 约束只发 Detail 且继续更新既有 Content。 |
+| R6 | Provider Request/Attempt、Raw/Candidate、计费、重试与 Fence 边界不变 | #426 / AC7 | satisfied | Stage 4 复用现有 Provider Dispatch、Raw Artifact、Candidate、Decision、Fenced Ingestion 与 Job Runtime。生产 Worker PostgreSQL 测试直接断言 Search/Detail 两组 Request/Attempt、Raw、attempt_no、dispatch/billing 状态和 Brand Evidence；既有恢复/重试测试继续进入 PR 全量 CI。 |
+| R7 | Contract、Migration、生成物和长期文档同步，不越界 Stage 5-7 | #426 / AC8 | satisfied | Pydantic Run/Plan/Create/Update/Response 增加 `brand_ids` 与互斥/必选约束；0045 是 Expand-only 单 head；OpenAPI 与 TypeScript Client 已按 generator 同步。Blueprint、API、环境、测试、Appendix、Collection/System README 与当前 Vue 兼容文案已同步；未实现 Stage 5 查询/导出、Stage 6 Brand UI 或 Stage 7 清理。 |
+| R8 | Completion Audit、独立 Review、PR HEAD CI、expected-head merge、main fresh CI、原生归档、Roadmap 与 Issue 收口 | #426 / AC8 | explicitly_deferred | 上游重读、Completion Audit 与两阶段实现 Review 已完成；最终 PR HEAD CI、expected-head merge、main fresh CI、仓库原生 Change Archive、Roadmap 状态提交和 Issue #426 关闭属于合并生命周期后置门禁。 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Unit / Component | required | Scope 独立展开、v1/v2 Snapshot 解析、Resolver 三分支、补采例外。 |
-| Contract / Generated Client | required | Run/Plan `brand_ids`、兼容字段约束、OpenAPI/Orval 漂移。 |
-| PostgreSQL Integration | required | Plan Brand 关系、Scheduler v2 Snapshot、Worker Evidence 与 filtered Candidate。 |
-| Provider trace / retry | required | 现有 TikHub Fixture 下 Request/Attempt/Raw、计费、Retry/Fence 回归。 |
-| Browser Mock Acceptance | required | 现有 Stage 6 前 UI 仍可经兼容字段提交，生成 Contract 不破坏当前构建。 |
-| Real Full-stack Golden Path | required | 现有 Collection 关键路径在 PR CI 保持接通。 |
-| Build / Static / Governance | required | Ruff、mypy、backend/frontend build、Migration/Schema、Change Ready、CI。 |
+| Unit / Component | required | Red 提交 `1f734a74` 的目标命令为 2 failed / 12 passed；最终 Stage 4 Unit/Contract/API 目标集 50 passed，覆盖逐词 Scope、v1/v2 选择、Resolver 三分支、Plan 互斥与补采例外。 |
+| Contract / Generated Client | required | OpenAPI generate `--check` 与兼容校验均成功；Run/Plan `brand_ids`、兼容字段约束和 Lifecycle OpenAPI 有直接测试，Orval Client 已重新生成。 |
+| PostgreSQL Integration | required | 新增/更新测试覆盖 Plan Brand 关系及删除保护、Scheduler v2 Snapshot、无词平台拒绝、旧车型失效隔离、Worker Content/Brand Evidence 与 filtered Candidate。当前 Windows 没有可用 PostgreSQL Secret/Engine，交由最终 PR HEAD 的 PostgreSQL 18 门禁提供新鲜执行证据。 |
+| Provider trace / retry | required | 正式 Worker Fixture 直接断言 Search/Detail Request/Attempt、Raw、Candidate、计费与 Evidence；现有 Retry/Recovery/Fence 套件由最终 PR HEAD CI 全量复核。未调用真实付费 TikHub。 |
+| Browser Mock Acceptance | required | Vitest 23 files / 135 tests passed；兼容页面要求 Keyword Pack，不再受 Global Relevance 可用性阻断，车型文案明确只转换为 Brand Scope。 |
+| Real Full-stack Golden Path | required | 前端生产构建成功；涉及 PostgreSQL/浏览器服务的现有 Golden Path 由最终 PR HEAD CI 执行。 |
+| Build / Static / Governance | required | 变更 Python Ruff success；mypy 324 source files success；Alembic 单 head 为 `20260910_0045`；ESLint、TypeScript/Vue typecheck、Vite build、Contract compatibility、docs facts 与 `git diff --check` 均成功。完整 Linux CI 仍是合并门禁。 |
 | External Provider Probe | not_applicable | Stage 4 行为由冻结 Fixture/正式 Adapter 调用链证明，不需要付费 TikHub 实时可用性。 |
-| Docs / Delivery | required | Blueprint/模块 README、PR/main CI、原生归档、Roadmap 和 Issue Closure。 |
+| Docs / Delivery | required | Blueprint/API/环境/测试/Appendix/模块 README 和当前 Vue 兼容文案已同步；PR/main CI、原生归档、Roadmap 状态与 Issue Closure 按合并生命周期继续执行。 |
 
 # 兼容、迁移、部署与回滚
 
@@ -109,9 +115,8 @@ Requirement Source：#426。
 
 # Completion Audit
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] two_stage_review
-- [ ] unresolved_cleared
-
+- [x] upstream_re_read：重新核对 Roadmap Stage 4/Exit Criteria、Issue #426、Stage 2 Resolver/Snapshot/Evidence、Stage 3 Import 过滤和当前 Collection Run/Plan/Scheduler/Worker/Batch 事实；未把 Stage 5 查询导出、Stage 6 Vue 产品化或 Stage 7 清理提前实现。
+- [x] change_coverage：R1-R7 均有实现、测试、生成物或文档证据；R8 只保留必须发生在最终 PR HEAD/合并后的交付生命周期证据并明确 `explicitly_deferred`。
+- [x] reverse_audit：按 Run/Plan 输入→Search/Filter Snapshot→Scheduler/Scope→Provider Request/Attempt/Raw/Candidate→Mapper/Canonical→Resolver→Decision/Ingestion/Evidence 反查，并核对 Batch Supplement、legacy v1、新 Contract、Plan Lifecycle、Brand 删除保护、Run 可观测字段和 Stage 6 前前端兼容入口。
+- [x] two_stage_review：A1 从 #426/Roadmap 独立重建 AC1-AC8 并检查搜索复杂度、冻结语义、三条 Resolver 分支、事务、兼容与分层测试；A2 以最终候选 diff 反向检查每个生产者/消费者和文档。Review 发现并修复目录转换并发漂移、目标平台 Search Term 静默缺失、Scheduler 单 Plan 异常中断、双 Scope 脏数据、Run 冻结 Brand 不可见、Plan→Brand 删除保护缺失及旧前端文案漂移。
+- [x] unresolved_cleared：R1-R7 无 `not_satisfied`，当前无已知 P0/P1/P2 实现 Finding；本地 PostgreSQL 不可用由最终 PR HEAD PostgreSQL 18/Full-stack CI 补齐。R8 的 PR/main/归档/Roadmap/Issue 动作是交付生命周期，不属于未解决实现缺陷。

@@ -18,10 +18,16 @@ from aima_ugc.contracts.canonical import (
     CanonicalSourceV1,
 )
 from aima_ugc.contracts.collection import CollectionDecisionPolicyV1, PreviousContentStateV1
-from aima_ugc.modules.analysis import RelevanceKeyword, RelevanceService
 from aima_ugc.modules.collection.decision import CollectionDecisionService
+from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
+from aima_ugc.modules.vehicles.brand_vehicle import (
+    BrandAliasRecord,
+    BrandRecord,
+    BrandVehicleCatalogSnapshot,
+)
 
 _NOW = datetime(2026, 8, 18, 2, 0, tzinfo=UTC)
+_BRAND_ID = uuid4()
 
 
 class _StateReader:
@@ -36,10 +42,12 @@ class _Writer:
     def __init__(self) -> None:
         self.filtered: list[object] = []
         self.ingested: list[object] = []
+        self.ingested_payloads: list[dict[str, object]] = []
         self.target_id = uuid4()
 
     def ingest_content(self, **kwargs: object) -> SimpleNamespace:
         self.ingested.append(kwargs["candidate_id"])
+        self.ingested_payloads.append(kwargs)
         return SimpleNamespace(target_id=self.target_id)
 
     def record_candidate_filtered(self, **kwargs: object) -> None:
@@ -112,13 +120,53 @@ def _content(*, comment_count: int | None, comment_count_observed: bool) -> Cano
     )
 
 
+def _filter_snapshot() -> BrandVehicleFilterSnapshot:
+    """构造只选择爱玛品牌的冻结目录。"""
+
+    return BrandVehicleFilterSnapshot(
+        search_semantics="keyword_pack",
+        catalog=BrandVehicleCatalogSnapshot(
+            catalog_version=1,
+            filter_scope="selected",
+            selected_brand_ids=(_BRAND_ID,),
+            brands=(
+                BrandRecord(
+                    id=_BRAND_ID,
+                    code="AIMA",
+                    display_name="爱玛",
+                    role="owned",
+                    status="active",
+                    version=1,
+                    catalog_version=1,
+                    created_at=_NOW,
+                    updated_at=_NOW,
+                ),
+            ),
+            brand_aliases=(
+                BrandAliasRecord(
+                    id=uuid4(),
+                    brand_id=_BRAND_ID,
+                    text="爱玛",
+                    normalized_text="爱玛",
+                    created_at=_NOW,
+                ),
+            ),
+            vehicles=(),
+            vehicle_aliases=(),
+        ),
+    )
+
+
 def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental_comments() -> None:
-    search_content = _content(comment_count=None, comment_count_observed=False)
+    search_content = _content(comment_count=None, comment_count_observed=False).model_copy(
+        update={"title": "爱玛搜索命中"}
+    )
     detail_content = _content(comment_count=7, comment_count_observed=True)
 
     executor = object.__new__(TikHubCollectionScopeExecutor)
+    writer = _Writer()
     executor._content_state = _StateReader()  # type: ignore[attr-defined]
-    executor._content_writer = _Writer()  # type: ignore[attr-defined]
+    executor._content_writer = writer  # type: ignore[attr-defined]
     executor._content_actions = _Actions()  # type: ignore[attr-defined]
     executor._decision_service = CollectionDecisionService()  # type: ignore[attr-defined]
 
@@ -159,14 +207,14 @@ def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental
         policy=CollectionDecisionPolicyV1(),
         context=_Context(),  # type: ignore[arg-type]
         stats=SimpleNamespace(technical_partial_results=0),  # type: ignore[arg-type]
-        relevance=SimpleNamespace(  # type: ignore[arg-type]
-            evaluate=lambda _content: SimpleNamespace(matched=True)
-        ),
+        filter_snapshot=_filter_snapshot(),
+        relevance=None,
     )
 
     assert detail_calls == ["detail"]
     assert comment_actions == ["fetch_incremental"]
     assert executor._content_actions.completed_comments is True  # type: ignore[attr-defined]
+    assert writer.ingested_payloads[0]["brand_vehicle_resolution"].matched is True  # type: ignore[union-attr]
 
 
 def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion() -> None:
@@ -201,7 +249,8 @@ def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion
         policy=CollectionDecisionPolicyV1(),
         context=_Context(),  # type: ignore[arg-type]
         stats=stats,  # type: ignore[arg-type]
-        relevance=RelevanceService((RelevanceKeyword(text="爱玛", priority=1),)),
+        filter_snapshot=_filter_snapshot(),
+        relevance=None,
     )
 
     assert detail_calls == ["detail"]
@@ -262,7 +311,10 @@ def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
         policy=CollectionDecisionPolicyV1(),
         context=_Context(),  # type: ignore[arg-type]
         stats=SimpleNamespace(technical_partial_results=0, filtered_content_count=0),  # type: ignore[arg-type]
-        relevance=RelevanceService((RelevanceKeyword(text="爱玛", priority=1),)),
+        filter_snapshot=_filter_snapshot(),
+        relevance=None,
     )
 
     assert writer.ingested == [search_candidate_id, *detail_candidate_ids]
+    assert writer.ingested_payloads[0]["brand_vehicle_resolution"] is None
+    assert writer.ingested_payloads[-1]["brand_vehicle_resolution"].matched is True  # type: ignore[union-attr]

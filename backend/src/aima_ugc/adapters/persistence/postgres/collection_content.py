@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
@@ -27,12 +27,20 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.content.tables import accounts_table, comments_table, contents_table
+from aima_ugc.modules.vehicles.brand_vehicle import (
+    BrandVehicleCatalogSnapshot,
+    BrandVehicleResolution,
+)
+from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
+from aima_ugc.platform.time import beijing_now
 
+from .brand_vehicle import PostgresBrandVehicleRepository
 from .candidates import PostgresCandidateRepository
 from .content import PostgresIngestionResult
 from .content_complete import PostgresCompleteContentRepository
 from .jobs import PostgresJobRepository
+from .vehicles import PostgresVehicleCatalogRepository
 
 _CONTENT_DIRECT_FIELDS = {
     "title": "title",
@@ -203,7 +211,7 @@ class PostgresFencedCollectionIngestionWriter:
         canonical: CanonicalContentV1,
         fence: JobExecutionFence,
     ) -> None:
-        """保留已成功映射但未通过全局 Relevance 的 Candidate 终态。"""
+        """保留已成功映射但未通过当前 Run 过滤规则的 Candidate 终态。"""
 
         attempt_id = _provider_attempt_id(canonical)
         raw_artifact_id = _raw_artifact_id(canonical)
@@ -238,7 +246,19 @@ class PostgresFencedCollectionIngestionWriter:
         canonical: CanonicalContentV1,
         fence: JobExecutionFence,
         candidate_id: UUID | None = None,
+        brand_vehicle_snapshot: BrandVehicleCatalogSnapshot | None = None,
+        brand_vehicle_resolution: BrandVehicleResolution | None = None,
     ) -> PostgresIngestionResult:
+        """在同一 Fenced 事务写 Content、Candidate 与冻结目录解析证据。"""
+
+        if (brand_vehicle_snapshot is None) != (brand_vehicle_resolution is None):
+            raise ValueError("Brand/Vehicle Snapshot 与 Resolution 必须同时提供")
+        if brand_vehicle_resolution is not None:
+            if not brand_vehicle_resolution.matched:
+                raise ValueError("只允许为通过过滤的 Content 写入 Brand/Vehicle Evidence")
+            assert brand_vehicle_snapshot is not None
+            if brand_vehicle_snapshot.catalog_version != brand_vehicle_resolution.catalog_version:
+                raise ValueError("Brand/Vehicle Resolution 与冻结 Snapshot 版本不一致")
         attempt_id = _provider_attempt_id(canonical)
         raw_artifact_id = _raw_artifact_id(canonical)
         item_locator = _item_locator(canonical)
@@ -271,6 +291,35 @@ class PostgresFencedCollectionIngestionWriter:
                     PostgresCompleteContentRepository(session)
                 )
                 result = content_service.ingest_content(canonical)
+                if brand_vehicle_resolution is not None:
+                    assert brand_vehicle_snapshot is not None
+                    vehicle_repository = PostgresVehicleCatalogRepository(session)
+                    for item in brand_vehicle_resolution.vehicle_evidence:
+                        if item.source != "alias_match":
+                            raise ValueError("自动 Vehicle Evidence 只接受 alias_match")
+                        vehicle_repository.append_evidence(
+                            ContentVehicleEvidence(
+                                id=uuid4(),
+                                content_id=result.target_id,
+                                content_version=result.version_no,
+                                vehicle_model_id=item.entity_id,
+                                source="alias_match",
+                                matched_text=item.matched_text,
+                                source_field=item.source_field,
+                                catalog_version=brand_vehicle_resolution.catalog_version,
+                                confidence=1.0,
+                                is_manual_locked=False,
+                                is_active=True,
+                                created_at=beijing_now(),
+                            )
+                        )
+                    PostgresBrandVehicleRepository(session).replace_automatic_brand_evidence(
+                        content_id=result.target_id,
+                        content_version=result.version_no,
+                        evidence=brand_vehicle_resolution.brand_evidence,
+                        catalog_version=brand_vehicle_resolution.catalog_version,
+                        catalog_snapshot=brand_vehicle_snapshot,
+                    )
                 candidate_service.record_ingestion(
                     candidate_id=candidate_id,
                     canonical=canonical,

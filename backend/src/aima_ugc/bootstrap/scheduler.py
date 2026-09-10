@@ -8,26 +8,23 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
+    PostgresBrandVehicleRepository,
+)
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
-from aima_ugc.adapters.persistence.postgres.relevance import (
-    GlobalRelevanceUnavailable,
-    PostgresGlobalRelevanceRepository,
-)
 from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     MissingScheduledKeywordPackError,
     PostgresScheduledKeywordSnapshotReader,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
-from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.adapters.providers.tikhub.transport import (
     DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
 )
-from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.contracts.collection import ProviderPlatformCapabilityV1
 from aima_ugc.modules.collection.collection_run_job import (
     COLLECTION_RUN_JOB_TYPE,
@@ -52,6 +49,7 @@ from aima_ugc.modules.collection.scheduler import (
     resolve_scheduler_plan,
 )
 from aima_ugc.modules.collection.search_config import normalize_search_config
+from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.time import beijing_now
@@ -135,15 +133,22 @@ def run_scheduler_once(
                     keyword_catalog = PostgresScheduledKeywordSnapshotReader(session).read(
                         plan.keyword_pack_ids
                     )
-                    vehicle_snapshot = PostgresVehicleCatalogRepository(session).snapshot(
-                        plan.vehicle_model_ids
+                    if plan.brand_ids and plan.vehicle_model_ids:
+                        raise ValueError("Plan Brand Scope 与兼容 Vehicle Scope 不能同时存在")
+                    brand_repository = PostgresBrandVehicleRepository(session)
+                    selected_brand_ids = plan.brand_ids or (
+                        brand_repository.brand_ids_for_vehicle_models(plan.vehicle_model_ids)
                     )
-                    relevance_snapshot, _ = PostgresGlobalRelevanceRepository(session).snapshot()
+                    filter_snapshot = BrandVehicleFilterSnapshot(
+                        search_semantics="keyword_pack",
+                        catalog=brand_repository.snapshot(brand_ids=selected_brand_ids or None),
+                    )
+                    if not filter_snapshot.catalog.brands:
+                        raise ValueError("Brand Filter 当前没有可用 active Brand")
                     scope_snapshot = build_collection_resource_snapshot(
                         plan_platforms=tuple(item.platform for item in plan.platforms),
                         keyword_entries=keyword_catalog.entries,
                         keyword_packs=keyword_catalog.keyword_packs,
-                        vehicles=vehicle_snapshot,
                     )
                     _require_scope_for_every_platform(plan, scope_snapshot.scopes)
 
@@ -187,27 +192,12 @@ def run_scheduler_once(
                             decision.enqueue_for,
                             provider_snapshots=provider_snapshots,
                             keyword_packs=scope_snapshot.keyword_packs,
-                            vehicle_snapshot={
-                                "catalog_version": scope_snapshot.vehicles.catalog_version,
-                                "vehicle_model_ids": [
-                                    str(item) for item in scope_snapshot.vehicles.vehicle_model_ids
-                                ],
-                                "resolved_aliases": list(scope_snapshot.vehicles.resolved_aliases),
-                                "vehicle_versions": [
-                                    {"id": str(model_id), "version": version}
-                                    for model_id, version in (
-                                        scope_snapshot.vehicles.vehicle_versions
-                                    )
-                                ],
-                                "alias_bindings": [
-                                    {"vehicle_model_id": str(model_id), "text": text}
-                                    for model_id, text in scope_snapshot.vehicles.alias_bindings
-                                ],
-                                "dimension_match": "keyword_or_x_vehicle_or",
-                            },
+                            search_terms=tuple(
+                                scope.source_value for scope in scope_snapshot.scopes
+                            ),
+                            filter_snapshot=filter_snapshot.model_dump(mode="json"),
                             keyword_scope_count=len(scope_snapshot.scopes),
                             job_timeout_seconds=job_timeout_seconds,
-                            relevance_snapshot=relevance_snapshot,
                         ),
                         scopes=scope_snapshot.scopes,
                         occurrence_id=occurrence.id,
@@ -222,7 +212,7 @@ def run_scheduler_once(
                     skipped += len(decision.skipped)
             except (
                 MissingScheduledKeywordPackError,
-                GlobalRelevanceUnavailable,
+                LookupError,
                 ScheduleExpressionError,
                 SchedulerBacklogLimitError,
                 ValueError,
@@ -314,14 +304,14 @@ def _scheduled_run_snapshot(
     *,
     provider_snapshots: tuple[dict[str, object], ...],
     keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...],
-    vehicle_snapshot: dict[str, object],
+    search_terms: tuple[str, ...],
+    filter_snapshot: dict[str, object],
     keyword_scope_count: int,
     job_timeout_seconds: int,
-    relevance_snapshot: RelevanceSnapshotV1,
 ) -> dict[str, object]:
     """冻结调度时可安全持久化的 Plan/Provider/词包执行事实，不复制 Secret 值。"""
     return {
-        "schema_version": "collection-run-config.v1",
+        "schema_version": "collection-run-config.v2",
         "plan_id": str(plan.id),
         "plan_name": plan.name,
         "schedule_version": plan.schedule_version,
@@ -349,7 +339,17 @@ def _scheduled_run_snapshot(
             }
             for item in keyword_packs
         ],
-        "vehicle_selection": vehicle_snapshot,
+        "keywords": list(dict.fromkeys(search_terms)),
+        "search_snapshot": {
+            "schema_version": "collection-search-snapshot.v1",
+            "keyword_pack_ids": [str(item) for item in plan.keyword_pack_ids],
+            "keyword_packs": [
+                {"id": str(item.pack_id), "version": item.version, "enabled": item.enabled}
+                for item in keyword_packs
+            ],
+            "terms": list(dict.fromkeys(search_terms)),
+        },
+        "brand_vehicle_filter": filter_snapshot,
+        "legacy_vehicle_model_ids": [str(item) for item in plan.vehicle_model_ids],
         "keyword_scope_count": keyword_scope_count,
-        "relevance": relevance_snapshot.model_dump(mode="json"),
     }

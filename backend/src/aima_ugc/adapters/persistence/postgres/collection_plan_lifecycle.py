@@ -16,6 +16,7 @@ from aima_ugc.modules.collection.corrective_tables import (
 from aima_ugc.modules.collection.lifecycle_schema import register_collection_lifecycle_schema
 from aima_ugc.modules.collection.planning import PlanPlatformDefinition
 from aima_ugc.modules.collection.tables import (
+    collection_plan_brands_table,
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
     collection_plan_vehicle_models_table,
@@ -52,6 +53,7 @@ class PostgresCollectionPlanLifecycleRepository:
         enabled: bool,
         platforms: tuple[PlanPlatformDefinition, ...],
         keyword_pack_ids: tuple[UUID, ...],
+        brand_ids: tuple[UUID, ...],
         vehicle_model_ids: tuple[UUID, ...],
     ) -> bool:
         """完整替换下一版本执行面；版本漂移或已归档时 fail closed。"""
@@ -101,6 +103,11 @@ class PostgresCollectionPlanLifecycleRepository:
             )
         )
         self._session.execute(
+            delete(collection_plan_brands_table).where(
+                collection_plan_brands_table.c.plan_id == plan_id
+            )
+        )
+        self._session.execute(
             delete(collection_plan_vehicle_models_table).where(
                 collection_plan_vehicle_models_table.c.plan_id == plan_id
             )
@@ -121,6 +128,11 @@ class PostgresCollectionPlanLifecycleRepository:
             self._session.execute(
                 insert(collection_plan_keyword_packs_table),
                 [{"plan_id": plan_id, "keyword_pack_id": pack_id} for pack_id in keyword_pack_ids],
+            )
+        if brand_ids:
+            self._session.execute(
+                insert(collection_plan_brands_table),
+                [{"plan_id": plan_id, "brand_id": brand_id} for brand_id in brand_ids],
             )
         if vehicle_model_ids:
             self._session.execute(
@@ -251,6 +263,11 @@ class PostgresCollectionPlanLifecycleRepository:
         self._session.execute(
             delete(collection_plan_keyword_packs_table).where(
                 collection_plan_keyword_packs_table.c.plan_id == plan_id
+            )
+        )
+        self._session.execute(
+            delete(collection_plan_brands_table).where(
+                collection_plan_brands_table.c.plan_id == plan_id
             )
         )
         self._session.execute(

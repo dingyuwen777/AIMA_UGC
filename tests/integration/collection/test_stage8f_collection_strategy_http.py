@@ -6,6 +6,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
+    PostgresBrandVehicleRepository,
+)
 from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
     StaleCollectionPlanError,
@@ -22,7 +25,11 @@ from aima_ugc.contracts.http import (
     ResourceEnabledRequest,
 )
 from aima_ugc.modules.collection.strategy_http import CollectionStrategyConflict
-from aima_ugc.modules.collection.tables import collection_plans_table, collection_runs_table
+from aima_ugc.modules.collection.tables import (
+    collection_plan_brands_table,
+    collection_plans_table,
+    collection_runs_table,
+)
 from aima_ugc.modules.system.tables import (
     global_relevance_config_table,
     keyword_pack_items_table,
@@ -32,7 +39,9 @@ from aima_ugc.modules.system.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
-from sqlalchemy import func, insert, select
+from sqlalchemy import delete, func, insert, select
+
+from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
 
 @pytest.fixture
@@ -151,6 +160,7 @@ def _seed_strategy_facts(runtime) -> tuple[UUID, UUID, UUID]:  # type: ignore[no
                 updated_at=now,
             )
         )
+    stage3_filter_brand_id(runtime, alias="爱玛")
     return provider_id, discovery_pack_id, relevance_pack_id
 
 
@@ -174,12 +184,17 @@ def _plan_request(provider_id: UUID, pack_id: UUID) -> CollectionPlanCreateReque
     )
 
 
-def test_strategy_service_creates_queryable_plan_without_creating_job(runtime) -> None:  # type: ignore[no-untyped-def]
+def test_strategy_service_persists_brand_scope_without_global_relevance_or_job(runtime) -> None:  # type: ignore[no-untyped-def]
     provider_id, discovery_pack_id, _ = _seed_strategy_facts(runtime)
+    brand_id = UUID(stage3_filter_brand_id(runtime, alias="爱玛"))
+    with runtime.database.engine.begin() as connection:
+        connection.execute(delete(global_relevance_config_table))
     service = PostgresCollectionStrategyHttpService(runtime)
 
     packs = service.list_keyword_packs(KeywordPackListQuery(limit=20))
-    created = service.create_plan(_plan_request(provider_id, discovery_pack_id))
+    created = service.create_plan(
+        _plan_request(provider_id, discovery_pack_id).model_copy(update={"brand_ids": (brand_id,)})
+    )
     listing = service.list_plans(CollectionPlanListQuery(platform="xiaohongshu", limit=20))
     by_plan_id = service.list_plans(CollectionPlanListQuery(search=str(created.id)[:12], limit=20))
     loaded = service.get_plan(created.id)
@@ -191,6 +206,7 @@ def test_strategy_service_creates_queryable_plan_without_creating_job(runtime) -
     assert by_plan_id.total == 1
     assert by_plan_id.items == (created,)
     assert loaded == created
+    assert created.brand_ids == (brand_id,)
     assert created.timezone == "Asia/Shanghai"
     assert created.detail_policy == "on_change"
     assert created.comment_policy == "adaptive"
@@ -203,6 +219,25 @@ def test_strategy_service_creates_queryable_plan_without_creating_job(runtime) -
         assert connection.scalar(select(func.count()).select_from(collection_plans_table)) == 1
         assert connection.scalar(select(func.count()).select_from(jobs_table)) == 0
         assert connection.scalar(select(func.count()).select_from(collection_runs_table)) == 0
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(collection_plan_brands_table)
+                .where(collection_plan_brands_table.c.brand_id == brand_id)
+            )
+            == 1
+        )
+
+    session = runtime.database.new_session()
+    try:
+        with pytest.raises(RuntimeError, match="已引用品牌"):
+            with session.begin():
+                PostgresBrandVehicleRepository(session).delete_unreferenced_brand(
+                    brand_id,
+                    actor_ref="stage4-plan-brand-reference",
+                )
+    finally:
+        session.close()
 
 
 def test_plan_and_pack_enablement_are_fenced_and_preserve_global_relevance(runtime) -> None:  # type: ignore[no-untyped-def]

@@ -51,3 +51,7 @@ def test_product_resource_lifecycle_routes_are_in_final_openapi() -> None:
         "deleteAnalysisScheme",
     }
     assert expected <= operation_ids
+    assert (
+        "brand_ids"
+        in document["components"]["schemas"]["CollectionPlanUpdateRequest"]["properties"]
+    )

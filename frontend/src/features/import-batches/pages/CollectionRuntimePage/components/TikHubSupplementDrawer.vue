@@ -222,8 +222,8 @@ function submit(): void {
     validation.value = '当前批次、采集渠道与采集内容组合没有可执行的平台。'
     return
   }
-  if (mode.value === 'discovery' && selectedPackIds.value.length === 0 && selectedVehicleIds.value.length === 0) {
-    validation.value = '请至少选择一个关键词包或车型。'
+  if (mode.value === 'discovery' && selectedPackIds.value.length === 0) {
+    validation.value = '请至少选择一个关键词包作为搜索条件。'
     return
   }
   if (mode.value === 'batch_supplement' && !selectedSupplementSource.value) {
@@ -300,7 +300,7 @@ function submit(): void {
 
           <AimaFeedbackBanner tone="info">
             {{ mode === 'discovery'
-              ? '选择关键词包或车型后，按所选平台的搜索条件发现新内容。'
+              ? '关键词包提供搜索词；兼容车型选择会转换为所属品牌过滤范围。'
               : '选择已有导入来源后，可补充其中已收录内容的信息和评论；可选平台以当前来源和采集渠道为准。' }}
           </AimaFeedbackBanner>
 
@@ -376,7 +376,7 @@ function submit(): void {
           >
             <VehicleMultiSelect
               v-model="selectedVehicleIds"
-              label="车型（可单独选择，也可与词包组合）"
+              label="兼容车型范围（转换为所属品牌，且必须同时选择词包）"
             />
           </section>
 

@@ -11,21 +11,15 @@ export interface PlanPlatformSelection {
 
 export interface PlanExecutionEligibilityInput {
   keywordPackIds: readonly string[]
-  vehicleModelIds: readonly string[]
   platforms: readonly PlanPlatformSelection[]
-  requireRelevance: boolean
-  relevanceAvailable: boolean
   packDetails: Readonly<Record<string, KeywordPackResponse>>
   capabilities: CollectionCapabilitiesResponse | null
 }
 
-/** 按当前后端 Capability、词包和全局相关性事实给出计划不可执行的首个原因。 */
+/** 按当前后端 Capability 与 Keyword Pack Search Terms 给出首个不可执行原因。 */
 export function planExecutionReason(input: PlanExecutionEligibilityInput): string | null {
-  if (input.keywordPackIds.length === 0 && input.vehicleModelIds.length === 0) {
-    return '请至少选择一个关键词包或车型。'
-  }
+  if (input.keywordPackIds.length === 0) return '请至少选择一个关键词包作为搜索条件。'
   if (input.platforms.length === 0) return '请至少选择一个采集平台。'
-  if (input.requireRelevance && !input.relevanceAvailable) return '全局相关性尚未配置。'
 
   const details: KeywordPackResponse[] = []
   for (const packId of input.keywordPackIds) {
@@ -36,7 +30,7 @@ export function planExecutionReason(input: PlanExecutionEligibilityInput): strin
   }
 
   for (const selection of input.platforms) {
-    const hasKeyword = input.vehicleModelIds.length > 0 || details.some((pack) =>
+    const hasKeyword = details.some((pack) =>
       pack.keywords.some(
         (keyword) =>
           keyword.enabled &&

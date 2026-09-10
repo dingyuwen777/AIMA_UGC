@@ -30,7 +30,6 @@ const props = defineProps<{
   packDetails: Record<string, KeywordPackResponse>
   capabilities: CollectionCapabilitiesResponse | null
   relevanceName: string
-  relevanceAvailable: boolean
   saving: boolean
   error?: string | null
   loadingPackDetails: boolean
@@ -78,10 +77,7 @@ const eligibilityReason = computed(() => {
 
   return planExecutionReason({
     keywordPackIds: selectedPacks.value,
-    vehicleModelIds: selectedVehicles.value,
     platforms: selectedPlatforms.value,
-    requireRelevance: enabled.value,
-    relevanceAvailable: props.relevanceAvailable,
     packDetails: props.packDetails,
     capabilities: props.capabilities,
   })
@@ -216,12 +212,12 @@ function submit(): void {
           type="checkbox"
           :value="pack.id"
         >{{ pack.name }} · v{{ pack.version }}{{ pack.enabled ? '' : ' · 已停用' }}</label><p v-if="packs.length === 0">
-          请先创建可用的关键词包，或选择车型作为发现范围。
+          请先创建可用的关键词包；TikHub Discovery 必须从词包取得搜索词。
         </p>
       </fieldset>
       <VehicleMultiSelect
         v-model="selectedVehicles"
-        label="3. 车型（可单独选择，也可与词包组合）"
+        label="3. 兼容车型范围（转换为所属品牌，且必须同时选择词包）"
       />
       <fieldset>
         <legend>4. 目标平台与采集渠道</legend><div class="platforms">
@@ -286,8 +282,8 @@ function submit(): void {
       <div class="policy">
         <strong>系统固定规则</strong><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
       </div>
-      <AimaFeedbackBanner :tone="enabled && !relevanceAvailable ? 'error' : 'success'">
-        <strong>全局规则相关性（系统全局）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>只读；启用计划前必须可用，执行时会冻结当时配置，单个计划不可覆盖。</small>
+      <AimaFeedbackBanner tone="info">
+        <strong>兼容全局规则相关性</strong><span>{{ relevanceName || '尚未配置' }}</span><small>只用于升级前已创建的旧任务；新计划使用品牌车型过滤，不要求配置此项。</small>
       </AimaFeedbackBanner>
       <div
         v-if="eligibilityReason && (selectedPacks.length || selectedVehicles.length) && platformOptions.some((item) => isPlatformSelected(item.value))"

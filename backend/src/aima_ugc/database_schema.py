@@ -30,6 +30,7 @@ from aima_ugc.modules.collection.corrective_tables import (
 from aima_ugc.modules.collection.lifecycle_schema import register_collection_lifecycle_schema
 from aima_ugc.modules.collection.scheduler_schema import register_scheduler_schema
 from aima_ugc.modules.collection.tables import (
+    collection_plan_brands_table,
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
     collection_plan_vehicle_models_table,
@@ -146,6 +147,7 @@ __all__ = [
     "collection_candidate_ingestions_table",
     "collection_candidates_table",
     "collection_content_actions_table",
+    "collection_plan_brands_table",
     "collection_plan_decision_policies_table",
     "collection_plan_keyword_packs_table",
     "collection_plan_platforms_table",

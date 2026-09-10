@@ -42,6 +42,8 @@ from aima_ugc.modules.system.tables import (
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from sqlalchemy import delete, select
 
+from tests.integration.stage3_brand_support import stage3_filter_brand_id
+
 
 @pytest.fixture
 def scheduler_runtime():
@@ -75,6 +77,7 @@ def scheduler_runtime():
 def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
     scheduler_runtime,
 ) -> None:
+    stage3_filter_brand_id(scheduler_runtime, alias="爱玛")
     session = scheduler_runtime.database.new_session()
     try:
         with session.begin():
@@ -202,6 +205,12 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
             ("xiaohongshu", "keyword_search", "电动车", "content_discovery"),
         }
         assert run["config_snapshot"]["keyword_pack_ids"] == [str(pack.id)]
+        assert run["config_snapshot"]["schema_version"] == "collection-run-config.v2"
+        assert run["config_snapshot"]["search_snapshot"]["terms"] == ["爱玛", "电动车"]
+        assert run["config_snapshot"]["brand_vehicle_filter"]["search_semantics"] == (
+            "keyword_pack"
+        )
+        assert "relevance" not in run["config_snapshot"]
         assert run["config_snapshot"]["keyword_packs"] == [
             {"id": str(pack.id), "version": 5, "enabled": True}
         ]

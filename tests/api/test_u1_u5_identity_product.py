@@ -154,6 +154,7 @@ def test_ordinary_user_cannot_mutate_keyword_relevance_or_plan_configuration() -
                         "search_config": {},
                     }
                 ],
+                "keyword_pack_ids": [str(pack_id)],
                 "vehicle_model_ids": [str(vehicle_id)],
             },
         ),
