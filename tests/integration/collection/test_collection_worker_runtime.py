@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -254,7 +255,13 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
         assert all(item["dispatch_status"] == "completed" for item in provider_attempts)
         assert all(item["attempt_no"] == 1 for item in provider_attempts)
         assert all(item["raw_artifact_id"] is not None for item in provider_attempts)
-        assert all(item["billing_status"] == "not_billable" for item in provider_attempts)
+        assert all(item["billing_status"] == "estimated" for item in provider_attempts)
+        assert all(item["cost_currency"] == "USD" for item in provider_attempts)
+        assert all(item["cost_unit"] == "request" for item in provider_attempts)
+        assert all(item["unit_price_snapshot"] == Decimal("0.010000") for item in provider_attempts)
+        assert all(item["estimated_cost"] == Decimal("0.010000") for item in provider_attempts)
+        assert all(item["actual_cost"] == Decimal("0") for item in provider_attempts)
+        assert all(item["potential_duplicate_charge"] is False for item in provider_attempts)
         assert "request_budget" not in run["config_snapshot"]
     finally:
         with runtime.database.engine.begin() as connection:
