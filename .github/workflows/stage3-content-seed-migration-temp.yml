@@ -174,24 +174,10 @@ jobs:
                   text,
                   "from aima_ugc.bootstrap.api import create_app\n",
                   "from aima_ugc.bootstrap.api import create_app\n"
-                  "from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService\n",
-                  label=f"{name}: brand service import",
-              )
-              contract_anchor = re.search(r"^from aima_ugc\.contracts\.", text, flags=re.MULTILINE)
-              if contract_anchor is None:
-                  raise RuntimeError(f"{name}: contract import anchor missing")
-              text = (
-                  text[: contract_anchor.start()]
-                  + "from aima_ugc.contracts.brand_vehicle import BrandCreateRequest\n"
-                  + text[contract_anchor.start() :]
-              )
-              module_anchor = re.search(r"^from aima_ugc\.modules\.", text, flags=re.MULTILINE)
-              if module_anchor is None:
-                  raise RuntimeError(f"{name}: module import anchor missing")
-              text = (
-                  text[: module_anchor.start()]
-                  + "from aima_ugc.modules.identity import Principal\n"
-                  + text[module_anchor.start() :]
+                  "from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService\n"
+                  "from aima_ugc.contracts.brand_vehicle import BrandCreateRequest\n"
+                  "from aima_ugc.modules.identity import Principal\n",
+                  label=f"{name}: Stage 3 test imports",
               )
               fixture = config["fixture"]
               text = replace_once(
