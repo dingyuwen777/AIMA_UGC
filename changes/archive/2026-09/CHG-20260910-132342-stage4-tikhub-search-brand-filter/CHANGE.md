@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260910-132342-stage4-tikhub-search-brand-filter
 title: 搜索与品牌车型过滤 Stage 4 TikHub 搜索过滤解耦
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/stage4-tikhub-search-brand-filter
 created: 2026-09-10
