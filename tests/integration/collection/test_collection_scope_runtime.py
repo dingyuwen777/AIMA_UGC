@@ -70,14 +70,14 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, accounts, vehicle_brands RESTART IDENTITY CASCADE"
         )
     try:
         yield runtime
     finally:
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, accounts, vehicle_brands RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
 
