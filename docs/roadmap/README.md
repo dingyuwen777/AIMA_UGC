@@ -11,7 +11,7 @@
 1. [`docs/roadmap/02_生产上线实施路线.md`](02_生产上线实施路线.md)：从已完成公司内网 V1 继续到完整 Production Go-Live 的生产强化；
 2. [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](03_4000万历史数据迁移实施方案.md)：完成公司服务器容量门禁、独立生产写授权、4000 万正式 Campaign 和全量对账；
 3. [`docs/roadmap/04_搜索与品牌车型过滤实施路线.md`](04_搜索与品牌车型过滤实施路线.md)：分阶段完成 Keyword Pack 搜索职责与品牌/车型过滤分类职责解耦，并覆盖数据库、后端、前端、旧数据重分类与 Legacy Cleanup；
-4. [`docs/roadmap/05_可重放数据底座与监测重分类实施路线.md`](05_可重放数据底座与监测重分类实施路线.md)：Roadmap 04 完成后，把 Raw/Canonical/Monitoring Filter 演进为可恢复、可重放、可版本化重分类的数据底座，同时允许年度 Content 上的车型组共现、新 UI、报表和专题分析并行开发。
+4. [`docs/roadmap/05_可重放数据底座与监测重分类实施路线.md`](05_可重放数据底座与监测重分类实施路线.md)：Roadmap 04 完成后，在现有主链中增加 Persistent Canonical JSONL.gz Artifact 和 Replay，使全部成功归一化的 Excel/TikHub 数据在 Brand/Vehicle Filter 前可长期复用；不建设 Monitoring Membership、Filter History、Platform Registry 等扩展平台能力。
 
 公司内网 V1、Stage 8F、Internal V1-A/V1-B、Stage 12 软件建设等已经完成的施工阶段不再继续占用 live Roadmap。需要理解历史原因或当时证据时，查 [`changes/archive/`](../../changes/archive/) 和 Git 历史。
 
