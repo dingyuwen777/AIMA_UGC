@@ -602,6 +602,55 @@ class PostgresBrandVehicleRepository:
             )
         return True
 
+    def merge_automatic_brand_evidence(
+        self,
+        *,
+        content_id: UUID,
+        content_version: int,
+        evidence: tuple[ResolverEvidence, ...],
+        catalog_version: int,
+        catalog_snapshot: BrandVehicleCatalogSnapshot,
+    ) -> bool:
+        """更新本次确认的品牌证据，不撤销其他品牌的既有结论。"""
+
+        if catalog_snapshot.catalog_version != catalog_version:
+            raise ValueError("Brand Evidence 的目录版本与冻结 Snapshot 不一致")
+        self._lock_brand_review_write(content_id=content_id, content_version=content_version)
+        locked = self._session.scalar(
+            select(content_brand_review_locks_table.c.is_locked).where(
+                content_brand_review_locks_table.c.content_id == content_id,
+                content_brand_review_locks_table.c.content_version == content_version,
+            )
+        )
+        if locked is True:
+            return False
+        confirmed_brand_ids = tuple({item.entity_id for item in evidence})
+        if confirmed_brand_ids:
+            self._session.execute(
+                update(content_brand_evidence_table)
+                .where(
+                    content_brand_evidence_table.c.content_id == content_id,
+                    content_brand_evidence_table.c.content_version == content_version,
+                    content_brand_evidence_table.c.brand_id.in_(confirmed_brand_ids),
+                    content_brand_evidence_table.c.is_active.is_(True),
+                    content_brand_evidence_table.c.is_manual_locked.is_(False),
+                )
+                .values(is_active=False)
+            )
+        for item in evidence:
+            if item.source not in ("alias_match", "vehicle_match"):
+                raise ValueError("自动 Brand Evidence 只接受 alias_match/vehicle_match")
+            self._validate_brand_evidence_against_snapshot(item, catalog_snapshot)
+            self._upsert_brand_evidence(
+                content_id=content_id,
+                content_version=content_version,
+                item=item,
+                catalog_version=catalog_version,
+                confidence=1.0,
+                is_manual_locked=False,
+            )
+        return True
+
     def replace_automatic_brand_evidence_batch(
         self,
         *,

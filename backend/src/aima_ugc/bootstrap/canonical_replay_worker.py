@@ -92,10 +92,7 @@ class PostgresCanonicalReplayJobExecutor:
             if not self._preflight_all(selected, fence=fence, context=context):
                 return JobHandlerResult.cancelled()
 
-            while True:
-                run, selected = self._load_execution(payload.run_id, fence)
-                if run.checkpoint_artifact_ordinal >= run.artifact_count:
-                    return JobHandlerResult.succeeded(_result(run))
+            while run.checkpoint_artifact_ordinal < run.artifact_count:
                 if context.cancel_requested():
                     return JobHandlerResult.cancelled()
                 current = selected[run.checkpoint_artifact_ordinal]
@@ -107,21 +104,25 @@ class PostgresCanonicalReplayJobExecutor:
                 try:
                     for _ in islice(iterator, run.checkpoint_row_number):
                         pass
-                    batch = tuple(islice(iterator, run.batch_size))
+                    while True:
+                        if context.cancel_requested():
+                            return JobHandlerResult.cancelled()
+                        batch = tuple(islice(iterator, run.batch_size))
+                        if not batch:
+                            run = self._advance_empty_artifact(run, current, fence=fence)
+                            break
+                        run = self._ingest_batch(
+                            run,
+                            current,
+                            artifact,
+                            batch,
+                            fence=fence,
+                        )
+                        context.heartbeat(progress=_progress(run))
                 finally:
                     iterator.close()
-
-                if not batch:
-                    run = self._advance_empty_artifact(run, current, fence=fence)
-                else:
-                    run = self._ingest_batch(
-                        run,
-                        current,
-                        artifact,
-                        batch,
-                        fence=fence,
-                    )
                 context.heartbeat(progress=_progress(run))
+            return JobHandlerResult.succeeded(_result(run))
         except LeaseLostError:
             raise
         except CanonicalArtifactIntegrityError:
@@ -227,7 +228,7 @@ class PostgresCanonicalReplayJobExecutor:
                             raise ValueError("Import Canonical Source 不符合当前持久格式")
                     return
 
-                parent_run_id = session.scalar(
+                parent = session.execute(
                     select(collection_scopes_table.c.run_id)
                     .select_from(
                         canonical_artifact_links_table.join(
@@ -246,16 +247,19 @@ class PostgresCanonicalReplayJobExecutor:
                         )
                     )
                     .where(canonical_artifact_links_table.c.artifact_id == selected.artifact_id)
-                )
-                if parent_run_id is None:
-                    raise ValueError("TikHub Canonical 缺少父级 Collection Run")
+                    .add_columns(collection_scopes_table.c.id)
+                ).one_or_none()
+                if parent is None:
+                    raise ValueError("TikHub Canonical 缺少父级 Collection Scope/Run")
+                parent_run_id = cast(UUID, parent.run_id)
+                parent_scope_id = cast(UUID, parent.id)
                 attempt_ids: set[UUID] = set()
-                expected_raw: dict[UUID, UUID] = {}
-                expected_request: dict[UUID, UUID] = {}
+                expected: dict[UUID, tuple[UUID, UUID, str, str]] = {}
                 for content in contents:
                     source = content.source
                     if (
                         source.provider_name != "tikhub"
+                        or source.operation is None
                         or source.provider_request_id is None
                         or source.provider_attempt_id is None
                         or source.raw_artifact_id is None
@@ -266,18 +270,24 @@ class PostgresCanonicalReplayJobExecutor:
                         attempt_id = UUID(source.provider_attempt_id)
                     except ValueError as exc:
                         raise ValueError("TikHub Canonical Request/Attempt 不是 UUID") from exc
-                    previous_raw = expected_raw.setdefault(attempt_id, source.raw_artifact_id)
-                    if previous_raw != source.raw_artifact_id:
-                        raise ValueError("同一 TikHub Attempt 指向多个 Raw")
-                    previous_request = expected_request.setdefault(attempt_id, request_id)
-                    if previous_request != request_id:
-                        raise ValueError("同一 TikHub Attempt 指向多个 Request")
+                    lineage = (
+                        request_id,
+                        source.raw_artifact_id,
+                        content.platform,
+                        source.operation,
+                    )
+                    previous = expected.setdefault(attempt_id, lineage)
+                    if previous != lineage:
+                        raise ValueError("同一 TikHub Attempt 的行级来源不一致")
                     attempt_ids.add(attempt_id)
                 rows = session.execute(
                     select(
                         provider_request_attempts_table.c.id,
                         provider_request_attempts_table.c.provider_request_id,
                         provider_request_attempts_table.c.raw_artifact_id,
+                        provider_requests_table.c.scope_id,
+                        provider_requests_table.c.platform,
+                        provider_requests_table.c.operation,
                         collection_scopes_table.c.run_id,
                     )
                     .join(
@@ -291,23 +301,36 @@ class PostgresCanonicalReplayJobExecutor:
                     )
                     .where(
                         provider_request_attempts_table.c.id.in_(attempt_ids),
+                        provider_request_attempts_table.c.dispatch_status == "completed",
+                        provider_request_attempts_table.c.raw_artifact_id.is_not(None),
                         provider_requests_table.c.provider == "tikhub",
                     )
                 )
                 actual = {
                     cast(UUID, row.id): (
                         cast(UUID, row.provider_request_id),
-                        cast(UUID | None, row.raw_artifact_id),
-                        row.run_id,
+                        cast(UUID, row.raw_artifact_id),
+                        cast(UUID, row.scope_id),
+                        cast(UUID, row.run_id),
+                        cast(str, row.platform),
+                        cast(str, row.operation),
                     )
                     for row in rows
                 }
                 if set(actual) != attempt_ids or any(
-                    actual[item] != (expected_request[item], expected_raw[item], parent_run_id)
+                    actual[item]
+                    != (
+                        expected[item][0],
+                        expected[item][1],
+                        parent_scope_id,
+                        parent_run_id,
+                        expected[item][2],
+                        expected[item][3],
+                    )
                     for item in attempt_ids
                 ):
                     raise ValueError(
-                        "TikHub Canonical Request/Attempt/Raw 不属于同一 Collection Run"
+                        "TikHub Canonical 行级来源不属于父级 Scope 或与 Request/Attempt/Raw 不一致"
                     )
         finally:
             session.close()
@@ -550,7 +573,7 @@ class PostgresCanonicalReplayJobExecutor:
                     created_at=beijing_now(),
                 )
             )
-        brand_repository.replace_automatic_brand_evidence(
+        brand_repository.merge_automatic_brand_evidence(
             content_id=content_id,
             content_version=content_version,
             evidence=resolution.brand_evidence,

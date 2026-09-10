@@ -400,14 +400,17 @@ Attempt。Scope-only 或其它无法证明的旧关系失败关闭；当前没�
 `brand_ids` 表示冻结当时全部 active Brand，非空集合表示只冻结明确选择的 active Brand。
 
 Worker 在第一次写 Content 前预检**全部**所选 Artifact，而不只是第一个；预检因此会额外完整
-读取一次输入集，容量规划必须把这部分 Artifact I/O 算入。业务阶段按 `batch_size` 提交，每个
-批次在当前 Fencing Token 下原子写 Content/Evidence、Run 内去重身份、checkpoint 与统计。
-接管从最后已提交 checkpoint 恢复；未提交事务不会留下去重身份或统计。重复 Replay 不产生
+打开一次输入集，容量规划必须把这部分 Artifact I/O 算入。业务阶段每件 Artifact 只打开一次并
+连续流式取批，按 `batch_size` 在当前 Fencing Token 下原子写 Content/Evidence、Run 内去重身份、
+checkpoint 与统计，不会每批从第 0 行重读。接管时只对当前 Artifact 从头线性跳过已提交行；未
+提交事务不会留下去重身份或统计。重复 Replay 不产生
 第二条 Content：同一 Run 的重复输入计入 `duplicates_removed`，数据库已有 Content 计入
 `existing_convergence`，新建 Content 计入 `rows_ingested`。
 
 当前正式入口只有管理员 API 的创建、查询和取消；尚无前端页面。Replay 不自动创建 Analysis
-Job，也不会在规则变窄时删除、隐藏或撤销以前已进入业务库的 Content。
+Job，也不会在规则变窄时删除、隐藏或撤销以前已进入业务库的 Content。Replay 只把冻结
+Snapshot 新命中的 Brand/Vehicle Evidence 追加或幂等恢复到当前 Content Version；不会像普通
+新 Observation 的完整重分类那样停用 selected 范围外的既有自动证据，人工锁仍优先。
 
 ---
 

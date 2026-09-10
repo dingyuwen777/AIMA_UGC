@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid5
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -92,6 +92,7 @@ class PostgresCanonicalReplayRepository:
         if not 1 <= batch_size <= 1000:
             raise ValueError("batch_size 必须是 1—1000")
 
+        self._lock_idempotency_key(key)
         run_id = uuid5(_RUN_NAMESPACE, key)
         existing = self.get(run_id)
         if existing is not None:
@@ -391,6 +392,14 @@ class PostgresCanonicalReplayRepository:
                 )
             return "tikhub_search_attempt_v1"
         raise UnsupportedCanonicalReplaySource("Canonical lineage 无法唯一分类")
+
+    def _lock_idempotency_key(self, key: str) -> None:
+        """串行化同一客户端幂等键，保证并发创建也返回同一 Run/Job。"""
+
+        lock_key = f"canonical-replay:{key}"
+        self._session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+        )
 
 
 def _run_from_row(row: RowMapping) -> CanonicalReplayRunRecord:

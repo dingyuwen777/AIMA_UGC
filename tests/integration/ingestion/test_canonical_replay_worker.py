@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
+from threading import Barrier
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,6 +12,7 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.bootstrap import canonical_replay_worker as canonical_replay_worker_module
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
@@ -22,6 +25,7 @@ from aima_ugc.bootstrap.worker import (
     create_worker_runtime,
 )
 from aima_ugc.contracts.brand_vehicle import BrandAliasCreateRequest, BrandCreateRequest
+from aima_ugc.contracts.http import CanonicalReplayCreateRequest
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.canonical_replay import (
@@ -35,6 +39,7 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
 from aima_ugc.modules.vehicles.tables import content_brand_evidence_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
+from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
@@ -112,12 +117,16 @@ def _worker(runtime: PlatformRuntime, *, suffix: str):  # type: ignore[no-untype
 
 
 def _create_brand_without_matching_alias(runtime: PlatformRuntime) -> UUID:
+    return _create_brand(runtime, alias="绝不命中的旧识别词")
+
+
+def _create_brand(runtime: PlatformRuntime, *, alias: str) -> UUID:
     created = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
             code=f"REPLAY-{uuid4()}",
             display_name="Replay 测试品牌",
             role="owned",
-            aliases=("绝不命中的旧识别词",),
+            aliases=(alias,),
         ),
         principal=_principal(),
         request_id="canonical-replay-brand",
@@ -141,21 +150,22 @@ def _import_canonical(
     *,
     filename: str,
     rows: tuple[tuple[str, str], ...],
-    brand_id: UUID,
+    brand_ids: tuple[UUID, ...],
 ) -> UUID:
+    files: list[tuple[str, tuple[str | None, object, str | None]]] = [
+        (
+            "file",
+            (
+                filename,
+                _xlsx(rows=rows),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+        )
+    ]
+    files.extend(("brand_ids", (None, str(brand_id), None)) for brand_id in brand_ids)
     created = client.post(
         "/api/v1/import-batches",
-        files=[
-            (
-                "file",
-                (
-                    filename,
-                    _xlsx(rows=rows),
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ),
-            ),
-            ("brand_ids", (None, str(brand_id))),
-        ],
+        files=files,
     )
     assert created.status_code == 202
     assert _worker(runtime, suffix=f"import-{filename}").run_once() is True
@@ -216,7 +226,7 @@ def test_new_alias_replay_deduplicates_and_converges_through_content_owner(
                 ("canonical-replay-same", "星曜首条"),
                 ("canonical-replay-same", "星曜重复记录"),
             ),
-            brand_id=brand_id,
+            brand_ids=(brand_id,),
         )
         catalog_version = _add_replay_alias(runtime, brand_id)
 
@@ -292,14 +302,14 @@ def test_all_artifacts_are_preflighted_before_first_content_write(tmp_path: Path
             runtime,
             filename="replay-valid.xlsx",
             rows=(("canonical-replay-valid", "星曜合法记录"),),
-            brand_id=brand_id,
+            brand_ids=(brand_id,),
         )
         second_artifact = _import_canonical(
             client,
             runtime,
             filename="replay-corrupt.xlsx",
             rows=(("canonical-replay-corrupt", "星曜损坏记录"),),
-            brand_id=brand_id,
+            brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
         with runtime.database.engine.connect() as connection:
@@ -352,7 +362,7 @@ def test_replay_enqueue_is_idempotent_and_rejects_parameter_drift(tmp_path: Path
             runtime,
             filename="replay-idempotency.xlsx",
             rows=(("canonical-replay-idempotency", "星曜幂等记录"),),
-            brand_id=brand_id,
+            brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
         key = f"replay-idempotency-{uuid4()}"
@@ -382,6 +392,171 @@ def test_replay_enqueue_is_idempotent_and_rejects_parameter_drift(tmp_path: Path
         assert repeated == first
         assert drift.status_code == 409
         assert drift.json()["errors"][0]["code"] == "canonical_replay_conflict"
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_concurrent_same_idempotency_key_returns_one_run_and_job(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
+        brand_id = _create_brand_without_matching_alias(runtime)
+        artifact_id = _import_canonical(
+            client,
+            runtime,
+            filename="replay-concurrent.xlsx",
+            rows=(("canonical-replay-concurrent", "并发幂等记录"),),
+            brand_ids=(brand_id,),
+        )
+        body = CanonicalReplayCreateRequest(
+            idempotency_key=f"replay-concurrent-{uuid4()}",
+            artifact_ids=(artifact_id,),
+            brand_ids=(brand_id,),
+            batch_size=1,
+        )
+        barrier = Barrier(2, timeout=5)
+        original = PostgresCanonicalReplayRepository._lock_idempotency_key
+
+        def synchronized_lock(repository, key):  # type: ignore[no-untyped-def]
+            barrier.wait()
+            original(repository, key)
+
+        monkeypatch.setattr(
+            PostgresCanonicalReplayRepository,
+            "_lock_idempotency_key",
+            synchronized_lock,
+        )
+
+        def create(index: int):  # type: ignore[no-untyped-def]
+            return PostgresCanonicalReplayHttpService(runtime).create_replay(
+                body,
+                actor_ref=_principal().principal_id,
+                request_id=f"canonical-replay-concurrent-{index}",
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = tuple(executor.map(create, range(2)))
+
+        assert responses[0] == responses[1]
+        with runtime.database.engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(jobs_table)
+                    .where(jobs_table.c.job_type == CANONICAL_REPLAY_JOB_TYPE)
+                )
+                == 1
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_small_batches_open_each_artifact_once_after_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        artifact_id = _import_canonical(
+            client,
+            runtime,
+            filename="replay-linear-read.xlsx",
+            rows=tuple(
+                (f"canonical-replay-linear-{index}", f"星曜线性读取 {index}") for index in range(5)
+            ),
+            brand_ids=(brand_id,),
+        )
+        calls = 0
+        original = canonical_replay_worker_module.CanonicalArtifactReader.read
+
+        def counted_read(reader, artifact):  # type: ignore[no-untyped-def]
+            nonlocal calls
+            calls += 1
+            yield from original(reader, artifact)
+
+        monkeypatch.setattr(
+            canonical_replay_worker_module.CanonicalArtifactReader,
+            "read",
+            counted_read,
+        )
+        _create_replay(
+            client,
+            artifact_ids=(artifact_id,),
+            brand_id=brand_id,
+            idempotency_key=f"replay-linear-{uuid4()}",
+            batch_size=1,
+        )
+
+        assert _worker(runtime, suffix="linear-read").run_once() is True
+        assert calls == 2
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_selected_replay_preserves_existing_out_of_scope_brand_evidence(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        selected_brand = _create_brand(runtime, alias="星曜")
+        out_of_scope_brand = _create_brand(runtime, alias="月影")
+        artifact_id = _import_canonical(
+            client,
+            runtime,
+            filename="replay-preserve-evidence.xlsx",
+            rows=(("canonical-replay-preserve-evidence", "星曜与月影联名"),),
+            brand_ids=(selected_brand, out_of_scope_brand),
+        )
+        with runtime.database.engine.connect() as connection:
+            before = set(
+                connection.scalars(
+                    select(content_brand_evidence_table.c.brand_id).where(
+                        content_brand_evidence_table.c.is_active.is_(True)
+                    )
+                )
+            )
+        assert before == {selected_brand, out_of_scope_brand}
+
+        replay = _create_replay(
+            client,
+            artifact_ids=(artifact_id,),
+            brand_id=selected_brand,
+            idempotency_key=f"replay-preserve-evidence-{uuid4()}",
+        )
+        assert _worker(runtime, suffix="preserve-evidence").run_once() is True
+        response = client.get(f"/api/v1/canonical-replays/{replay['run_id']}")
+        assert response.json()["stats"]["existing_convergence"] == 1
+        with runtime.database.engine.connect() as connection:
+            after = set(
+                connection.scalars(
+                    select(content_brand_evidence_table.c.brand_id).where(
+                        content_brand_evidence_table.c.is_active.is_(True)
+                    )
+                )
+            )
+        assert after == {selected_brand, out_of_scope_brand}
     finally:
         _truncate(runtime)
         runtime.close()
@@ -429,7 +604,7 @@ def test_replay_takeover_resumes_checkpoint_and_rejects_stale_fence(tmp_path: Pa
                 ("canonical-replay-takeover-1", "星曜接管第一条"),
                 ("canonical-replay-takeover-2", "星曜接管第二条"),
             ),
-            brand_id=brand_id,
+            brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
         created = _create_replay(

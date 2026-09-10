@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,12 +11,17 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
 )
+from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.storage.local import LocalArtifactStore
+from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
+from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
     collection_scopes_table,
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.ingestion.canonical_replay import CanonicalReplayArtifactRecord
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -25,6 +31,7 @@ from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage import ArtifactRecord, CanonicalArtifactParent
 from aima_ugc.platform.storage.canonical import (
@@ -177,20 +184,12 @@ def _campaign_source(session: Session) -> UUID:
     return canonical.id
 
 
-def _tikhub_source(session: Session) -> UUID:
-    run_id = uuid4()
-    session.execute(
-        insert(collection_runs_table).values(
-            id=run_id,
-            job_id=_job(session, job_type="collection.run.v1"),
-            trigger_type="backfill",
-            config_snapshot={},
-            status="succeeded",
-            created_at=_NOW,
-            started_at=_NOW,
-            finished_at=_NOW,
-        )
-    )
+def _tikhub_attempt(
+    session: Session,
+    *,
+    run_id: UUID,
+    source_value: str,
+) -> tuple[UUID, UUID, UUID, UUID]:
     scope_id = uuid4()
     session.execute(
         insert(collection_scopes_table).values(
@@ -198,7 +197,7 @@ def _tikhub_source(session: Session) -> UUID:
             run_id=run_id,
             platform="xiaohongshu",
             source_type="keyword_search",
-            source_value="爱玛",
+            source_value=source_value,
             operation_group="content_discovery",
             status="succeeded",
         )
@@ -211,7 +210,7 @@ def _tikhub_source(session: Session) -> UUID:
             provider="tikhub",
             operation="search_notes",
             request_fingerprint="c" * 64,
-            request_params={"keyword": "爱玛"},
+            request_params={"keyword": source_value},
             pagination_input={},
             status="completed",
             attempt_count=1,
@@ -236,6 +235,24 @@ def _tikhub_source(session: Session) -> UUID:
             created_at=_NOW,
         )
     )
+    return scope_id, request_id, attempt_id, raw.id
+
+
+def _tikhub_source(session: Session) -> UUID:
+    run_id = uuid4()
+    session.execute(
+        insert(collection_runs_table).values(
+            id=run_id,
+            job_id=_job(session, job_type="collection.run.v1"),
+            trigger_type="backfill",
+            config_snapshot={},
+            status="succeeded",
+            created_at=_NOW,
+            started_at=_NOW,
+            finished_at=_NOW,
+        )
+    )
+    _, _, attempt_id, _ = _tikhub_attempt(session, run_id=run_id, source_value="爱玛")
     canonical = _artifact(session, kind=CANONICAL_CONTENT_ARTIFACT_KIND)
     PostgresArtifactMetadataRepository(session).link_canonical(
         canonical.id,
@@ -313,6 +330,114 @@ def test_scope_only_canonical_is_rejected_by_database_after_clean_break() -> Non
                         parent=CanonicalArtifactParent(collection_scope_id=scope_id),
                         linked_at=_NOW,
                     )
+    finally:
+        session.close()
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+                "RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_tikhub_preflight_rejects_row_from_another_scope_in_the_same_run(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
+        )
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            collection_run_id = uuid4()
+            session.execute(
+                insert(collection_runs_table).values(
+                    id=collection_run_id,
+                    job_id=_job(session, job_type="collection.run.v1"),
+                    trigger_type="backfill",
+                    config_snapshot={},
+                    status="succeeded",
+                    created_at=_NOW,
+                    started_at=_NOW,
+                    finished_at=_NOW,
+                )
+            )
+            _, _, parent_attempt_id, _ = _tikhub_attempt(
+                session,
+                run_id=collection_run_id,
+                source_value="父 Scope",
+            )
+            _, foreign_request_id, foreign_attempt_id, foreign_raw_id = _tikhub_attempt(
+                session,
+                run_id=collection_run_id,
+                source_value="另一个 Scope",
+            )
+            canonical = _artifact(session, kind=CANONICAL_CONTENT_ARTIFACT_KIND)
+            PostgresArtifactMetadataRepository(session).link_canonical(
+                canonical.id,
+                parent=CanonicalArtifactParent(provider_attempt_id=parent_attempt_id),
+                linked_at=_NOW,
+            )
+            run, _ = PostgresCanonicalReplayRepository(session).enqueue(
+                idempotency_key=f"cross-scope-{uuid4()}",
+                artifact_ids=(canonical.id,),
+                brand_ids=(),
+                batch_size=1,
+                created_by="cross-scope-test",
+                request_id="cross-scope-test",
+            )
+            selected = PostgresCanonicalReplayRepository(session).list_artifacts(run.id)[0]
+
+        claim_session = runtime.new_session()
+        try:
+            with claim_session.begin():
+                claim = PostgresJobRepository(claim_session).claim_next(
+                    supported_job_types=("ingestion.canonical-replay.v1",),
+                    worker_id="cross-scope-worker",
+                    lease_seconds=30,
+                )
+                assert claim is not None and claim.lease_token is not None
+        finally:
+            claim_session.close()
+
+        content = CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id="cross-scope-content",
+            content_type="unknown",
+            observed_at=_NOW,
+            observed_fields=["content_type"],
+            source=CanonicalSourceV1(
+                provider_name="tikhub",
+                operation="search_notes",
+                provider_request_id=str(foreign_request_id),
+                provider_attempt_id=str(foreign_attempt_id),
+                raw_artifact_id=foreign_raw_id,
+                source_type="keyword_search",
+                source_value="另一个 Scope",
+                observed_at=_NOW,
+            ),
+        )
+        executor = PostgresCanonicalReplayJobExecutor(
+            SimpleNamespace(
+                database=runtime,
+                artifact_store=LocalArtifactStore(tmp_path),
+            )
+        )
+
+        with pytest.raises(ValueError, match="父级 Scope"):
+            executor._validate_source_rows(  # noqa: SLF001 - 纵切验证 fail-closed 边界
+                CanonicalReplayArtifactRecord(
+                    run_id=selected.run_id,
+                    ordinal=selected.ordinal,
+                    artifact_id=selected.artifact_id,
+                    source_kind=selected.source_kind,
+                ),
+                (content,),
+                fence=JobExecutionFence(job_id=claim.id, lease_token=claim.lease_token),
+            )
     finally:
         session.close()
         with runtime.engine.begin() as connection:
