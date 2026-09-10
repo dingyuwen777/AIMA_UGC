@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260910-194112-stage6-frontend-productization
 title: 搜索与品牌车型过滤 Stage 6 前端产品化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/stage6-frontend-productization
 created: 2026-09-10
@@ -69,27 +69,27 @@ Requirement Source：#434。
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Admin 只保留五个目标 Tab，并通过正式 Brand/Vehicle API 管理品牌、识别词与 1:N 车型，不调用词包车型关联 | #434 / AC1 | not_satisfied | 待实现并由 Admin Browser Acceptance、请求断言和旧入口零引用检查证明。 |
-| R2 | Collection Strategy 只保留 Keyword Pack/Plan，并区分 Search Terms 与 all_active/selected Brands | #434 / AC2 | not_satisfied | 待实现并由 Plan Store/Page/Browser Acceptance 证明。 |
-| R3 | Excel、TikHub Discovery 与 Batch Supplement 分别遵守批准的 Search/Brand Filter/补采语义 | #434 / AC3 | not_satisfied | 待实现并由 Runtime 组件测试、Browser 请求断言和兼容回归证明。 |
-| R4 | Voice Plaza 支持 Brand/Vehicle/Competition 查询、结果 Evidence 和 Brand/Role/Competition/Vehicle 导出选择 | #434 / AC4 | not_satisfied | 待实现并由 Store/Component/Browser Acceptance 与真实 Golden Path 证明。 |
-| R5 | 旧 Keyword Pack↔Vehicle、Global Keyword Relevance、Discovery Vehicle Search 前端职责退出，legacy 记录仍可只读显示 | #434 / AC5 | not_satisfied | 待实现并由生产代码零引用、legacy fixture 与 Browser 回归证明。 |
-| R6 | 四条用户路径的 Browser Mock、前端 lint/typecheck/unit/build 均有当前 revision 新鲜证据 | #434 / AC6 | not_satisfied | 待 Red/Green 和完整前端门禁证明。 |
-| R7 | Brand/Vehicle 配置到 Import/Collection、Voice Plaza Filter/Export 的真实跨组件链通过 | #434 / AC7 | not_satisfied | 待 Real Full-stack Golden Path 证明；Mock 只记录其实际边界。 |
-| R8 | Figma/实现一致、长期文档、Completion Audit、Deep Review、PR/main CI、归档与 Issue Closure 完整收口 | #434 / AC8 | not_satisfied | Figma 已达到 READY_WITH_NOTES；仍待代码回验、文档、Review 和交付生命周期证据。 |
+| R1 | Admin 只保留五个目标 Tab，并通过正式 Brand/Vehicle API 管理品牌、识别词与 1:N 车型，不调用词包车型关联 | #434 / AC1 | satisfied | `AdminConfigurationPage.vue` 与 `api.ts` 已收敛为“品牌与车型、AI 模型、TikHub、AI 分析规则、操作记录”，使用 generated Brand/Vehicle API；Browser Mock 覆盖品牌、识别词、旗下车型与错误/分页，Real Full-stack 覆盖真实创建链。 |
+| R2 | Collection Strategy 只保留 Keyword Pack/Plan，并区分 Search Terms 与 all_active/selected Brands | #434 / AC2 | satisfied | Strategy Store/Page 只保留 Keyword Pack/Plan；新 Plan 提交 `brand_ids` 且不提交 Vehicle Search，Browser 与 PostgreSQL Full-stack 验证 selected Brand；legacy Vehicle-only Plan 编辑默认保留原语义。 |
+| R3 | Excel、TikHub Discovery 与 Batch Supplement 分别遵守批准的 Search/Brand Filter/补采语义 | #434 / AC3 | satisfied | Excel UI 明确 Search 不适用并提交 all-active/selected Brand；Discovery 提交 Keyword Pack Search + Brand Filter；Batch Supplement 不提交 Search/Brand/Vehicle。Runtime Browser 请求断言和 Real Full-stack Excel/历史 Campaign 均通过。 |
+| R4 | Voice Plaza 支持 Brand/Vehicle/Competition 查询、结果 Evidence 和 Brand/Role/Competition/Vehicle 导出选择 | #434 / AC4 | satisfied | Voice Store 的共享 Filter Snapshot 已包含 `brand_ids`/`vehicle_model_ids`/`competition_scopes`；筛选、列表、详情和 Column Catalog v2 导出已产品化。Browser Mock 验证查询参数和显示，Real Full-stack 验证精确筛选快照与 Workbook 四类列。 |
+| R5 | 旧 Keyword Pack↔Vehicle、Global Keyword Relevance、Discovery Vehicle Search 前端职责退出，legacy 记录仍可只读显示 | #434 / AC5 | satisfied | 生产 Feature 已无旧 Global Relevance 或 Keyword Pack↔Vehicle 调用；Discovery 无 Vehicle 选择；legacy Plan 的 Vehicle ID 可显示且编辑默认保留。死代码 `RelevancePanel.vue` 与后端/生成 Contract 的物理删除明确留给 Stage 7。 |
+| R6 | 四条用户路径的 Browser Mock、前端 lint/typecheck/unit/build 均有当前 revision 新鲜证据 | #434 / AC6 | satisfied | 当前候选本地 ESLint、TypeScript/Vue typecheck、Vitest 24 files / 140 tests、Vite build 和 Browser Mock 106 tests 全部通过；最终 Ready revision 再执行同组门禁。 |
+| R7 | Brand/Vehicle 配置到 Import/Collection、Voice Plaza Filter/Export 的真实跨组件链通过 | #434 / AC7 | satisfied | Full-stack Acceptance Run `34483499943` 在精确实现提交 `05386b79` 上以 PostgreSQL 18、Migration、真实 API/Worker/Browser 运行四个 Stage 6 相关 spec，10 tests 全部通过。 |
+| R8 | Figma/实现一致、长期文档、Completion Audit、Deep Review、PR/main CI、归档、Roadmap 与 Issue 收口 | #434 / AC8 | explicitly_deferred | Figma、最终 Contract/实现复核、长期文档、Completion Audit 和 Deep Review 已完成；最终 PR HEAD CI、expected-head merge、main fresh CI、原生归档、Roadmap/Issue 收口属于 Ready 后交付生命周期门禁。自动 Figma 同步状态为 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`，不冒充人工视觉确认。 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | Store、表单、筛选、显示映射及 legacy 兼容的 Red/Green 证据。 |
-| 接口 / Contract | required | generated client 消费与 OpenAPI/Orval drift/compatibility；不修改后端 Contract。 |
-| 集成 / Persistence / Runtime Dependency | required | 复用 Stage 2—5 PostgreSQL/API/Worker 真实边界，在 Golden Path 中验证本次新前端接线。 |
-| 用户 / Workflow Acceptance | required | Admin、Strategy、Excel/Discovery、Voice Plaza 的 Browser Mock 成功、加载、错误、关键 method/URL/query/payload。 |
-| 跨组件 Golden Path | required | Brand/Vehicle 配置 → Import/Collection → Voice Plaza → Filter/Export 的少量真实链。 |
+| 行为 / Unit / Component | required | Red 基线提交 `4caf2819`；最终候选 Vitest 24 files / 140 tests 通过，覆盖 Store、表单、筛选、显示映射及 legacy Plan 编辑兼容。 |
+| 接口 / Contract | required | 未修改 Pydantic/OpenAPI/generated client；正式 generator `--check`、compatibility 与生成目录 drift 检查退出 0。 |
+| 集成 / Persistence / Runtime Dependency | required | Full-stack Run `34483499943` 迁移隔离 PostgreSQL 18，并通过真实 API/Worker 持久化 Brand/Vehicle、Plan、Import、Content 与 Export。 |
+| 用户 / Workflow Acceptance | required | Browser Mock 106/106 通过，覆盖 Admin、Strategy、Excel/Discovery、Voice 的成功、加载、错误和关键 method/URL/query/payload。 |
+| 跨组件 Golden Path | required | Full-stack Run `34483499943` 的 Brand/Vehicle 管理 → Brand Scope Import → Voice Filter/Detail → Export 真实闭环通过；四个 Stage 6 相关 spec 共 10/10。 |
 | External Dependency / Provider Probe | not_applicable | 本阶段不改变 Provider Operation 或真实第三方字段；稳定 Fixture/已有 Contract 足够，且禁止付费 Probe。 |
-| Build / Package / Runtime | required | ESLint、TypeScript/Vue typecheck、Vitest、Vite production build 与项目正式 Browser/full-stack 入口。 |
-| Docs / Governance / Other | required | Figma/Contract/代码一致性、当前文档同步、Change/Ready/Secret/CI/PR/main/Closure 门禁。 |
+| Build / Package / Runtime | required | ESLint、TypeScript/Vue typecheck、Vitest、Vite production build 与 Browser Mock 均通过；Full-stack Run `34483499943` 成功。 |
+| Docs / Governance / Other | required | docs/check facts、Change、architecture、Contract/Client drift 与 `git diff --check` 均通过；Figma 为 `READY_WITH_NOTES`，最终五页面/四业务路径 Design Context 已复核，待人工视觉确认。 |
 
 # 兼容、迁移、部署与回滚
 
@@ -100,8 +100,8 @@ Requirement Source：#434。
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前从 Issue #434、Roadmap Stage 6、最终 Figma、当前 Contract 和项目正式边界独立重建完成定义。
-- [ ] change_coverage：逐条比较 AC/R 与实现、测试、文档和交付证据，清除遗漏。
-- [ ] reverse_audit：按后端能力 → 前端入口及前端动作 → 后端支持，反查 Admin、Strategy、Runtime、Voice Plaza 和异步 Export 结果链。
-- [ ] two_stage_review：完成 A1 上游要求 → Change、A2 Change → 实现/测试/文档，再做 Deep 代码质量 Review。
-- [ ] unresolved_cleared：Ready 前清零所有 `not_satisfied`；延期/不适用必须有正式依据。
+- [x] upstream_re_read：重新读取 Issue #434、Roadmap Stage 6、最终 Figma、当前 Brand/Plan/Import/Content/Export Contract、generated client 和项目正式前端边界；确认 Stage 6 不新增后端 Contract/Schema，不提前执行 Stage 7。
+- [x] change_coverage：逐条比较 AC1—AC8/R1—R8 与 Admin、Strategy、Runtime、Voice、测试、文档和交付证据；R1—R7 已满足，R8 仅保留必须发生在 Ready/合并后的生命周期动作。
+- [x] reverse_audit：按 Brand/Vehicle API → Admin 入口、Plan/Import/Collection `brand_ids` → Strategy/Runtime、Content Read Model/Filter → Voice List/Detail/Analysis/Export 反查；前端动作均有 Stage 2—5 generated Contract 支持，legacy Vehicle Plan 未被静默扩域。
+- [x] two_stage_review：Review Target 为 `692b59c29218ce97bca8d3e505cb777b1840bf09...05386b7912e3d0cb8070da37af1f36c750e15e8d`。A1 从 #434/Roadmap/Figma/Contract 独立重建完成定义；A2 沿四条页面路径、请求快照、异步 Worker/Export、测试与文档审查。Review 发现并修复 legacy Vehicle-only Plan 编辑被静默改为 all-active Brand 的兼容缺陷；Browser/Full-stack 定位又收紧 Brand 与 Vehicle Owner 的证据列。当前无已知 P0/P1/P2 实现 Finding。
+- [x] unresolved_cleared：所有 `not_satisfied` 已清零；Provider Probe 因本阶段不改外部 Operation 正式不适用；R8 的 PR HEAD CI、合并、main 验证、归档、Roadmap 与 Issue 动作为后置交付门禁，不冒充已完成。
