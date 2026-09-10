@@ -550,8 +550,12 @@ class PostgresBrandVehicleRepository:
         content_version: int,
         evidence: tuple[ResolverEvidence, ...],
         catalog_version: int,
+        catalog_snapshot: BrandVehicleCatalogSnapshot | None = None,
     ) -> bool:
         """替换当前 Content Version 的自动 Brand 证据；人工锁存在时完全不写。"""
+
+        if catalog_snapshot is not None and catalog_snapshot.catalog_version != catalog_version:
+            raise ValueError("Brand Evidence 的目录版本与冻结 Snapshot 不一致")
 
         self._lock_brand_review_write(content_id=content_id, content_version=content_version)
         locked = self._session.scalar(
@@ -575,7 +579,10 @@ class PostgresBrandVehicleRepository:
         for item in evidence:
             if item.source not in ("alias_match", "vehicle_match"):
                 raise ValueError("自动 Brand Evidence 只接受 alias_match/vehicle_match")
-            self._validate_brand_evidence(item)
+            if catalog_snapshot is None:
+                self._validate_brand_evidence(item)
+            else:
+                self._validate_brand_evidence_against_snapshot(item, catalog_snapshot)
             self._upsert_brand_evidence(
                 content_id=content_id,
                 content_version=content_version,
@@ -692,6 +699,35 @@ class PostgresBrandVehicleRepository:
             )
             if vehicle_brand != item.entity_id:
                 raise ValueError("derived Vehicle 与 Brand 归属不一致")
+        elif item.derived_vehicle_model_id is not None:
+            raise ValueError("非 vehicle_match 不能携带 derived_vehicle_model_id")
+
+    @staticmethod
+    def _validate_brand_evidence_against_snapshot(
+        item: ResolverEvidence,
+        catalog_snapshot: BrandVehicleCatalogSnapshot,
+    ) -> None:
+        """按任务冻结目录校验证据，避免执行时的 live 目录变化改写历史解释。"""
+
+        active_brand_ids = {
+            brand.id for brand in catalog_snapshot.brands if brand.status == "active"
+        }
+        if item.entity_id not in active_brand_ids:
+            raise LookupError("冻结 Snapshot 中不存在有效品牌")
+        if item.source == "vehicle_match":
+            if item.derived_vehicle_model_id is None:
+                raise ValueError("vehicle_match 必须携带 derived_vehicle_model_id")
+            vehicle = next(
+                (
+                    candidate
+                    for candidate in catalog_snapshot.vehicles
+                    if candidate.id == item.derived_vehicle_model_id
+                    and candidate.status == "active"
+                ),
+                None,
+            )
+            if vehicle is None or vehicle.brand_id != item.entity_id:
+                raise ValueError("冻结 Snapshot 中 derived Vehicle 与 Brand 归属不一致")
         elif item.derived_vehicle_model_id is not None:
             raise ValueError("非 vehicle_match 不能携带 derived_vehicle_model_id")
 

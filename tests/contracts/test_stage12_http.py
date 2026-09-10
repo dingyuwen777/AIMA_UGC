@@ -13,28 +13,28 @@ from aima_ugc.contracts.http import (
 from pydantic import ValidationError
 
 
-def test_historical_campaign_request_accepts_relative_selection_and_frozen_keyword_packs() -> None:
-    pack_id = uuid4()
+def test_historical_campaign_request_accepts_relative_selection_and_brand_scope() -> None:
+    brand_id = uuid4()
     request = HistoricalCampaignCreateRequest(
         client_idempotency_key="stage12-import-001",
         relative_paths=("2024/history.xlsx",),
         recursive=False,
-        keyword_pack_ids=(pack_id,),
+        brand_ids=(brand_id,),
     )
     assert request.relative_paths == ("2024/history.xlsx",)
-    assert request.keyword_pack_ids == (pack_id,)
+    assert request.brand_ids == (brand_id,)
     assert request.ingestion_policy == "historical_fill_only"
 
 
 def test_local_campaign_manifest_keeps_relative_paths_and_policy_independent() -> None:
-    pack_id = uuid4()
+    brand_id = uuid4()
     request = LocalDataImportCampaignCreateRequest(
         client_idempotency_key="local-folder-001",
         files=(
             {"relative_path": "folder/a.xlsx", "byte_size": 128},
             {"relative_path": "folder/nested/b.xlsx", "byte_size": 256},
         ),
-        keyword_pack_ids=(pack_id,),
+        brand_ids=(brand_id,),
         ingestion_policy="historical_fill_only",
     )
 
@@ -51,7 +51,7 @@ def test_local_campaign_manifest_rejects_unsafe_or_non_xlsx_paths(value: str) ->
         LocalDataImportCampaignCreateRequest(
             client_idempotency_key="local-folder-002",
             files=({"relative_path": value, "byte_size": 1},),
-            keyword_pack_ids=(uuid4(),),
+            brand_ids=(uuid4(),),
         )
 
 
@@ -61,7 +61,7 @@ def test_historical_campaign_request_rejects_unsafe_paths(value: str) -> None:
         HistoricalCampaignCreateRequest(
             client_idempotency_key="stage12-import-002",
             relative_paths=(value,),
-            keyword_pack_ids=(uuid4(),),
+            brand_ids=(uuid4(),),
         )
 
 

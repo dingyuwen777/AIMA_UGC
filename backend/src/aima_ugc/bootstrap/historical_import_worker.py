@@ -1001,6 +1001,7 @@ def _append_historical_brand_vehicle_evidence(
             content_version=content_version,
             evidence=resolution.brand_evidence,
             catalog_version=filter_snapshot.catalog.catalog_version,
+            catalog_snapshot=filter_snapshot.catalog,
         )
 
 

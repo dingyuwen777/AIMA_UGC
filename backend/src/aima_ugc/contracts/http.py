@@ -1370,8 +1370,7 @@ class HistoricalCampaignCreateRequest(BaseModel):
     )
     relative_paths: tuple[str, ...] = Field(min_length=1, max_length=1000)
     recursive: bool = False
-    keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
-    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
+    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     profile: Literal["aima-monitoring-excel.v1"] = "aima-monitoring-excel.v1"
     ingestion_policy: DataImportIngestionPolicy = "historical_fill_only"
 
@@ -1383,22 +1382,14 @@ class HistoricalCampaignCreateRequest(BaseModel):
             raise ValueError("relative_paths 不能重复")
         return normalized
 
-    @field_validator("keyword_pack_ids")
+    @field_validator("brand_ids")
     @classmethod
-    def validate_keyword_pack_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+    def validate_brand_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        """selected Brand Scope 不允许重复；空集合表示 all_active。"""
+
         if len(set(value)) != len(value):
-            raise ValueError("keyword_pack_ids 不能重复")
+            raise ValueError("brand_ids 不能重复")
         return value
-
-    @model_validator(mode="after")
-    def validate_matching_resources(self) -> HistoricalCampaignCreateRequest:
-        """历史 Campaign 至少冻结词包或车型中的一个维度。"""
-
-        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
-            raise ValueError("vehicle_model_ids 不能重复")
-        if not self.keyword_pack_ids and not self.vehicle_model_ids:
-            raise ValueError("必须至少选择一个 Keyword Pack 或车型")
-        return self
 
 
 class LocalDataImportFileManifest(BaseModel):
@@ -1429,8 +1420,7 @@ class LocalDataImportCampaignCreateRequest(BaseModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
     )
     files: tuple[LocalDataImportFileManifest, ...] = Field(min_length=1, max_length=1000)
-    keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
-    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
+    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     profile: Literal["aima-monitoring-excel.v1"] = "aima-monitoring-excel.v1"
     ingestion_policy: DataImportIngestionPolicy = "standard_observation"
 
@@ -1445,22 +1435,14 @@ class LocalDataImportCampaignCreateRequest(BaseModel):
             raise ValueError("本地导入清单 relative_path 不能重复")
         return value
 
-    @field_validator("keyword_pack_ids")
+    @field_validator("brand_ids")
     @classmethod
-    def validate_keyword_pack_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+    def validate_brand_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        """selected Brand Scope 不允许重复；空集合表示 all_active。"""
+
         if len(set(value)) != len(value):
-            raise ValueError("keyword_pack_ids 不能重复")
+            raise ValueError("brand_ids 不能重复")
         return value
-
-    @model_validator(mode="after")
-    def validate_matching_resources(self) -> LocalDataImportCampaignCreateRequest:
-        """本地 Campaign 至少冻结词包或车型中的一个维度。"""
-
-        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
-            raise ValueError("vehicle_model_ids 不能重复")
-        if not self.keyword_pack_ids and not self.vehicle_model_ids:
-            raise ValueError("必须至少选择一个 Keyword Pack 或车型")
-        return self
 
 
 class LocalDataImportUploadItemResponse(BaseModel):

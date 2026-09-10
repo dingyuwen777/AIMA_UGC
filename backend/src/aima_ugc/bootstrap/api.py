@@ -81,6 +81,7 @@ from aima_ugc.contracts.http import (
     GlobalRelevanceConfigResponse,
     HistoricalCampaignConflictListResponse,
     HistoricalCampaignCreatedResponse,
+    HistoricalCampaignCreateRequest,
     HistoricalCampaignItemListResponse,
     HistoricalCampaignListResponse,
     HistoricalCampaignResponse,
@@ -101,6 +102,7 @@ from aima_ugc.contracts.http import (
     KeywordPackResponse,
     KeywordPackSummaryResponse,
     LocalDataImportCampaignCreatedResponse,
+    LocalDataImportCampaignCreateRequest,
     LocalDataImportFileUploadedResponse,
     ResourceEnabledRequest,
 )
@@ -120,12 +122,6 @@ from aima_ugc.contracts.product import (
 from aima_ugc.contracts.relevance_review import (
     ContentRelevanceReviewRequest,
     ContentRelevanceReviewResponse,
-)
-from aima_ugc.contracts.stage3_import import (
-    HistoricalCampaignCreateRequest as Stage3HistoricalCampaignCreateRequest,
-)
-from aima_ugc.contracts.stage3_import import (
-    LocalDataImportCampaignCreateRequest as Stage3LocalDataImportCampaignCreateRequest,
 )
 from aima_ugc.modules.administration.http import (
     AdministrationConflict,
@@ -170,6 +166,7 @@ from aima_ugc.modules.ingestion.historical_http import (
     HistoricalImportHttpService,
 )
 from aima_ugc.modules.ingestion.http import (
+    BrandVehicleFilterUnavailable,
     ImportConflict,
     ImportCursorUnavailable,
     ImportHttpService,
@@ -587,6 +584,19 @@ def create_app(
             title="相关性配置不可用",
             detail="全局 Relevance 词包尚未配置或没有有效关键词。",
             code="relevance_config_unavailable",
+        )
+
+    @application.exception_handler(BrandVehicleFilterUnavailable)
+    async def brand_vehicle_filter_unavailable(
+        request: Request, _: BrandVehicleFilterUnavailable
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="品牌车型过滤范围不可用",
+            detail="所选品牌不存在、已停用，或其车型目录当前不可用。",
+            code="brand_vehicle_filter_unavailable",
+            field="body.brand_ids",
         )
 
     @application.exception_handler(InvalidImportCursor)
@@ -1475,7 +1485,7 @@ def create_app(
         tags=["imports"],
     )
     def create_historical_import_campaign(
-        body: Stage3HistoricalCampaignCreateRequest,
+        body: HistoricalCampaignCreateRequest,
         request: Request,
     ) -> HistoricalCampaignCreatedResponse:
         """创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。"""
@@ -1499,7 +1509,7 @@ def create_app(
         tags=["imports"],
     )
     def create_local_data_import_campaign(
-        body: Stage3LocalDataImportCampaignCreateRequest,
+        body: LocalDataImportCampaignCreateRequest,
         request: Request,
     ) -> LocalDataImportCampaignCreatedResponse:
         """创建本地上传 Campaign；不接受 Keyword Pack/Vehicle Model 过滤字段。"""

@@ -56,7 +56,8 @@ ingestion_policy
 → 低优先级、有界 Chunk Job
 → Excel Reader / Mapper
 → Canonical
-→ 冻结 Keyword Pack Relevance
+→ 冻结 Brand/Vehicle Filter Snapshot
+→ BrandVehicleResolver 过滤
 → Content Owner 按 standard_observation / historical_fill_only 写入
 → 逐行终态账本 + 稀疏冲突账本
 → PostgreSQL
@@ -330,31 +331,31 @@ failed
 
 ---
 
-## 8. Relevance 在统一导入链哪里发生
+## 8. Brand/Vehicle Filter 在统一导入链哪里发生
 
-这里的 Relevance 是**规则/关键词相关性清洗**，不是 AI Semantic Relevance。
+正式 Excel/Data Import 在 Mapper 后使用同一个 Stage 2 `BrandVehicleResolver` 做确定性品牌车型过滤，不使用 Keyword Pack，也不是 AI Semantic Relevance。
 
 主链：
 
 ```text
 Excel Mapper
 → Canonical
-→ Campaign/Batch 冻结 Keyword Pack 选择
-→ effective_keywords
-→ title/text OR 匹配
+→ Campaign/Batch 冻结 BrandVehicleFilterSnapshot
+→ Brand/Vehicle Alias 解析
+→ 命中所选 Brand，或命中归属于所选 Brand 的 Vehicle
 → Dedup
 → Content Owner
 ```
 
-关键词父事实来自 System：
+目录父事实来自 Brand/Vehicle Owner：
 
 ```text
-keyword_packs
-keywords
-keyword_pack_items
+brands / brand_aliases
+vehicle_models / vehicle_model_aliases
+Vehicle → Brand 归属
 ```
 
-创建时冻结所选 Pack/版本/有效关键词；Worker 不在执行中途读取变化后的实时词包改变已创建 Campaign/Batch。
+创建时提交 `brand_ids`；空集合表示冻结全部 active Brand。Worker 不在执行中途读取变化后的实时目录，过滤和 Evidence 写入都使用同一冻结 Snapshot。升级前的 legacy Campaign/Job 继续按旧 Snapshot 与旧行格式执行。
 
 AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动创建 AI Job。
 
@@ -385,14 +386,15 @@ AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动
 
 ```text
 POST /api/v1/import-batches
-→ multipart XLSX + 1—20 个 Keyword Pack
+→ multipart XLSX + 可选 brand_ids；空集合表示全部 active Brand
 → Input Artifact
 → processing_import_batches
-→ ingestion.import-excel.v1
+→ ingestion.import-excel.v2
 → Worker
 → Excel Reader / Mapper
 → Canonical
-→ 冻结关键词 Relevance
+→ 冻结 Brand/Vehicle Filter
+→ Brand/Vehicle Evidence
 → ContentIngestionService
 → Content Owner
 → PostgreSQL
@@ -407,7 +409,7 @@ Job 领域入口：
 
 - [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py)
 
-`ImportKeywordSelectionSnapshot` 冻结多词包执行输入；当前新建/执行 Payload 要求 `keyword_selection`，不提供旧 `relevance` 单词包 Payload 兼容字段。Worker 校验 Batch `stats.keyword_selection` 与 Job Payload 一致，不一致时关闭失败。
+`BrandVehicleFilterSnapshot` 冻结目录版本、所选 Brand、Vehicle 归属和 Alias。当前新任务使用 `ingestion.import-excel.v2` 与 `filter_snapshot`；Worker 校验 Batch `stats.filter_snapshot` 与 Job Payload 一致，不一致时关闭失败。`ingestion.import-excel.v1` 与 `ImportKeywordSelectionSnapshot` 只保留用于解释升级前已经 queued/running 的旧任务。
 
 当前兼容 HTTP：
 
@@ -516,7 +518,8 @@ Excel
 | 文件 | 作用 | 常见修改场景 |
 | --- | --- | --- |
 | [`backend/src/aima_ugc/modules/ingestion/tables.py`](tables.py) | 兼容 Import Batch 与 import-parent 关系 | 改 Batch Schema/来源父级约束 |
-| [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v1` Payload/Handler | 改兼容 Import Job 语义 |
+| [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v1/v2` Payload/Handler | 改兼容 Import Job 版本与冻结输入语义 |
+| [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](brand_vehicle_filter.py) | Stage 3 Brand/Vehicle Filter Snapshot 与 JSONL 过滤 | 改统一品牌车型过滤语义 |
 | [`backend/src/aima_ugc/modules/ingestion/http.py`](http.py) | Import Batch HTTP Port/领域异常 | 改兼容入口应用层边界 |
 | [`backend/src/aima_ugc/modules/ingestion/query.py`](query.py) | Import Batch Read Model | 改兼容 Batch 列表/摘要 |
 | [`backend/src/aima_ugc/modules/ingestion/import_batch_cursor.py`](import_batch_cursor.py) | Import Batch Cursor | 改兼容分页安全/过期语义 |

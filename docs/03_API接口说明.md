@@ -347,7 +347,7 @@ backend/src/aima_ugc/modules/ingestion/
 
 ## 6.1 `POST /api/v1/import-batches`
 
-接受一个 multipart `.xlsx` 和当前 Contract 要求的 `keyword_pack_ids`，保存 Input Artifact，冻结关键词选择，创建 `processing_import_batches + ingestion.import-excel.v1 Job`，真正处理由 Worker 完成。
+接受一个 multipart `.xlsx` 和可选的重复字段 `brand_ids`；最多 100 个且不得重复，空集合表示在创建时冻结全部 active Brand。服务保存 Input Artifact，冻结 `BrandVehicleFilterSnapshot`，创建 `processing_import_batches + ingestion.import-excel.v2 Job`，真正处理由 Worker 完成。Excel Search 明确不适用，`keyword_pack_ids`、`vehicle_model_ids` 和其它未声明字段会被拒绝。`ingestion.import-excel.v1` 仅继续解释升级前已经 queued/running 的旧任务。
 
 ## 6.2 查询
 
@@ -586,7 +586,7 @@ PUT  /api/v1/relevance-config
 GET  /api/v1/relevance-config
 ```
 
-规则 Relevance 是确定性关键词筛选，不是 AI Semantic Relevance。Data Import Campaign 会按当前 Contract 冻结其所选 Keyword Pack/关键词事实；不能让 Worker 执行时重新读取变化后的选择。
+规则 Relevance 是 Collection 的确定性关键词筛选，不是 AI Semantic Relevance。Collection Run 会冻结当前 `global_relevance_config` 指向的词包事实；正式 Excel/Data Import Campaign 改为冻结 Brand/Vehicle Filter Snapshot，不再接收 Keyword Pack。两者都不能让 Worker 执行时重新读取变化后的目录选择。
 
 ---
 

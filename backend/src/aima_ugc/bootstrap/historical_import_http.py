@@ -33,6 +33,7 @@ from aima_ugc.contracts.http import (
     HistoricalCampaignConflictListResponse,
     HistoricalCampaignConflictResponse,
     HistoricalCampaignCreatedResponse,
+    HistoricalCampaignCreateRequest,
     HistoricalCampaignItemListResponse,
     HistoricalCampaignItemResponse,
     HistoricalCampaignListResponse,
@@ -44,14 +45,9 @@ from aima_ugc.contracts.http import (
     HistoricalDirectoryListQuery,
     HistoricalDirectoryListResponse,
     LocalDataImportCampaignCreatedResponse,
+    LocalDataImportCampaignCreateRequest,
     LocalDataImportFileUploadedResponse,
     LocalDataImportUploadItemResponse,
-)
-from aima_ugc.contracts.stage3_import import (
-    HistoricalCampaignCreateRequest as Stage3HistoricalCampaignCreateRequest,
-)
-from aima_ugc.contracts.stage3_import import (
-    LocalDataImportCampaignCreateRequest as Stage3LocalDataImportCampaignCreateRequest,
 )
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.historical_directory import (
@@ -72,7 +68,11 @@ from aima_ugc.modules.ingestion.historical_jobs import (
     HISTORICAL_JOB_PRIORITY,
     HistoricalDiscoverJobPayload,
 )
-from aima_ugc.modules.ingestion.http import ImportUploadTooLarge, InvalidImportFile
+from aima_ugc.modules.ingestion.http import (
+    BrandVehicleFilterUnavailable,
+    ImportUploadTooLarge,
+    InvalidImportFile,
+)
 from aima_ugc.modules.ingestion.xlsx_security import MAX_XLSX_FILE_BYTES
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactSizeLimitError
@@ -123,7 +123,7 @@ class PostgresHistoricalImportHttpService:
 
     def create_campaign(
         self,
-        request: Stage3HistoricalCampaignCreateRequest,
+        request: HistoricalCampaignCreateRequest,
         *,
         request_id: str,
     ) -> HistoricalCampaignCreatedResponse:
@@ -210,7 +210,7 @@ class PostgresHistoricalImportHttpService:
 
     def create_local_campaign(
         self,
-        request: Stage3LocalDataImportCampaignCreateRequest,
+        request: LocalDataImportCampaignCreateRequest,
         *,
         request_id: str,
     ) -> LocalDataImportCampaignCreatedResponse:
@@ -300,7 +300,7 @@ class PostgresHistoricalImportHttpService:
         """通过 Stage 2 Catalog Lock 读取并冻结 Filter Snapshot。"""
 
         if len(brand_ids) > 100 or len(brand_ids) != len(set(brand_ids)):
-            raise HistoricalCampaignStateConflict("Brand Filter 选择不合法")
+            raise BrandVehicleFilterUnavailable
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -309,9 +309,7 @@ class PostgresHistoricalImportHttpService:
                         brand_ids=brand_ids or None
                     )
                 except (LookupError, ValueError) as exc:
-                    raise HistoricalCampaignStateConflict(
-                        "Brand Filter 目录不存在或不可用"
-                    ) from exc
+                    raise BrandVehicleFilterUnavailable from exc
                 return BrandVehicleFilterSnapshot(catalog=catalog)
         finally:
             session.close()

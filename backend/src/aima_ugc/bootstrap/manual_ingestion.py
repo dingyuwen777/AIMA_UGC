@@ -430,6 +430,7 @@ def ingest_unified_content_batch(
                     content_version=result.version_no,
                     evidence=resolution.brand_evidence,
                     catalog_version=brand_vehicle_filter_snapshot.catalog.catalog_version,
+                    catalog_snapshot=brand_vehicle_filter_snapshot.catalog,
                 )
             elif result.target_id is not None and vehicle_catalog_version is not None:
                 for alias in record.matched_vehicle_aliases:

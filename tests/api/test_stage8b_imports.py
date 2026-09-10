@@ -20,6 +20,7 @@ from aima_ugc.contracts.http import (
     KeywordResponse,
 )
 from aima_ugc.modules.ingestion.http import (
+    BrandVehicleFilterUnavailable,
     ImportConflict,
     ImportResourceNotFound,
     InvalidImportFile,
@@ -335,3 +336,32 @@ def test_not_found_relevance_and_internal_failures_do_not_leak_details(
     assert len(matching_records) == 1
     assert matching_records[0].request_id == internal.json()["request_id"]
     assert "secret" not in caplog.text
+
+
+def test_unavailable_brand_vehicle_filter_has_dedicated_error_contract() -> None:
+    class ErrorService(_FakeImportService):
+        def create_import(
+            self,
+            *,
+            filename: str,
+            content_type: str | None,
+            source: BytesIO,
+            brand_ids: tuple[UUID, ...],
+            request_id: str,
+        ) -> ImportBatchCreatedResponse:
+            del filename, content_type, source, brand_ids, request_id
+            raise BrandVehicleFilterUnavailable
+
+    response = TestClient(create_app(import_service=ErrorService())).post(
+        "/api/v1/import-batches",
+        files={"file": ("input.xlsx", b"xlsx", "application/octet-stream")},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["errors"] == [
+        {
+            "field": "body.brand_ids",
+            "code": "brand_vehicle_filter_unavailable",
+            "message": "所选品牌不存在、已停用，或其车型目录当前不可用。",
+        }
+    ]

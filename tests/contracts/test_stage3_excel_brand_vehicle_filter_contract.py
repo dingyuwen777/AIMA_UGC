@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 
 from aima_ugc.bootstrap.api import create_app
-from aima_ugc.contracts.stage3_import import (
+from aima_ugc.contracts.http import (
     HistoricalCampaignCreateRequest,
     LocalDataImportCampaignCreateRequest,
 )

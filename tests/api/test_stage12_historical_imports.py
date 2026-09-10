@@ -9,19 +9,18 @@ from aima_ugc.bootstrap.api import create_app
 from aima_ugc.contracts.http import (
     HistoricalCampaignConflictListResponse,
     HistoricalCampaignCreatedResponse,
+    HistoricalCampaignCreateRequest,
     HistoricalCampaignItemListResponse,
     HistoricalCampaignListResponse,
     HistoricalCampaignResponse,
     HistoricalDirectoryListQuery,
     HistoricalDirectoryListResponse,
     LocalDataImportCampaignCreatedResponse,
+    LocalDataImportCampaignCreateRequest,
     LocalDataImportFileUploadedResponse,
 )
-from aima_ugc.contracts.stage3_import import (
-    HistoricalCampaignCreateRequest,
-    LocalDataImportCampaignCreateRequest,
-)
 from aima_ugc.modules.ingestion.historical_http import HistoricalCampaignStateConflict
+from aima_ugc.modules.ingestion.http import BrandVehicleFilterUnavailable
 from fastapi.testclient import TestClient
 
 CAMPAIGN_ID = UUID("10000000-0000-0000-0000-000000000001")
@@ -241,6 +240,31 @@ def test_historical_start_conflict_is_stable_409() -> None:
 
     assert response.status_code == 409
     assert response.json()["errors"][0]["code"] == "historical_campaign_state_conflict"
+
+
+def test_historical_create_uses_brand_vehicle_filter_error_contract() -> None:
+    class ErrorService(_FakeHistoricalService):
+        def create_campaign(
+            self,
+            request: HistoricalCampaignCreateRequest,
+            *,
+            request_id: str,
+        ) -> HistoricalCampaignCreatedResponse:
+            del request, request_id
+            raise BrandVehicleFilterUnavailable
+
+    response = TestClient(create_app(historical_import_service=ErrorService())).post(
+        "/api/v1/historical-import-campaigns",
+        json={
+            "client_idempotency_key": "campaign-invalid-brand",
+            "relative_paths": ["history"],
+            "brand_ids": ["30000000-0000-0000-0000-000000000001"],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["errors"][0]["code"] == "brand_vehicle_filter_unavailable"
+    assert response.json()["errors"][0]["field"] == "body.brand_ids"
 
 
 def test_historical_paths_reject_escape_before_service() -> None:

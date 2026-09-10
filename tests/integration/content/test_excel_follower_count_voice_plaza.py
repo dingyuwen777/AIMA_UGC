@@ -8,7 +8,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from aima_ugc.bootstrap.api import create_app
-from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.worker import (
@@ -16,50 +15,20 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
-from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.contracts.http import ContentListQuery
 from aima_ugc.modules.content.tables import (
     accounts_table,
     content_versions_table,
     contents_table,
 )
-from aima_ugc.modules.identity import Principal
 from aima_ugc.platform.config import load_settings
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import insert, select, update
 
-
-def _stage3_filter_brand_id(runtime, *, alias: str = "爱玛") -> str:  # type: ignore[no-untyped-def]
-    """建立或复用当前测试 Runtime 的 Stage 3 品牌过滤事实。"""
-
-    service = PostgresBrandVehicleHttpService(runtime)
-    active = service.list_brands(
-        search=None,
-        status_value="active",
-        role=None,
-        offset=0,
-        limit=200,
-    )
-    for brand in active.items:
-        if brand.display_name == alias or any(item.text == alias for item in brand.aliases):
-            return str(brand.id)
-    brand = service.create_brand(
-        BrandCreateRequest(
-            code=f"STAGE3-CONTENT-{uuid4()}",
-            display_name=f"Stage3 {alias}",
-            role="owned",
-            aliases=(alias,),
-        ),
-        principal=Principal(
-            principal_id="stage3-content-integration",
-            display_name="Stage3 Content 集成测试管理员",
-            role="administrator",
-            source="development",
-        ),
-        request_id=f"stage3-content-brand-{uuid4()}",
-    )
-    return str(brand.id)
+from tests.integration.content.stage3_brand_support import (
+    stage3_filter_brand_id as _stage3_filter_brand_id,
+)
 
 
 def _follower_workbook() -> bytes:

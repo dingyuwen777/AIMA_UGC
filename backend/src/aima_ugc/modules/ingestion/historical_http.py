@@ -8,17 +8,15 @@ from uuid import UUID
 from aima_ugc.contracts.http import (
     HistoricalCampaignConflictListResponse,
     HistoricalCampaignCreatedResponse,
+    HistoricalCampaignCreateRequest,
     HistoricalCampaignItemListResponse,
     HistoricalCampaignListResponse,
     HistoricalCampaignResponse,
     HistoricalDirectoryListQuery,
     HistoricalDirectoryListResponse,
     LocalDataImportCampaignCreatedResponse,
-    LocalDataImportFileUploadedResponse,
-)
-from aima_ugc.contracts.stage3_import import (
-    HistoricalCampaignCreateRequest,
     LocalDataImportCampaignCreateRequest,
+    LocalDataImportFileUploadedResponse,
 )
 
 

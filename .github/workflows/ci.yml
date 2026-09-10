@@ -200,17 +200,8 @@ jobs:
 
       - name: Install report validation CJK font
         if: steps.classify.outputs.backend_required == 'true'
-        shell: bash
         run: |
-          set -euo pipefail
-          while IFS= read -r source; do
-            echo "Temporarily disabling unrelated runner APT source: ${source}"
-            sudo mv -- "${source}" "${source}.disabled"
-          done < <(
-            grep -rlF 'dl.google.com/linux/chrome-stable/deb' /etc/apt/sources.list.d \
-              2>/dev/null || true
-          )
-          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
 
       - name: Verify required runtime versions

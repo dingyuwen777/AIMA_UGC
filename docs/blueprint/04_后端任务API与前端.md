@@ -85,6 +85,7 @@ Vue / API Client
 ```text
 collection.run.v1
 ingestion.import-excel.v1
+ingestion.import-excel.v2
 ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
 ingestion.historical-import-chunk.v1
@@ -93,7 +94,7 @@ analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
 
-三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
+`ingestion.import-excel.v2` 是新建单文件 Excel Import 的 Brand/Vehicle Filter Job；`v1` 仅用于继续解释升级前已经 queued/running 的旧任务。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
 注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
@@ -345,7 +346,7 @@ GET  /api/v1/import-batches/{batch_id}
 GET  /api/v1/jobs/{job_id}
 ```
 
-`POST /api/v1/import-batches` 当前接受 multipart：一个 `file` 和 1—20 个不重复 `keyword_pack_ids`。HTTP 层执行请求体大小与 multipart 形状校验；Import Service 冻结所选词包/关键词快照并创建 `ingestion.import-excel.v1` Job，真正 Excel 处理由 Worker 完成。
+`POST /api/v1/import-batches` 当前接受 multipart：一个 `file` 和可重复提交的 `brand_ids`，最多 100 个且不得重复；空集合表示在创建时冻结全部 active Brand。HTTP 层执行请求体大小与 multipart 形状校验；Import Service 冻结 `BrandVehicleFilterSnapshot` 并创建 `ingestion.import-excel.v2` Job，真正 Excel 处理由 Worker 完成。`keyword_pack_ids`、`vehicle_model_ids` 和其它未声明字段会被拒绝；Excel Search 明确不适用。
 
 该入口仍是合法兼容 Contract，但当前采集运行中心的“导入数据”页面主入口使用 5.8 的 `/api/v1/data-import-*` Campaign，不再把 `/api/v1/import-batches` 作为第二套页面工作流。
 
@@ -368,7 +369,7 @@ PUT  /api/v1/relevance-config
 GET  /api/v1/relevance-config
 ```
 
-规则 Relevance 是导入/采集入口的关键词相关性能力；它和 AI Semantic Relevance 不是同一个字段，也不能混为一层。
+规则 Relevance 是 Collection 入库前的关键词相关性能力；它和 AI Semantic Relevance、Excel Brand/Vehicle Filter 不是同一个字段，也不能混为一层。正式 Excel Import 不使用 Keyword Pack；升级前旧任务仍按其冻结的 legacy 词包快照执行。
 
 ### 5.7 Collection Plan
 

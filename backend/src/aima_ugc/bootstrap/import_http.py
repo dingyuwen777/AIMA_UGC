@@ -64,6 +64,7 @@ from aima_ugc.modules.analysis import (
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.http import (
+    BrandVehicleFilterUnavailable,
     ImportConflict,
     ImportCursorUnavailable,
     ImportResourceNotFound,
@@ -197,7 +198,7 @@ class PostgresImportHttpService:
 
         del content_type
         if len(brand_ids) > 100 or len(brand_ids) != len(set(brand_ids)):
-            raise RelevanceConfigurationError
+            raise BrandVehicleFilterUnavailable
         safe_name = _validate_upload_filename(filename)
         filter_snapshot = self._read_brand_vehicle_filter_snapshot(brand_ids)
         try:
@@ -562,7 +563,7 @@ class PostgresImportHttpService:
                         brand_ids=brand_ids or None
                     )
                 except (LookupError, ValueError) as exc:
-                    raise RelevanceConfigurationError from exc
+                    raise BrandVehicleFilterUnavailable from exc
                 return BrandVehicleFilterSnapshot(catalog=catalog)
         finally:
             session.close()

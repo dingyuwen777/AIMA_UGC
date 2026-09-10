@@ -41,6 +41,10 @@ class RelevanceConfigurationError(RuntimeError):
     """全局 Relevance 配置缺失、停用或为空。"""
 
 
+class BrandVehicleFilterUnavailable(RuntimeError):
+    """Brand/Vehicle Filter 选择引用了不存在或不可用的目录资源。"""
+
+
 class ImportCursorUnavailable(RuntimeError):
     """Cursor 签名 Secret 不可安全读取。"""
 
@@ -95,6 +99,7 @@ class ImportHttpService(Protocol):
 
 
 __all__ = [
+    "BrandVehicleFilterUnavailable",
     "ImportHttpService",
     "ImportConflict",
     "ImportCursorUnavailable",

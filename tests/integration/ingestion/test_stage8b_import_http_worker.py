@@ -389,12 +389,18 @@ def _stage3_upload_evidence_batch(client: TestClient, *, brand_id: UUID) -> Resp
     return created
 
 
-def _stage3_update_vehicle_alias(runtime, vehicle_id: UUID, alias: str) -> int:  # type: ignore[no-untyped-def]
-    """通过正式管理员 Service 修改 live alias，并返回新目录版本。"""
+def _stage3_update_vehicle(
+    runtime,
+    vehicle_id: UUID,
+    alias: str,
+    *,
+    brand_id: UUID,
+) -> int:  # type: ignore[no-untyped-def]
+    """通过正式管理员 Service 修改 live alias/归属，并返回新目录版本。"""
 
     updated = PostgresAdministrationHttpService(runtime).update_vehicle_model(
         vehicle_id,
-        VehicleModelUpdateRequest(aliases=(alias,)),
+        VehicleModelUpdateRequest(aliases=(alias,), brand_id=brand_id),
         principal=_principal(),
         request_id=f"stage3-evidence-alias-{alias}",
     )
@@ -433,7 +439,7 @@ def _stage3_lock_manual_evidence(
 
 
 def test_stage3_import_freezes_catalog_and_preserves_manual_evidence(tmp_path: Path) -> None:
-    """live alias 漂移后仍按冻结 Snapshot 写证据；同版本重放不得覆盖人工锁。"""
+    """live alias/归属漂移后仍按冻结 Snapshot 写证据，且不覆盖人工锁。"""
 
     settings = load_settings().model_copy(
         update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
@@ -455,7 +461,22 @@ def test_stage3_import_freezes_catalog_and_preserves_manual_evidence(tmp_path: P
         frozen_catalog_version = frozen_snapshot["catalog"]["catalog_version"]
         assert frozen_snapshot["schema_version"] == "brand-vehicle-filter.v1"
 
-        changed_catalog_version = _stage3_update_vehicle_alias(runtime, vehicle_id, "Q7CHANGED")
+        competitor = PostgresBrandVehicleHttpService(runtime).create_brand(
+            BrandCreateRequest(
+                code="COMPETITOR-STAGE3-EVIDENCE",
+                display_name="竞品",
+                role="competitor",
+                aliases=("竞品",),
+            ),
+            principal=_principal(),
+            request_id="stage3-evidence-competitor",
+        )
+        changed_catalog_version = _stage3_update_vehicle(
+            runtime,
+            vehicle_id,
+            "Q7CHANGED",
+            brand_id=competitor.id,
+        )
         assert changed_catalog_version > frozen_catalog_version
 
         worker = create_job_worker(
@@ -510,7 +531,12 @@ def test_stage3_import_freezes_catalog_and_preserves_manual_evidence(tmp_path: P
             brand_id=brand_id,
             vehicle_id=vehicle_id,
         )
-        restored_catalog_version = _stage3_update_vehicle_alias(runtime, vehicle_id, "Q7")
+        restored_catalog_version = _stage3_update_vehicle(
+            runtime,
+            vehicle_id,
+            "Q7",
+            brand_id=brand_id,
+        )
         assert restored_catalog_version > changed_catalog_version
 
         replay = _stage3_upload_evidence_batch(client, brand_id=brand_id)
