@@ -290,6 +290,38 @@ def test_canonical_artifact_rejects_duplicate_parent_binding() -> None:
         runtime.dispose()
 
 
+def test_stage2_parent_has_one_reusable_canonical_artifact() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            parent = _seed_real_parents(session)[0]
+            first = _create_stored_canonical(session)
+            PostgresArtifactMetadataRepository(session).link_canonical(
+                first.id,
+                parent=parent,
+                linked_at=_NOW,
+            )
+
+        with pytest.raises(IntegrityError):
+            with session.begin():
+                second = _create_stored_canonical(session)
+                PostgresArtifactMetadataRepository(session).link_canonical(
+                    second.id,
+                    parent=parent,
+                    linked_at=_NOW,
+                )
+
+        with session.begin():
+            recovered = PostgresArtifactMetadataRepository(session).get_canonical_for_parent(parent)
+        assert recovered is not None
+        assert recovered.id == first.id
+        assert recovered.storage_status == "linked"
+    finally:
+        session.close()
+        runtime.dispose()
+
+
 @pytest.mark.parametrize("parent_count", [0, 2])
 def test_database_rejects_zero_or_multiple_parents(parent_count: int) -> None:
     runtime = DatabaseRuntime(load_settings())

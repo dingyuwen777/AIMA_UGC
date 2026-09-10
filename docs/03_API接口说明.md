@@ -322,7 +322,7 @@ POST /api/v1/data-import-campaigns/{campaign_id}/retry-failed
 ```text
 ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
-ingestion.historical-import-chunk.v1
+ingestion.historical-import-chunk.v2
 ```
 
 物理名称沿用 `historical_*` 是兼容选择，不代表当前页面存在第二套“历史导入”业务入口。

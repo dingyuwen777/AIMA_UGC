@@ -24,9 +24,14 @@ def test_canonical_artifact_link_schema_has_one_owner_and_strong_parent_constrai
     )
     assert "num_nonnulls" in check_sql
     assert "= 1" in check_sql
-    assert {index.name for index in canonical_artifact_links_table.indexes} == {
+    indexes = {index.name: index for index in canonical_artifact_links_table.indexes}
+    assert set(indexes) == {
         "ix_canonical_artifact_links_processing_import_batch_id",
         "ix_canonical_artifact_links_historical_import_campaign_item_id",
         "ix_canonical_artifact_links_collection_scope_id",
         "ix_canonical_artifact_links_provider_attempt_id",
+        "uq_canonical_artifact_links_processing_import_batch_id",
+        "uq_canonical_artifact_links_historical_import_campaign_item_id",
     }
+    assert indexes["uq_canonical_artifact_links_processing_import_batch_id"].unique is True
+    assert indexes["uq_canonical_artifact_links_historical_import_campaign_item_id"].unique is True

@@ -121,9 +121,9 @@ def _setup_batch(session, *, observed_at: datetime) -> tuple[UUID, UUID, UUID]:
     session.execute(
         insert(jobs_table).values(
             id=job_id,
-            job_type="ingestion.historical-import-chunk.v1",
-            payload_version="ingestion.historical-import-chunk.v1",
-            payload={"schema_version": "ingestion.historical-import-chunk.v1"},
+            job_type="ingestion.historical-import-chunk.v2",
+            payload_version="ingestion.historical-import-chunk.v2",
+            payload={"schema_version": "ingestion.historical-import-chunk.v2"},
             status="queued",
             internal_idempotency_key=f"stage12:{job_id}",
             priority=-10,

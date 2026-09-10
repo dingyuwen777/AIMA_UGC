@@ -1,21 +1,14 @@
-"""历史 XLSX 到版本化有界 gzip JSONL Chunk 的流式转换。"""
+"""历史 XLSX 到有界 Pure Canonical JSONL Chunk 的流式转换。"""
 
 from __future__ import annotations
 
-import gzip
-import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from pydantic import ValidationError
-
-from aima_ugc.modules.ingestion.brand_vehicle_filter import (
-    BrandVehicleFilterSnapshot,
-    resolve_canonical_brand_vehicle,
-)
-from aima_ugc.modules.ingestion.historical_chunk import HISTORICAL_CHUNK_SCHEMA_VERSION
 
 from .excel_profile import get_excel_import_profile
 from .excel_reader import iter_excel_rows
@@ -24,22 +17,28 @@ from .models import ExcelImportRowError
 
 
 @dataclass(frozen=True, slots=True)
+class HistoricalInvalidRow:
+    """不能伪造成 Canonical、但必须进入逐行账本的最小错误事实。"""
+
+    source_row_ordinal: int
+    error_code: str
+
+
+@dataclass(frozen=True, slots=True)
 class HistoricalChunkDescriptor:
     ordinal: int
     row_start: int
     row_end: int
     row_count: int
-    candidate_count: int
-    filtered_count: int
-    invalid_count: int
+    canonical_row_ordinals: tuple[int, ...]
+    invalid_rows: tuple[HistoricalInvalidRow, ...]
     path: Path
 
 
 @dataclass(frozen=True, slots=True)
 class HistoricalConversionSummary:
     rows_seen: int
-    candidates: int
-    filtered: int
+    canonical_rows: int
     invalid: int
     chunks: int
 
@@ -49,12 +48,11 @@ def convert_historical_excel_to_chunks(
     input_path: Path,
     output_dir: Path,
     profile_name: str,
-    filter_snapshot: BrandVehicleFilterSnapshot,
     observed_at: datetime,
     chunk_rows: int,
     publish: Callable[[HistoricalChunkDescriptor], None],
 ) -> HistoricalConversionSummary:
-    """用冻结 Brand/Vehicle Resolver 流式映射并逐 Chunk 发布。"""
+    """只执行 Reader/Mapper；合法 Canonical 与 invalid 最小事实分离发布。"""
 
     if chunk_rows < 1:
         raise ValueError("chunk_rows 必须为正数")
@@ -62,32 +60,40 @@ def convert_historical_excel_to_chunks(
         raise ValueError("observed_at 必须包含时区")
     profile = get_excel_import_profile(profile_name)
     output_dir.mkdir(parents=True, exist_ok=True)
-    counters = {"rows_seen": 0, "candidates": 0, "filtered": 0, "invalid": 0, "chunks": 0}
-    handle: gzip.GzipFile | None = None
+    counters = {"rows_seen": 0, "canonical_rows": 0, "invalid": 0, "chunks": 0}
+    handle = None
     descriptor_values: dict[str, int] = {}
+    canonical_row_ordinals: list[int] = []
+    invalid_rows: list[HistoricalInvalidRow] = []
     chunk_path: Path | None = None
 
     def open_chunk(row_number: int) -> None:
-        nonlocal handle, chunk_path, descriptor_values
+        nonlocal handle, chunk_path, descriptor_values, canonical_row_ordinals, invalid_rows
         ordinal = counters["chunks"]
-        chunk_path = output_dir / f"chunk-{ordinal:08d}.jsonl.gz"
-        handle = gzip.GzipFile(filename=chunk_path, mode="wb", compresslevel=6, mtime=0)
+        chunk_path = output_dir / f"chunk-{ordinal:08d}.jsonl"
+        handle = chunk_path.open("w", encoding="utf-8", newline="\n")
         descriptor_values = {
             "ordinal": ordinal,
             "row_start": row_number,
             "row_end": row_number,
             "row_count": 0,
-            "candidate_count": 0,
-            "filtered_count": 0,
-            "invalid_count": 0,
         }
+        canonical_row_ordinals = []
+        invalid_rows = []
 
     def close_chunk() -> None:
         nonlocal handle, chunk_path
         if handle is None or chunk_path is None:
             return
+        handle.flush()
+        os.fsync(handle.fileno())
         handle.close()
-        descriptor = HistoricalChunkDescriptor(path=chunk_path, **descriptor_values)
+        descriptor = HistoricalChunkDescriptor(
+            path=chunk_path,
+            canonical_row_ordinals=tuple(canonical_row_ordinals),
+            invalid_rows=tuple(invalid_rows),
+            **descriptor_values,
+        )
         publish(descriptor)
         chunk_path.unlink(missing_ok=True)
         counters["chunks"] += 1
@@ -102,7 +108,6 @@ def convert_historical_excel_to_chunks(
             counters["rows_seen"] += 1
             descriptor_values["row_end"] = row.row_number
             descriptor_values["row_count"] += 1
-            payload: dict[str, object]
             try:
                 content = map_excel_row(
                     row,
@@ -111,42 +116,18 @@ def convert_historical_excel_to_chunks(
                     sheet_name=row.sheet_name,
                     observed_at=observed_at,
                 )
-                resolution = resolve_canonical_brand_vehicle(filter_snapshot, content)
-                matched = resolution.matched
-                outcome = "candidate" if matched else "filtered"
-                payload = {
-                    "schema_version": HISTORICAL_CHUNK_SCHEMA_VERSION,
-                    "source_row_ordinal": row.row_number,
-                    "outcome": outcome,
-                    "content": content.model_dump(mode="json"),
-                    "error_code": None,
-                }
-                counter_name = "candidates" if matched else "filtered"
-                descriptor_name = "candidate_count" if matched else "filtered_count"
-                counters[counter_name] += 1
-                descriptor_values[descriptor_name] += 1
+                handle.write(content.model_dump_json())
+                handle.write("\n")
+                canonical_row_ordinals.append(row.row_number)
+                counters["canonical_rows"] += 1
             except ExcelImportRowError as exc:
-                payload = {
-                    "schema_version": HISTORICAL_CHUNK_SCHEMA_VERSION,
-                    "source_row_ordinal": row.row_number,
-                    "outcome": "invalid",
-                    "content": None,
-                    "error_code": exc.code,
-                }
+                invalid_rows.append(HistoricalInvalidRow(row.row_number, exc.code))
                 counters["invalid"] += 1
-                descriptor_values["invalid_count"] += 1
             except ValidationError:
-                payload = {
-                    "schema_version": HISTORICAL_CHUNK_SCHEMA_VERSION,
-                    "source_row_ordinal": row.row_number,
-                    "outcome": "invalid",
-                    "content": None,
-                    "error_code": "canonical_validation_error",
-                }
+                invalid_rows.append(
+                    HistoricalInvalidRow(row.row_number, "canonical_validation_error")
+                )
                 counters["invalid"] += 1
-                descriptor_values["invalid_count"] += 1
-            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-            handle.write(encoded + b"\n")
             if descriptor_values["row_count"] >= chunk_rows:
                 close_chunk()
         close_chunk()
@@ -157,7 +138,7 @@ def convert_historical_excel_to_chunks(
             chunk_path.unlink(missing_ok=True)
         raise
     finally:
-        for path in output_dir.glob("chunk-*.jsonl.gz"):
+        for path in output_dir.glob("chunk-*.jsonl"):
             try:
                 path.unlink()
             except OSError:
@@ -168,5 +149,6 @@ def convert_historical_excel_to_chunks(
 __all__ = [
     "HistoricalChunkDescriptor",
     "HistoricalConversionSummary",
+    "HistoricalInvalidRow",
     "convert_historical_excel_to_chunks",
 ]

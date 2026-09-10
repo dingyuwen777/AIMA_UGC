@@ -8,6 +8,9 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
+    PostgresArtifactMetadataRepository,
+)
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
@@ -52,7 +55,12 @@ from aima_ugc.modules.vehicles.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
-from aima_ugc.platform.storage.tables import artifacts_table
+from aima_ugc.platform.storage.canonical import (
+    CANONICAL_CONTENT_ARTIFACT_KIND,
+    CanonicalArtifactParent,
+    CanonicalArtifactReader,
+)
+from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import func, insert, select, update
@@ -114,6 +122,38 @@ def _xlsx_with_cross_chunk_duplicates(*, rows: int) -> bytes:
                 "https://www.xiaohongshu.com/explore/stage12-cross-chunk-duplicate",
             ]
         )
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
+
+
+def _xlsx_with_mixed_filter_outcomes() -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "文章"
+    sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
+    sheet.append(
+        [
+            "小红书",
+            "爱玛命中",
+            "合法并命中当前目录",
+            "测试账号",
+            "2025-01-02 10:00:00",
+            "https://www.xiaohongshu.com/explore/stage2-matched",
+        ]
+    )
+    sheet.append(
+        [
+            "小红书",
+            "完全无关",
+            "合法但不命中当前目录",
+            "测试账号",
+            "2025-01-02 10:00:00",
+            "https://www.xiaohongshu.com/explore/stage2-filtered",
+        ]
+    )
+    sheet.append(["未知平台", "爱玛但平台非法", "invalid", "测试账号", "2025-01-02 10:00:00", None])
     output = BytesIO()
     workbook.save(output)
     workbook.close()
@@ -308,6 +348,34 @@ def test_historical_campaign_preflights_before_fill_only_import(tmp_path: Path) 
         assert ready["progress"]["preflight_completed_file_count"] == 1
         assert ready["progress"]["preflight_percent"] == 100
         assert ready["progress"]["migration_percent"] == 0
+        ready_items = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}/items").json()[
+            "items"
+        ]
+        chunk = next(item for item in ready_items if item["item_kind"] == "chunk")
+        assert chunk["stats"]["canonical"] == 1
+        assert chunk["stats"]["canonical_row_ordinals"] == [2]
+        assert chunk["stats"]["invalid_rows"] == []
+        with runtime.database.engine.begin() as connection:
+            canonical_chunk_count = connection.scalar(
+                select(func.count())
+                .select_from(canonical_artifact_links_table)
+                .join(
+                    historical_import_campaign_items_table,
+                    historical_import_campaign_items_table.c.id
+                    == canonical_artifact_links_table.c.historical_import_campaign_item_id,
+                )
+                .join(
+                    artifacts_table,
+                    artifacts_table.c.id == canonical_artifact_links_table.c.artifact_id,
+                )
+                .where(
+                    historical_import_campaign_items_table.c.campaign_id == UUID(campaign_id),
+                    historical_import_campaign_items_table.c.item_kind == "chunk",
+                    artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND,
+                    artifacts_table.c.storage_status == "linked",
+                )
+            )
+        assert canonical_chunk_count == 1
         listed = client.get("/api/v1/historical-import-campaigns").json()["items"]
         listed_campaign = next(item for item in listed if item["id"] == campaign_id)
         assert listed_campaign["progress"] == ready["progress"]
@@ -380,6 +448,99 @@ def test_historical_campaign_preflights_before_fill_only_import(tmp_path: Path) 
             assert [record.id for record in campaign_records] == [content["id"]]
         finally:
             query_session.close()
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
+
+
+def test_historical_pure_canonical_retains_filtered_and_ledgers_invalid(tmp_path: Path) -> None:
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    (historical_root / "mixed.xlsx").write_bytes(_xlsx_with_mixed_filter_outcomes())
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "historical_import_root": historical_root,
+            "historical_chunk_rows": 100,
+            "historical_max_in_flight_jobs": 1,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        client = TestClient(
+            create_app(
+                historical_import_service=PostgresHistoricalImportHttpService(runtime),
+                import_service=PostgresImportHttpService(runtime),
+            )
+        )
+        brand_id = _brand(runtime)
+        created = client.post(
+            "/api/v1/historical-import-campaigns",
+            json={
+                "client_idempotency_key": f"stage2-mixed-{uuid4()}",
+                "relative_paths": ["mixed.xlsx"],
+                "recursive": False,
+                "brand_ids": [brand_id],
+            },
+        )
+        campaign_id = created.json()["campaign_id"]
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage2-mixed-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert _drain(worker) == 2
+
+        with runtime.database.engine.begin() as connection:
+            chunk_item_id = connection.scalar(
+                select(historical_import_campaign_items_table.c.id).where(
+                    historical_import_campaign_items_table.c.campaign_id == UUID(campaign_id),
+                    historical_import_campaign_items_table.c.item_kind == "chunk",
+                )
+            )
+        assert chunk_item_id is not None
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                artifact = PostgresArtifactMetadataRepository(session).get_canonical_for_parent(
+                    CanonicalArtifactParent(historical_import_campaign_item_id=chunk_item_id)
+                )
+        finally:
+            session.close()
+        assert artifact is not None
+        retained = tuple(CanonicalArtifactReader(store=runtime.artifact_store).read(artifact))
+        assert [item.external_content_id for item in retained] == [
+            "stage2-matched",
+            "stage2-filtered",
+        ]
+
+        assert (
+            client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/start").status_code
+            == 200
+        )
+        assert _drain(worker) == 1
+        with runtime.database.engine.begin() as connection:
+            outcomes = tuple(
+                connection.execute(
+                    select(processing_import_batch_items_table.c.outcome).order_by(
+                        processing_import_batch_items_table.c.source_row_ordinal
+                    )
+                ).scalars()
+            )
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
+        assert outcomes == ("created", "filtered", "invalid")
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
@@ -828,6 +989,105 @@ def test_historical_snapshot_technical_retry_reuses_bound_source_artifact(
         runtime.close()
 
 
+def test_historical_snapshot_retry_reuses_linked_canonical_chunk(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    (historical_root / "canonical-retry.xlsx").write_bytes(
+        _xlsx(title="爱玛 Canonical 重试", text="发布后崩溃必须复用")
+    )
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "historical_import_root": historical_root,
+            "historical_chunk_rows": 100,
+            "historical_max_in_flight_jobs": 1,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
+        )
+    original_publish = historical_worker_module.PostgresHistoricalImportJobExecutor._publish_chunk
+    publish_calls = 0
+
+    def publish_then_fail(self, **kwargs):  # type: ignore[no-untyped-def]
+        nonlocal publish_calls
+        original_publish(self, **kwargs)
+        publish_calls += 1
+        if publish_calls == 1:
+            raise OSError("simulated crash after canonical publication")
+
+    monkeypatch.setattr(
+        historical_worker_module.PostgresHistoricalImportJobExecutor,
+        "_publish_chunk",
+        publish_then_fail,
+    )
+    try:
+        client = TestClient(
+            create_app(
+                historical_import_service=PostgresHistoricalImportHttpService(runtime),
+                import_service=PostgresImportHttpService(runtime),
+            )
+        )
+        brand_id = _brand(runtime)
+        created = client.post(
+            "/api/v1/historical-import-campaigns",
+            json={
+                "client_idempotency_key": f"stage2-canonical-retry-{uuid4()}",
+                "relative_paths": ["canonical-retry.xlsx"],
+                "recursive": False,
+                "brand_ids": [brand_id],
+            },
+        )
+        campaign_id = created.json()["campaign_id"]
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage2-canonical-retry-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert worker.run_once() is True
+        assert worker.run_once() is True
+        with runtime.database.engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(artifacts_table)
+                    .where(artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND)
+                )
+                == 1
+            )
+        assert worker.run_once() is True
+        assert publish_calls == 2
+        assert (
+            client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()["status"]
+            == "ready"
+        )
+        with runtime.database.engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(artifacts_table)
+                    .where(artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND)
+                )
+                == 1
+            )
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
+
+
 def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row(
     tmp_path: Path,
 ) -> None:
@@ -979,7 +1239,7 @@ def test_historical_failed_chunk_range_is_included_in_campaign_accounting(
 
         monkeypatch.setattr(
             historical_worker_module,
-            "read_historical_chunk",
+            "_read_bounded_canonical_artifact",
             fail_chunk_read,
         )
         assert worker.run_once() is True
@@ -1023,7 +1283,7 @@ def test_historical_failed_retry_preserves_cross_chunk_duplicate_identity(
             "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
             "accounts RESTART IDENTITY CASCADE"
         )
-    original_read_chunk = historical_worker_module.read_historical_chunk
+    original_read_chunk = historical_worker_module._read_bounded_canonical_artifact
     try:
         client = TestClient(
             create_app(
@@ -1061,13 +1321,13 @@ def test_historical_failed_retry_preserves_cross_chunk_duplicate_identity(
 
         monkeypatch.setattr(
             historical_worker_module,
-            "read_historical_chunk",
+            "_read_bounded_canonical_artifact",
             fail_chunk_read,
         )
         assert worker.run_once() is True
         monkeypatch.setattr(
             historical_worker_module,
-            "read_historical_chunk",
+            "_read_bounded_canonical_artifact",
             original_read_chunk,
         )
 

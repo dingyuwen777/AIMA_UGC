@@ -158,6 +158,38 @@ class PostgresArtifactMetadataRepository:
         )
         return _artifact_from_row(row) if row is not None else None
 
+    def get_canonical_for_parent(
+        self,
+        parent: CanonicalArtifactParent,
+    ) -> ArtifactRecord | None:
+        """读取一个 Stage 2 父级已经原子绑定的唯一 Canonical Artifact。"""
+
+        parent_values = {
+            "processing_import_batch_id": parent.processing_import_batch_id,
+            "historical_import_campaign_item_id": parent.historical_import_campaign_item_id,
+            "collection_scope_id": parent.collection_scope_id,
+            "provider_attempt_id": parent.provider_attempt_id,
+        }
+        parent_name, parent_id = next(
+            (name, value) for name, value in parent_values.items() if value is not None
+        )
+        row = (
+            self._session.execute(
+                select(artifacts_table)
+                .join(
+                    canonical_artifact_links_table,
+                    canonical_artifact_links_table.c.artifact_id == artifacts_table.c.id,
+                )
+                .where(
+                    canonical_artifact_links_table.c[parent_name] == parent_id,
+                    artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _artifact_from_row(row) if row is not None else None
+
     def mark_stored(
         self,
         artifact_id: UUID,

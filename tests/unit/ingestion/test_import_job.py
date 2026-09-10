@@ -5,6 +5,10 @@ from uuid import uuid4
 
 import pytest
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
+from aima_ugc.modules.ingestion.historical_jobs import (
+    HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
+    HistoricalImportChunkJobPayload,
+)
 from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_MAX_ATTEMPTS,
     IMPORT_JOB_PAYLOAD_VERSION,
@@ -91,6 +95,21 @@ def test_import_job_contract_rejects_legacy_v1_payload() -> None:
                     "config_version": 2,
                     "effective_keywords": ["爱玛"],
                 },
+            }
+        )
+
+
+def test_historical_chunk_job_cleanly_switches_to_pure_canonical_v2() -> None:
+    assert HISTORICAL_IMPORT_CHUNK_JOB_TYPE == "ingestion.historical-import-chunk.v2"
+    payload = HistoricalImportChunkJobPayload(batch_id=uuid4(), chunk_item_id=uuid4())
+    assert payload.schema_version == "ingestion.historical-import-chunk.v2"
+
+    with pytest.raises(ValidationError):
+        HistoricalImportChunkJobPayload.model_validate(
+            {
+                "schema_version": "ingestion.historical-import-chunk.v1",
+                "batch_id": str(uuid4()),
+                "chunk_item_id": str(uuid4()),
             }
         )
 

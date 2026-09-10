@@ -49,13 +49,12 @@ ingestion_policy
 两种来源
 → Data Import Campaign
 → Source Artifact + SHA-256
-→ Snapshot / XLSX Preflight
-→ 有界 Chunk Artifact
+→ Snapshot / XLSX Preflight / Reader / Mapper
+→ 有界 Pure Canonical Chunk Artifact
 → 全部预检成功后 ready
 → 用户显式 start
 → 低优先级、有界 Chunk Job
-→ Excel Reader / Mapper
-→ Canonical
+→ CanonicalArtifactReader 完整性预检
 → 冻结 Brand/Vehicle Filter Snapshot
 → BrandVehicleResolver 过滤
 → Content Owner 按 standard_observation / historical_fill_only 写入
@@ -71,7 +70,6 @@ ingestion_policy
 当前领域实现：
 
 - [`backend/src/aima_ugc/modules/ingestion/historical_directory.py`](historical_directory.py)
-- [`backend/src/aima_ugc/modules/ingestion/historical_chunk.py`](historical_chunk.py)
 - [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](historical_http.py)
 - [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py)
 - [`backend/src/aima_ugc/modules/ingestion/historical_tables.py`](historical_tables.py)
@@ -109,7 +107,7 @@ ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
 → Source Artifact、SHA-256、XLSX 预检和有界 Chunk 冻结
 
-ingestion.historical-import-chunk.v1
+ingestion.historical-import-chunk.v2
 → 真正执行一个冻结 Chunk 的业务导入并提交逐行结果
 ```
 
@@ -234,15 +232,17 @@ Campaign 在业务写入前先冻结输入：
 Source Item
 → 原文件 Artifact
 → SHA-256
-→ XLSX 安全/结构预检
-→ 有界 Chunk Artifact
+→ XLSX 安全/结构预检 + Reader / Mapper
+→ 有界 Pure Canonical Chunk Artifact
 ```
 
 关键不变量：
 
-- 后续业务导入只读冻结 Artifact/Chunk，不继续依赖原服务器文件或浏览器选择；
+- 后续业务导入只读共享 Reader 完整预检后的冻结 Pure Canonical Artifact，不继续依赖原服务器文件或浏览器选择；
 - Source Item 与 Artifact `linked` 关系按当前事务边界提交；
-- 未被 Campaign Item 引用的 Source/Chunk Artifact 才进入当前孤儿生命周期清理；已引用快照不能被普通孤儿规则删除；
+- 每个 Chunk Item 通过唯一关系绑定一件 linked Canonical Artifact；Snapshot 技术重试恢复并核对同一 Artifact，不制造平行 linked 副本；
+- Mapper invalid 不写入 Canonical，在消费前以 Chunk Item 最小行事实保存，消费后进入既有逐行终态账本；
+- 未被真实父事实引用的 Source/Canonical Artifact 才进入当前孤儿生命周期清理；已引用快照不能被普通孤儿规则删除；
 - 全部预检完成并满足状态门禁后 Campaign 才进入 `ready`，页面才能 start；
 - 不把整个工作簿、全部 Canonical 或全部身份集合一次性放进 Python 内存。
 
@@ -333,13 +333,14 @@ failed
 
 ## 8. Brand/Vehicle Filter 在统一导入链哪里发生
 
-正式 Excel/Data Import 在 Mapper 后使用同一个 Stage 2 `BrandVehicleResolver` 做确定性品牌车型过滤，不使用 Keyword Pack，也不是 AI Semantic Relevance。
+正式 Excel/Data Import 在 Mapper 后先持久化 Pure Canonical Artifact，再使用同一个 Stage 2 `BrandVehicleResolver` 做确定性品牌车型过滤；不使用 Keyword Pack，也不是 AI Semantic Relevance。
 
 主链：
 
 ```text
 Excel Mapper
-→ Canonical
+→ linked Pure Canonical Artifact
+→ CanonicalArtifactReader 完整性预检
 → Campaign/Batch 冻结 BrandVehicleFilterSnapshot
 → Brand/Vehicle Alias 解析
 → 命中所选 Brand，或命中归属于所选 Brand 的 Vehicle
@@ -355,7 +356,7 @@ vehicle_models / vehicle_model_aliases
 Vehicle → Brand 归属
 ```
 
-创建时提交 `brand_ids`；空集合表示冻结全部 active Brand。Worker 不在执行中途读取变化后的实时目录，过滤和 Evidence 写入都使用同一冻结 Snapshot。Campaign、Job 和 Chunk Reader 只接受当前 Brand/Vehicle Snapshot 与 v2 行格式；旧格式会失败关闭。
+创建时提交 `brand_ids`；空集合表示冻结全部 active Brand。Worker 不在执行中途读取变化后的实时目录，过滤和 Evidence 写入都使用同一冻结 Snapshot。单文件 Batch 和 Campaign Chunk Item 各自只允许绑定一件 Canonical Artifact；Job 重试先恢复并完整校验已有 Artifact。Campaign Chunk Job 只接受 `ingestion.historical-import-chunk.v2` 与当前 Pure Canonical 格式；旧 outcome Chunk / v1 Payload 不保留兼容，Migration 发现仍活跃或可重试存量时失败关闭。
 
 AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动创建 AI Job。
 
@@ -392,7 +393,8 @@ POST /api/v1/import-batches
 → ingestion.import-excel.v2
 → Worker
 → Excel Reader / Mapper
-→ Canonical
+→ linked Persistent Canonical Artifact
+→ CanonicalArtifactReader 完整性预检
 → 冻结 Brand/Vehicle Filter
 → Brand/Vehicle Evidence
 → ContentIngestionService
@@ -410,6 +412,11 @@ Job 领域入口：
 - [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py)
 
 `BrandVehicleFilterSnapshot` 冻结目录版本、所选 Brand、Vehicle 归属和 Alias。当前单文件任务只使用 `ingestion.import-excel.v2` 与 `filter_snapshot`；Worker 校验 Batch `stats.filter_snapshot` 与 Job Payload 一致，不一致时关闭失败。旧 v1 Payload 与关键词选择快照已退出注册和生产代码。
+
+Mapping 成功后，Worker 用共享 Canonical Writer 把全部合法 Canonical 写入 JSONL.gz，并与
+Processing Import Batch 原子绑定为 `linked`；Filter 只读取共享 Reader 已完成 metadata、
+SHA-256、byte size、gzip、JSON 和当前 Contract 校验的内容。重试先按 Batch 恢复唯一
+Canonical，因此不会重复执行已经成功持久化的 Mapping。
 
 当前兼容 HTTP：
 
@@ -528,7 +535,8 @@ Excel
 | [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](historical_http.py) | Data Import Campaign HTTP Port/模型边界 | 改统一导入应用接口 |
 | [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py) | Discover/Snapshot/Import-Chunk Job | 改 Campaign Job Payload/Handler |
 | [`backend/src/aima_ugc/modules/ingestion/historical_directory.py`](historical_directory.py) | 批准服务器目录安全访问 | 改目录枚举/路径安全 |
-| [`backend/src/aima_ugc/modules/ingestion/historical_chunk.py`](historical_chunk.py) | Chunk 内部格式/冻结边界 | 改 Chunk 读写/版本 |
+| [`backend/src/aima_ugc/adapters/providers/imports/historical_chunk.py`](../../adapters/providers/imports/historical_chunk.py) | Historical XLSX 到 Pure Canonical Chunk 的有界 Reader/Mapper | 改 Chunk 切分、Canonical 行号或 invalid 最小事实 |
+| [`backend/src/aima_ugc/platform/storage/canonical.py`](../../platform/storage/canonical.py) | 共享 Canonical Artifact Writer/Reader | 改 JSONL.gz、完整性或 Contract 校验边界 |
 
 跨目录生产实现：
 
