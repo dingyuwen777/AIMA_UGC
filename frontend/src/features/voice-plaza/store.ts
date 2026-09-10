@@ -11,6 +11,7 @@ import type {
   ContentDetailResponse,
   ContentFilterOptionsResponse,
   ContentFilterSnapshot,
+  ContentFilterSnapshotCompetitionScopesItem,
   ContentListItemResponse,
   ContentRelevance,
   ContentRelevanceReviewRequestDecision,
@@ -58,7 +59,9 @@ export interface VoicePlazaFilters {
   publishedFrom: string
   publishedTo: string
   sourceIdentifier: string
+  brandIds: string[]
   vehicleModelIds: string[]
+  competitionScopes: ContentFilterSnapshotCompetitionScopesItem[]
 }
 
 const EMPTY_FILTERS: VoicePlazaFilters = {
@@ -74,7 +77,9 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   publishedFrom: '',
   publishedTo: '',
   sourceIdentifier: '',
+  brandIds: [],
   vehicleModelIds: [],
+  competitionScopes: [],
 }
 
 function errorMessage(error: unknown): string {
@@ -174,7 +179,9 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
       published_from: beijingDayBoundary(filters.publishedFrom, 'start'),
       published_to: beijingDayBoundary(filters.publishedTo, 'end'),
       source_identifier: filters.sourceIdentifier.trim() || undefined,
+      brand_ids: filters.brandIds.length ? [...filters.brandIds] : undefined,
       vehicle_model_ids: filters.vehicleModelIds.length ? [...filters.vehicleModelIds] : undefined,
+      competition_scopes: filters.competitionScopes.length ? [...filters.competitionScopes] : undefined,
     }
   }
 

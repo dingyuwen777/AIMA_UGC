@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  BrandResponse,
   CollectionPlanResponse,
   CollectionProviderConfigResponse,
   KeywordPackSummaryResponse,
@@ -14,6 +15,7 @@ withDefaults(defineProps<{
   plans: CollectionPlanResponse[]
   archived?: ResourceLifecycleResponse[]
   packs: KeywordPackSummaryResponse[]
+  brands: BrandResponse[]
   vehicles: VehicleModelResponse[]
   providers: CollectionProviderConfigResponse[]
   total: number
@@ -44,23 +46,29 @@ const emit = defineEmits<{
 function discoveryScopeLines(
   plan: CollectionPlanResponse,
   packs: KeywordPackSummaryResponse[],
+  brands: BrandResponse[],
   vehicles: VehicleModelResponse[],
 ): string[] {
   const packLines = plan.keyword_pack_ids.map((id) =>
     packs.find((pack) => pack.id === id)?.name ?? '历史词包（当前目录不可用）',
   )
-  const vehicleLines = (plan.vehicle_model_ids ?? []).map((id) => {
-    const vehicle = vehicles.find((item) => item.id === id)
-    return `车型：${vehicle?.display_name ?? '历史车型（当前目录不可用）'}`
+  const brandLines = (plan.brand_ids ?? []).map((id) => {
+    const brand = brands.find((item) => item.id === id)
+    return `品牌：${brand?.display_name ?? '历史品牌（当前目录不可用）'}`
   })
+  const legacyVehicleLines = (plan.vehicle_model_ids ?? []).map((id) => {
+    const vehicle = vehicles.find((item) => item.id === id)
+    return `历史车型：${vehicle?.display_name ?? '当前目录不可用'}`
+  })
+  const filterLines = brandLines.length ? brandLines : legacyVehicleLines.length ? legacyVehicleLines : ['品牌：全部启用品牌']
   const visible: string[] = []
   if (packLines[0]) visible.push(packLines[0])
-  if (vehicleLines[0]) visible.push(vehicleLines[0])
-  for (const line of [...packLines.slice(1), ...vehicleLines.slice(1)]) {
+  if (filterLines[0]) visible.push(filterLines[0])
+  for (const line of [...packLines.slice(1), ...filterLines.slice(1)]) {
     if (visible.length >= 2) break
     visible.push(line)
   }
-  const remaining = packLines.length + vehicleLines.length - visible.length
+  const remaining = packLines.length + filterLines.length - visible.length
   return remaining > 0 ? [...visible, `另有 ${remaining} 项范围`] : visible
 }
 
@@ -106,7 +114,7 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
     </div>
     <div class="table-wrap">
       <table class="plan-table">
-        <thead><tr><th>计划</th><th>状态</th><th>词包 / 车型</th><th>目标平台 / 采集渠道</th><th>调度与下次运行</th><th>操作</th></tr></thead>
+        <thead><tr><th>计划</th><th>状态</th><th>搜索条件 / 品牌过滤</th><th>目标平台 / 采集渠道</th><th>调度与下次运行</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-if="loading">
             <td
@@ -133,7 +141,7 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
             <td><span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span></td>
             <td class="scope-lines">
               <span
-                v-for="(line, index) in discoveryScopeLines(plan, packs, vehicles)"
+                v-for="(line, index) in discoveryScopeLines(plan, packs, brands, vehicles)"
                 :key="`${plan.id}-scope-${index}`"
                 :title="line"
               >{{ line }}</span>

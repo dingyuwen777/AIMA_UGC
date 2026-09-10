@@ -130,6 +130,14 @@ function sortLabel(field: 'published_at' | 'follower_count'): 'none' | 'ascendin
 function platformMark(platform: ContentListItemResponse['platform']): string {
   return ({ xiaohongshu: '书', douyin: '抖', weibo: '微', bilibili: 'B', kuaishou: '快' })[platform]
 }
+
+function brandRoleLabel(role: 'owned' | 'competitor' | 'other'): string {
+  return role === 'owned' ? '自有' : role === 'competitor' ? '竞品' : '其他'
+}
+
+function competitionScopeLabel(scope?: ContentListItemResponse['competition_scope']): string {
+  return scope ? ({ owned_only: '仅自有品牌', competitor_only: '仅竞品品牌', mixed: '自有与竞品混合', other_only: '仅其他品牌', none_detected: '未识别品牌' })[scope] : '未识别品牌'
+}
 </script>
 
 <template>
@@ -164,7 +172,7 @@ function platformMark(platform: ContentListItemResponse['platform']): string {
           alt=""
         ></button>
       </span>
-      <span>AI 分析</span><span>车型</span>
+      <span>AI 分析</span><span>品牌 / 车型 / 竞争范围</span>
       <span
         role="columnheader"
         :aria-sort="sortLabel('published_at')"
@@ -294,13 +302,21 @@ function platformMark(platform: ContentListItemResponse['platform']): string {
       </div>
       <div class="vehicle-cell">
         <div
+          v-for="brand in item.brands ?? []"
+          :key="brand.id"
+          class="brand-line"
+        >
+          <strong>{{ brand.display_name }}</strong><span>{{ brandRoleLabel(brand.role) }}品牌</span>
+        </div>
+        <div
           v-for="vehicle in item.vehicles ?? []"
           :key="vehicle.vehicle_model_id"
         >
           <strong>{{ vehicle.display_name }}</strong>
-          <span v-if="vehicle.series_name || vehicle.category_name">{{ [vehicle.series_name, vehicle.category_name].filter(Boolean).join(' · ') }}</span>
+          <span>{{ vehicle.brand?.display_name ? `所属 ${vehicle.brand.display_name}` : '所属品牌未确认' }}{{ vehicle.series_name || vehicle.category_name ? ` · ${[vehicle.series_name, vehicle.category_name].filter(Boolean).join(' · ')}` : '' }}</span>
         </div>
-        <span v-if="!item.vehicles?.length">未关联</span>
+        <span v-if="!(item.brands ?? []).length && !item.vehicles?.length">未关联</span>
+        <span class="competition-scope">{{ competitionScopeLabel(item.competition_scope) }}</span>
       </div>
       <time>
         <strong>{{ dateTimeParts(item.published_at)[0] }}</strong>
@@ -330,7 +346,7 @@ function platformMark(platform: ContentListItemResponse['platform']): string {
 
 <style scoped>
 .content-list { overflow-x: auto; border-radius: 4px; background: var(--aima-surface); box-shadow: inset 0 0 0 1px var(--aima-border); }
-.table-head, .content-row { display: grid; min-width: 1212px; grid-template-columns: 16px minmax(240px, 1fr) 80px 200px 150px 120px 120px; column-gap: 12px; align-items: center; }
+.table-head, .content-row { display: grid; min-width: 1212px; grid-template-columns: 16px minmax(220px, 1fr) 76px 190px 230px 110px 110px; column-gap: 12px; align-items: center; }
 .table-head > :nth-child(2), .table-head > :nth-child(4), .table-head > :nth-child(5) { text-align: center; }
 .table-head { min-height: 40px; padding: 0 24px 0 8px; color: var(--aima-text-muted); background: var(--aima-color-bg-table-header); font-size: 12px; font-weight: 600; }
 .content-row { min-height: 76px; padding: 16px 24px 16px 8px; border-top: 1px solid var(--aima-border); }
@@ -358,6 +374,7 @@ function platformMark(platform: ContentListItemResponse['platform']): string {
 .fans-cell strong, .vehicle-cell strong, time strong { color: var(--aima-text); font-size: 13px; font-weight: 700; line-height: 18px; }
 .fans-cell span, .vehicle-cell span, time span { color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
 .vehicle-cell { overflow-wrap: anywhere; }
+.brand-line { display: flex !important; align-items: center; gap: 5px !important; }.brand-line strong { color: var(--aima-primary); }.competition-scope { width: max-content; max-width: 100%; padding: 1px 6px; border-radius: 4px; background: var(--aima-color-bg-hover); font-size: 10px !important; }
 time, .date-heading { text-align: right; }
 .row-actions { position: sticky; right: 0; display: grid; justify-items: end; align-self: stretch; align-content: center; gap: 4px; background: var(--aima-surface); }
 .actions-heading { position: sticky; right: 0; background: var(--aima-color-bg-table-header); text-align: right; }

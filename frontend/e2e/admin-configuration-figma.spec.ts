@@ -1,8 +1,8 @@
-import type { AnalysisSchemeResponse, ProviderConfigResponse, VehicleModelResponse } from '../src/generated/api/client'
+import type { AnalysisSchemeResponse, BrandResponse, ProviderConfigResponse, VehicleModelResponse } from '../src/generated/api/client'
 import { expect, test, type Page, type Route } from './fixture'
 
 const now = '2026-09-09T04:00:00+08:00'
-const packId = '71111111-1111-4111-8111-111111111111'
+const brandId = '71111111-1111-4111-8111-111111111111'
 const schemeId = '72111111-1111-4111-8111-111111111111'
 const versionId = '73111111-1111-4111-8111-111111111111'
 
@@ -22,8 +22,14 @@ const vehicles: VehicleModelResponse[] = [1, 2].map((index) => ({
   code: `AIMA-${index}`, display_name: `爱玛车型 ${index}`, status: 'active', version: 1,
   catalog_version: 1, referenced: index === 1, series_name: '城市系列', category_name: '通勤',
   aliases: [{ id: `76111111-1111-4111-8111-${String(index).padStart(12, '0')}`, text: `完整车型别名 ${index}`, normalized_text: `完整车型别名 ${index}` }],
-  keyword_pack_ids: index === 1 ? [packId] : [], created_at: now, updated_at: now,
+  brand_id: brandId, keyword_pack_ids: [], created_at: now, updated_at: now,
 }))
+
+const brands: BrandResponse[] = [{
+  id: brandId, code: 'AIMA', display_name: '爱玛', role: 'owned', status: 'active',
+  version: 1, catalog_version: 18, aliases: [{ id: '78111111-1111-4111-8111-111111111111', text: '爱玛电动车', normalized_text: '爱玛电动车' }],
+  created_at: now, updated_at: now,
+}]
 
 const scheme: AnalysisSchemeResponse = {
   id: schemeId, name: '业务分析规则', is_active: false, active_version_id: null, created_at: now, updated_at: now,
@@ -46,7 +52,7 @@ async function mockAdmin(page: Page): Promise<void> {
     const offset = Number(url.searchParams.get('offset') ?? '0')
     const limit = Number(url.searchParams.get('limit') ?? '100')
     if (url.pathname === '/api/v1/vehicle-models') return json(route, { items: vehicles, total: vehicles.length, catalog_version: 1, offset, limit })
-    if (url.pathname === '/api/v1/keyword-packs') return json(route, { items: [{ id: packId, name: '品牌词包', description: '当前配置', enabled: true, version: 1, keyword_count: 2 }], total: 1, offset, limit })
+    if (url.pathname === '/api/v1/vehicle-brands') return json(route, { items: brands, total: brands.length, catalog_version: 18, offset, limit })
     if (url.pathname === '/api/v1/analysis-schemes') return json(route, { items: [scheme] })
     if (url.pathname === '/api/v1/audit-events') return json(route, {
       items: [{ id: '77111111-1111-4111-8111-111111111111', actor_ref: 'local-administrator', event_type: 'provider_config_updated', object_type: 'provider_config', object_id: provider(1).id, request_id: 'admin-browser-request', safe_detail: { display_name: '模型配置 1', revision: 2 }, created_at: now }], total: 1, offset, limit,
@@ -137,18 +143,66 @@ test('preserves provider draft on save failure and prevents edits during its sub
   expect(requests).toBe(1)
 })
 
-test('keeps vehicle and audit table scrolling separate from headings and page controls', async ({ page }) => {
+test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N path', async ({ page }) => {
+  await mockAdmin(page)
+  const brandRequests: Array<{ method: string; body?: unknown }> = []
+  let vehicleBody: unknown
+  await page.route(`**/api/v1/vehicle-brands/${brandId}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    brandRequests.push({ method: 'PUT', body: route.request().postDataJSON() })
+    await json(route, { ...brands[0], ...route.request().postDataJSON(), version: 2 })
+  })
+  await page.route(`**/api/v1/vehicle-brands/${brandId}/aliases/*`, async (route) => {
+    brandRequests.push({ method: route.request().method() })
+    await route.fulfill({ status: 204, body: '' })
+  })
+  await page.route(`**/api/v1/vehicle-brands/${brandId}/aliases`, async (route) => {
+    brandRequests.push({ method: route.request().method(), body: route.request().postDataJSON() })
+    await json(route, { id: '79111111-1111-4111-8111-111111111111', text: 'AIMA', normalized_text: 'aima' }, 201)
+  })
+  await page.route('**/api/v1/vehicle-models', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    vehicleBody = route.request().postDataJSON()
+    await json(route, { ...vehicles[0], ...vehicleBody, id: '7a111111-1111-4111-8111-111111111111', version: 1, referenced: false }, 201)
+  })
+
+  await page.goto('/admin/configuration')
+  const brandEditor = page.locator('.brand-overview .form-card')
+  await brandEditor.getByLabel('显示名称', { exact: true }).fill('爱玛科技')
+  await brandEditor.locator('textarea').fill('AIMA')
+  await brandEditor.getByRole('button', { name: '保存品牌', exact: true }).click()
+  await expect(page.getByText('品牌与识别词已更新并记录操作。', { exact: true })).toBeVisible()
+  expect(brandRequests).toEqual(expect.arrayContaining([
+    { method: 'PUT', body: { display_name: '爱玛科技', role: 'owned', status: 'active' } },
+    { method: 'DELETE' },
+    { method: 'POST', body: { text: 'AIMA' } },
+  ]))
+
+  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+  const vehicleEditor = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
+  await page.getByPlaceholder('例如 AIMA-Q7').fill('AIMA-Q7-PRO')
+  await page.getByPlaceholder('例如 爱玛 Q7').fill('爱玛 Q7 Pro')
+  await page.getByPlaceholder('Q7\n爱玛Q7').fill('Q7 Pro')
+  await vehicleEditor.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
+  expect(vehicleBody).toMatchObject({
+    code: 'AIMA-Q7-PRO', display_name: '爱玛 Q7 Pro', brand_id: brandId, aliases: ['Q7 Pro'],
+  })
+})
+
+test('keeps the nested vehicle and audit tables reachable at supported desktop widths', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
   for (const width of [1180, 1281, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 })
-    await page.getByRole('button', { name: '车型管理', exact: true }).click()
+    await page.getByRole('button', { name: '品牌与车型', exact: true }).click()
     const vehicleTable = page.getByRole('region', { name: '车型目录表格', exact: true })
     await expect(vehicleTable).toHaveCSS('overflow-x', 'auto')
     await expect(vehicleTable.locator('table')).toHaveCSS('min-width', '726px')
+    await vehicleTable.scrollIntoViewIfNeeded()
     await vehicleTable.evaluate((element) => { element.scrollLeft = element.scrollWidth })
     await expect(vehicleTable.getByRole('button', { name: '编辑', exact: true }).first()).toBeInViewport()
-    await expect(page.getByRole('button', { name: '新增车型', exact: true })).toBeInViewport()
+    await expect(page.getByRole('button', { name: '新增车型', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '操作记录', exact: true }).click()
     const auditTable = page.getByRole('region', { name: '操作记录表格', exact: true })
     await expect(auditTable).toHaveCSS('overflow-x', 'auto')
@@ -164,7 +218,7 @@ test('keeps vehicle and audit table scrolling separate from headings and page co
 test('locks the current analysis rule while publishing and keeps its draft after a conflict', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
   let release!: () => void
   const pending = new Promise<void>((resolve) => { release = resolve })
   await page.route(`**/analysis-scheme-versions/${versionId}/publish`, async (route) => {
@@ -184,7 +238,7 @@ test('locks the current analysis rule while publishing and keeps its draft after
   await expect(page.getByRole('button', { name: '发布', exact: true })).toBeEnabled()
 })
 
-test('opens the active analysis principle instead of a newer draft', async ({ page }) => {
+test('opens the active analysis rule instead of a newer draft', async ({ page }) => {
   await mockAdmin(page)
   const activeVersionId = '73111111-1111-4111-8111-333333333333'
   const activeScheme: AnalysisSchemeResponse = {
@@ -198,7 +252,7 @@ test('opens the active analysis principle instead of a newer draft', async ({ pa
         id: activeVersionId,
         version: 2,
         status: 'published',
-        description: '当前线上生效原则',
+        description: '当前线上生效规则',
       },
     ],
   }
@@ -207,11 +261,11 @@ test('opens the active analysis principle instead of a newer draft', async ({ pa
   })
 
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
 
   await expect(page.getByText('版本 2 · 当前生效', { exact: true })).toBeVisible()
   await expect(page.getByText('版本 1 · 草稿，尚未生效', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('说明', { exact: true })).toHaveValue('当前线上生效原则')
+  await expect(page.getByLabel('说明', { exact: true })).toHaveValue('当前线上生效规则')
 })
 
 
@@ -295,7 +349,7 @@ test('analysis rule must save visible changes before publishing its persisted ve
     await json(route, current)
   })
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
   await page.getByLabel('一级标签名称', { exact: true }).first().fill('')
   await expect(page.getByRole('button', { name: '发布', exact: true })).toBeDisabled()
   await page.getByLabel('一级标签名称', { exact: true }).first().fill('外观设计')
@@ -304,13 +358,13 @@ test('analysis rule must save visible changes before publishing its persisted ve
   await page.getByRole('textbox', { name: '二级标签 1', exact: true }).last().fill('起步响应')
   await page.getByLabel('说明', { exact: true }).fill('  必须发布已保存的新说明  ')
   await expect(page.getByRole('button', { name: '发布', exact: true })).toBeDisabled()
-  await expect(page.getByText('原则有未保存修改，请先保存草稿后再发布。', { exact: true })).toBeVisible()
+  await expect(page.getByText('规则有未保存修改，请先保存草稿后再发布。', { exact: true })).toBeVisible()
   expect(published).toBe(0)
   await page.getByRole('button', { name: '保存草稿', exact: true }).click()
   await expect(page.getByRole('button', { name: '发布', exact: true })).toBeEnabled()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '发布', exact: true }).click()
-  await expect(page.getByText('AI 分析原则已发布并记录操作。', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析规则已发布并记录操作。', { exact: true })).toBeVisible()
   await expect(page.getByLabel('说明', { exact: true })).toHaveValue('必须发布已保存的新说明')
   expect(published).toBe(1)
 })
@@ -319,8 +373,8 @@ test('analysis rule must save visible changes before publishing its persisted ve
 test('keeps the analysis-rule copy editor open while its name is cleared', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
-  await page.getByRole('button', { name: '复制原则', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
+  await page.getByRole('button', { name: '复制规则', exact: true }).click()
   await page.getByLabel('副本名称', { exact: true }).fill('')
   await expect(page.getByLabel('副本名称', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '创建副本', exact: true })).toBeDisabled()
@@ -329,13 +383,13 @@ test('keeps the analysis-rule copy editor open while its name is cleared', async
 })
 
 
-test('six admin tabs keep their real controls and desktop layouts reachable', async ({ page }) => {
+test('five admin tabs keep their real controls and desktop layouts reachable', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
   const tabs = [
-    ['车型管理', '车型目录', 'vehicles'], ['词包关联', '选择词包', 'links'],
+    ['品牌与车型', '品牌目录', 'catalog'],
     ['AI 模型', 'AI 模型服务', 'llm'], ['TikHub', 'TikHub 采集服务', 'tikhub'],
-    ['AI 分析原则', '版本历史', 'scheme'], ['操作记录', '操作记录', 'audit'],
+    ['AI 分析规则', '版本历史', 'scheme'], ['操作记录', '操作记录', 'audit'],
   ] as const
   for (const width of [1440, 1180]) {
     await page.setViewportSize({ width, height: 900 })
@@ -345,11 +399,11 @@ test('six admin tabs keep their real controls and desktop layouts reachable', as
       await expect(page.getByRole('button', { name, exact: true })).toHaveClass(/active/)
       const bounds = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }))
       expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1)
-      if (name === '词包关联') {
-        await expect(page.getByRole('button', { name: /品牌词包/ })).not.toContainText('版本')
+      if (name === '品牌与车型') {
+        await expect(page.getByRole('button', { name: /爱玛/ }).first()).toContainText('AIMA')
         if (width === 1440) {
           const list = await page.locator('.list-card').boundingBox()
-          const editor = await page.locator('.form-card').boundingBox()
+          const editor = await page.locator('.two-column').first().locator('.form-card').boundingBox()
           expect(list!.width).toBeLessThan(editor!.width)
           expect(Math.abs(list!.y - editor!.y)).toBeLessThanOrEqual(1)
         }

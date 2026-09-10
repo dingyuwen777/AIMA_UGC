@@ -127,7 +127,7 @@ async function openImportDialog(page: Page) {
   return page.getByRole('dialog', { name: '导入数据' })
 }
 
-test('requires a source file but not a legacy keyword or vehicle filter', async ({ page }) => {
+test('requires a source file but not Provider search or a single-vehicle filter', async ({ page }) => {
   const dialog = await openImportDialog(page)
   const submitButton = dialog.locator('.create-button')
 
@@ -139,7 +139,8 @@ test('requires a source file but not a legacy keyword or vehicle filter', async 
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('aima'),
   })
-  await expect(dialog).toContainText('Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件')
+  await expect(dialog.getByLabel('搜索条件')).toHaveValue('不适用于 Excel 文件导入')
+  await expect(dialog).toContainText('创建任务时冻结品牌与旗下车型目录快照；Excel 导入不会发起 Provider 搜索。')
   await expect(submitButton).toBeEnabled()
   await expect(submitButton).toHaveCSS('cursor', 'pointer')
 })

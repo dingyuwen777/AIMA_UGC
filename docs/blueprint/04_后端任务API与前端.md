@@ -463,8 +463,8 @@ frontend/src/features/task-center/
 - 全局 `AppShell` 右上角提供任务中心 Drawer：通过现有 generated Client 聚合 Analysis Run、Collection Runtime 和 Data Export 三个既有 read model，显示活动任务数量、最近终态、进度/错误摘要和对应业务页入口；它没有独立路由，也不新增统一后端 Task API、Job 表或第二套状态机；
 - [`frontend/src/features/task-center/index.ts`](../../frontend/src/features/task-center/index.ts) 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
 - Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
-- `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
-- `/admin/configuration`：管理员车型/关键词关系、Analysis Scheme 版本与审计；路由守卫只改善交互，后端仍独立鉴权；
+- `/collection-strategy`：Keyword Pack Search Terms 与独立 Brand Filter 的 Collection Plan 管理；兼容 Global Relevance 后端不再暴露为产品入口；
+- `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本与审计；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
 - `/`：当前 HomeView。
 
 后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。任务中心同样不是一个新的后端 Job Domain，也没有独立路由；它只是所有业务页面共同使用的 `AppShell` 只读聚合入口。

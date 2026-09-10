@@ -19,7 +19,6 @@ import KeywordPackPanel from './components/KeywordPackPanel.vue'
 import PlanCreateDrawer from './components/PlanCreateDrawer.vue'
 import PlanDetailDrawer from './components/PlanDetailDrawer.vue'
 import PlanPanel from './components/PlanPanel.vue'
-import RelevancePanel from './components/RelevancePanel.vue'
 import StrategyKpiCards from './components/StrategyKpiCards.vue'
 
 const store = useCollectionStrategyStore()
@@ -32,9 +31,6 @@ const planDetailOpen = computed({
   set: (value: boolean) => { if (!value) store.selectedPlan = null },
 })
 const notice = ref<string | null>(null)
-const relevancePackName = computed(
-  () => store.packCatalog.find((pack) => pack.id === store.relevance?.keyword_pack_id)?.name ?? '',
-)
 const providers = computed(() => store.capabilities?.provider_configs ?? [])
 
 onMounted(() => store.refresh())
@@ -68,11 +64,6 @@ async function restoreArchivedPack(packId: string): Promise<void> {
 
 async function deleteArchivedPack(packId: string): Promise<void> {
   if (await store.deleteArchivedPack(packId)) showNotice('未被业务引用的归档词包已永久删除。')
-}
-
-/** 保存唯一全局相关性配置并显示成功反馈。 */
-async function saveRelevance(packId: string): Promise<void> {
-  if (await store.saveRelevance(packId)) showNotice('系统全局相关性已更新。')
 }
 
 function openNewPlan(): void {
@@ -142,7 +133,7 @@ function showNotice(message: string): void {
   <AppShell section-title="采集策略">
     <AimaPageHeader
       title="采集策略"
-      description="统一管理关键词包、全局相关性与周期采集计划"
+      description="统一管理 Provider 搜索词与独立的品牌过滤范围"
     >
       <template #actions>
         <AimaButton
@@ -164,8 +155,7 @@ function showNotice(message: string): void {
 
     <StrategyKpiCards
       :pack-count="store.packTotal"
-      :relevance="store.relevance"
-      :relevance-pack-name="relevancePackName"
+      :brand-count="store.enabledBrandCount"
       :enabled-plan-count="store.enabledPlanCount"
       :loading="store.loading"
     />
@@ -175,7 +165,7 @@ function showNotice(message: string): void {
       class="tabs"
     >
       <button
-        v-for="tab in [{ value: 'keywords', label: '关键词包' }, { value: 'relevance', label: '全局相关性' }, { value: 'plans', label: '采集计划' }] as const"
+        v-for="tab in [{ value: 'keywords', label: '关键词包' }, { value: 'plans', label: '采集计划' }] as const"
         :key="tab.value"
         type="button"
         :class="{ active: store.activeTab === tab.value }"
@@ -219,14 +209,6 @@ function showNotice(message: string): void {
       @next="store.nextPackPage"
     />
 
-    <RelevancePanel
-      v-else-if="store.activeTab === 'relevance'"
-      :packs="store.enabledPacks"
-      :relevance="store.relevance"
-      :saving="store.saving"
-      @save="saveRelevance"
-    />
-
     <template v-else>
       <section class="filters">
         <span class="search-field"><input
@@ -265,6 +247,7 @@ function showNotice(message: string): void {
         :plans="store.plans"
         :archived="store.archivedPlans"
         :packs="store.packCatalog"
+        :brands="store.brandCatalog"
         :vehicles="store.vehicleCatalog"
         :providers="providers"
         :total="store.planTotal"
@@ -297,7 +280,6 @@ function showNotice(message: string): void {
       :packs="planEditorPlan ? store.packCatalog : store.enabledPacks"
       :pack-details="store.packDetails"
       :capabilities="store.capabilities"
-      :relevance-name="relevancePackName"
       :saving="store.saving"
       :loading-pack-details="store.loadingPackDetails"
       :initial-plan="planEditorPlan"
@@ -310,6 +292,7 @@ function showNotice(message: string): void {
       :error="store.error"
       :plan="store.selectedPlan"
       :packs="store.packCatalog"
+      :brands="store.brandCatalog"
       :vehicles="store.vehicleCatalog"
       :providers="providers"
       :saving="store.saving"

@@ -361,7 +361,7 @@ describe('voice plaza', () => {
     expect(labels).toContain('真实用户发声')
   })
 
-  it('loads filter options and sends voice type with the existing query filters', async () => {
+  it('loads filter options and sends brand, vehicle, competition, and AI query filters', async () => {
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
     const store = useVoicePlazaStore()
 
@@ -370,6 +370,9 @@ describe('voice plaza', () => {
     store.filters.sentiment = '负面'
     store.filters.primaryLabel = '产品体验'
     store.filters.secondaryLabel = '续航表现'
+    store.filters.brandIds = ['brand-aima']
+    store.filters.vehicleModelIds = ['vehicle-q7']
+    store.filters.competitionScopes = ['owned_only', 'mixed']
     await store.refresh()
 
     expect(store.filterOptions?.voice_types[0]?.value).toBe('真实用户发声')
@@ -378,6 +381,9 @@ describe('voice plaza', () => {
       sentiment: '负面',
       primary_label: '产品体验',
       secondary_label: '续航表现',
+      brand_ids: ['brand-aima'],
+      vehicle_model_ids: ['vehicle-q7'],
+      competition_scopes: ['owned_only', 'mixed'],
     }))
   })
 

@@ -151,6 +151,14 @@ function vehicleEvidenceLabel(source: string): string {
   return '系统识别'
 }
 
+function brandRoleLabel(role: 'owned' | 'competitor' | 'other'): string {
+  return role === 'owned' ? '自有品牌' : role === 'competitor' ? '竞品品牌' : '其他品牌'
+}
+
+function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope']): string {
+  return scope ? ({ owned_only: '仅自有品牌', competitor_only: '仅竞品品牌', mixed: '自有与竞品混合', other_only: '仅其他品牌', none_detected: '未识别品牌' })[scope] : '未识别品牌'
+}
+
 /** 将评论覆盖枚举转换为用户可读状态。 */
 function commentCoverageLabel(value: string): string {
   if (value === 'complete') return '完整'
@@ -254,10 +262,39 @@ function commentCoverageLabel(value: string): string {
           <div><dt>平台</dt><dd>{{ platformLabel(item.platform) }}</dd></div>
           <div><dt>作者</dt><dd>{{ item.author_display_name || '未知作者' }}</dd></div>
           <div><dt>发布时间</dt><dd>{{ formatDateTime(item.published_at) }}</dd></div>
+          <div><dt>品牌</dt><dd>{{ (item.brands ?? []).map(brand => `${brand.display_name}（${brandRoleLabel(brand.role)}）`).join('、') || '未识别' }}</dd></div>
           <div><dt>车型</dt><dd>{{ (item.vehicles ?? []).map(vehicle => vehicle.display_name).join('、') || '未识别' }}</dd></div>
+          <div><dt>竞争范围</dt><dd>{{ competitionScopeLabel(item.competition_scope) }}</dd></div>
           <div><dt>AI 分析</dt><dd>{{ item.analysis.relevance === 'relevant' ? '相关' : item.analysis.relevance === 'irrelevant' ? '不相关' : '未判定' }} · {{ item.analysis.sentiment || '未判定' }} · {{ item.analysis.voice_type || '未判定' }}</dd></div>
           <div><dt>标签</dt><dd>{{ (item.analysis.labels ?? []).map(labelPairText).join('、') || '暂无 AI 标签' }}</dd></div>
         </dl>
+      </section>
+      <section class="classification-evidence">
+        <h4>品牌与车型识别</h4>
+        <div class="evidence-columns">
+          <div>
+            <strong>品牌识别证据</strong><article
+              v-for="brand in item.brands ?? []"
+              :key="brand.id"
+            >
+              <b>{{ brand.display_name }} · {{ brandRoleLabel(brand.role) }}</b><span
+                v-for="(evidence, index) in brand.evidences"
+                :key="`${brand.id}:${index}`"
+              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+            </article><small v-if="!(item.brands ?? []).length">暂无品牌证据</small>
+          </div>
+          <div>
+            <strong>车型识别证据</strong><article
+              v-for="vehicle in item.vehicles ?? []"
+              :key="vehicle.vehicle_model_id"
+            >
+              <b>{{ vehicle.display_name }}<template v-if="vehicle.brand"> · 所属 {{ vehicle.brand.display_name }}</template></b><span
+                v-for="(evidence, index) in vehicle.evidences"
+                :key="`${vehicle.vehicle_model_id}:${index}`"
+              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+            </article><small v-if="!item.vehicles?.length">暂无车型证据</small>
+          </div>
+        </div>
       </section>
       <section class="metrics-section">
         <div class="metric-grid">
@@ -363,7 +400,7 @@ function commentCoverageLabel(value: string): string {
         class="manual-review"
       >
         <header class="section-heading">
-          <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析原则。</small></div>
+          <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析规则。</small></div>
           <span v-if="lockedDimensions.length">锁定 {{ lockedDimensions.join('、') }}</span>
         </header>
         <p
@@ -503,6 +540,21 @@ function commentCoverageLabel(value: string): string {
               </span>
             </div>
             <div
+              v-if="(item.brands ?? []).some((brand) => brand.evidences.length)"
+              class="technical-list"
+            >
+              <strong>品牌证据追溯</strong>
+              <template
+                v-for="brand in item.brands ?? []"
+                :key="brand.id"
+              >
+                <span
+                  v-for="(evidence, index) in brand.evidences"
+                  :key="`${brand.id}:${index}`"
+                >{{ brand.display_name }} · {{ evidence.source }} · catalog v{{ evidence.catalog_version }}<template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+              </template>
+            </div>
+            <div
               v-if="(item.vehicles ?? []).some((vehicle) => vehicle.evidences.length)"
               class="technical-list"
             >
@@ -603,6 +655,7 @@ h4 { margin: 0 0 9px; color: var(--aima-text); font-size: 13px; line-height: 18p
 .evidence-list article { display: grid; gap: 3px; padding: 7px 9px; border-radius: 5px; background: #f7f8fa; }
 .evidence-list strong { color: var(--aima-text); font-size: 10px; }
 .evidence-list span { color: var(--aima-text-muted); font-size: 9px; }
+.evidence-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.evidence-columns > div { display: grid; align-content: start; gap: 6px; padding: 10px; border: 1px solid var(--aima-border); border-radius: 7px; }.evidence-columns strong { color: var(--aima-text); font-size: 12px; }.evidence-columns article { display: grid; gap: 3px; padding: 7px; border-radius: 5px; background: var(--aima-color-bg-hover); }.evidence-columns b { color: var(--aima-text); font-size: 11px; }.evidence-columns span,.evidence-columns small { color: var(--aima-text-muted); font-size: 10px; }
 .unlock-confirm { display: flex; align-items: flex-start; gap: 6px; color: var(--aima-danger); font-size: 10px; line-height: 15px; }
 .unlock-confirm input { margin: 1px 0 0; accent-color: var(--aima-primary); }
 .review-actions { display: flex; justify-content: flex-end; gap: 8px; }

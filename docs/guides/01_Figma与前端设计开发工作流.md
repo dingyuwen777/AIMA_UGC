@@ -354,7 +354,6 @@ Figma
 
 ```text
 采集策略 / 关键词包
-采集策略 / 全局相关性
 采集策略 / 采集计划
 关键词包 / 新建弹窗
 采集计划 / 新建抽屉
@@ -372,7 +371,7 @@ Figma
 
 它不接管：
 
-- Keyword Pack / Plan / Relevance 的 HTTP Schema；
+- Keyword Pack / Plan 的 HTTP Schema；
 - Provider Capability；
 - Scheduler、Plan 启停、冻结 Relevance 等后端状态机；
 - 当前服务器里到底有多少条 Plan、哪个 Provider Config 可用；
@@ -398,17 +397,17 @@ Figma
 “声音广场”的正式设计文件为 `EAPm8KVarUe7BFTSnzvOpT`。Design-to-Code 和后续 targeted re-review 使用以下正式节点：
 
 ```text
-Normal / Data              3924:556
-AI Runtime 未配置          3924:782
-Loading                    3925:697
-Empty                      3925:4440
-Error                      3925:4709
-内容详情 Drawer / Loaded   3925:4978
-内容详情 Drawer / Loading  3925:5068
-内容详情 Drawer / Error    3925:5212
-AI Analysis Preview        3926:978
-Excel Export / Empty       3927:1051
-Excel Export / Running     3929:1133
+Normal / Data              4627:7431
+Loading                    4627:7811
+Empty                      4627:8105
+Error                      4627:8307
+内容详情 Drawer / Loaded   4627:8510
+内容详情 Drawer / Loading  4627:8612
+内容详情 Drawer / Error    4627:8682
+AI Analysis Preview        4627:9110
+Excel Export               4627:8786
+Vehicle Picker             4627:9362
+AI Runtime 未配置          4627:9678
 ```
 
 这套 Figma 接管 `/voice-plaza` 的页面布局、视觉层级、状态表达和 Overlay 几何关系；当前 HTTP Contract、Pinia Store、Cursor、Analysis Run、人工相关性复核、Detail supplement、Export Job/Artifact 和错误语义仍以当前代码、generated client 与后端事实为准。Figma 中的帖子、Run 状态、选择数量、模型名、互动数和分页示例只用于说明布局，不得写成生产常量。
@@ -446,14 +445,30 @@ Browser Mock 可以覆盖广泛的用户可见状态和请求语义，但不能�
 管理员配置继续使用同一个正式设计文件 `EAPm8KVarUe7BFTSnzvOpT`，但作为独立页面，不放进声音广场 Canvas：
 
 ```text
-车型 / 关键词资源        3964:2
-Analysis Scheme          3967:86
-配置状态板               3971:2
+品牌与车型              3964:2
+AI 模型                 4474:192
+TikHub                  4474:379
+AI 分析规则             3967:86
+操作记录                4475:462
 ```
 
-代码 Owner 是 [`frontend/src/features/admin-configuration/`](../../frontend/src/features/admin-configuration/)；Provider-neutral Principal 和管理员路由守卫分别由 [`frontend/src/features/identity/`](../../frontend/src/features/identity/) 与 [`frontend/src/app/router.ts`](../../frontend/src/app/router.ts) 负责。车型多选跨 Collection、Import、声音广场和管理员页复用 [`frontend/src/shared/VehicleMultiSelect.vue`](../../frontend/src/shared/VehicleMultiSelect.vue)。
+代码 Owner 是 [`frontend/src/features/admin-configuration/`](../../frontend/src/features/admin-configuration/)；Provider-neutral Principal 和管理员路由守卫分别由 [`frontend/src/features/identity/`](../../frontend/src/features/identity/) 与 [`frontend/src/app/router.ts`](../../frontend/src/app/router.ts) 负责。Brand/Vehicle 选择分别复用 [`frontend/src/shared/BrandMultiSelect.vue`](../../frontend/src/shared/BrandMultiSelect.vue) 与 [`frontend/src/shared/VehicleMultiSelect.vue`](../../frontend/src/shared/VehicleMultiSelect.vue)。
 
-这组 Figma 只定义信息架构、布局、状态和组件复用。角色固定为管理员/普通用户，发布/回滚审计、车型删除限制、Scheme 版本冲突、动态目录和错误语义以当前 Contract/代码为准；示例车型、Prompt、Hash 和审计记录不构成生产事实。当前三个节点共复用 37 个共享组件实例，正文统一使用 Noto Sans SC，并分别保留实现注释；程序化 QA 未发现可见越界、非规范字体或本地重复组件。精确 QA 账本见 [`changes/archive/2026-09/CHG-20260902-u3-admin-identity-config/figma-state.json`](../../changes/archive/2026-09/CHG-20260902-u3-admin-identity-config/figma-state.json)。
+这组 Figma 只定义信息架构、布局、状态和组件复用。角色固定为管理员/普通用户，Brand/Vehicle Owner、发布/回滚审计、车型删除限制、Scheme 版本冲突、动态目录和错误语义以当前 Contract/代码为准；示例品牌、车型、Prompt、Hash 和审计记录不构成生产事实。Stage 6 已把正式页收敛为五个 Tab，并把旧“词包关联”画板移出正式流程；自动同步结果仍需人工视觉复核，不能把机器检查写成业务 Owner 已验收。
+
+### 7.4 Stage 6 采集页面基线
+
+同一设计文件中的 Stage 6 采集入口使用以下关键节点：
+
+```text
+采集策略 Page             4627:13214
+采集策略 / 关键词包       4627:13216
+采集策略 / 采集计划       4627:13336
+采集运行 / Excel 导入     3500:2875
+采集运行 / TikHub 发现    3500:4257
+```
+
+Keyword Pack 只表达 Provider Search Terms；Plan 和 TikHub Discovery 独立表达 Brand Filter；Excel 的 Search 字段必须 Disabled 并说明不适用。Batch Supplement 保持已有内容补采语义。Figma 的示例品牌、词包、平台和数量不构成运行事实。
 
 ---
 

@@ -8,6 +8,7 @@ import type {
   HistoricalCampaignResponse,
   HistoricalCampaignStatus,
 } from '../../../../../generated/api/client'
+import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import { createClientIdempotencyKey } from '../../../../../shared/idempotency'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
@@ -29,6 +30,8 @@ const emit = defineEmits<{
 const store = useImportBatchesStore()
 const sourceKind = ref<SourceKind>('local_upload')
 const ingestionPolicy = ref<DataImportIngestionPolicy>('standard_observation')
+const brandScope = ref<'all_active' | 'selected'>('all_active')
+const selectedBrandIds = ref<string[]>([])
 const selectedLocalFiles = ref<DataImportLocalFileSelection[]>([])
 const selectedPaths = ref<string[]>([])
 const validationError = ref<string | null>(null)
@@ -84,11 +87,15 @@ const sourceSelectionReady = computed(() =>
     ? selectedLocalFiles.value.length > 0
     : selectedPaths.value.length > 0,
 )
+const brandSelectionReady = computed(
+  () => brandScope.value === 'all_active' || selectedBrandIds.value.length > 0,
+)
 const canCreate = computed(
   () =>
     !store.loadingHistorical &&
     !store.creatingHistorical &&
-    sourceSelectionReady.value,
+    sourceSelectionReady.value &&
+    brandSelectionReady.value,
 )
 const canCancel = computed(() =>
   ['uploading', 'discovering', 'snapshotting', 'ready', 'queued', 'running', 'cancelling'].includes(
@@ -187,6 +194,8 @@ watch(
     stopPolling()
     sourceKind.value = 'local_upload'
     ingestionPolicy.value = 'standard_observation'
+    brandScope.value = 'all_active'
+    selectedBrandIds.value = []
     selectedLocalFiles.value = []
     selectedPaths.value = []
     revocationReason.value = ''
@@ -286,6 +295,7 @@ async function createCampaign(): Promise<void> {
     const campaign = await store.submitLocalCampaign(
       selectedLocalFiles.value,
       ingestionPolicy.value,
+      brandScope.value === 'selected' ? selectedBrandIds.value : [],
     )
     if (campaign) notice.value = '文件上传完成，服务器正在准备并预检数据。'
     return
@@ -293,7 +303,7 @@ async function createCampaign(): Promise<void> {
   const created = await store.submitHistoricalCampaign({
     client_idempotency_key: createClientIdempotencyKey(),
     relative_paths: selectedPaths.value,
-    brand_ids: [],
+    brand_ids: brandScope.value === 'selected' ? selectedBrandIds.value : [],
     recursive: recursive.value,
     profile: 'aima-monitoring-excel.v1',
     ingestion_policy: ingestionPolicy.value,
@@ -461,6 +471,44 @@ function viewCampaignContents(): void {
             </section>
 
             <section
+              class="filter-panel"
+              aria-label="导入搜索与内容过滤条件"
+            >
+              <label><strong>搜索条件</strong><input
+                value="不适用于 Excel 文件导入"
+                disabled
+                aria-label="搜索条件不适用"
+              ></label>
+              <fieldset>
+                <legend>内容过滤条件 · 品牌</legend>
+                <label><input
+                  v-model="brandScope"
+                  type="radio"
+                  value="all_active"
+                  :disabled="store.creatingHistorical"
+                >全部启用品牌及车型</label>
+                <label><input
+                  v-model="brandScope"
+                  type="radio"
+                  value="selected"
+                  :disabled="store.creatingHistorical"
+                >指定品牌</label>
+              </fieldset>
+              <BrandMultiSelect
+                v-if="brandScope === 'selected'"
+                v-model="selectedBrandIds"
+                label="指定品牌（可多选）"
+                :disabled="store.creatingHistorical"
+              />
+              <small
+                v-if="!brandSelectionReady"
+                class="validation-inline"
+                role="status"
+              >请至少选择一个品牌，或改为全部启用品牌。</small>
+              <small>创建任务时冻结品牌与旗下车型目录快照；Excel 导入不会发起 Provider 搜索。</small>
+            </section>
+
+            <section
               v-if="sourceKind === 'local_upload'"
               class="source-panel"
             >
@@ -595,10 +643,6 @@ function viewCampaignContents(): void {
                 <small>受服务器深度、文件数、批准根目录和分页限制</small>
               </label>
             </section>
-
-            <AimaFeedbackBanner tone="info">
-              Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件；当前按创建时全部已启用品牌冻结过滤范围。品牌范围选择器将在后续前端阶段补齐。
-            </AimaFeedbackBanner>
 
             <AimaFeedbackBanner tone="info">
               创建后先完成来源确认、数据快照与预检；AI 不会自动执行，智能分析需要在分析入口手动创建。
@@ -959,7 +1003,8 @@ header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); fon
 .source-tabs { display: flex; min-height: 40px; gap: 8px; }
 .source-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; }
 .source-tabs button.selected { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
-.policy-panel, .source-panel, .pack-panel, .campaign-panel, .campaign-history, .campaign-stats, .revocation-panel, .conflict-panel { padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.policy-panel, .filter-panel, .source-panel, .pack-panel, .campaign-panel, .campaign-history, .campaign-stats, .revocation-panel, .conflict-panel { padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.filter-panel { display: grid; gap: 12px; }.filter-panel > label { display: grid; gap: 6px; color: var(--aima-text); font-size: 13px; }.filter-panel > label input { height: 36px; padding: 0 10px; border: 1px solid var(--aima-border); border-radius: 6px; color: var(--aima-text-muted); background: var(--aima-color-bg-table-header); }.filter-panel fieldset { display: flex; gap: 18px; padding: 0; border: 0; }.filter-panel legend { margin-bottom: 7px; color: var(--aima-text); font-size: 13px; font-weight: 500; }.filter-panel fieldset label { display: inline-flex; align-items: center; gap: 6px; color: var(--aima-text-secondary); font-size: 12px; }.filter-panel small { color: var(--aima-text-muted); font-size: 11px; }
 .policy-panel > strong, .pack-panel > strong, .campaign-history > strong, .campaign-stats > strong { color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }
 .policy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
 .policy-grid label { position: relative; display: block; min-height: 58px; padding: 9px 11px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); cursor: pointer; }

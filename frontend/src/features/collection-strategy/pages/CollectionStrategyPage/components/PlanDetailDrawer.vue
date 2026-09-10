@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 
 import type {
+  BrandResponse,
   CollectionPlanResponse,
   CollectionProviderConfigResponse,
   KeywordPackSummaryResponse,
@@ -18,6 +19,7 @@ import PlanResourceDetailDialog from './PlanResourceDetailDialog.vue'
 const props = defineProps<{
   plan: CollectionPlanResponse | null
   packs: KeywordPackSummaryResponse[]
+  brands: BrandResponse[]
   vehicles: VehicleModelResponse[]
   providers: CollectionProviderConfigResponse[]
   saving: boolean
@@ -53,6 +55,11 @@ function packLabel(packId: string): string {
 function vehicleLabel(vehicleId: string): string {
   const vehicle = props.vehicles.find((item) => item.id === vehicleId)
   return vehicle ? `${vehicle.display_name} · ${vehicle.code}` : '历史车型（当前目录不可用）'
+}
+
+function brandLabel(brandId: string): string {
+  const brand = props.brands.find((item) => item.id === brandId)
+  return brand ? `${brand.display_name} · ${brand.role === 'owned' ? '自有' : brand.role === 'competitor' ? '竞品' : '其他'}` : '历史品牌（当前目录不可用）'
 }
 
 function providerLabel(providerId: string): string {
@@ -159,7 +166,7 @@ function archivePlan(): void {
         <div><dt>下次运行</dt><dd>{{ plan.next_run_at ? formatBeijingDateTime(plan.next_run_at) : '等待调度初始化' }}</dd></div>
         <div><dt>最近更新</dt><dd>{{ formatBeijingDateTime(plan.updated_at) }}</dd></div>
       </dl><section class="packs">
-        <h4>关键词包 · 当前配置</h4><button
+        <h4>搜索条件 · Keyword Packs</h4><button
           v-for="id in plan.keyword_pack_ids"
           :key="id"
           type="button"
@@ -167,22 +174,32 @@ function archivePlan(): void {
         >
           {{ packLabel(id) }}
         </button><em v-if="plan.keyword_pack_ids.length === 0">未选择关键词包</em>
-      </section><section class="vehicles">
-        <h4>车型 · 当前配置</h4><button
+      </section><section class="brands">
+        <h4>内容过滤条件 · 品牌</h4><span v-if="(plan.brand_ids ?? []).length === 0 && (plan.vehicle_model_ids ?? []).length === 0">全部启用品牌及车型</span><span
+          v-else-if="(plan.brand_ids ?? []).length === 0"
+        >沿用下方历史车型范围，尚未迁移为品牌过滤</span><span
+          v-for="id in plan.brand_ids ?? []"
+          :key="id"
+        >{{ brandLabel(id) }}</span>
+      </section><section
+        v-if="(plan.vehicle_model_ids ?? []).length"
+        class="vehicles"
+      >
+        <h4>历史车型范围 · 只读兼容</h4><button
           v-for="id in plan.vehicle_model_ids ?? []"
           :key="id"
           type="button"
           @click="selectedResource = { kind: 'vehicle', id }"
         >
           {{ vehicleLabel(id) }}
-        </button><em v-if="(plan.vehicle_model_ids ?? []).length === 0">未选择车型</em>
+        </button>
       </section><section class="channels">
         <h4>目标平台 / 采集渠道</h4><span
           v-for="item in plan.platforms"
           :key="item.platform"
         ><b>{{ collectionPlatformLabel(item.platform) }} · {{ providerLabel(item.provider_config_id) }}</b><small>{{ collectionSearchConfigSummary(item.search_config) }}</small></span>
       </section><AimaFeedbackBanner tone="info">
-        全局相关性只用于解释升级前创建的旧任务；新计划按 Keyword Pack 搜索，并在运行创建时冻结品牌车型过滤范围。修改计划只影响之后的新运行。
+        新计划按 Keyword Pack 搜索，并在运行创建时冻结品牌与车型目录快照。修改计划只影响之后的新运行。
       </AimaFeedbackBanner><section class="policy">
         <h4>系统固定规则</h4><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
       </section>
@@ -215,6 +232,10 @@ function archivePlan(): void {
             v-for="id in plan.vehicle_model_ids ?? []"
             :key="`vehicle-${id}`"
           >车型：{{ id }}</span>
+          <span
+            v-for="id in plan.brand_ids ?? []"
+            :key="`brand-${id}`"
+          >品牌：{{ id }}</span>
           <span
             v-for="item in plan.platforms"
             :key="`provider-${item.platform}`"

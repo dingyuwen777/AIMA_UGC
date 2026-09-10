@@ -9,14 +9,13 @@ const generated = vi.hoisted(() => ({
   getKeywordPack: vi.fn(),
   updateKeywordPackEnabled: vi.fn(),
   addKeywordToPack: vi.fn(),
-  getGlobalRelevanceConfig: vi.fn(),
-  setGlobalRelevanceConfig: vi.fn(),
   getCollectionCapabilities: vi.fn(),
   listCollectionPlans: vi.fn(),
   createCollectionPlan: vi.fn(),
   getCollectionPlan: vi.fn(),
   updateCollectionPlanEnabled: vi.fn(),
   listVehicleModels: vi.fn(),
+  listVehicleBrands: vi.fn(),
 }))
 
 vi.mock('../src/generated/api/client', () => generated)
@@ -68,11 +67,8 @@ describe('collection strategy feature', () => {
     generated.listKeywordPacks.mockResolvedValue({ items: [], total: 0, offset: 0, limit: 100 })
     generated.listCollectionPlans.mockResolvedValue({ items: [], total: 0, enabled_count: 0, offset: 0, limit: 20 })
     generated.listVehicleModels.mockResolvedValue({ items: [], total: 0, catalog_version: 1, offset: 0, limit: 200 })
+    generated.listVehicleBrands.mockResolvedValue({ items: [], total: 0, catalog_version: 1, offset: 0, limit: 200 })
     generated.getCollectionCapabilities.mockResolvedValue({ provider_configs: [], capabilities: [] })
-    generated.getGlobalRelevanceConfig.mockResolvedValue({
-      keyword_pack_id: 'pack-global', keyword_pack_version: 8, version: 3,
-      effective_keywords: ['爱玛'], updated_at: '2026-08-21T00:00:00Z',
-    })
     generated.getKeywordPack.mockResolvedValue(packDetail)
   })
 
@@ -81,19 +77,47 @@ describe('collection strategy feature', () => {
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ search: '爱玛', enabled: true, offset: 0, limit: 20 })
   })
 
-  it('loads packs, vehicles, global relevance, capabilities, and plans as one workspace', async () => {
+  it('loads packs, complete brands, historical vehicles, capabilities, and plans as one workspace', async () => {
     const store = useCollectionStrategyStore()
     await store.refresh()
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 20 })
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 100 })
     expect(generated.listVehicleModels).toHaveBeenCalledWith({ offset: 0, limit: 200 })
-    expect(generated.getGlobalRelevanceConfig).toHaveBeenCalledOnce()
+    expect(generated.listVehicleBrands).toHaveBeenCalledWith({ offset: 0, limit: 200 })
     expect(generated.getCollectionCapabilities).toHaveBeenCalledOnce()
     expect(generated.listCollectionPlans).toHaveBeenCalledWith({
       search: undefined, enabled: undefined, platform: undefined, offset: 0, limit: 20,
     })
     expect(generated.listCollectionPlans).toHaveBeenCalledWith({ enabled: true, offset: 0, limit: 100 })
-    expect(store.relevance?.keyword_pack_version).toBe(8)
+    expect(store.brandCatalog).toEqual([])
+  })
+
+  it('keeps deprecated brands available for historical plan display without counting them as enabled', async () => {
+    const deprecatedBrand = {
+      id: '77777777-7777-4777-8777-777777777777',
+      code: 'HISTORICAL',
+      display_name: '历史品牌',
+      role: 'competitor' as const,
+      status: 'deprecated' as const,
+      version: 2,
+      catalog_version: 9,
+      aliases: [],
+      created_at: '2026-08-01T00:00:00Z',
+      updated_at: '2026-08-28T00:00:00Z',
+    }
+    generated.listVehicleBrands.mockImplementation(async (params: { status?: string }) => ({
+      items: params.status === 'active' ? [] : [deprecatedBrand],
+      total: params.status === 'active' ? 0 : 1,
+      catalog_version: 9,
+      offset: 0,
+      limit: 200,
+    }))
+    const store = useCollectionStrategyStore()
+
+    await store.refresh()
+
+    expect(store.brandCatalog).toEqual([deprecatedBrand])
+    expect(store.enabledBrandCount).toBe(0)
   })
 
   it('loads the complete historical vehicle catalog without an active-only status filter', async () => {
@@ -187,21 +211,19 @@ describe('collection strategy feature', () => {
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 20, limit: 20 })
   })
 
-  it('does not send a disable request for the keyword pack used by global relevance', async () => {
+  it('does not disable a keyword pack referenced by an enabled plan', async () => {
     generated.listKeywordPacks.mockResolvedValue({ items: [globalPack], total: 1, offset: 0, limit: 100 })
-    generated.getGlobalRelevanceConfig.mockResolvedValue({
-      keyword_pack_id: globalPack.id, keyword_pack_version: 1, version: 1,
-      effective_keywords: ['爱玛'], updated_at: '2026-08-22T00:00:00Z',
-    })
+    generated.listCollectionPlans.mockImplementation(async (params: { enabled?: boolean }) => params.enabled
+      ? { items: [{ keyword_pack_ids: [globalPack.id] }], total: 1, enabled_count: 1, offset: 0, limit: 100 }
+      : { items: [], total: 0, enabled_count: 1, offset: 0, limit: 20 })
     const store = useCollectionStrategyStore()
     await store.refresh()
     await store.togglePack(globalPack)
     expect(generated.updateKeywordPackEnabled).not.toHaveBeenCalled()
-    expect(store.error).toContain('全局相关性')
+    expect(store.error).toContain('启用中的采集计划')
   })
 
-  it('enables a valid Plan when legacy global relevance is unavailable', async () => {
-    generated.getGlobalRelevanceConfig.mockResolvedValue({ status: 409, detail: 'not configured', request_id: 'r1' })
+  it('enables a valid Plan without reading legacy global relevance', async () => {
     generated.getCollectionCapabilities.mockResolvedValue({
       provider_configs: [{ id: 'provider-1', provider: 'tikhub', display_name: 'TikHub' }],
       capabilities: [{
@@ -237,16 +259,13 @@ describe('collection strategy feature', () => {
   it('does not overwrite a newer refresh with an older response', async () => {
     const store = useCollectionStrategyStore()
     let finishOlder!: (value: unknown) => void
-    generated.getGlobalRelevanceConfig.mockReturnValueOnce(new Promise((resolve) => { finishOlder = resolve }))
+    generated.listVehicleBrands.mockReturnValueOnce(new Promise((resolve) => { finishOlder = resolve }))
     const older = store.refresh()
-    generated.getGlobalRelevanceConfig.mockResolvedValueOnce({
-      keyword_pack_id: 'latest', keyword_pack_version: 9, version: 4,
-      effective_keywords: ['当前规则'], updated_at: '2026-08-28T00:00:00Z',
-    })
+    generated.listVehicleBrands.mockResolvedValueOnce({ items: [{ id: 'latest' }], total: 1, catalog_version: 2, offset: 0, limit: 200 })
     await store.refresh()
-    finishOlder({ keyword_pack_id: 'older', keyword_pack_version: 8, version: 3, effective_keywords: ['旧规则'], updated_at: '2026-08-21T00:00:00Z' })
+    finishOlder({ items: [{ id: 'older' }], total: 1, catalog_version: 1, offset: 0, limit: 200 })
     await older
-    expect(store.relevance?.keyword_pack_id).toBe('latest')
+    expect(store.brandCatalog[0]?.id).toBe('latest')
   })
 
   it('keeps refreshed pack details when an older cache request finishes later', async () => {

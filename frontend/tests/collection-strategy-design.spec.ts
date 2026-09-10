@@ -4,20 +4,11 @@ import { describe, expect, it } from 'vitest'
 
 import type {
   CollectionPlanResponse,
-  GlobalRelevanceConfigResponse,
 } from '../src/generated/api/client'
 import PlanCreateDrawer from '../src/features/collection-strategy/pages/CollectionStrategyPage/components/PlanCreateDrawer.vue'
 import PlanPanel from '../src/features/collection-strategy/pages/CollectionStrategyPage/components/PlanPanel.vue'
 import StrategyKpiCards from '../src/features/collection-strategy/pages/CollectionStrategyPage/components/StrategyKpiCards.vue'
 import { formatBeijingDateTime } from '../src/features/collection-strategy/presentation'
-
-const relevance: GlobalRelevanceConfigResponse = {
-  keyword_pack_id: 'pack-1',
-  keyword_pack_version: 3,
-  version: 2,
-  effective_keywords: ['爱玛'],
-  updated_at: '2026-08-28T08:00:00+08:00',
-}
 
 const plan: CollectionPlanResponse = {
   id: '33333333-3333-4333-8333-333333333333',
@@ -32,6 +23,7 @@ const plan: CollectionPlanResponse = {
   comment_policy: 'adaptive',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
   keyword_pack_ids: ['pack-1', 'pack-2'],
+  brand_ids: ['brand-1', 'brand-2'],
   vehicle_model_ids: ['vehicle-1', 'vehicle-2'],
   created_at: '2026-08-28T08:00:00+08:00',
   updated_at: '2026-08-28T08:00:00+08:00',
@@ -51,16 +43,16 @@ describe('采集策略正式 Figma 组件基线', () => {
   it('将三个动态指标放在一个摘要条中并使用正式中文术语', async () => {
     const html = await renderComponent(StrategyKpiCards, {
       packCount: 12,
-      relevance,
+      brandCount: 3,
       enabledPlanCount: 4,
-      relevancePackName: '品牌核心相关词',
       loading: false,
     })
 
     expect(html.match(/class="strategy-summary"/g)).toHaveLength(1)
     expect(html.match(/class="summary-item/g)).toHaveLength(3)
     expect(html).toContain('关键词包')
-    expect(html).toContain('品牌核心相关词')
+    expect(html).toContain('启用品牌')
+    expect(html).toContain('>3<')
     expect(html).not.toContain('Discovery')
   })
 
@@ -83,6 +75,10 @@ describe('采集策略正式 Figma 组件基线', () => {
           created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z',
         },
       ],
+      brands: [
+        { id: 'brand-1', code: 'AIMA', display_name: '爱玛', role: 'owned', status: 'active', version: 1, catalog_version: 8, aliases: [], created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z' },
+        { id: 'brand-2', code: 'YADEA', display_name: '雅迪', role: 'competitor', status: 'active', version: 1, catalog_version: 8, aliases: [], created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z' },
+      ],
       providers: [{ id: 'provider-1', provider: 'tikhub', display_name: 'TikHub 主配置' }],
       total: 1,
       offset: 0,
@@ -95,13 +91,13 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html.match(/<th[ >]/g)).toHaveLength(6)
     expect(html).not.toContain('>采集策略</th>')
     expect(html).toMatch(/<th[^>]*>计划<\/th>/)
-    expect(html).toContain('词包 / 车型')
+    expect(html).toContain('搜索条件 / 品牌过滤')
     expect(html).toContain('目标平台 / 采集渠道')
     expect(html).toContain('新品词包')
-    expect(html).toContain('车型：爱玛 A7')
+    expect(html).toContain('品牌：爱玛')
     expect(html).toContain('另有 2 项范围')
     expect(html).not.toContain('次要词包')
-    expect(html).not.toContain('车型：爱玛 B9')
+    expect(html).not.toContain('历史车型：爱玛 A7')
     expect(html).not.toContain('计划编号：')
     expect(html).not.toContain('33333333-3333-4333-8333-333333333333')
     expect(html).toContain('每6小时')

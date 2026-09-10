@@ -234,7 +234,9 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:published-from="store.filters.publishedFrom"
         v-model:published-to="store.filters.publishedTo"
         v-model:source-identifier="store.filters.sourceIdentifier"
+        v-model:brand-ids="store.filters.brandIds"
         v-model:vehicle-model-ids="store.filters.vehicleModelIds"
+        v-model:competition-scopes="store.filters.competitionScopes"
         :filter-options="store.filterOptions"
         :filter-options-loading="store.filterOptionsLoading"
         @search="search"
@@ -268,7 +270,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         tone="warning"
         role="alert"
       >
-        <strong>当前 AI 分析原则暂不可用</strong>
+        <strong>当前 AI 分析规则暂不可用</strong>
         <span>分析结果人工纠正已暂时停用；内容浏览与筛选仍可使用。</span>
         <details class="warning-details">
           <summary>技术详情</summary>

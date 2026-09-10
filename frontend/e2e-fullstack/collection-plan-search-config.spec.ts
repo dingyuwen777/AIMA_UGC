@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ensureStage3FilterBrand } from './stage3-brand-support'
 
 test('新 Plan 的逐平台 Search Config 经过真实 API 持久化到 PostgreSQL', async ({ page, request }) => {
   const suffix = `${Date.now()}`
@@ -12,10 +13,7 @@ test('新 Plan 的逐平台 Search Config 经过真实 API 持久化到 PostgreS
     data: { text: `爱玛 Plan ${suffix}`, priority: 10 },
   })
   expect(keywordResponse.status()).toBe(201)
-  const relevanceResponse = await request.put('/api/v1/relevance-config', {
-    data: { keyword_pack_id: pack.id },
-  })
-  expect(relevanceResponse.status()).toBe(200)
+  const brand = await ensureStage3FilterBrand(request)
 
   const capabilitiesResponse = await request.get('/api/v1/collection-capabilities')
   expect(capabilitiesResponse.status()).toBe(200)
@@ -29,10 +27,15 @@ test('新 Plan 的逐平台 Search Config 经过真实 API 持久化到 PostgreS
   expect(provider).toBeTruthy()
 
   await page.goto('/collection-strategy')
+  await expect(page.getByRole('navigation', { name: '采集策略类型' })).not.toContainText('全局相关性')
   await page.getByRole('button', { name: /新建采集计划/ }).click()
   const drawer = page.getByRole('dialog', { name: '新建采集计划' })
   await drawer.getByPlaceholder('例如：爱玛新品口碑追踪').fill(`Plan Search ${suffix}`)
   await drawer.getByRole('checkbox', { name: new RegExp(packName) }).check()
+  await drawer.getByLabel('指定品牌', { exact: true }).check()
+  await drawer.getByRole('group', { name: '指定品牌（可多选）' })
+    .getByRole('checkbox', { name: new RegExp(brand.name) })
+    .check()
   await drawer.getByText('小红书').click()
   await expect(drawer.getByRole('button', { name: '保存采集计划' })).toBeDisabled()
   await drawer.getByLabel('小红书排序').selectOption('latest')
@@ -49,8 +52,12 @@ test('新 Plan 的逐平台 Search Config 经过真实 API 持久化到 PostgreS
   expect(createdResponse.status()).toBe(201)
   const created = await createdResponse.json() as {
     id: string
+    brand_ids: string[]
+    vehicle_model_ids?: string[]
     platforms: { platform: string; provider_config_id: string; search_config: Record<string, string | null> }[]
   }
+  expect(created.brand_ids).toEqual([brand.id])
+  expect(created.vehicle_model_ids ?? []).toEqual([])
   expect(created.platforms).toEqual([{
     platform: 'xiaohongshu',
     provider_config_id: provider!.id,
