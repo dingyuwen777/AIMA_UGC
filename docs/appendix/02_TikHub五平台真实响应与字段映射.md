@@ -78,6 +78,14 @@ tests/fixtures/providers/tikhub/
 
 如果本文和当前 Operation/Mapper/Fixture/Test 冲突，以当前机器事实为准，并修正文档。
 
+正式 Discovery Runtime 不会把 Mapper 返回值直接交给 Filter。一个 Search Provider Attempt
+返回的有界页面先完成所有 Search Mapper 与必要 Detail fallback，再把每个 Candidate 的最终
+Filter 输入写成唯一 linked `canonical-content.v1` JSONL.gz。共享 Reader 完整预检并逐行核对
+本次确定性 Mapper 输出后，既有 Brand/Vehicle Filter、Decision 与 Ingestion 才消费这些记录。
+Artifact 绑定页面 Search Attempt；若某行来自 Detail，其 Canonical Source 仍保留实际 Detail
+Attempt、Raw Artifact 与 item locator。这个持久边界不改变本附录记录的 endpoint、Extractor、
+Mapper 字段语义或 Provider 请求次数。
+
 ---
 
 ## 2. Real Probe 当时怎样做

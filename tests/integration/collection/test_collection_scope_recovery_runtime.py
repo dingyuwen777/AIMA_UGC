@@ -287,6 +287,11 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
         scope_executor=TikHubCollectionScopeExecutor(
             session_factory=database_runtime.new_session,
             raw_artifacts=raw_artifacts,
+            artifacts=ArtifactService(
+                metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
+                store=LocalArtifactStore(tmp_path / "artifacts"),
+            ),
+            artifact_store=LocalArtifactStore(tmp_path / "artifacts"),
             transport_factory=lambda _config: resumed_transport,
             secret_resolver=lambda secret_ref: (
                 SecretStr("fixture-secret")

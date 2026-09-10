@@ -243,6 +243,11 @@ def _execute(
         scope_executor=TikHubCollectionScopeExecutor(
             session_factory=runtime.new_session,
             raw_artifacts=_raw_service(runtime, tmp_path / "artifacts"),
+            artifacts=ArtifactService(
+                metadata=PostgresArtifactMetadataGateway(runtime.new_session),
+                store=LocalArtifactStore(tmp_path / "artifacts"),
+            ),
+            artifact_store=LocalArtifactStore(tmp_path / "artifacts"),
             transport_factory=lambda _config: transport,
             secret_resolver=lambda secret_ref: (
                 SecretStr("fixture-secret")

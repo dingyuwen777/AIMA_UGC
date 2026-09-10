@@ -275,6 +275,11 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
         scope_executor=TikHubCollectionScopeExecutor(
             session_factory=database_runtime.new_session,
             raw_artifacts=_raw_service(database_runtime, tmp_path / "artifacts"),
+            artifacts=ArtifactService(
+                metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
+                store=LocalArtifactStore(tmp_path / "artifacts"),
+            ),
+            artifact_store=LocalArtifactStore(tmp_path / "artifacts"),
             transport_factory=lambda _config: transport,
             secret_resolver=lambda secret_ref: (
                 SecretStr("fixture-secret")

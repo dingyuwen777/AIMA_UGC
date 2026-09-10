@@ -11,6 +11,7 @@ from aima_ugc.bootstrap.collection_scope import (
     TikHubCollectionScopeExecutor,
     _DetailCandidate,
     _ExecutedCall,
+    _PreparedSearchContent,
 )
 from aima_ugc.contracts.canonical import (
     CanonicalContentV1,
@@ -193,6 +194,11 @@ def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental
             source_value="爱玛",
             platform="bilibili",
         ),  # type: ignore[arg-type]
+        prepared=_PreparedSearchContent(
+            search_content=search_content,
+            final_content=search_content,
+            search_candidate_id=uuid4(),
+        ),
         content=search_content,
         search_executed=_ExecutedCall(
             request_id=uuid4(),
@@ -201,7 +207,6 @@ def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental
             observed_at=_NOW,
             body={},
         ),
-        search_candidate_id=uuid4(),
         provider_config=SimpleNamespace(),  # type: ignore[arg-type]
         capability=BILIBILI_TIKHUB_CAPABILITY,
         policy=CollectionDecisionPolicyV1(),
@@ -237,12 +242,22 @@ def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion
     stats = SimpleNamespace(filtered_content_count=0)
     search_candidate_id = uuid4()
 
-    executor._process_search_content(
+    prepared = executor._prepare_search_content(
         run=SimpleNamespace(),  # type: ignore[arg-type]
         scope=SimpleNamespace(platform="bilibili"),  # type: ignore[arg-type]
         content=search_content,
-        search_executed=SimpleNamespace(),  # type: ignore[arg-type]
         search_candidate_id=search_candidate_id,
+        provider_config=SimpleNamespace(),  # type: ignore[arg-type]
+        context=_Context(),  # type: ignore[arg-type]
+        stats=stats,  # type: ignore[arg-type]
+        filter_snapshot=_filter_snapshot(),
+    )
+    executor._process_search_content(
+        run=SimpleNamespace(),  # type: ignore[arg-type]
+        scope=SimpleNamespace(platform="bilibili"),  # type: ignore[arg-type]
+        prepared=prepared,
+        content=prepared.final_content,
+        search_executed=SimpleNamespace(),  # type: ignore[arg-type]
         provider_config=SimpleNamespace(),  # type: ignore[arg-type]
         capability=BILIBILI_TIKHUB_CAPABILITY,
         policy=CollectionDecisionPolicyV1(),
@@ -287,7 +302,7 @@ def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
     )
     search_candidate_id = uuid4()
 
-    executor._process_search_content(
+    prepared = executor._prepare_search_content(
         run=SimpleNamespace(),  # type: ignore[arg-type]
         scope=SimpleNamespace(
             id=uuid4(),
@@ -296,6 +311,22 @@ def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
             platform="bilibili",
         ),  # type: ignore[arg-type]
         content=search_content,
+        search_candidate_id=search_candidate_id,
+        provider_config=SimpleNamespace(),  # type: ignore[arg-type]
+        context=_Context(),  # type: ignore[arg-type]
+        stats=SimpleNamespace(technical_partial_results=0, filtered_content_count=0),  # type: ignore[arg-type]
+        filter_snapshot=_filter_snapshot(),
+    )
+    executor._process_search_content(
+        run=SimpleNamespace(),  # type: ignore[arg-type]
+        scope=SimpleNamespace(
+            id=uuid4(),
+            source_type="keyword_search",
+            source_value="爱玛",
+            platform="bilibili",
+        ),  # type: ignore[arg-type]
+        prepared=prepared,
+        content=prepared.final_content,
         search_executed=_ExecutedCall(
             request_id=uuid4(),
             attempt_id=uuid4(),
@@ -303,7 +334,6 @@ def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
             observed_at=_NOW,
             body={},
         ),
-        search_candidate_id=search_candidate_id,
         provider_config=SimpleNamespace(),  # type: ignore[arg-type]
         capability=BILIBILI_TIKHUB_CAPABILITY,
         policy=CollectionDecisionPolicyV1(),

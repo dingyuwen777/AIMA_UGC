@@ -97,9 +97,27 @@ def test_filter_inputs_are_written_per_search_attempt_then_read_back() -> None:
     )
 
     assert actual == expected
-    assert writer.calls == [
-        (expected, CanonicalArtifactParent(provider_attempt_id=attempt_id))
-    ]
+    assert writer.calls == [(expected, CanonicalArtifactParent(provider_attempt_id=attempt_id))]
+    assert reader.calls == [artifact]
+
+
+def test_retry_reuses_linked_page_artifact_when_mapper_output_matches() -> None:
+    expected = (_content(),)
+    artifact = _artifact()
+    writer = _Writer(artifact)
+    reader = _Reader(expected)
+    executor = object.__new__(TikHubCollectionScopeExecutor)
+    executor._canonical_writer = writer  # type: ignore[attr-defined]
+    executor._canonical_reader = reader  # type: ignore[attr-defined]
+    executor._canonical_for_attempt = lambda _attempt_id: artifact  # type: ignore[attr-defined]
+
+    actual = executor._persistent_filter_inputs(  # type: ignore[attr-defined]
+        provider_attempt_id=uuid4(),
+        expected=expected,
+    )
+
+    assert actual == expected
+    assert writer.calls == []
     assert reader.calls == [artifact]
 
 
