@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260910-220849-stage7-reclassification-cleanup
 title: 搜索与品牌车型过滤 Stage 7 旧数据回填与 Cleanup
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feat/stage7-reclassification-cleanup
 created: 2026-09-10
@@ -84,27 +84,27 @@ Requirement Source：#437。
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 正式持久 Job 分两层完成旧 Content Brand/Vehicle Reclassification | #437 / AC1；Roadmap Stage 7 | not_satisfied | 生产实现与 Unit/静态检查已完成；等待 PR PostgreSQL 18 current-head 直接证据。 |
-| R2 | keyset/shard/checkpoint、retry/cancel/progress/recovery、幂等、统计对账；不调用 LLM、不改 Content Current | #437 / AC2；Roadmap Stage 7 | not_satisfied | 本地 Unit、类型与代码审查已覆盖；等待 PR PostgreSQL Job/Fence/事务证据。 |
-| R3 | Cleanup preflight 对全部前置条件 fail closed；任一 Legacy 表非空即拒绝 Upgrade | #437 / AC3；Roadmap Stage 7；#437 2026-09-10 Owner 补充决定 | not_satisfied | Migration 已检查三张空表、旧 Job/Batch/Run/Campaign 与 Brand Ownership；等待 PR Migration 真实 PostgreSQL 证据。 |
-| R4 | 满足门禁时删除三组 Legacy 表及对应旧 API/Contract/Repository/UI，Migration 可恢复且生成物无漂移 | #437 / AC4；Roadmap Stage 7 | not_satisfied | 旧生产消费者和生成 Schema 已清理，Contract 生成/兼容本地通过；等待 PR upgrade/downgrade 证据。 |
-| R5 | 只有真实数据证明时才收紧 brand_id；否则 nullable 且不制造 unknown Brand | #437 / AC5；Roadmap Stage 7 | not_satisfied | Schema/Migration 保持 nullable，未创建 unknown Brand；等待最终 Review/CI。 |
-| R6 | 完成 Schema/数据链反向审计与分层回归 | #437 / AC6；Roadmap Stage 7 | not_satisfied | 本地后端/前端/Contract/Docs 门禁已运行；等待 PR PostgreSQL 与 Real Full-stack。 |
-| R7 | 长期文档、Roadmap 03 关系和 Roadmap 04 生命周期正确收口 | #437 / AC7；Roadmap Stage 7 | not_satisfied | Product/Blueprint/Appendix/Operations/README 已同步并移除 live Roadmap；等待最终文档 Review/CI。 |
-| R8 | L3 Completion/Review/CI/merge/main/archive/Closure/cleanup 完整交付 | #437 / AC8；Roadmap 固定执行口令 | not_satisfied | 待后续交付门禁。 |
+| R1 | 正式持久 Job 分两层完成旧 Content Brand/Vehicle Reclassification | https://github.com/dingyuwen777/AIMA_UGC/issues/437#AC1 | satisfied | `vehicles.content-reclassification.v1` 已由正式 Worker Registry 注册；第一层从当前非 alias Vehicle Evidence 与冻结 Ownership 生成 `vehicle_match` Brand Evidence，第二层以 Current `title + text`、冻结 Snapshot 和正式 Resolver 替换自动 alias Evidence；Unit、类型与代码审查通过。 |
+| R2 | keyset/shard/checkpoint、retry/cancel/progress/recovery、幂等、统计对账；不调用 LLM、不改 Content Current | https://github.com/dingyuwen777/AIMA_UGC/issues/437#AC2 | satisfied | Run/Repository/Executor 已实现 UUID keyset、稳定 hash shard、有界 batch/max、同事务 Evidence+checkpoint、Fence、Job retry/cancel/heartbeat/progress、幂等键和九项对账统计；测试显式断言 Current/人工锁/重试与过期 Fence。 |
+| R3 | Cleanup preflight 对全部前置条件 fail closed；任一 Legacy 表非空即拒绝 Upgrade | https://github.com/dingyuwen777/AIMA_UGC/issues/437#AC3 | satisfied | Migration `0047` 在任何 Drop 前检查三张 Legacy 表、旧 v1 Job、含 `keyword_selection` 的旧 Batch、旧 Run/Campaign Snapshot 和 active Vehicle Ownership；非空/冲突 Fixture 均要求事务拒绝。 |
+| R4 | 满足门禁时删除三组 Legacy 表及对应旧 API/Contract/Repository/UI，Migration 可恢复且生成物无漂移 | https://github.com/dingyuwen777/AIMA_UGC/issues/437#AC4 | satisfied | `0047` 删除三表并在 downgrade 恢复经核对的空表结构；Owner 决定明确不存在旧数据，因此不伪造数据恢复。旧 API/Contract/Repository/UI/Job 分支及 Strategy Store 隐藏车型读取已删除；OpenAPI/client 生成、兼容与生产 consumer 搜索无漂移。 |
+| R5 | 只有真实数据证明时才收紧 brand_id；否则 nullable 且不制造 unknown Brand | https://github.com/dingyuwen777/AIMA_UGC/issues/437#AC5 | satisfied | 当前 SQLAlchemy/Migration 继续保持 `vehicle_models.brand_id` nullable，未创建 unknown Brand；Cleanup 只对 active Vehicle 缺少有效 Ownership fail closed，正式文档同步该结论。 |
+| R6 | 完成 Schema/数据链反向审计与分层回归 | https://github.com/dingyuwen777/AIMA_UGC/issues/437#AC6 | satisfied | 已沿 Schema writer/Migration/reader、Excel/TikHub→Resolver→Content→Voice Plaza/Export、Backend→Frontend/generated、Job→Worker 反查；本地 Unit 918 passed/8 skipped（另有 3 个已知 Windows POSIX-only 失败）、Contract 111、API 60、Stage 7 targeted 43、前端 Vitest 139、Browser 106、lint/typecheck/build 与文档/生成门禁通过；PR Ready 后仍须取得 PostgreSQL 18/Real Full-stack current-head required CI。 |
+| R7 | 长期文档、Roadmap 03 关系和 Roadmap 04 生命周期正确收口 | https://github.com/dingyuwen777/AIMA_UGC/issues/437#AC7 | satisfied | Product/Blueprint/Appendix/Operations/模块 README 已承接长期事实；Roadmap 03/05 已改为依赖当前 Brand/Vehicle Filter 机器事实；Roadmap 04 已从 live README 和文件树移除，历史需求由 #437、Change 与 Git 保留。 |
+| R8 | L3 Completion/Review/CI/merge/main/archive/Closure/cleanup 完整交付 | https://github.com/dingyuwen777/AIMA_UGC/issues/437#AC8 | explicitly_deferred | Requirement Traceability、Validation Matrix、Completion Audit 与 Deep Review 已完成；PR current-head CI、expected-head guarded merge、main fresh CI、原生归档、Issue Closure 和分支清理按强制顺序只能在 Ready 后执行。 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | Reclassification 两层选择、keyset/shard/checkpoint、幂等、统计、cancel/retry/recovery 与 Cleanup preflight Red→Green。 |
-| 接口 / Contract | required | Job Payload/Result、Pydantic/OpenAPI/generated client 删除 Legacy Contract 后生成与兼容检查。 |
-| 集成 / Persistence / Runtime Dependency | required | PostgreSQL 18 上 Evidence 写入、Job Runtime、Migration upgrade/downgrade、备份恢复与 fail-closed preflight。 |
-| 用户 / Workflow Acceptance | required | 受影响 Browser Mock 回归证明生产前端没有 Legacy 入口且新 Brand/Vehicle/Competition 路径不回退。 |
-| 跨组件 Golden Path | required | Real Full-stack 覆盖新 Filter/Query/Export 与至少一条旧 Content Reclassification → Voice Plaza/Export 关键链。 |
+| 行为 / Unit / Component | required | Stage 7 targeted 43/43；完整后端 Unit 918 passed、8 skipped（排除 3 个只在 POSIX 有 `geteuid/chown` 的已知 Windows host-preparation 用例）；重分类两层、keyset/shard/checkpoint、幂等、统计、cancel/retry/recovery 与 Cleanup preflight 均有直接测试。 |
+| 接口 / Contract | required | Contract 111/111、API 60/60；`python scripts/quality/generate_contracts.py --check` 与 compatibility 退出 0，Legacy HTTP Schema 已从 OpenAPI/generated client 删除。 |
+| 集成 / Persistence / Runtime Dependency | required | PostgreSQL 18 测试已覆盖 Evidence、Job/Fence/事务、Migration 空库/非空拒绝及 upgrade→downgrade→upgrade；本机缺少可用 PostgreSQL/Docker，精确 current-head 直接执行证据由 PR Ready 后 required CI 提供，生产备份/迁移不在授权范围。 |
+| 用户 / Workflow Acceptance | required | Playwright Browser Mock 106/106；旧 Plan Vehicle/Global Relevance 测试资产已移除，并由测试暴露后删除 Strategy Store 无 UI 消费者仍后台读取车型目录的残留。 |
+| 跨组件 Golden Path | required | Real Full-stack 影响分类覆盖 Brand/Vehicle Filter→Content→Voice Plaza/Export 当前链；重分类/Schema 的 PostgreSQL 直接链由 PR Ready 后 current-head CI 执行。 |
 | External Dependency / Provider Probe | not_applicable | 不改变 TikHub/LLM Operation 或真实第三方字段，且用户明确禁止付费 Probe；Fixture/Contract 回归足够。 |
-| Build / Package / Runtime | required | 后端质量门禁、前端 lint/typecheck/unit/build、Migration/Worker 启动与正式 CI。 |
-| Docs / Governance / Other | required | 文档事实、Secret、Change/Ready、Deep Review、PR/main CI、原生归档、Issue Closure 与 Roadmap 生命周期。 |
+| Build / Package / Runtime | required | Ruff check/format、Mypy 325 files、前端 ESLint、TS7/Vue typecheck、Vitest 24 files/139 tests、Vite build 均退出 0；正式 CI 仍作为 Ready 后合并门禁。 |
+| Docs / Governance / Other | required | docs/check、docs facts、architecture/table ownership/Secret、Contract drift/compatibility 与 `git diff --check` 退出 0；Deep Review 当前无已知 P0/P1/P2 Finding，后续仍需 PR/main CI、原生归档与 Issue Closure。 |
 
 # 任务与验证计划
 
@@ -125,8 +125,8 @@ Requirement Source：#437。
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重新读取 #437、Roadmap Stage 7 与整条 Stage 1—7、Roadmap 03 关系、Blueprint/Contract/Schema/Operations 和当前 main。
-- [ ] change_coverage：独立比较 AC1—AC8/R1—R8 与实现、测试、文档、Migration、交付证据，确认没有 requirement omission。
-- [ ] reverse_audit：执行 Schema writer→Migration→reader、Excel/TikHub→Resolver→Content→Voice Plaza/Export、旧数据/Legacy 清理对账，以及前后端/异步状态反向审计。
-- [ ] two_stage_review：A1 上游→Change、A2 Change→实现/测试/文档；随后完成代码质量、安全、兼容、Migration、回滚和测试充分性 Deep Review。
-- [ ] unresolved_cleared：Ready 前清零 not_satisfied；所有 deferred/N/A 必须有正式依据，生产未执行项不得冒充已验证。
+- [x] upstream_re_read：重新读取 #437 与 Owner 补充决定、`origin/main` Roadmap 04 Stage 1—7/退出条件、当前 Roadmap 03/05 关系、Blueprint 02/03/04/07、Operations 03、Pydantic/OpenAPI、SQLAlchemy/Alembic、Worker Registry 和当前 `origin/main` `94b3ab6f`；确认生产部署/回填/Migration 未获授权。
+- [x] change_coverage：逐条比较 AC1—AC8/R1—R8 与 Job/Repository/Worker、Migration/Schema、Legacy consumer 删除、生成物、测试、长期文档和交付顺序；R1—R7 已满足，R8 只保留 Ready 后强制生命周期动作。
+- [x] reverse_audit：沿 `content_reclassification_runs` writer→Migration→Repository/Worker、Existing Evidence+Current Content→Resolver→Evidence→Voice Plaza/Export、Excel/TikHub 新 Snapshot→Content、Plan/Import Contract→generated client→Vue 反查；生产源与 OpenAPI 对三张 Legacy 表、旧 v1 Job/Run 和 `/relevance-config` 均无命中，声音广场结果查询的 `vehicle_model_ids` 属于明确保留边界。
+- [x] two_stage_review：Review Target 为 `94b3ab6fa0d7007cd49e86f263d2ca454f3c79ff...7005d95d09a4faaa93b1e562ebddd24fd2d29267`。A1 从 #437/Owner 决定/Roadmap 独立重建完成定义；A2 按 Job/Schema/Migration/Contract/Frontend/Docs/Tests 审查。Review 发现并修复 Vehicles PostgreSQL suite 未进入 CI、Cleanup 漏查旧 Batch Snapshot、旧文档/测试残留，以及 Strategy Store 在 UI 移除后仍后台读取车型目录；当前无已知 P0/P1/P2 Finding。
+- [x] unresolved_cleared：所有 `not_satisfied` 已清零；External Provider Probe 因不改外部 Operation 且禁止付费调用正式不适用；R8 的 CI/合并/main/归档/Closure/cleanup 是必须发生在 Ready 后的后置门禁，不冒充已完成。
