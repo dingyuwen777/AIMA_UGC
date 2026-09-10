@@ -1,42 +1,15 @@
 import { expect, test, type Locator, type Page } from './fixture'
 
 const packId = '11111111-1111-4111-8111-111111111111'
-const relevancePackId = '22222222-2222-4222-8222-222222222222'
+const secondaryPackId = '22222222-2222-4222-8222-222222222222'
 const planId = '33333333-3333-4333-8333-333333333333'
 const providerId = '44444444-4444-4444-8444-444444444444'
-const historicalVehicleId = '66666666-6666-4666-8666-666666666666'
-const activeVehicleId = '77777777-7777-4777-8777-777777777777'
 const activeBrandId = '88888888-8888-4888-8888-888888888888'
 
 const packs = [
   { id: packId, name: '爱玛品牌词包', description: '新品车型及用户讨论', enabled: true, version: 4, keyword_count: 28 },
-  { id: relevancePackId, name: '产品车型词包', description: '车型、型号与产品系列发现', enabled: true, version: 2, keyword_count: 16 },
+  { id: secondaryPackId, name: '门店活动词包', description: '门店活动与用户讨论发现', enabled: true, version: 2, keyword_count: 16 },
 ]
-
-const historicalVehicle = {
-  id: historicalVehicleId,
-  code: 'A01',
-  display_name: '示例车型 A',
-  status: 'deprecated',
-  version: 3,
-  catalog_version: 9,
-  merged_into_id: null,
-  aliases: [],
-  keyword_pack_ids: [],
-  referenced: true,
-  created_at: '2026-08-01T00:00:00Z',
-  updated_at: '2026-08-28T00:00:00Z',
-}
-
-const activeVehicle = {
-  ...historicalVehicle,
-  id: activeVehicleId,
-  code: 'Q7',
-  display_name: '爱玛 Q7',
-  status: 'active',
-  version: 1,
-  referenced: false,
-}
 const activeBrand = {
   id: activeBrandId,
   code: 'AIMA',
@@ -63,7 +36,7 @@ const plan = {
   comment_policy: 'adaptive',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId, search_config: {} }],
   keyword_pack_ids: [packId],
-  vehicle_model_ids: [historicalVehicleId],
+  brand_ids: [activeBrandId],
   created_at: '2026-08-21T00:00:00Z',
   updated_at: '2026-08-21T00:00:00Z',
 }
@@ -111,31 +84,10 @@ async function mockStrategyApi(page: Page): Promise<void> {
       })
       return
     }
-    if (url.pathname === '/api/v1/vehicle-models' && request.method() === 'GET') {
-      const items = url.searchParams.get('status') === 'active' ? [activeVehicle] : [historicalVehicle]
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ items, total: items.length, catalog_version: 9, offset: 0, limit: 200 }),
-      })
-      return
-    }
     if (url.pathname === '/api/v1/vehicle-brands' && request.method() === 'GET') {
       await route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({ items: [activeBrand], total: 1, catalog_version: 18, offset: 0, limit: 200 }),
-      })
-      return
-    }
-    if (url.pathname === '/api/v1/relevance-config' && request.method() === 'GET') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          keyword_pack_id: packId,
-          keyword_pack_version: 4,
-          version: 3,
-          effective_keywords: ['爱玛 Q7', '爱玛电动车', '爱玛门店'],
-          updated_at: '2026-08-27T15:20:00Z',
-        }),
       })
       return
     }
@@ -322,7 +274,7 @@ test(`edits a ${memberCount}-member existing pack in the shared dialog without c
 })
 }
 
-test('opens complete current pack and vehicle details from plan references and returns to the plan', async ({ page }) => {
+test('opens complete current pack details from plan references and returns to the plan', async ({ page }) => {
   let rejectNextDetail = false
   await page.route(`**/api/v1/keyword-packs/${packId}`, async (route) => {
     if (rejectNextDetail) {
@@ -335,9 +287,6 @@ test('opens complete current pack and vehicle details from plan references and r
         priority: index + 1, enabled: index !== 34, note: `完整备注 ${index + 1}`,
       })),
     } })
-  })
-  await page.route(`**/api/v1/vehicle-models/${historicalVehicleId}`, async (route) => {
-    await route.fulfill({ json: { ...historicalVehicle, series_name: '车型系列', category_name: '车型分类', aliases: [{ id: 'alias-1', text: '当下完整别名', normalized_text: '当下完整别名' }] } })
   })
   await page.goto('/collection-strategy')
   await page.locator('.table-wrap').getByRole('button', { name: '查看' }).first().click()
@@ -356,15 +305,9 @@ test('opens complete current pack and vehicle details from plan references and r
   await page.keyboard.press('Escape')
   await expect(packDetail).toBeHidden()
   await expect(packLink).toBeFocused()
-  await planDetail.getByRole('button', { name: /示例车型 A/ }).click()
-  const vehicleDetail = page.getByRole('dialog', { name: '车型详情', exact: true })
-  await expect(vehicleDetail).toContainText('当下完整别名')
-  await expect(vehicleDetail).toContainText('车型系列')
-  await expect(vehicleDetail).toContainText('车型分类')
-  await expect(vehicleDetail).toContainText('v3')
-  await expect(vehicleDetail).toContainText('已停用')
-  await page.screenshot({ path: '../.runtime/strategy-figma-test/plan-vehicle-detail.png', fullPage: true })
-  await vehicleDetail.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(planDetail.getByRole('heading', { name: '内容过滤条件 · 品牌' })).toBeVisible()
+  await expect(planDetail.getByText('爱玛 · 自有')).toBeVisible()
+  await expect(planDetail.getByRole('button', { name: /车型/ })).toHaveCount(0)
   await expect(planDetail).toBeVisible()
 })
 
@@ -415,7 +358,8 @@ test('edits the selected plan through a single drawer and preserves its identity
   const editor = page.getByRole('dialog', { name: '编辑采集计划', exact: true })
   await expect(editor).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(1)
-  await expect(editor.getByLabel('保留历史车型范围（1 个，只读兼容）')).toBeChecked()
+  await expect(editor.getByText('指定品牌', { exact: true })).toBeVisible()
+  await expect(editor.getByText('爱玛', { exact: true })).toBeVisible()
   await editor.getByPlaceholder('例如：爱玛新品口碑追踪').fill('编辑后的计划')
   await editor.getByLabel('小红书排序').selectOption('latest')
   await editor.getByLabel('小红书发布时间').selectOption('1d')
@@ -426,9 +370,9 @@ test('edits the selected plan through a single drawer and preserves its identity
   expect(payload).toMatchObject({
     name: '编辑后的计划',
     expected_version: 3,
-    vehicle_model_ids: [historicalVehicleId],
+    brand_ids: [activeBrandId],
   })
-  expect(payload).not.toHaveProperty('brand_ids')
+  expect(payload).not.toHaveProperty('vehicle_model_ids')
   await expect(editor).toHaveCount(0)
 })
 

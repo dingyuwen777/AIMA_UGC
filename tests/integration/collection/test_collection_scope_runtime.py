@@ -42,6 +42,8 @@ from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
+from tests.integration.stage3_brand_support import stage4_collection_config_snapshot
+
 _FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 17, 4, 0, tzinfo=UTC)
 
@@ -155,14 +157,7 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
-                    "schema_version": "collection-run-config.v1",
-                    "relevance": {
-                        "schema_version": "relevance-snapshot.v1",
-                        "keyword_pack_id": str(uuid4()),
-                        "keyword_pack_version": 1,
-                        "config_version": 1,
-                        "effective_keywords": ["脱敏"],
-                    },
+                    **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
                     "platforms": [

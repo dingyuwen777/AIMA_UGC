@@ -126,6 +126,26 @@ def test_content_integration_test_change_runs_only_content_postgres_without_full
     assert requirements.fullstack_specs == ()
 
 
+def test_vehicle_integration_test_change_runs_vehicle_postgres_suite() -> None:
+    requirements = _requirements(
+        "tests/integration/vehicles/test_content_reclassification_postgres.py"
+    )
+
+    assert requirements.profile == "persistence"
+    assert requirements.postgres_required is True
+    assert requirements.postgres_suites == ("vehicles",)
+    assert requirements.fullstack_required is False
+
+
+def test_vehicle_persistence_change_runs_vehicle_postgres_suite() -> None:
+    requirements = _requirements(
+        "backend/src/aima_ugc/adapters/persistence/postgres/content_reclassification.py"
+    )
+
+    assert requirements.postgres_required is True
+    assert requirements.postgres_suites == ("vehicles",)
+
+
 def test_ingestion_persistence_runs_content_and_ingestion_postgres_suites() -> None:
     requirements = _requirements("backend/src/aima_ugc/modules/ingestion/imports.py")
 

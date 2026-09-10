@@ -14,7 +14,6 @@ import type {
   KeywordPackResponse,
   KeywordPackSummaryResponse,
   ResourceLifecycleResponse,
-  VehicleModelResponse,
 } from '../../generated/api/client'
 import {
   CollectionStrategyApiError,
@@ -36,7 +35,6 @@ import {
   fetchPackDeleteEligibility,
   fetchPlanDeleteEligibility,
   fetchPlans,
-  fetchVehicleModels,
   removePackKeyword,
   restorePack,
   restorePlan,
@@ -68,7 +66,6 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const packCatalog = ref<KeywordPackSummaryResponse[]>([])
   const archivedPacks = ref<ResourceLifecycleResponse[]>([])
   const brandCatalog = ref<BrandResponse[]>([])
-  const vehicleCatalog = ref<VehicleModelResponse[]>([])
   const packTotal = ref(0)
   const packOffset = ref(0)
   const packLimit = 20
@@ -106,21 +103,6 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     let offset = 0
     while (true) {
       const page = await fetchKeywordPacks({ offset, limit: 100 })
-      result.push(...page.items)
-      offset += page.items.length
-      if (offset >= page.total || page.items.length === 0) return result
-    }
-  }
-
-  /**
-   * 分页读取完整车型目录供计划历史引用展示。
-   * 不传 status，避免把 active-only 创建候选语义错误复用到 deprecated/merged 历史计划。
-   */
-  async function fetchAllVehicleModels(): Promise<VehicleModelResponse[]> {
-    const result: VehicleModelResponse[] = []
-    let offset = 0
-    while (true) {
-      const page = await fetchVehicleModels({ offset, limit: 200 })
       result.push(...page.items)
       offset += page.items.length
       if (offset >= page.total || page.items.length === 0) return result
@@ -182,11 +164,10 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     loading.value = true
     error.value = null
     try {
-      const [packPage, allPacks, allBrands, allVehicles, providerCapabilities, planPage, enabledPlans] = await Promise.all([
+      const [packPage, allPacks, allBrands, providerCapabilities, planPage, enabledPlans] = await Promise.all([
         fetchKeywordPacks({ offset: packOffset.value, limit: packLimit }),
         fetchAllKeywordPacks(),
         fetchAllBrands(),
-        fetchAllVehicleModels(),
         fetchCapabilities(),
         fetchPlans({
           search: filters.search.trim() || undefined,
@@ -201,7 +182,6 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       packs.value = packPage.items
       packCatalog.value = allPacks
       brandCatalog.value = allBrands
-      vehicleCatalog.value = allVehicles
       packTotal.value = packPage.total
       capabilities.value = providerCapabilities
       plans.value = planPage.items
@@ -708,7 +688,6 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     packCatalog,
     archivedPacks,
     brandCatalog,
-    vehicleCatalog,
     packTotal,
     packOffset,
     packLimit,

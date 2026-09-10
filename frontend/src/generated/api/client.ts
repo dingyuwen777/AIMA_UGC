@@ -682,8 +682,6 @@ export interface CollectionPlanCreateRequest {
      * @maxLength 100
      */
   schedule_expr: string;
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 export interface CollectionPlanPlatformResponse {
@@ -709,7 +707,6 @@ export interface CollectionPlanResponse {
   schedule_version: number;
   timezone: 'Asia/Shanghai';
   updated_at: string;
-  vehicle_model_ids?: string[];
 }
 
 export interface CollectionPlanListResponse {
@@ -753,8 +750,6 @@ export interface CollectionPlanUpdateRequest {
      * @maxLength 100
      */
   schedule_expr: string;
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 export type CollectionRunMode = typeof CollectionRunMode[keyof typeof CollectionRunMode];
@@ -792,8 +787,6 @@ export interface CollectionRunCreateRequest {
      * @maxItems 5
      */
   platforms: CollectionRunPlatformRequest[];
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 export interface CollectionRunCreatedResponse {
@@ -1894,20 +1887,6 @@ export interface ExportColumnCatalogResponse {
   version: number;
 }
 
-export interface GlobalRelevanceConfigRequest {
-  keyword_pack_id: string;
-}
-
-export interface GlobalRelevanceConfigResponse {
-  effective_keywords: string[];
-  keyword_pack_id: string;
-  /** @exclusiveMinimum 0 */
-  keyword_pack_version: number;
-  updated_at: string;
-  /** @exclusiveMinimum 0 */
-  version: number;
-}
-
 export type ValidationErrorCtx = { [key: string]: unknown };
 
 export interface ValidationError {
@@ -2356,22 +2335,6 @@ export interface KeywordPackUpdateRequest {
 }
 
 /**
- * 替换一个词包当前引用的车型集合。
- */
-export interface KeywordPackVehicleLinkRequest {
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
-}
-
-/**
- * 词包当前引用的车型 ID。
- */
-export interface KeywordPackVehicleLinksResponse {
-  pack_id: string;
-  vehicle_model_ids: string[];
-}
-
-/**
  * 声明浏览器显式选择的一个本地 XLSX；绝不承载本机绝对路径。
  */
 export interface LocalDataImportFileManifest {
@@ -2775,7 +2738,6 @@ export interface VehicleModelResponse {
   created_at: string;
   display_name: string;
   id: string;
-  keyword_pack_ids?: string[];
   merged_into_id?: string | null;
   referenced?: boolean;
   series_name?: string | null;
@@ -6053,39 +6015,6 @@ export const restoreKeywordPack = async (packId: string, options?: RequestInit):
 
 
 
-export const getReplaceKeywordPackVehicleModelsUrl = (packId: string,) => {
-
-
-
-
-  return `/api/v1/keyword-packs/${packId}/vehicle-models`
-}
-
-/**
- * 管理员原子替换一个词包引用的车型。
- * @summary Replace Keyword Pack Vehicle Models
- */
-export const replaceKeywordPackVehicleModels = async (packId: string,
-    keywordPackVehicleLinkRequest: KeywordPackVehicleLinkRequest, options?: RequestInit): Promise<KeywordPackVehicleLinksResponse> => {
-
-  const res = await fetch(getReplaceKeywordPackVehicleModelsUrl(packId),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(keywordPackVehicleLinkRequest)
-  }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackVehicleLinksResponse = body ? JSON.parse(body) : {}
-  return data
-}
-
-
-
 export const getListNotificationsUrl = (params?: ListNotificationsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -6472,68 +6401,6 @@ export const testProviderConfigConnection = async (providerConfigId: string, opt
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ProviderConnectionTestResponse = body ? JSON.parse(body) : {}
-  return data
-}
-
-
-
-export const getGetGlobalRelevanceConfigUrl = () => {
-
-
-
-
-  return `/api/v1/relevance-config`
-}
-
-/**
- * @summary Get Global Relevance
- */
-export const getGlobalRelevanceConfig = async ( options?: RequestInit): Promise<GlobalRelevanceConfigResponse> => {
-
-  const res = await fetch(getGetGlobalRelevanceConfigUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: GlobalRelevanceConfigResponse = body ? JSON.parse(body) : {}
-  return data
-}
-
-
-
-export const getSetGlobalRelevanceConfigUrl = () => {
-
-
-
-
-  return `/api/v1/relevance-config`
-}
-
-/**
- * @summary Set Global Relevance
- */
-export const setGlobalRelevanceConfig = async (globalRelevanceConfigRequest: GlobalRelevanceConfigRequest, options?: RequestInit): Promise<GlobalRelevanceConfigResponse> => {
-
-  const res = await fetch(getSetGlobalRelevanceConfigUrl(),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(globalRelevanceConfigRequest)
-  }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: GlobalRelevanceConfigResponse = body ? JSON.parse(body) : {}
   return data
 }
 

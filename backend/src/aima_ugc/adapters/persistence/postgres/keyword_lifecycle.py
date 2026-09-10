@@ -16,17 +16,13 @@ from aima_ugc.modules.collection.tables import (
     collection_plans_table,
     collection_runs_table,
 )
-from aima_ugc.modules.ingestion.historical_tables import historical_import_campaigns_table
 from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
 from aima_ugc.modules.system.models import KeywordPack, KeywordPackItem
 from aima_ugc.modules.system.tables import (
-    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
 )
-from aima_ugc.modules.vehicles.tables import keyword_pack_vehicle_models_table
-from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.time import beijing_now
 
 register_system_lifecycle_schema()
@@ -330,7 +326,7 @@ class PostgresKeywordPackLifecycleRepository:
         return _pack(updated)
 
     def copy_pack(self, pack_id: UUID, *, name: str) -> KeywordPack | None:
-        """复制词包内容与车型关系；副本固定从停用、未归档状态开始。"""
+        """复制词包内容；副本固定从停用、未归档状态开始。"""
 
         source = (
             self._session.execute(
@@ -381,27 +377,6 @@ class PostgresKeywordPackLifecycleRepository:
                         "note": item["note"],
                     }
                     for item in items
-                ],
-            )
-        vehicle_links = tuple(
-            self._session.execute(
-                select(
-                    keyword_pack_vehicle_models_table.c.vehicle_model_id,
-                    keyword_pack_vehicle_models_table.c.enabled,
-                ).where(keyword_pack_vehicle_models_table.c.pack_id == pack_id)
-            ).mappings()
-        )
-        if vehicle_links:
-            self._session.execute(
-                insert(keyword_pack_vehicle_models_table),
-                [
-                    {
-                        "pack_id": new_id,
-                        "vehicle_model_id": link["vehicle_model_id"],
-                        "enabled": link["enabled"],
-                        "created_at": now,
-                    }
-                    for link in vehicle_links
                 ],
             )
         return _pack(row)
@@ -479,15 +454,6 @@ class PostgresKeywordPackLifecycleRepository:
         blockers: list[str] = []
         if (
             self._session.scalar(
-                select(global_relevance_config_table.c.keyword_pack_id).where(
-                    global_relevance_config_table.c.keyword_pack_id == pack_id
-                )
-            )
-            is not None
-        ):
-            blockers.append("当前全局相关性正在使用该词包")
-        if (
-            self._session.scalar(
                 select(collection_plan_keyword_packs_table.c.plan_id)
                 .join(
                     collection_plans_table,
@@ -530,31 +496,6 @@ class PostgresKeywordPackLifecycleRepository:
             is not None
         ):
             blockers.append("采集计划历史引用了该词包")
-        pack_marker = [{"id": str(pack_id)}]
-        if (
-            self._session.scalar(
-                select(historical_import_campaigns_table.c.id)
-                .where(
-                    historical_import_campaigns_table.c.keyword_pack_snapshot[
-                        "keyword_packs"
-                    ].contains(pack_marker)
-                )
-                .limit(1)
-            )
-            is not None
-        ):
-            blockers.append("数据导入历史引用了该词包")
-        if (
-            self._session.scalar(
-                select(jobs_table.c.id)
-                .where(
-                    jobs_table.c.payload["keyword_selection"]["keyword_packs"].contains(pack_marker)
-                )
-                .limit(1)
-            )
-            is not None
-        ):
-            blockers.append("导入任务历史引用了该词包")
         if (
             self._session.scalar(
                 select(collection_runs_table.c.id)
@@ -584,11 +525,6 @@ class PostgresKeywordPackLifecycleRepository:
                 select(keyword_pack_items_table.c.keyword_id).where(
                     keyword_pack_items_table.c.pack_id == pack_id
                 )
-            )
-        )
-        self._session.execute(
-            delete(keyword_pack_vehicle_models_table).where(
-                keyword_pack_vehicle_models_table.c.pack_id == pack_id
             )
         )
         self._session.execute(

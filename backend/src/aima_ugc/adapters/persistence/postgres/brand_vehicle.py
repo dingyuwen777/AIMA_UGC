@@ -6,7 +6,8 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, insert, or_, select, update
+from sqlalchemy import delete, func, insert, or_, select, tuple_, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -430,35 +431,6 @@ class PostgresBrandVehicleRepository:
         )
         return tuple(rows)
 
-    def brand_ids_for_vehicle_models(
-        self,
-        vehicle_model_ids: tuple[UUID, ...],
-    ) -> tuple[UUID, ...]:
-        """把兼容期车型选择显式转换为有效 Brand Scope，拒绝悬空归属。"""
-
-        unique_ids = tuple(dict.fromkeys(vehicle_model_ids))
-        if not unique_ids:
-            return ()
-        self._lock_catalog_snapshot()
-        rows = tuple(
-            self._session.execute(
-                select(vehicle_models_table.c.id, vehicle_models_table.c.brand_id)
-                .join(
-                    vehicle_brands_table,
-                    vehicle_brands_table.c.id == vehicle_models_table.c.brand_id,
-                )
-                .where(
-                    vehicle_models_table.c.id.in_(unique_ids),
-                    vehicle_models_table.c.status == "active",
-                    vehicle_brands_table.c.status == "active",
-                )
-                .order_by(vehicle_models_table.c.id)
-            )
-        )
-        if {cast(UUID, row.id) for row in rows} != set(unique_ids):
-            raise LookupError("兼容车型不存在、已停用或缺少有效品牌归属")
-        return tuple(sorted({cast(UUID, row.brand_id) for row in rows}, key=str))
-
     def snapshot(self, *, brand_ids: tuple[UUID, ...] | None) -> BrandVehicleCatalogSnapshot:
         """冻结 all_active 或 selected Brand，并自动包含其全部 active Vehicle/Alias。"""
 
@@ -629,6 +601,141 @@ class PostgresBrandVehicleRepository:
                 is_manual_locked=False,
             )
         return True
+
+    def replace_automatic_brand_evidence_batch(
+        self,
+        *,
+        entries: tuple[tuple[UUID, int, tuple[ResolverEvidence, ...]], ...],
+        catalog_snapshot: BrandVehicleCatalogSnapshot,
+    ) -> tuple[int, int]:
+        """按冻结目录批量替换自动 Brand Evidence，并保持人工锁优先。"""
+
+        if not entries:
+            return 0, 0
+        pairs = tuple(sorted({(item[0], item[1]) for item in entries}, key=str))
+        for content_id, content_version in pairs:
+            self._lock_brand_review_write(
+                content_id=content_id,
+                content_version=content_version,
+            )
+        locked_pairs = set(
+            self._session.execute(
+                select(
+                    content_brand_review_locks_table.c.content_id,
+                    content_brand_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_brand_review_locks_table.c.content_id,
+                        content_brand_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_brand_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        unlocked_pairs = tuple(item for item in pairs if item not in locked_pairs)
+        if unlocked_pairs:
+            self._session.execute(
+                update(content_brand_evidence_table)
+                .where(
+                    tuple_(
+                        content_brand_evidence_table.c.content_id,
+                        content_brand_evidence_table.c.content_version,
+                    ).in_(unlocked_pairs),
+                    content_brand_evidence_table.c.is_active.is_(True),
+                    content_brand_evidence_table.c.is_manual_locked.is_(False),
+                )
+                .values(is_active=False)
+            )
+
+        now = beijing_now()
+        direct_values: list[dict[str, object]] = []
+        vehicle_values: list[dict[str, object]] = []
+        seen: set[tuple[object, ...]] = set()
+        for content_id, content_version, evidence in entries:
+            if (content_id, content_version) in locked_pairs:
+                continue
+            for item in evidence:
+                if item.source not in ("alias_match", "vehicle_match"):
+                    raise ValueError("自动 Brand Evidence 只接受 alias_match/vehicle_match")
+                self._validate_brand_evidence_against_snapshot(item, catalog_snapshot)
+                identity = (
+                    content_id,
+                    content_version,
+                    item.entity_id,
+                    item.source,
+                    item.derived_vehicle_model_id,
+                    catalog_snapshot.catalog_version,
+                )
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                values: dict[str, object] = {
+                    "id": uuid4(),
+                    "content_id": content_id,
+                    "content_version": content_version,
+                    "brand_id": item.entity_id,
+                    "source": item.source,
+                    "matched_text": item.matched_text,
+                    "source_field": item.source_field,
+                    "derived_vehicle_model_id": item.derived_vehicle_model_id,
+                    "catalog_version": catalog_snapshot.catalog_version,
+                    "confidence": 1.0,
+                    "is_manual_locked": False,
+                    "is_active": True,
+                    "created_at": now,
+                }
+                if item.derived_vehicle_model_id is None:
+                    direct_values.append(values)
+                else:
+                    vehicle_values.append(values)
+        if direct_values:
+            statement = pg_insert(content_brand_evidence_table).values(direct_values)
+            self._session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[
+                        content_brand_evidence_table.c.content_id,
+                        content_brand_evidence_table.c.content_version,
+                        content_brand_evidence_table.c.brand_id,
+                        content_brand_evidence_table.c.source,
+                        content_brand_evidence_table.c.catalog_version,
+                    ],
+                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_(None),
+                    set_={
+                        "matched_text": statement.excluded.matched_text,
+                        "source_field": statement.excluded.source_field,
+                        "confidence": 1.0,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": now,
+                    },
+                )
+            )
+        if vehicle_values:
+            statement = pg_insert(content_brand_evidence_table).values(vehicle_values)
+            self._session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[
+                        content_brand_evidence_table.c.content_id,
+                        content_brand_evidence_table.c.content_version,
+                        content_brand_evidence_table.c.brand_id,
+                        content_brand_evidence_table.c.source,
+                        content_brand_evidence_table.c.derived_vehicle_model_id,
+                        content_brand_evidence_table.c.catalog_version,
+                    ],
+                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(
+                        None
+                    ),
+                    set_={
+                        "matched_text": statement.excluded.matched_text,
+                        "source_field": statement.excluded.source_field,
+                        "confidence": 1.0,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": now,
+                    },
+                )
+            )
+        return len(direct_values) + len(vehicle_values), len(locked_pairs)
 
     def replace_manual_brand_evidence(
         self,

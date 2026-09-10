@@ -6,7 +6,6 @@ import type {
   CollectionPlanResponse,
   CollectionProviderConfigResponse,
   KeywordPackSummaryResponse,
-  VehicleModelResponse,
 } from '../../../../../generated/api/client'
 import { collectionSearchConfigSummary } from '../../../../../shared/collectionSearchConfig'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
@@ -20,7 +19,6 @@ const props = defineProps<{
   plan: CollectionPlanResponse | null
   packs: KeywordPackSummaryResponse[]
   brands: BrandResponse[]
-  vehicles: VehicleModelResponse[]
   providers: CollectionProviderConfigResponse[]
   saving: boolean
   error?: string | null
@@ -34,7 +32,7 @@ const emit = defineEmits<{
 const copied = ref(false)
 const copyName = ref('')
 const copyEditing = ref(false)
-const selectedResource = ref<{ kind: 'pack' | 'vehicle'; id: string } | null>(null)
+const selectedResource = ref<{ kind: 'pack'; id: string } | null>(null)
 
 watch(() => props.plan?.id, () => { copyEditing.value = false })
 watch(open, (value) => { if (!value) selectedResource.value = null })
@@ -50,11 +48,6 @@ async function copyPlanId(planId: string): Promise<void> {
 function packLabel(packId: string): string {
   const pack = props.packs.find((item) => item.id === packId)
   return pack ? `${pack.name} · v${pack.version}` : '历史词包（当前目录不可用）'
-}
-
-function vehicleLabel(vehicleId: string): string {
-  const vehicle = props.vehicles.find((item) => item.id === vehicleId)
-  return vehicle ? `${vehicle.display_name} · ${vehicle.code}` : '历史车型（当前目录不可用）'
 }
 
 function brandLabel(brandId: string): string {
@@ -175,24 +168,10 @@ function archivePlan(): void {
           {{ packLabel(id) }}
         </button><em v-if="plan.keyword_pack_ids.length === 0">未选择关键词包</em>
       </section><section class="brands">
-        <h4>内容过滤条件 · 品牌</h4><span v-if="(plan.brand_ids ?? []).length === 0 && (plan.vehicle_model_ids ?? []).length === 0">全部启用品牌及车型</span><span
-          v-else-if="(plan.brand_ids ?? []).length === 0"
-        >沿用下方历史车型范围，尚未迁移为品牌过滤</span><span
+        <h4>内容过滤条件 · 品牌</h4><span v-if="(plan.brand_ids ?? []).length === 0">全部启用品牌及车型</span><span
           v-for="id in plan.brand_ids ?? []"
           :key="id"
         >{{ brandLabel(id) }}</span>
-      </section><section
-        v-if="(plan.vehicle_model_ids ?? []).length"
-        class="vehicles"
-      >
-        <h4>历史车型范围 · 只读兼容</h4><button
-          v-for="id in plan.vehicle_model_ids ?? []"
-          :key="id"
-          type="button"
-          @click="selectedResource = { kind: 'vehicle', id }"
-        >
-          {{ vehicleLabel(id) }}
-        </button>
       </section><section class="channels">
         <h4>目标平台 / 采集渠道</h4><span
           v-for="item in plan.platforms"
@@ -229,10 +208,6 @@ function archivePlan(): void {
             :key="`pack-${id}`"
           >词包：{{ id }}</span>
           <span
-            v-for="id in plan.vehicle_model_ids ?? []"
-            :key="`vehicle-${id}`"
-          >车型：{{ id }}</span>
-          <span
             v-for="id in plan.brand_ids ?? []"
             :key="`brand-${id}`"
           >品牌：{{ id }}</span>
@@ -247,7 +222,6 @@ function archivePlan(): void {
   <PlanResourceDetailDialog
     :resource="selectedResource"
     :packs="packs"
-    :vehicles="vehicles"
     @close="selectedResource = null"
   />
 </template>
@@ -256,7 +230,7 @@ function archivePlan(): void {
 :global(.plan-detail-dialog) { margin: 0 0 0 auto; height: 100dvh; max-height: 100dvh; max-width: 100vw; overflow: hidden; border: 0; border-radius: 0; box-shadow: -10px 0 30px rgb(20 29 44 / 12%); }
 :global(.plan-detail-dialog > .aima-dialog-body) { display: contents; }
 header { display: flex; min-height: 84px; flex: none; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--aima-border); background: #fff; }h2 { margin: 0; font-size: 19px; line-height: 24px; }header p { margin: 5px 0 0; color: #7a8496; font-size: 12px; line-height: 18px; }.body { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding: 20px 22px 28px; }.status { font-size: 12px; font-weight: 500; }.enabled { color: #118852; }.disabled { color: #687386; }h3 { margin: 14px 0 10px; color: var(--aima-text); font-size: 20px; }.resource-actions { display: flex; gap: 7px; margin-bottom: 14px; }.copy-editor { display: grid; gap: 7px; margin: 10px 0 14px; padding: 10px; border: 1px solid var(--aima-border); border-radius: 7px; background: #fafbfc; }.copy-editor label { display: grid; gap: 5px; color: #6e798a; font-size: 11px; }.copy-editor input { height: 36px; padding: 0 9px; border: 1px solid #d9dee8; border-radius: 6px; }.copy-editor small { color: #818b9b; font-size: 11px; }.copy-editor > div { display: flex; justify-content: flex-end; gap: 7px; }dl { display: grid; grid-template-columns: repeat(2, 196px); column-gap: 14px; row-gap: 10px; margin-top: 10px; }dl div { min-height: 62px; padding: 10px; border: 1px solid #e1e5ec; border-radius: 6px; background: #fafafc; }dt { color: #8490a2; font-size: 11px; }dd { margin: 6px 0 0; overflow-wrap: anywhere; color: #2e3645; font-size: 12px; }.plan-id dt { display: flex; align-items: center; justify-content: space-between; }.plan-id :deep(.aima-button) { margin: -7px -5px -7px 0; }
-section { margin-top: 24px; }section h4 { display: block; margin: 0 0 8px; color: #3d4557; font-size: 13px; font-weight: 500; }section > span { display: block; margin: 6px 0; padding: 8px 9px; border-radius: 6px; background: #f6f8fb; color: #4a566a; font-size: 12px; }.packs > span,.vehicles > span { display: inline-block; width: max-content; max-width: 100%; margin-right: 6px; background: #f7faff; color: #384d6b; }.packs em,.vehicles em { color: #8b95a5; font-size: 12px; font-style: normal; }.channels > span { display: flex; min-height: 88px; flex-direction: column; justify-content: center; padding: 14px 12px; background: #f7fafc; }section span b, section span small { display: block; }section span small { margin-top: 4px; color: #788397; }.aima-feedback { margin-top: 30px; }.policy { margin-top: 30px; }.policy > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.policy > div span { margin: 0; border: 1px solid #e1e5ec; background: #fff; }.policy b { margin-top: 4px; color: #263146; }
+section { margin-top: 24px; }section h4 { display: block; margin: 0 0 8px; color: #3d4557; font-size: 13px; font-weight: 500; }section > span { display: block; margin: 6px 0; padding: 8px 9px; border-radius: 6px; background: #f6f8fb; color: #4a566a; font-size: 12px; }.packs > span { display: inline-block; width: max-content; max-width: 100%; margin-right: 6px; background: #f7faff; color: #384d6b; }.packs em { color: #8b95a5; font-size: 12px; font-style: normal; }.channels > span { display: flex; min-height: 88px; flex-direction: column; justify-content: center; padding: 14px 12px; background: #f7fafc; }section span b, section span small { display: block; }section span small { margin-top: 4px; color: #788397; }.aima-feedback { margin-top: 30px; }.policy { margin-top: 30px; }.policy > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.policy > div span { margin: 0; border: 1px solid #e1e5ec; background: #fff; }.policy b { margin-top: 4px; color: #263146; }
 .technical-details { margin-top: 28px; padding: 10px 12px; border: 1px dashed var(--aima-border-strong); border-radius: 7px; color: #778294; font-size: 11px; }.technical-details summary { cursor: pointer; color: #566276; font-weight: 600; }.technical-grid { grid-template-columns: 1fr; }.technical-grid div { min-height: 54px; }.technical-relations { display: grid; gap: 5px; margin-top: 10px; }.technical-relations strong { color: #657084; }.technical-relations span { overflow-wrap: anywhere; color: #8a93a3; }
-.packs > button,.vehicles > button { display: inline-block; max-width: 100%; margin: 6px 6px 6px 0; padding: 8px 9px; border: 1px solid #dce4f0; border-radius: 6px; color: var(--aima-primary); background: #f7faff; cursor: pointer; font: inherit; font-size: 12px; text-align: left; overflow-wrap: anywhere; }
+.packs > button { display: inline-block; max-width: 100%; margin: 6px 6px 6px 0; padding: 8px 9px; border: 1px solid #dce4f0; border-radius: 6px; color: var(--aima-primary); background: #f7faff; cursor: pointer; font: inherit; font-size: 12px; text-align: left; overflow-wrap: anywhere; }
 </style>

@@ -176,13 +176,3 @@ class KeywordPackItem:
     priority: int
     enabled: bool
     note: str
-
-
-@dataclass(frozen=True, slots=True)
-class GlobalRelevanceConfig:
-    """全系统零或一条的 Relevance Keyword Pack 选择事实。"""
-
-    keyword_pack_id: UUID
-    version: int
-    created_at: datetime
-    updated_at: datetime

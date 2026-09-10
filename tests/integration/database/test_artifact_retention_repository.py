@@ -213,7 +213,7 @@ def test_orphan_claim_rechecks_reference_after_candidate_scan() -> None:
         # 候选扫描不是删除授权。扫描后如果业务事务正式建立引用，真正认领时必须重新证明仍可删除。
         with session.begin():
             job = PostgresJobRepository(session).enqueue(
-                job_type="ingestion.import-excel.v1",
+                job_type="ingestion.import-excel.v2",
                 payload_version="1",
                 payload={},
                 internal_idempotency_key=f"retention-race:{batch_id}",
@@ -260,7 +260,7 @@ def test_import_source_waits_for_terminal_job_and_uses_cancel_time() -> None:
                 expires_at=None,
             )
             job = PostgresJobRepository(session).enqueue(
-                job_type="ingestion.import-excel.v1",
+                job_type="ingestion.import-excel.v2",
                 payload_version="1",
                 payload={},
                 internal_idempotency_key=f"retention-test:{batch_id}",

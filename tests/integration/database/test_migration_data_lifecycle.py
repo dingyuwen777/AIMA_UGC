@@ -1179,3 +1179,219 @@ def test_0040_adds_and_reverses_collection_campaign_source(
         engine.dispose()
 
     _upgrade(migration_database, "20260903_0040")
+
+
+def test_0047_drops_empty_legacy_tables_and_downgrade_restores_schema(
+    migration_database: str,
+) -> None:
+    """Owner 确认无历史数据时，Upgrade 删表且 Downgrade 恢复应用所需结构。"""
+
+    legacy_tables = {
+        "keyword_pack_vehicle_models",
+        "collection_plan_vehicle_models",
+        "global_relevance_config",
+    }
+    _upgrade(migration_database, "20260910_0046")
+    engine = _engine(migration_database)
+    try:
+        assert legacy_tables <= set(inspect(engine).get_table_names())
+        assert "content_reclassification_runs" in set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260910_0047")
+    engine = _engine(migration_database)
+    try:
+        assert not (legacy_tables & set(inspect(engine).get_table_names()))
+        assert "content_reclassification_runs" in set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260910_0046")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert legacy_tables <= set(inspector.get_table_names())
+        assert {item["name"] for item in inspector.get_columns("global_relevance_config")} == {
+            "singleton_key",
+            "keyword_pack_id",
+            "version",
+            "created_at",
+            "updated_at",
+        }
+        assert inspector.get_pk_constraint("collection_plan_vehicle_models")[
+            "constrained_columns"
+        ] == ["plan_id", "vehicle_model_id"]
+        assert inspector.get_pk_constraint("keyword_pack_vehicle_models")[
+            "constrained_columns"
+        ] == ["pack_id", "vehicle_model_id"]
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260910_0047")
+
+
+def test_0047_refuses_nonempty_legacy_table_before_any_drop(
+    migration_database: str,
+) -> None:
+    """与无旧数据前提冲突的任一 Legacy 业务行都必须保留并拒绝 Upgrade。"""
+
+    _upgrade(migration_database, "20260910_0046")
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+            connection.execute(
+                text(
+                    "INSERT INTO keyword_pack_vehicle_models"
+                    "(pack_id, vehicle_model_id, enabled, created_at) "
+                    "VALUES (:pack_id, :vehicle_model_id, TRUE, :created_at)"
+                ),
+                {
+                    "pack_id": uuid4(),
+                    "vehicle_model_id": uuid4(),
+                    "created_at": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="拒绝删除非空 Legacy 表"):
+        _upgrade(migration_database, "20260910_0047")
+
+    engine = _engine(migration_database)
+    try:
+        assert {
+            "keyword_pack_vehicle_models",
+            "collection_plan_vehicle_models",
+            "global_relevance_config",
+        } <= set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM keyword_pack_vehicle_models")) == 1
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260910_0046"
+            )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "blocked_fact",
+    ("legacy_job", "legacy_batch", "legacy_run", "legacy_campaign", "unowned_vehicle"),
+)
+def test_0047_refuses_incompatible_runtime_facts(
+    migration_database: str,
+    blocked_fact: str,
+) -> None:
+    """旧执行版本或未完成 Brand Ownership 时不得删除结构。"""
+
+    _upgrade(migration_database, "20260910_0046")
+    job_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            if blocked_fact in {"legacy_job", "legacy_run"}:
+                job_type = (
+                    "ingestion.import-excel.v1"
+                    if blocked_fact == "legacy_job"
+                    else "collection.run.v1"
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO jobs("
+                        "id, job_type, payload_version, payload, status, "
+                        "internal_idempotency_key, priority, attempt, max_attempts, "
+                        "timeout_seconds, progress, available_at, created_at, updated_at"
+                        ") VALUES ("
+                        ":id, :job_type, :payload_version, '{}'::jsonb, 'queued', "
+                        ":key, 0, 0, 1, 30, 0, :now, :now, :now)"
+                    ),
+                    {
+                        "id": job_id,
+                        "job_type": job_type,
+                        "payload_version": job_type,
+                        "key": f"stage7-{blocked_fact}",
+                        "now": _NOW,
+                    },
+                )
+            if blocked_fact == "legacy_run":
+                connection.execute(
+                    text(
+                        "INSERT INTO collection_runs("
+                        "id, job_id, trigger_type, config_snapshot, status, created_at"
+                        ") VALUES ("
+                        ":id, :job_id, 'api', "
+                        '\'{"schema_version":"collection-run-config.v1"}\'::jsonb, '
+                        "'queued', :now)"
+                    ),
+                    {"id": uuid4(), "job_id": job_id, "now": _NOW},
+                )
+            if blocked_fact == "legacy_batch":
+                connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+                connection.execute(
+                    text(
+                        "INSERT INTO processing_import_batches("
+                        "id, input_artifact_id, status, stats, created_at"
+                        ") VALUES ("
+                        ":id, :artifact_id, 'succeeded', "
+                        "'{\"keyword_selection\":{}}'::jsonb, :now)"
+                    ),
+                    {"id": uuid4(), "artifact_id": uuid4(), "now": _NOW},
+                )
+            if blocked_fact == "legacy_campaign":
+                connection.execute(
+                    text(
+                        "INSERT INTO historical_import_campaigns("
+                        "id, client_idempotency_key, root_relative_path, "
+                        "profile_snapshot, keyword_pack_snapshot, status, created_at"
+                        ") VALUES ("
+                        ":id, :key, '.', '{}'::jsonb, '{}'::jsonb, 'succeeded', :now)"
+                    ),
+                    {
+                        "id": uuid4(),
+                        "key": f"stage7-{blocked_fact}-{uuid4().hex}",
+                        "now": _NOW,
+                    },
+                )
+            if blocked_fact == "unowned_vehicle":
+                catalog_version = connection.scalar(
+                    text("SELECT max(version) FROM vehicle_catalog_versions")
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO vehicle_models("
+                        "id, code, display_name, brand_id, status, version, catalog_version, "
+                        "created_at, updated_at"
+                        ") VALUES ("
+                        ":id, :code, '未归属车型', NULL, 'active', 1, "
+                        ":catalog_version, :now, :now)"
+                    ),
+                    {
+                        "id": uuid4(),
+                        "code": f"UNOWNED-{uuid4().hex}",
+                        "catalog_version": catalog_version,
+                        "now": _NOW,
+                    },
+                )
+    finally:
+        engine.dispose()
+
+    expected = {
+        "legacy_job": "旧 ingestion.import-excel.v1 Job",
+        "legacy_batch": "旧 Import Batch Snapshot",
+        "legacy_run": "旧 Collection Run Snapshot",
+        "legacy_campaign": "旧 Data Import Campaign Snapshot",
+        "unowned_vehicle": "缺少有效 Brand Ownership",
+    }[blocked_fact]
+    with pytest.raises(RuntimeError, match=expected):
+        _upgrade(migration_database, "20260910_0047")
+
+    engine = _engine(migration_database)
+    try:
+        assert "global_relevance_config" in set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260910_0046"
+            )
+    finally:
+        engine.dispose()

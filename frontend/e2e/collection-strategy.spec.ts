@@ -1,40 +1,15 @@
 import { expect, test } from './fixture'
 
 const packId = '11111111-1111-4111-8111-111111111111'
-const relevancePackId = '22222222-2222-4222-8222-222222222222'
+const secondaryPackId = '22222222-2222-4222-8222-222222222222'
 const planId = '33333333-3333-4333-8333-333333333333'
 const providerId = '44444444-4444-4444-8444-444444444444'
-const historicalVehicleId = '66666666-6666-4666-8666-666666666666'
-const activeVehicleId = '77777777-7777-4777-8777-777777777777'
 const activeBrandId = '88888888-8888-4888-8888-888888888888'
 
 const packs = [
   { id: packId, name: '爱玛新品发现', description: 'Discovery', enabled: true, version: 4, keyword_count: 2 },
-  { id: relevancePackId, name: '爱玛核心相关词', description: 'Relevance', enabled: true, version: 8, keyword_count: 3 },
+  { id: secondaryPackId, name: '门店活动发现', description: 'Discovery', enabled: true, version: 8, keyword_count: 3 },
 ]
-const historicalVehicle = {
-  id: historicalVehicleId,
-  code: 'A7',
-  display_name: '爱玛 A7',
-  status: 'deprecated',
-  version: 3,
-  catalog_version: 9,
-  merged_into_id: null,
-  aliases: [],
-  keyword_pack_ids: [],
-  referenced: true,
-  created_at: '2026-08-01T00:00:00Z',
-  updated_at: '2026-08-28T00:00:00Z',
-}
-const activeVehicle = {
-  ...historicalVehicle,
-  id: activeVehicleId,
-  code: 'Q7',
-  display_name: '爱玛 Q7',
-  status: 'active',
-  version: 1,
-  referenced: false,
-}
 const activeBrand = {
   id: activeBrandId,
   code: 'AIMA',
@@ -60,7 +35,7 @@ const plan = {
   comment_policy: 'adaptive',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId, search_config: {} }],
   keyword_pack_ids: [packId],
-  vehicle_model_ids: [historicalVehicleId],
+  brand_ids: [activeBrandId],
   created_at: '2026-08-21T00:00:00Z',
   updated_at: '2026-08-21T00:00:00Z',
 }
@@ -75,30 +50,6 @@ test.beforeEach(async ({ page }) => {
     }
     if (url.pathname === `/api/v1/keyword-packs/${packId}`) {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...packs[0], keywords: [{ id: '55555555-5555-4555-8555-555555555555', text: '爱玛 Q7', platform_scope: 'all', enabled: true, priority: 10, note: '' }] }) })
-      return
-    }
-    if (url.pathname === '/api/v1/vehicle-models' && request.method() === 'GET') {
-      const activeOnly = url.searchParams.get('status') === 'active'
-      const offset = Number(url.searchParams.get('offset') ?? '0')
-      if (activeOnly) {
-        const items = offset === 0
-          ? Array.from({ length: 200 }, (_, index) => ({
-            ...activeVehicle,
-            id: `active-${index}`,
-            code: `Q${index}`,
-            display_name: `候选车型 ${index}`,
-          }))
-          : offset === 200 ? [activeVehicle] : []
-        await route.fulfill({
-          contentType: 'application/json',
-          body: JSON.stringify({ items, total: 201, catalog_version: 9, offset, limit: 200 }),
-        })
-        return
-      }
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ items: [historicalVehicle], total: 1, catalog_version: 9, offset: 0, limit: 200 }),
-      })
       return
     }
     if (url.pathname === '/api/v1/vehicle-brands' && request.method() === 'GET') {
@@ -117,14 +68,6 @@ test.beforeEach(async ({ page }) => {
       })
       return
     }
-    if (url.pathname === '/api/v1/relevance-config' && request.method() === 'GET') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ keyword_pack_id: relevancePackId, keyword_pack_version: 8, version: 3, effective_keywords: ['爱玛', '爱玛电动车'], updated_at: '2026-08-21T00:00:00Z' }) })
-      return
-    }
-    if (url.pathname === '/api/v1/relevance-config' && request.method() === 'PUT') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ keyword_pack_id: packId, keyword_pack_version: 4, version: 4, effective_keywords: ['爱玛 Q7'], updated_at: '2026-08-21T01:00:00Z' }) })
-      return
-    }
     if (url.pathname === '/api/v1/collection-capabilities') {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: [], supported_content_types: ['all', 'video', 'image'], manual_default: { sort_mode: 'latest', published_within: '1d', content_type: 'all' } } }] }) })
       return
@@ -141,7 +84,7 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('matches the approved Figma workspace and resolves historical vehicle scope from the API catalog', async ({ page }) => {
+test('matches the approved Figma workspace and resolves the current Brand filter from the API catalog', async ({ page }) => {
   await page.goto('/collection-strategy')
 
   await expect(page.getByRole('heading', { name: '采集策略' })).toBeVisible()
@@ -164,16 +107,15 @@ test('matches the approved Figma workspace and resolves historical vehicle scope
   const planRow = page.locator('.plan-table tbody tr').filter({ hasText: '爱玛口碑周期采集' })
   await expect(planRow.getByText(planId)).toHaveCount(0)
   await expect(planRow.getByText('爱玛新品发现')).toBeVisible()
-  await expect(planRow.getByText('历史车型：爱玛 A7')).toBeVisible()
+  await expect(planRow.getByText('品牌：爱玛')).toBeVisible()
   await expect(page.getByText('智能洞察')).toHaveCount(0)
   await expect(page.getByText('单次运行')).toHaveCount(0)
 
   await planRow.getByRole('button', { name: '查看详情' }).click()
   const detail = page.getByRole('dialog', { name: '采集计划详情' })
   await expect(detail.getByText('爱玛新品发现 · v4')).toBeVisible()
-  await expect(detail.getByRole('heading', { name: '历史车型范围 · 只读兼容' })).toBeVisible()
-  await expect(detail.getByText('爱玛 A7 · A7')).toBeVisible()
-  await expect(detail.getByText('历史计划：沿用兼容默认（不限时间）')).toBeVisible()
+  await expect(detail.getByRole('heading', { name: '内容过滤条件 · 品牌' })).toBeVisible()
+  await expect(detail.getByText('爱玛 · 自有')).toBeVisible()
   await expect(detail.getByText(planId)).not.toBeVisible()
   await detail.getByText('技术详情', { exact: true }).click()
   await expect(detail.getByText(planId)).toBeVisible()

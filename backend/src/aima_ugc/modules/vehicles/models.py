@@ -49,17 +49,6 @@ class VehicleModel:
 
 
 @dataclass(frozen=True, slots=True)
-class VehicleCatalogSnapshot:
-    """任务冻结的车型选择和解析后别名。"""
-
-    catalog_version: int
-    vehicle_model_ids: tuple[UUID, ...]
-    resolved_aliases: tuple[str, ...]
-    vehicle_versions: tuple[tuple[UUID, int], ...] = ()
-    alias_bindings: tuple[tuple[UUID, str], ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
 class ContentVehicleEvidence:
     """内容与车型之间可追溯、可人工锁定的证据。"""
 
@@ -80,7 +69,6 @@ class ContentVehicleEvidence:
 __all__ = [
     "ContentVehicleEvidence",
     "VehicleAlias",
-    "VehicleCatalogSnapshot",
     "VehicleEvidenceSource",
     "VehicleModel",
     "VehicleStatus",

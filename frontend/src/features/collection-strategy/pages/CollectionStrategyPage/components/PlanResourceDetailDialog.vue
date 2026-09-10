@@ -1,22 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-import type { KeywordPackResponse, KeywordPackSummaryResponse, VehicleModelResponse } from '../../../../../generated/api/client'
+import type { KeywordPackResponse, KeywordPackSummaryResponse } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
-import { fetchPack, fetchVehicle } from '../../../api'
-import { collectionPlatformLabel, formatBeijingDateTime } from '../../../presentation'
+import { fetchPack } from '../../../api'
+import { collectionPlatformLabel } from '../../../presentation'
 
 const props = defineProps<{
-  resource: { kind: 'pack' | 'vehicle'; id: string } | null
+  resource: { kind: 'pack'; id: string } | null
   packs: KeywordPackSummaryResponse[]
-  vehicles: VehicleModelResponse[]
 }>()
 const emit = defineEmits<{ close: [] }>()
 const open = computed({ get: () => props.resource !== null, set: (value: boolean) => { if (!value) emit('close') } })
 const pack = ref<KeywordPackResponse | null>(null)
-const vehicle = ref<VehicleModelResponse | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 let requestVersion = 0
@@ -26,18 +24,12 @@ async function load(): Promise<void> {
   const version = ++requestVersion
   const resource = props.resource
   pack.value = null
-  vehicle.value = null
   error.value = null
   loading.value = resource !== null
   if (!resource) return
   try {
-    if (resource.kind === 'pack') {
-      const result = await fetchPack(resource.id)
-      if (version === requestVersion) pack.value = result
-    } else {
-      const result = await fetchVehicle(resource.id)
-      if (version === requestVersion) vehicle.value = result
-    }
+    const result = await fetchPack(resource.id)
+    if (version === requestVersion) pack.value = result
   } catch (reason) {
     if (version === requestVersion) error.value = reason instanceof Error ? reason.message : '无法读取资源详情，请重试。'
   } finally {
@@ -51,12 +43,12 @@ watch(() => props.resource, load, { immediate: true })
 <template>
   <AimaDialog
     v-model="open"
-    :label="resource?.kind === 'vehicle' ? '车型详情' : '关键词包详情'"
+    label="关键词包详情"
     width="630px"
     class="plan-resource-dialog"
   >
     <template #header>
-      <div><h2>{{ resource?.kind === 'vehicle' ? '车型详情' : '关键词包详情' }}</h2><p>当前配置 · 每次运行会另行冻结当时使用的配置</p></div>
+      <div><h2>关键词包详情</h2><p>当前配置 · 每次运行会另行冻结当时使用的配置</p></div>
       <AimaButton
         variant="text"
         aria-label="关闭"
@@ -110,59 +102,6 @@ watch(() => props.resource, load, { immediate: true })
             :key="`${item.id}-${item.platform_scope}`"
           >
             {{ item.text }}：{{ item.id }}
-          </p>
-        </details>
-      </template>
-      <template v-else-if="vehicle">
-        <h3>{{ vehicle.display_name }} <small>v{{ vehicle.version }}</small></h3>
-        <dl>
-          <div><dt>车型编码</dt><dd>{{ vehicle.code }}</dd></div>
-          <div><dt>状态</dt><dd>{{ vehicle.status === 'active' ? '已启用' : vehicle.status === 'deprecated' ? '已停用' : '已合并' }}</dd></div>
-          <div><dt>系列</dt><dd>{{ vehicle.series_name || '未设置' }}</dd></div>
-          <div><dt>分类</dt><dd>{{ vehicle.category_name || '未设置' }}</dd></div>
-          <div><dt>目录版本</dt><dd>v{{ vehicle.catalog_version }}</dd></div>
-          <div><dt>业务引用</dt><dd>{{ vehicle.referenced ? '已被引用' : '尚未引用' }}</dd></div>
-          <div><dt>创建时间</dt><dd>{{ formatBeijingDateTime(vehicle.created_at) }}</dd></div>
-          <div><dt>最近更新</dt><dd>{{ formatBeijingDateTime(vehicle.updated_at) }}</dd></div>
-          <div v-if="vehicle.merged_into_id">
-            <dt>合并至</dt><dd>{{ vehicles.find((item) => item.id === vehicle?.merged_into_id)?.display_name || '目标车型不在当前目录' }}</dd>
-          </div>
-        </dl>
-        <h4>全部别名（{{ vehicle.aliases?.length ?? 0 }}）</h4>
-        <ul v-if="vehicle.aliases?.length">
-          <li
-            v-for="alias in vehicle.aliases"
-            :key="alias.id"
-          >
-            {{ alias.text }}
-          </li>
-        </ul><p v-else>
-          未设置别名。
-        </p>
-        <h4>关联词包（{{ vehicle.keyword_pack_ids?.length ?? 0 }}）</h4>
-        <ul v-if="vehicle.keyword_pack_ids?.length">
-          <li
-            v-for="id in vehicle.keyword_pack_ids"
-            :key="id"
-          >
-            {{ packs.find((item) => item.id === id)?.name || '历史词包（当前目录不可用）' }}
-          </li>
-        </ul><p v-else>
-          未关联词包。
-        </p>
-        <details>
-          <summary>技术详情</summary><p>车型标识：{{ vehicle.id }}</p><p v-if="vehicle.merged_into_id">
-            合并目标标识：{{ vehicle.merged_into_id }}
-          </p><p
-            v-for="id in vehicle.keyword_pack_ids"
-            :key="id"
-          >
-            词包标识：{{ id }}
-          </p><p
-            v-for="alias in vehicle.aliases"
-            :key="alias.id"
-          >
-            别名标识：{{ alias.id }} · 标准化文本：{{ alias.normalized_text }}
           </p>
         </details>
       </template>

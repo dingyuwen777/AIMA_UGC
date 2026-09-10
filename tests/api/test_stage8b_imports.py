@@ -8,8 +8,6 @@ import aima_ugc.bootstrap.api as api_module
 import pytest
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.contracts.http import (
-    GlobalRelevanceConfigRequest,
-    GlobalRelevanceConfigResponse,
     ImportBatchCreatedResponse,
     ImportBatchResponse,
     ImportStatsResponse,
@@ -24,7 +22,6 @@ from aima_ugc.modules.ingestion.http import (
     ImportConflict,
     ImportResourceNotFound,
     InvalidImportFile,
-    RelevanceConfigurationError,
 )
 from aima_ugc.modules.ingestion.xlsx_security import MAX_MULTIPART_BODY_BYTES
 from fastapi.testclient import TestClient
@@ -120,27 +117,6 @@ class _FakeImportService:
     def get_keyword_pack(self, pack_id: UUID) -> KeywordPackResponse:
         assert pack_id == self.pack_id
         return self._pack("全局相关性", "")
-
-    def set_global_relevance(
-        self,
-        request: GlobalRelevanceConfigRequest,
-        *,
-        actor_ref: str,
-        request_id: str,
-    ) -> GlobalRelevanceConfigResponse:
-        assert request.keyword_pack_id == self.pack_id
-        assert actor_ref == "local-administrator"
-        assert request_id
-        return self.get_global_relevance()
-
-    def get_global_relevance(self) -> GlobalRelevanceConfigResponse:
-        return GlobalRelevanceConfigResponse(
-            keyword_pack_id=self.pack_id,
-            keyword_pack_version=1,
-            version=1,
-            effective_keywords=("爱玛",),
-            updated_at=datetime(2026, 8, 20, tzinfo=UTC),
-        )
 
     def _pack(
         self,
@@ -240,7 +216,7 @@ def test_streamed_multipart_body_without_content_length_uses_actual_byte_limit(
     assert response.json()["errors"][0]["code"] == "multipart_body_too_large"
 
 
-def test_keyword_and_global_relevance_contracts_are_http_visible() -> None:
+def test_keyword_pack_contracts_are_http_visible() -> None:
     service = _FakeImportService()
     client = TestClient(create_app(import_service=service))
 
@@ -249,16 +225,8 @@ def test_keyword_and_global_relevance_contracts_are_http_visible() -> None:
         f"/api/v1/keyword-packs/{service.pack_id}/keywords",
         json={"text": "爱玛", "priority": 10},
     )
-    configured = client.put(
-        "/api/v1/relevance-config",
-        json={"keyword_pack_id": str(service.pack_id)},
-    )
-    loaded = client.get("/api/v1/relevance-config")
-
     assert pack.status_code == keyword.status_code == 201
     assert keyword.json()["keywords"][0]["text"] == "爱玛"
-    assert configured.status_code == loaded.status_code == 200
-    assert loaded.json()["effective_keywords"] == ["爱玛"]
 
 
 def test_keyword_contract_rejects_whitespace_only_values() -> None:
@@ -297,16 +265,13 @@ def test_keyword_conflict_uses_stable_error_contract() -> None:
     assert response.json()["request_id"] == response.headers["x-request-id"]
 
 
-def test_not_found_relevance_and_internal_failures_do_not_leak_details(
+def test_not_found_and_internal_failures_do_not_leak_details(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     class ErrorService(_FakeImportService):
         def get_job(self, job_id: UUID) -> JobStatusResponse:
             del job_id
             raise ImportResourceNotFound
-
-        def get_global_relevance(self) -> GlobalRelevanceConfigResponse:
-            raise RelevanceConfigurationError
 
         def get_keyword_pack(self, pack_id: UUID) -> KeywordPackResponse:
             del pack_id
@@ -318,14 +283,11 @@ def test_not_found_relevance_and_internal_failures_do_not_leak_details(
         raise_server_exceptions=False,
     )
     missing = client.get(f"/api/v1/jobs/{uuid4()}")
-    relevance = client.get("/api/v1/relevance-config")
     internal = client.get(f"/api/v1/keyword-packs/{uuid4()}")
 
     assert missing.status_code == 404
-    assert relevance.status_code == 409
     assert internal.status_code == 500
     assert missing.json()["errors"][0]["code"] == "resource_not_found"
-    assert relevance.json()["errors"][0]["code"] == "relevance_config_unavailable"
     assert "secret" not in internal.text
     assert internal.json()["request_id"] == internal.headers["x-request-id"]
     matching_records = [

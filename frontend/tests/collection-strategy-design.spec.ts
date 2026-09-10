@@ -24,7 +24,6 @@ const plan: CollectionPlanResponse = {
   platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
   keyword_pack_ids: ['pack-1', 'pack-2'],
   brand_ids: ['brand-1', 'brand-2'],
-  vehicle_model_ids: ['vehicle-1', 'vehicle-2'],
   created_at: '2026-08-28T08:00:00+08:00',
   updated_at: '2026-08-28T08:00:00+08:00',
 }

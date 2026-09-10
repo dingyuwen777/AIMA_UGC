@@ -27,20 +27,8 @@ from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatal
 from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
     PostgresProcessingImportBatchRepository,
 )
-from aima_ugc.adapters.persistence.postgres.relevance import (
-    GlobalRelevanceUnavailable,
-    PostgresGlobalRelevanceRepository,
-)
-from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
-    MissingScheduledKeywordPackError,
-    PostgresScheduledKeywordSnapshotReader,
-)
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
-from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
-from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.contracts.http import (
-    GlobalRelevanceConfigRequest,
-    GlobalRelevanceConfigResponse,
     ImportBatchCreatedResponse,
     ImportBatchListQuery,
     ImportBatchListResponse,
@@ -56,11 +44,7 @@ from aima_ugc.contracts.http import (
     KeywordPackResponse,
     KeywordResponse,
 )
-from aima_ugc.modules.analysis import (
-    RelevanceKeyword,
-    RelevanceService,
-    normalize_keyword_storage_text,
-)
+from aima_ugc.modules.analysis import normalize_keyword_storage_text
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.http import (
@@ -70,22 +54,17 @@ from aima_ugc.modules.ingestion.http import (
     ImportResourceNotFound,
     ImportUploadTooLarge,
     InvalidImportFile,
-    RelevanceConfigurationError,
 )
 from aima_ugc.modules.ingestion.import_batch_cursor import (
     ImportBatchCursorCodec,
     ImportBatchCursorPosition,
 )
 from aima_ugc.modules.ingestion.import_job import (
-    BRAND_VEHICLE_IMPORT_JOB_PAYLOAD_VERSION,
-    BRAND_VEHICLE_IMPORT_JOB_TYPE,
     IMPORT_JOB_MAX_ATTEMPTS,
+    IMPORT_JOB_PAYLOAD_VERSION,
     IMPORT_JOB_TIMEOUT_SECONDS,
-    LEGACY_IMPORT_JOB_TYPE,
-    BrandVehicleImportJobPayload,
-    ImportKeywordPackSnapshot,
-    ImportKeywordSelectionSnapshot,
-    ImportVehicleModelSnapshot,
+    IMPORT_JOB_TYPE,
+    ImportJobPayload,
 )
 from aima_ugc.modules.ingestion.query import ImportBatchReadQuery, ImportBatchReadRecord
 from aima_ugc.modules.ingestion.xlsx_security import (
@@ -105,72 +84,6 @@ from .runtime import PlatformRuntime
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _IMPORT_PROFILE = "aima-monitoring-excel.v1"
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
-
-
-def read_import_keyword_selection(
-    runtime: PlatformRuntime,
-    keyword_pack_ids: tuple[UUID, ...],
-    vehicle_model_ids: tuple[UUID, ...] = (),
-) -> ImportKeywordSelectionSnapshot:
-    """复用正式目录读取链，冻结 Import/Historical Campaign 的资源选择。"""
-
-    if (not keyword_pack_ids and not vehicle_model_ids) or len(keyword_pack_ids) > 20:
-        raise RelevanceConfigurationError
-    if len(keyword_pack_ids) != len(set(keyword_pack_ids)):
-        raise RelevanceConfigurationError
-    if len(vehicle_model_ids) > 100 or len(vehicle_model_ids) != len(set(vehicle_model_ids)):
-        raise RelevanceConfigurationError
-    session = runtime.database.new_session()
-    try:
-        with session.begin():
-            try:
-                catalog = PostgresScheduledKeywordSnapshotReader(session).read(keyword_pack_ids)
-            except (MissingScheduledKeywordPackError, ValueError) as exc:
-                raise RelevanceConfigurationError from exc
-            if any(not pack.enabled for pack in catalog.keyword_packs):
-                raise RelevanceConfigurationError
-            if keyword_pack_ids:
-                configured = tuple(
-                    RelevanceKeyword(text=entry.keyword_text, priority=entry.priority)
-                    for entry in catalog.entries
-                    if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
-                )
-                try:
-                    effective = RelevanceService(configured).effective_keywords
-                except ValueError as exc:
-                    raise RelevanceConfigurationError from exc
-            else:
-                effective = ()
-            try:
-                vehicle_snapshot = PostgresVehicleCatalogRepository(session).snapshot(
-                    vehicle_model_ids
-                )
-            except LookupError as exc:
-                raise RelevanceConfigurationError from exc
-            aliases_by_model: dict[UUID, list[str]] = {
-                model_id: [] for model_id in vehicle_model_ids
-            }
-            for model_id, alias in vehicle_snapshot.alias_bindings:
-                aliases_by_model[model_id].append(alias)
-            versions = dict(vehicle_snapshot.vehicle_versions)
-            return ImportKeywordSelectionSnapshot(
-                keyword_packs=tuple(
-                    ImportKeywordPackSnapshot(id=pack.pack_id, version=pack.version)
-                    for pack in catalog.keyword_packs
-                ),
-                effective_keywords=effective,
-                vehicle_catalog_version=vehicle_snapshot.catalog_version,
-                vehicle_models=tuple(
-                    ImportVehicleModelSnapshot(
-                        id=model_id,
-                        version=versions[model_id],
-                        aliases=tuple(aliases_by_model[model_id]),
-                    )
-                    for model_id in vehicle_model_ids
-                ),
-            )
-    finally:
-        session.close()
 
 
 class PostgresImportHttpService:
@@ -237,9 +150,9 @@ class PostgresImportHttpService:
         try:
             with session.begin():
                 job = PostgresJobRepository(session).enqueue(
-                    job_type=BRAND_VEHICLE_IMPORT_JOB_TYPE,
-                    payload_version=BRAND_VEHICLE_IMPORT_JOB_PAYLOAD_VERSION,
-                    payload=BrandVehicleImportJobPayload(
+                    job_type=IMPORT_JOB_TYPE,
+                    payload_version=IMPORT_JOB_PAYLOAD_VERSION,
+                    payload=ImportJobPayload(
                         filter_snapshot=filter_snapshot,
                     ).model_dump(mode="json"),
                     internal_idempotency_key=f"import-batch:{batch_id}",
@@ -358,16 +271,13 @@ class PostgresImportHttpService:
             raise ImportCursorUnavailable from exc
 
     def get_job(self, job_id: UUID) -> JobStatusResponse:
-        """查询接口同时承认升级前 v1 与 Stage 3 v2 Import Job。"""
+        """查询当前 Excel Import Job。"""
 
         session = self._runtime.database.new_session()
         try:
             with session.begin():
                 job = PostgresJobRepository(session).get(job_id)
-                if job is None or job.job_type not in {
-                    LEGACY_IMPORT_JOB_TYPE,
-                    BRAND_VEHICLE_IMPORT_JOB_TYPE,
-                }:
+                if job is None or job.job_type != IMPORT_JOB_TYPE:
                     raise ImportResourceNotFound
                 return _job_response(job)
         finally:
@@ -511,44 +421,6 @@ class PostgresImportHttpService:
         finally:
             session.close()
 
-    def set_global_relevance(
-        self,
-        request: GlobalRelevanceConfigRequest,
-        *,
-        actor_ref: str = "system:direct-service-call",
-        request_id: str = "direct-service-call",
-    ) -> GlobalRelevanceConfigResponse:
-        session = self._runtime.database.new_session()
-        try:
-            with session.begin():
-                repository = PostgresGlobalRelevanceRepository(session)
-                try:
-                    repository.set(request.keyword_pack_id)
-                    snapshot, updated_at = repository.snapshot()
-                except LookupError as exc:
-                    raise ImportResourceNotFound from exc
-                except GlobalRelevanceUnavailable as exc:
-                    raise RelevanceConfigurationError from exc
-                _audit_configuration(
-                    session,
-                    actor_ref=actor_ref,
-                    request_id=request_id,
-                    event_type="global_relevance_config_updated",
-                    object_type="global_relevance_config",
-                    object_id="global",
-                    detail={
-                        "keyword_pack_id": str(snapshot.keyword_pack_id),
-                        "keyword_pack_version": snapshot.keyword_pack_version,
-                    },
-                )
-                return _relevance_response(snapshot, updated_at)
-        finally:
-            session.close()
-
-    def get_global_relevance(self) -> GlobalRelevanceConfigResponse:
-        snapshot, updated_at = self._read_relevance_snapshot()
-        return _relevance_response(snapshot, updated_at)
-
     def _read_brand_vehicle_filter_snapshot(
         self,
         brand_ids: tuple[UUID, ...],
@@ -565,24 +437,6 @@ class PostgresImportHttpService:
                 except (LookupError, ValueError) as exc:
                     raise BrandVehicleFilterUnavailable from exc
                 return BrandVehicleFilterSnapshot(catalog=catalog)
-        finally:
-            session.close()
-
-    def _read_import_keyword_selection(
-        self,
-        keyword_pack_ids: tuple[UUID, ...],
-        vehicle_model_ids: tuple[UUID, ...] = (),
-    ) -> ImportKeywordSelectionSnapshot:
-        return read_import_keyword_selection(self._runtime, keyword_pack_ids, vehicle_model_ids)
-
-    def _read_relevance_snapshot(self) -> tuple[RelevanceSnapshotV1, datetime]:
-        session = self._runtime.database.new_session()
-        try:
-            with session.begin():
-                try:
-                    return PostgresGlobalRelevanceRepository(session).snapshot()
-                except GlobalRelevanceUnavailable as exc:
-                    raise RelevanceConfigurationError from exc
         finally:
             session.close()
 
@@ -651,19 +505,6 @@ def _pack_response(
             )
             for keyword, item in repository.list_keywords_for_pack(pack.id)
         ),
-    )
-
-
-def _relevance_response(
-    frozen: RelevanceSnapshotV1,
-    updated_at: datetime,
-) -> GlobalRelevanceConfigResponse:
-    return GlobalRelevanceConfigResponse(
-        keyword_pack_id=frozen.keyword_pack_id,
-        keyword_pack_version=frozen.keyword_pack_version,
-        version=frozen.config_version,
-        effective_keywords=frozen.effective_keywords,
-        updated_at=updated_at,
     )
 
 
@@ -786,4 +627,4 @@ def _stat(stats: dict[str, object], name: str) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
-__all__ = ["PostgresImportHttpService", "read_import_keyword_selection"]
+__all__ = ["PostgresImportHttpService"]

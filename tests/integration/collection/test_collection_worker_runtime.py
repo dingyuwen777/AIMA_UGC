@@ -12,9 +12,6 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
 from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatalogRepository
-from aima_ugc.adapters.persistence.postgres.relevance import (
-    PostgresGlobalRelevanceRepository,
-)
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
@@ -123,7 +120,6 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
                         note="worker vertical slice",
                     )
                 )
-                PostgresGlobalRelevanceRepository(session).set(pack.id)
                 provider_config = providers.create(
                     ProviderConfig(
                         id=uuid4(),
@@ -202,7 +198,6 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
 
         assert registry.supported_types == (
             "collection.run.v1",
-            "ingestion.import-excel.v1",
             "ingestion.import-excel.v2",
             "ingestion.historical-discover.v1",
             "ingestion.historical-snapshot.v1",
@@ -210,6 +205,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "analysis.content-label.v1",
             "analysis.content-run-plan.v1",
             "reporting.content-export-excel.v1",
+            "vehicles.content-reclassification.v1",
         )
         assert worker.run_once() is True
         assert worker.run_once() is False

@@ -19,7 +19,6 @@ from aima_ugc.adapters.persistence.postgres.keywords import (
     KeywordPackSummaryRecord,
     PostgresKeywordCatalogRepository,
 )
-from aima_ugc.adapters.persistence.postgres.relevance import PostgresGlobalRelevanceRepository
 from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     MissingScheduledKeywordPackError,
     PostgresScheduledKeywordSnapshotReader,
@@ -103,9 +102,6 @@ class PostgresCollectionStrategyHttpService:
                 if current is None:
                     raise CollectionStrategyResourceNotFound
                 if not request.enabled and current.enabled:
-                    relevance = PostgresGlobalRelevanceRepository(session).get()
-                    if relevance is not None and relevance.keyword_pack_id == pack_id:
-                        raise CollectionStrategyConflict("全局 Relevance 正在引用该词包")
                     if PostgresCollectionPlanningRepository(
                         session
                     ).has_enabled_plan_for_keyword_pack(pack_id):
@@ -276,7 +272,6 @@ def _plan_definition(
         ),
         keyword_pack_ids=request.keyword_pack_ids,
         brand_ids=request.brand_ids,
-        vehicle_model_ids=request.vehicle_model_ids,
     )
 
 
@@ -313,8 +308,6 @@ def _validate_execution_surface(
     *,
     require_explicit_search_config: bool,
 ) -> None:
-    if plan.brand_ids and plan.vehicle_model_ids:
-        raise CollectionStrategyConflict("Brand Scope 与兼容 Vehicle Scope 不能同时存在")
     keyword_repository = PostgresKeywordCatalogRepository(session)
     for pack_id in sorted(plan.keyword_pack_ids, key=str):
         pack = keyword_repository.get_pack_for_update(pack_id)
@@ -337,10 +330,7 @@ def _validate_execution_surface(
         keyword_entries = ()
     try:
         brand_repository = PostgresBrandVehicleRepository(session)
-        selected_brand_ids = plan.brand_ids or brand_repository.brand_ids_for_vehicle_models(
-            plan.vehicle_model_ids
-        )
-        filter_snapshot = brand_repository.snapshot(brand_ids=selected_brand_ids or None)
+        filter_snapshot = brand_repository.snapshot(brand_ids=plan.brand_ids or None)
     except (LookupError, ValueError) as exc:
         raise CollectionStrategyResourceNotFound from exc
     if not filter_snapshot.brands:
@@ -413,7 +403,6 @@ def _plan_response(record: CollectionPlanRecord) -> CollectionPlanResponse:
         ),
         keyword_pack_ids=record.keyword_pack_ids,
         brand_ids=record.brand_ids,
-        vehicle_model_ids=record.vehicle_model_ids,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )

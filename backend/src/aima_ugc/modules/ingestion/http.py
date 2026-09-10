@@ -6,8 +6,6 @@ from typing import BinaryIO, Protocol
 from uuid import UUID
 
 from aima_ugc.contracts.http import (
-    GlobalRelevanceConfigRequest,
-    GlobalRelevanceConfigResponse,
     ImportBatchCreatedResponse,
     ImportBatchListQuery,
     ImportBatchListResponse,
@@ -35,10 +33,6 @@ class ImportUploadTooLarge(ValueError):
 
 class InvalidImportFile(ValueError):
     """上传不是受支持且结构合法的 XLSX。"""
-
-
-class RelevanceConfigurationError(RuntimeError):
-    """全局 Relevance 配置缺失、停用或为空。"""
 
 
 class BrandVehicleFilterUnavailable(RuntimeError):
@@ -87,16 +81,6 @@ class ImportHttpService(Protocol):
 
     def get_keyword_pack(self, pack_id: UUID) -> KeywordPackResponse: ...
 
-    def set_global_relevance(
-        self,
-        request: GlobalRelevanceConfigRequest,
-        *,
-        actor_ref: str,
-        request_id: str,
-    ) -> GlobalRelevanceConfigResponse: ...
-
-    def get_global_relevance(self) -> GlobalRelevanceConfigResponse: ...
-
 
 __all__ = [
     "BrandVehicleFilterUnavailable",
@@ -107,5 +91,4 @@ __all__ = [
     "ImportUploadTooLarge",
     "InvalidImportFile",
     "InvalidImportCursor",
-    "RelevanceConfigurationError",
 ]

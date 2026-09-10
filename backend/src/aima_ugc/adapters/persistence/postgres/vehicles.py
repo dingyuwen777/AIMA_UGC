@@ -7,16 +7,14 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, insert, literal, or_, select, update
+from sqlalchemy import delete, func, insert, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import CursorResult, RowMapping
 from sqlalchemy.orm import Session
 
-from aima_ugc.modules.collection.tables import collection_plan_vehicle_models_table
 from aima_ugc.modules.vehicles.models import (
     ContentVehicleEvidence,
     VehicleAlias,
-    VehicleCatalogSnapshot,
     VehicleModel,
     VehicleStatus,
     normalize_vehicle_text,
@@ -24,7 +22,6 @@ from aima_ugc.modules.vehicles.models import (
 from aima_ugc.modules.vehicles.tables import (
     content_vehicle_evidence_table,
     content_vehicle_review_locks_table,
-    keyword_pack_vehicle_models_table,
     vehicle_brands_table,
     vehicle_catalog_versions_table,
     vehicle_model_aliases_table,
@@ -59,6 +56,14 @@ class PostgresVehicleCatalogRepository:
         """绑定调用方拥有的车型目录事务。"""
 
         self._session = session
+
+    def _lock_vehicle_review_write(self, *, content_id: UUID, content_version: int) -> None:
+        """串行化同一 Content Version 的自动/人工 Vehicle Evidence 写入。"""
+
+        lock_key = f"vehicle-review:{content_id}:{content_version}"
+        self._session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+        )
 
     def current_catalog_version(self) -> int:
         """返回当前目录版本；Migration 始终播种 version=1。"""
@@ -270,40 +275,6 @@ class PostgresVehicleCatalogRepository:
             raise RuntimeError("合并源必须未合并且目标必须为 active")
         catalog_version = self.next_catalog_version(reason="vehicle_merged", actor_ref=actor_ref)
         self._session.execute(
-            pg_insert(keyword_pack_vehicle_models_table)
-            .from_select(
-                ["pack_id", "vehicle_model_id", "enabled", "created_at"],
-                select(
-                    keyword_pack_vehicle_models_table.c.pack_id,
-                    literal(target_id),
-                    keyword_pack_vehicle_models_table.c.enabled,
-                    keyword_pack_vehicle_models_table.c.created_at,
-                ).where(keyword_pack_vehicle_models_table.c.vehicle_model_id == source_id),
-            )
-            .on_conflict_do_nothing()
-        )
-        self._session.execute(
-            delete(keyword_pack_vehicle_models_table).where(
-                keyword_pack_vehicle_models_table.c.vehicle_model_id == source_id
-            )
-        )
-        self._session.execute(
-            pg_insert(collection_plan_vehicle_models_table)
-            .from_select(
-                ["plan_id", "vehicle_model_id"],
-                select(
-                    collection_plan_vehicle_models_table.c.plan_id,
-                    literal(target_id),
-                ).where(collection_plan_vehicle_models_table.c.vehicle_model_id == source_id),
-            )
-            .on_conflict_do_nothing()
-        )
-        self._session.execute(
-            delete(collection_plan_vehicle_models_table).where(
-                collection_plan_vehicle_models_table.c.vehicle_model_id == source_id
-            )
-        )
-        self._session.execute(
             update(vehicle_models_table)
             .where(vehicle_models_table.c.merged_into_id == source_id)
             .values(
@@ -351,15 +322,9 @@ class PostgresVehicleCatalogRepository:
         return True
 
     def is_referenced(self, model_id: UUID) -> bool:
-        """检查词包、计划、内容证据或合并重定向引用。"""
+        """检查内容证据或合并重定向引用。"""
 
         checks = (
-            select(keyword_pack_vehicle_models_table.c.pack_id).where(
-                keyword_pack_vehicle_models_table.c.vehicle_model_id == model_id
-            ),
-            select(collection_plan_vehicle_models_table.c.plan_id).where(
-                collection_plan_vehicle_models_table.c.vehicle_model_id == model_id
-            ),
             select(content_vehicle_evidence_table.c.id).where(
                 content_vehicle_evidence_table.c.vehicle_model_id == model_id
             ),
@@ -368,131 +333,6 @@ class PostgresVehicleCatalogRepository:
             ),
         )
         return any(self._session.scalar(statement.limit(1)) is not None for statement in checks)
-
-    def list_keyword_pack_ids(self, model_id: UUID) -> tuple[UUID, ...]:
-        """返回当前引用车型的词包。"""
-
-        return tuple(
-            self._session.scalars(
-                select(keyword_pack_vehicle_models_table.c.pack_id)
-                .where(
-                    keyword_pack_vehicle_models_table.c.vehicle_model_id == model_id,
-                    keyword_pack_vehicle_models_table.c.enabled.is_(True),
-                )
-                .order_by(keyword_pack_vehicle_models_table.c.pack_id)
-            )
-        )
-
-    def replace_keyword_pack_models(
-        self,
-        pack_id: UUID,
-        model_ids: tuple[UUID, ...],
-        *,
-        actor_ref: str,
-    ) -> tuple[UUID, ...]:
-        """原子替换 Pack↔车型引用并递增目录版本。"""
-
-        existing_models = tuple(
-            self._session.scalars(
-                select(vehicle_models_table.c.id).where(
-                    vehicle_models_table.c.id.in_(model_ids),
-                    vehicle_models_table.c.status == "active",
-                )
-            )
-        )
-        if len(existing_models) != len(model_ids):
-            raise LookupError("车型不存在或已停用")
-        self.next_catalog_version(reason="keyword_pack_vehicle_links_updated", actor_ref=actor_ref)
-        self._session.execute(
-            delete(keyword_pack_vehicle_models_table).where(
-                keyword_pack_vehicle_models_table.c.pack_id == pack_id
-            )
-        )
-        if model_ids:
-            now = beijing_now()
-            self._session.execute(
-                insert(keyword_pack_vehicle_models_table),
-                [
-                    {
-                        "pack_id": pack_id,
-                        "vehicle_model_id": model_id,
-                        "enabled": True,
-                        "created_at": now,
-                    }
-                    for model_id in model_ids
-                ],
-            )
-        return tuple(sorted(model_ids, key=str))
-
-    def snapshot(self, model_ids: tuple[UUID, ...]) -> VehicleCatalogSnapshot:
-        """冻结所选 active 车型及其别名；歧义仍由执行匹配器处理。"""
-
-        if not model_ids:
-            return VehicleCatalogSnapshot(
-                catalog_version=self.current_catalog_version(),
-                vehicle_model_ids=(),
-                resolved_aliases=(),
-            )
-        rows = tuple(
-            self._session.execute(
-                select(
-                    vehicle_models_table.c.id,
-                    vehicle_models_table.c.version,
-                    vehicle_model_aliases_table.c.text,
-                    vehicle_model_aliases_table.c.normalized_text,
-                )
-                .join(
-                    vehicle_model_aliases_table,
-                    vehicle_model_aliases_table.c.vehicle_model_id == vehicle_models_table.c.id,
-                )
-                .where(
-                    vehicle_models_table.c.id.in_(model_ids),
-                    vehicle_models_table.c.status == "active",
-                )
-                .order_by(vehicle_models_table.c.id, vehicle_model_aliases_table.c.normalized_text)
-            ).mappings()
-        )
-        found = {cast(UUID, row["id"]) for row in rows}
-        if found != set(model_ids):
-            raise LookupError("车型不存在、停用或没有有效别名")
-        selected_normalized = {cast(str, row["normalized_text"]) for row in rows}
-        global_alias_rows = self._session.execute(
-            select(
-                vehicle_model_aliases_table.c.normalized_text,
-                vehicle_model_aliases_table.c.vehicle_model_id,
-            )
-            .join(
-                vehicle_models_table,
-                vehicle_models_table.c.id == vehicle_model_aliases_table.c.vehicle_model_id,
-            )
-            .where(
-                vehicle_models_table.c.status == "active",
-                vehicle_model_aliases_table.c.normalized_text.in_(selected_normalized),
-            )
-        ).mappings()
-        candidates_by_alias: defaultdict[str, set[UUID]] = defaultdict(set)
-        for alias_row in global_alias_rows:
-            candidates_by_alias[cast(str, alias_row["normalized_text"])].add(
-                cast(UUID, alias_row["vehicle_model_id"])
-            )
-        unambiguous_rows = tuple(
-            row for row in rows if len(candidates_by_alias[cast(str, row["normalized_text"])]) == 1
-        )
-        if not unambiguous_rows:
-            raise LookupError("所选车型没有可自动解析的非歧义别名")
-        return VehicleCatalogSnapshot(
-            catalog_version=self.current_catalog_version(),
-            vehicle_model_ids=tuple(model_ids),
-            resolved_aliases=tuple(
-                dict.fromkeys(cast(str, row["text"]) for row in unambiguous_rows)
-            ),
-            vehicle_versions=tuple(
-                dict.fromkeys((cast(UUID, row["id"]), cast(int, row["version"])) for row in rows)
-            ),
-            alias_bindings=tuple(
-                (cast(UUID, row["id"]), cast(str, row["text"])) for row in unambiguous_rows
-            ),
-        )
 
     def resolve_alias_candidates(self, text: str) -> dict[str, tuple[UUID, ...]]:
         """返回命中的规范化别名及候选车型；多个候选保持歧义。"""
@@ -520,6 +360,10 @@ class PostgresVehicleCatalogRepository:
     def append_evidence(self, evidence: ContentVehicleEvidence) -> bool:
         """幂等追加内容车型证据；人工锁定不会被自动证据更新。"""
 
+        self._lock_vehicle_review_write(
+            content_id=evidence.content_id,
+            content_version=evidence.content_version,
+        )
         if not evidence.is_manual_locked:
             locked = self._session.scalar(
                 select(content_vehicle_review_locks_table.c.is_locked).where(
@@ -562,6 +406,158 @@ class PostgresVehicleCatalogRepository:
         result = cast(CursorResult[Any], self._session.execute(statement))
         return bool(result.rowcount)
 
+    def append_automatic_alias_evidence_batch(
+        self,
+        evidence: tuple[ContentVehicleEvidence, ...],
+    ) -> tuple[int, int]:
+        """批量幂等追加 alias_match，并按人工锁跳过整个 Content Version。"""
+
+        if not evidence:
+            return 0, 0
+        if any(item.source != "alias_match" or item.is_manual_locked for item in evidence):
+            raise ValueError("批量自动车型证据只接受未锁定 alias_match")
+        pairs = tuple(
+            sorted({(item.content_id, item.content_version) for item in evidence}, key=str)
+        )
+        for content_id, content_version in pairs:
+            self._lock_vehicle_review_write(
+                content_id=content_id,
+                content_version=content_version,
+            )
+        locked_pairs = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        values = [
+            {
+                "id": item.id,
+                "content_id": item.content_id,
+                "content_version": item.content_version,
+                "vehicle_model_id": item.vehicle_model_id,
+                "source": item.source,
+                "matched_text": item.matched_text,
+                "source_field": item.source_field,
+                "catalog_version": item.catalog_version,
+                "confidence": item.confidence,
+                "is_manual_locked": False,
+                "is_active": item.is_active,
+                "created_at": item.created_at,
+            }
+            for item in evidence
+            if (item.content_id, item.content_version) not in locked_pairs
+        ]
+        if not values:
+            return 0, len(locked_pairs)
+        result = cast(
+            CursorResult[Any],
+            self._session.execute(
+                pg_insert(content_vehicle_evidence_table)
+                .values(values)
+                .on_conflict_do_nothing(constraint="uq_content_vehicle_evidence_identity")
+            ),
+        )
+        return result.rowcount or 0, len(locked_pairs)
+
+    def replace_automatic_alias_evidence_batch(
+        self,
+        *,
+        entries: tuple[tuple[UUID, int, tuple[ContentVehicleEvidence, ...]], ...],
+    ) -> tuple[int, int]:
+        """批量替换自动 alias_match；空结果也会停用旧目录留下的命中。"""
+
+        if not entries:
+            return 0, 0
+        pairs = tuple(sorted({(item[0], item[1]) for item in entries}, key=str))
+        for content_id, content_version, evidence in entries:
+            if any(
+                item.content_id != content_id
+                or item.content_version != content_version
+                or item.source != "alias_match"
+                or item.is_manual_locked
+                for item in evidence
+            ):
+                raise ValueError("批量自动车型证据只接受对应 Content Version 的未锁定 alias_match")
+        for content_id, content_version in pairs:
+            self._lock_vehicle_review_write(
+                content_id=content_id,
+                content_version=content_version,
+            )
+        locked_pairs = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        unlocked_pairs = tuple(item for item in pairs if item not in locked_pairs)
+        if unlocked_pairs:
+            self._session.execute(
+                update(content_vehicle_evidence_table)
+                .where(
+                    tuple_(
+                        content_vehicle_evidence_table.c.content_id,
+                        content_vehicle_evidence_table.c.content_version,
+                    ).in_(unlocked_pairs),
+                    content_vehicle_evidence_table.c.source == "alias_match",
+                    content_vehicle_evidence_table.c.is_active.is_(True),
+                    content_vehicle_evidence_table.c.is_manual_locked.is_(False),
+                )
+                .values(is_active=False)
+            )
+
+        values = [
+            {
+                "id": item.id,
+                "content_id": item.content_id,
+                "content_version": item.content_version,
+                "vehicle_model_id": item.vehicle_model_id,
+                "source": item.source,
+                "matched_text": item.matched_text,
+                "source_field": item.source_field,
+                "catalog_version": item.catalog_version,
+                "confidence": item.confidence,
+                "is_manual_locked": False,
+                "is_active": True,
+                "created_at": item.created_at,
+            }
+            for content_id, content_version, evidence in entries
+            if (content_id, content_version) not in locked_pairs
+            for item in evidence
+        ]
+        if values:
+            statement = pg_insert(content_vehicle_evidence_table).values(values)
+            self._session.execute(
+                statement.on_conflict_do_update(
+                    constraint="uq_content_vehicle_evidence_identity",
+                    set_={
+                        "matched_text": statement.excluded.matched_text,
+                        "source_field": statement.excluded.source_field,
+                        "confidence": statement.excluded.confidence,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": statement.excluded.created_at,
+                    },
+                )
+            )
+        return len(values), len(locked_pairs)
+
     def replace_manual_evidence(
         self,
         *,
@@ -573,6 +569,10 @@ class PostgresVehicleCatalogRepository:
     ) -> None:
         """写入人工车型结论；空集合也能被锁定，显式空解锁恢复自动证据。"""
 
+        self._lock_vehicle_review_write(
+            content_id=content_id,
+            content_version=content_version,
+        )
         locked = self._session.scalar(
             select(content_vehicle_review_locks_table.c.is_locked)
             .where(

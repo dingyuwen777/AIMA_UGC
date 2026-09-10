@@ -205,7 +205,7 @@ AIMA/模态框外壳
 
 采集策略 KPI
 Keyword Pack Workspace
-Global Relevance Config
+Brand Filter Config
 Collection Plan Table / Form
 → 保持 Feature 级组件或 Pattern
 ```

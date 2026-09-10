@@ -170,7 +170,6 @@ class VehicleModelResponse(BaseModel):
     catalog_version: int = Field(gt=0)
     merged_into_id: UUID | None = None
     aliases: tuple[VehicleModelAliasResponse, ...] = ()
-    keyword_pack_ids: tuple[UUID, ...] = ()
     referenced: bool = False
     created_at: datetime
     updated_at: datetime
@@ -195,30 +194,6 @@ class VehicleModelListResponse(BaseModel):
     catalog_version: int = Field(gt=0)
     offset: int = Field(ge=0)
     limit: int = Field(ge=1, le=200)
-
-
-class KeywordPackVehicleLinkRequest(BaseModel):
-    """替换一个词包当前引用的车型集合。"""
-
-    model_config = ConfigDict(extra="forbid")
-    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-
-    @field_validator("vehicle_model_ids")
-    @classmethod
-    def validate_unique_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
-        """词包内车型引用不得重复。"""
-
-        if len(value) != len(set(value)):
-            raise ValueError("vehicle_model_ids 不能重复")
-        return value
-
-
-class KeywordPackVehicleLinksResponse(BaseModel):
-    """词包当前引用的车型 ID。"""
-
-    model_config = ConfigDict(extra="forbid")
-    pack_id: UUID
-    vehicle_model_ids: tuple[UUID, ...]
 
 
 class AnalysisSchemeDefinitionRequest(BaseModel):
@@ -477,8 +452,6 @@ __all__ = [
     "AuditEventListResponse",
     "AuditEventResponse",
     "CurrentPrincipalResponse",
-    "KeywordPackVehicleLinkRequest",
-    "KeywordPackVehicleLinksResponse",
     "PrincipalRole",
     "ProviderConfigCreateRequest",
     "ProviderConfigListResponse",

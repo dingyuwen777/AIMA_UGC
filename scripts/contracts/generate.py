@@ -10,7 +10,6 @@ from aima_ugc.contracts.analysis import (
     ContentLabelAnalysisV1,
     ContentLabelAnalysisV2,
     ContentLabelAnalysisV3,
-    RelevanceSnapshotV1,
     UnifiedContentRecordV1,
 )
 from aima_ugc.contracts.canonical import (
@@ -41,7 +40,6 @@ ANALYSIS_MODELS = {
     "content-label-analysis.v2.schema.json": ContentLabelAnalysisV2,
     "content-label-analysis.v3.schema.json": ContentLabelAnalysisV3,
     "content-record.v1.schema.json": UnifiedContentRecordV1,
-    "relevance-snapshot.v1.schema.json": RelevanceSnapshotV1,
 }
 CANONICAL_MODELS = {
     "content.v1.schema.json": CanonicalContentV1,

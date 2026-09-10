@@ -30,7 +30,7 @@ from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     BrandVehicleFilterSnapshot,
     resolve_canonical_brand_vehicle,
 )
-from aima_ugc.modules.vehicles.models import ContentVehicleEvidence, normalize_vehicle_text
+from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
 from aima_ugc.platform.time import beijing_now
@@ -312,28 +312,18 @@ def ingest_unified_content_batch(
     rows_seen: int,
     rows_rejected: int,
     source_value_filter: str | None = None,
-    vehicle_catalog_version: int | None = None,
-    vehicle_alias_bindings: tuple[tuple[UUID, str], ...] = (),
     brand_vehicle_filter_snapshot: BrandVehicleFilterSnapshot | None = None,
 ) -> FileImportWriteSummary:
     """在一个调用方事务中写 Content，并按冻结 Snapshot 协调 Brand/Vehicle Evidence。"""
 
     if input_artifact.sha256 is None:
         raise RuntimeError("File Import 输入 Artifact 缺少 SHA-256")
-    if brand_vehicle_filter_snapshot is not None and (
-        vehicle_catalog_version is not None or vehicle_alias_bindings
-    ):
-        raise ValueError("Stage 3 Brand/Vehicle Filter 与 legacy Vehicle Evidence 参数不能混用")
-
     provider_repository = PostgresProviderRepository(session)
     provider_service = ProviderPersistenceService(provider_repository)
     content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
     lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
     rows_ingested = 0
     request_count = 0
-    vehicle_by_alias = {
-        normalize_vehicle_text(alias): model_id for model_id, alias in vehicle_alias_bindings
-    }
     vehicle_repository = PostgresVehicleCatalogRepository(session)
     brand_repository = PostgresBrandVehicleRepository(session)
 
@@ -432,27 +422,6 @@ def ingest_unified_content_batch(
                     catalog_version=brand_vehicle_filter_snapshot.catalog.catalog_version,
                     catalog_snapshot=brand_vehicle_filter_snapshot.catalog,
                 )
-            elif result.target_id is not None and vehicle_catalog_version is not None:
-                for alias in record.matched_vehicle_aliases:
-                    model_id = vehicle_by_alias.get(normalize_vehicle_text(alias))
-                    if model_id is None:
-                        continue
-                    vehicle_repository.append_evidence(
-                        ContentVehicleEvidence(
-                            id=uuid4(),
-                            content_id=result.target_id,
-                            content_version=result.version_no,
-                            vehicle_model_id=model_id,
-                            source="import",
-                            matched_text=alias,
-                            source_field="title_text",
-                            catalog_version=vehicle_catalog_version,
-                            confidence=1.0,
-                            is_manual_locked=False,
-                            is_active=True,
-                            created_at=beijing_now(),
-                        )
-                    )
             rows_ingested += 1
 
     PostgresProcessingImportBatchRepository(session).mark_succeeded(

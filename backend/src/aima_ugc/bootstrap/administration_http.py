@@ -1,11 +1,10 @@
-"""管理员车型、词包、Analysis Scheme 与审计 PostgreSQL Application Service。"""
+"""管理员车型、Provider、Analysis Scheme 与审计 PostgreSQL Application Service。"""
 
 from __future__ import annotations
 
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
@@ -26,8 +25,6 @@ from aima_ugc.contracts.administration import (
     AnalysisSchemeVersionResponse,
     AuditEventListResponse,
     AuditEventResponse,
-    KeywordPackVehicleLinkRequest,
-    KeywordPackVehicleLinksResponse,
     ProviderConfigCreateRequest,
     ProviderConfigListResponse,
     ProviderConfigResponse,
@@ -48,7 +45,6 @@ from aima_ugc.modules.administration.http import (
 from aima_ugc.modules.analysis.schemes import AnalysisSchemeVersionRecord
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
-from aima_ugc.modules.system.tables import keyword_packs_table
 from aima_ugc.modules.vehicles.models import VehicleModel
 from aima_ugc.platform.security import SecretFileError, write_secret_ref
 from aima_ugc.platform.time import beijing_now
@@ -279,52 +275,6 @@ class PostgresAdministrationHttpService:
                     detail={"target_vehicle_model_id": str(body.target_vehicle_model_id)},
                 )
                 return _vehicle_response(repository, model)
-        finally:
-            session.close()
-
-    def replace_keyword_pack_vehicles(
-        self,
-        pack_id: UUID,
-        body: KeywordPackVehicleLinkRequest,
-        *,
-        principal: Principal,
-        request_id: str,
-    ) -> KeywordPackVehicleLinksResponse:
-        """替换词包引用车型并记录审计。"""
-
-        principal.require_administrator()
-        session = self._runtime.database.new_session()
-        try:
-            with session.begin():
-                if (
-                    session.scalar(
-                        select(keyword_packs_table.c.id).where(keyword_packs_table.c.id == pack_id)
-                    )
-                    is None
-                ):
-                    raise AdministrationResourceNotFound
-                repository = PostgresVehicleCatalogRepository(session)
-                try:
-                    result = repository.replace_keyword_pack_models(
-                        pack_id,
-                        body.vehicle_model_ids,
-                        actor_ref=principal.principal_id,
-                    )
-                except LookupError as exc:
-                    raise AdministrationResourceNotFound from exc
-                _audit(
-                    session,
-                    principal=principal,
-                    request_id=request_id,
-                    event_type="keyword_pack_vehicle_links_updated",
-                    object_type="keyword_pack",
-                    object_id=str(pack_id),
-                    detail={"vehicle_model_ids": [str(item) for item in result]},
-                )
-                return KeywordPackVehicleLinksResponse(
-                    pack_id=pack_id,
-                    vehicle_model_ids=result,
-                )
         finally:
             session.close()
 
@@ -668,7 +618,6 @@ def _vehicle_response(
             )
             for alias in repository.list_aliases(model.id)
         ),
-        keyword_pack_ids=repository.list_keyword_pack_ids(model.id),
         referenced=repository.is_referenced(model.id),
         created_at=model.created_at,
         updated_at=model.updated_at,

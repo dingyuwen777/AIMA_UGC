@@ -5,7 +5,6 @@ import type {
   CollectionProviderConfigResponse,
   KeywordPackSummaryResponse,
   ResourceLifecycleResponse,
-  VehicleModelResponse,
 } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
@@ -16,7 +15,6 @@ withDefaults(defineProps<{
   archived?: ResourceLifecycleResponse[]
   packs: KeywordPackSummaryResponse[]
   brands: BrandResponse[]
-  vehicles: VehicleModelResponse[]
   providers: CollectionProviderConfigResponse[]
   total: number
   offset: number
@@ -40,14 +38,13 @@ const emit = defineEmits<{
 }>()
 
 /**
- * 按列表密度组合真实词包与车型范围。
+ * 按列表密度组合真实词包与品牌范围。
  * 目录缺失只说明这是历史引用，不把内部 UUID 暴露到普通视图。
  */
 function discoveryScopeLines(
   plan: CollectionPlanResponse,
   packs: KeywordPackSummaryResponse[],
   brands: BrandResponse[],
-  vehicles: VehicleModelResponse[],
 ): string[] {
   const packLines = plan.keyword_pack_ids.map((id) =>
     packs.find((pack) => pack.id === id)?.name ?? '历史词包（当前目录不可用）',
@@ -56,11 +53,7 @@ function discoveryScopeLines(
     const brand = brands.find((item) => item.id === id)
     return `品牌：${brand?.display_name ?? '历史品牌（当前目录不可用）'}`
   })
-  const legacyVehicleLines = (plan.vehicle_model_ids ?? []).map((id) => {
-    const vehicle = vehicles.find((item) => item.id === id)
-    return `历史车型：${vehicle?.display_name ?? '当前目录不可用'}`
-  })
-  const filterLines = brandLines.length ? brandLines : legacyVehicleLines.length ? legacyVehicleLines : ['品牌：全部启用品牌']
+  const filterLines = brandLines.length ? brandLines : ['品牌：全部启用品牌']
   const visible: string[] = []
   if (packLines[0]) visible.push(packLines[0])
   if (filterLines[0]) visible.push(filterLines[0])
@@ -141,7 +134,7 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
             <td><span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span></td>
             <td class="scope-lines">
               <span
-                v-for="(line, index) in discoveryScopeLines(plan, packs, brands, vehicles)"
+                v-for="(line, index) in discoveryScopeLines(plan, packs, brands)"
                 :key="`${plan.id}-scope-${index}`"
                 :title="line"
               >{{ line }}</span>

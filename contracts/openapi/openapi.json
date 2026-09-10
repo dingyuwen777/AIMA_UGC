@@ -1730,16 +1730,6 @@
             "minLength": 1,
             "title": "Schedule Expr",
             "type": "string"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -1936,15 +1926,6 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -2017,16 +1998,6 @@
             "minLength": 1,
             "title": "Schedule Expr",
             "type": "string"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -2142,16 +2113,6 @@
             "maxItems": 5,
             "minItems": 1,
             "title": "Platforms",
-            "type": "array"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
             "type": "array"
           }
         },
@@ -5722,62 +5683,6 @@
         "title": "ExportColumnResponse",
         "type": "object"
       },
-      "GlobalRelevanceConfigRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "keyword_pack_id": {
-            "format": "uuid",
-            "title": "Keyword Pack Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "keyword_pack_id"
-        ],
-        "title": "GlobalRelevanceConfigRequest",
-        "type": "object"
-      },
-      "GlobalRelevanceConfigResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "effective_keywords": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Effective Keywords",
-            "type": "array"
-          },
-          "keyword_pack_id": {
-            "format": "uuid",
-            "title": "Keyword Pack Id",
-            "type": "string"
-          },
-          "keyword_pack_version": {
-            "exclusiveMinimum": 0.0,
-            "title": "Keyword Pack Version",
-            "type": "integer"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "version": {
-            "exclusiveMinimum": 0.0,
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "keyword_pack_id",
-          "keyword_pack_version",
-          "version",
-          "effective_keywords",
-          "updated_at"
-        ],
-        "title": "GlobalRelevanceConfigResponse",
-        "type": "object"
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -7279,49 +7184,6 @@
         "title": "KeywordPackUpdateRequest",
         "type": "object"
       },
-      "KeywordPackVehicleLinkRequest": {
-        "additionalProperties": false,
-        "description": "替换一个词包当前引用的车型集合。",
-        "properties": {
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
-            "type": "array"
-          }
-        },
-        "title": "KeywordPackVehicleLinkRequest",
-        "type": "object"
-      },
-      "KeywordPackVehicleLinksResponse": {
-        "additionalProperties": false,
-        "description": "词包当前引用的车型 ID。",
-        "properties": {
-          "pack_id": {
-            "format": "uuid",
-            "title": "Pack Id",
-            "type": "string"
-          },
-          "vehicle_model_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Vehicle Model Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "pack_id",
-          "vehicle_model_ids"
-        ],
-        "title": "KeywordPackVehicleLinksResponse",
-        "type": "object"
-      },
       "KeywordResponse": {
         "additionalProperties": false,
         "properties": {
@@ -8509,15 +8371,6 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
-          },
-          "keyword_pack_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Keyword Pack Ids",
-            "type": "array"
           },
           "merged_into_id": {
             "anyOf": [
@@ -15373,101 +15226,6 @@
         ]
       }
     },
-    "/api/v1/keyword-packs/{pack_id}/vehicle-models": {
-      "put": {
-        "description": "管理员原子替换一个词包引用的车型。",
-        "operationId": "replaceKeywordPackVehicleModels",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "pack_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Pack Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KeywordPackVehicleLinkRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KeywordPackVehicleLinksResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "summary": "Replace Keyword Pack Vehicle Models",
-        "tags": [
-          "keywords",
-          "vehicles"
-        ]
-      }
-    },
     "/api/v1/notifications": {
       "get": {
         "operationId": "listNotifications",
@@ -16200,126 +15958,6 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
-      }
-    },
-    "/api/v1/relevance-config": {
-      "get": {
-        "operationId": "getGlobalRelevanceConfig",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GlobalRelevanceConfigResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "summary": "Get Global Relevance",
-        "tags": [
-          "relevance"
-        ]
-      },
-      "put": {
-        "operationId": "setGlobalRelevanceConfig",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GlobalRelevanceConfigRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GlobalRelevanceConfigResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "summary": "Set Global Relevance",
-        "tags": [
-          "relevance"
         ]
       }
     },

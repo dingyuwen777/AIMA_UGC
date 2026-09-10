@@ -84,7 +84,6 @@ Vue / API Client
 
 ```text
 collection.run.v1
-ingestion.import-excel.v1
 ingestion.import-excel.v2
 ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
@@ -92,9 +91,10 @@ ingestion.historical-import-chunk.v1
 analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
+vehicles.content-reclassification.v1
 ```
 
-`ingestion.import-excel.v2` 是新建单文件 Excel Import 的 Brand/Vehicle Filter Job；`v1` 仅用于继续解释升级前已经 queued/running 的旧任务。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
+`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
 注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
@@ -357,7 +357,7 @@ GET  /api/v1/jobs/{job_id}
 - [`backend/src/aima_ugc/bootstrap/import_http.py`](../../backend/src/aima_ugc/bootstrap/import_http.py)
 - [`backend/src/aima_ugc/bootstrap/import_worker.py`](../../backend/src/aima_ugc/bootstrap/import_worker.py)
 
-### 5.6 Keyword Pack / Relevance
+### 5.6 Keyword Pack
 
 ```text
 POST /api/v1/keyword-packs
@@ -365,11 +365,9 @@ GET  /api/v1/keyword-packs
 POST /api/v1/keyword-packs/{pack_id}/keywords
 GET  /api/v1/keyword-packs/{pack_id}
 PUT  /api/v1/keyword-packs/{pack_id}/enabled
-PUT  /api/v1/relevance-config
-GET  /api/v1/relevance-config
 ```
 
-Keyword Pack 只提供 TikHub Discovery Search Terms。新建 Discovery Run 在 Canonical 后使用冻结 Brand/Vehicle Filter Snapshot；正式 Excel Import 不执行 Search，但复用同一个 Resolver。旧 Global Rule Relevance API 暂时保留到清理阶段，只有升级前的 legacy Run 按已冻结的旧快照继续执行。AI Semantic Relevance 与人工相关性复核仍由 Analysis/查询层维护。
+Keyword Pack 只提供 TikHub Discovery Search Terms。新建 Discovery Run 在 Canonical 后使用冻结 Brand/Vehicle Filter Snapshot；正式 Excel Import 不执行 Search，但复用同一个 Resolver。旧 Global Rule Relevance API、旧 Run Snapshot 和对应兼容执行分支已经删除。AI Semantic Relevance 与人工相关性复核仍由 Analysis/查询层维护。
 
 ### 5.7 Collection Plan
 
@@ -418,13 +416,12 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 ```text
 GET  /api/v1/principal
 GET/POST/PUT/DELETE /api/v1/vehicle-models...
-PUT  /api/v1/keyword-packs/{pack_id}/vehicle-models
 GET/POST /api/v1/analysis-schemes
 PUT/POST /api/v1/analysis-scheme-versions/{version_id}...
 GET  /api/v1/audit-events
 ```
 
-车型无引用时允许物理删除；有引用后只能废弃、改显示名或合并，合并迁移未来 Plan/Pack 引用但保留历史内容证据。车型目录可配置系列名和类别名，作为筛选分组及列表展示信息；这两个可空属性不创建新的业务实体，也不改变车型 ID、匹配或合并规则。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
+车型无引用时允许物理删除；有引用后只能废弃、改显示名或合并，合并把后续读取重定向到最终 active 车型并保留历史内容证据。车型目录可配置系列名和类别名，作为筛选分组及列表展示信息；这两个可空属性不创建新的业务实体，也不改变车型 ID、匹配或合并规则。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
 
 ---
 
@@ -463,7 +460,7 @@ frontend/src/features/task-center/
 - 全局 `AppShell` 右上角提供任务中心 Drawer：通过现有 generated Client 聚合 Analysis Run、Collection Runtime 和 Data Export 三个既有 read model，显示活动任务数量、最近终态、进度/错误摘要和对应业务页入口；它没有独立路由，也不新增统一后端 Task API、Job 表或第二套状态机；
 - [`frontend/src/features/task-center/index.ts`](../../frontend/src/features/task-center/index.ts) 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
 - Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
-- `/collection-strategy`：Keyword Pack Search Terms 与独立 Brand Filter 的 Collection Plan 管理；兼容 Global Relevance 后端不再暴露为产品入口；
+- `/collection-strategy`：Keyword Pack Search Terms 与独立 Brand Filter 的 Collection Plan 管理；旧 Global Relevance 后端和产品入口均已删除；
 - `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本与审计；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
 - `/`：当前 HomeView。
 

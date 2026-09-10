@@ -46,9 +46,8 @@ const name = ref('')
 const scheduleExpr = ref('0 */6 * * *')
 const enabled = ref(true)
 const selectedPacks = ref<string[]>([])
-const brandScope = ref<'all_active' | 'selected' | 'legacy_vehicles'>('all_active')
+const brandScope = ref<'all_active' | 'selected'>('all_active')
 const selectedBrands = ref<string[]>([])
-const legacyVehicleIds = ref<string[]>([])
 const providerByPlatform = reactive<Partial<Record<CollectionPlatform, string>>>({})
 const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 const editing = computed(() => props.initialPlan !== null && props.initialPlan !== undefined)
@@ -96,12 +95,7 @@ watch(open, (value) => {
   enabled.value = plan?.enabled ?? true
   selectedPacks.value = [...(plan?.keyword_pack_ids ?? [])]
   selectedBrands.value = [...(plan?.brand_ids ?? [])]
-  legacyVehicleIds.value = selectedBrands.value.length ? [] : [...(plan?.vehicle_model_ids ?? [])]
-  brandScope.value = selectedBrands.value.length
-    ? 'selected'
-    : legacyVehicleIds.value.length
-      ? 'legacy_vehicles'
-      : 'all_active'
+  brandScope.value = selectedBrands.value.length ? 'selected' : 'all_active'
   for (const option of platformOptions) {
     delete providerByPlatform[option.value]
     delete searchConfigByPlatform[option.value]
@@ -165,14 +159,11 @@ function togglePlatform(platform: CollectionPlatform): void {
 /** 资格完整时提交创建或下一版本更新；历史运行的冻结配置不会被重写。 */
 function submit(): void {
   if (!name.value.trim() || eligibilityReason.value) return
-  const filterScope = brandScope.value === 'legacy_vehicles'
-    ? { vehicle_model_ids: [...legacyVehicleIds.value] }
-    : { brand_ids: brandScope.value === 'selected' ? [...selectedBrands.value] : [] }
   const common = {
     name: name.value.trim(),
     schedule_expr: scheduleExpr.value,
     keyword_pack_ids: selectedPacks.value,
-    ...filterScope,
+    brand_ids: brandScope.value === 'selected' ? [...selectedBrands.value] : [],
     platforms: selectedPlatforms.value,
     enabled: enabled.value,
   }
@@ -231,14 +222,6 @@ function submit(): void {
       </fieldset>
       <fieldset>
         <legend>3. 内容过滤条件：品牌</legend>
-        <label
-          v-if="legacyVehicleIds.length"
-          class="check"
-        ><input
-          v-model="brandScope"
-          type="radio"
-          value="legacy_vehicles"
-        >保留历史车型范围（{{ legacyVehicleIds.length }} 个，只读兼容）</label>
         <label class="check"><input
           v-model="brandScope"
           type="radio"
@@ -254,10 +237,7 @@ function submit(): void {
           v-model="selectedBrands"
           label="指定品牌（可多选）"
         />
-        <p v-if="brandScope === 'legacy_vehicles'">
-          普通编辑默认保留旧计划的车型过滤；明确选择新品牌范围后才迁移。
-        </p>
-        <p v-else>
+        <p>
           运行创建时冻结品牌及其车型目录快照；空 brand_ids 表示全部启用品牌。
         </p>
       </fieldset>
@@ -325,7 +305,7 @@ function submit(): void {
         <strong>系统固定规则</strong><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
       </div>
       <AimaFeedbackBanner tone="info">
-        <strong>搜索与过滤职责已分离</strong><span>Keyword Pack 提供 Provider Search Terms</span><small>品牌目录独立决定内容过滤范围；历史车型范围仅作只读兼容，不作为新计划选择项。</small>
+        <strong>搜索与过滤职责已分离</strong><span>Keyword Pack 提供 Provider Search Terms</span><small>品牌目录独立决定内容过滤范围。</small>
       </AimaFeedbackBanner>
       <div
         v-if="eligibilityReason && selectedPacks.length && platformOptions.some((item) => isPlatformSelected(item.value))"

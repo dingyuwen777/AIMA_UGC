@@ -60,7 +60,6 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     map_content,
     mapping_context,
 )
-from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.contracts.canonical import (
     CanonicalCommentV1,
     CanonicalContentV1,
@@ -76,7 +75,6 @@ from aima_ugc.contracts.collection import (
     ReplyDecisionRequestV1,
 )
 from aima_ugc.contracts.provider import JsonObject, ProviderRequestV1
-from aima_ugc.modules.analysis import RelevanceKeyword, RelevanceService
 from aima_ugc.modules.collection.collection_run_executor import (
     CollectionScopeExecutionResult,
     CollectionScopeRetryableError,
@@ -316,7 +314,7 @@ class TikHubCollectionScopeExecutor:
                 context=context,
             )
 
-        filter_snapshot, relevance = _discovery_filter(run)
+        filter_snapshot = _discovery_filter(run)
 
         stats = _ScopeStats.from_payload(scope.stats)
         self._refresh_counts(scope=scope, context=context, stats=stats)
@@ -415,7 +413,6 @@ class TikHubCollectionScopeExecutor:
                         context=context,
                         stats=stats,
                         filter_snapshot=filter_snapshot,
-                        relevance=relevance,
                     )
 
                 advance = advance_search(
@@ -746,22 +743,13 @@ class TikHubCollectionScopeExecutor:
         policy: CollectionDecisionPolicyV1,
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
-        filter_snapshot: BrandVehicleFilterSnapshot | None,
-        relevance: RelevanceService | None,
+        filter_snapshot: BrandVehicleFilterSnapshot,
     ) -> None:
         search_content = content
         prefetched_details: tuple[_DetailCandidate, ...] = ()
         detail_prefetched = False
-        search_resolution = (
-            resolve_canonical_brand_vehicle(filter_snapshot, content)
-            if filter_snapshot is not None
-            else None
-        )
-        search_matched = (
-            search_resolution.matched
-            if search_resolution is not None
-            else _require_legacy_relevance(relevance).evaluate(content).matched
-        )
+        search_resolution = resolve_canonical_brand_vehicle(filter_snapshot, content)
+        search_matched = search_resolution.matched
         accepted_resolution = search_resolution
         if not search_matched:
             details = self._fetch_detail_candidates(
@@ -773,16 +761,8 @@ class TikHubCollectionScopeExecutor:
                 stats=stats,
             )
             detail = details[-1]
-            detail_resolution = (
-                resolve_canonical_brand_vehicle(filter_snapshot, detail.content)
-                if filter_snapshot is not None
-                else None
-            )
-            detail_matched = (
-                detail_resolution.matched
-                if detail_resolution is not None
-                else _require_legacy_relevance(relevance).evaluate(detail.content).matched
-            )
+            detail_resolution = resolve_canonical_brand_vehicle(filter_snapshot, detail.content)
+            detail_matched = detail_resolution.matched
             if not detail_matched:
                 self._content_writer.record_candidate_filtered(
                     candidate_id=search_candidate_id,
@@ -851,11 +831,11 @@ class TikHubCollectionScopeExecutor:
         )
         content_id: UUID | None = None
         for candidate_index, candidate in enumerate(candidates):
-            candidate_resolution = accepted_resolution
+            candidate_resolution: BrandVehicleResolution | None = accepted_resolution
             if detail_prefetched:
                 candidate_resolution = (
                     resolve_canonical_brand_vehicle(filter_snapshot, candidate.content)
-                    if filter_snapshot is not None and candidate_index > 0
+                    if candidate_index > 0
                     else None
                 )
                 if candidate_resolution is not None and not candidate_resolution.matched:
@@ -865,9 +845,7 @@ class TikHubCollectionScopeExecutor:
                 fence=context.fence,
                 candidate_id=candidate.candidate_id,
                 brand_vehicle_snapshot=(
-                    filter_snapshot.catalog
-                    if filter_snapshot is not None and candidate_resolution is not None
-                    else None
+                    filter_snapshot.catalog if candidate_resolution is not None else None
                 ),
                 brand_vehicle_resolution=candidate_resolution,
             )
@@ -2123,44 +2101,20 @@ def _decision_policy(
     return CollectionDecisionPolicyV1.model_validate(payload)
 
 
-def _relevance_service(run: CollectionRunRecord) -> RelevanceService:
-    payload = run.config_snapshot.get("relevance")
-    snapshot = RelevanceSnapshotV1.model_validate(payload)
-    return RelevanceService(
-        tuple(
-            RelevanceKeyword(text=text, priority=priority)
-            for priority, text in enumerate(snapshot.effective_keywords)
-        )
-    )
-
-
 def _discovery_filter(
     run: CollectionRunRecord,
-) -> tuple[BrandVehicleFilterSnapshot | None, RelevanceService | None]:
-    """按 Run Snapshot 版本选择 Stage 4 品牌过滤或 legacy 全局相关性。"""
+) -> BrandVehicleFilterSnapshot:
+    """严格恢复当前 Collection Run 的冻结品牌车型过滤。"""
 
-    schema_version = run.config_snapshot.get(
-        "schema_version",
-        "collection-run-config.v1",
+    schema_version = run.config_snapshot.get("schema_version")
+    if schema_version != "collection-run-config.v2":
+        raise ValueError(f"Collection Run Snapshot 版本不受支持: {schema_version}")
+    snapshot = BrandVehicleFilterSnapshot.model_validate(
+        run.config_snapshot.get("brand_vehicle_filter")
     )
-    if schema_version == "collection-run-config.v2":
-        snapshot = BrandVehicleFilterSnapshot.model_validate(
-            run.config_snapshot.get("brand_vehicle_filter")
-        )
-        if snapshot.search_semantics != "keyword_pack":
-            raise ValueError("Collection Run v2 品牌车型过滤必须使用 keyword_pack 搜索语义")
-        return snapshot, None
-    if schema_version == "collection-run-config.v1":
-        return None, _relevance_service(run)
-    raise ValueError(f"Collection Run Snapshot 版本不受支持: {schema_version}")
-
-
-def _require_legacy_relevance(value: RelevanceService | None) -> RelevanceService:
-    """收窄 legacy v1 的相关性服务，避免 v2 分支误用旧过滤。"""
-
-    if value is None:
-        raise RuntimeError("Collection Run v1 缺少全局相关性服务")
-    return value
+    if snapshot.search_semantics != "keyword_pack":
+        raise ValueError("Collection Run v2 品牌车型过滤必须使用 keyword_pack 搜索语义")
+    return snapshot
 
 
 def _manual_deep_collection(run: CollectionRunRecord) -> bool:
