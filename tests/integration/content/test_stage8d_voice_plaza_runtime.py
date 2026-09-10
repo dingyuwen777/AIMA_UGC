@@ -71,7 +71,7 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import delete, func, insert, select, update
 
-from tests.integration.content.stage3_brand_support import (
+from tests.integration.stage3_brand_support import (
     stage3_filter_brand_id as _stage3_filter_brand_id,
 )
 

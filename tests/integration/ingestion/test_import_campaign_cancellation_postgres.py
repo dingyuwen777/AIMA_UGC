@@ -24,6 +24,8 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import func, select
 
+from tests.integration.stage3_brand_support import stage3_filter_brand_id
+
 
 def _xlsx() -> bytes:
     """生成一行可稳定导入的最小 Excel。"""
@@ -48,30 +50,16 @@ def _xlsx() -> bytes:
     return output.getvalue()
 
 
-def _keyword_pack(client: TestClient) -> str:
-    """创建导入所需的最小词包。"""
-
-    created = client.post("/api/v1/keyword-packs", json={"name": f"取消回归 {uuid4()}"})
-    assert created.status_code == 201
-    pack_id = created.json()["id"]
-    added = client.post(
-        f"/api/v1/keyword-packs/{pack_id}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert added.status_code == 201
-    return pack_id
-
-
-def _create_local_campaign(client: TestClient, payload: bytes) -> str:
+def _create_local_campaign(client: TestClient, runtime, payload: bytes) -> str:
     """创建、上传并 finalize 一个本地 Excel Campaign，使其进入预检。"""
 
-    pack_id = _keyword_pack(client)
+    brand_id = stage3_filter_brand_id(runtime)
     created = client.post(
         "/api/v1/data-import-campaigns/local",
         json={
             "client_idempotency_key": f"cancel-regression-{uuid4()}",
             "files": [{"relative_path": "local.xlsx", "byte_size": len(payload)}],
-            "keyword_pack_ids": [pack_id],
+            "brand_ids": [brand_id],
             "ingestion_policy": "standard_observation",
         },
     )
@@ -110,7 +98,8 @@ def _runtime(tmp_path: Path):
     runtime = create_worker_runtime(settings=settings)
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
         )
     return runtime
 
@@ -131,7 +120,8 @@ def _cleanup(runtime) -> None:
 
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
         )
     runtime.close()
 
@@ -154,7 +144,7 @@ def test_local_campaign_can_cancel_during_snapshot_preflight(tmp_path: Path) -> 
     runtime = _runtime(tmp_path)
     try:
         client = _client(runtime)
-        campaign_id = _create_local_campaign(client, _xlsx())
+        campaign_id = _create_local_campaign(client, runtime, _xlsx())
 
         cancelled = client.post(f"/api/v1/data-import-campaigns/{campaign_id}/cancel")
 
@@ -175,7 +165,7 @@ def test_ready_campaign_can_cancel_before_import_start(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path)
     try:
         client = _client(runtime)
-        campaign_id = _create_local_campaign(client, _xlsx())
+        campaign_id = _create_local_campaign(client, runtime, _xlsx())
         worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
@@ -207,7 +197,7 @@ def test_running_import_cancel_does_not_deadlock_worker(
     runtime = _runtime(tmp_path)
     try:
         client = _client(runtime)
-        campaign_id = _create_local_campaign(client, _xlsx())
+        campaign_id = _create_local_campaign(client, runtime, _xlsx())
         worker = create_job_worker(
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),

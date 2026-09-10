@@ -54,7 +54,7 @@ from openpyxl import Workbook
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import DatabaseError
 
-from tests.integration.content.stage3_brand_support import (
+from tests.integration.stage3_brand_support import (
     stage3_filter_brand_id as _stage3_filter_brand_id,
 )
 

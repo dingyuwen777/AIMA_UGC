@@ -36,6 +36,7 @@ affected_paths:
   - frontend/src/features/import-batches
   - frontend/src/generated/api/client.ts
   - frontend/e2e
+  - scripts/performance/benchmark_stage12_historical.py
   - tests/api
   - tests/contracts
   - tests/integration/collection/test_collection_worker_runtime.py
@@ -67,12 +68,12 @@ Requirement Source：#422。
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | R1 | 新单文件 Import 与 Historical/Data Import 创建冻结 Brand/Vehicle Filter Snapshot；Excel Search 为 not applicable | #422 / AC1 | satisfied | `contracts/http.py`、`modules/ingestion/brand_vehicle_filter.py`、两条 HTTP service 与持久 Job/Campaign；Contract/API/Browser Mock 直接约束 `brand_ids`、`all_active`、`search_semantics=not_applicable`，旧 `keyword_pack_ids/vehicle_model_ids` 被拒绝。 |
-| R2 | 两条 Excel 链使用统一 Resolver，保持 mapping→filtering→dedup→ingestion，并覆盖 Brand/Vehicle/multi/unmatched | #422 / AC2 | satisfied | `modules/ingestion/brand_vehicle_filter.py` 是唯一 Stage 3 Filter，单文件 Worker与 Historical converter 均调用 Stage 2 `BrandVehicleResolver`；Unit 新增 Snapshot round-trip 与 JSONL Filter 生产调用覆盖，既有 Resolver 覆盖品牌别名、车型派生品牌、多实体、歧义与 unmatched。 |
+| R2 | 两条 Excel 链使用统一 Resolver，保持 mapping→filtering→dedup→ingestion，并覆盖 Brand/Vehicle/multi/unmatched | #422 / AC2 | satisfied | `modules/ingestion/brand_vehicle_filter.py` 是唯一 Stage 3 Filter，单文件 Worker与 Historical converter 均调用 Stage 2 `BrandVehicleResolver`；Unit 新增 Snapshot round-trip 与 JSONL Filter 生产调用覆盖，既有 Resolver 覆盖品牌别名、车型派生品牌、多实体、歧义与 unmatched；PostgreSQL 单文件回归覆盖两个选中 Brand 的并集与 unmatched。 |
 | R3 | Content 与 Brand/Vehicle Evidence 使用同一冻结 Snapshot 在现有事务边界协调写入，人工锁不被绕过 | #422 / AC3 | satisfied | `manual_ingestion.py` 与 `historical_import_worker.py` 在 Content 写事务内写入两类 Evidence；Brand/Vehicle 人工锁沿用现有 Owner。最终 Review 发现 Brand Evidence 原先会用 live 目录复核冻结结果，现由 Stage 3 调用显式传入冻结 Catalog Snapshot，并在 Repository 内校验 catalog version、Brand 和 Vehicle→Brand 归属；回归把 live 车型 alias 与品牌归属同时改写后仍要求按旧 Snapshot 成功写入。 |
 | R4 | 新旧 Job/Campaign 显式版本兼容，升级前 queued/running 工作不被错读 | #422 / AC4 | satisfied | `ingestion.import-excel.v1/v2` 双注册；同一 `PostgresImportJobExecutor` 保留 legacy v1 与 v2 分支；Historical 按 Snapshot schema 和 `historical-canonical-row.v1/v2` 配对解释；Worker Registry 测试同时约束 v1/v2。 |
 | R5 | retry/replay 幂等，任务创建后目录变化不改变冻结解释 | #422 / AC5 | satisfied | v2 Worker 始终从 Batch/Campaign 读取冻结 Snapshot；单文件覆盖 Lease fencing/retry、目录 alias/车型归属漂移、重复内容与人工锁；Historical 覆盖 source-change fail-closed、技术 retry、跨 chunk duplicate、取消和 lease takeover。 |
 | R6 | imports_test/debug 继续复用生产能力，不复制 Resolver，不增加 Provider Probe | #422 / AC6 | satisfied | 本变更未新增 TikHub/LLM Probe，也未在调试目录复制 Resolver；`imports_test` 保留现有离线清洗用途，正式 Excel 创建、转换、Canonical、Ingestion 能力继续来自生产模块。 |
-| R7 | Contract、生成物和事实文档同步，不越界 Stage 4/6，不升级依赖 | #422 / AC7 | satisfied | 公共请求 Contract 在既有 `contracts/http.py` 单点维护，OpenAPI/TypeScript Client 由正式 generator 同步；Blueprint、API、Appendix 与模块 README 已改为 `brand_ids/all_active`、Search N/A、v2/legacy 和 Evidence 事实。无 Manifest/lock/Migration/Provider Search 改动；前端只完成当前入口兼容接线并说明 Stage 6 才提供品牌范围选择 UI；最终候选没有 `.github` workflow 修改。 |
+| R7 | Contract、生成物和事实文档同步，不越界 Stage 4/6，不升级依赖 | #422 / AC7 | satisfied | 公共请求 Contract 在既有 `contracts/http.py` 单点维护，OpenAPI/TypeScript Client 由正式 generator 同步；Blueprint、API、Appendix 与模块 README 已改为 `brand_ids/all_active`、Search N/A、v2/legacy 和 Evidence 事实。取消、撤销、多范围与容量基准资产已从旧 `keyword_pack_ids` 迁移到真实 Brand Catalog + `brand_ids`。无 Manifest/lock/Migration/Provider Search 改动；前端只完成当前入口兼容接线并说明 Stage 6 才提供品牌范围选择 UI；最终候选没有 `.github` workflow 修改。 |
 | R8 | Completion Audit、两阶段 Review、PR HEAD CI、expected-head merge、main fresh CI、原生归档与 Roadmap/Issue 收口 | #422 / AC8 | explicitly_deferred | 上游重读、Completion Audit 与两阶段实现 Review 已完成，发现的重复 Contract、错误 409 表达、测试辅助重复及冻结证据 live 校验均已修复。最终 PR HEAD 全量 CI、expected-head merge、main fresh CI、Change Archive、Roadmap 状态提交与 Issue #422 关闭属于合并生命周期后置门禁。 |
 
 # Validation Matrix
@@ -81,7 +82,7 @@ Requirement Source：#422。
 | --- | --- | --- |
 | Unit | required | `tests/unit/test_brand_vehicle_resolver.py`：8 passed；覆盖 Resolver 原有语义、Filter Snapshot JSON round-trip、JSONL 生产 Filter。 |
 | Contract / API / Generated Client | required | 本轮 `tests/contracts` 107 passed、`tests/api` 59 passed；Stage 3 定向 Contract/API 33 passed；OpenAPI generate/check 和 compatibility 均成功，Orval Client 已重新生成。 |
-| PostgreSQL Integration | required | 前序正式 GitHub runner `34383852063`：Resolver 6/6、Historical Worker 11/11；Run `34425486728`：Content PostgreSQL 58/58。最终 Review 新增 live 车型归属漂移回归，当前 Windows 缺少 `.runtime/secrets/postgres_password`，本地 PostgreSQL 套件只到环境初始化即停止；最终 PR HEAD 的 PostgreSQL 18 门禁必须提供新鲜 Green。 |
+| PostgreSQL Integration | required | 前序正式 GitHub runner `34383852063`：Resolver 6/6、Historical Worker 11/11；Run `34425486728`：Content PostgreSQL 58/58。PR Run `34433881961` 提供迁移前 Red：21 passed / 7 failed，失败均来自取消、撤销、多词包和容量基准仍提交已删除的 `keyword_pack_ids`；本轮已统一改为真实 Brand Catalog + `brand_ids`，并新增共享测试目录夹具。当前 Windows 缺少 `.runtime/secrets/postgres_password`，本地 PostgreSQL 套件只到收集 41 tests；最终 PR HEAD 的 PostgreSQL 18 门禁必须提供新鲜 Green。 |
 | Frontend static / unit / build | required | 本轮 ESLint success、Vue/TypeScript + Vite build success、Vitest 23 files / 134 tests passed。 |
 | Browser Mock Acceptance | required | 本轮 `collection-runtime`、`excel-import-submit-state`、`historical-migration` 共 26 passed；请求断言覆盖 `brand_ids`、旧字段不存在及 Stage 4 Collection Discovery 既有语义保持。 |
 | Real Full-stack | required | Stage 8F seed 已迁移为真实 Brand Catalog + Stage 3 `brand_ids` 导入；最终 PR HEAD `Real Full-stack Golden Path` 必须成功。 |
@@ -104,5 +105,5 @@ Requirement Source：#422。
 - [x] upstream_re_read：重新核对 Roadmap Stage 3/Exit Criteria、Blueprint、Issue #422 与 Stage 2 Resolver/Snapshot/Evidence 事实源；未改变 Stage 4/6 边界。
 - [x] change_coverage：R1-R7 均有实现、测试或生成证据；R8 只保留必须发生在最终 PR HEAD/合并后的交付生命周期证据并明确 `explicitly_deferred`。
 - [x] reverse_audit：按 HTTP→Filter Snapshot→Job/Campaign→mapping→Resolver filtering→dedup→ingestion→Brand/Vehicle Evidence 反查，并核对 legacy v1/v2、前端入口、Full-stack seed、事实文档和无 Provider Probe 边界。Review 发现并修复公共 Contract 重复、无效品牌错误映射、Content 集成辅助代码重复，以及冻结过滤结果被 live 车型归属校验拒绝的问题。
-- [x] two_stage_review：A1 从 #422/Roadmap 独立重建 AC1-AC8 并检查实现、Contract、兼容、事务与测试；A2 以最终候选 diff 反向检查公共输入、冻结边界、Evidence、前端、文档和非目标。已发现问题均已修复，当前无已知 P0/P1/P2 实现 Finding；最终 PR HEAD CI 与 GitHub review 状态仍作为合并门禁。
+- [x] two_stage_review：A1 从 #422/Roadmap 独立重建 AC1-AC8 并检查实现、Contract、兼容、事务与测试；A2 以最终候选 diff 反向检查公共输入、冻结边界、Evidence、前端、文档和非目标。已发现的实现问题及 CI 暴露的四组旧请求资产均已修复，当前无已知 P0/P1/P2 实现 Finding；最终 PR HEAD CI 与 GitHub review 状态仍作为合并门禁。
 - [x] unresolved_cleared：R1-R7 无 `not_satisfied`；required 分层均有本轮本地证据、已有正式 PostgreSQL 证据或明确的最终 PR HEAD 验证入口。Windows 缺 PostgreSQL Secret 与 Linux-only host 用例属于已说明的本机环境限制；R8 的 PR/main/归档/Roadmap/Issue 动作是交付生命周期，不属于未解决实现缺陷。

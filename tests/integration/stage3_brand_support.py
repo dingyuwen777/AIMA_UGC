@@ -1,4 +1,4 @@
-"""Content 集成测试共用的 Stage 3 Brand Filter 目录准备。"""
+"""集成测试共用的 Stage 3 Brand Filter 目录准备。"""
 
 from __future__ import annotations
 
@@ -26,18 +26,18 @@ def stage3_filter_brand_id(runtime: PlatformRuntime, *, alias: str = "爱玛") -
             return str(brand.id)
     brand = service.create_brand(
         BrandCreateRequest(
-            code=f"STAGE3-CONTENT-{uuid4()}",
+            code=f"STAGE3-INTEGRATION-{uuid4()}",
             display_name=f"Stage3 {alias}",
             role="owned",
             aliases=(alias,),
         ),
         principal=Principal(
-            principal_id="stage3-content-integration",
-            display_name="Stage3 Content 集成测试管理员",
+            principal_id="stage3-integration",
+            display_name="Stage3 集成测试管理员",
             role="administrator",
             source="development",
         ),
-        request_id=f"stage3-content-brand-{uuid4()}",
+        request_id=f"stage3-brand-{uuid4()}",
     )
     return str(brand.id)
 
