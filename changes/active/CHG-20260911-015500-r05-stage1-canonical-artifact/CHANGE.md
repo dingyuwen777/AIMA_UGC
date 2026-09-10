@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-015500-r05-stage1-canonical-artifact
 title: Roadmap 05 Stage 1 Canonical Artifact 基础
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feat/r05-stage1-canonical-artifact
 created: 2026-09-11
@@ -129,14 +129,14 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | AC1：流式、可复现 JSONL.gz Writer 并保持 Unicode/大文本/空可选字段语义 | #439 / AC1；Roadmap 05 Stage 1 / 必须完成 1–4 | not_satisfied | 待 Red/Green 直接证据 |
-| R2 | AC2：有界 Reader 使用当前 Contract 并对 gzip/JSON/Contract 错误 fail closed | #439 / AC2；Roadmap 05 Stage 1 / 必须完成 2–3 | not_satisfied | 待 Red/Green 直接证据 |
-| R3 | AC3：核对 SHA-256/byte size，完整性失配不得读取 | #439 / AC3；Roadmap 05 Stage 1 / 必须完成 4–5 | not_satisfied | 待 Artifact 完整性测试 |
-| R4 | AC4：正式 Artifact 生命周期 + 真实父级强外键 + 恰一关系 | #439 / AC4；Roadmap 05 Stage 1 / 必须完成 6–8 | not_satisfied | 待 PostgreSQL 集成与 Schema/Migration 证据 |
-| R5 | AC5：Migration 可升降级，不改公共 Contract/依赖/旧数据语义 | #439 / AC5；Roadmap 05 Stage 1 / 必须完成 8–9 | not_satisfied | 待 Migration/Contract/lock/diff 证据 |
-| R6 | AC6：完成目标、持久化、main-safe、打包与仓库质量验证 | #439 / AC6；Roadmap 05 Stage 1 / 直接验证/Main-safe | not_satisfied | 待分层验证和 CI |
-| R7 | AC7：完成追溯、审计、Review、CI、merge、main fresh、归档、Roadmap 与 Issue Closure | #439 / AC7；用户本轮明确交付要求 | not_satisfied | 待全生命周期证据 |
-| R8 | Stage 2–4 不实现，不新增列明的非目标，不为不存在的旧数据建兼容路 | user:Stage-1-fixed-scope；Roadmap 05 / 明确非目标 | not_satisfied | 待最终 diff 与反向审计 |
+| R1 | AC1：流式、可复现 JSONL.gz Writer 并保持 Unicode/大文本/空可选字段语义 | https://github.com/dingyuwen777/AIMA_UGC/issues/439#AC1 | satisfied | `canonical.py` 使用磁盘临时流、固定 gzip `mtime=0`、逐条排序 JSON；目标 Unit 覆盖 Unicode、512 KiB 级文本、`None`、语义往返、字节/hash 可复现和 256 条生成器内存上界。 |
+| R2 | AC2：有界 Reader 使用当前 Contract 并对 gzip/JSON/Contract 错误 fail closed | https://github.com/dingyuwen777/AIMA_UGC/issues/439#AC2 | satisfied | Reader 把压缩字节流式复制到磁盘临时文件，首遍完整预检 gzip/JSON/当前 Pydantic Contract，第二遍才逐条返回；损坏 gzip、截断合法前缀、非法 JSON、非法 Contract 均断言零输出。 |
+| R3 | AC3：核对 SHA-256/byte size，完整性失配不得读取 | https://github.com/dingyuwen777/AIMA_UGC/issues/439#AC3 | satisfied | 复用 `ArtifactStore.copy_to()` 流式计算实体 SHA-256/byte size；目标测试分别伪造 hash 与大小并验证首条输出前拒绝。 |
+| R4 | AC4：正式 Artifact 生命周期 + 真实父级强外键 + 恰一关系 | https://github.com/dingyuwen777/AIMA_UGC/issues/439#AC4 | satisfied | Writer 复用 `ArtifactService.store_stream()`；`link_canonical()` 在单一短事务 CAS `stored→linked` 并插入关系；新表有四类真实父级外键、artifact 主键和 `num_nonnulls(...)=1`。通用 `mark_linked()` 禁止旁路；绑定失败的 stored Canonical 进入既有 orphan cleanup。 |
+| R5 | AC5：Migration 可升降级，不改公共 Contract/依赖/旧数据语义 | https://github.com/dingyuwen777/AIMA_UGC/issues/439#AC5 | satisfied | Migration `20260911_0048` 只新增/删除独立关系表与父级索引；`alembic heads` 返回唯一 head；Contract 生成/兼容检查无 diff，`uv lock --check` 通过，Manifest/lock 未修改。真实 upgrade/check/downgrade/upgrade 由 PR PostgreSQL 18 门禁执行。 |
+| R6 | AC6：完成目标、持久化、main-safe、打包与仓库质量验证 | https://github.com/dingyuwen777/AIMA_UGC/issues/439#AC6 | explicitly_deferred | 本地目标 15/15、Unit 931 passed/8 skipped（另 3 个 Windows 缺少 POSIX API 的既有失败）、Contract+API 171/171、Frontend 139/139、Browser Mock 106/106、Ruff/Mypy/Wheel/Docs/Owner/Secret 均已验证；本机无 PostgreSQL/Docker，真实 Persistence/Migration 与 exact-head 全量证据按门禁只能由 Ready 后 PR CI 提供。 |
+| R7 | AC7：完成追溯、审计、Review、CI、merge、main fresh、归档、Roadmap 与 Issue Closure | https://github.com/dingyuwen777/AIMA_UGC/issues/439#AC7 | explicitly_deferred | Requirement Traceability、Completion Audit、Deep Review 和 Roadmap 目标状态已完成；PR exact-head CI、expected-head merge、main fresh、原生归档、Issue Closure 与分支清理只能在 Ready 后按顺序执行，不在当前记录预先冒充。 |
+| R8 | Stage 2–4 不实现，不新增列明的非目标，不为不存在的旧数据建兼容路 | https://github.com/dingyuwen777/AIMA_UGC/issues/439#AC5 | satisfied | `origin/main...a4b45287` 反向搜索确认现有 Excel/TikHub/Voice Plaza 无新 Writer/Reader 调用；无新 Job/API/UI/依赖，未出现 Monitoring Membership、Filter History、Platform Registry、第二数据库、消息系统或旧数据兼容路。 |
 
 # 验证矩阵
 
@@ -171,25 +171,25 @@ Docs Impact 为 `targeted`：Blueprint 02 解释 Raw/Source、Canonical Artifact
 - [x] 读取项目规则、Roadmap/Blueprint、canonical Source Mode 治理与当前机器事实
 - [x] 复核 `origin/main`、工作区、Issue #439 与本地任务分支
 - [x] 建立 Requirement Traceability、验证矩阵、方案比较与回滚边界
-- [ ] 写入并验证 Red 失败测试
-- [ ] 完成最小 Green/Refactor 实现和目标回归
-- [ ] 完成 Schema/Migration/PostgreSQL/main-safe/打包/文档分层验证
-- [ ] 重读上游、完成 Completion Audit 和独立 Review，清零阻塞 Finding
+- [x] 写入并验证 Red 失败测试
+- [x] 完成最小 Green/Refactor 实现和目标回归
+- [x] 完成本地 Schema/main-safe/打包/文档分层验证；PostgreSQL/Migration 真实执行交给 PR CI
+- [x] 重读上游、完成 Completion Audit 和独立 Review，清零阻塞 Finding
 - [ ] 在 exact-head CI 后 guarded merge，验证 main/归档，收口 Roadmap/Issue/分支
 
 # 完成审计
 
-- [ ] upstream_re_read：未进入 `ready_for_review`，待实现后重读 Issue #439、Roadmap 05 Stage 1 和相关机器事实。
-- [ ] change_coverage：待从 AC1–AC7 和 Roadmap 反查 Change 无遗漏。
-- [ ] reverse_audit：待执行 Writer → ArtifactService/Store → lineage/linked → Reader 和现有 Runtime 不消费新能力的反向审计。
-- [ ] unresolved_cleared：待 `not_satisfied` 清零，每个 required 验证层具有直接证据。
+- [x] upstream_re_read：2026-09-11 Ready 前重新读取 Issue #439 当前正文、Roadmap 05 Stage 1/直接验证/Main-safe/非目标、Blueprint 02/03、当前 Canonical Contract、ArtifactService/Store、Schema/Migration、CI 与 `origin/main@e2df5e5b`；Issue 仍 open，PR #440 仍明确未就绪。
+- [x] change_coverage：从 AC1–AC7、Roadmap 必须完成 1–9、直接验证与 Main-safe 逐条反查；R1–R5/R8 已有实现或直接证据，R6/R7 仅保留必须发生在 Ready 后的真实 PostgreSQL/CI/交付生命周期。
+- [x] reverse_audit：沿 Writer → 磁盘临时流 → ArtifactService/Store → PostgreSQL lineage/linked → Reader 反查；又从 orphan cleanup、通用 `mark_linked()`、四类父级、重复绑定和现有 Excel/TikHub/Voice Plaza consumer 反向检查。Review 发现并修复“父级绑定失败后的 stored Canonical 永不回收”缺口。
+- [x] unresolved_cleared：全部 `not_satisfied` 已清零；无已知 blocker/high/medium Finding。R6/R7 的真实 PostgreSQL/CI/merge/main/archive/Closure 有明确外部 Owner 与强制时序，不冒充当前完成。
 
 # 两阶段 Review
 
-- **需求与风险重建**：待实现后从 Issue/Roadmap/Contract/Schema 独立执行 A1/A2，不使用本 Change 作需求全集。
-- **实现与证据对照**：待 Standard/Deep Review 审查完整性、资源生命周期、Schema/外键、错误边界、内存和 main-safe 证据。
-- **测试充分性结论**：待判定。
+- **需求与风险重建**：Deep Review Target 为 `e2df5e5b...a4b45287`。A1 从 Issue #439、Roadmap 05、Canonical/Artifact/Schema 当前事实独立重建；A2 对 Writer/Reader、生命周期、lineage、Migration、测试、文档和既有 Runtime 逐项对照，不使用本 Change 作需求全集。
+- **实现与证据对照**：发现一项 MEDIUM 资源生命周期 Finding：父级绑定失败后，`stored` Canonical 不在既有 orphan cleanup allowlist，会无限保留。已把 kind 纳入原有 orphan 窗口并新增 PostgreSQL 回归；re-review 后原触发路径消失。未发现剩余 blocker/high/medium Finding。
+- **测试充分性结论**：Unit/Contract/Package/Main-safe Browser Mock 能直接证明文件 Contract、内存和既有 UI/API 不变；Fake/静态 Schema 不冒充 PostgreSQL。四父级、事务回滚、恰一约束、重复绑定、旁路拒绝、orphan cleanup 和 Migration 升降级仍由 exact-head PostgreSQL 18 CI 证明，证据边界已明确。
 
 # 完成证据与状态
 
-开发中；尚未进入 Ready，不宣称任何尚未实际执行的验证、CI、合并或归档结果。
+实现候选 `a4b45287894eb0431d2c22b67ecf0d9030d1293b` 已完成本地验证与 Deep Review，Change 进入 `ready_for_review`。本机无可用 PostgreSQL 18/Docker；PR exact-head CI、guarded merge、main fresh、原生归档与 Issue Closure 仍未执行，禁止提前宣称完成。
