@@ -186,10 +186,6 @@ jobs:
                   brand_helper + fixture,
                   label=f"{name}: helper insertion",
               )
-              text = text.replace(
-                  "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts",
-                  "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts",
-              )
 
               helper = config["helper"]
               if not config["has_runtime"]:
@@ -316,9 +312,19 @@ jobs:
             tests/integration/content/test_stage12_analysis_runs.py
             tests/integration/content/test_stage8d_voice_plaza_runtime.py
           )
+          uv run ruff check --fix "${TARGETS[@]}"
           uv run ruff format "${TARGETS[@]}"
           uv run ruff check "${TARGETS[@]}"
           git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          if [[ "${#changed[@]}" -ne "${#TARGETS[@]}" ]]; then
+            printf 'Unexpected changed file count: %s\n' "${#changed[@]}"
+            printf '%s\n' "${changed[@]}"
+            exit 1
+          fi
+          for target in "${TARGETS[@]}"; do
+            printf '%s\n' "${changed[@]}" | grep -Fxq "${target}"
+          done
 
       - name: Run complete Content PostgreSQL integration suite
         shell: bash
