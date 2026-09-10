@@ -113,5 +113,11 @@ Index(
         canonical_artifact_links_table.c.historical_import_campaign_item_id.is_not(None)
     ),
 )
+Index(
+    "uq_canonical_artifact_links_provider_attempt_id",
+    canonical_artifact_links_table.c.provider_attempt_id,
+    unique=True,
+    postgresql_where=canonical_artifact_links_table.c.provider_attempt_id.is_not(None),
+)
 
 __all__ = ["artifacts_table", "canonical_artifact_links_table"]

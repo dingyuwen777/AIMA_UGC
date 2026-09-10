@@ -139,6 +139,8 @@ def create_collection_job_registry(
     scope_executor = TikHubCollectionScopeExecutor(
         session_factory=runtime.database.new_session,
         raw_artifacts=raw_artifacts,
+        artifacts=artifact_service,
+        artifact_store=runtime.artifact_store,
         transport_factory=resolved_transport_factory,
         secret_resolver=secret_resolver or _default_secret_resolver(runtime),
     )

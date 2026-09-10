@@ -1530,3 +1530,117 @@ def test_0049_refuses_retryable_legacy_historical_chunk(
             )
     finally:
         engine.dispose()
+
+
+def test_0050_refuses_ambiguous_provider_attempt_canonical_links(
+    migration_database: str,
+) -> None:
+    """Stage 3 唯一父级不能在含糊旧关系上静默选取 Artifact。"""
+
+    _upgrade(migration_database, "20260911_0049")
+    job_id = uuid4()
+    run_id = uuid4()
+    scope_id = uuid4()
+    request_id = uuid4()
+    attempt_id = uuid4()
+    artifact_ids = (uuid4(), uuid4())
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO jobs(id, job_type, payload_version, payload, status, "
+                    "internal_idempotency_key, priority, attempt, max_attempts, "
+                    "timeout_seconds, progress, available_at, created_at, updated_at) "
+                    "VALUES (:id, 'collection.run.v1', 'collection.run.v1', '{}'::jsonb, "
+                    "'queued', :key, 0, 0, 1, 60, 0, :now, :now, :now)"
+                ),
+                {
+                    "id": job_id,
+                    "key": f"stage3-duplicate-{job_id}",
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO collection_runs(id, job_id, trigger_type, config_snapshot, "
+                    "status, created_at) VALUES (:id, :job_id, 'api', '{}'::jsonb, "
+                    "'queued', :now)"
+                ),
+                {"id": run_id, "job_id": job_id, "now": _NOW},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO collection_scopes(id, run_id, platform, source_type, "
+                    "source_value, operation_group, status) VALUES (:id, :run_id, "
+                    "'xiaohongshu', 'keyword_search', '爱玛', 'content_discovery', 'queued')"
+                ),
+                {"id": scope_id, "run_id": run_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO provider_requests(id, scope_id, provider, operation, "
+                    "request_fingerprint, request_params, pagination_input, status, "
+                    "attempt_count, created_at) VALUES (:id, :scope_id, 'tikhub', "
+                    "'search_notes', :fingerprint, '{}'::jsonb, '{}'::jsonb, 'completed', "
+                    "1, :now)"
+                ),
+                {
+                    "id": request_id,
+                    "scope_id": scope_id,
+                    "fingerprint": "d" * 64,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO provider_request_attempts(id, provider_request_id, "
+                    "attempt_no, dispatch_status, dispatch_started_at, completed_at, "
+                    "billing_status, potential_duplicate_charge, created_at) VALUES "
+                    "(:id, :request_id, 1, 'completed', :now, :now, 'not_billable', "
+                    "FALSE, :now)"
+                ),
+                {"id": attempt_id, "request_id": request_id, "now": _NOW},
+            )
+            for artifact_id in artifact_ids:
+                connection.execute(
+                    text(
+                        "INSERT INTO artifacts(id, kind, storage_backend, storage_key, "
+                        "content_type, encoding, sha256, byte_size, retention_class, "
+                        "storage_status, created_at, stored_at, linked_at) VALUES (:id, "
+                        "'canonical-content.v1', 'local', :key, 'application/x-ndjson', "
+                        "'gzip', :sha256, 1, 'canonical', 'linked', :now, :now, :now)"
+                    ),
+                    {
+                        "id": artifact_id,
+                        "key": f"canonical-content.v1/{artifact_id}.jsonl.gz",
+                        "sha256": "e" * 64,
+                        "now": _NOW,
+                    },
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO canonical_artifact_links(artifact_id, "
+                        "provider_attempt_id, created_at) VALUES (:artifact_id, "
+                        ":attempt_id, :now)"
+                    ),
+                    {
+                        "artifact_id": artifact_id,
+                        "attempt_id": attempt_id,
+                        "now": _NOW,
+                    },
+                )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="同一 Provider Attempt"):
+        _upgrade(migration_database, "20260911_0050")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260911_0049"
+            )
+    finally:
+        engine.dispose()

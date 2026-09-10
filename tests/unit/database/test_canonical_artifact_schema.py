@@ -32,6 +32,8 @@ def test_canonical_artifact_link_schema_has_one_owner_and_strong_parent_constrai
         "ix_canonical_artifact_links_provider_attempt_id",
         "uq_canonical_artifact_links_processing_import_batch_id",
         "uq_canonical_artifact_links_historical_import_campaign_item_id",
+        "uq_canonical_artifact_links_provider_attempt_id",
     }
     assert indexes["uq_canonical_artifact_links_processing_import_batch_id"].unique is True
     assert indexes["uq_canonical_artifact_links_historical_import_campaign_item_id"].unique is True
+    assert indexes["uq_canonical_artifact_links_provider_attempt_id"].unique is True

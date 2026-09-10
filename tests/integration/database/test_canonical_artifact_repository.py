@@ -290,12 +290,13 @@ def test_canonical_artifact_rejects_duplicate_parent_binding() -> None:
         runtime.dispose()
 
 
-def test_stage2_parent_has_one_reusable_canonical_artifact() -> None:
+@pytest.mark.parametrize("parent_index", [0, 1, 3])
+def test_runtime_parent_has_one_reusable_canonical_artifact(parent_index: int) -> None:
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()
     try:
         with session.begin():
-            parent = _seed_real_parents(session)[0]
+            parent = _seed_real_parents(session)[parent_index]
             first = _create_stored_canonical(session)
             PostgresArtifactMetadataRepository(session).link_canonical(
                 first.id,

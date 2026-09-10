@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from uuid import uuid4
 import pytest
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
+    PostgresArtifactMetadataRepository,
 )
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
@@ -37,8 +39,12 @@ from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobExecutionFence
-from aima_ugc.platform.storage import ArtifactService
-from aima_ugc.platform.storage.tables import artifacts_table
+from aima_ugc.platform.storage import (
+    ArtifactService,
+    CanonicalArtifactParent,
+    CanonicalArtifactReader,
+)
+from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
@@ -64,14 +70,14 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, accounts, vehicle_brands RESTART IDENTITY CASCADE"
         )
     try:
         yield runtime
     finally:
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, accounts, vehicle_brands RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
 
@@ -93,7 +99,7 @@ def _search_response() -> dict[str, object]:
     note = first["note"]
     assert isinstance(note, dict)
     note["comments_count"] = 0
-    page["items"] = [first]
+    page["items"] = [first, deepcopy(first)]
     page["has_more"] = False
     return body
 
@@ -126,9 +132,19 @@ def _raw_service(runtime: DatabaseRuntime, root: Path) -> RawArtifactService:
     )
 
 
-def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_content(
+@pytest.mark.parametrize(
+    ("filter_alias", "artifact_title", "artifact_uses_search_attempt"),
+    (
+        ("脱敏", "脱敏标题 A", True),
+        ("图文", "脱敏图文标题", False),
+    ),
+)
+def test_scope_runtime_persists_search_or_detail_final_canonical_before_filter(
     database_runtime: DatabaseRuntime,
     tmp_path: Path,
+    filter_alias: str,
+    artifact_title: str,
+    artifact_uses_search_attempt: bool,
 ) -> None:
     session = database_runtime.new_session()
     try:
@@ -157,7 +173,7 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
-                    **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
+                    **stage4_collection_config_snapshot(database_runtime, alias=filter_alias),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
                     "platforms": [
@@ -201,6 +217,11 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
     scope_executor = TikHubCollectionScopeExecutor(
         session_factory=database_runtime.new_session,
         raw_artifacts=_raw_service(database_runtime, tmp_path / "artifacts"),
+        artifacts=ArtifactService(
+            metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
+            store=LocalArtifactStore(tmp_path / "artifacts"),
+        ),
+        artifact_store=LocalArtifactStore(tmp_path / "artifacts"),
         transport_factory=lambda _config: transport,
         secret_resolver=lambda secret_ref: (
             SecretStr("fixture-secret")
@@ -230,8 +251,41 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
                 session.scalar(select(func.count()).select_from(provider_request_attempts_table))
                 == 2
             )
-            assert session.scalar(select(func.count()).select_from(artifacts_table)) == 2
+            assert session.scalar(select(func.count()).select_from(artifacts_table)) == 3
+            assert (
+                session.scalar(select(func.count()).select_from(canonical_artifact_links_table))
+                == 1
+            )
+            search_attempt_id = session.scalar(
+                select(provider_request_attempts_table.c.id)
+                .join(
+                    provider_requests_table,
+                    provider_requests_table.c.id
+                    == provider_request_attempts_table.c.provider_request_id,
+                )
+                .where(provider_requests_table.c.operation == "search_notes")
+            )
+            assert search_attempt_id is not None
+            canonical_artifact = PostgresArtifactMetadataRepository(
+                session
+            ).get_canonical_for_parent(
+                CanonicalArtifactParent(provider_attempt_id=search_attempt_id)
+            )
+            assert canonical_artifact is not None
             content = session.execute(select(contents_table)).mappings().one()
+        canonical_rows = tuple(
+            CanonicalArtifactReader(store=LocalArtifactStore(tmp_path / "artifacts")).read(
+                canonical_artifact
+            )
+        )
+        assert len(canonical_rows) == 2
+        assert all(row.external_content_id == "note-fixture-1" for row in canonical_rows)
+        assert all(row.title == artifact_title for row in canonical_rows)
+        assert all(
+            (row.source.provider_attempt_id == str(search_attempt_id))
+            is artifact_uses_search_attempt
+            for row in canonical_rows
+        )
         assert content["platform"] == "xiaohongshu"
         assert content["external_content_id"] == "note-fixture-1"
         assert content["title"] == "脱敏图文标题"
