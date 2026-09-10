@@ -212,7 +212,11 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
   await expect(vehicleEvidence).toContainText(`命中“${alias}”`)
   await expect(vehicleEvidence).not.toContainText('catalog v')
 
-  const brandEvidence = detail.locator('.classification-evidence article').filter({ hasText: brandName })
+  const brandEvidence = detail
+    .locator('.evidence-columns > div')
+    .filter({ hasText: '品牌识别证据' })
+    .locator('article')
+    .filter({ hasText: brandName })
   await expect(brandEvidence).toContainText('自有')
   await detail.getByRole('button', { name: '关闭', exact: true }).click()
 

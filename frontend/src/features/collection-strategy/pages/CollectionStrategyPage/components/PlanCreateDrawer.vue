@@ -325,7 +325,7 @@ function submit(): void {
         <strong>系统固定规则</strong><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
       </div>
       <AimaFeedbackBanner tone="info">
-        <strong>搜索与过滤职责已分离</strong><span>Keyword Pack 提供 Provider Search Terms</span><small>品牌目录独立决定内容过滤范围；历史计划中的车型范围仅在详情中只读展示。</small>
+        <strong>搜索与过滤职责已分离</strong><span>Keyword Pack 提供 Provider Search Terms</span><small>品牌目录独立决定内容过滤范围；历史车型范围仅作只读兼容，不作为新计划选择项。</small>
       </AimaFeedbackBanner>
       <div
         v-if="eligibilityReason && selectedPacks.length && platformOptions.some((item) => isPlatformSelected(item.value))"
