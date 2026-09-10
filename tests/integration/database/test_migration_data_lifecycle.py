@@ -1595,8 +1595,9 @@ def test_0050_refuses_ambiguous_provider_attempt_canonical_links(
             connection.execute(
                 text(
                     "INSERT INTO provider_request_attempts(id, provider_request_id, "
-                    "attempt_no, dispatch_status, billing_status, potential_duplicate_charge, "
-                    "created_at) VALUES (:id, :request_id, 1, 'completed', 'not_billable', "
+                    "attempt_no, dispatch_status, dispatch_started_at, completed_at, "
+                    "billing_status, potential_duplicate_charge, created_at) VALUES "
+                    "(:id, :request_id, 1, 'completed', :now, :now, 'not_billable', "
                     "FALSE, :now)"
                 ),
                 {"id": attempt_id, "request_id": request_id, "now": _NOW},

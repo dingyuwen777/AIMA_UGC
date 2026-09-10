@@ -158,14 +158,14 @@ Docs Impact 为 `targeted`：同步 Blueprint 02/03 与 TikHub 实现 Appendix �
 - [x] upstream_re_read：2026-09-11 Ready 前重读 Issue #444、Roadmap 05 Stage 3、Blueprint 02/03、当前 TikHub Runtime、Canonical/Artifact Contract、Schema/Migration、CI 与 `origin/main@7ca035fc`；main 未漂移，Issue/PR 仍 open。
 - [x] change_coverage：从 Issue AC1–AC12 与 Roadmap Stage 3 必须完成/退出条件逐条反查 Change、实现、测试和文档；R1–R10 已有直接实现或测试证据，R11–R12 仅保留必须发生在 Ready 后的外部生命周期，`not_satisfied` 已清零。
 - [x] reverse_audit：从 Search/Detail final Canonical、Provider Attempt 父级、Artifact Reader、冻结 Resolver、Candidate/Decision、Content Owner 反向检查；又从 Worker 构造、全部 Scope Runtime 测试、唯一索引/Migration、orphan cleanup 与无新 HTTP/UI 消费者反查，未发现绕过完整性预检或第二套写入路径。
-- [x] unresolved_cleared：首轮 Review 发现集成测试把已命中 Search 的行误判为 Detail Source；已参数化为 Search/Detail 两条来源场景并 re-review。当前无 blocker/high/medium Finding；本机无 PostgreSQL/Docker 的限制明确交给 PR CI，未冒充通过。
+- [x] unresolved_cleared：首轮 Review 发现集成测试把已命中 Search 的行误判为 Detail Source；已参数化为 Search/Detail 两条来源场景。首轮 PostgreSQL CI 又证明 Migration 负向 Fixture 缺少 `completed` Attempt 必需时间，已补齐真实父事实而未削弱约束。re-review 后无 blocker/high/medium Finding；本机无 PostgreSQL/Docker 的限制未冒充通过。
 
 # 两阶段 Review
 
 - **需求与风险重建**：Review Target 为 `7ca035fc...e20f7b96`。从 Issue #444、Roadmap 05 Stage 3 与当前 Provider/Raw/Candidate/Mapper/Detail/Filter/Content/Artifact 事实独立重建 R1–R12，没有使用本 Change 充当上游需求全集。
-- **实现与证据对照**：逐项审查页面有界边界、Search/Detail final 选择、Reader 前置、重复与 filtered 保留、Provider 调用计数、Source lineage、唯一关系、Migration、竞争恢复、取消/Fence、invalid 和文档。发现一项测试证据错误：Search Fixture 已命中“脱敏”，原断言却要求 Detail Source；已改为参数化 Search match 与 Detail match 并 re-review，生产实现无需绕过正确来源。未发现剩余 blocker/high/medium Finding。
+- **实现与证据对照**：逐项审查页面有界边界、Search/Detail final 选择、Reader 前置、重复与 filtered 保留、Provider 调用计数、Source lineage、唯一关系、Migration、竞争恢复、取消/Fence、invalid 和文档。发现一项测试证据错误：Search Fixture 已命中“脱敏”，原断言却要求 Detail Source；已改为参数化 Search match 与 Detail match。首轮 PostgreSQL CI 的 Migration 负向 Fixture 又因伪造 `completed` Attempt 时漏填 `dispatch_started_at/completed_at` 被既有约束正确拒绝；已补齐两个时间字段，没有改变生产 Migration。re-review 后无剩余 blocker/high/medium Finding。
 - **测试充分性结论**：Red 为 3 个预期失败；Green 目标 357 passed，Contract/API 171 passed，完整 Unit 除既有 POSIX 专用文件外 935 passed/8 skipped；Ruff、mypy、Contract 生成/兼容、Wheel、Docs、Architecture、Owner、Secret 与 lock 均通过。本机完整 Unit 另 3 个测试仅因 Windows 没有 `os.geteuid/os.chown` 失败；本机无 PostgreSQL 18 服务且 Docker daemon 未运行，真实 Migration/PostgreSQL/Full-stack 由 Ready exact-head PR CI 验证。
 
 # 完成证据与状态
 
-实现候选 `e20f7b9614bf0106cbdfa491c33ffa20bc23e710` 已完成本地验证、Completion Audit 与两阶段 Review，Change 进入 `ready_for_review`。PR #445 的早期 Completion Audit 失败是未 Ready 阶段的预期门禁；下一提交发布本记录后触发 exact-head CI。生产部署、生产 Migration、付费 Provider 和业务数据写入均未执行。
+实现候选（本次修正的父提交 `b9d6ee610840a4a48d6a785124514b145e46f53c`）已完成本地验证、Completion Audit 与两阶段 Review，Change 保持 `ready_for_review`。该提交的静态/Unit/Contract/API/Frontend/Wheel、Migration upgrade 与真实 Full-stack 已通过；PostgreSQL 首轮只暴露上述测试 Fixture 缺口，下一提交将重新触发 exact-head 全套 CI。生产部署、生产 Migration、付费 Provider 和业务数据写入均未执行。
