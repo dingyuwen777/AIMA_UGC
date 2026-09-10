@@ -241,18 +241,18 @@ src/features/collection-strategy/
 当前负责：
 
 - 后端分页的 Keyword Pack 列表，以及供跨页配置引用的完整只读目录；
-- 系统唯一的全局 Relevance Config；
-- 周期 Collection Plan 的筛选、分页、创建、编辑、复制、详情、启停和归档/恢复；
+- Keyword Pack 只维护 Provider Search Terms，不再提供全局 Relevance 产品入口；
+- 周期 Collection Plan 的筛选、分页、创建、编辑、复制、详情、启停和归档/恢复，并独立配置 `all_active / selected Brands`；
 - Capability 驱动的逐平台 Provider/Search Config，不在页面写死平台参数；
 - 历史 Plan 空 Search Config 的兼容说明。
 
 页面不直接运行 TikHub。保存 Plan/词包是修改配置事实，真正执行由 Scheduler 生成 Occurrence/Run/Job。
 
-词包新建与编辑使用同一表单，一次提交名称、说明和全部关键词的文本、平台、优先级、启停与备注。既有更新请求省略成员时仍只更新元数据；完整保存由同一事务执行版本及启用守卫，失败全部回滚。新建的单次500条限制不限制既有词包累计成员数。计划详情中的词包和车型入口每次重新读取完整当前配置，历史运行仍以原快照为准。
+词包新建与编辑使用同一表单，一次提交名称、说明和全部关键词的文本、平台、优先级、启停与备注。既有更新请求省略成员时仍只更新元数据；完整保存由同一事务执行版本及启用守卫，失败全部回滚。新建的单次500条限制不限制既有词包累计成员数。计划详情中的词包和兼容期历史车型入口每次重新读取完整当前配置，历史运行仍以原快照为准；新建/编辑计划不再提交 Discovery `vehicle_model_ids`。
 
 词包表单、计划创建/编辑与详情复用 [`frontend/src/shared/ui/AimaDialog.vue`](src/shared/ui/AimaDialog.vue) 的模态焦点隔离、Escape 和焦点返回，业务表单与抽屉尺寸仍由 Feature 维护。保存失败在当前弹层显示原因，名称、关键词和副本输入保留；只有服务端成功后关闭编辑区或清空输入。刷新与词包选择只接收当前请求的结果，较早响应不能覆盖最新选择。
 
-紧凑桌面宽度下，词包列表与详情、相关性配置与有效关键词上下排列；长关键词换行并在明细区滚动，长计划名在本列内换行，计划表格可横向滚动至操作列。正式画板尺寸与这些边界由 [`frontend/e2e/collection-strategy-figma-geometry.spec.ts`](e2e/collection-strategy-figma-geometry.spec.ts) 验证。
+紧凑桌面宽度下，词包列表与详情上下排列；长关键词换行并在明细区滚动，长计划名在本列内换行，计划表格可横向滚动至操作列。正式画板尺寸与这些边界由 [`frontend/e2e/collection-strategy-figma-geometry.spec.ts`](e2e/collection-strategy-figma-geometry.spec.ts) 验证。
 
 页面调用链保持为：
 
@@ -279,13 +279,13 @@ src/features/voice-plaza/
 当前组合：
 
 - Content 列表/详情；
-- 平台/文本/时间/来源/Analysis 筛选；除车型沿用车型目录外，业务下拉值从后端 Filter Options Contract 动态加载；
+- 平台/文本/时间/Brand/Vehicle/Competition/Analysis 筛选；Brand/Vehicle 使用统一目录，AI 业务下拉值从后端 Filter Options Contract 动态加载；
 - Analysis current/stale/pending；
 - 显式选择内容并做 Analysis Run Preview；
 - 创建手动 Analysis Run；
 - 只在声音记录前显示 `queued / running / cancelling` Analysis Run 的紧凑活动状态、真实进度并允许取消；终态 Run 不再作为历史大卡片持续占据声音广场正文；
 - 同一 Content Version 多轮 Analysis 结果的当前投影；
-- 查看 AI 原判与查询层 `effective_relevance / relevance_source`；
+- 查看 AI 原判与查询层 `effective_relevance / relevance_source`，并展示 Brand Role、Vehicle 所属 Brand、Competition Scope 与 Brand/Vehicle Evidence；
 - 对当前 Content Version 提交人工相关性复核/撤销复核；
 - 创建正式 Excel Export；
 - 查询 Export 状态、真实进度和下载 Artifact。
@@ -338,7 +338,7 @@ Data Export Job
 
 ### 5.5 `features/admin-configuration`：管理员业务配置
 
-该 Feature 消费 Principal、Vehicle Catalog、Keyword Pack↔车型、Analysis Scheme 和审计 Contract。角色只有 `administrator/user`；[`frontend/src/app/router.ts`](src/app/router.ts) 的守卫负责页面导航体验，真正权限由后端判断。车型选择跨 Collection、Import、声音广场和管理员页复用 [`frontend/src/shared/VehicleMultiSelect.vue`](src/shared/VehicleMultiSelect.vue)。
+该 Feature 消费 Principal、Brand/Vehicle Catalog、Analysis Scheme、Provider 和审计 Contract。角色只有 `administrator/user`；[`frontend/src/app/router.ts`](src/app/router.ts) 的守卫负责页面导航体验，真正权限由后端判断。“品牌与车型”只通过 Brand API 维护 Brand/Alias，通过 Vehicle API 维护 1:N 车型归属，不再调用 Keyword Pack↔Vehicle 写接口。Brand/Vehicle 选择分别复用 [`frontend/src/shared/BrandMultiSelect.vue`](src/shared/BrandMultiSelect.vue) 与 [`frontend/src/shared/VehicleMultiSelect.vue`](src/shared/VehicleMultiSelect.vue)。
 
 Scheme 草稿、发布、回滚和车型修改都通过 generated Client；页面默认打开服务端返回的 `active_version_id`，并明确区分“当前生效”和“草稿，尚未生效”。页面不保存第二套 Taxonomy，不直接写数据库，不把 development Principal 当飞书生产登录。
 
@@ -397,7 +397,7 @@ src/shared/
 
 页面私有视觉优先留在 Page/Component，避免改一处全局 CSS 把多个页面一起破坏。
 
-管理员配置的 AI 模型与 TikHub 复用 `ProviderConfigurationPanel`，测试连接仅使用已保存配置；组件维护在途配置身份和响应归属，防止重复请求及旧结果串到其他配置。保存时锁定表单，失败保留草稿。分析原则保存后用服务端返回的新版本建立编辑基线，发布前要求当前修改已保存。车型与操作记录使用独立表格滚动区；对应 Browser 场景见 [`frontend/e2e/admin-configuration-figma.spec.ts`](e2e/admin-configuration-figma.spec.ts)，真实保存、连接测试和资源生命周期见 [`frontend/e2e-fullstack/admin-product-capabilities.spec.ts`](e2e-fullstack/admin-product-capabilities.spec.ts)。
+管理员配置的 AI 模型与 TikHub 复用 `ProviderConfigurationPanel`，测试连接仅使用已保存配置；组件维护在途配置身份和响应归属，防止重复请求及旧结果串到其他配置。保存时锁定表单，失败保留草稿。AI 分析规则保存后用服务端返回的新版本建立编辑基线，发布前要求当前修改已保存。品牌目录、旗下车型与操作记录保持明确 Owner 和独立滚动边界；对应 Browser 场景见 [`frontend/e2e/admin-configuration-figma.spec.ts`](e2e/admin-configuration-figma.spec.ts)，真实保存、连接测试和资源生命周期见 [`frontend/e2e-fullstack/admin-product-capabilities.spec.ts`](e2e-fullstack/admin-product-capabilities.spec.ts)。
 
 新增页面：
 
