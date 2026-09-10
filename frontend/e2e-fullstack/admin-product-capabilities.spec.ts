@@ -207,7 +207,7 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
     .filter({ hasText: '车型识别证据' })
     .locator('article')
     .filter({ hasText: displayName })
-  await expect(vehicleEvidence.getByRole('strong').filter({ hasText: displayName })).toBeVisible()
+  await expect(vehicleEvidence.locator('b').filter({ hasText: displayName })).toBeVisible()
   await expect(vehicleEvidence).toContainText('系统识别')
   await expect(vehicleEvidence).toContainText(`命中“${alias}”`)
   await expect(vehicleEvidence).not.toContainText('catalog v')

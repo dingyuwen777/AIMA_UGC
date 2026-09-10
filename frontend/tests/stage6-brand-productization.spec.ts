@@ -32,7 +32,9 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
     expect(page).not.toContain("{ value: 'relevance', label: '全局相关性' }")
     expect(drawer).toContain('搜索条件：关键词包')
     expect(drawer).toContain('内容过滤条件：品牌')
-    expect(drawer).toContain("brand_ids: brandScope.value === 'selected' ? selectedBrands.value : []")
+    expect(drawer).toContain("brand_ids: brandScope.value === 'selected' ? [...selectedBrands.value] : []")
+    expect(drawer).toContain("? { vehicle_model_ids: [...legacyVehicleIds.value] }")
+    expect(drawer).toContain('保留历史车型范围')
     expect(drawer).not.toContain('vehicle_model_ids: selectedVehicles.value')
   })
 

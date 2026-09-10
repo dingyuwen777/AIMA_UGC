@@ -415,6 +415,7 @@ test('edits the selected plan through a single drawer and preserves its identity
   const editor = page.getByRole('dialog', { name: '编辑采集计划', exact: true })
   await expect(editor).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(1)
+  await expect(editor.getByLabel('保留历史车型范围（1 个，只读兼容）')).toBeChecked()
   await editor.getByPlaceholder('例如：爱玛新品口碑追踪').fill('编辑后的计划')
   await editor.getByLabel('小红书排序').selectOption('latest')
   await editor.getByLabel('小红书发布时间').selectOption('1d')
@@ -422,8 +423,12 @@ test('edits the selected plan through a single drawer and preserves its identity
   const request = page.waitForRequest((item) => new URL(item.url()).pathname === `/api/v1/collection-plans/${planId}` && item.method() === 'PUT')
   await editor.getByRole('button', { name: '保存计划修改' }).click()
   const payload = (await request).postDataJSON()
-  expect(payload).toMatchObject({ name: '编辑后的计划', expected_version: 3, brand_ids: [] })
-  expect(payload).not.toHaveProperty('vehicle_model_ids')
+  expect(payload).toMatchObject({
+    name: '编辑后的计划',
+    expected_version: 3,
+    vehicle_model_ids: [historicalVehicleId],
+  })
+  expect(payload).not.toHaveProperty('brand_ids')
   await expect(editor).toHaveCount(0)
 })
 

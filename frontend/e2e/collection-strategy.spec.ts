@@ -204,23 +204,23 @@ test('removes the global relevance entry and still protects Keyword Packs used b
 
 test('creates a periodic Collection Plan with paginated active Brand filtering and no new vehicle scope', async ({ page }) => {
   await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: /新建采集计划/ }).click()
+  const drawer = page.getByRole('dialog', { name: '新建采集计划' })
+  await expect(drawer).toBeVisible()
   const secondBrandPagePromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
     return url.pathname === '/api/v1/vehicle-brands'
       && url.searchParams.get('status') === 'active'
       && url.searchParams.get('offset') === '200'
   })
-  await page.getByRole('button', { name: /新建采集计划/ }).click()
+  await drawer.getByText('指定品牌', { exact: true }).click()
   const secondBrandPage = await secondBrandPagePromise
   const brandUrl = new URL(secondBrandPage.url())
   expect(brandUrl.searchParams.get('limit')).toBe('200')
   expect(brandUrl.searchParams.get('status')).toBe('active')
 
-  const drawer = page.getByRole('dialog', { name: '新建采集计划' })
-  await expect(drawer).toBeVisible()
   await drawer.getByPlaceholder('例如：爱玛新品口碑追踪').fill('爱玛新品自动采集')
   await drawer.getByText('爱玛新品发现 · v4').click()
-  await drawer.getByText('指定品牌', { exact: true }).click()
   await drawer.getByText('爱玛', { exact: true }).click()
   await drawer.getByText('小红书').click()
   await expect(drawer.getByRole('button', { name: '保存采集计划' })).toBeDisabled()

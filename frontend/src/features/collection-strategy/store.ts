@@ -96,6 +96,9 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const enabledPacks = computed(() =>
     packCatalog.value.filter((pack) => pack.enabled && pack.keyword_count > 0),
   )
+  const enabledBrandCount = computed(() =>
+    brandCatalog.value.filter((brand) => brand.status === 'active').length,
+  )
 
   /** 分页读取完整词包摘要目录，供跨页配置引用，不能用当前列表页冒充全集。 */
   async function fetchAllKeywordPacks(): Promise<KeywordPackSummaryResponse[]> {
@@ -124,12 +127,12 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
-  /** active 品牌用于新计划过滤，完整列表仍由历史计划只读展示自行兼容。 */
-  async function fetchAllActiveBrands(): Promise<BrandResponse[]> {
+  /** 分页读取完整品牌目录，供已停用品牌的历史计划继续显示真实名称。 */
+  async function fetchAllBrands(): Promise<BrandResponse[]> {
     const result: BrandResponse[] = []
     let offset = 0
     while (true) {
-      const page = await fetchBrands({ status: 'active', offset, limit: 200 })
+      const page = await fetchBrands({ offset, limit: 200 })
       result.push(...page.items)
       offset += page.items.length
       if (offset >= page.total || page.items.length === 0) return result
@@ -182,7 +185,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       const [packPage, allPacks, allBrands, allVehicles, providerCapabilities, planPage, enabledPlans] = await Promise.all([
         fetchKeywordPacks({ offset: packOffset.value, limit: packLimit }),
         fetchAllKeywordPacks(),
-        fetchAllActiveBrands(),
+        fetchAllBrands(),
         fetchAllVehicleModels(),
         fetchCapabilities(),
         fetchPlans({
@@ -710,6 +713,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     packOffset,
     packLimit,
     enabledPacks,
+    enabledBrandCount,
     capabilities,
     plans,
     archivedPlans,

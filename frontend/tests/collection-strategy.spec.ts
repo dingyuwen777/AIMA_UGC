@@ -77,19 +77,47 @@ describe('collection strategy feature', () => {
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ search: '爱玛', enabled: true, offset: 0, limit: 20 })
   })
 
-  it('loads packs, active brands, historical vehicles, capabilities, and plans as one workspace', async () => {
+  it('loads packs, complete brands, historical vehicles, capabilities, and plans as one workspace', async () => {
     const store = useCollectionStrategyStore()
     await store.refresh()
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 20 })
     expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 100 })
     expect(generated.listVehicleModels).toHaveBeenCalledWith({ offset: 0, limit: 200 })
-    expect(generated.listVehicleBrands).toHaveBeenCalledWith({ status: 'active', offset: 0, limit: 200 })
+    expect(generated.listVehicleBrands).toHaveBeenCalledWith({ offset: 0, limit: 200 })
     expect(generated.getCollectionCapabilities).toHaveBeenCalledOnce()
     expect(generated.listCollectionPlans).toHaveBeenCalledWith({
       search: undefined, enabled: undefined, platform: undefined, offset: 0, limit: 20,
     })
     expect(generated.listCollectionPlans).toHaveBeenCalledWith({ enabled: true, offset: 0, limit: 100 })
     expect(store.brandCatalog).toEqual([])
+  })
+
+  it('keeps deprecated brands available for historical plan display without counting them as enabled', async () => {
+    const deprecatedBrand = {
+      id: '77777777-7777-4777-8777-777777777777',
+      code: 'HISTORICAL',
+      display_name: '历史品牌',
+      role: 'competitor' as const,
+      status: 'deprecated' as const,
+      version: 2,
+      catalog_version: 9,
+      aliases: [],
+      created_at: '2026-08-01T00:00:00Z',
+      updated_at: '2026-08-28T00:00:00Z',
+    }
+    generated.listVehicleBrands.mockImplementation(async (params: { status?: string }) => ({
+      items: params.status === 'active' ? [] : [deprecatedBrand],
+      total: params.status === 'active' ? 0 : 1,
+      catalog_version: 9,
+      offset: 0,
+      limit: 200,
+    }))
+    const store = useCollectionStrategyStore()
+
+    await store.refresh()
+
+    expect(store.brandCatalog).toEqual([deprecatedBrand])
+    expect(store.enabledBrandCount).toBe(0)
   })
 
   it('loads the complete historical vehicle catalog without an active-only status filter', async () => {

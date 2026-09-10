@@ -175,7 +175,9 @@ function archivePlan(): void {
           {{ packLabel(id) }}
         </button><em v-if="plan.keyword_pack_ids.length === 0">未选择关键词包</em>
       </section><section class="brands">
-        <h4>内容过滤条件 · 品牌</h4><span v-if="(plan.brand_ids ?? []).length === 0">全部启用品牌及车型</span><span
+        <h4>内容过滤条件 · 品牌</h4><span v-if="(plan.brand_ids ?? []).length === 0 && (plan.vehicle_model_ids ?? []).length === 0">全部启用品牌及车型</span><span
+          v-else-if="(plan.brand_ids ?? []).length === 0"
+        >沿用下方历史车型范围，尚未迁移为品牌过滤</span><span
           v-for="id in plan.brand_ids ?? []"
           :key="id"
         >{{ brandLabel(id) }}</span>

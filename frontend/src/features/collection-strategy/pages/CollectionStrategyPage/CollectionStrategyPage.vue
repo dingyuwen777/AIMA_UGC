@@ -155,7 +155,7 @@ function showNotice(message: string): void {
 
     <StrategyKpiCards
       :pack-count="store.packTotal"
-      :brand-count="store.brandCatalog.length"
+      :brand-count="store.enabledBrandCount"
       :enabled-plan-count="store.enabledPlanCount"
       :loading="store.loading"
     />
