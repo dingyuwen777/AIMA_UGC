@@ -99,20 +99,6 @@ async function mockStrategyApi(page: Page): Promise<void> {
       return
     }
 
-    if (request.method() === 'GET' && url.pathname === '/api/v1/relevance-config') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          keyword_pack_id: packId,
-          keyword_pack_version: 4,
-          version: 3,
-          effective_keywords: ['爱玛 Q7'],
-          updated_at: '2026-09-04T00:00:00Z',
-        }),
-      })
-      return
-    }
-
     if (request.method() === 'GET' && url.pathname === '/api/v1/collection-capabilities') {
       await route.fulfill({
         contentType: 'application/json',

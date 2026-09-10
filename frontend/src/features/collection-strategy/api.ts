@@ -13,13 +13,11 @@ import {
   getCollectionPlanDeleteEligibility,
   getKeywordPack,
   getKeywordPackDeleteEligibility,
-  getVehicleModel,
   listArchivedCollectionPlans,
   listArchivedKeywordPacks,
   listCollectionPlans,
   listKeywordPacks,
   listVehicleBrands,
-  listVehicleModels,
   removeKeywordFromPack,
   restoreCollectionPlan,
   restoreKeywordPack,
@@ -48,11 +46,8 @@ import {
   type ListCollectionPlansParams,
   type ListKeywordPacksParams,
   type ListVehicleBrandsParams,
-  type ListVehicleModelsParams,
   type ResourceDeleteEligibilityResponse,
   type ResourceLifecycleListResponse,
-  type VehicleModelListResponse,
-  type VehicleModelResponse,
 } from '../../generated/api/client'
 
 export class CollectionStrategyApiError extends Error {
@@ -82,21 +77,10 @@ function unwrap<T>(value: T): T {
   return value
 }
 
-/** 读取计划引用车型的完整当前配置，保留已停用或合并资源的可追溯信息。 */
-export async function fetchVehicle(vehicleId: string): Promise<VehicleModelResponse> {
-  return unwrap(await getVehicleModel(vehicleId))
-}
-
 export async function fetchKeywordPacks(
   params?: ListKeywordPacksParams,
 ): Promise<KeywordPackListResponse> {
   return unwrap(await listKeywordPacks(params))
-}
-
-export async function fetchVehicleModels(
-  params?: ListVehicleModelsParams,
-): Promise<VehicleModelListResponse> {
-  return unwrap(await listVehicleModels(params))
 }
 
 export async function fetchBrands(
