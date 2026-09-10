@@ -19,7 +19,7 @@ jobs:
         env:
           POSTGRES_DB: aima_ugc
           POSTGRES_USER: aima_ugc
-          POSTGRES_PASSWORD: stage3-content-seed
+          POSTGRES_PASSWORD: ci-postgres
         ports:
           - 5432:5432
         options: >-
@@ -60,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
-          printf '%s\n' 'stage3-content-seed' > "${AIMA_SECRET_DIR}/postgres_password"
+          printf '%s\n' 'ci-postgres' > "${AIMA_SECRET_DIR}/postgres_password"
           chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
           uv run alembic upgrade head
           uv run alembic current
