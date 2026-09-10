@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-045854-r05-stage3-tikhub-canonical
 title: Roadmap 05 Stage 3 TikHub 持久 Canonical
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feat/r05-stage3-tikhub-canonical
 created: 2026-09-11
