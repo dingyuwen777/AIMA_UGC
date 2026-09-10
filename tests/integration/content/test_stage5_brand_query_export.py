@@ -151,7 +151,7 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
             principal=principal,
             request_id="stage5-competitor",
         )
-        other = brand_service.create_brand(
+        brand_service.create_brand(
             BrandCreateRequest(
                 code="OTHER-STAGE5",
                 display_name="其他 Stage5",
@@ -203,7 +203,9 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
                     ),
                 )
             ).all()
-            content_by_title = {str(title): UUID(str(content_id)) for content_id, title in title_rows}
+            content_by_title = {
+                str(title): UUID(str(content_id)) for content_id, title in title_rows
+            }
             none_id = content_by_title["爱玛舞台 历史未分类"]
             connection.execute(
                 update(content_brand_evidence_table)
@@ -391,7 +393,9 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         )
         assert export_worker.run_once() is True
         downloaded = reporting.download_export(export.export_id)
-        workbook = load_workbook(BytesIO(b"".join(download.chunks)), read_only=True, data_only=True)
+        workbook = load_workbook(
+            BytesIO(b"".join(downloaded.chunks)), read_only=True, data_only=True
+        )
         try:
             assert list(workbook["内容"].iter_rows(values_only=True)) == [
                 ("命中关键词", "品牌", "品牌角色", "竞品范围", "车型"),

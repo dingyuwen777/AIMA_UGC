@@ -11,6 +11,11 @@ from pydantic import ConfigDict, Field, computed_field, field_validator, model_v
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
+from aima_ugc.contracts.brand_vehicle import (
+    BrandCompetitionScope,
+    BrandRole,
+    competition_scope_for_brand_roles,
+)
 from aima_ugc.contracts.collection.models import BusinessOperation, CollectionSearchConfig
 from aima_ugc.contracts.platform import PlatformName, PlatformScope, normalize_platform_name
 from aima_ugc.platform.time import to_beijing
@@ -865,6 +870,41 @@ class ContentVehicleEvidenceResponse(BaseModel):
     is_manual_locked: bool = False
 
 
+class ContentBrandReferenceResponse(BaseModel):
+    """内容查询中的稳定 Brand 展示引用。"""
+
+    model_config = ConfigDict(extra="forbid")
+    id: UUID
+    code: str
+    display_name: str
+    role: BrandRole
+
+
+class ContentBrandEvidenceResponse(BaseModel):
+    """一个 Brand 关联的可追溯证据。"""
+
+    model_config = ConfigDict(extra="forbid")
+    source: Literal["alias_match", "vehicle_match", "manual_review", "import"]
+    matched_text: str | None = None
+    source_field: str | None = None
+    derived_vehicle_model_id: UUID | None = None
+    catalog_version: int = Field(gt=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    is_manual_locked: bool = False
+
+    @model_validator(mode="after")
+    def validate_derived_vehicle(self) -> ContentBrandEvidenceResponse:
+        if (self.source == "vehicle_match") != (self.derived_vehicle_model_id is not None):
+            raise ValueError("只有 vehicle_match Brand Evidence 必须携带 derived_vehicle_model_id")
+        return self
+
+
+class ContentBrandResponse(ContentBrandReferenceResponse):
+    """内容当前 Brand 及其全部有效证据。"""
+
+    evidences: tuple[ContentBrandEvidenceResponse, ...] = Field(min_length=1)
+
+
 class ContentVehicleResponse(BaseModel):
     """内容当前车型及其全部有效证据。"""
 
@@ -874,6 +914,7 @@ class ContentVehicleResponse(BaseModel):
     display_name: str
     series_name: str | None = None
     category_name: str | None = None
+    brand: ContentBrandReferenceResponse | None
     evidences: tuple[ContentVehicleEvidenceResponse, ...] = Field(min_length=1)
 
 
@@ -907,7 +948,9 @@ class ContentListItemResponse(BaseModel):
     effective_relevance: ContentRelevance | None = None
     relevance_source: ContentRelevanceSource | None = None
     source: ContentSourceResponse
+    brands: tuple[ContentBrandResponse, ...]
     vehicles: tuple[ContentVehicleResponse, ...] = ()
+    competition_scope: BrandCompetitionScope
     availability: ContentAvailabilityResponse | None = None
 
     @model_validator(mode="after")
@@ -919,6 +962,12 @@ class ContentListItemResponse(BaseModel):
             or self.analysis.relevance != self.effective_relevance
         ):
             raise ValueError("AI relevance_source 必须与当前 completed Analysis 原判一致")
+        brand_ids = tuple(brand.id for brand in self.brands)
+        if len(brand_ids) != len(set(brand_ids)):
+            raise ValueError("brands 不能包含重复 Brand")
+        expected_scope = competition_scope_for_brand_roles(brand.role for brand in self.brands)
+        if self.competition_scope != expected_scope:
+            raise ValueError("competition_scope 必须由 brands 的 role 派生")
         return self
 
 
@@ -939,7 +988,9 @@ class ContentFilterSnapshot(BaseModel):
     published_from: datetime | None = None
     published_to: datetime | None = None
     source_identifier: UUID | None = None
+    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
+    competition_scopes: tuple[BrandCompetitionScope, ...] = Field(default=(), max_length=5)
 
     @field_validator("platforms", mode="before")
     @classmethod
@@ -963,6 +1014,10 @@ class ContentFilterSnapshot(BaseModel):
             raise ValueError("published_from 不能晚于 published_to")
         if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
             raise ValueError("vehicle_model_ids 不能重复")
+        if len(self.brand_ids) != len(set(self.brand_ids)):
+            raise ValueError("brand_ids 不能重复")
+        if len(self.competition_scopes) != len(set(self.competition_scopes)):
+            raise ValueError("competition_scopes 不能重复")
         return self
 
 
@@ -1225,6 +1280,9 @@ type ExportColumnKey = Literal[
     "sentiment",
     "primary_label",
     "secondary_label",
+    "brands",
+    "brand_roles",
+    "competition_scope",
     "vehicles",
     "availability",
     "like_count",

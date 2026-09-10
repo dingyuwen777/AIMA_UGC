@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-EXPORT_COLUMN_CATALOG_VERSION = 1
+EXPORT_COLUMN_CATALOG_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +40,10 @@ EXPORT_COLUMNS = (
     ExportColumnDefinition("coin_count", "投币数", default_selected=True),
     ExportColumnDefinition("download_count", "下载数", default_selected=True),
     ExportColumnDefinition("matched_keywords", "命中关键词", default_selected=True),
+    ExportColumnDefinition("brands", "品牌"),
+    ExportColumnDefinition("brand_roles", "品牌角色"),
+    ExportColumnDefinition("competition_scope", "竞品范围"),
+    ExportColumnDefinition("vehicles", "车型"),
     ExportColumnDefinition("voice_type", "发声类型", default_selected=True),
     ExportColumnDefinition("sentiment", "情感标签", default_selected=True),
     ExportColumnDefinition("primary_label", "一级标签", default_selected=True),
@@ -50,7 +54,6 @@ EXPORT_COLUMNS = (
     ExportColumnDefinition("source_provider", "来源Provider", default_selected=True),
     ExportColumnDefinition("raw_locator", "Raw/来源定位", default_selected=True),
     ExportColumnDefinition("coverage", "评论覆盖", default_selected=True),
-    ExportColumnDefinition("vehicles", "车型"),
     ExportColumnDefinition("availability", "第三方可用状态"),
 )
 

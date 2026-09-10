@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -13,7 +14,31 @@ from aima_ugc.contracts.base import AimaHttpModel as BaseModel
 BrandRole = Literal["owned", "competitor", "other"]
 BrandStatus = Literal["active", "deprecated"]
 BrandFilterScope = Literal["all_active", "selected"]
+BrandCompetitionScope = Literal[
+    "owned_only",
+    "competitor_only",
+    "mixed",
+    "other_only",
+    "none_detected",
+]
 VehicleStatus = Literal["active", "deprecated", "merged"]
+
+
+def competition_scope_for_brand_roles(roles: Iterable[BrandRole]) -> BrandCompetitionScope:
+    """按实际命中的 Brand Role 集合派生竞品范围，不新增持久标量。"""
+
+    distinct = frozenset(roles)
+    if not distinct:
+        return "none_detected"
+    if len(distinct) > 1:
+        return "mixed"
+    role = next(iter(distinct))
+    scope_by_role: dict[BrandRole, BrandCompetitionScope] = {
+        "owned": "owned_only",
+        "competitor": "competitor_only",
+        "other": "other_only",
+    }
+    return scope_by_role[role]
 
 
 def _normalize_aliases(value: tuple[str, ...]) -> tuple[str, ...]:
@@ -185,6 +210,7 @@ class BrandVehicleCatalogReadinessResponse(BaseModel):
 __all__ = [
     "BrandAliasCreateRequest",
     "BrandAliasResponse",
+    "BrandCompetitionScope",
     "BrandCreateRequest",
     "BrandFilterScope",
     "BrandListResponse",
@@ -200,4 +226,5 @@ __all__ = [
     "CatalogVehicleSnapshotItem",
     "VehicleBrandAssignmentRequest",
     "VehicleBrandAssignmentResponse",
+    "competition_scope_for_brand_roles",
 ]

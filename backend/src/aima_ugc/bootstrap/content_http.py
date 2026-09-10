@@ -52,6 +52,9 @@ from aima_ugc.contracts.http import (
     ContentAnalysisStatus,
     ContentAnalysisSubmitRequest,
     ContentAnalysisTaxonomyResponse,
+    ContentBrandEvidenceResponse,
+    ContentBrandReferenceResponse,
+    ContentBrandResponse,
     ContentDetailResponse,
     ContentFilterLabelOptionResponse,
     ContentFilterOptionsResponse,
@@ -1117,6 +1120,27 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             import_batch_id=record.source.import_batch_id,
             collection_run_id=record.source.collection_run_id,
         ),
+        brands=tuple(
+            ContentBrandResponse(
+                id=brand.id,
+                code=brand.code,
+                display_name=brand.display_name,
+                role=brand.role,
+                evidences=tuple(
+                    ContentBrandEvidenceResponse(
+                        source=cast(Any, evidence.source),
+                        matched_text=evidence.matched_text,
+                        source_field=evidence.source_field,
+                        derived_vehicle_model_id=evidence.derived_vehicle_model_id,
+                        catalog_version=evidence.catalog_version,
+                        confidence=evidence.confidence,
+                        is_manual_locked=evidence.is_manual_locked,
+                    )
+                    for evidence in brand.evidences
+                ),
+            )
+            for brand in record.brands
+        ),
         vehicles=tuple(
             ContentVehicleResponse(
                 vehicle_model_id=vehicle.vehicle_model_id,
@@ -1124,6 +1148,16 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
                 display_name=vehicle.display_name,
                 series_name=vehicle.series_name,
                 category_name=vehicle.category_name,
+                brand=(
+                    ContentBrandReferenceResponse(
+                        id=vehicle.brand.id,
+                        code=vehicle.brand.code,
+                        display_name=vehicle.brand.display_name,
+                        role=vehicle.brand.role,
+                    )
+                    if vehicle.brand is not None
+                    else None
+                ),
                 evidences=tuple(
                     ContentVehicleEvidenceResponse(
                         source=cast(Any, evidence.source),
@@ -1138,6 +1172,7 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             )
             for vehicle in record.vehicles
         ),
+        competition_scope=record.competition_scope,
         availability=(
             ContentAvailabilityResponse(
                 status=cast(Any, record.availability.status),

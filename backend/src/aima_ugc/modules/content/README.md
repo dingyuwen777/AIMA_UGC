@@ -413,6 +413,7 @@ Content Current
 + Account Current follower count
 + Current Analysis Identity 对应 Analysis
 + Label Pairs
++ Current Version 的有效 Brand/Vehicle Evidence
 + Provider/Raw/Run/Batch Source
 ```
 
@@ -421,6 +422,8 @@ Content Current
 - [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 声音广场的粉丝数展示和排序使用同一个有效值：存在稳定作者账号且 `accounts.current_follower_count` 非空时优先读取 Account Current；否则回退到当前 `content_versions.author_snapshot.follower_count`，因此只有作者名和粉丝数的 Excel 导入也能直接展示和排序。缺失值保持未知，不用零替代，也不为排序重新请求 Provider。发布时间和粉丝数排序都由查询 Repository 在 PostgreSQL 中执行；空值置后，同值按 Content ID 续页。排序身份绑定到 Cursor，切换排序必须从第一页重新查询。未指定排序的旧调用和有效期内的旧 Cursor 保留原行为。
+
+Brand 与 Vehicle 是两组独立 Evidence。列表返回当前 Content Version 的全部有效 Brand 及证据；Vehicle 仍按合并后的有效车型展示，并嵌套该车型当前目录中的 Brand 引用。`competition_scope` 不持久化，而是由命中 Brand 的 `owned / competitor / other` 角色集合派生；没有 Brand 时为 `none_detected`。`brand_ids`、`vehicle_model_ids` 和 `competition_scopes` 在同一查询内按 AND 组合，各自数组内部按 OR 匹配。List、Count、Analysis query target 与 Export query target 都复用这一过滤入口。
 
 ### 当前 Analysis 状态
 
@@ -485,7 +488,7 @@ Application Service 会对：
 ContentFilterSnapshot
 ```
 
-计算 query hash，并在 Cursor 中绑定。
+计算 query hash，并在 Cursor 中绑定。Brand、Vehicle 与竞品范围筛选也属于该快照，因此切换这些条件后不能复用旧 Cursor。
 
 因此：
 

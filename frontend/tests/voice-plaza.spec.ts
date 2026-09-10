@@ -58,6 +58,8 @@ const item = {
   effective_relevance: 'relevant' as const,
   relevance_source: 'ai' as const,
   source: { provider_name: 'file-import' },
+  brands: [],
+  competition_scope: 'none_detected' as const,
 }
 
 const taxonomy = {

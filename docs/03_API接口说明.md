@@ -413,6 +413,11 @@ frontend/src/features/voice-plaza/
 - 最新人工相关性事件形成的 `effective_relevance / relevance_source`；
 - 来源链；
 - 作者和 Current Metrics。
+- 当前 Content Version 的有效 Brand/Vehicle Evidence。
+
+列表项中的 `brands[]` 提供 Brand 稳定引用、角色和可审计 Evidence；`vehicles[]` 按合并后的有效车型展示，并嵌套其当前目录 Brand（旧数据允许为 `null`）。`competition_scope` 由 `brands[].role` 派生，取值为 `owned_only / competitor_only / mixed / other_only / none_detected`，不是独立持久字段。
+
+`brand_ids`、`vehicle_model_ids`、`competition_scopes` 可组合筛选：不同维度按 AND，同一维度多个值按 OR。筛选快照同时绑定 Cursor，并被 List、Count、Analysis query target 和 Export query target 共用；调用方切换筛选后必须从第一页开始。
 
 默认列表按**有效相关性**排除当前仍为 irrelevant 的内容；没有 current Analysis 的 Content 仍可显示。
 
@@ -559,6 +564,8 @@ backend/src/aima_ugc/modules/reporting/
 ```text
 reporting.content-export-excel.v1
 ```
+
+Export Column Catalog v2 增加可选的“品牌、品牌角色、竞品范围、车型”列。Brand/Vehicle Evidence 按冻结的 `content_version` 投影，竞品范围由冻结版本的 Brand Role 派生；这些列默认不选，不改变既有默认导出表头。
 
 ## 9.2 查询/下载
 

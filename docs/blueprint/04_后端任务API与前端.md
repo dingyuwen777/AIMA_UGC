@@ -545,6 +545,7 @@ SELECT * FROM contents
 Content Current
 + current Content Version
 + 当前配置身份匹配的最新 Analysis Result
++ current Content Version 的有效 Brand/Vehicle Evidence
 + 当前来源 Request/Attempt/Raw
 ```
 
@@ -564,6 +565,8 @@ Content Current
 - 当前版本没有匹配 Analysis，但历史版本分析过时，会表现为 `stale`；
 - 完全没分析过为 `pending`；
 - 单条详情 `get_content()` 使用审计友好的读取，可读取 raw irrelevant Analysis 事实。
+
+Brand 和 Vehicle 是独立 Evidence 事实：查询返回当前 Content Version 的有效 Brand 证据；Vehicle 按合并后的有效车型展示，并嵌套该车型当前目录 Brand。`competition_scope` 只由实际命中 Brand 的角色集合派生，不新增持久化标量。`brand_ids`、`vehicle_model_ids`、`competition_scopes` 在不同维度间按 AND 组合，同一维度的多个值按 OR；List、Count、Analysis query target 和 Export query target 复用同一过滤实现。Cursor 的 query hash 包含这些条件。
 
 这也是为什么 AI relevance 当前不需要复制到 `contents.is_relevant`。
 
