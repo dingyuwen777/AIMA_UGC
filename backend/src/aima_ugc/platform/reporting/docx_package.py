@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC
 from io import BytesIO
 from pathlib import Path
@@ -321,14 +321,15 @@ class DocxBuilder:
                     _document_rels_xml(self.chart_count, self.image_count),
                 )
                 for index, spec in enumerate(self.charts, start=1):
+                    office_spec = _office_chart_spec(spec)
                     archive.writestr(
-                        f"word/charts/chart{index}.xml", _chart_xml(spec, chart_index=index)
+                        f"word/charts/chart{index}.xml", _chart_xml(office_spec, chart_index=index)
                     )
                     archive.writestr(
                         f"word/charts/_rels/chart{index}.xml.rels", _chart_rels_xml(index)
                     )
                     archive.writestr(
-                        f"word/embeddings/chart{index}.xlsx", _chart_workbook_bytes(spec)
+                        f"word/embeddings/chart{index}.xlsx", _chart_workbook_bytes(office_spec)
                     )
                 for index, image in enumerate(self.images, start=1):
                     archive.writestr(f"word/media/image{index}.png", image.path.read_bytes())
@@ -604,19 +605,18 @@ class DocxBuilder:
             section,
             f"{{{_W}}}pgSz",
             {
-                f"{{{_W}}}w": str(theme.A4_LANDSCAPE_WIDTH_TWIPS),
-                f"{{{_W}}}h": str(theme.A4_LANDSCAPE_HEIGHT_TWIPS),
-                f"{{{_W}}}orient": "landscape",
+                f"{{{_W}}}w": str(theme.A4_PORTRAIT_WIDTH_TWIPS),
+                f"{{{_W}}}h": str(theme.A4_PORTRAIT_HEIGHT_TWIPS),
             },
         )
         ET.SubElement(
             section,
             f"{{{_W}}}pgMar",
             {
-                f"{{{_W}}}top": str(theme.PAGE_MARGIN_TWIPS),
-                f"{{{_W}}}right": str(theme.PAGE_MARGIN_TWIPS),
-                f"{{{_W}}}bottom": str(theme.PAGE_MARGIN_TWIPS),
-                f"{{{_W}}}left": str(theme.PAGE_MARGIN_TWIPS),
+                f"{{{_W}}}top": str(theme.PAGE_MARGIN_VERTICAL_TWIPS),
+                f"{{{_W}}}right": str(theme.PAGE_MARGIN_HORIZONTAL_TWIPS),
+                f"{{{_W}}}bottom": str(theme.PAGE_MARGIN_VERTICAL_TWIPS),
+                f"{{{_W}}}left": str(theme.PAGE_MARGIN_HORIZONTAL_TWIPS),
                 f"{{{_W}}}header": "425",
                 f"{{{_W}}}footer": "425",
                 f"{{{_W}}}gutter": "0",
@@ -699,6 +699,23 @@ def _validate_chart_spec(spec: ChartSpec) -> None:
 
 def _series_names(spec: ChartSpec) -> tuple[str, ...]:
     return spec.series_names or tuple(f"系列 {index}" for index in range(1, len(spec.series) + 1))
+
+
+def _office_chart_spec(spec: ChartSpec) -> ChartSpec:
+    """Adapt horizontal rankings to Word's bottom-to-top category layout.
+
+    Word positions labels one category off when a horizontal category axis is
+    reversed. Reversing the linked workbook rows instead keeps Word's native
+    axis order while preserving the report's required descending visual order.
+    """
+
+    if spec.kind != "bar" or spec.bar_direction != "bar":
+        return spec
+    return replace(
+        spec,
+        categories=tuple(reversed(spec.categories)),
+        series=tuple(tuple(reversed(values)) for values in spec.series),
+    )
 
 
 def _chart_workbook_bytes(spec: ChartSpec) -> bytes:

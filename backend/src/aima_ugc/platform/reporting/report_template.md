@@ -5,182 +5,95 @@
 
 ---
 
-## 1. 管理摘要
-
-{{EXECUTIVE_SUMMARY}}
+## 1. 总体概况
 
 ### 1.1 核心指标
 
-<!-- aima:table-style=kpi -->
 {{EXECUTIVE_METRICS_TABLE}}
+
+平台每日明细
+
+<!-- aima:table-style=compact-daily -->
+{{PLATFORM_DAILY_TABLE}}
 
 ### 1.2 每日舆情声量走势
 
 {{DAILY_CONTENT_CHART}}
 
-## 2. 舆情重点关注
+### 1.3 与上周期对比
 
-{{RISK_SUMMARY}}
+{{PERIOD_COMPARISON}}
 
-### 2.1 正面内容平台分布
+## 2. 平台声量与情感结构
 
-<!-- aima:layout=ranking-chart -->
-<!-- aima:table-style=ranking -->
-{{POSITIVE_PLATFORM_TABLE}}
-
-{{POSITIVE_PLATFORM_BAR_CHART}}
-
-### 2.2 正面一级议题
-
-<!-- aima:layout=ranking-chart -->
-<!-- aima:table-style=ranking -->
-{{POSITIVE_PRIMARY_TABLE}}
-
-{{POSITIVE_PRIMARY_BAR_CHART}}
-
-### 2.3 正面二级议题
-
-<!-- aima:layout=ranking-chart -->
-<!-- aima:table-style=ranking -->
-{{POSITIVE_SECONDARY_TABLE}}
-
-{{POSITIVE_SECONDARY_BAR_CHART}}
-
-### 2.4 负面内容平台分布
-
-<!-- aima:layout=ranking-chart -->
-<!-- aima:table-style=ranking -->
-{{NEGATIVE_PLATFORM_TABLE}}
-
-{{NEGATIVE_PLATFORM_BAR_CHART}}
-
-### 2.5 负面一级议题
-
-<!-- aima:layout=ranking-chart -->
-<!-- aima:table-style=ranking -->
-{{NEGATIVE_PRIMARY_TABLE}}
-
-{{NEGATIVE_PRIMARY_BAR_CHART}}
-
-### 2.6 负面二级议题
-
-<!-- aima:layout=ranking-chart -->
-<!-- aima:table-style=ranking -->
-{{NEGATIVE_SECONDARY_TABLE}}
-
-{{NEGATIVE_SECONDARY_BAR_CHART}}
-
-## 3. 平台声量与情感结构
-
-### 3.1 平台声量分布
+### 2.1 平台声量分布
 
 <!-- aima:layout=table-chart -->
 {{PLATFORM_TABLE}}
 
 {{PLATFORM_PIE_CHART}}
 
-### 3.2 平台 × 情感对比
+### 2.2 平台与情感对比
 
 {{PLATFORM_SENTIMENT_TABLE}}
 
 {{PLATFORM_SENTIMENT_CHART}}
 
-### 3.3 平台每日声量变化
+### 2.3 平台每日声量变化
 
-<!-- aima:chart-presentation=dominant-split -->
-{{PLATFORM_DAILY_CHART}}
+{{PLATFORM_DAILY_CHARTS}}
 
-## 4. 整体情感表现
+## 3. 情感表现
 
-### 4.1 情感结构
+### 3.1 总体情感结构
 
 <!-- aima:layout=table-chart -->
 {{SENTIMENT_TABLE}}
 
 {{SENTIMENT_PIE_CHART}}
 
-### 4.2 情感每日趋势
+### 3.2 总体情感每日趋势
 
-主趋势突出正面与中性的绝对声量，负面与混合单列为低量级趋势；两者均使用相同统计结果与绝对数量。
+{{SENTIMENT_DAILY_CHARTS}}
 
-<!-- aima:chart-presentation=sentiment-split -->
-{{SENTIMENT_DAILY_CHART}}
+### 3.3 正面一级议题
 
-## 5. 核心议题分析
+{{POSITIVE_PRIMARY_RANKED_BAR_CHART}}
 
-### 5.1 一级议题分布
+### 3.4 正面二级议题
 
-一级议题以精确排名保留数量与占比，同时用词云辅助识别结构重心。
+{{POSITIVE_SECONDARY_RANKED_BAR_CHART}}
 
-<!-- aima:layout=primary-overview -->
+### 3.5 负面一级议题
+
+{{NEGATIVE_PRIMARY_RANKED_BAR_CHART}}
+
+### 3.6 负面二级议题
+
+{{NEGATIVE_SECONDARY_RANKED_BAR_CHART}}
+
+## 4. 核心议题分析
+
+### 4.1 一级议题分布
+
+<!-- aima:layout=ranking-image-top8 -->
 <!-- aima:table-style=ranking -->
 {{PRIMARY_TABLE}}
 
 {{PRIMARY_WORDCLOUD}}
 
-### 5.2 一级议题每日变化
+### 4.2 二级议题分布
 
-<!-- aima:chart-presentation=dominant-split -->
-{{PRIMARY_DAILY_CHART}}
-
-### 5.3 二级议题分布
-
-<!-- aima:layout=ranking-chart -->
+<!-- aima:layout=ranking-image-top8 -->
 <!-- aima:table-style=ranking -->
 {{SECONDARY_TABLE}}
 
-{{SECONDARY_BAR_CHART}}
+{{SECONDARY_WORDCLOUD}}
 
-### 5.4 二级议题每日变化
+## 5. 热点关键词
 
-<!-- aima:chart-presentation=dominant-split -->
-{{SECONDARY_DAILY_CHART}}
-
-### 5.5 一级与二级议题结构
-
-{{LABEL_PAIR_TABLE}}
-
-## 6. 热点关键词
-
-<!-- aima:layout=ranking-image -->
+<!-- aima:layout=ranking-image-top10 -->
 <!-- aima:table-style=ranking -->
 {{KEYWORD_TABLE}}
 
 {{KEYWORD_WORDCLOUD}}
-
-## 7. 数据概览与趋势明细
-
-### 7.1 数据规模
-
-{{OVERVIEW_TABLE}}
-
-### 7.2 平台每日明细
-
-<!-- aima:table-style=compact-daily -->
-{{PLATFORM_DAILY_TABLE}}
-
-### 7.3 情感每日明细
-
-<!-- aima:table-style=compact-daily -->
-{{SENTIMENT_DAILY_TABLE}}
-
-### 7.4 一级议题每日明细
-
-<!-- aima:table-style=compact-daily -->
-{{PRIMARY_DAILY_TABLE}}
-
-### 7.5 二级议题每日明细
-
-<!-- aima:table-style=compact-daily -->
-{{SECONDARY_DAILY_TABLE}}
-
-## 8. 数据质量说明
-
-{{DATA_QUALITY_TABLE}}
-
-- **内容总量：** 去重后纳入本期分析的有效公开内容数量。
-- **评论总量：** 纳入本期数据范围的公开评论数量。
-- **标签对总量：** 一条内容可同时涉及多个议题，因此标签数量可能高于内容数量。
-- **关键词覆盖：** 同一条内容可同时命中多个关键词，各关键词占比不要求相加等于 100%。
-- **趋势日期：** 按内容发布时间所在自然日统计；无法识别发布时间的记录不进入每日趋势，并在数据质量检查中单独列示。
-- **图表与明细：** 部分图表聚焦数量最高的主要议题以保证可读性，完整统计仍保留在对应明细中。
