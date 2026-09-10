@@ -20,6 +20,7 @@ from aima_ugc.modules.ingestion.historical_tables import (
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactStateConflict
+from aima_ugc.platform.storage.canonical import CANONICAL_CONTENT_ARTIFACT_KIND
 from aima_ugc.platform.storage.retention import IMPORT_SOURCE_RETENTION
 from sqlalchemy import insert
 
@@ -84,6 +85,12 @@ def test_provider_raw_is_not_a_one_day_orphan() -> None:
                 created_at=now - timedelta(days=2),
                 expires_at=None,
             )
+            canonical_orphan = _store_record(
+                repository,
+                kind=CANONICAL_CONTENT_ARTIFACT_KIND,
+                created_at=now - timedelta(days=2),
+                expires_at=None,
+            )
             historical_referenced = _store_record(
                 repository,
                 kind="historical-import.source",
@@ -138,6 +145,7 @@ def test_provider_raw_is_not_a_one_day_orphan() -> None:
         assert import_orphan.id in candidate_ids
         assert historical_source_orphan.id in candidate_ids
         assert historical_chunk_orphan.id in candidate_ids
+        assert canonical_orphan.id in candidate_ids
         assert historical_referenced.id not in candidate_ids
         assert provider_raw.id not in candidate_ids
     finally:

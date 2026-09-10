@@ -17,13 +17,21 @@ from aima_ugc.modules.ingestion.historical_tables import (
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.reporting.tables import reporting_data_exports_table
 from aima_ugc.platform.jobs.tables import jobs_table
-from aima_ugc.platform.storage.models import ArtifactRecord, ArtifactStateConflict
+from aima_ugc.platform.storage.canonical import CANONICAL_CONTENT_ARTIFACT_KIND
+from aima_ugc.platform.storage.models import (
+    ArtifactRecord,
+    ArtifactStateConflict,
+    CanonicalArtifactParent,
+)
 from aima_ugc.platform.storage.retention import (
     EXPORT_RETENTION,
     IMPORT_SOURCE_RETENTION,
     PROVIDER_RAW_RETENTION,
 )
-from aima_ugc.platform.storage.tables import artifacts_table
+from aima_ugc.platform.storage.tables import (
+    artifacts_table,
+    canonical_artifact_links_table,
+)
 
 
 def _artifact_from_row(row: RowMapping) -> ArtifactRecord:
@@ -86,6 +94,7 @@ def _cleanup_eligibility(*, now: datetime, orphan_before: datetime) -> ColumnEle
         or_(
             and_(artifacts_table.c.kind == "file-import.raw", ~import_referenced),
             and_(artifacts_table.c.kind == "content-export.xlsx", ~export_referenced),
+            artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND,
             and_(
                 artifacts_table.c.kind.in_(("historical-import.source", "historical-import.chunk")),
                 ~historical_referenced,
@@ -186,6 +195,7 @@ class PostgresArtifactMetadataRepository:
                 .where(
                     artifacts_table.c.id == artifact_id,
                     artifacts_table.c.storage_status == "stored",
+                    artifacts_table.c.kind != CANONICAL_CONTENT_ARTIFACT_KIND,
                 )
                 .values(storage_status="linked", linked_at=linked_at)
                 .returning(artifacts_table)
@@ -195,6 +205,45 @@ class PostgresArtifactMetadataRepository:
         )
         if row is None:
             raise ArtifactStateConflict("Artifact 不是 stored，不能标记为 linked")
+        return _artifact_from_row(row)
+
+    def link_canonical(
+        self,
+        artifact_id: UUID,
+        *,
+        parent: CanonicalArtifactParent,
+        linked_at: datetime,
+    ) -> ArtifactRecord:
+        """在当前事务内先锁定状态，再写父级关系，任一失败整体回滚。"""
+
+        row = (
+            self._session.execute(
+                update(artifacts_table)
+                .where(
+                    artifacts_table.c.id == artifact_id,
+                    artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND,
+                    artifacts_table.c.storage_status == "stored",
+                )
+                .values(storage_status="linked", linked_at=linked_at)
+                .returning(artifacts_table)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise ArtifactStateConflict(
+                "Canonical Artifact 不是 stored 或 kind 不匹配，不能建立父级关系"
+            )
+        self._session.execute(
+            insert(canonical_artifact_links_table).values(
+                artifact_id=artifact_id,
+                processing_import_batch_id=parent.processing_import_batch_id,
+                historical_import_campaign_item_id=(parent.historical_import_campaign_item_id),
+                collection_scope_id=parent.collection_scope_id,
+                provider_attempt_id=parent.provider_attempt_id,
+                created_at=linked_at,
+            )
+        )
         return _artifact_from_row(row)
 
     def mark_error(self, artifact_id: UUID) -> ArtifactRecord:
@@ -430,6 +479,23 @@ class PostgresArtifactMetadataGateway:
     def mark_linked(self, artifact_id: UUID, *, linked_at: datetime) -> ArtifactRecord:
         return self._run(
             lambda repository: repository.mark_linked(artifact_id, linked_at=linked_at)
+        )
+
+    def link_canonical(
+        self,
+        artifact_id: UUID,
+        *,
+        parent: CanonicalArtifactParent,
+        linked_at: datetime,
+    ) -> ArtifactRecord:
+        """用单个短事务提交 Canonical 关系和 linked 状态。"""
+
+        return self._run(
+            lambda repository: repository.link_canonical(
+                artifact_id,
+                parent=parent,
+                linked_at=linked_at,
+            )
         )
 
     def mark_error(self, artifact_id: UUID) -> ArtifactRecord:

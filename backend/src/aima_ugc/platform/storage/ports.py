@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import BinaryIO, Protocol
 from uuid import UUID
 
-from .models import ArtifactRecord, StoredBytes
+from .models import ArtifactRecord, CanonicalArtifactParent, StoredBytes
 
 
 class ArtifactStore(Protocol):
@@ -58,5 +58,15 @@ class ArtifactMetadataPort(Protocol):
         *,
         linked_at: datetime,
     ) -> ArtifactRecord: ...
+
+    def link_canonical(
+        self,
+        artifact_id: UUID,
+        *,
+        parent: CanonicalArtifactParent,
+        linked_at: datetime,
+    ) -> ArtifactRecord:
+        """在一个事务内写入 Canonical 父级关系并标记 linked。"""
+        ...
 
     def mark_error(self, artifact_id: UUID) -> ArtifactRecord: ...
