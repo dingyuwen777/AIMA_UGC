@@ -47,9 +47,17 @@ from sqlalchemy import func, select, text
 
 
 class _ExecutionContext:
-    def __init__(self, fence: JobExecutionFence, *, lose_after_heartbeat: bool = False) -> None:
+    def __init__(
+        self,
+        fence: JobExecutionFence,
+        *,
+        lose_after_heartbeat: bool = False,
+        cancel_after_checks: int | None = None,
+    ) -> None:
         self.fence = fence
         self._lose_after_heartbeat = lose_after_heartbeat
+        self._cancel_after_checks = cancel_after_checks
+        self._cancel_checks = 0
 
     def heartbeat(self, *, progress=None):  # type: ignore[no-untyped-def]
         del progress
@@ -57,7 +65,11 @@ class _ExecutionContext:
             raise LeaseLostError("模拟首批提交后的 Worker lease 丢失")
 
     def cancel_requested(self) -> bool:
-        return False
+        self._cancel_checks += 1
+        return (
+            self._cancel_after_checks is not None
+            and self._cancel_checks > self._cancel_after_checks
+        )
 
 
 def _principal() -> Principal:
@@ -134,10 +146,15 @@ def _create_brand(runtime: PlatformRuntime, *, alias: str) -> UUID:
     return created.id
 
 
-def _add_replay_alias(runtime: PlatformRuntime, brand_id: UUID) -> int:
+def _add_replay_alias(
+    runtime: PlatformRuntime,
+    brand_id: UUID,
+    *,
+    text: str = "星曜",
+) -> int:
     updated = PostgresBrandVehicleHttpService(runtime).add_alias(
         brand_id,
-        BrandAliasCreateRequest(text="星曜"),
+        BrandAliasCreateRequest(text=text),
         principal=_principal(),
         request_id="canonical-replay-alias",
     )
@@ -562,6 +579,108 @@ def test_selected_replay_preserves_existing_out_of_scope_brand_evidence(
         runtime.close()
 
 
+def test_replay_replaces_same_brand_automatic_evidence_and_preserves_manual_lock(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        selected_brand = _create_brand_without_matching_alias(runtime)
+        artifact_id = _import_canonical(
+            client,
+            runtime,
+            filename="replay-evidence-merge.xlsx",
+            rows=(("canonical-replay-evidence-merge", "星曜证据合并"),),
+            brand_ids=(selected_brand,),
+        )
+        first_catalog_version = _add_replay_alias(runtime, selected_brand)
+        _create_replay(
+            client,
+            artifact_ids=(artifact_id,),
+            brand_id=selected_brand,
+            idempotency_key=f"replay-evidence-first-{uuid4()}",
+        )
+        assert _worker(runtime, suffix="evidence-first").run_once() is True
+
+        second_catalog_version = _add_replay_alias(
+            runtime,
+            selected_brand,
+            text="目录版本推进别名",
+        )
+        assert second_catalog_version > first_catalog_version
+        _create_replay(
+            client,
+            artifact_ids=(artifact_id,),
+            brand_id=selected_brand,
+            idempotency_key=f"replay-evidence-second-{uuid4()}",
+        )
+        assert _worker(runtime, suffix="evidence-second").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            content = connection.execute(
+                select(contents_table.c.id, contents_table.c.current_version)
+            ).one()
+            selected_rows = tuple(
+                connection.execute(
+                    select(content_brand_evidence_table).where(
+                        content_brand_evidence_table.c.content_id == content.id,
+                        content_brand_evidence_table.c.brand_id == selected_brand,
+                    )
+                ).mappings()
+            )
+        assert [row["catalog_version"] for row in selected_rows if row["is_active"]] == [
+            second_catalog_version
+        ]
+        assert any(
+            row["catalog_version"] == first_catalog_version and not row["is_active"]
+            for row in selected_rows
+        )
+
+        manual_brand = _create_brand_without_matching_alias(runtime)
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                PostgresBrandVehicleRepository(session).replace_manual_brand_evidence(
+                    content_id=content.id,
+                    content_version=content.current_version,
+                    brand_ids=(manual_brand,),
+                    unlock_existing=False,
+                    actor_ref="canonical-replay-manual-reviewer",
+                )
+        finally:
+            session.close()
+
+        _create_replay(
+            client,
+            artifact_ids=(artifact_id,),
+            brand_id=selected_brand,
+            idempotency_key=f"replay-evidence-manual-lock-{uuid4()}",
+        )
+        assert _worker(runtime, suffix="evidence-manual-lock").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            active = tuple(
+                connection.execute(
+                    select(content_brand_evidence_table).where(
+                        content_brand_evidence_table.c.content_id == content.id,
+                        content_brand_evidence_table.c.content_version == content.current_version,
+                        content_brand_evidence_table.c.is_active.is_(True),
+                    )
+                ).mappings()
+            )
+        assert [(row["brand_id"], row["source"], row["is_manual_locked"]) for row in active] == [
+            (manual_brand, "manual_review", True)
+        ]
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
 def test_repository_snapshot_is_exactly_the_requested_active_brand(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path)
     _truncate(runtime)
@@ -578,6 +697,75 @@ def test_repository_snapshot_is_exactly_the_requested_active_brand(tmp_path: Pat
         assert snapshot.scope == "selected"
         assert {item.id for item in snapshot.brands} == {selected}
         assert ignored not in {item.id for item in snapshot.brands}
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_running_replay_cancels_between_committed_batches(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        artifact_id = _import_canonical(
+            client,
+            runtime,
+            filename="replay-running-cancel.xlsx",
+            rows=(
+                ("canonical-replay-cancel-1", "星曜取消第一条"),
+                ("canonical-replay-cancel-2", "星曜取消第二条"),
+            ),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+        created = _create_replay(
+            client,
+            artifact_ids=(artifact_id,),
+            brand_id=brand_id,
+            idempotency_key=f"replay-running-cancel-{uuid4()}",
+            batch_size=1,
+        )
+        run_id = UUID(str(created["run_id"]))
+        job_id = UUID(str(created["job_id"]))
+
+        claim_session = runtime.database.new_session()
+        try:
+            with claim_session.begin():
+                claim = PostgresJobRepository(claim_session).claim_next(
+                    supported_job_types=(CANONICAL_REPLAY_JOB_TYPE,),
+                    worker_id="replay-cancelling-worker",
+                    lease_seconds=30,
+                )
+                assert claim is not None and claim.lease_token is not None
+        finally:
+            claim_session.close()
+        fence = JobExecutionFence(job_id=job_id, lease_token=claim.lease_token)
+
+        result = PostgresCanonicalReplayJobExecutor(runtime).execute(
+            payload=CanonicalReplayJobPayload(run_id=run_id),
+            fence=fence,
+            context=_ExecutionContext(fence, cancel_after_checks=3),
+        )
+
+        assert result.outcome == "cancelled"
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                run = PostgresCanonicalReplayRepository(session).get(run_id)
+                assert run is not None
+                assert run.checkpoint_artifact_ordinal == 0
+                assert run.checkpoint_row_number == 1
+                assert run.rows_seen == 1
+        finally:
+            session.close()
+        with runtime.database.engine.connect() as connection:
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
     finally:
         _truncate(runtime)
         runtime.close()

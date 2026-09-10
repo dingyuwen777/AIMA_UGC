@@ -189,30 +189,34 @@ def _tikhub_attempt(
     *,
     run_id: UUID,
     source_value: str,
+    scope_id: UUID | None = None,
+    operation: str = "search_notes",
+    dispatch_status: str = "completed",
 ) -> tuple[UUID, UUID, UUID, UUID]:
-    scope_id = uuid4()
-    session.execute(
-        insert(collection_scopes_table).values(
-            id=scope_id,
-            run_id=run_id,
-            platform="xiaohongshu",
-            source_type="keyword_search",
-            source_value=source_value,
-            operation_group="content_discovery",
-            status="succeeded",
+    if scope_id is None:
+        scope_id = uuid4()
+        session.execute(
+            insert(collection_scopes_table).values(
+                id=scope_id,
+                run_id=run_id,
+                platform="xiaohongshu",
+                source_type="keyword_search",
+                source_value=source_value,
+                operation_group="content_discovery",
+                status="succeeded",
+            )
         )
-    )
     request_id = uuid4()
     session.execute(
         insert(provider_requests_table).values(
             id=request_id,
             scope_id=scope_id,
             provider="tikhub",
-            operation="search_notes",
-            request_fingerprint="c" * 64,
+            operation=operation,
+            request_fingerprint=request_id.hex * 2,
             request_params={"keyword": source_value},
             pagination_input={},
-            status="completed",
+            status=dispatch_status,
             attempt_count=1,
             created_at=_NOW,
             completed_at=_NOW,
@@ -225,17 +229,46 @@ def _tikhub_attempt(
             id=attempt_id,
             provider_request_id=request_id,
             attempt_no=1,
-            dispatch_status="completed",
+            dispatch_status=dispatch_status,
             dispatch_started_at=_NOW,
             completed_at=_NOW,
-            http_status=200,
+            http_status=200 if dispatch_status == "completed" else None,
             raw_artifact_id=raw.id,
-            billing_status="not_billable",
-            potential_duplicate_charge=False,
+            billing_status="not_billable" if dispatch_status == "completed" else "unknown",
+            potential_duplicate_charge=dispatch_status != "completed",
+            error_code=None if dispatch_status == "completed" else "transport_unknown",
+            error_detail=None if dispatch_status == "completed" else "fixture transport unknown",
             created_at=_NOW,
         )
     )
     return scope_id, request_id, attempt_id, raw.id
+
+
+def _tikhub_content(
+    *,
+    external_content_id: str,
+    operation: str,
+    request_id: UUID,
+    attempt_id: UUID,
+    raw_artifact_id: UUID,
+) -> CanonicalContentV1:
+    return CanonicalContentV1(
+        platform="xiaohongshu",
+        external_content_id=external_content_id,
+        content_type="unknown",
+        observed_at=_NOW,
+        observed_fields=["content_type"],
+        source=CanonicalSourceV1(
+            provider_name="tikhub",
+            operation=operation,
+            provider_request_id=str(request_id),
+            provider_attempt_id=str(attempt_id),
+            raw_artifact_id=raw_artifact_id,
+            source_type="keyword_search",
+            source_value="爱玛",
+            observed_at=_NOW,
+        ),
+    )
 
 
 def _tikhub_source(session: Session) -> UUID:
@@ -340,6 +373,164 @@ def test_scope_only_canonical_is_rejected_by_database_after_clean_break() -> Non
         runtime.dispose()
 
 
+def test_tikhub_preflight_accepts_search_and_detail_and_rejects_lineage_drift(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
+        )
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            collection_run_id = uuid4()
+            session.execute(
+                insert(collection_runs_table).values(
+                    id=collection_run_id,
+                    job_id=_job(session, job_type="collection.run.v1"),
+                    trigger_type="backfill",
+                    config_snapshot={},
+                    status="succeeded",
+                    created_at=_NOW,
+                    started_at=_NOW,
+                    finished_at=_NOW,
+                )
+            )
+            scope_id, search_request_id, search_attempt_id, search_raw_id = _tikhub_attempt(
+                session,
+                run_id=collection_run_id,
+                source_value="爱玛",
+            )
+            _, detail_request_id, detail_attempt_id, detail_raw_id = _tikhub_attempt(
+                session,
+                run_id=collection_run_id,
+                source_value="爱玛",
+                scope_id=scope_id,
+                operation="get_image_note_detail",
+            )
+            _, unknown_request_id, unknown_attempt_id, unknown_raw_id = _tikhub_attempt(
+                session,
+                run_id=collection_run_id,
+                source_value="爱玛",
+                scope_id=scope_id,
+                operation="get_video_note_detail",
+                dispatch_status="unknown",
+            )
+            canonical = _artifact(session, kind=CANONICAL_CONTENT_ARTIFACT_KIND)
+            PostgresArtifactMetadataRepository(session).link_canonical(
+                canonical.id,
+                parent=CanonicalArtifactParent(provider_attempt_id=search_attempt_id),
+                linked_at=_NOW,
+            )
+            run, _ = PostgresCanonicalReplayRepository(session).enqueue(
+                idempotency_key=f"tikhub-lineage-{uuid4()}",
+                artifact_ids=(canonical.id,),
+                brand_ids=(),
+                batch_size=10,
+                created_by="tikhub-lineage-test",
+                request_id="tikhub-lineage-test",
+            )
+            selected = PostgresCanonicalReplayRepository(session).list_artifacts(run.id)[0]
+
+        claim_session = runtime.new_session()
+        try:
+            with claim_session.begin():
+                claim = PostgresJobRepository(claim_session).claim_next(
+                    supported_job_types=("ingestion.canonical-replay.v1",),
+                    worker_id="tikhub-lineage-worker",
+                    lease_seconds=30,
+                )
+                assert claim is not None and claim.lease_token is not None
+        finally:
+            claim_session.close()
+
+        search = _tikhub_content(
+            external_content_id="search-content",
+            operation="search_notes",
+            request_id=search_request_id,
+            attempt_id=search_attempt_id,
+            raw_artifact_id=search_raw_id,
+        )
+        detail = _tikhub_content(
+            external_content_id="detail-content",
+            operation="get_image_note_detail",
+            request_id=detail_request_id,
+            attempt_id=detail_attempt_id,
+            raw_artifact_id=detail_raw_id,
+        )
+        executor = PostgresCanonicalReplayJobExecutor(
+            SimpleNamespace(
+                database=runtime,
+                artifact_store=LocalArtifactStore(tmp_path),
+            )
+        )
+        fence = JobExecutionFence(job_id=claim.id, lease_token=claim.lease_token)
+
+        executor._validate_source_rows(  # noqa: SLF001 - 纵切验证真实 Search/Detail 来源链
+            CanonicalReplayArtifactRecord(
+                run_id=selected.run_id,
+                ordinal=selected.ordinal,
+                artifact_id=selected.artifact_id,
+                source_kind=selected.source_kind,
+            ),
+            (search, detail),
+            fence=fence,
+        )
+
+        invalid_rows = (
+            detail.model_copy(
+                update={
+                    "source": detail.source.model_copy(update={"provider_request_id": str(uuid4())})
+                }
+            ),
+            detail.model_copy(
+                update={
+                    "source": detail.source.model_copy(update={"provider_attempt_id": str(uuid4())})
+                }
+            ),
+            detail.model_copy(
+                update={"source": detail.source.model_copy(update={"raw_artifact_id": uuid4()})}
+            ),
+            detail.model_copy(update={"platform": "douyin"}),
+            detail.model_copy(
+                update={
+                    "source": detail.source.model_copy(
+                        update={"operation": "get_video_note_detail"}
+                    )
+                }
+            ),
+            _tikhub_content(
+                external_content_id="unknown-content",
+                operation="get_video_note_detail",
+                request_id=unknown_request_id,
+                attempt_id=unknown_attempt_id,
+                raw_artifact_id=unknown_raw_id,
+            ),
+        )
+        for invalid in invalid_rows:
+            with pytest.raises(ValueError, match="父级 Scope"):
+                executor._validate_source_rows(  # noqa: SLF001 - 逐字段验证 fail-closed
+                    CanonicalReplayArtifactRecord(
+                        run_id=selected.run_id,
+                        ordinal=selected.ordinal,
+                        artifact_id=selected.artifact_id,
+                        source_kind=selected.source_kind,
+                    ),
+                    (invalid,),
+                    fence=fence,
+                )
+    finally:
+        session.close()
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+                "RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
 def test_tikhub_preflight_rejects_row_from_another_scope_in_the_same_run(
     tmp_path,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -403,22 +594,12 @@ def test_tikhub_preflight_rejects_row_from_another_scope_in_the_same_run(
         finally:
             claim_session.close()
 
-        content = CanonicalContentV1(
-            platform="xiaohongshu",
+        content = _tikhub_content(
             external_content_id="cross-scope-content",
-            content_type="unknown",
-            observed_at=_NOW,
-            observed_fields=["content_type"],
-            source=CanonicalSourceV1(
-                provider_name="tikhub",
-                operation="search_notes",
-                provider_request_id=str(foreign_request_id),
-                provider_attempt_id=str(foreign_attempt_id),
-                raw_artifact_id=foreign_raw_id,
-                source_type="keyword_search",
-                source_value="另一个 Scope",
-                observed_at=_NOW,
-            ),
+            operation="search_notes",
+            request_id=foreign_request_id,
+            attempt_id=foreign_attempt_id,
+            raw_artifact_id=foreign_raw_id,
         )
         executor = PostgresCanonicalReplayJobExecutor(
             SimpleNamespace(

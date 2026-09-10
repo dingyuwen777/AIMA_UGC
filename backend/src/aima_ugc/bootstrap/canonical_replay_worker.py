@@ -286,7 +286,7 @@ class PostgresCanonicalReplayJobExecutor:
                         provider_request_attempts_table.c.provider_request_id,
                         provider_request_attempts_table.c.raw_artifact_id,
                         provider_requests_table.c.scope_id,
-                        provider_requests_table.c.platform,
+                        collection_scopes_table.c.platform,
                         provider_requests_table.c.operation,
                         collection_scopes_table.c.run_id,
                     )
