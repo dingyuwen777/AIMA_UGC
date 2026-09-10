@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-033006-r05-stage2-excel-canonical
 title: Roadmap 05 Stage 2 Excel 持久 Canonical
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feat/r05-stage2-excel-canonical
 created: 2026-09-11
@@ -65,12 +65,12 @@ data_changes:
 
 ## 成功标准
 
-- [ ] 两个 Excel 入口的全部合法 Mapper 输出先成为 linked Canonical Artifact，再进入 Filter。
-- [ ] matched、filtered 和后续 duplicate 的合法 observation 均保留在 Artifact；invalid 不伪造 Canonical且仍可对账。
-- [ ] Filter/Dedup/Content Owner 与 `historical_fill_only` / `standard_observation` 业务结果保持不变。
-- [ ] 重试、接管、取消复用唯一 Artifact，不产生平行副本、重复 Content 或失联 Artifact。
-- [ ] 干净切换 Migration、Schema、Artifact、Job 与分层验证闭环。
-- [ ] Review、PR CI、合并、main 新鲜验证、归档、Roadmap 与 Issue Closure 完成。
+- [x] 两个 Excel 入口的全部合法 Mapper 输出先成为 linked Canonical Artifact，再进入 Filter。
+- [x] matched、filtered 和后续 duplicate 的合法 observation 均保留在 Artifact；invalid 不伪造 Canonical且仍可对账。
+- [x] Filter/Dedup/Content Owner 与 `historical_fill_only` / `standard_observation` 业务结果保持不变。
+- [x] 重试、接管、取消复用唯一 linked Artifact，不产生重复 Content 或失联关系；竞争产生的未绑定 `stored` 文件继续由既有 orphan cleanup 回收。
+- [x] 干净切换 Migration、Schema、Artifact、Job 与本地分层验证闭环。
+- [ ] exact-head PR CI、合并、main 新鲜验证、归档、Roadmap 与 Issue Closure 完成。
 
 ## 非目标
 
@@ -108,13 +108,13 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 单文件 Import 先持久并复用唯一 linked Canonical Artifact，Filter 只读完整性校验后的 Artifact | https://github.com/dingyuwen777/AIMA_UGC/issues/441 | not_satisfied | 待 Red/Green 与恢复测试 |
-| R2 | Data Import Campaign 生成 Pure Canonical Chunk，合法 observation 全保存，Filter 移到消费阶段 | https://github.com/dingyuwen777/AIMA_UGC/issues/441 | not_satisfied | 待 Red/Green 与 Chunk/Worker 测试 |
-| R3 | invalid 保留可对账事实，既有 row ledger、来源链、Dedup、两种 policy 与 Content Owner 语义不变 | https://github.com/dingyuwen777/AIMA_UGC/issues/441 | not_satisfied | 待集成/反向能力审计 |
-| R4 | 重试、接管与取消不产生平行 Artifact、重复 Content 或失联 Artifact | https://github.com/dingyuwen777/AIMA_UGC/issues/441 | not_satisfied | 待 Job/Artifact/PostgreSQL 测试 |
-| R5 | 干净切换，不保留旧 Historical Chunk/Payload 兼容；不安全存量 Migration 失败关闭 | https://github.com/dingyuwen777/AIMA_UGC/issues/441 | not_satisfied | 待 Migration/registry/schema 证据 |
-| R6 | 不扩大到 Stage 3/4、非目标、公共 HTTP/Canonical/依赖/生产动作 | `docs/roadmap/05_可重放数据底座与监测重分类实施路线.md` | not_satisfied | 待 diff/Contract/lock/Provider 反查 |
-| R7 | 完成相称验证、独立 Review、PR/merge/main/archive/Roadmap/Issue 闭环 | https://github.com/dingyuwen777/AIMA_UGC/issues/441 | not_satisfied | 待交付生命周期证据 |
+| R1 | 单文件 Import 先持久并复用唯一 linked Canonical Artifact，Filter 只读完整性校验后的 Artifact | https://github.com/dingyuwen777/AIMA_UGC/issues/441#AC1 | satisfied | `import_worker.py` 只在 Writer 完成父级绑定后用 Reader 物化 Filter 输入；单文件工作流测试证明 filtered 合法行仍在 Artifact，Filter I/O 重试只执行一次 Mapper且只有一个 linked Canonical。 |
+| R2 | Data Import Campaign 生成 Pure Canonical Chunk，合法 observation 全保存，Filter 移到消费阶段 | https://github.com/dingyuwen777/AIMA_UGC/issues/441#AC3 | satisfied | `historical_chunk.py` 只输出合法 `CanonicalContentV1`；Snapshot 用共享 Writer，Import Chunk 用共享 Reader 后才执行冻结 Filter；混合结果工作流证明 matched/filtered 均保留。 |
+| R3 | invalid 保留可对账事实，既有 row ledger、来源链、Dedup、两种 policy 与 Content Owner 语义不变 | https://github.com/dingyuwen777/AIMA_UGC/issues/441#AC4 | satisfied | Chunk Item `stats.invalid_rows` 保存行号/error code，与 Canonical 行号共同重建既有 ledger；混合结果断言 `created/filtered/invalid`，既有 fill-only、standard、跨 Chunk duplicate 回归继续覆盖 Owner 语义。 |
+| R4 | 重试、接管与取消不产生多个 linked Artifact、重复 Content 或失联关系 | https://github.com/dingyuwen777/AIMA_UGC/issues/441#AC2 | satisfied | 父级部分唯一索引、稳定 Chunk 父事实和 `get_canonical_for_parent()` 收敛恢复；单文件/历史 Snapshot 重试断言一个 Canonical，既有业务提交后重试、queued cancel、lease takeover 回归覆盖 Content/ledger 幂等。未绑定 stored 竞争副本沿用既有 orphan cleanup。 |
+| R5 | 干净切换，不保留旧 Historical Chunk/Payload 兼容；不安全存量 Migration 失败关闭 | https://github.com/dingyuwen777/AIMA_UGC/issues/441#AC6 | satisfied | Job/Payload 整体切为 `.v2`，旧 reader/module 删除；Migration `0049` 在活跃 `.v1` Job 或仍可执行/重试的旧 Chunk 上失败并停留 `0048`；registry/Schema/负向 payload 测试已更新。 |
+| R6 | 不扩大到 Stage 3/4、非目标、公共 HTTP/Canonical/依赖/生产动作 | https://github.com/dingyuwen777/AIMA_UGC/issues/441#AC7 | satisfied | `origin/main...1519275f` 反查仅涉及 Excel/Artifact/Job/Migration/目标文档测试；Contract 生成与兼容无 diff，Manifest/lock、Frontend、TikHub Runtime 均未改；未调用 Provider或生产环境。 |
+| R7 | 完成相称验证、独立 Review、PR/merge/main/archive/Roadmap/Issue 闭环 | https://github.com/dingyuwen777/AIMA_UGC/issues/441#AC8 | explicitly_deferred | 本地分层验证、Completion Audit 和两阶段 Review 已完成；PostgreSQL 18、exact-head CI、guarded merge、main fresh、归档、Roadmap/Issue/分支只能在 Ready 后依次执行，不在当前记录预先冒充。 |
 
 # 验证矩阵
 
@@ -149,18 +149,24 @@ Docs Impact 为 `targeted`：同步 Blueprint 02/03、Appendix 08、Ingestion RE
 - [x] 读取项目规则、canonical Agent_Skills Source、Roadmap/Blueprint 与当前机器事实
 - [x] 创建并复核 Issue #441、最新 main 与本地任务分支
 - [x] 建立 Change、Requirement Traceability、验证矩阵和迁移/回滚边界
-- [ ] Red 失败测试
-- [ ] Green/Refactor 实现与目标回归
-- [ ] 分层验证、Completion Audit 与独立 Review
+- [x] Red 失败测试
+- [x] Green/Refactor 实现与目标回归
+- [x] 分层验证、Completion Audit 与独立 Review
 - [ ] PR CI、guarded merge、main 新鲜验证、归档、Roadmap/Issue/分支收口
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 Issue、Roadmap Stage 2、当前代码/Contract/Schema/Migration 与最新 main。
-- [ ] change_coverage：逐条比较上游要求→Change→实现/测试/文档，`not_satisfied` 清零。
-- [ ] reverse_audit：从两类父级、Filter consumer、row ledger、Content Owner、retry/cancel/takeover 反向检查。
-- [ ] unresolved_cleared：Review/CI/Issue/PR 未决项与临时验证资产清零。
+- [x] upstream_re_read：2026-09-11 Ready 前重读 Issue #441、Roadmap 05 Stage 2、当前代码/Contract/Schema/Migration、CI 与 `origin/main@ac0b66f8`；main 未漂移，Issue/PR 仍 open。
+- [x] change_coverage：逐条比较 Issue AC、Roadmap Stage 2 要求→Change→实现/测试/文档；R1–R6 已有直接证据，R7 仅保留 Ready 后强制生命周期，`not_satisfied` 已清零。
+- [x] reverse_audit：从 Processing Import Batch/Historical Chunk 两类父级、共享 Reader、冻结 Filter、row ledger、Content Owner、retry/cancel/takeover 反向检查；未发现第二套写库或绕过 Artifact 完整性路径。
+- [x] unresolved_cleared：实现与本地证据无 blocker/high/medium Finding；本机无 PostgreSQL/Docker 的限制已隔离给 Ready 后 PR CI，未冒充通过。
 
 # 两阶段 Review
 
-待实现后由独立复核阶段从上游需求与风险重新建立检查表，再对 diff、测试、文档与证据逐项核对。
+- **需求与风险重建**：Review Target 为 `ac0b66f8...1519275f`。从 Issue #441、Roadmap 05 Stage 2、当前 Excel/Artifact/Job/Content Owner 事实独立重建 R1–R7；没有使用本 Change 充当上游需求全集。
+- **实现与证据对照**：逐项审查单文件 Import、Historical Snapshot/Chunk、Artifact 父级唯一关系、Migration clean break、错误分类、文档和测试。复核中特别检查合法 filtered/duplicate 保留、invalid 行号对账、全文件预检、Snapshot 崩溃窗口、Batch 重试、取消/fence、旧 `.v1` 运行时残留；未发现剩余 blocker/high/medium Finding。
+- **测试充分性结论**：目标 16/16、Contract 111/111、API 60/60、Ruff/Mypy/Contract 生成兼容/Wheel/Docs/Architecture/Owner/Secret 均通过。完整 Unit 为 932 passed/8 skipped，另 3 个仅因 Windows 无 `os.geteuid/os.chown` 的既有 POSIX 测试失败；本机缺 PostgreSQL Secret/服务，28 failed + 24 errors 均为连接前置缺失，不能当作产品失败或成功。真实 Migration/PostgreSQL/跨组件工作流由 Ready exact-head PR CI 验证。
+
+# 完成证据与状态
+
+实现候选 `1519275f9f7a5e62d6c5cfc258bc26e789ea8dff` 已完成本地验证、Completion Audit 与两阶段 Review，Change 进入 `ready_for_review`。PR #442 的早期 Completion Audit 失败是未 Ready 阶段的预期门禁；下一提交发布本记录后触发 exact-head CI。生产部署、Migration、Provider 和业务数据写入均未执行。
