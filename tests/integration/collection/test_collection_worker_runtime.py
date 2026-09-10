@@ -85,7 +85,8 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
     runtime = create_scheduler_runtime()
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, collection_plans, keyword_packs, accounts, "
+            "provider_configs RESTART IDENTITY CASCADE"
         )
     try:
         brand_id = UUID(stage3_filter_brand_id(runtime, alias="脱敏"))
@@ -219,7 +220,18 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             run = session.execute(select(collection_runs_table)).mappings().one()
             scope = session.execute(select(collection_scopes_table)).mappings().one()
             content = session.execute(select(contents_table)).mappings().one()
-            brand_evidence = session.execute(select(content_brand_evidence_table)).mappings().one()
+            brand_evidence = (
+                session.execute(
+                    select(content_brand_evidence_table).where(
+                        content_brand_evidence_table.c.content_id == content["id"],
+                        content_brand_evidence_table.c.content_version
+                        == content["current_version"],
+                        content_brand_evidence_table.c.is_active.is_(True),
+                    )
+                )
+                .mappings()
+                .one()
+            )
             provider_requests = session.execute(select(provider_requests_table)).mappings().all()
             provider_attempts = (
                 session.execute(select(provider_request_attempts_table)).mappings().all()
@@ -247,6 +259,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, collection_plans, keyword_packs, accounts, "
+                "provider_configs RESTART IDENTITY CASCADE"
             )
         runtime.close()

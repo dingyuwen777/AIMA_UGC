@@ -24,6 +24,7 @@ from aima_ugc.modules.collection.planning import (
     PlanPlatformDefinition,
 )
 from aima_ugc.modules.collection.tables import (
+    collection_plan_brands_table,
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
     collection_plans_table,
@@ -54,6 +55,7 @@ def scheduler_runtime():
             connection.execute(delete(collection_scopes_table))
             connection.execute(delete(collection_runs_table))
             connection.execute(delete(collection_schedule_occurrences_table))
+            connection.execute(delete(collection_plan_brands_table))
             connection.execute(delete(collection_plan_keyword_packs_table))
             connection.execute(delete(collection_plan_platforms_table))
             connection.execute(delete(collection_plan_decision_policies_table))
