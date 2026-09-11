@@ -168,6 +168,7 @@ def _import_canonical(
     filename: str,
     rows: tuple[tuple[str, str], ...],
     brand_ids: tuple[UUID, ...],
+    expected_rows_ingested: int = 0,
 ) -> UUID:
     files: list[tuple[str, tuple[str | None, object, str | None]]] = [
         (
@@ -189,7 +190,7 @@ def _import_canonical(
     batch = client.get(f"/api/v1/import-batches/{created.json()['batch_id']}")
     assert batch.status_code == 200
     assert batch.json()["status"] == "succeeded"
-    assert batch.json()["stats"]["rows_ingested"] == 0
+    assert batch.json()["stats"]["rows_ingested"] == expected_rows_ingested
     with runtime.database.engine.connect() as connection:
         artifact_id = connection.scalar(
             select(canonical_artifact_links_table.c.artifact_id).where(
@@ -496,6 +497,7 @@ def test_small_batches_open_each_artifact_once_after_preflight(
                 (f"canonical-replay-linear-{index}", f"星曜线性读取 {index}") for index in range(5)
             ),
             brand_ids=(brand_id,),
+            expected_rows_ingested=5,
         )
         calls = 0
         original = canonical_replay_worker_module.CanonicalArtifactReader.read
@@ -545,6 +547,7 @@ def test_selected_replay_preserves_existing_out_of_scope_brand_evidence(
             filename="replay-preserve-evidence.xlsx",
             rows=(("canonical-replay-preserve-evidence", "星曜与月影联名"),),
             brand_ids=(selected_brand, out_of_scope_brand),
+            expected_rows_ingested=1,
         )
         with runtime.database.engine.connect() as connection:
             before = set(
@@ -694,7 +697,8 @@ def test_repository_snapshot_is_exactly_the_requested_active_brand(tmp_path: Pat
         finally:
             session.close()
 
-        assert snapshot.scope == "selected"
+        assert snapshot.filter_scope == "selected"
+        assert snapshot.selected_brand_ids == (selected,)
         assert {item.id for item in snapshot.brands} == {selected}
         assert ignored not in {item.id for item in snapshot.brands}
     finally:
