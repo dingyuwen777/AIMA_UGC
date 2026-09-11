@@ -117,7 +117,7 @@ data_changes:
 | R7 | 不删除旧 Content、不触发 AI/Export/Report | #447 / AC7 | satisfied | Replay Evidence merge 不停用其它 Brand；selected 范围外证据保留回归；Job 无下游 enqueue；迁移无 Content 删除 |
 | R8 | Lease/Fence/Heartbeat/Deadline/Cancel/Retry/Recovery | #447 / AC8 | satisfied | 统一 Job Runtime；Replay handler/cancel API；首批提交后 running cancel、takeover 续跑、stale fence 与每 Artifact 线性 Reader 次数集成测试 |
 | R9 | 当前三类 Artifact lineage 可用，任意/含糊父级拒绝 | #447 / AC9 | satisfied | Repository 三来源分类；TikHub 同 Scope Search/Detail 正向及 Request/Attempt/Raw/platform/operation/completed/cross-Scope 负向 PostgreSQL 回归 |
-| R10 | 零 legacy clean break；旧结构失败关闭且无外部重取/历史篡改 | #447 / AC10 | satisfied | Migration 0051 gate + Scope DB check；Replay 无 Provider transport；当前 lineage 创建/复用 |
+| R10 | 零 legacy clean break；旧结构失败关闭且无外部重取/历史篡改 | #447 / AC10 | satisfied | Migration 0051 gate + Scope DB check；Replay 无 Provider transport；当前 lineage 创建/复用及同 Batch 多平台 1 Request/2 Attempt 重放回归 |
 | R11 | 正式管理员 API 创建/查询/取消，无复杂页面 | #447 / AC11 | satisfied | FastAPI API/授权/404/409/422/审计测试；无页面变更 |
 | R12 | Schema/Contract/生成物/文档/容量恢复/兼容边界同步且不越界 | #447 / AC12 | satisfied | Migration/metadata、OpenAPI/Orval、Product/Blueprint/Appendix/Operations/README；线性读取与接管成本边界；本地生成/文档门禁通过 |
 | R13 | 分层验证、Completion Audit、独立 Review、exact-head CI/main fresh | #447 / AC13 | explicitly_deferred | 本地分层验证、Completion Audit 与独立 Review 已完成；真实 PostgreSQL 18、exact-head CI、guarded merge 与 main fresh 必须在本 Ready 提交后依次执行 |
@@ -165,15 +165,16 @@ Docs Impact 为 `full`：Roadmap 05 总退出要求把 Replay、来源、失败�
 - [x] upstream_re_read：2026-09-11 Ready 前重新读取 Issue #447、Roadmap 05 Stage 4/总退出条件、Blueprint 02/07、当前 Canonical/Artifact/Filter/Content/Evidence/Job/Schema/Migration/CI 事实；`origin/main@9f88537d` 未漂移，Issue/PR 仍 open。
 - [x] change_coverage：从 Issue AC1—AC14 与 Roadmap Stage 4/总退出条件逐项反查 Change、实现、测试和长期文档；R1—R12 有实现或测试证据，R13—R14 只剩必须发生在 Ready/merge 后的外部生命周期，`not_satisfied` 已清零。
 - [x] reverse_audit：从三类 Persistent Canonical 生产者反查 Replay 输入分类/来源预检，再从管理员 API→Run/Job→Reader→冻结 Resolver/Filter→Content/Evidence Owner→checkpoint/统计/取消/接管正向核对；又从 Voice Plaza、Analysis、Export、Report、车型组查询消费者反查，均继续只消费正式 Content，未形成第二套 Mapper/Filter/Writer 或下游自动触发。
-- [x] unresolved_cleared：首轮四项 P1/P2 与首次 re-review 的错误 `platform` 列均已修复并补 PostgreSQL 回归；最终独立 re-review 对 `81948282f74b835abdea198342533af1a2098805` 给出 APPROVED，无剩余 P0/P1/P2。PR 无 Conversation comment、inline review 或 submitted review；本机缺 PostgreSQL/Docker 的限制已明确转交 exact-head CI，未冒充通过。
+- [x] unresolved_cleared：首轮四项 P1/P2 与首次 re-review 中 Replay TikHub SQL 的错误 `platform` 列均已修复；首次 exact-head CI 又真实暴露 Import lineage 同类无效列读取、Scope-only 旧测试假设和 Migration SQL 文本大小写断言，已在 `2c18235dc4fcaa267e7d01ff81fc10537a064d4f` 修复并补同 Batch 多平台 Replay PostgreSQL 回归。独立 post-CI re-review 给出 APPROVED，无剩余 P0/P1/P2。PR 无 Conversation comment、inline review 或 submitted review；本机缺 PostgreSQL/Docker 的限制已明确转交下一轮 exact-head CI，未冒充通过。
 
 # 两阶段 Review
 
 - **需求与风险重建**：独立 Reviewer 已从 Issue #447、Roadmap 05 Stage 4/总退出与当前机器事实重建，未以本 Change 自证。
 - **实现与证据对照**：首轮审查发现四项阻断：每批从头 Reader 导致近似 O(N²)、并发同幂等键可能 409、selected Replay 覆盖范围外 Brand Evidence、TikHub 同 Run 跨 Scope 来源可混入；已分别改为每 Artifact 一次连续流式执行、事务 advisory lock、仅 merge 本次确认品牌证据、逐行同 Scope/Request/Attempt/Raw/platform/operation 校验。首次 re-review 确认前三项闭环，但发现 TikHub SQL 误从无 `platform` 列的 Provider Request 取值；已改为真实 `Collection Scope.platform`，并新增同 Scope Search/Detail、字段漂移、未完成 Attempt、running cancel、同 Brand 旧证据替换与人工锁回归。最终独立 re-review 对实现候选 `81948282f74b835abdea198342533af1a2098805` 给出 APPROVED，未发现新的 P0/P1/P2。
+- **exact-head CI 反馈与再审**：`da61791cebaef668db0f6b1d4aa629005ce56a62` 的 run `34544347026` 中 Quality Core 与空库 Migration 成功；PostgreSQL Integration 真实执行发现 Scope-only 旧正向测试和大小写敏感 Schema 断言，Real Full-stack 发现新抽取的 Import lineage 仍读取不存在的 `provider_requests.platform`。`2c18235dc4fcaa267e7d01ff81fc10537a064d4f` 移除无效列读取，按既有 Batch + fingerprint Request 去重和平台确定性 Attempt ID 返回真实关联 Request，并补多平台首次建立/再次 Replay 回归；同步三类合法父级与 Scope-only 负向测试、大小写无关反射断言。独立 post-CI re-review APPROVED，未发现 P0/P1/P2，且未修改文件。
 
 # 完成证据与状态
 
-实现候选 `81948282f74b835abdea198342533af1a2098805` 已完成本地分层验证、Completion Audit 与独立两阶段 Review，最终结论 APPROVED。Change 现为 `ready_for_review`；R1—R12 satisfied，R13—R14 只对 Ready 后的 exact-head CI、merge/main fresh 和生命周期收口 explicitly deferred。生产部署、生产 Migration、TikHub/LLM 付费调用和真实业务写入均未执行。
+实现候选 `2c18235dc4fcaa267e7d01ff81fc10537a064d4f` 已完成本地分层验证、Completion Audit 与独立两阶段 Review；首次 exact-head CI 的三个真实缺陷已修复，独立 post-CI re-review 结论 APPROVED。Change 现为 `ready_for_review`；R1—R12 satisfied，R13—R14 只对新 Ready HEAD 的 exact-head CI、merge/main fresh 和生命周期收口 explicitly deferred。生产部署、生产 Migration、TikHub/LLM 付费调用和真实业务写入均未执行。
 
-本轮本地新鲜证据：Ruff format/check、mypy（332 个源码文件）、Unit（939 passed, 8 skipped；Windows 排除 3 个 POSIX-only host preparation case）、Contract（111 passed）、API（68 passed）、OpenAPI/Orval generate-check-compat、npm ci、文档/架构/表 Owner 门禁均通过；Replay 目标 12 passed，新 PostgreSQL 测试 14 collected。本机缺少 `.runtime/secrets/postgres_password` 且 Docker daemon 不可用，未伪造 PostgreSQL 执行结果，交由本 Ready HEAD 的 PR exact-head CI 验证。
+本轮本地新鲜证据：Ruff format/check（685 文件）、mypy（332 个源码文件）、Unit（939 passed, 8 skipped；Windows 排除 3 个 POSIX-only host preparation case）、Contract（111 passed）、API（68 passed）、OpenAPI/Orval generate-check-compat、npm ci、文档/架构/表 Owner 门禁均通过；post-CI 修复目标 14 passed，新 PostgreSQL 测试已收集。本机缺少 `.runtime/secrets/postgres_password` 且 Docker daemon 不可用，未伪造 PostgreSQL 执行结果，交由新 Ready HEAD 的 PR exact-head CI 验证。
