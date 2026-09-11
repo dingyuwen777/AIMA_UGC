@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260911-063418-r05-stage4-canonical-replay
 title: Roadmap 05 Stage 4 Canonical Replay 与 clean break 收口
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feat/r05-stage4-canonical-replay
 created: 2026-09-11
