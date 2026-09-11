@@ -206,6 +206,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "analysis.content-run-plan.v1",
             "reporting.content-export-excel.v1",
             "vehicles.content-reclassification.v1",
+            "ingestion.canonical-replay.v1",
         )
         assert worker.run_once() is True
         assert worker.run_once() is False
