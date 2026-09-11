@@ -26,6 +26,10 @@ from aima_ugc.modules.collection.collection_run_job import (
 )
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
+from aima_ugc.modules.ingestion.canonical_replay import (
+    CanonicalReplayJobHandler,
+    register_canonical_replay_job,
+)
 from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
@@ -46,6 +50,7 @@ from .analysis_high_throughput_planner import (
     HighThroughputContentAnalysisPlanJobExecutor,
     create_high_throughput_analysis_job_terminal_callback,
 )
+from .canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from .collection_scope import TikHubCollectionScopeExecutor
 from .content_reclassification_worker import PostgresContentReclassificationJobExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
@@ -178,6 +183,10 @@ def create_collection_job_registry(
     register_content_reclassification_job(
         registry,
         ContentReclassificationJobHandler(PostgresContentReclassificationJobExecutor(runtime)),
+    )
+    register_canonical_replay_job(
+        registry,
+        CanonicalReplayJobHandler(PostgresCanonicalReplayJobExecutor(runtime)),
     )
     return registry
 

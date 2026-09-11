@@ -1365,6 +1365,297 @@
         "title": "BrandVehicleCatalogSnapshotResponse",
         "type": "object"
       },
+      "CanonicalReplayCreateRequest": {
+        "additionalProperties": false,
+        "description": "创建 Replay 时显式冻结的输入选择。",
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "batch_size": {
+            "default": 500,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "artifact_ids"
+        ],
+        "title": "CanonicalReplayCreateRequest",
+        "type": "object"
+      },
+      "CanonicalReplayCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "job_id",
+          "status"
+        ],
+        "title": "CanonicalReplayCreatedResponse",
+        "type": "object"
+      },
+      "CanonicalReplayJobResultResponse": {
+        "additionalProperties": false,
+        "description": "Canonical Replay 成功终态的安全统计。",
+        "properties": {
+          "artifact_count": {
+            "minimum": 1.0,
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "duplicates_removed": {
+            "minimum": 0.0,
+            "title": "Duplicates Removed",
+            "type": "integer"
+          },
+          "existing_convergence": {
+            "minimum": 0.0,
+            "title": "Existing Convergence",
+            "type": "integer"
+          },
+          "invalid_artifact_rows": {
+            "const": 0,
+            "default": 0,
+            "title": "Invalid Artifact Rows",
+            "type": "integer"
+          },
+          "rows_filtered_out": {
+            "minimum": 0.0,
+            "title": "Rows Filtered Out",
+            "type": "integer"
+          },
+          "rows_ingested": {
+            "minimum": 0.0,
+            "title": "Rows Ingested",
+            "type": "integer"
+          },
+          "rows_matched": {
+            "minimum": 0.0,
+            "title": "Rows Matched",
+            "type": "integer"
+          },
+          "rows_seen": {
+            "minimum": 0.0,
+            "title": "Rows Seen",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "artifact_count",
+          "rows_seen",
+          "rows_matched",
+          "rows_filtered_out",
+          "duplicates_removed",
+          "rows_ingested",
+          "existing_convergence"
+        ],
+        "title": "CanonicalReplayJobResultResponse",
+        "type": "object"
+      },
+      "CanonicalReplayRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_count": {
+            "minimum": 1.0,
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "batch_size": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "brand_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Brand Ids",
+            "type": "array"
+          },
+          "catalog_version": {
+            "minimum": 1.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "checkpoint_artifact_ordinal": {
+            "minimum": 0.0,
+            "title": "Checkpoint Artifact Ordinal",
+            "type": "integer"
+          },
+          "checkpoint_row_number": {
+            "minimum": 0.0,
+            "title": "Checkpoint Row Number",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "filter_scope": {
+            "enum": [
+              "all_active",
+              "selected"
+            ],
+            "title": "Filter Scope",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobStatusResponse"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/CanonicalReplayStatsResponse"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "artifact_ids",
+          "filter_scope",
+          "brand_ids",
+          "catalog_version",
+          "artifact_count",
+          "checkpoint_artifact_ordinal",
+          "checkpoint_row_number",
+          "batch_size",
+          "stats",
+          "job",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CanonicalReplayRunResponse",
+        "type": "object"
+      },
+      "CanonicalReplayStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "duplicates_removed": {
+            "minimum": 0.0,
+            "title": "Duplicates Removed",
+            "type": "integer"
+          },
+          "existing_convergence": {
+            "minimum": 0.0,
+            "title": "Existing Convergence",
+            "type": "integer"
+          },
+          "invalid_artifact_rows": {
+            "const": 0,
+            "default": 0,
+            "title": "Invalid Artifact Rows",
+            "type": "integer"
+          },
+          "rows_filtered_out": {
+            "minimum": 0.0,
+            "title": "Rows Filtered Out",
+            "type": "integer"
+          },
+          "rows_ingested": {
+            "minimum": 0.0,
+            "title": "Rows Ingested",
+            "type": "integer"
+          },
+          "rows_matched": {
+            "minimum": 0.0,
+            "title": "Rows Matched",
+            "type": "integer"
+          },
+          "rows_seen": {
+            "minimum": 0.0,
+            "title": "Rows Seen",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows_seen",
+          "rows_matched",
+          "rows_filtered_out",
+          "duplicates_removed",
+          "rows_ingested",
+          "existing_convergence"
+        ],
+        "title": "CanonicalReplayStatsResponse",
+        "type": "object"
+      },
       "CatalogBrandAliasSnapshotItem": {
         "additionalProperties": false,
         "properties": {
@@ -6826,6 +7117,9 @@
                 "$ref": "#/components/schemas/DataExportJobResultResponse"
               },
               {
+                "$ref": "#/components/schemas/CanonicalReplayJobResultResponse"
+              },
+              {
                 "type": "null"
               }
             ],
@@ -9647,6 +9941,233 @@
         "summary": "List Audit Events",
         "tags": [
           "administration"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays": {
+      "post": {
+        "operationId": "createCanonicalReplay",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalReplayCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Canonical Replay",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/{run_id}": {
+      "get": {
+        "operationId": "getCanonicalReplay",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Canonical Replay",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancelCanonicalReplay",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel Canonical Replay",
+        "tags": [
+          "imports"
         ]
       }
     },

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
@@ -17,14 +17,12 @@ from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVe
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
 )
+from aima_ugc.adapters.persistence.postgres.import_lineage import ensure_single_import_lineage
 from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
     PostgresProcessingImportBatchRepository,
 )
-from aima_ugc.adapters.persistence.postgres.provider import PostgresProviderRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
-from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
-from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     BrandVehicleFilterSnapshot,
@@ -318,8 +316,6 @@ def ingest_unified_content_batch(
 
     if input_artifact.sha256 is None:
         raise RuntimeError("File Import 输入 Artifact 缺少 SHA-256")
-    provider_repository = PostgresProviderRepository(session)
-    provider_service = ProviderPersistenceService(provider_repository)
     content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
     lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
     rows_ingested = 0
@@ -343,43 +339,14 @@ def ingest_unified_content_batch(
                 continue
             lineage = lineage_by_platform.get(content.platform)
             if lineage is None:
-                request_id = uuid5(batch_id, f"provider-request:{content.platform}")
-                attempt_id = uuid5(batch_id, f"provider-attempt:{content.platform}")
-                request = ProviderRequestV1.create_for_import(
-                    request_id=request_id,
-                    import_batch_id=batch_id,
-                    provider="imports",
+                request_id, attempt_id = ensure_single_import_lineage(
+                    session=session,
+                    batch_id=batch_id,
                     platform=content.platform,
-                    operation="excel_import",
-                    request_params={
-                        "input_artifact_sha256": input_artifact.sha256,
-                        "profile": content.source.source_type or "unknown",
-                    },
-                    pagination_input={},
+                    input_artifact=input_artifact,
+                    profile=content.source.source_type or "unknown",
                 )
-                prepared = provider_service.prepare_non_billable_attempt(
-                    request=request,
-                    attempt_id=attempt_id,
-                )
-                dispatching = provider_repository.mark_dispatching(prepared.attempt.id)
-                if dispatching.dispatch_started_at is None:
-                    raise RuntimeError("File Import Attempt 未进入 dispatching")
-                terminal = ProviderAttemptV1(
-                    attempt_id=dispatching.id,
-                    provider_request_id=prepared.request.id,
-                    attempt_no=dispatching.attempt_no,
-                    dispatch_status="completed",
-                    dispatch_started_at=dispatching.dispatch_started_at,
-                    completed_at=beijing_now(),
-                    raw_artifact_id=input_artifact.id,
-                    billing=ProviderBillingV1(status="not_billable"),
-                    created_at=dispatching.created_at,
-                )
-                provider_repository.finalize_dispatch(
-                    attempt=terminal,
-                    raw_artifact_id=input_artifact.id,
-                )
-                lineage = (prepared.request.id, dispatching.id)
+                lineage = (request_id, attempt_id)
                 lineage_by_platform[content.platform] = lineage
                 request_count += 1
 

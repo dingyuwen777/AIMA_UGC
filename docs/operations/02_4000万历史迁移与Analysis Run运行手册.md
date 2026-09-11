@@ -117,7 +117,63 @@ uploading（仅本地）
 
 ---
 
-## 4. Historical Fill-Only 的写入语义
+## 4. Persistent Canonical Replay
+
+Replay 用于 Brand、Vehicle、Alias 或确定性 Resolver 扩展后，重筛已经持久化的
+`canonical-content.v1`。当前只有管理员 API，没有单独页面：
+
+```text
+POST /api/v1/canonical-replays
+→ 选择 1—100 个 linked Canonical Artifact
+→ brand_ids 为空时冻结 all_active；非空时冻结 selected
+→ 创建 canonical_replay_runs + ingestion.canonical-replay.v1
+
+GET /api/v1/canonical-replays/{run_id}
+→ 查看 Job 状态、checkpoint 和累计统计
+
+POST /api/v1/canonical-replays/{run_id}/cancel
+→ queued 立即取消；running 记录协作取消请求
+```
+
+创建请求示例：
+
+```json
+{
+  "idempotency_key": "replay-20260911-a",
+  "artifact_ids": ["00000000-0000-0000-0000-000000000001"],
+  "brand_ids": [],
+  "batch_size": 500
+}
+```
+
+`idempotency_key` 重复且参数相同时返回同一 Run/Job；Artifact 顺序、Brand Scope、
+`batch_size` 或创建主体发生漂移时失败关闭。当前只接受 Excel Import v2、Data Import Campaign
+Pure Canonical Chunk v2 与 TikHub Discovery Search Attempt 三类可证明 lineage。旧 Job、旧 outcome
+Chunk、Scope-only、缺失或含糊父级不能手工改表绕过，也不能通过重新发送 TikHub 请求“修复”。
+
+每次首次执行和 Lease 接管都会在下一笔 Content 写入前重新预检全部输入的 metadata、文件、
+SHA-256、byte size、gzip、JSON、Canonical Contract 和来源链。任一输入失败时先核对 Artifact/父级
+账本；不要删除 Run、修改 checkpoint 或把损坏文件替换到原 `storage_key`。已提交批次由
+`artifact ordinal + row number` checkpoint、每 Run Content identity 和 Job fencing 共同保护；接管
+从最后提交点继续，陈旧 Worker 不能推进统计或业务写入。
+
+容量估算必须计入“全输入预检 + 实际流式执行”两次 Reader 打开；每次打开内部还会完整复制到
+临时文件、全件预校验并正式流式解析。业务阶段对每件 Artifact 连续取批，不会每批从第 0 行重读；
+接管时只对当前 Artifact 从头线性跳过 checkpoint。还须测量 Content/Evidence 写入和 PostgreSQL
+WAL。当前 CI/开发验证不能替代公司服务器的真实容量、Soak、
+备份恢复和生产授权门禁。Replay 不自动删除旧 Content，也不触发 AI、Export 或 Report；如需这些
+动作，由对应正式入口另行发起。
+
+running 取消在预检批次和业务写入批次之间协作生效，已提交批次保持对账，后续批次不再写入。
+共享 Reader 为保证“坏件零业务写入”，每次打开都必须先复制并完整校验当前单件 Artifact，首个
+预检批次产出前不能中断这一次全件校验；因此取消响应可能等待当前 Artifact 的这段线性 I/O/解析
+完成。Excel/Campaign Canonical 的压缩文件上限沿用 500 MB，TikHub 页面 Artifact 使用页面内容
+计算的有界上限；目标服务器容量演练必须实测最坏取消等待。如果未来要求更短的硬中断 SLO，需在
+保持全件预检语义的前提下另行设计可取消 Reader，不能通过跳过完整性校验缩短等待。
+
+---
+
+## 5. Historical Fill-Only 的写入语义
 
 本节只适用于：
 
@@ -152,7 +208,7 @@ filtered / duplicate / invalid / failed
 
 ---
 
-## 5. 手动 AI Analysis Run
+## 6. 手动 AI Analysis Run
 
 历史导入**不会自动创建 AI Job**。用户在声音广场显式发起：
 
@@ -189,7 +245,7 @@ Worker 在调用 LLM 前会校验 Run 冻结的 Prompt/Taxonomy/Provider/Model/�
 
 ---
 
-## 6. 容量验证怎么执行
+## 7. 容量验证怎么执行
 
 容量入口：
 
@@ -213,7 +269,7 @@ Worker 在调用 LLM 前会校验 Run 冻结的 Prompt/Taxonomy/Provider/Model/�
 
 ---
 
-## 7. 生产 4000 万 Go/No-Go
+## 8. 生产 4000 万 Go/No-Go
 
 开始生产写入前必须另行批准，并至少满足：
 
@@ -234,7 +290,7 @@ Worker 在调用 LLM 前会校验 Run 冻结的 Prompt/Taxonomy/Provider/Model/�
 
 ---
 
-## 8. 排障顺序
+## 9. 排障顺序
 
 ### Campaign 卡住
 
@@ -263,7 +319,7 @@ analysis_content_runs
 
 ---
 
-## 9. 精确事实源
+## 10. 精确事实源
 
 ### HTTP
 

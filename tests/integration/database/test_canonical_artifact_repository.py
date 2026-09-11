@@ -68,7 +68,7 @@ def _create_stored_canonical(session: Session) -> ArtifactRecord:
 
 
 def _seed_real_parents(session: Session) -> tuple[CanonicalArtifactParent, ...]:
-    """建立四类真实父事实及其最小上游外键。"""
+    """建立三类合法父事实及一个已禁用的真实 Scope 父事实。"""
 
     source_artifact = _pending_artifact(kind="file-import.raw")
     PostgresArtifactMetadataRepository(session).create_pending(source_artifact)
@@ -201,20 +201,21 @@ def test_repository_atomically_links_each_real_parent_and_marks_linked() -> None
         with session.begin():
             parents = _seed_real_parents(session)
             repository = PostgresArtifactMetadataRepository(session)
+            legal_parents = (parents[0], parents[1], parents[3])
             linked = [
                 repository.link_canonical(
                     _create_stored_canonical(session).id,
                     parent=parent,
                     linked_at=_NOW,
                 )
-                for parent in parents
+                for parent in legal_parents
             ]
             rows = session.execute(select(canonical_artifact_links_table)).mappings().all()
 
         linked_ids = {record.id for record in linked}
         matching_rows = [row for row in rows if row["artifact_id"] in linked_ids]
         assert all(record.storage_status == "linked" for record in linked)
-        assert len(matching_rows) == 4
+        assert len(matching_rows) == 3
         assert {
             sum(
                 row[name] is not None
@@ -227,6 +228,26 @@ def test_repository_atomically_links_each_real_parent_and_marks_linked() -> None
             )
             for row in matching_rows
         } == {1}
+    finally:
+        session.close()
+        runtime.dispose()
+
+
+def test_database_rejects_deprecated_scope_only_parent() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            scope_parent = _seed_real_parents(session)[2]
+            artifact = _create_stored_canonical(session)
+
+        with pytest.raises(IntegrityError):
+            with session.begin():
+                PostgresArtifactMetadataRepository(session).link_canonical(
+                    artifact.id,
+                    parent=scope_parent,
+                    linked_at=_NOW,
+                )
     finally:
         session.close()
         runtime.dispose()
