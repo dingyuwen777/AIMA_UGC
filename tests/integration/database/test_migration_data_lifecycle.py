@@ -1664,9 +1664,12 @@ def test_0051_creates_and_drops_canonical_replay_schema(
         assert inspector.get_pk_constraint("canonical_replay_seen_content")[
             "constrained_columns"
         ] == ["run_id", "platform", "external_content_id"]
-        assert "collection_scope_id is null" in " ".join(
-            str(item["sqltext"])
-            for item in inspector.get_check_constraints("canonical_artifact_links")
+        assert (
+            "collection_scope_id is null"
+            in " ".join(
+                str(item["sqltext"])
+                for item in inspector.get_check_constraints("canonical_artifact_links")
+            ).casefold()
         )
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (

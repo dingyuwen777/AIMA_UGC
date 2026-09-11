@@ -101,7 +101,6 @@ def _ensure_import_lineage(
                 provider_requests_table.c.import_batch_id,
                 provider_requests_table.c.scope_id,
                 provider_requests_table.c.provider,
-                provider_requests_table.c.platform,
                 provider_requests_table.c.operation,
                 provider_requests_table.c.request_fingerprint,
                 provider_requests_table.c.request_params,
@@ -122,12 +121,12 @@ def _ensure_import_lineage(
         .one_or_none()
     )
     if existing is not None:
+        # Import Request 的既有 Schema 按 Batch + fingerprint 去重且不单列 platform；
+        # platform 已编码进确定性 Attempt ID，因此这里返回 Attempt 实际关联的 Request ID。
         if not (
-            existing["request_id"] == request.request_id
-            and existing["import_batch_id"] == request.import_batch_id
+            existing["import_batch_id"] == request.import_batch_id
             and existing["scope_id"] is None
             and existing["provider"] == request.provider
-            and existing["platform"] == request.platform
             and existing["operation"] == request.operation
             and existing["request_fingerprint"] == request.request_fingerprint
             and existing["request_params"] == request.request_params
@@ -138,7 +137,7 @@ def _ensure_import_lineage(
             and existing["potential_duplicate_charge"] is False
         ):
             raise ValueError("Import Provider lineage 与当前确定性来源不一致")
-        return request.request_id, attempt_id
+        return existing["request_id"], attempt_id
 
     repository = PostgresProviderRepository(session)
     prepared = ProviderPersistenceService(repository).prepare_non_billable_attempt(
