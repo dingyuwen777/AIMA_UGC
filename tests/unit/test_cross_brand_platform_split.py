@@ -142,14 +142,14 @@ def test_split_routes_all_five_platforms_and_preserves_raw_payload(tmp_path: Pat
         assert output_path.is_file()
         assert output_path.read_bytes() == raw_by_platform[platform]
 
-    xhs_lines = [
+    xiaohongshu_lines = [
         line
         for line in summary.output_paths["xiaohongshu"].read_bytes().splitlines()
         if line.strip()
     ]
-    assert len(xhs_lines) == 1
-    xhs_record = VehiclePairRecordV1.model_validate_json(xhs_lines[0])
-    assert len(xhs_record.matched_pairs) == 2
+    assert len(xiaohongshu_lines) == 1
+    xiaohongshu_record = VehiclePairRecordV1.model_validate_json(xiaohongshu_lines[0])
+    assert len(xiaohongshu_record.matched_pairs) == 2
 
     payload = json.loads(summary.run_summary_path.read_text(encoding="utf-8"))
     assert payload["rows_seen"] == 5
@@ -161,7 +161,12 @@ def test_split_always_creates_empty_files_for_platforms_without_rows(tmp_path: P
 
     input_path = tmp_path / "comparison_posts.jsonl"
     input_path.write_bytes(
-        _raw_line(_vehicle_pair_record(platform="xiaohongshu", external_id="only-xhs"))
+        _raw_line(
+            _vehicle_pair_record(
+                platform="xiaohongshu",
+                external_id="only-xiaohongshu",
+            )
+        )
     )
 
     summary = split_by_platform(
