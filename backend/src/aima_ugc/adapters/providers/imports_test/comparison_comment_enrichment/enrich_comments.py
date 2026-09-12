@@ -8,9 +8,10 @@ import re
 import shutil
 from collections import Counter
 from collections.abc import Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TextIO
 
 from pydantic import ValidationError
 
@@ -18,6 +19,17 @@ from aima_ugc.adapters.providers.imports_test.comparison_comment_enrichment.mode
     CommentFetchCoverageV1,
     CommentFetchFailureV1,
     VehiclePairCommentRecordV1,
+)
+from aima_ugc.adapters.providers.imports_test.incremental_state import (
+    AppendOnlyShardIndex,
+    SHARD_NAMES,
+    atomic_write_json,
+    content_identity_key,
+    iter_completed_run_dirs,
+    load_json_object,
+    resolve_summary_output,
+    shard_name,
+    state_lock,
 )
 from aima_ugc.adapters.providers.imports_test.vehicle_pair_filter.filter_vehicle_pairs import (
     VehiclePairRecordV1,
@@ -47,6 +59,9 @@ OUTPUT_ROOT = Path(__file__).with_name("output")
 
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._+-]+$")
 _FATAL_HTTP_STATUSES = frozenset({401, 403, 408, 425, 429})
+_STATE_SCHEMA = "comparison-comment-enrichment-state.v1"
+_RUN_SCHEMA = "comparison-comment-enrichment-run.v2"
+_CACHE_POLICY = "reuse-any-committed-result.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +73,12 @@ class CommentEnrichmentRunSummary:
     input_path: Path
     output_jsonl_path: Path
     workbook_path: Path
+    current_jsonl_path: Path
+    current_workbook_path: Path
     run_summary_path: Path
     rows_seen: int
+    rows_cached: int
+    rows_fetched: int
     rows_complete: int
     rows_partial: int
     rows_unavailable: int
@@ -364,7 +383,7 @@ def enrich_comparison_comments(
     provider_config: TikHubTestConfig | None = None,
     transport: ProviderTransport | None = None,
 ) -> CommentEnrichmentRunSummary:
-    """直接遍历车型共现 JSONL，为五个平台逐帖补采全部评论并导出 Excel。"""
+    """自动接管本机旧评论 run；有缓存的帖子直接复用，只为真正缺失帖子请求 Provider。"""
 
     source_path = Path(input_path)
     if not source_path.is_file():
@@ -404,108 +423,453 @@ def _run_enrichment(
     provider_config: TikHubTestConfig,
     transport: ProviderTransport,
 ) -> CommentEnrichmentRunSummary:
-    """在一个原子 run 中执行网络补采、统一 JSONL、Excel 与摘要写出。"""
+    """在文件化 cache/state 保护下执行增量补采，并维护累计 current JSONL/Excel。"""
 
-    actual_run_id = _resolve_run_id(run_id)
-    runs_root = output_root / "runs"
-    final_run_dir = runs_root / actual_run_id
-    staging_dir = output_root / f".staging-{actual_run_id}"
-    if final_run_dir.exists():
-        raise FileExistsError(f"目标 run 已存在: {final_run_dir}")
-    if staging_dir.exists():
-        raise FileExistsError(f"staging run 已存在，请先人工确认后清理: {staging_dir}")
-    runs_root.mkdir(parents=True, exist_ok=True)
-    staging_dir.mkdir(parents=True, exist_ok=False)
+    with state_lock(output_root):
+        state, cache_index = _load_and_reconcile_state(output_root)
+        actual_run_id = _resolve_run_id(run_id)
+        runs_root = output_root / "runs"
+        final_run_dir = runs_root / actual_run_id
+        staging_dir = output_root / f".staging-{actual_run_id}"
+        if final_run_dir.exists():
+            raise FileExistsError(f"目标 run 已存在: {final_run_dir}")
+        if staging_dir.exists():
+            raise FileExistsError(f"staging run 已存在，请先人工确认后清理: {staging_dir}")
+        runs_root.mkdir(parents=True, exist_ok=True)
+        staging_dir.mkdir(parents=True, exist_ok=False)
 
-    staging_jsonl = staging_dir / "comparison_posts_with_comments.jsonl"
-    staging_workbook = staging_dir / "comparison_posts_with_comments.xlsx"
-    final_jsonl = final_run_dir / staging_jsonl.name
-    final_workbook = final_run_dir / staging_workbook.name
-    final_summary = final_run_dir / "run_summary.json"
+        staging_jsonl = staging_dir / "comparison_posts_with_comments.jsonl"
+        staging_workbook = staging_dir / "comparison_posts_with_comments.xlsx"
+        final_jsonl = final_run_dir / staging_jsonl.name
+        final_workbook = final_run_dir / staging_workbook.name
+        final_summary = final_run_dir / "run_summary.json"
+        current_jsonl = output_root / "current" / "comparison_posts_with_comments.jsonl"
+        current_workbook = output_root / "current" / "comparison_posts_with_comments.xlsx"
+        partition_root = staging_dir / ".input_shards"
 
-    rows_seen = 0
-    coverage_counts: Counter[str] = Counter()
-    platform_counts: Counter[PlatformName] = Counter()
-    root_comment_count = 0
-    reply_count = 0
-    failure_count = 0
-    fetcher = _TikHubCommentFetcher(
-        provider_config=provider_config,
-        transport=transport,
-        staging_dir=staging_dir,
-    )
+        rows_seen = 0
+        rows_cached = 0
+        rows_fetched = 0
+        coverage_counts: Counter[str] = Counter()
+        platform_counts: Counter[PlatformName] = Counter()
+        root_comment_count = 0
+        reply_count = 0
+        failure_count = 0
+        fetcher = _TikHubCommentFetcher(
+            provider_config=provider_config,
+            transport=transport,
+            staging_dir=staging_dir,
+        )
 
+        try:
+            _partition_input(input_path, partition_root)
+            with staging_jsonl.open("w", encoding="utf-8", newline="\n") as output_file:
+                for shard in SHARD_NAMES:
+                    partition = partition_root / f"{shard}.jsonl"
+                    if not partition.is_file():
+                        continue
+                    cached_entries = cache_index.load_shard(shard)
+                    with partition.open("rb") as source_file:
+                        for line_number, raw_line in enumerate(source_file, start=1):
+                            if not raw_line.strip():
+                                continue
+                            record = _parse_input_record(
+                                raw_line,
+                                input_path=partition,
+                                line_number=line_number,
+                            )
+                            rows_seen += 1
+                            content = record.record.content
+                            platform_counts[content.platform] += 1
+                            key = content_identity_key(
+                                content.platform,
+                                content.external_content_id,
+                            )
+                            cached_entry = cached_entries.get(key)
+                            if cached_entry is not None:
+                                cached = _read_cached_record(output_root, cached_entry)
+                                enriched = VehiclePairCommentRecordV1(
+                                    record=record,
+                                    comments=cached.comments,
+                                    comment_fetch=cached.comment_fetch,
+                                )
+                                rows_cached += 1
+                            else:
+                                fetched = fetcher.fetch(record)
+                                enriched = VehiclePairCommentRecordV1(
+                                    record=record,
+                                    comments=fetched.comments,
+                                    comment_fetch=fetched.coverage,
+                                )
+                                rows_fetched += 1
+
+                            output_file.write(enriched.model_dump_json())
+                            output_file.write("\n")
+                            coverage = enriched.comment_fetch
+                            coverage_counts[coverage.coverage] += 1
+                            root_comment_count += coverage.root_comment_count
+                            reply_count += coverage.reply_count
+                            failure_count += len(coverage.failures)
+                output_file.flush()
+                os.fsync(output_file.fileno())
+            shutil.rmtree(partition_root, ignore_errors=True)
+
+            excel_summary = export_unified_data_excel(
+                _iter_excel_records(staging_jsonl),
+                staging_workbook,
+                include_analysis=False,
+            )
+            if excel_summary.content_rows != rows_seen:
+                raise RuntimeError("Excel 内容行数与评论补采 JSONL 帖子数不一致")
+            if excel_summary.comment_rows != root_comment_count + reply_count:
+                raise RuntimeError("Excel 评论行数与评论补采 JSONL 评论数不一致")
+
+            _write_json(
+                staging_dir / "run_summary.json",
+                _run_summary_payload(
+                    run_id=actual_run_id,
+                    input_path=input_path,
+                    rows_seen=rows_seen,
+                    rows_cached=rows_cached,
+                    rows_fetched=rows_fetched,
+                    coverage_counts=coverage_counts,
+                    platform_counts=platform_counts,
+                    root_comment_count=root_comment_count,
+                    reply_count=reply_count,
+                    request_count=fetcher.request_count,
+                    failure_count=failure_count,
+                    jsonl_path=final_jsonl,
+                    workbook_path=final_workbook,
+                    current_jsonl_path=current_jsonl,
+                    current_workbook_path=current_workbook,
+                ),
+            )
+            os.replace(staging_dir, final_run_dir)
+        except BaseException:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise
+
+        # final run 已发布后再推进 cache；即使 current 生成中断，下次也会从该 run 自动恢复且不重抓。
+        _index_comment_run(
+            output_root=output_root,
+            run_id=actual_run_id,
+            jsonl_path=final_jsonl,
+            cache_index=cache_index,
+        )
+        indexed_runs = set(_string_list(state.get("indexed_runs")))
+        indexed_runs.add(actual_run_id)
+        state["indexed_runs"] = sorted(indexed_runs)
+        atomic_write_json(output_root / "state" / "manifest.json", state)
+        _materialize_current(
+            output_root=output_root,
+            cache_index=cache_index,
+            output_path=current_jsonl,
+            workbook_path=current_workbook,
+        )
+        # current 路径与缓存统计写入最终摘要，方便本地人工核验本轮没有重复付费请求。
+        _write_json(
+            final_summary,
+            _run_summary_payload(
+                run_id=actual_run_id,
+                input_path=input_path,
+                rows_seen=rows_seen,
+                rows_cached=rows_cached,
+                rows_fetched=rows_fetched,
+                coverage_counts=coverage_counts,
+                platform_counts=platform_counts,
+                root_comment_count=root_comment_count,
+                reply_count=reply_count,
+                request_count=fetcher.request_count,
+                failure_count=failure_count,
+                jsonl_path=final_jsonl,
+                workbook_path=final_workbook,
+                current_jsonl_path=current_jsonl,
+                current_workbook_path=current_workbook,
+            ),
+        )
+
+        return CommentEnrichmentRunSummary(
+            run_id=actual_run_id,
+            run_dir=final_run_dir,
+            input_path=input_path,
+            output_jsonl_path=final_jsonl,
+            workbook_path=final_workbook,
+            current_jsonl_path=current_jsonl,
+            current_workbook_path=current_workbook,
+            run_summary_path=final_summary,
+            rows_seen=rows_seen,
+            rows_cached=rows_cached,
+            rows_fetched=rows_fetched,
+            rows_complete=coverage_counts["complete"],
+            rows_partial=coverage_counts["partial"],
+            rows_unavailable=coverage_counts["unavailable"],
+            platform_counts={platform: platform_counts[platform] for platform in PLATFORM_NAMES},
+            root_comment_count=root_comment_count,
+            reply_count=reply_count,
+            request_count=fetcher.request_count,
+            failure_count=failure_count,
+        )
+
+
+def _load_and_reconcile_state(
+    output_root: Path,
+) -> tuple[dict[str, Any], AppendOnlyShardIndex]:
+    """首次升级扫描本机旧评论 runs 建 cache；以后自动补索引但绝不触发 Provider。"""
+
+    manifest_path = output_root / "state" / "manifest.json"
+    state = load_json_object(manifest_path)
+    if state:
+        if state.get("schema_version") != _STATE_SCHEMA:
+            raise ValueError(f"不支持的评论增量状态版本: {manifest_path}")
+        if state.get("cache_policy") != _CACHE_POLICY:
+            raise ValueError(f"评论缓存策略不兼容: {manifest_path}")
+    else:
+        state = {
+            "schema_version": _STATE_SCHEMA,
+            "cache_policy": _CACHE_POLICY,
+            "indexed_runs": [],
+        }
+
+    cache_index = AppendOnlyShardIndex(output_root / "state" / "cache_index")
+    indexed_runs = set(_string_list(state.get("indexed_runs")))
+    for run_dir in iter_completed_run_dirs(output_root):
+        if run_dir.name in indexed_runs:
+            continue
+        summary = load_json_object(run_dir / "run_summary.json")
+        if summary.get("schema_version") not in {"comparison-comment-enrichment-run.v1", _RUN_SCHEMA}:
+            continue
+        jsonl_path = resolve_summary_output(
+            run_dir=run_dir,
+            summary=summary,
+            output_key="jsonl",
+            fallback_relative="comparison_posts_with_comments.jsonl",
+        )
+        if not jsonl_path.is_file():
+            continue
+        _index_comment_run(
+            output_root=output_root,
+            run_id=run_dir.name,
+            jsonl_path=jsonl_path,
+            cache_index=cache_index,
+        )
+        indexed_runs.add(run_dir.name)
+        state["indexed_runs"] = sorted(indexed_runs)
+        atomic_write_json(manifest_path, state)
+    state["indexed_runs"] = sorted(indexed_runs)
+    atomic_write_json(manifest_path, state)
+    return state, cache_index
+
+
+def _index_comment_run(
+    *,
+    output_root: Path,
+    run_id: str,
+    jsonl_path: Path,
+    cache_index: AppendOnlyShardIndex,
+) -> None:
+    """只读一个已完成 run，保存 content identity → JSONL byte offset locator。"""
+
+    delta_root = output_root / "state" / ".reconcile" / run_id / "cache_index"
+    shutil.rmtree(delta_root, ignore_errors=True)
+    delta_root.mkdir(parents=True, exist_ok=False)
+    writers: dict[str, TextIO] = {}
     try:
-        with staging_jsonl.open("w", encoding="utf-8", newline="\n") as output_file:
-            for record in _iter_input_records(input_path):
-                rows_seen += 1
-                platform_counts[record.record.content.platform] += 1
-                fetched = fetcher.fetch(record)
-                enriched = VehiclePairCommentRecordV1(
-                    record=record,
-                    comments=fetched.comments,
-                    comment_fetch=fetched.coverage,
+        with ExitStack() as stack, jsonl_path.open("rb") as source_file:
+            line_number = 0
+            while True:
+                byte_offset = source_file.tell()
+                raw_line = source_file.readline()
+                if not raw_line:
+                    break
+                line_number += 1
+                if not raw_line.strip():
+                    continue
+                try:
+                    enriched = VehiclePairCommentRecordV1.model_validate_json(raw_line)
+                except (ValidationError, ValueError) as exc:
+                    raise ValueError(
+                        f"历史评论 JSONL 非法: {jsonl_path}: 第 {line_number} 行"
+                    ) from exc
+                content = enriched.record.record.content
+                key = content_identity_key(content.platform, content.external_content_id)
+                shard = shard_name(key)
+                writer = writers.get(shard)
+                if writer is None:
+                    writer = stack.enter_context(
+                        (delta_root / f"{shard}.jsonl").open(
+                            "w",
+                            encoding="utf-8",
+                            newline="\n",
+                        )
+                    )
+                    writers[shard] = writer
+                entry = {
+                    "key": key,
+                    "run_id": run_id,
+                    "path": _relative_or_absolute(output_root, jsonl_path),
+                    "offset": byte_offset,
+                    "coverage": enriched.comment_fetch.coverage,
+                }
+                writer.write(json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
+                writer.write("\n")
+            for writer in writers.values():
+                writer.flush()
+                os.fsync(writer.fileno())
+        cache_index.append_delta_dir(delta_root)
+    finally:
+        shutil.rmtree(delta_root.parent.parent, ignore_errors=True)
+
+
+def _partition_input(input_path: Path, partition_root: Path) -> None:
+    """按 content identity hash 分片输入，使每个历史 cache shard 只需加载一次。"""
+
+    partition_root.mkdir(parents=True, exist_ok=False)
+    writers: dict[str, TextIO] = {}
+    with ExitStack() as stack, input_path.open("rb") as source_file:
+        for line_number, raw_line in enumerate(source_file, start=1):
+            if not raw_line.strip():
+                continue
+            record = _parse_input_record(
+                raw_line,
+                input_path=input_path,
+                line_number=line_number,
+            )
+            content = record.record.content
+            key = content_identity_key(content.platform, content.external_content_id)
+            shard = shard_name(key)
+            writer = writers.get(shard)
+            if writer is None:
+                writer = stack.enter_context(
+                    (partition_root / f"{shard}.jsonl").open(
+                        "w",
+                        encoding="utf-8",
+                        newline="\n",
+                    )
                 )
+                writers[shard] = writer
+            writer.write(record.model_dump_json())
+            writer.write("\n")
+        for writer in writers.values():
+            writer.flush()
+            os.fsync(writer.fileno())
+
+
+def _read_cached_record(
+    output_root: Path,
+    entry: dict[str, Any],
+) -> VehiclePairCommentRecordV1:
+    """按 state locator 从历史不可变 run 随机读取完整帖子+评论，不复制评论到 state。"""
+
+    path_value = entry.get("path")
+    offset = entry.get("offset")
+    if not isinstance(path_value, str) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("评论 cache locator 非法")
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = output_root / path
+    if not path.is_file():
+        raise FileNotFoundError(f"评论 cache 指向的历史 run 已丢失: {path}")
+    with path.open("rb") as source_file:
+        source_file.seek(offset)
+        raw_line = source_file.readline()
+    try:
+        return VehiclePairCommentRecordV1.model_validate_json(raw_line)
+    except (ValidationError, ValueError) as exc:
+        raise ValueError(f"评论 cache 指向的历史记录已损坏: {path}@{offset}") from exc
+
+
+def _materialize_current(
+    *,
+    output_root: Path,
+    cache_index: AppendOnlyShardIndex,
+    output_path: Path,
+    workbook_path: Path,
+) -> None:
+    """从 cache 最新 locator 生成累计全量 JSONL/Excel；该步骤只有本地 I/O，不请求 TikHub。"""
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp = output_path.with_name(f".{output_path.name}.tmp")
+    temp.unlink(missing_ok=True)
+    content_rows = 0
+    comment_rows = 0
+    try:
+        with temp.open("w", encoding="utf-8", newline="\n") as output_file:
+            for entry in cache_index.iter_latest_entries():
+                enriched = _read_cached_record(output_root, entry)
                 output_file.write(enriched.model_dump_json())
                 output_file.write("\n")
-                coverage_counts[fetched.coverage.coverage] += 1
-                root_comment_count += fetched.coverage.root_comment_count
-                reply_count += fetched.coverage.reply_count
-                failure_count += len(fetched.coverage.failures)
+                content_rows += 1
+                comment_rows += len(enriched.comments)
             output_file.flush()
             os.fsync(output_file.fileno())
-
-        excel_summary = export_unified_data_excel(
-            _iter_excel_records(staging_jsonl),
-            staging_workbook,
-            include_analysis=False,
-        )
-        if excel_summary.content_rows != rows_seen:
-            raise RuntimeError("Excel 内容行数与评论补采 JSONL 帖子数不一致")
-        if excel_summary.comment_rows != root_comment_count + reply_count:
-            raise RuntimeError("Excel 评论行数与评论补采 JSONL 评论数不一致")
-
-        summary_payload: dict[str, object] = {
-            "schema_version": "comparison-comment-enrichment-run.v1",
-            "run_id": actual_run_id,
-            "input": str(input_path),
-            "rows_seen": rows_seen,
-            "rows_complete": coverage_counts["complete"],
-            "rows_partial": coverage_counts["partial"],
-            "rows_unavailable": coverage_counts["unavailable"],
-            "platform_counts": {platform: platform_counts[platform] for platform in PLATFORM_NAMES},
-            "root_comment_count": root_comment_count,
-            "reply_count": reply_count,
-            "request_count": fetcher.request_count,
-            "failure_count": failure_count,
-            "outputs": {
-                "jsonl": str(final_jsonl),
-                "xlsx": str(final_workbook),
-            },
-        }
-        _write_json(staging_dir / "run_summary.json", summary_payload)
-        os.replace(staging_dir, final_run_dir)
+        os.replace(temp, output_path)
     except BaseException:
-        shutil.rmtree(staging_dir, ignore_errors=True)
+        temp.unlink(missing_ok=True)
         raise
 
-    return CommentEnrichmentRunSummary(
-        run_id=actual_run_id,
-        run_dir=final_run_dir,
-        input_path=input_path,
-        output_jsonl_path=final_jsonl,
-        workbook_path=final_workbook,
-        run_summary_path=final_summary,
-        rows_seen=rows_seen,
-        rows_complete=coverage_counts["complete"],
-        rows_partial=coverage_counts["partial"],
-        rows_unavailable=coverage_counts["unavailable"],
-        platform_counts={platform: platform_counts[platform] for platform in PLATFORM_NAMES},
-        root_comment_count=root_comment_count,
-        reply_count=reply_count,
-        request_count=fetcher.request_count,
-        failure_count=failure_count,
+    excel_summary = export_unified_data_excel(
+        _iter_excel_records(output_path),
+        workbook_path,
+        include_analysis=False,
     )
+    if excel_summary.content_rows != content_rows:
+        raise RuntimeError("累计评论 Excel 内容行数与 current JSONL 不一致")
+    if excel_summary.comment_rows != comment_rows:
+        raise RuntimeError("累计评论 Excel 评论行数与 current JSONL 不一致")
+
+
+def _run_summary_payload(
+    *,
+    run_id: str,
+    input_path: Path,
+    rows_seen: int,
+    rows_cached: int,
+    rows_fetched: int,
+    coverage_counts: Counter[str],
+    platform_counts: Counter[PlatformName],
+    root_comment_count: int,
+    reply_count: int,
+    request_count: int,
+    failure_count: int,
+    jsonl_path: Path,
+    workbook_path: Path,
+    current_jsonl_path: Path,
+    current_workbook_path: Path,
+) -> dict[str, object]:
+    """统一构造评论增量 run 摘要，显式区分 cached 与真正网络 fetch。"""
+
+    return {
+        "schema_version": _RUN_SCHEMA,
+        "run_id": run_id,
+        "input": str(input_path),
+        "cache_policy": _CACHE_POLICY,
+        "rows_seen": rows_seen,
+        "rows_cached": rows_cached,
+        "rows_fetched": rows_fetched,
+        "rows_complete": coverage_counts["complete"],
+        "rows_partial": coverage_counts["partial"],
+        "rows_unavailable": coverage_counts["unavailable"],
+        "platform_counts": {platform: platform_counts[platform] for platform in PLATFORM_NAMES},
+        "root_comment_count": root_comment_count,
+        "reply_count": reply_count,
+        "request_count": request_count,
+        "failure_count": failure_count,
+        "outputs": {
+            "jsonl": str(jsonl_path),
+            "xlsx": str(workbook_path),
+            "current_jsonl": str(current_jsonl_path),
+            "current_xlsx": str(current_workbook_path),
+        },
+    }
+
+
+def _relative_or_absolute(output_root: Path, path: Path) -> str:
+    """优先保存 output_root 相对 locator，跨机器复制目录时仍可恢复。"""
+
+    try:
+        return path.relative_to(output_root).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _validate_input_jsonl(path: Path) -> None:
@@ -609,11 +973,25 @@ def _is_root_comment(comment: CanonicalCommentV1) -> bool:
 def _write_json(path: Path, value: object) -> None:
     """原子 run 发布前把摘要写入 staging 并刷盘。"""
 
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.tmp")
+    temp.unlink(missing_ok=True)
+    try:
+        with temp.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+
+
+def _string_list(value: object) -> list[str]:
+    """读取状态中的字符串列表。"""
+
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
 
 
 def _resolve_run_id(run_id: str | None) -> str:
@@ -626,7 +1004,7 @@ def _resolve_run_id(run_id: str | None) -> str:
 
 
 def main() -> None:
-    """使用文件顶部人工配置执行五平台车型共现帖子评论补采。"""
+    """使用文件顶部人工配置执行五平台增量评论补采。"""
 
     summary = enrich_comparison_comments(
         input_path=INPUT_JSONL,
@@ -636,11 +1014,13 @@ def main() -> None:
         f"{platform}={summary.platform_counts[platform]}" for platform in PLATFORM_NAMES
     )
     print(
-        "车型共现帖子评论补采完成: "
-        f"run_id={summary.run_id}, rows={summary.rows_seen}, complete={summary.rows_complete}, "
-        f"partial={summary.rows_partial}, unavailable={summary.rows_unavailable}, "
-        f"roots={summary.root_comment_count}, replies={summary.reply_count}, "
-        f"requests={summary.request_count}, {counts}, output={summary.run_dir}"
+        "车型共现帖子评论增量补采完成: "
+        f"run_id={summary.run_id}, rows={summary.rows_seen}, "
+        f"cached={summary.rows_cached}, fetched={summary.rows_fetched}, "
+        f"complete={summary.rows_complete}, partial={summary.rows_partial}, "
+        f"unavailable={summary.rows_unavailable}, roots={summary.root_comment_count}, "
+        f"replies={summary.reply_count}, requests={summary.request_count}, "
+        f"{counts}, current={summary.current_jsonl_path}"
     )
 
 
