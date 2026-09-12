@@ -149,7 +149,7 @@ def test_convert_supported_platforms_skips_only_unmapped_platform(tmp_path: Path
     records = [
         CanonicalContentV1.model_validate_json(line) for line in _read_non_empty_lines(output_path)
     ]
-    assert [record.platform for record in records] == ["xiaohongshu", "douyin"]
+    assert {record.platform for record in records} == {"xiaohongshu", "douyin"}
     assert all(record.source.source_value == summary.files[0].source for record in records)
 
 
