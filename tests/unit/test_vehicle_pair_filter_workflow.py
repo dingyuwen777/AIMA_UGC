@@ -13,7 +13,7 @@ from aima_ugc.adapters.providers.imports_test.vehicle_pair_filter.filter_vehicle
     VehiclePairRecordV1,
     filter_vehicle_pairs,
 )
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 _HEADERS = (
     "媒体名称（中文）",
@@ -104,7 +104,7 @@ def _write_vehicle_catalog(path: Path) -> None:
 
 
 def test_vehicle_pair_filter_consumes_monitoring_excel_filter_output(tmp_path: Path) -> None:
-    """Runner 应真实执行 Excel → 第一阶段 deduplicated JSONL → 第二阶段共现 JSONL。"""
+    """Runner 应真实执行 Excel → 第一阶段 JSONL → 第二阶段共现 JSONL + Excel。"""
 
     input_dir = tmp_path / "input"
     _write_monitoring_workbook(input_dir / "2026-06-15_sample.xlsx")
@@ -152,3 +152,24 @@ def test_vehicle_pair_filter_consumes_monitoring_excel_filter_output(tmp_path: P
         (item.target_model, item.competitor_brand, item.competitor_model)
         for item in output.matched_pairs
     ] == [("元宇宙", "九号", "Q3")]
+
+    assert second.workbook_path.is_file()
+    workbook = load_workbook(second.workbook_path, read_only=True, data_only=True)
+    try:
+        content_rows = list(workbook["内容"].iter_rows(values_only=True))
+        label_rows = list(workbook["标签明细"].iter_rows(values_only=True))
+        comment_rows = list(workbook["评论"].iter_rows(values_only=True))
+    finally:
+        workbook.close()
+
+    assert len(content_rows) == 2
+    headers = tuple(str(value) for value in content_rows[0])
+    values = dict(zip(headers, content_rows[1], strict=True))
+    assert values["平台"] == "小红书"
+    assert values["内容ID"] == "pair-note-001"
+    assert values["品牌"] == "爱玛；九号"
+    assert values["品牌角色"] == "自有品牌；竞品品牌"
+    assert values["竞品范围"] == "混合品牌"
+    assert values["车型"] == "元宇宙；Q3"
+    assert len(label_rows) == 1
+    assert len(comment_rows) == 1
