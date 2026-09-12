@@ -549,9 +549,7 @@ def _classify_files(
                     "mtime_ns": stat.st_mtime_ns,
                 }
                 continue
-            raise ValueError(
-                f"已处理 Excel 内容发生变化，增量模式拒绝静默覆盖历史结果: {path}"
-            )
+            raise ValueError(f"已处理 Excel 内容发生变化，增量模式拒绝静默覆盖历史结果: {path}")
 
         current_sha = sha256_file(path)
         duplicate_of = known_sha.get(current_sha)
