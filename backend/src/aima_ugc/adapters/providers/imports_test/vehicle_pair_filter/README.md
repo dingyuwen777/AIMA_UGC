@@ -20,13 +20,7 @@ Stage 2 不重新解析 Excel、不访问 PostgreSQL、不调用 TikHub/LLM。
 
 ## 2. 第一次升级自动接管旧 run
 
-如果：
-
-```text
-output/state/manifest.json
-```
-
-不存在，代码自动扫描：
+如果 `output/state/` 还没有增量状态，代码自动扫描：
 
 ```text
 output/runs/*/run_summary.json
@@ -69,7 +63,7 @@ content.title
 content.text
 ```
 
-只认 `vehicle_catalog.json` 中的车型标准名和 aliases；不要求品牌名同时出现在帖子中。车型标准名本身自动作为 alias。
+只认 [`vehicle_catalog.json`](vehicle_catalog.json) 中的车型标准名和 aliases；不要求品牌名同时出现在帖子中。车型标准名本身自动作为 alias。
 
 同一规范化 alias 不能属于两个不同车型，否则 fail closed。
 
@@ -82,13 +76,9 @@ content.text
 
 一篇帖子会生成四个 `matched_pairs`，但 JSONL 和 Excel `内容` Sheet 仍然一帖一行。
 
-## 5. vehicle_catalog 变化为什么会停止增量
+## 5. 车型目录变化为什么会停止增量
 
-`output/state/manifest.json` 绑定当前：
-
-```text
-vehicle_catalog.json SHA-256
-```
+Stage 2 的本地增量状态绑定当前 [`vehicle_catalog.json`](vehicle_catalog.json) 的 SHA-256。
 
 如果目录发生变化，历史帖子可能产生新的车型命中关系，因此程序不会静默沿用旧 Stage 2 state，而会明确报错：
 
@@ -105,7 +95,6 @@ vehicle_catalog.json 已变化
 ```text
 output/
 ├── state/
-│   └── manifest.json
 ├── current/
 │   ├── comparison_posts.jsonl
 │   └── comparison_posts.xlsx
