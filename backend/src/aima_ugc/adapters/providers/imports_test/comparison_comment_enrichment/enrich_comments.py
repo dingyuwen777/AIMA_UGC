@@ -21,8 +21,8 @@ from aima_ugc.adapters.providers.imports_test.comparison_comment_enrichment.mode
     VehiclePairCommentRecordV1,
 )
 from aima_ugc.adapters.providers.imports_test.incremental_state import (
-    AppendOnlyShardIndex,
     SHARD_NAMES,
+    AppendOnlyShardIndex,
     atomic_write_json,
     content_identity_key,
     iter_completed_run_dirs,
