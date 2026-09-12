@@ -277,7 +277,6 @@ def _map_media(raw: dict[str, Any]) -> list[CanonicalMediaV1]:
             continue
         width, _ = _count(image, "width")
         height, _ = _count(image, "height")
-        position, position_present = _count(image, "index")
         mapped.append(
             CanonicalMediaV1(
                 media_type="image",
@@ -285,9 +284,8 @@ def _map_media(raw: dict[str, Any]) -> list[CanonicalMediaV1]:
                 url=_http_url(image, "url", "url_size_large"),
                 width=width,
                 height=height,
-                position=position
-                if position_present and position is not None
-                else fallback_position,
+                # App V2 真实响应可能给多张图片重复 index=0，数组顺序才是稳定位置事实。
+                position=fallback_position,
             )
         )
     return mapped
