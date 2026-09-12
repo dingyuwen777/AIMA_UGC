@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260913-015402-xiaohongshu-comment-supplement
 title: 修复小红书多图帖子评论补采中断
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/xiaohongshu-comment-supplement
 created: 2026-09-13
