@@ -10,7 +10,7 @@ from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ValidationError
 
@@ -193,8 +193,14 @@ class _TikHubCommentFetcher:
             state = dict(advance.next_state or {})
 
         request_count = self.request_count - request_count_before
+        coverage: Literal["complete", "partial", "unavailable"]
         if failures:
             coverage = "partial" if comments else "unavailable"
+        elif content.metrics.comment_count is not None and root_count < content.metrics.comment_count:
+            coverage = "partial"
+            root_stop_reason = (
+                f"{root_stop_reason or 'provider_stopped'}; observed_lt_reported_total"
+            )
         else:
             coverage = "complete"
         return _FetchResult(
