@@ -284,6 +284,9 @@ class PostgresCollectionHttpService:
                 )
                 policy = CollectionDecisionPolicyV1(
                     comments_enabled=request.include_comments,
+                    # 网页端辅助补采是用户显式发起的新 Run；即使帖子公布的评论数
+                    # 没有变化，也必须重新读取评论，才能恢复上次失败或不完整的补采。
+                    comment_refresh_when_count_unchanged=request.include_comments,
                 )
                 execution = CollectionExecutionService(
                     PostgresCollectionRepository(session)

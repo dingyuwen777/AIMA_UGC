@@ -88,6 +88,32 @@ def test_user_posted_note_create_time_maps_published_at() -> None:
     assert "published_at" in result.observed_fields
 
 
+def test_image_positions_follow_response_order_when_provider_indices_repeat() -> None:
+    """Provider 重复图片 index 时仍应生成唯一、稳定的媒体位置。"""
+    raw = {
+        "id": "note-repeated-image-index",
+        "type": "normal",
+        "images_list": [
+            {"fileid": "image-1", "index": 0},
+            {"fileid": "image-2", "index": 0},
+            {"fileid": "image-3", "index": 0},
+        ],
+    }
+
+    result = map_content(
+        raw,
+        _context(operation="get_image_note_detail"),
+        item_locator="note:note-repeated-image-index",
+    )
+
+    assert [media.external_media_id for media in result.media] == [
+        "image-1",
+        "image-2",
+        "image-3",
+    ]
+    assert [media.position for media in result.media] == [0, 1, 2]
+
+
 def test_mapper_does_not_invent_missing_or_blank_fields() -> None:
     result = map_content(
         {"note": {"id": "note-2", "type": "video", "title": "", "desc": ""}},

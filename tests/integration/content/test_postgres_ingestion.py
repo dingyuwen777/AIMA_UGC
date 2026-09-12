@@ -533,6 +533,137 @@ def test_raw_replay_and_sparse_author_do_not_duplicate_or_clear_history(
         session.close()
 
 
+def test_comment_author_converges_by_existing_alternate_stable_id(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """主 ID 漂移但 red_id 一致时，评论作者应复用既有平台账号。"""
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            service = ContentIngestionService(PostgresContentRepository(session))
+            content_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛",
+            )
+            content = service.ingest_content(
+                map_content(
+                    {
+                        "id": "note-author-convergence",
+                        "type": "normal",
+                        "user": {
+                            "userid": "historical-user-id",
+                            "red_id": "stable-red-id",
+                            "nickname": "同一作者",
+                        },
+                    },
+                    _mapping_context(content_chain, operation="search_notes"),
+                    item_locator="note:note-author-convergence",
+                )
+            )
+            original_author_id = session.scalar(
+                select(contents_table.c.author_account_id).where(
+                    contents_table.c.id == content.target_id
+                )
+            )
+            assert original_author_id is not None
+
+            comment_chain = _insert_source_chain(
+                session,
+                operation="get_note_comments",
+                source_value="note-author-convergence",
+            )
+            comment = service.ingest_comment(
+                map_comment(
+                    {
+                        "id": "comment-author-convergence",
+                        "note_id": "note-author-convergence",
+                        "content": "评论",
+                        "user": {
+                            "userid": "current-provider-user-id",
+                            "red_id": "stable-red-id",
+                            "nickname": "同一作者",
+                        },
+                    },
+                    _mapping_context(comment_chain, operation="get_note_comments"),
+                    item_locator="comment:comment-author-convergence",
+                    is_root=True,
+                )
+            )
+
+        comment_author_id = session.scalar(
+            select(comments_table.c.author_account_id).where(
+                comments_table.c.id == comment.target_id
+            )
+        )
+        account_ids = session.scalars(
+            select(accounts_table.c.id).where(accounts_table.c.platform == "xiaohongshu")
+        ).all()
+        assert comment_author_id == original_author_id
+        assert account_ids == [original_author_id]
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_account_primary_and_alternate_identity_conflict_fails_closed(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """主 ID 与备用 ID 分别命中不同账号时不得错误合并。"""
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            service = ContentIngestionService(PostgresContentRepository(session))
+            for note_id, user_id, red_id in (
+                ("note-account-a", "user-a", "red-a"),
+                ("note-account-b", "user-b", "red-b"),
+            ):
+                chain = _insert_source_chain(
+                    session,
+                    operation="search_notes",
+                    source_value=note_id,
+                )
+                service.ingest_content(
+                    map_content(
+                        {
+                            "id": note_id,
+                            "type": "normal",
+                            "user": {"userid": user_id, "red_id": red_id},
+                        },
+                        _mapping_context(chain, operation="search_notes"),
+                        item_locator=f"note:{note_id}",
+                    )
+                )
+
+        with pytest.raises(ValueError, match="主 ID 与备用稳定 ID 指向不同账号"):
+            with session.begin():
+                service = ContentIngestionService(PostgresContentRepository(session))
+                comment_chain = _insert_source_chain(
+                    session,
+                    operation="get_note_comments",
+                    source_value="note-account-a",
+                )
+                service.ingest_comment(
+                    map_comment(
+                        {
+                            "id": "comment-conflicting-author",
+                            "note_id": "note-account-a",
+                            "content": "身份矛盾",
+                            "user": {"userid": "user-a", "red_id": "red-b"},
+                        },
+                        _mapping_context(comment_chain, operation="get_note_comments"),
+                        item_locator="comment:comment-conflicting-author",
+                        is_root=True,
+                    )
+                )
+
+        assert len(session.scalars(select(accounts_table.c.id)).all()) == 2
+        assert session.scalars(select(comments_table.c.id)).all() == []
+    finally:
+        session.rollback()
+        session.close()
+
+
 def test_sparse_sub_comment_does_not_clear_known_direct_parent(
     database_runtime: DatabaseRuntime,
 ) -> None:

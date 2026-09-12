@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -107,6 +108,7 @@ from aima_ugc.modules.ingestion.brand_vehicle_filter import (
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
+from aima_ugc.platform.logging import log_exception_event
 from aima_ugc.platform.security import SecretFileError
 from aima_ugc.platform.storage import (
     ArtifactRecord,
@@ -144,6 +146,8 @@ _TECHNICAL_PARTIAL_STOP_REASONS = {
     "items_unavailable",
     "duplicate_page",
 }
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -522,7 +526,8 @@ class TikHubCollectionScopeExecutor:
                 pagination_state=pagination_state,
                 stats=stats,
             )
-        except Exception:
+        except Exception as exc:
+            _log_scope_execution_failed(run=run, scope=scope, error=exc)
             self._refresh_counts(scope=scope, context=context, stats=stats)
             return _result(
                 status="failed",
@@ -727,7 +732,8 @@ class TikHubCollectionScopeExecutor:
                 pagination_state=pagination_state,
                 stats=stats,
             )
-        except Exception:
+        except Exception as exc:
+            _log_scope_execution_failed(run=run, scope=scope, error=exc)
             self._refresh_counts(scope=scope, context=context, stats=stats)
             return _result(
                 status="failed",
@@ -2320,6 +2326,28 @@ def _result(
         failed_count=stats.failed_count,
         content_count=stats.content_count,
         comment_count=stats.comment_count,
+    )
+
+
+def _log_scope_execution_failed(
+    *,
+    run: CollectionRunRecord,
+    scope: CollectionScopeRecord,
+    error: Exception,
+) -> None:
+    """记录安全异常类型和关联身份，不泄露 Provider Raw 或 Secret。"""
+
+    log_exception_event(
+        logger,
+        logging.ERROR,
+        "collection.scope.execution_failed",
+        "Collection Scope 执行失败，已转换为稳定失败终态。",
+        error,
+        run_id=str(run.id),
+        job_id=str(run.job_id),
+        scope_id=str(scope.id),
+        platform=scope.platform,
+        operation_group=scope.operation_group,
     )
 
 

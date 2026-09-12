@@ -225,6 +225,8 @@ GET /api/v1/xiaohongshu/app_v2/get_video_note_detail
 视频: data.data[0]
 ```
 
+图文详情的 `images_list[].index` 不能作为 Canonical 媒体位置：真实响应中多张图片可能全部返回 `index=0`。Mapper 按 `images_list` 数组顺序生成从 `0` 开始的唯一 `position`，避免 `content_media(content_id, position)` 冲突中断后续评论补采。
+
 Fixture：
 
 - [`tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json)

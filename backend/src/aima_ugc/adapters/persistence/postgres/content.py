@@ -10,7 +10,7 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -472,38 +472,68 @@ class PostgresContentRepository:
             for path in _ACCOUNT_FIELD_COLUMNS
             if path in observed_fields
         }
-        account_id = uuid4()
-        created = self._session.execute(
-            pg_insert(accounts_table)
-            .values(
-                id=account_id,
-                platform=platform,
-                external_account_id=author.external_account_id,
-                first_seen_at=observed_at,
-                last_seen_at=observed_at,
-                field_observed_at=_initial_freshness(
-                    observed_fields,
-                    _ACCOUNT_FIELD_COLUMNS,
-                    observed_at,
-                ),
-                updated_at=observed_at,
-                **candidate_updates,
+        alternate_ids = author.alternate_ids if "author.alternate_ids" in observed_fields else {}
+        primary_account_id = self._session.scalar(
+            select(accounts_table.c.id).where(
+                accounts_table.c.platform == platform,
+                accounts_table.c.external_account_id == author.external_account_id,
             )
-            .on_conflict_do_nothing(
-                index_elements=[
-                    accounts_table.c.platform,
-                    accounts_table.c.external_account_id,
-                ]
-            )
-            .returning(accounts_table.c.id)
-        ).scalar_one_or_none()
+        )
+        alternate_account_id = self._account_id_by_alternate_ids(
+            platform=platform,
+            alternate_ids=alternate_ids,
+        )
+        if (
+            primary_account_id is not None
+            and alternate_account_id is not None
+            and primary_account_id != alternate_account_id
+        ):
+            raise ValueError("账号主 ID 与备用稳定 ID 指向不同账号")
+
+        matched_account_id = primary_account_id or alternate_account_id
+        account_id = matched_account_id or uuid4()
+        created: UUID | None = None
+        if matched_account_id is None:
+            created = self._session.execute(
+                pg_insert(accounts_table)
+                .values(
+                    id=account_id,
+                    platform=platform,
+                    external_account_id=author.external_account_id,
+                    first_seen_at=observed_at,
+                    last_seen_at=observed_at,
+                    field_observed_at=_initial_freshness(
+                        observed_fields,
+                        _ACCOUNT_FIELD_COLUMNS,
+                        observed_at,
+                    ),
+                    updated_at=observed_at,
+                    **candidate_updates,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        accounts_table.c.platform,
+                        accounts_table.c.external_account_id,
+                    ]
+                )
+                .returning(accounts_table.c.id)
+            ).scalar_one_or_none()
         if created is None:
+            if matched_account_id is None:
+                concurrent_account_id = self._session.scalar(
+                    select(accounts_table.c.id).where(
+                        accounts_table.c.platform == platform,
+                        accounts_table.c.external_account_id == author.external_account_id,
+                    )
+                )
+                if concurrent_account_id is None:
+                    raise RuntimeError("账号并发写入后无法读取稳定身份")
+                account_id = concurrent_account_id
             row = dict(
                 self._session.execute(
                     select(accounts_table)
                     .where(
-                        accounts_table.c.platform == platform,
-                        accounts_table.c.external_account_id == author.external_account_id,
+                        accounts_table.c.id == account_id,
                     )
                     .with_for_update()
                 )
@@ -528,9 +558,41 @@ class PostgresContentRepository:
             self._session.execute(
                 update(accounts_table).where(accounts_table.c.id == account_id).values(**values)
             )
-        if "author.alternate_ids" in observed_fields:
-            self._upsert_account_external_ids(account_id, author.alternate_ids)
+        if alternate_ids:
+            self._upsert_account_external_ids(account_id, alternate_ids)
         return account_id
+
+    def _account_id_by_alternate_ids(
+        self,
+        *,
+        platform: str,
+        alternate_ids: dict[str, str],
+    ) -> UUID | None:
+        """按任一备用稳定 ID 收敛账号，并拒绝跨账号或跨平台的矛盾线索。"""
+
+        if not alternate_ids:
+            return None
+        predicates = [
+            and_(
+                account_external_ids_table.c.id_type == id_type,
+                account_external_ids_table.c.external_id == external_id,
+            )
+            for id_type, external_id in sorted(alternate_ids.items())
+        ]
+        rows = self._session.execute(
+            select(accounts_table.c.id, accounts_table.c.platform)
+            .select_from(
+                account_external_ids_table.join(
+                    accounts_table,
+                    accounts_table.c.id == account_external_ids_table.c.account_id,
+                )
+            )
+            .where(or_(*predicates))
+        ).all()
+        account_ids = {cast(UUID, row.id) for row in rows}
+        if len(account_ids) > 1 or any(row.platform != platform for row in rows):
+            raise ValueError("账号备用稳定 ID 指向不同账号或平台")
+        return next(iter(account_ids), None)
 
     def _upsert_account_external_ids(
         self,
