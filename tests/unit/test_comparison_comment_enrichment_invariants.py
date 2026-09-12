@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from pydantic import ValidationError
-
 from aima_ugc.adapters.providers.imports_test.comparison_comment_enrichment.models import (
     CommentFetchCoverageV1,
     VehiclePairCommentRecordV1,
@@ -24,6 +22,7 @@ from aima_ugc.contracts.canonical import (
     CanonicalMetricsV1,
     CanonicalSourceV1,
 )
+from pydantic import ValidationError
 
 
 def _source(observed_at: datetime) -> CanonicalSourceV1:
@@ -81,7 +80,6 @@ def _comment(
     reply_count: int | None,
     observed_at: datetime,
 ) -> CanonicalCommentV1:
-    is_root = comment_id == root_comment_id
     return CanonicalCommentV1(
         platform="xiaohongshu",
         external_content_id="note-invariant",
