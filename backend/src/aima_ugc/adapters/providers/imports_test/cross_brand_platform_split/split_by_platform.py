@@ -150,9 +150,7 @@ def _write_run_summary(path: Path, summary: PlatformSplitRunSummary) -> None:
         "platform_counts": {
             platform: summary.platform_counts[platform] for platform in PLATFORM_NAMES
         },
-        "outputs": {
-            platform: str(summary.output_paths[platform]) for platform in PLATFORM_NAMES
-        },
+        "outputs": {platform: str(summary.output_paths[platform]) for platform in PLATFORM_NAMES},
     }
     with path.open("w", encoding="utf-8", newline="\n") as output_file:
         json.dump(payload, output_file, ensure_ascii=False, indent=2)
