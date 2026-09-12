@@ -81,7 +81,9 @@ def _write_input(path: Path) -> None:
     path.write_text(f"{record.model_dump_json()}\n", encoding="utf-8")
 
 
-def test_vehicle_pair_filter_exports_unified_excel_with_brand_vehicle_columns(tmp_path: Path) -> None:
+def test_vehicle_pair_filter_exports_unified_excel_with_brand_vehicle_columns(
+    tmp_path: Path,
+) -> None:
     """成功筛选应在同一 run 生成一帖一行、含品牌车型列的统一 Excel。"""
 
     input_path = tmp_path / "contents.jsonl"
@@ -100,7 +102,9 @@ def test_vehicle_pair_filter_exports_unified_excel_with_brand_vehicle_columns(tm
     assert summary.workbook_path.is_file()
     assert summary.run_summary_path.is_file()
     assert summary.rows_with_cross_brand_pair == 1
-    assert len([line for line in summary.output_path.read_bytes().splitlines() if line.strip()]) == 1
+    assert (
+        len([line for line in summary.output_path.read_bytes().splitlines() if line.strip()]) == 1
+    )
 
     workbook = load_workbook(summary.workbook_path, read_only=True, data_only=True)
     try:
