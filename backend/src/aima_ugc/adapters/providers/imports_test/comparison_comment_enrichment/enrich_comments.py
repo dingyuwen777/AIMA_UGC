@@ -636,7 +636,10 @@ def _load_and_reconcile_state(
         if run_dir.name in indexed_runs:
             continue
         summary = load_json_object(run_dir / "run_summary.json")
-        if summary.get("schema_version") not in {"comparison-comment-enrichment-run.v1", _RUN_SCHEMA}:
+        if summary.get("schema_version") not in {
+            "comparison-comment-enrichment-run.v1",
+            _RUN_SCHEMA,
+        }:
             continue
         jsonl_path = resolve_summary_output(
             run_dir=run_dir,
