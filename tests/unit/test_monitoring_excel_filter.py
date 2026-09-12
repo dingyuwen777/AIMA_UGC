@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-
 from aima_ugc.adapters.providers.imports.models import ExcelImportRowError
 from aima_ugc.adapters.providers.imports_test.monitoring_excel_filter.process_directory import (
     PROFILE,
