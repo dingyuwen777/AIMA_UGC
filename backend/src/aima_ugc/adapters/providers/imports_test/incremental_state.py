@@ -73,7 +73,9 @@ def iter_completed_run_dirs(output_root: Path) -> Iterator[Path]:
     runs_root = Path(output_root) / "runs"
     if not runs_root.is_dir():
         return
-    for run_dir in sorted((item for item in runs_root.iterdir() if item.is_dir()), key=lambda p: p.name):
+    for run_dir in sorted(
+        (item for item in runs_root.iterdir() if item.is_dir()), key=lambda p: p.name
+    ):
         if (run_dir / "run_summary.json").is_file():
             yield run_dir
 
