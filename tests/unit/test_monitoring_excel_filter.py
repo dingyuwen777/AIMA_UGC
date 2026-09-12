@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from openpyxl import Workbook
 
 from aima_ugc.adapters.providers.imports.models import ExcelImportRowError
 from aima_ugc.adapters.providers.imports_test.monitoring_excel_filter.process_directory import (
@@ -18,6 +17,7 @@ from aima_ugc.adapters.providers.imports_test.monitoring_excel_filter.process_di
 )
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1
+from openpyxl import Workbook
 
 _HEADERS = (
     "媒体名称（中文）",
