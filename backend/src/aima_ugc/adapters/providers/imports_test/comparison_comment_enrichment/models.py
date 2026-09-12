@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -61,12 +62,14 @@ class VehiclePairCommentRecordV1(_CommentEnrichmentBaseModel):
 
     @model_validator(mode="after")
     def validate_comments(self) -> VehiclePairCommentRecordV1:
-        """保证评论归属、唯一性和 coverage 计数与实际 payload 一致。"""
+        """保证评论归属、唯一性、计数和 complete 覆盖声明彼此一致。"""
 
         content = self.record.record.content
         keys: list[tuple[str, str]] = []
         root_count = 0
         reply_count = 0
+        expected_replies: dict[str, int] = {}
+        observed_replies: Counter[str] = Counter()
         for comment in self.comments:
             if comment.platform != content.platform:
                 raise ValueError("评论平台必须与帖子平台一致")
@@ -78,14 +81,29 @@ class VehiclePairCommentRecordV1(_CommentEnrichmentBaseModel):
                 and comment.parent_comment_id is None
             ):
                 root_count += 1
+                if comment.metrics.reply_count is not None:
+                    expected_replies[comment.external_comment_id] = comment.metrics.reply_count
             else:
                 reply_count += 1
+                if comment.root_comment_id is not None:
+                    observed_replies[comment.root_comment_id] += 1
         if len(keys) != len(set(keys)):
             raise ValueError("同一帖子评论不能重复")
         if root_count != self.comment_fetch.root_comment_count:
             raise ValueError("一级评论计数与 comment_fetch 不一致")
         if reply_count != self.comment_fetch.reply_count:
             raise ValueError("二级回复计数与 comment_fetch 不一致")
+        if self.comment_fetch.coverage == "complete":
+            reported_total = self.comment_fetch.reported_total
+            if reported_total is not None and root_count < reported_total:
+                raise ValueError("complete 不能少于帖子已知一级评论总数")
+            short_roots = [
+                root_id
+                for root_id, expected in expected_replies.items()
+                if observed_replies[root_id] < expected
+            ]
+            if short_roots:
+                raise ValueError("complete 不能少于一级评论已知回复数")
         return self
 
 
