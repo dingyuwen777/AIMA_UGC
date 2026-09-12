@@ -27,18 +27,17 @@ INPUT_DIR
 
 ## 2. 第一次升级：自动识别你本机已经跑过的数据
 
-如果 `output/state/manifest.json` 不存在，代码会自动扫描：
+如果 `output/state/` 还没有增量状态，代码会自动扫描：
 
 ```text
 output/runs/*/run_summary.json
 output/runs/*/deduplicated/contents.jsonl
 ```
 
-并建立：
+并在 `output/state/` 下建立文件 checkpoint 与 256 分片内容身份索引：
 
 ```text
 output/state/
-├── manifest.json
 └── content_index/
     ├── 00.jsonl
     ├── 01.jsonl
@@ -108,10 +107,9 @@ keyword_pack.txt SHA-256
 ```text
 output/
 ├── state/
-│   ├── manifest.json
 │   └── content_index/*.jsonl
 ├── current/
-│   └── manifest.json
+│   └── <累计索引>
 └── runs/
     ├── <历史旧 run>/                # 原封不动
     └── <本次 run>/
@@ -138,17 +136,11 @@ runs/<run_id>/deduplicated/contents.jsonl
 
 因此第二阶段直接处理最新 run 的该文件即可，不必再次扫描历史全部数据。
 
-### current 为什么只是 manifest
+### current 为什么只保存轻量累计索引
 
 第一阶段可能达到数千万条帖子。每次运行都重新复制一份全量 JSONL 会产生巨大、无业务价值的 I/O 和磁盘重复。
 
-所以：
-
-```text
-output/current/manifest.json
-```
-
-记录所有已提交 run delta 及累计行数；完整历史事实仍由不可变 `runs/*/deduplicated/contents.jsonl` + `state/content_index` 表达。
+所以 `output/current/` 只记录所有已提交 run delta 及累计行数；完整历史事实仍由不可变 `runs/*/deduplicated/contents.jsonl` + `state/content_index` 表达。
 
 第二、三阶段的数据规模已经明显收敛，才维护可直接查看的累计 `current` JSONL/Excel。
 
