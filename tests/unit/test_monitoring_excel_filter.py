@@ -105,7 +105,7 @@ def test_convert_supported_platforms_skips_only_unmapped_platform(tmp_path: Path
         [
             _row(
                 media_name="小红书",
-                article_id="xhs-source",
+                article_id="source-a",
                 title="爱玛元宇宙体验",
                 text="正文",
                 url="https://www.xiaohongshu.com/explore/abc123",
