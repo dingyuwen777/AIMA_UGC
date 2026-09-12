@@ -181,7 +181,9 @@ def test_vehicle_alias_match_does_not_require_brand_name_and_builds_local_cartes
     )
 
 
-def test_vehicle_pair_filter_can_match_target_in_title_and_competitor_in_text(tmp_path: Path) -> None:
+def test_vehicle_pair_filter_can_match_target_in_title_and_competitor_in_text(
+    tmp_path: Path,
+) -> None:
     """目标车型和竞品车型可以分别出现在标题、正文，仍视为同帖共现。"""
 
     input_path = tmp_path / "contents.jsonl"
