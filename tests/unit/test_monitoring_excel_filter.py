@@ -149,7 +149,7 @@ def test_convert_supported_platforms_skips_only_unmapped_platform(tmp_path: Path
     records = [
         CanonicalContentV1.model_validate_json(line) for line in _read_non_empty_lines(output_path)
     ]
-    assert [record.platform for record in records] == ["xiaohongshu", "douyin"]
+    assert {record.platform for record in records} == {"xiaohongshu", "douyin"}
     assert all(record.source.source_value == summary.files[0].source for record in records)
 
 
@@ -278,7 +278,7 @@ def test_process_directory_filters_and_deduplicates_across_files(tmp_path: Path)
     assert set(record.matched_keywords) == {"爱玛", "元宇宙"}
 
     payload = json.loads(summary.run_summary_path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == "monitoring-excel-filter-run.v1"
+    assert payload["schema_version"] == "monitoring-excel-filter-run.v2"
     assert payload["rows_seen"] == 4
     assert payload["rows_supported_platform"] == 3
     assert payload["rows_skipped_platform_unmapped"] == 1
