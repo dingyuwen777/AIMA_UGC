@@ -10,10 +10,19 @@ from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from aima_ugc.adapters.providers.imports_test.incremental_state import (
+    atomic_write_json,
+    content_identity_key,
+    iter_completed_run_dirs,
+    load_json_object,
+    resolve_summary_output,
+    sha256_file,
+    state_lock,
+)
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.export import UnifiedDataExcelV1
 from aima_ugc.modules.analysis.relevance import normalize_keyword_match_text
@@ -27,6 +36,9 @@ OUTPUT_ROOT = Path(__file__).with_name("output")
 VEHICLE_CATALOG_FILE = Path(__file__).with_name("vehicle_catalog.json")
 
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._+-]+$")
+_STATE_SCHEMA = "vehicle-pair-filter-state.v1"
+_RUN_SCHEMA = "vehicle-pair-filter-run.v2"
+_INCREMENTAL_SEMANTICS = "vehicle-pair-incremental.v1"
 _VEHICLE_PAIR_CONTENT_COLUMNS = (
     "平台",
     "内容ID",
@@ -251,9 +263,13 @@ class VehiclePairFilterRunSummary:
     run_id: str
     run_dir: Path
     input_path: Path
+    input_sha256: str
+    input_skipped_cached: bool
     catalog_path: Path
     output_path: Path
     workbook_path: Path
+    current_output_path: Path
+    current_workbook_path: Path
     run_summary_path: Path
     target_brand: str
     brand_count: int
@@ -301,118 +317,314 @@ def filter_vehicle_pairs(
     output_root: Path,
     run_id: str | None = None,
 ) -> VehiclePairFilterRunSummary:
-    """流式筛出同时命中目标品牌车型和任一竞品车型的帖子，并同步导出 Excel。"""
+    """自动接管历史 run；相同输入只产 no-op，新 delta 才重新执行车型共现筛选。"""
 
     source_path = Path(input_path)
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
-
+    target_root = Path(output_root)
+    catalog_path = Path(catalog_path)
     catalog = load_vehicle_catalog(catalog_path)
-    prepared_models = _prepare_models(catalog)
-    target_id = catalog.target_brand.casefold()
-    target_model_count = sum(
-        len(brand.models) for brand in catalog.brands if brand.name.casefold() == target_id
-    )
-    competitor_model_count = sum(
-        len(brand.models) for brand in catalog.brands if brand.name.casefold() != target_id
-    )
+    catalog_sha256 = sha256_file(catalog_path)
+    input_sha256 = sha256_file(source_path)
 
-    actual_run_id, run_dir = prepare_run_dir(output_root=output_root, run_id=run_id)
-    output_path = run_dir / "comparison_posts.jsonl"
-    workbook_path = run_dir / "comparison_posts.xlsx"
-    run_summary_path = run_dir / "run_summary.json"
+    with state_lock(target_root):
+        state = _load_and_reconcile_state(
+            output_root=target_root,
+            catalog_sha256=catalog_sha256,
+        )
+        processed_inputs = _dict_object(state.get("processed_inputs"))
+        input_skipped_cached = input_sha256 in processed_inputs
+        actual_run_id, run_dir = prepare_run_dir(output_root=target_root, run_id=run_id)
+        output_path = run_dir / "comparison_posts.jsonl"
+        workbook_path = run_dir / "comparison_posts.xlsx"
+        current_output_path = target_root / "current" / "comparison_posts.jsonl"
+        current_workbook_path = target_root / "current" / "comparison_posts.xlsx"
+        run_summary_path = run_dir / "run_summary.json"
 
-    try:
-        rows_seen = 0
-        rows_with_target_model = 0
-        rows_with_competitor_model = 0
-        rows_with_cross_brand_pair = 0
-        target_model_counts: Counter[str] = Counter()
-        competitor_model_counts: Counter[str] = Counter()
-        pair_counts: Counter[str] = Counter()
+        prepared_models = _prepare_models(catalog)
+        target_id = catalog.target_brand.casefold()
+        target_model_count = sum(
+            len(brand.models) for brand in catalog.brands if brand.name.casefold() == target_id
+        )
+        competitor_model_count = sum(
+            len(brand.models) for brand in catalog.brands if brand.name.casefold() != target_id
+        )
 
-        temp_path = output_path.with_name(f".{output_path.name}.tmp")
-        temp_path.unlink(missing_ok=True)
         try:
-            with (
-                source_path.open("rb") as source_file,
-                temp_path.open("w", encoding="utf-8", newline="\n") as output_file,
-            ):
-                for line_number, raw_line in enumerate(source_file, start=1):
-                    if not raw_line.strip():
-                        continue
-                    rows_seen += 1
-                    record = _parse_input_record(
-                        raw_line,
-                        input_path=source_path,
-                        line_number=line_number,
-                    )
-                    matches = _match_post_models(record, prepared_models)
-                    if matches.target_models:
-                        rows_with_target_model += 1
-                    if matches.competitor_models:
-                        rows_with_competitor_model += 1
-                    if not matches.target_models or not matches.competitor_models:
-                        continue
+            if input_skipped_cached:
+                rows_seen = 0
+                rows_with_target_model = 0
+                rows_with_competitor_model = 0
+                rows_with_cross_brand_pair = 0
+                target_model_counts: Counter[str] = Counter()
+                competitor_model_counts: Counter[str] = Counter()
+                pair_counts: Counter[str] = Counter()
+                _write_empty_jsonl(output_path)
+            else:
+                (
+                    rows_seen,
+                    rows_with_target_model,
+                    rows_with_competitor_model,
+                    rows_with_cross_brand_pair,
+                    target_model_counts,
+                    competitor_model_counts,
+                    pair_counts,
+                ) = _filter_input_to_jsonl(
+                    source_path=source_path,
+                    output_path=output_path,
+                    prepared_models=prepared_models,
+                )
 
-                    result = _build_output_record(record=record, matches=matches)
-                    output_file.write(result.model_dump_json())
-                    output_file.write("\n")
-                    rows_with_cross_brand_pair += 1
+            excel_summary = export_unified_data_excel(
+                _iter_vehicle_pair_excel_records(output_path),
+                workbook_path,
+                include_analysis=False,
+                content_columns=_VEHICLE_PAIR_CONTENT_COLUMNS,
+            )
+            if excel_summary.content_rows != rows_with_cross_brand_pair:
+                raise RuntimeError("车型共现 Excel 内容行数与 JSONL 共现帖子数不一致")
+            if excel_summary.comment_rows != 0 or excel_summary.label_rows != 0:
+                raise RuntimeError("车型共现 Excel 不应生成评论或标签明细数据行")
 
-                    for model in matches.target_models:
-                        target_model_counts[model] += 1
-                    for competitor in matches.competitor_models:
-                        competitor_model_counts[f"{competitor.brand}/{competitor.model}"] += 1
-                    for pair in result.matched_pairs:
-                        pair_counts[
-                            f"{pair.target_model}|{pair.competitor_brand}|{pair.competitor_model}"
-                        ] += 1
-
-                output_file.flush()
-                os.fsync(output_file.fileno())
+            summary = VehiclePairFilterRunSummary(
+                run_id=actual_run_id,
+                run_dir=run_dir,
+                input_path=source_path,
+                input_sha256=input_sha256,
+                input_skipped_cached=input_skipped_cached,
+                catalog_path=catalog_path,
+                output_path=output_path,
+                workbook_path=workbook_path,
+                current_output_path=current_output_path,
+                current_workbook_path=current_workbook_path,
+                run_summary_path=run_summary_path,
+                target_brand=catalog.target_brand,
+                brand_count=len(catalog.brands),
+                target_model_count=target_model_count,
+                competitor_model_count=competitor_model_count,
+                rows_seen=rows_seen,
+                rows_with_target_model=rows_with_target_model,
+                rows_with_competitor_model=rows_with_competitor_model,
+                rows_with_cross_brand_pair=rows_with_cross_brand_pair,
+                rows_filtered_out=rows_seen - rows_with_cross_brand_pair,
+                target_model_counts=dict(sorted(target_model_counts.items())),
+                competitor_model_counts=dict(sorted(competitor_model_counts.items())),
+                pair_counts=dict(sorted(pair_counts.items())),
+            )
+            _write_run_summary(summary, catalog_sha256=catalog_sha256)
+            _materialize_current(
+                output_root=target_root,
+                output_path=current_output_path,
+                workbook_path=current_workbook_path,
+            )
         except BaseException:
-            temp_path.unlink(missing_ok=True)
+            shutil.rmtree(run_dir, ignore_errors=True)
             raise
-        os.replace(temp_path, output_path)
 
-        excel_summary = export_unified_data_excel(
-            _iter_vehicle_pair_excel_records(output_path),
-            workbook_path,
-            include_analysis=False,
-            content_columns=_VEHICLE_PAIR_CONTENT_COLUMNS,
-        )
-        if excel_summary.content_rows != rows_with_cross_brand_pair:
-            raise RuntimeError("车型共现 Excel 内容行数与 JSONL 共现帖子数不一致")
-        if excel_summary.comment_rows != 0 or excel_summary.label_rows != 0:
-            raise RuntimeError("车型共现 Excel 不应生成评论或标签明细数据行")
-
-        summary = VehiclePairFilterRunSummary(
-            run_id=actual_run_id,
-            run_dir=run_dir,
-            input_path=source_path,
-            catalog_path=Path(catalog_path),
-            output_path=output_path,
-            workbook_path=workbook_path,
-            run_summary_path=run_summary_path,
-            target_brand=catalog.target_brand,
-            brand_count=len(catalog.brands),
-            target_model_count=target_model_count,
-            competitor_model_count=competitor_model_count,
-            rows_seen=rows_seen,
-            rows_with_target_model=rows_with_target_model,
-            rows_with_competitor_model=rows_with_competitor_model,
-            rows_with_cross_brand_pair=rows_with_cross_brand_pair,
-            rows_filtered_out=rows_seen - rows_with_cross_brand_pair,
-            target_model_counts=dict(sorted(target_model_counts.items())),
-            competitor_model_counts=dict(sorted(competitor_model_counts.items())),
-            pair_counts=dict(sorted(pair_counts.items())),
-        )
-        _write_run_summary(summary)
+        processed_inputs[input_sha256] = {
+            "run_id": actual_run_id,
+            "input": str(source_path),
+        }
+        indexed_runs = set(_string_list(state.get("indexed_runs")))
+        indexed_runs.add(actual_run_id)
+        state["processed_inputs"] = processed_inputs
+        state["indexed_runs"] = sorted(indexed_runs)
+        atomic_write_json(target_root / "state" / "manifest.json", state)
         return summary
+
+
+def _filter_input_to_jsonl(
+    *,
+    source_path: Path,
+    output_path: Path,
+    prepared_models: tuple[_PreparedModel, ...],
+) -> tuple[
+    int,
+    int,
+    int,
+    int,
+    Counter[str],
+    Counter[str],
+    Counter[str],
+]:
+    """保持原第二阶段业务规则，只对本次真正未处理的 delta 执行一次扫描。"""
+
+    rows_seen = 0
+    rows_with_target_model = 0
+    rows_with_competitor_model = 0
+    rows_with_cross_brand_pair = 0
+    target_model_counts: Counter[str] = Counter()
+    competitor_model_counts: Counter[str] = Counter()
+    pair_counts: Counter[str] = Counter()
+    temp_path = output_path.with_name(f".{output_path.name}.tmp")
+    temp_path.unlink(missing_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with (
+            source_path.open("rb") as source_file,
+            temp_path.open("w", encoding="utf-8", newline="\n") as output_file,
+        ):
+            for line_number, raw_line in enumerate(source_file, start=1):
+                if not raw_line.strip():
+                    continue
+                rows_seen += 1
+                record = _parse_input_record(
+                    raw_line,
+                    input_path=source_path,
+                    line_number=line_number,
+                )
+                matches = _match_post_models(record, prepared_models)
+                if matches.target_models:
+                    rows_with_target_model += 1
+                if matches.competitor_models:
+                    rows_with_competitor_model += 1
+                if not matches.target_models or not matches.competitor_models:
+                    continue
+
+                result = _build_output_record(record=record, matches=matches)
+                output_file.write(result.model_dump_json())
+                output_file.write("\n")
+                rows_with_cross_brand_pair += 1
+                for model in matches.target_models:
+                    target_model_counts[model] += 1
+                for competitor in matches.competitor_models:
+                    competitor_model_counts[f"{competitor.brand}/{competitor.model}"] += 1
+                for pair in result.matched_pairs:
+                    pair_counts[
+                        f"{pair.target_model}|{pair.competitor_brand}|{pair.competitor_model}"
+                    ] += 1
+            output_file.flush()
+            os.fsync(output_file.fileno())
+        os.replace(temp_path, output_path)
     except BaseException:
-        shutil.rmtree(run_dir, ignore_errors=True)
+        temp_path.unlink(missing_ok=True)
         raise
+    return (
+        rows_seen,
+        rows_with_target_model,
+        rows_with_competitor_model,
+        rows_with_cross_brand_pair,
+        target_model_counts,
+        competitor_model_counts,
+        pair_counts,
+    )
+
+
+def _load_and_reconcile_state(
+    *,
+    output_root: Path,
+    catalog_sha256: str,
+) -> dict[str, Any]:
+    """首次升级自动读取本机旧 Stage 2 runs；以后修复遗漏的 input checkpoint。"""
+
+    manifest_path = output_root / "state" / "manifest.json"
+    state = load_json_object(manifest_path)
+    if state:
+        if state.get("schema_version") != _STATE_SCHEMA:
+            raise ValueError(f"不支持的车型筛选增量状态版本: {manifest_path}")
+        if state.get("catalog_sha256") != catalog_sha256:
+            raise ValueError(
+                "vehicle_catalog.json 已变化；旧 Stage 2 state 不能安全增量沿用。"
+                "请使用新的 output_root 或人工重建 Stage 2 state；评论缓存无需因此重抓"
+            )
+    else:
+        state = {
+            "schema_version": _STATE_SCHEMA,
+            "semantics": _INCREMENTAL_SEMANTICS,
+            "catalog_sha256": catalog_sha256,
+            "indexed_runs": [],
+            "processed_inputs": {},
+        }
+
+    indexed_runs = set(_string_list(state.get("indexed_runs")))
+    processed_inputs = _dict_object(state.get("processed_inputs"))
+    for run_dir in iter_completed_run_dirs(output_root):
+        if run_dir.name in indexed_runs:
+            continue
+        summary = load_json_object(run_dir / "run_summary.json")
+        if summary.get("schema_version") not in {"vehicle-pair-filter-run.v1", _RUN_SCHEMA}:
+            continue
+        value = summary.get("input_sha256")
+        input_sha = value if isinstance(value, str) and value else None
+        input_value = summary.get("input")
+        input_path = Path(input_value) if isinstance(input_value, str) and input_value else None
+        if input_sha is None and input_path is not None and input_path.is_file():
+            input_sha = sha256_file(input_path)
+        if input_sha is not None:
+            processed_inputs[input_sha] = {
+                "run_id": run_dir.name,
+                "input": str(input_path) if input_path is not None else None,
+            }
+        indexed_runs.add(run_dir.name)
+        state["processed_inputs"] = processed_inputs
+        state["indexed_runs"] = sorted(indexed_runs)
+        atomic_write_json(manifest_path, state)
+
+    state["processed_inputs"] = processed_inputs
+    state["indexed_runs"] = sorted(indexed_runs)
+    atomic_write_json(manifest_path, state)
+    return state
+
+
+def _materialize_current(
+    *,
+    output_root: Path,
+    output_path: Path,
+    workbook_path: Path,
+) -> None:
+    """从不可变历史 run 合并累计车型结果；旧 run 保留，current 仅是可重建展示视图。"""
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp = output_path.with_name(f".{output_path.name}.tmp")
+    temp.unlink(missing_ok=True)
+    seen: set[str] = set()
+    try:
+        with temp.open("w", encoding="utf-8", newline="\n") as output_file:
+            for run_dir in iter_completed_run_dirs(output_root):
+                summary = load_json_object(run_dir / "run_summary.json")
+                if summary.get("schema_version") not in {"vehicle-pair-filter-run.v1", _RUN_SCHEMA}:
+                    continue
+                path = resolve_summary_output(
+                    run_dir=run_dir,
+                    summary=summary,
+                    output_key="comparison_posts",
+                    fallback_relative="comparison_posts.jsonl",
+                )
+                if not path.is_file():
+                    continue
+                with path.open("rb") as source:
+                    for line_number, raw_line in enumerate(source, start=1):
+                        if not raw_line.strip():
+                            continue
+                        try:
+                            record = VehiclePairRecordV1.model_validate_json(raw_line)
+                        except (ValidationError, ValueError) as exc:
+                            raise ValueError(
+                                f"车型历史 run JSONL 非法: {path}: 第 {line_number} 行"
+                            ) from exc
+                        content = record.record.content
+                        key = content_identity_key(content.platform, content.external_content_id)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        output_file.write(record.model_dump_json())
+                        output_file.write("\n")
+            output_file.flush()
+            os.fsync(output_file.fileno())
+        os.replace(temp, output_path)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+
+    excel_summary = export_unified_data_excel(
+        _iter_vehicle_pair_excel_records(output_path),
+        workbook_path,
+        include_analysis=False,
+        content_columns=_VEHICLE_PAIR_CONTENT_COLUMNS,
+    )
+    if excel_summary.content_rows != len(seen):
+        raise RuntimeError("累计车型共现 Excel 与 current JSONL 行数不一致")
 
 
 def _prepare_models(catalog: VehiclePairCatalog) -> tuple[_PreparedModel, ...]:
@@ -570,14 +782,17 @@ def _iter_vehicle_pair_excel_records(path: Path) -> Iterator[UnifiedDataExcelV1]
             yield UnifiedDataExcelV1(content=excel_content)
 
 
-def _write_run_summary(summary: VehiclePairFilterRunSummary) -> None:
+def _write_run_summary(summary: VehiclePairFilterRunSummary, *, catalog_sha256: str) -> None:
     """把成功运行统计原子写入 run_summary.json。"""
 
     payload: dict[str, object] = {
-        "schema_version": "vehicle-pair-filter-run.v1",
+        "schema_version": _RUN_SCHEMA,
         "run_id": summary.run_id,
         "input": str(summary.input_path),
+        "input_sha256": summary.input_sha256,
+        "input_skipped_cached": summary.input_skipped_cached,
         "catalog": str(summary.catalog_path),
+        "catalog_sha256": catalog_sha256,
         "target_brand": summary.target_brand,
         "brand_count": summary.brand_count,
         "target_model_count": summary.target_model_count,
@@ -593,27 +808,34 @@ def _write_run_summary(summary: VehiclePairFilterRunSummary) -> None:
         "outputs": {
             "comparison_posts": str(summary.output_path),
             "comparison_posts_excel": str(summary.workbook_path),
+            "current_comparison_posts": str(summary.current_output_path),
+            "current_comparison_posts_excel": str(summary.current_workbook_path),
         },
     }
-    _atomic_write_json(summary.run_summary_path, payload)
+    atomic_write_json(summary.run_summary_path, payload)
 
 
-def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
-    """使用临时文件、fsync 和原子替换写 JSON 摘要。"""
+def _write_empty_jsonl(path: Path) -> None:
+    """为重复输入 no-op run 保持稳定的空 JSONL 产物。"""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_name(f".{path.name}.tmp")
-    temp_path.unlink(missing_ok=True)
-    try:
-        with temp_path.open("w", encoding="utf-8", newline="\n") as output_file:
-            json.dump(payload, output_file, ensure_ascii=False, indent=2)
-            output_file.write("\n")
-            output_file.flush()
-            os.fsync(output_file.fileno())
-        os.replace(temp_path, path)
-    except BaseException:
-        temp_path.unlink(missing_ok=True)
-        raise
+    temp = path.with_name(f".{path.name}.tmp")
+    with temp.open("wb") as output_file:
+        output_file.flush()
+        os.fsync(output_file.fileno())
+    os.replace(temp, path)
+
+
+def _dict_object(value: object) -> dict[str, Any]:
+    """把可选 JSON Object 状态收敛为普通字典。"""
+
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _string_list(value: object) -> list[str]:
+    """读取状态中的字符串列表。"""
+
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
 
 
 def _resolve_run_id(run_id: str | None) -> str:
@@ -626,7 +848,7 @@ def _resolve_run_id(run_id: str | None) -> str:
 
 
 def main() -> None:
-    """使用文件顶部人工配置执行一次车型共现二次筛选。"""
+    """使用文件顶部人工配置执行一次可续跑车型共现筛选。"""
 
     summary = filter_vehicle_pairs(
         input_path=INPUT_JSONL,
@@ -634,12 +856,13 @@ def main() -> None:
         output_root=OUTPUT_ROOT,
     )
     print(
-        "车型共现筛选完成: "
+        "车型共现增量筛选完成: "
         f"run_id={summary.run_id}, "
+        f"cached_input={summary.input_skipped_cached}, "
         f"rows_seen={summary.rows_seen}, "
         f"matched={summary.rows_with_cross_brand_pair}, "
         f"output={summary.output_path}, "
-        f"excel={summary.workbook_path}"
+        f"current={summary.current_output_path}"
     )
 
 
