@@ -594,7 +594,10 @@ def _iter_excel_records(path: Path) -> Iterator[UnifiedDataExcelV1]:
 def _is_root_comment(comment: CanonicalCommentV1) -> bool:
     """按 Canonical root/parent 身份判断 Excel 展示层级。"""
 
-    return comment.root_comment_id == comment.external_comment_id and comment.parent_comment_id is None
+    return (
+        comment.root_comment_id == comment.external_comment_id
+        and comment.parent_comment_id is None
+    )
 
 
 def _write_json(path: Path, value: object) -> None:
