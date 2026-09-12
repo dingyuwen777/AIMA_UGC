@@ -25,9 +25,12 @@ deduplicated/contents.jsonl
 AND 至少 1 个非爱玛车型
 → 对该帖实际命中的两个车型集合做局部笛卡尔积
 → comparison_posts.jsonl
+→ comparison_posts.xlsx
 ```
 
 第二阶段**不会**重新解析 Excel、重新做 content 去重、访问 PostgreSQL、调用 TikHub/LLM，也不会修改正式 Brand/Vehicle、Platform、Canonical 或 HTTP Contract。
+
+`comparison_posts.xlsx` 不是第二套业务数据：它从本次最终 `comparison_posts.jsonl` 流式派生，并复用仓库唯一的 Provider-neutral `UnifiedDataExcelV1` + `export_unified_data_excel()`。因此 JSONL 仍是后续机器处理的正式输入，Excel 只是方便人工查看的统一展示视图。
 
 ## 2. 匹配规则
 
@@ -110,7 +113,7 @@ content.text
 - 至少存在一个非目标品牌车型；
 - 同一规范化 alias 不能同时归属于两个不同车型，否则启动时 fail closed，避免一条文本被歧义归到多个品牌/车型。
 
-当前仓库内默认车型只是已确认示例。实际跑全量数据前，应把需要参与比较的全部爱玛车型和竞品车型补齐到该文件。
+实际跑全量数据前，应把需要参与比较的全部爱玛车型和竞品车型维护在该文件中，并保证一个规范化 alias 只归属于一个标准车型。
 
 ## 4. 输入
 
@@ -150,7 +153,7 @@ UnifiedContentRecordV1
 墩墩 × 九号/Q3
 ```
 
-但 `comparison_posts.jsonl` 中这篇帖子仍然只占一行，避免后续抓评论、统计或 LLM 分析时重复处理同一个 content identity。
+但 `comparison_posts.jsonl` 中这篇帖子仍然只占一行；对应 `comparison_posts.xlsx` 的“内容”Sheet 也只占一行，避免后续抓评论、统计、人工检查或 LLM 分析时重复处理同一个 content identity。
 
 ## 6. 输出
 
@@ -161,10 +164,13 @@ output/
 └── runs/
     └── <run_id>/
         ├── comparison_posts.jsonl
+        ├── comparison_posts.xlsx
         └── run_summary.json
 ```
 
-`comparison_posts.jsonl` 每行结构：
+### 6.1 comparison_posts.jsonl
+
+每行结构：
 
 ```json
 {
@@ -194,6 +200,48 @@ output/
 
 `model_mentions` 用来解释车型为什么被识别：命中了标题还是正文，以及具体命中的标准名/alias。
 
+### 6.2 comparison_posts.xlsx
+
+Excel 从上面的 JSONL 重新读取 `VehiclePairRecordV1` 后，通过共享 Provider-neutral Excel Exporter 生成，不自己维护 Workbook Schema、样式或 Formula/ID 规则。
+
+Workbook 仍遵守统一三 Sheet：
+
+```text
+内容
+标签明细
+评论
+```
+
+本阶段没有 AI 标签和评论，因此“标签明细”“评论”只保留统一表头，不伪造数据行；人工查看主要使用“内容”Sheet。
+
+“内容”Sheet 选择现有统一合法列，包含帖子基础信息、互动指标和：
+
+```text
+品牌
+品牌角色
+竞品范围
+车型
+```
+
+例如一帖同时命中：
+
+```text
+爱玛：元宇宙、墩墩
+雅迪：莱茵
+九号：Q3
+```
+
+Excel 仍只写一条 Content 行，其中展示：
+
+```text
+品牌      爱玛；雅迪；九号
+品牌角色  自有品牌；竞品品牌；竞品品牌
+竞品范围  混合品牌
+车型      元宇宙；墩墩；莱茵；Q3
+```
+
+精确 `matched_pairs` 与 alias 命中证据仍保留在 JSONL，不为了人工展示新增第二套 Excel 私有字段。
+
 ## 7. run_summary.json
 
 摘要包含：
@@ -210,6 +258,13 @@ competitor_model_counts
 pair_counts
 ```
 
+`outputs` 同时记录：
+
+```text
+comparison_posts
+comparison_posts_excel
+```
+
 其中车型/pair 计数只统计最终进入 `comparison_posts.jsonl` 的帖子；每个帖子对同一个车型或 pair 最多贡献 1 次。
 
 成功运行满足：
@@ -218,6 +273,10 @@ pair_counts
 rows_seen
 = rows_with_cross_brand_pair
 + rows_filtered_out
+
+Excel 内容数据行数
+= rows_with_cross_brand_pair
+= comparison_posts.jsonl 有效行数
 ```
 
 注意 `rows_with_target_model` 与 `rows_with_competitor_model` 可以重叠，也可能包含最终因缺少另一侧车型而被过滤的帖子，因此两者不能相加做总量对账。
@@ -237,13 +296,23 @@ run_id
 rows_seen
 matched
 output
+excel
+```
+
+其中：
+
+```text
+output → comparison_posts.jsonl
+excel  → comparison_posts.xlsx
 ```
 
 ## 9. 失败与数据安全
 
 - 输入 JSONL 只读；
 - catalog 或输入 Contract 非法时 fail closed；
-- `comparison_posts.jsonl` 使用临时文件 + `fsync` + 原子替换，中途失败不会发布半截最终 JSONL；
-- 整个 run 失败时删除本次新建输出目录；
+- `comparison_posts.jsonl` 使用临时文件 + `fsync` + 原子替换；
+- `comparison_posts.xlsx` 复用共享 Exporter 的临时文件 + Workbook readback 校验 + 原子替换；
+- Excel 从最终 JSONL 派生，并校验 Excel Content 行数必须等于共现 JSONL 帖子数；
+- JSONL、Excel、摘要任一步失败时都会删除本次新建 run 目录，不留下看似成功的半截正式结果；
 - 全流程逐行处理，不把完整 JSONL 一次性加载到内存；
 - `output/` 已被当前目录 `.gitignore` 排除，不提交真实数据产物。
