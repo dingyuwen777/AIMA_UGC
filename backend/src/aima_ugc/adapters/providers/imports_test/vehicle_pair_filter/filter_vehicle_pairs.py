@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -14,7 +15,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
+from aima_ugc.contracts.export import UnifiedDataExcelV1
 from aima_ugc.modules.analysis.relevance import normalize_keyword_match_text
+from aima_ugc.platform.export import export_unified_data_excel, project_canonical_content
 from aima_ugc.platform.time import beijing_now
 
 INPUT_JSONL = Path(
@@ -24,6 +27,38 @@ OUTPUT_ROOT = Path(__file__).with_name("output")
 VEHICLE_CATALOG_FILE = Path(__file__).with_name("vehicle_catalog.json")
 
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._+-]+$")
+_VEHICLE_PAIR_CONTENT_COLUMNS = (
+    "平台",
+    "内容ID",
+    "来源项ID",
+    "内容类型",
+    "标题",
+    "正文",
+    "作者",
+    "发布时间",
+    "内容链接",
+    "作者粉丝数",
+    "作者关注数",
+    "作者内容数",
+    "作者获赞数",
+    "点赞",
+    "评论数",
+    "收藏数",
+    "分享数",
+    "转发数",
+    "浏览数",
+    "播放数",
+    "弹幕数",
+    "投币数",
+    "下载数",
+    "命中关键词",
+    "品牌",
+    "品牌角色",
+    "竞品范围",
+    "车型",
+    "来源Provider",
+    "Raw/来源定位",
+)
 
 
 class VehicleModelConfig(BaseModel):
@@ -218,6 +253,7 @@ class VehiclePairFilterRunSummary:
     input_path: Path
     catalog_path: Path
     output_path: Path
+    workbook_path: Path
     run_summary_path: Path
     target_brand: str
     brand_count: int
@@ -265,7 +301,7 @@ def filter_vehicle_pairs(
     output_root: Path,
     run_id: str | None = None,
 ) -> VehiclePairFilterRunSummary:
-    """流式筛出同时命中目标品牌车型和任一竞品车型的帖子。"""
+    """流式筛出同时命中目标品牌车型和任一竞品车型的帖子，并同步导出 Excel。"""
 
     source_path = Path(input_path)
     if not source_path.is_file():
@@ -283,6 +319,7 @@ def filter_vehicle_pairs(
 
     actual_run_id, run_dir = prepare_run_dir(output_root=output_root, run_id=run_id)
     output_path = run_dir / "comparison_posts.jsonl"
+    workbook_path = run_dir / "comparison_posts.xlsx"
     run_summary_path = run_dir / "run_summary.json"
 
     try:
@@ -339,12 +376,24 @@ def filter_vehicle_pairs(
             raise
         os.replace(temp_path, output_path)
 
+        excel_summary = export_unified_data_excel(
+            _iter_vehicle_pair_excel_records(output_path),
+            workbook_path,
+            include_analysis=False,
+            content_columns=_VEHICLE_PAIR_CONTENT_COLUMNS,
+        )
+        if excel_summary.content_rows != rows_with_cross_brand_pair:
+            raise RuntimeError("车型共现 Excel 内容行数与 JSONL 共现帖子数不一致")
+        if excel_summary.comment_rows != 0 or excel_summary.label_rows != 0:
+            raise RuntimeError("车型共现 Excel 不应生成评论或标签明细数据行")
+
         summary = VehiclePairFilterRunSummary(
             run_id=actual_run_id,
             run_dir=run_dir,
             input_path=source_path,
             catalog_path=Path(catalog_path),
             output_path=output_path,
+            workbook_path=workbook_path,
             run_summary_path=run_summary_path,
             target_brand=catalog.target_brand,
             brand_count=len(catalog.brands),
@@ -482,6 +531,45 @@ def _build_output_record(
     )
 
 
+def _iter_vehicle_pair_excel_records(path: Path) -> Iterator[UnifiedDataExcelV1]:
+    """从最终车型共现 JSONL 流式派生共享 Provider-neutral Excel 输入。"""
+
+    with path.open("rb") as source_file:
+        for line_number, raw_line in enumerate(source_file, start=1):
+            if not raw_line.strip():
+                continue
+            try:
+                pair_record = VehiclePairRecordV1.model_validate_json(raw_line)
+            except (ValidationError, ValueError) as exc:
+                raise ValueError(
+                    f"车型共现 JSONL 第 {line_number} 行无法导出 Excel: {path}"
+                ) from exc
+
+            excel_content = project_canonical_content(
+                pair_record.record.content,
+                matched_keywords=pair_record.record.matched_keywords,
+            )
+            target_models = set(pair_record.matched_target_models)
+            brands: list[str] = []
+            roles: list[str] = []
+            vehicles: list[str] = []
+            for mention in pair_record.model_mentions:
+                if mention.brand not in brands:
+                    brands.append(mention.brand)
+                    roles.append("owned" if mention.model in target_models else "competitor")
+                if mention.model not in vehicles:
+                    vehicles.append(mention.model)
+            excel_content = excel_content.model_copy(
+                update={
+                    "brands": tuple(brands),
+                    "brand_roles": tuple(roles),
+                    "competition_scope": "mixed",
+                    "vehicles": tuple(vehicles),
+                }
+            )
+            yield UnifiedDataExcelV1(content=excel_content)
+
+
 def _write_run_summary(summary: VehiclePairFilterRunSummary) -> None:
     """把成功运行统计原子写入 run_summary.json。"""
 
@@ -502,7 +590,10 @@ def _write_run_summary(summary: VehiclePairFilterRunSummary) -> None:
         "target_model_counts": summary.target_model_counts,
         "competitor_model_counts": summary.competitor_model_counts,
         "pair_counts": summary.pair_counts,
-        "outputs": {"comparison_posts": str(summary.output_path)},
+        "outputs": {
+            "comparison_posts": str(summary.output_path),
+            "comparison_posts_excel": str(summary.workbook_path),
+        },
     }
     _atomic_write_json(summary.run_summary_path, payload)
 
@@ -547,7 +638,8 @@ def main() -> None:
         f"run_id={summary.run_id}, "
         f"rows_seen={summary.rows_seen}, "
         f"matched={summary.rows_with_cross_brand_pair}, "
-        f"output={summary.output_path}"
+        f"output={summary.output_path}, "
+        f"excel={summary.workbook_path}"
     )
 
 
