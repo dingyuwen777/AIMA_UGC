@@ -136,14 +136,15 @@ def _rewrite_dimension_as_a1(path: Path) -> None:
 
     replacement = path.with_name(f".{path.name}.dimension-a1.tmp")
     changed = False
-    with ZipFile(path, "r") as source_archive, ZipFile(
-        replacement, "w", compression=ZIP_DEFLATED
-    ) as target_archive:
+    with (
+        ZipFile(path, "r") as source_archive,
+        ZipFile(replacement, "w", compression=ZIP_DEFLATED) as target_archive,
+    ):
         for item in source_archive.infolist():
             payload = source_archive.read(item.filename)
             if item.filename == "xl/worksheets/sheet1.xml":
                 payload, replacements = re.subn(
-                    br'<dimension ref="[^"]+"\s*/>',
+                    rb'<dimension ref="[^"]+"\s*/>',
                     b'<dimension ref="A1"/>',
                     payload,
                     count=1,
