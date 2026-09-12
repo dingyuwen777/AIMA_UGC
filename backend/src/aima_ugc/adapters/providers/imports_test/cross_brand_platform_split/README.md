@@ -33,9 +33,7 @@ Excel 目录
 顶部配置：
 
 ```python
-INPUT_JSONL = Path(
-    r"E:\...\vehicle_pair_filter\output\runs\<run_id>\comparison_posts.jsonl"
-)
+INPUT_JSONL = Path(r"E:\...\vehicle_pair_filter\output\runs\<run_id>\comparison_posts.jsonl")
 ```
 
 输入每个非空行必须是第二阶段的 `VehiclePairRecordV1`。工具读取：
