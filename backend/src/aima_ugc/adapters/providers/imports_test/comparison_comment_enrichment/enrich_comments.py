@@ -6,6 +6,8 @@ import json
 import os
 import re
 import shutil
+import time
+import zipfile
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import ExitStack
@@ -18,6 +20,8 @@ from pydantic import ValidationError
 from aima_ugc.adapters.providers.imports_test.comparison_comment_enrichment.models import (
     CommentFetchCoverageV1,
     CommentFetchFailureV1,
+    CommentIdentityMismatchV1,
+    CommentReplyShortfallV1,
     VehiclePairCommentRecordV1,
 )
 from aima_ugc.adapters.providers.imports_test.incremental_state import (
@@ -27,6 +31,7 @@ from aima_ugc.adapters.providers.imports_test.incremental_state import (
     iter_completed_run_dirs,
     load_json_object,
     resolve_summary_output,
+    sha256_file,
     shard_name,
     state_lock,
 )
@@ -52,15 +57,21 @@ from aima_ugc.platform.export import (
 from aima_ugc.platform.time import beijing_now
 
 INPUT_JSONL = Path(
-    r"E:\AIMA_UGC_data\vehicle_pair_filter\output\runs\<run_id>\comparison_posts.jsonl"
+    r"E:\work\03_Aima\code\AIMA_UGC\backend\src\aima_ugc\adapters\providers"
+    r"\imports_test\vehicle_pair_filter\output\runs\20260912T190531.644615+0800"
+    r"\comparison_posts.jsonl"
 )
 OUTPUT_ROOT = Path(__file__).with_name("output")
+RESUME_RUN_ID: str | None = None
 
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._+-]+$")
 _FATAL_HTTP_STATUSES = frozenset({401, 403, 408, 425, 429})
 _STATE_SCHEMA = "comparison-comment-enrichment-state.v1"
 _RUN_SCHEMA = "comparison-comment-enrichment-run.v2"
 _CACHE_POLICY = "reuse-any-committed-result.v1"
+_RUN_SCHEMAS = frozenset({"comparison-comment-enrichment-run.v1", _RUN_SCHEMA})
+_RESUME_SCHEMA = "comparison-comment-enrichment-resume.v1"
+_PUBLISH_RETRY_DELAYS_SECONDS = (0.1, 0.25, 0.5, 1.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,16 +133,50 @@ class _TikHubCommentFetcher:
         self._stores: dict[PlatformName, RunOutputStore] = {}
         self._platform_request_counts: Counter[PlatformName] = Counter()
         self.request_count = 0
+        self._restore_request_counters()
+
+    def _restore_request_counters(self) -> None:
+        """续跑时从既有 Raw 文件号恢复计数，保证审计文件永不覆盖。"""
+
+        for platform in PLATFORM_NAMES:
+            raw_dir = self.staging_dir / "provider" / platform / "runs" / "comments" / "raw"
+            request_no = 0
+            for path in raw_dir.glob("*.json"):
+                prefix, _, _ = path.name.partition("_")
+                if prefix.isdecimal():
+                    request_no = max(request_no, int(prefix))
+            if request_no:
+                self._platform_request_counts[platform] = request_no
+                self.request_count += request_no
 
     def fetch(self, record: VehiclePairRecordV1) -> _FetchResult:
         """对一篇已筛选帖子分页抓完一级评论及其全部二级回复。"""
 
         content = record.record.content
         reported_total = content.metrics.comment_count
+        unsupported_reason = _unsupported_comment_identity_reason(
+            platform=content.platform,
+            external_content_id=content.external_content_id,
+            alternate_ids=content.alternate_ids,
+        )
+        if unsupported_reason is not None:
+            return _FetchResult(
+                comments=(),
+                coverage=CommentFetchCoverageV1(
+                    coverage="unavailable",
+                    reported_total=reported_total,
+                    root_comment_count=0,
+                    reply_count=0,
+                    request_count=0,
+                    root_stop_reason=unsupported_reason,
+                ),
+            )
         request_count_before = self.request_count
         comments: list[CanonicalCommentV1] = []
         seen_comment_ids: set[str] = set()
         failures: list[CommentFetchFailureV1] = []
+        reply_shortfalls: list[CommentReplyShortfallV1] = []
+        identity_mismatches: list[CommentIdentityMismatchV1] = []
         root_count = 0
         reply_count = 0
         state: dict[str, object] | None = None
@@ -179,6 +224,16 @@ class _TikHubCommentFetcher:
                     item_locator=item_locator,
                     is_root=True,
                 )
+                if comment.external_content_id != content.external_content_id:
+                    identity_mismatches.append(
+                        _identity_mismatch(
+                            stage="comments",
+                            comment=comment,
+                            expected_external_content_id=content.external_content_id,
+                            raw_locator=item_locator,
+                        )
+                    )
+                    continue
                 if comment.external_comment_id in seen_comment_ids:
                     continue
                 seen_comment_ids.add(comment.external_comment_id)
@@ -190,7 +245,7 @@ class _TikHubCommentFetcher:
             for root in mapped_roots:
                 if root.metrics.reply_count == 0:
                     continue
-                replies, reply_failures = self._fetch_replies(
+                replies, reply_failures, reply_mismatches, reply_shortfall = self._fetch_replies(
                     content_platform=content.platform,
                     external_content_id=content.external_content_id,
                     alternate_ids=content.alternate_ids,
@@ -200,6 +255,9 @@ class _TikHubCommentFetcher:
                 comments.extend(replies)
                 reply_count += len(replies)
                 failures.extend(reply_failures)
+                identity_mismatches.extend(reply_mismatches)
+                if reply_shortfall is not None:
+                    reply_shortfalls.append(reply_shortfall)
 
             advance = tikhub_runtime.advance_comments(
                 platform=content.platform,
@@ -213,7 +271,7 @@ class _TikHubCommentFetcher:
 
         request_count = self.request_count - request_count_before
         coverage: Literal["complete", "partial", "unavailable"]
-        if failures:
+        if failures or reply_shortfalls or identity_mismatches:
             coverage = "partial" if comments else "unavailable"
         elif reported_total is not None and root_count < reported_total:
             coverage = "partial"
@@ -232,6 +290,8 @@ class _TikHubCommentFetcher:
                 request_count=request_count,
                 root_stop_reason=root_stop_reason,
                 failures=tuple(failures),
+                reply_shortfalls=tuple(reply_shortfalls),
+                identity_mismatches=tuple(identity_mismatches),
             ),
         )
 
@@ -243,11 +303,17 @@ class _TikHubCommentFetcher:
         alternate_ids: dict[str, str],
         root: CanonicalCommentV1,
         seen_comment_ids: set[str],
-    ) -> tuple[list[CanonicalCommentV1], list[CommentFetchFailureV1]]:
+    ) -> tuple[
+        list[CanonicalCommentV1],
+        list[CommentFetchFailureV1],
+        list[CommentIdentityMismatchV1],
+        CommentReplyShortfallV1 | None,
+    ]:
         """对一个一级评论分页抓完全部二级回复，不使用采样数量上限。"""
 
         replies: list[CanonicalCommentV1] = []
         failures: list[CommentFetchFailureV1] = []
+        identity_mismatches: list[CommentIdentityMismatchV1] = []
         state: dict[str, object] | None = None
         page_no = 0
         while True:
@@ -291,6 +357,16 @@ class _TikHubCommentFetcher:
                     item_locator=item_locator,
                     is_root=False,
                 )
+                if comment.external_content_id != external_content_id:
+                    identity_mismatches.append(
+                        _identity_mismatch(
+                            stage="replies",
+                            comment=comment,
+                            expected_external_content_id=external_content_id,
+                            raw_locator=item_locator,
+                        )
+                    )
+                    continue
                 if comment.external_comment_id in seen_comment_ids:
                     continue
                 seen_comment_ids.add(comment.external_comment_id)
@@ -305,7 +381,15 @@ class _TikHubCommentFetcher:
             if not advance.should_continue:
                 break
             state = dict(advance.next_state or {})
-        return replies, failures
+        reported_count = root.metrics.reply_count
+        reply_shortfall = None
+        if reported_count is not None and len(replies) < reported_count:
+            reply_shortfall = CommentReplyShortfallV1(
+                root_comment_id=root.external_comment_id,
+                reported_count=reported_count,
+                observed_count=len(replies),
+            )
+        return replies, failures, identity_mismatches, reply_shortfall
 
     def _send(
         self,
@@ -373,6 +457,40 @@ class _TikHubCommentFetcher:
         return store
 
 
+def _identity_mismatch(
+    *,
+    stage: Literal["comments", "replies"],
+    comment: CanonicalCommentV1,
+    expected_external_content_id: str,
+    raw_locator: str,
+) -> CommentIdentityMismatchV1:
+    """把串帖评论转成安全诊断，不让错误归属进入正式评论集合。"""
+
+    return CommentIdentityMismatchV1(
+        stage=stage,
+        external_comment_id=comment.external_comment_id,
+        expected_external_content_id=expected_external_content_id,
+        observed_external_content_id=comment.external_content_id,
+        raw_locator=raw_locator,
+    )
+
+
+def _unsupported_comment_identity_reason(
+    *,
+    platform: PlatformName,
+    external_content_id: str,
+    alternate_ids: dict[str, str],
+) -> str | None:
+    """阻止把微博文章哈希等非 status_id 身份误发给评论接口。"""
+
+    if platform != "weibo":
+        return None
+    status_id = alternate_ids.get("status_id", external_content_id).strip()
+    if status_id.isdecimal():
+        return None
+    return "unsupported_weibo_comment_identity"
+
+
 def enrich_comparison_comments(
     *,
     input_path: Path,
@@ -425,6 +543,7 @@ def _run_enrichment(
     """在文件化 cache/state 保护下按原输入顺序增量补采，并维护累计 current。"""
 
     with state_lock(output_root):
+        _recover_completed_staging_runs(output_root)
         state, cache_index = _load_and_reconcile_state(output_root)
         actual_run_id = _resolve_run_id(run_id)
         runs_root = output_root / "runs"
@@ -432,10 +551,24 @@ def _run_enrichment(
         staging_dir = output_root / f".staging-{actual_run_id}"
         if final_run_dir.exists():
             raise FileExistsError(f"目标 run 已存在: {final_run_dir}")
-        if staging_dir.exists():
-            raise FileExistsError(f"staging run 已存在，请先人工确认后清理: {staging_dir}")
         runs_root.mkdir(parents=True, exist_ok=True)
-        staging_dir.mkdir(parents=True, exist_ok=False)
+        is_resuming = staging_dir.exists()
+        if is_resuming and not staging_dir.is_dir():
+            raise FileExistsError(f"staging 路径不是目录: {staging_dir}")
+        if not is_resuming:
+            staging_dir.mkdir(parents=True, exist_ok=False)
+            try:
+                _write_json(
+                    staging_dir / "resume_manifest.json",
+                    {
+                        "schema_version": _RESUME_SCHEMA,
+                        "run_id": actual_run_id,
+                        "input_sha256": sha256_file(input_path),
+                    },
+                )
+            except BaseException:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                raise
 
         staging_jsonl = staging_dir / "comparison_posts_with_comments.jsonl"
         staging_workbook = staging_dir / "comparison_posts_with_comments.xlsx"
@@ -444,6 +577,16 @@ def _run_enrichment(
         final_summary = final_run_dir / "run_summary.json"
         current_jsonl = output_root / "current" / "comparison_posts_with_comments.jsonl"
         current_workbook = output_root / "current" / "comparison_posts_with_comments.xlsx"
+        resumed_records = _load_resumable_records(staging_jsonl) if is_resuming else []
+        if is_resuming:
+            _validate_resume_manifest(
+                staging_dir=staging_dir,
+                run_id=actual_run_id,
+                input_path=input_path,
+                has_resumed_records=bool(resumed_records),
+            )
+        if resumed_records:
+            _validate_resume_prefix(input_path=input_path, resumed_records=resumed_records)
 
         rows_seen = 0
         rows_cached = 0
@@ -460,38 +603,46 @@ def _run_enrichment(
         )
         loaded_cache_shards: dict[str, dict[str, dict[str, Any]]] = {}
 
+        completed_staging = False
         try:
-            with staging_jsonl.open("w", encoding="utf-8", newline="\n") as output_file:
+            output_mode = "a" if is_resuming else "w"
+            with staging_jsonl.open(output_mode, encoding="utf-8", newline="\n") as output_file:
                 for record in _iter_input_records(input_path):
                     rows_seen += 1
                     content = record.record.content
                     platform_counts[content.platform] += 1
-                    key = content_identity_key(content.platform, content.external_content_id)
-                    shard = shard_name(key)
-                    cached_entries = loaded_cache_shards.get(shard)
-                    if cached_entries is None:
-                        cached_entries = cache_index.load_shard(shard)
-                        loaded_cache_shards[shard] = cached_entries
-                    cached_entry = cached_entries.get(key)
-                    if cached_entry is not None:
-                        cached = _read_cached_record(output_root, cached_entry)
-                        enriched = VehiclePairCommentRecordV1(
-                            record=record,
-                            comments=cached.comments,
-                            comment_fetch=cached.comment_fetch,
-                        )
+                    should_append = rows_seen > len(resumed_records)
+                    if not should_append:
+                        enriched = resumed_records[rows_seen - 1]
                         rows_cached += 1
                     else:
-                        fetched = fetcher.fetch(record)
-                        enriched = VehiclePairCommentRecordV1(
-                            record=record,
-                            comments=fetched.comments,
-                            comment_fetch=fetched.coverage,
-                        )
-                        rows_fetched += 1
+                        key = content_identity_key(content.platform, content.external_content_id)
+                        shard = shard_name(key)
+                        cached_entries = loaded_cache_shards.get(shard)
+                        if cached_entries is None:
+                            cached_entries = cache_index.load_shard(shard)
+                            loaded_cache_shards[shard] = cached_entries
+                        cached_entry = cached_entries.get(key)
+                        if cached_entry is not None:
+                            cached = _read_cached_record(output_root, cached_entry)
+                            enriched = VehiclePairCommentRecordV1(
+                                record=record,
+                                comments=cached.comments,
+                                comment_fetch=cached.comment_fetch,
+                            )
+                            rows_cached += 1
+                        else:
+                            fetched = fetcher.fetch(record)
+                            enriched = VehiclePairCommentRecordV1(
+                                record=record,
+                                comments=fetched.comments,
+                                comment_fetch=fetched.coverage,
+                            )
+                            rows_fetched += 1
 
-                    output_file.write(enriched.model_dump_json())
-                    output_file.write("\n")
+                    if should_append:
+                        output_file.write(enriched.model_dump_json())
+                        output_file.write("\n")
                     coverage = enriched.comment_fetch
                     coverage_counts[coverage.coverage] += 1
                     root_comment_count += coverage.root_comment_count
@@ -530,9 +681,11 @@ def _run_enrichment(
                     current_workbook_path=current_workbook,
                 ),
             )
-            os.replace(staging_dir, final_run_dir)
+            completed_staging = True
+            _publish_run_directory(staging_dir, final_run_dir)
         except BaseException:
-            shutil.rmtree(staging_dir, ignore_errors=True)
+            if not completed_staging and not _has_resumable_data(staging_dir):
+                shutil.rmtree(staging_dir, ignore_errors=True)
             raise
 
         # final run 已发布后再推进 cache；即使 current 生成中断，下次也会从该 run 自动恢复且不重抓。
@@ -596,6 +749,158 @@ def _run_enrichment(
         )
 
 
+def _load_resumable_records(path: Path) -> list[VehiclePairCommentRecordV1]:
+    """读取未完成 run 已提交到 JSONL 的整行结果。"""
+
+    if not path.is_file():
+        raise ValueError(f"续跑 staging 缺少评论 JSONL: {path}")
+    records: list[VehiclePairCommentRecordV1] = []
+    with path.open("rb") as source_file:
+        for line_number, raw_line in enumerate(source_file, start=1):
+            if not raw_line.strip():
+                continue
+            try:
+                records.append(VehiclePairCommentRecordV1.model_validate_json(raw_line))
+            except (ValidationError, ValueError) as exc:
+                raise ValueError(f"续跑评论 JSONL 第 {line_number} 行非法: {path}") from exc
+    return records
+
+
+def _validate_resume_manifest(
+    *,
+    staging_dir: Path,
+    run_id: str,
+    input_path: Path,
+    has_resumed_records: bool,
+) -> None:
+    """核对断点的输入身份；旧 staging 至少要有可严格比对的完成行。"""
+
+    manifest_path = staging_dir / "resume_manifest.json"
+    manifest = load_json_object(manifest_path)
+    if not manifest:
+        if has_resumed_records:
+            return
+        raise ValueError(f"续跑 staging 缺少输入清单且没有已完成记录: {staging_dir}")
+    if manifest.get("schema_version") != _RESUME_SCHEMA:
+        raise ValueError(f"不支持的评论续跑清单版本: {manifest_path}")
+    if manifest.get("run_id") != run_id:
+        raise ValueError(f"评论续跑清单的 run_id 与目录不一致: {manifest_path}")
+    if manifest.get("input_sha256") != sha256_file(input_path):
+        raise ValueError(f"续跑输入文件已变化: {input_path}")
+
+
+def _validate_resume_prefix(
+    *,
+    input_path: Path,
+    resumed_records: list[VehiclePairCommentRecordV1],
+) -> None:
+    """续跑前严格核对输入前缀，避免把旧结果拼接到另一批输入。"""
+
+    input_records = _iter_input_records(input_path)
+    for line_number, resumed in enumerate(resumed_records, start=1):
+        current = next(input_records, None)
+        if current is None or current != resumed.record:
+            raise ValueError(f"续跑输入与 staging 第 {line_number} 行不一致")
+
+
+def _has_resumable_data(staging_dir: Path) -> bool:
+    """判断失败 staging 是否含已落盘结果或 Provider Raw 审计证据。"""
+
+    jsonl_path = staging_dir / "comparison_posts_with_comments.jsonl"
+    if jsonl_path.is_file() and jsonl_path.stat().st_size > 0:
+        return True
+    provider_root = staging_dir / "provider"
+    return provider_root.is_dir() and any(provider_root.rglob("raw/*.json"))
+
+
+def _recover_completed_staging_runs(output_root: Path) -> None:
+    """发布上次已写完摘要的 staging；只做本地校验和改名，不调用 Provider。"""
+
+    runs_root = output_root / "runs"
+    for staging_dir in sorted(output_root.glob(".staging-*")):
+        if not staging_dir.is_dir():
+            continue
+        summary_path = staging_dir / "run_summary.json"
+        if not summary_path.is_file():
+            continue
+        run_id = staging_dir.name.removeprefix(".staging-")
+        final_run_dir = runs_root / run_id
+        if final_run_dir.exists():
+            continue
+        _validate_completed_staging(staging_dir=staging_dir, run_id=run_id)
+        runs_root.mkdir(parents=True, exist_ok=True)
+        _publish_run_directory(staging_dir, final_run_dir)
+
+
+def _validate_completed_staging(*, staging_dir: Path, run_id: str) -> None:
+    """以摘要和完整 JSONL 为提交标记，拒绝接管不完整或不兼容 staging。"""
+
+    summary_path = staging_dir / "run_summary.json"
+    summary = load_json_object(summary_path)
+    if summary.get("schema_version") not in _RUN_SCHEMAS:
+        raise ValueError(f"不支持的评论 staging 版本: {summary_path}")
+    if summary.get("run_id") != run_id:
+        raise ValueError(f"评论 staging 的 run_id 与目录不一致: {summary_path}")
+
+    jsonl_path = staging_dir / "comparison_posts_with_comments.jsonl"
+    workbook_path = staging_dir / "comparison_posts_with_comments.xlsx"
+    if not jsonl_path.is_file() or not workbook_path.is_file() or workbook_path.stat().st_size == 0:
+        raise ValueError(f"评论 staging 缺少完整输出: {staging_dir}")
+    if not zipfile.is_zipfile(workbook_path):
+        raise ValueError(f"评论 staging Excel 不是有效的 XLSX: {workbook_path}")
+    with zipfile.ZipFile(workbook_path) as workbook_archive:
+        damaged_member = workbook_archive.testzip()
+    if damaged_member is not None:
+        raise ValueError(f"评论 staging Excel 成员损坏: {workbook_path}: {damaged_member}")
+
+    observed: Counter[str] = Counter()
+    with jsonl_path.open("rb") as source_file:
+        for line_number, raw_line in enumerate(source_file, start=1):
+            if not raw_line.strip():
+                continue
+            try:
+                enriched = VehiclePairCommentRecordV1.model_validate_json(raw_line)
+            except (ValidationError, ValueError) as exc:
+                raise ValueError(
+                    f"评论 staging JSONL 非法: {jsonl_path}: 第 {line_number} 行"
+                ) from exc
+            observed["rows_seen"] += 1
+            observed[f"rows_{enriched.comment_fetch.coverage}"] += 1
+            observed["root_comment_count"] += enriched.comment_fetch.root_comment_count
+            observed["reply_count"] += enriched.comment_fetch.reply_count
+            observed["failure_count"] += len(enriched.comment_fetch.failures)
+
+    for field in (
+        "rows_seen",
+        "rows_complete",
+        "rows_partial",
+        "rows_unavailable",
+        "root_comment_count",
+        "reply_count",
+        "failure_count",
+    ):
+        expected = summary.get(field)
+        if (
+            isinstance(expected, int)
+            and not isinstance(expected, bool)
+            and expected != observed[field]
+        ):
+            raise ValueError(f"评论 staging 摘要字段 {field} 与 JSONL 不一致: {summary_path}")
+
+
+def _publish_run_directory(staging_dir: Path, final_run_dir: Path) -> None:
+    """短暂文件占用时有界重试最终改名；失败后由调用方保留完整 staging。"""
+
+    for attempt in range(len(_PUBLISH_RETRY_DELAYS_SECONDS) + 1):
+        try:
+            os.replace(staging_dir, final_run_dir)
+            return
+        except PermissionError:
+            if attempt == len(_PUBLISH_RETRY_DELAYS_SECONDS):
+                raise
+            time.sleep(_PUBLISH_RETRY_DELAYS_SECONDS[attempt])
+
+
 def _load_and_reconcile_state(
     output_root: Path,
 ) -> tuple[dict[str, Any], AppendOnlyShardIndex]:
@@ -621,10 +926,7 @@ def _load_and_reconcile_state(
         if run_dir.name in indexed_runs:
             continue
         summary = load_json_object(run_dir / "run_summary.json")
-        if summary.get("schema_version") not in {
-            "comparison-comment-enrichment-run.v1",
-            _RUN_SCHEMA,
-        }:
+        if summary.get("schema_version") not in _RUN_SCHEMAS:
             continue
         jsonl_path = resolve_summary_output(
             run_dir=run_dir,
@@ -997,6 +1299,7 @@ def main() -> None:
     summary = enrich_comparison_comments(
         input_path=INPUT_JSONL,
         output_root=OUTPUT_ROOT,
+        run_id=RESUME_RUN_ID,
     )
     counts = ", ".join(
         f"{platform}={summary.platform_counts[platform]}" for platform in PLATFORM_NAMES

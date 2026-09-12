@@ -146,6 +146,15 @@ kuaishou    → photo_id
 
 `complete` 仍要求已知 `comment_count/reply_count` 数量对账；不足时不能伪装成 complete。
 
+如果 Provider 返回的评论不属于当前帖子，该评论会被过滤并记入
+`identity_mismatches`；如果一级评论声明的回复数大于实际分页结果，差额会记入
+`reply_shortfalls`。两种情况都只能得到 `partial` 或 `unavailable`，不会因为
+Pydantic 数量/归属校验而中断整批运行。
+
+微博评论接口只接受可验证的数字 `status_id`。只有来源哈希或 `ttarticle`
+文章身份、尚未解析出 `status_id` 的记录会以 `unsupported_weibo_comment_identity`
+标记为不可用，并且 Provider 请求数为 0，防止把文章 ID 误当微博帖子 ID。
+
 ## 7. 输出
 
 ```text
@@ -229,7 +238,12 @@ backend/src/aima_ugc/adapters/providers/tikhub_test/.env
 
 ```python
 INPUT_JSONL = Path(r"...\vehicle_pair_filter\output\runs\<run_id>\comparison_posts.jsonl")
+RESUME_RUN_ID: str | None = None
 ```
+
+新运行保持 `RESUME_RUN_ID = None`，由程序生成新 run ID。只有在续跑一个已保留的
+`.staging-<run_id>` 时，才把 `RESUME_RUN_ID` 设为该 run ID；不要为了重试一批新输入
+复用旧 run ID。
 
 然后：
 
@@ -254,6 +268,14 @@ current
 - 429/408/425/5xx/Transport 等运行级失败继续 fail closed；
 - 永久单帖 4xx 仍按 partial/unavailable 保存；
 - 新 run 通过 staging 目录原子发布；
+- 新 staging 会保存 `resume_manifest.json`，续跑前严格校验 run ID 和输入文件
+  SHA-256；旧 staging 至少要能用已完成行严格校验输入前缀；
+- 运行级异常后，只要 staging 中已有完整 JSONL 行或 Provider Raw，就保留现场；
+  设置相同 `RESUME_RUN_ID` 后会跳过已完成输入前缀，并从既有 Raw 文件号继续，不覆盖审计证据；
+- staging 如果已经生成完整 JSONL、XLSX 和 `run_summary.json`，下次启动会先校验内容和
+  统计，然后只做本地发布和缓存接管，不重新请求 Provider；
+- Windows 短暂占用目录导致最终改名失败时会有界重试；如果仍失败，完整 staging
+  保留，后续可自动接管；
 - 只有已经存在 `run_summary.json` 的完成 run 才会被后续自动纳入 cache；
 - 如果 run 已成功发布，但 state/current 更新中断，下次启动会从该不可变 run 自动补 cache，因此不会因为 state 落后而重复请求 Provider；
 - `output/` 由 `.gitignore` 排除，真实本地评论数据不提交 GitHub。
