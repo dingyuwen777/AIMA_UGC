@@ -87,7 +87,7 @@ unavailable
 
 识别。
 
-如果第二阶段以后因为 [`vehicle_catalog.json`](../vehicle_pair_filter/vehicle_catalog.json) 改动重算了某篇旧帖子，Stage 3 会：
+如果第二阶段以后因为 [`backend/src/aima_ugc/adapters/providers/imports_test/vehicle_pair_filter/vehicle_catalog.json`](../vehicle_pair_filter/vehicle_catalog.json) 改动重算了某篇旧帖子，Stage 3 会：
 
 ```text
 使用本次最新 VehiclePairRecordV1
