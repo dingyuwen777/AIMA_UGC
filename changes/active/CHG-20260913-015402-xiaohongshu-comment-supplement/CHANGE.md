@@ -150,4 +150,5 @@ data_changes:
 - 业务事实：目标 Content `42cb0f34-414d-4298-849f-699a8110b060` 有媒体位置 `0—4`、3 条一级评论和 1 条回复；回复的 `root_comment_id`/`parent_comment_id` 均指向“迟煜：还在吗？”。
 - HTTP/浏览器：根评论资源返回 `total_count=3, ingested_total_count=4`，回复资源返回直接父作者“迟煜”；声音广场实际展开显示“淇 YONG / 回复迟煜 / 在滴”。
 - 环境说明：首轮扩展回归的 16 个 Error 来自受限 pytest 临时目录 ACL，并非断言失败；确认 127.0.0.1:5432 只映射隔离容器 `aima-ugc-postgres-dev` 后，在沙箱外指定独立 basetemp 重跑全部 66 项通过，业务 PostgreSQL 未参与测试写入。
+- 追溯：PR body 使用仓库机器门禁支持的 `Requirement-Source: #473`，Change 内部继续以 `#473 / AC2`、`AC5`、`AC6` 绑定精确验收项。
 - PR：[#475](https://github.com/dingyuwen777/AIMA_UGC/pull/475) 已推送 Ready 实现；待当前头提交的必需 CI 全绿后按用户授权合并，再读取远程 main 新鲜状态。
