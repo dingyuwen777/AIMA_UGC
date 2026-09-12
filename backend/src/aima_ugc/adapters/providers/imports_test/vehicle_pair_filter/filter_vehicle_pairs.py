@@ -541,7 +541,9 @@ def _iter_vehicle_pair_excel_records(path: Path) -> Iterator[UnifiedDataExcelV1]
             try:
                 pair_record = VehiclePairRecordV1.model_validate_json(raw_line)
             except (ValidationError, ValueError) as exc:
-                raise ValueError(f"车型共现 JSONL 第 {line_number} 行无法导出 Excel: {path}") from exc
+                raise ValueError(
+                    f"车型共现 JSONL 第 {line_number} 行无法导出 Excel: {path}"
+                ) from exc
 
             excel_content = project_canonical_content(
                 pair_record.record.content,
