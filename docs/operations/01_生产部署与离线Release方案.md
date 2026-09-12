@@ -20,11 +20,12 @@
 - `images.tar`、`release-manifest.json`、`migration-manifest.json`、`SHA256SUMS`、`DEPLOY.md`；
 - PR Release dry-run 的离线重放；
 - 正式手工 Release 的 GHCR digest、Git Tag 和 GitHub Release 基础；
-- 服务器侧 `docker load` 后以 `--no-build --pull never` 启动已验证镜像的能力。
+- 服务器侧 `docker load` 后以 `--no-build --pull never` 启动已验证镜像的能力；
+- Frontend Nginx 的应用侧浏览器安全响应头基线与旧版跨域策略文件 404 边界。
 
 因此不能再把 Dockerfile、Compose、离线 Bundle 或 no-build/no-pull 重放整体描述成“尚未实现”。
 
-完整 Production 仍是 **No-Go**。当前未闭环项包括企业 Authentication、HTTPS/浏览器安全、协调 PostgreSQL + Artifact Backup/Restore、SBOM/独立签名/provenance、正式服务器发布/回滚闭环，以及真实生产安全、容量、Soak 和恢复验收。详见 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)。
+完整 Production 仍是 **No-Go**。当前未闭环项包括企业 Authentication、真实公网/企业入口的 TLS 与浏览器安全验收、协调 PostgreSQL + Artifact Backup/Restore、SBOM/独立签名/provenance、正式服务器发布/回滚闭环，以及真实生产安全、容量、Soak 和恢复验收。详见 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)。
 
 日常源码/本地运行见 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)；Windows Docker Desktop 见 [`docs/guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_Windows%20Docker%20Desktop%20Compose运行.md)。
 
@@ -176,7 +177,8 @@ TikHub 的 Internal V1 `configure` 也只负责首次创建稳定 Provider Confi
 - Migration 保持独立一次性进程；
 - bootstrap 只在初始化阶段以所需权限运行并退出；
 - PostgreSQL/API 不向普通宿主客户端发布业务端口；
-- Frontend/Nginx 是正常浏览器入口；
+- Frontend/Nginx 是正常浏览器入口，并由应用侧统一发出浏览器安全响应头；
+- Frontend 保持 `server_name _;` 与 8080 HTTP 监听，不在容器内强制 HTTP→HTTPS；
 - PostgreSQL、Artifact、日志和 Secret 不依赖容器可写层；
 - 镜像构建与 Runtime 不把真实 Secret 写入镜像。
 
@@ -292,6 +294,33 @@ Bundle **不得包含**：
 
 服务器继续使用稳定 `AIMA_HOST_ROOT=/data/AIMA_UGC`，Release 目录只保存应用版本。
 
+### 9.1 公网 HTTPS 与 IP+端口诊断入口
+
+`AIMA_HTTP_BIND_IP` / `AIMA_HTTP_PORT` 只决定 Frontend 端口在宿主哪个地址上发布，不配置 DNS、证书、443 或外层反向代理。例如：
+
+```dotenv
+AIMA_HTTP_BIND_IP=192.168.13.29
+AIMA_HTTP_PORT=8080
+```
+
+在该 IP 确实属于目标服务器、网络与防火墙允许时，仍可直接访问：
+
+```text
+http://192.168.13.29:8080
+```
+
+这与公网正式入口可以同时存在：
+
+```text
+https://ugc.aimatech.com
+→ 企业网关 / 反向代理 / TLS
+→ http://192.168.13.29:8080
+```
+
+如果反向代理与 AIMA 在同一台服务器并且不需要其它主机直连 8080，可把实际 `env.production` 的 `AIMA_HTTP_BIND_IP` 收紧为 `127.0.0.1`；如果代理/LB 在其它主机，应绑定目标服务器真实私网 NIC，并由防火墙只放行可信来源。不要为了方便默认使用 `0.0.0.0`。
+
+Frontend 返回 HSTS Header 不会让普通 `http://IP:8080` 自动变成 HTTPS：浏览器只有在安全 HTTPS 响应上才建立 HSTS 策略。正式域名的 TLS、证书与 HTTP→HTTPS 仍由外层入口负责。上线前必须检查外层入口是否也注入 `Strict-Transport-Security`，避免出现重复或冲突策略。
+
 ---
 
 ## 10. 发布前检查
@@ -305,7 +334,8 @@ Bundle **不得包含**：
 5. `env.production` 与 Secret 文件已在目标机按权限准备；新环境若使用模板默认启用的 TikHub/LLM bootstrap，两个 API Key 均已填写；
 6. Host Root、磁盘和数据库状态满足本次操作要求；
 7. 若本次 Migration/写操作存在不可逆风险，已经具备本次批准的恢复边界；
-8. 当前 Production Roadmap 中与本次部署相关的认证、安全、Backup/Restore 或验收前置条件没有被跳过。
+8. 当前 Production Roadmap 中与本次部署相关的认证、安全、Backup/Restore 或验收前置条件没有被跳过；
+9. 公网入口的 TLS/证书/反向代理 Owner 与应用侧安全响应头 Owner 已明确，不存在重复冲突配置。
 
 没有独立供应链签名/provenance 之前，`SHA256SUMS` 只能证明文件集合内部一致，不能单独证明发布来源。
 
@@ -327,6 +357,17 @@ ArtifactStore
 Migration 状态
 关键业务入口
 ```
+
+浏览器安全相关部署至少补以下检查；`<bind-ip>` 使用本机实际绑定地址，公网命令使用最终 HTTPS 域名：
+
+```bash
+curl -sSI http://<bind-ip>:8080/
+curl -i http://<bind-ip>:8080/clientaccesspolicy.xml
+curl -i http://<bind-ip>:8080/crossdomain.xml
+curl -sSI https://<public-domain>/
+```
+
+预期：IP+端口页面仍可访问；两个旧版跨域策略文件返回 404；公网 HTTPS 最终响应包含应用批准的 HSTS、CSP、Permissions-Policy、`X-Content-Type-Options` 与 `Referrer-Policy`，且上层网关没有剥离或冲突重复注入。真实浏览器还需覆盖声音广场、采集运行中心、采集策略、管理员配置、图表、图片、抽屉/弹窗、下载/导出与 API 请求，并检查 Console 没有合法资源被 CSP 阻断。
 
 生产候选环境还应根据实际发布影响运行高价值业务 Smoke，例如：
 
@@ -384,6 +425,8 @@ PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。
 
 代码回滚本身不删除已经写入的业务数据，也不能替代数据补偿方案。
 
+浏览器安全策略的回滚要单独处理：CSP/Permissions-Policy 回归可以回退应用镜像后重新验证；HSTS 已被浏览器从 HTTPS 响应接受后会在 `max-age` 内持久存在，不能把“回退镜像”当成立即撤销 HSTS。确需撤销时必须在可用 HTTPS 入口返回 `Strict-Transport-Security: max-age=0`，因此当前不启用 `includeSubDomains` 或 `preload`。
+
 ---
 
 ## 14. 尚未完成的 Production 强化
@@ -396,7 +439,7 @@ PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。
 
 ### HTTPS 与浏览器安全
 
-完成 TLS、Cookie/Session（如适用）、CORS/同源、CSRF/重放（按认证方式）、安全响应头、反向代理和敏感对象授权验收。
+应用侧安全响应头与旧策略文件 404 基线已经存在；仍需在最终公网/企业入口完成 TLS/证书/HTTP→HTTPS、上游响应头所有权、Cookie/Session（如适用）、CORS/同源、CSRF/重放（按认证方式）、真实浏览器 CSP 兼容、对象级授权和安全扫描复验。
 
 ### 协调 Backup/Restore
 

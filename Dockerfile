@@ -79,6 +79,10 @@ RUN npm run build
 FROM nginx:1.30.4-alpine3.24 AS frontend
 COPY frontend/nginx.conf /etc/nginx/nginx.conf
 COPY --from=frontend-builder --chown=nginx:nginx /build/frontend/dist /usr/share/nginx/html
+# 构建环境没有 Compose 的 api DNS；临时改写上游仅做语法校验，并清理 nginx -t 以 root 创建的 PID，避免污染非 root Runtime。
+RUN sed 's#http://api:8090#http://127.0.0.1:8090#g' /etc/nginx/nginx.conf > /tmp/nginx-test.conf \
+    && nginx -t -c /tmp/nginx-test.conf \
+    && rm -f /tmp/nginx-test.conf /tmp/nginx.pid
 USER nginx
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
