@@ -63,7 +63,7 @@ content.title
 content.text
 ```
 
-只认 [`vehicle_catalog.json`](vehicle_catalog.json) 中的车型标准名和 aliases；不要求品牌名同时出现在帖子中。车型标准名本身自动作为 alias。
+只认 [`backend/src/aima_ugc/adapters/providers/imports_test/vehicle_pair_filter/vehicle_catalog.json`](vehicle_catalog.json) 中的车型标准名和 aliases；不要求品牌名同时出现在帖子中。车型标准名本身自动作为 alias。
 
 同一规范化 alias 不能属于两个不同车型，否则 fail closed。
 
@@ -78,7 +78,7 @@ content.text
 
 ## 5. 车型目录变化为什么会停止增量
 
-Stage 2 的本地增量状态绑定当前 [`vehicle_catalog.json`](vehicle_catalog.json) 的 SHA-256。
+Stage 2 的本地增量状态绑定当前 [`backend/src/aima_ugc/adapters/providers/imports_test/vehicle_pair_filter/vehicle_catalog.json`](vehicle_catalog.json) 的 SHA-256。
 
 如果目录发生变化，历史帖子可能产生新的车型命中关系，因此程序不会静默沿用旧 Stage 2 state，而会明确报错：
 
