@@ -171,11 +171,14 @@ VehiclePairCommentRecordV1
 
 ### complete
 
-一级评论分页正常耗尽，所有需要补采的根评论也完成回复分页，没有 Provider 永久失败。
+一级评论分页正常耗尽，所有需要补采的根评论也完成回复分页，没有 Provider 永久失败；如果帖子已知一级评论总数，实际一级评论数不能少于该值；如果某个一级评论已知 `reply_count`，实际拿到的该根评论回复数也不能少于该值。`complete` 因此不仅表示“分页 API 停止”，还必须通过已知数量对账。
 
 ### partial
 
-已经取得至少一条评论，但某个一级评论页或某个回复页发生可归因到单内容的永久 4xx。已取得的数据保留，同时记录 `failures[]` 和对应脱敏 Raw 定位。
+以下情况保留已取得的数据，但不会声明完整：
+
+- 某个一级评论页或回复页发生可归因到单内容的永久 4xx，记录 `failures[]` 和对应脱敏 Raw 定位；
+- Provider 一级评论分页已停止，但帖子存在已知 `comment_count`，且本次实际一级评论数更少，此时 `root_stop_reason` 会包含 `observed_lt_reported_total`。
 
 ### unavailable
 
@@ -192,10 +195,11 @@ HTTP 5xx
 Transport 连接失败或发送状态未知
 成功响应不是 JSON Object
 Mapper / Contract / 分页不变量异常
+complete 记录与一级评论已知 reply_count 对账失败
 输入 JSONL Contract 错误
 ```
 
-401/403 属于配置级认证失败；429/5xx/Transport 异常属于需要停止并稍后重试的运行级边界，避免继续打 Provider。
+其中已知回复数短缺不会被伪装成 `complete`；输出 Contract 会直接拒绝该记录并让本次 run fail closed。401/403 属于配置级认证失败；429/5xx/Transport 异常属于需要停止并稍后重试的运行级边界，避免继续打 Provider。
 
 ## 8. Excel
 
