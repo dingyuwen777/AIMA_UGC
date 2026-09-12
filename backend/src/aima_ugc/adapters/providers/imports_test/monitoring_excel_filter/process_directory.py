@@ -586,15 +586,17 @@ def _filter_historical_duplicates(
     delta_root: Path,
     run_id: str,
 ) -> int:
-    """按单分片内存上限过滤历史 identity，并为成功 run 生成可重放 state delta。"""
+    """按单分片内存上限判重，并按输入原顺序发布跨历史全局新增记录。"""
 
     partition_root = output_path.parent / ".history_partitions"
     partition_root.mkdir(parents=True, exist_ok=False)
+    flags_path = partition_root / "keep_flags.bin"
     writers: dict[str, TextIO] = {}
     try:
         with ExitStack() as stack:
-            with input_path.open("rb") as source_file:
+            with input_path.open("rb") as source_file, flags_path.open("wb") as flags_file:
                 for line_number, raw_line in enumerate(source_file, start=1):
+                    flags_file.write(b"\x00")
                     if not raw_line.strip():
                         continue
                     record = _parse_unified_record(raw_line, input_path, line_number)
@@ -613,48 +615,76 @@ def _filter_historical_duplicates(
                             )
                         )
                         writers[shard] = writer
-                    writer.write(record.model_dump_json())
-                    writer.write("\n")
+                    writer.write(f"{line_number}\t{record.model_dump_json()}\n")
+                flags_file.flush()
+                os.fsync(flags_file.fileno())
             for writer in writers.values():
                 writer.flush()
                 os.fsync(writer.fileno())
 
+        historical_duplicates = 0
+        delta_root.mkdir(parents=True, exist_ok=True)
+        with flags_path.open("r+b") as flags_file:
+            for shard in SHARD_NAMES:
+                partition = partition_root / f"{shard}.jsonl"
+                if not partition.is_file():
+                    continue
+                known = index.load_shard(shard)
+                delta_path = delta_root / f"{shard}.jsonl"
+                with (
+                    partition.open("r", encoding="utf-8-sig") as part_file,
+                    delta_path.open("w", encoding="utf-8", newline="\n") as delta_file,
+                ):
+                    for partition_line_number, line in enumerate(part_file, start=1):
+                        try:
+                            source_line_text, record_json = line.rstrip("\n").split("\t", 1)
+                            source_line_number = int(source_line_text)
+                        except (ValueError, TypeError) as exc:
+                            raise ValueError(
+                                f"增量历史分片记录非法: {partition}: 第 {partition_line_number} 行"
+                            ) from exc
+                        record = _parse_unified_record(
+                            record_json.encode("utf-8"),
+                            partition,
+                            partition_line_number,
+                        )
+                        key = content_identity_key(
+                            record.content.platform,
+                            record.content.external_content_id,
+                        )
+                        if key in known:
+                            historical_duplicates += 1
+                            continue
+                        flags_file.seek(source_line_number - 1)
+                        flags_file.write(b"\x01")
+                        entry = {"key": key, "run_id": run_id}
+                        delta_file.write(
+                            json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
+                        )
+                        delta_file.write("\n")
+                        known[key] = entry
+                    delta_file.flush()
+                    os.fsync(delta_file.fileno())
+            flags_file.flush()
+            os.fsync(flags_file.fileno())
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         temp_output = output_path.with_name(f".{output_path.name}.tmp")
         temp_output.unlink(missing_ok=True)
-        historical_duplicates = 0
         try:
-            with temp_output.open("w", encoding="utf-8", newline="\n") as output_file:
-                for shard in SHARD_NAMES:
-                    partition = partition_root / f"{shard}.jsonl"
-                    if not partition.is_file():
-                        continue
-                    known = index.load_shard(shard)
-                    delta_root.mkdir(parents=True, exist_ok=True)
-                    delta_path = delta_root / f"{shard}.jsonl"
-                    with (
-                        partition.open("rb") as part_file,
-                        delta_path.open("w", encoding="utf-8", newline="\n") as delta_file,
-                    ):
-                        for line_number, raw_line in enumerate(part_file, start=1):
-                            record = _parse_unified_record(raw_line, partition, line_number)
-                            key = content_identity_key(
-                                record.content.platform,
-                                record.content.external_content_id,
-                            )
-                            if key in known:
-                                historical_duplicates += 1
-                                continue
-                            output_file.write(record.model_dump_json())
-                            output_file.write("\n")
-                            entry = {"key": key, "run_id": run_id}
-                            delta_file.write(
-                                json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
-                            )
-                            delta_file.write("\n")
-                            known[key] = entry
-                        delta_file.flush()
-                        os.fsync(delta_file.fileno())
+            with (
+                input_path.open("rb") as source_file,
+                flags_path.open("rb") as flags_file,
+                temp_output.open("wb") as output_file,
+            ):
+                for raw_line in source_file:
+                    flag = flags_file.read(1)
+                    if len(flag) != 1:
+                        raise RuntimeError("增量历史判重 flag 数量少于输入行数")
+                    if flag == b"\x01":
+                        output_file.write(raw_line)
+                if flags_file.read(1):
+                    raise RuntimeError("增量历史判重 flag 数量多于输入行数")
                 output_file.flush()
                 os.fsync(output_file.fileno())
             os.replace(temp_output, output_path)
