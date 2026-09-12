@@ -278,7 +278,7 @@ def test_process_directory_filters_and_deduplicates_across_files(tmp_path: Path)
     assert set(record.matched_keywords) == {"爱玛", "元宇宙"}
 
     payload = json.loads(summary.run_summary_path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == "monitoring-excel-filter-run.v1"
+    assert payload["schema_version"] == "monitoring-excel-filter-run.v2"
     assert payload["rows_seen"] == 4
     assert payload["rows_supported_platform"] == 3
     assert payload["rows_skipped_platform_unmapped"] == 1
