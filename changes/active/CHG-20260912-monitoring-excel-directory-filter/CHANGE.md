@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260912-monitoring-excel-directory-filter
 title: 增加监测 Excel 目录批量过滤脚本
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feat/451-monitoring-excel-directory-filter
 created: 2026-09-12
@@ -56,14 +56,14 @@ Excluded：PostgreSQL、TikHub、LLM、AI 标签、API/Worker/Scheduler、正式
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 递归发现目录及子目录 `.xlsx`，忽略临时/非目标文件并保持确定性顺序 | https://github.com/dingyuwen777/AIMA_UGC/issues/451 | in_progress | `test_discover_input_files_*` 已定义目标回归，生产入口待实现 |
-| R2 | 五平台复用 Mapper；仅 `platform_unmapped` skip，其他错误失败 | https://github.com/dingyuwen777/AIMA_UGC/issues/451 | in_progress | Mapper/错误边界回归已定义，生产入口待实现 |
-| R3 | 同名文件使用相对输入路径保留唯一来源追溯 | https://github.com/dingyuwen777/AIMA_UGC/issues/451 | in_progress | 同 basename 跨子目录回归已定义，生产入口待实现 |
-| R4 | 品牌/车型同一词包 OR，复用现有 Canonical Filter | https://github.com/dingyuwen777/AIMA_UGC/issues/451 | in_progress | 完整入口回归已定义，生产入口待实现 |
-| R5 | 所有文件统一复用现有 `(platform, external_content_id)` 去重 | https://github.com/dingyuwen777/AIMA_UGC/issues/451 | in_progress | 跨 Excel 重复回归已定义，生产入口待实现 |
-| R6 | 生成逐文件与全局可对账 `run_summary.json` | https://github.com/dingyuwen777/AIMA_UGC/issues/451 | in_progress | Summary 对账回归已定义，生产入口待实现 |
-| R7 | README 说明用途、输入、平台/关键词边界、命令与输出 | https://github.com/dingyuwen777/AIMA_UGC/issues/451 | in_progress | targeted README 待实现 |
-| R8 | targeted tests / Ruff / PR CI 证明实现且不改变正式 Contract/依赖 | https://github.com/dingyuwen777/AIMA_UGC/issues/451 | in_progress | current-head Evidence 待形成 |
+| R1 | 递归发现目录及子目录 `.xlsx`，忽略临时/非目标文件并保持确定性顺序 | `#451 / AC1` | satisfied | `discover_input_files()` + `test_discover_input_files_recurses_and_ignores_non_inputs` / `test_discover_input_files_rejects_empty_directory` |
+| R2 | 五平台复用 Mapper；仅 `platform_unmapped` skip，其他错误失败 | `#451 / AC2` | satisfied | `convert_supported_platforms()` + Mapper skip/fail targeted tests |
+| R3 | 同名文件使用相对输入路径保留唯一来源追溯 | `#451 / AC3` | satisfied | `relative_to(input_root).as_posix()` + `test_convert_supported_platforms_skips_only_unmapped_and_keeps_relative_source` |
+| R4 | 品牌/车型同一词包 OR，复用现有 Canonical Filter | `#451 / AC4` | satisfied | `load_keyword_pack()` + `filter_canonical_content_jsonl(keywords=...)`；完整入口测试覆盖品牌与车型分别命中 |
+| R5 | 所有文件统一复用现有 `(platform, external_content_id)` 去重 | `#451 / AC5` | satisfied | `deduplicate_content_jsonl()` + 完整入口跨 Excel 同身份去重与 conflict 断言 |
+| R6 | 生成逐文件与全局可对账 `run_summary.json` | `#451 / AC6` | satisfied | `_run_summary_payload()` + 完整入口统计/对账断言 |
+| R7 | README 说明用途、输入、平台/关键词边界、命令与输出 | `#451 / AC7` | satisfied | `monitoring_excel_filter/README.md` |
+| R8 | targeted tests / Ruff / PR CI 证明实现且不改变正式 Contract/依赖 | `#451 / AC8` | explicitly_deferred | targeted tests 与实现已提交；PR #453 current-head CI 是本行从 deferred 收敛到 satisfied 的外部门禁 |
 
 # Validation Matrix
 
@@ -82,13 +82,13 @@ Excluded：PostgreSQL、TikHub、LLM、AI 标签、API/Worker/Scheduler、正式
 - [x] 建立 Requirement Source：Issue #451。
 - [x] 恢复当前 Reader/Mapper/Filter/Dedup/Platform/Imports Test 机器事实。
 - [x] 定义目录发现、非五平台 skip、OR 过滤、跨文件去重和 summary 的 targeted tests。
-- [ ] 形成 Red Evidence，证明当前仓库尚无目标工具入口。
-- [ ] 实现 `monitoring_excel_filter/process_directory.py`，只新增薄编排层。
-- [ ] 增加 `keyword_pack.txt` 与 README。
-- [ ] 运行 targeted tests、静态检查和相关治理门禁。
-- [ ] 重新读取 Issue #451 与当前实现，完成 Completion Audit。
-- [ ] 完成独立 Review、PR current-head CI、Ready 与合并门禁。
-- [ ] 合并后验证 main fresh CI 和 repository-native Change 归档。
+- [x] 首个 tests-only PR head 形成失败证据；CI 先暴露 PR Requirement Source URL 不符合项目机器格式，随后已修正为 `#451`。
+- [x] 实现 `monitoring_excel_filter/process_directory.py`，只新增薄编排层。
+- [x] 增加 `keyword_pack.txt` 与 README。
+- [x] 本地可用环境已完成新增 Python 文件 `py_compile` 与行宽预检；正式 Python 3.14/Ruff/pytest 由 PR current-head CI 执行。
+- [x] 重新读取 Issue #451 与当前实现，完成实现侧 Completion Audit。
+- [ ] PR #453 current-head CI 全绿后，把 R8 从 `explicitly_deferred` 收敛为 `satisfied`。
+- [ ] 完成独立 Review、合并门禁和合并后 main fresh Evidence。
 
 # 当前新鲜证据
 
@@ -101,10 +101,10 @@ Excluded：PostgreSQL、TikHub、LLM、AI 标签、API/Worker/Scheduler、正式
 
 # Completion Audit
 
-- [x] upstream_re_read：已重新读取 Issue #451、当前 `main` 的项目规则、Blueprint、数据入口文档和直接相关生产实现。
-- [ ] change_coverage：R1–R8 待实现与 current-head 验证后收敛。
-- [ ] reverse_audit：待从最终 diff 反查生产 Owner 是否保持未修改、README/测试是否与真实入口一致。
-- [ ] unresolved_cleared：当前仍缺 Red/Green、PR current-head CI、独立 Review、合并后 main fresh Evidence。
+- [x] upstream_re_read：已重新读取 Issue #451、当前 `main` 的项目规则、Blueprint、数据入口文档，以及 Reader/Mapper/Identity/Filter/Dedup 直接机器事实。
+- [x] change_coverage：R1–R7 已分别映射到生产入口、README 和 targeted tests；R8 的 current-head CI 明确作为外部门禁延后收敛。
+- [x] reverse_audit：最终修改面只新增 `imports_test/monitoring_excel_filter/`、targeted test 与本 Change；正式 Import、Platform/Canonical Contract、数据库和依赖均未修改。
+- [x] unresolved_cleared：实现范围内没有未决需求、Schema/安全/数据决策；仅剩 R8 的 PR current-head CI、独立 Review、合并与 main fresh Evidence，均由既有交付门禁继续执行。
 
 # 兼容、部署与回滚
 
