@@ -109,6 +109,7 @@ class _TikHubCommentFetcher:
         """对一篇已筛选帖子分页抓完一级评论及其全部二级回复。"""
 
         content = record.record.content
+        reported_total = content.metrics.comment_count
         request_count_before = self.request_count
         comments: list[CanonicalCommentV1] = []
         seen_comment_ids: set[str] = set()
@@ -196,7 +197,7 @@ class _TikHubCommentFetcher:
         coverage: Literal["complete", "partial", "unavailable"]
         if failures:
             coverage = "partial" if comments else "unavailable"
-        elif content.metrics.comment_count is not None and root_count < content.metrics.comment_count:
+        elif reported_total is not None and root_count < reported_total:
             coverage = "partial"
             root_stop_reason = (
                 f"{root_stop_reason or 'provider_stopped'}; observed_lt_reported_total"
@@ -207,7 +208,7 @@ class _TikHubCommentFetcher:
             comments=tuple(comments),
             coverage=CommentFetchCoverageV1(
                 coverage=coverage,
-                reported_total=content.metrics.comment_count,
+                reported_total=reported_total,
                 root_comment_count=root_count,
                 reply_count=reply_count,
                 request_count=request_count,
