@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-import aima_ugc.adapters.providers.imports_test.vehicle_pair_filter.filter_vehicle_pairs as vehicle_pair_filter_module
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from openpyxl import load_workbook
+
+vehicle_pair_filter_module = importlib.import_module(
+    "aima_ugc.adapters.providers.imports_test.vehicle_pair_filter.filter_vehicle_pairs"
+)
 
 
 def _record(*, external_id: str, title: str, text: str) -> UnifiedContentRecordV1:
