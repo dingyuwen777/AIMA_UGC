@@ -18,8 +18,8 @@ from aima_ugc.adapters.providers.imports.excel_reader import iter_excel_rows
 from aima_ugc.adapters.providers.imports.mapper import map_excel_row
 from aima_ugc.adapters.providers.imports.models import ExcelImportRowError
 from aima_ugc.adapters.providers.imports_test.incremental_state import (
-    AppendOnlyShardIndex,
     SHARD_NAMES,
+    AppendOnlyShardIndex,
     atomic_write_json,
     content_identity_key,
     iter_completed_run_dirs,
