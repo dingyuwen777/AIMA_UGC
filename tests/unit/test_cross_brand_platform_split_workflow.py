@@ -42,12 +42,12 @@ def _write_monitoring_workbook(path: Path) -> None:
     rows = (
         (
             "小红书",
-            "xhs-pair",
+            "xiaohongshu-pair",
             "元宇宙实际体验",
             "Q3也试过",
             "测试作者",
             datetime(2026, 6, 15, 12, 0),
-            "https://www.xiaohongshu.com/explore/xhs-pair",
+            "https://www.xiaohongshu.com/explore/xiaohongshu-pair",
             100,
         ),
         (
@@ -92,12 +92,12 @@ def _write_monitoring_workbook(path: Path) -> None:
         ),
         (
             "小红书",
-            "xhs-target-only",
+            "xiaohongshu-target-only",
             "元宇宙单车体验",
             "这里只聊一个爱玛车型",
             "测试作者",
             datetime(2026, 6, 15, 12, 5),
-            "https://www.xiaohongshu.com/explore/xhs-target-only",
+            "https://www.xiaohongshu.com/explore/xiaohongshu-target-only",
             100,
         ),
         (
