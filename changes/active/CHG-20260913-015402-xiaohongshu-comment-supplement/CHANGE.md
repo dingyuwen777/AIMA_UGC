@@ -18,6 +18,7 @@ affected_areas:
 affected_paths:
   - backend/src/aima_ugc/adapters/providers/tikhub/mappers/xiaohongshu.py
   - backend/src/aima_ugc/adapters/persistence/postgres/content.py
+  - backend/src/aima_ugc/bootstrap/collection_http.py
   - backend/src/aima_ugc/bootstrap/collection_scope.py
   - tests/unit/collection/
   - tests/integration/collection/test_xiaohongshu_incremental_comments_runtime.py
@@ -44,6 +45,7 @@ data_changes:
 | E3 | PostgreSQL 报 `content_media` 主键冲突，键为同一内容的 `position=0` | 本地 Compose PostgreSQL 日志 | 详情媒体写入回滚直接阻断评论补采 |
 | E4 | 现有声音广场已经通过通用 Content/Comment PostgreSQL 查询展示评论层级 | 已合并 PR #474、归档 Change `CHG-20260913-001143-comment-thread-voice-plaza` | 本次不再新增页面、API 或 Schema |
 | E5 | 修复媒体位置后，目标帖子已发出 `get_note_comments`，但评论作者的 `red_id` 命中既有账号、Provider `userid` 与既有主 ID 不同，写入第二个账号时触发 `account_external_ids` 唯一冲突 | 本地真实 Run `3598c260-ec06-4a56-bb26-5d4561155ac1`、Worker 安全日志、PostgreSQL 错误日志和账号只读查询 | Content Owner 应用任一已知稳定备用 ID 收敛账号；主 ID 与备用 ID 指向不同账号时仍须 fail closed |
+| E6 | 修复账号收敛后，新建辅助补采 Run 在帖子评论数未变化时只请求 Detail、跳过 Comments | 本地真实 Run `c1a5de85-1f64-44cb-9e5c-9812cd974ff5`；新增 PostgreSQL 纵切在修复前稳定复现只出现 Detail 请求 | 网页端显式勾选评论创建的新 Run 必须冻结“评论数未变化也刷新”策略，才能恢复上次失败或不完整的评论补采 |
 
 # 目标、范围与非目标
 
@@ -52,6 +54,7 @@ data_changes:
 - [ ] 多张图片即使重复 Provider `index`，Canonical `position` 仍唯一、稳定并保持响应顺序。
 - [ ] PostgreSQL 纵切能保存全部图片、继续调用 `get_note_comments` 并入库评论。
 - [ ] 评论作者主 ID 漂移但稳定备用 ID 一致时复用既有账号；身份线索指向不同账号时拒绝错误合并。
+- [ ] 用户通过网页端新建辅助补采并勾选评论时，即使 Provider 评论数未变化也重新请求评论。
 - [ ] 目标业务帖子经本地真实辅助补采后，声音广场评论 API 能读到已采集评论及父子关系。
 - [ ] 未预期 Scope 失败日志保留 run/scope/platform/异常类型，不输出 Raw、Secret 或异常原始消息。
 - [ ] 不新增依赖、Migration、公共 Contract、补采按钮或专用重试 API。
@@ -86,7 +89,7 @@ data_changes:
 
 1. 用重复图片 `index=0` 的 Mapper 测试复现 `[0,0,0]`，改为按数组顺序生成 `[0,1,2]`。
 2. 让 Content Owner 在主 ID 未命中时按已观察到的稳定备用 ID 收敛账号；多个身份线索冲突时 fail closed。
-3. 扩展正式 Collection Runtime PostgreSQL 纵切，断言媒体位置唯一、评论请求被发出、评论成功入库。
+3. 让网页辅助补采冻结显式评论刷新策略；扩展正式 Collection Runtime PostgreSQL 纵切，断言评论数未变化时仍发出评论请求并成功入库。
 4. 为 Scope 未预期异常补安全日志及日志泄密回归。
 5. 扩大运行小红书、Content Ingestion、Collection Scope、评论/回复回归与静态检查。
 6. 构建本地 Backend，使用现有辅助补采入口对目标内容有界重跑；验证 Provider Request、媒体、评论及现有评论 HTTP 输出。

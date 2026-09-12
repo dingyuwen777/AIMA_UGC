@@ -477,6 +477,7 @@ def _insert_import_content(
     *,
     external_content_id: str = "stage8e-batch-note",
     title: str = "爱玛 Batch 内容",
+    current_comment_count: int | None = None,
 ) -> tuple[UUID, UUID]:
     batch_id, _ = _insert_succeeded_import(runtime, rows_ingested=1)
     now = datetime.now(UTC)
@@ -529,6 +530,7 @@ def _insert_import_content(
                 external_content_id=external_content_id,
                 content_type="image",
                 title=title,
+                current_comment_count=current_comment_count,
                 first_seen_at=now,
                 last_seen_at=now,
                 current_version=1,
@@ -1148,7 +1150,7 @@ def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
 
 def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
-    batch_id, content_id = _insert_import_content(runtime)
+    batch_id, content_id = _insert_import_content(runtime, current_comment_count=1)
     created = PostgresCollectionHttpService(
         runtime,
         cursor_signing_secret=b"r" * 32,
