@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-
 from aima_ugc.adapters.providers.imports_test.cross_brand_platform_split.split_by_platform import (
     split_by_platform,
 )
