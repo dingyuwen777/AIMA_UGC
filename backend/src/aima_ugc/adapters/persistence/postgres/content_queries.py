@@ -411,9 +411,7 @@ class PostgresContentQueryRepository:
         ingested = cast(
             int,
             self._session.scalar(
-                select(func.count())
-                .select_from(comment)
-                .where(comment.c.content_id == content_id)
+                select(func.count()).select_from(comment).where(comment.c.content_id == content_id)
             )
             or 0,
         )
