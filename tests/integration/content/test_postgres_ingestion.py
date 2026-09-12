@@ -12,12 +12,18 @@ from uuid import UUID, uuid4
 import pytest
 from aima_ugc.adapters.persistence.postgres.candidates import PostgresCandidateRepository
 from aima_ugc.adapters.persistence.postgres.content import PostgresContentRepository
+from aima_ugc.adapters.persistence.postgres.content_queries import (
+    PostgresContentQueryRepository,
+)
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     XiaohongshuMappingContext,
     map_comment,
     map_content,
 )
 from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import extract_search_items
+from aima_ugc.bootstrap.content_http import PostgresContentHttpService
+from aima_ugc.bootstrap.runtime import create_platform_runtime
+from aima_ugc.contracts.http import ContentCommentListQuery
 from aima_ugc.modules.collection.candidate_tables import (
     collection_candidate_ingestions_table,
     collection_candidates_table,
@@ -28,6 +34,10 @@ from aima_ugc.modules.collection.tables import (
     collection_scopes_table,
     provider_request_attempts_table,
     provider_requests_table,
+)
+from aima_ugc.modules.content.content_cursor import (
+    ContentCursorPosition,
+    InvalidContentCursor,
 )
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.content.tables import (
@@ -584,6 +594,170 @@ def test_sparse_sub_comment_does_not_clear_known_direct_parent(
         assert comment["root_comment_id"] == "comment-root"
         assert comment["parent_comment_id"] == "comment-parent"
         assert comment["current_version"] == 1
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_comment_query_pages_roots_and_replies_without_losing_direct_parent(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            content_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛评论展示",
+            )
+            service = ContentIngestionService(PostgresContentRepository(session))
+            content = service.ingest_content(
+                map_content(
+                    {"id": "note-thread-query", "type": "normal", "title": "评论线程"},
+                    _mapping_context(content_chain, operation="search_notes"),
+                    item_locator="note:note-thread-query",
+                )
+            )
+            root_chain = _insert_source_chain(
+                session,
+                operation="get_note_comments",
+                source_value="note-thread-query",
+            )
+            root_context = _mapping_context(root_chain, operation="get_note_comments")
+            for comment_id, author_id, nickname, created_at in (
+                ("root-old", "author-root-old", "较早用户", 1_700_000_000),
+                ("root-new", "author-root-new", "较新用户", 1_700_000_100),
+            ):
+                service.ingest_comment(
+                    map_comment(
+                        {
+                            "id": comment_id,
+                            "note_id": "note-thread-query",
+                            "content": f"{nickname}的一级评论",
+                            "create_time": created_at,
+                            "user_info": {"userid": author_id, "nickname": nickname},
+                        },
+                        root_context,
+                        item_locator=f"comment:{comment_id}",
+                        is_root=True,
+                    )
+                )
+            reply_chain = _insert_source_chain(
+                session,
+                operation="get_note_sub_comments",
+                source_value="note-thread-query",
+            )
+            reply_context = replace(
+                _mapping_context(reply_chain, operation="get_note_sub_comments"),
+                root_comment_id="root-old",
+            )
+            for raw in (
+                {
+                    "id": "reply-parent",
+                    "note_id": "note-thread-query",
+                    "content": "第一条回复",
+                    "create_time": 1_700_000_010,
+                    "target_comment": {"id": "root-old"},
+                    "user_info": {"userid": "author-reply-parent", "nickname": "回复用户甲"},
+                },
+                {
+                    "id": "reply-child",
+                    "note_id": "note-thread-query",
+                    "content": "回复第一条回复",
+                    "create_time": 1_700_000_020,
+                    "target_comment": {"id": "reply-parent"},
+                    "user_info": {"userid": "author-reply-child", "nickname": "回复用户乙"},
+                },
+            ):
+                service.ingest_comment(
+                    map_comment(
+                        raw,
+                        reply_context,
+                        item_locator=f"comment:{raw['id']}",
+                        is_root=False,
+                    )
+                )
+
+        repository = PostgresContentQueryRepository(session, analysis_identity=None)
+        first_roots = repository.list_comments_page(
+            content.target_id,
+            root_comment_id=None,
+            position=None,
+            limit=1,
+        )
+        second_roots = repository.list_comments_page(
+            content.target_id,
+            root_comment_id=None,
+            position=ContentCursorPosition(
+                sort_at=first_roots[0].published_at,
+                content_id=first_roots[0].id,
+            ),
+            limit=2,
+        )
+        replies = repository.list_comments_page(
+            content.target_id,
+            root_comment_id="root-old",
+            position=None,
+            limit=20,
+        )
+
+        assert [item.external_comment_id for item in first_roots] == ["root-new"]
+        assert [item.external_comment_id for item in second_roots] == ["root-old"]
+        assert [item.external_comment_id for item in replies] == [
+            "reply-parent",
+            "reply-child",
+        ]
+        assert replies[0].parent_author_display_name == "较早用户"
+        assert replies[1].parent_comment_id == "reply-parent"
+        assert replies[1].parent_author_display_name == "回复用户甲"
+        assert repository.count_comments(
+            content.target_id,
+            root_comment_id=None,
+        ) == (2, 4)
+        assert repository.count_comments(
+            content.target_id,
+            root_comment_id="root-old",
+        ) == (2, 4)
+
+        http_runtime = create_platform_runtime("comment-thread-integration")
+        try:
+            http_service = PostgresContentHttpService(
+                http_runtime,
+                cursor_signing_secret=b"comment-thread-integration-key-32b",
+            )
+            first_page = http_service.list_comments(
+                content.target_id,
+                ContentCommentListQuery(limit=1),
+            )
+            second_page = http_service.list_comments(
+                content.target_id,
+                ContentCommentListQuery(limit=1, cursor=first_page.next_cursor),
+            )
+            reply_page = http_service.list_comments(
+                content.target_id,
+                ContentCommentListQuery(root_comment_id="root-old", limit=20),
+            )
+            with pytest.raises(InvalidContentCursor):
+                http_service.list_comments(
+                    content.target_id,
+                    ContentCommentListQuery(
+                        root_comment_id="root-old",
+                        cursor=first_page.next_cursor,
+                        limit=20,
+                    ),
+                )
+        finally:
+            http_runtime.close()
+
+        assert [item.external_comment_id for item in first_page.items] == ["root-new"]
+        assert first_page.has_more is True
+        assert [item.external_comment_id for item in second_page.items] == ["root-old"]
+        assert [item.external_comment_id for item in reply_page.items] == [
+            "reply-parent",
+            "reply-child",
+        ]
+        assert reply_page.items[1].parent_author_display_name == "回复用户甲"
+        assert reply_page.ingested_total_count == 4
     finally:
         session.rollback()
         session.close()

@@ -164,6 +164,50 @@ test.beforeEach(async ({ page }) => {
 
   await page.route('**/api/v1/contents**', async (route) => {
     const url = new URL(route.request().url())
+    if (url.pathname === `/api/v1/contents/${contentId}/comments`) {
+      const isReplyPage = url.searchParams.get('root_comment_id') === 'comment-root-1'
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: isReplyPage ? [
+            {
+              id: '92345678-1234-5678-1234-567812345679',
+              external_comment_id: 'comment-reply-1',
+              root_comment_id: 'comment-root-1',
+              parent_comment_id: 'comment-root-1',
+              parent_author_display_name: '用户乙',
+              author_display_name: '内容作者',
+              text: '低温时我也遇到了，充电后会好一些。',
+              published_at: '2026-08-21T02:15:00Z',
+              like_count: 1,
+              reply_count: 0,
+              ingested_reply_count: 0,
+              is_by_content_author: true,
+            },
+          ] : [
+            {
+              id: '92345678-1234-5678-1234-567812345678',
+              external_comment_id: 'comment-root-1',
+              root_comment_id: 'comment-root-1',
+              parent_comment_id: null,
+              parent_author_display_name: null,
+              author_display_name: '用户乙',
+              text: '我也关注冬季续航。',
+              published_at: '2026-08-21T02:10:00Z',
+              like_count: 3,
+              reply_count: 1,
+              ingested_reply_count: 1,
+              is_by_content_author: false,
+            },
+          ],
+          next_cursor: null,
+          has_more: false,
+          total_count: 1,
+          ingested_total_count: 2,
+        }),
+      })
+      return
+    }
     if (url.pathname === `/api/v1/contents/${contentId}`) {
       await route.fulfill({
         contentType: 'application/json',
@@ -331,8 +375,12 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('电池、续航与充电 / 实际续航表现')
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('驾乘体验 / 坐垫舒适性')
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('售后服务 / 客服与服务态度')
-  await page.getByText('更多信息与评论', { exact: true }).click()
   await expect(page.getByText('我也关注冬季续航。')).toBeVisible()
+  await expect(page.getByText('已采集')).toBeVisible()
+  await page.getByRole('button', { name: '查看 1 条回复' }).click()
+  await expect(page.getByText('低温时我也遇到了，充电后会好一些。')).toBeVisible()
+  await expect(page.getByText('回复 用户乙')).toBeVisible()
+  await expect(page.getByText('原作者', { exact: true })).toBeVisible()
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('真实用户发声')
   await expect(page.getByText('原始内容媒体')).toHaveCount(0)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {

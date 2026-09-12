@@ -8,6 +8,8 @@ from aima_ugc.bootstrap.api import create_app
 from aima_ugc.contracts.http import (
     ContentAnalysisCreatedResponse,
     ContentAnalysisResponse,
+    ContentCommentListResponse,
+    ContentCommentResponse,
     ContentDetailResponse,
     ContentFilterLabelOptionResponse,
     ContentFilterOptionsResponse,
@@ -100,6 +102,32 @@ class _ContentService:
         if content_id != self.content_id:
             raise ContentResourceNotFound
         return ContentDetailResponse(**self._item().model_dump())
+
+    def list_comments(self, content_id: UUID, query):  # type: ignore[no-untyped-def]
+        if content_id != self.content_id:
+            raise ContentResourceNotFound
+        self.last_query = query
+        now = datetime(2026, 8, 21, tzinfo=UTC)
+        is_reply = query.root_comment_id is not None
+        return ContentCommentListResponse(
+            items=(
+                ContentCommentResponse(
+                    id=uuid4(),
+                    external_comment_id="reply-1" if is_reply else "root-1",
+                    root_comment_id="root-1",
+                    parent_comment_id="root-1" if is_reply else None,
+                    parent_author_display_name="一级用户" if is_reply else None,
+                    author_display_name="回复用户" if is_reply else "一级用户",
+                    text="回复内容" if is_reply else "一级评论",
+                    published_at=now,
+                    ingested_reply_count=0 if is_reply else 1,
+                ),
+            ),
+            next_cursor="next-comments" if not is_reply else None,
+            has_more=not is_reply,
+            total_count=1,
+            ingested_total_count=2,
+        )
 
     def create_analysis(self, request, *, request_id):  # type: ignore[no-untyped-def]
         return ContentAnalysisCreatedResponse(
@@ -212,6 +240,57 @@ def test_list_and_detail_return_every_ai_label_pair() -> None:
     ]
     assert detailed.status_code == 200
     assert len(detailed.json()["analysis"]["labels"]) == 2
+
+
+def test_comment_resource_pages_roots_and_replies_with_relationships() -> None:
+    service = _ContentService()
+    client = _client(service)
+
+    roots = client.get(f"/api/v1/contents/{service.content_id}/comments", params={"limit": 10})
+    replies = client.get(
+        f"/api/v1/contents/{service.content_id}/comments",
+        params={"root_comment_id": "root-1", "limit": 20},
+    )
+
+    assert roots.status_code == 200
+    assert roots.json() == {
+        "items": [
+            {
+                "id": roots.json()["items"][0]["id"],
+                "external_comment_id": "root-1",
+                "root_comment_id": "root-1",
+                "parent_comment_id": None,
+                "parent_author_display_name": None,
+                "author_display_name": "一级用户",
+                "text": "一级评论",
+                "published_at": "2026-08-21T08:00:00+08:00",
+                "like_count": None,
+                "reply_count": None,
+                "ingested_reply_count": 1,
+                "is_by_content_author": None,
+            }
+        ],
+        "next_cursor": "next-comments",
+        "has_more": True,
+        "total_count": 1,
+        "ingested_total_count": 2,
+    }
+    assert replies.status_code == 200
+    assert replies.json()["items"][0] == {
+        "id": replies.json()["items"][0]["id"],
+        "external_comment_id": "reply-1",
+        "root_comment_id": "root-1",
+        "parent_comment_id": "root-1",
+        "parent_author_display_name": "一级用户",
+        "author_display_name": "回复用户",
+        "text": "回复内容",
+        "published_at": "2026-08-21T08:00:00+08:00",
+        "like_count": None,
+        "reply_count": None,
+        "ingested_reply_count": 0,
+        "is_by_content_author": None,
+    }
+    assert service.last_query.root_comment_id == "root-1"
 
 
 def test_list_route_accepts_repeated_brand_and_competition_filters() -> None:

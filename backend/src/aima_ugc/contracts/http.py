@@ -1120,11 +1120,36 @@ class ContentCommentResponse(BaseModel):
 
     id: UUID
     external_comment_id: str
+    root_comment_id: str | None = None
+    parent_comment_id: str | None = None
+    parent_author_display_name: str | None = None
     author_display_name: str | None = None
     text: str | None = None
     published_at: datetime | None = None
     like_count: int | None = Field(default=None, ge=0)
     reply_count: int | None = Field(default=None, ge=0)
+    ingested_reply_count: int = Field(default=0, ge=0)
+    is_by_content_author: bool | None = None
+
+
+class ContentCommentListQuery(BaseModel):
+    """评论分页查询；不带根评论 ID 读取一级评论，带值读取该线程回复。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    root_comment_id: str | None = Field(default=None, min_length=1, max_length=512)
+    cursor: str | None = Field(default=None, min_length=1, max_length=4096)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class ContentCommentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[ContentCommentResponse, ...]
+    next_cursor: str | None = None
+    has_more: bool
+    total_count: int = Field(ge=0)
+    ingested_total_count: int = Field(ge=0)
 
 
 class CommentCoverageResponse(BaseModel):
@@ -1772,6 +1797,8 @@ __all__ = [
     "ContentAnalysisSubmitRequest",
     "ContentAnalysisTaxonomyLabelResponse",
     "ContentAnalysisTaxonomyResponse",
+    "ContentCommentListQuery",
+    "ContentCommentListResponse",
     "ContentCommentResponse",
     "ContentCountRequest",
     "ContentDetailResponse",

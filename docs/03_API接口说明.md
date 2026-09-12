@@ -462,7 +462,21 @@ AI 原判仍在 `analysis_content_results.relevance`，没有复制为 `contents
 
 读取详情，包括 media、comments、coverage、source_records 等审计/展示数据。单条详情不会因为 AI irrelevant 物理删除或隐藏 Content 业务事实。
 
-## 7.3 `POST /api/v1/content-relevance-reviews`
+详情内嵌的 `comments` 继续保留，用于兼容已有调用；它最多返回 100 条，不能作为完整评论浏览接口。
+
+## 7.3 `GET /api/v1/contents/{content_id}/comments`
+
+声音广场评论区使用的 PostgreSQL 分页 Read Model：
+
+- 不传 `root_comment_id` 时读取一级评论，按发布时间倒序、Comment UUID 倒序稳定续页；
+- 传 `root_comment_id` 时读取该一级评论线程下的回复，按发布时间正序、Comment UUID 正序稳定续页；
+- `root_comment_id`、`parent_comment_id` 和 `parent_author_display_name` 用于表达线程归属和“回复谁”，前端不得从正文或当前页位置猜测父子关系；
+- `ingested_reply_count` 是数据库中该线程当前已有的回复数；`total_count` 是当前分页范围总数，`ingested_total_count` 是该内容全部已采集评论数；
+- Cursor 与 Content、根评论条件和固定排序绑定，不能跨内容或跨线程复用。
+
+接口只读取已经通过正式采集/补采链路写入 PostgreSQL 的评论，不读取 `imports_test`、staging 或 JSONL 调试产物。声音广场分别显示平台报告数、已采集数和当前已显示数，避免把分页未加载误写成补采缺失。
+
+## 7.4 `POST /api/v1/content-relevance-reviews`
 
 对当前 Content Version 追加人工相关性决定：
 
@@ -474,7 +488,7 @@ inherit_ai
 
 模型原始 Result 不 UPDATE/DELETE；人工决定写入 `analysis_content_relevance_reviews`。批量请求先校验/锁定全部目标，任一目标不可操作时整批失败；已有人工覆盖要切到相反结论必须先撤销。精确 Contract 看 [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)。
 
-## 7.4 内容人工覆盖、Count、可用状态与通知
+## 7.5 内容人工覆盖、Count、可用状态与通知
 
 ```text
 POST /api/v1/contents/count

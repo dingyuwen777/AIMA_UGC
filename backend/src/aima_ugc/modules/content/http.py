@@ -15,6 +15,8 @@ from aima_ugc.contracts.http import (
     ContentAnalysisCreatedResponse,
     ContentAnalysisSubmitRequest,
     ContentAnalysisTaxonomyResponse,
+    ContentCommentListQuery,
+    ContentCommentListResponse,
     ContentDetailResponse,
     ContentFilterOptionsResponse,
     ContentListQuery,
@@ -68,6 +70,12 @@ class ContentHttpService(Protocol):
         ...
 
     def get_content(self, content_id: UUID) -> ContentDetailResponse: ...
+
+    def list_comments(
+        self,
+        content_id: UUID,
+        query: ContentCommentListQuery,
+    ) -> ContentCommentListResponse: ...
 
     def review_vehicles(
         self,
