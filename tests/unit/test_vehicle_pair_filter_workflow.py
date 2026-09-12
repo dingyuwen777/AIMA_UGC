@@ -145,7 +145,9 @@ def test_vehicle_pair_filter_consumes_monitoring_excel_filter_output(tmp_path: P
     output = VehiclePairRecordV1.model_validate_json(lines[0])
     assert output.record.content.external_content_id == "pair-note-001"
     assert output.matched_target_models == ("元宇宙",)
-    assert [(item.brand, item.model) for item in output.matched_competitor_models] == [("九号", "Q3")]
+    assert [(item.brand, item.model) for item in output.matched_competitor_models] == [
+        ("九号", "Q3")
+    ]
     assert [
         (item.target_model, item.competitor_brand, item.competitor_model)
         for item in output.matched_pairs
