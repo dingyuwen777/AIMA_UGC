@@ -1,70 +1,133 @@
-# 车型共现帖子五平台评论补采
+# 车型共现帖子五平台增量评论补采
 
-本目录是 `imports_test` 下新的**第三阶段独立离线工具**。它直接读取第二阶段 `vehicle_pair_filter` 产生的 `comparison_posts.jsonl`，不再先把帖子物理拆成五个平台文件，而是逐帖读取正式 `platform + content identity`，复用生产 TikHub Runtime 抓取该帖全部一级评论和全部二级回复。
+本目录是 `imports_test` 的第三阶段离线工具。它直接读取第二阶段 `comparison_posts.jsonl`，按正式 `platform + content identity` 调用现有 TikHub Runtime 抓一级评论和二级回复。现在默认具备**本机历史评论自动接管与缓存复用**：已经成功产出的评论 run 不需要上传 GitHub，也不会因为重新运行脚本而重复请求 TikHub。
 
-## 1. 当前三阶段数据流
-
-```text
-第一阶段
-Excel 目录
-→ monitoring_excel_filter/process_directory.py
-→ 五平台 + 品牌/车型 OR 宽筛 + 跨 Excel 去重
-→ deduplicated/contents.jsonl
-
-第二阶段
-→ vehicle_pair_filter/filter_vehicle_pairs.py
-→ 至少 1 个爱玛车型 AND 至少 1 个非爱玛车型
-→ comparison_posts.jsonl
-
-第三阶段
-→ comparison_comment_enrichment/enrich_comments.py
-→ 逐帖读取 platform + external_content_id + alternate_ids
-→ TikHub Comments / SubComments 正式 Runtime
-→ comparison_posts_with_comments.jsonl
-→ comparison_posts_with_comments.xlsx
-```
-
-旧的 `cross_brand_platform_split` 已退出主链，因为 TikHub Runtime 本身已经能根据正式平台身份 dispatch 到五个平台的评论接口；先拆成五个文件再统一处理只会增加一次无业务价值的 I/O。
-
-## 2. 输入
-
-编辑本目录 [enrich_comments.py](enrich_comments.py) 顶部：
-
-```python
-INPUT_JSONL = Path(
-    r"E:\AIMA_UGC_data\vehicle_pair_filter\output\runs\<run_id>\comparison_posts.jsonl"
-)
-```
-
-每个非空行必须是第二阶段正式输出 `VehiclePairRecordV1`。工具在发出任何 Provider 请求前会先完整扫描并校验输入 JSONL；输入格式错误时不会先消耗 TikHub 请求。
-
-## 3. TikHub 配置
-
-沿用现有 `tikhub_test` 配置：
+## 1. 三阶段增量链路
 
 ```text
-backend/src/aima_ugc/adapters/providers/tikhub_test/.env
+Stage 1
+新增 Excel
+→ 只输出全局新增帖子 delta
+
+Stage 2
+新帖子 delta
+→ 只做一次车型共现分析
+→ comparison_posts.jsonl delta
+
+Stage 3
+comparison_posts.jsonl
+→ 查本地 comment cache
+├─ cache hit  → 直接读取旧 run comments/coverage，Provider 请求 = 0
+└─ cache miss → TikHub Runtime 全量抓评论
+→ runs/<run_id>/comparison_posts_with_comments.jsonl/.xlsx
+→ current/comparison_posts_with_comments.jsonl/.xlsx  # 历史 + 新增累计全量
 ```
 
-可从同目录 `.env.example` 复制后填写：
+## 2. 第一次升级会自动识别你本机已有数据
+
+如果：
 
 ```text
-TIKHUB_BASE_URL=https://api.tikhub.dev
-TIKHUB_API_KEY=...
-TIKHUB_TIMEOUT_SECONDS=300
+output/state/manifest.json
 ```
 
-真实 API Key 不写入本工具、不写入 JSONL/Excel/summary/Raw；确定响应 Raw 继续通过现有 `RunOutputStore` 脱敏后落盘。
-
-## 4. 五个平台统一 ID dispatch
-
-本工具不自己维护 Provider endpoint 或平台私有 ID 规则，全部复用：
+不存在，代码自动扫描本机：
 
 ```text
-aima_ugc.adapters.providers.tikhub.runtime
+output/runs/*/run_summary.json
+output/runs/*/comparison_posts_with_comments.jsonl
 ```
 
-当前 Runtime 会从 Canonical 内容身份自动选择：
+每个旧 `VehiclePairCommentRecordV1` 会建立：
+
+```text
+(platform, external_content_id)
+→ 历史 JSONL path + byte offset
+```
+
+索引保存在：
+
+```text
+output/state/cache_index/00.jsonl ... ff.jsonl
+```
+
+state **不复制评论正文**；comments 仍只存在原来的不可变历史 run JSONL 中。旧 run 不修改、不删除、不覆盖。
+
+因此你已经在本地完整跑过的评论数据会自动成为缓存基线，不要求重新抓取。
+
+## 3. 默认缓存策略
+
+当前固定：
+
+```text
+reuse-any-committed-result.v1
+```
+
+也就是只要某帖子已经存在 committed 历史结果，就默认复用：
+
+```text
+complete
+partial
+unavailable
+```
+
+都不会自动重试。
+
+最重要的行为：
+
+```text
+历史帖子再次输入
+→ rows_cached += 1
+→ rows_fetched 不增加
+→ request_count 不增加
+→ TikHub Transport.send() 不执行
+```
+
+这样不会因为误把旧 `comparison_posts.jsonl` 再跑一次而重复付费。
+
+以后如果确实需要刷新旧帖新增评论，应单独增加显式 `force/ttl/retry_incomplete` 策略；当前任务不做后台自动刷新。
+
+## 4. 车型规则变化不会导致评论重抓
+
+评论缓存只按：
+
+```text
+(platform, external_content_id)
+```
+
+识别。
+
+如果第二阶段以后因为 `vehicle_catalog.json` 改动重算了某篇旧帖子，Stage 3 会：
+
+```text
+使用本次最新 VehiclePairRecordV1
++
+历史缓存 comments[]
++
+历史 comment_fetch
+```
+
+重新组装输出。
+
+因此 pair metadata 可以更新，但评论不会因为车型规则变化再次请求 TikHub。
+
+## 5. TikHub Runtime 仍是唯一 Provider 事实源
+
+cache miss 时继续复用正式：
+
+```text
+build_comments_call
+extract_comment_items
+map_comment
+advance_comments
+
+build_sub_comments_call
+extract_sub_comment_items
+map_comment
+advance_sub_comments
+```
+
+Typed identity 继续由 Runtime 处理：
 
 ```text
 xiaohongshu → note_id
@@ -74,169 +137,136 @@ bilibili    → bv_id / av_id
 kuaishou    → photo_id
 ```
 
-`alternate_ids` 中存在 Provider typed identity 时优先使用，否则按现有 Runtime 的稳定 `external_content_id` fallback 规则处理。
+本工具不复制 endpoint、分页或 Mapper 规则。
 
-一级评论固定复用：
+## 6. “全部评论”语义
 
-```text
-build_comments_call
-extract_comment_items
-map_comment
-advance_comments
-```
-
-二级回复固定复用：
-
-```text
-build_sub_comments_call
-extract_sub_comment_items
-map_comment
-advance_sub_comments
-```
-
-因此新增平台 API 差异仍由 TikHub Adapter/Runtime Owner 维护，本工具只负责“已知帖子 ID → 全量评论补采”的批处理编排。
-
-## 5. “全部评论”的精确定义
-
-现有 `tikhub_test/run_xxx()` 搜索调试入口默认有：
-
-```text
-max_comments_per_content=100
-max_comment_pages_per_content=20
-max_replies_per_root=20
-max_reply_pages_per_root=10
-```
-
-这些适合搜索调试，不等于本任务需要的“全部评论”。
-
-本工具**不使用上述采样数量/页数上限**：
+对 cache miss：
 
 ```text
 一级评论
-→ 从第一页开始
-→ Runtime advance_comments() 给出下一页就继续
-→ 直到 Runtime 明确停止
+→ 一直 advance_comments() 到 Provider/Runtime 明确停止
 
 二级回复
-→ reply_count == 0：不发无意义请求
-→ reply_count > 0 或未知：开始补采
-→ Runtime advance_sub_comments() 给出下一页就继续
-→ 直到 Runtime 明确停止
+→ 已知 reply_count == 0 时跳过
+→ 其他情况一直 advance_sub_comments() 到明确停止
 ```
 
-分页终止、游标不推进等规则继续由五平台正式 Runtime 负责，不在本工具复制 Provider-private 分页算法。
+不使用 `tikhub_test` 搜索调试入口原来的 100 条、20 页、10 页等采样上限。
 
-## 6. 输出 JSONL
+`complete` 仍要求已知 `comment_count/reply_count` 数量对账；不足时不能伪装成 complete。
 
-成功 run：
+## 7. 输出
 
 ```text
-output/runs/<run_id>/
-├── comparison_posts_with_comments.jsonl
-├── comparison_posts_with_comments.xlsx
-├── run_summary.json
-└── provider/
-    └── <platform>/runs/comments/
-        ├── raw/
-        ├── canonical/comments.jsonl
-        └── raw_data/
+output/
+├── state/
+│   ├── manifest.json
+│   └── cache_index/*.jsonl
+├── current/
+│   ├── comparison_posts_with_comments.jsonl
+│   └── comparison_posts_with_comments.xlsx
+└── runs/
+    ├── <历史旧 run>/                 # 原封不动
+    └── <本次 run>/
+        ├── comparison_posts_with_comments.jsonl
+        ├── comparison_posts_with_comments.xlsx
+        ├── run_summary.json
+        └── provider/                  # 仅 cache miss 才产生新的 Raw/Canonical
 ```
 
-`comparison_posts_with_comments.jsonl` 仍保持**一帖一行**。每行：
+### run 输出
+
+表示本次输入帖子处理结果；其中既可能包含：
 
 ```text
-VehiclePairCommentRecordV1
-├── record
-│   └── 原完整 VehiclePairRecordV1
-│       ├── 原帖子
-│       ├── matched_target_models
-│       ├── matched_competitor_models
-│       ├── matched_pairs
-│       └── model_mentions
-├── comments[]
-│   └── CanonicalCommentV1
-└── comment_fetch
-    ├── coverage
-    ├── reported_total
-    ├── root_comment_count
-    ├── reply_count
-    ├── request_count
-    ├── root_stop_reason
-    └── failures[]
+cached records
+fetched records
 ```
 
-同一帖子内按稳定 `external_comment_id` 去重。Canonical 根评论保持 `root_comment_id == external_comment_id`；回复保留正式 `root_comment_id / parent_comment_id`，不会为了 Excel 展示改写 Canonical。
+但 cached 记录没有新 Provider 请求。
 
-## 7. Coverage 与失败语义
+### current 输出
 
-### complete
+`current` 从 cache index 的最新 locator 重建，所以始终表示当前本地累计：
 
-一级评论分页正常耗尽，所有需要补采的根评论也完成回复分页，没有 Provider 永久失败；如果帖子已知一级评论总数，实际一级评论数不能少于该值；如果某个一级评论已知 `reply_count`，实际拿到的该根评论回复数也不能少于该值。`complete` 因此不仅表示“分页 API 停止”，还必须通过已知数量对账。
+> 所有历史缓存帖子 + 本次新增帖子及评论。
 
-### partial
+Excel 继续复用唯一 Provider-neutral `export_unified_data_excel()`：
 
-以下情况保留已取得的数据，但不会声明完整：
+- `内容`：一帖一行；
+- `评论`：一级/二级逐行；
+- 内容和评论通过稳定 content ID 关联。
 
-- 某个一级评论页或回复页发生可归因到单内容的永久 4xx，记录 `failures[]` 和对应脱敏 Raw 定位；
-- Provider 一级评论分页已停止，但帖子存在已知 `comment_count`，且本次实际一级评论数更少，此时 `root_stop_reason` 会包含 `observed_lt_reported_total`。
-
-### unavailable
-
-该帖在获得任何评论前即发生可归因到单内容的永久 4xx。
-
-### 整次 run 直接失败
-
-以下情况不继续批量请求，也不会发布正式 `runs/<run_id>`：
+## 8. run_summary.json 重点看这些字段
 
 ```text
-HTTP 401 / 403
-HTTP 408 / 425 / 429
-HTTP 5xx
-Transport 连接失败或发送状态未知
-成功响应不是 JSON Object
-Mapper / Contract / 分页不变量异常
-complete 记录与一级评论已知 reply_count 对账失败
-输入 JSONL Contract 错误
+rows_seen
+rows_cached
+rows_fetched
+rows_complete
+rows_partial
+rows_unavailable
+root_comment_count
+reply_count
+request_count
+failure_count
 ```
 
-其中已知回复数短缺不会被伪装成 `complete`；输出 Contract 会直接拒绝该记录并让本次 run fail closed。401/403 属于配置级认证失败；429/5xx/Transport 异常属于需要停止并稍后重试的运行级边界，避免继续打 Provider。
-
-## 8. Excel
-
-同一次 run 自动调用现有：
+如果你重新运行一批已经缓存的旧帖子，预期看到：
 
 ```text
-export_unified_data_excel()
+rows_seen=10000
+rows_cached=10000
+rows_fetched=0
+request_count=0
 ```
 
-生成：
+这就是“没有重复抓评论”的直接证据。
+
+## 9. Provider 配置
+
+cache miss 时沿用：
 
 ```text
-comparison_posts_with_comments.xlsx
+backend/src/aima_ugc/adapters/providers/tikhub_test/.env
 ```
 
-继续使用正式 Provider-neutral `UnifiedDataExcelV1`：
+真实 API Key 不写入 JSONL/Excel/summary/Raw。确定响应仍先通过现有 `RunOutputStore` 脱敏落盘。
 
-- `内容` Sheet：一帖一行；
-- `评论` Sheet：一级评论和二级回复逐行展示，并通过内容 ID 关联帖子；
-- 评论层级由 Canonical root/parent identity 投影为“一级 / 二级”；
-- 内容行继续携带命中关键词，并从第二阶段 `model_mentions` 投影品牌、品牌角色、竞品范围和车型；
-- `评论覆盖` 显示 complete/partial/unavailable 与本次一级/二级采集数。
+## 10. 运行
 
-JSONL 是完整机器事实；Excel 是现有受控展示格式，不反向修改 JSONL。
+编辑：
 
-## 9. 运行
+```python
+INPUT_JSONL = Path(
+    r"...\vehicle_pair_filter\output\runs\<run_id>\comparison_posts.jsonl"
+)
+```
 
-从仓库根目录：
+然后：
 
 ```bash
 uv run python -m aima_ugc.adapters.providers.imports_test.comparison_comment_enrichment.enrich_comments
 ```
 
-完成后终端打印帖子数、complete/partial/unavailable、一级评论数、回复数、请求数、五平台帖子数和输出目录。
+终端会打印：
 
-## 10. 成本与重跑
+```text
+rows
+cached
+fetched
+complete / partial / unavailable
+requests
+current
+```
 
-“全部评论”意味着请求数由真实评论页数和回复页数决定，可能显著高于搜索调试的采样模式。工具不隐藏自动重试，也不把 Provider partial 冒充 complete。
+## 11. 失败与恢复
 
-当前版本是离线一次性批处理：失败 run 不发布正式结果；成功 run 使用独立 `run_id`，不会覆盖旧结果。后续如果数据规模证明需要断点续跑/并发窗口，再基于真实耗时和 Provider 限额单独设计，不在当前简单链路中预先引入复杂调度。
+- 输入 JSONL 在任何网络请求前完整校验；
+- 429/408/425/5xx/Transport 等运行级失败继续 fail closed；
+- 永久单帖 4xx 仍按 partial/unavailable 保存；
+- 新 run 通过 staging 目录原子发布；
+- 只有已经存在 `run_summary.json` 的完成 run 才会被后续自动纳入 cache；
+- 如果 run 已成功发布，但 state/current 更新中断，下次启动会从该不可变 run 自动补 cache，因此不会因为 state 落后而重复请求 Provider；
+- `output/` 由 `.gitignore` 排除，真实本地评论数据不提交 GitHub。
