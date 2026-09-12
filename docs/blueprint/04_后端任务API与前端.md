@@ -279,6 +279,7 @@ GET  /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility
 ```text
 GET  /api/v1/contents
 GET  /api/v1/contents/{content_id}
+GET  /api/v1/contents/{content_id}/comments
 POST /api/v1/contents/count
 GET  /api/v1/content-analysis-capabilities
 POST /api/v1/content-analysis-requests
@@ -314,6 +315,8 @@ PUT  /api/v1/notifications/read
 车型、发声类型、情感和标签的人工修订按 `content_id + content_version` 保存，并按维度锁住自动结果；只有显式人工 unlock 才允许后续自动结果重新成为当前投影。车型允许 0..N 个，不设主车型。Count 保持 Cursor 查询不变，通过独立请求表达 `none / exact / estimated`；exact 只在有界范围承诺。
 
 Availability 使用追加式 Observation，不覆盖历史。只有明确 Provider 业务证据可以形成 `unavailable_confirmed`，技术失败只能是 `unknown/suspected`。Notification 是业务终态的按 Principal 收件箱投影，不替代 Job/Export/Run 状态机。
+
+声音广场内容详情中的评论区直接可见，不再藏在“更多信息”折叠项内。`GET /api/v1/contents/{content_id}/comments` 不带 `root_comment_id` 时稳定分页读取一级评论，带值时稳定分页读取该线程回复；响应保留根评论、直接父评论和父作者显示信息，页面据此缩进回复并明确显示“回复谁”。详情原有内嵌 `comments` 保持兼容但不承担完整浏览。页面数据只来自 PostgreSQL，并分别表达平台报告数、已采集数和当前显示数。
 
 ### 5.4 正式 Excel Export
 

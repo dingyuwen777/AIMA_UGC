@@ -13,6 +13,7 @@ import {
   getExportColumnCatalog,
   getDataExport,
   listContents,
+  listContentComments,
   listDataExports,
   previewContentAnalysisRun,
   reviewContentAnalysis,
@@ -30,6 +31,7 @@ import {
   type ContentAnalysisCreatedResponse,
   type ContentAnalysisSubmitRequest,
   type ContentDetailResponse,
+  type ContentCommentListResponse,
   type ContentFilterOptionsResponse,
   type ContentListResponse,
   type ContentRelevanceReviewRequest,
@@ -44,6 +46,7 @@ import {
   type HttpErrorResponse,
   type JobStatusResponse,
   type ListContentsParams,
+  type ListContentCommentsParams,
 } from '../../generated/api/client'
 
 export class VoicePlazaApiError extends Error {
@@ -79,6 +82,13 @@ export async function fetchContents(params: ListContentsParams): Promise<Content
 
 export async function fetchContentDetail(contentId: string): Promise<ContentDetailResponse> {
   return unwrap(await getContent(contentId))
+}
+
+export async function fetchContentComments(
+  contentId: string,
+  params?: ListContentCommentsParams,
+): Promise<ContentCommentListResponse> {
+  return unwrap(await listContentComments(contentId, params))
 }
 
 export async function fetchContentAnalysisCapabilities(): Promise<ContentAnalysisCapabilitiesResponse> {

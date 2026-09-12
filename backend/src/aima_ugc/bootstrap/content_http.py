@@ -55,6 +55,8 @@ from aima_ugc.contracts.http import (
     ContentBrandEvidenceResponse,
     ContentBrandReferenceResponse,
     ContentBrandResponse,
+    ContentCommentListQuery,
+    ContentCommentListResponse,
     ContentDetailResponse,
     ContentFilterLabelOptionResponse,
     ContentFilterOptionsResponse,
@@ -261,6 +263,55 @@ class PostgresContentHttpService:
                 )
         finally:
             session.close()
+
+    def list_comments(
+        self,
+        content_id: UUID,
+        query: ContentCommentListQuery,
+    ) -> ContentCommentListResponse:
+        """分页读取一级评论或指定线程回复，并保留直接父评论显示信息。"""
+
+        codec = self._cursor_codec()
+        query_hash = _comment_query_hash(content_id, root_comment_id=query.root_comment_id)
+        position = codec.decode(query.cursor, query_hash=query_hash) if query.cursor else None
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                configuration = active_analysis_configuration(session, self._runtime.settings)
+                repository = PostgresContentQueryRepository(
+                    session,
+                    analysis_identity=configuration.identity,
+                )
+                if repository.get_content(content_id) is None:
+                    raise ContentResourceNotFound
+                rows = repository.list_comments_page(
+                    content_id,
+                    root_comment_id=query.root_comment_id,
+                    position=position,
+                    limit=query.limit + 1,
+                )
+                total_count, ingested_total_count = repository.count_comments(
+                    content_id,
+                    root_comment_id=query.root_comment_id,
+                )
+        finally:
+            session.close()
+        has_more = len(rows) > query.limit
+        page = rows[: query.limit]
+        next_cursor = None
+        if has_more and page:
+            last = page[-1]
+            next_cursor = codec.encode(
+                ContentCursorPosition(sort_at=last.published_at, content_id=last.id),
+                query_hash=query_hash,
+            )
+        return ContentCommentListResponse(
+            items=page,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            total_count=total_count,
+            ingested_total_count=ingested_total_count,
+        )
 
     def review_vehicles(
         self,
@@ -1075,6 +1126,18 @@ def _query_hash(
     payload = filters.model_dump(mode="json", exclude_none=True)
     if sort_by is not None or sort_direction != "desc":
         payload["list_sort"] = {"by": sort_by, "direction": sort_direction}
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _comment_query_hash(content_id: UUID, *, root_comment_id: str | None) -> str:
+    """将评论 Cursor 绑定到 Content、线程和固定阅读顺序。"""
+
+    payload = {
+        "content_id": str(content_id),
+        "root_comment_id": root_comment_id,
+        "sort_direction": "asc" if root_comment_id is not None else "desc",
+    }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 

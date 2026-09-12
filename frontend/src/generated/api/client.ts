@@ -1471,10 +1471,26 @@ export interface ContentCommentResponse {
   author_display_name?: string | null;
   external_comment_id: string;
   id: string;
+  /** @minimum 0 */
+  ingested_reply_count?: number;
+  is_by_content_author?: boolean | null;
   like_count?: number | null;
+  parent_author_display_name?: string | null;
+  parent_comment_id?: string | null;
   published_at?: string | null;
   reply_count?: number | null;
+  root_comment_id?: string | null;
   text?: string | null;
+}
+
+export interface ContentCommentListResponse {
+  has_more: boolean;
+  /** @minimum 0 */
+  ingested_total_count: number;
+  items: ContentCommentResponse[];
+  next_cursor?: string | null;
+  /** @minimum 0 */
+  total_count: number;
 }
 
 export type ContentCountRequestCountMode = typeof ContentCountRequestCountMode[keyof typeof ContentCountRequestCountMode];
@@ -3015,6 +3031,16 @@ export const ListContentsSortDirection = {
   asc: 'asc',
   desc: 'desc',
 } as const;
+
+export type ListContentCommentsParams = {
+root_comment_id?: string | null;
+cursor?: string | null;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
 
 export type ListDataImportServerDirectoriesParams = {
 /**
@@ -4640,6 +4666,46 @@ export const reviewContentAnalysis = async (contentId: string,
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentAnalysisManualReviewResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListContentCommentsUrl = (contentId: string,
+    params?: ListContentCommentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/contents/${contentId}/comments?${stringifiedParams}` : `/api/v1/contents/${contentId}/comments`
+}
+
+/**
+ * @summary List Content Comments
+ */
+export const listContentComments = async (contentId: string,
+    params?: ListContentCommentsParams, options?: RequestInit): Promise<ContentCommentListResponse> => {
+
+  const res = await fetch(getListContentCommentsUrl(contentId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentCommentListResponse = body ? JSON.parse(body) : {}
   return data
 }
 

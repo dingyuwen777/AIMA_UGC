@@ -5,6 +5,7 @@ import type {
   AnalysisManualLabelRequest,
   ContentAnalysisManualReviewRequest,
   ContentAnalysisTaxonomyResponse,
+  ContentCommentResponse,
   ContentDetailResponse,
 } from '../../../../../generated/api/client'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
@@ -12,6 +13,8 @@ import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import { relevanceReviewActionLabel, relevanceReviewDecision, type RelevanceReviewDecision } from '../../../relevanceReview'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
+import type { CommentReplyState } from '../../../store'
+import ContentCommentSection from './ContentCommentSection.vue'
 import {
   contentSummary,
   contentTypeLabel,
@@ -29,12 +32,38 @@ const props = withDefaults(defineProps<{
   saving?: boolean
   error?: string | null
   saveError?: string | null
-}>(), { taxonomy: null, saving: false, error: null, saveError: null })
+  commentRoots?: ContentCommentResponse[]
+  commentReplies?: Record<string, ContentCommentResponse[]>
+  commentReplyStates?: Record<string, CommentReplyState>
+  commentsLoading?: boolean
+  commentsLoadingNext?: boolean
+  commentsError?: string | null
+  commentsHasMore?: boolean
+  commentsTotalCount?: number
+  commentsIngestedTotalCount?: number
+}>(), {
+  taxonomy: null,
+  saving: false,
+  error: null,
+  saveError: null,
+  commentRoots: () => [],
+  commentReplies: () => ({}),
+  commentReplyStates: () => ({}),
+  commentsLoading: false,
+  commentsLoadingNext: false,
+  commentsError: null,
+  commentsHasMore: false,
+  commentsTotalCount: 0,
+  commentsIngestedTotalCount: 0,
+})
 const emit = defineEmits<{
   'update:modelValue': [open: boolean]
   'review-vehicles': [vehicleModelIds: string[], unlockExisting: boolean]
   'review-analysis': [request: Omit<ContentAnalysisManualReviewRequest, 'content_version'>]
   retry: []
+  'retry-comments': []
+  'load-more-comments': []
+  'load-comment-replies': [rootCommentId: string, reset: boolean]
   review: [contentId: string, decision: RelevanceReviewDecision]
 }>()
 
@@ -159,12 +188,6 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
   return scope ? ({ owned_only: '仅自有品牌', competitor_only: '仅竞品品牌', mixed: '自有与竞品混合', other_only: '仅其他品牌', none_detected: '未识别品牌' })[scope] : '未识别品牌'
 }
 
-/** 将评论覆盖枚举转换为用户可读状态。 */
-function commentCoverageLabel(value: string): string {
-  if (value === 'complete') return '完整'
-  if (value === 'partial') return '部分'
-  return '待确认'
-}
 </script>
 
 <template>
@@ -495,8 +518,25 @@ function commentCoverageLabel(value: string): string {
         </template>
       </section>
 
+      <ContentCommentSection
+        :roots="commentRoots"
+        :replies="commentReplies"
+        :reply-states="commentReplyStates"
+        :loading="commentsLoading"
+        :loading-next="commentsLoadingNext"
+        :error="commentsError"
+        :has-more="commentsHasMore"
+        :root-total-count="commentsTotalCount"
+        :ingested-total-count="commentsIngestedTotalCount"
+        :provider-total-count="item.comment_coverage?.reported_total ?? item.metrics.comment_count"
+        :coverage="item.comment_coverage?.coverage"
+        @retry="emit('retry-comments')"
+        @load-more-roots="emit('load-more-comments')"
+        @load-replies="(rootCommentId, reset) => emit('load-comment-replies', rootCommentId, reset)"
+      />
+
       <details class="additional-details">
-        <summary>更多信息与评论</summary>
+        <summary>更多信息</summary>
         <section>
           <h4>内容可用状态</h4><p>{{ contentTypeLabel(item.content_type) }} · {{ sourceLabel(item.source.provider_name) }}</p>
           <p v-if="item.availability">
@@ -570,37 +610,6 @@ function commentCoverageLabel(value: string): string {
               </template>
             </div>
           </details>
-        </section>
-
-
-
-        <section>
-          <h4>评论与覆盖</h4>
-          <p
-            v-if="item.comment_coverage"
-            class="coverage"
-          >
-            已采集 {{ formatNumber(item.comment_coverage.collected_count) }} / {{ formatNumber(item.comment_coverage.reported_total) }}，覆盖状态：{{ commentCoverageLabel(item.comment_coverage.coverage) }}
-          </p>
-          <div
-            v-if="(item.comments ?? []).length"
-            class="comments"
-          >
-            <article
-              v-for="comment in item.comments ?? []"
-              :key="comment.id"
-            >
-              <strong>{{ comment.author_display_name || '匿名用户' }}</strong>
-              <time>{{ formatDateTime(comment.published_at) }}</time>
-              <p>{{ comment.text || '无评论正文' }}</p>
-            </article>
-          </div>
-          <p
-            v-else
-            class="empty"
-          >
-            暂无已入库评论。
-          </p>
         </section>
       </details>
     </div>

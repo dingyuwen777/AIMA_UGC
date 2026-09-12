@@ -69,6 +69,8 @@ from aima_ugc.contracts.http import (
     ContentAnalysisCreatedResponse,
     ContentAnalysisSubmitRequest,
     ContentAnalysisTaxonomyResponse,
+    ContentCommentListQuery,
+    ContentCommentListResponse,
     ContentCountRequest,
     ContentDetailResponse,
     ContentFilterOptionsResponse,
@@ -1154,6 +1156,25 @@ def create_app(
     )
     def get_content(content_id: UUID) -> ContentDetailResponse:
         return current_content_service().get_content(content_id)
+
+    @application.get(
+        "/api/v1/contents/{content_id}/comments",
+        operation_id="listContentComments",
+        response_model=ContentCommentListResponse,
+        responses={
+            400: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            503: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def list_content_comments(
+        content_id: UUID,
+        query: Annotated[ContentCommentListQuery, Query()],
+    ) -> ContentCommentListResponse:
+        return current_content_service().list_comments(content_id, query)
 
     @application.put(
         "/api/v1/contents/{content_id}/analysis-review",

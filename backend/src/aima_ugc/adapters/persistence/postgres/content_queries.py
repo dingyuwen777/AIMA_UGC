@@ -47,6 +47,7 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.availability_tables import (
     content_availability_observations_table,
 )
+from aima_ugc.modules.content.content_cursor import ContentCursorPosition
 from aima_ugc.modules.content.extended_tables import content_media_table
 from aima_ugc.modules.content.query import (
     ContentAnalysisRead,
@@ -340,33 +341,128 @@ class PostgresContentQueryRepository:
         limit: int = 100,
     ) -> tuple[ContentCommentResponse, ...]:
         comment = comments_table
-        author = accounts_table
         rows = self._session.execute(
+            self._comment_statement(content_id)
+            .order_by(comment.c.published_at.desc().nullslast(), comment.c.id.desc())
+            .limit(limit)
+        ).mappings()
+        return tuple(_comment_response(row) for row in rows)
+
+    def list_comments_page(
+        self,
+        content_id: UUID,
+        *,
+        root_comment_id: str | None,
+        position: ContentCursorPosition | None,
+        limit: int,
+    ) -> tuple[ContentCommentResponse, ...]:
+        """按一级评论或指定线程分页；一级评论最新优先，回复按时间正序。"""
+
+        comment = comments_table
+        ascending = root_comment_id is not None
+        statement = self._comment_statement(content_id).where(
+            _comment_scope_condition(root_comment_id)
+        )
+        if position is not None:
+            id_after = (
+                comment.c.id > position.content_id
+                if ascending
+                else comment.c.id < position.content_id
+            )
+            if position.sort_at is None:
+                after = and_(comment.c.published_at.is_(None), id_after)
+            else:
+                after = or_(
+                    comment.c.published_at > position.sort_at
+                    if ascending
+                    else comment.c.published_at < position.sort_at,
+                    and_(comment.c.published_at == position.sort_at, id_after),
+                    comment.c.published_at.is_(None),
+                )
+            statement = statement.where(after)
+        date_order = comment.c.published_at.asc() if ascending else comment.c.published_at.desc()
+        id_order = comment.c.id.asc() if ascending else comment.c.id.desc()
+        rows = self._session.execute(
+            statement.order_by(date_order.nullslast(), id_order).limit(limit)
+        ).mappings()
+        return tuple(_comment_response(row) for row in rows)
+
+    def count_comments(
+        self,
+        content_id: UUID,
+        *,
+        root_comment_id: str | None,
+    ) -> tuple[int, int]:
+        """返回当前分页范围数量与该内容全部已入库评论数量。"""
+
+        comment = comments_table
+        scoped = cast(
+            int,
+            self._session.scalar(
+                select(func.count())
+                .select_from(comment)
+                .where(
+                    comment.c.content_id == content_id,
+                    _comment_scope_condition(root_comment_id),
+                )
+            )
+            or 0,
+        )
+        ingested = cast(
+            int,
+            self._session.scalar(
+                select(func.count()).select_from(comment).where(comment.c.content_id == content_id)
+            )
+            or 0,
+        )
+        return scoped, ingested
+
+    def _comment_statement(self, content_id: UUID) -> Any:
+        """统一评论响应投影，并在数据库内解析直接父评论作者。"""
+
+        comment = comments_table
+        author = accounts_table
+        parent_comment = comments_table.alias("parent_comment")
+        parent_author = accounts_table.alias("parent_comment_author")
+        reply_comment = comments_table.alias("thread_reply_comment")
+        ingested_reply_count = (
+            select(func.count())
+            .select_from(reply_comment)
+            .where(
+                reply_comment.c.content_id == comment.c.content_id,
+                reply_comment.c.root_comment_id == comment.c.external_comment_id,
+                reply_comment.c.external_comment_id != comment.c.external_comment_id,
+            )
+            .correlate(comment)
+            .scalar_subquery()
+        )
+        return (
             select(
                 comment.c.id,
                 comment.c.external_comment_id,
+                comment.c.root_comment_id,
+                comment.c.parent_comment_id,
+                parent_author.c.display_name.label("parent_author_display_name"),
                 author.c.display_name.label("author_display_name"),
                 comment.c.text,
                 comment.c.published_at,
                 comment.c.current_like_count,
                 comment.c.current_reply_count,
+                ingested_reply_count.label("ingested_reply_count"),
+                comment.c.is_by_content_author,
             )
-            .select_from(comment.outerjoin(author, author.c.id == comment.c.author_account_id))
+            .select_from(
+                comment.outerjoin(author, author.c.id == comment.c.author_account_id)
+                .outerjoin(
+                    parent_comment,
+                    and_(
+                        parent_comment.c.content_id == comment.c.content_id,
+                        parent_comment.c.external_comment_id == comment.c.parent_comment_id,
+                    ),
+                )
+                .outerjoin(parent_author, parent_author.c.id == parent_comment.c.author_account_id)
+            )
             .where(comment.c.content_id == content_id)
-            .order_by(comment.c.published_at.desc().nullslast(), comment.c.id.desc())
-            .limit(limit)
-        ).mappings()
-        return tuple(
-            ContentCommentResponse(
-                id=cast(UUID, row["id"]),
-                external_comment_id=cast(str, row["external_comment_id"]),
-                author_display_name=cast(str | None, row["author_display_name"]),
-                text=cast(str | None, row["text"]),
-                published_at=cast(datetime | None, row["published_at"]),
-                like_count=cast(int | None, row["current_like_count"]),
-                reply_count=cast(int | None, row["current_reply_count"]),
-            )
-            for row in rows
         )
 
     def latest_comment_coverage(self, content_id: UUID) -> CommentCoverageResponse | None:
@@ -1247,6 +1343,38 @@ def _apply_filters(
             )
         )
     return statement
+
+
+def _comment_scope_condition(root_comment_id: str | None) -> Any:
+    """区分一级评论与某个根评论下的回复，不把线程回复混入一级列表。"""
+
+    comment = comments_table
+    if root_comment_id is None:
+        return or_(
+            comment.c.root_comment_id.is_(None),
+            comment.c.root_comment_id == comment.c.external_comment_id,
+        )
+    return and_(
+        comment.c.root_comment_id == root_comment_id,
+        comment.c.external_comment_id != root_comment_id,
+    )
+
+
+def _comment_response(row: RowMapping) -> ContentCommentResponse:
+    return ContentCommentResponse(
+        id=cast(UUID, row["id"]),
+        external_comment_id=cast(str, row["external_comment_id"]),
+        root_comment_id=cast(str | None, row["root_comment_id"]),
+        parent_comment_id=cast(str | None, row["parent_comment_id"]),
+        parent_author_display_name=cast(str | None, row["parent_author_display_name"]),
+        author_display_name=cast(str | None, row["author_display_name"]),
+        text=cast(str | None, row["text"]),
+        published_at=cast(datetime | None, row["published_at"]),
+        like_count=cast(int | None, row["current_like_count"]),
+        reply_count=cast(int | None, row["current_reply_count"]),
+        ingested_reply_count=cast(int, row["ingested_reply_count"]),
+        is_by_content_author=cast(bool | None, row["is_by_content_author"]),
+    )
 
 
 def _escape_like(value: str) -> str:

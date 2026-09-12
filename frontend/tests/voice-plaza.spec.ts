@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const generated = vi.hoisted(() => ({
   listContents: vi.fn(),
+  listContentComments: vi.fn(),
   getContent: vi.fn(),
   getContentAnalysisCapabilities: vi.fn(),
   getContentAnalysisTaxonomy: vi.fn(),
@@ -116,13 +117,70 @@ describe('voice plaza', () => {
     expect(store.detailId).toBe(item.id)
     expect(store.detailError).toContain('详情暂不可用')
     let resolve!: (value: unknown) => void
+    let resolveComments!: (value: unknown) => void
     generated.getContent.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    generated.listContentComments.mockReturnValueOnce(new Promise((done) => { resolveComments = done }))
     const loading = store.openDetail(item.id)
     store.closeDetail()
+    expect(store.commentsLoading).toBe(false)
     resolve(item)
+    resolveComments({ items: [], next_cursor: null, has_more: false, total_count: 0, ingested_total_count: 0 })
     await loading
     expect(store.detailId).toBeNull()
     expect(store.detail).toBeNull()
+  })
+
+  it('独立分页读取一级评论与回复，并保留数据库总数', async () => {
+    const root = {
+      id: 'comment-root-id',
+      external_comment_id: 'root-1',
+      root_comment_id: 'root-1',
+      parent_comment_id: null,
+      author_display_name: '一级用户',
+      text: '一级评论',
+      ingested_reply_count: 1,
+    }
+    const reply = {
+      id: 'comment-reply-id',
+      external_comment_id: 'reply-1',
+      root_comment_id: 'root-1',
+      parent_comment_id: 'root-1',
+      parent_author_display_name: '一级用户',
+      author_display_name: '回复用户',
+      text: '二级回复',
+      ingested_reply_count: 0,
+    }
+    generated.getContent.mockResolvedValue(item)
+    generated.listContentComments
+      .mockResolvedValueOnce({
+        items: [root], next_cursor: 'root-next', has_more: true,
+        total_count: 2, ingested_total_count: 3,
+      })
+      .mockResolvedValueOnce({
+        items: [reply], has_more: false, total_count: 1, ingested_total_count: 3,
+      })
+    const store = useVoicePlazaStore()
+
+    await store.openDetail(item.id)
+    await store.loadCommentReplies('root-1')
+
+    expect(generated.listContentComments).toHaveBeenNthCalledWith(1, item.id, {
+      cursor: undefined,
+      limit: 10,
+    })
+    expect(generated.listContentComments).toHaveBeenNthCalledWith(2, item.id, {
+      root_comment_id: 'root-1',
+      cursor: undefined,
+      limit: 20,
+    })
+    expect(store.commentRoots).toEqual([root])
+    expect(store.commentReplies['root-1']).toEqual([reply])
+    expect(store.commentsIngestedTotalCount).toBe(3)
+    expect(store.commentReplyStates['root-1']).toMatchObject({
+      loaded: true,
+      hasMore: false,
+      totalCount: 1,
+    })
   })
 
   it('慢 AI 查询不叠加，停止轮询后旧响应不会再触发内容请求', async () => {
@@ -225,6 +283,12 @@ describe('voice plaza', () => {
     generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
     generated.getContentAnalysisTaxonomy.mockResolvedValue(taxonomy)
     generated.getContentFilterOptions.mockResolvedValue(filterOptions)
+    generated.listContentComments.mockResolvedValue({
+      items: [],
+      has_more: false,
+      total_count: 0,
+      ingested_total_count: 0,
+    })
   })
 
   afterEach(() => {

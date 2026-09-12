@@ -8,6 +8,7 @@ import type {
   ContentAnalysisStatus,
   ContentAnalysisTaxonomyResponse,
   ContentCountResponse,
+  ContentCommentResponse,
   ContentDetailResponse,
   ContentFilterOptionsResponse,
   ContentFilterSnapshot,
@@ -31,6 +32,7 @@ import {
   fetchContentAnalysisCapabilities,
   fetchContentAnalysisTaxonomy,
   fetchContentCount,
+  fetchContentComments,
   fetchContentDetail,
   fetchContentFilterOptions,
   fetchContents,
@@ -45,6 +47,15 @@ import {
   submitContentRelevanceReview,
   submitDataExport,
 } from './api'
+
+export interface CommentReplyState {
+  loaded: boolean
+  loading: boolean
+  error: string | null
+  nextCursor: string | null
+  hasMore: boolean
+  totalCount: number
+}
 
 export interface VoicePlazaFilters {
   search: string
@@ -110,6 +121,16 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const detail = ref<ContentDetailResponse | null>(null)
   const detailId = ref<string | null>(null)
   const detailError = ref<string | null>(null)
+  const commentRoots = ref<ContentCommentResponse[]>([])
+  const commentsNextCursor = ref<string | null>(null)
+  const commentsHasMore = ref(false)
+  const commentsLoading = ref(false)
+  const commentsLoadingNext = ref(false)
+  const commentsError = ref<string | null>(null)
+  const commentsTotalCount = ref(0)
+  const commentsIngestedTotalCount = ref(0)
+  const commentReplies = reactive<Record<string, ContentCommentResponse[]>>({})
+  const commentReplyStates = reactive<Record<string, CommentReplyState>>({})
   let detailRevision = 0
   let listRevision = 0
   let analysisPreviewRevision = 0
@@ -383,22 +404,108 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
+  function resetComments(): void {
+    commentRoots.value = []
+    commentsNextCursor.value = null
+    commentsHasMore.value = false
+    commentsLoading.value = false
+    commentsLoadingNext.value = false
+    commentsError.value = null
+    commentsTotalCount.value = 0
+    commentsIngestedTotalCount.value = 0
+    for (const key of Object.keys(commentReplies)) delete commentReplies[key]
+    for (const key of Object.keys(commentReplyStates)) delete commentReplyStates[key]
+  }
+
+  async function loadCommentRoots(reset = false, revision = detailRevision): Promise<void> {
+    const contentId = detailId.value
+    if (!contentId || (!reset && (!commentsHasMore.value || commentsLoadingNext.value))) return
+    if (reset) resetComments()
+    const cursor = reset ? undefined : commentsNextCursor.value ?? undefined
+    if (reset) commentsLoading.value = true
+    else commentsLoadingNext.value = true
+    commentsError.value = null
+    try {
+      const page = await fetchContentComments(contentId, { cursor, limit: 10 })
+      if (revision !== detailRevision || detailId.value !== contentId) return
+      commentRoots.value = reset ? page.items : [...commentRoots.value, ...page.items]
+      commentsNextCursor.value = page.next_cursor ?? null
+      commentsHasMore.value = page.has_more
+      commentsTotalCount.value = page.total_count
+      commentsIngestedTotalCount.value = page.ingested_total_count
+    } catch (reason) {
+      if (revision === detailRevision && detailId.value === contentId) {
+        commentsError.value = errorMessage(reason)
+      }
+    } finally {
+      if (revision === detailRevision) {
+        commentsLoading.value = false
+        commentsLoadingNext.value = false
+      }
+    }
+  }
+
+  async function loadCommentReplies(rootCommentId: string, reset = false): Promise<void> {
+    const contentId = detailId.value
+    if (!contentId) return
+    const revision = detailRevision
+    const current = commentReplyStates[rootCommentId]
+    if (current?.loading || (!reset && current?.loaded && !current.hasMore)) return
+    if (reset) commentReplies[rootCommentId] = []
+    const state = current ?? {
+      loaded: false,
+      loading: false,
+      error: null,
+      nextCursor: null,
+      hasMore: false,
+      totalCount: 0,
+    }
+    commentReplyStates[rootCommentId] = state
+    state.loading = true
+    state.error = null
+    try {
+      const page = await fetchContentComments(contentId, {
+        root_comment_id: rootCommentId,
+        cursor: reset ? undefined : state.nextCursor ?? undefined,
+        limit: 20,
+      })
+      if (revision !== detailRevision || detailId.value !== contentId) return
+      const existing = reset ? [] : commentReplies[rootCommentId] ?? []
+      commentReplies[rootCommentId] = [...existing, ...page.items]
+      state.loaded = true
+      state.nextCursor = page.next_cursor ?? null
+      state.hasMore = page.has_more
+      state.totalCount = page.total_count
+      commentsIngestedTotalCount.value = page.ingested_total_count
+    } catch (reason) {
+      if (revision === detailRevision && detailId.value === contentId) {
+        state.loaded = true
+        state.error = errorMessage(reason)
+      }
+    } finally {
+      if (revision === detailRevision) state.loading = false
+    }
+  }
+
   async function openDetail(contentId: string): Promise<void> {
-    // 抽屉开关独立于成功结果；请求失败保留原入口，关闭后忽略迟到响应。
+    // 详情与评论独立失败；任一迟到响应都不能覆盖关闭或切换后的抽屉。
     const revision = ++detailRevision
     if (detailId.value !== contentId) detail.value = null
     detailId.value = contentId
     detailError.value = null
     loadingDetail.value = true
     error.value = null
-    try {
-      const result = await fetchContentDetail(contentId)
-      if (revision === detailRevision) detail.value = result
-    } catch (reason) {
-      if (revision === detailRevision) detailError.value = errorMessage(reason)
-    } finally {
-      if (revision === detailRevision) loadingDetail.value = false
-    }
+    const detailTask = (async () => {
+      try {
+        const result = await fetchContentDetail(contentId)
+        if (revision === detailRevision) detail.value = result
+      } catch (reason) {
+        if (revision === detailRevision) detailError.value = errorMessage(reason)
+      } finally {
+        if (revision === detailRevision) loadingDetail.value = false
+      }
+    })()
+    await Promise.all([detailTask, loadCommentRoots(true, revision)])
   }
 
   function closeDetail(): void {
@@ -408,6 +515,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     detailError.value = null
     loadingDetail.value = false
     detail.value = null
+    resetComments()
   }
 
   function toggleSelection(contentId: string): void {
@@ -677,6 +785,15 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     changeSort,
     detailId,
     detailError,
+    commentRoots,
+    commentsHasMore,
+    commentsLoading,
+    commentsLoadingNext,
+    commentsError,
+    commentsTotalCount,
+    commentsIngestedTotalCount,
+    commentReplies,
+    commentReplyStates,
     items,
     detail,
     selectedIds,
@@ -717,6 +834,8 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     loadNext,
     openDetail,
     closeDetail,
+    loadCommentRoots,
+    loadCommentReplies,
     toggleSelection,
     toggleVisibleSelection,
     clearSelection,
