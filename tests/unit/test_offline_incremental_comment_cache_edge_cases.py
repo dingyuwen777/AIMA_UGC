@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -185,9 +186,119 @@ def test_provider_failure_does_not_register_unpublished_run_in_state(tmp_path: P
         )
 
     assert not (output_root / "runs" / "rate-limited").exists()
-    assert not (output_root / ".staging-rate-limited").exists()
+    assert (output_root / ".staging-rate-limited").is_dir()
     state_path = output_root / "state" / "manifest.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state["indexed_runs"] == []
     cache_entries = list((output_root / "state" / "cache_index").glob("*.jsonl"))
     assert cache_entries == []
+
+
+def test_completed_staging_is_adopted_and_reused_without_provider_request(
+    tmp_path: Path,
+) -> None:
+    """上次只差最终改名的完整 staging 应先发布入 cache，再零请求复用。"""
+
+    output_root = tmp_path / "comment-output"
+    run_id = "interrupted-publish"
+    staging_dir = output_root / f".staging-{run_id}"
+    staging_dir.mkdir(parents=True)
+    cached_record = VehiclePairCommentRecordV1(
+        record=_pair_record("recover-me"),
+        comments=(),
+        comment_fetch=CommentFetchCoverageV1(
+            coverage="partial",
+            root_comment_count=0,
+            reply_count=0,
+            request_count=3,
+            root_stop_reason="provider_exhausted",
+            reply_shortfalls=(),
+            identity_mismatches=(),
+        ),
+    )
+    staging_jsonl = staging_dir / "comparison_posts_with_comments.jsonl"
+    staging_jsonl.write_text(f"{cached_record.model_dump_json()}\n", encoding="utf-8")
+    with zipfile.ZipFile(
+        staging_dir / "comparison_posts_with_comments.xlsx",
+        "w",
+    ) as workbook_archive:
+        workbook_archive.writestr("[Content_Types].xml", "<Types />")
+    final_run = output_root / "runs" / run_id
+    (staging_dir / "run_summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "comparison-comment-enrichment-run.v1",
+                "run_id": run_id,
+                "rows_seen": 1,
+                "rows_complete": 0,
+                "rows_partial": 1,
+                "rows_unavailable": 0,
+                "root_comment_count": 0,
+                "reply_count": 0,
+                "request_count": 3,
+                "failure_count": 0,
+                "outputs": {
+                    "jsonl": str(final_run / staging_jsonl.name),
+                    "xlsx": str(final_run / "comparison_posts_with_comments.xlsx"),
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    input_path = tmp_path / "pair.jsonl"
+    _write_pair_input(input_path, _pair_record("recover-me", target_model="墩墩"))
+    result = enrich_comparison_comments(
+        input_path=input_path,
+        output_root=output_root,
+        run_id="after-recovery",
+        provider_config=_config(),
+        transport=_FailIfCalledTransport(),
+    )
+
+    assert not staging_dir.exists()
+    assert final_run.is_dir()
+    assert result.rows_cached == 1
+    assert result.rows_fetched == 0
+    assert result.request_count == 0
+    manifest = json.loads((output_root / "state" / "manifest.json").read_text(encoding="utf-8"))
+    assert run_id in manifest["indexed_runs"]
+
+
+def test_legacy_diagnostic_fields_remain_parseable() -> None:
+    """拉取前已生成的 shortfall/mismatch 字段必须继续属于兼容 Contract。"""
+
+    payload = VehiclePairCommentRecordV1(
+        record=_pair_record("legacy-diagnostics"),
+        comments=(),
+        comment_fetch=CommentFetchCoverageV1(
+            coverage="unavailable",
+            root_comment_count=0,
+            reply_count=0,
+            request_count=1,
+        ),
+    ).model_dump(mode="json")
+    payload["comment_fetch"]["reply_shortfalls"] = [
+        {
+            "root_comment_id": "root-legacy",
+            "reported_count": 2,
+            "observed_count": 1,
+        }
+    ]
+    payload["comment_fetch"]["identity_mismatches"] = [
+        {
+            "stage": "comments",
+            "external_comment_id": "comment-legacy",
+            "expected_external_content_id": "legacy-diagnostics",
+            "observed_external_content_id": "other-content",
+            "raw_locator": "provider/test/raw.json#items[0]",
+        }
+    ]
+
+    restored = VehiclePairCommentRecordV1.model_validate(payload)
+
+    assert restored.comment_fetch.reply_shortfalls[0].reported_count == 2
+    assert restored.comment_fetch.identity_mismatches[0].observed_external_content_id == (
+        "other-content"
+    )

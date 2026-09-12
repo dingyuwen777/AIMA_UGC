@@ -21,6 +21,8 @@ frontend/node_modules
 frontend/dist
 frontend/playwright-report
 frontend/test-results
+# Provider Probe、导入测试等本地运行结果不属于镜像构建输入。
+backend/src/aima_ugc/adapters/providers/**/output/
 dist
 build
 .env

@@ -30,6 +30,32 @@ class CommentFetchFailureV1(_CommentEnrichmentBaseModel):
     raw_locator: str = Field(min_length=1, max_length=4096)
 
 
+class CommentReplyShortfallV1(_CommentEnrichmentBaseModel):
+    """记录 Provider 已知回复数与实际分页结果之间的缺口。"""
+
+    root_comment_id: str = Field(min_length=1, max_length=512)
+    reported_count: int = Field(ge=1)
+    observed_count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_shortfall(self) -> CommentReplyShortfallV1:
+        """只有实际少于已知数量时才允许声明 shortfall。"""
+
+        if self.observed_count >= self.reported_count:
+            raise ValueError("回复缺口必须满足 observed_count < reported_count")
+        return self
+
+
+class CommentIdentityMismatchV1(_CommentEnrichmentBaseModel):
+    """记录 Provider 返回了不属于当前帖子的评论。"""
+
+    stage: Literal["comments", "replies"]
+    external_comment_id: str = Field(min_length=1, max_length=512)
+    expected_external_content_id: str = Field(min_length=1, max_length=512)
+    observed_external_content_id: str = Field(min_length=1, max_length=512)
+    raw_locator: str = Field(min_length=1, max_length=4096)
+
+
 class CommentFetchCoverageV1(_CommentEnrichmentBaseModel):
     """描述一篇帖子本次评论补采的可验证覆盖范围。"""
 
@@ -40,13 +66,17 @@ class CommentFetchCoverageV1(_CommentEnrichmentBaseModel):
     request_count: int = Field(ge=0)
     root_stop_reason: str | None = Field(default=None, max_length=256)
     failures: tuple[CommentFetchFailureV1, ...] = ()
+    reply_shortfalls: tuple[CommentReplyShortfallV1, ...] = ()
+    identity_mismatches: tuple[CommentIdentityMismatchV1, ...] = ()
 
     @model_validator(mode="after")
     def validate_coverage(self) -> CommentFetchCoverageV1:
         """禁止把包含永久失败的记录标记为 complete。"""
 
-        if self.coverage == "complete" and self.failures:
-            raise ValueError("存在 Provider 永久失败时 coverage 不能为 complete")
+        if self.coverage == "complete" and (
+            self.failures or self.reply_shortfalls or self.identity_mismatches
+        ):
+            raise ValueError("存在失败、数量缺口或串帖评论时 coverage 不能为 complete")
         if self.coverage == "unavailable" and (self.root_comment_count or self.reply_count):
             raise ValueError("unavailable 不能同时声明已采集评论")
         return self
@@ -110,5 +140,7 @@ class VehiclePairCommentRecordV1(_CommentEnrichmentBaseModel):
 __all__ = [
     "CommentFetchCoverageV1",
     "CommentFetchFailureV1",
+    "CommentIdentityMismatchV1",
+    "CommentReplyShortfallV1",
     "VehiclePairCommentRecordV1",
 ]
