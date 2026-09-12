@@ -1,200 +1,208 @@
-# 监测 Excel 目录批量过滤
+# 监测 Excel 目录增量过滤
 
-本目录是 `imports_test` 下的一次性离线工具，用来处理一整个目录树中的监测 Excel：自动发现所有 `.xlsx`，只保留 AIMA_UGC 当前正式支持的五个平台数据，再按词包过滤标题/正文，最后跨文件统一去重并输出 JSONL。
+本目录是 `imports_test` 的第一阶段离线工具。它继续复用正式 Excel Reader、Mapper、Canonical、关键词过滤与单 run 去重实现，但现在会自动接管**本机**已有 `output/runs/*`，以后只解析新增 Excel，并把跨历史真正新增的帖子交给第二阶段。
 
-它只改变**人工触发方式和离线输出**，数据解析继续复用正式 Excel Reader、Mapper、Canonical、关键词过滤和去重实现。
+真实 `output/` 仍由本目录 `.gitignore` 排除：历史数据只存在你的电脑，不需要、也不应该上传 GitHub。
 
-## 1. 处理链
+## 1. 当前链路
 
 ```text
 INPUT_DIR
-→ 递归发现所有 .xlsx
-→ iter_excel_rows()
-→ map_excel_row()
-   ├─ xiaohongshu / douyin / weibo / bilibili / kuaishou → CanonicalContentV1
-   └─ platform_unmapped → 明确跳过并计数
-→ canonical/contents.jsonl
-→ filter_canonical_content_jsonl(keywords=...)
-→ filtered/contents.jsonl
-→ deduplicate_content_jsonl()
-→ deduplicated/contents.jsonl
-→ run_summary.json
+→ 发现全部 .xlsx
+→ 自动读取 output/state + output/runs
+→ 已处理且未变化 Excel：跳过
+→ 新增 Excel：iter_excel_rows() → map_excel_row()
+→ 五平台 Canonical
+→ keyword_pack OR 过滤
+→ 本 run 内 deduplicate_content_jsonl()
+→ 与历史 content identity index 再去重
+→ runs/<run_id>/deduplicated/contents.jsonl  # 仅本次全局新增 delta
 ```
 
-本工具**不会**写 PostgreSQL、调用 TikHub、调用 LLM、执行 AI 打标、启动 Worker/Scheduler、生成正式报告，也不会修改正式 Platform/Canonical Contract。
-
-## 2. 输入目录
-
-编辑 [`backend/src/aima_ugc/adapters/providers/imports_test/monitoring_excel_filter/process_directory.py`](process_directory.py) 顶部：
-
-```python
-INPUT_DIR = Path(r"E:\AIMA_UGC_data\monitoring")
-```
-
-脚本递归遍历该目录及全部子目录：
+稳定内容身份仍是：
 
 ```text
-monitoring/
-├── 2026-03/
-│   ├── 2026-03-01_xxx.xlsx
-│   └── 2026-03-02_xxx.xlsx
-├── 2026-04/
-│   └── ...
-└── 2026-09/
-    └── ...
+(platform, external_content_id)
 ```
 
-规则：
+## 2. 第一次升级：自动识别你本机已经跑过的数据
 
-- 处理后缀为 `.xlsx` 的文件（大小写不敏感）；
-- 自动忽略 Excel 临时文件 `~$*.xlsx`；
-- 其他格式忽略；
-- 没有发现 XLSX 时直接报错；
-- 文件按文件名、再按相对路径确定性排序；来源文件名以 `YYYY-MM-DD` 开头时自然按日期升序处理；
-- Canonical `source_value` 保存相对于 `INPUT_DIR` 的路径，因此不同子目录下同名 Excel 仍可唯一追溯。
-
-## 3. Excel 格式与平台范围
-
-继续使用现有 Profile：
+如果 `output/state/manifest.json` 不存在，代码会自动扫描：
 
 ```text
-aima-monitoring-excel.v1
+output/runs/*/run_summary.json
+output/runs/*/deduplicated/contents.jsonl
 ```
 
-`SHEET_NAME = None` 时沿用正式 Reader 自动发现符合 Profile 表头的工作表；如果全部文件都确定使用“文章”，也可改成：
-
-```python
-SHEET_NAME = "文章"
-```
-
-只处理 AIMA 当前五个平台：
+并建立：
 
 ```text
-xiaohongshu
-douyin
-weibo
-bilibili
-kuaishou
+output/state/
+├── manifest.json
+└── content_index/
+    ├── 00.jsonl
+    ├── 01.jsonl
+    ├── ...
+    └── ff.jsonl
 ```
 
-微信、今日头条、微信视频号、百度等无法映射为这五个平台的行会产生 `platform_unmapped`，本工具把它们视为明确的非目标数据：跳过并在 `run_summary.json` 统计。
+旧 run 只读使用，不修改、不删除、不覆盖。
 
-只有 `platform_unmapped` 可以跳过。`platform_missing`、内容身份缺失、日期/粉丝数字段非法、Canonical 校验失败、工作表/表头异常、损坏 XLSX 等都直接失败，避免静默丢失目标平台数据。
-
-## 4. 配置品牌词和车型词
-
-编辑当前目录的 [`backend/src/aima_ugc/adapters/providers/imports_test/monitoring_excel_filter/keyword_pack.txt`](keyword_pack.txt)。品牌和车型放在**同一个词包**，因为本次规则就是“命中任意品牌词 **OR** 任意车型词即保留”。
+对旧 Excel，bootstrap 只补一次：
 
 ```text
-# 品牌
-爱玛
-雅迪
-
-# 车型
-元宇宙
-墩墩
-莱茵
+relative source path
+size
+mtime_ns
+SHA-256
 ```
 
-沿用 `imports_test.keyword_pack.load_keyword_pack()`：
+不会重新进入 openpyxl/Reader/Mapper/关键词过滤。对历史最终 JSONL，只扫描稳定内容身份建立 256 分片索引，不重新处理 Excel。
 
-- UTF-8 / UTF-8 BOM；
-- 一行一个词；
-- 空行忽略；
-- `#` 开头为注释；
-- 规范化重复词只保留第一个标准词。
+## 3. 后续运行怎样判断文件
 
-匹配继续复用现有相关性实现，只检查：
+对于已经登记的同一路径文件：
 
 ```text
-title OR text
+size + mtime_ns 相同
+→ 直接 skipped_unchanged
+→ 不读取 Excel 内容
+
+size/mtime 变化但 SHA-256 相同
+→ 仍视为 unchanged，并刷新文件元数据
+
+SHA-256 不同
+→ fail closed
+→ 报“已处理 Excel 内容发生变化”
 ```
 
-匹配前继续执行当前规则：Unicode NFKC、casefold、忽略空白以及 `-`、`_`、`·` 连接符。最终 `matched_keywords` 保存词包中的标准名称。
+原因是历史文件原地修改可能包含删除/替换行，简单增量无法安全撤销旧贡献。
 
-## 5. 输出
+对于新路径文件：
 
-默认输出在本目录：
+```text
+SHA-256 从未出现
+→ 真正新增 → 处理
+
+SHA-256 与历史文件完全相同
+→ duplicate_binary → 跳过
+```
+
+建议处理完成的历史 Excel 保持不可变，后续数据用新 Excel 追加到目录。
+
+## 4. Pipeline Signature
+
+增量 state 绑定：
+
+```text
+processing semantics version
+profile_name
+sheet_name
+keyword_pack.txt SHA-256
+```
+
+如果词包、Profile 或 Sheet 配置变化，程序会拒绝沿用旧 state，因为历史 Excel 可能需要重新筛选。此时应使用新的 `output_root` 或明确重建 Stage 1 state，不能静默继续。
+
+## 5. 输出目录
 
 ```text
 output/
+├── state/
+│   ├── manifest.json
+│   └── content_index/*.jsonl
+├── current/
+│   └── manifest.json
 └── runs/
-    └── <run_id>/
-        ├── canonical/
-        │   └── contents.jsonl
-        ├── filtered/
-        │   └── contents.jsonl
+    ├── <历史旧 run>/                # 原封不动
+    └── <本次 run>/
+        ├── canonical/contents.jsonl
+        ├── filtered/contents.jsonl
         ├── deduplicated/
         │   ├── contents.jsonl
         │   └── deduplication_conflicts.jsonl
+        ├── state_delta/content_index/*.jsonl
         └── run_summary.json
 ```
 
-通常后续真正使用：
+### run 是 delta
+
+新的：
 
 ```text
-deduplicated/contents.jsonl
+runs/<run_id>/deduplicated/contents.jsonl
 ```
 
-各文件含义：
+只包含：
 
-- `canonical/contents.jsonl`：目录中所有成功映射到五个平台的 Canonical 内容；
-- `filtered/contents.jsonl`：标题/正文命中词包任意词的数据；
-- `deduplicated/contents.jsonl`：按 `(platform, external_content_id)` 去重后的最终结果；
-- `deduplication_conflicts.jsonl`：同稳定身份但业务字段存在差异的重复记录审计；
-- `run_summary.json`：总行数、五平台行数、非目标平台跳过数、过滤/去重统计，以及逐文件统计。
+> 本次新增 Excel 中，命中词包、run 内去重后，并且历史 content identity index 中从未出现的帖子。
 
-每次执行创建独立 run；已存在的显式 `run_id` 不会被覆盖。`output/` 已由当前目录 `.gitignore` 排除，不应提交真实数据产物。
+因此第二阶段直接处理最新 run 的该文件即可，不必再次扫描历史全部数据。
 
-## 6. 运行
+### current 为什么只是 manifest
 
-从仓库根目录执行：
+第一阶段可能达到数千万条帖子。每次运行都重新复制一份全量 JSONL 会产生巨大、无业务价值的 I/O 和磁盘重复。
+
+所以：
+
+```text
+output/current/manifest.json
+```
+
+记录所有已提交 run delta 及累计行数；完整历史事实仍由不可变 `runs/*/deduplicated/contents.jsonl` + `state/content_index` 表达。
+
+第二、三阶段的数据规模已经明显收敛，才维护可直接查看的累计 `current` JSONL/Excel。
+
+## 6. no-op run
+
+如果目录中所有 Excel 都已经处理且没有变化，本次运行仍然成功：
+
+```text
+files_processed = 0
+rows_seen = 0
+rows_after_deduplication = 0
+```
+
+并生成稳定的空 JSONL run，不把“没有新增数据”误报为错误。
+
+## 7. run_summary.json 关键字段
+
+除原有统计外，增量 run 新增：
+
+```text
+input_file_count                 # 目录发现总数
+files_processed                  # 本次真正打开处理的 Excel
+files_skipped_unchanged
+files_skipped_duplicate_binary
+historical_duplicates_removed    # 本次与历史 content identity 重复数
+pipeline_signature
+file_decisions
+```
+
+其中 `rows_seen` 只统计本次真正处理的新 Excel，不再重复计入历史文件。
+
+## 8. 运行
+
+配置：
+
+```python
+INPUT_DIR = Path(r"D:\慧科数据")
+KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
+```
+
+仓库根目录运行：
 
 ```bash
 uv run python -m aima_ugc.adapters.providers.imports_test.monitoring_excel_filter.process_directory
 ```
 
-成功后终端会打印本次 run ID、输入文件数、总行数、五平台行数、关键词命中数、最终去重行数和最终 JSONL 路径。
+第一次升级如果已有本地旧 run，会自动 bootstrap；无需手工登记旧 run。
 
-## 7. 去重语义
+## 9. 安全与失败边界
 
-直接复用现有 `deduplicate_content_jsonl()`：
-
-```text
-identity = (platform, external_content_id)
-```
-
-- 第一次出现：保留；
-- 相同身份再次出现：删除后续记录；
-- 字段完全等价：普通重复；
-- 字段有差异：仍保留首次记录，同时写 `deduplication_conflicts.jsonl`。
-
-脚本按确定性文件顺序处理，因此“首次记录”由该顺序决定。本工具不改变正式去重策略，也不实现“自动保留最新记录”。
-
-## 8. 运行摘要与对账
-
-成功 run 至少满足：
-
-```text
-rows_seen
-= rows_supported_platform
-+ rows_skipped_platform_unmapped
-```
-
-以及：
-
-```text
-rows_keyword_matched
-= rows_after_deduplication
-+ duplicates_removed
-```
-
-`run_summary.json` 同时保存 `skipped_media_names`，用于说明哪些媒体来源被明确作为非五平台跳过，而不是读取过程静默丢行。
-
-## 9. 失败与数据安全
-
-- 输入 Excel 只读，不删除、不修改；
-- Canonical 阶段使用临时文件 + `fsync` + 原子替换；异常时不发布半截 JSONL；
-- 过滤和去重继续使用现有原子写入实现；
-- 全流程流式处理，不把整批 Excel 或 JSONL 一次性加载到内存；
-- 只有所有阶段成功后才写 `run_summary.json`。
+- 输入 Excel 始终只读；
+- 旧 `runs/*` 不修改；
+- 同一个 output state 通过原子目录锁禁止两个进程同时推进；
+- Canonical/过滤/去重继续使用已有临时文件与原子替换；
+- identity index 使用 256 个 JSONL 分片，单次只加载一个历史分片，避免把几千万 content ID 全放内存；
+- 只有存在 `run_summary.json` 的完成 run 才会在下次启动时被自动 reconcile 进 state；
+- state 更新意外中断时，下次运行可从不可变历史 run 自动补索引，不需要重新解析 Excel。
