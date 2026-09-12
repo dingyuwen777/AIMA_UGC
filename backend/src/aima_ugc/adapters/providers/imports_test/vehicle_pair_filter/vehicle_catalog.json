@@ -1,0 +1,63 @@
+{
+  "schema_version": "vehicle-pair-catalog.v1",
+  "target_brand": "爱玛",
+  "brands": [
+    {
+      "name": "爱玛",
+      "models": [
+        {
+          "name": "元宇宙",
+          "aliases": ["爱玛元宇宙"]
+        },
+        {
+          "name": "墩墩",
+          "aliases": ["爱玛墩墩"]
+        }
+      ]
+    },
+    {
+      "name": "雅迪",
+      "models": [
+        {
+          "name": "莱茵",
+          "aliases": ["雅迪莱茵"]
+        },
+        {
+          "name": "麦芒",
+          "aliases": ["雅迪麦芒"]
+        }
+      ]
+    },
+    {
+      "name": "九号",
+      "models": [
+        {
+          "name": "QZ1",
+          "aliases": ["九号QZ1"]
+        },
+        {
+          "name": "Q3",
+          "aliases": ["九号Q3"]
+        }
+      ]
+    },
+    {
+      "name": "小牛",
+      "models": [
+        {
+          "name": "Y果冻",
+          "aliases": ["小牛Y果冻"]
+        }
+      ]
+    },
+    {
+      "name": "极核",
+      "models": [
+        {
+          "name": "Mo1",
+          "aliases": ["极核Mo1"]
+        }
+      ]
+    }
+  ]
+}
