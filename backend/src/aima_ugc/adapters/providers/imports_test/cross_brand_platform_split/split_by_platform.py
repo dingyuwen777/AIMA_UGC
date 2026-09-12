@@ -78,8 +78,7 @@ def split_by_platform(
     try:
         with ExitStack() as stack:
             writers: dict[PlatformName, BinaryIO] = {
-                item: stack.enter_context(staging_paths[item].open("wb"))
-                for item in PLATFORM_NAMES
+                item: stack.enter_context(staging_paths[item].open("wb")) for item in PLATFORM_NAMES
             }
             with source_path.open("rb") as source_file:
                 for line_number, raw_line in enumerate(source_file, start=1):
