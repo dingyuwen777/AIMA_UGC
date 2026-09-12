@@ -212,9 +212,7 @@ def test_three_stage_workflow_splits_cross_brand_posts_into_five_platform_files(
 
     for platform in PLATFORM_NAMES:
         lines = [
-            line
-            for line in third.output_paths[platform].read_bytes().splitlines()
-            if line.strip()
+            line for line in third.output_paths[platform].read_bytes().splitlines() if line.strip()
         ]
         assert len(lines) == 1
         record = VehiclePairRecordV1.model_validate_json(lines[0])
