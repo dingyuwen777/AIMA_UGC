@@ -25,7 +25,7 @@ INPUT_DIR
 
 ## 2. 输入目录
 
-编辑 [`process_directory.py`](process_directory.py) 顶部：
+编辑 [`backend/src/aima_ugc/adapters/providers/imports_test/monitoring_excel_filter/process_directory.py`](process_directory.py) 顶部：
 
 ```python
 INPUT_DIR = Path(r"E:\AIMA_UGC_data\monitoring")
@@ -83,7 +83,7 @@ kuaishou
 
 ## 4. 配置品牌词和车型词
 
-编辑当前目录的 [`keyword_pack.txt`](keyword_pack.txt)。品牌和车型放在**同一个词包**，因为本次规则就是“命中任意品牌词 **OR** 任意车型词即保留”。
+编辑当前目录的 [`backend/src/aima_ugc/adapters/providers/imports_test/monitoring_excel_filter/keyword_pack.txt`](keyword_pack.txt)。品牌和车型放在**同一个词包**，因为本次规则就是“命中任意品牌词 **OR** 任意车型词即保留”。
 
 ```text
 # 品牌
