@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
-from openpyxl import Workbook, load_workbook
-from pydantic import SecretStr
 from aima_ugc.adapters.providers.imports_test.comparison_comment_enrichment.enrich_comments import (
     enrich_comparison_comments,
 )
@@ -30,6 +28,8 @@ from aima_ugc.modules.collection.providers.transport import (
     ProviderTransportRequest,
     ProviderTransportResponse,
 )
+from openpyxl import Workbook, load_workbook
+from pydantic import SecretStr
 
 _HEADERS = (
     "媒体名称（中文）",
