@@ -23,7 +23,7 @@ from aima_ugc.modules.analysis import (
 )
 from aima_ugc.platform.time import beijing_now
 
-INPUT_DIR = Path(r"E:\\AIMA_UGC_data\\monitoring")
+INPUT_DIR = Path(r"E:\AIMA_UGC_data\monitoring")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 PROFILE = "aima-monitoring-excel.v1"
