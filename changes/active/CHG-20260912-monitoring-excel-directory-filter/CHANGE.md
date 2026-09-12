@@ -97,6 +97,7 @@ Excluded：PostgreSQL、TikHub、LLM、AI 标签、API/Worker/Scheduler、正式
 - 当前正式批量转换存在任意 rejected row 时拒绝发布 Canonical；`platform_unmapped` 因此不能直接复用该高层入口。
 - 当前 `filter_canonical_content_jsonl()` 只传 `keywords=` 时，同一维度内为 OR，满足品牌词/车型词任意命中需求。
 - 当前 `deduplicate_content_jsonl()` 按 `(platform, external_content_id)` 去重，可直接处理跨 Excel 过滤结果。
+- Draft PR 的正式 CI 会直接 skipped，因此 PR 已切为普通状态但仍保持“逻辑未就绪”；下一次同步提交只用于触发 tests-only Red。
 
 # Completion Audit
 
