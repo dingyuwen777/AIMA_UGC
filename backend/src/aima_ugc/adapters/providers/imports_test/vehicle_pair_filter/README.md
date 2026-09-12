@@ -151,9 +151,7 @@ outputs.current_comparison_posts_excel
 编辑顶部：
 
 ```python
-INPUT_JSONL = Path(
-    r"...\monitoring_excel_filter\output\runs\<最新run>\deduplicated\contents.jsonl"
-)
+INPUT_JSONL = Path(r"...\monitoring_excel_filter\output\runs\<最新run>\deduplicated\contents.jsonl")
 ```
 
 然后：
