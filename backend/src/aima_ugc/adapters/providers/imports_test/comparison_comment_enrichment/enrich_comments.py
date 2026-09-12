@@ -21,7 +21,6 @@ from aima_ugc.adapters.providers.imports_test.comparison_comment_enrichment.mode
     VehiclePairCommentRecordV1,
 )
 from aima_ugc.adapters.providers.imports_test.incremental_state import (
-    SHARD_NAMES,
     AppendOnlyShardIndex,
     atomic_write_json,
     content_identity_key,
@@ -423,7 +422,7 @@ def _run_enrichment(
     provider_config: TikHubTestConfig,
     transport: ProviderTransport,
 ) -> CommentEnrichmentRunSummary:
-    """在文件化 cache/state 保护下执行增量补采，并维护累计 current JSONL/Excel。"""
+    """在文件化 cache/state 保护下按原输入顺序增量补采，并维护累计 current。"""
 
     with state_lock(output_root):
         state, cache_index = _load_and_reconcile_state(output_root)
@@ -445,7 +444,6 @@ def _run_enrichment(
         final_summary = final_run_dir / "run_summary.json"
         current_jsonl = output_root / "current" / "comparison_posts_with_comments.jsonl"
         current_workbook = output_root / "current" / "comparison_posts_with_comments.xlsx"
-        partition_root = staging_dir / ".input_shards"
 
         rows_seen = 0
         rows_cached = 0
@@ -460,59 +458,47 @@ def _run_enrichment(
             transport=transport,
             staging_dir=staging_dir,
         )
+        loaded_cache_shards: dict[str, dict[str, dict[str, Any]]] = {}
 
         try:
-            _partition_input(input_path, partition_root)
             with staging_jsonl.open("w", encoding="utf-8", newline="\n") as output_file:
-                for shard in SHARD_NAMES:
-                    partition = partition_root / f"{shard}.jsonl"
-                    if not partition.is_file():
-                        continue
-                    cached_entries = cache_index.load_shard(shard)
-                    with partition.open("rb") as source_file:
-                        for line_number, raw_line in enumerate(source_file, start=1):
-                            if not raw_line.strip():
-                                continue
-                            record = _parse_input_record(
-                                raw_line,
-                                input_path=partition,
-                                line_number=line_number,
-                            )
-                            rows_seen += 1
-                            content = record.record.content
-                            platform_counts[content.platform] += 1
-                            key = content_identity_key(
-                                content.platform,
-                                content.external_content_id,
-                            )
-                            cached_entry = cached_entries.get(key)
-                            if cached_entry is not None:
-                                cached = _read_cached_record(output_root, cached_entry)
-                                enriched = VehiclePairCommentRecordV1(
-                                    record=record,
-                                    comments=cached.comments,
-                                    comment_fetch=cached.comment_fetch,
-                                )
-                                rows_cached += 1
-                            else:
-                                fetched = fetcher.fetch(record)
-                                enriched = VehiclePairCommentRecordV1(
-                                    record=record,
-                                    comments=fetched.comments,
-                                    comment_fetch=fetched.coverage,
-                                )
-                                rows_fetched += 1
+                for record in _iter_input_records(input_path):
+                    rows_seen += 1
+                    content = record.record.content
+                    platform_counts[content.platform] += 1
+                    key = content_identity_key(content.platform, content.external_content_id)
+                    shard = shard_name(key)
+                    cached_entries = loaded_cache_shards.get(shard)
+                    if cached_entries is None:
+                        cached_entries = cache_index.load_shard(shard)
+                        loaded_cache_shards[shard] = cached_entries
+                    cached_entry = cached_entries.get(key)
+                    if cached_entry is not None:
+                        cached = _read_cached_record(output_root, cached_entry)
+                        enriched = VehiclePairCommentRecordV1(
+                            record=record,
+                            comments=cached.comments,
+                            comment_fetch=cached.comment_fetch,
+                        )
+                        rows_cached += 1
+                    else:
+                        fetched = fetcher.fetch(record)
+                        enriched = VehiclePairCommentRecordV1(
+                            record=record,
+                            comments=fetched.comments,
+                            comment_fetch=fetched.coverage,
+                        )
+                        rows_fetched += 1
 
-                            output_file.write(enriched.model_dump_json())
-                            output_file.write("\n")
-                            coverage = enriched.comment_fetch
-                            coverage_counts[coverage.coverage] += 1
-                            root_comment_count += coverage.root_comment_count
-                            reply_count += coverage.reply_count
-                            failure_count += len(coverage.failures)
+                    output_file.write(enriched.model_dump_json())
+                    output_file.write("\n")
+                    coverage = enriched.comment_fetch
+                    coverage_counts[coverage.coverage] += 1
+                    root_comment_count += coverage.root_comment_count
+                    reply_count += coverage.reply_count
+                    failure_count += len(coverage.failures)
                 output_file.flush()
                 os.fsync(output_file.fileno())
-            shutil.rmtree(partition_root, ignore_errors=True)
 
             excel_summary = export_unified_data_excel(
                 _iter_excel_records(staging_jsonl),
@@ -566,7 +552,6 @@ def _run_enrichment(
             output_path=current_jsonl,
             workbook_path=current_workbook,
         )
-        # current 路径与缓存统计写入最终摘要，方便本地人工核验本轮没有重复付费请求。
         _write_json(
             final_summary,
             _run_summary_payload(
@@ -724,7 +709,7 @@ def _index_comment_run(
 
 
 def _partition_input(input_path: Path, partition_root: Path) -> None:
-    """按 content identity hash 分片输入，使每个历史 cache shard 只需加载一次。"""
+    """保留给大批量离线诊断的按 identity 分片工具；主补采链按输入顺序处理。"""
 
     partition_root.mkdir(parents=True, exist_ok=False)
     writers: dict[str, TextIO] = {}
