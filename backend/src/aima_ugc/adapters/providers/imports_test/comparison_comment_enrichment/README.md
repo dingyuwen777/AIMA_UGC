@@ -228,9 +228,7 @@ backend/src/aima_ugc/adapters/providers/tikhub_test/.env
 编辑：
 
 ```python
-INPUT_JSONL = Path(
-    r"...\vehicle_pair_filter\output\runs\<run_id>\comparison_posts.jsonl"
-)
+INPUT_JSONL = Path(r"...\vehicle_pair_filter\output\runs\<run_id>\comparison_posts.jsonl")
 ```
 
 然后：
