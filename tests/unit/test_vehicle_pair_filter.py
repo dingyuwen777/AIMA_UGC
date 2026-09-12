@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-
 from aima_ugc.adapters.providers.imports_test.vehicle_pair_filter.filter_vehicle_pairs import (
     VehiclePairRecordV1,
     filter_vehicle_pairs,
@@ -260,7 +259,8 @@ def test_shipped_catalog_is_valid() -> None:
 
     catalog_path = (
         Path(__file__).parents[2]
-        / "backend/src/aima_ugc/adapters/providers/imports_test/vehicle_pair_filter/vehicle_catalog.json"
+        / "backend/src/aima_ugc/adapters/providers/imports_test"
+        / "vehicle_pair_filter/vehicle_catalog.json"
     )
     catalog = load_vehicle_catalog(catalog_path)
 
