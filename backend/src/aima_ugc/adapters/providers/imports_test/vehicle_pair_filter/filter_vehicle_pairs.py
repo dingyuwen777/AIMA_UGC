@@ -297,9 +297,10 @@ def filter_vehicle_pairs(
         temp_path = output_path.with_name(f".{output_path.name}.tmp")
         temp_path.unlink(missing_ok=True)
         try:
-            with source_path.open("rb") as source_file, temp_path.open(
-                "w", encoding="utf-8", newline="\n"
-            ) as output_file:
+            with (
+                source_path.open("rb") as source_file,
+                temp_path.open("w", encoding="utf-8", newline="\n") as output_file,
+            ):
                 for line_number, raw_line in enumerate(source_file, start=1):
                     if not raw_line.strip():
                         continue
@@ -402,7 +403,9 @@ def _parse_input_record(
     try:
         return UnifiedContentRecordV1.model_validate_json(raw_line)
     except (ValidationError, ValueError) as exc:
-        raise ValueError(f"输入 JSONL 第 {line_number} 行不符合 UnifiedContentRecordV1: {input_path}") from exc
+        raise ValueError(
+            f"输入 JSONL 第 {line_number} 行不符合 UnifiedContentRecordV1: {input_path}"
+        ) from exc
 
 
 def _match_post_models(
