@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260912-browser-security-headers
 title: 公网浏览器安全响应头与 IP 端口兼容整改
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/browser-security-headers
 created: 2026-09-12
