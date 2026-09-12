@@ -209,7 +209,7 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """统一入口应按五平台 typed identity 发 Comments/SubComments，而无需预拆 JSONL。"""
+    """统一入口应按五平台正式 typed identity 发 Comments/SubComments。"""
 
     _install_generic_runtime(monkeypatch)
     monkeypatch.setattr(
@@ -284,10 +284,15 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
         "typed-photo-id",
     )
     for index, expected_id in enumerate(expected_ids):
+        platform = records[index].record.content.platform
         comment_request = transport.requests[index * 2]
         reply_request = transport.requests[index * 2 + 1]
         assert expected_id in comment_request.params.values()
-        assert expected_id in reply_request.params.values()
+        if platform == "weibo":
+            assert reply_request.path.endswith("/fetch_post_sub_comments")
+            assert expected_id not in reply_request.params.values()
+        else:
+            assert expected_id in reply_request.params.values()
         assert any(str(value).startswith("root-") for value in reply_request.params.values())
 
     output_lines = [
@@ -303,8 +308,8 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
 
     workbook = load_workbook(summary.workbook_path, read_only=True, data_only=True)
     try:
-        assert workbook["内容"].max_row == 6
-        assert workbook["评论"].max_row == 11
+        assert sum(1 for _ in workbook["内容"].iter_rows()) == 6
+        assert sum(1 for _ in workbook["评论"].iter_rows()) == 11
     finally:
         workbook.close()
 

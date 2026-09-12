@@ -304,8 +304,8 @@ def test_three_stage_workflow_outputs_unified_comments_jsonl_and_excel(
 
     workbook = load_workbook(third.workbook_path, read_only=True, data_only=True)
     try:
-        assert workbook["内容"].max_row == 6
-        assert workbook["评论"].max_row == 6
+        assert sum(1 for _ in workbook["内容"].iter_rows()) == 6
+        assert sum(1 for _ in workbook["评论"].iter_rows()) == 6
     finally:
         workbook.close()
 
