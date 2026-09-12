@@ -25,13 +25,7 @@ comparison_posts.jsonl
 
 ## 2. 第一次升级会自动识别你本机已有数据
 
-如果：
-
-```text
-output/state/manifest.json
-```
-
-不存在，代码自动扫描本机：
+如果 `output/state/` 还没有评论缓存状态，代码自动扫描本机：
 
 ```text
 output/runs/*/run_summary.json
@@ -45,11 +39,7 @@ output/runs/*/comparison_posts_with_comments.jsonl
 → 历史 JSONL path + byte offset
 ```
 
-索引保存在：
-
-```text
-output/state/cache_index/00.jsonl ... ff.jsonl
-```
+索引保存在 `output/state/cache_index/` 的 256 个 JSONL 分片中。
 
 state **不复制评论正文**；comments 仍只存在原来的不可变历史 run JSONL 中。旧 run 不修改、不删除、不覆盖。
 
@@ -97,7 +87,7 @@ unavailable
 
 识别。
 
-如果第二阶段以后因为 `vehicle_catalog.json` 改动重算了某篇旧帖子，Stage 3 会：
+如果第二阶段以后因为 [`vehicle_catalog.json`](../vehicle_pair_filter/vehicle_catalog.json) 改动重算了某篇旧帖子，Stage 3 会：
 
 ```text
 使用本次最新 VehiclePairRecordV1
@@ -161,7 +151,6 @@ kuaishou    → photo_id
 ```text
 output/
 ├── state/
-│   ├── manifest.json
 │   └── cache_index/*.jsonl
 ├── current/
 │   ├── comparison_posts_with_comments.jsonl
