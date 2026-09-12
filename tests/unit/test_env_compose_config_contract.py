@@ -148,7 +148,7 @@ def test_env_examples_expose_only_real_runtime_boundaries() -> None:
     assert local_config.historical_import_host_root == "./.runtime/historical-input"
     assert local_config.historical_import_root == "/data/aima-historical-input"
     assert "AIMA_HOST_ROOT=./.runtime/compose" in local_text
-    assert "AIMA_HISTORICAL_IMPORT_ROOT=/data/aima-historical-input" in production
+    assert "AIMA_HISTORICAL_IMPORT_ROOT=/data/AIMA_UGC/aima-historical-input" in production
     assert "AIMA_ANALYSIS_RUN_SHARD_SIZE" not in local_text
     assert "AIMA_ANALYSIS_RUN_SHARD_SIZE" not in production
     assert "AIMA_ANALYSIS_RUN_SHARD_SIZE" not in compose
