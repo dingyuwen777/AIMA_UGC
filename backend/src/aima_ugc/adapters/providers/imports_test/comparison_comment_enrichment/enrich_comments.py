@@ -328,9 +328,7 @@ class _TikHubCommentFetcher:
             )
             return _SendResult(None, raw_record, raw_locator, failure)
         if status_code >= 300:
-            raise RuntimeError(
-                f"TikHub {platform} 返回未支持的 HTTP {status_code}: {raw_locator}"
-            )
+            raise RuntimeError(f"TikHub {platform} 返回未支持的 HTTP {status_code}: {raw_locator}")
         if not isinstance(response.body, dict):
             raise ValueError(f"TikHub {platform} 成功响应必须为 JSON Object: {raw_locator}")
         return _SendResult(dict(response.body), raw_record, raw_locator, None)
@@ -468,9 +466,7 @@ def _run_enrichment(
             "rows_complete": coverage_counts["complete"],
             "rows_partial": coverage_counts["partial"],
             "rows_unavailable": coverage_counts["unavailable"],
-            "platform_counts": {
-                platform: platform_counts[platform] for platform in PLATFORM_NAMES
-            },
+            "platform_counts": {platform: platform_counts[platform] for platform in PLATFORM_NAMES},
             "root_comment_count": root_comment_count,
             "reply_count": reply_count,
             "request_count": fetcher.request_count,
@@ -598,10 +594,7 @@ def _iter_excel_records(path: Path) -> Iterator[UnifiedDataExcelV1]:
 def _is_root_comment(comment: CanonicalCommentV1) -> bool:
     """按 Canonical root/parent 身份判断 Excel 展示层级。"""
 
-    return (
-        comment.root_comment_id == comment.external_comment_id
-        and comment.parent_comment_id is None
-    )
+    return comment.root_comment_id == comment.external_comment_id and comment.parent_comment_id is None
 
 
 def _write_json(path: Path, value: object) -> None:
