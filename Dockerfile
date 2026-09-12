@@ -79,6 +79,8 @@ RUN npm run build
 FROM nginx:1.30.4-alpine3.24 AS frontend
 COPY frontend/nginx.conf /etc/nginx/nginx.conf
 COPY --from=frontend-builder --chown=nginx:nginx /build/frontend/dist /usr/share/nginx/html
+# 镜像构建阶段先校验最终 Nginx 配置，避免无效安全策略进入 Release 候选。
+RUN nginx -t
 USER nginx
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
