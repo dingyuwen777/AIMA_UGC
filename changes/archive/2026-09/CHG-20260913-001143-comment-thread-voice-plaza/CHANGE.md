@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260913-001143-comment-thread-voice-plaza
 title: 声音广场评论补采结果与父子关系展示
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: comment-thread-voice-plaza
 created: 2026-09-13
