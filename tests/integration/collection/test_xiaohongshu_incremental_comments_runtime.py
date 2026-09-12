@@ -136,8 +136,7 @@ def _detail_response() -> dict[str, object]:
     original_image = note["images_list"][0]
     assert isinstance(original_image, dict)
     note["images_list"] = [
-        {**original_image, "fileid": f"image-{position}", "index": 0}
-        for position in range(3)
+        {**original_image, "fileid": f"image-{position}", "index": 0} for position in range(3)
     ]
     return body
 

@@ -472,9 +472,7 @@ class PostgresContentRepository:
             for path in _ACCOUNT_FIELD_COLUMNS
             if path in observed_fields
         }
-        alternate_ids = (
-            author.alternate_ids if "author.alternate_ids" in observed_fields else {}
-        )
+        alternate_ids = author.alternate_ids if "author.alternate_ids" in observed_fields else {}
         primary_account_id = self._session.scalar(
             select(accounts_table.c.id).where(
                 accounts_table.c.platform == platform,
