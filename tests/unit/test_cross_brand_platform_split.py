@@ -162,9 +162,7 @@ def test_split_always_creates_empty_files_for_platforms_without_rows(tmp_path: P
 
     input_path = tmp_path / "comparison_posts.jsonl"
     input_path.write_bytes(
-        _raw_line(
-            _vehicle_pair_record(platform="xiaohongshu", external_id="only-xhs")
-        )
+        _raw_line(_vehicle_pair_record(platform="xiaohongshu", external_id="only-xhs"))
     )
 
     summary = split_by_platform(
