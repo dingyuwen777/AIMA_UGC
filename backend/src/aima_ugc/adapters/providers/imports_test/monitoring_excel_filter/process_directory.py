@@ -95,9 +95,7 @@ def discover_input_files(input_dir: Path) -> tuple[Path, ...]:
     files = [
         path
         for path in root.rglob("*")
-        if path.is_file()
-        and path.suffix.casefold() == ".xlsx"
-        and not path.name.startswith("~$")
+        if path.is_file() and path.suffix.casefold() == ".xlsx" and not path.name.startswith("~$")
     ]
     if not files:
         raise FileNotFoundError(f"输入目录未发现 XLSX: {root}")
