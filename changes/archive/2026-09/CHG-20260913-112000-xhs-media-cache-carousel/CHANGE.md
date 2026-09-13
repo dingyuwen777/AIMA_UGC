@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260913-112000-xhs-media-cache-carousel
 title: 小红书图片缓存与声音广场多图轮播
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feat/xhs-media-cache-carousel-20260913
 created: 2026-09-13
