@@ -70,6 +70,9 @@ const emit = defineEmits<{
 const editingVehicles = ref(false)
 const editingAnalysis = ref(false)
 const relevanceDecision = computed(() => props.item ? relevanceReviewDecision(props.item) : null)
+const displayMedia = computed(() =>
+  (props.item?.media ?? []).filter((media) => Boolean(media.preview_url || media.url)),
+)
 
 watch(() => props.item?.id, () => { editingVehicles.value = false; editingAnalysis.value = false })
 
@@ -119,103 +122,82 @@ function unlockVehicleReview(): void {
 }
 
 function saveAnalysisReview(): void {
-  if (!voiceType.value || !sentiment.value || labels.value.length === 0) return
-  emit('review-analysis', {
-    voice_type: voiceType.value,
-    sentiment: sentiment.value,
+  const request: Omit<ContentAnalysisManualReviewRequest, 'content_version'> = {
+    voice_type: voiceType.value || null,
+    sentiment: sentiment.value || null,
     labels: labels.value,
     unlock_dimensions: confirmUnlockAnalysis.value ? [...lockedDimensions.value] : [],
-  })
+  }
+  emit('review-analysis', request)
 }
 
 function unlockAnalysisReview(): void {
-  if (!window.confirm('解除人工分析锁定后，页面将恢复展示当前 AI 结果。是否继续？')) return
-  emit('review-analysis', { unlock_dimensions: [...lockedDimensions.value] })
+  if (!window.confirm('解除 AI 结果人工锁定后，当前自动分析会重新生效。是否继续？')) return
+  emit('review-analysis', {
+    voice_type: null,
+    sentiment: null,
+    labels: [],
+    unlock_dimensions: [...lockedDimensions.value],
+  })
 }
 
-/** 将内容补充状态映射为用户可理解的区块标题。 */
+function removeLabel(index: number): void {
+  labels.value.splice(index, 1)
+}
+
 function supplementTitle(status: string): string {
-  if (status === 'failed') return '内容补充失败'
-  if (status === 'partial_success') return '内容补充不完整'
-  if (status === 'cancelled') return '内容补充已取消'
-  return '内容补充进行中'
+  if (status === 'queued') return '辅助补采已排队'
+  if (status === 'running') return '正在辅助补采'
+  if (status === 'partial_success') return '辅助补采部分完成'
+  if (status === 'failed') return '辅助补采失败'
+  if (status === 'cancelled') return '辅助补采已取消'
+  return '辅助补采状态'
 }
 
-/** 解释内容补充的真实状态，并保留进入采集中心继续处理的语义。 */
 function supplementMessage(status: string): string {
-  if (status === 'failed') {
-    return '暂时无法获取完整详情与评论。已保留原始导入内容，可在采集中心查看失败原因并重新发起补充。'
-  }
-  if (status === 'partial_success') {
-    return '已获取部分详情或评论，仍有部分数据未成功补充。可在采集中心查看结果并按需重试。'
-  }
-  if (status === 'cancelled') {
-    return '内容补充已取消，当前展示已入库内容。可在采集中心重新发起补充。'
-  }
-  return '正在补充完整详情与评论，当前先展示已入库内容。'
+  if (status === 'queued') return '任务已创建，等待 Worker 执行。现有内容与已采集评论仍可查看。'
+  if (status === 'running') return '正在补充详情与评论；页面会保留当前已有结果。'
+  if (status === 'partial_success') return '已获得部分新数据，部分分页或平台请求未完整完成。'
+  if (status === 'failed') return '本次辅助补采未完成；现有已入库内容不会被删除。'
+  if (status === 'cancelled') return '任务已取消；取消前已成功写入的数据继续保留。'
+  return '辅助补采状态已更新。'
 }
 
-/** 将内部 Provider 名称归一为用户可理解的来源类别。 */
-function sourceLabel(providerName: string): string {
-  const normalized = providerName.toLowerCase()
-  if (normalized.includes('import') || normalized.includes('excel')) return '数据导入'
-  if (normalized.includes('tikhub')) return 'TikHub 采集'
-  if (normalized.includes('manual')) return '人工维护'
-  return '平台采集'
+function brandRoleLabel(role: string): string {
+  if (role === 'owned') return '自有品牌'
+  if (role === 'competitor') return '竞品'
+  return '其他品牌'
 }
 
-/** 将第三方可用状态映射为业务状态，原始 code 仅在技术详情保留。 */
-function availabilityLabel(status: string): string {
-  if (status === 'available') return '当前可访问'
-  if (status === 'unavailable_confirmed') return '已确认不可访问'
-  if (status === 'unavailable_suspected') return '可能不可访问'
-  return '状态待确认'
+function competitionScopeLabel(scope: string | null | undefined): string {
+  if (scope === 'owned_only') return '仅自有品牌'
+  if (scope === 'competitor_only') return '仅竞品'
+  if (scope === 'mixed') return '自有 + 竞品'
+  if (scope === 'other_only') return '仅其他品牌'
+  return '未识别'
 }
 
-/** 将车型证据来源归一为用户语义；内部 source/catalog version 下沉技术详情。 */
 function vehicleEvidenceLabel(source: string): string {
-  const normalized = source.toLowerCase()
-  if (normalized.includes('manual')) return '人工确认'
-  if (normalized.includes('keyword') || normalized.includes('alias')) return '词包 / 别名识别'
-  return '系统识别'
+  if (source === 'manual_review') return '人工确认'
+  if (source === 'source_explicit') return '源数据显式字段'
+  if (source === 'source_name') return '源数据名称'
+  if (source === 'text_alias') return '标题/正文识别'
+  if (source === 'derived_from_vehicle') return '由车型归属推导'
+  return source
 }
-
-function brandRoleLabel(role: 'owned' | 'competitor' | 'other'): string {
-  return role === 'owned' ? '自有品牌' : role === 'competitor' ? '竞品品牌' : '其他品牌'
-}
-
-function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope']): string {
-  return scope ? ({ owned_only: '仅自有品牌', competitor_only: '仅竞品品牌', mixed: '自有与竞品混合', other_only: '仅其他品牌', none_detected: '未识别品牌' })[scope] : '未识别品牌'
-}
-
 </script>
 
 <template>
   <AimaDialog
     :model-value="modelValue"
-    label="内容详情"
     width="610px"
     class="content-detail-dialog"
+    title="内容详情"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <template #header>
-      <header>
-        <div>
-          <h2>内容详情</h2>
-          <small v-if="item">{{ platformLabel(item.platform) }} · {{ item.author_display_name || '未知作者' }} · {{ formatDateTime(item.published_at) }}</small>
-        </div>
-        <button
-          class="close-button"
-          type="button"
-          aria-label="关闭"
-          @click="$emit('update:modelValue', false)"
-        >
-          <AimaIcon
-            name="close"
-            :size="22"
-          />
-        </button>
-      </header>
+    <template #subtitle>
+      <span v-if="item">{{ platformLabel(item.platform) }} · {{ item.author_display_name || '未知作者' }} · {{ formatDateTime(item.published_at) }}</span>
+      <span v-else>查看内容、分析结果和评论覆盖情况</span>
     </template>
     <div
       v-if="error"
@@ -261,10 +243,10 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         <p>{{ supplementMessage(item.supplement_status.status) }}</p>
       </section>
 
-      <section v-if="(item.media ?? []).length > 0">
+      <section v-if="displayMedia.length > 0">
         <div class="media-grid">
           <a
-            v-for="media in item.media ?? []"
+            v-for="media in displayMedia"
             :key="`${media.position}:${media.url}`"
             :href="media.url || undefined"
             target="_blank"
@@ -368,29 +350,27 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         class="manual-review"
       >
         <header class="section-heading">
-          <div><h4>车型人工确认</h4><small>0..N 个车型；自动别名证据与人工结论分开保留。</small></div>
-          <span v-if="hasVehicleLock">已人工锁定</span>
+          <div><h4>车型人工确认</h4><small>人工确认会锁定当前 Content Version 的车型；自动识别不会覆盖。</small></div>
+          <span v-if="hasVehicleLock">当前版本已锁定</span>
         </header>
         <VehicleMultiSelect
           v-model="vehicleModelIds"
-          label="当前车型"
-          compact
+          label="确认车型"
+          helper-text="支持多选；提交后更新当前版本的人工车型证据。"
         />
         <div
-          v-if="(item.vehicles ?? []).length"
+          v-if="hasVehicleLock"
           class="evidence-list"
         >
           <article
             v-for="vehicle in item.vehicles ?? []"
             :key="vehicle.vehicle_model_id"
           >
-            <strong>{{ vehicle.display_name }}</strong>
+            <strong>{{ vehicle.display_name }}<template v-if="vehicle.brand"> · {{ vehicle.brand.display_name }}</template></strong>
             <span
               v-for="(evidence, index) in vehicle.evidences"
-              :key="`${evidence.source}:${index}`"
-            >
-              {{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.is_manual_locked"> · 已人工确认</template>
-            </span>
+              :key="`${vehicle.vehicle_model_id}:${index}`"
+            >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · “{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
           </article>
         </div>
         <label
@@ -399,123 +379,117 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         ><input
           v-model="confirmUnlockVehicles"
           type="checkbox"
-        >我确认先解锁现有人工车型结论，再保存新结论</label>
+        >我确认本次提交需要解除现有车型人工锁定，再写入新的人工车型结果。</label>
         <div class="review-actions">
           <AimaButton
             v-if="hasVehicleLock"
+            type="secondary"
             size="small"
+            :disabled="saving"
             @click="unlockVehicleReview"
           >
-            仅解除锁定
-          </AimaButton><AimaButton
-            variant="primary"
+            仅解除车型锁定
+          </AimaButton>
+          <AimaButton
             size="small"
             :disabled="saving || (hasVehicleLock && !confirmUnlockVehicles)"
             @click="saveVehicleReview"
           >
-            保存车型结论
+            保存车型人工确认
           </AimaButton>
         </div>
       </section>
 
       <section
         v-if="editingAnalysis"
-        class="manual-review"
+        class="manual-review analysis-review"
       >
         <header class="section-heading">
-          <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析规则。</small></div>
-          <span v-if="lockedDimensions.length">锁定 {{ lockedDimensions.join('、') }}</span>
+          <div><h4>AI 结果人工纠正</h4><small>Voice Type / Sentiment / Labels 分维度锁定；未提交的维度继续使用自动结果。</small></div>
+          <span v-if="lockedDimensions.length">已锁定 {{ lockedDimensions.join(' / ') }}</span>
         </header>
+        <div class="review-grid">
+          <label>发声类型<select v-model="voiceType"><option value="">继承自动结果</option><option
+            v-for="option in taxonomy?.voice_types ?? []"
+            :key="option"
+            :value="option"
+          >{{ option }}</option></select></label>
+          <label>情感<select v-model="sentiment"><option value="">继承自动结果</option><option
+            v-for="option in taxonomy?.sentiments ?? []"
+            :key="option"
+            :value="option"
+          >{{ option }}</option></select></label>
+        </div>
+        <div class="label-editor">
+          <select
+            v-model="labelPrimary"
+            aria-label="一级标签"
+            @change="labelSecondary = ''"
+          ><option value="">选择一级标签</option><option
+            v-for="option in taxonomy?.labels ?? []"
+            :key="option.primary_label"
+            :value="option.primary_label"
+          >{{ option.primary_label }}</option></select>
+          <select
+            v-model="labelSecondary"
+            aria-label="二级标签"
+            :disabled="!labelPrimary"
+          ><option value="">选择二级标签</option><option
+            v-for="option in secondaryOptions"
+            :key="option"
+            :value="option"
+          >{{ option }}</option></select>
+          <AimaButton
+            type="secondary"
+            size="small"
+            :disabled="!labelPrimary || !labelSecondary"
+            @click="addLabel"
+          >
+            添加标签
+          </AimaButton>
+        </div>
+        <div class="manual-labels">
+          <button
+            v-for="(label, index) in labels"
+            :key="`${label.primary_label}:${label.secondary_label}`"
+            type="button"
+            @click="removeLabel(index)"
+          >
+            {{ labelPairText(label) }} ×
+          </button>
+          <span v-if="!labels.length" class="empty">当前不锁定标签</span>
+        </div>
         <p
-          v-if="item.analysis.status !== 'completed'"
+          v-if="lockedDimensions.length"
           class="review-warning"
         >
-          尚无可纠正的当前 AI 结果，请先完成 AI 打标。
+          当前版本已有人工锁定。若要覆盖锁定维度，必须先确认解除；否则本次提交不会越过人工决定。
         </p>
-        <template v-else>
-          <div class="review-grid">
-            <label>发声类型<select v-model="voiceType"><option value="">请选择</option><option
-              v-for="value in taxonomy?.voice_types ?? []"
-              :key="value"
-              :value="value"
-            >{{ value }}</option></select></label>
-            <label>情感<select v-model="sentiment"><option value="">请选择</option><option
-              v-for="value in taxonomy?.sentiments ?? []"
-              :key="value"
-              :value="value"
-            >{{ value }}</option></select></label>
-          </div>
-          <div class="label-editor">
-            <select
-              v-model="labelPrimary"
-              @change="labelSecondary = ''"
-            >
-              <option value="">
-                一级标签
-              </option><option
-                v-for="group in taxonomy?.labels ?? []"
-                :key="group.primary_label"
-                :value="group.primary_label"
-              >
-                {{ group.primary_label }}
-              </option>
-            </select>
-            <select
-              v-model="labelSecondary"
-              :disabled="!labelPrimary"
-            >
-              <option value="">
-                二级标签
-              </option><option
-                v-for="value in secondaryOptions"
-                :key="value"
-                :value="value"
-              >
-                {{ value }}
-              </option>
-            </select>
-            <AimaButton
-              size="small"
-              :disabled="!labelPrimary || !labelSecondary"
-              @click="addLabel"
-            >
-              添加
-            </AimaButton>
-          </div>
-          <div class="manual-labels">
-            <button
-              v-for="(label, index) in labels"
-              :key="`${label.primary_label}:${label.secondary_label}`"
-              type="button"
-              @click="labels.splice(index, 1)"
-            >
-              {{ label.primary_label }} ／ {{ label.secondary_label }} ×
-            </button>
-          </div>
-          <label
+        <label
+          v-if="lockedDimensions.length"
+          class="unlock-confirm"
+        ><input
+          v-model="confirmUnlockAnalysis"
+          type="checkbox"
+        >我确认本次提交需要解除现有 AI 结果人工锁定，再写入新的人工结果。</label>
+        <div class="review-actions">
+          <AimaButton
             v-if="lockedDimensions.length"
-            class="unlock-confirm"
-          ><input
-            v-model="confirmUnlockAnalysis"
-            type="checkbox"
-          >我确认先解锁已锁定维度，再保存新的人工结论</label>
-          <div class="review-actions">
-            <AimaButton
-              v-if="lockedDimensions.length"
-              size="small"
-              @click="unlockAnalysisReview"
-            >
-              解除全部分析锁定
-            </AimaButton><AimaButton
-              variant="primary"
-              size="small"
-              :disabled="saving || !taxonomy || !voiceType || !sentiment || labels.length === 0 || (lockedDimensions.length > 0 && !confirmUnlockAnalysis)"
-              @click="saveAnalysisReview"
-            >
-              保存人工纠正
-            </AimaButton>
-          </div>
-        </template>
+            type="secondary"
+            size="small"
+            :disabled="saving"
+            @click="unlockAnalysisReview"
+          >
+            仅解除 AI 锁定
+          </AimaButton>
+          <AimaButton
+            size="small"
+            :disabled="saving || (lockedDimensions.length > 0 && !confirmUnlockAnalysis)"
+            @click="saveAnalysisReview"
+          >
+            保存人工纠正
+          </AimaButton>
+        </div>
       </section>
 
       <ContentCommentSection
@@ -712,24 +686,24 @@ header small { font-size: 12px; }
 .info-grid dt { font-size: 12px; }
 .info-grid dd { font-size: 13px; line-height: 20px; text-align: left; }
 .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.metric-grid span { min-height: 64px; padding: 10px 12px; place-items: start; align-content: center; background: #f7f9fb; font-size: 12px; }
-.media-grid { grid-template-columns: 1fr; }
-.media-grid img { height: 100px; }
-.drawer-body > .manual-summary { display: grid; gap: 6px; padding: 12px; border-radius: 6px; background: #f7f9fb; }
-.manual-summary h4 { margin: 0; font-size: 16px; }
-.manual-summary > div { display: flex; min-height: 32px; align-items: center; gap: 12px; border-radius: 4px; background: white; }
-.manual-summary strong { width: 78px; flex: none; font-size: 12px; font-weight: 400; }
-.manual-summary span { min-width: 0; flex: 1; color: var(--aima-text-muted); font-size: 12px; overflow-wrap: anywhere; }
-.manual-summary :deep(.aima-button) { flex: none; height: 32px; }
-.manual-summary small { font-size: 11px; }
-.original-link { display: flex; height: 40px; align-items: center; justify-content: center; margin: 16px 24px 24px; border-radius: 6px; color: white; background: var(--aima-primary); text-decoration: none; font-size: 13px; }
-.additional-details { display: grid; gap: 12px; color: var(--aima-text-muted); font-size: 12px; }
-.additional-details > summary { cursor: pointer; }
-.additional-details > section { margin-top: 16px; }
-.drawer-state { min-height: 180px; align-content: center; gap: 12px; padding: 24px; }
-.drawer-save-error { padding: 12px 24px; color: var(--aima-danger); font-size: 12px; }
-</style>
-<style>
-.content-detail-dialog { height: 100dvh; max-height: 100dvh; max-width: 100vw; margin: 0 0 0 auto; border-radius: 12px 0 0 12px; }
-.content-detail-dialog > .aima-dialog-body { flex: 1; }
+.metric-grid span { min-height: 64px; padding: 10px 12px; place-items: start; align-content: center; background: #f7f9fb; font-size: 12px; text-align: left; }
+.metric-grid b { font-size: 15px; line-height: 20px; }
+.manual-summary { display: grid; gap: 0; }
+.manual-summary h4 { margin: 0; padding: 0 0 8px; font-size: 16px; line-height: 22px; }
+.manual-summary > div { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; min-height: 38px; align-items: center; gap: 12px; border-top: 1px solid var(--aima-border); }
+.manual-summary strong { color: var(--aima-text); font-size: 12px; }
+.manual-summary span { color: var(--aima-text-muted); font-size: 12px; }
+.manual-summary small { padding-top: 8px; font-size: 11px; }
+.additional-details { border-top: 1px solid var(--aima-border); }
+.additional-details > summary { padding: 12px 0; cursor: pointer; color: var(--aima-text-secondary); font-size: 12px; font-weight: 600; }
+.additional-details > section { padding: 8px 0 0; }
+.technical-section { padding-top: 10px !important; }
+:deep(.aima-dialog__header) { padding: 24px 24px 18px; border-bottom: 0; }
+:deep(.aima-dialog__body) { padding: 0; }
+:deep(.aima-dialog__body-scroll) { padding: 0; }
+:deep(.aima-dialog__footer) { display: flex; min-height: 64px; align-items: center; justify-content: center; padding: 12px 24px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
+.original-link { display: flex; width: 100%; min-height: 34px; align-items: center; justify-content: center; border: 1px solid var(--aima-primary); border-radius: 6px; color: #fff; background: var(--aima-primary); font-size: 12px; font-weight: 600; text-decoration: none; }
+.original-link:hover { background: var(--aima-primary-hover); }
+.drawer-save-error { margin: 0 24px 12px; padding: 10px 12px; border: 1px solid #f0cbd0; border-radius: 6px; color: var(--aima-danger); background: #fff7f8; font-size: 11px; }
+@media (max-width: 680px) { .review-grid,.label-editor { grid-template-columns: 1fr; }.manual-summary > div { grid-template-columns: 72px minmax(0,1fr); }.manual-summary > div :deep(.aima-button) { grid-column: 2; justify-self: start; } }
 </style>
