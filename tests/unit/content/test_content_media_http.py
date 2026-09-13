@@ -1,10 +1,9 @@
 from uuid import uuid4
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from aima_ugc.bootstrap.content_media_cache import CachedContentMedia, ContentMediaCacheNotFound
 from aima_ugc.bootstrap.content_media_http import install_content_media_routes
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 class _FakeMediaReader:
