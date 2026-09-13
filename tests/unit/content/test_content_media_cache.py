@@ -1,12 +1,11 @@
-import httpx
-import pytest
-
 from aima_ugc.bootstrap.content_media_cache import (
     ContentMediaCacheUnavailable,
     XiaohongshuImageFetcher,
     normalize_xiaohongshu_image_url,
 )
 from aima_ugc.platform.storage.retention import MEDIA_CACHE_ITEM_MAX_BYTES
+import httpx
+import pytest
 
 
 def test_normalize_xiaohongshu_image_url_accepts_only_trusted_origin() -> None:
