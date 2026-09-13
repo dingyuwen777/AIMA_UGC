@@ -54,8 +54,8 @@ data_changes:
 - 小红书辅助补采完整执行既有 Detail/Comments/SubComments 后，以 best-effort 方式预热图文图片缓存；缓存失败不改变原 Collection 结果。
 - 原始 `content_media.url` / `external_media_id` 继续作为长期媒体事实；服务器缓存只是可删除、可重建的派生字节。
 - 媒体缓存 TTL 30 天，单张最大 10 MiB；总缓存超过 30 GiB 时按最旧缓存优先回收到 24 GiB。每小时 housekeeping 采用 500×20 的有界短批次推进 TTL 候选，避免旧的“每小时 100 条”吞吐把大量图片拖成长周期积压。
-- 声音广场详情保持 610 px 干净抽屉；小红书多图通过同源缓存 URL 以原生横向 scroll-snap 展示，主图 `contain`、多图轻微露出下一张，不引入额外 Carousel/UI 依赖。
-- 未做辅助补采不会让详情退化为错误态：已有媒体 URL 时首次打开按需懒缓存，无媒体事实时不渲染大空槽，媒体源不可用时显示固定同源占位图，评论未采集时显示中性状态；合法的 `media.url=null` 不会被强行投影成 404 的缓存地址。
+- 声音广场详情保持现有 Drawer；小红书多图通过同源缓存 URL 以原生横向 scroll-snap 展示，主图 `contain`、多图轻微露出下一张，不引入额外 Carousel/UI 依赖。
+- 未做辅助补采不会让详情退化为错误态：已有媒体 URL 时首次打开按需懒缓存，无媒体事实时不渲染媒体区，媒体源不可用时显示固定同源占位图，评论未采集时显示中性状态；合法的 `media.url=null` 不会被强行投影成 404 的缓存地址。
 - 正式 Figma `EAPm8KVarUe7BFTSnzvOpT / 4627:7429` 已修改共享 Detail Drawer body Owner，并新增未补采/媒体回退状态规格 `5363:2514`；两处均通过 Fresh Screenshot 复核。
 
 # 目标、范围与非目标
@@ -88,7 +88,7 @@ data_changes:
 
 - `content_media.url` 和 Provider Raw 保留第三方原始事实；缓存是派生副本。
 - 既有 ArtifactStore 的路径安全、原子写入、SHA-256 与删除状态机继续作为文件字节 Owner。
-- 现有 610 px Detail Drawer、正文/AI/人工确认/评论的主要信息层级继续保持。
+- 现有 Detail Drawer 的正文/AI/人工确认/评论主要信息层级和人工复核逻辑继续保持，不顺带重构。
 - 缓存行为不依赖 TikHub API Key，也不把任何 Secret 写入数据库、日志、URL 或前端。
 - “评论尚未采集”只是当前本地覆盖状态，不能被展示成 Provider/Collection 失败。
 
@@ -102,7 +102,8 @@ data_changes:
 6. 不新增轮播运行时依赖，使用浏览器原生横向滚动/scroll-snap 与现有 Vue 页面结构。
 7. 同源图片字节路由为产品内部资源路由，不加入业务 OpenAPI/generated client；正式 Content Detail Contract 仍只暴露媒体事实。
 8. 辅助补采图片预热只用于降低首次访问延迟；声音广场对已有媒体事实始终支持懒缓存，未采集评论不自动触发 Provider 请求。
-9. 媒体源暂不可用时内部路由返回固定静态 SVG 占位图并短缓存 60 秒；没有任何媒体事实时前端直接不渲染媒体区；媒体记录没有真实 `url` 时保留原 preview/空态，不构造内部路由。
+9. 媒体源暂不可用时内部路由返回固定静态 SVG 占位图并短缓存 60 秒；媒体记录没有真实 `url` 时不构造内部路由；`url` 与 `preview_url` 均为空时在 Voice Plaza 适配层过滤。
+10. `ContentDetailDrawer.vue` 保持 `main` 原实现，本任务不修改人工确认/分析锁定/Dialog 结构；媒体可展示性在 Voice Plaza API 适配层收敛，视觉由独立 CSS 接管。
 
 # 需求追溯
 
@@ -110,10 +111,10 @@ data_changes:
 | --- | --- | --- | --- | --- |
 | R1 | 小红书辅助补采后服务器缓存帖子图片，缓存可重建且不影响评论补采 | user:xhs-media-cache-carousel / AC1 | satisfied | `media_cache_collection_scope.py` 在 `super().execute()` 完成后仅对成功/部分成功 enrichment 预热；`content_media_cache.py` 实现 hit/miss 重建；对应 Collection/API 单元测试已随 PR 提交 |
 | R2 | 图片缓存 30 天，最大 30GB，超过后回收到 24GB，避免无限增长 | user:xhs-media-cache-carousel / AC2 | satisfied | `retention.py` 固化 30 天、10 MiB、30/24 GiB；`artifact_cleanup.py` 新增 500×20 有界 TTL 批次、单次容量回收和 `drained` 可观察状态；`scheduler_main.py` 每小时调用批量排空入口；`test_artifact_cleanup_scheduler.py` 覆盖排空、单次容量扫描和 max-batches 停止 |
-| R3 | 声音广场多图左右滑动，界面干净整洁、大方、美观 | user:xhs-media-cache-carousel / AC3 | satisfied | `voice-plaza/api.ts` 对有真实 URL 的小红书图片投影同源 preview；`voice-plaza-media-carousel.css` 使用原生 scroll-snap/FIT；正式 Figma `4627:8510` Fresh Screenshot 1440×900 复核主图完整、Drawer 层级与固定操作区未破坏 |
+| R3 | 声音广场多图左右滑动，界面干净整洁、大方、美观 | user:xhs-media-cache-carousel / AC3 | satisfied | `voice-plaza/api.ts` 对有真实 URL 的小红书图片投影同源 preview，并过滤完全不可展示媒体；`voice-plaza-media-carousel.css` 使用原生 scroll-snap/FIT；正式 Figma `4627:8510` Fresh Screenshot 复核主图完整、Drawer 层级未破坏 |
 | R4 | 同步正式 Figma 页面 4627:7429，并保持设计/代码一致 | user:xhs-media-cache-carousel / AC4 | satisfied | 已修改共享 Owner `4861:31020` / media `4627:8557` / image `4627:8558`，新增第二图示例 `5362:14408`；正式 Detail Drawer `4627:8510` Fresh Screenshot 复核通过 |
 | R5 | 代码验证无问题后合并主分支 | user:xhs-media-cache-carousel / AC5 | explicitly_deferred | 用户已授权端到端交付；merge 只能在 PR #477 required CI 与独立 Review 全绿后执行，随后再验证 main/Change Archive，属于 Ready 后 post-merge finalization |
-| R6 | 未做辅助补采/评论采集的帖子也必须美观可读，且不能把未采集误报为错误 | user:xhs-media-cache-carousel / AC6 | satisfied | 已有源 URL 的媒体通过 `fetchContentDetail()` 同源 preview + media route 懒缓存；`media.url=null` 保留原 preview/空态并由 `voice-plaza-media-preview.spec.ts` 覆盖；`ContentDetailDrawer.vue` 在 `media=[]` 时不渲染媒体区；`content_media_http.py` 对源不可用返回固定占位图；`ContentCommentSection.vue` 区分评论尚未采集与平台 0 评论，`content-comment-section.spec.ts`/`test_content_media_http.py` 覆盖；Figma 状态规格 `5363:2514` Fresh Screenshot 复核四种回退状态无裁切 |
+| R6 | 未做辅助补采/评论采集的帖子也必须美观可读，且不能把未采集误报为错误 | user:xhs-media-cache-carousel / AC6 | satisfied | 已有源 URL 的媒体通过 `fetchContentDetail()` 同源 preview + media route 懒缓存；`url=null && preview=null` 在 Voice Plaza 适配层过滤，已有 preview 则保留，`voice-plaza-media-preview.spec.ts` 覆盖；`content_media_http.py` 对源不可用返回固定占位图；`ContentCommentSection.vue` 区分评论尚未采集与平台 0 评论，`content-comment-section.spec.ts`/`test_content_media_http.py` 覆盖；Figma 状态规格 `5363:2514` Fresh Screenshot 复核四种回退状态无裁切 |
 
 # 实施与验证计划
 
@@ -121,9 +122,9 @@ data_changes:
 2. 实现小红书 CDN URL 安全规范化、图片下载上限、cache hit/miss、重建与同源媒体响应。
 3. 用 Collection Scope 装饰器在辅助补采原流程成功/部分成功返回后执行 best-effort 预热，确保评论请求先完成。
 4. 扩展 Artifact housekeeping：30 天 TTL 通过每小时有界短批次尽量排空；超过 30 GiB 时按最旧缓存回收至 24 GiB；积压达到批次上限时记录 `drained=false` 并后续继续。
-5. 在最终 API assembly 安装内部媒体路由，并在 Voice Plaza API adapter 中仅对存在真实源 URL 的小红书 image `preview_url` 投影为同源媒体 URL。
-6. 前端使用原生横向 scroll-snap 打造克制的多图浏览区；图片 `contain`，单图不制造额外控制噪音。
-7. 补齐未补采路径：已有媒体懒缓存、空 URL 不构造缓存路由、无媒体不渲染、源不可用占位图、评论未采集中性状态与对应回归测试。
+5. 在最终 API assembly 安装内部媒体路由，并在 Voice Plaza API adapter 中仅对存在真实源 URL 的小红书 image `preview_url` 投影为同源媒体 URL，同时过滤 `url/preview` 均为空的不可展示记录。
+6. 前端使用独立 CSS 的原生横向 scroll-snap 打造克制的多图浏览区；图片 `contain`，单图不制造额外控制噪音，不改 Drawer 其它业务逻辑。
+7. 补齐未补采路径：已有媒体懒缓存、空 URL 不构造缓存路由、无可展示媒体不渲染、源不可用占位图、评论未采集中性状态与对应回归测试。
 8. 同步 Figma 实际 Owner 与未补采/媒体回退状态规格；执行正式画板 Fresh Screenshot / Canvas-level Review。
 9. Ready 后由 PR #477 执行完整后端、PostgreSQL、Contract、前端、Browser、Build CI 和独立 Review；全部绿后合并 `main` 并做 post-merge 验证。
 
@@ -131,7 +132,7 @@ data_changes:
 
 | 验证层 | 是否要求 | 范围 |
 | --- | --- | --- |
-| 单元 / Component | required | URL allowlist、图片类型/10MiB、TTL/容量、TTL 批次排空/max-batches、媒体路由、不可用占位、空媒体 URL 投影、Collection prefetch、未采集评论状态；完整执行由 PR CI 证明 |
+| 单元 / Component | required | URL allowlist、图片类型/10MiB、TTL/容量、TTL 批次排空/max-batches、媒体路由、不可用占位、空媒体 URL 投影/过滤、Collection prefetch、未采集评论状态；完整执行由 PR CI 证明 |
 | Contract / API | required | 内部媒体路由不进入 OpenAPI，Content Detail/generated client 不漂移；`ContentMediaResponse.url` 可为空，空值不被强制投影；不可用媒体仍为内部资源语义 |
 | PostgreSQL / Persistence | required | 0052 Migration、cache binding/Artifact 生命周期、删除后按原始媒体事实可重建 |
 | Browser Mock Acceptance | required | 单图/多图/无媒体/评论未采集、Detail Drawer 其它信息不回归；Figma Fresh Screenshot 已验证 Normal 与回退状态视觉，Browser 自动验收由 PR CI 证明 |
@@ -147,7 +148,7 @@ data_changes:
 | 安全 | 媒体 URL 是外部 I/O；仅 allowlist XHS Host、禁止 redirect/任意代理、限制栅格类型与 10 MiB、`trust_env=False`；占位 SVG 是固定静态服务器内容，不插入用户输入 |
 | 性能 | 预热发生在评论链路完成后且 best-effort；API cache miss 允许懒重建；未补采历史数据首次打开可能有一次图片下载延迟；TTL 清理每批保持短事务，backfill/容量统计不会随 20 批重复；文件不进入数据库 |
 | 容量 | TTL 截止时间为创建后 30 天；每小时最多推进 10,000 条 TTL 候选并暴露 `drained`，再执行 30/24 GiB 双阈值容量回收；极端积压跨后续周期继续，避免无界占用 Scheduler |
-| 兼容性 | Content 原始 URL/既有业务 Contract 字段保留；`url=null` 继续合法；业务 OpenAPI/generated client 无变化；其它平台媒体不投影同源缓存；未采集评论只改变展示文案不改数据语义 |
+| 兼容性 | Content 原始 URL/既有业务 Contract 字段保留；`url=null` 继续合法；业务 OpenAPI/generated client 无变化；其它平台媒体不投影同源缓存；Detail Drawer 既有人工复核逻辑保持 main；未采集评论只改变展示文案不改数据语义 |
 | 数据 / Migration | 新增可丢弃缓存绑定表 0052；不回写历史业务媒体，历史记录首次查看时可懒缓存 |
 | 部署 | 正常 Backend/Frontend 发布并执行 Alembic upgrade；Artifact 根目录维持现有可写挂载，无新增卷 |
 | 回滚 | 先回滚应用代码，再 downgrade 0052 删除缓存绑定表；缓存 Artifact 字节可由 Housekeeping/人工清理，不影响 Content 原始事实、评论或 Provider Raw |
@@ -157,7 +158,7 @@ data_changes:
 - [x] upstream_re_read：已重读本轮用户确认的 30 天/30GB/美观/Figma/合并要求，以及新增“未做辅助补采/评论采集仍要美观显示”的要求，并重新核对 Content/Artifact/Collection/API/Frontend/Figma Owner、Scheduler 清理入口、ContentMedia nullable Contract 与任务基线 main。
 - [x] change_coverage：R1—R4、R6 已映射到真实实现、测试与 Figma 证据；R5 明确绑定 PR #477 全绿后的 post-merge finalization，没有把未来 merge 伪装成已完成。
 - [x] reverse_audit：已反向核对 `Collection→prefetch→Artifact`、`Content media/url?→内部 media route/原 preview→Voice Plaza`、`未补采→lazy cache/neutral comments`、`expires_at→bounded hourly batches→30/24GiB capacity` 四条链路；业务 OpenAPI 与 TikHub 主链保持不变。
-- [x] unresolved_cleared：实现侧无已知未满足 requirement；完整 PR CI / 独立 Review 是 Ready 后 merge gate，若出现失败则立即回到实现修复而不是继续合并。
+- [x] unresolved_cleared：实现侧无已知未满足 requirement；逐文件 Review 已发现并撤回 `ContentDetailDrawer.vue` 中与本任务无关的人工确认/Dialog 改动；完整 PR CI / 独立 Review 是 Ready 后 merge gate，若出现失败则立即回到实现修复而不是继续合并。
 
 # 两阶段 Review
 
@@ -167,7 +168,7 @@ data_changes:
 
 ## Review A2：Change → 实现、测试与文档
 
-实现、测试用例、Migration、长期文档、Figma Normal Owner 与未补采/媒体回退状态规格已覆盖 Change 当前范围；Review 发现的每小时 100 条 TTL 吞吐缺口已改为有界批量排空并补测试；nullable `media.url` 也已用纯前端测试锁定不产生缓存 404。PR #477 的完整 CI 与独立 Review 作为 Ready 后强门禁继续执行，任何阻断 Finding 都会回到本 Change 修复。
+实现、测试用例、Migration、长期文档、Figma Normal Owner 与未补采/媒体回退状态规格已覆盖 Change 当前范围；Review 发现的每小时 100 条 TTL 吞吐缺口已改为有界批量排空并补测试；nullable `media.url` 已用纯前端测试锁定；`ContentDetailDrawer.vue` 的无关 diff 已恢复为 `main` 同一 blob。PR #477 的完整 CI 与独立 Review 作为 Ready 后强门禁继续执行，任何阻断 Finding 都会回到本 Change 修复。
 
 # 完成证据与交付状态
 
@@ -176,5 +177,5 @@ data_changes:
 - PR：`#477`；Requirement Source、Ready、Secret、Docs/Schema Facts、OpenAPI/generated client 和 API/Vite startup 已在多轮 PR Actions 中取得新鲜通过证据；此前失败均已按真实诊断修复，最终 head 仍需完整 CI 收口。
 - Runtime / Tooling：Developer Tooling 已有成功历史 run；Runtime Acceptance 持续覆盖 canonical Compose/Migration/host-root/Windows overlay，最终以待合并 head 的新鲜结果为准。
 - Figma：共享 Detail Drawer body Owner `4861:31020` 与正式 `4627:8510` 已同步；未补采/媒体回退状态规格 `5363:2514` Fresh Screenshot 为 1440×669，四种状态完整无裁切，正常详情与固定底部操作未被改写。
-- 文档：`docs/collection/xiaohongshu_media_cache.md` 已建立并从 `docs/collection/README.md` 导航，现已明确预热非前置条件、懒缓存、无媒体、媒体不可用占位、未采集评论语义，以及每小时 TTL 有界批量排空策略。
+- 文档：`docs/collection/xiaohongshu_media_cache.md` 已建立并从 `docs/collection/README.md` 导航，现已明确预热非前置条件、懒缓存、不可展示媒体过滤、媒体不可用占位、未采集评论语义，以及每小时 TTL 有界批量排空策略。
 - 下一门禁：当前 head 的完整 PR CI / Runtime / PostgreSQL / Browser + 独立 Review；全部绿后才执行 squash merge 与 main 新鲜验证。
