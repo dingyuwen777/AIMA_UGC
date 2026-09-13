@@ -1,6 +1,6 @@
 # 小红书图片缓存与声音广场展示
 
-本文记录小红书图文图片从 Detail 事实到服务器可丢弃缓存、声音广场同源展示的当前实现。Provider Endpoint、分页和 Mapper 仍以 [`01_xiaohongshu.md`](01_xiaohongshu.md) 为事实入口；本文不复制 TikHub 协议。
+本文记录小红书图文图片从 Detail 事实到服务器可丢弃缓存、声音广场同源展示的当前实现。Provider Endpoint、分页和 Mapper 仍以 [`docs/collection/01_xiaohongshu.md`](01_xiaohongshu.md) 为事实入口；本文不复制 TikHub 协议。
 
 ## 1. 数据与缓存边界
 
@@ -70,8 +70,8 @@ ci.xiaohongshu.com
 
 相关实现：
 
-- `backend/src/aima_ugc/bootstrap/content_media_cache.py`
-- `tests/unit/content/test_content_media_cache.py`
+- [`backend/src/aima_ugc/bootstrap/content_media_cache.py`](../../backend/src/aima_ugc/bootstrap/content_media_cache.py)
+- [`tests/unit/content/test_content_media_cache.py`](../../tests/unit/content/test_content_media_cache.py)
 
 ## 4. 保留期与容量
 
@@ -97,9 +97,9 @@ TTL = 30 天
 
 相关实现：
 
-- `backend/src/aima_ugc/platform/storage/retention.py`
-- `backend/src/aima_ugc/bootstrap/artifact_cleanup.py`
-- `backend/src/aima_ugc/adapters/persistence/postgres/content_media_cache.py`
+- [`backend/src/aima_ugc/platform/storage/retention.py`](../../backend/src/aima_ugc/platform/storage/retention.py)
+- [`backend/src/aima_ugc/bootstrap/artifact_cleanup.py`](../../backend/src/aima_ugc/bootstrap/artifact_cleanup.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_media_cache.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_media_cache.py)
 
 ## 5. 声音广场展示
 
