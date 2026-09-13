@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
@@ -95,7 +96,6 @@ def run_artifact_cleanup_once(
                     orphan_before=orphan_before,
                 )
         except ArtifactStateConflict:
-            # 扫描后若业务建立正式引用，或另一 housekeeping 已改变状态，本轮放弃删除。
             continue
         finally:
             claim_session.close()
@@ -156,17 +156,13 @@ def run_artifact_cleanup_once(
 def _delete_claimed_artifact(
     runtime: PlatformRuntime,
     *,
-    artifact_id: object,
+    artifact_id: UUID,
     storage_key: str,
     kind: str,
     deleted_at: datetime,
 ) -> tuple[int, int]:
     """删除一个已认领的 Artifact 字节，并以短事务收敛数据库状态。"""
 
-    from uuid import UUID
-
-    if not isinstance(artifact_id, UUID):
-        raise TypeError("artifact_id 必须是 UUID")
     try:
         runtime.artifact_store.delete(storage_key)
     except (OSError, ValueError) as exc:
