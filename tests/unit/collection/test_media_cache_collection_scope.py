@@ -2,7 +2,9 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from aima_ugc.bootstrap.collection_scope import TikHubCollectionScopeExecutor
-from aima_ugc.bootstrap.media_cache_collection_scope import MediaCachingTikHubCollectionScopeExecutor
+from aima_ugc.bootstrap.media_cache_collection_scope import (
+    MediaCachingTikHubCollectionScopeExecutor,
+)
 from aima_ugc.modules.collection.collection_run_executor import CollectionScopeExecutionResult
 
 
