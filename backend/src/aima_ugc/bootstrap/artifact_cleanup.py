@@ -1,4 +1,4 @@
-"""Artifact 保留期限补齐与到期字节清理。"""
+"""Artifact 保留期限补齐、到期字节与媒体缓存容量清理。"""
 
 from __future__ import annotations
 
@@ -9,12 +9,21 @@ from datetime import datetime
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.content_media_cache import (
+    PostgresContentMediaCacheRepository,
+)
 from aima_ugc.platform.logging import log_event, log_exception_event
 from aima_ugc.platform.storage import ArtifactStateConflict
-from aima_ugc.platform.storage.retention import ORPHAN_RETENTION
+from aima_ugc.platform.storage.retention import (
+    MEDIA_CACHE_MAX_BYTES,
+    MEDIA_CACHE_TARGET_BYTES,
+    ORPHAN_RETENTION,
+)
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
+
+_CAPACITY_CLEANUP_LIMIT = 10000
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +43,7 @@ def run_artifact_cleanup_once(
     now: datetime | None = None,
     limit: int = 100,
 ) -> ArtifactCleanupResult:
-    """补齐历史 TTL 并分阶段删除到期 Artifact 字节。
+    """补齐历史 TTL、删除到期 Artifact，并按 30/24 GiB 水位回收媒体缓存。
 
     数据库事务只负责状态认领/收敛；实体文件删除始终在事务外执行，避免长 I/O
     持锁。`delete_pending` 会在后续 housekeeping 中继续重试。
@@ -63,6 +72,7 @@ def run_artifact_cleanup_once(
     deleted = 0
     failed = 0
     skipped_backend = 0
+    scanned = len(candidates)
     for candidate in candidates:
         if candidate.storage_backend != runtime.artifact_store.backend_name:
             skipped_backend += 1
@@ -92,49 +102,103 @@ def run_artifact_cleanup_once(
         if claimed.storage_status == "deleted":
             continue
 
-        try:
-            runtime.artifact_store.delete(claimed.storage_key)
-        except (OSError, ValueError) as exc:
-            failed += 1
-            log_exception_event(
-                runtime.logger,
-                logging.WARNING,
-                "artifact.cleanup.delete_failed",
-                "Artifact 实体删除失败，将保留 delete_pending 供后续重试",
-                exc,
-                artifact_id=str(claimed.id),
-                kind=claimed.kind,
-            )
-            continue
+        deleted_delta, failed_delta = _delete_claimed_artifact(
+            runtime,
+            artifact_id=claimed.id,
+            storage_key=claimed.storage_key,
+            kind=claimed.kind,
+            deleted_at=observed_at,
+        )
+        deleted += deleted_delta
+        failed += failed_delta
 
-        finish_session = runtime.database.new_session()
-        try:
-            with finish_session.begin():
-                PostgresArtifactMetadataRepository(finish_session).mark_deleted(
-                    claimed.id,
-                    deleted_at=observed_at,
-                )
-            deleted += 1
-        except ArtifactStateConflict:
-            # 并发清理已经收敛到 deleted 时不把幂等竞争计为删除失败。
-            check_session = runtime.database.new_session()
-            try:
-                with check_session.begin():
-                    current = PostgresArtifactMetadataRepository(check_session).get(claimed.id)
-                if current is None or current.storage_status != "deleted":
-                    failed += 1
-            finally:
-                check_session.close()
-        finally:
-            finish_session.close()
+    media_repository = PostgresContentMediaCacheRepository(runtime.database.new_session)
+    media_usage = media_repository.usage_bytes()
+    if media_usage > MEDIA_CACHE_MAX_BYTES:
+        bytes_to_free = media_usage - MEDIA_CACHE_TARGET_BYTES
+        capacity_candidates = media_repository.list_oldest_capacity_candidates(
+            bytes_to_free=bytes_to_free,
+            limit=_CAPACITY_CLEANUP_LIMIT,
+        )
+        scanned += len(capacity_candidates)
+        log_event(
+            runtime.logger,
+            logging.INFO,
+            "artifact.cleanup.media_cache_capacity_started",
+            "媒体缓存超过容量高水位，开始按最旧优先回收。",
+            usage_bytes=media_usage,
+            max_bytes=MEDIA_CACHE_MAX_BYTES,
+            target_bytes=MEDIA_CACHE_TARGET_BYTES,
+            candidate_count=len(capacity_candidates),
+        )
+        for candidate in capacity_candidates:
+            if not media_repository.claim_capacity_delete(candidate.artifact_id):
+                continue
+            deleted_delta, failed_delta = _delete_claimed_artifact(
+                runtime,
+                artifact_id=candidate.artifact_id,
+                storage_key=candidate.storage_key,
+                kind="content-media-cache",
+                deleted_at=observed_at,
+            )
+            deleted += deleted_delta
+            failed += failed_delta
 
     return ArtifactCleanupResult(
         backfilled=backfilled,
-        scanned=len(candidates),
+        scanned=scanned,
         deleted=deleted,
         failed=failed,
         skipped_backend=skipped_backend,
     )
+
+
+def _delete_claimed_artifact(
+    runtime: PlatformRuntime,
+    *,
+    artifact_id: object,
+    storage_key: str,
+    kind: str,
+    deleted_at: datetime,
+) -> tuple[int, int]:
+    """删除一个已认领的 Artifact 字节，并以短事务收敛数据库状态。"""
+
+    from uuid import UUID
+
+    if not isinstance(artifact_id, UUID):
+        raise TypeError("artifact_id 必须是 UUID")
+    try:
+        runtime.artifact_store.delete(storage_key)
+    except (OSError, ValueError) as exc:
+        log_exception_event(
+            runtime.logger,
+            logging.WARNING,
+            "artifact.cleanup.delete_failed",
+            "Artifact 实体删除失败，将保留 delete_pending 供后续重试",
+            exc,
+            artifact_id=str(artifact_id),
+            kind=kind,
+        )
+        return 0, 1
+
+    finish_session = runtime.database.new_session()
+    try:
+        with finish_session.begin():
+            PostgresArtifactMetadataRepository(finish_session).mark_deleted(
+                artifact_id,
+                deleted_at=deleted_at,
+            )
+        return 1, 0
+    except ArtifactStateConflict:
+        check_session = runtime.database.new_session()
+        try:
+            with check_session.begin():
+                current = PostgresArtifactMetadataRepository(check_session).get(artifact_id)
+            return (0, 0) if current is not None and current.storage_status == "deleted" else (0, 1)
+        finally:
+            check_session.close()
+    finally:
+        finish_session.close()
 
 
 __all__ = ["ArtifactCleanupResult", "run_artifact_cleanup_once"]
