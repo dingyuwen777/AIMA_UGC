@@ -94,11 +94,11 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 小红书辅助补采后服务器缓存帖子图片，缓存可重建且不影响评论补采 | user:xhs-media-cache-carousel | satisfied | `media_cache_collection_scope.py` 在 `super().execute()` 完成后仅对成功/部分成功 enrichment 预热；`content_media_cache.py` 实现 hit/miss 重建；对应 Collection/API 单元测试已随 PR 提交 |
-| R2 | 图片缓存 30 天，最大 30GB，超过后回收到 24GB，避免无限增长 | user:xhs-media-cache-carousel | satisfied | `retention.py` 固化 30 天、10 MiB、30/24 GiB；`artifact_cleanup.py` 复用每小时 housekeeping 做 TTL 后容量回收；首轮 Runtime Acceptance 已通过 canonical Compose/Migration/持久化主步骤 |
-| R3 | 声音广场多图左右滑动，界面干净整洁、大方、美观 | user:xhs-media-cache-carousel | satisfied | `voice-plaza/api.ts` 投影同源 preview；`voice-plaza-media-carousel.css` 使用原生 scroll-snap/FIT；正式 Figma `4627:8510` Fresh Screenshot 1440×900 复核主图完整、Drawer 层级与固定操作区未破坏 |
-| R4 | 同步正式 Figma 页面 4627:7429，并保持设计/代码一致 | user:xhs-media-cache-carousel | satisfied | 已修改共享 Owner `4861:31020` / media `4627:8557` / image `4627:8558`，新增第二图示例 `5362:14408`；正式 Detail Drawer `4627:8510` Fresh Screenshot 复核通过 |
-| R5 | 代码验证无问题后合并主分支 | user:xhs-media-cache-carousel | explicitly_deferred | 用户已授权端到端交付；merge 只能在 PR #477 required CI 与独立 Review 全绿后执行，随后再验证 main/Change Archive，属于 Ready 后 post-merge finalization |
+| R1 | 小红书辅助补采后服务器缓存帖子图片，缓存可重建且不影响评论补采 | user:xhs-media-cache-carousel / AC1 | satisfied | `media_cache_collection_scope.py` 在 `super().execute()` 完成后仅对成功/部分成功 enrichment 预热；`content_media_cache.py` 实现 hit/miss 重建；对应 Collection/API 单元测试已随 PR 提交 |
+| R2 | 图片缓存 30 天，最大 30GB，超过后回收到 24GB，避免无限增长 | user:xhs-media-cache-carousel / AC2 | satisfied | `retention.py` 固化 30 天、10 MiB、30/24 GiB；`artifact_cleanup.py` 复用每小时 housekeeping 做 TTL 后容量回收；首轮 Runtime Acceptance 已通过 canonical Compose/Migration/持久化主步骤 |
+| R3 | 声音广场多图左右滑动，界面干净整洁、大方、美观 | user:xhs-media-cache-carousel / AC3 | satisfied | `voice-plaza/api.ts` 投影同源 preview；`voice-plaza-media-carousel.css` 使用原生 scroll-snap/FIT；正式 Figma `4627:8510` Fresh Screenshot 1440×900 复核主图完整、Drawer 层级与固定操作区未破坏 |
+| R4 | 同步正式 Figma 页面 4627:7429，并保持设计/代码一致 | user:xhs-media-cache-carousel / AC4 | satisfied | 已修改共享 Owner `4861:31020` / media `4627:8557` / image `4627:8558`，新增第二图示例 `5362:14408`；正式 Detail Drawer `4627:8510` Fresh Screenshot 复核通过 |
+| R5 | 代码验证无问题后合并主分支 | user:xhs-media-cache-carousel / AC5 | explicitly_deferred | 用户已授权端到端交付；merge 只能在 PR #477 required CI 与独立 Review 全绿后执行，随后再验证 main/Change Archive，属于 Ready 后 post-merge finalization |
 
 # 实施与验证计划
 
