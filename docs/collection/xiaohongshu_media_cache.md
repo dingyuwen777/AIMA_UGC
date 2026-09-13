@@ -9,7 +9,7 @@
 ```text
 content_media
 ├─ external_media_id   # fileid 等稳定媒体身份
-├─ url                 # Provider 返回的原始 xhscdn / ci.xiaohongshu.com URL
+├─ url                 # Provider 返回的原始小红书 CDN / ci.xiaohongshu.com URL
 ├─ position            # images_list 数组顺序
 ├─ width
 └─ height
@@ -42,7 +42,7 @@ Detail
 → best-effort 图片缓存预热
 ```
 
-只有小红书 `content + content_enrichment` 且 Scope 为 `succeeded` / `partial_success` 时才预热。图片缓存属于非关键派生能力：单张或整次预热失败只记录安全日志，不改变已经完成的 Detail/评论结果，也不触发额外 TikHub 请求。
+只有小红书 `content + content_enrichment` 且 Scope 为 `succeeded` / `partial_success` 时才预热。图片缓存属于非关键派生能力：单张或整次预热的普通缓存、数据库或文件故障只记录安全日志，不改变已经完成的 Detail/评论结果，也不触发额外 TikHub 请求；Job `LeaseLostError` 仍按正式 Fencing 语义上抛，不能被 best-effort 吞掉。
 
 **预热只是性能优化，不是声音广场显示图片的前置条件。** 历史 Content 没有预热缓存也不需要回填任务；只要 `content_media` 已有小红书图片 URL，首次打开详情就会走 cache miss → 源 URL 下载 → Artifact 缓存 → 返回浏览器。
 
@@ -80,18 +80,21 @@ content_media.url 已存在
 
 响应使用 `X-AIMA-Media-State: unavailable`，只短缓存 60 秒；后续重新打开仍可再次尝试按原始媒体 URL 重建。这个占位 SVG 是服务器固定静态内容，不包含用户输入，也不进入业务 OpenAPI/generated client。
 
+如果 Housekeeping 恰好在媒体绑定读取之后并发删掉缓存文件，读取侧会把文件缺失收敛成 cache miss，重新按原始媒体事实构建，不把这一竞态暴露成 500 或浏览器破图。
+
 ### 3.4 从未采集评论
 
-未采集评论不是错误态。声音广场根据当前事实区分：
+未采集评论不是错误态。详情页展示的是数据库当前记录事实，不会因为打开页面而实时请求平台，因此评论数统一使用“记录口径”：
 
 ```text
-平台显示评论数 > 0，已采集 = 0
+当前数据记录评论数 > 0，已采集 = 0
 → “评论尚未采集”
-→ 展示平台评论数
+→ 展示“平台记录”评论数
+→ 说明本地尚未采集评论正文
 → 提示需要评论分析时再到采集运行中心发起辅助补采
 
-平台显示评论数 = 0
-→ “平台当前暂无评论”
+当前数据记录评论数 = 0
+→ “数据记录中暂无评论”
 → 明确这不是采集异常
 
 已采集 > 0
@@ -101,7 +104,7 @@ content_media.url 已存在
 → 才进入红色错误态并提供重试
 ```
 
-正文、已有图片和 AI 信息始终不依赖评论是否已经补采。
+正文、已有图片和 AI 信息始终不依赖评论是否已经补采；打开详情本身也不会自动触发付费 Provider 评论请求。
 
 相关实现与回归测试：
 
@@ -189,13 +192,13 @@ TTL = 30 天
 
 ```text
 cache hit  → ArtifactStore 直接返回
-cache miss → 安全请求保存的 xhscdn URL → 缓存 → 返回
+cache miss → 安全请求保存的小红书 CDN URL → 缓存 → 返回
 源不可用  → AIMA 固定浅灰占位图，不暴露浏览器破图
 ```
 
 原始 `media.url` 不被覆盖，仍可用于溯源/原始媒体链接。没有 URL 但已有 preview 的媒体保留原 preview；URL 和 preview 都为空的媒体不会进入画廊。
 
-详情抽屉媒体区使用浏览器原生横向滚动和 `scroll-snap`，不引入额外 Carousel/UI Library：
+详情抽屉的小红书内部缓存媒体使用浏览器原生横向滚动和 `scroll-snap`，不引入额外 Carousel/UI Library；样式通过内部媒体 URL 特征限定作用域，不改变抖音、B 站等其它平台原有媒体布局：
 
 - 单图占满媒体区；
 - 多图保留下一张轻微露出，提示左右滑动；
