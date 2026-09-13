@@ -35,6 +35,11 @@ _ALLOWED_RASTER_TYPES = frozenset(
 )
 _REFERER = "https://www.xiaohongshu.com/"
 _USER_AGENT = "AIMA_UGC/1.0"
+_REQUEST_HEADERS = {
+    "Accept": "image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8",
+    "Referer": _REFERER,
+    "User-Agent": _USER_AGENT,
+}
 logger = logging.getLogger(__name__)
 
 
@@ -63,11 +68,6 @@ class XiaohongshuImageFetcher:
             timeout=httpx.Timeout(20.0),
             follow_redirects=False,
             trust_env=False,
-            headers={
-                "Accept": "image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8",
-                "Referer": _REFERER,
-                "User-Agent": _USER_AGENT,
-            },
         )
 
     def close(self) -> None:
@@ -81,7 +81,7 @@ class XiaohongshuImageFetcher:
 
         normalized = normalize_xiaohongshu_image_url(source_url)
         try:
-            with self._client.stream("GET", normalized) as response:
+            with self._client.stream("GET", normalized, headers=_REQUEST_HEADERS) as response:
                 if response.status_code != 200:
                     raise ContentMediaCacheUnavailable("图片源返回非成功状态")
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
@@ -118,19 +118,19 @@ def normalize_xiaohongshu_image_url(source_url: str) -> str:
     trusted_host = hostname == "ci.xiaohongshu.com" or hostname == "xhscdn.com" or hostname.endswith(
         ".xhscdn.com"
     )
+    default_port = (parsed.scheme == "http" and port in (None, 80)) or (
+        parsed.scheme == "https" and port in (None, 443)
+    )
     if (
         parsed.scheme not in {"http", "https"}
         or not trusted_host
-        or port not in (None, 80, 443)
+        or not default_port
         or parsed.username is not None
         or parsed.password is not None
         or not parsed.path.startswith("/")
     ):
         raise ContentMediaCacheUnavailable("图片源不在允许的小红书 Origin")
-    netloc = hostname
-    if port not in (None, 80, 443):
-        netloc = f"{hostname}:{port}"
-    return urlunsplit(("https", netloc, parsed.path, parsed.query, ""))
+    return urlunsplit(("https", hostname, parsed.path, parsed.query, ""))
 
 
 class PostgresContentMediaCacheService:
