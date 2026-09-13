@@ -109,7 +109,7 @@ class XiaohongshuImageFetcher:
 
 
 def normalize_xiaohongshu_image_url(source_url: str) -> str:
-    """把允许的 XHS 图片 URL 规范为 HTTPS Origin，并拒绝任意代理目标。"""
+    """把允许的小红书图片 URL 规范为 HTTPS Origin，并拒绝任意代理目标。"""
 
     try:
         parsed = urlsplit(source_url.strip())
