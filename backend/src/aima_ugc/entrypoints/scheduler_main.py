@@ -6,7 +6,10 @@ import logging
 import time
 from collections.abc import Callable
 
-from aima_ugc.bootstrap.artifact_cleanup import ArtifactCleanupResult, run_artifact_cleanup_once
+from aima_ugc.bootstrap.artifact_cleanup import (
+    ArtifactCleanupResult,
+    run_artifact_cleanup_until_drained,
+)
 from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
 from aima_ugc.platform.logging import log_event, log_exception_event
@@ -21,7 +24,7 @@ def run_scheduler_loop(
     poll_seconds: float = _SCHEDULER_POLL_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
-    cleanup: Callable[[PlatformRuntime], ArtifactCleanupResult] = run_artifact_cleanup_once,
+    cleanup: Callable[[PlatformRuntime], ArtifactCleanupResult] = run_artifact_cleanup_until_drained,
 ) -> None:
     """持续执行短事务 Scheduler tick；Artifact housekeeping 至多每小时一次。"""
     if poll_seconds <= 0:
@@ -67,7 +70,9 @@ def run_scheduler_loop(
             else:
                 cleanup_level = (
                     logging.WARNING
-                    if cleanup_result.failed or cleanup_result.skipped_backend
+                    if cleanup_result.failed
+                    or cleanup_result.skipped_backend
+                    or not cleanup_result.drained
                     else logging.INFO
                     if cleanup_result.backfilled or cleanup_result.deleted
                     else logging.DEBUG
@@ -82,6 +87,8 @@ def run_scheduler_loop(
                     deleted=cleanup_result.deleted,
                     failed=cleanup_result.failed,
                     skipped_backend=cleanup_result.skipped_backend,
+                    batches=cleanup_result.batches,
+                    drained=cleanup_result.drained,
                 )
             next_cleanup_at = current + _ARTIFACT_CLEANUP_INTERVAL_SECONDS
         sleep(poll_seconds)
