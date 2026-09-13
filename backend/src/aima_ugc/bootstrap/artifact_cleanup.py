@@ -25,6 +25,8 @@ from aima_ugc.platform.time import beijing_now
 from .runtime import PlatformRuntime
 
 _CAPACITY_CLEANUP_LIMIT = 10000
+_HOURLY_CLEANUP_BATCH_LIMIT = 500
+_HOURLY_CLEANUP_MAX_BATCHES = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +38,8 @@ class ArtifactCleanupResult:
     deleted: int
     failed: int
     skipped_backend: int
+    batches: int = 1
+    drained: bool = True
 
 
 def run_artifact_cleanup_once(
@@ -44,7 +48,7 @@ def run_artifact_cleanup_once(
     now: datetime | None = None,
     limit: int = 100,
 ) -> ArtifactCleanupResult:
-    """补齐历史 TTL、删除到期 Artifact，并按 30/24 GiB 水位回收媒体缓存。
+    """补齐历史 TTL、删除一批到期 Artifact，并按 30/24 GiB 水位回收媒体缓存。
 
     数据库事务只负责状态认领/收敛；实体文件删除始终在事务外执行，避免长 I/O
     持锁。`delete_pending` 会在后续 housekeeping 中继续重试。
@@ -150,6 +154,60 @@ def run_artifact_cleanup_once(
         deleted=deleted,
         failed=failed,
         skipped_backend=skipped_backend,
+        batches=1,
+        drained=len(candidates) < limit,
+    )
+
+
+def run_artifact_cleanup_until_drained(
+    runtime: PlatformRuntime,
+    *,
+    now: datetime | None = None,
+    batch_limit: int = _HOURLY_CLEANUP_BATCH_LIMIT,
+    max_batches: int = _HOURLY_CLEANUP_MAX_BATCHES,
+) -> ArtifactCleanupResult:
+    """用有界短批次尽量排空到期 Artifact，避免海量媒体把 30 天 TTL 拖成长期积压。
+
+    每批仍沿用 `run_artifact_cleanup_once` 的短事务/文件 I/O 边界。达到最大批次数时
+    返回 `drained=False`，由 Scheduler 记录 Warning，下一小时继续，不无限阻塞调度主循环。
+    """
+
+    if batch_limit < 1:
+        raise ValueError("Artifact cleanup batch_limit 必须大于 0")
+    if max_batches < 1:
+        raise ValueError("Artifact cleanup max_batches 必须大于 0")
+    observed_at = beijing_now() if now is None else now
+    if observed_at.utcoffset() is None:
+        raise ValueError("Artifact cleanup now 必须包含时区")
+
+    backfilled = 0
+    scanned = 0
+    deleted = 0
+    failed = 0
+    skipped_backend = 0
+    batches = 0
+    drained = False
+
+    for _ in range(max_batches):
+        result = run_artifact_cleanup_once(runtime, now=observed_at, limit=batch_limit)
+        batches += 1
+        backfilled += result.backfilled
+        scanned += result.scanned
+        deleted += result.deleted
+        failed += result.failed
+        skipped_backend += result.skipped_backend
+        if result.drained:
+            drained = True
+            break
+
+    return ArtifactCleanupResult(
+        backfilled=backfilled,
+        scanned=scanned,
+        deleted=deleted,
+        failed=failed,
+        skipped_backend=skipped_backend,
+        batches=batches,
+        drained=drained,
     )
 
 
@@ -197,4 +255,8 @@ def _delete_claimed_artifact(
         finish_session.close()
 
 
-__all__ = ["ArtifactCleanupResult", "run_artifact_cleanup_once"]
+__all__ = [
+    "ArtifactCleanupResult",
+    "run_artifact_cleanup_once",
+    "run_artifact_cleanup_until_drained",
+]
