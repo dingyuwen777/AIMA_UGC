@@ -51,12 +51,13 @@ from .analysis_high_throughput_planner import (
     create_high_throughput_analysis_job_terminal_callback,
 )
 from .canonical_replay_worker import PostgresCanonicalReplayJobExecutor
-from .collection_scope import TikHubCollectionScopeExecutor
+from .content_media_cache import PostgresContentMediaCacheService
 from .content_reclassification_worker import PostgresContentReclassificationJobExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
 from .historical_cancellation import historical_cancellation_terminal_callback
 from .historical_import_worker import PostgresHistoricalImportJobExecutor
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
+from .media_cache_collection_scope import MediaCachingTikHubCollectionScopeExecutor
 from .runtime import PlatformRuntime, create_platform_runtime
 
 
@@ -141,7 +142,10 @@ def create_collection_job_registry(
         pool = _TikHubTransportPool()
         runtime.add_resource_closer(pool.close)
         resolved_transport_factory = pool
-    scope_executor = TikHubCollectionScopeExecutor(
+    media_cache = PostgresContentMediaCacheService(runtime)
+    runtime.add_resource_closer(media_cache.close)
+    scope_executor = MediaCachingTikHubCollectionScopeExecutor(
+        media_prefetcher=media_cache,
         session_factory=runtime.database.new_session,
         raw_artifacts=raw_artifacts,
         artifacts=artifact_service,
