@@ -15,7 +15,7 @@ from aima_ugc.modules.collection.collection_run_executor import CollectionScopeE
 from aima_ugc.modules.collection.execution import CollectionRunRecord, CollectionScopeRecord
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
 from aima_ugc.modules.system.models import ProviderConfig
-from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
+from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.logging import log_exception_event
 from aima_ugc.platform.storage import ArtifactService, ArtifactStore
 
@@ -76,7 +76,10 @@ class MediaCachingTikHubCollectionScopeExecutor(TikHubCollectionScopeExecutor):
         ):
             try:
                 self._media_prefetcher.prefetch_content(UUID(scope.source_value))
-            except (ValueError, RuntimeError, OSError) as exc:
+            except LeaseLostError:
+                raise
+            except Exception as exc:
+                # 媒体预热是非关键派生能力；普通缓存/数据库/文件故障不得改写已完成的采集结果。
                 log_exception_event(
                     logger,
                     logging.WARNING,
