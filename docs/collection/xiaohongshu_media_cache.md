@@ -148,13 +148,18 @@ TTL = 30 天
 容量低水位 = 24 GiB
 ```
 
-现有 Scheduler 每小时执行统一 `run_artifact_cleanup_once()`：
+现有 Scheduler 每小时执行统一 Artifact housekeeping。为了避免大规模图片场景被旧的“每小时只处理 100 条”吞吐限制拖成长期积压，正式入口使用 `run_artifact_cleanup_until_drained()` 做**有界批量排空**：
 
-1. 先按 `expires_at` 删除 30 天到期缓存；
-2. 再统计仍占实体存储的 `content-media-cache`；
-3. 总量不超过 30 GiB 时不做额外容量回收；
-4. 超过 30 GiB 时按 Artifact `created_at` 最旧优先删除，目标回落到不高于 24 GiB；
-5. 单次容量清理最多处理 10,000 个 Artifact，极端情况下下一个小时继续，避免 housekeeping 长时间独占进程。
+1. 每批最多扫描 500 条到期/待删 Artifact，保持原有短事务与文件 I/O 边界；
+2. 每个小时最多执行 20 批，即最多推进 10,000 条 TTL 候选；
+3. Retention backfill 只在第一批执行一次，不随批次数重复扫描；
+4. 如果 20 批后仍有积压，返回 `drained=false` 并记录 Warning，下一小时继续，不无限阻塞 Scheduler；
+5. TTL 批次结束后只做一次媒体容量统计；
+6. 总量不超过 30 GiB 时不做额外容量回收；
+7. 超过 30 GiB 时按 Artifact `created_at` 最旧优先删除，目标回落到不高于 24 GiB；
+8. 单次容量回收最多处理 10,000 个 Artifact，极端情况下下一小时继续。
+
+因此 `expires_at = 创建时间 + 30 天` 是缓存进入删除资格的机器截止时间；物理文件由每小时有界 housekeeping 尽快排空。系统不会为了严格到秒删除而把 Scheduler 无限占用，但会显式暴露 `batches / drained`，便于发现持续积压。
 
 删除的是 Artifact 字节和存储状态，不删除 Content 媒体事实；下次读取可以重新缓存。
 
@@ -162,7 +167,9 @@ TTL = 30 天
 
 - [`backend/src/aima_ugc/platform/storage/retention.py`](../../backend/src/aima_ugc/platform/storage/retention.py)
 - [`backend/src/aima_ugc/bootstrap/artifact_cleanup.py`](../../backend/src/aima_ugc/bootstrap/artifact_cleanup.py)
+- [`backend/src/aima_ugc/entrypoints/scheduler_main.py`](../../backend/src/aima_ugc/entrypoints/scheduler_main.py)
 - [`backend/src/aima_ugc/adapters/persistence/postgres/content_media_cache.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_media_cache.py)
+- [`tests/unit/platform/test_artifact_cleanup_scheduler.py`](../../tests/unit/platform/test_artifact_cleanup_scheduler.py)
 
 ## 6. 声音广场展示
 
