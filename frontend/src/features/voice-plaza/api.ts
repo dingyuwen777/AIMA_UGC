@@ -76,12 +76,28 @@ function unwrap<T>(value: T): T {
   return value
 }
 
+/** 将小红书图片的预览地址收敛到 AIMA 同源缓存，原始 URL 仍保留用于溯源。 */
+function withLocalMediaPreview(detail: ContentDetailResponse): ContentDetailResponse {
+  if (detail.platform !== 'xiaohongshu') return detail
+  return {
+    ...detail,
+    media: (detail.media ?? []).map((media) =>
+      media.media_type === 'image'
+        ? {
+            ...media,
+            preview_url: `/api/v1/contents/${detail.id}/media/${media.position}`,
+          }
+        : media,
+    ),
+  }
+}
+
 export async function fetchContents(params: ListContentsParams): Promise<ContentListResponse> {
   return unwrap(await listContents(params))
 }
 
 export async function fetchContentDetail(contentId: string): Promise<ContentDetailResponse> {
-  return unwrap(await getContent(contentId))
+  return withLocalMediaPreview(unwrap(await getContent(contentId)))
 }
 
 export async function fetchContentComments(
