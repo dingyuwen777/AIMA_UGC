@@ -1,6 +1,5 @@
 import httpx
 import pytest
-
 from aima_ugc.bootstrap.content_media_cache import (
     ContentMediaCacheUnavailable,
     XiaohongshuImageFetcher,
