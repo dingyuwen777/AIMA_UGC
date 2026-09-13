@@ -33,7 +33,7 @@ const loadedCount = computed(() =>
 
 const emptyStateTitle = computed(() => {
   if (props.coverage === 'unavailable') return '平台暂未提供可采集评论'
-  if (props.providerTotalCount === 0) return '平台当前暂无评论'
+  if (props.providerTotalCount === 0) return '数据记录中暂无评论'
   if (props.ingestedTotalCount === 0) return '评论尚未采集'
   return '暂无可显示评论'
 })
@@ -43,10 +43,10 @@ const emptyStateMessage = computed(() => {
     return '当前帖子正文、已有图片和分析信息仍可正常查看。'
   }
   if (props.providerTotalCount === 0) {
-    return '平台当前显示 0 条评论，这不是采集异常；正文和已有图片仍可正常查看。'
+    return '当前数据记录的评论数为 0，这不是采集异常；正文和已有图片仍可正常查看。'
   }
   if (props.ingestedTotalCount === 0 && props.providerTotalCount != null) {
-    return `平台当前显示 ${formatNumber(props.providerTotalCount)} 条评论，本地尚未采集。需要评论分析时，可在采集运行中心发起辅助补采。`
+    return `当前数据记录显示 ${formatNumber(props.providerTotalCount)} 条评论，本地尚未采集评论正文。需要评论分析时，可在采集运行中心发起辅助补采。`
   }
   if (props.ingestedTotalCount === 0) {
     return '当前未进行评论补采。正文和已有图片仍可正常查看，需要评论分析时再发起辅助补采。'
@@ -82,7 +82,7 @@ function coverageLabel(): string {
   if (props.coverage === 'partial') return '本次采集到部分评论'
   if (props.coverage === 'unavailable') return '平台暂未提供评论'
   if (props.ingestedTotalCount > 0) return '已采集评论，完整度待确认'
-  if (props.providerTotalCount === 0) return '平台暂无评论'
+  if (props.providerTotalCount === 0) return '记录中暂无评论'
   return '尚未采集评论'
 }
 </script>
@@ -98,7 +98,7 @@ function coverageLabel(): string {
         class="comment-counts"
         aria-label="评论数量"
       >
-        <span>平台显示 <b>{{ providerTotalCount == null ? '未提供' : formatNumber(providerTotalCount) }}</b></span>
+        <span>平台记录 <b>{{ providerTotalCount == null ? '未提供' : formatNumber(providerTotalCount) }}</b></span>
         <span>已采集 <b>{{ formatNumber(ingestedTotalCount) }}</b></span>
         <span>当前显示 <b>{{ formatNumber(loadedCount) }}</b></span>
       </div>
