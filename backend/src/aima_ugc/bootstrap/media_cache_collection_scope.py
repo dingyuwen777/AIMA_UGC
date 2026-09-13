@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from pydantic import SecretStr
+from sqlalchemy.orm import Session
+
 from aima_ugc.modules.collection.collection_run_executor import CollectionScopeExecutionResult
 from aima_ugc.modules.collection.execution import CollectionRunRecord, CollectionScopeRecord
+from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
+from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 from aima_ugc.platform.logging import log_exception_event
+from aima_ugc.platform.storage import ArtifactService, ArtifactStore
 
 from .collection_scope import TikHubCollectionScopeExecutor
 
@@ -25,8 +33,29 @@ class ContentMediaPrefetcher(Protocol):
 class MediaCachingTikHubCollectionScopeExecutor(TikHubCollectionScopeExecutor):
     """保持原 Scope 状态机不变，只在辅助补采结束后追加非关键媒体预热。"""
 
-    def __init__(self, *, media_prefetcher: ContentMediaPrefetcher, **kwargs: object) -> None:
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        *,
+        media_prefetcher: ContentMediaPrefetcher,
+        session_factory: Callable[[], Session],
+        raw_artifacts: RawArtifactService,
+        artifacts: ArtifactService,
+        artifact_store: ArtifactStore,
+        transport_factory: Callable[[ProviderConfig], ProviderTransport],
+        secret_resolver: Callable[[str], SecretStr],
+        observed_at: Callable[[], datetime] | None = None,
+    ) -> None:
+        """复用生产 Scope 依赖，并额外注入非关键媒体预热边界。"""
+
+        super().__init__(
+            session_factory=session_factory,
+            raw_artifacts=raw_artifacts,
+            artifacts=artifacts,
+            artifact_store=artifact_store,
+            transport_factory=transport_factory,
+            secret_resolver=secret_resolver,
+            observed_at=observed_at,
+        )
         self._media_prefetcher = media_prefetcher
 
     def execute(
