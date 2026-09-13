@@ -24,7 +24,9 @@ def run_scheduler_loop(
     poll_seconds: float = _SCHEDULER_POLL_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
-    cleanup: Callable[[PlatformRuntime], ArtifactCleanupResult] = run_artifact_cleanup_until_drained,
+    cleanup: Callable[
+        [PlatformRuntime], ArtifactCleanupResult
+    ] = run_artifact_cleanup_until_drained,
 ) -> None:
     """持续执行短事务 Scheduler tick；Artifact housekeeping 至多每小时一次。"""
     if poll_seconds <= 0:
