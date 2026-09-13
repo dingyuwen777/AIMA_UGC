@@ -162,7 +162,7 @@ class PostgresContentMediaCacheService:
             self._fetcher.close()
 
     def get_media(self, content_id: UUID, position: int) -> CachedContentMedia:
-        """缓存命中直接读取；miss 时安全下载、落 Artifact、更新当前绑定。"""
+        """缓存命中直接读取；miss 或并发清理竞态时安全重建当前图片。"""
 
         source = self._repository.get_source(content_id, position)
         if not _cacheable_source(source):
@@ -175,12 +175,22 @@ class PostgresContentMediaCacheService:
             binding is not None
             and binding.source_url_hash == source_hash
             and binding.storage_status in {"stored", "linked"}
-            and self._runtime.artifact_store.exists(binding.storage_key)
         ):
-            return CachedContentMedia(
-                data=self._runtime.artifact_store.read(binding.storage_key),
-                content_type=binding.content_type,
-            )
+            try:
+                data = self._runtime.artifact_store.read(binding.storage_key)
+            except (OSError, ValueError) as exc:
+                # Housekeeping 可能在绑定读取后并发删除文件；把 TOCTOU 竞态收敛成 cache miss。
+                log_exception_event(
+                    logger,
+                    logging.INFO,
+                    "content_media_cache.read_miss",
+                    "媒体缓存字节不可读，将按原始媒体事实重新构建。",
+                    exc,
+                    content_id=str(content_id),
+                    position=position,
+                )
+            else:
+                return CachedContentMedia(data=data, content_type=binding.content_type)
 
         normalized, data, content_type = self._fetcher.fetch(source.source_url)
         source_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
