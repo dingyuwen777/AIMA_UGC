@@ -103,7 +103,7 @@ data_changes:
 7. 同源图片字节路由为产品内部资源路由，不加入业务 OpenAPI/generated client；正式 Content Detail Contract 仍只暴露媒体事实。
 8. 辅助补采图片预热只用于降低首次访问延迟；声音广场对已有媒体事实始终支持懒缓存，未采集评论不自动触发 Provider 请求。
 9. 媒体源暂不可用时内部路由返回固定静态 SVG 占位图并短缓存 60 秒；媒体记录没有真实 `url` 时不构造内部路由；`url` 与 `preview_url` 均为空时在 Voice Plaza 适配层过滤。
-10. `ContentDetailDrawer.vue` 保持 `main` 原实现，本任务不修改人工确认/分析锁定/Dialog 结构；媒体可展示性在 Voice Plaza API 适配层收敛，视觉由独立 CSS 接管。
+10. `ContentDetailDrawer.vue` 与当前 `main` 保持同一 blob，本任务不修改人工确认/分析锁定/Dialog 结构；媒体可展示性在 Voice Plaza API 适配层收敛，视觉由独立 CSS 接管。
 
 # 需求追溯
 
@@ -168,7 +168,7 @@ data_changes:
 
 ## Review A2：Change → 实现、测试与文档
 
-实现、测试用例、Migration、长期文档、Figma Normal Owner 与未补采/媒体回退状态规格已覆盖 Change 当前范围；Review 发现的每小时 100 条 TTL 吞吐缺口已改为有界批量排空并补测试；nullable `media.url` 已用纯前端测试锁定；`ContentDetailDrawer.vue` 的无关 diff 已恢复为 `main` 同一 blob。PR #477 的完整 CI 与独立 Review 作为 Ready 后强门禁继续执行，任何阻断 Finding 都会回到本 Change 修复。
+实现、测试用例、Migration、长期文档、Figma Normal Owner 与未补采/媒体回退状态规格已覆盖 Change 当前范围；Review 发现的每小时 100 条 TTL 吞吐缺口已改为有界批量排空并补测试；nullable `media.url` 已用纯前端测试锁定；`ContentDetailDrawer.vue` 的无关 diff 已精确恢复为 `main` 同一 blob。PR #477 的完整 CI 与独立 Review 作为 Ready 后强门禁继续执行，任何阻断 Finding 都会回到本 Change 修复。
 
 # 完成证据与交付状态
 
@@ -176,6 +176,6 @@ data_changes:
 - 基线：`main@6651a0fb484a58911790bb590b839fd670142233`。
 - PR：`#477`；Requirement Source、Ready、Secret、Docs/Schema Facts、OpenAPI/generated client 和 API/Vite startup 已在多轮 PR Actions 中取得新鲜通过证据；此前失败均已按真实诊断修复，最终 head 仍需完整 CI 收口。
 - Runtime / Tooling：Developer Tooling 已有成功历史 run；Runtime Acceptance 持续覆盖 canonical Compose/Migration/host-root/Windows overlay，最终以待合并 head 的新鲜结果为准。
-- Figma：共享 Detail Drawer body Owner `4861:31020` 与正式 `4627:8510` 已同步；未补采/媒体回退状态规格 `5363:2514` Fresh Screenshot 为 1440×669，四种状态完整无裁切，正常详情与固定底部操作未被改写。
+- Figma：共享 Detail Drawer body Owner `4861:31020` 与正式 `4627:8510` 已同步；未补采/媒体回退状态规格 `5363:2514` Fresh Screenshot 为 1440×669，四种状态完整无裁切；代码侧 `ContentDetailDrawer.vue` 已恢复 main，不再夹带无关业务重构。
 - 文档：`docs/collection/xiaohongshu_media_cache.md` 已建立并从 `docs/collection/README.md` 导航，现已明确预热非前置条件、懒缓存、不可展示媒体过滤、媒体不可用占位、未采集评论语义，以及每小时 TTL 有界批量排空策略。
 - 下一门禁：当前 head 的完整 PR CI / Runtime / PostgreSQL / Browser + 独立 Review；全部绿后才执行 squash merge 与 main 新鲜验证。
