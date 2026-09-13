@@ -61,11 +61,13 @@ content_media.url 已存在
 → 正常显示图片
 ```
 
-因此 Excel 历史导入、旧 TikHub 数据或从未执行 Batch Supplement 的帖子，只要已有 `content_media`，也可以直接展示图片。
+因此 Excel 历史导入、旧 TikHub 数据或从未执行 Batch Supplement 的帖子，只要已有可用 `content_media`，也可以直接展示图片。
 
-### 3.2 完全没有媒体事实
+### 3.2 完全没有可展示媒体
 
-如果 `Content Detail.media` 为空，详情抽屉不渲染媒体区，不保留 336 px 空白卡片。标题、正文、AI 信息、互动数据和评论状态直接自然上移。
+如果 `Content Detail.media` 为空，详情抽屉不渲染媒体区，不保留 336 px 空白卡片。历史数据还可能存在媒体记录但 `url=null && preview_url=null`；这类记录虽然是合法 Contract 输入，却没有可展示内容，Voice Plaza 适配层会直接过滤。`url=null` 但已有 `preview_url` 的记录仍保留显示。
+
+因此当所有媒体都不可展示时，标题、正文、AI 信息、互动数据和评论状态直接自然上移，不出现“查看原始媒体”的大空卡片。
 
 ### 3.3 有媒体事实，但源图片临时不可用
 
@@ -104,9 +106,11 @@ content_media.url 已存在
 相关实现与回归测试：
 
 - [`backend/src/aima_ugc/bootstrap/content_media_http.py`](../../backend/src/aima_ugc/bootstrap/content_media_http.py)
+- [`frontend/src/features/voice-plaza/api.ts`](../../frontend/src/features/voice-plaza/api.ts)
 - [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue`](../../frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue)
 - [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentCommentSection.vue`](../../frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentCommentSection.vue)
 - [`tests/unit/content/test_content_media_http.py`](../../tests/unit/content/test_content_media_http.py)
+- [`frontend/tests/voice-plaza-media-preview.spec.ts`](../../frontend/tests/voice-plaza-media-preview.spec.ts)
 - [`frontend/tests/content-comment-section.spec.ts`](../../frontend/tests/content-comment-section.spec.ts)
 
 ## 4. 安全下载边界
@@ -175,7 +179,7 @@ TTL = 30 天
 
 声音广场仍通过正式 Content Detail Contract 读取 `media.position/url`，不把二进制图片端点加入 OpenAPI/generated client。
 
-对小红书 `image`，前端把预览地址投影为同源内部资源：
+对有真实 `url` 的小红书 `image`，前端把预览地址投影为同源内部资源：
 
 ```text
 /api/v1/contents/{content_id}/media/{position}
@@ -189,7 +193,7 @@ cache miss → 安全请求保存的 xhscdn URL → 缓存 → 返回
 源不可用  → AIMA 固定浅灰占位图，不暴露浏览器破图
 ```
 
-原始 `media.url` 不被覆盖，仍可用于溯源/原始媒体链接。
+原始 `media.url` 不被覆盖，仍可用于溯源/原始媒体链接。没有 URL 但已有 preview 的媒体保留原 preview；URL 和 preview 都为空的媒体不会进入画廊。
 
 详情抽屉媒体区使用浏览器原生横向滚动和 `scroll-snap`，不引入额外 Carousel/UI Library：
 
@@ -198,7 +202,7 @@ cache miss → 安全请求保存的 xhscdn URL → 缓存 → 返回
 - 触屏、触控板、鼠标横向滚动都使用原生行为；
 - 图片 `object-fit: contain`，避免裁掉车型/产品主体；
 - 隐藏厚重滚动条，不增加无必要箭头/分页器；
-- 没有媒体事实时整个媒体区不出现；
+- 没有可展示媒体时整个媒体区不出现；
 - 图片源失败不影响标题、正文、AI 信息、人工确认和评论。
 
 正式 Figma：`EAPm8KVarUe7BFTSnzvOpT / 4627:7429`。共享 Detail Drawer body Owner 与代码保持一致：610 px Drawer 内使用 336 px 高、FIT、横向可滚动媒体区；未补采/无媒体/媒体不可用/评论未采集状态由同页状态规格说明。
