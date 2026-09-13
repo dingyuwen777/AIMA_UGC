@@ -1,7 +1,16 @@
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from uuid import UUID, uuid4
+
 import httpx
 import pytest
+from aima_ugc.adapters.persistence.postgres.content_media_cache import (
+    ContentMediaCacheBinding,
+    ContentMediaSource,
+)
 from aima_ugc.bootstrap.content_media_cache import (
     ContentMediaCacheUnavailable,
+    PostgresContentMediaCacheService,
     XiaohongshuImageFetcher,
     normalize_xiaohongshu_image_url,
 )
@@ -76,3 +85,78 @@ def test_xiaohongshu_image_fetcher_rejects_redirect_unsafe_type_and_oversize(
             fetcher.fetch("https://sns-img-bd.xhscdn.com/abc")
     finally:
         client.close()
+
+
+def test_media_cache_read_race_rebuilds_from_source_instead_of_failing() -> None:
+    """Housekeeping 在绑定读取后删掉缓存字节时，应按 cache miss 重建。"""
+
+    content_id = uuid4()
+    old_artifact_id = uuid4()
+    new_artifact_id = uuid4()
+    source_url = "https://sns-img-bd.xhscdn.com/source"
+    now = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+
+    class Repository:
+        def __init__(self) -> None:
+            self.bound_artifact_id: UUID | None = None
+
+        def get_source(self, requested_content_id: UUID, position: int) -> ContentMediaSource:
+            assert requested_content_id == content_id
+            assert position == 0
+            return ContentMediaSource(
+                content_id=content_id,
+                position=0,
+                platform="xiaohongshu",
+                media_type="image",
+                source_url=source_url,
+            )
+
+        def get_binding(
+            self, requested_content_id: UUID, position: int
+        ) -> ContentMediaCacheBinding:
+            assert requested_content_id == content_id
+            assert position == 0
+            return ContentMediaCacheBinding(
+                artifact_id=old_artifact_id,
+                source_url_hash=(
+                    "8b2b318e8e2bcb7d9b51d843c1c889581a3d3e94e5a61dcb96f925d2c160b05e"
+                ),
+                storage_key="media-cache/old/item",
+                content_type="image/webp",
+                storage_status="linked",
+                byte_size=5,
+                created_at=now,
+                expires_at=now,
+            )
+
+        def bind(self, **kwargs: object) -> None:
+            self.bound_artifact_id = kwargs["artifact_id"]  # type: ignore[assignment]
+
+    class RaceStore:
+        def read(self, _storage_key: str) -> bytes:
+            raise FileNotFoundError("concurrent cleanup")
+
+    class Fetcher:
+        def fetch(self, requested_url: str) -> tuple[str, bytes, str]:
+            assert requested_url == source_url
+            return source_url, b"fresh", "image/webp"
+
+    class Artifacts:
+        def store_bytes(self, **_kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(id=new_artifact_id)
+
+        def link(self, artifact_id: UUID) -> None:
+            assert artifact_id == new_artifact_id
+
+    repository = Repository()
+    service = object.__new__(PostgresContentMediaCacheService)
+    service._runtime = SimpleNamespace(artifact_store=RaceStore())
+    service._repository = repository
+    service._fetcher = Fetcher()
+    service._artifacts = Artifacts()
+
+    media = service.get_media(content_id, 0)
+
+    assert media.data == b"fresh"
+    assert media.content_type == "image/webp"
+    assert repository.bound_artifact_id == new_artifact_id
