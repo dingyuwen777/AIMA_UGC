@@ -47,6 +47,24 @@ async function render(replies: Record<string, ContentCommentResponse[]>): Promis
   }))
 }
 
+async function renderEmpty(providerTotalCount: number | null): Promise<string> {
+  return renderToString(createSSRApp({
+    render: () => h(ContentCommentSection, {
+      roots: [],
+      replies: {},
+      replyStates: {},
+      loading: false,
+      loadingNext: false,
+      error: null,
+      hasMore: false,
+      rootTotalCount: 0,
+      ingestedTotalCount: 0,
+      providerTotalCount,
+      coverage: null,
+    }),
+  }))
+}
+
 describe('content comment section', () => {
   it('用缩进线程和自然语言回复对象展示直接父子关系', async () => {
     const html = await render({
@@ -86,5 +104,22 @@ describe('content comment section', () => {
     expect(html).toContain('当前显示')
     expect(html).not.toContain('root_comment_id')
     expect(html).not.toContain('parent_comment_id')
+  })
+
+  it('未进行辅助补采时以中性状态提示评论尚未采集', async () => {
+    const html = await renderEmpty(42)
+
+    expect(html).toContain('评论尚未采集')
+    expect(html).toContain('平台当前显示 42 条评论')
+    expect(html).toContain('采集运行中心')
+    expect(html).not.toContain('评论暂时加载失败')
+  })
+
+  it('平台本身没有评论时不误报为采集失败', async () => {
+    const html = await renderEmpty(0)
+
+    expect(html).toContain('平台当前暂无评论')
+    expect(html).toContain('这不是采集异常')
+    expect(html).not.toContain('评论尚未采集')
   })
 })
