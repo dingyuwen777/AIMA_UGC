@@ -41,7 +41,8 @@ _PLATFORM_CONTEXT_PATTERN = re.compile(
     r"(?:platform(?:s|_scope)?|Platform(?:Name|Scope)?)", re.IGNORECASE
 )
 _XIAOHONGSHU_ALIAS_PATTERN = re.compile(r"xhs", re.IGNORECASE)
-_XIAOHONGSHU_EXTERNAL_LITERALS = ("xhslink.com", "xhslink.cn")
+# 官方外部域名不是平台机器标识，允许在 URL/协议事实中保真出现。
+_XIAOHONGSHU_EXTERNAL_LITERALS = ("xhslink.com", "xhslink.cn", "xhscdn.com")
 _RED_PLATFORM_ALIAS_PATTERN = re.compile(
     r"(?:platform|platform_scope)\s*(?:=|:)\s*[\"']red[\"']",
     re.IGNORECASE,
