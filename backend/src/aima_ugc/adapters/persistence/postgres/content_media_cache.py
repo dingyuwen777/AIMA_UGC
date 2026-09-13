@@ -168,7 +168,9 @@ class PostgresContentMediaCacheRepository:
                 session.scalar(
                     select(func.coalesce(func.sum(artifacts_table.c.byte_size), 0)).where(
                         artifacts_table.c.kind == "content-media-cache",
-                        artifacts_table.c.storage_status.in_(("stored", "linked", "delete_pending")),
+                        artifacts_table.c.storage_status.in_(
+                            ("stored", "linked", "delete_pending")
+                        ),
                     )
                 )
                 or 0,
