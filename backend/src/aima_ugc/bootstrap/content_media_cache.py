@@ -84,7 +84,9 @@ class XiaohongshuImageFetcher:
             with self._client.stream("GET", normalized, headers=_REQUEST_HEADERS) as response:
                 if response.status_code != 200:
                     raise ContentMediaCacheUnavailable("图片源返回非成功状态")
-                content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                content_type = (
+                    response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                )
                 if content_type not in _ALLOWED_RASTER_TYPES:
                     raise ContentMediaCacheUnavailable("图片源响应类型不受支持")
                 declared = response.headers.get("content-length")
@@ -115,8 +117,10 @@ def normalize_xiaohongshu_image_url(source_url: str) -> str:
     except ValueError as exc:
         raise ContentMediaCacheUnavailable("图片源 URL 不合法") from exc
     hostname = (parsed.hostname or "").lower()
-    trusted_host = hostname == "ci.xiaohongshu.com" or hostname == "xhscdn.com" or hostname.endswith(
-        ".xhscdn.com"
+    trusted_host = (
+        hostname == "ci.xiaohongshu.com"
+        or hostname == "xhscdn.com"
+        or hostname.endswith(".xhscdn.com")
     )
     default_port = (parsed.scheme == "http" and port in (None, 80)) or (
         parsed.scheme == "https" and port in (None, 443)
