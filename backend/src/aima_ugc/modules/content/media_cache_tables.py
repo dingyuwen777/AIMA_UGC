@@ -13,7 +13,6 @@ from sqlalchemy import (
 
 from aima_ugc.platform.database.metadata import metadata
 
-
 content_media_cache_entries_table = Table(
     "content_media_cache_entries",
     metadata,
