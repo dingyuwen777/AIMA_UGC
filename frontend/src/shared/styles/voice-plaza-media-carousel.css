@@ -1,0 +1,80 @@
+/* 声音广场详情媒体：保持 Drawer 克制、完整展示图片，并以轻量 peek 提示横向滑动。 */
+body .content-detail-dialog .media-grid {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 0 4px;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+body .content-detail-dialog .media-grid::-webkit-scrollbar {
+  display: none;
+}
+
+body .content-detail-dialog .media-grid > a {
+  position: relative;
+  display: grid;
+  flex: 0 0 calc(100% - 28px);
+  min-width: 0;
+  height: 336px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--aima-border);
+  border-radius: 14px;
+  color: var(--aima-text-muted);
+  background: #f5f7f9;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 4%);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  text-decoration: none;
+}
+
+body .content-detail-dialog .media-grid > a:only-child {
+  flex-basis: 100%;
+}
+
+body .content-detail-dialog .media-grid > a:focus-visible {
+  outline: 2px solid var(--aima-primary);
+  outline-offset: 2px;
+}
+
+body .content-detail-dialog .media-grid img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #f5f7f9;
+}
+
+body .content-detail-dialog .media-grid span {
+  padding: 20px;
+  color: var(--aima-text-disabled);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
+@media (max-height: 760px) {
+  body .content-detail-dialog .media-grid > a {
+    height: 292px;
+  }
+}
+
+@media (max-width: 720px) {
+  body .content-detail-dialog .media-grid > a {
+    height: min(62vh, 336px);
+    border-radius: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .content-detail-dialog .media-grid {
+    scroll-behavior: auto;
+  }
+}
