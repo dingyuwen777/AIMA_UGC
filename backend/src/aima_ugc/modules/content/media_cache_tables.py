@@ -1,8 +1,16 @@
 """内容媒体可丢弃缓存的当前绑定表。"""
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, Table, Text, Uuid
-
 from aima_ugc.platform.database.metadata import metadata
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Table,
+    Text,
+    Uuid,
+)
 
 
 content_media_cache_entries_table = Table(
