@@ -56,6 +56,7 @@ from aima_ugc.modules.content.extended_tables import (
     content_mentions_table,
     content_topics_table,
 )
+from aima_ugc.modules.content.media_cache_tables import content_media_cache_entries_table
 from aima_ugc.modules.content.source_constraints import register_content_source_constraints
 from aima_ugc.modules.content.tables import (
     accounts_table,
@@ -174,6 +175,7 @@ __all__ = [
     "content_reclassification_runs_table",
     "content_external_ids_table",
     "content_locations_table",
+    "content_media_cache_entries_table",
     "content_media_table",
     "content_mentions_table",
     "content_metric_observations_table",
