@@ -27,7 +27,9 @@ def test_artifact_retention_policy_matches_approved_windows() -> None:
     assert MEDIA_CACHE_MAX_BYTES == 30 * 1024 * 1024 * 1024
     assert MEDIA_CACHE_TARGET_BYTES == 24 * 1024 * 1024 * 1024
     assert initial_artifact_expiry("provider-raw", observed_at) == observed_at + timedelta(days=30)
-    assert initial_artifact_expiry("content-media-cache", observed_at) == observed_at + timedelta(days=30)
+    assert initial_artifact_expiry("content-media-cache", observed_at) == observed_at + timedelta(
+        days=30
+    )
     assert initial_artifact_expiry("content-export.xlsx", observed_at) is None
     assert initial_artifact_expiry("file-import.raw", observed_at) is None
     assert import_source_expiry(observed_at) == observed_at + timedelta(days=7)
