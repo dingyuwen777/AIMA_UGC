@@ -76,13 +76,13 @@ function unwrap<T>(value: T): T {
   return value
 }
 
-/** 将小红书图片的预览地址收敛到 AIMA 同源缓存，原始 URL 仍保留用于溯源。 */
-function withLocalMediaPreview(detail: ContentDetailResponse): ContentDetailResponse {
+/** 将有真实源 URL 的小红书图片收敛到 AIMA 同源缓存；空 URL 不制造 404 破图。 */
+export function withLocalMediaPreview(detail: ContentDetailResponse): ContentDetailResponse {
   if (detail.platform !== 'xiaohongshu') return detail
   return {
     ...detail,
     media: (detail.media ?? []).map((media) =>
-      media.media_type === 'image'
+      media.media_type === 'image' && media.url
         ? {
             ...media,
             preview_url: `/api/v1/contents/${detail.id}/media/${media.position}`,
