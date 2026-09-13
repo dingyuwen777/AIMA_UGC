@@ -47,8 +47,10 @@ def run_artifact_cleanup_once(
     *,
     now: datetime | None = None,
     limit: int = 100,
+    backfill_retention: bool = True,
+    include_capacity: bool = True,
 ) -> ArtifactCleanupResult:
-    """补齐历史 TTL、删除一批到期 Artifact，并按 30/24 GiB 水位回收媒体缓存。
+    """补齐历史 TTL、删除一批到期 Artifact，并可执行 30/24 GiB 容量回收。
 
     数据库事务只负责状态认领/收敛；实体文件删除始终在事务外执行，避免长 I/O
     持锁。`delete_pending` 会在后续 housekeeping 中继续重试。
@@ -65,7 +67,7 @@ def run_artifact_cleanup_once(
     try:
         with scan_session.begin():
             repository = PostgresArtifactMetadataRepository(scan_session)
-            backfilled = repository.backfill_retention_deadlines()
+            backfilled = repository.backfill_retention_deadlines() if backfill_retention else 0
             candidates = repository.list_cleanup_candidates(
                 now=observed_at,
                 orphan_before=orphan_before,
@@ -116,37 +118,14 @@ def run_artifact_cleanup_once(
         deleted += deleted_delta
         failed += failed_delta
 
-    media_repository = PostgresContentMediaCacheRepository(runtime.database.new_session)
-    media_usage = media_repository.usage_bytes()
-    if media_usage > MEDIA_CACHE_MAX_BYTES:
-        bytes_to_free = media_usage - MEDIA_CACHE_TARGET_BYTES
-        capacity_candidates = media_repository.list_oldest_capacity_candidates(
-            bytes_to_free=bytes_to_free,
-            limit=_CAPACITY_CLEANUP_LIMIT,
+    if include_capacity:
+        capacity_scanned, capacity_deleted, capacity_failed = _run_media_capacity_cleanup(
+            runtime,
+            observed_at=observed_at,
         )
-        scanned += len(capacity_candidates)
-        log_event(
-            runtime.logger,
-            logging.INFO,
-            "artifact.cleanup.media_cache_capacity_started",
-            "媒体缓存超过容量高水位，开始按最旧优先回收。",
-            usage_bytes=media_usage,
-            max_bytes=MEDIA_CACHE_MAX_BYTES,
-            target_bytes=MEDIA_CACHE_TARGET_BYTES,
-            candidate_count=len(capacity_candidates),
-        )
-        for candidate in capacity_candidates:
-            if not media_repository.claim_capacity_delete(candidate.artifact_id):
-                continue
-            deleted_delta, failed_delta = _delete_claimed_artifact(
-                runtime,
-                artifact_id=candidate.artifact_id,
-                storage_key=candidate.storage_key,
-                kind="content-media-cache",
-                deleted_at=observed_at,
-            )
-            deleted += deleted_delta
-            failed += failed_delta
+        scanned += capacity_scanned
+        deleted += capacity_deleted
+        failed += capacity_failed
 
     return ArtifactCleanupResult(
         backfilled=backfilled,
@@ -168,8 +147,9 @@ def run_artifact_cleanup_until_drained(
 ) -> ArtifactCleanupResult:
     """用有界短批次尽量排空到期 Artifact，避免海量媒体把 30 天 TTL 拖成长期积压。
 
-    每批仍沿用 `run_artifact_cleanup_once` 的短事务/文件 I/O 边界。达到最大批次数时
-    返回 `drained=False`，由 Scheduler 记录 Warning，下一小时继续，不无限阻塞调度主循环。
+    Retention backfill 只在第一批执行，30/24 GiB 容量统计与回收只在 TTL 批次结束后
+    执行一次，避免扩大吞吐后重复做全表扫描。达到最大批次数时返回 `drained=False`，
+    Scheduler 记录 Warning 并在下一小时继续，不无限阻塞调度主循环。
     """
 
     if batch_limit < 1:
@@ -188,8 +168,14 @@ def run_artifact_cleanup_until_drained(
     batches = 0
     drained = False
 
-    for _ in range(max_batches):
-        result = run_artifact_cleanup_once(runtime, now=observed_at, limit=batch_limit)
+    for batch_index in range(max_batches):
+        result = run_artifact_cleanup_once(
+            runtime,
+            now=observed_at,
+            limit=batch_limit,
+            backfill_retention=batch_index == 0,
+            include_capacity=False,
+        )
         batches += 1
         backfilled += result.backfilled
         scanned += result.scanned
@@ -200,6 +186,14 @@ def run_artifact_cleanup_until_drained(
             drained = True
             break
 
+    capacity_scanned, capacity_deleted, capacity_failed = _run_media_capacity_cleanup(
+        runtime,
+        observed_at=observed_at,
+    )
+    scanned += capacity_scanned
+    deleted += capacity_deleted
+    failed += capacity_failed
+
     return ArtifactCleanupResult(
         backfilled=backfilled,
         scanned=scanned,
@@ -209,6 +203,51 @@ def run_artifact_cleanup_until_drained(
         batches=batches,
         drained=drained,
     )
+
+
+def _run_media_capacity_cleanup(
+    runtime: PlatformRuntime,
+    *,
+    observed_at: datetime,
+) -> tuple[int, int, int]:
+    """超过 30 GiB 时按最旧优先回收到 24 GiB；返回 scanned/deleted/failed。"""
+
+    media_repository = PostgresContentMediaCacheRepository(runtime.database.new_session)
+    media_usage = media_repository.usage_bytes()
+    if media_usage <= MEDIA_CACHE_MAX_BYTES:
+        return 0, 0, 0
+
+    bytes_to_free = media_usage - MEDIA_CACHE_TARGET_BYTES
+    candidates = media_repository.list_oldest_capacity_candidates(
+        bytes_to_free=bytes_to_free,
+        limit=_CAPACITY_CLEANUP_LIMIT,
+    )
+    log_event(
+        runtime.logger,
+        logging.INFO,
+        "artifact.cleanup.media_cache_capacity_started",
+        "媒体缓存超过容量高水位，开始按最旧优先回收。",
+        usage_bytes=media_usage,
+        max_bytes=MEDIA_CACHE_MAX_BYTES,
+        target_bytes=MEDIA_CACHE_TARGET_BYTES,
+        candidate_count=len(candidates),
+    )
+
+    deleted = 0
+    failed = 0
+    for candidate in candidates:
+        if not media_repository.claim_capacity_delete(candidate.artifact_id):
+            continue
+        deleted_delta, failed_delta = _delete_claimed_artifact(
+            runtime,
+            artifact_id=candidate.artifact_id,
+            storage_key=candidate.storage_key,
+            kind="content-media-cache",
+            deleted_at=observed_at,
+        )
+        deleted += deleted_delta
+        failed += failed_delta
+    return len(candidates), deleted, failed
 
 
 def _delete_claimed_artifact(
