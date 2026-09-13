@@ -26,9 +26,9 @@ body .content-detail-dialog .media-grid > a {
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--aima-border);
-  border-radius: 14px;
+  border-radius: var(--aima-radius-xl);
   color: var(--aima-text-muted);
-  background: #f5f7f9;
+  background: var(--aima-surface-subtle);
   box-shadow: 0 1px 2px rgb(16 24 40 / 4%);
   scroll-snap-align: start;
   scroll-snap-stop: always;
@@ -49,7 +49,7 @@ body .content-detail-dialog .media-grid img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #f5f7f9;
+  background: var(--aima-surface-subtle);
 }
 
 body .content-detail-dialog .media-grid span {
@@ -69,7 +69,7 @@ body .content-detail-dialog .media-grid span {
 @media (max-width: 720px) {
   body .content-detail-dialog .media-grid > a {
     height: min(62vh, 336px);
-    border-radius: 12px;
+    border-radius: var(--aima-radius-xl);
   }
 }
 
