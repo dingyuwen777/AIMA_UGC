@@ -44,9 +44,72 @@ Detail
 
 只有小红书 `content + content_enrichment` 且 Scope 为 `succeeded` / `partial_success` 时才预热。图片缓存属于非关键派生能力：单张或整次预热失败只记录安全日志，不改变已经完成的 Detail/评论结果，也不触发额外 TikHub 请求。
 
-历史 Content 没有预热缓存也不需要回填任务。声音广场首次读取图片时可以 cache miss → 源 URL 下载 → Artifact 缓存 → 返回浏览器。
+**预热只是性能优化，不是声音广场显示图片的前置条件。** 历史 Content 没有预热缓存也不需要回填任务；只要 `content_media` 已有小红书图片 URL，首次打开详情就会走 cache miss → 源 URL 下载 → Artifact 缓存 → 返回浏览器。
 
-## 3. 安全下载边界
+## 3. 未做辅助补采的帖子怎么显示
+
+“有没有辅助补采评论”和“详情页能不能正常显示”是两个独立维度。
+
+### 3.1 已有媒体事实，但从未预热
+
+```text
+content_media.url 已存在
+→ 打开声音广场详情
+→ 前端使用 AIMA 同源媒体地址
+→ cache miss
+→ 后端按已保存的源 URL 安全懒缓存
+→ 正常显示图片
+```
+
+因此 Excel 历史导入、旧 TikHub 数据或从未执行 Batch Supplement 的帖子，只要已有 `content_media`，也可以直接展示图片。
+
+### 3.2 完全没有媒体事实
+
+如果 `Content Detail.media` 为空，详情抽屉不渲染媒体区，不保留 336 px 空白卡片。标题、正文、AI 信息、互动数据和评论状态直接自然上移。
+
+### 3.3 有媒体事实，但源图片临时不可用
+
+源图请求失败、第三方 URL 失效或当前无法安全读取时，内部媒体资源不会把浏览器的破图图标直接暴露给用户，而是返回 AIMA 固定的同源浅灰占位图：
+
+```text
+图片暂不可用
+帖子正文与评论信息仍可正常查看
+```
+
+响应使用 `X-AIMA-Media-State: unavailable`，只短缓存 60 秒；后续重新打开仍可再次尝试按原始媒体 URL 重建。这个占位 SVG 是服务器固定静态内容，不包含用户输入，也不进入业务 OpenAPI/generated client。
+
+### 3.4 从未采集评论
+
+未采集评论不是错误态。声音广场根据当前事实区分：
+
+```text
+平台显示评论数 > 0，已采集 = 0
+→ “评论尚未采集”
+→ 展示平台评论数
+→ 提示需要评论分析时再到采集运行中心发起辅助补采
+
+平台显示评论数 = 0
+→ “平台当前暂无评论”
+→ 明确这不是采集异常
+
+已采集 > 0
+→ 按现有 complete / partial / 完整度待确认语义显示
+
+真实加载失败
+→ 才进入红色错误态并提供重试
+```
+
+正文、已有图片和 AI 信息始终不依赖评论是否已经补采。
+
+相关实现与回归测试：
+
+- [`backend/src/aima_ugc/bootstrap/content_media_http.py`](../../backend/src/aima_ugc/bootstrap/content_media_http.py)
+- [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue`](../../frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue)
+- [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentCommentSection.vue`](../../frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentCommentSection.vue)
+- [`tests/unit/content/test_content_media_http.py`](../../tests/unit/content/test_content_media_http.py)
+- [`frontend/tests/content-comment-section.spec.ts`](../../frontend/tests/content-comment-section.spec.ts)
+
+## 4. 安全下载边界
 
 媒体缓存不是通用 URL Proxy。后端只接受小红书图片 Origin：
 
@@ -73,7 +136,7 @@ ci.xiaohongshu.com
 - [`backend/src/aima_ugc/bootstrap/content_media_cache.py`](../../backend/src/aima_ugc/bootstrap/content_media_cache.py)
 - [`tests/unit/content/test_content_media_cache.py`](../../tests/unit/content/test_content_media_cache.py)
 
-## 4. 保留期与容量
+## 5. 保留期与容量
 
 媒体缓存 Artifact：
 
@@ -101,7 +164,7 @@ TTL = 30 天
 - [`backend/src/aima_ugc/bootstrap/artifact_cleanup.py`](../../backend/src/aima_ugc/bootstrap/artifact_cleanup.py)
 - [`backend/src/aima_ugc/adapters/persistence/postgres/content_media_cache.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_media_cache.py)
 
-## 5. 声音广场展示
+## 6. 声音广场展示
 
 声音广场仍通过正式 Content Detail Contract 读取 `media.position/url`，不把二进制图片端点加入 OpenAPI/generated client。
 
@@ -116,6 +179,7 @@ TTL = 30 天
 ```text
 cache hit  → ArtifactStore 直接返回
 cache miss → 安全请求保存的 xhscdn URL → 缓存 → 返回
+源不可用  → AIMA 固定浅灰占位图，不暴露浏览器破图
 ```
 
 原始 `media.url` 不被覆盖，仍可用于溯源/原始媒体链接。
@@ -127,11 +191,12 @@ cache miss → 安全请求保存的 xhscdn URL → 缓存 → 返回
 - 触屏、触控板、鼠标横向滚动都使用原生行为；
 - 图片 `object-fit: contain`，避免裁掉车型/产品主体；
 - 隐藏厚重滚动条，不增加无必要箭头/分页器；
-- 图片失败不影响标题、正文、AI 信息、人工确认和评论。
+- 没有媒体事实时整个媒体区不出现；
+- 图片源失败不影响标题、正文、AI 信息、人工确认和评论。
 
-正式 Figma：`EAPm8KVarUe7BFTSnzvOpT / 4627:7429`。共享 Detail Drawer body Owner 与代码保持一致：610 px Drawer 内使用 336 px 高、FIT、横向可滚动媒体区。
+正式 Figma：`EAPm8KVarUe7BFTSnzvOpT / 4627:7429`。共享 Detail Drawer body Owner 与代码保持一致：610 px Drawer 内使用 336 px 高、FIT、横向可滚动媒体区；未补采/无媒体/媒体不可用/评论未采集状态由同页状态规格说明。
 
-## 6. Migration 与回滚
+## 7. Migration 与回滚
 
 Migration：
 
