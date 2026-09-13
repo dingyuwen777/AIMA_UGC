@@ -27,12 +27,12 @@ _MEDIA_UNAVAILABLE_PLACEHOLDER = (
     '<rect x="0" y="0" width="100" height="82" rx="12"/>'
     '<circle cx="31" cy="26" r="9"/>'
     '<path d="M14 68 38 45l18 17 14-13 16 19"/>'
-    '</g>'
+    "</g>"
     '<text x="562" y="378" text-anchor="middle" font-family="sans-serif" '
     'font-size="30" font-weight="600" fill="#6B778C">图片暂不可用</text>'
     '<text x="562" y="421" text-anchor="middle" font-family="sans-serif" '
     'font-size="22" fill="#A8B0BF">帖子正文与评论信息仍可正常查看</text>'
-    '</svg>'
+    "</svg>"
 ).encode()
 
 
