@@ -129,3 +129,53 @@ def test_artifact_cleanup_until_drained_uses_bounded_batches_and_one_capacity_sc
     assert result.skipped_backend == 1
     assert result.batches == 3
     assert result.drained is True
+
+
+def test_artifact_cleanup_until_drained_stops_at_max_batches(monkeypatch) -> None:
+    runtime = cast(PlatformRuntime, SimpleNamespace())
+    observed_at = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+    once_calls = 0
+
+    def fake_once(
+        _runtime: PlatformRuntime,
+        *,
+        now: datetime | None = None,
+        limit: int = 100,
+        backfill_retention: bool = True,
+        include_capacity: bool = True,
+    ) -> ArtifactCleanupResult:
+        nonlocal once_calls
+        once_calls += 1
+        assert now == observed_at
+        assert limit == 500
+        assert include_capacity is False
+        assert backfill_retention is (once_calls == 1)
+        return ArtifactCleanupResult(
+            backfilled=1 if once_calls == 1 else 0,
+            scanned=500,
+            deleted=500,
+            failed=0,
+            skipped_backend=0,
+            drained=False,
+        )
+
+    monkeypatch.setattr(artifact_cleanup, "run_artifact_cleanup_once", fake_once)
+    monkeypatch.setattr(
+        artifact_cleanup,
+        "_run_media_capacity_cleanup",
+        lambda _runtime, *, observed_at: (0, 0, 0),
+    )
+
+    result = artifact_cleanup.run_artifact_cleanup_until_drained(
+        runtime,
+        now=observed_at,
+        batch_limit=500,
+        max_batches=2,
+    )
+
+    assert once_calls == 2
+    assert result.backfilled == 1
+    assert result.scanned == 1000
+    assert result.deleted == 1000
+    assert result.batches == 2
+    assert result.drained is False
