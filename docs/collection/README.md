@@ -219,7 +219,7 @@ Search Candidate
 ## 7. 五个平台分别去哪看
 
 - [`docs/collection/01_xiaohongshu.md`](01_xiaohongshu.md)
-  - 图片缓存、30 天/30 GiB 生命周期与声音广场多图展示见 [`xiaohongshu_media_cache.md`](xiaohongshu_media_cache.md)
+  - 图片缓存、30 天/30 GiB 生命周期与声音广场多图展示见 [`docs/collection/xiaohongshu_media_cache.md`](xiaohongshu_media_cache.md)
 - [`docs/collection/02_douyin.md`](02_douyin.md)
 - [`docs/collection/03_weibo.md`](03_weibo.md)
 - [`docs/collection/04_bilibili.md`](04_bilibili.md)
