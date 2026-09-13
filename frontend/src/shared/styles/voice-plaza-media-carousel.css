@@ -1,5 +1,5 @@
-/* 声音广场详情媒体：保持 Drawer 克制、完整展示图片，并以轻量 peek 提示横向滑动。 */
-body .content-detail-dialog .media-grid {
+/* 声音广场小红书详情媒体：仅内部缓存图片启用轻量横滑，避免影响其它平台媒体。 */
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) {
   display: flex;
   width: 100%;
   gap: 10px;
@@ -13,11 +13,11 @@ body .content-detail-dialog .media-grid {
   -webkit-overflow-scrolling: touch;
 }
 
-body .content-detail-dialog .media-grid::-webkit-scrollbar {
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"])::-webkit-scrollbar {
   display: none;
 }
 
-body .content-detail-dialog .media-grid > a {
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a {
   position: relative;
   display: grid;
   flex: 0 0 calc(100% - 28px);
@@ -35,16 +35,16 @@ body .content-detail-dialog .media-grid > a {
   text-decoration: none;
 }
 
-body .content-detail-dialog .media-grid > a:only-child {
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a:only-child {
   flex-basis: 100%;
 }
 
-body .content-detail-dialog .media-grid > a:focus-visible {
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a:focus-visible {
   outline: 2px solid var(--aima-primary);
   outline-offset: 2px;
 }
 
-body .content-detail-dialog .media-grid img {
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) img {
   display: block;
   width: 100%;
   height: 100%;
@@ -52,7 +52,7 @@ body .content-detail-dialog .media-grid img {
   background: var(--aima-surface-subtle);
 }
 
-body .content-detail-dialog .media-grid span {
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) span {
   padding: 20px;
   color: var(--aima-text-disabled);
   font-size: 12px;
@@ -61,20 +61,20 @@ body .content-detail-dialog .media-grid span {
 }
 
 @media (max-height: 760px) {
-  body .content-detail-dialog .media-grid > a {
+  body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a {
     height: 292px;
   }
 }
 
 @media (max-width: 720px) {
-  body .content-detail-dialog .media-grid > a {
+  body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a {
     height: min(62vh, 336px);
     border-radius: var(--aima-radius-xl);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body .content-detail-dialog .media-grid {
+  body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) {
     scroll-behavior: auto;
   }
 }
