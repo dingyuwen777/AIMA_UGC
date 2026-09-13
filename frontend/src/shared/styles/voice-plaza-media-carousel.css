@@ -1,0 +1,80 @@
+/* 声音广场小红书详情媒体：仅内部缓存图片启用轻量横滑，避免影响其它平台媒体。 */
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 0 4px;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"])::-webkit-scrollbar {
+  display: none;
+}
+
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a {
+  position: relative;
+  display: grid;
+  flex: 0 0 calc(100% - 28px);
+  min-width: 0;
+  height: 336px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--aima-border);
+  border-radius: var(--aima-radius-xl);
+  color: var(--aima-text-muted);
+  background: var(--aima-surface-subtle);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 4%);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  text-decoration: none;
+}
+
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a:only-child {
+  flex-basis: 100%;
+}
+
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a:focus-visible {
+  outline: 2px solid var(--aima-primary);
+  outline-offset: 2px;
+}
+
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--aima-surface-subtle);
+}
+
+body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) span {
+  padding: 20px;
+  color: var(--aima-text-disabled);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
+@media (max-height: 760px) {
+  body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a {
+    height: 292px;
+  }
+}
+
+@media (max-width: 720px) {
+  body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) > a {
+    height: min(62vh, 336px);
+    border-radius: var(--aima-radius-xl);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .content-detail-dialog .media-grid:has(> a > img[src^="/api/v1/contents/"]) {
+    scroll-behavior: auto;
+  }
+}

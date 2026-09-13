@@ -31,6 +31,29 @@ const loadedCount = computed(() =>
   + Object.values(props.replies).reduce((total, items) => total + items.length, 0),
 )
 
+const emptyStateTitle = computed(() => {
+  if (props.coverage === 'unavailable') return '平台暂未提供可采集评论'
+  if (props.providerTotalCount === 0) return '数据记录中暂无评论'
+  if (props.ingestedTotalCount === 0) return '评论尚未采集'
+  return '暂无可显示评论'
+})
+
+const emptyStateMessage = computed(() => {
+  if (props.coverage === 'unavailable') {
+    return '当前帖子正文、已有图片和分析信息仍可正常查看。'
+  }
+  if (props.providerTotalCount === 0) {
+    return '当前数据记录的评论数为 0，这不是采集异常；正文和已有图片仍可正常查看。'
+  }
+  if (props.ingestedTotalCount === 0 && props.providerTotalCount != null) {
+    return `当前数据记录显示 ${formatNumber(props.providerTotalCount)} 条评论，本地尚未采集评论正文。需要评论分析时，可在采集运行中心发起辅助补采。`
+  }
+  if (props.ingestedTotalCount === 0) {
+    return '当前未进行评论补采。正文和已有图片仍可正常查看，需要评论分析时再发起辅助补采。'
+  }
+  return '当前没有可显示的一级评论。'
+})
+
 function replyState(rootCommentId: string): CommentReplyState | undefined {
   return props.replyStates[rootCommentId]
 }
@@ -54,11 +77,13 @@ function replyButtonLabel(root: ContentCommentResponse): string {
   return `已显示全部 ${formatNumber(state.totalCount)} 条回复`
 }
 
-function coverageLabel(value?: string | null): string {
-  if (value === 'complete') return '本次采集已完成'
-  if (value === 'partial') return '本次采集到部分评论'
-  if (value === 'unavailable') return '平台暂未提供评论'
-  return '采集完整度待确认'
+function coverageLabel(): string {
+  if (props.coverage === 'complete') return '本次采集已完成'
+  if (props.coverage === 'partial') return '本次采集到部分评论'
+  if (props.coverage === 'unavailable') return '平台暂未提供评论'
+  if (props.ingestedTotalCount > 0) return '已采集评论，完整度待确认'
+  if (props.providerTotalCount === 0) return '记录中暂无评论'
+  return '尚未采集评论'
 }
 </script>
 
@@ -67,13 +92,13 @@ function coverageLabel(value?: string | null): string {
     <div class="comment-heading">
       <div>
         <h4>评论</h4>
-        <p>{{ coverageLabel(coverage) }}</p>
+        <p>{{ coverageLabel() }}</p>
       </div>
       <div
         class="comment-counts"
         aria-label="评论数量"
       >
-        <span>平台显示 <b>{{ providerTotalCount == null ? '未提供' : formatNumber(providerTotalCount) }}</b></span>
+        <span>平台记录 <b>{{ providerTotalCount == null ? '未提供' : formatNumber(providerTotalCount) }}</b></span>
         <span>已采集 <b>{{ formatNumber(ingestedTotalCount) }}</b></span>
         <span>当前显示 <b>{{ formatNumber(loadedCount) }}</b></span>
       </div>
@@ -98,12 +123,13 @@ function coverageLabel(value?: string | null): string {
         重新加载评论
       </AimaButton>
     </div>
-    <p
+    <div
       v-else-if="roots.length === 0"
-      class="comment-state"
+      class="comment-state comment-state--empty"
     >
-      暂无已采集评论。
-    </p>
+      <strong>{{ emptyStateTitle }}</strong>
+      <p>{{ emptyStateMessage }}</p>
+    </div>
 
     <div
       v-else
@@ -196,15 +222,18 @@ function coverageLabel(value?: string | null): string {
 .comment-heading h4 { margin: 0 0 3px; font-size: 16px; }
 .comment-heading p { margin: 0; color: var(--aima-text-disabled); font-size: 11px; }
 .comment-counts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.comment-counts span { padding: 5px 8px; border-radius: 5px; color: var(--aima-text-muted); background: #f7f9fb; font-size: 10px; }
+.comment-counts span { padding: 5px 8px; border-radius: 5px; color: var(--aima-text-muted); background: var(--aima-surface-subtle); font-size: 10px; }
 .comment-counts b { margin-left: 3px; color: var(--aima-text); }
-.comment-state { display: grid; min-height: 72px; place-items: center; gap: 8px; margin: 0; border-radius: 7px; color: var(--aima-text-disabled); background: #f7f9fb; font-size: 12px; }
+.comment-state { display: grid; min-height: 72px; place-items: center; gap: 8px; margin: 0; border-radius: 7px; color: var(--aima-text-disabled); background: var(--aima-surface-subtle); font-size: 12px; }
 .comment-state p { margin: 0; }
+.comment-state--empty { min-height: 96px; padding: 16px 18px; text-align: center; }
+.comment-state--empty strong { color: var(--aima-text-secondary); font-size: 13px; font-weight: 600; }
+.comment-state--empty p { max-width: 430px; color: var(--aima-text-disabled); line-height: 18px; }
 .comment-state--error,
 .comment-page-error,
 .reply-error { color: var(--aima-danger); }
 .comment-threads { display: grid; gap: 14px; }
-.comment-thread { display: grid; gap: 9px; padding: 14px; border: 1px solid var(--aima-border); border-radius: 8px; background: white; }
+.comment-thread { display: grid; gap: 9px; padding: 14px; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); }
 .root-comment,
 .reply-comment { display: grid; gap: 5px; }
 .comment-meta { display: flex; min-width: 0; align-items: center; gap: 7px; }
@@ -213,7 +242,7 @@ function coverageLabel(value?: string | null): string {
 .author-badge { padding: 2px 6px; border-radius: 999px; color: var(--aima-primary); background: var(--aima-primary-soft); font-size: 9px; }
 .root-comment p,
 .reply-comment p { margin: 0; color: var(--aima-text-secondary); font-size: 12px; line-height: 19px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.comment-replies { display: grid; gap: 10px; margin-left: 24px; padding: 11px 12px; border-left: 3px solid #e2e7ef; border-radius: 0 7px 7px 0; background: #f7f9fb; }
+.comment-replies { display: grid; gap: 10px; margin-left: 24px; padding: 11px 12px; border-left: 3px solid #e2e7ef; border-radius: 0 7px 7px 0; background: var(--aima-surface-subtle); }
 .reply-comment + .reply-comment { padding-top: 10px; border-top: 1px solid #e7ebf1; }
 .reply-comment small { color: var(--aima-primary); font-size: 10px; }
 .reply-button { justify-self: start; }

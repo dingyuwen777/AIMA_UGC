@@ -47,6 +47,24 @@ async function render(replies: Record<string, ContentCommentResponse[]>): Promis
   }))
 }
 
+async function renderEmpty(providerTotalCount: number | null): Promise<string> {
+  return renderToString(createSSRApp({
+    render: () => h(ContentCommentSection, {
+      roots: [],
+      replies: {},
+      replyStates: {},
+      loading: false,
+      loadingNext: false,
+      error: null,
+      hasMore: false,
+      rootTotalCount: 0,
+      ingestedTotalCount: 0,
+      providerTotalCount,
+      coverage: null,
+    }),
+  }))
+}
+
 describe('content comment section', () => {
   it('用缩进线程和自然语言回复对象展示直接父子关系', async () => {
     const html = await render({
@@ -81,10 +99,29 @@ describe('content comment section', () => {
     expect(html).toContain('回复 蜂蜜柚子')
     expect(html).toContain('回复这条一级评论')
     expect(html).toContain('原作者')
-    expect(html).toContain('平台显示')
+    expect(html).toContain('平台记录')
     expect(html).toContain('已采集')
     expect(html).toContain('当前显示')
     expect(html).not.toContain('root_comment_id')
     expect(html).not.toContain('parent_comment_id')
+  })
+
+  it('未进行辅助补采时以中性状态提示评论尚未采集', async () => {
+    const html = await renderEmpty(42)
+
+    expect(html).toContain('评论尚未采集')
+    expect(html).toContain('当前数据记录显示 42 条评论')
+    expect(html).toContain('本地尚未采集评论正文')
+    expect(html).toContain('采集运行中心')
+    expect(html).not.toContain('评论暂时加载失败')
+  })
+
+  it('数据记录本身没有评论时不误报为采集失败', async () => {
+    const html = await renderEmpty(0)
+
+    expect(html).toContain('数据记录中暂无评论')
+    expect(html).toContain('当前数据记录的评论数为 0')
+    expect(html).toContain('这不是采集异常')
+    expect(html).not.toContain('评论尚未采集')
   })
 })

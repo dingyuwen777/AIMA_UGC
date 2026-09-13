@@ -3,6 +3,7 @@ import { createApp } from 'vue'
 
 import './shared/styles/tokens.css'
 import './shared/styles/responsive.css'
+import './shared/styles/voice-plaza-media-carousel.css'
 
 import App from './App.vue'
 import { router } from './app/router'
