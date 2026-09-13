@@ -4,6 +4,10 @@ from aima_ugc.adapters.storage.local import LocalArtifactStore
 from aima_ugc.platform.storage.retention import (
     EXPORT_RETENTION,
     IMPORT_SOURCE_RETENTION,
+    MEDIA_CACHE_ITEM_MAX_BYTES,
+    MEDIA_CACHE_MAX_BYTES,
+    MEDIA_CACHE_RETENTION,
+    MEDIA_CACHE_TARGET_BYTES,
     ORPHAN_RETENTION,
     PROVIDER_RAW_RETENTION,
     import_source_expiry,
@@ -18,7 +22,12 @@ def test_artifact_retention_policy_matches_approved_windows() -> None:
     assert IMPORT_SOURCE_RETENTION == timedelta(days=7)
     assert EXPORT_RETENTION == timedelta(days=7)
     assert ORPHAN_RETENTION == timedelta(days=1)
+    assert MEDIA_CACHE_RETENTION == timedelta(days=30)
+    assert MEDIA_CACHE_ITEM_MAX_BYTES == 10 * 1024 * 1024
+    assert MEDIA_CACHE_MAX_BYTES == 30 * 1024 * 1024 * 1024
+    assert MEDIA_CACHE_TARGET_BYTES == 24 * 1024 * 1024 * 1024
     assert initial_artifact_expiry("provider-raw", observed_at) == observed_at + timedelta(days=30)
+    assert initial_artifact_expiry("content-media-cache", observed_at) == observed_at + timedelta(days=30)
     assert initial_artifact_expiry("content-export.xlsx", observed_at) is None
     assert initial_artifact_expiry("file-import.raw", observed_at) is None
     assert import_source_expiry(observed_at) == observed_at + timedelta(days=7)
