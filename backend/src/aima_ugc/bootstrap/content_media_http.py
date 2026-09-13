@@ -17,17 +17,23 @@ from .content_media_cache import (
 )
 from .runtime import create_platform_runtime
 
-_MEDIA_UNAVAILABLE_PLACEHOLDER = """<svg xmlns="http://www.w3.org/2000/svg" width="1124" height="672" viewBox="0 0 1124 672" role="img" aria-label="图片暂不可用">
-<rect width="1124" height="672" rx="28" fill="#F8FAFC"/>
-<rect x="1" y="1" width="1122" height="670" rx="27" fill="none" stroke="#E6EAF0" stroke-width="2"/>
-<g transform="translate(512 252)" fill="none" stroke="#A8B0BF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-<rect x="0" y="0" width="100" height="82" rx="12"/>
-<circle cx="31" cy="26" r="9"/>
-<path d="M14 68 38 45l18 17 14-13 16 19"/>
-</g>
-<text x="562" y="378" text-anchor="middle" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="30" font-weight="600" fill="#6B778C">图片暂不可用</text>
-<text x="562" y="421" text-anchor="middle" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="22" fill="#A8B0BF">帖子正文与评论信息仍可正常查看</text>
-</svg>""".encode("utf-8")
+_MEDIA_UNAVAILABLE_PLACEHOLDER = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1124 672">'
+    '<rect width="1124" height="672" rx="28" fill="#F8FAFC"/>'
+    '<rect x="1" y="1" width="1122" height="670" rx="27" fill="none" '
+    'stroke="#E6EAF0" stroke-width="2"/>'
+    '<g transform="translate(512 252)" fill="none" stroke="#A8B0BF" stroke-width="8" '
+    'stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="0" y="0" width="100" height="82" rx="12"/>'
+    '<circle cx="31" cy="26" r="9"/>'
+    '<path d="M14 68 38 45l18 17 14-13 16 19"/>'
+    '</g>'
+    '<text x="562" y="378" text-anchor="middle" font-family="sans-serif" '
+    'font-size="30" font-weight="600" fill="#6B778C">图片暂不可用</text>'
+    '<text x="562" y="421" text-anchor="middle" font-family="sans-serif" '
+    'font-size="22" fill="#A8B0BF">帖子正文与评论信息仍可正常查看</text>'
+    '</svg>'
+).encode()
 
 
 class ContentMediaReader(Protocol):
