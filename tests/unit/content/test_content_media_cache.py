@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -94,6 +95,7 @@ def test_media_cache_read_race_rebuilds_from_source_instead_of_failing() -> None
     old_artifact_id = uuid4()
     new_artifact_id = uuid4()
     source_url = "https://sns-img-bd.xhscdn.com/source"
+    source_hash = hashlib.sha256(source_url.encode()).hexdigest()
     now = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
 
     class Repository:
@@ -118,9 +120,7 @@ def test_media_cache_read_race_rebuilds_from_source_instead_of_failing() -> None
             assert position == 0
             return ContentMediaCacheBinding(
                 artifact_id=old_artifact_id,
-                source_url_hash=(
-                    "8b2b318e8e2bcb7d9b51d843c1c889581a3d3e94e5a61dcb96f925d2c160b05e"
-                ),
+                source_url_hash=source_hash,
                 storage_key="media-cache/old/item",
                 content_type="image/webp",
                 storage_status="linked",
@@ -130,7 +130,9 @@ def test_media_cache_read_race_rebuilds_from_source_instead_of_failing() -> None
             )
 
         def bind(self, **kwargs: object) -> None:
-            self.bound_artifact_id = kwargs["artifact_id"]  # type: ignore[assignment]
+            artifact_id = kwargs["artifact_id"]
+            assert isinstance(artifact_id, UUID)
+            self.bound_artifact_id = artifact_id
 
     class RaceStore:
         def read(self, _storage_key: str) -> bytes:
