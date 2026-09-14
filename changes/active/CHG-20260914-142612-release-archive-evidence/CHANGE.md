@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260914-142612-release-archive-evidence
 title: 修复手工 Tag 与归档提交 Release 门禁
 level: L3
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: fix/release-archive-evidence
 created: 2026-09-14
@@ -37,12 +37,12 @@ data_changes:
 
 ## 成功标准
 
-- [ ] Actions 手工输入 `vMAJOR.MINOR.PATCH` 仍可从最新 `main` 构建候选、创建 Tag 和 GitHub Release。
-- [ ] 手工推送指向最新 `main` 的标准 SemVer Tag 后，以不受 `[skip ci]` 影响的 Tag create 事件触发同一正式发布链路。
-- [ ] 当前发布提交已有完整必需检查时只使用当前提交证据。
-- [ ] 当前发布提交三项检查全部缺失且被严格证明为单一 Change 的确定性归档提交时，才继承唯一父提交的绿色证据。
-- [ ] 部分缺失、失败检查、伪造归档消息、正文篡改、额外文件、错误 Tag SHA、重复 Release 均 fail closed。
-- [ ] 目标单元测试、Release workflow 回归、文档与治理检查通过。
+- [x] Actions 手工输入 `vMAJOR.MINOR.PATCH` 仍可从最新 `main` 构建候选、创建 Tag 和 GitHub Release。
+- [x] 手工推送指向最新 `main` 的标准 SemVer Tag 后，以不受 `[skip ci]` 影响的 Tag create 事件触发同一正式发布链路。
+- [x] 当前发布提交已有完整必需检查时只使用当前提交证据。
+- [x] 当前发布提交三项检查全部缺失且被严格证明为单一 Change 的确定性归档提交时，才继承唯一父提交的绿色证据。
+- [x] 部分缺失、失败检查、伪造归档消息、正文篡改、额外文件、错误 Tag SHA、重复 Release 均 fail closed。
+- [x] 目标单元测试、Release workflow 回归、文档与治理检查通过。
 
 ## 范围
 
@@ -69,10 +69,10 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 修复 Release #321 因自动归档提交缺少同 SHA 检查而失败 | user:2026-09-14-release-321 | not_satisfied | 待实现严格归档证据继承并完成回归 |
-| R2 | 用户可以手工建立标准 Tag 并 Release 一个版本 | user:2026-09-14-manual-tag-release | not_satisfied | 待增加 Tag create 正式触发与 main/Tag 身份校验 |
-| R3 | Actions 手工输入版本的既有入口继续可用 | docs/operations/01_生产部署与离线Release方案.md | not_satisfied | 待保持 workflow_dispatch 并覆盖兼容回归 |
-| R4 | 不降低 main、CI、GHCR、重复版本和不可变候选安全门禁 | AGENTS.md / release.yml | not_satisfied | 待完成失败路径测试和实现复核 |
+| R1 | 修复 Release #321 因自动归档提交缺少同 SHA 检查而失败 | #482 / AC1 | satisfied | `release_evidence.py` 严格识别确定性归档；真实 `cefbcfb` 解析到唯一父提交 `6ff41bc6`，父提交三项检查均为 success |
+| R2 | 用户可以手工建立标准 Tag 并 Release 一个版本 | #482 / AC2 | satisfied | `create` Tag 事件进入正式链路；构建前和发布前均校验 SemVer、最新 main、Tag 目标及重复 Release；Operations 给出手工命令 |
+| R3 | Actions 手工输入版本的既有入口继续可用 | #482 / AC3 | satisfied | 保留 `workflow_dispatch` 身份解析、最新 main 校验及缺少 Tag 时由 `gh release create --target` 创建 Tag 的既有路径；静态回归覆盖 |
+| R4 | 不降低 main、CI、GHCR、重复版本和不可变候选安全门禁 | #482 / AC4 | satisfied | 49 项 Release/CI/Docker/归档专项测试通过；Tag/Release 查询仅明确 HTTP 404 才视为不存在，其他 API 异常 fail closed |
 
 # 实施与验证计划
 
@@ -102,17 +102,17 @@ data_changes:
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重读用户要求、Release #321 原始失败、当前 Workflow、Operations 与归档实现。
-- [ ] change_coverage：逐项映射手工 Tag、workflow_dispatch、归档证据继承和失败关闭边界。
-- [ ] reverse_audit：从两个正式触发入口反查 main/Tag/检查/候选/发布身份，从 publish 动作反查授权与不可变候选。
-- [ ] unresolved_cleared：Requirement Traceability 无 `not_satisfied`，不适用层有范围依据。
+- [x] upstream_re_read：已重读 #482、用户要求、Release #321 原始失败、当前 Workflow、Operations 与归档实现。
+- [x] change_coverage：已逐项映射手工 Tag、workflow_dispatch、归档证据继承和失败关闭边界。
+- [x] reverse_audit：已从两个正式触发入口反查 main/Tag/检查/候选/发布身份，从 publish 动作反查授权与不可变候选。
+- [x] unresolved_cleared：Requirement Traceability 无 `not_satisfied`，不适用层有范围依据；PR Runner dry-run 仍按验证矩阵在 PR Ready 后执行。
 
 # 两阶段 Review
 
 ## Review A1：上游要求 → Change
 
-待实现完成后独立重建。
+重读 #482、用户本轮“手工建 Tag 并 Release”要求和 Release #321 失败事实后，独立重建为四项边界：手工 Tag 必须成为正式入口、既有 Actions 手工入口不能回归、归档提交只能继承严格可证明的父提交证据、所有既有发布安全门禁必须保留。R1–R4 已覆盖上述边界，没有把任意 `[skip ci]` 或旧 main 扩展为可发布对象。
 
 ## Review A2：Change → 实现、测试与文档
 
-待实现完成后独立审查。
+逐层复核结果：Workflow 仅接受 `workflow_dispatch` 或 Tag `create`，分支 create 在 Job 分配前跳过；两个正式入口都绑定最新 `main`，已有 Tag 必须精确指向候选 SHA，Tag/Release 查询异常和重复 Release 均失败关闭；publish 仍只消费已回放候选且保持最小写权限。证据 helper 只允许当前 SHA 的完整检查，或严格两路径、单父、确定性生命周期冻结的归档提交继承父证据。Operations 文档与实现一致。独立审查发现并修复了 Release 存在性查询的非 404 异常误判风险；修复后 49 项专项回归、Ruff 和 YAML 解析通过，治理、Completion、文档事实与 Secret 门禁在最终提交前复验；真实 GitHub Runner dry-run 留待 PR Ready 验证。
