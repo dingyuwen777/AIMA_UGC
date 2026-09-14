@@ -3,11 +3,14 @@ name: Release
 run-name: >-
   ${{ github.event_name == 'workflow_dispatch'
       && format('Release {0} from {1}', inputs.version, github.sha)
+      || github.event_name == 'create' && github.ref_type == 'tag'
+      && format('Release {0} from manual tag', github.ref_name)
       || format('Release dry-run for PR #{0}', github.event.pull_request.number) }}
 
 # Release 只有两种模式：
 # 1. pull_request：只读 dry-run。验证构建、离线 Bundle 和真实 Compose 回放，不发布任何版本。
-# 2. workflow_dispatch：用户手工正式发布。先完整复用阶段 1 的已回放候选，再写 GHCR / Tag / GitHub Release。
+# 2. workflow_dispatch / SemVer Tag create：用户手工正式发布。先完整复用阶段 1 的已回放候选，
+#    再写 GHCR / Tag / GitHub Release；已有 Tag 只在精确指向当前 main 时复用。
 #
 # 两个 Job 故意分开：build-verify 永远只有读权限；publish-release 才拥有最小发布写权限。
 # publish-release 不 checkout 源码，只消费已经回放过的候选 Artifact，并显式指定 GitHub repository，
@@ -19,6 +22,7 @@ on:
         description: "正式版本号，例如 v2.0.0"
         required: true
         type: string
+  create:
   pull_request:
     branches:
       - main
@@ -57,7 +61,9 @@ env:
 jobs:
   build-verify:
     name: Build and replay offline candidate
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: >-
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      (github.event_name != 'create' || github.ref_type == 'tag')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
@@ -85,6 +91,8 @@ jobs:
           RELEASE_SHA="$(git rev-parse HEAD)"
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             VERSION="${{ inputs.version }}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "create" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
           else
             VERSION="dryrun-pr-${{ github.event.pull_request.number }}-${RELEASE_SHA:0:12}"
           fi
@@ -119,18 +127,32 @@ jobs:
           echo "GitHub CLI repository context works without a local .git directory."
 
       - name: Validate formal release request
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
-            echo "Release 只能从 main 分支手工触发；当前 ref=${GITHUB_REF}" >&2
-            exit 1
-          fi
           if [[ ! "${VERSION}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "版本号必须使用 vMAJOR.MINOR.PATCH，例如 v2.0.0 或 v2.0.1。" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+              echo "Actions 手工发布只能从 main 分支触发；当前 ref=${GITHUB_REF}" >&2
+              exit 1
+            fi
+          elif [[ "${GITHUB_EVENT_NAME}" == "create" ]]; then
+            if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+              echo "Create 事件只允许 Tag 进入正式 Release；当前 ref_type=${GITHUB_REF_TYPE}" >&2
+              exit 1
+            fi
+            if [[ "${GITHUB_REF}" != "refs/tags/${VERSION}" ]]; then
+              echo "Tag 发布事件与版本身份不一致：ref=${GITHUB_REF}, version=${VERSION}" >&2
+              exit 1
+            fi
+          else
+            echo "正式 Release 不支持当前事件：${GITHUB_EVENT_NAME}" >&2
             exit 1
           fi
           git fetch --no-tags --depth=1 origin main
@@ -138,12 +160,34 @@ jobs:
             echo "当前 Workflow SHA 已不是远端 main 最新 SHA，拒绝发布。" >&2
             exit 1
           fi
-          if gh api "/repos/${GH_REPO}/git/ref/tags/${VERSION}" >/dev/null 2>&1; then
-            echo "Git Tag ${VERSION} 已存在，拒绝覆盖已有发布基线。" >&2
+          TAG_EXISTS=false
+          TAG_REF_JSON="${RUNNER_TEMP}/release-tag-ref.json"
+          TAG_REF_ERROR="${RUNNER_TEMP}/release-tag-ref.error"
+          if gh api "/repos/${GH_REPO}/git/ref/tags/${VERSION}" >"${TAG_REF_JSON}" 2>"${TAG_REF_ERROR}"; then
+            TAG_EXISTS=true
+            TAG_TARGET="$(gh api "/repos/${GH_REPO}/commits/${VERSION}" --jq '.sha')"
+            if [[ "${TAG_TARGET}" != "${RELEASE_SHA}" ]]; then
+              echo "Git Tag ${VERSION} 已存在但未指向当前 main：${TAG_TARGET}" >&2
+              exit 1
+            fi
+            echo "复用已指向当前 main 的 Git Tag ${VERSION}。"
+          elif ! grep -Fq "HTTP 404" "${TAG_REF_ERROR}"; then
+            cat "${TAG_REF_ERROR}" >&2
+            echo "无法确认 Git Tag ${VERSION} 是否存在，拒绝继续发布。" >&2
             exit 1
           fi
-          if gh release view "${VERSION}" --repo "${GH_REPO}" >/dev/null 2>&1; then
+          if [[ "${GITHUB_EVENT_NAME}" == "create" && "${TAG_EXISTS}" != "true" ]]; then
+            echo "Tag create 发布事件缺少对应远程 Tag：${VERSION}" >&2
+            exit 1
+          fi
+          RELEASE_REF_JSON="${RUNNER_TEMP}/release-ref.json"
+          RELEASE_REF_ERROR="${RUNNER_TEMP}/release-ref.error"
+          if gh api "/repos/${GH_REPO}/releases/tags/${VERSION}" >"${RELEASE_REF_JSON}" 2>"${RELEASE_REF_ERROR}"; then
             echo "GitHub Release ${VERSION} 已存在，拒绝重复发布。" >&2
+            exit 1
+          elif ! grep -Fq "HTTP 404" "${RELEASE_REF_ERROR}"; then
+            cat "${RELEASE_REF_ERROR}" >&2
+            echo "无法确认 GitHub Release ${VERSION} 是否存在，拒绝继续发布。" >&2
             exit 1
           fi
 
@@ -167,8 +211,9 @@ jobs:
             fi
           done
 
-      - name: Verify required main CI gates
-        if: github.event_name == 'workflow_dispatch'
+      - name: Resolve required main CI evidence
+        if: github.event_name != 'pull_request'
+        id: ci_evidence
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -177,42 +222,26 @@ jobs:
           gh api -H "Accept: application/vnd.github+json" \
             "/repos/${GH_REPO}/commits/${RELEASE_SHA}/check-runs?per_page=100" \
             > "${RUNNER_TEMP}/release-check-runs.json"
-          python3 - "${RUNNER_TEMP}/release-check-runs.json" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
+          python3 scripts/quality/release_evidence.py resolve \
+            --root . \
+            --release-sha "${RELEASE_SHA}" \
+            --check-runs-file "${RUNNER_TEMP}/release-check-runs.json" \
+            --github-output "${GITHUB_OUTPUT}"
 
-          required = {
-              "CI Gate",
-              "Compose Golden Path",
-              "Requirement Traceability and Completion Audit",
-          }
-          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          latest: dict[str, tuple[str, str | None, str | None]] = {}
-          for run in payload.get("check_runs", []):
-              name = run.get("name")
-              if name not in required:
-                  continue
-              timestamp = run.get("completed_at") or run.get("started_at") or ""
-              previous = latest.get(name)
-              if previous is None or timestamp > previous[0]:
-                  latest[name] = (timestamp, run.get("status"), run.get("conclusion"))
-
-          failures: list[str] = []
-          for name in sorted(required):
-              if name not in latest:
-                  failures.append(f"{name}: missing")
-                  continue
-              _, status, conclusion = latest[name]
-              if status != "completed" or conclusion != "success":
-                  failures.append(f"{name}: status={status}, conclusion={conclusion}")
-          if failures:
-              raise SystemExit(
-                  "Release gate failed; required main checks are not green:\n- "
-                  + "\n- ".join(failures)
-              )
-          print("Release gate passed: required main checks are green.")
-          PY
+      - name: Verify required main CI gates
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_SHA: ${{ steps.ci_evidence.outputs.evidence_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -H "Accept: application/vnd.github+json" \
+            "/repos/${GH_REPO}/commits/${EVIDENCE_SHA}/check-runs?per_page=100" \
+            > "${RUNNER_TEMP}/release-evidence-check-runs.json"
+          python3 scripts/quality/release_evidence.py verify \
+            --check-runs-file "${RUNNER_TEMP}/release-evidence-check-runs.json"
+          echo "Release SHA ${RELEASE_SHA} uses required-check evidence from ${EVIDENCE_SHA}."
 
       - name: Verify Docker toolchain
         shell: bash
@@ -573,7 +602,9 @@ jobs:
           sha256sum "${CANDIDATE_ARCHIVE}"
 
       - name: Upload replay-tested release candidate
-        if: github.event_name == 'workflow_dispatch'
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'create' && github.ref_type == 'tag')
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.identity.outputs.candidate_artifact }}
@@ -593,7 +624,9 @@ jobs:
 
   publish-release:
     name: Publish replay-tested candidate
-    if: github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'create' && github.ref_type == 'tag')
     needs: build-verify
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -623,12 +656,33 @@ jobs:
             echo "构建完成后 main 已前进；拒绝把旧候选发布为当前版本。" >&2
             exit 1
           fi
-          if gh api "/repos/${GH_REPO}/git/ref/tags/${VERSION}" >/dev/null 2>&1; then
-            echo "Git Tag ${VERSION} 已存在，拒绝覆盖。" >&2
+          TAG_REF_JSON="${RUNNER_TEMP}/publish-tag-ref.json"
+          TAG_REF_ERROR="${RUNNER_TEMP}/publish-tag-ref.error"
+          if gh api "/repos/${GH_REPO}/git/ref/tags/${VERSION}" >"${TAG_REF_JSON}" 2>"${TAG_REF_ERROR}"; then
+            TAG_TARGET="$(gh api "/repos/${GH_REPO}/commits/${VERSION}" --jq '.sha')"
+            if [[ "${TAG_TARGET}" != "${RELEASE_SHA}" ]]; then
+              echo "Git Tag ${VERSION} 已存在但未指向已回放候选：${TAG_TARGET}" >&2
+              exit 1
+            fi
+            echo "发布阶段复用已验证 Tag ${VERSION}。"
+          elif grep -Fq "HTTP 404" "${TAG_REF_ERROR}"; then
+            if [[ "${GITHUB_EVENT_NAME}" == "create" ]]; then
+              echo "构建完成后手工 Tag ${VERSION} 已不存在，拒绝发布。" >&2
+              exit 1
+            fi
+          else
+            cat "${TAG_REF_ERROR}" >&2
+            echo "无法重新确认 Git Tag ${VERSION} 是否存在，拒绝发布。" >&2
             exit 1
           fi
-          if gh release view "${VERSION}" --repo "${GH_REPO}" >/dev/null 2>&1; then
+          RELEASE_REF_JSON="${RUNNER_TEMP}/publish-release-ref.json"
+          RELEASE_REF_ERROR="${RUNNER_TEMP}/publish-release-ref.error"
+          if gh api "/repos/${GH_REPO}/releases/tags/${VERSION}" >"${RELEASE_REF_JSON}" 2>"${RELEASE_REF_ERROR}"; then
             echo "GitHub Release ${VERSION} 已存在，拒绝重复发布。" >&2
+            exit 1
+          elif ! grep -Fq "HTTP 404" "${RELEASE_REF_ERROR}"; then
+            cat "${RELEASE_REF_ERROR}" >&2
+            echo "无法重新确认 GitHub Release ${VERSION} 是否存在，拒绝发布。" >&2
             exit 1
           fi
 
@@ -793,7 +847,7 @@ jobs:
             exit 1
           fi
 
-          tag_target="$(gh api "/repos/${GH_REPO}/git/ref/tags/${VERSION}" --jq '.object.sha')"
+          tag_target="$(gh api "/repos/${GH_REPO}/commits/${VERSION}" --jq '.sha')"
           if [[ "${tag_target}" != "${RELEASE_SHA}" ]]; then
             echo "Published Git tag target mismatch: ${tag_target}" >&2
             exit 1

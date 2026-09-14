@@ -19,9 +19,12 @@ def test_formal_release_is_manual_and_pr_mode_is_dry_run_only() -> None:
     header, jobs = workflow.split("jobs:", 1)
 
     assert "workflow_dispatch:" in header
+    assert "create:" in header
+    assert "push:" not in header
+    assert "github.ref_type == 'tag'" in jobs
+    assert 'VERSION="${GITHUB_REF_NAME}"' in jobs
     assert "pull_request:" in header
     assert "ready_for_review" in header
-    assert "push:" not in header
     assert "permissions:\n  contents: read" in header
 
     build_job = jobs.split("publish-release:", 1)[0]
@@ -31,9 +34,48 @@ def test_formal_release_is_manual_and_pr_mode_is_dry_run_only() -> None:
     )
 
     publish_job = _publish_job(jobs)
-    assert "if: github.event_name == 'workflow_dispatch'" in publish_job
+    assert "github.event_name == 'workflow_dispatch'" in publish_job
+    assert "github.event_name == 'create' && github.ref_type == 'tag'" in publish_job
     assert "contents: write" in publish_job
     assert "packages: write" in publish_job
+
+
+def test_formal_release_can_inherit_only_guarded_archive_evidence() -> None:
+    workflow = _workflow_text()
+
+    assert "Resolve required main CI evidence" in workflow
+    assert "scripts/quality/release_evidence.py resolve" in workflow
+    assert "scripts/quality/release_evidence.py verify" in workflow
+    assert "steps.ci_evidence.outputs.evidence_sha" in workflow
+
+
+def test_manual_tag_release_requires_latest_main_and_exact_tag_target() -> None:
+    workflow = _workflow_text()
+    formal_validation = workflow.split("Validate formal release request", 1)[1].split(
+        "Verify GHCR packages are private", 1
+    )[0]
+    publish_validation = _publish_job(workflow).split(
+        "Revalidate private GHCR packages before push", 1
+    )[0]
+
+    assert '"${GITHUB_REF}" != "refs/tags/${VERSION}"' in formal_validation
+    assert '"${GITHUB_REF_TYPE}" != "tag"' in formal_validation
+    assert "git fetch --no-tags --depth=1 origin main" in formal_validation
+    assert '"$(git rev-parse FETCH_HEAD)" != "${RELEASE_SHA}"' in formal_validation
+    assert '"/repos/${GH_REPO}/commits/${VERSION}"' in formal_validation
+    assert '"${TAG_TARGET}" != "${RELEASE_SHA}"' in formal_validation
+    assert 'grep -Fq "HTTP 404" "${TAG_REF_ERROR}"' in formal_validation
+    assert "无法确认 Git Tag ${VERSION} 是否存在，拒绝继续发布。" in formal_validation
+    assert '"/repos/${GH_REPO}/releases/tags/${VERSION}"' in formal_validation
+    assert 'grep -Fq "HTTP 404" "${RELEASE_REF_ERROR}"' in formal_validation
+    assert "无法确认 GitHub Release ${VERSION} 是否存在" in formal_validation
+    assert '"${CURRENT_MAIN_SHA}" != "${RELEASE_SHA}"' in publish_validation
+    assert '"${TAG_TARGET}" != "${RELEASE_SHA}"' in publish_validation
+    assert 'grep -Fq "HTTP 404" "${TAG_REF_ERROR}"' in publish_validation
+    assert "无法重新确认 Git Tag ${VERSION} 是否存在，拒绝发布。" in publish_validation
+    assert '"/repos/${GH_REPO}/releases/tags/${VERSION}"' in publish_validation
+    assert 'grep -Fq "HTTP 404" "${RELEASE_REF_ERROR}"' in publish_validation
+    assert "无法重新确认 GitHub Release ${VERSION} 是否存在" in publish_validation
 
 
 def test_release_fails_closed_unless_both_ghcr_packages_are_private() -> None:
