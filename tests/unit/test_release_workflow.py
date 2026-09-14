@@ -60,8 +60,10 @@ def test_manual_tag_release_requires_latest_main_and_exact_tag_target() -> None:
 
     assert '"${GITHUB_REF}" != "refs/tags/${VERSION}"' in formal_validation
     assert '"${GITHUB_REF_TYPE}" != "tag"' in formal_validation
-    assert "git fetch --no-tags --depth=1 origin main" in formal_validation
-    assert '"$(git rev-parse FETCH_HEAD)" != "${RELEASE_SHA}"' in formal_validation
+    assert '"/repos/${GH_REPO}/git/ref/heads/main"' in formal_validation
+    assert "--jq '.object.sha'" in formal_validation
+    assert '"${CURRENT_MAIN_SHA}" != "${RELEASE_SHA}"' in formal_validation
+    assert "git fetch --no-tags --depth=1 origin main" not in formal_validation
     assert '"/repos/${GH_REPO}/commits/${VERSION}"' in formal_validation
     assert '"${TAG_TARGET}" != "${RELEASE_SHA}"' in formal_validation
     assert 'grep -Fq "HTTP 404" "${TAG_REF_ERROR}"' in formal_validation
