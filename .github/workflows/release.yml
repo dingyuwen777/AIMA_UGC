@@ -155,8 +155,8 @@ jobs:
             echo "正式 Release 不支持当前事件：${GITHUB_EVENT_NAME}" >&2
             exit 1
           fi
-          git fetch --no-tags --depth=1 origin main
-          if [[ "$(git rev-parse FETCH_HEAD)" != "${RELEASE_SHA}" ]]; then
+          CURRENT_MAIN_SHA="$(gh api "/repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "${CURRENT_MAIN_SHA}" != "${RELEASE_SHA}" ]]; then
             echo "当前 Workflow SHA 已不是远端 main 最新 SHA，拒绝发布。" >&2
             exit 1
           fi
