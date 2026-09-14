@@ -158,7 +158,8 @@ def test_release_pull_request_dry_run_has_no_repository_write_token() -> None:
 
     assert "publish-release:" in jobs
     publish_job = jobs.split("publish-release:", 1)[1]
-    assert "if: github.event_name == 'workflow_dispatch'" in publish_job
+    assert "github.event_name == 'workflow_dispatch'" in publish_job
+    assert "github.event_name == 'create' && github.ref_type == 'tag'" in publish_job
     assert "permissions:" in publish_job
     assert "contents: write" in publish_job
     assert "packages: write" in publish_job
