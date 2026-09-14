@@ -52,6 +52,33 @@ describe('content supplement status', () => {
     expect(html).not.toContain('href="https://sns-i11.rednotecdn.com/original-image"')
   })
 
+  it('renders accessible navigation only for a multi-image cached gallery', async () => {
+    const item = {
+      ...baseItem,
+      media: [0, 1, 2].map((position) => ({
+        position,
+        media_type: 'image',
+        url: `https://sns-i11.rednotecdn.com/original-image-${position}`,
+        preview_url: `/api/v1/contents/${baseItem.id}/media/${position}`,
+        alt_text: null,
+      })),
+    } as unknown as ContentDetailResponse
+
+    const html = await render(item)
+
+    expect(html).toContain('aria-label="上一张图片"')
+    expect(html).toContain('aria-label="下一张图片"')
+    expect(html).toContain('aria-live="polite"')
+    expect(html).toContain('1 / 3')
+
+    const singleImageHtml = await render({
+      ...item,
+      media: item.media?.slice(0, 1),
+    } as ContentDetailResponse)
+    expect(singleImageHtml).not.toContain('aria-label="上一张图片"')
+    expect(singleImageHtml).not.toContain('aria-label="下一张图片"')
+  })
+
   it('keeps other platforms linking to their original media', async () => {
     const item = {
       ...baseItem,
