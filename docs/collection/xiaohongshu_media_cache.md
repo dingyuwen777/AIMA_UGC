@@ -200,15 +200,18 @@ cache miss → 安全请求保存的小红书 CDN URL → 缓存 → 返回
 
 原始 `media.url` 不被覆盖，继续作为 Provider 媒体事实用于溯源。详情画廊的显示与点击都优先使用 `preview_url`：小红书图片因此始终通过 AIMA 同源缓存资源查看，不会继承原始 CDN 的附件下载响应。没有 URL 但已有 preview 的媒体保留原 preview；URL 和 preview 都为空的媒体不会进入画廊。
 
-详情抽屉的小红书内部缓存媒体使用浏览器原生横向滚动和 `scroll-snap`，不引入额外 Carousel/UI Library；样式通过内部媒体 URL 特征限定作用域，不改变抖音、B 站等其它平台原有媒体布局：
+详情抽屉的小红书内部缓存媒体保留浏览器原生横向滚动和 `scroll-snap`，并为普通鼠标与键盘用户提供轻量的上一张/下一张按钮；不引入额外 Carousel/UI Library。样式通过内部媒体 URL 特征限定作用域，不改变抖音、B 站等其它平台原有媒体布局：
 
-- 单图占满媒体区；
-- 多图保留下一张轻微露出，提示左右滑动；
-- 触屏、触控板、鼠标横向滚动都使用原生行为；
+- 单图占满媒体区且不显示切换控件；
+- 多图保留下一张轻微露出，并显示左右按钮与当前序号；
+- 触屏和触控板继续使用原生横向滑动，普通鼠标或键盘可使用左右按钮逐张查看；
+- 首张禁用“上一张”，末张禁用“下一张”；原生滑动后按钮状态与当前序号同步；
 - 图片 `object-fit: contain`，避免裁掉车型/产品主体；
-- 隐藏厚重滚动条，不增加无必要箭头/分页器；
+- 隐藏厚重滚动条，不增加占空间的圆点分页器；
 - 没有可展示媒体时整个媒体区不出现；
 - 图片源失败不影响标题、正文、AI 信息、人工确认和评论。
+
+当前交互实现在 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue`](../../frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue)，视觉规则在 [`frontend/src/shared/styles/voice-plaza-media-carousel.css`](../../frontend/src/shared/styles/voice-plaza-media-carousel.css)；鼠标切换与原生滚动同步由 [`frontend/e2e/voice-plaza-media-carousel.spec.ts`](../../frontend/e2e/voice-plaza-media-carousel.spec.ts) 从公开页面入口回归。
 
 正式 Figma：`EAPm8KVarUe7BFTSnzvOpT / 4627:7429`。共享 Detail Drawer body Owner 与代码保持一致：610 px Drawer 内使用 336 px 高、FIT、横向可滚动媒体区；未补采/无媒体/媒体不可用/评论未采集状态由同页状态规格说明。
 

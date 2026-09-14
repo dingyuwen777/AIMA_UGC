@@ -83,19 +83,21 @@ describe('content supplement status', () => {
     const item = {
       ...baseItem,
       platform: 'douyin',
-      media: [{
-        position: 0,
+      media: [0, 1].map((position) => ({
+        position,
         media_type: 'video',
-        url: 'https://www.douyin.com/video/original',
-        preview_url: 'https://example.invalid/video-cover.jpg',
+        url: `https://www.douyin.com/video/original-${position}`,
+        preview_url: `https://example.invalid/video-cover-${position}.jpg`,
         alt_text: null,
-      }],
+      })),
     } as unknown as ContentDetailResponse
 
     const html = await render(item)
 
-    expect(html).toContain('href="https://www.douyin.com/video/original"')
-    expect(html).toContain('src="https://example.invalid/video-cover.jpg"')
+    expect(html).toContain('href="https://www.douyin.com/video/original-0"')
+    expect(html).toContain('src="https://example.invalid/video-cover-0.jpg"')
+    expect(html).not.toContain('aria-label="上一张图片"')
+    expect(html).not.toContain('aria-label="下一张图片"')
   })
 
   it('describes a failed supplement without claiming the imported content is unviewable', async () => {

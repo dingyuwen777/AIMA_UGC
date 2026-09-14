@@ -102,6 +102,10 @@ test('普通鼠标可通过左右按钮逐张查看全部缓存图片', async ({
   await expect(previous).toBeDisabled()
   await expect(next).toBeEnabled()
 
+  if (process.env.AIMA_CAPTURE_VISUAL === '1') {
+    await page.screenshot({ path: 'test-results/xhs-media-carousel-navigation.png', fullPage: true })
+  }
+
   await next.click()
   await expect(position).toHaveText('2 / 3')
   await expect.poll(() => gallery.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0)
