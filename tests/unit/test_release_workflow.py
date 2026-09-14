@@ -66,11 +66,16 @@ def test_manual_tag_release_requires_latest_main_and_exact_tag_target() -> None:
     assert '"${TAG_TARGET}" != "${RELEASE_SHA}"' in formal_validation
     assert 'grep -Fq "HTTP 404" "${TAG_REF_ERROR}"' in formal_validation
     assert "无法确认 Git Tag ${VERSION} 是否存在，拒绝继续发布。" in formal_validation
-    assert 'gh release view "${VERSION}" --repo "${GH_REPO}"' in formal_validation
+    assert '"/repos/${GH_REPO}/releases/tags/${VERSION}"' in formal_validation
+    assert 'grep -Fq "HTTP 404" "${RELEASE_REF_ERROR}"' in formal_validation
+    assert "无法确认 GitHub Release ${VERSION} 是否存在" in formal_validation
     assert '"${CURRENT_MAIN_SHA}" != "${RELEASE_SHA}"' in publish_validation
     assert '"${TAG_TARGET}" != "${RELEASE_SHA}"' in publish_validation
     assert 'grep -Fq "HTTP 404" "${TAG_REF_ERROR}"' in publish_validation
     assert "无法重新确认 Git Tag ${VERSION} 是否存在，拒绝发布。" in publish_validation
+    assert '"/repos/${GH_REPO}/releases/tags/${VERSION}"' in publish_validation
+    assert 'grep -Fq "HTTP 404" "${RELEASE_REF_ERROR}"' in publish_validation
+    assert "无法重新确认 GitHub Release ${VERSION} 是否存在" in publish_validation
 
 
 def test_release_fails_closed_unless_both_ghcr_packages_are_private() -> None:
