@@ -71,10 +71,10 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 缓存图片应在网页详情中直接显示 | user:xhs-rednote-media-preview / AC1 | satisfied | `content_media_cache.py` 接受 `sns-i11.rednotecdn.com`；后端 9 项回归通过；截图 Content 的同源端点返回 200 `image/webp`、`X-AIMA-Media-State: available`，Chrome 实际加载 576×432 图片 |
-| R2 | 点击图片不再得到下载链接 | user:xhs-rednote-media-preview / AC2 | satisfied | `ContentDetailDrawer.vue` 对小红书链接优先使用同源 `preview_url`；前端 6 项定向回归通过；Chrome 实际点击后打开 `image/webp` 图片文档而非下载 |
-| R3 | 保持缓存安全边界，不能成为任意代理，且其它平台链接行为不变 | docs/collection/xiaohongshu_media_cache.md / AC3 | satisfied | `rednotecdn.com.evil.example` 反例被拒绝；无 redirect、MIME、10 MiB 与 URL 结构原门禁保持；新增抖音原始媒体链接兼容回归并通过 |
-| R4 | 本地验证无问题后合并远程主分支 | user:xhs-rednote-media-preview / AC4 | explicitly_deferred | 实现和本地目标链路已满足；PR required CI、Review、merge 与 main-fresh 按用户授权在 Ready 后执行，不能在 Change 入 PR 前伪造完成 |
+| R1 | 缓存图片应在网页详情中直接显示 | #478 / AC1 | satisfied | `content_media_cache.py` 接受 `sns-i11.rednotecdn.com`；后端 9 项回归通过；截图 Content 的同源端点返回 200 `image/webp`、`X-AIMA-Media-State: available`，Chrome 实际加载 576×432 图片 |
+| R2 | 点击图片不再得到下载链接 | #478 / AC2 | satisfied | `ContentDetailDrawer.vue` 对小红书链接优先使用同源 `preview_url`；前端 6 项定向回归通过；Chrome 实际点击后打开 `image/webp` 图片文档而非下载 |
+| R3 | 保持缓存安全边界，不能成为任意代理，且其它平台链接行为不变 | #478 / AC3 | satisfied | `rednotecdn.com.evil.example` 反例被拒绝；无 redirect、MIME、10 MiB 与 URL 结构原门禁保持；新增抖音原始媒体链接兼容回归并通过 |
+| R4 | 本地验证无问题后合并远程主分支 | #478 / AC4 | explicitly_deferred | 实现和本地目标链路已满足；PR required CI、Review、merge 与 main-fresh 按用户授权在 Ready 后执行，不能在 Change 入 PR 前伪造完成 |
 
 # 实施与验证计划
 
@@ -114,7 +114,7 @@ data_changes:
 
 ## Review A1：上游要求 → Change
 
-已独立重建四项上游要求：网页直接显示、点击不下载、安全边界不退化、本地验证后合并 main。前三项已有当前实现和多层证据；合并要求按项目交付顺序保留在 PR 与 main-fresh 阶段，没有用 Change 自身代替上游要求。
+已独立重建 Issue #478 的四项上游要求：网页直接显示、点击不下载、安全边界不退化、本地验证后合并 main。前三项已有当前实现和多层证据；合并要求按项目交付顺序保留在 PR 与 main-fresh 阶段，没有用 Change 自身代替上游要求。
 
 ## Review A2：Change → 实现、测试与文档
 
@@ -129,4 +129,4 @@ data_changes:
 - Backend/API：API `69 passed`；Mypy `345 source files` 通过；本次 Python 文件 Ruff format/check 通过；Contract 生成 `--check` 通过。
 - Runtime/Golden Path：Windows 正式 Compose 镜像构建成功，API/Frontend/PostgreSQL 健康；截图 Content `42cb0f34-414d-4298-849f-699a8110b060` 的媒体端点两次返回 200、80252 字节、`image/webp`、`available`，无 `Content-Disposition`；Chrome 详情图片和点击后图片文档均为 576×432。
 - 已知本机非目标失败：完整 Python Unit 为 `991 passed, 8 skipped, 3 failed`，失败仅来自 Windows 无 `os.geteuid/os.chown` 的 POSIX host-preparation 测试；完整 Contract 为 `110 passed, 1 failed`，失败仅来自用户本地 ignored Provider Raw 被平台别名扫描命中。相关失败文件与本分支无差异，远程干净 Linux CI 继续作为合并硬门禁。
-- Git：首个本地提交 `60e737f7` 已锁定回归；生产修复、兼容回归、文档与本 Change 待本地 Ready Check 后提交、推送并创建 PR。
+- Git：`60e737f7` 锁定首轮回归，`f814246d` 提交生产修复、兼容回归、文档与 Ready 证据；Requirement Source 为 Issue #478，当前追溯更新通过门禁后提交并进入 PR。
