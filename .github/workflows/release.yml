@@ -180,8 +180,14 @@ jobs:
             echo "Tag create 发布事件缺少对应远程 Tag：${VERSION}" >&2
             exit 1
           fi
-          if gh release view "${VERSION}" --repo "${GH_REPO}" >/dev/null 2>&1; then
+          RELEASE_REF_JSON="${RUNNER_TEMP}/release-ref.json"
+          RELEASE_REF_ERROR="${RUNNER_TEMP}/release-ref.error"
+          if gh api "/repos/${GH_REPO}/releases/tags/${VERSION}" >"${RELEASE_REF_JSON}" 2>"${RELEASE_REF_ERROR}"; then
             echo "GitHub Release ${VERSION} 已存在，拒绝重复发布。" >&2
+            exit 1
+          elif ! grep -Fq "HTTP 404" "${RELEASE_REF_ERROR}"; then
+            cat "${RELEASE_REF_ERROR}" >&2
+            echo "无法确认 GitHub Release ${VERSION} 是否存在，拒绝继续发布。" >&2
             exit 1
           fi
 
@@ -669,8 +675,14 @@ jobs:
             echo "无法重新确认 Git Tag ${VERSION} 是否存在，拒绝发布。" >&2
             exit 1
           fi
-          if gh release view "${VERSION}" --repo "${GH_REPO}" >/dev/null 2>&1; then
+          RELEASE_REF_JSON="${RUNNER_TEMP}/publish-release-ref.json"
+          RELEASE_REF_ERROR="${RUNNER_TEMP}/publish-release-ref.error"
+          if gh api "/repos/${GH_REPO}/releases/tags/${VERSION}" >"${RELEASE_REF_JSON}" 2>"${RELEASE_REF_ERROR}"; then
             echo "GitHub Release ${VERSION} 已存在，拒绝重复发布。" >&2
+            exit 1
+          elif ! grep -Fq "HTTP 404" "${RELEASE_REF_ERROR}"; then
+            cat "${RELEASE_REF_ERROR}" >&2
+            echo "无法重新确认 GitHub Release ${VERSION} 是否存在，拒绝发布。" >&2
             exit 1
           fi
 
