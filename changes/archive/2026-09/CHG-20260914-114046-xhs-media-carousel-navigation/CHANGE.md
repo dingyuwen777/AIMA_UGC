@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260914-114046-xhs-media-carousel-navigation
 title: 修复小红书多图画廊鼠标切换
 level: L2
-status: ready_for_review
+status: done
 owner: Codex
 branch: fix/xhs-media-carousel-navigation
 created: 2026-09-14
