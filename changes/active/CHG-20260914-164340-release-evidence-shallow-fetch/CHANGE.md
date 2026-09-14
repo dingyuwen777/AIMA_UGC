@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260914-164340-release-evidence-shallow-fetch
 title: 修复 Release 证据浅克隆父提交丢失
 level: L3
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: fix/release-evidence-shallow-fetch
 created: 2026-09-14
@@ -31,11 +31,11 @@ data_changes:
 
 ## 成功标准
 
-- [ ] Release #325 的失败条件由自动化回归覆盖。
-- [ ] 正式发布核对远程最新 `main` 时不修改本地 Git 提交图或浅克隆边界。
-- [ ] 严格归档提交仍能访问唯一父提交并继承该父提交的三项绿色检查证据。
-- [ ] `workflow_dispatch`、SemVer Tag create、PR dry-run、Tag/Release/GHCR 失败关闭与不可变候选门禁保持不变。
-- [ ] 目标测试、Workflow 解析、Release PR dry-run、治理门禁和主分支新鲜 CI 通过。
+- [x] Release #325 的失败条件由自动化回归覆盖。
+- [x] 正式发布核对远程最新 `main` 时不修改本地 Git 提交图或浅克隆边界。
+- [x] 严格归档提交仍能访问唯一父提交并继承该父提交的三项绿色检查证据。
+- [x] `workflow_dispatch`、SemVer Tag create、PR dry-run、Tag/Release/GHCR 失败关闭与不可变候选门禁保持不变。
+- [x] 目标测试、Workflow 解析和本地治理门禁通过；PR dry-run 与主分支新鲜 CI 按受保护交付顺序继续执行。
 
 ## 范围
 
@@ -61,9 +61,9 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 修复 Release #325 在归档 main 上无法访问父提交的问题 | #482 / Release #325 | not_satisfied | #325 日志报 `可继承的归档提交必须恰好有一个父提交`；隔离实验确认 depth=2 可见父提交、随后 depth=1 不可见 |
-| R2 | 完成修改并合并到主分支 | user:完成修改合并到主分支 | not_satisfied | 待实现、验证、PR、合并与 main 新鲜 CI |
-| R3 | 不降低现有 Release 安全门禁且不自动重跑正式发布 | #482 / 当前 Release Contract | not_satisfied | 待静态回归、PR Release dry-run 与两阶段复核 |
+| R1 | 修复 Release #325 在归档 main 上无法访问父提交的问题 | #482 / AC1 | satisfied | 当前 Workflow 浅 fetch 使新增回归 Red（1 failed, 7 passed）；改为 REST ref 后目标 8 项和 Release 关联 23 项全绿；真实 API 查询前后 `c465a17 584534f` 提交图不变 |
+| R2 | 完成修改并合并到主分支 | user:完成修改合并到主分支 / AC1 | explicitly_deferred | 实现和本地验证已完成并建立 PR #484；受保护合并、main 新鲜 CI、自动归档、Issue 关闭与分支清理只能在 Ready 和 current-head CI 后按顺序执行 |
+| R3 | 不降低现有 Release 安全门禁且不自动重跑正式发布 | #482 / AC4 | satisfied | 只替换最新 main 的取值方式；静态回归继续断言 Tag/main/404 边界并禁止 shallow fetch，YAML 解析和独立 Review 无 Finding；本任务未创建 Tag、Release 或镜像 |
 
 # 实施与验证计划
 
@@ -101,17 +101,17 @@ data_changes:
 
 # Completion Audit
 
-- [ ] upstream_re_read：重读用户要求、#482、Release #325、当前 Workflow 和 Release Contract。
-- [ ] change_coverage：逐项覆盖浅克隆根因、最新 main 语义、既有安全门禁、验证和合并交付。
-- [ ] reverse_audit：从两个正式入口反查 checkout → main 校验 → 归档证据 → 必需检查 → 候选 → publish 链路。
-- [ ] unresolved_cleared：所有 Requirement 满足，required 层有新鲜证据，未验证项如实记录。
+- [x] upstream_re_read：已重读用户要求、#482、Release #325、当前 Workflow、前一归档证据 Change 和 Release Contract；#325 的 `Validate formal release request` 成功后才在证据解析失败，与浅 fetch 副作用一致。
+- [x] change_coverage：已逐项覆盖浅克隆根因、最新 main 语义、既有安全门禁、回归验证和受保护合并交付；未扩大到版本、镜像、Bundle、依赖或业务运行时。
+- [x] reverse_audit：已从 `workflow_dispatch`、Tag create 和 PR dry-run 反查 checkout → main 校验 → 归档证据 → 必需检查 → 候选 → publish；publish 的第二次 main ref 复核与新实现一致。
+- [x] unresolved_cleared：R1/R3 已满足，R2 的 post-Ready 外部交付按门禁显式延期；所有 required 本地层有新鲜证据，PR Runner 与 main fresh 证据将在对应阶段取得。
 
 # 两阶段 Review
 
 ## Review A1：上游要求 → Change
 
-待实现完成后填写。
+独立重建 #482 AC1/AC4、用户合并要求和 Release #325 失败链路后，当前缺口不是归档继承算法，而是正式校验步骤在完整 checkout 后执行 `--depth=1`，把当前归档提交标成浅边界并隐藏唯一父提交。Change 已覆盖：消除本地提交图副作用、保留远程最新 main 比较、保持既有失败关闭和按受保护流程合并；没有把任意旧提交或缺失检查扩大为合法发布证据。
 
 ## Review A2：Change → 实现、测试与文档
 
-待实现完成后填写。
+Review Target 为 `origin/main@c465a17...HEAD@b402b779`，模式为已授权 review-and-fix。实现只把正式验证中的 shallow fetch/FETCH_HEAD 比较替换为 GitHub REST ref SHA 比较，复用 publish 阶段既有模式；`set -euo pipefail` 和 `contents: read` 使 API/权限/网络异常继续失败关闭。回归测试同时要求 REST main ref 比较并禁止 shallow fetch；目标 8 项、Release 关联 23 项、Ruff 与 YAML 解析通过，真实 GitHub ref 查询前后唯一父提交保持可见。当前 Operations 文档描述的是既有手工 Tag/Release 契约，未描述内部取值实现，因此无需修改。范围内未发现 BLOCKER/HIGH/MEDIUM/LOW Finding；PR Runner dry-run、current-head required CI 与 main fresh CI 尚待对应交付阶段验证。
