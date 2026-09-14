@@ -147,7 +147,7 @@ function unlockAnalysisReview(): void {
   emit('review-analysis', { unlock_dimensions: [...lockedDimensions.value] })
 }
 
-/** 将画廊平滑移动到指定图片，并立即更新按钮与序号状态。 */
+/** 将画廊移动到指定图片，并立即更新按钮与序号状态。 */
 function showMedia(index: number): void {
   const grid = mediaGrid.value
   if (!grid || !hasMediaNavigation.value) return
@@ -159,7 +159,6 @@ function showMedia(index: number): void {
   activeMediaIndex.value = targetIndex
   grid.scrollTo({
     left: grid.scrollLeft + targetRect.left - gridRect.left,
-    behavior: 'smooth',
   })
 }
 
