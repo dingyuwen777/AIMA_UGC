@@ -9,7 +9,7 @@
 ```text
 content_media
 ├─ external_media_id   # fileid 等稳定媒体身份
-├─ url                 # Provider 返回的原始小红书 CDN / ci.xiaohongshu.com URL
+├─ url                 # Provider 返回的原始小红书 CDN URL
 ├─ position            # images_list 数组顺序
 ├─ width
 └─ height
@@ -123,6 +123,8 @@ content_media.url 已存在
 ```text
 *.xhscdn.com
 xhscdn.com
+*.rednotecdn.com
+rednotecdn.com
 ci.xiaohongshu.com
 ```
 
@@ -196,7 +198,7 @@ cache miss → 安全请求保存的小红书 CDN URL → 缓存 → 返回
 源不可用  → AIMA 固定浅灰占位图，不暴露浏览器破图
 ```
 
-原始 `media.url` 不被覆盖，仍可用于溯源/原始媒体链接。没有 URL 但已有 preview 的媒体保留原 preview；URL 和 preview 都为空的媒体不会进入画廊。
+原始 `media.url` 不被覆盖，继续作为 Provider 媒体事实用于溯源。详情画廊的显示与点击都优先使用 `preview_url`：小红书图片因此始终通过 AIMA 同源缓存资源查看，不会继承原始 CDN 的附件下载响应。没有 URL 但已有 preview 的媒体保留原 preview；URL 和 preview 都为空的媒体不会进入画廊。
 
 详情抽屉的小红书内部缓存媒体使用浏览器原生横向滚动和 `scroll-snap`，不引入额外 Carousel/UI Library；样式通过内部媒体 URL 特征限定作用域，不改变抖音、B 站等其它平台原有媒体布局：
 
