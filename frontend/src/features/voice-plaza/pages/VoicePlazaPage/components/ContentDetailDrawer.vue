@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import type {
   AnalysisManualLabelRequest,
@@ -69,9 +69,23 @@ const emit = defineEmits<{
 
 const editingVehicles = ref(false)
 const editingAnalysis = ref(false)
+const mediaGrid = ref<HTMLElement | null>(null)
+const activeMediaIndex = ref(0)
 const relevanceDecision = computed(() => props.item ? relevanceReviewDecision(props.item) : null)
+const mediaItems = computed(() => props.item?.media ?? [])
+const hasMediaNavigation = computed(() =>
+  props.item?.platform === 'xiaohongshu'
+  && mediaItems.value.length > 1
+  && mediaItems.value.some((media) => media.preview_url?.startsWith('/api/v1/contents/')),
+)
 
-watch(() => props.item?.id, () => { editingVehicles.value = false; editingAnalysis.value = false })
+watch(() => props.item?.id, async () => {
+  editingVehicles.value = false
+  editingAnalysis.value = false
+  activeMediaIndex.value = 0
+  await nextTick()
+  if (mediaGrid.value) mediaGrid.value.scrollLeft = 0
+})
 
 const vehicleModelIds = ref<string[]>([])
 const voiceType = ref('')
@@ -131,6 +145,40 @@ function saveAnalysisReview(): void {
 function unlockAnalysisReview(): void {
   if (!window.confirm('解除人工分析锁定后，页面将恢复展示当前 AI 结果。是否继续？')) return
   emit('review-analysis', { unlock_dimensions: [...lockedDimensions.value] })
+}
+
+/** 将画廊移动到指定图片，并立即更新按钮与序号状态。 */
+function showMedia(index: number): void {
+  const grid = mediaGrid.value
+  if (!grid || !hasMediaNavigation.value) return
+  const targetIndex = Math.min(Math.max(index, 0), mediaItems.value.length - 1)
+  const target = grid.children.item(targetIndex)
+  if (!(target instanceof HTMLElement)) return
+  const gridRect = grid.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  activeMediaIndex.value = targetIndex
+  grid.scrollTo({
+    left: grid.scrollLeft + targetRect.left - gridRect.left,
+  })
+}
+
+/** 根据原生触控或触控板滚动位置同步当前图片序号。 */
+function syncMediaIndex(): void {
+  const grid = mediaGrid.value
+  if (!grid || !hasMediaNavigation.value) return
+  const gridRect = grid.getBoundingClientRect()
+  const gridCenter = gridRect.left + gridRect.width / 2
+  let nearestIndex = 0
+  let nearestDistance = Number.POSITIVE_INFINITY
+  Array.from(grid.children).forEach((child, index) => {
+    const childRect = child.getBoundingClientRect()
+    const distance = Math.abs(childRect.left + childRect.width / 2 - gridCenter)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestIndex = index
+    }
+  })
+  activeMediaIndex.value = nearestIndex
 }
 
 /** 将内容补充状态映射为用户可理解的区块标题。 */
@@ -262,23 +310,60 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       </section>
 
       <section v-if="(item.media ?? []).length > 0">
-        <div class="media-grid">
-          <a
-            v-for="media in item.media ?? []"
-            :key="`${media.position}:${media.url}`"
-            :href="item.platform === 'xiaohongshu'
-              ? (media.preview_url || media.url || undefined)
-              : (media.url || media.preview_url || undefined)"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div class="media-carousel">
+          <div
+            ref="mediaGrid"
+            class="media-grid"
+            @scroll.passive="syncMediaIndex"
           >
-            <img
-              v-if="media.preview_url"
-              :src="media.preview_url"
-              :alt="media.alt_text || '原始内容媒体预览'"
+            <a
+              v-for="media in item.media ?? []"
+              :key="`${media.position}:${media.url}`"
+              :href="item.platform === 'xiaohongshu'
+                ? (media.preview_url || media.url || undefined)
+                : (media.url || media.preview_url || undefined)"
+              target="_blank"
+              rel="noopener noreferrer"
             >
-            <span v-else>{{ media.media_type }} · 查看原始媒体</span>
-          </a>
+              <img
+                v-if="media.preview_url"
+                :src="media.preview_url"
+                :alt="media.alt_text || '原始内容媒体预览'"
+              >
+              <span v-else>{{ media.media_type }} · 查看原始媒体</span>
+            </a>
+          </div>
+          <template v-if="hasMediaNavigation">
+            <button
+              class="media-navigation media-navigation--previous"
+              type="button"
+              aria-label="上一张图片"
+              :disabled="activeMediaIndex === 0"
+              @click="showMedia(activeMediaIndex - 1)"
+            >
+              <AimaIcon
+                name="chevron-left"
+                :size="20"
+              />
+            </button>
+            <span
+              class="media-position"
+              aria-live="polite"
+              aria-atomic="true"
+            >{{ activeMediaIndex + 1 }} / {{ mediaItems.length }}</span>
+            <button
+              class="media-navigation media-navigation--next"
+              type="button"
+              aria-label="下一张图片"
+              :disabled="activeMediaIndex === mediaItems.length - 1"
+              @click="showMedia(activeMediaIndex + 1)"
+            >
+              <AimaIcon
+                name="chevron-right"
+                :size="20"
+              />
+            </button>
+          </template>
         </div>
       </section>
       <section class="content-info">
