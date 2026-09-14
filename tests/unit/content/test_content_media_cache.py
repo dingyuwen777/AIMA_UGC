@@ -26,10 +26,14 @@ def test_normalize_xiaohongshu_image_url_accepts_only_trusted_origin() -> None:
     assert normalize_xiaohongshu_image_url("https://ci.xiaohongshu.com/abc") == (
         "https://ci.xiaohongshu.com/abc"
     )
+    assert normalize_xiaohongshu_image_url("https://sns-i11.rednotecdn.com/image") == (
+        "https://sns-i11.rednotecdn.com/image"
+    )
 
     for url in (
         "https://example.com/image.jpg",
         "https://xhscdn.com.evil.example/image.jpg",
+        "https://rednotecdn.com.evil.example/image.jpg",
         "https://user@xhscdn.com/image.jpg",
         "https://sns-img-bd.xhscdn.com:80/image.jpg",
         "http://sns-img-bd.xhscdn.com:443/image.jpg",

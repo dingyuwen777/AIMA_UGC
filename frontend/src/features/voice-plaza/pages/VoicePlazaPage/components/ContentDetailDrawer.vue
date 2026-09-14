@@ -266,7 +266,9 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
           <a
             v-for="media in item.media ?? []"
             :key="`${media.position}:${media.url}`"
-            :href="media.url || undefined"
+            :href="item.platform === 'xiaohongshu'
+              ? (media.preview_url || media.url || undefined)
+              : (media.url || media.preview_url || undefined)"
             target="_blank"
             rel="noopener noreferrer"
           >

@@ -33,6 +33,44 @@ async function render(item: ContentDetailResponse): Promise<string> {
 }
 
 describe('content supplement status', () => {
+  it('uses the same-origin cached preview for both display and click-through', async () => {
+    const item = {
+      ...baseItem,
+      media: [{
+        position: 0,
+        media_type: 'image',
+        url: 'https://sns-i11.rednotecdn.com/original-image',
+        preview_url: '/api/v1/contents/01991f80-6d5d-7dc8-95cb-c67c12345678/media/0',
+        alt_text: null,
+      }],
+    } as unknown as ContentDetailResponse
+
+    const html = await render(item)
+
+    expect(html).toContain('href="/api/v1/contents/01991f80-6d5d-7dc8-95cb-c67c12345678/media/0"')
+    expect(html).toContain('src="/api/v1/contents/01991f80-6d5d-7dc8-95cb-c67c12345678/media/0"')
+    expect(html).not.toContain('href="https://sns-i11.rednotecdn.com/original-image"')
+  })
+
+  it('keeps other platforms linking to their original media', async () => {
+    const item = {
+      ...baseItem,
+      platform: 'douyin',
+      media: [{
+        position: 0,
+        media_type: 'video',
+        url: 'https://www.douyin.com/video/original',
+        preview_url: 'https://example.invalid/video-cover.jpg',
+        alt_text: null,
+      }],
+    } as unknown as ContentDetailResponse
+
+    const html = await render(item)
+
+    expect(html).toContain('href="https://www.douyin.com/video/original"')
+    expect(html).toContain('src="https://example.invalid/video-cover.jpg"')
+  })
+
   it('describes a failed supplement without claiming the imported content is unviewable', async () => {
     const item = {
       ...baseItem,

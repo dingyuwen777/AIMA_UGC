@@ -121,6 +121,8 @@ def normalize_xiaohongshu_image_url(source_url: str) -> str:
         hostname == "ci.xiaohongshu.com"
         or hostname == "xhscdn.com"
         or hostname.endswith(".xhscdn.com")
+        or hostname == "rednotecdn.com"
+        or hostname.endswith(".rednotecdn.com")
     )
     default_port = (parsed.scheme == "http" and port in (None, 80)) or (
         parsed.scheme == "https" and port in (None, 443)
