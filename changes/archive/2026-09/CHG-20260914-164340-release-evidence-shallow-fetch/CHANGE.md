@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260914-164340-release-evidence-shallow-fetch
 title: 修复 Release 证据浅克隆父提交丢失
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: fix/release-evidence-shallow-fetch
 created: 2026-09-14
