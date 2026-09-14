@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260914-093702-xhs-rednote-media-preview
 title: 修复小红书缓存图片网页内联展示
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: fix/xhs-rednote-media-preview
 created: 2026-09-14
