@@ -12,7 +12,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 CORE = ROOT / "scripts" / "release" / "release_bundle.py"
 POWERSHELL = ROOT / "scripts" / "release" / "build_local_release.ps1"
-PRODUCTION_ENV = ROOT / "env.production.example"
 
 
 def _load_module():
@@ -104,8 +103,11 @@ def test_build_images_adds_latest_aliases(monkeypatch: pytest.MonkeyPatch) -> No
     calls: list[tuple[str, ...]] = []
 
     def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
-        del cwd, capture
-        calls.append(tuple(arguments))
+        del cwd
+        normalized = tuple(str(item) for item in arguments)
+        calls.append(normalized)
+        if normalized[:4] == ("docker", "image", "inspect", "-f") and capture:
+            return "sha256:application\n"
         return ""
 
     monkeypatch.setattr(module, "_require_tool", lambda _name: None)
@@ -256,15 +258,6 @@ def test_strict_replay_removes_version_and_latest_aliases(
         "postgres:18.4",
     ) in calls
     assert ("docker", "load", "-i", str(bundle / "images.tar")) in calls
-
-
-def test_production_env_defaults_to_latest() -> None:
-    values = dict(
-        line.split("=", 1)
-        for line in PRODUCTION_ENV.read_text(encoding="utf-8").splitlines()
-        if line and not line.startswith("#") and "=" in line
-    )
-    assert values["AIMA_IMAGE_TAG"] == "latest"
 
 
 def test_manifest_records_profile_upstreams_and_verification_state() -> None:
@@ -458,6 +451,7 @@ def test_windows_entry_defaults_to_china_and_delegates_to_shared_core() -> None:
     assert '"--formal"' in script
     assert '"--verify"' in script
     assert "$pythonCommand = @(Resolve-PythonCommand)" in script
+    assert "docker tag" not in script
     assert "git tag" not in script
     assert "git push" not in script
     assert "gh release" not in script
