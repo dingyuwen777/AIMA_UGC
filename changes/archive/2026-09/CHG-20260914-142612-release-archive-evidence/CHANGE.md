@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260914-142612-release-archive-evidence
 title: 修复手工 Tag 与归档提交 Release 门禁
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: fix/release-archive-evidence
 created: 2026-09-14
