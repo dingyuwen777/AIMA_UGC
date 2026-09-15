@@ -22,7 +22,6 @@ from typing import Any
 from urllib.request import urlopen
 
 POSTGRES_IMAGE = "postgres:18.4"
-POSTGRES_RUNTIME_USER = "999:999"
 PLATFORM = "linux/amd64"
 FORMAL_VERSION_PATTERN = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 LOCAL_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
@@ -677,56 +676,16 @@ def _http_get(url: str) -> None:
         raise ReleaseBundleError(f"HTTP smoke 失败：{url}：{exc}") from exc
 
 
-def _cleanup_smoke_root(*, root: Path, smoke_root: Path, backend_image: str) -> None:
-    """只清理本次随机 smoke 根；POSIX 按固定容器 UID 分段回收 root-owned bind 内容。"""
+def _cleanup_smoke_root(smoke_root: Path) -> None:
+    """只清理本次随机 smoke 根；权限不足时失败关闭且不触碰其他目录。"""
     if not smoke_root.exists():
         return
-    if os.name == "nt":
-        shutil.rmtree(smoke_root)
-        return
-
-    cleanup_code = (
-        "from pathlib import Path; import shutil; "
-        "root=Path('/cleanup'); "
-        "[(shutil.rmtree(p) if p.is_dir() else p.unlink()) for p in list(root.iterdir())]"
-    )
-    postgres_root = smoke_root / "postgres"
-    _run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "--user",
-            POSTGRES_RUNTIME_USER,
-            "--mount",
-            f"type=bind,source={postgres_root},target=/cleanup",
-            backend_image,
-            "python",
-            "-c",
-            cleanup_code,
-        ],
-        cwd=root,
-    )
-    _run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "--user",
-            "0:0",
-            "--mount",
-            f"type=bind,source={smoke_root},target=/cleanup",
-            backend_image,
-            "python",
-            "-c",
-            cleanup_code,
-        ],
-        cwd=root,
-    )
     try:
-        smoke_root.rmdir()
-    except OSError as exc:
-        raise ReleaseBundleError(f"Smoke 临时根清理失败：{smoke_root}") from exc
+        shutil.rmtree(smoke_root)
+    except PermissionError as exc:
+        raise ReleaseBundleError(
+            f"Smoke 临时根包含当前进程无法删除的容器文件：{smoke_root}"
+        ) from exc
 
 
 def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: bool) -> None:
@@ -737,7 +696,8 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
     smoke_root = smoke_parent / "root"
     smoke_root.mkdir()
     (smoke_root / "postgres").mkdir()
-    env_path = _smoke_env(bundle_dir=bundle_dir, smoke_root=smoke_root, port=_find_free_port())
+    port = _find_free_port()
+    env_path = _smoke_env(bundle_dir=bundle_dir, smoke_root=smoke_root, port=port)
     project = f"aima-release-smoke-{os.getpid()}"
     compose = _compose_command(
         root=root,
@@ -764,13 +724,6 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
                     f"候选镜像仍可通过 {image} 访问，不能证明离线 Bundle 独立可回放。"
                 )
     _run(["docker", "load", "-i", str(bundle_dir / "images.tar")], cwd=root)
-    port = int(
-        next(
-            line.split("=", 1)[1]
-            for line in env_path.read_text(encoding="utf-8").splitlines()
-            if line.startswith("AIMA_HTTP_PORT=")
-        )
-    )
     try:
         _run([*compose, "config", "--quiet"], cwd=root)
         _run([*compose, "up", "-d", "--no-build", "--pull", "never", "--wait"], cwd=root)
@@ -805,7 +758,7 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
     finally:
         subprocess.run([*compose, "down", "--remove-orphans", "-v"], cwd=root, check=False)
         env_path.unlink(missing_ok=True)
-        _cleanup_smoke_root(root=root, smoke_root=smoke_root, backend_image=backend)
+        _cleanup_smoke_root(smoke_root)
         try:
             smoke_parent.rmdir()
         except OSError as exc:
