@@ -134,9 +134,7 @@ def test_bundle_uses_latest_runtime_alias_and_saves_both_application_tags(
     root = tmp_path / "repo"
     root.mkdir()
     (root / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
-    (root / "env.production.example").write_text(
-        "AIMA_IMAGE_TAG=internal-v1a\n", encoding="utf-8"
-    )
+    (root / "env.production.example").write_text("AIMA_IMAGE_TAG=internal-v1a\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
     def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
