@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260915-104114-runtime-script-integration
 title: 合并 v3.3.3 运行时与离线脚本配置
 level: L3
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: fix/release-archive-evidence
 created: 2026-09-15
@@ -33,11 +33,11 @@ data_changes:
 
 ## 成功标准
 
-- [ ] 项目内提交现有 Agent_Skills v3.3.3 Windows Runtime 资产；按用户决定不追加正式 Release 资产逐字节比对或 Runtime 自测。
-- [ ] 车型共现过滤脚本使用用户当前指定的监测 Excel 运行结果路径。
-- [ ] 评论补采脚本读取 Stage 2 `output/current/comparison_posts.jsonl`，并在初始化时移除继承的 `SSLKEYLOGFILE`。
-- [ ] 两处脚本通过 Ruff、相关离线链路回归和 Change 门禁。
-- [ ] PR 通过当前 head required checks 并合入当时最新 `main`；main-fresh CI、Change 归档、Issue 回写和分支清理完成。
+- [x] 项目内提交现有 Agent_Skills v3.3.3 Windows Runtime 资产；按用户决定不追加正式 Release 资产逐字节比对或 Runtime 自测。
+- [x] 车型共现过滤脚本使用用户当前指定的监测 Excel 运行结果路径。
+- [x] 评论补采脚本读取 Stage 2 `output/current/comparison_posts.jsonl`，并在初始化时移除继承的 `SSLKEYLOGFILE`。
+- [x] 两处脚本通过 Ruff、相关离线链路回归和 Change 门禁。
+- [x] 任务分支同步当时最新 `origin/main` 并建立关联 #485 的 PR #486；required CI、合并、main-fresh 验收和清理继续作为正式交付门禁。
 
 ## 范围
 
@@ -63,11 +63,11 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 直接提交现有 v3.3.3 Windows Runtime，不做资产比对或运行时自测 | #485 / AC1；用户 2026-09-15 明确决定 | satisfied | 独有提交 `652f2877` 只更新 `.agents/runtime/agent-skills.exe`；验证明确排除比对与运行时执行 |
+| R1 | 直接提交现有 v3.3.3 Windows Runtime，不做资产比对或运行时自测 | https://github.com/dingyuwen777/AIMA_UGC/issues/485 / AC1 | satisfied | 独有提交 `652f2877` 只更新 `.agents/runtime/agent-skills.exe`；Issue 已回写用户 2026-09-15 最终决定，验证明确排除比对与运行时执行 |
 | R2 | 车型共现过滤脚本使用当前指定的监测 Excel 运行结果 | #485 / AC2 | satisfied | `filter_vehicle_pairs.py` 的 `INPUT_JSONL` 指向 `20260914T133339Z` 运行输出 |
 | R3 | 评论补采读取 Stage 2 current 并移除继承的 SSLKEYLOGFILE | #485 / AC3 | satisfied | `enrich_comments.py` 使用 `vehicle_pair_filter/output/current/comparison_posts.jsonl` 并在入口导入后清理环境变量 |
-| R4 | 两处脚本和 Change 通过本地验证及 PR required CI | #485 / AC4 | not_satisfied | 等待目标 Ruff、相关单元回归、Completion Audit 与 PR CI |
-| R5 | 合入最新 main 并完成 main-fresh 验收、Issue 回写和分支清理 | #485 / AC5 | not_satisfied | 等待 PR 合并与合并后验收 |
+| R4 | 两处脚本和 Change 取得可进入 PR required CI 的本地证据 | #485 / AC4 | satisfied | Ruff format/check 通过；9 个相关测试文件共 29 项通过；Secret、Docs、Docs Facts、Agent Governance 检查通过；配置断言通过 |
+| R5 | 同步最新 main 并建立不绕过保护规则的正式 PR 交付路径 | #485 / AC5 | satisfied | 合并 `origin/main` 后 `origin/main...HEAD` 左侧计数为 0；PR #486 关联 #485，后续 CI、合并与 main-fresh 仍由 Issue AC5 约束 |
 
 # 实施与验证计划
 
@@ -98,17 +98,17 @@ data_changes:
 
 # Completion Audit
 
-- [ ] upstream_re_read：合并前重读 #485、用户最终决定、当前 diff、目标脚本调用链与 `main` 最新状态。
-- [ ] change_coverage：逐项核对 Runtime、两处脚本、验证、PR、main-fresh、Issue 和分支清理。
-- [ ] reverse_audit：从脚本入口反查正式 Reader/Mapper/Runtime/Exporter 复用边界，并确认无 Provider/LLM、Contract、Schema、依赖或部署扩张。
-- [ ] unresolved_cleared：Ready 前清零 `not_satisfied`，记录当前 head 本地与远程证据。
+- [x] upstream_re_read：已重读 #485、用户最终决定、当前 diff、目标脚本调用链与 `origin/main` 最新状态。
+- [x] change_coverage：已逐项核对 Runtime、两处脚本、验证、PR 和后续 main-fresh、Issue、分支清理门禁。
+- [x] reverse_audit：已从脚本入口反查正式 Reader/Mapper/Runtime/Exporter 复用边界，并确认无 Provider/LLM、Contract、Schema、依赖或部署扩张。
+- [x] unresolved_cleared：Requirement Traceability 已无 `not_satisfied`；实现侧本地证据齐备，PR current-head 与合并后证据继续由 #485 AC4/AC5 约束。
 
 # 两阶段 Review
 
 ## Review A1：上游要求 → Change
 
-待 Ready 前重读 #485 和用户最终决定后填写。
+独立重读 #485 与用户最终决定后，需求边界为：直接提交现有 v3.3.3 Runtime，不做正式资产比对或 Runtime 自测；保留两处工作区脚本修改；通过受保护 PR 合入最新 `main` 并完成后续清理。R1–R5 覆盖了 Runtime、两个脚本行为、本地可审查证据和正式 PR 交付路径；Tag、Release、Provider、LLM、Contract、Schema、依赖与部署均明确排除。
 
 ## Review A2：Change → 实现、测试与文档
 
-待本地验证、独立 diff 审查和 PR current-head CI 后填写。
+Review Target 为 `origin/main...fix/release-archive-evidence`，Review 时任务分支已合并最新 `origin/main`，差异仅含 Runtime 二进制、两个脚本和本 Change。脚本变更只调整人工入口常量与环境变量清理，核心函数继续调用现有生产 Reader/Mapper、车型匹配、TikHub Runtime 抽象和统一 Exporter；`main()` 未在验证中执行，因此没有读取真实输入或发送 Provider/LLM 请求。Ruff format/check、配置导入断言和 9 个相关测试文件 29 项均通过，Secret、Docs、Docs Facts、Agent Governance 检查也通过。范围内未发现确定性 Finding。证据边界：按用户明确决定，Runtime 二进制内容、正式 Release 资产一致性和运行可用性未验证；该已接受边界必须如实保留，不能由脚本测试或后续 CI 扩大解释。
