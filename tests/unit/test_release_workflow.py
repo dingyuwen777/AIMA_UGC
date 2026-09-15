@@ -147,9 +147,7 @@ def test_public_repository_release_keeps_downloadable_offline_images() -> None:
     workflow = _workflow_text()
     core = _core_text()
     publish_job = _publish_job(workflow)
-    bundle_builder = core.split("def build_bundle_files(", 1)[1].split(
-        "def _find_free_port(", 1
-    )[0]
+    bundle_builder = core.split("def build_bundle_files(", 1)[1].split("def _find_free_port(", 1)[0]
 
     # 正式 GitHub Release 仍附带完整离线部署包；Bundle 生成由共享核心负责。
     assert '"docker",' in bundle_builder
