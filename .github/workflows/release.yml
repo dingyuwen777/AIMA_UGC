@@ -279,14 +279,25 @@ jobs:
             --require-offline-replay \
             --require-strict-replay
 
+      - name: Prepare compressed release candidate transfer
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRANSFER_DIR="release-transfer"
+          CANDIDATE_ARCHIVE="${RUNNER_TEMP}/AIMA_UGC-${VERSION}-deploy.tar.gz"
+          mkdir -p "${TRANSFER_DIR}/scripts/release"
+          cp "${CANDIDATE_ARCHIVE}" "${TRANSFER_DIR}/candidate.tar.gz"
+          cp scripts/release/release_bundle.py "${TRANSFER_DIR}/scripts/release/release_bundle.py"
+          gzip -t "${TRANSFER_DIR}/candidate.tar.gz"
+          ls -lh "${TRANSFER_DIR}/candidate.tar.gz"
+
       - name: Upload replay-tested release candidate
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.identity.outputs.candidate_artifact }}
-          path: |
-            release-bundle/
-            scripts/release/release_bundle.py
+          path: release-transfer/
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -397,9 +408,14 @@ jobs:
         run: |
           set -euo pipefail
           RELEASE_TOOL="release-candidate/scripts/release/release_bundle.py"
+          TRANSFER_ARCHIVE="release-candidate/candidate.tar.gz"
           BUNDLE_DIR="release-candidate/release-bundle"
-          test -s "${BUNDLE_DIR}/images.tar"
+          test -s "${TRANSFER_ARCHIVE}"
           test -s "${RELEASE_TOOL}"
+          gzip -t "${TRANSFER_ARCHIVE}"
+          mkdir -p "${BUNDLE_DIR}"
+          tar -xzf "${TRANSFER_ARCHIVE}" -C "${BUNDLE_DIR}"
+          test -s "${BUNDLE_DIR}/images.tar"
           python3 "${RELEASE_TOOL}" verify \
             --bundle-dir "${BUNDLE_DIR}" \
             --expected-version "${VERSION}" \

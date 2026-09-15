@@ -638,15 +638,13 @@ def _find_free_smoke_network(root: Path) -> tuple[str, str]:
     ]
     occupied: list[ipaddress.IPv4Network] = []
     if network_ids:
-        raw_networks = _run(
-            ["docker", "network", "inspect", *network_ids], cwd=root, capture=True
-        )
+        raw_networks = _run(["docker", "network", "inspect", *network_ids], cwd=root, capture=True)
         try:
             networks = json.loads(raw_networks)
         except json.JSONDecodeError as exc:
             raise ReleaseBundleError("无法解析现有 Docker network 信息。") from exc
         for network in networks:
-            for config in (network.get("IPAM", {}).get("Config") or []):
+            for config in network.get("IPAM", {}).get("Config") or []:
                 subnet = config.get("Subnet")
                 if not subnet:
                     continue
