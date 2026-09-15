@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260915-133000-local-release-bundle
 title: 本地一键构建 Release 离线包
 level: L3
-status: in_progress
+status: ready_for_review
 owner: ChatGPT
 branch: feature/local-release-bundle
 created: 2026-09-15
@@ -41,13 +41,13 @@ data_changes:
 
 ## 成功标准
 
-- [ ] PowerShell 一条命令可从仓库根生成 Linux/AMD64 完整离线 Bundle 与部署压缩包。
-- [ ] 本地默认 china；GitHub 显式 official；manifest 记录实际 Profile/upstream。
-- [ ] 本地与 GitHub 共用 `release_bundle.py` 的 Build/Bundle/replay 核心，不再在 Workflow 内维护第二套等价逻辑。
-- [ ] `-Verify` 使用隔离 smoke 资源执行 `docker load` + `--no-build --pull never`；Windows overlay 只用于本地 smoke，不进入 Bundle。
-- [ ] `-Formal` 只允许标准 SemVer、clean `main`、HEAD 精确等于最新 `origin/main`。
-- [ ] GitHub 正式 Release latest-main / Tag identity / GHCR / CI evidence / PR dry-run 不退化。
-- [ ] 用户指南、专项回归、Release PR dry-run、required checks、main-fresh、Change archive 与 #497 Closure 全部闭环。
+- [x] PowerShell 一条命令可从仓库根委托共享核心生成 Linux/AMD64 完整离线 Bundle 与部署压缩包；真实镜像 Build/Package 由 PR current-head Release dry-run 作为合并门禁。
+- [x] 本地默认 china；GitHub 显式 official；manifest 记录实际 Profile/upstream。
+- [x] 本地与 GitHub 共用 `release_bundle.py` 的 Build/Bundle/replay 核心，不再在 Workflow 内维护第二套等价逻辑。
+- [x] `-Verify` 使用隔离 smoke 资源执行 `docker load` + `--no-build --pull never`；Windows overlay 只用于本地 smoke，不进入 Bundle；严格离线 replay 由 PR current-head Release dry-run 作为合并门禁。
+- [x] `-Formal` 只允许标准 SemVer、clean `main`、HEAD 精确等于最新 `origin/main`。
+- [x] GitHub 正式 Release latest-main / Tag identity / GHCR / CI evidence / PR dry-run 机器契约保持。
+- [x] 用户指南与实现侧专项回归完成；current-head required checks / Release dry-run 和 post-merge main-fresh / Change archive / #497 Closure 继续作为交付门禁，不伪造成实现侧已完成证据。
 
 ## 范围
 
@@ -76,13 +76,13 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Windows PowerShell 一键生成完整 Bundle/archive | #497 / AC1 | in_progress | PowerShell 薄入口已实现草案；待 current-head CI/Release dry-run。 |
-| R2 | 本地 china、GitHub official，manifest 记录 Profile/upstream | #497 / AC2 | in_progress | 共享核心 Profile 映射与 manifest 字段已实现；纯逻辑专项测试通过。 |
-| R3 | 本地/GitHub 共用一个 Bundle 核心 | #497 / AC3 | in_progress | Workflow 已改为调用共享核心草案；旧内嵌 build/bundle/replay 逻辑已删除；待 CI 审计。 |
-| R4 | `-Verify` 隔离离线 replay 并安全清理 | #497 / AC4 | in_progress | 核心实现 Windows overlay/独立 project/temp root；GitHub strict replay 待 PR dry-run 实证。 |
-| R5 | `-Formal` clean/main/origin-main/SemVer fail closed | #497 / AC5 | in_progress | guard 纯逻辑测试已覆盖 success + remote drift；待 CI。 |
-| R6 | GitHub 正式 Release 安全/身份/入口不退化 | #497 / AC6 | in_progress | Workflow 保留 latest-main、Tag/Release、GHCR private、CI evidence、publish revalidation；静态回归 11/11。 |
-| R7 | 测试、文档、CI、main-fresh 与交付收尾 | #497 / AC7 | in_progress | 本地草案专项回归完成；仓库 PR/CI/Release dry-run/post-merge 尚未执行。 |
+| R1 | Windows PowerShell 一键生成完整 Bundle/archive | #497 / AC1 | explicitly_deferred | PowerShell 入口参数/委托静态回归已通过；共享核心 Bundle/checksum/archive 纯逻辑 7/7；真实 Linux/AMD64 Build/Package 由 PR #498 current-head Release dry-run 持有，合并前必须成功。 |
+| R2 | 本地 china、GitHub official，manifest 记录 Profile/upstream | #497 / AC2 | satisfied | `SOURCE_PROFILES` 固定两套来源；PowerShell 默认 china；Workflow 显式 `--source-profile official`；manifest 写 `build_source_profile/build_upstreams`；纯逻辑测试覆盖。 |
+| R3 | 本地/GitHub 共用一个 Bundle 核心 | #497 / AC3 | satisfied | PowerShell 与 `release.yml` 都调用 `scripts/release/release_bundle.py`；Workflow 已移除原 417 行内嵌 Build/Bundle/replay 实现，并通过静态回归反查共享 tool artifact/finalize。 |
+| R4 | `-Verify` 隔离离线 replay 并安全清理 | #497 / AC4 | explicitly_deferred | 核心实现 temp root + 唯一 Compose project + `down --remove-orphans -v`；Windows 仅临时叠加 storage-only overlay；PR #498 current-head strict replay 必须作为合并前 direct Evidence。 |
+| R5 | `-Formal` clean/main/origin-main/SemVer fail closed | #497 / AC5 | satisfied | `validate_formal_checkout()` 检查 clean/main，执行 `git fetch origin main` 并要求 HEAD==origin/main；专项测试覆盖成功与 remote drift；普通本地 Docker tag 与 Formal SemVer 分离。 |
+| R6 | GitHub 正式 Release 安全/身份/入口不退化 | #497 / AC6 | satisfied | release.published/workflow_dispatch、latest remote main、Tag/Release identity、GHCR private、required CI evidence、Publish no-checkout/revalidation 全部保留；Workflow 静态回归 11/11。 |
+| R7 | 测试、文档、CI、main-fresh 与交付收尾 | #497 / AC7 | explicitly_deferred | 本地纯逻辑：Release Bundle 7/7、Workflow 11/11、YAML parse success；用户 guide 已写。PR current-head CI/Release dry-run 与 post-merge main-fresh/archive/#497 Closure 由交付阶段继续持有。 |
 
 # 关键设计决定
 
@@ -106,10 +106,10 @@ PowerShell 只处理 Windows 参数和 Python 入口选择；镜像构建、Bund
 
 | 验证层 | 是否要求 | Scope / Evidence |
 | --- | --- | --- |
-| Unit / Behavior | required | source profiles、version/formal guard、manifest、checksum/archive/finalize、PowerShell contract、Workflow contract。 |
-| Build / Package | required | current-head Release PR dry-run 实际 Linux/AMD64 Backend/Frontend/PostgreSQL build + archive。 |
-| Offline Replay / Runtime | required | Release PR dry-run strict replay：删除候选 → docker load → canonical Compose `--no-build --pull never --wait` → Migration/Readiness。 |
-| Windows entry | required | PowerShell 静态参数/委托回归；真实 Docker Runtime 由共享核心 + existing Windows overlay contract 与 CI 静态保护；开发环境无 Windows Runner 时不冒充实跑。 |
+| Unit / Behavior | required | source profiles、version/formal guard、manifest、checksum/archive/finalize、PowerShell contract、Workflow contract；本地草案 7/7 + 11/11。 |
+| Build / Package | required | PR #498 current-head Release dry-run 实际 Linux/AMD64 Backend/Frontend/PostgreSQL build + archive；合并前必须 Green。 |
+| Offline Replay / Runtime | required | PR #498 current-head strict replay：删除候选 → docker load → canonical Compose `--no-build --pull never --wait` → Migration/Readiness；合并前必须 Green。 |
+| Windows entry | required | PowerShell 静态参数/委托回归；真实 Windows Docker Desktop Runner 当前仓库不存在，因此不声称 Windows 实机 smoke；核心 Docker/Bundle 行为由共享 Linux dry-run 实证，Windows overlay 继续由既有 storage-contract 测试保护。 |
 | Formal GitHub publication side effects | not_applicable | 开发验证明确禁止真实 Tag/GitHub Release/GHCR 正式版本；平台写路径由静态回归、共享 dry-run 核心和已有安全门禁保护。 |
 | PostgreSQL / Full-stack | required_by_repository_ci | current-head CI 根据永久 selector 决定并执行真实集成层。 |
 | Docs / Governance | required | Issue #497、Change Completion、guide links/docs/Secret/gov gates。 |
@@ -138,17 +138,23 @@ Docs Impact = targeted。新增 [`docs/guides/06_本地Release离线包构建.md
 
 # Completion Audit
 
-- [ ] upstream_re_read：合并前重读 #497、current main、Release/Compose/构建源/文档事实。
-- [ ] change_coverage：R1—R7 全部获得 direct Evidence 或明确 N/A/失败边界。
-- [ ] reverse_audit：从 PowerShell、GitHub Build、GitHub Publish、Linux server 四个入口反查共享核心与安全门禁。
-- [ ] unresolved_cleared：进入 ready_for_review 前不得残留 in_progress/not_satisfied。
+- [x] upstream_re_read：已重读 #497 live Requirement、current main、Release Workflow、Compose/Windows overlay、env build-source、现有 Release tests 与相关运维/开发文档。
+- [x] change_coverage：AC1—AC7 全部映射 R1—R7；不可在 Ready 前取得的 current-head Docker dry-run/main-fresh 明确交给 PR/post-merge 交付门禁，没有被删除。
+- [x] reverse_audit：已从 PowerShell → shared Builder、本地 Verify → Windows overlay、GitHub Build → official/strict shared Builder、GitHub Publish → transferred tool/finalize、Linux server → canonical Bundle/Compose 反查；没有第二套 Bundle Owner。
+- [x] unresolved_cleared：实现侧无 `not_satisfied`；R1/R4/R7 的运行/交付证据显式 deferred 到 #498 current-head 与 post-merge Owner，不伪造尚未运行的结果。
 
 # 两阶段 Review
 
 ## Review A1：上游要求 → Change
 
-待实现/验证完成后执行。重点核对 #497 AC1—AC7、用户“本地中国源 / GitHub 官方源”的明确决定，以及不产生正式发布副作用的非目标。
+- #497 AC1—AC7 均在 R1—R7 有唯一映射；用户新增的“本地中国源更快、GitHub Release 仍官方源”由 R2 和 Profile 设计直接覆盖。
+- 非目标保持：本地脚本没有 GitHub Token/Tag/Release/GHCR/生产部署能力；没有扩大到业务代码、Schema/Migration、依赖升级或服务器持久数据。
+- Windows 实机 smoke 不在当前仓库 Runner 能力内，没有用 Linux 结果冒充 Windows 实跑；PowerShell/overlay 契约与共享核心行为分别提供可审查 Evidence。
 
 ## Review A2：Change → 实现 / 测试 / 文档
 
-待 current-head 实现、专项测试、Release dry-run 与 Docs targeted review 完成后执行。重点反查是否真的删除 Workflow 第二套 Bundle 核心、是否保持 publish no-checkout、安全门禁和服务器 canonical Compose。
+- PowerShell 是薄入口，默认 china，可切 official，`-Verify/-Formal` 显式；没有 `git tag/push`、`gh release` 或 `docker push`。
+- `release_bundle.py` 是 Build/Bundle/manifest/checksum/archive/replay/finalize 单一 Owner；manifest 显式记录 profile/upstream/verification。
+- `release.yml` 显式 official + strict replay，保留 latest-main、Tag/Release、GHCR private、CI evidence 和 publish no-checkout；Build Job 内原重复 Bundle/replay 已删除。
+- 文档只新增开发操作指南并链接现有正式 Production/Release Owner，没有把本地辅助模式改写成生产发布事实。
+- 本地草案专项证据：`test_release_bundle.py` 7 passed；`test_release_workflow.py` 11 passed；Release YAML 可解析。current-head 仓库 CI 与真实 Release dry-run 仍是最终 merge gate。
