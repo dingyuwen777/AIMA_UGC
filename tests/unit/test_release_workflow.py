@@ -136,9 +136,10 @@ def test_release_candidate_uses_shared_bundle_core_and_internal_tool_artifact() 
 
     assert "scripts/release/release_bundle.py build" in build_job
     assert "Prepare compressed release candidate transfer" in build_job
-    assert "scripts/release/release_bundle.py" in build_job.split(
-        "Prepare compressed release candidate transfer", 1
-    )[1]
+    assert (
+        "scripts/release/release_bundle.py"
+        in build_job.split("Prepare compressed release candidate transfer", 1)[1]
+    )
     assert "path: release-candidate" in publish_job
     assert 'RELEASE_TOOL="release-candidate/scripts/release/release_bundle.py"' in publish_job
     assert 'BUNDLE_DIR="release-candidate/release-bundle"' in publish_job

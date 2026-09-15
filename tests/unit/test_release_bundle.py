@@ -157,9 +157,7 @@ def test_smoke_env_overrides_default_network(tmp_path: Path) -> None:
     module = _load_module()
     bundle = tmp_path / "release-bundle"
     bundle.mkdir()
-    (bundle / "env.production.example").write_bytes(
-        (ROOT / "env.production.example").read_bytes()
-    )
+    (bundle / "env.production.example").write_bytes((ROOT / "env.production.example").read_bytes())
     smoke_root = tmp_path / "root"
     smoke_root.mkdir()
 
