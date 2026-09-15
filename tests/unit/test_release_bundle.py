@@ -98,6 +98,168 @@ def test_formal_checkout_fails_when_origin_main_has_moved(monkeypatch: pytest.Mo
         module.validate_formal_checkout(Path("."))
 
 
+def test_build_images_adds_latest_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_module()
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
+        del cwd
+        normalized = tuple(str(item) for item in arguments)
+        calls.append(normalized)
+        if normalized[:4] == ("docker", "image", "inspect", "-f") and capture:
+            return "sha256:application\n"
+        return ""
+
+    monkeypatch.setattr(module, "_require_tool", lambda _name: None)
+    monkeypatch.setattr(module, "_run", fake_run)
+
+    module.build_images(Path("."), "v3.2.0", "official")
+
+    assert (
+        "docker",
+        "tag",
+        "aima-ugc-backend:v3.2.0",
+        "aima-ugc-backend:latest",
+    ) in calls
+    assert (
+        "docker",
+        "tag",
+        "aima-ugc-frontend:v3.2.0",
+        "aima-ugc-frontend:latest",
+    ) in calls
+
+
+def test_bundle_uses_latest_runtime_alias_and_saves_both_application_tags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_module()
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
+    (root / "env.production.example").write_text("AIMA_IMAGE_TAG=internal-v1a\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
+        del cwd, capture
+        normalized = tuple(str(item) for item in arguments)
+        calls.append(normalized)
+        if normalized[:3] == ("docker", "save", "-o"):
+            Path(normalized[3]).write_bytes(b"images")
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    facts = module.ImageFacts(
+        backend_id="sha256:backend",
+        frontend_id="sha256:frontend",
+        postgres_ref="postgres@sha256:postgres",
+        alembic_head="head123",
+        openapi_sha256="openapi123",
+    )
+    bundle = tmp_path / "release-bundle"
+    archive = tmp_path / "AIMA_UGC-v3.2.0-deploy.tar.gz"
+
+    module.build_bundle_files(
+        root=root,
+        bundle_dir=bundle,
+        archive_path=archive,
+        version="v3.2.0",
+        repository="dingyuwen777/AIMA_UGC",
+        git_sha="abc123",
+        profile_name="official",
+        builder_context="github-actions",
+        facts=facts,
+        offline_replay=False,
+        strict_replay=False,
+    )
+
+    assert "AIMA_IMAGE_TAG=latest\n" in (bundle / "env.production.example").read_text(
+        encoding="utf-8"
+    )
+    save_call = next(call for call in calls if call[:3] == ("docker", "save", "-o"))
+    assert save_call[4:] == (
+        "aima-ugc-backend:v3.2.0",
+        "aima-ugc-backend:latest",
+        "aima-ugc-frontend:v3.2.0",
+        "aima-ugc-frontend:latest",
+        "postgres:18.4",
+    )
+    manifest = json.loads((bundle / "release-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["version"] == "v3.2.0"
+    assert manifest["images"]["backend"]["offline_tag"] == "aima-ugc-backend:v3.2.0"
+    assert manifest["images"]["frontend"]["offline_tag"] == "aima-ugc-frontend:v3.2.0"
+
+
+def test_strict_replay_removes_version_and_latest_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_module()
+    bundle = tmp_path / "release-bundle"
+    bundle.mkdir()
+    smoke_parent = tmp_path / "smoke"
+    smoke_parent.mkdir()
+    smoke_root = smoke_parent / "root"
+    calls: list[tuple[str, ...]] = []
+
+    class FakeCompletedProcess:
+        def __init__(self, returncode: int) -> None:
+            self.returncode = returncode
+
+    def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
+        del cwd
+        normalized = tuple(str(item) for item in arguments)
+        calls.append(normalized)
+        if normalized[:5] == ("docker", "compose", "ps", "-a", "-q"):
+            return f"{normalized[-1]}-container\n"
+        if normalized[:4] == ("docker", "inspect", "-f", "{{.State.ExitCode}}"):
+            return "0\n"
+        if normalized[:3] == ("docker", "image", "inspect") and capture:
+            return "sha256:application\n"
+        if normalized[:3] == ("docker", "compose", "up"):
+            (smoke_root / "postgres" / "18" / "docker").mkdir(parents=True)
+            log_dir = smoke_root / "runtime" / "logs"
+            log_dir.mkdir(parents=True)
+            (log_dir / "api.log").write_text("ready\n", encoding="utf-8")
+        return ""
+
+    def fake_subprocess_run(arguments, **_kwargs):
+        if list(arguments)[:3] == ["docker", "image", "inspect"]:
+            return FakeCompletedProcess(1)
+        return FakeCompletedProcess(0)
+
+    def fake_smoke_env(**_kwargs) -> Path:
+        env_path = smoke_parent / "smoke.env"
+        env_path.write_text("AIMA_IMAGE_TAG=latest\n", encoding="utf-8")
+        return env_path
+
+    monkeypatch.setattr(module, "verify_bundle", lambda _bundle: None)
+    monkeypatch.setattr(module.tempfile, "mkdtemp", lambda prefix: str(smoke_parent))
+    monkeypatch.setattr(module, "_find_free_port", lambda: 49152)
+    monkeypatch.setattr(
+        module,
+        "_find_free_smoke_network",
+        lambda _root: ("10.254.254.0/24", "10.254.254.1"),
+    )
+    monkeypatch.setattr(module, "_smoke_env", fake_smoke_env)
+    monkeypatch.setattr(module, "_compose_command", lambda **_kwargs: ["docker", "compose"])
+    monkeypatch.setattr(module, "_http_get", lambda _url: None)
+    monkeypatch.setattr(module, "_run", fake_run)
+    monkeypatch.setattr(module.subprocess, "run", fake_subprocess_run)
+
+    module.replay_bundle(root=tmp_path, bundle_dir=bundle, version="v3.2.0", strict_replay=True)
+
+    assert (
+        "docker",
+        "image",
+        "rm",
+        "aima-ugc-backend:v3.2.0",
+        "aima-ugc-backend:latest",
+        "aima-ugc-frontend:v3.2.0",
+        "aima-ugc-frontend:latest",
+        "postgres:18.4",
+    ) in calls
+    assert ("docker", "load", "-i", str(bundle / "images.tar")) in calls
+
+
 def test_manifest_records_profile_upstreams_and_verification_state() -> None:
     module = _load_module()
     facts = module.ImageFacts(
@@ -289,6 +451,7 @@ def test_windows_entry_defaults_to_china_and_delegates_to_shared_core() -> None:
     assert '"--formal"' in script
     assert '"--verify"' in script
     assert "$pythonCommand = @(Resolve-PythonCommand)" in script
+    assert "docker tag" not in script
     assert "git tag" not in script
     assert "git push" not in script
     assert "gh release" not in script

@@ -25,6 +25,7 @@ from urllib.parse import urlsplit
 
 POSTGRES_IMAGE = "postgres:18.4"
 PLATFORM = "linux/amd64"
+RUNTIME_IMAGE_TAG = "latest"
 FORMAL_VERSION_PATTERN = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 LOCAL_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
 EXPECTED_BUNDLE_ENTRIES = frozenset(
@@ -144,6 +145,16 @@ def source_profile(name: str) -> Mapping[str, str]:
         raise ReleaseBundleError(f"未知 build source profile：{name}") from exc
 
 
+def _application_image_refs(version: str) -> tuple[str, str, str, str]:
+    """返回应用镜像的正式版本标签与 latest 运行别名。"""
+    return (
+        f"aima-ugc-backend:{version}",
+        f"aima-ugc-backend:{RUNTIME_IMAGE_TAG}",
+        f"aima-ugc-frontend:{version}",
+        f"aima-ugc-frontend:{RUNTIME_IMAGE_TAG}",
+    )
+
+
 def validate_formal_checkout(root: Path) -> str:
     """Formal 本地构建只允许干净且与最新 origin/main 一致的 main。"""
     _require_tool("git")
@@ -239,10 +250,39 @@ def _docker_inspect_json(root: Path, image: str, template: str) -> Any:
         raise ReleaseBundleError(f"无法解析 Docker inspect JSON：{image}") from exc
 
 
+def _verify_application_image_aliases(root: Path, version: str) -> None:
+    """确认版本标签与 latest 运行别名指向完全相同的应用镜像。"""
+    backend_version, backend_latest, frontend_version, frontend_latest = _application_image_refs(
+        version
+    )
+    for version_ref, latest_ref in (
+        (backend_version, backend_latest),
+        (frontend_version, frontend_latest),
+    ):
+        version_id = _run(
+            ["docker", "image", "inspect", "-f", "{{.Id}}", version_ref],
+            cwd=root,
+            capture=True,
+        ).strip()
+        latest_id = _run(
+            ["docker", "image", "inspect", "-f", "{{.Id}}", latest_ref],
+            cwd=root,
+            capture=True,
+        ).strip()
+        if not version_id or version_id != latest_id:
+            raise ReleaseBundleError(
+                f"应用镜像版本标签与 latest 不一致：{version_ref}={version_id or '<empty>'}, "
+                f"{latest_ref}={latest_id or '<empty>'}"
+            )
+
+
 def build_images(root: Path, version: str, profile_name: str) -> None:
     """按指定下载源 Profile 构建 Linux/AMD64 应用镜像并准备 PostgreSQL。"""
     _require_tool("docker")
     profile = source_profile(profile_name)
+    backend_version, backend_latest, frontend_version, frontend_latest = _application_image_refs(
+        version
+    )
     _run(["docker", "version"], cwd=root)
     _run(["docker", "compose", "version"], cwd=root)
     _run(
@@ -261,7 +301,7 @@ def build_images(root: Path, version: str, profile_name: str) -> None:
             "--build-arg",
             f"AIMA_BUILD_PYPI_INDEX={profile['pypi']}",
             "-t",
-            f"aima-ugc-backend:{version}",
+            backend_version,
             ".",
         ],
         cwd=root,
@@ -278,18 +318,20 @@ def build_images(root: Path, version: str, profile_name: str) -> None:
             "--build-arg",
             f"AIMA_BUILD_NPM_REGISTRY={profile['npm']}",
             "-t",
-            f"aima-ugc-frontend:{version}",
+            frontend_version,
             ".",
         ],
         cwd=root,
     )
+    _run(["docker", "tag", backend_version, backend_latest], cwd=root)
+    _run(["docker", "tag", frontend_version, frontend_latest], cwd=root)
+    _verify_application_image_aliases(root, version)
     _run(["docker", "pull", "--platform", PLATFORM, POSTGRES_IMAGE], cwd=root)
 
 
 def collect_image_facts(root: Path, version: str) -> ImageFacts:
     """冻结应用镜像、PostgreSQL digest、Alembic head 与 OpenAPI hash。"""
-    backend = f"aima-ugc-backend:{version}"
-    frontend = f"aima-ugc-frontend:{version}"
+    backend, _, frontend, _ = _application_image_refs(version)
     backend_id = _run(
         ["docker", "image", "inspect", "-f", "{{.Id}}", backend],
         cwd=root,
@@ -425,6 +467,8 @@ def _deploy_markdown(version: str) -> str:
     return f"""# AIMA_UGC {version} 离线部署
 
 本目录包含已构建的 Linux/AMD64 Backend、Frontend 和 PostgreSQL 18.4 镜像。
+Backend/Frontend 同时保留 `{version}` 与 `latest` 标签，两者必须指向同一个 Image ID；
+`latest` 只作为 Compose 运行别名，正式版本身份仍由 `{version}` 与 manifest 记录。
 服务器不需要重新 build，也不需要从 Docker Hub/GHCR 拉取运行镜像。
 是否执行过离线回放验证，以 `release-manifest.json` 的 `verification.offline_replay` 为准；
 正式 GitHub Release 会要求该值为 `true`。
@@ -444,7 +488,8 @@ chmod 0600 env.production
 ```
 
 编辑 `env.production`：公司服务器保持 `AIMA_HOST_ROOT=/data/AIMA_UGC`，
-并按实际内网地址、TikHub/LLM 配置填写机器配置。
+并可长期保持 `AIMA_IMAGE_TAG=latest`；每次 `docker load` 当前 Release 的 `images.tar` 会恢复
+该版本对应的 `latest` 运行别名。TikHub/LLM 等其它机器配置仍按实际环境填写。
 真实 `env.production` 属于敏感文件，不得提交 Git 或放回 Release 包。
 
 ## 3. 启动
@@ -581,7 +626,10 @@ def build_bundle_files(
     _replace_env_values(
         root / "env.production.example",
         bundle_dir / "env.production.example",
-        {"AIMA_IMAGE_TAG": version},
+        {"AIMA_IMAGE_TAG": RUNTIME_IMAGE_TAG},
+    )
+    backend_version, backend_latest, frontend_version, frontend_latest = _application_image_refs(
+        version
     )
     _run(
         [
@@ -589,8 +637,10 @@ def build_bundle_files(
             "save",
             "-o",
             str(bundle_dir / "images.tar"),
-            f"aima-ugc-backend:{version}",
-            f"aima-ugc-frontend:{version}",
+            backend_version,
+            backend_latest,
+            frontend_version,
+            frontend_latest,
             POSTGRES_IMAGE,
         ],
         cwd=root,
@@ -770,9 +820,7 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
         project=project,
         windows_overlay=windows_overlay,
     )
-    backend = f"aima-ugc-backend:{version}"
-    frontend = f"aima-ugc-frontend:{version}"
-    image_refs = (backend, frontend, POSTGRES_IMAGE)
+    image_refs = (*_application_image_refs(version), POSTGRES_IMAGE)
     if strict_replay:
         _run(["docker", "image", "rm", *image_refs], cwd=root)
         for image in image_refs:
@@ -788,6 +836,7 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
                     f"候选镜像仍可通过 {image} 访问，不能证明离线 Bundle 独立可回放。"
                 )
     _run(["docker", "load", "-i", str(bundle_dir / "images.tar")], cwd=root)
+    _verify_application_image_aliases(root, version)
     try:
         _run([*compose, "config", "--quiet"], cwd=root)
         _run([*compose, "up", "-d", "--no-build", "--pull", "never", "--wait"], cwd=root)

@@ -17,6 +17,7 @@
 - Windows Docker Desktop 的 storage-only [`compose.windows.yaml`](../../compose.windows.yaml)；
 - [`.github/workflows/release.yml`](../../.github/workflows/release.yml) 的 GitHub 离线 Release 基础；
 - `linux/amd64` Backend/Frontend 镜像与固定 `postgres:18.4`；
+- 应用镜像正式版本标签与 `latest` 运行别名共存、且同一版本内指向相同 Image ID；
 - `images.tar`、`release-manifest.json`、`migration-manifest.json`、`SHA256SUMS`、`DEPLOY.md`；
 - PR Release dry-run 的离线重放；
 - 正式手工 Release 的 GHCR digest、Git Tag 和 GitHub Release 基础；
@@ -230,10 +231,12 @@ PR 触发时执行 Release dry-run，不推送 GHCR、不创建 Tag/Release。�
 ```text
 发布时最新 main / PR candidate
 → 构建 linux/amd64 Backend + Frontend
+→ 为 Backend/Frontend 增加 latest 运行别名并验证与版本标签指向同一 Image ID
 → 固定 postgres:18.4
-→ 生成离线 Bundle
-→ PR: 删除候选运行镜像后从 images.tar 重新 docker load
-→ canonical Compose --no-build --pull never --wait
+→ 生成同时保存版本标签与 latest 别名的离线 Bundle
+→ PR: 删除候选的版本标签、latest 别名与 PostgreSQL 镜像后从 images.tar 重新 docker load
+→ 再次验证版本标签与 latest 指向同一 Image ID
+→ canonical Compose --no-build --pull never --wait（Bundle 内默认 AIMA_IMAGE_TAG=latest）
 → Migration / Readiness / 持久目录 smoke
 → 正式 workflow_dispatch 或 GitHub Release published: 推送 GHCR 并记录 digest
 → workflow_dispatch: 创建同 SHA Git Tag + GitHub Release
@@ -241,7 +244,7 @@ PR 触发时执行 Release dry-run，不推送 GHCR、不创建 Tag/Release。�
 → 最终复核 Tag / Release / manifest / image identity
 ```
 
-禁止使用 `latest` 作为正式发布身份。
+禁止使用 `latest` 作为正式发布身份；正式身份仍是 SemVer + Git SHA + manifest / registry digest。`latest` 只作为同一已验证应用镜像的离线 Compose 运行别名。
 
 ---
 
@@ -268,7 +271,9 @@ SHA256SUMS
 DEPLOY.md
 ```
 
-`images.tar` 包含当前版本 Backend/Frontend 镜像和固定 PostgreSQL 镜像。`release-manifest.json` 记录版本、Git SHA、构建时间、`linux/amd64`、镜像身份、Alembic head、OpenAPI SHA256 和当前发布能力边界；正式发布路径额外记录应用 registry digest。
+`images.tar` 包含当前版本 Backend/Frontend 的版本标签与 `latest` 运行别名；同一应用镜像的两个标签必须指向相同 Image ID。它同时包含固定 PostgreSQL 镜像。Bundle 内 [`env.production.example`](../../env.production.example) 使用 `AIMA_IMAGE_TAG=latest`，但 `release-manifest.json` 仍以版本标签、版本号、Git SHA、镜像 ID / registry digest 记录正式发布身份，不把 `latest` 当版本事实。
+
+`release-manifest.json` 还记录构建时间、`linux/amd64`、Alembic head、OpenAPI SHA256 和当前发布能力边界；正式发布路径额外记录应用 registry digest。
 
 `migration-manifest.json` 记录 Alembic head、正式 upgrade 动作和当前没有自动 Schema rollback / 协调 Backup/Restore 的事实。
 
@@ -294,6 +299,14 @@ Bundle **不得包含**：
 → docker compose up --no-build --pull never --wait
 → health / business smoke
 ```
+
+服务器实际 `env.production` 可以长期保持：
+
+```dotenv
+AIMA_IMAGE_TAG=latest
+```
+
+每次加载新的正式 `images.tar` 时，Docker 会恢复该 Release 内 Backend/Frontend 的版本标签与 `latest` 运行别名；因此升级时无需把服务器 `env.production` 从 `vX.Y.Z` 手工改到下一版本。正式版本追溯仍读取 Release Tag、`release-manifest.json`、Git SHA 和镜像 ID / digest，而不是把 `latest` 当版本号。
 
 对于数据库已经存在对应 Provider 的升级环境，env 不覆盖数据库中的管理员配置；是否仍需要修改 env Key 取决于当前数据库 Provider/Secret Store 的真实状态，不应为了模板默认值强制回写已由数据库接管的配置。
 
@@ -425,12 +438,13 @@ Backup Set = PostgreSQL + ArtifactStore
 ### 应用版本可兼容当前 Schema
 
 ```text
-切换到已验证旧镜像
+加载目标旧 Release 的 images.tar
+→ 旧版本标签与 latest 运行别名恢复到该 Release 的同一 Image ID
 → 使用同一 AIMA_HOST_ROOT
 → 启动 / health / smoke
 ```
 
-PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。
+PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。使用 `AIMA_IMAGE_TAG=latest` 时，回滚必须先加载目标旧 Release 的 `images.tar`；不能只依赖当前机器上 `latest` 的既有指向。
 
 ### Schema 与旧应用不兼容
 
