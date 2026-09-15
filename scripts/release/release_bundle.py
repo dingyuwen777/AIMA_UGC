@@ -920,7 +920,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """解析命令行并执行对应 Release Bundle 动作。"""
     if sys.version_info < (3, 10):
-        print("ERROR: Release Builder 要求 Python 3.10+；AIMA_UGC 开发环境仍使用仓库当前 Python 3.14。", file=sys.stderr)
+        print(
+            "ERROR: Release Builder 要求 Python 3.10+；AIMA_UGC 开发环境仍使用仓库当前 Python 3.14。",
+            file=sys.stderr,
+        )
         return 1
     parser = _build_parser()
     args = parser.parse_args(argv)
