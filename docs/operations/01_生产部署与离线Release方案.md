@@ -271,7 +271,7 @@ SHA256SUMS
 DEPLOY.md
 ```
 
-`images.tar` 包含当前版本 Backend/Frontend 的版本标签与 `latest` 运行别名；同一应用镜像的两个标签必须指向相同 Image ID。它同时包含固定 PostgreSQL 镜像。Bundle 内 `env.production.example` 使用 `AIMA_IMAGE_TAG=latest`，但 `release-manifest.json` 仍以版本标签、版本号、Git SHA、镜像 ID / registry digest 记录正式发布身份，不把 `latest` 当版本事实。
+`images.tar` 包含当前版本 Backend/Frontend 的版本标签与 `latest` 运行别名；同一应用镜像的两个标签必须指向相同 Image ID。它同时包含固定 PostgreSQL 镜像。Bundle 内 [`env.production.example`](../../env.production.example) 使用 `AIMA_IMAGE_TAG=latest`，但 `release-manifest.json` 仍以版本标签、版本号、Git SHA、镜像 ID / registry digest 记录正式发布身份，不把 `latest` 当版本事实。
 
 `release-manifest.json` 还记录构建时间、`linux/amd64`、Alembic head、OpenAPI SHA256 和当前发布能力边界；正式发布路径额外记录应用 registry digest。
 
