@@ -22,6 +22,7 @@ from typing import Any
 from urllib.request import urlopen
 
 POSTGRES_IMAGE = "postgres:18.4"
+POSTGRES_RUNTIME_USER = "999:999"
 PLATFORM = "linux/amd64"
 FORMAL_VERSION_PATTERN = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 LOCAL_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
@@ -677,19 +678,34 @@ def _http_get(url: str) -> None:
 
 
 def _cleanup_smoke_root(*, root: Path, smoke_root: Path, backend_image: str) -> None:
-    """只清理本次随机 smoke 根；Linux root-owned bind 内容通过已加载 Backend 镜像删除。"""
+    """只清理本次随机 smoke 根；POSIX 按固定容器 UID 分段回收 root-owned bind 内容。"""
     if not smoke_root.exists():
         return
-    try:
+    if os.name == "nt":
         shutil.rmtree(smoke_root)
         return
-    except PermissionError:
-        if os.name == "nt":
-            raise
+
     cleanup_code = (
         "from pathlib import Path; import shutil; "
         "root=Path('/cleanup'); "
         "[(shutil.rmtree(p) if p.is_dir() else p.unlink()) for p in list(root.iterdir())]"
+    )
+    postgres_root = smoke_root / "postgres"
+    _run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--user",
+            POSTGRES_RUNTIME_USER,
+            "--mount",
+            f"type=bind,source={postgres_root},target=/cleanup",
+            backend_image,
+            "python",
+            "-c",
+            cleanup_code,
+        ],
+        cwd=root,
     )
     _run(
         [
@@ -707,14 +723,20 @@ def _cleanup_smoke_root(*, root: Path, smoke_root: Path, backend_image: str) -> 
         ],
         cwd=root,
     )
-    shutil.rmtree(smoke_root)
+    try:
+        smoke_root.rmdir()
+    except OSError as exc:
+        raise ReleaseBundleError(f"Smoke 临时根清理失败：{smoke_root}") from exc
 
 
 def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: bool) -> None:
     """通过 docker load + no-build/no-pull Compose 验证离线 Bundle。"""
     verify_bundle(bundle_dir)
     windows_overlay = os.name == "nt"
-    smoke_root = Path(tempfile.mkdtemp(prefix="aima-release-smoke-")).resolve()
+    smoke_parent = Path(tempfile.mkdtemp(prefix="aima-release-smoke-")).resolve()
+    smoke_root = smoke_parent / "root"
+    smoke_root.mkdir()
+    (smoke_root / "postgres").mkdir()
     env_path = _smoke_env(bundle_dir=bundle_dir, smoke_root=smoke_root, port=_find_free_port())
     project = f"aima-release-smoke-{os.getpid()}"
     compose = _compose_command(
@@ -784,6 +806,10 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
         subprocess.run([*compose, "down", "--remove-orphans", "-v"], cwd=root, check=False)
         env_path.unlink(missing_ok=True)
         _cleanup_smoke_root(root=root, smoke_root=smoke_root, backend_image=backend)
+        try:
+            smoke_parent.rmdir()
+        except OSError as exc:
+            raise ReleaseBundleError(f"Smoke 临时父目录清理失败：{smoke_parent}") from exc
 
 
 def _update_verification(bundle_dir: Path, *, strict_replay: bool) -> None:
