@@ -11,13 +11,13 @@ import re
 import shutil
 import socket
 import subprocess
-import sys
 import tarfile
 import tempfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 from urllib.request import urlopen
 
 POSTGRES_IMAGE = "postgres:18.4"
@@ -156,7 +156,8 @@ def validate_formal_checkout(root: Path) -> str:
     remote_main = _git(root, "rev-parse", "refs/remotes/origin/main")
     if head != remote_main:
         raise ReleaseBundleError(
-            f"Formal 模式要求本地 HEAD 等于最新 origin/main；HEAD={head}, origin/main={remote_main}。"
+            "Formal 模式要求本地 HEAD 等于最新 origin/main；"
+            f"HEAD={head}, origin/main={remote_main}。"
         )
     return head
 
@@ -347,7 +348,7 @@ def _release_manifest(
         "version": version,
         "repository": repository,
         "git_sha": git_sha,
-        "built_at": datetime.now(timezone.utc).isoformat(),
+        "built_at": datetime.now(UTC).isoformat(),
         "platform": PLATFORM,
         "builder_context": builder_context,
         "build_source_profile": profile_name,
@@ -439,7 +440,8 @@ cp env.production.example env.production
 chmod 0600 env.production
 ```
 
-编辑 `env.production`：公司服务器保持 `AIMA_HOST_ROOT=/data/AIMA_UGC`，并按实际内网地址、TikHub/LLM 配置填写机器配置。
+编辑 `env.production`：公司服务器保持 `AIMA_HOST_ROOT=/data/AIMA_UGC`，
+并按实际内网地址、TikHub/LLM 配置填写机器配置。
 真实 `env.production` 属于敏感文件，不得提交 Git 或放回 Release 包。
 
 ## 3. 启动
@@ -919,12 +921,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """解析命令行并执行对应 Release Bundle 动作。"""
-    if sys.version_info < (3, 10):
-        print(
-            "ERROR: Release Builder 要求 Python 3.10+；AIMA_UGC 开发环境仍使用仓库当前 Python 3.14。",
-            file=sys.stderr,
-        )
-        return 1
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
