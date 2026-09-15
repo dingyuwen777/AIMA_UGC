@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import importlib.util
 import json
 import sys
@@ -186,6 +187,7 @@ def test_bundle_checksum_archive_and_publication_finalization(tmp_path: Path) ->
 
 def test_windows_entry_defaults_to_china_and_delegates_to_shared_core() -> None:
     assert POWERSHELL.is_file()
+    assert POWERSHELL.read_bytes().startswith(codecs.BOM_UTF8)
     script = POWERSHELL.read_text(encoding="utf-8")
 
     assert '[string]$SourceProfile = "china"' in script
@@ -197,6 +199,7 @@ def test_windows_entry_defaults_to_china_and_delegates_to_shared_core() -> None:
     assert '"--source-profile", $SourceProfile' in script
     assert '"--formal"' in script
     assert '"--verify"' in script
+    assert "$pythonCommand = @(Resolve-PythonCommand)" in script
     assert "git tag" not in script
     assert "git push" not in script
     assert "gh release" not in script

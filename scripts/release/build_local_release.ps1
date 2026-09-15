@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -43,7 +43,7 @@ else {
 $bundleDir = Join-Path $releaseRoot "release-bundle"
 $archivePath = Join-Path $releaseRoot "AIMA_UGC-$Version-deploy.tar.gz"
 $coreScript = Join-Path $repoRoot "scripts\release\release_bundle.py"
-$pythonCommand = Resolve-PythonCommand
+$pythonCommand = @(Resolve-PythonCommand)
 
 $arguments = @(
     $coreScript,
