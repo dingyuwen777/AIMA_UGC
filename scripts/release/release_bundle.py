@@ -11,6 +11,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tarfile
 import tempfile
 from collections.abc import Mapping, Sequence
