@@ -40,11 +40,13 @@ def test_formal_release_is_manual_and_pr_mode_is_dry_run_only() -> None:
         in build_job
     )
     assert "ref: ${{ github.event_name == 'pull_request' && github.sha || 'main' }}" in build_job
-    assert "python3 scripts/release/release_bundle.py build" in build_job
+    assert "sudo -E python3 scripts/release/release_bundle.py build" in build_job
     assert "--source-profile official" in build_job
     assert "--builder-context github-actions" in build_job
     assert "--verify" in build_job
     assert "--strict-replay" in build_job
+    assert 'sudo chown -R "$(id -u):$(id -g)" release-bundle' in build_job
+    assert 'sudo chown "$(id -u):$(id -g)" "${CANDIDATE_ARCHIVE}"' in build_job
 
     publish_job = _publish_job(jobs)
     assert "github.event_name == 'workflow_dispatch'" in publish_job
@@ -145,10 +147,14 @@ def test_public_repository_release_keeps_downloadable_offline_images() -> None:
     workflow = _workflow_text()
     core = _core_text()
     publish_job = _publish_job(workflow)
+    bundle_builder = core.split("def build_bundle_files(", 1)[1].split(
+        "def _find_free_port(", 1
+    )[0]
 
     # 正式 GitHub Release 仍附带完整离线部署包；Bundle 生成由共享核心负责。
-    assert '"docker", "save"' in core
-    assert '"images.tar"' in core
+    assert '"docker",' in bundle_builder
+    assert '"save",' in bundle_builder
+    assert 'str(bundle_dir / "images.tar")' in bundle_builder
     assert 'DEPLOY_ARCHIVE="AIMA_UGC-${VERSION}-deploy.tar.gz"' in publish_job
     assert '"${DEPLOY_ARCHIVE}"' in publish_job.split("Create Git tag and GitHub Release", 1)[1]
     assert (
