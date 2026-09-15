@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260915-112101-local-pypi-mirror-default
 title: 对齐本地 Compose PyPI 默认镜像
 level: L2
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: fix/local-pypi-mirror-default
 created: 2026-09-15
@@ -31,9 +31,9 @@ data_changes:
 
 ## 成功标准
 
-- [ ] 本地环境模板默认使用 `https://pypi.tuna.tsinghua.edu.cn/simple`。
-- [ ] `uv.lock` 继续保留官方 PyPI 依赖身份，依赖版本、镜像 Tag、TLS 与完整性校验不变。
-- [ ] Docker 构建源专项测试、配置/文档/Secret/Change 门禁通过。
+- [x] 本地环境模板默认使用 `https://pypi.tuna.tsinghua.edu.cn/simple`。
+- [x] `uv.lock` 继续保留官方 PyPI 依赖身份，依赖版本、镜像 Tag、TLS 与完整性校验不变。
+- [x] Docker 构建源专项测试、配置/文档/Secret/Change 门禁通过。
 - [ ] 通过关联 #488 的 PR 合入当时最新 `main`；main-fresh CI、Change 归档、Issue 回写和分支清理作为交付收尾完成。
 
 ## 范围
@@ -58,8 +58,8 @@ data_changes:
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | R1 | 本地 Compose 模板默认源与项目现有清华 TUNA 基线一致 | https://github.com/dingyuwen777/AIMA_UGC/issues/488 / AC1 | satisfied | 工作区 diff 只把 `env.local.example` 的 PyPI 默认值改为现有项目统一地址 |
-| R2 | 不改写锁文件、依赖身份、版本或完整性校验 | https://github.com/dingyuwen777/AIMA_UGC/issues/488 / AC2 | satisfied | 预计 diff 仅含环境模板和本 Change；`uv.lock` 保持官方 PyPI registry |
-| R3 | 构建源专项与治理检查通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/488 / AC3 | not_satisfied | 等待目标测试、配置一致性和 Change 门禁 |
+| R2 | 不改写锁文件、依赖身份、版本或完整性校验 | https://github.com/dingyuwen777/AIMA_UGC/issues/488 / AC2 | satisfied | `git diff --quiet origin/main...HEAD -- uv.lock` 退出码 0；最终 diff 仅含环境模板和本 Change，依赖版本、Tag、TLS 与完整性逻辑未改 |
+| R3 | 构建源专项与治理检查通过 | https://github.com/dingyuwen777/AIMA_UGC/issues/488 / AC3 | satisfied | TUNA `simple` 地址 HEAD 返回 HTTP 200；`test_docker_build_sources.py` 7 passed；Secret、Docs、Docs Facts、Agent Governance 均通过 |
 | R4 | 合入最新 main 并完成合并后验收与清理 | https://github.com/dingyuwen777/AIMA_UGC/issues/488 / AC4 | explicitly_deferred | 用户已授权端到端交付与管理员 bypass；依赖 current-head CI、合并及 main-fresh 结果，最终交付前必须完成 |
 
 # 实施与验证计划
@@ -90,17 +90,17 @@ data_changes:
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重读 #488、当前配置/文档/测试和最新 `main`。
-- [ ] change_coverage：逐项核对默认源、锁文件不变、验证、PR 和合并后收尾。
-- [ ] reverse_audit：从 `env.local.example` 反查 Compose build args、Dockerfile、安装脚本、生产模板和构建指南的一致性。
-- [ ] unresolved_cleared：Ready 前清零实现侧 `not_satisfied`，记录 current-head 证据与明确未验证项。
+- [x] upstream_re_read：已重读 #488、当前配置/文档/测试和 `origin/main@3f6cfd12`。
+- [x] change_coverage：已逐项核对默认源、锁文件不变、验证、PR 和合并后收尾；合并后事项由 R4 明确延期至交付收尾。
+- [x] reverse_audit：已从 `env.local.example` 反查 Compose build args、Dockerfile、安装脚本、生产模板和构建指南，确认其默认值均为同一 TUNA 地址。
+- [x] unresolved_cleared：实现侧 `not_satisfied` 已清零；未执行完整 Docker 镜像构建，因本次不改变构建实现、锁文件或镜像身份，使用现有专项测试和配置一致性检查覆盖。
 
 # 两阶段 Review
 
 ## Review A1：上游要求 → Change
 
-待 Ready 前重读 #488 和用户授权后填写。
+已重读 #488 及本轮用户授权。AC1–AC3 已完整映射到 R1–R3，AC4 映射到 R4；R4 仅依赖 PR current-head、合并和 main-fresh 外部状态，已按用户端到端交付授权明确延期至收尾，没有遗漏实现要求。
 
 ## Review A2：Change → 实现、测试与文档
 
-待目标验证和独立 diff 审查后填写。
+审查范围为 `origin/main...HEAD`。变更只有本 Change 与 `env.local.example` 的一个默认值，未发现 API、Contract、Schema、数据、前端或锁文件变化；官方 TUNA 帮助、HTTPS HTTP 200、项目既有配置一致性、7 个专项测试和治理检查形成相互独立证据。结论：范围内无发现。证据边界：未执行完整 Docker 镜像构建，本次配置变更不改变 Dockerfile、Compose 构建逻辑、依赖身份或镜像产物。
