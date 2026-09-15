@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260915-113043-release-latest-main
 title: Release 发布绑定发布时最新 main
 level: L3
-status: ready_for_review
+status: done
 owner: ChatGPT
 branch: fix/release-published-latest-main
 created: 2026-09-15
