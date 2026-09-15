@@ -210,34 +210,35 @@ API、Worker、Scheduler、Migration、Health、网络、端口、外部 Secret 
 
 - [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
-PR 触发时执行 Release dry-run，不推送 GHCR、不创建 Tag/Release。正式发布支持两种手工入口：从默认分支执行 `workflow_dispatch` 并输入标准 SemVer；或由维护者手工创建并推送指向最新 `main` 的标准 SemVer Tag。两种入口都校验当前发布 SHA 仍是远端 `main` 最新 SHA及所需主分支门禁；已有 Tag 只有在精确指向本次发布 SHA 且同名 GitHub Release 尚不存在时才可复用，绝不移动或覆盖版本身份。
+PR 触发时执行 Release dry-run，不推送 GHCR、不创建 Tag/Release。正式发布支持两种手工入口：
+
+1. 在 GitHub `Actions → Release → Run workflow` 中选择 `main` 并输入标准 SemVer；
+2. 在 GitHub `Releases → Draft a new release` 中创建或选择标准 SemVer Tag，Tag target 选择 `main`，然后点击 **Publish release**。
+
+第二种网页路径只有在 GitHub Release 真正进入 `published` 状态后才触发正式 Workflow；**单独创建或 push Tag 不再触发正式镜像发布**。正式候选会显式 checkout 当时的 `main`，并在构建前后两次核验远端 `main` 仍等于候选 SHA。Release Tag、离线 Bundle、GHCR 镜像和 manifest 必须绑定同一个 Git SHA。
+
+如果网页 Release 使用了提前创建、已经落后于当前 `main` 的 Tag，Workflow 会 fail closed：不移动 Tag、不上传旧代码镜像，也不会把旧 SHA 伪装成当前 Release。维护者应修正尚未正式使用的错误版本/Tag 后重新发布，或使用新的版本号；不要强制移动已经作为版本身份使用的历史 Tag。
+
+`workflow_dispatch` 路径仍允许 Workflow 在 replay-tested 候选通过后创建同 SHA Git Tag 和 GitHub Release；GitHub Release `published` 路径则复用已经发布的 Release，只向它上传同一批 replay-tested 资产。两条正式入口都要求标准 SemVer、当前 main、主分支质量证据和版本身份一致。
 
 当最新 `main` 是 repository-native Archivist 生成的 `[skip ci]` Change 归档提交时，Release 仍构建和发布该最新提交；只有脚本证明它恰好把一个 `coding-change/v1` 从 `active/ready_for_review` 确定性冻结为 `archive/done`、没有任何额外改动时，检查门禁才复用它唯一父提交的三项绿色证据。普通 `[skip ci]`、部分检查、失败检查、正文变化或额外文件都 fail closed。
-
-手工 Tag 入口示例：
-
-```bash
-git fetch origin main
-git tag v3.1.0 origin/main
-git push origin refs/tags/v3.1.0
-```
-
-Tag push 后由不受提交消息 `[skip ci]` 指令影响的 GitHub `create` 事件启动 `Release` Workflow，自动完成候选构建、离线回放、GHCR 推送和 GitHub Release 创建。该 Workflow 对分支 create 事件在 Job 分配前跳过，只接受 `ref_type=tag`。不要预先创建同名 GitHub Release，也不要把 Tag 指向旧 `main`。
 
 当前 GitHub Release 构建使用明确的官方上游下载源，避免把开发机/公司网络的镜像加速配置变成发布来源事实；这不会修改本地 Dockerfile/Compose 中的镜像身份或 lockfile。
 
 构建和发布链：
 
 ```text
-main / PR candidate
+发布时最新 main / PR candidate
 → 构建 linux/amd64 Backend + Frontend
 → 固定 postgres:18.4
 → 生成离线 Bundle
 → PR: 删除候选运行镜像后从 images.tar 重新 docker load
 → canonical Compose --no-build --pull never --wait
 → Migration / Readiness / 持久目录 smoke
-→ 正式 workflow_dispatch 或手工 SemVer Tag create: 推送 GHCR 并记录 digest
-→ 创建或复用同 SHA Git Tag，并创建 GitHub Release
+→ 正式 workflow_dispatch 或 GitHub Release published: 推送 GHCR 并记录 digest
+→ workflow_dispatch: 创建同 SHA Git Tag + GitHub Release
+→ GitHub Release published: 向已发布 Release 上传同一批 replay-tested assets
+→ 最终复核 Tag / Release / manifest / image identity
 ```
 
 禁止使用 `latest` 作为正式发布身份。
