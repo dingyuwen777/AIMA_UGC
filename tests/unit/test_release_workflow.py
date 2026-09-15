@@ -135,12 +135,46 @@ def test_release_candidate_uses_shared_bundle_core_and_internal_tool_artifact() 
     publish_job = _publish_job(workflow)
 
     assert "scripts/release/release_bundle.py build" in build_job
-    upload_block = build_job.split("Upload replay-tested release candidate", 1)[1]
-    assert "scripts/release/release_bundle.py" in upload_block
+    assert "Prepare compressed release candidate transfer" in build_job
+    assert "scripts/release/release_bundle.py" in build_job.split(
+        "Prepare compressed release candidate transfer", 1
+    )[1]
     assert "path: release-candidate" in publish_job
     assert 'RELEASE_TOOL="release-candidate/scripts/release/release_bundle.py"' in publish_job
     assert 'BUNDLE_DIR="release-candidate/release-bundle"' in publish_job
     assert 'python3 "${RELEASE_TOOL}" finalize' in publish_job
+
+
+def test_release_candidate_cross_job_transfer_uses_precompressed_archive() -> None:
+    workflow = _workflow_text()
+    build_job = workflow.split("publish-release:", 1)[0]
+    publish_job = _publish_job(workflow)
+
+    transfer_block = build_job.split("Prepare compressed release candidate transfer", 1)[1].split(
+        "Upload replay-tested release candidate", 1
+    )[0]
+    upload_block = build_job.split("Upload replay-tested release candidate", 1)[1].split(
+        "Report dry-run result", 1
+    )[0]
+    verification = publish_job.split("Verify transferred candidate", 1)[1].split(
+        "Load and tag exact replay-tested images", 1
+    )[0]
+
+    assert 'CANDIDATE_ARCHIVE="${RUNNER_TEMP}/AIMA_UGC-${VERSION}-deploy.tar.gz"' in transfer_block
+    assert 'cp "${CANDIDATE_ARCHIVE}" "${TRANSFER_DIR}/candidate.tar.gz"' in transfer_block
+    assert (
+        'cp scripts/release/release_bundle.py "${TRANSFER_DIR}/scripts/release/release_bundle.py"'
+        in transfer_block
+    )
+    assert 'gzip -t "${TRANSFER_DIR}/candidate.tar.gz"' in transfer_block
+    assert "path: release-transfer/" in upload_block
+    assert "release-bundle/" not in upload_block
+    assert "compression-level: 0" in upload_block
+
+    assert 'TRANSFER_ARCHIVE="release-candidate/candidate.tar.gz"' in verification
+    assert 'gzip -t "${TRANSFER_ARCHIVE}"' in verification
+    assert 'tar -xzf "${TRANSFER_ARCHIVE}" -C "${BUNDLE_DIR}"' in verification
+    assert 'test -s "${BUNDLE_DIR}/images.tar"' in verification
 
 
 def test_public_repository_release_keeps_downloadable_offline_images() -> None:
