@@ -148,7 +148,9 @@ def validate_formal_checkout(root: Path) -> str:
         raise ReleaseBundleError("Formal 模式要求 Git 工作区干净。")
     branch = _git(root, "branch", "--show-current")
     if branch != "main":
-        raise ReleaseBundleError(f"Formal 模式只能从 main 构建；当前分支={branch or '<detached>'}。")
+        raise ReleaseBundleError(
+            f"Formal 模式只能从 main 构建；当前分支={branch or '<detached>'}。"
+        )
     _run(["git", "fetch", "--quiet", "origin", "main"], cwd=root)
     head = _git(root, "rev-parse", "HEAD")
     remote_main = _git(root, "rev-parse", "refs/remotes/origin/main")
@@ -495,7 +497,9 @@ def verify_bundle(bundle_dir: Path) -> None:
             raise ReleaseBundleError(f"SHA256SUMS 指向不存在文件：{name}")
         actual_hash = _sha256_file(target)
         if actual_hash != expected:
-            raise ReleaseBundleError(f"SHA256 校验失败：{name} expected={expected} actual={actual_hash}")
+            raise ReleaseBundleError(
+                f"SHA256 校验失败：{name} expected={expected} actual={actual_hash}"
+            )
 
 
 def verify_manifest_identity(
@@ -915,8 +919,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """解析命令行并执行对应 Release Bundle 动作。"""
-    if not (sys.version_info.major == 3 and sys.version_info.minor == 14):
-        print("ERROR: Release Builder 要求仓库当前 Python 3.14 运行环境。", file=sys.stderr)
+    if sys.version_info < (3, 10):
+        print("ERROR: Release Builder 要求 Python 3.10+；AIMA_UGC 开发环境仍使用仓库当前 Python 3.14。", file=sys.stderr)
         return 1
     parser = _build_parser()
     args = parser.parse_args(argv)
