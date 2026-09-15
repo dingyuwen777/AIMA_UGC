@@ -256,7 +256,9 @@ jobs:
         run: |
           set -euo pipefail
           CANDIDATE_ARCHIVE="${RUNNER_TEMP}/AIMA_UGC-${VERSION}-deploy.tar.gz"
-          python3 scripts/release/release_bundle.py build \
+          # Canonical Compose smoke 会在宿主 bind 目录产生 PostgreSQL root/container-owned 文件；
+          # Hosted Runner 用 root 执行共享 Builder，完成后立即把候选产物归还 runner 用户。
+          sudo -E python3 scripts/release/release_bundle.py build \
             --root . \
             --version "${VERSION}" \
             --source-profile official \
@@ -267,6 +269,8 @@ jobs:
             --archive-path "${CANDIDATE_ARCHIVE}" \
             --verify \
             --strict-replay
+          sudo chown -R "$(id -u):$(id -g)" release-bundle
+          sudo chown "$(id -u):$(id -g)" "${CANDIDATE_ARCHIVE}"
           python3 scripts/release/release_bundle.py verify \
             --bundle-dir release-bundle \
             --expected-version "${VERSION}" \
