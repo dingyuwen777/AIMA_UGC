@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260915-133000-local-release-bundle
 title: 本地一键构建 Release 离线包
 level: L3
-status: ready_for_review
+status: done
 owner: ChatGPT
 branch: feature/local-release-bundle
 created: 2026-09-15
