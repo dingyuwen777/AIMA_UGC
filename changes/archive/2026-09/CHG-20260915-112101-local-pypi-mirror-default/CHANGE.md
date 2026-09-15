@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260915-112101-local-pypi-mirror-default
 title: 对齐本地 Compose PyPI 默认镜像
 level: L2
-status: ready_for_review
+status: done
 owner: Codex
 branch: fix/local-pypi-mirror-default
 created: 2026-09-15
