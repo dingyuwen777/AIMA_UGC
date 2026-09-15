@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260915-104114-runtime-script-integration
 title: 合并 v3.3.3 运行时与离线脚本配置
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: fix/release-archive-evidence
 created: 2026-09-15
