@@ -126,9 +126,10 @@ def test_public_repository_release_keeps_downloadable_offline_images() -> None:
     assert "docker save -o release-bundle/images.tar" in workflow
     assert 'DEPLOY_ARCHIVE="AIMA_UGC-${VERSION}-deploy.tar.gz"' in publish_job
     assert '"${DEPLOY_ARCHIVE}"' in publish_job.split("Create Git tag and GitHub Release", 1)[1]
-    assert '"${DEPLOY_ARCHIVE}"' in publish_job.split(
-        "Upload assets to published GitHub Release", 1
-    )[1]
+    assert (
+        '"${DEPLOY_ARCHIVE}"'
+        in publish_job.split("Upload assets to published GitHub Release", 1)[1]
+    )
     assert "Verify published GitHub Release" in publish_job
     assert '"${DEPLOY_ARCHIVE}"' in publish_job.split("Verify published GitHub Release", 1)[1]
 
@@ -156,9 +157,10 @@ def test_publish_job_uses_explicit_repository_context_without_checkout() -> None
     assert 'gh repo view "${GH_REPO}"' in publish_job
     assert 'gh release view "${VERSION}" --repo "${GH_REPO}"' in publish_job
     assert '--repo "${GH_REPO}"' in publish_job.split("Create Git tag and GitHub Release", 1)[1]
-    assert '--repo "${GH_REPO}"' in publish_job.split(
-        "Upload assets to published GitHub Release", 1
-    )[1]
+    assert (
+        '--repo "${GH_REPO}"'
+        in publish_job.split("Upload assets to published GitHub Release", 1)[1]
+    )
 
 
 def test_publish_job_verifies_the_created_release_and_assets() -> None:
