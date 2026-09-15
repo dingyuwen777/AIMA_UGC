@@ -2,11 +2,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
+RELEASE_CORE = ROOT / "scripts" / "release" / "release_bundle.py"
 
 
 def _workflow_text() -> str:
     assert RELEASE_WORKFLOW.is_file()
     return RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+
+def _core_text() -> str:
+    assert RELEASE_CORE.is_file()
+    return RELEASE_CORE.read_text(encoding="utf-8")
 
 
 def _publish_job(workflow: str) -> str:
@@ -34,6 +40,11 @@ def test_formal_release_is_manual_and_pr_mode_is_dry_run_only() -> None:
         in build_job
     )
     assert "ref: ${{ github.event_name == 'pull_request' && github.sha || 'main' }}" in build_job
+    assert "python3 scripts/release/release_bundle.py build" in build_job
+    assert "--source-profile official" in build_job
+    assert "--builder-context github-actions" in build_job
+    assert "--verify" in build_job
+    assert "--strict-replay" in build_job
 
     publish_job = _publish_job(jobs)
     assert "github.event_name == 'workflow_dispatch'" in publish_job
@@ -116,14 +127,28 @@ def test_release_fails_closed_unless_both_ghcr_packages_are_private() -> None:
     assert "Change visibility" not in workflow
 
 
-def test_public_repository_release_keeps_downloadable_offline_images() -> None:
+def test_release_candidate_uses_shared_bundle_core_and_internal_tool_artifact() -> None:
     workflow = _workflow_text()
+    build_job = workflow.split("publish-release:", 1)[0]
     publish_job = _publish_job(workflow)
 
-    # 当前源码仓库是 public；正式 GitHub Release 仍附带完整离线部署包。
-    # GHCR application packages 保持 private，但 Release asset 中的 images.tar 会随 public
-    # GitHub Release 对外可下载，这是已确认的交付边界。
-    assert "docker save -o release-bundle/images.tar" in workflow
+    assert "scripts/release/release_bundle.py build" in build_job
+    upload_block = build_job.split("Upload replay-tested release candidate", 1)[1]
+    assert "scripts/release/release_bundle.py" in upload_block
+    assert "path: release-candidate" in publish_job
+    assert 'RELEASE_TOOL="release-candidate/scripts/release/release_bundle.py"' in publish_job
+    assert 'BUNDLE_DIR="release-candidate/release-bundle"' in publish_job
+    assert 'python3 "${RELEASE_TOOL}" finalize' in publish_job
+
+
+def test_public_repository_release_keeps_downloadable_offline_images() -> None:
+    workflow = _workflow_text()
+    core = _core_text()
+    publish_job = _publish_job(workflow)
+
+    # 正式 GitHub Release 仍附带完整离线部署包；Bundle 生成由共享核心负责。
+    assert '"docker", "save"' in core
+    assert '"images.tar"' in core
     assert 'DEPLOY_ARCHIVE="AIMA_UGC-${VERSION}-deploy.tar.gz"' in publish_job
     assert '"${DEPLOY_ARCHIVE}"' in publish_job.split("Create Git tag and GitHub Release", 1)[1]
     assert (
@@ -136,22 +161,24 @@ def test_public_repository_release_keeps_downloadable_offline_images() -> None:
 
 def test_offline_release_preserves_server_compose_start_command() -> None:
     workflow = _workflow_text()
+    core = _core_text()
 
     # Release 只改变镜像交付方式，不建立第二套服务器 Runtime。
-    # docker load 后继续运行 canonical compose.yaml 与现有 env.production。
-    assert "cp compose.yaml release-bundle/compose.yaml" in workflow
-    assert "docker load -i images.tar" in workflow
-    assert (
-        "docker compose --env-file env.production up -d --no-build --pull never --wait" in workflow
-    )
-    assert "compose.windows.yaml" not in workflow
+    assert 'shutil.copy2(root / "compose.yaml", bundle_dir / "compose.yaml")' in core
+    assert '"docker", "load", "-i"' in core
+    assert '"--no-build", "--pull", "never", "--wait"' in core
+    assert "docker compose --env-file env.production up -d --no-build --pull never --wait" in core
+    build_step = workflow.split("Build replay-tested Linux AMD64 release bundle", 1)[1].split(
+        "Upload replay-tested release candidate", 1
+    )[0]
+    assert "compose.windows.yaml" not in build_step
+    assert "compose.windows.yaml" in core  # 只用于 Windows 本地 smoke overlay，不进入 Bundle。
 
 
 def test_publish_job_uses_explicit_repository_context_without_checkout() -> None:
     publish_job = _publish_job(_workflow_text())
 
-    # Publish consumes the replay-tested artifact; it must not need a source checkout
-    # merely so GitHub CLI can infer which repository to operate on.
+    # Publish 只消费 replay-tested artifact；共享工具也随候选 artifact 传递，不需要源码 checkout。
     assert "actions/checkout@" not in publish_job
     assert "GH_REPO: ${{ github.repository }}" in publish_job
     assert 'gh repo view "${GH_REPO}"' in publish_job
@@ -161,6 +188,19 @@ def test_publish_job_uses_explicit_repository_context_without_checkout() -> None
         '--repo "${GH_REPO}"'
         in publish_job.split("Upload assets to published GitHub Release", 1)[1]
     )
+
+
+def test_publish_job_revalidates_candidate_identity_before_external_writes() -> None:
+    publish_job = _publish_job(_workflow_text())
+    verification = publish_job.split("Verify transferred candidate", 1)[1].split(
+        "Load and tag exact replay-tested images", 1
+    )[0]
+
+    assert '--expected-version "${VERSION}"' in verification
+    assert '--expected-git-sha "${RELEASE_SHA}"' in verification
+    assert "--expected-profile official" in verification
+    assert "--require-offline-replay" in verification
+    assert "--require-strict-replay" in verification
 
 
 def test_publish_job_verifies_the_created_release_and_assets() -> None:
