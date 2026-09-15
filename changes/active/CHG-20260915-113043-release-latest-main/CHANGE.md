@@ -17,6 +17,7 @@ affected_areas:
 affected_paths:
   - .github/workflows/release.yml
   - tests/unit/test_release_workflow.py
+  - tests/unit/test_docker_build_sources.py
   - docs/02_环境运行与部署.md
   - docs/operations/01_生产部署与离线Release方案.md
   - changes/active/CHG-20260915-113043-release-latest-main/CHANGE.md
@@ -40,12 +41,13 @@ data_changes:
 - [x] 网页 Release Tag 必须精确指向候选 SHA；旧 Tag / 非 main Tag fail closed，绝不移动或覆盖版本 Tag。
 - [x] `workflow_dispatch` 继续允许 Workflow 创建新 Tag/GitHub Release；网页 `release: published` 对已存在的 Release 只上传 replay-tested assets。
 - [x] PR dry-run 继续真实构建 Linux/AMD64 Backend/Frontend、生成离线 Bundle 并用 `--no-build --pull never` 回放。
-- [x] 合并前证据已达到 Review/CI 门禁入口：Release dry-run 当前实现 revision 成功，文档已同步、两阶段 Review 无阻塞 Finding；PR required checks 在本 Change 进入 `ready_for_review` 后作为 current-head merge gate 执行。合并后的 main-fresh CI 与 Issue #492 Closure Audit 属于 post-merge Finalization，不伪造成 Change Ready 证据。
+- [x] 合并前证据已达到 Review/CI 门禁入口：Release dry-run 已成功证明修改后的构建/回放链；文档已同步、两阶段 Review 无阻塞 Finding。PR current-head required checks 继续作为 merge gate；合并后的 main-fresh CI 与 Issue #492 Closure Audit 属于 post-merge Finalization，不伪造成 Change Ready 证据。
 
 ## 范围
 
 - `.github/workflows/release.yml` 的触发事件、正式 revision 解析、Release 存在性校验与发布分流。
-- `tests/unit/test_release_workflow.py` 对新正式发布语义的静态回归。
+- `tests/unit/test_release_workflow.py` 对新正式发布语义的专门静态回归。
+- `tests/unit/test_docker_build_sources.py` 中原有 Release 权限边界回归由旧 `create && tag` 同步为新的 `release` 正式入口。
 - 两份直接描述正式 Release 操作的当前文档。
 - Requirement Source #492、当前 Change、PR/CI/Review/合并后收尾。
 
@@ -88,12 +90,12 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Release 网页路径只在真正 published 时进入正式发布，单独 Tag create 不再发布 | #492 / AC1 | satisfied | `.github/workflows/release.yml` 使用 `release: types: [published]`，删除正式 `create` 触发；`tests/unit/test_release_workflow.py` 固化该机器事实；Review A1/A2 已核对。 |
-| R2 | 正式网页发布使用发布时最新 main，并在构建前/发布前防漂移 | #492 / AC2 | satisfied | 正式事件 checkout 显式 `ref=main`；build/publish 两阶段均读取远端 `git/ref/heads/main` 并要求等于 `RELEASE_SHA`；PR dry-run run `34926618924` 已证明修改后的 Workflow 能完成候选构建/回放。 |
-| R3 | Release Tag 必须精确等于候选 main SHA；旧 Tag fail closed 且不自动移动 | #492 / AC3 | satisfied | build/publish 两阶段都解析 `${VERSION}` Tag target 并与 `RELEASE_SHA` 比较；不存在 `git tag -f`、`git update-ref` 或等价移动逻辑；相关静态回归已写入 `tests/unit/test_release_workflow.py`。 |
-| R4 | workflow_dispatch 与 PR dry-run 保持现有正式/验证能力 | #492 / AC4 | satisfied | `workflow_dispatch` 保留；PR dry-run run `34926618924`：Build Linux AMD64 images、Bundle、`docker load`、canonical Compose `--no-build --pull never` replay、archive check 均 success；Publish job 在 PR 模式正确 skipped。 |
+| R1 | Release 网页路径只在真正 published 时进入正式发布，单独 Tag create 不再发布 | #492 / AC1 | satisfied | `.github/workflows/release.yml` 使用 `release: types: [published]`，删除正式 `create` 触发；Release 专项与既有权限边界测试同步新机器事实；Review A1/A2 已核对。 |
+| R2 | 正式网页发布使用发布时最新 main，并在构建前/发布前防漂移 | #492 / AC2 | satisfied | 正式事件 checkout 显式 `ref=main`；build/publish 两阶段均读取远端 `git/ref/heads/main` 并要求等于 `RELEASE_SHA`；PR dry-run 已证明修改后的 Workflow 能完成候选构建/回放。 |
+| R3 | Release Tag 必须精确等于候选 main SHA；旧 Tag fail closed 且不自动移动 | #492 / AC3 | satisfied | build/publish 两阶段都解析 `${VERSION}` Tag target 并与 `RELEASE_SHA` 比较；不存在 `git tag -f`、`git update-ref` 或等价移动逻辑；专项静态回归已覆盖。 |
+| R4 | workflow_dispatch 与 PR dry-run 保持现有正式/验证能力 | #492 / AC4 | satisfied | `workflow_dispatch` 保留；PR dry-run已实际通过 Linux AMD64 images、Bundle、`docker load`、canonical Compose `--no-build --pull never` replay；Publish job 在 PR 模式正确 skipped。 |
 | R5 | release.published 上传既有 Release assets；workflow_dispatch 继续创建 Release；所有发布身份同 SHA | #492 / AC5 | satisfied | publish job 分流：`workflow_dispatch → gh release create --target ${RELEASE_SHA}`；`release → gh release upload`；统一最终 Tag/Release/assets 校验与 manifest `git_sha` 检查保留。 |
-| R6 | Release 单测、文档/治理、PR CI、main-fresh 全部闭环 | #492 / AC6 | explicitly_deferred | Pre-merge：Change 已 Ready，PR current-head required CI/Release dry-run继续作为 merge gate；Post-merge：`Issue #492` Closure Audit 持有 main-fresh CI、Acceptance 写回/重读与关闭证据。main-fresh 只能在 merge 后取得，不能作为 Change Ready 的伪造前置证据。 |
+| R6 | Release 单测、文档/治理、PR CI、main-fresh 全部闭环 | #492 / AC6 | explicitly_deferred | Pre-merge：Change 已 Ready，PR current-head required CI/Release dry-run作为 merge gate；Post-merge：Issue #492 Closure Audit 持有 main-fresh CI、Acceptance 写回/重读与关闭证据。main-fresh 只能在 merge 后取得，不能作为 Change Ready 的伪造前置证据。 |
 
 # 实施结果
 
@@ -102,27 +104,28 @@ data_changes:
 3. 网页 Release 路径要求现有 Release/Tag 均存在且 Tag=current main；`workflow_dispatch` 继续要求同名 Release 不存在、Tag 不存在或精确匹配。
 4. publish 阶段再次核验 main/tag；网页 Release 用 `gh release upload`，Actions 正式入口继续 `gh release create --target RELEASE_SHA`。
 5. `tests/unit/test_release_workflow.py` 新增/调整正式触发、main checkout、Tag/main 一致性、create/upload 分流与无强制移动的回归断言。
-6. `docs/02_环境运行与部署.md` 与 `docs/operations/01_生产部署与离线Release方案.md` 已同步当前操作流程和 stale Tag fail-closed 边界。
-7. 最新 `main` 已合入任务分支；相对该 main 只保留本 Change 的 5 个目标文件。
+6. `tests/unit/test_docker_build_sources.py` 的既有 PR 权限测试从旧 `create && tag` 更新为新的 `release` 正式发布入口；此前 current-head CI 暴露该旧断言漂移为唯一 Unit failure（当轮 `1 failed, 1012 passed`），未降低断言强度。
+7. `docs/02_环境运行与部署.md` 与 `docs/operations/01_生产部署与离线Release方案.md` 已同步当前操作流程和 stale Tag fail-closed 边界。
+8. 最新 `main` 已合入任务分支；每次 merge preflight 继续重新确认 base freshness。
 
 # Validation Matrix
 
 | 验证层 | 是否要求 | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | `tests/unit/test_release_workflow.py` 覆盖 release.published、main checkout、Tag/main 一致性和 create/upload 分流；current-head CI 负责执行该回归，结果作为 PR merge gate。 |
+| 行为 / Unit / Component | required | 两个 Release 相关 Unit 文件共同覆盖 release.published、main checkout、Tag/main 一致性、create/upload 分流及 PR/正式权限隔离；current-head CI 作为 merge gate。 |
 | 接口 / Contract | required | Review A1/A2 已核对 Release identity invariant：Tag/main/manifest/image SHA 单一；正式事件只允许 `workflow_dispatch/release.published`；不存在 Tag force/move。 |
 | 集成 / Persistence / Runtime Dependency | not_applicable | 不改数据库、文件持久化、Worker 或服务器 Runtime dependency。 |
-| 用户 / Workflow Acceptance | required | GitHub Actions PR Release dry-run run `34926618924` 在实现 revision `aa913fa0028809c00a06edf3a40a94bf35cf7d22` success；正式发布副作用未在开发阶段执行。 |
-| 跨组件 Golden Path | required | 同 run `34926618924`：Docker build → images.tar → 删除本地候选 → docker load → canonical Compose `--no-build --pull never --wait` → Migration/Readiness/持久目录 smoke success。 |
+| 用户 / Workflow Acceptance | required | GitHub Actions PR Release dry-run 已实际成功证明修改后的 Workflow 候选构建/回放；正式发布副作用未在开发阶段执行。 |
+| 跨组件 Golden Path | required | PR Release dry-run：Docker build → images.tar → 删除本地候选 → docker load → canonical Compose `--no-build --pull never --wait` → Migration/Readiness/持久目录 smoke success。 |
 | External Dependency / Provider Probe | not_applicable | 不修改 TikHub/LLM/第三方业务 Provider；GitHub `release: published` 与 `GITHUB_TOKEN` 事件语义已依据 GitHub 官方文档核验。 |
-| Build / Package / Runtime | required | run `34926618924`：Linux/AMD64 Backend/Frontend build、immutable image/schema facts、离线 Bundle、deploy archive 均 success；Runtime Acceptance run `34926618929` success。 |
-| Docs / Governance / Other | required | Requirement Source #492 已写后重读；两份正式文档 diff 均只修改 Release 段落；Change Completion Audit 完成；PR current-head CI 与 post-merge main-fresh 继续由交付门禁负责。 |
+| Build / Package / Runtime | required | PR Release dry-run：Linux/AMD64 Backend/Frontend build、immutable image/schema facts、离线 Bundle、deploy archive success；Runtime Acceptance success。 |
+| Docs / Governance / Other | required | Requirement Source #492 已写后重读；两份正式文档只同步 Release 段落；Change Completion Audit 完成；PR current-head CI 与 post-merge main-fresh 继续由交付门禁负责。 |
 
 # Evidence Preservation Mapping
 
 | 原证明责任 | 原位置 | 新位置 | 证据等级 | 依据 |
 | --- | --- | --- | --- | --- |
-| PR Release dry-run 构建/离线回放 | `build-verify` PR 路径 | 保持原 `build-verify` PR 路径 | 保持 | run `34926618924` 已实际证明 build、Bundle、docker load、Compose replay 全链 success。 |
+| PR Release dry-run 构建/离线回放 | `build-verify` PR 路径 | 保持原 `build-verify` PR 路径 | 保持 | 实际 PR dry-run 已证明 build、Bundle、docker load、Compose replay 全链 success。 |
 | 正式发布只使用当前 main | Tag create 校验 `CURRENT_MAIN_SHA == RELEASE_SHA` | release.published / workflow_dispatch 均显式 checkout main，并在 build/publish 两阶段复核 | 加强 | 检查时间从 Tag 创建推进到 Release 发布，并保留二次防漂移。 |
 | Tag 与候选 SHA 一致 | build/publish 两阶段 Tag target 检查 | 保持双阶段检查 | 保持/加强 | release.published 要求已存在 Tag；workflow_dispatch 仍可无 Tag 后由 release create 建立。 |
 | 离线候选不可变传递 | Actions artifact + SHA256SUMS | 保持 | 保持 | publish job 继续只消费 replay-tested artifact；PR 模式 publish skipped。 |
@@ -142,7 +145,7 @@ data_changes:
 
 - [x] upstream_re_read：重读 Issue #492、当前 Release Workflow、Release 运维/运行文档、最新 main 和 Agent_Skills 当前交付/CI/Review 规则。
 - [x] change_coverage：AC1—AC6 均进入 Traceability；AC6 的 main-fresh 明确由 post-merge Issue Closure Owner 持有，没有从 Change Ready 中伪造删除。
-- [x] reverse_audit：从网页 Release/Actions 两个正式入口反查到 main checkout、Tag/Release identity、候选 build/replay、GHCR/asset 发布分流、最终 identity verify；服务器 Bundle/Compose 路径保持。
+- [x] reverse_audit：从网页 Release/Actions 两个正式入口反查到 main checkout、Tag/Release identity、候选 build/replay、GHCR/asset 发布分流、最终 identity verify；服务器 Bundle/Compose 路径保持；旧 Release 权限测试也已同步新事件语义。
 - [x] unresolved_cleared：R1—R5 已有实现/运行证据；R6 中不可在 merge 前取得的 main-fresh/Issue Closure 已显式转交 #492 post-merge Closure Audit，无 `not_satisfied` 残留。
 
 # 两阶段 Review
@@ -156,13 +159,13 @@ data_changes:
 ## Review A2：Change → 实现 / 测试 / 文档
 
 - `.github/workflows/release.yml` 的正式事件、checkout、build/publish 两次 main/tag/release 校验和发布分流与 AC 一致。
-- 原离线 Bundle、checksum、GHCR private、manifest、docker load、canonical Compose replay、最终 Release asset/tag 校验均保留；run `34926618924` 已实际证明 PR dry-run 全链。
-- `tests/unit/test_release_workflow.py` 已针对新事件与防漂移规则更新；current-head CI 负责执行并作为 merge gate。
-- `docs/02_环境运行与部署.md`、`docs/operations/01_生产部署与离线Release方案.md` 已同步，且逐提交 diff 未发现无关文档漂移。
+- 原离线 Bundle、checksum、GHCR private、manifest、docker load、canonical Compose replay、最终 Release asset/tag 校验均保留；PR dry-run 已实际证明全链。
+- 两个 Release 相关 Unit 文件均已对新事件语义同步；上一轮唯一失败来自旧 `create && tag` 断言，属于测试事实漂移，已按新正式 Contract 更新而未放宽权限断言。
+- `docs/02_环境运行与部署.md`、`docs/operations/01_生产部署与离线Release方案.md` 已同步，逐提交 diff 未发现无关文档漂移。
 
 ## 代码质量 / 测试充分性 Review
 
-- Review 结论：`NO_FINDINGS_WITHIN_SCOPE`（基于当前实现与已取得运行证据）。
-- 重点反查风险：Release event ref、main 漂移、stale Tag、Tag force/move、workflow_dispatch 递归发布、PR 模式外部副作用、离线 Bundle/Compose 回放证据降级。
+- 当前设计 Review：`NO_FINDINGS_WITHIN_SCOPE`；current-head CI 仍是最终 merge gate。
+- 重点反查风险：Release event ref、main 漂移、stale Tag、Tag force/move、workflow_dispatch 递归发布、PR 模式外部副作用、离线 Bundle/Compose 回放证据降级，以及旧测试是否仍要求被废弃的 `create` 事件。
 - 未执行真实正式 `release: published` 外部写入 Probe：开发阶段明确禁止创建真实版本 Release/GHCR 副作用；该事件路径通过官方 GitHub 事件语义 + 机器静态回归 + PR dry-run 的共享 build/replay 链验证，正式发布时仍由同一 Workflow 的 build/publish 双重 fail-closed 门禁保护。
-- 当前剩余 merge gate：PR current-head CI/required checks；失败则返回 Coding 修复并重新 Review。
+- 合并前必须以最新 main 重新确认 diff、required checks、Review thread 和 current-head；合并后必须取得 main-fresh CI、repository-native Change archive 与 Issue #492 Closure Audit 后才能报告端到端完成。
