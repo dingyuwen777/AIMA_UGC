@@ -65,7 +65,7 @@ npm             → registry.npmjs.org
 从仓库根目录运行，确保：
 
 1. Docker Desktop 已启动，并能执行 `docker version` 和 `docker compose version`；
-2. 已安装 Python 3.10+；项目完整开发环境仍以 [`pyproject.toml`](../../pyproject.toml) 的正式 Runtime 要求为准；
+2. 使用仓库当前 Python 3.14.7 运行环境；精确版本以 [`pyproject.toml`](../../pyproject.toml) 和 CI 当前机器事实为准；
 3. 当前目录是 AIMA_UGC 仓库根目录。
 
 PowerShell、Windows Terminal 或 VS Code Terminal 都可以。
@@ -214,7 +214,7 @@ docker compose --env-file env.production up -d --no-build --pull never --wait
 
 ### 找不到 Python
 
-PowerShell 会先找 `python`，再尝试 Windows `py -3`。两者都不存在时会停止，不会继续生成半成品 Bundle。
+PowerShell 会先找 `python`，再尝试 Windows `py -3`。两者都不存在时会停止，不会继续生成半成品 Bundle；实际使用时应保持仓库当前 Python 3.14.7 环境。
 
 ### Formal 提示工作区不干净
 
