@@ -54,6 +54,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  POSTGRES_IMAGE: postgres:18.4
   BACKEND_IMAGE: ghcr.io/dingyuwen777/aima-ugc-backend
   FRONTEND_IMAGE: ghcr.io/dingyuwen777/aima-ugc-frontend
   PACKAGE_OWNER: dingyuwen777
