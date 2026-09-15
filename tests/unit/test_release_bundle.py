@@ -190,9 +190,9 @@ def test_windows_entry_defaults_to_china_and_delegates_to_shared_core() -> None:
 
     assert '[string]$SourceProfile = "china"' in script
     assert '[ValidateSet("china", "official")]' in script
-    assert '[switch]$Verify' in script
-    assert '[switch]$Formal' in script
-    assert 'scripts\\release\\release_bundle.py' in script
+    assert "[switch]$Verify" in script
+    assert "[switch]$Formal" in script
+    assert "scripts\\release\\release_bundle.py" in script
     assert '"--builder-context", "local"' in script
     assert '"--source-profile", $SourceProfile' in script
     assert '"--formal"' in script
