@@ -669,73 +669,114 @@ def _http_get(url: str) -> None:
         raise ReleaseBundleError(f"HTTP smoke 失败：{url}：{exc}") from exc
 
 
+def _cleanup_smoke_root(*, root: Path, smoke_root: Path, backend_image: str) -> None:
+    """只清理本次随机 smoke 根；Linux root-owned bind 内容通过已加载 Backend 镜像删除。"""
+    if not smoke_root.exists():
+        return
+    try:
+        shutil.rmtree(smoke_root)
+        return
+    except PermissionError:
+        if os.name == "nt":
+            raise
+    cleanup_code = (
+        "from pathlib import Path; import shutil; "
+        "root=Path('/cleanup'); "
+        "[(shutil.rmtree(p) if p.is_dir() else p.unlink()) for p in list(root.iterdir())]"
+    )
+    _run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--user",
+            "0:0",
+            "--mount",
+            f"type=bind,source={smoke_root},target=/cleanup",
+            backend_image,
+            "python",
+            "-c",
+            cleanup_code,
+        ],
+        cwd=root,
+    )
+    shutil.rmtree(smoke_root)
+
+
 def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: bool) -> None:
     """通过 docker load + no-build/no-pull Compose 验证离线 Bundle。"""
     verify_bundle(bundle_dir)
     windows_overlay = os.name == "nt"
-    with tempfile.TemporaryDirectory(prefix="aima-release-smoke-") as temp:
-        smoke_root = Path(temp).resolve()
-        port = _find_free_port()
-        env_path = _smoke_env(bundle_dir=bundle_dir, smoke_root=smoke_root, port=port)
-        project = f"aima-release-smoke-{os.getpid()}"
-        compose = _compose_command(
-            root=root,
-            bundle_dir=bundle_dir,
-            env_path=env_path,
-            project=project,
-            windows_overlay=windows_overlay,
-        )
-        backend = f"aima-ugc-backend:{version}"
-        frontend = f"aima-ugc-frontend:{version}"
-        image_refs = (backend, frontend, POSTGRES_IMAGE)
-        if strict_replay:
-            _run(["docker", "image", "rm", *image_refs], cwd=root)
-            for image in image_refs:
-                result = subprocess.run(
-                    ["docker", "image", "inspect", image],
-                    cwd=root,
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+    smoke_root = Path(tempfile.mkdtemp(prefix="aima-release-smoke-")).resolve()
+    env_path = _smoke_env(bundle_dir=bundle_dir, smoke_root=smoke_root, port=_find_free_port())
+    project = f"aima-release-smoke-{os.getpid()}"
+    compose = _compose_command(
+        root=root,
+        bundle_dir=bundle_dir,
+        env_path=env_path,
+        project=project,
+        windows_overlay=windows_overlay,
+    )
+    backend = f"aima-ugc-backend:{version}"
+    frontend = f"aima-ugc-frontend:{version}"
+    image_refs = (backend, frontend, POSTGRES_IMAGE)
+    if strict_replay:
+        _run(["docker", "image", "rm", *image_refs], cwd=root)
+        for image in image_refs:
+            result = subprocess.run(
+                ["docker", "image", "inspect", image],
+                cwd=root,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if result.returncode == 0:
+                raise ReleaseBundleError(
+                    f"候选镜像仍可通过 {image} 访问，不能证明离线 Bundle 独立可回放。"
                 )
-                if result.returncode == 0:
-                    raise ReleaseBundleError(
-                        f"候选镜像仍可通过 {image} 访问，不能证明离线 Bundle 独立可回放。"
-                    )
-        _run(["docker", "load", "-i", str(bundle_dir / "images.tar")], cwd=root)
-        try:
-            _run([*compose, "config", "--quiet"], cwd=root)
-            _run([*compose, "up", "-d", "--no-build", "--pull", "never", "--wait"], cwd=root)
-            for service in ("bootstrap", "migrate", "configure"):
-                container_id = _run(
-                    [*compose, "ps", "-a", "-q", service],
-                    cwd=root,
-                    capture=True,
-                ).strip()
-                if not container_id:
-                    raise ReleaseBundleError(f"Smoke 缺少容器：{service}")
-                exit_code = _run(
-                    ["docker", "inspect", "-f", "{{.State.ExitCode}}", container_id],
-                    cwd=root,
-                    capture=True,
-                ).strip()
-                if exit_code != "0":
-                    raise ReleaseBundleError(f"Smoke 服务失败：{service} exit={exit_code}")
-            _http_get(f"http://127.0.0.1:{port}/health/ready")
-            _http_get(f"http://127.0.0.1:{port}/")
-            if not windows_overlay:
-                postgres_dir = smoke_root / "postgres" / "18" / "docker"
-                if not postgres_dir.is_dir():
-                    raise ReleaseBundleError(f"Smoke PostgreSQL 持久目录不存在：{postgres_dir}")
-            api_log = smoke_root / "runtime" / "logs" / "api.log"
-            if not api_log.is_file() or api_log.stat().st_size <= 0:
-                raise ReleaseBundleError(f"Smoke API 日志不存在或为空：{api_log}")
-        except Exception:
-            subprocess.run([*compose, "ps", "-a"], cwd=root, check=False)
-            subprocess.run([*compose, "logs", "--no-color"], cwd=root, check=False)
-            raise
-        finally:
-            subprocess.run([*compose, "down", "--remove-orphans", "-v"], cwd=root, check=False)
+    _run(["docker", "load", "-i", str(bundle_dir / "images.tar")], cwd=root)
+    port = int(
+        next(
+            line.split("=", 1)[1]
+            for line in env_path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("AIMA_HTTP_PORT=")
+        )
+    )
+    try:
+        _run([*compose, "config", "--quiet"], cwd=root)
+        _run([*compose, "up", "-d", "--no-build", "--pull", "never", "--wait"], cwd=root)
+        for service in ("bootstrap", "migrate", "configure"):
+            container_id = _run(
+                [*compose, "ps", "-a", "-q", service],
+                cwd=root,
+                capture=True,
+            ).strip()
+            if not container_id:
+                raise ReleaseBundleError(f"Smoke 缺少容器：{service}")
+            exit_code = _run(
+                ["docker", "inspect", "-f", "{{.State.ExitCode}}", container_id],
+                cwd=root,
+                capture=True,
+            ).strip()
+            if exit_code != "0":
+                raise ReleaseBundleError(f"Smoke 服务失败：{service} exit={exit_code}")
+        _http_get(f"http://127.0.0.1:{port}/health/ready")
+        _http_get(f"http://127.0.0.1:{port}/")
+        if not windows_overlay:
+            postgres_dir = smoke_root / "postgres" / "18" / "docker"
+            if not postgres_dir.is_dir():
+                raise ReleaseBundleError(f"Smoke PostgreSQL 持久目录不存在：{postgres_dir}")
+        api_log = smoke_root / "runtime" / "logs" / "api.log"
+        if not api_log.is_file() or api_log.stat().st_size <= 0:
+            raise ReleaseBundleError(f"Smoke API 日志不存在或为空：{api_log}")
+    except Exception:
+        subprocess.run([*compose, "ps", "-a"], cwd=root, check=False)
+        subprocess.run([*compose, "logs", "--no-color"], cwd=root, check=False)
+        raise
+    finally:
+        subprocess.run([*compose, "down", "--remove-orphans", "-v"], cwd=root, check=False)
+        env_path.unlink(missing_ok=True)
+        _cleanup_smoke_root(root=root, smoke_root=smoke_root, backend_image=backend)
 
 
 def _update_verification(bundle_dir: Path, *, strict_replay: bool) -> None:
@@ -874,8 +915,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """解析命令行并执行对应 Release Bundle 动作。"""
-    if sys.version_info < (3, 10):
-        print("ERROR: Release Builder 要求 Python 3.10+。", file=sys.stderr)
+    if not (sys.version_info.major == 3 and sys.version_info.minor == 14):
+        print("ERROR: Release Builder 要求仓库当前 Python 3.14 运行环境。", file=sys.stderr)
         return 1
     parser = _build_parser()
     args = parser.parse_args(argv)
