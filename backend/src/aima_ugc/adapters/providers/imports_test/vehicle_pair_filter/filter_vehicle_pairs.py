@@ -30,7 +30,7 @@ from aima_ugc.platform.export import export_unified_data_excel, project_canonica
 from aima_ugc.platform.time import beijing_now
 
 INPUT_JSONL = Path(
-    r"E:\work\03_Aima\code\AIMA_UGC\backend\src\aima_ugc\adapters\providers\imports_test\monitoring_excel_filter\output\runs\20260912T163435.487712+0800\deduplicated\contents.jsonl"
+    r"E:\work\03_Aima\code\AIMA_UGC\backend\src\aima_ugc\adapters\providers\imports_test\monitoring_excel_filter\output\runs\20260914T133339.512321+0800\deduplicated\contents.jsonl"
 )
 OUTPUT_ROOT = Path(__file__).with_name("output")
 VEHICLE_CATALOG_FILE = Path(__file__).with_name("vehicle_catalog.json")

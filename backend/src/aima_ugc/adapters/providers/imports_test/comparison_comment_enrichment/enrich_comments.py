@@ -56,10 +56,10 @@ from aima_ugc.platform.export import (
 )
 from aima_ugc.platform.time import beijing_now
 
+os.environ.pop("SSLKEYLOGFILE", None)
+
 INPUT_JSONL = Path(
-    r"E:\work\03_Aima\code\AIMA_UGC\backend\src\aima_ugc\adapters\providers"
-    r"\imports_test\vehicle_pair_filter\output\runs\20260912T190531.644615+0800"
-    r"\comparison_posts.jsonl"
+    r"E:\work\03_Aima\code\AIMA_UGC\backend\src\aima_ugc\adapters\providers\imports_test\vehicle_pair_filter\output\current\comparison_posts.jsonl"
 )
 OUTPUT_ROOT = Path(__file__).with_name("output")
 RESUME_RUN_ID: str | None = None
