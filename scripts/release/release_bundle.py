@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -17,9 +18,10 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from http.client import HTTPConnection, HTTPException
 from pathlib import Path
 from typing import Any
-from urllib.request import urlopen
+from urllib.parse import urlsplit
 
 POSTGRES_IMAGE = "postgres:18.4"
 PLATFORM = "linux/amd64"
@@ -625,7 +627,52 @@ def _find_free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _smoke_env(*, bundle_dir: Path, smoke_root: Path, port: int) -> Path:
+def _find_free_smoke_network(root: Path) -> tuple[str, str]:
+    """避开现有 Docker 网段，为本次 smoke 选择独立的 IPv4 /24 网络。"""
+    network_ids = [
+        line.strip()
+        for line in _run(
+            ["docker", "network", "ls", "--quiet"], cwd=root, capture=True
+        ).splitlines()
+        if line.strip()
+    ]
+    occupied: list[ipaddress.IPv4Network] = []
+    if network_ids:
+        raw_networks = _run(
+            ["docker", "network", "inspect", *network_ids], cwd=root, capture=True
+        )
+        try:
+            networks = json.loads(raw_networks)
+        except json.JSONDecodeError as exc:
+            raise ReleaseBundleError("无法解析现有 Docker network 信息。") from exc
+        for network in networks:
+            for config in (network.get("IPAM", {}).get("Config") or []):
+                subnet = config.get("Subnet")
+                if not subnet:
+                    continue
+                try:
+                    parsed = ipaddress.ip_network(subnet, strict=False)
+                except ValueError:
+                    continue
+                if isinstance(parsed, ipaddress.IPv4Network):
+                    occupied.append(parsed)
+
+    for second_octet in range(254, -1, -1):
+        for third_octet in range(255, -1, -1):
+            candidate = ipaddress.IPv4Network(f"10.{second_octet}.{third_octet}.0/24")
+            if not any(candidate.overlaps(existing) for existing in occupied):
+                return str(candidate), str(candidate.network_address + 1)
+    raise ReleaseBundleError("没有可供离线 smoke 使用的空闲 Docker IPv4 /24 网段。")
+
+
+def _smoke_env(
+    *,
+    bundle_dir: Path,
+    smoke_root: Path,
+    port: int,
+    subnet: str,
+    gateway: str,
+) -> Path:
     """生成只指向临时目录和本地端口的 smoke env。"""
     env_path = smoke_root.parent / f"{smoke_root.name}.env"
     historical_input = smoke_root / "historical-input"
@@ -639,6 +686,8 @@ def _smoke_env(*, bundle_dir: Path, smoke_root: Path, port: int) -> Path:
             "AIMA_HOST_ROOT": smoke_root.as_posix(),
             "AIMA_HISTORICAL_IMPORT_HOST_ROOT": historical_input.as_posix(),
             "AIMA_HISTORICAL_IMPORT_ROOT": "/data/aima-historical-input",
+            "AIMA_DOCKER_SUBNET": subnet,
+            "AIMA_DOCKER_GATEWAY": gateway,
             "AIMA_TIKHUB_ENABLED": "false",
         },
         drop_keys=DISABLED_SMOKE_RUNTIME_KEYS,
@@ -666,14 +715,24 @@ def _compose_command(
 
 
 def _http_get(url: str) -> None:
-    """用 Python 标准库验证 smoke HTTP 端点。"""
+    """直连本机 HTTP 端点，避免代理和 HTTPS 环境变量干扰 smoke。"""
+    parsed = urlsplit(url)
+    if parsed.scheme != "http" or parsed.hostname is None or parsed.port is None:
+        raise ReleaseBundleError(f"HTTP smoke URL 非法：{url}")
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    connection = HTTPConnection(parsed.hostname, parsed.port, timeout=5)
     try:
-        with urlopen(url, timeout=5) as response:
-            if response.status < 200 or response.status >= 400:
-                raise ReleaseBundleError(f"HTTP smoke 失败：{url} status={response.status}")
-            response.read()
-    except OSError as exc:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        if response.status < 200 or response.status >= 400:
+            raise ReleaseBundleError(f"HTTP smoke 失败：{url} status={response.status}")
+        response.read()
+    except (HTTPException, OSError) as exc:
         raise ReleaseBundleError(f"HTTP smoke 失败：{url}：{exc}") from exc
+    finally:
+        connection.close()
 
 
 def _cleanup_smoke_root(smoke_root: Path) -> None:
@@ -697,7 +756,14 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
     smoke_root.mkdir()
     (smoke_root / "postgres").mkdir()
     port = _find_free_port()
-    env_path = _smoke_env(bundle_dir=bundle_dir, smoke_root=smoke_root, port=port)
+    subnet, gateway = _find_free_smoke_network(root)
+    env_path = _smoke_env(
+        bundle_dir=bundle_dir,
+        smoke_root=smoke_root,
+        port=port,
+        subnet=subnet,
+        gateway=gateway,
+    )
     project = f"aima-release-smoke-{os.getpid()}"
     compose = _compose_command(
         root=root,

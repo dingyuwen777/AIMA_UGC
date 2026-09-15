@@ -126,6 +126,97 @@ def test_manifest_records_profile_upstreams_and_verification_state() -> None:
     assert manifest["publication"] == {"github_release": False, "ghcr": False}
 
 
+def test_smoke_network_avoids_existing_docker_subnet(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_module()
+
+    def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
+        del cwd, capture
+        if arguments == ["docker", "network", "ls", "--quiet"]:
+            return "network-1\n"
+        if arguments == ["docker", "network", "inspect", "network-1"]:
+            return json.dumps(
+                [
+                    {
+                        "IPAM": {
+                            "Config": [
+                                {"Subnet": "10.254.255.0/24", "Gateway": "10.254.255.1"},
+                                {"Subnet": "fd00::/64", "Gateway": "fd00::1"},
+                            ]
+                        }
+                    }
+                ]
+            )
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(module, "_run", fake_run)
+
+    assert module._find_free_smoke_network(Path(".")) == ("10.254.254.0/24", "10.254.254.1")
+
+
+def test_smoke_env_overrides_default_network(tmp_path: Path) -> None:
+    module = _load_module()
+    bundle = tmp_path / "release-bundle"
+    bundle.mkdir()
+    (bundle / "env.production.example").write_bytes(
+        (ROOT / "env.production.example").read_bytes()
+    )
+    smoke_root = tmp_path / "root"
+    smoke_root.mkdir()
+
+    env_path = module._smoke_env(
+        bundle_dir=bundle,
+        smoke_root=smoke_root,
+        port=49152,
+        subnet="10.254.254.0/24",
+        gateway="10.254.254.1",
+    )
+    values = dict(
+        line.split("=", 1)
+        for line in env_path.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    )
+
+    assert values["AIMA_DOCKER_SUBNET"] == "10.254.254.0/24"
+    assert values["AIMA_DOCKER_GATEWAY"] == "10.254.254.1"
+    assert values["AIMA_HTTP_PORT"] == "49152"
+
+
+def test_http_smoke_uses_direct_local_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_module()
+    events: list[tuple[object, ...]] = []
+
+    class FakeResponse:
+        status = 200
+
+        def read(self) -> bytes:
+            events.append(("read",))
+            return b"ok"
+
+    class FakeConnection:
+        def __init__(self, host: str, port: int, *, timeout: int) -> None:
+            events.append(("connect", host, port, timeout))
+
+        def request(self, method: str, path: str) -> None:
+            events.append(("request", method, path))
+
+        def getresponse(self) -> FakeResponse:
+            return FakeResponse()
+
+        def close(self) -> None:
+            events.append(("close",))
+
+    monkeypatch.setattr(module, "HTTPConnection", FakeConnection)
+
+    module._http_get("http://127.0.0.1:49152/health/ready?probe=1")
+
+    assert events == [
+        ("connect", "127.0.0.1", 49152, 5),
+        ("request", "GET", "/health/ready?probe=1"),
+        ("read",),
+        ("close",),
+    ]
+
+
 def test_bundle_checksum_archive_and_publication_finalization(tmp_path: Path) -> None:
     module = _load_module()
     bundle = tmp_path / "release-bundle"

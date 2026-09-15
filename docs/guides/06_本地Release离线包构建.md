@@ -132,7 +132,7 @@ dist/releases/local-20260915/
 → 清理本次 smoke Compose 资源
 ```
 
-Windows 验证时会临时叠加 [`compose.windows.yaml`](../../compose.windows.yaml) 解决 Docker Desktop 的 Linux 文件权限/存储适配，但它**不会进入最终 Release Bundle**。Bundle 中仍只有 canonical [`compose.yaml`](../../compose.yaml)，因此复制到 Linux 服务器后的部署模型不变。
+Windows 验证时会临时叠加 [`compose.windows.yaml`](../../compose.windows.yaml) 解决 Docker Desktop 的 Linux 文件权限/存储适配，并从现有 Docker network 之外选择临时 smoke 子网；这些本地验证设置**不会进入最终 Release Bundle**。Bundle 中仍只有 canonical [`compose.yaml`](../../compose.yaml)，因此复制到 Linux 服务器后的部署模型不变。
 
 本地 `-Verify` 不会删除开发机已有的候选镜像来证明严格隔离；GitHub Release PR dry-run 会执行更严格的 replay，在 `docker load` 前删除候选运行镜像并要求完整离线恢复。
 
