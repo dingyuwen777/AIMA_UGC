@@ -42,7 +42,7 @@ describe('administrator configuration baseline', () => {
     ]) {
       expect(html).toContain(label)
     }
-    expect(html).toContain('品牌编码创建后保持不变')
+    expect(html).toContain('品牌编码创建后不可修改')
     expect(html).toContain('品牌识别词（每行一个）')
     expect(html).toContain('技术标识与原始审计数据仅在需要时展开查看')
     expect(html).not.toContain('词包关联')
