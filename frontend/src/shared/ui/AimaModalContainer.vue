@@ -38,7 +38,7 @@ watch(() => props.modelValue, async (visible, previous) => {
   returnFocus = null
   await nextTick()
   if (target.isConnected) target.focus({ preventScroll: true })
-}, { flush: 'post' })
+}, { flush: 'post', immediate: true })
 </script>
 
 <template>

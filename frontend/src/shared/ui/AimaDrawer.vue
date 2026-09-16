@@ -33,7 +33,7 @@ watch(() => props.modelValue, async (visible, previous) => {
   returnFocus = null
   await nextTick()
   if (target.isConnected) target.focus({ preventScroll: true })
-}, { flush: 'post' })
+}, { flush: 'post', immediate: true })
 </script>
 
 <template>
@@ -95,11 +95,11 @@ watch(() => props.modelValue, async (visible, previous) => {
   height: 100dvh;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--aima-color-border-default);
+  border: 0;
   border-radius: var(--aima-radius-xl) 0 0 var(--aima-radius-xl);
   outline: 0;
   background: var(--aima-color-bg-white);
-  box-shadow: -10px 0 30px rgb(23 32 51 / 12%);
+  box-shadow: inset 0 0 0 1px var(--aima-color-border-default), -10px 0 30px rgb(23 32 51 / 12%);
 }
 .aima-drawer-header,
 .aima-drawer-footer { flex: none; }
