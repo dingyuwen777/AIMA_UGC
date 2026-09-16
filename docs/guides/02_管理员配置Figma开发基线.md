@@ -46,27 +46,13 @@ Figma 中存在“报告策略”设计，但当前产品与机器事实没有�
 
 ## 3. 真实代码 Owner
 
-```text
-路由与管理员可见性
-→ frontend/src/app/routes.ts
-→ frontend/src/app/router.ts
-
-App Shell
-→ frontend/src/app/layouts/AppShell.vue
-
-管理员配置页面组合
-→ frontend/src/features/admin-configuration/pages/AdminConfigurationPage/
-
-Provider 配置唯一业务 Owner
-→ frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue
-
-结构化标签唯一编辑 Owner
-→ frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue
-
-Feature API
-→ frontend/src/features/admin-configuration/api.ts
-→ frontend/src/generated/api/client.ts
-```
+- 路由与管理员可见性 → [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts) 与 [`frontend/src/app/router.ts`](../../frontend/src/app/router.ts)；
+- App Shell → [`frontend/src/app/layouts/AppShell.vue`](../../frontend/src/app/layouts/AppShell.vue)；
+- 管理员配置页面组合 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/AdminConfigurationPage.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/AdminConfigurationPage.vue)；
+- Provider 配置唯一业务 Owner → [`frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue`](../../frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue)；
+- 结构化标签唯一编辑 Owner → [`frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue`](../../frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue)；
+- Feature API → [`frontend/src/features/admin-configuration/api.ts`](../../frontend/src/features/admin-configuration/api.ts)；
+- HTTP 类型链 → [`frontend/src/generated/api/client.ts`](../../frontend/src/generated/api/client.ts)。
 
 Figma MCP 返回的 React/Tailwind 代码只用于恢复设计结构；生产实现保持当前 Vue 3 + TypeScript + CSS/Design Token 技术栈，不引入 Tailwind、第二套 UI Library、第二套 API 或第二套状态管理。
 
@@ -87,7 +73,7 @@ Figma MCP 返回的 React/Tailwind 代码只用于恢复设计结构；生产实
 
 ### Provider
 
-AI 模型和 TikHub 继续复用同一个 `ProviderConfigurationPanel`：
+AI 模型和 TikHub 继续复用同一个 Provider 配置业务 Owner：
 
 - Secret/API Key 不回显；
 - 测试连接只测试已保存配置；
@@ -170,15 +156,15 @@ Audit 正式列宽参考：
 
 ## 6. 公共组件与 Feature 边界
 
-继续复用：
+继续复用以下当前公共 Owner：
 
-- `AimaButton.vue`
-- `AimaPageHeader.vue`
-- `AimaFeedbackBanner.vue`
-- `AimaDialog.vue`
-- `AimaModalContainer.vue`
-- `AimaDrawer.vue`
-- `AimaIcon.vue`
+- [`frontend/src/shared/ui/AimaButton.vue`](../../frontend/src/shared/ui/AimaButton.vue)
+- [`frontend/src/shared/ui/AimaPageHeader.vue`](../../frontend/src/shared/ui/AimaPageHeader.vue)
+- [`frontend/src/shared/ui/AimaFeedbackBanner.vue`](../../frontend/src/shared/ui/AimaFeedbackBanner.vue)
+- [`frontend/src/shared/ui/AimaDialog.vue`](../../frontend/src/shared/ui/AimaDialog.vue)
+- [`frontend/src/shared/ui/AimaModalContainer.vue`](../../frontend/src/shared/ui/AimaModalContainer.vue)
+- [`frontend/src/shared/ui/AimaDrawer.vue`](../../frontend/src/shared/ui/AimaDrawer.vue)
+- [`frontend/src/shared/ui/AimaIcon.vue`](../../frontend/src/shared/ui/AimaIcon.vue)
 
 页面私有的 Brand Directory、Brand Detail、Vehicle Dialog、Scheme Version List、Audit Table 等保持在管理员配置 Page/Feature 内；只有真实跨 Feature 复用后才提升到 `shared`。
 
