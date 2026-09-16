@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260916-collection-strategy-figma-alignment
 title: 收敛采集策略前端到当前有效 Figma 基线
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/collection-strategy-figma-sync
 created: 2026-09-16
-updated: 2026-09-16
+updated: 2026-09-17
 completion_gate: required
 depends_on: []
 affected_areas:
