@@ -33,25 +33,32 @@ withDefaults(defineProps<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   border: 1px solid var(--aima-border-strong);
-  border-radius: var(--aima-radius-lg);
-  color: var(--aima-text);
+  border-radius: var(--aima-radius-control);
+  color: var(--aima-text-secondary);
   background: var(--aima-surface);
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 20px;
   transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
 }
-.is-medium { height: 40px; padding: 4px 16px; }
-.is-small { height: 32px; padding: 4px 12px; }
+
+.is-medium {
+  min-height: var(--aima-control-height-md);
+  padding: 0 15px;
+  font-size: var(--aima-font-size-control);
+}
+
+.is-small {
+  min-height: var(--aima-button-height-sm);
+  padding: 0 10px;
+  font-size: var(--aima-font-size-body-small);
+}
+
 .is-primary { border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); }
 .is-outline { border-color: var(--aima-primary); color: var(--aima-primary); }
-.is-text { height: 32px; padding: 4px 12px; border-color: transparent; color: var(--aima-color-info); background: transparent; }
+.is-text { min-height: auto; padding: 4px; border-color: transparent; color: var(--aima-primary); background: transparent; }
 .aima-button:not(:disabled):hover { border-color: var(--aima-primary); color: var(--aima-primary); }
 .is-primary:not(:disabled):hover { color: #fff; background: var(--aima-primary-hover); }
-.is-text:not(:disabled):hover { border-color: transparent; color: var(--aima-primary); background: transparent; }
 .aima-button:focus-visible { outline: 2px solid var(--aima-primary-soft-strong); outline-offset: 2px; }
-.aima-button:disabled { border-color: var(--aima-border); color: var(--aima-text-disabled); background: var(--aima-surface); cursor: not-allowed; opacity: 1; }
+.aima-button:disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); cursor: not-allowed; opacity: .72; }
 </style>
