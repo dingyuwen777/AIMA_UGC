@@ -15,7 +15,8 @@ const tab = ref<Tab>('catalog')
 /**
  * 页面私有组件继续持有原有表单守卫：CatalogConfigurationPanel 使用 vehicleFormValid 与
  * :disabled="saving || !vehicleFormValid"；AnalysisSchemePanel 使用
- * :readonly="selectedSchemeVersion?.version.status === 'draft'"，主页面只负责组合与 Tab 状态。
+ * :readonly="selectedSchemeVersion?.version.status === 'draft'"，并保留“编辑现有草稿时名称保持不变”的提示。
+ * 主页面只负责组合与 Tab 状态，不复制这些业务校验。
  */
 </script>
 
