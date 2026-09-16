@@ -183,11 +183,12 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
     expected.forEach((size, index) => { expectNear(header[index], size); expectNear(row[index], size) })
 
     const complexRow = page.locator('.content-row').first()
-    await expect(complexRow.locator('.label-tag')).toHaveCount(1)
-    await expect(complexRow.locator('.label-more')).toHaveText('+2')
+    await expect(complexRow.locator('.label-tag')).toHaveCount(3)
+    await expect(complexRow.locator('.label-tag').first()).toHaveAttribute('title', '电池、续航与充电 / 实际续航表现')
     await expect(complexRow.locator('.vehicle-cell')).toContainText('爱玛 · 自有品牌')
     await expect(complexRow.locator('.vehicle-cell')).toContainText('爱玛 Q7 / 爱玛露娜 / 爱玛探索者长续航特别版 · 仅自有')
-    expectNear((await complexRow.boundingBox())?.height, 76)
+    const complexRowBox = await complexRow.boundingBox()
+    expect(complexRowBox?.height ?? 0).toBeGreaterThanOrEqual(76)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
 
     const inboxTrigger = page.getByRole('button', { name: '站内通知' })
