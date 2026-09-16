@@ -139,8 +139,9 @@ test('requires a source file but not Provider search or a single-vehicle filter'
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('aima'),
   })
-  await expect(dialog.getByLabel('搜索条件')).toHaveValue('不适用于 Excel 文件导入')
-  await expect(dialog).toContainText('创建任务时冻结品牌与旗下车型目录快照；Excel 导入不会发起 Provider 搜索。')
+  await expect(dialog.getByText('搜索条件', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('不适用于 Excel 文件导入', { exact: true })).toBeVisible()
+  await expect(dialog).toContainText('创建后冻结品牌车型目录快照并执行预检；Excel 不执行 Provider 搜索，导入完成后不会自动触发智能分析。')
   await expect(submitButton).toBeEnabled()
   await expect(submitButton).toHaveCSS('cursor', 'pointer')
 })
@@ -240,8 +241,8 @@ test('allows an interrupted local upload Campaign to be cancelled', async ({ pag
     })
   })
 
-  const dialog = await openImportDialog(page)
-  await dialog.getByRole('button', { name: '打开导入任务 本地文件导入' }).click()
+  await page.goto(`/collection-runtime?data_import_campaign_id=${campaignId}`)
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
   const cancelButton = dialog.getByRole('button', { name: '取消任务', exact: true })
   await expect(cancelButton).toBeEnabled()
   await cancelButton.click()
