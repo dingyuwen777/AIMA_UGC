@@ -24,6 +24,38 @@
 }
 
 /*
+ * 声音广场 release-2 PageShell：1440 为视觉锚点，1180/1920 只改变可用工作区，
+ * 不缩放整个页面。横向溢出由表格自己的 viewport 消化。
+ */
+#app .app-shell .workspace-main:has(> .voice-plaza-page) {
+  padding: 28px 24px 20px;
+}
+
+#app .app-shell .voice-plaza-page {
+  gap: 20px;
+}
+
+#app .app-shell .voice-plaza-page > .aima-page-header {
+  margin-bottom: 0;
+}
+
+#app .app-shell .voice-plaza-page .aima-page-actions .aima-button {
+  min-height: 32px;
+  padding-inline: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+#app .app-shell .voice-plaza-page .list-heading {
+  min-height: 28px;
+}
+
+#app .app-shell .voice-plaza-page .pagination {
+  min-height: 53px;
+  padding: 12px 0 20px;
+}
+
+/*
  * 以下旧页面 Typography 迁移规则显式挂到 #app。
  * Vue scoped CSS 会给页面选择器追加 data-v 属性；这里用稳定的应用根作用域提高
  * specificity，确保 semantic token 真正覆盖旧 9–10px 值，而不使用 !important。
@@ -173,14 +205,6 @@
 
   .app-shell .voice-plaza-page .filter-row {
     flex-wrap: wrap;
-  }
-
-  .app-shell .voice-plaza-page .filters .field--search {
-    flex: 1 1 280px;
-  }
-
-  .app-shell .voice-plaza-page .filters .field:not(.field--search) {
-    flex: 1 1 150px;
   }
 
   .app-shell .voice-plaza-page :where(.active-analysis-heading, .list-heading, .pagination),
