@@ -4,6 +4,10 @@ import { computed, onMounted, ref } from 'vue'
 import { formatDateTime } from '../../shared/domain/beijingTime'
 import { useIdentityStore } from './store'
 
+withDefaults(defineProps<{
+  compact?: boolean
+}>(), { compact: false })
+
 const store = useIdentityStore()
 const open = ref(false)
 const unreadIds = computed(() => store.notifications.filter((item) => !item.is_read).map((item) => item.id))
@@ -18,12 +22,16 @@ async function toggle(): Promise<void> {
 </script>
 
 <template>
-  <div class="inbox">
+  <div
+    class="inbox"
+    :class="{ 'inbox--compact': compact }"
+  >
     <button
       class="inbox-trigger"
       type="button"
       :aria-expanded="open"
       aria-label="站内通知"
+      title="消息中心"
       @click="toggle"
     >
       <img
@@ -31,7 +39,7 @@ async function toggle(): Promise<void> {
         width="18"
         height="18"
         alt=""
-      ><span>消息中心</span>
+      ><span class="inbox-trigger-label">消息中心</span>
       <b v-if="store.unreadCount">{{ Math.min(store.unreadCount, 99) }}</b>
     </button>
     <section
@@ -91,6 +99,11 @@ async function toggle(): Promise<void> {
 .inbox { position: relative; }
 .inbox-trigger { position: relative; display: flex; width: 100%; height: 38px; align-items: center; gap: 10px; padding: 0 12px; border: 0; border-radius: 6px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; font-size: 13px; }
 .inbox-trigger b { position: absolute; top: -5px; right: -7px; min-width: 18px; height: 18px; padding: 0 4px; border: 2px solid #fff; border-radius: 9px; color: #fff; background: var(--aima-primary); font-size: 9px; line-height: 14px; }
+.inbox--compact { flex: none; }
+.inbox--compact .inbox-trigger { width: 28px; height: 28px; justify-content: center; padding: 0; border-radius: 6px; background: transparent; }
+.inbox--compact .inbox-trigger:hover { color: var(--aima-primary); background: var(--aima-primary-soft); }
+.inbox--compact .inbox-trigger-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.inbox--compact .inbox-trigger b { top: -6px; right: -6px; }
 .inbox-panel { position: absolute; z-index: 80; bottom: 0; left: calc(100% + 12px); width: min(360px, calc(100vw - 200px)); max-height: min(480px, calc(100dvh - 100px)); overflow: auto; border: 1px solid var(--aima-border); border-radius: 10px; background: var(--aima-surface); box-shadow: var(--aima-shadow-floating); }
 .inbox-panel header { position: sticky; top: 0; display: flex; min-height: 58px; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--aima-border); background: var(--aima-surface); }
 .inbox-panel header div { display: grid; gap: 3px; }

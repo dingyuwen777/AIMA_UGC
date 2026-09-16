@@ -11,13 +11,13 @@ import type {
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDateRange from '../../../../../shared/ui/AimaDateRange.vue'
 import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
+import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import {
   analysisStatusLabel,
   contentTypeLabel,
   platformLabel,
   relevanceLabel,
 } from '../../../format'
-import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 
 const props = withDefaults(defineProps<{
   search: string
@@ -81,6 +81,7 @@ const competitionLabel = computed(() => {
 function optionLabel(value: string, source: 'active' | 'historical'): string {
   return source === 'historical' ? `${value}（历史数据）` : value
 }
+
 /** 从原生输入控件事件中读取字符串值，保持页面与 Store 的 v-model 边界单一。 */
 function value(event: Event): string {
   return (event.target as HTMLInputElement | HTMLSelectElement).value
@@ -161,9 +162,11 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         />
       </div>
     </div>
+
     <p class="filter-hint">
       可与平台、品牌、车型、竞争范围、AI 分析结果和发布时间组合筛选
     </p>
+
     <div class="filter-row filter-row--secondary">
       <BrandMultiSelect
         :model-value="brandIds"
@@ -204,12 +207,13 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         :value="contentType"
         :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:contentType', value($event))"
-      ><option value="">全部类型</option><option
+      ><option value="">全部内容类型</option><option
         v-for="item in filterOptions?.content_types ?? []"
         :key="item"
         :value="item"
       >{{ contentTypeLabel(item) }}</option></select></label>
     </div>
+
     <div class="filter-row filter-row--tertiary">
       <label class="field field--label"><span>一级标签</span><select
         aria-label="一级标签"
@@ -232,6 +236,7 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         :value="item.value"
       >{{ optionLabel(item.value, item.source) }}</option></select></label>
     </div>
+
     <footer class="filter-footer">
       <div class="filter-summary">
         <span>当前条件：</span><span class="filter-chip filter-chip--primary">{{ platform ? platformLabel(platform) : '全部平台' }}</span><span class="filter-chip">{{ brandIds.length ? `已选 ${brandIds.length} 个品牌` : '全部品牌' }}</span><span class="filter-chip">{{ vehicleModelIds.length ? `已选 ${vehicleModelIds.length} 款车型` : '全部车型' }}</span><span class="filter-chip">{{ competitionLabel }}</span><span class="filter-chip">{{ primaryLabel || '全部一级标签' }}</span><button
@@ -263,35 +268,47 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 </template>
 
 <style scoped>
-.filters { min-width: 0; padding: 20px; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); }
-.filter-row { display: grid; min-width: 0; align-items: start; gap: 16px; }
-.filter-row--primary { grid-template-columns: minmax(240px, 1fr) 140px 150px 120px 130px 200px; }
-.filter-row--secondary { grid-template-columns: repeat(2, minmax(170px, 1fr)) minmax(170px, 1fr) 160px 130px; }
-.filter-row--tertiary { grid-template-columns: repeat(2, minmax(220px, 1fr)); margin-top: 12px; }
+.filters { display: grid; min-width: 0; gap: 12px; padding: 20px; border: 0; border-radius: 8px; background: var(--aima-surface); box-shadow: inset 0 0 0 1px var(--aima-border); }
+.filter-row { display: flex; min-width: 0; flex-wrap: wrap; align-items: flex-start; gap: 12px 16px; }
+.filter-row--primary .field--search { min-width: 280px; flex: 1 1 280px; }
+.filter-row--primary .field--platform { flex: 0 0 140px; }
+.filter-row--primary .field--relevance { flex: 0 0 150px; }
+.filter-row--primary .field--sentiment { flex: 0 0 120px; }
+.filter-row--primary .field--status { flex: 0 0 130px; }
+.filter-row--primary .field--date { flex: 0 0 200px; }
+.filter-row--secondary > :nth-child(1),
+.filter-row--secondary > :nth-child(2),
+.filter-row--secondary > :nth-child(3) { min-width: 180px; flex: 0 0 180px; }
+.filter-row--secondary > :nth-child(4),
+.filter-row--secondary > :nth-child(5) { min-width: 160px; flex: 0 0 160px; }
+.filter-row--tertiary > .field { min-width: 180px; flex: 1 1 180px; }
 .field { display: grid; min-width: 0; gap: 6px; color: var(--aima-text-muted); font-size: 12px; font-weight: 700; }
 .field input, .field select { width: 100%; height: 40px; min-width: 0; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: 8px; color: var(--aima-text-muted); background: var(--aima-surface); font: inherit; font-size: 13px; font-weight: 400; }
 .field input::placeholder { color: var(--aima-text-disabled); }
 .field select:disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); cursor: not-allowed; }
 .field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: 1px; }
-.multi-select { position: relative; height: 40px; border: 1px solid var(--aima-border-strong); border-radius: 8px; background: var(--aima-surface); font-size: 13px; font-weight: 400; }.multi-select summary { height: 38px; padding: 10px 12px; overflow: hidden; cursor: pointer; list-style: none; text-overflow: ellipsis; white-space: nowrap; }.multi-select[open] { z-index: 5; }.multi-select label { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 12px; border-inline: 1px solid var(--aima-border); background: #fff; }.multi-select label:last-child { border-bottom: 1px solid var(--aima-border); border-radius: 0 0 8px 8px; }.multi-select input { width: 14px; height: 14px; }
-.filter-hint { margin: 10px 0 12px; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
-.filter-footer { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.multi-select { position: relative; height: 40px; border: 1px solid var(--aima-border-strong); border-radius: 8px; background: var(--aima-surface); font-size: 13px; font-weight: 400; }
+.multi-select summary { height: 38px; padding: 10px 12px; overflow: hidden; cursor: pointer; list-style: none; text-overflow: ellipsis; white-space: nowrap; }
+.multi-select[open] { z-index: 5; }
+.multi-select label { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 12px; border-inline: 1px solid var(--aima-border); background: #fff; }
+.multi-select label:last-child { border-bottom: 1px solid var(--aima-border); border-radius: 0 0 8px 8px; }
+.multi-select input { width: 14px; height: 14px; }
+.filter-hint { display: none; margin: 0; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
+.filter-footer { display: flex; min-width: 0; min-height: 45px; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--aima-border); }
 .filter-summary { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--aima-text-muted); font-size: 12px; }
-.filter-chip { max-width: 100%; padding: 3px 8px; border: 0; border-radius: 4px; color: var(--aima-text-muted); background: var(--aima-color-bg-hover); font: inherit; overflow-wrap: anywhere; }
+.filter-chip { max-width: 100%; padding: 4px 10px; border: 0; border-radius: 4px; color: var(--aima-text-muted); background: var(--aima-color-bg-hover); font: inherit; overflow-wrap: anywhere; }
 .filter-chip--primary { color: var(--aima-primary); background: var(--aima-primary-soft); }
 .filter-actions { display: flex; flex: none; gap: 12px; }
-@media (max-width: 1439px) {
-  .filter-row--primary { grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(120px, 1fr)); }
-  .field--status { grid-column: 1; }
-  .field--date { grid-column: 2 / span 2; }
-  .filter-row--secondary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .filter-row--tertiary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .field--label { grid-column: auto; }
+.filter-actions :deep(.aima-button) { min-height: 32px; padding-inline: 16px; border-radius: 4px; font-size: 13px; }
+@media (max-width: 1279px) {
+  .filter-hint { display: block; }
+  .filter-footer { align-items: flex-start; flex-wrap: wrap; }
 }
 @media (max-width: 900px) {
-  .filter-row--primary, .filter-row--secondary, .filter-row--tertiary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .field--search, .field--date { grid-column: 1 / -1; }
-  .field--status { grid-column: auto; }
-  .filter-footer { align-items: flex-start; flex-wrap: wrap; }
+  .filter-row--primary > .field,
+  .filter-row--secondary > :nth-child(n),
+  .filter-row--tertiary > .field { min-width: min(100%, 180px); flex: 1 1 calc(50% - 8px); }
+  .filter-row--primary .field--search,
+  .filter-row--primary .field--date { flex-basis: 100%; }
 }
 </style>
