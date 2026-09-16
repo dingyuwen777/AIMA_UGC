@@ -139,17 +139,31 @@ function safeJson(value: Record<string, unknown>): string {
           >
             <td>{{ formatDateTime(event.created_at) }}</td>
             <td>{{ auditActorLabel(event.actor_ref) }}</td>
-            <td><strong>{{ auditActionLabel(event.event_type) }}</strong></td>
+            <td>
+              <strong>{{ auditActionLabel(event.event_type) }}</strong>
+            </td>
             <td>{{ auditObjectLabel(event.object_type, event.object_id) }}</td>
             <td>{{ auditSummaryText(event) }}</td>
             <td>
               <details class="technical-details audit-details">
                 <summary>技术详情</summary>
                 <dl>
-                  <div><dt>事件类型</dt><dd>{{ event.event_type }}</dd></div>
-                  <div><dt>对象类型</dt><dd>{{ event.object_type ?? '—' }}</dd></div>
-                  <div><dt>对象标识</dt><dd>{{ event.object_id ?? '—' }}</dd></div>
-                  <div><dt>请求标识</dt><dd>{{ event.request_id ?? '—' }}</dd></div>
+                  <div>
+                    <dt>事件类型</dt>
+                    <dd>{{ event.event_type }}</dd>
+                  </div>
+                  <div>
+                    <dt>对象类型</dt>
+                    <dd>{{ event.object_type ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>对象标识</dt>
+                    <dd>{{ event.object_id ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>请求标识</dt>
+                    <dd>{{ event.request_id ?? '—' }}</dd>
+                  </div>
                 </dl>
                 <div class="raw-detail">
                   <strong>安全审计数据</strong>
