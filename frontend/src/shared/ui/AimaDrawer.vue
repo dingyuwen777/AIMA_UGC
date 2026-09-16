@@ -23,6 +23,7 @@ function close(): void {
 /** 打开时把键盘焦点移入抽屉，关闭后恢复到触发控件，保证 Escape 与连续操作可达。 */
 watch(() => props.modelValue, async (visible, previous) => {
   if (visible) {
+    if (typeof document === 'undefined' || typeof HTMLElement === 'undefined') return
     returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     await nextTick()
     panel.value?.focus({ preventScroll: true })

@@ -28,6 +28,7 @@ function close(): void {
 /** 打开时把焦点移入模态框，关闭后恢复触发控件，兼容嵌套资源详情的键盘返回。 */
 watch(() => props.modelValue, async (visible, previous) => {
   if (visible) {
+    if (typeof document === 'undefined' || typeof HTMLElement === 'undefined') return
     returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     await nextTick()
     panel.value?.focus({ preventScroll: true })
