@@ -88,7 +88,9 @@ Excluded：新增数据库表/状态枚举、修改 Excel Profile/Canonical/Cont
 - [x] PR head `82fa268480f16a9cdb767271f8cd3d6b9903a1b3`：治理、Ruff/Mypy、Unit/Contract/API、架构/Owner、Wheel、前端 unit/build/Browser Mock、PostgreSQL Integration、Runtime Acceptance、Developer Tooling 均通过。
 - [x] Full-stack 失败已与 current main `ccab9d50a17e3b8faab85eccf891fabfe36b63ce` 对照：两者均只在 `admin-product-capabilities.spec.ts` 的声音广场车型系列/类别断言失败，非本 Change 引入；不绕过 required gate。
 - [x] 任务分支已非强制同步 current main，保留其 env 模板更新。
-- [ ] 最新同步 head current-head CI 与独立 Review 复核。
+- [x] PR 描述已移除 `Closes #506` 并收敛为当前实现/证据；Issue 只在 merge 后 main-fresh 与 Change archive 完成后关闭。
+- [ ] 当前提交触发最新同步 head 的完整 current-head CI；不再修改 PR 元数据，避免 metadata-only 取消该运行。
+- [ ] current-head CI 后执行最终独立 Review。
 - [ ] required checks 全部满足后 guarded merge；随后取得 main fresh、repository-native Change archive 和 Issue Closure Evidence。
 
 # 当前新鲜证据
@@ -98,6 +100,7 @@ Excluded：新增数据库表/状态枚举、修改 Excel Profile/Canonical/Cont
 - 真实 Green：PR run 35066151634 的 PostgreSQL Integration job 104698171000 通过，直接覆盖正常+空、正常+坏、全空、全坏；同一 run 的前端、静态、Unit/API、架构与 Wheel 均通过。
 - 基线隔离：current main CI run 35065984387 与 PR run 35066151634 在同一 Full-stack 用例 `admin-product-capabilities.spec.ts`、同一系列/类别文本断言失败；本 Change 未修改声音广场车型展示或该用例。
 - task branch 已同步 current main `ccab9d50a17e3b8faab85eccf891fabfe36b63ce`，同步提交使用两个 parent 且非强制更新分支。
+- Ruleset `main-quality-gate` 当前 required checks 为 `CI Gate`、`Requirement Traceability and Completion Audit`、`Compose Golden Path`；即使当前账号可 bypass，也禁止用 bypass 代替绿色 required checks。
 
 # Completion Audit
 
