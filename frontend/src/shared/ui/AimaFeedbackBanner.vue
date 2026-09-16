@@ -21,7 +21,7 @@ const icon = computed<AimaIconName>(() => props.tone === 'error' ? 'warning' : p
   >
     <AimaIcon
       :name="icon"
-      :size="17"
+      :size="16"
     />
     <div><slot /></div>
   </div>
@@ -31,23 +31,18 @@ const icon = computed<AimaIconName>(() => props.tone === 'error' ? 'warning' : p
 .aima-feedback {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 11px 13px;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
   border: 1px solid;
-  border-radius: var(--aima-radius-control);
-  font-size: var(--aima-font-size-body-small);
-  line-height: var(--aima-line-height-body);
+  border-radius: var(--aima-radius-lg);
+  font-size: 12px;
+  line-height: 18px;
 }
-
-.aima-feedback > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.aima-feedback svg { flex: none; margin-top: 1px; }
-.is-info { border-color: #1677ff; color: #1768c8; background: #eef7ff; }
-.is-success { border-color: #afe2c8; color: #14834f; background: #effaf4; }
-.is-warning { border-color: #ffd29f; color: #a85709; background: #fff8ef; }
-.is-error { border-color: #ffc4ca; color: #b4232d; background: #fff5f6; }
+.aima-feedback > div { min-width: 0; overflow-wrap: anywhere; }
+.aima-feedback svg { flex: none; }
+.is-info { border-color: var(--aima-color-info); color: var(--aima-color-info); background: var(--aima-color-info-bg); }
+.is-success { border-color: var(--aima-color-success); color: var(--aima-color-success); background: var(--aima-color-success-bg); }
+.is-warning { border-color: var(--aima-color-warning); color: var(--aima-color-warning); background: var(--aima-color-warning-bg); }
+.is-error { border-color: var(--aima-color-error); color: var(--aima-color-error); background: var(--aima-color-error-bg); }
 </style>
