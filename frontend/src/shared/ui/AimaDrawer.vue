@@ -37,7 +37,10 @@ function close(): void {
           v-if="$slots.header"
           class="aima-drawer-header"
         >
-          <slot name="header" :close="close" />
+          <slot
+            name="header"
+            :close="close"
+          />
         </div>
         <div class="aima-drawer-body">
           <slot />
@@ -46,7 +49,10 @@ function close(): void {
           v-if="$slots.footer"
           class="aima-drawer-footer"
         >
-          <slot name="footer" :close="close" />
+          <slot
+            name="footer"
+            :close="close"
+          />
         </div>
       </aside>
     </div>
