@@ -204,7 +204,7 @@ async function viewContents(batchId: string): Promise<void> {
       tone="error"
       role="alert"
     >
-      {{ store.error }}
+      采集运行刷新失败，当前列表已保留，请稍后重试。
     </AimaFeedbackBanner>
 
     <div class="list-heading">
