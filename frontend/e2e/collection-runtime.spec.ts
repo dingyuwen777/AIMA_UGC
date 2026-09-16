@@ -503,7 +503,7 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
   await expect(detail).not.toContainText('providers/tikhub')
 })
 
-test('shows the stable unified Error Contract request_id', async ({ page }) => {
+test('keeps unified Error Contract technical ids out of the product list error state', async ({ page }) => {
   await page.unroute('**/api/v1/**')
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
@@ -511,5 +511,6 @@ test('shows the stable unified Error Contract request_id', async ({ page }) => {
     await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: '分页服务暂不可用', status: 503, detail: '分页服务配置不可用，请使用 request_id 联系管理员。', request_id: 'req_stage8e_error', errors: [] }) })
   })
   await page.goto('/collection-runtime')
-  await expect(page.getByRole('alert').filter({ hasText: 'req_stage8e_error' })).toContainText('req_stage8e_error')
+  await expect(page.getByRole('alert')).toContainText('采集运行加载失败，请稍后重试。')
+  await expect(page.getByText('req_stage8e_error', { exact: false })).toHaveCount(0)
 })

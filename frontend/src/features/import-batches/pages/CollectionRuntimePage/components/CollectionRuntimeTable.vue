@@ -64,10 +64,7 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
         tone="error"
         role="alert"
       >
-        <div class="error-copy">
-          <strong>采集运行加载失败，请稍后重试。</strong>
-          <small>{{ error }}</small>
-        </div>
+        采集运行加载失败，请稍后重试。
       </AimaFeedbackBanner>
       <AimaButton
         variant="secondary"
@@ -159,7 +156,7 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
 .table-head { min-height: 44px; padding: 0 16px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-muted); background: var(--aima-color-bg-table-header); font-size: 12px; font-weight: 500; }
 .table-head span { text-align: center; }
 .table-row { position: relative; min-height: 78px; padding: 16px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-secondary); font-size: 13px; line-height: 20px; }
-.table-row:nth-of-type(odd) { background: var(--aima-color-bg-subtle); }
+.table-row:nth-of-type(even) { background: var(--aima-color-bg-subtle); }
 .table-row:last-child { border-bottom: 0; }
 .identity { min-width: 0; text-align: center; }
 .identity strong, .identity span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -178,9 +175,6 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
 .skeleton-row { width: 100%; height: 20px; border-radius: var(--aima-radius-sm); background: var(--aima-color-bg-subtle); }
 .table-state--error { display: grid; min-height: 178px; gap: 20px; align-content: center; justify-items: end; }
 .table-state--error :deep(.aima-feedback) { width: 100%; }
-.error-copy { display: grid; gap: 2px; }
-.error-copy strong { font-size: 12px; font-weight: 500; line-height: 18px; }
-.error-copy small { font-size: 10px; line-height: 16px; opacity: .82; }
 .table-state--error :deep(.aima-button) { min-width: 92px; }
 .table-state--empty { min-height: 196px; }
 .table-state--empty :deep(.aima-empty-state) { width: min(100%, 420px); margin: 0 auto; }
