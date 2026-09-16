@@ -74,15 +74,17 @@ function relevanceClass(item: ContentListItemResponse): string {
 function analysisMeta(item: ContentListItemResponse): string {
   const reviewBadge = badge(item)
   const voiceType = item.analysis.voice_type ? `发声：${item.analysis.voice_type} · ` : ''
+  const labelText = labels(item).map(labelPairText).join('、')
   if (item.analysis.status === 'stale') {
     return reviewBadge ? `AI stale · ${reviewBadge}` : 'AI stale · 需重新打标'
   }
   if (item.analysis.status !== 'completed') {
     return reviewBadge ? `AI 未完成 · ${reviewBadge}` : 'AI 未完成'
   }
-  return reviewBadge
+  const base = reviewBadge
     ? `${voiceType}AI 已完成 · ${reviewBadge}`
     : `${voiceType}AI 已完成 · 人工未覆盖`
+  return labelText ? `${base} · ${labelText}` : base
 }
 
 /** 返回当前行可执行的人工相关性复核决策。 */
@@ -136,7 +138,32 @@ function brandRoleLabel(role: 'owned' | 'competitor' | 'other'): string {
 }
 
 function competitionScopeLabel(scope?: ContentListItemResponse['competition_scope']): string {
-  return scope ? ({ owned_only: '仅自有品牌', competitor_only: '仅竞品品牌', mixed: '自有与竞品混合', other_only: '仅其他品牌', none_detected: '未识别品牌' })[scope] : '未识别品牌'
+  return scope ? ({ owned_only: '仅自有', competitor_only: '仅竞品', mixed: '混合', other_only: '仅其他', none_detected: '未识别' })[scope] : '未识别'
+}
+
+/** 主列表只展示用户决策需要的品牌/车型摘要，完整系列与分类信息保留在 title/详情。 */
+function brandSummary(item: ContentListItemResponse): string {
+  const brands = item.brands ?? []
+  if (!brands.length) return '未关联品牌'
+  if (brands.length === 1) return `${brands[0]!.display_name} · ${brandRoleLabel(brands[0]!.role)}品牌`
+  return brands.map((brand) => brand.display_name).join(' / ')
+}
+
+function vehicleSummary(item: ContentListItemResponse): string {
+  const names = (item.vehicles ?? []).map((vehicle) => vehicle.display_name)
+  const vehicleText = names.length ? names.join(' / ') : '未关联车型'
+  return `${vehicleText} · ${competitionScopeLabel(item.competition_scope)}`
+}
+
+function vehicleCellTitle(item: ContentListItemResponse): string {
+  const brands = (item.brands ?? []).map((brand) => `${brand.display_name}（${brandRoleLabel(brand.role)}品牌）`)
+  const vehicles = (item.vehicles ?? []).map((vehicle) => [
+    vehicle.display_name,
+    vehicle.brand?.display_name ? `所属 ${vehicle.brand.display_name}` : null,
+    vehicle.series_name,
+    vehicle.category_name,
+  ].filter(Boolean).join(' · '))
+  return [...brands, ...vehicles, `竞争范围：${competitionScopeLabel(item.competition_scope)}`].join('；')
 }
 </script>
 
@@ -172,7 +199,7 @@ function competitionScopeLabel(scope?: ContentListItemResponse['competition_scop
           alt=""
         ></button>
       </span>
-      <span>AI 分析</span><span>品牌 / 车型 / 竞争范围</span>
+      <span>AI 分析</span><span>品牌 / 车型 / 竞品</span>
       <span
         role="columnheader"
         :aria-sort="sortLabel('published_at')"
@@ -279,44 +306,33 @@ function competitionScopeLabel(scope?: ContentListItemResponse['competition_scop
             v-if="item.analysis.voice_type"
             class="status-badge status-badge--voice"
           >{{ item.analysis.voice_type }}</span>
-          <span
-            v-if="item.availability && item.availability.status !== 'available'"
-            class="status-badge status-badge--neutral"
-          >{{ item.availability.status }}</span>
         </div>
         <div
           data-testid="content-labels"
           class="label-summary"
         >
           <span
-            v-for="label in labels(item)"
-            :key="labelPairText(label)"
+            v-if="labels(item).length"
             class="label-tag"
-            :title="labelPairText(label)"
-          >{{ label.primary_label }}</span>
+            :title="labels(item).map(labelPairText).join('、')"
+          >{{ labels(item)[0]?.primary_label }}</span>
+          <span
+            v-if="labels(item).length > 1"
+            class="label-more"
+            :title="labels(item).slice(1).map(labelPairText).join('、')"
+          >+{{ labels(item).length - 1 }}</span>
           <span
             v-if="!labels(item).length"
             class="empty-label"
           >暂无 AI 标签</span>
         </div>
       </div>
-      <div class="vehicle-cell">
-        <div
-          v-for="brand in item.brands ?? []"
-          :key="brand.id"
-          class="brand-line"
-        >
-          <strong>{{ brand.display_name }}</strong><span>{{ brandRoleLabel(brand.role) }}品牌</span>
-        </div>
-        <div
-          v-for="vehicle in item.vehicles ?? []"
-          :key="vehicle.vehicle_model_id"
-        >
-          <strong>{{ vehicle.display_name }}</strong>
-          <span>{{ vehicle.brand?.display_name ? `所属 ${vehicle.brand.display_name}` : '所属品牌未确认' }}{{ vehicle.series_name || vehicle.category_name ? ` · ${[vehicle.series_name, vehicle.category_name].filter(Boolean).join(' · ')}` : '' }}</span>
-        </div>
-        <span v-if="!(item.brands ?? []).length && !item.vehicles?.length">未关联</span>
-        <span class="competition-scope">{{ competitionScopeLabel(item.competition_scope) }}</span>
+      <div
+        class="vehicle-cell"
+        :title="vehicleCellTitle(item)"
+      >
+        <strong>{{ brandSummary(item) }}</strong>
+        <span>{{ vehicleSummary(item) }}</span>
       </div>
       <time>
         <strong>{{ dateTimeParts(item.published_at)[0] }}</strong>
@@ -345,38 +361,37 @@ function competitionScopeLabel(scope?: ContentListItemResponse['competition_scop
 </template>
 
 <style scoped>
-.content-list { overflow-x: auto; border-radius: 4px; background: var(--aima-surface); box-shadow: inset 0 0 0 1px var(--aima-border); }
-.table-head, .content-row { display: grid; min-width: 1212px; grid-template-columns: 16px minmax(220px, 1fr) 76px 190px 230px 110px 110px; column-gap: 12px; align-items: center; }
+.content-list { min-width: 0; overflow-x: auto; overflow-y: hidden; border-radius: 8px; background: var(--aima-surface); box-shadow: inset 0 0 0 1px var(--aima-border); }
+.table-head, .content-row { display: grid; min-width: 1212px; grid-template-columns: 16px minmax(422px, 1fr) 80px 200px 150px 120px 120px; column-gap: 12px; align-items: center; }
 .table-head > :nth-child(2), .table-head > :nth-child(4), .table-head > :nth-child(5) { text-align: center; }
-.table-head { min-height: 40px; padding: 0 24px 0 8px; color: var(--aima-text-muted); background: var(--aima-color-bg-table-header); font-size: 12px; font-weight: 600; }
+.table-head { min-height: 40px; padding: 0 24px 0 8px; color: var(--aima-text-muted); background: var(--aima-color-bg-table-header); font-size: 13px; font-weight: 700; }
 .content-row { min-height: 76px; padding: 16px 24px 16px 8px; border-top: 1px solid var(--aima-border); }
 .check { display: grid; place-items: center; }
 .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--aima-primary); }
 .content-copy, .analysis-cell, .fans-cell, .vehicle-cell, time { min-width: 0; }
-.content-copy { display: grid; gap: 4px; }
-.title-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.platform-mark { display: grid; flex: none; place-items: center; min-width: 22px; height: 22px; padding-inline: 4px; border-radius: 2px; color: #fff; background: var(--aima-primary); font-size: 12px; font-weight: 700; }
+.content-copy { display: grid; gap: 6px; }
+.title-line { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.platform-mark { display: grid; min-width: 22px; height: 22px; flex: none; place-items: center; padding-inline: 4px; border-radius: 2px; color: #fff; background: var(--aima-primary); font-size: 12px; font-weight: 700; }
 .platform-mark--douyin, .platform-mark--weibo { background: var(--aima-info); }
-.platform-mark--kuaishou { background: #ff7a00; }
+.platform-mark--kuaishou { background: #f97316; }
 .platform-mark--bilibili { background: #00a1d6; }
-.content-title { min-width: 0; padding: 0; border: 0; color: var(--aima-text); background: transparent; font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.content-title { min-width: 0; padding: 0; overflow: hidden; border: 0; color: var(--aima-text); background: transparent; font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .content-copy p { margin: 0; overflow: hidden; color: var(--aima-text-muted); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-cell { display: grid; gap: 4px; }
-.analysis-badges, .label-summary { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.status-badge, .label-tag { display: inline-flex; max-width: 100%; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
-.label-tag { padding-block: 0; font-size: 11px; }
+.analysis-badges, .label-summary { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+.status-badge, .label-tag, .label-more { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; padding: 2px 8px; overflow: hidden; border-radius: 4px; font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.label-tag { padding-block: 0; color: var(--aima-text-muted); background: var(--aima-color-bg-hover); font-size: 11px; }
+.label-more { flex: none; padding: 0 5px; color: var(--aima-text-disabled); background: var(--aima-color-bg-hover); font-size: 10px; }
 .status-badge--positive { color: var(--aima-success); background: var(--aima-color-success-bg); }
 .status-badge--negative { color: var(--aima-danger); background: var(--aima-color-error-bg); }
-.status-badge--neutral, .label-tag { color: var(--aima-text-muted); background: var(--aima-color-bg-hover); }
+.status-badge--neutral { color: var(--aima-text-muted); background: var(--aima-color-bg-hover); }
 .status-badge--voice { color: var(--aima-info); background: var(--aima-color-info-bg); }
 .empty-label { color: var(--aima-text-disabled); font-size: 12px; }
-.fans-cell, .vehicle-cell, .vehicle-cell > div, time { display: grid; gap: 4px; }
-.fans-cell strong, .vehicle-cell strong, time strong { color: var(--aima-text); font-size: 13px; font-weight: 700; line-height: 18px; }
-.fans-cell span, .vehicle-cell span, time span { color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
-.vehicle-cell { overflow-wrap: anywhere; }
-.brand-line { display: flex !important; align-items: center; gap: 5px !important; }.brand-line strong { color: var(--aima-primary); }.competition-scope { width: max-content; max-width: 100%; padding: 1px 6px; border-radius: 4px; background: var(--aima-color-bg-hover); font-size: 10px !important; }
+.fans-cell, .vehicle-cell, time { display: grid; gap: 4px; }
+.fans-cell strong, .vehicle-cell strong, time strong { overflow: hidden; color: var(--aima-text); font-size: 13px; font-weight: 700; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.fans-cell span, .vehicle-cell span, time span { overflow: hidden; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
 time, .date-heading { text-align: right; }
-.row-actions { position: sticky; right: 0; display: grid; justify-items: end; align-self: stretch; align-content: center; gap: 4px; background: var(--aima-surface); }
+.row-actions { position: sticky; right: 0; display: grid; align-self: stretch; align-content: center; justify-items: end; gap: 4px; background: var(--aima-surface); }
 .actions-heading { position: sticky; right: 0; background: var(--aima-color-bg-table-header); text-align: right; }
 .detail-button, .review-button, .sort-button { padding: 0; border: 0; background: transparent; cursor: pointer; text-align: right; }
 .detail-button { color: var(--aima-text); font-size: 13px; font-weight: 700; line-height: 18px; }
@@ -384,8 +399,7 @@ time, .date-heading { text-align: right; }
 .review-button--relevant { color: var(--aima-success); }
 .review-button--irrelevant { color: var(--aima-danger); }
 .review-button:disabled { cursor: not-allowed; opacity: .55; }
-.sort-button { display: inline-flex; align-items: center; gap: 6px; color: inherit; font: inherit; }
-.sort-button span { color: var(--aima-text-disabled); }
+.sort-button { display: inline-flex; align-items: center; gap: 4px; color: inherit; font: inherit; }
 [aria-sort=ascending] .sort-button, [aria-sort=descending] .sort-button { color: var(--aima-primary); }
 .content-title:focus-visible, .detail-button:focus-visible, .review-button:focus-visible, .sort-button:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: 3px; }
 .table-state { display: flex; min-height: 376px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--aima-text-muted); text-align: center; }
