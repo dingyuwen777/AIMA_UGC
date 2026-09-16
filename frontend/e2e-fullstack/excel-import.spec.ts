@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { ensureStage3FilterBrand } from './stage3-brand-support'
 
 const importedTitle = '爱玛 Stage8F 浏览器真实导入'
+const excelImportNotice = '创建后冻结品牌车型目录快照并执行预检；Excel 不执行 Provider 搜索，导入完成后不会自动触发智能分析。'
 
 async function uploadExcel(
   page: Page,
@@ -14,7 +15,7 @@ async function uploadExcel(
   const dialog = page.getByRole('dialog', { name: '导入数据' })
   await expect(dialog).toBeVisible()
   await dialog.locator('input[type="file"]').first().setInputFiles(fixturePath)
-  await expect(dialog).toContainText('创建任务时冻结品牌与旗下车型目录快照；Excel 导入不会发起 Provider 搜索。')
+  await expect(dialog).toContainText(excelImportNotice)
   const createdResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
