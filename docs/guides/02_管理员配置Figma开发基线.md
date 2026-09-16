@@ -1,19 +1,15 @@
 # 管理员配置 Figma 开发基线
 
-本文维护 `/admin/configuration` 当前正式 Design-to-Code 基线，只记录实现所需的设计事实、真实系统边界与节点导航；HTTP 字段、Schema、权限和业务状态机继续以当前 Contract、代码与测试为准。
+本文维护 `/admin/configuration` 当前正式 Design-to-Code 基线。HTTP 字段、Schema、权限和业务状态机继续以当前 Contract、代码与测试为准，不在本文复制第二份机器事实。
 
 ## 1. 正式设计事实源
 
-正式 Figma：
-
 ```text
-File: qmZEFvPrB8u9JX5fyqc93S
+Figma File: qmZEFvPrB8u9JX5fyqc93S
 Page: 3957:2
 ```
 
-`3957:2` 是“管理员配置”完整设计事实源。下面的 Frame / Component Node 只用于 MCP 精确读取 Design Context、状态定位和 targeted visual review，不是彼此独立的业务页面，也不建立第二套事实源。
-
-当前 Web 正式实现 Anchor：
+`3957:2` 是“管理员配置”完整设计事实源。以下 Node 只是 MCP 精确读取、状态定位和 targeted visual review 的 Anchor，不是相互独立的业务页面：
 
 | 业务域 | Node |
 | --- | --- |
@@ -26,11 +22,11 @@ Page: 3957:2
 | 行为与状态规格 | `7127:33634` |
 | 响应式开发验收 | `7127:34621` |
 
-旧的 `4758:508 响应式验收 · 配置表单与审计表（未更新）` 不是现行开发基线。
+旧的 `4758:508 响应式验收 · 配置表单与审计表（未更新）` 不是现行实现基线。
 
-## 2. 当前实现范围
+## 2. 当前正式范围
 
-当前正式 Web 只实现五个真实 Tab：
+当前 Web 只实现五个真实 Tab：
 
 ```text
 品牌与车型
@@ -40,15 +36,18 @@ AI 分析规则
 操作记录
 ```
 
-Figma 中存在“报告策略”设计，但当前产品与机器事实没有正式 Web Report Plan / Report Job / Scheduler / Delivery Contract，因此它**不属于当前 `/admin/configuration` 的实现范围**。在正式 Requirement、Contract、后端能力和 generated client 建立以前，不得只根据 Figma 新增报告策略 Tab、永久 Mock、假任务或死按钮。
+Figma 中存在“报告策略”设计，但当前产品与机器事实没有正式 Web Report Plan / Report Job / Scheduler / Delivery Contract，因此它不属于本轮 `/admin/configuration` 实现范围。正式 Requirement、Contract、后端能力和 generated client 建立以前，不得只根据 Figma 新增该 Tab、永久 Mock、假任务或死按钮。
 
-当前 Word 报告仍沿用现有离线报告链路；是否建设 Web 报告策略需要独立产品与跨层实现决策。
+当前 Word 报告继续沿用既有离线报告链路；Web 报告策略如需落地，应独立建立跨层 Feature。
 
-## 3. 真实代码 Owner
+## 3. 当前代码 Owner
 
 - 路由与管理员可见性 → [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts) 与 [`frontend/src/app/router.ts`](../../frontend/src/app/router.ts)；
 - App Shell → [`frontend/src/app/layouts/AppShell.vue`](../../frontend/src/app/layouts/AppShell.vue)；
-- 管理员配置页面组合 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/AdminConfigurationPage.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/AdminConfigurationPage.vue)；
+- 管理员配置页面组合 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue)；
+- 品牌与车型页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/CatalogConfigurationPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/CatalogConfigurationPanel.vue)；
+- AI 分析规则页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AnalysisSchemePanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AnalysisSchemePanel.vue)；
+- 操作记录页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AuditPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AuditPanel.vue)；
 - Provider 配置唯一业务 Owner → [`frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue`](../../frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue)；
 - 结构化标签唯一编辑 Owner → [`frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue`](../../frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue)；
 - Feature API → [`frontend/src/features/admin-configuration/api.ts`](../../frontend/src/features/admin-configuration/api.ts)；
@@ -56,24 +55,24 @@ Figma 中存在“报告策略”设计，但当前产品与机器事实没有�
 
 Figma MCP 返回的 React/Tailwind 代码只用于恢复设计结构；生产实现保持当前 Vue 3 + TypeScript + CSS/Design Token 技术栈，不引入 Tailwind、第二套 UI Library、第二套 API 或第二套状态管理。
 
-## 4. 必须保持的机器边界
+## 4. 必须保持的真实系统边界
 
 ### 权限
 
-`/admin/configuration` 继续只对 `administrator` 可达。前端 Route Guard 只负责用户体验，后端 Authorization 仍是最终守卫；不因为设计状态新增登录体系或绕过后端权限。
+`/admin/configuration` 继续只对 `administrator` 可达。前端 Route Guard 只负责交互，后端 Authorization 仍是最终守卫；不因为设计状态新增登录体系或绕过后端权限。
 
-### Brand / Vehicle
+### 品牌与车型
 
 - Brand Code、Vehicle Code 创建后保持稳定机器身份；
 - Brand Alias 继续通过 Brand Alias API；
 - Vehicle 品牌归属只由 Vehicle API 修改；
 - 已引用实体的删除、停用、合并资格由当前 Contract/后端最终决定；
 - 当前没有 Brand Merge Contract，不得从设计文案推导并新增前端假能力；
-- Brand 正常业务层可以隐藏机器 Code，但创建时仍按当前 Contract 收集必填 Code，已创建 Code 放入技术信息按需查看。
+- 正常业务层可以下沉机器 Code，但创建时仍按当前 Contract 收集必填 Code，已创建 Code 在技术信息按需查看。
 
 ### Provider
 
-AI 模型和 TikHub 继续复用同一个 Provider 配置业务 Owner：
+AI 模型与 TikHub 继续复用同一个 Provider 配置业务 Owner：
 
 - Secret/API Key 不回显；
 - 测试连接只测试已保存配置；
@@ -87,10 +86,10 @@ AI 模型和 TikHub 继续复用同一个 Provider 配置业务 Owner：
 
 - Analysis Scheme = Prompt Template + voice types + sentiments + labels 的完整版本；
 - 修改后先保存草稿，再发布；
-- 发布、恢复、归档必须沿用当前版本冲突与审计规则；
+- 发布、恢复、归档继续沿用当前版本冲突与审计规则；
 - `无法分类 / 无法判断` 等必需兜底标签继续由结构化编辑器约束；
 - Prompt 保持高级编辑路径，业务标签使用结构化编辑器；
-- Figma 示例版本号、日期、规则名只用于排版。
+- Figma 示例版本号、日期和规则名只用于排版。
 
 ### 操作记录
 
@@ -99,13 +98,13 @@ AI 模型和 TikHub 继续复用同一个 Provider 配置业务 Owner：
 - 不新增当前 Contract 不支持的全库搜索；
 - 当前 offset pagination 继续沿用正式 API。
 
-## 5. 正式响应式规则
+## 5. 响应式与宽表格
 
 基线：
 
 ```text
-固定 Sidebar 180px
-右侧 Workspace 使用剩余宽度
+Sidebar 180px
+Workspace 使用剩余宽度
 页面水平 padding 24px
 1440 为基准桌面
 1180 为 Compact 验收
@@ -116,17 +115,11 @@ AI 模型和 TikHub 继续复用同一个 Provider 配置业务 Owner：
 
 ### Wide
 
-1440 / 1920：
-
-```text
-资源列表保持固定或最小可读宽度
-+ 24px gap
-+ 编辑区吸收剩余空间
-```
+1440 / 1920 使用“资源列表固定或最小可读宽度 + 24px gap + 编辑区吸收剩余空间”。
 
 ### Compact
 
-1180：
+1180 使用纵向排列：
 
 ```text
 资源列表
@@ -134,7 +127,7 @@ AI 模型和 TikHub 继续复用同一个 Provider 配置业务 Owner：
 编辑区
 ```
 
-紧凑宽度下页面自身不能产生横向滚动。宽表格达到最小可读宽度后，只允许表格 Viewport 使用 `overflow-x: auto`；标题、刷新、分页和其它页面操作留在表格横滚容器外。
+页面自身不能产生横向滚动。宽表格达到最小可读宽度后，只允许表格 Viewport 使用 `overflow-x: auto`；标题、刷新、分页和其它页面操作留在表格横滚容器外。
 
 当前表格基线：
 
@@ -156,7 +149,7 @@ Audit 正式列宽参考：
 
 ## 6. 公共组件与 Feature 边界
 
-继续复用以下当前公共 Owner：
+继续复用现有公共 Owner：
 
 - [`frontend/src/shared/ui/AimaButton.vue`](../../frontend/src/shared/ui/AimaButton.vue)
 - [`frontend/src/shared/ui/AimaPageHeader.vue`](../../frontend/src/shared/ui/AimaPageHeader.vue)
@@ -166,13 +159,13 @@ Audit 正式列宽参考：
 - [`frontend/src/shared/ui/AimaDrawer.vue`](../../frontend/src/shared/ui/AimaDrawer.vue)
 - [`frontend/src/shared/ui/AimaIcon.vue`](../../frontend/src/shared/ui/AimaIcon.vue)
 
-页面私有的 Brand Directory、Brand Detail、Vehicle Dialog、Scheme Version List、Audit Table 等保持在管理员配置 Page/Feature 内；只有真实跨 Feature 复用后才提升到 `shared`。
+Brand Directory、Brand Detail、Vehicle Dialog、Scheme Version List、Audit Table 等业务组合保持在管理员配置 Page/Feature 内；只有真实跨 Feature 复用后才提升到 `shared`。
 
-设计系统和代码组件不要求机械 1:1。Figma 的 AIMA/Input、AIMA/Select、AIMA/Tab 等 Pattern 用于约束视觉 API，但普通页面同步任务不能因此一次性重写全仓所有表单控件。
+设计系统和代码组件不要求机械 1:1。Figma 的 Input、Select、Tab 等 Pattern 约束视觉语义，但本轮不能因此一次性重写全仓表单控件。
 
-## 7. 验收
+## 7. 验收证据
 
-管理员配置 Design-to-Code 至少按以下证据分层：
+管理员配置 Design-to-Code 至少按以下链路验证：
 
 ```text
 Fresh Figma Design Context / Screenshot
@@ -182,7 +175,7 @@ Fresh Figma Design Context / Screenshot
 → Implementation ↔ Figma Conformance
 ```
 
-Browser Mock 只证明前端可观察行为与请求语义，不冒充真实后端/PostgreSQL；本类纯前端同步如果 Contract、Backend 和 Persistence 没有变化，不机械扩大后端修改范围。
+Browser Mock 只证明前端可观察行为与请求语义，不冒充真实 Backend/PostgreSQL；本类纯前端同步如果 Contract、Backend 和 Persistence 没有变化，不机械扩大后端修改范围。
 
 视觉复核重点：
 
