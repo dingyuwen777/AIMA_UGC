@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260916-174631-voice-plaza-compact-overflow
 title: 修复声音广场紧凑桌面溢出
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/voice-plaza-compact-overflow-515
 created: 2026-09-16
