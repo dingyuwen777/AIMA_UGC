@@ -64,27 +64,32 @@ async function openCampaignFromRoute(): Promise<void> {
   }
 }
 
+/** 使用当前筛选值刷新第一页，并由 Store 冻结为后续 Cursor Window 的查询条件。 */
 async function search(): Promise<void> {
   await store.refresh()
 }
 
+/** 恢复产品默认筛选后立即刷新，避免界面值和列表结果不同步。 */
 async function reset(): Promise<void> {
   store.resetFilters()
   await store.refresh()
 }
 
+/** 打开统一数据导入工作区，创建状态不预选历史 Campaign。 */
 async function openDataImport(): Promise<void> {
   store.selectedHistoricalCampaign = null
   dataImportOpen.value = true
   await store.openHistoricalWorkspace()
 }
 
+/** 打开辅助补采；从列表发起时可把当前导入来源作为初始补采来源。 */
 async function openCreate(source: SupplementSourceSelection | null = null): Promise<void> {
   initialSupplementSource.value = source
   await store.loadCreationOptions(source)
   supplementOpen.value = true
 }
 
+/** 创建成功后关闭表单并使用产品可读反馈，后台执行继续由 Store 轮询。 */
 async function createRun(request: CollectionRunCreateRequest): Promise<void> {
   const created = await store.createRun(request)
   if (!created) return
@@ -92,6 +97,7 @@ async function createRun(request: CollectionRunCreateRequest): Promise<void> {
   showNotice('辅助补采任务已创建，将在后台执行。')
 }
 
+/** 根据统一运行记录的真实 record_type 进入对应详情 Owner。 */
 async function selectItem(item: CollectionRuntimeItemResponse): Promise<void> {
   if (item.record_type === 'excel_import') {
     await store.openBatchDetail(item.import_batch_id ?? item.record_id)
@@ -107,6 +113,7 @@ async function selectItem(item: CollectionRuntimeItemResponse): Promise<void> {
   await store.openRunDetail(item.collection_run_id ?? item.record_id)
 }
 
+/** 技术详情中的标识复制失败只反馈权限问题，不影响任务本身。 */
 async function copy(value: string): Promise<void> {
   try {
     if (!navigator.clipboard) throw new Error('Clipboard API unavailable')
@@ -117,6 +124,7 @@ async function copy(value: string): Promise<void> {
   }
 }
 
+/** 页面 Toast 使用单一短时状态，后来的消息不会被旧定时器提前清除。 */
 function showNotice(message: string): void {
   notice.value = message
   window.setTimeout(() => {
@@ -124,6 +132,7 @@ function showNotice(message: string): void {
   }, 2600)
 }
 
+/** 从导入详情跳到声音广场时继续使用真实来源标识筛选。 */
 async function viewContents(batchId: string): Promise<void> {
   await router.push({ name: 'voice-plaza', query: { source_identifier: batchId } })
 }
@@ -138,18 +147,21 @@ async function viewContents(batchId: string): Promise<void> {
     >
       <template #actions>
         <AimaButton
+          class="runtime-action runtime-action--refresh"
           variant="secondary"
           @click="store.refresh()"
         >
           刷新数据
         </AimaButton>
         <AimaButton
+          class="runtime-action runtime-action--import"
           variant="secondary"
           @click="openDataImport"
         >
           导入数据
         </AimaButton>
         <AimaButton
+          class="runtime-action runtime-action--create"
           variant="primary"
           @click="openCreate()"
         >
@@ -180,7 +192,6 @@ async function viewContents(batchId: string): Promise<void> {
       v-model:search="store.filters.search"
       v-model:status="store.filters.status"
       v-model:record-type="store.filters.recordType"
-      v-model:stage="store.filters.stage"
       v-model:created-from="store.filters.createdFrom"
       v-model:created-to="store.filters.createdTo"
       :active-tab="store.activeTab"
@@ -188,7 +199,7 @@ async function viewContents(batchId: string): Promise<void> {
       @reset="reset"
     />
     <AimaFeedbackBanner
-      v-if="store.error"
+      v-if="store.error && store.items.length > 0"
       class="page-error"
       tone="error"
       role="alert"
@@ -202,8 +213,10 @@ async function viewContents(batchId: string): Promise<void> {
     <CollectionRuntimeTable
       :items="store.items"
       :loading="store.loading"
+      :error="store.error"
       @select="selectItem"
       @supplement="openCreate"
+      @retry="store.refresh()"
     />
     <div class="pagination">
       <span>已加载 {{ store.items.length }} 条</span>
@@ -261,15 +274,24 @@ async function viewContents(batchId: string): Promise<void> {
 
 <style scoped>
 .runtime-tabs { display: flex; gap: 8px; min-height: 40px; margin-top: 24px; margin-bottom: 20px; border-bottom: 0; }
-.runtime-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; }
+.runtime-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; line-height: 20px; }
 .runtime-tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
 .page-error { margin-top: 16px; }
 .list-heading { display: flex; min-height: 24px; align-items: center; margin: 34px 0 12px; }
 .list-heading strong { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24px; }
-.pagination { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: 20px; margin-top: 24px; color: var(--aima-text-muted); font-size: 12px; }
+.pagination { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: 20px; margin-top: 24px; color: var(--aima-text-disabled); font-size: 12px; }
 .notice { position: fixed; z-index: 200; top: 76px; left: 50%; width: min(560px, calc(100vw - 48px)); transform: translateX(-50%); }
+.runtime-page-header :deep(h1) { font-size: 24px; font-weight: 700; line-height: 32px; }
+.runtime-page-header :deep(p) { margin-top: 6px; font-size: 12px; line-height: 18px; }
+.runtime-page-header :deep(.aima-page-actions) { gap: 12px; }
+.runtime-action--refresh,
+.runtime-action--import { min-width: 104px; }
+.runtime-action--create { min-width: 150px; }
 @media (min-width: 981px) {
   .runtime-page-header { margin-top: 4px; flex-wrap: nowrap; align-items: center; }
   .runtime-page-header :deep(.aima-page-actions) { flex: none; justify-content: flex-end; }
+}
+@media (max-width: 980px) {
+  .runtime-page-header :deep(.aima-page-actions) { width: 100%; justify-content: flex-start; }
 }
 </style>
