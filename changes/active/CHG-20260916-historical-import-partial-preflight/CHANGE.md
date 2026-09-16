@@ -58,11 +58,11 @@ Excluded：新增数据库表/状态枚举、修改 Excel Profile/Canonical/Cont
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 正常文件 + 空文件时，空文件跳过且正常数据可导入，最终 succeeded | user:historical-import-minimal-plan-ac1 | satisfied | 用户确认方案 + Issue #506 AC1；`historical_import_worker.py` 将空 Source 收敛为 `succeeded` warning；对应真实 DB/API/Worker 回归已提交，current-head PostgreSQL Integration 在 PR Ready 后执行 |
-| R2 | 正常文件 + 坏文件时，正常数据可导入，最终 partial_failed 且坏文件可追溯 | user:historical-import-minimal-plan-ac2 | satisfied | 用户确认方案 + Issue #506 AC2；`finalize_preflight()` 允许存在 failed Source 时进入 `ready`；`refresh_batch_and_campaign()` 纳入 Source failed；对应真实回归已提交 |
-| R3 | 全空无写入成功；全坏 failed 且不可开始 | user:historical-import-minimal-plan-ac3 | satisfied | 用户确认方案 + Issue #506 AC3；`finalize_preflight()` 明确全空 `succeeded` / 全坏 `failed`；对应真实回归已提交 |
-| R4 | 默认业务层使用用户语言，技术错误码只在技术详情追溯 | user:historical-import-minimal-plan-ac4 | satisfied | 用户确认方案 + Issue #506 AC4；`DataImportDialog.vue` 显示“文件没有数据，已自动跳过。”和既有友好失败提示；技术详情保留 `relative_path · error_code` |
-| R5 | 现有 Chunk partial failure、取消、重试、Filter 和两种写入策略保持不变 | user:historical-import-minimal-plan-ac5 | satisfied | 用户确认的最小范围 + Issue #506 AC5；未改 Job type、Chunk retry、Filter Snapshot、Policy、Schema/Contract；PR current-head 全套 CI 作为最终回归门禁 |
+| R1 | 正常文件 + 空文件时，空文件跳过且正常数据可导入，最终 succeeded | #506 / AC1 | satisfied | `historical_import_worker.py` 将空 Source 收敛为 `succeeded` warning；对应真实 DB/API/Worker 回归已提交，current-head PostgreSQL Integration 在 PR Ready 后执行 |
+| R2 | 正常文件 + 坏文件时，正常数据可导入，最终 partial_failed 且坏文件可追溯 | #506 / AC2 | satisfied | `finalize_preflight()` 允许存在 failed Source 时进入 `ready`；`refresh_batch_and_campaign()` 纳入 Source failed；对应真实回归已提交 |
+| R3 | 全空无写入成功；全坏 failed 且不可开始 | #506 / AC3 | satisfied | `finalize_preflight()` 明确全空 `succeeded` / 全坏 `failed`；对应真实回归已提交 |
+| R4 | 默认业务层使用用户语言，技术错误码只在技术详情追溯 | #506 / AC4 | satisfied | `DataImportDialog.vue` 显示“文件没有数据，已自动跳过。”和既有友好失败提示；技术详情保留 `relative_path · error_code` |
+| R5 | 现有 Chunk partial failure、取消、重试、Filter 和两种写入策略保持不变 | #506 / AC5 | satisfied | 未改 Job type、Chunk retry、Filter Snapshot、Policy、Schema/Contract；PR current-head 全套 CI 作为最终回归门禁 |
 
 # Validation Matrix
 
@@ -96,7 +96,8 @@ Excluded：新增数据库表/状态枚举、修改 Excel Profile/Canonical/Cont
 - Red CI 尝试：Actions run `35064515979`；`Requirement Traceability and Completion Audit` 因当时 Change=`in_progress` 失败，后续 `PostgreSQL Integration`/产品 CI 被仓库门禁跳过，因此没有把“未执行测试”冒充失败测试证据。
 - Runtime Acceptance run `35064515732`：Compose Golden Path fast-path success；Runtime 风险路径未变化。
 - 本地容器再次尝试通过 raw GitHub 拉取分支文件做 `py_compile`，因 DNS `Temporary failure in name resolution` 无法取得源码；该环境缺口不替代 PR CI。
-- PR current-head 首轮 Ready run `35065702165`：Requirement Source 与项目治理接线通过；Change Ready Check 因 Source 文本 `Issue #506 AC*` 被解析为仓库路径而失败，生产/测试 jobs 按门禁跳过；本提交已把 Source 改为正式支持的 `user:<标识>`，Issue #506 继续作为 PR/正文证据。
+- PR Ready run `35065702165`：Requirement Source 与项目治理接线通过；Change Source `Issue #506 AC*` 被解析为仓库路径，Ready Check 失败。
+- PR Ready run `35065790019`：Requirement Source 与项目治理接线继续通过；Ready Check 明确要求 Source 使用稳定 Acceptance（例如 `#123 / AC1`）。本提交已改为 `#506 / AC1`～`AC5`；两次均为治理载体格式失败，产品/Integration jobs 按门禁未执行。
 
 # Completion Audit
 
