@@ -45,7 +45,10 @@ function close(): void {
           v-if="$slots.header"
           class="aima-modal-header"
         >
-          <slot name="header" :close="close" />
+          <slot
+            name="header"
+            :close="close"
+          />
         </div>
         <div class="aima-modal-body">
           <slot />
@@ -54,7 +57,10 @@ function close(): void {
           v-if="$slots.footer"
           class="aima-modal-footer"
         >
-          <slot name="footer" :close="close" />
+          <slot
+            name="footer"
+            :close="close"
+          />
         </div>
       </section>
     </div>
