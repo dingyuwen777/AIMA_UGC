@@ -415,4 +415,8 @@ time, .date-heading { text-align: right; }
 .skeleton--long { width: 360px; }
 .skeleton--medium { width: 320px; }
 .skeleton--short { width: 280px; }
+@media (max-width: 1439px) {
+  .table-head, .content-row { min-width: 952px; grid-template-columns: 16px minmax(162px, 1fr) 80px 200px 150px 120px 120px; }
+  .content-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: normal; }
+}
 </style>

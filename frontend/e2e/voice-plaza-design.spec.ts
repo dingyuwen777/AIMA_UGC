@@ -176,7 +176,7 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
     const table = await page.locator('.content-list').boundingBox()
     expectNear(table?.x, 204)
     expectNear(table?.width, width - 228)
-    const tableLayoutWidth = Math.max(1212, width - 228)
+    const tableLayoutWidth = Math.max(width < 1440 ? 952 : 1212, width - 228)
     const expected = [16, tableLayoutWidth - 790, 80, 200, 150, 120, 120]
     const header = await page.locator('.table-head > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
     const row = await page.locator('.content-row').first().locator(':scope > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
@@ -204,15 +204,43 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
       ;[180, 180, 180, 160, 160].forEach((size, index) => expectNear(secondaryWidths[index], size))
     }
 
-    if (width < 1440) {
-      await page.locator('.content-list').evaluate((node) => { node.scrollLeft = node.scrollWidth })
-      await page.locator('.content-row').first().getByRole('button', { name: '查看详情' }).click()
+    if (width <= 1280) {
+      const compactTitle = await complexRow.locator('.content-title').boundingBox()
+      expect(compactTitle?.height ?? 0).toBeGreaterThan(20)
+      const tableMetrics = await page.locator('.content-list').evaluate((node) => ({
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+        scrollLeft: node.scrollLeft,
+      }))
+      expect(tableMetrics.scrollWidth).toBeLessThanOrEqual(tableMetrics.clientWidth + 1)
+      expect(tableMetrics.scrollLeft).toBe(0)
+      const date = await page.locator('.table-head .date-heading').boundingBox()
+      const details = await complexRow.getByRole('button', { name: '查看详情' }).boundingBox()
+      expect(date).not.toBeNull()
+      expect(details).not.toBeNull()
+      expect((date?.x ?? 0) + (date?.width ?? 0)).toBeLessThanOrEqual((table?.x ?? 0) + (table?.width ?? 0) + 1)
+      expect((details?.x ?? 0) + (details?.width ?? 0)).toBeLessThanOrEqual((table?.x ?? 0) + (table?.width ?? 0) + 1)
+      await complexRow.getByRole('button', { name: '查看详情' }).click()
       await expect(page.getByRole('dialog', { name: '内容详情' })).toBeVisible()
       await page.keyboard.press('Escape')
     }
     if (process.env.AIMA_CAPTURE_VISUAL === '1') await page.screenshot({ path: `test-results/voice-plaza-${width}.png`, fullPage: true, animations: 'disabled' })
   })
 }
+
+test('keeps table-local scrolling as a fallback below the compact desktop width', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 })
+  await stubNormalContents(page)
+  await page.goto('/voice-plaza')
+  await expect(page.locator('.content-row')).toHaveCount(3)
+  const table = page.locator('.content-list')
+  const metrics = await table.evaluate((node) => ({ clientWidth: node.clientWidth, scrollWidth: node.scrollWidth }))
+  expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1100)
+  await table.evaluate((node) => { node.scrollLeft = node.scrollWidth })
+  await page.locator('.content-row').first().getByRole('button', { name: '查看详情' }).click()
+  await expect(page.getByRole('dialog', { name: '内容详情' })).toBeVisible()
+})
 
 test('vehicle groups use catalog data and confirm drafts without losing keyboard focus', async ({ page }) => {
   await stubNormalContents(page)
