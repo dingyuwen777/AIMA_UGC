@@ -37,11 +37,13 @@ function restoreTriggerFocus(): void {
   if (target?.isConnected) target.focus({ preventScroll: true })
 }
 
-/** 只让当前 DOM 中最上层的模态元素响应全局 Escape，避免嵌套弹层连带关闭。 */
+/** Escape 只关闭最上层 Drawer；存在更高层 Modal 时由 Modal 独占该按键。 */
 function onDocumentKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Escape' || !props.modelValue || !panel.value || typeof document === 'undefined') return
-  const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]'))
-  if (dialogs.at(-1) !== panel.value) return
+  if (document.querySelector('.aima-modal-layer')) return
+  const currentLayer = panel.value.closest('.aima-drawer-layer')
+  const layers = Array.from(document.querySelectorAll<HTMLElement>('.aima-drawer-layer'))
+  if (layers.at(-1) !== currentLayer) return
   event.preventDefault()
   event.stopImmediatePropagation()
   close()
