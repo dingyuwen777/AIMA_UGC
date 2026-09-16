@@ -353,18 +353,38 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
     :disabled="saving"
     aria-label="AI 分析规则"
   >
-    <AimaFeedbackBanner v-if="error" tone="error" role="alert">
+    <AimaFeedbackBanner
+      v-if="error"
+      tone="error"
+      role="alert"
+    >
       <strong>AI 分析规则操作失败</strong>
       <span>{{ error }}</span>
     </AimaFeedbackBanner>
-    <AimaFeedbackBanner v-if="notice" tone="success">{{ notice }}</AimaFeedbackBanner>
+    <AimaFeedbackBanner
+      v-if="notice"
+      tone="success"
+    >
+      {{ notice }}
+    </AimaFeedbackBanner>
 
-    <div v-if="loading" class="state-card">正在加载 AI 分析规则…</div>
+    <div
+      v-if="loading"
+      class="state-card"
+    >
+      正在加载 AI 分析规则…
+    </div>
 
-    <div v-else class="scheme-layout">
+    <div
+      v-else
+      class="scheme-layout"
+    >
       <section class="card scheme-history">
         <h2>版本历史</h2>
-        <template v-for="scheme in schemes" :key="scheme.id">
+        <template
+          v-for="scheme in schemes"
+          :key="scheme.id"
+        >
           <button
             v-for="version in scheme.versions"
             :key="version.id"
@@ -384,14 +404,49 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           <span>历史版本可随时恢复。</span>
         </div>
 
-        <details class="archived-schemes" @toggle="onArchivedSchemesToggle">
+        <details
+          class="archived-schemes"
+          @toggle="onArchivedSchemesToggle"
+        >
           <summary>已归档规则</summary>
-          <div v-if="archivedSchemeLoading" class="archived-scheme-state">正在读取…</div>
-          <div v-else-if="archivedSchemes.length === 0" class="archived-scheme-state">暂无已归档规则。</div>
-          <div v-for="item in archivedSchemes" v-else :key="item.id" class="archived-scheme-row">
-            <span><strong>{{ item.name }}</strong><small>{{ formatDateTime(item.archived_at) }}</small></span>
-            <AimaButton variant="text" size="small" :disabled="saving" @click="restoreArchivedAnalysisScheme(item)">恢复</AimaButton>
-            <AimaButton variant="text" size="small" :disabled="saving" @click="deleteArchivedAnalysisScheme(item)">永久删除</AimaButton>
+          <div
+            v-if="archivedSchemeLoading"
+            class="archived-scheme-state"
+          >
+            正在读取…
+          </div>
+          <div
+            v-else-if="archivedSchemes.length === 0"
+            class="archived-scheme-state"
+          >
+            暂无已归档规则。
+          </div>
+          <div
+            v-for="item in archivedSchemes"
+            v-else
+            :key="item.id"
+            class="archived-scheme-row"
+          >
+            <span>
+              <strong>{{ item.name }}</strong>
+              <small>{{ formatDateTime(item.archived_at) }}</small>
+            </span>
+            <AimaButton
+              variant="text"
+              size="small"
+              :disabled="saving"
+              @click="restoreArchivedAnalysisScheme(item)"
+            >
+              恢复
+            </AimaButton>
+            <AimaButton
+              variant="text"
+              size="small"
+              :disabled="saving"
+              @click="deleteArchivedAnalysisScheme(item)"
+            >
+              永久删除
+            </AimaButton>
           </div>
         </details>
       </section>
@@ -401,31 +456,69 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           <div>
             <h2>
               AI 分析规则
-              <template v-if="selectedSchemeVersion"> · {{ schemeVersionStateLabel(selectedSchemeVersion.scheme, selectedSchemeVersion.version) }}</template>
+              <template v-if="selectedSchemeVersion">
+                · {{ schemeVersionStateLabel(selectedSchemeVersion.scheme, selectedSchemeVersion.version) }}
+              </template>
             </h2>
             <p>按业务含义维护发声类型、情感和标签；修改后先生成草稿。</p>
           </div>
-          <div v-if="selectedSchemeVersion" class="scheme-resource-actions">
-            <AimaButton size="small" :disabled="saving" @click="startSchemeCopy">复制规则</AimaButton>
-            <AimaButton size="small" :disabled="saving" @click="archiveSelectedScheme">归档规则</AimaButton>
+          <div
+            v-if="selectedSchemeVersion"
+            class="scheme-resource-actions"
+          >
+            <AimaButton
+              size="small"
+              :disabled="saving"
+              @click="startSchemeCopy"
+            >
+              复制规则
+            </AimaButton>
+            <AimaButton
+              size="small"
+              :disabled="saving"
+              @click="archiveSelectedScheme"
+            >
+              归档规则
+            </AimaButton>
           </div>
         </header>
 
-        <div v-if="schemeCopyEditing" class="scheme-copy-editor">
+        <div
+          v-if="schemeCopyEditing"
+          class="scheme-copy-editor"
+        >
           <label>
             副本名称
-            <input v-model="schemeCopyName" maxlength="200">
+            <input
+              v-model="schemeCopyName"
+              maxlength="200"
+            >
           </label>
           <small>复制的是该规则当前最新版本；副本只创建草稿，不会自动发布。</small>
           <div>
-            <AimaButton size="small" @click="schemeCopyEditing = false">取消</AimaButton>
-            <AimaButton variant="primary" size="small" :disabled="saving || !schemeCopyName.trim()" @click="copySelectedScheme">创建副本</AimaButton>
+            <AimaButton
+              size="small"
+              @click="schemeCopyEditing = false"
+            >
+              取消
+            </AimaButton>
+            <AimaButton
+              variant="primary"
+              size="small"
+              :disabled="saving || !schemeCopyName.trim()"
+              @click="copySelectedScheme"
+            >
+              创建副本
+            </AimaButton>
           </div>
         </div>
 
         <label>
           规则名称
-          <input v-model="schemeDraft.schemeName" :readonly="selectedSchemeVersion?.version.status === 'draft'">
+          <input
+            v-model="schemeDraft.schemeName"
+            :readonly="selectedSchemeVersion?.version.status === 'draft'"
+          >
           <small v-if="selectedSchemeVersion?.version.status === 'draft'">编辑现有草稿时名称保持不变；需要新名称时，请基于已发布或历史版本新建草稿。</small>
         </label>
         <label>
@@ -434,14 +527,23 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         </label>
         <label>
           发声类型
-          <textarea v-model="schemeDraft.voiceTypes" rows="4" />
+          <textarea
+            v-model="schemeDraft.voiceTypes"
+            rows="4"
+          />
         </label>
         <label>
           情感
-          <textarea v-model="schemeDraft.sentiments" rows="4" />
+          <textarea
+            v-model="schemeDraft.sentiments"
+            rows="4"
+          />
         </label>
 
-        <AnalysisLabelsEditor v-model="schemeDraft.labelsJson" @validity="schemeLabelsValid = $event" />
+        <AnalysisLabelsEditor
+          v-model="schemeDraft.labelsJson"
+          @validity="schemeLabelsValid = $event"
+        />
 
         <details class="advanced-editor">
           <summary>高级规则编辑</summary>
@@ -453,7 +555,11 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
             </div>
             <label>
               提示词模板
-              <textarea v-model="schemeDraft.promptTemplate" rows="14" spellcheck="false" />
+              <textarea
+                v-model="schemeDraft.promptTemplate"
+                rows="14"
+                spellcheck="false"
+              />
             </label>
             <div class="technical-note">
               提示词必须包含标签规则占位符 <code v-pre>{{AIMA_TAXONOMY_JSON}}</code>，发布时由后端再次校验。
@@ -461,10 +567,18 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           </div>
         </details>
 
-        <p v-if="hasUnsavedSchemeChanges" class="unsaved-hint">规则有未保存修改，请先保存草稿后再发布。</p>
+        <p
+          v-if="hasUnsavedSchemeChanges"
+          class="unsaved-hint"
+        >
+          规则有未保存修改，请先保存草稿后再发布。
+        </p>
 
         <div class="actions">
-          <AimaButton :disabled="saving || !schemeLabelsValid" @click="saveSchemeDraft">
+          <AimaButton
+            :disabled="saving || !schemeLabelsValid"
+            @click="saveSchemeDraft"
+          >
             {{ selectedSchemeVersion?.version.status === 'draft' ? '保存草稿' : '基于此版本新建草稿' }}
           </AimaButton>
           <AimaButton
@@ -472,11 +586,15 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
             variant="primary"
             :disabled="saving || hasUnsavedSchemeChanges"
             @click="publishVersion(selectedSchemeVersion.version)"
-          >发布</AimaButton>
+          >
+            发布
+          </AimaButton>
           <AimaButton
             v-else-if="selectedSchemeVersion && selectedSchemeVersion.scheme.active_version_id !== selectedSchemeVersion.version.id"
             @click="rollbackVersion(selectedSchemeVersion.version)"
-          >恢复到此版本</AimaButton>
+          >
+            恢复到此版本
+          </AimaButton>
         </div>
       </section>
     </div>
