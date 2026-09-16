@@ -27,7 +27,7 @@ const matching = computed(() => options.value.filter((item) => {
     .some((text) => text.toLocaleLowerCase().includes(query))
 }))
 const selectedLabel = computed(() => {
-  if (!props.modelValue.length) return '全部启用品牌及车型'
+  if (!props.modelValue.length) return '全部品牌'
   if (props.modelValue.length === 1) {
     return options.value.find((item) => item.id === props.modelValue[0])?.display_name ?? '已选 1 个品牌'
   }
