@@ -469,27 +469,49 @@ async function mergeSelectedVehicle(): Promise<void> {
                 </td>
                 <td>{{ vehicles.filter((vehicle) => vehicle.brand_id === item.id).length }} 个</td>
                 <td class="table-actions">
-                  <button type="button" @click="selectBrand(item)">编辑</button>
+                  <button
+                    type="button"
+                    @click="selectBrand(item)"
+                  >
+                    编辑
+                  </button>
                   <button
                     v-if="item.status === 'active'"
                     type="button"
                     @click="setBrandStatus(item, 'deprecated')"
-                  >停用</button>
+                  >
+                    停用
+                  </button>
                   <button
                     v-else
                     type="button"
                     @click="setBrandStatus(item, 'active')"
-                  >启用</button>
-                  <button type="button" @click="requestDeleteBrand(item)">删除</button>
+                  >
+                    启用
+                  </button>
+                  <button
+                    type="button"
+                    @click="requestDeleteBrand(item)"
+                  >
+                    删除
+                  </button>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <p v-if="brands.length === 0" class="empty-state">暂无品牌，请先新增品牌。</p>
+        <p
+          v-if="brands.length === 0"
+          class="empty-state"
+        >
+          暂无品牌，请先新增品牌。
+        </p>
 
-        <AimaFeedbackBanner v-if="brands.length > 0" tone="warning">
+        <AimaFeedbackBanner
+          v-if="brands.length > 0"
+          tone="warning"
+        >
           已被车型或历史内容引用的品牌不能物理删除；请停用或改名，历史证据继续保留。
         </AimaFeedbackBanner>
       </section>
@@ -501,42 +523,70 @@ async function mergeSelectedVehicle(): Promise<void> {
         <header class="brand-detail-header">
           <h2>品牌详情</h2>
           <div class="brand-detail-actions">
-            <AimaButton size="small" @click="cancelBrandChanges">取消</AimaButton>
+            <AimaButton
+              size="small"
+              @click="cancelBrandChanges"
+            >
+              取消
+            </AimaButton>
             <AimaButton
               variant="primary"
               size="small"
               aria-label="保存品牌"
               :disabled="saving || !brandFormValid"
               @click="saveBrand"
-            >保存</AimaButton>
+            >
+              保存
+            </AimaButton>
           </div>
         </header>
 
         <label>
           品牌名称
-          <input v-model="brandDraft.displayName" maxlength="200" aria-label="显示名称">
+          <input
+            v-model="brandDraft.displayName"
+            maxlength="200"
+            aria-label="显示名称"
+          >
         </label>
         <label>
           品牌角色
           <select v-model="brandDraft.role">
-            <option value="owned">自有品牌</option>
-            <option value="competitor">竞品品牌</option>
-            <option value="other">其他品牌</option>
+            <option value="owned">
+              自有品牌
+            </option>
+            <option value="competitor">
+              竞品品牌
+            </option>
+            <option value="other">
+              其他品牌
+            </option>
           </select>
         </label>
         <label>
           品牌识别词（每行一个）
-          <textarea v-model="brandDraft.aliases" rows="4" />
+          <textarea
+            v-model="brandDraft.aliases"
+            rows="4"
+          />
         </label>
 
         <fieldset class="status-field">
           <legend>状态</legend>
           <label class="radio-option">
-            <input v-model="brandDraft.status" type="radio" value="active">
+            <input
+              v-model="brandDraft.status"
+              type="radio"
+              value="active"
+            >
             <span>已启用</span>
           </label>
           <label class="radio-option">
-            <input v-model="brandDraft.status" type="radio" value="deprecated">
+            <input
+              v-model="brandDraft.status"
+              type="radio"
+              value="deprecated"
+            >
             <span>停用</span>
           </label>
         </fieldset>
@@ -556,31 +606,59 @@ async function mergeSelectedVehicle(): Promise<void> {
         >
           <table>
             <thead>
-              <tr><th>系列</th><th>车型</th><th>状态</th><th>操作</th></tr>
+              <tr>
+                <th>系列</th>
+                <th>车型</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
             </thead>
             <tbody>
-              <tr v-for="item in selectedBrandVehicles" :key="item.id">
+              <tr
+                v-for="item in selectedBrandVehicles"
+                :key="item.id"
+              >
                 <td>{{ item.series_name || '—' }}</td>
                 <td>
                   <strong>{{ item.display_name }}</strong>
                   <small v-if="item.category_name">{{ item.category_name }}</small>
                 </td>
                 <td>
-                  <span class="vehicle-status" :class="{ muted: item.status !== 'active' }">
+                  <span
+                    class="vehicle-status"
+                    :class="{ muted: item.status !== 'active' }"
+                  >
                     {{ item.status === 'active' ? '启用' : formatRuntimeStatus(item.status) }}
                   </span>
                 </td>
-                <td><button type="button" @click="openVehicleEditor(item)">编辑</button></td>
+                <td>
+                  <button
+                    type="button"
+                    @click="openVehicleEditor(item)"
+                  >
+                    编辑
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <p v-if="selectedBrandVehicles.length === 0" class="empty-state compact">当前品牌暂无车型。</p>
+        <p
+          v-if="selectedBrandVehicles.length === 0"
+          class="empty-state compact"
+        >
+          当前品牌暂无车型。
+        </p>
 
         <div class="vehicle-toolbar">
           <span />
-          <AimaButton variant="primary" size="small" :disabled="saving" @click="openNewVehicleDialog">
+          <AimaButton
+            variant="primary"
+            size="small"
+            :disabled="saving"
+            @click="openNewVehicleDialog"
+          >
             新增车型
           </AimaButton>
         </div>
@@ -588,13 +666,22 @@ async function mergeSelectedVehicle(): Promise<void> {
         <details class="technical-details brand-technical">
           <summary>技术信息</summary>
           <dl>
-            <div><dt>品牌编码</dt><dd>{{ selectedBrand.code }}</dd></div>
-            <div><dt>目录版本</dt><dd>v{{ selectedBrand.catalog_version }}</dd></div>
+            <div>
+              <dt>品牌编码</dt>
+              <dd>{{ selectedBrand.code }}</dd>
+            </div>
+            <div>
+              <dt>目录版本</dt>
+              <dd>v{{ selectedBrand.catalog_version }}</dd>
+            </div>
           </dl>
         </details>
       </section>
 
-      <section v-else class="card form-card brand-detail-card empty-detail">
+      <section
+        v-else
+        class="card form-card brand-detail-card empty-detail"
+      >
         <h2>品牌详情</h2>
         <p>请选择品牌，或新增品牌后继续配置旗下车型。</p>
       </section>
@@ -610,100 +697,203 @@ async function mergeSelectedVehicle(): Promise<void> {
         <h2>新增品牌</h2>
         <label>
           品牌编码
-          <input v-model="brandDraft.code" maxlength="100" placeholder="例如 AIMA">
+          <input
+            v-model="brandDraft.code"
+            maxlength="100"
+            placeholder="例如 AIMA"
+          >
           <small>稳定机器身份，创建后不可修改。</small>
         </label>
         <label>
           品牌名称
-          <input v-model="brandDraft.displayName" maxlength="200" placeholder="请输入品牌名称">
+          <input
+            v-model="brandDraft.displayName"
+            maxlength="200"
+            placeholder="请输入品牌名称"
+          >
         </label>
         <label>
           品牌角色
           <select v-model="brandDraft.role">
-            <option value="owned">自有品牌</option>
-            <option value="competitor">竞品品牌</option>
-            <option value="other">其他品牌</option>
+            <option value="owned">
+              自有品牌
+            </option>
+            <option value="competitor">
+              竞品品牌
+            </option>
+            <option value="other">
+              其他品牌
+            </option>
           </select>
         </label>
         <label>
           品牌识别词（每行一个）
-          <textarea v-model="brandDraft.aliases" rows="4" placeholder="请输入识别词，每行一个" />
+          <textarea
+            v-model="brandDraft.aliases"
+            rows="4"
+            placeholder="请输入识别词，每行一个"
+          />
         </label>
         <div class="creation-status-note">
           <strong>状态</strong>
           <span>新建品牌按当前 Contract 默认启用；创建后可在品牌详情中停用。</span>
         </div>
         <div class="actions">
-          <AimaButton @click="closeBrandCreateDialog">取消</AimaButton>
-          <AimaButton variant="primary" :disabled="saving || !brandFormValid" @click="saveBrand">创建品牌</AimaButton>
+          <AimaButton @click="closeBrandCreateDialog">
+            取消
+          </AimaButton>
+          <AimaButton
+            variant="primary"
+            :disabled="saving || !brandFormValid"
+            @click="saveBrand"
+          >
+            创建品牌
+          </AimaButton>
         </div>
       </section>
     </AimaDialog>
 
-    <AimaDialog v-model="vehicleEditorOpen" :label="vehicleDraft.id ? '编辑车型' : '新增车型'" width="420px">
+    <AimaDialog
+      v-model="vehicleEditorOpen"
+      :label="vehicleDraft.id ? '编辑车型' : '新增车型'"
+      width="420px"
+    >
       <section class="resource-dialog-form vehicle-dialog-form">
         <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
         <label>
           车型编码
-          <input v-model="vehicleDraft.code" :disabled="Boolean(vehicleDraft.id)" placeholder="例如 AIMA-Q7">
+          <input
+            v-model="vehicleDraft.code"
+            :disabled="Boolean(vehicleDraft.id)"
+            placeholder="例如 AIMA-Q7"
+          >
           <small>稳定机器身份，创建后不可修改。</small>
         </label>
         <label>
           显示名称
-          <input v-model="vehicleDraft.displayName" placeholder="例如 爱玛 Q7">
+          <input
+            v-model="vehicleDraft.displayName"
+            placeholder="例如 爱玛 Q7"
+          >
         </label>
         <label>
           品牌
-          <select v-model="vehicleDraft.brandId" aria-label="品牌">
-            <option value="">请选择品牌</option>
-            <option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.display_name }}</option>
+          <select
+            v-model="vehicleDraft.brandId"
+            aria-label="品牌"
+          >
+            <option value="">
+              请选择品牌
+            </option>
+            <option
+              v-for="brand in brands"
+              :key="brand.id"
+              :value="brand.id"
+            >
+              {{ brand.display_name }}
+            </option>
           </select>
           <small>active 车型必须显式绑定一个当前可用品牌；修改归属只通过 Vehicle API。</small>
         </label>
         <label>
           系列（可选）
-          <input v-model="vehicleDraft.seriesName" maxlength="200" placeholder="用于车型筛选分组">
+          <input
+            v-model="vehicleDraft.seriesName"
+            maxlength="200"
+            placeholder="用于车型筛选分组"
+          >
         </label>
         <label>
           类别（可选）
-          <input v-model="vehicleDraft.categoryName" maxlength="200" placeholder="用于车型信息展示">
+          <input
+            v-model="vehicleDraft.categoryName"
+            maxlength="200"
+            placeholder="用于车型信息展示"
+          >
         </label>
         <label>
           别名（每行一个）
-          <textarea v-model="vehicleDraft.aliases" rows="4" placeholder="Q7&#10;爱玛Q7" />
+          <textarea
+            v-model="vehicleDraft.aliases"
+            rows="4"
+            placeholder="Q7&#10;爱玛Q7"
+          />
         </label>
 
-        <fieldset v-if="vehicleDraft.id" class="status-field">
+        <fieldset
+          v-if="vehicleDraft.id"
+          class="status-field"
+        >
           <legend>状态</legend>
           <label class="radio-option">
-            <input v-model="vehicleDraft.status" type="radio" value="active"><span>已启用</span>
+            <input
+              v-model="vehicleDraft.status"
+              type="radio"
+              value="active"
+            >
+            <span>已启用</span>
           </label>
           <label class="radio-option">
-            <input v-model="vehicleDraft.status" type="radio" value="deprecated"><span>停用</span>
+            <input
+              v-model="vehicleDraft.status"
+              type="radio"
+              value="deprecated"
+            >
+            <span>停用</span>
           </label>
         </fieldset>
-        <div v-else class="creation-status-note">
+        <div
+          v-else
+          class="creation-status-note"
+        >
           <strong>状态</strong>
           <span>新建车型按当前 Contract 默认启用；创建后可在编辑车型中停用。</span>
         </div>
 
-        <details v-if="vehicleDraft.id" class="merge-vehicle-details">
+        <details
+          v-if="vehicleDraft.id"
+          class="merge-vehicle-details"
+        >
           <summary>合并重复车型</summary>
           <select v-model="mergeTargetId">
-            <option value="">选择目标车型</option>
+            <option value="">
+              选择目标车型
+            </option>
             <option
               v-for="item in vehicles.filter((vehicle) => vehicle.id !== vehicleDraft.id && vehicle.status === 'active')"
               :key="item.id"
               :value="item.id"
-            >{{ item.display_name }}</option>
+            >
+              {{ item.display_name }}
+            </option>
           </select>
-          <AimaButton size="small" :disabled="!mergeTargetId" @click="mergeSelectedVehicle">合并到目标车型</AimaButton>
+          <AimaButton
+            size="small"
+            :disabled="!mergeTargetId"
+            @click="mergeSelectedVehicle"
+          >
+            合并到目标车型
+          </AimaButton>
         </details>
 
         <div class="actions">
-          <AimaButton @click="vehicleEditorOpen = false">取消</AimaButton>
-          <AimaButton v-if="vehicleDraft.id" variant="text" @click="requestCurrentVehicleDelete">删除</AimaButton>
-          <AimaButton variant="primary" :disabled="saving || !vehicleFormValid" @click="saveVehicle">保存</AimaButton>
+          <AimaButton @click="vehicleEditorOpen = false">
+            取消
+          </AimaButton>
+          <AimaButton
+            v-if="vehicleDraft.id"
+            variant="text"
+            @click="requestCurrentVehicleDelete"
+          >
+            删除
+          </AimaButton>
+          <AimaButton
+            variant="primary"
+            :disabled="saving || !vehicleFormValid"
+            @click="saveVehicle"
+          >
+            保存
+          </AimaButton>
         </div>
       </section>
     </AimaDialog>
@@ -718,8 +908,15 @@ async function mergeSelectedVehicle(): Promise<void> {
         <h2>删除品牌</h2>
         <p>确定删除未被引用的品牌“{{ brandDeleteTarget?.display_name }}”吗？服务端会拒绝删除仍有关联的品牌。</p>
         <div class="actions">
-          <AimaButton @click="brandDeleteTarget = null">取消</AimaButton>
-          <AimaButton variant="primary" @click="confirmDeleteBrand">确认删除</AimaButton>
+          <AimaButton @click="brandDeleteTarget = null">
+            取消
+          </AimaButton>
+          <AimaButton
+            variant="primary"
+            @click="confirmDeleteBrand"
+          >
+            确认删除
+          </AimaButton>
         </div>
       </section>
     </AimaDialog>
@@ -734,8 +931,15 @@ async function mergeSelectedVehicle(): Promise<void> {
         <h2>删除车型</h2>
         <p>确定删除未引用车型“{{ vehicleDeleteTarget?.display_name }}”吗？系统会保留本次操作记录。</p>
         <div class="actions">
-          <AimaButton @click="vehicleDeleteTarget = null">取消</AimaButton>
-          <AimaButton variant="primary" @click="confirmDeleteVehicle">确认删除</AimaButton>
+          <AimaButton @click="vehicleDeleteTarget = null">
+            取消
+          </AimaButton>
+          <AimaButton
+            variant="primary"
+            @click="confirmDeleteVehicle"
+          >
+            确认删除
+          </AimaButton>
         </div>
       </section>
     </AimaDialog>
@@ -750,7 +954,12 @@ async function mergeSelectedVehicle(): Promise<void> {
         <h2>当前资源无法删除</h2>
         <p>{{ resourceConflict }}</p>
         <div class="actions">
-          <AimaButton variant="primary" @click="resourceConflict = null">知道了</AimaButton>
+          <AimaButton
+            variant="primary"
+            @click="resourceConflict = null"
+          >
+            知道了
+          </AimaButton>
         </div>
       </section>
     </AimaDialog>
