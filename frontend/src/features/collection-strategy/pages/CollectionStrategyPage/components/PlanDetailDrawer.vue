@@ -112,7 +112,10 @@ function archivePlan(): void {
         {{ error }}
       </AimaFeedbackBanner>
       <span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span><h3>{{ plan.name }}</h3>
-      <div class="resource-actions" aria-label="计划管理操作">
+      <div
+        class="resource-actions"
+        aria-label="计划管理操作"
+      >
         <AimaButton
           size="small"
           :disabled="saving"
