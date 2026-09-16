@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260916-historical-import-partial-preflight
 title: 历史批量导入跳过空文件并隔离少量坏文件
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/506-historical-import-partial-preflight
 created: 2026-09-16
