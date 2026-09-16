@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { nextTick, ref, watch } from 'vue'
+
 const props = withDefaults(defineProps<{
   modelValue: boolean
   label: string
@@ -14,12 +16,29 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
+const panel = ref<HTMLElement | null>(null)
+let returnFocus: HTMLElement | null = null
 
 /** 共享复杂模态框只管理遮罩、视口约束和固定头尾；业务动作与可关闭资格由调用方传入。 */
 function close(): void {
   if (props.closeDisabled) return
   emit('update:modelValue', false)
 }
+
+/** 打开时把焦点移入模态框，关闭后恢复触发控件，兼容嵌套资源详情的键盘返回。 */
+watch(() => props.modelValue, async (visible, previous) => {
+  if (visible) {
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    await nextTick()
+    panel.value?.focus({ preventScroll: true })
+    return
+  }
+  if (!previous || !returnFocus) return
+  const target = returnFocus
+  returnFocus = null
+  await nextTick()
+  if (target.isConnected) target.focus({ preventScroll: true })
+}, { flush: 'post' })
 </script>
 
 <template>
@@ -31,6 +50,7 @@ function close(): void {
       @click.self="closeOnBackdrop && close()"
     >
       <section
+        ref="panel"
         class="aima-modal-container"
         :style="{
           width: `min(${width}, calc(100vw - 48px))`,
@@ -39,7 +59,8 @@ function close(): void {
         role="dialog"
         aria-modal="true"
         :aria-label="label"
-        @keydown.esc="close"
+        tabindex="-1"
+        @keydown.esc.stop="close"
       >
         <div
           v-if="$slots.header"
@@ -84,6 +105,7 @@ function close(): void {
   overflow: hidden;
   border: 1px solid var(--aima-color-border-default);
   border-radius: var(--aima-radius-xl);
+  outline: 0;
   background: var(--aima-color-bg-white);
   box-shadow: 0 22px 60px rgb(22 29 43 / 22%);
 }
