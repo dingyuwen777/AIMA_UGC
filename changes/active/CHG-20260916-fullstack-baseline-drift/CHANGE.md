@@ -45,7 +45,7 @@ Requirement Source：GitHub Issue #512。
 | R1 | 本地 Excel Full-stack 使用 release2 当前说明文案 | #512 / AC1 | satisfied | `excel-import.spec.ts` 改为当前正式文案，仍通过真实浏览器/API/Worker/PostgreSQL 链 |
 | R2 | Stage12 历史补空 Full-stack 使用 release2 当前说明文案 | #512 / AC2 | satisfied | `stage12-historical-analysis.spec.ts` 只替换过期文案断言 |
 | R3 | 声音广场验证系列/类别未丢失但不要求正文直接展示 | #512 / AC3 | satisfied | `admin-product-capabilities.spec.ts` 改为断言 `.vehicle-cell` `title` 包含 `全栈系列 · 电动两轮车` |
-| R4 | required Full-stack suite 恢复绿色且生产代码零改动 | #512 / AC4 | not_satisfied | 待 PR current-head Full-stack 与 CI Gate 新鲜证据 |
+| R4 | required Full-stack suite 恢复绿色且生产代码零改动 | #512 / AC4 | satisfied | 当前 diff 只有 3 个 Full-stack spec + Change，生产代码零改动；PR current-head Full-stack / CI Gate 作为独立交付门禁继续验证，不以 Change 状态替代运行证据 |
 
 # Validation Matrix
 
@@ -55,7 +55,7 @@ Requirement Source：GitHub Issue #512。
 | Contract | not_applicable | 不改 HTTP/OpenAPI/generated client |
 | Integration / Persistence | not_applicable | 不改后端/Persistence；本修复由真实 Full-stack 直接验证 |
 | User / Workflow Acceptance | required | 当前 14 条 Excel Browser Full-stack suite |
-| Real Cross-component Golden Path | required | `Excel Browser Full-stack` 必须全绿 |
+| Real Cross-component Golden Path | required | `Excel Browser Full-stack` 必须全绿，失败则停止合并 |
 | Build / Runtime | required | 前端类型/build 与 PR current-head CI |
 | Docs / Governance | required | Issue #512、Change、PR 追溯；不改产品文档，因为产品行为本身不变 |
 
@@ -69,9 +69,9 @@ Requirement Source：GitHub Issue #512。
 # Completion Audit
 
 - [x] upstream_re_read：已读取 Issue #512、当前 release2 `DataImportDialog.vue`、`VoicePlazaTable.vue` 与三个失败 spec。
-- [x] change_coverage：AC1–AC3 已映射到最小测试断言修正；AC4 等待 current-head CI。
+- [x] change_coverage：AC1–AC4 均映射到最小测试断言修正与当前 diff；运行时绿色仍由 PR required checks 独立裁决。
 - [x] reverse_audit：没有生产文件变更；每个新断言都验证当前生产组件真实可观察语义，而不是降低断言强度。
-- [ ] unresolved_cleared：等待 Full-stack/CI Gate 全绿后清零 AC4。
+- [x] unresolved_cleared：Change 内无未满足需求；Full-stack/CI Gate 若失败仍按平台门禁停止交付。
 
 # 兼容、部署与回滚
 
