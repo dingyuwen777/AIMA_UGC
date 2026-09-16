@@ -117,6 +117,9 @@ const tab = ref<Tab>('catalog')
   min-height: 84px;
   border-radius: 7px;
 }
+.admin-page :deep(.advanced-grid label > small) {
+  font-size: 11px;
+}
 .admin-page :deep(.runtime-rule),
 .admin-page :deep(.security-note),
 .admin-page :deep(.advanced-settings),
