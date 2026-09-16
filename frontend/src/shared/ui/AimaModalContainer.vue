@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -25,21 +25,53 @@ function close(): void {
   emit('update:modelValue', false)
 }
 
-/** 打开时把焦点移入模态框，关闭后恢复触发控件，兼容嵌套资源详情的键盘返回。 */
-watch(() => props.modelValue, async (visible, previous) => {
-  if (visible) {
-    if (typeof document === 'undefined' || typeof HTMLElement === 'undefined') return
+/** 打开时记录触发控件并把焦点移入模态框。 */
+async function focusPanel(): Promise<void> {
+  if (typeof document === 'undefined' || typeof HTMLElement === 'undefined') return
+  if (!returnFocus) {
     returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    await nextTick()
-    panel.value?.focus({ preventScroll: true })
-    return
   }
-  if (!previous || !returnFocus) return
+  await nextTick()
+  panel.value?.focus({ preventScroll: true })
+}
+
+/** 关闭或被父组件卸载时，恢复触发控件焦点。 */
+function restoreTriggerFocus(): void {
   const target = returnFocus
   returnFocus = null
-  await nextTick()
-  if (target.isConnected) target.focus({ preventScroll: true })
-}, { flush: 'post', immediate: true })
+  if (target?.isConnected) target.focus({ preventScroll: true })
+}
+
+/** 只让当前 DOM 中最上层的模态元素响应全局 Escape，嵌套详情不会误关底层抽屉。 */
+function onDocumentKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape' || !props.modelValue || !panel.value || typeof document === 'undefined') return
+  const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]'))
+  if (dialogs.at(-1) !== panel.value) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  close()
+}
+
+watch(() => props.modelValue, async (visible, previous) => {
+  if (visible && !previous) {
+    await focusPanel()
+    return
+  }
+  if (!visible && previous) {
+    await nextTick()
+    restoreTriggerFocus()
+  }
+}, { flush: 'post' })
+
+onMounted(() => {
+  document.addEventListener('keydown', onDocumentKeydown, true)
+  if (props.modelValue) void focusPanel()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocumentKeydown, true)
+  restoreTriggerFocus()
+})
 </script>
 
 <template>
