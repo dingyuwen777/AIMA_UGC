@@ -741,7 +741,10 @@ function viewCampaignContents(): void {
           >
             <span>{{ item.item_kind === 'source_file' ? '文件' : `数据分段 ${item.ordinal ?? ''}` }} · {{ item.relative_path }}</span>
             <b>{{ historicalItemStatusLabels[item.status] }}</b>
-            <small v-if="item.status === 'failed'">处理失败；技术原因可在下方技术详情中查看。</small>
+            <small
+              v-if="item.status === 'succeeded' && item.error_code === 'historical_source_empty'"
+            >文件没有数据，已自动跳过。</small>
+            <small v-else-if="item.status === 'failed'">处理失败；技术原因可在下方技术详情中查看。</small>
           </div>
         </div>
         <small v-if="store.historicalCampaignItemsHasMore">明细按失败和运行状态优先，当前仅展示前 200 条。</small>
@@ -810,7 +813,7 @@ function viewCampaignContents(): void {
             v-if="store.historicalCampaignItems.some((item) => item.error_code)"
             class="technical-errors"
           >
-            <strong>失败项技术信息</strong>
+            <strong>异常 / 警告技术信息</strong>
             <span
               v-for="item in store.historicalCampaignItems.filter((entry) => entry.error_code)"
               :key="`technical-${item.id}`"

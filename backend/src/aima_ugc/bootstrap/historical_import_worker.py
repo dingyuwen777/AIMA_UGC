@@ -179,7 +179,7 @@ class PostgresHistoricalImportJobExecutor:
         item, campaign = self._load_snapshot_item(payload.campaign_item_id, fence)
         source_artifact: ArtifactRecord | None = None
         try:
-            if item["status"] == "ready":
+            if item["status"] in {"ready", "succeeded"}:
                 artifact_id = cast(UUID | None, item["artifact_id"])
                 if artifact_id is not None:
                     self._link_if_stored(artifact_id)
@@ -261,22 +261,31 @@ class PostgresHistoricalImportJobExecutor:
                     chunk_rows=_required_int(profile, "chunk_rows"),
                     publish=publish,
                 )
-            if summary.rows_seen == 0 or summary.chunks == 0:
-                return JobHandlerResult.failed("historical_source_empty")
             if context.cancel_requested():
                 return JobHandlerResult.cancelled()
+            empty_source = summary.rows_seen == 0 or summary.chunks == 0
             session = self._runtime.database.new_session()
             try:
                 with session.begin():
                     PostgresJobRepository(session).lock_current_execution(fence)
                     repository = PostgresHistoricalImportRepository(session)
-                    repository.complete_source_snapshot(
-                        item_id=payload.campaign_item_id,
-                        artifact_id=source_artifact.id,
-                        sha256=source_artifact.sha256,
-                        row_count=summary.rows_seen,
-                        stats=asdict(summary),
-                    )
+                    stats = asdict(summary)
+                    if empty_source:
+                        stats["warning_code"] = "historical_source_empty"
+                        repository.complete_empty_source_snapshot(
+                            item_id=payload.campaign_item_id,
+                            artifact_id=source_artifact.id,
+                            sha256=source_artifact.sha256,
+                            stats=stats,
+                        )
+                    else:
+                        repository.complete_source_snapshot(
+                            item_id=payload.campaign_item_id,
+                            artifact_id=source_artifact.id,
+                            sha256=source_artifact.sha256,
+                            row_count=summary.rows_seen,
+                            stats=stats,
+                        )
                     repository.schedule_snapshot_jobs(
                         cast(UUID, item["campaign_id"]),
                         max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
@@ -290,6 +299,7 @@ class PostgresHistoricalImportJobExecutor:
                     "campaign_item_id": str(payload.campaign_item_id),
                     "rows_seen": summary.rows_seen,
                     "chunks": summary.chunks,
+                    "empty_source": empty_source,
                 }
             )
         except LeaseLostError:
