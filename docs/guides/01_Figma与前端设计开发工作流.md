@@ -394,10 +394,12 @@ Figma
 
 ### 7.2 声音广场正式 Figma 基线
 
-“声音广场”的正式设计文件为 `EAPm8KVarUe7BFTSnzvOpT`。Design-to-Code 和后续 targeted re-review 使用以下正式节点：
+“声音广场”的正式设计文件为 release-2 的 `qmZEFvPrB8u9JX5fyqc93S`，页面节点为 `4627:7429`。Design-to-Code 和后续 targeted re-review 使用以下正式节点：
 
 ```text
 Normal / Data              4627:7431
+Compact 1180               4725:1325
+Wide 1920                  4725:1781
 Loading                    4627:7811
 Empty                      4627:8105
 Error                      4627:8307
@@ -427,7 +429,7 @@ App Shell
 → 页面私有 Filter / Table / Drawer / Dialog 留在 Voice Plaza Page
 ```
 
-正式桌面视觉复核使用 `1440×900` 作为参考 Viewport，但生产代码不得因此写死页面宽高。浏览器原生控件（例如 `input[type=date]`）的系统 Chrome 可以随浏览器/平台变化；验收关注其语义、尺寸、布局和可操作性，不用 Figma 静态占位符替代真实原生行为。
+正式桌面视觉复核使用 `1440×900` 作为参考 Viewport，Compact 1180 下七列表格应直接展示日期与详情，标题列收窄后允许换行或省略而不缩小字号；只有更窄的窗口才由表格区域局部横滚兜底。生产代码不得因此写死页面宽高。浏览器原生控件（例如 `input[type=date]`）的系统 Chrome 可以随浏览器/平台变化；验收关注其语义、尺寸、布局和可操作性，不用 Figma 静态占位符替代真实原生行为。
 
 声音广场视觉或交互变更至少按以下证据分层验证：
 

@@ -112,9 +112,9 @@ onMounted(() => void identity.ensurePrincipal())
 .brand strong, .brand span { display: block; white-space: nowrap; }
 .brand strong { color: var(--aima-text); font-size: 14px; font-weight: 500; line-height: 22px; }
 .brand span { margin-top: 2px; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
-nav { min-height: 0; overflow-y: auto; }
+nav { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; }
 .nav-group-label { display: block; margin-bottom: 4px; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
-.nav-item { display: flex; width: 156px; min-height: 38px; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; color: var(--aima-text); text-decoration: none; font-size: 14px; line-height: 22px; }
+.nav-item { display: flex; width: 100%; min-height: 38px; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; color: var(--aima-text); text-decoration: none; font-size: 14px; line-height: 22px; }
 .nav-item + .nav-item { margin-top: 4px; }
 .nav-item.router-link-active { color: var(--aima-primary); background: var(--aima-primary-soft); font-weight: 500; }
 .nav-icon { display: flex; width: 16px; flex: none; color: var(--aima-text-muted); }
@@ -136,7 +136,7 @@ nav { min-height: 0; overflow-y: auto; }
   .brand { gap: 6px; }
   .brand strong { font-size: 12px; }
   .brand span { display: none; }
-  .nav-item { width: 128px; padding-inline: 8px; font-size: 12px; }
+  .nav-item { padding-inline: 8px; font-size: 12px; }
   .workspace { width: calc(100% - 144px); margin-left: 144px; }
   .workspace-main { padding: 16px; }
   .principal { display: none; }

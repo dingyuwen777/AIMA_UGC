@@ -25,7 +25,7 @@
 
 /*
  * 声音广场 release-2 PageShell：1440 为视觉锚点，1180/1920 只改变可用工作区，
- * 不缩放整个页面。横向溢出由表格自己的 viewport 消化。
+ * 不缩放整个页面。1180 紧凑桌面完整展示表格列，极窄窗口才由表格 viewport 局部横滚。
  */
 #app .app-shell .workspace-main:has(> .voice-plaza-page) {
   padding: 28px 24px 20px;

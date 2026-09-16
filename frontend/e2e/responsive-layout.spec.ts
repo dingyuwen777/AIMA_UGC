@@ -204,12 +204,17 @@ async function expectNoPageHorizontalOverflow(page: Page): Promise<void> {
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
 }
 
-/** 验证 AppShell 与真实内容区都被约束在当前 viewport 内。 */
+/** 验证 AppShell、侧栏导航与真实内容区都被约束在当前 viewport 内。 */
 async function expectWorkspaceInsideViewport(page: Page, viewportWidth: number): Promise<void> {
   const shell = await page.locator('.app-shell').boundingBox()
   const workspace = await page.locator('.workspace-main').boundingBox()
+  const navigation = await page.getByRole('navigation', { name: '业务导航' }).evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
   expect(shell).not.toBeNull()
   expect(workspace).not.toBeNull()
+  expect(navigation.scrollWidth).toBeLessThanOrEqual(navigation.clientWidth)
   expect((shell?.x ?? 0) + (shell?.width ?? 0)).toBeLessThanOrEqual(viewportWidth + 1)
   expect((workspace?.x ?? 0) + (workspace?.width ?? 0)).toBeLessThanOrEqual(viewportWidth + 1)
   await expectNoPageHorizontalOverflow(page)
@@ -300,6 +305,19 @@ for (const viewport of viewports) {
     }
   })
 }
+
+test('keeps narrow sidebar navigation inside its own width and routes normally', async ({ page }) => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await mockResponsivePages(page)
+  await page.goto('/voice-plaza')
+  const navigation = await page.getByRole('navigation', { name: '业务导航' }).evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
+  expect(navigation.scrollWidth).toBeLessThanOrEqual(navigation.clientWidth)
+  await page.getByRole('navigation', { name: '业务导航' }).getByRole('link', { name: '采集策略' }).click()
+  await expect(page.getByRole('heading', { name: '采集策略' })).toBeVisible()
+})
 
 test('constrains a real dialog to the viewport safe margin in a narrow window', async ({ page }) => {
   const viewport = { width: 560, height: 800 }
