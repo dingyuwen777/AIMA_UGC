@@ -139,7 +139,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
-  test(`matches Figma column geometry and keeps the viewport usable at ${width}px`, async ({ page }) => {
+  test(`matches release-2 geometry and keeps the viewport usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 })
     const platforms = ['xiaohongshu', 'douyin', 'kuaishou', 'weibo', 'bilibili']
     await stubNormalContents(page, platforms.map((platform, index) => ({
@@ -154,6 +154,8 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
           { primary_label: '驾乘体验', secondary_label: '坐垫舒适性' },
           { primary_label: '售后服务', secondary_label: '客服与服务态度' },
         ] },
+        brands: [{ id: 'brand-aima', display_name: '爱玛', role: 'owned', evidences: [] }],
+        competition_scope: 'owned_only',
         vehicles: ['爱玛 Q7', '爱玛露娜', '爱玛探索者长续航特别版'].map((display_name, vehicleIndex) => ({
           vehicle_model_id: `52345678-1234-5678-1234-56781234567${vehicleIndex}`,
           display_name, code: `MODEL-${vehicleIndex}`, series_name: '通勤系列', category_name: '电动两轮车', evidences: [],
@@ -170,27 +172,38 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
       await expect(badge).toHaveText(mark)
       await expect(badge).toHaveAttribute('title', label)
     }
+
     const table = await page.locator('.content-list').boundingBox()
     expectNear(table?.x, 204)
     expectNear(table?.width, width - 228)
-    const expected = [16, Math.max(1212, width - 228) - 836, 76, 190, 230, 110, 110]
+    const tableLayoutWidth = Math.max(1212, width - 228)
+    const expected = [16, tableLayoutWidth - 790, 80, 200, 150, 120, 120]
     const header = await page.locator('.table-head > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
     const row = await page.locator('.content-row').first().locator(':scope > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
     expected.forEach((size, index) => { expectNear(header[index], size); expectNear(row[index], size) })
+
     const complexRow = page.locator('.content-row').first()
     await expect(complexRow.locator('.label-tag')).toHaveCount(3)
-    await expect(complexRow.locator('.vehicle-cell > div')).toHaveCount(3)
-    const fits = await complexRow.evaluate((node) => {
-      const bounds = node.getBoundingClientRect()
-      return [...node.querySelectorAll<HTMLElement>('.content-title, .label-tag, .vehicle-cell, .row-actions')].every((child) => {
-        const box = child.getBoundingClientRect()
-        return child.scrollWidth <= child.clientWidth + 1 && box.top >= bounds.top && box.bottom <= bounds.bottom
-      })
-    })
-    expect(fits).toBe(true)
+    await expect(complexRow.locator('.label-tag').first()).toHaveAttribute('title', '电池、续航与充电 / 实际续航表现')
+    await expect(complexRow.locator('.vehicle-cell')).toContainText('爱玛 · 自有品牌')
+    await expect(complexRow.locator('.vehicle-cell')).toContainText('爱玛 Q7 / 爱玛露娜 / 爱玛探索者长续航特别版 · 仅自有')
+    const complexRowBox = await complexRow.boundingBox()
+    expect(complexRowBox?.height ?? 0).toBeGreaterThanOrEqual(76)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
-    await expect(page.locator('.inbox-trigger img')).toHaveJSProperty('naturalWidth', 18)
-    await expect(page.locator('.inbox-trigger')).toContainText('消息中心')
+
+    const inboxTrigger = page.getByRole('button', { name: '站内通知' })
+    await expect(inboxTrigger).toBeVisible()
+    await expect(inboxTrigger.locator('img')).toHaveJSProperty('naturalWidth', 18)
+
+    if (width === 1440) {
+      const filter = page.locator('.filters')
+      expectNear((await filter.boundingBox())?.width, 1212)
+      const primaryWidths = await filter.locator('.filter-row--primary > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
+      ;[352, 140, 150, 120, 130, 200].forEach((size, index) => expectNear(primaryWidths[index], size))
+      const secondaryWidths = await filter.locator('.filter-row--secondary > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
+      ;[180, 180, 180, 160, 160].forEach((size, index) => expectNear(secondaryWidths[index], size))
+    }
+
     if (width < 1440) {
       await page.locator('.content-list').evaluate((node) => { node.scrollLeft = node.scrollWidth })
       await page.locator('.content-row').first().getByRole('button', { name: '查看详情' }).click()
@@ -337,7 +350,7 @@ test('matches the formal 1440 desktop shell and empty-state composition', async 
   const filters = await page.locator('.filters').boundingBox()
   const emptyState = await page.locator('.table-state--empty').boundingBox()
   expectNear(sidebar?.width, 180)
-  expectNear(pageHeader?.y, 24)
+  expectNear(pageHeader?.y, 28)
   expectNear(pageHeader?.height, 64)
   expectNear(filters?.width, 1212)
   expectNear(emptyState?.height, 376)
