@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260916-134600-collection-runtime-release2-sync
 title: 采集运行中心对齐 release-2 Figma 正式设计
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/503-collection-runtime-release2-sync
 created: 2026-09-16
