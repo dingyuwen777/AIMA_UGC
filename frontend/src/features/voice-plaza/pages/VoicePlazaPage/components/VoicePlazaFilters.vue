@@ -268,7 +268,7 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 </template>
 
 <style scoped>
-.filters { display: grid; min-width: 0; gap: 12px; padding: 20px; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); }
+.filters { display: grid; min-width: 0; gap: 12px; padding: 20px; border: 0; border-radius: 8px; background: var(--aima-surface); box-shadow: inset 0 0 0 1px var(--aima-border); }
 .filter-row { display: flex; min-width: 0; flex-wrap: wrap; align-items: flex-start; gap: 12px 16px; }
 .filter-row--primary .field--search { min-width: 280px; flex: 1 1 280px; }
 .filter-row--primary .field--platform { flex: 0 0 140px; }
