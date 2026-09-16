@@ -312,15 +312,11 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
           class="label-summary"
         >
           <span
-            v-if="labels(item).length"
+            v-for="label in labels(item)"
+            :key="labelPairText(label)"
             class="label-tag"
-            :title="labels(item).map(labelPairText).join('、')"
-          >{{ labels(item)[0]?.primary_label }}</span>
-          <span
-            v-if="labels(item).length > 1"
-            class="label-more"
-            :title="labels(item).slice(1).map(labelPairText).join('、')"
-          >+{{ labels(item).length - 1 }}</span>
+            :title="labelPairText(label)"
+          >{{ label.primary_label }}</span>
           <span
             v-if="!labels(item).length"
             class="empty-label"
@@ -378,10 +374,10 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
 .content-title { min-width: 0; padding: 0; overflow: hidden; border: 0; color: var(--aima-text); background: transparent; font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .content-copy p { margin: 0; overflow: hidden; color: var(--aima-text-muted); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-cell { display: grid; gap: 4px; }
-.analysis-badges, .label-summary { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
-.status-badge, .label-tag, .label-more { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; padding: 2px 8px; overflow: hidden; border-radius: 4px; font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.analysis-badges { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+.label-summary { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
+.status-badge, .label-tag { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; padding: 2px 8px; overflow: hidden; border-radius: 4px; font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .label-tag { padding-block: 0; color: var(--aima-text-muted); background: var(--aima-color-bg-hover); font-size: 11px; }
-.label-more { flex: none; padding: 0 5px; color: var(--aima-text-disabled); background: var(--aima-color-bg-hover); font-size: 10px; }
 .status-badge--positive { color: var(--aima-success); background: var(--aima-color-success-bg); }
 .status-badge--negative { color: var(--aima-danger); background: var(--aima-color-error-bg); }
 .status-badge--neutral { color: var(--aima-text-muted); background: var(--aima-color-bg-hover); }
