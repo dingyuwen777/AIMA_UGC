@@ -138,21 +138,23 @@ function brandRoleLabel(role: 'owned' | 'competitor' | 'other'): string {
 }
 
 function competitionScopeLabel(scope?: ContentListItemResponse['competition_scope']): string {
-  return scope ? ({ owned_only: '仅自有', competitor_only: '仅竞品', mixed: '混合', other_only: '仅其他', none_detected: '未识别' })[scope] : '未识别'
+  return scope ? ({ owned_only: '仅自有品牌', competitor_only: '仅竞品品牌', mixed: '自有与竞品混合', other_only: '仅其他品牌', none_detected: '未识别品牌' })[scope] : '未识别品牌'
 }
 
-/** 主列表只展示用户决策需要的品牌/车型摘要，完整系列与分类信息保留在 title/详情。 */
-function brandSummary(item: ContentListItemResponse): string {
+/** 主列表按 Figma 两行结构展示摘要，完整系列与分类信息保留在 title/详情。 */
+function brandNames(item: ContentListItemResponse): string {
   const brands = item.brands ?? []
-  if (!brands.length) return '未关联品牌'
-  if (brands.length === 1) return `${brands[0]!.display_name} · ${brandRoleLabel(brands[0]!.role)}品牌`
-  return brands.map((brand) => brand.display_name).join(' / ')
+  return brands.length ? brands.map((brand) => brand.display_name).join(' / ') : '未关联品牌'
 }
 
-function vehicleSummary(item: ContentListItemResponse): string {
+function singleBrandRole(item: ContentListItemResponse): string | null {
+  const brands = item.brands ?? []
+  return brands.length === 1 ? `${brandRoleLabel(brands[0]!.role)}品牌` : null
+}
+
+function vehicleNames(item: ContentListItemResponse): string {
   const names = (item.vehicles ?? []).map((vehicle) => vehicle.display_name)
-  const vehicleText = names.length ? names.join(' / ') : '未关联车型'
-  return `${vehicleText} · ${competitionScopeLabel(item.competition_scope)}`
+  return names.length ? names.join(' / ') : '未关联车型'
 }
 
 function vehicleCellTitle(item: ContentListItemResponse): string {
@@ -327,8 +329,8 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
         class="vehicle-cell"
         :title="vehicleCellTitle(item)"
       >
-        <strong>{{ brandSummary(item) }}</strong>
-        <span>{{ vehicleSummary(item) }}</span>
+        <strong><span>{{ brandNames(item) }}</span><template v-if="singleBrandRole(item)"> · <span class="brand-role">{{ singleBrandRole(item) }}</span></template></strong>
+        <span><span>{{ vehicleNames(item) }}</span> · <span class="competition-scope">{{ competitionScopeLabel(item.competition_scope) }}</span></span>
       </div>
       <time>
         <strong>{{ dateTimeParts(item.published_at)[0] }}</strong>
@@ -386,6 +388,9 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
 .fans-cell, .vehicle-cell, time { display: grid; gap: 4px; }
 .fans-cell strong, .vehicle-cell strong, time strong { overflow: hidden; color: var(--aima-text); font-size: 13px; font-weight: 700; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .fans-cell span, .vehicle-cell span, time span { overflow: hidden; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.vehicle-cell strong > span:first-child, .vehicle-cell > span > span:first-child { color: inherit; font: inherit; }
+.vehicle-cell .brand-role { color: var(--aima-text); font-size: inherit; font-weight: inherit; }
+.vehicle-cell .competition-scope { color: inherit; font-size: inherit; }
 time, .date-heading { text-align: right; }
 .row-actions { position: sticky; right: 0; display: grid; align-self: stretch; align-content: center; justify-items: end; gap: 4px; background: var(--aima-surface); }
 .actions-heading { position: sticky; right: 0; background: var(--aima-color-bg-table-header); text-align: right; }
