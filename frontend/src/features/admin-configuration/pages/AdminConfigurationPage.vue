@@ -92,6 +92,13 @@ const tab = ref<Tab>('catalog')
   font-weight: 500;
 }
 
+/* 品牌目录在 Wide 下按内容收起空白高度，编辑区单独承担长表单滚动。 */
+.admin-page :deep(.brand-directory-card) {
+  height: auto;
+  min-height: 0;
+  overflow-y: visible;
+}
+
 /* AI 模型与 TikHub 保持同一个业务 Owner，只在管理员页面同步 Figma Geometry。 */
 .admin-page :deep(.provider-layout) {
   grid-template-columns: 398px minmax(760px, 1fr);
