@@ -79,7 +79,7 @@ test('uses the current Figma business projection without leaking Provider detail
   await page.locator('.plan-table tbody tr').first().getByRole('button', { name: '查看详情' }).click()
   const detail = page.getByRole('dialog', { name: '采集计划详情' })
   await expect(detail.getByText('计划规则与执行范围', { exact: true })).toBeVisible()
-  await expect(detail.getByText('主采集渠道', { exact: false })).toHaveCount(0)
+  await expect(detail.getByText('主采集渠道', { exact: false })).toBeHidden()
   await expect(detail.getByText('小红书', { exact: true })).toBeVisible()
 })
 
