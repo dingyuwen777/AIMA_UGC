@@ -136,7 +136,9 @@ def _reset_database(runtime: PlatformRuntime) -> None:
 
 
 @pytest.fixture
-def historical_environment(tmp_path: Path) -> Iterator[tuple[PlatformRuntime, TestClient, Any, str, Path]]:
+def historical_environment(
+    tmp_path: Path,
+) -> Iterator[tuple[PlatformRuntime, TestClient, Any, str, Path]]:
     """建立真实 PostgreSQL/API/Worker 历史导入测试环境。"""
 
     historical_root = tmp_path / "approved-history"
@@ -230,7 +232,9 @@ def test_good_and_empty_sources_import_good_data(
     assert ready["can_start"] is True
     assert ready["ready_item_count"] == 2
     assert ready["total_rows"] == 1
-    empty_source = next(item for item in _items(client, campaign_id) if item["relative_path"] == "empty.xlsx")
+    empty_source = next(
+        item for item in _items(client, campaign_id) if item["relative_path"] == "empty.xlsx"
+    )
     assert empty_source["item_kind"] == "source_file"
     assert empty_source["status"] == "succeeded"
     assert empty_source["row_count"] == 0
@@ -264,7 +268,9 @@ def test_good_and_bad_sources_finish_partial_failed(
     assert ready["status"] == "ready"
     assert ready["can_start"] is True
     assert ready["ready_item_count"] == 2
-    bad_source = next(item for item in _items(client, campaign_id) if item["relative_path"] == "bad.xlsx")
+    bad_source = next(
+        item for item in _items(client, campaign_id) if item["relative_path"] == "bad.xlsx"
+    )
     assert bad_source["status"] == "failed"
     assert bad_source["error_code"] == "historical_snapshot_invalid"
 
