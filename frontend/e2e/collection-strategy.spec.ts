@@ -97,10 +97,10 @@ test('matches the approved Figma workspace and resolves the current Brand filter
   await expect(page.getByText('爱玛口碑周期采集')).toBeVisible()
   const headers = page.locator('.plan-table thead th')
   await expect(headers).toHaveCount(6)
-  await expect(headers.nth(0)).toHaveText('计划')
+  await expect(headers.nth(0)).toHaveText('采集计划')
   await expect(headers.nth(1)).toHaveText('状态')
   await expect(headers.nth(2)).toHaveText('搜索条件 / 品牌过滤')
-  await expect(headers.nth(3)).toHaveText('目标平台 / 采集渠道')
+  await expect(headers.nth(3)).toHaveText('目标平台')
   await expect(headers.nth(4)).toHaveText('调度与下次运行')
   await expect(headers.nth(5)).toHaveText('操作')
 

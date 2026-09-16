@@ -3,8 +3,8 @@ import { computed, ref, watch } from 'vue'
 
 import type { KeywordPackResponse, KeywordPackSummaryResponse } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
-import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
+import AimaModalContainer from '../../../../../shared/ui/AimaModalContainer.vue'
 import { fetchPack } from '../../../api'
 import { collectionPlatformLabel } from '../../../presentation'
 
@@ -41,21 +41,24 @@ watch(() => props.resource, load, { immediate: true })
 </script>
 
 <template>
-  <AimaDialog
+  <AimaModalContainer
     v-model="open"
     label="关键词包详情"
     width="630px"
-    class="plan-resource-dialog"
+    height="526px"
+    close-on-backdrop
   >
     <template #header>
-      <div><h2>关键词包详情</h2><p>当前配置 · 每次运行会另行冻结当时使用的配置</p></div>
-      <AimaButton
-        variant="text"
-        aria-label="关闭"
-        @click="emit('close')"
-      >
-        关闭
-      </AimaButton>
+      <header>
+        <div><h2>关键词包详情</h2><p>当前配置 · 每次运行会另行冻结当时使用的配置</p></div>
+        <AimaButton
+          variant="text"
+          aria-label="关闭"
+          @click="emit('close')"
+        >
+          关闭
+        </AimaButton>
+      </header>
     </template>
     <div class="resource-body">
       <p
@@ -107,17 +110,17 @@ watch(() => props.resource, load, { immediate: true })
       </template>
     </div>
     <template #footer>
-      <AimaButton @click="emit('close')">
-        返回计划详情
-      </AimaButton>
+      <footer>
+        <AimaButton @click="emit('close')">
+          返回计划详情
+        </AimaButton>
+      </footer>
     </template>
-  </AimaDialog>
+  </AimaModalContainer>
 </template>
 
 <style scoped>
-:global(.plan-resource-dialog) { height: 526px; border: 0; border-radius: 10px; }
-:global(.plan-resource-dialog > .aima-dialog-header) { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 24px 24px 0; }
-:global(.plan-resource-dialog > .aima-dialog-body) { flex: 1; }
-:global(.plan-resource-dialog > .aima-dialog-footer) { display: flex; justify-content: flex-end; padding: 20px 24px 24px; }
-h2 { margin: 0; font-size: 19px; line-height: 22px; }h2 + p { margin: 5px 0 0; color: #788397; font-size: 12px; line-height: 16px; }.resource-body { padding: 20px 24px 0; font-size: 13px; overflow-wrap: anywhere; }h3 { margin: 0 0 10px; font-size: 17px; }h3 small { display: block; margin-top: 6px; color: #788397; font-size: 12px; font-weight: 400; }.description { white-space: pre-wrap; color: #536075; }h4 { margin: 18px 0 8px; font-size: 13px; }table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }th,td { padding: 9px 7px; border: 1px solid var(--aima-border); text-align: left; vertical-align: top; }th { background: #f7f9fc; font-weight: 500; }th:first-child { width: 26%; }th:nth-child(2) { width: 18%; }th:nth-child(3),th:nth-child(4) { width: 13%; }dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }dl > div { padding: 10px; border: 1px solid var(--aima-border); border-radius: 6px; }dt { color: #788397; font-size: 12px; }dd { margin: 6px 0 0; }ul { margin: 0; padding-left: 20px; }li { margin-top: 6px; }details { margin-top: 20px; padding: 10px; border: 1px dashed var(--aima-border); color: #788397; font-size: 11px; }summary { cursor: pointer; }
+header { display: flex; width: 100%; min-height: 68px; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 24px 24px 0; }
+footer { display: flex; width: 100%; justify-content: flex-end; padding: 20px 24px 24px; }
+h2 { margin: 0; font-size: 19px; line-height: 22px; }h2 + p { margin: 5px 0 0; color: #788397; font-size: 12px; line-height: 16px; }.resource-body { padding: 20px 24px 0; font-size: 13px; overflow-wrap: anywhere; }h3 { margin: 0 0 10px; font-size: 17px; }h3 small { display: block; margin-top: 6px; color: #788397; font-size: 12px; font-weight: 400; }.description { white-space: pre-wrap; color: #536075; }h4 { margin: 18px 0 8px; font-size: 13px; }table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }th,td { padding: 9px 7px; border: 1px solid var(--aima-border); text-align: left; vertical-align: top; }th { background: #f7f9fc; font-weight: 500; }th:first-child { width: 26%; }th:nth-child(2) { width: 18%; }th:nth-child(3),th:nth-child(4) { width: 13%; }details { margin-top: 20px; padding: 10px; border: 1px dashed var(--aima-border); color: #788397; font-size: 11px; }summary { cursor: pointer; }
 </style>

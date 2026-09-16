@@ -3,9 +3,9 @@ import { computed, ref, watch } from 'vue'
 
 import type { KeywordPackKeywordCreateRequest, KeywordPackResponse } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
-import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
+import AimaModalContainer from '../../../../../shared/ui/AimaModalContainer.vue'
 import { COLLECTION_PLATFORM_OPTIONS } from '../../../presentation'
 
 const props = defineProps<{ saving: boolean; error?: string | null; initialPack?: KeywordPackResponse | null }>()
@@ -35,6 +35,7 @@ watch(open, (value) => {
   }))
 }, { immediate: true })
 
+/** 已启用词包中的原始成员保持只读，避免绕过服务端生命周期约束。 */
 function locked(item: DraftKeyword): boolean {
   return props.saving || (item.original && props.initialPack?.enabled === true)
 }
@@ -47,6 +48,7 @@ function addDrafts(): void {
   keywordText.value = ''
 }
 
+/** 校验草稿后统一提交名称、描述和完整关键词成员。 */
 function save(): void {
   if (invalid.value || props.saving) return
   addDrafts()
@@ -58,22 +60,26 @@ function save(): void {
 </script>
 
 <template>
-  <AimaDialog
+  <AimaModalContainer
     v-model="open"
     :label="initialPack ? '编辑关键词包' : '新建关键词包'"
     width="630px"
-    class="keyword-create-dialog"
+    height="526px"
+    close-on-backdrop
   >
-    <header>
-      <div><h2>{{ initialPack ? '编辑关键词包' : '新建关键词包' }}</h2><p>保存词包名称、描述和关键词，可被多个采集计划复用</p></div>
-      <AimaButton
-        variant="text"
-        aria-label="关闭"
-        @click="open = false"
-      >
-        <AimaIcon name="close" />
-      </AimaButton>
-    </header>
+    <template #header>
+      <header>
+        <div><h2>{{ initialPack ? '编辑关键词包' : '新建关键词包' }}</h2><p>保存词包名称、描述和关键词，可被多个采集计划复用</p></div>
+        <AimaButton
+          variant="text"
+          aria-label="关闭"
+          @click="open = false"
+        >
+          <AimaIcon name="close" />
+        </AimaButton>
+      </header>
+    </template>
+
     <div class="body">
       <AimaFeedbackBanner
         v-if="error"
@@ -181,25 +187,26 @@ function save(): void {
         新建词包一次最多保存 500 条关键词，请减少后重试。
       </AimaFeedbackBanner>
     </div>
-    <footer>
-      <AimaButton @click="open = false">
-        取消
-      </AimaButton><AimaButton
-        variant="primary"
-        :disabled="saving || invalid"
-        @click="save"
-      >
-        {{ saving ? '保存中…' : '保存词包' }}
-      </AimaButton>
-    </footer>
-  </AimaDialog>
+
+    <template #footer>
+      <footer>
+        <AimaButton @click="open = false">
+          取消
+        </AimaButton><AimaButton
+          variant="primary"
+          :disabled="saving || invalid"
+          @click="save"
+        >
+          {{ saving ? '保存中…' : '保存词包' }}
+        </AimaButton>
+      </footer>
+    </template>
+  </AimaModalContainer>
 </template>
 
 <style scoped>
-:global(.keyword-create-dialog) { height: 526px; overflow: hidden; border: 0; border-radius: 10px; box-shadow: 0 20px 60px rgb(20 29 44 / 22%); }
-:global(.keyword-create-dialog > .aima-dialog-body) { display: contents; }
-header { display: flex; height: 68px; flex: none; align-items: flex-start; justify-content: space-between; padding: 24px 24px 0; }h2 { margin: 0; font-size: 19px; line-height: 22px; }header p { margin: 5px 0 0; color: #788397; font-size: 12px; line-height: 16px; }
-.body { min-height: 0; flex: 1; overflow-y: auto; padding: 20px 24px 0; }label { display: block; margin-bottom: 16px; color: #344054; font-size: 13px; font-weight: 600; line-height: 16px; }input,textarea,select { display: block; width: 100%; margin-top: 7px; padding: 9px 11px; border: 1px solid #d9dfe8; border-radius: 6px; font-weight: 400; }input,select { height: 40px; }textarea { height: 120px; min-height: 120px; resize: vertical; }.body :deep(.aima-feedback) { margin-bottom: 14px; min-height: 38px; padding: 9px 13px; }
-footer { display: flex; height: 76px; flex: none; align-items: flex-start; justify-content: flex-end; gap: 12px; padding: 20px 24px 24px; }footer :deep(.aima-button) { height: 32px; }footer :deep(.aima-button:first-child) { min-width: 68px; }footer :deep(.aima-button:last-child) { min-width: 96px; }
-.keyword-list { display: grid; gap: 10px; margin-bottom: 16px; }.keyword-row { padding: 10px; border: 1px solid var(--aima-border); border-radius: 6px; }.keyword-title { display: flex; align-items: center; gap: 8px; }.keyword-title input { min-width: 0; flex: 1; margin: 0; }.keyword-row summary { margin-top: 8px; color: #788397; cursor: pointer; font-size: 11px; }.keyword-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }.keyword-options label { margin: 0; }.keyword-enabled { display: flex; align-items: center; gap: 6px; }.keyword-enabled input { width: 14px; height: 14px; margin: 0; }.note { grid-column: 1 / -1; }.draft-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #788397; font-size: 12px; }input:disabled,select:disabled { color: #758094; background: #f7f9fc; }
+header { display: flex; width: 100%; height: 68px; align-items: flex-start; justify-content: space-between; padding: 24px 24px 0; }h2 { margin: 0; font-size: 18px; line-height: 24px; }header p { margin: 5px 0 0; color: #788397; font-size: 13px; line-height: 18px; }
+.body { width: 100%; padding: 20px 24px 0; }label { display: block; margin-bottom: 16px; color: #344054; font-size: 13px; font-weight: 600; line-height: 20px; }input,textarea,select { display: block; width: 100%; margin-top: 7px; padding: 9px 11px; border: 1px solid #d9dfe8; border-radius: 8px; font-weight: 400; }input,select { height: 40px; }textarea { height: 120px; min-height: 120px; resize: vertical; }.body :deep(.aima-feedback) { margin-bottom: 14px; min-height: 38px; padding: 9px 13px; }
+footer { display: flex; width: 100%; height: 76px; align-items: flex-start; justify-content: flex-end; gap: 12px; padding: 20px 24px 24px; }footer :deep(.aima-button) { height: 32px; }footer :deep(.aima-button:first-child) { min-width: 68px; }footer :deep(.aima-button:last-child) { min-width: 96px; }
+.keyword-list { display: grid; gap: 10px; margin-bottom: 16px; }.keyword-row { padding: 10px; border: 1px solid var(--aima-border); border-radius: 6px; }.keyword-title { display: flex; align-items: center; gap: 8px; }.keyword-title input { min-width: 0; flex: 1; margin: 0; }.keyword-row summary { margin-top: 8px; color: #788397; cursor: pointer; font-size: 11px; }.keyword-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }.keyword-options label { margin: 0; }.keyword-enabled { display: flex; align-items: center; gap: 6px; }.keyword-enabled input { width: 14px; height: 14px; margin: 0; accent-color: var(--aima-primary); }.note { grid-column: 1 / -1; }.draft-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border: 1px solid #91d5ff; border-radius: 6px; color: #1677ff; background: #e6f7ff; font-size: 12px; }input:disabled,select:disabled { color: #758094; background: #f7f9fc; }
 </style>

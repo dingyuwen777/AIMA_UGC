@@ -12,12 +12,12 @@ import AppShell from '../../../../app/layouts/AppShell.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
-import { COLLECTION_PLATFORM_OPTIONS } from '../../presentation'
 import { useCollectionStrategyStore } from '../../store'
 import KeywordPackCreateDialog from './components/KeywordPackCreateDialog.vue'
 import KeywordPackPanel from './components/KeywordPackPanel.vue'
 import PlanCreateDrawer from './components/PlanCreateDrawer.vue'
 import PlanDetailDrawer from './components/PlanDetailDrawer.vue'
+import PlanFilterBar from './components/PlanFilterBar.vue'
 import PlanPanel from './components/PlanPanel.vue'
 import StrategyKpiCards from './components/StrategyKpiCards.vue'
 
@@ -47,6 +47,7 @@ async function savePack(name: string, description: string, keywords: KeywordPack
   }
 }
 
+/** 复制当前词包并保留服务端默认的停用状态。 */
 async function copyPack(name: string, onSaved: () => void): Promise<void> {
   if (await store.copySelectedPack(name)) {
     onSaved()
@@ -54,18 +55,22 @@ async function copyPack(name: string, onSaved: () => void): Promise<void> {
   }
 }
 
+/** 归档当前词包，不改写历史运行冻结配置。 */
 async function archivePack(): Promise<void> {
   if (await store.archiveSelectedPack()) showNotice('词包已归档。')
 }
 
+/** 恢复归档词包，恢复后仍保持停用。 */
 async function restoreArchivedPack(packId: string): Promise<void> {
   if (await store.restoreArchivedPack(packId)) showNotice('词包已恢复，当前保持停用。')
 }
 
+/** 永久删除服务端确认无业务引用的归档词包。 */
 async function deleteArchivedPack(packId: string): Promise<void> {
   if (await store.deleteArchivedPack(packId)) showNotice('未被业务引用的归档词包已永久删除。')
 }
 
+/** 打开新建计划抽屉并清空当前编辑上下文。 */
 function openNewPlan(): void {
   store.error = null
   planEditorPlan.value = null
@@ -81,6 +86,7 @@ async function savePlan(request: CollectionPlanCreateRequest): Promise<void> {
   }
 }
 
+/** 更新计划只影响之后的新运行，历史冻结配置保持不变。 */
 async function updatePlan(request: CollectionPlanUpdateRequest): Promise<void> {
   if (await store.updateExistingPlan(request)) {
     planDrawerOpen.value = false
@@ -95,12 +101,14 @@ function openPlan(plan: CollectionPlanResponse): void {
   store.selectedPlan = plan
 }
 
+/** 从详情进入同一计划的编辑抽屉。 */
 function editPlan(plan: CollectionPlanResponse): void {
   store.selectedPlan = plan
   planEditorPlan.value = plan
   planDrawerOpen.value = true
 }
 
+/** 复制计划并保持副本停用。 */
 async function copyPlan(plan: CollectionPlanResponse, name: string, onSaved: () => void): Promise<void> {
   store.selectedPlan = plan
   if (await store.copySelectedPlan(name)) {
@@ -109,15 +117,18 @@ async function copyPlan(plan: CollectionPlanResponse, name: string, onSaved: () 
   }
 }
 
+/** 归档计划只停止未来调度，不影响既有运行。 */
 async function archivePlan(plan: CollectionPlanResponse): Promise<void> {
   store.selectedPlan = plan
   if (await store.archiveSelectedPlan()) showNotice('采集计划已归档；已经创建的运行不受影响。')
 }
 
+/** 恢复归档计划，恢复后仍保持停用。 */
 async function restoreArchivedPlan(planId: string): Promise<void> {
   if (await store.restoreArchivedPlan(planId)) showNotice('采集计划已恢复，当前保持停用。')
 }
 
+/** 永久删除服务端确认从未执行且无历史引用的归档计划。 */
 async function deleteArchivedPlan(planId: string): Promise<void> {
   if (await store.deleteArchivedPlan(planId)) showNotice('从未执行且无历史引用的归档计划已永久删除。')
 }
@@ -133,7 +144,7 @@ function showNotice(message: string): void {
   <AppShell section-title="采集策略">
     <AimaPageHeader
       title="采集策略"
-      description="统一管理 Provider 搜索词与独立的品牌过滤范围"
+      description="关键词包只负责 Provider 搜索词；采集计划独立配置搜索条件、品牌过滤范围与调度。"
     >
       <template #actions>
         <AimaButton
@@ -210,45 +221,18 @@ function showNotice(message: string): void {
     />
 
     <template v-else>
-      <section class="filters">
-        <span class="search-field"><input
-          v-model="store.filters.search"
-          placeholder="搜索计划名称"
-        ></span><select v-model="store.filters.enabled">
-          <option value="">
-            全部状态
-          </option><option value="true">
-            已启用
-          </option><option value="false">
-            已停用
-          </option>
-        </select><select v-model="store.filters.platform">
-          <option value="">
-            全部平台
-          </option><option
-            v-for="option in COLLECTION_PLATFORM_OPTIONS"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </option>
-        </select><span /><AimaButton
-          @click="store.resetPlanFilters(); store.firstPlanPage()"
-        >
-          重置
-        </AimaButton><AimaButton
-          variant="primary"
-          @click="store.firstPlanPage()"
-        >
-          查询
-        </AimaButton>
-      </section>
+      <PlanFilterBar
+        v-model:search="store.filters.search"
+        v-model:enabled="store.filters.enabled"
+        v-model:platform="store.filters.platform"
+        @reset="store.resetPlanFilters(); store.firstPlanPage()"
+        @query="store.firstPlanPage()"
+      />
       <PlanPanel
         :plans="store.plans"
         :archived="store.archivedPlans"
         :packs="store.packCatalog"
         :brands="store.brandCatalog"
-        :providers="providers"
         :total="store.planTotal"
         :offset="store.planOffset"
         :limit="store.planLimit"
@@ -313,8 +297,6 @@ function showNotice(message: string): void {
 :deep(.aima-page-header) { margin-top: 4px; }
 :deep(.aima-page-actions) { gap: 12px; }
 @media (min-width: 1100px) { :deep(.aima-page-header) { flex-wrap: nowrap; align-items: center; }:deep(.aima-page-actions) { flex: none; justify-content: flex-end; } }
-.tabs { display: flex; gap: 28px; min-height: 46px; margin: 0 0 20px; border-bottom: 1px solid var(--aima-border); }.tabs button { height: 46px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #536075; background: transparent; cursor: pointer; font-size: 13px; }.tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 600; }
-.filters { display: grid; grid-template-columns: 420px 120px 172px 1fr auto auto; gap: 12px; height: 72px; margin-bottom: 20px; padding: 15px 16px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }.filters input,.filters select { width: 100%; height: 40px; padding: 0 10px; border: 1px solid #d9dfe8; border-radius: 6px; color: var(--aima-text-secondary); background: #fff; font-size: 12px; }
+.tabs { display: flex; gap: 24px; min-height: 46px; margin: 0 0 20px; border-bottom: 1px solid var(--aima-border); }.tabs button { height: 46px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: #536075; background: transparent; cursor: pointer; font-size: 13px; }.tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 600; }
 .page-error { margin-bottom: 14px; }.success-toast { position: fixed; z-index: 200; top: 8px; left: 50%; width: 360px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
-@media (max-width: 1260px) { .filters { grid-template-columns: minmax(240px, 1fr) 120px 150px auto auto; }.filters > span:nth-of-type(2) { display: none; } }
 </style>

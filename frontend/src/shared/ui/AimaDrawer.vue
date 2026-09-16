@@ -1,5 +1,7 @@
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+const props = withDefaults(defineProps<{
   modelValue: boolean
   label: string
   width?: string
@@ -10,11 +12,63 @@ withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
+const panel = ref<HTMLElement | null>(null)
+let returnFocus: HTMLElement | null = null
 
-/** 共享抽屉只拥有关闭交互和滚动边界，业务页签、动作与状态继续由调用方维护。 */
+/** 关闭共享抽屉；业务动作、资格和保存状态继续由调用方维护。 */
 function close(): void {
   emit('update:modelValue', false)
 }
+
+/** 打开时记录触发控件并把键盘焦点移入抽屉。 */
+async function focusPanel(): Promise<void> {
+  if (typeof document === 'undefined' || typeof HTMLElement === 'undefined') return
+  if (!returnFocus) {
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  }
+  await nextTick()
+  panel.value?.focus({ preventScroll: true })
+}
+
+/** 关闭或被父组件直接卸载时，把焦点还给原触发控件。 */
+function restoreTriggerFocus(): void {
+  const target = returnFocus
+  returnFocus = null
+  if (target?.isConnected) target.focus({ preventScroll: true })
+}
+
+/** Escape 只关闭最上层 Drawer；存在更高层 Modal 时由 Modal 独占该按键。 */
+function onDocumentKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape' || !props.modelValue || !panel.value || typeof document === 'undefined') return
+  if (document.querySelector('.aima-modal-layer')) return
+  const currentLayer = panel.value.closest('.aima-drawer-layer')
+  const layers = Array.from(document.querySelectorAll<HTMLElement>('.aima-drawer-layer'))
+  if (layers.at(-1) !== currentLayer) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  close()
+}
+
+watch(() => props.modelValue, async (visible, previous) => {
+  if (visible && !previous) {
+    await focusPanel()
+    return
+  }
+  if (!visible && previous) {
+    await nextTick()
+    restoreTriggerFocus()
+  }
+}, { flush: 'post' })
+
+onMounted(() => {
+  document.addEventListener('keydown', onDocumentKeydown, true)
+  if (props.modelValue) void focusPanel()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocumentKeydown, true)
+  restoreTriggerFocus()
+})
 </script>
 
 <template>
@@ -26,12 +80,14 @@ function close(): void {
       @click.self="closeOnBackdrop && close()"
     >
       <aside
+        ref="panel"
         class="aima-drawer"
         :style="{ width: `min(${width}, 100vw)` }"
         role="dialog"
         aria-modal="true"
         :aria-label="label"
-        @keydown.esc="close"
+        tabindex="-1"
+        @keydown.esc.stop="close"
       >
         <div
           v-if="$slots.header"
@@ -74,10 +130,11 @@ function close(): void {
   height: 100dvh;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--aima-color-border-default);
+  border: 0;
   border-radius: var(--aima-radius-xl) 0 0 var(--aima-radius-xl);
+  outline: 0;
   background: var(--aima-color-bg-white);
-  box-shadow: -10px 0 30px rgb(23 32 51 / 12%);
+  box-shadow: inset 0 0 0 1px var(--aima-color-border-default), -10px 0 30px rgb(23 32 51 / 12%);
 }
 .aima-drawer-header,
 .aima-drawer-footer { flex: none; }
@@ -86,5 +143,9 @@ function close(): void {
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
+}
+.aima-drawer-body > :deep(.body) {
+  height: 100%;
+  box-sizing: border-box;
 }
 </style>
