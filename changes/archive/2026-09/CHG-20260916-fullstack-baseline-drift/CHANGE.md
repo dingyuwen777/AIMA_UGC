@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260916-fullstack-baseline-drift
 title: 修复 release2 后 Full-stack 验收断言漂移
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/512-fullstack-baseline-drift
 created: 2026-09-16
