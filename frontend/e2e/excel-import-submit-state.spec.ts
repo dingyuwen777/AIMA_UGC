@@ -217,7 +217,7 @@ test('stages local files through Campaign upload and restores a visible error', 
   await expect(submitButton).toHaveAttribute('aria-busy', 'false')
   await expect(submitButton).toHaveText('创建并预检')
   await expect(dialog.getByRole('alert')).toContainText('数据导入 Campaign 创建失败')
-  await expect(dialog.getByRole('alert')).toContainText('req_data_import_busy_state')
+  await expect(dialog.getByText('req_data_import_busy_state', { exact: false })).toHaveCount(0)
 })
 
 test('allows an interrupted local upload Campaign to be cancelled', async ({ page }) => {
