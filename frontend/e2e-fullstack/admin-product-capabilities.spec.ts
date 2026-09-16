@@ -195,7 +195,10 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
   await expect(contentRow).toContainText(brandName)
   await expect(contentRow).toContainText('自有品牌')
   await expect(contentRow).toContainText('仅自有品牌')
-  await expect(contentRow).toContainText('全栈系列 · 电动两轮车')
+  await expect(contentRow.locator('.vehicle-cell')).toHaveAttribute(
+    'title',
+    /全栈系列 · 电动两轮车/,
+  )
   const sortingResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/contents' && new URL(response.url()).searchParams.get('sort_by') === 'follower_count')
   await page.getByRole('button', { name: '按粉丝数排序' }).click()
   expect((await sortingResponse).status()).toBe(200)
