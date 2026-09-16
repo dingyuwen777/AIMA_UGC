@@ -1,20 +1,23 @@
 <script setup lang="ts">
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: boolean
   label: string
   width?: string
   height?: string
   closeOnBackdrop?: boolean
+  closeDisabled?: boolean
 }>(), {
   width: '840px',
   height: '800px',
   closeOnBackdrop: false,
+  closeDisabled: false,
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 
-/** 共享复杂模态框只管理遮罩、视口约束和固定头尾，Feature 继续拥有业务表单与动作。 */
+/** 共享复杂模态框只管理遮罩、视口约束和固定头尾；业务动作与可关闭资格由调用方传入。 */
 function close(): void {
+  if (props.closeDisabled) return
   emit('update:modelValue', false)
 }
 </script>
