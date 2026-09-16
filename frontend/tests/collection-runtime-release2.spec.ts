@@ -65,8 +65,8 @@ describe('采集运行中心 release-2 Figma 基线', () => {
     ])
 
     expect(drawerShell).toContain('class="aima-drawer"')
-    expect(drawerShell).toContain('<slot name="header"')
-    expect(drawerShell).toContain('<slot name="footer"')
+    expect(drawerShell).toMatch(/<slot\s+name="header"/)
+    expect(drawerShell).toMatch(/<slot\s+name="footer"/)
     expect(modalShell).toContain('class="aima-modal-container"')
     expect(emptyState).toContain('class="aima-empty-state"')
     expect(importDetail).toContain('<AimaDrawer')
