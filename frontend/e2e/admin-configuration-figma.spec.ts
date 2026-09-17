@@ -143,6 +143,21 @@ test('preserves provider draft on save failure and prevents edits during its sub
   expect(requests).toBe(1)
 })
 
+test('brand and vehicle create dialogs do not expose internal code controls', async ({ page }) => {
+  await mockAdmin(page)
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: '新增品牌', exact: true }).click()
+  const brandDialog = page.getByRole('heading', { name: '新增品牌', exact: true }).locator('..')
+  await expect(brandDialog.getByText('品牌编码', { exact: true })).toHaveCount(0)
+  await expect(brandDialog).toContainText('内部编码由服务端自动生成')
+  await brandDialog.getByRole('button', { name: '取消', exact: true }).click()
+
+  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+  const vehicleDialog = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
+  await expect(vehicleDialog.getByText('车型编码', { exact: true })).toHaveCount(0)
+  await expect(vehicleDialog).toContainText('内部编码由服务端自动生成')
+})
+
 test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N path', async ({ page }) => {
   await mockAdmin(page)
   const brandRequests: Array<{ method: string; body?: unknown }> = []
@@ -180,14 +195,15 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
 
   await page.getByRole('button', { name: '新增车型', exact: true }).click()
   const vehicleEditor = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
-  await page.getByPlaceholder('例如 AIMA-Q7').fill('AIMA-Q7-PRO')
+  await expect(vehicleEditor.getByText('车型编码', { exact: true })).toHaveCount(0)
   await page.getByPlaceholder('例如 爱玛 Q7').fill('爱玛 Q7 Pro')
   await page.getByPlaceholder('Q7\n爱玛Q7').fill('Q7 Pro')
   await vehicleEditor.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
   expect(vehicleBody).toMatchObject({
-    code: 'AIMA-Q7-PRO', display_name: '爱玛 Q7 Pro', brand_id: brandId, aliases: ['Q7 Pro'],
+    display_name: '爱玛 Q7 Pro', brand_id: brandId, aliases: ['Q7 Pro'],
   })
+  expect(vehicleBody).not.toHaveProperty('code')
 })
 
 test('keeps the nested vehicle and audit tables reachable at supported desktop widths', async ({ page }) => {
