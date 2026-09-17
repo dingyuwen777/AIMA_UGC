@@ -45,7 +45,7 @@ data_changes:
 
 完成 Issue #526 与 `docs/blueprint/08_采集策略与平台能力.md` 的正式五平台补采闭环。现有原生 ID 继续走正式 TikHub Operation；受支持的分享链接先取得精确评论目标身份。微博 `ttarticle` 长文章按用户最新决定不补采评论。解析失败或无映射时明确保留原因，绝不以任意内容 ID 构造评论请求。
 
-# 当前事实、目标与边界
+# 背景、现状与问题
 
 - 立项时 `main` 为 `7f1ca524c1c43fc4e61b8601f5d0e241e5023493`，声音广场评论层级与分页已落地；本 Change 补齐身份解析、Eligibility 诊断、Run Coverage 和五平台真实补采验收。
 - 本变更复用现有 Collection Run、持久 Job、Provider Attempt/Raw、Content Owner、PostgreSQL、Pydantic/OpenAPI/Orval 和声音广场。保持 Canonical 主身份、已存在合法原生 ID、公共请求和既有内容详情兼容。
@@ -54,7 +54,27 @@ data_changes:
 - 用户随后明确决定：TikHub 无法证明精确归属的快手短链、微博视频链接和 B站 `b23.tv` 短链按不可获取处理；五平台原生 ID 补采继续验收。此边界不排除普通 `photo_id`、`status_id`、`av_id/bv_id`，也不允许猜测或错配 ID 发评论请求。
 - 用户提供的正向样本页面显示 1 条评论，但完整文章 ID 及去掉 `230940` 的数字在 TikHub App Detail/Comments 的 4 次限额 Probe 中均返回 HTTP 400；该页面计数不能写成已获取评论。
 
-# 方案比较与决定
+# 事实与证据
+
+- 当前实现与约束由 Collection Run、持久 Job、TikHub Operation/Mapper、Content/Comment Owner、生成 Contract 及声音广场代码和测试确认；原路线图的完成定义可从本分支 Git 历史与 Issue #526 复核。
+- 有界 TikHub Probe 已确认五平台原生 ID 的评论结构及分页终止；快手短链回环身份不一致，微博视频与 B站短链样本失败，不能据此建立精确评论目标。详细请求数和计划费用见 TikHub 接口台账。
+- 用户决定排除微博 `ttarticle` 长文章评论，并将三类无法证明精确归属的链接标为不可获取；其余五平台原生 ID 路径继续验收。
+
+# 目标、成功标准与非目标
+
+- 目标：从现有网页入口完成五平台评论与回复补采，持久化精确身份、请求和结果，并在页面解释不可获取原因。
+- 成功标准：Issue #526 的 AC1–AC9 逐项取得对应证据；本地、PR 当前提交及合并后 main 的适用门禁通过。
+- 非目标：模糊搜索猜测目标、长文章评论补采、终态重试 API、跨 API family 隐藏 fallback、依赖升级和生产部署。
+
+# 约束与意图决策
+
+- 保留 Canonical 主身份、现有合法原生 ID、公共请求及内容详情兼容；评论请求只使用平台白名单 typed ID。
+- 精确归属无法证明时保留不可获取原因与已有 Raw/Attempt，不发送可能串帖的评论请求。
+- 真实 Provider Probe 显式限额、脱敏，不纳入普通 CI；付费计划值不作为实际账单。
+
+# 修改方案与决策依据
+
+## 备选方案与取舍
 
 | 方案 | 正确性与兼容 | 成本与风险 | 选择 |
 | --- | --- | --- | --- |
@@ -62,7 +82,7 @@ data_changes:
 | 仅让上游 Excel 预先提供所有原生 ID | 原生 ID 精确且费用低 | 无法覆盖已有短链数据，用户仍看不到阻塞原因 | 作为精确输入优先级，不单独作为全部方案 |
 | 通过标题/作者搜索猜测目标并直接补采 | 可能误抓他帖评论 | 数据污染与额外付费，无法审计精确归属 | 禁止 |
 
-# Requirement Traceability
+# 需求追溯
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
@@ -77,7 +97,13 @@ data_changes:
 | R9 | 文档迁移、Completion Audit、Review、PR/main CI 与 Roadmap 退出 | #526 / AC9 | explicitly_deferred | Product、API、Blueprint、Appendix、模块 README 已承载长期事实，live Roadmap 已退出；上游和反向能力审计及两阶段本地 Review 已完成。PR current-head CI 必须在 Ready/push 后通过，main fresh CI 必须在 merge 后通过；这两项按仓库生命周期顺序暂记待执行，不豁免合并门禁或最终验收 |
 | R10 | 微博 `ttarticle` 长文章不补采评论；删除新增的文章 ID 提取，历史定位字段即使伴随 `status_id` 也零请求 | user:2026-09-17-ttarticle-decision#AC1 | satisfied | `imports/identity.py`、`comment_target.py`、`collection_targets.py` 和补采页不可用说明；目标单元/离线入口 48 passed，隔离 PostgreSQL Eligibility 10 passed，前端目标 8 passed |
 
-# Validation Matrix
+# 计划改动
+
+- 在导入和 Collection Target 中保留受支持身份并拒绝长文章；在 TikHub Runtime 前解析和校验精确 typed ID。
+- 用既有 Attempt/Raw、Content Owner 和持久 Job 保存解析、评论分页、回复与 Coverage；在 HTTP 响应和网页展示诊断及结果。
+- 同步 Product、API、Blueprint、Appendix 与模块 README；保留本 Change 和 Git 历史作为完成证据。
+
+# 验证矩阵
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
@@ -100,13 +126,18 @@ data_changes:
 6. 离线调试与已处理数据：`imports_test` 复用生产身份解析；受控重放当前失败样本，核对原内容身份、评论去重、费用和不可获取原因。
 7. 同步文档并执行 Completion Audit：重新读取 Issue、原路线图的 Git 历史与现行 Product/Blueprint/Appendix，逐项核对 R1–R9、前后端和结果反向能力；运行项目 Ready Check、两阶段 Review、current-head CI；满足后 merge，执行 main fresh CI 与仓库原生归档/Issue 关闭检查。
 
-# 兼容、数据、部署与回滚
+# 风险、兼容性、迁移与回滚
 
 - 预计不增加数据库表、Migration、依赖或 Job type；若真实 Schema/FK 无法表达来源，先回到设计门禁，不用 JSON 绕过。
 - HTTP 只增加可选响应诊断，旧请求和详情响应兼容。前后端同版本发布；本任务不包含生产部署或数据迁移。
 - 可关闭新增平台解析入口并回滚代码；保留已写入的 typed identity、Raw 和评论。请求前 typed ID 保护不得回滚。
 
-# Completion Audit
+# 文档、依赖、部署与发布影响
+
+- 长期能力边界已同步 Product、API、Blueprint、Appendix 和 Collection README；已完成的 live Roadmap 退出，历史证据由 Git 与本 Change 保留。
+- 未增加依赖、数据库 Migration 或 Job type；不执行生产部署。发布时前后端同版本，回滚按现有流程执行并保留已持久化 Raw、身份和评论。
+
+# 完成审计
 
 - [x] upstream_re_read：本轮重读 #526 的 AC1–AC9、原路线图退出定义、当前 HTTP Contract、正式 Runtime/Mapper、数据库关系和 CI；确认长文章排除及三类无法精确映射链接的用户决定没有降低五平台原生 ID 门槛。
 - [x] change_coverage：AC1–AC8 对应 R1–R8 均有单元、Contract、隔离 PostgreSQL、浏览器全栈或有界真实 Probe 的适用证据；AC9 的文档与审计完成，PR/main CI 按生命周期继续执行。
@@ -118,7 +149,7 @@ data_changes:
 1. 上游完成定义复核：从 #526 重建五平台原生身份、短链范围、评论/回复分页、持久恢复、网页闭环、离线兼容与真实费用边界；逐项核对 R1–R10。小红书/微博固定样本无真实回复正例已在台账注明，使用历史真实字段 Fixture 与 PostgreSQL 纵切验证结构，不把不可见评论写成已抓取。
 2. 实现与证据复核：检查 Content 身份所有权的发送前及摄取事务检查、Candidate/Attempt/Raw 追溯、Root/Reply 分类、Scope 检查点、可选 HTTP 响应和生成 Client。复核中发现检查点推进原进度会破坏重试，已保持原进度；快手回复缺 `parent_comment_id` 的真实形状用 `root_comment_id` 判层级；`comments_completed` 前先持久化覆盖阶段。目标回归、70 例隔离数据库及浏览器全栈重新通过，无未解决的重要代码问题。
 
-# 本轮已取得的验证证据（2026-09-17）
+# 完成证据与状态
 
 - Windows 本地 Python 单元、Contract、API：排除 3 个环境/本地数据相关文件后，`1196 passed, 8 skipped`。排除项分别依赖 POSIX 主机行为、Windows 路径表示和本机既有忽略 Raw 输出；不能将此结果写成完整套件通过。
 - 隔离 PostgreSQL 18.4 容器完成 Alembic `upgrade head` 后，Collection 集成测试 `99 passed`；新增批次补采不因抽样目标提前停止的测试单独通过。补充五平台 typed ID 从 Content Owner 账本读取的参数化回归后，再次使用一次性容器运行目标文件 `9 passed`。测试没有写入用户开发数据库；临时密码文件和容器已清理。
