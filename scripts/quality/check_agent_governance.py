@@ -205,7 +205,11 @@ def check_repository(root: Path = ROOT) -> list[str]:
             f"GOV018 {GOVERNANCE_ASSET_CONTRACT.as_posix()}: 项目治理资产机器 Contract 适配器不存在"
         )
     else:
-        checker = _read_text(root / PR_REQUIREMENT_SOURCE_CHECK) if (root / PR_REQUIREMENT_SOURCE_CHECK).is_file() else ""
+        checker = (
+            _read_text(root / PR_REQUIREMENT_SOURCE_CHECK)
+            if (root / PR_REQUIREMENT_SOURCE_CHECK).is_file()
+            else ""
+        )
         if "governance_asset_contract" not in checker:
             errors.append(
                 f"GOV018 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: PR gate 未接入项目治理资产机器 Contract"
