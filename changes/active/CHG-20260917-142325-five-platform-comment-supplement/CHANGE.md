@@ -74,7 +74,7 @@ data_changes:
 | R7 | 调试入口复用生产实现，失败样本受控重放或明确不可获取 | #526 / AC7；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | `imports_test` 已复用身份解析；staging 行级受控重放及对账未完成 |
 | R8 | 五平台多层测试、真实 Provider Probe、全栈和费用台账 | #526 / AC8；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 四平台固定公开样本 Detail/一级评论通过；“爱玛”快手候选的非空根评论与回复 Mapper 通过，但用户提供的另一快手链接 Detail 空、五平台多页和真实全栈缺证据 |
 | R9 | 文档迁移、Completion Audit、Review、PR/main CI 与 Roadmap 退出 | #526 / AC9；docs/roadmap/README.md | not_satisfied | 合并前后按当前门禁验证 |
-| R10 | 微博 `ttarticle` 长文章不补采评论；删除新增的文章 ID 提取，历史定位字段即使伴随 `status_id` 也零请求 | 用户 2026-09-17 最新决定 | satisfied | `imports/identity.py`、`comment_target.py`、`collection_targets.py`；目标单元/离线入口 48 passed，隔离 PostgreSQL Eligibility 10 passed |
+| R10 | 微博 `ttarticle` 长文章不补采评论；删除新增的文章 ID 提取，历史定位字段即使伴随 `status_id` 也零请求 | 用户 2026-09-17 最新决定 | satisfied | `imports/identity.py`、`comment_target.py`、`collection_targets.py` 和补采页不可用说明；目标单元/离线入口 48 passed，隔离 PostgreSQL Eligibility 10 passed，前端目标 8 passed |
 
 # Validation Matrix
 

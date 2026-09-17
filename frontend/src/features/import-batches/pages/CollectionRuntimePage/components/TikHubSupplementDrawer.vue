@@ -120,7 +120,8 @@ function platformDiagnostic(platform: CollectionPlatform): CollectionSupplementP
 function unavailableReason(item: CollectionSupplementPlatformDiagnosticResponse): string {
   if (!selectedProvider.value) return '先选择采集渠道'
   if (item.direct_target_count > 0) return '当前渠道不支持所选采集内容'
-  if (item.resolution_candidate_count > 0) return `有 ${item.resolution_candidate_count} 条分享/文章链接，当前缺少精确解析能力；请让上游提供原始内容链接或原生 ID`
+  if (item.resolution_candidate_count > 0) return `有 ${item.resolution_candidate_count} 条分享链接，当前缺少精确解析能力；请让上游提供原始内容链接或原生 ID`
+  if (item.platform === 'weibo') return `有 ${item.blocked_count} 条内容不可补采；微博长文章不支持评论补采，其他内容请补充平台原生 ID`
   return `有 ${item.blocked_count} 条内容缺少可验证的原生 ID；请在导入来源补充原始内容链接`
 }
 
