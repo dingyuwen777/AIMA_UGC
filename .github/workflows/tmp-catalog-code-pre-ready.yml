@@ -1,0 +1,47 @@
+name: Temporary Catalog Code Pre-Ready Validation
+
+on:
+  push:
+    branches:
+      - feature/server-generated-catalog-code
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/server-generated-catalog-code
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: '3.14.7'
+      - name: Install uv
+        run: |
+          python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
+          uv sync --locked
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+      - name: Backend targeted validation
+        run: |
+          uv run ruff format --check backend/src/aima_ugc/contracts/brand_vehicle.py backend/src/aima_ugc/contracts/administration.py backend/src/aima_ugc/bootstrap/brand_vehicle_http.py backend/src/aima_ugc/bootstrap/administration_http.py tests/api/test_brand_vehicle_stage2_contract.py
+          uv run ruff check backend/src/aima_ugc/contracts/brand_vehicle.py backend/src/aima_ugc/contracts/administration.py backend/src/aima_ugc/bootstrap/brand_vehicle_http.py backend/src/aima_ugc/bootstrap/administration_http.py tests/api/test_brand_vehicle_stage2_contract.py
+          uv run pytest -q tests/api/test_brand_vehicle_stage2_contract.py
+      - name: Contract drift validation
+        run: |
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          git diff --exit-code -- contracts frontend/src/generated/api
+      - name: Frontend static unit build
+        run: |
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run test -- --run
+          npm --prefix frontend run build
+      - name: Browser mock acceptance
+        run: npm --prefix frontend run test:e2e -- e2e/admin-configuration-figma.spec.ts
