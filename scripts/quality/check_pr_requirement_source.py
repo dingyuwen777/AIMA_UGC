@@ -17,7 +17,9 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
-GOVERNANCE_CONTRACT_PATH = ROOT / ".agents" / "skills" / "coding" / "scripts" / "governance_contract.py"
+GOVERNANCE_CONTRACT_PATH = (
+    ROOT / ".agents" / "skills" / "coding" / "scripts" / "governance_contract.py"
+)
 CANONICAL_ISSUE_FORM_DIR = ROOT / ".agents" / "skills" / "coding" / "assets" / "issue-templates"
 CANONICAL_CHANGE_TEMPLATE = ROOT / ".agents" / "skills" / "coding" / "assets" / "CHANGE.template.md"
 CHANGE_CARRIER = Path("changes")
@@ -49,7 +51,9 @@ def _load_governance_contract() -> Any:
         GOVERNANCE_CONTRACT_PATH,
     )
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"无法加载受管 canonical 治理资产机器 Contract：{GOVERNANCE_CONTRACT_PATH}")
+        raise RuntimeError(
+            f"无法加载受管 canonical 治理资产机器 Contract：{GOVERNANCE_CONTRACT_PATH}"
+        )
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -86,9 +90,7 @@ def _changed_active_change_paths(root: Path, base_sha: str, head_sha: str) -> tu
         errors="replace",
     )
     if result.returncode != 0:
-        raise RequirementSourceError(
-            "无法计算本 PR Active Change 范围：" + result.stderr.strip()
-        )
+        raise RequirementSourceError("无法计算本 PR Active Change 范围：" + result.stderr.strip())
     return tuple(Path(line.strip()) for line in result.stdout.splitlines() if line.strip())
 
 
@@ -98,11 +100,7 @@ def validate_new_changes_since(root: Path, *, base_sha: str, head_sha: str) -> t
     errors: list[str] = []
     for relative in _changed_active_change_paths(root, base_sha, head_sha):
         parts = relative.parts
-        if (
-            len(parts) != 4
-            or parts[:2] != ("changes", "active")
-            or relative.name != "CHANGE.md"
-        ):
+        if len(parts) != 4 or parts[:2] != ("changes", "active") or relative.name != "CHANGE.md":
             continue
         document_errors = GOVERNANCE_CONTRACT.validate_new_change_file(
             root / relative,
