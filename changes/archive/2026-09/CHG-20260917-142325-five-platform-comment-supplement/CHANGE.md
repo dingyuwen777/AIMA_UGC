@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260917-142325-five-platform-comment-supplement
 title: 五平台评论补采身份解析与网页闭环
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/five-platform-comment-supplement
 created: 2026-09-17
