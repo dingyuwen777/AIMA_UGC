@@ -9,12 +9,8 @@ MANAGED_START = "<!-- agent-skills:managed:start -->"
 MANAGED_END = "<!-- agent-skills:managed:end -->"
 PROJECT_GOVERNANCE_MARKER = "<!-- agent-skills:project-governance:v1 -->"
 READY_CHECK = Path(".agents/skills/coding/scripts/ready_check.py")
-CANONICAL_GOVERNANCE_CONTRACT = Path(
-    ".agents/skills/coding/scripts/governance_contract.py"
-)
-CANONICAL_ISSUE_FORM_DIR = Path(
-    ".agents/skills/coding/assets/issue-templates"
-)
+CANONICAL_GOVERNANCE_CONTRACT = Path(".agents/skills/coding/scripts/governance_contract.py")
+CANONICAL_ISSUE_FORM_DIR = Path(".agents/skills/coding/assets/issue-templates")
 PROJECT_CHANGE_CHECK = Path("scripts/quality/check_change_completion.py")
 PR_REQUIREMENT_SOURCE_CHECK = Path("scripts/quality/check_pr_requirement_source.py")
 WORKFLOW_DIR = Path(".github/workflows")
@@ -80,15 +76,13 @@ def _check_issue_form_projection(root: Path) -> list[str]:
     target_dir = root / ISSUE_TEMPLATE_DIR
     if not source_dir.is_dir():
         return [
-            f"GOV018 {CANONICAL_ISSUE_FORM_DIR.as_posix()}: "
-            "受管 canonical Issue Form assets 不存在"
+            f"GOV018 {CANONICAL_ISSUE_FORM_DIR.as_posix()}: 受管 canonical Issue Form assets 不存在"
         ]
 
     sources = tuple(sorted(source_dir.glob("*.yml")))
     if not sources:
         return [
-            f"GOV018 {CANONICAL_ISSUE_FORM_DIR.as_posix()}: "
-            "受管 canonical Issue Form assets 为空"
+            f"GOV018 {CANONICAL_ISSUE_FORM_DIR.as_posix()}: 受管 canonical Issue Form assets 为空"
         ]
 
     errors: list[str] = []
@@ -104,8 +98,7 @@ def _check_issue_form_projection(root: Path) -> list[str]:
         code = "GOV013" if source.name == "config.yml" else "GOV012"
         if not target.is_file():
             errors.append(
-                f"{code} {target.relative_to(root).as_posix()}: "
-                "受管 Issue Form 投影不存在"
+                f"{code} {target.relative_to(root).as_posix()}: 受管 Issue Form 投影不存在"
             )
             continue
         if target.read_bytes() != source.read_bytes():
@@ -169,8 +162,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
         errors.append(f"GOV007 {PROJECT_CHANGE_CHECK.as_posix()}: AIMA 顶层 Change 门禁入口不存在")
     if not (root / PR_REQUIREMENT_SOURCE_CHECK).is_file():
         errors.append(
-            f"GOV015 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: "
-            "PR Requirement Source 机器门禁不存在"
+            f"GOV015 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: PR Requirement Source 机器门禁不存在"
         )
     else:
         requirement_checker = _read_text(root / PR_REQUIREMENT_SOURCE_CHECK)
