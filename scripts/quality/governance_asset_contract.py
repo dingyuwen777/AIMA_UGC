@@ -183,19 +183,19 @@ def _validate_ordered_headings(body: str, required: Sequence[str], *, level: int
     for heading in required:
         count = actual.count(heading)
         if count == 0:
-            errors.append(f"新 Change 缺少必需标题：{heading}")
+            errors.append(f"Active Change 缺少必需标题：{heading}")
             continue
         if count > 1:
-            errors.append(f"新 Change 必需标题重复：{heading}")
+            errors.append(f"Active Change 必需标题重复：{heading}")
             continue
         positions.append(actual.index(heading))
     if len(positions) == len(required) and positions != sorted(positions):
-        errors.append("新 Change 必需标题顺序与当前受管 Profile 不一致")
+        errors.append("Active Change 必需标题顺序与当前受管 Profile 不一致")
     return errors
 
 
 def validate_new_change_file(path: Path, *, root: Path = ROOT) -> list[str]:
-    """校验本 PR 新增 Coding Change 的 current identity 与当前受管模板 Profile。"""
+    """校验本 PR 新增或修改的 Active Coding Change 是否满足 current identity/Profile。"""
     try:
         text = path.read_text(encoding="utf-8")
         template_text = (root / CHANGE_TEMPLATE).read_text(encoding="utf-8")
@@ -207,24 +207,24 @@ def validate_new_change_file(path: Path, *, root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     change_id = metadata.get("id", "")
     if metadata.get("schema") != "coding-change/v1":
-        errors.append("新 Change schema 必须为 coding-change/v1")
+        errors.append("Active Change schema 必须为 coding-change/v1")
     if CURRENT_CHANGE_ID_PATTERN.fullmatch(change_id) is None:
         errors.append(
-            "新 Change ID 必须使用 CHG-YYYYMMDD-HHMMSS-kebab-case；日期级 ID 只保留历史 archive 兼容"
+            "当前 Active Change ID 必须使用 CHG-YYYYMMDD-HHMMSS-kebab-case；日期级 ID 只保留历史 archive 兼容"
         )
     if path.name == "CHANGE.md" and path.parent.name != change_id:
         errors.append("Change 目录 ID 与 frontmatter id 不一致")
     level = metadata.get("level", "")
     if level not in {"L2", "L3"}:
-        errors.append(f"持久新 Change level 必须为 L2/L3，当前为 {level or '<empty>'}")
+        errors.append(f"持久 Active Change level 必须为 L2/L3，当前为 {level or '<empty>'}")
     errors.extend(_validate_ordered_headings(body, required_headings, level=1))
     if level == "L3":
         errors.extend(_validate_ordered_headings(body, L3_REQUIRED_SECOND_LEVEL_HEADINGS, level=2))
     return errors
 
 
-def _added_change_paths(root: Path, base_sha: str, head_sha: str) -> tuple[Path, ...]:
-    """只枚举 PR base→head 新增的 AIMA 顶层 Active Change，避免回溯历史 archive。"""
+def _changed_active_change_paths(root: Path, base_sha: str, head_sha: str) -> tuple[Path, ...]:
+    """枚举 PR base→head 新增或修改的 AIMA Active Change；历史 archive 完全排除。"""
     result = subprocess.run(
         [
             "git",
@@ -232,7 +232,7 @@ def _added_change_paths(root: Path, base_sha: str, head_sha: str) -> tuple[Path,
             str(root),
             "diff",
             "--name-only",
-            "--diff-filter=A",
+            "--diff-filter=AM",
             "--no-renames",
             base_sha,
             head_sha,
@@ -247,23 +247,23 @@ def _added_change_paths(root: Path, base_sha: str, head_sha: str) -> tuple[Path,
     )
     if result.returncode != 0:
         raise GovernanceAssetContractError(
-            "无法计算本 PR 新增 Change 范围：" + result.stderr.strip()
+            "无法计算本 PR Active Change 范围：" + result.stderr.strip()
         )
     return tuple(Path(line.strip()) for line in result.stdout.splitlines() if line.strip())
 
 
 def validate_new_changes_since(root: Path, *, base_sha: str, head_sha: str) -> tuple[str, ...]:
-    """对本 PR 新增 Change 执行 current machine Contract；历史 archive 不参与。"""
+    """对本 PR 新增或修改的 Active Change 执行 current machine Contract；历史 archive 不参与。"""
     validated: list[str] = []
     errors: list[str] = []
-    for relative in _added_change_paths(root, base_sha, head_sha):
+    for relative in _changed_active_change_paths(root, base_sha, head_sha):
         parts = relative.parts
         if len(parts) != 4 or parts[:2] != ("changes", "active") or relative.name != "CHANGE.md":
             continue
         document_errors = validate_new_change_file(root / relative, root=root)
         if document_errors:
             errors.append(
-                f"新增 Change `{relative.as_posix()}` 不满足当前 Project Profile：\n- "
+                f"Active Change `{relative.as_posix()}` 不满足当前 Project Profile：\n- "
                 + "\n- ".join(document_errors)
             )
         else:
