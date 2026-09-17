@@ -133,7 +133,6 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         vehicle_service = PostgresAdministrationHttpService(runtime)
         owned = brand_service.create_brand(
             BrandCreateRequest(
-                code="AIMA-STAGE5",
                 display_name="爱玛 Stage5",
                 role="owned",
                 aliases=("爱玛舞台",),
@@ -143,7 +142,6 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         )
         competitor = brand_service.create_brand(
             BrandCreateRequest(
-                code="COMP-STAGE5",
                 display_name="竞品 Stage5",
                 role="competitor",
                 aliases=("竞品舞台",),
@@ -153,7 +151,6 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         )
         brand_service.create_brand(
             BrandCreateRequest(
-                code="OTHER-STAGE5",
                 display_name="其他 Stage5",
                 role="other",
                 aliases=("其他舞台",),
@@ -163,7 +160,6 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         )
         source_vehicle = vehicle_service.create_vehicle_model(
             VehicleModelCreateRequest(
-                code="OLD-STAGE5",
                 display_name="旧车型 Stage5",
                 brand_id=owned.id,
                 aliases=("旧车型舞台",),
@@ -173,7 +169,6 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         )
         target_vehicle = vehicle_service.create_vehicle_model(
             VehicleModelCreateRequest(
-                code="NEW-STAGE5",
                 display_name="新车型 Stage5",
                 brand_id=owned.id,
                 aliases=("新车型舞台",),
