@@ -30,7 +30,20 @@ jobs:
       - name: Backend format check
         run: uv run ruff format --check backend/src/aima_ugc/contracts/brand_vehicle.py backend/src/aima_ugc/contracts/administration.py backend/src/aima_ugc/bootstrap/brand_vehicle_http.py backend/src/aima_ugc/bootstrap/administration_http.py tests/api/test_brand_vehicle_stage2_contract.py
       - name: Backend lint check
-        run: uv run ruff check backend/src/aima_ugc/contracts/brand_vehicle.py backend/src/aima_ugc/contracts/administration.py backend/src/aima_ugc/bootstrap/brand_vehicle_http.py backend/src/aima_ugc/bootstrap/administration_http.py tests/api/test_brand_vehicle_stage2_contract.py
+        run: |
+          set +e
+          uv run ruff check backend/src/aima_ugc/contracts/brand_vehicle.py backend/src/aima_ugc/contracts/administration.py backend/src/aima_ugc/bootstrap/brand_vehicle_http.py backend/src/aima_ugc/bootstrap/administration_http.py tests/api/test_brand_vehicle_stage2_contract.py 2>&1 | tee /tmp/catalog-code-ruff.txt
+          status=${PIPESTATUS[0]}
+          echo "$status" > /tmp/catalog-code-ruff-status.txt
+          exit "$status"
+      - name: Upload lint diagnosis
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-code-ruff-diagnosis
+          path: |
+            /tmp/catalog-code-ruff.txt
+            /tmp/catalog-code-ruff-status.txt
       - name: Backend contract regression
         run: uv run pytest -q tests/api/test_brand_vehicle_stage2_contract.py
       - name: Contract drift validation
