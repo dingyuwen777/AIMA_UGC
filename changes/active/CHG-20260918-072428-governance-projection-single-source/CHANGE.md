@@ -132,6 +132,8 @@ Agent_Skills #256 / PR #257 已完成单一 canonical source：Change Template�
 
 ## 未验证内容与剩余风险
 
+PR body edited 与同分支 push 曾触发 concurrency 取消，因此 final head 必须重新取得一轮完整 same-SHA required CI；metadata-only 结果不能替代该完整基线。
+
 正式 Release/Deploy、产品功能、数据库/Provider 不在本次变更边界。final-head CI/Review 与 post-merge Evidence 由对应生命周期门禁取得；在这些证据实际 Green 前不得 merge/关闭 Issue。
 
 ## 交付状态
