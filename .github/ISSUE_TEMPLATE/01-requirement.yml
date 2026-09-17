@@ -1,19 +1,29 @@
 name: 需求
-description: 提交新增或调整用户、调用方或系统可观察行为的需求
+description: 提交新增或调整可观察能力、行为或用户流程的需求
 title: "[需求] "
 body:
   - type: markdown
     attributes:
       value: |
-        请写清“为什么改、做到什么算完成、哪些东西不能被破坏”。没有相关事实时可以写“无 / 不适用 / 待确认（说明原因）”，不要编造。
+        请基于可核实事实填写。没有相关事实源、非目标或风险时，可以明确写“无 / 不适用 / 待确认（说明原因）”，不要为了完成表单编造内容。
 
   - type: checkboxes
     id: duplicate_search
     attributes:
       label: 重复检查
+      description: 创建前先搜索现有 Issue、Spec、RFC、工单或其他正式需求载体。
       options:
-        - label: 我已搜索现有 Issue / 正式需求，没有找到范围和验收标准相同的未完成事项。
+        - label: 我已搜索现有事项，没有找到范围和验收语义相同的未完成需求；如存在相关事项，会在下方事实源中引用。
           required: true
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem_context
+    attributes:
+      label: 问题背景
+      description: 当前存在什么问题、机会或业务/工程背景？为什么需要处理？
+      placeholder: 描述当前事实、痛点、触发条件和必要上下文。
     validations:
       required: true
 
@@ -21,8 +31,17 @@ body:
     id: objective
     attributes:
       label: 目标
-      description: 完成后用户、调用方或系统应观察到什么结果？
-      placeholder: 完成后，应能够……
+      description: 期望改变什么结果或行为？尽量描述可观察结果，而不是预设具体实现。
+      placeholder: 完成后，用户或系统应能够……
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_scenario
+    attributes:
+      label: 用户 / 使用场景
+      description: 谁在什么场景下需要这个能力？如果没有直接最终用户，请描述调用方、运维方或系统场景。
+      placeholder: 角色、入口、前置条件、典型流程。
     validations:
       required: true
 
@@ -30,7 +49,7 @@ body:
     id: scope
     attributes:
       label: 范围
-      description: 本次明确包含哪些能力、页面、接口、数据或流程？
+      description: 本需求明确包含哪些能力、页面、接口、数据或流程边界？
       placeholder: |
         - 包含……
         - 包含……
@@ -41,7 +60,7 @@ body:
     id: non_goals
     attributes:
       label: 非目标
-      description: 本次明确不解决什么？没有时写“无”。
+      description: 明确这次不解决什么，避免开发或 Review 静默扩大范围。确实没有时写“无”。
       placeholder: |
         - 不包含……
         - 不改变……
@@ -64,8 +83,8 @@ body:
     id: invariants
     attributes:
       label: 必须保持不变
-      description: 哪些现有行为、Contract、数据、权限或流程不能被本需求破坏？没有时写“无”。
-      placeholder: 列出不可回归的行为或约束。
+      description: 现有兼容行为、公共 Contract、数据语义、权限、安全或用户流程中哪些不能被本需求破坏？确实没有时写“无”。
+      placeholder: 列出不可回归、不允许改变的行为或约束。
     validations:
       required: true
 
@@ -73,11 +92,21 @@ body:
     id: upstream_sources
     attributes:
       label: 上游事实源 / 相关资料
-      description: 引用已有 Spec、Roadmap、Figma、Contract、Schema、相关 Issue 等。没有更强来源时写“无”。
+      description: 引用已有 Issue、Spec、OpenSpec、RFC、ADR、Roadmap、Figma、Contract、Schema、标准等正式事实源。没有更强来源时明确写“无”；待补充时说明缺口，不要虚构链接。
       placeholder: |
-        - Figma / Spec：……
+        - Spec / RFC：……
+        - Figma：……
         - Contract / Schema：……
         - Related Issue：……
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks_dependencies
+    attributes:
+      label: 风险与依赖
+      description: 外部依赖、跨模块影响、兼容风险、数据风险、发布约束或待决事项。没有时写“无”。
+      placeholder: 描述已知依赖、风险和需要协调的 Owner。
     validations:
       required: true
 
@@ -85,7 +114,7 @@ body:
     id: validation_requirements
     attributes:
       label: 验证要求
-      description: 需要哪些测试、构建、集成验证、人工验收、外部 Probe 或数据校验才能直接证明 AC 完成？
+      description: 需要哪些测试、构建、集成验证、人工验收、外部 Probe 或数据校验才能证明需求完成？
       placeholder: |
         - 自动测试：……
         - 集成 / E2E：……

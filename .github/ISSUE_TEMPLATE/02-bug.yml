@@ -1,18 +1,19 @@
 name: 缺陷
-description: 报告当前实际行为与已确认期望行为不一致的问题
+description: 报告当前可观察行为与已确认期望行为不一致的问题
 title: "[缺陷] "
 body:
   - type: markdown
     attributes:
       value: |
-        请优先提供可复现事实和原始证据。没有根因证据时不要猜测。
+        请优先提供可复现事实和原始证据。没有根因证据时不要猜测；无法稳定复现时，请描述已知触发条件、频率和无法稳定复现的原因。
 
   - type: checkboxes
     id: duplicate_search
     attributes:
       label: 重复检查
+      description: 创建前先搜索现有 Issue、已知问题、回归记录或相关修复 PR。
       options:
-        - label: 我已搜索现有 Issue / 已知问题，没有找到同一现象和影响范围的未完成缺陷。
+        - label: 我已搜索现有事项，没有找到同一现象、影响范围和根因语义相同的未完成缺陷；如存在相关事项，会在下方事实源中引用。
           required: true
     validations:
       required: true
@@ -21,7 +22,7 @@ body:
     id: actual_behavior
     attributes:
       label: 实际行为
-      description: 当前真实发生了什么？
+      description: 当前真实发生了什么？请描述可观察现象，不要先把猜测的原因当成事实。
       placeholder: 在……条件下，系统实际……
     validations:
       required: true
@@ -30,7 +31,7 @@ body:
     id: expected_behavior
     attributes:
       label: 期望行为
-      description: 正确结果应该是什么？依据是什么？
+      description: 根据什么已确认规则、Contract、设计或既有稳定行为，正确结果应该是什么？
       placeholder: 正确行为应为……；依据为……
     validations:
       required: true
@@ -39,8 +40,21 @@ body:
     id: impact_scope
     attributes:
       label: 影响范围
-      description: 哪些用户、环境、模块、数据或流程受影响？
-      placeholder: 描述影响范围、频率和严重程度。
+      description: 哪些用户、环境、模块、数据、接口或流程受影响？严重程度和频率如何？
+      placeholder: 描述受影响范围、频率、数据/安全/可用性影响。
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment_version
+    attributes:
+      label: 环境 / 版本
+      description: 提供可复现实例所处的版本、commit/tag、部署环境、操作系统、浏览器、配置或相关运行条件；不适用项可明确写“不适用”。
+      placeholder: |
+        版本 / commit：
+        环境：
+        OS / 浏览器 / Runtime：
+        关键配置：
     validations:
       required: true
 
@@ -48,12 +62,12 @@ body:
     id: reproduction_steps
     attributes:
       label: 复现步骤
-      description: 给出最小稳定复现步骤；无法稳定复现时说明已知触发条件。
+      description: 给出最小稳定复现步骤。若只能间歇复现，请写清触发条件、频率、已尝试步骤以及为什么暂时无法稳定复现。
       placeholder: |
         1. ……
         2. ……
         3. ……
-        实际结果：……
+        结果：……
     validations:
       required: true
 
@@ -61,17 +75,24 @@ body:
     id: evidence
     attributes:
       label: 证据
-      description: 日志、错误、截图、请求/响应、失败测试或最小样例。拿不到时说明原因。
-      placeholder: 粘贴或链接可核实证据。
+      description: 提供日志、错误信息、截图、请求/响应、trace、失败测试、最小样例或其他可核实证据。确实拿不到时说明原因和已检查范围。
+      placeholder: 粘贴或链接到原始证据，并说明证据对应的时间/环境。
     validations:
       required: true
+
+  - type: textarea
+    id: suspected_root_cause
+    attributes:
+      label: 已知 / 怀疑根因（可选）
+      description: 只有存在代码、日志、trace 或实验依据时填写；没有证据时留空，不要为了完整性猜测。
+      placeholder: 已确认事实、怀疑点及对应证据。
 
   - type: textarea
     id: regression_scope
     attributes:
       label: 回归范围
-      description: 修复时必须保护哪些相邻行为或历史路径？
-      placeholder: 列出需要避免回归的路径或行为。
+      description: 修复时需要重点保护哪些相邻行为、历史路径、兼容语义或数据？
+      placeholder: 列出可能受修复影响的相邻路径和需要补充的回归测试。
     validations:
       required: true
 
@@ -103,9 +124,10 @@ body:
     id: upstream_sources
     attributes:
       label: 上游事实源 / 相关资料
-      description: 引用定义期望行为的 Contract、Spec、Figma、历史 Issue/PR 等。没有时写“无 / 待确认（原因）”。
+      description: 引用定义期望行为的 Contract、Spec、Figma、历史 Issue/PR、运行手册或其他正式事实源。没有时明确写“无/待确认（原因）”，不要编造。
       placeholder: |
         - Contract / Spec：……
         - Related Issue / PR：……
+        - 其他：……
     validations:
       required: true

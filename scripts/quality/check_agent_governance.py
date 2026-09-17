@@ -11,6 +11,7 @@ PROJECT_GOVERNANCE_MARKER = "<!-- agent-skills:project-governance:v1 -->"
 READY_CHECK = Path(".agents/skills/coding/scripts/ready_check.py")
 PROJECT_CHANGE_CHECK = Path("scripts/quality/check_change_completion.py")
 PR_REQUIREMENT_SOURCE_CHECK = Path("scripts/quality/check_pr_requirement_source.py")
+GOVERNANCE_ASSET_CONTRACT = Path("scripts/quality/governance_asset_contract.py")
 WORKFLOW_DIR = Path(".github/workflows")
 FORBIDDEN_WORKFLOW_FRAGMENTS = (
     ".agents/skills/coding/tests",
@@ -50,18 +51,22 @@ TECHNICAL_CHANGE_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "03-technical-change.yml"
 ISSUE_TEMPLATE_CONFIG = ISSUE_TEMPLATE_DIR / "config.yml"
 PR_TEMPLATE = Path(".github/PULL_REQUEST_TEMPLATE.md")
 REQUIREMENT_FORM_FIELDS = (
+    "id: problem_context",
     "id: objective",
+    "id: user_scenario",
     "id: scope",
     "id: non_goals",
     "id: acceptance_criteria",
     "id: invariants",
     "id: upstream_sources",
+    "id: risks_dependencies",
     "id: validation_requirements",
 )
 BUG_FORM_FIELDS = (
     "id: actual_behavior",
     "id: expected_behavior",
     "id: impact_scope",
+    "id: environment_version",
     "id: reproduction_steps",
     "id: evidence",
     "id: regression_scope",
@@ -70,7 +75,7 @@ BUG_FORM_FIELDS = (
     "id: validation_requirements",
 )
 TECHNICAL_CHANGE_FORM_FIELDS = (
-    "id: motivation",
+    "id: motivation_root_cause",
     "id: current_state",
     "id: target_state",
     "id: scope",
@@ -119,6 +124,16 @@ def _issue_field_block(text: str, field_id: str) -> str | None:
     return tail if next_field < 0 else tail[:next_field]
 
 
+def _issue_field_is_required(block: str) -> bool:
+    """确认字段自己的 validations.required 为 true，避免其他控件的 required 计数误补。"""
+    lines = [line.strip() for line in block.splitlines()]
+    try:
+        validations_index = lines.index("validations:")
+    except ValueError:
+        return False
+    return "required: true" in lines[validations_index + 1 :]
+
+
 def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]:
     """检查项目 Issue Form 的专项字段与统一公共 Profile。"""
     if not path.is_file():
@@ -126,10 +141,14 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
     text = _read_text(path)
     errors: list[str] = []
     for field in required_fields:
-        if field not in text:
+        field_id = field.removeprefix("id: ").strip()
+        block = _issue_field_block(text, field_id)
+        if block is None:
             errors.append(f"GOV012 {path.as_posix()}: 缺少必需需求字段 {field}")
-    if text.count("required: true") < len(required_fields):
-        errors.append(f"GOV012 {path.as_posix()}: 必需需求字段未保持 required 约束")
+        elif not _issue_field_is_required(block):
+            errors.append(
+                f"GOV012 {path.as_posix()}: 必需需求字段 {field} 未保持 validations.required=true"
+            )
     profile = ISSUE_FORM_PROFILES.get(path.name)
     if profile is not None:
         chooser_name, title_prefix = profile
@@ -195,6 +214,21 @@ def check_repository(root: Path = ROOT) -> list[str]:
         errors.append(
             f"GOV015 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: PR Requirement Source 机器门禁不存在"
         )
+    if not (root / GOVERNANCE_ASSET_CONTRACT).is_file():
+        errors.append(
+            f"GOV018 {GOVERNANCE_ASSET_CONTRACT.as_posix()}: 项目治理资产机器 Contract 适配器不存在"
+        )
+    else:
+        checker = (
+            _read_text(root / PR_REQUIREMENT_SOURCE_CHECK)
+            if (root / PR_REQUIREMENT_SOURCE_CHECK).is_file()
+            else ""
+        )
+        if "governance_asset_contract" not in checker:
+            errors.append(
+                f"GOV018 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: "
+                "PR gate 未接入项目治理资产机器 Contract"
+            )
 
     for workflow in _workflow_paths(root):
         text = _read_text(workflow)
