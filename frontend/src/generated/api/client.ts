@@ -991,6 +991,26 @@ export const CollectionScopeResponseCommentCoverage = {
   not_requested: 'not_requested',
 } as const;
 
+export type CollectionScopeResponseCommentStage = typeof CollectionScopeResponseCommentStage[keyof typeof CollectionScopeResponseCommentStage] | null;
+
+
+export const CollectionScopeResponseCommentStage = {
+  roots: 'roots',
+  replies: 'replies',
+  finished: 'finished',
+} as const;
+
+export type CollectionScopeResponseIdentityStatus = typeof CollectionScopeResponseIdentityStatus[keyof typeof CollectionScopeResponseIdentityStatus] | null;
+
+
+export const CollectionScopeResponseIdentityStatus = {
+  resolving: 'resolving',
+  resolved: 'resolved',
+  unavailable: 'unavailable',
+  ambiguous: 'ambiguous',
+  conflict: 'conflict',
+} as const;
+
 export interface CollectionRunStatsResponse {
   /** @minimum 0 */
   comment_count: number;
@@ -1001,7 +1021,11 @@ export interface CollectionRunStatsResponse {
   /** @minimum 0 */
   filtered_count?: number;
   /** @minimum 0 */
+  reply_count?: number;
+  /** @minimum 0 */
   requested_count: number;
+  /** @minimum 0 */
+  root_comment_count?: number;
   /** @minimum 0 */
   succeeded_count: number;
 }
@@ -1023,8 +1047,10 @@ export const CollectionRuntimeStatus = {
  */
 export interface CollectionScopeResponse {
   comment_coverage?: CollectionScopeResponseCommentCoverage;
+  comment_stage?: CollectionScopeResponseCommentStage;
   finished_at?: string | null;
   id: string;
+  identity_status?: CollectionScopeResponseIdentityStatus;
   operation_group: string;
   platform: CollectionPlatform;
   /**

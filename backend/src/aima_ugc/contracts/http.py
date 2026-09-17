@@ -384,6 +384,8 @@ class CollectionRunStatsResponse(BaseModel):
     failed_count: int = Field(ge=0)
     content_count: int = Field(ge=0)
     comment_count: int = Field(ge=0)
+    root_comment_count: int = Field(default=0, ge=0)
+    reply_count: int = Field(default=0, ge=0)
     filtered_count: int = Field(default=0, ge=0)
 
 
@@ -400,6 +402,10 @@ class CollectionScopeResponse(BaseModel):
     progress: int = Field(ge=0, le=100)
     stats: CollectionRunStatsResponse
     comment_coverage: Literal["complete", "partial", "unavailable", "not_requested"] | None = None
+    identity_status: (
+        Literal["resolving", "resolved", "unavailable", "ambiguous", "conflict"] | None
+    ) = None
+    comment_stage: Literal["roots", "replies", "finished"] | None = None
     stop_reason: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None

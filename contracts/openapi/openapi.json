@@ -2704,9 +2704,21 @@
             "title": "Filtered Count",
             "type": "integer"
           },
+          "reply_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Reply Count",
+            "type": "integer"
+          },
           "requested_count": {
             "minimum": 0.0,
             "title": "Requested Count",
+            "type": "integer"
+          },
+          "root_comment_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Root Comment Count",
             "type": "integer"
           },
           "succeeded_count": {
@@ -3019,6 +3031,22 @@
             ],
             "title": "Comment Coverage"
           },
+          "comment_stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "roots",
+                  "replies",
+                  "finished"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Stage"
+          },
           "finished_at": {
             "anyOf": [
               {
@@ -3035,6 +3063,24 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "identity_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "resolving",
+                  "resolved",
+                  "unavailable",
+                  "ambiguous",
+                  "conflict"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Status"
           },
           "operation_group": {
             "title": "Operation Group",

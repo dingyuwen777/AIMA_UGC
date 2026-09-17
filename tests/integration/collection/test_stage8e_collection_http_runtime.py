@@ -9,6 +9,9 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.collection_content import (
+    PostgresCollectionContentStateReader,
+)
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
 from aima_ugc.bootstrap.worker import create_worker_runtime
@@ -22,7 +25,10 @@ from aima_ugc.modules.collection.http import (
     CollectionConflict,
     CollectionResourceNotFound,
 )
-from aima_ugc.modules.collection.providers import ProviderTransportResponse
+from aima_ugc.modules.collection.providers import (
+    ProviderTransportFailure,
+    ProviderTransportResponse,
+)
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
     collection_scopes_table,
@@ -1267,7 +1273,18 @@ def test_batch_supplement_native_ids_persist_replies_under_their_root(
                 ),
             ]
         )
-    transport = FakeProviderTransport(tuple(responses))
+    observed_stages: list[tuple[str | None, int]] = []
+
+    class ObservingTransport(FakeProviderTransport):
+        def send(self, request):  # type: ignore[no-untyped-def]
+            if self.call_count in (1, 2):
+                current = service.get_run(created.run_id).scopes[0]
+                observed_stages.append(
+                    (current.comment_stage, current.stats.root_comment_count)
+                )
+            return super().send(request)
+
+    transport = ObservingTransport(tuple(responses))
     worker = create_job_worker(
         runtime=runtime,
         registry=create_collection_job_registry(
@@ -1284,6 +1301,11 @@ def test_batch_supplement_native_ids_persist_replies_under_their_root(
     run = service.get_run(created.run_id)
     assert run.status == "succeeded", (run.scopes[0].stop_reason, transport.call_count)
     assert run.scopes[0].comment_coverage == "complete"
+    assert run.scopes[0].identity_status == "resolved"
+    assert run.scopes[0].comment_stage == "finished"
+    assert run.scopes[0].stats.root_comment_count == 1
+    assert run.scopes[0].stats.reply_count == (2 if platform == "kuaishou" else 1)
+    assert observed_stages == [("roots", 0), ("replies", 1)]
     with runtime.database.engine.begin() as connection:
         comments = connection.execute(
             select(comments_table).where(comments_table.c.content_id == content_id)
@@ -1849,6 +1871,7 @@ def test_batch_supplement_blocks_ambiguous_shortlink_without_comment_request(run
     run = service.get_run(created.run_id)
     assert run.status == "failed"
     assert run.scopes[0].stop_reason == "identity_ambiguous"
+    assert run.scopes[0].identity_status == "ambiguous"
     assert transport.call_count == 1
     with runtime.database.engine.begin() as connection:
         assert connection.scalar(
@@ -1862,6 +1885,163 @@ def test_batch_supplement_blocks_ambiguous_shortlink_without_comment_request(run
             .where(provider_requests_table.c.scope_id == run.scopes[0].id)
         ).mappings().one()
     assert attempt["raw_artifact_id"] is not None
+
+
+@pytest.mark.parametrize("bypass_early_check", [False, True])
+def test_batch_supplement_shortlink_identity_owned_by_other_content_is_blocked(
+    runtime, monkeypatch, bypass_early_check: bool,
+) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, source_content_id = _insert_import_content(
+        runtime,
+        external_content_id="url_sha256:conflicting-share-source",
+        lookup_id_type="share_text",
+        lookup_value="https://xhslink.com/o/8fCmVEVQWmp",
+    )
+    _, other_content_id = _insert_import_content(
+        runtime,
+        external_content_id="xhs-note-1",
+        lookup_id_type="note_id",
+        lookup_value="xhs-note-1",
+    )
+    if bypass_early_check:
+        monkeypatch.setattr(
+            PostgresCollectionContentStateReader,
+            "lookup_identity_owned_by_other_content",
+            lambda *args, **kwargs: False,
+        )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu",
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-conflicting-shortlink",
+    )
+    detail = _batch_detail_response(note_id="xhs-note-1")
+    detail["data"]["data"][0]["note_list"][0]["comments_count"] = 1
+    transport = FakeProviderTransport(
+        (ProviderTransportResponse(status_code=200, body=detail),)
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-conflicting-shortlink-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    run = service.get_run(created.run_id)
+    assert run.status == "failed"
+    assert run.scopes[0].stop_reason == "identity_conflict"
+    assert run.scopes[0].comment_coverage == "unavailable"
+    assert run.scopes[0].identity_status == "conflict"
+    assert transport.call_count == 1
+    with runtime.database.engine.begin() as connection:
+        assert connection.scalar(
+            select(func.count())
+            .select_from(comments_table)
+            .where(comments_table.c.content_id.in_((source_content_id, other_content_id)))
+        ) == 0
+        conflicting_ids = connection.scalar(
+            select(func.count())
+            .select_from(content_external_ids_table)
+            .where(
+                content_external_ids_table.c.content_id == source_content_id,
+                content_external_ids_table.c.id_type == "note_id",
+            )
+        )
+    assert conflicting_ids == 0
+
+
+def test_batch_supplement_shortlink_unknown_delivery_keeps_auditable_attempt(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        external_content_id="url_sha256:unknown-share-source",
+        lookup_id_type="share_text",
+        lookup_value="https://xhslink.com/o/8fCmVEVQWmp",
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu",
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-unknown-shortlink",
+    )
+    detail = _batch_detail_response()
+    detail["data"]["data"][0]["note_list"][0]["comments_count"] = 0
+    transport = FakeProviderTransport(
+        (
+            ProviderTransportFailure.unknown(
+                code="connection_closed", safe_summary="发送结果未知"
+            ),
+            ProviderTransportResponse(status_code=200, body=detail),
+        )
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-unknown-shortlink-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert worker.run_once() is True
+    assert transport.call_count == 2
+    assert service.get_run(created.run_id).status == "succeeded"
+    with runtime.database.engine.begin() as connection:
+        attempts = connection.execute(
+            select(provider_request_attempts_table)
+            .select_from(provider_request_attempts_table.join(provider_requests_table))
+            .where(
+                provider_requests_table.c.scope_id
+                == service.get_run(created.run_id).scopes[0].id
+            )
+            .order_by(provider_request_attempts_table.c.attempt_no)
+        ).mappings().all()
+        typed_count = connection.scalar(
+            select(func.count())
+            .select_from(content_external_ids_table)
+            .where(
+                content_external_ids_table.c.content_id == content_id,
+                content_external_ids_table.c.id_type == "note_id",
+            )
+        )
+    assert len(attempts) == 2
+    assert attempts[0]["dispatch_status"] == "unknown"
+    assert attempts[0]["billing_status"] == "unknown"
+    assert attempts[1]["raw_artifact_id"] is not None
+    assert typed_count == 1
 
 
 def test_batch_supplement_persists_safe_error_when_provider_secret_is_unavailable(

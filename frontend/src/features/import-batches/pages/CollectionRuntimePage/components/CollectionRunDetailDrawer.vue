@@ -22,9 +22,22 @@ const emit = defineEmits<{
   viewResults: [runId: string]
 }>()
 
+const identityStatusLabels = {
+  resolving: '解析中',
+  resolved: '已确认',
+  unavailable: '不可获取',
+  ambiguous: '归属不明确',
+  conflict: '身份冲突',
+} as const
+const commentStageLabels = {
+  roots: '一级评论抓取中',
+  replies: '回复抓取中',
+  finished: '抓取结束',
+} as const
+
 const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((platform) => {
   const scopes = props.item?.scopes.filter((scope) => scope.platform === platform) ?? []
-  const blocked = (scope: typeof scopes[number]) => ['identity_unavailable', 'exact_resolution_unavailable'].includes(scope.stop_reason ?? '')
+  const blocked = (scope: typeof scopes[number]) => ['identity_unavailable', 'exact_resolution_unavailable', 'identity_conflict'].includes(scope.stop_reason ?? '')
   return {
     platform,
     complete: scopes.filter((scope) => scope.comment_coverage === 'complete' && scope.status === 'succeeded').length,
@@ -91,6 +104,8 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         </div>
         <div><span>内容</span><strong>{{ formatNumber(item.stats.content_count) }}</strong></div>
         <div><span>评论</span><strong>{{ formatNumber(item.stats.comment_count) }}</strong></div>
+        <div><span>一级评论</span><strong>{{ formatNumber(item.stats.root_comment_count) }}</strong></div>
+        <div><span>回复</span><strong>{{ formatNumber(item.stats.reply_count) }}</strong></div>
         <div><span>相关性过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
       </section>
       <template v-if="item.mode === 'batch_supplement'">
@@ -114,7 +129,7 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
           v-for="scope in item.scopes"
           :key="scope.id"
         >
-          <i :class="`dot dot--${scope.status}`" /><span>{{ platformLabels[scope.platform] }} · {{ runtimeStageLabel(scope.operation_group) }}<small v-if="scope.comment_coverage">评论覆盖：{{ scope.comment_coverage === 'complete' ? '完整' : scope.comment_coverage === 'partial' ? '部分' : scope.comment_coverage === 'unavailable' ? '不可用' : '未请求' }}</small><small
+          <i :class="`dot dot--${scope.status}`" /><span>{{ platformLabels[scope.platform] }} · {{ runtimeStageLabel(scope.operation_group) }}<small v-if="scope.identity_status">目标身份：{{ identityStatusLabels[scope.identity_status] }}</small><small v-if="scope.comment_stage">{{ commentStageLabels[scope.comment_stage] }}</small><small v-if="scope.comment_coverage">一级评论 {{ scope.stats.root_comment_count }} · 回复 {{ scope.stats.reply_count }} · 评论覆盖：{{ scope.comment_coverage === 'complete' ? '完整' : scope.comment_coverage === 'partial' ? '部分' : scope.comment_coverage === 'unavailable' ? '不可用' : '未请求' }}</small><small
             v-if="scope.status === 'failed' && scope.stop_reason"
           >{{ runtimeFailureMessage(scope.stop_reason) }}</small></span><b :class="`scope-state scope-state--${scope.status}`">{{ runtimeStatusLabels[scope.status] }} · {{ scope.progress }}%</b>
         </div>

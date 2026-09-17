@@ -53,6 +53,18 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
     expect(response.status()).toBe(200)
     return (await response.json() as { status: string }).status
   }, { timeout: 90_000 }).toBe('succeeded')
+  const completed = await request.get(`/api/v1/collection-runs/${runId}`)
+  expect(completed.status()).toBe(200)
+  const run = await completed.json() as {
+    scopes: { identity_status: string; comment_stage: string; stats: { root_comment_count: number; reply_count: number } }[]
+  }
+  expect(run.scopes).toHaveLength(5)
+  for (const scope of run.scopes) {
+    expect(scope.identity_status).toBe('resolved')
+    expect(scope.comment_stage).toBe('finished')
+    expect(scope.stats.root_comment_count).toBe(1)
+  }
+  expect(run.scopes.map((scope) => scope.stats.reply_count).sort()).toEqual([0, 0, 0, 0, 2])
 
   await page.goto('/collection-runtime')
   const runRow = page.locator('.table-row').filter({ hasText: '基于已有导入数据' }).first()
@@ -63,6 +75,9 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   for (const label of labels) {
     await expect(runDetail.getByRole('region', { name: '平台评论覆盖' })).toContainText(label)
   }
+  await expect(runDetail.getByText('目标身份：已确认')).toHaveCount(5)
+  await expect(runDetail.getByText('抓取结束')).toHaveCount(5)
+  await expect(runDetail.getByText('一级评论', { exact: true })).toBeVisible()
   await runDetail.getByRole('button', { name: '查看补采结果' }).click()
   await expect(page).toHaveURL((url) =>
     url.pathname === '/voice-plaza' && url.searchParams.get('source_identifier') === runId,

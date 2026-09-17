@@ -221,6 +221,8 @@ HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Wor
 
 读取一个 Run 当前状态、Scope、进度、统计、错误摘要等。Scope 返回 Provider-neutral 运行事实，不把 TikHub 私有分页 Cursor 当公共 Contract。
 
+辅助补采 Scope 额外返回可选的 `identity_status`、`comment_stage` 与 `comment_coverage`；其统计区分 `root_comment_count` 和 `reply_count`，由已持久化的 Candidate/Comment 事实汇总。Run 统计也汇总这两个分项。`identity_status` 区分解析中、已确认、不可获取、歧义和冲突；`comment_stage` 区分一级评论抓取、回复抓取与结束。精确枚举和字段类型以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 中的 `CollectionScopeResponse` 及生成 OpenAPI 为准。
+
 ## 4.4 `GET /api/v1/collection-runtime/runs`
 
 采集运行中心统一 Read Model，可投影 Data Import Campaign、兼容 Excel Import 与 TikHub Run。统一发生在 Query 层，不表示数据库把三类父事实合成万能表。Campaign 下的物理 Chunk Batch 不再作为兼容 Excel Import 重复投影或计入 KPI。
@@ -333,6 +335,8 @@ ingestion.historical-import-chunk.v2
 
 返回一个 Campaign 当前可用于辅助补采的平台和目标数量。目标从逐行来源账本反查 Content，因此 `unchanged` 行不需要伪造新 Content Version 也能保留补采资格；当前有效 AI 结果为不相关或缺少可执行 Provider locator 的内容不会进入结果。
 
+`diagnostics` 保留五个平台的直接目标、可精确解析候选、阻塞数量和原因；仅有不可获取链接的平台仍可见，但不能据此发起错误 ID 的评论请求。
+
 ---
 
 # 6. 兼容 Excel Import API
@@ -365,6 +369,8 @@ GET /api/v1/jobs/{job_id}
 ## 6.3 `GET /api/v1/import-batches/{batch_id}/supplement-eligibility`
 
 这是采集补采前的只读资格投影。后端按当前 Analysis Identity 读取该 Import Batch 对应的现有 Content Target，并按五个平台返回真实 `target_count`；接口本身不创建 Collection Run，也不把声音广场列表查询结果当资格依据。真正创建补采 Run 时，服务端仍会重新冻结/校验同一目标事实，因此该接口是前端展示与预检入口，不是最终写入守卫。
+
+`diagnostics` 与 Campaign 资格使用相同的平台、可解析和阻塞语义。微博长文章及未证明精确归属的快手、微博视频、B站短链计入阻塞原因；已验证的小红书和抖音短链才计入待解析。
 
 ## 6.4 Historical Import 兼容 API
 

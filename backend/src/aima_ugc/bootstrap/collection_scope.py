@@ -23,6 +23,7 @@ from aima_ugc.adapters.persistence.postgres.collection_actions import (
     PostgresCollectionContentActionRepository,
 )
 from aima_ugc.adapters.persistence.postgres.collection_content import (
+    CollectionContentIdentityConflictError,
     PostgresCollectionContentStateReader,
     PostgresFencedCollectionIngestionWriter,
 )
@@ -239,9 +240,13 @@ class _ScopeStats:
     sub_comment_requests: int = 0
     content_count: int = 0
     comment_count: int = 0
+    root_comment_count: int = 0
+    reply_count: int = 0
     technical_partial_results: int = 0
     filtered_content_count: int = 0
     comment_coverage: str | None = None
+    identity_status: str | None = None
+    comment_stage: str | None = None
 
     @classmethod
     def from_payload(cls, payload: dict[str, object]) -> _ScopeStats:
@@ -256,6 +261,8 @@ class _ScopeStats:
             sub_comment_requests=_payload_int(payload, "sub_comment_requests"),
             content_count=_payload_int(payload, "content_count"),
             comment_count=_payload_int(payload, "comment_count"),
+            root_comment_count=_payload_int(payload, "root_comment_count"),
+            reply_count=_payload_int(payload, "reply_count"),
             technical_partial_results=_payload_int(
                 payload,
                 "technical_partial_results",
@@ -267,6 +274,17 @@ class _ScopeStats:
                 in {"complete", "partial", "unavailable", "not_requested"}
                 else None
             ),
+            identity_status=(
+                cast(str, payload["identity_status"])
+                if payload.get("identity_status")
+                in {"resolving", "resolved", "unavailable", "ambiguous", "conflict"}
+                else None
+            ),
+            comment_stage=(
+                cast(str, payload["comment_stage"])
+                if payload.get("comment_stage") in {"roots", "replies", "finished"}
+                else None
+            ),
         )
 
     def sync_counts(self, counts: CollectionScopeExecutionCounts) -> None:
@@ -275,6 +293,8 @@ class _ScopeStats:
         self.failed_count = counts.failed_count
         self.content_count = counts.content_count
         self.comment_count = counts.comment_count
+        self.root_comment_count = counts.root_comment_count
+        self.reply_count = counts.reply_count
 
     def payload(self) -> dict[str, object]:
         return {
@@ -283,6 +303,8 @@ class _ScopeStats:
             "failed_count": self.failed_count,
             "content_count": self.content_count,
             "comment_count": self.comment_count,
+            "root_comment_count": self.root_comment_count,
+            "reply_count": self.reply_count,
             "search_pages": self.search_pages,
             "search_items": self.search_items,
             "detail_requests": self.detail_requests,
@@ -292,6 +314,8 @@ class _ScopeStats:
             "filtered_content_count": self.filtered_content_count,
             "provider_requests": self.requested_count,
             "comment_coverage": self.comment_coverage,
+            "identity_status": self.identity_status,
+            "comment_stage": self.comment_stage,
         }
 
 
@@ -610,6 +634,25 @@ class TikHubCollectionScopeExecutor:
                     observed_at=self._observed_at(),
                 ),
             )
+            identity = resolve_comment_target(
+                platform=_tikhub_platform(scope.platform),
+                external_content_id=seed.external_content_id,
+                alternate_ids=seed.alternate_ids,
+            )
+            stats.identity_status = (
+                "resolved"
+                if identity.state == "resolved"
+                else "resolving"
+                if resolve_supported_locator(_tikhub_platform(scope.platform), seed.alternate_ids)
+                else "unavailable"
+            )
+            self._scope_gateway.checkpoint_scope(
+                scope.id,
+                fence=context.fence,
+                pagination_state=pagination_state,
+                progress=scope.progress,
+                stats=stats.payload(),
+            )
             details = self._fetch_detail_candidates(
                 run=run,
                 scope=scope,
@@ -619,6 +662,22 @@ class TikHubCollectionScopeExecutor:
                 stats=stats,
             )
             latest = details[-1].content
+            latest_identity = resolve_comment_target(
+                platform=_tikhub_platform(scope.platform),
+                external_content_id=latest.external_content_id,
+                alternate_ids=latest.alternate_ids,
+            )
+            stats.identity_status = (
+                "resolved" if latest_identity.state == "resolved" else "unavailable"
+            )
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            self._scope_gateway.checkpoint_scope(
+                scope.id,
+                fence=context.fence,
+                pagination_state=pagination_state,
+                progress=scope.progress,
+                stats=stats.payload(),
+            )
             prior = self._content_state.evaluate(latest)
             if prior is None:
                 raise ValueError("补采目标 Content 在执行期不存在")
@@ -648,11 +707,28 @@ class TikHubCollectionScopeExecutor:
                 fence=context.fence,
             )
             for candidate in details:
-                ingestion = self._content_writer.ingest_content(
-                    canonical=candidate.content,
-                    fence=context.fence,
-                    candidate_id=candidate.candidate_id,
-                )
+                try:
+                    ingestion = self._content_writer.ingest_content(
+                        canonical=candidate.content,
+                        fence=context.fence,
+                        candidate_id=candidate.candidate_id,
+                        identity_guard=(
+                            (latest_identity.lookup_id_type, latest_identity.lookup_id)
+                            if latest_identity.lookup_id_type is not None
+                            and latest_identity.lookup_id is not None
+                            else None
+                        ),
+                    )
+                except CollectionContentIdentityConflictError as exc:
+                    candidate_attempt_id, _ = _canonical_source_ids(candidate.content)
+                    self._content_writer.record_candidate_failure(
+                        candidate_id=candidate.candidate_id,
+                        provider_attempt_id=candidate_attempt_id,
+                        fence=context.fence,
+                        result="invalid",
+                        error_code="detail_comment_target_identity_conflict",
+                    )
+                    raise _CommentTargetUnavailable("identity_conflict") from exc
                 if ingestion.target_id != target.content_id:
                     raise RuntimeError("Batch Detail 未收敛到原 Content")
 
@@ -675,6 +751,8 @@ class TikHubCollectionScopeExecutor:
 
             technical_partial = False
             if action.decision.comment_action in _COMMENT_FETCH_ACTIONS:
+                stats.comment_stage = "roots"
+                self._checkpoint_enrichment_stats(scope=scope, context=context, stats=stats)
                 outcome = self._fetch_comments(
                     run=run,
                     scope=scope,
@@ -692,11 +770,14 @@ class TikHubCollectionScopeExecutor:
                 technical_partial = outcome.technical_partial
                 stats.comment_coverage = outcome.coverage
                 if outcome.completed:
+                    stats.comment_stage = "finished"
+                    self._checkpoint_enrichment_stats(scope=scope, context=context, stats=stats)
                     self._content_actions.complete_comments(
                         action_id=action.id,
                         fence=context.fence,
                     )
             else:
+                stats.comment_stage = "finished" if policy.comments_enabled else None
                 stats.comment_coverage = self._record_non_fetch_coverage(
                     content_id=target.content_id,
                     content=latest,
@@ -704,6 +785,7 @@ class TikHubCollectionScopeExecutor:
                     comment_reason=action.decision.comment_reason,
                     comment_target=action.decision.comment_target,
                 )
+                self._checkpoint_enrichment_stats(scope=scope, context=context, stats=stats)
                 self._content_actions.complete_comments(
                     action_id=action.id,
                     fence=context.fence,
@@ -734,6 +816,12 @@ class TikHubCollectionScopeExecutor:
         except LeaseLostError:
             raise
         except _CommentTargetUnavailable as exc:
+            stats.identity_status = {
+                "identity_ambiguous": "ambiguous",
+                "identity_conflict": "conflict",
+            }.get(exc.code, "unavailable")
+            if stats.comment_coverage is None:
+                stats.comment_coverage = "unavailable"
             self._refresh_counts(scope=scope, context=context, stats=stats)
             return _result(
                 status="failed",
@@ -842,6 +930,23 @@ class TikHubCollectionScopeExecutor:
                 scope_id=scope.id,
                 fence=context.fence,
             )
+        )
+
+    def _checkpoint_enrichment_stats(
+        self,
+        *,
+        scope: CollectionScopeRecord,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+    ) -> None:
+        """把已入库的评论分层计数和当前阶段暴露给运行详情轮询。"""
+        self._refresh_counts(scope=scope, context=context, stats=stats)
+        self._scope_gateway.checkpoint_scope(
+            scope.id,
+            fence=context.fence,
+            pagination_state=dict(scope.pagination_state),
+            progress=scope.progress,
+            stats=stats.payload(),
         )
 
     def _prepare_search_content(
@@ -1314,6 +1419,22 @@ class TikHubCollectionScopeExecutor:
                         error_code="detail_comment_target_identity_unavailable",
                     )
                     raise _CommentTargetUnavailable("identity_unavailable")
+                assert resolved.lookup_id_type is not None
+                assert resolved.lookup_id is not None
+                if self._content_state.lookup_identity_owned_by_other_content(
+                    platform=platform,
+                    canonical_external_content_id=content.external_content_id,
+                    id_type=resolved.lookup_id_type,
+                    external_id=resolved.lookup_id,
+                ):
+                    self._content_writer.record_candidate_failure(
+                        candidate_id=candidate_id,
+                        provider_attempt_id=executed.attempt_id,
+                        fence=context.fence,
+                        result="invalid",
+                        error_code="detail_comment_target_identity_conflict",
+                    )
+                    raise _CommentTargetUnavailable("identity_conflict")
                 detail_content = detail_content.model_copy(
                     update={
                         "external_content_id": content.external_content_id,
@@ -1354,6 +1475,25 @@ class TikHubCollectionScopeExecutor:
         platform = _tikhub_platform(scope.platform)
         link_lookup_id = _link_backed_lookup_id(content)
         full_capture = run.config_snapshot.get("mode") == "batch_supplement"
+        if full_capture:
+            target = resolve_comment_target(
+                platform=platform,
+                external_content_id=content.external_content_id,
+                alternate_ids=content.alternate_ids,
+            )
+            if (
+                target.state != "resolved"
+                or target.lookup_id_type is None
+                or target.lookup_id is None
+            ):
+                raise _CommentTargetUnavailable("identity_unavailable")
+            if self._content_state.lookup_identity_owned_by_other_content(
+                platform=platform,
+                canonical_external_content_id=content.external_content_id,
+                id_type=target.lookup_id_type,
+                external_id=target.lookup_id,
+            ):
+                raise _CommentTargetUnavailable("identity_conflict")
         pagination_state: dict[str, object] = {}
         seen_comment_ids: set[str] = set()
         reported_total = (
@@ -1510,6 +1650,11 @@ class TikHubCollectionScopeExecutor:
                         reply_target=reply_decision.target,
                     )
                     technical_partial = technical_partial or reply_outcome.technical_partial
+                    if full_capture and reply_outcome.completed:
+                        stats.comment_stage = "roots"
+                        self._checkpoint_enrichment_stats(
+                            scope=scope, context=context, stats=stats
+                        )
                     if not reply_outcome.completed:
                         return _CommentFetchOutcome(
                             completed=False,
@@ -1531,6 +1676,9 @@ class TikHubCollectionScopeExecutor:
                         and reply_decision.reason != "reply_count_zero"
                     ):
                         technical_partial = True
+
+            if full_capture:
+                self._checkpoint_enrichment_stats(scope=scope, context=context, stats=stats)
 
             advance = advance_comments(
                 platform=platform,
@@ -1788,6 +1936,10 @@ class TikHubCollectionScopeExecutor:
         reported_total = _observed_reply_count(root_comment)
         technical_partial = False
 
+        if full_capture:
+            stats.comment_stage = "replies"
+            self._checkpoint_enrichment_stats(scope=scope, context=context, stats=stats)
+
         for _page_no in range(1, MAX_SUB_COMMENT_PAGES + 1):
             if context.cancel_requested():
                 if last_executed is not None:
@@ -1898,6 +2050,9 @@ class TikHubCollectionScopeExecutor:
                     candidate_id=candidate_id,
                 )
                 reply_ids.add(reply.external_comment_id)
+
+            if full_capture:
+                self._checkpoint_enrichment_stats(scope=scope, context=context, stats=stats)
 
             advance = advance_sub_comments(
                 platform=platform,

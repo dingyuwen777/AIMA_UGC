@@ -731,6 +731,8 @@ def _scope_stats(scope: CollectionScopeRecord) -> CollectionRunStatsResponse:
         failed_count=_safe_count(scope.stats, "failed_count"),
         content_count=_safe_count(scope.stats, "content_count"),
         comment_count=_safe_count(scope.stats, "comment_count"),
+        root_comment_count=_safe_count(scope.stats, "root_comment_count"),
+        reply_count=_safe_count(scope.stats, "reply_count"),
         filtered_count=_safe_count(scope.stats, "filtered_content_count"),
     )
 
@@ -753,6 +755,20 @@ def _scope_response(scope: CollectionScopeRecord) -> CollectionScopeResponse:
             in {"complete", "partial", "unavailable", "not_requested"}
             else None
         ),
+        identity_status=(
+            cast(
+                Literal["resolving", "resolved", "unavailable", "ambiguous", "conflict"],
+                scope.stats["identity_status"],
+            )
+            if scope.stats.get("identity_status")
+            in {"resolving", "resolved", "unavailable", "ambiguous", "conflict"}
+            else None
+        ),
+        comment_stage=(
+            cast(Literal["roots", "replies", "finished"], scope.stats["comment_stage"])
+            if scope.stats.get("comment_stage") in {"roots", "replies", "finished"}
+            else None
+        ),
         stop_reason=scope.stop_reason,
         started_at=scope.started_at,
         finished_at=scope.finished_at,
@@ -769,6 +785,8 @@ def _run_stats(
         failed_count=run.failed_count,
         content_count=run.content_count,
         comment_count=run.comment_count,
+        root_comment_count=sum(_safe_count(scope.stats, "root_comment_count") for scope in scopes),
+        reply_count=sum(_safe_count(scope.stats, "reply_count") for scope in scopes),
         filtered_count=sum(_safe_count(scope.stats, "filtered_content_count") for scope in scopes),
     )
 
