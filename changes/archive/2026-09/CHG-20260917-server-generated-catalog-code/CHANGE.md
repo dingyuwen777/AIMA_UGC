@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260917-server-generated-catalog-code
 title: 品牌与车型 code 改为服务端生成并同步 Figma
 level: L3
-status: ready_for_review
+status: done
 owner: engineering
 branch: feature/server-generated-catalog-code
 created: 2026-09-17
