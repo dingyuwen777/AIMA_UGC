@@ -359,10 +359,7 @@ class PostgresCollectionTargetReader:
                 bucket[1] += 1
                 continue
             reason = identity_block_reason(platform, ids)
-            if reason == "exact_resolution_unavailable":
-                bucket[1] += 1
-            else:
-                bucket[2] += 1
+            bucket[2] += 1
             reasons[platform][reason] = reasons[platform].get(reason, 0) + 1
         return tuple(
             CollectionSupplementPlatformDiagnostic(

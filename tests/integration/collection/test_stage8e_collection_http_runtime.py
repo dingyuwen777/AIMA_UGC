@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -58,6 +59,7 @@ from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
 _XIAOHONGSHU_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _DOUYIN_FIXTURES = Path("tests/fixtures/providers/tikhub/douyin")
+_TIKHUB_FIXTURES = Path("tests/fixtures/providers/tikhub")
 
 
 @pytest.fixture
@@ -996,6 +998,433 @@ def test_batch_supplement_worker_reuses_detail_mapper_and_ingestion_without_refi
     assert scope["status"] == "succeeded"
     assert content["title"] == "爱玛 Batch 内容已补全"
     assert version_count == 2
+
+
+@pytest.mark.parametrize(
+    ("platform", "lookup_id_type", "lookup_value"),
+    [
+        ("xiaohongshu", "note_id", "xhs-note-1"),
+        ("douyin", "aweme_id", "100001"),
+        ("weibo", "status_id", "100001"),
+        ("bilibili", "av_id", "100010"),
+        ("kuaishou", "photo_id", "100003"),
+    ],
+)
+def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
+    runtime, platform: str, lookup_id_type: str, lookup_value: str
+) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        platform=platform,
+        external_content_id=lookup_value,
+        lookup_id_type=lookup_id_type,
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    eligibility = service.get_batch_supplement_eligibility(batch_id)
+    assert [(item.platform, item.target_count) for item in eligibility.targets] == [(platform, 1)]
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform=platform,
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id=f"stage8e-native-{platform}",
+    )
+    body = json.loads(
+        (_TIKHUB_FIXTURES / platform / "comments_page1.sanitized.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    detail_name = (
+        "image_detail.sanitized.json"
+        if platform == "xiaohongshu"
+        else "detail.sanitized.json"
+    )
+    detail = json.loads((_TIKHUB_FIXTURES / platform / detail_name).read_text(encoding="utf-8"))
+    if platform == "xiaohongshu":
+        detail["data"]["data"][0]["note_list"][0]["id"] = lookup_value
+        detail["data"]["data"][0]["note_list"][0]["comments_count"] = 2
+        body["data"]["data"]["comment_count"] = 2
+        body["data"]["data"]["comment_count_l1"] = 2
+    elif platform == "douyin":
+        detail["data"]["aweme_detail"]["aweme_id"] = lookup_value
+        detail["data"]["aweme_detail"]["statistics"]["comment_count"] = 2
+        body["data"]["comments"][0]["aweme_id"] = lookup_value
+    elif platform == "weibo":
+        detail["data"]["detailInfo"]["status"]["idstr"] = lookup_value
+        detail["data"]["detailInfo"]["status"]["id"] = int(lookup_value)
+        detail["data"]["detailInfo"]["status"]["comments_count"] = 2
+    elif platform == "bilibili":
+        detail["data"]["data"]["aid"] = int(lookup_value)
+        detail["data"]["data"]["stat"]["aid"] = int(lookup_value)
+        detail["data"]["data"]["stat"]["reply"] = 2
+        body["data"]["data"]["cursor"]["pagination_reply"]["next_offset"] = 1
+    else:
+        detail["data"]["photos"][0]["photo_id"] = int(lookup_value)
+        detail["data"]["photos"][0]["comment_count"] = 2
+    final_comments_page = deepcopy(body)
+    if platform == "xiaohongshu":
+        final_comments_page["data"]["data"]["comments"][0]["id"] = "xhs-comment-root-2"
+        final_comments_page["data"]["data"]["cursor"] = "cursor-end"
+        final_comments_page["data"]["data"]["has_more"] = False
+    elif platform == "douyin":
+        final_comments_page["data"]["comments"][0]["cid"] = "douyin-comment-root-2"
+        final_comments_page["data"]["has_more"] = 0
+    elif platform == "weibo":
+        second_root = final_comments_page["data"]["items"][0]["data"]
+        second_root.update(
+            id=100004,
+            idstr="weibo-comment-root-2",
+            mid="weibo-comment-root-2",
+            rootid=100004,
+            rootidstr="weibo-comment-root-2",
+        )
+        final_comments_page["data"].pop("moreInfo")
+    elif platform == "bilibili":
+        second_root = final_comments_page["data"]["data"]["replies"][0]
+        second_root.update(rpid=100012, rpid_str="bili-comment-root-2")
+        final_comments_page["data"]["data"]["cursor"]["is_end"] = True
+    else:
+        final_comments_page["data"]["rootComments"][0]["comment_id"] = 100005
+        final_comments_page["data"]["pcursor"] = "cursor-second"
+    responses = [
+        ProviderTransportResponse(status_code=200, body=detail),
+        ProviderTransportResponse(status_code=200, body=body),
+        ProviderTransportResponse(status_code=200, body=final_comments_page),
+    ]
+    if platform == "kuaishou":
+        responses.append(
+            ProviderTransportResponse(
+                status_code=200,
+                body={"data": {"result": 1, "rootComments": [], "pcursor": ""}},
+            )
+        )
+    transport = FakeProviderTransport(tuple(responses))
+    registry = create_collection_job_registry(
+        runtime=runtime,
+        transport_factory=lambda _config: transport,
+        secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=registry,
+        worker_id=f"stage8e-native-{platform}",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    run = service.get_run(created.run_id)
+    with runtime.database.engine.begin() as connection:
+        scope_outcomes = connection.execute(
+            select(collection_scopes_table.c.status, collection_scopes_table.c.stop_reason).where(
+                collection_scopes_table.c.run_id == created.run_id
+            )
+        ).all()
+    assert run.status == "succeeded", (scope_outcomes, run.scopes[0], transport.call_count)
+    assert transport.seen_requests[0].params
+    with runtime.database.engine.begin() as connection:
+        comments = connection.execute(
+            select(comments_table).where(comments_table.c.content_id == content_id)
+        ).mappings().all()
+        assert sum(
+            comment["root_comment_id"] == comment["external_comment_id"]
+            and comment["parent_comment_id"] is None
+            for comment in comments
+        ) == 2
+        content_platform = connection.scalar(
+            select(contents_table.c.platform).where(contents_table.c.id == content_id)
+        )
+        assert content_platform == platform
+        attempts = connection.scalar(
+            select(func.count())
+            .select_from(provider_request_attempts_table.join(provider_requests_table))
+            .where(provider_requests_table.c.scope_id.in_(
+                select(collection_scopes_table.c.id).where(
+                    collection_scopes_table.c.run_id == created.run_id
+                )
+            ))
+        )
+        assert attempts == len(responses)
+
+
+@pytest.mark.parametrize(
+    ("platform", "lookup_id_type", "lookup_value", "reply_file"),
+    [
+        ("xiaohongshu", "note_id", "xhs-note-1", "sub_comments_page1.sanitized.json"),
+        ("douyin", "aweme_id", "100001", "replies_page1.sanitized.json"),
+        ("weibo", "status_id", "100001", "sub_comments_page1.sanitized.json"),
+        ("bilibili", "av_id", "100010", "replies_page1.sanitized.json"),
+        ("kuaishou", "photo_id", "100003", "sub_comments_page1.sanitized.json"),
+    ],
+)
+def test_batch_supplement_native_ids_persist_replies_under_their_root(
+    runtime, platform: str, lookup_id_type: str, lookup_value: str, reply_file: str
+) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        platform=platform,
+        external_content_id=lookup_value,
+        lookup_id_type=lookup_id_type,
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform=platform,
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=True,
+        ),
+        request_id=f"stage8e-native-reply-{platform}",
+    )
+    fixture_dir = _TIKHUB_FIXTURES / platform
+    detail_file = (
+        "image_detail.sanitized.json"
+        if platform == "xiaohongshu"
+        else "detail.sanitized.json"
+    )
+    detail = json.loads((fixture_dir / detail_file).read_text(encoding="utf-8"))
+    roots = json.loads((fixture_dir / "comments_page1.sanitized.json").read_text(encoding="utf-8"))
+    replies = json.loads((fixture_dir / reply_file).read_text(encoding="utf-8"))
+    if platform == "xiaohongshu":
+        note = detail["data"]["data"][0]["note_list"][0]
+        note.update(id=lookup_value, comments_count=1)
+        page = roots["data"]["data"]
+        page.update(has_more=False, comment_count=1, comment_count_l1=1)
+        root = page["comments"][0]
+        root.update(sub_comment_count=1, sub_comments=[])
+        replies["data"]["data"]["has_more"] = False
+    elif platform == "douyin":
+        video = detail["data"]["aweme_detail"]
+        video["aweme_id"] = lookup_value
+        video["statistics"]["comment_count"] = 1
+        root = roots["data"]["comments"][0]
+        root.update(aweme_id=lookup_value, reply_comment_total=1)
+        roots["data"]["has_more"] = 0
+        reply = replies["data"]["comments"][0]
+        reply.update(aweme_id=lookup_value, reply_to_reply_id="0")
+        replies["data"]["has_more"] = 0
+    elif platform == "weibo":
+        status = detail["data"]["detailInfo"]["status"]
+        status.update(id=int(lookup_value), idstr=lookup_value, comments_count=1)
+        root = roots["data"]["items"][0]["data"]
+        root["total_number"] = 1
+        roots["data"].pop("moreInfo")
+        replies["data"]["max_id"] = 0
+    elif platform == "bilibili":
+        video = detail["data"]["data"]
+        video["aid"] = int(lookup_value)
+        video["stat"].update(aid=int(lookup_value), reply=1)
+        root = roots["data"]["data"]["replies"][0]
+        root["rcount"] = 1
+        roots["data"]["data"]["cursor"]["is_end"] = True
+        replies["data"]["data"]["root"]["rcount"] = 1
+        replies["data"]["data"]["cursor"]["is_end"] = True
+    else:
+        photo = detail["data"]["photos"][0]
+        photo.update(photo_id=int(lookup_value), comment_count=1)
+        root = roots["data"]["rootComments"][0]
+        root["subCommentCount"] = 2
+        for offset, reply in enumerate(replies["data"]["subComments"]):
+            reply["comment_id"] = 100006 + offset
+    root_id = str(
+        root.get("idstr")
+        or root.get("rpid_str")
+        or root.get("id")
+        or root.get("cid")
+        or root.get("comment_id")
+    )
+    responses = [
+        ProviderTransportResponse(status_code=200, body=detail),
+        ProviderTransportResponse(status_code=200, body=roots),
+        ProviderTransportResponse(status_code=200, body=replies),
+    ]
+    if platform == "kuaishou":
+        responses.extend(
+            [
+                ProviderTransportResponse(
+                    status_code=200,
+                    body={"data": {"result": 1, "subComments": [], "pcursor": ""}},
+                ),
+                ProviderTransportResponse(
+                    status_code=200,
+                    body={"data": {"result": 1, "rootComments": [], "pcursor": ""}},
+                ),
+            ]
+        )
+    transport = FakeProviderTransport(tuple(responses))
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id=f"stage8e-native-reply-{platform}",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    run = service.get_run(created.run_id)
+    assert run.status == "succeeded", (run.scopes[0].stop_reason, transport.call_count)
+    assert run.scopes[0].comment_coverage == "complete"
+    with runtime.database.engine.begin() as connection:
+        comments = connection.execute(
+            select(comments_table).where(comments_table.c.content_id == content_id)
+        ).mappings().all()
+        thread_coverage = connection.execute(
+            select(comment_thread_coverage_observations_table).where(
+                comment_thread_coverage_observations_table.c.content_id == content_id,
+                comment_thread_coverage_observations_table.c.root_comment_id == root_id,
+            )
+        ).mappings().one()
+    assert any(
+        item["external_comment_id"] == root_id and item["parent_comment_id"] is None
+        for item in comments
+    )
+    assert any(
+        item["root_comment_id"] == root_id and item["external_comment_id"] != root_id
+        for item in comments
+    )
+    assert thread_coverage["coverage"] == "complete"
+    assert thread_coverage["captured_count"] == (2 if platform == "kuaishou" else 1)
+    assert transport.call_count == len(responses)
+
+
+@pytest.mark.parametrize(
+    ("platform", "lookup_id_type", "lookup_value"),
+    [
+        ("xiaohongshu", "note_id", "xhs-note-1"),
+        ("douyin", "aweme_id", "100001"),
+        ("weibo", "status_id", "100001"),
+        ("bilibili", "av_id", "100010"),
+        ("kuaishou", "photo_id", "100003"),
+    ],
+)
+def test_batch_supplement_native_id_comment_retry_reuses_detail_raw(
+    runtime, platform: str, lookup_id_type: str, lookup_value: str
+) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        platform=platform,
+        external_content_id=lookup_value,
+        lookup_id_type=lookup_id_type,
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform=platform,
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id=f"stage8e-native-retry-{platform}",
+    )
+    fixture_dir = _TIKHUB_FIXTURES / platform
+    detail_file = (
+        "image_detail.sanitized.json"
+        if platform == "xiaohongshu"
+        else "detail.sanitized.json"
+    )
+    detail = json.loads((fixture_dir / detail_file).read_text(encoding="utf-8"))
+    comments = json.loads(
+        (fixture_dir / "comments_page1.sanitized.json").read_text(encoding="utf-8")
+    )
+    if platform == "xiaohongshu":
+        note = detail["data"]["data"][0]["note_list"][0]
+        note.update(id=lookup_value, comments_count=1)
+        comments["data"]["data"].update(
+            comment_count=1, comment_count_l1=1, has_more=False
+        )
+    elif platform == "douyin":
+        video = detail["data"]["aweme_detail"]
+        video["aweme_id"] = lookup_value
+        video["statistics"]["comment_count"] = 1
+        comments["data"]["comments"][0]["aweme_id"] = lookup_value
+        comments["data"]["has_more"] = 0
+    elif platform == "weibo":
+        status = detail["data"]["detailInfo"]["status"]
+        status.update(id=int(lookup_value), idstr=lookup_value, comments_count=1)
+        comments["data"].pop("moreInfo")
+    elif platform == "bilibili":
+        video = detail["data"]["data"]
+        video["aid"] = int(lookup_value)
+        video["stat"].update(aid=int(lookup_value), reply=1)
+        comments["data"]["data"]["cursor"]["is_end"] = True
+    else:
+        detail["data"]["photos"][0].update(
+            photo_id=int(lookup_value), comment_count=1
+        )
+    responses = [
+        ProviderTransportResponse(status_code=200, body=detail),
+        ProviderTransportResponse(status_code=503, body={"error": "temporary"}),
+        ProviderTransportResponse(status_code=200, body=comments),
+    ]
+    if platform == "kuaishou":
+        responses.append(
+            ProviderTransportResponse(
+                status_code=200,
+                body={"data": {"result": 1, "rootComments": [], "pcursor": ""}},
+            )
+        )
+    transport = FakeProviderTransport(tuple(responses))
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id=f"stage8e-native-retry-{platform}",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert worker.run_once() is True
+    assert worker.run_once() is False
+    assert service.get_run(created.run_id).status == "succeeded"
+    assert transport.call_count == len(responses)
+    assert transport.seen_requests[1].params == transport.seen_requests[2].params
+    with runtime.database.engine.begin() as connection:
+        persisted = connection.scalar(
+            select(func.count())
+            .select_from(comments_table)
+            .where(comments_table.c.content_id == content_id)
+        )
+        details = connection.scalar(
+            select(func.count())
+            .select_from(provider_requests_table)
+            .where(
+                provider_requests_table.c.operation
+                == transport.seen_requests[0].path.rsplit("/", 1)[-1],
+            )
+        )
+    assert persisted >= 1
+    assert details == 1
 
 
 def test_batch_supplement_resolves_xhs_shortlink_and_keeps_import_content_identity(

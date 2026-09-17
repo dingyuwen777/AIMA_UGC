@@ -185,4 +185,5 @@ def test_kuaishou_detail_normalizes_numeric_ids_and_video_media() -> None:
     assert mapped.metrics.view_count == 1000
     assert mapped.metrics.download_count == 2
     assert {media.media_type for media in mapped.media} == {"video", "cover"}
+    assert [media.position for media in mapped.media] == [0, 1]
     assert any(media.duration_ms == 11500 for media in mapped.media)

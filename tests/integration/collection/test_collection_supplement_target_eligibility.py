@@ -359,7 +359,7 @@ def test_batch_supplement_targets_require_lookup_identity_and_exclude_current_ir
 
 
 def test_batch_eligibility_diagnostics_keep_unresolved_platform_visible(runtime) -> None:  # type: ignore[no-untyped-def]
-    """短链候选与无身份内容进入诊断，但不能进入实际补采 Scope。"""
+    """可解析短链进入目标和候选诊断，无身份内容只进入阻塞诊断。"""
     batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
     _insert_content(
         runtime,
@@ -379,7 +379,7 @@ def test_batch_eligibility_diagnostics_keep_unresolved_platform_visible(runtime)
         job_id=job_id,
         irrelevant=False,
     )
-    _insert_content(
+    blocked_id = _insert_content(
         runtime,
         attempt_id=attempt_id,
         artifact_id=artifact_id,
@@ -393,7 +393,7 @@ def test_batch_eligibility_diagnostics_keep_unresolved_platform_visible(runtime)
             insert(content_external_ids_table).values(
                 content_id=candidate_id,
                 id_type="share_text",
-                external_id="https://xhslink.com/example",
+                external_id="https://xhslink.com/o/example",
                 provider_attempt_id=attempt_id,
                 raw_artifact_id=artifact_id,
                 observed_at=datetime.now(UTC),
@@ -412,21 +412,19 @@ def test_batch_eligibility_diagnostics_keep_unresolved_platform_visible(runtime)
             source_items = reader.list_batch_source_items(
                 batch_id=batch_id, platforms=("xiaohongshu",)
             )
-            candidate_reason = reader.get_batch_unavailable_reason(
-                batch_id=batch_id, content_id=candidate_id
+            blocked_reason = reader.get_batch_unavailable_reason(
+                batch_id=batch_id, content_id=blocked_id
             )
 
-    assert len(targets) == 1
+    assert len(targets) == 2
+    assert any(target.content_id == candidate_id for target in targets)
     assert len(source_items) == 3
-    assert candidate_reason == "exact_resolution_unavailable"
+    assert blocked_reason == "identity_unavailable"
     assert len(diagnostics) == 1
     assert diagnostics[0].direct_target_count == 1
     assert diagnostics[0].resolution_candidate_count == 1
     assert diagnostics[0].blocked_count == 1
-    assert diagnostics[0].block_reasons == {
-        "exact_resolution_unavailable": 1,
-        "identity_unavailable": 1,
-    }
+    assert diagnostics[0].block_reasons == {"identity_unavailable": 1}
 
 
 def test_legacy_weibo_ttarticle_identity_is_blocked_even_with_status_id(runtime) -> None:  # type: ignore[no-untyped-def]
@@ -482,6 +480,50 @@ def test_legacy_weibo_ttarticle_identity_is_blocked_even_with_status_id(runtime)
     assert diagnostics[0].blocked_count == 1
     assert diagnostics[0].block_reasons == {"identity_unavailable": 1}
     assert blocked_reason == "identity_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("platform", "locator_type", "locator"),
+    [
+        ("weibo", "weibo_video_url", "https://weibo.com/tv/show/1034:5232127105761312"),
+        ("bilibili", "bilibili_share_url", "https://b23.tv/wDz5Xnc"),
+        ("kuaishou", "kuaishou_share_url", "https://v.kuaishou.com/KDh1s1j1"),
+    ],
+)
+def test_unverified_share_locator_is_blocked_from_eligibility(
+    runtime,  # type: ignore[no-untyped-def]
+    platform: PlatformName,
+    locator_type: str,
+    locator: str,
+) -> None:
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    content_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id=f"url_sha256:{platform}",
+        lookup_id=True,
+        lookup_id_type=locator_type,
+        lookup_value=locator,
+        job_id=job_id,
+        irrelevant=False,
+        platform=platform,
+    )
+    with runtime.database.new_session() as session:
+        with session.begin():
+            reader = PostgresCollectionTargetReader(
+                session, analysis_identity=_CURRENT_ANALYSIS_IDENTITY
+            )
+            targets = reader.list_batch_targets(batch_id=batch_id, platforms=(platform,))
+            diagnostics = reader.list_batch_diagnostics(batch_id=batch_id, platforms=(platform,))
+            reason = reader.get_batch_unavailable_reason(batch_id=batch_id, content_id=content_id)
+
+    assert targets == ()
+    assert len(diagnostics) == 1
+    assert diagnostics[0].blocked_count == 1
+    assert diagnostics[0].resolution_candidate_count == 0
+    assert diagnostics[0].block_reasons == {"exact_resolution_unavailable": 1}
+    assert reason == "exact_resolution_unavailable"
 
 
 def test_typed_lookup_that_does_not_match_stable_content_identity_is_eligible(

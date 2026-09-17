@@ -200,6 +200,7 @@ def _map_media(item: dict[str, Any]) -> list[CanonicalMediaV1]:
     if video_url is not None:
         mapped.append(
             CanonicalMediaV1(
+                position=len(mapped),
                 media_type="video",
                 url=video_url,
                 duration_ms=duration,
@@ -209,6 +210,7 @@ def _map_media(item: dict[str, Any]) -> list[CanonicalMediaV1]:
     if cover_url is not None:
         mapped.append(
             CanonicalMediaV1(
+                position=len(mapped),
                 media_type="cover",
                 url=cover_url,
                 duration_ms=duration,

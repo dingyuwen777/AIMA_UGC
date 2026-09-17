@@ -51,6 +51,7 @@ data_changes:
 - 本变更复用现有 Collection Run、持久 Job、Provider Attempt/Raw、Content Owner、PostgreSQL、Pydantic/OpenAPI/Orval 和声音广场。保持 Canonical 主身份、已存在合法原生 ID、公共请求和既有内容详情兼容。
 - 不进行模糊搜索、跨 API family 隐藏 fallback、终态重试 API、依赖升级或额外任务系统。真实 Probe 显式限额，不进入普通 CI。
 - 用户最新决定：微博 `ttarticle` 长文章不进行评论补采，移除新增的文章 ID 提取逻辑。历史记录即使有 `ttarticle_id` 和 `status_id`，也在评论目标解析及 Batch/Campaign 资格判定中阻断；普通微博帖子维持原能力。
+- 用户随后明确决定：TikHub 无法证明精确归属的快手短链、微博视频链接和 B站 `b23.tv` 短链按不可获取处理；五平台原生 ID 补采继续验收。此边界不排除普通 `photo_id`、`status_id`、`av_id/bv_id`，也不允许猜测或错配 ID 发评论请求。
 - 用户提供的正向样本页面显示 1 条评论，但完整文章 ID 及去掉 `230940` 的数字在 TikHub App Detail/Comments 的 4 次限额 Probe 中均返回 HTTP 400；该页面计数不能写成已获取评论。
 
 # 方案比较与决定
@@ -65,14 +66,14 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 五平台 URL/分享身份识别并保留 Canonical 主身份；`ttarticle` 长文章排除 | #526 / AC1；用户最新决定；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已补 host/完整路径/重复参数保护并移除新增的 `ttarticle_id` 提取；小红书 `share_text` 与抖音分享短链已实测取得 typed ID 并在隔离 PostgreSQL 持久化来源；快手候选回环 ID 不一致，其他平台分享链接精确映射尚未覆盖 |
+| R1 | 五平台 URL/分享身份识别并保留 Canonical 主身份；`ttarticle` 长文章排除 | #526 / AC1；用户两项排除决定；docs/roadmap/04_五平台评论补采产品化实施方案.md | satisfied | 导入身份规则保留五平台原生或分享定位字段及 Canonical 主身份；小红书/抖音受支持短链已实测并持久化来源；快手短链、微博视频链接和 B站 `b23.tv` 按用户决定作为不可获取留原因，微博长文章排除；目标单元、隔离 PostgreSQL 与网页五平台选择 Mock E2E 通过 |
 | R2 | 评论请求只接受平台白名单 typed ID，非法定位符和长文章零请求 | #526 / AC2；用户最新决定；docs/roadmap/04_五平台评论补采产品化实施方案.md | satisfied | `comment_target.py`、TikHub Runtime、五平台单元回归；历史 `ttarticle_id` 连同 `status_id` 一并拒绝，来源哈希和文章 ID 不再回退发请求 |
 | R3 | 精确解析有独立 Attempt/Raw、持久结果与明确失败语义 | #526 / AC3；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 小红书和抖音短链已接入独立详情 Operation/Attempt/Raw，typed ID 写入原 Content 外部 ID 账本；小红书评论 503 重试复用同一解析 Raw；其他平台无精确映射时继续阻断，歧义/冲突矩阵尚未完成 |
-| R4 | 五平台评论与回复分页耗尽、可恢复且 Coverage 真实 | #526 / AC4；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 批次补采已去除抽样停机并修复回复短缺，隔离 PostgreSQL 回归通过；五平台分页/恢复矩阵未完成 |
+| R4 | 五平台评论与回复分页耗尽、可恢复且 Coverage 真实 | #526 / AC4；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 批次补采已去除抽样停机并修复回复短缺；隔离 PostgreSQL 五平台原生 ID 两页根评论均抓取至 Provider 终止、各保存两条根评论且 Run 成功；五平台二级回复入库、根归属和线程 Coverage 完整，快手回复空页终止；五平台评论 503 后新 Attempt 恢复且详情 Raw 不重发；页中断、取消及并发矩阵未完成 |
 | R5 | Eligibility 与 Run/Scope 可解释直接、待解析、阻塞及部分结果 | #526 / AC5；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已增加诊断、混合来源失败 Scope、持久评论 Coverage 与页面平台汇总；回复级数量/完整阶段验收仍缺 |
 | R6 | 网页创建、跟踪、恢复、结果跳转及数据库评论分页闭环 | #526 / AC6；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已接线结果跳转与覆盖展示；既有声音广场分页可复用，逐平台全栈尚未证明 |
 | R7 | 调试入口复用生产实现，失败样本受控重放或明确不可获取 | #526 / AC7；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | `imports_test` 继续复用生产身份解析/评论 Runtime；新增 typed ID 精确核对后挂回原 Canonical 内容的根评论与回复回归，既有串帖拒绝仍通过。本机旧 Run 有微博 34 行 HTTP 400、小红书 2 行真正的跨内容 ID 错配；旧结果只读，行级重放及对账未完成 |
-| R8 | 五平台多层测试、真实 Provider Probe、全栈和费用台账 | #526 / AC8；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 四平台固定公开样本 Detail/一级评论通过；“爱玛”快手候选一级评论前两页 30+20 条及选中线程 6 条回复经生产 Mapper 验证，报告回复数亦为 6；用户提供的另一快手链接 Detail 空，五平台完整分页终止及真实全栈仍缺证据 |
+| R8 | 五平台多层测试、真实 Provider Probe、全栈和费用台账 | #526 / AC8；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 四平台固定公开样本 Detail/一级评论通过；“爱玛”快手候选一级评论前两页 30+20 条及选中线程 6 条回复经生产 Mapper 验证，报告回复数亦为 6；网页 Mock E2E 五平台同时提交及采集运行页 16 passed；隔离 PostgreSQL 五平台原生 ID 两页根评论、二级回复及 503 新 Attempt 恢复各 5 passed，纵切集 49 passed；浏览器真实全栈及真实五平台分页终止仍缺证据 |
 | R9 | 文档迁移、Completion Audit、Review、PR/main CI 与 Roadmap 退出 | #526 / AC9；docs/roadmap/README.md | not_satisfied | 合并前后按当前门禁验证 |
 | R10 | 微博 `ttarticle` 长文章不补采评论；删除新增的文章 ID 提取，历史定位字段即使伴随 `status_id` 也零请求 | 用户 2026-09-17 最新决定 | satisfied | `imports/identity.py`、`comment_target.py`、`collection_targets.py` 和补采页不可用说明；目标单元/离线入口 48 passed，隔离 PostgreSQL Eligibility 10 passed，前端目标 8 passed |
 
@@ -127,6 +128,7 @@ data_changes:
 - 微博视频详情官方链接示例的带前缀 ID 与去前缀数字分别 HTTP 400；另一官方数字示例 HTTP/业务码 200 且实际 `data.status.idstr` 为数字，说明文档所列 `items[0].data.idstr` 与现行返回不一致。B站 Web V3 URL 详情对一个公开 `b23.tv` 短链 HTTP 400。微博 4 次/B站 1 次业务请求计划费用分别 0.004/0.001 美元；这些样本不支持把短链解析接入正式补采。
 - 短链详情空列表的隔离 PostgreSQL 回归先显示泛化 `scope_execution_failed`，修复后 Scope 稳定返回 `identity_unavailable`，只产生一次解析请求，不写 typed ID 或评论。
 - 用户指定离线脚本的旧 Run 中 2 行小红书 `comment_content_identity_mismatch` 经逐条只读核对，原 Canonical 身份与 typed `note_id` 相同，Provider 返回的 76 条和 6 条评论均指向其他内容；原有过滤正确，不能把它们挂回原内容。另为合法的“Canonical 主身份与 typed ID 不同”场景新增失败回归，并在核对 Provider typed ID 后安全挂载一级评论和回复；相关离线工作流 22 passed，串帖过滤测试继续通过。旧 Run 未修改，也未对这两行再次付费。
+- 用户确认三类链接不可获取后，Eligibility 的可解析候选与阻塞计数修正，隔离 PostgreSQL 目标用例 4 passed，补采纵切集 49 passed；采集运行页 Playwright 16 passed。五平台原生 ID 各通过两页一级评论入库、回复与线程 Coverage，以及评论 503 后新 Attempt 恢复并复用详情 Raw，三组目标共 15 passed。快手 Detail 的视频与封面 `position` 冲突曾导致入库失败，修复后五平台均为成功终态；五平台 Mapper 单元 16 passed。用户指定 `enrich_comments.py` 相关四个测试文件 18 passed，未直接运行付费的真实数据脚本。前端 lint/typecheck/build、本次 Python Ruff 与 `mypy backend/src` 通过。
 - 这些验证只覆盖当前部分实现。R1、R3–R9 尚未满足，严格 Ready Check、PR current-head CI、两阶段 Review 和 main fresh CI 尚未执行；不得合并。
 
 # 交付状态
