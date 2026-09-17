@@ -110,7 +110,7 @@ test('keeps healthy admin resources usable when audit fails and paginates audit 
 
   await page.getByRole('button', { name: '操作记录' }).click()
   await expect(page.getByText('audit temporarily unavailable')).toBeVisible()
-  await page.getByRole('button', { name: '重试当前数据' }).click()
+  await page.getByRole('button', { name: '重试' }).click()
   await expect(page.getByText('配置操作', { exact: true })).toBeVisible()
   await expect(page.getByText('audit-event-0')).not.toBeVisible()
   await page.getByText('技术详情', { exact: true }).click()

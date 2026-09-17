@@ -400,12 +400,17 @@ test('five admin tabs keep their real controls and desktop layouts reachable', a
       const bounds = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }))
       expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1)
       if (name === '品牌与车型') {
-        await expect(page.getByRole('button', { name: /爱玛/ }).first()).toContainText('AIMA')
+        await expect(page.getByRole('button', { name: /爱玛/ }).first()).toContainText('爱玛')
+        const directory = await page.locator('.brand-directory-card').boundingBox()
+        const editor = await page.locator('.brand-detail-card').boundingBox()
+        expect(directory).not.toBeNull()
+        expect(editor).not.toBeNull()
         if (width === 1440) {
-          const list = await page.locator('.list-card').boundingBox()
-          const editor = await page.locator('.two-column').first().locator('.form-card').boundingBox()
-          expect(list!.width).toBeLessThan(editor!.width)
-          expect(Math.abs(list!.y - editor!.y)).toBeLessThanOrEqual(1)
+          expect(directory!.width).toBeGreaterThan(editor!.width)
+          expect(Math.abs(directory!.y - editor!.y)).toBeLessThanOrEqual(1)
+        } else {
+          expect(editor!.y).toBeGreaterThanOrEqual(directory!.y + directory!.height)
+          expect(Math.abs(directory!.width - editor!.width)).toBeLessThanOrEqual(2)
         }
       }
       if (process.env.AIMA_ADMIN_SCREENSHOT_DIR) {

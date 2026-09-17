@@ -287,8 +287,8 @@ for (const viewport of viewports) {
       expect(Math.abs((smallButton?.height ?? 0) - 30)).toBeLessThanOrEqual(1)
     }
     await page.getByRole('button', { name: '品牌与车型' }).click()
-    await expect(page.locator('.brand-list > button span').first()).toBeVisible()
-    expect(await fontSize(page, '.brand-list > button span')).toBeGreaterThanOrEqual(11)
+    await expect(page.locator('.brand-directory-table tbody td').first()).toBeVisible()
+    expect(await fontSize(page, '.brand-directory-table tbody td')).toBeGreaterThanOrEqual(11)
 
     await page.getByRole('button', { name: 'AI 模型' }).click()
     await expect(page.locator('.provider-layout')).toBeVisible()
