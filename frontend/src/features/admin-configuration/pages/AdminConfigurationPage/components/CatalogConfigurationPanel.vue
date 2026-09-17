@@ -37,7 +37,6 @@ const resourceConflict = ref<string | null>(null)
 
 const brandDraft = reactive({
   id: '',
-  code: '',
   displayName: '',
   role: 'owned' as 'owned' | 'competitor' | 'other',
   aliases: '',
@@ -45,7 +44,6 @@ const brandDraft = reactive({
 })
 const vehicleDraft = reactive({
   id: '',
-  code: '',
   displayName: '',
   brandId: '',
   seriesName: '',
@@ -57,10 +55,9 @@ const mergeTargetId = ref('')
 
 const selectedBrand = computed(() => brands.value.find((item) => item.id === selectedBrandId.value) ?? null)
 const selectedBrandVehicles = computed(() => vehicles.value.filter((item) => item.brand_id === selectedBrandId.value))
-const brandFormValid = computed(() => Boolean(brandDraft.code.trim() && brandDraft.displayName.trim()))
+const brandFormValid = computed(() => Boolean(brandDraft.displayName.trim()))
 const vehicleFormValid = computed(() => Boolean(
-  vehicleDraft.code.trim()
-    && vehicleDraft.displayName.trim()
+  vehicleDraft.displayName.trim()
     && (vehicleDraft.status !== 'active' || vehicleDraft.brandId),
 ))
 
@@ -96,7 +93,7 @@ function splitLines(value: string): string[] {
 function clearBrandDraft(): void {
   selectedBrandId.value = ''
   Object.assign(brandDraft, {
-    id: '', code: '', displayName: '', role: 'owned', aliases: '', status: 'active',
+    id: '', displayName: '', role: 'owned', aliases: '', status: 'active',
   })
   resetVehicleDraft()
 }
@@ -106,7 +103,6 @@ function selectBrand(item: BrandResponse): void {
   selectedBrandId.value = item.id
   Object.assign(brandDraft, {
     id: item.id,
-    code: item.code,
     displayName: item.display_name,
     role: item.role,
     aliases: (item.aliases ?? []).map((alias) => alias.text).join('\n'),
@@ -118,7 +114,7 @@ function selectBrand(item: BrandResponse): void {
 /** 打开新增品牌弹窗，不改变背景当前选择。 */
 function openBrandCreateDialog(): void {
   Object.assign(brandDraft, {
-    id: '', code: '', displayName: '', role: 'owned', aliases: '', status: 'active',
+    id: '', displayName: '', role: 'owned', aliases: '', status: 'active',
   })
   brandCreateOpen.value = true
 }
@@ -148,7 +144,6 @@ async function saveBrand(): Promise<void> {
     let brandId = brandDraft.id
     if (!brandId) {
       const created = await addBrand({
-        code: brandDraft.code.trim(),
         display_name: brandDraft.displayName.trim(),
         role: brandDraft.role,
         aliases: requestedAliases,
@@ -234,10 +229,10 @@ async function confirmDeleteBrand(): Promise<void> {
   }
 }
 
-/** 新车型默认继承当前品牌；创建后编码不可修改。 */
+/** 新车型默认继承当前品牌；内部编码由服务端生成。 */
 function resetVehicleDraft(brandId = selectedBrandId.value): void {
   Object.assign(vehicleDraft, {
-    id: '', code: '', displayName: '', brandId, seriesName: '', categoryName: '', aliases: '', status: 'active',
+    id: '', displayName: '', brandId, seriesName: '', categoryName: '', aliases: '', status: 'active',
   })
   mergeTargetId.value = ''
 }
@@ -246,7 +241,6 @@ function resetVehicleDraft(brandId = selectedBrandId.value): void {
 function editVehicleDraft(item: VehicleModelResponse): void {
   Object.assign(vehicleDraft, {
     id: item.id,
-    code: item.code,
     displayName: item.display_name,
     brandId: item.brand_id ?? '',
     seriesName: item.series_name ?? '',
@@ -288,7 +282,6 @@ async function saveVehicle(): Promise<void> {
       })
     } else {
       await addVehicle({
-        code: vehicleDraft.code.trim(),
         display_name: vehicleDraft.displayName.trim(),
         brand_id: vehicleDraft.brandId,
         series_name: vehicleDraft.seriesName.trim() || null,
@@ -407,7 +400,7 @@ async function mergeSelectedVehicle(): Promise<void> {
         <header>
           <div>
             <h2>品牌目录</h2>
-            <p>品牌编码创建后不可修改；品牌识别词用于统一匹配，旗下车型通过唯一品牌归属自动纳入过滤。</p>
+            <p>品牌识别词用于统一匹配，旗下车型通过唯一品牌归属自动纳入过滤。</p>
           </div>
           <AimaButton
             variant="primary"
@@ -667,10 +660,6 @@ async function mergeSelectedVehicle(): Promise<void> {
           <summary>技术信息</summary>
           <dl>
             <div>
-              <dt>品牌编码</dt>
-              <dd>{{ selectedBrand.code }}</dd>
-            </div>
-            <div>
               <dt>目录版本</dt>
               <dd>v{{ selectedBrand.catalog_version }}</dd>
             </div>
@@ -695,15 +684,6 @@ async function mergeSelectedVehicle(): Promise<void> {
     >
       <section class="resource-dialog-form">
         <h2>新增品牌</h2>
-        <label>
-          品牌编码
-          <input
-            v-model="brandDraft.code"
-            maxlength="100"
-            placeholder="例如 AIMA"
-          >
-          <small>稳定机器身份，创建后不可修改。</small>
-        </label>
         <label>
           品牌名称
           <input
@@ -760,15 +740,6 @@ async function mergeSelectedVehicle(): Promise<void> {
     >
       <section class="resource-dialog-form vehicle-dialog-form">
         <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
-        <label>
-          车型编码
-          <input
-            v-model="vehicleDraft.code"
-            :disabled="Boolean(vehicleDraft.id)"
-            placeholder="例如 AIMA-Q7"
-          >
-          <small>稳定机器身份，创建后不可修改。</small>
-        </label>
         <label>
           显示名称
           <input

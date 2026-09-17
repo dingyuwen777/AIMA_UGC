@@ -63,12 +63,12 @@ Figma MCP 返回的 React/Tailwind 代码只用于恢复设计结构；生产实
 
 ### 品牌与车型
 
-- Brand Code、Vehicle Code 创建后保持稳定机器身份；
+- Brand/Vehicle 内部 `code` 由服务端生成，创建后保持稳定且不可修改；
 - Brand Alias 继续通过 Brand Alias API；
 - Vehicle 品牌归属只由 Vehicle API 修改；
 - 已引用实体的删除、停用、合并资格由当前 Contract/后端最终决定；
 - 当前没有 Brand Merge Contract，不得从设计文案推导并新增前端假能力；
-- 正常业务层可以下沉机器 Code，但创建时仍按当前 Contract 收集必填 Code，已创建 Code 在技术信息按需查看。
+- 业务创建/编辑表单不收集、不允许人工修改或展示内部 `code`；数据库列、唯一约束与响应 Contract 继续保留该字段，既有记录不迁移。
 
 ### Provider
 

@@ -85,7 +85,7 @@ class PostgresAdministrationHttpService:
                 except RuntimeError as exc:
                     raise AdministrationConflict(str(exc)) from exc
                 model = repository.create_model(
-                    code=body.code,
+                    code=f"VEH_{uuid4().hex.upper()}",
                     display_name=body.display_name,
                     aliases=body.aliases,
                     brand_id=body.brand_id,

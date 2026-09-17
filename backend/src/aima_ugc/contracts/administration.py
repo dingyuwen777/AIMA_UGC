@@ -61,20 +61,11 @@ class VehicleModelCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    code: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     display_name: str = Field(min_length=1, max_length=200)
     brand_id: UUID | None = None
     aliases: tuple[str, ...] = Field(default=(), max_length=100)
     series_name: str | None = Field(default=None, min_length=1, max_length=200)
     category_name: str | None = Field(default=None, min_length=1, max_length=200)
-
-    @field_validator("code", mode="before")
-    @classmethod
-    def normalize_code(cls, value: object) -> object:
-        """车型 code 使用去空白后的大写稳定身份。"""
-
-        value = _trimmed(value)
-        return value.upper() if isinstance(value, str) else value
 
     @field_validator("display_name", "series_name", "category_name", mode="before")
     @classmethod

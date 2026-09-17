@@ -53,15 +53,9 @@ def _normalize_aliases(value: tuple[str, ...]) -> tuple[str, ...]:
 
 class BrandCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    code: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     display_name: str = Field(min_length=1, max_length=200)
     role: BrandRole
     aliases: tuple[str, ...] = Field(default=(), max_length=100)
-
-    @field_validator("code", mode="before")
-    @classmethod
-    def normalize_code(cls, value: object) -> object:
-        return value.strip().upper() if isinstance(value, str) else value
 
     @field_validator("display_name", mode="before")
     @classmethod
