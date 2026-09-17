@@ -7,7 +7,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ISSUE_TEMPLATE_DIR = Path(".github/ISSUE_TEMPLATE")
 CHANGE_TEMPLATE = Path(".agents/skills/coding/assets/CHANGE.template.md")
