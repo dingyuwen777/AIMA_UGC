@@ -117,11 +117,14 @@ def test_project_issue_profiles_are_recovered_from_forms(tmp_path: Path) -> None
 def test_live_issue_instance_uses_project_profile_and_stable_acceptance(tmp_path: Path) -> None:
     """API/网页创建的 live Issue 也必须满足当前项目 Form 的机器语义。"""
     root = _prepare_root(tmp_path)
-    assert VALIDATE_ISSUE_INSTANCE(
-        "[技术变更] 统一治理",
-        _technical_issue_body(),
-        root=root,
-    ) == []
+    assert (
+        VALIDATE_ISSUE_INSTANCE(
+            "[技术变更] 统一治理",
+            _technical_issue_body(),
+            root=root,
+        )
+        == []
+    )
 
 
 def test_live_issue_rejects_non_contiguous_acceptance_ids(tmp_path: Path) -> None:
