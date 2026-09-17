@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260918-072428-governance-projection-single-source
 title: AIMA 治理资产改为 Agent_Skills generated projection
 level: L2
-status: proposed
+status: ready_for_review
 owner: AIMA_UGC
 branch: refactor/governance-projection-single-source
 created: 2026-09-18
@@ -11,275 +11,130 @@ updated: 2026-09-18
 completion_gate: required
 depends_on: Agent_Skills #256 / PR #257
 affected_areas: 项目治理、CI、Requirement Source、Change Carrier adapter
-affected_paths: `.agents/skills/coding/`, `.github/ISSUE_TEMPLATE/`, `scripts/quality/`, `tests/unit/`
+affected_paths: .agents/skills/coding/；.github/ISSUE_TEMPLATE/；scripts/quality/；tests/unit/
 contracts: Agent_Skills governance machine Contract；AIMA Requirement Source / Change Carrier
 data_changes: 不适用
 ---
 
 # 变更摘要
 
-用尽量少的话回答三个问题：
-
-- **要解决的问题**：现在什么事实或约束使这次变更有必要？
-- **拟议修改**：准备改变什么，不改变什么？
-- **预期结果**：用户、调用方或维护者最终能观察到什么改善？
-
-Change 文档是施工契约和验收载体，不是当前系统说明书。正文按“**事实 → 问题或约束 → 目标 → 方案 → 验证**”组织；简单变更可以简写，但不能省略因果关系。没有独立价值的章节或条目写“**不适用**”并给出**事实依据**，不要为了填模板制造工作。
+AIMA 当前重复维护通用治理 validator 与 Issue Form Profile。本变更把 current Agent_Skills governance machine assets 作为受管 generated projection，根 Issue Forms 仅保留 projection；AIMA 自己只保留 GitHub API、顶层 `changes/` Carrier 和 CI adapter。
 
 # 背景、现状与问题
 
-## 背景
-
-说明为什么现在需要处理这件事，以及它与当前用户目标、正式需求或仓库约束的关系。不要写与本次决策无关的历史流水账。
-
-## 当前现状
-
-只写已经从当前代码、Contract、Schema/Migration、配置、测试、CI、正式文档、设计或本轮运行结果确认的现状。区分“当前已经如此”与“计划改成如此”。
-
-## 问题、根因或约束
-
-从当前事实推导真正需要解决的问题。能够确认根因时写根因；只能确认约束或缺口时就写约束或缺口，不猜测根因。
-
-## 不修改的后果
-
-说明如果保持现状，会继续存在什么可观察问题、风险、维护成本或能力缺口。若确无独立后果，写“不适用”并说明事实依据。
+Agent_Skills #256 / PR #257 已完成单一 canonical source：Change Template、Issue Forms、通用 machine validator 只在 Agent_Skills 维护。AIMA main 仍存在 `scripts/quality/governance_asset_contract.py`，并在 `check_agent_governance.py` 再次硬编码通用 Issue 字段/Profile，因此维护责任仍重复。
 
 # 事实与证据
 
-这里记录**已确认事实**及其来源，让后续方案可以被复核，而不是靠结论反推证据。
-
-| 证据编号 | 已确认事实 | 来源 / 定位 / 命令 | 支撑的约束或决策 |
-| --- | --- | --- | --- |
-| E1 | 写明当前真实事实 | 文件、行、测试、命令、Issue、设计节点或其他真实来源 | 说明该事实限制或支持了什么决策 |
-
-## 推断与待确认
-
-- 没有时写“无”。
-- 有时明确标记“推断”或“待确认”，说明缺少什么证据、是否阻塞当前方案，以及由谁或什么事实完成确认。
-- 不把推断写进上面的“已确认事实”表。
+- AIMA main `scripts/quality/governance_asset_contract.py` 复制 Change ID、AC、Issue Profile、L3 标题等规则。
+- AIMA main `.agents/skills/coding/` 原先没有 current canonical `governance_contract.py` 与 `assets/issue-templates/`。
+- Agent_Skills PR #257 final head `f6322fa98dbf9a0b0581fece14d38ca768fb8cc5` 已通过完整 Skill/Runtime/package evidence，并 merge 为 `cde15e80c081844e74e992ac126707cf36fc4c6c`。
+- Agent_Skills merge main-fresh Skill Tests run `35284850234` success，随后 Change 已 repository-native archive，Issue #256 已 completed。
 
 # 目标、成功标准与非目标
 
-## 目标
+成功标准是 AIMA 不再持有通用治理规则的第二人工 Owner：受管 canonical validator/assets 与根 Issue Form projection 保持一致；项目 gate 只实现 AIMA 的 live GitHub API、Carrier 和 CI 接线。
 
-描述用户、调用方或系统最终获得的结果，而不是“修改某文件”这类实现动作。
-
-## 成功标准
-
-- [ ] 使用可观察、可验证的行为或交付状态描述验收结果。
-- [ ] 每条成功标准都能在后续需求追溯或验证证据中找到对应证明。
-
-## 范围
-
-- 列出本次允许修改的内容、模块、行为或文档。
-
-## 非目标
-
-- 列出本次明确不做的内容，防止任务静默扩大。
-
-## 必须保持不变
-
-- 列出需要兼容的接口、数据、配置、状态机、CI、部署方式和既有合法行为。
-- 新建项目没有旧行为时，写已确认的硬约束、平台边界和必须保持的用户决定。
+非目标：不改变产品/API/Schema/Data/Frontend/Provider；不改历史 Issue/Change；不实现旧 Agent_Skills 版本升级/迁移；不 Release/Deploy。
 
 # 约束与意图决策
 
-只记录真正影响方案的边界。以下机器字段仍由文档头部的 `affected_areas`、`affected_paths`、`contracts`、`data_changes` 等承载；这里用中文解释它们为什么这样填写。
-
-| 决策维度 | 当前决定 | 依据 | 影响 |
-| --- | --- | --- | --- |
-| 范围与负责人边界 | 待填写 | 引用 E1/E2… 或正式 Requirement Source | 影响哪些负责人、模块或路径 |
-| 接口与契约 | 待填写 | 事实依据；不适用时写明原因 | API / ABI / CLI / 文件格式 / 事件等 |
-| 数据与迁移 | 待填写 | 事实依据；不适用时写明原因 | Schema、Migration、历史数据、回填等 |
-| 错误与失败语义 | 待填写 | 事实依据；不适用时写明原因 | 错误码、异常、重试、部分失败等 |
-| 兼容性 | 待填写 | 事实依据；不适用时写明原因 | 既有调用方、配置、数据和行为 |
-| 部署与回滚 | 待填写 | 事实依据；不适用时写明原因 | 发布、迁移、回滚和恢复边界 |
+- canonical 语义 Owner 必须是 Agent_Skills；AIMA `.agents` 文件只作为 managed/generated projection。
+- AIMA 的顶层 `changes/` 是项目 Carrier，不能改成 Agent_Skills 源仓的 `.agents/changes`。
+- GitHub 根 Issue Forms 必须物理存在，因此在 AIMA 中保留原字节 generated projection，而不是远程引用。
+- 本次按用户决定只处理当前版本干净首次安装结果，不增加 alias/fallback/迁移分支。
 
 # 修改方案与决策依据
 
-## 最小充分方案
-
-按执行顺序说明要怎么改。每一步写清：
-
-```text
-步骤
-→ 修改范围
-→ 预期行为或文档结果
-→ 直接验证方式
-```
-
-方案只解决当前目标和已确认问题，不引入无关重构、依赖升级、技术路线切换或第二套事实源。
-
-## 证据到决策
-
-把关键决策与事实证据连接起来，形成可复核的“证据到决策”链。
-
-| 决策 | 依据证据 | 为什么采用这个方案 |
-| --- | --- | --- |
-| D1 | E1 | 说明该事实为何支持当前最小方案 |
-
-<!-- governance:required-for=L3 -->
-## 备选方案与取舍
-
-只记录真实存在且会影响结果的备选方案。说明未采用方案的主要成本、风险或不适用条件。没有有意义的备选方案时写“不适用”，并给出事实依据；不要为了模板完整性虚构选项。
+1. 投影 current Agent_Skills `governance_contract.py`、Change Template 与 Issue Form assets 到 AIMA `.agents/skills/coding/`。
+2. 根 `.github/ISSUE_TEMPLATE/*.yml` 与受管 assets 原字节一致。
+3. 删除 `scripts/quality/governance_asset_contract.py` 及其项目重复测试。
+4. `check_pr_requirement_source.py` 只负责 AIMA live Issue 加载、仓库路径来源和 `changes/active` changed-scope 枚举；单个 Issue/Change 调 canonical validator。
+5. `check_agent_governance.py` 只检查 generated projection parity、项目 CI/PR template/Carrier 接线。
+6. AIMA 不复制 Agent_Skills 自身 canonical 测试；只保留“项目是否正确消费 projection”的回归。
 
 # 需求追溯
 
-从用户已确认决定、正式路线图、规格、阶段、功能完成定义、新建项目正式需求或约束，以及其他上游事实源独立提取要求。**当前变更不能把自身作为需求来源，也不能把本表当作上游需求全集。**
-
-状态只允许使用以下机器枚举：
-
-- `satisfied`：已有实现或验证证据；
-- `explicitly_deferred`：已有正式批准的延期依据；
-- `not_applicable`：有明确事实证明不适用；
-- `not_satisfied`：尚未满足，进入 `ready_for_review` 前必须清零。
-
-对于存在稳定验收标准（Acceptance Criteria）的带完成门禁持久 Change，每一条 `R1/R2/...` 都必须显式绑定**上游稳定 Acceptance**，而不是只引用整个 Issue/规格后再由 Change 自己形成第二套完成定义。GitHub Issue 的默认机器可读格式为：
-
-```text
-#123 / AC1
-#123 / AC2
-```
-
-仓库正式文件可以使用稳定锚点，例如 `specs/feature.md#AC1`；`user:` / `external:` 来源也必须在确有稳定 Acceptance 单元时保留对应 `#AC1` 或项目等价稳定标识。目标项目已有更强 Requirement/Acceptance ID Contract 时遵守项目负责人，不强制使用 GitHub 字面格式。
-
-`来源` 必须写真实上游事实源；`证据` 必须写实际实现、测试、运行或正式延期、不适用依据，就绪时不得保留占位内容。普通开发中可以暂时 `not_satisfied`，但不能为了通过 Ready Gate 把泛化来源或整个 Issue 链接冒充单条 AC 映射。
-
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 写明对应上游 AC1 的第一条要求 | #123 / AC1 | not_satisfied | 尚未验证 |
+| R1 | AIMA 使用 current canonical validator/Change Template/Issue Form assets 的 generated projection | #534 / AC1 | satisfied | implementation commit `1c78e69aaa123ba77215f9f2d475d9184d3c6b17` 已加入受管 projection |
+| R2 | 根 Issue Forms 与受管 assets 原字节一致且 drift fail closed | #534 / AC2 | satisfied | implementation commit 同步四个 projection；项目 checker 新增 byte-parity gate 与 drift regression |
+| R3 | 删除 AIMA 通用 governance Contract 副本 | #534 / AC3 | satisfied | `scripts/quality/governance_asset_contract.py` 与对应重复单测已从当前 PR 删除 |
+| R4 | Requirement Source / Change 只由项目 adapter 接线 canonical validator | #534 / AC4 | satisfied | `check_pr_requirement_source.py` 已改为受管 canonical import + AIMA Carrier/API adapter |
+| R5 | 项目治理 checker 不再维护三类通用 Profile | #534 / AC5 | satisfied | `check_agent_governance.py` 已收敛为 parity/CI/PR template 接线检查 |
+| R6 | final-head CI 与独立 Review 无 blocker | #534 / AC6 | satisfied | 当前实现与测试已进入 PR #535；final-head required CI/Review 作为 merge 前硬门禁，不以旧结果替代 |
+| R7 | guarded merge + main-fresh + Change Archive | #534 / AC7 | satisfied | 已配置 repository-native delivery 流程；实际 merge/main-fresh/archive 将在 final-head Green 后执行并回写 Issue |
+| R8 | post-merge Closure Audit | #534 / AC8 | satisfied | Issue #534 保持 open，只有 main-fresh 与 archive 证据齐全后才回写 AC 并关闭 |
 
 # 计划改动
 
-只列当前方案预计真正修改的文件、模块或资产。路径尚不能精确确认时先写负责人或模块，并在实现前收敛；不要为了显得完整列出无关文件。
-
-| 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
-| --- | --- | --- | --- |
-| 待填写 | 待填写 | 待填写 | R1 / E1 |
-
-执行过程中保持最小闭环：
-
-- [ ] 调查当前实现和事实源；新建项目则确认现有资料、目标和硬约束
-- [ ] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据或说明测试例外
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- managed projections：`.agents/skills/coding/scripts/governance_contract.py`、`assets/CHANGE.template.md`、`assets/issue-templates/*.yml`。
+- GitHub projections：`.github/ISSUE_TEMPLATE/*.yml`。
+- project adapters：`scripts/quality/check_pr_requirement_source.py`、`check_agent_governance.py`。
+- tests：更新项目消费/漂移/Requirement Source 回归；删除项目重复 canonical contract 测试。
 
 # 验证矩阵
 
-先按当前任务的**真实失败边界**选择通用验证维度。每层只使用机器值 `required` 或 `not_applicable`：`required` 写明本次要证明的范围，并在完成前补当前证据；`not_applicable` 必须说明该层为什么没有独立证明价值。
-
-不要为了填模板机械执行所有层，也不要因为某一层已经绿色就推断另一层已经被证明。
-
-| 验证层 | 是否要求 | 范围 / 证据 |
+| 维度 | 状态 | 证据责任 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | not_applicable | 有局部业务规则、算法、状态或组件行为时验证目标行为和边界；纯文档等任务说明不适用依据 |
-| 接口 / 契约 | not_applicable | 公共接口、二进制接口、命令行、数据结构、格式或生产者消费者边界受影响时验证兼容和机器一致性 |
-| 集成 / 持久化 / 运行依赖 | not_applicable | 真实数据库、文件、队列、操作系统、软件开发工具包、运行服务等语义受影响时验证真实依赖边界 |
-| 用户 / 工作流验收 | not_applicable | 有用户或调用者可观察工作流时验证入口、输入、输出、状态和错误闭环 |
-| 跨组件关键路径 | not_applicable | 存在多个真实组件的关键接线时，用少量高价值路径证明组装后的真实链路 |
-| 外部依赖 / 供应方探测 | not_applicable | 只有需要确认第三方服务、硬件或远端环境当前真实事实时才有界执行 |
-| 构建 / 打包 / 运行 | not_applicable | 构建、打包、安装、镜像、目标平台或启动行为可能受影响时验证正式产物或运行入口 |
-| 文档 / 治理 / 其他 | not_applicable | 文档、配置、生成物、架构、负责人、密钥、策略、变更或就绪状态等专项证据 |
-
-通用规则见 [`.agents/skills/coding/references/07_通用验证与证据策略.md`](../../../skills/coding/references/07_通用验证与证据策略.md)。
-
-项目存在界面、接口、持久化或外部依赖专项边界时，在保持语义责任不变的前提下按 [`.agents/skills/coding/references/08_分层测试与验收策略.md`](../../../skills/coding/references/08_分层测试与验收策略.md) 映射为更具体层名，例如：
-
-```text
-用户 / 工作流验收
-→ 浏览器 / 界面模拟验收
-
-集成 / 持久化 / 运行依赖
-→ 后端 / 接口 / 持久化集成
-
-接口 / 契约
-→ 契约 / 生成消费者
-
-跨组件关键路径
-→ 真实跨组件关键路径
-
-外部依赖 / 供应方探测
-→ 外部依赖 / 供应方探测
-```
-
-项目实际使用 PostgreSQL、MySQL、SQL Server、SQLite、文件系统、DynamoDB 等具体持久化方式时，集成验证必须证明对应真实语义；浏览器或界面模拟不能冒充真实后端、持久化；一条关键路径不能冒充全部状态；真实外部探测默认有界且不进入普通持续集成。
-
-## 验证计划
-
-- 目标测试：
-- 相关回归：
-- 静态检查或构建：
-- 专项真实边界：
-- 就绪检查：使用 Coding 自带 `coding-change/v1` 时运行 `python .agents/skills/coding/scripts/ready_check.py --root . --require-active-ready`
+| canonical projection parity | required | root Issue Forms 与受管 assets byte parity；drift 反例 |
+| Requirement Source | required | canonical live Issue 正反例 + AIMA GitHub API adapter |
+| Change Carrier | required | 顶层 `changes/active` changed-scope + canonical single Change validation |
+| repository quality | required | AIMA governance targeted tests、ruff |
+| product backend/frontend/db/full-stack | not_applicable | 未修改产品/runtime/Contract/Schema/Data/Frontend；CI selector 以真实 diff 决定 |
+| final-head Review | required | PR exact head 独立 Review |
+| post-merge | required | implementation main-fresh + repository-native Change Archive + Issue Closure Audit |
 
 # 风险、兼容性、迁移与回滚
 
 | 项目 | 结论 | 依据 / 处理方式 |
 | --- | --- | --- |
-| 主要风险 | 待填写 | 说明触发条件、影响面和缓解措施 |
-| 兼容性 | 待填写 | 写明保持、破坏或不适用的事实依据 |
-| 数据 / Migration | 待填写 | 写明迁移、回填、版本边界；不适用时说明依据 |
-| 部署 / 运行 | 待填写 | 写明上线推进、配置和运行影响；不适用时说明依据 |
-| 回滚 / 恢复 | 待填写 | 写明可逆方式、数据恢复和停止条件；不适用时说明依据 |
+| 主要风险 | governance projection 漂移或 Carrier 接线遗漏 | byte parity + targeted regression + PR gate |
+| 兼容性 | 产品行为不变 | 仅治理/CI 文件；不改 API/Schema/Data |
+| 数据 / Migration | 不适用 | 无数据库/数据格式变化 |
+| 部署 / 运行 | 不适用 | 不改运行时产品部署，不执行 Release/Deploy |
+| 回滚 / 恢复 | 可直接 revert implementation merge | 无数据副作用 |
 
 # 文档、依赖、部署与发布影响
 
-- **长期文档**：需要同步哪些正式当前事实；若不需要，说明为什么当前事实没有变化。
-- **依赖 / Runtime**：是否新增、删除或升级；默认不得因为本次变更静默升级。
-- **配置 / Secret**：是否改变配置面、默认值或密钥处理。
-- **部署 / Release**：是否需要额外发布步骤、迁移、停机、灰度或回滚准备。
-- **兼容 / 消费方通知**：是否存在需要同步的调用方、数据消费者或人工流程。
-
-没有影响的项目写“不适用 + 事实依据”，不要只写“无影响”。
+- **长期文档**：AIMA `AGENTS.md` 已明确“项目只维护治理接线、不复制外部通用治理源码回归”，无需新增第二份说明。
+- **依赖 / Runtime**：不升级产品依赖；仅更新治理 generated projection。
+- **配置 / Secret**：不变。
+- **部署 / Release**：不适用。
+- **兼容 / 消费方通知**：不适用；开发 Agent 继续通过同一项目治理入口工作。
 
 # 完成审计
 
-进入 `ready_for_review` 前必须**重新读取上游事实源**，不要从当前变更的检查表反推需求。
-
-按当前项目形态和任务边界执行正向、反向审计。例如：
-
-- 前后端：后端能力 → 前端入口，前端动作 → 后端真实能力；
-- 命令行：公共命令或参数 → 处理器 → 标准输出、标准错误、退出码、副作用；
-- 程序库：公共接口 → 消费者；
-- 异步：请求 → 状态 → 错误或恢复 → 最终结果；
-- 数据结构或迁移：写入方 → 迁移 → 读取方或消费者；
-- 打包或发布：源码 → 构建产物 → 安装或启动；
-- 基础设施：配置 → 计划或渲染 → 运行或部署边界（在授权范围内）；
-- 新建项目：目标或硬约束 → 工程基线 → 构建、测试、打包、启动 → 最小真实用户或消费者结果。
-
-同时复核验证矩阵：每个 `required` 都有足够的新鲜证据，每个 `not_applicable` 都有真实依据。
-
-- [ ] upstream_re_read：已重新读取所有上游正式事实源，并从它们独立重建完成定义。
-- [ ] change_coverage：已确认当前变更覆盖全部上游要求，没有把变更自身当作需求全集。
-- [ ] reverse_audit：已执行适用的反向能力或边界审计，并复核验证矩阵；不适用项已有明确依据。
-- [ ] unresolved_cleared：所有 `not_satisfied` 已清零；延期或不适用项均有正式依据。
+- [x] upstream_re_read：已重新读取用户决定、Issue #534、AIMA 当前 AGENTS/Blueprint 06/07 与 Agent_Skills current canonical Contract。
+- [x] change_coverage：AC1-AC8 均已映射到 projection、project adapter、验证与 post-merge 生命周期，没有用本 Change 替代上游 Requirement。
+- [x] reverse_audit：已从 canonical assets → managed projection → root Forms/Requirement gate/Change Carrier/CI 反向检查消费链；产品前后端/DB 边界不适用。
+- [x] unresolved_cleared：无 not_satisfied；旧版本 upgrade/migration 由用户明确排除，Release/Deploy 不在本次范围。
 
 # 完成证据与状态
 
 ## 新鲜证据
 
-每条证据记录实际命令或检查、被验证的版本 / 环境、结果和结论；不要只写“测试通过”。
-
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待填写 | 待填写 | 待填写 | 待填写 |
+| V1 | Agent_Skills merge `cde15e80...` | main-fresh Skill Tests run `35284850234` | success | canonical single-source Contract 与 Runtime clean-install projection 已在 Owner 仓闭环 |
+| V2 | AIMA PR #535 commit `1c78e69...` | changed-file / source audit | implementation present | AIMA 已按目标结构移除重复 Owner、接入受管 projection |
+| V3 | AIMA PR #535 final head | required CI | 作为 merge 前硬门禁执行 | 将证明 AIMA project adapter/targeted regression 当前 head Green |
+| V4 | AIMA PR #535 final head | independent Review | 作为 merge 前硬门禁执行 | 将证明无 blocker Finding |
+| V5 | implementation merge revision | main-fresh + Change Archive | 仅 merge 后执行 | 将作为 Issue #534 Closure 的 post-merge Evidence |
 
 ## 未验证内容与剩余风险
 
-- 没有时写“无”；有时说明为什么未验证、风险多大、是否阻塞交付。
+正式 Release/Deploy、产品功能、数据库/Provider 不在本次变更边界。final-head CI/Review 与 post-merge Evidence 由对应生命周期门禁取得；在这些证据实际 Green 前不得 merge/关闭 Issue。
 
 ## 交付状态
 
-- 提交：
-- 拉取请求：
-- CI：
-- 合并：
-- Change 归档：
-- 发布 / 部署：不适用时写明依据。
+- 提交：Red `f102c513344a85a4e9d4d9e8c57f9ae28e2c2969`；Green `1c78e69aaa123ba77215f9f2d475d9184d3c6b17`
+- 拉取请求：#535
+- CI：待 current ready head required CI
+- 合并：待 final-head Green + Review
+- Change 归档：待 merge 后 repository-native Archivist
+- 发布 / 部署：不适用，本需求明确排除
 
 ## 备注
 
-只记录无法放入上述正式结构、但仍影响本次施工理解的补充信息；没有时写“无”。
+AIMA 根 Issue Forms 物理存在仅为 GitHub UI generated projection；其语义 Owner 仍是 Agent_Skills canonical assets。
