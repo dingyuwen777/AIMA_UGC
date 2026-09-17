@@ -45,6 +45,10 @@ from aima_ugc.adapters.providers.tikhub_test.core.core import RawOutputRecord, R
 from aima_ugc.contracts.canonical import CanonicalCommentV1
 from aima_ugc.contracts.export import UnifiedDataExcelCommentV1, UnifiedDataExcelV1
 from aima_ugc.contracts.platform import PLATFORM_NAMES, PlatformName
+from aima_ugc.modules.collection.comment_target import (
+    identity_block_reason,
+    resolve_comment_target,
+)
 from aima_ugc.modules.collection.providers.transport import (
     ProviderTransport,
     ProviderTransportFailure,
@@ -171,6 +175,13 @@ class _TikHubCommentFetcher:
                     root_stop_reason=unsupported_reason,
                 ),
             )
+        target = resolve_comment_target(
+            platform=content.platform,
+            external_content_id=content.external_content_id,
+            alternate_ids=content.alternate_ids,
+        )
+        assert target.lookup_id is not None
+        lookup_id = target.lookup_id
         request_count_before = self.request_count
         comments: list[CanonicalCommentV1] = []
         seen_comment_ids: set[str] = set()
@@ -219,11 +230,15 @@ class _TikHubCommentFetcher:
                         source_type="content",
                         source_value=content.external_content_id,
                         observed_at=sent.raw_record.observed_at,
-                        external_content_id=content.external_content_id,
+                        external_content_id=lookup_id,
                     ),
                     item_locator=item_locator,
                     is_root=True,
                 )
+                if comment.external_content_id == lookup_id:
+                    comment = comment.model_copy(
+                        update={"external_content_id": content.external_content_id}
+                    )
                 if comment.external_content_id != content.external_content_id:
                     identity_mismatches.append(
                         _identity_mismatch(
@@ -314,6 +329,13 @@ class _TikHubCommentFetcher:
         replies: list[CanonicalCommentV1] = []
         failures: list[CommentFetchFailureV1] = []
         identity_mismatches: list[CommentIdentityMismatchV1] = []
+        target = resolve_comment_target(
+            platform=content_platform,
+            external_content_id=external_content_id,
+            alternate_ids=alternate_ids,
+        )
+        assert target.lookup_id is not None
+        lookup_id = target.lookup_id
         state: dict[str, object] | None = None
         page_no = 0
         while True:
@@ -351,12 +373,16 @@ class _TikHubCommentFetcher:
                         source_type="comment",
                         source_value=root.external_comment_id,
                         observed_at=sent.raw_record.observed_at,
-                        external_content_id=external_content_id,
+                        external_content_id=lookup_id,
                         root_comment_id=root.external_comment_id,
                     ),
                     item_locator=item_locator,
                     is_root=False,
                 )
+                if comment.external_content_id == lookup_id:
+                    comment = comment.model_copy(
+                        update={"external_content_id": external_content_id}
+                    )
                 if comment.external_content_id != external_content_id:
                     identity_mismatches.append(
                         _identity_mismatch(
@@ -481,14 +507,15 @@ def _unsupported_comment_identity_reason(
     external_content_id: str,
     alternate_ids: dict[str, str],
 ) -> str | None:
-    """阻止把微博文章哈希等非 status_id 身份误发给评论接口。"""
-
-    if platform != "weibo":
-        return None
-    status_id = alternate_ids.get("status_id", external_content_id).strip()
-    if status_id.isdecimal():
-        return None
-    return "unsupported_weibo_comment_identity"
+    """离线调试与正式采集共用五平台 typed 评论目标规则。"""
+    resolution = resolve_comment_target(
+        platform=platform,
+        external_content_id=external_content_id,
+        alternate_ids=alternate_ids,
+    )
+    return (
+        None if resolution.state == "resolved" else identity_block_reason(platform, alternate_ids)
+    )
 
 
 def enrich_comparison_comments(

@@ -109,7 +109,7 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === `/api/v1/collection-runs/${runId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runDetail) })
     if (url.pathname === '/api/v1/import-batches' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, job_id: importJobId, status: 'queued' }) })
     if (url.pathname === '/api/v1/import-batches') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [usableImport, secondUsableImport], next_cursor: null, has_more: false }) })
-    if (url.pathname === `/api/v1/import-batches/${batchId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, targets: [{ platform: 'xiaohongshu', target_count: 1 }] }) })
+    if (url.pathname === `/api/v1/import-batches/${batchId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, targets: [{ platform: 'xiaohongshu', target_count: 1 }], diagnostics: [{ platform: 'xiaohongshu', direct_target_count: 1, resolution_candidate_count: 0, blocked_count: 0, block_reasons: {} }, { platform: 'weibo', direct_target_count: 0, resolution_candidate_count: 0, blocked_count: 1, block_reasons: { exact_resolution_unavailable: 1 } }, { platform: 'kuaishou', direct_target_count: 0, resolution_candidate_count: 0, blocked_count: 1, block_reasons: { identity_unavailable: 1 } }] }) })
     if (url.pathname === `/api/v1/import-batches/${secondBatchId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ batch_id: secondBatchId, targets: [{ platform: 'douyin', target_count: 1 }] }) })
     if (url.pathname === `/api/v1/import-batches/${batchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(importDetail) })
     if (url.pathname === `/api/v1/import-batches/${secondBatchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(secondUsableImport) })
@@ -330,6 +330,10 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
   await drawer.getByLabel('数据导入来源').selectOption(`batch:${batchId}`)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
+  await expect(drawer.getByText('微博', { exact: true })).toBeVisible()
+  await expect(drawer.getByText(/有 1 条分享链接无法确认对应内容/)).toBeVisible()
+  await expect(drawer.getByText('快手', { exact: true })).toBeVisible()
+  await expect(drawer.getByText(/有 1 条内容缺少可验证的原生 ID/)).toBeVisible()
   await drawer.getByRole('button', { name: /小红书/ }).click()
   const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await drawer.getByRole('button', { name: '创建补采任务' }).click()
@@ -344,6 +348,42 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
   const supplementBody = (await requestPromise).postDataJSON()
   expect(supplementBody.platforms[0]).not.toHaveProperty('search_config')
   expect(supplementBody).not.toHaveProperty('vehicle_model_ids')
+})
+
+test('submits all five eligible platforms through the existing supplement drawer', async ({ page }) => {
+  const platforms = ['xiaohongshu', 'douyin', 'weibo', 'bilibili', 'kuaishou']
+  await page.route('**/api/v1/collection-capabilities', (route) => route.fulfill({
+    json: {
+      provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }],
+      capabilities: platforms.map((platform) => ({
+        provider: 'tikhub', platform,
+        operations: ['content_detail', 'comments', 'sub_comments'],
+        search: { supported_sort_modes: ['latest'], supported_time_filters: ['all'], supported_duration_filters: [], supported_content_types: ['all'], manual_default: { sort_mode: 'latest' } },
+      })),
+    },
+  }))
+  await page.route(`**/api/v1/import-batches/${batchId}/supplement-eligibility`, (route) => route.fulfill({
+    json: {
+      batch_id: batchId,
+      targets: platforms.map((platform) => ({ platform, target_count: 1 })),
+      diagnostics: platforms.map((platform) => ({ platform, direct_target_count: 1, resolution_candidate_count: 0, blocked_count: 0, block_reasons: {} })),
+    },
+  }))
+
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '新建辅助补采' }).click()
+  const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
+  await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
+  await drawer.getByLabel('数据导入来源').selectOption(`batch:${batchId}`)
+  for (const label of ['小红书', '抖音', '微博', 'B站', '快手']) {
+    await drawer.getByRole('button', { name: new RegExp(label) }).click()
+  }
+  const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
+  await drawer.getByRole('button', { name: '创建补采任务' }).click()
+  const body = (await requestPromise).postDataJSON()
+  expect(body.mode).toBe('batch_supplement')
+  expect(body.import_batch_id).toBe(batchId)
+  expect(body.platforms).toEqual(platforms.map((platform) => ({ platform, provider_config_id: providerConfigId })))
 })
 
 test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {
@@ -500,7 +540,10 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
   await expect(detail).toContainText('采集服务授权信息不可用，请联系管理员检查服务配置。')
   await expect(detail).toContainText('小红书 · 补充内容信息')
   await expect(detail).toContainText('失败 · 100%')
+  await expect(detail.getByRole('region', { name: '平台评论覆盖' })).toContainText('失败 1')
   await expect(detail).not.toContainText('providers/tikhub')
+  await detail.getByRole('button', { name: '查看补采结果' }).click()
+  await expect(page).toHaveURL(new RegExp(`source_identifier=${runId}`))
 })
 
 test('keeps unified Error Contract technical ids out of the product list error state', async ({ page }) => {

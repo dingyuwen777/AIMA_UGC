@@ -12,6 +12,7 @@ ALL_FULLSTACK_SPECS = (
     "admin-product-capabilities.spec.ts",
     "analysis-streaming.spec.ts",
     "collection-plan-search-config.spec.ts",
+    "comment-supplement.spec.ts",
     "excel-import.spec.ts",
     "manual-relevance-review.spec.ts",
     "stage12-historical-analysis.spec.ts",
@@ -259,7 +260,10 @@ def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
     if any(marker in path for marker in administration_markers):
         return ("admin-product-capabilities.spec.ts",)
     if any(marker in path for marker in collection_markers):
-        return ("collection-plan-search-config.spec.ts",)
+        return (
+            "collection-plan-search-config.spec.ts",
+            "comment-supplement.spec.ts",
+        )
     if any(marker in path for marker in ingestion_markers):
         return ("excel-import.spec.ts", "stage12-historical-analysis.spec.ts")
     if any(marker in path for marker in analysis_markers):

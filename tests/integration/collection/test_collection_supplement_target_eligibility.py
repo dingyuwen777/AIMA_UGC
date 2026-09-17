@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.bootstrap.worker import create_worker_runtime
+from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
@@ -155,16 +156,22 @@ def _insert_content(
     lookup_id: bool,
     job_id: UUID,
     irrelevant: bool,
+    platform: PlatformName = "xiaohongshu",
+    lookup_id_type: str = "note_id",
+    lookup_value: str | None = None,
 ) -> UUID:
     now = datetime.now(UTC)
     content_id = uuid4()
+    content_type = (
+        "image" if platform == "xiaohongshu" else "text" if platform == "weibo" else "video"
+    )
     with runtime.database.engine.begin() as connection:
         connection.execute(
             insert(contents_table).values(
                 id=content_id,
-                platform="xiaohongshu",
+                platform=platform,
                 external_content_id=external_content_id,
-                content_type="image",
+                content_type=content_type,
                 title="爱玛测试内容",
                 first_seen_at=now,
                 last_seen_at=now,
@@ -178,7 +185,7 @@ def _insert_content(
                 id=uuid4(),
                 content_id=content_id,
                 version_no=1,
-                content_type="image",
+                content_type=content_type,
                 title="爱玛测试内容",
                 provider_attempt_id=attempt_id,
                 raw_artifact_id=artifact_id,
@@ -189,8 +196,8 @@ def _insert_content(
             connection.execute(
                 insert(content_external_ids_table).values(
                     content_id=content_id,
-                    id_type="note_id",
-                    external_id=external_content_id,
+                    id_type=lookup_id_type,
+                    external_id=lookup_value or external_content_id,
                     provider_attempt_id=attempt_id,
                     raw_artifact_id=artifact_id,
                     observed_at=now,
@@ -271,6 +278,49 @@ def _read_targets(runtime, *, batch_id: UUID, identity: AnalysisConfigurationIde
             )
 
 
+@pytest.mark.parametrize(
+    ("platform", "id_type", "native_id"),
+    (
+        ("xiaohongshu", "note_id", "6a85c701000000001d0040e2"),
+        ("douyin", "aweme_id", "7531234567890123456"),
+        ("weibo", "status_id", "5337757797058061"),
+        ("bilibili", "av_id", "117119547215182"),
+        ("kuaishou", "photo_id", "3xv8mv8f3mwrtdk"),
+    ),
+)
+def test_batch_supplement_reads_five_platform_typed_ids_from_content_owner(
+    runtime, platform: PlatformName, id_type: str, native_id: str
+) -> None:  # type: ignore[no-untyped-def]
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    content_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id=f"source-{platform}",
+        lookup_id=True,
+        job_id=job_id,
+        irrelevant=False,
+        platform=platform,
+        lookup_id_type=id_type,
+        lookup_value=native_id,
+    )
+    with runtime.database.new_session() as session:
+        with session.begin():
+            reader = PostgresCollectionTargetReader(
+                session, analysis_identity=_CURRENT_ANALYSIS_IDENTITY
+            )
+            targets = reader.list_batch_targets(batch_id=batch_id, platforms=(platform,))
+            diagnostics = reader.list_batch_diagnostics(batch_id=batch_id, platforms=(platform,))
+
+    assert len(targets) == 1
+    assert targets[0].content_id == content_id
+    assert targets[0].lookup_id_type == id_type
+    assert targets[0].lookup_value == native_id
+    assert len(diagnostics) == 1
+    assert diagnostics[0].direct_target_count == 1
+    assert diagnostics[0].blocked_count == 0
+
+
 def test_batch_supplement_targets_require_lookup_identity_and_exclude_current_irrelevant(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -306,6 +356,174 @@ def test_batch_supplement_targets_require_lookup_identity_and_exclude_current_ir
     targets = _read_targets(runtime, batch_id=batch_id, identity=_CURRENT_ANALYSIS_IDENTITY)
 
     assert [target.content_id for target in targets] == [eligible_id]
+
+
+def test_batch_eligibility_diagnostics_keep_unresolved_platform_visible(runtime) -> None:  # type: ignore[no-untyped-def]
+    """可解析短链进入目标和候选诊断，无身份内容只进入阻塞诊断。"""
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="6a81d4300000000028002076",
+        lookup_id=True,
+        job_id=job_id,
+        irrelevant=False,
+    )
+    candidate_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="url_sha256:candidate",
+        lookup_id=False,
+        job_id=job_id,
+        irrelevant=False,
+    )
+    blocked_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="url_sha256:blocked",
+        lookup_id=False,
+        job_id=job_id,
+        irrelevant=False,
+    )
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            insert(content_external_ids_table).values(
+                content_id=candidate_id,
+                id_type="share_text",
+                external_id="https://xhslink.com/o/example",
+                provider_attempt_id=attempt_id,
+                raw_artifact_id=artifact_id,
+                observed_at=datetime.now(UTC),
+            )
+        )
+
+    with runtime.database.new_session() as session:
+        with session.begin():
+            reader = PostgresCollectionTargetReader(
+                session, analysis_identity=_CURRENT_ANALYSIS_IDENTITY
+            )
+            targets = reader.list_batch_targets(batch_id=batch_id, platforms=("xiaohongshu",))
+            diagnostics = reader.list_batch_diagnostics(
+                batch_id=batch_id, platforms=("xiaohongshu",)
+            )
+            source_items = reader.list_batch_source_items(
+                batch_id=batch_id, platforms=("xiaohongshu",)
+            )
+            blocked_reason = reader.get_batch_unavailable_reason(
+                batch_id=batch_id, content_id=blocked_id
+            )
+
+    assert len(targets) == 2
+    assert any(target.content_id == candidate_id for target in targets)
+    assert len(source_items) == 3
+    assert blocked_reason == "identity_unavailable"
+    assert len(diagnostics) == 1
+    assert diagnostics[0].direct_target_count == 1
+    assert diagnostics[0].resolution_candidate_count == 1
+    assert diagnostics[0].blocked_count == 1
+    assert diagnostics[0].block_reasons == {"identity_unavailable": 1}
+
+
+def test_legacy_weibo_ttarticle_identity_is_blocked_even_with_status_id(runtime) -> None:  # type: ignore[no-untyped-def]
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    ordinary_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="5191839277071122",
+        lookup_id=True,
+        lookup_id_type="status_id",
+        job_id=job_id,
+        irrelevant=False,
+        platform="weibo",
+    )
+    article_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="5337665377009857",
+        lookup_id=True,
+        lookup_id_type="status_id",
+        job_id=job_id,
+        irrelevant=False,
+        platform="weibo",
+    )
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            insert(content_external_ids_table).values(
+                content_id=article_id,
+                id_type="ttarticle_id",
+                external_id="2309405337665377009857",
+                provider_attempt_id=attempt_id,
+                raw_artifact_id=artifact_id,
+                observed_at=datetime.now(UTC),
+            )
+        )
+
+    with runtime.database.new_session() as session:
+        with session.begin():
+            reader = PostgresCollectionTargetReader(
+                session, analysis_identity=_CURRENT_ANALYSIS_IDENTITY
+            )
+            targets = reader.list_batch_targets(batch_id=batch_id, platforms=("weibo",))
+            diagnostics = reader.list_batch_diagnostics(batch_id=batch_id, platforms=("weibo",))
+            blocked_reason = reader.get_batch_unavailable_reason(
+                batch_id=batch_id, content_id=article_id
+            )
+
+    assert {target.content_id for target in targets} == {ordinary_id}
+    assert len(diagnostics) == 1
+    assert diagnostics[0].direct_target_count == 1
+    assert diagnostics[0].blocked_count == 1
+    assert diagnostics[0].block_reasons == {"identity_unavailable": 1}
+    assert blocked_reason == "identity_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("platform", "locator_type", "locator"),
+    [
+        ("weibo", "weibo_video_url", "https://weibo.com/tv/show/1034:5232127105761312"),
+        ("bilibili", "bilibili_share_url", "https://b23.tv/wDz5Xnc"),
+        ("kuaishou", "kuaishou_share_url", "https://v.kuaishou.com/KDh1s1j1"),
+    ],
+)
+def test_unverified_share_locator_is_blocked_from_eligibility(
+    runtime,  # type: ignore[no-untyped-def]
+    platform: PlatformName,
+    locator_type: str,
+    locator: str,
+) -> None:
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    content_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id=f"url_sha256:{platform}",
+        lookup_id=True,
+        lookup_id_type=locator_type,
+        lookup_value=locator,
+        job_id=job_id,
+        irrelevant=False,
+        platform=platform,
+    )
+    with runtime.database.new_session() as session:
+        with session.begin():
+            reader = PostgresCollectionTargetReader(
+                session, analysis_identity=_CURRENT_ANALYSIS_IDENTITY
+            )
+            targets = reader.list_batch_targets(batch_id=batch_id, platforms=(platform,))
+            diagnostics = reader.list_batch_diagnostics(batch_id=batch_id, platforms=(platform,))
+            reason = reader.get_batch_unavailable_reason(batch_id=batch_id, content_id=content_id)
+
+    assert targets == ()
+    assert len(diagnostics) == 1
+    assert diagnostics[0].blocked_count == 1
+    assert diagnostics[0].resolution_candidate_count == 0
+    assert diagnostics[0].block_reasons == {"exact_resolution_unavailable": 1}
+    assert reason == "exact_resolution_unavailable"
 
 
 def test_typed_lookup_that_does_not_match_stable_content_identity_is_eligible(

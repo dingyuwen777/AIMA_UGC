@@ -112,7 +112,10 @@ def test_collection_persistence_change_runs_only_collection_postgres_and_relevan
     assert requirements.postgres_required is True
     assert requirements.postgres_suites == ("collection",)
     assert requirements.fullstack_required is True
-    assert requirements.fullstack_specs == ("collection-plan-search-config.spec.ts",)
+    assert requirements.fullstack_specs == (
+        "collection-plan-search-config.spec.ts",
+        "comment-supplement.spec.ts",
+    )
 
 
 def test_content_integration_test_change_runs_only_content_postgres_without_fullstack() -> None:
@@ -212,6 +215,13 @@ def test_analysis_streaming_spec_is_selected_independently() -> None:
 
     assert requirements.fullstack_required is True
     assert requirements.fullstack_specs == ("analysis-streaming.spec.ts",)
+
+
+def test_comment_supplement_spec_is_selected_independently() -> None:
+    requirements = _requirements("frontend/e2e-fullstack/comment-supplement.spec.ts")
+
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("comment-supplement.spec.ts",)
 
 
 def test_administration_persistence_runs_admin_product_golden_path_and_all_postgres() -> None:

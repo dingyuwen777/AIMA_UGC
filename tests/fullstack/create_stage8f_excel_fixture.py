@@ -12,19 +12,25 @@ def main() -> int:
     if len(sys.argv) not in {2, 3}:
         raise SystemExit(
             "用法: python tests/fullstack/create_stage8f_excel_fixture.py "
-            "<output.xlsx> [success|worker-failure|manual-review|admin-product]"
+            "<output.xlsx> [success|worker-failure|manual-review|admin-product|comment-supplement]"
         )
 
     output = Path(sys.argv[1])
     scenario = sys.argv[2] if len(sys.argv) == 3 else "success"
-    if scenario not in {"success", "worker-failure", "manual-review", "admin-product"}:
-        raise SystemExit("scenario 只支持 success、worker-failure、manual-review 或 admin-product")
+    if scenario not in {
+        "success",
+        "worker-failure",
+        "manual-review",
+        "admin-product",
+        "comment-supplement",
+    }:
+        raise SystemExit("scenario 不在允许的 Full-stack Fixture 列表中")
     output.parent.mkdir(parents=True, exist_ok=True)
 
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "文章"
-    if scenario in {"success", "manual-review", "admin-product"}:
+    if scenario in {"success", "manual-review", "admin-product", "comment-supplement"}:
         sheet.append(
             [
                 "媒体名称（中文）",
@@ -67,6 +73,44 @@ def main() -> int:
                     "https://www.xiaohongshu.com/explore/stage8f-manual-review-content-2",
                 ]
             )
+        elif scenario == "comment-supplement":
+            for platform, title, url in (
+                (
+                    "小红书",
+                    "爱玛评论补采全栈小红书",
+                    "https://www.xiaohongshu.com/explore/6a85c701000000001d0040e2",
+                ),
+                (
+                    "抖音",
+                    "爱玛评论补采全栈抖音",
+                    "https://www.douyin.com/share/video/7675702103746898533",
+                ),
+                (
+                    "微博",
+                    "爱玛评论补采全栈微博",
+                    "https://weibo.com/1914372032/Re8y6x01w",
+                ),
+                (
+                    "B站",
+                    "爱玛评论补采全栈B站",
+                    "https://www.bilibili.com/video/av117122567048434/",
+                ),
+                (
+                    "快手",
+                    "爱玛评论补采全栈快手",
+                    "https://www.kuaishou.com/short-video/3xsx8zpayhdcyd9",
+                ),
+            ):
+                sheet.append(
+                    [
+                        platform,
+                        title,
+                        "评论补采全栈测试内容",
+                        "全栈测试账号",
+                        "2026-09-17 12:00:00",
+                        url,
+                    ]
+                )
         else:
             sheet.append(
                 [

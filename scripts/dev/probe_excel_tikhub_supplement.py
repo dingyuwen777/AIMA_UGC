@@ -24,6 +24,7 @@ from typing import Any, cast
 from uuid import uuid4
 
 from aima_ugc.adapters.providers.imports import convert_excel_to_canonical_jsonl
+from aima_ugc.adapters.providers.tikhub.mappers.common import TikHubMappingContext
 from aima_ugc.adapters.providers.tikhub.probe import TikHubOperationProbe, TikHubProbeLimits
 from aima_ugc.adapters.providers.tikhub.runtime import (
     TikHubOperationCall,
@@ -79,7 +80,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="验证固定五平台 Excel 链接 → TikHub 详情/评论补采")
     parser.add_argument("--samples", type=Path, default=_DEFAULT_SAMPLES)
     parser.add_argument("--output", type=Path, default=Path("tikhub-excel-supplement-probe.json"))
+    parser.add_argument("--platform", action="append", choices=_PLATFORMS)
     args = parser.parse_args()
+    selected_platforms = tuple(dict.fromkeys(args.platform)) if args.platform else _PLATFORMS
 
     api_key = os.environ.get("TIKHUB_API_KEY", "").strip()
     if not api_key:
@@ -87,8 +90,10 @@ def main() -> int:
     base_url = os.environ.get("TIKHUB_BASE_URL", "https://api.tikhub.io").strip()
     samples = _load_samples(args.samples)
 
-    # 五个平台各固定 Detail + Comments 两次请求；预算硬上限只服务显式 Probe。
-    limits = TikHubProbeLimits(max_requests=10, max_estimated_cost=Decimal("0.10"))
+    # 每个平台最多 Detail + Comments 各一次；失败后继续验证其余平台，不重复已验证样本。
+    limits = TikHubProbeLimits(
+        max_requests=2 * len(selected_platforms), max_estimated_cost=Decimal("0.10")
+    )
     results: list[dict[str, object]] = []
     with TikHubHttpTransport(base_url=base_url) as transport:
         probe = TikHubOperationProbe(
@@ -96,17 +101,16 @@ def main() -> int:
             credential=SecretStr(api_key),
             limits=limits,
         )
-        for platform in _PLATFORMS:
+        for platform in selected_platforms:
             sample = cast(list[dict[str, object]], samples["platforms"][platform])[0]
             results.append(_probe_platform(probe=probe, platform=platform, sample=sample))
 
-    if probe.request_count != 10:
-        raise RuntimeError(f"固定五平台 Probe 预期 10 次请求，实际 {probe.request_count} 次")
     payload = {
         "verified_at": datetime.now(UTC).isoformat(),
         "source": samples["source"],
         "source_sha256": samples["source_sha256"],
         "request_count": probe.request_count,
+        "max_requests": limits.max_requests,
         "cumulative_planned_cost_usd": str(probe.cumulative_planned_cost),
         "platforms": results,
     }
@@ -148,20 +152,34 @@ def _probe_platform(
     platform: TikHubPlatform,
     sample: dict[str, object],
 ) -> dict[str, object]:
+    stage = "excel_identity"
     try:
         imported = _roundtrip_excel(platform=platform, sample=sample)
         lookup_types = _assert_lookup_identity(platform, imported)
+        stage = "detail"
         detail = _probe_detail(probe=probe, platform=platform, imported=imported)
+        stage = "comments"
         _probe_comments(probe=probe, platform=platform, detail=detail)
     except Exception as exc:
-        raise RuntimeError(
-            f"{platform}: 固定 Excel Probe 样本已失效或 Provider 链路失败；"
-            "请先通过显式维护验证替换该平台单条样本"
-        ) from exc
+        error = str(exc)
+        failure_code = (
+            error
+            if (error.startswith("tikhub_http_") and error[12:].isdigit())
+            or error in {"detail_shape_unavailable", "detail_mapping_invalid"}
+            else type(exc).__name__
+        )
+        return {
+            "platform": platform,
+            "source_row": sample["row"],
+            "stage": stage,
+            "status": "failed",
+            "failure_code": failure_code,
+        }
     return {
         "platform": platform,
         "source_row": sample["row"],
         "lookup_types": lookup_types,
+        "status": "succeeded",
         "detail": "ok",
         "comments": "ok",
     }
@@ -180,6 +198,7 @@ def _roundtrip_excel(
         output = root / "contents.jsonl"
         workbook = Workbook()
         worksheet = workbook.active
+        assert worksheet is not None
         worksheet.title = "文章"
         worksheet.append(_HEADERS)
         worksheet.append(
@@ -221,19 +240,25 @@ def _probe_detail(
     call = build_detail_call(platform, imported)
     response = _execute(probe, call)
     body = _response_body(response)
-    items = extract_detail_items(platform, body)
+    try:
+        items = extract_detail_items(platform, body)
+    except ValueError as exc:
+        raise RuntimeError("detail_shape_unavailable") from exc
     if not items:
         raise RuntimeError(f"{platform}: Detail 无可映射内容")
-    detail = map_content(
-        platform=platform,
-        raw=items[0],
-        context=_mapping_context(
-            operation=call.operation,
-            source_value=imported.external_content_id,
-            external_content_id=imported.external_content_id,
-        ),
-        item_locator="probe-detail:0",
-    )
+    try:
+        detail = map_content(
+            platform=platform,
+            raw=items[0],
+            context=_mapping_context(
+                operation=call.operation,
+                source_value=imported.external_content_id,
+                external_content_id=imported.external_content_id,
+            ),
+            item_locator="probe-detail:0",
+        )
+    except ValueError as exc:
+        raise RuntimeError("detail_mapping_invalid") from exc
     if detail.external_content_id != imported.external_content_id:
         raise RuntimeError(f"{platform}: Excel 与 Detail 内容身份不一致")
     return detail
@@ -248,6 +273,7 @@ def _probe_comments(
     call = build_comments_call(
         platform=platform,
         external_content_id=detail.external_content_id,
+        alternate_ids=detail.alternate_ids,
         state=None,
     )
     response = _execute(probe, call)
@@ -274,8 +300,8 @@ def _probe_comments(
 
 def _execute(probe: TikHubOperationProbe, call: TikHubOperationCall) -> ProviderTransportResponse:
     response = probe.execute(call).response
-    if response.status_code < 200 or response.status_code >= 300:
-        raise RuntimeError("TikHub HTTP 响应非成功状态")
+    if response.status_code is None or not 200 <= response.status_code < 300:
+        raise RuntimeError(f"tikhub_http_{response.status_code}")
     return response
 
 
@@ -291,7 +317,7 @@ def _mapping_context(
     operation: str,
     source_value: str,
     external_content_id: str | None = None,
-):  # type: ignore[no-untyped-def]
+) -> TikHubMappingContext:
     return mapping_context(
         provider_request_id=str(uuid4()),
         provider_attempt_id=str(uuid4()),

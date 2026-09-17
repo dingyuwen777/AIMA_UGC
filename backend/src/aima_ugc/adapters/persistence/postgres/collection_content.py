@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,7 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.content.tables import accounts_table, comments_table, contents_table
 from aima_ugc.modules.vehicles.brand_vehicle import (
@@ -70,6 +71,10 @@ class CollectionContentDecisionState:
 
     previous: PreviousContentStateV1
     business_changed: bool
+
+
+class CollectionContentIdentityConflictError(RuntimeError):
+    """一个 typed 评论目标已归属其他 Content。"""
 
 
 class PostgresCollectionContentStateReader:
@@ -125,6 +130,50 @@ class PostgresCollectionContentStateReader:
                     )
                 ).all()
                 return frozenset(str(value) for value in values if value)
+        finally:
+            session.close()
+
+    def lookup_identity_owned_by_other_content(
+        self,
+        *,
+        platform: str,
+        canonical_external_content_id: str,
+        id_type: str,
+        external_id: str,
+    ) -> bool:
+        """防止短链解析出的评论身份被另一条 Content 占用后继续发评论请求。"""
+
+        session = self._session_factory()
+        try:
+            with session.begin():
+                other_primary = session.scalar(
+                    select(contents_table.c.id)
+                    .where(
+                        contents_table.c.platform == platform,
+                        contents_table.c.external_content_id == external_id,
+                        contents_table.c.external_content_id != canonical_external_content_id,
+                    )
+                    .limit(1)
+                )
+                if other_primary is not None:
+                    return True
+                other_alias = session.scalar(
+                    select(content_external_ids_table.c.content_id)
+                    .select_from(
+                        content_external_ids_table.join(
+                            contents_table,
+                            content_external_ids_table.c.content_id == contents_table.c.id,
+                        )
+                    )
+                    .where(
+                        contents_table.c.platform == platform,
+                        contents_table.c.external_content_id != canonical_external_content_id,
+                        content_external_ids_table.c.id_type == id_type,
+                        content_external_ids_table.c.external_id == external_id,
+                    )
+                    .limit(1)
+                )
+                return other_alias is not None
         finally:
             session.close()
 
@@ -248,6 +297,7 @@ class PostgresFencedCollectionIngestionWriter:
         candidate_id: UUID | None = None,
         brand_vehicle_snapshot: BrandVehicleCatalogSnapshot | None = None,
         brand_vehicle_resolution: BrandVehicleResolution | None = None,
+        identity_guard: tuple[str, str] | None = None,
     ) -> PostgresIngestionResult:
         """在同一 Fenced 事务写 Content、Candidate 与冻结目录解析证据。"""
 
@@ -287,6 +337,39 @@ class PostgresFencedCollectionIngestionWriter:
                         candidate_id=candidate_id,
                         attempt_id=attempt_id,
                     )
+                if identity_guard is not None:
+                    id_type, external_id = identity_guard
+                    lock_key = f"comment-target:{canonical.platform}:{id_type}:{external_id}"
+                    session.execute(
+                        select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+                    )
+                    other_primary = session.scalar(
+                        select(contents_table.c.id)
+                        .where(
+                            contents_table.c.platform == canonical.platform,
+                            contents_table.c.external_content_id == external_id,
+                            contents_table.c.external_content_id != canonical.external_content_id,
+                        )
+                        .limit(1)
+                    )
+                    other_alias = session.scalar(
+                        select(content_external_ids_table.c.content_id)
+                        .select_from(
+                            content_external_ids_table.join(
+                                contents_table,
+                                content_external_ids_table.c.content_id == contents_table.c.id,
+                            )
+                        )
+                        .where(
+                            contents_table.c.platform == canonical.platform,
+                            contents_table.c.external_content_id != canonical.external_content_id,
+                            content_external_ids_table.c.id_type == id_type,
+                            content_external_ids_table.c.external_id == external_id,
+                        )
+                        .limit(1)
+                    )
+                    if other_primary is not None or other_alias is not None:
+                        raise CollectionContentIdentityConflictError("评论目标属于其他 Content")
                 content_service = ContentIngestionService(
                     PostgresCompleteContentRepository(session)
                 )

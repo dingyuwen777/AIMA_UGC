@@ -9,6 +9,7 @@ import type {
   CollectionRunMode,
   CollectionSearchCapabilityResponse,
   CollectionSearchConfig,
+  CollectionSupplementPlatformDiagnosticResponse,
   HistoricalCampaignResponse,
   ImportBatchResponse,
   KeywordPackSummaryResponse,
@@ -29,6 +30,7 @@ const props = defineProps<{
   batches: ImportBatchResponse[]
   keywordPacks: KeywordPackSummaryResponse[]
   supplementContentPlatforms: CollectionPlatform[]
+  supplementDiagnostics: CollectionSupplementPlatformDiagnosticResponse[]
   loadingSupplementPlatforms: boolean
   creating: boolean
   initialSource?: SupplementSourceSelection | null
@@ -102,6 +104,27 @@ const availablePlatforms = computed(() => {
       .filter((value, index, values) => values.indexOf(value) === index) ?? []
   )
 })
+
+const unavailablePlatforms = computed(() =>
+  mode.value === 'batch_supplement'
+    ? props.supplementDiagnostics.filter((item) => !availablePlatforms.value.includes(item.platform))
+    : [],
+)
+
+/** 从 Eligibility 读取平台数量，避免页面自行推断 Provider 身份。 */
+function platformDiagnostic(platform: CollectionPlatform): CollectionSupplementPlatformDiagnosticResponse | undefined {
+  return props.supplementDiagnostics.find((item) => item.platform === platform)
+}
+
+/** 把稳定阻塞分类转换为用户可执行的来源修复说明。 */
+function unavailableReason(item: CollectionSupplementPlatformDiagnosticResponse): string {
+  if (!selectedProvider.value) return '先选择采集渠道'
+  if (item.direct_target_count > 0) return '当前渠道不支持所选采集内容'
+  if (item.resolution_candidate_count > 0) return `有 ${item.resolution_candidate_count} 条受支持的分享链接，创建任务后将解析原生 ID`
+  if (item.block_reasons.exact_resolution_unavailable) return `有 ${item.block_reasons.exact_resolution_unavailable} 条分享链接无法确认对应内容；请在导入来源补充平台原生 ID`
+  if (item.platform === 'weibo') return `有 ${item.blocked_count} 条内容不可补采；微博长文章不支持评论补采，其他内容请补充平台原生 ID`
+  return `有 ${item.blocked_count} 条内容缺少可验证的原生 ID；请在导入来源补充原始内容链接`
+}
 
 function searchCapability(platform: CollectionPlatform): CollectionSearchCapabilityResponse | null {
   const provider = selectedProvider.value
@@ -466,6 +489,11 @@ function submit(): void {
               <span><strong>{{ platformLabels[platform] }}</strong><small v-if="!platforms.includes(platform)">点击选择</small></span>
               <span v-if="platforms.includes(platform)">{{ selectedProvider?.display_name }}</span>
             </button>
+            <small v-if="mode === 'batch_supplement' && platformDiagnostic(platform)">
+              可直接补采 {{ platformDiagnostic(platform)?.direct_target_count }} 条；
+              待解析 {{ platformDiagnostic(platform)?.resolution_candidate_count }} 条；
+              不可补采 {{ platformDiagnostic(platform)?.blocked_count }} 条
+            </small>
             <CollectionSearchConfigFields
               v-if="mode === 'discovery' && platforms.includes(platform) && searchCapability(platform) && searchConfigByPlatform[platform]"
               class="platform-search-fields"
@@ -475,12 +503,21 @@ function submit(): void {
               @update:model-value="searchConfigByPlatform[platform] = $event"
             />
           </div>
+          <div
+            v-for="item in unavailablePlatforms"
+            :key="`unavailable-${item.platform}`"
+            class="platform-option unavailable"
+            aria-disabled="true"
+          >
+            <strong>{{ platformLabels[item.platform] }}</strong>
+            <small>{{ unavailableReason(item) }}</small>
+          </div>
         </div>
         <p
           v-if="!loadingSupplementPlatforms && availablePlatforms.length === 0"
           class="platform-state"
         >
-          当前选择没有同时满足导入内容与采集渠道能力的平台。
+          当前选择没有可直接补采的平台；请查看各平台的身份与渠道说明。
         </p>
       </section>
 
@@ -572,6 +609,7 @@ select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .platform-grid { display: grid; gap: 8px; margin-top: 12px; }
 .platform-option { padding: 10px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-lg); background: var(--aima-surface); }
 .platform-option.selected { border-color: var(--aima-primary); background: var(--aima-color-primary-light); }
+.platform-option.unavailable { background: var(--aima-surface-muted); }
 .platform-option button { display: flex; width: 100%; min-height: 38px; align-items: center; justify-content: space-between; gap: 12px; padding: 0; border: 0; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 12px; text-align: left; }
 .platform-option strong, .platform-option small { display: block; }
 .platform-option strong { color: var(--aima-text); font-size: 14px; font-weight: 500; line-height: 22px; }

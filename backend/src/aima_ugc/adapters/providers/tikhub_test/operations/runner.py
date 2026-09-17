@@ -494,6 +494,7 @@ class _TikHubDebugRunner:
             call = tikhub_runtime.build_comments_call(
                 platform=self.platform,
                 external_content_id=content_id,
+                alternate_ids=content.alternate_ids,
                 state=pagination,
             )
             try:
@@ -636,6 +637,7 @@ class _TikHubDebugRunner:
             call = tikhub_runtime.build_sub_comments_call(
                 platform=self.platform,
                 external_content_id=content.external_content_id,
+                alternate_ids=content.alternate_ids,
                 root_comment_id=root.external_comment_id,
                 state=pagination,
             )
