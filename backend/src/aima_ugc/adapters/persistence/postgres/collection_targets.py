@@ -482,7 +482,7 @@ def _lookup_identity(
     """
 
     # 曾写入的文章定位身份必须优先于 TikHub 历史内容 ID 回退判定。
-    if platform == "weibo" and alternate_ids.get("ttarticle_id"):
+    if platform == "weibo" and "ttarticle_id" in alternate_ids:
         return None
 
     resolution = resolve_comment_target(

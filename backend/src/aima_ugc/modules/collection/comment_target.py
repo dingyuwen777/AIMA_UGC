@@ -52,7 +52,7 @@ def resolve_comment_target(
 
     ids = alternate_ids or {}
     # 历史数据可能已带有该定位字段；长文章不进入当前 TikHub 帖子评论接口。
-    if platform == "weibo" and ids.get("ttarticle_id"):
+    if platform == "weibo" and "ttarticle_id" in ids:
         return CommentTargetResolution(
             state="unavailable",
             canonical_external_content_id=external_content_id,
@@ -110,7 +110,7 @@ def _valid_lookup_id(id_type: str, value: str) -> bool:
 def identity_block_reason(platform: PlatformName, alternate_ids: dict[str, str]) -> str:
     """有定位身份但缺少精确映射时，与完全缺失身份使用不同原因。"""
 
-    if platform == "weibo" and alternate_ids.get("ttarticle_id"):
+    if platform == "weibo" and "ttarticle_id" in alternate_ids:
         return "identity_unavailable"
     return (
         "exact_resolution_unavailable"

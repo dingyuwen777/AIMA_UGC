@@ -103,3 +103,9 @@ def test_legacy_ttarticle_locator_blocks_even_with_status_id() -> None:
         )
         == "identity_unavailable"
     )
+    with pytest.raises(ValueError, match="identity_unavailable"):
+        build_comments_call(
+            platform="weibo",
+            external_content_id="SOURCE-001",
+            alternate_ids={"ttarticle_id": "", "status_id": "5191839277071122"},
+        )
