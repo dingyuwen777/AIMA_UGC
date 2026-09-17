@@ -8,7 +8,6 @@ ROOT = Path(__file__).resolve().parents[2]
 CHECKER_PATH = ROOT / "scripts" / "quality" / "check_agent_governance.py"
 CHECKER = runpy.run_path(str(CHECKER_PATH))
 CHECK_REPOSITORY = CHECKER["check_repository"]
-CHECK_ISSUE_FORM = CHECKER["_check_issue_form"]
 MANAGED_START = "<!-- agent-skills:managed:start -->"
 MANAGED_END = "<!-- agent-skills:managed:end -->"
 
@@ -103,6 +102,21 @@ def _minimal_repository(root: Path) -> None:
         ),
     )
     _write(root / ".github/ISSUE_TEMPLATE/config.yml", "blank_issues_enabled: false\n")
+    canonical_dir = root / ".agents/skills/coding/assets/issue-templates"
+    for filename in (
+        "01-requirement.yml",
+        "02-bug.yml",
+        "03-technical-change.yml",
+        "config.yml",
+    ):
+        _write(
+            canonical_dir / filename,
+            (root / ".github/ISSUE_TEMPLATE" / filename).read_text(encoding="utf-8"),
+        )
+    _write(
+        root / ".agents/skills/coding/scripts/governance_contract.py",
+        "# generated canonical validator fixture\n",
+    )
     _write(
         root / ".github/PULL_REQUEST_TEMPLATE.md",
         "Requirement-Source: #123\n"
@@ -311,36 +325,18 @@ def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) 
     assert any(error.startswith("GOV014") for error in errors)
 
 
-def test_required_textarea_cannot_be_hidden_by_other_required_controls(tmp_path: Path) -> None:
-    """其他 checkbox 的 required 计数不能掩盖必需 textarea 被弱化为 optional。"""
-    form = tmp_path / "01-requirement.yml"
-    form.write_text(
-        """name: 需求
-description: fixture
-title: "[需求] "
-body:
-  - type: checkboxes
-    id: duplicate_search
-    attributes:
-      label: 重复检查
-    validations:
-      required: true
-  - type: textarea
-    id: objective
-    attributes:
-      label: 目标
-    validations:
-      required: false
-  - type: textarea
-    id: scope
-    attributes:
-      label: 范围
-    validations:
-      required: true
-""",
-        encoding="utf-8",
-    )
+def test_checker_requires_installed_canonical_governance_contract(tmp_path: Path) -> None:
+    """AIMA 只允许消费受管 canonical validator，缺失时必须失败关闭。"""
+    _minimal_repository(tmp_path)
+    (tmp_path / ".agents/skills/coding/scripts/governance_contract.py").unlink()
+    errors = CHECK_REPOSITORY(tmp_path)
+    assert any(error.startswith("GOV018") for error in errors)
 
-    errors = CHECK_ISSUE_FORM(form, ("id: objective", "id: scope"))
 
-    assert any("GOV012" in error and "required" in error for error in errors)
+def test_checker_rejects_issue_form_projection_drift(tmp_path: Path) -> None:
+    """根 Issue Form 不是受管 canonical asset 的原字节投影时必须失败。"""
+    _minimal_repository(tmp_path)
+    form = tmp_path / ".github/ISSUE_TEMPLATE/01-requirement.yml"
+    _write(form, form.read_text(encoding="utf-8") + "\n# project drift\n")
+    errors = CHECK_REPOSITORY(tmp_path)
+    assert any(error.startswith("GOV012") and "投影" in error for error in errors)

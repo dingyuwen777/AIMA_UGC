@@ -83,10 +83,10 @@ def _issue_loader(number: int) -> dict[str, Any]:
 
 
 def _profile_root(tmp_path: Path) -> Path:
-    """复制当前项目 Issue Forms 到临时仓库，使测试消费真实 Project Profile。"""
-    target = tmp_path / ".github" / "ISSUE_TEMPLATE"
+    """复制受管 canonical Issue Form assets，使测试不依赖项目根副本解释语义。"""
+    target = tmp_path / ".agents" / "skills" / "coding" / "assets" / "issue-templates"
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(ROOT / ".github" / "ISSUE_TEMPLATE", target)
+    shutil.copytree(ROOT / ".agents/skills/coding/assets/issue-templates", target)
     return tmp_path
 
 
