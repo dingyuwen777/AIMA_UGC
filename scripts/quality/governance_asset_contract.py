@@ -12,9 +12,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[2]
 ISSUE_TEMPLATE_DIR = Path(".github/ISSUE_TEMPLATE")
 CHANGE_TEMPLATE = Path(".agents/skills/coding/assets/CHANGE.template.md")
-CURRENT_CHANGE_ID_PATTERN = re.compile(
-    r"^CHG-\d{8}-\d{6}-[a-z0-9]+(?:-[a-z0-9]+)*$"
-)
+CURRENT_CHANGE_ID_PATTERN = re.compile(r"^CHG-\d{8}-\d{6}-[a-z0-9]+(?:-[a-z0-9]+)*$")
 FRONTMATTER_FIELD_PATTERN = re.compile(r"^(?P<key>[a-z_]+):\s*(?P<value>.*?)\s*$")
 TOP_LEVEL_HEADING_PATTERN = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 SECOND_LEVEL_HEADING_PATTERN = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
@@ -96,8 +94,7 @@ def load_issue_profile(path: Path) -> IssueProfile:
 def load_issue_profiles(root: Path = ROOT) -> tuple[IssueProfile, ...]:
     """加载 AIMA 三类 Issue Form Profile，并保持文件顺序稳定。"""
     return tuple(
-        load_issue_profile(root / ISSUE_TEMPLATE_DIR / filename)
-        for filename in ISSUE_FORM_FILES
+        load_issue_profile(root / ISSUE_TEMPLATE_DIR / filename) for filename in ISSUE_FORM_FILES
     )
 
 
@@ -124,7 +121,9 @@ def validate_issue_instance(
     except GovernanceAssetContractError as exc:
         return [str(exc)]
 
-    headings = tuple(_normalise_heading(match.group(1)) for match in ISSUE_HEADING_PATTERN.finditer(body))
+    headings = tuple(
+        _normalise_heading(match.group(1)) for match in ISSUE_HEADING_PATTERN.finditer(body)
+    )
     errors: list[str] = []
     for required in profile.required_headings:
         count = headings.count(required)
@@ -143,7 +142,9 @@ def validate_issue_instance(
         errors.append(f"Issue Acceptance ID 必须从 AC1 连续且唯一，当前为 {numbers}")
     for match in acceptance:
         if require_all_checked and match.group("checked").casefold() != "x":
-            errors.append(f"AC{match.group('number')} 尚未勾选，不能完成 Requirement Source Closure")
+            errors.append(
+                f"AC{match.group('number')} 尚未勾选，不能完成 Requirement Source Closure"
+            )
     return errors
 
 
@@ -168,7 +169,9 @@ def _frontmatter_and_body(text: str) -> tuple[dict[str, str], str]:
 
 def _template_headings(template_text: str) -> tuple[str, ...]:
     """从当前受管 Change 模板动态恢复有序一级 Profile。"""
-    headings = tuple(match.group(1).strip() for match in TOP_LEVEL_HEADING_PATTERN.finditer(template_text))
+    headings = tuple(
+        match.group(1).strip() for match in TOP_LEVEL_HEADING_PATTERN.finditer(template_text)
+    )
     if not headings or len(set(headings)) != len(headings):
         raise GovernanceAssetContractError("当前受管 Change 模板一级 Profile 不可解析")
     return headings
