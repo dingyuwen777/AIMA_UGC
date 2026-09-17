@@ -654,6 +654,95 @@ def test_comment_identity_mismatch_is_filtered_and_recorded(
     assert mismatch.observed_external_content_id == "note-other"
 
 
+def test_typed_note_id_comments_attach_to_original_import_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider 的 note_id 与已保存 typed ID 相同时，保留导入内容主身份和回复。"""
+
+    _install_generic_runtime(monkeypatch)
+    monkeypatch.setattr(
+        tikhub_runtime,
+        "advance_comments",
+        lambda **kwargs: tikhub_runtime.TikHubPageAdvance(None, "provider_exhausted"),
+    )
+    monkeypatch.setattr(
+        tikhub_runtime,
+        "advance_sub_comments",
+        lambda **kwargs: tikhub_runtime.TikHubPageAdvance(None, "provider_exhausted"),
+    )
+
+    def map_observed_comment(
+        *,
+        platform: PlatformName,
+        raw: dict[str, Any],
+        context: Any,
+        item_locator: str,
+        is_root: bool,
+    ) -> CanonicalCommentV1:
+        return _fake_comment(
+            platform=platform,
+            content_id=str(raw["content_id"]),
+            comment_id=str(raw["id"]),
+            root_comment_id=context.root_comment_id,
+            is_root=is_root,
+            reply_count=1 if is_root else 0,
+            observed_at=context.observed_at,
+            raw_artifact_id=context.raw_artifact_id,
+            item_locator=item_locator,
+        )
+
+    monkeypatch.setattr(tikhub_runtime, "map_comment", map_observed_comment)
+    input_path = tmp_path / "comparison_posts.jsonl"
+    _write_records(
+        input_path,
+        [
+            _pair_record(
+                platform="xiaohongshu",
+                external_id="source-article-identity",
+                alternate_ids={"note_id": "note-provider-target"},
+            )
+        ],
+    )
+    transport = _FakeTransport(
+        lambda call_no, request: ProviderTransportResponse(
+            status_code=200,
+            body={
+                "items": [
+                    {"id": "wrong-1", "content_id": "another-note"},
+                    {
+                        "id": "root-1" if call_no == 1 else "reply-1",
+                        "content_id": "note-provider-target",
+                    },
+                ],
+            },
+        )
+    )
+
+    summary = enrich_comparison_comments(
+        input_path=input_path,
+        output_root=tmp_path / "output",
+        run_id="typed-target-original-content",
+        provider_config=_config(),
+        transport=transport,
+    )
+
+    assert summary.rows_partial == 1
+    assert summary.root_comment_count == 1
+    assert summary.reply_count == 1
+    enriched = VehiclePairCommentRecordV1.model_validate_json(
+        summary.output_jsonl_path.read_text(encoding="utf-8").strip()
+    )
+    assert {comment.external_content_id for comment in enriched.comments} == {
+        "source-article-identity"
+    }
+    assert len(enriched.comment_fetch.identity_mismatches) == 2
+    assert {comment.external_comment_id for comment in enriched.comments} == {
+        "root-1",
+        "reply-1",
+    }
+
+
 def test_completed_staging_is_preserved_after_publish_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -71,7 +71,7 @@ data_changes:
 | R4 | 五平台评论与回复分页耗尽、可恢复且 Coverage 真实 | #526 / AC4；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 批次补采已去除抽样停机并修复回复短缺，隔离 PostgreSQL 回归通过；五平台分页/恢复矩阵未完成 |
 | R5 | Eligibility 与 Run/Scope 可解释直接、待解析、阻塞及部分结果 | #526 / AC5；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已增加诊断、混合来源失败 Scope、持久评论 Coverage 与页面平台汇总；回复级数量/完整阶段验收仍缺 |
 | R6 | 网页创建、跟踪、恢复、结果跳转及数据库评论分页闭环 | #526 / AC6；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已接线结果跳转与覆盖展示；既有声音广场分页可复用，逐平台全栈尚未证明 |
-| R7 | 调试入口复用生产实现，失败样本受控重放或明确不可获取 | #526 / AC7；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | `imports_test` 已复用身份解析；staging 行级受控重放及对账未完成 |
+| R7 | 调试入口复用生产实现，失败样本受控重放或明确不可获取 | #526 / AC7；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | `imports_test` 继续复用生产身份解析/评论 Runtime；新增 typed ID 精确核对后挂回原 Canonical 内容的根评论与回复回归，既有串帖拒绝仍通过。本机旧 Run 有微博 34 行 HTTP 400、小红书 2 行真正的跨内容 ID 错配；旧结果只读，行级重放及对账未完成 |
 | R8 | 五平台多层测试、真实 Provider Probe、全栈和费用台账 | #526 / AC8；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 四平台固定公开样本 Detail/一级评论通过；“爱玛”快手候选一级评论前两页 30+20 条及选中线程 6 条回复经生产 Mapper 验证，报告回复数亦为 6；用户提供的另一快手链接 Detail 空，五平台完整分页终止及真实全栈仍缺证据 |
 | R9 | 文档迁移、Completion Audit、Review、PR/main CI 与 Roadmap 退出 | #526 / AC9；docs/roadmap/README.md | not_satisfied | 合并前后按当前门禁验证 |
 | R10 | 微博 `ttarticle` 长文章不补采评论；删除新增的文章 ID 提取，历史定位字段即使伴随 `status_id` 也零请求 | 用户 2026-09-17 最新决定 | satisfied | `imports/identity.py`、`comment_target.py`、`collection_targets.py` 和补采页不可用说明；目标单元/离线入口 48 passed，隔离 PostgreSQL Eligibility 10 passed，前端目标 8 passed |
@@ -126,6 +126,7 @@ data_changes:
 - 官方 endpoint-info 核价后，抖音 App V3 官方示例短链 1 次请求、计划 0.001 美元，返回唯一可映射数字 `aweme_id`。快手已验证作品做 3 组“生成短链 → 按 URL 查询”回环，共 6 次请求、计划 0.009 美元，生成目标 ID 与输入相同，解析响应虽为 HTTP/业务码 200 且 `data.result=1`，`data.photo.photoId` 三次都与输入不一致；未证明精确归属，正式请求必须继续阻断。详见 Roadmap 进度记录。
 - 微博视频详情官方链接示例的带前缀 ID 与去前缀数字分别 HTTP 400；另一官方数字示例 HTTP/业务码 200 且实际 `data.status.idstr` 为数字，说明文档所列 `items[0].data.idstr` 与现行返回不一致。B站 Web V3 URL 详情对一个公开 `b23.tv` 短链 HTTP 400。微博 4 次/B站 1 次业务请求计划费用分别 0.004/0.001 美元；这些样本不支持把短链解析接入正式补采。
 - 短链详情空列表的隔离 PostgreSQL 回归先显示泛化 `scope_execution_failed`，修复后 Scope 稳定返回 `identity_unavailable`，只产生一次解析请求，不写 typed ID 或评论。
+- 用户指定离线脚本的旧 Run 中 2 行小红书 `comment_content_identity_mismatch` 经逐条只读核对，原 Canonical 身份与 typed `note_id` 相同，Provider 返回的 76 条和 6 条评论均指向其他内容；原有过滤正确，不能把它们挂回原内容。另为合法的“Canonical 主身份与 typed ID 不同”场景新增失败回归，并在核对 Provider typed ID 后安全挂载一级评论和回复；相关离线工作流 22 passed，串帖过滤测试继续通过。旧 Run 未修改，也未对这两行再次付费。
 - 这些验证只覆盖当前部分实现。R1、R3–R9 尚未满足，严格 Ready Check、PR current-head CI、两阶段 Review 和 main fresh CI 尚未执行；不得合并。
 
 # 交付状态

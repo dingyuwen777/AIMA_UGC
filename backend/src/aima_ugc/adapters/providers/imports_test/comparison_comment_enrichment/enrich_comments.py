@@ -175,6 +175,13 @@ class _TikHubCommentFetcher:
                     root_stop_reason=unsupported_reason,
                 ),
             )
+        target = resolve_comment_target(
+            platform=content.platform,
+            external_content_id=content.external_content_id,
+            alternate_ids=content.alternate_ids,
+        )
+        assert target.lookup_id is not None
+        lookup_id = target.lookup_id
         request_count_before = self.request_count
         comments: list[CanonicalCommentV1] = []
         seen_comment_ids: set[str] = set()
@@ -223,11 +230,15 @@ class _TikHubCommentFetcher:
                         source_type="content",
                         source_value=content.external_content_id,
                         observed_at=sent.raw_record.observed_at,
-                        external_content_id=content.external_content_id,
+                        external_content_id=lookup_id,
                     ),
                     item_locator=item_locator,
                     is_root=True,
                 )
+                if comment.external_content_id == lookup_id:
+                    comment = comment.model_copy(
+                        update={"external_content_id": content.external_content_id}
+                    )
                 if comment.external_content_id != content.external_content_id:
                     identity_mismatches.append(
                         _identity_mismatch(
@@ -318,6 +329,13 @@ class _TikHubCommentFetcher:
         replies: list[CanonicalCommentV1] = []
         failures: list[CommentFetchFailureV1] = []
         identity_mismatches: list[CommentIdentityMismatchV1] = []
+        target = resolve_comment_target(
+            platform=content_platform,
+            external_content_id=external_content_id,
+            alternate_ids=alternate_ids,
+        )
+        assert target.lookup_id is not None
+        lookup_id = target.lookup_id
         state: dict[str, object] | None = None
         page_no = 0
         while True:
@@ -355,12 +373,16 @@ class _TikHubCommentFetcher:
                         source_type="comment",
                         source_value=root.external_comment_id,
                         observed_at=sent.raw_record.observed_at,
-                        external_content_id=external_content_id,
+                        external_content_id=lookup_id,
                         root_comment_id=root.external_comment_id,
                     ),
                     item_locator=item_locator,
                     is_root=False,
                 )
+                if comment.external_content_id == lookup_id:
+                    comment = comment.model_copy(
+                        update={"external_content_id": external_content_id}
+                    )
                 if comment.external_content_id != external_content_id:
                     identity_mismatches.append(
                         _identity_mismatch(
