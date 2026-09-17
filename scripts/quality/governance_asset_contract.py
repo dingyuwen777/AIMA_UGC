@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import subprocess
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -99,7 +98,7 @@ def load_issue_profiles(root: Path = ROOT) -> tuple[IssueProfile, ...]:
     )
 
 
-def _resolve_issue_profile(title: str, profiles: Sequence[IssueProfile]) -> IssueProfile:
+def _resolve_issue_profile(title: str, profiles: tuple[IssueProfile, ...]) -> IssueProfile:
     """使用项目真实 title prefix 选择唯一 Issue Profile。"""
     matches = [profile for profile in profiles if title.startswith(profile.title_prefix)]
     if len(matches) != 1:
@@ -178,7 +177,12 @@ def _template_headings(template_text: str) -> tuple[str, ...]:
     return headings
 
 
-def _validate_ordered_headings(body: str, required: Sequence[str], *, level: int) -> list[str]:
+def _validate_ordered_headings(
+    body: str,
+    required: tuple[str, ...],
+    *,
+    level: int,
+) -> list[str]:
     """校验 Change 必需标题存在、唯一且顺序稳定。"""
     pattern = TOP_LEVEL_HEADING_PATTERN if level == 1 else SECOND_LEVEL_HEADING_PATTERN
     actual = [match.group(1).strip() for match in pattern.finditer(body)]
