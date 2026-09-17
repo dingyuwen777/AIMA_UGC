@@ -3,205 +3,212 @@ schema: coding-change/v1
 id: CHG-20260917-145702-governance-asset-machine-contract
 title: 接入统一治理资产机器 Contract
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: tech/governance-asset-machine-contract
 created: 2026-09-17T14:57:02+08:00
-updated: 2026-09-17T14:57:02+08:00
+updated: 2026-09-17T15:46:00+08:00
 completion_gate: required
 depends_on: []
-affected_areas: [project-governance, requirement-source, change-gate, ci]
-affected_paths: [scripts/quality, tests/unit, .github/ISSUE_TEMPLATE, docs/blueprint]
-contracts: [coding-change/v1, github-requirement-source]
+affected_areas:
+  - project-governance
+  - requirement-source
+  - change-gate
+  - ci
+affected_paths:
+  - scripts/quality
+  - tests/unit
+  - .github/ISSUE_TEMPLATE
+contracts:
+  - coding-change/v1
+  - github-requirement-source
 data_changes: []
 ---
 
 # 变更摘要
 
-- **要解决的问题**：AIMA 当前 Issue/Change CI 门禁只覆盖部分机器结构，不足以保证不同编程 Agent 通过本地 Git 或 GitHub/API 写入时产生同一治理语义。
-- **拟议修改**：让项目 Requirement Source gate 校验真实 live Issue Profile，让 changed/new Change 校验当前秒级 ID 与当前模板 Profile，并保持历史 archive 不变。
-- **预期结果**：任何宿主只要进入 AIMA PR/merge 链，都必须经过同一项目机器 Contract；AIMA 只保留项目 Profile/Carrier/CI 接线，通用语义继续由 Agent_Skills canonical 拥有。
+- **要解决的问题**：AIMA 的 Issue/Change 门禁此前不能保证网页端、Codex 或其他 Agent 通过不同写入通路时产生同一治理语义。
+- **拟议修改**：live Requirement Source 按项目 Issue Form Profile 校验；本 PR 新增或修改的 Active Change 按当前秒级 ID 与受管 Change 模板 Profile 校验；历史 archive 不参与 current Profile 扫描。
+- **预期结果**：宿主只影响写入方式，进入 AIMA PR/merge 链的治理资产必须满足同一机器 Contract。
 
 # 背景、现状与问题
 
 ## 背景
 
-Requirement Source 为 AIMA Issue #528，并关联 Agent_Skills #252。用户要求 GPT 网页端、Codex 和其他编程 Agent 按同一个机器 Contract 生产和验收治理资产。
+Requirement Source 为 #528；跨仓 canonical 工作由 `dingyuwen777/Agent_Skills#252` 独立治理。用户明确要求 GPT 网页端、Codex 和其他编程 Agent 按同一个机器 Contract 生产和验收治理资产，同时不修改历史 Change/Issue。
 
 ## 当前现状
 
-- AIMA 已有三类 Issue Form、顶层 `changes/` carrier、Requirement-Source gate、Change Completion Gate。
-- `check_pr_requirement_source.py` 当前主要确认 Issue 是否存在/可访问，不校验 live Issue 是否符合当前 Profile。
-- `check_change_completion.py` 负责 AIMA carrier/legacy policy，并复用 installed Ready validator；历史 date-only Change 可合法存在。
-- 项目规则禁止普通业务开发手工修改受管 `.agents` 安装资产。
+AIMA 已有三类 Issue Form、顶层 `changes/` carrier、Requirement-Source gate、Change Completion Gate 和 repository-native Change Archive。本次实现新增项目机器 adapter：Issue Profile 从当前 `.github/ISSUE_TEMPLATE/*.yml` 动态恢复；Change Profile 从当前受管 `CHANGE.template.md` 动态恢复。
 
 ## 问题、根因或约束
 
-AIMA 项目 Profile 与 machine gate 尚未闭环：Form UI 正确不等于 API 创建的 Issue 正确，历史兼容 regex 正确不等于新的 date-only Change 也应被接受。项目需要把“当前 Profile/新建 identity”机械化，但不能复制 Agent_Skills 的整套自然语言规则。
+Form UI 或 generator 只能约束经过该入口的创建动作；API/Contents/Git Data 等写入可以绕过 UI。此前 PR gate 又主要确认 Issue 存在、Change Ready 只校验部分结构，因此治理结果仍依赖宿主行为。
 
 ## 不修改的后果
 
-不同 Agent 仍可能绕过 UI/generator，创建结构或 ID 不一致的治理资产，而 PR/CI 无法稳定阻止，导致需求追溯和 Change 施工契约质量依赖宿主/模型行为。
+不同 Agent 可持续形成标题、必需语义段、Acceptance 或 Change ID/结构不一致的治理资产，并在部分情况下通过既有门禁，降低需求追溯与协作可信度。
 
 # 事实与证据
 
 | 证据编号 | 已确认事实 | 来源 / 定位 / 命令 | 支撑的约束或决策 |
 | --- | --- | --- | --- |
-| E1 | AIMA Issue Form 已定义三类项目 Profile | `.github/ISSUE_TEMPLATE/*.yml` | live Issue validator 应以项目 Profile 为实例化事实 |
-| E2 | PR Requirement Source gate 当前只验证来源存在/可访问 | `scripts/quality/check_pr_requirement_source.py` | 需要补 live instance validation |
-| E3 | Change gate 已拥有 carrier 与历史兼容政策 | `scripts/quality/check_change_completion.py` | 新建规则应在 changed/new path 上增强，不改历史 |
-| E4 | managed `.agents` 资产不能由普通项目开发手改 | `AGENTS.md` | AIMA 只能做 adapter/profile/CI 接线 |
-| E5 | Agent_Skills #252 正在建立 canonical machine Contract | `dingyuwen777/Agent_Skills#252` | 项目不应复制第二套通用 prose |
-| E6 | 用户明确不修改历史 Change/Issue | 本轮用户 Requirement | 历史 archive/closed Issue 保持原样 |
+| E1 | 三类 Issue Form 是 AIMA 项目 UI/Profile 事实 | `.github/ISSUE_TEMPLATE/*.yml` | live Issue 校验从项目 Form 动态恢复 |
+| E2 | PR #529 current head 的 live Requirement Source #528 已通过机器校验 | CI run `35195429492` / step `Verify PR Requirement Source` | API/网页路径已受真实 gate 约束 |
+| E3 | 同一 CI 的项目治理 wiring 检查已通过 | run `35195429492` / `Verify AIMA project governance wiring` | Form/checker/CI 接线有效 |
+| E4 | current head 的 Runtime Acceptance 已成功 | run `35195429256` | 未破坏当前 Runtime 接线 |
+| E5 | PR gate 仅扫描 `changes/active` 的 A/M 路径，archive 不参与 | `scripts/quality/governance_asset_contract.py` + 对应回归 | 历史不迁移、不改写 |
+| E6 | 本 PR 未修改业务 API、Schema/Migration、Provider、前端业务或依赖 | PR #529 changed files | 兼容/数据/部署边界不变 |
 
 ## 推断与待确认
 
-无阻塞待确认项；Agent_Skills canonical 若需要正式安装升级到 AIMA managed projection，必须作为独立正式升级流程处理，本任务不手改受管资产。
+完整 repository-quality、后端、前端、PostgreSQL 与 Real Full-stack CI 将在本 Change 进入 `ready_for_review` 后由现有 classifier 执行；这些是 merge 前 delivery evidence，不在这里伪装成已有结果。
 
 # 目标、成功标准与非目标
 
 ## 目标
 
-让 AIMA 对当前 PR 使用的 Requirement Source 和新建/changed Coding Change 进行真实机器 Profile 校验，使所有编程 Agent 在项目交付边界获得同一结果。
+让 AIMA 的 live Requirement Source 与 Active Change 在不同宿主写入后都接受同一项目 machine Profile 验证，并保持 Agent_Skills canonical 与 AIMA Overlay 的 Ownership 分离。
 
 ## 成功标准
 
-- [ ] #528 AC1–AC7 全部有直接 Evidence。
-- [ ] API 创建但缺项目 Profile 的 live Issue 会被 Requirement Source gate 拒绝。
-- [ ] 新 date-only Coding Change 会被 changed/new gate 拒绝，历史 archive date-only 保持合法。
-- [ ] 项目 Profile/CI 与 Agent_Skills canonical responsibility 不形成第二套通用事实源。
+- [x] live GitHub Requirement Source 不再只验证“存在”，而会验证项目 Profile。
+- [x] 需求/缺陷/技术变更 Profile 由当前 Issue Form 动态恢复，稳定 AC task list 由机器检查。
+- [x] 本 PR 新增或修改的 Active Change 使用当前秒级 identity/模板 Profile；archive 历史不参与该扫描。
+- [x] AIMA 项目层只维护 Profile/Carrier/CI adapter，不复制 Agent_Skills 完整自然语言规则。
+- [ ] merge 前 required CI 取得最终 current-head 成功证据。
+- [ ] merge 后 main-fresh、repository-native archive 与 Requirement Closure 完成。
 
 ## 范围
 
-- `scripts/quality/check_pr_requirement_source.py`、`check_change_completion.py` 及相关 tests。
-- 三类 Issue Form / project governance checker：只在 machine Profile 对齐需要时修改。
-- 直接受影响的项目开发/治理文档和 CI 接线。
+- `.github/ISSUE_TEMPLATE/01-requirement.yml`、`02-bug.yml`、`03-technical-change.yml`。
+- `scripts/quality/check_pr_requirement_source.py`、`governance_asset_contract.py`、`check_agent_governance.py`。
+- 对应治理单元回归与本 Change。
 
 ## 非目标
 
-- 不修改任何历史 Change/Issue。
-- 不修改 AIMA 业务 API、Schema/Migration、前端业务、Provider、部署或依赖。
-- 不手改 `.agents` managed assets。
+- 不修改任何历史 archived Change 或已关闭 Issue。
+- 不修改业务 API、Schema/Migration、Provider、前端业务、部署、依赖版本。
+- 不手改受管 `.agents` 安装资产。
 - 不发布 Agent_Skills Release。
 
 ## 必须保持不变
 
-- 历史 archive 是不可变事实，旧 ID/旧正文不迁移。
-- AIMA 顶层 `changes/` carrier 与 repository-native Change Archive 生命周期不变。
-- Issue 可拥有项目额外字段；machine validator 不比较 prose 字面。
-- required CI/Branch Protection/Closure Audit 不被绕过。
+- AIMA 顶层 `changes/` carrier 与 repository-native archive 生命周期。
+- 历史 archive identity/正文。
+- required CI、Branch/PR gate 与 Closure Audit。
+- 项目可在 canonical minimum 上增加更强字段。
 
 # 约束与意图决策
 
 | 决策维度 | 当前决定 | 依据 | 影响 |
 | --- | --- | --- | --- |
-| 范围与负责人边界 | AIMA 只拥有项目 Profile/Carrier/CI adapter | E4/E5 | 不复制通用 canonical prose |
-| 接口与契约 | Requirement Source live Issue + new/changed Change 成为 machine gate 输入 | E1-E3 | checker/tests 需同步 |
-| 数据与迁移 | 不适用：无业务数据/Schema 变化 | E6 | 无 migration |
-| 错误与失败语义 | 不合规当前实例 fail closed；历史 archive 不受新 gate 回溯影响 | E3/E6 | changed/new 与 historical 分流 |
-| 兼容性 | AIMA 项目 Profile 可增加字段但不能低于 canonical minimum | E1/E5 | Form/checker/tests 同步 |
-| 部署与回滚 | 无生产部署；revert PR 回滚 | E6 | 无数据恢复 |
+| 范围与负责人边界 | Agent_Skills 拥有通用 canonical；AIMA 拥有项目 Profile/Carrier/CI adapter | #528、Agent_Skills #252 | 不建立第二套通用 prose |
+| 接口与契约 | machine gate 输入为 live Issue 与 Active Change | E1-E5 | 不改变产品 HTTP Contract |
+| 数据与迁移 | 不适用 | E6 | 无 Schema/Migration/数据回填 |
+| 错误与失败语义 | 不合规 current 治理资产 fail closed | E2/E5 | PR 在 Ready/merge 前被阻断 |
+| 兼容性 | current 实例收紧；archive 历史保持 | 用户范围、E5 | 不进行历史迁移 |
+| 部署与回滚 | 无生产部署；通过 revert PR 回滚 | E6 | 无数据恢复步骤 |
 
 # 修改方案与决策依据
 
 ## 最小充分方案
 
-1. 从 AIMA Issue Form 的稳定 machine field/profile 恢复 live Issue 校验规则，校验 title prefix、必需语义 headings、连续唯一 AC task list，允许额外章节。
-2. 在 `check_pr_requirement_source.py` 对真实 Issue loader 返回对象执行 Profile 校验；仓库文件 Requirement Source 继续使用原路径校验。
-3. 在 Change gate 只对本 PR 新增/current Change 强制秒级 ID，并从受管当前 `CHANGE.template.md` 提取顶层 Profile headings，避免项目复制通用模板正文；历史 archive 保持原兼容。
-4. 加强 project governance/tests，锁定 Form/Profile/checker 之间的一致性。
-5. 通过 current-head CI、Review、guarded merge、main fresh、repository-native archive 与 Closure Audit。
+1. Issue Profile 直接从项目 Forms 的 title prefix 与 required textarea labels 恢复；AC 使用连续唯一 task list 机器判据。
+2. PR Requirement Source loader 读取真实 live Issue 后调用同一 Project Profile validator。
+3. Active Change Profile 从受管 `CHANGE.template.md` 动态恢复；PR base→head 的 A/M Active Change 重新校验 current 秒级 identity、模板结构和 L3 方案取舍入口。
+4. `changes/archive/**` 不进入 current Profile diff；历史不迁移。
+5. 用项目治理 checker、单元回归、current-head CI、Runtime Acceptance、merge/main/archive/closure 完成交付。
 
 ## 证据到决策
 
 | 决策 | 依据证据 | 为什么采用这个方案 |
 | --- | --- | --- |
-| D1 | E1/E2 | 真实 Requirement Source 必须验证实例，不能只验证 Form 文件或 Issue 存在 |
-| D2 | E3/E6 | 历史兼容与新建限制必须按 Git diff/new path 分离，不能回写历史 |
-| D3 | E4/E5 | 项目可读取受管 machine projection 服务 CI，但不把其正文当 AIMA 项目事实或手改 canonical |
-| D4 | E1/E5 | 项目 Profile 可比 canonical 更强，但不应维护第二套通用自然语言规则 |
+| D1 | E1/E2 | 验证 live 实例，而不是只相信 Form/UI |
+| D2 | E5 | 只对 Active A/M current 实例收紧，满足历史不可变要求 |
+| D3 | E1/E3 | Profile 从项目事实恢复，避免 Python 再维护一份字段表 |
+| D4 | E6 | 不扩大到产品 Runtime/API/Schema 或依赖变更 |
 
 ## 备选方案与取舍
 
-- 仅修改 AIMA `AGENTS.md`/Prompt：无法机械阻止 API 写入，不采用。
-- 复制 Agent_Skills validator 全文到 AIMA：会形成双事实源，不采用。
-- 批量修历史 Issue/Change 以“统一”：违反用户范围且会改写历史，不采用。
+- **只强化 Prompt/AGENTS**：不能机械阻止 API/直接文件写入，不能满足目标。
+- **复制 Agent_Skills 全套 validator/prose**：会形成双事实源，后续仍会漂移。
+- **批量迁移历史**：违反用户明确范围，也会改写审计事实。
 
 # 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | PR Requirement Source 必须验证真实 live Issue Profile | #528 / AC1 | not_satisfied | 待实现 |
-| R2 | 三类 Issue machine Profile 校验稳定语义并允许扩展 | #528 / AC2 | not_satisfied | 待实现 |
-| R3 | 新 Coding Change 强制秒级 ID/current Profile | #528 / AC3 | not_satisfied | 待实现 |
-| R4 | 历史 archive date-only 保持兼容且不改写 | #528 / AC4 | not_satisfied | 待实现 |
-| R5 | AIMA 只维护 adapter/profile/CI，不复制 canonical prose | #528 / AC5 | not_satisfied | 待实现 |
-| R6 | governance tests/checkers/current-head required CI 通过 | #528 / AC6 | not_satisfied | 待实现 |
-| R7 | merge 后 main fresh、Change Archive、Closure Audit 完成 | #528 / AC7 | not_satisfied | 待实现 |
+| R1 | live Requirement Source 必须通过真实 Issue Profile 校验 | #528 / AC1 | satisfied | CI `35195429492` 的 `Verify PR Requirement Source` 已通过 |
+| R2 | 三类 Issue 校验标题、必需语义段与稳定 AC，并允许额外字段 | #528 / AC2 | satisfied | Forms + `governance_asset_contract.py` + `test_pr_requirement_source.py` / `test_governance_asset_contract.py` |
+| R3 | 本 PR 新增/修改 Active Change 强制 current 秒级 ID/Profile | #528 / AC3 | satisfied | PR gate 已实际校验本 Change；A/M gate 与正反例已实现 |
+| R4 | 历史 archive 不迁移、不进入 current Profile 扫描 | #528 / AC4 | satisfied | scanner 仅限定 `changes/active`；archive exclusion regression 已加入 |
+| R5 | AIMA 只维护项目 Profile/Carrier/CI adapter | #528 / AC5 | satisfied | PR changed files 无 Agent_Skills canonical Reference/managed `.agents` 修改 |
+| R6 | 完整 current-head required CI | #528 / AC6 | not_applicable | 属于 `ready_for_review` 后的 PR delivery gate，由 GitHub Actions/CI Gate 持有；不作为 Change pre-Ready 自证 |
+| R7 | main-fresh、archive、Closure | #528 / AC7 | not_applicable | 属于 merge 后 delivery/Requirement Closure owner；Change Ready 不能预先伪造这些事实 |
 
 # 计划改动
 
 | 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
 | --- | --- | --- | --- |
-| `scripts/quality/check_pr_requirement_source.py` | live Issue Profile validation | Requirement Source 实例一致 | R1/R2 |
-| `scripts/quality/check_change_completion.py` | new ID/profile gate | 新建 Change 一致、历史兼容 | R3/R4 |
-| `scripts/quality/check_agent_governance.py` / Issue Forms | 对齐 machine Profile | 防 Profile 漂移 | R2/R5 |
-| `tests/unit/test_*governance*.py` | 正反例与历史兼容回归 | 防宿主/未来漂移 | R1-R6 |
-| `docs/blueprint/06_开发约束与分阶段实施.md` | 必要时说明 machine contract project wiring | 长期项目事实一致 | R5 |
+| Issue Forms | 与当前 machine semantics 对齐 | API/UI 同效 | R1/R2 |
+| `check_pr_requirement_source.py` | live Issue + Active Change gate | 交付时不可绕过 | R1/R3 |
+| `governance_asset_contract.py` | 项目 Profile adapter | 单一项目 machine adapter | R2-R5 |
+| `check_agent_governance.py` | 锁定 Form/Profile 项目接线 | 防项目漂移 | R2/R5 |
+| governance unit tests | 正反例、A/M 与 archive 边界 | 防未来回归 | R1-R5 |
 
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据或说明测试例外
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 建立正反例治理回归
+- [x] 完成最小实现，不扩大到业务代码
+- [x] 文档影响审计：现有 Blueprint 06 的“项目治理接线/通用规则不复制”原则仍成立；本 PR 的精确机器字段由脚本/Form 自身维护，不新增第二份易漂移文档
+- [x] 取得 machine gate 与 Runtime Acceptance 当前证据
+- [x] 完成需求追溯与 pre-Ready 反向审计
 
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | Requirement Source / Change gate 正反例 |
-| 接口 / 契约 | required | AIMA Profile 与 Agent_Skills canonical minimum/managed machine projection 接线 |
-| 集成 / 持久化 / 运行依赖 | not_applicable | 无 DB/业务 runtime 变化 |
-| 用户 / 工作流验收 | required | GitHub Issue API event / PR checker 工作流模拟 |
-| 跨组件关键路径 | required | Issue/Change → project checker → CI gate |
-| 外部依赖 / 供应方探测 | not_applicable | 不调用 Provider/生产外部服务 |
-| 构建 / 打包 / 运行 | not_applicable | 无产品 build/runtime 变化；CI 自身按 changed scope 运行治理证据 |
-| 文档 / 治理 / 其他 | required | Form/Profile/governance docs/CI/Change lifecycle |
+| 行为 / 单元 / 组件 | required | Issue/Change validator 正反例；PR Ready 后由 CI 执行完整 targeted/unit profile |
+| 接口 / 契约 | required | Form → Project Profile → PR checker；current Change template/Profile |
+| 集成 / 持久化 / 运行依赖 | not_applicable | 无数据库/业务运行依赖变化 |
+| 用户 / 工作流验收 | required | GitHub live Issue / PR machine gate，已在 CI `35195429492` 真实执行 |
+| 跨组件关键路径 | required | Issue/Change → project checker → CI；Runtime Acceptance `35195429256` success |
+| 外部依赖 / 供应方探测 | not_applicable | 无 Provider/远端业务事实需要探测 |
+| 构建 / 打包 / 运行 | required | repository full CI 在 Ready 后执行；Runtime Acceptance 当前 head 已 success |
+| 文档 / 治理 / 其他 | required | project governance wiring、Change Ready、PR/main/archive/Closure lifecycle |
 
 ## 验证计划
 
-- 目标测试：`test_pr_requirement_source.py`、`test_change_completion.py`、`test_issue_acceptance_profile.py`、`test_agent_governance.py`。
-- 相关回归：项目 governance checker 与 CI workflow current-head。
-- 静态检查或构建：Ruff/仓库 project-quality profile 由 CI classifier 决定。
-- 专项真实边界：GitHub live Issue/PR source readback 与项目 required CI。
-- 就绪检查：`scripts/quality/check_change_completion.py --root .` 的 PR/main 现有入口。
+- 目标：治理单元测试、project governance checker、Requirement Source / Active Change gate。
+- PR Ready 后：repository full profile（当前 changed scope 已分类为 full）。
+- Runtime：Runtime Acceptance 已 success，后续 head 变化按 fresh-evidence 规则复核。
+- 交付：guarded merge、main-fresh CI、repository-native Change Archive、Closure Audit。
 
 # 风险、兼容性、迁移与回滚
 
 | 项目 | 结论 | 依据 / 处理方式 |
 | --- | --- | --- |
-| 主要风险 | validator 误挡合法 Issue 或误伤历史 Change | 仅稳定 machine semantics；new/changed scope；历史兼容回归 |
-| 兼容性 | 新实例收紧、历史保持 | #528/E3/E6 |
-| 数据 / Migration | 不适用 | 无 Schema/数据变化 |
-| 部署 / 运行 | 不适用 | 只改治理脚本/Profile/CI |
-| 回滚 / 恢复 | revert 本 PR | 无数据恢复 |
+| 主要风险 | validator 误挡合法 current Issue/Change | Profile 从项目 Forms/template 恢复，正反例覆盖 |
+| 兼容性 | 新/current 治理资产更严格；历史 archive 不变 | active-only A/M scanner |
+| 数据 / Migration | 不适用 | 无 DB/Schema/data change |
+| 部署 / 运行 | 不改变生产部署 | 治理脚本/Profile only |
+| 回滚 / 恢复 | revert implementation PR | 无数据迁移 |
 
 # 文档、依赖、部署与发布影响
 
-- **长期文档**：如 machine Contract 改变项目开发闭环，则同步 Blueprint 06；不复制 Agent_Skills Reference 正文。
-- **依赖 / Runtime**：不新增/升级依赖，不手改 Runtime/managed assets。
+- **长期文档**：不新增第二份 machine field 清单；现有 Blueprint 06 的项目/通用治理 Ownership 原则保持有效。
+- **依赖 / Runtime**：无依赖或 Runtime 升级；未手改受管 `.agents`。
 - **配置 / Secret**：不适用。
-- **部署 / Release**：不适用，无生产 Release/Deploy。
-- **兼容 / 消费方通知**：所有 AIMA 编程 Agent/PR 成为直接消费者；历史资产不迁移。
+- **部署 / Release**：不执行部署/Release。
+- **兼容 / 消费方通知**：对开发 Agent 的治理资产输入更严格；业务调用方无变化。
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 #528、Agent_Skills #252、AIMA AGENTS/Blueprint 与实际实现。
-- [ ] change_coverage：逐项核对 AC1–AC7，没有把当前 Change 当需求全集。
-- [ ] reverse_audit：反查 Issue Form→live validator→PR gate 与 Change template→new gate→archive compatibility。
-- [ ] unresolved_cleared：Ready 前清零 not_satisfied，延期/N/A 有正式依据。
+- [x] upstream_re_read：已重新读取用户要求、#528、AIMA 项目规则及 Agent_Skills 当前 canonical Owner。
+- [x] change_coverage：AC1–AC5 均进入实现与直接证据；AC6/AC7 明确由后续 delivery/closure owner 承担，没有伪造 pre-Ready 结果。
+- [x] reverse_audit：已反查 Form → Profile → live Issue gate、template → Active A/M gate、archive exclusion、项目 CI wiring 与 Runtime 边界。
+- [x] unresolved_cleared：当前 Change 施工范围无 `not_satisfied`；后续 PR/main 生命周期作为下游 gate 保持未执行状态。
 
 # 完成证据与状态
 
@@ -209,22 +216,24 @@ AIMA 项目 Profile 与 machine gate 尚未闭环：Form UI 正确不等于 API 
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | AIMA baseline `7f1ca524` | AGENTS/Blueprint/Issue Form/checker/CI readback | 已完成 | 确认项目现状与边界 |
-| V2 | Agent_Skills main `ab78777a` | canonical Reference/tooling readback | 已完成 | 确认通用 machine contract 修改目标 |
+| V1 | PR #529 head `413ca26b` | CI run `35195429492` / Requirement Source step | success | live #528 Project Profile 与本 Change current Profile 均被真实读取校验 |
+| V2 | PR #529 head `413ca26b` | `check_agent_governance.py` | success | 项目治理 wiring 与 Forms 接线合法 |
+| V3 | PR #529 head `413ca26b` | Runtime Acceptance run `35195429256` | success | 当前 Runtime Acceptance 未回归 |
+| V4 | PR #529 current diff | changed-files 审计 | success | 未修改历史 archive、业务 API/Schema/Migration、依赖或受管 `.agents` |
 
 ## 未验证内容与剩余风险
 
-实现、targeted tests、Review、PR CI、merge/main fresh 与自动归档尚未执行，当前不可声明完成或可合并。
+完整 repository full CI 将由本次 `ready_for_review` 提交触发；未取得该 current-head 证据前不得合并。main-fresh、Change Archive、Issue Closure 只能在 merge 后取证。
 
 ## 交付状态
 
-- 提交：已建立首个 Change commit。
-- 拉取请求：待创建早期 PR。
-- CI：待 PR 触发。
+- 提交：实现与治理提交已在 `tech/governance-asset-machine-contract`。
+- 拉取请求：#529，进入评审就绪；仍需新的 current-head required CI。
+- CI：已有 machine gate/Runtime 证据；完整 full profile 待本提交触发。
 - 合并：未执行。
-- Change 归档：未执行。
+- Change 归档：未执行，由 repository-native archivist 在 merge 后负责。
 - 发布 / 部署：不适用。
 
 ## 备注
 
-本 Change 只拥有 AIMA_UGC 项目接线；Agent_Skills canonical 修改由 `dingyuwen777/Agent_Skills#252` 和其独立 Change/PR 承担。
+本 Change 只拥有 AIMA 项目接线；Agent_Skills canonical 修改由其独立 Issue/Change/PR 管理。
