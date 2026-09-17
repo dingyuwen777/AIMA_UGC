@@ -383,12 +383,6 @@ export interface BrandCreateRequest {
   aliases?: string[];
   /**
      * @minLength 1
-     * @maxLength 100
-     * @pattern ^[A-Za-z0-9][A-Za-z0-9._-]*$
-     */
-  code: string;
-  /**
-     * @minLength 1
      * @maxLength 200
      */
   display_name: string;
@@ -2822,19 +2816,13 @@ export interface VehicleModelAliasResponse {
 }
 
 /**
- * 创建一个稳定车型及其初始别名。
+ * 创建一个稳定车型及其初始别名；内部 code 由服务端生成。
  */
 export interface VehicleModelCreateRequest {
   /** @maxItems 100 */
   aliases?: string[];
   brand_id?: string | null;
   category_name?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 100
-     * @pattern ^[A-Za-z0-9][A-Za-z0-9._-]*$
-     */
-  code: string;
   /**
      * @minLength 1
      * @maxLength 200

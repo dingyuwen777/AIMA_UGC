@@ -1045,13 +1045,6 @@
             "title": "Aliases",
             "type": "array"
           },
-          "code": {
-            "maxLength": 100,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-            "title": "Code",
-            "type": "string"
-          },
           "display_name": {
             "maxLength": 200,
             "minLength": 1,
@@ -1069,7 +1062,6 @@
           }
         },
         "required": [
-          "code",
           "display_name",
           "role"
         ],
@@ -8574,7 +8566,7 @@
       },
       "VehicleModelCreateRequest": {
         "additionalProperties": false,
-        "description": "创建一个稳定车型及其初始别名。",
+        "description": "创建一个稳定车型及其初始别名；内部 code 由服务端生成。",
         "properties": {
           "aliases": {
             "default": [],
@@ -8610,13 +8602,6 @@
             ],
             "title": "Category Name"
           },
-          "code": {
-            "maxLength": 100,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-            "title": "Code",
-            "type": "string"
-          },
           "display_name": {
             "maxLength": 200,
             "minLength": 1,
@@ -8638,7 +8623,6 @@
           }
         },
         "required": [
-          "code",
           "display_name"
         ],
         "title": "VehicleModelCreateRequest",
