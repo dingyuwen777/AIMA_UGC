@@ -106,48 +106,54 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
   const fixturePath = process.env.AIMA_ADMIN_PRODUCT_EXCEL_FIXTURE
   expect(fixturePath, 'AIMA_ADMIN_PRODUCT_EXCEL_FIXTURE 必须指向车型验收 Fixture').toBeTruthy()
   const suffix = Date.now().toString()
-  const brandCode = `FS-BRAND-${suffix}`
   const brandName = `全栈品牌 ${suffix}`
   const brandAlias = `全栈品牌${suffix}`
-  const code = `FS-${suffix}`
   const displayName = `全栈车型 ${suffix}`
   const alias = '爱玛 U2 车型证据全栈导入'
 
   await page.goto('/admin/configuration')
   await expect(page.getByRole('heading', { name: '管理员配置', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '新增品牌', exact: true }).click()
-  const brandForm = page.locator('.brand-overview .form-card')
-  await brandForm.getByLabel('品牌编码').fill(brandCode)
-  await brandForm.getByLabel('显示名称').fill(brandName)
+  const brandForm = page.getByRole('heading', { name: '新增品牌', exact: true }).locator('..')
+  await expect(brandForm.getByText('品牌编码', { exact: true })).toHaveCount(0)
+  await brandForm.getByLabel('品牌名称').fill(brandName)
   await brandForm.getByLabel('品牌角色').selectOption('owned')
   await brandForm.getByLabel(/品牌识别词/).fill(brandAlias)
   const brandCreatedPromise = page.waitForResponse((response) =>
     response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/vehicle-brands')
-  await brandForm.getByRole('button', { name: '保存品牌', exact: true }).click()
+  await brandForm.getByRole('button', { name: '创建品牌', exact: true }).click()
   const brandCreated = await brandCreatedPromise
   expect(brandCreated.status()).toBe(201)
-  const brand = await brandCreated.json() as { id: string; display_name: string; aliases: { text: string }[] }
+  const brand = await brandCreated.json() as { id: string; code: string; display_name: string; aliases: { text: string }[] }
+  expect(brand.code).toMatch(/^BRAND_[0-9A-F]{32}$/)
   expect(brand.display_name).toBe(brandName)
   expect(brand.aliases.map((item) => item.text)).toContain(brandAlias)
   await expect(page.getByText('品牌已创建并记录操作。', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '新增车型', exact: true }).click()
-  const vehicleForm = page.locator('.catalog-stack > .two-column').nth(1).locator('.form-card')
-  await vehicleForm.getByLabel('车型编码').fill(code)
+  const vehicleForm = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
+  await expect(vehicleForm.getByText('车型编码', { exact: true })).toHaveCount(0)
   await vehicleForm.getByLabel('显示名称').fill(displayName)
   await vehicleForm.getByLabel('品牌', { exact: true }).selectOption(brand.id)
   await vehicleForm.getByLabel('系列（可选）').fill('全栈系列')
   await vehicleForm.getByLabel('类别（可选）').fill('电动两轮车')
   await vehicleForm.getByLabel(/别名/).fill(alias)
+  const vehicleCreatedPromise = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/vehicle-models')
   await vehicleForm.getByRole('button', { name: '保存', exact: true }).click()
+  const vehicleCreated = await vehicleCreatedPromise
+  expect(vehicleCreated.status()).toBe(201)
+  const createdVehicle = await vehicleCreated.json() as { id: string; code: string }
+  expect(createdVehicle.code).toMatch(/^VEHICLE_[0-9A-F]{32}$/)
   await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
   await expect(page.getByRole('row').filter({ hasText: displayName })).toBeVisible()
 
   const vehiclesResponse = await request.get('/api/v1/vehicle-models?limit=200')
   expect(vehiclesResponse.status()).toBe(200)
   const vehicles = await vehiclesResponse.json() as { items: { id: string; code: string; brand_id: string | null; series_name: string; category_name: string }[] }
-  const vehicle = vehicles.items.find((item) => item.code === code)
+  const vehicle = vehicles.items.find((item) => item.id === createdVehicle.id)
   expect(vehicle, '浏览器创建的车型必须能从正式目录 API 重读').toBeTruthy()
+  expect(vehicle?.code).toBe(createdVehicle.code)
   expect(vehicle?.brand_id).toBe(brand.id)
   expect(vehicle?.series_name).toBe('全栈系列')
   expect(vehicle?.category_name).toBe('电动两轮车')

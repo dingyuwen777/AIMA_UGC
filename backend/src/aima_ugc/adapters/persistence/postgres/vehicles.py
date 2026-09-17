@@ -177,7 +177,7 @@ class PostgresVehicleCatalogRepository:
             base = base.where(*conditions)
             count_statement = count_statement.where(*conditions)
         rows = self._session.execute(
-            base.order_by(vehicle_models_table.c.code, vehicle_models_table.c.id)
+            base.order_by(vehicle_models_table.c.display_name, vehicle_models_table.c.id)
             .offset(offset)
             .limit(limit)
         ).mappings()

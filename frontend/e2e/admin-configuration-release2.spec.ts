@@ -285,7 +285,7 @@ test('1440 provider and scheme layouts keep fixed readable lists plus flexible e
   await expectNoGlobalHorizontalScroll(page)
 })
 
-test('vehicle create and edit use product dialogs while preserving immutable identity and real fields', async ({ page }) => {
+test('vehicle create and edit hide internal code while preserving real fields', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockAdmin(page)
   await page.goto('/admin/configuration')
@@ -293,12 +293,12 @@ test('vehicle create and edit use product dialogs while preserving immutable ide
   await page.getByRole('button', { name: '新增车型', exact: true }).click()
   const createDialog = page.getByRole('dialog', { name: '新增车型' })
   await expect(createDialog).toBeVisible()
-  await expect(createDialog.getByPlaceholder('例如 AIMA-Q7')).toBeEnabled()
+  await expect(createDialog.getByText('车型编码', { exact: true })).toHaveCount(0)
   await expect(createDialog.getByPlaceholder('例如 爱玛 Q7')).toBeVisible()
   await expect(createDialog.getByPlaceholder('用于车型筛选分组')).toBeVisible()
   await expect(createDialog.getByPlaceholder('用于车型信息展示')).toBeVisible()
   await expect(createDialog.getByPlaceholder('Q7\n爱玛Q7')).toBeVisible()
-  await expect(createDialog.getByText('新建车型按当前 Contract 默认启用', { exact: false })).toBeVisible()
+  await expect(createDialog.getByText('内部编码由服务端自动生成', { exact: false })).toBeVisible()
   await createDialog.getByRole('button', { name: '取消', exact: true }).click()
   await expect(createDialog).not.toBeVisible()
 
@@ -306,12 +306,12 @@ test('vehicle create and edit use product dialogs while preserving immutable ide
   await vehicleRegion.getByRole('button', { name: '编辑', exact: true }).first().click()
   const editDialog = page.getByRole('dialog', { name: '编辑车型' })
   await expect(editDialog).toBeVisible()
-  await expect(editDialog.getByPlaceholder('例如 AIMA-Q7')).toBeDisabled()
+  await expect(editDialog.getByText('车型编码', { exact: true })).toHaveCount(0)
   await expect(editDialog.getByText('已启用', { exact: true })).toBeVisible()
   await expect(editDialog.getByText('合并重复车型', { exact: true })).toBeVisible()
 })
 
-test('brand creation preserves required immutable code while normal detail keeps it technical', async ({ page }) => {
+test('brand creation hides internal code while normal detail keeps it technical', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockAdmin(page)
   await page.goto('/admin/configuration')
@@ -319,8 +319,8 @@ test('brand creation preserves required immutable code while normal detail keeps
   await page.getByRole('button', { name: '新增品牌', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '新增品牌' })
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByPlaceholder('例如 AIMA')).toBeVisible()
-  await expect(dialog.getByText('稳定机器身份，创建后不可修改。', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('品牌编码', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByText('内部编码由服务端自动生成', { exact: false })).toBeVisible()
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
 
   await expect(page.getByText('品牌编码', { exact: true })).not.toBeVisible()

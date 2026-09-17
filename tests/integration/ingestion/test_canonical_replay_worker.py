@@ -135,7 +135,6 @@ def _create_brand_without_matching_alias(runtime: PlatformRuntime) -> UUID:
 def _create_brand(runtime: PlatformRuntime, *, alias: str) -> UUID:
     created = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code=f"REPLAY-{uuid4()}",
             display_name="Replay 测试品牌",
             role="owned",
             aliases=(alias,),

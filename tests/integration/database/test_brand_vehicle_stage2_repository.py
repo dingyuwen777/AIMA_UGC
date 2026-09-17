@@ -68,14 +68,13 @@ def test_brand_vehicle_management_snapshot_and_readiness_use_one_catalog(runtime
 
     with pytest.raises(AdministrationConflict):
         vehicle_service.create_vehicle_model(
-            VehicleModelCreateRequest(code="NO-BRAND", display_name="无品牌车型"),
+            VehicleModelCreateRequest(display_name="无品牌车型"),
             principal=principal,
             request_id="stage2-no-brand",
         )
 
     owned = brand_service.create_brand(
         BrandCreateRequest(
-            code="aima",
             display_name="爱玛",
             role="owned",
             aliases=("爱玛", "AIMA"),
@@ -85,7 +84,6 @@ def test_brand_vehicle_management_snapshot_and_readiness_use_one_catalog(runtime
     )
     competitor = brand_service.create_brand(
         BrandCreateRequest(
-            code="competitor-b",
             display_name="竞品 B",
             role="competitor",
             aliases=("竞品B", "共享品牌词"),
@@ -101,7 +99,6 @@ def test_brand_vehicle_management_snapshot_and_readiness_use_one_catalog(runtime
     )
     vehicle = vehicle_service.create_vehicle_model(
         VehicleModelCreateRequest(
-            code="LUNA-AIR",
             display_name="露娜 Air",
             brand_id=owned.id,
             aliases=("露娜Air",),
@@ -178,7 +175,6 @@ def test_brand_vehicle_snapshot_holds_catalog_read_lock_until_transaction_end(
     principal = _principal()
     brand = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code="SNAPSHOT-LOCK",
             display_name="快照锁品牌",
             role="other",
             aliases=("快照锁品牌",),
@@ -213,7 +209,6 @@ def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_l
     brand_service = PostgresBrandVehicleHttpService(runtime)
     brand = brand_service.create_brand(
         BrandCreateRequest(
-            code="AIMA-LOCK",
             display_name="爱玛锁测试",
             role="owned",
             aliases=("爱玛锁测试",),

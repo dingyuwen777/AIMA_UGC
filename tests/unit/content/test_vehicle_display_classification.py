@@ -9,11 +9,11 @@ from pydantic import ValidationError
 
 
 def test_vehicle_classification_is_optional_and_trimmed() -> None:
-    """旧请求无须补数据，显式分组去除首尾空白。"""
-    old = VehicleModelCreateRequest(code="Q7", display_name="爱玛 Q7")
+    """创建请求无需内部 code 或分组数据，显式分组去除首尾空白。"""
+    old = VehicleModelCreateRequest(display_name="爱玛 Q7")
     assert old.series_name is None and old.category_name is None
     model = VehicleModelCreateRequest(
-        code="Q7", display_name="爱玛 Q7", series_name=" Q 系列 ", category_name=" 电动两轮车 "
+        display_name="爱玛 Q7", series_name=" Q 系列 ", category_name=" 电动两轮车 "
     )
     assert model.series_name == "Q 系列"
     assert model.category_name == "电动两轮车"

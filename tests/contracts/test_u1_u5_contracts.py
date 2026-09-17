@@ -62,16 +62,14 @@ def test_vehicle_model_contract_normalizes_aliases_and_rejects_duplicates() -> N
     """车型别名以规范化身份去重，不能在同车型下重复。"""
 
     model = VehicleModelCreateRequest(
-        code=" q7 ",
         display_name=" 爱玛 Q7 ",
         aliases=["Q7", "爱玛Q7"],
     )
-    assert model.code == "Q7"
     assert model.display_name == "爱玛 Q7"
+    assert model.aliases == ("Q7", "爱玛Q7")
 
     with pytest.raises(ValidationError):
         VehicleModelCreateRequest(
-            code="Q7",
             display_name="爱玛 Q7",
             aliases=["Q7", " q7 "],
         )

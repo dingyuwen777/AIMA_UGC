@@ -29,7 +29,6 @@ def stage3_filter_brand_id(runtime: PlatformRuntime, *, alias: str = "爱玛") -
             return str(brand.id)
     brand = service.create_brand(
         BrandCreateRequest(
-            code=f"STAGE3-INTEGRATION-{uuid4()}",
             display_name=f"Stage3 {alias}",
             role="owned",
             aliases=(alias,),

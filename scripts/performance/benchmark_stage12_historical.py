@@ -343,7 +343,6 @@ def _write_fixture(root: Path, *, row_count: int, rows_per_file: int) -> tuple[P
 def _create_capacity_brand(runtime: PlatformRuntime) -> str:
     brand = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code=f"STAGE12-CAPACITY-{uuid4()}",
             display_name="爱玛",
             role="owned",
             aliases=("爱玛",),

@@ -110,7 +110,6 @@ def _principal() -> Principal:
 def _configure_and_upload(client: TestClient, runtime) -> Response:  # type: ignore[no-untyped-def]
     brand = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code="AIMA-STAGE3-IMPORT",
             display_name="爱玛",
             role="owned",
             aliases=("爱玛",),
@@ -309,7 +308,6 @@ def test_unmatched_single_import_is_retained_in_canonical_before_filter(tmp_path
         client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
         brand = PostgresBrandVehicleHttpService(runtime).create_brand(
             BrandCreateRequest(
-                code="AIMA-STAGE2-FILTERED",
                 display_name="爱玛",
                 role="owned",
                 aliases=("爱玛",),
@@ -580,7 +578,6 @@ def _stage3_evidence_catalog(runtime) -> tuple[UUID, UUID]:  # type: ignore[no-u
 
     brand = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code="AIMA-STAGE3-EVIDENCE",
             display_name="爱玛",
             role="owned",
             aliases=("爱玛",),
@@ -590,7 +587,6 @@ def _stage3_evidence_catalog(runtime) -> tuple[UUID, UUID]:  # type: ignore[no-u
     )
     vehicle = PostgresAdministrationHttpService(runtime).create_vehicle_model(
         VehicleModelCreateRequest(
-            code="AIMA-STAGE3-EVIDENCE-Q7",
             display_name="Q7",
             brand_id=brand.id,
             aliases=("Q7",),
@@ -696,7 +692,6 @@ def test_stage3_import_freezes_catalog_and_preserves_manual_evidence(tmp_path: P
 
         competitor = PostgresBrandVehicleHttpService(runtime).create_brand(
             BrandCreateRequest(
-                code="COMPETITOR-STAGE3-EVIDENCE",
                 display_name="竞品",
                 role="competitor",
                 aliases=("竞品",),
