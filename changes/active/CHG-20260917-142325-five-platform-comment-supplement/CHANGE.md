@@ -50,8 +50,8 @@ data_changes:
 - 当前 `main` 为 `7f1ca524c1c43fc4e61b8601f5d0e241e5023493`。声音广场评论层级与分页子项已落地；五平台身份解析、Eligibility 诊断、Run Coverage、真实五平台补采验收仍未完成。
 - 本变更复用现有 Collection Run、持久 Job、Provider Attempt/Raw、Content Owner、PostgreSQL、Pydantic/OpenAPI/Orval 和声音广场。保持 Canonical 主身份、已存在合法原生 ID、公共请求和既有内容详情兼容。
 - 不进行模糊搜索、跨 API family 隐藏 fallback、终态重试 API、依赖升级或额外任务系统。真实 Probe 显式限额，不进入普通 CI。
-- 微博 `ttarticle` 仅在唯一精确父 `status_id` 有证据时抓父帖评论；没有映射的样本记 `identity_unavailable`，不把文章 ID 发往帖子评论接口。
-- 用户本轮补充一条显示 1 条评论的长文章，并确认保持“唯一原始父微博评论”语义；该页面数字不能替代 `ttarticle_id → 父 status_id` 的精确映射证据。
+- 微博 `ttarticle` 的页面评论可按用户最新决定计入产品中的“父帖评论”。实际采集仍须有文章页面评论线程的正式 Operation 与精确归属证据，或有唯一原始父 `status_id` 的精确关联证据；结果必须保留真实来源。没有可验证线程的样本记 `identity_unavailable`，不把文章 ID 发往帖子评论接口。
+- 用户提供的正向样本页面显示 1 条评论，但页面计数不能替代已获取评论。完整文章 ID 及去掉 `230940` 的数字在 TikHub App Detail/Comments 的 4 次限额 Probe 中均返回 HTTP 400；当前正式 Operation 未取得该评论。
 
 # 方案比较与决定
 
@@ -118,7 +118,7 @@ data_changes:
 - 前端 28 个 Vitest 文件共 `157 passed`，指定 Collection/Voice Plaza 的 Playwright Mock E2E `26 passed`；lint、生产构建和 TypeScript 检查通过。
 - 后端 `mypy backend/src` 检查 346 个源码文件通过；OpenAPI 生成一致性及兼容检查、文档和架构/表 Owner 检查通过。
 - 真实 TikHub 有界 Probe 的请求数、计划费用和局限记录于 Roadmap 实施进度；四个平台固定样本 Detail/一级评论成功，原固定快手样本的 Detail/非空评论闭环未通过。
-- 后续有界 Probe 找到一个可见的“爱玛”快手候选，Detail、30 条根评论和 10 条回复的结构/归属通过生产 Mapper；用户给的另一快手链接仍返回空 `data.photos`。微博标准帖 Detail/评论成功，但其 Detail 不含用户另给长文章 ID，不能证明长文章的父帖映射。完整请求/费用与边界见 Roadmap 和 TikHub 台账。
+- 后续有界 Probe 找到一个可见的“爱玛”快手候选，Detail、30 条根评论和 10 条回复的结构/归属通过生产 Mapper；用户给的另一快手链接仍返回空 `data.photos`。微博标准帖 Detail/评论成功，但其 Detail 不含用户另给长文章 ID，不能证明长文章的父帖映射。长文章正向样本的 4 次 App 请求均为 HTTP 400；不能据页面显示的 1 条评论断言已补采。完整请求/费用与边界见 Roadmap 和 TikHub 台账。
 - 这些验证只覆盖当前部分实现。R1、R3–R9 尚未满足，严格 Ready Check、PR current-head CI、两阶段 Review 和 main fresh CI 尚未执行；不得合并。
 
 # 交付状态
