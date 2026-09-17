@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.bootstrap.worker import create_worker_runtime
+from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
@@ -155,16 +156,22 @@ def _insert_content(
     lookup_id: bool,
     job_id: UUID,
     irrelevant: bool,
+    platform: PlatformName = "xiaohongshu",
+    lookup_id_type: str = "note_id",
+    lookup_value: str | None = None,
 ) -> UUID:
     now = datetime.now(UTC)
     content_id = uuid4()
+    content_type = (
+        "image" if platform == "xiaohongshu" else "text" if platform == "weibo" else "video"
+    )
     with runtime.database.engine.begin() as connection:
         connection.execute(
             insert(contents_table).values(
                 id=content_id,
-                platform="xiaohongshu",
+                platform=platform,
                 external_content_id=external_content_id,
-                content_type="image",
+                content_type=content_type,
                 title="爱玛测试内容",
                 first_seen_at=now,
                 last_seen_at=now,
@@ -178,7 +185,7 @@ def _insert_content(
                 id=uuid4(),
                 content_id=content_id,
                 version_no=1,
-                content_type="image",
+                content_type=content_type,
                 title="爱玛测试内容",
                 provider_attempt_id=attempt_id,
                 raw_artifact_id=artifact_id,
@@ -189,8 +196,8 @@ def _insert_content(
             connection.execute(
                 insert(content_external_ids_table).values(
                     content_id=content_id,
-                    id_type="note_id",
-                    external_id=external_content_id,
+                    id_type=lookup_id_type,
+                    external_id=lookup_value or external_content_id,
                     provider_attempt_id=attempt_id,
                     raw_artifact_id=artifact_id,
                     observed_at=now,
@@ -269,6 +276,49 @@ def _read_targets(runtime, *, batch_id: UUID, identity: AnalysisConfigurationIde
                 batch_id=batch_id,
                 platforms=("xiaohongshu",),
             )
+
+
+@pytest.mark.parametrize(
+    ("platform", "id_type", "native_id"),
+    (
+        ("xiaohongshu", "note_id", "6a85c701000000001d0040e2"),
+        ("douyin", "aweme_id", "7531234567890123456"),
+        ("weibo", "status_id", "5337757797058061"),
+        ("bilibili", "av_id", "117119547215182"),
+        ("kuaishou", "photo_id", "3xv8mv8f3mwrtdk"),
+    ),
+)
+def test_batch_supplement_reads_five_platform_typed_ids_from_content_owner(
+    runtime, platform: PlatformName, id_type: str, native_id: str
+) -> None:  # type: ignore[no-untyped-def]
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    content_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id=f"source-{platform}",
+        lookup_id=True,
+        job_id=job_id,
+        irrelevant=False,
+        platform=platform,
+        lookup_id_type=id_type,
+        lookup_value=native_id,
+    )
+    with runtime.database.new_session() as session:
+        with session.begin():
+            reader = PostgresCollectionTargetReader(
+                session, analysis_identity=_CURRENT_ANALYSIS_IDENTITY
+            )
+            targets = reader.list_batch_targets(batch_id=batch_id, platforms=(platform,))
+            diagnostics = reader.list_batch_diagnostics(batch_id=batch_id, platforms=(platform,))
+
+    assert len(targets) == 1
+    assert targets[0].content_id == content_id
+    assert targets[0].lookup_id_type == id_type
+    assert targets[0].lookup_value == native_id
+    assert len(diagnostics) == 1
+    assert diagnostics[0].direct_target_count == 1
+    assert diagnostics[0].blocked_count == 0
 
 
 def test_batch_supplement_targets_require_lookup_identity_and_exclude_current_irrelevant(

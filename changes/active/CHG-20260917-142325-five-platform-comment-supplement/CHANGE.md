@@ -51,6 +51,7 @@ data_changes:
 - 本变更复用现有 Collection Run、持久 Job、Provider Attempt/Raw、Content Owner、PostgreSQL、Pydantic/OpenAPI/Orval 和声音广场。保持 Canonical 主身份、已存在合法原生 ID、公共请求和既有内容详情兼容。
 - 不进行模糊搜索、跨 API family 隐藏 fallback、终态重试 API、依赖升级或额外任务系统。真实 Probe 显式限额，不进入普通 CI。
 - 微博 `ttarticle` 仅在唯一精确父 `status_id` 有证据时抓父帖评论；没有映射的样本记 `identity_unavailable`，不把文章 ID 发往帖子评论接口。
+- 用户本轮补充一条显示 1 条评论的长文章，并确认保持“唯一原始父微博评论”语义；该页面数字不能替代 `ttarticle_id → 父 status_id` 的精确映射证据。
 
 # 方案比较与决定
 
@@ -113,7 +114,7 @@ data_changes:
 # 本轮已取得的验证证据（2026-09-17）
 
 - Windows 本地 Python 单元、Contract、API：排除 3 个环境/本地数据相关文件后，`1196 passed, 8 skipped`。排除项分别依赖 POSIX 主机行为、Windows 路径表示和本机既有忽略 Raw 输出；不能将此结果写成完整套件通过。
-- 隔离 PostgreSQL 18.4 容器完成 Alembic `upgrade head` 后，Collection 集成测试 `99 passed`；新增批次补采不因抽样目标提前停止的测试单独通过。测试使用一次性库与 Secret，没有写入用户开发数据库。
+- 隔离 PostgreSQL 18.4 容器完成 Alembic `upgrade head` 后，Collection 集成测试 `99 passed`；新增批次补采不因抽样目标提前停止的测试单独通过。补充五平台 typed ID 从 Content Owner 账本读取的参数化回归后，再次使用一次性容器运行目标文件 `9 passed`。测试没有写入用户开发数据库；临时密码文件和容器已清理。
 - 前端 28 个 Vitest 文件共 `157 passed`，指定 Collection/Voice Plaza 的 Playwright Mock E2E `26 passed`；lint、生产构建和 TypeScript 检查通过。
 - 后端 `mypy backend/src` 检查 346 个源码文件通过；OpenAPI 生成一致性及兼容检查、文档和架构/表 Owner 检查通过。
 - 真实 TikHub 有界 Probe 的请求数、计划费用和局限记录于 Roadmap 实施进度；四个平台固定样本 Detail/一级评论成功，原固定快手样本的 Detail/非空评论闭环未通过。
