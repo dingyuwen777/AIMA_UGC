@@ -233,3 +233,4 @@ data_changes:
 ## 备注
 
 本 Change 的秒级 ID 和一级标题按当前主线治理资产 Contract 迁移，业务需求追溯和实现范围保持不变。
+PR 的 `Requirement-Source` 已同步指向本 Change 的秒级路径，供 GitHub 机器门禁直接校验。
