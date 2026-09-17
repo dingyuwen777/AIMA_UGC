@@ -1,28 +1,29 @@
 name: 技术变更
-description: 提交架构、重构、CI、基础设施、性能、安全、依赖、部署、维护性或工程质量类变更
+description: 提交重构、基础设施、CI、性能、安全、依赖或可维护性等技术变更
 title: "[技术变更] "
 body:
   - type: markdown
     attributes:
       value: |
-        技术变更不等于自动升级为高风险任务；实际 L1/L2/L3 仍由影响边界决定。请写清为什么需要改、当前事实、目标状态、兼容与回滚，以及什么证据可以证明完成。
+        技术变更应说明为什么必须改、当前与目标状态、兼容/迁移和回滚边界。不要用“代码更优雅”替代可验证的工程目标。
 
   - type: checkboxes
     id: duplicate_search
     attributes:
       label: 重复检查
+      description: 创建前先搜索现有 Issue、RFC/ADR、技术债、迁移计划或相关 PR。
       options:
-        - label: 我已搜索现有 Issue / Active Change / 正式技术决策，没有找到范围和验收标准相同的未完成事项。
+        - label: 我已搜索现有事项，没有找到目标状态和验收语义相同的未完成技术变更；如存在相关事项，会在下方事实源中引用。
           required: true
     validations:
       required: true
 
   - type: textarea
-    id: motivation
+    id: motivation_root_cause
     attributes:
-      label: 动机 / 工程约束
-      description: 为什么现在需要做这项技术变更？解决什么实际维护、质量、性能、安全、CI 或交付问题？
-      placeholder: 描述问题、约束和触发背景；没有事实时不要猜测。
+      label: 动机 / 根因
+      description: 当前工程问题、约束或根因是什么？为什么现在需要处理？有证据时附上证据，不要把未经验证的猜测写成事实。
+      placeholder: 描述技术债、性能瓶颈、安全风险、维护成本、CI/部署问题或其他可核实动机。
     validations:
       required: true
 
@@ -30,8 +31,8 @@ body:
     id: current_state
     attributes:
       label: 当前状态
-      description: 当前仓库或运行行为是什么？引用可验证代码、配置、CI、日志或测量结果。
-      placeholder: 当前实现 / Workflow / 配置实际……
+      description: 当前架构、实现、流程或配置真实是什么样？有哪些已知限制？
+      placeholder: 用当前代码、配置、指标、流程或失败证据描述现状。
     validations:
       required: true
 
@@ -39,8 +40,8 @@ body:
     id: target_state
     attributes:
       label: 目标状态
-      description: 合并后工程或系统应达到什么可观察状态？
-      placeholder: 完成后，应能够……
+      description: 变更完成后，系统在结构、行为、性能、运维或安全方面应达到什么可观察状态？
+      placeholder: 描述目标边界和可验证结果，不必预设所有实现细节。
     validations:
       required: true
 
@@ -48,7 +49,7 @@ body:
     id: scope
     attributes:
       label: 范围
-      description: 本次明确修改哪些模块、工具链、Workflow、基础设施或工程能力？
+      description: 本次允许修改哪些模块、依赖、配置、流程或接口？
       placeholder: |
         - 包含……
         - 包含……
@@ -59,9 +60,9 @@ body:
     id: non_goals
     attributes:
       label: 非目标
-      description: 明确本次不解决什么；没有时写“无”。
+      description: 本次明确不处理什么，避免借技术变更扩大成无边界重构。没有时写“无”。
       placeholder: |
-        - 不包含……
+        - 不迁移……
         - 不改变……
     validations:
       required: true
@@ -70,8 +71,12 @@ body:
     id: compatibility_migration
     attributes:
       label: 兼容与迁移
-      description: 是否影响 API、Contract、Schema、数据、配置、依赖、部署、开发流程或已有 PR？不适用时写“无 / 不适用（说明原因）”。
-      placeholder: 描述兼容边界、迁移要求及受影响对象。
+      description: 说明 public API、Schema、数据、配置、依赖、运行环境、部署和回滚兼容影响。完全无影响时写“无，并说明检查范围”。
+      placeholder: |
+        兼容影响：
+        数据 / Schema：
+        配置 / 部署：
+        迁移步骤：
     validations:
       required: true
 
@@ -79,11 +84,12 @@ body:
     id: risks_rollback
     attributes:
       label: 风险与回滚
-      description: 最可能出错在哪里？失败后如何安全恢复？没有特殊风险时也说明依据。
+      description: 哪些失败模式最重要？如何检测？如果上线或迁移失败，怎样恢复到安全状态？
       placeholder: |
-        - 风险：……
-        - 控制：……
-        - 回滚：……
+        主要风险：
+        监测方式：
+        回滚触发：
+        回滚步骤：
     validations:
       required: true
 
@@ -116,10 +122,10 @@ body:
     id: upstream_sources
     attributes:
       label: 上游事实源 / 相关资料
-      description: 引用定义约束或目标的 Issue、Spec、Blueprint、ADR、Contract、Schema、监控数据、外部官方资料等。没有更强来源时写“无”。
+      description: 引用 RFC、ADR、Spec、架构文档、Contract、Schema/Migration、事故记录、性能数据或相关 Issue。没有更强来源时明确写“无”；待确认时说明缺口。
       placeholder: |
-        - Related Issue：……
-        - Blueprint / Spec：……
-        - 官方资料 / 测量证据：……
+        - RFC / ADR：……
+        - Contract / Schema：……
+        - 指标 / 事故 / Related Issue：……
     validations:
       required: true
