@@ -15,9 +15,7 @@ def test_current_issue_forms_are_generated_projection() -> None:
     target_dir = ROOT / ".github/ISSUE_TEMPLATE"
     sources = tuple(sorted(source_dir.glob("*.yml")))
     assert sources
-    assert {path.name for path in sources} == {
-        path.name for path in target_dir.glob("*.yml")
-    }
+    assert {path.name for path in sources} == {path.name for path in target_dir.glob("*.yml")}
     for source in sources:
         assert (target_dir / source.name).read_bytes() == source.read_bytes()
 
