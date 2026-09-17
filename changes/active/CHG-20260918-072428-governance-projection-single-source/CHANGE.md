@@ -9,11 +9,22 @@ branch: refactor/governance-projection-single-source
 created: 2026-09-18
 updated: 2026-09-18
 completion_gate: required
-depends_on: Agent_Skills #256 / PR #257
-affected_areas: 项目治理、CI、Requirement Source、Change Carrier adapter
-affected_paths: .agents/skills/coding/；.github/ISSUE_TEMPLATE/；scripts/quality/；tests/unit/
-contracts: Agent_Skills governance machine Contract；AIMA Requirement Source / Change Carrier
-data_changes: 不适用
+depends_on: []
+affected_areas:
+  - 项目治理
+  - CI
+  - Requirement Source
+  - Change Carrier adapter
+affected_paths:
+  - .agents/skills/coding
+  - .github/ISSUE_TEMPLATE
+  - scripts/quality
+  - tests/unit
+contracts:
+  - Agent_Skills governance machine Contract
+  - AIMA Requirement Source
+  - AIMA Change Carrier
+data_changes: []
 ---
 
 # 变更摘要
