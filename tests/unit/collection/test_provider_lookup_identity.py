@@ -218,41 +218,29 @@ def test_excel_weibo_permalink_converts_base62_bid_to_numeric_status_id() -> Non
     assert identity.alternate_ids["status_id"] == "4331051486294436"
 
 
-def test_weibo_ttarticle_keeps_article_locator_separate_from_comment_target() -> None:
-    """长文章 ID 不等于可评论的父微博 status_id。"""
+def test_weibo_ttarticle_is_not_supported_comment_target() -> None:
+    """不补采长文章评论，文章 ID 不能变成微博帖子 ID。"""
     identity = resolve_content_identity(
         platform="weibo",
         canonical_url="https://Card.Weibo.Com/ttarticle/p/show?id=230940123456789#comments",
         source_article_id=None,
     )
     assert identity.external_content_id.startswith("url_sha256:")
-    assert identity.alternate_ids == {"ttarticle_id": "230940123456789"}
+    assert identity.alternate_ids == {}
+    with pytest.raises(ValueError, match="identity_unavailable"):
+        build_comments_call(
+            platform="weibo",
+            external_content_id=identity.external_content_id,
+            alternate_ids=identity.alternate_ids,
+        )
 
 
-@pytest.mark.parametrize(
-    "url",
-    (
-        "https://weibo.com.evil.test/ttarticle/p/show?id=230940123456789",
-        "https://weibo.com/ttarticle/p/show/extra?id=230940123456789",
-        "https://weibo.com/ttarticle/p/show?id=230940123456789&id=230940000000001",
-        "https://weibo.com/ttarticle/p/show?id=",
-        "https://weibo.com/ttarticle/p/show?id=abc",
-    ),
-)
-def test_ttarticle_locator_requires_exact_host_path_and_unique_numeric_id(url: str) -> None:
-    """伪装或歧义链接不得产生可用文章定位身份。"""
-    identity = resolve_content_identity(
-        platform="weibo", canonical_url=url, source_article_id="SOURCE-001"
-    )
-    assert "ttarticle_id" not in identity.alternate_ids
-
-
-def test_ttarticle_url_with_userinfo_is_rejected() -> None:
+def test_weibo_url_with_userinfo_is_rejected() -> None:
     """URL 凭据不得伪装成微博 host。"""
     with pytest.raises(ExcelImportRowError, match="用户凭据"):
         resolve_content_identity(
             platform="weibo",
-            canonical_url="https://weibo.com@evil.test/ttarticle/p/show?id=230940123456789",
+            canonical_url="https://weibo.com@evil.test/status/5191839277071122",
             source_article_id="SOURCE-001",
         )
 

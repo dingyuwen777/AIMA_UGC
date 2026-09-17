@@ -43,15 +43,15 @@ data_changes:
 
 # 变更摘要
 
-完成 Issue #526 与 `docs/roadmap/04_五平台评论补采产品化实施方案.md` 的正式五平台补采闭环。现有原生 ID 继续走正式 TikHub Operation；只有分享链接、来源哈希或微博长文章 ID 的内容先取得精确评论目标身份。解析失败或无映射时明确保留原因，绝不以任意内容 ID 构造评论请求。
+完成 Issue #526 与 `docs/roadmap/04_五平台评论补采产品化实施方案.md` 的正式五平台补采闭环。现有原生 ID 继续走正式 TikHub Operation；受支持的分享链接先取得精确评论目标身份。微博 `ttarticle` 长文章按用户最新决定不补采评论。解析失败或无映射时明确保留原因，绝不以任意内容 ID 构造评论请求。
 
 # 当前事实、目标与边界
 
 - 当前 `main` 为 `7f1ca524c1c43fc4e61b8601f5d0e241e5023493`。声音广场评论层级与分页子项已落地；五平台身份解析、Eligibility 诊断、Run Coverage、真实五平台补采验收仍未完成。
 - 本变更复用现有 Collection Run、持久 Job、Provider Attempt/Raw、Content Owner、PostgreSQL、Pydantic/OpenAPI/Orval 和声音广场。保持 Canonical 主身份、已存在合法原生 ID、公共请求和既有内容详情兼容。
 - 不进行模糊搜索、跨 API family 隐藏 fallback、终态重试 API、依赖升级或额外任务系统。真实 Probe 显式限额，不进入普通 CI。
-- 微博 `ttarticle` 的页面评论可按用户最新决定计入产品中的“父帖评论”。实际采集仍须有文章页面评论线程的正式 Operation 与精确归属证据，或有唯一原始父 `status_id` 的精确关联证据；结果必须保留真实来源。没有可验证线程的样本记 `identity_unavailable`，不把文章 ID 发往帖子评论接口。
-- 用户提供的正向样本页面显示 1 条评论，但页面计数不能替代已获取评论。完整文章 ID 及去掉 `230940` 的数字在 TikHub App Detail/Comments 的 4 次限额 Probe 中均返回 HTTP 400；当前正式 Operation 未取得该评论。
+- 用户最新决定：微博 `ttarticle` 长文章不进行评论补采，移除新增的文章 ID 提取逻辑。历史记录即使有 `ttarticle_id` 和 `status_id`，也在评论目标解析及 Batch/Campaign 资格判定中阻断；普通微博帖子维持原能力。
+- 用户提供的正向样本页面显示 1 条评论，但完整文章 ID 及去掉 `230940` 的数字在 TikHub App Detail/Comments 的 4 次限额 Probe 中均返回 HTTP 400；该页面计数不能写成已获取评论。
 
 # 方案比较与决定
 
@@ -65,8 +65,8 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 五平台 URL/分享身份识别并保留 Canonical 主身份 | #526 / AC1；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已补 `ttarticle_id`、host/完整路径/重复参数保护；五平台短链精确解析仍缺 |
-| R2 | 评论请求只接受平台白名单 typed ID，非法定位符零请求 | #526 / AC2；docs/roadmap/04_五平台评论补采产品化实施方案.md | satisfied | `comment_target.py`、TikHub Runtime、五平台单元回归；来源哈希和文章 ID 不再回退发请求 |
+| R1 | 五平台 URL/分享身份识别并保留 Canonical 主身份；`ttarticle` 长文章排除 | #526 / AC1；用户最新决定；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已补 host/完整路径/重复参数保护并移除新增的 `ttarticle_id` 提取；五平台短链精确解析仍缺 |
+| R2 | 评论请求只接受平台白名单 typed ID，非法定位符和长文章零请求 | #526 / AC2；用户最新决定；docs/roadmap/04_五平台评论补采产品化实施方案.md | satisfied | `comment_target.py`、TikHub Runtime、五平台单元回归；历史 `ttarticle_id` 连同 `status_id` 一并拒绝，来源哈希和文章 ID 不再回退发请求 |
 | R3 | 精确解析有独立 Attempt/Raw、持久结果与明确失败语义 | #526 / AC3；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 当前只对缺少精确映射的来源 fail closed；独立解析 Operation/Attempt/Raw 尚未实现 |
 | R4 | 五平台评论与回复分页耗尽、可恢复且 Coverage 真实 | #526 / AC4；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 批次补采已去除抽样停机并修复回复短缺，隔离 PostgreSQL 回归通过；五平台分页/恢复矩阵未完成 |
 | R5 | Eligibility 与 Run/Scope 可解释直接、待解析、阻塞及部分结果 | #526 / AC5；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已增加诊断、混合来源失败 Scope、持久评论 Coverage 与页面平台汇总；回复级数量/完整阶段验收仍缺 |
@@ -74,6 +74,7 @@ data_changes:
 | R7 | 调试入口复用生产实现，失败样本受控重放或明确不可获取 | #526 / AC7；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | `imports_test` 已复用身份解析；staging 行级受控重放及对账未完成 |
 | R8 | 五平台多层测试、真实 Provider Probe、全栈和费用台账 | #526 / AC8；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 四平台固定公开样本 Detail/一级评论通过；“爱玛”快手候选的非空根评论与回复 Mapper 通过，但用户提供的另一快手链接 Detail 空、五平台多页和真实全栈缺证据 |
 | R9 | 文档迁移、Completion Audit、Review、PR/main CI 与 Roadmap 退出 | #526 / AC9；docs/roadmap/README.md | not_satisfied | 合并前后按当前门禁验证 |
+| R10 | 微博 `ttarticle` 长文章不补采评论；删除新增的文章 ID 提取，历史定位字段即使伴随 `status_id` 也零请求 | 用户 2026-09-17 最新决定 | satisfied | `imports/identity.py`、`comment_target.py`、`collection_targets.py`；目标单元/离线入口 48 passed，隔离 PostgreSQL Eligibility 10 passed |
 
 # Validation Matrix
 
@@ -117,6 +118,7 @@ data_changes:
 - 隔离 PostgreSQL 18.4 容器完成 Alembic `upgrade head` 后，Collection 集成测试 `99 passed`；新增批次补采不因抽样目标提前停止的测试单独通过。补充五平台 typed ID 从 Content Owner 账本读取的参数化回归后，再次使用一次性容器运行目标文件 `9 passed`。测试没有写入用户开发数据库；临时密码文件和容器已清理。
 - 前端 28 个 Vitest 文件共 `157 passed`，指定 Collection/Voice Plaza 的 Playwright Mock E2E `26 passed`；lint、生产构建和 TypeScript 检查通过。
 - 后端 `mypy backend/src` 检查 346 个源码文件通过；OpenAPI 生成一致性及兼容检查、文档和架构/表 Owner 检查通过。
+- 最新长文章排除决策的 48 个目标单元/离线入口测试通过；隔离 PostgreSQL 18.4 完成 Alembic `upgrade head` 后，Eligibility 目标集 10 passed，证实历史 `ttarticle_id` 与 `status_id` 并存时也不会成为可补采 Target。一次性容器与临时密码文件已清理。
 - 真实 TikHub 有界 Probe 的请求数、计划费用和局限记录于 Roadmap 实施进度；四个平台固定样本 Detail/一级评论成功，原固定快手样本的 Detail/非空评论闭环未通过。
 - 后续有界 Probe 找到一个可见的“爱玛”快手候选，Detail、30 条根评论和 10 条回复的结构/归属通过生产 Mapper；用户给的另一快手链接仍返回空 `data.photos`。微博标准帖 Detail/评论成功，但其 Detail 不含用户另给长文章 ID，不能证明长文章的父帖映射。长文章正向样本的 4 次 App 请求均为 HTTP 400；不能据页面显示的 1 条评论断言已补采。完整请求/费用与边界见 Roadmap 和 TikHub 台账。
 - 这些验证只覆盖当前部分实现。R1、R3–R9 尚未满足，严格 Ready Check、PR current-head CI、两阶段 Review 和 main fresh CI 尚未执行；不得合并。

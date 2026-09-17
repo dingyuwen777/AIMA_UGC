@@ -429,6 +429,61 @@ def test_batch_eligibility_diagnostics_keep_unresolved_platform_visible(runtime)
     }
 
 
+def test_legacy_weibo_ttarticle_identity_is_blocked_even_with_status_id(runtime) -> None:  # type: ignore[no-untyped-def]
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    ordinary_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="5191839277071122",
+        lookup_id=True,
+        lookup_id_type="status_id",
+        job_id=job_id,
+        irrelevant=False,
+        platform="weibo",
+    )
+    article_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="5337665377009857",
+        lookup_id=True,
+        lookup_id_type="status_id",
+        job_id=job_id,
+        irrelevant=False,
+        platform="weibo",
+    )
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            insert(content_external_ids_table).values(
+                content_id=article_id,
+                id_type="ttarticle_id",
+                external_id="2309405337665377009857",
+                provider_attempt_id=attempt_id,
+                raw_artifact_id=artifact_id,
+                observed_at=datetime.now(UTC),
+            )
+        )
+
+    with runtime.database.new_session() as session:
+        with session.begin():
+            reader = PostgresCollectionTargetReader(
+                session, analysis_identity=_CURRENT_ANALYSIS_IDENTITY
+            )
+            targets = reader.list_batch_targets(batch_id=batch_id, platforms=("weibo",))
+            diagnostics = reader.list_batch_diagnostics(batch_id=batch_id, platforms=("weibo",))
+            blocked_reason = reader.get_batch_unavailable_reason(
+                batch_id=batch_id, content_id=article_id
+            )
+
+    assert {target.content_id for target in targets} == {ordinary_id}
+    assert len(diagnostics) == 1
+    assert diagnostics[0].direct_target_count == 1
+    assert diagnostics[0].blocked_count == 1
+    assert diagnostics[0].block_reasons == {"identity_unavailable": 1}
+    assert blocked_reason == "identity_unavailable"
+
+
 def test_typed_lookup_that_does_not_match_stable_content_identity_is_eligible(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]

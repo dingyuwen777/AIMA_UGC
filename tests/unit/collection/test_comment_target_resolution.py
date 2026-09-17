@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.collection_targets import _lookup_identity
 from aima_ugc.adapters.providers.tikhub.runtime import (
     build_comments_call,
     build_sub_comments_call,
@@ -14,7 +15,7 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     (
         ("xiaohongshu", "url_sha256:abc", {"share_text": "https://xhslink.com/abc"}),
         ("douyin", "SOURCE-001", {"douyin_share_url": "https://v.douyin.com/abc"}),
-        ("weibo", "url_sha256:abc", {"ttarticle_id": "230940123456789"}),
+        ("weibo", "230940123456789", {}),
         ("bilibili", "SOURCE-001", {"bilibili_share_url": "https://b23.tv/abc"}),
         ("kuaishou", "SOURCE-001", {"kuaishou_share_url": "https://v.kuaishou.com/abc"}),
     ),
@@ -68,3 +69,26 @@ def test_platform_mismatched_typed_id_is_rejected() -> None:
             external_content_id="7298145681699622182",
             alternate_ids={"status_id": "7298145681699622182"},
         )
+
+
+def test_legacy_ttarticle_locator_blocks_even_with_status_id() -> None:
+    """旧数据带文章定位字段时也不能请求帖子评论。"""
+    with pytest.raises(ValueError, match="identity_unavailable"):
+        build_comments_call(
+            platform="weibo",
+            external_content_id="SOURCE-001",
+            alternate_ids={"ttarticle_id": "230940123456789", "status_id": "5191839277071122"},
+        )
+
+    assert (
+        _lookup_identity(
+            platform="weibo",
+            external_content_id="5191839277071122",
+            alternate_ids={
+                "ttarticle_id": "230940123456789",
+                "status_id": "5191839277071122",
+            },
+            has_tikhub_source=True,
+        )
+        is None
+    )

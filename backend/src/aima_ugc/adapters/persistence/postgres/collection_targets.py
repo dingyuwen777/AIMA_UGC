@@ -481,6 +481,10 @@ def _lookup_identity(
     ``alternate_ids`` 传入 Detail/Comments/SubComments，Mapper 再把结果挂回稳定 Content。
     """
 
+    # 曾写入的文章定位身份必须优先于 TikHub 历史内容 ID 回退判定。
+    if platform == "weibo" and alternate_ids.get("ttarticle_id"):
+        return None
+
     resolution = resolve_comment_target(
         platform=platform,
         external_content_id=external_content_id,

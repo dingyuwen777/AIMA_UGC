@@ -204,12 +204,6 @@ def _provider_lookup_ids(
         and parts.path.casefold().startswith("/tv/show/")
     ):
         return {"weibo_video_url": normalized_url}
-    if platform == "weibo" and _host_matches(hostname, ("weibo.com", "weibo.cn")):
-        # 长文章与微博帖子是不同对象；这里只保存定位 ID，不把它当 status_id。
-        if parts.path.casefold() == "/ttarticle/p/show":
-            article_ids = parse_qs(parts.query, keep_blank_values=True).get("id", ())
-            if len(article_ids) == 1 and article_ids[0].isascii() and article_ids[0].isdecimal():
-                return {"ttarticle_id": article_ids[0]}
     return {}
 
 

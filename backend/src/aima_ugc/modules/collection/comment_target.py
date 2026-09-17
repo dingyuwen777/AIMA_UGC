@@ -20,7 +20,7 @@ _LOOKUP_ID_PRIORITY: dict[PlatformName, tuple[str, ...]] = {
 _LOCATION_ID_TYPES: dict[PlatformName, tuple[str, ...]] = {
     "xiaohongshu": ("share_text",),
     "douyin": ("douyin_share_url",),
-    "weibo": ("ttarticle_id", "weibo_video_url"),
+    "weibo": ("weibo_video_url",),
     "bilibili": ("bilibili_share_url",),
     "kuaishou": ("kuaishou_share_url",),
 }
@@ -51,6 +51,14 @@ def resolve_comment_target(
     """仅从该平台允许的 typed ID 解析评论参数，不推断主身份的来源。"""
 
     ids = alternate_ids or {}
+    # 历史数据可能已带有该定位字段；长文章不进入当前 TikHub 帖子评论接口。
+    if platform == "weibo" and ids.get("ttarticle_id"):
+        return CommentTargetResolution(
+            state="unavailable",
+            canonical_external_content_id=external_content_id,
+            platform=platform,
+            failure_code="identity_unavailable",
+        )
     # BV/av 前缀本身就是 B站原生身份；旧 Canonical 行没有 typed 别名时仍可确定性识别。
     if platform == "bilibili" and not ids:
         if _BV_ID.fullmatch(external_content_id):
