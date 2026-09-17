@@ -29,26 +29,26 @@ _HOST_SUFFIXES = {
 }
 _NATIVE_PATH_PATTERNS = {
     "xiaohongshu": (
-        re.compile(r"^/explore/([^/?#]+)", re.IGNORECASE),
-        re.compile(r"^/discovery/item/([^/?#]+)", re.IGNORECASE),
+        re.compile(r"^/explore/([^/?#]+)/?$", re.IGNORECASE),
+        re.compile(r"^/discovery/item/([^/?#]+)/?$", re.IGNORECASE),
     ),
     "douyin": (
-        re.compile(r"^/(?:video|note)/(\d+)", re.IGNORECASE),
-        re.compile(r"^/share/video/(\d+)", re.IGNORECASE),
+        re.compile(r"^/(?:video|note)/([0-9]+)/?$", re.IGNORECASE),
+        re.compile(r"^/share/video/([0-9]+)/?$", re.IGNORECASE),
     ),
     "weibo": (
-        re.compile(r"^/(?:status|detail)/([A-Za-z0-9]+)", re.IGNORECASE),
-        re.compile(r"^/\d+/([A-Za-z0-9]+)", re.IGNORECASE),
+        re.compile(r"^/(?:status|detail)/([A-Za-z0-9]+)/?$", re.IGNORECASE),
+        re.compile(r"^/[0-9]+/([A-Za-z0-9]+)/?$", re.IGNORECASE),
     ),
     "bilibili": (
-        re.compile(r"^/video/((?:BV[A-Za-z0-9]+)|(?:av\d+))", re.IGNORECASE),
-        re.compile(r"^/opus/(\d+)", re.IGNORECASE),
-        re.compile(r"^/read/(cv\d+)", re.IGNORECASE),
+        re.compile(r"^/video/((?:BV[A-Za-z0-9]+)|(?:av[0-9]+))/?$", re.IGNORECASE),
+        re.compile(r"^/opus/([0-9]+)/?$", re.IGNORECASE),
+        re.compile(r"^/read/(cv[0-9]+)/?$", re.IGNORECASE),
     ),
     "kuaishou": (
-        re.compile(r"^/short-video/([^/?#]+)", re.IGNORECASE),
+        re.compile(r"^/short-video/([^/?#]+)/?$", re.IGNORECASE),
         # 用户上传 Excel 中存在 live.kuaishou.com/u/{user}/{photo_id} 作品链接。
-        re.compile(r"^/u/[^/?#]+/([^/?#]+)", re.IGNORECASE),
+        re.compile(r"^/u/[^/?#]+/([^/?#]+)/?$", re.IGNORECASE),
     ),
 }
 _WEIBO_BASE62_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -142,10 +142,10 @@ def _native_content_id(*, platform: str, normalized_url: str | None) -> str | No
 def _native_query_content_id(*, platform: str, parts: SplitResult) -> str | None:
     """只解析平台已知、可直接证明为 native ID 的 Query 参数。"""
 
-    query = parse_qs(parts.query, keep_blank_values=False)
+    query = parse_qs(parts.query, keep_blank_values=True)
     if platform == "douyin":
         values = query.get("modal_id") or ()
-        if values and values[0].isdigit():
+        if len(values) == 1 and values[0].isascii() and values[0].isdecimal():
             return values[0]
     return None
 

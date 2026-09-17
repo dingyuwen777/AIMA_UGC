@@ -64,14 +64,14 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 五平台 URL/分享身份识别并保留 Canonical 主身份 | #526 / AC1；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已补 `ttarticle_id` 和 host/路径保护；五平台短链精确解析仍缺 |
+| R1 | 五平台 URL/分享身份识别并保留 Canonical 主身份 | #526 / AC1；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已补 `ttarticle_id`、host/完整路径/重复参数保护；五平台短链精确解析仍缺 |
 | R2 | 评论请求只接受平台白名单 typed ID，非法定位符零请求 | #526 / AC2；docs/roadmap/04_五平台评论补采产品化实施方案.md | satisfied | `comment_target.py`、TikHub Runtime、五平台单元回归；来源哈希和文章 ID 不再回退发请求 |
 | R3 | 精确解析有独立 Attempt/Raw、持久结果与明确失败语义 | #526 / AC3；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 当前只对缺少精确映射的来源 fail closed；独立解析 Operation/Attempt/Raw 尚未实现 |
 | R4 | 五平台评论与回复分页耗尽、可恢复且 Coverage 真实 | #526 / AC4；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 批次补采已去除抽样停机并修复回复短缺，隔离 PostgreSQL 回归通过；五平台分页/恢复矩阵未完成 |
 | R5 | Eligibility 与 Run/Scope 可解释直接、待解析、阻塞及部分结果 | #526 / AC5；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已增加诊断、混合来源失败 Scope、持久评论 Coverage 与页面平台汇总；回复级数量/完整阶段验收仍缺 |
 | R6 | 网页创建、跟踪、恢复、结果跳转及数据库评论分页闭环 | #526 / AC6；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已接线结果跳转与覆盖展示；既有声音广场分页可复用，逐平台全栈尚未证明 |
 | R7 | 调试入口复用生产实现，失败样本受控重放或明确不可获取 | #526 / AC7；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | `imports_test` 已复用身份解析；staging 行级受控重放及对账未完成 |
-| R8 | 五平台多层测试、真实 Provider Probe、全栈和费用台账 | #526 / AC8；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 四平台固定公开样本 Detail/一级评论通过；快手当前 Probe 失败，回复、多页和真实全栈缺证据 |
+| R8 | 五平台多层测试、真实 Provider Probe、全栈和费用台账 | #526 / AC8；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 四平台固定公开样本 Detail/一级评论通过；“爱玛”快手候选的非空根评论与回复 Mapper 通过，但用户提供的另一快手链接 Detail 空、五平台多页和真实全栈缺证据 |
 | R9 | 文档迁移、Completion Audit、Review、PR/main CI 与 Roadmap 退出 | #526 / AC9；docs/roadmap/README.md | not_satisfied | 合并前后按当前门禁验证 |
 
 # Validation Matrix
@@ -116,7 +116,8 @@ data_changes:
 - 隔离 PostgreSQL 18.4 容器完成 Alembic `upgrade head` 后，Collection 集成测试 `99 passed`；新增批次补采不因抽样目标提前停止的测试单独通过。测试使用一次性库与 Secret，没有写入用户开发数据库。
 - 前端 28 个 Vitest 文件共 `157 passed`，指定 Collection/Voice Plaza 的 Playwright Mock E2E `26 passed`；lint、生产构建和 TypeScript 检查通过。
 - 后端 `mypy backend/src` 检查 346 个源码文件通过；OpenAPI 生成一致性及兼容检查、文档和架构/表 Owner 检查通过。
-- 真实 TikHub 有界 Probe 的请求数、计划费用和局限记录于 Roadmap 实施进度；四个平台固定样本 Detail/一级评论成功，快手尚无非空评论与 Detail 闭环证据。
+- 真实 TikHub 有界 Probe 的请求数、计划费用和局限记录于 Roadmap 实施进度；四个平台固定样本 Detail/一级评论成功，原固定快手样本的 Detail/非空评论闭环未通过。
+- 后续有界 Probe 找到一个可见的“爱玛”快手候选，Detail、30 条根评论和 10 条回复的结构/归属通过生产 Mapper；用户给的另一快手链接仍返回空 `data.photos`。微博标准帖 Detail/评论成功，但其 Detail 不含用户另给长文章 ID，不能证明长文章的父帖映射。完整请求/费用与边界见 Roadmap 和 TikHub 台账。
 - 这些验证只覆盖当前部分实现。R1、R3–R9 尚未满足，严格 Ready Check、PR current-head CI、两阶段 Review 和 main fresh CI 尚未执行；不得合并。
 
 # 交付状态

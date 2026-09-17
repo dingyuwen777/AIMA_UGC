@@ -154,6 +154,40 @@ def test_excel_douyin_modal_id_is_typed_aweme_lookup() -> None:
     assert identity.alternate_ids["aweme_id"] == "7531234567890123456"
 
 
+@pytest.mark.parametrize(
+    "url",
+    (
+        "https://www.douyin.com/search/aima?modal_id=7531234567890123456&modal_id=7531234567890123457",
+        "https://www.douyin.com/search/aima?modal_id=&modal_id=7531234567890123456",
+        "https://www.douyin.com/search/aima?modal_id=%EF%BC%91%EF%BC%92%EF%BC%93",
+    ),
+)
+def test_douyin_modal_id_rejects_ambiguous_or_non_ascii_query(url: str) -> None:
+    identity = resolve_content_identity(
+        platform="douyin", canonical_url=url, source_article_id="SOURCE-001"
+    )
+    assert "aweme_id" not in identity.alternate_ids
+
+
+@pytest.mark.parametrize(
+    ("platform", "url", "id_type"),
+    (
+        ("xiaohongshu", "https://www.xiaohongshu.com/explore/note-1/other", "note_id"),
+        ("douyin", "https://www.douyin.com/video/123abc", "aweme_id"),
+        ("weibo", "https://weibo.com/detail/123/other", "status_id"),
+        ("bilibili", "https://www.bilibili.com/video/BV1xx411c7mD/other", "bv_id"),
+        ("kuaishou", "https://www.kuaishou.com/short-video/photo-1/other", "photo_id"),
+    ),
+)
+def test_native_content_id_requires_complete_known_path(
+    platform: str, url: str, id_type: str
+) -> None:
+    identity = resolve_content_identity(
+        platform=platform, canonical_url=url, source_article_id="SOURCE-001"
+    )
+    assert id_type not in identity.alternate_ids
+
+
 def test_excel_bilibili_urls_normalize_bv_to_tikhub_aid_and_keep_lookup_aliases() -> None:
     bv = resolve_content_identity(
         platform="bilibili",

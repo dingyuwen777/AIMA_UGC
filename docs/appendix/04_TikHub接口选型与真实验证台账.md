@@ -551,4 +551,8 @@ Tests
 
 使用 [`scripts/dev/probe_excel_tikhub_supplement.py`](../../scripts/dev/probe_excel_tikhub_supplement.py) 从固定公开 Excel 链接经过生产 Converter、TikHub Operation/Transport/Extractor/Mapper，只保存非敏感摘要。小红书的 Detail 与一级评论在首次运行通过；另一次选择抖音、微博、B站、快手的运行共 7 次请求、计划费用 0.007 美元，其中前三个平台的 Detail 与一级评论通过，快手 Detail 失败。单独重试快手固定样本 1 次、计划费用 0.001 美元，响应缺少当前 App Detail 提取器需要的非空 `data.photos`，不能据此判定是样本失效、接口结构变化还是访问限制。
 
-随后两次限额“爱玛”快手 Search Probe 各发送 1 次请求、各计划费用 0.010 美元：首次提取到 19 条 Search item，但搜索价格已用尽该次保守费用上限，未发送 Detail；第二次业务响应失败。对固定样本单独发送两次一级评论请求（各计划费用 0.001 美元），HTTP/业务状态以及 `data.rootComments` 列表和游标结构可读取，但列表为空，不能验证非空评论 Mapper。以上仍未验证快手 Detail/非空评论闭环。本轮未发现可证明 `ttarticle_id → 唯一原始父 status_id` 的正式映射 Operation，也没有把短链解析升级为正式 Capability。上述价格是当前仓库 `pricing.toml` 的请求前估算，最终账单未核验；真实回复、多页与失效样本仍待逐平台 Probe。
+随后两次限额“爱玛”快手 Search Probe 各发送 1 次请求、各计划费用 0.010 美元：首次提取到 19 条 Search item，但搜索价格已用尽该次保守费用上限，未发送 Detail；第二次业务响应失败。对固定样本单独发送两次一级评论请求（各计划费用 0.001 美元），HTTP/业务状态以及 `data.rootComments` 列表和游标结构可读取，但列表为空。
+
+用户补充两个公开样本后，本地用生产 Operation/Transport/Mapper 做有界复核。微博标准帖与快手作品各一次 Detail/一级评论，共 4 次请求、计划费用 0.004 美元：微博 Detail 与 1 条评论映射到同一 Content；该快手作品的 Detail 不可提取，一级评论为零。单独再发 1 次快手 Detail、计划费用 0.001 美元，确认 HTTP 和外层业务 `code=200`，但 `data.photos=[]`；不能把空列表修饰为 Mapper 缺陷或完整零评论成功。随后“爱玛”快手 Search/首个候选 Detail/Comments 共 3 次请求、计划费用 0.012 美元，18 条候选中的首个作品 Detail 成功且提取 30 条一级评论；该作品另以 2 次请求、计划费用 0.002 美元验证 30 条根评论与 10 条回复均可由生产 Mapper 映射到同一内容与评论线程。证明当前 App 主链对**一个可见快手作品**具备非空根评论与回复结构能力，不代表其他作品可见、多页已验证或补采 Job 全栈已通过。
+
+用户随后补充的微博 `ttarticle` 链接与上述标准帖子是两个不同身份。对标准帖子再发 1 次 Detail、计划费用 0.001 美元，响应可提取 1 条内容，但不包含所给文章 ID；现有证据不能证明该帖是文章唯一原始父帖，文章“没有评论”也不能替代父帖身份解析。本轮未发现可证明 `ttarticle_id → 唯一原始父 status_id` 的正式映射 Operation，没有把短链解析升级为正式 Capability。上述价格是当前仓库 `pricing.toml` 的请求前估算，最终账单未核验；五平台多页、恢复、短链和真实全栈仍待验证。
