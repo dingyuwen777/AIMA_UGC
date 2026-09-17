@@ -8,6 +8,7 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     build_comments_call,
     build_sub_comments_call,
 )
+from aima_ugc.modules.collection.comment_target import identity_block_reason
 
 
 @pytest.mark.parametrize(
@@ -91,4 +92,14 @@ def test_legacy_ttarticle_locator_blocks_even_with_status_id() -> None:
             has_tikhub_source=True,
         )
         is None
+    )
+    assert (
+        identity_block_reason(
+            "weibo",
+            {
+                "ttarticle_id": "230940123456789",
+                "weibo_video_url": "https://weibo.com/tv/show/123",
+            },
+        )
+        == "identity_unavailable"
     )

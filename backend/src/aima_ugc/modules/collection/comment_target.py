@@ -110,6 +110,8 @@ def _valid_lookup_id(id_type: str, value: str) -> bool:
 def identity_block_reason(platform: PlatformName, alternate_ids: dict[str, str]) -> str:
     """有定位身份但缺少精确映射时，与完全缺失身份使用不同原因。"""
 
+    if platform == "weibo" and alternate_ids.get("ttarticle_id"):
+        return "identity_unavailable"
     return (
         "exact_resolution_unavailable"
         if any(alternate_ids.get(id_type) for id_type in _LOCATION_ID_TYPES[platform])
