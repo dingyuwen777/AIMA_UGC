@@ -101,4 +101,5 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
    - frontend lint/typecheck/unit/build success；
    - `test:e2e -- e2e/admin-configuration-figma.spec.ts` success。
 4. Figma：正式 source `qmZEFvPrB8u9JX5fyqc93S / 3957:2` 的新增品牌 `7511:11637`、新增车型 `7511:11276` 完成当前 Design Context 与截图复核；Plugin 全页文本扫描只发现 DEV 规格中的两处 code 说明，且均明确“服务端创建时生成、创建请求不接收 code、响应仍返回 code”。
-5. 正式 PR required CI 和 post-merge main CI 不提前冒充；分别在 Ready/merge 后执行并回填最终证据。
+5. PR #525 已使用机器门禁要求的独立行 `Requirement-Source: #522` 绑定真实 Requirement Source；本提交用于触发 `synchronize` 完整 CI，不使用 metadata-only 结果替代代码验证。
+6. 正式 PR required CI 和 post-merge main CI 不提前冒充；分别在当前 synchronize/merge 后执行并回填最终证据。
