@@ -148,3 +148,5 @@ PR body edited 与同分支 push 曾触发 concurrency 取消，因此 final hea
 ## 备注
 
 AIMA 根 Issue Forms 物理存在仅为 GitHub UI generated projection；其语义 Owner 仍是 Agent_Skills canonical assets。
+
+CI 并发事实：head `a0b12c657da530b013739516dae51334c0967b6f` 的 synchronize full CI run `35287879772` 在 PR metadata edited run `35287919417` 之后被 concurrency 取消；该结果不作为 Green Evidence。最终候选 head 必须重新取得完整 synchronize CI，再进入 merge。
