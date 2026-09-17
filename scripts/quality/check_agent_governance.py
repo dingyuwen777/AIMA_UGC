@@ -124,6 +124,16 @@ def _issue_field_block(text: str, field_id: str) -> str | None:
     return tail if next_field < 0 else tail[:next_field]
 
 
+def _issue_field_is_required(block: str) -> bool:
+    """确认字段自己的 validations.required 为 true，避免其他控件的 required 计数误补。"""
+    lines = [line.strip() for line in block.splitlines()]
+    try:
+        validations_index = lines.index("validations:")
+    except ValueError:
+        return False
+    return "required: true" in lines[validations_index + 1 :]
+
+
 def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]:
     """检查项目 Issue Form 的专项字段与统一公共 Profile。"""
     if not path.is_file():
@@ -131,10 +141,14 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
     text = _read_text(path)
     errors: list[str] = []
     for field in required_fields:
-        if field not in text:
+        field_id = field.removeprefix("id: ").strip()
+        block = _issue_field_block(text, field_id)
+        if block is None:
             errors.append(f"GOV012 {path.as_posix()}: 缺少必需需求字段 {field}")
-    if text.count("required: true") < len(required_fields):
-        errors.append(f"GOV012 {path.as_posix()}: 必需需求字段未保持 required 约束")
+        elif not _issue_field_is_required(block):
+            errors.append(
+                f"GOV012 {path.as_posix()}: 必需需求字段 {field} 未保持 validations.required=true"
+            )
     profile = ISSUE_FORM_PROFILES.get(path.name)
     if profile is not None:
         chooser_name, title_prefix = profile
