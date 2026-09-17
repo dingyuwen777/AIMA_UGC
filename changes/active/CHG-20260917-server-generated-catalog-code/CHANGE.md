@@ -33,6 +33,7 @@ affected_paths:
   - tests/integration/database/test_brand_vehicle_stage2_repository.py
   - tests/integration/database/test_u1_u5_administration.py
   - tests/integration/stage3_brand_support.py
+  - tests/integration/content/test_stage5_brand_query_export.py
   - docs/guides/02_管理员配置Figma开发基线.md
 contracts:
   - Brand Create HTTP Contract
@@ -60,7 +61,7 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 | R5 | DB `code` 列、唯一约束、既有记录保持不变，无 Migration | #522 / AC5 | satisfied | 本 PR 未修改 `tables.py`、Alembic Migration 或 Repository Schema；只改变 HTTP 输入和创建应用服务，`data_changes: []` |
 | R6 | 管理员新增品牌/车型 UI 不再展示、校验或提交编码 | #522 / AC6 | satisfied | `CatalogConfigurationPanel.vue` 已移除 draft/validation/payload/input code；SSR、unit/build 与 Browser Mock 在 run `35178746591` 全绿；release2 Browser Mock 旧编码断言已同步新语义 |
 | R7 | 正式 Figma source component 与开发规格同步 | #522 / AC7 | satisfied | 正式 `qmZEFvPrB8u9JX5fyqc93S / 3957:2` 新鲜回读：新增品牌 `7511:11637`、新增车型 `7511:11276` 均无编码输入；DEV 规格明确“创建请求不接收 code、响应仍返回 code”，截图已重新获取；设计已正确，无需制造无意义画布差异 |
-| R8 | 相关后端、Contract、前端、E2E 与 required PR CI 通过 | #522 / AC8 | explicitly_deferred | 主 CI 核心层、Runtime 与 Developer Tooling 已多轮验证；run `35181910194` 的 PostgreSQL Integration 仅暴露共享 Stage3 集成 helper 仍通过 public `BrandCreateRequest` 传客户端 code，已更新；必须以当前最终 HEAD 重新全绿后再标 satisfied |
+| R8 | 相关后端、Contract、前端、E2E 与 required PR CI 通过 | #522 / AC8 | explicitly_deferred | run `35182545902` 的核心 CI 与 Real Full-stack 已绿色；PostgreSQL Integration 仅剩 Stage5 查询/导出集成测试仍通过 public Brand/Vehicle Create 传客户端 code，已更新；必须以当前最终 HEAD 重新全绿后再标 satisfied |
 | R9 | 合并后 main required CI 再次通过 | #522 / AC9 | explicitly_deferred | 这是 post-merge fresh-evidence gate；合并完成后必须绑定 merge SHA 重新读取 main workflow 结果，绿色后才关闭 #522 和完成分支清理 |
 
 # Validation Matrix
@@ -69,9 +70,9 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 | --- | --- | --- |
 | 行为 / Unit / Component | required | pre-ready run `35178746591` 绿色；正式 CI 暴露的 unit/contract 历史 fixture 已同步新 Create Contract，原业务断言均保留 |
 | 接口 / Contract | required | Pydantic → OpenAPI → Orval generated drift success；create 无 code、response 有 code、extra forbid；所有已发现 public Create fixture 均按无-code 输入边界更新 |
-| Backend/API/PostgreSQL | required | 生产创建应用服务生成 code；Schema/Migration 无 diff；Stage2/U1-U5 PostgreSQL 集成 fixture 与 Stage3 共享集成 helper 已移除 public Create 的人工 code，同时保留 snapshot、lock、merge、分类、delete 与 Collection 行为断言 |
+| Backend/API/PostgreSQL | required | 生产创建应用服务生成 code；Schema/Migration 无 diff；Stage2/U1-U5、Stage3 与 Stage5 查询/导出集成测试已移除 public Create 的人工 code，同时保留 snapshot、lock、merge、分类、delete、Collection、Query/Export 行为断言 |
 | Browser Mock Acceptance | required | `admin-configuration-figma.spec.ts` 与 release2 管理员配置 Browser Mock 均验证创建弹窗无编码输入且其它真实字段保持可用 |
-| Real Full-stack Golden Path | required | `admin-product-capabilities.spec.ts` 已更新为真实 API/DB 路径与服务器 code 断言；Stage8F manual relevance seed 不再绕过新 Create Contract；正式 PR CI 执行结果是 merge gate |
+| Real Full-stack Golden Path | required | `admin-product-capabilities.spec.ts` 已更新为真实 API/DB 路径与服务器 code 断言；Stage8F manual relevance seed 不再绕过新 Create Contract；run `35182545902` Real Full-stack 全绿，最终仍以当前 HEAD 重跑结果为 merge gate |
 | External Provider Probe | not_applicable | 不改变 TikHub/外部 Provider |
 | Build / Runtime | required | Runtime Acceptance 与 Developer Tooling 已有当前任务绿色证据；正式 required CI 仍需当前最终 HEAD 通过 |
 | Docs / Governance / Other | required | Issue #522 AC1—AC9、本文 Traceability/Completion Audit、管理员配置开发基线均已同步 |
@@ -91,6 +92,7 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 - [x] 更新 Stage8F manual relevance Full-stack seed，使其通过真实无-code `BrandCreateRequest` 创建品牌，不再由测试客户端伪造 code。
 - [x] 更新 Stage2 与 U1—U5 PostgreSQL Integration 历史 fixture，删除 public Brand/Vehicle Create 的人工 code，同时保留原 snapshot、readiness、lock、merge、classification、delete 与 audit 断言。
 - [x] 更新 Stage3 集成测试共享品牌 helper，使 Collection 集成测试通过真实无-code `BrandCreateRequest` 建立品牌事实；Stage4 Repository 级显式内部 code 测试入口保持不变。
+- [x] 更新 Stage5 Brand/Vehicle 查询与冻结导出集成测试中的 3 个 Brand、2 个 Vehicle public Create fixture，删除人工 code，保留五种竞品范围、过滤、分析、导出与冻结版本断言。
 - [ ] PR Ready 后 required CI 全绿并完成独立 Review。
 - [ ] merge 后 main required CI 全绿，再关闭 Requirement Issue 并清理任务分支。
 
@@ -98,7 +100,7 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 
 - [x] upstream_re_read：已重新读取 Issue #522 AC1—AC9、当前 Create/Response Contract、HTTP 创建链、前端表单、generated artifacts、正式 Figma 页面与本轮验证结果；没有继续使用旧会话快照代替当前事实。
 - [x] change_coverage：R1—R7 已有直接实现与新鲜证据；R8/R9 仅是按交付生命周期显式递延的 PR/post-merge CI 门禁，没有隐藏实现缺口。
-- [x] reverse_audit：已从管理员新增品牌/车型动作反查 `CatalogConfigurationPanel` → Orval generated client → FastAPI/Pydantic Create Contract → Bootstrap Application Service → Repository/DB → Response，并继续反查 unit / contract / Browser Mock / PostgreSQL Integration / Full-stack seed / Collection 共享 helper；客户端 code 输入在公开创建链及测试调用者中均被切断，Response/DB code 保留。
+- [x] reverse_audit：已从管理员新增品牌/车型动作反查 `CatalogConfigurationPanel` → Orval generated client → FastAPI/Pydantic Create Contract → Bootstrap Application Service → Repository/DB → Response，并继续反查 unit / contract / Browser Mock / PostgreSQL Integration / Full-stack seed / Collection 共享 helper / Stage5 Query-Export；客户端 code 输入在公开创建链及测试调用者中均被切断，Response/DB code 保留。
 - [x] unresolved_cleared：当前无 `not_satisfied` Requirement；唯一剩余项是 R8 正式 PR CI 与 R9 post-merge main CI，均有明确执行时点且在完成前不会宣称通过或关闭 #522。
 
 # 本轮验证证据
@@ -114,4 +116,5 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 9. 正式 CI run `35180163448`：Requirement Traceability、静态、Contract/API、架构、Wheel、前端 unit/build/Browser Mock 全部 success；Real Full-stack 在启动浏览器前的 `Seed AI irrelevant content for manual review` 阶段发现 `tests/fullstack/seed_stage8f_manual_relevance_review.py` 仍向 `BrandCreateRequest` 传 `code`，已改为无-code 创建。Runtime Acceptance 与 Developer Tooling 同 HEAD 均 success。
 10. 正式 CI run `35181067113`：核心 CI（Requirement Source/Change readiness、docs/secret、generated drift、Python format/lint/mypy、全量 unit/contracts/API、architecture、Wheel、frontend unit/build/Browser Mock）全部 success；Real Full-stack 的 Stage8F seed、真实 API/Worker 启动均 success 并进入浏览器 acceptance；PostgreSQL Integration 运行 79 条时仅 6 条历史 fixture 因仍向 `BrandCreateRequest` / `VehicleModelCreateRequest` 传 `code` 失败，其余 73 条通过。已更新 `test_brand_vehicle_stage2_repository.py` 与 `test_u1_u5_administration.py`，不降低原数据库行为断言。
 11. 正式 CI run `35181910194`：核心 CI 再次全部 success；PostgreSQL Integration 中数据库 79 条与 jobs 13 条均通过，Collection 集成 96 条中仅 `test_production_worker_consumes_scheduler_created_collection_run` 失败，根因是共享 `tests/integration/stage3_brand_support.py` 仍向 public `BrandCreateRequest` 传 `code`；该 helper 已改为无-code 创建，保留 Stage3/Collection 真实行为。
-12. 正式 PR required CI 和 post-merge main CI 不提前冒充；分别在当前最终 HEAD/merge 后执行并回填最终证据。
+12. 正式 CI run `35182545902`：核心 CI、Real Full-stack Golden Path、database 79 条、jobs 13 条、Collection 96 条全部 success；PostgreSQL Integration 仅在 content 集成 62 条中剩 `test_brand_vehicle_filters_share_targets_and_export_frozen_version` 因 3 个 Brand / 2 个 Vehicle fixture 仍传客户端 code 失败，其余 61 条通过。已同步 Stage5 Query/Export fixture，原过滤、分析、导出与冻结事实断言不变。
+13. 正式 PR required CI 和 post-merge main CI 不提前冒充；分别在当前最终 HEAD/merge 后执行并回填最终证据。
