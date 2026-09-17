@@ -344,6 +344,17 @@ export interface AuditEventListResponse {
   total: number;
 }
 
+export interface BodyCreateFeishuReportPublication {
+  current_file: Blob;
+  end_date: string;
+  previous_file: Blob;
+  start_date: string;
+}
+
+export interface BodyCreateFeishuRepresentativeSelection {
+  file: Blob;
+}
+
 export interface BodyCreateImportBatch {
   brand_ids?: string[];
   file: Blob;
@@ -2008,6 +2019,99 @@ export interface ExportColumnCatalogResponse {
   version: number;
 }
 
+export type FeishuPublicationCreatedResponseKind = typeof FeishuPublicationCreatedResponseKind[keyof typeof FeishuPublicationCreatedResponseKind];
+
+
+export const FeishuPublicationCreatedResponseKind = {
+  report: 'report',
+  representative_selection: 'representative_selection',
+} as const;
+
+/**
+ * 管理员发布请求入队后的 202 响应。
+ */
+export interface FeishuPublicationCreatedResponse {
+  job_id: string;
+  kind: FeishuPublicationCreatedResponseKind;
+  status?: 'queued';
+}
+
+export type FeishuPublicationJobResponseKind = typeof FeishuPublicationJobResponseKind[keyof typeof FeishuPublicationJobResponseKind];
+
+
+export const FeishuPublicationJobResponseKind = {
+  report: 'report',
+  representative_selection: 'representative_selection',
+} as const;
+
+export type FeishuPublicationJobResponseStatus = typeof FeishuPublicationJobResponseStatus[keyof typeof FeishuPublicationJobResponseStatus];
+
+
+export const FeishuPublicationJobResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+/**
+ * 报告发布成功后的安全结果；不暴露本地临时路径或 Secret。
+ */
+export interface FeishuReportPublicationResult {
+  /** @minimum 0 */
+  comment_rows: number;
+  /** @minimum 0 */
+  content_rows: number;
+  editable_chart_sheet_url?: string | null;
+  end_date: string;
+  kind?: 'report';
+  /** @minimum 0 */
+  label_rows: number;
+  native_document_url: string;
+  start_date: string;
+}
+
+/**
+ * 代表性筛选多维表发布后的安全结果。
+ */
+export interface FeishuRepresentativeSelectionResult {
+  /** @minimum 0 */
+  created_count: number;
+  kind?: 'representative_selection';
+  target_table_id: string;
+  target_table_name: string;
+  /** @minimum 0 */
+  updated_count: number;
+  verification_errors?: string[];
+  /** @minimum 0 */
+  verified_count: number;
+}
+
+/**
+ * 管理员发布任务查询响应。
+ */
+export interface FeishuPublicationJobResponse {
+  /** @minimum 0 */
+  attempt: number;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  kind: FeishuPublicationJobResponseKind;
+  /** @exclusiveMinimum 0 */
+  max_attempts: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  result?: FeishuReportPublicationResult | FeishuRepresentativeSelectionResult | null;
+  source_filenames?: string[];
+  started_at?: string | null;
+  status: FeishuPublicationJobResponseStatus;
+}
+
 export type ValidationErrorCtx = { [key: string]: unknown };
 
 export interface ValidationError {
@@ -3171,6 +3275,108 @@ export const ListVehicleModelsStatus = {
   deprecated: 'deprecated',
   merged: 'merged',
 } as const;
+
+export const getGetFeishuPublicationJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/v1/admin/feishu-publication-jobs/${jobId}`
+}
+
+/**
+ * @summary Get Feishu Publication Job
+ */
+export const getFeishuPublicationJob = async (jobId: string, options?: RequestInit): Promise<FeishuPublicationJobResponse> => {
+
+  const res = await fetch(getGetFeishuPublicationJobUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: FeishuPublicationJobResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateFeishuReportPublicationUrl = () => {
+
+
+
+
+  return `/api/v1/admin/feishu-report-publications`
+}
+
+/**
+ * 上传本期/上期 Excel 和必填日期范围，异步发布报告到飞书。
+ * @summary Create Feishu Report Publication
+ */
+export const createFeishuReportPublication = async (bodyCreateFeishuReportPublication: BodyCreateFeishuReportPublication, options?: RequestInit): Promise<FeishuPublicationCreatedResponse> => {
+    const formData = new FormData();
+formData.append(`current_file`, bodyCreateFeishuReportPublication.current_file);
+formData.append(`end_date`, bodyCreateFeishuReportPublication.end_date);
+formData.append(`previous_file`, bodyCreateFeishuReportPublication.previous_file);
+formData.append(`start_date`, bodyCreateFeishuReportPublication.start_date);
+
+  const res = await fetch(getCreateFeishuReportPublicationUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: FeishuPublicationCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateFeishuRepresentativeSelectionUrl = () => {
+
+
+
+
+  return `/api/v1/admin/feishu-representative-selections`
+}
+
+/**
+ * 上传已打标 Excel，异步筛选并发布到飞书多维表。
+ * @summary Create Feishu Representative Selection
+ */
+export const createFeishuRepresentativeSelection = async (bodyCreateFeishuRepresentativeSelection: BodyCreateFeishuRepresentativeSelection, options?: RequestInit): Promise<FeishuPublicationCreatedResponse> => {
+    const formData = new FormData();
+formData.append(`file`, bodyCreateFeishuRepresentativeSelection.file);
+
+  const res = await fetch(getCreateFeishuRepresentativeSelectionUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: FeishuPublicationCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
 
 export const getUpdateAnalysisSchemeDraftUrl = (versionId: string,) => {
 
