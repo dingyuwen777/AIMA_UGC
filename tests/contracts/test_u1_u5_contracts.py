@@ -59,19 +59,17 @@ def test_collection_plan_accepts_brand_scope_and_rejects_removed_vehicle_scope()
 
 
 def test_vehicle_model_contract_normalizes_aliases_and_rejects_duplicates() -> None:
-    """车型别名以规范化身份去重，不能在同车型下重复。"""
+    """车型别名以规范化身份去重，创建请求不再暴露内部 code。"""
 
     model = VehicleModelCreateRequest(
-        code=" q7 ",
         display_name=" 爱玛 Q7 ",
         aliases=["Q7", "爱玛Q7"],
     )
-    assert model.code == "Q7"
     assert model.display_name == "爱玛 Q7"
+    assert model.aliases == ("Q7", "爱玛Q7")
 
     with pytest.raises(ValidationError):
         VehicleModelCreateRequest(
-            code="Q7",
             display_name="爱玛 Q7",
             aliases=["Q7", " q7 "],
         )
