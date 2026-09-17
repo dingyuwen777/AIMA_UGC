@@ -62,7 +62,7 @@ class PostgresBrandVehicleHttpService:
             with session.begin():
                 repository = PostgresBrandVehicleRepository(session)
                 brand = repository.create_brand(
-                    code=body.code,
+                    code=f"BRAND_{uuid4().hex.upper()}",
                     display_name=body.display_name,
                     role=body.role,
                     aliases=body.aliases,
