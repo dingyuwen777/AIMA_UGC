@@ -112,9 +112,7 @@ class RepresentativeAdviceService:
             for item in untranslated:
                 candidate = translated.get(item.item_no, "")
                 result[item.item_no] = (
-                    candidate
-                    if _is_chinese_advice(candidate)
-                    else _fallback_chinese_advice(item)
+                    candidate if _is_chinese_advice(candidate) else _fallback_chinese_advice(item)
                 )
         return result
 
@@ -177,9 +175,7 @@ def _fallback_chinese_advice(item: RepresentativeAdviceInput) -> str:
 
 def _compact_labels(value: str) -> str:
     labels: list[str] = []
-    for raw_value in re.split(
-        r"(?:\r?\n|<br\s*/?>|[,，、;；])+", value, flags=re.IGNORECASE
-    ):
+    for raw_value in re.split(r"(?:\r?\n|<br\s*/?>|[,，、;；])+", value, flags=re.IGNORECASE):
         label = _collapse_adjacent_repeated_label(raw_value.strip())
         if label and label not in labels:
             labels.append(label)

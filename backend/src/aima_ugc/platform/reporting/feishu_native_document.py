@@ -14,9 +14,7 @@ _BULLET_RE = re.compile(r"^[-*]\s+(.+)$")
 _NUMBERED_RE = re.compile(r"^\d+[.)]\s+(.+)$")
 _IMAGE_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 _AIMA_COMMENT_RE = re.compile(r"^<!--\s*aima:[a-z0-9_-]+=[a-z0-9_-]+\s*-->$", re.IGNORECASE)
-_AIMA_TABLE_STYLE_RE = re.compile(
-    r"^<!--\s*aima:table-style=([a-z0-9_-]+)\s*-->$", re.IGNORECASE
-)
+_AIMA_TABLE_STYLE_RE = re.compile(r"^<!--\s*aima:table-style=([a-z0-9_-]+)\s*-->$", re.IGNORECASE)
 _AIMA_LAYOUT_RE = re.compile(r"^<!--\s*aima:layout=([a-z0-9_-]+)\s*-->$", re.IGNORECASE)
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$")
 _COMPACT_DAILY_DIMENSIONS_PER_TABLE = 5

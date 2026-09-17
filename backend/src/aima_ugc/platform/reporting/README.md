@@ -18,11 +18,11 @@ platform/reporting/
 
 详细专题说明见：
 
-[`../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md)
+[`docs/appendix/10_Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md)
 
 统一数据 Excel 规则见：
 
-[`../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
+[`docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
 
 ---
 
@@ -30,22 +30,20 @@ platform/reporting/
 
 | 文件 | 当前职责 | 想改什么时先看 |
 | --- | --- | --- |
-| `excel_report.py` | 读取统一 Workbook、筛选日期、统计平台/情感/议题/关键词、构造 Report Context | 统计口径、报告数据来源、日期筛选 |
-| `report_template.md` | Markdown 正文唯一模板 | 标题、章节顺序、说明文字 |
-| `markdown_word.py` | 解析当前支持的 Markdown/展示元数据并驱动 Word | Markdown → DOCX 转换规则 |
-| `visual_docx.py` | A4 纵向页面、Ranking、表格、组合布局、词云等视觉组件 | Word 排版、页面密度、字号/间距 |
-| `chart_spec.py` | 从 Mermaid/报告数据形成 Office Chart 规格 | bar/line/pie 语义、系列分组 |
-| `chart_png.py` | 需要静态位图的确定性视觉资产 | 词云/飞书图表 PNG 生成边界 |
-| `feishu_native_document.py` | 把当前报告 Markdown 投影为顺序化的正文、原生表格、图表和图片块 | 飞书正文/表格/图表的内容位置 |
-| `docx_package.py` | OOXML Chart、关系、内嵌 XLSX、ZIP 包装与结构校验 | Office Chart/OOXML/嵌入工作簿 |
-| `__init__.py` | 对外导出 `generate_excel_report` 等稳定入口 | 调用方入口 |
+| [`backend/src/aima_ugc/platform/reporting/excel_report.py`](excel_report.py) | 读取统一 Workbook、筛选日期、统计平台/情感/议题/关键词、构造 Report Context | 统计口径、报告数据来源、日期筛选 |
+| [`backend/src/aima_ugc/platform/reporting/report_template.md`](report_template.md) | Markdown 正文唯一模板 | 标题、章节顺序、说明文字 |
+| [`backend/src/aima_ugc/platform/reporting/markdown_word.py`](markdown_word.py) | 解析当前支持的 Markdown/展示元数据并驱动 Word | Markdown → DOCX 转换规则 |
+| [`backend/src/aima_ugc/platform/reporting/visual_docx.py`](visual_docx.py) | A4 纵向页面、Ranking、表格、组合布局、词云等视觉组件 | Word 排版、页面密度、字号/间距 |
+| [`backend/src/aima_ugc/platform/reporting/chart_spec.py`](chart_spec.py) | 从 Mermaid/报告数据形成 Office Chart 规格 | bar/line/pie 语义、系列分组 |
+| [`backend/src/aima_ugc/platform/reporting/chart_png.py`](chart_png.py) | 需要静态位图的确定性视觉资产 | 词云/飞书图表 PNG 生成边界 |
+| [`backend/src/aima_ugc/platform/reporting/feishu_native_document.py`](feishu_native_document.py) | 把当前报告 Markdown 投影为顺序化的正文、原生表格、图表和图片块 | 飞书正文/表格/图表的内容位置 |
+| [`backend/src/aima_ugc/platform/reporting/docx_package.py`](docx_package.py) | OOXML Chart、关系、内嵌 XLSX、ZIP 包装与结构校验 | Office Chart/OOXML/嵌入工作簿 |
+| [`backend/src/aima_ugc/platform/reporting/__init__.py`](__init__.py) | 对外导出 `generate_excel_report` 等稳定入口 | 调用方入口 |
 
 人工入口：
 
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py
-backend/src/aima_ugc/adapters/providers/imports_test/test.py
-```
+- [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../adapters/providers/imports_test/generate_report.py)
+- [`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](../../adapters/providers/imports_test/test.py)
 
 如果只是改 Word 视觉，通常不应该修改 Canonical、Content Ingestion、AI Prompt 或 PostgreSQL Schema。
 
@@ -76,7 +74,7 @@ reports/assets/primary_topics_wordcloud.png
 reports/assets/keyword_wordcloud.png
 ```
 
-`report_date_range` 是可选的北京时间自然日闭区间，只限制报告统计；传 `None` 时使用 Excel 全部日期。传入 `previous_input_path` 时必须同时指定本期 `report_date_range`：报告会从上期 Workbook 读取与本期等长、紧邻本期的上一周期，并自动生成 1.3 的结论和“指标 / 本期 / 上期 / 变化情况”表。未传上期输入时，1.3 会明确标识暂无可比数据。`generate_excel_report()` 默认使用本目录的 `report_template.md`；调用方也可显式传入 `template_path=` 覆盖模板。
+`report_date_range` 是可选的北京时间自然日闭区间，只限制报告统计；传 `None` 时使用 Excel 全部日期。传入 `previous_input_path` 时必须同时指定本期 `report_date_range`：报告会从上期 Workbook 读取与本期等长、紧邻本期的上一周期，并自动生成 1.3 的结论和“指标 / 本期 / 上期 / 变化情况”表。未传上期输入时，1.3 会明确标识暂无可比数据。`generate_excel_report()` 默认使用本目录的 [`backend/src/aima_ugc/platform/reporting/report_template.md`](report_template.md)；调用方也可显式传入 `template_path=` 覆盖模板。
 
 该函数：
 
@@ -223,13 +221,9 @@ Word 不维护第二套正文。
 - 章节顺序；
 - 管理摘要措辞；
 
-优先改：
+优先改：[`backend/src/aima_ugc/platform/reporting/report_template.md`](report_template.md)
 
-```text
-report_template.md
-```
-
-而不是在 `visual_docx.py` 再写一套正文字符串。
+而不是在 [`backend/src/aima_ugc/platform/reporting/visual_docx.py`](visual_docx.py) 再写一套正文字符串。
 
 ---
 
@@ -258,17 +252,9 @@ word/embeddings/chartN.xlsx
 - 调整图例；
 - 修改样式/布局。
 
-精确 OOXML 打包实现：
+精确 OOXML 打包实现：[`backend/src/aima_ugc/platform/reporting/docx_package.py`](docx_package.py)
 
-```text
-docx_package.py
-```
-
-图表规格：
-
-```text
-chart_spec.py
-```
+图表规格：[`backend/src/aima_ugc/platform/reporting/chart_spec.py`](chart_spec.py)
 
 未支持的 Mermaid 类型必须直接失败，不能静默丢图。
 
@@ -302,11 +288,7 @@ Top 重点 Ranking
 
 平台分布、情感结构等短表与图表并排；一级、二级议题和关键词采用左侧紧凑 Top Ranking、右侧词云，不显示进度条。正面/负面一级、二级议题不再配套表格，均为单张带数据标签的横向 Office 排名图：类别标签包含排名和占比，柱端显示数量，并从上到下按数量递减。Word 通过反转图表内嵌工作簿中的横向排名行序保持原生类别轴，避免反转坐标轴造成标签错位；因此类别、条形和柱端数值逐行对齐，数值横轴固定在图底部。
 
-这些视觉实现主要在：
-
-```text
-visual_docx.py
-```
+这些视觉实现主要在：[`backend/src/aima_ugc/platform/reporting/visual_docx.py`](visual_docx.py)
 
 ---
 
@@ -388,11 +370,7 @@ docx_package.py
 
 ## 12. `imports_test` 如何复用
 
-人工入口：
-
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/test.py
-```
+人工入口：[`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](../../adapters/providers/imports_test/test.py)
 
 当前 `run_all()` 人工链：
 
@@ -575,7 +553,7 @@ uv run pytest \
    └─ ChartSpec → 高清静态 PNG 图表
 ```
 
-`feishu_native_document.py` 只消费 `report.md`、本地图片资产和已有 `ChartSpec`，也不重新读取 Excel。标记为
+[`backend/src/aima_ugc/platform/reporting/feishu_native_document.py`](feishu_native_document.py) 只消费 `report.md`、本地图片资产和已有 `ChartSpec`，也不重新读取 Excel。标记为
 `table-style=compact-daily` 的三列日期/维度/数量明细会按 Word 相同的首见顺序透视为“日期 × 维度”原生表格；每张表最多五个维度，避免在线文档列过窄。
 飞书文档保持 Markdown 中的章节、表格和图表顺序；Word 的并排版式在飞书中会顺序展示为“表格后接图”，不承诺像素级分页一致。
 

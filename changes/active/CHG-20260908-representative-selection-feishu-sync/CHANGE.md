@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260908-representative-selection-feishu-sync
 title: 代表性正负面内容筛选与飞书多维表同步
 level: L2
-status: completed
+status: ready_for_review
 owner: chatgpt
 branch: feature/BOLL2
 created: 2026-09-08
-updated: 2026-09-09
+updated: 2026-09-17
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -47,19 +47,19 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 只读取一个或多个文件的 `内容` Sheet，并按平台 + 内容ID 跨文件去重 | 用户确认方案 | satisfied | `labeled_content_reader.py`；单文件、跨文件 Reader 测试 |
-| R2 | 只处理抖音和小红书，且只从真实用户发声建立候选池 | 用户确认方案 | satisfied | `build_candidate_pool()`；候选池单元测试；非真实用户不会进入 LLM 筛选 |
-| R3 | 使用已有发声类型和情感标签作为硬筛选条件，不重新打标；指定 Prompt 仅用于组内代表性选择，不执行全量导入打标 | 用户确认方案 | satisfied | `build_candidate_pool()` + `RepresentativePrompt` + 独立筛选入口；全量导入打标流程保持独立 |
-| R4 | 四组结果每组最多 10 条，数量不足不硬凑 | 用户确认方案 | satisfied | 四组独立选择、主题多样性、本地兜底和不足摘要；服务单元测试覆盖 |
-| R5 | 筛选结果保留主题、理由、评分和原始内容字段 | 用户确认方案 | satisfied | `selected_results.jsonl` 与 `_selected_row()` |
-| R6 | 每次写入在同一 Base 内新建按生成时间命名的数据表，旧数据表和旧记录不更新、不删除 | 用户后续确认 | satisfied | `create_table_from_current()` + 新表字段复制 + 新表写入/回读；Mock HTTP 创建表测试 |
-| R7 | 飞书字段动态读取、类型转换、写入前快照和写入后回读核验 | 用户确认方案 | satisfied | `bitable.py` 字段映射、类型转换、快照和字段值回读验证；Mock HTTP 测试 |
-| R8 | Secret 不进入日志或运行结果，默认 Dry Run | 项目 Secret/安全边界 | satisfied | Secret 文件读取复用现有安全边界；入口默认不写飞书；错误输出只保留稳定错误类型 |
-| R9 | 不新增第三方依赖、不新增数据库 Migration 或公共 HTTP API | 已确认实施方案 | satisfied | 仅复用既有 `openpyxl`、`httpx`、Pydantic 和 LLM Adapter；无 Migration/API 变更 |
-| R10 | 运行入口、配置、README 和测试同步 | 已确认实施方案 | satisfied | 独立入口、Settings/env 模板、Analysis/imports_test README、28 个相关测试 |
-| R11 | 已完成 Dry Run 后可只同步已有结果，避免重复调用大模型，并写入新的时间命名数据表 | 用户后续确认 | satisfied | `--write-feishu-from-run`；selected_results JSONL 严格校验；入口测试验证不初始化 LLM |
-| R12 | 支持直接使用飞书 `/base/` 链接中的 app_token，不强制依赖 Wiki Token | 用户后续确认 | satisfied | `AIMA_FEISHU_APP_TOKEN`；Base 直连跳过 Wiki 解析测试；Wiki 模式继续兼容 |
-| R13 | 已打标的多个 Excel 可直接传入代表性筛选入口，不经过 `test.py` 全量重新打标 | 用户后续确认 | satisfied | `--input-xlsx` 可重复传入；跨文件读取测试和入口参数测试 |
+| R1 | 只读取一个或多个文件的 `内容` Sheet，并按平台 + 内容ID 跨文件去重 | user:confirmed-requirements / AC1 | satisfied | `labeled_content_reader.py`；单文件、跨文件 Reader 测试 |
+| R2 | 只处理抖音和小红书，且只从真实用户发声建立候选池 | user:confirmed-requirements / AC2 | satisfied | `build_candidate_pool()`；候选池单元测试；非真实用户不会进入 LLM 筛选 |
+| R3 | 使用已有发声类型和情感标签作为硬筛选条件，不重新打标；指定 Prompt 仅用于组内代表性选择，不执行全量导入打标 | user:confirmed-requirements / AC3 | satisfied | `build_candidate_pool()` + `RepresentativePrompt` + 独立筛选入口；全量导入打标流程保持独立 |
+| R4 | 四组结果每组最多 10 条，数量不足不硬凑 | user:confirmed-requirements / AC4 | satisfied | 四组独立选择、主题多样性、本地兜底和不足摘要；服务单元测试覆盖 |
+| R5 | 筛选结果保留主题、理由、评分和原始内容字段 | user:confirmed-requirements / AC5 | satisfied | `selected_results.jsonl` 与 `_selected_row()` |
+| R6 | 每次写入在同一 Base 内新建按生成时间命名的数据表，旧数据表和旧记录不更新、不删除 | user:follow-up-confirmation / AC6 | satisfied | `create_table_from_current()` + 新表字段复制 + 新表写入/回读；Mock HTTP 创建表测试 |
+| R7 | 飞书字段动态读取、类型转换、写入前快照和写入后回读核验 | user:confirmed-requirements / AC7 | satisfied | `bitable.py` 字段映射、类型转换、快照和字段值回读验证；Mock HTTP 测试 |
+| R8 | Secret 不进入日志或运行结果，默认 Dry Run | user:security-boundary / AC8 | satisfied | Secret 文件读取复用现有安全边界；入口默认不写飞书；错误输出只保留稳定错误类型 |
+| R9 | 不新增第三方依赖、不新增数据库 Migration 或公共 HTTP API | user:confirmed-implementation-plan / AC9 | satisfied | 仅复用既有 `openpyxl`、`httpx`、Pydantic 和 LLM Adapter；无 Migration/API 变更 |
+| R10 | 运行入口、配置、README 和测试同步 | user:confirmed-implementation-plan / AC10 | satisfied | 独立入口、Settings/env 模板、Analysis/imports_test README、28 个相关测试 |
+| R11 | 已完成 Dry Run 后可只同步已有结果，避免重复调用大模型，并写入新的时间命名数据表 | user:follow-up-confirmation / AC11 | satisfied | `--write-feishu-from-run`；selected_results JSONL 严格校验；入口测试验证不初始化 LLM |
+| R12 | 支持直接使用飞书 `/base/` 链接中的 app_token，不强制依赖 Wiki Token | user:follow-up-confirmation / AC12 | satisfied | `AIMA_FEISHU_APP_TOKEN`；Base 直连跳过 Wiki 解析测试；Wiki 模式继续兼容 |
+| R13 | 已打标的多个 Excel 可直接传入代表性筛选入口，不经过 `test.py` 全量重新打标 | user:follow-up-confirmation / AC13 | satisfied | `--input-xlsx` 可重复传入；跨文件读取测试和入口参数测试 |
 
 # Validation Matrix
 

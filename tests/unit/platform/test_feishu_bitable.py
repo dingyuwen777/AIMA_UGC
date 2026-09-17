@@ -135,9 +135,7 @@ def test_create_table_from_current_clones_schema_without_touching_old_records() 
             source_sentiment = next(
                 field for field in table["fields"] if field["field_name"] == "情感"
             )
-            assert source_sentiment["property"] == {
-                "options": [{"name": "正面"}, {"name": "负面"}]
-            }
+            assert source_sentiment["property"] == {"options": [{"name": "正面"}, {"name": "负面"}]}
             return httpx.Response(
                 200,
                 json={"code": 0, "data": {"table_id": "tbl-new"}},
@@ -224,6 +222,7 @@ def test_target_table_schema_uses_content_link_as_idempotency_key() -> None:
     )
     row = _selected_row(selected)
     config = FeishuConfig(app_id="app", app_token="base", table_id="table", max_retries=0)
+
     def respond(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("/tenant_access_token/internal"):

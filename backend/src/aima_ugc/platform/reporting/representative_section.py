@@ -57,13 +57,9 @@ def build_representative_section(
     for platform, sentiment, title in REPRESENTATIVE_GROUP_ORDER:
         sections.extend((f"### 6.{_subsection_number(platform, sentiment)} {title}", ""))
         group_rows = [
-            row
-            for row in rows
-            if row.platform == platform and row.sentiment == sentiment
+            row for row in rows if row.platform == platform and row.sentiment == sentiment
         ]
-        rendered_rows = tuple(
-            _render_row(row, report_root=report_root) for row in group_rows[:10]
-        )
+        rendered_rows = tuple(_render_row(row, report_root=report_root) for row in group_rows[:10])
         if not rendered_rows:
             rendered_rows = (("暂无数据", "", "", "", "", "", ""),)
         sections.append(_markdown_table(REPRESENTATIVE_TABLE_HEADERS, rendered_rows))

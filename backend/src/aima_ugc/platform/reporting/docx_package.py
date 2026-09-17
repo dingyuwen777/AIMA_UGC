@@ -35,14 +35,14 @@ _DCTERMS: Final = "http://purl.org/dc/terms/"
 _XSI: Final = "http://www.w3.org/2001/XMLSchema-instance"
 _CHART_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
 _IMAGE_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
-_HYPERLINK_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+_HYPERLINK_REL: Final = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+)
 _PACKAGE_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
 _CHART_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
 _XLSX_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _LINE_WIDTH_2_25_PT_EMU: Final = "28575"
-_RICH_MARKDOWN_RE = re.compile(
-    r"!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)"
-)
+_RICH_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)")
 
 for prefix, uri in (("w", _W), ("r", _R), ("wp", _WP), ("a", _A), ("c", _C), ("pic", _PIC)):
     ET.register_namespace(prefix, uri)
@@ -301,9 +301,7 @@ class DocxBuilder:
                 height = min(height, 1_300_000)
                 if height < round(width * height_px / width_px):
                     width = round(height * width_px / height_px)
-                self.images.append(
-                    _ImageAsset(image_path, image_alt, width, height)
-                )
+                self.images.append(_ImageAsset(image_path, image_alt, width, height))
                 self.image_count += 1
                 self._add_image_drawing(
                     self.image_count,
@@ -518,7 +516,6 @@ class DocxBuilder:
         except BaseException:
             temp_path.unlink(missing_ok=True)
             raise
-
 
     def _add_cell_margins(
         self, parent: ET.Element, *, top: int, left: int, bottom: int, right: int

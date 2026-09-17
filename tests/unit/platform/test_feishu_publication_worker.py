@@ -141,9 +141,7 @@ def test_representative_worker_delegates_and_maps_retryable_feishu_error(
     monkeypatch.setattr(
         worker_module,
         "publish_representative_selection_to_feishu",
-        lambda **kwargs: (_ for _ in ()).throw(
-            FeishuAPIError("temporary", retryable=True)
-        ),
+        lambda **kwargs: (_ for _ in ()).throw(FeishuAPIError("temporary", retryable=True)),
     )
     retry = executor.execute_representative_selection(
         payload=payload,

@@ -108,10 +108,13 @@ def test_two_handlers_delegate_independent_payloads_and_honor_cancel() -> None:
     assert selection_result.outcome == "succeeded"
     assert executor.report_payload == report_payload
     assert executor.selection_payload == selection_payload
-    assert FeishuReportPublicationJobHandler(executor)(
-        report_payload,
-        _Context(cancelled=True),
-    ).outcome == "cancelled"
+    assert (
+        FeishuReportPublicationJobHandler(executor)(
+            report_payload,
+            _Context(cancelled=True),
+        ).outcome
+        == "cancelled"
+    )
 
 
 def test_job_registry_contains_only_the_two_new_publication_types() -> None:

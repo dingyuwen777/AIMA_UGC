@@ -49,8 +49,11 @@ REPORT_DATE_RANGE = (
 
 ENABLE_REAL_LLM = True
 
-# 一条内容 = 一次独立 LLM 请求；最多同时 250 个请求。
-LLM_CONCURRENCY = 250
+# 一条内容 = 一次独立 LLM 请求；最多同时 80 个请求。
+LLM_CONCURRENCY = 80
+
+# 对每个物理请求（包括重试）限制启动速率，避免服务商突发 429。
+LLM_MAX_RPS = 5
 
 # HTTP/网络/429/可恢复 5xx 的额外重试次数。
 MAX_TRANSPORT_RETRIES = 4
@@ -67,7 +70,7 @@ Excel 输入只有 `INPUT_XLSX_FILES` 一个配置入口。它接受一个 `Path
 
 当前没有 `LLM_BATCH_SIZE` 配置。**不会把 20 条内容拼进一次模型请求。**
 
-`LLM_CONCURRENCY = 250` 表示最大在飞 HTTP 请求数，不是每个请求包含 250 条数据。
+`LLM_CONCURRENCY = 80` 表示最大在飞 HTTP 请求数，不是每个请求包含 80 条数据。
 
 `ENABLE_REAL_LLM = True` 表示人工执行到 AI 打标阶段时默认发送真实付费请求；仅导入模块或
 运行普通自动测试不会触发模型。若本次只想处理到去重/导出，请不要调用打标阶段，或先将该
@@ -421,12 +424,12 @@ AI 阶段不是“250 条一次发给模型”，而是：
 预检通过后直接进入有界滑动窗口，首批按 `LLM_CONCURRENCY` 并发。没有额外的串行模型探测；远程认证、余额或权限错误可能已经影响首批请求，观察到错误后停止补充。
 
 ```text
-最多 250 个 Future 在飞
+最多 80 个 Future 在飞
 → 任一请求完成
 → 立即补入下一条
 ```
 
-不会等“这一组 250 全部完成”才继续，也不会一次创建 90,000 个 Future。
+不会等“这一组 80 全部完成”才继续，也不会一次创建 90,000 个 Future。
 
 HTTP 使用一个共享 `httpx.Client`，连接池容量与 `LLM_CONCURRENCY` 一致并复用 keep-alive，不为每条数据重新建立 Client/TLS 连接。
 
@@ -941,7 +944,7 @@ print(result.word_path)
 `output_dir` 可以省略。省略时，显式 Excel 的报告默认写到该 Excel 同目录下的 `reports/`。
 `report_date_range` 是包含首尾日期的闭区间；传 `None` 时保持原有全量报告行为。
 
-如果使用本目录的 `generate_report.py`，直接修改文件顶部的 `INPUT_EXCEL` 和
+如果使用本目录的 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](generate_report.py)，直接修改文件顶部的 `INPUT_EXCEL` 和
 `REPORT_DATE_RANGE`。脚本按周期写入 `output/reports/YYYYMMDD-YYYYMMDD/`，避免不同周期
 报告互相覆盖；全量报告写入 `output/reports/all/`。
 
@@ -990,9 +993,7 @@ print(result.word_path)
 
 报告正文模板只有：
 
-```text
-backend/src/aima_ugc/platform/reporting/report_template.md
-```
+[`backend/src/aima_ugc/platform/reporting/report_template.md`](../../../platform/reporting/report_template.md)
 
 固定链路：
 
@@ -1032,7 +1033,7 @@ Chart，并为每张图内嵌对应的 XLSX 数据；图表数据与 Markdown �
 
 ### 18.7 报告完成后发布到飞书
 
-飞书发布默认关闭。启用后，`run_all()` 和本目录 `generate_report.py` 会在 Word 完成后继续执行：
+飞书发布默认关闭。启用后，`run_all()` 和本目录 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](generate_report.py) 会在 Word 完成后继续执行：
 
 ```text
 report.docx
@@ -1046,7 +1047,7 @@ report.md + 同一组 ChartSpec + reports/assets 中的 PNG
 
 飞书正文和表格可直接编辑；图表与词云是完整高清 PNG，保留在与 Markdown 对应的章节和表格之后，不承诺与 Word 分页像素一致。启用飞书发布时，本地临时生成 `report-charts.xlsx` 并导入为飞书原生“可编辑图表”Sheet；每张报告图下都有对应的“编辑图表数据”入口。图表仍是在线文档中的静态图片：改完 Sheet 后由用户截图并手动替换图片；系统不提供同步按钮、同步脚本或自动回写，也不会修改本地 `report.docx`。导入成功后本地临时 XLSX 和飞书上传源文件都会清理，不作为用户交付物。
 
-离线报告入口以本目录 Git 忽略的 `.env` 为准；只有 `.env` 未写的项才回退到 PowerShell/系统环境变量。因此日常配置和交接都不需要依赖某次终端会话，旧终端残留值也不会覆盖新同事的文件夹：复制 `.env.example` 为 `.env`，填写以下非 Secret 项即可。
+离线报告入口以本目录 Git 忽略的 `.env` 为准；只有 `.env` 未写的项才回退到 PowerShell/系统环境变量。因此日常配置和交接都不需要依赖某次终端会话，旧终端残留值也不会覆盖新同事的文件夹：复制 [`backend/src/aima_ugc/adapters/providers/imports_test/.env.example`](.env.example) 为 `.env`，填写以下非 Secret 项即可。
 
 ```text
 AIMA_FEISHU_REPORT_ENABLED=false
@@ -1085,15 +1086,11 @@ AIMA_EXTERNAL_SECRET_DIR=.runtime/secrets
 
 对已经完成打标的 Excel，不需要重新执行本目录的导入、清洗或 AI 打标流程。使用独立入口：
 
-```text
-backend/src/aima_ugc/entrypoints/representative_selection_main.py
-```
+[`backend/src/aima_ugc/entrypoints/representative_selection_main.py`](../../../entrypoints/representative_selection_main.py)
 
 该入口固定读取一个或多个已打标输入文件的 `内容` Sheet，按 `平台 + 内容ID` 跨文件去重，只处理抖音和小红书，并使用：
 
-```text
-backend/src/aima_ugc/modules/analysis/prompts/zhengfu_shaixuan.md
-```
+[`backend/src/aima_ugc/modules/analysis/prompts/zhengfu_shaixuan.md`](../../../modules/analysis/prompts/zhengfu_shaixuan.md)
 
 程序直接沿用 Excel 已有的 `发声类型` 和 `情感标签`，只从 `真实用户发声` 且已有情感为正面或负面的记录中建立四个分组，再分别选择抖音/小红书的正面/负面代表性内容，每组最多 10 条。不会重新打标或覆盖已有标签。筛选不足时保留实际符合要求的数量，不把信息不足或高度重复的内容硬凑进去。
 
@@ -1146,7 +1143,7 @@ uv run python -m aima_ugc.entrypoints.representative_selection_main `
 
 新表字段按模板保留：`声音内容/连接` 写入带标题的可点击原文链接；`声音截图`、`典型评论示例`、`优先级`、`处理建议` 没有可用值时留空；`来源`、`发布时间`、`用户情绪` 使用已有数据；如果输入 Excel 有 `一级标签`、`二级标签` 则写入对应值；`处理进展` 每条固定写入 `待处理`。如果模板缺少 `一级标签`、`二级标签` 或 `用户情绪`，程序会在新表创建时补齐这三列。
 
-该入口不会修改原始 Excel，也不会改变本目录现有 `test.py` 的导入、打标和报告行为。
+该入口不会修改原始 Excel，也不会改变本目录现有 [`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](test.py) 的导入、打标和报告行为。
 
 ### 19.1 只同步已有 Dry Run 结果
 

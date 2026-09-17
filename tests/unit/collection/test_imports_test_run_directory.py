@@ -69,6 +69,7 @@ def test_run_all_uses_one_isolated_run_directory_for_every_stage(
     monkeypatch.setattr(imports_test, "label_sentiment", stage("label_sentiment"))
     monkeypatch.setattr(imports_test, "export_labeled_excel", export_labeled_excel)
     monkeypatch.setattr(imports_test, "generate_report", generate_report)
+    monkeypatch.setattr(imports_test, "load_feishu_publication_config", lambda: None)
 
     result = imports_test.run_all(run_id=run_id)
 
@@ -93,7 +94,7 @@ def test_run_all_uses_one_isolated_run_directory_for_every_stage(
     assert payload["report_input_excel"] == str(run_dir / "labeled_data.xlsx")
     assert payload["report_markdown"] == str(run_dir / "reports" / "report.md")
     assert payload["report_word"] == str(run_dir / "reports" / "report.docx")
-    assert payload["report_date_range"] == ["2026-08-13", "2026-08-19"]
+    assert payload["report_date_range"] == ["2026-09-10", "2026-09-16"]
     assert not (tmp_path / "run_summary.json").exists()
 
 

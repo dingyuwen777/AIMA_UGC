@@ -37,11 +37,7 @@ from aima_ugc.platform.time import beijing_now
 _FEISHU_TARGET_KEY_FIELDS = ("声音内容/连接",)
 _TARGET_PLATFORMS = frozenset({"抖音", "小红书"})
 _DEFAULT_PROMPT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "modules"
-    / "analysis"
-    / "prompts"
-    / "zhengfu_shaixuan.md"
+    Path(__file__).resolve().parents[1] / "modules" / "analysis" / "prompts" / "zhengfu_shaixuan.md"
 )
 
 

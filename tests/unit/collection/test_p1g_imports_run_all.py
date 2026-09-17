@@ -70,6 +70,7 @@ def test_p1g_run_all_uses_default_chain_without_raw_excel(
     monkeypatch.setattr(imports_test_entry, "label_sentiment", stage("label_sentiment"))
     monkeypatch.setattr(imports_test_entry, "export_labeled_excel", export_stage)
     monkeypatch.setattr(imports_test_entry, "generate_report", report_stage)
+    monkeypatch.setattr(imports_test_entry, "load_feishu_publication_config", lambda: None)
 
     def raw_must_not_run(*args, **kwargs):
         raise AssertionError("run_all 不得调用 export_raw_excel")
@@ -232,14 +233,14 @@ def test_label_sentiment_only_requires_three_llm_env_values_and_wires_concurrenc
     assert captured["base_url"] == "https://llm.example/v1"
     assert captured["model"] == "model-a"
     assert captured["timeout_seconds"] == 60.0
-    assert captured["max_connections"] == 250
+    assert captured["max_connections"] == 80
     assert "api_key" in captured
     assert "pricing_catalog" in captured
     assert callable(captured["request_audit"])
     assert "provider_name" not in captured
     assert "use_json_mode" not in captured
     assert captured["retry_kwargs"]["max_retries"] == 4
-    assert captured["label_kwargs"]["max_concurrency"] == 250
+    assert captured["label_kwargs"]["max_concurrency"] == 80
     assert result.llm_total_cost_amount == Decimal("0.001355")
     assert result.llm_cost_currency == "CNY"
 
@@ -387,6 +388,7 @@ def test_run_summary_lists_all_source_excel_files(
     monkeypatch.setattr(imports_test_entry, "label_sentiment", stage("label_sentiment"))
     monkeypatch.setattr(imports_test_entry, "export_labeled_excel", export_stage)
     monkeypatch.setattr(imports_test_entry, "generate_report", report_stage)
+    monkeypatch.setattr(imports_test_entry, "load_feishu_publication_config", lambda: None)
 
     summary = imports_test_entry.run_all(run_id="multi")
     payload = json.loads(summary.run_summary_path.read_text(encoding="utf-8"))

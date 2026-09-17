@@ -433,16 +433,16 @@ Unified JSONL
 ### 4.1 代表性正负面内容筛选
 
 代表性筛选是独立的离线入口，不改变正式 Analysis Result、数据库 Schema 或
-`imports_test/test.py` 的导入/打标/报告主流程：
+[`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](../../adapters/providers/imports_test/test.py) 的导入/打标/报告主流程：
 
 - 读取一个或多个已打标 Excel 的 `内容` Sheet，按 `平台 + 内容ID` 跨文件去重；
 - 只处理抖音和小红书，并且只从 `发声类型 = 真实用户发声` 且 `情感标签 = 正面/负面` 的记录中建立候选池；
-- 使用 [`prompts/zhengfu_shaixuan.md`](prompts/zhengfu_shaixuan.md) 在已有 `平台 + 发声类型 + 情感标签` 分组内选择代表性内容；不重新打标，不修改已有标签；
+- 使用 [`backend/src/aima_ugc/modules/analysis/prompts/zhengfu_shaixuan.md`](prompts/zhengfu_shaixuan.md) 在已有 `平台 + 发声类型 + 情感标签` 分组内选择代表性内容；不重新打标，不修改已有标签；
 - 分别形成抖音正面、抖音负面、小红书正面、小红书负面四组，每组最多 10 条；严格筛选不足时保留实际数量，不用低质量内容凑数；
-- 通过 [`adapters/feishu/bitable.py`](../../adapters/feishu/bitable.py) 以配置中的数据表作为模板，在同一 Base 内新建一个按生成时间命名的数据表，再写入本次结果；旧数据表和旧记录不更新、不删除。
+- 通过 [`backend/src/aima_ugc/adapters/feishu/bitable.py`](../../adapters/feishu/bitable.py) 以配置中的数据表作为模板，在同一 Base 内新建一个按生成时间命名的数据表，再写入本次结果；旧数据表和旧记录不更新、不删除。
 - 写入字段严格按模板：原文列使用可点击链接，`典型评论示例`留空，`处理进展`固定为`待处理`；一级/二级标签优先使用输入 Excel 已有值，缺少时留空。
 
-运行入口：[`entrypoints/representative_selection_main.py`](../../entrypoints/representative_selection_main.py)
+运行入口：[`backend/src/aima_ugc/entrypoints/representative_selection_main.py`](../../entrypoints/representative_selection_main.py)
 
 ```powershell
 uv run python -m aima_ugc.entrypoints.representative_selection_main `
@@ -452,7 +452,7 @@ uv run python -m aima_ugc.entrypoints.representative_selection_main `
   --dry-run
 ```
 
-该入口直接消费已经完成打标的 Excel，不会调用 `imports_test/test.py` 的全量导入和打标流程。
+该入口直接消费已经完成打标的 Excel，不会调用 [`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](../../adapters/providers/imports_test/test.py) 的全量导入和打标流程。
 每个文件都只读取 `内容` Sheet；多个文件按传入顺序合并，重复的 `平台 + 内容ID` 保留第一条。
 合并后再按 `发声类型 = 真实用户发声` 且 `情感标签 = 正面/负面` 筛选，因此不会把其他发声类型或中性等非目标情感送入代表性筛选。
 

@@ -102,10 +102,7 @@ def test_native_document_parser_pivots_compact_daily_table_like_word(tmp_path: P
 def test_native_document_parser_normalizes_empty_table_cells(tmp_path: Path) -> None:
     markdown_path = tmp_path / "report.md"
     markdown_path.write_text(
-        "| 指标 | 数量 |\n"
-        "| --- | --- |\n"
-        "| 暂无数据 |  |\n\n"
-        "```mermaid\nxychart-beta\n```\n",
+        "| 指标 | 数量 |\n| --- | --- |\n| 暂无数据 |  |\n\n```mermaid\nxychart-beta\n```\n",
         encoding="utf-8",
     )
 
@@ -207,10 +204,7 @@ def test_report_publisher_creates_native_document_without_docx_import(
                     },
                 },
             )
-        if (
-            request.url.path == "/open-apis/drive/v1/files/file-2"
-            and request.method == "DELETE"
-        ):
+        if request.url.path == "/open-apis/drive/v1/files/file-2" and request.method == "DELETE":
             assert request.url.params["type"] == "file"
             deleted_files.append(request.url.path.rsplit("/", 1)[-1])
             return httpx.Response(200, json={"code": 0, "data": {}})
@@ -229,9 +223,11 @@ def test_report_publisher_creates_native_document_without_docx_import(
                 },
             )
         if request.url.path == "/open-apis/drive/v1/medias/upload_all":
-            parent_node = request.content.split(b'name="parent_node"\r\n\r\n', 1)[1].split(
-                b"\r\n", 1
-            )[0].decode("utf-8")
+            parent_node = (
+                request.content.split(b'name="parent_node"\r\n\r\n', 1)[1]
+                .split(b"\r\n", 1)[0]
+                .decode("utf-8")
+            )
             uploaded_image_parents.append(parent_node)
             return httpx.Response(200, json={"code": 0, "data": {"file_token": "image-token"}})
         if (

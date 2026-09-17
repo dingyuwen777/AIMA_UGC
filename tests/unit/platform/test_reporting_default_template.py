@@ -111,9 +111,7 @@ def test_default_report_compares_the_matching_previous_period(tmp_path: Path) ->
     current["内容"].append(
         ("抖音", "2026-08-20 12:00:00", "爱玛", "负面", "品牌评价", "口碑与信任")
     )
-    current["标签明细"].append(
-        ("抖音", "负面", "品牌评价", "口碑与信任", "2026-08-20 12:00:00")
-    )
+    current["标签明细"].append(("抖音", "负面", "品牌评价", "口碑与信任", "2026-08-20 12:00:00"))
     current["评论"].append(("抖音", "2026-08-20 12:30:00"))
     current.save(current_path)
     current.close()

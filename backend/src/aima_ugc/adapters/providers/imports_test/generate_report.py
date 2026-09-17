@@ -85,11 +85,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     previous_excel = (
         arguments.previous_input_xlsx.resolve()
         if arguments.previous_input_xlsx is not None
-        else (
-            PREVIOUS_INPUT_EXCEL.resolve()
-            if input_excel == INPUT_EXCEL.resolve()
-            else None
-        )
+        else (PREVIOUS_INPUT_EXCEL.resolve() if input_excel == INPUT_EXCEL.resolve() else None)
     )
     output_dir = (
         arguments.output_dir.resolve()

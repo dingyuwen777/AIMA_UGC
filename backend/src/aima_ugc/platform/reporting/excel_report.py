@@ -1389,7 +1389,7 @@ def _materialize_representative_assets(
         try:
             if source.resolve() != target.resolve():
                 shutil.copy2(source, target)
-        except (OSError, ValueError):
+        except OSError, ValueError:
             result.append(replace(row, screenshot_path=None))
             continue
         result.append(replace(row, screenshot_path=target))

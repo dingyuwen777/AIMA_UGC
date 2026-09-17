@@ -353,9 +353,7 @@ class FeishuBitableClient:
                     {
                         "field_name": field_name,
                         "type": (
-                            4
-                            if field_name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES
-                            else 3
+                            4 if field_name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES else 3
                         ),
                         "property": {"options": [{"name": option} for option in options]},
                     }
@@ -480,9 +478,7 @@ class FeishuBitableClient:
                 continue
             if key in existing_by_key:
                 raise FeishuSyncError(
-                    "飞书已有记录存在重复的 "
-                    + " + ".join(self._upsert_key_fields)
-                    + "，已停止写入"
+                    "飞书已有记录存在重复的 " + " + ".join(self._upsert_key_fields) + "，已停止写入"
                 )
             existing_by_key[key] = record
 
@@ -494,13 +490,9 @@ class FeishuBitableClient:
         for row in rows:
             key = _row_key(row, self._upsert_key_fields)
             if key is None:
-                raise FeishuSyncError(
-                    "待同步结果缺少 " + " + ".join(self._upsert_key_fields)
-                )
+                raise FeishuSyncError("待同步结果缺少 " + " + ".join(self._upsert_key_fields))
             if key in seen_input_keys:
-                raise FeishuSyncError(
-                    "待同步结果存在重复的 " + " + ".join(self._upsert_key_fields)
-                )
+                raise FeishuSyncError("待同步结果存在重复的 " + " + ".join(self._upsert_key_fields))
             seen_input_keys.add(key)
             fields_payload = _row_fields(row, mapping)
             for logical in self._upsert_key_fields:
@@ -574,8 +566,7 @@ class FeishuBitableClient:
                 ]
                 if mismatches:
                     verification_errors.extend(
-                        f"回读字段不一致 {'/'.join(key)}/{field_name}"
-                        for field_name in mismatches
+                        f"回读字段不一致 {'/'.join(key)}/{field_name}" for field_name in mismatches
                     )
                 else:
                     verified_count += 1
@@ -781,9 +772,7 @@ def _table_field_definition(field: FeishuField) -> dict[str, object]:
     if field.name == "声音内容/连接":
         field_type = 15
     elif field.name in dict(_REQUIRED_TEMPLATE_SELECT_FIELDS):
-        field_type = (
-            4 if field.name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES else 3
-        )
+        field_type = 4 if field.name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES else 3
     else:
         field_type = field.field_type
     definition: dict[str, object] = {
@@ -807,9 +796,7 @@ def _table_field_definition(field: FeishuField) -> dict[str, object]:
         required_options = dict(_REQUIRED_TEMPLATE_SELECT_FIELDS).get(field.name, ())
         existing_options = {str(option["name"]) for option in options}
         options.extend(
-            {"name": option}
-            for option in required_options
-            if option not in existing_options
+            {"name": option} for option in required_options if option not in existing_options
         )
         if options:
             definition["property"] = {"options": options}
@@ -845,8 +832,7 @@ def _record_key(
     key_fields: Sequence[str],
 ) -> tuple[str, ...] | None:
     values = tuple(
-        _key_value(field, record.fields.get(mapping.resolved[field].name))
-        for field in key_fields
+        _key_value(field, record.fields.get(mapping.resolved[field].name)) for field in key_fields
     )
     return values if all(values) else None
 
@@ -971,8 +957,7 @@ def _field_values_equal(actual: object, expected: object) -> bool:
         if not isinstance(actual, dict):
             return False
         return all(
-            _value_text(actual.get(key)) == _value_text(value)
-            for key, value in expected.items()
+            _value_text(actual.get(key)) == _value_text(value) for key, value in expected.items()
         )
     if isinstance(expected, (int, float, Decimal)) and not isinstance(expected, bool):
         if isinstance(actual, (int, float, Decimal)) and not isinstance(actual, bool):

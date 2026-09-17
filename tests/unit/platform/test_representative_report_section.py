@@ -64,8 +64,7 @@ class _EnglishThenChineseAdviceLLM:
             raw_text=(
                 '{"items":['
                 + ",".join(
-                    f'{{"item_no":{item.item_no},"action_advice":"{advice}"}}'
-                    for item in items
+                    f'{{"item_no":{item.item_no},"action_advice":"{advice}"}}' for item in items
                 )
                 + "]}"
             )
@@ -128,7 +127,7 @@ def test_representative_section_contains_four_groups_and_blank_progress(tmp_path
             RepresentativeReportRow(
                 platform="小红书",
                 sentiment="负面",
-                content_id="xhs-1",
+                content_id="xiaohongshu-1",
                 content_url="https://example.com/a?x=1",
                 link_text="爱玛售后服务不错",
                 comment_text="评论内容",
@@ -264,17 +263,17 @@ def test_douyin_screenshot_uses_fixed_16_9_viewport(tmp_path: Path) -> None:
     assert page.clip == {"x": 160, "y": 55, "width": 1280, "height": 755}
     assert _OptionalScreenshotSession._VIEWPORT == {"width": 1440, "height": 810}
 
-    xhs_row = RepresentativeReportRow(
+    xiaohongshu_row = RepresentativeReportRow(
         platform="小红书",
         sentiment="正面",
-        content_id="xhs-1",
-        content_url="https://example.com/xhs",
+        content_id="xiaohongshu-1",
+        content_url="https://example.com/xiaohongshu",
         comment_text="",
         primary_label="品牌评价",
         secondary_label="口碑与信任",
         action_advice="建议持续关注",
     )
-    assert session.fetch(xhs_row) is None
+    assert session.fetch(xiaohongshu_row) is None
 
 
 def test_douyin_screenshot_skips_login_overlay(tmp_path: Path) -> None:
@@ -375,7 +374,7 @@ def test_docx_rich_table_writes_external_link_and_image(tmp_path: Path) -> None:
         names = archive.namelist()
     assert "https://example.com/post" not in document_xml
     assert 'w:hyperlink r:id="rId2001"' in document_xml
-    assert "Target=\"https://example.com/post\"" in relationships
+    assert 'Target="https://example.com/post"' in relationships
     assert "word/media/image1.png" in names
     assert document_xml.count("建议跟进") == 1
 

@@ -10,6 +10,7 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, TypedDict
 
 from openpyxl import load_workbook
 from PIL import Image
@@ -40,12 +41,24 @@ from aima_ugc.platform.reporting import (
     normalize_representative_content_url,
 )
 
+if TYPE_CHECKING:
+    from playwright.sync_api import Browser, BrowserContext, Page, Playwright
+
+
+class _ViewportSize(TypedDict):
+    width: int
+    height: int
+
+
+class _ScreenshotClip(TypedDict):
+    x: float
+    y: float
+    width: float
+    height: float
+
+
 DEFAULT_REPRESENTATIVE_PROMPT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "modules"
-    / "analysis"
-    / "prompts"
-    / "zhengfu_shaixuan.md"
+    Path(__file__).resolve().parents[1] / "modules" / "analysis" / "prompts" / "zhengfu_shaixuan.md"
 )
 
 
@@ -260,9 +273,7 @@ def _load_comment_map(
         headers = {str(value).strip(): index for index, value in enumerate(raw_headers) if value}
         required = {"平台", "内容ID", "评论内容"}
         if not required.issubset(headers):
-            warnings.append(
-                "评论 Sheet 缺少平台、内容ID或评论内容字段，代表性评论内容列按要求留空"
-            )
+            warnings.append("评论 Sheet 缺少平台、内容ID或评论内容字段，代表性评论内容列按要求留空")
             return {}
         likes_index = headers.get("评论点赞")
         result: dict[tuple[str, str], tuple[int, int, str]] = {}
@@ -318,7 +329,7 @@ class _OptionalScreenshotSession:
     """尽力按抖音桌面端页面样式截图；不可用时安全降级为空。"""
 
     _DOUYIN_PLATFORM = "抖音"
-    _VIEWPORT = {"width": 1440, "height": 810}
+    _VIEWPORT: _ViewportSize = {"width": 1440, "height": 810}
     # 抖音公开页的登录遮罩不是首屏同步渲染，通常在 5～7 秒后才出现。
     # 先等待动态首屏，再用下面的有界轮询确认媒体已完成绘制，避免把二维码弹窗、
     # 加载中骨架屏或视频黑帧截进报告。
@@ -328,7 +339,7 @@ class _OptionalScreenshotSession:
     _PAGE_READY_STABLE_POLLS = 2
     _AFTER_DISMISS_WAIT_MS = 800
     # 去掉抖音网页左侧导航和顶部账号区；保留帖子主体、右侧作者、评论和推荐区。
-    _POST_CLIP = {"x": 160, "y": 55, "width": 1280, "height": 755}
+    _POST_CLIP: _ScreenshotClip = {"x": 160, "y": 55, "width": 1280, "height": 755}
     _PROFILE_COPY_IGNORED = shutil.ignore_patterns(
         "Cache",
         "Code Cache",
@@ -344,9 +355,9 @@ class _OptionalScreenshotSession:
     def __init__(self, warnings: list[str], *, target_dir: Path) -> None:
         self._warnings = warnings
         self._target_dir = Path(target_dir)
-        self._playwright = None
-        self._browser = None
-        self._page = None
+        self._playwright: Playwright | None = None
+        self._browser: Browser | BrowserContext | None = None
+        self._page: Page | None = None
         self._browser_executable: Path | None = None
         self._browser_profile: tempfile.TemporaryDirectory[str] | None = None
         self._browser_user_data_dir: Path | None = None
@@ -358,11 +369,14 @@ class _OptionalScreenshotSession:
             from playwright.sync_api import sync_playwright
 
             self._playwright = sync_playwright().start()
-            launch_kwargs: dict[str, object] = {"headless": True}
             executable = _find_headless_browser()
             if executable is not None:
-                launch_kwargs["executable_path"] = str(executable)
-            self._browser = self._playwright.chromium.launch(**launch_kwargs)
+                self._browser = self._playwright.chromium.launch(
+                    executable_path=str(executable),
+                    headless=True,
+                )
+            else:
+                self._browser = self._playwright.chromium.launch(headless=True)
             self._page = self._browser.new_page(
                 viewport=self._VIEWPORT,
                 device_scale_factor=1,
@@ -373,14 +387,11 @@ class _OptionalScreenshotSession:
             executable = _find_headless_browser()
             if executable is None:
                 self._warnings.append(
-                    f"公开抖音截图浏览器不可用（{type(exc).__name__}），"
-                    "报告中的截图单元格已留空"
+                    f"公开抖音截图浏览器不可用（{type(exc).__name__}），报告中的截图单元格已留空"
                 )
                 return None
             self._browser_executable = executable
-            self._browser_profile = tempfile.TemporaryDirectory(
-                prefix="aima-douyin-screenshot-"
-            )
+            self._browser_profile = tempfile.TemporaryDirectory(prefix="aima-douyin-screenshot-")
             self._browser_user_data_dir = Path(self._browser_profile.name)
             self._warnings.append(
                 f"无法复用 Edge 登录配置，已使用临时系统浏览器截图：{executable.name}"
@@ -420,9 +431,7 @@ class _OptionalScreenshotSession:
                             if bool(state.get("blocking_login"))
                             else "页面加载未完成"
                         )
-                        self._warnings.append(
-                            f"抖音{reason}，已跳过截图：{row.content_id}"
-                        )
+                        self._warnings.append(f"抖音{reason}，已跳过截图：{row.content_id}")
                         return None
                 elif _page_requires_login(self._page):
                     if not self._switch_to_authenticated_browser():
@@ -432,9 +441,7 @@ class _OptionalScreenshotSession:
                         return None
                     self._prepare_douyin_page(self._page, row.content_url)
                     if _page_requires_login(self._page):
-                        self._warnings.append(
-                            f"抖音页面仍需要登录，已跳过截图：{row.content_id}"
-                        )
+                        self._warnings.append(f"抖音页面仍需要登录，已跳过截图：{row.content_id}")
                         return None
                 # 登录提示可能在最后一次状态检查之后才被站点重新挂载；截图前再清理
                 # 一次，并在真实浏览器上重新确认页面状态。
@@ -442,14 +449,10 @@ class _OptionalScreenshotSession:
                     self._page.wait_for_timeout(self._AFTER_DISMISS_WAIT_MS)
                 final_state = _inspect_douyin_page(self._page)
                 if final_state is not None and not bool(final_state.get("ready")):
-                    self._warnings.append(
-                        f"抖音截图前页面状态不稳定，已跳过：{row.content_id}"
-                    )
+                    self._warnings.append(f"抖音截图前页面状态不稳定，已跳过：{row.content_id}")
                     return None
                 if final_state is None and _page_requires_login(self._page):
-                    self._warnings.append(
-                        f"抖音页面仍需要登录，已跳过截图：{row.content_id}"
-                    )
+                    self._warnings.append(f"抖音页面仍需要登录，已跳过截图：{row.content_id}")
                     return None
                 self._page.screenshot(
                     path=str(target),
@@ -467,17 +470,13 @@ class _OptionalScreenshotSession:
                 return target
             if target.is_file():
                 target.unlink(missing_ok=True)
-                self._warnings.append(
-                    f"抖音截图疑似仍在加载或画面过暗，已跳过：{row.content_id}"
-                )
+                self._warnings.append(f"抖音截图疑似仍在加载或画面过暗，已跳过：{row.content_id}")
                 return None
             self._warnings.append(f"抖音截图未生成，已跳过：{row.content_id}")
             return None
         except Exception as exc:
             target.unlink(missing_ok=True)
-            self._warnings.append(
-                f"抖音截图失败，已跳过：{row.content_id}（{type(exc).__name__}）"
-            )
+            self._warnings.append(f"抖音截图失败，已跳过：{row.content_id}（{type(exc).__name__}）")
             return None
 
     def _prepare_douyin_page(
@@ -532,9 +531,7 @@ class _OptionalScreenshotSession:
         executable, user_data_dir, profile_directory = authenticated_browser
         try:
             self._close_browser_runtime()
-            self._browser_profile = tempfile.TemporaryDirectory(
-                prefix="aima-edge-profile-copy-"
-            )
+            self._browser_profile = tempfile.TemporaryDirectory(prefix="aima-edge-profile-copy-")
             copied_root = Path(self._browser_profile.name)
             _copy_edge_profile(
                 source_root=user_data_dir,
@@ -636,16 +633,21 @@ class _OptionalScreenshotSession:
         self._browser_profile_directory = None
 
     def _close_browser_runtime(self) -> None:
-        if self._page is not None:
-            self._page.close()
-        if self._browser is not None:
-            self._browser.close()
-        if self._playwright is not None:
-            self._playwright.stop()
+        page = self._page
+        browser = self._browser
+        playwright = self._playwright
         self._page = None
         self._browser = None
         self._playwright = None
         self._browser_executable = None
+        for runtime, method_name in (
+            (page, "close"),
+            (browser, "close"),
+            (playwright, "stop"),
+        ):
+            close = getattr(runtime, method_name, None)
+            if callable(close):
+                close()
 
 
 def _find_authenticated_edge_profile() -> tuple[Path, Path, str] | None:
@@ -908,7 +910,7 @@ def _is_usable_screenshot(path: Path) -> bool:
                 return False
             sample = image.convert("L").resize((64, 64))
             pixels = list(sample.tobytes())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return False
     if not pixels:
         return False
@@ -928,9 +930,7 @@ def _find_edge_executable() -> Path | None:
     for variable_name in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
         base = os.environ.get(variable_name, "").strip()
         if base:
-            candidates.append(
-                Path(base) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
-            )
+            candidates.append(Path(base) / "Microsoft" / "Edge" / "Application" / "msedge.exe")
     return _first_existing_path(candidates)
 
 
@@ -948,12 +948,12 @@ def _read_edge_profile_directory(user_data_dir: Path) -> str:
         for candidate in candidates:
             if isinstance(candidate, str) and (user_data_dir / candidate).is_dir():
                 return candidate
-    except (OSError, TypeError, ValueError):
+    except OSError, TypeError, ValueError:
         pass
     return "Default"
 
 
-def _crop_screenshot_to_post_area(path: Path, *, clip: Mapping[str, int]) -> None:
+def _crop_screenshot_to_post_area(path: Path, *, clip: _ScreenshotClip) -> None:
     if not path.is_file():
         return
     with Image.open(path) as image:
@@ -1013,7 +1013,7 @@ def _write_selection_artifacts(
     with selected_results_path.open("w", encoding="utf-8", newline="\n") as handle:
         for selected in selection_run.selected:
             content = selected.candidate.content
-            payload = {
+            selected_payload = {
                 "content": {
                     "row_number": content.row_number,
                     "platform": content.platform,
@@ -1030,9 +1030,9 @@ def _write_selection_artifacts(
                 },
                 "decision": selected.decision.model_dump(),
             }
-            handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+            handle.write(json.dumps(selected_payload, ensure_ascii=False, separators=(",", ":")))
             handle.write("\n")
-    payload = {
+    report_payload: dict[str, object] = {
         "selected_count": len(selection_run.selected),
         "rows": [
             {
@@ -1055,7 +1055,7 @@ def _write_selection_artifacts(
         "warnings": list(warnings),
     }
     (Path(output_dir) / "representative_report.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(report_payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
@@ -1071,7 +1071,7 @@ def _integer_or_zero(values: tuple[object, ...], index: int | None) -> int:
         return 0
     try:
         return int(float(str(values[index]).strip()))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
 
 

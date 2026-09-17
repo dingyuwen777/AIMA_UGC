@@ -711,18 +711,6 @@ def create_app(
             code="feishu_publication_not_found",
         )
 
-    @application.exception_handler(RelevanceConfigurationError)
-    async def relevance_unavailable(
-        request: Request, _: RelevanceConfigurationError
-    ) -> JSONResponse:
-        return _error_response(
-            status_code=409,
-            request_id=_request_id(request),
-            title="相关性配置不可用",
-            detail="全局 Relevance 词包尚未配置或没有有效关键词。",
-            code="relevance_config_unavailable",
-        )
-
     @application.exception_handler(BrandVehicleFilterUnavailable)
     async def brand_vehicle_filter_unavailable(
         request: Request, _: BrandVehicleFilterUnavailable

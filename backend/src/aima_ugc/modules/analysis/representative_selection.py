@@ -447,9 +447,7 @@ def _decision_from_existing_label(
     raw_sentiment = candidate.content.sentiment_label
     if raw_sentiment not in {"正面", "负面"}:
         raise ValueError("existing_sentiment_label_invalid")
-    sentiment: RepresentativeSentiment = (
-        "正面" if raw_sentiment == "正面" else "负面"
-    )
+    sentiment: RepresentativeSentiment = "正面" if raw_sentiment == "正面" else "负面"
     return RepresentativeDecisionModel(
         item_no=candidate.item_no,
         eligible=True,

@@ -473,14 +473,10 @@ def _content_from_selected_payload(payload: Mapping[str, object]) -> LabeledCont
         voice_type=_selected_text(payload, "voice_type"),
         sentiment_label=_selected_text(payload, "sentiment_label"),
         primary_label=(
-            _selected_text(payload, "primary_label")
-            if "primary_label" in payload
-            else ""
+            _selected_text(payload, "primary_label") if "primary_label" in payload else ""
         ),
         secondary_label=(
-            _selected_text(payload, "secondary_label")
-            if "secondary_label" in payload
-            else ""
+            _selected_text(payload, "secondary_label") if "secondary_label" in payload else ""
         ),
     )
 
