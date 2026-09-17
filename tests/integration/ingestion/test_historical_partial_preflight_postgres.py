@@ -103,7 +103,6 @@ def _create_brand(runtime: PlatformRuntime) -> str:
 
     brand = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code=f"AIMA-PARTIAL-PREFLIGHT-{uuid4()}",
             display_name="爱玛",
             role="owned",
             aliases=("爱玛",),

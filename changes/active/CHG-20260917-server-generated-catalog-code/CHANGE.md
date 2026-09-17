@@ -17,6 +17,8 @@ affected_areas:
   - frontend
   - documentation
 affected_paths:
+  - tests/integration/ingestion/
+  - scripts/performance/benchmark_stage12_historical.py
   - backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py
   - backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py
   - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
@@ -86,6 +88,7 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 - [x] Create Contract 移除客户端 `code` 输入，Response/DB `code` 保留。
 - [x] HTTP 创建应用服务生成稳定唯一内部 code；Repository/Schema 不改，内部显式 code 调用兼容。
 - [x] 用户可见品牌/车型顺序不再依赖内部 `code`：管理员目录按显示名稳定排序，内容品牌按业务角色（自有→竞品→其他）再按显示名排序，内容车型按有效显示名排序。
+- [x] 使用 AST 全仓扫描公共 Create Contract 调用点，清理所有 `BrandCreateRequest` / `VehicleModelCreateRequest` 中的客户端 `code`；Repository 层显式内部 code 调用保持不变。
 - [x] 前端创建品牌/车型不再显示、校验或提交 `code`；已有品牌 code 仅在技术信息只读展示。
 - [x] OpenAPI 与 Orval generated client 通过正式生成链重新生成，未手改 generated client。
 - [x] 补 Contract、SSR、Browser Mock 与 Real Full-stack 直接回归。
@@ -122,3 +125,5 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 11. 正式 CI run `35181910194`：核心 CI 再次全部 success；PostgreSQL Integration 中数据库 79 条与 jobs 13 条均通过，Collection 集成 96 条中仅 `test_production_worker_consumes_scheduler_created_collection_run` 失败，根因是共享 `tests/integration/stage3_brand_support.py` 仍向 public `BrandCreateRequest` 传 `code`；该 helper 已改为无-code 创建，保留 Stage3/Collection 真实行为。
 12. 正式 CI run `35182545902`：核心 CI、Real Full-stack Golden Path、database 79 条、jobs 13 条、Collection 96 条全部 success；PostgreSQL Integration 仅在 content 集成 62 条中剩 `test_brand_vehicle_filters_share_targets_and_export_frozen_version` 因 3 个 Brand / 2 个 Vehicle fixture 仍传客户端 code 失败，其余 61 条通过。已同步 Stage5 Query/Export fixture，原过滤、分析、导出与冻结事实断言不变。
 13. 正式 PR required CI 和 post-merge main CI 不提前冒充；分别在当前最终 HEAD/merge 后执行并回填最终证据。
+
+13. 正式 PostgreSQL Integration 在 ingestion 套件集中暴露历史公共 Create fixture 与 Stage12 性能 harness 仍传客户端 `code`；本轮改为 AST 全仓扫描并清零此类调用，仅保留 Repository 层合法内部显式 code。最终通过状态仍以当前 HEAD required CI 为准。

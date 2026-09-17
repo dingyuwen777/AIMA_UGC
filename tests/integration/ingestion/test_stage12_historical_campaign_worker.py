@@ -172,7 +172,6 @@ def _principal() -> Principal:
 def _brand(runtime: PlatformRuntime) -> str:
     brand = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code=f"AIMA-STAGE3-{uuid4()}",
             display_name="爱玛",
             role="owned",
             aliases=("爱玛",),
@@ -1578,7 +1577,6 @@ def _stage3_historical_evidence_catalog(runtime: PlatformRuntime) -> tuple[UUID,
 
     brand = PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code="AIMA-STAGE3-HISTORICAL-EVIDENCE",
             display_name="爱玛",
             role="owned",
             aliases=("爱玛",),
@@ -1588,7 +1586,6 @@ def _stage3_historical_evidence_catalog(runtime: PlatformRuntime) -> tuple[UUID,
     )
     vehicle = PostgresAdministrationHttpService(runtime).create_vehicle_model(
         VehicleModelCreateRequest(
-            code="AIMA-STAGE3-HISTORICAL-Q7",
             display_name="Q7",
             brand_id=brand.id,
             aliases=("Q7",),
