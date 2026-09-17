@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
 
 from aima_ugc.contracts.administration import VehicleModelCreateRequest
 from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.entrypoints.api_main import create_app
+from pydantic import ValidationError
 
 
 def test_brand_vehicle_stage2_routes_are_installed_on_formal_api() -> None:
