@@ -20,6 +20,7 @@ from aima_ugc.modules.analysis.tables import (
 from aima_ugc.modules.collection.comment_target import (
     identity_block_reason,
     resolve_comment_target,
+    resolve_supported_locator,
 )
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
@@ -308,7 +309,9 @@ class PostgresCollectionTargetReader:
                 has_tikhub_source=content_id in tikhub_content_ids,
             )
             if lookup is None:
-                continue
+                lookup = resolve_supported_locator(platform, ids)
+                if lookup is None:
+                    continue
             id_type, value = lookup
             ids.setdefault(id_type, value)
             targets.append(
@@ -351,6 +354,9 @@ class PostgresCollectionTargetReader:
             )
             if lookup is not None:
                 bucket[0] += 1
+                continue
+            if resolve_supported_locator(platform, ids) is not None:
+                bucket[1] += 1
                 continue
             reason = identity_block_reason(platform, ids)
             if reason == "exact_resolution_unavailable":

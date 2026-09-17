@@ -12,7 +12,10 @@ from pydantic import SecretStr, TypeAdapter
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.contracts.provider import JsonObject
-from aima_ugc.modules.collection.comment_target import resolve_comment_target
+from aima_ugc.modules.collection.comment_target import (
+    resolve_comment_target,
+    resolve_supported_locator,
+)
 from aima_ugc.modules.collection.providers.transport import ProviderTransportRequest
 
 from .mappers import bilibili as bilibili_mapper
@@ -24,7 +27,9 @@ from .mappers.common import TikHubMappingContext
 from .operations import bilibili, douyin, kuaishou, weibo, xiaohongshu
 
 TikHubPlatform = PlatformName
-TikHubBusinessOperation = Literal["keyword_search", "content_detail", "comments", "sub_comments"]
+TikHubBusinessOperation = Literal[
+    "keyword_search", "content_detail", "identity_resolution", "comments", "sub_comments"
+]
 _JSON_OBJECT_ADAPTER = TypeAdapter(JsonObject)
 
 
@@ -373,6 +378,37 @@ def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> 
         kuaishou_request.method,
         kuaishou_request.path,
         _json_object(kuaishou_request.params),
+    )
+
+
+def build_identity_resolution_call(
+    *, platform: TikHubPlatform, locator_type: str, locator: str
+) -> TikHubOperationCall:
+    """短链详情属于独立身份解析 Operation，评论接口不接收链接。"""
+
+    validated = resolve_supported_locator(platform, {locator_type: locator})
+    if validated != (locator_type, locator):
+        raise ValueError("identity_unavailable: 分享链接不是当前支持的精确定位身份")
+    if platform == "xiaohongshu":
+        xiaohongshu_request = xiaohongshu.build_image_detail_by_share_text_request(
+            share_text=locator
+        )
+        return TikHubOperationCall(
+            "xiaohongshu",
+            "identity_resolution",
+            "get_image_note_detail",
+            "GET",
+            xiaohongshu_request.path,
+            _json_object(xiaohongshu_request.params),
+        )
+    douyin_request = douyin.build_video_detail_by_share_url_request(share_url=locator)
+    return TikHubOperationCall(
+        "douyin",
+        "identity_resolution",
+        "fetch_one_video_by_share_url",
+        douyin_request.method,
+        douyin_request.path,
+        _json_object(douyin_request.params),
     )
 
 

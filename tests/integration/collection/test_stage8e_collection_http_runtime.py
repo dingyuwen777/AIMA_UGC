@@ -57,6 +57,7 @@ from sqlalchemy import func, insert, select, update
 from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
 _XIAOHONGSHU_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
+_DOUYIN_FIXTURES = Path("tests/fixtures/providers/tikhub/douyin")
 
 
 @pytest.fixture
@@ -480,6 +481,9 @@ def _insert_import_content(
     current_comment_count: int | None = None,
     batch_id: UUID | None = None,
     lookup_id_type: str | None = "note_id",
+    lookup_value: str | None = None,
+    platform: str = "xiaohongshu",
+    content_type: str = "image",
 ) -> tuple[UUID, UUID]:
     if batch_id is None:
         batch_id, _ = _insert_succeeded_import(runtime, rows_ingested=1)
@@ -529,9 +533,9 @@ def _insert_import_content(
         connection.execute(
             insert(contents_table).values(
                 id=content_id,
-                platform="xiaohongshu",
+                platform=platform,
                 external_content_id=external_content_id,
-                content_type="image",
+                content_type=content_type,
                 title=title,
                 current_comment_count=current_comment_count,
                 first_seen_at=now,
@@ -546,7 +550,7 @@ def _insert_import_content(
                 id=uuid4(),
                 content_id=content_id,
                 version_no=1,
-                content_type="image",
+                content_type=content_type,
                 title=title,
                 provider_attempt_id=attempt_id,
                 raw_artifact_id=artifact_id,
@@ -558,7 +562,7 @@ def _insert_import_content(
                 insert(content_external_ids_table).values(
                     content_id=content_id,
                     id_type=lookup_id_type,
-                    external_id=external_content_id,
+                    external_id=lookup_value or external_content_id,
                     provider_attempt_id=attempt_id,
                     raw_artifact_id=artifact_id,
                     observed_at=now,
@@ -992,6 +996,306 @@ def test_batch_supplement_worker_reuses_detail_mapper_and_ingestion_without_refi
     assert scope["status"] == "succeeded"
     assert content["title"] == "爱玛 Batch 内容已补全"
     assert version_count == 2
+
+
+def test_batch_supplement_resolves_xhs_shortlink_and_keeps_import_content_identity(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    shortlink = "https://xhslink.com/o/8fCmVEVQWmp"
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        external_content_id="url_sha256:shortlink-source",
+        lookup_id_type="share_text",
+        lookup_value=shortlink,
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu", provider_config_id=provider_config_id
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-shortlink-resolution",
+    )
+    comments = _batch_comments_response()
+    page = comments["data"]["data"]
+    page["comments"][0]["sub_comment_count"] = 0
+    transport = FakeProviderTransport(
+        (
+            ProviderTransportResponse(
+                status_code=200,
+                body=_batch_detail_response(comment_count=1),
+            ),
+            ProviderTransportResponse(status_code=200, body=comments),
+        )
+    )
+    registry = create_collection_job_registry(
+        runtime=runtime,
+        transport_factory=lambda _config: transport,
+        secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=registry,
+        worker_id="stage8e-shortlink-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert transport.call_count == 2
+    assert transport.seen_requests[0].params == {"share_text": shortlink}
+    assert transport.seen_requests[1].params["note_id"] == "stage8e-batch-note"
+    run = service.get_run(created.run_id)
+    assert run.status == "succeeded"
+    with runtime.database.engine.begin() as connection:
+        content = (
+            connection.execute(select(contents_table).where(contents_table.c.id == content_id))
+            .mappings()
+            .one()
+        )
+        note_id = (
+            connection.execute(
+                select(content_external_ids_table).where(
+                    content_external_ids_table.c.content_id == content_id,
+                    content_external_ids_table.c.id_type == "note_id",
+                )
+            )
+            .mappings()
+            .one()
+        )
+        stored_comment_count = connection.scalar(
+            select(func.count())
+            .select_from(comments_table)
+            .where(comments_table.c.content_id == content_id)
+        )
+    assert content["external_content_id"] == "url_sha256:shortlink-source"
+    assert note_id["external_id"] == "stage8e-batch-note"
+    assert note_id["provider_attempt_id"] is not None
+    assert note_id["raw_artifact_id"] is not None
+    assert stored_comment_count == 1
+
+
+def test_batch_supplement_resolves_douyin_shortlink_before_comments(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    shortlink = "https://v.douyin.com/e3x2fjE/"
+    aweme_id = "7675702103746898533"
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        external_content_id="url_sha256:douyin-share-source",
+        lookup_id_type="douyin_share_url",
+        lookup_value=shortlink,
+        platform="douyin",
+        content_type="video",
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="douyin", provider_config_id=provider_config_id
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-douyin-share-resolution",
+    )
+    detail = json.loads((_DOUYIN_FIXTURES / "detail.sanitized.json").read_text(encoding="utf-8"))
+    detail["data"]["aweme_detail"]["aweme_id"] = aweme_id
+    detail["data"]["aweme_detail"]["desc"] = "爱玛分享短链内容"
+    detail["data"]["aweme_detail"]["statistics"]["comment_count"] = 1
+    comments = json.loads(
+        (_DOUYIN_FIXTURES / "comments_page1.sanitized.json").read_text(encoding="utf-8")
+    )
+    comments["data"]["comments"] = [comments["data"]["comments"][0]]
+    comments["data"]["comments"][0]["aweme_id"] = aweme_id
+    comments["data"]["comments"][0]["reply_comment_total"] = 0
+    comments["data"]["total"] = 1
+    comments["data"]["has_more"] = 0
+    transport = FakeProviderTransport(
+        (
+            ProviderTransportResponse(status_code=200, body=detail),
+            ProviderTransportResponse(status_code=200, body=comments),
+        )
+    )
+    registry = create_collection_job_registry(
+        runtime=runtime,
+        transport_factory=lambda _config: transport,
+        secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=registry,
+        worker_id="stage8e-douyin-share-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert transport.call_count == 2
+    assert transport.seen_requests[0].params == {"share_url": shortlink}
+    assert transport.seen_requests[1].params["aweme_id"] == aweme_id
+    run = service.get_run(created.run_id)
+    assert run.status == "succeeded"
+    with runtime.database.engine.begin() as connection:
+        content = (
+            connection.execute(select(contents_table).where(contents_table.c.id == content_id))
+            .mappings()
+            .one()
+        )
+        stored_aweme_id = (
+            connection.execute(
+                select(content_external_ids_table).where(
+                    content_external_ids_table.c.content_id == content_id,
+                    content_external_ids_table.c.id_type == "aweme_id",
+                )
+            )
+            .mappings()
+            .one()
+        )
+        stored_comment_count = connection.scalar(
+            select(func.count())
+            .select_from(comments_table)
+            .where(comments_table.c.content_id == content_id)
+        )
+    assert content["external_content_id"] == "url_sha256:douyin-share-source"
+    assert stored_aweme_id["external_id"] == aweme_id
+    assert stored_aweme_id["provider_attempt_id"] is not None
+    assert stored_aweme_id["raw_artifact_id"] is not None
+    assert stored_comment_count == 1
+
+
+def test_batch_supplement_reuses_shortlink_resolution_after_comment_retry(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    shortlink = "https://xhslink.com/o/8fCmVEVQWmp"
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        external_content_id="url_sha256:retry-share-source",
+        lookup_id_type="share_text",
+        lookup_value=shortlink,
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu", provider_config_id=provider_config_id
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-shortlink-comment-retry",
+    )
+    comments = _batch_comments_response()
+    comments["data"]["data"]["comments"][0]["sub_comment_count"] = 0
+    transport = FakeProviderTransport(
+        (
+            ProviderTransportResponse(
+                status_code=200, body=_batch_detail_response(comment_count=1)
+            ),
+            ProviderTransportResponse(status_code=503, body={"error": "temporary"}),
+            ProviderTransportResponse(status_code=200, body=comments),
+        )
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-shortlink-retry-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert worker.run_once() is True
+    assert worker.run_once() is False
+    assert transport.call_count == 3
+    assert transport.seen_requests[0].params == {"share_text": shortlink}
+    assert transport.seen_requests[1].params == transport.seen_requests[2].params
+    assert transport.seen_requests[1].params["note_id"] == "stage8e-batch-note"
+    assert service.get_run(created.run_id).status == "succeeded"
+    with runtime.database.engine.begin() as connection:
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(comments_table)
+                .where(comments_table.c.content_id == content_id)
+            )
+            == 1
+        )
+
+
+def test_batch_supplement_reports_unavailable_when_shortlink_detail_is_empty(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        external_content_id="url_sha256:empty-share-source",
+        lookup_id_type="share_text",
+        lookup_value="https://xhslink.com/o/8fCmVEVQWmp",
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu", provider_config_id=provider_config_id
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-empty-shortlink-detail",
+    )
+    transport = FakeProviderTransport(
+        (ProviderTransportResponse(status_code=200, body={"code": 200, "data": {"data": []}}),)
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-empty-shortlink-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert transport.call_count == 1
+    run = service.get_run(created.run_id)
+    assert run.status == "failed"
+    assert run.scopes[0].stop_reason == "identity_unavailable"
+    with runtime.database.engine.begin() as connection:
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(content_external_ids_table)
+                .where(
+                    content_external_ids_table.c.content_id == content_id,
+                    content_external_ids_table.c.id_type == "note_id",
+                )
+            )
+            == 0
+        )
 
 
 def test_batch_supplement_persists_safe_error_when_provider_secret_is_unavailable(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Literal
+from urllib.parse import urlsplit
 
 from aima_ugc.contracts.platform import PlatformName
 
@@ -26,6 +27,8 @@ _LOCATION_ID_TYPES: dict[PlatformName, tuple[str, ...]] = {
 }
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 _BV_ID = re.compile(r"^BV[A-Za-z0-9]{10}$", re.IGNORECASE)
+_XHS_SHORT_PATH = re.compile(r"^/(?:o|m|a)/[A-Za-z0-9_-]+/?$")
+_DOUYIN_SHORT_PATH = re.compile(r"^/[A-Za-z0-9_-]+/?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,3 +120,40 @@ def identity_block_reason(platform: PlatformName, alternate_ids: dict[str, str])
         if any(alternate_ids.get(id_type) for id_type in _LOCATION_ID_TYPES[platform])
         else "identity_unavailable"
     )
+
+
+def resolve_supported_locator(
+    platform: PlatformName, alternate_ids: dict[str, str]
+) -> tuple[str, str] | None:
+    """只接纳已由 TikHub 真实详情请求验证的短链定位身份。"""
+
+    if platform == "xiaohongshu":
+        locator_type = "share_text"
+        hosts = {"xhslink.com", "xhslink.cn"}
+        path_pattern = _XHS_SHORT_PATH
+    elif platform == "douyin":
+        locator_type = "douyin_share_url"
+        hosts = {"v.douyin.com"}
+        path_pattern = _DOUYIN_SHORT_PATH
+    else:
+        return None
+    value = alternate_ids.get(locator_type)
+    if not isinstance(value, str) or not value or value != value.strip():
+        return None
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError:
+        return None
+    if (
+        parts.scheme not in {"http", "https"}
+        or parts.hostname not in hosts
+        or parts.username is not None
+        or parts.password is not None
+        or parts.fragment
+        or port not in {None, 80 if parts.scheme == "http" else 443}
+        or path_pattern.fullmatch(parts.path) is None
+        or any(ord(char) < 32 for char in value)
+    ):
+        return None
+    return locator_type, value

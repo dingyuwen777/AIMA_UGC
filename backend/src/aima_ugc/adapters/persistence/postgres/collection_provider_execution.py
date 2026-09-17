@@ -49,6 +49,42 @@ class PostgresFencedProviderAttemptPreparer:
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
 
+    def has_scope_request(
+        self,
+        *,
+        scope_id: UUID,
+        request_fingerprint: str,
+        fence: JobExecutionFence,
+    ) -> bool:
+        """只在当前 Job 持有 Scope 时查询已有逻辑请求。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                PostgresJobRepository(session).lock_current_execution(fence)
+                owner_job_id = session.scalar(
+                    select(collection_runs_table.c.job_id)
+                    .select_from(
+                        collection_scopes_table.join(
+                            collection_runs_table,
+                            collection_scopes_table.c.run_id == collection_runs_table.c.id,
+                        )
+                    )
+                    .where(collection_scopes_table.c.id == scope_id)
+                )
+                if owner_job_id != fence.job_id:
+                    raise LeaseLostError("Collection Scope 不属于当前 Job Fence")
+                return (
+                    session.scalar(
+                        select(provider_requests_table.c.id).where(
+                            provider_requests_table.c.scope_id == scope_id,
+                            provider_requests_table.c.request_fingerprint == request_fingerprint,
+                        )
+                    )
+                    is not None
+                )
+        finally:
+            session.close()
+
     def prepare_billable_attempt(
         self,
         *,

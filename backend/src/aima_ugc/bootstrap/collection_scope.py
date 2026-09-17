@@ -52,6 +52,7 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     advance_sub_comments,
     build_comments_call,
     build_detail_call,
+    build_identity_resolution_call,
     build_search_call,
     build_sub_comments_call,
     extract_comment_items,
@@ -81,6 +82,10 @@ from aima_ugc.modules.collection.collection_run_executor import (
     CollectionScopeExecutionResult,
     CollectionScopeRetryableError,
     CollectionScopeTerminalStatus,
+)
+from aima_ugc.modules.collection.comment_target import (
+    resolve_comment_target,
+    resolve_supported_locator,
 )
 from aima_ugc.modules.collection.decision import (
     CollectionDecisionService,
@@ -1196,7 +1201,45 @@ class TikHubCollectionScopeExecutor:
         """通过正式 Provider/Raw/Mapper 获取一次 Detail，但不提前写 Content。"""
 
         platform = _tikhub_platform(scope.platform)
-        detail_call = build_detail_call(platform, content)
+        direct_target = resolve_comment_target(
+            platform=platform,
+            external_content_id=content.external_content_id,
+            alternate_ids=content.alternate_ids,
+        )
+        supported_locator = resolve_supported_locator(platform, content.alternate_ids)
+        locator_call = (
+            build_identity_resolution_call(
+                platform=platform,
+                locator_type=supported_locator[0],
+                locator=supported_locator[1],
+            )
+            if supported_locator is not None
+            else None
+        )
+        reuse_locator = False
+        if direct_target.state == "resolved" and locator_call is not None:
+            prior_request = ProviderRequestV1.create(
+                request_id=uuid4(),
+                run_id=run.id,
+                scope_id=scope.id,
+                provider=provider_config.provider,
+                platform=scope.platform,
+                operation=locator_call.operation,
+                request_params={
+                    "method": locator_call.method,
+                    "path": locator_call.path,
+                    "params": dict(locator_call.params),
+                },
+            )
+            reuse_locator = self._attempt_preparer.has_scope_request(
+                scope_id=scope.id,
+                request_fingerprint=prior_request.request_fingerprint,
+                fence=context.fence,
+            )
+        locator = supported_locator if direct_target.state != "resolved" or reuse_locator else None
+        detail_call = locator_call if locator is not None else build_detail_call(platform, content)
+        if detail_call is None:  # pragma: no cover - locator 与调用同步构造
+            raise RuntimeError("TikHub 身份解析调用缺失")
         executed = self._execute_call(
             run=run,
             scope=scope,
@@ -1208,7 +1251,11 @@ class TikHubCollectionScopeExecutor:
 
         detail_items = extract_detail_items(platform, executed.body)
         if not detail_items:
+            if locator is not None:
+                raise _CommentTargetUnavailable("identity_unavailable")
             raise ValueError("TikHub Detail 响应未包含可映射内容")
+        if locator is not None and len(detail_items) != 1:
+            raise _CommentTargetUnavailable("identity_ambiguous")
         mapped: list[_DetailCandidate] = []
         for raw_item in detail_items:
             item_locator = _stable_item_locator(
@@ -1249,6 +1296,33 @@ class TikHubCollectionScopeExecutor:
                     error_code=type(exc).__name__,
                 )
                 raise
+            if locator is not None:
+                resolved = resolve_comment_target(
+                    platform=platform,
+                    external_content_id=detail_content.external_content_id,
+                    alternate_ids=detail_content.alternate_ids,
+                )
+                if (
+                    resolved.state != "resolved"
+                    or resolved.lookup_id != detail_content.external_content_id
+                ):
+                    self._content_writer.record_candidate_failure(
+                        candidate_id=candidate_id,
+                        provider_attempt_id=executed.attempt_id,
+                        fence=context.fence,
+                        result="invalid",
+                        error_code="detail_comment_target_identity_unavailable",
+                    )
+                    raise _CommentTargetUnavailable("identity_unavailable")
+                detail_content = detail_content.model_copy(
+                    update={
+                        "external_content_id": content.external_content_id,
+                        "alternate_ids": {
+                            **content.alternate_ids,
+                            **detail_content.alternate_ids,
+                        },
+                    }
+                )
             if detail_content.external_content_id != content.external_content_id:
                 self._content_writer.record_candidate_failure(
                     candidate_id=candidate_id,
@@ -1278,6 +1352,7 @@ class TikHubCollectionScopeExecutor:
         reported_total_override: int | None,
     ) -> _CommentFetchOutcome:
         platform = _tikhub_platform(scope.platform)
+        link_lookup_id = _link_backed_lookup_id(content)
         full_capture = run.config_snapshot.get("mode") == "batch_supplement"
         pagination_state: dict[str, object] = {}
         seen_comment_ids: set[str] = set()
@@ -1365,7 +1440,7 @@ class TikHubCollectionScopeExecutor:
                             source_type=scope.source_type,
                             source_value=scope.source_value,
                             observed_at=executed.observed_at,
-                            external_content_id=content.external_content_id,
+                            external_content_id=link_lookup_id or content.external_content_id,
                         ),
                         item_locator=item_locator,
                         is_root=True,
@@ -1379,6 +1454,10 @@ class TikHubCollectionScopeExecutor:
                         error_code=type(exc).__name__,
                     )
                     raise
+                if link_lookup_id is not None and comment.external_content_id == link_lookup_id:
+                    comment = comment.model_copy(
+                        update={"external_content_id": content.external_content_id}
+                    )
                 if comment.external_content_id != content.external_content_id:
                     self._content_writer.record_candidate_failure(
                         candidate_id=candidate_id,
@@ -1701,6 +1780,7 @@ class TikHubCollectionScopeExecutor:
         reply_target: int | None,
     ) -> _ReplyFetchOutcome:
         platform = _tikhub_platform(scope.platform)
+        link_lookup_id = _link_backed_lookup_id(content)
         full_capture = run.config_snapshot.get("mode") == "batch_supplement"
         pagination_state: dict[str, object] = {}
         reply_ids: set[str] = set()
@@ -1775,7 +1855,7 @@ class TikHubCollectionScopeExecutor:
                             source_type=scope.source_type,
                             source_value=scope.source_value,
                             observed_at=executed.observed_at,
-                            external_content_id=root_comment.external_content_id,
+                            external_content_id=link_lookup_id or root_comment.external_content_id,
                             root_comment_id=root_comment.external_comment_id,
                         ),
                         item_locator=item_locator,
@@ -1790,6 +1870,10 @@ class TikHubCollectionScopeExecutor:
                         error_code=type(exc).__name__,
                     )
                     raise
+                if link_lookup_id is not None and reply.external_content_id == link_lookup_id:
+                    reply = reply.model_copy(
+                        update={"external_content_id": root_comment.external_content_id}
+                    )
                 if reply.external_content_id != root_comment.external_content_id:
                     self._content_writer.record_candidate_failure(
                         candidate_id=candidate_id,
@@ -2180,6 +2264,21 @@ def _comment_sort_mode(platform: TikHubPlatform) -> str:
     if platform in {"xiaohongshu", "weibo", "bilibili"}:
         return "latest"
     return "provider_default"
+
+
+def _link_backed_lookup_id(content: CanonicalContentV1) -> str | None:
+    """短链导入保持原 Content 身份，Mapper 先核对真实 Provider 目标再挂回原内容。"""
+
+    if resolve_supported_locator(content.platform, content.alternate_ids) is None:
+        return None
+    resolution = resolve_comment_target(
+        platform=content.platform,
+        external_content_id=content.external_content_id,
+        alternate_ids=content.alternate_ids,
+    )
+    if resolution.state != "resolved" or resolution.lookup_id == content.external_content_id:
+        return None
+    return resolution.lookup_id
 
 
 def _coverage_for_stop(

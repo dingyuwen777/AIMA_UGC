@@ -6,9 +6,58 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.collection_targets import _lookup_identity
 from aima_ugc.adapters.providers.tikhub.runtime import (
     build_comments_call,
+    build_identity_resolution_call,
     build_sub_comments_call,
 )
-from aima_ugc.modules.collection.comment_target import identity_block_reason
+from aima_ugc.modules.collection.comment_target import (
+    identity_block_reason,
+    resolve_supported_locator,
+)
+
+
+@pytest.mark.parametrize(
+    ("platform", "id_type", "url", "path", "parameter"),
+    (
+        (
+            "xiaohongshu",
+            "share_text",
+            "https://xhslink.com/o/8fCmVEVQWmp",
+            "/api/v1/xiaohongshu/app_v2/get_image_note_detail",
+            "share_text",
+        ),
+        (
+            "douyin",
+            "douyin_share_url",
+            "https://v.douyin.com/e3x2fjE/",
+            "/api/v1/douyin/app/v3/fetch_one_video_by_share_url",
+            "share_url",
+        ),
+    ),
+)
+def test_verified_share_locator_uses_separate_detail_operation(
+    platform: str, id_type: str, url: str, path: str, parameter: str
+) -> None:
+    locator = resolve_supported_locator(platform, {id_type: url})
+    assert locator == (id_type, url)
+    call = build_identity_resolution_call(platform=platform, locator_type=id_type, locator=url)
+    assert call.path == path
+    assert call.params == {parameter: url}
+    assert call.business_operation == "identity_resolution"
+
+
+@pytest.mark.parametrize(
+    ("platform", "id_type", "url"),
+    (
+        ("xiaohongshu", "share_text", "https://xhslink.com.evil.invalid/o/abc"),
+        ("xiaohongshu", "share_text", "https://user@xhslink.com/o/abc"),
+        ("douyin", "douyin_share_url", "http://127.0.0.1/abc"),
+        ("douyin", "douyin_share_url", "https://v.douyin.com.evil.invalid/abc"),
+    ),
+)
+def test_share_locator_rejects_unapproved_origin(platform: str, id_type: str, url: str) -> None:
+    assert resolve_supported_locator(platform, {id_type: url}) is None
+    with pytest.raises(ValueError, match="identity_unavailable"):
+        build_identity_resolution_call(platform=platform, locator_type=id_type, locator=url)
 
 
 @pytest.mark.parametrize(

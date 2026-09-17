@@ -107,6 +107,13 @@ verified_at = "2026-08-15"
 verified_via = "get_endpoint_info"
 
 [[endpoints]]
+path = "/api/v1/douyin/app/v3/fetch_one_video_by_share_url"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-09-17"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
 path = "/api/v1/douyin/app/v3/fetch_video_comment_replies"
 verification_status = "verified"
 base_price = "0.001000"

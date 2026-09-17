@@ -65,9 +65,9 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 五平台 URL/分享身份识别并保留 Canonical 主身份；`ttarticle` 长文章排除 | #526 / AC1；用户最新决定；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已补 host/完整路径/重复参数保护并移除新增的 `ttarticle_id` 提取；五平台短链精确解析仍缺 |
+| R1 | 五平台 URL/分享身份识别并保留 Canonical 主身份；`ttarticle` 长文章排除 | #526 / AC1；用户最新决定；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已补 host/完整路径/重复参数保护并移除新增的 `ttarticle_id` 提取；小红书 `share_text` 与抖音分享短链已实测取得 typed ID 并在隔离 PostgreSQL 持久化来源；快手候选回环 ID 不一致，其他平台分享链接精确映射尚未覆盖 |
 | R2 | 评论请求只接受平台白名单 typed ID，非法定位符和长文章零请求 | #526 / AC2；用户最新决定；docs/roadmap/04_五平台评论补采产品化实施方案.md | satisfied | `comment_target.py`、TikHub Runtime、五平台单元回归；历史 `ttarticle_id` 连同 `status_id` 一并拒绝，来源哈希和文章 ID 不再回退发请求 |
-| R3 | 精确解析有独立 Attempt/Raw、持久结果与明确失败语义 | #526 / AC3；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 当前只对缺少精确映射的来源 fail closed；独立解析 Operation/Attempt/Raw 尚未实现 |
+| R3 | 精确解析有独立 Attempt/Raw、持久结果与明确失败语义 | #526 / AC3；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 小红书和抖音短链已接入独立详情 Operation/Attempt/Raw，typed ID 写入原 Content 外部 ID 账本；小红书评论 503 重试复用同一解析 Raw；其他平台无精确映射时继续阻断，歧义/冲突矩阵尚未完成 |
 | R4 | 五平台评论与回复分页耗尽、可恢复且 Coverage 真实 | #526 / AC4；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 批次补采已去除抽样停机并修复回复短缺，隔离 PostgreSQL 回归通过；五平台分页/恢复矩阵未完成 |
 | R5 | Eligibility 与 Run/Scope 可解释直接、待解析、阻塞及部分结果 | #526 / AC5；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已增加诊断、混合来源失败 Scope、持久评论 Coverage 与页面平台汇总；回复级数量/完整阶段验收仍缺 |
 | R6 | 网页创建、跟踪、恢复、结果跳转及数据库评论分页闭环 | #526 / AC6；docs/roadmap/04_五平台评论补采产品化实施方案.md | not_satisfied | 已接线结果跳转与覆盖展示；既有声音广场分页可复用，逐平台全栈尚未证明 |
@@ -122,6 +122,10 @@ data_changes:
 - 真实 TikHub 有界 Probe 的请求数、计划费用和局限记录于 Roadmap 实施进度；四个平台固定样本 Detail/一级评论成功，原固定快手样本的 Detail/非空评论闭环未通过。
 - 后续有界 Probe 找到一个可见的“爱玛”快手候选，Detail、30 条根评论和 10 条回复的结构/归属通过生产 Mapper；用户给的另一快手链接仍返回空 `data.photos`。微博标准帖 Detail/评论成功，但其 Detail 不含用户另给长文章 ID，不能证明长文章的父帖映射。长文章正向样本的 4 次 App 请求均为 HTTP 400；不能据页面显示的 1 条评论断言已补采。完整请求/费用与边界见 Roadmap 和 TikHub 台账。
 - 同一快手候选的追加分页 Probe：4 次请求、计划费用 0.004 美元；前两页一级评论 30+20 条正确归属且无跨页重复，第二页后仍有下一游标。一条根评论的回复第一页 6 条、次页空页终止，均正确归属；另 1 次请求、计划费用 0.001 美元核对其报告回复数也为 6。此证据只证明快手部分真实分页和该线程回复覆盖，尚未证明一级评论最终耗尽。
+- 小红书 App V2 图文详情 `share_text` 实测：已验证长链接返回唯一详情和一致 `note_id`；近期公开短链返回 HTTP/业务码 200、唯一详情和 typed `note_id`。旧公开“爱玛”短链两次 HTTP 400。实际 4 次详情请求、计划费用 0.040 美元；长链接 Probe 计划的第二次评论请求因费用上限不足在发送前被拒绝。隔离 PostgreSQL 中小红书与抖音短链解析→评论→原 Content 写入通过；新增小红书评论 503 重试回归先失败后修复，确认复用已持久的解析 Raw。
+- 官方 endpoint-info 核价后，抖音 App V3 官方示例短链 1 次请求、计划 0.001 美元，返回唯一可映射数字 `aweme_id`。快手已验证作品做 3 组“生成短链 → 按 URL 查询”回环，共 6 次请求、计划 0.009 美元，生成目标 ID 与输入相同，解析响应虽为 HTTP/业务码 200 且 `data.result=1`，`data.photo.photoId` 三次都与输入不一致；未证明精确归属，正式请求必须继续阻断。详见 Roadmap 进度记录。
+- 微博视频详情官方链接示例的带前缀 ID 与去前缀数字分别 HTTP 400；另一官方数字示例 HTTP/业务码 200 且实际 `data.status.idstr` 为数字，说明文档所列 `items[0].data.idstr` 与现行返回不一致。B站 Web V3 URL 详情对一个公开 `b23.tv` 短链 HTTP 400。微博 4 次/B站 1 次业务请求计划费用分别 0.004/0.001 美元；这些样本不支持把短链解析接入正式补采。
+- 短链详情空列表的隔离 PostgreSQL 回归先显示泛化 `scope_execution_failed`，修复后 Scope 稳定返回 `identity_unavailable`，只产生一次解析请求，不写 typed ID 或评论。
 - 这些验证只覆盖当前部分实现。R1、R3–R9 尚未满足，严格 Ready Check、PR current-head CI、两阶段 Review 和 main fresh CI 尚未执行；不得合并。
 
 # 交付状态
