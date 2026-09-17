@@ -22,6 +22,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           def replace_once(path: str, old: str, new: str) -> None:
               p = Path(path)
@@ -30,6 +31,14 @@ jobs:
               if count != 1:
                   raise SystemExit(f"{path}: expected exactly one match for {old!r}, got {count}")
               p.write_text(text.replace(old, new), encoding="utf-8")
+
+          def regex_once(path: str, pattern: str, replacement: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              updated, count = re.subn(pattern, replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one regex match, got {count}")
+              p.write_text(updated, encoding="utf-8")
 
           replace_once(
               "backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py",
@@ -41,11 +50,9 @@ jobs:
               "base.order_by(vehicle_models_table.c.code, vehicle_models_table.c.id)",
               "base.order_by(vehicle_models_table.c.display_name, vehicle_models_table.c.id)",
           )
-          replace_once(
+          regex_once(
               "backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py",
-              """content_brand_evidence_table.c.content_id,
-                    vehicle_brands_table.c.code,
-                    vehicle_brands_table.c.id,""",
+              r"content_brand_evidence_table\.c\.content_id,\s+vehicle_brands_table\.c\.code,\s+vehicle_brands_table\.c\.id,",
               """content_brand_evidence_table.c.content_id,
                     case(
                         (vehicle_brands_table.c.role == \"owned\", 0),
@@ -55,11 +62,9 @@ jobs:
                     vehicle_brands_table.c.display_name,
                     vehicle_brands_table.c.id,""",
           )
-          replace_once(
+          regex_once(
               "backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py",
-              """content_vehicle_evidence_table.c.content_id,
-                    func.coalesce(effective_vehicle.c.code, vehicle_models_table.c.code),
-                    content_vehicle_evidence_table.c.created_at,""",
+              r"content_vehicle_evidence_table\.c\.content_id,\s+func\.coalesce\(effective_vehicle\.c\.code,\s*vehicle_models_table\.c\.code\),\s+content_vehicle_evidence_table\.c\.created_at,",
               """content_vehicle_evidence_table.c.content_id,
                     func.coalesce(
                         effective_vehicle.c.display_name,
