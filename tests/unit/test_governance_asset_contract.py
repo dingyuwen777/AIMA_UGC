@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import runpy
 import shutil
+import subprocess
 from pathlib import Path
 from string import Template
 
@@ -11,6 +12,7 @@ CONTRACT = runpy.run_path(str(CONTRACT_PATH))
 LOAD_ISSUE_PROFILES = CONTRACT["load_issue_profiles"]
 VALIDATE_ISSUE_INSTANCE = CONTRACT["validate_issue_instance"]
 VALIDATE_NEW_CHANGE_FILE = CONTRACT["validate_new_change_file"]
+VALIDATE_NEW_CHANGES_SINCE = CONTRACT["validate_new_changes_since"]
 
 
 def _prepare_root(tmp_path: Path) -> Path:
@@ -25,6 +27,18 @@ def _prepare_root(tmp_path: Path) -> Path:
         template_target / "CHANGE.template.md",
     )
     return tmp_path
+
+
+def _git(root: Path, *arguments: str) -> str:
+    """在临时仓库执行确定性 Git 操作并返回 stdout。"""
+    result = subprocess.run(
+        ["git", "-C", str(root), *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return result.stdout.strip()
 
 
 def _technical_issue_body() -> str:
@@ -141,3 +155,48 @@ def test_l3_change_cannot_drop_tradeoff_structure(tmp_path: Path) -> None:
     path.write_text(content, encoding="utf-8")
     errors = VALIDATE_NEW_CHANGE_FILE(path, root=root)
     assert any("备选方案与取舍" in error for error in errors)
+
+
+def test_changed_existing_active_change_is_revalidated(tmp_path: Path) -> None:
+    """已有 current Active Change 被另一个宿主改坏时，PR changed-scope 仍必须重新校验。"""
+    root = _prepare_root(tmp_path)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.name", "governance-contract")
+    _git(root, "config", "user.email", "governance-contract@example.invalid")
+    path = _write_change(root, "CHG-20260917-153002-existing-contract")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "建立治理资产基线")
+    base = _git(root, "rev-parse", "HEAD")
+
+    broken = path.read_text(encoding="utf-8").replace("# 完成审计", "# 其他审计")
+    path.write_text(broken, encoding="utf-8")
+    _git(root, "add", str(path.relative_to(root)))
+    _git(root, "commit", "-m", "模拟宿主破坏治理结构")
+    head = _git(root, "rev-parse", "HEAD")
+
+    try:
+        VALIDATE_NEW_CHANGES_SINCE(root, base_sha=base, head_sha=head)
+    except CONTRACT["GovernanceAssetContractError"] as exc:
+        assert "完成审计" in str(exc)
+    else:
+        raise AssertionError("已修改 Active Change 未被 current machine Contract 拒绝")
+
+
+def test_history_archive_is_outside_current_change_revalidation(tmp_path: Path) -> None:
+    """历史 archive 即使是 date-only identity，也不进入本 PR Active Change current Profile 扫描。"""
+    root = _prepare_root(tmp_path)
+    _git(root, "init", "-b", "main")
+    _git(root, "config", "user.name", "governance-contract")
+    _git(root, "config", "user.email", "governance-contract@example.invalid")
+    archive = root / "changes/archive/2026-09/CHG-20260916-legacy/CHANGE.md"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    archive.write_text("legacy immutable history\n", encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "建立历史归档基线")
+    base = _git(root, "rev-parse", "HEAD")
+    archive.write_text("legacy immutable history touched for fixture\n", encoding="utf-8")
+    _git(root, "add", str(archive.relative_to(root)))
+    _git(root, "commit", "-m", "模拟历史路径变化")
+    head = _git(root, "rev-parse", "HEAD")
+
+    assert VALIDATE_NEW_CHANGES_SINCE(root, base_sha=base, head_sha=head) == ()
