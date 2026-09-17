@@ -1,0 +1,119 @@
+name: Temporary Internal Code Sort Fix
+
+on:
+  push:
+    branches:
+      - feature/server-generated-catalog-code
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '解耦内部编码与展示排序') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/server-generated-catalog-code
+          fetch-depth: 0
+      - name: Apply exact ordering patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}")
+              p.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py",
+              "from sqlalchemy import delete, func, insert, or_, select, tuple_, update\n",
+              "from sqlalchemy import case, delete, func, insert, or_, select, tuple_, update\n",
+          )
+          replace_once(
+              "backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py",
+              """statement.order_by(vehicle_brands_table.c.code, vehicle_brands_table.c.id)
+            .offset(offset)
+            .limit(limit)""",
+              """statement.order_by(
+                case(
+                    (vehicle_brands_table.c.role == \"owned\", 0),
+                    (vehicle_brands_table.c.role == \"competitor\", 1),
+                    else_=2,
+                ),
+                vehicle_brands_table.c.display_name,
+                vehicle_brands_table.c.id,
+            )
+            .offset(offset)
+            .limit(limit)""",
+          )
+          replace_once(
+              "backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py",
+              """base.order_by(vehicle_models_table.c.code, vehicle_models_table.c.id)
+            .offset(offset)
+            .limit(limit)""",
+              """base.order_by(vehicle_models_table.c.display_name, vehicle_models_table.c.id)
+            .offset(offset)
+            .limit(limit)""",
+          )
+          replace_once(
+              "backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py",
+              """.order_by(
+                    content_brand_evidence_table.c.content_id,
+                    vehicle_brands_table.c.code,
+                    vehicle_brands_table.c.id,
+                    content_brand_evidence_table.c.created_at,
+                    content_brand_evidence_table.c.id,
+                )""",
+              """.order_by(
+                    content_brand_evidence_table.c.content_id,
+                    case(
+                        (vehicle_brands_table.c.role == \"owned\", 0),
+                        (vehicle_brands_table.c.role == \"competitor\", 1),
+                        else_=2,
+                    ),
+                    vehicle_brands_table.c.display_name,
+                    vehicle_brands_table.c.id,
+                    content_brand_evidence_table.c.created_at,
+                    content_brand_evidence_table.c.id,
+                )""",
+          )
+          replace_once(
+              "backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py",
+              """.order_by(
+                    content_vehicle_evidence_table.c.content_id,
+                    func.coalesce(effective_vehicle.c.code, vehicle_models_table.c.code),
+                    content_vehicle_evidence_table.c.created_at,
+                )""",
+              """.order_by(
+                    content_vehicle_evidence_table.c.content_id,
+                    func.coalesce(
+                        effective_vehicle.c.display_name,
+                        vehicle_models_table.c.display_name,
+                    ),
+                    func.coalesce(effective_vehicle.c.id, vehicle_models_table.c.id),
+                    content_vehicle_evidence_table.c.created_at,
+                    content_vehicle_evidence_table.c.id,
+                )""",
+          )
+          PY
+          git diff --check
+          git diff -- backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes required"
+            exit 0
+          fi
+          git config user.name "yuwen.ding"
+          git config user.email "dingyuwen777@gmail.com"
+          git add backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+          git commit -m "解耦内部编码与展示排序"
+          git push origin HEAD:feature/server-generated-catalog-code
