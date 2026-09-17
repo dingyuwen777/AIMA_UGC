@@ -197,8 +197,7 @@ def test_live_issue_rejects_non_task_acceptance(tmp_path: Path) -> None:
     """普通编号列表不能冒充可回写的稳定 Acceptance task list。"""
     root = _prepare_root(tmp_path)
     body = _technical_issue_body().replace(
-        "- [ ] AC1：新治理资产必须通过机器门禁。\n"
-        "- [ ] AC2：历史治理资产不被批量改写。",
+        "- [ ] AC1：新治理资产必须通过机器门禁。\n- [ ] AC2：历史治理资产不被批量改写。",
         "1. 新治理资产必须通过机器门禁。\n2. 历史治理资产不被批量改写。",
     )
     errors = VALIDATE_ISSUE_INSTANCE("[技术变更] 统一治理", body, root=root)
