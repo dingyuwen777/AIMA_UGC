@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from aima_ugc.contracts.administration import VehicleModelCreateRequest
 from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.entrypoints.api_main import create_app
