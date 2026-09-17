@@ -777,7 +777,12 @@ class PostgresContentQueryRepository:
                 )
                 .order_by(
                     content_brand_evidence_table.c.content_id,
-                    vehicle_brands_table.c.code,
+                    case(
+                        (vehicle_brands_table.c.role == "owned", 0),
+                        (vehicle_brands_table.c.role == "competitor", 1),
+                        else_=2,
+                    ),
+                    vehicle_brands_table.c.display_name,
                     vehicle_brands_table.c.id,
                     content_brand_evidence_table.c.created_at,
                     content_brand_evidence_table.c.id,
@@ -879,8 +884,13 @@ class PostgresContentQueryRepository:
                 )
                 .order_by(
                     content_vehicle_evidence_table.c.content_id,
-                    func.coalesce(effective_vehicle.c.code, vehicle_models_table.c.code),
+                    func.coalesce(
+                        effective_vehicle.c.display_name,
+                        vehicle_models_table.c.display_name,
+                    ),
+                    func.coalesce(effective_vehicle.c.id, vehicle_models_table.c.id),
                     content_vehicle_evidence_table.c.created_at,
+                    content_vehicle_evidence_table.c.id,
                 )
             ).mappings()
             for vehicle_row in vehicle_rows:

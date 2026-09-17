@@ -192,7 +192,7 @@ class PostgresBrandVehicleRepository:
             statement = statement.where(*conditions)
             count_statement = count_statement.where(*conditions)
         rows = self._session.execute(
-            statement.order_by(vehicle_brands_table.c.code, vehicle_brands_table.c.id)
+            statement.order_by(vehicle_brands_table.c.display_name, vehicle_brands_table.c.id)
             .offset(offset)
             .limit(limit)
         ).mappings()
