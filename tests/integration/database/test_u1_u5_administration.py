@@ -64,16 +64,12 @@ def test_vehicle_merge_redirects_identity_and_audits_mutations(runtime) -> None:
     )
     brand = _create_owned_brand(runtime, principal, code="U1-MERGE")
     source = service.create_vehicle_model(
-        VehicleModelCreateRequest(
-            display_name="旧 Q7", brand_id=brand.id, aliases=("旧Q7",)
-        ),
+        VehicleModelCreateRequest(display_name="旧 Q7", brand_id=brand.id, aliases=("旧Q7",)),
         principal=principal,
         request_id="req-create-source",
     )
     target = service.create_vehicle_model(
-        VehicleModelCreateRequest(
-            display_name="爱玛 Q7", brand_id=brand.id, aliases=("Q7",)
-        ),
+        VehicleModelCreateRequest(display_name="爱玛 Q7", brand_id=brand.id, aliases=("Q7",)),
         principal=principal,
         request_id="req-create-target",
     )
@@ -178,9 +174,7 @@ def test_unreferenced_vehicle_can_be_physically_deleted(runtime) -> None:  # typ
     )
     brand = _create_owned_brand(runtime, principal, code="U1-DELETE")
     created = service.create_vehicle_model(
-        VehicleModelCreateRequest(
-            display_name="爱玛露娜", brand_id=brand.id, aliases=("露娜",)
-        ),
+        VehicleModelCreateRequest(display_name="爱玛露娜", brand_id=brand.id, aliases=("露娜",)),
         principal=principal,
         request_id="req-create",
     )
