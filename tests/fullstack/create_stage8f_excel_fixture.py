@@ -18,7 +18,11 @@ def main() -> int:
     output = Path(sys.argv[1])
     scenario = sys.argv[2] if len(sys.argv) == 3 else "success"
     if scenario not in {
-        "success", "worker-failure", "manual-review", "admin-product", "comment-supplement"
+        "success",
+        "worker-failure",
+        "manual-review",
+        "admin-product",
+        "comment-supplement",
     }:
         raise SystemExit("scenario 不在允许的 Full-stack Fixture 列表中")
     output.parent.mkdir(parents=True, exist_ok=True)

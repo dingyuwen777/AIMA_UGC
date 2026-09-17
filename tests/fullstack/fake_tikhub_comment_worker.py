@@ -44,9 +44,10 @@ class _CommentFixtureTransport:
                 "xiaohongshu",
                 "comments",
             ),
-            xiaohongshu.build_sub_comments_request(
-                note_id="fixture", comment_id="fixture"
-            ).path: ("xiaohongshu", "sub_comments"),
+            xiaohongshu.build_sub_comments_request(note_id="fixture", comment_id="fixture").path: (
+                "xiaohongshu",
+                "sub_comments",
+            ),
             douyin.build_video_detail_request(aweme_id="1").path: ("douyin", "detail"),
             douyin.build_video_comments_request(aweme_id="1").path: ("douyin", "comments"),
             weibo.build_status_detail_request(status_id="1").path: ("weibo", "detail"),
@@ -91,18 +92,19 @@ def _fixture(platform: str, filename: str) -> dict[str, Any]:
 
 def _detail(platform: str, lookup: str) -> dict[str, Any]:
     filename = (
-        "image_detail.sanitized.json"
-        if platform == "xiaohongshu"
-        else "detail.sanitized.json"
+        "image_detail.sanitized.json" if platform == "xiaohongshu" else "detail.sanitized.json"
     )
     body = _fixture(platform, filename)
-    title = "爱玛评论补采全栈" + {
-        "xiaohongshu": "小红书",
-        "douyin": "抖音",
-        "weibo": "微博",
-        "bilibili": "B站",
-        "kuaishou": "快手",
-    }[platform]
+    title = (
+        "爱玛评论补采全栈"
+        + {
+            "xiaohongshu": "小红书",
+            "douyin": "抖音",
+            "weibo": "微博",
+            "bilibili": "B站",
+            "kuaishou": "快手",
+        }[platform]
+    )
     if platform == "xiaohongshu":
         note = body["data"]["data"][0]["note_list"][0]
         note.update(id=lookup, title=title, comments_count=1)
@@ -118,15 +120,11 @@ def _detail(platform: str, lookup: str) -> dict[str, Any]:
         video.update(aid=int(lookup), title=title)
         video["stat"].update(aid=int(lookup), reply=1)
     else:
-        body["data"]["photos"][0].update(
-            photo_id=lookup, caption=title, comment_count=1
-        )
+        body["data"]["photos"][0].update(photo_id=lookup, caption=title, comment_count=1)
     return body
 
 
-def _comments(
-    platform: str, lookup: str, params: dict[str, Any]
-) -> dict[str, Any]:
+def _comments(platform: str, lookup: str, params: dict[str, Any]) -> dict[str, Any]:
     if platform == "kuaishou" and params.get("pcursor"):
         return {"data": {"result": 1, "rootComments": [], "pcursor": ""}}
     body = _fixture(platform, "comments_page1.sanitized.json")

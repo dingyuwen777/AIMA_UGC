@@ -151,8 +151,7 @@ class PostgresCollectionContentStateReader:
                     .where(
                         contents_table.c.platform == platform,
                         contents_table.c.external_content_id == external_id,
-                        contents_table.c.external_content_id
-                        != canonical_external_content_id,
+                        contents_table.c.external_content_id != canonical_external_content_id,
                     )
                     .limit(1)
                 )
@@ -168,8 +167,7 @@ class PostgresCollectionContentStateReader:
                     )
                     .where(
                         contents_table.c.platform == platform,
-                        contents_table.c.external_content_id
-                        != canonical_external_content_id,
+                        contents_table.c.external_content_id != canonical_external_content_id,
                         content_external_ids_table.c.id_type == id_type,
                         content_external_ids_table.c.external_id == external_id,
                     )
@@ -350,8 +348,7 @@ class PostgresFencedCollectionIngestionWriter:
                         .where(
                             contents_table.c.platform == canonical.platform,
                             contents_table.c.external_content_id == external_id,
-                            contents_table.c.external_content_id
-                            != canonical.external_content_id,
+                            contents_table.c.external_content_id != canonical.external_content_id,
                         )
                         .limit(1)
                     )
@@ -365,8 +362,7 @@ class PostgresFencedCollectionIngestionWriter:
                         )
                         .where(
                             contents_table.c.platform == canonical.platform,
-                            contents_table.c.external_content_id
-                            != canonical.external_content_id,
+                            contents_table.c.external_content_id != canonical.external_content_id,
                             content_external_ids_table.c.id_type == id_type,
                             content_external_ids_table.c.external_id == external_id,
                         )

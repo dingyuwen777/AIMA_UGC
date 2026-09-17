@@ -1652,9 +1652,7 @@ class TikHubCollectionScopeExecutor:
                     technical_partial = technical_partial or reply_outcome.technical_partial
                     if full_capture and reply_outcome.completed:
                         stats.comment_stage = "roots"
-                        self._checkpoint_enrichment_stats(
-                            scope=scope, context=context, stats=stats
-                        )
+                        self._checkpoint_enrichment_stats(scope=scope, context=context, stats=stats)
                     if not reply_outcome.completed:
                         return _CommentFetchOutcome(
                             completed=False,

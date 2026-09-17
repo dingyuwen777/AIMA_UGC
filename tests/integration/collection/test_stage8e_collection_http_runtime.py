@@ -1045,14 +1045,10 @@ def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
         request_id=f"stage8e-native-{platform}",
     )
     body = json.loads(
-        (_TIKHUB_FIXTURES / platform / "comments_page1.sanitized.json").read_text(
-            encoding="utf-8"
-        )
+        (_TIKHUB_FIXTURES / platform / "comments_page1.sanitized.json").read_text(encoding="utf-8")
     )
     detail_name = (
-        "image_detail.sanitized.json"
-        if platform == "xiaohongshu"
-        else "detail.sanitized.json"
+        "image_detail.sanitized.json" if platform == "xiaohongshu" else "detail.sanitized.json"
     )
     detail = json.loads((_TIKHUB_FIXTURES / platform / detail_name).read_text(encoding="utf-8"))
     if platform == "xiaohongshu":
@@ -1138,14 +1134,21 @@ def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
     assert run.status == "succeeded", (scope_outcomes, run.scopes[0], transport.call_count)
     assert transport.seen_requests[0].params
     with runtime.database.engine.begin() as connection:
-        comments = connection.execute(
-            select(comments_table).where(comments_table.c.content_id == content_id)
-        ).mappings().all()
-        assert sum(
-            comment["root_comment_id"] == comment["external_comment_id"]
-            and comment["parent_comment_id"] is None
-            for comment in comments
-        ) == 2
+        comments = (
+            connection.execute(
+                select(comments_table).where(comments_table.c.content_id == content_id)
+            )
+            .mappings()
+            .all()
+        )
+        assert (
+            sum(
+                comment["root_comment_id"] == comment["external_comment_id"]
+                and comment["parent_comment_id"] is None
+                for comment in comments
+            )
+            == 2
+        )
         content_platform = connection.scalar(
             select(contents_table.c.platform).where(contents_table.c.id == content_id)
         )
@@ -1153,11 +1156,13 @@ def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
         attempts = connection.scalar(
             select(func.count())
             .select_from(provider_request_attempts_table.join(provider_requests_table))
-            .where(provider_requests_table.c.scope_id.in_(
-                select(collection_scopes_table.c.id).where(
-                    collection_scopes_table.c.run_id == created.run_id
+            .where(
+                provider_requests_table.c.scope_id.in_(
+                    select(collection_scopes_table.c.id).where(
+                        collection_scopes_table.c.run_id == created.run_id
+                    )
                 )
-            ))
+            )
         )
         assert attempts == len(responses)
 
@@ -1200,9 +1205,7 @@ def test_batch_supplement_native_ids_persist_replies_under_their_root(
     )
     fixture_dir = _TIKHUB_FIXTURES / platform
     detail_file = (
-        "image_detail.sanitized.json"
-        if platform == "xiaohongshu"
-        else "detail.sanitized.json"
+        "image_detail.sanitized.json" if platform == "xiaohongshu" else "detail.sanitized.json"
     )
     detail = json.loads((fixture_dir / detail_file).read_text(encoding="utf-8"))
     roots = json.loads((fixture_dir / "comments_page1.sanitized.json").read_text(encoding="utf-8"))
@@ -1279,9 +1282,7 @@ def test_batch_supplement_native_ids_persist_replies_under_their_root(
         def send(self, request):  # type: ignore[no-untyped-def]
             if self.call_count in (1, 2):
                 current = service.get_run(created.run_id).scopes[0]
-                observed_stages.append(
-                    (current.comment_stage, current.stats.root_comment_count)
-                )
+                observed_stages.append((current.comment_stage, current.stats.root_comment_count))
             return super().send(request)
 
     transport = ObservingTransport(tuple(responses))
@@ -1307,15 +1308,23 @@ def test_batch_supplement_native_ids_persist_replies_under_their_root(
     assert run.scopes[0].stats.reply_count == (2 if platform == "kuaishou" else 1)
     assert observed_stages == [("roots", 0), ("replies", 1)]
     with runtime.database.engine.begin() as connection:
-        comments = connection.execute(
-            select(comments_table).where(comments_table.c.content_id == content_id)
-        ).mappings().all()
-        thread_coverage = connection.execute(
-            select(comment_thread_coverage_observations_table).where(
-                comment_thread_coverage_observations_table.c.content_id == content_id,
-                comment_thread_coverage_observations_table.c.root_comment_id == root_id,
+        comments = (
+            connection.execute(
+                select(comments_table).where(comments_table.c.content_id == content_id)
             )
-        ).mappings().one()
+            .mappings()
+            .all()
+        )
+        thread_coverage = (
+            connection.execute(
+                select(comment_thread_coverage_observations_table).where(
+                    comment_thread_coverage_observations_table.c.content_id == content_id,
+                    comment_thread_coverage_observations_table.c.root_comment_id == root_id,
+                )
+            )
+            .mappings()
+            .one()
+        )
     assert any(
         item["external_comment_id"] == root_id and item["parent_comment_id"] is None
         for item in comments
@@ -1367,9 +1376,7 @@ def test_batch_supplement_native_id_comment_retry_reuses_detail_raw(
     )
     fixture_dir = _TIKHUB_FIXTURES / platform
     detail_file = (
-        "image_detail.sanitized.json"
-        if platform == "xiaohongshu"
-        else "detail.sanitized.json"
+        "image_detail.sanitized.json" if platform == "xiaohongshu" else "detail.sanitized.json"
     )
     detail = json.loads((fixture_dir / detail_file).read_text(encoding="utf-8"))
     comments = json.loads(
@@ -1378,9 +1385,7 @@ def test_batch_supplement_native_id_comment_retry_reuses_detail_raw(
     if platform == "xiaohongshu":
         note = detail["data"]["data"][0]["note_list"][0]
         note.update(id=lookup_value, comments_count=1)
-        comments["data"]["data"].update(
-            comment_count=1, comment_count_l1=1, has_more=False
-        )
+        comments["data"]["data"].update(comment_count=1, comment_count_l1=1, has_more=False)
     elif platform == "douyin":
         video = detail["data"]["aweme_detail"]
         video["aweme_id"] = lookup_value
@@ -1397,9 +1402,7 @@ def test_batch_supplement_native_id_comment_retry_reuses_detail_raw(
         video["stat"].update(aid=int(lookup_value), reply=1)
         comments["data"]["data"]["cursor"]["is_end"] = True
     else:
-        detail["data"]["photos"][0].update(
-            photo_id=int(lookup_value), comment_count=1
-        )
+        detail["data"]["photos"][0].update(photo_id=int(lookup_value), comment_count=1)
     responses = [
         ProviderTransportResponse(status_code=200, body=detail),
         ProviderTransportResponse(status_code=503, body={"error": "temporary"}),
@@ -1852,9 +1855,7 @@ def test_batch_supplement_blocks_ambiguous_shortlink_without_comment_request(run
     other_note = deepcopy(first_note)
     other_note["id"] = "different-note"
     detail["data"]["data"][0]["note_list"].append(other_note)
-    transport = FakeProviderTransport(
-        (ProviderTransportResponse(status_code=200, body=detail),)
-    )
+    transport = FakeProviderTransport((ProviderTransportResponse(status_code=200, body=detail),))
     worker = create_job_worker(
         runtime=runtime,
         registry=create_collection_job_registry(
@@ -1874,22 +1875,31 @@ def test_batch_supplement_blocks_ambiguous_shortlink_without_comment_request(run
     assert run.scopes[0].identity_status == "ambiguous"
     assert transport.call_count == 1
     with runtime.database.engine.begin() as connection:
-        assert connection.scalar(
-            select(func.count())
-            .select_from(comments_table)
-            .where(comments_table.c.content_id == content_id)
-        ) == 0
-        attempt = connection.execute(
-            select(provider_request_attempts_table)
-            .select_from(provider_request_attempts_table.join(provider_requests_table))
-            .where(provider_requests_table.c.scope_id == run.scopes[0].id)
-        ).mappings().one()
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(comments_table)
+                .where(comments_table.c.content_id == content_id)
+            )
+            == 0
+        )
+        attempt = (
+            connection.execute(
+                select(provider_request_attempts_table)
+                .select_from(provider_request_attempts_table.join(provider_requests_table))
+                .where(provider_requests_table.c.scope_id == run.scopes[0].id)
+            )
+            .mappings()
+            .one()
+        )
     assert attempt["raw_artifact_id"] is not None
 
 
 @pytest.mark.parametrize("bypass_early_check", [False, True])
 def test_batch_supplement_shortlink_identity_owned_by_other_content_is_blocked(
-    runtime, monkeypatch, bypass_early_check: bool,
+    runtime,
+    monkeypatch,
+    bypass_early_check: bool,
 ) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, source_content_id = _insert_import_content(
@@ -1928,9 +1938,7 @@ def test_batch_supplement_shortlink_identity_owned_by_other_content_is_blocked(
     )
     detail = _batch_detail_response(note_id="xhs-note-1")
     detail["data"]["data"][0]["note_list"][0]["comments_count"] = 1
-    transport = FakeProviderTransport(
-        (ProviderTransportResponse(status_code=200, body=detail),)
-    )
+    transport = FakeProviderTransport((ProviderTransportResponse(status_code=200, body=detail),))
     worker = create_job_worker(
         runtime=runtime,
         registry=create_collection_job_registry(
@@ -1951,11 +1959,14 @@ def test_batch_supplement_shortlink_identity_owned_by_other_content_is_blocked(
     assert run.scopes[0].identity_status == "conflict"
     assert transport.call_count == 1
     with runtime.database.engine.begin() as connection:
-        assert connection.scalar(
-            select(func.count())
-            .select_from(comments_table)
-            .where(comments_table.c.content_id.in_((source_content_id, other_content_id)))
-        ) == 0
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(comments_table)
+                .where(comments_table.c.content_id.in_((source_content_id, other_content_id)))
+            )
+            == 0
+        )
         conflicting_ids = connection.scalar(
             select(func.count())
             .select_from(content_external_ids_table)
@@ -1997,9 +2008,7 @@ def test_batch_supplement_shortlink_unknown_delivery_keeps_auditable_attempt(
     detail["data"]["data"][0]["note_list"][0]["comments_count"] = 0
     transport = FakeProviderTransport(
         (
-            ProviderTransportFailure.unknown(
-                code="connection_closed", safe_summary="发送结果未知"
-            ),
+            ProviderTransportFailure.unknown(code="connection_closed", safe_summary="发送结果未知"),
             ProviderTransportResponse(status_code=200, body=detail),
         )
     )
@@ -2020,15 +2029,19 @@ def test_batch_supplement_shortlink_unknown_delivery_keeps_auditable_attempt(
     assert transport.call_count == 2
     assert service.get_run(created.run_id).status == "succeeded"
     with runtime.database.engine.begin() as connection:
-        attempts = connection.execute(
-            select(provider_request_attempts_table)
-            .select_from(provider_request_attempts_table.join(provider_requests_table))
-            .where(
-                provider_requests_table.c.scope_id
-                == service.get_run(created.run_id).scopes[0].id
+        attempts = (
+            connection.execute(
+                select(provider_request_attempts_table)
+                .select_from(provider_request_attempts_table.join(provider_requests_table))
+                .where(
+                    provider_requests_table.c.scope_id
+                    == service.get_run(created.run_id).scopes[0].id
+                )
+                .order_by(provider_request_attempts_table.c.attempt_no)
             )
-            .order_by(provider_request_attempts_table.c.attempt_no)
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         typed_count = connection.scalar(
             select(func.count())
             .select_from(content_external_ids_table)
