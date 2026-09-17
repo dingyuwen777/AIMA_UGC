@@ -1,5 +1,4 @@
 import { expect, type APIRequestContext } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
 
 interface BrandListItem {
   id: string
@@ -29,7 +28,6 @@ export async function ensureStage3FilterBrand(
 
   const created = await request.post('/api/v1/vehicle-brands', {
     data: {
-      code: `FS-STAGE3-${randomUUID()}`,
       display_name: alias,
       role: 'owned',
       aliases: [alias],

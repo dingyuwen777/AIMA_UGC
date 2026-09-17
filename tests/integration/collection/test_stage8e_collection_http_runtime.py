@@ -1427,6 +1427,80 @@ def test_batch_supplement_native_id_comment_retry_reuses_detail_raw(
     assert details == 1
 
 
+def test_batch_supplement_resumes_second_comment_page_without_refetching_first(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        external_content_id="xhs-note-1",
+        lookup_id_type="note_id",
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu",
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-second-page-retry",
+    )
+    detail = _batch_detail_response()
+    detail["data"]["data"][0]["note_list"][0]["id"] = "xhs-note-1"
+    detail["data"]["data"][0]["note_list"][0]["comments_count"] = 2
+    first = json.loads(
+        (_TIKHUB_FIXTURES / "xiaohongshu" / "comments_page1.sanitized.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    first["data"]["data"].update(comment_count=2, comment_count_l1=2)
+    second = deepcopy(first)
+    second["data"]["data"]["comments"][0]["id"] = "xhs-comment-root-2"
+    second["data"]["data"].update(cursor="cursor-end", has_more=False)
+    transport = FakeProviderTransport(
+        (
+            ProviderTransportResponse(status_code=200, body=detail),
+            ProviderTransportResponse(status_code=200, body=first),
+            ProviderTransportResponse(status_code=503, body={"error": "temporary"}),
+            ProviderTransportResponse(status_code=200, body=second),
+        )
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-second-page-retry-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert worker.run_once() is True
+    assert service.get_run(created.run_id).status == "succeeded"
+    assert transport.call_count == 4
+    assert transport.seen_requests[2].params == transport.seen_requests[3].params
+    with runtime.database.engine.begin() as connection:
+        roots = connection.scalar(
+            select(func.count())
+            .select_from(comments_table)
+            .where(
+                comments_table.c.content_id == content_id,
+                comments_table.c.parent_comment_id.is_(None),
+            )
+        )
+    assert roots == 2
+
+
 def test_batch_supplement_resolves_xhs_shortlink_and_keeps_import_content_identity(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -1725,6 +1799,69 @@ def test_batch_supplement_reports_unavailable_when_shortlink_detail_is_empty(run
             )
             == 0
         )
+
+
+def test_batch_supplement_blocks_ambiguous_shortlink_without_comment_request(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, content_id = _insert_import_content(
+        runtime,
+        external_content_id="url_sha256:ambiguous-share-source",
+        lookup_id_type="share_text",
+        lookup_value="https://xhslink.com/o/8fCmVEVQWmp",
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu",
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=True,
+        ),
+        request_id="stage8e-ambiguous-shortlink",
+    )
+    detail = _batch_detail_response()
+    first_note = detail["data"]["data"][0]["note_list"][0]
+    other_note = deepcopy(first_note)
+    other_note["id"] = "different-note"
+    detail["data"]["data"][0]["note_list"].append(other_note)
+    transport = FakeProviderTransport(
+        (ProviderTransportResponse(status_code=200, body=detail),)
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-ambiguous-shortlink-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    run = service.get_run(created.run_id)
+    assert run.status == "failed"
+    assert run.scopes[0].stop_reason == "identity_ambiguous"
+    assert transport.call_count == 1
+    with runtime.database.engine.begin() as connection:
+        assert connection.scalar(
+            select(func.count())
+            .select_from(comments_table)
+            .where(comments_table.c.content_id == content_id)
+        ) == 0
+        attempt = connection.execute(
+            select(provider_request_attempts_table)
+            .select_from(provider_request_attempts_table.join(provider_requests_table))
+            .where(provider_requests_table.c.scope_id == run.scopes[0].id)
+        ).mappings().one()
+    assert attempt["raw_artifact_id"] is not None
 
 
 def test_batch_supplement_persists_safe_error_when_provider_secret_is_unavailable(
