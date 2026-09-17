@@ -1,11 +1,13 @@
-"""校验提交到 main 的 PR 是否声明了真实、可访问的需求来源。"""
+"""校验提交到 main 的 PR 是否引用合规 Requirement Source，并校验本次新增 Change。"""
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
+import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -13,6 +15,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+ROOT = Path(__file__).resolve().parents[2]
+GOVERNANCE_CONTRACT_PATH = ROOT / "scripts" / "quality" / "governance_asset_contract.py"
 REQUIREMENT_SOURCE_PATTERN = re.compile(
     r"^\s*Requirement-Source\s*:\s*(.*?)\s*$",
     flags=re.IGNORECASE | re.MULTILINE,
@@ -34,8 +38,25 @@ PLACEHOLDER_SOURCES = {
 }
 
 
+def _load_governance_contract() -> Any:
+    """加载 AIMA 项目治理资产机器 Contract 适配器，避免 checker 复制 Profile 规则。"""
+    spec = importlib.util.spec_from_file_location(
+        "aima_governance_asset_contract",
+        GOVERNANCE_CONTRACT_PATH,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载项目治理资产机器 Contract：{GOVERNANCE_CONTRACT_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+GOVERNANCE_CONTRACT = _load_governance_contract()
+
+
 class RequirementSourceError(ValueError):
-    """表示 PR Requirement Source 不满足机器可验证的追溯约束。"""
+    """表示 PR Requirement Source 或新增治理资产不满足机器可验证约束。"""
 
 
 def extract_requirement_sources(body: str) -> tuple[str, ...]:
@@ -58,8 +79,10 @@ def extract_requirement_sources(body: str) -> tuple[str, ...]:
 def _validate_issue_source(
     source: str,
     issue_loader: Callable[[int], Mapping[str, Any]],
+    *,
+    root: Path,
 ) -> None:
-    """确认本仓 Issue 来源真实存在，并排除 GitHub `/issues` 返回的 Pull Request。"""
+    """确认本仓 Issue 真实存在且 live 实例满足当前 AIMA Project Profile。"""
     match = ISSUE_SOURCE_PATTERN.fullmatch(source)
     if match is None:
         raise RequirementSourceError(f"不支持的 Issue Requirement-Source: {source}")
@@ -69,6 +92,16 @@ def _validate_issue_source(
     if "pull_request" in issue:
         raise RequirementSourceError(
             f"Requirement-Source {source} 指向 Pull Request；请引用定义需求的 Issue"
+        )
+    title = str(issue.get("title") or "").strip()
+    body = str(issue.get("body") or "").strip()
+    if not title or not body:
+        raise RequirementSourceError(f"Requirement-Source {source} 缺少可审查的标题或正文")
+    errors = GOVERNANCE_CONTRACT.validate_issue_instance(title, body, root=root)
+    if errors:
+        raise RequirementSourceError(
+            f"Requirement-Source {source} 不满足当前 AIMA 治理资产机器 Contract：\n- "
+            + "\n- ".join(errors)
         )
 
 
@@ -110,11 +143,11 @@ def validate_requirement_sources(
     root: Path,
     issue_loader: Callable[[int], Mapping[str, Any]],
 ) -> tuple[str, ...]:
-    """验证 PR body 中每个来源都能由稳定机器事实确认，而不判断自然语言质量。"""
+    """验证 PR body 中每个来源都满足真实可访问与当前 Project Profile 约束。"""
     sources = extract_requirement_sources(body)
     for source in sources:
         if ISSUE_SOURCE_PATTERN.fullmatch(source):
-            _validate_issue_source(source, issue_loader)
+            _validate_issue_source(source, issue_loader, root=root)
             continue
         _validate_repository_path(source, root)
     return sources
@@ -168,8 +201,8 @@ def _load_github_issue(
     return payload
 
 
-def _load_pull_request_event(event_path: Path) -> tuple[str, str]:
-    """从 GitHub pull_request event 文件读取 PR body 和仓库完整名。"""
+def _load_pull_request_event(event_path: Path) -> tuple[str, str, str, str]:
+    """从 GitHub pull_request event 读取 body、仓库身份与 base/head revision。"""
     try:
         event = json.loads(event_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -184,26 +217,39 @@ def _load_pull_request_event(event_path: Path) -> tuple[str, str]:
 
     body = pull_request.get("body")
     repository_name = repository.get("full_name")
+    base = pull_request.get("base")
+    head = pull_request.get("head")
     if body is None:
         body = ""
     if not isinstance(body, str) or not isinstance(repository_name, str):
         raise RequirementSourceError("GitHub event 中 PR body 或 repository.full_name 类型异常")
-    return body, repository_name
+    if not isinstance(base, dict) or not isinstance(head, dict):
+        raise RequirementSourceError("GitHub event 中 PR base/head 结构异常")
+    base_sha = str(base.get("sha") or "").strip()
+    head_sha = str(head.get("sha") or "").strip()
+    if not base_sha or not head_sha:
+        raise RequirementSourceError("GitHub event 中 PR base/head SHA 为空")
+    return body, repository_name, base_sha, head_sha
 
 
 def build_parser() -> argparse.ArgumentParser:
     """构建 CI 命令行解析器，显式暴露 event 与仓库根路径。"""
-    parser = argparse.ArgumentParser(description="校验 PR Requirement-Source 追溯事实")
+    parser = argparse.ArgumentParser(description="校验 PR Requirement-Source 与新增治理资产")
     parser.add_argument("--event", type=Path, required=True, help="GitHub GITHUB_EVENT_PATH")
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="当前仓库根目录")
     return parser
 
 
 def main() -> int:
-    """执行真实 PR Requirement Source 校验并返回适合 GitHub Actions 的退出码。"""
+    """执行真实 PR Requirement Source / new Change 校验并返回适合 GitHub Actions 的退出码。"""
     args = build_parser().parse_args()
     try:
-        body, repository = _load_pull_request_event(args.event)
+        body, repository, base_sha, head_sha = _load_pull_request_event(args.event)
+        validated_changes = GOVERNANCE_CONTRACT.validate_new_changes_since(
+            args.root,
+            base_sha=base_sha,
+            head_sha=head_sha,
+        )
         token = os.environ.get("GITHUB_TOKEN", "")
         api_url = os.environ.get("GITHUB_API_URL", "https://api.github.com")
 
@@ -217,11 +263,13 @@ def main() -> int:
             )
 
         sources = validate_requirement_sources(body, root=args.root, issue_loader=issue_loader)
-    except RequirementSourceError as exc:
-        print(f"PR Requirement Source 校验失败: {exc}")
+    except (RequirementSourceError, GOVERNANCE_CONTRACT.GovernanceAssetContractError) as exc:
+        print(f"PR Requirement Source / Governance Asset 校验失败: {exc}")
         return 1
 
     print(f"PR Requirement Source 校验通过，共确认 {len(sources)} 个来源。")
+    if validated_changes:
+        print(f"新增 Change 机器 Contract 校验通过，共确认 {len(validated_changes)} 个实例。")
     return 0
 
 
