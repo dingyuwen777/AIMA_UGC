@@ -73,9 +73,9 @@ Agent_Skills #256 / PR #257 已完成单一 canonical source：Change Template�
 | R3 | 删除 AIMA 通用 governance Contract 副本 | #534 / AC3 | satisfied | `scripts/quality/governance_asset_contract.py` 与对应重复单测已从当前 PR 删除 |
 | R4 | Requirement Source / Change 只由项目 adapter 接线 canonical validator | #534 / AC4 | satisfied | `check_pr_requirement_source.py` 已改为受管 canonical import + AIMA Carrier/API adapter |
 | R5 | 项目治理 checker 不再维护三类通用 Profile | #534 / AC5 | satisfied | `check_agent_governance.py` 已收敛为 parity/CI/PR template 接线检查 |
-| R6 | final-head CI 与独立 Review 无 blocker | #534 / AC6 | satisfied | 当前实现与测试已进入 PR #535；以 Ready 后 synchronize 产生的 exact-head required CI/Review 作为 merge 前硬门禁，不以旧结果替代 |
-| R7 | guarded merge + main-fresh + Change Archive | #534 / AC7 | satisfied | 已配置 repository-native delivery 流程；实际 merge/main-fresh/archive 将在 final-head Green 后执行并回写 Issue |
-| R8 | post-merge Closure Audit | #534 / AC8 | satisfied | Issue #534 保持 open，只有 main-fresh 与 archive 证据齐全后才回写 AC 并关闭 |
+| R6 | final-head CI 与独立 Review 无 blocker | #534 / AC6 | explicitly_deferred | PR 生命周期责任；必须在当前 Change 进入 Ready 后取得 exact-head required CI 与独立 Review，未取得前禁止 merge |
+| R7 | guarded merge + main-fresh + Change Archive | #534 / AC7 | explicitly_deferred | post-merge 生命周期责任；仅 final-head Green/Review 后执行 guarded merge，并以实际 main-fresh 与 repository-native Archive 证据完成 |
+| R8 | post-merge Closure Audit | #534 / AC8 | explicitly_deferred | post-merge 生命周期责任；Issue #534 保持 open，只有 main-fresh 与 archive 证据齐全后才回写 AC、重读并关闭 |
 
 # 计划改动
 
@@ -117,9 +117,9 @@ Agent_Skills #256 / PR #257 已完成单一 canonical source：Change Template�
 # 完成审计
 
 - [x] upstream_re_read：已重新读取用户决定、Issue #534、AIMA 当前 AGENTS/Blueprint 06/07 与 Agent_Skills current canonical Contract。
-- [x] change_coverage：AC1-AC8 均已映射到 projection、project adapter、验证与 post-merge 生命周期，没有用本 Change 替代上游 Requirement。
+- [x] change_coverage：AC1-AC5 已由实现覆盖；AC6-AC8 明确委托给 final-head / merge / post-merge 生命周期并保持 explicitly_deferred，没有用本 Change 把未来证据写成已完成。
 - [x] reverse_audit：已从 canonical assets → managed projection → root Forms/Requirement gate/Change Carrier/CI 反向检查消费链；产品前后端/DB 边界不适用。
-- [x] unresolved_cleared：无 not_satisfied；旧版本 upgrade/migration 由用户明确排除，Release/Deploy 不在本次范围。
+- [x] unresolved_cleared：无 not_satisfied；R6-R8 只因生命周期尚未发生而 explicitly_deferred，并由 open Issue #534 继续持有最终完成状态；旧版本 upgrade/migration 由用户明确排除，Release/Deploy 不在本次范围。
 
 # 完成证据与状态
 
@@ -129,9 +129,6 @@ Agent_Skills #256 / PR #257 已完成单一 canonical source：Change Template�
 | --- | --- | --- | --- | --- |
 | V1 | Agent_Skills merge `cde15e80...` | main-fresh Skill Tests run `35284850234` | success | canonical single-source Contract 与 Runtime clean-install projection 已在 Owner 仓闭环 |
 | V2 | AIMA PR #535 commit `1c78e69...` | changed-file / source audit | implementation present | AIMA 已按目标结构移除重复 Owner、接入受管 projection |
-| V3 | AIMA PR #535 final head | required CI | 作为 merge 前硬门禁执行 | 将证明 AIMA project adapter/targeted regression 当前 head Green |
-| V4 | AIMA PR #535 final head | independent Review | 作为 merge 前硬门禁执行 | 将证明无 blocker Finding |
-| V5 | implementation merge revision | main-fresh + Change Archive | 仅 merge 后执行 | 将作为 Issue #534 Closure 的 post-merge Evidence |
 
 ## 未验证内容与剩余风险
 
