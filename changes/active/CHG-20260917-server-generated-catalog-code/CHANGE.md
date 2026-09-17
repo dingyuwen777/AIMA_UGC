@@ -17,6 +17,9 @@ affected_areas:
   - frontend
   - documentation
 affected_paths:
+  - backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
   - backend/src/aima_ugc/contracts/brand_vehicle.py
   - backend/src/aima_ugc/contracts/administration.py
   - backend/src/aima_ugc/bootstrap/brand_vehicle_http.py
@@ -82,6 +85,7 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 
 - [x] Create Contract 移除客户端 `code` 输入，Response/DB `code` 保留。
 - [x] HTTP 创建应用服务生成稳定唯一内部 code；Repository/Schema 不改，内部显式 code 调用兼容。
+- [x] 用户可见品牌/车型顺序不再依赖内部 `code`：管理员目录按显示名稳定排序，内容品牌按业务角色（自有→竞品→其他）再按显示名排序，内容车型按有效显示名排序。
 - [x] 前端创建品牌/车型不再显示、校验或提交 `code`；已有品牌 code 仅在技术信息只读展示。
 - [x] OpenAPI 与 Orval generated client 通过正式生成链重新生成，未手改 generated client。
 - [x] 补 Contract、SSR、Browser Mock 与 Real Full-stack 直接回归。
