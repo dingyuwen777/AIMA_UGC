@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, timedelta
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -57,6 +57,7 @@ from aima_ugc.contracts.http import (
     CollectionScopeResponse,
     CollectionSearchCapabilityResponse,
     CollectionSearchConfig,
+    CollectionSupplementPlatformDiagnosticResponse,
     ImportStatsResponse,
 )
 from aima_ugc.modules.collection.collection_run_job import (
@@ -204,6 +205,18 @@ class PostgresCollectionHttpService:
                         for platform in _ALL_COLLECTION_PLATFORMS
                         if platform in counts
                     ),
+                    diagnostics=tuple(
+                        CollectionSupplementPlatformDiagnosticResponse(
+                            platform=item.platform,
+                            direct_target_count=item.direct_target_count,
+                            resolution_candidate_count=item.resolution_candidate_count,
+                            blocked_count=item.blocked_count,
+                            block_reasons=item.block_reasons,
+                        )
+                        for item in reader.list_batch_diagnostics(
+                            batch_id=batch_id, platforms=_ALL_COLLECTION_PLATFORMS
+                        )
+                    ),
                 )
         finally:
             session.close()
@@ -240,6 +253,18 @@ class PostgresCollectionHttpService:
                         )
                         for platform in _ALL_COLLECTION_PLATFORMS
                         if platform in counts
+                    ),
+                    diagnostics=tuple(
+                        CollectionSupplementPlatformDiagnosticResponse(
+                            platform=item.platform,
+                            direct_target_count=item.direct_target_count,
+                            resolution_candidate_count=item.resolution_candidate_count,
+                            blocked_count=item.blocked_count,
+                            block_reasons=item.block_reasons,
+                        )
+                        for item in reader.list_campaign_diagnostics(
+                            campaign_id=campaign_id, platforms=_ALL_COLLECTION_PLATFORMS
+                        )
                     ),
                 )
         finally:
@@ -588,11 +613,19 @@ class PostgresCollectionHttpService:
                 campaign_id=request.data_import_campaign_id,
                 platforms=selected_platforms,
             )
+            source_items = reader.list_campaign_source_items(
+                campaign_id=request.data_import_campaign_id,
+                platforms=selected_platforms,
+            )
         else:
             assert request.import_batch_id is not None
             if not reader.batch_exists(request.import_batch_id):
                 raise CollectionResourceNotFound
             targets = reader.list_batch_targets(
+                batch_id=request.import_batch_id,
+                platforms=selected_platforms,
+            )
+            source_items = reader.list_batch_source_items(
                 batch_id=request.import_batch_id,
                 platforms=selected_platforms,
             )
@@ -607,7 +640,7 @@ class PostgresCollectionHttpService:
                     source_value=str(target.content_id),
                     operation_group="content_enrichment",
                 )
-                for target in targets
+                for target in source_items
             ),
             (),
             {},
@@ -711,6 +744,15 @@ def _scope_response(scope: CollectionScopeRecord) -> CollectionScopeResponse:
         status=_runtime_status(scope.status),
         progress=scope.progress,
         stats=_scope_stats(scope),
+        comment_coverage=(
+            cast(
+                Literal["complete", "partial", "unavailable", "not_requested"],
+                scope.stats["comment_coverage"],
+            )
+            if scope.stats.get("comment_coverage")
+            in {"complete", "partial", "unavailable", "not_requested"}
+            else None
+        ),
         stop_reason=scope.stop_reason,
         started_at=scope.started_at,
         finished_at=scope.finished_at,

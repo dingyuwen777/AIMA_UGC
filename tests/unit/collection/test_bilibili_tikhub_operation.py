@@ -174,6 +174,7 @@ def test_runtime_bilibili_first_comment_page_explicitly_sends_zero_offset() -> N
     call = build_comments_call(
         platform="bilibili",
         external_content_id="123456",
+        alternate_ids={"av_id": "123456"},
         state=None,
     )
 

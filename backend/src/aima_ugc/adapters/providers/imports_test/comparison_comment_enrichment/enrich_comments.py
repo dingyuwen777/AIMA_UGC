@@ -45,6 +45,10 @@ from aima_ugc.adapters.providers.tikhub_test.core.core import RawOutputRecord, R
 from aima_ugc.contracts.canonical import CanonicalCommentV1
 from aima_ugc.contracts.export import UnifiedDataExcelCommentV1, UnifiedDataExcelV1
 from aima_ugc.contracts.platform import PLATFORM_NAMES, PlatformName
+from aima_ugc.modules.collection.comment_target import (
+    identity_block_reason,
+    resolve_comment_target,
+)
 from aima_ugc.modules.collection.providers.transport import (
     ProviderTransport,
     ProviderTransportFailure,
@@ -481,14 +485,15 @@ def _unsupported_comment_identity_reason(
     external_content_id: str,
     alternate_ids: dict[str, str],
 ) -> str | None:
-    """阻止把微博文章哈希等非 status_id 身份误发给评论接口。"""
-
-    if platform != "weibo":
-        return None
-    status_id = alternate_ids.get("status_id", external_content_id).strip()
-    if status_id.isdecimal():
-        return None
-    return "unsupported_weibo_comment_identity"
+    """离线调试与正式采集共用五平台 typed 评论目标规则。"""
+    resolution = resolve_comment_target(
+        platform=platform,
+        external_content_id=external_content_id,
+        alternate_ids=alternate_ids,
+    )
+    return (
+        None if resolution.state == "resolved" else identity_block_reason(platform, alternate_ids)
+    )
 
 
 def enrich_comparison_comments(

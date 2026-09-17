@@ -143,9 +143,13 @@ describe('collection runtime feature', () => {
     generated.getCollectionBatchSupplementEligibility.mockResolvedValue({
       batch_id: 'batch-1',
       targets: [{ platform: 'xiaohongshu', target_count: 2 }],
+      diagnostics: [{ platform: 'weibo', direct_target_count: 0, resolution_candidate_count: 1, blocked_count: 0, block_reasons: { exact_resolution_unavailable: 1 } }],
     })
 
-    await expect(fetchBatchContentPlatforms('batch-1', ['xiaohongshu', 'douyin'])).resolves.toEqual(['xiaohongshu'])
+    await expect(fetchBatchContentPlatforms('batch-1', ['xiaohongshu', 'douyin'])).resolves.toEqual({
+      platforms: ['xiaohongshu'],
+      diagnostics: [{ platform: 'weibo', direct_target_count: 0, resolution_candidate_count: 1, blocked_count: 0, block_reasons: { exact_resolution_unavailable: 1 } }],
+    })
     expect(generated.getCollectionBatchSupplementEligibility).toHaveBeenCalledWith('batch-1')
   })
 
@@ -172,7 +176,7 @@ describe('collection runtime feature', () => {
     expect(store.supplementContentPlatforms).toEqual(['douyin'])
     await expect(
       fetchCampaignContentPlatforms('campaign-1', ['xiaohongshu', 'douyin']),
-    ).resolves.toEqual(['douyin'])
+    ).resolves.toEqual({ platforms: ['douyin'], diagnostics: [] })
     expect(generated.getCollectionCampaignSupplementEligibility).toHaveBeenCalledWith('campaign-1')
   })
 
@@ -182,7 +186,9 @@ describe('collection runtime feature', () => {
       targets: [],
     })
 
-    await expect(fetchBatchContentPlatforms('batch-irrelevant', ['xiaohongshu'])).resolves.toEqual([])
+    await expect(fetchBatchContentPlatforms('batch-irrelevant', ['xiaohongshu'])).resolves.toEqual({
+      platforms: [], diagnostics: [],
+    })
     expect(generated.getCollectionBatchSupplementEligibility).toHaveBeenCalledWith('batch-irrelevant')
   })
 })

@@ -1,0 +1,70 @@
+"""五平台评论目标必须来自明确的 Provider 身份。"""
+
+from __future__ import annotations
+
+import pytest
+from aima_ugc.adapters.providers.tikhub.runtime import (
+    build_comments_call,
+    build_sub_comments_call,
+)
+
+
+@pytest.mark.parametrize(
+    ("platform", "external_content_id", "alternate_ids"),
+    (
+        ("xiaohongshu", "url_sha256:abc", {"share_text": "https://xhslink.com/abc"}),
+        ("douyin", "SOURCE-001", {"douyin_share_url": "https://v.douyin.com/abc"}),
+        ("weibo", "url_sha256:abc", {"ttarticle_id": "230940123456789"}),
+        ("bilibili", "SOURCE-001", {"bilibili_share_url": "https://b23.tv/abc"}),
+        ("kuaishou", "SOURCE-001", {"kuaishou_share_url": "https://v.kuaishou.com/abc"}),
+    ),
+)
+def test_unresolved_content_never_builds_comment_request(
+    platform: str, external_content_id: str, alternate_ids: dict[str, str]
+) -> None:
+    """定位身份和 Canonical 主身份均不能冒充评论目标。"""
+    with pytest.raises(ValueError, match="identity_unavailable"):
+        build_comments_call(
+            platform=platform,  # type: ignore[arg-type]
+            external_content_id=external_content_id,
+            alternate_ids=alternate_ids,
+        )
+    with pytest.raises(ValueError, match="identity_unavailable"):
+        build_sub_comments_call(
+            platform=platform,  # type: ignore[arg-type]
+            external_content_id=external_content_id,
+            alternate_ids=alternate_ids,
+            root_comment_id="root-1",
+        )
+
+
+@pytest.mark.parametrize(
+    ("platform", "id_type", "value", "parameter"),
+    (
+        ("xiaohongshu", "note_id", "6a81d4300000000028002076", "note_id"),
+        ("douyin", "aweme_id", "7298145681699622182", "aweme_id"),
+        ("weibo", "status_id", "5191839277071122", "status_id"),
+        ("bilibili", "av_id", "170001", "av_id"),
+        ("kuaishou", "photo_id", "3x8hhinajs8pgpq", "photo_id"),
+    ),
+)
+def test_typed_comment_target_routes_to_expected_provider_parameter(
+    platform: str, id_type: str, value: str, parameter: str
+) -> None:
+    """五平台已确认的 typed ID 仍可进入正式评论接口。"""
+    call = build_comments_call(
+        platform=platform,  # type: ignore[arg-type]
+        external_content_id="SOURCE-001",
+        alternate_ids={id_type: value},
+    )
+    assert call.params[parameter] == value
+
+
+def test_platform_mismatched_typed_id_is_rejected() -> None:
+    """其他平台的 ID 类型不能借 Canonical 字段绕过校验。"""
+    with pytest.raises(ValueError, match="identity_unavailable"):
+        build_comments_call(
+            platform="douyin",
+            external_content_id="7298145681699622182",
+            alternate_ids={"status_id": "7298145681699622182"},
+        )

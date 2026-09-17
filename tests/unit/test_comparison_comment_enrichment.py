@@ -77,7 +77,11 @@ def _pair_record(
     content = CanonicalContentV1(
         platform=platform,
         external_content_id=external_id,
-        alternate_ids=alternate_ids or {},
+        alternate_ids=(
+            alternate_ids
+            if alternate_ids is not None
+            else ({"note_id": external_id} if platform == "xiaohongshu" else {})
+        ),
         content_type="video" if platform != "xiaohongshu" else "image",
         title="元宇宙与Q3对比",
         text="同一帖子同时讨论两款车型",
@@ -235,7 +239,7 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
         _pair_record(
             platform="douyin",
             external_id="canonical-douyin",
-            alternate_ids={"aweme_id": "typed-aweme-id"},
+            alternate_ids={"aweme_id": "7298145681699622182"},
         ),
         _pair_record(
             platform="weibo",
@@ -245,7 +249,7 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
         _pair_record(
             platform="bilibili",
             external_id="canonical-bilibili",
-            alternate_ids={"bv_id": "BV1typedid"},
+            alternate_ids={"bv_id": "BV1xx411c7mD"},
         ),
         _pair_record(
             platform="kuaishou",
@@ -281,9 +285,9 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
 
     expected_ids = (
         "typed-note-id",
-        "typed-aweme-id",
+        "7298145681699622182",
         "5300602615631073",
-        "BV1typedid",
+        "BV1xx411c7mD",
         "typed-photo-id",
     )
     for index, expected_id in enumerate(expected_ids):
@@ -524,7 +528,7 @@ def test_weibo_hash_identity_is_unavailable_without_provider_request(tmp_path: P
     enriched = VehiclePairCommentRecordV1.model_validate_json(
         summary.output_jsonl_path.read_text(encoding="utf-8").strip()
     )
-    assert enriched.comment_fetch.root_stop_reason == "unsupported_weibo_comment_identity"
+    assert enriched.comment_fetch.root_stop_reason == "identity_unavailable"
 
 
 def test_reply_shortfall_is_published_as_partial_instead_of_crashing(

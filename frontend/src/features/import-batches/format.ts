@@ -68,6 +68,11 @@ const runtimeStageLabels: Record<string, string> = {
 
 const runtimeFailureMessages: Record<string, string> = {
   provider_secret_unavailable: '采集服务授权信息不可用，请联系管理员检查服务配置。',
+  identity_unavailable: '导入内容缺少可验证的平台原生 ID；请补充原始内容链接或原生 ID 后新建补采任务。',
+  exact_resolution_unavailable: '导入内容只有分享链接或文章 ID，当前渠道无法精确定位评论所属内容；请向上游补充原始内容链接或原生 ID。',
+  comment_coverage_partial: 'Provider 可见评论或回复未完整补齐；请查看内容详情中的覆盖率，并从原来源新建补采任务。',
+  identity_ambiguous: '来源对应多个可能的评论目标，需先确认唯一原始内容后新建补采任务。',
+  identity_resolution_unknown: '身份解析结果暂时未知，后台将按任务重试策略处理。',
 }
 
 export function runtimeStageLabel(value: string): string {
@@ -77,7 +82,7 @@ export function runtimeStageLabel(value: string): string {
 /** 将稳定错误码转换为可操作提示；未知机器错误不直接暴露到业务主视图。 */
 export function runtimeFailureMessage(value: string | null | undefined): string | null {
   if (!value) return null
-  return runtimeFailureMessages[value] ?? '任务执行遇到问题，请重试；如持续失败，请联系管理员查看技术详情。'
+  return runtimeFailureMessages[value] ?? '任务执行遇到问题；如已终止，请修复原因后新建补采任务。'
 }
 
 export function formatNumber(value: number | undefined): string {

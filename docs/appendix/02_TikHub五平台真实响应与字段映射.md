@@ -1101,3 +1101,5 @@ tests/fixtures/providers/tikhub/<platform>/
 截至 2026-08-23 当前生产主链：小红书 Detail/Comments 使用 `note_id`；抖音 Detail/Comments 使用 `aweme_id`；微博普通帖子 Detail/Comments 使用数字 `status_id`，`tv/show` 视频链接必须先经视频详情取得真实 `idstr`，不能把 URL 中视频 ID 直接用于评论；B站 App Detail/Comments/Reply 使用 `av_id` 或 `bv_id` 二选一；快手 App Detail/Comments 使用 `photo_id`。
 
 Excel 标准 URL 的 typed identity 必须与这些正式 Operation 参数一致。Comment ID/Root Comment ID 只来自评论响应，不从 Excel URL 推导。真实 Probe 必须复用生产 Operation/Transport/Extractor/Mapper，并限制请求数和费用；删除、私密、失效内容允许跳过候选，但不能把空响应伪装成接口成功。
+
+本轮 Mapper 将小红书 `note_id`、抖音 `aweme_id`、微博数字 `status_id` 显式放入 Canonical `alternate_ids`，快手和 B站继续保留已有 typed 别名。Detail、一级评论、回复调用均使用同一平台白名单解析器；它只接受 typed ID，绝不以 Canonical 主身份的来源哈希或微博 `ttarticle_id` 回退。固定样本实时 Probe 的状态与限制见接口验证台账，不能由历史 Fixture 推断当前 Provider 一定可用。

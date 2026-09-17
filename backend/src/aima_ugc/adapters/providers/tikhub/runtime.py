@@ -12,6 +12,7 @@ from pydantic import SecretStr, TypeAdapter
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.contracts.provider import JsonObject
+from aima_ugc.modules.collection.comment_target import resolve_comment_target
 from aima_ugc.modules.collection.providers.transport import ProviderTransportRequest
 
 from .mappers import bilibili as bilibili_mapper
@@ -300,34 +301,17 @@ def _provider_lookup_identity(
     external_content_id: str,
     alternate_ids: dict[str, str] | None = None,
 ) -> tuple[str, str]:
-    """选择 TikHub Detail/Comments 实际需要的 typed locator。
-
-    ``external_content_id`` 始终是 Canonical/数据库稳定身份；这里只决定外部 Provider
-    请求参数。Excel/TikHub Mapper 已确认的 typed identity 优先，缺失时兼容旧稳定 ID。
-    """
-    ids = alternate_ids or {}
-    if platform == "xiaohongshu":
-        return "note_id", ids.get("note_id", external_content_id)
-    if platform == "douyin":
-        return "aweme_id", ids.get("aweme_id", external_content_id)
-    if platform == "weibo":
-        return "status_id", ids.get("status_id", external_content_id)
-    if platform == "bilibili":
-        av_id = ids.get("av_id")
-        if av_id:
-            return "av_id", av_id[2:] if av_id[:2].casefold() == "av" else av_id
-        bv_id = ids.get("bv_id")
-        if bv_id:
-            return "bv_id", bv_id
-        if external_content_id.casefold().startswith("bv"):
-            return "bv_id", external_content_id
-        return (
-            "av_id",
-            external_content_id[2:]
-            if external_content_id[:2].casefold() == "av"
-            else external_content_id,
-        )
-    return "photo_id", ids.get("photo_id", external_content_id)
+    """只允许经过平台白名单校验的 typed locator 进入 TikHub 请求。"""
+    resolution = resolve_comment_target(
+        platform=platform,
+        external_content_id=external_content_id,
+        alternate_ids=alternate_ids,
+    )
+    if resolution.state != "resolved":
+        raise ValueError("identity_unavailable: 缺少可验证的平台评论目标身份")
+    assert resolution.lookup_id_type is not None
+    assert resolution.lookup_id is not None
+    return resolution.lookup_id_type, resolution.lookup_id
 
 
 def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> TikHubOperationCall:

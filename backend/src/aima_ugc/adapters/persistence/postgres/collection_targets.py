@@ -17,6 +17,10 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
     analysis_content_runs_table,
 )
+from aima_ugc.modules.collection.comment_target import (
+    identity_block_reason,
+    resolve_comment_target,
+)
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
@@ -30,18 +34,10 @@ from aima_ugc.modules.ingestion.historical_tables import (
 )
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 
+
 # 这里只列当前生产 Runtime 已验证可直接消费的 typed Provider lookup identity。
 # typed locator 可以与数据库稳定 external_content_id 不同；
 # Runtime 显式传递 alternate_ids，并保持 Content 主身份。
-_LOOKUP_ID_PRIORITY: dict[PlatformName, tuple[str, ...]] = {
-    "xiaohongshu": ("note_id",),
-    "douyin": ("aweme_id",),
-    "weibo": ("status_id",),
-    "bilibili": ("av_id", "bv_id"),
-    "kuaishou": ("photo_id",),
-}
-
-
 @dataclass(frozen=True, slots=True)
 class CollectionEnrichmentTarget:
     content_id: UUID
@@ -51,6 +47,25 @@ class CollectionEnrichmentTarget:
     lookup_id_type: str
     lookup_value: str
     alternate_ids: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionSupplementPlatformDiagnostic:
+    """来源中该平台可直采、待解析与不可解析的只读数量。"""
+
+    platform: PlatformName
+    direct_target_count: int
+    resolution_candidate_count: int
+    blocked_count: int
+    block_reasons: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionSupplementSourceItem:
+    """来源账本中一条相关 Content，不承诺已有可用评论目标。"""
+
+    content_id: UUID
+    platform: PlatformName
 
 
 class PostgresCollectionTargetReader:
@@ -84,6 +99,18 @@ class PostgresCollectionTargetReader:
         rows = self._candidate_rows(batch_id=batch_id, platforms=platforms)
         return self._eligible_targets(rows, exclude_irrelevant=True)
 
+    def list_batch_diagnostics(
+        self, *, batch_id: UUID, platforms: tuple[PlatformName, ...]
+    ) -> tuple[CollectionSupplementPlatformDiagnostic, ...]:
+        """保留没有评论目标身份的来源平台及其稳定阻塞原因。"""
+        return self._diagnostics(self._candidate_rows(batch_id=batch_id, platforms=platforms))
+
+    def list_batch_source_items(
+        self, *, batch_id: UUID, platforms: tuple[PlatformName, ...]
+    ) -> tuple[CollectionSupplementSourceItem, ...]:
+        """保留没有 typed ID 的 Scope，使运行结果能报告真实缺口。"""
+        return self._source_items(self._candidate_rows(batch_id=batch_id, platforms=platforms))
+
     def campaign_exists(self, campaign_id: UUID) -> bool:
         return (
             self._session.scalar(
@@ -115,6 +142,22 @@ class PostgresCollectionTargetReader:
         )
         return self._eligible_targets(rows, exclude_irrelevant=True)
 
+    def list_campaign_diagnostics(
+        self, *, campaign_id: UUID, platforms: tuple[PlatformName, ...]
+    ) -> tuple[CollectionSupplementPlatformDiagnostic, ...]:
+        """按 Campaign 逐行来源账本计算各平台补采资格。"""
+        return self._diagnostics(
+            self._campaign_candidate_rows(campaign_id=campaign_id, platforms=platforms)
+        )
+
+    def list_campaign_source_items(
+        self, *, campaign_id: UUID, platforms: tuple[PlatformName, ...]
+    ) -> tuple[CollectionSupplementSourceItem, ...]:
+        """从 Campaign 逐行账本保留不可解析的来源内容。"""
+        return self._source_items(
+            self._campaign_candidate_rows(campaign_id=campaign_id, platforms=platforms)
+        )
+
     def get_batch_target(
         self,
         *,
@@ -130,6 +173,12 @@ class PostgresCollectionTargetReader:
         targets = self._eligible_targets(rows, exclude_irrelevant=False)
         return targets[0] if targets else None
 
+    def get_batch_unavailable_reason(self, *, batch_id: UUID, content_id: UUID) -> str | None:
+        """区分来源存在但身份不足与 Scope 关联丢失。"""
+        return self._unavailable_reason(
+            self._candidate_rows(batch_id=batch_id, content_id=content_id)
+        )
+
     def get_campaign_target(
         self,
         *,
@@ -144,6 +193,12 @@ class PostgresCollectionTargetReader:
         )
         targets = self._eligible_targets(rows, exclude_irrelevant=False)
         return targets[0] if targets else None
+
+    def get_campaign_unavailable_reason(self, *, campaign_id: UUID, content_id: UUID) -> str | None:
+        """返回 Campaign 内容的精确解析缺口。"""
+        return self._unavailable_reason(
+            self._campaign_candidate_rows(campaign_id=campaign_id, content_id=content_id)
+        )
 
     def _candidate_rows(
         self,
@@ -269,6 +324,81 @@ class PostgresCollectionTargetReader:
             )
         return tuple(targets)
 
+    def _diagnostics(
+        self, rows: tuple[RowMapping, ...]
+    ) -> tuple[CollectionSupplementPlatformDiagnostic, ...]:
+        """只读分类与真实 Scope 资格共用同一 lookup 规则。"""
+        if not rows:
+            return ()
+        content_ids = tuple(cast(UUID, row["id"]) for row in rows)
+        alternate_ids = self._alternate_ids(content_ids)
+        tikhub_content_ids = self._tikhub_content_ids(content_ids)
+        irrelevant_content_ids = self._latest_current_irrelevant_content_ids(content_ids)
+        counts: dict[PlatformName, list[int]] = {}
+        reasons: dict[PlatformName, dict[str, int]] = defaultdict(dict)
+        for row in rows:
+            content_id = cast(UUID, row["id"])
+            if content_id in irrelevant_content_ids:
+                continue
+            platform = require_platform_name(cast(str, row["platform"]))
+            ids = alternate_ids.get(content_id, {})
+            bucket = counts.setdefault(platform, [0, 0, 0])
+            lookup = _lookup_identity(
+                platform=platform,
+                external_content_id=cast(str, row["external_content_id"]),
+                alternate_ids=ids,
+                has_tikhub_source=content_id in tikhub_content_ids,
+            )
+            if lookup is not None:
+                bucket[0] += 1
+                continue
+            reason = identity_block_reason(platform, ids)
+            if reason == "exact_resolution_unavailable":
+                bucket[1] += 1
+            else:
+                bucket[2] += 1
+            reasons[platform][reason] = reasons[platform].get(reason, 0) + 1
+        return tuple(
+            CollectionSupplementPlatformDiagnostic(
+                platform=platform,
+                direct_target_count=bucket[0],
+                resolution_candidate_count=bucket[1],
+                blocked_count=bucket[2],
+                block_reasons=reasons[platform],
+            )
+            for platform, bucket in counts.items()
+        )
+
+    def _source_items(
+        self, rows: tuple[RowMapping, ...]
+    ) -> tuple[CollectionSupplementSourceItem, ...]:
+        """Scope 只排除当前明确不相关内容，身份缺口留给执行期分类。"""
+        irrelevant = (
+            self._latest_current_irrelevant_content_ids(
+                tuple(cast(UUID, row["id"]) for row in rows)
+            )
+            if rows
+            else set()
+        )
+        return tuple(
+            CollectionSupplementSourceItem(
+                content_id=cast(UUID, row["id"]),
+                platform=require_platform_name(cast(str, row["platform"])),
+            )
+            for row in rows
+            if cast(UUID, row["id"]) not in irrelevant
+        )
+
+    def _unavailable_reason(self, rows: tuple[RowMapping, ...]) -> str | None:
+        """有定位链接但当前无精确解析能力时提供稳定失败码。"""
+        if not rows:
+            return None
+        row = rows[0]
+        content_id = cast(UUID, row["id"])
+        platform = require_platform_name(cast(str, row["platform"]))
+        ids = self._alternate_ids((content_id,)).get(content_id, {})
+        return identity_block_reason(platform, ids)
+
     def _alternate_ids(self, content_ids: tuple[UUID, ...]) -> dict[UUID, dict[str, str]]:
         rows = self._session.execute(
             select(
@@ -351,10 +481,15 @@ def _lookup_identity(
     ``alternate_ids`` 传入 Detail/Comments/SubComments，Mapper 再把结果挂回稳定 Content。
     """
 
-    for id_type in _LOOKUP_ID_PRIORITY[platform]:
-        value = alternate_ids.get(id_type)
-        if value:
-            return id_type, value
+    resolution = resolve_comment_target(
+        platform=platform,
+        external_content_id=external_content_id,
+        alternate_ids=alternate_ids,
+    )
+    if resolution.state == "resolved":
+        assert resolution.lookup_id_type is not None
+        assert resolution.lookup_id is not None
+        return resolution.lookup_id_type, resolution.lookup_id
     if not has_tikhub_source:
         return None
     return _legacy_tikhub_lookup(
@@ -372,7 +507,17 @@ def _legacy_tikhub_lookup(
     if not value or value.startswith("url_sha256:"):
         return None
     if platform == "xiaohongshu":
-        return "note_id", value
+        candidate = ("note_id", value)
+        return (
+            candidate
+            if resolve_comment_target(
+                platform=platform,
+                external_content_id=value,
+                alternate_ids={candidate[0]: candidate[1]},
+            ).state
+            == "resolved"
+            else None
+        )
     if platform == "douyin" and value.isdigit():
         return "aweme_id", value
     if platform == "weibo" and value.isdigit():
@@ -385,7 +530,17 @@ def _legacy_tikhub_lookup(
             return "av_id", av_value
         return None
     if platform == "kuaishou":
-        return "photo_id", value
+        candidate = ("photo_id", value)
+        return (
+            candidate
+            if resolve_comment_target(
+                platform=platform,
+                external_content_id=value,
+                alternate_ids={candidate[0]: candidate[1]},
+            ).state
+            == "resolved"
+            else None
+        )
     return None
 
 

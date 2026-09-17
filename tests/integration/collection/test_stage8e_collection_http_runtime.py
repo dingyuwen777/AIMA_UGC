@@ -478,8 +478,11 @@ def _insert_import_content(
     external_content_id: str = "stage8e-batch-note",
     title: str = "爱玛 Batch 内容",
     current_comment_count: int | None = None,
+    batch_id: UUID | None = None,
+    lookup_id_type: str | None = "note_id",
 ) -> tuple[UUID, UUID]:
-    batch_id, _ = _insert_succeeded_import(runtime, rows_ingested=1)
+    if batch_id is None:
+        batch_id, _ = _insert_succeeded_import(runtime, rows_ingested=1)
     now = datetime.now(UTC)
     request_id = uuid4()
     attempt_id = uuid4()
@@ -499,7 +502,7 @@ def _insert_import_content(
                 provider_config_id=None,
                 provider="file_import",
                 operation="excel_import",
-                request_fingerprint="1" * 64,
+                request_fingerprint=uuid4().hex * 2,
                 request_params={},
                 pagination_input={},
                 status="completed",
@@ -550,16 +553,17 @@ def _insert_import_content(
                 observed_at=now,
             )
         )
-        connection.execute(
-            insert(content_external_ids_table).values(
-                content_id=content_id,
-                id_type="note_id",
-                external_id=external_content_id,
-                provider_attempt_id=attempt_id,
-                raw_artifact_id=artifact_id,
-                observed_at=now,
+        if lookup_id_type is not None:
+            connection.execute(
+                insert(content_external_ids_table).values(
+                    content_id=content_id,
+                    id_type=lookup_id_type,
+                    external_id=external_content_id,
+                    provider_attempt_id=attempt_id,
+                    raw_artifact_id=artifact_id,
+                    observed_at=now,
+                )
             )
-        )
     return batch_id, content_id
 
 
@@ -1208,6 +1212,175 @@ def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> No
     assert comment_content_id == content_id
     assert coverage["coverage"] == "not_requested"
     assert coverage["stop_reason"] == "sub_comments_disabled"
+
+
+def test_batch_supplement_reply_shortfall_is_partial_in_run_and_coverage(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, content_id = _insert_import_content(runtime, current_comment_count=1)
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu", provider_config_id=provider_config_id
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=True,
+        ),
+        request_id="stage8e-reply-shortfall",
+    )
+    replies = json.loads(
+        (_XIAOHONGSHU_FIXTURES / "sub_comments_page1.sanitized.json").read_text(encoding="utf-8")
+    )
+    replies["data"]["data"]["comments"][0]["note_id"] = "stage8e-batch-note"
+    transport = FakeProviderTransport(
+        (
+            ProviderTransportResponse(
+                status_code=200, body=_batch_detail_response(comment_count=1)
+            ),
+            ProviderTransportResponse(status_code=200, body=_batch_comments_response()),
+            ProviderTransportResponse(status_code=200, body=replies),
+        )
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-reply-shortfall-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert transport.call_count == 3
+    with runtime.database.engine.begin() as connection:
+        thread = (
+            connection.execute(select(comment_thread_coverage_observations_table)).mappings().one()
+        )
+    run = service.get_run(created.run_id)
+    assert thread["content_id"] == content_id
+    assert thread["coverage"] == "partial"
+    assert run.status == "partial_success"
+    assert run.scopes[0].status == "partial_success"
+    assert run.scopes[0].comment_coverage == "partial"
+
+
+def test_batch_supplement_does_not_stop_at_comment_sample_target(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, _ = _insert_import_content(runtime, current_comment_count=1)
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu", provider_config_id=provider_config_id
+                ),
+            ),
+            include_comments=True,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-page-after-target",
+    )
+    first_page = _batch_comments_response()
+    first_page["data"]["data"]["has_more"] = True
+    last_page = _batch_comments_response()
+    last_page["data"]["data"]["comments"] = []
+    last_page["data"]["data"]["has_more"] = False
+    transport = FakeProviderTransport(
+        (
+            ProviderTransportResponse(
+                status_code=200, body=_batch_detail_response(comment_count=1)
+            ),
+            ProviderTransportResponse(status_code=200, body=first_page),
+            ProviderTransportResponse(status_code=200, body=last_page),
+        )
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-page-after-target-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert transport.call_count == 3
+    run = service.get_run(created.run_id)
+    assert run.scopes[0].comment_coverage == "complete"
+    assert run.status == "succeeded"
+
+
+def test_batch_supplement_reports_unresolved_sibling_without_provider_request(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_config_id, _ = _seed_config_and_search_pack(runtime)
+    batch_id, _ = _insert_import_content(runtime)
+    _, blocked_content_id = _insert_import_content(
+        runtime,
+        batch_id=batch_id,
+        external_content_id="url_sha256:unresolved",
+        lookup_id_type="share_text",
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu", provider_config_id=provider_config_id
+                ),
+            ),
+            include_comments=False,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-mixed-identity",
+    )
+    transport = FakeProviderTransport(
+        (ProviderTransportResponse(status_code=200, body=_batch_detail_response()),)
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        ),
+        worker_id="stage8e-mixed-identity-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert transport.call_count == 1
+    run = service.get_run(created.run_id)
+    assert run.status == "partial_success"
+    assert len(run.scopes) == 2
+    assert any(
+        scope.status == "failed" and scope.stop_reason == "exact_resolution_unavailable"
+        for scope in run.scopes
+    )
+    assert any(scope.status == "succeeded" for scope in run.scopes)
+    with runtime.database.engine.begin() as connection:
+        source_values = {
+            row["source_value"]
+            for row in connection.execute(
+                select(collection_scopes_table.c.source_value).where(
+                    collection_scopes_table.c.run_id == created.run_id
+                )
+            ).mappings()
+        }
+    assert str(blocked_content_id) in source_values
 
 
 def test_batch_supplement_retries_provider_5xx_with_new_attempt(runtime) -> None:  # type: ignore[no-untyped-def]

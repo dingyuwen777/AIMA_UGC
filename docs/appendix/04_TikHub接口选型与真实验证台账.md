@@ -546,3 +546,9 @@ Tests
 ```
 
 当前不实现自动 API family fallback；否则会改变 Attempt、Raw lineage、失败语义和费用审计。
+
+## 2026-09-17 五平台评论补采复核（当前 Change，未通过退出门禁）
+
+使用 [`scripts/dev/probe_excel_tikhub_supplement.py`](../../scripts/dev/probe_excel_tikhub_supplement.py) 从固定公开 Excel 链接经过生产 Converter、TikHub Operation/Transport/Extractor/Mapper，只保存非敏感摘要。小红书的 Detail 与一级评论在首次运行通过；另一次选择抖音、微博、B站、快手的运行共 7 次请求、计划费用 0.007 美元，其中前三个平台的 Detail 与一级评论通过，快手 Detail 失败。单独重试快手固定样本 1 次、计划费用 0.001 美元，响应缺少当前 App Detail 提取器需要的非空 `data.photos`，不能据此判定是样本失效、接口结构变化还是访问限制。
+
+随后两次限额“爱玛”快手 Search Probe 各发送 1 次请求、各计划费用 0.010 美元：首次提取到 19 条 Search item，但搜索价格已用尽该次保守费用上限，未发送 Detail；第二次业务响应失败。对固定样本单独发送两次一级评论请求（各计划费用 0.001 美元），HTTP/业务状态以及 `data.rootComments` 列表和游标结构可读取，但列表为空，不能验证非空评论 Mapper。以上仍未验证快手 Detail/非空评论闭环。本轮未发现可证明 `ttarticle_id → 唯一原始父 status_id` 的正式映射 Operation，也没有把短链解析升级为正式 Capability。上述价格是当前仓库 `pricing.toml` 的请求前估算，最终账单未核验；真实回复、多页与失效样本仍待逐平台 Probe。

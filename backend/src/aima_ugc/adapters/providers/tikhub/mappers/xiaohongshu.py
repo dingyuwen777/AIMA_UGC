@@ -41,7 +41,7 @@ def map_content(
     """把搜索卡片或真实详情事实映射为一条原子 Content Observation。"""
     item = _unwrap_content(raw)
     external_id = _required_string(item, "id", "note_id")
-    observed_fields: list[str] = ["content_type"]
+    observed_fields: list[str] = ["content_type", "alternate_ids"]
 
     title = _optional_string(item, "title")
     text = _optional_string(item, "desc", "text", "content")
@@ -77,6 +77,7 @@ def map_content(
     return CanonicalContentV1(
         platform="xiaohongshu",
         external_content_id=external_id,
+        alternate_ids={"note_id": external_id},
         content_type=_content_type(item),
         title=title,
         text=text,

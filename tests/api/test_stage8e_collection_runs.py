@@ -115,6 +115,7 @@ def test_batch_supplement_eligibility_is_queryable() -> None:
             {"platform": "xiaohongshu", "target_count": 2},
             {"platform": "weibo", "target_count": 1},
         ],
+        "diagnostics": [],
     }
 
 
@@ -127,6 +128,7 @@ def test_campaign_supplement_eligibility_is_queryable() -> None:
     assert response.json() == {
         "campaign_id": str(CAMPAIGN_ID),
         "targets": [{"platform": "xiaohongshu", "target_count": 3}],
+        "diagnostics": [],
     }
 
 

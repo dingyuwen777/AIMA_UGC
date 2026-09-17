@@ -10,6 +10,7 @@ import type {
   CollectionRunCreateRequest,
   CollectionRunCreatedResponse,
   CollectionRunResponse,
+  CollectionSupplementPlatformDiagnosticResponse,
   CollectionRuntimeItemResponse,
   CollectionRuntimeRecordType,
   CollectionRuntimeStatus,
@@ -131,6 +132,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const batchOptions = ref<ImportBatchResponse[]>([])
   const keywordPackOptions = ref<KeywordPackSummaryResponse[]>([])
   const supplementContentPlatforms = ref<CollectionPlatform[]>([])
+  const supplementDiagnostics = ref<CollectionSupplementPlatformDiagnosticResponse[]>([])
   const historicalDirectoryPath = ref('')
   const historicalDirectoryEntries = ref<HistoricalDirectoryEntryResponse[]>([])
   const historicalDirectoryNextCursor = ref<string | null>(null)
@@ -355,14 +357,18 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   async function loadSupplementPlatforms(source: SupplementSourceSelection): Promise<void> {
     const version = ++supplementPlatformVersion
     supplementContentPlatforms.value = []
+    supplementDiagnostics.value = []
     if (!source.id) return
     loadingSupplementPlatforms.value = true
     error.value = null
     try {
-      const platforms = source.kind === 'campaign'
+      const eligibility = source.kind === 'campaign'
         ? await fetchCampaignContentPlatforms(source.id, SUPPORTED_PLATFORMS)
         : await fetchBatchContentPlatforms(source.id, SUPPORTED_PLATFORMS)
-      if (version === supplementPlatformVersion) supplementContentPlatforms.value = platforms
+      if (version === supplementPlatformVersion) {
+        supplementContentPlatforms.value = eligibility.platforms
+        supplementDiagnostics.value = eligibility.diagnostics
+      }
     } catch (reason) {
       if (version === supplementPlatformVersion) error.value = errorMessage(reason)
     } finally {
@@ -392,6 +398,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   ): Promise<void> {
     error.value = null
     supplementContentPlatforms.value = []
+    supplementDiagnostics.value = []
     try {
       const [providerCapabilities, campaigns, batches, packs] = await Promise.all([
         fetchCollectionCapabilities(),
@@ -722,6 +729,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     batchOptions,
     keywordPackOptions,
     supplementContentPlatforms,
+    supplementDiagnostics,
     historicalDirectoryPath,
     historicalDirectoryEntries,
     historicalDirectoryNextCursor,

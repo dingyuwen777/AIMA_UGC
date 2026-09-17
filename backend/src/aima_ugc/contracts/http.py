@@ -399,6 +399,7 @@ class CollectionScopeResponse(BaseModel):
     status: CollectionRuntimeStatus
     progress: int = Field(ge=0, le=100)
     stats: CollectionRunStatsResponse
+    comment_coverage: Literal["complete", "partial", "unavailable", "not_requested"] | None = None
     stop_reason: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -474,6 +475,18 @@ class CollectionBatchSupplementTargetResponse(BaseModel):
     target_count: int = Field(gt=0)
 
 
+class CollectionSupplementPlatformDiagnosticResponse(BaseModel):
+    """五平台来源资格；不公开原始链接或 Provider 私有 ID。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: CollectionPlatform
+    direct_target_count: int = Field(ge=0)
+    resolution_candidate_count: int = Field(ge=0)
+    blocked_count: int = Field(ge=0)
+    block_reasons: dict[str, int]
+
+
 class CollectionBatchSupplementEligibilityResponse(BaseModel):
     """前端 Batch Supplement 平台资格；不公开 Provider 私有身份或 AI 结果正文。"""
 
@@ -481,6 +494,7 @@ class CollectionBatchSupplementEligibilityResponse(BaseModel):
 
     batch_id: UUID
     targets: tuple[CollectionBatchSupplementTargetResponse, ...]
+    diagnostics: tuple[CollectionSupplementPlatformDiagnosticResponse, ...] = ()
 
 
 class CollectionCampaignSupplementEligibilityResponse(BaseModel):
@@ -490,6 +504,7 @@ class CollectionCampaignSupplementEligibilityResponse(BaseModel):
 
     campaign_id: UUID
     targets: tuple[CollectionBatchSupplementTargetResponse, ...]
+    diagnostics: tuple[CollectionSupplementPlatformDiagnosticResponse, ...] = ()
 
 
 class CollectionRuntimeListQuery(BaseModel):
@@ -1764,6 +1779,7 @@ __all__ = [
     "CommentCoverageResponse",
     "CollectionBatchSupplementEligibilityResponse",
     "CollectionBatchSupplementTargetResponse",
+    "CollectionSupplementPlatformDiagnosticResponse",
     "CollectionCampaignSupplementEligibilityResponse",
     "CollectionCapabilitiesResponse",
     "CollectionCapabilityResponse",

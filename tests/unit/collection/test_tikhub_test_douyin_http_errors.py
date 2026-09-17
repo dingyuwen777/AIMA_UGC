@@ -21,13 +21,17 @@ _SEARCH_FIXTURE = Path("tests/fixtures/providers/tikhub/douyin/search_page1.sani
 def _search_response() -> ProviderTransportResponse:
     body = json.loads(_SEARCH_FIXTURE.read_text(encoding="utf-8"))
     first_item = body["data"]["business_data"][0]
+    first_aweme = first_item["data"]["aweme_info"]
+    first_aweme["aweme_id"] = "7531234567890123456"
+    first_aweme["group_id"] = "7531234567890123456"
+    first_aweme["statistics"]["aweme_id"] = "7531234567890123456"
     second_item = deepcopy(first_item)
     second_item["card_id"] = "card-fixture-2"
     second_item["data_id"] = "data-fixture-2"
     second_aweme = second_item["data"]["aweme_info"]
-    second_aweme["aweme_id"] = "aweme-fixture-2"
-    second_aweme["group_id"] = "aweme-fixture-2"
-    second_aweme["statistics"]["aweme_id"] = "aweme-fixture-2"
+    second_aweme["aweme_id"] = "7531234567890123457"
+    second_aweme["group_id"] = "7531234567890123457"
+    second_aweme["statistics"]["aweme_id"] = "7531234567890123457"
     body["data"]["business_data"] = [first_item, second_item]
     return ProviderTransportResponse(
         status_code=200,
@@ -59,8 +63,8 @@ def _detail_200_response() -> ProviderTransportResponse:
         body={
             "data": {
                 "aweme_detail": {
-                    "aweme_id": "aweme-fixture-2",
-                    "group_id": "aweme-fixture-2",
+                    "aweme_id": "7531234567890123457",
+                    "group_id": "7531234567890123457",
                     "desc": "脱敏详情正文",
                     "item_title": "脱敏详情标题",
                     "create_time": 1720000000,

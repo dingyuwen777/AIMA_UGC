@@ -195,6 +195,7 @@ class _PreparedSearchContent:
 class _CommentFetchOutcome:
     completed: bool
     technical_partial: bool = False
+    coverage: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +214,14 @@ class _ProviderCallFailed(RuntimeError):
         self.retryable = retryable
 
 
+class _CommentTargetUnavailable(RuntimeError):
+    """补采来源仍存在，但当前不能证明其 Provider 评论目标身份。"""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 @dataclass(slots=True)
 class _ScopeStats:
     requested_count: int = 0
@@ -227,6 +236,7 @@ class _ScopeStats:
     comment_count: int = 0
     technical_partial_results: int = 0
     filtered_content_count: int = 0
+    comment_coverage: str | None = None
 
     @classmethod
     def from_payload(cls, payload: dict[str, object]) -> _ScopeStats:
@@ -246,6 +256,12 @@ class _ScopeStats:
                 "technical_partial_results",
             ),
             filtered_content_count=_payload_int(payload, "filtered_content_count"),
+            comment_coverage=(
+                cast(str, payload["comment_coverage"])
+                if payload.get("comment_coverage")
+                in {"complete", "partial", "unavailable", "not_requested"}
+                else None
+            ),
         )
 
     def sync_counts(self, counts: CollectionScopeExecutionCounts) -> None:
@@ -270,6 +286,7 @@ class _ScopeStats:
             "technical_partial_results": self.technical_partial_results,
             "filtered_content_count": self.filtered_content_count,
             "provider_requests": self.requested_count,
+            "comment_coverage": self.comment_coverage,
         }
 
 
@@ -668,13 +685,14 @@ class TikHubCollectionScopeExecutor:
                     reported_total_override=action.resolved_comment_count,
                 )
                 technical_partial = outcome.technical_partial
+                stats.comment_coverage = outcome.coverage
                 if outcome.completed:
                     self._content_actions.complete_comments(
                         action_id=action.id,
                         fence=context.fence,
                     )
             else:
-                self._record_non_fetch_coverage(
+                stats.comment_coverage = self._record_non_fetch_coverage(
                     content_id=target.content_id,
                     content=latest,
                     context=context,
@@ -685,6 +703,12 @@ class TikHubCollectionScopeExecutor:
                     action_id=action.id,
                     fence=context.fence,
                 )
+            if (
+                run.config_snapshot.get("mode") == "batch_supplement"
+                and policy.comments_enabled
+                and stats.comment_coverage in {"partial", "unavailable"}
+            ):
+                technical_partial = True
             if context.cancel_requested():
                 self._refresh_counts(scope=scope, context=context, stats=stats)
                 return _result(
@@ -698,12 +722,20 @@ class TikHubCollectionScopeExecutor:
             self._refresh_counts(scope=scope, context=context, stats=stats)
             return _result(
                 status="partial_success" if technical_partial else "succeeded",
-                stop_reason=None,
+                stop_reason="comment_coverage_partial" if technical_partial else None,
                 pagination_state=pagination_state,
                 stats=stats,
             )
         except LeaseLostError:
             raise
+        except _CommentTargetUnavailable as exc:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            return _result(
+                status="failed",
+                stop_reason=exc.code,
+                pagination_state=pagination_state,
+                stats=stats,
+            )
         except SecretFileError:
             self._refresh_counts(scope=scope, context=context, stats=stats)
             return _result(
@@ -763,15 +795,33 @@ class TikHubCollectionScopeExecutor:
                         campaign_id=run.data_import_campaign_id,
                         content_id=content_id,
                     )
+                    unavailable_reason = (
+                        reader.get_campaign_unavailable_reason(
+                            campaign_id=run.data_import_campaign_id,
+                            content_id=content_id,
+                        )
+                        if target is None
+                        else None
+                    )
                 else:
                     assert run.import_batch_id is not None
                     target = reader.get_batch_target(
                         batch_id=run.import_batch_id,
                         content_id=content_id,
                     )
+                    unavailable_reason = (
+                        reader.get_batch_unavailable_reason(
+                            batch_id=run.import_batch_id,
+                            content_id=content_id,
+                        )
+                        if target is None
+                        else None
+                    )
         finally:
             session.close()
         if target is None:
+            if unavailable_reason is not None:
+                raise _CommentTargetUnavailable(unavailable_reason)
             raise ValueError("补采目标不属于 Run 关联的数据导入来源")
         return target
 
@@ -1228,6 +1278,7 @@ class TikHubCollectionScopeExecutor:
         reported_total_override: int | None,
     ) -> _CommentFetchOutcome:
         platform = _tikhub_platform(scope.platform)
+        full_capture = run.config_snapshot.get("mode") == "batch_supplement"
         pagination_state: dict[str, object] = {}
         seen_comment_ids: set[str] = set()
         reported_total = (
@@ -1268,6 +1319,7 @@ class TikHubCollectionScopeExecutor:
                 return _CommentFetchOutcome(
                     completed=False,
                     technical_partial=technical_partial,
+                    coverage="partial",
                 )
             call = build_comments_call(
                 platform=platform,
@@ -1383,6 +1435,7 @@ class TikHubCollectionScopeExecutor:
                         return _CommentFetchOutcome(
                             completed=False,
                             technical_partial=technical_partial,
+                            coverage="partial",
                         )
                 else:
                     self._record_non_fetch_thread_coverage(
@@ -1393,6 +1446,12 @@ class TikHubCollectionScopeExecutor:
                         reason=reply_decision.reason,
                         target_count=reply_decision.target,
                     )
+                    if (
+                        full_capture
+                        and _include_sub_comments(run)
+                        and reply_decision.reason != "reply_count_zero"
+                    ):
+                        technical_partial = True
 
             advance = advance_comments(
                 platform=platform,
@@ -1414,7 +1473,13 @@ class TikHubCollectionScopeExecutor:
                     reported_total,
                     len(seen_comment_ids),
                 )
-                technical_partial = technical_partial or _technical_partial_stop(stop_reason)
+                if full_capture and technical_partial:
+                    coverage = "partial"
+                technical_partial = (
+                    technical_partial
+                    or _technical_partial_stop(stop_reason)
+                    or (full_capture and coverage != "complete")
+                )
                 self._record_comment_coverage(
                     content_id=content_id,
                     platform=platform,
@@ -1431,6 +1496,7 @@ class TikHubCollectionScopeExecutor:
                 return _CommentFetchOutcome(
                     completed=True,
                     technical_partial=technical_partial,
+                    coverage=coverage,
                 )
 
             if comment_action == "fetch_incremental" and known_comment_boundary_reached(
@@ -1453,8 +1519,9 @@ class TikHubCollectionScopeExecutor:
                 return _CommentFetchOutcome(
                     completed=True,
                     technical_partial=technical_partial,
+                    coverage="partial",
                 )
-            if comment_action == "probe_first_page":
+            if comment_action == "probe_first_page" and not full_capture:
                 self._record_comment_coverage(
                     content_id=content_id,
                     platform=platform,
@@ -1471,8 +1538,13 @@ class TikHubCollectionScopeExecutor:
                 return _CommentFetchOutcome(
                     completed=True,
                     technical_partial=technical_partial,
+                    coverage="partial",
                 )
-            if comment_target is not None and len(seen_comment_ids) >= comment_target:
+            if (
+                not full_capture
+                and comment_target is not None
+                and len(seen_comment_ids) >= comment_target
+            ):
                 # 只有 Provider 仍声明可继续分页时才会走到这里；达到软目标不能证明全集完整。
                 coverage = "partial"
                 self._record_comment_coverage(
@@ -1491,6 +1563,7 @@ class TikHubCollectionScopeExecutor:
                 return _CommentFetchOutcome(
                     completed=True,
                     technical_partial=technical_partial,
+                    coverage="partial",
                 )
             assert advance.next_state is not None
             pagination_state = dict(advance.next_state)
@@ -1513,6 +1586,7 @@ class TikHubCollectionScopeExecutor:
         return _CommentFetchOutcome(
             completed=True,
             technical_partial=True,
+            coverage="partial",
         )
 
     def _record_non_fetch_coverage(
@@ -1523,7 +1597,7 @@ class TikHubCollectionScopeExecutor:
         context: JobExecutionContextProtocol,
         comment_reason: str,
         comment_target: int | None,
-    ) -> None:
+    ) -> str:
         attempt_id, raw_artifact_id = _canonical_source_ids(content)
         if comment_reason == "provider_reported_zero":
             coverage = "complete"
@@ -1546,6 +1620,7 @@ class TikHubCollectionScopeExecutor:
             stop_reason=comment_reason,
             observed_at=content.observed_at,
         )
+        return coverage
 
     def _record_non_fetch_thread_coverage(
         self,
@@ -1626,6 +1701,7 @@ class TikHubCollectionScopeExecutor:
         reply_target: int | None,
     ) -> _ReplyFetchOutcome:
         platform = _tikhub_platform(scope.platform)
+        full_capture = run.config_snapshot.get("mode") == "batch_supplement"
         pagination_state: dict[str, object] = {}
         reply_ids: set[str] = set()
         last_executed: _ExecutedCall | None = None
@@ -1753,7 +1829,11 @@ class TikHubCollectionScopeExecutor:
                     reported_total,
                     len(reply_ids),
                 )
-                technical_partial = technical_partial or _technical_partial_stop(stop_reason)
+                technical_partial = (
+                    technical_partial
+                    or _technical_partial_stop(stop_reason)
+                    or (full_capture and coverage != "complete")
+                )
                 self._content_writer.record_thread_coverage(
                     content_id=content_id,
                     root_comment_id=root_comment.external_comment_id,
@@ -1774,7 +1854,7 @@ class TikHubCollectionScopeExecutor:
                     technical_partial=technical_partial,
                 )
 
-            if reply_action == "probe_first_page":
+            if reply_action == "probe_first_page" and not full_capture:
                 self._content_writer.record_thread_coverage(
                     content_id=content_id,
                     root_comment_id=root_comment.external_comment_id,
@@ -1795,7 +1875,7 @@ class TikHubCollectionScopeExecutor:
                     technical_partial=technical_partial,
                 )
 
-            if reply_target is not None and len(reply_ids) >= reply_target:
+            if not full_capture and reply_target is not None and len(reply_ids) >= reply_target:
                 coverage = "partial"
                 self._content_writer.record_thread_coverage(
                     content_id=content_id,

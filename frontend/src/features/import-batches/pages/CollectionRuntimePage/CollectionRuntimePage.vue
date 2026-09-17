@@ -136,6 +136,11 @@ function showNotice(message: string): void {
 async function viewContents(batchId: string): Promise<void> {
   await router.push({ name: 'voice-plaza', query: { source_identifier: batchId } })
 }
+
+/** 复用声音广场的来源筛选查看本次补采 Run 的已入库内容。 */
+async function viewRunResults(runId: string): Promise<void> {
+  await router.push({ name: 'voice-plaza', query: { source_identifier: runId } })
+}
 </script>
 
 <template>
@@ -242,6 +247,7 @@ async function viewContents(batchId: string): Promise<void> {
       :item="store.selectedRun"
       @refresh="store.selectedRun && store.openRunDetail(store.selectedRun.run_id)"
       @copy="copy"
+      @view-results="viewRunResults"
     />
     <DataImportDialog
       v-model="dataImportOpen"
@@ -254,6 +260,7 @@ async function viewContents(batchId: string): Promise<void> {
       :batches="store.batchOptions"
       :keyword-packs="store.keywordPackOptions"
       :supplement-content-platforms="store.supplementContentPlatforms"
+      :supplement-diagnostics="store.supplementDiagnostics"
       :loading-supplement-platforms="store.loadingSupplementPlatforms"
       :creating="store.creating"
       :initial-source="initialSupplementSource"

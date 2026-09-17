@@ -421,6 +421,8 @@ skip / refresh
 
 具体平台能力和采集策略见 Blueprint 08。
 
+Batch/Campaign 辅助补采与普通 Discovery 的采样目的不同：已批准的 typed `note_id/aweme_id/status_id/av_id/bv_id/photo_id` 才能作为评论目标。资格读取保留五平台直采、待精确解析和缺身份数量；某平台含直采行时，Run 也为该来源其余相关行创建 Scope，缺身份 Scope 明确失败且不发送 Provider 请求。批次补采对已请求的一级评论和回复按 Provider 分页终止判断覆盖，回复不足会使内容 Coverage 与 Run 为部分完成。`imports_test` 使用同一身份解析边界。
+
 ---
 
 ## 9. Scheduler 当前怎样创建 Run

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
+from aima_ugc.adapters.providers.imports.models import ExcelImportRowError
 from aima_ugc.adapters.providers.tikhub.runtime import build_comments_call, build_detail_call
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 
@@ -181,6 +182,59 @@ def test_excel_weibo_permalink_converts_base62_bid_to_numeric_status_id() -> Non
 
     assert identity.external_content_id == "4331051486294436"
     assert identity.alternate_ids["status_id"] == "4331051486294436"
+
+
+def test_weibo_ttarticle_keeps_article_locator_separate_from_comment_target() -> None:
+    """长文章 ID 不等于可评论的父微博 status_id。"""
+    identity = resolve_content_identity(
+        platform="weibo",
+        canonical_url="https://Card.Weibo.Com/ttarticle/p/show?id=230940123456789#comments",
+        source_article_id=None,
+    )
+    assert identity.external_content_id.startswith("url_sha256:")
+    assert identity.alternate_ids == {"ttarticle_id": "230940123456789"}
+
+
+@pytest.mark.parametrize(
+    "url",
+    (
+        "https://weibo.com.evil.test/ttarticle/p/show?id=230940123456789",
+        "https://weibo.com/ttarticle/p/show/extra?id=230940123456789",
+        "https://weibo.com/ttarticle/p/show?id=230940123456789&id=230940000000001",
+        "https://weibo.com/ttarticle/p/show?id=",
+        "https://weibo.com/ttarticle/p/show?id=abc",
+    ),
+)
+def test_ttarticle_locator_requires_exact_host_path_and_unique_numeric_id(url: str) -> None:
+    """伪装或歧义链接不得产生可用文章定位身份。"""
+    identity = resolve_content_identity(
+        platform="weibo", canonical_url=url, source_article_id="SOURCE-001"
+    )
+    assert "ttarticle_id" not in identity.alternate_ids
+
+
+def test_ttarticle_url_with_userinfo_is_rejected() -> None:
+    """URL 凭据不得伪装成微博 host。"""
+    with pytest.raises(ExcelImportRowError, match="用户凭据"):
+        resolve_content_identity(
+            platform="weibo",
+            canonical_url="https://weibo.com@evil.test/ttarticle/p/show?id=230940123456789",
+            source_article_id="SOURCE-001",
+        )
+
+
+@pytest.mark.parametrize(
+    ("platform", "url", "locator_type"),
+    (
+        ("weibo", "https://evil.test/tv/show/123", "weibo_video_url"),
+        ("kuaishou", "https://evil.test/f/123", "kuaishou_share_url"),
+    ),
+)
+def test_share_locator_rejects_unrelated_host(platform: str, url: str, locator_type: str) -> None:
+    identity = resolve_content_identity(
+        platform=platform, canonical_url=url, source_article_id="SOURCE-001"
+    )
+    assert locator_type not in identity.alternate_ids
 
 
 def test_bilibili_runtime_routes_bv_identity_to_bv_parameter() -> None:

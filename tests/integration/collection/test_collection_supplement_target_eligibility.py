@@ -308,6 +308,77 @@ def test_batch_supplement_targets_require_lookup_identity_and_exclude_current_ir
     assert [target.content_id for target in targets] == [eligible_id]
 
 
+def test_batch_eligibility_diagnostics_keep_unresolved_platform_visible(runtime) -> None:  # type: ignore[no-untyped-def]
+    """短链候选与无身份内容进入诊断，但不能进入实际补采 Scope。"""
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="6a81d4300000000028002076",
+        lookup_id=True,
+        job_id=job_id,
+        irrelevant=False,
+    )
+    candidate_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="url_sha256:candidate",
+        lookup_id=False,
+        job_id=job_id,
+        irrelevant=False,
+    )
+    _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="url_sha256:blocked",
+        lookup_id=False,
+        job_id=job_id,
+        irrelevant=False,
+    )
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            insert(content_external_ids_table).values(
+                content_id=candidate_id,
+                id_type="share_text",
+                external_id="https://xhslink.com/example",
+                provider_attempt_id=attempt_id,
+                raw_artifact_id=artifact_id,
+                observed_at=datetime.now(UTC),
+            )
+        )
+
+    with runtime.database.new_session() as session:
+        with session.begin():
+            reader = PostgresCollectionTargetReader(
+                session, analysis_identity=_CURRENT_ANALYSIS_IDENTITY
+            )
+            targets = reader.list_batch_targets(batch_id=batch_id, platforms=("xiaohongshu",))
+            diagnostics = reader.list_batch_diagnostics(
+                batch_id=batch_id, platforms=("xiaohongshu",)
+            )
+            source_items = reader.list_batch_source_items(
+                batch_id=batch_id, platforms=("xiaohongshu",)
+            )
+            candidate_reason = reader.get_batch_unavailable_reason(
+                batch_id=batch_id, content_id=candidate_id
+            )
+
+    assert len(targets) == 1
+    assert len(source_items) == 3
+    assert candidate_reason == "exact_resolution_unavailable"
+    assert len(diagnostics) == 1
+    assert diagnostics[0].direct_target_count == 1
+    assert diagnostics[0].resolution_candidate_count == 1
+    assert diagnostics[0].blocked_count == 1
+    assert diagnostics[0].block_reasons == {
+        "exact_resolution_unavailable": 1,
+        "identity_unavailable": 1,
+    }
+
+
 def test_typed_lookup_that_does_not_match_stable_content_identity_is_eligible(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
