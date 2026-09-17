@@ -1009,7 +1009,7 @@ def test_batch_supplement_worker_reuses_detail_mapper_and_ingestion_without_refi
 @pytest.mark.parametrize(
     ("platform", "lookup_id_type", "lookup_value"),
     [
-        ("xiaohongshu", "note_id", "xhs-note-1"),
+        ("xiaohongshu", "note_id", "xiaohongshu-note-1"),
         ("douyin", "aweme_id", "100001"),
         ("weibo", "status_id", "100001"),
         ("bilibili", "av_id", "100010"),
@@ -1074,7 +1074,7 @@ def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
         detail["data"]["photos"][0]["comment_count"] = 2
     final_comments_page = deepcopy(body)
     if platform == "xiaohongshu":
-        final_comments_page["data"]["data"]["comments"][0]["id"] = "xhs-comment-root-2"
+        final_comments_page["data"]["data"]["comments"][0]["id"] = "xiaohongshu-comment-root-2"
         final_comments_page["data"]["data"]["cursor"] = "cursor-end"
         final_comments_page["data"]["data"]["has_more"] = False
     elif platform == "douyin":
@@ -1170,7 +1170,7 @@ def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
 @pytest.mark.parametrize(
     ("platform", "lookup_id_type", "lookup_value", "reply_file"),
     [
-        ("xiaohongshu", "note_id", "xhs-note-1", "sub_comments_page1.sanitized.json"),
+        ("xiaohongshu", "note_id", "xiaohongshu-note-1", "sub_comments_page1.sanitized.json"),
         ("douyin", "aweme_id", "100001", "replies_page1.sanitized.json"),
         ("weibo", "status_id", "100001", "sub_comments_page1.sanitized.json"),
         ("bilibili", "av_id", "100010", "replies_page1.sanitized.json"),
@@ -1341,7 +1341,7 @@ def test_batch_supplement_native_ids_persist_replies_under_their_root(
 @pytest.mark.parametrize(
     ("platform", "lookup_id_type", "lookup_value"),
     [
-        ("xiaohongshu", "note_id", "xhs-note-1"),
+        ("xiaohongshu", "note_id", "xiaohongshu-note-1"),
         ("douyin", "aweme_id", "100001"),
         ("weibo", "status_id", "100001"),
         ("bilibili", "av_id", "100010"),
@@ -1458,7 +1458,7 @@ def test_batch_supplement_resumes_second_comment_page_without_refetching_first(
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(
         runtime,
-        external_content_id="xhs-note-1",
+        external_content_id="xiaohongshu-note-1",
         lookup_id_type="note_id",
     )
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
@@ -1478,7 +1478,7 @@ def test_batch_supplement_resumes_second_comment_page_without_refetching_first(
         request_id="stage8e-second-page-retry",
     )
     detail = _batch_detail_response()
-    detail["data"]["data"][0]["note_list"][0]["id"] = "xhs-note-1"
+    detail["data"]["data"][0]["note_list"][0]["id"] = "xiaohongshu-note-1"
     detail["data"]["data"][0]["note_list"][0]["comments_count"] = 2
     first = json.loads(
         (_TIKHUB_FIXTURES / "xiaohongshu" / "comments_page1.sanitized.json").read_text(
@@ -1487,7 +1487,7 @@ def test_batch_supplement_resumes_second_comment_page_without_refetching_first(
     )
     first["data"]["data"].update(comment_count=2, comment_count_l1=2)
     second = deepcopy(first)
-    second["data"]["data"]["comments"][0]["id"] = "xhs-comment-root-2"
+    second["data"]["data"]["comments"][0]["id"] = "xiaohongshu-comment-root-2"
     second["data"]["data"].update(cursor="cursor-end", has_more=False)
     transport = FakeProviderTransport(
         (
@@ -1526,7 +1526,7 @@ def test_batch_supplement_resumes_second_comment_page_without_refetching_first(
     assert roots == 2
 
 
-def test_batch_supplement_resolves_xhs_shortlink_and_keeps_import_content_identity(
+def test_batch_supplement_resolves_xiaohongshu_shortlink_and_keeps_import_content_identity(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
@@ -1910,9 +1910,9 @@ def test_batch_supplement_shortlink_identity_owned_by_other_content_is_blocked(
     )
     _, other_content_id = _insert_import_content(
         runtime,
-        external_content_id="xhs-note-1",
+        external_content_id="xiaohongshu-note-1",
         lookup_id_type="note_id",
-        lookup_value="xhs-note-1",
+        lookup_value="xiaohongshu-note-1",
     )
     if bypass_early_check:
         monkeypatch.setattr(
@@ -1936,7 +1936,7 @@ def test_batch_supplement_shortlink_identity_owned_by_other_content_is_blocked(
         ),
         request_id="stage8e-conflicting-shortlink",
     )
-    detail = _batch_detail_response(note_id="xhs-note-1")
+    detail = _batch_detail_response(note_id="xiaohongshu-note-1")
     detail["data"]["data"][0]["note_list"][0]["comments_count"] = 1
     transport = FakeProviderTransport((ProviderTransportResponse(status_code=200, body=detail),))
     worker = create_job_worker(

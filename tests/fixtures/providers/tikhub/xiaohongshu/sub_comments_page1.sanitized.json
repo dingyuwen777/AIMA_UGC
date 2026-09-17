@@ -3,20 +3,20 @@
     "data": {
       "comments": [
         {
-          "id": "xhs-comment-reply-2",
-          "note_id": "xhs-note-1",
+          "id": "xiaohongshu-comment-reply-2",
+          "note_id": "xiaohongshu-note-1",
           "content": "脱敏二级回复",
           "like_count": 3,
           "time": 1720000200,
           "user": {
-            "userid": "xhs-user-3",
+            "userid": "xiaohongshu-user-3",
             "nickname": "脱敏回复用户"
           },
           "target_comment": {
-            "id": "xhs-comment-root-1",
+            "id": "xiaohongshu-comment-root-1",
             "status": 0,
             "user": {
-              "userid": "xhs-user-1"
+              "userid": "xiaohongshu-user-1"
             }
           }
         }

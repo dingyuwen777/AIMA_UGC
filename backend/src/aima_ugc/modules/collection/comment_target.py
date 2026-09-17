@@ -27,7 +27,7 @@ _LOCATION_ID_TYPES: dict[PlatformName, tuple[str, ...]] = {
 }
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 _BV_ID = re.compile(r"^BV[A-Za-z0-9]{10}$", re.IGNORECASE)
-_XHS_SHORT_PATH = re.compile(r"^/(?:o|m|a)/[A-Za-z0-9_-]+/?$")
+_XIAOHONGSHU_SHORT_PATH = re.compile(r"^/(?:o|m|a)/[A-Za-z0-9_-]+/?$")
 _DOUYIN_SHORT_PATH = re.compile(r"^/[A-Za-z0-9_-]+/?$")
 
 
@@ -130,7 +130,7 @@ def resolve_supported_locator(
     if platform == "xiaohongshu":
         locator_type = "share_text"
         hosts = {"xhslink.com", "xhslink.cn"}
-        path_pattern = _XHS_SHORT_PATH
+        path_pattern = _XIAOHONGSHU_SHORT_PATH
     elif platform == "douyin":
         locator_type = "douyin_share_url"
         hosts = {"v.douyin.com"}

@@ -156,7 +156,7 @@ def _xiaohongshu_replies(lookup: str, params: dict[str, Any]) -> dict[str, Any]:
     reply = page["comments"][0]
     reply["note_id"] = lookup
     if params.get("cursor"):
-        reply.update(id="xhs-comment-reply-page2", content="脱敏第二页回复")
+        reply.update(id="xiaohongshu-comment-reply-page2", content="脱敏第二页回复")
         page.update(cursor="cursor-end", has_more=False)
     else:
         page.update(cursor="cursor-next", has_more=True)
