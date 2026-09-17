@@ -10,105 +10,30 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, '解耦内部编码与展示排序') }}
+    if: ${{ !contains(github.event.head_commit.message, '应用内部编码排序格式化') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           ref: feature/server-generated-catalog-code
           fetch-depth: 0
-      - name: Apply exact ordering patch
+      - name: Format and validate ordering patch
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one match for {old!r}, got {count}")
-              p.write_text(text.replace(old, new), encoding="utf-8")
-
-          def regex_once(path: str, pattern: str, replacement: str) -> None:
-              p = Path(path)
-              text = p.read_text(encoding="utf-8")
-              updated, count = re.subn(pattern, replacement, text, count=1)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one regex match, got {count}")
-              p.write_text(updated, encoding="utf-8")
-
-          replace_once(
-              "backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py",
-              "statement.order_by(vehicle_brands_table.c.code, vehicle_brands_table.c.id)",
-              "statement.order_by(vehicle_brands_table.c.display_name, vehicle_brands_table.c.id)",
-          )
-          replace_once(
-              "backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py",
-              "base.order_by(vehicle_models_table.c.code, vehicle_models_table.c.id)",
-              "base.order_by(vehicle_models_table.c.display_name, vehicle_models_table.c.id)",
-          )
-          regex_once(
-              "backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py",
-              r"content_brand_evidence_table\.c\.content_id,\s+vehicle_brands_table\.c\.code,\s+vehicle_brands_table\.c\.id,",
-              """content_brand_evidence_table.c.content_id,
-                    case(
-                        (vehicle_brands_table.c.role == \"owned\", 0),
-                        (vehicle_brands_table.c.role == \"competitor\", 1),
-                        else_=2,
-                    ),
-                    vehicle_brands_table.c.display_name,
-                    vehicle_brands_table.c.id,""",
-          )
-          regex_once(
-              "backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py",
-              r"content_vehicle_evidence_table\.c\.content_id,\s+func\.coalesce\(effective_vehicle\.c\.code,\s*vehicle_models_table\.c\.code\),\s+content_vehicle_evidence_table\.c\.created_at,",
-              """content_vehicle_evidence_table.c.content_id,
-                    func.coalesce(
-                        effective_vehicle.c.display_name,
-                        vehicle_models_table.c.display_name,
-                    ),
-                    func.coalesce(effective_vehicle.c.id, vehicle_models_table.c.id),
-                    content_vehicle_evidence_table.c.created_at,
-                    content_vehicle_evidence_table.c.id,""",
-          )
-
-          change = Path("changes/active/CHG-20260917-server-generated-catalog-code/CHANGE.md")
-          text = change.read_text(encoding="utf-8")
-          paths = (
-              "  - backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py\n"
-              "  - backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py\n"
-              "  - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py\n"
-          )
-          if "backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py" not in text:
-              marker = "affected_paths:\n"
-              if marker not in text:
-                  raise SystemExit("Change affected_paths marker not found")
-              text = text.replace(marker, marker + paths, 1)
-          behavior = (
-              "- [x] 用户可见品牌/车型顺序不再依赖内部 `code`：管理员目录按显示名稳定排序，"
-              "内容品牌按业务角色（自有→竞品→其他）再按显示名排序，内容车型按有效显示名排序。\n"
-          )
-          if behavior not in text:
-              marker = "- [x] HTTP 创建应用服务生成稳定唯一内部 code；Repository/Schema 不改，内部显式 code 调用兼容。\n"
-              if marker not in text:
-                  raise SystemExit("Change implementation marker not found")
-              text = text.replace(marker, marker + behavior, 1)
-          change.write_text(text, encoding="utf-8")
-          PY
+          python -m pip install ruff==0.16.2
+          ruff format backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+          ruff check backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
           git diff --check
-          git diff -- backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py changes/active/CHG-20260917-server-generated-catalog-code/CHANGE.md
-      - name: Commit patch
+          git diff -- backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+      - name: Commit formatting
         shell: bash
         run: |
           if git diff --quiet; then
-            echo "No changes required"
+            echo "No formatting changes required"
             exit 0
           fi
           git config user.name "yuwen.ding"
           git config user.email "dingyuwen777@gmail.com"
-          git add backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py changes/active/CHG-20260917-server-generated-catalog-code/CHANGE.md
-          git commit -m "解耦内部编码与展示排序"
+          git add backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+          git commit -m "应用内部编码排序格式化"
           git push origin HEAD:feature/server-generated-catalog-code
