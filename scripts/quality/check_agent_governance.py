@@ -212,7 +212,8 @@ def check_repository(root: Path = ROOT) -> list[str]:
         )
         if "governance_asset_contract" not in checker:
             errors.append(
-                f"GOV018 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: PR gate 未接入项目治理资产机器 Contract"
+                f"GOV018 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: "
+                "PR gate 未接入项目治理资产机器 Contract"
             )
 
     for workflow in _workflow_paths(root):

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,7 +18,8 @@ TOP_LEVEL_HEADING_PATTERN = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 SECOND_LEVEL_HEADING_PATTERN = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 ISSUE_HEADING_PATTERN = re.compile(r"^#{2,6}\s+(.+?)\s*$", re.MULTILINE)
 ACCEPTANCE_ITEM_PATTERN = re.compile(
-    r"^\s*-\s*\[(?P<checked>[ xX])\]\s*\*{0,2}AC(?P<number>[1-9][0-9]*)\*{0,2}[：:]\s*(?P<text>.+?)\s*$",
+    r"^\s*-\s*\[(?P<checked>[ xX])\]\s*\*{0,2}"
+    r"AC(?P<number>[1-9][0-9]*)\*{0,2}[：:]\s*(?P<text>.+?)\s*$",
     re.MULTILINE,
 )
 FORM_TITLE_PATTERN = re.compile(r'^title:\s*"(?P<prefix>.+?)"\s*$', re.MULTILINE)
@@ -213,7 +214,8 @@ def validate_new_change_file(path: Path, *, root: Path = ROOT) -> list[str]:
         errors.append("Active Change schema 必须为 coding-change/v1")
     if CURRENT_CHANGE_ID_PATTERN.fullmatch(change_id) is None:
         errors.append(
-            "当前 Active Change ID 必须使用 CHG-YYYYMMDD-HHMMSS-kebab-case；日期级 ID 只保留历史 archive 兼容"
+            "当前 Active Change ID 必须使用 CHG-YYYYMMDD-HHMMSS-kebab-case；"
+            "日期级 ID 只保留历史 archive 兼容"
         )
     if path.name == "CHANGE.md" and path.parent.name != change_id:
         errors.append("Change 目录 ID 与 frontmatter id 不一致")
