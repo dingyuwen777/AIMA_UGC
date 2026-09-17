@@ -8,37 +8,18 @@ GOVERNANCE_TEST = runpy.run_path(str(ROOT / "tests/unit/test_agent_governance.py
 CHECK_REPOSITORY = GOVERNANCE_TEST["CHECK_REPOSITORY"]
 MINIMAL_REPOSITORY = GOVERNANCE_TEST["_minimal_repository"]
 
-FORM_PROFILES = {
-    "01-requirement.yml": ("需求", "[需求] "),
-    "02-bug.yml": ("缺陷", "[缺陷] "),
-    "03-technical-change.yml": ("技术变更", "[技术变更] "),
-}
 
-
-def _field_block(text: str, field_id: str) -> str:
-    """返回 Issue Form 指定字段块，便于锁定公共字段语义。"""
-    marker = f"id: {field_id}"
-    assert marker in text
-    tail = text.split(marker, 1)[1]
-    next_field = tail.find("\n  - type:")
-    return tail if next_field < 0 else tail[:next_field]
-
-
-def test_current_issue_profiles_share_title_acceptance_and_validation_contract() -> None:
-    """AIMA 三类 GitHub Issue Form 应共享标题、AC 与验证要求公共 Contract。"""
-    for filename, (chooser_name, title_prefix) in FORM_PROFILES.items():
-        text = (ROOT / ".github/ISSUE_TEMPLATE" / filename).read_text(encoding="utf-8")
-        first_lines = text.splitlines()[:4]
-        assert f"name: {chooser_name}" in first_lines
-        assert f'title: "{title_prefix}"' in first_lines
-
-        acceptance = _field_block(text, "acceptance_criteria")
-        validation = _field_block(text, "validation_requirements")
-        assert "label: 验收标准" in acceptance
-        assert "- [ ] AC1：" in acceptance
-        assert "required: true" in acceptance
-        assert "label: 验证要求" in validation
-        assert "required: true" in validation
+def test_current_issue_forms_are_generated_projection() -> None:
+    """AIMA 根 Issue Forms 必须与受管 canonical assets 原字节一致。"""
+    source_dir = ROOT / ".agents/skills/coding/assets/issue-templates"
+    target_dir = ROOT / ".github/ISSUE_TEMPLATE"
+    sources = tuple(sorted(source_dir.glob("*.yml")))
+    assert sources
+    assert {path.name for path in sources} == {
+        path.name for path in target_dir.glob("*.yml")
+    }
+    for source in sources:
+        assert (target_dir / source.name).read_bytes() == source.read_bytes()
 
 
 def test_current_pr_template_delays_auto_close_when_post_merge_evidence_is_required() -> None:
@@ -53,11 +34,13 @@ def test_current_pr_template_delays_auto_close_when_post_merge_evidence_is_requi
         assert marker in text
 
 
-def test_checker_rejects_issue_profile_contract_drift(tmp_path: Path) -> None:
-    """项目 checker 必须把 chooser/title/AC/validation 漂移变成稳定失败。"""
+def test_checker_rejects_issue_projection_drift(tmp_path: Path) -> None:
+    """AIMA 项目 checker 必须把根 Issue Form 漂移变成稳定失败。"""
     MINIMAL_REPOSITORY(tmp_path)
+    form = tmp_path / ".github/ISSUE_TEMPLATE/03-technical-change.yml"
+    form.write_text(form.read_text(encoding="utf-8") + "\n# drift\n", encoding="utf-8")
     errors = CHECK_REPOSITORY(tmp_path)
-    assert any(error.startswith("GOV017") for error in errors)
+    assert any(error.startswith("GOV012") and "投影" in error for error in errors)
 
 
 def test_checker_rejects_missing_post_merge_closure_contract(tmp_path: Path) -> None:

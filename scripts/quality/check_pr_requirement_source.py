@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
@@ -16,7 +17,10 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
-GOVERNANCE_CONTRACT_PATH = ROOT / "scripts" / "quality" / "governance_asset_contract.py"
+GOVERNANCE_CONTRACT_PATH = ROOT / ".agents" / "skills" / "coding" / "scripts" / "governance_contract.py"
+CANONICAL_ISSUE_FORM_DIR = ROOT / ".agents" / "skills" / "coding" / "assets" / "issue-templates"
+CANONICAL_CHANGE_TEMPLATE = ROOT / ".agents" / "skills" / "coding" / "assets" / "CHANGE.template.md"
+CHANGE_CARRIER = Path("changes")
 REQUIREMENT_SOURCE_PATTERN = re.compile(
     r"^\s*Requirement-Source\s*:\s*(.*?)\s*$",
     flags=re.IGNORECASE | re.MULTILINE,
@@ -39,13 +43,13 @@ PLACEHOLDER_SOURCES = {
 
 
 def _load_governance_contract() -> Any:
-    """加载 AIMA 项目治理资产机器 Contract 适配器，避免 checker 复制 Profile 规则。"""
+    """加载受管 canonical 治理资产机器 Contract，项目 checker 不复制通用规则。"""
     spec = importlib.util.spec_from_file_location(
         "aima_governance_asset_contract",
         GOVERNANCE_CONTRACT_PATH,
     )
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"无法加载项目治理资产机器 Contract：{GOVERNANCE_CONTRACT_PATH}")
+        raise RuntimeError(f"无法加载受管 canonical 治理资产机器 Contract：{GOVERNANCE_CONTRACT_PATH}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -57,6 +61,63 @@ GOVERNANCE_CONTRACT = _load_governance_contract()
 
 class RequirementSourceError(ValueError):
     """表示 PR Requirement Source 或新增治理资产不满足机器可验证约束。"""
+
+
+def _changed_active_change_paths(root: Path, base_sha: str, head_sha: str) -> tuple[Path, ...]:
+    """枚举 PR base→head 新增或修改的 AIMA 顶层 Active Change。"""
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "diff",
+            "--name-only",
+            "--diff-filter=AM",
+            "--no-renames",
+            base_sha,
+            head_sha,
+            "--",
+            (CHANGE_CARRIER / "active").as_posix(),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        raise RequirementSourceError(
+            "无法计算本 PR Active Change 范围：" + result.stderr.strip()
+        )
+    return tuple(Path(line.strip()) for line in result.stdout.splitlines() if line.strip())
+
+
+def validate_new_changes_since(root: Path, *, base_sha: str, head_sha: str) -> tuple[str, ...]:
+    """只适配 AIMA 顶层 Carrier，单个 Change 的通用判定委托 canonical validator。"""
+    validated: list[str] = []
+    errors: list[str] = []
+    for relative in _changed_active_change_paths(root, base_sha, head_sha):
+        parts = relative.parts
+        if (
+            len(parts) != 4
+            or parts[:2] != ("changes", "active")
+            or relative.name != "CHANGE.md"
+        ):
+            continue
+        document_errors = GOVERNANCE_CONTRACT.validate_new_change_file(
+            root / relative,
+            template_path=root / CANONICAL_CHANGE_TEMPLATE.relative_to(ROOT),
+        )
+        if document_errors:
+            errors.append(
+                f"Active Change `{relative.as_posix()}` 不满足 canonical machine Contract：\n- "
+                + "\n- ".join(document_errors)
+            )
+        else:
+            validated.append(relative.as_posix())
+    if errors:
+        raise RequirementSourceError("\n".join(errors))
+    return tuple(validated)
 
 
 def extract_requirement_sources(body: str) -> tuple[str, ...]:
@@ -97,10 +158,14 @@ def _validate_issue_source(
     body = str(issue.get("body") or "").strip()
     if not title or not body:
         raise RequirementSourceError(f"Requirement-Source {source} 缺少可审查的标题或正文")
-    errors = GOVERNANCE_CONTRACT.validate_issue_instance(title, body, root=root)
+    errors = GOVERNANCE_CONTRACT.validate_issue_instance(
+        title,
+        body,
+        forms_dir=root / CANONICAL_ISSUE_FORM_DIR.relative_to(ROOT),
+    )
     if errors:
         raise RequirementSourceError(
-            f"Requirement-Source {source} 不满足当前 AIMA 治理资产机器 Contract：\n- "
+            f"Requirement-Source {source} 不满足 canonical 治理资产机器 Contract：\n- "
             + "\n- ".join(errors)
         )
 
@@ -245,7 +310,7 @@ def main() -> int:
     args = build_parser().parse_args()
     try:
         body, repository, base_sha, head_sha = _load_pull_request_event(args.event)
-        validated_changes = GOVERNANCE_CONTRACT.validate_new_changes_since(
+        validated_changes = validate_new_changes_since(
             args.root,
             base_sha=base_sha,
             head_sha=head_sha,
@@ -263,7 +328,7 @@ def main() -> int:
             )
 
         sources = validate_requirement_sources(body, root=args.root, issue_loader=issue_loader)
-    except (RequirementSourceError, GOVERNANCE_CONTRACT.GovernanceAssetContractError) as exc:
+    except (RequirementSourceError, GOVERNANCE_CONTRACT.GovernanceContractError) as exc:
         print(f"PR Requirement Source / Governance Asset 校验失败: {exc}")
         return 1
 

@@ -16,7 +16,7 @@ VALIDATE_REQUIREMENT_SOURCES = CHECKER["validate_requirement_sources"]
 
 
 def _technical_change_body() -> str:
-    """返回满足当前 AIMA 技术变更 Project Profile 的最小 live Issue 正文。"""
+    """返回满足 canonical 技术变更 Profile 的最小 live Issue 正文。"""
     return """## 动机 / 根因
 需要统一治理机器门禁。
 
@@ -140,7 +140,7 @@ def test_validate_accepts_real_issue_and_repository_file(tmp_path: Path) -> None
 def test_validate_rejects_issue_without_project_title_prefix(tmp_path: Path) -> None:
     """绕过 Issue Form/API 直接创建时仍必须满足项目标题 Profile。"""
     root = _profile_root(tmp_path)
-    with pytest.raises(RequirementSourceError, match="Project Profile|标题"):
+    with pytest.raises(RequirementSourceError, match="治理资产机器 Contract|标题"):
         VALIDATE_REQUIREMENT_SOURCES(
             "Requirement-Source: #287\n",
             root=root,
