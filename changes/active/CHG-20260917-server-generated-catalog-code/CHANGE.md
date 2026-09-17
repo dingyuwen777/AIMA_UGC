@@ -27,6 +27,7 @@ affected_paths:
   - frontend/e2e/
   - frontend/e2e-fullstack/
   - tests/api/
+  - tests/contracts/test_u1_u5_contracts.py
   - tests/unit/content/test_vehicle_display_classification.py
   - docs/guides/02_管理员配置Figma开发基线.md
 contracts:
@@ -55,15 +56,15 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 | R5 | DB `code` 列、唯一约束、既有记录保持不变，无 Migration | #522 / AC5 | satisfied | 本 PR 未修改 `tables.py`、Alembic Migration 或 Repository Schema；只改变 HTTP 输入和创建应用服务，`data_changes: []` |
 | R6 | 管理员新增品牌/车型 UI 不再展示、校验或提交编码 | #522 / AC6 | satisfied | `CatalogConfigurationPanel.vue` 已移除 draft/validation/payload/input code；SSR、unit/build 与 Browser Mock 在 run `35178746591` 全绿 |
 | R7 | 正式 Figma source component 与开发规格同步 | #522 / AC7 | satisfied | 正式 `qmZEFvPrB8u9JX5fyqc93S / 3957:2` 新鲜回读：新增品牌 `7511:11637`、新增车型 `7511:11276` 均无编码输入；DEV 规格明确“创建请求不接收 code、响应仍返回 code”，截图已重新获取；设计已正确，无需制造无意义画布差异 |
-| R8 | 相关后端、Contract、前端、E2E 与 required PR CI 通过 | #522 / AC8 | explicitly_deferred | pre-ready run `35178746591` 已通过 format/lint/Contract regression/generated drift/frontend lint/typecheck/unit/build/Browser Mock；正式 PR required CI 必须在当前最终 HEAD 通过后再标 satisfied |
+| R8 | 相关后端、Contract、前端、E2E 与 required PR CI 通过 | #522 / AC8 | explicitly_deferred | pre-ready run `35178746591` 已通过 targeted/static/generated/frontend/Browser Mock；正式 PR required CI 必须在当前最终 HEAD 通过后再标 satisfied |
 | R9 | 合并后 main required CI 再次通过 | #522 / AC9 | explicitly_deferred | 这是 post-merge fresh-evidence gate；合并完成后必须绑定 merge SHA 重新读取 main workflow 结果，绿色后才关闭 #522 和完成分支清理 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | pre-ready run `35178746591`：Backend Contract regression、Frontend unit tests success；正式 CI 已暴露并修正一处仍传客户端 code 的旧 unit fixture |
-| 接口 / Contract | required | pre-ready run `35178746591`：Pydantic → OpenAPI → Orval generated drift success；create 无 code、response 有 code、extra forbid |
+| 行为 / Unit / Component | required | pre-ready run `35178746591` 绿色；正式 CI 已暴露并修正两个仍向 Create Contract 传客户端 code 的历史 fixture，原业务断言均保留 |
+| 接口 / Contract | required | pre-ready run `35178746591`：Pydantic → OpenAPI → Orval generated drift success；create 无 code、response 有 code、extra forbid；U1—U5 别名 Contract fixture 已同步新输入边界 |
 | Backend/API/PostgreSQL | required | 生产创建应用服务生成 code；正式 PR Real Full-stack job 在 Ready 后执行；Schema/Migration 无 diff |
 | Browser Mock Acceptance | required | pre-ready run `35178746591`：`admin-configuration-figma.spec.ts` success，创建弹窗无编码控件且 payload 无 code |
 | Real Full-stack Golden Path | required | `admin-product-capabilities.spec.ts` 已更新为真实 API/DB 路径与服务器 code 断言；正式 PR CI 执行结果是 merge gate |
@@ -80,7 +81,8 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 - [x] OpenAPI 与 Orval generated client 通过正式生成链重新生成，未手改 generated client。
 - [x] 补 Contract、SSR、Browser Mock 与 Real Full-stack 直接回归。
 - [x] 同步管理员配置开发基线；正式 Figma 当前状态已与要求一致并完成 readback/screenshot 复核。
-- [x] 更新原有车型分类单元测试，使其按新 Create Contract 构造无 code 请求；没有删除或弱化分类字段断言。
+- [x] 更新原有车型分类 unit fixture，使其按新 Create Contract 构造无 code 请求；没有删除或弱化分类字段断言。
+- [x] 更新 U1—U5 车型别名 Contract fixture，使其按新 Create Contract 构造无 code 请求；保留显示名 trim 与别名规范化/重复拒绝断言。
 - [ ] PR Ready 后 required CI 全绿并完成独立 Review。
 - [ ] merge 后 main required CI 全绿，再关闭 Requirement Issue 并清理任务分支。
 
@@ -97,6 +99,7 @@ Requirement Source：GitHub Issue #522，验收绑定 AC1—AC9。
 2. Browser/Full-stack acceptance 更新 workflow run `35177948358` success；临时 workflow 已删除。
 3. pre-ready validation run `35178746591` success：`ruff format --check`、`ruff check`、目标 Contract pytest、OpenAPI/Orval drift、frontend lint/typecheck/unit/build、Browser Mock 均 success。
 4. Figma：正式 source `qmZEFvPrB8u9JX5fyqc93S / 3957:2` 的新增品牌 `7511:11637`、新增车型 `7511:11276` 完成当前 Design Context 与截图复核；Plugin 全页文本扫描只发现 DEV 规格中的两处 code 说明，且均明确“服务端创建时生成、创建请求不接收 code、响应仍返回 code”。
-5. PR #525 已使用机器门禁要求的独立行 `Requirement-Source: #522` 绑定真实 Requirement Source；Requirement Source / Change readiness 在正式 CI run `35179041234` 已通过。
-6. 正式 CI run `35179041234` 首次在全量 unit 阶段暴露 `tests/unit/content/test_vehicle_display_classification.py` 仍使用旧 `VehicleModelCreateRequest(code=...)` 的 fixture；同轮结果为 `1 failed, 1028 passed`。该旧测试已改为无 code 请求，并保留原分类字段可选/trim 断言。当前最终 HEAD 必须重新通过正式 required CI 后才能满足 R8。
-7. 正式 PR required CI 和 post-merge main CI 不提前冒充；分别在当前最终 HEAD/merge 后执行并回填最终证据。
+5. PR #525 已使用机器门禁要求的独立行 `Requirement-Source: #522` 绑定真实 Requirement Source；Requirement Source / Change readiness 在正式 CI 中已通过。
+6. 正式 CI run `35179041234` 首次在全量 unit 阶段暴露 `tests/unit/content/test_vehicle_display_classification.py` 仍使用旧 `VehicleModelCreateRequest(code=...)` fixture；同轮结果 `1 failed, 1028 passed`。该 fixture 已改为无 code 请求，并保留分类字段可选/trim 断言。
+7. 正式 CI run `35179364523` 复验时 unit 已达到 `1029 passed`，随后 contracts 暴露 `tests/contracts/test_u1_u5_contracts.py` 的车型别名 fixture 仍传 `code`；同轮 contracts 结果 `1 failed, 110 passed`。该 fixture 已改为无 code 请求，保留显示名 trim、别名内容与重复别名拒绝断言。
+8. 正式 PR required CI 和 post-merge main CI 不提前冒充；分别在当前最终 HEAD/merge 后执行并回填最终证据。
