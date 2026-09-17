@@ -127,7 +127,7 @@ async function openImportDialog(page: Page) {
   return page.getByRole('dialog', { name: '导入数据' })
 }
 
-test('requires a source file but not a legacy keyword or vehicle filter', async ({ page }) => {
+test('requires a source file but not Provider search or a single-vehicle filter', async ({ page }) => {
   const dialog = await openImportDialog(page)
   const submitButton = dialog.locator('.create-button')
 
@@ -139,7 +139,9 @@ test('requires a source file but not a legacy keyword or vehicle filter', async 
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('aima'),
   })
-  await expect(dialog).toContainText('Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件')
+  await expect(dialog.getByText('搜索条件', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('不适用于 Excel 文件导入', { exact: true })).toBeVisible()
+  await expect(dialog).toContainText('创建后冻结品牌车型目录快照并执行预检；Excel 不执行 Provider 搜索，导入完成后不会自动触发智能分析。')
   await expect(submitButton).toBeEnabled()
   await expect(submitButton).toHaveCSS('cursor', 'pointer')
 })
@@ -215,7 +217,7 @@ test('stages local files through Campaign upload and restores a visible error', 
   await expect(submitButton).toHaveAttribute('aria-busy', 'false')
   await expect(submitButton).toHaveText('创建并预检')
   await expect(dialog.getByRole('alert')).toContainText('数据导入 Campaign 创建失败')
-  await expect(dialog.getByRole('alert')).toContainText('req_data_import_busy_state')
+  await expect(dialog.getByText('req_data_import_busy_state', { exact: false })).toHaveCount(0)
 })
 
 test('allows an interrupted local upload Campaign to be cancelled', async ({ page }) => {
@@ -239,8 +241,8 @@ test('allows an interrupted local upload Campaign to be cancelled', async ({ pag
     })
   })
 
-  const dialog = await openImportDialog(page)
-  await dialog.getByRole('button', { name: '打开导入任务 本地文件导入' }).click()
+  await page.goto(`/collection-runtime?data_import_campaign_id=${campaignId}`)
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
   const cancelButton = dialog.getByRole('button', { name: '取消任务', exact: true })
   await expect(cancelButton).toBeEnabled()
   await cancelButton.click()

@@ -52,6 +52,11 @@ from aima_ugc.contracts.http import (
     ContentAnalysisStatus,
     ContentAnalysisSubmitRequest,
     ContentAnalysisTaxonomyResponse,
+    ContentBrandEvidenceResponse,
+    ContentBrandReferenceResponse,
+    ContentBrandResponse,
+    ContentCommentListQuery,
+    ContentCommentListResponse,
     ContentDetailResponse,
     ContentFilterLabelOptionResponse,
     ContentFilterOptionsResponse,
@@ -258,6 +263,55 @@ class PostgresContentHttpService:
                 )
         finally:
             session.close()
+
+    def list_comments(
+        self,
+        content_id: UUID,
+        query: ContentCommentListQuery,
+    ) -> ContentCommentListResponse:
+        """分页读取一级评论或指定线程回复，并保留直接父评论显示信息。"""
+
+        codec = self._cursor_codec()
+        query_hash = _comment_query_hash(content_id, root_comment_id=query.root_comment_id)
+        position = codec.decode(query.cursor, query_hash=query_hash) if query.cursor else None
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                configuration = active_analysis_configuration(session, self._runtime.settings)
+                repository = PostgresContentQueryRepository(
+                    session,
+                    analysis_identity=configuration.identity,
+                )
+                if repository.get_content(content_id) is None:
+                    raise ContentResourceNotFound
+                rows = repository.list_comments_page(
+                    content_id,
+                    root_comment_id=query.root_comment_id,
+                    position=position,
+                    limit=query.limit + 1,
+                )
+                total_count, ingested_total_count = repository.count_comments(
+                    content_id,
+                    root_comment_id=query.root_comment_id,
+                )
+        finally:
+            session.close()
+        has_more = len(rows) > query.limit
+        page = rows[: query.limit]
+        next_cursor = None
+        if has_more and page:
+            last = page[-1]
+            next_cursor = codec.encode(
+                ContentCursorPosition(sort_at=last.published_at, content_id=last.id),
+                query_hash=query_hash,
+            )
+        return ContentCommentListResponse(
+            items=page,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            total_count=total_count,
+            ingested_total_count=ingested_total_count,
+        )
 
     def review_vehicles(
         self,
@@ -1076,6 +1130,18 @@ def _query_hash(
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _comment_query_hash(content_id: UUID, *, root_comment_id: str | None) -> str:
+    """将评论 Cursor 绑定到 Content、线程和固定阅读顺序。"""
+
+    payload = {
+        "content_id": str(content_id),
+        "root_comment_id": root_comment_id,
+        "sort_direction": "asc" if root_comment_id is not None else "desc",
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
     """投影当前内容、作者粉丝数与已有分析结果。"""
     return ContentListItemResponse(
@@ -1117,6 +1183,27 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             import_batch_id=record.source.import_batch_id,
             collection_run_id=record.source.collection_run_id,
         ),
+        brands=tuple(
+            ContentBrandResponse(
+                id=brand.id,
+                code=brand.code,
+                display_name=brand.display_name,
+                role=brand.role,
+                evidences=tuple(
+                    ContentBrandEvidenceResponse(
+                        source=cast(Any, evidence.source),
+                        matched_text=evidence.matched_text,
+                        source_field=evidence.source_field,
+                        derived_vehicle_model_id=evidence.derived_vehicle_model_id,
+                        catalog_version=evidence.catalog_version,
+                        confidence=evidence.confidence,
+                        is_manual_locked=evidence.is_manual_locked,
+                    )
+                    for evidence in brand.evidences
+                ),
+            )
+            for brand in record.brands
+        ),
         vehicles=tuple(
             ContentVehicleResponse(
                 vehicle_model_id=vehicle.vehicle_model_id,
@@ -1124,6 +1211,16 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
                 display_name=vehicle.display_name,
                 series_name=vehicle.series_name,
                 category_name=vehicle.category_name,
+                brand=(
+                    ContentBrandReferenceResponse(
+                        id=vehicle.brand.id,
+                        code=vehicle.brand.code,
+                        display_name=vehicle.brand.display_name,
+                        role=vehicle.brand.role,
+                    )
+                    if vehicle.brand is not None
+                    else None
+                ),
                 evidences=tuple(
                     ContentVehicleEvidenceResponse(
                         source=cast(Any, evidence.source),
@@ -1138,6 +1235,7 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             )
             for vehicle in record.vehicles
         ),
+        competition_scope=record.competition_scope,
         availability=(
             ContentAvailabilityResponse(
                 status=cast(Any, record.availability.status),

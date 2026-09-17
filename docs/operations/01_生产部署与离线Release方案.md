@@ -17,14 +17,16 @@
 - Windows Docker Desktop 的 storage-only [`compose.windows.yaml`](../../compose.windows.yaml)；
 - [`.github/workflows/release.yml`](../../.github/workflows/release.yml) 的 GitHub 离线 Release 基础；
 - `linux/amd64` Backend/Frontend 镜像与固定 `postgres:18.4`；
+- 应用镜像正式版本标签与 `latest` 运行别名共存、且同一版本内指向相同 Image ID；
 - `images.tar`、`release-manifest.json`、`migration-manifest.json`、`SHA256SUMS`、`DEPLOY.md`；
 - PR Release dry-run 的离线重放；
 - 正式手工 Release 的 GHCR digest、Git Tag 和 GitHub Release 基础；
-- 服务器侧 `docker load` 后以 `--no-build --pull never` 启动已验证镜像的能力。
+- 服务器侧 `docker load` 后以 `--no-build --pull never` 启动已验证镜像的能力；
+- Frontend Nginx 的应用侧浏览器安全响应头基线与旧版跨域策略文件 404 边界。
 
 因此不能再把 Dockerfile、Compose、离线 Bundle 或 no-build/no-pull 重放整体描述成“尚未实现”。
 
-完整 Production 仍是 **No-Go**。当前未闭环项包括企业 Authentication、HTTPS/浏览器安全、协调 PostgreSQL + Artifact Backup/Restore、SBOM/独立签名/provenance、正式服务器发布/回滚闭环，以及真实生产安全、容量、Soak 和恢复验收。详见 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)。
+完整 Production 仍是 **No-Go**。当前未闭环项包括企业 Authentication、真实公网/企业入口的 TLS 与浏览器安全验收、协调 PostgreSQL + Artifact Backup/Restore、SBOM/独立签名/provenance、正式服务器发布/回滚闭环，以及真实生产安全、容量、Soak 和恢复验收。详见 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)。
 
 日常源码/本地运行见 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)；Windows Docker Desktop 见 [`docs/guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_Windows%20Docker%20Desktop%20Compose运行.md)。
 
@@ -176,7 +178,8 @@ TikHub 的 Internal V1 `configure` 也只负责首次创建稳定 Provider Confi
 - Migration 保持独立一次性进程；
 - bootstrap 只在初始化阶段以所需权限运行并退出；
 - PostgreSQL/API 不向普通宿主客户端发布业务端口；
-- Frontend/Nginx 是正常浏览器入口；
+- Frontend/Nginx 是正常浏览器入口，并由应用侧统一发出浏览器安全响应头；
+- Frontend 保持 `server_name _;` 与 8080 HTTP 监听，不在容器内强制 HTTP→HTTPS；
 - PostgreSQL、Artifact、日志和 Secret 不依赖容器可写层；
 - 镜像构建与 Runtime 不把真实 Secret 写入镜像。
 
@@ -208,25 +211,40 @@ API、Worker、Scheduler、Migration、Health、网络、端口、外部 Secret 
 
 - [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
-PR 触发时执行 Release dry-run，不推送 GHCR、不创建 Tag/Release。正式 `workflow_dispatch` 从默认分支执行，版本使用标准 SemVer，并校验当前发布 SHA 仍是远端 `main` 最新 SHA及所需主分支门禁。
+PR 触发时执行 Release dry-run，不推送 GHCR、不创建 Tag/Release。正式发布支持两种手工入口：
+
+1. 在 GitHub `Actions → Release → Run workflow` 中选择 `main` 并输入标准 SemVer；
+2. 在 GitHub `Releases → Draft a new release` 中创建或选择标准 SemVer Tag，Tag target 选择 `main`，然后点击 **Publish release**。
+
+第二种网页路径只有在 GitHub Release 真正进入 `published` 状态后才触发正式 Workflow；**单独创建或 push Tag 不再触发正式镜像发布**。正式候选会显式 checkout 当时的 `main`，并在构建前后两次核验远端 `main` 仍等于候选 SHA。Release Tag、离线 Bundle、GHCR 镜像和 manifest 必须绑定同一个 Git SHA。
+
+如果网页 Release 使用了提前创建、已经落后于当前 `main` 的 Tag，Workflow 会 fail closed：不移动 Tag、不上传旧代码镜像，也不会把旧 SHA 伪装成当前 Release。维护者应修正尚未正式使用的错误版本/Tag 后重新发布，或使用新的版本号；不要强制移动已经作为版本身份使用的历史 Tag。
+
+`workflow_dispatch` 路径仍允许 Workflow 在 replay-tested 候选通过后创建同 SHA Git Tag 和 GitHub Release；GitHub Release `published` 路径则复用已经发布的 Release，只向它上传同一批 replay-tested 资产。两条正式入口都要求标准 SemVer、当前 main、主分支质量证据和版本身份一致。
+
+当最新 `main` 是 repository-native Archivist 生成的 `[skip ci]` Change 归档提交时，Release 仍构建和发布该最新提交；只有脚本证明它恰好把一个 `coding-change/v1` 从 `active/ready_for_review` 确定性冻结为 `archive/done`、没有任何额外改动时，检查门禁才复用它唯一父提交的三项绿色证据。普通 `[skip ci]`、部分检查、失败检查、正文变化或额外文件都 fail closed。
 
 当前 GitHub Release 构建使用明确的官方上游下载源，避免把开发机/公司网络的镜像加速配置变成发布来源事实；这不会修改本地 Dockerfile/Compose 中的镜像身份或 lockfile。
 
 构建和发布链：
 
 ```text
-main / PR candidate
+发布时最新 main / PR candidate
 → 构建 linux/amd64 Backend + Frontend
+→ 为 Backend/Frontend 增加 latest 运行别名并验证与版本标签指向同一 Image ID
 → 固定 postgres:18.4
-→ 生成离线 Bundle
-→ PR: 删除候选运行镜像后从 images.tar 重新 docker load
-→ canonical Compose --no-build --pull never --wait
+→ 生成同时保存版本标签与 latest 别名的离线 Bundle
+→ PR: 删除候选的版本标签、latest 别名与 PostgreSQL 镜像后从 images.tar 重新 docker load
+→ 再次验证版本标签与 latest 指向同一 Image ID
+→ canonical Compose --no-build --pull never --wait（Bundle 内默认 AIMA_IMAGE_TAG=latest）
 → Migration / Readiness / 持久目录 smoke
-→ 正式 workflow_dispatch: 推送 GHCR 并记录 digest
-→ 创建 Git Tag / GitHub Release
+→ 正式 workflow_dispatch 或 GitHub Release published: 推送 GHCR 并记录 digest
+→ workflow_dispatch: 创建同 SHA Git Tag + GitHub Release
+→ GitHub Release published: 向已发布 Release 上传同一批 replay-tested assets
+→ 最终复核 Tag / Release / manifest / image identity
 ```
 
-禁止使用 `latest` 作为正式发布身份。
+禁止使用 `latest` 作为正式发布身份；正式身份仍是 SemVer + Git SHA + manifest / registry digest。`latest` 只作为同一已验证应用镜像的离线 Compose 运行别名。
 
 ---
 
@@ -253,7 +271,9 @@ SHA256SUMS
 DEPLOY.md
 ```
 
-`images.tar` 包含当前版本 Backend/Frontend 镜像和固定 PostgreSQL 镜像。`release-manifest.json` 记录版本、Git SHA、构建时间、`linux/amd64`、镜像身份、Alembic head、OpenAPI SHA256 和当前发布能力边界；正式发布路径额外记录应用 registry digest。
+`images.tar` 包含当前版本 Backend/Frontend 的版本标签与 `latest` 运行别名；同一应用镜像的两个标签必须指向相同 Image ID。它同时包含固定 PostgreSQL 镜像。Bundle 内 [`env.production.example`](../../env.production.example) 使用 `AIMA_IMAGE_TAG=latest`，但 `release-manifest.json` 仍以版本标签、版本号、Git SHA、镜像 ID / registry digest 记录正式发布身份，不把 `latest` 当版本事实。
+
+`release-manifest.json` 还记录构建时间、`linux/amd64`、Alembic head、OpenAPI SHA256 和当前发布能力边界；正式发布路径额外记录应用 registry digest。
 
 `migration-manifest.json` 记录 Alembic head、正式 upgrade 动作和当前没有自动 Schema rollback / 协调 Backup/Restore 的事实。
 
@@ -280,6 +300,14 @@ Bundle **不得包含**：
 → health / business smoke
 ```
 
+服务器实际 `env.production` 可以长期保持：
+
+```dotenv
+AIMA_IMAGE_TAG=latest
+```
+
+每次加载新的正式 `images.tar` 时，Docker 会恢复该 Release 内 Backend/Frontend 的版本标签与 `latest` 运行别名；因此升级时无需把服务器 `env.production` 从 `vX.Y.Z` 手工改到下一版本。正式版本追溯仍读取 Release Tag、`release-manifest.json`、Git SHA 和镜像 ID / digest，而不是把 `latest` 当版本号。
+
 对于数据库已经存在对应 Provider 的升级环境，env 不覆盖数据库中的管理员配置；是否仍需要修改 env Key 取决于当前数据库 Provider/Secret Store 的真实状态，不应为了模板默认值强制回写已由数据库接管的配置。
 
 禁止把正式 Release 变成：
@@ -291,6 +319,33 @@ Bundle **不得包含**：
 - 为了部署方便绕过 Migration/Readiness/Secret 门禁。
 
 服务器继续使用稳定 `AIMA_HOST_ROOT=/data/AIMA_UGC`，Release 目录只保存应用版本。
+
+### 9.1 公网 HTTPS 与 IP+端口诊断入口
+
+`AIMA_HTTP_BIND_IP` / `AIMA_HTTP_PORT` 只决定 Frontend 端口在宿主哪个地址上发布，不配置 DNS、证书、443 或外层反向代理。例如：
+
+```dotenv
+AIMA_HTTP_BIND_IP=192.168.13.29
+AIMA_HTTP_PORT=8080
+```
+
+在该 IP 确实属于目标服务器、网络与防火墙允许时，仍可直接访问：
+
+```text
+http://192.168.13.29:8080
+```
+
+这与公网正式入口可以同时存在：
+
+```text
+https://ugc.aimatech.com
+→ 企业网关 / 反向代理 / TLS
+→ http://192.168.13.29:8080
+```
+
+如果反向代理与 AIMA 在同一台服务器并且不需要其它主机直连 8080，可把实际 `env.production` 的 `AIMA_HTTP_BIND_IP` 收紧为 `127.0.0.1`；如果代理/LB 在其它主机，应绑定目标服务器真实私网 NIC，并由防火墙只放行可信来源。不要为了方便默认使用 `0.0.0.0`。
+
+Frontend 返回 HSTS Header 不会让普通 `http://IP:8080` 自动变成 HTTPS：浏览器只有在安全 HTTPS 响应上才建立 HSTS 策略。正式域名的 TLS、证书与 HTTP→HTTPS 仍由外层入口负责。上线前必须检查外层入口是否也注入 `Strict-Transport-Security`，避免出现重复或冲突策略。
 
 ---
 
@@ -305,7 +360,8 @@ Bundle **不得包含**：
 5. `env.production` 与 Secret 文件已在目标机按权限准备；新环境若使用模板默认启用的 TikHub/LLM bootstrap，两个 API Key 均已填写；
 6. Host Root、磁盘和数据库状态满足本次操作要求；
 7. 若本次 Migration/写操作存在不可逆风险，已经具备本次批准的恢复边界；
-8. 当前 Production Roadmap 中与本次部署相关的认证、安全、Backup/Restore 或验收前置条件没有被跳过。
+8. 当前 Production Roadmap 中与本次部署相关的认证、安全、Backup/Restore 或验收前置条件没有被跳过；
+9. 公网入口的 TLS/证书/反向代理 Owner 与应用侧安全响应头 Owner 已明确，不存在重复冲突配置。
 
 没有独立供应链签名/provenance 之前，`SHA256SUMS` 只能证明文件集合内部一致，不能单独证明发布来源。
 
@@ -327,6 +383,17 @@ ArtifactStore
 Migration 状态
 关键业务入口
 ```
+
+浏览器安全相关部署至少补以下检查；`<bind-ip>` 使用本机实际绑定地址，公网命令使用最终 HTTPS 域名：
+
+```bash
+curl -sSI http://<bind-ip>:8080/
+curl -i http://<bind-ip>:8080/clientaccesspolicy.xml
+curl -i http://<bind-ip>:8080/crossdomain.xml
+curl -sSI https://<public-domain>/
+```
+
+预期：IP+端口页面仍可访问；两个旧版跨域策略文件返回 404；公网 HTTPS 最终响应包含应用批准的 HSTS、CSP、Permissions-Policy、`X-Content-Type-Options` 与 `Referrer-Policy`，且上层网关没有剥离或冲突重复注入。真实浏览器还需覆盖声音广场、采集运行中心、采集策略、管理员配置、图表、图片、抽屉/弹窗、下载/导出与 API 请求，并检查 Console 没有合法资源被 CSP 阻断。
 
 生产候选环境还应根据实际发布影响运行高价值业务 Smoke，例如：
 
@@ -371,18 +438,21 @@ Backup Set = PostgreSQL + ArtifactStore
 ### 应用版本可兼容当前 Schema
 
 ```text
-切换到已验证旧镜像
+加载目标旧 Release 的 images.tar
+→ 旧版本标签与 latest 运行别名恢复到该 Release 的同一 Image ID
 → 使用同一 AIMA_HOST_ROOT
 → 启动 / health / smoke
 ```
 
-PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。
+PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。使用 `AIMA_IMAGE_TAG=latest` 时，回滚必须先加载目标旧 Release 的 `images.tar`；不能只依赖当前机器上 `latest` 的既有指向。
 
 ### Schema 与旧应用不兼容
 
 不能机械执行 `alembic downgrade`。应按该 Migration 的真实兼容策略处理；若没有安全 downgrade，则需要恢复发布前批准并验证的 Backup Set，或使用事先设计的双版本兼容窗口。
 
 代码回滚本身不删除已经写入的业务数据，也不能替代数据补偿方案。
+
+浏览器安全策略的回滚要单独处理：CSP/Permissions-Policy 回归可以回退应用镜像后重新验证；HSTS 已被浏览器从 HTTPS 响应接受后会在 `max-age` 内持久存在，不能把“回退镜像”当成立即撤销 HSTS。确需撤销时必须在可用 HTTPS 入口返回 `Strict-Transport-Security: max-age=0`，因此当前不启用 `includeSubDomains` 或 `preload`。
 
 ---
 
@@ -396,7 +466,7 @@ PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。
 
 ### HTTPS 与浏览器安全
 
-完成 TLS、Cookie/Session（如适用）、CORS/同源、CSRF/重放（按认证方式）、安全响应头、反向代理和敏感对象授权验收。
+应用侧安全响应头与旧策略文件 404 基线已经存在；仍需在最终公网/企业入口完成 TLS/证书/HTTP→HTTPS、上游响应头所有权、Cookie/Session（如适用）、CORS/同源、CSRF/重放（按认证方式）、真实浏览器 CSP 兼容、对象级授权和安全扫描复验。
 
 ### 协调 Backup/Restore
 

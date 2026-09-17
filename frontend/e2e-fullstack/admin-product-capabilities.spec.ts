@@ -9,22 +9,6 @@ interface AnalysisRun {
   status: string
 }
 
-async function createVehicleBrand(request: APIRequestContext, suffix: string): Promise<{ id: string; name: string }> {
-  const name = `全栈品牌 ${suffix}`
-  const created = await request.post('/api/v1/vehicle-brands', {
-    data: {
-      code: `FS-BRAND-${suffix}`,
-      display_name: name,
-      role: 'owned',
-      aliases: [`全栈品牌${suffix}`],
-    },
-  })
-  expect(created.status()).toBe(201)
-  const brand = await created.json() as { id: string; display_name: string }
-  expect(brand.display_name).toBe(name)
-  return { id: brand.id, name }
-}
-
 async function createKeywordPack(request: APIRequestContext, suffix: string): Promise<{ id: string; name: string }> {
   const name = `U1 词包车型关联 ${suffix}`
   const created = await request.post('/api/v1/keyword-packs', {
@@ -118,49 +102,66 @@ async function contentIdBySearch(request: APIRequestContext, search: string): Pr
   return item!.id
 }
 
-test('车型、词包关联、品牌范围 Excel 匹配、声音广场筛选与详情形成真实闭环', async ({ page, request }) => {
+test('品牌与车型目录、品牌范围导入、声音广场筛选详情和导出形成真实闭环', async ({ page, request }) => {
   const fixturePath = process.env.AIMA_ADMIN_PRODUCT_EXCEL_FIXTURE
   expect(fixturePath, 'AIMA_ADMIN_PRODUCT_EXCEL_FIXTURE 必须指向车型验收 Fixture').toBeTruthy()
   const suffix = Date.now().toString()
-  const code = `FS-${suffix}`
+  const brandName = `全栈品牌 ${suffix}`
+  const brandAlias = `全栈品牌${suffix}`
   const displayName = `全栈车型 ${suffix}`
   const alias = '爱玛 U2 车型证据全栈导入'
-  const brand = await createVehicleBrand(request, suffix)
-  const pack = await createKeywordPack(request, suffix)
 
   await page.goto('/admin/configuration')
   await expect(page.getByRole('heading', { name: '管理员配置', exact: true })).toBeVisible()
-  await page.getByLabel('车型编码').fill(code)
-  await page.getByLabel('显示名称').fill(displayName)
-  await page.getByLabel('品牌', { exact: true }).selectOption(brand.id)
-  await page.getByLabel('系列（可选）').fill('全栈系列')
-  await page.getByLabel('类别（可选）').fill('电动两轮车')
-  await page.getByLabel(/别名/).fill(alias)
-  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await page.getByRole('button', { name: '新增品牌', exact: true }).click()
+  const brandForm = page.getByRole('heading', { name: '新增品牌', exact: true }).locator('..')
+  await expect(brandForm.getByText('品牌编码', { exact: true })).toHaveCount(0)
+  await brandForm.getByLabel('品牌名称').fill(brandName)
+  await brandForm.getByLabel('品牌角色').selectOption('owned')
+  await brandForm.getByLabel(/品牌识别词/).fill(brandAlias)
+  const brandCreatedPromise = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/vehicle-brands')
+  await brandForm.getByRole('button', { name: '创建品牌', exact: true }).click()
+  const brandCreated = await brandCreatedPromise
+  expect(brandCreated.status()).toBe(201)
+  const brand = await brandCreated.json() as { id: string; code: string; display_name: string; aliases: { text: string }[] }
+  expect(brand.code).toMatch(/^BRAND_[0-9A-F]{32}$/)
+  expect(brand.display_name).toBe(brandName)
+  expect(brand.aliases.map((item) => item.text)).toContain(brandAlias)
+  await expect(page.getByText('品牌已创建并记录操作。', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+  const vehicleForm = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
+  await expect(vehicleForm.getByText('车型编码', { exact: true })).toHaveCount(0)
+  await vehicleForm.getByLabel('显示名称').fill(displayName)
+  await vehicleForm.getByLabel('品牌', { exact: true }).selectOption(brand.id)
+  await vehicleForm.getByLabel('系列（可选）').fill('全栈系列')
+  await vehicleForm.getByLabel('类别（可选）').fill('电动两轮车')
+  await vehicleForm.getByLabel(/别名/).fill(alias)
+  const vehicleCreatedPromise = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/vehicle-models')
+  await vehicleForm.getByRole('button', { name: '保存', exact: true }).click()
+  const vehicleCreated = await vehicleCreatedPromise
+  expect(vehicleCreated.status()).toBe(201)
+  const createdVehicle = await vehicleCreated.json() as { id: string; code: string }
+  expect(createdVehicle.code).toMatch(/^VEHICLE_[0-9A-F]{32}$/)
   await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
   await expect(page.getByRole('row').filter({ hasText: displayName })).toBeVisible()
 
   const vehiclesResponse = await request.get('/api/v1/vehicle-models?limit=200')
   expect(vehiclesResponse.status()).toBe(200)
   const vehicles = await vehiclesResponse.json() as { items: { id: string; code: string; brand_id: string | null; series_name: string; category_name: string }[] }
-  const vehicle = vehicles.items.find((item) => item.code === code)
+  const vehicle = vehicles.items.find((item) => item.id === createdVehicle.id)
   expect(vehicle, '浏览器创建的车型必须能从正式目录 API 重读').toBeTruthy()
+  expect(vehicle?.code).toBe(createdVehicle.code)
   expect(vehicle?.brand_id).toBe(brand.id)
   expect(vehicle?.series_name).toBe('全栈系列')
   expect(vehicle?.category_name).toBe('电动两轮车')
 
-  await page.getByRole('button', { name: '词包关联', exact: true }).click()
-  await page.getByRole('button', { name: new RegExp(pack.name) }).click()
-  await page.getByRole('group', { name: /关联车型/ }).getByLabel(new RegExp(displayName)).check()
-  await page.getByRole('button', { name: '保存关联', exact: true }).click()
-  await expect(page.getByText('词包与车型关联已更新并记录操作。', { exact: true })).toBeVisible()
-
   await page.reload()
-  await page.getByRole('button', { name: '词包关联', exact: true }).click()
-  await page.getByRole('button', { name: new RegExp(pack.name) }).click()
-  await expect(
-    page.getByRole('group', { name: /关联车型/ }).getByLabel(new RegExp(displayName)),
-  ).toBeChecked()
+  await expect(page.getByRole('navigation', { name: '管理员配置分类' })).not.toContainText('词包关联')
+  await page.getByRole('button', { name: new RegExp(brandName) }).click()
+  await expect(page.getByRole('row').filter({ hasText: displayName })).toBeVisible()
 
   await uploadVehicleContent(request, fixturePath!, brand.id)
 
@@ -175,26 +176,83 @@ test('车型、词包关联、品牌范围 Excel 匹配、声音广场筛选与�
   ).not.toBeVisible()
 
   await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '选择品牌', exact: true }).click()
+  const brandFilter = page.getByRole('dialog', { name: '选择品牌', exact: true })
+  await brandFilter.getByLabel(new RegExp(brandName)).check()
+  await brandFilter.getByRole('button', { name: '确定', exact: true }).click()
   await page.getByRole('button', { name: '选择车型', exact: true }).click()
   const vehicleFilter = page.getByRole('dialog', { name: '选择车型', exact: true })
   await vehicleFilter.getByRole('button', { name: /全栈系列/ }).click()
   await vehicleFilter.getByLabel(displayName, { exact: true }).check()
   await vehicleFilter.getByRole('button', { name: '确定', exact: true }).click()
+  await page.locator('.field--competition summary').click()
+  await page.getByLabel('仅自有品牌', { exact: true }).check()
+  const filteredResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return url.pathname === '/api/v1/contents' &&
+      url.searchParams.get('brand_ids') === brand.id &&
+      url.searchParams.get('vehicle_model_ids') === vehicle!.id &&
+      url.searchParams.get('competition_scopes') === 'owned_only'
+  })
   await page.getByRole('button', { name: '查询', exact: true }).click()
+  expect((await filteredResponsePromise).status()).toBe(200)
   const contentRow = page.locator('article.content-row').filter({ hasText: vehicleContentTitle })
   await expect(contentRow.getByText(vehicleContentTitle, { exact: true })).toBeVisible()
-  await expect(contentRow).toContainText('全栈系列 · 电动两轮车')
+  await expect(contentRow).toContainText(brandName)
+  await expect(contentRow).toContainText('自有品牌')
+  await expect(contentRow).toContainText('仅自有品牌')
+  await expect(contentRow.locator('.vehicle-cell')).toHaveAttribute(
+    'title',
+    /全栈系列 · 电动两轮车/,
+  )
   const sortingResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/contents' && new URL(response.url()).searchParams.get('sort_by') === 'follower_count')
   await page.getByRole('button', { name: '按粉丝数排序' }).click()
   expect((await sortingResponse).status()).toBe(200)
   await contentRow.getByRole('button', { name: '查看详情', exact: true }).click()
   const detail = page.getByRole('dialog', { name: '内容详情' })
   await detail.getByRole('button', { name: '修改车型', exact: true }).click()
-  const vehicleEvidence = detail.locator('article').filter({ hasText: displayName })
-  await expect(vehicleEvidence.getByRole('strong').filter({ hasText: displayName })).toBeVisible()
+  const vehicleEvidence = detail
+    .locator('.evidence-columns > div')
+    .filter({ hasText: '车型识别证据' })
+    .locator('article')
+    .filter({ hasText: displayName })
+  await expect(vehicleEvidence.locator('b').filter({ hasText: displayName })).toBeVisible()
   await expect(vehicleEvidence).toContainText('系统识别')
   await expect(vehicleEvidence).toContainText(`命中“${alias}”`)
   await expect(vehicleEvidence).not.toContainText('catalog v')
+
+  const brandEvidence = detail
+    .locator('.evidence-columns > div')
+    .filter({ hasText: '品牌识别证据' })
+    .locator('article')
+    .filter({ hasText: brandName })
+  await expect(brandEvidence).toContainText('自有')
+  await detail.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await page.getByRole('button', { name: '导出记录', exact: true }).click()
+  const exportDialog = page.getByRole('dialog', { name: '导出声音记录' })
+  for (const column of ['品牌', '品牌角色', '竞品范围', '车型']) {
+    await exportDialog.getByLabel(column, { exact: true }).check()
+  }
+  await exportDialog.getByText('全部查询结果', { exact: true }).click()
+  const exportCreatedPromise = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/data-exports')
+  await exportDialog.getByRole('button', { name: '开始导出查询结果', exact: true }).click()
+  const exportCreated = await exportCreatedPromise
+  expect(exportCreated.status()).toBe(202)
+  const exportRequest = exportCreated.request().postDataJSON() as {
+    columns: string[]
+    targets: { scope: string; filters: { brand_ids?: string[]; vehicle_model_ids?: string[]; competition_scopes?: string[] } }
+  }
+  expect(exportRequest.columns).toEqual(expect.arrayContaining(['brands', 'brand_roles', 'competition_scope', 'vehicles']))
+  expect(exportRequest.targets).toMatchObject({
+    scope: 'query',
+    filters: {
+      brand_ids: [brand.id],
+      vehicle_model_ids: [vehicle!.id],
+      competition_scopes: ['owned_only'],
+    },
+  })
 })
 
 test('导出 Worker 终态进入当前 Principal 通知并可从声音广场下载', async ({ page, request }) => {
@@ -269,17 +327,17 @@ test('管理员发布原子 Scheme 后新 Run 冻结新版本且旧 Run 身份�
   expect(oldRun.analysis_scheme_version_id).toBe(activeBefore!.id)
 
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: 'AI 分析原则', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
   const activeVersionButton = page.getByRole('button', {
     name: new RegExp(`版本 ${activeBefore!.version} · 当前生效`),
   })
   await expect(activeVersionButton).toHaveClass(/active/)
   await page.getByLabel('说明').fill(`U4 全栈发布 ${Date.now()}`)
   await page.getByRole('button', { name: '基于此版本新建草稿', exact: true }).click()
-  await expect(page.getByText('AI 分析原则草稿已保存并记录操作。', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析规则草稿已保存并记录操作。', { exact: true })).toBeVisible()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '发布', exact: true }).click()
-  await expect(page.getByText('AI 分析原则已发布并记录操作。', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析规则已发布并记录操作。', { exact: true })).toBeVisible()
 
   const schemesAfterResponse = await request.get('/api/v1/analysis-schemes')
   expect(schemesAfterResponse.status()).toBe(200)

@@ -98,9 +98,7 @@ const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
 ]
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ImportApiError) {
-    return `${error.message}（request_id: ${error.requestId}）`
-  }
+  if (error instanceof ImportApiError) return error.message
   if (error instanceof Error && error.message) return error.message
   return '请求失败，请稍后重试。'
 }
@@ -568,6 +566,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   async function submitLocalCampaign(
     files: DataImportLocalFileSelection[],
     ingestionPolicy: DataImportIngestionPolicy,
+    brandIds: string[],
   ): Promise<HistoricalCampaignResponse | null> {
     creatingHistorical.value = true
     localUploadCompleted.value = 0
@@ -581,7 +580,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
           relative_path: item.relativePath,
           byte_size: item.file.size,
         })),
-        brand_ids: [],
+        brand_ids: brandIds,
         ingestion_policy: ingestionPolicy,
         profile: 'aima-monitoring-excel.v1',
       }

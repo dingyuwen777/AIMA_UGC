@@ -33,6 +33,73 @@ async function render(item: ContentDetailResponse): Promise<string> {
 }
 
 describe('content supplement status', () => {
+  it('uses the same-origin cached preview for both display and click-through', async () => {
+    const item = {
+      ...baseItem,
+      media: [{
+        position: 0,
+        media_type: 'image',
+        url: 'https://sns-i11.rednotecdn.com/original-image',
+        preview_url: '/api/v1/contents/01991f80-6d5d-7dc8-95cb-c67c12345678/media/0',
+        alt_text: null,
+      }],
+    } as unknown as ContentDetailResponse
+
+    const html = await render(item)
+
+    expect(html).toContain('href="/api/v1/contents/01991f80-6d5d-7dc8-95cb-c67c12345678/media/0"')
+    expect(html).toContain('src="/api/v1/contents/01991f80-6d5d-7dc8-95cb-c67c12345678/media/0"')
+    expect(html).not.toContain('href="https://sns-i11.rednotecdn.com/original-image"')
+  })
+
+  it('renders accessible navigation only for a multi-image cached gallery', async () => {
+    const item = {
+      ...baseItem,
+      media: [0, 1, 2].map((position) => ({
+        position,
+        media_type: 'image',
+        url: `https://sns-i11.rednotecdn.com/original-image-${position}`,
+        preview_url: `/api/v1/contents/${baseItem.id}/media/${position}`,
+        alt_text: null,
+      })),
+    } as unknown as ContentDetailResponse
+
+    const html = await render(item)
+
+    expect(html).toContain('aria-label="上一张图片"')
+    expect(html).toContain('aria-label="下一张图片"')
+    expect(html).toContain('aria-live="polite"')
+    expect(html).toContain('1 / 3')
+
+    const singleImageHtml = await render({
+      ...item,
+      media: item.media?.slice(0, 1),
+    } as ContentDetailResponse)
+    expect(singleImageHtml).not.toContain('aria-label="上一张图片"')
+    expect(singleImageHtml).not.toContain('aria-label="下一张图片"')
+  })
+
+  it('keeps other platforms linking to their original media', async () => {
+    const item = {
+      ...baseItem,
+      platform: 'douyin',
+      media: [0, 1].map((position) => ({
+        position,
+        media_type: 'video',
+        url: `https://www.douyin.com/video/original-${position}`,
+        preview_url: `https://example.invalid/video-cover-${position}.jpg`,
+        alt_text: null,
+      })),
+    } as unknown as ContentDetailResponse
+
+    const html = await render(item)
+
+    expect(html).toContain('href="https://www.douyin.com/video/original-0"')
+    expect(html).toContain('src="https://example.invalid/video-cover-0.jpg"')
+    expect(html).not.toContain('aria-label="上一张图片"')
+    expect(html).not.toContain('aria-label="下一张图片"')
+  })
+
   it('describes a failed supplement without claiming the imported content is unviewable', async () => {
     const item = {
       ...baseItem,

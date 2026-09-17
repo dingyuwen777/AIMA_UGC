@@ -96,7 +96,6 @@ def main() -> int:
         import_service = PostgresImportHttpService(runtime)
         brand = PostgresBrandVehicleHttpService(runtime).create_brand(
             BrandCreateRequest(
-                code=f"AIMA-STAGE8F-{uuid4()}",
                 display_name="爱玛",
                 role="owned",
                 aliases=("爱玛",),

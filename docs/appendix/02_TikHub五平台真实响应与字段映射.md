@@ -78,6 +78,14 @@ tests/fixtures/providers/tikhub/
 
 如果本文和当前 Operation/Mapper/Fixture/Test 冲突，以当前机器事实为准，并修正文档。
 
+正式 Discovery Runtime 不会把 Mapper 返回值直接交给 Filter。一个 Search Provider Attempt
+返回的有界页面先完成所有 Search Mapper 与必要 Detail fallback，再把每个 Candidate 的最终
+Filter 输入写成唯一 linked `canonical-content.v1` JSONL.gz。共享 Reader 完整预检并逐行核对
+本次确定性 Mapper 输出后，既有 Brand/Vehicle Filter、Decision 与 Ingestion 才消费这些记录。
+Artifact 绑定页面 Search Attempt；若某行来自 Detail，其 Canonical Source 仍保留实际 Detail
+Attempt、Raw Artifact 与 item locator。这个持久边界不改变本附录记录的 endpoint、Extractor、
+Mapper 字段语义或 Provider 请求次数。
+
 ---
 
 ## 2. Real Probe 当时怎样做
@@ -216,6 +224,8 @@ GET /api/v1/xiaohongshu/app_v2/get_video_note_detail
 图文: data.data[0].note_list[0]
 视频: data.data[0]
 ```
+
+图文详情的 `images_list[].index` 不能作为 Canonical 媒体位置：真实响应中多张图片可能全部返回 `index=0`。Mapper 按 `images_list` 数组顺序生成从 `0` 开始的唯一 `position`，避免 `content_media(content_id, position)` 冲突中断后续评论补采。
 
 Fixture：
 

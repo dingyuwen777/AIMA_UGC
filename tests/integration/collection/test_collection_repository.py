@@ -66,7 +66,7 @@ def test_service_persists_run_and_scopes_bound_to_real_job(
                 job_id=job.id,
                 trigger_type="backfill",
                 config_snapshot={
-                    "schema_version": "collection-run-config.v1",
+                    "schema_version": "collection-run-config.v2",
                     "platforms": ["xiaohongshu", "douyin"],
                 },
                 scopes=(

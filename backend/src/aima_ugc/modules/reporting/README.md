@@ -206,12 +206,16 @@ ordinal > after_ordinal
 + Content Current 的互动指标
 + 对应来源 Provider/Raw
 + 指定版本下当前 Analysis Identity 匹配的 Analysis
++ 指定版本的有效 Brand Evidence 与派生竞品范围
++ 指定版本的有效 Vehicle Evidence
 + Comments
 + Comment Coverage
 → UnifiedDataExcelV1
 ```
 
 这意味着导出同时复用多个 Owner 的**只读事实**，但只由 Reporting Owner 写 `reporting_data_*` 表。
+
+Brand 与 Vehicle 都按 Export Item 冻结的 `content_version` 读取，不在 Worker 执行时改读 Content Current。Brand 名称稳定去重后输出，Brand Role 及 `competition_scope` 由同一批 Evidence 派生；Vehicle 名称仍按当前合并后的有效车型展示。品牌、品牌角色、竞品范围、车型是 Column Catalog v2 的可选列，未选择时不改变既有默认 Excel 表头。
 
 ---
 
@@ -394,6 +398,8 @@ ContentFilterSnapshot / DataExportSubmitRequest
 → API Test
 → generated Client
 ```
+
+Brand、Vehicle 与竞品范围筛选复用 Content Query 的同一过滤实现；因此 List、Count、Analysis query target 和 Export query target 不允许各自解释一套命中规则。
 
 ### 改 Worker 重试/恢复
 

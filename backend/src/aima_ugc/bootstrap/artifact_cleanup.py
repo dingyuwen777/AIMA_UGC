@@ -1,20 +1,32 @@
-"""Artifact 保留期限补齐与到期字节清理。"""
+"""Artifact 保留期限补齐、到期字节与媒体缓存容量清理。"""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.content_media_cache import (
+    PostgresContentMediaCacheRepository,
+)
 from aima_ugc.platform.logging import log_event, log_exception_event
 from aima_ugc.platform.storage import ArtifactStateConflict
-from aima_ugc.platform.storage.retention import ORPHAN_RETENTION
+from aima_ugc.platform.storage.retention import (
+    MEDIA_CACHE_MAX_BYTES,
+    MEDIA_CACHE_TARGET_BYTES,
+    ORPHAN_RETENTION,
+)
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
+
+_CAPACITY_CLEANUP_LIMIT = 10000
+_HOURLY_CLEANUP_BATCH_LIMIT = 500
+_HOURLY_CLEANUP_MAX_BATCHES = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +38,8 @@ class ArtifactCleanupResult:
     deleted: int
     failed: int
     skipped_backend: int
+    batches: int = 1
+    drained: bool = True
 
 
 def run_artifact_cleanup_once(
@@ -33,8 +47,10 @@ def run_artifact_cleanup_once(
     *,
     now: datetime | None = None,
     limit: int = 100,
+    backfill_retention: bool = True,
+    include_capacity: bool = True,
 ) -> ArtifactCleanupResult:
-    """补齐历史 TTL 并分阶段删除到期 Artifact 字节。
+    """补齐历史 TTL、删除一批到期 Artifact，并可执行 30/24 GiB 容量回收。
 
     数据库事务只负责状态认领/收敛；实体文件删除始终在事务外执行，避免长 I/O
     持锁。`delete_pending` 会在后续 housekeeping 中继续重试。
@@ -51,7 +67,7 @@ def run_artifact_cleanup_once(
     try:
         with scan_session.begin():
             repository = PostgresArtifactMetadataRepository(scan_session)
-            backfilled = repository.backfill_retention_deadlines()
+            backfilled = repository.backfill_retention_deadlines() if backfill_retention else 0
             candidates = repository.list_cleanup_candidates(
                 now=observed_at,
                 orphan_before=orphan_before,
@@ -63,6 +79,7 @@ def run_artifact_cleanup_once(
     deleted = 0
     failed = 0
     skipped_backend = 0
+    scanned = len(candidates)
     for candidate in candidates:
         if candidate.storage_backend != runtime.artifact_store.backend_name:
             skipped_backend += 1
@@ -85,56 +102,200 @@ def run_artifact_cleanup_once(
                     orphan_before=orphan_before,
                 )
         except ArtifactStateConflict:
-            # 扫描后若业务建立正式引用，或另一 housekeeping 已改变状态，本轮放弃删除。
             continue
         finally:
             claim_session.close()
         if claimed.storage_status == "deleted":
             continue
 
-        try:
-            runtime.artifact_store.delete(claimed.storage_key)
-        except (OSError, ValueError) as exc:
-            failed += 1
-            log_exception_event(
-                runtime.logger,
-                logging.WARNING,
-                "artifact.cleanup.delete_failed",
-                "Artifact 实体删除失败，将保留 delete_pending 供后续重试",
-                exc,
-                artifact_id=str(claimed.id),
-                kind=claimed.kind,
-            )
-            continue
+        deleted_delta, failed_delta = _delete_claimed_artifact(
+            runtime,
+            artifact_id=claimed.id,
+            storage_key=claimed.storage_key,
+            kind=claimed.kind,
+            deleted_at=observed_at,
+        )
+        deleted += deleted_delta
+        failed += failed_delta
 
-        finish_session = runtime.database.new_session()
-        try:
-            with finish_session.begin():
-                PostgresArtifactMetadataRepository(finish_session).mark_deleted(
-                    claimed.id,
-                    deleted_at=observed_at,
-                )
-            deleted += 1
-        except ArtifactStateConflict:
-            # 并发清理已经收敛到 deleted 时不把幂等竞争计为删除失败。
-            check_session = runtime.database.new_session()
-            try:
-                with check_session.begin():
-                    current = PostgresArtifactMetadataRepository(check_session).get(claimed.id)
-                if current is None or current.storage_status != "deleted":
-                    failed += 1
-            finally:
-                check_session.close()
-        finally:
-            finish_session.close()
+    if include_capacity:
+        capacity_scanned, capacity_deleted, capacity_failed = _run_media_capacity_cleanup(
+            runtime,
+            observed_at=observed_at,
+        )
+        scanned += capacity_scanned
+        deleted += capacity_deleted
+        failed += capacity_failed
 
     return ArtifactCleanupResult(
         backfilled=backfilled,
-        scanned=len(candidates),
+        scanned=scanned,
         deleted=deleted,
         failed=failed,
         skipped_backend=skipped_backend,
+        batches=1,
+        drained=len(candidates) < limit,
     )
 
 
-__all__ = ["ArtifactCleanupResult", "run_artifact_cleanup_once"]
+def run_artifact_cleanup_until_drained(
+    runtime: PlatformRuntime,
+    *,
+    now: datetime | None = None,
+    batch_limit: int = _HOURLY_CLEANUP_BATCH_LIMIT,
+    max_batches: int = _HOURLY_CLEANUP_MAX_BATCHES,
+) -> ArtifactCleanupResult:
+    """用有界短批次尽量排空到期 Artifact，避免海量媒体把 30 天 TTL 拖成长期积压。
+
+    Retention backfill 只在第一批执行，30/24 GiB 容量统计与回收只在 TTL 批次结束后
+    执行一次，避免扩大吞吐后重复做全表扫描。达到最大批次数时返回 `drained=False`，
+    Scheduler 记录 Warning 并在下一小时继续，不无限阻塞调度主循环。
+    """
+
+    if batch_limit < 1:
+        raise ValueError("Artifact cleanup batch_limit 必须大于 0")
+    if max_batches < 1:
+        raise ValueError("Artifact cleanup max_batches 必须大于 0")
+    observed_at = beijing_now() if now is None else now
+    if observed_at.utcoffset() is None:
+        raise ValueError("Artifact cleanup now 必须包含时区")
+
+    backfilled = 0
+    scanned = 0
+    deleted = 0
+    failed = 0
+    skipped_backend = 0
+    batches = 0
+    drained = False
+
+    for batch_index in range(max_batches):
+        result = run_artifact_cleanup_once(
+            runtime,
+            now=observed_at,
+            limit=batch_limit,
+            backfill_retention=batch_index == 0,
+            include_capacity=False,
+        )
+        batches += 1
+        backfilled += result.backfilled
+        scanned += result.scanned
+        deleted += result.deleted
+        failed += result.failed
+        skipped_backend += result.skipped_backend
+        if result.drained:
+            drained = True
+            break
+
+    capacity_scanned, capacity_deleted, capacity_failed = _run_media_capacity_cleanup(
+        runtime,
+        observed_at=observed_at,
+    )
+    scanned += capacity_scanned
+    deleted += capacity_deleted
+    failed += capacity_failed
+
+    return ArtifactCleanupResult(
+        backfilled=backfilled,
+        scanned=scanned,
+        deleted=deleted,
+        failed=failed,
+        skipped_backend=skipped_backend,
+        batches=batches,
+        drained=drained,
+    )
+
+
+def _run_media_capacity_cleanup(
+    runtime: PlatformRuntime,
+    *,
+    observed_at: datetime,
+) -> tuple[int, int, int]:
+    """超过 30 GiB 时按最旧优先回收到 24 GiB；返回 scanned/deleted/failed。"""
+
+    media_repository = PostgresContentMediaCacheRepository(runtime.database.new_session)
+    media_usage = media_repository.usage_bytes()
+    if media_usage <= MEDIA_CACHE_MAX_BYTES:
+        return 0, 0, 0
+
+    bytes_to_free = media_usage - MEDIA_CACHE_TARGET_BYTES
+    candidates = media_repository.list_oldest_capacity_candidates(
+        bytes_to_free=bytes_to_free,
+        limit=_CAPACITY_CLEANUP_LIMIT,
+    )
+    log_event(
+        runtime.logger,
+        logging.INFO,
+        "artifact.cleanup.media_cache_capacity_started",
+        "媒体缓存超过容量高水位，开始按最旧优先回收。",
+        usage_bytes=media_usage,
+        max_bytes=MEDIA_CACHE_MAX_BYTES,
+        target_bytes=MEDIA_CACHE_TARGET_BYTES,
+        candidate_count=len(candidates),
+    )
+
+    deleted = 0
+    failed = 0
+    for candidate in candidates:
+        if not media_repository.claim_capacity_delete(candidate.artifact_id):
+            continue
+        deleted_delta, failed_delta = _delete_claimed_artifact(
+            runtime,
+            artifact_id=candidate.artifact_id,
+            storage_key=candidate.storage_key,
+            kind="content-media-cache",
+            deleted_at=observed_at,
+        )
+        deleted += deleted_delta
+        failed += failed_delta
+    return len(candidates), deleted, failed
+
+
+def _delete_claimed_artifact(
+    runtime: PlatformRuntime,
+    *,
+    artifact_id: UUID,
+    storage_key: str,
+    kind: str,
+    deleted_at: datetime,
+) -> tuple[int, int]:
+    """删除一个已认领的 Artifact 字节，并以短事务收敛数据库状态。"""
+
+    try:
+        runtime.artifact_store.delete(storage_key)
+    except (OSError, ValueError) as exc:
+        log_exception_event(
+            runtime.logger,
+            logging.WARNING,
+            "artifact.cleanup.delete_failed",
+            "Artifact 实体删除失败，将保留 delete_pending 供后续重试",
+            exc,
+            artifact_id=str(artifact_id),
+            kind=kind,
+        )
+        return 0, 1
+
+    finish_session = runtime.database.new_session()
+    try:
+        with finish_session.begin():
+            PostgresArtifactMetadataRepository(finish_session).mark_deleted(
+                artifact_id,
+                deleted_at=deleted_at,
+            )
+        return 1, 0
+    except ArtifactStateConflict:
+        check_session = runtime.database.new_session()
+        try:
+            with check_session.begin():
+                current = PostgresArtifactMetadataRepository(check_session).get(artifact_id)
+            return (0, 0) if current is not None and current.storage_status == "deleted" else (0, 1)
+        finally:
+            check_session.close()
+    finally:
+        finish_session.close()
+
+
+__all__ = [
+    "ArtifactCleanupResult",
+    "run_artifact_cleanup_once",
+    "run_artifact_cleanup_until_drained",
+]

@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from aima_ugc.contracts.brand_vehicle import BrandCompetitionScope, BrandRole
 from aima_ugc.contracts.http import ContentFilterSnapshot
 from aima_ugc.contracts.platform import PlatformName
 
@@ -64,6 +65,30 @@ class ContentSourceRead:
 
 
 @dataclass(frozen=True, slots=True)
+class ContentBrandReferenceRead:
+    id: UUID
+    code: str
+    display_name: str
+    role: BrandRole
+
+
+@dataclass(frozen=True, slots=True)
+class ContentBrandEvidenceRead:
+    source: str
+    matched_text: str | None
+    source_field: str | None
+    derived_vehicle_model_id: UUID | None
+    catalog_version: int
+    confidence: float | None
+    is_manual_locked: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ContentBrandRead(ContentBrandReferenceRead):
+    evidences: tuple[ContentBrandEvidenceRead, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ContentVehicleEvidenceRead:
     source: str
     matched_text: str | None
@@ -81,6 +106,7 @@ class ContentVehicleRead:
     evidences: tuple[ContentVehicleEvidenceRead, ...]
     series_name: str | None = None
     category_name: str | None = None
+    brand: ContentBrandReferenceRead | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +137,9 @@ class ContentReadRecord:
     effective_relevance: str | None
     relevance_source: str | None
     source: ContentSourceRead
+    brands: tuple[ContentBrandRead, ...] = ()
     vehicles: tuple[ContentVehicleRead, ...] = ()
+    competition_scope: BrandCompetitionScope = "none_detected"
     availability: ContentAvailabilityRead | None = None
     author_follower_count: int | None = None
 
@@ -119,6 +147,9 @@ class ContentReadRecord:
 __all__ = [
     "ContentAnalysisRead",
     "ContentAvailabilityRead",
+    "ContentBrandEvidenceRead",
+    "ContentBrandRead",
+    "ContentBrandReferenceRead",
     "ContentReadQuery",
     "ContentFilterValues",
     "ContentReadRecord",

@@ -79,6 +79,9 @@ _CONTENT_HEADERS = (
 )
 _CONTENT_AVAILABLE_HEADERS = (
     *_CONTENT_HEADERS[:24],
+    "品牌",
+    "品牌角色",
+    "竞品范围",
     "车型",
     "第三方可用状态",
     *_CONTENT_HEADERS[24:],
@@ -122,6 +125,18 @@ _HEADER_ROW_HEIGHT = 16.5
 _DEFAULT_ROW_HEIGHT = 14.5
 _MAX_ROW_HEIGHT = 409.0
 _SECONDARY_LABEL_HEADER = "二级标签"
+_BRAND_ROLE_LABELS = {
+    "owned": "自有品牌",
+    "competitor": "竞品品牌",
+    "other": "其他品牌",
+}
+_COMPETITION_SCOPE_LABELS = {
+    "owned_only": "仅自有品牌",
+    "competitor_only": "仅竞品品牌",
+    "mixed": "混合品牌",
+    "other_only": "仅其他品牌",
+    "none_detected": "未识别品牌",
+}
 _CONTENT_COLUMN_WIDTHS = {
     "平台": 15,
     "内容ID": 34,
@@ -147,6 +162,9 @@ _CONTENT_COLUMN_WIDTHS = {
     "投币数": 12,
     "下载数": 12,
     "命中关键词": 20,
+    "品牌": 24,
+    "品牌角色": 18,
+    "竞品范围": 18,
     "车型": 24,
     "第三方可用状态": 18,
     "发声类型": 18,
@@ -651,6 +669,13 @@ def _content_values(
         (content.coin_count, False, False),
         (content.download_count, False, False),
         ("；".join(content.matched_keywords) or None, False, False),
+        ("；".join(content.brands) or None, False, False),
+        (
+            "；".join(_BRAND_ROLE_LABELS[role] for role in content.brand_roles) or None,
+            False,
+            False,
+        ),
+        (_COMPETITION_SCOPE_LABELS[content.competition_scope], False, False),
         ("；".join(content.vehicles) or None, False, False),
         (content.availability, False, False),
         (

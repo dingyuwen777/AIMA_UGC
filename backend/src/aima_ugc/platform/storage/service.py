@@ -9,12 +9,12 @@ from uuid import UUID, uuid4
 
 from aima_ugc.platform.time import beijing_now
 
-from .models import ArtifactRecord, StoredBytes
+from .models import ArtifactRecord, CanonicalArtifactParent, StoredBytes
 from .ports import ArtifactMetadataPort, ArtifactStore
 from .retention import initial_artifact_expiry
 
 _KIND_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
-_SUFFIX_PATTERN = re.compile(r"^\.[a-z0-9]{1,16}$")
+_SUFFIX_PATTERN = re.compile(r"^\.[a-z0-9]{1,16}(?:\.[a-z0-9]{1,16})?$")
 
 
 class ArtifactService:
@@ -192,5 +192,19 @@ class ArtifactService:
         """在业务记录已经建立引用后，把 stored 元数据标记为 linked。"""
         return self._metadata.mark_linked(
             artifact_id,
+            linked_at=beijing_now(),
+        )
+
+    def link_canonical(
+        self,
+        artifact_id: UUID,
+        *,
+        parent: CanonicalArtifactParent,
+    ) -> ArtifactRecord:
+        """原子建立 Canonical 父级关系并把 stored 元数据标记为 linked。"""
+
+        return self._metadata.link_canonical(
+            artifact_id,
+            parent=parent,
             linked_at=beijing_now(),
         )

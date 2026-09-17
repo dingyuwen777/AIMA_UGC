@@ -305,8 +305,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format --check backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
-          uv run ruff check backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
+          uv run ruff format --check backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py migrations/versions/20260910_0046_content_reclassification_runs.py migrations/versions/20260910_0047_remove_legacy_filtering.py
+          uv run ruff check backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py migrations/versions/20260910_0046_content_reclassification_runs.py migrations/versions/20260910_0047_remove_legacy_filtering.py
           uv run mypy backend/src
 
       - name: Unit, Contract and API tests
@@ -453,6 +453,7 @@ jobs:
           if selected collection; then uv run pytest tests/integration/collection -q; fi
           if selected content; then uv run pytest tests/integration/content -q; fi
           if selected ingestion; then uv run pytest tests/integration/ingestion -q; fi
+          if selected vehicles; then uv run pytest tests/integration/vehicles -q; fi
 
   real-fullstack:
     name: Real Full-stack Golden Path

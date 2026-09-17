@@ -57,24 +57,15 @@ class CurrentPrincipalResponse(BaseModel):
 
 
 class VehicleModelCreateRequest(BaseModel):
-    """创建一个稳定车型及其初始别名。"""
+    """创建一个稳定车型及其初始别名；内部 code 由服务端生成。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    code: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     display_name: str = Field(min_length=1, max_length=200)
     brand_id: UUID | None = None
     aliases: tuple[str, ...] = Field(default=(), max_length=100)
     series_name: str | None = Field(default=None, min_length=1, max_length=200)
     category_name: str | None = Field(default=None, min_length=1, max_length=200)
-
-    @field_validator("code", mode="before")
-    @classmethod
-    def normalize_code(cls, value: object) -> object:
-        """车型 code 使用去空白后的大写稳定身份。"""
-
-        value = _trimmed(value)
-        return value.upper() if isinstance(value, str) else value
 
     @field_validator("display_name", "series_name", "category_name", mode="before")
     @classmethod
@@ -170,7 +161,6 @@ class VehicleModelResponse(BaseModel):
     catalog_version: int = Field(gt=0)
     merged_into_id: UUID | None = None
     aliases: tuple[VehicleModelAliasResponse, ...] = ()
-    keyword_pack_ids: tuple[UUID, ...] = ()
     referenced: bool = False
     created_at: datetime
     updated_at: datetime
@@ -195,30 +185,6 @@ class VehicleModelListResponse(BaseModel):
     catalog_version: int = Field(gt=0)
     offset: int = Field(ge=0)
     limit: int = Field(ge=1, le=200)
-
-
-class KeywordPackVehicleLinkRequest(BaseModel):
-    """替换一个词包当前引用的车型集合。"""
-
-    model_config = ConfigDict(extra="forbid")
-    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-
-    @field_validator("vehicle_model_ids")
-    @classmethod
-    def validate_unique_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
-        """词包内车型引用不得重复。"""
-
-        if len(value) != len(set(value)):
-            raise ValueError("vehicle_model_ids 不能重复")
-        return value
-
-
-class KeywordPackVehicleLinksResponse(BaseModel):
-    """词包当前引用的车型 ID。"""
-
-    model_config = ConfigDict(extra="forbid")
-    pack_id: UUID
-    vehicle_model_ids: tuple[UUID, ...]
 
 
 class AnalysisSchemeDefinitionRequest(BaseModel):
@@ -477,8 +443,6 @@ __all__ = [
     "AuditEventListResponse",
     "AuditEventResponse",
     "CurrentPrincipalResponse",
-    "KeywordPackVehicleLinkRequest",
-    "KeywordPackVehicleLinksResponse",
     "PrincipalRole",
     "ProviderConfigCreateRequest",
     "ProviderConfigListResponse",

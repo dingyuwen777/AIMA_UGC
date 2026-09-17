@@ -383,12 +383,6 @@ export interface BrandCreateRequest {
   aliases?: string[];
   /**
      * @minLength 1
-     * @maxLength 100
-     * @pattern ^[A-Za-z0-9][A-Za-z0-9._-]*$
-     */
-  code: string;
-  /**
-     * @minLength 1
      * @maxLength 200
      */
   display_name: string;
@@ -552,6 +546,177 @@ export interface BrandVehicleCatalogSnapshotResponse {
   vehicles: CatalogVehicleSnapshotItem[];
 }
 
+/**
+ * 创建 Replay 时显式冻结的输入选择。
+ */
+export interface CanonicalReplayCreateRequest {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  artifact_ids: string[];
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
+  batch_size?: number;
+  /** @maxItems 100 */
+  brand_ids?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  idempotency_key: string;
+}
+
+export type CanonicalReplayCreatedResponseStatus = typeof CanonicalReplayCreatedResponseStatus[keyof typeof CanonicalReplayCreatedResponseStatus];
+
+
+export const CanonicalReplayCreatedResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface CanonicalReplayCreatedResponse {
+  job_id: string;
+  run_id: string;
+  status: CanonicalReplayCreatedResponseStatus;
+}
+
+/**
+ * Canonical Replay 成功终态的安全统计。
+ */
+export interface CanonicalReplayJobResultResponse {
+  /** @minimum 1 */
+  artifact_count: number;
+  /** @minimum 0 */
+  duplicates_removed: number;
+  /** @minimum 0 */
+  existing_convergence: number;
+  invalid_artifact_rows?: 0;
+  /** @minimum 0 */
+  rows_filtered_out: number;
+  /** @minimum 0 */
+  rows_ingested: number;
+  /** @minimum 0 */
+  rows_matched: number;
+  /** @minimum 0 */
+  rows_seen: number;
+  run_id: string;
+}
+
+export type CanonicalReplayRunResponseFilterScope = typeof CanonicalReplayRunResponseFilterScope[keyof typeof CanonicalReplayRunResponseFilterScope];
+
+
+export const CanonicalReplayRunResponseFilterScope = {
+  all_active: 'all_active',
+  selected: 'selected',
+} as const;
+
+export interface ImportJobResultResponse {
+  batch_id: string;
+  /** @minimum 0 */
+  rows_ingested: number;
+}
+
+export interface ContentAnalysisJobResultResponse {
+  /** @minimum 0 */
+  failed: number;
+  request_id: string;
+  /** @minimum 0 */
+  stale: number;
+  /** @minimum 0 */
+  succeeded: number;
+}
+
+export interface DataExportJobResultResponse {
+  /** @minimum 0 */
+  analyzed_count: number;
+  artifact_id: string;
+  /** @minimum 0 */
+  comment_count: number;
+  /** @minimum 0 */
+  content_count: number;
+  export_id: string;
+  /** @minimum 0 */
+  unanalyzed_count: number;
+}
+
+export type JobStatusResponseStatus = typeof JobStatusResponseStatus[keyof typeof JobStatusResponseStatus];
+
+
+export const JobStatusResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface JobStatusResponse {
+  /** @minimum 0 */
+  attempt: number;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  job_type: string;
+  /** @exclusiveMinimum 0 */
+  max_attempts: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  result?: ImportJobResultResponse | ContentAnalysisJobResultResponse | DataExportJobResultResponse | CanonicalReplayJobResultResponse | null;
+  started_at?: string | null;
+  status: JobStatusResponseStatus;
+}
+
+export interface CanonicalReplayStatsResponse {
+  /** @minimum 0 */
+  duplicates_removed: number;
+  /** @minimum 0 */
+  existing_convergence: number;
+  invalid_artifact_rows?: 0;
+  /** @minimum 0 */
+  rows_filtered_out: number;
+  /** @minimum 0 */
+  rows_ingested: number;
+  /** @minimum 0 */
+  rows_matched: number;
+  /** @minimum 0 */
+  rows_seen: number;
+}
+
+export interface CanonicalReplayRunResponse {
+  /** @minimum 1 */
+  artifact_count: number;
+  artifact_ids: string[];
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
+  batch_size: number;
+  brand_ids: string[];
+  /** @minimum 1 */
+  catalog_version: number;
+  /** @minimum 0 */
+  checkpoint_artifact_ordinal: number;
+  /** @minimum 0 */
+  checkpoint_row_number: number;
+  created_at: string;
+  created_by: string;
+  filter_scope: CanonicalReplayRunResponseFilterScope;
+  id: string;
+  job: JobStatusResponse;
+  stats: CanonicalReplayStatsResponse;
+  updated_at: string;
+}
+
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
 
 
@@ -682,8 +847,6 @@ export interface CollectionPlanCreateRequest {
      * @maxLength 100
      */
   schedule_expr: string;
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 export interface CollectionPlanPlatformResponse {
@@ -709,7 +872,6 @@ export interface CollectionPlanResponse {
   schedule_version: number;
   timezone: 'Asia/Shanghai';
   updated_at: string;
-  vehicle_model_ids?: string[];
 }
 
 export interface CollectionPlanListResponse {
@@ -753,8 +915,6 @@ export interface CollectionPlanUpdateRequest {
      * @maxLength 100
      */
   schedule_expr: string;
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 export type CollectionRunMode = typeof CollectionRunMode[keyof typeof CollectionRunMode];
@@ -792,8 +952,6 @@ export interface CollectionRunCreateRequest {
      * @maxItems 5
      */
   platforms: CollectionRunPlatformRequest[];
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
 }
 
 export interface CollectionRunCreatedResponse {
@@ -975,16 +1133,6 @@ export interface ContentAnalysisCreatedResponse {
   target_count: number;
 }
 
-export interface ContentAnalysisJobResultResponse {
-  /** @minimum 0 */
-  failed: number;
-  request_id: string;
-  /** @minimum 0 */
-  stale: number;
-  /** @minimum 0 */
-  succeeded: number;
-}
-
 export type ContentAnalysisManualReviewRequestUnlockDimensionsItem = typeof ContentAnalysisManualReviewRequestUnlockDimensionsItem[keyof typeof ContentAnalysisManualReviewRequestUnlockDimensionsItem];
 
 
@@ -1083,6 +1231,17 @@ export interface ContentAnalysisResponse {
   voice_type?: ContentVoiceType | null;
 }
 
+export type ContentFilterSnapshotCompetitionScopesItem = typeof ContentFilterSnapshotCompetitionScopesItem[keyof typeof ContentFilterSnapshotCompetitionScopesItem];
+
+
+export const ContentFilterSnapshotCompetitionScopesItem = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
+
 export type PlatformName = typeof PlatformName[keyof typeof PlatformName];
 
 
@@ -1099,6 +1258,10 @@ export const PlatformName = {
  */
 export interface ContentFilterSnapshot {
   analysis_status?: ContentAnalysisStatus | null;
+  /** @maxItems 100 */
+  brand_ids?: string[];
+  /** @maxItems 5 */
+  competition_scopes?: ContentFilterSnapshotCompetitionScopesItem[];
   /** @maxItems 20 */
   content_types?: string[];
   /** @maxItems 5 */
@@ -1234,14 +1397,94 @@ export interface ContentAvailabilityResponse {
   status: ContentAvailabilityResponseStatus;
 }
 
+export type ContentBrandEvidenceResponseSource = typeof ContentBrandEvidenceResponseSource[keyof typeof ContentBrandEvidenceResponseSource];
+
+
+export const ContentBrandEvidenceResponseSource = {
+  alias_match: 'alias_match',
+  vehicle_match: 'vehicle_match',
+  manual_review: 'manual_review',
+  import: 'import',
+} as const;
+
+/**
+ * 一个 Brand 关联的可追溯证据。
+ */
+export interface ContentBrandEvidenceResponse {
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  confidence?: number | null;
+  derived_vehicle_model_id?: string | null;
+  is_manual_locked?: boolean;
+  matched_text?: string | null;
+  source: ContentBrandEvidenceResponseSource;
+  source_field?: string | null;
+}
+
+export type ContentBrandReferenceResponseRole = typeof ContentBrandReferenceResponseRole[keyof typeof ContentBrandReferenceResponseRole];
+
+
+export const ContentBrandReferenceResponseRole = {
+  owned: 'owned',
+  competitor: 'competitor',
+  other: 'other',
+} as const;
+
+/**
+ * 内容查询中的稳定 Brand 展示引用。
+ */
+export interface ContentBrandReferenceResponse {
+  code: string;
+  display_name: string;
+  id: string;
+  role: ContentBrandReferenceResponseRole;
+}
+
+export type ContentBrandResponseRole = typeof ContentBrandResponseRole[keyof typeof ContentBrandResponseRole];
+
+
+export const ContentBrandResponseRole = {
+  owned: 'owned',
+  competitor: 'competitor',
+  other: 'other',
+} as const;
+
+/**
+ * 内容当前 Brand 及其全部有效证据。
+ */
+export interface ContentBrandResponse {
+  code: string;
+  display_name: string;
+  /** @minItems 1 */
+  evidences: ContentBrandEvidenceResponse[];
+  id: string;
+  role: ContentBrandResponseRole;
+}
+
 export interface ContentCommentResponse {
   author_display_name?: string | null;
   external_comment_id: string;
   id: string;
+  /** @minimum 0 */
+  ingested_reply_count?: number;
+  is_by_content_author?: boolean | null;
   like_count?: number | null;
+  parent_author_display_name?: string | null;
+  parent_comment_id?: string | null;
   published_at?: string | null;
   reply_count?: number | null;
+  root_comment_id?: string | null;
   text?: string | null;
+}
+
+export interface ContentCommentListResponse {
+  has_more: boolean;
+  /** @minimum 0 */
+  ingested_total_count: number;
+  items: ContentCommentResponse[];
+  next_cursor?: string | null;
+  /** @minimum 0 */
+  total_count: number;
 }
 
 export type ContentCountRequestCountMode = typeof ContentCountRequestCountMode[keyof typeof ContentCountRequestCountMode];
@@ -1290,6 +1533,17 @@ export interface ContentCountResponse {
   count_mode: ContentCountResponseCountMode;
   truncated?: boolean;
 }
+
+export type ContentDetailResponseCompetitionScope = typeof ContentDetailResponseCompetitionScope[keyof typeof ContentDetailResponseCompetitionScope];
+
+
+export const ContentDetailResponseCompetitionScope = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
 
 export interface ContentMediaResponse {
   alt_text?: string | null;
@@ -1363,6 +1617,7 @@ export interface ContentVehicleEvidenceResponse {
  * 内容当前车型及其全部有效证据。
  */
 export interface ContentVehicleResponse {
+  brand: ContentBrandReferenceResponse | null;
   category_name?: string | null;
   code: string;
   display_name: string;
@@ -1377,8 +1632,10 @@ export interface ContentDetailResponse {
   author_display_name?: string | null;
   author_follower_count?: number | null;
   availability?: ContentAvailabilityResponse | null;
+  brands: ContentBrandResponse[];
   comment_coverage?: CommentCoverageResponse | null;
   comments?: ContentCommentResponse[];
+  competition_scope: ContentDetailResponseCompetitionScope;
   content_type: string;
   content_url?: string | null;
   /** @exclusiveMinimum 0 */
@@ -1447,11 +1704,24 @@ export interface ContentFilterOptionsResponse {
   voice_types: ContentFilterValueOptionResponse[];
 }
 
+export type ContentListItemResponseCompetitionScope = typeof ContentListItemResponseCompetitionScope[keyof typeof ContentListItemResponseCompetitionScope];
+
+
+export const ContentListItemResponseCompetitionScope = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
+
 export interface ContentListItemResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
   author_follower_count?: number | null;
   availability?: ContentAvailabilityResponse | null;
+  brands: ContentBrandResponse[];
+  competition_scope: ContentListItemResponseCompetitionScope;
   content_type: string;
   content_url?: string | null;
   /** @exclusiveMinimum 0 */
@@ -1572,56 +1842,6 @@ export interface DataExportCreatedResponse {
   target_count: number;
 }
 
-export interface DataExportJobResultResponse {
-  /** @minimum 0 */
-  analyzed_count: number;
-  artifact_id: string;
-  /** @minimum 0 */
-  comment_count: number;
-  /** @minimum 0 */
-  content_count: number;
-  export_id: string;
-  /** @minimum 0 */
-  unanalyzed_count: number;
-}
-
-export interface ImportJobResultResponse {
-  batch_id: string;
-  /** @minimum 0 */
-  rows_ingested: number;
-}
-
-export type JobStatusResponseStatus = typeof JobStatusResponseStatus[keyof typeof JobStatusResponseStatus];
-
-
-export const JobStatusResponseStatus = {
-  queued: 'queued',
-  running: 'running',
-  succeeded: 'succeeded',
-  failed: 'failed',
-  cancelled: 'cancelled',
-} as const;
-
-export interface JobStatusResponse {
-  /** @minimum 0 */
-  attempt: number;
-  created_at: string;
-  error_code?: string | null;
-  finished_at?: string | null;
-  id: string;
-  job_type: string;
-  /** @exclusiveMinimum 0 */
-  max_attempts: number;
-  /**
-     * @minimum 0
-     * @maximum 100
-     */
-  progress: number;
-  result?: ImportJobResultResponse | ContentAnalysisJobResultResponse | DataExportJobResultResponse | null;
-  started_at?: string | null;
-  status: JobStatusResponseStatus;
-}
-
 export interface DataExportStatsResponse {
   /** @minimum 0 */
   analyzed_count: number;
@@ -1671,6 +1891,9 @@ export const ExportColumnKey = {
   sentiment: 'sentiment',
   primary_label: 'primary_label',
   secondary_label: 'secondary_label',
+  brands: 'brands',
+  brand_roles: 'brand_roles',
+  competition_scope: 'competition_scope',
   vehicles: 'vehicles',
   availability: 'availability',
   like_count: 'like_count',
@@ -1781,20 +2004,6 @@ export interface ExportColumnResponse {
 export interface ExportColumnCatalogResponse {
   /** @minItems 1 */
   columns: ExportColumnResponse[];
-  /** @exclusiveMinimum 0 */
-  version: number;
-}
-
-export interface GlobalRelevanceConfigRequest {
-  keyword_pack_id: string;
-}
-
-export interface GlobalRelevanceConfigResponse {
-  effective_keywords: string[];
-  keyword_pack_id: string;
-  /** @exclusiveMinimum 0 */
-  keyword_pack_version: number;
-  updated_at: string;
   /** @exclusiveMinimum 0 */
   version: number;
 }
@@ -2247,22 +2456,6 @@ export interface KeywordPackUpdateRequest {
 }
 
 /**
- * 替换一个词包当前引用的车型集合。
- */
-export interface KeywordPackVehicleLinkRequest {
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
-}
-
-/**
- * 词包当前引用的车型 ID。
- */
-export interface KeywordPackVehicleLinksResponse {
-  pack_id: string;
-  vehicle_model_ids: string[];
-}
-
-/**
  * 声明浏览器显式选择的一个本地 XLSX；绝不承载本机绝对路径。
  */
 export interface LocalDataImportFileManifest {
@@ -2623,19 +2816,13 @@ export interface VehicleModelAliasResponse {
 }
 
 /**
- * 创建一个稳定车型及其初始别名。
+ * 创建一个稳定车型及其初始别名；内部 code 由服务端生成。
  */
 export interface VehicleModelCreateRequest {
   /** @maxItems 100 */
   aliases?: string[];
   brand_id?: string | null;
   category_name?: string | null;
-  /**
-     * @minLength 1
-     * @maxLength 100
-     * @pattern ^[A-Za-z0-9][A-Za-z0-9._-]*$
-     */
-  code: string;
   /**
      * @minLength 1
      * @maxLength 200
@@ -2666,7 +2853,6 @@ export interface VehicleModelResponse {
   created_at: string;
   display_name: string;
   id: string;
-  keyword_pack_ids?: string[];
   merged_into_id?: string | null;
   referenced?: boolean;
   series_name?: string | null;
@@ -2788,7 +2974,15 @@ source_identifier?: string | null;
 /**
  * @maxItems 100
  */
+brand_ids?: string[];
+/**
+ * @maxItems 100
+ */
 vehicle_model_ids?: string[];
+/**
+ * @maxItems 5
+ */
+competition_scopes?: ListContentsCompetitionScopesItem[];
 cursor?: string | null;
 /**
  * @minimum 1
@@ -2798,6 +2992,17 @@ limit?: number;
 sort_by?: ListContentsSortBy;
 sort_direction?: ListContentsSortDirection;
 };
+
+export type ListContentsCompetitionScopesItem = typeof ListContentsCompetitionScopesItem[keyof typeof ListContentsCompetitionScopesItem];
+
+
+export const ListContentsCompetitionScopesItem = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
 
 export type ListContentsSortBy = typeof ListContentsSortBy[keyof typeof ListContentsSortBy] | null;
 
@@ -2814,6 +3019,16 @@ export const ListContentsSortDirection = {
   asc: 'asc',
   desc: 'desc',
 } as const;
+
+export type ListContentCommentsParams = {
+root_comment_id?: string | null;
+cursor?: string | null;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
 
 export type ListDataImportServerDirectoriesParams = {
 /**
@@ -3496,6 +3711,99 @@ export const listAuditEvents = async (params?: ListAuditEventsParams, options?: 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: AuditEventListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateCanonicalReplayUrl = () => {
+
+
+
+
+  return `/api/v1/canonical-replays`
+}
+
+/**
+ * @summary Create Canonical Replay
+ */
+export const createCanonicalReplay = async (canonicalReplayCreateRequest: CanonicalReplayCreateRequest, options?: RequestInit): Promise<CanonicalReplayCreatedResponse> => {
+
+  const res = await fetch(getCreateCanonicalReplayUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(canonicalReplayCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCanonicalReplayUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/canonical-replays/${runId}`
+}
+
+/**
+ * @summary Get Canonical Replay
+ */
+export const getCanonicalReplay = async (runId: string, options?: RequestInit): Promise<CanonicalReplayRunResponse> => {
+
+  const res = await fetch(getGetCanonicalReplayUrl(runId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayRunResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelCanonicalReplayUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/canonical-replays/${runId}/cancel`
+}
+
+/**
+ * @summary Cancel Canonical Replay
+ */
+export const cancelCanonicalReplay = async (runId: string, options?: RequestInit): Promise<CanonicalReplayRunResponse> => {
+
+  const res = await fetch(getCancelCanonicalReplayUrl(runId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayRunResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -4214,7 +4522,7 @@ export const getListContentsUrl = (params?: ListContentsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-    const explodeParameters = ["platforms","content_types","vehicle_model_ids"];
+    const explodeParameters = ["platforms","content_types","brand_ids","vehicle_model_ids","competition_scopes"];
 
     if (Array.isArray(value) && explodeParameters.includes(key)) {
       value.forEach((v) => {
@@ -4346,6 +4654,46 @@ export const reviewContentAnalysis = async (contentId: string,
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentAnalysisManualReviewResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListContentCommentsUrl = (contentId: string,
+    params?: ListContentCommentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/contents/${contentId}/comments?${stringifiedParams}` : `/api/v1/contents/${contentId}/comments`
+}
+
+/**
+ * @summary List Content Comments
+ */
+export const listContentComments = async (contentId: string,
+    params?: ListContentCommentsParams, options?: RequestInit): Promise<ContentCommentListResponse> => {
+
+  const res = await fetch(getListContentCommentsUrl(contentId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentCommentListResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -5925,39 +6273,6 @@ export const restoreKeywordPack = async (packId: string, options?: RequestInit):
 
 
 
-export const getReplaceKeywordPackVehicleModelsUrl = (packId: string,) => {
-
-
-
-
-  return `/api/v1/keyword-packs/${packId}/vehicle-models`
-}
-
-/**
- * 管理员原子替换一个词包引用的车型。
- * @summary Replace Keyword Pack Vehicle Models
- */
-export const replaceKeywordPackVehicleModels = async (packId: string,
-    keywordPackVehicleLinkRequest: KeywordPackVehicleLinkRequest, options?: RequestInit): Promise<KeywordPackVehicleLinksResponse> => {
-
-  const res = await fetch(getReplaceKeywordPackVehicleModelsUrl(packId),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(keywordPackVehicleLinkRequest)
-  }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackVehicleLinksResponse = body ? JSON.parse(body) : {}
-  return data
-}
-
-
-
 export const getListNotificationsUrl = (params?: ListNotificationsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -6344,68 +6659,6 @@ export const testProviderConfigConnection = async (providerConfigId: string, opt
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ProviderConnectionTestResponse = body ? JSON.parse(body) : {}
-  return data
-}
-
-
-
-export const getGetGlobalRelevanceConfigUrl = () => {
-
-
-
-
-  return `/api/v1/relevance-config`
-}
-
-/**
- * @summary Get Global Relevance
- */
-export const getGlobalRelevanceConfig = async ( options?: RequestInit): Promise<GlobalRelevanceConfigResponse> => {
-
-  const res = await fetch(getGetGlobalRelevanceConfigUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: GlobalRelevanceConfigResponse = body ? JSON.parse(body) : {}
-  return data
-}
-
-
-
-export const getSetGlobalRelevanceConfigUrl = () => {
-
-
-
-
-  return `/api/v1/relevance-config`
-}
-
-/**
- * @summary Set Global Relevance
- */
-export const setGlobalRelevanceConfig = async (globalRelevanceConfigRequest: GlobalRelevanceConfigRequest, options?: RequestInit): Promise<GlobalRelevanceConfigResponse> => {
-
-  const res = await fetch(getSetGlobalRelevanceConfigUrl(),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(globalRelevanceConfigRequest)
-  }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: GlobalRelevanceConfigResponse = body ? JSON.parse(body) : {}
   return data
 }
 

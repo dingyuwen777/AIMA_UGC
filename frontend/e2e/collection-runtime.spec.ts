@@ -10,6 +10,7 @@ const brandPackId = '82345678-1234-5678-1234-567812345678'
 const modelPackId = '92345678-1234-5678-1234-567812345678'
 const dataImportCampaignId = 'a2345678-1234-4678-9234-567812345678'
 const dataImportItemId = 'b2345678-1234-4678-9234-567812345678'
+const brandId = 'c2345678-1234-4678-9234-567812345678'
 
 const keywordPacks = {
   items: [
@@ -95,6 +96,7 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === '/api/v1/collection-runtime/runs') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [runtimeItem], next_cursor: null, has_more: false }) })
     if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: [], supported_content_types: ['all', 'video', 'image'], manual_default: { sort_mode: 'latest', published_within: '1d', content_type: 'all' } } }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: ['all', 'short', 'long'], supported_content_types: ['all', 'video'], manual_default: { sort_mode: 'latest', published_within: '1d', duration: 'all', content_type: 'all' } } }] }) })
     if (url.pathname === '/api/v1/keyword-packs' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(keywordPacks) })
+    if (url.pathname === '/api/v1/vehicle-brands' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ id: brandId, code: 'AIMA', display_name: '爱玛', role: 'owned', status: 'active', version: 1, catalog_version: 18, aliases: [], created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z' }], total: 1, catalog_version: 18, offset: 0, limit: 200 }) })
     if (url.pathname === '/api/v1/data-import-campaigns' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [completedDataImportCampaign] }) })
     if (url.pathname === '/api/v1/data-import-campaigns/local' && request.method() === 'POST') return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ campaign_id: dataImportCampaignId, upload_items: [{ item_id: dataImportItemId, relative_path: 'stage8e.xlsx' }] }) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(dataImportCampaign) })
@@ -117,6 +119,9 @@ test.beforeEach(async ({ page }) => {
 
 test('keeps all runtime columns reachable at compact and wide Figma widths', async ({ page }) => {
   await page.goto('/collection-runtime')
+  await expect(page.getByPlaceholder('搜索任务名称或来源文件')).toBeVisible()
+  await expect(page.getByText('按任务名称、创建时间、状态和类型筛选', { exact: true })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: '处理阶段' })).toHaveCount(0)
   const table = page.getByRole('region', { name: '采集运行记录', exact: true })
   const details = table.getByRole('button', { name: '查看详情', exact: true })
   for (const width of [1180, 1200, 1100, 1280, 1440, 1920]) {
@@ -233,32 +238,32 @@ test('shows unavailable revocation evidence without offering a destructive actio
   await expect(dialog.getByRole('button', { name: '撤销本次导入', exact: true })).toHaveCount(0)
 })
 
-test('creates an all-active-brand Excel import and converts a legacy vehicle discovery scope', async ({ page }) => {
-  const vehicleId = 'c2345678-1234-4678-9234-567812345678'
-  await page.route('**/api/v1/vehicle-models**', (route) => route.fulfill({
-    json: { items: [{ id: vehicleId, code: 'Q7', display_name: '爱玛 Q7', status: 'active', series_name: 'Q 系列', aliases: [], active_version: 1 }], total: 1, offset: 0, limit: 200 },
-  }))
+test('creates an all-active-brand Excel import and a selected-brand discovery Run', async ({ page }) => {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据', exact: true })
   await dialog.locator('input[type="file"]').first().setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
-  await expect(dialog).toContainText('Excel/Data Import 不再使用关键词包或单车型作为入库过滤条件')
+  await expect(dialog.getByText('不适用于 Excel 文件导入', { exact: true })).toBeVisible()
   const create = page.waitForRequest((request) => request.url().endsWith('/data-import-campaigns/local') && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建并预检', exact: true }).click()
   const importBody = (await create).postDataJSON()
   expect(importBody).toMatchObject({ brand_ids: [], ingestion_policy: 'standard_observation' })
   expect(importBody).not.toHaveProperty('keyword_pack_ids')
   expect(importBody).not.toHaveProperty('vehicle_model_ids')
+  await expect(dialog.getByText('文件上传完成，服务器正在准备并预检数据。')).toBeVisible()
   await dialog.getByRole('button', { name: '关闭导入数据', exact: true }).click()
   await page.getByRole('button', { name: '新建辅助补采', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
   await drawer.getByLabel(/爱玛品牌词包/).check()
-  await drawer.getByLabel(/爱玛 Q7/).check()
+  await drawer.getByText('指定品牌', { exact: true }).click()
+  await drawer.getByRole('group', { name: '指定品牌（可多选）' }).getByRole('checkbox', { name: /爱玛/ }).check()
   await drawer.getByRole('button', { name: /小红书/ }).click()
   await drawer.getByLabel('小红书发布时间', { exact: true }).selectOption('7d')
   const discovery = page.waitForRequest((request) => request.url().endsWith('/collection-runs') && request.method() === 'POST')
   await drawer.getByRole('button', { name: '创建补采任务', exact: true }).click()
-  expect((await discovery).postDataJSON()).toMatchObject({ keyword_pack_ids: [brandPackId], vehicle_model_ids: [vehicleId], platforms: [{ platform: 'xiaohongshu', search_config: { published_within: '7d' } }] })
+  const discoveryBody = (await discovery).postDataJSON()
+  expect(discoveryBody).toMatchObject({ keyword_pack_ids: [brandPackId], brand_ids: [brandId], platforms: [{ platform: 'xiaohongshu', search_config: { published_within: '7d' } }] })
+  expect(discoveryBody).not.toHaveProperty('vehicle_model_ids')
 })
 
 test('centralizes runtime facts, opens Batch detail, and creates a local Campaign with all-active brands', async ({ page }) => {
@@ -266,21 +271,21 @@ test('centralizes runtime facts, opens Batch detail, and creates a local Campaig
   await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
   await expect(page.getByText('3,284')).toBeVisible()
   await expect(page.getByText('采集运行记录', { exact: true })).toBeVisible()
-  await expect(page.getByPlaceholder('搜索来源文件或采集关键词')).toBeVisible()
+  await expect(page.getByPlaceholder('搜索任务名称或来源文件')).toBeVisible()
   await expect(page.getByText('Batch ID:', { exact: false })).toHaveCount(0)
   await expect(page.getByText('Campaign', { exact: false })).toHaveCount(0)
   await page.getByRole('button', { name: '查看详情' }).click()
-  const importDetailDialog = page.getByRole('dialog', { name: '数据导入详情' })
+  const importDetailDialog = page.getByRole('dialog', { name: '批次详情' })
   await expect(importDetailDialog).toBeVisible()
-  await importDetailDialog.getByRole('button', { name: '运行状态' }).click()
+  await importDetailDialog.getByRole('button', { name: '任务信息' }).click()
   await importDetailDialog.getByText('技术详情', { exact: true }).click()
   await expect(importDetailDialog.getByText('2 / 10')).toBeVisible()
   await page.getByRole('button', { name: '关闭详情' }).click()
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await expect(dialog).toContainText('预检通过后再确认开始入库')
+  await expect(dialog).toContainText('按词包规则完成预检')
   await dialog.locator('input[type="file"]').first().setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
-  await expect(dialog).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
+  await expect(dialog).toContainText('创建后冻结品牌车型目录快照并执行预检')
   const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/data-import-campaigns/local' && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建并预检' }).click()
   const importBody = (await requestPromise).postDataJSON()
@@ -307,6 +312,7 @@ test('creates a one-time TikHub discovery Run from multiple Keyword Packs', asyn
   expect((await requestPromise).postDataJSON()).toMatchObject({
     mode: 'discovery',
     keyword_pack_ids: [brandPackId, modelPackId],
+    brand_ids: [],
     platforms: [{
       platform: 'xiaohongshu',
       provider_config_id: providerConfigId,
@@ -332,9 +338,12 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
     import_batch_id: batchId,
     data_import_campaign_id: null,
     keyword_pack_ids: [],
+    brand_ids: [],
     platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }],
   })
-  expect((await requestPromise).postDataJSON().platforms[0]).not.toHaveProperty('search_config')
+  const supplementBody = (await requestPromise).postDataJSON()
+  expect(supplementBody.platforms[0]).not.toHaveProperty('search_config')
+  expect(supplementBody).not.toHaveProperty('vehicle_model_ids')
 })
 
 test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {
@@ -389,7 +398,7 @@ test('shows a Data Import Campaign without a synthetic Job and opens its persist
 
   await page.goto('/collection-runtime')
   await expect(page.getByText('数据导入 · 历史导入/campaign.xlsx')).toBeVisible()
-  await expect(page.getByText('相关 2')).toBeVisible()
+  await expect(page.getByText('匹配 2 条')).toBeVisible()
   await page.getByRole('button', { name: '查看详情' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
   await expect(dialog.locator('.campaign-status')).toHaveText('正在上传文件')
@@ -420,8 +429,8 @@ test('explains failed Import terminal state without inventing pending stages', a
   await page.route(`**/api/v1/import-batches/${batchId}`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(failedImport) }))
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '查看详情' }).click()
-  const detail = page.getByRole('dialog', { name: '数据导入详情' })
-  await detail.getByRole('button', { name: '处理阶段' }).click()
+  const detail = page.getByRole('dialog', { name: '批次详情' })
+  await detail.getByRole('button', { name: '执行进度' }).click()
   await expect(detail.getByText('任务已失败', { exact: false })).toBeVisible()
   await expect(detail.getByText('无法准确还原失败前最后完成的处理步骤', { exact: false })).toBeVisible()
   await expect(detail.locator('.stage-row')).toHaveCount(0)
@@ -487,14 +496,14 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
 
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '查看详情' }).click()
-  const detail = page.getByRole('dialog', { name: '辅助补采详情' })
+  const detail = page.getByRole('dialog', { name: '辅助补采运行详情' })
   await expect(detail).toContainText('采集服务授权信息不可用，请联系管理员检查服务配置。')
   await expect(detail).toContainText('小红书 · 补充内容信息')
   await expect(detail).toContainText('失败 · 100%')
   await expect(detail).not.toContainText('providers/tikhub')
 })
 
-test('shows the stable unified Error Contract request_id', async ({ page }) => {
+test('keeps unified Error Contract technical ids out of the product list error state', async ({ page }) => {
   await page.unroute('**/api/v1/**')
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
@@ -502,5 +511,7 @@ test('shows the stable unified Error Contract request_id', async ({ page }) => {
     await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: '分页服务暂不可用', status: 503, detail: '分页服务配置不可用，请使用 request_id 联系管理员。', request_id: 'req_stage8e_error', errors: [] }) })
   })
   await page.goto('/collection-runtime')
-  await expect(page.getByRole('alert').filter({ hasText: 'req_stage8e_error' })).toContainText('req_stage8e_error')
+  const runtimeTable = page.getByRole('region', { name: '采集运行记录', exact: true })
+  await expect(runtimeTable.getByRole('alert')).toContainText('采集运行加载失败，请稍后重试。')
+  await expect(runtimeTable.getByText('req_stage8e_error', { exact: false })).toHaveCount(0)
 })

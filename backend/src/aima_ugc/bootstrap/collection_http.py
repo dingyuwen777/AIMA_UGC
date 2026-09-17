@@ -284,6 +284,9 @@ class PostgresCollectionHttpService:
                 )
                 policy = CollectionDecisionPolicyV1(
                     comments_enabled=request.include_comments,
+                    # 网页端辅助补采是用户显式发起的新 Run；即使帖子公布的评论数
+                    # 没有变化，也必须重新读取评论，才能恢复上次失败或不完整的补采。
+                    comment_refresh_when_count_unchanged=request.include_comments,
                 )
                 execution = CollectionExecutionService(
                     PostgresCollectionRepository(session)
@@ -302,9 +305,6 @@ class PostgresCollectionHttpService:
                             "terms": list(effective_keywords),
                         },
                         "brand_vehicle_filter": filter_snapshot,
-                        "legacy_vehicle_model_ids": [
-                            str(item) for item in request.vehicle_model_ids
-                        ],
                         "keywords": list(effective_keywords),
                         "import_batch_id": (
                             str(request.import_batch_id)
@@ -547,12 +547,9 @@ class PostgresCollectionHttpService:
                 raise CollectionConflict
             try:
                 brand_repository = PostgresBrandVehicleRepository(session)
-                selected_brand_ids = request.brand_ids or (
-                    brand_repository.brand_ids_for_vehicle_models(request.vehicle_model_ids)
-                )
                 filter_snapshot = BrandVehicleFilterSnapshot(
                     search_semantics="keyword_pack",
-                    catalog=brand_repository.snapshot(brand_ids=selected_brand_ids or None),
+                    catalog=brand_repository.snapshot(brand_ids=request.brand_ids or None),
                 )
                 if not filter_snapshot.catalog.brands:
                     raise CollectionConflict("Brand Filter 当前没有可用 active Brand")

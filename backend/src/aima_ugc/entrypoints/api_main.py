@@ -17,6 +17,7 @@ from aima_ugc.bootstrap.analysis_scheme_lifecycle_http import (
 from aima_ugc.bootstrap.api import HealthResponse, ReadinessChecks, ReadinessResponse
 from aima_ugc.bootstrap.api import create_app as _create_app
 from aima_ugc.bootstrap.brand_vehicle_http import install_brand_vehicle_routes
+from aima_ugc.bootstrap.content_media_http import install_content_media_routes
 from aima_ugc.bootstrap.import_revocation_http import install_import_revocation_routes
 from aima_ugc.bootstrap.provider_lifecycle_http import install_provider_lifecycle_routes
 from aima_ugc.bootstrap.resource_lifecycle_http import install_resource_lifecycle_routes
@@ -32,6 +33,7 @@ def _with_product_extension_routes[**P](
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> FastAPI:
         application = factory(*args, **kwargs)
         install_content_analysis_capability_route(application)
+        install_content_media_routes(application)
         raw_kwargs = cast(dict[str, object], kwargs)
         identity_resolver = cast(
             IdentityResolver | None,

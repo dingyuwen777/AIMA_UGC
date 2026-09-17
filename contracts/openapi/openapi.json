@@ -1045,13 +1045,6 @@
             "title": "Aliases",
             "type": "array"
           },
-          "code": {
-            "maxLength": 100,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-            "title": "Code",
-            "type": "string"
-          },
           "display_name": {
             "maxLength": 200,
             "minLength": 1,
@@ -1069,7 +1062,6 @@
           }
         },
         "required": [
-          "code",
           "display_name",
           "role"
         ],
@@ -1363,6 +1355,297 @@
           "unresolved_active_vehicle_ids"
         ],
         "title": "BrandVehicleCatalogSnapshotResponse",
+        "type": "object"
+      },
+      "CanonicalReplayCreateRequest": {
+        "additionalProperties": false,
+        "description": "创建 Replay 时显式冻结的输入选择。",
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "batch_size": {
+            "default": 500,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "artifact_ids"
+        ],
+        "title": "CanonicalReplayCreateRequest",
+        "type": "object"
+      },
+      "CanonicalReplayCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "job_id",
+          "status"
+        ],
+        "title": "CanonicalReplayCreatedResponse",
+        "type": "object"
+      },
+      "CanonicalReplayJobResultResponse": {
+        "additionalProperties": false,
+        "description": "Canonical Replay 成功终态的安全统计。",
+        "properties": {
+          "artifact_count": {
+            "minimum": 1.0,
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "duplicates_removed": {
+            "minimum": 0.0,
+            "title": "Duplicates Removed",
+            "type": "integer"
+          },
+          "existing_convergence": {
+            "minimum": 0.0,
+            "title": "Existing Convergence",
+            "type": "integer"
+          },
+          "invalid_artifact_rows": {
+            "const": 0,
+            "default": 0,
+            "title": "Invalid Artifact Rows",
+            "type": "integer"
+          },
+          "rows_filtered_out": {
+            "minimum": 0.0,
+            "title": "Rows Filtered Out",
+            "type": "integer"
+          },
+          "rows_ingested": {
+            "minimum": 0.0,
+            "title": "Rows Ingested",
+            "type": "integer"
+          },
+          "rows_matched": {
+            "minimum": 0.0,
+            "title": "Rows Matched",
+            "type": "integer"
+          },
+          "rows_seen": {
+            "minimum": 0.0,
+            "title": "Rows Seen",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "artifact_count",
+          "rows_seen",
+          "rows_matched",
+          "rows_filtered_out",
+          "duplicates_removed",
+          "rows_ingested",
+          "existing_convergence"
+        ],
+        "title": "CanonicalReplayJobResultResponse",
+        "type": "object"
+      },
+      "CanonicalReplayRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_count": {
+            "minimum": 1.0,
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "batch_size": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "brand_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Brand Ids",
+            "type": "array"
+          },
+          "catalog_version": {
+            "minimum": 1.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "checkpoint_artifact_ordinal": {
+            "minimum": 0.0,
+            "title": "Checkpoint Artifact Ordinal",
+            "type": "integer"
+          },
+          "checkpoint_row_number": {
+            "minimum": 0.0,
+            "title": "Checkpoint Row Number",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "filter_scope": {
+            "enum": [
+              "all_active",
+              "selected"
+            ],
+            "title": "Filter Scope",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobStatusResponse"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/CanonicalReplayStatsResponse"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "artifact_ids",
+          "filter_scope",
+          "brand_ids",
+          "catalog_version",
+          "artifact_count",
+          "checkpoint_artifact_ordinal",
+          "checkpoint_row_number",
+          "batch_size",
+          "stats",
+          "job",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CanonicalReplayRunResponse",
+        "type": "object"
+      },
+      "CanonicalReplayStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "duplicates_removed": {
+            "minimum": 0.0,
+            "title": "Duplicates Removed",
+            "type": "integer"
+          },
+          "existing_convergence": {
+            "minimum": 0.0,
+            "title": "Existing Convergence",
+            "type": "integer"
+          },
+          "invalid_artifact_rows": {
+            "const": 0,
+            "default": 0,
+            "title": "Invalid Artifact Rows",
+            "type": "integer"
+          },
+          "rows_filtered_out": {
+            "minimum": 0.0,
+            "title": "Rows Filtered Out",
+            "type": "integer"
+          },
+          "rows_ingested": {
+            "minimum": 0.0,
+            "title": "Rows Ingested",
+            "type": "integer"
+          },
+          "rows_matched": {
+            "minimum": 0.0,
+            "title": "Rows Matched",
+            "type": "integer"
+          },
+          "rows_seen": {
+            "minimum": 0.0,
+            "title": "Rows Seen",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows_seen",
+          "rows_matched",
+          "rows_filtered_out",
+          "duplicates_removed",
+          "rows_ingested",
+          "existing_convergence"
+        ],
+        "title": "CanonicalReplayStatsResponse",
         "type": "object"
       },
       "CatalogBrandAliasSnapshotItem": {
@@ -1730,16 +2013,6 @@
             "minLength": 1,
             "title": "Schedule Expr",
             "type": "string"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -1936,15 +2209,6 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -2017,16 +2281,6 @@
             "minLength": 1,
             "title": "Schedule Expr",
             "type": "string"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
-            "type": "array"
           }
         },
         "required": [
@@ -2142,16 +2396,6 @@
             "maxItems": 5,
             "minItems": 1,
             "title": "Platforms",
-            "type": "array"
-          },
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
             "type": "array"
           }
         },
@@ -3545,6 +3789,211 @@
         "title": "ContentAvailabilityResponse",
         "type": "object"
       },
+      "ContentBrandEvidenceResponse": {
+        "additionalProperties": false,
+        "description": "一个 Brand 关联的可追溯证据。",
+        "properties": {
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "derived_vehicle_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived Vehicle Model Id"
+          },
+          "is_manual_locked": {
+            "default": false,
+            "title": "Is Manual Locked",
+            "type": "boolean"
+          },
+          "matched_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Text"
+          },
+          "source": {
+            "enum": [
+              "alias_match",
+              "vehicle_match",
+              "manual_review",
+              "import"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Field"
+          }
+        },
+        "required": [
+          "source",
+          "catalog_version"
+        ],
+        "title": "ContentBrandEvidenceResponse",
+        "type": "object"
+      },
+      "ContentBrandReferenceResponse": {
+        "additionalProperties": false,
+        "description": "内容查询中的稳定 Brand 展示引用。",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owned",
+              "competitor",
+              "other"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "display_name",
+          "role"
+        ],
+        "title": "ContentBrandReferenceResponse",
+        "type": "object"
+      },
+      "ContentBrandResponse": {
+        "additionalProperties": false,
+        "description": "内容当前 Brand 及其全部有效证据。",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/components/schemas/ContentBrandEvidenceResponse"
+            },
+            "minItems": 1,
+            "title": "Evidences",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owned",
+              "competitor",
+              "other"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "display_name",
+          "role",
+          "evidences"
+        ],
+        "title": "ContentBrandResponse",
+        "type": "object"
+      },
+      "ContentCommentListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "ingested_total_count": {
+            "minimum": 0.0,
+            "title": "Ingested Total Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContentCommentResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "total_count": {
+            "minimum": 0.0,
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "total_count",
+          "ingested_total_count"
+        ],
+        "title": "ContentCommentListResponse",
+        "type": "object"
+      },
       "ContentCommentResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3568,6 +4017,23 @@
             "title": "Id",
             "type": "string"
           },
+          "ingested_reply_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ingested Reply Count",
+            "type": "integer"
+          },
+          "is_by_content_author": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is By Content Author"
+          },
           "like_count": {
             "anyOf": [
               {
@@ -3579,6 +4045,28 @@
               }
             ],
             "title": "Like Count"
+          },
+          "parent_author_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Author Display Name"
+          },
+          "parent_comment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Comment Id"
           },
           "published_at": {
             "anyOf": [
@@ -3603,6 +4091,17 @@
               }
             ],
             "title": "Reply Count"
+          },
+          "root_comment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Comment Id"
           },
           "text": {
             "anyOf": [
@@ -3749,6 +4248,13 @@
               }
             ]
           },
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/ContentBrandResponse"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
           "comment_coverage": {
             "anyOf": [
               {
@@ -3766,6 +4272,17 @@
             },
             "title": "Comments",
             "type": "array"
+          },
+          "competition_scope": {
+            "enum": [
+              "owned_only",
+              "competitor_only",
+              "mixed",
+              "other_only",
+              "none_detected"
+            ],
+            "title": "Competition Scope",
+            "type": "string"
           },
           "content_type": {
             "title": "Content Type",
@@ -3908,7 +4425,9 @@
           "last_seen_at",
           "metrics",
           "analysis",
-          "source"
+          "source",
+          "brands",
+          "competition_scope"
         ],
         "title": "ContentDetailResponse",
         "type": "object"
@@ -4029,6 +4548,32 @@
                 "type": "null"
               }
             ]
+          },
+          "brand_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Brand Ids",
+            "type": "array"
+          },
+          "competition_scopes": {
+            "default": [],
+            "items": {
+              "enum": [
+                "owned_only",
+                "competitor_only",
+                "mixed",
+                "other_only",
+                "none_detected"
+              ],
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Competition Scopes",
+            "type": "array"
           },
           "content_types": {
             "default": [],
@@ -4250,6 +4795,24 @@
               }
             ]
           },
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/ContentBrandResponse"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "competition_scope": {
+            "enum": [
+              "owned_only",
+              "competitor_only",
+              "mixed",
+              "other_only",
+              "none_detected"
+            ],
+            "title": "Competition Scope",
+            "type": "string"
+          },
           "content_type": {
             "title": "Content Type",
             "type": "string"
@@ -4365,7 +4928,9 @@
           "last_seen_at",
           "metrics",
           "analysis",
-          "source"
+          "source",
+          "brands",
+          "competition_scope"
         ],
         "title": "ContentListItemResponse",
         "type": "object"
@@ -4828,6 +5393,16 @@
         "additionalProperties": false,
         "description": "内容当前车型及其全部有效证据。",
         "properties": {
+          "brand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentBrandReferenceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "category_name": {
             "anyOf": [
               {
@@ -4876,6 +5451,7 @@
           "vehicle_model_id",
           "code",
           "display_name",
+          "brand",
           "evidences"
         ],
         "title": "ContentVehicleResponse",
@@ -5430,6 +6006,9 @@
           "sentiment",
           "primary_label",
           "secondary_label",
+          "brands",
+          "brand_roles",
+          "competition_scope",
           "vehicles",
           "availability",
           "like_count",
@@ -5480,62 +6059,6 @@
           "label"
         ],
         "title": "ExportColumnResponse",
-        "type": "object"
-      },
-      "GlobalRelevanceConfigRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "keyword_pack_id": {
-            "format": "uuid",
-            "title": "Keyword Pack Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "keyword_pack_id"
-        ],
-        "title": "GlobalRelevanceConfigRequest",
-        "type": "object"
-      },
-      "GlobalRelevanceConfigResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "effective_keywords": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Effective Keywords",
-            "type": "array"
-          },
-          "keyword_pack_id": {
-            "format": "uuid",
-            "title": "Keyword Pack Id",
-            "type": "string"
-          },
-          "keyword_pack_version": {
-            "exclusiveMinimum": 0.0,
-            "title": "Keyword Pack Version",
-            "type": "integer"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "version": {
-            "exclusiveMinimum": 0.0,
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "keyword_pack_id",
-          "keyword_pack_version",
-          "version",
-          "effective_keywords",
-          "updated_at"
-        ],
-        "title": "GlobalRelevanceConfigResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -6681,6 +7204,9 @@
                 "$ref": "#/components/schemas/DataExportJobResultResponse"
               },
               {
+                "$ref": "#/components/schemas/CanonicalReplayJobResultResponse"
+              },
+              {
                 "type": "null"
               }
             ],
@@ -7037,49 +7563,6 @@
           "name"
         ],
         "title": "KeywordPackUpdateRequest",
-        "type": "object"
-      },
-      "KeywordPackVehicleLinkRequest": {
-        "additionalProperties": false,
-        "description": "替换一个词包当前引用的车型集合。",
-        "properties": {
-          "vehicle_model_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Vehicle Model Ids",
-            "type": "array"
-          }
-        },
-        "title": "KeywordPackVehicleLinkRequest",
-        "type": "object"
-      },
-      "KeywordPackVehicleLinksResponse": {
-        "additionalProperties": false,
-        "description": "词包当前引用的车型 ID。",
-        "properties": {
-          "pack_id": {
-            "format": "uuid",
-            "title": "Pack Id",
-            "type": "string"
-          },
-          "vehicle_model_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Vehicle Model Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "pack_id",
-          "vehicle_model_ids"
-        ],
-        "title": "KeywordPackVehicleLinksResponse",
         "type": "object"
       },
       "KeywordResponse": {
@@ -8083,7 +8566,7 @@
       },
       "VehicleModelCreateRequest": {
         "additionalProperties": false,
-        "description": "创建一个稳定车型及其初始别名。",
+        "description": "创建一个稳定车型及其初始别名；内部 code 由服务端生成。",
         "properties": {
           "aliases": {
             "default": [],
@@ -8119,13 +8602,6 @@
             ],
             "title": "Category Name"
           },
-          "code": {
-            "maxLength": 100,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-            "title": "Code",
-            "type": "string"
-          },
           "display_name": {
             "maxLength": 200,
             "minLength": 1,
@@ -8147,7 +8623,6 @@
           }
         },
         "required": [
-          "code",
           "display_name"
         ],
         "title": "VehicleModelCreateRequest",
@@ -8269,15 +8744,6 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
-          },
-          "keyword_pack_ids": {
-            "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Keyword Pack Ids",
-            "type": "array"
           },
           "merged_into_id": {
             "anyOf": [
@@ -9554,6 +10020,233 @@
         "summary": "List Audit Events",
         "tags": [
           "administration"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays": {
+      "post": {
+        "operationId": "createCanonicalReplay",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalReplayCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Canonical Replay",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/{run_id}": {
+      "get": {
+        "operationId": "getCanonicalReplay",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Canonical Replay",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancelCanonicalReplay",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel Canonical Replay",
+        "tags": [
+          "imports"
         ]
       }
     },
@@ -11270,6 +11963,21 @@
           },
           {
             "in": "query",
+            "name": "brand_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Brand Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
             "name": "vehicle_model_ids",
             "required": false,
             "schema": {
@@ -11280,6 +11988,27 @@
               },
               "maxItems": 100,
               "title": "Vehicle Model Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "competition_scopes",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "enum": [
+                  "owned_only",
+                  "competitor_only",
+                  "mixed",
+                  "other_only",
+                  "none_detected"
+                ],
+                "type": "string"
+              },
+              "maxItems": 5,
+              "title": "Competition Scopes",
               "type": "array"
             }
           },
@@ -11599,6 +12328,137 @@
           }
         },
         "summary": "Review Content Analysis",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/contents/{content_id}/comments": {
+      "get": {
+        "operationId": "listContentComments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "root_comment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Root Comment Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentCommentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Content Comments",
         "tags": [
           "contents"
         ]
@@ -15097,101 +15957,6 @@
         ]
       }
     },
-    "/api/v1/keyword-packs/{pack_id}/vehicle-models": {
-      "put": {
-        "description": "管理员原子替换一个词包引用的车型。",
-        "operationId": "replaceKeywordPackVehicleModels",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "pack_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Pack Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KeywordPackVehicleLinkRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KeywordPackVehicleLinksResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "summary": "Replace Keyword Pack Vehicle Models",
-        "tags": [
-          "keywords",
-          "vehicles"
-        ]
-      }
-    },
     "/api/v1/notifications": {
       "get": {
         "operationId": "listNotifications",
@@ -15924,126 +16689,6 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
-      }
-    },
-    "/api/v1/relevance-config": {
-      "get": {
-        "operationId": "getGlobalRelevanceConfig",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GlobalRelevanceConfigResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "summary": "Get Global Relevance",
-        "tags": [
-          "relevance"
-        ]
-      },
-      "put": {
-        "operationId": "setGlobalRelevanceConfig",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GlobalRelevanceConfigRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GlobalRelevanceConfigResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "summary": "Set Global Relevance",
-        "tags": [
-          "relevance"
         ]
       }
     },

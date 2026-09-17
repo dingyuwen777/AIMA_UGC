@@ -5,6 +5,7 @@ import { stubVoicePlazaTaxonomy } from './voicePlazaTaxonomy'
 const packId = '11111111-1111-4111-8111-111111111111'
 const keywordId = '55555555-5555-4555-8555-555555555555'
 const providerId = '44444444-4444-4444-8444-444444444444'
+const brandId = '66666666-6666-4666-8666-666666666666'
 
 /** 为响应式 Browser Mock 提供采集策略页面最小稳定数据，不复制后端业务规则。 */
 async function mockStrategyApi(page: Page): Promise<void> {
@@ -73,15 +74,26 @@ async function mockStrategyApi(page: Page): Promise<void> {
       return
     }
 
-    if (request.method() === 'GET' && url.pathname === '/api/v1/relevance-config') {
+    if (request.method() === 'GET' && url.pathname === '/api/v1/vehicle-brands') {
       await route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
-          keyword_pack_id: packId,
-          keyword_pack_version: 4,
-          version: 3,
-          effective_keywords: ['爱玛 Q7'],
-          updated_at: '2026-09-04T00:00:00Z',
+          items: [{
+            id: brandId,
+            code: 'AIMA',
+            display_name: '爱玛',
+            role: 'owned',
+            status: 'active',
+            version: 1,
+            catalog_version: 1,
+            aliases: [],
+            created_at: '2026-09-04T00:00:00+08:00',
+            updated_at: '2026-09-04T00:00:00+08:00',
+          }],
+          total: 1,
+          catalog_version: 1,
+          offset: Number(url.searchParams.get('offset') ?? '0'),
+          limit: Number(url.searchParams.get('limit') ?? '100'),
         }),
       })
       return
@@ -192,12 +204,17 @@ async function expectNoPageHorizontalOverflow(page: Page): Promise<void> {
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
 }
 
-/** 验证 AppShell 与真实内容区都被约束在当前 viewport 内。 */
+/** 验证 AppShell、侧栏导航与真实内容区都被约束在当前 viewport 内。 */
 async function expectWorkspaceInsideViewport(page: Page, viewportWidth: number): Promise<void> {
   const shell = await page.locator('.app-shell').boundingBox()
   const workspace = await page.locator('.workspace-main').boundingBox()
+  const navigation = await page.getByRole('navigation', { name: '业务导航' }).evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
   expect(shell).not.toBeNull()
   expect(workspace).not.toBeNull()
+  expect(navigation.scrollWidth).toBeLessThanOrEqual(navigation.clientWidth)
   expect((shell?.x ?? 0) + (shell?.width ?? 0)).toBeLessThanOrEqual(viewportWidth + 1)
   expect((workspace?.x ?? 0) + (workspace?.width ?? 0)).toBeLessThanOrEqual(viewportWidth + 1)
   await expectNoPageHorizontalOverflow(page)
@@ -256,19 +273,22 @@ for (const viewport of viewports) {
     await expect(page.getByRole('navigation', { name: '管理员配置分类' })).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
     if (viewport.width <= 1279) {
-      const adminColumns = await page.locator('.two-column').evaluate(
-        (element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length,
+      const adminColumns = await page.locator('.two-column').evaluateAll(
+        (elements) => elements.map(
+          (element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length,
+        ),
       )
-      expect(adminColumns).toBe(1)
+      expect(adminColumns).not.toHaveLength(0)
+      expect(adminColumns.every((count) => count === 1)).toBe(true)
     }
     if (viewport.width === 1440) {
       const smallButton = await page.getByRole('button', { name: '新增车型' }).boundingBox()
       expect(smallButton).not.toBeNull()
       expect(Math.abs((smallButton?.height ?? 0) - 30)).toBeLessThanOrEqual(1)
     }
-    await page.getByRole('button', { name: '词包关联' }).click()
-    await expect(page.locator('.list-card > button span').first()).toBeVisible()
-    expect(await fontSize(page, '.list-card > button span')).toBeGreaterThanOrEqual(11)
+    await page.getByRole('button', { name: '品牌与车型' }).click()
+    await expect(page.locator('.brand-directory-table tbody td').first()).toBeVisible()
+    expect(await fontSize(page, '.brand-directory-table tbody td')).toBeGreaterThanOrEqual(11)
 
     await page.getByRole('button', { name: 'AI 模型' }).click()
     await expect(page.locator('.provider-layout')).toBeVisible()
@@ -285,6 +305,19 @@ for (const viewport of viewports) {
     }
   })
 }
+
+test('keeps narrow sidebar navigation inside its own width and routes normally', async ({ page }) => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await mockResponsivePages(page)
+  await page.goto('/voice-plaza')
+  const navigation = await page.getByRole('navigation', { name: '业务导航' }).evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
+  expect(navigation.scrollWidth).toBeLessThanOrEqual(navigation.clientWidth)
+  await page.getByRole('navigation', { name: '业务导航' }).getByRole('link', { name: '采集策略' }).click()
+  await expect(page.getByRole('heading', { name: '采集策略' })).toBeVisible()
+})
 
 test('constrains a real dialog to the viewport safe margin in a narrow window', async ({ page }) => {
   const viewport = { width: 560, height: 800 }

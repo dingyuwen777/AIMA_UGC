@@ -55,8 +55,8 @@ def test_stage8e_create_contract_is_strict_and_discriminates_two_modes() -> None
     assert "search_config" not in platform_request["required"]
 
 
-def test_stage4_discovery_requires_keyword_terms_and_one_filter_contract() -> None:
-    """Discovery 始终从 Keyword Pack 搜索，Brand 与兼容车型范围互斥。"""
+def test_stage4_discovery_requires_keyword_terms_and_rejects_removed_vehicle_scope() -> None:
+    """Discovery 始终从 Keyword Pack 搜索，不再接受计划级车型范围。"""
 
     common = {
         "mode": "discovery",
@@ -69,7 +69,7 @@ def test_stage4_discovery_requires_keyword_terms_and_one_filter_contract() -> No
     }
     with pytest.raises(ValidationError, match="Keyword Pack"):
         CollectionRunCreateRequest.model_validate(common)
-    with pytest.raises(ValidationError, match="不能同时提交"):
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         CollectionRunCreateRequest.model_validate(
             {
                 **common,

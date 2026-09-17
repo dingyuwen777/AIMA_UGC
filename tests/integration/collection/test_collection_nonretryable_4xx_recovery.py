@@ -52,6 +52,8 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import func, select, update
 
+from tests.integration.stage3_brand_support import stage4_collection_config_snapshot
+
 _OBSERVED_AT = datetime(2026, 8, 17, 7, 0, tzinfo=UTC)
 
 
@@ -127,14 +129,7 @@ def test_completed_http_400_is_not_resent_after_worker_takeover(
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
-                    "schema_version": "collection-run-config.v1",
-                    "relevance": {
-                        "schema_version": "relevance-snapshot.v1",
-                        "keyword_pack_id": str(uuid4()),
-                        "keyword_pack_version": 1,
-                        "config_version": 1,
-                        "effective_keywords": ["脱敏"],
-                    },
+                    **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
                     "platforms": [
@@ -249,6 +244,11 @@ def test_completed_http_400_is_not_resent_after_worker_takeover(
         scope_executor=TikHubCollectionScopeExecutor(
             session_factory=database_runtime.new_session,
             raw_artifacts=raw_artifacts,
+            artifacts=ArtifactService(
+                metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
+                store=LocalArtifactStore(tmp_path / "artifacts"),
+            ),
+            artifact_store=LocalArtifactStore(tmp_path / "artifacts"),
             transport_factory=lambda _config: resumed_transport,
             secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
             observed_at=lambda: _OBSERVED_AT,

@@ -10,7 +10,6 @@ from .content_label import (
     ContentVoiceType,
 )
 from .content_record import ContentLabelAnalysis, UnifiedContentRecordV1
-from .relevance import RelevanceSnapshotV1
 
 __all__ = [
     "CONTENT_RELEVANCES",
@@ -21,6 +20,5 @@ __all__ = [
     "ContentLabelPairV2",
     "ContentRelevance",
     "ContentVoiceType",
-    "RelevanceSnapshotV1",
     "UnifiedContentRecordV1",
 ]

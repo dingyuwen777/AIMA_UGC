@@ -84,17 +84,18 @@ Vue / API Client
 
 ```text
 collection.run.v1
-ingestion.import-excel.v1
 ingestion.import-excel.v2
 ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
-ingestion.historical-import-chunk.v1
+ingestion.historical-import-chunk.v2
 analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
+vehicles.content-reclassification.v1
+ingestion.canonical-replay.v1
 ```
 
-`ingestion.import-excel.v2` 是新建单文件 Excel Import 的 Brand/Vehicle Filter Job；`v1` 仅用于继续解释升级前已经 queued/running 的旧任务。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
+`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
 注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
@@ -278,6 +279,7 @@ GET  /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility
 ```text
 GET  /api/v1/contents
 GET  /api/v1/contents/{content_id}
+GET  /api/v1/contents/{content_id}/comments
 POST /api/v1/contents/count
 GET  /api/v1/content-analysis-capabilities
 POST /api/v1/content-analysis-requests
@@ -313,6 +315,8 @@ PUT  /api/v1/notifications/read
 车型、发声类型、情感和标签的人工修订按 `content_id + content_version` 保存，并按维度锁住自动结果；只有显式人工 unlock 才允许后续自动结果重新成为当前投影。车型允许 0..N 个，不设主车型。Count 保持 Cursor 查询不变，通过独立请求表达 `none / exact / estimated`；exact 只在有界范围承诺。
 
 Availability 使用追加式 Observation，不覆盖历史。只有明确 Provider 业务证据可以形成 `unavailable_confirmed`，技术失败只能是 `unknown/suspected`。Notification 是业务终态的按 Principal 收件箱投影，不替代 Job/Export/Run 状态机。
+
+声音广场内容详情中的评论区直接可见，不再藏在“更多信息”折叠项内。`GET /api/v1/contents/{content_id}/comments` 不带 `root_comment_id` 时稳定分页读取一级评论，带值时稳定分页读取该线程回复；响应保留根评论、直接父评论和父作者显示信息，页面据此缩进回复并明确显示“回复谁”。详情原有内嵌 `comments` 保持兼容但不承担完整浏览。页面数据只来自 PostgreSQL，并分别表达平台报告数、已采集数和当前显示数。
 
 ### 5.4 正式 Excel Export
 
@@ -357,7 +361,7 @@ GET  /api/v1/jobs/{job_id}
 - [`backend/src/aima_ugc/bootstrap/import_http.py`](../../backend/src/aima_ugc/bootstrap/import_http.py)
 - [`backend/src/aima_ugc/bootstrap/import_worker.py`](../../backend/src/aima_ugc/bootstrap/import_worker.py)
 
-### 5.6 Keyword Pack / Relevance
+### 5.6 Keyword Pack
 
 ```text
 POST /api/v1/keyword-packs
@@ -365,11 +369,9 @@ GET  /api/v1/keyword-packs
 POST /api/v1/keyword-packs/{pack_id}/keywords
 GET  /api/v1/keyword-packs/{pack_id}
 PUT  /api/v1/keyword-packs/{pack_id}/enabled
-PUT  /api/v1/relevance-config
-GET  /api/v1/relevance-config
 ```
 
-Keyword Pack 只提供 TikHub Discovery Search Terms。新建 Discovery Run 在 Canonical 后使用冻结 Brand/Vehicle Filter Snapshot；正式 Excel Import 不执行 Search，但复用同一个 Resolver。旧 Global Rule Relevance API 暂时保留到清理阶段，只有升级前的 legacy Run 按已冻结的旧快照继续执行。AI Semantic Relevance 与人工相关性复核仍由 Analysis/查询层维护。
+Keyword Pack 只提供 TikHub Discovery Search Terms。新建 Discovery Run 在 Canonical 后使用冻结 Brand/Vehicle Filter Snapshot；正式 Excel Import 不执行 Search，但复用同一个 Resolver。旧 Global Rule Relevance API、旧 Run Snapshot 和对应兼容执行分支已经删除。AI Semantic Relevance 与人工相关性复核仍由 Analysis/查询层维护。
 
 ### 5.7 Collection Plan
 
@@ -411,20 +413,45 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 
 当前正式 API 仍没有 `/alerts`、通用 Web Report Center 等未来占位路径。未来新增资源时以当时 Pydantic Contract 和 Route 为准，不提前在 Blueprint 冻结不存在的 URL。
 
-### 5.9 Principal、车型目录与管理员配置
+### 5.9 Persistent Canonical Replay
+
+```text
+POST /api/v1/canonical-replays
+GET  /api/v1/canonical-replays/{run_id}
+POST /api/v1/canonical-replays/{run_id}/cancel
+```
+
+这是管理员级恢复入口，不是通用文件扫描接口。创建请求显式提交 1—100 个已知 Canonical
+Artifact ID、客户端幂等键、可选 Brand ID 和批大小；空 Brand 集合表示在创建事务中冻结当时
+全部 active Brand。后端校验 Artifact 必须是当前 Excel v2、Data Import Pure Canonical Chunk
+v2 或 TikHub Discovery Search Attempt 的唯一 linked Canonical，随后原子创建 Replay Run 与
+`ingestion.canonical-replay.v1` Job。重复幂等键只有在 Artifact 顺序、Brand、批大小和创建者
+完全一致时返回原 Run；参数漂移返回 409。
+
+查询返回冻结目录版本、Artifact 顺序、checkpoint、Job 状态及对账统计。取消沿用统一 Job
+语义：排队任务立即进入取消终态，运行任务记录取消请求并由 Worker 在有界批次边界协作收敛。
+这三个路由都执行后端管理员角色检查并记录创建/取消审计；当前没有对应前端页面，不能写成
+采集运行中心已经提供的可视化操作。
+
+代码：
+
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_worker.py)
+- [`backend/src/aima_ugc/modules/ingestion/canonical_replay.py`](../../backend/src/aima_ugc/modules/ingestion/canonical_replay.py)
+
+### 5.10 Principal、车型目录与管理员配置
 
 管理员能力的精确 Route/字段仍以 [`backend/src/aima_ugc/contracts/administration.py`](../../backend/src/aima_ugc/contracts/administration.py)、[`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 和生成 OpenAPI 为机器事实。稳定资源边界包括：
 
 ```text
 GET  /api/v1/principal
 GET/POST/PUT/DELETE /api/v1/vehicle-models...
-PUT  /api/v1/keyword-packs/{pack_id}/vehicle-models
 GET/POST /api/v1/analysis-schemes
 PUT/POST /api/v1/analysis-scheme-versions/{version_id}...
 GET  /api/v1/audit-events
 ```
 
-车型无引用时允许物理删除；有引用后只能废弃、改显示名或合并，合并迁移未来 Plan/Pack 引用但保留历史内容证据。车型目录可配置系列名和类别名，作为筛选分组及列表展示信息；这两个可空属性不创建新的业务实体，也不改变车型 ID、匹配或合并规则。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
+车型无引用时允许物理删除；有引用后只能废弃、改显示名或合并，合并把后续读取重定向到最终 active 车型并保留历史内容证据。车型目录可配置系列名和类别名，作为筛选分组及列表展示信息；这两个可空属性不创建新的业务实体，也不改变车型 ID、匹配或合并规则。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
 
 ---
 
@@ -463,8 +490,8 @@ frontend/src/features/task-center/
 - 全局 `AppShell` 右上角提供任务中心 Drawer：通过现有 generated Client 聚合 Analysis Run、Collection Runtime 和 Data Export 三个既有 read model，显示活动任务数量、最近终态、进度/错误摘要和对应业务页入口；它没有独立路由，也不新增统一后端 Task API、Job 表或第二套状态机；
 - [`frontend/src/features/task-center/index.ts`](../../frontend/src/features/task-center/index.ts) 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
 - Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
-- `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
-- `/admin/configuration`：管理员车型/关键词关系、Analysis Scheme 版本与审计；路由守卫只改善交互，后端仍独立鉴权；
+- `/collection-strategy`：Keyword Pack Search Terms 与独立 Brand Filter 的 Collection Plan 管理；旧 Global Relevance 后端和产品入口均已删除；
+- `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本与审计；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
 - `/`：当前 HomeView。
 
 后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。任务中心同样不是一个新的后端 Job Domain，也没有独立路由；它只是所有业务页面共同使用的 `AppShell` 只读聚合入口。
@@ -545,6 +572,7 @@ SELECT * FROM contents
 Content Current
 + current Content Version
 + 当前配置身份匹配的最新 Analysis Result
++ current Content Version 的有效 Brand/Vehicle Evidence
 + 当前来源 Request/Attempt/Raw
 ```
 
@@ -564,6 +592,8 @@ Content Current
 - 当前版本没有匹配 Analysis，但历史版本分析过时，会表现为 `stale`；
 - 完全没分析过为 `pending`；
 - 单条详情 `get_content()` 使用审计友好的读取，可读取 raw irrelevant Analysis 事实。
+
+Brand 和 Vehicle 是独立 Evidence 事实：查询返回当前 Content Version 的有效 Brand 证据；Vehicle 按合并后的有效车型展示，并嵌套该车型当前目录 Brand。`competition_scope` 只由实际命中 Brand 的角色集合派生，不新增持久化标量。`brand_ids`、`vehicle_model_ids`、`competition_scopes` 在不同维度间按 AND 组合，同一维度的多个值按 OR；List、Count、Analysis query target 和 Export query target 复用同一过滤实现。Cursor 的 query hash 包含这些条件。
 
 这也是为什么 AI relevance 当前不需要复制到 `contents.is_relevant`。
 

@@ -2,19 +2,18 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import type {
+  BrandResponse,
   CollectionCapabilitiesResponse,
   CollectionPlanCreateRequest,
   CollectionPlanResponse,
   CollectionPlanUpdateRequest,
   CollectionPlatform,
-  GlobalRelevanceConfigResponse,
   KeywordPackItemUpdateRequest,
   KeywordPackKeywordCreateRequest,
   KeywordPackUpdateRequest,
   KeywordPackResponse,
   KeywordPackSummaryResponse,
   ResourceLifecycleResponse,
-  VehicleModelResponse,
 } from '../../generated/api/client'
 import {
   CollectionStrategyApiError,
@@ -29,18 +28,16 @@ import {
   deletePlan,
   fetchArchivedPacks,
   fetchArchivedPlans,
+  fetchBrands,
   fetchCapabilities,
-  fetchGlobalRelevance,
   fetchKeywordPacks,
   fetchPack,
   fetchPackDeleteEligibility,
   fetchPlanDeleteEligibility,
   fetchPlans,
-  fetchVehicleModels,
   removePackKeyword,
   restorePack,
   restorePlan,
-  setGlobalRelevance,
   setPackEnabled,
   setPlanEnabled,
   updatePack,
@@ -49,7 +46,7 @@ import {
 } from './api'
 import { planExecutionReason } from './eligibility'
 
-export type StrategyTab = 'keywords' | 'relevance' | 'plans'
+export type StrategyTab = 'keywords' | 'plans'
 
 interface PlanFilters {
   search: string
@@ -68,11 +65,10 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const packs = ref<KeywordPackSummaryResponse[]>([])
   const packCatalog = ref<KeywordPackSummaryResponse[]>([])
   const archivedPacks = ref<ResourceLifecycleResponse[]>([])
-  const vehicleCatalog = ref<VehicleModelResponse[]>([])
+  const brandCatalog = ref<BrandResponse[]>([])
   const packTotal = ref(0)
   const packOffset = ref(0)
   const packLimit = 20
-  const relevance = ref<GlobalRelevanceConfigResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
   const plans = ref<CollectionPlanResponse[]>([])
   const archivedPlans = ref<ResourceLifecycleResponse[]>([])
@@ -97,6 +93,9 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const enabledPacks = computed(() =>
     packCatalog.value.filter((pack) => pack.enabled && pack.keyword_count > 0),
   )
+  const enabledBrandCount = computed(() =>
+    brandCatalog.value.filter((brand) => brand.status === 'active').length,
+  )
 
   /** 分页读取完整词包摘要目录，供跨页配置引用，不能用当前列表页冒充全集。 */
   async function fetchAllKeywordPacks(): Promise<KeywordPackSummaryResponse[]> {
@@ -110,15 +109,12 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
-  /**
-   * 分页读取完整车型目录供计划历史引用展示。
-   * 不传 status，避免把 active-only 创建候选语义错误复用到 deprecated/merged 历史计划。
-   */
-  async function fetchAllVehicleModels(): Promise<VehicleModelResponse[]> {
-    const result: VehicleModelResponse[] = []
+  /** 分页读取完整品牌目录，供已停用品牌的历史计划继续显示真实名称。 */
+  async function fetchAllBrands(): Promise<BrandResponse[]> {
+    const result: BrandResponse[] = []
     let offset = 0
     while (true) {
-      const page = await fetchVehicleModels({ offset, limit: 200 })
+      const page = await fetchBrands({ offset, limit: 200 })
       result.push(...page.items)
       offset += page.items.length
       if (offset >= page.total || page.items.length === 0) return result
@@ -168,15 +164,10 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     loading.value = true
     error.value = null
     try {
-      const relevancePromise = fetchGlobalRelevance().catch((reason: unknown) => {
-        if (reason instanceof CollectionStrategyApiError && reason.status === 409) return null
-        throw reason
-      })
-      const [packPage, allPacks, allVehicles, currentRelevance, providerCapabilities, planPage, enabledPlans] = await Promise.all([
+      const [packPage, allPacks, allBrands, providerCapabilities, planPage, enabledPlans] = await Promise.all([
         fetchKeywordPacks({ offset: packOffset.value, limit: packLimit }),
         fetchAllKeywordPacks(),
-        fetchAllVehicleModels(),
-        relevancePromise,
+        fetchAllBrands(),
         fetchCapabilities(),
         fetchPlans({
           search: filters.search.trim() || undefined,
@@ -190,9 +181,8 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       if (version !== refreshVersion) return
       packs.value = packPage.items
       packCatalog.value = allPacks
-      vehicleCatalog.value = allVehicles
+      brandCatalog.value = allBrands
       packTotal.value = packPage.total
-      relevance.value = currentRelevance
       capabilities.value = providerCapabilities
       plans.value = planPage.items
       planTotal.value = planPage.total
@@ -337,10 +327,9 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
-  /** 根据全局相关性与启用计划引用判断词包是否允许停用。 */
+  /** 启用计划仍引用词包时阻止停用，避免下一次搜索失去冻结来源。 */
   function packToggleReason(pack: KeywordPackSummaryResponse): string | null {
     if (!pack.enabled) return null
-    if (relevance.value?.keyword_pack_id === pack.id) return '全局相关性正在引用该词包。'
     if (enabledPlanPackIds.value.includes(pack.id)) return '启用中的采集计划正在引用该词包。'
     return null
   }
@@ -439,20 +428,6 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       }
       await deletePack(packId)
       await loadArchivedPacks()
-      return true
-    } catch (reason) {
-      error.value = errorMessage(reason)
-      return false
-    } finally {
-      saving.value = false
-    }
-  }
-
-  async function saveRelevance(packId: string): Promise<boolean> {
-    saving.value = true
-    error.value = null
-    try {
-      relevance.value = await setGlobalRelevance(packId)
       return true
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -712,12 +687,12 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     packs,
     packCatalog,
     archivedPacks,
-    vehicleCatalog,
+    brandCatalog,
     packTotal,
     packOffset,
     packLimit,
     enabledPacks,
-    relevance,
+    enabledBrandCount,
     capabilities,
     plans,
     archivedPlans,
@@ -748,7 +723,6 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     loadArchivedPacks,
     restoreArchivedPack,
     deleteArchivedPack,
-    saveRelevance,
     loadPackDetails,
     planReason,
     savePlan,

@@ -148,6 +148,43 @@ def _multilabel_export_record() -> UnifiedDataExcelV1:
     )
 
 
+def test_shared_exporter_writes_human_readable_brand_role_competition_and_vehicle_columns(
+    tmp_path: Path,
+) -> None:
+    """品牌分类使用独立列，既有命中关键词保持原语义。"""
+
+    record = _export_record()
+    enriched = UnifiedDataExcelV1(
+        content=record.content.model_copy(
+            update={
+                "brands": ("爱玛", "竞品 B"),
+                "brand_roles": ("owned", "competitor"),
+                "competition_scope": "mixed",
+                "vehicles": ("露娜 Air",),
+            }
+        ),
+        comments=record.comments,
+    )
+    output = tmp_path / "stage5-brand-columns.xlsx"
+
+    export_unified_data_excel(
+        (enriched,),
+        output,
+        include_analysis=True,
+        content_columns=("命中关键词", "品牌", "品牌角色", "竞品范围", "车型"),
+    )
+
+    workbook = load_workbook(output, read_only=True, data_only=True)
+    try:
+        rows = list(workbook["内容"].iter_rows(values_only=True))
+        assert rows == [
+            ("命中关键词", "品牌", "品牌角色", "竞品范围", "车型"),
+            ("keyword-a；keyword-b", "爱玛；竞品 B", "自有品牌；竞品品牌", "混合品牌", "露娜 Air"),
+        ]
+    finally:
+        workbook.close()
+
+
 def test_v2_jsonl_export_uses_current_chinese_voice_type_default(tmp_path: Path) -> None:
     """历史 V2 无 voice_type 时只使用当前中文“无法判断”，不得发明旧英文机器值。"""
 

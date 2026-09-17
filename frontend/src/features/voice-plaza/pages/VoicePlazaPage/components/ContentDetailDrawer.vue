@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import type {
   AnalysisManualLabelRequest,
   ContentAnalysisManualReviewRequest,
   ContentAnalysisTaxonomyResponse,
+  ContentCommentResponse,
   ContentDetailResponse,
 } from '../../../../../generated/api/client'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
@@ -12,6 +13,8 @@ import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import { relevanceReviewActionLabel, relevanceReviewDecision, type RelevanceReviewDecision } from '../../../relevanceReview'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
+import type { CommentReplyState } from '../../../store'
+import ContentCommentSection from './ContentCommentSection.vue'
 import {
   contentSummary,
   contentTypeLabel,
@@ -29,20 +32,60 @@ const props = withDefaults(defineProps<{
   saving?: boolean
   error?: string | null
   saveError?: string | null
-}>(), { taxonomy: null, saving: false, error: null, saveError: null })
+  commentRoots?: ContentCommentResponse[]
+  commentReplies?: Record<string, ContentCommentResponse[]>
+  commentReplyStates?: Record<string, CommentReplyState>
+  commentsLoading?: boolean
+  commentsLoadingNext?: boolean
+  commentsError?: string | null
+  commentsHasMore?: boolean
+  commentsTotalCount?: number
+  commentsIngestedTotalCount?: number
+}>(), {
+  taxonomy: null,
+  saving: false,
+  error: null,
+  saveError: null,
+  commentRoots: () => [],
+  commentReplies: () => ({}),
+  commentReplyStates: () => ({}),
+  commentsLoading: false,
+  commentsLoadingNext: false,
+  commentsError: null,
+  commentsHasMore: false,
+  commentsTotalCount: 0,
+  commentsIngestedTotalCount: 0,
+})
 const emit = defineEmits<{
   'update:modelValue': [open: boolean]
   'review-vehicles': [vehicleModelIds: string[], unlockExisting: boolean]
   'review-analysis': [request: Omit<ContentAnalysisManualReviewRequest, 'content_version'>]
   retry: []
+  'retry-comments': []
+  'load-more-comments': []
+  'load-comment-replies': [rootCommentId: string, reset: boolean]
   review: [contentId: string, decision: RelevanceReviewDecision]
 }>()
 
 const editingVehicles = ref(false)
 const editingAnalysis = ref(false)
+const mediaGrid = ref<HTMLElement | null>(null)
+const activeMediaIndex = ref(0)
 const relevanceDecision = computed(() => props.item ? relevanceReviewDecision(props.item) : null)
+const mediaItems = computed(() => props.item?.media ?? [])
+const hasMediaNavigation = computed(() =>
+  props.item?.platform === 'xiaohongshu'
+  && mediaItems.value.length > 1
+  && mediaItems.value.some((media) => media.preview_url?.startsWith('/api/v1/contents/')),
+)
 
-watch(() => props.item?.id, () => { editingVehicles.value = false; editingAnalysis.value = false })
+watch(() => props.item?.id, async () => {
+  editingVehicles.value = false
+  editingAnalysis.value = false
+  activeMediaIndex.value = 0
+  await nextTick()
+  if (mediaGrid.value) mediaGrid.value.scrollLeft = 0
+})
 
 const vehicleModelIds = ref<string[]>([])
 const voiceType = ref('')
@@ -104,6 +147,40 @@ function unlockAnalysisReview(): void {
   emit('review-analysis', { unlock_dimensions: [...lockedDimensions.value] })
 }
 
+/** 将画廊移动到指定图片，并立即更新按钮与序号状态。 */
+function showMedia(index: number): void {
+  const grid = mediaGrid.value
+  if (!grid || !hasMediaNavigation.value) return
+  const targetIndex = Math.min(Math.max(index, 0), mediaItems.value.length - 1)
+  const target = grid.children.item(targetIndex)
+  if (!(target instanceof HTMLElement)) return
+  const gridRect = grid.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  activeMediaIndex.value = targetIndex
+  grid.scrollTo({
+    left: grid.scrollLeft + targetRect.left - gridRect.left,
+  })
+}
+
+/** 根据原生触控或触控板滚动位置同步当前图片序号。 */
+function syncMediaIndex(): void {
+  const grid = mediaGrid.value
+  if (!grid || !hasMediaNavigation.value) return
+  const gridRect = grid.getBoundingClientRect()
+  const gridCenter = gridRect.left + gridRect.width / 2
+  let nearestIndex = 0
+  let nearestDistance = Number.POSITIVE_INFINITY
+  Array.from(grid.children).forEach((child, index) => {
+    const childRect = child.getBoundingClientRect()
+    const distance = Math.abs(childRect.left + childRect.width / 2 - gridCenter)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestIndex = index
+    }
+  })
+  activeMediaIndex.value = nearestIndex
+}
+
 /** 将内容补充状态映射为用户可理解的区块标题。 */
 function supplementTitle(status: string): string {
   if (status === 'failed') return '内容补充失败'
@@ -151,12 +228,14 @@ function vehicleEvidenceLabel(source: string): string {
   return '系统识别'
 }
 
-/** 将评论覆盖枚举转换为用户可读状态。 */
-function commentCoverageLabel(value: string): string {
-  if (value === 'complete') return '完整'
-  if (value === 'partial') return '部分'
-  return '待确认'
+function brandRoleLabel(role: 'owned' | 'competitor' | 'other'): string {
+  return role === 'owned' ? '自有品牌' : role === 'competitor' ? '竞品品牌' : '其他品牌'
 }
+
+function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope']): string {
+  return scope ? ({ owned_only: '仅自有品牌', competitor_only: '仅竞品品牌', mixed: '自有与竞品混合', other_only: '仅其他品牌', none_detected: '未识别品牌' })[scope] : '未识别品牌'
+}
+
 </script>
 
 <template>
@@ -231,21 +310,60 @@ function commentCoverageLabel(value: string): string {
       </section>
 
       <section v-if="(item.media ?? []).length > 0">
-        <div class="media-grid">
-          <a
-            v-for="media in item.media ?? []"
-            :key="`${media.position}:${media.url}`"
-            :href="media.url || undefined"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div class="media-carousel">
+          <div
+            ref="mediaGrid"
+            class="media-grid"
+            @scroll.passive="syncMediaIndex"
           >
-            <img
-              v-if="media.preview_url"
-              :src="media.preview_url"
-              :alt="media.alt_text || '原始内容媒体预览'"
+            <a
+              v-for="media in item.media ?? []"
+              :key="`${media.position}:${media.url}`"
+              :href="item.platform === 'xiaohongshu'
+                ? (media.preview_url || media.url || undefined)
+                : (media.url || media.preview_url || undefined)"
+              target="_blank"
+              rel="noopener noreferrer"
             >
-            <span v-else>{{ media.media_type }} · 查看原始媒体</span>
-          </a>
+              <img
+                v-if="media.preview_url"
+                :src="media.preview_url"
+                :alt="media.alt_text || '原始内容媒体预览'"
+              >
+              <span v-else>{{ media.media_type }} · 查看原始媒体</span>
+            </a>
+          </div>
+          <template v-if="hasMediaNavigation">
+            <button
+              class="media-navigation media-navigation--previous"
+              type="button"
+              aria-label="上一张图片"
+              :disabled="activeMediaIndex === 0"
+              @click="showMedia(activeMediaIndex - 1)"
+            >
+              <AimaIcon
+                name="chevron-left"
+                :size="20"
+              />
+            </button>
+            <span
+              class="media-position"
+              aria-live="polite"
+              aria-atomic="true"
+            >{{ activeMediaIndex + 1 }} / {{ mediaItems.length }}</span>
+            <button
+              class="media-navigation media-navigation--next"
+              type="button"
+              aria-label="下一张图片"
+              :disabled="activeMediaIndex === mediaItems.length - 1"
+              @click="showMedia(activeMediaIndex + 1)"
+            >
+              <AimaIcon
+                name="chevron-right"
+                :size="20"
+              />
+            </button>
+          </template>
         </div>
       </section>
       <section class="content-info">
@@ -254,10 +372,39 @@ function commentCoverageLabel(value: string): string {
           <div><dt>平台</dt><dd>{{ platformLabel(item.platform) }}</dd></div>
           <div><dt>作者</dt><dd>{{ item.author_display_name || '未知作者' }}</dd></div>
           <div><dt>发布时间</dt><dd>{{ formatDateTime(item.published_at) }}</dd></div>
+          <div><dt>品牌</dt><dd>{{ (item.brands ?? []).map(brand => `${brand.display_name}（${brandRoleLabel(brand.role)}）`).join('、') || '未识别' }}</dd></div>
           <div><dt>车型</dt><dd>{{ (item.vehicles ?? []).map(vehicle => vehicle.display_name).join('、') || '未识别' }}</dd></div>
+          <div><dt>竞争范围</dt><dd>{{ competitionScopeLabel(item.competition_scope) }}</dd></div>
           <div><dt>AI 分析</dt><dd>{{ item.analysis.relevance === 'relevant' ? '相关' : item.analysis.relevance === 'irrelevant' ? '不相关' : '未判定' }} · {{ item.analysis.sentiment || '未判定' }} · {{ item.analysis.voice_type || '未判定' }}</dd></div>
           <div><dt>标签</dt><dd>{{ (item.analysis.labels ?? []).map(labelPairText).join('、') || '暂无 AI 标签' }}</dd></div>
         </dl>
+      </section>
+      <section class="classification-evidence">
+        <h4>品牌与车型识别</h4>
+        <div class="evidence-columns">
+          <div>
+            <strong>品牌识别证据</strong><article
+              v-for="brand in item.brands ?? []"
+              :key="brand.id"
+            >
+              <b>{{ brand.display_name }} · {{ brandRoleLabel(brand.role) }}</b><span
+                v-for="(evidence, index) in brand.evidences"
+                :key="`${brand.id}:${index}`"
+              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+            </article><small v-if="!(item.brands ?? []).length">暂无品牌证据</small>
+          </div>
+          <div>
+            <strong>车型识别证据</strong><article
+              v-for="vehicle in item.vehicles ?? []"
+              :key="vehicle.vehicle_model_id"
+            >
+              <b>{{ vehicle.display_name }}<template v-if="vehicle.brand"> · 所属 {{ vehicle.brand.display_name }}</template></b><span
+                v-for="(evidence, index) in vehicle.evidences"
+                :key="`${vehicle.vehicle_model_id}:${index}`"
+              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+            </article><small v-if="!item.vehicles?.length">暂无车型证据</small>
+          </div>
+        </div>
       </section>
       <section class="metrics-section">
         <div class="metric-grid">
@@ -363,7 +510,7 @@ function commentCoverageLabel(value: string): string {
         class="manual-review"
       >
         <header class="section-heading">
-          <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析原则。</small></div>
+          <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析规则。</small></div>
           <span v-if="lockedDimensions.length">锁定 {{ lockedDimensions.join('、') }}</span>
         </header>
         <p
@@ -458,8 +605,25 @@ function commentCoverageLabel(value: string): string {
         </template>
       </section>
 
+      <ContentCommentSection
+        :roots="commentRoots"
+        :replies="commentReplies"
+        :reply-states="commentReplyStates"
+        :loading="commentsLoading"
+        :loading-next="commentsLoadingNext"
+        :error="commentsError"
+        :has-more="commentsHasMore"
+        :root-total-count="commentsTotalCount"
+        :ingested-total-count="commentsIngestedTotalCount"
+        :provider-total-count="item.comment_coverage?.reported_total ?? item.metrics.comment_count"
+        :coverage="item.comment_coverage?.coverage"
+        @retry="emit('retry-comments')"
+        @load-more-roots="emit('load-more-comments')"
+        @load-replies="(rootCommentId, reset) => emit('load-comment-replies', rootCommentId, reset)"
+      />
+
       <details class="additional-details">
-        <summary>更多信息与评论</summary>
+        <summary>更多信息</summary>
         <section>
           <h4>内容可用状态</h4><p>{{ contentTypeLabel(item.content_type) }} · {{ sourceLabel(item.source.provider_name) }}</p>
           <p v-if="item.availability">
@@ -503,6 +667,21 @@ function commentCoverageLabel(value: string): string {
               </span>
             </div>
             <div
+              v-if="(item.brands ?? []).some((brand) => brand.evidences.length)"
+              class="technical-list"
+            >
+              <strong>品牌证据追溯</strong>
+              <template
+                v-for="brand in item.brands ?? []"
+                :key="brand.id"
+              >
+                <span
+                  v-for="(evidence, index) in brand.evidences"
+                  :key="`${brand.id}:${index}`"
+                >{{ brand.display_name }} · {{ evidence.source }} · catalog v{{ evidence.catalog_version }}<template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+              </template>
+            </div>
+            <div
               v-if="(item.vehicles ?? []).some((vehicle) => vehicle.evidences.length)"
               class="technical-list"
             >
@@ -518,37 +697,6 @@ function commentCoverageLabel(value: string): string {
               </template>
             </div>
           </details>
-        </section>
-
-
-
-        <section>
-          <h4>评论与覆盖</h4>
-          <p
-            v-if="item.comment_coverage"
-            class="coverage"
-          >
-            已采集 {{ formatNumber(item.comment_coverage.collected_count) }} / {{ formatNumber(item.comment_coverage.reported_total) }}，覆盖状态：{{ commentCoverageLabel(item.comment_coverage.coverage) }}
-          </p>
-          <div
-            v-if="(item.comments ?? []).length"
-            class="comments"
-          >
-            <article
-              v-for="comment in item.comments ?? []"
-              :key="comment.id"
-            >
-              <strong>{{ comment.author_display_name || '匿名用户' }}</strong>
-              <time>{{ formatDateTime(comment.published_at) }}</time>
-              <p>{{ comment.text || '无评论正文' }}</p>
-            </article>
-          </div>
-          <p
-            v-else
-            class="empty"
-          >
-            暂无已入库评论。
-          </p>
         </section>
       </details>
     </div>
@@ -603,6 +751,7 @@ h4 { margin: 0 0 9px; color: var(--aima-text); font-size: 13px; line-height: 18p
 .evidence-list article { display: grid; gap: 3px; padding: 7px 9px; border-radius: 5px; background: #f7f8fa; }
 .evidence-list strong { color: var(--aima-text); font-size: 10px; }
 .evidence-list span { color: var(--aima-text-muted); font-size: 9px; }
+.evidence-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.evidence-columns > div { display: grid; align-content: start; gap: 6px; padding: 10px; border: 1px solid var(--aima-border); border-radius: 7px; }.evidence-columns strong { color: var(--aima-text); font-size: 12px; }.evidence-columns article { display: grid; gap: 3px; padding: 7px; border-radius: 5px; background: var(--aima-color-bg-hover); }.evidence-columns b { color: var(--aima-text); font-size: 11px; }.evidence-columns span,.evidence-columns small { color: var(--aima-text-muted); font-size: 10px; }
 .unlock-confirm { display: flex; align-items: flex-start; gap: 6px; color: var(--aima-danger); font-size: 10px; line-height: 15px; }
 .unlock-confirm input { margin: 1px 0 0; accent-color: var(--aima-primary); }
 .review-actions { display: flex; justify-content: flex-end; gap: 8px; }

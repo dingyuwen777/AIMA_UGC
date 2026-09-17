@@ -214,7 +214,7 @@ def test_scheduled_occurrence_and_run_share_one_job_and_plan_snapshot(
                 job_id=job.id,
                 trigger_type="scheduled",
                 config_snapshot={
-                    "schema_version": "collection-run-config.v1",
+                    "schema_version": "collection-run-config.v2",
                     "plan_id": str(plan.id),
                     "schedule_version": plan.schedule_version,
                 },
@@ -248,7 +248,7 @@ def test_manual_run_can_reference_plan_without_occurrence(
             execution = execution_service.create_run(
                 job_id=job.id,
                 trigger_type="manual",
-                config_snapshot={"schema_version": "collection-run-config.v1"},
+                config_snapshot={"schema_version": "collection-run-config.v2"},
                 scopes=(),
                 manual_plan_id=plan.id,
             )
@@ -306,7 +306,7 @@ def test_deferred_constraint_rejects_occurrence_and_run_job_mismatch(
             execution_service.create_run(
                 job_id=run_job.id,
                 trigger_type="scheduled",
-                config_snapshot={"schema_version": "collection-run-config.v1"},
+                config_snapshot={"schema_version": "collection-run-config.v2"},
                 scopes=(),
                 occurrence_id=occurrence.id,
             )
@@ -337,7 +337,7 @@ def test_deferred_constraint_rejects_run_for_skipped_occurrence(
             execution_service.create_run(
                 job_id=job.id,
                 trigger_type="scheduled",
-                config_snapshot={"schema_version": "collection-run-config.v1"},
+                config_snapshot={"schema_version": "collection-run-config.v2"},
                 scopes=(),
                 occurrence_id=occurrence.id,
             )

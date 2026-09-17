@@ -27,10 +27,10 @@ from aima_ugc.modules.reporting.column_catalog import (
 from pydantic import ValidationError
 
 
-def test_legacy_vehicle_scope_requires_keyword_search_terms() -> None:
-    """兼容车型范围仍可提交，但 Discovery Search Terms 必须来自 Keyword Pack。"""
+def test_collection_plan_accepts_brand_scope_and_rejects_removed_vehicle_scope() -> None:
+    """计划只保留 Brand 范围，已删除的车型字段必须关闭失败。"""
 
-    vehicle_id = uuid4()
+    brand_id = uuid4()
     keyword_pack_id = uuid4()
     request = CollectionPlanCreateRequest(
         name="Q7 监测",
@@ -43,27 +43,33 @@ def test_legacy_vehicle_scope_requires_keyword_search_terms() -> None:
             }
         ],
         keyword_pack_ids=[keyword_pack_id],
-        vehicle_model_ids=[vehicle_id],
+        brand_ids=[brand_id],
     )
 
     assert request.keyword_pack_ids == (keyword_pack_id,)
-    assert request.vehicle_model_ids == (vehicle_id,)
+    assert request.brand_ids == (brand_id,)
+
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        CollectionPlanCreateRequest.model_validate(
+            {
+                **request.model_dump(mode="json"),
+                "vehicle_model_ids": [str(uuid4())],
+            }
+        )
 
 
 def test_vehicle_model_contract_normalizes_aliases_and_rejects_duplicates() -> None:
     """车型别名以规范化身份去重，不能在同车型下重复。"""
 
     model = VehicleModelCreateRequest(
-        code=" q7 ",
         display_name=" 爱玛 Q7 ",
         aliases=["Q7", "爱玛Q7"],
     )
-    assert model.code == "Q7"
     assert model.display_name == "爱玛 Q7"
+    assert model.aliases == ("Q7", "爱玛Q7")
 
     with pytest.raises(ValidationError):
         VehicleModelCreateRequest(
-            code="Q7",
             display_name="爱玛 Q7",
             aliases=["Q7", " q7 "],
         )

@@ -31,9 +31,9 @@ _NOTIFICATION_TABLES = {"notification_events", "notification_inbox_items"}
 _VEHICLE_TABLES = {
     "content_brand_evidence",
     "content_brand_review_locks",
+    "content_reclassification_runs",
     "content_vehicle_evidence",
     "content_vehicle_review_locks",
-    "keyword_pack_vehicle_models",
     "vehicle_catalog_versions",
     "vehicle_model_aliases",
     "vehicle_models",

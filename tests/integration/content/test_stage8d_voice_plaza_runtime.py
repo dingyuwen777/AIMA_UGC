@@ -115,21 +115,6 @@ def _seed_import(
     workbook: bytes | None = None,
 ) -> str:  # type: ignore[no-untyped-def]
     """通过正式导入入口建立列表测试来源。"""
-    pack = client.post(
-        "/api/v1/keyword-packs",
-        json={"name": f"Stage8D 相关性 {uuid4()}"},
-    )
-    assert pack.status_code == 201
-    keyword = client.post(
-        f"/api/v1/keyword-packs/{pack.json()['id']}/keywords",
-        json={"text": "爱玛", "priority": 10},
-    )
-    assert keyword.status_code == 201
-    configured = client.put(
-        "/api/v1/relevance-config",
-        json={"keyword_pack_id": pack.json()["id"]},
-    )
-    assert configured.status_code == 200
     brand_id = _stage3_filter_brand_id(runtime, alias="爱玛")
     uploaded = client.post(
         "/api/v1/import-batches",

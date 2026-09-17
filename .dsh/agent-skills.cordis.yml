@@ -1,0 +1,13 @@
+# agent-skills:deepseek-harness:start
+- insert:
+    - id: mcp-agent-skills
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: agent-skills
+        transport: stdio
+        command: .agents/runtime/agent-skills.exe
+        args:
+          - serve
+        cwd: !!js process.cwd()
+        failOnStartupError: true
+# agent-skills:deepseek-harness:end

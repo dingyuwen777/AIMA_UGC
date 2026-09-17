@@ -226,6 +226,8 @@ Fixture：
 - [`tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json)
 - [`tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json)
 
+图文详情的多张图片按 `images_list` 数组顺序映射为唯一媒体位置。Provider 返回的 `images_list[].index` 可能重复为 `0`，不能直接作为 `content_media` 的 `position`。
+
 Search Mapper 和账号笔记 Mapper 都复用同一 Canonical Content Mapper；进入后续处理后由内容类型选择正确 Detail Operation。
 
 ## 8. 评论能力

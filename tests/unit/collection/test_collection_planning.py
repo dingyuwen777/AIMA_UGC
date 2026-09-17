@@ -34,7 +34,6 @@ def _definition(
     platforms: tuple[PlanPlatformDefinition, ...] | None = None,
     keyword_pack_ids: tuple[UUID, ...] | None = None,
     brand_ids: tuple[UUID, ...] = (),
-    vehicle_model_ids: tuple[UUID, ...] = (),
 ) -> CollectionPlanDefinition:
     """构造采集计划定义；显式空集合必须保留给校验逻辑，而不能回退默认值。"""
     provider_config_id = uuid4()
@@ -62,7 +61,6 @@ def _definition(
         ),
         keyword_pack_ids=(uuid4(),) if keyword_pack_ids is None else keyword_pack_ids,
         brand_ids=brand_ids,
-        vehicle_model_ids=vehicle_model_ids,
     )
 
 
@@ -120,13 +118,6 @@ def test_service_rejects_duplicate_brand_identity() -> None:
         )
 
 
-def test_definition_rejects_brand_and_legacy_vehicle_scope_together() -> None:
-    """Domain 不能依赖 HTTP Contract 才维持范围互斥。"""
-
-    with pytest.raises(ValueError, match="不能同时存在"):
-        _definition(brand_ids=(uuid4(),), vehicle_model_ids=(uuid4(),))
-
-
 @pytest.mark.parametrize("secret_key", ("access-token", "refresh_token"))
 def test_plan_platform_config_rejects_secret_shaped_keys_recursively(secret_key: str) -> None:
     """计划快照不得把任何常见 Secret 形态持久化到嵌套平台配置。"""
@@ -144,8 +135,6 @@ def test_definition_rejects_empty_execution_surface() -> None:
         _definition(platforms=())
     with pytest.raises(ValueError, match="Keyword Pack"):
         _definition(keyword_pack_ids=())
-    with pytest.raises(ValueError, match="Keyword Pack"):
-        _definition(keyword_pack_ids=(), vehicle_model_ids=(uuid4(),))
 
 
 def test_definition_rejects_invalid_stable_numeric_and_text_fields() -> None:

@@ -213,7 +213,7 @@ batch_supplement
 
 补采请求必须且只能提交 `data_import_campaign_id` 或 `import_batch_id` 之一。新页面优先使用 Campaign；旧 Batch 字段继续保持兼容。
 
-Discovery 必须提交至少一个 `keyword_pack_ids`；`brand_ids` 为空表示冻结全部 active Brand，非空表示 selected Brand Scope。兼容期仍接收 `vehicle_model_ids`，但它只转换为对应 Brand Scope，不能替代 Keyword Pack，也不能与 `brand_ids` 同时提交。实际 Scope 数量只由平台和去重后的 Search Terms 决定，不按 Vehicle Alias 扩展。
+Discovery 必须提交至少一个 `keyword_pack_ids`；`brand_ids` 为空表示冻结全部 active Brand，非空表示 selected Brand Scope。Collection 创建接口不再接收 `vehicle_model_ids`；车型通过所选 Brand 对应的 active Vehicle 与 Alias 进入冻结 Filter Snapshot。实际 Scope 数量只由平台和去重后的 Search Terms 决定，不按 Vehicle Alias 扩展。
 
 HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Worker 完成。
 
@@ -322,7 +322,7 @@ POST /api/v1/data-import-campaigns/{campaign_id}/retry-failed
 ```text
 ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
-ingestion.historical-import-chunk.v1
+ingestion.historical-import-chunk.v2
 ```
 
 物理名称沿用 `historical_*` 是兼容选择，不代表当前页面存在第二套“历史导入”业务入口。
@@ -349,7 +349,7 @@ backend/src/aima_ugc/modules/ingestion/
 
 ## 6.1 `POST /api/v1/import-batches`
 
-接受一个 multipart `.xlsx` 和可选的重复字段 `brand_ids`；最多 100 个且不得重复，空集合表示在创建时冻结全部 active Brand。服务保存 Input Artifact，冻结 `BrandVehicleFilterSnapshot`，创建 `processing_import_batches + ingestion.import-excel.v2 Job`，真正处理由 Worker 完成。Excel Search 明确不适用，`keyword_pack_ids`、`vehicle_model_ids` 和其它未声明字段会被拒绝。`ingestion.import-excel.v1` 仅继续解释升级前已经 queued/running 的旧任务。
+接受一个 multipart `.xlsx` 和可选的重复字段 `brand_ids`；最多 100 个且不得重复，空集合表示在创建时冻结全部 active Brand。服务保存 Input Artifact，冻结 `BrandVehicleFilterSnapshot`，创建 `processing_import_batches + ingestion.import-excel.v2 Job`，真正处理由 Worker 完成。Excel Search 明确不适用，`keyword_pack_ids`、`vehicle_model_ids` 和其它未声明字段会被拒绝；旧 v1 Job 不再注册。
 
 ## 6.2 查询
 
@@ -384,6 +384,33 @@ POST /api/v1/historical-import-campaigns/{campaign_id}/retry-failed
 
 精确 Method、Schema、operationId 和当前是否存在始终以 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
 
+## 6.5 Persistent Canonical Replay
+
+```text
+POST /api/v1/canonical-replays
+GET  /api/v1/canonical-replays/{run_id}
+POST /api/v1/canonical-replays/{run_id}/cancel
+```
+
+三个接口都要求后端确认管理员角色。创建请求提交客户端幂等键、1—100 个已知 Canonical
+Artifact ID、可选 Brand ID 和有界批大小；空 Brand 集合表示冻结创建时全部 active Brand。
+服务只接受可证明属于当前 Excel Import v2、Data Import Pure Canonical Chunk v2 或 TikHub
+Discovery Search Attempt 的 linked Artifact，并在同一 PostgreSQL 事务创建 Replay Run 与
+`ingestion.canonical-replay.v1` Job。API 返回 202，Worker 才执行全输入预检、当前
+Brand/Vehicle Resolver/Filter、持久去重与 Content Owner 收敛。
+
+查询响应包含冻结目录版本、Artifact 顺序、checkpoint、Job 状态与
+`rows_seen / rows_matched / rows_filtered_out / duplicates_removed / rows_ingested /
+existing_convergence / invalid_artifact_rows` 统计。精确字段、状态和错误仍以生成 OpenAPI 为准，
+文档不复制完整 Schema。取消沿用统一 Job 协作取消语义。当前入口是正式管理员 API，尚无前端
+页面；它不会调用 Provider，也不会自动创建 AI 任务或因新规则变窄而删除既有 Content。
+
+实现：
+
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_worker.py)
+- [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py)
+
 ---
 
 # 7. Content / 声音广场 API
@@ -413,6 +440,11 @@ frontend/src/features/voice-plaza/
 - 最新人工相关性事件形成的 `effective_relevance / relevance_source`；
 - 来源链；
 - 作者和 Current Metrics。
+- 当前 Content Version 的有效 Brand/Vehicle Evidence。
+
+列表项中的 `brands[]` 提供 Brand 稳定引用、角色和可审计 Evidence；`vehicles[]` 按合并后的有效车型展示，并嵌套其当前目录 Brand（旧数据允许为 `null`）。`competition_scope` 由 `brands[].role` 派生，取值为 `owned_only / competitor_only / mixed / other_only / none_detected`，不是独立持久字段。
+
+`brand_ids`、`vehicle_model_ids`、`competition_scopes` 可组合筛选：不同维度按 AND，同一维度多个值按 OR。筛选快照同时绑定 Cursor，并被 List、Count、Analysis query target 和 Export query target 共用；调用方切换筛选后必须从第一页开始。
 
 默认列表按**有效相关性**排除当前仍为 irrelevant 的内容；没有 current Analysis 的 Content 仍可显示。
 
@@ -430,7 +462,21 @@ AI 原判仍在 `analysis_content_results.relevance`，没有复制为 `contents
 
 读取详情，包括 media、comments、coverage、source_records 等审计/展示数据。单条详情不会因为 AI irrelevant 物理删除或隐藏 Content 业务事实。
 
-## 7.3 `POST /api/v1/content-relevance-reviews`
+详情内嵌的 `comments` 继续保留，用于兼容已有调用；它最多返回 100 条，不能作为完整评论浏览接口。
+
+## 7.3 `GET /api/v1/contents/{content_id}/comments`
+
+声音广场评论区使用的 PostgreSQL 分页 Read Model：
+
+- 不传 `root_comment_id` 时读取一级评论，按发布时间倒序、Comment UUID 倒序稳定续页；
+- 传 `root_comment_id` 时读取该一级评论线程下的回复，按发布时间正序、Comment UUID 正序稳定续页；
+- `root_comment_id`、`parent_comment_id` 和 `parent_author_display_name` 用于表达线程归属和“回复谁”，前端不得从正文或当前页位置猜测父子关系；
+- `ingested_reply_count` 是数据库中该线程当前已有的回复数；`total_count` 是当前分页范围总数，`ingested_total_count` 是该内容全部已采集评论数；
+- Cursor 与 Content、根评论条件和固定排序绑定，不能跨内容或跨线程复用。
+
+接口只读取已经通过正式采集/补采链路写入 PostgreSQL 的评论，不读取 `imports_test`、staging 或 JSONL 调试产物。声音广场分别显示平台报告数、已采集数和当前已显示数，避免把分页未加载误写成补采缺失。
+
+## 7.4 `POST /api/v1/content-relevance-reviews`
 
 对当前 Content Version 追加人工相关性决定：
 
@@ -442,7 +488,7 @@ inherit_ai
 
 模型原始 Result 不 UPDATE/DELETE；人工决定写入 `analysis_content_relevance_reviews`。批量请求先校验/锁定全部目标，任一目标不可操作时整批失败；已有人工覆盖要切到相反结论必须先撤销。精确 Contract 看 [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)。
 
-## 7.4 内容人工覆盖、Count、可用状态与通知
+## 7.5 内容人工覆盖、Count、可用状态与通知
 
 ```text
 POST /api/v1/contents/count
@@ -560,6 +606,8 @@ backend/src/aima_ugc/modules/reporting/
 reporting.content-export-excel.v1
 ```
 
+Export Column Catalog v2 增加可选的“品牌、品牌角色、竞品范围、车型”列。Brand/Vehicle Evidence 按冻结的 `content_version` 投影，竞品范围由冻结版本的 Brand Role 派生；这些列默认不选，不改变既有默认导出表头。
+
 ## 9.2 查询/下载
 
 ```text
@@ -574,7 +622,7 @@ GET /api/v1/data-exports/{export_id}/download
 
 ---
 
-# 10. Keyword Pack / legacy Relevance API
+# 10. Keyword Pack API
 
 当前 Route：
 
@@ -584,11 +632,9 @@ GET  /api/v1/keyword-packs
 POST /api/v1/keyword-packs/{pack_id}/keywords
 GET  /api/v1/keyword-packs/{pack_id}
 PUT  /api/v1/keyword-packs/{pack_id}/enabled
-PUT  /api/v1/relevance-config
-GET  /api/v1/relevance-config
 ```
 
-Keyword Pack 是 TikHub Discovery 的 Search Terms 来源。新建 Discovery Run 使用 `collection-run-config.v2`，分别冻结 Search Snapshot 与 Brand/Vehicle Filter Snapshot，不再读取 `global_relevance_config`。`/api/v1/relevance-config` 在 Roadmap 清理阶段前继续保留，供旧配置管理和升级前 `collection-run-config.v1` 任务解释；它不是新任务的入库过滤器。正式 Excel/Data Import Campaign 不执行 Search，也不接收 Keyword Pack，只冻结 Brand/Vehicle Filter Snapshot。AI/人工 Relevance 继续属于 Analysis 与查询语义。
+Keyword Pack 是 TikHub Discovery 的 Search Terms 来源。Discovery Run 使用 `collection-run-config.v2`，分别冻结 Search Snapshot 与 Brand/Vehicle Filter Snapshot；旧 Global Keyword Relevance 配置、`/api/v1/relevance-config` 和 v1 Run Contract 已删除。正式 Excel/Data Import Campaign 不执行 Search，也不接收 Keyword Pack，只冻结 Brand/Vehicle Filter Snapshot。AI/人工 Relevance 继续属于 Analysis 与查询语义。
 
 ---
 
@@ -616,7 +662,7 @@ misfire_policy = latest_only
 max_catch_up_runs = 0
 ```
 
-Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围；Plan 中空 `brand_ids` 表示 all-active。兼容 `vehicle_model_ids` 会在创建 Run 时转换为所属 Brand Scope，不能和 `brand_ids` 同时提交，也不能单独形成 Discovery Search。Plan Response 保留提交的 `brand_ids`；Run Response 返回任务创建时实际冻结的 Brand UUID，因而 all-active Run 也能显示当时纳入的具体 Brand。前端生成类型以当前 OpenAPI 为准。
+Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围；Plan 中空 `brand_ids` 表示 all-active。Plan/Run 不再接收 Discovery `vehicle_model_ids`。Plan Response 保留提交的 `brand_ids`；Run Response 返回任务创建时实际冻结的 Brand UUID，因而 all-active Run 也能显示当时纳入的具体 Brand。前端生成类型以当前 OpenAPI 为准。
 
 完整 Scheduler 语义：[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)。
 
@@ -630,7 +676,6 @@ GET    /api/v1/vehicle-models/{vehicle_model_id}
 PUT    /api/v1/vehicle-models/{vehicle_model_id}
 DELETE /api/v1/vehicle-models/{vehicle_model_id}
 POST   /api/v1/vehicle-models/{vehicle_model_id}/merge
-PUT    /api/v1/keyword-packs/{pack_id}/vehicle-models
 GET    /api/v1/analysis-schemes
 POST   /api/v1/analysis-schemes
 PUT    /api/v1/analysis-scheme-versions/{version_id}
@@ -640,7 +685,7 @@ GET    /api/v1/audit-events
 GET    /api/v1/export-columns
 ```
 
-Provider-neutral Principal 只允许 `administrator/user`。车型、词包等只读目录可供普通业务页面消费；车型修改/合并/删除、词包写入、全局相关性、采集计划写入、Scheme 管理和审计查询均由后端管理员守卫保护。第一版不强制双人审批，但配置修改、发布和回滚必须记录审计。完整字段以 [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py) 和当前 OpenAPI 为准。
+Provider-neutral Principal 只允许 `administrator/user`。车型、词包等只读目录可供普通业务页面消费；车型修改/合并/删除、词包写入、采集计划写入、Scheme 管理和审计查询均由后端管理员守卫保护。第一版不强制双人审批，但配置修改、发布和回滚必须记录审计。完整字段以 [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py) 和当前 OpenAPI 为准。
 
 ---
 
@@ -682,7 +727,7 @@ Data Import 目录/Campaign 的分页/游标以其当前 Pydantic Contract 和 `
 → import-batches 兼容运行事实
 
 /collection-strategy
-→ keyword-packs / relevance-config / collection-plans
+→ keyword-packs / collection-plans
 
 /voice-plaza
 → contents / content-relevance-reviews
@@ -691,7 +736,7 @@ Data Import 目录/Campaign 的分页/游标以其当前 Pydantic Contract 和 `
 → data-exports
 
 /admin/configuration
-→ principal / vehicle-models / keyword-pack vehicle links
+→ principal / brands / vehicle-models
 → analysis-schemes / audit-events
 ```
 

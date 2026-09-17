@@ -114,6 +114,7 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     assert (
         "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
     )
+    assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 
     assert (
         "      - name: Install report validation CJK font\n"
@@ -170,9 +171,13 @@ def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
         "      - .github/workflows/release.yml\n"
         "      - Dockerfile\n"
         "      - compose.yaml\n"
+        "      - compose.windows.yaml\n"
         "      - env.production.example\n"
+        "      - scripts/release/release_bundle.py\n"
+        "      - scripts/release/build_local_release.ps1\n"
         "      - tests/unit/test_docker_build_sources.py\n"
-        "      - tests/unit/test_release_workflow.py\n" in trigger_block
+        "      - tests/unit/test_release_workflow.py\n"
+        "      - tests/unit/test_release_bundle.py\n" in trigger_block
     )
     for retired_path in (
         "docs/02_环境运行与部署.md",

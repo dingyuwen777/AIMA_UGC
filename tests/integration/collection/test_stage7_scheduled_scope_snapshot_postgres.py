@@ -10,9 +10,6 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
 from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatalogRepository
-from aima_ugc.adapters.persistence.postgres.relevance import (
-    PostgresGlobalRelevanceRepository,
-)
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
 from aima_ugc.modules.collection.corrective_tables import (
@@ -34,7 +31,6 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.system.models import Keyword, KeywordPack, KeywordPackItem, ProviderConfig
 from aima_ugc.modules.system.tables import (
-    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
@@ -62,7 +58,6 @@ def scheduler_runtime():
             connection.execute(delete(collection_plans_table))
             connection.execute(delete(job_attempt_events_table))
             connection.execute(delete(jobs_table))
-            connection.execute(delete(global_relevance_config_table))
             connection.execute(delete(keyword_pack_items_table))
             connection.execute(delete(keywords_table))
             connection.execute(delete(keyword_packs_table))
@@ -125,7 +120,6 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                     note="xiaohongshu only",
                 )
             )
-            PostgresGlobalRelevanceRepository(session).set(pack.id)
             xiaohongshu_config = provider_repository.create(
                 ProviderConfig(
                     id=uuid4(),

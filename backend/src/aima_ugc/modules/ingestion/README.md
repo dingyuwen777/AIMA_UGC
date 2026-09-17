@@ -49,13 +49,12 @@ ingestion_policy
 两种来源
 → Data Import Campaign
 → Source Artifact + SHA-256
-→ Snapshot / XLSX Preflight
-→ 有界 Chunk Artifact
+→ Snapshot / XLSX Preflight / Reader / Mapper
+→ 有界 Pure Canonical Chunk Artifact
 → 全部预检成功后 ready
 → 用户显式 start
 → 低优先级、有界 Chunk Job
-→ Excel Reader / Mapper
-→ Canonical
+→ CanonicalArtifactReader 完整性预检
 → 冻结 Brand/Vehicle Filter Snapshot
 → BrandVehicleResolver 过滤
 → Content Owner 按 standard_observation / historical_fill_only 写入
@@ -71,7 +70,6 @@ ingestion_policy
 当前领域实现：
 
 - [`backend/src/aima_ugc/modules/ingestion/historical_directory.py`](historical_directory.py)
-- [`backend/src/aima_ugc/modules/ingestion/historical_chunk.py`](historical_chunk.py)
 - [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](historical_http.py)
 - [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py)
 - [`backend/src/aima_ugc/modules/ingestion/historical_tables.py`](historical_tables.py)
@@ -109,7 +107,7 @@ ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
 → Source Artifact、SHA-256、XLSX 预检和有界 Chunk 冻结
 
-ingestion.historical-import-chunk.v1
+ingestion.historical-import-chunk.v2
 → 真正执行一个冻结 Chunk 的业务导入并提交逐行结果
 ```
 
@@ -234,15 +232,17 @@ Campaign 在业务写入前先冻结输入：
 Source Item
 → 原文件 Artifact
 → SHA-256
-→ XLSX 安全/结构预检
-→ 有界 Chunk Artifact
+→ XLSX 安全/结构预检 + Reader / Mapper
+→ 有界 Pure Canonical Chunk Artifact
 ```
 
 关键不变量：
 
-- 后续业务导入只读冻结 Artifact/Chunk，不继续依赖原服务器文件或浏览器选择；
+- 后续业务导入只读共享 Reader 完整预检后的冻结 Pure Canonical Artifact，不继续依赖原服务器文件或浏览器选择；
 - Source Item 与 Artifact `linked` 关系按当前事务边界提交；
-- 未被 Campaign Item 引用的 Source/Chunk Artifact 才进入当前孤儿生命周期清理；已引用快照不能被普通孤儿规则删除；
+- 每个 Chunk Item 通过唯一关系绑定一件 linked Canonical Artifact；Snapshot 技术重试恢复并核对同一 Artifact，不制造平行 linked 副本；
+- Mapper invalid 不写入 Canonical，在消费前以 Chunk Item 最小行事实保存，消费后进入既有逐行终态账本；
+- 未被真实父事实引用的 Source/Canonical Artifact 才进入当前孤儿生命周期清理；已引用快照不能被普通孤儿规则删除；
 - 全部预检完成并满足状态门禁后 Campaign 才进入 `ready`，页面才能 start；
 - 不把整个工作簿、全部 Canonical 或全部身份集合一次性放进 Python 内存。
 
@@ -333,13 +333,14 @@ failed
 
 ## 8. Brand/Vehicle Filter 在统一导入链哪里发生
 
-正式 Excel/Data Import 在 Mapper 后使用同一个 Stage 2 `BrandVehicleResolver` 做确定性品牌车型过滤，不使用 Keyword Pack，也不是 AI Semantic Relevance。
+正式 Excel/Data Import 在 Mapper 后先持久化 Pure Canonical Artifact，再使用同一个 Stage 2 `BrandVehicleResolver` 做确定性品牌车型过滤；不使用 Keyword Pack，也不是 AI Semantic Relevance。
 
 主链：
 
 ```text
 Excel Mapper
-→ Canonical
+→ linked Pure Canonical Artifact
+→ CanonicalArtifactReader 完整性预检
 → Campaign/Batch 冻结 BrandVehicleFilterSnapshot
 → Brand/Vehicle Alias 解析
 → 命中所选 Brand，或命中归属于所选 Brand 的 Vehicle
@@ -355,7 +356,7 @@ vehicle_models / vehicle_model_aliases
 Vehicle → Brand 归属
 ```
 
-创建时提交 `brand_ids`；空集合表示冻结全部 active Brand。Worker 不在执行中途读取变化后的实时目录，过滤和 Evidence 写入都使用同一冻结 Snapshot。升级前的 legacy Campaign/Job 继续按旧 Snapshot 与旧行格式执行。
+创建时提交 `brand_ids`；空集合表示冻结全部 active Brand。Worker 不在执行中途读取变化后的实时目录，过滤和 Evidence 写入都使用同一冻结 Snapshot。单文件 Batch 和 Campaign Chunk Item 各自只允许绑定一件 Canonical Artifact；Job 重试先恢复并完整校验已有 Artifact。Campaign Chunk Job 只接受 `ingestion.historical-import-chunk.v2` 与当前 Pure Canonical 格式；旧 outcome Chunk / v1 Payload 不保留兼容，Migration 发现仍活跃或可重试存量时失败关闭。
 
 AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动创建 AI Job。
 
@@ -376,6 +377,41 @@ AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动
 
 原 Campaign、Source/Chunk Artifact、逐行 outcome、Raw、旧 Content Version 和审计继续保留；同一 Campaign 重复撤销幂等。`standard_observation` 与 `historical_fill_only` 都在各自业务写事务中记录 Contribution，因此机制上线后的新导入进入同一可撤销模型。
 
+### 8.2 Persistent Canonical Replay 怎样补入新命中内容
+
+Replay 用于 Brand、Vehicle、Alias 或确定性 Resolver 扩展后重筛以前已经成功归一化、但当时
+未命中的数据。它不重新读取原 Excel，不重新请求 TikHub，也不是第二套 Content Writer：
+
+```text
+POST /api/v1/canonical-replays
+→ 冻结所选 Artifact 顺序与当前 BrandVehicleFilterSnapshot
+→ canonical_replay_runs + ingestion.canonical-replay.v1
+→ 全部 Artifact 的 metadata/SHA-256/byte size/gzip/JSON/Contract/来源预检
+→ CanonicalArtifactReader
+→ 当前 BrandVehicleResolver / Filter
+→ Run 内持久 identity 去重
+→ ContentIngestionService / Content Owner
+→ Brand/Vehicle Evidence + checkpoint + 对账统计
+```
+
+只有当前三种 lineage 可以创建任务：兼容单文件 `ingestion.import-excel.v2`、Data Import
+`ingestion.historical-import-chunk.v2` 的 Pure Canonical Chunk、TikHub Discovery Search
+Attempt。Scope-only 或其它无法证明的旧关系失败关闭；当前没有 legacy 转换分支。API 的空
+`brand_ids` 表示冻结当时全部 active Brand，非空集合表示只冻结明确选择的 active Brand。
+
+Worker 在第一次写 Content 前预检**全部**所选 Artifact，而不只是第一个；预检因此会额外完整
+打开一次输入集，容量规划必须把这部分 Artifact I/O 算入。业务阶段每件 Artifact 只打开一次并
+连续流式取批，按 `batch_size` 在当前 Fencing Token 下原子写 Content/Evidence、Run 内去重身份、
+checkpoint 与统计，不会每批从第 0 行重读。接管时只对当前 Artifact 从头线性跳过已提交行；未
+提交事务不会留下去重身份或统计。重复 Replay 不产生
+第二条 Content：同一 Run 的重复输入计入 `duplicates_removed`，数据库已有 Content 计入
+`existing_convergence`，新建 Content 计入 `rows_ingested`。
+
+当前正式入口只有管理员 API 的创建、查询和取消；尚无前端页面。Replay 不自动创建 Analysis
+Job，也不会在规则变窄时删除、隐藏或撤销以前已进入业务库的 Content。Replay 只把冻结
+Snapshot 新命中的 Brand/Vehicle Evidence 追加或幂等恢复到当前 Content Version；不会像普通
+新 Observation 的完整重分类那样停用 selected 范围外的既有自动证据，人工锁仍优先。
+
 ---
 
 ## 9. 兼容单文件 Import：`/api/v1/import-batches`
@@ -392,7 +428,8 @@ POST /api/v1/import-batches
 → ingestion.import-excel.v2
 → Worker
 → Excel Reader / Mapper
-→ Canonical
+→ linked Persistent Canonical Artifact
+→ CanonicalArtifactReader 完整性预检
 → 冻结 Brand/Vehicle Filter
 → Brand/Vehicle Evidence
 → ContentIngestionService
@@ -409,7 +446,12 @@ Job 领域入口：
 
 - [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py)
 
-`BrandVehicleFilterSnapshot` 冻结目录版本、所选 Brand、Vehicle 归属和 Alias。当前新任务使用 `ingestion.import-excel.v2` 与 `filter_snapshot`；Worker 校验 Batch `stats.filter_snapshot` 与 Job Payload 一致，不一致时关闭失败。`ingestion.import-excel.v1` 与 `ImportKeywordSelectionSnapshot` 只保留用于解释升级前已经 queued/running 的旧任务。
+`BrandVehicleFilterSnapshot` 冻结目录版本、所选 Brand、Vehicle 归属和 Alias。当前单文件任务只使用 `ingestion.import-excel.v2` 与 `filter_snapshot`；Worker 校验 Batch `stats.filter_snapshot` 与 Job Payload 一致，不一致时关闭失败。旧 v1 Payload 与关键词选择快照已退出注册和生产代码。
+
+Mapping 成功后，Worker 用共享 Canonical Writer 把全部合法 Canonical 写入 JSONL.gz，并与
+Processing Import Batch 原子绑定为 `linked`；Filter 只读取共享 Reader 已完成 metadata、
+SHA-256、byte size、gzip、JSON 和当前 Contract 校验的内容。重试先按 Batch 恢复唯一
+Canonical，因此不会重复执行已经成功持久化的 Mapping。
 
 当前兼容 HTTP：
 
@@ -518,8 +560,11 @@ Excel
 | 文件 | 作用 | 常见修改场景 |
 | --- | --- | --- |
 | [`backend/src/aima_ugc/modules/ingestion/tables.py`](tables.py) | 兼容 Import Batch 与 import-parent 关系 | 改 Batch Schema/来源父级约束 |
-| [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v1/v2` Payload/Handler | 改兼容 Import Job 版本与冻结输入语义 |
+| [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v2` Payload/Handler | 改 Import Job 版本与冻结输入语义 |
 | [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](brand_vehicle_filter.py) | Stage 3 Brand/Vehicle Filter Snapshot 与 JSONL 过滤 | 改统一品牌车型过滤语义 |
+| [`backend/src/aima_ugc/modules/ingestion/canonical_replay.py`](canonical_replay.py) | Replay Job/Payload/运行记录边界 | 改 Replay Job 与冻结输入语义 |
+| [`backend/src/aima_ugc/modules/ingestion/canonical_replay_tables.py`](canonical_replay_tables.py) | Replay Run、输入与持久去重表 | 改 Replay Schema/对账约束 |
+| [`backend/src/aima_ugc/modules/ingestion/canonical_replay_http.py`](canonical_replay_http.py) | Replay HTTP Service Port 与领域异常 | 改创建/查询/取消边界 |
 | [`backend/src/aima_ugc/modules/ingestion/http.py`](http.py) | Import Batch HTTP Port/领域异常 | 改兼容入口应用层边界 |
 | [`backend/src/aima_ugc/modules/ingestion/query.py`](query.py) | Import Batch Read Model | 改兼容 Batch 列表/摘要 |
 | [`backend/src/aima_ugc/modules/ingestion/import_batch_cursor.py`](import_batch_cursor.py) | Import Batch Cursor | 改兼容分页安全/过期语义 |
@@ -528,7 +573,8 @@ Excel
 | [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](historical_http.py) | Data Import Campaign HTTP Port/模型边界 | 改统一导入应用接口 |
 | [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py) | Discover/Snapshot/Import-Chunk Job | 改 Campaign Job Payload/Handler |
 | [`backend/src/aima_ugc/modules/ingestion/historical_directory.py`](historical_directory.py) | 批准服务器目录安全访问 | 改目录枚举/路径安全 |
-| [`backend/src/aima_ugc/modules/ingestion/historical_chunk.py`](historical_chunk.py) | Chunk 内部格式/冻结边界 | 改 Chunk 读写/版本 |
+| [`backend/src/aima_ugc/adapters/providers/imports/historical_chunk.py`](../../adapters/providers/imports/historical_chunk.py) | Historical XLSX 到 Pure Canonical Chunk 的有界 Reader/Mapper | 改 Chunk 切分、Canonical 行号或 invalid 最小事实 |
+| [`backend/src/aima_ugc/platform/storage/canonical.py`](../../platform/storage/canonical.py) | 共享 Canonical Artifact Writer/Reader | 改 JSONL.gz、完整性或 Contract 校验边界 |
 
 跨目录生产实现：
 
@@ -536,7 +582,10 @@ Excel
 - [`backend/src/aima_ugc/bootstrap/import_worker.py`](../../bootstrap/import_worker.py)
 - [`backend/src/aima_ugc/bootstrap/historical_import_http.py`](../../bootstrap/historical_import_http.py)
 - [`backend/src/aima_ugc/bootstrap/historical_import_worker.py`](../../bootstrap/historical_import_worker.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../../bootstrap/canonical_replay_http.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../../bootstrap/canonical_replay_worker.py)
 - [`backend/src/aima_ugc/bootstrap/manual_ingestion.py`](../../bootstrap/manual_ingestion.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/canonical_replay.py`](../../adapters/persistence/postgres/canonical_replay.py)
 - [`backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py`](../../adapters/persistence/postgres/historical_import.py)
 - [`backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py`](../../adapters/persistence/postgres/historical_content.py)
 
@@ -645,7 +694,7 @@ SQL：
 - 非 XLSX / 损坏 ZIP / Zip Bomb 关闭失败；
 - Input Artifact + Batch + Job 同事务；
 - Provider Request 父级约束；
-- `keyword_selection` 冻结与多词包 OR；
+- `filter_snapshot` 冻结、Brand Scope 与 Resolver 一致性；
 - Worker retry 不产生第二个业务 Content；
 - Cursor 与查询条件绑定。
 

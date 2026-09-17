@@ -42,6 +42,7 @@ PROVIDER_DOCS = {
 RETIRED_LIVE_DOCS = {
     Path("docs/roadmap/01_内网V1上线实施计划.md"),
     Path("docs/roadmap/04_业务目录内容查询与AI配置中心实施路线.md"),
+    Path("docs/roadmap/05_可重放数据底座与监测重分类实施路线.md"),
     Path("docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md"),
     Path("docs/appendix/11_生产部署与离线Release方案.md"),
     Path("docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md"),

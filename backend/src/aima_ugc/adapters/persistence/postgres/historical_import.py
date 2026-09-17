@@ -486,18 +486,18 @@ class PostgresHistoricalImportRepository:
             )
         return len(rows)
 
-    def create_chunk(
+    def ensure_canonical_chunk(
         self,
         *,
         source_item: RowMapping,
-        artifact_id: UUID,
-        sha256: str,
         ordinal: int,
         row_start: int,
         row_end: int,
         row_count: int,
         stats: dict[str, object],
     ) -> UUID:
+        """先建立稳定 Chunk 父事实，允许 Canonical Writer 随后强外键绑定。"""
+
         existing = (
             self._session.execute(
                 select(historical_import_campaign_items_table).where(
@@ -511,12 +511,12 @@ class PostgresHistoricalImportRepository:
         )
         if existing is not None:
             if (
-                existing["sha256"] != sha256
-                or existing["row_start"] != row_start
+                existing["row_start"] != row_start
                 or existing["row_end"] != row_end
                 or existing["row_count"] != row_count
+                or existing["stats"] != stats
             ):
-                raise HistoricalCampaignConflict("同一 Chunk ordinal 已绑定到不同不可变内容")
+                raise HistoricalCampaignConflict("同一 Chunk ordinal 已绑定到不同来源行事实")
             return cast(UUID, existing["id"])
         item_id = uuid4()
         self._session.execute(
@@ -528,17 +528,51 @@ class PostgresHistoricalImportRepository:
                 relative_path=source_item["relative_path"],
                 manifest_identity=source_item["manifest_identity"],
                 ordinal=ordinal,
-                artifact_id=artifact_id,
-                sha256=sha256,
                 row_start=row_start,
                 row_end=row_end,
                 row_count=row_count,
-                status="ready",
+                status="snapshotting",
                 stats=stats,
                 created_at=func.clock_timestamp(),
             )
         )
         return item_id
+
+    def bind_chunk_canonical_artifact(
+        self,
+        *,
+        item_id: UUID,
+        artifact_id: UUID,
+        sha256: str,
+    ) -> None:
+        """把已 linked 的唯一 Canonical Artifact 收敛为可调度 Chunk。"""
+
+        bound = self._session.execute(
+            update(historical_import_campaign_items_table)
+            .where(
+                historical_import_campaign_items_table.c.id == item_id,
+                historical_import_campaign_items_table.c.item_kind == "chunk",
+                historical_import_campaign_items_table.c.status == "snapshotting",
+                historical_import_campaign_items_table.c.artifact_id.is_(None),
+            )
+            .values(
+                artifact_id=artifact_id,
+                sha256=sha256,
+                status="ready",
+            )
+            .returning(historical_import_campaign_items_table.c.id)
+        ).scalar_one_or_none()
+        if bound is not None:
+            return
+        current = self.get_item(item_id)
+        if (
+            current is not None
+            and current["artifact_id"] == artifact_id
+            and current["sha256"] == sha256
+            and current["status"] in {"ready", "queued", "running", "succeeded"}
+        ):
+            return
+        raise HistoricalCampaignConflict("Historical Chunk 已绑定到其他 Artifact 或状态不合法")
 
     def bind_source_artifact(
         self,
@@ -668,6 +702,34 @@ class PostgresHistoricalImportRepository:
             )
         )
 
+    def complete_empty_source_snapshot(
+        self,
+        *,
+        item_id: UUID,
+        artifact_id: UUID,
+        sha256: str,
+        stats: dict[str, object],
+    ) -> None:
+        """把合法但无数据的 Source 标记为已完成警告，不进入后续 Batch/Chunk。"""
+
+        self._session.execute(
+            update(historical_import_campaign_items_table)
+            .where(
+                historical_import_campaign_items_table.c.id == item_id,
+                historical_import_campaign_items_table.c.item_kind == "source_file",
+                historical_import_campaign_items_table.c.status == "snapshotting",
+            )
+            .values(
+                artifact_id=artifact_id,
+                sha256=sha256,
+                row_count=0,
+                status="succeeded",
+                stats=stats,
+                error_code="historical_source_empty",
+                finished_at=func.clock_timestamp(),
+            )
+        )
+
     def fail_item(self, item_id: UUID, *, error_code: str) -> None:
         self._session.execute(
             update(historical_import_campaign_items_table)
@@ -707,16 +769,25 @@ class PostgresHistoricalImportRepository:
         )
 
     def finalize_preflight(self, campaign_id: UUID) -> str:
+        """完成 Source 预检收敛；少量坏文件不阻塞仍可导入的正常文件。"""
+
         rows = self._source_status_counts(campaign_id)
         total = sum(rows.values())
-        terminal = rows.get("ready", 0) + rows.get("failed", 0) + rows.get("cancelled", 0)
+        ready = rows.get("ready", 0)
+        empty = rows.get("succeeded", 0)
+        failed = rows.get("failed", 0)
+        cancelled = rows.get("cancelled", 0)
+        terminal = ready + empty + failed + cancelled
         if terminal < total:
             return "snapshotting"
-        if total == 0 or rows.get("failed", 0) or rows.get("cancelled", 0):
+        if total == 0 or cancelled:
+            status = "failed"
+        elif ready:
+            status = "ready"
+        elif failed:
             status = "failed"
         else:
-            status = "ready"
-        ready = rows.get("ready", 0)
+            status = "succeeded"
         total_rows = cast(
             int,
             self._session.scalar(
@@ -732,6 +803,11 @@ class PostgresHistoricalImportRepository:
             )
             or 0,
         )
+        error_summary = None
+        if status == "ready" and failed:
+            error_summary = "部分文件预检失败，其他文件仍可继续导入。"
+        elif status == "failed" and failed and not ready:
+            error_summary = "没有文件通过预检，当前没有可导入数据。"
         self._session.execute(
             update(historical_import_campaigns_table)
             .where(
@@ -740,9 +816,10 @@ class PostgresHistoricalImportRepository:
             )
             .values(
                 status=status,
-                ready_item_count=ready,
+                ready_item_count=terminal,
                 total_rows=total_rows,
-                finished_at=func.clock_timestamp() if status == "failed" else None,
+                error_summary=error_summary,
+                finished_at=func.clock_timestamp() if status in {"failed", "succeeded"} else None,
             )
         )
         return status
@@ -1253,13 +1330,27 @@ class PostgresHistoricalImportRepository:
         if campaign_statuses and all(
             value in {"succeeded", "failed", "cancelled"} for value in campaign_statuses
         ):
-            if any(value == "failed" for value in campaign_statuses):
+            source_statuses = tuple(
+                self._session.execute(
+                    select(historical_import_campaign_items_table.c.status).where(
+                        historical_import_campaign_items_table.c.campaign_id == campaign_id,
+                        historical_import_campaign_items_table.c.item_kind == "source_file",
+                    )
+                ).scalars()
+            )
+            has_failed = any(value == "failed" for value in campaign_statuses) or any(
+                value == "failed" for value in source_statuses
+            )
+            has_cancelled = any(value == "cancelled" for value in campaign_statuses) or any(
+                value == "cancelled" for value in source_statuses
+            )
+            if has_failed:
                 status = (
                     "partial_failed"
                     if any(value == "succeeded" for value in campaign_statuses)
                     else "failed"
                 )
-            elif any(value == "cancelled" for value in campaign_statuses):
+            elif has_cancelled:
                 status = "cancelled"
             else:
                 status = "succeeded"

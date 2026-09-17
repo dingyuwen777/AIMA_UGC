@@ -112,8 +112,8 @@ def test_ordinary_user_cannot_read_admin_scheme_or_audit_routes() -> None:
     assert audits.json()["errors"][0]["code"] == "administrator_required"
 
 
-def test_ordinary_user_cannot_mutate_keyword_relevance_or_plan_configuration() -> None:
-    """词包、全局相关性和采集计划写操作都属于管理员配置边界。"""
+def test_ordinary_user_cannot_mutate_keyword_or_plan_configuration() -> None:
+    """词包和采集计划写操作都属于管理员配置边界。"""
 
     unexpected = _UnexpectedConfigurationMutationService()
     client = TestClient(
@@ -126,7 +126,7 @@ def test_ordinary_user_cannot_mutate_keyword_relevance_or_plan_configuration() -
     )
     pack_id = uuid4()
     plan_id = uuid4()
-    vehicle_id = uuid4()
+    brand_id = uuid4()
 
     responses = (
         client.post("/api/v1/keyword-packs", json={"name": "普通用户词包"}),
@@ -137,10 +137,6 @@ def test_ordinary_user_cannot_mutate_keyword_relevance_or_plan_configuration() -
         client.put(
             f"/api/v1/keyword-packs/{pack_id}/enabled",
             json={"enabled": False},
-        ),
-        client.put(
-            "/api/v1/relevance-config",
-            json={"keyword_pack_id": str(pack_id)},
         ),
         client.post(
             "/api/v1/collection-plans",
@@ -155,7 +151,7 @@ def test_ordinary_user_cannot_mutate_keyword_relevance_or_plan_configuration() -
                     }
                 ],
                 "keyword_pack_ids": [str(pack_id)],
-                "vehicle_model_ids": [str(vehicle_id)],
+                "brand_ids": [str(brand_id)],
             },
         ),
         client.put(

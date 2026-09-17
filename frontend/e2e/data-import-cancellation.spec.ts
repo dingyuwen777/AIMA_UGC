@@ -142,11 +142,8 @@ test('预检过程中可以取消导入，并持续展示取消状态直到终�
     return route.fallback()
   })
 
-  await page.goto('/collection-runtime')
-  await page.getByRole('button', { name: '导入数据' }).click()
+  await page.goto(`/collection-runtime?data_import_campaign_id=${campaignId}`)
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
-  await dialog.getByRole('button', { name: /打开导入任务/ }).click()
 
   await expect(dialog.locator('.campaign-status')).toHaveText('正在确认数据来源')
   await expect(dialog.getByRole('button', { name: '取消任务', exact: true })).toBeVisible()

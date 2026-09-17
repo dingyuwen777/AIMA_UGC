@@ -18,7 +18,11 @@ from aima_ugc.modules.collection.providers import (
     RawArtifactIntegrityError,
     RawArtifactService,
 )
-from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
+from aima_ugc.platform.storage import (
+    ArtifactRecord,
+    ArtifactService,
+    CanonicalArtifactParent,
+)
 
 
 class FakeArtifactMetadata:
@@ -54,6 +58,15 @@ class FakeArtifactMetadata:
         )
         self.records[artifact_id] = updated
         return updated
+
+    def link_canonical(
+        self,
+        artifact_id: UUID,
+        *,
+        parent: CanonicalArtifactParent,
+        linked_at: datetime,
+    ) -> ArtifactRecord:
+        raise AssertionError((artifact_id, parent, linked_at))
 
     def mark_error(self, artifact_id: UUID) -> ArtifactRecord:
         updated = replace(self.records[artifact_id], storage_status="error")

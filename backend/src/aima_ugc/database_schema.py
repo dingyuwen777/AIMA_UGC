@@ -33,7 +33,6 @@ from aima_ugc.modules.collection.tables import (
     collection_plan_brands_table,
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
-    collection_plan_vehicle_models_table,
     collection_plans_table,
     collection_runs_table,
     collection_schedule_occurrences_table,
@@ -57,6 +56,7 @@ from aima_ugc.modules.content.extended_tables import (
     content_mentions_table,
     content_topics_table,
 )
+from aima_ugc.modules.content.media_cache_tables import content_media_cache_entries_table
 from aima_ugc.modules.content.source_constraints import register_content_source_constraints
 from aima_ugc.modules.content.tables import (
     accounts_table,
@@ -67,6 +67,11 @@ from aima_ugc.modules.content.tables import (
     content_metric_observations_table,
     content_versions_table,
     contents_table,
+)
+from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_run_artifacts_table,
+    canonical_replay_runs_table,
+    canonical_replay_seen_content_table,
 )
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -94,7 +99,6 @@ from aima_ugc.modules.reporting.tables import (
 from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
 from aima_ugc.modules.system.tables import (
     audit_events_table,
-    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
@@ -104,9 +108,9 @@ from aima_ugc.modules.system.tables import (
 from aima_ugc.modules.vehicles.tables import (
     content_brand_evidence_table,
     content_brand_review_locks_table,
+    content_reclassification_runs_table,
     content_vehicle_evidence_table,
     content_vehicle_review_locks_table,
-    keyword_pack_vehicle_models_table,
     vehicle_brand_aliases_table,
     vehicle_brands_table,
     vehicle_catalog_versions_table,
@@ -115,7 +119,7 @@ from aima_ugc.modules.vehicles.tables import (
 )
 from aima_ugc.platform.database.metadata import metadata
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
-from aima_ugc.platform.storage.tables import artifacts_table
+from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 
 register_scheduler_schema()
 register_collection_lifecycle_schema()
@@ -138,8 +142,11 @@ __all__ = [
     "account_external_ids_table",
     "accounts_table",
     "artifacts_table",
+    "canonical_artifact_links_table",
+    "canonical_replay_run_artifacts_table",
+    "canonical_replay_runs_table",
+    "canonical_replay_seen_content_table",
     "audit_events_table",
-    "global_relevance_config_table",
     "historical_import_campaign_items_table",
     "historical_import_campaign_revocations_table",
     "historical_import_revocation_content_versions_table",
@@ -151,7 +158,6 @@ __all__ = [
     "collection_plan_decision_policies_table",
     "collection_plan_keyword_packs_table",
     "collection_plan_platforms_table",
-    "collection_plan_vehicle_models_table",
     "collection_plans_table",
     "collection_runs_table",
     "collection_schedule_occurrences_table",
@@ -166,8 +172,10 @@ __all__ = [
     "comments_table",
     "content_brand_evidence_table",
     "content_brand_review_locks_table",
+    "content_reclassification_runs_table",
     "content_external_ids_table",
     "content_locations_table",
+    "content_media_cache_entries_table",
     "content_media_table",
     "content_mentions_table",
     "content_metric_observations_table",
@@ -178,7 +186,6 @@ __all__ = [
     "contents_table",
     "job_attempt_events_table",
     "jobs_table",
-    "keyword_pack_vehicle_models_table",
     "keyword_pack_items_table",
     "keyword_packs_table",
     "keywords_table",

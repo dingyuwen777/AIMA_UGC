@@ -1,12 +1,16 @@
 import {
   archiveAnalysisScheme,
   archiveProviderConfig,
+  addVehicleBrandAlias,
   copyAnalysisScheme,
   createAnalysisSchemeDraft,
   createProviderConfig,
+  createVehicleBrand,
   createVehicleModel,
   deleteAnalysisScheme,
   deleteProviderConfig,
+  deleteVehicleBrand,
+  deleteVehicleBrandAlias,
   deleteVehicleModel,
   getAnalysisSchemeDeleteEligibility,
   getProviderConfigDeleteEligibility,
@@ -15,18 +19,17 @@ import {
   listArchivedProviderConfigs,
   listAuditEvents,
   listVehicleBrands,
-  listKeywordPacks,
   listProviderConfigs,
   listVehicleModels,
   mergeVehicleModel,
   publishAnalysisScheme,
-  replaceKeywordPackVehicleModels,
   restoreAnalysisScheme,
   restoreProviderConfig,
   rollbackAnalysisScheme,
   testProviderConfigConnection,
   updateAnalysisSchemeDraft,
   updateProviderConfig,
+  updateVehicleBrand,
   updateVehicleModel,
   type AnalysisSchemeCopyRequest,
   type AnalysisSchemeCreateDraftRequest,
@@ -34,8 +37,10 @@ import {
   type AnalysisSchemeResponse,
   type AnalysisSchemeUpdateDraftRequest,
   type AuditEventListResponse,
+  type BrandAliasCreateRequest,
+  type BrandCreateRequest,
   type BrandListResponse,
-  type KeywordPackListResponse,
+  type BrandUpdateRequest,
   type ProviderConfigCreateRequest,
   type ProviderConfigListResponse,
   type ProviderConfigResponse,
@@ -65,17 +70,32 @@ export async function fetchVehicles(): Promise<VehicleModelListResponse> {
 }
 
 export async function fetchVehicleBrandsForAdmin(): Promise<BrandListResponse> {
-  const first = unwrapResponse(await listVehicleBrands({ status: 'active', offset: 0, limit: 200 }))
+  const first = unwrapResponse(await listVehicleBrands({ offset: 0, limit: 200 }))
   const items = [...first.items]
   let offset = items.length
   while (offset < first.total) {
-    const page = unwrapResponse(await listVehicleBrands({ status: 'active', offset, limit: 200 }))
+    const page = unwrapResponse(await listVehicleBrands({ offset, limit: 200 }))
     if (page.items.length === 0) break
     items.push(...page.items)
     offset += page.items.length
   }
   return { ...first, items, offset: 0 }
 }
+
+export const addBrand = async (body: BrandCreateRequest) =>
+  unwrapResponse(await createVehicleBrand(body))
+
+export const editBrand = async (id: string, body: BrandUpdateRequest) =>
+  unwrapResponse(await updateVehicleBrand(id, body))
+
+export const removeBrand = async (id: string) =>
+  unwrapResponse(await deleteVehicleBrand(id))
+
+export const addBrandAlias = async (brandId: string, body: BrandAliasCreateRequest) =>
+  unwrapResponse(await addVehicleBrandAlias(brandId, body))
+
+export const removeBrandAlias = async (brandId: string, aliasId: string) =>
+  unwrapResponse(await deleteVehicleBrandAlias(brandId, aliasId))
 
 export const addVehicle = async (body: VehicleModelCreateRequest) =>
   unwrapResponse(await createVehicleModel(body))
@@ -88,23 +108,6 @@ export const removeVehicle = async (id: string): Promise<void> =>
 
 export const mergeVehicle = async (id: string, body: VehicleModelMergeRequest) =>
   unwrapResponse(await mergeVehicleModel(id, body))
-
-/** 分页读取全部词包，保证管理配置使用完整后端目录。 */
-export async function fetchKeywordPacksForAdmin(): Promise<KeywordPackListResponse> {
-  const first = unwrapResponse(await listKeywordPacks({ offset: 0, limit: 100 }))
-  const items = [...first.items]
-  let offset = items.length
-  while (offset < first.total) {
-    const page = unwrapResponse(await listKeywordPacks({ offset, limit: 100 }))
-    if (page.items.length === 0) break
-    items.push(...page.items)
-    offset += page.items.length
-  }
-  return { ...first, items, offset: 0 }
-}
-
-export const saveKeywordPackVehicles = async (packId: string, vehicleModelIds: string[]) =>
-  unwrapResponse(await replaceKeywordPackVehicleModels(packId, { vehicle_model_ids: vehicleModelIds }))
 
 export const fetchSchemes = async (): Promise<AnalysisSchemeListResponse> =>
   unwrapResponse(await listAnalysisSchemes())

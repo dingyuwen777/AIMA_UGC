@@ -4,21 +4,13 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
-from aima_ugc.adapters.persistence.postgres.relevance import (
-    PostgresGlobalRelevanceRepository,
-)
-from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
-from aima_ugc.contracts.administration import (
-    VehicleModelCreateRequest,
-    VehicleModelUpdateRequest,
-)
 from aima_ugc.modules.collection.corrective_tables import (
     collection_plan_decision_policies_table,
 )
@@ -31,15 +23,12 @@ from aima_ugc.modules.collection.tables import (
     collection_plan_brands_table,
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
-    collection_plan_vehicle_models_table,
     collection_plans_table,
     collection_runs_table,
     collection_schedule_occurrences_table,
     collection_scopes_table,
 )
-from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.system.tables import (
-    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
@@ -63,12 +52,10 @@ def scheduler_runtime():
             connection.execute(delete(collection_plan_brands_table))
             connection.execute(delete(collection_plan_keyword_packs_table))
             connection.execute(delete(collection_plan_platforms_table))
-            connection.execute(delete(collection_plan_vehicle_models_table))
             connection.execute(delete(collection_plan_decision_policies_table))
             connection.execute(delete(collection_plans_table))
             connection.execute(delete(job_attempt_events_table))
             connection.execute(delete(jobs_table))
-            connection.execute(delete(global_relevance_config_table))
             connection.execute(delete(keyword_pack_items_table))
             connection.execute(delete(keywords_table))
             connection.execute(delete(keyword_packs_table))
@@ -82,7 +69,7 @@ def scheduler_runtime():
         runtime.close()
 
 
-def _create_plan(scheduler_runtime, *, vehicle_model_ids=()):
+def _create_plan(scheduler_runtime):
     stage3_filter_brand_id(scheduler_runtime, alias="爱玛")
     session = scheduler_runtime.database.new_session()
     try:
@@ -134,7 +121,6 @@ def _create_plan(scheduler_runtime, *, vehicle_model_ids=()):
                     note="scheduler runtime fixture",
                 )
             )
-            PostgresGlobalRelevanceRepository(session).set(keyword_pack_id)
             plan = CollectionPlanningService(
                 PostgresCollectionPlanningRepository(session)
             ).create_plan(
@@ -157,7 +143,6 @@ def _create_plan(scheduler_runtime, *, vehicle_model_ids=()):
                         ),
                     ),
                     keyword_pack_ids=(keyword_pack_id,),
-                    vehicle_model_ids=vehicle_model_ids,
                 )
             )
         return plan
@@ -180,51 +165,6 @@ def _force_due_cursor(scheduler_runtime, plan_id, *, scheduled_for: datetime) ->
             )
     finally:
         session.close()
-
-
-def test_scheduler_rejects_stale_legacy_vehicle_scope_without_stopping_tick(
-    scheduler_runtime,
-) -> None:
-    """兼容车型失效时当前 Plan 记失败，Scheduler 仍返回本轮汇总。"""
-
-    brand_id = UUID(stage3_filter_brand_id(scheduler_runtime, alias="爱玛"))
-    principal = Principal(
-        principal_id="stage4-scheduler",
-        display_name="Stage4 Scheduler 测试管理员",
-        role="administrator",
-        source="development",
-    )
-    vehicle_service = PostgresAdministrationHttpService(scheduler_runtime)
-    vehicle = vehicle_service.create_vehicle_model(
-        VehicleModelCreateRequest(
-            code=f"SCHEDULER-LEGACY-{uuid4()}",
-            display_name="Scheduler Legacy Vehicle",
-            brand_id=brand_id,
-            aliases=(f"Scheduler Legacy Alias {uuid4()}",),
-        ),
-        principal=principal,
-        request_id=f"stage4-scheduler-vehicle-{uuid4()}",
-    )
-    plan = _create_plan(scheduler_runtime, vehicle_model_ids=(vehicle.id,))
-    vehicle_service.update_vehicle_model(
-        vehicle.id,
-        VehicleModelUpdateRequest(status="deprecated"),
-        principal=principal,
-        request_id=f"stage4-scheduler-deprecate-{uuid4()}",
-    )
-    _force_due_cursor(
-        scheduler_runtime,
-        plan.id,
-        scheduled_for=datetime(2026, 8, 15, 4, 0, tzinfo=UTC),
-    )
-
-    result = run_scheduler_once(
-        scheduler_runtime,
-        now=datetime(2026, 8, 15, 5, 0, tzinfo=UTC),
-    )
-
-    assert result.failed == 1
-    assert result.enqueued == 0
 
 
 def test_scheduler_initializes_future_cursor_without_pre_creation_backfill(

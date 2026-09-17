@@ -156,7 +156,7 @@ test('selects only server-relative files, preflights, and explicitly starts a ca
   await expect(dialog.getByText('只浏览管理员批准的只读根目录')).toBeVisible()
   await dialog.getByRole('button', { name: /2025-archive/ }).click()
   await dialog.getByLabel('选择 part-001.xlsx').check()
-  await expect(dialog).toContainText('当前按创建时全部已启用品牌冻结过滤范围')
+  await expect(dialog).toContainText('创建后冻结品牌车型目录快照并执行预检；Excel 不执行 Provider 搜索，导入完成后不会自动触发智能分析。')
 
   const createRequest = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url())
@@ -240,12 +240,9 @@ test('continues directory enumeration with the server cursor', async ({ page }) 
 })
 
 test('reopens an existing campaign after a page reload', async ({ page }) => {
-  await page.goto('/collection-runtime')
-  await page.getByRole('button', { name: '导入数据' }).click()
+  await page.goto(`/collection-runtime?data_import_campaign_id=${campaignId}`)
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
 
-  await dialog.getByRole('button', { name: '打开导入任务 服务器目录导入' }).click()
   await expect(dialog.locator('.campaign-status')).toHaveText('预检完成')
 })
 
@@ -278,11 +275,8 @@ test('does not invent a percentage while directory discovery has no total', asyn
     })
   })
 
-  await page.goto('/collection-runtime')
-  await page.getByRole('button', { name: '导入数据' }).click()
+  await page.goto(`/collection-runtime?data_import_campaign_id=${campaignId}`)
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
-  await dialog.getByRole('button', { name: '打开导入任务 服务器目录导入' }).click()
 
   const progress = dialog.getByRole('progressbar', { name: '导入预检进度' })
   await expect(progress).not.toHaveAttribute('aria-valuenow')
@@ -330,11 +324,8 @@ test('keeps polling a cancelling campaign until it reaches cancelled', async ({ 
     },
   )
 
-  await page.goto('/collection-runtime')
-  await page.getByRole('button', { name: '导入数据' }).click()
+  await page.goto(`/collection-runtime?data_import_campaign_id=${campaignId}`)
   const dialog = page.getByRole('dialog', { name: '导入数据' })
-  await dialog.getByRole('button', { name: '服务器目录', exact: true }).click()
-  await dialog.getByRole('button', { name: '打开导入任务 服务器目录导入' }).click()
   await expect(dialog.locator('.campaign-status')).toHaveText('正在导入')
   await dialog.getByRole('button', { name: '取消任务', exact: true }).click()
 

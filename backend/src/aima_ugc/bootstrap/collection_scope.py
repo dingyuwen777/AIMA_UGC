@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,6 +12,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from pydantic import JsonValue, SecretStr
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -60,7 +62,6 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     map_content,
     mapping_context,
 )
-from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.contracts.canonical import (
     CanonicalCommentV1,
     CanonicalContentV1,
@@ -76,7 +77,6 @@ from aima_ugc.contracts.collection import (
     ReplyDecisionRequestV1,
 )
 from aima_ugc.contracts.provider import JsonObject, ProviderRequestV1
-from aima_ugc.modules.analysis import RelevanceKeyword, RelevanceService
 from aima_ugc.modules.collection.collection_run_executor import (
     CollectionScopeExecutionResult,
     CollectionScopeRetryableError,
@@ -108,8 +108,16 @@ from aima_ugc.modules.ingestion.brand_vehicle_filter import (
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
+from aima_ugc.platform.logging import log_exception_event
 from aima_ugc.platform.security import SecretFileError
-from aima_ugc.platform.storage import ArtifactRecord
+from aima_ugc.platform.storage import (
+    ArtifactRecord,
+    ArtifactService,
+    ArtifactStore,
+    CanonicalArtifactParent,
+    CanonicalArtifactReader,
+    CanonicalArtifactWriter,
+)
 from aima_ugc.platform.time import beijing_now
 
 _COMMENT_FETCH_ACTIONS = {
@@ -138,6 +146,8 @@ _TECHNICAL_PARTIAL_STOP_REASONS = {
     "items_unavailable",
     "duplicate_page",
 }
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +179,16 @@ class _ExecutedCall:
 class _DetailCandidate:
     content: CanonicalContentV1
     candidate_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedSearchContent:
+    """一个 Search Candidate 完成当前 Detail fallback 后的最终 Filter 输入。"""
+
+    search_content: CanonicalContentV1
+    final_content: CanonicalContentV1
+    search_candidate_id: UUID
+    prefetched_details: tuple[_DetailCandidate, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,12 +281,16 @@ class TikHubCollectionScopeExecutor:
         *,
         session_factory: Callable[[], Session],
         raw_artifacts: RawArtifactService,
+        artifacts: ArtifactService,
+        artifact_store: ArtifactStore,
         transport_factory: Callable[[ProviderConfig], ProviderTransport],
         secret_resolver: Callable[[str], SecretStr],
         observed_at: Callable[[], datetime] | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._raw_artifacts = raw_artifacts
+        self._canonical_writer = CanonicalArtifactWriter(artifacts=artifacts)
+        self._canonical_reader = CanonicalArtifactReader(store=artifact_store)
         self._transport_factory = transport_factory
         self._secret_resolver = secret_resolver
         self._observed_at = observed_at or (lambda: beijing_now())
@@ -316,7 +340,7 @@ class TikHubCollectionScopeExecutor:
                 context=context,
             )
 
-        filter_snapshot, relevance = _discovery_filter(run)
+        filter_snapshot = _discovery_filter(run)
 
         stats = _ScopeStats.from_payload(scope.stats)
         self._refresh_counts(scope=scope, context=context, stats=stats)
@@ -353,6 +377,7 @@ class TikHubCollectionScopeExecutor:
 
                 items = extract_search_items(platform, executed.body)
                 stats.search_items += len(items)
+                prepared_contents: list[_PreparedSearchContent] = []
                 for raw_item in items:
                     if context.cancel_requested():
                         self._refresh_counts(
@@ -403,19 +428,48 @@ class TikHubCollectionScopeExecutor:
                             error_code=type(exc).__name__,
                         )
                         raise
+                    prepared_contents.append(
+                        self._prepare_search_content(
+                            run=run,
+                            scope=scope,
+                            content=search_content,
+                            search_candidate_id=candidate_id,
+                            provider_config=provider_config,
+                            context=context,
+                            stats=stats,
+                            filter_snapshot=filter_snapshot,
+                        )
+                    )
+
+                persistent_contents = self._persistent_filter_inputs(
+                    provider_attempt_id=executed.attempt_id,
+                    expected=tuple(item.final_content for item in prepared_contents),
+                )
+                for prepared, persistent_content in zip(
+                    prepared_contents,
+                    persistent_contents,
+                    strict=True,
+                ):
+                    if context.cancel_requested():
+                        self._refresh_counts(scope=scope, context=context, stats=stats)
+                        return _result(
+                            status="cancelled",
+                            stop_reason="cancelled",
+                            pagination_state=pagination_state,
+                            stats=stats,
+                        )
                     self._process_search_content(
                         run=run,
                         scope=scope,
-                        content=search_content,
+                        prepared=prepared,
+                        content=persistent_content,
                         search_executed=executed,
-                        search_candidate_id=candidate_id,
                         provider_config=provider_config,
                         capability=capability,
                         policy=policy,
                         context=context,
                         stats=stats,
                         filter_snapshot=filter_snapshot,
-                        relevance=relevance,
                     )
 
                 advance = advance_search(
@@ -472,7 +526,8 @@ class TikHubCollectionScopeExecutor:
                 pagination_state=pagination_state,
                 stats=stats,
             )
-        except Exception:
+        except Exception as exc:
+            _log_scope_execution_failed(run=run, scope=scope, error=exc)
             self._refresh_counts(scope=scope, context=context, stats=stats)
             return _result(
                 status="failed",
@@ -677,7 +732,8 @@ class TikHubCollectionScopeExecutor:
                 pagination_state=pagination_state,
                 stats=stats,
             )
-        except Exception:
+        except Exception as exc:
+            _log_scope_execution_failed(run=run, scope=scope, error=exc)
             self._refresh_counts(scope=scope, context=context, stats=stats)
             return _result(
                 status="failed",
@@ -733,74 +789,87 @@ class TikHubCollectionScopeExecutor:
             )
         )
 
-    def _process_search_content(
+    def _prepare_search_content(
         self,
         *,
         run: CollectionRunRecord,
         scope: CollectionScopeRecord,
         content: CanonicalContentV1,
-        search_executed: _ExecutedCall,
         search_candidate_id: UUID,
+        provider_config: ProviderConfig,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+        filter_snapshot: BrandVehicleFilterSnapshot,
+    ) -> _PreparedSearchContent:
+        """保持当前 Search→Detail fallback，只确定最终 Filter Canonical。"""
+
+        search_resolution = resolve_canonical_brand_vehicle(filter_snapshot, content)
+        if search_resolution.matched:
+            return _PreparedSearchContent(
+                search_content=content,
+                final_content=content,
+                search_candidate_id=search_candidate_id,
+            )
+
+        details = self._fetch_detail_candidates(
+            run=run,
+            scope=scope,
+            content=content,
+            provider_config=provider_config,
+            context=context,
+            stats=stats,
+        )
+        return _PreparedSearchContent(
+            search_content=content,
+            final_content=details[-1].content,
+            search_candidate_id=search_candidate_id,
+            prefetched_details=details,
+        )
+
+    def _process_search_content(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+        prepared: _PreparedSearchContent,
+        content: CanonicalContentV1,
+        search_executed: _ExecutedCall,
         provider_config: ProviderConfig,
         capability: ProviderPlatformCapabilityV1,
         policy: CollectionDecisionPolicyV1,
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
-        filter_snapshot: BrandVehicleFilterSnapshot | None,
-        relevance: RelevanceService | None,
+        filter_snapshot: BrandVehicleFilterSnapshot,
     ) -> None:
-        search_content = content
-        prefetched_details: tuple[_DetailCandidate, ...] = ()
-        detail_prefetched = False
-        search_resolution = (
-            resolve_canonical_brand_vehicle(filter_snapshot, content)
-            if filter_snapshot is not None
-            else None
-        )
-        search_matched = (
-            search_resolution.matched
-            if search_resolution is not None
-            else _require_legacy_relevance(relevance).evaluate(content).matched
-        )
-        accepted_resolution = search_resolution
-        if not search_matched:
-            details = self._fetch_detail_candidates(
-                run=run,
-                scope=scope,
-                content=content,
-                provider_config=provider_config,
-                context=context,
-                stats=stats,
+        """只处理已由 Persistent Canonical Reader 完整预检的 final Content。"""
+
+        if content != prepared.final_content:
+            raise ValueError("TikHub Persistent Canonical 与本次 Mapper 输出不一致")
+        search_content = prepared.search_content
+        prefetched_details = prepared.prefetched_details
+        detail_prefetched = bool(prefetched_details)
+        accepted_resolution = resolve_canonical_brand_vehicle(filter_snapshot, content)
+        if not accepted_resolution.matched:
+            self._content_writer.record_candidate_filtered(
+                candidate_id=prepared.search_candidate_id,
+                canonical=search_content,
+                fence=context.fence,
             )
-            detail = details[-1]
-            detail_resolution = (
-                resolve_canonical_brand_vehicle(filter_snapshot, detail.content)
-                if filter_snapshot is not None
-                else None
-            )
-            detail_matched = (
-                detail_resolution.matched
-                if detail_resolution is not None
-                else _require_legacy_relevance(relevance).evaluate(detail.content).matched
-            )
-            if not detail_matched:
+            for candidate in prefetched_details:
                 self._content_writer.record_candidate_filtered(
-                    candidate_id=search_candidate_id,
-                    canonical=content,
+                    candidate_id=candidate.candidate_id,
+                    canonical=candidate.content,
                     fence=context.fence,
                 )
-                for candidate in details:
-                    self._content_writer.record_candidate_filtered(
-                        candidate_id=candidate.candidate_id,
-                        canonical=candidate.content,
-                        fence=context.fence,
-                    )
-                stats.filtered_content_count += 1
-                return
-            content = detail.content
-            accepted_resolution = detail_resolution
-            prefetched_details = details
-            detail_prefetched = True
+            stats.filtered_content_count += 1
+            return
+
+        if detail_prefetched:
+            final_detail = prefetched_details[-1]
+            prefetched_details = (
+                *prefetched_details[:-1],
+                _DetailCandidate(content=content, candidate_id=final_detail.candidate_id),
+            )
 
         action = self._content_actions.get(
             scope_id=scope.id,
@@ -843,19 +912,19 @@ class TikHubCollectionScopeExecutor:
 
         candidates = (
             (
-                _DetailCandidate(search_content, search_candidate_id),
+                _DetailCandidate(search_content, prepared.search_candidate_id),
                 *prefetched_details,
             )
             if detail_prefetched
-            else (_DetailCandidate(content, search_candidate_id),)
+            else (_DetailCandidate(content, prepared.search_candidate_id),)
         )
         content_id: UUID | None = None
         for candidate_index, candidate in enumerate(candidates):
-            candidate_resolution = accepted_resolution
+            candidate_resolution: BrandVehicleResolution | None = accepted_resolution
             if detail_prefetched:
                 candidate_resolution = (
                     resolve_canonical_brand_vehicle(filter_snapshot, candidate.content)
-                    if filter_snapshot is not None and candidate_index > 0
+                    if candidate_index > 0
                     else None
                 )
                 if candidate_resolution is not None and not candidate_resolution.matched:
@@ -865,9 +934,7 @@ class TikHubCollectionScopeExecutor:
                 fence=context.fence,
                 candidate_id=candidate.candidate_id,
                 brand_vehicle_snapshot=(
-                    filter_snapshot.catalog
-                    if filter_snapshot is not None and candidate_resolution is not None
-                    else None
+                    filter_snapshot.catalog if candidate_resolution is not None else None
                 ),
                 brand_vehicle_resolution=candidate_resolution,
             )
@@ -977,6 +1044,44 @@ class TikHubCollectionScopeExecutor:
             action_id=action.id,
             fence=context.fence,
         )
+
+    def _persistent_filter_inputs(
+        self,
+        *,
+        provider_attempt_id: UUID,
+        expected: tuple[CanonicalContentV1, ...],
+    ) -> tuple[CanonicalContentV1, ...]:
+        """写入或复用一个 Search Attempt Chunk，并校验确定性 Mapper 结果。"""
+
+        artifact = self._canonical_for_attempt(provider_attempt_id)
+        if artifact is None:
+            try:
+                artifact = self._canonical_writer.write(
+                    expected,
+                    parent=CanonicalArtifactParent(provider_attempt_id=provider_attempt_id),
+                    retention_class="canonical",
+                    max_bytes=_canonical_page_max_bytes(expected),
+                )
+            except IntegrityError:
+                artifact = self._canonical_for_attempt(provider_attempt_id)
+                if artifact is None:
+                    raise
+        actual = tuple(self._canonical_reader.read(artifact))
+        if actual != expected:
+            raise ValueError("TikHub Persistent Canonical 与本次 Mapper 输出不一致")
+        return actual
+
+    def _canonical_for_attempt(self, provider_attempt_id: UUID) -> ArtifactRecord | None:
+        """在 Writer 竞争或 Worker 重试后读取唯一 linked 页面 Artifact。"""
+
+        session = self._session_factory()
+        try:
+            with session.begin():
+                return PostgresArtifactMetadataRepository(session).get_canonical_for_parent(
+                    CanonicalArtifactParent(provider_attempt_id=provider_attempt_id)
+                )
+        finally:
+            session.close()
 
     def _fetch_detail(
         self,
@@ -2040,6 +2145,15 @@ def _response_body(value: object) -> dict[str, object]:
     return cast(dict[str, object], value)
 
 
+def _canonical_page_max_bytes(contents: tuple[CanonicalContentV1, ...]) -> int:
+    """按本页已验证 Canonical 的未压缩大小给 Writer 一个有限安全上限。"""
+
+    uncompressed_bytes = sum(
+        len(content.model_dump_json().encode("utf-8")) + 1 for content in contents
+    )
+    return max(1024, uncompressed_bytes * 2)
+
+
 def _retryable_http_status(status_code: int) -> bool:
     return status_code in _RETRYABLE_HTTP_STATUSES or status_code >= 500
 
@@ -2123,44 +2237,20 @@ def _decision_policy(
     return CollectionDecisionPolicyV1.model_validate(payload)
 
 
-def _relevance_service(run: CollectionRunRecord) -> RelevanceService:
-    payload = run.config_snapshot.get("relevance")
-    snapshot = RelevanceSnapshotV1.model_validate(payload)
-    return RelevanceService(
-        tuple(
-            RelevanceKeyword(text=text, priority=priority)
-            for priority, text in enumerate(snapshot.effective_keywords)
-        )
-    )
-
-
 def _discovery_filter(
     run: CollectionRunRecord,
-) -> tuple[BrandVehicleFilterSnapshot | None, RelevanceService | None]:
-    """按 Run Snapshot 版本选择 Stage 4 品牌过滤或 legacy 全局相关性。"""
+) -> BrandVehicleFilterSnapshot:
+    """严格恢复当前 Collection Run 的冻结品牌车型过滤。"""
 
-    schema_version = run.config_snapshot.get(
-        "schema_version",
-        "collection-run-config.v1",
+    schema_version = run.config_snapshot.get("schema_version")
+    if schema_version != "collection-run-config.v2":
+        raise ValueError(f"Collection Run Snapshot 版本不受支持: {schema_version}")
+    snapshot = BrandVehicleFilterSnapshot.model_validate(
+        run.config_snapshot.get("brand_vehicle_filter")
     )
-    if schema_version == "collection-run-config.v2":
-        snapshot = BrandVehicleFilterSnapshot.model_validate(
-            run.config_snapshot.get("brand_vehicle_filter")
-        )
-        if snapshot.search_semantics != "keyword_pack":
-            raise ValueError("Collection Run v2 品牌车型过滤必须使用 keyword_pack 搜索语义")
-        return snapshot, None
-    if schema_version == "collection-run-config.v1":
-        return None, _relevance_service(run)
-    raise ValueError(f"Collection Run Snapshot 版本不受支持: {schema_version}")
-
-
-def _require_legacy_relevance(value: RelevanceService | None) -> RelevanceService:
-    """收窄 legacy v1 的相关性服务，避免 v2 分支误用旧过滤。"""
-
-    if value is None:
-        raise RuntimeError("Collection Run v1 缺少全局相关性服务")
-    return value
+    if snapshot.search_semantics != "keyword_pack":
+        raise ValueError("Collection Run v2 品牌车型过滤必须使用 keyword_pack 搜索语义")
+    return snapshot
 
 
 def _manual_deep_collection(run: CollectionRunRecord) -> bool:
@@ -2236,6 +2326,28 @@ def _result(
         failed_count=stats.failed_count,
         content_count=stats.content_count,
         comment_count=stats.comment_count,
+    )
+
+
+def _log_scope_execution_failed(
+    *,
+    run: CollectionRunRecord,
+    scope: CollectionScopeRecord,
+    error: Exception,
+) -> None:
+    """记录安全异常类型和关联身份，不泄露 Provider Raw 或 Secret。"""
+
+    log_exception_event(
+        logger,
+        logging.ERROR,
+        "collection.scope.execution_failed",
+        "Collection Scope 执行失败，已转换为稳定失败终态。",
+        error,
+        run_id=str(run.id),
+        job_id=str(run.job_id),
+        scope_id=str(scope.id),
+        platform=scope.platform,
+        operation_group=scope.operation_group,
     )
 
 

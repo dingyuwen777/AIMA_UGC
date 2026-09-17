@@ -41,10 +41,9 @@ def test_stage3_historical_contract_uses_brand_scope_only() -> None:
         assert "vehicle_model_ids" not in model.model_fields
 
 
-def test_stage3_single_file_job_keeps_legacy_v1_and_creates_v2() -> None:
-    """新 Worker 显式区分新旧 Job Type，不能用同一 v1 Payload 静默换语义。"""
+def test_stage3_single_file_job_only_accepts_brand_vehicle_v2() -> None:
+    """无历史任务的 Stage 7 只保留 Brand/Vehicle 冻结快照语义。"""
 
-    assert import_job.LEGACY_IMPORT_JOB_TYPE == "ingestion.import-excel.v1"
-    assert import_job.BRAND_VEHICLE_IMPORT_JOB_TYPE == "ingestion.import-excel.v2"
-    assert "keyword_selection" in import_job.ImportJobPayload.model_fields
-    assert "filter_snapshot" in import_job.BrandVehicleImportJobPayload.model_fields
+    assert import_job.IMPORT_JOB_TYPE == "ingestion.import-excel.v2"
+    assert import_job.IMPORT_JOB_PAYLOAD_VERSION == "ingestion.import-excel.v2"
+    assert set(import_job.ImportJobPayload.model_fields) == {"schema_version", "filter_snapshot"}

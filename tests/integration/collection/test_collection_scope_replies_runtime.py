@@ -47,6 +47,8 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import select
 
+from tests.integration.stage3_brand_support import stage4_collection_config_snapshot
+
 _FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 17, 5, 0, tzinfo=UTC)
 
@@ -209,14 +211,7 @@ def _execute_reply_case(
                 timeout_seconds=300,
             )
             snapshot: dict[str, object] = {
-                "schema_version": "collection-run-config.v1",
-                "relevance": {
-                    "schema_version": "relevance-snapshot.v1",
-                    "keyword_pack_id": str(uuid4()),
-                    "keyword_pack_version": 1,
-                    "config_version": 1,
-                    "effective_keywords": ["脱敏"],
-                },
+                **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                 "detail_policy": "on_change",
                 "comment_policy": "adaptive",
                 "platforms": [
@@ -265,11 +260,17 @@ def _execute_reply_case(
         )
     )
     fence = JobExecutionFence(job_id=job.id, lease_token=claimed.lease_token)
+    artifact_root = tmp_path / f"artifacts-{uuid4()}"
     result = CollectionRunExecutor(
         gateway=PostgresCollectionRunExecutionGateway(database_runtime.new_session),
         scope_executor=TikHubCollectionScopeExecutor(
             session_factory=database_runtime.new_session,
-            raw_artifacts=_raw_service(database_runtime, tmp_path / f"artifacts-{uuid4()}"),
+            raw_artifacts=_raw_service(database_runtime, artifact_root),
+            artifacts=ArtifactService(
+                metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
+                store=LocalArtifactStore(artifact_root),
+            ),
+            artifact_store=LocalArtifactStore(artifact_root),
             transport_factory=lambda _config: transport,
             secret_resolver=lambda secret_ref: (
                 SecretStr("fixture-secret")

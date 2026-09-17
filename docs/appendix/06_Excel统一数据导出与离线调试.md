@@ -445,16 +445,21 @@ Worker 读取 `content_versions` 的指定版本正文，而不是执行时的�
 
 同时互动指标当前来自 Content Current；Analysis 只读取指定版本且匹配当前 Analysis Identity 的最新结果。
 
+Brand/Vehicle 则读取该冻结 Content Version 的有效 Evidence：Brand 名称与角色稳定去重，竞品范围由这些角色派生；Vehicle Evidence 同样按冻结版本选择，展示名称继续解析到当前合并后的有效车型。这样后续 Content 版本变化不会改写已创建 Export 的品牌/车型选择。
+
 所以一个正式 Export Record 实际可能组合：
 
 ```text
 冻结版本的标题/正文/作者快照
 + 当前互动指标
 + 冻结版本的当前合法 Analysis
++ 冻结版本的 Brand/Vehicle Evidence 与派生竞品范围
 + 评论
 + 评论 Coverage
 + 来源 Provider/Raw
 ```
+
+Column Catalog v2 提供“品牌、品牌角色、竞品范围、车型”四个可选列；它们未进入默认选择，因此未显式选列的既有导出仍保持原表头。品牌角色和竞品范围在 Excel 中使用中文展示标签，底层 Contract 继续保留稳定英文枚举。
 
 精确投影：
 

@@ -62,7 +62,7 @@ def test_service_creates_supported_run_with_immutable_scope_sequence() -> None:
     result = service.create_run(
         job_id=job_id,
         trigger_type="manual",
-        config_snapshot={"schema_version": "collection-run-config.v1"},
+        config_snapshot={"schema_version": "collection-run-config.v2"},
         scopes=scopes,
     )
 
@@ -71,7 +71,7 @@ def test_service_creates_supported_run_with_immutable_scope_sequence() -> None:
         {
             "job_id": job_id,
             "trigger_type": "manual",
-            "config_snapshot": {"schema_version": "collection-run-config.v1"},
+            "config_snapshot": {"schema_version": "collection-run-config.v2"},
             "scopes": tuple(scopes),
             "manual_plan_id": None,
             "occurrence_id": None,

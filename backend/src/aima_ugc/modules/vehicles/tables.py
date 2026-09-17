@@ -1,6 +1,7 @@
-"""品牌车型目录、词包引用与内容证据表。"""
+"""品牌车型目录、内容证据与重分类表。"""
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 from aima_ugc.platform.database.metadata import metadata
 
@@ -117,16 +119,6 @@ vehicle_model_aliases_table = Table(
     UniqueConstraint("vehicle_model_id", "normalized_text"),
     CheckConstraint("char_length(text) > 0", name="text_nonempty"),
     CheckConstraint("char_length(normalized_text) > 0", name="normalized_text_nonempty"),
-    info={"owner": "vehicles"},
-)
-
-keyword_pack_vehicle_models_table = Table(
-    "keyword_pack_vehicle_models",
-    metadata,
-    Column("pack_id", Uuid(), ForeignKey("keyword_packs.id"), primary_key=True),
-    Column("vehicle_model_id", Uuid(), ForeignKey("vehicle_models.id"), primary_key=True),
-    Column("enabled", Boolean(), nullable=False, server_default=text("true")),
-    Column("created_at", DateTime(timezone=True), nullable=False),
     info={"owner": "vehicles"},
 )
 
@@ -268,12 +260,64 @@ content_brand_review_locks_table = Table(
     info={"owner": "vehicles"},
 )
 
+content_reclassification_runs_table = Table(
+    "content_reclassification_runs",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column("job_id", Uuid(), ForeignKey("jobs.id"), nullable=False, unique=True),
+    Column("catalog_snapshot", JSONB(), nullable=False),
+    Column("shard_index", Integer(), nullable=False),
+    Column("shard_count", Integer(), nullable=False),
+    # 三个 UUID 仅是可恢复游标，不建立 Content FK，避免历史 Run 阻塞正常 Content 生命周期。
+    Column("start_after_content_id", Uuid()),
+    Column("end_at_content_id", Uuid()),
+    Column("checkpoint_content_id", Uuid()),
+    Column("batch_size", Integer(), nullable=False),
+    Column("max_contents", BigInteger(), nullable=False),
+    Column("processed_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("matched_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("unmatched_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("brand_evidence_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("vehicle_evidence_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("conflict_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("brand_locked_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("vehicle_locked_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("created_by", Text(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("shard_count > 0", name="shard_count_positive"),
+    CheckConstraint(
+        "shard_index >= 0 and shard_index < shard_count",
+        name="shard_index_within_count",
+    ),
+    CheckConstraint("batch_size > 0 and batch_size <= 1000", name="batch_size_range"),
+    CheckConstraint("max_contents > 0", name="max_contents_positive"),
+    CheckConstraint(
+        "processed_count >= 0 and matched_count >= 0 and unmatched_count >= 0 "
+        "and brand_evidence_count >= 0 and vehicle_evidence_count >= 0 "
+        "and conflict_count >= 0 and brand_locked_count >= 0 and vehicle_locked_count >= 0",
+        name="counters_nonnegative",
+    ),
+    CheckConstraint("processed_count <= max_contents", name="processed_within_max"),
+    CheckConstraint(
+        "end_at_content_id is null or start_after_content_id is null "
+        "or start_after_content_id < end_at_content_id",
+        name="content_range_ordered",
+    ),
+    CheckConstraint(
+        "char_length(created_by) between 1 and 200",
+        name="created_by_length",
+    ),
+    Index("ix_content_reclassification_runs_created_at", "created_at", "id"),
+    info={"owner": "vehicles"},
+)
+
 __all__ = [
     "content_brand_evidence_table",
     "content_brand_review_locks_table",
+    "content_reclassification_runs_table",
     "content_vehicle_evidence_table",
     "content_vehicle_review_locks_table",
-    "keyword_pack_vehicle_models_table",
     "vehicle_brand_aliases_table",
     "vehicle_brands_table",
     "vehicle_catalog_versions_table",

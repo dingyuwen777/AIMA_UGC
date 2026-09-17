@@ -35,7 +35,7 @@ class _FakeStage8CService:
             raise ImportCursorUnavailable
         job = JobStatusResponse(
             id=_JOB_ID,
-            job_type="ingestion.import-excel.v1",
+            job_type="ingestion.import-excel.v2",
             status="running",
             attempt=2,
             max_attempts=10,

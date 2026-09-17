@@ -234,7 +234,9 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:published-from="store.filters.publishedFrom"
         v-model:published-to="store.filters.publishedTo"
         v-model:source-identifier="store.filters.sourceIdentifier"
+        v-model:brand-ids="store.filters.brandIds"
         v-model:vehicle-model-ids="store.filters.vehicleModelIds"
+        v-model:competition-scopes="store.filters.competitionScopes"
         :filter-options="store.filterOptions"
         :filter-options-loading="store.filterOptionsLoading"
         @search="search"
@@ -268,7 +270,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         tone="warning"
         role="alert"
       >
-        <strong>当前 AI 分析原则暂不可用</strong>
+        <strong>当前 AI 分析规则暂不可用</strong>
         <span>分析结果人工纠正已暂时停用；内容浏览与筛选仍可使用。</span>
         <details class="warning-details">
           <summary>技术详情</summary>
@@ -448,7 +450,19 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         :save-error="store.error"
         :taxonomy="store.taxonomy"
         :saving="store.reviewingDetail"
+        :comment-roots="store.commentRoots"
+        :comment-replies="store.commentReplies"
+        :comment-reply-states="store.commentReplyStates"
+        :comments-loading="store.commentsLoading"
+        :comments-loading-next="store.commentsLoadingNext"
+        :comments-error="store.commentsError"
+        :comments-has-more="store.commentsHasMore"
+        :comments-total-count="store.commentsTotalCount"
+        :comments-ingested-total-count="store.commentsIngestedTotalCount"
         @retry="store.detailId && store.openDetail(store.detailId)"
+        @retry-comments="store.loadCommentRoots(true)"
+        @load-more-comments="store.loadCommentRoots()"
+        @load-comment-replies="store.loadCommentReplies"
         @review="reviewSingle"
         @review-vehicles="store.reviewDetailVehicles"
         @review-analysis="store.reviewDetailAnalysis"

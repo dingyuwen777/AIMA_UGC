@@ -14,9 +14,10 @@ RUN python -m pip install \
       --index-url "${AIMA_BUILD_PYPI_INDEX}" \
       "uv==0.12.3"
 COPY pyproject.toml uv.lock README.md ./
-COPY backend ./backend
-# uv.lock 继续作为依赖版本与 hash 的机器事实；下载源只改变传输路径。
-RUN uv export \
+# 第三方依赖只由 Manifest/lock 驱动，避免 backend 源码变化使依赖安装层失效；
+# uv.lock 继续作为依赖版本与 hash 的机器事实，cache mount 只优化下载，不参与正确性。
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv export \
       --frozen \
       --no-dev \
       --no-emit-local \
@@ -27,8 +28,12 @@ RUN uv export \
       --python .venv/bin/python \
       --default-index "${AIMA_BUILD_PYPI_INDEX}" \
       --require-hashes \
-      /tmp/requirements.txt \
-    && uv build \
+      /tmp/requirements.txt
+
+COPY backend ./backend
+# 项目源码变化只重新构建本地 wheel；共享 uv cache 仍只作为可丢弃的性能缓存。
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv build \
       --wheel \
       --out-dir /tmp/dist \
       --default-index "${AIMA_BUILD_PYPI_INDEX}" \
@@ -79,6 +84,10 @@ RUN npm run build
 FROM nginx:1.30.4-alpine3.24 AS frontend
 COPY frontend/nginx.conf /etc/nginx/nginx.conf
 COPY --from=frontend-builder --chown=nginx:nginx /build/frontend/dist /usr/share/nginx/html
+# 构建环境没有 Compose 的 api DNS；临时改写上游仅做语法校验，并清理 nginx -t 以 root 创建的 PID，避免污染非 root Runtime。
+RUN sed 's#http://api:8090#http://127.0.0.1:8090#g' /etc/nginx/nginx.conf > /tmp/nginx-test.conf \
+    && nginx -t -c /tmp/nginx-test.conf \
+    && rm -f /tmp/nginx-test.conf /tmp/nginx.pid
 USER nginx
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

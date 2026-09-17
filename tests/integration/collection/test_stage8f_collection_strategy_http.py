@@ -31,7 +31,6 @@ from aima_ugc.modules.collection.tables import (
     collection_runs_table,
 )
 from aima_ugc.modules.system.tables import (
-    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
@@ -39,7 +38,7 @@ from aima_ugc.modules.system.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import func, insert, select
 
 from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
@@ -151,15 +150,6 @@ def _seed_strategy_facts(runtime) -> tuple[UUID, UUID, UUID]:  # type: ignore[no
                 ]
             )
         )
-        connection.execute(
-            insert(global_relevance_config_table).values(
-                singleton_key="global",
-                keyword_pack_id=relevance_pack_id,
-                version=1,
-                created_at=now,
-                updated_at=now,
-            )
-        )
     stage3_filter_brand_id(runtime, alias="爱玛")
     return provider_id, discovery_pack_id, relevance_pack_id
 
@@ -184,11 +174,9 @@ def _plan_request(provider_id: UUID, pack_id: UUID) -> CollectionPlanCreateReque
     )
 
 
-def test_strategy_service_persists_brand_scope_without_global_relevance_or_job(runtime) -> None:  # type: ignore[no-untyped-def]
+def test_strategy_service_persists_brand_scope_without_creating_job(runtime) -> None:  # type: ignore[no-untyped-def]
     provider_id, discovery_pack_id, _ = _seed_strategy_facts(runtime)
     brand_id = UUID(stage3_filter_brand_id(runtime, alias="爱玛"))
-    with runtime.database.engine.begin() as connection:
-        connection.execute(delete(global_relevance_config_table))
     service = PostgresCollectionStrategyHttpService(runtime)
 
     packs = service.list_keyword_packs(KeywordPackListQuery(limit=20))
@@ -240,16 +228,16 @@ def test_strategy_service_persists_brand_scope_without_global_relevance_or_job(r
         session.close()
 
 
-def test_plan_and_pack_enablement_are_fenced_and_preserve_global_relevance(runtime) -> None:  # type: ignore[no-untyped-def]
+def test_plan_and_pack_enablement_are_fenced(runtime) -> None:  # type: ignore[no-untyped-def]
     provider_id, discovery_pack_id, relevance_pack_id = _seed_strategy_facts(runtime)
     service = PostgresCollectionStrategyHttpService(runtime)
     created = service.create_plan(_plan_request(provider_id, discovery_pack_id))
 
-    with pytest.raises(CollectionStrategyConflict):
-        service.set_keyword_pack_enabled(
-            relevance_pack_id,
-            ResourceEnabledRequest(enabled=False),
-        )
+    unrelated = service.set_keyword_pack_enabled(
+        relevance_pack_id,
+        ResourceEnabledRequest(enabled=False),
+    )
+    assert unrelated.enabled is False
     with pytest.raises(CollectionStrategyConflict):
         service.set_keyword_pack_enabled(
             discovery_pack_id,

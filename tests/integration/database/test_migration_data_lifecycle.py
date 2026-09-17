@@ -1179,3 +1179,511 @@ def test_0040_adds_and_reverses_collection_campaign_source(
         engine.dispose()
 
     _upgrade(migration_database, "20260903_0040")
+
+
+def test_0047_drops_empty_legacy_tables_and_downgrade_restores_schema(
+    migration_database: str,
+) -> None:
+    """Owner 确认无历史数据时，Upgrade 删表且 Downgrade 恢复应用所需结构。"""
+
+    legacy_tables = {
+        "keyword_pack_vehicle_models",
+        "collection_plan_vehicle_models",
+        "global_relevance_config",
+    }
+    _upgrade(migration_database, "20260910_0046")
+    engine = _engine(migration_database)
+    try:
+        assert legacy_tables <= set(inspect(engine).get_table_names())
+        assert "content_reclassification_runs" in set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260910_0047")
+    engine = _engine(migration_database)
+    try:
+        assert not (legacy_tables & set(inspect(engine).get_table_names()))
+        assert "content_reclassification_runs" in set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260910_0046")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert legacy_tables <= set(inspector.get_table_names())
+        assert {item["name"] for item in inspector.get_columns("global_relevance_config")} == {
+            "singleton_key",
+            "keyword_pack_id",
+            "version",
+            "created_at",
+            "updated_at",
+        }
+        assert inspector.get_pk_constraint("collection_plan_vehicle_models")[
+            "constrained_columns"
+        ] == ["plan_id", "vehicle_model_id"]
+        assert inspector.get_pk_constraint("keyword_pack_vehicle_models")[
+            "constrained_columns"
+        ] == ["pack_id", "vehicle_model_id"]
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260910_0047")
+
+
+def test_0047_refuses_nonempty_legacy_table_before_any_drop(
+    migration_database: str,
+) -> None:
+    """与无旧数据前提冲突的任一 Legacy 业务行都必须保留并拒绝 Upgrade。"""
+
+    _upgrade(migration_database, "20260910_0046")
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+            connection.execute(
+                text(
+                    "INSERT INTO keyword_pack_vehicle_models"
+                    "(pack_id, vehicle_model_id, enabled, created_at) "
+                    "VALUES (:pack_id, :vehicle_model_id, TRUE, :created_at)"
+                ),
+                {
+                    "pack_id": uuid4(),
+                    "vehicle_model_id": uuid4(),
+                    "created_at": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="拒绝删除非空 Legacy 表"):
+        _upgrade(migration_database, "20260910_0047")
+
+    engine = _engine(migration_database)
+    try:
+        assert {
+            "keyword_pack_vehicle_models",
+            "collection_plan_vehicle_models",
+            "global_relevance_config",
+        } <= set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM keyword_pack_vehicle_models")) == 1
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260910_0046"
+            )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "blocked_fact",
+    ("legacy_job", "legacy_batch", "legacy_run", "legacy_campaign", "unowned_vehicle"),
+)
+def test_0047_refuses_incompatible_runtime_facts(
+    migration_database: str,
+    blocked_fact: str,
+) -> None:
+    """旧执行版本或未完成 Brand Ownership 时不得删除结构。"""
+
+    _upgrade(migration_database, "20260910_0046")
+    job_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            if blocked_fact in {"legacy_job", "legacy_run"}:
+                job_type = (
+                    "ingestion.import-excel.v1"
+                    if blocked_fact == "legacy_job"
+                    else "collection.run.v1"
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO jobs("
+                        "id, job_type, payload_version, payload, status, "
+                        "internal_idempotency_key, priority, attempt, max_attempts, "
+                        "timeout_seconds, progress, available_at, created_at, updated_at"
+                        ") VALUES ("
+                        ":id, :job_type, :payload_version, '{}'::jsonb, 'queued', "
+                        ":key, 0, 0, 1, 30, 0, :now, :now, :now)"
+                    ),
+                    {
+                        "id": job_id,
+                        "job_type": job_type,
+                        "payload_version": job_type,
+                        "key": f"stage7-{blocked_fact}",
+                        "now": _NOW,
+                    },
+                )
+            if blocked_fact == "legacy_run":
+                connection.execute(
+                    text(
+                        "INSERT INTO collection_runs("
+                        "id, job_id, trigger_type, config_snapshot, status, created_at"
+                        ") VALUES ("
+                        ":id, :job_id, 'api', "
+                        '\'{"schema_version":"collection-run-config.v1"}\'::jsonb, '
+                        "'queued', :now)"
+                    ),
+                    {"id": uuid4(), "job_id": job_id, "now": _NOW},
+                )
+            if blocked_fact == "legacy_batch":
+                connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+                connection.execute(
+                    text(
+                        "INSERT INTO processing_import_batches("
+                        "id, input_artifact_id, status, stats, created_at"
+                        ") VALUES ("
+                        ":id, :artifact_id, 'succeeded', "
+                        "'{\"keyword_selection\":{}}'::jsonb, :now)"
+                    ),
+                    {"id": uuid4(), "artifact_id": uuid4(), "now": _NOW},
+                )
+            if blocked_fact == "legacy_campaign":
+                connection.execute(
+                    text(
+                        "INSERT INTO historical_import_campaigns("
+                        "id, client_idempotency_key, root_relative_path, "
+                        "profile_snapshot, keyword_pack_snapshot, status, created_at"
+                        ") VALUES ("
+                        ":id, :key, '.', '{}'::jsonb, '{}'::jsonb, 'succeeded', :now)"
+                    ),
+                    {
+                        "id": uuid4(),
+                        "key": f"stage7-{blocked_fact}-{uuid4().hex}",
+                        "now": _NOW,
+                    },
+                )
+            if blocked_fact == "unowned_vehicle":
+                catalog_version = connection.scalar(
+                    text("SELECT max(version) FROM vehicle_catalog_versions")
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO vehicle_models("
+                        "id, code, display_name, brand_id, status, version, catalog_version, "
+                        "created_at, updated_at"
+                        ") VALUES ("
+                        ":id, :code, '未归属车型', NULL, 'active', 1, "
+                        ":catalog_version, :now, :now)"
+                    ),
+                    {
+                        "id": uuid4(),
+                        "code": f"UNOWNED-{uuid4().hex}",
+                        "catalog_version": catalog_version,
+                        "now": _NOW,
+                    },
+                )
+    finally:
+        engine.dispose()
+
+    expected = {
+        "legacy_job": "旧 ingestion.import-excel.v1 Job",
+        "legacy_batch": "旧 Import Batch Snapshot",
+        "legacy_run": "旧 Collection Run Snapshot",
+        "legacy_campaign": "旧 Data Import Campaign Snapshot",
+        "unowned_vehicle": "缺少有效 Brand Ownership",
+    }[blocked_fact]
+    with pytest.raises(RuntimeError, match=expected):
+        _upgrade(migration_database, "20260910_0047")
+
+    engine = _engine(migration_database)
+    try:
+        assert "global_relevance_config" in set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260910_0046"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0049_refuses_active_legacy_historical_chunk_job(
+    migration_database: str,
+) -> None:
+    """干净切换不能让新 Worker 错读已排队的旧 outcome Chunk。"""
+
+    _upgrade(migration_database, "20260911_0048")
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO jobs("
+                    "id, job_type, payload_version, payload, status, "
+                    "internal_idempotency_key, priority, attempt, max_attempts, "
+                    "timeout_seconds, progress, available_at, created_at, updated_at"
+                    ") VALUES ("
+                    ":id, 'ingestion.historical-import-chunk.v1', "
+                    "'ingestion.historical-import-chunk.v1', "
+                    '\'{"schema_version":"ingestion.historical-import-chunk.v1"}\'::jsonb, '
+                    "'queued', :key, -20, 0, 5, 3600, 0, :now, :now, :now)"
+                ),
+                {"id": uuid4(), "key": f"stage2-legacy-{uuid4().hex}", "now": _NOW},
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="活跃 ingestion.historical-import-chunk.v1 Job"):
+        _upgrade(migration_database, "20260911_0049")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260911_0048"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0049_refuses_retryable_legacy_historical_chunk(
+    migration_database: str,
+) -> None:
+    """没有活跃 Job 时也不能让可重试的旧 Chunk 穿过干净切换。"""
+
+    _upgrade(migration_database, "20260911_0048")
+    campaign_id = uuid4()
+    source_item_id = uuid4()
+    chunk_item_id = uuid4()
+    artifact_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO historical_import_campaigns("
+                    "id, client_idempotency_key, root_relative_path, recursive, "
+                    "profile_snapshot, keyword_pack_snapshot, status, created_at"
+                    ") VALUES ("
+                    ":id, :key, '.', FALSE, '{}'::jsonb, '{}'::jsonb, 'ready', :now)"
+                ),
+                {
+                    "id": campaign_id,
+                    "key": f"stage2-legacy-chunk-{campaign_id}",
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO artifacts("
+                    "id, kind, storage_backend, storage_key, content_type, encoding, "
+                    "sha256, byte_size, retention_class, storage_status, created_at, "
+                    "stored_at, linked_at"
+                    ") VALUES ("
+                    ":id, 'historical-import.chunk', 'local', :key, 'application/gzip', "
+                    "'gzip', :sha256, 1, 'raw', 'linked', :now, :now, :now)"
+                ),
+                {
+                    "id": artifact_id,
+                    "key": f"historical-import.chunk/{artifact_id}.gz",
+                    "sha256": "c" * 64,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO historical_import_campaign_items("
+                    "id, campaign_id, item_kind, relative_path, manifest_identity, "
+                    "file_size, file_mtime_ns, row_count, status, stats, created_at"
+                    ") VALUES ("
+                    ":id, :campaign_id, 'source_file', 'legacy.xlsx', :manifest, "
+                    "1, 1, 1, 'ready', '{}'::jsonb, :now)"
+                ),
+                {
+                    "id": source_item_id,
+                    "campaign_id": campaign_id,
+                    "manifest": "a" * 64,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO historical_import_campaign_items("
+                    "id, campaign_id, parent_item_id, item_kind, relative_path, "
+                    "manifest_identity, ordinal, artifact_id, sha256, row_start, row_end, "
+                    "row_count, status, stats, created_at"
+                    ") VALUES ("
+                    ":id, :campaign_id, :parent_id, 'chunk', 'legacy.xlsx', :manifest, "
+                    "0, :artifact_id, :sha256, 2, 2, 1, 'ready', '{}'::jsonb, :now)"
+                ),
+                {
+                    "id": chunk_item_id,
+                    "campaign_id": campaign_id,
+                    "parent_id": source_item_id,
+                    "artifact_id": artifact_id,
+                    "manifest": "a" * 64,
+                    "sha256": "c" * 64,
+                    "now": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="仍可执行或重试的旧 Historical Chunk"):
+        _upgrade(migration_database, "20260911_0049")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260911_0048"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0050_refuses_ambiguous_provider_attempt_canonical_links(
+    migration_database: str,
+) -> None:
+    """Stage 3 唯一父级不能在含糊旧关系上静默选取 Artifact。"""
+
+    _upgrade(migration_database, "20260911_0049")
+    job_id = uuid4()
+    run_id = uuid4()
+    scope_id = uuid4()
+    request_id = uuid4()
+    attempt_id = uuid4()
+    artifact_ids = (uuid4(), uuid4())
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO jobs(id, job_type, payload_version, payload, status, "
+                    "internal_idempotency_key, priority, attempt, max_attempts, "
+                    "timeout_seconds, progress, available_at, created_at, updated_at) "
+                    "VALUES (:id, 'collection.run.v1', 'collection.run.v1', '{}'::jsonb, "
+                    "'queued', :key, 0, 0, 1, 60, 0, :now, :now, :now)"
+                ),
+                {
+                    "id": job_id,
+                    "key": f"stage3-duplicate-{job_id}",
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO collection_runs(id, job_id, trigger_type, config_snapshot, "
+                    "status, created_at) VALUES (:id, :job_id, 'api', '{}'::jsonb, "
+                    "'queued', :now)"
+                ),
+                {"id": run_id, "job_id": job_id, "now": _NOW},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO collection_scopes(id, run_id, platform, source_type, "
+                    "source_value, operation_group, status) VALUES (:id, :run_id, "
+                    "'xiaohongshu', 'keyword_search', '爱玛', 'content_discovery', 'queued')"
+                ),
+                {"id": scope_id, "run_id": run_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO provider_requests(id, scope_id, provider, operation, "
+                    "request_fingerprint, request_params, pagination_input, status, "
+                    "attempt_count, created_at) VALUES (:id, :scope_id, 'tikhub', "
+                    "'search_notes', :fingerprint, '{}'::jsonb, '{}'::jsonb, 'completed', "
+                    "1, :now)"
+                ),
+                {
+                    "id": request_id,
+                    "scope_id": scope_id,
+                    "fingerprint": "d" * 64,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO provider_request_attempts(id, provider_request_id, "
+                    "attempt_no, dispatch_status, dispatch_started_at, completed_at, "
+                    "billing_status, potential_duplicate_charge, created_at) VALUES "
+                    "(:id, :request_id, 1, 'completed', :now, :now, 'not_billable', "
+                    "FALSE, :now)"
+                ),
+                {"id": attempt_id, "request_id": request_id, "now": _NOW},
+            )
+            for artifact_id in artifact_ids:
+                connection.execute(
+                    text(
+                        "INSERT INTO artifacts(id, kind, storage_backend, storage_key, "
+                        "content_type, encoding, sha256, byte_size, retention_class, "
+                        "storage_status, created_at, stored_at, linked_at) VALUES (:id, "
+                        "'canonical-content.v1', 'local', :key, 'application/x-ndjson', "
+                        "'gzip', :sha256, 1, 'canonical', 'linked', :now, :now, :now)"
+                    ),
+                    {
+                        "id": artifact_id,
+                        "key": f"canonical-content.v1/{artifact_id}.jsonl.gz",
+                        "sha256": "e" * 64,
+                        "now": _NOW,
+                    },
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO canonical_artifact_links(artifact_id, "
+                        "provider_attempt_id, created_at) VALUES (:artifact_id, "
+                        ":attempt_id, :now)"
+                    ),
+                    {
+                        "artifact_id": artifact_id,
+                        "attempt_id": attempt_id,
+                        "now": _NOW,
+                    },
+                )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="同一 Provider Attempt"):
+        _upgrade(migration_database, "20260911_0050")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260911_0049"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0051_creates_and_drops_canonical_replay_schema(
+    migration_database: str,
+) -> None:
+    """Stage 4 Replay 表从当前 0050 基线可升级、可回滚且版本一致。"""
+
+    _upgrade(migration_database, "20260911_0050")
+    _upgrade(migration_database, "20260911_0051")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert {
+            "canonical_replay_runs",
+            "canonical_replay_run_artifacts",
+            "canonical_replay_seen_content",
+        }.issubset(inspector.get_table_names())
+        assert inspector.get_pk_constraint("canonical_replay_seen_content")[
+            "constrained_columns"
+        ] == ["run_id", "platform", "external_content_id"]
+        assert (
+            "collection_scope_id is null"
+            in " ".join(
+                str(item["sqltext"])
+                for item in inspector.get_check_constraints("canonical_artifact_links")
+            ).casefold()
+        )
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260911_0051"
+            )
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260911_0050")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_runs" not in inspector.get_table_names()
+        assert "canonical_replay_run_artifacts" not in inspector.get_table_names()
+        assert "canonical_replay_seen_content" not in inspector.get_table_names()
+    finally:
+        engine.dispose()

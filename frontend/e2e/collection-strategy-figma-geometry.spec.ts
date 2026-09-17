@@ -1,40 +1,26 @@
 import { expect, test, type Locator, type Page } from './fixture'
 
 const packId = '11111111-1111-4111-8111-111111111111'
-const relevancePackId = '22222222-2222-4222-8222-222222222222'
+const secondaryPackId = '22222222-2222-4222-8222-222222222222'
 const planId = '33333333-3333-4333-8333-333333333333'
 const providerId = '44444444-4444-4444-8444-444444444444'
-const historicalVehicleId = '66666666-6666-4666-8666-666666666666'
-const activeVehicleId = '77777777-7777-4777-8777-777777777777'
+const activeBrandId = '88888888-8888-4888-8888-888888888888'
 
 const packs = [
   { id: packId, name: '爱玛品牌词包', description: '新品车型及用户讨论', enabled: true, version: 4, keyword_count: 28 },
-  { id: relevancePackId, name: '产品车型词包', description: '车型、型号与产品系列发现', enabled: true, version: 2, keyword_count: 16 },
+  { id: secondaryPackId, name: '门店活动词包', description: '门店活动与用户讨论发现', enabled: true, version: 2, keyword_count: 16 },
 ]
-
-const historicalVehicle = {
-  id: historicalVehicleId,
-  code: 'A01',
-  display_name: '示例车型 A',
-  status: 'deprecated',
-  version: 3,
-  catalog_version: 9,
-  merged_into_id: null,
-  aliases: [],
-  keyword_pack_ids: [],
-  referenced: true,
-  created_at: '2026-08-01T00:00:00Z',
-  updated_at: '2026-08-28T00:00:00Z',
-}
-
-const activeVehicle = {
-  ...historicalVehicle,
-  id: activeVehicleId,
-  code: 'Q7',
-  display_name: '爱玛 Q7',
+const activeBrand = {
+  id: activeBrandId,
+  code: 'AIMA',
+  display_name: '爱玛',
+  role: 'owned',
   status: 'active',
   version: 1,
-  referenced: false,
+  catalog_version: 18,
+  aliases: [],
+  created_at: '2026-08-01T00:00:00Z',
+  updated_at: '2026-08-28T00:00:00Z',
 }
 
 const plan = {
@@ -50,7 +36,7 @@ const plan = {
   comment_policy: 'adaptive',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId, search_config: {} }],
   keyword_pack_ids: [packId],
-  vehicle_model_ids: [historicalVehicleId],
+  brand_ids: [activeBrandId],
   created_at: '2026-08-21T00:00:00Z',
   updated_at: '2026-08-21T00:00:00Z',
 }
@@ -98,24 +84,10 @@ async function mockStrategyApi(page: Page): Promise<void> {
       })
       return
     }
-    if (url.pathname === '/api/v1/vehicle-models' && request.method() === 'GET') {
-      const items = url.searchParams.get('status') === 'active' ? [activeVehicle] : [historicalVehicle]
+    if (url.pathname === '/api/v1/vehicle-brands' && request.method() === 'GET') {
       await route.fulfill({
         contentType: 'application/json',
-        body: JSON.stringify({ items, total: items.length, catalog_version: 9, offset: 0, limit: 200 }),
-      })
-      return
-    }
-    if (url.pathname === '/api/v1/relevance-config' && request.method() === 'GET') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          keyword_pack_id: packId,
-          keyword_pack_version: 4,
-          version: 3,
-          effective_keywords: ['爱玛 Q7', '爱玛电动车', '爱玛门店'],
-          updated_at: '2026-08-27T15:20:00Z',
-        }),
+        body: JSON.stringify({ items: [activeBrand], total: 1, catalog_version: 18, offset: 0, limit: 200 }),
       })
       return
     }
@@ -208,21 +180,17 @@ test('matches the formal keyword modal and collection plan drawer geometry', asy
   await expectBox(drawer.locator('footer'), { y: 826, height: 74 })
   await expectBox(drawer.locator('.platform').first(), { height: 68 })
 
-  const vehicleSelect = drawer.locator('.vehicle-select')
-  await expect(vehicleSelect).toHaveCSS('border-top-width', '0px')
-  await expect(vehicleSelect.locator('.vehicle-select__options label').first()).toHaveCSS('border-top-width', '0px')
-  await expectBox(vehicleSelect.locator('.vehicle-select__options label').first(), { height: 32 })
+  await drawer.getByText('指定品牌', { exact: true }).click()
+  const brandSelect = drawer.locator('.brand-select')
+  await expect(brandSelect).toHaveCSS('border-top-width', '0px')
+  await expect(brandSelect.locator('.brand-select__options label').first()).toHaveCSS('border-top-width', '0px')
+  await expectBox(brandSelect.locator('.brand-select__options label').first(), { height: 32 })
 })
 
-test('matches the formal relevance workspace and plan detail drawer geometry', async ({ page }) => {
+test('removes the global relevance entry and matches the formal plan detail drawer geometry', async ({ page }) => {
   await page.goto('/collection-strategy')
-  await page.getByRole('button', { name: '全局相关性' }).click()
+  await expect(page.getByRole('button', { name: '全局相关性' })).toHaveCount(0)
 
-  await expectBox(page.locator('.relevance-layout'), { x: 204, y: 286, width: 1212 })
-  await expectBox(page.locator('.relevance-layout > article'), { x: 204, width: 790, height: 322 })
-  await expectBox(page.locator('.relevance-layout > aside'), { x: 1016, width: 400, height: 322 })
-
-  await page.getByRole('button', { name: '采集计划', exact: true }).click()
   const planRow = page.locator('.plan-table tbody tr').filter({ hasText: '爱玛新品口碑追踪' })
   await planRow.getByRole('button', { name: '查看详情' }).click()
 
@@ -236,30 +204,12 @@ test('matches the formal relevance workspace and plan detail drawer geometry', a
 
 test('keeps compact strategy panels inside the workspace and long keywords inside their card', async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 900 })
-  await page.route('**/api/v1/relevance-config', async (route) => {
-    await route.fulfill({ json: {
-      keyword_pack_id: packId, keyword_pack_version: 4, version: 3,
-      effective_keywords: Array.from({ length: 45 }, (_, index) => `长关键词_${index}_${'A'.repeat(60)}`),
-      updated_at: '2026-08-27T15:20:00Z',
-    } })
-  })
   await page.goto('/collection-strategy')
-  for (const tab of ['关键词包', '全局相关性']) {
-    await page.getByRole('button', { name: tab, exact: true }).click()
-    const card = page.locator(tab === '关键词包' ? '.detail-card' : '.relevance-layout > aside')
-    await expect(card).toBeVisible()
-    const box = await card.boundingBox()
-    expect(box!.x + box!.width).toBeLessThanOrEqual(1157)
-  }
-  const keywords = page.locator('.relevance-layout .keywords')
-  const metrics = await keywords.evaluate((node) => ({
-    clientWidth: node.clientWidth, scrollWidth: node.scrollWidth,
-    bottom: node.getBoundingClientRect().bottom,
-    cardBottom: node.parentElement!.getBoundingClientRect().bottom,
-  }))
-  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth)
-  expect(metrics.bottom).toBeLessThan(metrics.cardBottom)
-  await page.screenshot({ path: '../.runtime/strategy-figma-test/relevance-compact-long.png', fullPage: true })
+  await page.getByRole('button', { name: '关键词包', exact: true }).click()
+  const card = page.locator('.detail-card')
+  await expect(card).toBeVisible()
+  const box = await card.boundingBox()
+  expect(box!.x + box!.width).toBeLessThanOrEqual(1157)
 })
 
 test('preserves keyword pack edit, copy and add drafts after rejected requests', async ({ page }) => {
@@ -324,7 +274,7 @@ test(`edits a ${memberCount}-member existing pack in the shared dialog without c
 })
 }
 
-test('opens complete current pack and vehicle details from plan references and returns to the plan', async ({ page }) => {
+test('opens complete current pack details from plan references and returns to the plan', async ({ page }) => {
   let rejectNextDetail = false
   await page.route(`**/api/v1/keyword-packs/${packId}`, async (route) => {
     if (rejectNextDetail) {
@@ -337,9 +287,6 @@ test('opens complete current pack and vehicle details from plan references and r
         priority: index + 1, enabled: index !== 34, note: `完整备注 ${index + 1}`,
       })),
     } })
-  })
-  await page.route(`**/api/v1/vehicle-models/${historicalVehicleId}`, async (route) => {
-    await route.fulfill({ json: { ...historicalVehicle, series_name: '车型系列', category_name: '车型分类', aliases: [{ id: 'alias-1', text: '当下完整别名', normalized_text: '当下完整别名' }] } })
   })
   await page.goto('/collection-strategy')
   await page.locator('.table-wrap').getByRole('button', { name: '查看' }).first().click()
@@ -358,15 +305,9 @@ test('opens complete current pack and vehicle details from plan references and r
   await page.keyboard.press('Escape')
   await expect(packDetail).toBeHidden()
   await expect(packLink).toBeFocused()
-  await planDetail.getByRole('button', { name: /示例车型 A/ }).click()
-  const vehicleDetail = page.getByRole('dialog', { name: '车型详情', exact: true })
-  await expect(vehicleDetail).toContainText('当下完整别名')
-  await expect(vehicleDetail).toContainText('车型系列')
-  await expect(vehicleDetail).toContainText('车型分类')
-  await expect(vehicleDetail).toContainText('v3')
-  await expect(vehicleDetail).toContainText('已停用')
-  await page.screenshot({ path: '../.runtime/strategy-figma-test/plan-vehicle-detail.png', fullPage: true })
-  await vehicleDetail.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(planDetail.getByRole('heading', { name: '内容过滤条件 · 品牌' })).toBeVisible()
+  await expect(planDetail.getByText('爱玛 · 自有')).toBeVisible()
+  await expect(planDetail.getByRole('button', { name: /车型/ })).toHaveCount(0)
   await expect(planDetail).toBeVisible()
 })
 
@@ -417,13 +358,21 @@ test('edits the selected plan through a single drawer and preserves its identity
   const editor = page.getByRole('dialog', { name: '编辑采集计划', exact: true })
   await expect(editor).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(1)
+  await expect(editor.getByText('指定品牌', { exact: true })).toBeVisible()
+  await expect(editor.getByText('爱玛', { exact: true })).toBeVisible()
   await editor.getByPlaceholder('例如：爱玛新品口碑追踪').fill('编辑后的计划')
   await editor.getByLabel('小红书排序').selectOption('latest')
   await editor.getByLabel('小红书发布时间').selectOption('1d')
   await editor.getByLabel('小红书内容类型').selectOption('all')
   const request = page.waitForRequest((item) => new URL(item.url()).pathname === `/api/v1/collection-plans/${planId}` && item.method() === 'PUT')
   await editor.getByRole('button', { name: '保存计划修改' }).click()
-  expect((await request).postDataJSON()).toMatchObject({ name: '编辑后的计划', expected_version: 3, vehicle_model_ids: [historicalVehicleId] })
+  const payload = (await request).postDataJSON()
+  expect(payload).toMatchObject({
+    name: '编辑后的计划',
+    expected_version: 3,
+    brand_ids: [activeBrandId],
+  })
+  expect(payload).not.toHaveProperty('vehicle_model_ids')
   await expect(editor).toHaveCount(0)
 })
 

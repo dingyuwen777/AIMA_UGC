@@ -26,12 +26,20 @@ from aima_ugc.modules.collection.collection_run_job import (
 )
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
+from aima_ugc.modules.ingestion.canonical_replay import (
+    CanonicalReplayJobHandler,
+    register_canonical_replay_job,
+)
 from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
     register_data_export_job,
 )
 from aima_ugc.modules.system.models import ProviderConfig
+from aima_ugc.modules.vehicles.content_reclassification import (
+    ContentReclassificationJobHandler,
+    register_content_reclassification_job,
+)
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
@@ -42,11 +50,14 @@ from .analysis_high_throughput_planner import (
     HighThroughputContentAnalysisPlanJobExecutor,
     create_high_throughput_analysis_job_terminal_callback,
 )
-from .collection_scope import TikHubCollectionScopeExecutor
+from .canonical_replay_worker import PostgresCanonicalReplayJobExecutor
+from .content_media_cache import PostgresContentMediaCacheService
+from .content_reclassification_worker import PostgresContentReclassificationJobExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
 from .historical_cancellation import historical_cancellation_terminal_callback
 from .historical_import_worker import PostgresHistoricalImportJobExecutor
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
+from .media_cache_collection_scope import MediaCachingTikHubCollectionScopeExecutor
 from .runtime import PlatformRuntime, create_platform_runtime
 
 
@@ -131,9 +142,14 @@ def create_collection_job_registry(
         pool = _TikHubTransportPool()
         runtime.add_resource_closer(pool.close)
         resolved_transport_factory = pool
-    scope_executor = TikHubCollectionScopeExecutor(
+    media_cache = PostgresContentMediaCacheService(runtime)
+    runtime.add_resource_closer(media_cache.close)
+    scope_executor = MediaCachingTikHubCollectionScopeExecutor(
+        media_prefetcher=media_cache,
         session_factory=runtime.database.new_session,
         raw_artifacts=raw_artifacts,
+        artifacts=artifact_service,
+        artifact_store=runtime.artifact_store,
         transport_factory=resolved_transport_factory,
         secret_resolver=secret_resolver or _default_secret_resolver(runtime),
     )
@@ -167,6 +183,14 @@ def create_collection_job_registry(
         registry,
         DataExportJobHandler(PostgresDataExportJobExecutor(runtime)),
         terminal_callback=export_job_terminal_callback,
+    )
+    register_content_reclassification_job(
+        registry,
+        ContentReclassificationJobHandler(PostgresContentReclassificationJobExecutor(runtime)),
+    )
+    register_canonical_replay_job(
+        registry,
+        CanonicalReplayJobHandler(PostgresCanonicalReplayJobExecutor(runtime)),
     )
     return registry
 

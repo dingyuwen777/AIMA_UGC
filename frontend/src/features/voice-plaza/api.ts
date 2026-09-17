@@ -13,6 +13,7 @@ import {
   getExportColumnCatalog,
   getDataExport,
   listContents,
+  listContentComments,
   listDataExports,
   previewContentAnalysisRun,
   reviewContentAnalysis,
@@ -30,6 +31,7 @@ import {
   type ContentAnalysisCreatedResponse,
   type ContentAnalysisSubmitRequest,
   type ContentDetailResponse,
+  type ContentCommentListResponse,
   type ContentFilterOptionsResponse,
   type ContentListResponse,
   type ContentRelevanceReviewRequest,
@@ -44,6 +46,7 @@ import {
   type HttpErrorResponse,
   type JobStatusResponse,
   type ListContentsParams,
+  type ListContentCommentsParams,
 } from '../../generated/api/client'
 
 export class VoicePlazaApiError extends Error {
@@ -73,12 +76,35 @@ function unwrap<T>(value: T): T {
   return value
 }
 
+/** 将有真实源 URL 的小红书图片收敛到同源缓存，并过滤完全不可展示的媒体记录。 */
+export function withLocalMediaPreview(detail: ContentDetailResponse): ContentDetailResponse {
+  if (detail.platform !== 'xiaohongshu') return detail
+  const media = (detail.media ?? [])
+    .map((item) =>
+      item.media_type === 'image' && item.url
+        ? {
+            ...item,
+            preview_url: `/api/v1/contents/${detail.id}/media/${item.position}`,
+          }
+        : item,
+    )
+    .filter((item) => Boolean(item.preview_url || item.url))
+  return { ...detail, media }
+}
+
 export async function fetchContents(params: ListContentsParams): Promise<ContentListResponse> {
   return unwrap(await listContents(params))
 }
 
 export async function fetchContentDetail(contentId: string): Promise<ContentDetailResponse> {
-  return unwrap(await getContent(contentId))
+  return withLocalMediaPreview(unwrap(await getContent(contentId)))
+}
+
+export async function fetchContentComments(
+  contentId: string,
+  params?: ListContentCommentsParams,
+): Promise<ContentCommentListResponse> {
+  return unwrap(await listContentComments(contentId, params))
 }
 
 export async function fetchContentAnalysisCapabilities(): Promise<ContentAnalysisCapabilitiesResponse> {

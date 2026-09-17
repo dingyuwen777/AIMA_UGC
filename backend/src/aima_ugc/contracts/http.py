@@ -11,6 +11,11 @@ from pydantic import ConfigDict, Field, computed_field, field_validator, model_v
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
+from aima_ugc.contracts.brand_vehicle import (
+    BrandCompetitionScope,
+    BrandRole,
+    competition_scope_for_brand_roles,
+)
 from aima_ugc.contracts.collection.models import BusinessOperation, CollectionSearchConfig
 from aima_ugc.contracts.platform import PlatformName, PlatformScope, normalize_platform_name
 from aima_ugc.platform.time import to_beijing
@@ -89,6 +94,22 @@ class DataExportJobResultResponse(BaseModel):
     comment_count: int = Field(ge=0)
 
 
+class CanonicalReplayJobResultResponse(BaseModel):
+    """Canonical Replay 成功终态的安全统计。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    artifact_count: int = Field(ge=1)
+    rows_seen: int = Field(ge=0)
+    rows_matched: int = Field(ge=0)
+    rows_filtered_out: int = Field(ge=0)
+    duplicates_removed: int = Field(ge=0)
+    rows_ingested: int = Field(ge=0)
+    existing_convergence: int = Field(ge=0)
+    invalid_artifact_rows: Literal[0] = 0
+
+
 class JobStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -103,6 +124,7 @@ class JobStatusResponse(BaseModel):
         ImportJobResultResponse
         | ContentAnalysisJobResultResponse
         | DataExportJobResultResponse
+        | CanonicalReplayJobResultResponse
         | None
     ) = None
     created_at: datetime
@@ -116,6 +138,76 @@ class ImportBatchCreatedResponse(BaseModel):
     batch_id: UUID
     job_id: UUID
     status: Literal["queued"] = "queued"
+
+
+class CanonicalReplayCreateRequest(BaseModel):
+    """创建 Replay 时显式冻结的输入选择。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    artifact_ids: tuple[UUID, ...] = Field(min_length=1, max_length=100)
+    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
+    batch_size: int = Field(default=500, ge=1, le=1000)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def normalize_idempotency_key(cls, value: str) -> str:
+        """去除调用方无意义空白，并拒绝纯空白幂等键。"""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("idempotency_key 不能为空")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_unique_selection(self) -> CanonicalReplayCreateRequest:
+        """冻结列表顺序，但拒绝同一 Artifact/Brand 被重复选择。"""
+
+        if len(set(self.artifact_ids)) != len(self.artifact_ids):
+            raise ValueError("artifact_ids 不能重复")
+        if len(set(self.brand_ids)) != len(self.brand_ids):
+            raise ValueError("brand_ids 不能重复")
+        return self
+
+
+class CanonicalReplayCreatedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    job_id: UUID
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+
+
+class CanonicalReplayStatsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rows_seen: int = Field(ge=0)
+    rows_matched: int = Field(ge=0)
+    rows_filtered_out: int = Field(ge=0)
+    duplicates_removed: int = Field(ge=0)
+    rows_ingested: int = Field(ge=0)
+    existing_convergence: int = Field(ge=0)
+    invalid_artifact_rows: Literal[0] = 0
+
+
+class CanonicalReplayRunResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    artifact_ids: tuple[UUID, ...]
+    filter_scope: Literal["all_active", "selected"]
+    brand_ids: tuple[UUID, ...]
+    catalog_version: int = Field(ge=1)
+    artifact_count: int = Field(ge=1)
+    checkpoint_artifact_ordinal: int = Field(ge=0)
+    checkpoint_row_number: int = Field(ge=0)
+    batch_size: int = Field(ge=1, le=1000)
+    stats: CanonicalReplayStatsResponse
+    job: JobStatusResponse
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class ImportBatchResponse(BaseModel):
@@ -237,7 +329,6 @@ class CollectionRunCreateRequest(BaseModel):
     mode: CollectionRunMode
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
@@ -253,10 +344,6 @@ class CollectionRunCreateRequest(BaseModel):
             raise ValueError("同一次 Collection Run 的词包不得重复")
         if len(self.brand_ids) != len(set(self.brand_ids)):
             raise ValueError("同一次 Collection Run 的品牌不得重复")
-        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
-            raise ValueError("同一次 Collection Run 的车型不得重复")
-        if self.brand_ids and self.vehicle_model_ids:
-            raise ValueError("品牌范围与兼容车型范围不能同时提交")
         if self.mode == "discovery":
             if not self.keyword_pack_ids:
                 raise ValueError("主动发现必须选择至少一个 Keyword Pack 作为 Search Terms")
@@ -271,8 +358,6 @@ class CollectionRunCreateRequest(BaseModel):
                 raise ValueError("基于 Batch 补采不能提交 Keyword Pack")
             if self.brand_ids:
                 raise ValueError("基于 Batch 补采不能提交品牌过滤范围")
-            if self.vehicle_model_ids:
-                raise ValueError("基于 Batch 补采不能提交车型")
             if any(item.search_config is not None for item in self.platforms):
                 raise ValueError("基于 Batch 补采不能提交关键词搜索配置")
         if self.include_sub_comments and not self.include_comments:
@@ -587,22 +672,6 @@ class ResourceEnabledRequest(BaseModel):
     enabled: bool
 
 
-class GlobalRelevanceConfigRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    keyword_pack_id: UUID
-
-
-class GlobalRelevanceConfigResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    keyword_pack_id: UUID
-    keyword_pack_version: int = Field(gt=0)
-    version: int = Field(gt=0)
-    effective_keywords: tuple[str, ...]
-    updated_at: datetime
-
-
 class CollectionPlanPlatformRequest(BaseModel):
     """Plan 逐平台提交 Provider-neutral 搜索配置，不接收 Provider 私有参数。"""
 
@@ -628,7 +697,6 @@ class CollectionPlanCreateRequest(BaseModel):
     platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(min_length=1, max_length=5)
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     enabled: bool = True
 
     @field_validator("name", "schedule_expr", mode="before")
@@ -649,10 +717,6 @@ class CollectionPlanCreateRequest(BaseModel):
             raise ValueError("同一 Plan 的 Discovery 词包不得重复")
         if len(self.brand_ids) != len(set(self.brand_ids)):
             raise ValueError("同一 Plan 的品牌不得重复")
-        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
-            raise ValueError("同一 Plan 的车型不得重复")
-        if self.brand_ids and self.vehicle_model_ids:
-            raise ValueError("品牌范围与兼容车型范围不能同时提交")
         if not self.keyword_pack_ids:
             raise ValueError("Plan 必须选择至少一个 Keyword Pack 作为 Search Terms")
         return self
@@ -682,7 +746,6 @@ class CollectionPlanResponse(BaseModel):
     platforms: tuple[CollectionPlanPlatformResponse, ...]
     keyword_pack_ids: tuple[UUID, ...]
     brand_ids: tuple[UUID, ...] = ()
-    vehicle_model_ids: tuple[UUID, ...] = ()
     created_at: datetime
     updated_at: datetime
 
@@ -865,6 +928,41 @@ class ContentVehicleEvidenceResponse(BaseModel):
     is_manual_locked: bool = False
 
 
+class ContentBrandReferenceResponse(BaseModel):
+    """内容查询中的稳定 Brand 展示引用。"""
+
+    model_config = ConfigDict(extra="forbid")
+    id: UUID
+    code: str
+    display_name: str
+    role: BrandRole
+
+
+class ContentBrandEvidenceResponse(BaseModel):
+    """一个 Brand 关联的可追溯证据。"""
+
+    model_config = ConfigDict(extra="forbid")
+    source: Literal["alias_match", "vehicle_match", "manual_review", "import"]
+    matched_text: str | None = None
+    source_field: str | None = None
+    derived_vehicle_model_id: UUID | None = None
+    catalog_version: int = Field(gt=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    is_manual_locked: bool = False
+
+    @model_validator(mode="after")
+    def validate_derived_vehicle(self) -> ContentBrandEvidenceResponse:
+        if (self.source == "vehicle_match") != (self.derived_vehicle_model_id is not None):
+            raise ValueError("只有 vehicle_match Brand Evidence 必须携带 derived_vehicle_model_id")
+        return self
+
+
+class ContentBrandResponse(ContentBrandReferenceResponse):
+    """内容当前 Brand 及其全部有效证据。"""
+
+    evidences: tuple[ContentBrandEvidenceResponse, ...] = Field(min_length=1)
+
+
 class ContentVehicleResponse(BaseModel):
     """内容当前车型及其全部有效证据。"""
 
@@ -874,6 +972,7 @@ class ContentVehicleResponse(BaseModel):
     display_name: str
     series_name: str | None = None
     category_name: str | None = None
+    brand: ContentBrandReferenceResponse | None
     evidences: tuple[ContentVehicleEvidenceResponse, ...] = Field(min_length=1)
 
 
@@ -907,7 +1006,9 @@ class ContentListItemResponse(BaseModel):
     effective_relevance: ContentRelevance | None = None
     relevance_source: ContentRelevanceSource | None = None
     source: ContentSourceResponse
+    brands: tuple[ContentBrandResponse, ...]
     vehicles: tuple[ContentVehicleResponse, ...] = ()
+    competition_scope: BrandCompetitionScope
     availability: ContentAvailabilityResponse | None = None
 
     @model_validator(mode="after")
@@ -919,6 +1020,12 @@ class ContentListItemResponse(BaseModel):
             or self.analysis.relevance != self.effective_relevance
         ):
             raise ValueError("AI relevance_source 必须与当前 completed Analysis 原判一致")
+        brand_ids = tuple(brand.id for brand in self.brands)
+        if len(brand_ids) != len(set(brand_ids)):
+            raise ValueError("brands 不能包含重复 Brand")
+        expected_scope = competition_scope_for_brand_roles(brand.role for brand in self.brands)
+        if self.competition_scope != expected_scope:
+            raise ValueError("competition_scope 必须由 brands 的 role 派生")
         return self
 
 
@@ -939,7 +1046,9 @@ class ContentFilterSnapshot(BaseModel):
     published_from: datetime | None = None
     published_to: datetime | None = None
     source_identifier: UUID | None = None
+    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
+    competition_scopes: tuple[BrandCompetitionScope, ...] = Field(default=(), max_length=5)
 
     @field_validator("platforms", mode="before")
     @classmethod
@@ -963,6 +1072,10 @@ class ContentFilterSnapshot(BaseModel):
             raise ValueError("published_from 不能晚于 published_to")
         if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
             raise ValueError("vehicle_model_ids 不能重复")
+        if len(self.brand_ids) != len(set(self.brand_ids)):
+            raise ValueError("brand_ids 不能重复")
+        if len(self.competition_scopes) != len(set(self.competition_scopes)):
+            raise ValueError("competition_scopes 不能重复")
         return self
 
 
@@ -1007,11 +1120,36 @@ class ContentCommentResponse(BaseModel):
 
     id: UUID
     external_comment_id: str
+    root_comment_id: str | None = None
+    parent_comment_id: str | None = None
+    parent_author_display_name: str | None = None
     author_display_name: str | None = None
     text: str | None = None
     published_at: datetime | None = None
     like_count: int | None = Field(default=None, ge=0)
     reply_count: int | None = Field(default=None, ge=0)
+    ingested_reply_count: int = Field(default=0, ge=0)
+    is_by_content_author: bool | None = None
+
+
+class ContentCommentListQuery(BaseModel):
+    """评论分页查询；不带根评论 ID 读取一级评论，带值读取该线程回复。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    root_comment_id: str | None = Field(default=None, min_length=1, max_length=512)
+    cursor: str | None = Field(default=None, min_length=1, max_length=4096)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class ContentCommentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[ContentCommentResponse, ...]
+    next_cursor: str | None = None
+    has_more: bool
+    total_count: int = Field(ge=0)
+    ingested_total_count: int = Field(ge=0)
 
 
 class CommentCoverageResponse(BaseModel):
@@ -1225,6 +1363,9 @@ type ExportColumnKey = Literal[
     "sentiment",
     "primary_label",
     "secondary_label",
+    "brands",
+    "brand_roles",
+    "competition_scope",
     "vehicles",
     "availability",
     "like_count",
@@ -1656,6 +1797,8 @@ __all__ = [
     "ContentAnalysisSubmitRequest",
     "ContentAnalysisTaxonomyLabelResponse",
     "ContentAnalysisTaxonomyResponse",
+    "ContentCommentListQuery",
+    "ContentCommentListResponse",
     "ContentCommentResponse",
     "ContentCountRequest",
     "ContentDetailResponse",
@@ -1674,6 +1817,11 @@ __all__ = [
     "ContentSourceResponse",
     "ContentSupplementStatusResponse",
     "ContentTargetSelection",
+    "CanonicalReplayCreateRequest",
+    "CanonicalReplayCreatedResponse",
+    "CanonicalReplayJobResultResponse",
+    "CanonicalReplayRunResponse",
+    "CanonicalReplayStatsResponse",
     "DataExportCreatedResponse",
     "DataExportJobResultResponse",
     "DataExportListResponse",
@@ -1683,8 +1831,6 @@ __all__ = [
     "ExportColumnKey",
     "DataImportIngestionPolicy",
     "DataImportSourceKind",
-    "GlobalRelevanceConfigRequest",
-    "GlobalRelevanceConfigResponse",
     "HistoricalCampaignConflictListResponse",
     "HistoricalCampaignConflictResponse",
     "HistoricalCampaignCreateRequest",

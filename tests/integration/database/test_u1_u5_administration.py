@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from uuid import uuid4
-
 import pytest
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.contracts.administration import (
-    KeywordPackVehicleLinkRequest,
     VehicleModelCreateRequest,
     VehicleModelMergeRequest,
     VehicleModelUpdateRequest,
@@ -21,15 +17,8 @@ from aima_ugc.modules.administration import (
     AdministrationConflict,
     AdministrationResourceNotFound,
 )
-from aima_ugc.modules.collection.tables import (
-    collection_plan_vehicle_models_table,
-    collection_plans_table,
-)
 from aima_ugc.modules.identity import Principal
-from aima_ugc.modules.system.tables import keyword_packs_table
-from aima_ugc.modules.vehicles.tables import keyword_pack_vehicle_models_table
 from aima_ugc.platform.config import load_settings
-from sqlalchemy import func, insert, select
 
 
 @pytest.fixture
@@ -54,7 +43,6 @@ def runtime():  # type: ignore[no-untyped-def]
 def _create_owned_brand(runtime, principal: Principal, *, code: str):  # type: ignore[no-untyped-def]
     return PostgresBrandVehicleHttpService(runtime).create_brand(
         BrandCreateRequest(
-            code=code,
             display_name=f"测试品牌 {code}",
             role="owned",
             aliases=(f"{code}品牌",),
@@ -64,8 +52,8 @@ def _create_owned_brand(runtime, principal: Principal, *, code: str):  # type: i
     )
 
 
-def test_vehicle_merge_redirects_future_references_and_audits_mutations(runtime) -> None:  # type: ignore[no-untyped-def]
-    """合并迁移 Plan/Pack 引用但保留源车型身份，所有配置写入均可审计。"""
+def test_vehicle_merge_redirects_identity_and_audits_mutations(runtime) -> None:  # type: ignore[no-untyped-def]
+    """合并保留源车型身份并折叠链路，所有管理写入均可审计。"""
 
     service = PostgresAdministrationHttpService(runtime)
     principal = Principal(
@@ -76,22 +64,17 @@ def test_vehicle_merge_redirects_future_references_and_audits_mutations(runtime)
     )
     brand = _create_owned_brand(runtime, principal, code="U1-MERGE")
     source = service.create_vehicle_model(
-        VehicleModelCreateRequest(
-            code="Q7-OLD", display_name="旧 Q7", brand_id=brand.id, aliases=("旧Q7",)
-        ),
+        VehicleModelCreateRequest(display_name="旧 Q7", brand_id=brand.id, aliases=("旧Q7",)),
         principal=principal,
         request_id="req-create-source",
     )
     target = service.create_vehicle_model(
-        VehicleModelCreateRequest(
-            code="Q7", display_name="爱玛 Q7", brand_id=brand.id, aliases=("Q7",)
-        ),
+        VehicleModelCreateRequest(display_name="爱玛 Q7", brand_id=brand.id, aliases=("Q7",)),
         principal=principal,
         request_id="req-create-target",
     )
     final_target = service.create_vehicle_model(
         VehicleModelCreateRequest(
-            code="Q7-CANONICAL",
             display_name="爱玛 Q7 标准车型",
             brand_id=brand.id,
             aliases=("爱玛Q7标准车型",),
@@ -99,50 +82,6 @@ def test_vehicle_merge_redirects_future_references_and_audits_mutations(runtime)
         principal=principal,
         request_id="req-create-final-target",
     )
-    pack_id = uuid4()
-    plan_id = uuid4()
-    now = datetime.now(UTC)
-    with runtime.database.engine.begin() as connection:
-        connection.execute(
-            insert(keyword_packs_table).values(
-                id=pack_id,
-                name=f"u1-pack-{uuid4()}",
-                description="",
-                enabled=True,
-                version=1,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        connection.execute(
-            insert(collection_plans_table).values(
-                id=plan_id,
-                name=f"u1-plan-{uuid4()}",
-                enabled=False,
-                schedule_expr="0 9 * * *",
-                timezone="Asia/Shanghai",
-                schedule_version=1,
-                misfire_policy="latest_only",
-                max_catch_up_runs=0,
-                detail_policy="on_change",
-                comment_policy="adaptive",
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        connection.execute(
-            insert(collection_plan_vehicle_models_table).values(
-                plan_id=plan_id,
-                vehicle_model_id=source.id,
-            )
-        )
-    service.replace_keyword_pack_vehicles(
-        pack_id,
-        KeywordPackVehicleLinkRequest(vehicle_model_ids=(source.id,)),
-        principal=principal,
-        request_id="req-link",
-    )
-
     merged = service.merge_vehicle_model(
         source.id,
         VehicleModelMergeRequest(target_vehicle_model_id=target.id),
@@ -161,40 +100,6 @@ def test_vehicle_merge_redirects_future_references_and_audits_mutations(runtime)
     )
     assert service.get_vehicle_model(source.id).merged_into_id == final_target.id
     assert service.get_vehicle_model(target.id).merged_into_id == final_target.id
-    with runtime.database.engine.begin() as connection:
-        assert (
-            connection.scalar(
-                select(func.count())
-                .select_from(keyword_pack_vehicle_models_table)
-                .where(keyword_pack_vehicle_models_table.c.vehicle_model_id == source.id)
-            )
-            == 0
-        )
-        assert (
-            connection.scalar(
-                select(func.count())
-                .select_from(keyword_pack_vehicle_models_table)
-                .where(keyword_pack_vehicle_models_table.c.vehicle_model_id == final_target.id)
-            )
-            == 1
-        )
-        assert (
-            connection.scalar(
-                select(func.count())
-                .select_from(collection_plan_vehicle_models_table)
-                .where(collection_plan_vehicle_models_table.c.vehicle_model_id == source.id)
-            )
-            == 0
-        )
-        assert (
-            connection.scalar(
-                select(func.count())
-                .select_from(collection_plan_vehicle_models_table)
-                .where(collection_plan_vehicle_models_table.c.vehicle_model_id == final_target.id)
-            )
-            == 1
-        )
-
     session = runtime.database.new_session()
     try:
         with session.begin():
@@ -203,7 +108,6 @@ def test_vehicle_merge_redirects_future_references_and_audits_mutations(runtime)
         session.close()
     assert {event.event_type for event in events} >= {
         "vehicle_model_created",
-        "keyword_pack_vehicle_links_updated",
         "vehicle_model_merged",
     }
     assert all(event.actor_ref == "admin-1" for event in events)
@@ -229,7 +133,6 @@ def test_vehicle_display_classification_persists_and_can_be_cleared(runtime) -> 
     brand = _create_owned_brand(runtime, principal, code="U1-CLASS")
     created = service.create_vehicle_model(
         VehicleModelCreateRequest(
-            code="CLASS-Q7",
             display_name="爱玛 Q7",
             brand_id=brand.id,
             series_name=" Q 系列 ",
@@ -271,9 +174,7 @@ def test_unreferenced_vehicle_can_be_physically_deleted(runtime) -> None:  # typ
     )
     brand = _create_owned_brand(runtime, principal, code="U1-DELETE")
     created = service.create_vehicle_model(
-        VehicleModelCreateRequest(
-            code="LUNA", display_name="爱玛露娜", brand_id=brand.id, aliases=("露娜",)
-        ),
+        VehicleModelCreateRequest(display_name="爱玛露娜", brand_id=brand.id, aliases=("露娜",)),
         principal=principal,
         request_id="req-create",
     )

@@ -24,7 +24,6 @@
 - `keyword_packs`：`system`；
 - `keywords`：`system`；
 - `keyword_pack_items`：`system`；
-- `global_relevance_config`：`system`；
 - `audit_events`：`system`。
 
 ## Runtime Provider 配置控制面
@@ -67,13 +66,13 @@ Collection
 → Content Ingestion + Brand/Vehicle Evidence
 ```
 
-正式 Excel Import 不执行 Search，但使用同一个 Brand/Vehicle Filter：创建 Import/Campaign 时提交 `brand_ids`，由 Stage 2 Brand/Vehicle Catalog 冻结 `BrandVehicleFilterSnapshot`；空集合表示全部 active Brand。升级前的 legacy Import/Campaign 仍按自己的旧 Snapshot 执行。
+正式 Excel Import 不执行 Search，但使用同一个 Brand/Vehicle Filter：创建 Import/Campaign 时提交 `brand_ids`，由 Brand/Vehicle Catalog 冻结 `BrandVehicleFilterSnapshot`；空集合表示全部 active Brand。Import 与 Campaign 都拒绝旧关键词/车型混合 Snapshot。
 
-`global_relevance_config` 及其 API 在 Roadmap Stage 7 前保留兼容，只用于解释升级前已经创建的 `collection-run-config.v1`。新建 Discovery Run 不读取该配置。AI Semantic Relevance 与人工相关性复核仍由 Analysis 与查询层维护。
+Keyword Pack 只负责 TikHub Discovery 的 Search Terms；Brand/Vehicle Filter 由任务创建时冻结的 Brand 范围和目录快照负责。旧 Global Keyword Relevance 配置与 API 已退出当前 Schema 和生产调用链。AI Semantic Relevance 与人工相关性复核仍由 Analysis 与查询层维护，两者不是旧入库过滤配置的延续。
 
 `imports_test` 的离线相关性清洗继续复用现有 Relevance 匹配规则。数据库关键词身份与运行时匹配规范化仍是两个有意不同的概念：`keywords.normalized_text` 负责稳定数据库身份；Relevance 匹配可以进一步忽略空白和 `-/_/·`。同一选择范围内多个数据库关键词若收敛为同一匹配文本，运行时按稳定优先级/顺序保留第一个有效匹配项，数据库与管理 API 仍保留各自词条。
 
-正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护；legacy Collection 全局 Relevance 由 `PostgresGlobalRelevanceRepository` 维护。Brand/Vehicle Snapshot 由 Brand/Vehicle Owner 提供，并在 Import 与 Collection 创建入口接入 [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](../ingestion/brand_vehicle_filter.py)。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
+正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护。Brand/Vehicle Snapshot 由 Brand/Vehicle Owner 提供，并在 Import 与 Collection 创建入口接入 [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](../ingestion/brand_vehicle_filter.py)。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
 
 Keyword 别名仍通过独立关键词表达；Brand/Vehicle 别名由各自 Catalog 与 Alias 表维护。两类父事实、唯一身份和运行 Snapshot 不互相替代。
 

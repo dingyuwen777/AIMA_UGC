@@ -47,6 +47,8 @@ def _item() -> ContentListItemResponse:
             analyzed_at=now,
         ),
         source=ContentSourceResponse(provider_name="file-import"),
+        brands=(),
+        competition_scope="none_detected",
     )
 
 

@@ -68,6 +68,7 @@ watch(
   { deep: true },
 )
 
+/** 从正式 JSON 结构恢复可编辑行，并自动补回系统必需兜底项。 */
 function loadFromModel(value: string): void {
   syncingFromModel = true
   try {
@@ -99,20 +100,25 @@ function loadFromModel(value: string): void {
   }
 }
 
+/** 新增普通一级标签，系统兜底项不受此操作影响。 */
 function addPrimary(): void {
   if (rows.value.length >= 100) return
   rows.value.push({ id: nextId++, primary: '', secondaries: [''] })
 }
 
+/** 移除普通一级标签；系统兜底项不可删除。 */
 function removePrimary(row: LabelRow): void {
   if (row.primary.trim() === '无法分类') return
   rows.value = rows.value.filter((item) => item.id !== row.id)
 }
 
+/** 在指定一级标签下新增二级标签。 */
 function addSecondary(row: LabelRow): void {
+  if (row.primary.trim() === '无法分类') return
   row.secondaries.push('')
 }
 
+/** 移除普通二级标签，但始终为一级标签保留至少一项。 */
 function removeSecondary(row: LabelRow, index: number): void {
   if (row.primary.trim() === '无法分类') return
   if (row.secondaries.length <= 1) return
@@ -125,19 +131,7 @@ function removeSecondary(row: LabelRow, index: number): void {
     class="labels-editor"
     aria-label="结构化标签规则"
   >
-    <header>
-      <div>
-        <strong>标签规则</strong>
-        <p>直接维护一级标签和二级标签；系统会自动转换为正式结构化配置。</p>
-      </div>
-      <AimaButton
-        size="small"
-        :disabled="rows.length >= 100"
-        @click="addPrimary"
-      >
-        新增一级标签
-      </AimaButton>
-    </header>
+    <strong class="labels-title">标签规则</strong>
 
     <div class="label-groups">
       <article
@@ -145,55 +139,73 @@ function removeSecondary(row: LabelRow, index: number): void {
         :key="row.id"
         class="label-group"
       >
-        <div class="primary-row">
-          <label>
-            <span>一级标签</span>
-            <input
-              v-model="row.primary"
-              maxlength="200"
-              :readonly="row.primary === '无法分类'"
-              :aria-label="row.primary === '无法分类' ? '必需一级标签 无法分类' : '一级标签名称'"
-            >
-          </label>
-          <AimaButton
-            v-if="row.primary !== '无法分类'"
-            variant="text"
-            size="small"
-            @click="removePrimary(row)"
+        <label>
+          <span>一级标签</span>
+          <input
+            v-model="row.primary"
+            maxlength="200"
+            :readonly="row.primary === '无法分类'"
+            :aria-label="row.primary === '无法分类' ? '必需一级标签 无法分类' : '一级标签名称'"
           >
-            移除一级标签
-          </AimaButton>
-        </div>
+        </label>
+
         <div class="secondary-list">
           <label
             v-for="(_, index) in row.secondaries"
             :key="`${row.id}-${index}`"
           >
-            <span>二级标签 {{ index + 1 }}</span>
+            <span>{{ index === 0 ? '二级标签' : `二级标签 ${index + 1}` }}</span>
             <span class="secondary-control">
               <input
                 v-model="row.secondaries[index]"
                 maxlength="200"
                 :readonly="row.primary === '无法分类'"
+                :aria-label="`二级标签 ${index + 1}`"
               >
               <button
                 v-if="row.primary !== '无法分类' && row.secondaries.length > 1"
                 type="button"
                 @click="removeSecondary(row, index)"
-              >移除</button>
+              >
+                移除
+              </button>
             </span>
           </label>
+        </div>
+
+        <div class="label-actions">
           <AimaButton
-            v-if="row.primary !== '无法分类'"
-            variant="text"
             size="small"
+            :disabled="row.primary === '无法分类'"
             @click="addSecondary(row)"
           >
             新增二级标签
           </AimaButton>
+          <AimaButton
+            size="small"
+            :disabled="row.primary === '无法分类'"
+            @click="removePrimary(row)"
+          >
+            移除一级标签
+          </AimaButton>
         </div>
+
+        <p
+          v-if="row.primary === '无法分类'"
+          class="required-label-note"
+        >
+          必需兜底标签，不能移除。
+        </p>
       </article>
     </div>
+
+    <AimaButton
+      size="small"
+      :disabled="rows.length >= 100"
+      @click="addPrimary"
+    >
+      新增一级标签
+    </AimaButton>
 
     <AimaFeedbackBanner
       v-if="errors.length"
@@ -203,19 +215,83 @@ function removeSecondary(row: LabelRow, index: number): void {
       <strong>标签规则还不能保存</strong>
       <span>{{ errors.join('；') }}</span>
     </AimaFeedbackBanner>
-    <AimaFeedbackBanner
-      v-else
-      tone="info"
-    >
-      “无法分类 / 无法判断”为系统必需兜底项，不允许删除或改名。
-    </AimaFeedbackBanner>
   </section>
 </template>
 
 <style scoped>
-.labels-editor { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); background: #fbfcfe; }
-.labels-editor > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }.labels-editor header strong { color: var(--aima-text); font-size: 12px; }.labels-editor header p { margin: 3px 0 0; color: var(--aima-text-muted); font-size: 10px; line-height: 15px; }
-.label-groups { display: grid; gap: 8px; }.label-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--aima-border); border-radius: 7px; background: #fff; }.primary-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: end; }.label-group label { display: grid; gap: 4px; color: var(--aima-text-muted); font-size: 10px; }.label-group input { width: 100%; height: 34px; padding: 0 9px; border: 1px solid var(--aima-border-strong); border-radius: 5px; color: var(--aima-text-secondary); background: #fff; font-size: 11px; }.label-group input:read-only { background: #f5f7fa; color: var(--aima-text-muted); }
-.secondary-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }.secondary-control { display: flex; gap: 5px; }.secondary-control button { flex: none; border: 0; color: var(--aima-danger); background: transparent; cursor: pointer; font-size: 10px; }.secondary-list > :deep(.aima-button) { align-self: end; justify-self: start; }
-@media (max-width: 900px) { .secondary-list { grid-template-columns: 1fr; } }
+.labels-editor {
+  display: grid;
+  gap: 12px;
+}
+.labels-title {
+  color: var(--aima-text-tertiary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.label-groups {
+  display: grid;
+  gap: 12px;
+}
+.label-group {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #fff;
+}
+.label-group label {
+  display: grid;
+  gap: 6px;
+  color: var(--aima-text-tertiary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.label-group input {
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid var(--aima-border-strong);
+  border-radius: 8px;
+  color: var(--aima-text);
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+.label-group input:read-only {
+  cursor: not-allowed;
+  color: var(--aima-text-disabled);
+  background: var(--aima-color-bg-disabled, #f2f5f7);
+}
+.secondary-list {
+  display: grid;
+  gap: 8px;
+}
+.secondary-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.secondary-control button {
+  flex: none;
+  border: 0;
+  color: var(--aima-primary);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+}
+.label-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.required-label-note {
+  margin: 0;
+  color: var(--aima-text-tertiary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
 </style>

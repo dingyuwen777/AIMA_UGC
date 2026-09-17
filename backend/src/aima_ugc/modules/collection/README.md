@@ -109,7 +109,7 @@ PostgreSQL Plan / Occurrence Repository：
 - [`backend/src/aima_ugc/modules/collection/run_snapshot.py`](run_snapshot.py)：Run Snapshot 中稳定执行事实的结构
 
 
-真正把 TikHub、Raw、Mapper、Ingestion 串起来：
+真正把 TikHub、Raw、Mapper、Persistent Canonical、Filter 与 Ingestion 串起来：
 
 - [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../bootstrap/collection_scope.py)
 
@@ -216,7 +216,13 @@ bootstrap/worker.py
 → TikHubCollectionScopeExecutor
 ```
 
-`CollectionRunExecutor` 负责 Run/Scope 生命周期；`TikHubCollectionScopeExecutor` 负责真正的 Provider 执行、Raw、Candidate、Mapper、Ingestion。
+`CollectionRunExecutor` 负责 Run/Scope 生命周期；`TikHubCollectionScopeExecutor` 负责真正的 Provider 执行、Raw、Candidate、Mapper、Persistent Canonical、Filter 与 Ingestion。
+
+Discovery 以一个 Search Provider Attempt 的有界页面作为 Canonical Chunk。页面完成 Search
+Mapper 与必要 Detail fallback 后，把每个 Candidate 的最终 Filter 输入写入或复用唯一
+linked `canonical-content.v1` Artifact；共享 Reader 先验证 SHA-256、大小、完整 gzip、JSON
+与当前 Contract，再把全页交给 Filter。Artifact 父级是 Search Attempt，Detail-derived 行的
+Canonical Source 仍指向实际 Detail Attempt、Raw 与 item locator。
 
 ### 3.3 0 Scope 为什么 fail closed
 
@@ -364,13 +370,16 @@ Mapper 失败或 Brand/Vehicle Filter 未命中后，很难知道来源项在哪
 Raw
 → Candidate（来源项身份）
 → Mapper
-→ Canonical
+→ Search Attempt 唯一 Persistent Canonical Artifact
+→ 共享 Reader 完整性预检
 → BrandVehicleResolver / Decision
 → Ingestion
 → Candidate Ingestion 结果
 ```
 
-Candidate 不复制最终业务字段，也不代替 Content。
+重复 identity 与多 Evidence 所需的合法 final observation 都保留在页面 Artifact 中，既有
+Content Owner 再执行去重。Mapper invalid 不会写入伪 Canonical，只保留 Raw、Candidate 和
+失败事实。Candidate 不复制最终业务字段，也不代替 Content。
 
 ---
 

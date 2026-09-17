@@ -14,9 +14,10 @@ import type {
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
 import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
-import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
+import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
 import { isCollectionSearchConfigComplete } from '../../../../../shared/collectionSearchConfig'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
+import AimaDrawer from '../../../../../shared/ui/AimaDrawer.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { platformLabels, shortId } from '../../../format'
 import type { SupplementSourceSelection } from '../../../store'
@@ -40,7 +41,8 @@ const emit = defineEmits<{
 
 const mode = ref<CollectionRunMode>('discovery')
 const selectedPackIds = ref<string[]>([])
-const selectedVehicleIds = ref<string[]>([])
+const brandScope = ref<'all_active' | 'selected'>('all_active')
+const selectedBrandIds = ref<string[]>([])
 const platforms = ref<CollectionPlatform[]>([])
 const providerConfigId = ref('')
 const supplementSourceValue = ref('')
@@ -116,10 +118,13 @@ function clearSearchConfigs(): void {
 const canSubmit = computed(() => {
   if (props.creating || !providerConfigId.value || platforms.value.length === 0) return false
   if (mode.value === 'discovery') {
-    return (selectedPackIds.value.length > 0 || selectedVehicleIds.value.length > 0) && platforms.value.every((platform) => {
-      const capability = searchCapability(platform)
-      return capability && isCollectionSearchConfigComplete(capability, searchConfigByPlatform[platform])
-    })
+    return (
+      (brandScope.value === 'all_active' || selectedBrandIds.value.length > 0) &&
+      selectedPackIds.value.length > 0 && platforms.value.every((platform) => {
+        const capability = searchCapability(platform)
+        return capability && isCollectionSearchConfigComplete(capability, searchConfigByPlatform[platform])
+      })
+    )
   }
   return selectedSupplementSource.value !== null && !props.loadingSupplementPlatforms
 })
@@ -139,7 +144,8 @@ watch(
     lastRequestedSourceValue.value = supplementSourceValue.value
     mode.value = props.initialSource ? 'batch_supplement' : 'discovery'
     selectedPackIds.value = []
-    selectedVehicleIds.value = []
+    brandScope.value = 'all_active'
+    selectedBrandIds.value = []
     platforms.value = []
     includeComments.value = true
     includeSubComments.value = false
@@ -209,6 +215,7 @@ function togglePlatform(platform: CollectionPlatform): void {
   }
 }
 
+/** 提交前只校验当前真实 Capability/来源/词包选择，不从 Figma 示例推导平台能力。 */
 function submit(): void {
   if (!providerConfigId.value) {
     validation.value = '请选择本次运行使用的采集渠道配置。'
@@ -226,6 +233,10 @@ function submit(): void {
     validation.value = '请至少选择一个关键词包作为搜索条件。'
     return
   }
+  if (mode.value === 'discovery' && brandScope.value === 'selected' && selectedBrandIds.value.length === 0) {
+    validation.value = '请至少选择一个品牌，或改为全部启用品牌。'
+    return
+  }
   if (mode.value === 'batch_supplement' && !selectedSupplementSource.value) {
     validation.value = '请选择要补采的数据导入来源。'
     return
@@ -235,7 +246,7 @@ function submit(): void {
   emit('submit', {
     mode: mode.value,
     keyword_pack_ids: mode.value === 'discovery' ? selectedPackIds.value : [],
-    vehicle_model_ids: mode.value === 'discovery' ? selectedVehicleIds.value : [],
+    brand_ids: mode.value === 'discovery' && brandScope.value === 'selected' ? selectedBrandIds.value : [],
     import_batch_id: mode.value === 'batch_supplement' && source?.kind === 'batch'
       ? source.id
       : null,
@@ -256,279 +267,300 @@ function submit(): void {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="modelValue"
-      class="drawer-layer"
-      @click.self="emit('update:modelValue', false)"
-    >
-      <aside
-        class="drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-label="新建辅助补采"
+  <AimaDrawer
+    :model-value="modelValue"
+    label="新建辅助补采"
+    width="510px"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <template #header>
+      <header class="drawer-header">
+        <div><strong>新建辅助补采</strong><span>创建辅助补采任务</span></div>
+        <AimaButton
+          variant="text"
+          size="small"
+          aria-label="关闭"
+          @click="emit('update:modelValue', false)"
+        >
+          关闭
+        </AimaButton>
+      </header>
+    </template>
+
+    <div class="drawer-body">
+      <nav class="mode-tabs">
+        <button
+          type="button"
+          :class="{ active: mode === 'discovery' }"
+          @click="mode = 'discovery'"
+        >
+          独立发现新内容
+        </button>
+        <button
+          type="button"
+          :class="{ active: mode === 'batch_supplement' }"
+          @click="mode = 'batch_supplement'"
+        >
+          基于已有批次补采
+        </button>
+      </nav>
+
+      <AimaFeedbackBanner tone="info">
+        {{ mode === 'discovery'
+          ? '关键词包提供 Provider 搜索词；内容入库前按冻结的品牌与车型目录过滤。'
+          : '选择已有导入来源后，可补充其中已收录内容的信息和评论；可选平台以当前来源和采集渠道为准。' }}
+      </AimaFeedbackBanner>
+
+      <section
+        v-if="mode === 'discovery'"
+        class="form-card"
       >
-        <header>
-          <div><strong>新建辅助补采</strong><span>创建辅助补采任务</span></div>
-          <AimaButton
-            variant="text"
-            size="small"
-            aria-label="关闭"
-            @click="emit('update:modelValue', false)"
+        <label>搜索条件 · 关键词包（至少选择一项）</label>
+        <div class="pack-choice-list">
+          <label
+            v-for="pack in keywordPacks"
+            :key="pack.id"
+            class="pack-choice"
           >
-            关闭
-          </AimaButton>
-        </header>
-
-        <div class="drawer-body">
-          <nav class="mode-tabs">
-            <button
-              type="button"
-              :class="{ active: mode === 'discovery' }"
-              @click="mode = 'discovery'"
+            <input
+              type="checkbox"
+              :checked="selectedPackIds.includes(pack.id)"
+              @change="togglePack(pack.id)"
             >
-              独立发现新内容
-            </button>
-            <button
-              type="button"
-              :class="{ active: mode === 'batch_supplement' }"
-              @click="mode = 'batch_supplement'"
-            >
-              基于已有批次补采
-            </button>
-          </nav>
-
-          <AimaFeedbackBanner tone="info">
-            {{ mode === 'discovery'
-              ? '关键词包提供搜索词；兼容车型选择会转换为所属品牌过滤范围。'
-              : '选择已有导入来源后，可补充其中已收录内容的信息和评论；可选平台以当前来源和采集渠道为准。' }}
-          </AimaFeedbackBanner>
-
-          <section
-            v-if="mode === 'discovery'"
-            class="form-card"
-          >
-            <label>关键词包（可多选）</label>
-            <div class="pack-choice-list">
-              <label
-                v-for="pack in keywordPacks"
-                :key="pack.id"
-                class="pack-choice"
-              >
-                <input
-                  type="checkbox"
-                  :checked="selectedPackIds.includes(pack.id)"
-                  @change="togglePack(pack.id)"
-                >
-                <span>{{ pack.name }}</span>
-                <small>{{ pack.keyword_count }} 词 · v{{ pack.version }}</small>
-              </label>
-            </div>
-            <p
-              v-if="keywordPacks.length === 0"
-              class="platform-state"
-            >
-              当前没有可用的已启用词包。
-            </p>
-          </section>
-          <section
-            v-else
-            class="form-card"
-          >
-            <label for="supplement-source-select">数据导入来源</label>
-            <select
-              id="supplement-source-select"
-              v-model="supplementSourceValue"
-            >
-              <option value="">
-                请选择已完成的数据导入
-              </option>
-              <optgroup
-                v-if="campaigns.length"
-                label="统一数据导入"
-              >
-                <option
-                  v-for="campaign in campaigns"
-                  :key="campaign.id"
-                  :value="`campaign:${campaign.id}`"
-                >
-                  {{ campaign.root_relative_path || '本地上传' }} · {{ shortId(campaign.id) }}
-                </option>
-              </optgroup>
-              <optgroup
-                v-if="batches.length"
-                label="兼容旧 Excel 批次"
-              >
-                <option
-                  v-for="batch in batches"
-                  :key="batch.id"
-                  :value="`batch:${batch.id}`"
-                >
-                  {{ batch.source_filename || '未记录文件名' }} · {{ shortId(batch.id) }}
-                </option>
-              </optgroup>
-            </select>
-          </section>
-
-          <section
-            v-if="mode === 'discovery'"
-            class="form-card vehicle-card"
-          >
-            <VehicleMultiSelect
-              v-model="selectedVehicleIds"
-              label="兼容车型范围（转换为所属品牌，且必须同时选择词包）"
-            />
-          </section>
-
-          <section
-            v-if="(capabilities?.provider_configs.length ?? 0) > 0"
-            class="form-card"
-          >
-            <label for="provider-select">采集渠道</label>
-            <select
-              id="provider-select"
-              v-model="providerConfigId"
-              :disabled="capabilities?.provider_configs.length === 1"
-            >
-              <option value="">
-                请选择采集渠道
-              </option>
-              <option
-                v-for="config in capabilities?.provider_configs"
-                :key="config.id"
-                :value="config.id"
-              >
-                {{ config.display_name }}
-              </option>
-            </select>
-          </section>
-
-          <section class="form-card platform-card">
-            <div class="section-title-row">
-              <label>目标平台</label>
-              <small>只显示当前采集渠道支持的平台</small>
-            </div>
-            <p
-              v-if="mode === 'batch_supplement' && loadingSupplementPlatforms"
-              class="platform-state"
-            >
-              正在核对该导入来源的真实内容平台…
-            </p>
-            <div
-              v-else
-              class="platform-grid"
-            >
-              <div
-                v-for="platform in availablePlatforms"
-                :key="platform"
-                class="platform-option"
-                :class="{ selected: platforms.includes(platform) }"
-              >
-                <button
-                  type="button"
-                  :aria-pressed="platforms.includes(platform)"
-                  @click="togglePlatform(platform)"
-                >
-                  <span><strong>{{ platformLabels[platform] }}</strong><small v-if="!platforms.includes(platform)">点击选择</small></span>
-                  <span v-if="platforms.includes(platform)">{{ selectedProvider?.display_name }} · 已选</span>
-                </button>
-                <CollectionSearchConfigFields
-                  v-if="mode === 'discovery' && platforms.includes(platform) && searchCapability(platform) && searchConfigByPlatform[platform]"
-                  class="platform-search-fields"
-                  :model-value="searchConfigByPlatform[platform]!"
-                  :capability="searchCapability(platform)!"
-                  :platform-label="platformLabels[platform]"
-                  @update:model-value="searchConfigByPlatform[platform] = $event"
-                />
-              </div>
-            </div>
-            <p
-              v-if="!loadingSupplementPlatforms && availablePlatforms.length === 0"
-              class="platform-state"
-            >
-              当前选择没有同时满足导入内容与采集渠道能力的平台。
-            </p>
-          </section>
-
-          <section class="form-card content-card">
-            <label>采集内容</label>
-            <div class="content-options">
-              <label class="content-option disabled">
-                <input
-                  type="checkbox"
-                  checked
-                  disabled
-                >
-                <span>内容详情</span><small>固定执行</small>
-              </label>
-              <label class="content-option">
-                <input
-                  v-model="includeComments"
-                  type="checkbox"
-                >
-                <span>评论</span><small>可选</small>
-              </label>
-              <label
-                class="content-option"
-                :class="{ disabled: !includeComments }"
-              >
-                <input
-                  v-model="includeSubComments"
-                  type="checkbox"
-                  :disabled="!includeComments"
-                >
-                <span>二级回复</span><small>依赖评论</small>
-              </label>
-            </div>
-          </section>
-
-          <AimaFeedbackBanner tone="warning">
-            将发起真实外部采集请求，可能产生渠道费用；提交后由后台任务执行，可在采集运行中心查看进度。
-          </AimaFeedbackBanner>
-          <AimaFeedbackBanner
-            v-if="validation"
-            tone="error"
-            role="alert"
-          >
-            {{ validation }}
-          </AimaFeedbackBanner>
+            <span>{{ pack.name }}</span>
+            <small>{{ pack.keyword_count }} 词 · v{{ pack.version }}</small>
+          </label>
         </div>
+        <p
+          v-if="keywordPacks.length === 0"
+          class="platform-state"
+        >
+          当前没有可用的已启用词包。请先在“采集策略”创建并启用至少一个词包。
+        </p>
+      </section>
+      <section
+        v-else
+        class="form-card"
+      >
+        <label for="supplement-source-select">数据导入来源</label>
+        <select
+          id="supplement-source-select"
+          v-model="supplementSourceValue"
+        >
+          <option value="">
+            请选择已完成的数据导入
+          </option>
+          <optgroup
+            v-if="campaigns.length"
+            label="统一数据导入"
+          >
+            <option
+              v-for="campaign in campaigns"
+              :key="campaign.id"
+              :value="`campaign:${campaign.id}`"
+            >
+              {{ campaign.root_relative_path || '本地上传' }} · {{ shortId(campaign.id) }}
+            </option>
+          </optgroup>
+          <optgroup
+            v-if="batches.length"
+            label="兼容旧 Excel 批次"
+          >
+            <option
+              v-for="batch in batches"
+              :key="batch.id"
+              :value="`batch:${batch.id}`"
+            >
+              {{ batch.source_filename || '未记录文件名' }} · {{ shortId(batch.id) }}
+            </option>
+          </optgroup>
+        </select>
+      </section>
 
-        <footer>
-          <AimaButton
-            variant="secondary"
-            size="small"
-            @click="emit('update:modelValue', false)"
+      <section
+        v-if="mode === 'discovery'"
+        class="form-card brand-card"
+      >
+        <fieldset>
+          <legend>内容过滤条件 · 品牌</legend>
+          <label><input
+            v-model="brandScope"
+            type="radio"
+            value="all_active"
+          >全部启用品牌及车型</label>
+          <label><input
+            v-model="brandScope"
+            type="radio"
+            value="selected"
+          >指定品牌</label>
+        </fieldset>
+        <BrandMultiSelect
+          v-if="brandScope === 'selected'"
+          v-model="selectedBrandIds"
+          label="指定品牌（可多选）"
+        />
+        <small
+          v-if="brandScope === 'selected' && selectedBrandIds.length === 0"
+          class="validation-inline"
+          role="status"
+        >请至少选择一个品牌，或改为全部启用品牌。</small>
+        <small>品牌与车型目录随本次任务冻结；指定品牌可多选。</small>
+      </section>
+
+      <section
+        v-if="(capabilities?.provider_configs.length ?? 0) > 0"
+        class="form-card"
+      >
+        <label for="provider-select">采集渠道</label>
+        <select
+          id="provider-select"
+          v-model="providerConfigId"
+          :disabled="capabilities?.provider_configs.length === 1"
+        >
+          <option value="">
+            请选择采集渠道
+          </option>
+          <option
+            v-for="config in capabilities?.provider_configs"
+            :key="config.id"
+            :value="config.id"
           >
-            取消
-          </AimaButton>
-          <AimaButton
-            variant="primary"
-            :disabled="!canSubmit"
-            @click="submit"
+            {{ config.display_name }}
+          </option>
+        </select>
+      </section>
+      <AimaFeedbackBanner
+        v-else
+        tone="error"
+        role="alert"
+      >
+        当前没有可用采集渠道，无法创建辅助补采任务。
+      </AimaFeedbackBanner>
+
+      <section class="form-card platform-card">
+        <div class="section-title-row">
+          <label>目标平台与采集渠道</label>
+          <small>只显示当前采集渠道真实支持的平台</small>
+        </div>
+        <p
+          v-if="mode === 'batch_supplement' && loadingSupplementPlatforms"
+          class="platform-state"
+        >
+          正在核对该导入来源的真实内容平台…
+        </p>
+        <div
+          v-else
+          class="platform-grid"
+        >
+          <div
+            v-for="platform in availablePlatforms"
+            :key="platform"
+            class="platform-option"
+            :class="{ selected: platforms.includes(platform) }"
           >
-            {{ creating ? '创建中…' : '创建补采任务' }}
-          </AimaButton>
-        </footer>
-      </aside>
+            <button
+              type="button"
+              :aria-pressed="platforms.includes(platform)"
+              @click="togglePlatform(platform)"
+            >
+              <span><strong>{{ platformLabels[platform] }}</strong><small v-if="!platforms.includes(platform)">点击选择</small></span>
+              <span v-if="platforms.includes(platform)">{{ selectedProvider?.display_name }}</span>
+            </button>
+            <CollectionSearchConfigFields
+              v-if="mode === 'discovery' && platforms.includes(platform) && searchCapability(platform) && searchConfigByPlatform[platform]"
+              class="platform-search-fields"
+              :model-value="searchConfigByPlatform[platform]!"
+              :capability="searchCapability(platform)!"
+              :platform-label="platformLabels[platform]"
+              @update:model-value="searchConfigByPlatform[platform] = $event"
+            />
+          </div>
+        </div>
+        <p
+          v-if="!loadingSupplementPlatforms && availablePlatforms.length === 0"
+          class="platform-state"
+        >
+          当前选择没有同时满足导入内容与采集渠道能力的平台。
+        </p>
+      </section>
+
+      <section class="form-card content-card">
+        <label>采集内容</label>
+        <div class="content-options">
+          <label class="content-option disabled">
+            <input
+              type="checkbox"
+              checked
+              disabled
+            >
+            <span>内容详情</span><small>固定执行</small>
+          </label>
+          <label class="content-option">
+            <input
+              v-model="includeComments"
+              type="checkbox"
+            >
+            <span>评论</span><small>可选</small>
+          </label>
+          <label
+            class="content-option"
+            :class="{ disabled: !includeComments }"
+          >
+            <input
+              v-model="includeSubComments"
+              type="checkbox"
+              :disabled="!includeComments"
+            >
+            <span>二级回复</span><small>依赖评论</small>
+          </label>
+        </div>
+      </section>
+
+      <AimaFeedbackBanner tone="warning">
+        将发起真实外部采集请求，可能产生渠道费用；提交后自动执行，可在采集运行中心查看进度。
+      </AimaFeedbackBanner>
+      <AimaFeedbackBanner
+        v-if="validation"
+        tone="error"
+        role="alert"
+      >
+        {{ validation }}
+      </AimaFeedbackBanner>
     </div>
-  </Teleport>
+
+    <template #footer>
+      <footer class="drawer-footer">
+        <AimaButton
+          variant="secondary"
+          size="small"
+          @click="emit('update:modelValue', false)"
+        >
+          取消
+        </AimaButton>
+        <AimaButton
+          variant="primary"
+          :disabled="!canSubmit"
+          @click="submit"
+        >
+          {{ creating ? '创建中…' : '创建补采任务' }}
+        </AimaButton>
+      </footer>
+    </template>
+  </AimaDrawer>
 </template>
 
 <style scoped>
-.drawer-layer { position: fixed; inset: 0; z-index: 110; background: rgb(17 22 37 / 50%); }
-.drawer { position: absolute; inset: 0 0 0 auto; display: grid; width: min(510px, 100vw); height: 100vh; grid-template-rows: 76px minmax(0, 1fr) 72px; overflow: hidden; border-left: 1px solid var(--aima-border); background: var(--aima-surface); box-shadow: -10px 0 30px rgb(23 32 51 / 12%); }
-header { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--aima-border); }
-header strong, header span { display: block; }
-header strong { color: var(--aima-text); font-size: 18px; line-height: 24px; }
-header span { margin-top: 4px; color: var(--aima-text-disabled); font-size: 12px; line-height: 18px; }
-.drawer-body { display: flex; min-height: 0; flex-direction: column; gap: 20px; padding: 16px 24px; overflow-x: hidden; overflow-y: auto; }
+.drawer-header { display: flex; height: 76px; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--aima-border); background: var(--aima-surface); }
+.drawer-header strong, .drawer-header span { display: block; }
+.drawer-header strong { color: var(--aima-text); font-size: 18px; font-weight: 700; line-height: 24px; }
+.drawer-header span { margin-top: 4px; color: var(--aima-color-text-tertiary); font-size: 12px; line-height: 18px; }
+.drawer-body { display: flex; min-height: 978px; flex-direction: column; gap: 20px; padding: 16px 24px 12px; }
 .mode-tabs { display: flex; min-height: 40px; gap: 8px; }
-.mode-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; }
+.mode-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; line-height: 20px; }
 .mode-tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
-.form-card { padding: 10px 11px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.form-card { padding: 10px 11px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-lg); background: var(--aima-surface); }
 .form-card > label, .section-title-row > label { display: block; margin-bottom: 9px; color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }
-select { width: 100%; height: 32px; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); color: var(--aima-text-secondary); background: var(--aima-surface); font-size: 13px; }
+select { width: 100%; height: 32px; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-lg); color: var(--aima-text-secondary); background: var(--aima-surface); font-size: 13px; }
 select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .pack-choice-list { display: grid; gap: 4px; }
 .pack-choice { display: grid; min-height: 32px; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; color: var(--aima-text-secondary); font-size: 13px; }
@@ -538,23 +570,25 @@ select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .section-title-row > label { margin-bottom: 0; }
 .section-title-row small { color: var(--aima-text-disabled); font-size: 11px; }
 .platform-grid { display: grid; gap: 8px; margin-top: 12px; }
-.platform-option { padding: 12px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); }
-.platform-option.selected { border-color: var(--aima-primary); }
+.platform-option { padding: 10px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-lg); background: var(--aima-surface); }
+.platform-option.selected { border-color: var(--aima-primary); background: var(--aima-color-primary-light); }
 .platform-option button { display: flex; width: 100%; min-height: 38px; align-items: center; justify-content: space-between; gap: 12px; padding: 0; border: 0; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 12px; text-align: left; }
 .platform-option strong, .platform-option small { display: block; }
-.platform-option strong { color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.platform-option strong { color: var(--aima-text); font-size: 14px; font-weight: 500; line-height: 22px; }
 .platform-option small { margin-top: 5px; color: var(--aima-text-disabled); font-size: 11px; }
 .platform-option button > span + span { color: var(--aima-text-muted); font-size: 11px; }
 .platform-search-fields { margin-top: 12px; }
-.vehicle-card { min-height: 114px; }
-.vehicle-card :deep(.vehicle-select) { padding: 0; border: 0; }
-.vehicle-card :deep(legend) { padding: 0; margin-bottom: 10px; color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.brand-card { min-height: 114px; }
+.brand-card fieldset { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; padding: 0; border: 0; }
+.brand-card legend { width: 100%; margin-bottom: 2px; color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.brand-card fieldset label { display: inline-flex; align-items: center; gap: 5px; color: var(--aima-text-secondary); font-size: 12px; }
+.brand-card > small { display: block; margin-top: 8px; color: var(--aima-text-muted); font-size: 11px; }
 .platform-state { margin: 8px 0 0; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
 .content-options { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
 .content-option { display: grid; min-height: 32px; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; color: var(--aima-text-secondary); font-size: 13px; }
 .content-option small { color: var(--aima-text-disabled); font-size: 11px; }
 .content-option.disabled { color: var(--aima-text-disabled); }
-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 24px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
-footer :deep(.aima-button.is-primary) { min-width: 136px; }
-footer :deep(.aima-button.is-secondary) { min-width: 88px; }
+.drawer-footer { display: flex; height: 72px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 24px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
+.drawer-footer :deep(.aima-button.is-primary) { min-width: 136px; }
+.drawer-footer :deep(.aima-button.is-secondary) { min-width: 88px; }
 </style>

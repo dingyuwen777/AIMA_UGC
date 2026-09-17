@@ -29,6 +29,7 @@ from aima_ugc.modules.collection.execution import (
     CollectionScopeDefinition,
 )
 from aima_ugc.modules.collection.providers import ProviderTransportResponse, RawArtifactService
+from aima_ugc.modules.content.extended_tables import content_media_table
 from aima_ugc.modules.content.tables import (
     comment_coverage_observations_table,
     comments_table,
@@ -42,6 +43,8 @@ from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import delete, insert, select
+
+from tests.integration.stage3_brand_support import stage4_collection_config_snapshot
 
 _FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 18, 0, 20, tzinfo=UTC)
@@ -130,6 +133,11 @@ def _detail_response() -> dict[str, object]:
     assert isinstance(note, dict)
     note["id"] = _CONTENT_EXTERNAL_ID
     note["comments_count"] = 12
+    original_image = note["images_list"][0]
+    assert isinstance(original_image, dict)
+    note["images_list"] = [
+        {**original_image, "fileid": f"image-{position}", "index": 0} for position in range(3)
+    ]
     return body
 
 
@@ -272,14 +280,7 @@ def test_xiaohongshu_incremental_comments_stop_after_safe_known_comment_boundary
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
-                    "schema_version": "collection-run-config.v1",
-                    "relevance": {
-                        "schema_version": "relevance-snapshot.v1",
-                        "keyword_pack_id": str(uuid4()),
-                        "keyword_pack_version": 1,
-                        "config_version": 1,
-                        "effective_keywords": ["脱敏"],
-                    },
+                    **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
                     "platforms": [
@@ -330,6 +331,11 @@ def test_xiaohongshu_incremental_comments_stop_after_safe_known_comment_boundary
         scope_executor=TikHubCollectionScopeExecutor(
             session_factory=database_runtime.new_session,
             raw_artifacts=_raw_service(database_runtime, tmp_path / "artifacts"),
+            artifacts=ArtifactService(
+                metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
+                store=LocalArtifactStore(tmp_path / "artifacts"),
+            ),
+            artifact_store=LocalArtifactStore(tmp_path / "artifacts"),
             transport_factory=lambda _config: transport,
             secret_resolver=lambda secret_ref: (
                 SecretStr("fixture-secret")
@@ -369,11 +375,17 @@ def test_xiaohongshu_incremental_comments_stop_after_safe_known_comment_boundary
                 .mappings()
                 .one()
             )
+            media_positions = session.scalars(
+                select(content_media_table.c.position)
+                .where(content_media_table.c.content_id == content_id)
+                .order_by(content_media_table.c.position)
+            ).all()
         assert _NEW_COMMENT_ID in comment_ids
         assert _KNOWN_COMMENT_ID in comment_ids
         assert "xiaohongshu-comment-too-old" not in comment_ids
         assert coverage["coverage"] == "partial"
         assert coverage["sort_mode"] == "latest"
         assert coverage["stop_reason"] == "known_comment_reached"
+        assert media_positions == [0, 1, 2]
     finally:
         session.close()

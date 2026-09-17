@@ -104,7 +104,7 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('>⇩ 导出记录<')
   })
 
-  it('Figma 两行筛选全部直达，内容类型使用真实标准化选项', async () => {
+  it('Figma 三行筛选全部直达，包含品牌、车型和竞争范围', async () => {
     const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
       useVoicePlazaStore(pinia).filterOptions = filterOptions
     })
@@ -114,6 +114,9 @@ describe('声音广场正式 Figma 基线', () => {
       '平台',
       '相关性',
       '发声类型',
+      '品牌',
+      '车型',
+      '竞争范围',
       '情感',
       '状态',
       '内容类型',
@@ -133,6 +136,7 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('更多筛选')
     expect(html).toContain('filter-row--primary')
     expect(html).toContain('filter-row--secondary')
+    expect(html).toContain('filter-row--tertiary')
     for (const [value, label] of [
       ['note', '笔记'],
       ['image', '图文 / 图片'],

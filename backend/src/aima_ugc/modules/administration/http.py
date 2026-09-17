@@ -12,8 +12,6 @@ from aima_ugc.contracts.administration import (
     AnalysisSchemeResponse,
     AnalysisSchemeUpdateDraftRequest,
     AuditEventListResponse,
-    KeywordPackVehicleLinkRequest,
-    KeywordPackVehicleLinksResponse,
     ProviderConfigCreateRequest,
     ProviderConfigListResponse,
     ProviderConfigResponse,
@@ -38,7 +36,7 @@ class AdministrationConflict(RuntimeError):
 
 
 class AdministrationHttpService(Protocol):
-    """车型、词包关系、Scheme 与审计的管理边界。"""
+    """车型、Scheme 与审计的管理边界。"""
 
     def create_vehicle_model(
         self,
@@ -93,18 +91,6 @@ class AdministrationHttpService(Protocol):
         request_id: str,
     ) -> VehicleModelResponse:
         """把源车型合并到 active 目标车型。"""
-
-        ...
-
-    def replace_keyword_pack_vehicles(
-        self,
-        pack_id: UUID,
-        body: KeywordPackVehicleLinkRequest,
-        *,
-        principal: Principal,
-        request_id: str,
-    ) -> KeywordPackVehicleLinksResponse:
-        """原子替换词包引用的车型集合。"""
 
         ...
 
