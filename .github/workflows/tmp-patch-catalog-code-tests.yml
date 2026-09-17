@@ -1,0 +1,159 @@
+name: Temporary Catalog Code Test Patch
+
+on:
+  push:
+    branches:
+      - feature/server-generated-catalog-code
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/server-generated-catalog-code
+          fetch-depth: 0
+      - name: Patch browser and full-stack acceptance
+        shell: python
+        run: |
+          from pathlib import Path
+
+          mock_path = Path('frontend/e2e/admin-configuration-figma.spec.ts')
+          mock = mock_path.read_text(encoding='utf-8')
+          marker = "test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N path', async ({ page }) => {"
+          new_test = r'''test('brand and vehicle create dialogs do not expose internal code controls', async ({ page }) => {
+            await mockAdmin(page)
+            await page.goto('/admin/configuration')
+            await page.getByRole('button', { name: '新增品牌', exact: true }).click()
+            const brandDialog = page.getByRole('heading', { name: '新增品牌', exact: true }).locator('..')
+            await expect(brandDialog.getByText('品牌编码', { exact: true })).toHaveCount(0)
+            await expect(brandDialog).toContainText('内部编码由服务端自动生成')
+            await brandDialog.getByRole('button', { name: '取消', exact: true }).click()
+
+            await page.getByRole('button', { name: '新增车型', exact: true }).click()
+            const vehicleDialog = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
+            await expect(vehicleDialog.getByText('车型编码', { exact: true })).toHaveCount(0)
+            await expect(vehicleDialog).toContainText('内部编码由服务端自动生成')
+          })
+
+          '''
+          if new_test.strip() not in mock:
+              if mock.count(marker) != 1:
+                  raise SystemExit('mock insertion marker mismatch')
+              mock = mock.replace(marker, new_test + marker)
+          old_line = "  await page.getByPlaceholder('例如 AIMA-Q7').fill('AIMA-Q7-PRO')\n"
+          new_line = "  await expect(vehicleEditor.getByText('车型编码', { exact: true })).toHaveCount(0)\n"
+          if old_line in mock:
+              mock = mock.replace(old_line, new_line, 1)
+          old_payload = """  expect(vehicleBody).toMatchObject({
+              code: 'AIMA-Q7-PRO', display_name: '爱玛 Q7 Pro', brand_id: brandId, aliases: ['Q7 Pro'],
+            })
+          """
+          new_payload = """  expect(vehicleBody).toMatchObject({
+              display_name: '爱玛 Q7 Pro', brand_id: brandId, aliases: ['Q7 Pro'],
+            })
+            expect(vehicleBody).not.toHaveProperty('code')
+          """
+          if old_payload in mock:
+              mock = mock.replace(old_payload, new_payload, 1)
+          if "例如 AIMA-Q7" in mock or "code: 'AIMA-Q7-PRO'" in mock:
+              raise SystemExit('mock still contains client vehicle code expectation')
+          mock_path.write_text(mock, encoding='utf-8')
+
+          full_path = Path('frontend/e2e-fullstack/admin-product-capabilities.spec.ts')
+          full = full_path.read_text(encoding='utf-8')
+          full = full.replace("  const brandCode = `FS-BRAND-${suffix}`\n", '', 1)
+          full = full.replace("  const code = `FS-${suffix}`\n", '', 1)
+          old_brand = """  await page.getByRole('button', { name: '新增品牌', exact: true }).click()
+            const brandForm = page.locator('.brand-overview .form-card')
+            await brandForm.getByLabel('品牌编码').fill(brandCode)
+            await brandForm.getByLabel('显示名称').fill(brandName)
+            await brandForm.getByLabel('品牌角色').selectOption('owned')
+            await brandForm.getByLabel(/品牌识别词/).fill(brandAlias)
+            const brandCreatedPromise = page.waitForResponse((response) =>
+              response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/vehicle-brands')
+            await brandForm.getByRole('button', { name: '保存品牌', exact: true }).click()
+            const brandCreated = await brandCreatedPromise
+            expect(brandCreated.status()).toBe(201)
+            const brand = await brandCreated.json() as { id: string; display_name: string; aliases: { text: string }[] }
+            expect(brand.display_name).toBe(brandName)
+            expect(brand.aliases.map((item) => item.text)).toContain(brandAlias)
+          """
+          new_brand = """  await page.getByRole('button', { name: '新增品牌', exact: true }).click()
+            const brandForm = page.getByRole('heading', { name: '新增品牌', exact: true }).locator('..')
+            await expect(brandForm.getByText('品牌编码', { exact: true })).toHaveCount(0)
+            await brandForm.getByLabel('品牌名称').fill(brandName)
+            await brandForm.getByLabel('品牌角色').selectOption('owned')
+            await brandForm.getByLabel(/品牌识别词/).fill(brandAlias)
+            const brandCreatedPromise = page.waitForResponse((response) =>
+              response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/vehicle-brands')
+            await brandForm.getByRole('button', { name: '创建品牌', exact: true }).click()
+            const brandCreated = await brandCreatedPromise
+            expect(brandCreated.status()).toBe(201)
+            const brand = await brandCreated.json() as { id: string; code: string; display_name: string; aliases: { text: string }[] }
+            expect(brand.code).toMatch(/^BRAND_[0-9A-F]{32}$/)
+            expect(brand.display_name).toBe(brandName)
+            expect(brand.aliases.map((item) => item.text)).toContain(brandAlias)
+          """
+          if old_brand not in full:
+              raise SystemExit('full-stack brand block mismatch')
+          full = full.replace(old_brand, new_brand, 1)
+          old_vehicle = """  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+            const vehicleForm = page.locator('.catalog-stack > .two-column').nth(1).locator('.form-card')
+            await vehicleForm.getByLabel('车型编码').fill(code)
+            await vehicleForm.getByLabel('显示名称').fill(displayName)
+            await vehicleForm.getByLabel('品牌', { exact: true }).selectOption(brand.id)
+            await vehicleForm.getByLabel('系列（可选）').fill('全栈系列')
+            await vehicleForm.getByLabel('类别（可选）').fill('电动两轮车')
+            await vehicleForm.getByLabel(/别名/).fill(alias)
+            await vehicleForm.getByRole('button', { name: '保存', exact: true }).click()
+            await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
+            await expect(page.getByRole('row').filter({ hasText: displayName })).toBeVisible()
+
+            const vehiclesResponse = await request.get('/api/v1/vehicle-models?limit=200')
+            expect(vehiclesResponse.status()).toBe(200)
+            const vehicles = await vehiclesResponse.json() as { items: { id: string; code: string; brand_id: string | null; series_name: string; category_name: string }[] }
+            const vehicle = vehicles.items.find((item) => item.code === code)
+            expect(vehicle, '浏览器创建的车型必须能从正式目录 API 重读').toBeTruthy()
+          """
+          new_vehicle = """  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+            const vehicleForm = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
+            await expect(vehicleForm.getByText('车型编码', { exact: true })).toHaveCount(0)
+            await vehicleForm.getByLabel('显示名称').fill(displayName)
+            await vehicleForm.getByLabel('品牌', { exact: true }).selectOption(brand.id)
+            await vehicleForm.getByLabel('系列（可选）').fill('全栈系列')
+            await vehicleForm.getByLabel('类别（可选）').fill('电动两轮车')
+            await vehicleForm.getByLabel(/别名/).fill(alias)
+            const vehicleCreatedPromise = page.waitForResponse((response) =>
+              response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/vehicle-models')
+            await vehicleForm.getByRole('button', { name: '保存', exact: true }).click()
+            const vehicleCreated = await vehicleCreatedPromise
+            expect(vehicleCreated.status()).toBe(201)
+            const createdVehicle = await vehicleCreated.json() as { id: string; code: string }
+            expect(createdVehicle.code).toMatch(/^VEHICLE_[0-9A-F]{32}$/)
+            await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
+            await expect(page.getByRole('row').filter({ hasText: displayName })).toBeVisible()
+
+            const vehiclesResponse = await request.get('/api/v1/vehicle-models?limit=200')
+            expect(vehiclesResponse.status()).toBe(200)
+            const vehicles = await vehiclesResponse.json() as { items: { id: string; code: string; brand_id: string | null; series_name: string; category_name: string }[] }
+            const vehicle = vehicles.items.find((item) => item.id === createdVehicle.id)
+            expect(vehicle, '浏览器创建的车型必须能从正式目录 API 重读').toBeTruthy()
+            expect(vehicle?.code).toBe(createdVehicle.code)
+          """
+          if old_vehicle not in full:
+              raise SystemExit('full-stack vehicle block mismatch')
+          full = full.replace(old_vehicle, new_vehicle, 1)
+          if "getByLabel('品牌编码')" in full or "getByLabel('车型编码')" in full or "item.code === code" in full:
+              raise SystemExit('full-stack still depends on client code input')
+          full_path.write_text(full, encoding='utf-8')
+      - name: Commit acceptance updates
+        run: |
+          git add frontend/e2e/admin-configuration-figma.spec.ts frontend/e2e-fullstack/admin-product-capabilities.spec.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "更新品牌车型内部编码验收"
+          git push origin HEAD:feature/server-generated-catalog-code
