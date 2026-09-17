@@ -11,6 +11,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Final, cast
 from xml.etree import ElementTree as ET
+from xml.sax.saxutils import escape as xml_escape
 
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
@@ -34,10 +35,14 @@ _DCTERMS: Final = "http://purl.org/dc/terms/"
 _XSI: Final = "http://www.w3.org/2001/XMLSchema-instance"
 _CHART_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
 _IMAGE_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+_HYPERLINK_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 _PACKAGE_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
 _CHART_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
 _XLSX_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _LINE_WIDTH_2_25_PT_EMU: Final = "28575"
+_RICH_MARKDOWN_RE = re.compile(
+    r"!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)"
+)
 
 for prefix, uri in (("w", _W), ("r", _R), ("wp", _WP), ("a", _A), ("c", _C), ("pic", _PIC)):
     ET.register_namespace(prefix, uri)
@@ -91,6 +96,7 @@ class DocxBuilder:
         self.body = ET.SubElement(self.document, f"{{{_W}}}body")
         self.charts: list[ChartSpec] = []
         self.images: list[_ImageAsset] = []
+        self.hyperlinks: list[str] = []
         self.paragraph_count = 0
         self.table_count = 0
         self.chart_count = 0
@@ -157,6 +163,170 @@ class DocxBuilder:
         self._add_table_row(table, headers, header=True, column_widths=column_widths)
         for row in rows:
             self._add_table_row(table, row, header=False, column_widths=column_widths)
+
+    def add_rich_table(
+        self,
+        headers: tuple[str, ...],
+        rows: tuple[tuple[str, ...], ...],
+        *,
+        asset_root: Path,
+        column_widths: tuple[int, ...],
+    ) -> None:
+        """添加支持 Word 超链接和表格内 PNG 图片的固定宽度表格。"""
+
+        if not headers:
+            raise ValueError("Word 富文本表格至少需要一列")
+        if len(column_widths) != len(headers):
+            raise ValueError("Word 富文本表格列宽数量与表头不一致")
+        if any(len(row) != len(headers) for row in rows):
+            raise ValueError("Word 富文本表格数据列数与表头不一致")
+        table = ET.SubElement(self.body, f"{{{_W}}}tbl")
+        self.table_count += 1
+        tbl_pr = ET.SubElement(table, f"{{{_W}}}tblPr")
+        ET.SubElement(tbl_pr, f"{{{_W}}}tblW", {f"{{{_W}}}w": "5000", f"{{{_W}}}type": "pct"})
+        ET.SubElement(tbl_pr, f"{{{_W}}}tblLayout", {f"{{{_W}}}type": "fixed"})
+        borders = ET.SubElement(tbl_pr, f"{{{_W}}}tblBorders")
+        for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+            ET.SubElement(
+                borders,
+                f"{{{_W}}}{side}",
+                {
+                    f"{{{_W}}}val": "single",
+                    f"{{{_W}}}sz": "4",
+                    f"{{{_W}}}color": theme.DIVIDER_COLOR,
+                },
+            )
+        self._add_cell_margins(tbl_pr, top=90, left=80, bottom=90, right=80)
+        grid = ET.SubElement(table, f"{{{_W}}}tblGrid")
+        for width in column_widths:
+            ET.SubElement(grid, f"{{{_W}}}gridCol", {f"{{{_W}}}w": str(width)})
+        self._add_rich_table_row(
+            table,
+            headers,
+            header=True,
+            column_widths=column_widths,
+            asset_root=asset_root,
+        )
+        for row in rows:
+            self._add_rich_table_row(
+                table,
+                row,
+                header=False,
+                column_widths=column_widths,
+                asset_root=asset_root,
+            )
+
+    def _add_rich_table_row(
+        self,
+        table: ET.Element,
+        values: tuple[str, ...],
+        *,
+        header: bool,
+        column_widths: tuple[int, ...],
+        asset_root: Path,
+    ) -> None:
+        row = ET.SubElement(table, f"{{{_W}}}tr")
+        tr_pr = ET.SubElement(row, f"{{{_W}}}trPr")
+        ET.SubElement(tr_pr, f"{{{_W}}}cantSplit")
+        if header:
+            ET.SubElement(tr_pr, f"{{{_W}}}tblHeader")
+        for column_index, value in enumerate(values):
+            cell = ET.SubElement(row, f"{{{_W}}}tc")
+            cell_pr = ET.SubElement(cell, f"{{{_W}}}tcPr")
+            ET.SubElement(
+                cell_pr,
+                f"{{{_W}}}tcW",
+                {f"{{{_W}}}w": str(column_widths[column_index]), f"{{{_W}}}type": "dxa"},
+            )
+            ET.SubElement(cell_pr, f"{{{_W}}}vAlign", {f"{{{_W}}}val": "center"})
+            if header:
+                ET.SubElement(cell_pr, f"{{{_W}}}shd", {f"{{{_W}}}fill": theme.SOFT_BACKGROUND})
+            paragraph = ET.SubElement(cell, f"{{{_W}}}p")
+            p_pr = ET.SubElement(paragraph, f"{{{_W}}}pPr")
+            ET.SubElement(
+                p_pr,
+                f"{{{_W}}}spacing",
+                {f"{{{_W}}}before": "0", f"{{{_W}}}after": "0", f"{{{_W}}}line": "240"},
+            )
+            ET.SubElement(
+                p_pr,
+                f"{{{_W}}}jc",
+                {
+                    f"{{{_W}}}val": (
+                        "center" if header else _table_cell_alignment(value, column_index)
+                    )
+                },
+            )
+            if header:
+                self._add_inline_runs(
+                    paragraph,
+                    value,
+                    bold=True,
+                    color=theme.TITLE_COLOR,
+                    font_size="17",
+                )
+            else:
+                self._add_rich_cell_content(
+                    cell,
+                    paragraph,
+                    value,
+                    asset_root=asset_root,
+                    max_width_emu=max(260_000, column_widths[column_index] * 635 - 100_000),
+                )
+
+    def _add_rich_cell_content(
+        self,
+        cell: ET.Element,
+        paragraph: ET.Element,
+        value: str,
+        *,
+        asset_root: Path,
+        max_width_emu: int,
+    ) -> None:
+        cursor = 0
+        for match in _RICH_MARKDOWN_RE.finditer(value):
+            if match.start() > cursor:
+                self._add_inline_runs(
+                    paragraph,
+                    value[cursor : match.start()],
+                    color=theme.TEXT_COLOR,
+                    font_size="17",
+                )
+            image_alt, image_target, link_text, link_target = match.groups()
+            if image_target is not None:
+                image_path = _resolve_local_asset(asset_root, image_target)
+                width_px, height_px = _png_dimensions(image_path)
+                width = min(max_width_emu, max(160_000, width_px * 635))
+                height = round(width * height_px / width_px)
+                height = min(height, 1_300_000)
+                if height < round(width * height_px / width_px):
+                    width = round(height * width_px / height_px)
+                self.images.append(
+                    _ImageAsset(image_path, image_alt, width, height)
+                )
+                self.image_count += 1
+                self._add_image_drawing(
+                    self.image_count,
+                    self.images[-1],
+                    parent=cell,
+                )
+            else:
+                assert link_text is not None and link_target is not None
+                self._add_hyperlink(
+                    paragraph,
+                    link_text,
+                    link_target,
+                    color="0563C1",
+                    font_size="17",
+                )
+            cursor = match.end()
+        if cursor < len(value):
+            self._add_inline_runs(
+                paragraph,
+                value[cursor:],
+                color=theme.TEXT_COLOR,
+                font_size="17",
+            )
 
     def add_ranking(self, headers: tuple[str, ...], rows: tuple[tuple[str, ...], ...]) -> None:
         if len(headers) < 3:
@@ -302,7 +472,8 @@ class DocxBuilder:
         self.image_count += 1
         self._add_image_drawing(self.image_count, self.images[-1])
 
-    def save(self, path: Path) -> None:
+    def save(self, path: Path) -> Path:
+        path = Path(path)
         self._add_section_properties()
         temp_path = path.with_name(f".{path.name}.tmp")
         temp_path.unlink(missing_ok=True)
@@ -318,7 +489,11 @@ class DocxBuilder:
                 archive.writestr("word/styles.xml", _styles_xml())
                 archive.writestr(
                     "word/_rels/document.xml.rels",
-                    _document_rels_xml(self.chart_count, self.image_count),
+                    _document_rels_xml(
+                        self.chart_count,
+                        self.image_count,
+                        hyperlinks=tuple(self.hyperlinks),
+                    ),
                 )
                 for index, spec in enumerate(self.charts, start=1):
                     office_spec = _office_chart_spec(spec)
@@ -333,10 +508,17 @@ class DocxBuilder:
                     )
                 for index, image in enumerate(self.images, start=1):
                     archive.writestr(f"word/media/image{index}.png", image.path.read_bytes())
-            os.replace(temp_path, path)
+            try:
+                os.replace(temp_path, path)
+            except PermissionError:
+                fallback_path = _locked_target_fallback_path(path)
+                os.replace(temp_path, fallback_path)
+                return fallback_path
+            return path
         except BaseException:
             temp_path.unlink(missing_ok=True)
             raise
+
 
     def _add_cell_margins(
         self, parent: ET.Element, *, top: int, left: int, bottom: int, right: int
@@ -522,6 +704,47 @@ class DocxBuilder:
             node.set(f"{{{_XML}}}space", "preserve")
             node.text = piece
 
+    def _add_hyperlink(
+        self,
+        paragraph: ET.Element,
+        text: str,
+        url: str,
+        *,
+        color: str = "0563C1",
+        font_size: str = "19",
+    ) -> None:
+        target = url.strip()
+        if not target or "://" not in target:
+            self._add_run(
+                paragraph,
+                text,
+                bold=False,
+                italic=False,
+                code=False,
+                color=theme.TEXT_COLOR,
+                font_size=font_size,
+            )
+            return
+        try:
+            hyperlink_index = self.hyperlinks.index(target) + 1
+        except ValueError:
+            self.hyperlinks.append(target)
+            hyperlink_index = len(self.hyperlinks)
+        hyperlink = ET.SubElement(
+            paragraph,
+            f"{{{_W}}}hyperlink",
+            {f"{{{_R}}}id": f"rId{2000 + hyperlink_index}"},
+        )
+        run = ET.SubElement(hyperlink, f"{{{_W}}}r")
+        r_pr = ET.SubElement(run, f"{{{_W}}}rPr")
+        ET.SubElement(r_pr, f"{{{_W}}}color", {f"{{{_W}}}val": color})
+        ET.SubElement(r_pr, f"{{{_W}}}u", {f"{{{_W}}}val": "single"})
+        ET.SubElement(r_pr, f"{{{_W}}}sz", {f"{{{_W}}}val": font_size})
+        ET.SubElement(r_pr, f"{{{_W}}}szCs", {f"{{{_W}}}val": font_size})
+        text_node = ET.SubElement(run, f"{{{_W}}}t")
+        text_node.set(f"{{{_XML}}}space", "preserve")
+        text_node.text = text
+
     def _add_chart_drawing(self, chart_index: int) -> None:
         paragraph = ET.SubElement(self.body, f"{{{_W}}}p")
         self.paragraph_count += 1
@@ -553,8 +776,15 @@ class DocxBuilder:
         graphic_data = ET.SubElement(graphic, f"{{{_A}}}graphicData", {"uri": _C})
         ET.SubElement(graphic_data, f"{{{_C}}}chart", {f"{{{_R}}}id": f"rId{chart_index + 1}"})
 
-    def _add_image_drawing(self, image_index: int, image: _ImageAsset) -> None:
-        paragraph = ET.SubElement(self.body, f"{{{_W}}}p")
+    def _add_image_drawing(
+        self,
+        image_index: int,
+        image: _ImageAsset,
+        *,
+        parent: ET.Element | None = None,
+    ) -> None:
+        container = self.body if parent is None else parent
+        paragraph = ET.SubElement(container, f"{{{_W}}}p")
         self.paragraph_count += 1
         p_pr = ET.SubElement(paragraph, f"{{{_W}}}pPr")
         ET.SubElement(p_pr, f"{{{_W}}}jc", {f"{{{_W}}}val": "center"})
@@ -622,6 +852,18 @@ class DocxBuilder:
                 f"{{{_W}}}gutter": "0",
             },
         )
+
+
+def _locked_target_fallback_path(path: Path) -> Path:
+    """为被 Word 锁定的目标生成不覆盖旧文件的同目录新文件名。"""
+
+    timestamp = beijing_now().strftime("%Y%m%d_%H%M%S_%f")
+    candidate = path.with_name(f"{path.stem}_{timestamp}{path.suffix}")
+    suffix = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.stem}_{timestamp}_{suffix}{path.suffix}")
+        suffix += 1
+    return candidate
 
 
 def verify_docx(path: Path, *, expected_charts: int, expected_images: int | None = None) -> None:
@@ -1020,6 +1262,22 @@ def _png_dimensions(path: Path) -> tuple[int, int]:
     return width, height
 
 
+def _resolve_local_asset(asset_root: Path, raw_target: str) -> Path:
+    target = raw_target.strip()
+    if target.startswith("<") and target.endswith(">"):
+        target = target[1:-1].strip()
+    if not target or "://" in target or target.startswith("data:"):
+        raise ValueError("Word 表格内只支持报告目录内的本地 PNG 图片")
+    candidate = Path(target)
+    if candidate.is_absolute():
+        raise ValueError("Word 表格内图片路径必须是相对路径")
+    root = Path(asset_root).resolve()
+    resolved = (root / candidate).resolve()
+    if resolved != root and root not in resolved.parents:
+        raise ValueError("Word 表格内图片路径不能离开报告目录")
+    return resolved
+
+
 def _number_text(value: float) -> str:
     return str(int(value)) if value.is_integer() else f"{value:g}"
 
@@ -1071,7 +1329,12 @@ def _root_rels_xml() -> str:
 </Relationships>"""
 
 
-def _document_rels_xml(chart_count: int, image_count: int) -> str:
+def _document_rels_xml(
+    chart_count: int,
+    image_count: int,
+    *,
+    hyperlinks: tuple[str, ...] = (),
+) -> str:
     relationships = [
         (
             '<Relationship Id="rId1" '
@@ -1088,6 +1351,12 @@ def _document_rels_xml(chart_count: int, image_count: int) -> str:
         relationships.append(
             f'<Relationship Id="rId{1000 + index}" Type="{_IMAGE_REL}" '
             f'Target="media/image{index}.png"/>'
+        )
+    for index, target in enumerate(hyperlinks, start=1):
+        escaped_target = xml_escape(target).replace('"', "&quot;")
+        relationships.append(
+            f'<Relationship Id="rId{2000 + index}" Type="{_HYPERLINK_REL}" '
+            f'Target="{escaped_target}" TargetMode="External"/>'
         )
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'

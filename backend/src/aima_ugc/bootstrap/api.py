@@ -22,6 +22,13 @@ from aima_ugc.bootstrap.analysis_taxonomy_http import (
     ContentAnalysisTaxonomyUnavailable,
     content_analysis_taxonomy_response,
 )
+from aima_ugc.bootstrap.feishu_publication_http import (
+    FeishuPublicationHttpService,
+    FeishuPublicationInvalidFile,
+    FeishuPublicationInvalidRequest,
+    FeishuPublicationResourceNotFound,
+    FeishuPublicationUploadTooLarge,
+)
 from aima_ugc.contracts.administration import (
     AnalysisSchemeCreateDraftRequest,
     AnalysisSchemeListResponse,
@@ -42,6 +49,10 @@ from aima_ugc.contracts.administration import (
     VehicleModelMergeRequest,
     VehicleModelResponse,
     VehicleModelUpdateRequest,
+)
+from aima_ugc.contracts.feishu_publication import (
+    FeishuPublicationCreatedResponse,
+    FeishuPublicationJobResponse,
 )
 from aima_ugc.contracts.http import (
     AnalysisContentRunCreatedResponse,
@@ -327,6 +338,7 @@ def create_app(
     historical_import_service: HistoricalImportHttpService | None = None,
     canonical_replay_service: CanonicalReplayHttpService | None = None,
     administration_service: AdministrationHttpService | None = None,
+    feishu_publication_service: FeishuPublicationHttpService | None = None,
     product_service: ProductHttpService | None = None,
     identity_resolver: IdentityResolver | None = None,
     analysis_taxonomy_loader: PromptTaxonomyLoader | None = None,
@@ -446,6 +458,18 @@ def create_app(
         )
 
         return PostgresAdministrationHttpService(resolved_runtime)
+
+    def current_feishu_publication_service() -> FeishuPublicationHttpService:
+        if feishu_publication_service is not None:
+            return feishu_publication_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Feishu Publication Service 依赖不可用")
+        from aima_ugc.bootstrap.feishu_publication_http import (
+            PostgresFeishuPublicationHttpService,
+        )
+
+        return PostgresFeishuPublicationHttpService(resolved_runtime)
 
     def current_product_service() -> ProductHttpService:
         if product_service is not None:
@@ -631,6 +655,72 @@ def create_app(
             detail="文件不是受支持且结构合法的 XLSX。",
             code="invalid_xlsx",
             field="body.file",
+        )
+
+    @application.exception_handler(FeishuPublicationUploadTooLarge)
+    async def feishu_publication_upload_too_large(
+        request: Request,
+        _: FeishuPublicationUploadTooLarge,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=413,
+            request_id=_request_id(request),
+            title="飞书发布 Excel 过大",
+            detail="上传的 Excel 文件或解压资源超过安全上限。",
+            code="feishu_publication_xlsx_too_large",
+            field="body.file",
+        )
+
+    @application.exception_handler(FeishuPublicationInvalidFile)
+    async def invalid_feishu_publication_file(
+        request: Request,
+        _: FeishuPublicationInvalidFile,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=422,
+            request_id=_request_id(request),
+            title="飞书发布 Excel 不合法",
+            detail="上传文件不是受支持且结构合法的 XLSX。",
+            code="invalid_feishu_publication_xlsx",
+            field="body.file",
+        )
+
+    @application.exception_handler(FeishuPublicationInvalidRequest)
+    async def invalid_feishu_publication_request(
+        request: Request,
+        exc: FeishuPublicationInvalidRequest,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=422,
+            request_id=_request_id(request),
+            title="飞书发布请求不合法",
+            detail=str(exc),
+            code="invalid_feishu_publication_request",
+        )
+
+    @application.exception_handler(FeishuPublicationResourceNotFound)
+    async def feishu_publication_resource_not_found(
+        request: Request,
+        _: FeishuPublicationResourceNotFound,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=404,
+            request_id=_request_id(request),
+            title="飞书发布任务不存在",
+            detail="请求的飞书发布任务不存在。",
+            code="feishu_publication_not_found",
+        )
+
+    @application.exception_handler(RelevanceConfigurationError)
+    async def relevance_unavailable(
+        request: Request, _: RelevanceConfigurationError
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="相关性配置不可用",
+            detail="全局 Relevance 词包尚未配置或没有有效关键词。",
+            code="relevance_config_unavailable",
         )
 
     @application.exception_handler(BrandVehicleFilterUnavailable)
@@ -2021,6 +2111,147 @@ def create_app(
     )
     def get_job(job_id: UUID) -> JobStatusResponse:
         return current_import_service().get_job(job_id)
+
+    @application.post(
+        "/api/v1/admin/feishu-report-publications",
+        operation_id="createFeishuReportPublication",
+        response_model=FeishuPublicationCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            413: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["administration"],
+    )
+    async def create_feishu_report_publication(
+        request: Request,
+        current_file: Annotated[UploadFile, File()],
+        previous_file: Annotated[UploadFile, File()],
+        start_date: Annotated[str, Form()],
+        end_date: Annotated[str, Form()],
+    ) -> FeishuPublicationCreatedResponse:
+        """上传本期/上期 Excel 和必填日期范围，异步发布报告到飞书。"""
+
+        form = await request.form()
+        items = list(form.multi_items())
+        allowed = {"current_file", "previous_file", "start_date", "end_date"}
+        current_items = [value for key, value in items if key == "current_file"]
+        previous_items = [value for key, value in items if key == "previous_file"]
+        start_items = [value for key, value in items if key == "start_date"]
+        end_items = [value for key, value in items if key == "end_date"]
+        if (
+            any(key not in allowed for key, _ in items)
+            or len(current_items) != 1
+            or current_items[0] is not current_file
+            or len(previous_items) != 1
+            or previous_items[0] is not previous_file
+            or len(start_items) != 1
+            or start_items[0] != start_date
+            or len(end_items) != 1
+            or end_items[0] != end_date
+        ):
+            raise RequestValidationError(
+                [
+                    {
+                        "type": "value_error",
+                        "loc": ("body",),
+                        "msg": "multipart 必须包含本期文件、上一期文件和唯一日期范围",
+                        "input": None,
+                        "ctx": {"error": ValueError("非法飞书报告发布请求")},
+                    }
+                ]
+            )
+        principal = current_administrator(request)
+        try:
+            return await run_in_threadpool(
+                partial(
+                    current_feishu_publication_service().create_report_publication,
+                    current_filename=current_file.filename or "",
+                    current_source=current_file.file,
+                    previous_filename=previous_file.filename or "",
+                    previous_source=previous_file.file,
+                    start_date=start_date,
+                    end_date=end_date,
+                    principal=principal,
+                    request_id=_request_id(request),
+                )
+            )
+        finally:
+            await current_file.close()
+            await previous_file.close()
+
+    @application.post(
+        "/api/v1/admin/feishu-representative-selections",
+        operation_id="createFeishuRepresentativeSelection",
+        response_model=FeishuPublicationCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            413: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["administration"],
+    )
+    async def create_feishu_representative_selection(
+        request: Request,
+        file: Annotated[UploadFile, File()],
+    ) -> FeishuPublicationCreatedResponse:
+        """上传已打标 Excel，异步筛选并发布到飞书多维表。"""
+
+        form = await request.form()
+        items = list(form.multi_items())
+        file_items = [value for key, value in items if key == "file"]
+        if (
+            any(key != "file" for key, _ in items)
+            or len(file_items) != 1
+            or file_items[0] is not file
+        ):
+            raise RequestValidationError(
+                [
+                    {
+                        "type": "value_error",
+                        "loc": ("body", "file"),
+                        "msg": "multipart 只允许一个 file",
+                        "input": None,
+                        "ctx": {"error": ValueError("非法代表性筛选上传")},
+                    }
+                ]
+            )
+        principal = current_administrator(request)
+        try:
+            return await run_in_threadpool(
+                partial(
+                    current_feishu_publication_service().create_representative_selection,
+                    filename=file.filename or "",
+                    source=file.file,
+                    principal=principal,
+                    request_id=_request_id(request),
+                )
+            )
+        finally:
+            await file.close()
+
+    @application.get(
+        "/api/v1/admin/feishu-publication-jobs/{job_id}",
+        operation_id="getFeishuPublicationJob",
+        response_model=FeishuPublicationJobResponse,
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["administration"],
+    )
+    def get_feishu_publication_job(
+        job_id: UUID,
+        request: Request,
+    ) -> FeishuPublicationJobResponse:
+        current_administrator(request)
+        return current_feishu_publication_service().get_job(job_id)
 
     @application.get(
         "/api/v1/content-analysis-taxonomy",

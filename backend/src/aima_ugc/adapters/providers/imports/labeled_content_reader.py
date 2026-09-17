@@ -18,7 +18,14 @@ CONTENT_SHEET_NAME = "内容"
 REAL_USER_VOICE_TYPE = "真实用户发声"
 
 _REQUIRED_HEADERS = ("平台", "内容ID", "标题", "正文", "作者")
-_OPTIONAL_HEADERS = ("发布时间", "内容链接", "发声类型", "情感标签")
+_OPTIONAL_HEADERS = (
+    "发布时间",
+    "内容链接",
+    "发声类型",
+    "情感标签",
+    "一级标签",
+    "二级标签",
+)
 
 
 class LabeledContentReaderError(ValueError):
@@ -100,6 +107,8 @@ def iter_labeled_contents(
                 content_url=_cell_text(row.get("内容链接")),
                 voice_type=_cell_text(row.get("发声类型")),
                 sentiment_label=_cell_text(row.get("情感标签")),
+                primary_label=_cell_text(row.get("一级标签")),
+                secondary_label=_cell_text(row.get("二级标签")),
             )
             if record.deduplication_key in seen_keys:
                 continue
@@ -163,6 +172,8 @@ def read_labeled_contents(
                 content_url=_cell_text(row.get("内容链接")),
                 voice_type=_cell_text(row.get("发声类型")),
                 sentiment_label=_cell_text(row.get("情感标签")),
+                primary_label=_cell_text(row.get("一级标签")),
+                secondary_label=_cell_text(row.get("二级标签")),
             )
             if record.deduplication_key in seen_keys:
                 duplicate_rows += 1

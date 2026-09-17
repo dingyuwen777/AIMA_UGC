@@ -28,7 +28,17 @@ def _write_workbook(path: Path, *, headers: list[str], rows: list[list[object]])
 
 def test_reads_content_sheet_and_deduplicates_platform_content_id(tmp_path: Path) -> None:
     path = tmp_path / "labeled.xlsx"
-    headers = ["平台", "内容ID", "标题", "正文", "作者", "发布时间", "内容链接"]
+    headers = [
+        "平台",
+        "内容ID",
+        "标题",
+        "正文",
+        "作者",
+        "发布时间",
+        "内容链接",
+        "一级标签",
+        "二级标签",
+    ]
     _write_workbook(
         path,
         headers=headers,
@@ -41,6 +51,8 @@ def test_reads_content_sheet_and_deduplicates_platform_content_id(tmp_path: Path
                 "用户",
                 "2026-09-01 10:00:00",
                 "https://example.test/1",
+                "外观设计",
+                "颜色与配色",
             ],
             [
                 "抖音",
@@ -50,6 +62,8 @@ def test_reads_content_sheet_and_deduplicates_platform_content_id(tmp_path: Path
                 "用户",
                 "2026-09-01 10:01:00",
                 "https://example.test/2",
+                "外观设计",
+                "颜色与配色",
             ],
             ["小红书", "same", "另一个平台", "正文", "用户", datetime(2026, 9, 1, 11), None],
         ],
@@ -59,6 +73,8 @@ def test_reads_content_sheet_and_deduplicates_platform_content_id(tmp_path: Path
 
     assert [record.content_id for record in records] == ["same", "same"]
     assert [record.platform for record in records] == ["抖音", "小红书"]
+    assert records[0].primary_label == "外观设计"
+    assert records[0].secondary_label == "颜色与配色"
     assert records[1].published_at == "2026-09-01 11:00:00"
     assert summary.rows_seen == 3
     assert summary.rows_read == 2

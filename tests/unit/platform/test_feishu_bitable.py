@@ -35,6 +35,19 @@ def _fields() -> list[dict[str, Any]]:
             "type": 3,
             "property": {"options": [{"name": "正面"}, {"name": "负面"}]},
         },
+        {
+            "field_id": "primary",
+            "field_name": "一级标签",
+            "type": 3,
+            "property": {"options": [{"name": "外观设计"}]},
+        },
+        {
+            "field_id": "secondary",
+            "field_name": "二级标签",
+            "type": 3,
+            "property": {"options": [{"name": "颜色与配色"}]},
+        },
+        {"field_id": "content-link", "field_name": "声音内容/连接", "type": 1},
         {"field_id": "content-id", "field_name": "内容ID", "type": 1},
         {"field_id": "title", "field_name": "标题", "type": 1},
         {"field_id": "body", "field_name": "正文", "type": 1},
@@ -103,9 +116,22 @@ def test_create_table_from_current_clones_schema_without_touching_old_records() 
             table = payload["table"]
             assert table["name"] == "20260909T120000.000000+0800"
             assert table["default_view_name"] == "表格视图"
-            assert {field["field_name"] for field in table["fields"]} == {
-                field["field_name"] for field in _fields()
-            }
+            assert {field["field_name"] for field in table["fields"]} == (
+                {field["field_name"] for field in _fields()}
+                | {"一级标签", "二级标签", "用户情绪", "处理进展"}
+            )
+            content_link = next(
+                field for field in table["fields"] if field["field_name"] == "声音内容/连接"
+            )
+            assert content_link["type"] == 15
+            primary_label = next(
+                field for field in table["fields"] if field["field_name"] == "一级标签"
+            )
+            secondary_label = next(
+                field for field in table["fields"] if field["field_name"] == "二级标签"
+            )
+            assert primary_label["type"] == 4
+            assert secondary_label["type"] == 4
             source_sentiment = next(
                 field for field in table["fields"] if field["field_name"] == "情感"
             )
@@ -133,8 +159,20 @@ def test_create_table_from_current_clones_schema_without_touching_old_records() 
 
 def test_target_table_schema_uses_content_link_as_idempotency_key() -> None:
     fields = [
-        {"field_id": "main", "field_name": "声音内容/连接", "type": 1},
+        {"field_id": "main", "field_name": "声音内容/连接", "type": 15},
         {"field_id": "example", "field_name": "典型评论示例", "type": 1},
+        {
+            "field_id": "primary",
+            "field_name": "一级标签",
+            "type": 3,
+            "property": {"options": [{"name": "外观设计"}]},
+        },
+        {
+            "field_id": "secondary",
+            "field_name": "二级标签",
+            "type": 3,
+            "property": {"options": [{"name": "颜色与配色"}]},
+        },
         {
             "field_id": "source",
             "field_name": "来源",
@@ -147,6 +185,12 @@ def test_target_table_schema_uses_content_link_as_idempotency_key() -> None:
             "field_name": "用户情绪",
             "type": 3,
             "property": {"options": [{"name": "正面"}]},
+        },
+        {
+            "field_id": "progress",
+            "field_name": "处理进展",
+            "type": 3,
+            "property": {"options": [{"name": "待处理"}]},
         },
     ]
     candidate = RepresentativeCandidate(
@@ -162,6 +206,8 @@ def test_target_table_schema_uses_content_link_as_idempotency_key() -> None:
             content_url="https://example.test/id-1",
             voice_type="真实用户发声",
             sentiment_label="正面",
+            primary_label="外观设计",
+            secondary_label="颜色与配色",
         ),
     )
     selected = SelectedRepresentative(
@@ -209,9 +255,82 @@ def test_target_table_schema_uses_content_link_as_idempotency_key() -> None:
         prepared = feishu.preflight([row])
 
     assert len(prepared.creates) == 1
-    assert prepared.creates[0]["声音内容/连接"].endswith("https://example.test/id-1")
+    assert prepared.creates[0]["声音内容/连接"] == {
+        "link": "https://example.test/id-1",
+        "text": "用户体验",
+    }
+    assert "典型评论示例" not in prepared.creates[0]
     assert prepared.creates[0]["来源"] == "抖音"
+    assert prepared.creates[0]["一级标签"] == "外观设计"
+    assert prepared.creates[0]["二级标签"] == "颜色与配色"
     assert prepared.creates[0]["用户情绪"] == "正面"
+    assert prepared.creates[0]["处理进展"] == "待处理"
+
+
+def test_multi_select_labels_split_newline_values_and_remove_duplicates() -> None:
+    fields = [
+        {"field_id": "main", "field_name": "声音内容/连接", "type": 15},
+        {
+            "field_id": "primary",
+            "field_name": "一级标签",
+            "type": 4,
+            "property": {"options": [{"name": "外观设计"}, {"name": "品牌评价"}]},
+        },
+        {
+            "field_id": "secondary",
+            "field_name": "二级标签",
+            "type": 4,
+            "property": {"options": [{"name": "颜色与配色"}, {"name": "口碑与信任"}]},
+        },
+        {
+            "field_id": "source",
+            "field_name": "来源",
+            "type": 3,
+            "property": {"options": [{"name": "抖音"}]},
+        },
+    ]
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/tenant_access_token/internal"):
+            return httpx.Response(
+                200,
+                json={"code": 0, "tenant_access_token": "token", "expire": 7200},
+            )
+        if path.endswith("/fields"):
+            return httpx.Response(
+                200,
+                json={"code": 0, "data": {"items": fields, "has_more": False}},
+            )
+        if path.endswith("/records") and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"code": 0, "data": {"items": [], "has_more": False}},
+            )
+        raise AssertionError(f"unexpected request: {request.method} {path}")
+
+    config = FeishuConfig(app_id="app", app_token="base", table_id="table", max_retries=0)
+    client = httpx.Client(
+        base_url="https://open.feishu.cn/", transport=httpx.MockTransport(respond)
+    )
+    rows = [
+        {
+            "声音内容/连接": "https://example.test/id-1",
+            "来源": "抖音",
+            "一级标签": "外观设计\n品牌评价\n外观设计",
+            "二级标签": "颜色与配色\r\n口碑与信任",
+        }
+    ]
+    with FeishuBitableClient(
+        config=config,
+        app_secret="secret",
+        client=client,
+        upsert_key_fields=("声音内容/连接",),
+    ) as feishu:
+        prepared = feishu.preflight(rows)
+
+    assert prepared.creates[0]["一级标签"] == ["外观设计", "品牌评价"]
+    assert prepared.creates[0]["二级标签"] == ["颜色与配色", "口碑与信任"]
 
 
 def test_preflight_update_create_and_readback_are_idempotent() -> None:

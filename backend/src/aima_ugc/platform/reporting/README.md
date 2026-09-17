@@ -438,6 +438,22 @@ result = generate_report(
 
 `imports_test` 不拥有第二份 Report Template。
 
+代表性评论与报告统一入口：
+
+```powershell
+uv run python backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py `
+  --input-xlsx "C:\路径\抖音已打标.xlsx" `
+  --publish-all
+```
+
+该入口会复用同一份已打标 Excel，按抖音/小红书和正面/负面四组各筛选最多 10 条，
+生成行动建议并追加报告第 6 节。`--publish-all` 会在本地报告成功后发布飞书在线报告和
+代表性评论多维表；不带发布参数时只生成本地报告。截图获取失败不会阻断报告生成。
+抖音截图默认先用干净的 Playwright/Edge 会话打开公开页面，不依赖本机 Edge 是否登录，也不要求关闭
+Edge 窗口。页面加载完成后会关闭延迟出现的登录提示遮罩，再只截取帖子区域；只有页面确实被登录门槛拦截时，
+才会按需使用 Edge 登录配置的临时副本。如果浏览器不可用、页面仍被登录拦截或截图失败，会留空该行截图，
+并在 `publication_status.json` 的 `warnings` 中说明原因，不会把登录弹窗写入报告。
+
 ---
 
 ## 13. 修改不同问题应该改哪里

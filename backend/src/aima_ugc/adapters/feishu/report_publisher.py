@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 import uuid
 from collections.abc import Callable, Mapping
@@ -29,6 +30,8 @@ from aima_ugc.platform.security.secrets import (
 _MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 _PENDING_IMPORT_STATUSES = {1, 2}
 _RETRIABLE_API_CODES = {99991400, 1061045, 1069923}
+_TABLE_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://.+)\)$")
+_TABLE_IMAGE_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)$")
 
 
 class FeishuApiError(RuntimeError):
@@ -440,7 +443,7 @@ class FeishuReportPublisher:
                         },
                         {
                             "block_id": text_id,
-                            **_text_block(2, value, bold=row_index == 0),
+                            **_table_cell_text_block(value, bold=row_index == 0),
                             "children": [],
                         },
                     )
@@ -1172,6 +1175,18 @@ def _text_block(
             "style": {},
         },
     }
+
+
+def _table_cell_text_block(value: str, *, bold: bool) -> dict[str, Any]:
+    """把代表性表格的 Markdown 链接投影为飞书富文本。"""
+
+    link = _TABLE_LINK_RE.fullmatch(value.strip())
+    if link is not None:
+        return _text_block(2, link.group(1), link=link.group(2), bold=bold)
+    image = _TABLE_IMAGE_RE.fullmatch(value.strip())
+    if image is not None:
+        return _text_block(2, "截图", bold=bold)
+    return _text_block(2, value, bold=bold)
 
 
 def _png_dimensions(content: bytes) -> tuple[int, int]:

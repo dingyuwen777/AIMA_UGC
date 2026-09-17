@@ -84,6 +84,32 @@ def test_write_feishu_from_run_reads_existing_results_without_llm(
     assert observed[1] == run_dir.resolve()
 
 
+def test_feishu_verification_warning_is_not_printed_or_returned_as_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_dir = tmp_path / "representative-run"
+    run_dir.mkdir()
+    (run_dir / "selected_results.jsonl").write_text(
+        json.dumps(_selected_payload(), ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(entrypoint, "load_settings", lambda **kwargs: object())
+    monkeypatch.setattr(
+        entrypoint,
+        "_sync_to_feishu",
+        lambda **kwargs: SimpleNamespace(
+            verification_errors=("回读缺少测试链接",),
+            as_dict=lambda: {"created_count": 1},
+        ),
+    )
+
+    assert entrypoint.main(["--write-feishu-from-run", str(run_dir)]) == 0
+    assert capsys.readouterr().out == ""
+
+
 def test_existing_selected_results_must_be_eligible(tmp_path: Path) -> None:
     run_dir = tmp_path / "representative-run"
     run_dir.mkdir()

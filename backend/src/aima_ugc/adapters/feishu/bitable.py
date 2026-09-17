@@ -22,6 +22,71 @@ _FIELD_TYPES_MULTI_SELECT = frozenset({4})
 _FIELD_TYPES_DATETIME = frozenset({5})
 _FIELD_TYPES_URL = frozenset({15})
 _TABLE_CLONE_FIELD_TYPES = frozenset({1, 2, 3, 4, 5, 7, 11, 13, 15, 17})
+_REQUIRED_TEMPLATE_SELECT_FIELDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "一级标签",
+        (
+            "品牌评价",
+            "外观设计",
+            "骑行性能",
+            "电池、续航与充电",
+            "智能化与电子功能",
+            "耐用性与质量",
+            "价格与价值",
+            "销售与购买体验",
+            "售后服务",
+            "无法分类",
+        ),
+    ),
+    (
+        "二级标签",
+        (
+            "口碑与信任",
+            "形象与定位",
+            "性价比与溢价",
+            "推荐与购买意愿",
+            "偏好与转换",
+            "营销与传播",
+            "整体造型与颜值",
+            "颜色与配色",
+            "外观风格与适配人群",
+            "动力与加速表现",
+            "操控与稳定性",
+            "制动与刹车表现",
+            "舒适性",
+            "实际续航表现",
+            "电池寿命与衰减",
+            "充电体验",
+            "电池安全",
+            "App与智能互联",
+            "智能解锁与启动",
+            "仪表与信息显示",
+            "智能辅助功能",
+            "系统稳定性与功能体验",
+            "做工与装配质量",
+            "长期使用与寿命表现",
+            "故障问题与稳定性",
+            "购车价格与配置价值",
+            "性价比与价格竞争力",
+            "购车优惠与促销政策",
+            "使用与养护成本",
+            "门店与渠道便利性",
+            "销售服务与购车咨询",
+            "下单与交易流程",
+            "交付与提车体验",
+            "售后网点与服务便利性",
+            "客服与服务态度",
+            "维修处理效率与质量",
+            "保修政策与执行",
+            "配件供应与维修成本",
+            "投诉处理与用户权益",
+            "无法判断",
+        ),
+    ),
+    ("用户情绪", ("正面", "负面")),
+    ("处理进展", ("待处理",)),
+)
+_REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES = frozenset({"一级标签", "二级标签"})
 _RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 DEFAULT_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -281,11 +346,29 @@ class FeishuBitableClient:
             for field in source_fields
             if field.field_type in _TABLE_CLONE_FIELD_TYPES
         ]
+        existing_field_names = {field.name for field in source_fields}
+        for field_name, options in _REQUIRED_TEMPLATE_SELECT_FIELDS:
+            if field_name not in existing_field_names:
+                field_definitions.append(
+                    {
+                        "field_name": field_name,
+                        "type": (
+                            4
+                            if field_name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES
+                            else 3
+                        ),
+                        "property": {"options": [{"name": option} for option in options]},
+                    }
+                )
         skipped_fields = tuple(
             field.name
             for field in source_fields
             if field.field_type not in _TABLE_CLONE_FIELD_TYPES
         )
+        if skipped_fields:
+            raise FeishuSyncError(
+                "模板数据表存在无法复制的字段，已停止创建新表: " + ", ".join(skipped_fields)
+            )
         if not field_definitions:
             raise FeishuSyncError("模板数据表没有可复制的字段")
 
@@ -695,11 +778,19 @@ def _parse_field(value: object) -> FeishuField:
 def _table_field_definition(field: FeishuField) -> dict[str, object]:
     """生成创建数据表所需的字段定义，不复用旧字段 ID。"""
 
+    if field.name == "声音内容/连接":
+        field_type = 15
+    elif field.name in dict(_REQUIRED_TEMPLATE_SELECT_FIELDS):
+        field_type = (
+            4 if field.name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES else 3
+        )
+    else:
+        field_type = field.field_type
     definition: dict[str, object] = {
         "field_name": field.name,
-        "type": field.field_type,
+        "type": field_type,
     }
-    if field.field_type in _FIELD_TYPES_SINGLE_SELECT | _FIELD_TYPES_MULTI_SELECT:
+    if field_type in _FIELD_TYPES_SINGLE_SELECT | _FIELD_TYPES_MULTI_SELECT:
         options: list[dict[str, object]] = []
         raw_options = field.field_property.get("options", []) if field.field_property else []
         if isinstance(raw_options, list):
@@ -713,6 +804,13 @@ def _table_field_definition(field: FeishuField) -> dict[str, object]:
                 options.append(option)
         if not options:
             options = [{"name": option} for option in field.options]
+        required_options = dict(_REQUIRED_TEMPLATE_SELECT_FIELDS).get(field.name, ())
+        existing_options = {str(option["name"]) for option in options}
+        options.extend(
+            {"name": option}
+            for option in required_options
+            if option not in existing_options
+        )
         if options:
             definition["property"] = {"options": options}
     return definition
@@ -781,9 +879,12 @@ def _convert_field_value(field: FeishuField, value: object) -> object | None:
         return _value_text(value)
     if field.field_type in _FIELD_TYPES_URL:
         text = _value_text(value)
-        if not text.startswith(("http://", "https://")):
+        match = re.search(r"https?://[^\s]+", text)
+        if match is None:
             return None
-        return {"link": text, "text": text}
+        link = match.group(0).rstrip("，。；、,.;:：）)]}>")
+        display_text = text[: match.start()].strip() or link
+        return {"link": link, "text": display_text}
     if field.field_type in _FIELD_TYPES_NUMBER:
         if isinstance(value, bool):
             return None
@@ -801,9 +902,14 @@ def _convert_field_value(field: FeishuField, value: object) -> object | None:
         return text if text in field.options else None
     if field.field_type in _FIELD_TYPES_MULTI_SELECT:
         if isinstance(value, (list, tuple)):
-            values = [_value_text(item) for item in value]
+            raw_values = [_value_text(item) for item in value]
         else:
-            values = [_value_text(value)]
+            raw_values = re.split(r"(?:\r?\n|[,，、;；])+", _value_text(value))
+        values: list[str] = []
+        for item in raw_values:
+            normalized = item.strip()
+            if normalized and normalized not in values:
+                values.append(normalized)
         if not values or any(item not in field.options for item in values):
             return None
         return values

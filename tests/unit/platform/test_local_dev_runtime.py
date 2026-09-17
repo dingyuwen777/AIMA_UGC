@@ -140,6 +140,68 @@ def test_runtime_environment_forwards_historical_import_root(tmp_path: Path) -> 
     assert environment["AIMA_HISTORICAL_IMPORT_ROOT"] == ".runtime/historical-input"
 
 
+def test_runtime_environment_forwards_feishu_publication_configuration(
+    tmp_path: Path,
+) -> None:
+    """源码 launcher 必须把多维表和报告发布配置传给 API/Worker。"""
+
+    env_path = tmp_path / "env.local"
+    env_path.write_text(
+        "AIMA_FEISHU_BASE_URL=https://open.feishu.cn\n"
+        "AIMA_FEISHU_APP_ID=cli-test\n"
+        "AIMA_FEISHU_APP_TOKEN=app-test\n"
+        "AIMA_FEISHU_WIKI_TOKEN=wiki-test\n"
+        "AIMA_FEISHU_TABLE_ID=tbl-test\n"
+        "AIMA_FEISHU_APP_SECRET_FILE=feishu_app_secret\n"
+        "AIMA_FEISHU_REPORT_ENABLED=true\n"
+        "AIMA_FEISHU_FOLDER_TOKEN=fld-test\n"
+        "AIMA_FEISHU_APP_SECRET_REF=feishu/report_app_secret\n"
+        "AIMA_FEISHU_TIMEOUT_SECONDS=45\n"
+        "AIMA_FEISHU_MAX_RETRIES=4\n",
+        encoding="utf-8",
+    )
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    config = load_local_dev_config(env_path)
+
+    environment = build_runtime_environment(paths=paths, config=config)
+
+    assert environment["AIMA_FEISHU_BASE_URL"] == "https://open.feishu.cn"
+    assert environment["AIMA_FEISHU_APP_ID"] == "cli-test"
+    assert environment["AIMA_FEISHU_APP_TOKEN"] == "app-test"
+    assert environment["AIMA_FEISHU_WIKI_TOKEN"] == "wiki-test"
+    assert environment["AIMA_FEISHU_TABLE_ID"] == "tbl-test"
+    assert environment["AIMA_FEISHU_APP_SECRET_FILE"] == "feishu_app_secret"
+    assert environment["AIMA_FEISHU_REPORT_ENABLED"] == "true"
+    assert environment["AIMA_FEISHU_FOLDER_TOKEN"] == "fld-test"
+    assert environment["AIMA_FEISHU_APP_SECRET_REF"] == "feishu/report_app_secret"
+    assert environment["AIMA_FEISHU_TIMEOUT_SECONDS"] == "45"
+    assert environment["AIMA_FEISHU_MAX_RETRIES"] == "4"
+
+
+def test_runtime_environment_does_not_forward_feishu_secret_contents(
+    tmp_path: Path,
+) -> None:
+    """飞书 App Secret 只通过已配置的文件引用使用，不进入子进程环境。"""
+
+    env_path = tmp_path / "env.local"
+    env_path.write_text(
+        "AIMA_FEISHU_APP_ID=cli-test\n"
+        "AIMA_FEISHU_APP_TOKEN=app-test\n"
+        "AIMA_FEISHU_TABLE_ID=tbl-test\n"
+        "AIMA_FEISHU_APP_SECRET_FILE=feishu_app_secret\n",
+        encoding="utf-8",
+    )
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    config = load_local_dev_config(env_path)
+
+    environment = build_runtime_environment(paths=paths, config=config)
+
+    assert "AIMA_FEISHU_APP_SECRET" not in environment
+    assert environment["AIMA_FEISHU_APP_SECRET_FILE"] == "feishu_app_secret"
+
+
 def test_runtime_environment_does_not_forward_ssl_key_log_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -54,16 +54,19 @@ from aima_ugc.platform.export import (
     ExcelExportSummary,
     export_unified_content_jsonl_to_excel,
 )
-from aima_ugc.platform.reporting import ReportGenerationSummary, generate_excel_report
+from aima_ugc.platform.reporting import (
+    ReportGenerationSummary,
+    RepresentativeReportRow,
+    generate_excel_report,
+)
 from aima_ugc.platform.time import beijing_now
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
 # 配置一个 Path 走单文件转换；配置多个 Path 的有序元组合并到同一个 run。
 INPUT_XLSX_FILES: Path | tuple[Path, ...] = (
-    Path(r"C:\Users\BOLL\Desktop\惠科data(0903-0906).xlsx"),
-    Path(r"C:\Users\BOLL\Desktop\惠科data(0907-0908).xlsx"),
-    Path(r"C:\Users\BOLL\Desktop\惠科data(0909).xlsx"),
+    Path(r"C:\Users\BOLL\Desktop\惠科data(0910-0913).xlsx"),
+    Path(r"C:\Users\BOLL\Desktop\惠科data(0914-0916).xlsx"),
 )
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
@@ -76,8 +79,8 @@ WRITE_TO_DATABASE = False
 # 只限制报告统计，不影响转换、关键词过滤、去重、AI 打标或最终 Excel 全量数据。
 # None 表示报告使用 Excel 内全部日期；日期范围包含开始日和结束日。
 REPORT_DATE_RANGE: tuple[date, date] | None = (
-    date(2026, 9, 3),
-    date(2026, 9, 9),
+    date(2026, 9, 10),
+    date(2026, 9, 16),
 )
 
 # 最终 Excel 的“内容”Sheet 展示列；顺序就是导出顺序。
@@ -390,6 +393,7 @@ def generate_report(
     report_date_range: tuple[date, date] | None = None,
     previous_excel_path: Path | None = None,
     prepare_feishu_publication: bool = False,
+    representative_rows: tuple[RepresentativeReportRow, ...] | list[RepresentativeReportRow] = (),
 ) -> ReportGenerationSummary:
     """从最终统一 Excel 独立生成 Markdown/Word 报告。"""
 
@@ -416,6 +420,8 @@ def generate_report(
         report_kwargs["previous_input_path"] = previous_excel_path
     if prepare_feishu_publication:
         report_kwargs["chart_workbook_name"] = "report-charts.xlsx"
+    if representative_rows:
+        report_kwargs["representative_rows"] = representative_rows
     return generate_excel_report(**report_kwargs)
 
 

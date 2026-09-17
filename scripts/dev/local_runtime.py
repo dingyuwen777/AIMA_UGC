@@ -33,6 +33,17 @@ _SOURCE_LOCAL_KEYS = frozenset(
         "AIMA_HISTORICAL_IMPORT_HOST_ROOT",
         "AIMA_HISTORICAL_IMPORT_ROOT",
         "AIMA_DEV_ENABLE_SCHEDULER",
+        "AIMA_FEISHU_BASE_URL",
+        "AIMA_FEISHU_APP_ID",
+        "AIMA_FEISHU_APP_TOKEN",
+        "AIMA_FEISHU_WIKI_TOKEN",
+        "AIMA_FEISHU_TABLE_ID",
+        "AIMA_FEISHU_APP_SECRET_FILE",
+        "AIMA_FEISHU_REPORT_ENABLED",
+        "AIMA_FEISHU_FOLDER_TOKEN",
+        "AIMA_FEISHU_APP_SECRET_REF",
+        "AIMA_FEISHU_TIMEOUT_SECONDS",
+        "AIMA_FEISHU_MAX_RETRIES",
     }
 )
 _COMPOSE_LOCAL_KEYS = frozenset(
@@ -107,6 +118,17 @@ class LocalDevConfig:
     historical_import_root: str | None
     scheduler_enabled: bool
     unknown_keys: tuple[str, ...]
+    feishu_base_url: str | None = None
+    feishu_app_id: str | None = None
+    feishu_app_token: str | None = None
+    feishu_wiki_token: str | None = None
+    feishu_table_id: str | None = None
+    feishu_app_secret_file: str | None = None
+    feishu_report_enabled: str | None = None
+    feishu_folder_token: str | None = None
+    feishu_app_secret_ref: str | None = None
+    feishu_timeout_seconds: str | None = None
+    feishu_max_retries: str | None = None
 
     @property
     def tikhub_configured(self) -> bool:
@@ -256,6 +278,17 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
             key="AIMA_DEV_ENABLE_SCHEDULER",
         ),
         unknown_keys=unknown,
+        feishu_base_url=_clean(values.get("AIMA_FEISHU_BASE_URL")),
+        feishu_app_id=_clean(values.get("AIMA_FEISHU_APP_ID")),
+        feishu_app_token=_clean(values.get("AIMA_FEISHU_APP_TOKEN")),
+        feishu_wiki_token=_clean(values.get("AIMA_FEISHU_WIKI_TOKEN")),
+        feishu_table_id=_clean(values.get("AIMA_FEISHU_TABLE_ID")),
+        feishu_app_secret_file=_clean(values.get("AIMA_FEISHU_APP_SECRET_FILE")),
+        feishu_report_enabled=_clean(values.get("AIMA_FEISHU_REPORT_ENABLED")),
+        feishu_folder_token=_clean(values.get("AIMA_FEISHU_FOLDER_TOKEN")),
+        feishu_app_secret_ref=_clean(values.get("AIMA_FEISHU_APP_SECRET_REF")),
+        feishu_timeout_seconds=_clean(values.get("AIMA_FEISHU_TIMEOUT_SECONDS")),
+        feishu_max_retries=_clean(values.get("AIMA_FEISHU_MAX_RETRIES")),
     )
 
 
@@ -331,6 +364,22 @@ def build_runtime_environment(
     source_historical_import_root = config.source_historical_import_root
     if source_historical_import_root is not None:
         environment["AIMA_HISTORICAL_IMPORT_ROOT"] = source_historical_import_root
+
+    for key, value in (
+        ("AIMA_FEISHU_BASE_URL", config.feishu_base_url),
+        ("AIMA_FEISHU_APP_ID", config.feishu_app_id),
+        ("AIMA_FEISHU_APP_TOKEN", config.feishu_app_token),
+        ("AIMA_FEISHU_WIKI_TOKEN", config.feishu_wiki_token),
+        ("AIMA_FEISHU_TABLE_ID", config.feishu_table_id),
+        ("AIMA_FEISHU_APP_SECRET_FILE", config.feishu_app_secret_file),
+        ("AIMA_FEISHU_REPORT_ENABLED", config.feishu_report_enabled),
+        ("AIMA_FEISHU_FOLDER_TOKEN", config.feishu_folder_token),
+        ("AIMA_FEISHU_APP_SECRET_REF", config.feishu_app_secret_ref),
+        ("AIMA_FEISHU_TIMEOUT_SECONDS", config.feishu_timeout_seconds),
+        ("AIMA_FEISHU_MAX_RETRIES", config.feishu_max_retries),
+    ):
+        if value is not None:
+            environment[key] = value
 
     if config.llm_configured:
         assert config.llm_base_url is not None

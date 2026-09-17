@@ -440,6 +440,7 @@ Unified JSONL
 - 使用 [`prompts/zhengfu_shaixuan.md`](prompts/zhengfu_shaixuan.md) 在已有 `平台 + 发声类型 + 情感标签` 分组内选择代表性内容；不重新打标，不修改已有标签；
 - 分别形成抖音正面、抖音负面、小红书正面、小红书负面四组，每组最多 10 条；严格筛选不足时保留实际数量，不用低质量内容凑数；
 - 通过 [`adapters/feishu/bitable.py`](../../adapters/feishu/bitable.py) 以配置中的数据表作为模板，在同一 Base 内新建一个按生成时间命名的数据表，再写入本次结果；旧数据表和旧记录不更新、不删除。
+- 写入字段严格按模板：原文列使用可点击链接，`典型评论示例`留空，`处理进展`固定为`待处理`；一级/二级标签优先使用输入 Excel 已有值，缺少时留空。
 
 运行入口：[`entrypoints/representative_selection_main.py`](../../entrypoints/representative_selection_main.py)
 

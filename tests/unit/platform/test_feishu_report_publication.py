@@ -13,6 +13,7 @@ from aima_ugc.adapters.feishu import (
     FeishuReportPublisherConfig,
     load_feishu_report_publisher_config,
 )
+from aima_ugc.adapters.feishu.report_publisher import _table_cell_text_block
 from aima_ugc.platform.reporting import (
     ChartSpec,
     build_editable_chart_workbook,
@@ -46,6 +47,17 @@ def _report_markdown(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def test_representative_link_cell_projects_blue_clickable_text() -> None:
+    payload = _table_cell_text_block(
+        "[爱玛售后服务不错](https://example.com/post)",
+        bold=False,
+    )
+
+    text_run = payload["text"]["elements"][0]["text_run"]
+    assert text_run["content"] == "爱玛售后服务不错"
+    assert text_run["text_element_style"]["link"] == {"url": "https://example.com/post"}
 
 
 def test_native_document_parser_keeps_text_table_chart_and_image_order(tmp_path: Path) -> None:

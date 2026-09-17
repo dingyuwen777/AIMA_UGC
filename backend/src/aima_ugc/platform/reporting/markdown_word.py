@@ -54,15 +54,15 @@ def convert_markdown_to_docx(markdown_path: Path, output_path: Path) -> WordConv
     builder = ReportDocxBuilder()
     _parse_markdown(source.read_text(encoding="utf-8"), builder, asset_root=source.parent)
     target.parent.mkdir(parents=True, exist_ok=True)
-    builder.save(target)
+    actual_target = builder.save(target)
     verify_docx(
-        target,
+        actual_target,
         expected_charts=builder.chart_count,
         expected_images=builder.image_count,
     )
     return WordConversionSummary(
         markdown_path=source,
-        output_path=target,
+        output_path=actual_target,
         paragraph_count=builder.paragraph_count,
         table_count=builder.table_count,
         chart_count=builder.chart_count,
@@ -181,6 +181,16 @@ def _parse_markdown(markdown: str, builder: ReportDocxBuilder, *, asset_root: Pa
                 )
                 table_style = None
                 layout_style = None
+                continue
+            if headers and headers[0] == "原文链接" and len(headers) == 7:
+                builder.add_rich_table(
+                    headers,
+                    rows,
+                    asset_root=asset_root,
+                    column_widths=(1450, 1600, 250, 1400, 1400, 1600, 606),
+                )
+                table_style = None
+                index = after_table
                 continue
             if table_style is None or table_style == "editorial":
                 builder.add_table(headers, rows)

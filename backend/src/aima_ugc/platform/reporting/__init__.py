@@ -17,6 +17,14 @@ from .markdown_word import (
     convert_markdown_to_docx,
     extract_chart_specs,
 )
+from .representative_section import (
+    REPRESENTATIVE_GROUP_ORDER,
+    REPRESENTATIVE_TABLE_HEADERS,
+    RepresentativeReportRow,
+    build_representative_section,
+    format_representative_labels,
+    normalize_representative_content_url,
+)
 
 __all__ = [
     "DEFAULT_REPORT_TEMPLATE_PATH",
@@ -25,10 +33,16 @@ __all__ = [
     "FeishuNativeBlock",
     "FeishuNativeDocument",
     "ReportGenerationSummary",
+    "RepresentativeReportRow",
+    "REPRESENTATIVE_GROUP_ORDER",
+    "REPRESENTATIVE_TABLE_HEADERS",
     "WordConversionSummary",
     "build_editable_chart_workbook",
     "build_feishu_native_document",
     "convert_markdown_to_docx",
     "extract_chart_specs",
     "generate_excel_report",
+    "build_representative_section",
+    "format_representative_labels",
+    "normalize_representative_content_url",
 ]

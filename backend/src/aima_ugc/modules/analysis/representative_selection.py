@@ -83,6 +83,8 @@ class LabeledContent:
     content_url: str
     voice_type: str
     sentiment_label: str
+    primary_label: str = ""
+    secondary_label: str = ""
 
     @property
     def deduplication_key(self) -> tuple[str, str]:

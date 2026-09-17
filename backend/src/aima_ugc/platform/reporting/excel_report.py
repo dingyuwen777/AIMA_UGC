@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,10 @@ from aima_ugc.platform.presentation import platform_display_name
 from .chart_spec import ChartSpec
 from .chart_workbook import build_editable_chart_workbook
 from .markdown_word import WordConversionSummary, convert_markdown_to_docx
+from .representative_section import (
+    RepresentativeReportRow,
+    build_representative_section,
+)
 from .visuals.wordcloud import render_wordcloud_png
 
 DEFAULT_REPORT_TEMPLATE_PATH = Path(__file__).with_name("report_template.md")
@@ -129,6 +134,7 @@ def generate_excel_report(
     generated_at: datetime | None = None,
     report_date_range: tuple[date, date] | None = None,
     previous_input_path: Path | None = None,
+    representative_rows: Sequence[RepresentativeReportRow] | None = None,
 ) -> ReportGenerationSummary:
     """只读统一 Excel，按 Markdown 模板生成报告并转换为 Word。
 
@@ -175,6 +181,11 @@ def generate_excel_report(
             report_date_range=_previous_period_range(actual_date_range),
         )
     )
+    target_dir.mkdir(parents=True, exist_ok=True)
+    report_representatives = _materialize_representative_assets(
+        tuple(representative_rows or ()),
+        target_dir=target_dir,
+    )
     template_text = template.read_text(encoding="utf-8")
     visual_replacements = _build_visual_replacements(
         stats,
@@ -189,9 +200,12 @@ def generate_excel_report(
         previous_stats=previous_stats,
     )
     replacements.update(visual_replacements)
+    replacements["REPRESENTATIVE_SECTION"] = build_representative_section(
+        report_representatives,
+        report_root=target_dir,
+    )
     markdown = _render_template(template_text, replacements)
 
-    target_dir.mkdir(parents=True, exist_ok=True)
     markdown_path = target_dir / markdown_name
     word_path = target_dir / word_name
     _atomic_write_text(markdown_path, markdown)
@@ -204,7 +218,7 @@ def generate_excel_report(
         source_excel_path=source_path,
         template_path=template,
         markdown_path=markdown_path,
-        word_path=word_path,
+        word_path=word_summary.output_path,
         content_rows=stats.content_rows,
         label_rows=stats.label_rows,
         comment_rows=stats.comment_rows,
@@ -1351,6 +1365,35 @@ def _render_template(template: str, replacements: Mapping[str, str]) -> str:
     if leftovers:
         raise ValueError(f"报告模板存在未替换占位符: {'、'.join(sorted(set(leftovers)))}")
     return rendered.rstrip() + "\n"
+
+
+def _materialize_representative_assets(
+    rows: tuple[RepresentativeReportRow, ...],
+    *,
+    target_dir: Path,
+) -> tuple[RepresentativeReportRow, ...]:
+    """把可用截图收拢到报告目录，失败时只清空该行截图。"""
+
+    if not rows:
+        return rows
+    asset_dir = target_dir / "assets" / "representatives"
+    result: list[RepresentativeReportRow] = []
+    for index, row in enumerate(rows, start=1):
+        source = row.screenshot_path
+        if source is None or not source.is_file() or source.suffix.lower() != ".png":
+            result.append(replace(row, screenshot_path=None))
+            continue
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        safe_id = re.sub(r"[^0-9A-Za-z_-]+", "_", row.content_id).strip("_") or "content"
+        target = asset_dir / f"{index:03d}_{safe_id}.png"
+        try:
+            if source.resolve() != target.resolve():
+                shutil.copy2(source, target)
+        except (OSError, ValueError):
+            result.append(replace(row, screenshot_path=None))
+            continue
+        result.append(replace(row, screenshot_path=target))
+    return tuple(result)
 
 
 def _markdown_table(headers: Sequence[object], rows: Iterable[Sequence[object]]) -> str:

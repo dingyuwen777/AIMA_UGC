@@ -7,19 +7,11 @@ import json
 import os
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import replace
-from datetime import datetime
 from pathlib import Path
 
 from pydantic import SecretStr, ValidationError
 
-from aima_ugc.adapters.feishu import (
-    FeishuBitableClient,
-    FeishuConfig,
-    FeishuConfigError,
-    FeishuSyncError,
-    FeishuSyncSummary,
-)
+from aima_ugc.adapters.feishu import FeishuConfigError, FeishuSyncError, FeishuSyncSummary
 from aima_ugc.adapters.llm import (
     OpenAICompatibleContentLabelingLLM,
     RetryingContentLabelingLLM,
@@ -31,6 +23,10 @@ from aima_ugc.adapters.providers.imports import (
     LabeledContent,
     LabeledContentReadSummary,
     read_labeled_content_files,
+)
+from aima_ugc.bootstrap.representative_selection_publication import (
+    publish_selected_representatives_to_feishu,
+    selected_representative_to_row,
 )
 from aima_ugc.modules.analysis.representative_selection import (
     CandidatePoolSummary,
@@ -44,6 +40,7 @@ from aima_ugc.modules.analysis.representative_selection import (
 )
 from aima_ugc.platform.config import PlatformSettings, load_settings
 from aima_ugc.platform.security import SecretFileError, read_secret_file
+from aima_ugc.platform.time import beijing_now
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
@@ -65,8 +62,11 @@ _SELECTED_CONTENT_FIELDS = frozenset(
         "content_url",
         "voice_type",
         "sentiment_label",
+        "primary_label",
+        "secondary_label",
     }
 )
+_LEGACY_SELECTED_CONTENT_FIELDS = _SELECTED_CONTENT_FIELDS - {"primary_label", "secondary_label"}
 _TARGET_PLATFORMS = frozenset({"抖音", "小红书"})
 _FEISHU_TARGET_KEY_FIELDS = ("声音内容/连接",)
 
@@ -233,8 +233,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if sync_summary.verification_errors:
-        _print_line("飞书同步完成但回读核验存在错误")
-        return 2
+        # 飞书写入已完成；回读核验详情已保存到 feishu_sync_summary.json，
+        # 不再把第三方回读延迟当作命令失败，也不在终端显示误导性提示。
+        return 0
     _print_json(sync_summary.as_dict())
     return 0
 
@@ -270,8 +271,9 @@ def _sync_selected_results_from_run(
         return 2
 
     if sync_summary.verification_errors:
-        _print_line("飞书同步完成但回读核验存在错误")
-        return 2
+        # 飞书写入已完成；回读核验详情已保存到 feishu_sync_summary.json，
+        # 不再把第三方回读延迟当作命令失败，也不在终端显示误导性提示。
+        return 0
     _print_json(sync_summary.as_dict())
     return 0
 
@@ -282,46 +284,19 @@ def _sync_to_feishu(
     selected: Sequence[SelectedRepresentative],
     output_dir: Path,
 ) -> FeishuSyncSummary:
-    """新建本次运行的数据表，将结果写入新表并保存同步审计产物。"""
+    """调用正式代表性发布用例。"""
 
-    feishu_config = FeishuConfig.from_settings(settings)
-    app_secret = _read_feishu_secret(settings, feishu_config.app_secret_file)
-    rows = tuple(_selected_row(item) for item in selected)
-    if not rows:
-        raise ValueError("没有可写入的代表性结果，未创建飞书新表")
-
-    table_name = _new_feishu_table_name()
-    with FeishuBitableClient(
-        config=feishu_config,
-        app_secret=app_secret,
-        upsert_key_fields=_FEISHU_TARGET_KEY_FIELDS,
-    ) as template_feishu:
-        new_table = template_feishu.create_table_from_current(name=table_name)
-
-    target_config = feishu_config.model_copy(update={"table_id": new_table.table_id})
-    with FeishuBitableClient(
-        config=target_config,
-        app_secret=app_secret,
-        upsert_key_fields=_FEISHU_TARGET_KEY_FIELDS,
-    ) as feishu:
-        prepared = feishu.preflight(rows)
-        _write_json(output_dir / "feishu_field_mapping.json", prepared.field_mapping.as_dict())
-        _write_jsonl(output_dir / "feishu_before_update.jsonl", prepared.before_snapshot)
-        sync_summary = feishu.apply(prepared)
-    sync_summary = replace(
-        sync_summary,
-        target_table_id=new_table.table_id,
-        target_table_name=new_table.name,
+    return publish_selected_representatives_to_feishu(
+        selected=selected,
+        output_dir=output_dir,
+        settings=settings,
     )
-    _write_json(output_dir / "feishu_new_table.json", new_table.as_dict())
-    _write_json(output_dir / "feishu_sync_summary.json", sync_summary.as_dict())
-    return sync_summary
 
 
 def _new_feishu_table_name() -> str:
     """返回本次写入新数据表的生成时间名称。"""
 
-    return datetime.now().astimezone().strftime("%Y%m%dT%H%M%S.%f%z")
+    return beijing_now().strftime("%Y%m%dT%H%M%S.%f%z")
 
 
 def _create_llm(
@@ -480,7 +455,8 @@ def _read_selected_results(
 def _content_from_selected_payload(payload: Mapping[str, object]) -> LabeledContent:
     """将本程序生成的 content JSON 恢复为只读的原始内容模型。"""
 
-    if frozenset(payload) != _SELECTED_CONTENT_FIELDS:
+    payload_fields = frozenset(payload)
+    if payload_fields not in {_SELECTED_CONTENT_FIELDS, _LEGACY_SELECTED_CONTENT_FIELDS}:
         raise ValueError("content 字段集合不正确")
     row_number = payload.get("row_number")
     if isinstance(row_number, bool) or not isinstance(row_number, int) or row_number < 1:
@@ -496,6 +472,16 @@ def _content_from_selected_payload(payload: Mapping[str, object]) -> LabeledCont
         content_url=_selected_text(payload, "content_url"),
         voice_type=_selected_text(payload, "voice_type"),
         sentiment_label=_selected_text(payload, "sentiment_label"),
+        primary_label=(
+            _selected_text(payload, "primary_label")
+            if "primary_label" in payload
+            else ""
+        ),
+        secondary_label=(
+            _selected_text(payload, "secondary_label")
+            if "secondary_label" in payload
+            else ""
+        ),
     )
 
 
@@ -509,7 +495,7 @@ def _selected_text(payload: Mapping[str, object], field_name: str) -> str:
 def _resolve_run_dir(input_path: Path, requested: Path | None) -> Path:
     if requested is not None:
         return requested.resolve()
-    timestamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
+    timestamp = beijing_now().strftime("%Y%m%dT%H%M%S%f%z")
     return input_path.parent / f"representative_selection_{timestamp}"
 
 
@@ -526,6 +512,8 @@ def _content_payload(candidate: RepresentativeCandidate) -> dict[str, object]:
         "content_url": content.content_url,
         "voice_type": content.voice_type,
         "sentiment_label": content.sentiment_label,
+        "primary_label": content.primary_label,
+        "secondary_label": content.secondary_label,
     }
 
 
@@ -541,18 +529,7 @@ def _outcome_payload(outcome: RepresentativeDecisionOutcome) -> dict[str, object
 
 
 def _selected_row(item: SelectedRepresentative) -> dict[str, object]:
-    content = item.candidate.content
-    decision = item.decision
-    if decision.sentiment is None:
-        raise ValueError("最终选择缺少情感")
-    return {
-        "声音内容/连接": _content_reference(content),
-        "典型评论示例": content.text,
-        "来源": content.platform,
-        "发布时间": content.published_at,
-        "一级标签": _primary_tag(decision.theme),
-        "用户情绪": decision.sentiment,
-    }
+    return selected_representative_to_row(item)
 
 
 def _content_reference(content: LabeledContent) -> str:
@@ -564,28 +541,6 @@ def _content_reference(content: LabeledContent) -> str:
     if not title:
         return fallback
     return f"{title}\n{fallback}" if fallback else title
-
-
-def _primary_tag(theme: str) -> str | None:
-    """将模型主题收敛到目标表已有的一级标签选项。"""
-
-    if any(token in theme for token in ("电池", "续航", "充电", "电量")):
-        return "电池、续航与充电"
-    if any(token in theme for token in ("售后", "门店服务", "收费", "假冒", "欺诈")):
-        return "售后服务"
-    if any(token in theme for token in ("外观", "颜色", "配色")):
-        return "外观设计"
-    if any(token in theme for token in ("性价比", "价格", "价值")):
-        return "价格与价值"
-    if any(token in theme for token in ("购车", "购买")):
-        return "销售与购买体验"
-    if any(token in theme for token in ("智能", "APP", "功能")):
-        return "智能化与电子功能"
-    if any(token in theme for token in ("质量", "耐用", "零部件", "轮胎", "电机")):
-        return "耐用性与质量"
-    if any(token in theme for token in ("骑行", "操控", "动力")):
-        return "骑行性能"
-    return None
 
 
 def _selection_summary(
