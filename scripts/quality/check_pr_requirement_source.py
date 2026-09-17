@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import re
+import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -46,6 +47,7 @@ def _load_governance_contract() -> Any:
     if spec is None or spec.loader is None:
         raise RuntimeError(f"无法加载项目治理资产机器 Contract：{GOVERNANCE_CONTRACT_PATH}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
