@@ -76,6 +76,18 @@ def _technical_issue_body() -> str:
 """
 
 
+def _issue_body(headings: tuple[str, ...]) -> str:
+    """按显式项目语义标题构造最小 Issue 正文，用于覆盖三类合法 Profile。"""
+    blocks: list[str] = []
+    for heading in headings:
+        if heading == "验收标准":
+            content = "- [ ] AC1：当前 Profile 可以被机器验证。"
+        else:
+            content = "测试内容。"
+        blocks.append(f"## {heading}\n{content}")
+    return "\n\n".join(blocks) + "\n"
+
+
 def _write_change(root: Path, change_id: str, *, level: str = "L3") -> Path:
     """用当前受管模板生成测试 Change，使 Profile 来源保持单一。"""
     raw = (root / ".agents/skills/coding/assets/CHANGE.template.md").read_text(encoding="utf-8")
@@ -114,6 +126,60 @@ def test_project_issue_profiles_are_recovered_from_forms(tmp_path: Path) -> None
     assert "验证要求" in technical.required_headings
 
 
+def test_all_issue_types_accept_valid_project_profiles(tmp_path: Path) -> None:
+    """需求、缺陷、技术变更三类合法实例都必须通过当前项目 Profile。"""
+    root = _prepare_root(tmp_path)
+    cases = (
+        (
+            "[需求] 合法需求",
+            (
+                "问题背景",
+                "目标",
+                "用户 / 使用场景",
+                "范围",
+                "非目标",
+                "验收标准",
+                "必须保持不变",
+                "上游事实源 / 相关资料",
+                "风险与依赖",
+                "验证要求",
+            ),
+        ),
+        (
+            "[缺陷] 合法缺陷",
+            (
+                "实际行为",
+                "期望行为",
+                "影响范围",
+                "环境 / 版本",
+                "复现步骤",
+                "证据",
+                "回归范围",
+                "验收标准",
+                "验证要求",
+                "上游事实源 / 相关资料",
+            ),
+        ),
+        (
+            "[技术变更] 合法技术变更",
+            (
+                "动机 / 根因",
+                "当前状态",
+                "目标状态",
+                "范围",
+                "非目标",
+                "兼容与迁移",
+                "风险与回滚",
+                "验收标准",
+                "验证要求",
+                "上游事实源 / 相关资料",
+            ),
+        ),
+    )
+    for title, headings in cases:
+        assert VALIDATE_ISSUE_INSTANCE(title, _issue_body(headings), root=root) == []
+
+
 def test_live_issue_instance_uses_project_profile_and_stable_acceptance(tmp_path: Path) -> None:
     """API/网页创建的 live Issue 也必须满足当前项目 Form 的机器语义。"""
     root = _prepare_root(tmp_path)
@@ -125,6 +191,26 @@ def test_live_issue_instance_uses_project_profile_and_stable_acceptance(tmp_path
         )
         == []
     )
+
+
+def test_live_issue_rejects_non_task_acceptance(tmp_path: Path) -> None:
+    """普通编号列表不能冒充可回写的稳定 Acceptance task list。"""
+    root = _prepare_root(tmp_path)
+    body = _technical_issue_body().replace(
+        "- [ ] AC1：新治理资产必须通过机器门禁。\n"
+        "- [ ] AC2：历史治理资产不被批量改写。",
+        "1. 新治理资产必须通过机器门禁。\n2. 历史治理资产不被批量改写。",
+    )
+    errors = VALIDATE_ISSUE_INSTANCE("[技术变更] 统一治理", body, root=root)
+    assert any("task list" in error for error in errors)
+
+
+def test_live_issue_rejects_duplicate_acceptance_ids(tmp_path: Path) -> None:
+    """Acceptance ID 重复时必须失败，不能形成不稳定的最终状态 Owner。"""
+    root = _prepare_root(tmp_path)
+    body = _technical_issue_body().replace("AC2：", "AC1：")
+    errors = VALIDATE_ISSUE_INSTANCE("[技术变更] 统一治理", body, root=root)
+    assert any("连续且唯一" in error for error in errors)
 
 
 def test_live_issue_rejects_non_contiguous_acceptance_ids(tmp_path: Path) -> None:
