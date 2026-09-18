@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260918-205506-collection-runtime-figma-owner-sync
 title: 采集运行中心同步 Figma 四层 Owner 与紧凑布局
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/539-collection-runtime-figma-owner-sync
 created: 2026-09-18
