@@ -130,7 +130,7 @@ nav { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; }
 .principal-error button { border: 0; padding: 0; background: transparent; color: var(--aima-primary); cursor: pointer; }
 .avatar { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border-radius: 50%; color: #fff; background: #7b61ff; font-size: 13px; font-weight: 500; line-height: 22px; }
 .workspace { width: calc(100% - 180px); min-width: 0; min-height: 100vh; margin-left: 180px; }
-.workspace-main { width: 100%; min-width: 0; padding: 24px 24px 32px; }
+.workspace-main { width: 100%; min-width: 0; padding: var(--aima-layout-page-padding-y) var(--aima-layout-page-padding-x) 32px; }
 @media (max-width: 767px) {
   .sidebar { width: 144px; padding-inline: 8px; }
   .brand { gap: 6px; }
