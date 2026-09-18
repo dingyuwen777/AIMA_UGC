@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260918-151826-collection-strategy-figma-sync
 title: 采集策略前端按最新 Figma 正式基线收敛
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/collection-strategy-figma-sync
 created: 2026-09-18T15:18:26+08:00
-updated: 2026-09-18T16:18:00+08:00
+updated: 2026-09-18
 completion_gate: required
 depends_on: []
 affected_areas:
