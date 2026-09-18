@@ -292,6 +292,7 @@ describe('frontend full-stack audit regressions', () => {
     expect(source).not.toContain('Raw Artifact')
     expect(source).not.toContain('reason_code')
     expect(source).not.toContain('evidence_kind')
+    expect(source).not.toContain('evidence.source_field')
     expect(source).toContain('<h4>内容可用状态</h4>')
     expect(source).toContain('sourceLabel(item.source.provider_name)')
     expect(source).toContain('contentTypeLabel(item.content_type)')
