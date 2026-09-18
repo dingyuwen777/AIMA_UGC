@@ -62,9 +62,12 @@ const confirmLabel = computed(() =>
   >
     <template #header>
       <header>
-        <div><h2>{{ title }}</h2><p v-if="target">
-          {{ target.name }}
-        </p></div>
+        <div>
+          <h2>{{ title }}</h2>
+          <p v-if="target">
+            {{ target.name }}
+          </p>
+        </div>
         <AimaButton
           variant="text"
           aria-label="关闭"
