@@ -185,7 +185,7 @@ test('copies a plan in one click, retries duplicate names, and keeps the source 
   const detail = page.getByRole('dialog', { name: '采集计划详情' })
   await detail.getByRole('button', { name: '复制', exact: true }).click()
 
-  await expect(page.getByRole('status')).toContainText('已复制采集计划，副本默认停用。')
+  await expect(page.locator('.success-toast')).toContainText('已复制采集计划，副本默认停用。')
   await expect(detail).toBeVisible()
   await expect(detail.getByRole('heading', { name: plan.name })).toBeVisible()
   await expect(detail.getByLabel('副本名称')).toHaveCount(0)
@@ -223,7 +223,7 @@ test('uses product confirmation for archive and permanent delete flows', async (
   )
   await deleteDialog.getByRole('button', { name: '永久删除', exact: true }).click()
   await deleteRequest
-  await expect(page.getByRole('status')).toContainText('归档采集计划已永久删除。')
+  await expect(page.locator('.success-toast')).toContainText('归档采集计划已永久删除。')
 
   await page.getByRole('button', { name: '查看详情' }).click()
   const detail = page.getByRole('dialog', { name: '采集计划详情' })

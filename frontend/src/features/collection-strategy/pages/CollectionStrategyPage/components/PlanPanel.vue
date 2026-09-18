@@ -198,5 +198,5 @@ function nextRun(value?: string | null): string {
 .table-state { display: grid; min-width: 100%; min-height: 225px; align-content: center; justify-items: center; gap: 6px; color: #8993a4; font-size: 12px; }.table-state strong { color: #313c4f; font-size: 14px; }.table-state span { color: #8993a4; font-size: 11px; }
 .plan-table td strong { overflow-wrap: anywhere; }
 .pagination { display: flex; align-items: center; justify-content: flex-start; gap: 12px; margin-top: 14px; color: #6f7a8d; font-size: 12px; }.pagination button { height: 32px; padding: 0 12px; border: 1px solid #d8dee8; border-radius: 6px; color: #526075; background: #fff; cursor: pointer; }.pagination button:disabled { opacity: .45; cursor: default; }
-.archived-plans { margin-top: 14px; }
+.archived-plans { margin-top: 31px; }
 </style>
