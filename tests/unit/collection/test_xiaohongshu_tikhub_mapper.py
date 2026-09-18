@@ -183,3 +183,23 @@ def test_explicit_target_comment_maps_direct_parent() -> None:
     assert result.parent_comment_id == "comment-child"
     assert "root_comment_id" in result.observed_fields
     assert "parent_comment_id" in result.observed_fields
+
+
+def test_flat_target_comment_id_maps_direct_parent_without_guessing() -> None:
+    """Provider 明确给出扁平 target_comment_id 时必须保留直接父级。"""
+
+    result = map_comment(
+        {
+            "id": "comment-child-3",
+            "note_id": "note-1",
+            "content": "回复另一个回复",
+            "target_comment_id": "comment-child-2",
+        },
+        _context(operation="get_note_sub_comments", root_comment_id="comment-root"),
+        item_locator="comment:comment-child-3",
+        is_root=False,
+    )
+
+    assert result.root_comment_id == "comment-root"
+    assert result.parent_comment_id == "comment-child-2"
+    assert "parent_comment_id" in result.observed_fields
