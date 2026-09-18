@@ -440,7 +440,7 @@ class PostgresContentQueryRepository:
         resolved_is_by_content_author = case(
             (
                 comment.c.is_by_content_author.is_not(None),
-                resolved_is_by_content_author,
+                comment.c.is_by_content_author,
             ),
             (
                 and_(
@@ -464,7 +464,7 @@ class PostgresContentQueryRepository:
                 comment.c.current_like_count,
                 comment.c.current_reply_count,
                 ingested_reply_count.label("ingested_reply_count"),
-                comment.c.is_by_content_author,
+                resolved_is_by_content_author,
             )
             .select_from(
                 comment.join(content, content.c.id == comment.c.content_id)
