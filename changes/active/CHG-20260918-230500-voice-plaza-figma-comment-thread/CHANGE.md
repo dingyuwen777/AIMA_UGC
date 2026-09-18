@@ -19,8 +19,6 @@ affected_areas:
 affected_paths:
   - frontend/src/features/voice-plaza/
   - frontend/src/features/task-center/
-  - frontend/src/shared/
-  - frontend/src/app/layouts/AppShell.vue
   - frontend/tests/
   - frontend/e2e/
   - frontend/e2e-fullstack/
@@ -146,7 +144,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 2. **直接父级** → XHS Mapper 接受 nested target 和明确 flat target ID → 缺字段继续为空 → Mapper Unit + Collection/PG Integration。
 3. **原作者** → Query 先用 Provider 显式 `is_by_content_author`，为空时仅在 content/comment 两个 `author_account_id` 都存在时比较账号相等 → PG Integration。
 4. **UI 语义** → parent author 已知显示“回复 X”；parent=root 显示“回复一级评论”；只知 root 时显示“属于该一级评论线程” → Component 回归。
-5. **Design-to-Code** → Voice Plaza/Task Center/Analysis/Export/Detail 消费产品文案与状态；共享几何上收 Token/AppShell/PageHeader/Button → Frontend Unit/Browser/build。
+5. **Design-to-Code** → Voice Plaza/Task Center/Analysis/Export/Detail 消费产品文案与状态；Voice Plaza 仅在 Feature Owner 内补正式页特有的 28px 顶距、标题层级和 32px 头部动作，Shared Owner 保持当前跨页基线 → Frontend Unit/Browser/build。
 6. **交付** → PR Ready 后 current-head CI → 独立 Review → guarded merge → main-fresh/archive/Issue Closure。
 
 ## 证据到决策
@@ -156,7 +154,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 | D1 | E2/E4 | 回复已在 PG，无需 Provider 调用，只补读路径 |
 | D2 | E5/E7 | 接受明确字段即可恢复事实，同时避免 root 猜 direct parent |
 | D3 | E6 | 账号身份已是统一 Owner，可无回填恢复原作者 |
-| D4 | E1 | Shared 几何应修 Shared Owner，不在 Voice Plaza 私有覆盖 |
+| D4 | E1 | Shared Owner 还被其它已验收页面消费；跨页基线不应为单页 Figma Delta 改写，Voice Plaza 特有几何留在 Feature Owner |
 | D5 | E3 | Contract 已足够，不引入 Schema/生成链变化 |
 
 ## 备选方案与取舍
@@ -165,7 +163,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 - **所有二级回复强制 parent=root**：会制造错误事实，违反 AC5，拒绝。
 - **新增 parent/original-author Schema**：现有字段足够，无必要 Migration。
 - **默认开启更多 TikHub 二级补采**：扩大费用且不是根因，违反 AC7。
-- **页面私有覆盖 Shared Header/Button/PageShell**：破坏 Owner 链，改 Shared Owner 更符合 Figma 事实源。
+- **为 Voice Plaza 改写 Shared Header/Button/PageShell**：会回归其它已验收正式页面；本次保留 Shared Owner 基线，只在 Voice Plaza Feature Owner 表达该页面实例的特有几何。
 
 # 需求追溯
 
@@ -188,14 +186,13 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 | XHS Mapper | flat target 兼容 | Provider 明确父级不能丢 | R4—R6 / E5 |
 | PostgreSQL Content Query | 原作者投影 | 利用既有账号身份事实 | R4—R6 / E6 |
 | Voice Plaza / Task Center dialogs | 产品化文案与状态 | 跟随 Figma | R1—R3 / E1 |
-| Shared Token/AppShell/PageHeader/Button | 公共几何对齐 | 修 Shared Owner 而非页面补丁 | R1/R3 / E1 |
 | Unit/Integration/E2E/Full-stack | 回归保护 | 固定跨层可观察行为 | R4—R8 / E8 |
 | 当前 Change | 完成定义、验证与交付证据 | L3 Completion Gate | R1—R8 |
 
 - [x] 调查当前实现、历史正常参照、PR #527 与 Figma 事实源
 - [x] 建立 Issue、Change、任务分支和 Draft PR
 - [x] 建立评论关系回归并完成最小实现
-- [x] 完成 Figma Design-to-Code Delta
+- [x] 完成 Figma Design-to-Code Delta，并验证未把单页几何扩散到其它正式页面
 - [x] 完成需求追溯与反向能力审计
 - [x] 同步当前 Change 到 ready_for_review
 - [ ] 取得 current-head CI、独立 Review、merge/main-fresh/archive/closure 证据
@@ -233,7 +230,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 
 # 文档、依赖、部署与发布影响
 
-- **长期文档**：正式 Figma 已是视觉事实源；无需复制第二份易漂移页面规格，当前 Change 保留 Implementation Trace。
+- **长期文档**：正式 Figma 已是视觉事实源；无需复制第二份易漂移页面规格，当前 Change 保留 Implementation Trace；Shared Owner 最终未发生代码差异。
 - **依赖 / Runtime**：不新增、不删除、不升级依赖；锁文件不变。
 - **配置 / Secret**：不改变配置面、默认值或 Secret 处理。
 - **部署 / Release**：本任务不部署、不创建 Release；仅合并代码到 main。
