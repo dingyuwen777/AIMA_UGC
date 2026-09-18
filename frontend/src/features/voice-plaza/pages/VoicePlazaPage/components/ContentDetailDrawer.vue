@@ -71,6 +71,7 @@ const editingVehicles = ref(false)
 const editingAnalysis = ref(false)
 const mediaGrid = ref<HTMLElement | null>(null)
 const activeMediaIndex = ref(0)
+const mediaNavigationTarget = ref<number | null>(null)
 const relevanceDecision = computed(() => props.item ? relevanceReviewDecision(props.item) : null)
 const mediaItems = computed(() => props.item?.media ?? [])
 const hasMediaNavigation = computed(() =>
@@ -83,6 +84,7 @@ watch(() => props.item?.id, async () => {
   editingVehicles.value = false
   editingAnalysis.value = false
   activeMediaIndex.value = 0
+  mediaNavigationTarget.value = null
   await nextTick()
   if (mediaGrid.value) mediaGrid.value.scrollLeft = 0
 })
@@ -169,19 +171,36 @@ function showMedia(index: number): void {
   const targetIndex = Math.min(Math.max(index, 0), mediaItems.value.length - 1)
   const target = grid.children.item(targetIndex)
   if (!(target instanceof HTMLElement)) return
+  const gridRect = grid.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const targetLeft = grid.scrollLeft + targetRect.left - gridRect.left
+  mediaNavigationTarget.value = targetIndex
   activeMediaIndex.value = targetIndex
-  grid.scrollTo({ left: target.offsetLeft, behavior: 'auto' })
+  grid.scrollTo({ left: targetLeft, behavior: 'auto' })
 }
 
 /** 根据原生触控或触控板滚动位置同步当前图片序号。 */
 function syncMediaIndex(): void {
   const grid = mediaGrid.value
   if (!grid || !hasMediaNavigation.value) return
+  const gridRect = grid.getBoundingClientRect()
+
+  if (mediaNavigationTarget.value !== null) {
+    const target = grid.children.item(mediaNavigationTarget.value)
+    if (target instanceof HTMLElement) {
+      const targetLeft = grid.scrollLeft + target.getBoundingClientRect().left - gridRect.left
+      activeMediaIndex.value = mediaNavigationTarget.value
+      if (Math.abs(grid.scrollLeft - targetLeft) <= 2) mediaNavigationTarget.value = null
+      return
+    }
+    mediaNavigationTarget.value = null
+  }
+
   let nearestIndex = 0
   let nearestDistance = Number.POSITIVE_INFINITY
   Array.from(grid.children).forEach((child, index) => {
     if (!(child instanceof HTMLElement)) return
-    const distance = Math.abs(child.offsetLeft - grid.scrollLeft)
+    const distance = Math.abs(child.getBoundingClientRect().left - gridRect.left)
     if (distance < nearestDistance) {
       nearestDistance = distance
       nearestIndex = index
