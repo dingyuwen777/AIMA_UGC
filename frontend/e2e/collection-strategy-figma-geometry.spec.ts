@@ -151,6 +151,7 @@ test('matches the formal 1440×900 Figma geometry for the strategy workspace', a
   await expectBox(page.locator('.filters'), { x: 204, y: 286, width: 1212, height: 72 })
   await expectBox(page.locator('.plan-card > .aima-feedback'), { x: 204, y: 378, width: 1212, height: 44 })
   await expectBox(page.locator('.table-wrap'), { x: 204, y: 484, width: 1212, height: 227 })
+  await expectBox(page.locator('.archived-plans'), { x: 204, y: 789, width: 1212, height: 46 })
 
   await page.getByRole('button', { name: '关键词包' }).click()
   await expectBox(page.locator('.panel-grid'), { x: 204, y: 286, width: 1212 })
@@ -158,6 +159,7 @@ test('matches the formal 1440×900 Figma geometry for the strategy workspace', a
   await expectBox(page.locator('.detail-card'), { x: 1043, y: 286, width: 373 })
   await expectBox(page.locator('.table-head'), { height: 54 })
   await expectBox(page.locator('.pack-row').first(), { height: 74 })
+  await expectBox(page.locator('.panel-grid > .archived-resource'), { x: 204, y: 595, width: 1212, height: 46 })
   await expect(page.locator('.detail-card').getByRole('button', { name: '编辑', exact: true })).toBeVisible()
 })
 

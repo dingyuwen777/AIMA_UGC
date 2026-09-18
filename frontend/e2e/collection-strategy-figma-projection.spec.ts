@@ -81,6 +81,10 @@ test('uses the current Figma business projection without leaking Provider detail
   await expect(detail.getByText('计划规则与执行范围', { exact: true })).toBeVisible()
   await expect(detail.getByText('主采集渠道', { exact: false })).toBeHidden()
   await expect(detail.getByText('小红书', { exact: true })).toBeVisible()
+  await expect(detail.getByText('技术详情', { exact: true })).toHaveCount(0)
+  await expect(detail.getByRole('button', { name: '编辑计划', exact: true })).toBeVisible()
+  await expect(detail.getByRole('button', { name: '复制', exact: true })).toBeVisible()
+  await expect(detail.getByRole('button', { name: '归档', exact: true })).toBeVisible()
 })
 
 test('wraps the keyword detail card below the list at the compact 1180 viewport', async ({ page }) => {
