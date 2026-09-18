@@ -64,8 +64,9 @@ function replyItems(rootCommentId: string): ContentCommentResponse[] {
 
 function replyTarget(comment: ContentCommentResponse): string {
   if (comment.parent_author_display_name) return `回复 ${comment.parent_author_display_name}`
+  if (comment.parent_comment_id === comment.root_comment_id) return '回复一级评论'
   if (comment.parent_comment_id) return '回复该线程中的评论'
-  return '回复这条一级评论'
+  return '属于该一级评论线程'
 }
 
 function replyButtonLabel(root: ContentCommentResponse): string {
