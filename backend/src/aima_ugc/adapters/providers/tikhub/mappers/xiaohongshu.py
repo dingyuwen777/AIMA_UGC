@@ -131,6 +131,8 @@ def map_comment(
 
     explicit_parent = _first_dict(raw, "target_comment", "targetComment")
     parent_comment_id: str | None = _optional_string(explicit_parent, "id", "comment_id")
+    if parent_comment_id is None:
+        parent_comment_id = _optional_string(raw, "target_comment_id", "targetCommentId")
     root_comment_id: str | None
     if is_root:
         root_comment_id = external_comment_id
