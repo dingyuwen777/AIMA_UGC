@@ -75,7 +75,7 @@
   --aima-layout-topbar-height: 60px;
   --aima-layout-topbar-padding-x: clamp(24px, calc(18px + 0.555556vw), 32px);
   --aima-layout-page-padding-x: clamp(20px, calc(12px + 0.833333vw), 32px);
-  --aima-layout-page-padding-y: clamp(24px, calc(18px + 0.416667vw), 30px);
+  --aima-layout-page-padding-y: clamp(24px, calc(22px + 0.416667vw), 30px);
   --aima-layout-content-max-width: clamp(1400px, 88vw, 1760px);
   --aima-layout-drawer-width: 510px;
   --aima-layout-detail-drawer-width: 450px;
