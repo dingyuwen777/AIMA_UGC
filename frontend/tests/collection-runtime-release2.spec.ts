@@ -29,6 +29,15 @@ describe('采集运行中心 release-2 Figma 基线', () => {
     expect(source).not.toContain('runtimeStageLabel')
   })
 
+  it('在 1120px 及以下按 Figma 紧凑规范稳定切换为两列筛选', async () => {
+    const source = await readRuntimeSource('components/CollectionRuntimeFilters.vue')
+
+    expect(source).toContain('@media (max-width: 1120px)')
+    expect(source).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))')
+    expect(source).toContain('@media (max-width: 720px)')
+    expect(source).toContain('grid-template-columns: minmax(0, 1fr)')
+  })
+
   it('主列表使用 1212px 七列产品表格与 Figma 状态进度组件', async () => {
     const [tableSource, statusSource] = await Promise.all([
       readRuntimeSource('components/CollectionRuntimeTable.vue'),
