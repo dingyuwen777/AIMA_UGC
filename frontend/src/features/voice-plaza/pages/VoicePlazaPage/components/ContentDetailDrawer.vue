@@ -177,6 +177,11 @@ function showMedia(index: number): void {
   mediaNavigationTarget.value = targetIndex
   activeMediaIndex.value = targetIndex
   grid.scrollTo({ left: targetLeft, behavior: 'auto' })
+  window.requestAnimationFrame(() => {
+    if (mediaGrid.value !== grid || mediaNavigationTarget.value !== targetIndex) return
+    mediaNavigationTarget.value = null
+    syncMediaIndex()
+  })
 }
 
 /** 根据原生触控或触控板滚动位置同步当前图片序号。 */
