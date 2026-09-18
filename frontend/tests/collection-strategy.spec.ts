@@ -9,11 +9,13 @@ const generated = vi.hoisted(() => ({
   getKeywordPack: vi.fn(),
   updateKeywordPackEnabled: vi.fn(),
   addKeywordToPack: vi.fn(),
+  copyKeywordPack: vi.fn(),
   getCollectionCapabilities: vi.fn(),
   listCollectionPlans: vi.fn(),
   createCollectionPlan: vi.fn(),
   getCollectionPlan: vi.fn(),
   updateCollectionPlanEnabled: vi.fn(),
+  copyCollectionPlan: vi.fn(),
   listVehicleBrands: vi.fn(),
 }))
 
@@ -132,6 +134,59 @@ describe('collection strategy feature', () => {
       packDetails: {},
       capabilities: { provider_configs: [], capabilities: [] },
     })).toBe('请至少选择一个关键词包作为搜索条件。')
+  })
+
+  it('copies a keyword pack with automatic duplicate-name retry and keeps the source selected', async () => {
+    generated.listKeywordPacks.mockResolvedValue({ items: [discoveryPack], total: 1, offset: 0, limit: 100 })
+    generated.copyKeywordPack
+      .mockResolvedValueOnce({ status: 409, detail: '同名词包已经存在', request_id: 'pack-duplicate' })
+      .mockResolvedValueOnce({ ...packDetail, id: 'copied-pack', name: '爱玛新品发现 副本 2', enabled: false })
+    const store = useCollectionStrategyStore()
+    await store.refresh()
+    await store.openPack(discoveryPack.id)
+
+    expect(await store.copySelectedPack()).toBe(true)
+
+    expect(generated.copyKeywordPack.mock.calls.map((call) => call[1]?.name)).toEqual([
+      '爱玛新品发现 副本',
+      '爱玛新品发现 副本 2',
+    ])
+    expect(store.selectedPack?.id).toBe(discoveryPack.id)
+    expect(store.error).toBeNull()
+  })
+
+  it('copies a plan with automatic duplicate-name retry and keeps the source detail context', async () => {
+    const source: CollectionPlanResponse = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '停用计划',
+      enabled: false,
+      schedule_expr: '0 9 * * *',
+      timezone: 'Asia/Shanghai',
+      schedule_version: 3,
+      next_run_at: null,
+      last_scheduled_at: null,
+      detail_policy: 'on_change',
+      comment_policy: 'adaptive',
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
+      keyword_pack_ids: [discoveryPack.id],
+      brand_ids: [],
+      created_at: '2026-08-22T00:00:00Z',
+      updated_at: '2026-08-22T00:00:00Z',
+    }
+    generated.copyCollectionPlan
+      .mockResolvedValueOnce({ status: 409, detail: '同名采集计划已经存在', request_id: 'plan-duplicate' })
+      .mockResolvedValueOnce({ ...source, id: 'copied-plan', name: '停用计划 副本 2', schedule_version: 1 })
+    const store = useCollectionStrategyStore()
+    store.selectedPlan = source
+
+    expect(await store.copySelectedPlan()).toBe(true)
+
+    expect(generated.copyCollectionPlan.mock.calls.map((call) => call[1]?.name)).toEqual([
+      '停用计划 副本',
+      '停用计划 副本 2',
+    ])
+    expect(store.selectedPlan?.id).toBe(source.id)
+    expect(store.error).toBeNull()
   })
 
   it('paginates the periodic Plan list through the formal offset contract', async () => {

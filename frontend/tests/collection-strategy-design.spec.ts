@@ -109,7 +109,7 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).toContain('4. 采集渠道')
     expect(html).toContain('5. 执行频率')
     expect(html).toContain('自动采集规则')
-    expect(html).toContain('目录快照（创建时冻结）')
+    expect(html).toContain('当前品牌车型范围')
     expect(html).toContain('aria-label="执行频率"')
     expect(html).toMatch(/<option value="0 \*\/6 \* \* \*"[^>]* selected>每6小时<\/option>/)
     for (const [label, value] of [

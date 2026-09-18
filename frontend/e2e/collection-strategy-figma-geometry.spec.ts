@@ -212,7 +212,7 @@ test('keeps compact strategy panels inside the workspace and long keywords insid
   expect(box!.x + box!.width).toBeLessThanOrEqual(1157)
 })
 
-test('preserves keyword pack edit, copy and add drafts after rejected requests', async ({ page }) => {
+test('preserves keyword pack edit and add drafts after rejected requests', async ({ page }) => {
   await page.route('**/api/v1/keyword-packs/**', async (route) => {
     if (route.request().method() === 'GET') return route.fallback()
     await route.fulfill({ status: 409, json: { status: 409, title: 'Conflict', detail: '测试保存冲突，请重试。', request_id: 'strategy-draft-conflict' } })
@@ -228,13 +228,6 @@ test('preserves keyword pack edit, copy and add drafts after rejected requests',
   await expect(editor.getByRole('alert')).toBeVisible()
   await expect(editor.getByLabel('词包名称', { exact: true })).toHaveValue('保留名称草稿')
   await editor.getByRole('button', { name: '取消', exact: true }).click()
-  await detail.getByRole('button', { name: '复制', exact: true }).click()
-  await detail.getByLabel('副本名称').clear()
-  await expect(detail.getByLabel('副本名称')).toBeVisible()
-  await detail.getByLabel('副本名称').fill('保留副本草稿')
-  await detail.getByRole('button', { name: '创建副本' }).click()
-  await expect(detail.getByLabel('副本名称')).toHaveValue('保留副本草稿')
-  await detail.getByRole('button', { name: '取消', exact: true }).click()
   await detail.getByRole('button', { name: '编辑', exact: true }).click()
   await editor.getByLabel('关键词（每行一个）').fill('保留新增关键词')
   await editor.getByRole('button', { name: '保存词包', exact: true }).click()
@@ -311,22 +304,6 @@ test('opens complete current pack details from plan references and returns to th
   await expect(planDetail).toBeVisible()
 })
 
-test('preserves plan copy drafts and displays the failure inside the detail drawer', async ({ page }) => {
-  await page.route('**/api/v1/collection-plans/*/copy', async (route) => {
-    await route.fulfill({ status: 409, json: { status: 409, title: 'Conflict', detail: '计划名称冲突，请修改后重试。', request_id: 'plan-copy-conflict' } })
-  })
-  await page.goto('/collection-strategy')
-  await page.getByRole('button', { name: '查看详情' }).click()
-  const detail = page.getByRole('dialog', { name: '采集计划详情' })
-  await detail.getByRole('button', { name: '复制', exact: true }).click()
-  await detail.getByLabel('副本名称').clear()
-  await expect(detail.getByLabel('副本名称')).toBeVisible()
-  await detail.getByLabel('副本名称').fill('计划副本草稿')
-  await detail.getByRole('button', { name: '创建副本' }).click()
-  await expect(detail.getByRole('alert')).toContainText('计划名称冲突')
-  await expect(detail.getByLabel('副本名称')).toHaveValue('计划副本草稿')
-})
-
 test('supports Escape and returns keyboard focus for every strategy overlay', async ({ page }) => {
   await page.goto('/collection-strategy')
   const create = page.getByRole('button', { name: '新建采集计划', exact: true })
@@ -365,7 +342,7 @@ test('edits the selected plan through a single drawer and preserves its identity
   await editor.getByLabel('小红书发布时间').selectOption('1d')
   await editor.getByLabel('小红书内容类型').selectOption('all')
   const request = page.waitForRequest((item) => new URL(item.url()).pathname === `/api/v1/collection-plans/${planId}` && item.method() === 'PUT')
-  await editor.getByRole('button', { name: '保存计划修改' }).click()
+  await editor.getByRole('button', { name: '保存修改' }).click()
   const payload = (await request).postDataJSON()
   expect(payload).toMatchObject({
     name: '编辑后的计划',
