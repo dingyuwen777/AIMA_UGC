@@ -7,7 +7,7 @@ status: ready_for_review
 owner: dingyuwen777
 branch: feature/collection-strategy-figma-sync
 created: 2026-09-18T15:18:26+08:00
-updated: 2026-09-18T16:06:00+08:00
+updated: 2026-09-18T16:18:00+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -137,8 +137,8 @@ Issue #536 已把本轮 Figma 正式基线、用户可见目标和验收条件�
 | R6 | 管理/归档动作保持真实可执行链路 | #536 / AC6 | satisfied | 页面事件→Store→generated API 链保持，Figma Prototype 关键 reaction 已复核；E2E 增加删除/归档确认流程 |
 | R7 | 编辑计划复用 Drawer 且业务文案对齐 | #536 / AC7 | satisfied | PlanCreateDrawer 继续共用 Create/Edit，已对齐“保存修改/后续采集/当前品牌车型范围”等正式文案 |
 | R8 | 保持列表、资格、响应式、键盘和错误态能力 | #536 / AC8 | satisfied | 6 列 PlanPanel、eligibility/Capability Owner 未改；现有 1180/1440/1920、Escape/focus、草稿错误态测试继续保留 |
-| R9 | 目标测试/构建/required CI 通过 | #536 / AC9 | explicitly_deferred | PR Draft 无法运行 quality-core；目标测试已提交，切 Ready 后由同一 current-head CI 执行，CI 未绿前禁止 merge，绿后回写 satisfied 证据 |
-| R10 | Implementation ↔ Figma 六域无阻塞差异 | #536 / AC10 | explicitly_deferred | 已完成源码/Design Context/Prototype 定向对照并修正 Figma“惠科”残留；最终运行态六域复核依赖 current-head CI，完成后回写 satisfied |
+| R9 | 目标测试/构建/required CI 通过 | #536 / AC9 | satisfied | PR head 68857450：CI #5290 success；28/28 Vitest 文件、159/159 单元测试通过，生产构建通过，Playwright 120 passed + 1 个无关 Voice Plaza flaky retry；CI Gate / Requirement Traceability / Compose Golden Path 均 success |
+| R10 | Implementation ↔ Figma 六域无阻塞差异 | #536 / AC10 | satisfied | Visual=Collection Strategy geometry E2E 通过；Interaction=复制/归档业务 E2E + Figma Prototype reaction 通过；State=归档/确认/失败状态对齐；Data-Contract=公共 Contract/generated client 未改；Responsive=1180/1440/1920 等响应式回归通过；Component-Owner=Shared/Feature Owner 双向复核无阻塞差异 |
 
 # 计划改动
 
@@ -158,8 +158,8 @@ Issue #536 已把本轮 Figma 正式基线、用户可见目标和验收条件�
 - [x] 行为变化已通过更新后的 Unit/E2E 断言建立回归目标；真实执行结果由 Ready PR CI 产生
 - [x] 完成最小实现；未修改 public Contract、Schema、Scheduler、generated client 或依赖
 - [x] 长期文档不适用：现有 Figma/前端开发规则未发生长期事实变化；Figma 正式 Owner 已同步必要设计修正
-- [ ] current-head 自动化验证待 PR Ready 触发；当前已有源码审计、测试实现和 Figma 机器事实证据
-- [x] 完成 pre-CI 需求追溯与完成审计；R9/R10 明确 deferred 为 merge blockers
+- [x] current-head 自动化验证已由 CI #5290 完成；CI Gate / Requirement Traceability / Compose Golden Path 全绿
+- [x] 完成需求追溯与完成审计；R1–R10 均有当前实现、自动化或 Figma Conformance 直接证据
 
 # 验证矩阵
 
@@ -203,9 +203,9 @@ Issue #536 已把本轮 Figma 正式基线、用户可见目标和验收条件�
 # 完成审计
 
 - [x] upstream_re_read：已重新读取 Issue #536、最新 Figma Design Context/Prototype、resource lifecycle Contract、目标 Vue/Store 与现有测试。
-- [x] change_coverage：AC1–AC8 已逐项映射到实现与测试；AC9/AC10 作为只能在 Ready PR 后取得的外部门禁证据明确 deferred，未伪造完成。
+- [x] change_coverage：AC1–AC10 已逐项映射到实现、current-head CI 与 Figma 六域 Conformance 证据。
 - [x] reverse_audit：已检查前端动作→Store→generated API、后端 lifecycle 能力→前端入口，以及 Shared/Feature Owner 复用；无 public Contract 缺口。
-- [x] unresolved_cleared：无未说明的 not_satisfied；仅 R9/R10 有明确 post-ready 依据并继续作为 merge blockers，CI/Figma 复核未完成前不得合并。
+- [x] unresolved_cleared：R1–R10 全部 satisfied；无 not_satisfied、explicitly_deferred 或未说明阻塞项。
 
 # 完成证据与状态
 
@@ -216,17 +216,19 @@ Issue #536 已把本轮 Figma 正式基线、用户可见目标和验收条件�
 | V1 | main 37721e8 / Figma current | 代码、Contract、测试、Design Context、Prototype、Ruleset 定向审计 | 基线事实已恢复 | 证明变更范围与约束 |
 | V2 | PR #537 head 908efae + 98b1290 前序实现 | PR diff 与目标源文件复核 | 已删除技术详情/复制中间态/window.confirm，新增归档与确认 Feature Owner、一键复制和上下文保持 | 证明 AC1–AC8 已有实现与回归断言 |
 | V3 | Figma current | Fresh Design Context + Prototype + Owner 审计，并修正 Create/Edit 渠道字段旧“惠科”示例 | 正式设计只表达真实平台多选业务语义，关键管理按钮均有 reaction | 证明实现未迁就过时设计机器事实 |
+| V4 | PR #537 head 68857450 | GitHub Actions CI #5290 + Runtime Acceptance #2319 | CI / Runtime 均 success；28/28 Vitest files、159 tests、build、Collection Strategy E2E/geometry/projection 通过；全套 Playwright 120 passed + 1 unrelated flaky retry | 证明当前 head 可构建、目标交互与布局回归通过 |
+| V5 | Figma current + PR head 68857450 | Implementation ↔ Figma 六域复核 | Visual / Interaction / State / Data-Contract / Responsive / Component-Owner 均无阻塞差异 | 证明 AC10 完成 |
 
 ## 未验证内容与剩余风险
 
-目标测试与 current-head CI 尚未实际执行；最终运行态 Implementation↔Figma Conformance、合并后 main fresh 也尚未取得。以上均保持为显式 merge blockers。
+PR current-head 自动化与 Implementation↔Figma Conformance 已完成。剩余仅为交付后门禁：真实 merge、main fresh CI、repository-native Change archive、Issue Acceptance/Closure 与任务分支清理。
 
 ## 交付状态
 
 - 提交：治理 + 实现 + 回归测试已提交到 feature/collection-strategy-figma-sync
 - 拉取请求：Draft PR #537；本提交后切 Ready 触发正式 required CI
-- CI：等待 current-head CI Gate / Requirement Traceability and Completion Audit / Compose Golden Path
-- 合并：CI 与最终 Figma Conformance 通过前禁止 merge
+- CI：PR head 68857450 的 CI #5290、Runtime Acceptance #2319 已 success；required checks 全绿
+- 合并：待本 Change 证据回写 commit 的 current-head required checks 再次全绿后 guarded merge
 - Change 归档：merge 后由 repository-native automation 归档
 - 发布 / 部署：不适用；本任务只合入源码，不执行 Release/Deploy。
 
