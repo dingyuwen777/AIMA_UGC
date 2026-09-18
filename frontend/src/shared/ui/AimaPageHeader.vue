@@ -35,12 +35,12 @@ h1 {
   margin: 0;
   color: var(--aima-text);
   font-size: var(--aima-font-size-page-title);
-  font-weight: 700;
+  font-weight: 650;
   line-height: var(--aima-line-height-heading);
 }
 
 p {
-  margin: 6px 0 0;
+  margin: 3px 0 0;
   color: var(--aima-text-muted);
   font-size: var(--aima-font-size-body-small);
   line-height: var(--aima-line-height-body);
