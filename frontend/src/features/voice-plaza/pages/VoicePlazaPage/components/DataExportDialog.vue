@@ -119,7 +119,7 @@ function canDownload(item: DataExportResponse): boolean {
         role="alert"
         class="request-error"
       >
-        {{ error }}
+        导出操作未完成，请稍后重试。
       </p>
       <h3>导出范围</h3>
       <div class="choice-grid">

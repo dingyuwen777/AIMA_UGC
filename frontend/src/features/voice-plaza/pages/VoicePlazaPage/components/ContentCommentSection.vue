@@ -115,7 +115,7 @@ function coverageLabel(): string {
       class="comment-state comment-state--error"
       role="alert"
     >
-      <p>评论暂时加载失败：{{ error }}</p>
+      <p>评论暂时加载失败，请稍后重试。</p>
       <AimaButton
         size="small"
         @click="emit('retry')"
@@ -179,7 +179,7 @@ function coverageLabel(): string {
           class="reply-error"
           role="alert"
         >
-          回复加载失败：{{ replyState(root.external_comment_id)?.error }}
+          回复暂时加载失败，请重试。
         </p>
         <AimaButton
           v-if="(root.ingested_reply_count ?? 0) > 0"
@@ -211,7 +211,7 @@ function coverageLabel(): string {
       class="comment-page-error"
       role="alert"
     >
-      更多评论加载失败：{{ error }}
+      更多评论暂时加载失败，请重试。
     </p>
   </section>
 </template>

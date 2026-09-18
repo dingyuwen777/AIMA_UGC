@@ -285,7 +285,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       class="drawer-state"
       role="alert"
     >
-      <strong>详情加载失败</strong><p>{{ error }}</p><AimaButton @click="emit('retry')">
+      <strong>详情加载失败</strong><p>暂时无法加载这条内容的完整详情，请稍后重试。</p><AimaButton @click="emit('retry')">
         重新加载
       </AimaButton>
     </div>
@@ -294,7 +294,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       class="drawer-save-error"
       role="alert"
     >
-      {{ saveError }}
+      操作未完成，当前输入已保留，请稍后重试。
     </div>
     <div
       v-if="loading && !item"

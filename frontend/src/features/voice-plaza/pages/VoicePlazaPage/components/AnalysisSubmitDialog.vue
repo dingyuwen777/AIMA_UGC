@@ -72,7 +72,7 @@ function selectScope(next: AnalysisScope): void {
         role="alert"
         class="request-error"
       >
-        {{ error }}
+        AI 分析请求未完成，请稍后重试。
       </p>
       <fieldset class="scope-picker">
         <legend>当前范围：{{ scope === 'selected' ? `已选内容（${selectedCount} 条）` : '全部系统内容' }}</legend>
