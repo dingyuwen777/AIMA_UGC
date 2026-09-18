@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
+import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 import AimaModalContainer from '../../../../../shared/ui/AimaModalContainer.vue'
 
 interface ConfirmTarget {
@@ -74,7 +75,7 @@ const confirmLabel = computed(() =>
           :disabled="saving"
           @click="emit('close')"
         >
-          关闭
+          <AimaIcon name="close" />
         </AimaButton>
       </header>
     </template>
