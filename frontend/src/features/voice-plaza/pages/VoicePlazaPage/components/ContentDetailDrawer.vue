@@ -227,7 +227,7 @@ function sourceLabel(providerName: string): string {
   return '平台采集'
 }
 
-/** 将第三方可用状态映射为业务状态，原始 code 仅在技术详情保留。 */
+/** 将第三方可用状态映射为业务状态，原始 code 不进入普通用户界面。 */
 function availabilityLabel(status: string): string {
   if (status === 'available') return '当前可访问'
   if (status === 'unavailable_confirmed') return '已确认不可访问'
@@ -235,7 +235,7 @@ function availabilityLabel(status: string): string {
   return '状态待确认'
 }
 
-/** 将车型证据来源归一为用户语义；内部 source/catalog version 下沉技术详情。 */
+/** 将车型证据来源归一为用户语义；内部 source/catalog version 继续留在审计事实源。 */
 function vehicleEvidenceLabel(source: string): string {
   const normalized = source.toLowerCase()
   if (normalized.includes('manual')) return '人工确认'

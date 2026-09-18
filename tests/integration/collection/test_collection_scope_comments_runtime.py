@@ -17,8 +17,8 @@ from aima_ugc.adapters.persistence.postgres.collection import PostgresCollection
 from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
-from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.content_queries import PostgresContentQueryRepository
+from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.storage.local import LocalArtifactStore
