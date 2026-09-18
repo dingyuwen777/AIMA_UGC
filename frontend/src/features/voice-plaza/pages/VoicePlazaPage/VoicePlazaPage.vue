@@ -478,8 +478,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 </template>
 
 <style scoped>
-.voice-plaza-page { display: grid; gap: 20px; padding-top: 4px; }
-.voice-plaza-page :deep(.aima-page-header) { flex-wrap: nowrap; align-items: center; }
+.voice-plaza-page { display: grid; gap: 20px; }
+.voice-plaza-page :deep(.aima-page-header) { margin-top: 4px; flex-wrap: nowrap; align-items: center; }
 .voice-plaza-page :deep(.aima-page-header h1) { font-weight: 700; }
 .voice-plaza-page :deep(.aima-page-header p) { margin-top: 6px; }
 .voice-plaza-page :deep(.aima-page-actions) { flex: none; }
