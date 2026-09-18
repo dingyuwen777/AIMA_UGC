@@ -7,6 +7,10 @@ const runtimeRoot = new URL(
   import.meta.url,
 )
 const sharedUiRoot = new URL('../src/shared/ui/', import.meta.url)
+const ownerGuide = new URL(
+  '../../docs/guides/07_采集运行中心Figma开发基线.md',
+  import.meta.url,
+)
 
 /** 读取采集运行中心页面或组件源码，用于锁定 Figma 正式基线的结构性约束。 */
 async function readRuntimeSource(relativePath: string): Promise<string> {
@@ -36,6 +40,17 @@ describe('采集运行中心 release-2 Figma 基线', () => {
     expect(source).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))')
     expect(source).toContain('@media (max-width: 720px)')
     expect(source).toContain('grid-template-columns: minmax(0, 1fr)')
+  })
+
+  it('长期基线记录 Figma 四层 Owner、正式页面和响应式锚点', async () => {
+    const source = await readFile(ownerGuide, 'utf8')
+
+    for (const owner of ['L1', 'L2', 'L3', 'L4']) expect(source).toContain(`| ${owner} |`)
+    for (const node of ['7840:9761', '3500:2025', '4742:2404', '4742:2603']) {
+      expect(source).toContain(`\`${node}\``)
+    }
+    expect(source).toContain('frontend/src/shared/ui/')
+    expect(source).toContain('CollectionRuntimePage/components/')
   })
 
   it('主列表使用 1212px 七列产品表格与 Figma 状态进度组件', async () => {

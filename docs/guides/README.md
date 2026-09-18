@@ -10,6 +10,7 @@
 - [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)：网络受限环境的构建源和开发机重置边界；
 - [`docs/guides/05_多人协作与Change自动归档.md`](05_多人协作与Change自动归档.md)：多人协作、Requirement/Change、PR、Review、合并和自动归档的仓库工作流；
 - [`docs/guides/06_本地Release离线包构建.md`](06_本地Release离线包构建.md)：Windows/PowerShell 如何用国内源一键构建与 GitHub Release 共用 Contract 的 Linux/AMD64 离线部署包，并按需执行离线回放验证。
+- [`docs/guides/07_采集运行中心Figma开发基线.md`](07_采集运行中心Figma开发基线.md)：采集运行中心四层 Figma Owner、正式节点、代码映射、响应式和 Design-to-Code 验收边界。
 
 ## 不再维护“固定持续开发提示词”
 

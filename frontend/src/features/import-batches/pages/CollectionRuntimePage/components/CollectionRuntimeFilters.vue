@@ -103,9 +103,17 @@ select { width: 132px; flex: 0 0 132px; min-width: 0; padding: 0 12px; color: va
 .filter-actions > div { display: flex; flex: none; gap: 12px; }
 .filter-actions :deep(.aima-button.is-secondary) { min-width: 68px; }
 .filter-actions :deep(.aima-button.is-primary) { min-width: 66px; }
+@media (max-width: 1120px) {
+  .filter-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .search-box,
+  .runtime-date-range,
+  select { box-sizing: border-box; width: 100%; min-width: 0; flex: none; }
+}
 @media (max-width: 860px) {
-  .runtime-date-range { flex: 1 1 258px; }
   .filter-actions { align-items: flex-end; flex-direction: column; }
   .filter-actions > span { align-self: flex-start; }
+}
+@media (max-width: 720px) {
+  .filter-row { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
