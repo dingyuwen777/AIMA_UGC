@@ -478,10 +478,16 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 </template>
 
 <style scoped>
-.voice-plaza-page { display: grid; gap: 20px; }
+.voice-plaza-page { display: grid; gap: 20px; padding-top: 4px; }
 .voice-plaza-page :deep(.aima-page-header) { flex-wrap: nowrap; align-items: center; }
 .voice-plaza-page :deep(.aima-page-header h1) { font-weight: 700; }
+.voice-plaza-page :deep(.aima-page-header p) { margin-top: 6px; }
 .voice-plaza-page :deep(.aima-page-actions) { flex: none; }
+.voice-plaza-page :deep(.aima-page-actions .aima-button.is-small) {
+  min-height: 32px;
+  font-size: 13px;
+  font-weight: 500;
+}
 .count-summary { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
 .count-summary strong { color: var(--aima-primary); }
 .count-summary small { color: var(--aima-text-disabled); font-size: 10px; }
