@@ -648,11 +648,6 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
             状态待确认 · 暂无明确的平台可用性证据。
           </p>
         </section>
-
-
-
-
-
       </details>
     </div>
     <template #footer>
