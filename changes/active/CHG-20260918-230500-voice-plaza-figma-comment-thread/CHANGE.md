@@ -79,6 +79,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 | E6 | Content/Comment 账号可通过 stable/alternate IDs 收敛为同一 account | `test_comment_author_converges_by_existing_alternate_stable_id` | Provider bool 缺失时可从已收敛账号可靠推导 |
 | E7 | 五平台能力文档允许部分平台只证明 root thread | `docs/appendix/02_TikHub五平台真实响应与字段映射.md` | parent 未知必须保持未知 |
 | E8 | PR #527 没有把直接父级关系固定成跨层回归 | 归档 Change + Full-stack 测试审计 | 本 Change 必须补纵切与 Browser 回归 |
+| E9 | Requirement Source #541 已按 canonical `[缺陷]` Issue Profile 归一，AC1—AC8 保持原需求语义 | GitHub Issue #541 live readback | current-head CI 可执行真实 Requirement Source Contract 校验 |
 
 ## 推断与待确认
 
@@ -253,7 +254,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 | --- | --- | --- | --- | --- |
 | V1 | Figma current | Formal/Owner/Prototype/Geometry/术语机器审计 | READY；invalid destinations=0、enabled dead actions=0、正式 UI 工程术语=0、Canvas overlap/overflow=0 | 当前设计可作为实现基线 |
 | V2 | PR current branch | 逐层代码与历史正常参照审计 | PG/HTTP root/direct-parent 仍在；实际缺口收敛到 Store/XHS target/original-author/UI 降级 | 根因与修改范围有直接证据 |
-| V3 | current-head GitHub Runner | Required CI | 待本次 synchronize run 取证 | 尚未把 CI 写成完成事实 |
+| V3 | current-head GitHub Runner | Required CI | Requirement Source 已归一；本次同步提交触发新的完整 current-head run | CI 结果仍以该 run 实际结论为准 |
 
 ## 未验证内容与剩余风险
 
