@@ -115,20 +115,14 @@ function selectScope(next: AnalysisScope): void {
         class="preview"
         role="status"
       >
-        正在预估处理范围并检查模型配置…
+        正在预估分析范围…
       </div>
       <div
         v-else-if="preview"
         class="preview"
       >
-        <span>预计分析 {{ preview.target_count }} 条内容 · {{ preview.shard_count }} 个分片 · 每片最多 {{ preview.shard_size }} 条</span>
-        <small>{{ preview.cost_estimate_note }}</small>
-        <details class="technical-details">
-          <summary>高级配置</summary>
-          <span>模型：{{ preview.model_provider }} / {{ preview.model }}</span>
-          <span>Prompt：{{ preview.prompt_version }}</span>
-          <span>配置哈希：{{ preview.configuration_hash.slice(0, 12) }}…</span>
-        </details>
+        <strong>预计分析 {{ preview.target_count }} 条内容</strong>
+        <small>分析规则由管理员统一维护。确认开始后执行，运行进度可在任务中心查看。</small>
       </div>
     </div>
     <template #footer>
@@ -167,9 +161,6 @@ header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line
 .preview { display: grid; min-height: 88px; align-content: center; gap: 5px; padding: 10px 12px; border: 1px solid #bfd5f5; border-radius: 6px; color: #32618f; background: #f2f7fd; font-size: 10px; line-height: 14px; }
 .preview strong { font-size: 11px; }
 .preview small { color: var(--aima-text-disabled); font-size: 9px; }
-.technical-details { color: #527293; }
-.technical-details summary { width: max-content; cursor: pointer; font-weight: 600; }
-.technical-details span { display: block; margin-top: 3px; overflow-wrap: anywhere; }
 footer { display: flex; min-height: 68px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); }
 footer :deep(.aima-button) { height: 38px; }
 @media (min-height: 500px) {
@@ -185,10 +176,9 @@ footer :deep(.aima-button) { height: 38px; }
 .scope-option strong { font-size: 13px; font-weight: 500; }
 .preview { min-height: 0; padding: 0; border: 0; color: var(--aima-text-muted); background: transparent; font-size: 11px; }
 .preview small { font-size: 11px; line-height: 18px; }
-.technical-details summary { margin-top: 6px; padding: 7px 24px; border: 1px solid var(--aima-border-strong); border-radius: 6px; color: var(--aima-text); font-size: 13px; list-style: none; }
 footer :deep(.is-primary) { min-width: 190px; }
 @media (max-height: 570px) { .body { min-height: 0; } }
-:global(.voice-analysis-modal) { height: 510px; }
+:global(.voice-analysis-modal) { height: 380px; }
 :global(.voice-analysis-modal > .aima-dialog-body) { flex: 1; }
 .body { min-height: 0; max-height: none; }
 </style>

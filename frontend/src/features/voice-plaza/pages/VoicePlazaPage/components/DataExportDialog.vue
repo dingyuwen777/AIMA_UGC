@@ -170,7 +170,7 @@ function canDownload(item: DataExportResponse): boolean {
         </div>
       </section>
       <p class="analysis-note">
-        未完成 AI 打标的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。
+        未完成 AI 分析的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。
       </p>
       <p class="retention-note">
         Excel 导出文件自生成完成后保留 7 天。过期后文件会自动清理，导出记录仍保留；需要时可重新创建导出。
@@ -200,7 +200,7 @@ function canDownload(item: DataExportResponse): boolean {
               :value="item.job.progress"
               :tone="item.job.status === 'succeeded' ? 'success' : item.job.status === 'failed' ? 'danger' : 'primary'"
             />
-            <span v-if="item.stats">内容 {{ formatNumber(item.stats.content_count) }} · 已打标 {{ formatNumber(item.stats.analyzed_count) }} · 未打标 {{ formatNumber(item.stats.unanalyzed_count) }}</span>
+            <span v-if="item.stats">内容 {{ formatNumber(item.stats.content_count) }} · 已分析 {{ formatNumber(item.stats.analyzed_count) }} · 未分析 {{ formatNumber(item.stats.unanalyzed_count) }}</span>
             <span
               v-if="retention(item).expiresAt"
               :class="{ expired: retention(item).expired }"
@@ -212,14 +212,7 @@ function canDownload(item: DataExportResponse): boolean {
             <span
               v-if="item.job.error_code"
               class="error"
-            >导出遇到问题，请重试；如持续失败，请联系管理员查看技术详情。</span>
-            <details
-              v-if="item.job.error_code"
-              class="technical-details"
-            >
-              <summary>技术详情</summary>
-              <code>{{ item.job.error_code }}</code>
-            </details>
+            >导出遇到问题，请重试；如持续失败，请联系管理员。</span>
           </div>
           <AimaButton
             size="small"
@@ -301,9 +294,6 @@ header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line
 .records :deep(.task-progress__track) { height: 7px; }
 .records .error,
 .records .expired { color: var(--aima-danger); }
-.technical-details { color: var(--aima-text-muted); font-size: 9px; }
-.technical-details summary { cursor: pointer; }
-.technical-details code { display: block; margin-top: 4px; color: var(--aima-text-secondary); white-space: normal; }
 .pending-artifact { color: var(--aima-text-disabled) !important; }
 .empty { padding: 24px; color: var(--aima-text-disabled); text-align: center; }
 footer { display: flex; min-height: 68px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); }
