@@ -235,7 +235,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
 
   function updateWarning(): void {
     warning.value = refreshErrors.size
-      ? `部分任务状态暂不可更新，继续显示上次成功结果。${[...refreshErrors].map(([name, error]) => `${name}：${error}`).join('；')}`
+      ? '部分任务状态暂不可更新，继续显示上次成功结果。请稍后重试。'
       : null
   }
 
@@ -319,7 +319,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
       analysisRuns.value = analysisRuns.value.map((run) => run.id === runId ? cancelled : run)
       return true
     } catch (error) {
-      warning.value = `AI 分析取消失败：${errorMessage(error)}`
+      warning.value = 'AI 分析取消失败，请稍后重试。'
       return false
     } finally {
       cancellingAnalysisRunId.value = null
