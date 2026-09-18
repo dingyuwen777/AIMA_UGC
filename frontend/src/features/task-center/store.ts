@@ -318,7 +318,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
       analysisRefreshInFlight = 0
       analysisRuns.value = analysisRuns.value.map((run) => run.id === runId ? cancelled : run)
       return true
-    } catch (error) {
+    } catch {
       warning.value = 'AI 分析取消失败，请稍后重试。'
       return false
     } finally {
