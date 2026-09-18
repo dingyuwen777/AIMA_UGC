@@ -470,11 +470,18 @@ AI 分析规则             4804:15542
 采集策略 Page             4627:13214
 采集策略 / 关键词包       4627:13216
 采集策略 / 采集计划       4627:13336
+采集运行 Page             3500:2023
+采集运行 / 正式主页面      3500:2025
 采集运行 / Excel 导入     3500:2875
 采集运行 / TikHub 发现    3500:4257
+采集运行 / Compact 1180   4742:2404
+采集运行 / Wide 1920      4742:2603
+采集运行 / Owner 规范      7840:9761
 ```
 
 Keyword Pack 只表达 Provider Search Terms；Plan 和 TikHub Discovery 独立表达 Brand Filter；Excel 的 Search 字段必须 Disabled 并说明不适用。Batch Supplement 保持已有内容补采语义。Figma 的示例品牌、词包、平台和数量不构成运行事实。
+
+采集运行中心已经按“设计规范/公共组件 → 页面模板 → 页面公共组件/Feature Owner → 正式页面实例”形成正式同步链路。页面节点、代码 Owner、状态、响应式和实施顺序的完整基线见 [`docs/guides/07_采集运行中心Figma开发基线.md`](07_采集运行中心Figma开发基线.md)。后续先更新长期设计 Owner，再由正式页面实例和代码消费；只属于真实运行数据、API、Capability 或后端状态机的事实仍由代码 Contract 决定，不回填为 Figma 常量。
 
 ---
 

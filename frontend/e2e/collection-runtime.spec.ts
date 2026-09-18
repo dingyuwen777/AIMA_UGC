@@ -124,11 +124,21 @@ test('keeps all runtime columns reachable at compact and wide Figma widths', asy
   await expect(page.getByRole('combobox', { name: '处理阶段' })).toHaveCount(0)
   const table = page.getByRole('region', { name: '采集运行记录', exact: true })
   const details = table.getByRole('button', { name: '查看详情', exact: true })
-  for (const width of [1180, 1200, 1100, 1280, 1440, 1920]) {
+  for (const width of [1100, 1120, 1180, 1200, 1280, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 })
     await expect(details).toBeVisible()
-    const filterOverflow = await page.locator('.filter-row').evaluate(element => element.scrollWidth - element.clientWidth)
-    expect(filterOverflow, `筛选行在 ${width}px 下应保持可达`).toBeLessThanOrEqual(1)
+    const filterLayout = await page.locator('.filter-row').evaluate(element => ({
+      display: getComputedStyle(element).display,
+      columns: getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length,
+      overflow: element.scrollWidth - element.clientWidth,
+    }))
+    expect(filterLayout.overflow, `筛选行在 ${width}px 下应保持可达`).toBeLessThanOrEqual(1)
+    if (width <= 1120) {
+      expect(filterLayout.display, `${width}px 应使用紧凑筛选 Grid`).toBe('grid')
+      expect(filterLayout.columns, `${width}px 应稳定为两列`).toBe(2)
+    } else {
+      expect(filterLayout.display, `${width}px 应保持单行优先`).toBe('flex')
+    }
     const geometry = await table.evaluate((element) => {
       element.scrollLeft = element.scrollWidth
       const rect = element.getBoundingClientRect()
@@ -143,6 +153,14 @@ test('keeps all runtime columns reachable at compact and wide Figma widths', asy
       expect(geometry.right - geometry.actionsRight).toBeLessThan(24)
     }
   }
+
+  await page.setViewportSize({ width: 700, height: 900 })
+  const narrowFilterLayout = await page.locator('.filter-row').evaluate(element => ({
+    columns: getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length,
+    overflow: element.scrollWidth - element.clientWidth,
+  }))
+  expect(narrowFilterLayout.columns).toBe(1)
+  expect(narrowFilterLayout.overflow).toBeLessThanOrEqual(1)
 })
 
 test('shows returned conflict fields separately from conflicting row totals', async ({ page }) => {
