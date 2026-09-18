@@ -99,14 +99,6 @@ watch(() => props.resource, load, { immediate: true })
         <p v-else>
           当前词包没有关键词。
         </p>
-        <details>
-          <summary>技术详情</summary><p>词包标识：{{ pack.id }}</p><p
-            v-for="item in pack.keywords"
-            :key="`${item.id}-${item.platform_scope}`"
-          >
-            {{ item.text }}：{{ item.id }}
-          </p>
-        </details>
       </template>
     </div>
     <template #footer>
@@ -122,5 +114,4 @@ watch(() => props.resource, load, { immediate: true })
 <style scoped>
 header { display: flex; width: 100%; min-height: 68px; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 24px 24px 0; }
 footer { display: flex; width: 100%; justify-content: flex-end; padding: 20px 24px 24px; }
-h2 { margin: 0; font-size: 19px; line-height: 22px; }h2 + p { margin: 5px 0 0; color: #788397; font-size: 12px; line-height: 16px; }.resource-body { padding: 20px 24px 0; font-size: 13px; overflow-wrap: anywhere; }h3 { margin: 0 0 10px; font-size: 17px; }h3 small { display: block; margin-top: 6px; color: #788397; font-size: 12px; font-weight: 400; }.description { white-space: pre-wrap; color: #536075; }h4 { margin: 18px 0 8px; font-size: 13px; }table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }th,td { padding: 9px 7px; border: 1px solid var(--aima-border); text-align: left; vertical-align: top; }th { background: #f7f9fc; font-weight: 500; }th:first-child { width: 26%; }th:nth-child(2) { width: 18%; }th:nth-child(3),th:nth-child(4) { width: 13%; }details { margin-top: 20px; padding: 10px; border: 1px dashed var(--aima-border); color: #788397; font-size: 11px; }summary { cursor: pointer; }
-</style>
+h2 { margin: 0; font-size: 19px; line-height: 22px; }h2 + p { margin: 5px 0 0; color: #788397; font-size: 12px; line-height: 16px; }.resource-body { padding: 20px 24px 0; font-size: 13px; overflow-wrap: anywhere; }h3 { margin: 0 0 10px; font-size: 17px; }h3 small { display: block; margin-top: 6px; color: #788397; font-size: 12px; font-weight: 400; }.description { white-space: pre-wrap; color: #536075; }h4 { margin: 18px 0 8px; font-size: 13px; }table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }th,td { padding: 9px 7px; border: 1px solid var(--aima-border); text-align: left; vertical-align: top; }th { background: #f7f9fc; font-weight: 500; }th:first-child { width: 26%; }th:nth-child(2) { width: 18%; }th:nth-child(3),th:nth-child(4) { width: 13%; }</style>

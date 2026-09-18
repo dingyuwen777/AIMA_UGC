@@ -60,6 +60,46 @@ function errorMessage(error: unknown): string {
   return '请求失败，请稍后重试。'
 }
 
+const COPY_NAME_MAX_LENGTH = 200
+const COPY_NAME_MAX_ATTEMPTS = 100
+
+/** 根据复制次数生成不超过 Contract 上限的业务副本名称。 */
+function copyCandidateName(sourceName: string, attempt: number): string {
+  const suffix = attempt === 1 ? ' 副本' : ` 副本 ${attempt}`
+  const maxBaseLength = Math.max(1, COPY_NAME_MAX_LENGTH - suffix.length)
+  const base = sourceName.trim().slice(0, maxBaseLength).trimEnd()
+  return `${base}${suffix}`
+}
+
+/** 只把服务端明确返回的“同名资源”冲突识别为可自动换名重试。 */
+function isDuplicateCopyNameConflict(error: unknown, resource: 'keyword_pack' | 'plan'): boolean {
+  const expected = resource === 'keyword_pack' ? '同名词包已经存在' : '同名采集计划已经存在'
+  if (error instanceof CollectionStrategyApiError) {
+    return error.status === 409 && error.message.includes(expected)
+  }
+  return error instanceof Error && error.message.includes(expected)
+}
+
+/** 使用稳定递增后缀寻找可用副本名称；其它错误保持原语义直接上浮。 */
+async function copyWithAvailableName<T>(
+  sourceName: string,
+  resource: 'keyword_pack' | 'plan',
+  action: (name: string) => Promise<T>,
+): Promise<T> {
+  for (let attempt = 1; attempt <= COPY_NAME_MAX_ATTEMPTS; attempt += 1) {
+    const name = copyCandidateName(sourceName, attempt)
+    try {
+      return await action(name)
+    } catch (reason) {
+      if (!isDuplicateCopyNameConflict(reason, resource)) throw reason
+      if (attempt === COPY_NAME_MAX_ATTEMPTS) {
+        throw new Error('无法自动生成可用副本名称，请稍后重试。')
+      }
+    }
+  }
+  throw new Error('无法自动生成可用副本名称，请稍后重试。')
+}
+
 export const useCollectionStrategyStore = defineStore('collection-strategy', () => {
   const activeTab = ref<StrategyTab>('plans')
   const packs = ref<KeywordPackSummaryResponse[]>([])
@@ -352,16 +392,20 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
-  async function copySelectedPack(name: string): Promise<boolean> {
+  /** 一键复制当前词包；系统自动生成可用名称，成功后保持当前词包上下文。 */
+  async function copySelectedPack(): Promise<boolean> {
     const pack = selectedPack.value
     if (!pack) return false
+    const source = pack
     saving.value = true
     error.value = null
     try {
-      const copied = await copyPack(pack.id, { name: name.trim() })
-      packOffset.value = 0
+      await copyWithAvailableName(source.name, 'keyword_pack', (name) =>
+        copyPack(source.id, { name }),
+      )
       await refresh()
-      await openPack(copied.id)
+      selectedPack.value = source
+      packDetails.value = { ...packDetails.value, [source.id]: source }
       return true
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -532,16 +576,19 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
-  async function copySelectedPlan(name: string): Promise<boolean> {
+  /** 一键复制当前采集计划；系统自动生成可用名称，成功后保持原计划详情上下文。 */
+  async function copySelectedPlan(): Promise<boolean> {
     const plan = selectedPlan.value
     if (!plan) return false
+    const source = plan
     saving.value = true
     error.value = null
     try {
-      const copied = await copyPlan(plan.id, { name: name.trim() })
-      planOffset.value = 0
+      await copyWithAvailableName(source.name, 'plan', (name) =>
+        copyPlan(source.id, { name }),
+      )
       await refresh()
-      selectedPlan.value = copied
+      selectedPlan.value = source
       return true
     } catch (reason) {
       error.value = errorMessage(reason)

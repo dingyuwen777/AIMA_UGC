@@ -192,7 +192,7 @@ function submit(): void {
   >
     <template #header>
       <header>
-        <div><h2>{{ editing ? '编辑采集计划' : '新建采集计划' }}</h2><p>{{ editing ? '修改只影响之后的新运行，历史运行保持原冻结配置' : '保存发现范围与周期采集配置' }}</p></div><AimaButton
+        <div><h2>{{ editing ? '编辑采集计划' : '新建采集计划' }}</h2><p>{{ editing ? '修改仅影响后续采集，历史记录保持不变' : '保存发现范围与周期采集配置' }}</p></div><AimaButton
           variant="text"
           aria-label="关闭"
           @click="open = false"
@@ -246,7 +246,7 @@ function submit(): void {
           label="指定品牌（可多选）"
         />
         <p>
-          运行创建时冻结品牌及其车型目录快照；空 brand_ids 表示全部启用品牌。
+          默认覆盖全部启用品牌；选择“指定品牌”后可选择具体品牌。
         </p>
       </fieldset>
       <fieldset>
@@ -308,15 +308,15 @@ function submit(): void {
       <label class="switch"><strong>6. {{ editing ? '保存后启用计划' : '创建后启用计划' }}</strong><input
         v-model="enabled"
         type="checkbox"
-        aria-label="创建后启用计划"
+        :aria-label="editing ? '保存后启用计划' : '创建后启用计划'"
       ></label>
       <div class="policy">
         <strong>自动采集规则</strong><div><span>内容详情<b>数据变化时更新</b></span><span>评论<b>自适应采集</b></span></div>
       </div>
       <div class="snapshot-note">
-        <strong>目录快照（创建时冻结）</strong>
+        <strong>当前品牌车型范围</strong>
         <span>{{ brandScopeSummary }}</span>
-        <small>只读；启用计划前目录必须可用，执行时会冻结当时的品牌车型过滤范围。</small>
+        <small>只读；启用计划前必须可用。每次任务执行时，系统自动保存当时的品牌车型过滤范围。</small>
       </div>
       <div
         v-if="eligibilityReason && selectedPacks.length && platformOptions.some((item) => isPlatformSelected(item.value))"
@@ -340,7 +340,7 @@ function submit(): void {
           :title="eligibilityReason || undefined"
           @click="submit"
         >
-          {{ saving ? '保存中…' : editing ? '保存计划修改' : '保存采集计划' }}
+          {{ saving ? '保存中…' : editing ? '保存修改' : '保存采集计划' }}
         </AimaButton>
       </footer>
     </template>
