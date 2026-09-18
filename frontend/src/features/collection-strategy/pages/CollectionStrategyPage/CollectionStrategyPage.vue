@@ -348,5 +348,5 @@ function showNotice(message: string): void {
 :deep(.aima-page-actions) { gap: 12px; }
 @media (min-width: 1100px) { :deep(.aima-page-header) { flex-wrap: nowrap; align-items: center; }:deep(.aima-page-actions) { flex: none; justify-content: flex-end; } }
 .tabs { display: flex; gap: 24px; min-height: 46px; margin: 0 0 20px; border-bottom: 1px solid var(--aima-border); }.tabs button { height: 46px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: #536075; background: transparent; cursor: pointer; font-size: 13px; }.tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 600; }
-.page-error { margin-bottom: 14px; }.success-toast { position: fixed; z-index: 200; top: 8px; left: 50%; width: 360px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
+.page-error { margin-bottom: 14px; }.success-toast { position: fixed; z-index: 200; top: 8px; left: 50%; width: min(480px, calc(100vw - 48px)); transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
 </style>

@@ -186,6 +186,7 @@ test('copies a plan in one click, retries duplicate names, and keeps the source 
   await detail.getByRole('button', { name: '复制', exact: true }).click()
 
   await expect(page.locator('.success-toast')).toContainText('已复制采集计划，副本默认停用。')
+  await expect(page.locator('.success-toast')).toHaveCSS('width', '480px')
   await expect(detail).toBeVisible()
   await expect(detail.getByRole('heading', { name: plan.name })).toBeVisible()
   await expect(detail.getByLabel('副本名称')).toHaveCount(0)
