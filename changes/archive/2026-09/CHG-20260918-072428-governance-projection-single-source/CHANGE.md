@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260918-072428-governance-projection-single-source
 title: AIMA 治理资产改为 Agent_Skills generated projection
 level: L2
-status: ready_for_review
+status: done
 owner: AIMA_UGC
 branch: refactor/governance-projection-single-source
 created: 2026-09-18
