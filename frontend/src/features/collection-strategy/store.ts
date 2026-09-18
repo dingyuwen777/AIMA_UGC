@@ -74,10 +74,11 @@ function copyCandidateName(sourceName: string, attempt: number): string {
 /** 只把服务端明确返回的“同名资源”冲突识别为可自动换名重试。 */
 function isDuplicateCopyNameConflict(error: unknown, resource: 'keyword_pack' | 'plan'): boolean {
   const expected = resource === 'keyword_pack' ? '同名词包已经存在' : '同名采集计划已经存在'
-  if (error instanceof CollectionStrategyApiError) {
-    return error.status === 409 && error.message.includes(expected)
-  }
-  return error instanceof Error && error.message.includes(expected)
+  return (
+    error instanceof CollectionStrategyApiError
+    && error.status === 409
+    && error.message.includes(expected)
+  )
 }
 
 /** 使用稳定递增后缀寻找可用副本名称；其它错误保持原语义直接上浮。 */
