@@ -433,6 +433,17 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       commentsHasMore.value = page.has_more
       commentsTotalCount.value = page.total_count
       commentsIngestedTotalCount.value = page.ingested_total_count
+
+      // 已入库回复是详情线程的一部分，不应要求用户再次点击后才能理解回复关系。
+      // 这里只读取本地 PostgreSQL 的首个回复页，不触发 TikHub/Provider 请求，也保留后续分页。
+      const rootsWithIngestedReplies = page.items.filter(
+        (root) => (root.ingested_reply_count ?? 0) > 0,
+      )
+      await Promise.all(
+        rootsWithIngestedReplies.map(
+          (root) => loadCommentReplies(root.external_comment_id, true, revision),
+        ),
+      )
     } catch (reason) {
       if (revision === detailRevision && detailId.value === contentId) {
         commentsError.value = errorMessage(reason)
@@ -445,10 +456,13 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
-  async function loadCommentReplies(rootCommentId: string, reset = false): Promise<void> {
+  async function loadCommentReplies(
+    rootCommentId: string,
+    reset = false,
+    revision = detailRevision,
+  ): Promise<void> {
     const contentId = detailId.value
     if (!contentId) return
-    const revision = detailRevision
     const current = commentReplyStates[rootCommentId]
     if (current?.loading || (!reset && current?.loaded && !current.hasMore)) return
     if (reset) commentReplies[rootCommentId] = []
