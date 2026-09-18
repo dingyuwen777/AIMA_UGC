@@ -359,6 +359,8 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   await page.goto('/voice-plaza')
 
   await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
+  await expect(page.getByPlaceholder('搜索标题、正文或作者')).toBeVisible()
+  await expect(page.getByText('统计准确数量', { exact: true })).toHaveCount(0)
   await expect(page.getByTitle('电池、续航与充电 / 实际续航表现', { exact: true })).toBeVisible()
   await expect(page.getByTitle('驾乘体验 / 坐垫舒适性', { exact: true })).toBeVisible()
   await expect(page.getByTitle('售后服务 / 客服与服务态度', { exact: true })).toBeVisible()
@@ -381,6 +383,8 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   await expect(page.getByText('回复 用户乙')).toBeVisible()
   await expect(page.getByText('原作者', { exact: true })).toBeVisible()
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('真实用户发声')
+  await expect(page.getByRole('dialog', { name: '内容详情' }).getByText('技术详情', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '内容详情' }).getByText('Content ID', { exact: true })).toHaveCount(0)
   await expect(page.getByText('原始内容媒体')).toHaveCount(0)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/stage8d-content-detail.png', fullPage: true })
@@ -462,8 +466,8 @@ test('keeps filters and content usable when manual-edit taxonomy is unavailable'
 
   await expect(page.getByRole('alert').getByText('当前 AI 分析规则暂不可用', { exact: true })).toBeVisible()
   const taxonomyWarning = page.locator('.taxonomy-warning')
-  await taxonomyWarning.getByText('技术详情', { exact: true }).click()
-  await expect(taxonomyWarning.getByText(/request-taxonomy/)).toBeVisible()
+  await expect(taxonomyWarning.getByText('技术详情', { exact: true })).toHaveCount(0)
+  await expect(taxonomyWarning.getByText(/request-taxonomy/)).toHaveCount(0)
   await expect(page.locator('label.field--voice-type select')).toBeEnabled()
   await expect(page.getByText(item.title)).toBeVisible()
   await expect(page.getByRole('button', { name: /导出记录/ })).toBeEnabled()
@@ -526,7 +530,7 @@ test('shows AI unavailable and disables analysis when runtime is not configured'
 
   await page.goto('/voice-plaza')
 
-  await expect(page.getByText(/AI 打标暂不可用：管理员尚未完成 AI 模型配置/)).toBeVisible()
+  await expect(page.getByText(/AI 分析暂不可用：管理员尚未完成 AI 模型配置/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'AI 分析', exact: true })).toBeDisabled()
 })
 
@@ -544,7 +548,7 @@ test('慢导出初始化不阻塞活动 AI 的自动刷新', async ({ page }) =>
   })
   try {
     await page.goto('/voice-plaza')
-    const progress = page.getByRole('progressbar', { name: 'AI 打标进度' })
+    const progress = page.getByRole('progressbar', { name: 'AI 分析进度' })
     await expect(progress).toHaveAttribute('aria-valuenow', '20')
     succeeded = 10
     await expect(progress).toHaveAttribute('aria-valuenow', '50', { timeout: 2500 })
@@ -626,15 +630,17 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   await page.getByLabel('选择当前已加载内容').check()
   await expect(analysisButton).toBeEnabled()
   await analysisButton.click()
-  await expect(page.getByText('预计分析 1 条内容 · 1 个分片 · 每片最多 1 条')).toBeVisible()
+  await expect(page.getByText('预计分析 1 条内容')).toBeVisible()
   await expect(page.getByText('openai-compatible / fixture-model')).not.toBeVisible()
-  await expect(page.getByText(/当前无法可靠估算费用/)).toBeVisible()
+  await expect(page.getByText(/分析规则由管理员统一维护/)).toBeVisible()
+  await expect(page.getByText(/分片/)).toHaveCount(0)
+  await expect(page.getByText('高级配置', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '确认开始分析' }).click()
-  await expect(page.getByText(/已创建 AI 打标任务/)).toBeVisible()
+  await expect(page.getByText(/已创建 AI 分析任务/)).toBeVisible()
   await expect(page.getByText('AI Analysis Run 历史')).toHaveCount(0)
-  await expect(page.getByText('AI 打标任务', { exact: true })).toBeVisible()
-  await expect(page.getByText('AI 打标 · 处理中')).toBeVisible()
-  await expect(page.getByRole('progressbar', { name: 'AI 打标进度' })).toHaveAttribute('aria-valuenow', '20')
+  await expect(page.getByText('AI 分析任务', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI 分析 · 处理中')).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: 'AI 分析进度' })).toHaveAttribute('aria-valuenow', '20')
   expect(previewRequest).toMatchObject({
     targets: { scope: 'selected', content_ids: [contentId] },
   })
@@ -645,18 +651,18 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
     run_intent: 'manual_reanalysis',
   })
   await page.getByRole('button', { name: '取消任务' }).click()
-  await expect(page.getByText('AI 打标 · 处理中')).toHaveCount(0)
+  await expect(page.getByText('AI 分析 · 处理中')).toHaveCount(0)
   expect(cancelRequested).toBe(true)
 
   await page.getByRole('button', { name: /任务中心/ }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
-  await expect(taskCenter).toContainText('AI 打标任务 1')
+  await expect(taskCenter).toContainText('AI 分析任务 1')
   await expect(taskCenter).toContainText('已取消')
   await taskCenter.getByRole('button', { name: '关闭任务中心' }).click()
 
   await page.getByRole('button', { name: /导出记录/ }).click()
-  await expect(page.getByText('未完成 AI 打标的内容不会被丢弃')).toBeVisible()
+  await expect(page.getByText('未完成 AI 分析的内容不会被丢弃')).toBeVisible()
   await page.getByText('当前页内容').click()
   await page.getByRole('button', { name: /开始导出/ }).click()
   await expect(page.getByText(/已创建 Excel 导出任务/)).toBeVisible()
@@ -714,7 +720,8 @@ test('creates an all-data analysis run without browser-side content ids', async 
   await analysisButton.click()
   const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
   await expect(dialog.getByRole('radio', { name: /全部系统内容/ })).toBeChecked()
-  await expect(dialog.getByText('预计分析 4200 条内容 · 42 个分片 · 每片最多 100 条')).toBeVisible()
+  await expect(dialog.getByText('预计分析 4200 条内容')).toBeVisible()
+  await expect(dialog.getByText(/分析规则由管理员统一维护/)).toBeVisible()
   expect(previewRequest).toEqual({ targets: { scope: 'all' } })
   await dialog.getByRole('button', { name: '确认开始分析' }).click()
   expect(createRequest).toMatchObject({
