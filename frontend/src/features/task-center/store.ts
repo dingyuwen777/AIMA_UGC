@@ -108,7 +108,7 @@ export function analysisRunProgress(run: AnalysisContentRunResponse): number {
   return Math.max(0, Math.min(100, Math.round(processed * 100 / run.target_count)))
 }
 
-/** 将 AI 打标运行转换为普通用户可理解的任务视图；模型/Provider/Run ID 不进入默认层。 */
+/** 将 AI 分析运行转换为普通用户可理解的任务视图；模型/Provider/Run ID 不进入默认层。 */
 function analysisTask(run: AnalysisContentRunResponse): TaskCenterItem {
   const stats = run.stats
   const processed = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
@@ -117,7 +117,7 @@ function analysisTask(run: AnalysisContentRunResponse): TaskCenterItem {
     key: `analysis:${run.id}`,
     sourceId: run.id,
     kind: 'analysis',
-    title: `AI 打标任务 ${run.sequence_no}`,
+    title: `AI 分析任务 ${run.sequence_no}`,
     subtitle: `${run.target_count} 条内容`,
     status: run.status,
     statusLabel: ANALYSIS_STATUS_LABELS[run.status] ?? '状态待确认',
@@ -250,11 +250,11 @@ export const useTaskCenterStore = defineStore('task-center', () => {
       if (revision !== analysisRevision) return
       analysisRuns.value = runs
       analysisError.value = null
-      refreshErrors.delete('AI 打标')
+      refreshErrors.delete('AI 分析')
     } catch (error) {
       if (revision !== analysisRevision) return
       analysisError.value = errorMessage(error)
-      refreshErrors.set('AI 打标', analysisError.value)
+      refreshErrors.set('AI 分析', analysisError.value)
     } finally {
       if (analysisRefreshInFlight === revision) analysisRefreshInFlight = 0
       updateWarning()
@@ -308,7 +308,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     open.value = false
   }
 
-  /** 取消活动 AI 打标任务，并同步全局任务列表。 */
+  /** 取消活动 AI 分析任务，并同步全局任务列表。 */
   async function cancelAnalysisRun(runId: string): Promise<boolean> {
     if (cancellingAnalysisRunId.value) return false
     cancellingAnalysisRunId.value = runId
@@ -319,7 +319,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
       analysisRuns.value = analysisRuns.value.map((run) => run.id === runId ? cancelled : run)
       return true
     } catch (error) {
-      warning.value = `AI 打标取消失败：${errorMessage(error)}`
+      warning.value = `AI 分析取消失败：${errorMessage(error)}`
       return false
     } finally {
       cancellingAnalysisRunId.value = null

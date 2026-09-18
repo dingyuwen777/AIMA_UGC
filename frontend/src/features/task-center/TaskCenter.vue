@@ -18,7 +18,7 @@ function progressTone(item: TaskCenterItem): 'primary' | 'success' | 'warning' |
 
 /** 将任务来源映射为用户可理解的业务分类名称。 */
 function kindLabel(kind: TaskCenterItem['kind']): string {
-  if (kind === 'analysis') return 'AI 打标'
+  if (kind === 'analysis') return 'AI 分析'
   if (kind === 'collection') return '采集与导入'
   return '数据导出'
 }

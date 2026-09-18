@@ -587,7 +587,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         unlock_existing: unlockExisting,
       })
       detail.value = await fetchContentDetail(detail.value.id)
-      notice.value = '车型人工结论已保存；后续自动处理不会覆盖人工锁定。'
+      notice.value = '车型人工结论已保存；后续自动识别不会覆盖当前人工结果。'
       await refreshLoadedWindow()
       return true
     } catch (reason) {
@@ -611,7 +611,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         content_version: detail.value.content_version,
       })
       detail.value = await fetchContentDetail(detail.value.id)
-      notice.value = '分析人工纠正已保存；修改已锁定维度前必须显式解锁。'
+      notice.value = '分析人工纠正已保存；如需替换已确认结果，请先确认解除当前人工结论。'
       await refreshLoadedWindow()
       await refreshFilterOptions()
       return true
