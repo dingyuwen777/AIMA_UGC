@@ -46,12 +46,14 @@ withDefaults(defineProps<{
   min-height: var(--aima-control-height-md);
   padding: 0 15px;
   font-size: var(--aima-font-size-control);
+  font-weight: 500;
 }
 
 .is-small {
-  min-height: var(--aima-button-height-sm);
+  min-height: var(--aima-control-height-sm);
   padding: 0 10px;
-  font-size: var(--aima-font-size-body-small);
+  font-size: var(--aima-font-size-control);
+  font-weight: 500;
 }
 
 .is-primary { border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); }
