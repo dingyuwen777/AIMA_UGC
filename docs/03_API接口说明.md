@@ -683,6 +683,9 @@ POST   /api/v1/analysis-scheme-versions/{version_id}/publish
 POST   /api/v1/analysis-scheme-versions/{version_id}/rollback
 GET    /api/v1/audit-events
 GET    /api/v1/export-columns
+POST   /api/v1/admin/feishu-report-publications
+POST   /api/v1/admin/feishu-representative-selections
+GET    /api/v1/admin/feishu-publication-jobs/{job_id}
 ```
 
 Provider-neutral Principal 只允许 `administrator/user`。车型、词包等只读目录可供普通业务页面消费；车型修改/合并/删除、词包写入、采集计划写入、Scheme 管理和审计查询均由后端管理员守卫保护。第一版不强制双人审批，但配置修改、发布和回滚必须记录审计。完整字段以 [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py) 和当前 OpenAPI 为准。
