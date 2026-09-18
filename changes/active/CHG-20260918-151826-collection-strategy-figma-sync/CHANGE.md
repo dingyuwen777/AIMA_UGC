@@ -9,11 +9,22 @@ branch: feature/collection-strategy-figma-sync
 created: 2026-09-18T15:18:26+08:00
 updated: 2026-09-18T16:06:00+08:00
 completion_gate: required
-depends_on: none
-affected_areas: frontend, collection-strategy, figma-design-to-code
-affected_paths: frontend/src/app/layouts/AppShell.vue; frontend/src/features/collection-strategy; frontend/e2e/collection-strategy*.spec.ts; frontend/tests/collection-strategy*.spec.ts
-contracts: no-public-contract-change
-data_changes: none
+depends_on: []
+affected_areas:
+  - frontend
+  - collection-strategy
+  - figma-design-to-code
+affected_paths:
+  - frontend/src/app/layouts/AppShell.vue
+  - frontend/src/features/collection-strategy
+  - frontend/e2e/collection-strategy-figma-geometry.spec.ts
+  - frontend/e2e/collection-strategy-figma-projection.spec.ts
+  - frontend/e2e/collection-strategy.spec.ts
+  - frontend/tests/collection-strategy-design.spec.ts
+  - frontend/tests/collection-strategy.spec.ts
+contracts:
+  - no-public-contract-change
+data_changes: []
 ---
 
 # 变更摘要
