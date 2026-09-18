@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260918-151826-collection-strategy-figma-sync
 title: 采集策略前端按最新 Figma 正式基线收敛
 level: L2
-status: proposed
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/collection-strategy-figma-sync
 created: 2026-09-18T15:18:26+08:00
-updated: 2026-09-18T15:18:26+08:00
+updated: 2026-09-18T16:06:00+08:00
 completion_gate: required
 depends_on: none
 affected_areas: frontend, collection-strategy, figma-design-to-code
@@ -118,16 +118,16 @@ Issue #536 已把本轮 Figma 正式基线、用户可见目标和验收条件�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 普通页面删除技术详情和内部诊断信息 | #536 / AC1 | not_satisfied | 待实现与验证 |
-| R2 | 词包/计划一键复制并自动唯一命名 | #536 / AC2 | not_satisfied | 待实现与验证 |
-| R3 | 复制成功保持当前上下文并 Toast | #536 / AC3 | not_satisfied | 待实现与验证 |
-| R4 | 统一紧凑归档单容器四态 | #536 / AC4 | not_satisfied | 待实现与验证 |
-| R5 | 归档/删除使用产品化确认 Modal | #536 / AC5 | not_satisfied | 待实现与验证 |
-| R6 | 管理/归档动作保持真实可执行链路 | #536 / AC6 | not_satisfied | 待实现与验证 |
-| R7 | 编辑计划复用 Drawer 且业务文案对齐 | #536 / AC7 | not_satisfied | 待实现与验证 |
-| R8 | 保持列表、资格、响应式、键盘和错误态能力 | #536 / AC8 | not_satisfied | 待回归 |
-| R9 | 目标测试/构建/required CI 通过 | #536 / AC9 | not_satisfied | 待执行 |
-| R10 | Implementation ↔ Figma 六域无阻塞差异 | #536 / AC10 | not_satisfied | 待完成 |
+| R1 | 普通页面删除技术详情和内部诊断信息 | #536 / AC1 | satisfied | PlanDetailDrawer / PlanResourceDetailDialog 已删除技术详情、内部 ID、Provider 展示；E2E 已改为反向断言 |
+| R2 | 词包/计划一键复制并自动唯一命名 | #536 / AC2 | satisfied | Store 以“副本/副本 2…”有界重试明确同名 409；KeywordPackPanel/PlanDetailDrawer 无改名中间态；Unit/E2E 已覆盖 |
+| R3 | 复制成功保持当前上下文并 Toast | #536 / AC3 | satisfied | Store 复制后恢复 source selection，Page 使用现有 success toast；E2E 验证原计划详情保持打开 |
+| R4 | 统一紧凑归档单容器四态 | #536 / AC4 | satisfied | 新增 ArchivedResourcePanel，KeywordPackPanel/PlanPanel 共同复用；geometry 测试绑定 Figma 46px 折叠态 |
+| R5 | 归档/删除使用产品化确认 Modal | #536 / AC5 | satisfied | 新增 ResourceConfirmDialog，已移除三个 window.confirm 路径；永久删除仍调用服务端 eligibility |
+| R6 | 管理/归档动作保持真实可执行链路 | #536 / AC6 | satisfied | 页面事件→Store→generated API 链保持，Figma Prototype 关键 reaction 已复核；E2E 增加删除/归档确认流程 |
+| R7 | 编辑计划复用 Drawer 且业务文案对齐 | #536 / AC7 | satisfied | PlanCreateDrawer 继续共用 Create/Edit，已对齐“保存修改/后续采集/当前品牌车型范围”等正式文案 |
+| R8 | 保持列表、资格、响应式、键盘和错误态能力 | #536 / AC8 | satisfied | 6 列 PlanPanel、eligibility/Capability Owner 未改；现有 1180/1440/1920、Escape/focus、草稿错误态测试继续保留 |
+| R9 | 目标测试/构建/required CI 通过 | #536 / AC9 | explicitly_deferred | PR Draft 无法运行 quality-core；目标测试已提交，切 Ready 后由同一 current-head CI 执行，CI 未绿前禁止 merge，绿后回写 satisfied 证据 |
+| R10 | Implementation ↔ Figma 六域无阻塞差异 | #536 / AC10 | explicitly_deferred | 已完成源码/Design Context/Prototype 定向对照并修正 Figma“惠科”残留；最终运行态六域复核依赖 current-head CI，完成后回写 satisfied |
 
 # 计划改动
 
@@ -144,11 +144,11 @@ Issue #536 已把本轮 Figma 正式基线、用户可见目标和验收条件�
 
 - [x] 调查当前实现和事实源；新建项目则确认现有资料、目标和硬约束
 - [x] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据或说明测试例外
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 行为变化已通过更新后的 Unit/E2E 断言建立回归目标；真实执行结果由 Ready PR CI 产生
+- [x] 完成最小实现；未修改 public Contract、Schema、Scheduler、generated client 或依赖
+- [x] 长期文档不适用：现有 Figma/前端开发规则未发生长期事实变化；Figma 正式 Owner 已同步必要设计修正
+- [ ] current-head 自动化验证待 PR Ready 触发；当前已有源码审计、测试实现和 Figma 机器事实证据
+- [x] 完成 pre-CI 需求追溯与完成审计；R9/R10 明确 deferred 为 merge blockers
 
 # 验证矩阵
 
@@ -191,10 +191,10 @@ Issue #536 已把本轮 Figma 正式基线、用户可见目标和验收条件�
 
 # 完成审计
 
-- [ ] upstream_re_read：实现完成后重新读取 Issue #536、最新 Figma、Contract 和目标代码。
-- [ ] change_coverage：实现完成后逐项映射 AC1–AC10。
-- [ ] reverse_audit：实现完成后检查前端动作→真实 API、后端能力→前端入口、六域 Figma Conformance。
-- [ ] unresolved_cleared：进入 ready_for_review 前 R1–R10 全部清零。
+- [x] upstream_re_read：已重新读取 Issue #536、最新 Figma Design Context/Prototype、resource lifecycle Contract、目标 Vue/Store 与现有测试。
+- [x] change_coverage：AC1–AC8 已逐项映射到实现与测试；AC9/AC10 作为只能在 Ready PR 后取得的外部门禁证据明确 deferred，未伪造完成。
+- [x] reverse_audit：已检查前端动作→Store→generated API、后端 lifecycle 能力→前端入口，以及 Shared/Feature Owner 复用；无 public Contract 缺口。
+- [x] unresolved_cleared：无未说明的 not_satisfied；仅 R9/R10 有明确 post-ready 依据并继续作为 merge blockers，CI/Figma 复核未完成前不得合并。
 
 # 完成证据与状态
 
@@ -203,18 +203,20 @@ Issue #536 已把本轮 Figma 正式基线、用户可见目标和验收条件�
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | main 37721e8 / Figma current | 代码、Contract、测试、Design Context、Prototype、Ruleset 定向审计 | 基线事实已恢复 | 证明变更范围与约束 |
+| V2 | PR #537 head 908efae + 98b1290 前序实现 | PR diff 与目标源文件复核 | 已删除技术详情/复制中间态/window.confirm，新增归档与确认 Feature Owner、一键复制和上下文保持 | 证明 AC1–AC8 已有实现与回归断言 |
+| V3 | Figma current | Fresh Design Context + Prototype + Owner 审计，并修正 Create/Edit 渠道字段旧“惠科”示例 | 正式设计只表达真实平台多选业务语义，关键管理按钮均有 reaction | 证明实现未迁就过时设计机器事实 |
 
 ## 未验证内容与剩余风险
 
-实现、目标测试、current-head CI 和合并后 main fresh 尚未执行。
+目标测试与 current-head CI 尚未实际执行；最终运行态 Implementation↔Figma Conformance、合并后 main fresh 也尚未取得。以上均保持为显式 merge blockers。
 
 ## 交付状态
 
-- 提交：仅治理初始化待创建
-- 拉取请求：待创建 Draft PR
-- CI：待实现后执行
-- 合并：待 required gate
-- Change 归档：待 merge 后 repository-native automation
+- 提交：治理 + 实现 + 回归测试已提交到 feature/collection-strategy-figma-sync
+- 拉取请求：Draft PR #537；本提交后切 Ready 触发正式 required CI
+- CI：等待 current-head CI Gate / Requirement Traceability and Completion Audit / Compose Golden Path
+- 合并：CI 与最终 Figma Conformance 通过前禁止 merge
+- Change 归档：merge 后由 repository-native automation 归档
 - 发布 / 部署：不适用；本任务只合入源码，不执行 Release/Deploy。
 
 ## 备注
