@@ -319,6 +319,7 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
     finally:
         session.close()
 
+
 def test_scope_runtime_preserves_reply_parent_relation_for_voice_plaza(
     database_runtime: DatabaseRuntime,
     tmp_path: Path,
@@ -446,4 +447,3 @@ def test_scope_runtime_preserves_reply_parent_relation_for_voice_plaza(
         assert reply.parent_author_display_name == "脱敏用户"
     finally:
         session.close()
-
