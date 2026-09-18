@@ -424,7 +424,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
               <b>{{ brand.display_name }} · {{ brandRoleLabel(brand.role) }}</b><span
                 v-for="(evidence, index) in brand.evidences"
                 :key="`${brand.id}:${index}`"
-              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template></span>
             </article><small v-if="!(item.brands ?? []).length">暂无品牌证据</small>
           </div>
           <div>
@@ -435,7 +435,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
               <b>{{ vehicle.display_name }}<template v-if="vehicle.brand"> · 所属 {{ vehicle.brand.display_name }}</template></b><span
                 v-for="(evidence, index) in vehicle.evidences"
                 :key="`${vehicle.vehicle_model_id}:${index}`"
-              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template></span>
             </article><small v-if="!item.vehicles?.length">暂无车型证据</small>
           </div>
         </div>
