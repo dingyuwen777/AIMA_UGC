@@ -342,6 +342,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
           <div
             ref="mediaGrid"
             class="media-grid"
+            :class="{ 'media-grid--carousel': hasMediaNavigation }"
             @scroll.passive="syncMediaIndex"
           >
             <a
@@ -801,20 +802,20 @@ header small { font-size: 12px; }
 .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .metric-grid span { min-height: 64px; padding: 10px 12px; place-items: start; align-content: center; background: #f7f9fb; font-size: 12px; }
 .media-carousel { position: relative; overflow: hidden; border-radius: 8px; }
-.media-grid {
-  display: grid;
+.media-grid { grid-template-columns: 1fr; }
+.media-grid img { height: 100px; }
+.media-grid--carousel {
   grid-auto-flow: column;
   grid-auto-columns: 100%;
   grid-template-columns: none;
-  gap: 8px;
   overflow-x: auto;
   scroll-behavior: auto;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
 }
-.media-grid::-webkit-scrollbar { display: none; }
-.media-grid a { scroll-snap-align: start; }
-.media-grid img { height: 180px; }
+.media-grid--carousel::-webkit-scrollbar { display: none; }
+.media-grid--carousel a { scroll-snap-align: start; }
+.media-grid--carousel img { height: 180px; }
 .media-navigation {
   position: absolute;
   top: 50%;
