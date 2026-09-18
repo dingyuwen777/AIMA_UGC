@@ -61,6 +61,66 @@ data_changes:
 - PostgreSQL 读取层优先使用持久化 Provider 标识；仅当该值为空且内容作者/评论作者都有已收敛账号时，以账号相等推导“原作者”；身份缺失继续返回未知。
 - 不新增 Schema/Migration，不修改 HTTP Contract，不手改 generated client。
 
+# 事实与证据
+
+| 证据 | 当前事实 | 决策影响 |
+| --- | --- | --- |
+| E1 | READY Figma 已建立 Design System → Shared → Pattern → Feature Owner → Formal Screen 单一链路 | 代码按正式 Owner 做增量 Design-to-Code，不重画第二套页面 |
+| E2 | PostgreSQL/HTTP 仍保留 root/direct-parent/parent-author 评论语义 | 不新增 Schema/Contract，只修真实断点 |
+| E3 | 旧 Store 必须点击才加载回复，导致打开详情看不到已入库线程 | 详情首屏有界预取本地回复 |
+| E4 | XHS Mapper 只识别嵌套 target，账号收敛事实未用于原作者展示 | 补明确扁平 target；读取层在 Provider 值为空时用可靠账号身份推导 |
+| E5 | 五平台并非都能证明直接父评论 | 无证据时 parent 保持为空，UI 只表达根线程归属 |
+| E6 | Figma 普通用户态不展示工程术语/技术详情 | AI/导出/详情/任务中心使用产品文案，技术信息留在后端诊断面 |
+
+# 约束与意图决策
+
+| 决策维度 | 当前决定 | 依据 / 影响 |
+| --- | --- | --- |
+| Figma 与代码事实源 | Figma 负责视觉/状态/交互，Contract/Store/backend 负责系统语义 | 不为 Figma 示例造 API/字段 |
+| 评论直接父级 | 只保存 Provider 明确证据 | 不用 root 猜 direct parent |
+| 原作者 | 显式 Provider 值优先；缺失时仅用已收敛账号相等推导 | 历史数据无需回填即可改善展示 |
+| Provider 费用 | 不改变二级回复默认采集策略 | 自动首屏只读 PostgreSQL |
+| Contract/Schema | 保持不变 | 无 generated client 手改、无 Migration |
+| Shared Owner | PageShell/PageHeader/Button/布局 Token 按正式 Figma Owner 对齐 | 避免 Voice Plaza 私有 CSS 复制公共组件 |
+
+# 修改方案与决策依据
+
+1. 评论链先修用户可观察断点：根评论返回后有界预取已入库回复首屏，保留后续 Cursor。
+2. 修语义而不是造关系：明确父作者/父 ID 才展示“回复谁”，未知 direct parent 仅显示属于当前一级线程。
+3. 补 Provider/读取层最小兼容：XHS 接受明确 flat target；原作者从既有账号身份恢复。
+4. 按 READY Figma 清理工程化 UI，并将共享几何上收 Shared Owner。
+5. 用 Unit → PostgreSQL Integration → Browser Mock → Real Full-stack → build/CI 证明整条链。
+
+# 备选方案与取舍
+
+- **只改前端文字/自动展开**：不能修复真实 Raw 缺父级和原作者缺标识，拒绝。
+- **把所有二级回复强制 parent=root**：会伪造“回复一级评论”的事实，拒绝。
+- **新增 parent/original-author 数据库字段**：现有 Contract/Schema 已足够表达，增加 Migration 没有必要。
+- **默认开启更多 TikHub 二级补采**：会扩大 Provider 成本且不是本回归根因，保持现状。
+- **页面私有覆盖 Shared Header/Button/PageShell**：会破坏 Owner 链，改 Shared Owner 的真实 Delta。
+
+# 计划改动
+
+| Owner / 文件 | 改动 | 可观察结果 |
+| --- | --- | --- |
+| Voice Plaza Store | 打开详情后预取有已入库回复的根线程首屏 | 无需再次点击即可看到回复 |
+| ContentCommentSection | 区分明确 direct parent 与仅 root thread | 不再猜造“回复这条一级评论” |
+| XHS Mapper | 支持 nested + explicit flat target ID | Provider 明确父级不会丢失 |
+| PostgreSQL Query | 显式值缺失时从已收敛账号关系推导原作者 | 原作者 Badge 可恢复 |
+| Voice Plaza / Task Center / dialogs | Figma 产品文案、状态、错误信息、技术信息清理 | 普通用户只见产品语义 |
+| Shared Token / AppShell / PageHeader / Button | 对齐正式公共 Owner | 页面几何与字号/按钮统一 |
+| Unit / Integration / E2E / Full-stack | 固定上述行为 | 防止 TikHub/前端再次回归 |
+
+# 文档、依赖、部署与发布影响
+
+- **长期文档**：不新增重复 Figma 文档；正式 Figma 本身已经是视觉事实源，本 Change 记录 Implementation Trace。
+- **依赖**：不新增、不升级依赖；lock 文件不变。
+- **配置 / Secret**：不变；不读取或提交 Provider 密钥。
+- **Contract / generated client**：不变，无需重新生成。
+- **数据库 / Migration**：不变，无回填。
+- **部署 / Release**：不执行；本任务只交付代码到 main。
+- **回滚**：revert Implementation PR 即可，无数据恢复步骤。
+
 # 目标、成功标准与非目标
 
 ## 目标
@@ -90,7 +150,7 @@ data_changes:
 | R6 | 不改变 TikHub 二级回复默认采集费用行为 | #541 | satisfied | 只读本地评论首屏；collection policy/default 未修改 |
 | R7 | current-head CI、独立 Review、guarded merge 与 post-merge Closure | #541 | explicitly_deferred | 属于本 Change 进入 PR Ready 后的交付生命周期门禁，未伪造为已完成 |
 
-# 实施与验证矩阵
+# 验证矩阵
 
 | 层 | 是否要求 | 范围 / 当前状态 |
 | --- | --- | --- |
@@ -113,7 +173,7 @@ data_changes:
 - [x] fee_audit：自动预取只调用本项目评论 HTTP 读取 PostgreSQL，不触发 Provider 补采；`include_sub_comments` 默认策略未改。
 - [x] unresolved_cleared：无实现层 `not_satisfied`；current-head CI/Review/merge/main-fresh/archive/closure 作为下游交付门禁显式延期。
 
-# 当前验证证据与剩余门禁
+# 完成证据与状态
 
 ## 已取得的静态/结构证据
 
@@ -131,7 +191,7 @@ data_changes:
 - Issue #541 Acceptance/Closure。
 - 不执行生产部署。
 
-# 风险、兼容性与回滚
+# 风险、兼容性、迁移与回滚
 
 | 项目 | 结论 |
 | --- | --- |
