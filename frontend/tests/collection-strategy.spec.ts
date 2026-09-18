@@ -189,6 +189,39 @@ describe('collection strategy feature', () => {
     expect(store.error).toBeNull()
   })
 
+  it('does not retry a non-duplicate copy conflict', async () => {
+    const source: CollectionPlanResponse = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '停用计划',
+      enabled: false,
+      schedule_expr: '0 9 * * *',
+      timezone: 'Asia/Shanghai',
+      schedule_version: 3,
+      next_run_at: null,
+      last_scheduled_at: null,
+      detail_policy: 'on_change',
+      comment_policy: 'adaptive',
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
+      keyword_pack_ids: [discoveryPack.id],
+      brand_ids: [],
+      created_at: '2026-08-22T00:00:00Z',
+      updated_at: '2026-08-22T00:00:00Z',
+    }
+    generated.copyCollectionPlan.mockResolvedValueOnce({
+      status: 409,
+      detail: '名称或关联配置冲突',
+      request_id: 'plan-other-conflict',
+    })
+    const store = useCollectionStrategyStore()
+    store.selectedPlan = source
+
+    expect(await store.copySelectedPlan()).toBe(false)
+
+    expect(generated.copyCollectionPlan).toHaveBeenCalledTimes(1)
+    expect(generated.copyCollectionPlan).toHaveBeenCalledWith(source.id, { name: '停用计划 副本' })
+    expect(store.error).toContain('名称或关联配置冲突')
+  })
+
   it('paginates the periodic Plan list through the formal offset contract', async () => {
     generated.listCollectionPlans.mockImplementation(async (params: { enabled?: boolean; offset?: number; limit?: number }) =>
       params.enabled === true
