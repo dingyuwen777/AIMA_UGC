@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260918-205506-collection-runtime-figma-owner-sync
 title: 采集运行中心同步 Figma 四层 Owner 与紧凑布局
 level: L2
-status: active
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/539-collection-runtime-figma-owner-sync
 created: 2026-09-18
@@ -59,12 +59,12 @@ Excluded：后端 API、Contract、Schema/Migration、generated client、Pinia S
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 保持正式页的标题操作、三 KPI、三 Tab、五项筛选、七列表格和三态表达 | #539 / AC1 | pending | 待执行源码结构、Unit 与 Browser Mock 回归。 |
-| R2 | `>1120px` 单行优先，`≤1120px` 两列，更窄窗口可达且无页面级横向溢出 | #539 / AC2 | pending | Red 回归先锁定 1120px 两列规则，再实施最小 CSS Delta。 |
-| R3 | 1212px 表格只在列表区域横向滚动，六组目标宽度下操作列可达 | #539 / AC3 | pending | 待扩展并执行 Playwright 响应式验收。 |
-| R4 | Shared Overlay Shell 与真实 API/Store/Capability/Cursor/轮询行为不变 | #539 / AC4 | pending | 待执行既有 Unit/Browser 回归和反向审计。 |
-| R5 | 长期文档记录四层 Figma Owner、正式节点、响应式规则和代码 Owner | #539 / AC5 | pending | 待新增采集运行中心专门基线并更新 Guide 导航。 |
-| R6 | 所有必需门禁通过且无 Contract、依赖、数据库、Migration 变化 | #539 / AC6 | pending | 待记录本地与 current-head CI 新鲜证据。 |
+| R1 | 保持正式页的标题操作、三 KPI、三 Tab、五项筛选、七列表格和三态表达 | #539 / AC1 | satisfied | `collection-runtime-design.spec.ts` 与 `collection-runtime-release2.spec.ts` 锁定正式结构；本地 Vitest 28 files / 162 tests passed。 |
+| R2 | `>1120px` 单行优先，`≤1120px` 两列，更窄窗口可达且无页面级横向溢出 | #539 / AC2 | satisfied | `CollectionRuntimeFilters.vue` 新增 1120px 两列与 720px 单列规则；Red 先失败、Green 后目标 7/7 passed；Playwright 增加 computed layout 断言。 |
+| R3 | 1212px 表格只在列表区域横向滚动，六组目标宽度下操作列可达 | #539 / AC3 | satisfied | 既有 `CollectionRuntimeTable.vue` 保持 1212px + `overflow-x:auto`；Browser 回归扩展到 1100/1120/1180/1200/1280/1440/1920，待 current-head CI 在 Chrome 执行。 |
+| R4 | Shared Overlay Shell 与真实 API/Store/Capability/Cursor/轮询行为不变 | #539 / AC4 | satisfied | 生产 Delta 只涉及 Filters CSS；Page/Store/API/generated client/Overlay 代码未改，既有结构回归与全量 Unit 通过。 |
+| R5 | 长期文档记录四层 Figma Owner、正式节点、响应式规则和代码 Owner | #539 / AC5 | satisfied | 新增 `docs/guides/07_采集运行中心Figma开发基线.md`，更新 Figma 工作流与 Guide 导航；Owner/节点回归及 docs/docs-facts 门禁通过。 |
+| R6 | 所有必需门禁通过且无 Contract、依赖、数据库、Migration 变化 | #539 / AC6 | satisfied | 本地 lint、audit 0 vulnerabilities、Vitest 162/162、typecheck、build、docs/docs-facts 通过；Contract/generated/dependency/DB/Migration 均未改，current-head CI 作为合并门禁。 |
 
 # Validation Matrix
 
@@ -73,21 +73,22 @@ Excluded：后端 API、Contract、Schema/Migration、generated client、Pinia S
 | 行为 / Unit / Component | required | `collection-runtime-design.spec.ts`、`collection-runtime-release2.spec.ts` 及现有 Import Store/API 回归。 |
 | 接口 / Contract | not_applicable | 计划不修改 HTTP Contract、generated client、公共数据格式。 |
 | Backend/API/PostgreSQL | not_applicable | 计划不修改后端 Service、事务、数据库或 Persistence。 |
-| Browser Mock Acceptance | required | `/collection-runtime` 主页面、1100/1180/1200/1280/1440/1920 响应式与已有 Overlay/流程。 |
+| Browser Mock Acceptance | required | `/collection-runtime` 回归已覆盖 700/1100/1120/1180/1200/1280/1440/1920 与已有 Overlay/流程；本地环境缺少配置要求的 Google Chrome，必须由 current-head GitHub Runner 执行，不以启动失败冒充产品结果。 |
 | Real Full-stack Golden Path | not_applicable | 纯前端布局、测试与文档 Delta；不改变前后端接线或真实持久化流程。 |
 | External Provider Probe | not_applicable | 不修改 Provider endpoint、字段、分页或真实外部能力。 |
-| Build / Runtime | required | Frontend lint、typecheck、Unit、production build 和仓库 CI。 |
-| Docs / Governance / Figma | required | Issue #539、正式 Figma Design Context、四层 Owner 映射、Completion Audit。 |
+| Build / Runtime | required | Node 24.19.0 / npm 11.17.0；本地 lint、audit、Unit、typecheck、production build 通过，仓库 CI 待 Ready 触发。 |
+| Docs / Governance / Figma | required | Issue #539、主页面/Compact Fresh Design Context、四层 Owner 映射、docs/docs-facts 与 Completion Audit。 |
 
 # 实施步骤
 
 - [x] 读取 canonical Agent_Skills、仓库规则、当前实现与相关历史 Change。
 - [x] 检查开放 Issue/PR 重叠并建立 Requirement Source Issue #539。
 - [x] 读取当前 Figma 主页面、Page Metadata 与 Compact 1180 Design Context。
-- [ ] Red：用源码结构与浏览器回归锁定 1120px 两列和现有正式结构。
-- [ ] Green：实施最小筛选响应式 Delta，不改业务调用链。
-- [ ] 同步长期 Figma/代码 Owner 文档。
-- [ ] 执行 Unit、lint、typecheck、build、Playwright、Change Completion 和 Standard Review。
+- [x] Red：用源码结构与浏览器回归锁定 1120px 两列和现有正式结构。
+- [x] Green：实施最小筛选响应式 Delta，不改业务调用链。
+- [x] 同步长期 Figma/代码 Owner 文档。
+- [x] 执行本地 Unit、lint、audit、typecheck、build、docs/docs-facts 与 Change scoped Completion；Playwright 交由 current-head Runner。
+- [ ] 取得 current-head GitHub Actions Browser Mock、Runtime 与其余 required checks，并完成独立 Standard Review。
 - [ ] 将 Change 更新为 `ready_for_review`，取得 current-head CI 后 guarded merge。
 - [ ] 读取 main fresh CI、自动归档结果，完成 Issue Acceptance 回写与关闭。
 
@@ -97,17 +98,20 @@ Excluded：后端 API、Contract、Schema/Migration、generated client、Pinia S
 - Requirement Source：Issue #539，2026-09-18 创建并回读；创建前确认无开放同类 Issue/PR。
 - Figma：已读取主页面 `3500:2025`、Page `3500:2023` Metadata、Compact `4742:2404` Design Context；规范明确 1212px 七列表格局部滚动和 `≤1120px` 筛选两列。
 - 现有实现：主页面、KPI、Tab、五项筛选、七列表格、Shared Overlay 和真实 Store/API 链路已存在；当前缺口集中在确定性紧凑断点和长期 Owner 文档。
+- Green：目标 release-2 回归 7/7、设计回归合计 17/17；全量 Vitest 28 files / 162 tests；ESLint、typecheck、Vite 8.2.1 build、audit 0 vulnerabilities、docs、docs-facts、`git diff --check` 全部通过。
+- Browser：目标 Playwright 已加入 700/1100/1120/1180/1200/1280/1440/1920 断言；本地启动因 `/opt/google/chrome/chrome` 不存在而失败，未产生页面断言结果，待 PR #540 current-head Runner 验证。
+- 上游复读：Issue #539 仍 open 且 AC 未变化；`origin/main` 仍为 `0549d28726d2b132c7605fd019f4dde3b7c4e619` 并是当前分支祖先；PR #540 当前可合并且无 base 漂移。
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重新读取 Issue #539、目标 Figma 节点、当前 PR HEAD 与最新 main。
-- [ ] change_coverage：逐项核对 AC1—AC6 / R1—R6，所有必需项有当前 revision 直接证据。
-- [ ] reverse_audit：从用户动作反查 Page/Store/API/generated client；确认没有 Figma 示例或新平行状态机进入生产实现。
-- [ ] unresolved_cleared：所有 required 行为与门禁满足；未验证风险、N/A 理由和回滚边界明确。
+- [x] upstream_re_read：Ready 前已重新读取 Issue #539、目标 Figma 主页面/Compact/Page Metadata、PR #540 与最新 `origin/main`；AC 和 base 未漂移。
+- [x] change_coverage：逐项核对 AC1—AC6 / R1—R6；生产 CSS、Unit、Browser 断言、Owner 文档和本地门禁均有当前代码树直接证据。
+- [x] reverse_audit：从刷新、筛选、导入、补采、详情和分页动作反查 Page/Store/API/generated client；本次未改调用链，也没有写入 Figma 示例或新平行状态机。
+- [x] unresolved_cleared：实现范围无残留 TODO；本地 Chrome 缺失、current-head CI 与独立 Review 被明确保留为合并前外部门禁，Backend/Contract/DB/Provider 的 N/A 与回滚边界明确。
 
 # 文档影响
 
-本 Change 会新增采集运行中心专门 Figma 开发基线，并更新现有 Figma 工作流与 Guide 导航。Blueprint、API、Operations、Product 文档不受影响，因为本次不改变业务能力、接口、数据、部署或运行语义。
+本 Change 新增采集运行中心专门 Figma 开发基线，并更新现有 Figma 工作流与 Guide 导航。Blueprint、API、Operations、Product 文档不受影响，因为本次不改变业务能力、接口、数据、部署或运行语义。
 
 # 兼容、部署与回滚
 
