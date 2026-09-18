@@ -349,7 +349,7 @@ test('keeps terminal analysis history out of the formal data canvas and availabl
   await page.getByRole('button', { name: /任务中心/ }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
-  await expect(taskCenter).toContainText('AI 打标任务 12')
+  await expect(taskCenter).toContainText('AI 分析任务 12')
   await expect(taskCenter).toContainText('已完成')
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
@@ -432,10 +432,11 @@ test('renders the formal error banner and recoverable list error state', async (
   })
 
   await page.goto('/voice-plaza')
-  await expect(page.getByText('加载声音广场失败')).toBeVisible()
-  await expect(page.getByText('暂时无法加载声音记录')).toBeVisible()
-  await expect(page.getByText('检查网络或服务状态后点击“刷新数据”重试。')).toBeVisible()
-  await expect(page.locator('.page-error')).toContainText('req_voice_plaza_figma_error')
+  const pageError = page.locator('.page-error')
+  await expect(pageError).toContainText('暂时无法加载声音记录')
+  await expect(pageError).toContainText('请检查网络或服务状态后重试。')
+  await expect(pageError).not.toContainText('req_voice_plaza_figma_error')
+  await expect(page.locator('.table-state--error')).toContainText('检查网络或服务状态后点击“刷新数据”重试。')
   await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
   expectNear((await page.locator('.table-state--error').boundingBox())?.height, 306)
 
@@ -455,7 +456,7 @@ test('keeps the formal runtime-unavailable warning while the content list stays 
 
   await page.goto('/voice-plaza')
   const warning = page.locator('.capability-warning')
-  await expect(warning).toContainText('AI 打标暂不可用：管理员尚未完成 AI 模型配置。')
+  await expect(warning).toContainText('AI 分析暂不可用：管理员尚未完成 AI 模型配置。')
   await expect(page.getByRole('button', { name: 'AI 分析', exact: true })).toBeDisabled()
   await expect(page.locator('.content-row')).toHaveCount(3)
   await expect(page.getByRole('button', { name: '查看详情' }).first()).toBeEnabled()
@@ -531,13 +532,15 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
   await analysisButton.click()
   const analysisDialog = page.getByRole('dialog', { name: '开始 AI 分析' })
   await expect(analysisDialog).toBeVisible()
-  await expect(analysisDialog.getByText('预计分析 1 条内容 · 1 个分片 · 每片最多 1 条')).toBeVisible()
+  await expect(analysisDialog.getByText('预计分析 1 条内容')).toBeVisible()
+  await expect(analysisDialog).not.toContainText('分片')
+  await expect(analysisDialog).not.toContainText('Prompt')
   await expect(analysisDialog.getByRole('button', { name: '确认开始分析' })).toBeEnabled()
   const analysisBox = await analysisDialog.boundingBox()
   expectNear(analysisBox?.x, 410)
-  expectNear(analysisBox?.y, 195)
+  expectNear(analysisBox?.y, 265.5)
   expectNear(analysisBox?.width, 620)
-  expectNear(analysisBox?.height, 510)
+  expectNear(analysisBox?.height, 369)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-analysis.png', fullPage: true })
   }
