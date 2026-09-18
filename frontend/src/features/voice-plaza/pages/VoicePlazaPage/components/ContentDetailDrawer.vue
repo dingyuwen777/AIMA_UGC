@@ -169,25 +169,19 @@ function showMedia(index: number): void {
   const targetIndex = Math.min(Math.max(index, 0), mediaItems.value.length - 1)
   const target = grid.children.item(targetIndex)
   if (!(target instanceof HTMLElement)) return
-  const gridRect = grid.getBoundingClientRect()
-  const targetRect = target.getBoundingClientRect()
   activeMediaIndex.value = targetIndex
-  grid.scrollTo({
-    left: grid.scrollLeft + targetRect.left - gridRect.left,
-  })
+  grid.scrollTo({ left: target.offsetLeft, behavior: 'auto' })
 }
 
 /** 根据原生触控或触控板滚动位置同步当前图片序号。 */
 function syncMediaIndex(): void {
   const grid = mediaGrid.value
   if (!grid || !hasMediaNavigation.value) return
-  const gridRect = grid.getBoundingClientRect()
-  const gridCenter = gridRect.left + gridRect.width / 2
   let nearestIndex = 0
   let nearestDistance = Number.POSITIVE_INFINITY
   Array.from(grid.children).forEach((child, index) => {
-    const childRect = child.getBoundingClientRect()
-    const distance = Math.abs(childRect.left + childRect.width / 2 - gridCenter)
+    if (!(child instanceof HTMLElement)) return
+    const distance = Math.abs(child.offsetLeft - grid.scrollLeft)
     if (distance < nearestDistance) {
       nearestDistance = distance
       nearestIndex = index
@@ -787,8 +781,49 @@ header small { font-size: 12px; }
 .info-grid dd { font-size: 13px; line-height: 20px; text-align: left; }
 .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .metric-grid span { min-height: 64px; padding: 10px 12px; place-items: start; align-content: center; background: #f7f9fb; font-size: 12px; }
-.media-grid { grid-template-columns: 1fr; }
-.media-grid img { height: 100px; }
+.media-carousel { position: relative; overflow: hidden; border-radius: 8px; }
+.media-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  grid-template-columns: none;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-behavior: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.media-grid::-webkit-scrollbar { display: none; }
+.media-grid a { scroll-snap-align: start; }
+.media-grid img { height: 180px; }
+.media-navigation {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  color: var(--aima-text);
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 2px 8px rgb(23 35 61 / 14%);
+  cursor: pointer;
+}
+.media-navigation--previous { left: 8px; }
+.media-navigation--next { right: 8px; }
+.media-navigation:disabled { cursor: default; opacity: .38; }
+.media-position {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: white;
+  background: rgb(17 22 37 / 65%);
+  font-size: 10px;
+}
 .drawer-body > .manual-summary { display: grid; gap: 6px; padding: 12px; border-radius: 6px; background: #f7f9fb; }
 .manual-summary h4 { margin: 0; font-size: 16px; }
 .manual-summary > div { display: flex; min-height: 32px; align-items: center; gap: 12px; border-radius: 4px; background: white; }
