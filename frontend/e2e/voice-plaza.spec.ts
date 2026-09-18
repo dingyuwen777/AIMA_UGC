@@ -377,7 +377,6 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('售后服务 / 客服与服务态度')
   await expect(page.getByText('我也关注冬季续航。')).toBeVisible()
   await expect(page.getByText('已采集')).toBeVisible()
-  await page.getByRole('button', { name: '查看 1 条回复' }).click()
   await expect(page.getByText('低温时我也遇到了，充电后会好一些。')).toBeVisible()
   await expect(page.getByText('回复 用户乙')).toBeVisible()
   await expect(page.getByText('原作者', { exact: true })).toBeVisible()

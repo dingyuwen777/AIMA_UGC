@@ -18,6 +18,7 @@ from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.content_queries import PostgresContentQueryRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.storage.local import LocalArtifactStore
@@ -125,6 +126,43 @@ def _comments_response() -> dict[str, object]:
     root["sub_comment_count"] = 0
     root["sub_comments"] = []
     page["comments"] = [root]
+    page["has_more"] = False
+    return body
+
+
+def _comments_response_with_replies() -> dict[str, object]:
+    body = _fixture("comments_page1.sanitized.json")
+    outer = body["data"]
+    assert isinstance(outer, dict)
+    page = outer["data"]
+    assert isinstance(page, dict)
+    comments = page["comments"]
+    assert isinstance(comments, list) and comments
+    root = comments[0]
+    assert isinstance(root, dict)
+    root["note_id"] = "note-fixture-1"
+    root["sub_comment_count"] = 1
+    root["sub_comments"] = []
+    page["comments"] = [root]
+    page["has_more"] = False
+    return body
+
+
+def _sub_comments_response(root_comment_id: str) -> dict[str, object]:
+    body = _fixture("sub_comments_page1.sanitized.json")
+    outer = body["data"]
+    assert isinstance(outer, dict)
+    page = outer["data"]
+    assert isinstance(page, dict)
+    comments = page["comments"]
+    assert isinstance(comments, list) and comments
+    reply = comments[0]
+    assert isinstance(reply, dict)
+    reply["note_id"] = "note-fixture-1"
+    target = reply["target_comment"]
+    assert isinstance(target, dict)
+    target["id"] = root_comment_id
+    page["comments"] = [reply]
     page["has_more"] = False
     return body
 
@@ -280,3 +318,132 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
         assert run_comment_count == 1
     finally:
         session.close()
+
+def test_scope_runtime_preserves_reply_parent_relation_for_voice_plaza(
+    database_runtime: DatabaseRuntime,
+    tmp_path: Path,
+) -> None:
+    """TikHub 可证明直接父评论时，采集、入库和声音广场读取都必须保留关系。"""
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            provider_config = PostgresProviderConfigRepository(session).create(
+                ProviderConfig(
+                    id=uuid4(),
+                    provider="tikhub",
+                    display_name="TikHub Scope Reply Relation Runtime",
+                    base_url="https://api.tikhub.io",
+                    secret_ref="providers/tikhub/test/scope-reply-relation",
+                    enabled=True,
+                )
+            )
+            job = PostgresJobRepository(session).enqueue(
+                job_type="collection.run.v1",
+                payload_version="collection.run.v1",
+                payload={"schema_version": "collection.run.v1"},
+                internal_idempotency_key=f"scope-reply-relation:{uuid4()}",
+                request_id=None,
+                priority=10,
+                max_attempts=2,
+                timeout_seconds=300,
+            )
+            CollectionExecutionService(PostgresCollectionRepository(session)).create_run(
+                job_id=job.id,
+                trigger_type="api",
+                config_snapshot={
+                    **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
+                    "detail_policy": "on_change",
+                    "comment_policy": "adaptive",
+                    "include_sub_comments": True,
+                    "platforms": [
+                        {
+                            "platform": "xiaohongshu",
+                            "provider_config_id": str(provider_config.id),
+                            "config": {
+                                "sort_mode": "latest",
+                                "published_within": "1d",
+                                "content_type": "all",
+                            },
+                        }
+                    ],
+                },
+                scopes=(
+                    CollectionScopeDefinition(
+                        platform="xiaohongshu",
+                        source_type="keyword_search",
+                        source_value="爱玛",
+                        operation_group="content_discovery",
+                    ),
+                ),
+            )
+        with session.begin():
+            claimed = PostgresJobRepository(session).claim_next(
+                supported_job_types=("collection.run.v1",),
+                worker_id="scope-reply-relation-worker",
+                lease_seconds=120,
+            )
+        assert claimed is not None and claimed.lease_token is not None
+    finally:
+        session.close()
+
+    comments_response = _comments_response_with_replies()
+    root_comment_id = _first_comment_id(comments_response)
+    transport = FakeProviderTransport(
+        (
+            ProviderTransportResponse(status_code=200, body=_search_response()),
+            ProviderTransportResponse(status_code=200, body=_detail_response()),
+            ProviderTransportResponse(status_code=200, body=comments_response),
+            ProviderTransportResponse(
+                status_code=200,
+                body=_sub_comments_response(root_comment_id),
+            ),
+        )
+    )
+    fence = JobExecutionFence(job_id=job.id, lease_token=claimed.lease_token)
+    result = CollectionRunExecutor(
+        gateway=PostgresCollectionRunExecutionGateway(database_runtime.new_session),
+        scope_executor=TikHubCollectionScopeExecutor(
+            session_factory=database_runtime.new_session,
+            raw_artifacts=_raw_service(database_runtime, tmp_path / "artifacts"),
+            artifacts=ArtifactService(
+                metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
+                store=LocalArtifactStore(tmp_path / "artifacts"),
+            ),
+            artifact_store=LocalArtifactStore(tmp_path / "artifacts"),
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda secret_ref: (
+                SecretStr("fixture-secret")
+                if secret_ref == provider_config.secret_ref
+                else (_ for _ in ()).throw(AssertionError("unexpected secret_ref"))
+            ),
+            observed_at=lambda: _OBSERVED_AT,
+        ),
+    ).execute(fence=fence, context=_Context(fence))
+
+    assert result.outcome == "succeeded"
+    assert transport.call_count == 4
+    assert transport.seen_requests[-1].path.endswith("/get_note_sub_comments")
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            rows = tuple(session.execute(select(comments_table)).mappings())
+            root = next(row for row in rows if row["external_comment_id"] == root_comment_id)
+            repository = PostgresContentQueryRepository(session, analysis_identity=None)
+            replies = repository.list_comments_page(
+                root["content_id"],
+                root_comment_id=root_comment_id,
+                position=None,
+                limit=20,
+            )
+        assert len(rows) == 2
+        assert len(replies) == 1
+        reply = replies[0]
+        assert reply.text == "脱敏二级回复"
+        assert reply.root_comment_id == root_comment_id
+        assert reply.parent_comment_id == root_comment_id
+        assert reply.parent_author_display_name == "脱敏用户"
+    finally:
+        session.close()
+
