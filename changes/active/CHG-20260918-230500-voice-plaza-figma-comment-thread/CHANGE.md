@@ -15,10 +15,12 @@ affected_areas:
   - content
   - comments
   - tikhub
+  - collection-strategy
   - testing
 affected_paths:
   - frontend/src/features/voice-plaza/
   - frontend/src/features/task-center/
+  - frontend/src/features/collection-strategy/pages/CollectionStrategyPage/components/KeywordPackPanel.vue
   - frontend/tests/
   - frontend/e2e/
   - frontend/e2e-fullstack/
@@ -34,7 +36,7 @@ data_changes: []
 # 变更摘要
 
 - **要解决的问题**：READY Figma 已成为声音广场正式视觉/交互基线，但当前 Vue 仍保留部分工程化文案与布局漂移；同时详情评论回归为必须额外点击才看到回复，且 XHS 明确父评论字段与原作者身份存在跨层丢失窗口。
-- **拟议修改**：按 Figma Owner 链增量对齐 Voice Plaza/Task Center/Shared UI；恢复本地已入库回复首屏；补 XHS 明确父级兼容与原作者读取推导；不改变公共 Schema/HTTP 字段、generated client 或 TikHub 二级回复默认采集开关。
+- **拟议修改**：按 Figma Owner 链增量对齐 Voice Plaza/Task Center；恢复本地已入库回复首屏；补 XHS 明确父级兼容与原作者读取推导；current-head Required CI 发现采集策略关键词包详情卡与其正式 Figma 几何已发生确定性漂移，因此只在该既有 Owner 内做最小几何校准；不改变公共 Schema/HTTP 字段、generated client 或 TikHub 二级回复默认采集开关。
 - **预期结果**：普通用户打开详情即可看到一级评论、二级回复、可证明的“回复谁”和原作者；不能证明直接父级时只表达根线程归属；页面视觉/状态/产品语言与正式 Figma 一致。
 
 # 背景、现状与问题
@@ -78,6 +80,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 | E7 | 五平台能力文档允许部分平台只证明 root thread | `docs/appendix/02_TikHub五平台真实响应与字段映射.md` | parent 未知必须保持未知 |
 | E8 | PR #527 没有把直接父级关系固定成跨层回归 | 归档 Change + Full-stack 测试审计 | 本 Change 必须补纵切与 Browser 回归 |
 | E9 | Requirement Source #541 已按 canonical `[缺陷]` Issue Profile 归一，AC1—AC8 保持原需求语义 | GitHub Issue #541 live readback | current-head CI 可执行真实 Requirement Source Contract 校验 |
+| E10 | Required CI 暴露采集策略关键词包正式画板几何漂移；当前 Figma `4627:13216` 的详情卡为约 373×288.84、归档区 y≈594.84 | Figma `4814:24037` Design Context + `I4804:12720;4798:1788;7768:3299` metadata | 只修 `KeywordPackPanel` 已有 Owner 的高度/间距，不改采集策略业务能力 |
 
 ## 推断与待确认
 
@@ -186,6 +189,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 | XHS Mapper | flat target 兼容 | Provider 明确父级不能丢 | R4—R6 / E5 |
 | PostgreSQL Content Query | 原作者投影 | 利用既有账号身份事实 | R4—R6 / E6 |
 | Voice Plaza / Task Center dialogs | 产品化文案与状态 | 跟随 Figma | R1—R3 / E1 |
+| Collection Strategy KeywordPackPanel | 仅校准详情卡 289px、高度内 flex 布局与归档区 20px 间距 | Required CI 的确定性 Figma 几何阻塞；不吸收其它采集策略改动 | R8 / E10 |
 | Unit/Integration/E2E/Full-stack | 回归保护 | 固定跨层可观察行为 | R4—R8 / E8 |
 | 当前 Change | 完成定义、验证与交付证据 | L3 Completion Gate | R1—R8 |
 
@@ -193,6 +197,7 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 - [x] 建立 Issue、Change、任务分支和 Draft PR
 - [x] 建立评论关系回归并完成最小实现
 - [x] 完成 Figma Design-to-Code Delta，并验证未把单页几何扩散到其它正式页面
+- [x] 对 Required CI 暴露的采集策略关键词包几何阻塞按当前正式 Figma 做最小 Owner 校准
 - [x] 完成需求追溯与反向能力审计
 - [x] 同步当前 Change 到 ready_for_review
 - [ ] 取得 current-head CI、独立 Review、merge/main-fresh/archive/closure 证据
@@ -251,7 +256,8 @@ Requirement Source 为 Issue #541。用户已先行验收声音广场 Figma 文�
 | --- | --- | --- | --- | --- |
 | V1 | Figma current | Formal/Owner/Prototype/Geometry/术语机器审计 | READY；invalid destinations=0、enabled dead actions=0、正式 UI 工程术语=0、Canvas overlap/overflow=0 | 当前设计可作为实现基线 |
 | V2 | PR current branch | 逐层代码与历史正常参照审计 | PG/HTTP root/direct-parent 仍在；实际缺口收敛到 Store/XHS target/original-author/UI 降级 | 根因与修改范围有直接证据 |
-| V3 | current-head GitHub Runner | Required CI | Requirement Source 已归一；本次同步提交触发新的完整 current-head run | CI 结果仍以该 run 实际结论为准 |
+| V3 | current-head GitHub Runner | Required CI | 前序运行已证明 Python format/lint/type、Unit/Contract/API、Architecture/Wheel 和大部分 Browser Mock 通过；后续修复仅针对剩余确定性几何/媒体状态失败 | final-head CI 仍必须重新完整取证 |
+| V4 | Figma current / Required CI | Collection Strategy geometry cross-check | 归档区 y≈594.84、详情卡 h≈288.84；旧实现工作区多出 10px | 采集策略最小 CSS 校准有正式设计证据，不是无关重构 |
 
 ## 未验证内容与剩余风险
 
