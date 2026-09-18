@@ -303,7 +303,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       <section class="hero">
         <div class="badges">
           <span class="platform">{{ platformLabel(item.platform) }}</span>
-          <span class="analysis">{{ item.analysis.status === 'completed' ? item.analysis.sentiment || '已打标' : item.analysis.status === 'stale' ? '需重新打标' : '未打标' }}</span>
+          <span class="analysis">{{ item.analysis.status === 'completed' ? item.analysis.sentiment || '已分析' : item.analysis.status === 'stale' ? '需重新分析' : '未分析' }}</span>
         </div>
         <h3>{{ contentSummary(item.title, item.text) }}</h3>
         <p>{{ item.text || '该内容没有正文。' }}</p>
