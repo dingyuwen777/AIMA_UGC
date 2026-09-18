@@ -445,13 +445,18 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
+  /** 恢复归档词包但保持用户当前选择，不因低频生命周期操作切换工作上下文。 */
   async function restoreArchivedPack(packId: string): Promise<boolean> {
+    const current = selectedPack.value
     saving.value = true
     error.value = null
     try {
-      const restored = await restorePack(packId)
+      await restorePack(packId)
       await Promise.all([refresh(), loadArchivedPacks()])
-      await openPack(restored.id)
+      if (current) {
+        selectedPack.value = current
+        packDetails.value = { ...packDetails.value, [current.id]: current }
+      }
       return true
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -628,13 +633,14 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
+  /** 恢复归档计划后停留在计划列表，不自动打开刚恢复的详情。 */
   async function restoreArchivedPlan(planId: string): Promise<boolean> {
     saving.value = true
     error.value = null
     try {
-      const restored = await restorePlan(planId)
+      await restorePlan(planId)
       await Promise.all([refresh(), loadArchivedPlans()])
-      selectedPlan.value = restored
+      selectedPlan.value = null
       return true
     } catch (reason) {
       error.value = errorMessage(reason)

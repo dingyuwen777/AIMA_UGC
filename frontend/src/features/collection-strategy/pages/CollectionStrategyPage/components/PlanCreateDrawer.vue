@@ -261,7 +261,7 @@ function submit(): void {
             @keydown.enter="togglePlatform(option.value)"
           >
             <span>{{ option.label }}</span><select
-              v-if="isPlatformSelected(option.value)"
+              v-if="isPlatformSelected(option.value) && configsFor(option.value).length > 1"
               v-model="providerByPlatform[option.value]"
               :aria-label="`${option.label}采集服务`"
               @click.stop
@@ -280,7 +280,7 @@ function submit(): void {
               >
                 {{ config.display_name }}
               </option>
-            </select><small v-else>{{ configsFor(option.value).length ? '点击选择' : '暂无可用配置' }}</small>
+            </select><small v-else-if="!isPlatformSelected(option.value)">{{ configsFor(option.value).length ? '点击选择' : '暂无可用配置' }}</small><small v-else>已选择</small>
             <div
               v-if="providerByPlatform[option.value] && searchCapability(option.value)"
               class="platform-search"
