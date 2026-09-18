@@ -122,7 +122,7 @@ function selectScope(next: AnalysisScope): void {
         class="preview"
       >
         <strong>预计分析 {{ preview.target_count }} 条内容</strong>
-        <small>分析规则由管理员统一维护。确认开始后执行，运行进度可在任务中心查看。</small>
+        <small>分析可能产生服务费用。确认开始后执行，运行进度可在任务中心查看。</small>
       </div>
     </div>
     <template #footer>
@@ -178,7 +178,7 @@ footer :deep(.aima-button) { height: 38px; }
 .preview small { font-size: 11px; line-height: 18px; }
 footer :deep(.is-primary) { min-width: 190px; }
 @media (max-height: 570px) { .body { min-height: 0; } }
-:global(.voice-analysis-modal) { height: 380px; }
+:global(.voice-analysis-modal) { height: 369px; }
 :global(.voice-analysis-modal > .aima-dialog-body) { flex: 1; }
 .body { min-height: 0; max-height: none; }
 </style>
