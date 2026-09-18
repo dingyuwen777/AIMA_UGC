@@ -8,6 +8,7 @@ import type {
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { collectionPlatformLabel, collectionScheduleLabel, formatBeijingDateTime } from '../../../presentation'
+import ArchivedResourcePanel from './ArchivedResourcePanel.vue'
 
 withDefaults(defineProps<{
   plans: CollectionPlanResponse[]
@@ -30,7 +31,7 @@ const emit = defineEmits<{
   toggle: [plan: CollectionPlanResponse]
   loadArchived: []
   restoreArchived: [planId: string]
-  deleteArchived: [planId: string]
+  deleteArchived: [item: ResourceLifecycleResponse]
   previous: []
   next: []
 }>()
@@ -68,7 +69,7 @@ function planScopeSummary(plan: CollectionPlanResponse): string {
   return `${plan.keyword_pack_ids.length} 个关键词包 · ${plan.platforms.length} 个平台`
 }
 
-/** 普通列表只展示业务平台名称，Provider 身份留在计划详情技术层。 */
+/** 普通列表只展示业务平台名称，内部采集配置身份不进入用户视图。 */
 function channelLines(plan: CollectionPlanResponse): string[] {
   const lines = plan.platforms.map((item) => collectionPlatformLabel(item.platform))
   if (lines.length <= 2) return lines
@@ -79,23 +80,12 @@ function channelLines(plan: CollectionPlanResponse): string[] {
 function nextRun(value?: string | null): string {
   return value ? formatBeijingDateTime(value) : '等待调度初始化'
 }
-
-/** 展开归档目录时按需读取归档计划。 */
-function onArchivedToggle(event: Event): void {
-  if ((event.currentTarget as HTMLDetailsElement).open) emit('loadArchived')
-}
-
-/** 永久删除前再次提示不可逆性，最终资格仍由服务端判断。 */
-function deleteArchived(item: ResourceLifecycleResponse): void {
-  if (!window.confirm(`确认永久删除已归档采集计划“${item.name}”吗？只有从未执行且没有历史引用的计划才会被服务端允许删除。`)) return
-  emit('deleteArchived', item.id)
-}
 </script>
 
 <template>
   <section class="plan-card">
     <AimaFeedbackBanner tone="info">
-      采集计划执行时会冻结 Keyword Pack 搜索词与品牌车型过滤范围；重新启用后从下一调度周期开始执行，不补跑停用期间任务。
+      每次执行时，系统自动保存关键词包、品牌车型范围和平台搜索配置；后续修改不影响历史运行。重新启用后从下一周期执行，不补跑停用期间任务。
     </AimaFeedbackBanner>
     <div class="table-heading">
       <strong>找到 {{ total }} 条采集计划</strong>
@@ -182,48 +172,18 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
       </button>
     </nav>
 
-    <details
+    <ArchivedResourcePanel
       class="archived-plans"
-      @toggle="onArchivedToggle"
-    >
-      <summary>已归档采集计划</summary>
-      <div
-        v-if="loadingArchived"
-        class="archived-state"
-      >
-        正在读取…
-      </div>
-      <div
-        v-else-if="archived.length === 0"
-        class="archived-state"
-      >
-        暂无已归档计划。
-      </div>
-      <div
-        v-for="item in archived"
-        v-else
-        :key="item.id"
-        class="archived-row"
-      >
-        <span><strong>{{ item.name }}</strong><small>归档于 {{ formatBeijingDateTime(item.archived_at) }}</small></span>
-        <AimaButton
-          variant="text"
-          size="small"
-          :disabled="saving"
-          @click="emit('restoreArchived', item.id)"
-        >
-          恢复
-        </AimaButton>
-        <AimaButton
-          variant="text"
-          size="small"
-          :disabled="saving"
-          @click="deleteArchived(item)"
-        >
-          永久删除
-        </AimaButton>
-      </div>
-    </details>
+      title="已归档采集计划"
+      loading-message="正在加载已归档采集计划…"
+      empty-message="暂无已归档采集计划 · 归档后的计划会显示在这里"
+      :items="archived"
+      :loading="loadingArchived"
+      :saving="saving"
+      @load="emit('loadArchived')"
+      @restore="emit('restoreArchived', $event.id)"
+      @request-delete="emit('deleteArchived', $event)"
+    />
   </section>
 </template>
 
@@ -238,5 +198,5 @@ function deleteArchived(item: ResourceLifecycleResponse): void {
 .table-state { display: grid; min-width: 100%; min-height: 225px; align-content: center; justify-items: center; gap: 6px; color: #8993a4; font-size: 12px; }.table-state strong { color: #313c4f; font-size: 14px; }.table-state span { color: #8993a4; font-size: 11px; }
 .plan-table td strong { overflow-wrap: anywhere; }
 .pagination { display: flex; align-items: center; justify-content: flex-start; gap: 12px; margin-top: 14px; color: #6f7a8d; font-size: 12px; }.pagination button { height: 32px; padding: 0 12px; border: 1px solid #d8dee8; border-radius: 6px; color: #526075; background: #fff; cursor: pointer; }.pagination button:disabled { opacity: .45; cursor: default; }
-.archived-plans { margin-top: 14px; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }.archived-plans summary { padding: 12px 16px; cursor: pointer; color: #536075; font-size: 12px; font-weight: 600; }.archived-state { padding: 16px; color: #8993a4; font-size: 12px; }.archived-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid #edf0f4; }.archived-row strong,.archived-row small { display: block; }.archived-row strong { color: #313c4f; font-size: 12px; }.archived-row small { margin-top: 3px; color: #929baa; font-size: 10px; }
+.archived-plans { margin-top: 31px; }
 </style>
