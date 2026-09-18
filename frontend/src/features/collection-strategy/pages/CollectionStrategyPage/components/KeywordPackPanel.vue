@@ -185,7 +185,7 @@ function keywordScopeLabel(scope?: string): string {
 </template>
 
 <style scoped>
-.panel-grid { display: grid; gap: 20px; }
+.panel-grid { display: grid; gap: 11px; }
 .strategy-workspace { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
 .list-column { min-width: 0; flex: 1 1 640px; }
 .table-card,.detail-card { border: 1px solid var(--aima-border); border-radius: 9px; background: #fff; }
