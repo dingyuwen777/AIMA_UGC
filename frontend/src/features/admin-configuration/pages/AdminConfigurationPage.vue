@@ -7,8 +7,9 @@ import ProviderConfigurationPanel from '../components/ProviderConfigurationPanel
 import AnalysisSchemePanel from './AdminConfigurationPage/components/AnalysisSchemePanel.vue'
 import AuditPanel from './AdminConfigurationPage/components/AuditPanel.vue'
 import CatalogConfigurationPanel from './AdminConfigurationPage/components/CatalogConfigurationPanel.vue'
+import ReportStrategyPanel from './AdminConfigurationPage/components/ReportStrategyPanel.vue'
 
-type Tab = 'catalog' | 'llm' | 'tikhub' | 'scheme' | 'audit'
+type Tab = 'catalog' | 'llm' | 'tikhub' | 'scheme' | 'audit' | 'report'
 
 const tab = ref<Tab>('catalog')
 
@@ -25,7 +26,7 @@ const tab = ref<Tab>('catalog')
     <main class="admin-page">
       <AimaPageHeader
         title="管理员配置"
-        description="统一管理品牌、车型、AI 模型、采集服务和 AI 分析规则。技术标识与原始审计数据仅在需要时展开查看。"
+        description="统一管理品牌、车型、AI 模型、采集服务、AI 分析规则和报告发布准备。技术标识与原始审计数据仅在需要时展开查看。"
       />
 
       <nav
@@ -33,7 +34,7 @@ const tab = ref<Tab>('catalog')
         aria-label="管理员配置分类"
       >
         <button
-          v-for="item in ([['catalog', '品牌与车型'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'AI 分析规则'], ['audit', '操作记录']] as const)"
+          v-for="item in ([['catalog', '品牌与车型'], ['llm', 'AI 模型'], ['tikhub', 'TikHub'], ['scheme', 'AI 分析规则'], ['audit', '操作记录'], ['report', '报告策略']] as const)"
           :key="item[0]"
           type="button"
           :class="{ active: tab === item[0] }"
@@ -53,7 +54,8 @@ const tab = ref<Tab>('catalog')
         provider-kind="collection"
       />
       <AnalysisSchemePanel v-else-if="tab === 'scheme'" />
-      <AuditPanel v-else />
+      <AuditPanel v-else-if="tab === 'audit'" />
+      <ReportStrategyPanel v-else />
     </main>
   </AppShell>
 </template>

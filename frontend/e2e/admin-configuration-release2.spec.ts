@@ -200,15 +200,58 @@ async function expectNoGlobalHorizontalScroll(page: Page): Promise<void> {
   expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1)
 }
 
-test('admin exposes exactly the five real tabs and never exposes report strategy', async ({ page }) => {
+test('admin exposes the six approved tabs including the frontend report strategy', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
   const nav = page.getByRole('navigation', { name: '管理员配置分类' })
-  await expect(nav.getByRole('button')).toHaveCount(5)
-  for (const name of ['品牌与车型', 'AI 模型', 'TikHub', 'AI 分析规则', '操作记录']) {
+  await expect(nav.getByRole('button')).toHaveCount(6)
+  for (const name of ['品牌与车型', 'AI 模型', 'TikHub', 'AI 分析规则', '操作记录', '报告策略']) {
     await expect(nav.getByRole('button', { name, exact: true })).toBeVisible()
   }
-  await expect(nav.getByRole('button', { name: '报告策略', exact: true })).toHaveCount(0)
+  await nav.getByRole('button', { name: '报告策略', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '飞书报告发布' })).toBeVisible()
+  await expect(page.getByText('上传本期和上期 XLSX')).toBeVisible()
+})
+
+test('report strategy validates local inputs and states the backend boundary without sending a fake task', async ({ page }) => {
+  const mutations: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/api/') && request.method() !== 'GET') {
+      mutations.push(`${request.method()} ${request.url()}`)
+    }
+  })
+  await mockAdmin(page)
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: '报告策略', exact: true }).click()
+
+  const submit = page.getByRole('button', { name: '生成报告并同步到飞书', exact: true })
+  await expect(submit).toBeDisabled()
+  await page.getByLabel('本期 XLSX').setInputFiles({
+    name: '本期报告.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from('local-current-period'),
+  })
+  await page.getByLabel('上期 XLSX').setInputFiles({
+    name: '上期报告.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from('local-prior-period'),
+  })
+  await page.getByLabel('开始日期').fill('2026-09-10')
+  await page.getByLabel('结束日期').fill('2026-09-01')
+  await expect(submit).toBeEnabled()
+  await submit.click()
+  await expect(page.getByRole('alert')).toContainText('结束日期不早于开始日期')
+
+  await page.getByLabel('结束日期').fill('2026-09-17')
+  await submit.click()
+  await expect(page.getByRole('alert')).toContainText('报告服务尚未接入，暂不可提交')
+  await expect(page.getByRole('button', { name: '后端服务未接入', exact: true })).toBeDisabled()
+  expect(mutations).toEqual([])
+
+  await page.getByRole('button', { name: '重置', exact: true }).click()
+  await expect(page.getByLabel('开始日期')).toHaveValue('')
+  await expect(page.getByText('本期报告.xlsx')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '生成报告并同步到飞书', exact: true })).toBeDisabled()
 })
 
 test('brand catalog follows the 1440 wide geometry and keeps tables locally scrollable', async ({ page }) => {
