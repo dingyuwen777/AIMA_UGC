@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260919-114700-figma-code-final-sync
 title: 四页 Figma 与前端交互最终同步
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/figma-code-final-sync
 created: 2026-09-19
