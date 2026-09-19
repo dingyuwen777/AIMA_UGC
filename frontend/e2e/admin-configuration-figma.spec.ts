@@ -474,6 +474,13 @@ test('shows a failed connection result and can test again without losing saved c
   expect(calls).toBe(2)
 })
 
+test('does not warn when an untouched provider configuration switches tabs', async ({ page }) => {
+  await openProvider(page, 'AI 模型')
+  await page.getByRole('button', { name: 'TikHub', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '放弃未保存的修改' })).toHaveCount(0)
+  await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('TikHub配置 1')
+})
+
 test('guards unsaved AI model and TikHub drafts before switching tabs', async ({ page }) => {
   for (const [source, target, expectedTargetName] of [
     ['AI 模型', 'TikHub', 'TikHub配置 1'],
