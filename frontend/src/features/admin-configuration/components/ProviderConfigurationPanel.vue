@@ -26,6 +26,10 @@ const props = defineProps<{
   providerKind: 'llm' | 'collection'
 }>()
 
+const emit = defineEmits<{
+  'dirty-change': [dirty: boolean]
+}>()
+
 const items = ref<ProviderConfigResponse[]>([])
 const archivedItems = ref<ResourceLifecycleResponse[]>([])
 const selectedId = ref('')
@@ -77,6 +81,25 @@ const hasUnsavedChanges = computed(() => {
     || draft.enabled !== item.enabled
     || (isLlm.value && draft.isDefault !== item.is_default)
 })
+/** 页面离开保护只关心用户是否改变了当前草稿；空列表的默认占位草稿不应误报为未保存。 */
+const navigationDirty = computed(() => {
+  const item = selectedItem.value
+  if (item) return hasUnsavedChanges.value
+  const defaultDisplayName = isLlm.value ? '默认 AI 模型' : 'TikHub'
+  const defaultProvider = isLlm.value ? 'openai_compatible' : 'tikhub'
+  return draft.displayName.trim() !== defaultDisplayName
+    || draft.provider.trim() !== defaultProvider
+    || Boolean(draft.baseUrl.trim())
+    || Boolean(draft.model.trim())
+    || Boolean(draft.apiKey.trim())
+    || draft.timeoutSeconds !== 45
+    || draft.maxRetries !== 3
+    || draft.maxConcurrency !== 5
+    || Boolean(String(draft.maxRps).trim())
+    || draft.enabled !== true
+    || draft.isDefault !== isLlm.value
+})
+
 const formValid = computed(() => {
   if (!draft.displayName.trim() || !draft.provider.trim() || !draft.baseUrl.trim()) return false
   if (isLlm.value && !draft.model.trim()) return false
@@ -98,6 +121,9 @@ function invalidateConnectionTest(): void {
 }
 
 watch(draft, invalidateConnectionTest, { flush: 'sync' })
+
+/** 将当前草稿是否需要离开确认上送给管理员 Page Owner。 */
+watch(navigationDirty, (dirty) => emit('dirty-change', dirty), { immediate: true })
 
 async function load(preferredId?: string): Promise<void> {
   loading.value = true
