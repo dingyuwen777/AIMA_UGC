@@ -190,7 +190,7 @@ describe('全局任务中心聚合', () => {
     expect(store.activeCount).toBe(3)
     expect(store.activeItems.map((item) => item.kind)).toEqual(['analysis', 'collection', 'export'])
     expect(store.activeItems[0]).toMatchObject({
-      title: 'AI 打标任务 12',
+      title: 'AI 分析任务 12',
       statusLabel: '处理中',
       progress: 50,
       href: '/voice-plaza',
@@ -239,7 +239,7 @@ describe('全局任务中心聚合', () => {
 
     expect(store.activeCount).toBe(0)
     expect(store.recentItems).toHaveLength(12)
-    expect(store.recentItems[0].title).toBe('AI 打标任务 14')
-    expect(store.recentItems.at(-1)?.title).toBe('AI 打标任务 3')
+    expect(store.recentItems[0].title).toBe('AI 分析任务 14')
+    expect(store.recentItems.at(-1)?.title).toBe('AI 分析任务 3')
   })
 })

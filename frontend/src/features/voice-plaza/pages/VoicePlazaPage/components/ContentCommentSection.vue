@@ -64,8 +64,9 @@ function replyItems(rootCommentId: string): ContentCommentResponse[] {
 
 function replyTarget(comment: ContentCommentResponse): string {
   if (comment.parent_author_display_name) return `回复 ${comment.parent_author_display_name}`
+  if (comment.parent_comment_id === comment.root_comment_id) return '回复一级评论'
   if (comment.parent_comment_id) return '回复该线程中的评论'
-  return '回复这条一级评论'
+  return '属于该一级评论线程'
 }
 
 function replyButtonLabel(root: ContentCommentResponse): string {
@@ -115,7 +116,7 @@ function coverageLabel(): string {
       class="comment-state comment-state--error"
       role="alert"
     >
-      <p>评论暂时加载失败：{{ error }}</p>
+      <p>评论暂时加载失败，请稍后重试。</p>
       <AimaButton
         size="small"
         @click="emit('retry')"
@@ -179,7 +180,7 @@ function coverageLabel(): string {
           class="reply-error"
           role="alert"
         >
-          回复加载失败：{{ replyState(root.external_comment_id)?.error }}
+          回复暂时加载失败，请重试。
         </p>
         <AimaButton
           v-if="(root.ingested_reply_count ?? 0) > 0"
@@ -211,7 +212,7 @@ function coverageLabel(): string {
       class="comment-page-error"
       role="alert"
     >
-      更多评论加载失败：{{ error }}
+      更多评论暂时加载失败，请重试。
     </p>
   </section>
 </template>

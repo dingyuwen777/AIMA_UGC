@@ -91,9 +91,9 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
     const contentDetail = page.getByRole('dialog', { name: '内容详情' })
     await expect(contentDetail.getByText('脱敏一级评论')).toBeVisible()
     if (label === '小红书') {
-      await contentDetail.getByRole('button', { name: '查看 2 条回复' }).click()
       await expect(contentDetail.getByText('脱敏二级回复')).toBeVisible()
       await expect(contentDetail.getByText('脱敏第二页回复')).toBeVisible()
+      await expect(contentDetail.getByText('回复 脱敏用户').first()).toBeVisible()
     }
     await contentDetail.getByRole('button', { name: '关闭' }).click()
   }

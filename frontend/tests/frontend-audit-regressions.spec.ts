@@ -279,22 +279,23 @@ describe('frontend full-stack audit regressions', () => {
     expect(source).not.toContain("item.item_kind === 'chunk' && item.status === 'failed'")
   })
 
-  it('将声音详情的工程身份和原始状态码下沉到技术详情', async () => {
+  it('声音详情只展示产品化可用状态，不向普通用户暴露工程身份和原始状态码', async () => {
     const source = await readFile(
       new URL('../src/features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue', import.meta.url),
       'utf8',
     )
-    const technicalIndex = source.indexOf('<summary>技术详情</summary>')
-    const rawAvailabilityIndex = source.indexOf('{{ item.availability.status }} · {{ item.availability.reason_code }} · {{ item.availability.evidence_kind }}')
 
-    expect(technicalIndex).toBeGreaterThan(-1)
-    expect(source).not.toContain('Content ID: {{ item.id }}')
-    expect(source.indexOf('<dt>Content ID</dt>')).toBeGreaterThan(technicalIndex)
-    expect(source.indexOf('<dt>外部内容 ID</dt>')).toBeGreaterThan(technicalIndex)
+    expect(source).not.toContain('<summary>技术详情</summary>')
+    expect(source).not.toContain('<dt>Content ID</dt>')
+    expect(source).not.toContain('<dt>外部内容 ID</dt>')
+    expect(source).not.toContain('Provider Attempt')
+    expect(source).not.toContain('Raw Artifact')
+    expect(source).not.toContain('reason_code')
+    expect(source).not.toContain('evidence_kind')
+    expect(source).not.toContain('evidence.source_field')
     expect(source).toContain('<h4>内容可用状态</h4>')
-    expect(rawAvailabilityIndex).toBeGreaterThan(technicalIndex)
-    expect(source).toContain("sourceLabel(item.source.provider_name)")
-    expect(source).toContain("contentTypeLabel(item.content_type)")
+    expect(source).toContain('sourceLabel(item.source.provider_name)')
+    expect(source).toContain('contentTypeLabel(item.content_type)')
   })
 
   it('offers a retry control when the shared vehicle catalog fails to load', async () => {

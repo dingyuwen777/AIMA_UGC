@@ -76,7 +76,7 @@ function analysisMeta(item: ContentListItemResponse): string {
   const voiceType = item.analysis.voice_type ? `发声：${item.analysis.voice_type} · ` : ''
   const labelText = labels(item).map(labelPairText).join('、')
   if (item.analysis.status === 'stale') {
-    return reviewBadge ? `AI stale · ${reviewBadge}` : 'AI stale · 需重新打标'
+    return reviewBadge ? `需重新分析 · ${reviewBadge}` : '需重新分析'
   }
   if (item.analysis.status !== 'completed') {
     return reviewBadge ? `AI 未完成 · ${reviewBadge}` : 'AI 未完成'
@@ -303,7 +303,7 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
           <span
             v-else
             class="status-badge status-badge--neutral"
-          >{{ item.analysis.status === 'stale' ? '需重新打标' : '未打标' }}</span>
+          >{{ item.analysis.status === 'stale' ? '需重新分析' : '未分析' }}</span>
           <span
             v-if="item.analysis.voice_type"
             class="status-badge status-badge--voice"

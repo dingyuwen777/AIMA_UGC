@@ -433,6 +433,17 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       commentsHasMore.value = page.has_more
       commentsTotalCount.value = page.total_count
       commentsIngestedTotalCount.value = page.ingested_total_count
+
+      // 已入库回复是详情线程的一部分，不应要求用户再次点击后才能理解回复关系。
+      // 这里只读取本地 PostgreSQL 的首个回复页，不触发 TikHub/Provider 请求，也保留后续分页。
+      const rootsWithIngestedReplies = page.items.filter(
+        (root) => (root.ingested_reply_count ?? 0) > 0,
+      )
+      await Promise.all(
+        rootsWithIngestedReplies.map(
+          (root) => loadCommentReplies(root.external_comment_id, true, revision),
+        ),
+      )
     } catch (reason) {
       if (revision === detailRevision && detailId.value === contentId) {
         commentsError.value = errorMessage(reason)
@@ -445,10 +456,13 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
-  async function loadCommentReplies(rootCommentId: string, reset = false): Promise<void> {
+  async function loadCommentReplies(
+    rootCommentId: string,
+    reset = false,
+    revision = detailRevision,
+  ): Promise<void> {
     const contentId = detailId.value
     if (!contentId) return
-    const revision = detailRevision
     const current = commentReplyStates[rootCommentId]
     if (current?.loading || (!reset && current?.loaded && !current.hasMore)) return
     if (reset) commentReplies[rootCommentId] = []
@@ -573,7 +587,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         unlock_existing: unlockExisting,
       })
       detail.value = await fetchContentDetail(detail.value.id)
-      notice.value = '车型人工结论已保存；后续自动处理不会覆盖人工锁定。'
+      notice.value = '车型人工结论已保存；后续自动识别不会覆盖当前人工结果。'
       await refreshLoadedWindow()
       return true
     } catch (reason) {
@@ -597,7 +611,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         content_version: detail.value.content_version,
       })
       detail.value = await fetchContentDetail(detail.value.id)
-      notice.value = '分析人工纠正已保存；修改已锁定维度前必须显式解锁。'
+      notice.value = '分析人工纠正已保存；如需替换已确认结果，请先确认解除当前人工结论。'
       await refreshLoadedWindow()
       await refreshFilterOptions()
       return true
