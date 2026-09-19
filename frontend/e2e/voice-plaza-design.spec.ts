@@ -561,3 +561,26 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
     await page.screenshot({ path: 'test-results/voice-plaza-figma-export.png', fullPage: true })
   }
 })
+
+
+test('detail quick navigation scrolls to the formal content, AI, manual and comments sections', async ({ page }) => {
+  await stubNormalContents(page)
+  await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '查看详情' }).first().click()
+
+  const dialog = page.getByRole('dialog', { name: '内容详情' })
+  await expect(dialog).toBeVisible()
+  const nav = dialog.getByRole('navigation', { name: '详情快捷导航' })
+  for (const label of ['内容', 'AI 信息', '人工确认', '评论']) {
+    await expect(nav.getByRole('button', { name: label, exact: true })).toBeVisible()
+  }
+
+  const body = dialog.locator('.aima-dialog-body')
+  const before = await body.evaluate((node) => node.scrollTop)
+  await nav.getByRole('button', { name: '评论', exact: true }).click()
+  await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(before)
+  const commentTop = await body.evaluate((node) => node.scrollTop)
+
+  await nav.getByRole('button', { name: '内容', exact: true }).click()
+  await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeLessThan(commentTop)
+})
