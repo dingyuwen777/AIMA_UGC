@@ -387,8 +387,10 @@ test('未引用关键词包可以从业务界面归档、恢复并安全永久�
   await expect(packRow).toBeVisible()
   await packRow.click()
 
-  page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '归档', exact: true }).click()
+  const firstArchiveDialog = page.getByRole('dialog', { name: '确认归档关键词包' })
+  await expect(firstArchiveDialog).toContainText(pack.name)
+  await firstArchiveDialog.getByRole('button', { name: '确认归档', exact: true }).click()
   await expect(page.getByText('词包已归档。', { exact: true })).toBeVisible()
   await expect(page.locator('.pack-row').filter({ hasText: pack.name })).toHaveCount(0)
 
@@ -406,15 +408,19 @@ test('未引用关键词包可以从业务界面归档、恢复并安全永久�
   await expect(packRow).toContainText('已停用')
   await packRow.click()
 
-  page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: '归档', exact: true }).click()
+  const secondArchiveDialog = page.getByRole('dialog', { name: '确认归档关键词包' })
+  await expect(secondArchiveDialog).toContainText(pack.name)
+  await secondArchiveDialog.getByRole('button', { name: '确认归档', exact: true }).click()
   await expect(page.getByText('词包已归档。', { exact: true })).toBeVisible()
   archivedRow = archivedDetails.locator('.archived-row').filter({ hasText: pack.name })
   await expect(archivedRow).toBeVisible()
 
-  page.once('dialog', (dialog) => dialog.accept())
   await archivedRow.getByRole('button', { name: '永久删除', exact: true }).click()
-  await expect(page.getByText('未被业务引用的归档词包已永久删除。', { exact: true })).toBeVisible()
+  const deleteDialog = page.getByRole('dialog', { name: '永久删除已归档词包' })
+  await expect(deleteDialog).toContainText(pack.name)
+  await deleteDialog.getByRole('button', { name: '永久删除', exact: true }).click()
+  await expect(page.getByText('归档词包已永久删除。', { exact: true })).toBeVisible()
   await expect(archivedDetails.locator('.archived-row').filter({ hasText: pack.name })).toHaveCount(0)
 
   const deleted = await request.get(`/api/v1/keyword-packs/${pack.id}`)
