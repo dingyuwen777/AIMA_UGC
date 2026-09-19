@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import type {
   AnalysisSchemeDefinitionRequest,
@@ -39,6 +39,10 @@ const schemeLabelsValid = ref(true)
 const schemeCopyName = ref('')
 const schemeCopyEditing = ref(false)
 
+const emit = defineEmits<{
+  'dirty-change': [dirty: boolean]
+}>()
+
 const schemeDraft = reactive({
   schemeName: '',
   description: '',
@@ -56,15 +60,18 @@ const selectedSchemeVersion = computed(() => {
   return null
 })
 
-/** 发布只能消费已持久化草稿，未保存编辑不能直接生效。 */
-const hasUnsavedSchemeChanges = computed(() => {
+/** 判断当前编辑输入是否偏离所选版本；已发布版本的编辑同样属于尚未创建的新草稿。 */
+const navigationDirty = computed(() => {
   const selected = selectedSchemeVersion.value
-  if (!selected || selected.version.status !== 'draft') return false
+  if (!selected) return false
+  const defaultCopyName = `${selected.scheme.name} 副本`
+  if (schemeCopyEditing.value && schemeCopyName.value.trim() !== defaultCopyName) return true
   if (!schemeLabelsValid.value) return true
   try {
     const definition = schemeDefinition()
     const saved = selected.version.definition
-    return schemeDraft.description !== selected.version.description
+    return schemeDraft.schemeName !== selected.scheme.name
+      || schemeDraft.description !== selected.version.description
       || definition.prompt_template !== saved.prompt_template
       || JSON.stringify(definition.voice_types) !== JSON.stringify(saved.voice_types)
       || JSON.stringify(definition.sentiments) !== JSON.stringify(saved.sentiments)
@@ -73,6 +80,14 @@ const hasUnsavedSchemeChanges = computed(() => {
     return true
   }
 })
+
+/** 发布只能消费已持久化草稿，未保存编辑不能直接生效。 */
+const hasUnsavedSchemeChanges = computed(() =>
+  selectedSchemeVersion.value?.version.status === 'draft' && navigationDirty.value,
+)
+
+/** 将页面离开保护需要的草稿状态上送给管理员 Page Owner。 */
+watch(navigationDirty, (dirty) => emit('dirty-change', dirty), { immediate: true })
 
 onMounted(loadSchemes)
 

@@ -473,3 +473,99 @@ test('shows a failed connection result and can test again without losing saved c
   await expect(page.getByText('认证失败，请检查 API Key', { exact: true })).not.toBeVisible()
   expect(calls).toBe(2)
 })
+
+test('does not warn when an untouched provider configuration switches tabs', async ({ page }) => {
+  await openProvider(page, 'AI 模型')
+  await page.getByRole('button', { name: 'TikHub', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '放弃未保存的修改' })).toHaveCount(0)
+  await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('TikHub配置 1')
+})
+
+test('guards unsaved AI model and TikHub drafts before switching tabs', async ({ page }) => {
+  for (const [source, target, expectedTargetName] of [
+    ['AI 模型', 'TikHub', 'TikHub配置 1'],
+    ['TikHub', 'AI 模型', '模型配置 1'],
+  ] as const) {
+    await openProvider(page, source)
+    const field = page.getByLabel('配置名称', { exact: true })
+    await field.fill(`${source} 尚未保存`)
+
+    await page.getByRole('button', { name: target, exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '放弃未保存的修改' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('heading', { name: '放弃未保存的修改？', exact: true })).toBeVisible()
+
+    await dialog.getByRole('button', { name: '继续编辑', exact: true }).click()
+    await expect(dialog).not.toBeVisible()
+    await expect(field).toHaveValue(`${source} 尚未保存`)
+
+    await page.getByRole('button', { name: target, exact: true }).click()
+    await dialog.getByRole('button', { name: '放弃修改并切换', exact: true }).click()
+    await expect(dialog).not.toBeVisible()
+    await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue(expectedTargetName)
+  }
+})
+
+test('guards unsaved brand catalog edits before opening the read-only audit tab', async ({ page }) => {
+  await mockAdmin(page)
+  await page.goto('/admin/configuration')
+  const field = page.locator('.brand-overview .form-card').getByLabel('显示名称', { exact: true })
+  await field.fill('爱玛未保存名称')
+
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '放弃未保存的修改' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '继续编辑', exact: true }).click()
+  await expect(field).toHaveValue('爱玛未保存名称')
+
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+  await dialog.getByRole('button', { name: '放弃修改并切换', exact: true }).click()
+  await expect(page.getByRole('region', { name: '操作记录表格', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'AI 模型', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '放弃未保存的修改' })).toHaveCount(0)
+})
+
+test('guards an edited analysis-rule copy name before switching tabs', async ({ page }) => {
+  await mockAdmin(page)
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
+  await page.getByRole('button', { name: '复制规则', exact: true }).click()
+
+  const copyName = page.getByLabel('副本名称', { exact: true })
+  await copyName.fill('未保存的规则副本名称')
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: '放弃未保存的修改' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '继续编辑', exact: true }).click()
+  await expect(copyName).toHaveValue('未保存的规则副本名称')
+})
+
+test('guards unsaved analysis-rule and report-strategy inputs before switching tabs', async ({ page }) => {
+  await mockAdmin(page)
+  await page.goto('/admin/configuration')
+
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
+  const description = page.getByLabel('说明', { exact: true })
+  await description.fill('未保存的分析规则说明')
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: '放弃未保存的修改' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '继续编辑', exact: true }).click()
+  await expect(description).toHaveValue('未保存的分析规则说明')
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+  await dialog.getByRole('button', { name: '放弃修改并切换', exact: true }).click()
+
+  await page.getByRole('button', { name: '报告策略', exact: true }).click()
+  const startDate = page.getByLabel('开始日期', { exact: true })
+  await startDate.fill('2026-09-01')
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '放弃未保存的修改' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '继续编辑', exact: true }).click()
+  await expect(startDate).toHaveValue('2026-09-01')
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+  await dialog.getByRole('button', { name: '放弃修改并切换', exact: true }).click()
+  await expect(page.getByRole('region', { name: '操作记录表格', exact: true })).toBeVisible()
+})

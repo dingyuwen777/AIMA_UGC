@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
@@ -17,6 +17,18 @@ const validationMessage = ref('')
 const currentInput = ref<HTMLInputElement | null>(null)
 const previousInput = ref<HTMLInputElement | null>(null)
 
+const emit = defineEmits<{
+  'dirty-change': [dirty: boolean]
+}>()
+
+/** 任何本地报告输入都属于尚未提交的草稿；后端未接入时尤其不能静默丢失。 */
+const navigationDirty = computed(() => Boolean(
+  currentFile.value
+  || previousFile.value
+  || startDate.value
+  || endDate.value,
+))
+
 const formComplete = computed(() => Boolean(
   currentFile.value
   && previousFile.value
@@ -27,6 +39,9 @@ const formComplete = computed(() => Boolean(
 const submitLabel = computed(() => status.value === 'backend-unavailable'
   ? '后端服务未接入'
   : '生成报告并同步到飞书')
+
+/** 将本地报告草稿状态上送给管理员 Page Owner。 */
+watch(navigationDirty, (dirty) => emit('dirty-change', dirty), { immediate: true })
 
 /** 返回文件槽当前持有的本地文件。 */
 function selectedFile(slot: FileSlot): File | null {
