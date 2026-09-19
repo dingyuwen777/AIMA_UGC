@@ -526,6 +526,22 @@ test('guards unsaved brand catalog edits before opening the read-only audit tab'
   await expect(page.getByRole('dialog', { name: '放弃未保存的修改' })).toHaveCount(0)
 })
 
+test('guards an edited analysis-rule copy name before switching tabs', async ({ page }) => {
+  await mockAdmin(page)
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
+  await page.getByRole('button', { name: '复制规则', exact: true }).click()
+
+  const copyName = page.getByLabel('副本名称', { exact: true })
+  await copyName.fill('未保存的规则副本名称')
+  await page.getByRole('button', { name: '操作记录', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: '放弃未保存的修改' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '继续编辑', exact: true }).click()
+  await expect(copyName).toHaveValue('未保存的规则副本名称')
+})
+
 test('guards unsaved analysis-rule and report-strategy inputs before switching tabs', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
