@@ -64,6 +64,8 @@ const selectedSchemeVersion = computed(() => {
 const navigationDirty = computed(() => {
   const selected = selectedSchemeVersion.value
   if (!selected) return false
+  const defaultCopyName = `${selected.scheme.name} 副本`
+  if (schemeCopyEditing.value && schemeCopyName.value.trim() !== defaultCopyName) return true
   if (!schemeLabelsValid.value) return true
   try {
     const definition = schemeDefinition()
