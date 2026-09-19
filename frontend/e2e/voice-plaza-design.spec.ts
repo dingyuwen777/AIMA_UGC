@@ -116,7 +116,10 @@ async function stubCommonRoutes(page: Page): Promise<void> {
 /** 允许 1px 浏览器布局取整误差地核对 Figma 的正式关键尺寸。 */
 function expectNear(actual: number | undefined, expected: number): void {
   expect(actual).toBeDefined()
-  expect(Math.abs((actual ?? 0) - expected)).toBeLessThanOrEqual(1)
+  expect(
+    Math.abs((actual ?? 0) - expected),
+    `actual=${actual ?? 'undefined'} expected=${expected}`,
+  ).toBeLessThanOrEqual(1)
 }
 
 /** 默认使用三行内容；多屏幕检查可传入覆盖全部平台的同结构列表。 */
