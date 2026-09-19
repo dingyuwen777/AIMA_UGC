@@ -394,9 +394,10 @@ test('未引用关键词包可以从业务界面归档、恢复并安全永久�
   await expect(page.getByText('词包已归档。', { exact: true })).toBeVisible()
   await expect(page.locator('.pack-row').filter({ hasText: pack.name })).toHaveCount(0)
 
-  const archivedDetails = page.locator('details.archived-card')
-  if (!await archivedDetails.evaluate((element) => (element as HTMLDetailsElement).open)) {
-    await archivedDetails.locator('summary').click()
+  const archivedDetails = page.locator('section.archived-resource')
+  const archivedToggle = archivedDetails.getByRole('button', { name: /已归档词包/ })
+  if (await archivedToggle.getAttribute('aria-expanded') !== 'true') {
+    await archivedToggle.click()
   }
   let archivedRow = archivedDetails.locator('.archived-row').filter({ hasText: pack.name })
   await expect(archivedRow).toBeVisible()
