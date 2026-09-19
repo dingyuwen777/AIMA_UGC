@@ -80,6 +80,30 @@ const hasMediaNavigation = computed(() =>
   && mediaItems.value.some((media) => media.preview_url?.startsWith('/api/v1/contents/')),
 )
 
+type DetailSection = 'content' | 'analysis' | 'manual' | 'comments'
+const contentSection = ref<HTMLElement | null>(null)
+const analysisSection = ref<HTMLElement | null>(null)
+const manualSection = ref<HTMLElement | null>(null)
+const commentsSection = ref<HTMLElement | null>(null)
+
+const detailNavigation: ReadonlyArray<{ key: DetailSection; label: string }> = [
+  { key: 'content', label: '内容' },
+  { key: 'analysis', label: 'AI 信息' },
+  { key: 'manual', label: '人工确认' },
+  { key: 'comments', label: '评论' },
+]
+
+/** 按正式 Figma 的四段导航滚动到详情抽屉内对应业务区块。 */
+function scrollToDetailSection(section: DetailSection): void {
+  const targets: Record<DetailSection, HTMLElement | null> = {
+    content: contentSection.value,
+    analysis: analysisSection.value,
+    manual: manualSection.value,
+    comments: commentsSection.value,
+  }
+  targets[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 watch(() => props.item?.id, async () => {
   editingVehicles.value = false
   editingAnalysis.value = false
@@ -324,7 +348,24 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       v-else-if="item"
       class="drawer-body"
     >
-      <section class="hero">
+      <nav
+        class="detail-section-nav"
+        aria-label="详情快捷导航"
+      >
+        <button
+          v-for="entry in detailNavigation"
+          :key="entry.key"
+          type="button"
+          @click="scrollToDetailSection(entry.key)"
+        >
+          {{ entry.label }}
+        </button>
+      </nav>
+
+      <section
+        ref="contentSection"
+        class="hero detail-anchor"
+      >
         <div class="badges">
           <span class="platform">{{ platformLabel(item.platform) }}</span>
           <span class="analysis">{{ item.analysis.status === 'completed' ? item.analysis.sentiment || '已分析' : item.analysis.status === 'stale' ? '需重新分析' : '未分析' }}</span>
@@ -400,7 +441,10 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
           </template>
         </div>
       </section>
-      <section class="content-info">
+      <section
+        ref="analysisSection"
+        class="content-info detail-anchor"
+      >
         <h4>内容与 AI 信息</h4>
         <dl class="info-grid">
           <div><dt>平台</dt><dd>{{ platformLabel(item.platform) }}</dd></div>
@@ -450,7 +494,10 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
           <span v-if="item.metrics.view_count != null">浏览<b>{{ formatNumber(item.metrics.view_count) }}</b></span>
         </div>
       </section>
-      <section class="manual-summary">
+      <section
+        ref="manualSection"
+        class="manual-summary detail-anchor"
+      >
         <h4>人工确认</h4>
         <div>
           <strong>相关性</strong><span>{{ item.effective_relevance === 'relevant' ? '相关' : item.effective_relevance === 'irrelevant' ? '不相关' : '未判定' }} · {{ item.relevance_source === 'manual_review' ? '已人工确认' : '人工未覆盖' }}</span><AimaButton
@@ -639,7 +686,11 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         </template>
       </section>
 
-      <ContentCommentSection
+      <div
+        ref="commentsSection"
+        class="detail-anchor comments-anchor"
+      >
+        <ContentCommentSection
         :roots="commentRoots"
         :replies="commentReplies"
         :reply-states="commentReplyStates"
@@ -654,7 +705,8 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         @retry="emit('retry-comments')"
         @load-more-roots="emit('load-more-comments')"
         @load-replies="(rootCommentId, reset) => emit('load-comment-replies', rootCommentId, reset)"
-      />
+        />
+      </div>
 
       <details class="additional-details">
         <summary>更多信息</summary>
@@ -793,6 +845,35 @@ dd { overflow-wrap: anywhere; margin: 0; color: var(--aima-text); font-size: 10p
 .comments p { margin-top: 5px !important; font-size: 11px !important; }
 .drawer-state { display: grid; flex: 1; place-items: center; color: var(--aima-text-muted); }
 .drawer-body { gap: 20px; padding: 0 24px 24px; overflow: visible; }
+.detail-section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--aima-border);
+  background: var(--aima-surface);
+}
+.detail-section-nav button {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--aima-text-muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+}
+.detail-section-nav button:hover,
+.detail-section-nav button:focus-visible {
+  color: var(--aima-primary);
+  background: var(--aima-primary-soft);
+  outline: none;
+}
+.detail-anchor { scroll-margin-top: 52px; }
+.comments-anchor { min-width: 0; }
 header { min-height: 80px; padding: 24px 24px 16px; border: 0; }
 header h2 { margin: 0 0 4px; font-size: 16px; line-height: 22px; }
 header small { font-size: 12px; }
