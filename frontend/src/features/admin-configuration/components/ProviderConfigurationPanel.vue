@@ -45,8 +45,8 @@ let connectionRequestVersion = 0
 
 const draft = reactive({
   id: '',
-  provider: '',
-  displayName: '',
+  provider: props.providerKind === 'llm' ? 'openai_compatible' : 'tikhub',
+  displayName: props.providerKind === 'llm' ? '默认 AI 模型' : 'TikHub',
   baseUrl: '',
   model: '',
   apiKey: '',
@@ -55,7 +55,7 @@ const draft = reactive({
   maxConcurrency: 5,
   maxRps: '',
   enabled: true,
-  isDefault: false,
+  isDefault: props.providerKind === 'llm',
 })
 
 const testing = computed(() => pendingConnectionIds.has(draft.id))
