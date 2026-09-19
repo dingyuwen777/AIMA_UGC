@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260918-230500-voice-plaza-figma-comment-thread
 title: 声音广场 Figma 对齐与评论线程关系回归修复
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/541-voice-plaza-figma-comment-thread
 created: 2026-09-18
