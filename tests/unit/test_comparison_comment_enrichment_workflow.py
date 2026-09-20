@@ -85,7 +85,7 @@ def _write_monitoring_workbook(path: Path) -> None:
             "莱茵也试过",
             "测试作者",
             datetime(2026, 6, 15, 12, 1),
-            "https://www.douyin.com/video/douyin-pair",
+            "https://www.douyin.com/video/7531234567890123456",
             100,
         ),
         (
@@ -95,7 +95,7 @@ def _write_monitoring_workbook(path: Path) -> None:
             "Y果冻也试过",
             "测试作者",
             datetime(2026, 6, 15, 12, 2),
-            "https://weibo.com/1/weibo-pair",
+            "https://weibo.com/1/4331051486294436",
             100,
         ),
         (
@@ -105,7 +105,7 @@ def _write_monitoring_workbook(path: Path) -> None:
             "QZ1也试过",
             "测试作者",
             datetime(2026, 6, 15, 12, 3),
-            "https://www.bilibili.com/video/BV1testpair",
+            "https://www.bilibili.com/video/av170001",
             100,
         ),
         (

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.provider import ProviderBillingV1, ProviderRequestV1
@@ -26,6 +26,7 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.content.tables import comments_table
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 
 from .jobs import PostgresJobRepository
@@ -41,6 +42,8 @@ class CollectionScopeExecutionCounts:
     failed_count: int
     content_count: int
     comment_count: int
+    root_comment_count: int
+    reply_count: int
 
 
 class PostgresFencedProviderAttemptPreparer:
@@ -48,6 +51,42 @@ class PostgresFencedProviderAttemptPreparer:
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
+
+    def has_scope_request(
+        self,
+        *,
+        scope_id: UUID,
+        request_fingerprint: str,
+        fence: JobExecutionFence,
+    ) -> bool:
+        """只在当前 Job 持有 Scope 时查询已有逻辑请求。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                PostgresJobRepository(session).lock_current_execution(fence)
+                owner_job_id = session.scalar(
+                    select(collection_runs_table.c.job_id)
+                    .select_from(
+                        collection_scopes_table.join(
+                            collection_runs_table,
+                            collection_scopes_table.c.run_id == collection_runs_table.c.id,
+                        )
+                    )
+                    .where(collection_scopes_table.c.id == scope_id)
+                )
+                if owner_job_id != fence.job_id:
+                    raise LeaseLostError("Collection Scope 不属于当前 Job Fence")
+                return (
+                    session.scalar(
+                        select(provider_requests_table.c.id).where(
+                            provider_requests_table.c.scope_id == scope_id,
+                            provider_requests_table.c.request_fingerprint == request_fingerprint,
+                        )
+                    )
+                    is not None
+                )
+        finally:
+            session.close()
 
     def prepare_billable_attempt(
         self,
@@ -200,31 +239,38 @@ class PostgresFencedProviderAttemptPreparer:
                     for status, error_code in attempts
                 )
 
-                def target_count(kind: str) -> int:
+                def target_count(kind: str, *, reply: bool | None = None) -> int:
                     target_column = (
                         collection_candidate_ingestions_table.c.content_id
                         if kind == "content"
                         else collection_candidate_ingestions_table.c.comment_id
                     )
-                    value = session.scalar(
-                        select(func.count(func.distinct(target_column)))
-                        .select_from(
-                            collection_candidate_ingestions_table.join(
-                                collection_candidates_table,
-                                collection_candidate_ingestions_table.c.candidate_id
-                                == collection_candidates_table.c.id,
-                            )
-                            .join(
-                                provider_request_attempts_table,
-                                collection_candidates_table.c.provider_request_attempt_id
-                                == provider_request_attempts_table.c.id,
-                            )
-                            .join(
-                                provider_requests_table,
-                                provider_request_attempts_table.c.provider_request_id
-                                == provider_requests_table.c.id,
-                            )
+                    source = (
+                        collection_candidate_ingestions_table.join(
+                            collection_candidates_table,
+                            collection_candidate_ingestions_table.c.candidate_id
+                            == collection_candidates_table.c.id,
                         )
+                        .join(
+                            provider_request_attempts_table,
+                            collection_candidates_table.c.provider_request_attempt_id
+                            == provider_request_attempts_table.c.id,
+                        )
+                        .join(
+                            provider_requests_table,
+                            provider_request_attempts_table.c.provider_request_id
+                            == provider_requests_table.c.id,
+                        )
+                    )
+                    if reply is not None:
+                        source = source.join(
+                            comments_table,
+                            collection_candidate_ingestions_table.c.comment_id
+                            == comments_table.c.id,
+                        )
+                    query = (
+                        select(func.count(func.distinct(target_column)))
+                        .select_from(source)
                         .where(
                             provider_requests_table.c.scope_id == scope_id,
                             collection_candidates_table.c.item_kind == kind,
@@ -234,6 +280,28 @@ class PostgresFencedProviderAttemptPreparer:
                             target_column.is_not(None),
                         )
                     )
+                    if reply is not None:
+                        is_reply = or_(
+                            comments_table.c.parent_comment_id.is_not(None),
+                            and_(
+                                comments_table.c.root_comment_id.is_not(None),
+                                comments_table.c.root_comment_id
+                                != comments_table.c.external_comment_id,
+                            ),
+                        )
+                        query = query.where(
+                            is_reply
+                            if reply
+                            else and_(
+                                comments_table.c.parent_comment_id.is_(None),
+                                or_(
+                                    comments_table.c.root_comment_id.is_(None),
+                                    comments_table.c.root_comment_id
+                                    == comments_table.c.external_comment_id,
+                                ),
+                            )
+                        )
+                    value = session.scalar(query)
                     return int(value or 0)
 
                 return CollectionScopeExecutionCounts(
@@ -242,6 +310,8 @@ class PostgresFencedProviderAttemptPreparer:
                     failed_count=failed_count,
                     content_count=target_count("content"),
                     comment_count=target_count("comment"),
+                    root_comment_count=target_count("comment", reply=False),
+                    reply_count=target_count("comment", reply=True),
                 )
         finally:
             session.close()

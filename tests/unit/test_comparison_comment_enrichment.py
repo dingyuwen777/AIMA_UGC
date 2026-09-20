@@ -77,7 +77,11 @@ def _pair_record(
     content = CanonicalContentV1(
         platform=platform,
         external_content_id=external_id,
-        alternate_ids=alternate_ids or {},
+        alternate_ids=(
+            alternate_ids
+            if alternate_ids is not None
+            else ({"note_id": external_id} if platform == "xiaohongshu" else {})
+        ),
         content_type="video" if platform != "xiaohongshu" else "image",
         title="元宇宙与Q3对比",
         text="同一帖子同时讨论两款车型",
@@ -235,7 +239,7 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
         _pair_record(
             platform="douyin",
             external_id="canonical-douyin",
-            alternate_ids={"aweme_id": "typed-aweme-id"},
+            alternate_ids={"aweme_id": "7298145681699622182"},
         ),
         _pair_record(
             platform="weibo",
@@ -245,7 +249,7 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
         _pair_record(
             platform="bilibili",
             external_id="canonical-bilibili",
-            alternate_ids={"bv_id": "BV1typedid"},
+            alternate_ids={"bv_id": "BV1xx411c7mD"},
         ),
         _pair_record(
             platform="kuaishou",
@@ -281,9 +285,9 @@ def test_five_platforms_use_runtime_typed_identity_and_fetch_replies(
 
     expected_ids = (
         "typed-note-id",
-        "typed-aweme-id",
+        "7298145681699622182",
         "5300602615631073",
-        "BV1typedid",
+        "BV1xx411c7mD",
         "typed-photo-id",
     )
     for index, expected_id in enumerate(expected_ids):
@@ -524,7 +528,7 @@ def test_weibo_hash_identity_is_unavailable_without_provider_request(tmp_path: P
     enriched = VehiclePairCommentRecordV1.model_validate_json(
         summary.output_jsonl_path.read_text(encoding="utf-8").strip()
     )
-    assert enriched.comment_fetch.root_stop_reason == "unsupported_weibo_comment_identity"
+    assert enriched.comment_fetch.root_stop_reason == "identity_unavailable"
 
 
 def test_reply_shortfall_is_published_as_partial_instead_of_crashing(
@@ -648,6 +652,95 @@ def test_comment_identity_mismatch_is_filtered_and_recorded(
     assert mismatch.external_comment_id == "wrong-root"
     assert mismatch.expected_external_content_id == "note-expected"
     assert mismatch.observed_external_content_id == "note-other"
+
+
+def test_typed_note_id_comments_attach_to_original_import_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider 的 note_id 与已保存 typed ID 相同时，保留导入内容主身份和回复。"""
+
+    _install_generic_runtime(monkeypatch)
+    monkeypatch.setattr(
+        tikhub_runtime,
+        "advance_comments",
+        lambda **kwargs: tikhub_runtime.TikHubPageAdvance(None, "provider_exhausted"),
+    )
+    monkeypatch.setattr(
+        tikhub_runtime,
+        "advance_sub_comments",
+        lambda **kwargs: tikhub_runtime.TikHubPageAdvance(None, "provider_exhausted"),
+    )
+
+    def map_observed_comment(
+        *,
+        platform: PlatformName,
+        raw: dict[str, Any],
+        context: Any,
+        item_locator: str,
+        is_root: bool,
+    ) -> CanonicalCommentV1:
+        return _fake_comment(
+            platform=platform,
+            content_id=str(raw["content_id"]),
+            comment_id=str(raw["id"]),
+            root_comment_id=context.root_comment_id,
+            is_root=is_root,
+            reply_count=1 if is_root else 0,
+            observed_at=context.observed_at,
+            raw_artifact_id=context.raw_artifact_id,
+            item_locator=item_locator,
+        )
+
+    monkeypatch.setattr(tikhub_runtime, "map_comment", map_observed_comment)
+    input_path = tmp_path / "comparison_posts.jsonl"
+    _write_records(
+        input_path,
+        [
+            _pair_record(
+                platform="xiaohongshu",
+                external_id="source-article-identity",
+                alternate_ids={"note_id": "note-provider-target"},
+            )
+        ],
+    )
+    transport = _FakeTransport(
+        lambda call_no, request: ProviderTransportResponse(
+            status_code=200,
+            body={
+                "items": [
+                    {"id": "wrong-1", "content_id": "another-note"},
+                    {
+                        "id": "root-1" if call_no == 1 else "reply-1",
+                        "content_id": "note-provider-target",
+                    },
+                ],
+            },
+        )
+    )
+
+    summary = enrich_comparison_comments(
+        input_path=input_path,
+        output_root=tmp_path / "output",
+        run_id="typed-target-original-content",
+        provider_config=_config(),
+        transport=transport,
+    )
+
+    assert summary.rows_partial == 1
+    assert summary.root_comment_count == 1
+    assert summary.reply_count == 1
+    enriched = VehiclePairCommentRecordV1.model_validate_json(
+        summary.output_jsonl_path.read_text(encoding="utf-8").strip()
+    )
+    assert {comment.external_content_id for comment in enriched.comments} == {
+        "source-article-identity"
+    }
+    assert len(enriched.comment_fetch.identity_mismatches) == 2
+    assert {comment.external_comment_id for comment in enriched.comments} == {
+        "root-1",
+        "reply-1",
+    }
 
 
 def test_completed_staging_is_preserved_after_publish_failure(

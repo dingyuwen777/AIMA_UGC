@@ -76,6 +76,24 @@ test.beforeEach(async ({ page }) => {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [plan], total: 1, enabled_count: 1, offset: 0, limit: 20 }) })
       return
     }
+    if (url.pathname === `/api/v1/keyword-packs/${packId}/copy` && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...packs[0], id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: body.name, enabled: false, keywords: [] }),
+      })
+      return
+    }
+    if (url.pathname === `/api/v1/collection-plans/${planId}/copy` && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...plan, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: body.name, enabled: false, schedule_version: 1 }),
+      })
+      return
+    }
     if (url.pathname === '/api/v1/collection-plans' && request.method() === 'POST') {
       await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(plan) })
       return
@@ -116,9 +134,9 @@ test('matches the approved Figma workspace and resolves the current Brand filter
   await expect(detail.getByText('爱玛新品发现 · v4')).toBeVisible()
   await expect(detail.getByRole('heading', { name: '内容过滤条件 · 品牌' })).toBeVisible()
   await expect(detail.getByText('爱玛 · 自有')).toBeVisible()
-  await expect(detail.getByText(planId)).not.toBeVisible()
-  await detail.getByText('技术详情', { exact: true }).click()
-  await expect(detail.getByText(planId)).toBeVisible()
+  await expect(detail.getByText(planId)).toHaveCount(0)
+  await expect(detail.getByText('技术详情', { exact: true })).toHaveCount(0)
+  await expect(detail.getByText('TikHub 主配置', { exact: false })).toHaveCount(0)
   await detail.getByRole('button', { name: '关闭详情' }).click()
 
   await page.getByRole('button', { name: '关键词包' }).click()
@@ -142,6 +160,79 @@ test('removes the global relevance entry and still protects Keyword Packs used b
   await expect(planPackRow.getByRole('button', { name: '停用' })).toHaveAttribute('title', /采集计划/)
 
   await expect(page.getByRole('button', { name: '全局相关性' })).toHaveCount(0)
+})
+
+test('copies a plan in one click, retries duplicate names, and keeps the source detail open', async ({ page }) => {
+  const attemptedNames: string[] = []
+  await page.route(`**/api/v1/collection-plans/${planId}/copy`, async (route) => {
+    const body = route.request().postDataJSON()
+    attemptedNames.push(body.name)
+    if (attemptedNames.length === 1) {
+      await route.fulfill({
+        status: 409,
+        json: { status: 409, title: 'Conflict', detail: '同名采集计划已经存在', request_id: 'copy-duplicate' },
+      })
+      return
+    }
+    await route.fulfill({
+      status: 201,
+      json: { ...plan, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: body.name, enabled: false, schedule_version: 1 },
+    })
+  })
+
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const detail = page.getByRole('dialog', { name: '采集计划详情' })
+  await detail.getByRole('button', { name: '复制', exact: true }).click()
+
+  await expect(page.locator('.success-toast')).toContainText('已复制采集计划，副本默认停用。')
+  await expect(page.locator('.success-toast')).toHaveCSS('width', '480px')
+  await expect(detail).toBeVisible()
+  await expect(detail.getByRole('heading', { name: plan.name })).toBeVisible()
+  await expect(detail.getByLabel('副本名称')).toHaveCount(0)
+  expect(attemptedNames).toEqual([`${plan.name} 副本`, `${plan.name} 副本 2`])
+})
+
+test('uses product confirmation for archive and permanent delete flows', async ({ page }) => {
+  const archivedPlanId = '99999999-9999-4999-8999-999999999999'
+  await page.route('**/api/v1/resource-lifecycle/collection-plans/archived', async (route) => {
+    await route.fulfill({
+      json: { items: [{ id: archivedPlanId, resource_type: 'collection_plan', name: '季度竞品巡检', archived_at: '2026-09-18T10:30:00+08:00' }] },
+    })
+  })
+  await page.route(`**/api/v1/collection-plans/${archivedPlanId}/delete-eligibility`, async (route) => {
+    await route.fulfill({ json: { id: archivedPlanId, eligible: true, blocking_reasons: [] } })
+  })
+  await page.route(`**/api/v1/collection-plans/${archivedPlanId}`, async (route) => {
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: /已归档采集计划.*展开/ }).click()
+  await expect(page.getByText('季度竞品巡检', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '永久删除', exact: true }).click()
+  const deleteDialog = page.getByRole('dialog', { name: '永久删除已归档采集计划' })
+  await expect(deleteDialog).toContainText('删除后无法恢复')
+  const deleteRequest = page.waitForRequest((request) =>
+    new URL(request.url()).pathname === `/api/v1/collection-plans/${archivedPlanId}`
+      && request.method() === 'DELETE',
+  )
+  await deleteDialog.getByRole('button', { name: '永久删除', exact: true }).click()
+  await deleteRequest
+  await expect(page.locator('.success-toast')).toContainText('归档采集计划已永久删除。')
+
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const detail = page.getByRole('dialog', { name: '采集计划详情' })
+  await detail.getByRole('button', { name: '归档', exact: true }).click()
+  const archiveDialog = page.getByRole('dialog', { name: '确认归档采集计划' })
+  await expect(archiveDialog).toContainText('已经创建的历史运行不受影响')
+  await archiveDialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(archiveDialog).toHaveCount(0)
 })
 
 test('creates a periodic Collection Plan with paginated active Brand filtering and no new vehicle scope', async ({ page }) => {
@@ -191,5 +282,5 @@ test('creates a periodic Collection Plan with paginated active Brand filtering a
   expect(payload).not.toHaveProperty('schedule_mode')
   expect(payload).not.toHaveProperty('relevance_keyword_pack_id')
   expect(payload).not.toHaveProperty('vehicle_model_ids')
-  await expect(page.getByText('采集计划已保存，将由调度服务执行。')).toBeVisible()
+  await expect(page.getByText('采集计划已保存，将按设定周期自动执行。')).toBeVisible()
 })

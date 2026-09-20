@@ -18,7 +18,7 @@ function progressTone(item: TaskCenterItem): 'primary' | 'success' | 'warning' |
 
 /** 将任务来源映射为用户可理解的业务分类名称。 */
 function kindLabel(kind: TaskCenterItem['kind']): string {
-  if (kind === 'analysis') return 'AI 打标'
+  if (kind === 'analysis') return 'AI 分析'
   if (kind === 'collection') return '采集与导入'
   return '数据导出'
 }
@@ -144,13 +144,12 @@ onBeforeUnmount(() => {
                   :detail="item.progressDetail"
                   :tone="progressTone(item)"
                 />
-                <details
+                <p
                   v-if="item.errorCode"
-                  class="task-technical-details"
+                  class="task-error-note"
                 >
-                  <summary>技术详情</summary>
-                  <span>错误码：{{ item.errorCode }}</span>
-                </details>
+                  任务遇到问题，请稍后重试；如持续失败，请联系管理员。
+                </p>
                 <footer class="task-card-footer">
                   <span>{{ formatDateTime(item.createdAt) }}</span>
                   <div class="task-card-actions">
@@ -203,13 +202,12 @@ onBeforeUnmount(() => {
                 <div class="task-result">
                   <span>{{ item.progressDetail }}</span>
                 </div>
-                <details
+                <p
                   v-if="item.errorCode"
-                  class="task-technical-details"
+                  class="task-error-note"
                 >
-                  <summary>技术详情</summary>
-                  <span>错误码：{{ item.errorCode }}</span>
-                </details>
+                  任务遇到问题，请稍后重试；如持续失败，请联系管理员。
+                </p>
                 <footer class="task-card-footer">
                   <span>{{ formatDateTime(item.finishedAt ?? item.createdAt) }}</span>
                   <RouterLink
@@ -315,9 +313,7 @@ onBeforeUnmount(() => {
 .task-card p { overflow: hidden; margin: 0; color: var(--aima-text-secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .task-result { display: flex; min-width: 0; justify-content: space-between; gap: 12px; color: var(--aima-text-muted); font-size: 10px; }
 .task-result span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-technical-details { padding: 6px 8px; border: 1px dashed var(--aima-border); border-radius: 6px; color: var(--aima-text-muted); font-size: 9px; }
-.task-technical-details summary { cursor: pointer; color: var(--aima-text-secondary); font-weight: 500; }
-.task-technical-details span { display: block; margin-top: 5px; overflow-wrap: anywhere; }
+.task-error-note { color: var(--aima-danger) !important; white-space: normal !important; }
 .task-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--aima-text-muted); font-size: 9px; }
 .task-card-actions { display: flex; align-items: center; gap: 9px; }
 .task-card-actions button,

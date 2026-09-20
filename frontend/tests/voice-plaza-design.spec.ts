@@ -151,6 +151,9 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('UUID / 来源标识')
     expect(html).not.toContain('Analysis Scheme')
     expect(html).not.toContain('版本化目录')
+    expect(html).not.toContain('搜索标题、正文、作者或内容 ID')
+    expect(html).not.toContain('统计准确数量')
+    expect(html).not.toContain('快速估算数量')
   })
 
   it('终态 Analysis Run 不再作为历史大卡片占据声音广场正文', async () => {
@@ -169,13 +172,13 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('Run #9')
   })
 
-  it('仅对活动 AI 打标任务展示业务进度，并提供进入全局任务中心的入口', async () => {
+  it('仅对活动 AI 分析任务展示业务进度，并提供进入全局任务中心的入口', async () => {
     const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
       useVoicePlazaStore(pinia).analysisRuns = [baseAnalysisRun]
     })
 
-    expect(html).toContain('AI 打标任务')
-    expect(html).toContain('AI 打标 · 处理中')
+    expect(html).toContain('AI 分析任务')
+    expect(html).toContain('AI 分析 · 处理中')
     expect(html).toContain('已处理 50 / 100 条')
     expect(html).toContain('查看任务中心')
     expect(html).not.toContain('Run #8')

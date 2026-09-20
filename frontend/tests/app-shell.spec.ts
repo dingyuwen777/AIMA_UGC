@@ -35,7 +35,7 @@ describe('AppShell 内网 V1 导航', () => {
     const html = await renderShell()
 
     expect(html).toContain('href="/"')
-    expect(html).toContain('首页')
+    expect(html).toContain('工作台')
     expect(html).toContain('业务工作台')
     expect(html).toContain('href="/voice-plaza"')
     expect(html).toContain('声音广场')

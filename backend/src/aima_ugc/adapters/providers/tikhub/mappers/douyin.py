@@ -40,11 +40,11 @@ def map_content(
     external_id = required_string(item, "aweme_id")
     observed_fields: list[str] = ["content_type"]
 
-    alternate_ids: dict[str, str] = {}
+    alternate_ids: dict[str, str] = {"aweme_id": external_id}
+    observed_fields.append("alternate_ids")
     group_id = optional_string(item, "group_id")
     if group_id is not None and group_id != external_id:
         alternate_ids["group_id"] = group_id
-        observed_fields.append("alternate_ids")
 
     title = optional_string(item, "item_title")
     text = optional_string(item, "desc")

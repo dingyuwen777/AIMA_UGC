@@ -27,6 +27,7 @@ import {
   uploadLocalDataImportFile,
   type CollectionCapabilitiesResponse,
   type CollectionPlatform,
+  type CollectionSupplementPlatformDiagnosticResponse,
   type CollectionRunCreateRequest,
   type CollectionRunCreatedResponse,
   type CollectionRunResponse,
@@ -148,22 +149,33 @@ export async function fetchCollectionRunDetail(runId: string): Promise<Collectio
   return unwrap(await getCollectionRun(runId))
 }
 
+export interface SupplementEligibilitySnapshot {
+  platforms: CollectionPlatform[]
+  diagnostics: CollectionSupplementPlatformDiagnosticResponse[]
+}
+
 export async function fetchBatchContentPlatforms(
   batchId: string,
   platforms: readonly CollectionPlatform[],
-): Promise<CollectionPlatform[]> {
+): Promise<SupplementEligibilitySnapshot> {
   const eligibility = unwrap(await getCollectionBatchSupplementEligibility(batchId))
   const eligible = new Set(eligibility.targets.map((item) => item.platform))
-  return platforms.filter((platform) => eligible.has(platform))
+  return {
+    platforms: platforms.filter((platform) => eligible.has(platform)),
+    diagnostics: eligibility.diagnostics ?? [],
+  }
 }
 
 export async function fetchCampaignContentPlatforms(
   campaignId: string,
   platforms: readonly CollectionPlatform[],
-): Promise<CollectionPlatform[]> {
+): Promise<SupplementEligibilitySnapshot> {
   const eligibility = unwrap(await getCollectionCampaignSupplementEligibility(campaignId))
   const eligible = new Set(eligibility.targets.map((item) => item.platform))
-  return platforms.filter((platform) => eligible.has(platform))
+  return {
+    platforms: platforms.filter((platform) => eligible.has(platform)),
+    diagnostics: eligibility.diagnostics ?? [],
+  }
 }
 
 export async function fetchHistoricalDirectory(

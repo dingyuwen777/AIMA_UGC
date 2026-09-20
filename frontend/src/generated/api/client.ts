@@ -739,6 +739,22 @@ export const CollectionPlatform = {
   kuaishou: 'kuaishou',
 } as const;
 
+export type CollectionSupplementPlatformDiagnosticResponseBlockReasons = {[key: string]: number};
+
+/**
+ * 五平台来源资格；不公开原始链接或 Provider 私有 ID。
+ */
+export interface CollectionSupplementPlatformDiagnosticResponse {
+  block_reasons: CollectionSupplementPlatformDiagnosticResponseBlockReasons;
+  /** @minimum 0 */
+  blocked_count: number;
+  /** @minimum 0 */
+  direct_target_count: number;
+  platform: CollectionPlatform;
+  /** @minimum 0 */
+  resolution_candidate_count: number;
+}
+
 /**
  * 一个平台当前真实可创建 Batch Supplement Scope 的目标数。
  */
@@ -753,6 +769,7 @@ export interface CollectionBatchSupplementTargetResponse {
  */
 export interface CollectionBatchSupplementEligibilityResponse {
   batch_id: string;
+  diagnostics?: CollectionSupplementPlatformDiagnosticResponse[];
   targets: CollectionBatchSupplementTargetResponse[];
 }
 
@@ -761,6 +778,7 @@ export interface CollectionBatchSupplementEligibilityResponse {
  */
 export interface CollectionCampaignSupplementEligibilityResponse {
   campaign_id: string;
+  diagnostics?: CollectionSupplementPlatformDiagnosticResponse[];
   targets: CollectionBatchSupplementTargetResponse[];
 }
 
@@ -974,6 +992,36 @@ export interface CollectionRunCreatedResponse {
   status?: 'queued';
 }
 
+export type CollectionScopeResponseCommentCoverage = typeof CollectionScopeResponseCommentCoverage[keyof typeof CollectionScopeResponseCommentCoverage] | null;
+
+
+export const CollectionScopeResponseCommentCoverage = {
+  complete: 'complete',
+  partial: 'partial',
+  unavailable: 'unavailable',
+  not_requested: 'not_requested',
+} as const;
+
+export type CollectionScopeResponseCommentStage = typeof CollectionScopeResponseCommentStage[keyof typeof CollectionScopeResponseCommentStage] | null;
+
+
+export const CollectionScopeResponseCommentStage = {
+  roots: 'roots',
+  replies: 'replies',
+  finished: 'finished',
+} as const;
+
+export type CollectionScopeResponseIdentityStatus = typeof CollectionScopeResponseIdentityStatus[keyof typeof CollectionScopeResponseIdentityStatus] | null;
+
+
+export const CollectionScopeResponseIdentityStatus = {
+  resolving: 'resolving',
+  resolved: 'resolved',
+  unavailable: 'unavailable',
+  ambiguous: 'ambiguous',
+  conflict: 'conflict',
+} as const;
+
 export interface CollectionRunStatsResponse {
   /** @minimum 0 */
   comment_count: number;
@@ -984,7 +1032,11 @@ export interface CollectionRunStatsResponse {
   /** @minimum 0 */
   filtered_count?: number;
   /** @minimum 0 */
+  reply_count?: number;
+  /** @minimum 0 */
   requested_count: number;
+  /** @minimum 0 */
+  root_comment_count?: number;
   /** @minimum 0 */
   succeeded_count: number;
 }
@@ -1005,8 +1057,11 @@ export const CollectionRuntimeStatus = {
  * Provider-neutral Scope 进度；不公开 Provider 私有分页状态。
  */
 export interface CollectionScopeResponse {
+  comment_coverage?: CollectionScopeResponseCommentCoverage;
+  comment_stage?: CollectionScopeResponseCommentStage;
   finished_at?: string | null;
   id: string;
+  identity_status?: CollectionScopeResponseIdentityStatus;
   operation_group: string;
   platform: CollectionPlatform;
   /**

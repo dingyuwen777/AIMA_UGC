@@ -270,6 +270,8 @@ GET  /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility
 
 辅助补采同样先选择真实导入父事实。新 Campaign 通过逐行来源账本反查已有 Content，所以 `unchanged` 等没有新建 Content Version 的行仍可进入资格判断；旧 Import Batch 继续沿用 Provider Request/Attempt 追溯。Collection Run 只保存其中一种来源 ID，二者不得同时出现。资格接口只返回当前分析配置下仍可补采的平台和数量，前端不能通过声音广场分页猜测。
 
+资格接口另外返回五平台诊断：直接可补采、只有待解析定位链接、缺少身份的数量及稳定原因。网页对全无 typed ID 的平台显示禁用原因；混合来源中的缺身份内容保留在持久 Scope，终态明确失败且不发送 Provider 请求。Run Detail 读取 Scope 的评论 Coverage 并按平台汇总完整/部分/不可用/失败，展示自动 Attempt 和停止原因；“查看补采结果”沿用 `source_identifier=<run_id>` 进入声音广场。
+
 `GET /api/v1/collection-capabilities` 同时返回各 Provider/Platform 的可执行 Operation 和 Provider-neutral Search 选项。手工 Discovery 可以不传 `search_config`，后端会按 Capability 补齐并冻结“最新、一天内、不限内容”的可支持部分；新建周期 Plan 必须逐平台显式提交完整 `search_config`。平台不支持的维度不进入 Contract，前端不得自行维护另一套平台参数表。
 
 历史 Plan 可能持久化空的 `config={}`。读取、重新启用和 Scheduler 执行继续接受这类记录，并沿用原 Adapter 默认行为；系统不把历史 Plan 静默改成新的手工 Discovery 默认值。
@@ -491,7 +493,7 @@ frontend/src/features/task-center/
 - [`frontend/src/features/task-center/index.ts`](../../frontend/src/features/task-center/index.ts) 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
 - Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
 - `/collection-strategy`：Keyword Pack Search Terms 与独立 Brand Filter 的 Collection Plan 管理；旧 Global Relevance 后端和产品入口均已删除；
-- `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本与审计；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
+- `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本与审计；报告策略当前只有 XLSX/日期前端准备面并明确提示后端未接入，不属于现有 Worker Registry，也没有 Report Job/API 或飞书同步写链路；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
 - `/`：当前 HomeView。
 
 后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。任务中心同样不是一个新的后端 Job Domain，也没有独立路由；它只是所有业务页面共同使用的 `AppShell` 只读聚合入口。

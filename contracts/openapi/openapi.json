@@ -1863,6 +1863,14 @@
             "title": "Batch Id",
             "type": "string"
           },
+          "diagnostics": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CollectionSupplementPlatformDiagnosticResponse"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
           "targets": {
             "items": {
               "$ref": "#/components/schemas/CollectionBatchSupplementTargetResponse"
@@ -1906,6 +1914,14 @@
             "format": "uuid",
             "title": "Campaign Id",
             "type": "string"
+          },
+          "diagnostics": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CollectionSupplementPlatformDiagnosticResponse"
+            },
+            "title": "Diagnostics",
+            "type": "array"
           },
           "targets": {
             "items": {
@@ -2732,9 +2748,21 @@
             "title": "Filtered Count",
             "type": "integer"
           },
+          "reply_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Reply Count",
+            "type": "integer"
+          },
           "requested_count": {
             "minimum": 0.0,
             "title": "Requested Count",
+            "type": "integer"
+          },
+          "root_comment_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Root Comment Count",
             "type": "integer"
           },
           "succeeded_count": {
@@ -3030,6 +3058,39 @@
         "additionalProperties": false,
         "description": "Provider-neutral Scope 进度；不公开 Provider 私有分页状态。",
         "properties": {
+          "comment_coverage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unavailable",
+                  "not_requested"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Coverage"
+          },
+          "comment_stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "roots",
+                  "replies",
+                  "finished"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Stage"
+          },
           "finished_at": {
             "anyOf": [
               {
@@ -3046,6 +3107,24 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "identity_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "resolving",
+                  "resolved",
+                  "unavailable",
+                  "ambiguous",
+                  "conflict"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Status"
           },
           "operation_group": {
             "title": "Operation Group",
@@ -3214,6 +3293,46 @@
           }
         },
         "title": "CollectionSearchConfig",
+        "type": "object"
+      },
+      "CollectionSupplementPlatformDiagnosticResponse": {
+        "additionalProperties": false,
+        "description": "五平台来源资格；不公开原始链接或 Provider 私有 ID。",
+        "properties": {
+          "block_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Block Reasons",
+            "type": "object"
+          },
+          "blocked_count": {
+            "minimum": 0.0,
+            "title": "Blocked Count",
+            "type": "integer"
+          },
+          "direct_target_count": {
+            "minimum": 0.0,
+            "title": "Direct Target Count",
+            "type": "integer"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "resolution_candidate_count": {
+            "minimum": 0.0,
+            "title": "Resolution Candidate Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platform",
+          "direct_target_count",
+          "resolution_candidate_count",
+          "blocked_count",
+          "block_reasons"
+        ],
+        "title": "CollectionSupplementPlatformDiagnosticResponse",
         "type": "object"
       },
       "CommentCoverageResponse": {

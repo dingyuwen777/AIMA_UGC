@@ -71,6 +71,7 @@ const editingVehicles = ref(false)
 const editingAnalysis = ref(false)
 const mediaGrid = ref<HTMLElement | null>(null)
 const activeMediaIndex = ref(0)
+const mediaNavigationTarget = ref<number | null>(null)
 const relevanceDecision = computed(() => props.item ? relevanceReviewDecision(props.item) : null)
 const mediaItems = computed(() => props.item?.media ?? [])
 const hasMediaNavigation = computed(() =>
@@ -79,10 +80,35 @@ const hasMediaNavigation = computed(() =>
   && mediaItems.value.some((media) => media.preview_url?.startsWith('/api/v1/contents/')),
 )
 
+type DetailSection = 'content' | 'analysis' | 'manual' | 'comments'
+const contentSection = ref<HTMLElement | null>(null)
+const analysisSection = ref<HTMLElement | null>(null)
+const manualSection = ref<HTMLElement | null>(null)
+const commentsSection = ref<HTMLElement | null>(null)
+
+const detailNavigation: ReadonlyArray<{ key: DetailSection; label: string }> = [
+  { key: 'content', label: '内容' },
+  { key: 'analysis', label: 'AI 信息' },
+  { key: 'manual', label: '人工确认' },
+  { key: 'comments', label: '评论' },
+]
+
+/** 按正式 Figma 的四段导航滚动到详情抽屉内对应业务区块。 */
+function scrollToDetailSection(section: DetailSection): void {
+  const targets: Record<DetailSection, HTMLElement | null> = {
+    content: contentSection.value,
+    analysis: analysisSection.value,
+    manual: manualSection.value,
+    comments: commentsSection.value,
+  }
+  targets[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 watch(() => props.item?.id, async () => {
   editingVehicles.value = false
   editingAnalysis.value = false
   activeMediaIndex.value = 0
+  mediaNavigationTarget.value = null
   await nextTick()
   if (mediaGrid.value) mediaGrid.value.scrollLeft = 0
 })
@@ -95,6 +121,14 @@ const labelPrimary = ref('')
 const labelSecondary = ref('')
 const confirmUnlockVehicles = ref(false)
 const confirmUnlockAnalysis = ref(false)
+const unlockTarget = ref<'vehicles' | 'analysis' | null>(null)
+const unlockDialogOpen = computed({
+  get: () => unlockTarget.value !== null,
+  set: (open: boolean) => { if (!open) unlockTarget.value = null },
+})
+const unlockDialogMessage = computed(() => unlockTarget.value === 'vehicles'
+  ? '确定解除当前车型人工结论吗？解除后，自动识别结果会重新生效。'
+  : '确定解除已人工确认的 AI 分析结果吗？解除后，当前 AI 结果会重新生效。')
 
 const hasVehicleLock = computed(() =>
   (props.item?.vehicles ?? []).some((vehicle) =>
@@ -113,6 +147,7 @@ watch(() => props.item, (item) => {
   labels.value = [...(item?.analysis.labels ?? [])]
   confirmUnlockVehicles.value = false
   confirmUnlockAnalysis.value = false
+  unlockTarget.value = null
 }, { immediate: true })
 
 function addLabel(): void {
@@ -128,8 +163,7 @@ function saveVehicleReview(): void {
 }
 
 function unlockVehicleReview(): void {
-  if (!window.confirm('解除车型人工锁定后，当前自动证据会重新生效。是否继续？')) return
-  emit('review-vehicles', [], true)
+  unlockTarget.value = 'vehicles'
 }
 
 function saveAnalysisReview(): void {
@@ -143,8 +177,15 @@ function saveAnalysisReview(): void {
 }
 
 function unlockAnalysisReview(): void {
-  if (!window.confirm('解除人工分析锁定后，页面将恢复展示当前 AI 结果。是否继续？')) return
-  emit('review-analysis', { unlock_dimensions: [...lockedDimensions.value] })
+  unlockTarget.value = 'analysis'
+}
+
+function confirmUnlockReview(): void {
+  if (unlockTarget.value === 'vehicles') emit('review-vehicles', [], true)
+  else if (unlockTarget.value === 'analysis') {
+    emit('review-analysis', { unlock_dimensions: [...lockedDimensions.value] })
+  }
+  unlockTarget.value = null
 }
 
 /** 将画廊移动到指定图片，并立即更新按钮与序号状态。 */
@@ -156,9 +197,14 @@ function showMedia(index: number): void {
   if (!(target instanceof HTMLElement)) return
   const gridRect = grid.getBoundingClientRect()
   const targetRect = target.getBoundingClientRect()
+  const targetLeft = grid.scrollLeft + targetRect.left - gridRect.left
+  mediaNavigationTarget.value = targetIndex
   activeMediaIndex.value = targetIndex
-  grid.scrollTo({
-    left: grid.scrollLeft + targetRect.left - gridRect.left,
+  grid.scrollTo({ left: targetLeft, behavior: 'auto' })
+  window.requestAnimationFrame(() => {
+    if (mediaGrid.value !== grid || mediaNavigationTarget.value !== targetIndex) return
+    mediaNavigationTarget.value = null
+    syncMediaIndex()
   })
 }
 
@@ -167,12 +213,23 @@ function syncMediaIndex(): void {
   const grid = mediaGrid.value
   if (!grid || !hasMediaNavigation.value) return
   const gridRect = grid.getBoundingClientRect()
-  const gridCenter = gridRect.left + gridRect.width / 2
+
+  if (mediaNavigationTarget.value !== null) {
+    const target = grid.children.item(mediaNavigationTarget.value)
+    if (target instanceof HTMLElement) {
+      const targetLeft = grid.scrollLeft + target.getBoundingClientRect().left - gridRect.left
+      activeMediaIndex.value = mediaNavigationTarget.value
+      if (Math.abs(grid.scrollLeft - targetLeft) <= 2) mediaNavigationTarget.value = null
+      return
+    }
+    mediaNavigationTarget.value = null
+  }
+
   let nearestIndex = 0
   let nearestDistance = Number.POSITIVE_INFINITY
   Array.from(grid.children).forEach((child, index) => {
-    const childRect = child.getBoundingClientRect()
-    const distance = Math.abs(childRect.left + childRect.width / 2 - gridCenter)
+    if (!(child instanceof HTMLElement)) return
+    const distance = Math.abs(child.getBoundingClientRect().left - gridRect.left)
     if (distance < nearestDistance) {
       nearestDistance = distance
       nearestIndex = index
@@ -207,12 +264,12 @@ function supplementMessage(status: string): string {
 function sourceLabel(providerName: string): string {
   const normalized = providerName.toLowerCase()
   if (normalized.includes('import') || normalized.includes('excel')) return '数据导入'
-  if (normalized.includes('tikhub')) return 'TikHub 采集'
+  if (normalized.includes('tikhub')) return '平台采集'
   if (normalized.includes('manual')) return '人工维护'
   return '平台采集'
 }
 
-/** 将第三方可用状态映射为业务状态，原始 code 仅在技术详情保留。 */
+/** 将第三方可用状态映射为业务状态，原始 code 不进入普通用户界面。 */
 function availabilityLabel(status: string): string {
   if (status === 'available') return '当前可访问'
   if (status === 'unavailable_confirmed') return '已确认不可访问'
@@ -220,7 +277,7 @@ function availabilityLabel(status: string): string {
   return '状态待确认'
 }
 
-/** 将车型证据来源归一为用户语义；内部 source/catalog version 下沉技术详情。 */
+/** 将车型证据来源归一为用户语义；内部 source/catalog version 继续留在审计事实源。 */
 function vehicleEvidenceLabel(source: string): string {
   const normalized = source.toLowerCase()
   if (normalized.includes('manual')) return '人工确认'
@@ -270,7 +327,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       class="drawer-state"
       role="alert"
     >
-      <strong>详情加载失败</strong><p>{{ error }}</p><AimaButton @click="emit('retry')">
+      <strong>详情加载失败</strong><p>暂时无法加载这条内容的完整详情，请稍后重试。</p><AimaButton @click="emit('retry')">
         重新加载
       </AimaButton>
     </div>
@@ -279,7 +336,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       class="drawer-save-error"
       role="alert"
     >
-      {{ saveError }}
+      操作未完成，当前输入已保留，请稍后重试。
     </div>
     <div
       v-if="loading && !item"
@@ -291,10 +348,27 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       v-else-if="item"
       class="drawer-body"
     >
-      <section class="hero">
+      <nav
+        class="detail-section-nav"
+        aria-label="详情快捷导航"
+      >
+        <button
+          v-for="entry in detailNavigation"
+          :key="entry.key"
+          type="button"
+          @click="scrollToDetailSection(entry.key)"
+        >
+          {{ entry.label }}
+        </button>
+      </nav>
+
+      <section
+        ref="contentSection"
+        class="hero detail-anchor"
+      >
         <div class="badges">
           <span class="platform">{{ platformLabel(item.platform) }}</span>
-          <span class="analysis">{{ item.analysis.status === 'completed' ? item.analysis.sentiment || '已打标' : item.analysis.status === 'stale' ? '需重新打标' : '未打标' }}</span>
+          <span class="analysis">{{ item.analysis.status === 'completed' ? item.analysis.sentiment || '已分析' : item.analysis.status === 'stale' ? '需重新分析' : '未分析' }}</span>
         </div>
         <h3>{{ contentSummary(item.title, item.text) }}</h3>
         <p>{{ item.text || '该内容没有正文。' }}</p>
@@ -314,6 +388,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
           <div
             ref="mediaGrid"
             class="media-grid"
+            :class="{ 'media-grid--carousel': hasMediaNavigation }"
             @scroll.passive="syncMediaIndex"
           >
             <a
@@ -366,7 +441,10 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
           </template>
         </div>
       </section>
-      <section class="content-info">
+      <section
+        ref="analysisSection"
+        class="content-info detail-anchor"
+      >
         <h4>内容与 AI 信息</h4>
         <dl class="info-grid">
           <div><dt>平台</dt><dd>{{ platformLabel(item.platform) }}</dd></div>
@@ -390,7 +468,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
               <b>{{ brand.display_name }} · {{ brandRoleLabel(brand.role) }}</b><span
                 v-for="(evidence, index) in brand.evidences"
                 :key="`${brand.id}:${index}`"
-              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template></span>
             </article><small v-if="!(item.brands ?? []).length">暂无品牌证据</small>
           </div>
           <div>
@@ -401,7 +479,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
               <b>{{ vehicle.display_name }}<template v-if="vehicle.brand"> · 所属 {{ vehicle.brand.display_name }}</template></b><span
                 v-for="(evidence, index) in vehicle.evidences"
                 :key="`${vehicle.vehicle_model_id}:${index}`"
-              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template><template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
+              >{{ vehicleEvidenceLabel(evidence.source) }}<template v-if="evidence.matched_text"> · 命中“{{ evidence.matched_text }}”</template></span>
             </article><small v-if="!item.vehicles?.length">暂无车型证据</small>
           </div>
         </div>
@@ -416,7 +494,10 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
           <span v-if="item.metrics.view_count != null">浏览<b>{{ formatNumber(item.metrics.view_count) }}</b></span>
         </div>
       </section>
-      <section class="manual-summary">
+      <section
+        ref="manualSection"
+        class="manual-summary detail-anchor"
+      >
         <h4>人工确认</h4>
         <div>
           <strong>相关性</strong><span>{{ item.effective_relevance === 'relevant' ? '相关' : item.effective_relevance === 'irrelevant' ? '不相关' : '未判定' }} · {{ item.relevance_source === 'manual_review' ? '已人工确认' : '人工未覆盖' }}</span><AimaButton
@@ -456,7 +537,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       >
         <header class="section-heading">
           <div><h4>车型人工确认</h4><small>0..N 个车型；自动别名证据与人工结论分开保留。</small></div>
-          <span v-if="hasVehicleLock">已人工锁定</span>
+          <span v-if="hasVehicleLock">已有人工结论</span>
         </header>
         <VehicleMultiSelect
           v-model="vehicleModelIds"
@@ -486,14 +567,14 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         ><input
           v-model="confirmUnlockVehicles"
           type="checkbox"
-        >我确认先解锁现有人工车型结论，再保存新结论</label>
+        >我确认替换现有人工车型结论</label>
         <div class="review-actions">
           <AimaButton
             v-if="hasVehicleLock"
             size="small"
             @click="unlockVehicleReview"
           >
-            仅解除锁定
+            解除人工结论
           </AimaButton><AimaButton
             variant="primary"
             size="small"
@@ -511,13 +592,13 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       >
         <header class="section-heading">
           <div><h4>发声类型、情感与标签人工纠正</h4><small>合法选项来自当前生效的 AI 分析规则。</small></div>
-          <span v-if="lockedDimensions.length">锁定 {{ lockedDimensions.join('、') }}</span>
+          <span v-if="lockedDimensions.length">已人工确认：{{ lockedDimensions.join('、') }}</span>
         </header>
         <p
           v-if="item.analysis.status !== 'completed'"
           class="review-warning"
         >
-          尚无可纠正的当前 AI 结果，请先完成 AI 打标。
+          尚无可纠正的当前 AI 结果，请先完成 AI 分析。
         </p>
         <template v-else>
           <div class="review-grid">
@@ -585,14 +666,14 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
           ><input
             v-model="confirmUnlockAnalysis"
             type="checkbox"
-          >我确认先解锁已锁定维度，再保存新的人工结论</label>
+          >我确认替换已人工确认的分析结果</label>
           <div class="review-actions">
             <AimaButton
               v-if="lockedDimensions.length"
               size="small"
               @click="unlockAnalysisReview"
             >
-              解除全部分析锁定
+              解除人工分析结论
             </AimaButton><AimaButton
               variant="primary"
               size="small"
@@ -605,22 +686,27 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         </template>
       </section>
 
-      <ContentCommentSection
-        :roots="commentRoots"
-        :replies="commentReplies"
-        :reply-states="commentReplyStates"
-        :loading="commentsLoading"
-        :loading-next="commentsLoadingNext"
-        :error="commentsError"
-        :has-more="commentsHasMore"
-        :root-total-count="commentsTotalCount"
-        :ingested-total-count="commentsIngestedTotalCount"
-        :provider-total-count="item.comment_coverage?.reported_total ?? item.metrics.comment_count"
-        :coverage="item.comment_coverage?.coverage"
-        @retry="emit('retry-comments')"
-        @load-more-roots="emit('load-more-comments')"
-        @load-replies="(rootCommentId, reset) => emit('load-comment-replies', rootCommentId, reset)"
-      />
+      <div
+        ref="commentsSection"
+        class="detail-anchor comments-anchor"
+      >
+        <ContentCommentSection
+          :roots="commentRoots"
+          :replies="commentReplies"
+          :reply-states="commentReplyStates"
+          :loading="commentsLoading"
+          :loading-next="commentsLoadingNext"
+          :error="commentsError"
+          :has-more="commentsHasMore"
+          :root-total-count="commentsTotalCount"
+          :ingested-total-count="commentsIngestedTotalCount"
+          :provider-total-count="item.comment_coverage?.reported_total ?? item.metrics.comment_count"
+          :coverage="item.comment_coverage?.coverage"
+          @retry="emit('retry-comments')"
+          @load-more-roots="emit('load-more-comments')"
+          @load-replies="(rootCommentId, reset) => emit('load-comment-replies', rootCommentId, reset)"
+        />
+      </div>
 
       <details class="additional-details">
         <summary>更多信息</summary>
@@ -633,71 +719,6 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
             状态待确认 · 暂无明确的平台可用性证据。
           </p>
         </section>
-
-
-
-
-
-        <section class="technical-section">
-          <details class="technical-details">
-            <summary>技术详情</summary>
-            <dl>
-              <div><dt>Content ID</dt><dd>{{ item.id }}</dd></div>
-              <div><dt>外部内容 ID</dt><dd>{{ item.external_content_id }}</dd></div>
-              <div><dt>当前来源 Provider</dt><dd>{{ item.source.provider_name }}</dd></div>
-              <div><dt>Provider Attempt</dt><dd>{{ item.source.provider_attempt_id || '—' }}</dd></div>
-              <div><dt>Raw Artifact</dt><dd>{{ item.source.raw_artifact_id || '—' }}</dd></div>
-              <div><dt>Import Batch</dt><dd>{{ item.source.import_batch_id || '—' }}</dd></div>
-              <div><dt>Collection Run</dt><dd>{{ item.source.collection_run_id || '—' }}</dd></div>
-              <div><dt>AI 模型</dt><dd>{{ item.analysis.model_provider }} / {{ item.analysis.model }}</dd></div>
-              <div v-if="item.availability">
-                <dt>可用状态原始证据</dt><dd>{{ item.availability.status }} · {{ item.availability.reason_code }} · {{ item.availability.evidence_kind }}</dd>
-              </div>
-            </dl>
-            <div
-              v-if="(item.source_records ?? []).length"
-              class="technical-list"
-            >
-              <strong>来源追溯</strong>
-              <span
-                v-for="(source, index) in item.source_records ?? []"
-                :key="`${source.provider_attempt_id ?? source.raw_artifact_id ?? index}`"
-              >
-                {{ source.provider_name }}<template v-if="source.import_batch_id"> · Import {{ source.import_batch_id }}</template><template v-if="source.collection_run_id"> · Run {{ source.collection_run_id }}</template><template v-if="source.provider_attempt_id"> · Attempt {{ source.provider_attempt_id }}</template><template v-if="source.raw_artifact_id"> · Artifact {{ source.raw_artifact_id }}</template>
-              </span>
-            </div>
-            <div
-              v-if="(item.brands ?? []).some((brand) => brand.evidences.length)"
-              class="technical-list"
-            >
-              <strong>品牌证据追溯</strong>
-              <template
-                v-for="brand in item.brands ?? []"
-                :key="brand.id"
-              >
-                <span
-                  v-for="(evidence, index) in brand.evidences"
-                  :key="`${brand.id}:${index}`"
-                >{{ brand.display_name }} · {{ evidence.source }} · catalog v{{ evidence.catalog_version }}<template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
-              </template>
-            </div>
-            <div
-              v-if="(item.vehicles ?? []).some((vehicle) => vehicle.evidences.length)"
-              class="technical-list"
-            >
-              <strong>车型证据追溯</strong>
-              <template
-                v-for="vehicle in item.vehicles ?? []"
-                :key="vehicle.vehicle_model_id"
-              >
-                <span
-                  v-for="(evidence, index) in vehicle.evidences"
-                  :key="`${vehicle.vehicle_model_id}:${index}`"
-                >{{ vehicle.display_name }} · {{ evidence.source }} · catalog v{{ evidence.catalog_version }}<template v-if="evidence.source_field"> · {{ evidence.source_field }}</template></span>
-              </template>
-            </div>
-          </details>
-        </section>
       </details>
     </div>
     <template #footer>
@@ -708,6 +729,50 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         target="_blank"
         rel="noopener noreferrer"
       >查看原始链接 ↗</a>
+    </template>
+  </AimaDialog>
+
+  <AimaDialog
+    v-model="unlockDialogOpen"
+    label="解除人工结论"
+    width="480px"
+    class="voice-unlock-modal"
+  >
+    <template #header>
+      <header class="unlock-dialog-header">
+        <div>
+          <h2>解除人工结论</h2>
+          <small>此操作会恢复当前自动识别 / AI 分析结果。</small>
+        </div>
+        <button
+          class="close-button"
+          type="button"
+          aria-label="关闭"
+          @click="unlockDialogOpen = false"
+        >
+          <AimaIcon
+            name="close"
+            :size="20"
+          />
+        </button>
+      </header>
+    </template>
+    <div class="unlock-dialog-body">
+      <strong>{{ unlockDialogMessage }}</strong>
+      <p>原始分析记录仍会保留。</p>
+    </div>
+    <template #footer>
+      <footer class="unlock-dialog-footer">
+        <AimaButton @click="unlockDialogOpen = false">
+          取消
+        </AimaButton>
+        <AimaButton
+          variant="primary"
+          @click="confirmUnlockReview"
+        >
+          确认解除
+        </AimaButton>
+      </footer>
     </template>
   </AimaDialog>
 </template>
@@ -763,13 +828,6 @@ h4 { margin: 0 0 9px; color: var(--aima-text); font-size: 13px; line-height: 18p
 .manual-labels { display: flex; flex-wrap: wrap; gap: 6px; }
 .manual-labels button { padding: 3px 7px; border: 0; border-radius: 4px; color: #396b9e; background: #e8f3ff; cursor: pointer; font-size: 9px; }
 .review-warning { padding: 8px 10px; border-radius: 5px; color: #8a641d !important; background: #fff9ec; }
-.technical-section { padding: 0 !important; border: 0 !important; background: transparent !important; }
-.technical-details { padding: 10px 12px; border: 1px dashed var(--aima-border-strong); border-radius: 7px; color: var(--aima-text-muted); background: #fafbfc; font-size: 10px; }
-.technical-details summary { cursor: pointer; color: var(--aima-text-secondary); font-weight: 600; }
-.technical-details dl { margin-top: 10px; }
-.technical-list { display: grid; gap: 4px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--aima-border); }
-.technical-list strong { color: var(--aima-text-secondary); font-size: 10px; }
-.technical-list span { overflow-wrap: anywhere; color: var(--aima-text-muted); font-size: 9px; line-height: 15px; }
 dl { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 8px; margin: 0; }
 dl div { display: flex; min-height: 28px; align-items: flex-start; justify-content: space-between; gap: 10px; }
 dt { color: var(--aima-text-disabled); font-size: 10px; }
@@ -787,6 +845,35 @@ dd { overflow-wrap: anywhere; margin: 0; color: var(--aima-text); font-size: 10p
 .comments p { margin-top: 5px !important; font-size: 11px !important; }
 .drawer-state { display: grid; flex: 1; place-items: center; color: var(--aima-text-muted); }
 .drawer-body { gap: 20px; padding: 0 24px 24px; overflow: visible; }
+.detail-section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--aima-border);
+  background: var(--aima-surface);
+}
+.detail-section-nav button {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--aima-text-muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+}
+.detail-section-nav button:hover,
+.detail-section-nav button:focus-visible {
+  color: var(--aima-primary);
+  background: var(--aima-primary-soft);
+  outline: none;
+}
+.detail-anchor { scroll-margin-top: 52px; }
+.comments-anchor { min-width: 0; }
 header { min-height: 80px; padding: 24px 24px 16px; border: 0; }
 header h2 { margin: 0 0 4px; font-size: 16px; line-height: 22px; }
 header small { font-size: 12px; }
@@ -800,8 +887,49 @@ header small { font-size: 12px; }
 .info-grid dd { font-size: 13px; line-height: 20px; text-align: left; }
 .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .metric-grid span { min-height: 64px; padding: 10px 12px; place-items: start; align-content: center; background: #f7f9fb; font-size: 12px; }
+.media-carousel { position: relative; overflow: hidden; border-radius: 8px; }
 .media-grid { grid-template-columns: 1fr; }
 .media-grid img { height: 100px; }
+.media-grid--carousel {
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  grid-template-columns: none;
+  overflow-x: auto;
+  scroll-behavior: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.media-grid--carousel::-webkit-scrollbar { display: none; }
+.media-grid--carousel a { scroll-snap-align: start; }
+.media-grid--carousel img { height: 180px; }
+.media-navigation {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  color: var(--aima-text);
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 2px 8px rgb(23 35 61 / 14%);
+  cursor: pointer;
+}
+.media-navigation--previous { left: 8px; }
+.media-navigation--next { right: 8px; }
+.media-navigation:disabled { cursor: default; opacity: .38; }
+.media-position {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: white;
+  background: rgb(17 22 37 / 65%);
+  font-size: 10px;
+}
 .drawer-body > .manual-summary { display: grid; gap: 6px; padding: 12px; border-radius: 6px; background: #f7f9fb; }
 .manual-summary h4 { margin: 0; font-size: 16px; }
 .manual-summary > div { display: flex; min-height: 32px; align-items: center; gap: 12px; border-radius: 4px; background: white; }
@@ -813,6 +941,13 @@ header small { font-size: 12px; }
 .additional-details { display: grid; gap: 12px; color: var(--aima-text-muted); font-size: 12px; }
 .additional-details > summary { cursor: pointer; }
 .additional-details > section { margin-top: 16px; }
+.unlock-dialog-header { min-height: 64px; padding: 0 20px; }
+.unlock-dialog-header h2 { margin-bottom: 2px; font-size: 16px; line-height: 22px; }
+.unlock-dialog-header small { font-size: 11px; }
+.unlock-dialog-body { display: grid; gap: 10px; padding: 20px; }
+.unlock-dialog-body strong { color: var(--aima-text); font-size: 13px; line-height: 20px; }
+.unlock-dialog-body p { margin: 0; color: var(--aima-text-muted); font-size: 11px; line-height: 18px; }
+.unlock-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px 20px; }
 .drawer-state { min-height: 180px; align-content: center; gap: 12px; padding: 24px; }
 .drawer-save-error { padding: 12px 24px; color: var(--aima-danger); font-size: 12px; }
 </style>

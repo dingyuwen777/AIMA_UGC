@@ -28,7 +28,8 @@ test('从页面提交两条内容并通过真实 Worker 保存两份合法打标
   await page.getByLabel('选择 爱玛 并发验收 B', { exact: true }).check()
   await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
-  await expect(dialog.getByText(/预计分析 2 条内容 · 1 个分片 · 每片最多 \d+ 条/)).toBeVisible()
+  await expect(dialog.getByText('预计分析 2 条内容', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('分析可能产生服务费用。确认开始后执行，运行进度可在任务中心查看。', { exact: true })).toBeVisible()
   const createdResponse = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')

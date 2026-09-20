@@ -40,7 +40,7 @@ def map_content(
     external_id = required_string(item, "idstr", "id", "mid")
     observed_fields: list[str] = ["content_type"]
 
-    alternate_ids: dict[str, str] = {}
+    alternate_ids: dict[str, str] = {"status_id": external_id} if external_id.isdecimal() else {}
     for key in ("mid", "bid"):
         value = optional_string(item, key)
         if value is not None and value != external_id:

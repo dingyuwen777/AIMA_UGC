@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
+from aima_ugc.adapters.providers.imports.models import ExcelImportRowError
 from aima_ugc.adapters.providers.tikhub.runtime import build_comments_call, build_detail_call
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 
@@ -153,6 +154,40 @@ def test_excel_douyin_modal_id_is_typed_aweme_lookup() -> None:
     assert identity.alternate_ids["aweme_id"] == "7531234567890123456"
 
 
+@pytest.mark.parametrize(
+    "url",
+    (
+        "https://www.douyin.com/search/aima?modal_id=7531234567890123456&modal_id=7531234567890123457",
+        "https://www.douyin.com/search/aima?modal_id=&modal_id=7531234567890123456",
+        "https://www.douyin.com/search/aima?modal_id=%EF%BC%91%EF%BC%92%EF%BC%93",
+    ),
+)
+def test_douyin_modal_id_rejects_ambiguous_or_non_ascii_query(url: str) -> None:
+    identity = resolve_content_identity(
+        platform="douyin", canonical_url=url, source_article_id="SOURCE-001"
+    )
+    assert "aweme_id" not in identity.alternate_ids
+
+
+@pytest.mark.parametrize(
+    ("platform", "url", "id_type"),
+    (
+        ("xiaohongshu", "https://www.xiaohongshu.com/explore/note-1/other", "note_id"),
+        ("douyin", "https://www.douyin.com/video/123abc", "aweme_id"),
+        ("weibo", "https://weibo.com/detail/123/other", "status_id"),
+        ("bilibili", "https://www.bilibili.com/video/BV1xx411c7mD/other", "bv_id"),
+        ("kuaishou", "https://www.kuaishou.com/short-video/photo-1/other", "photo_id"),
+    ),
+)
+def test_native_content_id_requires_complete_known_path(
+    platform: str, url: str, id_type: str
+) -> None:
+    identity = resolve_content_identity(
+        platform=platform, canonical_url=url, source_article_id="SOURCE-001"
+    )
+    assert id_type not in identity.alternate_ids
+
+
 def test_excel_bilibili_urls_normalize_bv_to_tikhub_aid_and_keep_lookup_aliases() -> None:
     bv = resolve_content_identity(
         platform="bilibili",
@@ -181,6 +216,47 @@ def test_excel_weibo_permalink_converts_base62_bid_to_numeric_status_id() -> Non
 
     assert identity.external_content_id == "4331051486294436"
     assert identity.alternate_ids["status_id"] == "4331051486294436"
+
+
+def test_weibo_ttarticle_is_not_supported_comment_target() -> None:
+    """不补采长文章评论，文章 ID 不能变成微博帖子 ID。"""
+    identity = resolve_content_identity(
+        platform="weibo",
+        canonical_url="https://Card.Weibo.Com/ttarticle/p/show?id=230940123456789#comments",
+        source_article_id=None,
+    )
+    assert identity.external_content_id.startswith("url_sha256:")
+    assert identity.alternate_ids == {}
+    with pytest.raises(ValueError, match="identity_unavailable"):
+        build_comments_call(
+            platform="weibo",
+            external_content_id=identity.external_content_id,
+            alternate_ids=identity.alternate_ids,
+        )
+
+
+def test_weibo_url_with_userinfo_is_rejected() -> None:
+    """URL 凭据不得伪装成微博 host。"""
+    with pytest.raises(ExcelImportRowError, match="用户凭据"):
+        resolve_content_identity(
+            platform="weibo",
+            canonical_url="https://weibo.com@evil.test/status/5191839277071122",
+            source_article_id="SOURCE-001",
+        )
+
+
+@pytest.mark.parametrize(
+    ("platform", "url", "locator_type"),
+    (
+        ("weibo", "https://evil.test/tv/show/123", "weibo_video_url"),
+        ("kuaishou", "https://evil.test/f/123", "kuaishou_share_url"),
+    ),
+)
+def test_share_locator_rejects_unrelated_host(platform: str, url: str, locator_type: str) -> None:
+    identity = resolve_content_identity(
+        platform=platform, canonical_url=url, source_article_id="SOURCE-001"
+    )
+    assert locator_type not in identity.alternate_ids
 
 
 def test_bilibili_runtime_routes_bv_identity_to_bv_parameter() -> None:

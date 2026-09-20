@@ -5,10 +5,12 @@
 ## 当前指南
 
 - [`docs/guides/01_Figma与前端设计开发工作流.md`](01_Figma与前端设计开发工作流.md)：Figma/原型如何与当前 Vue、真实后端 Contract、公共组件和设计系统协作；
+- [`docs/guides/02_管理员配置Figma开发基线.md`](02_管理员配置Figma开发基线.md)：管理员配置六个正式页签、设计节点、代码 Owner 与报告策略前后端边界；
 - [`docs/guides/03_Windows Docker Desktop Compose运行.md`](03_Windows%20Docker%20Desktop%20Compose运行.md)：Windows Docker Desktop 如何运行 canonical Compose + storage-only override；
 - [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)：网络受限环境的构建源和开发机重置边界；
 - [`docs/guides/05_多人协作与Change自动归档.md`](05_多人协作与Change自动归档.md)：多人协作、Requirement/Change、PR、Review、合并和自动归档的仓库工作流；
 - [`docs/guides/06_本地Release离线包构建.md`](06_本地Release离线包构建.md)：Windows/PowerShell 如何用国内源一键构建与 GitHub Release 共用 Contract 的 Linux/AMD64 离线部署包，并按需执行离线回放验证。
+- [`docs/guides/07_采集运行中心Figma开发基线.md`](07_采集运行中心Figma开发基线.md)：采集运行中心四层 Figma Owner、正式节点、代码映射、响应式和 Design-to-Code 验收边界。
 
 ## 不再维护“固定持续开发提示词”
 

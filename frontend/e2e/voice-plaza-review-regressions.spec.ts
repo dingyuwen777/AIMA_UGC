@@ -86,11 +86,12 @@ test('辅助能力失败时保留成功加载的空内容状态', async ({ page 
 
   await page.goto('/voice-plaza')
 
-  await expect(page.getByText('声音广场操作失败')).toBeVisible()
-  await expect(page.getByText('加载声音广场失败')).toHaveCount(0)
+  const pageError = page.locator('.page-error')
+  await expect(pageError).toContainText('操作未完成')
+  await expect(pageError).toContainText('当前页面状态已保留，请稍后重试。')
+  await expect(pageError).not.toContainText('req_voice_plaza_capability_failure')
   await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
-  await expect(page.getByText('暂时无法加载声音记录')).toHaveCount(0)
-  await expect(page.locator('.page-error')).toContainText('req_voice_plaza_capability_failure')
+  await expect(page.locator('.table-state--error')).toHaveCount(0)
 })
 
 test('车型目录响应缺少 items 时显示错误且不中断页面渲染', async ({ page }) => {
@@ -122,7 +123,7 @@ test('车型目录响应缺少 items 时显示错误且不中断页面渲染', a
   expect(pageErrors).toEqual([])
 })
 
-test('Failed Analysis Run 在全局任务中心保留后端 error_code', async ({ page }) => {
+test('Failed Analysis Run 在全局任务中心只展示产品化失败状态', async ({ page }) => {
   await stubStableAuxiliaryRoutes(page)
   await page.route('**/api/v1/contents**', async (route) => {
     await route.fulfill({
@@ -170,7 +171,8 @@ test('Failed Analysis Run 在全局任务中心保留后端 error_code', async (
   await page.getByRole('button', { name: /任务中心/ }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
-  await expect(taskCenter).toContainText('AI 打标任务 13')
-  await taskCenter.getByText('技术详情', { exact: true }).click()
-  await expect(taskCenter.getByText(/analysis_shard_failed/)).toBeVisible()
+  await expect(taskCenter).toContainText('AI 分析任务 13')
+  await expect(taskCenter).toContainText('任务遇到问题，请稍后重试；如持续失败，请联系管理员。')
+  await expect(taskCenter.getByText('技术详情', { exact: true })).toHaveCount(0)
+  await expect(taskCenter).not.toContainText('analysis_shard_failed')
 })

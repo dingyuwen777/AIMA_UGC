@@ -151,9 +151,14 @@ kuaishou    → photo_id
 `reply_shortfalls`。两种情况都只能得到 `partial` 或 `unavailable`，不会因为
 Pydantic 数量/归属校验而中断整批运行。
 
-微博评论接口只接受可验证的数字 `status_id`。只有来源哈希或 `ttarticle`
-文章身份、尚未解析出 `status_id` 的记录会以 `unsupported_weibo_comment_identity`
-标记为不可用，并且 Provider 请求数为 0，防止把文章 ID 误当微博帖子 ID。
+若导入内容的 Canonical 主身份与已保存的 `note_id` 等评论目标 ID 不同，先以
+Provider 返回的内容 ID 核对该 typed ID；相同才把一级评论和回复挂回原导入内容。
+其他 ID 仍按串帖过滤并记录 `identity_mismatches`。离线入口继续复用生产
+`resolve_comment_target`、TikHub Operation、Mapper 和分页规则，不会自动解析短链。
+
+微博评论接口只接受可验证的数字 `status_id`。`ttarticle` 长文章不做评论补采；
+只有文章 URL 的导入记录不生成评论目标 ID，历史记录带有 `ttarticle_id` 时即使
+同时存在 `status_id` 也会以 `identity_unavailable` 阻断，Provider 请求数为 0。
 
 ## 7. 输出
 

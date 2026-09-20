@@ -137,13 +137,13 @@ async function submitAnalysis(): Promise<void> {
   const count = await store.confirmAnalysis()
   if (count === null) return
   analysisOpen.value = false
-  showNotice(`已创建 AI 打标任务，将处理 ${count} 条内容。`)
+  showNotice(`已创建 AI 分析任务，将处理 ${count} 条内容。`)
 }
 
 /** 请求取消仍处于可取消状态的 Analysis Run，并同步全局任务中心。 */
 async function cancelAnalysis(runId: string): Promise<void> {
   if (await store.cancelRun(runId)) {
-    showNotice('已请求取消 AI 打标任务。')
+    showNotice('已请求取消 AI 分析任务。')
   }
 }
 
@@ -206,14 +206,16 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       >
         <template #actions>
           <AimaButton
+            size="small"
             :disabled="store.analysisConfigured !== true"
-            :title="store.analysisConfigured === false ? 'AI 模型尚未配置' : store.analysisConfigured === null ? '正在检查 AI 打标是否可用' : '可选择已选内容或全部数据进行打标'"
+            :title="store.analysisConfigured === false ? 'AI 分析尚未配置' : store.analysisConfigured === null ? '正在检查 AI 分析是否可用' : '可选择已选内容或全部数据进行分析'"
             @click="analysisOpen = true"
           >
             AI 分析
           </AimaButton>
           <AimaButton
             variant="primary"
+            size="small"
             @click="exportOpen = true"
           >
             导出记录
@@ -248,7 +250,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         class="capability-warning"
         tone="warning"
       >
-        <strong>AI 打标暂不可用：管理员尚未完成 AI 模型配置。</strong>
+        <strong>AI 分析暂不可用：管理员尚未完成 AI 模型配置。</strong>
         <span>请联系管理员完成模型配置后重试；内容浏览、筛选和人工复核不受影响。</span>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
@@ -259,10 +261,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       >
         <strong>筛选项暂不可用</strong>
         <span>动态筛选已暂时停用；内容浏览和其它操作仍可使用。</span>
-        <details class="warning-details">
-          <summary>技术详情</summary>
-          <span>{{ store.filterOptionsError }}</span>
-        </details>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="store.taxonomyError"
@@ -272,10 +270,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       >
         <strong>当前 AI 分析规则暂不可用</strong>
         <span>分析结果人工纠正已暂时停用；内容浏览与筛选仍可使用。</span>
-        <details class="warning-details">
-          <summary>技术详情</summary>
-          <span>{{ store.taxonomyError }}</span>
-        </details>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="reviewNote"
@@ -290,8 +284,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         tone="error"
         role="alert"
       >
-        <strong>{{ store.listError && store.items.length === 0 ? '加载声音广场失败' : '声音广场操作失败' }}</strong>
-        <span>{{ store.listError ?? store.error }}</span>
+        <strong>{{ store.listError && store.items.length === 0 ? '暂时无法加载声音记录' : '操作未完成' }}</strong>
+        <span>{{ store.listError && store.items.length === 0 ? '请检查网络或服务状态后重试。' : '当前页面状态已保留，请稍后重试。' }}</span>
         <AimaButton
           size="small"
           @click="refreshPage"
@@ -303,11 +297,11 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       <section
         v-if="activeAnalysisRuns.length && (!store.listError || store.items.length > 0)"
         class="active-analysis-runs"
-        aria-label="AI 打标活动任务"
+        aria-label="AI 分析活动任务"
       >
         <header class="active-analysis-heading">
           <div>
-            <strong>AI 打标任务</strong>
+            <strong>AI 分析任务</strong>
             <span>{{ activeAnalysisRuns.length }} 个任务正在处理；历史任务统一在任务中心查看。</span>
           </div>
           <button
@@ -326,12 +320,12 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             :class="`run-status--${run.status}`"
           >{{ runStatusLabels[run.status] }}</span>
           <div class="run-info">
-            <strong>AI 打标 · {{ runStatusLabels[run.status] }}</strong>
+            <strong>AI 分析 · {{ runStatusLabels[run.status] }}</strong>
             <small>{{ analysisRunProgressDetail(run) }}</small>
           </div>
           <TaskProgressBar
             compact
-            label="AI 打标进度"
+            label="AI 分析进度"
             :value="analysisRunProgress(run)"
             :detail="analysisRunProgressDetail(run)"
           />
@@ -352,29 +346,12 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         class="list-heading"
       >
         <div class="selection-actions">
-          <details class="count-options">
-            <summary><span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} <strong>{{ store.contentCount.count.toLocaleString('zh-CN') }} 条</strong></span><span v-else>已显示 <strong>{{ store.items.length }} 条</strong></span></summary>
-            <div class="count-menu">
-              <button
-                type="button"
-                :disabled="store.countLoading"
-                @click="store.refreshCount('exact')"
-              >
-                统计准确数量
-              </button><button
-                type="button"
-                :disabled="store.countLoading"
-                @click="store.refreshCount('estimated')"
-              >
-                快速估算数量
-              </button><button
-                type="button"
-                @click="refreshPage"
-              >
-                刷新数据
-              </button><small v-if="store.countError">{{ store.countError }}</small><small v-else-if="store.contentCount?.truncated">结果较多，暂不显示精确总数</small>
-            </div>
-          </details>
+          <div class="count-summary">
+            <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} <strong>{{ store.contentCount.count.toLocaleString('zh-CN') }} 条</strong></span>
+            <span v-else>已显示 <strong>{{ store.items.length }} 条</strong></span>
+            <small v-if="store.contentCount?.truncated">结果较多，当前显示估算总数</small>
+            <small v-else-if="store.countError">总数暂不可用</small>
+          </div>
           <button
             v-if="selectedReviewIds.relevant.length"
             class="review-selected review-selected--relevant"
@@ -501,11 +478,19 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 </template>
 
 <style scoped>
-.voice-plaza-page { display: grid; gap: 16px; }
-.voice-plaza-page > :deep(.aima-page-header) { margin-bottom: 8px; }
+.voice-plaza-page { display: grid; gap: 20px; }
 .voice-plaza-page :deep(.aima-page-header) { flex-wrap: nowrap; align-items: center; }
+.voice-plaza-page :deep(.aima-page-header h1) { font-weight: 700; }
+.voice-plaza-page :deep(.aima-page-header p) { margin-top: 6px; }
 .voice-plaza-page :deep(.aima-page-actions) { flex: none; }
-.count-options strong { color: var(--aima-primary); }
+.voice-plaza-page :deep(.aima-page-actions .aima-button.is-small) {
+  min-height: 32px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.count-summary { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+.count-summary strong { color: var(--aima-primary); }
+.count-summary small { color: var(--aima-text-disabled); font-size: 10px; }
 .capability-warning strong,
 .capability-warning span,
 .taxonomy-warning strong,
@@ -548,19 +533,10 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .selected-count { color: var(--aima-primary); background: var(--aima-primary-soft); }
 .selection-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .pagination { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 20px; color: var(--aima-text-muted); font-size: 11px; }
-.count-tools { display: flex; align-items: center; gap: 8px; }
-.count-tools button { padding: 3px 7px; border: 1px solid var(--aima-border); border-radius: 4px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; font-size: 10px; }
-.count-tools button:disabled { cursor: wait; opacity: .55; }
 .pagination :deep(.aima-button) { height: 34px; }
 .notice { position: fixed; z-index: 200; top: 76px; left: 50%; min-width: 280px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
 @media (max-width: 1280px) {
   .active-analysis-runs article { grid-template-columns: auto minmax(180px, 1fr) minmax(180px, 1fr); }
   .run-counts { grid-column: 2; }
 }
-.list-heading details { position: relative; }
-.list-heading summary { cursor: pointer; list-style: none; }
-.count-menu { position: absolute; z-index: 5; top: 28px; left: 0; display: grid; min-width: 180px; padding: 8px; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); box-shadow: var(--aima-shadow-floating); }
-.count-menu button { padding: 8px; border: 0; color: var(--aima-text); background: transparent; text-align: left; cursor: pointer; font-size: 12px; }
-.count-menu button:hover { background: var(--aima-primary-soft); }
-.count-menu small { padding: 8px; color: var(--aima-text-muted); }
 </style>

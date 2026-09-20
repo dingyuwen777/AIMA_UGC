@@ -47,11 +47,10 @@ async function assertCompletedRunRetained(
     status: 'succeeded',
   }))
 
-  // 声音广场只展示 queued/running/cancelling 活动 Run；终态历史统一进入任务中心。
-  await page.locator('.count-options > summary').click()
-  await page.locator('.count-options').getByRole('button', { name: '刷新数据', exact: true }).click()
-  await page.locator('.count-options > summary').click()
-  await expect(page.getByRole('region', { name: 'AI 打标活动任务' })).toHaveCount(0)
+  // 声音广场只展示 queued/running/cancelling 活动任务；终态历史统一进入任务中心。
+  await expect(page.getByRole('region', { name: 'AI 分析活动任务' })).toHaveCount(0, {
+    timeout: 5_000,
+  })
 }
 
 async function createAnalysisRun(
@@ -61,7 +60,7 @@ async function createAnalysisRun(
   await page.getByLabel(/选择 爱玛 Stage12 当前标题/).check()
   await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
-  await expect(dialog.getByText(/预计分析 1 条内容 · 1 个分片 · 每片最多 \d+ 条/)).toBeVisible()
+  await expect(dialog.getByText('预计分析 1 条内容', { exact: true })).toBeVisible()
   const createdResponsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
@@ -102,13 +101,9 @@ async function createAllDataAnalysisRun(
     targets: { scope: string; content_ids?: string[] }
   }
   expect(previewRequest).toEqual({ targets: { scope: 'all' } })
-  const preview = await previewResponse.json() as { target_count: number; shard_count: number; shard_size: number }
+  const preview = await previewResponse.json() as { target_count: number }
   expect(preview.target_count).toBeGreaterThan(1)
-  await expect(
-    dialog.getByText(
-      `预计分析 ${preview.target_count} 条内容 · ${preview.shard_count} 个分片 · 每片最多 ${preview.shard_size} 条`,
-    ),
-  ).toBeVisible()
+  await expect(dialog.getByText(`预计分析 ${preview.target_count} 条内容`, { exact: true })).toBeVisible()
 
   const createdResponsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST'

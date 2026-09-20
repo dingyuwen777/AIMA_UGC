@@ -127,6 +127,7 @@ def _content_record(*, external_id: str) -> UnifiedContentRecordV1:
         content=CanonicalContentV1(
             platform="xiaohongshu",
             external_content_id=external_id,
+            alternate_ids={"note_id": external_id},
             content_type="image",
             title="元宇宙实际体验",
             text="Q3也试过",

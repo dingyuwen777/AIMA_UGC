@@ -66,6 +66,7 @@ def _pair_record(external_id: str, *, target_model: str = "元宇宙") -> Vehicl
     content = CanonicalContentV1(
         platform="xiaohongshu",
         external_content_id=external_id,
+        alternate_ids={"note_id": external_id},
         content_type="image",
         title=f"{target_model}实际体验",
         text="Q3也试过",

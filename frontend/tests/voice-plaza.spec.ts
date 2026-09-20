@@ -130,7 +130,7 @@ describe('voice plaza', () => {
     expect(store.detail).toBeNull()
   })
 
-  it('独立分页读取一级评论与回复，并保留数据库总数', async () => {
+  it('打开详情会预取已入库回复并保留数据库总数', async () => {
     const root = {
       id: 'comment-root-id',
       external_comment_id: 'root-1',
@@ -162,7 +162,6 @@ describe('voice plaza', () => {
     const store = useVoicePlazaStore()
 
     await store.openDetail(item.id)
-    await store.loadCommentReplies('root-1')
 
     expect(generated.listContentComments).toHaveBeenNthCalledWith(1, item.id, {
       cursor: undefined,

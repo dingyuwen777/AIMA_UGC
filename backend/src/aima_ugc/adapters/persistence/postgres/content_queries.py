@@ -421,6 +421,7 @@ class PostgresContentQueryRepository:
         """统一评论响应投影，并在数据库内解析直接父评论作者。"""
 
         comment = comments_table
+        content = contents_table
         author = accounts_table
         parent_comment = comments_table.alias("parent_comment")
         parent_author = accounts_table.alias("parent_comment_author")
@@ -436,6 +437,20 @@ class PostgresContentQueryRepository:
             .correlate(comment)
             .scalar_subquery()
         )
+        resolved_is_by_content_author = case(
+            (
+                comment.c.is_by_content_author.is_not(None),
+                comment.c.is_by_content_author,
+            ),
+            (
+                and_(
+                    comment.c.author_account_id.is_not(None),
+                    content.c.author_account_id.is_not(None),
+                ),
+                comment.c.author_account_id == content.c.author_account_id,
+            ),
+            else_=None,
+        ).label("is_by_content_author")
         return (
             select(
                 comment.c.id,
@@ -449,10 +464,11 @@ class PostgresContentQueryRepository:
                 comment.c.current_like_count,
                 comment.c.current_reply_count,
                 ingested_reply_count.label("ingested_reply_count"),
-                comment.c.is_by_content_author,
+                resolved_is_by_content_author,
             )
             .select_from(
-                comment.outerjoin(author, author.c.id == comment.c.author_account_id)
+                comment.join(content, content.c.id == comment.c.content_id)
+                .outerjoin(author, author.c.id == comment.c.author_account_id)
                 .outerjoin(
                     parent_comment,
                     and_(

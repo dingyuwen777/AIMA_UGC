@@ -33,6 +33,7 @@ def test_batch_supplement_eligibility_exposes_only_platform_target_counts() -> N
             {"platform": "xiaohongshu", "target_count": 3},
             {"platform": "weibo", "target_count": 1},
         ],
+        "diagnostics": [],
     }
 
 

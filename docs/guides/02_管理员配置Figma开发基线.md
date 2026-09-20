@@ -15,9 +15,11 @@ Page: 3957:2
 | --- | --- |
 | 品牌与车型 | `7511:10359` |
 | AI 模型 | `4804:15203` |
-| TikHub | `4804:15376` |
+| TikHub | `7708:12501` |
 | AI 分析规则 | `4804:15542` |
 | 操作记录 | `4804:15700` |
+| 报告策略默认态 | `7434:40097` |
+| 报告策略唯一 Feature Owner | `7434:40096` |
 | 权限、身份与数据来源规格 | `7127:33626` |
 | 行为与状态规格 | `7127:33634` |
 | 响应式开发验收 | `7127:34621` |
@@ -26,7 +28,7 @@ Page: 3957:2
 
 ## 2. 当前正式范围
 
-当前 Web 只实现五个真实 Tab：
+当前 Web 实现六个真实 Tab：
 
 ```text
 品牌与车型
@@ -34,11 +36,12 @@ AI 模型
 TikHub
 AI 分析规则
 操作记录
+报告策略
 ```
 
-Figma 中存在“报告策略”设计，但当前产品与机器事实没有正式 Web Report Plan / Report Job / Scheduler / Delivery Contract，因此它不属于本轮 `/admin/configuration` 实现范围。正式 Requirement、Contract、后端能力和 generated client 建立以前，不得只根据 Figma 新增该 Tab、永久 Mock、假任务或死按钮。
+“报告策略”当前只实现前端准备面：选择本期/上期 `.xlsx`、填写报告日期范围、执行本地格式与日期校验、重置输入，并明确展示报告服务尚未接入。它不发送报告写请求，不生成假任务、假成功态或假飞书链接。
 
-当前 Word 报告继续沿用既有离线报告链路；Web 报告策略如需落地，应独立建立跨层 Feature。
+当前 Word 报告继续沿用既有离线报告链路；Figma 中的提交中、同步失败和成功结果是后端接入后的验收目标。正式 Web Report Job / API / Scheduler / Delivery Contract 建立后，必须从后端机器事实、generated client 和任务中心真实 read model 接通，不得用前端延时或永久 Mock 冒充。
 
 ## 3. 当前代码 Owner
 
@@ -48,6 +51,7 @@ Figma 中存在“报告策略”设计，但当前产品与机器事实没有�
 - 品牌与车型页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/CatalogConfigurationPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/CatalogConfigurationPanel.vue)；
 - AI 分析规则页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AnalysisSchemePanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AnalysisSchemePanel.vue)；
 - 操作记录页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AuditPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AuditPanel.vue)；
+- 报告策略页面私有 Feature Owner → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/ReportStrategyPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/ReportStrategyPanel.vue)；
 - Provider 配置唯一业务 Owner → [`frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue`](../../frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue)；
 - 结构化标签唯一编辑 Owner → [`frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue`](../../frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue)；
 - Feature API → [`frontend/src/features/admin-configuration/api.ts`](../../frontend/src/features/admin-configuration/api.ts)；
@@ -97,6 +101,13 @@ AI 模型与 TikHub 继续复用同一个 Provider 配置业务 Owner：
 - raw event/object/request ID 与 `safe_detail` 只在技术详情按需展开；
 - 不新增当前 Contract 不支持的全库搜索；
 - 当前 offset pagination 继续沿用正式 API。
+
+### 报告策略
+
+- 浏览器当前只验证文件扩展名与日期范围，不把 `.xlsx` 扩展名检查描述成工作簿内容已校验；
+- 报告服务未接入时，主操作必须停止在明确的不可提交状态；
+- 当前不得调用不存在的 API，不得在任务中心写入假任务，不得构造飞书文档或多维表格链接；
+- 后续后端实现必须补齐真实任务、失败恢复、飞书同步结果和端到端持久化验收后，才能开放提交中、同步失败与成功状态。
 
 ## 5. 响应式与宽表格
 
@@ -169,7 +180,7 @@ Brand Directory、Brand Detail、Vehicle Dialog、Scheme Version List、Audit Ta
 
 ```text
 Fresh Figma Design Context / Screenshot
-→ Browser Mock：5 个真实 Tab、主要状态、Dialog、1180/1440/1920 Geometry
+→ Browser Mock：6 个真实 Tab、报告前端边界、主要状态、Dialog、1180/1440/1920 Geometry
 → Lint / Typecheck / Unit / Build
 → 当前 required CI
 → Implementation ↔ Figma Conformance
@@ -185,6 +196,7 @@ Browser Mock 只证明前端可观察行为与请求语义，不冒充真实 Bac
 - Scheme 268px 版本区 + 弹性编辑区；
 - Structured Labels 的 40px 控件与兜底 Disabled 表达；
 - Audit 1176px 局部横滚；
+- Report 两份文件、日期范围、校验失败、重置和后端未接入状态；
 - 页面自身无横向溢出；
 - Loading / Empty / Error / Disabled 状态；
 - Secret、技术标识和原始审计数据没有回到默认业务层。

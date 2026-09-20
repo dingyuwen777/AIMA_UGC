@@ -109,7 +109,7 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
     <div class="filter-row filter-row--primary">
       <label class="field field--search"><span>搜索内容</span><input
         :value="search"
-        placeholder="搜索标题、正文、作者或内容 ID"
+        placeholder="搜索标题、正文或作者"
         @input="emit('update:search', value($event))"
         @keyup.enter="emit('search')"
       ></label>

@@ -18,6 +18,7 @@ def test_sub_comment_calls_use_current_primary_operations() -> None:
         build_sub_comments_call(
             platform="xiaohongshu",
             external_content_id="note-1",
+            alternate_ids={"note_id": "note-1"},
             root_comment_id="comment-1",
         ).path
         == "/api/v1/xiaohongshu/app_v2/get_note_sub_comments"
@@ -26,6 +27,7 @@ def test_sub_comment_calls_use_current_primary_operations() -> None:
         build_sub_comments_call(
             platform="douyin",
             external_content_id="aweme-1",
+            alternate_ids={"aweme_id": "123456"},
             root_comment_id="comment-1",
         ).path
         == "/api/v1/douyin/app/v3/fetch_video_comment_replies"
@@ -34,6 +36,7 @@ def test_sub_comment_calls_use_current_primary_operations() -> None:
         build_sub_comments_call(
             platform="weibo",
             external_content_id="status-1",
+            alternate_ids={"status_id": "123456"},
             root_comment_id="comment-1",
         ).path
         == "/api/v1/weibo/web_v2/fetch_post_sub_comments"
@@ -42,6 +45,7 @@ def test_sub_comment_calls_use_current_primary_operations() -> None:
         build_sub_comments_call(
             platform="bilibili",
             external_content_id="100010",
+            alternate_ids={"av_id": "100010"},
             root_comment_id="comment-1",
         ).path
         == "/api/v1/bilibili/app/fetch_reply_detail"
@@ -50,6 +54,7 @@ def test_sub_comment_calls_use_current_primary_operations() -> None:
     kuaishou = build_sub_comments_call(
         platform="kuaishou",
         external_content_id="photo-1",
+        alternate_ids={"photo_id": "photo-1"},
         root_comment_id="comment-1",
     )
     assert kuaishou.path == "/api/v1/kuaishou/app/fetch_video_sub_comments"
@@ -94,6 +99,7 @@ def test_comment_pagination_uses_existing_platform_state_models() -> None:
     next_xiaohongshu_call = build_comments_call(
         platform="xiaohongshu",
         external_content_id="note-1",
+        alternate_ids={"note_id": "note-1"},
         state=xiaohongshu.next_state,
     )
     assert next_xiaohongshu_call.params["cursor"] == "after"

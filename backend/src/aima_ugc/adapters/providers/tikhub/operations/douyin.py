@@ -188,6 +188,14 @@ def build_video_detail_request(*, aweme_id: str) -> DouyinRequest:
     )
 
 
+def build_video_detail_by_share_url_request(*, share_url: str) -> DouyinRequest:
+    """通过已验证的 App V3 分享链接详情接口取得视频身份。"""
+
+    return DouyinRequest(
+        "GET", f"{_APP_V3_BASE}/fetch_one_video_by_share_url", {"share_url": share_url}
+    )
+
+
 def build_video_comments_request(*, aweme_id: str, cursor: int = 0) -> DouyinRequest:
     _nonnegative_cursor(cursor)
     return DouyinRequest(
@@ -318,6 +326,7 @@ __all__ = [
     "build_video_comment_replies_request",
     "build_video_comments_request",
     "build_video_detail_request",
+    "build_video_detail_by_share_url_request",
     "build_video_search_request",
     "build_video_search_v1_candidate_request",
     "extract_comment_items",

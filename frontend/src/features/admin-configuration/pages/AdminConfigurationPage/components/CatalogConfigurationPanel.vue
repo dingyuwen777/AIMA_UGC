@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import type { BrandResponse, VehicleModelResponse } from '../../../../../generated/api/client'
 import { apiErrorMessage } from '../../../../../shared/api/http'
@@ -53,6 +53,10 @@ const vehicleDraft = reactive({
 })
 const mergeTargetId = ref('')
 
+const emit = defineEmits<{
+  'dirty-change': [dirty: boolean]
+}>()
+
 const selectedBrand = computed(() => brands.value.find((item) => item.id === selectedBrandId.value) ?? null)
 const selectedBrandVehicles = computed(() => vehicles.value.filter((item) => item.brand_id === selectedBrandId.value))
 const brandFormValid = computed(() => Boolean(brandDraft.displayName.trim()))
@@ -60,6 +64,58 @@ const vehicleFormValid = computed(() => Boolean(
   vehicleDraft.displayName.trim()
     && (vehicleDraft.status !== 'active' || vehicleDraft.brandId),
 ))
+
+
+/** 比较品牌编辑区与当前服务端基线；新增弹窗只有真正输入后才算未保存。 */
+const brandDraftDirty = computed(() => {
+  if (brandCreateOpen.value) {
+    return Boolean(
+      brandDraft.displayName.trim()
+      || brandDraft.aliases.trim()
+      || brandDraft.role !== 'owned'
+      || brandDraft.status !== 'active',
+    )
+  }
+  const current = selectedBrand.value
+  if (!current) return false
+  return brandDraft.displayName.trim() !== current.display_name
+    || brandDraft.role !== current.role
+    || brandDraft.status !== current.status
+    || JSON.stringify(splitLines(brandDraft.aliases)) !== JSON.stringify(
+      (current.aliases ?? []).map((alias) => alias.text),
+    )
+})
+
+/** 车型弹窗只有在打开时参与离开保护，并与当前车型或新增默认值比较。 */
+const vehicleDraftDirty = computed(() => {
+  if (!vehicleEditorOpen.value) return false
+  const current = vehicles.value.find((item) => item.id === vehicleDraft.id)
+  if (!current) {
+    return Boolean(
+      vehicleDraft.displayName.trim()
+      || vehicleDraft.seriesName.trim()
+      || vehicleDraft.categoryName.trim()
+      || vehicleDraft.aliases.trim()
+      || vehicleDraft.status !== 'active'
+      || vehicleDraft.brandId !== selectedBrandId.value
+      || mergeTargetId.value,
+    )
+  }
+  return vehicleDraft.displayName.trim() !== current.display_name
+    || vehicleDraft.brandId !== (current.brand_id ?? '')
+    || vehicleDraft.seriesName.trim() !== (current.series_name ?? '')
+    || vehicleDraft.categoryName.trim() !== (current.category_name ?? '')
+    || vehicleDraft.status !== (current.status === 'deprecated' ? 'deprecated' : 'active')
+    || JSON.stringify(splitLines(vehicleDraft.aliases)) !== JSON.stringify(
+      (current.aliases ?? []).map((alias) => alias.text),
+    )
+    || Boolean(mergeTargetId.value)
+})
+
+const navigationDirty = computed(() => brandDraftDirty.value || vehicleDraftDirty.value)
+
+/** 将目录编辑草稿状态上送给管理员 Page Owner。 */
+watch(navigationDirty, (dirty) => emit('dirty-change', dirty), { immediate: true })
 
 onMounted(load)
 

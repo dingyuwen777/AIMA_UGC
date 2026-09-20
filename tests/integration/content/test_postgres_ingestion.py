@@ -601,6 +601,16 @@ def test_comment_author_converges_by_existing_alternate_stable_id(
         ).all()
         assert comment_author_id == original_author_id
         assert account_ids == [original_author_id]
+
+        repository = PostgresContentQueryRepository(session, analysis_identity=None)
+        comments = repository.list_comments_page(
+            content.target_id,
+            root_comment_id=None,
+            position=None,
+            limit=20,
+        )
+        assert len(comments) == 1
+        assert comments[0].is_by_content_author is True
     finally:
         session.rollback()
         session.close()

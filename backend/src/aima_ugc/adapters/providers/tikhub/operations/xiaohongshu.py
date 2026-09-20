@@ -230,6 +230,12 @@ def build_image_detail_request(*, note_id: str) -> XiaohongshuRequest:
     return XiaohongshuRequest(f"{_BASE}/get_image_note_detail", {"note_id": note_id})
 
 
+def build_image_detail_by_share_text_request(*, share_text: str) -> XiaohongshuRequest:
+    """把已验证的分享链接交给 App V2 详情接口取得唯一笔记身份。"""
+
+    return XiaohongshuRequest(f"{_BASE}/get_image_note_detail", {"share_text": share_text})
+
+
 def build_video_detail_request(*, note_id: str) -> XiaohongshuRequest:
     return XiaohongshuRequest(f"{_BASE}/get_video_note_detail", {"note_id": note_id})
 

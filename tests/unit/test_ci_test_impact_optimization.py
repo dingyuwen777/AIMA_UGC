@@ -73,7 +73,10 @@ def test_persistence_leaf_selects_only_owned_postgres_suite() -> None:
 
     assert requirements.postgres_required is True
     assert requirements.postgres_suites == ("collection",)
-    assert requirements.fullstack_specs == ("collection-plan-search-config.spec.ts",)
+    assert requirements.fullstack_specs == (
+        "collection-plan-search-config.spec.ts",
+        "comment-supplement.spec.ts",
+    )
 
 
 def test_migration_compatibility_verifier_selects_migration_suite() -> None:

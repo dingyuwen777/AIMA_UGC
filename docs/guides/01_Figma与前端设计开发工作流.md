@@ -444,19 +444,23 @@ Browser Mock 可以覆盖广泛的用户可见状态和请求语义，但不能�
 
 ### 7.3 管理员配置正式 Figma 基线
 
-管理员配置继续使用同一个正式设计文件 `EAPm8KVarUe7BFTSnzvOpT`，但作为独立页面，不放进声音广场 Canvas：
+管理员配置使用 release-2 正式设计文件 `qmZEFvPrB8u9JX5fyqc93S`，页面级事实源为 `3957:2`：
 
 ```text
-品牌与车型              3964:2
-AI 模型                 4474:192
-TikHub                  4474:379
-AI 分析规则             3967:86
-操作记录                4475:462
+品牌与车型              7511:10359
+AI 模型                 4804:15203
+TikHub                  7708:12501
+AI 分析规则             4804:15542
+操作记录                4804:15700
+报告策略默认态           7434:40097
+报告策略 Feature Owner   7434:40096
 ```
 
 代码 Owner 是 [`frontend/src/features/admin-configuration/`](../../frontend/src/features/admin-configuration/)；Provider-neutral Principal 和管理员路由守卫分别由 [`frontend/src/features/identity/`](../../frontend/src/features/identity/) 与 [`frontend/src/app/router.ts`](../../frontend/src/app/router.ts) 负责。Brand/Vehicle 选择分别复用 [`frontend/src/shared/BrandMultiSelect.vue`](../../frontend/src/shared/BrandMultiSelect.vue) 与 [`frontend/src/shared/VehicleMultiSelect.vue`](../../frontend/src/shared/VehicleMultiSelect.vue)。
 
-这组 Figma 只定义信息架构、布局、状态和组件复用。角色固定为管理员/普通用户，Brand/Vehicle Owner、发布/回滚审计、车型删除限制、Scheme 版本冲突、动态目录和错误语义以当前 Contract/代码为准；示例品牌、车型、Prompt、Hash 和审计记录不构成生产事实。Stage 6 已把正式页收敛为五个 Tab，并把旧“词包关联”画板移出正式流程；自动同步结果仍需人工视觉复核，不能把机器检查写成业务 Owner 已验收。
+这组 Figma 只定义信息架构、布局、状态和组件复用。角色固定为管理员/普通用户，Brand/Vehicle Owner、发布/回滚审计、车型删除限制、Scheme 版本冲突、动态目录和错误语义以当前 Contract/代码为准；示例品牌、车型、Prompt、Hash 和审计记录不构成生产事实。正式页面现为六个 Tab，旧“词包关联”画板不回到正式流程。
+
+报告策略当前只落地文件、日期、本地校验和后端未接入边界。Figma 中提交中、同步失败和成功结果保留为后续真实 Report Job/API 与飞书同步接通后的验收目标；前端不得通过延时、永久 Mock、假任务或假链接提前宣称端到端完成。更细的节点、Owner 和响应式验收见 [`docs/guides/02_管理员配置Figma开发基线.md`](02_管理员配置Figma开发基线.md)。
 
 ### 7.4 Stage 6 采集页面基线
 
@@ -466,11 +470,18 @@ AI 分析规则             3967:86
 采集策略 Page             4627:13214
 采集策略 / 关键词包       4627:13216
 采集策略 / 采集计划       4627:13336
+采集运行 Page             3500:2023
+采集运行 / 正式主页面      3500:2025
 采集运行 / Excel 导入     3500:2875
 采集运行 / TikHub 发现    3500:4257
+采集运行 / Compact 1180   4742:2404
+采集运行 / Wide 1920      4742:2603
+采集运行 / Owner 规范      7840:9761
 ```
 
 Keyword Pack 只表达 Provider Search Terms；Plan 和 TikHub Discovery 独立表达 Brand Filter；Excel 的 Search 字段必须 Disabled 并说明不适用。Batch Supplement 保持已有内容补采语义。Figma 的示例品牌、词包、平台和数量不构成运行事实。
+
+采集运行中心已经按“设计规范/公共组件 → 页面模板 → 页面公共组件/Feature Owner → 正式页面实例”形成正式同步链路。页面节点、代码 Owner、状态、响应式和实施顺序的完整基线见 [`docs/guides/07_采集运行中心Figma开发基线.md`](07_采集运行中心Figma开发基线.md)。后续先更新长期设计 Owner，再由正式页面实例和代码消费；只属于真实运行数据、API、Capability 或后端状态机的事实仍由代码 Contract 决定，不回填为 Figma 常量。
 
 ---
 
