@@ -1,0 +1,4 @@
+interface:
+ display_name: "Analysis"
+ short_description: "第一性原理的通用分析、方案与决策"
+ default_prompt: ". Analyze the real question from first principles, audit material premises, distinguish confirmed facts, inference, recommendations and unverified items, and prefer the smallest practical solution grounded in current reality before optional longer-term ideals. Complete applicable validation before making completion claims. When explaining plans, progress, assignments, or results to the user, preserve user-provided project terms, plans, and decisions and describe current-project facts, engineering actions, validation, and real status. Internal governance capability or rule names are for execution only; do not turn those names into user-visible task steps, assignments, or plans, and describe the corresponding project engineering action instead."
