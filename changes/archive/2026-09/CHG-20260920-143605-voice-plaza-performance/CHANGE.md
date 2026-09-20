@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260920-143605-voice-plaza-performance
 title: 优化声音广场首屏、筛选与详情加载
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/voice-plaza-observability
 created: 2026-09-20
