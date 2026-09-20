@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260920-143605-voice-plaza-performance
 title: 优化声音广场首屏、筛选与详情加载
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: fix/voice-plaza-observability
 created: 2026-09-20
@@ -72,7 +72,7 @@ data_changes:
 - [x] 内容详情不再重复传输旧内嵌评论；打开详情只并行读取主体和一级评论，线程回复由用户展开时按需读取。
 - [x] 筛选目录和评论分页不再为存在性/目录计算执行完整详情投影；新增索引与迁移覆盖最新倒序、评论线程和当前分析热路径。
 - [x] API 5xx 与超过阈值的慢请求记录脱敏的 request_id、method、path、status_code、duration_ms。
-- [ ] Browser、API/Contract、PostgreSQL Migration/Integration、生成 Client、构建和治理门禁均有本轮新鲜证据；完成 Review 后才合并 `main`。
+- [x] Browser、API/Contract、PostgreSQL Migration/Integration、生成 Client、构建和治理门禁均有本轮新鲜分支证据；完成两阶段 Review 后才进入 PR required checks 与受控合并。
 
 ## 范围
 
@@ -111,7 +111,7 @@ data_changes:
 | R3 | 平台筛选可用，动态筛选目录慢/失败不阻塞列表或连带禁用稳定筛选 | #547 / AC3 | satisfied | Browser 回归覆盖动态目录慢、失败和手工 taxonomy 失败，平台/相关性/分析状态保持可用 |
 | R4 | 系统性降低列表、筛选目录和详情加载开销，评论回复按需加载 | #547 / AC4 | satisfied | 轻量详情 `include_comments=false`、轻量存在性/目录投影、按需回复及索引回归通过；Migration 在隔离 PostgreSQL 完成 upgrade/current/check |
 | R5 | 增加足够日志定位慢请求与 5xx，不记录筛选值、正文或 Secret | #547 / AC5 | satisfied | API observability 回归确认慢请求、已处理 5xx 和未处理异常事件字段；日志只记录 path，不记录 query 值或异常原文 |
-| R6 | 在 `fix/voice-plaza-observability` 完成修复并通过门禁后合并主分支 | #547 / AC6 | not_satisfied | 分支范围内验证与 Review 已完成；`origin/main@4f6c452c` 当前 CI 因 4 条无关的 PyPI 镜像源断言失败，PR、Required CI、合并与 main-fresh 尚未完成 |
+| R6 | Browser Mock、真实 Browser→Vue→FastAPI→PostgreSQL、Contract/generated client、Migration、相关集成、构建与两阶段 Review 完成 | #547 / AC6 | satisfied | Playwright 129/129、Vitest 164/164、真实评论 Full-stack、API/索引目标回归、PostgreSQL Migration/Integration、Contract/client、构建及两阶段 Review 均通过；当前无未解决 finding |
 
 # Validation Matrix
 
@@ -134,14 +134,15 @@ data_changes:
 - [x] Green：实现轻量详情、一级评论/回复按需加载、轻量目录/存在性查询与索引 Migration。
 - [x] Refactor：收敛请求身份、注释、错误降级和无关重复逻辑；同步当前文档与生成物。
 - [x] 执行目标测试、相关回归、PostgreSQL/Contract/Browser/Full-stack/Build 门禁。
-- [ ] 完成 Completion Audit、两阶段 Review、合并与 main-fresh 验证。
+- [x] 完成 Completion Audit 与两阶段 Review，进入 PR current-head required checks。
+- [ ] 完成 PR current-head required checks、受控合并、implementation main-fresh、Change 自动归档、Issue Closure Audit 与分支清理；这些是 Ready 后的平台交付门禁，不在合并前伪造完成。
 
 # Completion Audit
 
 - [x] upstream_re_read：完成前重新读取用户 AC、产品/Blueprint、Contract、实现和适用项目规则，独立重建完成定义。
 - [x] change_coverage：逐条比较 R1—R6 与实现、测试、文档、Git 交付，确认没有遗漏或静默延期。
 - [x] reverse_audit：从页面动作反查 generated Client → FastAPI → Repository → PostgreSQL，并从新增 Contract/索引反查真实消费者和部署顺序。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零；未执行边界和剩余性能风险明确记录。
+- [x] unresolved_cleared：R1—R6 无 `not_satisfied`，Review finding 已修复并复核；生产 `EXPLAIN ANALYZE` 与具体毫秒 SLO 未执行边界明确。PR CI、受控合并、main-fresh、自动归档与 Issue 关闭由平台真实状态持有，不伪造为 Ready 前已完成。
 
 # 本轮验证与 Review 证据
 
@@ -152,8 +153,13 @@ data_changes:
 - Contract/Migration：OpenAPI 生成检查、兼容检查、架构/表 Owner 检查通过；隔离 PostgreSQL 升级至 `20260920_0053`，`alembic current` 和 `alembic check` 通过。
 - 文档与治理：文档入口、事实一致性、Secret 扫描、项目治理接线和 `git diff --check` 通过。
 - Review：标准 Review 与深度 Review 已完成；修复了未处理异常只记 WARNING 且缺少安全堆栈、Full Playwright 选择器碰撞两项发现；当前声音广场范围无未解决 finding。
-- 全量 Python 本地结果为 1237 passed、8 skipped、8 failed：其中 3 项是 Windows 不支持的 POSIX host-prep 行为，1 项由工作区既有忽略 Provider Raw 触发；其余 4 项在干净 Linux `main` 同样失败，原因是镜像配置已改阿里云而测试仍断言清华源。该基线问题不属于本 Change，不以放宽断言或混入修复掩盖。
+- 较早的全量 Python 本地运行曾有 4 项镜像源断言基线失败；该独立问题已由 PR #550 修复并在 `main@c1472736` 通过 CI、PostgreSQL、真实 Full-stack、Runtime 与 Linux/Windows Tooling。当前分支已合并该 main，声音广场 PR 仍需以当前 HEAD 重新取得永久 CI 证据。
 - 当前尚无生产数据量、`EXPLAIN ANALYZE` 或正式环境锁等待证据；本 Change 只宣称切断已确认的前端串行阻塞/请求放大并为已知查询补索引，不宣称具体生产毫秒 SLO。
+
+# Ready 后交付边界
+
+- Issue #547 AC6 中的 PR current-head CI、受控合并、implementation main-fresh、repository-native Change Archive、Issue Closure Audit 与分支清理是时序后置的平台门禁。
+- 它们继续保持未完成，必须由 PR、Commit、Actions、Archive 与 Issue 的真实状态证明；本 Active Change 只声明施工范围达到 `ready_for_review`。
 
 # 兼容、迁移、部署与回滚
 
