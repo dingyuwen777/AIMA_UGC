@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260920-175016-voice-plaza-read-model
 title: 声音广场增量读模型与交互性能整改
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: perf/voice-plaza-read-model
 created: 2026-09-20
