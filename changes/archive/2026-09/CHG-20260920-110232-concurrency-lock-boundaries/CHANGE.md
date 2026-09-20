@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260920-110232-concurrency-lock-boundaries
 title: 修复并发读取阻塞与历史导入租约丢失
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/concurrency-lock-boundaries
 created: 2026-09-20
