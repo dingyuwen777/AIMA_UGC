@@ -872,6 +872,7 @@ class ContentFilterOptionsResponse(BaseModel):
     sentiments: tuple[ContentFilterValueOptionResponse, ...]
     voice_types: tuple[ContentFilterValueOptionResponse, ...]
     labels: tuple[ContentFilterLabelOptionResponse, ...]
+    catalog_status: Literal["building", "ready"] = "ready"
 
 
 class ContentAnalysisResponse(BaseModel):

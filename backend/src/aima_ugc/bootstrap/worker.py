@@ -25,6 +25,10 @@ from aima_ugc.modules.collection.collection_run_job import (
     register_collection_run_job,
 )
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
+from aima_ugc.modules.content.read_model_job import (
+    VoicePlazaProjectionJobHandler,
+    register_voice_plaza_projection_job,
+)
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
 from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayJobHandler,
@@ -59,6 +63,10 @@ from .historical_import_worker import PostgresHistoricalImportJobExecutor
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
 from .media_cache_collection_scope import MediaCachingTikHubCollectionScopeExecutor
 from .runtime import PlatformRuntime, create_platform_runtime
+from .voice_plaza_projection_worker import (
+    PostgresVoicePlazaProjectionJobExecutor,
+    voice_plaza_projection_job_terminal_callback,
+)
 
 
 class _TikHubTransportPool:
@@ -191,6 +199,11 @@ def create_collection_job_registry(
     register_canonical_replay_job(
         registry,
         CanonicalReplayJobHandler(PostgresCanonicalReplayJobExecutor(runtime)),
+    )
+    register_voice_plaza_projection_job(
+        registry,
+        VoicePlazaProjectionJobHandler(PostgresVoicePlazaProjectionJobExecutor(runtime)),
+        terminal_callback=voice_plaza_projection_job_terminal_callback,
     )
     return registry
 

@@ -33,6 +33,7 @@ class ContentReadQuery:
 class ContentFilterValues:
     """当前可见 Content 投影中实际存在的动态筛选值。"""
 
+    catalog_status: Literal["building", "ready"]
     content_types: tuple[str, ...]
     sentiments: tuple[str, ...]
     voice_types: tuple[str, ...]

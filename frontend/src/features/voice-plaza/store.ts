@@ -14,6 +14,7 @@ import type {
   ContentFilterSnapshot,
   ContentFilterSnapshotCompetitionScopesItem,
   ContentListItemResponse,
+  ContentListResponse,
   ContentRelevance,
   ContentRelevanceReviewRequestDecision,
   ContentRelevanceReviewResponse,
@@ -99,6 +100,7 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
 }
 
 const FILTER_SESSION_KEY = 'aima.voice-plaza.applied-search.v1'
+const LIST_CACHE_TTL_MS = 60_000
 
 interface PersistedVoicePlazaSearch {
   filters: VoicePlazaFilters
@@ -258,7 +260,14 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollRevision = 0
   let lastExportPollAt = 0
+  let lastFilterOptionsPollAt = 0
   let displayedAnalysisSignature = '[]'
+  const listPageCache = new Map<string, { page: ContentListResponse, cachedAt: number }>()
+  let nextPagePrefetch: {
+    revision: number
+    cursor: string
+    promise: Promise<ContentListResponse | null>
+  } | null = null
   const analysisSignature = computed(() => JSON.stringify(analysisRuns.value.map((run) => [
     run.id, run.status, run.stats?.succeeded, run.stats?.failed, run.stats?.stale,
     run.stats?.cancelled,
@@ -311,6 +320,30 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     return { ...filterSnapshot(), sort_by: sortBy.value, sort_direction: sortDirection.value, cursor, limit: 20 }
   }
 
+  /** 提交一个完整列表页，并提前读取下一 Cursor 页以缩短“加载更多”的等待。 */
+  function commitListPage(page: ContentListResponse, revision: number): void {
+    items.value = page.items
+    nextCursor.value = page.next_cursor ?? null
+    hasMore.value = page.has_more
+    selectedIds.value = selectedIds.value.filter((id) => page.items.some((item) => item.id === id))
+    prefetchNextPage(revision)
+  }
+
+  function prefetchNextPage(revision: number): void {
+    const cursor = nextCursor.value
+    if (!hasMore.value || !cursor) {
+      nextPagePrefetch = null
+      return
+    }
+    if (nextPagePrefetch?.revision === revision && nextPagePrefetch.cursor === cursor) return
+    nextPagePrefetch = {
+      revision,
+      cursor,
+      // 预取失败不能产生未处理 Promise；用户点击时会执行一次正常重试。
+      promise: fetchContents(listParams(cursor)).catch(() => null),
+    }
+  }
+
   /** 新字段首次按降序浏览，再次点击切换方向，并重置旧排序的分页边界。 */
   async function changeSort(field: 'published_at' | 'follower_count'): Promise<void> {
     sortDirection.value = sortBy.value === field && sortDirection.value === 'desc' ? 'asc' : 'desc'
@@ -347,16 +380,21 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   async function refresh(silent = false): Promise<void> {
     // 新查询拥有列表提交权，迟到的旧筛选或排序请求不得覆盖当前画面。
     const revision = ++listRevision
-    if (!silent) loading.value = true
+    nextPagePrefetch = null
+    const params = listParams()
+    const cacheKey = JSON.stringify(params)
+    const cached = listPageCache.get(cacheKey)
+    const hasFreshCache = Boolean(cached && Date.now() - cached.cachedAt <= LIST_CACHE_TTL_MS)
+    if (cached && hasFreshCache) commitListPage(cached.page, revision)
+    if (!silent && !hasFreshCache) loading.value = true
     listError.value = null
     error.value = null
     try {
-      const page = await fetchContents(listParams())
+      // 即使命中缓存也重新获取第一页，确保最新倒序列表最终以服务端当前事实为准。
+      const page = await fetchContents(params)
       if (revision !== listRevision) return
-      items.value = page.items
-      nextCursor.value = page.next_cursor ?? null
-      hasMore.value = page.has_more
-      selectedIds.value = selectedIds.value.filter((id) => page.items.some((item) => item.id === id))
+      listPageCache.set(cacheKey, { page, cachedAt: Date.now() })
+      commitListPage(page, revision)
       if (detailId.value) await openDetail(detailId.value)
     } catch (reason) {
       if (revision !== listRevision) return
@@ -461,14 +499,21 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     // 换序或重新查询期间不复用旧 Cursor；丢弃换序之前在途的下一页。
     if (!nextCursor.value || loadingNext.value || loading.value) return
     const revision = listRevision
+    const cursor = nextCursor.value
     loadingNext.value = true
     error.value = null
     try {
-      const page = await fetchContents(listParams(nextCursor.value))
+      const prefetched = nextPagePrefetch?.revision === revision && nextPagePrefetch.cursor === cursor
+        ? await nextPagePrefetch.promise
+        : null
+      nextPagePrefetch = null
+      const page = prefetched ?? await fetchContents(listParams(cursor))
       if (revision !== listRevision) return
-      items.value = [...items.value, ...page.items]
+      const seen = new Set(items.value.map((item) => item.id))
+      items.value = [...items.value, ...page.items.filter((item) => !seen.has(item.id))]
       nextCursor.value = page.next_cursor ?? null
       hasMore.value = page.has_more
+      prefetchNextPage(revision)
     } catch (reason) {
       if (revision !== listRevision) return
       error.value = errorMessage(reason)
@@ -588,7 +633,10 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   async function openDetail(contentId: string): Promise<void> {
     // 详情与评论独立失败；任一迟到响应都不能覆盖关闭或切换后的抽屉。
     const revision = ++detailRevision
-    if (detailId.value !== contentId) detail.value = null
+    if (detailId.value !== contentId) {
+      const summary = items.value.find((item) => item.id === contentId)
+      detail.value = summary ? { ...summary, source_records: [summary.source] } : null
+    }
     detailId.value = contentId
     detailError.value = null
     loadingDetail.value = true
@@ -851,6 +899,14 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       lastExportPollAt = Date.now()
       void refreshExports()
     }
+    if (
+      filterOptions.value?.catalog_status === 'building' &&
+      !filterOptionsLoading.value &&
+      Date.now() - lastFilterOptionsPollAt >= 15_000
+    ) {
+      lastFilterOptionsPollAt = Date.now()
+      void refreshFilterOptions()
+    }
     await taskCenter.pollAnalysisRuns()
     if (revision !== pollRevision || pageIsHidden()) return
     const signature = analysisSignature.value
@@ -869,6 +925,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   function startPolling(intervalMilliseconds = 1000): void {
     stopPolling()
     lastExportPollAt = Date.now()
+    lastFilterOptionsPollAt = Date.now()
     pollHandle = setInterval(() => void poll(), intervalMilliseconds)
   }
 

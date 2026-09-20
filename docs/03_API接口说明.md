@@ -436,7 +436,7 @@ frontend/src/features/voice-plaza/
 
 ## 7.1 `GET /api/v1/contents`
 
-用于声音广场列表、Analysis/Export 目标查询的基础 Read Model。
+用于声音广场列表、Analysis/Export 目标查询的基础 Read Model。`voice_plaza_projection_state=ready` 后，请求从一行一 Content 的增量投影按 Cursor 读取，不在请求内重建全库 Analysis/Review 窗口；回填完成前继续使用兼容查询以保证结果完整。
 
 查询层组合：
 
@@ -543,7 +543,7 @@ Taxonomy 读取或校验失败时，接口使用统一 Problem Response 返回 `
 
 声音广场下拉选项的唯一后端目录。平台、相关性和分析状态来自正式 Contract，内容类型来自当前可见 Content Current；情感、发声类型和两级标签按 active Taxonomy 顺序优先，再追加当前可见最新 Analysis/人工覆盖中仍存在的历史值。历史项明确返回 `source=historical`，但不会写回或扩大 active Taxonomy。
 
-历史值查询复用内容列表的当前版本、有效来源、最新 Analysis 和人工维度锁语义，但使用只包含筛选字段的独立最小投影，不再构造完整内容列表行；它不会从旧 Content Version、失效来源或全表原始结果做无边界 `DISTINCT`。读取失败不阻断内容列表；平台、相关性和分析状态继续使用生成 Contract 中的稳定值，只有内容类型、情感、发声类型和两级标签等动态下拉暂时禁用。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
+历史值来自由逐 Content 贡献增量维护的持久聚合目录，不从旧 Content Version、失效来源或全表原始结果做无边界 `DISTINCT`。Response 的 `catalog_status` 为 `building` 时表示历史目录仍在回填；已返回选项、平台、相关性、分析状态和 active Taxonomy 值仍可立即使用，前端只提示后台同步，不把平台筛选误报为不可用。真正读取失败仍不阻断内容列表。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
 
 ## 8.4 `POST /api/v1/analysis/content-runs/preview`
 

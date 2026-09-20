@@ -15,6 +15,7 @@ Roadmap
 - [`docs/operations/01_生产部署与离线Release方案.md`](01_生产部署与离线Release方案.md)：Docker/Compose、宿主目录、Secret、离线 Release、发布/回滚边界；
 - [`docs/operations/02_4000万历史迁移与Analysis Run运行手册.md`](02_4000万历史迁移与Analysis%20Run运行手册.md)：统一 Data Import Campaign、Persistent Canonical Replay、Historical Fill-Only、容量门禁、迁移对账和手动 Analysis Run；
 - [`docs/operations/03_内容重分类与Legacy_Cleanup运行手册.md`](03_内容重分类与Legacy_Cleanup运行手册.md)：旧 Content Brand/Vehicle Evidence 重分类、Legacy Cleanup 前置检查、Migration/回滚和对账。
+- [`docs/operations/04_声音广场读模型回填与性能验证.md`](04_声音广场读模型回填与性能验证.md)：声音广场投影回填状态、Job 排障、阶段耗时日志和服务器验收。
 
 常用开发/本地运行命令仍由 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md) 维护；Windows Docker Desktop 操作见 [`docs/guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_Windows%20Docker%20Desktop%20Compose运行.md)。
 

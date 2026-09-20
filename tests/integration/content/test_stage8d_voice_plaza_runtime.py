@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
+import aima_ugc.bootstrap.voice_plaza_projection_worker as projection_worker_module
 import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
@@ -24,6 +25,9 @@ from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.export_worker import PostgresDataExportJobExecutor
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.reporting_http import PostgresReportingHttpService
+from aima_ugc.bootstrap.voice_plaza_projection_worker import (
+    ensure_voice_plaza_projection_backfill_job,
+)
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_worker,
@@ -60,6 +64,11 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
 )
 from aima_ugc.modules.content.content_cursor import InvalidContentCursor
+from aima_ugc.modules.content.read_model_tables import (
+    voice_plaza_content_projection_table,
+    voice_plaza_filter_catalog_table,
+    voice_plaza_projection_state_table,
+)
 from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
@@ -245,6 +254,94 @@ def test_voice_plaza_global_sort_pagination_and_nulls(
                     )
         assert found == expected
         assert cursor is None
+    finally:
+        runtime.close()
+
+
+def test_voice_plaza_projection_backfill_switches_reads_to_ready_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """历史 Content 用持久 Job 集合式回填后，列表与筛选目录切换到完整投影。"""
+
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    try:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            )
+            connection.execute(delete(voice_plaza_filter_catalog_table))
+            connection.execute(
+                update(voice_plaza_projection_state_table).values(
+                    status="pending",
+                    generation=voice_plaza_projection_state_table.c.generation + 1,
+                    last_content_id=None,
+                    projected_count=0,
+                    total_content_count=None,
+                    started_at=None,
+                    finished_at=None,
+                    last_error_code=None,
+                )
+            )
+
+        client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
+        _seed_import(client, runtime)
+        import_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="voice-projection-import",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert import_worker.run_once() is True
+
+        # 模拟升级时已有历史数据但尚无投影；Migration 本身不执行大表回填。
+        with runtime.database.engine.begin() as connection:
+            connection.execute(delete(voice_plaza_content_projection_table))
+            connection.execute(delete(voice_plaza_filter_catalog_table))
+        queued = ensure_voice_plaza_projection_backfill_job(runtime)
+        assert queued is not None
+        projection_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="voice-projection-backfill",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        monkeypatch.setattr(projection_worker_module, "_BATCHES_PER_JOB", 1)
+        assert projection_worker.run_once() is True
+        with runtime.database.engine.connect() as connection:
+            assert (
+                connection.scalar(select(voice_plaza_projection_state_table.c.status)) == "running"
+            )
+        assert projection_worker.run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            state = connection.execute(select(voice_plaza_projection_state_table)).mappings().one()
+            projected_count = connection.scalar(
+                select(func.count()).select_from(voice_plaza_content_projection_table)
+            )
+        assert state["status"] == "ready"
+        assert state["projected_count"] == 2
+        assert projected_count == 2
+
+        service = PostgresContentHttpService(
+            runtime,
+            cursor_signing_secret=b"voice-projection-test-key-32-bytes-minimum",
+        )
+        page = service.list_contents(ContentListQuery())
+        assert [entry.title for entry in page.items] == [
+            "爱玛门店服务体验",
+            "爱玛 Q7 续航体验",
+        ]
+        filtered = service.list_contents(ContentListQuery(platforms=("xiaohongshu",)))
+        assert len(filtered.items) == 2
+        options = service.get_filter_options()
+        assert options.catalog_status == "ready"
+        assert {entry.content_type for entry in page.items}.issubset(options.content_types)
     finally:
         runtime.close()
 

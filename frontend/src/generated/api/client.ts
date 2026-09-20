@@ -1746,11 +1746,20 @@ export interface ContentFilterLabelOptionResponse {
   source: ContentFilterOptionSource;
 }
 
+export type ContentFilterOptionsResponseCatalogStatus = typeof ContentFilterOptionsResponseCatalogStatus[keyof typeof ContentFilterOptionsResponseCatalogStatus];
+
+
+export const ContentFilterOptionsResponseCatalogStatus = {
+  building: 'building',
+  ready: 'ready',
+} as const;
+
 /**
  * 声音广场下拉选项；历史值不改变 active Taxonomy。
  */
 export interface ContentFilterOptionsResponse {
   analysis_statuses: ContentAnalysisStatus[];
+  catalog_status?: ContentFilterOptionsResponseCatalogStatus;
   content_types: string[];
   labels: ContentFilterLabelOptionResponse[];
   platforms: PlatformName[];

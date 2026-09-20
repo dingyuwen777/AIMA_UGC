@@ -8,6 +8,9 @@ import socket
 import time
 from collections.abc import Callable
 
+from aima_ugc.bootstrap.voice_plaza_projection_worker import (
+    ensure_voice_plaza_projection_backfill_job,
+)
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_reaper,
@@ -58,6 +61,7 @@ def main() -> None:
 
     runtime = create_worker_runtime()
     registry = create_collection_job_registry(runtime=runtime)
+    projection_job = ensure_voice_plaza_projection_backfill_job(runtime)
     worker_id = f"{socket.gethostname()}:{os.getpid()}"
     worker = create_job_worker(
         runtime=runtime,
@@ -78,6 +82,9 @@ def main() -> None:
         "Worker 已启动",
         worker_id=worker_id,
         supported_job_types=registry.supported_types,
+        voice_plaza_projection_job_id=(
+            str(projection_job.id) if projection_job is not None else None
+        ),
     )
     try:
         run_worker_loop(worker, reaper)

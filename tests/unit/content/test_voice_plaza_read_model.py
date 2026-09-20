@@ -1,13 +1,12 @@
 """声音广场增量读模型与固定成本查询形态回归。"""
 
-from sqlalchemy.dialects import postgresql
-from sqlalchemy.orm import Session
-
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
 from aima_ugc.contracts.http import ContentFilterOptionsResponse, ContentFilterSnapshot
 from aima_ugc.database_schema import metadata
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import Session
 
 
 def _postgres_sql(statement: object) -> str:
@@ -38,16 +37,22 @@ def test_voice_plaza_projection_schema_exposes_indexed_current_state() -> None:
         "competition_scope",
         "updated_at",
     } <= set(projection.c.keys())
-    assert {"singleton", "status", "last_content_id", "projected_count"} <= set(
-        state.c.keys()
-    )
+    assert {"singleton", "status", "last_content_id", "projected_count"} <= set(state.c.keys())
     assert {
         "ix_voice_plaza_projection_latest",
+        "ix_voice_plaza_projection_published_latest",
         "ix_voice_plaza_projection_platform_latest",
         "ix_voice_plaza_projection_labels_gin",
         "ix_voice_plaza_projection_brand_ids_gin",
         "ix_voice_plaza_projection_vehicle_ids_gin",
     } <= {index.name for index in projection.indexes}
+    published_latest = next(
+        index
+        for index in projection.indexes
+        if index.name == "ix_voice_plaza_projection_published_latest"
+    )
+    predicate = str(published_latest.dialect_options["postgresql"]["where"])
+    assert "is_visible IS TRUE" in predicate
 
 
 def test_voice_plaza_list_statement_has_no_global_window_projection() -> None:

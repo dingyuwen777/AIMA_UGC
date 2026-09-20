@@ -13,6 +13,7 @@ import VoicePlazaTable from '../src/features/voice-plaza/pages/VoicePlazaPage/co
 import { useVoicePlazaStore } from '../src/features/voice-plaza/store'
 
 const filterOptions: ContentFilterOptionsResponse = {
+  catalog_status: 'ready',
   platforms: ['xiaohongshu', 'douyin', 'weibo', 'bilibili', 'kuaishou'],
   relevances: ['relevant', 'irrelevant'],
   analysis_statuses: ['completed', 'pending', 'stale'],
