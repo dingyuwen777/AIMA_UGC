@@ -37,6 +37,7 @@ class _ContentService:
         self.content_id = uuid4()
         self.job_id = uuid4()
         self.last_query = None
+        self.last_include_comments: bool | None = None
 
     def _item(self) -> ContentListItemResponse:
         now = datetime(2026, 8, 21, tzinfo=UTC)
@@ -98,7 +99,13 @@ class _ContentService:
             ),
         )
 
-    def get_content(self, content_id: UUID) -> ContentDetailResponse:
+    def get_content(
+        self,
+        content_id: UUID,
+        *,
+        include_comments: bool = True,
+    ) -> ContentDetailResponse:
+        self.last_include_comments = include_comments
         if content_id != self.content_id:
             raise ContentResourceNotFound
         return ContentDetailResponse(**self._item().model_dump())
@@ -240,6 +247,19 @@ def test_list_and_detail_return_every_ai_label_pair() -> None:
     ]
     assert detailed.status_code == 200
     assert len(detailed.json()["analysis"]["labels"]) == 2
+    assert service.last_include_comments is True
+
+
+def test_detail_can_skip_embedded_comments_for_paginated_clients() -> None:
+    service = _ContentService()
+
+    response = _client(service).get(
+        f"/api/v1/contents/{service.content_id}",
+        params={"include_comments": "false"},
+    )
+
+    assert response.status_code == 200
+    assert service.last_include_comments is False
 
 
 def test_comment_resource_pages_roots_and_replies_with_relationships() -> None:

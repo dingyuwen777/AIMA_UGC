@@ -8,15 +8,17 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 
-def _client(*, status_code: int = 200) -> TestClient:
+def _client(*, status_code: int = 200, raise_error: bool = False) -> TestClient:
     application = FastAPI()
 
     @application.get("/voice-plaza-probe")
     async def voice_plaza_probe() -> JSONResponse:
+        if raise_error:
+            raise RuntimeError("probe failure")
         return JSONResponse({"ok": status_code < 500}, status_code=status_code)
 
     application.add_middleware(api._RequestContextMiddleware)  # noqa: SLF001
-    return TestClient(application)
+    return TestClient(application, raise_server_exceptions=False)
 
 
 def test_slow_request_logs_duration_without_query_values(
@@ -50,3 +52,20 @@ def test_failed_response_is_logged_even_when_fast(caplog, monkeypatch) -> None:
     record = next(item for item in caplog.records if item.event == "api.response_failed")
     assert record.status_code == 503
     assert record.duration_ms == 10
+
+
+def test_unhandled_exception_is_logged_before_server_error_response(caplog, monkeypatch) -> None:
+    ticks = iter((30.0, 30.02))
+    monkeypatch.setattr(api, "perf_counter", lambda: next(ticks), raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="aima_ugc"):
+        response = _client(raise_error=True).get("/voice-plaza-probe")
+
+    assert response.status_code == 500
+    record = next(item for item in caplog.records if item.event == "api.response_failed")
+    assert record.levelno == logging.ERROR
+    assert record.status_code == 500
+    assert record.duration_ms == 20
+    assert record.error_type == "RuntimeError"
+    assert "RuntimeError" in record.exception
+    assert "probe failure" not in record.exception

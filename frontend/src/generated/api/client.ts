@@ -3075,6 +3075,10 @@ export const ListContentsSortDirection = {
   desc: 'desc',
 } as const;
 
+export type GetContentParams = {
+include_comments?: boolean;
+};
+
 export type ListContentCommentsParams = {
 root_comment_id?: string | null;
 cursor?: string | null;
@@ -4650,20 +4654,29 @@ export const countContents = async (contentCountRequest: ContentCountRequest, op
 
 
 
-export const getGetContentUrl = (contentId: string,) => {
+export const getGetContentUrl = (contentId: string,
+    params?: GetContentParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/contents/${contentId}`
+  return stringifiedParams.length > 0 ? `/api/v1/contents/${contentId}?${stringifiedParams}` : `/api/v1/contents/${contentId}`
 }
 
 /**
  * @summary Get Content
  */
-export const getContent = async (contentId: string, options?: RequestInit): Promise<ContentDetailResponse> => {
+export const getContent = async (contentId: string,
+    params?: GetContentParams, options?: RequestInit): Promise<ContentDetailResponse> => {
 
-  const res = await fetch(getGetContentUrl(contentId),
+  const res = await fetch(getGetContentUrl(contentId,params),
   {
     ...options,
     method: 'GET'

@@ -66,12 +66,12 @@ data_changes:
 
 ## 成功标准
 
-- [ ] 无筛选首次进入立即请求 `limit=20&sort_by=published_at&sort_direction=desc`，收到后立刻展示，不等待筛选目录、统计、任务或导出接口。
-- [ ] 已应用筛选条件在离开声音广场再返回时恢复，并参与返回后的最新倒序第一页请求；“查询”仍是草稿条件生效边界。
-- [ ] 平台、相关性、分析状态等稳定筛选不因动态筛选目录加载中或失败而禁用；动态项失败保留上次成功目录并提供可重试诊断。
-- [ ] 内容详情不再重复传输旧内嵌评论；打开详情只并行读取主体和一级评论，线程回复由用户展开时按需读取。
-- [ ] 筛选目录和评论分页不再为存在性/目录计算执行完整详情投影；新增索引与迁移覆盖最新倒序、评论线程和当前分析热路径。
-- [ ] API 5xx 与超过阈值的慢请求记录脱敏的 request_id、method、path、status_code、duration_ms。
+- [x] 无筛选首次进入立即请求 `limit=20&sort_by=published_at&sort_direction=desc`，收到后立刻展示，不等待筛选目录、统计、任务或导出接口。
+- [x] 已应用筛选条件在离开声音广场再返回时恢复，并参与返回后的最新倒序第一页请求；“查询”仍是草稿条件生效边界。
+- [x] 平台、相关性、分析状态等稳定筛选不因动态筛选目录加载中或失败而禁用；动态项失败保留上次成功目录并提供可重试诊断。
+- [x] 内容详情不再重复传输旧内嵌评论；打开详情只并行读取主体和一级评论，线程回复由用户展开时按需读取。
+- [x] 筛选目录和评论分页不再为存在性/目录计算执行完整详情投影；新增索引与迁移覆盖最新倒序、评论线程和当前分析热路径。
+- [x] API 5xx 与超过阈值的慢请求记录脱敏的 request_id、method、path、status_code、duration_ms。
 - [ ] Browser、API/Contract、PostgreSQL Migration/Integration、生成 Client、构建和治理门禁均有本轮新鲜证据；完成 Review 后才合并 `main`。
 
 ## 范围
@@ -106,12 +106,12 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 无筛选首次进入自动展示最新数据第一页，按发布时间倒序且不等待筛选目录 | user:2026-09-20-声音广场首屏与最新排序 / AC1 | not_satisfied | 待 Browser 请求语义与首屏可见性回归、后端排序回归 |
-| R2 | 选定筛选后离开页面再返回，恢复之前已应用条件并据此自动查询 | user:2026-09-20-声音广场筛选恢复 / AC2 | not_satisfied | 待 Browser 返回路径与请求参数回归 |
-| R3 | 平台筛选可用，动态筛选目录慢/失败不阻塞列表或连带禁用稳定筛选 | user:2026-09-20-平台筛选修复 / AC3 | not_satisfied | 待 Browser 慢/错目录回归 |
-| R4 | 系统性降低列表、筛选目录和详情加载开销，评论回复按需加载 | user:2026-09-20-声音广场性能方案 / AC4 | not_satisfied | 待请求扇出、API、PostgreSQL 与 Migration 证据 |
-| R5 | 增加足够日志定位慢请求与 5xx，不记录筛选值、正文或 Secret | user:2026-09-20-增加排障日志 / AC5 | not_satisfied | 待 Middleware 回归与日志字段审查 |
-| R6 | 在 `fix/voice-plaza-observability` 完成修复并通过门禁后合并主分支 | user:2026-09-20-本地分支合并主分支 / AC6 | not_satisfied | 待 current-head 验证、Review、合并与 main-fresh 证据 |
+| R1 | 无筛选首次进入自动展示最新数据第一页，按发布时间倒序且不等待筛选目录 | #547 / AC1 | satisfied | Browser 回归确认首个列表请求为第一页、20 条、`published_at desc`，慢筛选目录未阻塞首屏；API 排序回归通过 |
+| R2 | 选定筛选后离开页面再返回，恢复之前已应用条件并据此自动查询 | #547 / AC2 | satisfied | Browser 回归确认已应用平台条件写入会话、离开并重新进入后自动恢复并查询 |
+| R3 | 平台筛选可用，动态筛选目录慢/失败不阻塞列表或连带禁用稳定筛选 | #547 / AC3 | satisfied | Browser 回归覆盖动态目录慢、失败和手工 taxonomy 失败，平台/相关性/分析状态保持可用 |
+| R4 | 系统性降低列表、筛选目录和详情加载开销，评论回复按需加载 | #547 / AC4 | satisfied | 轻量详情 `include_comments=false`、轻量存在性/目录投影、按需回复及索引回归通过；Migration 在隔离 PostgreSQL 完成 upgrade/current/check |
+| R5 | 增加足够日志定位慢请求与 5xx，不记录筛选值、正文或 Secret | #547 / AC5 | satisfied | API observability 回归确认慢请求、已处理 5xx 和未处理异常事件字段；日志只记录 path，不记录 query 值或异常原文 |
+| R6 | 在 `fix/voice-plaza-observability` 完成修复并通过门禁后合并主分支 | #547 / AC6 | not_satisfied | 分支范围内验证与 Review 已完成；`origin/main@4f6c452c` 当前 CI 因 4 条无关的 PyPI 镜像源断言失败，PR、Required CI、合并与 main-fresh 尚未完成 |
 
 # Validation Matrix
 
@@ -128,20 +128,32 @@ data_changes:
 
 # 实施步骤
 
-- [ ] Red：把首屏、默认排序、稳定筛选、筛选恢复和详情回复请求扇出写入 Browser 回归并确认旧实现失败。
-- [ ] Red：为详情轻量 Contract、内容存在性和查询索引建立 API/数据库回归并确认缺口。
-- [ ] Green：实现首屏优先、草稿/已应用筛选恢复、稳定筛选解耦和目录 last-known-good。
-- [ ] Green：实现轻量详情、一级评论/回复按需加载、轻量目录/存在性查询与索引 Migration。
-- [ ] Refactor：收敛请求身份、注释、错误降级和无关重复逻辑；同步当前文档与生成物。
-- [ ] 执行目标测试、相关回归、PostgreSQL/Contract/Browser/Full-stack/Build 门禁。
+- [x] Red：把首屏、默认排序、稳定筛选、筛选恢复和详情回复请求扇出写入 Browser 回归并确认旧实现失败。
+- [x] Red：为详情轻量 Contract、内容存在性和查询索引建立 API/数据库回归并确认缺口。
+- [x] Green：实现首屏优先、草稿/已应用筛选恢复、稳定筛选解耦和目录 last-known-good。
+- [x] Green：实现轻量详情、一级评论/回复按需加载、轻量目录/存在性查询与索引 Migration。
+- [x] Refactor：收敛请求身份、注释、错误降级和无关重复逻辑；同步当前文档与生成物。
+- [x] 执行目标测试、相关回归、PostgreSQL/Contract/Browser/Full-stack/Build 门禁。
 - [ ] 完成 Completion Audit、两阶段 Review、合并与 main-fresh 验证。
 
 # Completion Audit
 
-- [ ] upstream_re_read：完成前重新读取用户 AC、产品/Blueprint、Contract、实现和适用项目规则，独立重建完成定义。
-- [ ] change_coverage：逐条比较 R1—R6 与实现、测试、文档、Git 交付，确认没有遗漏或静默延期。
-- [ ] reverse_audit：从页面动作反查 generated Client → FastAPI → Repository → PostgreSQL，并从新增 Contract/索引反查真实消费者和部署顺序。
+- [x] upstream_re_read：完成前重新读取用户 AC、产品/Blueprint、Contract、实现和适用项目规则，独立重建完成定义。
+- [x] change_coverage：逐条比较 R1—R6 与实现、测试、文档、Git 交付，确认没有遗漏或静默延期。
+- [x] reverse_audit：从页面动作反查 generated Client → FastAPI → Repository → PostgreSQL，并从新增 Contract/索引反查真实消费者和部署顺序。
 - [ ] unresolved_cleared：所有 `not_satisfied` 清零；未执行边界和剩余性能风险明确记录。
+
+# 本轮验证与 Review 证据
+
+- 前端静态与构建：ESLint、29 个 Vitest 文件共 164 项、TypeScript/Vite Build 全部通过。
+- Browser Mock：Playwright 全量 129 项通过；覆盖首屏第一页最新倒序、慢/错动态目录、平台筛选可用、筛选恢复和回复按需加载。
+- 真实 Full-stack：`comment-supplement.spec.ts` 通过，链路为 Browser → Vue → FastAPI → PostgreSQL，Provider 使用本地固定 Fixture，不产生外部费用。
+- Backend：Ruff、mypy（346 个源码文件）、目标 API/observability/index 14 项、Content PostgreSQL Integration 8 项通过。
+- Contract/Migration：OpenAPI 生成检查、兼容检查、架构/表 Owner 检查通过；隔离 PostgreSQL 升级至 `20260920_0053`，`alembic current` 和 `alembic check` 通过。
+- 文档与治理：文档入口、事实一致性、Secret 扫描、项目治理接线和 `git diff --check` 通过。
+- Review：标准 Review 与深度 Review 已完成；修复了未处理异常只记 WARNING 且缺少安全堆栈、Full Playwright 选择器碰撞两项发现；当前声音广场范围无未解决 finding。
+- 全量 Python 本地结果为 1237 passed、8 skipped、8 failed：其中 3 项是 Windows 不支持的 POSIX host-prep 行为，1 项由工作区既有忽略 Provider Raw 触发；其余 4 项在干净 Linux `main` 同样失败，原因是镜像配置已改阿里云而测试仍断言清华源。该基线问题不属于本 Change，不以放宽断言或混入修复掩盖。
+- 当前尚无生产数据量、`EXPLAIN ANALYZE` 或正式环境锁等待证据；本 Change 只宣称切断已确认的前端串行阻塞/请求放大并为已知查询补索引，不宣称具体生产毫秒 SLO。
 
 # 兼容、迁移、部署与回滚
 

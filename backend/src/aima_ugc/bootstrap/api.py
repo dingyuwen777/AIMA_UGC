@@ -263,6 +263,22 @@ class _RequestContextMiddleware:
             await self._app(scope, limited_receive, response_send)
         except _RequestBodyTooLarge:
             body_too_large = True
+        except Exception as error:
+            duration_ms = max(0, round((perf_counter() - started) * 1000))
+            log_exception_event(
+                _LOGGER,
+                logging.ERROR,
+                "api.response_failed",
+                "API 请求发生未处理异常。",
+                error,
+                request_id=request_id,
+                method=scope.get("method", ""),
+                # 查询参数可能含用户输入或筛选值，只记录路径用于定位接口。
+                path=scope.get("path", ""),
+                status_code=status_code or 500,
+                duration_ms=duration_ms,
+            )
+            raise
         if body_too_large:
             await _send_body_limit_error(scope, receive, send, request_id)
             return
@@ -1186,8 +1202,14 @@ def create_app(
         },
         tags=["contents"],
     )
-    def get_content(content_id: UUID) -> ContentDetailResponse:
-        return current_content_service().get_content(content_id)
+    def get_content(
+        content_id: UUID,
+        include_comments: Annotated[bool, Query()] = True,
+    ) -> ContentDetailResponse:
+        return current_content_service().get_content(
+            content_id,
+            include_comments=include_comments,
+        )
 
     @application.get(
         "/api/v1/contents/{content_id}/comments",

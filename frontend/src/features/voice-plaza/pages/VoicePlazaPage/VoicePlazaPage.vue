@@ -49,10 +49,10 @@ const selectedReviewIds = computed<Record<RelevanceReviewDecision, string[]>>(()
   return grouped
 })
 const reviewNote = computed(() => {
-  if (store.filters.relevance === 'irrelevant') {
+  if (store.appliedFilters.relevance === 'irrelevant') {
     return '当前显示业务有效不相关内容：AI 原判不相关的内容可人工标记为相关；被人工排除的内容可撤销人工判断。AI 原始结果始终保留。'
   }
-  if (store.filters.relevance === 'relevant') {
+  if (store.appliedFilters.relevance === 'relevant') {
     return '当前显示业务有效相关内容：AI 原判相关的内容可人工标记为不相关；被人工纳入的内容可撤销人工判断。AI 原始结果始终保留。'
   }
   return null
@@ -73,19 +73,20 @@ const detailOpen = computed({
 
 onMounted(() => {
   const sourceIdentifier = route.query.source_identifier
-  if (typeof sourceIdentifier === 'string') store.filters.sourceIdentifier = sourceIdentifier
-  store.startPolling()
-  void refreshPage()
+  if (typeof sourceIdentifier === 'string') {
+    store.filters.sourceIdentifier = sourceIdentifier
+    store.applyFilters()
+  }
+  void refreshPage().finally(() => store.startPolling())
 })
 onBeforeUnmount(() => store.stopPolling())
 
-/** 先校准后端筛选目录，再并行刷新列表和独立业务资源。 */
+/** 首先展示最新倒序第一页，再在后台加载不会影响首屏的目录与任务资源。 */
 async function refreshPage(): Promise<void> {
-  const taxonomyRequest = store.refreshTaxonomy()
-  await store.refreshFilterOptions()
-  await Promise.all([
-    taxonomyRequest,
-    store.refresh(),
+  await store.refresh()
+  void Promise.allSettled([
+    store.refreshTaxonomy(),
+    store.refreshFilterOptions(),
     store.refreshCount('estimated'),
     store.refreshExports(),
     store.refreshAnalysisCapabilities(),
@@ -95,14 +96,16 @@ async function refreshPage(): Promise<void> {
 
 /** 提交当前筛选并清空旧选择，避免跨查询误操作。 */
 async function search(): Promise<void> {
-  store.clearSelection()
-  await Promise.all([store.refresh(), store.refreshCount('estimated')])
+  store.applyFilters()
+  await store.refresh()
+  void store.refreshCount('estimated')
 }
 
 /** 恢复默认筛选并重新获取第一页。 */
 async function reset(): Promise<void> {
   store.resetFilters()
-  await Promise.all([store.refresh(), store.refreshCount('estimated')])
+  await store.refresh()
+  void store.refreshCount('estimated')
 }
 
 /** 把人工相关性复核结果转换为用户可读反馈。 */
@@ -259,8 +262,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         tone="warning"
         role="alert"
       >
-        <strong>筛选项暂不可用</strong>
-        <span>动态筛选已暂时停用；内容浏览和其它操作仍可使用。</span>
+        <strong>部分动态筛选项暂不可用</strong>
+        <span>平台、相关性和状态仍可筛选；情感、标签等动态目录可稍后重试。</span>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="store.taxonomyError"

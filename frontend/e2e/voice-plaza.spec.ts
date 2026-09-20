@@ -357,8 +357,12 @@ test.beforeEach(async ({ page }) => {
 
 test('renders every AI label and opens the text-first content detail', async ({ page }) => {
   let replyRequestCount = 0
+  let detailSkippedEmbeddedComments = false
   page.on('request', (request) => {
     const url = new URL(request.url())
+    if (url.pathname === `/api/v1/contents/${contentId}`) {
+      detailSkippedEmbeddedComments = url.searchParams.get('include_comments') === 'false'
+    }
     if (
       url.pathname === `/api/v1/contents/${contentId}/comments`
       && url.searchParams.get('root_comment_id') === 'comment-root-1'
@@ -381,6 +385,7 @@ test('renders every AI label and opens the text-first content detail', async ({ 
 
   await page.getByRole('button', { name: '查看详情' }).click()
   await expect(page.getByRole('dialog', { name: '内容详情' })).toBeVisible()
+  expect(detailSkippedEmbeddedComments).toBe(true)
   await expect(page.getByText('内容与 AI 信息')).toBeVisible()
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('电池、续航与充电 / 实际续航表现')
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('驾乘体验 / 坐垫舒适性')
@@ -458,7 +463,7 @@ test('renders the newest first page before slow filter options are ready', async
   await expect(page.getByText(item.title), '最新倒序第一页不应等待筛选目录').toBeVisible({
     timeout: 2_000,
   })
-  await expect(page.getByLabel('平台', { exact: true })).toBeEnabled()
+  await expect(page.locator('section.filters').getByLabel('平台', { exact: true })).toBeEnabled()
   releaseFilterOptions()
   await expect(page.locator('label.field--voice-type select')).toBeEnabled()
 })
@@ -542,7 +547,8 @@ test('keeps stable filters and content usable when dynamic filter options are un
 
 test('restores the applied platform filter after leaving and reloading the page', async ({ page }) => {
   await page.goto('/voice-plaza')
-  await page.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
+  const voicePlaza = page.getByRole('main', { name: '声音广场' })
+  await voicePlaza.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
   await page.getByRole('button', { name: '查询' }).click()
 
   const restoredRequest = page.waitForRequest((request) => {
@@ -555,7 +561,7 @@ test('restores the applied platform filter after leaving and reloading the page'
   await page.goto('/voice-plaza')
   await restoredRequest
 
-  await expect(page.getByLabel('平台', { exact: true })).toHaveValue('xiaohongshu')
+  await expect(voicePlaza.getByLabel('平台', { exact: true })).toHaveValue('xiaohongshu')
   await expect(page.getByText(item.title)).toBeVisible()
 })
 

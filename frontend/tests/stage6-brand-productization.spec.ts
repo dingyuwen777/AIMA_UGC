@@ -56,8 +56,8 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
       readSource('features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue'),
     ])
 
-    expect(store).toContain('brand_ids: filters.brandIds.length ? [...filters.brandIds] : undefined')
-    expect(store).toContain('competition_scopes: filters.competitionScopes.length ? [...filters.competitionScopes] : undefined')
+    expect(store).toContain('brand_ids: appliedFilters.brandIds.length ? [...appliedFilters.brandIds] : undefined')
+    expect(store).toContain('competition_scopes: appliedFilters.competitionScopes.length ? [...appliedFilters.competitionScopes] : undefined')
     expect(filters).toContain('品牌')
     expect(filters).toContain('竞争范围')
     expect(detail).toContain('品牌识别证据')

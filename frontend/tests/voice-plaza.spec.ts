@@ -4,6 +4,15 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const generated = vi.hoisted(() => ({
+  ContentAnalysisStatus: { completed: 'completed', pending: 'pending', stale: 'stale' },
+  ContentRelevance: { relevant: 'relevant', irrelevant: 'irrelevant' },
+  PlatformName: {
+    xiaohongshu: 'xiaohongshu',
+    douyin: 'douyin',
+    weibo: 'weibo',
+    bilibili: 'bilibili',
+    kuaishou: 'kuaishou',
+  },
   listContents: vi.fn(),
   listContentComments: vi.fn(),
   getContent: vi.fn(),
@@ -130,7 +139,7 @@ describe('voice plaza', () => {
     expect(store.detail).toBeNull()
   })
 
-  it('打开详情会预取已入库回复并保留数据库总数', async () => {
+  it('打开详情先加载一级评论，展开后再读取回复并保留数据库总数', async () => {
     const root = {
       id: 'comment-root-id',
       external_comment_id: 'root-1',
@@ -167,14 +176,19 @@ describe('voice plaza', () => {
       cursor: undefined,
       limit: 10,
     })
+    expect(generated.listContentComments).toHaveBeenCalledTimes(1)
+    expect(store.commentRoots).toEqual([root])
+    expect(store.commentReplies['root-1']).toBeUndefined()
+    expect(store.commentsIngestedTotalCount).toBe(3)
+
+    await store.loadCommentReplies('root-1')
+
     expect(generated.listContentComments).toHaveBeenNthCalledWith(2, item.id, {
       root_comment_id: 'root-1',
       cursor: undefined,
       limit: 20,
     })
-    expect(store.commentRoots).toEqual([root])
     expect(store.commentReplies['root-1']).toEqual([reply])
-    expect(store.commentsIngestedTotalCount).toBe(3)
     expect(store.commentReplyStates['root-1']).toMatchObject({
       loaded: true,
       hasMore: false,
@@ -279,6 +293,7 @@ describe('voice plaza', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
+    if (typeof sessionStorage !== 'undefined') sessionStorage.clear()
     generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
     generated.getContentAnalysisTaxonomy.mockResolvedValue(taxonomy)
     generated.getContentFilterOptions.mockResolvedValue(filterOptions)
@@ -379,7 +394,7 @@ describe('voice plaza', () => {
     expect(html).not.toContain('value="正面"')
   })
 
-  it('disables dynamic controls while newer filter options are loading', async () => {
+  it('keeps stable filters enabled while disabling dynamic controls during catalog loading', async () => {
     const html = await renderToString(
       createSSRApp({
         render: () => h(VoicePlazaFilters, {
@@ -401,7 +416,7 @@ describe('voice plaza', () => {
       }),
     )
 
-    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(8)
+    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(5)
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
@@ -436,6 +451,7 @@ describe('voice plaza', () => {
     store.filters.brandIds = ['brand-aima']
     store.filters.vehicleModelIds = ['vehicle-q7']
     store.filters.competitionScopes = ['owned_only', 'mixed']
+    store.applyFilters()
     await store.refresh()
 
     expect(store.filterOptions?.voice_types[0]?.value).toBe('真实用户发声')

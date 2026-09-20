@@ -468,7 +468,7 @@ AI 原判仍在 `analysis_content_results.relevance`，没有复制为 `contents
 
 读取详情，包括 media、comments、coverage、source_records 等审计/展示数据。单条详情不会因为 AI irrelevant 物理删除或隐藏 Content 业务事实。
 
-详情内嵌的 `comments` 继续保留，用于兼容已有调用；它最多返回 100 条，不能作为完整评论浏览接口。
+可选查询参数 `include_comments` 默认是 `true`。详情内嵌的 `comments` 继续保留，用于兼容已有调用；它最多返回 100 条，不能作为完整评论浏览接口。已经使用独立评论分页的调用方应传 `include_comments=false`，避免在详情请求中重复读取评论；响应结构不变，`comments` 返回空数组。
 
 ## 7.3 `GET /api/v1/contents/{content_id}/comments`
 
@@ -543,7 +543,7 @@ Taxonomy 读取或校验失败时，接口使用统一 Problem Response 返回 `
 
 声音广场下拉选项的唯一后端目录。平台、相关性和分析状态来自正式 Contract，内容类型来自当前可见 Content Current；情感、发声类型和两级标签按 active Taxonomy 顺序优先，再追加当前可见最新 Analysis/人工覆盖中仍存在的历史值。历史项明确返回 `source=historical`，但不会写回或扩大 active Taxonomy。
 
-历史值查询复用内容列表的当前版本、有效来源、最新 Analysis、人工维度锁和有效相关性投影，不从旧 Content Version、失效来源或全表原始结果做无边界 `DISTINCT`。读取失败不阻断内容列表；前端禁用动态下拉并显示统一错误，不回退到业务值硬编码。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
+历史值查询复用内容列表的当前版本、有效来源、最新 Analysis 和人工维度锁语义，但使用只包含筛选字段的独立最小投影，不再构造完整内容列表行；它不会从旧 Content Version、失效来源或全表原始结果做无边界 `DISTINCT`。读取失败不阻断内容列表；平台、相关性和分析状态继续使用生成 Contract 中的稳定值，只有内容类型、情感、发声类型和两级标签等动态下拉暂时禁用。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
 
 ## 8.4 `POST /api/v1/analysis/content-runs/preview`
 
