@@ -35,9 +35,11 @@ data_changes: []
 
 # 背景、现状与问题
 
+## 背景
+
 Requirement Source 为 Issue #545。用户要求按既定修复方案完成代码修改、验证并合并到 `main`。
 
-## 已确认事实
+## 当前现状
 
 1. `active_analysis_configuration()` 每次都调用 `bootstrap_default()`；后者在检查 active Version 前取得事务级独占 advisory lock。
 2. 多个 API 读取路径在同一请求事务中调用该函数，锁等待会占住已经 checkout 的数据库连接。
@@ -45,9 +47,38 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 4. Heartbeat 使用独立 Session 更新同一 Job 行；长事务持有行锁时，Heartbeat 会等待并可能错过 Lease。
 5. 当前已有 `validate_current_execution()` 作为事务开始的无行锁校验，兼容 Import Worker 已采用“开始 validate、提交前 lock”的正常参照。
 
+## 问题、根因或约束
+
+- Analysis 读取路径把“读取已有 active Version”和“空库初始化”合并成同一条带写锁路径，造成不必要的读写互斥；并发请求在等待时继续占用连接，可能放大为连接池超时。
+- Historical Import Chunk 把最终提交所需的 Job 行锁提前到长事务开始，Heartbeat 与业务事务发生自锁竞争，Lease 到期后最终 Fence 校验失败并回滚。
+
+## 不修改的后果
+
+- Scheme registry 有写事务时，原本只读的 Analysis 请求仍可能排队并占住连接，继续放大 API 超时风险。
+- 处理时间接近或超过 Lease 的 Chunk 仍可能阻塞自身 Heartbeat，造成重复尝试、失败回滚和 Worker 退出风险。
+
+# 事实与证据
+
+| 证据编号 | 已确认事实 | 来源 / 定位 / 命令 | 支撑的约束或决策 |
+| --- | --- | --- | --- |
+| E1 | 已有 active Version 时，`active_analysis_configuration()` 仍调用先取 advisory lock 的 `bootstrap_default()` | `backend/src/aima_ugc/bootstrap/analysis_identity.py`、Scheme Repository 当前实现 | 读取已有配置应先走无写锁快路径；仅空库进入 bootstrap |
+| E2 | Chunk 长事务开始即对 Job 行执行 `SELECT ... FOR UPDATE`，Heartbeat 通过独立事务更新同一行 | `backend/src/aima_ugc/bootstrap/historical_import_worker.py`、`PostgresJobRepository` | 事务开始只能无锁校验 Fence，提交前才锁定校验 |
+| E3 | 普通 Import Worker 已采用“开始 validate、提交前 lock”的边界 | `backend/src/aima_ugc/bootstrap/import_worker.py` | Historical Import 可复用同一既有不变量，无需新机制 |
+| E4 | 项目规范要求 API 短事务及持久 Job 的 Lease、Heartbeat、Fencing | 根 `AGENTS.md` 与 Blueprint | 修复必须保留最终原子提交和 Fencing，不能以关闭安全机制止血 |
+| E5 | Issue 已把修复边界固化为 AC1—AC4 | `#545` | Change、实现、测试和交付逐条绑定稳定 Acceptance |
+
+## 推断与待确认
+
+- 已确认上述两条机制能够造成连接等待和 Lease 丢失；事故发生时最初持锁事务的业务来源没有现场 `pg_locks` 快照，不能把某个具体请求断言为唯一首因。该未知项不阻塞切断已确认的放大路径。
+
 # 目标、成功标准与非目标
 
 ## 目标
+
+- 已初始化的 Analysis 配置读取不进入 registry 写锁路径，同时保留空库并发初始化的唯一 active 语义。
+- Historical Import Chunk 处理期间 Heartbeat 可以续租，最终业务提交仍由当前 Fencing Token 保护。
+
+## 成功标准
 
 - [ ] 已有 active Scheme 时直接读取，不进入带 registry 写锁的 bootstrap。
 - [ ] 空库 bootstrap 仍由 advisory lock 保护，并发初始化只形成一个 active Version。
@@ -55,6 +86,12 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 - [ ] 最终业务提交前仍锁定并校验当前 Fencing Token。
 - [ ] 两条失败机制都有 Red → Green 回归和真实 PostgreSQL 并发证据。
 - [ ] PR current-head CI、独立 Review、guarded merge 与 main-fresh 收尾完成。
+
+## 范围
+
+- Analysis Scheme active identity 的读取/空库初始化分流。
+- Historical Import Chunk 的事务开始与最终提交 Fence 边界。
+- 对应真实 PostgreSQL 并发回归、质量门禁和交付证据。
 
 ## 非目标
 
@@ -71,9 +108,22 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 - Historical Import 的 Content/Evidence/账本/checkpoint 原子提交。
 - 公共 API、Schema、依赖锁、启动、部署与 Release 方式。
 
-# 修改方案与计划
+# 约束与意图决策
 
-## Step 1：固定 Analysis 读取回归
+| 决策维度 | 当前决定 | 依据 | 影响 |
+| --- | --- | --- | --- |
+| 范围与负责人边界 | 仅修改 Analysis bootstrap 与 Historical Import Worker 两处 Owner 实现及回归 | E1—E5 | 不扩展到连接池容量、Worker 监督或日志改造 |
+| 接口与契约 | 不改变公共 HTTP、Pydantic/OpenAPI、generated client 或 Job Payload | E1—E5 | 调用方无需适配 |
+| 数据与迁移 | 不改变 Schema、Migration 或历史数据 | E1—E3 | 无迁移、回填和不可逆数据操作 |
+| 错误与失败语义 | 保留 Lease、Deadline、取消、重试和 Fence 失败语义，只消除错误的锁边界 | E2—E4 | 过期执行仍不能提交，Heartbeat 获得正常续租窗口 |
+| 兼容性 | 保持唯一 active Scheme、业务原子提交和所有合法输入输出 | E1—E4 | 修复只改变内部同步时机 |
+| 部署与回滚 | 普通代码合并，无额外配置/迁移/发布动作；可整体 revert PR | E4 | 无独立部署或数据恢复步骤 |
+
+# 修改方案与决策依据
+
+## 最小充分方案
+
+### Step 1：固定 Analysis 读取回归
 
 - **Requirement**：#545 AC1/AC3。
 - **Owner / 行为**：Analysis identity 读取已有 active Version 时不调用 bootstrap。
@@ -81,7 +131,7 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 - **可观察结果**：旧实现因仍调用 bootstrap 而失败；修复后读取成功且空库初始化语义不变。
 - **直接 Evidence**：目标 pytest Red/Green 输出；必要时 PostgreSQL 并发测试。
 
-## Step 2：固定 Historical Chunk Heartbeat/Fencing 回归
+### Step 2：固定 Historical Chunk Heartbeat/Fencing 回归
 
 - **Requirement**：#545 AC2/AC3。
 - **Owner / 行为**：Chunk 处理期间 Job 行可被 Heartbeat 更新，最终提交仍需当前 Fence。
@@ -89,7 +139,7 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 - **可观察结果**：旧实现下 Heartbeat 被事务行锁阻塞或调用序列不符合不变量；修复后处理期可续租，失效 Token 不能提交。
 - **直接 Evidence**：真实 PostgreSQL Integration Red/Green。
 
-## Step 3：最小生产修复
+### Step 3：最小生产修复
 
 - **Requirement**：#545 AC1/AC2。
 - **Owner / 行为**：Analysis 读取/初始化分流；Historical Chunk 开始 validate、提交前 lock。
@@ -97,7 +147,7 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 - **可观察结果**：两条回归转绿，公共 Contract 与数据语义不变。
 - **直接 Evidence**：目标测试、相关模块回归、diff 审查。
 
-## Step 4：完成审计与交付
+### Step 4：完成审计与交付
 
 - **Requirement**：#545 AC4。
 - **Owner / 行为**：质量门禁、Review、CI、合并和 post-merge 收尾。
@@ -105,7 +155,21 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 - **可观察结果**：current-head 门禁通过，guarded merge 后 main-fresh 通过，Issue Acceptance 有直接 Evidence。
 - **直接 Evidence**：命令输出、PR/CI/head/merge/archive/Issue 回读。
 
-# Requirement Traceability
+## 证据到决策
+
+| 决策 | 依据证据 | 为什么采用这个方案 |
+| --- | --- | --- |
+| D1：已有 active Version 先直接读取，未命中才 bootstrap | E1、E4 | 把普通读请求移出独占锁路径，同时 bootstrap 内部重检继续保证空库并发安全 |
+| D2：Chunk 开始 validate，提交前 lock | E2、E3、E4 | Heartbeat 在长处理期可更新 Job 行，最终锁定校验仍阻止失效执行提交 |
+| D3：不调整连接池容量或扩大 Worker 行为 | E1—E5 | 容量调整不能切断已确认锁竞争，且缺少独立容量测量和上游 Acceptance |
+
+## 备选方案与取舍
+
+- 只扩大数据库连接池：只能推迟连接耗尽，不能消除 Scheme 写锁导致的连接占用，未采用。
+- 延长 Historical Import Lease：只能降低部分复现概率，Heartbeat 仍会被同一事务行锁阻塞，未采用。
+- 拆分整个 Chunk 为多个事务：会改变导入原子性、checkpoint 和失败语义，超出本次已确认问题的最小充分边界，未采用。
+
+# 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
@@ -114,7 +178,25 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 | R3 | 两条机制均有目标回归和真实 PostgreSQL Integration 证据 | #545 / AC3 | not_satisfied | 待目标测试与集成测试 |
 | R4 | 相关回归、质量门禁与 current-head CI 通过，公共边界保持不变 | #545 / AC4 | not_satisfied | 待质量门禁、Review 与 CI |
 
-# Validation Matrix
+# 计划改动
+
+| 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
+| --- | --- | --- | --- |
+| `backend/src/aima_ugc/bootstrap/analysis_identity.py` | active 读取快路径，空库才 bootstrap | 消除普通读取的不必要 registry 写锁 | R1 / E1 |
+| `backend/src/aima_ugc/bootstrap/historical_import_worker.py` | 长事务开始无锁 validate，最终提交保留 lock | 解除 Heartbeat 与业务事务的 Job 行锁竞争 | R2 / E2、E3 |
+| `tests/integration/database/test_analysis_identity_locking.py` | 新增真实 PostgreSQL advisory lock 与并发空库回归 | 直接证明读锁边界和唯一 active 语义 | R1、R3 |
+| `tests/integration/ingestion/test_stage12_historical_campaign_worker.py` | 新增长事务期间 Heartbeat 回归 | 直接证明处理期可续租和最终完成 | R2、R3 |
+| 当前 Change / PR / Issue | 同步追溯、证据、审计和交付状态 | 满足持久 L2 交付门禁 | R4 / E5 |
+
+- [x] 调查当前实现和事实源
+- [x] 建立任务路由和验证矩阵
+- [ ] 行为变化取得失败证据
+- [ ] 完成最小实现
+- [ ] 复核长期文档影响
+- [ ] 取得覆盖当前版本的验证证据
+- [ ] 完成需求追溯、完成审计和适用复核
+
+# 验证矩阵
 
 | 验证层 | 是否要求 | Scope / Evidence |
 | --- | --- | --- |
@@ -127,25 +209,62 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 | Build / Package / Runtime | required | 仓库正式 Python 检查与 PR current-head CI |
 | Docs / Governance / Other | required | Change Completion、架构/Owner/Secret/docs checks、两阶段 Review、PR/Issue 追溯 |
 
-# 文档、兼容性、迁移与回滚
+## 验证计划
+
+- 目标测试：Analysis identity 两项 PostgreSQL 并发测试；Historical Chunk Heartbeat 测试。
+- 相关回归：Analysis、Job、Historical Campaign 相关测试及 CI 选定后端套件。
+- 静态检查或构建：Ruff、类型/仓库质量门禁、Wheel/运行检查由正式 CI 覆盖。
+- 专项真实边界：GitHub Runner 的隔离 PostgreSQL；本地数据库未证明隔离，不执行会 `TRUNCATE` 的集成夹具。
+- 就绪检查：`uv run python scripts/quality/check_change_completion.py --root . --require-active-ready`。
+
+# 风险、兼容性、迁移与回滚
+
+| 项目 | 结论 | 依据 / 处理方式 |
+| --- | --- | --- |
+| 主要风险 | 快路径可能削弱空库并发初始化；Fence 调整可能允许失效执行提交 | 用并发空库唯一 active 测试和最终提交锁定校验覆盖 |
+| 兼容性 | 保持公共接口、数据和合法行为 | 只改变内部锁取得时机，不改 Contract/Schema/Payload |
+| 数据 / Migration | 不适用 | 无 Schema、Migration、回填或数据格式变化 |
+| 部署 / 运行 | 普通代码变更 | 不改变配置、进程拓扑、依赖或启动方式 |
+| 回滚 / 恢复 | 可 revert 本 PR | 无迁移和不可逆数据变化；若回归可恢复原实现 |
+
+# 文档、依赖、部署与发布影响
 
 - **长期文档**：现有 Blueprint/模块文档已经要求 API 短事务、Heartbeat 不被外部/长工作阻塞、最终写入受 Fencing 保护；本次优先修实现与测试，完成前复核是否仍需 targeted 文档澄清。
-- **Contract / Schema / Migration**：无变化。
-- **依赖 / Runtime / lock**：无变化。
-- **部署 / Release**：不创建 Release、不部署；合并后由既有发布流程消费。
-- **回滚**：可 revert 本次 PR；无不可逆数据变化或迁移。
+- **依赖 / Runtime**：不新增、删除或升级依赖，不修改锁文件和 Runtime。
+- **配置 / Secret**：不改变配置面、默认值或 Secret 处理。
+- **部署 / Release**：不创建 Release、不部署；本次只合并到 `main`。
+- **兼容 / 消费方通知**：不改变公共 Contract、Schema、Payload 或人工流程，无需消费方适配。
 
-# Completion Audit
+# 完成审计
 
 - [ ] upstream_re_read：Ready 前重新读取 #545、适用项目规则与当前实现事实。
 - [ ] change_coverage：逐条比较 #545 AC1—AC4 与本 Change，确认没有遗漏或静默缩限。
 - [ ] reverse_audit：从 active Scheme consumers 与 Historical Chunk/Heartbeat/Fence 两向反查实现和证据层。
 - [ ] unresolved_cleared：`not_satisfied` 清零；所有 N/A 都有当前事实依据。
 
-# 完成证据与交付状态
+# 完成证据与状态
+
+## 新鲜证据
+
+| 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
+| --- | --- | --- | --- | --- |
+| V1 | `02e27512` / 本地 | `uv run ruff check ...` | 通过 | 新增回归测试满足静态规范 |
+| V2 | `02e27512` / 本地 | 目标 pytest `--collect-only` | 收集 17 项 | 测试模块可导入，目标用例进入正式收集 |
+| V3 | `02e27512` / GitHub Runner | PR run `35485986763` | 前置 Change 机器契约失败，PostgreSQL Integration 被跳过 | 尚未取得功能 Red；需先修正文档结构再重跑 |
+
+## 未验证内容与剩余风险
+
+- 尚未取得隔离 PostgreSQL 上的功能 Red/Green；本地数据库隔离性未知，故没有运行会清表的集成夹具。
+
+## 交付状态
 
 - Issue：#545，OPEN。
 - Branch：`fix/concurrency-lock-boundaries`。
-- PR：待首个失败回归/治理提交后创建早期 PR。
+- PR：#546，早期 PR，逻辑未就绪。
+- CI：run `35485986763` 因 Change 标题不符合机器契约在前置门禁失败，功能测试未运行。
 - Merge：未执行。
 - Release / Deploy：不适用。
+
+## 备注
+
+- 事故当时没有保存 `pg_locks` 快照，因此不声称已识别唯一首个持锁请求；当前修复针对代码中已确认且可复现的两条锁放大机制。
