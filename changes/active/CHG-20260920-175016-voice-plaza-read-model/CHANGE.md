@@ -243,7 +243,7 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 - [x] upstream_re_read：已重新读取 Issue #551、用户最新验收边界和正式项目文档，并独立重建完成定义。
 - [x] change_coverage：已确认当前变更覆盖 AC1–AC8，没有把 Change 自身当作需求全集。
-- [x] reverse_audit：已执行前端入口→API→投影→事实表、写入→触发器→投影→查询、Migration→Worker→ready 的反向审计；审计中修正了部分索引谓词不匹配、Content Version 首次刷新遗漏、长 Job 独占 Worker、Migration/Metadata 约束名漂移和 Worker 完整注册表测试遗漏新 Job 五个问题。
+- [x] reverse_audit：已执行前端入口→API→投影→事实表、写入→触发器→投影→查询、Migration→Worker→ready 的反向审计；审计中修正了部分索引谓词不匹配、Content Version 首次刷新遗漏、长 Job 独占 Worker、Migration/Metadata 约束名漂移、Worker 完整注册表测试遗漏新 Job，以及 CI 清库后未恢复新 singleton seed 六个问题。
 - [x] unresolved_cleared：所有 `not_satisfied` 已清零；真实大库性能未验证按用户明确边界记录为 post-merge 服务器验收，不伪装成本地完成。
 
 # 完成证据与状态
@@ -258,7 +258,8 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 | V4 | `d1d29a7a` / PostgreSQL 18.4 | `EXPLAIN (COSTS OFF)` 默认最新和 `platform='xiaohongshu'` 查询 | 分别为 `ix_voice_plaza_projection_published_latest`、`ix_voice_plaza_projection_platform_latest` 的 `Index Only Scan` | 实际查询谓词和排序与索引匹配；不是只“创建了索引” |
 | V5 | `d1d29a7a` / Node 24 | `npm --prefix frontend test -- --run`；`npm --prefix frontend run build`；4 个声音广场 Playwright 文件 | 168 单测、生产构建、33 浏览器测试全部通过 | 首屏、筛选恢复、摘要先显、预取加载更多和页面状态无回归 |
 | V6 | `d1d29a7a` | Contract generate/check compatibility；docs/docs facts/architecture/table ownership/secret checks | 全部通过 | 公共契约向后兼容，文档与架构边界同步且无 Secret 泄漏 |
-| V7 | 当前工作树 / PostgreSQL 18.4 临时容器 | `pytest tests/integration/collection/test_collection_worker_runtime.py::test_production_worker_consumes_scheduler_created_collection_run -q` | 1 条通过 | 完整 Worker Registry Contract 已包含声音广场回填 Job，原有 Collection Job 仍可由生产 Worker 消费 |
+| V7 | `ac6bfca9` / PostgreSQL 18.4 临时容器 | `pytest tests/integration/collection/test_collection_worker_runtime.py::test_production_worker_consumes_scheduler_created_collection_run -q` | 1 条通过 | 完整 Worker Registry Contract 已包含声音广场回填 Job，原有 Collection Job 仍可由生产 Worker 消费 |
+| V8 | 当前工作树 / PostgreSQL 18.4 临时容器 / `GITHUB_ACTIONS=true` | CI 全表清理与 seed 恢复后运行 `test_voice_plaza_projection_backfill_switches_reads_to_ready_catalog` | 1 条通过 | CI 数据库生命周期会恢复 Migration 保证的声音广场 singleton 状态，回填和 ready 切换不依赖测试顺序 |
 
 ## 未验证内容与剩余风险
 
@@ -269,8 +270,8 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 - 提交：Red 基线 `deda3b42`；实现与文档 `d1d29a7a`、`ecbfbe64`；Migration/Metadata 约束命名修复 `dc17bb62`；数据库差异证据 `2217579b`。
 - 拉取请求：#552 已建立早期追溯；Issue #551 已按 canonical 技术变更 Profile 补齐根因、状态、范围、迁移、回滚、验证和 AC1–AC8；当前 Change 已达到 `ready_for_review`。
-- Review：Stage A 已按 Issue #551 AC1–AC8 重建完成定义且无遗漏；Stage B 已复核查询、迁移、触发器、Job 公平性、前端并发/缓存、日志和回滚，审查中发现的五项问题均已修正并重验。
-- CI：`5616a800` 已通过核心质量、Compose、Linux/Windows Development Tooling 和真实 Full-stack；PostgreSQL Integration 的唯一失败是完整 Worker Registry 预期仍缺新 Job，本提交已修正并在本地 PostgreSQL 重验，最终完整 CI 以本提交后的新 SHA 为准。
+- Review：Stage A 已按 Issue #551 AC1–AC8 重建完成定义且无遗漏；Stage B 已复核查询、迁移、触发器、Job 公平性、前端并发/缓存、日志和回滚，审查中发现的六项问题均已修正并重验。
+- CI：`ac6bfca9` 已通过核心质量、Compose、Linux/Windows Development Tooling 和真实 Full-stack；PostgreSQL Integration 在 134 条 Collection 用例通过后暴露 CI 清库未恢复新 singleton seed，本提交已修正并用 `GITHUB_ACTIONS=true` 的本地 PostgreSQL 场景重验，最终完整 CI 以本提交后的新 SHA 为准。
 - 合并：尚未执行。
 - Change 归档：尚未执行。
 - 发布 / 部署：不在本次授权范围；仅合并主分支，不执行服务器部署或生产 Migration。
