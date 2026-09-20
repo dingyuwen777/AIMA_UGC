@@ -350,7 +350,7 @@ jobs:
           if ((Get-AimaPythonInstallerUri -Version $targets.Python) -ne 'https://mirrors.tuna.tsinghua.edu.cn/python/3.14.7/python-3.14.7-amd64.exe') { throw 'Python China mirror URL is not exact.' }
           if ((Get-AimaNodeInstallerUri -Version $targets.Node) -ne 'https://npmmirror.com/mirrors/node/v24.19.0/node-v24.19.0-x64.msi') { throw 'Node China mirror URL is not exact.' }
           if ((Get-AimaNodeChecksumUri -Version $targets.Node) -ne 'https://npmmirror.com/mirrors/node/v24.19.0/SHASUMS256.txt') { throw 'Node checksum China mirror URL is not exact.' }
-          if ((Get-AimaPypiIndexUri) -ne 'https://pypi.tuna.tsinghua.edu.cn/simple') { throw 'PyPI China mirror is not exact.' }
+          if ((Get-AimaPypiIndexUri) -ne 'https://mirrors.aliyun.com/pypi/simple') { throw 'PyPI China mirror is not exact.' }
           if ((Get-AimaNpmRegistryUri) -ne 'https://registry.npmmirror.com') { throw 'npm China registry is not exact.' }
 
           $scriptContent = Get-Content -LiteralPath $scriptPath -Raw

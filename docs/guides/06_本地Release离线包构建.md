@@ -41,7 +41,7 @@ Windows / 中国网络默认使用项目现有国内源：
 ```text
 Debian          → mirrors.aliyun.com
 Debian Security → mirrors.aliyun.com
-PyPI            → pypi.tuna.tsinghua.edu.cn
+PyPI            → mirrors.aliyun.com/pypi
 npm             → registry.npmmirror.com
 ```
 
