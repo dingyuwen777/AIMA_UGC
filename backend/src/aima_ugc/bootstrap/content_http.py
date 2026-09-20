@@ -240,7 +240,12 @@ class PostgresContentHttpService:
             labels=labels,
         )
 
-    def get_content(self, content_id: UUID) -> ContentDetailResponse:
+    def get_content(
+        self,
+        content_id: UUID,
+        *,
+        include_comments: bool = True,
+    ) -> ContentDetailResponse:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -256,7 +261,7 @@ class PostgresContentHttpService:
                 return ContentDetailResponse(
                     **item.model_dump(),
                     media=repository.list_media(content_id),
-                    comments=repository.list_comments(content_id),
+                    comments=(repository.list_comments(content_id) if include_comments else ()),
                     comment_coverage=repository.latest_comment_coverage(content_id),
                     supplement_status=repository.latest_supplement_status(content_id),
                     source_records=repository.list_source_records(content_id),
@@ -282,7 +287,7 @@ class PostgresContentHttpService:
                     session,
                     analysis_identity=configuration.identity,
                 )
-                if repository.get_content(content_id) is None:
+                if not repository.content_exists(content_id):
                     raise ContentResourceNotFound
                 rows = repository.list_comments_page(
                     content_id,

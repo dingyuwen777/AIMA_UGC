@@ -423,6 +423,10 @@ Content Current
 
 声音广场的粉丝数展示和排序使用同一个有效值：存在稳定作者账号且 `accounts.current_follower_count` 非空时优先读取 Account Current；否则回退到当前 `content_versions.author_snapshot.follower_count`，因此只有作者名和粉丝数的 Excel 导入也能直接展示和排序。缺失值保持未知，不用零替代，也不为排序重新请求 Provider。发布时间和粉丝数排序都由查询 Repository 在 PostgreSQL 中执行；空值置后，同值按 Content ID 续页。排序身份绑定到 Cursor，切换排序必须从第一页重新查询。未指定排序的旧调用和有效期内的旧 Cursor 保留原行为。
 
+声音广场没有筛选时显式请求发布时间倒序的第一页。`contents(published_at DESC NULLS LAST, id DESC)` 索引与这个稳定排序一致；评论一级列表和线程回复分别使用与各自排序、线程条件一致的索引。最新 Analysis Result 与最新 Analysis Run 的当前投影也按 `content_id + content_version` 建立读取索引。精确索引定义由 [`backend/src/aima_ugc/modules/content/tables.py`](tables.py)、[`backend/src/aima_ugc/modules/analysis/tables.py`](../analysis/tables.py) 和对应 Migration 维护。
+
+筛选目录只需要内容类型、最新分析值和人工锁定值，因此走独立的最小投影，不再复用包含正文、作者、来源和车型证据的完整列表投影；它仍使用统一的有效来源判断和当前版本语义。评论分页判断 Content 是否存在时也只读取可见性，不会为一次存在性检查构造整份详情。
+
 Brand 与 Vehicle 是两组独立 Evidence。列表返回当前 Content Version 的全部有效 Brand 及证据；Vehicle 仍按合并后的有效车型展示，并嵌套该车型当前目录中的 Brand 引用。`competition_scope` 不持久化，而是由命中 Brand 的 `owned / competitor / other` 角色集合派生；没有 Brand 时为 `none_detected`。`brand_ids`、`vehicle_model_ids` 和 `competition_scopes` 在同一查询内按 AND 组合，各自数组内部按 OR 匹配。List、Count、Analysis query target 与 Export query target 都复用这一过滤入口。
 
 ### 当前 Analysis 状态

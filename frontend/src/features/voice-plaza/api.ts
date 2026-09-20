@@ -97,7 +97,7 @@ export async function fetchContents(params: ListContentsParams): Promise<Content
 }
 
 export async function fetchContentDetail(contentId: string): Promise<ContentDetailResponse> {
-  return withLocalMediaPreview(unwrap(await getContent(contentId)))
+  return withLocalMediaPreview(unwrap(await getContent(contentId, { include_comments: false })))
 }
 
 export async function fetchContentComments(

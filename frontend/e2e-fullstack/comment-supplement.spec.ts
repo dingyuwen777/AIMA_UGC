@@ -78,19 +78,40 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   await expect(runDetail.getByText('目标身份：已确认')).toHaveCount(5)
   await expect(runDetail.getByText('抓取结束')).toHaveCount(5)
   await expect(runDetail.getByText('一级评论', { exact: true })).toBeVisible()
+  const initialContentResponse = page.waitForResponse((response) =>
+    response.request().method() === 'GET' &&
+    new URL(response.url()).pathname === '/api/v1/contents',
+  )
   await runDetail.getByRole('button', { name: '查看补采结果' }).click()
+  const contentResponse = await initialContentResponse
+  expect(contentResponse.status()).toBe(200)
+  const initialContentUrl = new URL(contentResponse.url())
+  expect(initialContentUrl.searchParams.get('cursor')).toBeNull()
+  expect(initialContentUrl.searchParams.get('limit')).toBe('20')
+  expect(initialContentUrl.searchParams.get('sort_by')).toBe('published_at')
+  expect(initialContentUrl.searchParams.get('sort_direction')).toBe('desc')
   await expect(page).toHaveURL((url) =>
     url.pathname === '/voice-plaza' && url.searchParams.get('source_identifier') === runId,
   )
+  await expect(page.getByLabel('平台')).toBeEnabled()
 
   for (const label of labels) {
     const title = `爱玛评论补采全栈${label}`
     const contentRow = page.locator('.content-row').filter({ hasText: title })
     await expect(contentRow).toBeVisible()
+    const detailResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url())
+      return response.request().method() === 'GET' &&
+        /^\/api\/v1\/contents\/[^/]+$/.test(url.pathname)
+    })
     await contentRow.getByRole('button', { name: '查看详情' }).click()
+    const detailResponse = await detailResponsePromise
+    expect(detailResponse.status()).toBe(200)
+    expect(new URL(detailResponse.url()).searchParams.get('include_comments')).toBe('false')
     const contentDetail = page.getByRole('dialog', { name: '内容详情' })
     await expect(contentDetail.getByText('脱敏一级评论')).toBeVisible()
     if (label === '小红书') {
+      await contentDetail.getByRole('button', { name: /查看 \d+ 条回复/ }).click()
       await expect(contentDetail.getByText('脱敏二级回复')).toBeVisible()
       await expect(contentDetail.getByText('脱敏第二页回复')).toBeVisible()
       await expect(contentDetail.getByText('回复 脱敏用户').first()).toBeVisible()

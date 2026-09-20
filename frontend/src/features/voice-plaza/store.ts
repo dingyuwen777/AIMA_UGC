@@ -24,6 +24,11 @@ import type {
   ListContentsParams,
   PlatformName,
 } from '../../generated/api/client'
+import {
+  ContentAnalysisStatus as ContentAnalysisStatusValues,
+  ContentRelevance as ContentRelevanceValues,
+  PlatformName as PlatformNameValues,
+} from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import { createClientIdempotencyKey } from '../../shared/idempotency'
 import { useTaskCenterStore } from '../task-center/store'
@@ -93,6 +98,85 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   competitionScopes: [],
 }
 
+const FILTER_SESSION_KEY = 'aima.voice-plaza.applied-search.v1'
+
+interface PersistedVoicePlazaSearch {
+  filters: VoicePlazaFilters
+  sortBy: 'published_at' | 'follower_count'
+  sortDirection: 'asc' | 'desc'
+}
+
+/** 复制筛选数组，避免草稿、已应用条件和默认值共享可变引用。 */
+function copyFilters(source: VoicePlazaFilters): VoicePlazaFilters {
+  return {
+    ...source,
+    brandIds: [...source.brandIds],
+    vehicleModelIds: [...source.vehicleModelIds],
+    competitionScopes: [...source.competitionScopes],
+  }
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+/** 只恢复本应用写入且仍符合当前 Contract 的会话筛选，损坏缓存直接回退默认值。 */
+function readPersistedSearch(): PersistedVoicePlazaSearch {
+  const fallback: PersistedVoicePlazaSearch = {
+    filters: copyFilters(EMPTY_FILTERS),
+    sortBy: 'published_at',
+    sortDirection: 'desc',
+  }
+  if (typeof sessionStorage === 'undefined') return fallback
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(FILTER_SESSION_KEY) ?? 'null') as unknown
+    if (!parsed || typeof parsed !== 'object') return fallback
+    const record = parsed as Record<string, unknown>
+    const raw = record.filters
+    if (!raw || typeof raw !== 'object') return fallback
+    const values = raw as Record<string, unknown>
+    const stringValue = (key: keyof VoicePlazaFilters): string =>
+      typeof values[key] === 'string' ? values[key] : ''
+    const platform = Object.values(PlatformNameValues).includes(values.platform as PlatformName)
+      ? values.platform as PlatformName
+      : ''
+    const analysisStatus = Object.values(ContentAnalysisStatusValues).includes(
+      values.analysisStatus as ContentAnalysisStatus,
+    ) ? values.analysisStatus as ContentAnalysisStatus : ''
+    const relevance = Object.values(ContentRelevanceValues).includes(
+      values.relevance as ContentRelevance,
+    ) ? values.relevance as ContentRelevance : ''
+    const competitionScopes = isStringArray(values.competitionScopes)
+      ? values.competitionScopes.filter((item): item is ContentFilterSnapshotCompetitionScopesItem =>
+        ['owned_only', 'competitor_only', 'mixed', 'other_only', 'none_detected'].includes(item),
+      )
+      : []
+    return {
+      filters: {
+        search: stringValue('search'),
+        platform,
+        contentType: stringValue('contentType'),
+        analysisStatus,
+        relevance,
+        voiceType: stringValue('voiceType'),
+        sentiment: stringValue('sentiment'),
+        primaryLabel: stringValue('primaryLabel'),
+        secondaryLabel: stringValue('secondaryLabel'),
+        publishedFrom: stringValue('publishedFrom'),
+        publishedTo: stringValue('publishedTo'),
+        sourceIdentifier: stringValue('sourceIdentifier'),
+        brandIds: isStringArray(values.brandIds) ? values.brandIds : [],
+        vehicleModelIds: isStringArray(values.vehicleModelIds) ? values.vehicleModelIds : [],
+        competitionScopes,
+      },
+      sortBy: record.sortBy === 'follower_count' ? 'follower_count' : 'published_at',
+      sortDirection: record.sortDirection === 'asc' ? 'asc' : 'desc',
+    }
+  } catch {
+    return fallback
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof VoicePlazaApiError) {
     return `${error.message}（request_id: ${error.requestId}）`
@@ -114,9 +198,11 @@ function relevanceReviewNotice(
 export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const taskCenter = useTaskCenterStore()
   const { analysisRuns, hasActiveAnalysisRuns, cancellingAnalysisRunId } = storeToRefs(taskCenter)
-  const filters = reactive<VoicePlazaFilters>({ ...EMPTY_FILTERS })
-  const sortBy = ref<'published_at' | 'follower_count'>('published_at')
-  const sortDirection = ref<'asc' | 'desc'>('desc')
+  const persistedSearch = readPersistedSearch()
+  const filters = reactive<VoicePlazaFilters>(copyFilters(persistedSearch.filters))
+  const appliedFilters = reactive<VoicePlazaFilters>(copyFilters(persistedSearch.filters))
+  const sortBy = ref<'published_at' | 'follower_count'>(persistedSearch.sortBy)
+  const sortDirection = ref<'asc' | 'desc'>(persistedSearch.sortDirection)
   const items = ref<ContentListItemResponse[]>([])
   const detail = ref<ContentDetailResponse | null>(null)
   const detailId = ref<string | null>(null)
@@ -181,28 +267,42 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const allVisibleSelected = computed(
     () => items.value.length > 0 && items.value.every((item) => selectedIds.value.includes(item.id)),
   )
-const hasActiveExportJobs = computed(() =>
-  exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
-)
-const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExportJobs.value)
+  const hasActiveExportJobs = computed(() =>
+    exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
+  )
+  const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExportJobs.value)
+
+  /** 保存已应用条件而不是输入中的草稿，页面重载后仍从同一查询状态恢复。 */
+  function persistAppliedSearch(): void {
+    if (typeof sessionStorage === 'undefined') return
+    try {
+      sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify({
+        filters: copyFilters(appliedFilters),
+        sortBy: sortBy.value,
+        sortDirection: sortDirection.value,
+      } satisfies PersistedVoicePlazaSearch))
+    } catch {
+      // 浏览器禁用会话存储时保留当前 Pinia 状态，不阻断查询。
+    }
+  }
 
   function filterSnapshot(): ContentFilterSnapshot {
     return {
-      search: filters.search.trim() || undefined,
-      platforms: filters.platform ? [filters.platform] : undefined,
-      content_types: filters.contentType ? [filters.contentType] : undefined,
-      analysis_status: filters.analysisStatus || undefined,
-      relevance: filters.relevance || undefined,
-      voice_type: filters.voiceType.trim() || undefined,
-      sentiment: filters.sentiment.trim() || undefined,
-      primary_label: filters.primaryLabel.trim() || undefined,
-      secondary_label: filters.secondaryLabel.trim() || undefined,
-      published_from: beijingDayBoundary(filters.publishedFrom, 'start'),
-      published_to: beijingDayBoundary(filters.publishedTo, 'end'),
-      source_identifier: filters.sourceIdentifier.trim() || undefined,
-      brand_ids: filters.brandIds.length ? [...filters.brandIds] : undefined,
-      vehicle_model_ids: filters.vehicleModelIds.length ? [...filters.vehicleModelIds] : undefined,
-      competition_scopes: filters.competitionScopes.length ? [...filters.competitionScopes] : undefined,
+      search: appliedFilters.search.trim() || undefined,
+      platforms: appliedFilters.platform ? [appliedFilters.platform] : undefined,
+      content_types: appliedFilters.contentType ? [appliedFilters.contentType] : undefined,
+      analysis_status: appliedFilters.analysisStatus || undefined,
+      relevance: appliedFilters.relevance || undefined,
+      voice_type: appliedFilters.voiceType.trim() || undefined,
+      sentiment: appliedFilters.sentiment.trim() || undefined,
+      primary_label: appliedFilters.primaryLabel.trim() || undefined,
+      secondary_label: appliedFilters.secondaryLabel.trim() || undefined,
+      published_from: beijingDayBoundary(appliedFilters.publishedFrom, 'start'),
+      published_to: beijingDayBoundary(appliedFilters.publishedTo, 'end'),
+      source_identifier: appliedFilters.sourceIdentifier.trim() || undefined,
+      brand_ids: appliedFilters.brandIds.length ? [...appliedFilters.brandIds] : undefined,
+      vehicle_model_ids: appliedFilters.vehicleModelIds.length ? [...appliedFilters.vehicleModelIds] : undefined,
+      competition_scopes: appliedFilters.competitionScopes.length ? [...appliedFilters.competitionScopes] : undefined,
     }
   }
 
@@ -219,7 +319,17 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
     items.value = []
     nextCursor.value = null
     hasMore.value = false
+    persistAppliedSearch()
     await refresh()
+  }
+
+  /** 提交筛选草稿；列表、统计、导出和轮询在下一次提交前只消费这份快照。 */
+  function applyFilters(): void {
+    Object.assign(appliedFilters, copyFilters(filters))
+    selectedIds.value = []
+    nextCursor.value = null
+    hasMore.value = false
+    persistAppliedSearch()
   }
 
   function targetSelection(scope: 'query' | 'selected'): ContentTargetSelection {
@@ -330,7 +440,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
-  /** 读取后端筛选目录，并清理已不再能命中当前可见内容的选择。 */
+  /** 读取后端动态筛选目录；失败时保留上次成功目录和已应用查询。 */
   async function refreshFilterOptions(): Promise<void> {
     const revision = ++filterOptionsRevision
     filterOptionsLoading.value = true
@@ -339,24 +449,8 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const loaded = await fetchContentFilterOptions()
       if (revision !== filterOptionsRevision) return
       filterOptions.value = loaded
-      if (!loaded.platforms.includes(filters.platform as PlatformName)) filters.platform = ''
-      if (!loaded.content_types.includes(filters.contentType)) filters.contentType = ''
-      if (!loaded.analysis_statuses.includes(filters.analysisStatus as ContentAnalysisStatus)) {
-        filters.analysisStatus = ''
-      }
-      if (!loaded.relevances.includes(filters.relevance as ContentRelevance)) filters.relevance = ''
-      if (!loaded.sentiments.some((item) => item.value === filters.sentiment)) filters.sentiment = ''
-      if (!loaded.voice_types.some((item) => item.value === filters.voiceType)) filters.voiceType = ''
-      const labelGroup = loaded.labels.find((item) => item.primary_label === filters.primaryLabel)
-      if (!labelGroup) {
-        filters.primaryLabel = ''
-        filters.secondaryLabel = ''
-      } else if (!labelGroup.secondary_labels.some((item) => item.value === filters.secondaryLabel)) {
-        filters.secondaryLabel = ''
-      }
     } catch (reason) {
       if (revision !== filterOptionsRevision) return
-      filterOptions.value = null
       filterOptionsError.value = errorMessage(reason)
     } finally {
       if (revision === filterOptionsRevision) filterOptionsLoading.value = false
@@ -434,16 +528,6 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       commentsTotalCount.value = page.total_count
       commentsIngestedTotalCount.value = page.ingested_total_count
 
-      // 已入库回复是详情线程的一部分，不应要求用户再次点击后才能理解回复关系。
-      // 这里只读取本地 PostgreSQL 的首个回复页，不触发 TikHub/Provider 请求，也保留后续分页。
-      const rootsWithIngestedReplies = page.items.filter(
-        (root) => (root.ingested_reply_count ?? 0) > 0,
-      )
-      await Promise.all(
-        rootsWithIngestedReplies.map(
-          (root) => loadCommentReplies(root.external_comment_id, true, revision),
-        ),
-      )
     } catch (reason) {
       if (revision === detailRevision && detailId.value === contentId) {
         commentsError.value = errorMessage(reason)
@@ -752,9 +836,11 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   function resetFilters(): void {
-    Object.assign(filters, EMPTY_FILTERS)
+    Object.assign(filters, copyFilters(EMPTY_FILTERS))
+    Object.assign(appliedFilters, copyFilters(EMPTY_FILTERS))
     clearSelection()
     notice.value = null
+    persistAppliedSearch()
   }
 
   /** 先读落库进度再刷新内容；慢窗口未包含的新进度留到下一次，终态也不丢刷新。 */
@@ -794,9 +880,11 @@ async function refreshAnalysisCapabilities(): Promise<void> {
 
   return {
     filters,
+    appliedFilters,
     sortBy,
     sortDirection,
     changeSort,
+    applyFilters,
     detailId,
     detailError,
     commentRoots,

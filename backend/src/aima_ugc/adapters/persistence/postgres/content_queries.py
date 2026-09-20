@@ -156,14 +156,64 @@ class PostgresContentQueryRepository:
             return None
         return self._records((row,))[0]
 
+    def content_exists(self, content_id: UUID) -> bool:
+        """只判断业务可见 Content 是否存在，避免评论分页重复构造详情投影。"""
+
+        return bool(
+            self._session.scalar(
+                select(
+                    exists(
+                        select(contents_table.c.id).where(
+                            contents_table.c.id == content_id,
+                            content_has_active_source(contents_table.c.id),
+                        )
+                    )
+                )
+            )
+        )
+
+    def _filter_value_statement(self) -> Any:
+        """构造筛选目录所需的最小当前态投影。"""
+
+        content = contents_table
+        analysis = _latest_analysis_subquery(self._analysis_identity)
+        manual = analysis_content_manual_overrides_table
+        current_analysis = and_(
+            analysis.c.content_id == content.c.id,
+            analysis.c.content_version == content.c.current_version,
+            analysis.c.rank == 1,
+        )
+        current_manual = and_(
+            manual.c.content_id == content.c.id,
+            manual.c.content_version == content.c.current_version,
+        )
+        effective_voice_type = case(
+            (manual.c.voice_type_locked.is_(True), manual.c.voice_type),
+            else_=analysis.c.voice_type,
+        )
+        effective_sentiment = case(
+            (manual.c.sentiment_locked.is_(True), manual.c.sentiment),
+            else_=analysis.c.sentiment,
+        )
+        return (
+            select(
+                content.c.content_type,
+                analysis.c.id.label("analysis_result_id"),
+                effective_voice_type.label("voice_type"),
+                effective_sentiment.label("sentiment"),
+                manual.c.labels.label("manual_labels"),
+                manual.c.labels_locked,
+            )
+            .select_from(
+                content.outerjoin(analysis, current_analysis).outerjoin(manual, current_manual)
+            )
+            .where(content_has_active_source(content.c.id))
+        )
+
     def list_filter_values(self) -> ContentFilterValues:
         """读取当前可见 Content 的有效筛选值，避免旧版本或失效来源泄漏。"""
 
-        statement, _ = self._base_statement(
-            ContentFilterSnapshot(),
-            include_irrelevant=True,
-        )
-        current = statement.subquery("current_content_filter_values")
+        current = self._filter_value_statement().subquery("current_content_filter_values")
 
         def distinct_strings(column: Any) -> tuple[str, ...]:
             return tuple(

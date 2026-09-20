@@ -318,7 +318,9 @@ PUT  /api/v1/notifications/read
 
 Availability 使用追加式 Observation，不覆盖历史。只有明确 Provider 业务证据可以形成 `unavailable_confirmed`，技术失败只能是 `unknown/suspected`。Notification 是业务终态的按 Principal 收件箱投影，不替代 Job/Export/Run 状态机。
 
-声音广场内容详情中的评论区直接可见，不再藏在“更多信息”折叠项内。`GET /api/v1/contents/{content_id}/comments` 不带 `root_comment_id` 时稳定分页读取一级评论，带值时稳定分页读取该线程回复；响应保留根评论、直接父评论和父作者显示信息，页面据此缩进回复并明确显示“回复谁”。详情原有内嵌 `comments` 保持兼容但不承担完整浏览。页面数据只来自 PostgreSQL，并分别表达平台报告数、已采集数和当前显示数。
+声音广场首屏把列表作为唯一阻塞资源：首次进入立即请求 `limit=20 + sort_by=published_at + sort_direction=desc`，列表返回后马上展示；筛选目录、Taxonomy、计数、导出和任务状态在后台独立加载，任何一个失败都不阻断已经取得的内容。已点击“查询”的筛选快照和排序保存在浏览器会话中，离开再返回时自动恢复；筛选输入草稿在再次提交前不影响列表、统计、导出或轮询。
+
+声音广场内容详情中的评论区直接可见，不再藏在“更多信息”折叠项内。页面读取详情时传 `include_comments=false`，避免详情兼容字段与评论分页重复查询；该参数默认仍为 `true`，旧调用继续取得最多 100 条内嵌评论。`GET /api/v1/contents/{content_id}/comments` 不带 `root_comment_id` 时稳定分页读取一级评论，带值时稳定分页读取该线程回复；页面先显示一级评论，只有用户展开线程时才读取回复。响应保留根评论、直接父评论和父作者显示信息，页面据此缩进回复并明确显示“回复谁”。页面数据只来自 PostgreSQL，并分别表达平台报告数、已采集数和当前显示数。
 
 ### 5.4 正式 Excel Export
 
@@ -545,7 +547,7 @@ Figma 到代码流程：
 - [`backend/src/aima_ugc/modules/content/content_cursor.py`](../../backend/src/aima_ugc/modules/content/content_cursor.py)
 - [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
 
-它会把查询过滤条件和排序方式绑定到 Cursor，防止把一个查询的 Cursor 拿去另一个查询继续翻页。发布时间和作者最近已采集粉丝数均由 PostgreSQL 排序，升降序都将缺失值放在最后，同值使用 Content ID 稳定续页。声音广场显式采用发布时间降序；旧调用不传排序时保留原先以发布时间、缺失时以最近采集时间降序的语义，原查询下未过期的旧 Cursor 继续可用。粉丝数来自账号当前已采集值，不额外调用 Provider，也不是发帖时快照；分页期间数据变化时不承诺冻结结果集。
+它会把查询过滤条件和排序方式绑定到 Cursor，防止把一个查询的 Cursor 拿去另一个查询继续翻页。发布时间和作者最近已采集粉丝数均由 PostgreSQL 排序，升降序都将缺失值放在最后，同值使用 Content ID 稳定续页。声音广场首屏显式采用发布时间降序，因此第一页代表请求时可见数据中的最新一页；旧调用不传排序时保留原先以发布时间、缺失时以最近采集时间降序的语义，原查询下未过期的旧 Cursor 继续可用。粉丝数来自账号当前已采集值，不额外调用 Provider，也不是发帖时快照；分页期间数据变化时不承诺冻结结果集。
 
 Import Batch 和 Collection Runtime 也有各自独立 Cursor/Secret；不能复用数据库密码，也不能让前端解析并自行构造。
 

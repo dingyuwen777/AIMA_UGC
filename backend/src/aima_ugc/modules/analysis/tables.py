@@ -105,6 +105,12 @@ Index(
     analysis_content_run_targets_table.c.run_id,
     analysis_content_run_targets_table.c.target_ordinal,
 )
+Index(
+    "ix_analysis_targets_content_version_run",
+    analysis_content_run_targets_table.c.content_id,
+    analysis_content_run_targets_table.c.content_version,
+    analysis_content_run_targets_table.c.run_id,
+)
 
 analysis_content_results_table = Table(
     "analysis_content_results",
@@ -148,6 +154,13 @@ analysis_content_results_table = Table(
         "char_length(generation_config_hash) = 64", name="generation_config_hash_length"
     ),
     info={"owner": "analysis"},
+)
+
+Index(
+    "ix_analysis_results_content_version_run",
+    analysis_content_results_table.c.content_id,
+    analysis_content_results_table.c.content_version,
+    analysis_content_results_table.c.analysis_run_id,
 )
 
 analysis_content_requests_table = Table(

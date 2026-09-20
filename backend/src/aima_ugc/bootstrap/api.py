@@ -7,6 +7,7 @@ import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from functools import partial
+from time import perf_counter
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -196,6 +197,7 @@ from .runtime import PlatformRuntime, create_platform_runtime
 
 ReadinessCheck = Callable[[], ReadinessReport]
 _LOGGER = logging.getLogger("aima_ugc")
+_SLOW_HTTP_REQUEST_MS = 1_000
 
 
 class _RequestBodyTooLarge(RuntimeError):
@@ -212,6 +214,7 @@ class _RequestContextMiddleware:
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return
+        started = perf_counter()
         request_id = str(uuid4())
         scope.setdefault("state", {})["request_id"] = request_id
         headers = {key.lower(): value for key, value in scope.get("headers", ())}
@@ -241,9 +244,12 @@ class _RequestContextMiddleware:
         # Starlette 的 multipart 解析器会把接收流异常转换为 400。multipart 响应体在请求解析完成前
         # 暂存，才能在无 Content-Length 的实际字节超限时稳定改写为统一 413 Contract。
         buffered_messages: list[Message] = []
+        status_code: int | None = None
 
         async def response_send(message: Message) -> None:
+            nonlocal status_code
             if message["type"] == "http.response.start":
+                status_code = int(message["status"])
                 raw_headers = list(message.get("headers", ()))
                 if not any(key.lower() == b"x-request-id" for key, _ in raw_headers):
                     raw_headers.append((b"x-request-id", request_id.encode("ascii")))
@@ -257,11 +263,53 @@ class _RequestContextMiddleware:
             await self._app(scope, limited_receive, response_send)
         except _RequestBodyTooLarge:
             body_too_large = True
+        except Exception as error:
+            duration_ms = max(0, round((perf_counter() - started) * 1000))
+            log_exception_event(
+                _LOGGER,
+                logging.ERROR,
+                "api.response_failed",
+                "API 请求发生未处理异常。",
+                error,
+                request_id=request_id,
+                method=scope.get("method", ""),
+                # 查询参数可能含用户输入或筛选值，只记录路径用于定位接口。
+                path=scope.get("path", ""),
+                status_code=status_code or 500,
+                duration_ms=duration_ms,
+            )
+            raise
         if body_too_large:
             await _send_body_limit_error(scope, receive, send, request_id)
             return
         for message in buffered_messages:
             await send(message)
+
+        duration_ms = max(0, round((perf_counter() - started) * 1000))
+        fields = {
+            "request_id": request_id,
+            "method": scope.get("method", ""),
+            # 查询参数可能含用户输入或筛选值，只记录路径用于定位接口。
+            "path": scope.get("path", ""),
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+        }
+        if status_code is not None and status_code >= 500:
+            log_event(
+                _LOGGER,
+                logging.WARNING,
+                "api.response_failed",
+                "API 返回服务端错误响应。",
+                **fields,
+            )
+        elif duration_ms >= _SLOW_HTTP_REQUEST_MS:
+            log_event(
+                _LOGGER,
+                logging.WARNING,
+                "api.request_slow",
+                "API 请求处理耗时超过阈值。",
+                **fields,
+            )
 
 
 def _parse_content_length(value: bytes | None) -> int | None:
@@ -1154,8 +1202,14 @@ def create_app(
         },
         tags=["contents"],
     )
-    def get_content(content_id: UUID) -> ContentDetailResponse:
-        return current_content_service().get_content(content_id)
+    def get_content(
+        content_id: UUID,
+        include_comments: Annotated[bool, Query()] = True,
+    ) -> ContentDetailResponse:
+        return current_content_service().get_content(
+            content_id,
+            include_comments=include_comments,
+        )
 
     @application.get(
         "/api/v1/contents/{content_id}/comments",

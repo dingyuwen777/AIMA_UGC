@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type {
+import {
   ContentAnalysisStatus,
-  ContentFilterOptionsResponse,
-  ContentFilterSnapshotCompetitionScopesItem,
   ContentRelevance,
   PlatformName,
+  type ContentFilterOptionsResponse,
+} from '../../../../../generated/api/client'
+import type {
+  ContentFilterSnapshotCompetitionScopesItem,
 } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDateRange from '../../../../../shared/ui/AimaDateRange.vue'
@@ -63,6 +65,9 @@ const secondaryLabels = computed(
   () => props.filterOptions?.labels.find((item) => item.primary_label === props.primaryLabel)
     ?.secondary_labels ?? [],
 )
+const platformOptions = Object.values(PlatformName)
+const relevanceOptions = Object.values(ContentRelevance)
+const analysisStatusOptions = Object.values(ContentAnalysisStatus)
 const competitionOptions: Array<{ value: ContentFilterSnapshotCompetitionScopesItem, label: string }> = [
   { value: 'owned_only', label: '仅自有品牌' },
   { value: 'competitor_only', label: '仅竞品品牌' },
@@ -116,20 +121,18 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       <label class="field field--platform"><span>平台</span><select
         aria-label="平台"
         :value="platform"
-        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:platform', value($event) as '' | PlatformName)"
       ><option value="">全部平台</option><option
-        v-for="item in filterOptions?.platforms ?? []"
+        v-for="item in platformOptions"
         :key="item"
         :value="item"
       >{{ platformLabel(item) }}</option></select></label>
       <label class="field field--relevance"><span>相关性</span><select
         aria-label="相关性"
         :value="relevance"
-        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
       ><option value="">默认业务数据</option><option
-        v-for="item in filterOptions?.relevances ?? []"
+        v-for="item in relevanceOptions"
         :key="item"
         :value="item"
       >{{ relevanceLabel(item) }}</option></select></label>
@@ -146,10 +149,9 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       <label class="field field--status"><span>状态</span><select
         aria-label="状态"
         :value="analysisStatus"
-        :disabled="filterOptionsLoading || !filterOptions"
         @change="emit('update:analysisStatus', value($event) as '' | ContentAnalysisStatus)"
       ><option value="">全部状态</option><option
-        v-for="item in filterOptions?.analysis_statuses ?? []"
+        v-for="item in analysisStatusOptions"
         :key="item"
         :value="item"
       >{{ analysisStatusLabel(item) }}</option></select></label>

@@ -12318,6 +12318,16 @@
               "title": "Content Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "include_comments",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Comments",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {

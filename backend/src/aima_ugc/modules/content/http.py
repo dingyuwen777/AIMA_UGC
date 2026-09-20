@@ -69,7 +69,12 @@ class ContentHttpService(Protocol):
 
         ...
 
-    def get_content(self, content_id: UUID) -> ContentDetailResponse: ...
+    def get_content(
+        self,
+        content_id: UUID,
+        *,
+        include_comments: bool = True,
+    ) -> ContentDetailResponse: ...
 
     def list_comments(
         self,
