@@ -350,7 +350,7 @@ class PostgresHistoricalImportJobExecutor:
             try:
                 with session.begin():
                     jobs = PostgresJobRepository(session)
-                    jobs.lock_current_execution(fence)
+                    jobs.validate_current_execution(fence)
                     lock_historical_campaign_cancel_gate(session, campaign_id, shared=True)
                     repository = PostgresHistoricalImportRepository(session)
                     campaign = repository.get_campaign(campaign_id)

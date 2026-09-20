@@ -1661,37 +1661,39 @@ def test_historical_chunk_allows_heartbeat_during_business_transaction(
         )
         with ThreadPoolExecutor(max_workers=1) as executor:
             execution = executor.submit(import_worker.run_once)
-            assert transaction_entered.wait(timeout=10), "Historical Chunk 未进入业务事务"
-            with runtime.database.engine.begin() as connection:
-                running_job = (
-                    connection.execute(
-                        select(
-                            jobs_table.c.id,
-                            jobs_table.c.lease_token,
-                            jobs_table.c.lease_expires_at,
-                        ).where(
-                            jobs_table.c.job_type == HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
-                            jobs_table.c.status == "running",
-                        )
-                    )
-                    .mappings()
-                    .one()
-                )
-            assert running_job["lease_token"] is not None
-
-            heartbeat_session = runtime.database.new_session()
             try:
-                with heartbeat_session.begin():
-                    heartbeat_session.execute(text("SET LOCAL lock_timeout = '750ms'"))
-                    renewed = PostgresJobRepository(heartbeat_session).heartbeat(
-                        job_id=running_job["id"],
-                        lease_token=running_job["lease_token"],
-                        lease_seconds=120,
-                        progress=50,
+                assert transaction_entered.wait(timeout=10), "Historical Chunk 未进入业务事务"
+                with runtime.database.engine.begin() as connection:
+                    running_job = (
+                        connection.execute(
+                            select(
+                                jobs_table.c.id,
+                                jobs_table.c.lease_token,
+                                jobs_table.c.lease_expires_at,
+                            ).where(
+                                jobs_table.c.job_type == HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
+                                jobs_table.c.status == "running",
+                            )
+                        )
+                        .mappings()
+                        .one()
                     )
-                assert renewed.lease_expires_at > running_job["lease_expires_at"]
+                assert running_job["lease_token"] is not None
+
+                heartbeat_session = runtime.database.new_session()
+                try:
+                    with heartbeat_session.begin():
+                        heartbeat_session.execute(text("SET LOCAL lock_timeout = '750ms'"))
+                        renewed = PostgresJobRepository(heartbeat_session).heartbeat(
+                            job_id=running_job["id"],
+                            lease_token=running_job["lease_token"],
+                            lease_seconds=120,
+                            progress=50,
+                        )
+                    assert renewed.lease_expires_at > running_job["lease_expires_at"]
+                finally:
+                    heartbeat_session.close()
             finally:
-                heartbeat_session.close()
                 continue_transaction.set()
 
             assert execution.result(timeout=10) is True
