@@ -45,7 +45,7 @@ NODE_BASE_URL="https://npmmirror.com/mirrors/node/v${NODE_VERSION}"
 NODE_ARCHIVE="node-v${NODE_VERSION}-linux-x64.tar.xz"
 NODE_SOURCE_URL="${NODE_BASE_URL}/${NODE_ARCHIVE}"
 NPM_REGISTRY="https://registry.npmmirror.com"
-PYPI_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
+PYPI_INDEX="https://mirrors.aliyun.com/pypi/simple"
 DOCKER_RPM_BASE="https://mirrors.aliyun.com/docker-ce/linux/centos"
 CENTOS_STREAM_BASE="https://mirrors.aliyun.com/centos-stream/9-stream"
 

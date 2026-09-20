@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $script:AimaPythonMirrorRoot = 'https://mirrors.tuna.tsinghua.edu.cn/python'
-$script:AimaPypiIndex = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+$script:AimaPypiIndex = 'https://mirrors.aliyun.com/pypi/simple'
 $script:AimaNodeMirrorRoot = 'https://npmmirror.com/mirrors/node'
 $script:AimaNpmRegistry = 'https://registry.npmmirror.com'
 
