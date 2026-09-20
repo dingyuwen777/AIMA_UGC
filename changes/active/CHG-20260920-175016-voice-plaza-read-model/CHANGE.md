@@ -3,17 +3,40 @@ schema: coding-change/v1
 id: CHG-20260920-175016-voice-plaza-read-model
 title: 声音广场增量读模型与交互性能整改
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: perf/voice-plaza-read-model
 created: 2026-09-20
 updated: 2026-09-20
 completion_gate: required
 depends_on: []
-affected_areas: [content, analysis, vehicles, jobs, api, frontend, database, docs]
-affected_paths: [backend/src/aima_ugc, frontend/src, migrations/versions, tests, docs]
-contracts: [ContentFilterOptionsResponse, ContentListResponse, ContentDetailResponse, ContentCommentListResponse, content.voice-plaza-projection-backfill.v1]
-data_changes: [voice_plaza_content_projection, voice_plaza_projection_state]
+affected_areas:
+  - content
+  - analysis
+  - vehicles
+  - jobs
+  - api
+  - frontend
+  - database
+  - documentation
+affected_paths:
+  - backend/src/aima_ugc/
+  - frontend/src/
+  - contracts/openapi/
+  - migrations/versions/
+  - tests/
+  - docs/
+contracts:
+  - ContentFilterOptionsResponse
+  - ContentListResponse
+  - ContentDetailResponse
+  - ContentCommentListResponse
+  - content.voice-plaza-projection-backfill.v1
+data_changes:
+  - voice_plaza_content_projection
+  - voice_plaza_filter_catalog
+  - voice_plaza_filter_catalog_entries
+  - voice_plaza_projection_state
 ---
 
 # 变更摘要
@@ -97,7 +120,7 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 | 数据与迁移 | Migration 只建表、函数、触发器和初始 pending 状态；历史数据由 Job 分块回填 | #551 / AC5 | 避免 182 万数据在 Alembic 单事务回填 |
 | 错误与失败语义 | 回填未完成时列表保留兼容查询；筛选目录返回 active Taxonomy + 已投影目录并标识 building | #551 / AC3、AC5 | 不把回填过程误报为筛选不可用 |
 | 兼容性 | Cursor、筛选和来源可见性语义保持 | #551 / AC6 | 查询路径改变而业务结果不变 |
-| 部署与回滚 | Worker 自动认领一次性回填；读模型 ready 后切换；回滚先退应用再降迁移 | #551 / AC5、AC8 | 部署期间允许兼容慢路径但不能返回错误结果 |
+| 部署与回滚 | Worker 自动认领低优先级有界回填切片；读模型 ready 后切换；回滚先退应用再降迁移 | #551 / AC5、AC8 | 回填不独占 Worker，部署期间允许兼容慢路径但不能返回错误结果 |
 
 # 修改方案与决策依据
 
@@ -110,8 +133,8 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 2. **持久 Job 分块回填**
    → 新增 `content.voice-plaza-projection-backfill.v1`、Worker 装配与启动幂等入队
-   → 按 UUID 游标分块提交，可中断续跑，完成后原子标记 ready
-   → Handler 单元测试与 PostgreSQL 续跑/幂等集成测试。
+   → 每个低优先级 Job 最多执行 5×500 条，按 UUID 游标短事务提交，终态回调原子串接下一切片，完成后标记 ready
+   → Handler 单元测试与 PostgreSQL 分片串接、续跑、幂等集成测试。
 
 3. **切换高频查询**
    → 列表/筛选从 ready 投影读取，详情只对一个 Content 做补充；评论用集合聚合
@@ -148,14 +171,14 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 首次自动加载最新倒序第一页，返回保留已应用筛选 | #551 / AC1 | not_satisfied | 待实现与验证 |
-| R2 | 列表、平台筛选和加载更多只走增量投影，不再全量窗口 | #551 / AC2 | not_satisfied | 待实现与验证 |
-| R3 | 筛选目录从小投影读取，回填期间仍可用 | #551 / AC3 | not_satisfied | 待实现与验证 |
-| R4 | 详情摘要先显、详情与评论独立、评论无逐行计数 | #551 / AC4 | not_satisfied | 待实现与验证 |
-| R5 | 持久 Job 分块回填且各类增量变化刷新投影 | #551 / AC5 | not_satisfied | 待实现与验证 |
-| R6 | 保持既有业务语义且不引入新基础设施 | #551 / AC6 | not_satisfied | 待实现与验证 |
-| R7 | 增加安全阶段耗时与投影状态日志 | #551 / AC7 | not_satisfied | 待实现与验证 |
-| R8 | 完成本地正确性门禁；真实大库性能由合并后服务器日志验收 | #551 / AC8 | not_satisfied | 用户明确验收边界；待完成本地门禁 |
+| R1 | 首次自动加载最新倒序第一页，返回保留已应用筛选 | #551 / AC1 | satisfied | V4、V5：默认发布时间倒序索引计划；Browser 33 条和 Store 回归覆盖首屏与筛选恢复 |
+| R2 | 列表、平台筛选和加载更多只走增量投影，不再全量窗口 | #551 / AC2 | satisfied | V3、V4：ready 后 SQL 无全局窗口；默认与平台路径分别命中专用 Index Only Scan |
+| R3 | 筛选目录从小投影读取，回填期间仍可用 | #551 / AC3 | satisfied | V2、V3、V5：聚合目录、building/ready Contract、后台自动刷新与页面提示通过 |
+| R4 | 详情摘要先显、详情与评论独立、评论无逐行计数 | #551 / AC4 | satisfied | V2、V3、V5：评论一次分组，摘要/详情/评论用户路径通过 |
+| R5 | 持久 Job 分块回填且各类增量变化刷新投影 | #551 / AC5 | satisfied | V3：Migration 往返和真实 PostgreSQL 两切片串接、触发器、ready 切换通过 |
+| R6 | 保持既有业务语义且不引入新基础设施 | #551 / AC6 | satisfied | V1、V3、V5：Content 63 条集成、前端完整回归通过；依赖/锁文件未变化 |
+| R7 | 增加安全阶段耗时与投影状态日志 | #551 / AC7 | satisfied | V2：结构化慢日志测试验证事件、阶段字段及不包含 search/payload |
+| R8 | 完成本地正确性门禁；真实大库性能由合并后服务器日志验收 | #551 / AC8 | satisfied | V1–V6；真实 182 万性能仍按用户明确决定留给合并后服务器验收 |
 
 # 计划改动
 
@@ -171,11 +194,11 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 行为变化建立失败证据
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档
+- [x] 取得仍覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -205,7 +228,7 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 | 主要风险 | 投影刷新遗漏导致列表与事实表不一致 | 覆盖 Content/Analysis/Review/Manual/Brand/Vehicle 写入触发器，回填和增量一致性测试 |
 | 兼容性 | 保持现有列表、筛选、详情、评论和 Cursor 语义 | Contract 回归和新旧结果对照 |
 | 数据 / Migration | 新增派生表与状态；不改变业务事实表 | Migration 只建结构，Job 分块回填，可重建投影 |
-| 部署 / 运行 | Migration 后 Worker 自动回填；ready 前列表使用兼容路径 | 日志输出状态和进度，运维文档给出检查方法 |
+| 部署 / 运行 | Migration 后 Worker 以低优先级有界切片自动回填；ready 前列表使用兼容路径 | 普通业务 Job 优先，日志输出状态和进度，运维文档给出检查方法 |
 | 回滚 / 恢复 | 先回滚应用到旧查询，再执行 downgrade；投影可丢弃重建 | 派生投影不是业务事实，不需要回写业务表 |
 
 # 文档、依赖、部署与发布影响
@@ -218,10 +241,10 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 # 完成审计
 
-- [ ] upstream_re_read：已重新读取 Issue #551、用户最新验收边界和正式项目文档，并独立重建完成定义。
-- [ ] change_coverage：已确认当前变更覆盖 AC1–AC8，没有把 Change 自身当作需求全集。
-- [ ] reverse_audit：已执行前端入口→API→投影→事实表、写入→触发器→投影→查询、Migration→Worker→ready 的反向审计。
-- [ ] unresolved_cleared：所有 `not_satisfied` 已清零；真实大库性能未验证按用户明确边界记录为 post-merge 服务器验收，不伪装成本地完成。
+- [x] upstream_re_read：已重新读取 Issue #551、用户最新验收边界和正式项目文档，并独立重建完成定义。
+- [x] change_coverage：已确认当前变更覆盖 AC1–AC8，没有把 Change 自身当作需求全集。
+- [x] reverse_audit：已执行前端入口→API→投影→事实表、写入→触发器→投影→查询、Migration→Worker→ready 的反向审计；审计中修正了部分索引谓词不匹配、Content Version 首次刷新遗漏和长 Job 独占 Worker 三个问题。
+- [x] unresolved_cleared：所有 `not_satisfied` 已清零；真实大库性能未验证按用户明确边界记录为 post-merge 服务器验收，不伪装成本地完成。
 
 # 完成证据与状态
 
@@ -229,17 +252,24 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待实现 HEAD | 待执行 | 待执行 | 待补 |
+| V1 | `d1d29a7a` / Windows / Python 3.14 | `ruff format --check`、`ruff check`（17 个变更 Python 文件）；`mypy backend/src` | 通过；350 个源码文件无类型错误 | 变更格式、静态规则和生产源码类型正确 |
+| V2 | `d1d29a7a` / pytest | `pytest tests/unit/content/test_voice_plaza_read_model*.py tests/unit/content/test_voice_plaza_observability.py -q`；Worker 注册专项 | 7 + 8 条通过 | SQL 形态、索引谓词、Job Contract/注册、评论聚合和安全日志成立 |
+| V3 | `d1d29a7a` / PostgreSQL 18.4 临时容器 | Alembic `downgrade 0053 → upgrade head`；`pytest tests/integration/content -q` | Migration 往返通过；63 条通过 | 最终 DDL、触发器、低优先级切片串接、查询/分析/评论/导出兼容成立 |
+| V4 | `d1d29a7a` / PostgreSQL 18.4 | `EXPLAIN (COSTS OFF)` 默认最新和 `platform='xiaohongshu'` 查询 | 分别为 `ix_voice_plaza_projection_published_latest`、`ix_voice_plaza_projection_platform_latest` 的 `Index Only Scan` | 实际查询谓词和排序与索引匹配；不是只“创建了索引” |
+| V5 | `d1d29a7a` / Node 24 | `npm --prefix frontend test -- --run`；`npm --prefix frontend run build`；4 个声音广场 Playwright 文件 | 168 单测、生产构建、33 浏览器测试全部通过 | 首屏、筛选恢复、摘要先显、预取加载更多和页面状态无回归 |
+| V6 | `d1d29a7a` | Contract generate/check compatibility；docs/docs facts/architecture/table ownership/secret checks | 全部通过 | 公共契约向后兼容，文档与架构边界同步且无 Secret 泄漏 |
 
 ## 未验证内容与剩余风险
 
 - 真实 182 万数据的查询计划、P50/P95 和用户感知耗时不在本地验证；合并后由用户在服务器执行，随后基于安全阶段日志继续分析。
+- Windows 本地完整 `tests/unit` 结果为 1062 passed、8 skipped、3 failed；3 个失败均是既有 Linux Host Preparation 用例在 Windows 不存在 `os.geteuid/os.chown`，与本次变更无关，最终以 PR 的 Linux CI 为门禁。
 
 ## 交付状态
 
-- 提交：尚未创建。
-- 拉取请求：尚未创建。
-- CI：尚未运行。
+- 提交：Red 基线 `deda3b42`；实现与文档 `d1d29a7a`。
+- 拉取请求：#552 已建立早期追溯；当前 Change 已达到 `ready_for_review`，待推送并更新 PR 描述。
+- Review：Stage A 已按 Issue #551 AC1–AC8 重建完成定义且无遗漏；Stage B 已复核查询、迁移、触发器、Job 公平性、前端并发/缓存、日志和回滚，审查中发现的三项问题均已修正并重验。
+- CI：待推送最终实现后运行。
 - 合并：尚未执行。
 - Change 归档：尚未执行。
 - 发布 / 部署：不在本次授权范围；仅合并主分支，不执行服务器部署或生产 Migration。
