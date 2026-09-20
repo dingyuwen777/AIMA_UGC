@@ -152,7 +152,7 @@ Linux 初始化脚本直接管理 daemon 的 `registry-mirrors` 列表，当前�
 ```dotenv
 AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.aliyun.com/debian
 AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
-AIMA_BUILD_PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+AIMA_BUILD_PYPI_INDEX=https://mirrors.aliyun.com/pypi/simple
 AIMA_BUILD_NPM_REGISTRY=https://registry.npmmirror.com
 ```
 

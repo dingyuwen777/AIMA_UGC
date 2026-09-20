@@ -69,7 +69,7 @@ def test_package_source_defaults_use_china_mirrors_but_remain_overridable() -> N
     domestic_defaults = (
         "AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.aliyun.com/debian",
         "AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security",
-        "AIMA_BUILD_PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple",
+        "AIMA_BUILD_PYPI_INDEX=https://mirrors.aliyun.com/pypi/simple",
         "AIMA_BUILD_NPM_REGISTRY=https://registry.npmmirror.com",
     )
     for expected in domestic_defaults:
@@ -81,7 +81,7 @@ def test_package_source_defaults_use_china_mirrors_but_remain_overridable() -> N
         "${AIMA_BUILD_DEBIAN_SECURITY_MIRROR:-https://mirrors.aliyun.com/debian-security}"
         in compose
     )
-    assert "${AIMA_BUILD_PYPI_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}" in compose
+    assert "${AIMA_BUILD_PYPI_INDEX:-https://mirrors.aliyun.com/pypi/simple}" in compose
     assert "${AIMA_BUILD_NPM_REGISTRY:-https://registry.npmmirror.com}" in compose
 
 
@@ -107,7 +107,7 @@ def test_release_workflow_uses_official_profile_without_changing_local_defaults(
     domestic_sources = (
         "https://mirrors.aliyun.com/debian",
         "https://mirrors.aliyun.com/debian-security",
-        "https://pypi.tuna.tsinghua.edu.cn/simple",
+        "https://mirrors.aliyun.com/pypi/simple",
         "https://registry.npmmirror.com",
     )
     for domestic in domestic_sources:

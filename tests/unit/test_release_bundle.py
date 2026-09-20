@@ -30,7 +30,7 @@ def test_source_profiles_keep_local_china_and_github_official_boundaries() -> No
     assert module.SOURCE_PROFILES["china"] == {
         "debian": "https://mirrors.aliyun.com/debian",
         "debian_security": "https://mirrors.aliyun.com/debian-security",
-        "pypi": "https://pypi.tuna.tsinghua.edu.cn/simple",
+        "pypi": "https://mirrors.aliyun.com/pypi/simple",
         "npm": "https://registry.npmmirror.com",
     }
     assert module.SOURCE_PROFILES["official"] == {
@@ -283,7 +283,7 @@ def test_manifest_records_profile_upstreams_and_verification_state() -> None:
 
     assert manifest["platform"] == "linux/amd64"
     assert manifest["build_source_profile"] == "china"
-    assert manifest["build_upstreams"]["pypi"] == "https://pypi.tuna.tsinghua.edu.cn/simple"
+    assert manifest["build_upstreams"]["pypi"] == "https://mirrors.aliyun.com/pypi/simple"
     assert manifest["verification"] == {"offline_replay": False, "strict_replay": False}
     assert manifest["publication"] == {"github_release": False, "ghcr": False}
 
