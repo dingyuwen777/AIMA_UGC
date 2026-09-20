@@ -47,6 +47,10 @@ data_changes:
 
 # 背景、现状与问题
 
+本 Change 来自 Issue #547 及用户对首屏最新倒序、筛选恢复、平台筛选可用性、加载性能和排障日志的明确要求；当前实现与现场日志共同限定了本次修复范围。
+
+# 事实与证据
+
 ## 已确认事实
 
 1. `VoicePlazaPage.refreshPage()` 当前先 `await refreshFilterOptions()`，随后才请求列表；筛选目录成为首屏前置条件。
@@ -94,7 +98,24 @@ data_changes:
 - Filter Options 的动态历史值仍来自 active Taxonomy 与当前可见 Content，前端不维护业务分类枚举。
 - 详情内嵌 `comments` 字段保持向后兼容，旧调用默认行为不变；声音广场显式选择轻量读取。
 
-# 方案比较与决策
+# 约束与意图决策
+
+| 决策维度 | 当前决定 | 依据 | 影响 |
+| --- | --- | --- | --- |
+| 范围与负责人边界 | 只修改声音广场及其 Content 查询、索引和 API 可观测性链路 | 已确认事实 1—6、Issue #547 | 不改 Provider、采集、AI 执行或权限模型 |
+| 接口与契约 | 详情只增加默认兼容的可选轻量读取参数 | 旧客户端仍依赖内嵌 `comments` | OpenAPI 与 generated client 同步，默认行为不破坏 |
+| 数据与迁移 | 只增加查询索引，不改业务字段、约束或历史数据 | 当前瓶颈位于查询路径，不需要业务数据重写 | 先执行 Migration，再部署代码；无回填 |
+| 错误与失败语义 | 动态目录失败只影响动态项；慢请求与 5xx 输出脱敏诊断 | 稳定 Contract 不应被动态目录连带禁用 | 保留上次成功目录并允许重试，不泄露查询值或正文 |
+| 兼容性 | 保持 Cursor、服务器全量排序、默认 irrelevant 排除与 active source 可见性 | 现有产品与 Contract 约束 | 不用前端本页排序换取表面速度 |
+| 部署与回滚 | 索引 Migration 先行；代码与索引都可独立回滚 | Migration 只增 B-tree/partial indexes | 正式环境需评估建索引锁与耗时 |
+
+# 修改方案与决策依据
+
+## 最小充分方案
+
+按首屏关键路径、筛选状态边界、详情请求扇出、查询热路径和可观测性五个相互关联的机制实施；每一项均由对应 Browser、API、PostgreSQL 或日志回归直接验证，不引入缓存服务或第二套 Read Model。
+
+## 备选方案与取舍
 
 | 方案 | 能解决什么 | 主要代价 / 缺口 | 决定 |
 | --- | --- | --- | --- |
@@ -113,7 +134,26 @@ data_changes:
 | R5 | 增加足够日志定位慢请求与 5xx，不记录筛选值、正文或 Secret | #547 / AC5 | satisfied | API observability 回归确认慢请求、已处理 5xx 和未处理异常事件字段；日志只记录 path，不记录 query 值或异常原文 |
 | R6 | Browser Mock、真实 Browser→Vue→FastAPI→PostgreSQL、Contract/generated client、Migration、相关集成、构建与两阶段 Review 完成 | #547 / AC6 | satisfied | Playwright 129/129、Vitest 164/164、真实评论 Full-stack、API/索引目标回归、PostgreSQL Migration/Integration、Contract/client、构建及两阶段 Review 均通过；当前无未解决 finding |
 
-# Validation Matrix
+# 计划改动
+
+| 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
+| --- | --- | --- | --- |
+| `frontend/src/features/voice-plaza/` | 首屏优先、筛选状态恢复、稳定/动态筛选分层、详情按需加载 | 切断串行阻塞和请求扇出 | R1—R4 |
+| Content API / Repository / Contract | 轻量详情、存在性与筛选目录投影、慢/错请求日志 | 降低重复读取并形成可诊断路径 | R4—R5 |
+| `migrations/versions/` | 增加最新列表、评论线程和当前分析热路径索引 | 支撑已确认查询路径 | R4 |
+| OpenAPI / generated client / tests | 同步兼容参数并覆盖前后端与数据库行为 | 防止 Contract 漂移和回归 | R1—R6 |
+| 产品、Blueprint 与模块文档 | 同步当前用户行为、查询与日志边界 | 避免实现与长期事实分裂 | R1—R6 |
+
+- [x] Red：把首屏、默认排序、稳定筛选、筛选恢复和详情回复请求扇出写入 Browser 回归并确认旧实现失败。
+- [x] Red：为详情轻量 Contract、内容存在性和查询索引建立 API/数据库回归并确认缺口。
+- [x] Green：实现首屏优先、草稿/已应用筛选恢复、稳定筛选解耦和目录 last-known-good。
+- [x] Green：实现轻量详情、一级评论/回复按需加载、轻量目录/存在性查询与索引 Migration。
+- [x] Refactor：收敛请求身份、注释、错误降级和无关重复逻辑；同步当前文档与生成物。
+- [x] 执行目标测试、相关回归、PostgreSQL/Contract/Browser/Full-stack/Build 门禁。
+- [x] 完成 Completion Audit 与两阶段 Review，进入 PR current-head required checks。
+- [ ] 完成 PR current-head required checks、受控合并、implementation main-fresh、Change 自动归档、Issue Closure Audit 与分支清理；这些是 Ready 后的平台交付门禁，不在合并前伪造完成。
+
+# 验证矩阵
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
@@ -126,25 +166,30 @@ data_changes:
 | Build / Package / Runtime | required | 前端 lint/typecheck/build、Python Ruff/mypy、迁移链与必要启动/运行检查 |
 | Docs / Governance / Other | required | 当前产品/前端/Content/API 文档、Change Completion、两阶段 Review 与 Git 交付状态 |
 
-# 实施步骤
+# 风险、兼容性、迁移与回滚
 
-- [x] Red：把首屏、默认排序、稳定筛选、筛选恢复和详情回复请求扇出写入 Browser 回归并确认旧实现失败。
-- [x] Red：为详情轻量 Contract、内容存在性和查询索引建立 API/数据库回归并确认缺口。
-- [x] Green：实现首屏优先、草稿/已应用筛选恢复、稳定筛选解耦和目录 last-known-good。
-- [x] Green：实现轻量详情、一级评论/回复按需加载、轻量目录/存在性查询与索引 Migration。
-- [x] Refactor：收敛请求身份、注释、错误降级和无关重复逻辑；同步当前文档与生成物。
-- [x] 执行目标测试、相关回归、PostgreSQL/Contract/Browser/Full-stack/Build 门禁。
-- [x] 完成 Completion Audit 与两阶段 Review，进入 PR current-head required checks。
-- [ ] 完成 PR current-head required checks、受控合并、implementation main-fresh、Change 自动归档、Issue Closure Audit 与分支清理；这些是 Ready 后的平台交付门禁，不在合并前伪造完成。
+- 详情 Query 只增加可选参数且默认保留原行为；旧客户端无需修改，声音广场使用轻量模式。
+- Migration 只增加 B-tree/partial indexes，不回填、不修改业务行。部署顺序为先 Migration、后新代码；索引创建期间的锁/时长由正式环境变更窗口评估。
+- 回滚代码不会要求回滚业务数据；索引可由 downgrade 删除。整体回滚会重新引入首屏阻塞、平台不可用和详情请求放大，只有新实现出现阻塞缺陷时才执行。
 
-# Completion Audit
+# 文档、依赖、部署与发布影响
+
+- **长期文档**：已同步声音广场用户流程、前端边界、Content 查询与 API 可观测性事实。
+- **依赖 / Runtime**：不新增、删除或升级依赖，不改变 Python、Node、PostgreSQL 或容器 Runtime 身份。
+- **配置 / Secret**：不新增配置或 Secret；日志不记录筛选值、正文、Token 或异常原文。
+- **部署 / Release**：代码交付包含索引 Migration，正式部署必须先 Migration 后应用；本任务不授权生产发布。
+- **兼容 / 消费方通知**：详情轻量参数为可选扩展且默认保持旧行为；声音广场 generated client 是本次新参数的直接消费者。
+
+# 完成审计
 
 - [x] upstream_re_read：完成前重新读取用户 AC、产品/Blueprint、Contract、实现和适用项目规则，独立重建完成定义。
 - [x] change_coverage：逐条比较 R1—R6 与实现、测试、文档、Git 交付，确认没有遗漏或静默延期。
 - [x] reverse_audit：从页面动作反查 generated Client → FastAPI → Repository → PostgreSQL，并从新增 Contract/索引反查真实消费者和部署顺序。
 - [x] unresolved_cleared：R1—R6 无 `not_satisfied`，Review finding 已修复并复核；生产 `EXPLAIN ANALYZE` 与具体毫秒 SLO 未执行边界明确。PR CI、受控合并、main-fresh、自动归档与 Issue 关闭由平台真实状态持有，不伪造为 Ready 前已完成。
 
-# 本轮验证与 Review 证据
+# 完成证据与状态
+
+## 新鲜证据
 
 - 前端静态与构建：ESLint、29 个 Vitest 文件共 164 项、TypeScript/Vite Build 全部通过。
 - Browser Mock：Playwright 全量 129 项通过；覆盖首屏第一页最新倒序、慢/错动态目录、平台筛选可用、筛选恢复和回复按需加载。
@@ -154,15 +199,20 @@ data_changes:
 - 文档与治理：文档入口、事实一致性、Secret 扫描、项目治理接线和 `git diff --check` 通过。
 - Review：标准 Review 与深度 Review 已完成；修复了未处理异常只记 WARNING 且缺少安全堆栈、Full Playwright 选择器碰撞两项发现；当前声音广场范围无未解决 finding。
 - 较早的全量 Python 本地运行曾有 4 项镜像源断言基线失败；该独立问题已由 PR #550 修复并在 `main@c1472736` 通过 CI、PostgreSQL、真实 Full-stack、Runtime 与 Linux/Windows Tooling。当前分支已合并该 main，声音广场 PR 仍需以当前 HEAD 重新取得永久 CI 证据。
+
+## 未验证内容与剩余风险
+
 - 当前尚无生产数据量、`EXPLAIN ANALYZE` 或正式环境锁等待证据；本 Change 只宣称切断已确认的前端串行阻塞/请求放大并为已知查询补索引，不宣称具体生产毫秒 SLO。
 
-# Ready 后交付边界
+## Ready 后交付边界
 
 - Issue #547 AC6 中的 PR current-head CI、受控合并、implementation main-fresh、repository-native Change Archive、Issue Closure Audit 与分支清理是时序后置的平台门禁。
 - 它们继续保持未完成，必须由 PR、Commit、Actions、Archive 与 Issue 的真实状态证明；本 Active Change 只声明施工范围达到 `ready_for_review`。
 
-# 兼容、迁移、部署与回滚
+## 交付状态
 
-- 详情 Query 只增加可选参数且默认保留原行为；旧客户端无需修改，声音广场使用轻量模式。
-- Migration 只增加 B-tree/partial indexes，不回填、不修改业务行。部署顺序为先 Migration、后新代码；索引创建期间的锁/时长由正式环境变更窗口评估。
-- 回滚代码不会要求回滚业务数据；索引可由 downgrade 删除。整体回滚会重新引入首屏阻塞、平台不可用和详情请求放大，只有新实现出现阻塞缺陷时才执行。
+- 提交：实现提交 `a9b0a193`；main 同步与 Ready 提交已推送至 `fix/voice-plaza-observability`。
+- 拉取请求：PR #548 已由 Draft 转为 Ready，当前 HEAD 为 `30cb0705`。
+- CI：最终 HEAD 首轮因 Change 旧章节标题不符合 canonical machine Contract 失败；正在修复该治理资产后重新触发，不把失败冒充通过。
+- 合并 / Change 归档：尚未执行，必须等待 current-head required checks 全绿。
+- 发布 / 部署：本任务只合并代码与 Migration，不执行生产发布或生产 Migration。
