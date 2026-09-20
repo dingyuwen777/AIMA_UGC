@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260920-110232-concurrency-lock-boundaries
 title: 修复并发读取阻塞与历史导入租约丢失
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/concurrency-lock-boundaries
 created: 2026-09-20
@@ -80,11 +80,11 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 
 ## 成功标准
 
-- [ ] 已有 active Scheme 时直接读取，不进入带 registry 写锁的 bootstrap。
-- [ ] 空库 bootstrap 仍由 advisory lock 保护，并发初始化只形成一个 active Version。
-- [ ] Historical Import Chunk 长事务开始只校验当前 Fencing Token，不在处理期间锁住 Job 行。
-- [ ] 最终业务提交前仍锁定并校验当前 Fencing Token。
-- [ ] 两条失败机制都有 Red → Green 回归和真实 PostgreSQL 并发证据。
+- [x] 已有 active Scheme 时直接读取，不进入带 registry 写锁的 bootstrap。
+- [x] 空库 bootstrap 仍由 advisory lock 保护，并发初始化只形成一个 active Version。
+- [x] Historical Import Chunk 长事务开始只校验当前 Fencing Token，不在处理期间锁住 Job 行。
+- [x] 最终业务提交前仍锁定并校验当前 Fencing Token。
+- [x] 两条失败机制都有 Red → Green 回归和真实 PostgreSQL 并发证据。
 - [ ] PR current-head CI、独立 Review、guarded merge 与 main-fresh 收尾完成。
 
 ## 范围
@@ -173,10 +173,10 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 已有 active Scheme 的读取不进入带 registry 写锁的 bootstrap；空库并发初始化仍安全 | #545 / AC1 | not_satisfied | 待 Red/Green 与 PostgreSQL 回归 |
-| R2 | Historical Import Chunk 处理期间不锁 Job 行，Heartbeat 可续租；最终提交仍受 Fence 保护 | #545 / AC2 | not_satisfied | 待 Red/Green 与 PostgreSQL 回归 |
-| R3 | 两条机制均有目标回归和真实 PostgreSQL Integration 证据 | #545 / AC3 | not_satisfied | 待目标测试与集成测试 |
-| R4 | 相关回归、质量门禁与 current-head CI 通过，公共边界保持不变 | #545 / AC4 | not_satisfied | 待质量门禁、Review 与 CI |
+| R1 | 已有 active Scheme 的读取不进入带 registry 写锁的 bootstrap；空库并发初始化仍安全 | #545 / AC1 | satisfied | `test_analysis_identity_locking.py` 两项真实 PostgreSQL 回归；Red 命中 advisory lock，Green 2/2；实现只在 active 未命中时 bootstrap |
+| R2 | Historical Import Chunk 处理期间不锁 Job 行，Heartbeat 可续租；最终提交仍受 Fence 保护 | #545 / AC2 | satisfied | Heartbeat Red 命中 `jobs` tuple lock，Green 通过；事务开始 `validate_current_execution`、提交前保留 `lock_current_execution`；Job Runtime 13/13 |
+| R3 | 两条机制均有目标回归和真实 PostgreSQL Integration 证据 | #545 / AC3 | satisfied | 隔离 PostgreSQL 18 目标 3/3、database + ingestion 130/130、jobs 13/13 |
+| R4 | 相关回归、质量门禁与 current-head CI 通过，公共边界保持不变 | #545 / AC4 | explicitly_deferred | 本地相关回归、Ruff 与独立 Review 已通过且 Contract/Schema/lock 无 diff；仓库 CI 设计要求 Change Ready 后执行，current-head Green 是 merge 前硬门禁 |
 
 # 计划改动
 
@@ -190,24 +190,24 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 
 - [x] 调查当前实现和事实源
 - [x] 建立任务路由和验证矩阵
-- [ ] 行为变化取得失败证据
-- [ ] 完成最小实现
-- [ ] 复核长期文档影响
-- [ ] 取得覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 行为变化取得失败证据
+- [x] 完成最小实现
+- [x] 复核长期文档影响
+- [x] 取得覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
 | 验证层 | 是否要求 | Scope / Evidence |
 | --- | --- | --- |
-| Behavior / Unit / Component | required | Analysis 已有 active Version 读取分支及 Historical Chunk 的开始/提交 Fence 不变量 |
+| Behavior / Unit / Component | required | 目标 3/3、相关 unit/API 9/9；覆盖 active 读取、空库并发与 Historical Chunk Heartbeat |
 | Contract / Consumer | not_applicable | 不改变 HTTP、Pydantic、OpenAPI、generated client 或 Job Payload |
-| Integration / Persistence / Runtime Dependency | required | PostgreSQL advisory lock、Job 行锁、Heartbeat/Lease/Fencing 并发语义 |
+| Integration / Persistence / Runtime Dependency | required | 隔离 PostgreSQL 18：database + ingestion 130/130、jobs 13/13；覆盖 advisory lock、行锁、Heartbeat/Lease/Fencing |
 | User / Workflow Acceptance | not_applicable | 不改变用户入口或工作流语义；原始运行时故障由真实生产入口的 PostgreSQL Integration 直接覆盖 |
 | Real Cross-component Golden Path | not_applicable | 不改变前端/API/Worker 接线，且当前独立失败边界可在后端真实数据库层直接证明 |
 | External Dependency / Provider Probe | not_applicable | 不改变 TikHub/LLM 或任何外部 Provider 边界 |
-| Build / Package / Runtime | required | 仓库正式 Python 检查与 PR current-head CI |
-| Docs / Governance / Other | required | Change Completion、架构/Owner/Secret/docs checks、两阶段 Review、PR/Issue 追溯 |
+| Build / Package / Runtime | required | 目标文件 Ruff 已通过；完整仓库检查与 PR current-head CI 在 Ready 后执行 |
+| Docs / Governance / Other | required | Change 机器契约通过；独立 Review 无 Finding；PR current-head 治理/CI 在 Ready 后执行 |
 
 ## 验证计划
 
@@ -237,10 +237,10 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 #545、适用项目规则与当前实现事实。
-- [ ] change_coverage：逐条比较 #545 AC1—AC4 与本 Change，确认没有遗漏或静默缩限。
-- [ ] reverse_audit：从 active Scheme consumers 与 Historical Chunk/Heartbeat/Fence 两向反查实现和证据层。
-- [ ] unresolved_cleared：`not_satisfied` 清零；所有 N/A 都有当前事实依据。
+- [x] upstream_re_read：已重新读取 #545、适用项目规则、Scheme/Job Repository、两条入口及当前 diff。
+- [x] change_coverage：已从 #545 AC1—AC4 独立重建完成定义；R1—R3 已满足，R4 的 Runner/merge 生命周期按仓库工作流明确延期且保持硬门禁。
+- [x] reverse_audit：已从 active Scheme consumers 反查读取/空库分流，并从 Chunk → Heartbeat → Lease takeover → 最终 Fence 反查事务边界与真实 PostgreSQL 证据。
+- [x] unresolved_cleared：无 `not_satisfied`；不适用层均基于无公共 Contract、UI、跨组件或外部 Provider 变化；仅剩 Ready 后 current-head CI/merge 生命周期。
 
 # 完成证据与状态
 
@@ -250,18 +250,27 @@ Requirement Source 为 Issue #545。用户要求按既定修复方案完成代�
 | --- | --- | --- | --- | --- |
 | V1 | `02e27512` / 本地 | `uv run ruff check ...` | 通过 | 新增回归测试满足静态规范 |
 | V2 | `02e27512` / 本地 | 目标 pytest `--collect-only` | 收集 17 项 | 测试模块可导入，目标用例进入正式收集 |
-| V3 | `02e27512` / GitHub Runner | PR run `35485986763` | 前置 Change 机器契约失败，PostgreSQL Integration 被跳过 | 尚未取得功能 Red；需先修正文档结构再重跑 |
+| V3 | `02e27512` / GitHub Runner | PR run `35485986763` | 前置 Change 机器契约失败，PostgreSQL Integration 被跳过 | 该失败不是功能 Red，未冒充缺陷证据 |
+| V4 | 修复前生产实现 / 本地隔离 PostgreSQL 18 | 目标 Analysis lock 测试 | `LockNotAvailable` at `pg_advisory_xact_lock`；空库并发对照通过 | active 读取确实错误进入独占 registry 锁；并发 bootstrap 测试基线有效 |
+| V5 | 修复前生产实现 / 本地隔离 PostgreSQL 18 | Historical Chunk Heartbeat 目标测试 | `LockNotAvailable` while updating tuple in `jobs` | 长业务事务提前锁 Job 行会真实阻塞 Heartbeat |
+| V6 | `17991db9` / 本地隔离 PostgreSQL 18 | 三条目标测试 | 3 passed | 两条 Red 已转 Green，空库唯一 active 保持 |
+| V7 | `17991db9` / 本地隔离 PostgreSQL 18 | `pytest tests/integration/database tests/integration/ingestion -q` | 130 passed | Analysis 数据库行为与 Historical Import 相邻状态/持久化回归通过 |
+| V8 | `17991db9` / 本地隔离 PostgreSQL 18 | `pytest tests/integration/jobs -q` | 13 passed | Heartbeat、Lease takeover、stale token 与通用 Fence 语义保持 |
+| V9 | `17991db9` / 本地 | 相关 unit/API pytest；目标文件 Ruff | 9 passed；All checks passed | 相邻装配/API 与静态规范通过 |
+| V10 | `17991db9` / 独立 Review | #545 → 调用链/diff → tests/evidence 复核 | `NO_FINDINGS_WITHIN_SCOPE` | 最终 Fence、空库 bootstrap、兼容与测试证据未发现阻塞问题 |
+| V11 | final PR head / GitHub Runner | current-head required CI | 待 Change Ready 后执行 | merge 前硬门禁，不以前序失败或本地证据替代 |
 
 ## 未验证内容与剩余风险
 
-- 尚未取得隔离 PostgreSQL 上的功能 Red/Green；本地数据库隔离性未知，故没有运行会清表的集成夹具。
+- 事故现场没有 `pg_locks` 快照，无法确认唯一首个持锁请求；本次已切断两个代码级、可重复的锁放大机制。
+- current-head GitHub CI、guarded merge、main-fresh、Change Archive、Issue Closure 与分支清理尚未发生；在实际完成前不宣称交付完成。
 
 ## 交付状态
 
 - Issue：#545，OPEN。
 - Branch：`fix/concurrency-lock-boundaries`。
-- PR：#546，早期 PR，逻辑未就绪。
-- CI：run `35485986763` 因 Change 标题不符合机器契约在前置门禁失败，功能测试未运行。
+- PR：#546，当前实现与本地证据已就绪，等待 final-head CI。
+- CI：前序 run `35485986763` 的 Change 机器契约失败已修正；final-head CI 待本次 Ready 提交推送后执行。
 - Merge：未执行。
 - Release / Deploy：不适用。
 
