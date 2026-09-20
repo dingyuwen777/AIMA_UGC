@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from math import ceil
+from time import perf_counter
 from typing import Any, Literal, cast
 from uuid import UUID, uuid4, uuid5
 
@@ -115,6 +117,7 @@ from aima_ugc.modules.content.query import ContentReadQuery, ContentReadRecord
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
 from aima_ugc.platform.jobs import JobRecord
+from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.time import beijing_now
 
@@ -145,6 +148,7 @@ class PostgresContentHttpService:
 
     def list_contents(self, query: ContentListQuery) -> ContentListResponse:
         """读取数据库排序的一页内容，并将排序身份绑定到 Cursor。"""
+        started = perf_counter()
         codec = self._cursor_codec()
         filters = _filters(query)
         query_hash = _query_hash(
@@ -152,13 +156,18 @@ class PostgresContentHttpService:
         )
         position = codec.decode(query.cursor, query_hash=query_hash) if query.cursor else None
         session = self._runtime.database.new_session()
+        configuration_loaded_at = started
+        query_finished_at = started
+        projection_ready: bool | None = None
         try:
             with session.begin():
                 configuration = active_analysis_configuration(session, self._runtime.settings)
-                rows = PostgresContentQueryRepository(
+                configuration_loaded_at = perf_counter()
+                repository = PostgresContentQueryRepository(
                     session,
                     analysis_identity=configuration.identity,
-                ).list_contents(
+                )
+                rows = repository.list_contents(
                     query=ContentReadQuery(
                         filters=filters,
                         position=position,
@@ -167,6 +176,8 @@ class PostgresContentHttpService:
                         sort_direction=query.sort_direction,
                     )
                 )
+                projection_ready = repository.last_projection_ready
+                query_finished_at = perf_counter()
         finally:
             session.close()
         has_more = len(rows) > query.limit
@@ -182,11 +193,24 @@ class PostgresContentHttpService:
                 ),
                 query_hash=query_hash,
             )
-        return ContentListResponse(
+        response = ContentListResponse(
             items=tuple(_item_response(item) for item in page),
             next_cursor=next_cursor,
             has_more=has_more,
         )
+        self._log_read_timing(
+            operation="list",
+            started=started,
+            configuration_ms=_elapsed_ms(started, configuration_loaded_at),
+            query_ms=_elapsed_ms(configuration_loaded_at, query_finished_at),
+            projection_ready=projection_ready,
+            item_count=len(page),
+            has_more=has_more,
+            cursor_present=query.cursor is not None,
+            sort_by=query.sort_by,
+            sort_direction=query.sort_direction,
+        )
+        return response
 
     def get_analysis_taxonomy(self) -> ContentAnalysisTaxonomyResponse:
         """返回数据库 active Scheme 的安全 Taxonomy 投影。"""
@@ -197,17 +221,22 @@ class PostgresContentHttpService:
     def get_filter_options(self) -> ContentFilterOptionsResponse:
         """合并 active Taxonomy 与当前可见 Content 的历史筛选值。"""
 
+        started = perf_counter()
         session = self._runtime.database.new_session()
+        configuration_loaded_at = started
+        query_finished_at = started
         try:
             with session.begin():
                 try:
                     configuration = active_analysis_configuration(session, self._runtime.settings)
                 except (RuntimeError, ValueError) as exc:
                     raise ContentAnalysisTaxonomyUnavailable from exc
+                configuration_loaded_at = perf_counter()
                 values = PostgresContentQueryRepository(
                     session,
                     analysis_identity=configuration.identity,
                 ).list_filter_values()
+                query_finished_at = perf_counter()
         finally:
             session.close()
 
@@ -230,7 +259,7 @@ class PostgresContentHttpService:
             )
             for primary in primary_order
         )
-        return ContentFilterOptionsResponse(
+        response = ContentFilterOptionsResponse(
             platforms=PLATFORM_NAMES,
             relevances=CONTENT_RELEVANCES,
             analysis_statuses=CONTENT_ANALYSIS_STATUSES,
@@ -238,7 +267,22 @@ class PostgresContentHttpService:
             sentiments=_filter_value_options(taxonomy.sentiments, values.sentiments),
             voice_types=_filter_value_options(taxonomy.voice_types, values.voice_types),
             labels=labels,
+            catalog_status=values.catalog_status,
         )
+        self._log_read_timing(
+            operation="filter_options",
+            started=started,
+            configuration_ms=_elapsed_ms(started, configuration_loaded_at),
+            query_ms=_elapsed_ms(configuration_loaded_at, query_finished_at),
+            projection_ready=values.catalog_status == "ready",
+            option_count=(
+                len(response.content_types)
+                + len(response.sentiments)
+                + len(response.voice_types)
+                + sum(len(group.secondary_labels) for group in response.labels)
+            ),
+        )
+        return response
 
     def get_content(
         self,
@@ -246,10 +290,15 @@ class PostgresContentHttpService:
         *,
         include_comments: bool = True,
     ) -> ContentDetailResponse:
+        started = perf_counter()
         session = self._runtime.database.new_session()
+        configuration_loaded_at = started
+        query_finished_at = started
+        projection_ready: bool | None = None
         try:
             with session.begin():
                 configuration = active_analysis_configuration(session, self._runtime.settings)
+                configuration_loaded_at = perf_counter()
                 repository = PostgresContentQueryRepository(
                     session,
                     analysis_identity=configuration.identity,
@@ -258,7 +307,7 @@ class PostgresContentHttpService:
                 if record is None:
                     raise ContentResourceNotFound
                 item = _item_response(record)
-                return ContentDetailResponse(
+                response = ContentDetailResponse(
                     **item.model_dump(),
                     media=repository.list_media(content_id),
                     comments=(repository.list_comments(content_id) if include_comments else ()),
@@ -266,8 +315,21 @@ class PostgresContentHttpService:
                     supplement_status=repository.latest_supplement_status(content_id),
                     source_records=repository.list_source_records(content_id),
                 )
+                projection_ready = repository.last_projection_ready
+                query_finished_at = perf_counter()
         finally:
             session.close()
+        self._log_read_timing(
+            operation="detail",
+            started=started,
+            configuration_ms=_elapsed_ms(started, configuration_loaded_at),
+            query_ms=_elapsed_ms(configuration_loaded_at, query_finished_at),
+            projection_ready=projection_ready,
+            include_comments=include_comments,
+            media_count=len(response.media),
+            source_record_count=len(response.source_records),
+        )
+        return response
 
     def list_comments(
         self,
@@ -276,6 +338,7 @@ class PostgresContentHttpService:
     ) -> ContentCommentListResponse:
         """分页读取一级评论或指定线程回复，并保留直接父评论显示信息。"""
 
+        started = perf_counter()
         codec = self._cursor_codec()
         query_hash = _comment_query_hash(content_id, root_comment_id=query.root_comment_id)
         position = codec.decode(query.cursor, query_hash=query_hash) if query.cursor else None
@@ -301,6 +364,7 @@ class PostgresContentHttpService:
                 )
         finally:
             session.close()
+        query_finished_at = perf_counter()
         has_more = len(rows) > query.limit
         page = rows[: query.limit]
         next_cursor = None
@@ -310,12 +374,42 @@ class PostgresContentHttpService:
                 ContentCursorPosition(sort_at=last.published_at, content_id=last.id),
                 query_hash=query_hash,
             )
-        return ContentCommentListResponse(
+        response = ContentCommentListResponse(
             items=page,
             next_cursor=next_cursor,
             has_more=has_more,
             total_count=total_count,
             ingested_total_count=ingested_total_count,
+        )
+        self._log_read_timing(
+            operation="comments",
+            started=started,
+            query_ms=_elapsed_ms(started, query_finished_at),
+            item_count=len(page),
+            has_more=has_more,
+            thread_view=query.root_comment_id is not None,
+            cursor_present=query.cursor is not None,
+        )
+        return response
+
+    def _log_read_timing(
+        self,
+        *,
+        operation: str,
+        started: float,
+        **fields: object,
+    ) -> None:
+        """记录安全的阶段耗时；慢查询提升到 WARNING，正常请求保持 DEBUG。"""
+
+        duration_ms = _elapsed_ms(started, perf_counter())
+        log_event(
+            self._runtime.logger,
+            logging.WARNING if duration_ms >= 500 else logging.DEBUG,
+            "voice_plaza.read_slow" if duration_ms >= 500 else "voice_plaza.read_completed",
+            "声音广场读取超过阶段耗时阈值。" if duration_ms >= 500 else "声音广场读取完成。",
+            operation=operation,
+            duration_ms=duration_ms,
+            **fields,
         )
 
     def review_vehicles(
@@ -1277,6 +1371,12 @@ def _analysis_job_response(
         started_at=job.started_at,
         finished_at=job.finished_at,
     )
+
+
+def _elapsed_ms(started: float, finished: float) -> int:
+    """把单调时钟差转换为非负毫秒。"""
+
+    return max(0, round((finished - started) * 1000))
 
 
 __all__ = ["PostgresContentHttpService"]

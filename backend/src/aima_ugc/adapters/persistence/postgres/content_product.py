@@ -38,7 +38,10 @@ class PostgresContentProductRepository:
     def exact_count(self, filters: ContentFilterSnapshot, *, limit: int) -> tuple[int, bool]:
         """扫描至上限加一，返回范围内数量和是否被截断。"""
 
-        statement, _ = self._queries._base_statement(filters, targets_only=True)  # noqa: SLF001
+        statement, _ = self._queries._effective_base_statement(  # noqa: SLF001
+            filters,
+            targets_only=True,
+        )
         rows = tuple(self._session.scalars(select(statement.subquery().c.id).limit(limit + 1)))
         return min(len(rows), limit), len(rows) > limit
 

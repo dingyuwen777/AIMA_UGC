@@ -86,6 +86,7 @@ const taxonomy = {
 }
 
 const filterOptions: ContentFilterOptionsResponse = {
+  catalog_status: 'ready',
   platforms: ['xiaohongshu', 'douyin', 'weibo', 'bilibili', 'kuaishou'],
   relevances: ['relevant', 'irrelevant'],
   analysis_statuses: ['completed', 'pending', 'stale'],
@@ -111,10 +112,17 @@ describe('voice plaza', () => {
     store.toggleSelection(item.id)
     await store.changeSort('follower_count')
     expect(store.selectedIds).toEqual([])
-    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ sort_by: 'follower_count', sort_direction: 'desc' })
-    expect(generated.listContents.mock.lastCall?.[0].cursor).toBeUndefined()
+    expect(generated.listContents.mock.calls.some(([params]) =>
+      params.sort_by === 'follower_count' &&
+      params.sort_direction === 'desc' &&
+      params.cursor === undefined,
+    )).toBe(true)
     await store.changeSort('follower_count')
-    expect(generated.listContents.mock.lastCall?.[0].sort_direction).toBe('asc')
+    expect(generated.listContents.mock.calls.some(([params]) =>
+      params.sort_by === 'follower_count' &&
+      params.sort_direction === 'asc' &&
+      params.cursor === undefined,
+    )).toBe(true)
     await store.loadNext()
     expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ cursor: 'next-page', sort_by: 'follower_count', sort_direction: 'asc' })
   })
@@ -137,6 +145,87 @@ describe('voice plaza', () => {
     await loading
     expect(store.detailId).toBeNull()
     expect(store.detail).toBeNull()
+  })
+
+  it('点击列表项时立即用当前摘要打开详情，再并行补齐详情和评论', async () => {
+    let resolveDetail!: (value: unknown) => void
+    let resolveComments!: (value: unknown) => void
+    generated.getContent.mockReturnValueOnce(new Promise((resolve) => { resolveDetail = resolve }))
+    generated.listContentComments.mockReturnValueOnce(
+      new Promise((resolve) => { resolveComments = resolve }),
+    )
+    const store = useVoicePlazaStore()
+    store.items = [item]
+
+    const loading = store.openDetail(item.id)
+
+    expect(store.detail).toMatchObject({ id: item.id, title: item.title })
+    expect(store.loadingDetail).toBe(true)
+    resolveDetail({ ...item, media: [], source_records: [item.source] })
+    resolveComments({
+      items: [], next_cursor: null, has_more: false, total_count: 0, ingested_total_count: 0,
+    })
+    await loading
+    expect(store.loadingDetail).toBe(false)
+  })
+
+  it('首屏完成后预取下一页，加载更多直接复用同一请求结果', async () => {
+    const nextItem = { ...item, id: '01991f80-6d5d-7dc8-95cb-c67c87654321' }
+    generated.listContents
+      .mockResolvedValueOnce({ items: [item], next_cursor: 'next-page', has_more: true })
+      .mockResolvedValueOnce({ items: [nextItem], has_more: false })
+    const store = useVoicePlazaStore()
+
+    await store.refresh()
+    await store.loadNext()
+
+    expect(generated.listContents).toHaveBeenCalledTimes(2)
+    expect(generated.listContents).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: 'next-page' }),
+    )
+    expect(store.items.map((entry) => entry.id)).toEqual([item.id, nextItem.id])
+  })
+
+  it('返回同一查询时先显示会话缓存，再用服务端最新第一页替换', async () => {
+    generated.listContents.mockResolvedValueOnce({ items: [item], has_more: false })
+    const store = useVoicePlazaStore()
+    await store.refresh()
+    let resolveLatest!: (value: unknown) => void
+    generated.listContents.mockReturnValueOnce(
+      new Promise((resolve) => { resolveLatest = resolve }),
+    )
+
+    const refreshing = store.refresh()
+
+    expect(store.items[0]?.title).toBe(item.title)
+    expect(store.loading).toBe(false)
+    resolveLatest({ items: [{ ...item, title: '服务端最新内容' }], has_more: false })
+    await refreshing
+    expect(store.items[0]?.title).toBe('服务端最新内容')
+  })
+
+  it('离开页面后用会话中已应用的平台筛选和排序恢复查询', () => {
+    const values = new Map<string, string>()
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      clear: () => values.clear(),
+    })
+    const first = useVoicePlazaStore()
+    first.filters.platform = 'douyin'
+    first.applyFilters()
+    first.sortBy = 'follower_count'
+    first.sortDirection = 'asc'
+    first.applyFilters()
+
+    setActivePinia(createPinia())
+    const restored = useVoicePlazaStore()
+
+    expect(restored.filters.platform).toBe('douyin')
+    expect(restored.appliedFilters.platform).toBe('douyin')
+    expect(restored.sortBy).toBe('follower_count')
+    expect(restored.sortDirection).toBe('asc')
   })
 
   it('打开详情先加载一级评论，展开后再读取回复并保留数据库总数', async () => {

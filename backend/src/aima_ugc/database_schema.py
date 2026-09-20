@@ -57,6 +57,12 @@ from aima_ugc.modules.content.extended_tables import (
     content_topics_table,
 )
 from aima_ugc.modules.content.media_cache_tables import content_media_cache_entries_table
+from aima_ugc.modules.content.read_model_tables import (
+    voice_plaza_content_projection_table,
+    voice_plaza_filter_catalog_entries_table,
+    voice_plaza_filter_catalog_table,
+    voice_plaza_projection_state_table,
+)
 from aima_ugc.modules.content.source_constraints import register_content_source_constraints
 from aima_ugc.modules.content.tables import (
     accounts_table,
@@ -182,6 +188,10 @@ __all__ = [
     "content_source_contributions_table",
     "content_availability_observations_table",
     "content_topics_table",
+    "voice_plaza_content_projection_table",
+    "voice_plaza_filter_catalog_entries_table",
+    "voice_plaza_filter_catalog_table",
+    "voice_plaza_projection_state_table",
     "content_versions_table",
     "contents_table",
     "job_attempt_events_table",
