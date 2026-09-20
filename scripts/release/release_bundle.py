@@ -59,7 +59,7 @@ SOURCE_PROFILES: Mapping[str, Mapping[str, str]] = {
     "china": {
         "debian": "https://mirrors.aliyun.com/debian",
         "debian_security": "https://mirrors.aliyun.com/debian-security",
-        "pypi": "https://pypi.tuna.tsinghua.edu.cn/simple",
+        "pypi": "https://mirrors.aliyun.com/pypi/simple",
         "npm": "https://registry.npmmirror.com",
     },
     "official": {
