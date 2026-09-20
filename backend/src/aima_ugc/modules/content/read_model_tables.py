@@ -69,7 +69,7 @@ voice_plaza_content_projection_table = Table(
     ),
     CheckConstraint(
         "(effective_relevance is null) = (relevance_source is null)",
-        name="relevance_projection_consistent",
+        name="relevance_consistent",
     ),
     CheckConstraint("jsonb_typeof(labels) = 'array'", name="labels_array"),
     CheckConstraint(

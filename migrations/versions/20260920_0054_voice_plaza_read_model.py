@@ -54,31 +54,34 @@ def upgrade() -> None:
         ),
         sa.Column("competition_scope", sa.Text(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint("content_version > 0", name=op.f("ck_vp_projection_version")),
+        sa.CheckConstraint(
+            "content_version > 0",
+            name=op.f("ck_voice_plaza_content_projection_content_version_positive"),
+        ),
         sa.CheckConstraint(
             "analysis_status in ('completed','pending','stale')",
-            name=op.f("ck_vp_projection_analysis_status"),
+            name=op.f("ck_voice_plaza_content_projection_analysis_status_allowed"),
         ),
         sa.CheckConstraint(
             "effective_relevance is null or effective_relevance in ('relevant','irrelevant')",
-            name=op.f("ck_vp_projection_relevance"),
+            name=op.f("ck_voice_plaza_content_projection_effective_relevance_allowed"),
         ),
         sa.CheckConstraint(
             "relevance_source is null or relevance_source in ('ai','manual_review')",
-            name=op.f("ck_vp_projection_relevance_source"),
+            name=op.f("ck_voice_plaza_content_projection_relevance_source_allowed"),
         ),
         sa.CheckConstraint(
             "(effective_relevance is null) = (relevance_source is null)",
-            name=op.f("ck_vp_projection_relevance_consistent"),
+            name=op.f("ck_voice_plaza_content_projection_relevance_consistent"),
         ),
         sa.CheckConstraint(
             "jsonb_typeof(labels) = 'array'",
-            name=op.f("ck_vp_projection_labels_array"),
+            name=op.f("ck_voice_plaza_content_projection_labels_array"),
         ),
         sa.CheckConstraint(
             "competition_scope in "
             "('none_detected','owned_only','competitor_only','other_only','mixed')",
-            name=op.f("ck_vp_projection_competition_scope"),
+            name=op.f("ck_voice_plaza_content_projection_competition_scope_allowed"),
         ),
         sa.ForeignKeyConstraint(
             ["content_id"],
@@ -181,10 +184,16 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
             "dimension in ('content_type','sentiment','voice_type','label')",
-            name=op.f("ck_vp_filter_catalog_dimension"),
+            name=op.f("ck_voice_plaza_filter_catalog_dimension_allowed"),
         ),
-        sa.CheckConstraint("char_length(value) > 0", name=op.f("ck_vp_filter_catalog_value")),
-        sa.CheckConstraint("content_count > 0", name=op.f("ck_vp_filter_catalog_count")),
+        sa.CheckConstraint(
+            "char_length(value) > 0",
+            name=op.f("ck_voice_plaza_filter_catalog_value_nonempty"),
+        ),
+        sa.CheckConstraint(
+            "content_count > 0",
+            name=op.f("ck_voice_plaza_filter_catalog_content_count_positive"),
+        ),
         sa.PrimaryKeyConstraint(
             "dimension",
             "value",
@@ -200,9 +209,12 @@ def upgrade() -> None:
         sa.Column("secondary_value", sa.Text(), server_default=sa.text("''"), nullable=False),
         sa.CheckConstraint(
             "dimension in ('content_type','sentiment','voice_type','label')",
-            name=op.f("ck_vp_filter_entries_dimension"),
+            name=op.f("ck_voice_plaza_filter_catalog_entries_dimension_allowed"),
         ),
-        sa.CheckConstraint("char_length(value) > 0", name=op.f("ck_vp_filter_entries_value")),
+        sa.CheckConstraint(
+            "char_length(value) > 0",
+            name=op.f("ck_voice_plaza_filter_catalog_entries_value_nonempty"),
+        ),
         sa.ForeignKeyConstraint(
             ["content_id"],
             ["voice_plaza_content_projection.content_id"],
@@ -234,19 +246,25 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(timezone=True)),
         sa.Column("last_error_code", sa.Text()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint("singleton", name=op.f("ck_vp_projection_state_singleton")),
+        sa.CheckConstraint(
+            "singleton",
+            name=op.f("ck_voice_plaza_projection_state_singleton_true"),
+        ),
         sa.CheckConstraint(
             "status in ('pending','running','ready','failed')",
-            name=op.f("ck_vp_projection_state_status"),
+            name=op.f("ck_voice_plaza_projection_state_status_allowed"),
         ),
-        sa.CheckConstraint("generation > 0", name=op.f("ck_vp_projection_state_generation")),
+        sa.CheckConstraint(
+            "generation > 0",
+            name=op.f("ck_voice_plaza_projection_state_generation_positive"),
+        ),
         sa.CheckConstraint(
             "projected_count >= 0",
-            name=op.f("ck_vp_projection_state_projected_count"),
+            name=op.f("ck_voice_plaza_projection_state_projected_count_nonnegative"),
         ),
         sa.CheckConstraint(
             "total_content_count is null or total_content_count >= 0",
-            name=op.f("ck_vp_projection_state_total_count"),
+            name=op.f("ck_voice_plaza_projection_state_total_content_count_nonnegative"),
         ),
         sa.PrimaryKeyConstraint("singleton", name=op.f("pk_voice_plaza_projection_state")),
     )
