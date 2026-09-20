@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
+from threading import Event
 from uuid import UUID, uuid4
 
 import pytest
@@ -63,7 +65,7 @@ from aima_ugc.platform.storage.canonical import (
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 
@@ -1564,6 +1566,141 @@ def test_historical_chunk_resumes_after_lease_takeover_without_duplicate_outcome
         assert outcome_count == 1
         assert content_count == 1
     finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
+
+
+def test_historical_chunk_allows_heartbeat_during_business_transaction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chunk 长事务处理期间不得锁住 Job 行并阻塞 Heartbeat 续租。"""
+
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    (historical_root / "heartbeat.xlsx").write_bytes(
+        _xlsx(title="爱玛 Heartbeat", text="长事务期间允许续租")
+    )
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "historical_import_root": historical_root,
+            "historical_chunk_rows": 100,
+            "historical_max_in_flight_jobs": 1,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
+        )
+
+    transaction_entered = Event()
+    continue_transaction = Event()
+    original_campaign_rows = (
+        historical_worker_module.PostgresHistoricalImportJobExecutor._campaign_rows
+    )
+
+    def wait_inside_business_transaction(self, **kwargs):  # type: ignore[no-untyped-def]
+        """在真实业务事务中建立可观察同步点，供另一 Session 执行 Heartbeat。"""
+
+        transaction_entered.set()
+        assert continue_transaction.wait(timeout=10), "Historical Chunk 事务未按测试信号继续"
+        return original_campaign_rows(self, **kwargs)
+
+    monkeypatch.setattr(
+        historical_worker_module.PostgresHistoricalImportJobExecutor,
+        "_campaign_rows",
+        wait_inside_business_transaction,
+    )
+
+    try:
+        client = TestClient(
+            create_app(
+                historical_import_service=PostgresHistoricalImportHttpService(runtime),
+                import_service=PostgresImportHttpService(runtime),
+            )
+        )
+        brand_id = _brand(runtime)
+        created = client.post(
+            "/api/v1/historical-import-campaigns",
+            json={
+                "client_idempotency_key": f"stage12-heartbeat-{uuid4()}",
+                "relative_paths": ["heartbeat.xlsx"],
+                "recursive": False,
+                "brand_ids": [brand_id],
+            },
+        )
+        assert created.status_code == 202
+        campaign_id = created.json()["campaign_id"]
+        preflight_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage12-heartbeat-preflight-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert _drain(preflight_worker) == 2
+        assert (
+            client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/start").status_code
+            == 200
+        )
+
+        import_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage12-heartbeat-import-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            execution = executor.submit(import_worker.run_once)
+            assert transaction_entered.wait(timeout=10), "Historical Chunk 未进入业务事务"
+            with runtime.database.engine.begin() as connection:
+                running_job = (
+                    connection.execute(
+                        select(
+                            jobs_table.c.id,
+                            jobs_table.c.lease_token,
+                            jobs_table.c.lease_expires_at,
+                        ).where(
+                            jobs_table.c.job_type == HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
+                            jobs_table.c.status == "running",
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+            assert running_job["lease_token"] is not None
+
+            heartbeat_session = runtime.database.new_session()
+            try:
+                with heartbeat_session.begin():
+                    heartbeat_session.execute(text("SET LOCAL lock_timeout = '750ms'"))
+                    renewed = PostgresJobRepository(heartbeat_session).heartbeat(
+                        job_id=running_job["id"],
+                        lease_token=running_job["lease_token"],
+                        lease_seconds=120,
+                        progress=50,
+                    )
+                assert renewed.lease_expires_at > running_job["lease_expires_at"]
+            finally:
+                heartbeat_session.close()
+                continue_transaction.set()
+
+            assert execution.result(timeout=10) is True
+
+        completed = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()
+        assert completed["status"] == "succeeded"
+        assert completed["stats"]["created"] == 1
+    finally:
+        continue_transaction.set()
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
                 "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
