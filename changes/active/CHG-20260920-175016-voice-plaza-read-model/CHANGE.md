@@ -266,10 +266,10 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 ## 交付状态
 
-- 提交：Red 基线 `deda3b42`；实现与文档 `d1d29a7a`；Migration/Metadata 约束命名修复 `dc17bb62`。
-- 拉取请求：#552 已建立早期追溯；当前 Change 已达到 `ready_for_review`，待推送并更新 PR 描述。
+- 提交：Red 基线 `deda3b42`；实现与文档 `d1d29a7a`、`ecbfbe64`；Migration/Metadata 约束命名修复 `dc17bb62`；数据库差异证据 `2217579b`。
+- 拉取请求：#552 已建立早期追溯；Issue #551 已按 canonical 技术变更 Profile 补齐根因、状态、范围、迁移、回滚、验证和 AC1–AC8；当前 Change 已达到 `ready_for_review`。
 - Review：Stage A 已按 Issue #551 AC1–AC8 重建完成定义且无遗漏；Stage B 已复核查询、迁移、触发器、Job 公平性、前端并发/缓存、日志和回滚，审查中发现的四项问题均已修正并重验。
-- CI：待推送最终实现后运行。
+- CI：首轮已通过 Compose Golden Path、Linux/Windows Development Tooling；追溯门禁暴露并促使修正 Issue canonical Profile，最终完整 CI 以本提交后的新 SHA 为准。
 - 合并：尚未执行。
 - Change 归档：尚未执行。
 - 发布 / 部署：不在本次授权范围；仅合并主分支，不执行服务器部署或生产 Migration。
