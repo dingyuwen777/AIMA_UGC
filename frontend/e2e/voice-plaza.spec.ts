@@ -356,6 +356,14 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('renders every AI label and opens the text-first content detail', async ({ page }) => {
+  let replyRequestCount = 0
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (
+      url.pathname === `/api/v1/contents/${contentId}/comments`
+      && url.searchParams.get('root_comment_id') === 'comment-root-1'
+    ) replyRequestCount += 1
+  })
   await page.goto('/voice-plaza')
 
   await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
@@ -379,7 +387,11 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('售后服务 / 客服与服务态度')
   await expect(page.getByText('我也关注冬季续航。')).toBeVisible()
   await expect(page.getByText('已采集')).toBeVisible()
+  await expect(page.getByText('低温时我也遇到了，充电后会好一些。')).toHaveCount(0)
+  expect(replyRequestCount).toBe(0)
+  await page.getByRole('button', { name: '查看 1 条回复' }).click()
   await expect(page.getByText('低温时我也遇到了，充电后会好一些。')).toBeVisible()
+  expect(replyRequestCount).toBe(1)
   await expect(page.getByText('回复 用户乙')).toBeVisible()
   await expect(page.getByText('原作者', { exact: true })).toBeVisible()
   await expect(page.getByRole('dialog', { name: '内容详情' }).locator('.info-grid')).toContainText('真实用户发声')
@@ -421,28 +433,34 @@ test('loads backend filter options and submits voice type with dependent labels'
   expect(params.get('competition_scopes')).toBe('owned_only')
 })
 
-test('reconciles filter options before issuing the initial content query', async ({ page }) => {
+test('renders the newest first page before slow filter options are ready', async ({ page }) => {
   await page.unroute('**/api/v1/content-filter-options')
-  let filterOptionsReady = false
-  let queriedBeforeFilterOptions = false
-  page.on('request', (request) => {
-    const url = new URL(request.url())
-    if (url.pathname === '/api/v1/contents' && !filterOptionsReady) {
-      queriedBeforeFilterOptions = true
-    }
-  })
+  let releaseFilterOptions!: () => void
+  const filterOptionsReady = new Promise<void>((resolve) => { releaseFilterOptions = resolve })
   await page.route('**/api/v1/content-filter-options', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    filterOptionsReady = true
+    await filterOptionsReady
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify(voicePlazaFilterOptionsFixture),
     })
   })
 
+  const firstPageRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return request.method() === 'GET' && url.pathname === '/api/v1/contents'
+  })
   await page.goto('/voice-plaza')
+  const request = await firstPageRequest
+  const params = new URL(request.url()).searchParams
+  expect(params.get('limit')).toBe('20')
+  expect(params.get('sort_by')).toBe('published_at')
+  expect(params.get('sort_direction')).toBe('desc')
+  await expect(page.getByText(item.title), '最新倒序第一页不应等待筛选目录').toBeVisible({
+    timeout: 2_000,
+  })
+  await expect(page.getByLabel('平台', { exact: true })).toBeEnabled()
+  releaseFilterOptions()
   await expect(page.locator('label.field--voice-type select')).toBeEnabled()
-  expect(queriedBeforeFilterOptions).toBe(false)
 })
 
 test('keeps filters and content usable when manual-edit taxonomy is unavailable', async ({ page }) => {
@@ -492,7 +510,7 @@ test('does not block the initial content list on a slow manual-edit taxonomy', a
   releaseTaxonomy()
 })
 
-test('keeps content usable when dynamic filter options are unavailable', async ({ page }) => {
+test('keeps stable filters and content usable when dynamic filter options are unavailable', async ({ page }) => {
   await page.unroute('**/api/v1/content-filter-options')
   await page.route('**/api/v1/content-filter-options', async (route) => {
     await route.fulfill({
@@ -511,11 +529,33 @@ test('keeps content usable when dynamic filter options are unavailable', async (
 
   await page.goto('/voice-plaza')
 
-  await expect(page.getByRole('alert').getByText('筛选项暂不可用', { exact: true })).toBeVisible()
+  await expect(page.getByRole('alert').getByText('部分动态筛选项暂不可用', { exact: true })).toBeVisible()
   const filters = page.locator('section.filters')
-  for (const label of ['平台', '相关性', '情感', '状态', '发声类型', '内容类型', '一级标签', '二级标签']) {
+  for (const label of ['平台', '相关性', '状态']) {
+    await expect(filters.getByLabel(label, { exact: true })).toBeEnabled()
+  }
+  for (const label of ['情感', '发声类型', '内容类型', '一级标签', '二级标签']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeDisabled()
   }
+  await expect(page.getByText(item.title)).toBeVisible()
+})
+
+test('restores the applied platform filter after leaving and reloading the page', async ({ page }) => {
+  await page.goto('/voice-plaza')
+  await page.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
+  await page.getByRole('button', { name: '查询' }).click()
+
+  const restoredRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return request.method() === 'GET'
+      && url.pathname === '/api/v1/contents'
+      && url.searchParams.get('platforms') === 'xiaohongshu'
+  })
+  await page.goto('/')
+  await page.goto('/voice-plaza')
+  await restoredRequest
+
+  await expect(page.getByLabel('平台', { exact: true })).toHaveValue('xiaohongshu')
   await expect(page.getByText(item.title)).toBeVisible()
 })
 
