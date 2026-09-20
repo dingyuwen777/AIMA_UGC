@@ -243,7 +243,7 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 - [x] upstream_re_read：已重新读取 Issue #551、用户最新验收边界和正式项目文档，并独立重建完成定义。
 - [x] change_coverage：已确认当前变更覆盖 AC1–AC8，没有把 Change 自身当作需求全集。
-- [x] reverse_audit：已执行前端入口→API→投影→事实表、写入→触发器→投影→查询、Migration→Worker→ready 的反向审计；审计中修正了部分索引谓词不匹配、Content Version 首次刷新遗漏和长 Job 独占 Worker 三个问题。
+- [x] reverse_audit：已执行前端入口→API→投影→事实表、写入→触发器→投影→查询、Migration→Worker→ready 的反向审计；审计中修正了部分索引谓词不匹配、Content Version 首次刷新遗漏、长 Job 独占 Worker 和 Migration/Metadata 约束名漂移四个问题。
 - [x] unresolved_cleared：所有 `not_satisfied` 已清零；真实大库性能未验证按用户明确边界记录为 post-merge 服务器验收，不伪装成本地完成。
 
 # 完成证据与状态
@@ -254,7 +254,7 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 | --- | --- | --- | --- | --- |
 | V1 | `d1d29a7a` / Windows / Python 3.14 | `ruff format --check`、`ruff check`（17 个变更 Python 文件）；`mypy backend/src` | 通过；350 个源码文件无类型错误 | 变更格式、静态规则和生产源码类型正确 |
 | V2 | `d1d29a7a` / pytest | `pytest tests/unit/content/test_voice_plaza_read_model*.py tests/unit/content/test_voice_plaza_observability.py -q`；Worker 注册专项 | 7 + 8 条通过 | SQL 形态、索引谓词、Job Contract/注册、评论聚合和安全日志成立 |
-| V3 | `d1d29a7a` / PostgreSQL 18.4 临时容器 | Alembic `downgrade 0053 → upgrade head`；`pytest tests/integration/content -q` | Migration 往返通过；63 条通过 | 最终 DDL、触发器、低优先级切片串接、查询/分析/评论/导出兼容成立 |
+| V3 | `dc17bb62` / PostgreSQL 18.4 临时容器 | Alembic `downgrade 0053 → upgrade head`、`alembic check`；`pytest tests/integration/content -q` | Migration 往返且自动差异清零；63 条通过 | 最终 DDL/Metadata、触发器、低优先级切片串接、查询/分析/评论/导出兼容成立 |
 | V4 | `d1d29a7a` / PostgreSQL 18.4 | `EXPLAIN (COSTS OFF)` 默认最新和 `platform='xiaohongshu'` 查询 | 分别为 `ix_voice_plaza_projection_published_latest`、`ix_voice_plaza_projection_platform_latest` 的 `Index Only Scan` | 实际查询谓词和排序与索引匹配；不是只“创建了索引” |
 | V5 | `d1d29a7a` / Node 24 | `npm --prefix frontend test -- --run`；`npm --prefix frontend run build`；4 个声音广场 Playwright 文件 | 168 单测、生产构建、33 浏览器测试全部通过 | 首屏、筛选恢复、摘要先显、预取加载更多和页面状态无回归 |
 | V6 | `d1d29a7a` | Contract generate/check compatibility；docs/docs facts/architecture/table ownership/secret checks | 全部通过 | 公共契约向后兼容，文档与架构边界同步且无 Secret 泄漏 |
@@ -266,9 +266,9 @@ Issue #551 承载本次正式验收项。用户已明确要求按系统方案修
 
 ## 交付状态
 
-- 提交：Red 基线 `deda3b42`；实现与文档 `d1d29a7a`。
+- 提交：Red 基线 `deda3b42`；实现与文档 `d1d29a7a`；Migration/Metadata 约束命名修复 `dc17bb62`。
 - 拉取请求：#552 已建立早期追溯；当前 Change 已达到 `ready_for_review`，待推送并更新 PR 描述。
-- Review：Stage A 已按 Issue #551 AC1–AC8 重建完成定义且无遗漏；Stage B 已复核查询、迁移、触发器、Job 公平性、前端并发/缓存、日志和回滚，审查中发现的三项问题均已修正并重验。
+- Review：Stage A 已按 Issue #551 AC1–AC8 重建完成定义且无遗漏；Stage B 已复核查询、迁移、触发器、Job 公平性、前端并发/缓存、日志和回滚，审查中发现的四项问题均已修正并重验。
 - CI：待推送最终实现后运行。
 - 合并：尚未执行。
 - Change 归档：尚未执行。
