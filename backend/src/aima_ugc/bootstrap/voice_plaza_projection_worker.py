@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Integer, select
+from time import perf_counter
+
+from sqlalchemy import Integer, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -27,6 +29,8 @@ from .runtime import PlatformRuntime
 
 _BATCH_SIZE = 500
 _BATCHES_PER_JOB = 5
+_BATCH_STATEMENT_TIMEOUT_SECONDS = 180
+_BATCH_TRANSACTION_TIMEOUT_SECONDS = 240
 
 
 class PostgresVoicePlazaProjectionJobExecutor:
@@ -46,11 +50,29 @@ class PostgresVoicePlazaProjectionJobExecutor:
     ) -> JobHandlerResult:
         """循环推进回填并在批次之间续租、检查取消。"""
 
-        try:
-            for _ in range(_BATCHES_PER_JOB):
+        for batch_number in range(1, _BATCHES_PER_JOB + 1):
+            batch_started = perf_counter()
+            self._runtime.logger.info(
+                "声音广场投影批次开始执行。",
+                extra={
+                    "event": "voice_plaza_projection.batch_started",
+                    "generation": payload.generation,
+                    "batch_number": batch_number,
+                    "batch_size": _BATCH_SIZE,
+                },
+            )
+            try:
                 session = self._runtime.database.new_session()
                 try:
                     with session.begin():
+                        session.execute(
+                            text("SELECT set_config('statement_timeout', :timeout, true)"),
+                            {"timeout": f"{_BATCH_STATEMENT_TIMEOUT_SECONDS}s"},
+                        )
+                        session.execute(
+                            text("SELECT set_config('transaction_timeout', :timeout, true)"),
+                            {"timeout": f"{_BATCH_TRANSACTION_TIMEOUT_SECONDS}s"},
+                        )
                         state, processed = PostgresVoicePlazaProjectionRepository(
                             session
                         ).project_next_batch(
@@ -60,42 +82,72 @@ class PostgresVoicePlazaProjectionJobExecutor:
                         )
                 finally:
                     session.close()
+            except LeaseLostError:
+                raise
+            except SQLAlchemyError as exc:
+                self._runtime.logger.warning(
+                    "声音广场投影批次数据库执行失败，等待统一 Job 重试。",
+                    extra={
+                        "event": "voice_plaza_projection.batch_failed",
+                        "generation": payload.generation,
+                        "batch_number": batch_number,
+                        "duration_ms": max(
+                            0,
+                            int((perf_counter() - batch_started) * 1000),
+                        ),
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                return JobHandlerResult.retry("voice_plaza_projection_database_error")
 
-                if state.generation != payload.generation:
-                    return JobHandlerResult.succeeded(
-                        {
-                            "superseded": True,
-                            "generation": payload.generation,
-                            "current_generation": state.generation,
-                        }
-                    )
-                if state.status == "ready":
-                    return JobHandlerResult.succeeded(
-                        {
-                            "complete": True,
-                            "generation": state.generation,
-                            "projected_count": state.projected_count,
-                            "total_content_count": state.total_content_count or 0,
-                        }
-                    )
-                total = max(state.total_content_count or 0, 1)
-                context.heartbeat(progress=min(99, int(state.projected_count * 100 / total)))
-                if context.cancel_requested():
-                    return JobHandlerResult.cancelled()
-                if processed <= 0:
-                    return JobHandlerResult.retry("voice_plaza_projection_no_progress")
-            return JobHandlerResult.succeeded(
-                {
-                    "complete": False,
+            self._runtime.logger.info(
+                "声音广场投影批次执行完成。",
+                extra={
+                    "event": "voice_plaza_projection.batch_completed",
                     "generation": state.generation,
+                    "batch_number": batch_number,
+                    "processed_count": processed,
                     "projected_count": state.projected_count,
                     "total_content_count": state.total_content_count or 0,
-                }
+                    "status": state.status,
+                    "duration_ms": max(
+                        0,
+                        int((perf_counter() - batch_started) * 1000),
+                    ),
+                },
             )
-        except LeaseLostError:
-            raise
-        except SQLAlchemyError:
-            return JobHandlerResult.retry("voice_plaza_projection_database_error")
+
+            if state.generation != payload.generation:
+                return JobHandlerResult.succeeded(
+                    {
+                        "superseded": True,
+                        "generation": payload.generation,
+                        "current_generation": state.generation,
+                    }
+                )
+            if state.status == "ready":
+                return JobHandlerResult.succeeded(
+                    {
+                        "complete": True,
+                        "generation": state.generation,
+                        "projected_count": state.projected_count,
+                        "total_content_count": state.total_content_count or 0,
+                    }
+                )
+            total = max(state.total_content_count or 0, 1)
+            context.heartbeat(progress=min(99, int(state.projected_count * 100 / total)))
+            if context.cancel_requested():
+                return JobHandlerResult.cancelled()
+            if processed <= 0:
+                return JobHandlerResult.retry("voice_plaza_projection_no_progress")
+        return JobHandlerResult.succeeded(
+            {
+                "complete": False,
+                "generation": state.generation,
+                "projected_count": state.projected_count,
+                "total_content_count": state.total_content_count or 0,
+            }
+        )
 
 
 def ensure_voice_plaza_projection_backfill_job(

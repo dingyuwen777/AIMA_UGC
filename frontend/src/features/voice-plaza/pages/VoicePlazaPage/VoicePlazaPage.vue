@@ -351,9 +351,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         <div class="selection-actions">
           <div class="count-summary">
             <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} <strong>{{ store.contentCount.count.toLocaleString('zh-CN') }} 条</strong></span>
-            <span v-else>已显示 <strong>{{ store.items.length }} 条</strong></span>
-            <small v-if="store.contentCount?.truncated">结果较多，当前显示估算总数</small>
-            <small v-else-if="store.countError">总数暂不可用</small>
+            <span v-else-if="store.countLoading">总数统计中…</span>
+            <span v-else>总数暂不可用</span>
           </div>
           <button
             v-if="selectedReviewIds.relevant.length"
@@ -412,7 +411,12 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-if="store.items.length > 0"
         class="pagination"
       >
-        <span>已显示 {{ store.items.length }} 条</span>
+        <span class="pagination-count">
+          <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} {{ store.contentCount.count.toLocaleString('zh-CN') }} 条</span>
+          <span v-else-if="store.countLoading">总数统计中…</span>
+          <span v-else>总数暂不可用</span>
+          <small>当前已加载 {{ store.items.length }} 条</small>
+        </span>
         <AimaButton
           size="small"
           :disabled="!store.hasMore || store.loadingNext"
@@ -536,6 +540,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .selected-count { color: var(--aima-primary); background: var(--aima-primary-soft); }
 .selection-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .pagination { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 20px; color: var(--aima-text-muted); font-size: 11px; }
+.pagination-count { display: flex; align-items: baseline; gap: 8px; }
+.pagination-count small { color: var(--aima-text-disabled); font-size: 10px; }
 .pagination :deep(.aima-button) { height: 34px; }
 .notice { position: fixed; z-index: 200; top: 76px; left: 50%; min-width: 280px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
 @media (max-width: 1280px) {

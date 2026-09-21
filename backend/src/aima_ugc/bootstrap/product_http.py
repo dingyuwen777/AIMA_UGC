@@ -63,11 +63,11 @@ class PostgresProductHttpService:
                         as_of=beijing_now(),
                     )
                 if request.count_mode == "estimated":
-                    estimate = repository.estimated_count(request.filters)
+                    count, count_kind = repository.display_count(request.filters)
                     return ContentCountResponse(
                         count_mode="estimated",
-                        count=estimate,
-                        count_kind="estimated" if estimate is not None else "none",
+                        count=count,
+                        count_kind=count_kind,
                         as_of=beijing_now(),
                     )
                 assert request.exact_limit is not None

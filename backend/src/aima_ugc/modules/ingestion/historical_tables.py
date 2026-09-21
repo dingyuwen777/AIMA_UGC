@@ -246,6 +246,11 @@ Index(
     processing_import_batch_items_table.c.campaign_item_id,
     processing_import_batch_items_table.c.outcome,
 )
+Index(
+    "ix_processing_import_batch_items_content_id",
+    processing_import_batch_items_table.c.content_id,
+    postgresql_where=processing_import_batch_items_table.c.content_id.is_not(None),
+)
 
 
 __all__ = [

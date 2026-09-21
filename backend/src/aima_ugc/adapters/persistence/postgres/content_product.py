@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import cast
+from typing import Literal, cast
 from uuid import uuid4
 
 from sqlalchemy import insert, select, text
@@ -56,6 +56,19 @@ class PostgresContentProductRepository:
             )
         )
         return None if value is None else max(int(value), 0)
+
+    def display_count(
+        self, filters: ContentFilterSnapshot
+    ) -> tuple[int | None, Literal["none", "exact", "estimated"]]:
+        """优先读取投影精确总数；升级窗口仅对无筛选返回明确标注的估算。"""
+
+        count = self._queries.projection_count(filters)
+        if count is not None:
+            return count, "exact"
+        estimate = self.estimated_count(filters)
+        if estimate is not None:
+            return estimate, "estimated"
+        return None, "none"
 
     def append_availability(
         self,

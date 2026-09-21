@@ -282,6 +282,7 @@ src/features/voice-plaza/
 - 首次进入先请求最新发布时间倒序的第一页，列表返回后立即展示，不等待筛选目录、Taxonomy、计数、导出或任务状态；
 - 平台/文本/时间/Brand/Vehicle/Competition/Analysis 筛选；平台、相关性和分析状态直接使用 generated Contract 的稳定值，Brand/Vehicle 使用统一目录，其余 AI 业务下拉值从后端 Filter Options Contract 动态加载；
 - 已点击“查询”的筛选快照和排序保存在当前浏览器会话中，跨页面返回时自动恢复；输入中的草稿在提交前不影响当前查询；
+- 筛选总数在首屏列表之后独立加载，表示当前已应用筛选命中的全部内容；当前已加载条数单独展示，总数尚未返回或失败时不使用分页条数代替；
 - 详情正文与一级评论独立加载，线程回复在展开时按需读取；
 - Analysis current/stale/pending；
 - 显式选择内容并做 Analysis Run Preview；

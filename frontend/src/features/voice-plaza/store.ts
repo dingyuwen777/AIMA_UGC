@@ -362,6 +362,11 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     selectedIds.value = []
     nextCursor.value = null
     hasMore.value = false
+    // 已应用条件改变后旧总数立即失效；列表仍优先读取，随后再异步补回新总数。
+    countRevision += 1
+    contentCount.value = null
+    countError.value = null
+    countLoading.value = true
     persistAppliedSearch()
   }
 
@@ -888,6 +893,10 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     Object.assign(appliedFilters, copyFilters(EMPTY_FILTERS))
     clearSelection()
     notice.value = null
+    countRevision += 1
+    contentCount.value = null
+    countError.value = null
+    countLoading.value = true
     persistAppliedSearch()
   }
 

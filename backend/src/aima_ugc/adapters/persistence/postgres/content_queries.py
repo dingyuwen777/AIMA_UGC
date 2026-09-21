@@ -267,6 +267,39 @@ class PostgresContentQueryRepository:
         self._last_projection_ready = ready
         return ready
 
+    def projection_count(self, filters: ContentFilterSnapshot) -> int | None:
+        """投影就绪时返回与列表完全相同筛选语义的精确总数。"""
+
+        if not self.projection_ready():
+            return None
+        value = self._session.scalar(self._projection_count_statement(filters))
+        return 0 if value is None else int(value)
+
+    def _projection_count_statement(self, filters: ContentFilterSnapshot) -> Any:
+        """只在文本搜索需要时连接事实表，其余计数保持在窄投影上。"""
+
+        projection = voice_plaza_content_projection_table
+        content = contents_table
+        version = content_versions_table
+        source: Any = projection
+        if filters.search is not None:
+            source = projection.join(content, content.c.id == projection.c.content_id).join(
+                version,
+                and_(
+                    version.c.content_id == projection.c.content_id,
+                    version.c.version_no == projection.c.content_version,
+                ),
+            )
+        statement = select(func.count()).select_from(source)
+        return _apply_projection_filters(
+            statement,
+            filters=filters,
+            projection=projection,
+            content=content,
+            version=version,
+            include_irrelevant=False,
+        )
+
     def freeze_targets(
         self,
         *,

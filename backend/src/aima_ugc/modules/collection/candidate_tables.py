@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Table,
     Text,
@@ -86,4 +87,10 @@ collection_candidate_ingestions_table = Table(
         name="success_target_required",
     ),
     info={"owner": "collection"},
+)
+
+Index(
+    "ix_collection_candidate_ingestions_content_id",
+    collection_candidate_ingestions_table.c.content_id,
+    postgresql_where=collection_candidate_ingestions_table.c.content_id.is_not(None),
 )
