@@ -435,6 +435,67 @@ describe('voice plaza', () => {
     expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
   })
 
+  it('starts the total request without waiting for the slow list request', async () => {
+    let finishList!: (value: unknown) => void
+    generated.listContents.mockReturnValueOnce(
+      new Promise((resolve) => { finishList = resolve }),
+    )
+    generated.countContents.mockResolvedValue({
+      count_mode: 'estimated',
+      count: 1823565,
+      count_kind: 'exact',
+      as_of: '2026-09-21T12:00:00+08:00',
+      truncated: false,
+    })
+    const store = useVoicePlazaStore()
+
+    const loading = store.refreshResults()
+    await Promise.resolve()
+
+    expect(generated.listContents).toHaveBeenCalledTimes(1)
+    expect(generated.countContents).toHaveBeenCalledTimes(1)
+    expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
+
+    finishList({ items: [item], has_more: false })
+    await loading
+    expect(store.items).toEqual([item])
+  })
+
+  it('aborts the previous total request when a new applied filter starts counting', async () => {
+    let finishFirst!: (value: unknown) => void
+    generated.countContents
+      .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve }))
+      .mockResolvedValueOnce({
+        count_mode: 'estimated',
+        count: 42,
+        count_kind: 'exact',
+        as_of: '2026-09-21T12:01:00+08:00',
+        truncated: false,
+      })
+    const store = useVoicePlazaStore()
+
+    const first = store.refreshCount('estimated')
+    await Promise.resolve()
+    store.filters.platform = 'douyin'
+    store.applyFilters()
+    await store.refreshCount('estimated')
+
+    const firstSignal = generated.countContents.mock.calls[0]?.[1]?.signal
+    expect(firstSignal).toBeInstanceOf(AbortSignal)
+    expect(firstSignal?.aborted).toBe(true)
+    expect(store.contentCount).toMatchObject({ count: 42, count_kind: 'exact' })
+
+    finishFirst({
+      count_mode: 'estimated',
+      count: 1823565,
+      count_kind: 'exact',
+      as_of: '2026-09-21T12:00:00+08:00',
+      truncated: false,
+    })
+    await first
+    expect(store.contentCount).toMatchObject({ count: 42, count_kind: 'exact' })
+  })
+
   it('offers exactly the five supported content platforms in the platform filter', async () => {
     const html = await renderToString(
       createSSRApp({

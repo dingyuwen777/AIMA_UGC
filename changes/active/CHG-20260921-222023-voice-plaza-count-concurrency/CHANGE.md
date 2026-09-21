@@ -151,7 +151,7 @@ Issue #551 的 AC8 仍等待 1,823,565+ 条真实服务器数据验收。PR #554
 
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据
+- [x] 行为变化建立失败证据
 - [ ] 完成最小实现，不静默扩大范围
 - [ ] 同步受影响的长期文档
 - [ ] 取得仍覆盖当前版本的验证证据
@@ -209,7 +209,7 @@ Issue #551 的 AC8 仍等待 1,823,565+ 条真实服务器数据验收。PR #554
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待填写 | 待填写 | 待填写 | 待填写 |
+| V1 | Red / Windows / Node 24.19 / Python 3.14 | `npm --prefix frontend test -- --run tests/voice-plaza.spec.ts tests/voice-plaza-design.spec.ts`；`uv run pytest tests/unit/content/test_voice_plaza_observability.py -q -p no:cacheprovider` | 前端 3 failed、37 passed；后端 1 failed、1 passed | 当前缺少并发入口、AbortSignal、空列表 Count 状态和 Count 日志，失败原因与 AC9–AC11 一致 |
 
 ## 未验证内容与剩余风险
 
