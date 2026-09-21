@@ -84,7 +84,7 @@ data_changes:
 
 ## 推断与待确认
 
-- 当前尚未取得正式 GitHub Issue/PR；在早期治理提交推送后按项目规则建立远端追溯链。
+- 正式 Requirement Source 已建立为 GitHub Issue #555；早期 PR 尚待创建。
 - 真实飞书双企业外部联调需要有效 App、组、回调与 Secret；交付包的历史叙述不能替代当前 revision 的新鲜证据。若当前环境没有凭据，将单独判断是否阻塞合并。
 
 # 目标、成功标准与非目标
@@ -164,12 +164,14 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 在本地任务分支集成补丁，确认无问题后才合并主分支 | user:2026-09-21-current-request / AC1 | not_satisfied | 尚未完成移植、验证、Review、PR 与合并 |
-| R2 | 提供真实企业身份登录、Session/Claims、Principal 映射与审计 | docs/roadmap/02_生产上线实施路线.md / AC1 | not_satisfied | 待移植并验证 |
-| R3 | 飞书身份保持在 Adapter 边界，业务只消费 Provider-neutral Principal | docs/blueprint/07_技术决策与实施门禁.md / AC1 | not_satisfied | 待移植后执行调用链与架构审查 |
-| R4 | 多个飞书 Connector 可同时配置且相互隔离，旧单企业配置保持兼容 | external:飞书登录-交付包-20260921-多企业计划 / AC1 | not_satisfied | 待移植并运行配置、路由与 PostgreSQL 回归 |
-| R5 | 跨企业 state、重放、开放重定向、日志泄密和登录滥用必须失败关闭 | external:飞书登录-交付包-20260921-安全验收 / AC1 | not_satisfied | 待运行安全正反例与 Review |
-| R6 | 当前 revision 的 Contract、Migration、前后端、质量门禁、PR CI 与 main-fresh 证据完整 | user:2026-09-21-current-request / AC2 | not_satisfied | 待执行 |
+| R1 | 完成 OAuth、一次性 state、Principal 映射、Session 与安全审计 | #555 / AC1 | not_satisfied | 待移植并验证 |
+| R2 | 角色、拒绝语义、401/403 与现有后端授权保持正确 | #555 / AC2 | not_satisfied | 待移植并验证 |
+| R3 | state/重放/串企业、开放重定向、敏感信息与登录滥用失败关闭 | #555 / AC3 | not_satisfied | 待运行安全正反例与 Review |
+| R4 | 多 Connector 隔离并保持单企业、旧路由与 connector_id 兼容 | #555 / AC4 | not_satisfied | 待移植并运行配置、路由与 PostgreSQL 回归 |
+| R5 | Schema/Migration、表 Owner 与真实 PostgreSQL 语义闭环 | #555 / AC5 | not_satisfied | 待审查 Migration 并执行数据库验证 |
+| R6 | 前端登录、降级、401/403、身份展示与登出闭环 | #555 / AC6 | not_satisfied | 待移植并执行前端/工作流验证 |
+| R7 | 当前 revision 的 Contract、测试、构建、跨组件与外部边界证据充分 | #555 / AC7 | not_satisfied | 待执行完整 Validation Matrix |
+| R8 | 文档/治理、Deep Review、PR CI、合并后 main-fresh 与归档完成 | #555 / AC8 | not_satisfied | 待完成远端交付链 |
 
 # 计划改动
 
@@ -252,7 +254,8 @@ data_changes:
 
 ## 交付状态
 
-- 提交：尚未创建。
+- 提交：首个治理提交 `30c01f8d` 已推送。
+- Requirement Source：GitHub Issue #555。
 - 拉取请求：尚未创建。
 - CI：尚未运行。
 - 合并：尚未执行。
