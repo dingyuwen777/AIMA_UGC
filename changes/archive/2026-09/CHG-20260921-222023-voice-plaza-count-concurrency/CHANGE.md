@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260921-222023-voice-plaza-count-concurrency
 title: 声音广场筛选总数独立加载与可观测性
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/voice-plaza-count-independent-loading
 created: 2026-09-21
