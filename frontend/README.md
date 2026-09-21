@@ -49,6 +49,8 @@ src/main.ts
 | 路径 | 页面 | 代码入口 |
 | --- | --- | --- |
 | `/` | 工作台 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue)，当前仅展示“开发中”图片，功能后续实现 |
+| `/login` | 飞书登录 | [`frontend/src/views/LoginView.vue`](src/views/LoginView.vue)，未登录（后端 401）时由守卫改道至此 |
+| `/no-access` | 无访问权限 | [`frontend/src/views/NoAccessView.vue`](src/views/NoAccessView.vue)，已登录但无权限（后端 403）时改道至此 |
 | `/collection-runtime` | 采集运行中心 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue`](src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue) |
 | `/collection-strategy` | 采集策略 | [`frontend/src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue`](src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue) |
 | `/voice-plaza` | 声音广场 | [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue`](src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue) |

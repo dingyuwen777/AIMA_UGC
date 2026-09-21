@@ -83,4 +83,11 @@ describe('AppShell 内网 V1 导航', () => {
     expect(html).not.toMatch(/[⌂◌▣◎♧⚙]/u)
     expect(html).toContain('智能监测与洞察平台')
   })
+
+  it('侧栏底部提供登出入口', async () => {
+    const html = await renderShell()
+
+    expect(html).toContain('退出')
+    expect(html).toContain('title="退出登录"')
+  })
 })

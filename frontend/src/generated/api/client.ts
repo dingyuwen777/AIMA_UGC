@@ -344,6 +344,35 @@ export interface AuditEventListResponse {
   total: number;
 }
 
+/**
+ * 一个**可登录的飞书企业**，供前端登录页展示。
+ *
+ * ⚠️ **只暴露展示所需的两个字段**。这个端点是**未认证**的（登录页要调它），
+ * 因此绝不能返回 App Secret、Secret 引用、用户组 ID 或回调地址 ——
+ * 那些都是服务端配置，泄露它们等于把接入细节告诉任何访问者。
+ */
+export interface AuthConnectorResponse {
+  /**
+     * @minLength 1
+     * @maxLength 32
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 64
+     */
+  display_name: string;
+}
+
+/**
+ * 可登录企业列表。
+ *
+ * **顺序即配置顺序** —— 前端按它渲染，保证每次刷新按钮顺序一致。
+ */
+export interface AuthConnectorListResponse {
+  items: AuthConnectorResponse[];
+}
+
 export interface BodyCreateImportBatch {
   brand_ids?: string[];
   file: Blob;
@@ -1882,6 +1911,8 @@ export const CurrentPrincipalResponseSource = {
  * 当前请求的 Provider-neutral Principal 投影。
  */
 export interface CurrentPrincipalResponse {
+  avatar_url?: string | null;
+  department_name?: string | null;
   /**
      * @minLength 1
      * @maxLength 200
@@ -2983,6 +3014,25 @@ offset?: number;
 limit?: number;
 };
 
+export type CompleteFeishuLoginParams = {
+code?: string | null;
+state?: string | null;
+};
+
+export type StartFeishuLoginParams = {
+return_to?: string | null;
+connector?: string | null;
+};
+
+export type CompleteFeishuLoginForConnectorParams = {
+code?: string | null;
+state?: string | null;
+};
+
+export type StartFeishuLoginForConnectorParams = {
+return_to?: string | null;
+};
+
 export type ListCollectionPlansParams = {
 search?: string | null;
 enabled?: boolean | null;
@@ -3779,6 +3829,237 @@ export const listAuditEvents = async (params?: ListAuditEventsParams, options?: 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: AuditEventListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListAuthConnectorsUrl = () => {
+
+
+
+
+  return `/api/v1/auth/connectors`
+}
+
+/**
+ * 返回**可登录企业列表**（供前端登录页渲染企业选择）。
+ *
+ * ⚠️ 这是一个**未认证**端点（登录页在未登录状态下要调它），因此：
+ *
+ * · **只返回 `code` 与显示名** —— 绝不含 Secret / 组 ID / 回调地址；
+ * · **不透露"某企业是否可用"** —— 那会变成配置探测接口。
+ *
+ * **顺序 = 配置顺序**（前端按钮顺序依赖它，见 `ConnectorRegistry` 的说明）。
+ * @summary Listauthconnectors
+ */
+export const listAuthConnectors = async ( options?: RequestInit): Promise<AuthConnectorListResponse> => {
+
+  const res = await fetch(getListAuthConnectorsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AuthConnectorListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCompleteFeishuLoginUrl = (params?: CompleteFeishuLoginParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/callback?${stringifiedParams}` : `/api/v1/auth/feishu/callback`
+}
+
+/**
+ * 旧回调入口；使用默认企业并完成飞书登录。
+ * @summary Completefeishulogin
+ */
+export const completeFeishuLogin = async (params?: CompleteFeishuLoginParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getCompleteFeishuLoginUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getStartFeishuLoginUrl = (params?: StartFeishuLoginParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/login?${stringifiedParams}` : `/api/v1/auth/feishu/login`
+}
+
+/**
+ * 旧登录入口；`connector` 可显式选择企业，不传时使用默认企业。
+ * @summary Startfeishulogin
+ */
+export const startFeishuLogin = async (params?: StartFeishuLoginParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getStartFeishuLoginUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCompleteFeishuLoginForConnectorUrl = (connectorCode: string,
+    params?: CompleteFeishuLoginForConnectorParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/${connectorCode}/callback?${stringifiedParams}` : `/api/v1/auth/feishu/${connectorCode}/callback`
+}
+
+/**
+ * 按路径中的企业标识完成飞书登录回调。
+ * @summary Completefeishuloginforconnector
+ */
+export const completeFeishuLoginForConnector = async (connectorCode: string,
+    params?: CompleteFeishuLoginForConnectorParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getCompleteFeishuLoginForConnectorUrl(connectorCode,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getStartFeishuLoginForConnectorUrl = (connectorCode: string,
+    params?: StartFeishuLoginForConnectorParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/${connectorCode}/login?${stringifiedParams}` : `/api/v1/auth/feishu/${connectorCode}/login`
+}
+
+/**
+ * 按路径中的企业标识发起登录。
+ * @summary Startfeishuloginforconnector
+ */
+export const startFeishuLoginForConnector = async (connectorCode: string,
+    params?: StartFeishuLoginForConnectorParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getStartFeishuLoginForConnectorUrl(connectorCode,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getLogoutCurrentSessionUrl = () => {
+
+
+
+
+  return `/api/v1/auth/logout`
+}
+
+/**
+ * 登出：**服务端撤销会话** + 清 Cookie（幂等，重复登出不报错）。
+ * @summary Logoutcurrentsession
+ */
+export const logoutCurrentSession = async ( options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getLogoutCurrentSessionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
   return data
 }
 

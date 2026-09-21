@@ -89,6 +89,8 @@ def test_current_principal_exposes_only_the_two_role_model() -> None:
         "display_name": "普通用户",
         "role": "user",
         "source": "development",
+        "avatar_url": None,
+        "department_name": None,
         "is_administrator": False,
     }
 
