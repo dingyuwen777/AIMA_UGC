@@ -157,6 +157,18 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('快速估算数量')
   })
 
+  it('筛选目录在后台补齐时保持无感，不展示同步提示', async () => {
+    const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
+      useVoicePlazaStore(pinia).filterOptions = {
+        ...filterOptions,
+        catalog_status: 'building',
+      }
+    })
+
+    expect(html).not.toContain('筛选数据正在后台同步')
+    expect(html).not.toContain('历史情感与标签选项会自动补齐')
+  })
+
   it('终态 Analysis Run 不再作为历史大卡片占据声音广场正文', async () => {
     const terminalRun: AnalysisContentRunResponse = {
       ...baseAnalysisRun,
