@@ -12,7 +12,10 @@ from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
 )
 from aima_ugc.bootstrap import voice_plaza_projection_worker as worker_module
 from aima_ugc.bootstrap.runtime import PlatformRuntime
-from aima_ugc.modules.content.read_model_job import VoicePlazaProjectionJobPayload
+from aima_ugc.modules.content.read_model_job import (
+    VOICE_PLAZA_PROJECTION_JOB_TIMEOUT_SECONDS,
+    VoicePlazaProjectionJobPayload,
+)
 from aima_ugc.platform.jobs import JobExecutionFence
 from sqlalchemy.exc import OperationalError
 
@@ -148,8 +151,12 @@ def test_projection_batch_sets_statement_timeout_and_logs_progress(
     assert timeout_calls == [
         (
             "SELECT set_config('statement_timeout', :timeout, true)",
+            {"timeout": "180s"},
+        ),
+        (
+            "SELECT set_config('transaction_timeout', :timeout, true)",
             {"timeout": "240s"},
-        )
+        ),
     ]
     events = {getattr(record, "event", None): record for record in caplog.records}
     assert events["voice_plaza_projection.batch_started"].batch_number == 1
@@ -158,6 +165,11 @@ def test_projection_batch_sets_statement_timeout_and_logs_progress(
     assert completed.projected_count == 500
     assert completed.total_content_count == 500
     assert completed.duration_ms >= 0
+    assert (
+        worker_module._BATCHES_PER_JOB  # noqa: SLF001
+        * worker_module._BATCH_TRANSACTION_TIMEOUT_SECONDS  # noqa: SLF001
+        < VOICE_PLAZA_PROJECTION_JOB_TIMEOUT_SECONDS
+    )
 
 
 def test_projection_batch_database_error_logs_safe_retry(

@@ -1687,3 +1687,48 @@ def test_0051_creates_and_drops_canonical_replay_schema(
         assert "canonical_replay_seen_content" not in inspector.get_table_names()
     finally:
         engine.dispose()
+
+
+def test_0055_creates_and_drops_voice_plaza_source_lookup_indexes(
+    migration_database: str,
+) -> None:
+    """声音广场来源反查索引可以从 0054 建立并无损回滚。"""
+
+    expected = {
+        "processing_import_batch_items": "ix_processing_import_batch_items_content_id",
+        "collection_candidate_ingestions": "ix_collection_candidate_ingestions_content_id",
+    }
+    _upgrade(migration_database, "20260920_0054")
+    _upgrade(migration_database, "20260921_0055")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        for table_name, index_name in expected.items():
+            indexes = {entry["name"] for entry in inspector.get_indexes(table_name)}
+            assert index_name in indexes
+        with engine.connect() as connection:
+            definitions = {
+                row.indexname: row.indexdef
+                for row in connection.execute(
+                    text(
+                        "SELECT indexname, indexdef FROM pg_indexes "
+                        "WHERE schemaname = current_schema() "
+                        "AND indexname = ANY(:index_names)"
+                    ),
+                    {"index_names": list(expected.values())},
+                )
+            }
+        assert set(definitions) == set(expected.values())
+        assert all("WHERE (content_id IS NOT NULL)" in value for value in definitions.values())
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260920_0054")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        for table_name, index_name in expected.items():
+            indexes = {entry["name"] for entry in inspector.get_indexes(table_name)}
+            assert index_name not in indexes
+    finally:
+        engine.dispose()
