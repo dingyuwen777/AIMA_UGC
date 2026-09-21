@@ -3,18 +3,18 @@ import { computed, onMounted, onServerPrefetch, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useIdentityStore } from '../features/identity/store'
+import {
+  getStartFeishuLoginUrl,
+  listAuthConnectors,
+  type AuthConnectorResponse,
+  type StartFeishuLoginParams,
+} from '../generated/api/client'
 
 const route = useRoute()
 const identity = useIdentityStore()
 
-/** 可登录企业的列表端点。**单企业部署时它不存在（404）**，所以下面必须容忍失败。 */
-const CONNECTORS_ENDPOINT = '/api/v1/auth/connectors'
-
-/** 一个可登录的飞书企业（只取展示与路由所需的两个字段，与后端契约一致）。 */
-interface LoginConnector {
-  code: string
-  display_name: string
-}
+/** 一个可登录的飞书企业；类型直接来自 OpenAPI 生成客户端，不另维护平行契约。 */
+type LoginConnector = AuthConnectorResponse
 
 const connectors = ref<LoginConnector[]>([])
 
@@ -38,19 +38,16 @@ function toConnector(value: unknown): LoginConnector | null {
  * 读取可登录企业列表。
  *
  * ⚠️ 这个请求**刻意不是**"必须成功"的：
- * · 单企业部署时后端根本不注册该端点（404）；
- * · 它在登录页、未认证状态下调用，网络/服务异常都可能发生。
+ * · 单企业部署返回空列表，旧版本后端可能返回 404；
+ * · 它在登录页、未认证状态下调用，网络/服务异常也可能发生。
  * 因此**任何失败都只把列表留空**，页面随后走"单个飞书登录按钮"的降级分支 ——
  * 绝不能让一个可选接口把整个登录入口拖down。
  */
 async function loadConnectors(): Promise<void> {
   try {
-    const response = await fetch(CONNECTORS_ENDPOINT, {
-      headers: { Accept: 'application/json' },
-    })
-    // 404（单企业）/ 5xx 等都按"拿不到列表"处理，不区分——对用户而言结果一样。
-    if (!response.ok) return
-    const payload: unknown = await response.json()
+    // 使用 OpenAPI 生成客户端保持 URL 与契约单一来源；旧后端 404/5xx 返回的错误对象
+    // 没有 `items`，会与网络异常一样自然落入下方的空列表降级。
+    const payload: unknown = await listAuthConnectors()
     const items = (payload as { items?: unknown }).items
     if (!Array.isArray(items)) return
     connectors.value = items
@@ -117,12 +114,11 @@ const showConnectorList = computed(
  * （`/api/v1/auth/feishu/login`），必须逐字保持。
  */
 function loginHrefFor(connectorCode = ''): string {
-  const params = new URLSearchParams()
+  const params: StartFeishuLoginParams = {}
   const returnTo = typeof route.query.return_to === 'string' ? route.query.return_to : undefined
-  if (returnTo) params.set('return_to', returnTo)
-  if (connectorCode) params.set('connector', connectorCode)
-  const query = params.toString()
-  return `/api/v1/auth/feishu/login${query ? `?${query}` : ''}`
+  if (returnTo) params.return_to = returnTo
+  if (connectorCode) params.connector = connectorCode
+  return getStartFeishuLoginUrl(params)
 }
 
 /**

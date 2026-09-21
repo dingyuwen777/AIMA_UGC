@@ -22,7 +22,7 @@
 | 绕过形态 | 为什么危险 |
 |---|---|
 | `//evil.example` | **协议相对 URL** —— 浏览器会跳到 `https://evil.example` |
-| `/\evil.example` | 浏览器把反斜杠当 `/`，等价于上面那条 |
+| `/\\evil.example` | 浏览器把反斜杠当 `/`，等价于上面那条 |
 | `/%2f%2fevil.example` | 编码斜杠，解码后变成 `//evil.example` |
 | `/path\r\nSet-Cookie:` | **CRLF 注入**，可污染响应头 |
 | `https://evil.example` | 绝对 URL，直接跳外站 |

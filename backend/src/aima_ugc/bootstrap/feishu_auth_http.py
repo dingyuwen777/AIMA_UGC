@@ -1,4 +1,4 @@
-"""飞书登录的三个 HTTP 路由（登录 / 回调 / 登出）与它们的装配。
+"""飞书登录、回调、Connector 列表、登出 HTTP 路由与它们的装配。
 
 ════════ 这个模块负责什么 ════════
 
@@ -15,7 +15,7 @@
 
 ════════ 为什么不改 `modules/identity/feishu/` ════════
 
-单 ①② 已验收的零件（适配器 / 映射 / 会话）保持**逐字不动**：本模块只做"接线与编排"，
+适配器 / 映射 / 会话继续各自负责协议、持久化与解析，本模块只做"接线与编排"；
 飞书协议细节仍留在 `modules/identity/feishu/` 内。`AuthenticationRequired` 之所以定义
 在这里而不是 `modules/identity/models.py`，是因为 `Principal` 契约与既有异常禁止改动
 （任务书 §2.2）；它继承 `AuthorizationDenied`，因此既有 `except AuthorizationDenied`
@@ -86,6 +86,7 @@ from aima_ugc.modules.identity.feishu.redirect import (
 from aima_ugc.modules.identity.tables import identity_login_states_table
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.config import PlatformSettings, load_settings
+from aima_ugc.platform.config.settings import DEFAULT_FEISHU_APP_SECRET_REF
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.time import beijing_now
@@ -157,6 +158,7 @@ class FeishuAuthSettings:
         self,
         *,
         app_id: str,
+        app_secret_ref: str = DEFAULT_FEISHU_APP_SECRET_REF,
         admin_group_id: str,
         user_group_id: str,
         redirect_uri: str,
@@ -166,9 +168,10 @@ class FeishuAuthSettings:
         state_ttl: timedelta = DEFAULT_STATE_TTL,
         cookie_name: str = SESSION_COOKIE_NAME,
     ) -> None:
-        """保存已校验的配置；`connector_id` 由 `app_id` 确定性派生（本期单企业）。"""
+        """保存一家企业的已校验配置；`connector_id` 由 `app_id` 确定性派生。"""
 
         self.app_id = app_id
+        self.app_secret_ref = app_secret_ref
         self.admin_group_id = admin_group_id
         self.user_group_id = user_group_id
         self.redirect_uri = redirect_uri
@@ -195,7 +198,9 @@ class FeishuAuthSettings:
         算法不一致会让同一家企业在两处得到不同 ID，导致身份映射对不上。
         """
 
-        return uuid5(NAMESPACE_URL, f"https://aima.local/identity/connectors/feishu/{self.app_id}").hex
+        return uuid5(
+            NAMESPACE_URL, f"https://aima.local/identity/connectors/feishu/{self.app_id}"
+        ).hex
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,8 +295,8 @@ class _LoginStateStore:
         *,
         return_to: str,
         ttl: timedelta,
+        connector_id: str,
         client_ip: str | None = None,
-        connector_id: str | None = None,
     ) -> str:
         """生成新 state 并记录（返回原文，**只在这一次存在于内存**）。
 
@@ -300,7 +305,8 @@ class _LoginStateStore:
 
         `connector_id` **记住这次登录属于哪家企业**。回调时必须核对它与路径里的
         企业标识一致 —— 否则会出现"用 A 企业的 state 走 B 企业的回调"
-        （跨企业串号，见 `consume` 的说明）。单企业形态下仍传 `None`（该列可空）。
+        （跨企业串号，见 `consume` 的说明）。单企业也用 App ID 派生稳定 Connector ID，
+        因而每条 state 都有明确企业归属。
         """
 
         state = secrets.token_urlsafe(32)
@@ -322,7 +328,7 @@ class _LoginStateStore:
         self,
         state: str,
         *,
-        expected_connector_id: str | None = None,
+        expected_connector_id: str,
     ) -> str:
         """**原子**消费 state 并返回其中的 `return_to`；不可用时抛 `LoginStateInvalid`。
 
@@ -336,8 +342,8 @@ class _LoginStateStore:
           若不做校验，系统会用 **B 的 App Secret** 去换 **A 的授权码** ——
           正常情况会失败，但**错误信息可能暴露配置差异**；
           更糟的是两家 Secret 若被配成同一个，会直接**串号**。
-        · `None` 表示**单企业形态**（此时 state 里没记企业），跳过该校验 ——
-          这就是"改造后旧行为不变"的保证。
+        · 单企业与多企业都传入 expected Connector ID；旧路径只是使用默认企业，
+          不代表 state 可以没有企业归属。
         """
 
         if not state:
@@ -364,11 +370,7 @@ class _LoginStateStore:
         if row is not None:
             issued_connector_id = row[1]
             # ── 跨企业串号防护（多企业形态才生效）──────────────────────────
-            if (
-                expected_connector_id is not None
-                and issued_connector_id is not None
-                and issued_connector_id != expected_connector_id
-            ):
+            if issued_connector_id != expected_connector_id:
                 # ⚠️ state **已被消费**（上面那条 UPDATE 已写 consumed_at）——
                 # 这是刻意的：一次串号尝试不该让同一个 state 还能被重放。
                 raise LoginStateInvalid("connector_mismatch")
@@ -432,6 +434,7 @@ def build_feishu_auth_settings(settings: PlatformSettings) -> FeishuAuthSettings
 
     return FeishuAuthSettings(
         app_id=app_id,
+        app_secret_ref=settings.feishu_app_secret_ref,
         admin_group_id=admin_group_id,
         user_group_id=user_group_id,
         redirect_uri=redirect_uri,
@@ -471,7 +474,7 @@ class FeishuAuthRoutes:
         connector_display_names: Mapping[str, str] | None = None,
         session_factory: Callable[[], Session] | None = None,
         client: HttpxFeishuClient | None = None,
-        app_secret_reader: Callable[[], SecretStr] | None = None,
+        app_secret_reader: Callable[[str], SecretStr] | None = None,
         rate_limiter: LoginRateLimiter | None = None,
     ) -> None:
         """保存配置与可注入依赖；`session_factory` / `client` 未注入时惰性自建。
@@ -485,6 +488,7 @@ class FeishuAuthRoutes:
         self._settings = auth_settings
         self._session_factory = session_factory
         self._client = client
+        self._clients: dict[str, HttpxFeishuClient] = {}
         self._app_secret_reader = app_secret_reader
         # 登录入口限流（方案 §6.0 S8）：默认双轨阈值；测试可注入更小的值。
         self._rate_limiter = rate_limiter or LoginRateLimiter(
@@ -533,10 +537,9 @@ class FeishuAuthRoutes:
             return self._settings
         return self._connectors.get(connector_code)
 
-
     # ------------------------------------------------------------------ 装配
     def install(self, application: FastAPI) -> None:
-        """把中间件、异常处理器与三个路由装到应用上。"""
+        """把中间件、异常处理器与身份路由装到应用上。"""
 
         application.add_middleware(_CookieRedactingMiddleware)
 
@@ -555,9 +558,7 @@ class FeishuAuthRoutes:
             )
 
         @application.exception_handler(LoginRateLimited)
-        async def _handle_login_rate_limited(
-            request: Request, _: LoginRateLimited
-        ) -> JSONResponse:
+        async def _handle_login_rate_limited(request: Request, _: LoginRateLimited) -> JSONResponse:
             """登录发起过于频繁 → 429（S8）。
 
             ⚠️ 对外**不区分** IP 维度与全局维度，也不回显当前计数 ——
@@ -626,7 +627,7 @@ class FeishuAuthRoutes:
         #     · `/connectors` → **200 + 空列表**（前端据此降级为单按钮）
         application.add_api_route(
             MULTI_LOGIN_PATH,
-            self.login,
+            self.login_for_connector,
             methods=["GET"],
             operation_id="startFeishuLoginForConnector",
             name="startFeishuLoginForConnector",
@@ -635,7 +636,7 @@ class FeishuAuthRoutes:
         )
         application.add_api_route(
             MULTI_CALLBACK_PATH,
-            self.callback,
+            self.callback_for_connector,
             methods=["GET"],
             operation_id="completeFeishuLoginForConnector",
             name="completeFeishuLoginForConnector",
@@ -666,12 +667,14 @@ class FeishuAuthRoutes:
 
     @staticmethod
     def _error_responses() -> dict[int | str, dict[str, Any]]:
-        """三个路由共用的稳定错误 Contract（全部走统一 `HttpErrorResponse`）。"""
+        """认证路由共用的稳定错误 Contract（全部走统一 `HttpErrorResponse`）。"""
 
         return {
             400: {"model": HttpErrorResponse},
             401: {"model": HttpErrorResponse},
             403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            429: {"model": HttpErrorResponse},
             502: {"model": HttpErrorResponse},
             503: {"model": HttpErrorResponse},
         }
@@ -690,6 +693,9 @@ class FeishuAuthRoutes:
                 try:
                     yield
                 finally:
+                    for client in self._clients.values():
+                        client.close()
+                    self._clients.clear()
                     if self._runtime is not None:
                         self._runtime.dispose()
 
@@ -728,21 +734,27 @@ class FeishuAuthRoutes:
             # `AuthorizationDenied`；这些语义都是**未登录**，翻译成 401。
             raise AuthenticationRequired("当前请求没有可用会话") from exc
 
-    def _feishu_client(self) -> HttpxFeishuClient:
-        """返回飞书客户端；未注入时按配置惰性建立（Secret 只在此时读取一次）。"""
+    def _feishu_client(self, auth_settings: FeishuAuthSettings) -> HttpxFeishuClient:
+        """按企业返回飞书客户端；每家企业只读取一次自己的 Secret 并独立缓存。"""
 
-        if self._client is None:
-            if self._settings is None:
-                raise RuntimeError("飞书未配置")
-            reader = self._app_secret_reader or self._default_app_secret_reader
-            self._client = HttpxFeishuClient(
-                app_id=self._settings.app_id,
-                app_secret=reader(),
-            )
-        return self._client
+        # 注入客户端只用于测试或显式的单客户端装配；生产路径始终走下方按企业缓存。
+        if self._client is not None:
+            return self._client
+
+        existing = self._clients.get(auth_settings.connector_id)
+        if existing is not None:
+            return existing
+
+        reader = self._app_secret_reader or self._default_app_secret_reader
+        created = HttpxFeishuClient(
+            app_id=auth_settings.app_id,
+            app_secret=reader(auth_settings.app_secret_ref),
+        )
+        self._clients[auth_settings.connector_id] = created
+        return created
 
     @staticmethod
-    def _default_app_secret_reader() -> SecretStr:
+    def _default_app_secret_reader(secret_ref: str) -> SecretStr:
         """按配置里的 **Secret 引用**读 App Secret（绝对路径不回显、不写日志）。"""
 
         from aima_ugc.platform.security import read_secret_ref
@@ -750,7 +762,7 @@ class FeishuAuthRoutes:
         settings = load_settings()
         return read_secret_ref(
             settings.external_secret_root,
-            settings.feishu_app_secret_ref,
+            secret_ref,
         )
 
     # ------------------------------------------------------------------ 路由
@@ -779,10 +791,38 @@ class FeishuAuthRoutes:
         self,
         request: Request,
         return_to: str | None = None,
-        connector_code: str | None = None,
         connector: str | None = None,
     ) -> Response:
-        """发起登录：限流 → 校验 `return_to` → 生成一次性 state → 302 跳飞书授权页。
+        """旧登录入口；`connector` 可显式选择企业，不传时使用默认企业。"""
+
+        return self._start_login(
+            request,
+            return_to=return_to,
+            connector_code=connector,
+        )
+
+    def login_for_connector(
+        self,
+        request: Request,
+        connector_code: str,
+        return_to: str | None = None,
+    ) -> Response:
+        """按路径中的企业标识发起登录。"""
+
+        return self._start_login(
+            request,
+            return_to=return_to,
+            connector_code=connector_code,
+        )
+
+    def _start_login(
+        self,
+        request: Request,
+        *,
+        return_to: str | None,
+        connector_code: str | None,
+    ) -> Response:
+        """限流 → 校验 `return_to` → 生成一次性 state → 302 跳飞书授权页。
 
         **企业标识的两个来源**：
 
@@ -799,17 +839,16 @@ class FeishuAuthRoutes:
         两者都没传时走默认那家（单企业形态即唯一那家）—— **旧行为不变**。
         """
 
-        effective_connector = connector_code or connector
-        auth_settings = self._require_settings(effective_connector)
+        auth_settings = self._require_settings(connector_code)
         # 只有站内相对路径能通过；其余（绝对 URL / //evil / javascript:）退回 "/"。
         target = safe_return_to(return_to)
         client_ip = client_ip_of(request)
         session = self._sessions()()
         try:
             with session.begin():
-                # ⚠️ 限流判断与"写 state"**必须在同一事务**里：
-                # 计数读的是本表过去 60 秒的行数，若分成两个事务，
-                # 并发请求会同时读到偏小的计数，阈值被绕过。
+                # ⚠️ 限流判断与"写 state"**必须在同一事务**里：限流器取得的
+                # PostgreSQL 事务锁会一直持有到 state 提交，使并发请求依次看到
+                # 最新计数；若拆成两个事务，锁提前释放后仍可能一起越过阈值。
                 try:
                     self._rate_limiter.check(session, client_ip=client_ip)
                 except LoginRateLimited as exc:
@@ -856,9 +895,41 @@ class FeishuAuthRoutes:
         request: Request,
         code: str | None = None,
         state: str | None = None,
-        connector_code: str | None = None,
     ) -> Response:
-        """飞书回跳：消费 state → 换令牌 → 取用户 → 查组 → 判角色 → 建会话 → 302。
+        """旧回调入口；使用默认企业并完成飞书登录。"""
+
+        return self._complete_login(
+            request,
+            code=code,
+            state=state,
+            connector_code=None,
+        )
+
+    def callback_for_connector(
+        self,
+        request: Request,
+        connector_code: str,
+        code: str | None = None,
+        state: str | None = None,
+    ) -> Response:
+        """按路径中的企业标识完成飞书登录回调。"""
+
+        return self._complete_login(
+            request,
+            code=code,
+            state=state,
+            connector_code=connector_code,
+        )
+
+    def _complete_login(
+        self,
+        request: Request,
+        *,
+        code: str | None,
+        state: str | None,
+        connector_code: str | None,
+    ) -> Response:
+        """消费 state → 换令牌 → 取用户 → 查组 → 判角色 → 建会话 → 302。
 
         ⚠️⚠️ **参数名不能叫 `code`**：飞书的 OAuth 授权码在 query string 里叫 `code`，
         若路径参数也叫 `code`，FastAPI 会**静默**把路径值（企业标识）填进这个参数，
@@ -891,13 +962,11 @@ class FeishuAuthRoutes:
         try:
             with session.begin():
                 try:
-                    # 多企业形态下额外核对"签发 state 的企业 == 现在回调的企业"。
-                    # 单企业形态（旧路由不带 code）传 `None`，跳过校验 —— 旧行为不变。
+                    # 所有形态都核对"签发 state 的企业 == 当前回调选择的企业"；
+                    # 旧路由没有路径 code 时使用默认企业，但同样不能跳过绑定。
                     return_to = _LoginStateStore(session).consume(
                         state or "",
-                        expected_connector_id=(
-                            auth_settings.connector_id if connector_code is not None else None
-                        ),
+                        expected_connector_id=auth_settings.connector_id,
                     )
                 except LoginStateInvalid as exc:
                     log_event(
@@ -919,7 +988,7 @@ class FeishuAuthRoutes:
             session.close()
 
         # ⚠️ 外部 HTTP 一律在数据库事务之外（AGENTS §7）。
-        client = self._feishu_client()
+        client = self._feishu_client(auth_settings)
         try:
             tokens = client.exchange_authorization_code(code)
             user = client.get_current_user(tokens.access_token)
@@ -1184,7 +1253,6 @@ class FeishuAuthRoutes:
         return found
 
 
-
 class _FeishuNotConfigured(Exception):
     """飞书登录未配置（`AIMA_FEISHU_*` 未提供）。"""
 
@@ -1203,9 +1271,8 @@ class _UnknownConnector(Exception):
         super().__init__(f"未知的飞书企业标识：{connector_code}")
 
 
-
 def _service_unavailable(request: Request, _: Exception) -> JSONResponse:
-    """未配置飞书时三个路由统一返回 503（而不是 500 或 404）。"""
+    """未配置飞书时登录/回调路由统一返回 503（而不是 500 或 404）。"""
 
     return _error_response(
         status_code=503,
@@ -1268,13 +1335,18 @@ def build_feishu_identity(
 
     resolved_settings = load_settings() if settings is None else settings
 
+    def read_app_secret(secret_ref: str) -> SecretStr:
+        """从本次装配使用的 Secret 根读取指定企业的引用。"""
+
+        from aima_ugc.platform.security import read_secret_ref
+
+        return read_secret_ref(resolved_settings.external_secret_root, secret_ref)
+
     # ── 多企业优先：配了 `AIMA_FEISHU_CONNECTORS` 就以它为准 ──────────────
     connector_map = _build_connector_settings_map(resolved_settings)
     if connector_map:
         registry = resolved_settings.feishu_connectors
-        display_names = (
-            {c.code: c.display_name for c in registry} if registry is not None else {}
-        )
+        display_names = {c.code: c.display_name for c in registry} if registry is not None else {}
         routes = FeishuAuthRoutes(
             # 多企业时 `auth_settings` 传**第一家**：旧路由（无 code）用它兜底，
             # 这样已登记进飞书后台的旧回调地址不会立刻失效。
@@ -1283,6 +1355,7 @@ def build_feishu_identity(
             connector_display_names=display_names,
             session_factory=session_factory,
             client=client,
+            app_secret_reader=read_app_secret,
         )
         resolver: IdentityResolver = FeishuLoginRequiredResolver(routes)
         return resolver, routes
@@ -1293,6 +1366,7 @@ def build_feishu_identity(
         auth_settings=auth_settings,
         session_factory=session_factory,
         client=client,
+        app_secret_reader=read_app_secret,
     )
     if auth_settings is None:
         # 未配置：既不产生 401 语义，也不改变任何既有路由的行为。
@@ -1321,6 +1395,7 @@ def _build_connector_settings_map(
     for connector in registry:
         result[connector.code] = FeishuAuthSettings(
             app_id=connector.app_id,
+            app_secret_ref=connector.app_secret_ref,
             admin_group_id=connector.admin_group_id,
             user_group_id=connector.user_group_id,
             redirect_uri=connector.redirect_uri,
@@ -1334,7 +1409,6 @@ def _build_connector_settings_map(
             state_ttl=timedelta(seconds=settings.feishu_state_ttl_seconds),
         )
     return result
-
 
 
 def install_feishu_auth_routes(

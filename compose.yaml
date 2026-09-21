@@ -38,6 +38,7 @@ x-backend-environment: &backend-environment
   - AIMA_FEISHU_COOKIE_SECURE
   - AIMA_FEISHU_SESSION_TTL_HOURS
   - AIMA_FEISHU_STATE_TTL_SECONDS
+  - AIMA_FEISHU_CONNECTORS
 
 x-backend-build: &backend-build
   context: .

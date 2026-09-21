@@ -89,7 +89,7 @@ export const useIdentityStore = defineStore('identity', () => {
   /** 退出登录：先让**服务端**撤销会话，再清空本地身份状态。 */
   async function logout(): Promise<void> {
     try {
-      await logoutCurrentSession()
+      unwrapResponse(await logoutCurrentSession())
     } finally {
       // 服务端即便报错也要清本地状态：否则页面会停在"看着还登着"的假象里。
       principal.value = null

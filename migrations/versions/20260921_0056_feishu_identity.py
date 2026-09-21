@@ -7,14 +7,15 @@
     identity_login_states          OAuth state（一次性，只存 hash）
     identity_sessions              AIMA 会话（只存 token 的 hash）
 
-**不修改任何历史 Migration**：`down_revision` 指向当时的 head `20260913_0052`。
-（本迁移文件当时**尚未提交入库**，故补列时直接改本文件，不新建第二个迁移。）
+本 Migration 是身份能力首次进入 canonical 主分支的完整 Schema，接在当前真实 head
+`20260921_0055` 之后。交付包中未进入主分支的旧迁移编号不构成项目历史事实，不能与
+已经存在的声音广场 Migration 形成平行 head 或重复 revision。
 
 本迁移与 `backend/src/aima_ugc/modules/identity/tables.py` **逐列一致**，
 `alembic check` 必须保持 `No new upgrade operations`。
 
-Revision ID: 20260917_0053
-Revises: 20260913_0052
+Revision ID: 20260921_0056
+Revises: 20260921_0055
 """
 
 from collections.abc import Sequence
@@ -22,8 +23,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260917_0053"
-down_revision: str | Sequence[str] | None = "20260913_0052"
+revision: str = "20260921_0056"
+down_revision: str | Sequence[str] | None = "20260921_0055"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -48,7 +49,7 @@ def upgrade() -> None:
         "identity_external_identities",
         sa.Column("id", sa.Text(), nullable=False),
         sa.Column("principal_id", sa.Text(), nullable=False),
-        # 哪家企业（本期单企业，仍保留列，便于将来多企业接入时不必改身份模型）。
+        # 哪家企业；多 Connector 依靠该列隔离相同的 Provider Subject。
         sa.Column("connector_id", sa.Text(), nullable=False),
         sa.Column("provider", sa.Text(), nullable=False),
         sa.Column("provider_subject", sa.Text(), nullable=False),
@@ -87,11 +88,10 @@ def upgrade() -> None:
     op.create_table(
         "identity_login_states",
         sa.Column("state_hash", sa.Text(), nullable=False),
-        # 这次登录属于哪家企业（本期单企业，暂不填写 → **可空**）。
-        # ⚠️ 刻意不加 ForeignKey：本期还没有 identity_connectors 表可引用，
-        # 加了外键迁移会直接失败。等多企业阶段再单独迁移补齐。
-        sa.Column("connector_id", sa.Text(), nullable=True),
+        # 所有 state 都绑定 Connector ID；当前没有持久 identity_connectors 表，故不建虚假外键。
+        sa.Column("connector_id", sa.Text(), nullable=False),
         sa.Column("return_to", sa.Text(), nullable=True),
+        sa.Column("client_ip", sa.Text(), nullable=True),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -100,6 +100,16 @@ def upgrade() -> None:
             name=op.f("ck_identity_login_states_state_hash_nonempty"),
         ),
         sa.PrimaryKeyConstraint("state_hash", name=op.f("pk_identity_login_states")),
+    )
+    op.create_index(
+        "ix_identity_login_states_client_ip_created",
+        "identity_login_states",
+        ["client_ip", "created_at"],
+    )
+    op.create_index(
+        "ix_identity_login_states_created",
+        "identity_login_states",
+        ["created_at"],
     )
     op.create_table(
         "identity_sessions",
@@ -114,8 +124,8 @@ def upgrade() -> None:
         sa.Column("feishu_group_ids", sa.Text(), nullable=True),
         # 上一次判出来的角色（角色刷新时记下旧角色，供变更审计）。
         sa.Column("role_snapshot", sa.Text(), nullable=True),
-        # 上一次向飞书核对角色/权限的时间（方案 §2.3：会话每 8 小时刷新角色）。
-        # NOT NULL 必须配 server_default，否则已有数据的库加列会报 NOT NULL 违反。
+        # 最近一次完成飞书授权判定的时间；当前版本不自动回查飞书。
+        # NOT NULL 配 server_default，保证首次签发会话时该事实非空。
         sa.Column(
             "authorization_checked_at",
             sa.DateTime(timezone=True),
@@ -158,15 +168,18 @@ def upgrade() -> None:
 def downgrade() -> None:
     """按外键依赖顺序回滚：先删引用方，再删被引用的 `identity_principals`。
 
-    本次新增的 4 列（`identity_sessions.authorization_checked_at` /
-    `feishu_group_ids` / `role_snapshot`，`identity_login_states.connector_id`）
-    都随 `op.create_table` 一起建，因此 `op.drop_table` 会连列一起删掉 ——
-    **无需**再写 `op.drop_column`（那会和 drop_table 重复，属多余动作）。
+    所有身份列与登录限流索引都由本 Migration 首次建立；回滚时先删除显式索引，
+    再按外键依赖顺序删除表。
     回滚后 4 张 `identity_*` 表全部消失。
     """
 
     op.drop_index("ix_identity_sessions_principal_id", table_name="identity_sessions")
     op.drop_table("identity_sessions")
+    op.drop_index("ix_identity_login_states_created", table_name="identity_login_states")
+    op.drop_index(
+        "ix_identity_login_states_client_ip_created",
+        table_name="identity_login_states",
+    )
     op.drop_table("identity_login_states")
     op.drop_index(
         "ix_identity_external_identities_principal_id",

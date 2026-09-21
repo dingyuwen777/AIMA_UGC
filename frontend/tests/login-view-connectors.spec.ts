@@ -35,7 +35,7 @@ function connectorsOk(items: unknown[]) {
   return mock
 }
 
-/** 模拟单企业部署：该端点**根本没注册**，返回 404。 */
+/** 模拟滚动升级期间仍在运行的旧后端：端点尚未注册，返回 404。 */
 function connectorsMissing() {
   const mock = vi.fn(async () => new Response('{"detail":"Not Found"}', { status: 404 }))
   vi.stubGlobal('fetch', mock)
@@ -124,7 +124,7 @@ describe('登录页：多企业自动路由', () => {
     )
   })
 
-  it('接口 404（单企业部署）：降级为单个「飞书登录」按钮，链接不带 connector', async () => {
+  it('旧后端接口 404：降级为单个「飞书登录」按钮，链接不带 connector', async () => {
     connectorsMissing()
 
     const html = await renderLogin()

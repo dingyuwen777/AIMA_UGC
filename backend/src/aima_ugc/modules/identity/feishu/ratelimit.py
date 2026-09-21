@@ -68,6 +68,11 @@ DEFAULT_GLOBAL_LIMIT = 240
 # 超过 200 次/分钟仍会被拒（429），全局 240/分钟这一层也仍然独立生效。
 DEFAULT_IP_LIMIT = 200
 
+# PostgreSQL 事务级 advisory lock 的稳定命名空间。全局限流必须让所有 API 进程
+# 在“计数 → 写入登录 state”这一小段事务上排队，否则 READ COMMITTED 下多个并发
+# 请求可能同时读到相同旧计数并一起越过阈值。
+_LOGIN_RATE_LIMIT_LOCK_KEY = "aima.identity.feishu.login-rate-limit.v1"
+
 
 class LoginRateLimited(RuntimeError):
     """发起登录过于频繁（IP 维度或全局维度任一超限）。"""
@@ -85,8 +90,9 @@ class LoginRateLimited(RuntimeError):
 class LoginRateLimiter:
     """按"过去 60 秒内已发起多少次登录"判断是否放行。
 
-    计数直接读 `identity_login_states` —— 调用方必须把本判断与"写 state"
-    放在**同一个事务**里，否则并发下会出现"读到的计数偏小"的竞态。
+    计数直接读 `identity_login_states`。本方法先取得 PostgreSQL 事务级 advisory
+    lock；调用方还必须把本判断与"写 state"放在**同一个事务**里，锁才能一直
+    持有到新 state 提交，使并发请求看到前一个请求已经提交的计数。
     """
 
     global_limit: int = DEFAULT_GLOBAL_LIMIT
@@ -110,6 +116,9 @@ class LoginRateLimiter:
         （反向代理配置差异、测试环境等都可能取不到），此时仍受全局阈值保护。
         """
 
+        session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(_LOGIN_RATE_LIMIT_LOCK_KEY, 0)))
+        )
         since = beijing_now() - self.window
 
         # ① 全局维度：过去一个窗口内所有登录发起
@@ -122,9 +131,7 @@ class LoginRateLimiter:
             or 0
         )
         if global_count >= self.global_limit:
-            raise LoginRateLimited(
-                scope="global", limit=self.global_limit, observed=global_count
-            )
+            raise LoginRateLimited(scope="global", limit=self.global_limit, observed=global_count)
 
         # ② IP 维度：过去一个窗口内同一来源
         if client_ip:
@@ -140,9 +147,7 @@ class LoginRateLimiter:
                 or 0
             )
             if ip_count >= self.ip_limit:
-                raise LoginRateLimited(
-                    scope="ip", limit=self.ip_limit, observed=ip_count
-                )
+                raise LoginRateLimited(scope="ip", limit=self.ip_limit, observed=ip_count)
 
 
 def client_ip_of(request: object) -> str | None:

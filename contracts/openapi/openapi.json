@@ -10241,7 +10241,7 @@
     },
     "/api/v1/auth/feishu/callback": {
       "get": {
-        "description": "飞书回跳：消费 state → 换令牌 → 取用户 → 查组 → 判角色 → 建会话 → 302。\n\n⚠️⚠️ **参数名不能叫 `code`**：飞书的 OAuth 授权码在 query string 里叫 `code`，\n若路径参数也叫 `code`，FastAPI 会**静默**把路径值（企业标识）填进这个参数，\n真正的授权码就取不到了 —— 且**不报错**，表现成\"飞书说授权码无效\"。\n\n`connector_code` 由新路由\n`/api/v1/auth/feishu/{connector_code}/callback` 注入；\n旧路由不传它，走 `self._settings`（**行为与改造前逐字一致**）。",
+        "description": "旧回调入口；使用默认企业并完成飞书登录。",
         "operationId": "completeFeishuLogin",
         "parameters": [
           {
@@ -10275,22 +10275,6 @@
               ],
               "title": "State"
             }
-          },
-          {
-            "in": "query",
-            "name": "connector_code",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Connector Code"
-            }
           }
         ],
         "responses": {
@@ -10332,6 +10316,16 @@
             },
             "description": "Forbidden"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10341,6 +10335,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "502": {
             "content": {
@@ -10371,7 +10375,7 @@
     },
     "/api/v1/auth/feishu/login": {
       "get": {
-        "description": "发起登录：限流 → 校验 `return_to` → 生成一次性 state → 302 跳飞书授权页。\n\n**企业标识的两个来源**：\n\n| 参数 | 来自 | 用于 |\n|---|---|---|\n| `connector_code` | 新路由的**路径** `/feishu/{connector_code}/login` | 多企业主路径 |\n| `connector` | 旧路由 **query** `/feishu/login?connector=aima` | 兼容主页带 `?c=` |\n\n⚠️ 为什么旧路由也要支持指定企业（`?connector=`）：\n飞书后台的「网页应用主页」会配成 `http://x/login?c=aima`，\n前端登录页读到 `?c=` 后**转发给后端**，从而自动路由到正确企业 ——\n用户**不需要在企业列表里手动选**。\n\n两者都没传时走默认那家（单企业形态即唯一那家）—— **旧行为不变**。",
+        "description": "旧登录入口；`connector` 可显式选择企业，不传时使用默认企业。",
         "operationId": "startFeishuLogin",
         "parameters": [
           {
@@ -10388,22 +10392,6 @@
                 }
               ],
               "title": "Return To"
-            }
-          },
-          {
-            "in": "query",
-            "name": "connector_code",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Connector Code"
             }
           },
           {
@@ -10462,6 +10450,16 @@
             },
             "description": "Forbidden"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10471,6 +10469,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "502": {
             "content": {
@@ -10501,7 +10509,7 @@
     },
     "/api/v1/auth/feishu/{connector_code}/callback": {
       "get": {
-        "description": "飞书回跳：消费 state → 换令牌 → 取用户 → 查组 → 判角色 → 建会话 → 302。\n\n⚠️⚠️ **参数名不能叫 `code`**：飞书的 OAuth 授权码在 query string 里叫 `code`，\n若路径参数也叫 `code`，FastAPI 会**静默**把路径值（企业标识）填进这个参数，\n真正的授权码就取不到了 —— 且**不报错**，表现成\"飞书说授权码无效\"。\n\n`connector_code` 由新路由\n`/api/v1/auth/feishu/{connector_code}/callback` 注入；\n旧路由不传它，走 `self._settings`（**行为与改造前逐字一致**）。",
+        "description": "按路径中的企业标识完成飞书登录回调。",
         "operationId": "completeFeishuLoginForConnector",
         "parameters": [
           {
@@ -10509,15 +10517,8 @@
             "name": "connector_code",
             "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Connector Code"
+              "title": "Connector Code",
+              "type": "string"
             }
           },
           {
@@ -10592,6 +10593,16 @@
             },
             "description": "Forbidden"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10601,6 +10612,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "502": {
             "content": {
@@ -10631,7 +10652,7 @@
     },
     "/api/v1/auth/feishu/{connector_code}/login": {
       "get": {
-        "description": "发起登录：限流 → 校验 `return_to` → 生成一次性 state → 302 跳飞书授权页。\n\n**企业标识的两个来源**：\n\n| 参数 | 来自 | 用于 |\n|---|---|---|\n| `connector_code` | 新路由的**路径** `/feishu/{connector_code}/login` | 多企业主路径 |\n| `connector` | 旧路由 **query** `/feishu/login?connector=aima` | 兼容主页带 `?c=` |\n\n⚠️ 为什么旧路由也要支持指定企业（`?connector=`）：\n飞书后台的「网页应用主页」会配成 `http://x/login?c=aima`，\n前端登录页读到 `?c=` 后**转发给后端**，从而自动路由到正确企业 ——\n用户**不需要在企业列表里手动选**。\n\n两者都没传时走默认那家（单企业形态即唯一那家）—— **旧行为不变**。",
+        "description": "按路径中的企业标识发起登录。",
         "operationId": "startFeishuLoginForConnector",
         "parameters": [
           {
@@ -10639,15 +10660,8 @@
             "name": "connector_code",
             "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Connector Code"
+              "title": "Connector Code",
+              "type": "string"
             }
           },
           {
@@ -10664,22 +10678,6 @@
                 }
               ],
               "title": "Return To"
-            }
-          },
-          {
-            "in": "query",
-            "name": "connector",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Connector"
             }
           }
         ],
@@ -10722,6 +10720,16 @@
             },
             "description": "Forbidden"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10731,6 +10739,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "502": {
             "content": {
@@ -10801,6 +10819,26 @@
               }
             },
             "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "502": {
             "content": {

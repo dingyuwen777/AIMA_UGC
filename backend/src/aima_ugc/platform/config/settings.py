@@ -210,7 +210,6 @@ class PlatformSettings(BaseModel):
                     f"connector {connector.code!r} 的 app_secret_ref 不合法：{exc}"
                 ) from exc
 
-
     @property
     def artifact_dir(self) -> Path:
         """返回 Local ArtifactStore 的字节根目录。"""
@@ -280,7 +279,6 @@ class PlatformSettings(BaseModel):
         return None if registry is None else registry.get(code)
 
 
-
 _ENV_TO_FIELD = {
     "AIMA_DATA_DIR": "data_dir",
     "AIMA_LOG_DIR": "log_dir",
@@ -345,7 +343,7 @@ def _parse_connectors_or_none(raw: str) -> ConnectorRegistry | None:
 
     try:
         payload = json.loads(raw)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if not isinstance(payload, list):
         return None

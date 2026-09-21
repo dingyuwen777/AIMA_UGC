@@ -678,12 +678,15 @@ Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围
 飞书登录与会话（Cookie 名 `aima_session`，属性 `HttpOnly` + `SameSite=Lax` + `Path=/`，`Secure` 按环境）：
 
 ```text
+GET    /api/v1/auth/connectors
 GET    /api/v1/auth/feishu/login
 GET    /api/v1/auth/feishu/callback
+GET    /api/v1/auth/feishu/{connector_code}/login
+GET    /api/v1/auth/feishu/{connector_code}/callback
 POST   /api/v1/auth/logout
 ```
 
-`/login` 生成一次性 state 后 302 到飞书授权页，`?return_to=` 只允许站内相对路径；`/callback` 校验并消费 state、用授权码换令牌、取用户、查用户组、判角色、建会话后 302 回 `return_to`；`/logout` **在服务端撤销会话**并清 Cookie。无会话访问受保护接口返回 `401`，已登录但角色不足返回 `403`。未配置 `AIMA_FEISHU_*` 时这三个路由返回 `503`，进程沿用开发身份。
+`/connectors` 只返回可登录企业的 `code/display_name`，单企业或未配置时返回空列表；带 `{connector_code}` 的路由按企业隔离 App ID、Secret 引用、用户组和 OAuth state。`/login` 生成一次性 state 后 302 到飞书授权页，`?return_to=` 只允许站内相对路径；`/callback` 校验并原子消费 state、用对应企业的授权码换令牌、取用户、查用户组、判角色、建会话后 302 回 `return_to`；`/logout` **在服务端撤销会话**并清 Cookie。无会话访问受保护接口返回 `401`，已登录但角色不足返回 `403`。未配置飞书时登录/回调返回 `503`、企业列表为空，进程沿用开发身份；登出保持幂等 `204`。
 
 
 ```text

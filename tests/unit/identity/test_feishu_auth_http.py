@@ -22,6 +22,8 @@ from aima_ugc.bootstrap.feishu_auth_http import (
     CALLBACK_PATH,
     LOGIN_PATH,
     LOGOUT_PATH,
+    MULTI_CALLBACK_PATH,
+    MULTI_LOGIN_PATH,
     AuthenticationRequired,
     FeishuAuthRoutes,
     FeishuAuthSettings,
@@ -34,7 +36,7 @@ from aima_ugc.bootstrap.feishu_auth_http import (
 from aima_ugc.entrypoints.api_main import create_app as create_main_app
 from aima_ugc.modules.identity import AuthorizationDenied, DevelopmentIdentityResolver
 from aima_ugc.platform.config import load_settings
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 # ── D4：必须被拒绝的 `return_to` 形态（每一条都对应一种真实绕过手法）────────────
 UNSAFE_RETURN_TO = [
@@ -122,6 +124,31 @@ def test_d1_unconfigured_deployment_installs_the_same_three_routes(
 
     assert {LOGIN_PATH, CALLBACK_PATH, LOGOUT_PATH} <= registered
     assert application.openapi()["paths"][LOGIN_PATH]["get"]["operationId"] == "startFeishuLogin"
+    assert {"404", "429", "503"} <= set(
+        application.openapi()["paths"][LOGIN_PATH]["get"]["responses"]
+    )
+    old_login_parameters = application.openapi()["paths"][LOGIN_PATH]["get"]["parameters"]
+    assert {parameter["name"] for parameter in old_login_parameters} == {
+        "return_to",
+        "connector",
+    }
+    multi_login_parameters = application.openapi()["paths"][MULTI_LOGIN_PATH]["get"]["parameters"]
+    connector_parameter = next(
+        parameter for parameter in multi_login_parameters if parameter["name"] == "connector_code"
+    )
+    assert connector_parameter["in"] == "path"
+    assert connector_parameter["required"] is True
+    assert connector_parameter["schema"] == {"type": "string", "title": "Connector Code"}
+    old_callback_parameters = application.openapi()["paths"][CALLBACK_PATH]["get"]["parameters"]
+    assert {parameter["name"] for parameter in old_callback_parameters} == {"code", "state"}
+    multi_callback_parameters = application.openapi()["paths"][MULTI_CALLBACK_PATH]["get"][
+        "parameters"
+    ]
+    assert next(
+        parameter
+        for parameter in multi_callback_parameters
+        if parameter["name"] == "connector_code"
+    )["schema"] == {"type": "string", "title": "Connector Code"}
     assert application.openapi()["paths"][LOGOUT_PATH]["post"]["operationId"] == (
         "logoutCurrentSession"
     )
@@ -347,3 +374,58 @@ def test_auth_routes_require_settings_before_touching_dependencies() -> None:
         routes._require_settings()  # noqa: SLF001 - 断言的就是这个内部守卫
 
     assert error.value.__class__.__name__ == "_FeishuNotConfigured"
+
+
+def test_multi_connector_clients_use_their_own_app_and_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """多企业回调必须按当前企业选择 App ID 与 Secret，不能复用默认企业客户端。"""
+
+    import aima_ugc.bootstrap.feishu_auth_http as auth_http
+
+    class FakeHttpxFeishuClient:
+        """只记录装配参数，避免单测建立真实网络连接池。"""
+
+        def __init__(self, *, app_id: str, app_secret: SecretStr) -> None:
+            self.app_id = app_id
+            self.app_secret = app_secret.get_secret_value()
+
+        def close(self) -> None:
+            """匹配生产客户端生命周期接口。"""
+
+    monkeypatch.setattr(auth_http, "HttpxFeishuClient", FakeHttpxFeishuClient)
+
+    first = FeishuAuthSettings(
+        app_id="cli_first",
+        app_secret_ref="first_secret",
+        admin_group_id="grp_first_admin",
+        user_group_id="grp_first_user",
+        redirect_uri="https://example.test/api/v1/auth/feishu/first/callback",
+    )
+    second = FeishuAuthSettings(
+        app_id="cli_second",
+        app_secret_ref="second_secret",
+        admin_group_id="grp_second_admin",
+        user_group_id="grp_second_user",
+        redirect_uri="https://example.test/api/v1/auth/feishu/second/callback",
+    )
+    read_refs: list[str] = []
+
+    def read_secret(secret_ref: str) -> SecretStr:
+        read_refs.append(secret_ref)
+        return SecretStr(f"value-for-{secret_ref}")
+
+    routes = FeishuAuthRoutes(
+        auth_settings=first,
+        connectors={"first": first, "second": second},
+        app_secret_reader=read_secret,
+    )
+
+    first_client = routes._feishu_client(first)  # noqa: SLF001 - 验证生产装配边界
+    second_client = routes._feishu_client(second)  # noqa: SLF001 - 验证生产装配边界
+    assert first_client is not second_client
+    assert first_client.app_id == "cli_first"  # type: ignore[attr-defined]
+    assert second_client.app_id == "cli_second"  # type: ignore[attr-defined]
+    assert first_client.app_secret == "value-for-first_secret"  # type: ignore[attr-defined]
+    assert second_client.app_secret == "value-for-second_secret"  # type: ignore[attr-defined]
+    assert read_refs == ["first_secret", "second_secret"]

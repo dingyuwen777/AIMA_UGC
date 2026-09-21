@@ -115,6 +115,30 @@ describe('身份失败分类（401 → 登录，403 → 无权限，且不成环
 
     expect(store.principal).toBeNull()
   })
+
+  it('服务端用错误 Contract 回答登出失败时也不能误判成成功', async () => {
+    generated.getCurrentPrincipal.mockResolvedValue({
+      principal_id: 'p-1',
+      display_name: '张三',
+      role: 'user',
+      source: 'feishu',
+    })
+    generated.logoutCurrentSession.mockResolvedValue({
+      type: 'https://aima.example/problems/logout-failed',
+      title: '登出失败',
+      status: 503,
+      detail: '会话服务暂时不可用',
+      request_id: 'req-logout-failed',
+      errors: [],
+    })
+    const store = useIdentityStore()
+    await store.ensurePrincipal()
+
+    await expect(store.logout()).rejects.toMatchObject({ status: 503 })
+
+    expect(store.principal).toBeNull()
+    expect(store.outcome).toBe('unauthenticated')
+  })
 })
 
 describe('路由守卫：401 跳登录、403 跳无权限且不循环', () => {

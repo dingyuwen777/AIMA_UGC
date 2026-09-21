@@ -180,11 +180,11 @@ def test_whitespace_connectors_treated_as_unset() -> None:
 @pytest.mark.parametrize(
     "bad_value",
     [
-        "not json",                       # 不是 JSON
-        '{"code":"x"}',                   # 是对象不是数组
-        "[]",                             # 空数组
-        '[{"code":"X"}]',                 # 大写 code
-        '[{"code":"a","app_id":"1"}]',    # 缺字段
+        "not json",  # 不是 JSON
+        '{"code":"x"}',  # 是对象不是数组
+        "[]",  # 空数组
+        '[{"code":"X"}]',  # 大写 code
+        '[{"code":"a","app_id":"1"}]',  # 缺字段
     ],
 )
 def test_invalid_multi_enterprise_config_fails_at_load(bad_value: str) -> None:

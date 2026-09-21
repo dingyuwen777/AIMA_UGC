@@ -305,6 +305,36 @@ def test_d4_list_user_groups_preserves_order_and_paginates() -> None:
     assert seen_tokens == [None, "p2"]
 
 
+def test_d4_repeated_page_token_fails_closed_instead_of_looping() -> None:
+    """上游重复分页游标时立即失败，不能让认证请求无限循环。"""
+
+    group_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """每一页都返回同一个游标，模拟飞书异常分页响应。"""
+
+        nonlocal group_calls
+        if request.url.path == APP_TOKEN_PATH:
+            return _json_response(
+                request,
+                {"code": 0, "msg": "success", "tenant_access_token": "t-1", "expire": 7200},
+            )
+        group_calls += 1
+        return _ok(
+            {"group_list": ["grp_a"], "has_more": True, "page_token": "stuck"},
+            request,
+        )
+
+    client = _client(handler)
+    try:
+        with pytest.raises(FeishuError, match="page_token 未推进"):
+            _adapter(client).list_user_groups("ou_1")
+    finally:
+        client.close()
+
+    assert group_calls == 2
+
+
 # --------------------------------------------------------- D5 频控可重试/认证不
 def test_d5_rate_limit_codes_are_retryable() -> None:
     """真正的频控码可重试；认证码绝不重试。"""
@@ -632,6 +662,34 @@ def test_exchange_authorization_code_maps_fields() -> None:
     oidc_request = next(r for r in seen if r.url.path == OIDC_TOKEN_PATH)
     assert oidc_request.headers["authorization"] == "Bearer t-1"
     assert b"authorization_code" in oidc_request.content
+
+
+def test_exchange_authorization_code_is_never_retried() -> None:
+    """授权码只能使用一次；网络结果未知或 5xx 时也不能拿同一码隐藏重试。"""
+
+    oidc_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """应用令牌成功，授权码交换持续返回可重试的上游失败。"""
+
+        nonlocal oidc_calls
+        if request.url.path == APP_TOKEN_PATH:
+            return _json_response(
+                request,
+                {"code": 0, "msg": "success", "tenant_access_token": "t-1", "expire": 7200},
+            )
+        assert request.url.path == OIDC_TOKEN_PATH
+        oidc_calls += 1
+        return _json_response(request, {"code": 99991402, "msg": "rate limited"}, status=503)
+
+    client = _client(handler)
+    try:
+        with pytest.raises(FeishuError):
+            _adapter(client, max_attempts=3).exchange_authorization_code("single-use-code")
+    finally:
+        client.close()
+
+    assert oidc_calls == 1
 
 
 def test_get_current_user_uses_user_identity_and_maps_avatar() -> None:

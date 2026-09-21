@@ -451,6 +451,12 @@ v2 或 TikHub Discovery Search Attempt 的唯一 linked Canonical，随后原子
 管理员能力的精确 Route/字段仍以 [`backend/src/aima_ugc/contracts/administration.py`](../../backend/src/aima_ugc/contracts/administration.py)、[`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 和生成 OpenAPI 为机器事实。稳定资源边界包括：
 
 ```text
+GET  /api/v1/auth/connectors
+GET  /api/v1/auth/feishu/login
+GET  /api/v1/auth/feishu/callback
+GET  /api/v1/auth/feishu/{connector_code}/login
+GET  /api/v1/auth/feishu/{connector_code}/callback
+POST /api/v1/auth/logout
 GET  /api/v1/principal
 GET/POST/PUT/DELETE /api/v1/vehicle-models...
 GET/POST /api/v1/analysis-schemes
@@ -476,6 +482,8 @@ GET  /api/v1/audit-events
 /collection-runtime
 /collection-strategy
 /admin/configuration
+/login
+/no-access
 ```
 
 主要 Feature：
@@ -499,6 +507,8 @@ frontend/src/features/task-center/
 - Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
 - `/collection-strategy`：Keyword Pack Search Terms 与独立 Brand Filter 的 Collection Plan 管理；旧 Global Relevance 后端和产品入口均已删除；
 - `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本与审计；报告策略当前只有 XLSX/日期前端准备面并明确提示后端未接入，不属于现有 Worker Registry，也没有 Report Job/API 或飞书同步写链路；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
+- `/login`：读取可登录企业列表并发起对应 Connector 的飞书 OAuth；`return_to` 最终仍由后端站内路径白名单校验；
+- `/no-access`：展示“已登录但无权限”，不再次发起登录，避免 403 登录回环；
 - `/`：当前 HomeView。
 
 后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。任务中心同样不是一个新的后端 Job Domain，也没有独立路由；它只是所有业务页面共同使用的 `AppShell` 只读聚合入口。
@@ -705,18 +715,18 @@ HttpErrorResponse
 
 ## 13. 当前身份与认证边界
 
-当前代码已有 Provider-neutral `Principal/AuthContext` 和后端 Authorization；角色只允许 `administrator` 与 `user`。development Identity Adapter 为本地环境提供 Principal，不能被描述成公网生产认证。
+当前代码已有 Provider-neutral `Principal/AuthContext` 和后端 Authorization；角色只允许 `administrator` 与 `user`。未配置飞书时 Development Identity Adapter 为本地环境提供 Principal；配置飞书时，OAuth 回调、用户组判权、外部身份映射和 AIMA Session 进入同一身份边界。两种装配都不能自动被描述成已经通过公网 Production 验收。
 
 因此：
 
 - 不能把当前 API 描述成已具备公网生产权限控制；
 - 不能在业务模块绑定飞书 `open_id/union_id`；
-- 后续飞书身份源只通过 Identity Adapter 映射到既有 Principal；
+- 飞书身份源只通过 Identity Adapter 映射到既有 Principal；
 - Authentication 与 Authorization 分开；
 - 对象级下载/敏感资源权限最终由后端判断，不靠前端隐藏按钮。
 - 第一版不强制双人审批；配置修改、发布与回滚必须审计。
 
-飞书真实登录、回调、Session/OIDC、企业目录和生产部署接入属于后续独立高风险变更。
+当前会话不会在存续期自动回查飞书用户组；远端撤权/移组最迟在会话过期后重新判定。真实双企业应用、HTTPS 入口、浏览器安全、对象级授权和生产候选环境验收仍属于 Production 高风险门禁。
 
 ---
 
@@ -773,7 +783,7 @@ Job Payload / Handler
 /api/v1/reports
 独立 monitoring 模块
 独立 dashboard 模块
-飞书企业登录/公网生产认证
+公网 Production 认证正式验收
 Word Report 的正式 PostgreSQL Job/API
 LLM 配置编辑/Secret 查询 API
 ```

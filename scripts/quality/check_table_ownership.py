@@ -9,6 +9,7 @@ ALLOWED_OWNERS = {
     "collection",
     "content",
     "dashboard",
+    "identity",
     "ingestion",
     "monitoring",
     "notification",
@@ -28,6 +29,7 @@ _SYSTEM_TABLES = {
 }
 _INGESTION_TABLES = {"processing_import_batches"}
 _NOTIFICATION_TABLES = {"notification_events", "notification_inbox_items"}
+_IDENTITY_PREFIXES = ("identity_",)
 _VEHICLE_TABLES = {
     "content_brand_evidence",
     "content_brand_review_locks",
@@ -59,6 +61,8 @@ def _expected_owner(table_name: str) -> str | None:
         return "ingestion"
     if table_name in _NOTIFICATION_TABLES:
         return "notification"
+    if table_name.startswith(_IDENTITY_PREFIXES):
+        return "identity"
     if table_name in _VEHICLE_TABLES:
         return "vehicles"
     if table_name.startswith(_CONTENT_PREFIXES):

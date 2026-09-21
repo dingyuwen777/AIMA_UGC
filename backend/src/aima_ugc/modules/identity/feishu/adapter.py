@@ -199,9 +199,9 @@ class HttpxFeishuClient:
             headers=self._authorization_headers(self.get_app_access_token()),
             json_body={"grant_type": "authorization_code", "code": code},
             # 授权码只能用一次：上一次请求若其实成功了、只是响应没收到，
-            # 重试会拿同一个码再换 → 飞书返回明确的 `20003`。这里保留重试，
-            # 但"重试必然失败"的码在 `is_retryable` 里已归为不可重试。
-            allow_retry=True,
+            # 重试会拿同一个码再次交换，既不能恢复结果，也会混淆真实失败原因。
+            # 因此不在 Transport 内隐藏重试；用户重新发起登录会取得新 state 与授权码。
+            allow_retry=False,
         )
         data = require_data_object(payload, step)
         access_token = data.get("access_token")
@@ -263,6 +263,7 @@ class HttpxFeishuClient:
         step = "查用户所属用户组"
         group_ids: list[str] = []
         page_token: str | None = None
+        seen_page_tokens: set[str] = set()
         while True:
             query: dict[str, str] = {
                 "member_id": open_id,
@@ -282,8 +283,13 @@ class HttpxFeishuClient:
             group_list = data.get("group_list")
             if isinstance(group_list, list):
                 group_ids.extend(item for item in group_list if isinstance(item, str))
-            page_token = optional_string(data.get("page_token"))
-            if data.get("has_more") is True and page_token:
+            page_token = _next_page_token(
+                data,
+                current=page_token,
+                seen=seen_page_tokens,
+                step=step,
+            )
+            if page_token is not None:
                 continue
             break
         return tuple(group_ids)
@@ -300,6 +306,7 @@ class HttpxFeishuClient:
         step = "取用户组成员"
         member_ids: list[str] = []
         page_token: str | None = None
+        seen_page_tokens: set[str] = set()
         while True:
             query: dict[str, str] = {
                 "member_id_type": "open_id",
@@ -322,8 +329,13 @@ class HttpxFeishuClient:
                         member_id = member.get("member_id")
                         if isinstance(member_id, str) and member_id:
                             member_ids.append(member_id)
-            page_token = optional_string(data.get("page_token"))
-            if data.get("has_more") is True and page_token:
+            page_token = _next_page_token(
+                data,
+                current=page_token,
+                seen=seen_page_tokens,
+                step=step,
+            )
+            if page_token is not None:
                 continue
             break
         return tuple(member_ids)
@@ -547,6 +559,26 @@ def _absolute_base_url(client: httpx.Client | None) -> str:
     if not base_url.scheme or not base_url.host:
         return ""
     return str(base_url).strip()
+
+
+def _next_page_token(
+    data: dict[str, Any],
+    *,
+    current: str | None,
+    seen: set[str],
+    step: str,
+) -> str | None:
+    """校验飞书分页游标确实向前推进；异常响应失败关闭，避免登录请求无限循环。"""
+
+    if data.get("has_more") is not True:
+        return None
+    candidate = optional_string(data.get("page_token"))
+    if candidate is None:
+        raise FeishuError(step, msg="分页响应声明还有数据但缺少 page_token", retryable=False)
+    if candidate == current or candidate in seen:
+        raise FeishuError(step, msg="分页响应的 page_token 未推进", retryable=False)
+    seen.add(candidate)
+    return candidate
 
 
 __all__ = [

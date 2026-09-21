@@ -105,13 +105,13 @@ def test_valid_codes_accepted(code: str) -> None:
 @pytest.mark.parametrize(
     "code",
     [
-        "AIMA",          # 大写：URL 里大小写敏感，易混
-        "-aima",         # 连字符开头
-        "aima/evil",     # 🔴 路径分隔符 —— 路径穿越风险
-        "aima.evil",     # 点：可能与路由后缀混淆
-        "aima evil",     # 空格
-        "aima%2f",       # 编码字符
-        "",              # 空（另有 require_str 拦住）
+        "AIMA",  # 大写：URL 里大小写敏感，易混
+        "-aima",  # 连字符开头
+        "aima/evil",  # 🔴 路径分隔符 —— 路径穿越风险
+        "aima.evil",  # 点：可能与路由后缀混淆
+        "aima evil",  # 空格
+        "aima%2f",  # 编码字符
+        "",  # 空（另有 require_str 拦住）
         "x" * (MAX_CONNECTOR_CODE_LENGTH + 1),  # 超长
     ],
 )

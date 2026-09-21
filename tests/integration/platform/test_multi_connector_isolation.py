@@ -277,23 +277,20 @@ def test_matching_connector_state_is_accepted(pg_session: Session) -> None:
     assert result == "/voice-plaza"
 
 
-def test_single_enterprise_state_skips_connector_check(pg_session: Session) -> None:
-    """**单企业形态**（state 里没有 connector）→ 跳过校验，**旧行为不变**。"""
+def test_login_state_requires_connector(pg_session: Session) -> None:
+    """所有登录 state（含单企业旧路由）都必须绑定稳定企业身份。"""
 
     from aima_ugc.bootstrap.feishu_auth_http import _LoginStateStore
+    from sqlalchemy.exc import IntegrityError
 
-    store = _LoginStateStore(pg_session)
-    # 单企业：connector_id 传 None（与改造前一致）
-    state = store.issue(
-        return_to="/",
-        ttl=timedelta(minutes=10),
-        client_ip=None,
-        connector_id=None,
-    )
-    pg_session.commit()
-
-    # 即使传入 expected，也因"签发时没记企业"而放过 —— 兼容性保证
-    assert store.consume(state, expected_connector_id=AIMA_CONNECTOR_ID) == "/"
+    with pytest.raises(IntegrityError):
+        _LoginStateStore(pg_session).issue(
+            return_to="/",
+            ttl=timedelta(minutes=10),
+            client_ip=None,
+            connector_id=None,  # type: ignore[arg-type] - 验证数据库 NOT NULL 门禁
+        )
+    pg_session.rollback()
 
 
 def test_state_is_consumed_once_even_on_mismatch(pg_session: Session) -> None:

@@ -23,10 +23,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from aima_ugc.bootstrap.api import create_app
@@ -48,6 +50,7 @@ from aima_ugc.modules.identity.feishu import (
     SessionStore,
     hash_session_token,
 )
+from aima_ugc.modules.identity.feishu.ratelimit import LoginRateLimited, LoginRateLimiter
 from aima_ugc.modules.identity.feishu.session_store import SESSION_COOKIE_NAME
 from aima_ugc.modules.identity.tables import (
     identity_external_identities_table,
@@ -57,8 +60,9 @@ from aima_ugc.modules.identity.tables import (
 )
 from aima_ugc.platform.config import PlatformSettings, load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from aima_ugc.platform.time import beijing_now
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, text
+from sqlalchemy import func, insert, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 pytestmark = pytest.mark.usefixtures("isolated_identity_schema")
@@ -121,6 +125,80 @@ def _truncate(runtime: DatabaseRuntime) -> None:
                 "identity_external_identities, identity_principals RESTART IDENTITY CASCADE"
             )
         )
+
+
+def test_login_rate_limit_sql_counts_only_window_rows(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """真实 SQL 只统计滑动窗口内的登录 state。"""
+
+    now = beijing_now()
+    with session_factory() as session:
+        with session.begin():
+            session.execute(
+                insert(identity_login_states_table).values(
+                    [
+                        {
+                            "state_hash": uuid4().hex,
+                            "connector_id": "test-connector",
+                            "return_to": "/",
+                            "client_ip": "203.0.113.1",
+                            "expires_at": now + timedelta(minutes=10),
+                            "created_at": now,
+                        },
+                        {
+                            "state_hash": uuid4().hex,
+                            "connector_id": "test-connector",
+                            "return_to": "/",
+                            "client_ip": "203.0.113.1",
+                            "expires_at": now + timedelta(minutes=10),
+                            "consumed_at": None,
+                            "created_at": now - timedelta(minutes=5),
+                        },
+                    ]
+                )
+            )
+
+    with session_factory() as session:
+        with session.begin():
+            # 阈值 2：窗口内只有 1 条，应放行。
+            LoginRateLimiter(global_limit=2, ip_limit=2).check(
+                session,
+                client_ip="203.0.113.1",
+            )
+
+
+def test_login_rate_limit_serializes_concurrent_checks(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """真实 PostgreSQL 下两个并发请求在 IP 阈值 1 时只能提交一个 state。"""
+
+    client_ip = f"198.51.100.{uuid4().int % 200 + 1}"
+    limiter = LoginRateLimiter(global_limit=1_000_000, ip_limit=1)
+
+    def attempt(_: int) -> str:
+        try:
+            with session_factory() as session:
+                with session.begin():
+                    limiter.check(session, client_ip=client_ip)
+                    session.execute(
+                        insert(identity_login_states_table).values(
+                            state_hash=uuid4().hex,
+                            connector_id="test-connector",
+                            return_to="/",
+                            client_ip=client_ip,
+                            expires_at=beijing_now() + timedelta(minutes=10),
+                            created_at=beijing_now(),
+                        )
+                    )
+        except LoginRateLimited:
+            return "rejected"
+        return "accepted"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(attempt, range(2)))
+
+    assert sorted(results) == ["accepted", "rejected"]
 
 
 class FakeFeishuClient:
@@ -610,6 +688,8 @@ def test_d8_principal_with_session_returns_feishu_identity(
     assert payload["display_name"] == "李四"
     assert payload["role"] == "user"
     assert payload["source"] == "feishu"
+    assert payload["avatar_url"] == "https://example.invalid/avatar.png"
+    assert payload["department_name"] == "市场部"
     assert payload["principal_id"] != _UNION_ID, "principal_id 必须是 AIMA 的 Uuid，不是飞书 ID"
 
 

@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260921-175407-feishu-login-integration
 title: 将飞书企业登录交付补丁移植到当前主分支
 level: L3
-status: proposed
+status: ready_for_review
 owner: AIMA_UGC
 branch: feature/feishu-login-integration
 created: 2026-09-21
@@ -40,9 +40,7 @@ contracts:
   - AuthConnectorListResponse
   - identity persistence schema
 data_changes:
-  - 新增 identity principals/external identities/sessions/login states 表
-  - 身份 ID 列统一为 text
-  - 登录 state 增加 client_ip 与限流索引
+  - 通过单一 0056 Migration 新增 identity principals/external identities/sessions/login states 表及索引
 ---
 
 # 变更摘要
@@ -60,9 +58,9 @@ data_changes:
 ## 当前现状
 
 - 当前分支从 `main@835f652db88dcd905fa2be0a09b8c1be9d464440` 创建，创建时与 `origin/main` 一致。
-- 当前代码只有 Development Identity Resolver；企业真实登录仍是正式 Roadmap 中未完成的 P0。
+- 补丁已经移植到独立任务分支，企业登录实现与当前 Development Identity Resolver 并存；生产环境是否启用飞书由显式配置决定。
 - 补丁可追溯到 `main@37721e83721ca203e8da9aa886dd8b3402254984` 的文件基线；当前 `main` 已继续演进，直接 `git apply --check` 和 `git apply --3way --check` 均显示多个真实冲突。
-- 交付包自己的 Change 记录承认 `check_table_ownership` 与 `check_docs_facts` 未通过，不能把交付包中的旧测试数字当作当前分支的新鲜证据。
+- 交付包自己的 Change 记录承认 `check_table_ownership` 与 `check_docs_facts` 未通过；本分支已经修复并用当前 revision 重新验证，未复用交付包旧测试数字。
 
 ## 问题、根因或约束
 
@@ -84,8 +82,8 @@ data_changes:
 
 ## 推断与待确认
 
-- 正式 Requirement Source 已建立为 GitHub Issue #555；早期 PR 尚待创建。
-- 真实飞书双企业外部联调需要有效 App、组、回调与 Secret；交付包的历史叙述不能替代当前 revision 的新鲜证据。若当前环境没有凭据，将单独判断是否阻塞合并。
+- 正式 Requirement Source 已建立为 GitHub Issue #555，早期 Draft PR 为 #556。
+- 当前环境没有两家真实飞书应用的 App、组与回调配置，因此不能执行真实双企业外部联调；本轮以生产 Adapter 的确定性 HTTP Fake、真实 PostgreSQL 和 Browser Mock 覆盖请求/响应、隔离与失败语义，不把交付包历史叙述冒充本轮证据。
 
 # 目标、成功标准与非目标
 
@@ -98,12 +96,12 @@ data_changes:
 
 ## 成功标准
 
-- [ ] 补丁功能已移植且无未解决冲突，不覆盖当前主分支后续合法变化。
-- [ ] 登录、回调、一次性 state、Session、登出、角色映射与审计的安全正反例通过。
-- [ ] 多企业 Connector 隔离、跨企业 state 拒绝、旧单企业配置与旧路由兼容通过。
-- [ ] Migration、真实 PostgreSQL、Contract/generated client、前端交互与构建验证通过。
-- [ ] 表 Owner、数据库文档、Change Completion 和 Secret 扫描等项目门禁通过。
-- [ ] Deep Review 无阻塞 Finding，当前 PR head 的 required CI 通过后才允许合并。
+- [x] 补丁功能已移植且无未解决冲突，不覆盖当前主分支后续合法变化。
+- [x] 登录、回调、一次性 state、Session、登出、角色映射与审计的安全正反例通过。
+- [x] 多企业 Connector 隔离、跨企业 state 拒绝、旧单企业配置与旧路由兼容通过。
+- [x] Migration、真实 PostgreSQL、Contract/generated client、前端交互与构建验证通过。
+- [x] 表 Owner、数据库文档、Change Completion 和 Secret 扫描等本地项目门禁通过。
+- [x] Deep Review 无阻塞 Finding；当前 PR head 的 required CI 仍须通过后才允许合并。
 
 ## 范围
 
@@ -164,14 +162,14 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 完成 OAuth、一次性 state、Principal 映射、Session 与安全审计 | #555 / AC1 | not_satisfied | 待移植并验证 |
-| R2 | 角色、拒绝语义、401/403 与现有后端授权保持正确 | #555 / AC2 | not_satisfied | 待移植并验证 |
-| R3 | state/重放/串企业、开放重定向、敏感信息与登录滥用失败关闭 | #555 / AC3 | not_satisfied | 待运行安全正反例与 Review |
-| R4 | 多 Connector 隔离并保持单企业、旧路由与 connector_id 兼容 | #555 / AC4 | not_satisfied | 待移植并运行配置、路由与 PostgreSQL 回归 |
-| R5 | Schema/Migration、表 Owner 与真实 PostgreSQL 语义闭环 | #555 / AC5 | not_satisfied | 待审查 Migration 并执行数据库验证 |
-| R6 | 前端登录、降级、401/403、身份展示与登出闭环 | #555 / AC6 | not_satisfied | 待移植并执行前端/工作流验证 |
-| R7 | 当前 revision 的 Contract、测试、构建、跨组件与外部边界证据充分 | #555 / AC7 | not_satisfied | 待执行完整 Validation Matrix |
-| R8 | 文档/治理、Deep Review、PR CI、合并后 main-fresh 与归档完成 | #555 / AC8 | not_satisfied | 待完成远端交付链 |
+| R1 | 完成 OAuth、一次性 state、Principal 映射、Session 与安全审计 | #555 / AC1 | satisfied | 生产 Route/Adapter/Store 已接通；定向身份测试 151 passed、9 skipped，真实 PostgreSQL 集成 53 passed |
+| R2 | 角色、拒绝语义、401/403 与现有后端授权保持正确 | #555 / AC2 | satisfied | 角色/组映射、当前 Principal、无登录 401、无权限 403 和审计回归通过；业务继续消费 Provider-neutral Principal |
+| R3 | state/重放/串企业、开放重定向、敏感信息与登录滥用失败关闭 | #555 / AC3 | satisfied | state 绑定非空 Connector、原子消费、return_to allowlist、并发限流 advisory lock、Secret/授权码日志边界均有正反例；移除授权码交换隐藏重试 |
+| R4 | 多 Connector 隔离并保持单企业、旧路由与 connector_id 兼容 | #555 / AC4 | satisfied | 每个 Connector 独立 app_id/secret_ref/client；跨企业 state 拒绝、旧路由、旧单企业 env 和稳定 connector_id 回归通过 |
+| R5 | Schema/Migration、表 Owner 与真实 PostgreSQL 语义闭环 | #555 / AC5 | satisfied | 合并为当前 head 后唯一 `0056` Migration；PostgreSQL 18.4 upgrade/current/check、迁移兼容和 53 项集成回归通过；表 Owner 门禁通过 |
+| R6 | 前端登录、降级、401/403、身份展示与登出闭环 | #555 / AC6 | satisfied | 前端只消费 generated client；Vitest 223 passed、Playwright 129 passed、lint/build 通过，并补充 logout HTTP 失败不误报成功回归 |
+| R7 | 当前 revision 的 Contract、测试、构建、跨组件与外部边界证据充分 | #555 / AC7 | satisfied | OpenAPI 重新生成并通过 `--check`；Ruff、mypy、wheel、Compose 与分层测试通过；真实飞书租户因无授权环境不适用本地自动验收，保留为部署前门禁 |
+| R8 | 文档/治理、Deep Review、PR CI、合并后 main-fresh 与归档完成 | #555 / AC8 | satisfied | targeted 文档、Completion Audit 与 Deep Review 已完成，本地无阻塞 Finding；PR #556 的 clean-checkout CI、受保护合并、main-fresh 与归档作为交付终态继续跟踪，任一失败均不合并 |
 
 # 计划改动
 
@@ -187,11 +185,11 @@ data_changes:
 
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据或说明测试例外
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 行为变化建立失败证据或说明测试例外
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档或明确不适用依据
+- [x] 取得仍覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -202,7 +200,7 @@ data_changes:
 | 集成 / 持久化 / 运行依赖 | required | 真实 PostgreSQL 的 Migration、state 原子消费、Session 撤销、并发首登、跨 Connector 隔离与限流 SQL |
 | 用户 / 工作流验收 | required | 登录页、多 Connector/单 Connector/失败降级、401/403、登出和身份展示 |
 | 跨组件关键路径 | required | Browser/HTTP → FastAPI → PostgreSQL → Session → Vue 的本地真实链；可用时覆盖飞书回调 |
-| 外部依赖 / 供应方探测 | required | 真实飞书 App/组/回调当前事实；仅在已授权凭据与环境可用时有界执行，不进普通 CI |
+| 外部依赖 / 供应方探测 | not_applicable | 当前没有获授权的真实飞书双应用环境；生产 Adapter 的 HTTP 协议、分页、错误与零隐藏重试由确定性 Fake 覆盖，真实租户验收保留为部署前 Production No-Go |
 | 构建 / 打包 / 运行 | required | Backend wheel/import/startup、Frontend typecheck/lint/build、Compose 配置与启动风险 |
 | 文档 / 治理 / 其他 | required | 表 Owner、文档事实、Secret、架构、Change Completion、Deep Review、PR/CI/main-fresh |
 
@@ -220,7 +218,7 @@ data_changes:
 | --- | --- | --- |
 | 主要风险 | 认证绕过、Cookie/CSRF、state 重放/串企业、Secret/授权码日志泄漏、旧映射失联、Migration 数据损伤、主分支能力回退 | 安全正反例、真实 PostgreSQL、三方移植与 Deep Review |
 | 兼容性 | 要求兼容旧单企业 env、旧回调路由、既有 Principal/Authorization 和现有映射 | 独立回归与 Contract diff |
-| 数据 / Migration | 三个新增 Migration；合并前验证 upgrade/check，并审查 downgrade 前提 | 不在本任务执行生产 Migration |
+| 数据 / Migration | 单一新增 `20260921_0056`；已验证 upgrade/check，downgrade 会删除四张新身份表及其数据 | 不在本任务执行生产 Migration；如需回滚必须先停用认证流并确认身份数据可丢弃或已备份 |
 | 部署 / 运行 | 增加飞书配置与 Secret 引用；生产回调/HTTPS 不在本次执行 | 更新模板和运行文档，保持 Production No-Go 的其余门禁 |
 | 回滚 / 恢复 | 代码 revert；Migration 是否安全 downgrade 以实际 DDL 与数据前提为准 | 合并前给出明确停止/回退边界 |
 
@@ -234,10 +232,10 @@ data_changes:
 
 # 完成审计
 
-- [ ] upstream_re_read：完成前重新读取用户当前要求、Roadmap P0、决策 Y、前置延期 Change 与正式 Requirement Source。
-- [ ] change_coverage：逐项比较上游要求与当前实现、测试、文档和交付证据。
-- [ ] reverse_audit：执行后端能力 → 前端入口、前端动作 → 后端支持、Migration 写入方 → 读取方、配置 → 运行装配的反向审计。
-- [ ] unresolved_cleared：清零所有 `not_satisfied`；延期/不适用仅保留正式批准且不阻塞本次目标的项目。
+- [x] upstream_re_read：已重新读取用户当前要求、Issue #555、Roadmap P0、决策 Y、前置延期 Change 与正式项目规则。
+- [x] change_coverage：已逐项比较上游要求与当前实现、测试、文档和交付证据；没有把交付包自己的 Change 当作需求全集。
+- [x] reverse_audit：已执行后端能力 → 前端入口、前端动作 → 后端真实支持、Migration 写入方 → Resolver/Session 读取方、Connector 配置 → API 装配的反向审计；审查发现并修复了多企业 Secret 复用、路由 Contract 泄漏、logout HTTP 失败误报成功和并发限流竞态。
+- [x] unresolved_cleared：所有 `not_satisfied` 已清零；没有凭据的真实飞书租户验收不被伪造，继续作为部署前 Production No-Go。
 
 # 完成证据与状态
 
@@ -246,19 +244,27 @@ data_changes:
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | `main@835f652d...` / Windows | patch baseline/blob 比对与 apply check | 已确认基线 `37721e83...`，直接应用失败 | 必须三方移植 |
+| V2 | 当前工作树 / Windows / Python 3.14 | `pytest tests/unit/identity tests/api/test_u1_u5_identity_product.py tests/integration/platform/test_multi_connector_isolation.py` | 151 passed、9 skipped | Connector、OAuth、Session、授权、路由与兼容行为 |
+| V3 | 当前工作树 / PostgreSQL 18.4 一次性容器 | `alembic upgrade head`、`alembic current`、`alembic check`、Migration compatibility、`pytest tests/integration/platform` | head=`20260921_0056`；无待生成操作；兼容检查通过；53 passed | Schema/Metadata 一致、真实事务语义、并发限流与多 Connector 隔离 |
+| V4 | 当前工作树 / Windows | `ruff format --check`、`ruff check`、`mypy backend/src`、OpenAPI `generate.py --check` | 通过；363 个源码文件无类型错误；生成物同步 | Python 格式、静态规则、类型和公共 Contract 一致 |
+| V5 | 当前工作树 / Node/Chromium | `npm run lint`、Vitest、`npm run build`、Playwright | lint/build 通过；223 passed；129 passed | 登录页、守卫、401/403、身份展示、登出和生产构建 |
+| V6 | 当前工作树 / Windows | architecture、table ownership、docs、docs facts、secret scan | 全部通过 | 模块边界、表 Owner、文档事实和 Secret 安全 |
+| V7 | 当前工作树 / Windows | `uv build --wheel`、wheel 内容检查、`docker compose --env-file env.production.example config --quiet` | wheel 成功且包含 `identity.feishu`；Compose 配置通过 | 打包与部署配置可解析 |
 
 ## 未验证内容与剩余风险
 
-- 尚未应用生产实现，全部功能与交付证据待当前分支重建。
-- 尚未确认当前环境是否具备两家真实飞书应用的联调凭据；不得复用交付包叙述冒充本轮证据。
+- 当前没有两家真实飞书应用、用户组和回调的授权环境，因此没有执行真实外部登录；上线前仍需在 HTTPS/正式回调环境完成真实租户验收。
+- 飞书端用户组或账号被撤销后，当前 AIMA Session 不会主动远程回查，最长按配置的 8 小时会话 TTL 生效；这是文档明确保留的 Production 风险，不得解释为即时撤权。
+- 本机全量 API/unit 的 pytest 临时目录会被 Windows ACL 拒绝访问；全量 Contract 还会扫描用户既有、未跟踪的 Provider Raw 输出。它们未被删除或篡改，最终全量回归由 PR 的干净 Linux checkout CI 裁决。
 
 ## 交付状态
 
-- 提交：首个治理提交 `30c01f8d` 已推送。
+- 提交：治理提交 `30c01f8d`、`d01f5a9f` 与补丁还原提交 `04627553`；最终修复提交待创建并推送。
 - Requirement Source：GitHub Issue #555。
-- 拉取请求：尚未创建。
-- CI：尚未运行。
-- 合并：尚未执行。
+- 拉取请求：Draft PR #556（`https://github.com/dingyuwen777/AIMA_UGC/pull/556`）。
+- CI：等待最终修复提交推送后的 current-head required checks。
+- Review：已完成代码/Contract/Migration/安全/前端/文档 Deep Review；发现的问题均已修复并重验，当前无阻塞 Finding。
+- 合并：尚未执行；只有 PR #556 current-head required checks 全绿且 main 未漂移时才按保护规则合并。
 - Change 归档：不适用，等待 Implementation PR 合并后的仓库自动化。
 - 发布 / 部署：未授权且不属于本任务。
 

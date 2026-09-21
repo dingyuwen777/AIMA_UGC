@@ -25,9 +25,8 @@ AIMA 的长期门禁（`docs/blueprint/07` 决策 Y）要求：**业务表不以
 ════════ 列可空性的取舍（非显然，必须解释）════════
 
 - `connector_id` 设为 **NOT NULL**：PostgreSQL 的 UNIQUE 约束**不比较 NULL**
-  （多个 NULL 互不冲突），若该列可空，唯一约束就形同虚设 —— 这正是本表最不能接受的。
-  ⚠️ 例外是 `identity_login_states.connector_id`：那列**没有**唯一约束要保护，
-  且本期单企业拿不到企业 ID，所以刻意**可空、不加外键**（详见该表处注释）。
+  （多个 NULL 互不冲突），若该列可空，唯一约束就形同虚设；OAuth state 同样必须
+  绑定明确企业，单企业也使用 App ID 派生的稳定 Connector ID。
 - `id` 用 `Text()`（应用侧生成 `uuid4().hex` 的 32 位十六进制字符串），不用自增：
   自增会把「身份标识」暴露成可枚举序号，且跨库迁移/合并时更容易撞号。
 - 时间列统一 `DateTime(timezone=True)`（`timestamptz`），语义是绝对时间点。
@@ -77,7 +76,7 @@ identity_external_identities_table = Table(
         ForeignKey("identity_principals.id"),
         nullable=False,
     ),
-    # 哪家企业（本期单企业，仍保留列，便于将来多企业接入时不必改身份模型）。
+    # 哪家企业；多 Connector 依靠该列隔离相同的 Provider Subject。
     Column("connector_id", Text(), nullable=False),
     Column("provider", Text(), nullable=False),
     Column("provider_subject", Text(), nullable=False),
@@ -96,11 +95,8 @@ identity_login_states_table = Table(
     "identity_login_states",
     metadata,
     Column("state_hash", Text(), primary_key=True),
-    # 这次登录属于哪家企业（本期单企业，暂不填写）。
-    # ⚠️ 刻意**设为可空**：本期单企业流程还没有企业 ID 可写，若设 NOT NULL，
-    # 登录入口会直接插不进去。也**不加外键** —— 本期还没有 identity_connectors
-    # 表可引用，加了迁移就会失败；等多企业阶段再单独迁移补齐。
-    Column("connector_id", Text()),
+    # 所有 state 都绑定 Connector ID；当前没有持久 identity_connectors 表，故不建虚假外键。
+    Column("connector_id", Text(), nullable=False),
     Column("return_to", Text()),
     # 发起登录的客户端 IP（可空：取不到时留空，不因此拒绝登录）。
     # 用途只有一个 —— **登录入口的 IP 维度限流**（S8）：按"过去 60 秒内同一 IP
@@ -149,10 +145,10 @@ identity_sessions_table = Table(
     Column("feishu_group_ids", Text()),
     # 上一次判出来的角色。角色刷新时把**旧角色**记下来，供角色变更审计。
     Column("role_snapshot", Text()),
-    # 🔴 **最关键的一列**：上一次向飞书核对角色/权限的时间。
-    # 方案 §2.3 定了"会话每 8 小时刷新一次角色"，没有这一列就无从判断
-    # "上次是什么时候查的"，刷新逻辑会退化成每个请求都查飞书（必踩频控）。
-    # `server_default=func.now()`：NOT NULL 列若无默认值，在已有数据的库上加列会失败。
+    # 记录最近一次完成飞书授权判定的时间，为未来受控刷新提供持久事实。
+    # 当前版本不会在会话存续期自动回查飞书，远端撤权最迟在会话过期后生效；
+    # 不能用这个列的存在宣称刷新链路已经实现。
+    # `server_default=func.now()` 保证首次签发会话时该事实非空。
     Column(
         "authorization_checked_at",
         DateTime(timezone=True),

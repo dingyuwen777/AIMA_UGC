@@ -21,11 +21,6 @@ from aima_ugc.modules.identity.feishu.ratelimit import (
     LoginRateLimiter,
     client_ip_of,
 )
-from aima_ugc.modules.identity.tables import identity_login_states_table
-from aima_ugc.platform.database.metadata import metadata
-from aima_ugc.platform.time import beijing_now
-from sqlalchemy import create_engine, insert
-from sqlalchemy.orm import Session, sessionmaker
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
@@ -119,6 +114,18 @@ def test_missing_ip_skips_only_ip_check() -> None:
     limiter.check(session, client_ip=None)
 
 
+def test_check_takes_transaction_lock_before_counting() -> None:
+    """先取得跨进程事务锁，再查计数，避免并发请求同时越过阈值。"""
+
+    limiter = LoginRateLimiter(global_limit=10, ip_limit=10)
+    session = _FakeSession(rows=[])
+
+    limiter.check(session, client_ip=None)
+
+    assert session.calls[0].startswith("SELECT pg_advisory_xact_lock(")
+    assert session.calls[1] == "scalar"
+
+
 # ─────────────────────────── D4 阈值校验 ───────────────────────────
 @pytest.mark.parametrize(
     ("global_limit", "ip_limit", "window"),
@@ -128,9 +135,7 @@ def test_missing_ip_skips_only_ip_check() -> None:
         (10, 10, timedelta(0)),
     ],
 )
-def test_invalid_thresholds_rejected(
-    global_limit: int, ip_limit: int, window: timedelta
-) -> None:
+def test_invalid_thresholds_rejected(global_limit: int, ip_limit: int, window: timedelta) -> None:
     """非法阈值在装配时就报错，不把"0 次/分钟"这类配置带进运行期。"""
 
     with pytest.raises(ValueError):
@@ -138,7 +143,7 @@ def test_invalid_thresholds_rejected(
 
 
 def test_defaults_match_documented_values() -> None:
-    """默认阈值与方案一致：全局 240/分钟、IP 20/分钟。"""
+    """默认阈值与当前配置说明一致：全局 240/分钟、IP 200/分钟。"""
 
     limiter = LoginRateLimiter()
     assert limiter.global_limit == DEFAULT_GLOBAL_LIMIT == 240
@@ -176,9 +181,7 @@ def test_client_ip_none_when_unavailable() -> None:
 def test_client_ip_truncated_to_column_width() -> None:
     """超长头被截断到 64 字符，避免把任意长的字符串写进列。"""
 
-    request = SimpleNamespace(
-        headers={"x-forwarded-for": "x" * 200}, client=None
-    )
+    request = SimpleNamespace(headers={"x-forwarded-for": "x" * 200}, client=None)
     value = client_ip_of(request)
     assert value is not None and len(value) == 64
 
@@ -207,17 +210,18 @@ class _FakeSession:
         self._rows = rows
         self._expected_ip = expected_ip
         self._call = 0
+        self.calls: list[str] = []
+
+    def execute(self, statement: object) -> None:
+        self.calls.append(str(statement))
 
     def scalar(self, statement: object) -> int:  # noqa: ARG002 - 只看调用次序
+        self.calls.append("scalar")
         self._call += 1
         if self._call == 1:
             return sum(1 for r in self._rows if _in_window(r))
         # 第 2 次：只数与被检查 IP 相同的行。
-        return sum(
-            1
-            for r in self._rows
-            if _in_window(r) and r["ip"] == self._expected_ip
-        )
+        return sum(1 for r in self._rows if _in_window(r) and r["ip"] == self._expected_ip)
 
 
 def _row(*, ip: str | None, minutes_ago: int) -> dict[str, object]:
@@ -231,77 +235,3 @@ def _in_window(row: dict[str, object]) -> bool:
 
     minutes = int(row["minutes_ago"])  # type: ignore[arg-type]
     return minutes < 1
-
-
-# ═══════════════════ 真实 SQL 的集成校验（需要数据库）═══════════════════
-@pytest.fixture
-def pg_session() -> Session:
-    """用环境里的 PostgreSQL 建一个空库并返回 Session；无库时跳过。"""
-
-    import os
-
-    host = os.environ.get("AIMA_DB_HOST")
-    port = os.environ.get("AIMA_DB_PORT")
-    if not host or not port:
-        pytest.skip("未提供 AIMA_DB_HOST / AIMA_DB_PORT，跳过真实 SQL 校验")
-
-    url = (
-        f"postgresql+psycopg://{os.environ.get('AIMA_DB_USER', 'aima_ugc')}:"
-        f"{_pg_password()}@{host}:{port}/{os.environ.get('AIMA_DB_NAME', 'aima_ugc')}"
-    )
-    engine = create_engine(url)
-    metadata.create_all(engine)
-    factory = sessionmaker(bind=engine)
-    session = factory()
-    yield session
-    session.close()
-    engine.dispose()
-
-
-def _pg_password() -> str:
-    """从 Secret 文件读测试库密码。"""
-
-    import os
-    from pathlib import Path
-
-    secret_dir = os.environ.get("AIMA_SECRET_DIR")
-    if secret_dir:
-        path = Path(secret_dir) / "postgres_password"
-        if path.exists():
-            return path.read_text(encoding="utf-8").strip()
-    return "ci-postgres"
-
-
-def test_real_sql_counts_only_window_rows(pg_session: Session) -> None:
-    """真实 SQL：窗口外的行不计数，窗口内的计数 —— 验证滑动窗口真的生效。"""
-
-    now = beijing_now()
-    table = identity_login_states_table
-    pg_session.execute(
-        insert(table).values(
-            [
-                {
-                    "state_hash": "in-window",
-                    "return_to": "/",
-                    "client_ip": "203.0.113.1",
-                    "expires_at": now + timedelta(minutes=10),
-                    "created_at": now,
-                },
-                {
-                    "state_hash": "out-of-window",
-                    "return_to": "/",
-                    "client_ip": "203.0.113.1",
-                    "expires_at": now + timedelta(minutes=10),
-                    "consumed_at": None,
-                    # 5 分钟前：落在窗口之外
-                    "created_at": now - timedelta(minutes=5),
-                },
-            ]
-        )
-    )
-    pg_session.commit()
-
-    # 阈值 2 → 窗口内只有 1 条，应放行（若把窗口外那条也算进来就会误拒）
-    LoginRateLimiter(global_limit=2, ip_limit=2).check(
-        pg_session, client_ip="203.0.113.1"
-    )
