@@ -248,6 +248,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const countLoading = ref(false)
   const countError = ref<string | null>(null)
   let countRevision = 0
+  let countAbortController: AbortController | null = null
   const error = ref<string | null>(null)
   const listError = ref<string | null>(null)
   const notice = ref<string | null>(null)
@@ -362,8 +363,10 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     selectedIds.value = []
     nextCursor.value = null
     hasMore.value = false
-    // 已应用条件改变后旧总数立即失效；列表仍优先读取，随后再异步补回新总数。
+    // 已应用条件改变后旧总数立即失效，并在浏览器侧中止仍未完成的旧请求。
     countRevision += 1
+    countAbortController?.abort()
+    countAbortController = null
     contentCount.value = null
     countError.value = null
     countLoading.value = true
@@ -409,6 +412,13 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     } finally {
       if (!silent && revision === listRevision) loading.value = false
     }
+  }
+
+  /** 先发起列表请求，再立即并行读取同一筛选快照的总数。 */
+  async function refreshResults(): Promise<void> {
+    const listRequest = refresh()
+    void refreshCount('estimated')
+    await listRequest
   }
 
   /** 重新读取当前已加载的 Cursor 窗口，刷新内容状态但不把列表折叠回第一页。 */
@@ -528,9 +538,13 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   async function refreshCount(mode: 'exact' | 'estimated'): Promise<void> {
-    // 数量读取失败独立反馈，不覆盖正常内容；筛选变化后旧计数不能回写。
+    // 数量读取失败独立反馈，不覆盖正常内容；筛选变化后旧计数不能回写，并尽快中止浏览器请求。
     const revision = ++countRevision
+    countAbortController?.abort()
+    const abortController = new AbortController()
+    countAbortController = abortController
     const snapshot = filterSnapshot()
+    const snapshotSignature = JSON.stringify(snapshot)
     countLoading.value = true
     countError.value = null
     contentCount.value = null
@@ -539,13 +553,24 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         filters: snapshot,
         count_mode: mode,
         exact_limit: mode === 'exact' ? 100_000 : undefined,
-      })
-      if (revision === countRevision && JSON.stringify(snapshot) === JSON.stringify(filterSnapshot())) contentCount.value = result
+      }, { signal: abortController.signal })
+      if (revision === countRevision && snapshotSignature === JSON.stringify(filterSnapshot())) contentCount.value = result
     } catch (reason) {
-      if (revision === countRevision) countError.value = errorMessage(reason)
+      if (revision === countRevision && !abortController.signal.aborted) countError.value = errorMessage(reason)
     } finally {
-      if (revision === countRevision) countLoading.value = false
+      if (revision === countRevision) {
+        if (countAbortController === abortController) countAbortController = null
+        countLoading.value = false
+      }
     }
+  }
+
+  /** 页面离开时停止尚未完成的总数请求，避免无效网络与迟到状态写入。 */
+  function cancelCount(): void {
+    countRevision += 1
+    countAbortController?.abort()
+    countAbortController = null
+    countLoading.value = false
   }
 
   function resetComments(): void {
@@ -894,6 +919,8 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     clearSelection()
     notice.value = null
     countRevision += 1
+    countAbortController?.abort()
+    countAbortController = null
     contentCount.value = null
     countError.value = null
     countLoading.value = true
@@ -995,10 +1022,12 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     listError,
     notice,
     refresh,
+    refreshResults,
     refreshAnalysisCapabilities,
     refreshTaxonomy,
     refreshFilterOptions,
     refreshCount,
+    cancelCount,
     loadNext,
     openDetail,
     closeDetail,

@@ -79,15 +79,17 @@ onMounted(() => {
   }
   void refreshPage().finally(() => store.startPolling())
 })
-onBeforeUnmount(() => store.stopPolling())
+onBeforeUnmount(() => {
+  store.cancelCount()
+  store.stopPolling()
+})
 
 /** 首先展示最新倒序第一页，再在后台加载不会影响首屏的目录与任务资源。 */
 async function refreshPage(): Promise<void> {
-  await store.refresh()
+  await store.refreshResults()
   void Promise.allSettled([
     store.refreshTaxonomy(),
     store.refreshFilterOptions(),
-    store.refreshCount('estimated'),
     store.refreshExports(),
     store.refreshAnalysisCapabilities(),
     store.refreshAnalysisRuns(),
@@ -97,15 +99,13 @@ async function refreshPage(): Promise<void> {
 /** 提交当前筛选并清空旧选择，避免跨查询误操作。 */
 async function search(): Promise<void> {
   store.applyFilters()
-  await store.refresh()
-  void store.refreshCount('estimated')
+  await store.refreshResults()
 }
 
 /** 恢复默认筛选并重新获取第一页。 */
 async function reset(): Promise<void> {
   store.resetFilters()
-  await store.refresh()
-  void store.refreshCount('estimated')
+  await store.refreshResults()
 }
 
 /** 把人工相关性复核结果转换为用户可读反馈。 */
@@ -345,13 +345,27 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </section>
 
       <div
-        v-if="store.items.length > 0"
+        v-if="store.contentCount || store.countLoading || store.countError"
         class="list-heading"
       >
         <div class="selection-actions">
           <div class="count-summary">
             <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} <strong>{{ store.contentCount.count.toLocaleString('zh-CN') }} 条</strong></span>
             <span v-else-if="store.countLoading">总数统计中…</span>
+            <span
+              v-else-if="store.countError"
+              class="count-error"
+            >
+              总数统计失败
+              <button
+                class="count-retry"
+                type="button"
+                @click="store.refreshCount('estimated')"
+              >
+                重试总数
+              </button>
+            </span>
+            <span v-else-if="store.contentCount?.count_kind === 'none'">总数数据准备中…</span>
             <span v-else>总数暂不可用</span>
           </div>
           <button
@@ -414,6 +428,11 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         <span class="pagination-count">
           <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} {{ store.contentCount.count.toLocaleString('zh-CN') }} 条</span>
           <span v-else-if="store.countLoading">总数统计中…</span>
+          <span
+            v-else-if="store.countError"
+            class="count-error"
+          >总数统计失败</span>
+          <span v-else-if="store.contentCount?.count_kind === 'none'">总数数据准备中…</span>
           <span v-else>总数暂不可用</span>
           <small>当前已加载 {{ store.items.length }} 条</small>
         </span>
@@ -498,6 +517,9 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .count-summary { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
 .count-summary strong { color: var(--aima-primary); }
 .count-summary small { color: var(--aima-text-disabled); font-size: 10px; }
+.count-summary .count-error,
+.pagination-count .count-error { color: var(--aima-danger); }
+.count-retry { color: var(--aima-danger); background: var(--aima-color-error-bg); }
 .capability-warning strong,
 .capability-warning span,
 .taxonomy-warning strong,

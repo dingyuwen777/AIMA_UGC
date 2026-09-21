@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from math import ceil
 from time import perf_counter
 from typing import Any, Literal, cast
@@ -117,7 +116,6 @@ from aima_ugc.modules.content.query import ContentReadQuery, ContentReadRecord
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
 from aima_ugc.platform.jobs import JobRecord
-from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.time import beijing_now
 
@@ -131,6 +129,7 @@ from .analysis_taxonomy_http import (
     content_analysis_taxonomy_projection,
 )
 from .runtime import PlatformRuntime
+from .voice_plaza_observability import elapsed_ms, log_voice_plaza_read_timing
 
 _ANALYSIS_RUN_ID_NAMESPACE = UUID("d9c7fe38-1a46-4ef9-b9d3-bb87dd7d8301")
 _AnalysisTargetSelection = ContentTargetSelection | AnalysisRunTargetSelection
@@ -201,8 +200,8 @@ class PostgresContentHttpService:
         self._log_read_timing(
             operation="list",
             started=started,
-            configuration_ms=_elapsed_ms(started, configuration_loaded_at),
-            query_ms=_elapsed_ms(configuration_loaded_at, query_finished_at),
+            configuration_ms=elapsed_ms(started, configuration_loaded_at),
+            query_ms=elapsed_ms(configuration_loaded_at, query_finished_at),
             projection_ready=projection_ready,
             item_count=len(page),
             has_more=has_more,
@@ -272,8 +271,8 @@ class PostgresContentHttpService:
         self._log_read_timing(
             operation="filter_options",
             started=started,
-            configuration_ms=_elapsed_ms(started, configuration_loaded_at),
-            query_ms=_elapsed_ms(configuration_loaded_at, query_finished_at),
+            configuration_ms=elapsed_ms(started, configuration_loaded_at),
+            query_ms=elapsed_ms(configuration_loaded_at, query_finished_at),
             projection_ready=values.catalog_status == "ready",
             option_count=(
                 len(response.content_types)
@@ -322,8 +321,8 @@ class PostgresContentHttpService:
         self._log_read_timing(
             operation="detail",
             started=started,
-            configuration_ms=_elapsed_ms(started, configuration_loaded_at),
-            query_ms=_elapsed_ms(configuration_loaded_at, query_finished_at),
+            configuration_ms=elapsed_ms(started, configuration_loaded_at),
+            query_ms=elapsed_ms(configuration_loaded_at, query_finished_at),
             projection_ready=projection_ready,
             include_comments=include_comments,
             media_count=len(response.media),
@@ -384,7 +383,7 @@ class PostgresContentHttpService:
         self._log_read_timing(
             operation="comments",
             started=started,
-            query_ms=_elapsed_ms(started, query_finished_at),
+            query_ms=elapsed_ms(started, query_finished_at),
             item_count=len(page),
             has_more=has_more,
             thread_view=query.root_comment_id is not None,
@@ -401,14 +400,10 @@ class PostgresContentHttpService:
     ) -> None:
         """记录安全的阶段耗时；慢查询提升到 WARNING，正常请求保持 DEBUG。"""
 
-        duration_ms = _elapsed_ms(started, perf_counter())
-        log_event(
+        log_voice_plaza_read_timing(
             self._runtime.logger,
-            logging.WARNING if duration_ms >= 500 else logging.DEBUG,
-            "voice_plaza.read_slow" if duration_ms >= 500 else "voice_plaza.read_completed",
-            "声音广场读取超过阶段耗时阈值。" if duration_ms >= 500 else "声音广场读取完成。",
             operation=operation,
-            duration_ms=duration_ms,
+            started=started,
             **fields,
         )
 
@@ -1371,12 +1366,6 @@ def _analysis_job_response(
         started_at=job.started_at,
         finished_at=job.finished_at,
     )
-
-
-def _elapsed_ms(started: float, finished: float) -> int:
-    """把单调时钟差转换为非负毫秒。"""
-
-    return max(0, round((finished - started) * 1000))
 
 
 __all__ = ["PostgresContentHttpService"]

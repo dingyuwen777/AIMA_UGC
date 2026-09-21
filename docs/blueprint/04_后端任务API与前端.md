@@ -319,9 +319,9 @@ PUT  /api/v1/notifications/read
 
 Availability 使用追加式 Observation，不覆盖历史。只有明确 Provider 业务证据可以形成 `unavailable_confirmed`，技术失败只能是 `unknown/suspected`。Notification 是业务终态的按 Principal 收件箱投影，不替代 Job/Export/Run 状态机。
 
-声音广场首屏把列表作为唯一阻塞资源：首次进入立即请求 `limit=20 + sort_by=published_at + sort_direction=desc`，列表返回后马上展示；同一会话已有同查询页面时采用 stale-while-revalidate，先保留可用结果再取得服务端最新第一页。筛选目录、Taxonomy、计数、导出和任务状态在后台独立加载，任何一个失败都不阻断已经取得的内容。页面把当前筛选总数与当前已加载数分开表达；总数未返回时显示统计中或不可用，不回退成第一页条数。已点击“查询”的筛选快照和排序保存在浏览器会话中，离开再返回时自动恢复；筛选输入草稿在再次提交前不影响列表、统计、导出或轮询。取得下一页 Cursor 后前端预取一页；筛选或排序 revision 变化时旧预取不能提交。
+声音广场首屏把列表作为唯一阻塞资源：首次进入先发起 `limit=20 + sort_by=published_at + sort_direction=desc` 列表请求，随后立即并行发起同一已应用筛选快照的计数请求，任一请求都不等待另一个完成；同一会话已有同查询页面时采用 stale-while-revalidate，先保留可用结果再取得服务端最新第一页。筛选目录、Taxonomy、计数、导出和任务状态在后台独立加载，任何一个失败都不阻断已经取得的内容。页面把当前筛选总数与当前已加载数分开表达，明确区分统计中、读模型准备中、统计失败和可靠数字；总数为零时仍显示 `0 条`，不回退成第一页条数。提交新筛选会取消上一条尚未完成的计数请求，迟到响应不能覆盖当前筛选结果。已点击“查询”的筛选快照和排序保存在浏览器会话中，离开再返回时自动恢复；筛选输入草稿在再次提交前不影响列表、统计、导出或轮询。取得下一页 Cursor 后前端预取一页；筛选或排序 revision 变化时旧预取不能提交。
 
-列表、平台筛选、加载更多和详情基础记录在 `voice_plaza_projection_state=ready` 后读取 `voice_plaza_content_projection`，请求内不再重建全库 `row_number()` Current；历史回填期间列表仍走旧路径保证完整，动态目录只读增量聚合小表并返回 `catalog_status=building/ready`。详情点击先把列表项提升为可显示摘要，再并行补齐完整详情和一级评论。服务端对列表、筛选目录、详情和评论记录安全阶段耗时：正常完成是 DEBUG，超过 500ms 是 `voice_plaza.read_slow` WARNING，不记录搜索词、正文或 Secret。
+列表、平台筛选、加载更多和详情基础记录在 `voice_plaza_projection_state=ready` 后读取 `voice_plaza_content_projection`，请求内不再重建全库 `row_number()` Current；历史回填期间列表仍走旧路径保证完整，动态目录只读增量聚合小表并返回 `catalog_status=building/ready`。详情点击先把列表项提升为可显示摘要，再并行补齐完整详情和一级评论。服务端对列表、筛选目录、计数、详情和评论记录安全阶段耗时：正常完成是 DEBUG，超过 500ms 是 `voice_plaza.read_slow` WARNING；计数日志只记录筛选字段名，不记录搜索词、筛选值、正文或 Secret。
 
 声音广场内容详情中的评论区直接可见，不再藏在“更多信息”折叠项内。页面读取详情时传 `include_comments=false`，避免详情兼容字段与评论分页重复查询；该参数默认仍为 `true`，旧调用继续取得最多 100 条内嵌评论。`GET /api/v1/contents/{content_id}/comments` 不带 `root_comment_id` 时稳定分页读取一级评论，带值时稳定分页读取该线程回复；页面先显示一级评论，只有用户展开线程时才读取回复。响应保留根评论、直接父评论和父作者显示信息，页面据此缩进回复并明确显示“回复谁”。页面数据只来自 PostgreSQL，并分别表达平台报告数、已采集数和当前显示数。
 
