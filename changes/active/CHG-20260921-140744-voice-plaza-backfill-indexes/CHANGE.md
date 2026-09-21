@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260921-140744-voice-plaza-backfill-indexes
 title: 声音广场读模型回填索引与超时整改
 level: L3
-status: proposed
+status: ready_for_review
 owner: codex
 branch: fix/voice-plaza-projection-backfill-indexes
 created: 2026-09-21
@@ -34,7 +34,7 @@ data_changes:
 # 变更摘要
 
 - **要解决的问题**：真实 1,823,565+ 数据环境中，声音广场投影回填单次 Attempt 运行数小时后超时，投影始终未进入 `ready`，列表、筛选、加载更多和详情继续走旧查询。
-- **拟议修改**：为两类来源账本增加按 `content_id` 反查的部分索引，为每个回填批次设置短于 Job Deadline 的 PostgreSQL 语句超时，并记录不含业务正文的批次开始、完成和失败日志。
+- **已实施修改**：为两类来源账本增加按 `content_id` 反查的部分索引，为每个回填批次设置短于 Job Deadline 的 PostgreSQL 语句与事务超时，并记录不含业务正文的批次开始、完成和失败日志。
 - **预期结果**：回填不再对历史账本重复做无索引扫描，也不会在单条 SQL 卡住时占用 Worker 数小时；投影可持续推进并最终切换读取路径。
 
 # 背景、现状与问题
@@ -79,11 +79,11 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 
 ## 成功标准
 
-- [ ] Metadata 与 Alembic head 同时包含两张来源账本的 `content_id IS NOT NULL` 部分索引。
-- [ ] 每个回填批次的 PostgreSQL 语句耗时被限制在 Job Attempt Deadline 以内，超时进入现有可重试语义。
-- [ ] 批次开始、完成和数据库失败均有安全结构化日志，可看到 generation、批次序号、处理量、进度和耗时。
-- [ ] Migration upgrade/downgrade、`alembic check`、目标单元测试和 PostgreSQL 集成测试通过。
-- [ ] 用户可从本地离线包部署后的日志确认投影推进到 `ready`，再完成真实性能验收。
+- [x] Metadata 与 Alembic head 同时包含两张来源账本的 `content_id IS NOT NULL` 部分索引。
+- [x] 单条 SQL 限制为 180 秒、整个批次事务限制为 240 秒；五批最坏事务上限低于 1800 秒 Job Attempt Deadline，超时复用现有 Retry。
+- [x] 批次开始、完成和数据库失败均有安全结构化日志，可看到 generation、批次序号、处理量、进度和耗时。
+- [x] Migration upgrade/downgrade、`alembic check`、目标单元测试和 PostgreSQL 集成测试通过。
+- [x] 运维文档给出本地离线包部署后确认索引、投影进度、`ready` 切换和真实性能验收的方法。
 
 ## 范围
 
@@ -120,7 +120,7 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 ## 最小充分方案
 
 1. 新增两张来源账本的部分索引并用 Migration 管理。
-2. 在每个回填短事务内用 PostgreSQL `set_config(..., true)` 设置语句超时，确保五个批次的最坏上限低于 1800 秒 Attempt Deadline。
+2. 在每个回填短事务内用 PostgreSQL `set_config(..., true)` 分别设置 180 秒语句超时和 240 秒事务超时，确保五个批次的事务上限低于 1800 秒 Attempt Deadline。
 3. 在现有统一日志中记录批次开始、完成和数据库错误，不输出 Content ID、正文或 SQL Payload。
 4. 用 Metadata、Migration 往返、PostgreSQL 集成和日志回归证明索引与恢复语义。
 
@@ -129,7 +129,7 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 | 决策 | 依据证据 | 为什么采用这个方案 |
 | --- | --- | --- |
 | D1：来源账本反查索引 | E3、E4 | 直接切断已确认的大表无索引反查，不增加新基础设施 |
-| D2：批次级语句超时 | E2 | 即使仍有数据库异常，也能在 Deadline 前回到 Job Retry，而不是卡到重启 |
+| D2：语句与批次事务双重超时 | E2 | 单条 SQL 与整个事务分别有界，即使仍有数据库异常，也能在 Deadline 前回到 Job Retry，而不是卡到重启 |
 | D3：批次级安全日志 | E2 | 让服务器测试能区分索引无效、锁等待和批次推进 |
 
 ## 备选方案与取舍
@@ -142,9 +142,9 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 读模型可分片回填、可观察且可安全回滚 | #551 / AC7 | not_satisfied | 待 Migration、超时和日志验证 |
-| R2 | 在真实服务器完成列表、筛选、详情和评论性能验收 | #551 / AC8 | not_satisfied | 本次先修复阻塞验收的回填，真实性能仍由用户离线包测试 |
-| R3 | 按确认方案修改但暂不合并主分支 | user:2026-09-21#AC1 | not_satisfied | 待本地分支实现、验证并保持未合并 |
+| R1 | 读模型可分片回填、可观察且可安全回滚 | #551 / AC7 | satisfied | Migration `0055`、双重超时、批次日志、迁移往返与真实 PostgreSQL 回填测试均通过 |
+| R2 | 在真实服务器完成列表、筛选、详情和评论性能验收 | #551 / AC8 | explicitly_deferred | 用户明确先在本地构建离线包测试；本 Change 已修复阻塞回填并同步验收手册，不伪造 182 万规模结论 |
+| R3 | 按确认方案修改但暂不合并主分支 | user:2026-09-21#AC1 | satisfied | 实现保留在本地 `fix/voice-plaza-projection-backfill-indexes`，未 push、未建 PR、未合并 `main` |
 
 # 计划改动
 
@@ -158,11 +158,11 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 行为变化建立失败证据
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档
+- [x] 取得仍覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -205,25 +205,34 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 
 # 完成审计
 
-- [ ] upstream_re_read：已重新读取 Issue #551、用户本轮决定和正式项目文档，并独立重建完成定义。
-- [ ] change_coverage：已确认当前变更覆盖全部上游要求，没有把变更自身当作需求全集。
-- [ ] reverse_audit：已复核 Metadata → Migration → Worker → projection state → 查询切换与 downgrade 边界。
-- [ ] unresolved_cleared：所有 `not_satisfied` 已清零；真实 182 万性能仅在用户离线包测试后验收。
+- [x] upstream_re_read：已重新读取 Issue #551、用户本轮决定和正式项目文档，并独立重建完成定义。
+- [x] change_coverage：已确认当前变更覆盖全部上游要求，没有把变更自身当作需求全集；真实服务器性能验收按用户决定显式延期到离线包测试。
+- [x] reverse_audit：已复核 Metadata → Migration → Worker → projection state → 查询切换与 downgrade 边界；审查中发现单独 `statement_timeout` 不能约束整个批次，已增加 PostgreSQL 18 `transaction_timeout` 并重验。
+- [x] unresolved_cleared：所有 `not_satisfied` 已清零；真实 182 万性能仅在用户离线包测试后验收。
 
 # 完成证据与状态
 
 ## 新鲜证据
 
-尚未执行；实现后补当前分支 HEAD 的命令、环境、结果和证明范围。
+| 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明范围 |
+| --- | --- | --- | --- | --- |
+| V1 | Red `66cdc8c6` / Windows / Python 3.14 | `pytest tests/unit/content/test_voice_plaza_read_model.py tests/unit/content/test_voice_plaza_projection_worker.py -q` | 3 failed、4 passed；缺少两个索引、超时设置和失败日志 | 修复前缺陷可复现，失败原因与目标一致 |
+| V2 | `536c413e` / Windows / Python 3.14 | `pytest tests/unit/content -q -p no:cacheprovider` | 35 passed | Content 单元回归、索引 Metadata、180/240 秒双重超时和安全日志成立 |
+| V3 | `536c413e` / PostgreSQL 18.4 一次性无数据卷容器 | `test_0055_creates_and_drops_voice_plaza_source_lookup_indexes`；`alembic upgrade head`；`alembic check` | 迁移往返 1 passed；自动差异清零 | `0054 → 0055` 可建索引、可回滚且 Metadata/DDL 一致 |
+| V4 | `536c413e` / PostgreSQL 18.4 一次性无数据卷容器 | `test_voice_plaza_projection_backfill_switches_reads_to_ready_catalog` | 1 passed | PostgreSQL 18 接受事务超时；生产 Job 链能从 pending 回填到 ready 并切换列表/目录读取 |
+| V5 | `536c413e` / Windows | 变更文件 `ruff format --check`、`ruff check`；`mypy backend/src` | 通过；350 个源码文件无类型错误 | 格式、静态规则和生产源码类型正确 |
+| V6 | `536c413e` / Windows | `check_architecture.py`、`check_table_ownership.py`、`check_docs.py`、`check_docs_facts.py` | 全部通过 | 模块 Owner、文档链接与长期事实同步 |
 
 ## 未验证内容与剩余风险
 
-- 当前没有生产数据库访问权，无法在本地证明 182 万规模的最终耗时。
+- 当前没有生产数据库访问权，无法在本地证明 182 万规模的最终耗时、P50/P95 或实际建索引时长。
 - 用户本地离线包构建和服务器运行验收尚未执行。
 
 ## 交付状态
 
 - 分支：`fix/voice-plaza-projection-backfill-indexes`。
-- 提交 / PR：尚未创建。
+- 提交：Red 基线 `66cdc8c6`；实现、测试与文档 `536c413e`。
+- PR：按用户“先不用合并主分支”的本地测试边界未创建，也未推送远程分支。
+- Review：已审查 Migration、调用链、超时、Fencing/Heartbeat、日志安全和回滚；发现的事务总时长边界已修复并重验，当前无剩余阻塞 Finding。
 - 合并：按用户要求暂不合并 `main`。
 - 发布 / 部署：不在本次执行范围。
