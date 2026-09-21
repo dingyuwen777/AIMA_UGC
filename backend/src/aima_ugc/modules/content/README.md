@@ -429,6 +429,8 @@ HTTP 热路径不会在每次请求中对这些大表重建全局窗口。`voice
 
 筛选目录只读取 `voice_plaza_filter_catalog` 小表，不再为一次请求对 Current 做全量 `DISTINCT`。逐 Content 目录贡献通过 `voice_plaza_filter_catalog_entries` 增量维护；历史回填期间返回部分目录和 `catalog_status=building`，平台、相关性、分析状态及 active Taxonomy 值仍可使用。评论分页判断 Content 是否存在时也只读取可见性，不会为一次存在性检查构造整份详情；一级评论的已入库回复数按当前 Content 一次分组，不执行逐行相关子查询。
 
+列表总数继续通过独立 Count 请求读取，不进入首屏 Cursor 查询。投影 `ready` 后，Count 在 `voice_plaza_content_projection` 上复用列表全部筛选语义执行精确 `COUNT(*)`；只有文本搜索需要连接当前 Content/Version 正文列，其余条件保持窄投影查询。回填期间不能可靠得到筛选总数时明确返回无数字，前端不会把当前已加载页数冒充总数。
+
 Brand 与 Vehicle 是两组独立 Evidence。列表返回当前 Content Version 的全部有效 Brand 及证据；Vehicle 仍按合并后的有效车型展示，并嵌套该车型当前目录中的 Brand 引用。`competition_scope` 不持久化，而是由命中 Brand 的 `owned / competitor / other` 角色集合派生；没有 Brand 时为 `none_detected`。`brand_ids`、`vehicle_model_ids` 和 `competition_scopes` 在同一查询内按 AND 组合，各自数组内部按 OR 匹配。List、Count、Analysis query target 与 Export query target 都复用这一过滤入口。
 
 ### 当前 Analysis 状态

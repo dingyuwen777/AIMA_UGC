@@ -13,6 +13,7 @@ const generated = vi.hoisted(() => ({
     bilibili: 'bilibili',
     kuaishou: 'kuaishou',
   },
+  countContents: vi.fn(),
   listContents: vi.fn(),
   listContentComments: vi.fn(),
   getContent: vi.fn(),
@@ -406,6 +407,32 @@ describe('voice plaza', () => {
       items: [item],
     })
     expect(generated.listContents).toHaveBeenCalledWith({ sentiment: '负面', limit: 20 })
+  })
+
+  it('requests the total for the applied filters independently from loaded pages', async () => {
+    generated.countContents.mockResolvedValue({
+      count_mode: 'estimated',
+      count: 1823565,
+      count_kind: 'exact',
+      as_of: '2026-09-21T12:00:00+08:00',
+      truncated: false,
+    })
+    const store = useVoicePlazaStore()
+    await store.refreshCount('estimated')
+    expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
+
+    store.filters.platform = 'douyin'
+    store.applyFilters()
+    expect(store.contentCount).toBeNull()
+    expect(store.countLoading).toBe(true)
+
+    await store.refreshCount('estimated')
+
+    expect(generated.countContents).toHaveBeenCalledWith(expect.objectContaining({
+      filters: expect.objectContaining({ platforms: ['douyin'] }),
+      count_mode: 'estimated',
+    }))
+    expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
   })
 
   it('offers exactly the five supported content platforms in the platform filter', async () => {

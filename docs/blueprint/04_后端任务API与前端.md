@@ -315,11 +315,11 @@ PUT  /api/v1/notifications/read
 
 `POST /api/v1/content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /api/v1/contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
 
-车型、发声类型、情感和标签的人工修订按 `content_id + content_version` 保存，并按维度锁住自动结果；只有显式人工 unlock 才允许后续自动结果重新成为当前投影。车型允许 0..N 个，不设主车型。Count 保持 Cursor 查询不变，通过独立请求表达 `none / exact / estimated`；exact 只在有界范围承诺。
+车型、发声类型、情感和标签的人工修订按 `content_id + content_version` 保存，并按维度锁住自动结果；只有显式人工 unlock 才允许后续自动结果重新成为当前投影。车型允许 0..N 个，不设主车型。Count 保持 Cursor 查询不变，通过独立请求表达 `none / exact / estimated`；exact 只在有界范围承诺。声音广场的后台 `estimated` 请求在读模型就绪后优先从一行一 Content 的投影按当前筛选执行精确计数，并以 `count_kind=exact` 明示；回填窗口内无筛选请求才允许回退为明确标注的 PostgreSQL 估算，有筛选但尚无可靠数字时返回 `none`，不拿已加载页数代替总数。
 
 Availability 使用追加式 Observation，不覆盖历史。只有明确 Provider 业务证据可以形成 `unavailable_confirmed`，技术失败只能是 `unknown/suspected`。Notification 是业务终态的按 Principal 收件箱投影，不替代 Job/Export/Run 状态机。
 
-声音广场首屏把列表作为唯一阻塞资源：首次进入立即请求 `limit=20 + sort_by=published_at + sort_direction=desc`，列表返回后马上展示；同一会话已有同查询页面时采用 stale-while-revalidate，先保留可用结果再取得服务端最新第一页。筛选目录、Taxonomy、计数、导出和任务状态在后台独立加载，任何一个失败都不阻断已经取得的内容。已点击“查询”的筛选快照和排序保存在浏览器会话中，离开再返回时自动恢复；筛选输入草稿在再次提交前不影响列表、统计、导出或轮询。取得下一页 Cursor 后前端预取一页；筛选或排序 revision 变化时旧预取不能提交。
+声音广场首屏把列表作为唯一阻塞资源：首次进入立即请求 `limit=20 + sort_by=published_at + sort_direction=desc`，列表返回后马上展示；同一会话已有同查询页面时采用 stale-while-revalidate，先保留可用结果再取得服务端最新第一页。筛选目录、Taxonomy、计数、导出和任务状态在后台独立加载，任何一个失败都不阻断已经取得的内容。页面把当前筛选总数与当前已加载数分开表达；总数未返回时显示统计中或不可用，不回退成第一页条数。已点击“查询”的筛选快照和排序保存在浏览器会话中，离开再返回时自动恢复；筛选输入草稿在再次提交前不影响列表、统计、导出或轮询。取得下一页 Cursor 后前端预取一页；筛选或排序 revision 变化时旧预取不能提交。
 
 列表、平台筛选、加载更多和详情基础记录在 `voice_plaza_projection_state=ready` 后读取 `voice_plaza_content_projection`，请求内不再重建全库 `row_number()` Current；历史回填期间列表仍走旧路径保证完整，动态目录只读增量聚合小表并返回 `catalog_status=building/ready`。详情点击先把列表项提升为可显示摘要，再并行补齐完整详情和一级评论。服务端对列表、筛选目录、详情和评论记录安全阶段耗时：正常完成是 DEBUG，超过 500ms 是 `voice_plaza.read_slow` WARNING，不记录搜索词、正文或 Secret。
 

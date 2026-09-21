@@ -24,6 +24,7 @@ from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.export_worker import PostgresDataExportJobExecutor
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
+from aima_ugc.bootstrap.product_http import PostgresProductHttpService
 from aima_ugc.bootstrap.reporting_http import PostgresReportingHttpService
 from aima_ugc.bootstrap.voice_plaza_projection_worker import (
     ensure_voice_plaza_projection_backfill_job,
@@ -35,6 +36,7 @@ from aima_ugc.bootstrap.worker import (
 )
 from aima_ugc.contracts.http import (
     ContentAnalysisSubmitRequest,
+    ContentCountRequest,
     ContentListQuery,
     ContentTargetSelection,
     DataExportSubmitRequest,
@@ -339,6 +341,16 @@ def test_voice_plaza_projection_backfill_switches_reads_to_ready_catalog(
         ]
         filtered = service.list_contents(ContentListQuery(platforms=("xiaohongshu",)))
         assert len(filtered.items) == 2
+        product_service = PostgresProductHttpService(runtime)
+        total = product_service.count_contents(ContentCountRequest(count_mode="estimated"))
+        filtered_total = product_service.count_contents(
+            ContentCountRequest(
+                filters={"platforms": ["xiaohongshu"], "search": "Q7"},
+                count_mode="estimated",
+            )
+        )
+        assert (total.count, total.count_kind, total.truncated) == (2, "exact", False)
+        assert (filtered_total.count, filtered_total.count_kind) == (1, "exact")
         options = service.get_filter_options()
         assert options.catalog_status == "ready"
         assert {entry.content_type for entry in page.items}.issubset(options.content_types)

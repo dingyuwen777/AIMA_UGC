@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260921-140744-voice-plaza-backfill-indexes
 title: 声音广场读模型回填索引与超时整改
 level: L3
-status: ready_for_review
+status: in_progress
 owner: codex
 branch: fix/voice-plaza-projection-backfill-indexes
 created: 2026-09-21
@@ -12,6 +12,8 @@ completion_gate: required
 depends_on: []
 affected_areas:
   - content
+  - product
+  - frontend
   - collection
   - ingestion
   - jobs
@@ -21,6 +23,10 @@ affected_paths:
   - backend/src/aima_ugc/modules/collection/candidate_tables.py
   - backend/src/aima_ugc/modules/ingestion/historical_tables.py
   - backend/src/aima_ugc/bootstrap/voice_plaza_projection_worker.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/content_product.py
+  - backend/src/aima_ugc/bootstrap/product_http.py
+  - frontend/src/features/voice-plaza/
   - migrations/versions/
   - tests/
   - docs/operations/04_声音广场读模型回填与性能验证.md
@@ -36,6 +42,7 @@ data_changes:
 - **要解决的问题**：真实 1,823,565+ 数据环境中，声音广场投影回填单次 Attempt 运行数小时后超时，投影始终未进入 `ready`，列表、筛选、加载更多和详情继续走旧查询。
 - **已实施修改**：为两类来源账本增加按 `content_id` 反查的部分索引，为每个回填批次设置短于 Job Deadline 的 PostgreSQL 语句与事务超时，并记录不含业务正文的批次开始、完成和失败日志。
 - **预期结果**：回填不再对历史账本重复做无索引扫描，也不会在单条 SQL 卡住时占用 Worker 数小时；投影可持续推进并最终切换读取路径。
+- **追加用户要求**：声音广场筛选区下方显示当前已应用筛选命中的总数据量，不得再用当前已加载页数冒充总数；总数仍异步读取，不能阻塞最新倒序第一页。
 
 # 背景、现状与问题
 
@@ -84,6 +91,7 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 - [x] 批次开始、完成和数据库失败均有安全结构化日志，可看到 generation、批次序号、处理量、进度和耗时。
 - [x] Migration upgrade/downgrade、`alembic check`、目标单元测试和 PostgreSQL 集成测试通过。
 - [x] 运维文档给出本地离线包部署后确认索引、投影进度、`ready` 切换和真实性能验收的方法。
+- [ ] 无筛选和任意已应用筛选都返回与列表语义一致的总数；页面明确区分“总数”和“当前已加载数”，且计数不阻塞第一页。
 
 ## 范围
 
@@ -94,6 +102,7 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 ## 非目标
 
 - 不修改声音广场 HTTP Contract、筛选语义、排序或 Cursor。
+- 不把总数计算并入列表请求，不因计数失败阻断第一页或加载更多。
 - 不在本地伪造 182 万数据并宣称生产性能已经通过。
 - 不引入 Redis、消息队列、搜索引擎、新进程或新依赖。
 - 本次不合并 `main`、不构建正式 Release、不执行生产 Migration。
@@ -145,6 +154,7 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 | R1 | 读模型可分片回填、可观察且可安全回滚 | #551 / AC7 | satisfied | Migration `0055`、双重超时、批次日志、迁移往返与真实 PostgreSQL 回填测试均通过 |
 | R2 | 在真实服务器完成列表、筛选、详情和评论性能验收 | #551 / AC8 | explicitly_deferred | 用户明确先在本地构建离线包测试；本 Change 已修复阻塞回填并同步验收手册，不伪造 182 万规模结论 |
 | R3 | 按确认方案修改但暂不合并主分支 | user:2026-09-21#AC1 | satisfied | 实现保留在本地 `fix/voice-plaza-projection-backfill-indexes`，未 push、未建 PR、未合并 `main` |
+| R4 | 筛选区域下方显示当前筛选命中的全部数据量；无筛选时显示全部可见数据量 | user:2026-09-21#AC2 | not_satisfied | 待实现投影精确计数、页面文案和回归测试 |
 
 # 计划改动
 

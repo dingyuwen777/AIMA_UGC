@@ -80,6 +80,23 @@ def test_voice_plaza_list_statement_has_no_global_window_projection() -> None:
     assert "row_number() over" not in sql
 
 
+def test_voice_plaza_count_statement_uses_projection_and_current_filters() -> None:
+    """筛选总数必须复用窄投影，不能重新扫描旧 Current 窗口或加载全部 ID。"""
+
+    repository = PostgresContentQueryRepository(Session(), analysis_identity=None)
+    statement = repository._projection_count_statement(  # noqa: SLF001
+        ContentFilterSnapshot(platforms=("xiaohongshu",), search="爱玛")
+    )
+
+    sql = _postgres_sql(statement)
+
+    assert "count(*)" in sql
+    assert "voice_plaza_content_projection" in sql
+    assert "voice_plaza_content_projection.platform in ('xiaohongshu')" in sql
+    assert "contents.title ilike" in sql
+    assert "row_number() over" not in sql
+
+
 def test_comment_reply_counts_are_grouped_once_per_content() -> None:
     repository = PostgresContentQueryRepository(Session(), analysis_identity=None)
 

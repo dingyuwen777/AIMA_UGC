@@ -126,6 +126,18 @@ function expectNear(actual: number | undefined, expected: number): void {
 async function stubNormalContents(page: Page, items = normalItems): Promise<void> {
   await page.route('**/api/v1/contents**', async (route) => {
     const path = new URL(route.request().url()).pathname
+    if (path === '/api/v1/contents/count') {
+      await route.fulfill({
+        json: {
+          count_mode: 'estimated',
+          count: 1823565,
+          count_kind: 'exact',
+          as_of: '2026-09-21T12:00:00+08:00',
+          truncated: false,
+        },
+      })
+      return
+    }
     if (path === `/api/v1/contents/${content.id}`) {
       await route.fulfill({ json: { ...content, vehicles: [], media: [], comments: [] } })
       return
@@ -346,7 +358,8 @@ test('keeps terminal analysis history out of the formal data canvas and availabl
   await expect(page.getByText('Run #12')).toHaveCount(0)
   await expect(page.locator('.content-row')).toHaveCount(3)
   await expect(page.getByText('标题内容', { exact: true })).toBeVisible()
-  await expect(page.locator('.pagination').getByText('已显示 3 条')).toBeVisible()
+  await expect(page.locator('.pagination')).toContainText('共 1,823,565 条')
+  await expect(page.locator('.pagination')).toContainText('当前已加载 3 条')
   await expect(page.getByRole('button', { name: '加载更多 →' })).toBeEnabled()
 
   await page.getByRole('button', { name: /任务中心/ }).click()
