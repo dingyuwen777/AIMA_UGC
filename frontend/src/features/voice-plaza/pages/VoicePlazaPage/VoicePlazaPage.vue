@@ -266,14 +266,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         <span>平台、相关性和状态仍可筛选；情感、标签等动态目录可稍后重试。</span>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
-        v-else-if="store.filterOptions?.catalog_status === 'building'"
-        class="taxonomy-warning"
-        tone="info"
-      >
-        <strong>筛选数据正在后台同步</strong>
-        <span>平台、相关性和状态可立即使用；历史情感与标签选项会自动补齐，无需手动刷新。</span>
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
         v-if="store.taxonomyError"
         class="taxonomy-warning"
         tone="warning"
