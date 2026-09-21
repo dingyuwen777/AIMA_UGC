@@ -674,6 +674,18 @@ Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围
 
 ## 11.1 Principal、车型与管理员配置
 
+
+飞书登录与会话（Cookie 名 `aima_session`，属性 `HttpOnly` + `SameSite=Lax` + `Path=/`，`Secure` 按环境）：
+
+```text
+GET    /api/v1/auth/feishu/login
+GET    /api/v1/auth/feishu/callback
+POST   /api/v1/auth/logout
+```
+
+`/login` 生成一次性 state 后 302 到飞书授权页，`?return_to=` 只允许站内相对路径；`/callback` 校验并消费 state、用授权码换令牌、取用户、查用户组、判角色、建会话后 302 回 `return_to`；`/logout` **在服务端撤销会话**并清 Cookie。无会话访问受保护接口返回 `401`，已登录但角色不足返回 `403`。未配置 `AIMA_FEISHU_*` 时这三个路由返回 `503`，进程沿用开发身份。
+
+
 ```text
 GET    /api/v1/principal
 GET    /api/v1/vehicle-models
@@ -820,7 +832,6 @@ Pydantic Contract
 /api/v1/alerts
 /api/v1/reports
 /api/v1/client-events
-企业登录 / Session API
 LLM 配置编辑 / Secret 查询 API
 独立顶层 /api/v1/analysis-runs 资源
 ```

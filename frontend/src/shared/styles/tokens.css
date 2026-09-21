@@ -91,6 +91,19 @@
   --aima-border-width-focus: 2px;
   --aima-control-height-toggle: 24px;
 
+  /* 浮层阴影：给"浮在内容之上"的元素用（通知面板 / 对话框 / 下拉菜单）。
+     三层叠加比单层自然：近距勾边 + 中距厚度 + 远距负扩散（营造离地高度）。
+     基色取正文色 `#17233d` 而非纯黑 —— 纯黑阴影在浅色界面上偏脏。
+
+     ⚠️ 本令牌此前**被 3 个文件引用但从未在此定义**
+     （`NotificationInbox.vue` / `AimaDialog.vue` / `VoicePlazaPage.vue`），
+     导致那三处 `box-shadow` **静默失效**（弹窗与下拉菜单实际是平的，且不报错）。
+     2026-09-20 补齐。 */
+  --aima-shadow-floating:
+    0 1px 2px rgb(23 35 61 / 8%),
+    0 8px 20px rgb(23 35 61 / 10%),
+    0 24px 48px -16px rgb(23 35 61 / 16%);
+
   /* 兼容已有页面的短名称；值只从上述 Figma 映射变量取得。 */
   --aima-primary: var(--aima-color-primary);
   --aima-primary-hover: var(--aima-color-primary-hover);

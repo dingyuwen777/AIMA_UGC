@@ -1882,6 +1882,8 @@ export const CurrentPrincipalResponseSource = {
  * 当前请求的 Provider-neutral Principal 投影。
  */
 export interface CurrentPrincipalResponse {
+  avatar_url?: string | null;
+  department_name?: string | null;
   /**
      * @minLength 1
      * @maxLength 200
@@ -2983,6 +2985,15 @@ offset?: number;
 limit?: number;
 };
 
+export type CompleteFeishuLoginParams = {
+code?: string | null;
+state?: string | null;
+};
+
+export type StartFeishuLoginParams = {
+return_to?: string | null;
+};
+
 export type ListCollectionPlansParams = {
 search?: string | null;
 enabled?: boolean | null;
@@ -3779,6 +3790,116 @@ export const listAuditEvents = async (params?: ListAuditEventsParams, options?: 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: AuditEventListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCompleteFeishuLoginUrl = (params?: CompleteFeishuLoginParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/callback?${stringifiedParams}` : `/api/v1/auth/feishu/callback`
+}
+
+/**
+ * 飞书回跳：消费 state → 换令牌 → 取用户 → 查组 → 判角色 → 建会话 → 302。
+ * @summary Completefeishulogin
+ */
+export const completeFeishuLogin = async (params?: CompleteFeishuLoginParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getCompleteFeishuLoginUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getStartFeishuLoginUrl = (params?: StartFeishuLoginParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/login?${stringifiedParams}` : `/api/v1/auth/feishu/login`
+}
+
+/**
+ * 发起登录：限流 → 校验 `return_to` → 生成一次性 state → 302 跳飞书授权页。
+ * @summary Startfeishulogin
+ */
+export const startFeishuLogin = async (params?: StartFeishuLoginParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getStartFeishuLoginUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getLogoutCurrentSessionUrl = () => {
+
+
+
+
+  return `/api/v1/auth/logout`
+}
+
+/**
+ * 登出：**服务端撤销会话** + 清 Cookie（幂等，重复登出不报错）。
+ * @summary Logoutcurrentsession
+ */
+export const logoutCurrentSession = async ( options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getLogoutCurrentSessionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
   return data
 }
 

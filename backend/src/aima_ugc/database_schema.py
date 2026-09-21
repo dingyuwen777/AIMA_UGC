@@ -74,6 +74,12 @@ from aima_ugc.modules.content.tables import (
     content_versions_table,
     contents_table,
 )
+from aima_ugc.modules.identity.tables import (
+    identity_external_identities_table,
+    identity_login_states_table,
+    identity_principals_table,
+    identity_sessions_table,
+)
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
@@ -194,6 +200,10 @@ __all__ = [
     "voice_plaza_projection_state_table",
     "content_versions_table",
     "contents_table",
+    "identity_external_identities_table",
+    "identity_login_states_table",
+    "identity_principals_table",
+    "identity_sessions_table",
     "job_attempt_events_table",
     "jobs_table",
     "keyword_pack_items_table",

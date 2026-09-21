@@ -2116,11 +2116,17 @@ def create_app(
         """返回当前 Provider-neutral Principal 与两角色投影。"""
 
         principal = current_principal(request)
+        # 头像与部门名由 Identity Resolver 经 `request.state` 附带
+        # （方案 §7B 头像、§5D 部门）：它们只服务前端展示，
+        # 不属于 Provider-neutral 的 `Principal` 本身。
+        # 开发身份不设置这两个属性，因此这里用 getattr 兜底为 None。
         return CurrentPrincipalResponse(
             principal_id=principal.principal_id,
             display_name=principal.display_name,
             role=principal.role,
             source=principal.source,
+            avatar_url=getattr(request.state, "principal_avatar_url", None),
+            department_name=getattr(request.state, "principal_department_name", None),
         )
 
     @application.get(
