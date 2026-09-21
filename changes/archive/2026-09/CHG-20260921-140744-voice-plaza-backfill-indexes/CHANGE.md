@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260921-140744-voice-plaza-backfill-indexes
 title: 声音广场读模型回填索引与超时整改
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/voice-plaza-projection-backfill-indexes
 created: 2026-09-21
