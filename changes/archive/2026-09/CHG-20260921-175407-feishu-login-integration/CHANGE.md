@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260921-175407-feishu-login-integration
 title: 将飞书企业登录交付补丁移植到当前主分支
 level: L3
-status: ready_for_review
+status: done
 owner: AIMA_UGC
 branch: feature/feishu-login-integration
 created: 2026-09-21
