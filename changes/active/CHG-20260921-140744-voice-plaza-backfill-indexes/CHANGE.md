@@ -157,7 +157,7 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 | --- | --- | --- | --- | --- |
 | R1 | 读模型可分片回填、可观察且可安全回滚 | #551 / AC7 | satisfied | Migration `0055`、双重超时、批次日志、迁移往返与真实 PostgreSQL 回填测试均通过 |
 | R2 | 在真实服务器完成列表、筛选、详情和评论性能验收 | #551 / AC8 | explicitly_deferred | 用户明确先在本地构建离线包测试；本 Change 已修复阻塞回填并同步验收手册，不伪造 182 万规模结论 |
-| R3 | 按确认方案修改但暂不合并主分支 | user:2026-09-21#AC1 | satisfied | 实现保留在本地 `fix/voice-plaza-projection-backfill-indexes`，未 push、未建 PR、未合并 `main` |
+| R3 | 按确认方案修改，先不合并主分支并交由本地离线包验证 | user:2026-09-21#AC1 | satisfied | 在用户发出后续合并指令前，实现与验证均保留在本地 `fix/voice-plaza-projection-backfill-indexes`，未提前合并 `main` |
 | R4 | 筛选区域下方显示当前筛选命中的全部数据量；无筛选时显示全部可见数据量 | user:2026-09-21#AC2 | satisfied | 投影精确 Count 复用列表筛选；页面显示“共 N 条 / 当前已加载 M 条”；PostgreSQL、Store 与 Playwright 回归通过 |
 
 # 计划改动
@@ -253,8 +253,8 @@ Issue #551 的 AC8 仍等待真实服务器性能验收。2026-09-21 新日志�
 ## 交付状态
 
 - 分支：`fix/voice-plaza-projection-backfill-indexes`。
-- 提交：Red 基线 `66cdc8c6`；回填实现、测试与文档 `536c413e`、`8bf09805`；筛选总数实现与回归 `d60ff6fa`。
-- PR：按用户“先不用合并主分支”的本地测试边界未创建，也未推送远程分支。
+- 提交：Red 基线 `66cdc8c6`；回填实现、测试与文档 `536c413e`、`8bf09805`；筛选总数实现与回归 `d60ff6fa`、`d411041c`。
+- PR：用户后续已授权合并；分支已推送并创建 PR `#554`（`https://github.com/dingyuwen777/AIMA_UGC/pull/554`）。
 - Review：已审查 Migration、调用链、超时、Fencing/Heartbeat、日志安全、Count/列表筛选一致性、筛选竞态和回滚；事务总时长与旧筛选总数短暂残留问题均已修复并重验，当前无剩余阻塞 Finding。
-- 合并：按用户要求暂不合并 `main`。
+- 合并：等待 PR 必需检查通过后合并 `main`；合并后由仓库自动归档当前 Change。
 - 发布 / 部署：不在本次执行范围。
