@@ -111,8 +111,11 @@ export async function fetchContentAnalysisCapabilities(): Promise<ContentAnalysi
   return unwrap(await getContentAnalysisCapabilities())
 }
 
-export async function fetchContentCount(request: ContentCountRequest): Promise<ContentCountResponse> {
-  return unwrap(await countContents(request))
+export async function fetchContentCount(
+  request: ContentCountRequest,
+  options?: RequestInit,
+): Promise<ContentCountResponse> {
+  return unwrap(await countContents(request, options))
 }
 
 export async function reviewVehicles(

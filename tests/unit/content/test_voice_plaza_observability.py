@@ -1,7 +1,7 @@
 """声音广场读取阶段日志回归。"""
 
-from contextlib import nullcontext
 import logging
+from contextlib import nullcontext
 from time import perf_counter
 from types import SimpleNamespace
 from typing import cast

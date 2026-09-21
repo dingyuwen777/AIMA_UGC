@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260921-222023-voice-plaza-count-concurrency
 title: 声音广场筛选总数独立加载与可观测性
 level: L2
-status: proposed
+status: ready_for_review
 owner: codex
 branch: fix/voice-plaza-count-independent-loading
 created: 2026-09-21
@@ -20,7 +20,9 @@ affected_paths:
   - frontend/tests/
   - backend/src/aima_ugc/bootstrap/content_http.py
   - backend/src/aima_ugc/bootstrap/product_http.py
+  - backend/src/aima_ugc/bootstrap/voice_plaza_observability.py
   - tests/unit/content/
+  - docs/blueprint/04_后端任务API与前端.md
   - docs/operations/04_声音广场读模型回填与性能验证.md
 contracts: []
 data_changes: []
@@ -75,12 +77,12 @@ Issue #551 的 AC8 仍等待 1,823,565+ 条真实服务器数据验收。PR #554
 
 ## 成功标准
 
-- [ ] 页面进入、查询和重置时，列表与 Count 使用同一已应用筛选快照独立启动。
-- [ ] Count 完成或失败都不阻塞列表；新筛选取消旧 Count，并继续拒绝迟到结果。
-- [ ] 页面在空列表时也显示统计状态，准确展示 `共 0 条`，并区分准备中、请求失败和可靠总数。
-- [ ] Count 日志包含总耗时、配置读取耗时、数据库查询耗时、投影就绪状态和筛选形状，不记录筛选值或正文。
-- [ ] 现有 HTTP Contract、Schema/Migration、依赖、列表筛选和投影回填语义保持不变。
-- [ ] 目标回归、前端构建、Contract 漂移检查和当前 CI 通过，独立 Review 无阻断 Finding 后合并主分支。
+- [x] 页面进入、查询和重置时，列表与 Count 使用同一已应用筛选快照独立启动。
+- [x] Count 完成或失败都不阻塞列表；新筛选取消旧 Count，并继续拒绝迟到结果。
+- [x] 页面在空列表时也显示统计状态，准确展示 `共 0 条`，并区分准备中、请求失败和可靠总数。
+- [x] Count 日志包含总耗时、配置读取耗时、数据库查询耗时、投影就绪状态和筛选形状，不记录筛选值或正文。
+- [x] 现有 HTTP Contract、Schema/Migration、依赖、列表筛选和投影回填语义保持不变。
+- [x] 目标回归、前端构建、Contract 漂移检查和独立 Review 已通过；PR CI 与合并按交付状态继续执行。
 
 ## 范围
 
@@ -134,10 +136,10 @@ Issue #551 的 AC8 仍等待 1,823,565+ 条真实服务器数据验收。PR #554
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 列表与同一筛选快照总数独立启动、互不等待 | #551 / AC9 | not_satisfied | 待失败回归与实现验证 |
-| R2 | 取消/丢弃过期 Count，失败不影响列表，页面区分状态并显示零 | #551 / AC10 | not_satisfied | 待组件与 Store 回归 |
-| R3 | 投影精确 Count 具备不泄露筛选值的阶段耗时观测；生产性能留给 AC8 | #551 / AC11 | not_satisfied | 待后端日志回归与运维文档 |
-| R4 | 不改变公共 Contract/Schema/Migration/依赖/筛选语义，验证和 Review 后合并 | #551 / AC12 | not_satisfied | 待 Contract/构建/CI/Review/merge |
+| R1 | 列表与同一筛选快照总数独立启动、互不等待 | #551 / AC9 | satisfied | `refreshResults` 先调用列表再立即启动 Count；Store 回归与 Playwright 慢列表场景均证明 Count 不等待列表 |
+| R2 | 取消/丢弃过期 Count，失败不影响列表，页面区分状态并显示零 | #551 / AC10 | satisfied | AbortSignal + revision/快照守卫；Store、SSR 页面回归覆盖迟到结果、失败隔离、零值、准备中和重试状态 |
+| R3 | 投影精确 Count 具备不泄露筛选值的阶段耗时观测；生产性能留给 AC8 | #551 / AC11 | satisfied | Count 继续调用 `display_count`；后端回归证明 `operation=count`、投影状态、阶段耗时和仅字段名日志，Blueprint/运维手册已同步 |
+| R4 | 不改变公共 Contract/Schema/Migration/依赖/筛选语义，验证和 Review 后合并 | #551 / AC12 | satisfied | 无 Contract/Schema/Migration/依赖 diff；兼容检查、类型/构建/静态门禁和 Standard Review 通过，PR #557 继续执行 CI 后合并 |
 | R5 | 真实 1,823,565+ 条数据性能验收 | #551 / AC8 | explicitly_deferred | AC8 明确要求在 Implementation merge 后的服务器环境执行，本 Change 不伪造该结果 |
 
 # 计划改动
@@ -152,10 +154,10 @@ Issue #551 的 AC8 仍等待 1,823,565+ 条真实服务器数据验收。PR #554
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
 - [x] 行为变化建立失败证据
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档
+- [x] 取得仍覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -198,10 +200,10 @@ Issue #551 的 AC8 仍等待 1,823,565+ 条真实服务器数据验收。PR #554
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取 #551 当前 live Acceptance、用户合并授权和正式项目事实。
-- [ ] change_coverage：确认 AC9–AC12 全部进入实现/测试/文档，AC8 保留 post-merge 服务器验收。
-- [ ] reverse_audit：从页面动作反查 Store/Client/后端投影，从后端 Count/日志反查页面状态与运维验收。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零；延期只有 #551 / AC8 的正式 post-merge 边界。
+- [x] upstream_re_read：2026-09-21 合并前重新读取 #551 live AC9–AC12、AC8 post-merge 边界、用户合并授权和当前 main/PR 事实。
+- [x] change_coverage：AC9–AC12 已逐条映射到实现、回归、文档和交付；AC8 继续保留真实服务器 post-merge 验收。
+- [x] reverse_audit：已从页面进入/查询/重置反查 Store、生成 Client、Count Service 与投影，并从 Count/日志反查页面状态、重试和运维验收。
+- [x] unresolved_cleared：R1–R4 已有当前实现与本轮证据，唯一延期 R5 由 #551 / AC8 明确要求在合并后服务器验证。
 
 # 完成证据与状态
 
@@ -210,16 +212,23 @@ Issue #551 的 AC8 仍等待 1,823,565+ 条真实服务器数据验收。PR #554
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | Red / Windows / Node 24.19 / Python 3.14 | `npm --prefix frontend test -- --run tests/voice-plaza.spec.ts tests/voice-plaza-design.spec.ts`；`uv run pytest tests/unit/content/test_voice_plaza_observability.py -q -p no:cacheprovider` | 前端 3 failed、37 passed；后端 1 failed、1 passed | 当前缺少并发入口、AbortSignal、空列表 Count 状态和 Count 日志，失败原因与 AC9–AC11 一致 |
+| V2 | Green / Windows / Node 24.19 / Python 3.14 | 同一目标回归命令 | 前端 41 passed；后端 2 passed | 同一 Red 路径已修复，并补充 Count 失败不覆盖列表 |
+| V3 | Windows / Node 24.19 | `npm --prefix frontend run test -- --run`；`npm --prefix frontend run lint`；`npm --prefix frontend run build` | 227 passed；lint、双 TypeScript 检查和 Vite build 通过 | 前端完整回归、类型和正式产物构建未受破坏 |
+| V4 | Windows / Playwright Browser Mock Acceptance | `npm --prefix frontend run test:e2e -- voice-plaza-design.spec.ts --grep "shows the matching total"` | 1 passed | 真实页面入口中列表保持 pending 时总数已经显示，之后列表正常提交 |
+| V5 | Windows / Python 3.14 | `uv run pytest tests/unit -q -p no:cacheprovider --ignore=tests/unit/test_prepare_host.py`；`uv run pytest tests/contracts tests/api -q -p no:cacheprovider -k "not current_machine_facts_do_not_reintroduce_platform_aliases"` | 1215 passed、8 skipped；185 passed、1 deselected | 除 Windows 不具备 POSIX API 和既有本地 Provider 输出扫描干扰外，后端单元、Contract 与 API 回归通过 |
+| V6 | Windows / Python 3.14 | Ruff format/check、Mypy、Contract generate/compatibility、architecture/table ownership、Docs checks、Change schema | 全部通过 | 静态类型、格式、架构边界、公共 Contract、文档和 Change 结构无回归 |
+| V7 | Standard Review / `origin/main` 9963e2f | AC9–AC12 → diff/调用链 → 测试/文档反向审查 | `NO_FINDINGS_WITHIN_SCOPE` | 当前范围无阻断 Finding；浏览器证据为 Mock，真实 PostgreSQL 与 Linux 门禁交给 PR CI |
 
 ## 未验证内容与剩余风险
 
 - 真实服务器投影状态、并发列表/Count P50/P95 与数据库 CPU/IO 仍由 #551 / AC8 在合并后验证。
+- Windows 本地无法执行 3 个 Linux POSIX 主机权限测试；一项 Contract 仓库扫描受工作区既有、非本 Change 的 Provider 原始输出影响，未删除用户数据。干净 Linux PR CI 负责最终确认。
 
 ## 交付状态
 
-- 提交：待创建。
-- 拉取请求：待创建。
-- CI：待执行。
+- 提交：Change、Red 已提交；Green/文档/证据提交待创建。
+- 拉取请求：#557（早期 PR，待更新为可审查说明）。
+- CI：早期 proposed Change 门禁按预期失败；ready_for_review 推送后重跑。
 - 合并：待执行。
 - Change 归档：合并后由仓库自动化处理。
 - 发布 / 部署：不在本次授权范围。

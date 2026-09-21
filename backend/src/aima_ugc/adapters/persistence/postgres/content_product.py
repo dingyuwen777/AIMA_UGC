@@ -70,6 +70,12 @@ class PostgresContentProductRepository:
             return estimate, "estimated"
         return None, "none"
 
+    @property
+    def last_projection_ready(self) -> bool | None:
+        """暴露本次读取观察到的派生读模型就绪状态。"""
+
+        return self._queries.last_projection_ready
+
     def append_availability(
         self,
         request: ContentAvailabilityObservationRequest,

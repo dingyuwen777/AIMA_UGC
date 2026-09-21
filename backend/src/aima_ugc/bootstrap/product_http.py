@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from time import perf_counter
 from uuid import uuid4
 
 from aima_ugc.adapters.persistence.postgres.content_product import (
@@ -11,7 +12,7 @@ from aima_ugc.adapters.persistence.postgres.notifications import (
     PostgresNotificationRepository,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
-from aima_ugc.contracts.http import ContentCountRequest
+from aima_ugc.contracts.http import ContentCountRequest, ContentFilterSnapshot
 from aima_ugc.contracts.product import (
     ContentAvailabilityObservationRequest,
     ContentAvailabilityResponse,
@@ -34,6 +35,7 @@ from aima_ugc.platform.time import beijing_now
 
 from .analysis_identity import active_analysis_configuration
 from .runtime import PlatformRuntime
+from .voice_plaza_observability import elapsed_ms, log_voice_plaza_read_timing
 
 
 class PostgresProductHttpService:
@@ -47,42 +49,64 @@ class PostgresProductHttpService:
     def count_contents(self, request: ContentCountRequest) -> ContentCountResponse:
         """执行 none、受限 exact 或有条件 estimated 计数。"""
 
+        started = perf_counter()
         session = self._runtime.database.new_session()
+        configuration_loaded_at = started
+        query_finished_at = started
+        projection_ready: bool | None = None
         try:
             with session.begin():
                 configuration = active_analysis_configuration(session, self._runtime.settings)
+                configuration_loaded_at = perf_counter()
                 repository = PostgresContentProductRepository(
                     session,
                     analysis_identity=configuration.identity,
                 )
                 if request.count_mode == "none":
-                    return ContentCountResponse(
+                    response = ContentCountResponse(
                         count_mode="none",
                         count=None,
                         count_kind="none",
                         as_of=beijing_now(),
                     )
-                if request.count_mode == "estimated":
+                elif request.count_mode == "estimated":
                     count, count_kind = repository.display_count(request.filters)
-                    return ContentCountResponse(
+                    projection_ready = repository.last_projection_ready
+                    response = ContentCountResponse(
                         count_mode="estimated",
                         count=count,
                         count_kind=count_kind,
                         as_of=beijing_now(),
                     )
-                assert request.exact_limit is not None
-                count, truncated = repository.exact_count(
-                    request.filters, limit=request.exact_limit
-                )
-                return ContentCountResponse(
-                    count_mode="exact",
-                    count=None if truncated else count,
-                    count_kind="none" if truncated else "exact",
-                    as_of=beijing_now(),
-                    truncated=truncated,
-                )
+                else:
+                    assert request.exact_limit is not None
+                    count, truncated = repository.exact_count(
+                        request.filters, limit=request.exact_limit
+                    )
+                    response = ContentCountResponse(
+                        count_mode="exact",
+                        count=None if truncated else count,
+                        count_kind="none" if truncated else "exact",
+                        as_of=beijing_now(),
+                        truncated=truncated,
+                    )
+                query_finished_at = perf_counter()
         finally:
             session.close()
+        log_voice_plaza_read_timing(
+            self._runtime.logger,
+            operation="count",
+            started=started,
+            configuration_ms=elapsed_ms(started, configuration_loaded_at),
+            query_ms=elapsed_ms(configuration_loaded_at, query_finished_at),
+            projection_ready=projection_ready,
+            count_mode=request.count_mode,
+            count_kind=response.count_kind,
+            result_available=response.count is not None,
+            truncated=response.truncated,
+            filter_fields=_filter_fields(request.filters),
+        )
+        return response
 
     def observe_availability(
         self,
@@ -193,6 +217,18 @@ class PostgresProductHttpService:
                 )
         finally:
             session.close()
+
+
+def _filter_fields(filters: ContentFilterSnapshot) -> tuple[str, ...]:
+    """只返回已使用的筛选字段名，避免把筛选值写入日志。"""
+
+    return tuple(
+        sorted(
+            name
+            for name, value in filters.model_dump().items()
+            if value is not None and value != "" and value != [] and value != ()
+        )
+    )
 
 
 __all__ = ["PostgresProductHttpService"]

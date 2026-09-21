@@ -428,10 +428,13 @@ describe('voice plaza', () => {
 
     await store.refreshCount('estimated')
 
-    expect(generated.countContents).toHaveBeenCalledWith(expect.objectContaining({
-      filters: expect.objectContaining({ platforms: ['douyin'] }),
-      count_mode: 'estimated',
-    }))
+    expect(generated.countContents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({ platforms: ['douyin'] }),
+        count_mode: 'estimated',
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
     expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
   })
 
@@ -448,13 +451,21 @@ describe('voice plaza', () => {
       truncated: false,
     })
     const store = useVoicePlazaStore()
+    store.filters.platform = 'douyin'
+    store.applyFilters()
 
     const loading = store.refreshResults()
-    await Promise.resolve()
 
-    expect(generated.listContents).toHaveBeenCalledTimes(1)
-    expect(generated.countContents).toHaveBeenCalledTimes(1)
-    expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
+    expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
+      platforms: ['douyin'],
+    }))
+    expect(generated.countContents).toHaveBeenCalledWith(
+      expect.objectContaining({ filters: expect.objectContaining({ platforms: ['douyin'] }) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    await vi.waitFor(() => {
+      expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
+    })
 
     finishList({ items: [item], has_more: false })
     await loading
@@ -494,6 +505,20 @@ describe('voice plaza', () => {
     })
     await first
     expect(store.contentCount).toMatchObject({ count: 42, count_kind: 'exact' })
+  })
+
+  it('keeps the loaded list when the independent total request fails', async () => {
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    generated.countContents.mockRejectedValue(new Error('count timeout'))
+    const store = useVoicePlazaStore()
+
+    await store.refreshResults()
+    await vi.waitFor(() => expect(store.countError).toBe('count timeout'))
+
+    expect(store.items).toEqual([item])
+    expect(store.listError).toBeNull()
+    expect(store.error).toBeNull()
+    expect(store.contentCount).toBeNull()
   })
 
   it('offers exactly the five supported content platforms in the platform filter', async () => {

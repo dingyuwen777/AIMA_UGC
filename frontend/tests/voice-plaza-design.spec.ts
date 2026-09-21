@@ -250,7 +250,7 @@ describe('声音广场正式 Figma 基线', () => {
     })
 
     expect(zero).toContain('共')
-    expect(zero).toContain('<strong>0 条</strong>')
+    expect(zero).toMatch(/<strong[^>]*>0 条<\/strong>/)
     expect(building).toContain('总数数据准备中')
     expect(failed).toContain('总数统计失败')
     expect(failed).toContain('重试总数')
