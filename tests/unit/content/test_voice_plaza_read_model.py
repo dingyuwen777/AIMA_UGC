@@ -55,6 +55,21 @@ def test_voice_plaza_projection_schema_exposes_indexed_current_state() -> None:
     assert "is_visible IS TRUE" in predicate
 
 
+def test_voice_plaza_source_ledgers_expose_content_lookup_indexes() -> None:
+    """来源可见性按 Content 反查时必须命中部分索引，不能重复扫描历史账本。"""
+
+    expected = {
+        "processing_import_batch_items": "ix_processing_import_batch_items_content_id",
+        "collection_candidate_ingestions": "ix_collection_candidate_ingestions_content_id",
+    }
+
+    for table_name, index_name in expected.items():
+        table = metadata.tables[table_name]
+        index = next(index for index in table.indexes if index.name == index_name)
+        predicate = str(index.dialect_options["postgresql"]["where"])
+        assert "content_id IS NOT NULL" in predicate
+
+
 def test_voice_plaza_list_statement_has_no_global_window_projection() -> None:
     repository = PostgresContentQueryRepository(Session(), analysis_identity=None)
     statement, _ = repository._base_statement(ContentFilterSnapshot())  # noqa: SLF001
