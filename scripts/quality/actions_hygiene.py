@@ -25,7 +25,6 @@ class TransientGitHubApiError(RuntimeError):
     """表示可以等待下一次 main push 自动重试的 GitHub 临时错误。"""
 
 
-
 def _normalise_workflow_path(value: Any) -> str | None:
     """只接受 GitHub 官方 Workflow 目录中的直接 YAML 文件路径。"""
     if not isinstance(value, str):
