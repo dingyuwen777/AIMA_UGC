@@ -528,6 +528,7 @@ def test_unified_runtime_aggregates_all_canonical_replay_children_once(runtime) 
                     "available_at": now,
                     "started_at": now,
                     "finished_at": now,
+                    "error_code": None,
                     "created_at": now,
                     "updated_at": now,
                 },
