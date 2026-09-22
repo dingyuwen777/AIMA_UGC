@@ -72,6 +72,73 @@ async function openProvider(page: Page, name = 'AI 模型'): Promise<void> {
   await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue(name === 'AI 模型' ? '模型配置 1' : 'TikHub配置 1')
 }
 
+test('queues every historical Canonical Artifact from the catalog header', async ({ page }) => {
+  await mockAdmin(page)
+  const submitted: Record<string, unknown>[] = []
+  await page.route('**/api/v1/canonical-replays/all', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    submitted.push(route.request().postDataJSON())
+    await json(route, {
+      artifact_count: 205,
+      run_count: 3,
+      artifacts_per_run: 100,
+      batch_size: 1000,
+    }, 202)
+  })
+
+  await page.goto('/admin/configuration')
+  const replayButton = page.getByRole('button', { name: '重筛入库', exact: true })
+  const addButton = page.getByRole('button', { name: '新增品牌', exact: true })
+  const replayBox = await replayButton.boundingBox()
+  const addBox = await addButton.boundingBox()
+  expect(replayBox).not.toBeNull()
+  expect(addBox).not.toBeNull()
+  expect(replayBox!.x).toBeLessThan(addBox!.x)
+
+  await replayButton.click()
+  const dialog = page.getByRole('dialog', { name: '重筛全部历史数据' })
+  await expect(dialog).toContainText('全部历史 Canonical')
+  await expect(dialog).toContainText('不会重新请求 TikHub，也不会自动触发 AI')
+  await dialog.getByRole('button', { name: '确认重筛入库', exact: true }).click()
+
+  await expect(page.getByText('已将 205 个 Canonical 文件拆分为 3 个重筛任务，Worker 将按可用并发处理。', { exact: true })).toBeVisible()
+  expect(submitted).toHaveLength(1)
+  expect(submitted[0]!.idempotency_key).toMatch(/^admin-catalog-all-/)
+})
+
+test('retries an uncertain all-Canonical request with the same idempotency key', async ({ page }) => {
+  await mockAdmin(page)
+  const keys: string[] = []
+  await page.route('**/api/v1/canonical-replays/all', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    keys.push(route.request().postDataJSON().idempotency_key)
+    if (keys.length === 1) {
+      return json(route, {
+        title: 'Replay 请求冲突',
+        detail: '暂时无法确认任务是否已创建，请使用原请求重试。',
+        request_id: 'replay-all-failed',
+      }, 409)
+    }
+    await json(route, {
+      artifact_count: 0,
+      run_count: 0,
+      artifacts_per_run: 100,
+      batch_size: 1000,
+    }, 202)
+  })
+
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: '重筛入库', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '重筛全部历史数据' })
+  await dialog.getByRole('button', { name: '确认重筛入库', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('暂时无法确认任务是否已创建')
+  await dialog.getByRole('button', { name: '确认重筛入库', exact: true }).click()
+
+  await expect(page.getByText('当前没有符合条件的历史 Canonical 数据，无需创建重筛任务。', { exact: true })).toBeVisible()
+  expect(keys).toHaveLength(2)
+  expect(keys[1]).toBe(keys[0])
+})
+
 for (const kind of ['llm', 'collection'] as const) {
   test(`${kind} tests only saved configuration and preserves unsaved input`, async ({ page }) => {
     await openProvider(page, kind === 'llm' ? 'AI 模型' : 'TikHub')
