@@ -187,6 +187,7 @@ Issue #566 固化了用户当前决定与七条验收标准。Canonical Replay �
 | V7 | Windows Frontend | ESLint；typecheck；Vitest；Vite build | 通过；32 files / 227 tests；生产构建成功 | 前端穷举、Store、组件和构建无回归 |
 | V8 | Windows Playwright Browser Mock | `collection-runtime.spec.ts admin-configuration-figma.spec.ts` | 45 passed | 重筛列表、筛选、详情、提示及既有导入/补采/目录流程成立 |
 | V9 | Windows 文档与仓库门禁 | docs/docs-facts、architecture、table ownership、Secret scan | 全部通过 | 文档事实、只读跨 Owner 聚合与 Secret 边界成立 |
+| V10 | Windows Playwright 轮询同步 | `collection-runtime.spec.ts --grep "canonical replay as one"` | 1 passed；运行中详情在 5 秒轮询后更新为已完成 2 / 2 | 打开详情复用统一列表轮询并同步最新聚合状态 |
 
 ## 未验证内容与剩余风险
 

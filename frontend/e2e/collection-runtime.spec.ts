@@ -203,8 +203,10 @@ test('keeps all runtime columns reachable at compact and wide Figma widths', asy
 })
 
 test('shows canonical replay as one filterable runtime record with aggregate details', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-09-22T18:00:00+08:00') })
+  let replayItem = canonicalReplayRuntimeItem
   await page.route('**/api/v1/collection-runtime/runs*', (route) => route.fulfill({
-    json: { items: [canonicalReplayRuntimeItem], next_cursor: null, has_more: false },
+    json: { items: [replayItem], next_cursor: null, has_more: false },
   }))
   await page.goto('/collection-runtime')
 
@@ -236,6 +238,25 @@ test('shows canonical replay as one filterable runtime record with aggregate det
   await drawer.getByRole('group').filter({ has: page.locator('summary', { hasText: '技术详情' }) }).locator('summary').click()
   await expect(drawer.getByText(canonicalReplayRequestId, { exact: true })).toBeVisible()
   await expect(drawer.getByText('1 / 2', { exact: true })).toBeVisible()
+
+  replayItem = {
+    ...canonicalReplayRuntimeItem,
+    status: 'succeeded',
+    stage: 'succeeded',
+    progress: 100,
+    finished_at: '2026-09-22T10:03:00Z',
+    canonical_replay_stats: {
+      ...canonicalReplayRuntimeItem.canonical_replay_stats,
+      running_run_count: 0,
+      succeeded_run_count: 2,
+    },
+  }
+  const polled = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/api/v1/collection-runtime/runs')
+  await page.clock.runFor(5000)
+  await polled
+  await expect(drawer.getByText('已完成', { exact: true }).first()).toBeVisible()
+  await expect(drawer.getByText('2 / 2', { exact: true })).toBeVisible()
 })
 
 test('shows returned conflict fields separately from conflicting row totals', async ({ page }) => {
