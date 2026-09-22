@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-160053-vehicle-save-explicit-replay
 title: 车型保存与重筛解耦并修复慢响应弹窗
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/vehicle-save-explicit-replay
 created: 2026-09-22
