@@ -32,7 +32,9 @@ from aima_ugc.modules.content.read_model_job import (
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
 from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayJobHandler,
+    CanonicalReplayReversalJobHandler,
     register_canonical_replay_job,
+    register_canonical_replay_reversal_job,
 )
 from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
 from aima_ugc.modules.reporting.data_export_job import (
@@ -53,6 +55,11 @@ from .analysis_concurrent_worker import ConcurrentPostgresContentAnalysisJobExec
 from .analysis_high_throughput_planner import (
     HighThroughputContentAnalysisPlanJobExecutor,
     create_high_throughput_analysis_job_terminal_callback,
+)
+from .canonical_replay_reversal_worker import (
+    PostgresCanonicalReplayReversalJobExecutor,
+    canonical_replay_job_terminal_callback,
+    canonical_replay_reversal_terminal_callback,
 )
 from .canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from .content_media_cache import PostgresContentMediaCacheService
@@ -199,6 +206,12 @@ def create_collection_job_registry(
     register_canonical_replay_job(
         registry,
         CanonicalReplayJobHandler(PostgresCanonicalReplayJobExecutor(runtime)),
+        terminal_callback=canonical_replay_job_terminal_callback,
+    )
+    register_canonical_replay_reversal_job(
+        registry,
+        CanonicalReplayReversalJobHandler(PostgresCanonicalReplayReversalJobExecutor(runtime)),
+        terminal_callback=canonical_replay_reversal_terminal_callback,
     )
     register_voice_plaza_projection_job(
         registry,

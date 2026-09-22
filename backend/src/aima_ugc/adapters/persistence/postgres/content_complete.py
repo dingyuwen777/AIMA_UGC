@@ -53,9 +53,15 @@ _COMMENT_COLLECTION_FIELDS = {
 class PostgresCompleteContentRepository:
     """调用方拥有事务；核心、子实体与来源贡献在同一 Session 原子提交。"""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        replay_visibility_owner_id: UUID | None = None,
+    ) -> None:
         self._session = session
         self._core = PostgresContentRepository(session)
+        self._replay_visibility_owner_id = replay_visibility_owner_id
 
     def ingest_content(self, observation: CanonicalContentV1) -> PostgresIngestionResult:
         """完整写入 Content，并冻结同一来源实际施加的可逆 before/after Delta。"""
@@ -76,6 +82,11 @@ class PostgresCompleteContentRepository:
             draft=contribution,
             observation=observation,
             content_id=result.target_id,
+        )
+        self._session.execute(
+            update(contents_table)
+            .where(contents_table.c.id == result.target_id)
+            .values(replay_visibility_owner_id=self._replay_visibility_owner_id)
         )
         return result
 

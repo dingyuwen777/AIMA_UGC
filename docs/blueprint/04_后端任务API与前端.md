@@ -93,10 +93,11 @@ analysis.content-label.v1
 reporting.content-export-excel.v1
 vehicles.content-reclassification.v1
 ingestion.canonical-replay.v1
+ingestion.canonical-replay-reversal.v1
 content.voice-plaza-projection-backfill.v1
 ```
 
-`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务；`content.voice-plaza-projection-backfill.v1` 是声音广场历史读模型的可恢复分块回填。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
+`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务；`ingestion.canonical-replay-reversal.v1` 是全量重筛的可恢复精确撤回任务；`content.voice-plaza-projection-backfill.v1` 是声音广场历史读模型的可恢复分块回填。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
 注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
@@ -425,6 +426,8 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 ```text
 POST /api/v1/canonical-replays
 POST /api/v1/canonical-replays/all
+POST /api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke
+POST /api/v1/canonical-replays/all/{replay_request_id}/revoke
 GET  /api/v1/canonical-replays/{run_id}
 POST /api/v1/canonical-replays/{run_id}/cancel
 ```
@@ -443,22 +446,31 @@ v2 或 TikHub Discovery Search Attempt 的唯一 linked Canonical，随后原子
 Artifact 数、子 Run 数和创建者，使空选择也具有可验证的幂等身份；同一键下选择或创建者漂移
 返回 409。所有子 Job 一次入队，多个 Worker 可以并行领取，但单 Worker 仍会顺序执行。
 
-查询返回冻结目录版本、Artifact 顺序、checkpoint、Job 状态及对账统计。取消沿用统一 Job
-语义：排队任务立即进入取消终态，运行任务记录取消请求并由 Worker 在有界批次边界协作收敛。
-这些路由都执行后端管理员角色检查并记录创建/取消审计。当前前端只提供全量创建入口；单 Run
-查询、取消和显式 Artifact 选择仍由正式 API 提供，不能写成页面已经提供逐 Run 管理能力。
+查询返回冻结目录版本、Artifact 顺序、checkpoint、Job 状态及对账统计。单 Run 取消沿用统一 Job
+语义。全量请求的“取消并撤回”先对未终态子 Job 发出协作取消，再在全部子 Job 终态后排队
+`ingestion.canonical-replay-reversal.v1`；终态请求也可直接“撤回本次入库”。撤回按 Replay 写入事务
+同步冻结的 Content Delta、可见性归属和自动 Brand/Vehicle Evidence before/after 执行；仅修改仍归
+本请求所有且未被后续普通导入、其他重筛或人工锁接管的事实。Canonical、Raw、Content Version
+和审计历史保留；只有自动 Evidence 幂等收敛而没有 Current Delta 时保留原 Content Version，
+避免使该版本仍有效的 Analysis 结果失效。升级前没有精确账本的历史请求 `reversible=false`，
+必须失败关闭，不能推断撤回。
+这些路由都执行后端管理员角色检查并记录创建、取消或撤回审计。单 Run 查询、取消和显式
+Artifact 选择仍由正式 API 提供，不能写成页面已经提供逐 Run 管理能力。
 
 采集运行中心的统一只读模型同时把 `canonical_replay_all_requests` 投影为
 `canonical_replay` 记录；一次全量请求只出现一条，不把子 Run/Job 暴露成多条业务记录。状态由
 关联 Job 集合聚合，进度按每个子 Run 的 Artifact 数对 Job 进度加权，统计汇总 Artifact、子任务、
 读取、命中、过滤、去重、入库与已有内容收敛。空选择没有子 Job，但作为 100% 已完成请求展示。
 该投影只读现有 Replay/Job 表，不创建 Collection Run，也不改变 Replay Worker 状态机；列表、
-详情轮询和运行中心 KPI 使用同一聚合事实。
+详情轮询和运行中心 KPI 使用同一聚合事实。历史重筛详情使用与数据导入一致的 Modal；活动请求
+提供“取消并撤回”，终态可撤回请求提供“撤回本次入库”，并持续展示撤回 Job 的阶段、进度、
+结果计数与失败信息，不把撤回 Job 再投影成一条重复运行记录。
 
 代码：
 
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_worker.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py)
 - [`backend/src/aima_ugc/modules/ingestion/canonical_replay.py`](../../backend/src/aima_ugc/modules/ingestion/canonical_replay.py)
 
 ### 5.10 Principal、车型目录与管理员配置

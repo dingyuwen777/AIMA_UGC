@@ -8,6 +8,7 @@ from uuid import UUID
 from aima_ugc.contracts.http import (
     CanonicalReplayAllCreatedResponse,
     CanonicalReplayAllCreateRequest,
+    CanonicalReplayAllOperationResponse,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayRunResponse,
@@ -52,6 +53,22 @@ class CanonicalReplayHttpService(Protocol):
         actor_ref: str,
         request_id: str,
     ) -> CanonicalReplayRunResponse: ...
+
+    def cancel_and_revoke_all(
+        self,
+        replay_request_id: UUID,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse: ...
+
+    def revoke_all(
+        self,
+        replay_request_id: UUID,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse: ...
 
 
 __all__ = [

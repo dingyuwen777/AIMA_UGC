@@ -1437,6 +1437,11 @@
             "title": "Batch Size",
             "type": "integer"
           },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
           "run_count": {
             "minimum": 0.0,
             "title": "Run Count",
@@ -1444,10 +1449,92 @@
           }
         },
         "required": [
+          "request_id",
           "artifact_count",
           "run_count"
         ],
         "title": "CanonicalReplayAllCreatedResponse",
+        "type": "object"
+      },
+      "CanonicalReplayAllOperationResponse": {
+        "additionalProperties": false,
+        "description": "一次全历史 Replay 的取消/撤回生命周期快照。",
+        "properties": {
+          "cancellation_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancellation Requested At"
+          },
+          "lifecycle_status": {
+            "enum": [
+              "active",
+              "cancelling",
+              "reverting",
+              "reverted",
+              "revert_failed"
+            ],
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "reversal_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Job Id"
+          },
+          "reversal_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Requested At"
+          },
+          "reversed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed At"
+          },
+          "reversible": {
+            "title": "Reversible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "request_id",
+          "lifecycle_status",
+          "reversible"
+        ],
+        "title": "CanonicalReplayAllOperationResponse",
         "type": "object"
       },
       "CanonicalReplayCreateRequest": {
@@ -1719,9 +1806,56 @@
             "title": "Failed Run Count",
             "type": "integer"
           },
+          "hidden_content_count": {
+            "minimum": 0.0,
+            "title": "Hidden Content Count",
+            "type": "integer"
+          },
+          "lifecycle_status": {
+            "enum": [
+              "active",
+              "cancelling",
+              "reverting",
+              "reverted",
+              "revert_failed"
+            ],
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
           "queued_run_count": {
             "minimum": 0.0,
             "title": "Queued Run Count",
+            "type": "integer"
+          },
+          "restored_evidence_count": {
+            "minimum": 0.0,
+            "title": "Restored Evidence Count",
+            "type": "integer"
+          },
+          "retained_content_count": {
+            "minimum": 0.0,
+            "title": "Retained Content Count",
+            "type": "integer"
+          },
+          "reversal_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Job Id"
+          },
+          "reversible": {
+            "title": "Reversible",
+            "type": "boolean"
+          },
+          "reverted_content_count": {
+            "minimum": 0.0,
+            "title": "Reverted Content Count",
             "type": "integer"
           },
           "rows_filtered_out": {
@@ -1754,6 +1888,16 @@
             "title": "Running Run Count",
             "type": "integer"
           },
+          "skipped_content_count": {
+            "minimum": 0.0,
+            "title": "Skipped Content Count",
+            "type": "integer"
+          },
+          "skipped_evidence_count": {
+            "minimum": 0.0,
+            "title": "Skipped Evidence Count",
+            "type": "integer"
+          },
           "succeeded_run_count": {
             "minimum": 0.0,
             "title": "Succeeded Run Count",
@@ -1773,7 +1917,15 @@
           "rows_filtered_out",
           "duplicates_removed",
           "rows_ingested",
-          "existing_convergence"
+          "existing_convergence",
+          "reversible",
+          "lifecycle_status",
+          "reverted_content_count",
+          "hidden_content_count",
+          "retained_content_count",
+          "skipped_content_count",
+          "restored_evidence_count",
+          "skipped_evidence_count"
         ],
         "title": "CanonicalReplayRuntimeStatsResponse",
         "type": "object"
@@ -11166,6 +11318,174 @@
           }
         },
         "summary": "Create All Canonical Replays",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke": {
+      "post": {
+        "description": "取消父请求的全部活跃子任务，并排队撤回已提交贡献。",
+        "operationId": "cancelAndRevokeAllCanonicalReplays",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "replay_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Replay Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayAllOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel And Revoke All Canonical Replays",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/all/{replay_request_id}/revoke": {
+      "post": {
+        "description": "只对已经终止子任务的父请求排队撤回。",
+        "operationId": "revokeAllCanonicalReplays",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "replay_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Replay Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayAllOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Revoke All Canonical Replays",
         "tags": [
           "imports"
         ]

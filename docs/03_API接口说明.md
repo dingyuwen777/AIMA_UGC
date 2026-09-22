@@ -395,11 +395,13 @@ POST /api/v1/historical-import-campaigns/{campaign_id}/retry-failed
 ```text
 POST /api/v1/canonical-replays
 POST /api/v1/canonical-replays/all
+POST /api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke
+POST /api/v1/canonical-replays/all/{replay_request_id}/revoke
 GET  /api/v1/canonical-replays/{run_id}
 POST /api/v1/canonical-replays/{run_id}/cancel
 ```
 
-四个接口都要求后端确认管理员角色。显式创建请求提交客户端幂等键、1—100 个已知 Canonical
+六个接口都要求后端确认管理员角色。显式创建请求提交客户端幂等键、1—100 个已知 Canonical
 Artifact ID、可选 Brand ID 和有界批大小；空 Brand 集合表示冻结创建时全部 active Brand。
 服务只接受可证明属于当前 Excel Import v2、Data Import Pure Canonical Chunk v2 或 TikHub
 Discovery Search Attempt 的 linked Artifact，并在同一 PostgreSQL 事务创建 Replay Run 与
@@ -414,16 +416,20 @@ Brand/Vehicle 目录，按每 100 个 Artifact 建立一个 Replay Run，并固�
 查询响应包含冻结目录版本、Artifact 顺序、checkpoint、Job 状态与
 `rows_seen / rows_matched / rows_filtered_out / duplicates_removed / rows_ingested /
 existing_convergence / invalid_artifact_rows` 统计。精确字段、状态和错误仍以生成 OpenAPI 为准，
-文档不复制完整 Schema。取消沿用统一 Job 协作取消语义。当前入口是正式管理员 API，尚无前端
-逐 Run 页面；它不会调用 Provider，也不会自动创建 AI 任务或因新规则变窄而删除既有 Content。
+文档不复制完整 Schema。单 Run 取消沿用统一 Job 协作取消语义；全量请求的取消会等待子 Job
+收敛后自动排队撤回，终态请求可直接排队撤回。撤回只根据本请求写入时原子记录的贡献账本，
+逆转仍归本请求所有的 Content Current、业务可见性和自动 Brand/Vehicle Evidence；后续其他来源
+写入、人工锁和历史版本不动。没有账本的旧请求失败关闭。当前入口是正式管理员 API，尚无前端
+逐 Run 页面；它不会调用 Provider，也不会自动创建 AI 任务。
 管理员页面提供全量创建入口；创建后可在采集运行中心按“历史重筛”类型查看一条请求级记录、
-聚合进度、子任务状态和处理统计。该运行中心投影复用现有 all-request、Run 和 Job 表，不新增
-写入接口或平行状态机。
+聚合进度、子任务状态和处理统计。详情为 Modal，并提供全量请求级取消/撤回；撤回阶段与统计仍
+归入原记录。该运行中心投影复用现有 all-request、Run 和 Job 表，不新增平行状态机。
 
 实现：
 
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_worker.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py)
 - [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py)
 
 ---

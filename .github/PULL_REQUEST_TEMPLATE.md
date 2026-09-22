@@ -2,7 +2,7 @@
 
 Requirement-Source: #<Issue>
 
-- 填写真实、稳定且可追溯的 Requirement Source。GitHub Issue 可使用 `Requirement-Source: #123`；仓库正式文件可使用当前仓库真实路径，例如 `Requirement-Source: docs/spec.md` 或 `Requirement-Source: docs/architecture.md`。
+- 填写真实、稳定且可追溯的 Requirement Source。GitHub Issue 可使用 `Requirement-Source: #123`；仓库正式文件可使用仓库内真实存在的路径，例如 `Requirement-Source: docs/spec.md` 或 `Requirement-Source: docs/architecture.md`。
 - 一个 PR 确实对应多个独立来源时，每个来源单独填写一行 `Requirement-Source:`；不要把多个来源挤在同一行。
 - `#<Issue>`、空值、`TBD`、`TODO`、`待确认`、`无` 等占位值不能作为正式来源。
 - machine gate 只负责可机械确认的来源形状、存在性或可解析性；它不替代 Requirement 自然语言完整性、Completion Audit 或独立 Review。

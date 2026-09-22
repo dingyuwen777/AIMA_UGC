@@ -8,7 +8,7 @@ from itertools import islice
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,10 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 )
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
+)
+from aima_ugc.adapters.persistence.postgres.content_contributions import (
+    build_content_contribution_delta,
+    capture_content_contribution_snapshot,
 )
 from aima_ugc.adapters.persistence.postgres.import_lineage import (
     ensure_campaign_import_lineage,
@@ -35,6 +39,7 @@ from aima_ugc.modules.collection.tables import (
     provider_requests_table,
 )
 from aima_ugc.modules.content.ingestion import ContentIngestionService
+from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.ingestion.brand_vehicle_filter import resolve_canonical_brand_vehicle
 from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayArtifactRecord,
@@ -42,12 +47,16 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayJobPayload,
     CanonicalReplayRunRecord,
 )
+from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_content_changes_table,
+)
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
+from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage import (
     ArtifactRecord,
     CanonicalArtifactIntegrityError,
@@ -384,7 +393,12 @@ class PostgresCanonicalReplayJobExecutor:
                 ):
                     raise LeaseLostError("Canonical Replay checkpoint 已不属于当前执行")
                 lineage = self._load_import_lineage_context(session, selected, artifact)
-                content_owner = ContentIngestionService(PostgresCompleteContentRepository(session))
+                content_owner = ContentIngestionService(
+                    PostgresCompleteContentRepository(
+                        session,
+                        replay_visibility_owner_id=current.all_request_id,
+                    )
+                )
                 vehicle_repository = PostgresVehicleCatalogRepository(session)
                 brand_repository = PostgresBrandVehicleRepository(session)
                 matched = 0
@@ -410,7 +424,38 @@ class PostgresCanonicalReplayJobExecutor:
                         lineage=lineage,
                         lineage_by_platform=lineage_by_platform,
                     )
+                    before = capture_content_contribution_snapshot(session, observation)
+                    owner_before = (
+                        session.scalar(
+                            select(contents_table.c.replay_visibility_owner_id).where(
+                                contents_table.c.id == before.content_id
+                            )
+                        )
+                        if before.content_id is not None
+                        else None
+                    )
+                    vehicle_before = (
+                        vehicle_repository.snapshot_automatic_evidence(
+                            content_id=before.content_id,
+                            content_version=before.version_no,
+                        )
+                        if before.content_id is not None and before.version_no is not None
+                        else []
+                    )
+                    brand_before = (
+                        brand_repository.snapshot_automatic_brand_evidence(
+                            content_id=before.content_id,
+                            content_version=before.version_no,
+                        )
+                        if before.content_id is not None and before.version_no is not None
+                        else []
+                    )
                     result = content_owner.ingest_content(observation)
+                    after = capture_content_contribution_snapshot(
+                        session,
+                        observation,
+                        content_id=result.target_id,
+                    )
                     if result.version_created and result.version_no == 1:
                         inserted += 1
                     else:
@@ -423,6 +468,44 @@ class PostgresCanonicalReplayJobExecutor:
                         resolution=resolution,
                         run=run,
                     )
+                    if current.all_request_id is not None:
+                        attempt_id = observation.source.provider_attempt_id
+                        raw_id = observation.source.raw_artifact_id
+                        if attempt_id is None or raw_id is None:
+                            raise ValueError("Replay 贡献账本要求 Attempt 与 Raw 来源")
+                        session.execute(
+                            insert(canonical_replay_content_changes_table).values(
+                                id=uuid4(),
+                                all_request_id=current.all_request_id,
+                                run_id=current.id,
+                                content_id=result.target_id,
+                                provider_attempt_id=UUID(attempt_id),
+                                raw_artifact_id=raw_id,
+                                version_before=before.version_no,
+                                version_after=result.version_no,
+                                delta=build_content_contribution_delta(
+                                    observation,
+                                    before,
+                                    after,
+                                ),
+                                visibility_owner_before=owner_before,
+                                vehicle_evidence_before=vehicle_before,
+                                vehicle_evidence_after=(
+                                    vehicle_repository.snapshot_automatic_evidence(
+                                        content_id=result.target_id,
+                                        content_version=result.version_no,
+                                    )
+                                ),
+                                brand_evidence_before=brand_before,
+                                brand_evidence_after=(
+                                    brand_repository.snapshot_automatic_brand_evidence(
+                                        content_id=result.target_id,
+                                        content_version=result.version_no,
+                                    )
+                                ),
+                                created_at=beijing_now(),
+                            )
+                        )
                 counters = CanonicalReplayCounters(
                     rows_seen=len(contents),
                     rows_matched=matched,
@@ -471,10 +554,10 @@ class PostgresCanonicalReplayJobExecutor:
                 raise ValueError("Excel Input Artifact 不可用")
             return _ImportLineageContext(cast(UUID, row.id), raw, "excel_import")
 
-        row = session.execute(
+        chunk = session.execute(
             select(
-                processing_import_batches_table.c.id,
-                processing_import_batches_table.c.historical_policy_version,
+                historical_import_campaign_items_table.c.parent_item_id,
+                jobs_table.c.payload,
             )
             .select_from(
                 canonical_artifact_links_table.join(
@@ -482,12 +565,28 @@ class PostgresCanonicalReplayJobExecutor:
                     canonical_artifact_links_table.c.historical_import_campaign_item_id
                     == historical_import_campaign_items_table.c.id,
                 ).join(
-                    processing_import_batches_table,
-                    processing_import_batches_table.c.historical_campaign_item_id
-                    == historical_import_campaign_items_table.c.parent_item_id,
+                    jobs_table,
+                    jobs_table.c.id == historical_import_campaign_items_table.c.job_id,
                 )
             )
             .where(canonical_artifact_links_table.c.artifact_id == artifact.id)
+        ).one_or_none()
+        if chunk is None or chunk.parent_item_id is None:
+            raise ValueError("Data Import Canonical 缺少 Chunk Job")
+        payload = cast(dict[str, object], chunk.payload)
+        try:
+            batch_id = UUID(str(payload["batch_id"]))
+        except (KeyError, ValueError) as exc:
+            raise ValueError("Data Import Chunk Job 缺少有效 batch_id") from exc
+        row = session.execute(
+            select(
+                processing_import_batches_table.c.id,
+                processing_import_batches_table.c.historical_policy_version,
+            ).where(
+                processing_import_batches_table.c.id == batch_id,
+                processing_import_batches_table.c.historical_campaign_item_id
+                == chunk.parent_item_id,
+            )
         ).one_or_none()
         if row is None:
             raise ValueError("Data Import Canonical 缺少当前 Processing Batch")

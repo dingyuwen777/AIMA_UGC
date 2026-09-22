@@ -1,4 +1,5 @@
 import {
+  cancelAndRevokeAllCanonicalReplays,
   cancelDataImportCampaign,
   createCollectionRun,
   createLocalDataImportCampaign,
@@ -23,6 +24,7 @@ import {
   previewDataImportCampaignRevocation,
   retryDataImportCampaignFailedItems,
   revokeDataImportCampaign,
+  revokeAllCanonicalReplays,
   startDataImportCampaign,
   uploadLocalDataImportFile,
   type CollectionCapabilitiesResponse,
@@ -33,6 +35,7 @@ import {
   type CollectionRunResponse,
   type CollectionRuntimeListResponse,
   type CollectionRuntimeSummaryResponse,
+  type CanonicalReplayAllOperationResponse,
   type DataImportRevocationPreviewResponse,
   type DataImportRevocationResponse,
   type DataImportRevokeRequest,
@@ -133,6 +136,18 @@ export async function fetchCollectionRuntimeList(
 
 export async function fetchCollectionRuntimeSummary(): Promise<CollectionRuntimeSummaryResponse> {
   return unwrap(await getCollectionRuntimeSummary())
+}
+
+export async function cancelAndRevokeCanonicalReplay(
+  requestId: string,
+): Promise<CanonicalReplayAllOperationResponse> {
+  return unwrap(await cancelAndRevokeAllCanonicalReplays(requestId))
+}
+
+export async function revokeCanonicalReplay(
+  requestId: string,
+): Promise<CanonicalReplayAllOperationResponse> {
+  return unwrap(await revokeAllCanonicalReplays(requestId))
 }
 
 export async function fetchCollectionCapabilities(): Promise<CollectionCapabilitiesResponse> {

@@ -400,6 +400,14 @@ POST /api/v1/canonical-replays
 所有 Job 一次排队，可由多个 Worker 并行领取；单 Worker 仍按队列逐个执行。100 表示每个 Run
 包含的 Canonical 文件上限，不是内容行数上限，单个文件仍以 Reader 流式读取。
 
+全量请求可以通过请求级 `cancel-and-revoke` 或 `revoke` 管理接口撤回。前者先请求未终态子 Job
+协作取消，全部子 Job 终态后再创建 `ingestion.canonical-replay-reversal.v1`；后者直接对终态请求
+排队撤回。Replay 的 Content/Evidence/checkpoint 事务同时写入精确贡献账本，Reversal 只回滚
+`replay_visibility_owner_id` 仍属于目标请求且 after/freshness 仍匹配的 Content Current，并按人工锁
+和 before/after 守卫恢复自动 Brand/Vehicle Evidence。后续普通导入、其他 Replay 和人工结论优先。
+如果账本证明 Content/Account Current 完全没有变化、只是自动 Evidence 被幂等收敛，撤回会在
+原 Content Version 上恢复 Evidence，不额外制造 Version，避免让原版本仍有效的 Analysis 结果失效。
+
 只有当前三种 lineage 可以创建任务：兼容单文件 `ingestion.import-excel.v2`、Data Import
 `ingestion.historical-import-chunk.v2` 的 Pure Canonical Chunk、TikHub Discovery Search
 Attempt。Scope-only 或其它无法证明的旧关系失败关闭；当前没有 legacy 转换分支。API 的空
@@ -413,11 +421,14 @@ checkpoint 与统计，不会每批从第 0 行重读。接管时只对当前 Ar
 第二条 Content：同一 Run 的重复输入计入 `duplicates_removed`，数据库已有 Content 计入
 `existing_convergence`，新建 Content 计入 `rows_ingested`。
 
-当前前端只提供全部历史 Canonical 的创建入口；显式 Artifact 创建、单 Run 查询和取消仍通过
-管理员 API。Replay 不自动创建 Analysis Job，也不会在规则变窄时删除、隐藏或撤销以前已进入
-业务库的 Content。Replay 只把冻结
-Snapshot 新命中的 Brand/Vehicle Evidence 追加或幂等恢复到当前 Content Version；不会像普通
-新 Observation 的完整重分类那样停用 selected 范围外的既有自动证据，人工锁仍优先。
+前端提供全部历史 Canonical 创建入口，并在采集运行中心的请求级详情 Modal 提供取消/撤回与
+进度结果；显式 Artifact 创建、单 Run 查询和取消仍通过管理员 API。Replay 不自动创建 Analysis
+Job。正常 Replay 只把冻结 Snapshot 新命中的 Brand/Vehicle Evidence 追加或幂等恢复到当前
+Content Version；不会像普通新 Observation 的完整重分类那样停用 selected 范围外的既有自动
+证据，人工锁仍优先。撤回不删除 Canonical、Raw、Content Version 或审计：仅把仍独占的新建
+Content 从业务读取隐藏；有 Current Delta 时追加新 Version 恢复 Current/自动证据，纯 Evidence
+幂等收敛时保留原 Version 并原位恢复自动证据。升级前没有贡献账本的旧 all-request 标记为
+不可撤回并失败关闭。
 
 ---
 

@@ -8,6 +8,7 @@ from aima_ugc.bootstrap.api import create_app
 from aima_ugc.contracts.http import (
     CanonicalReplayAllCreatedResponse,
     CanonicalReplayAllCreateRequest,
+    CanonicalReplayAllOperationResponse,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayRunResponse,
@@ -24,6 +25,7 @@ from fastapi.testclient import TestClient
 
 _RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
 _JOB_ID = UUID("22222222-2222-4222-8222-222222222222")
+_REQUEST_ID = UUID("55555555-5555-4555-8555-555555555555")
 _ARTIFACT_ID = UUID("33333333-3333-4333-8333-333333333333")
 _BRAND_ID = UUID("44444444-4444-4444-8444-444444444444")
 _NOW = datetime(2026, 9, 11, 8, 0, tzinfo=UTC)
@@ -69,6 +71,7 @@ class _ReplayService:
         self.created: tuple[CanonicalReplayCreateRequest, str, str] | None = None
         self.all_created: tuple[CanonicalReplayAllCreateRequest, str, str] | None = None
         self.cancelled: tuple[UUID, str, str] | None = None
+        self.all_action: tuple[str, UUID, str, str] | None = None
         self.error: Exception | None = None
 
     def create_replay(
@@ -94,6 +97,7 @@ class _ReplayService:
             raise self.error
         self.all_created = (body, actor_ref, request_id)
         return CanonicalReplayAllCreatedResponse(
+            request_id=_REQUEST_ID,
             artifact_count=205,
             run_count=3,
             artifacts_per_run=100,
@@ -117,6 +121,38 @@ class _ReplayService:
             raise self.error
         self.cancelled = (run_id, actor_ref, request_id)
         return _run_response(status="cancelled")
+
+    def cancel_and_revoke_all(
+        self,
+        replay_request_id: UUID,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse:
+        self.all_action = ("cancel_and_revoke", replay_request_id, actor_ref, request_id)
+        return CanonicalReplayAllOperationResponse(
+            request_id=replay_request_id,
+            lifecycle_status="cancelling",
+            reversible=True,
+            reversal_requested_at=_NOW,
+            cancellation_requested_at=_NOW,
+        )
+
+    def revoke_all(
+        self,
+        replay_request_id: UUID,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse:
+        self.all_action = ("revoke", replay_request_id, actor_ref, request_id)
+        return CanonicalReplayAllOperationResponse(
+            request_id=replay_request_id,
+            lifecycle_status="reverting",
+            reversible=True,
+            reversal_job_id=_JOB_ID,
+            reversal_requested_at=_NOW,
+        )
 
 
 def _body() -> dict[str, object]:
@@ -186,6 +222,7 @@ def test_admin_can_queue_all_replayable_canonical_artifacts() -> None:
 
     assert response.status_code == 202
     assert response.json() == {
+        "request_id": str(_REQUEST_ID),
         "artifact_count": 205,
         "run_count": 3,
         "artifacts_per_run": 100,
@@ -195,6 +232,37 @@ def test_admin_can_queue_all_replayable_canonical_artifacts() -> None:
     assert service.all_created[0].idempotency_key == "admin-catalog-all-1"
     assert service.all_created[1] == "replay-admin"
     assert service.all_created[2] == response.headers["x-request-id"]
+
+
+def test_admin_can_cancel_and_revoke_or_revoke_terminal_all_request() -> None:
+    service = _ReplayService()
+    client = TestClient(
+        create_app(
+            canonical_replay_service=service,
+            identity_resolver=DevelopmentIdentityResolver(principal_id="replay-admin"),
+        )
+    )
+
+    cancelling = client.post(f"/api/v1/canonical-replays/all/{_REQUEST_ID}/cancel-and-revoke")
+    assert cancelling.status_code == 202
+    assert cancelling.json()["lifecycle_status"] == "cancelling"
+    assert service.all_action == (
+        "cancel_and_revoke",
+        _REQUEST_ID,
+        "replay-admin",
+        cancelling.headers["x-request-id"],
+    )
+
+    reverting = client.post(f"/api/v1/canonical-replays/all/{_REQUEST_ID}/revoke")
+    assert reverting.status_code == 202
+    assert reverting.json()["lifecycle_status"] == "reverting"
+    assert reverting.json()["reversal_job_id"] == str(_JOB_ID)
+    assert service.all_action == (
+        "revoke",
+        _REQUEST_ID,
+        "replay-admin",
+        reverting.headers["x-request-id"],
+    )
 
 
 def test_replay_routes_require_administrator_before_calling_service() -> None:
@@ -215,6 +283,8 @@ def test_replay_routes_require_administrator_before_calling_service() -> None:
         ),
         client.get(f"/api/v1/canonical-replays/{_RUN_ID}"),
         client.post(f"/api/v1/canonical-replays/{_RUN_ID}/cancel"),
+        client.post(f"/api/v1/canonical-replays/all/{_REQUEST_ID}/cancel-and-revoke"),
+        client.post(f"/api/v1/canonical-replays/all/{_REQUEST_ID}/revoke"),
     )
 
     assert all(response.status_code == 403 for response in responses)
@@ -224,6 +294,7 @@ def test_replay_routes_require_administrator_before_calling_service() -> None:
     assert service.created is None
     assert service.all_created is None
     assert service.cancelled is None
+    assert service.all_action is None
 
 
 @pytest.mark.parametrize(

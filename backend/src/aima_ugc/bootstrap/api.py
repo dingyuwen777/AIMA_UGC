@@ -53,6 +53,7 @@ from aima_ugc.contracts.http import (
     AnalysisContentRunResponse,
     CanonicalReplayAllCreatedResponse,
     CanonicalReplayAllCreateRequest,
+    CanonicalReplayAllOperationResponse,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayRunResponse,
@@ -1982,6 +1983,60 @@ def create_app(
         principal = current_administrator(request)
         return current_canonical_replay_service().cancel_replay(
             run_id,
+            actor_ref=principal.principal_id,
+            request_id=_request_id(request),
+        )
+
+    @application.post(
+        "/api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke",
+        operation_id="cancelAndRevokeAllCanonicalReplays",
+        response_model=CanonicalReplayAllOperationResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def cancel_and_revoke_all_canonical_replays(
+        replay_request_id: UUID,
+        request: Request,
+    ) -> CanonicalReplayAllOperationResponse:
+        """取消父请求的全部活跃子任务，并排队撤回已提交贡献。"""
+
+        principal = current_administrator(request)
+        return current_canonical_replay_service().cancel_and_revoke_all(
+            replay_request_id,
+            actor_ref=principal.principal_id,
+            request_id=_request_id(request),
+        )
+
+    @application.post(
+        "/api/v1/canonical-replays/all/{replay_request_id}/revoke",
+        operation_id="revokeAllCanonicalReplays",
+        response_model=CanonicalReplayAllOperationResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def revoke_all_canonical_replays(
+        replay_request_id: UUID,
+        request: Request,
+    ) -> CanonicalReplayAllOperationResponse:
+        """只对已经终止子任务的父请求排队撤回。"""
+
+        principal = current_administrator(request)
+        return current_canonical_replay_service().revoke_all(
+            replay_request_id,
             actor_ref=principal.principal_id,
             request_id=_request_id(request),
         )

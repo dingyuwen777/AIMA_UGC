@@ -194,10 +194,31 @@ class CanonicalReplayAllCreatedResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    request_id: UUID
     artifact_count: int = Field(ge=0)
     run_count: int = Field(ge=0)
     artifacts_per_run: Literal[100] = 100
     batch_size: Literal[1000] = 1000
+
+
+class CanonicalReplayAllOperationResponse(BaseModel):
+    """一次全历史 Replay 的取消/撤回生命周期快照。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    lifecycle_status: Literal[
+        "active",
+        "cancelling",
+        "reverting",
+        "reverted",
+        "revert_failed",
+    ]
+    reversible: bool
+    reversal_job_id: UUID | None = None
+    cancellation_requested_at: datetime | None = None
+    reversal_requested_at: datetime | None = None
+    reversed_at: datetime | None = None
 
 
 class CanonicalReplayCreatedResponse(BaseModel):
@@ -593,6 +614,21 @@ class CanonicalReplayRuntimeStatsResponse(BaseModel):
     duplicates_removed: int = Field(ge=0)
     rows_ingested: int = Field(ge=0)
     existing_convergence: int = Field(ge=0)
+    reversible: bool
+    lifecycle_status: Literal[
+        "active",
+        "cancelling",
+        "reverting",
+        "reverted",
+        "revert_failed",
+    ]
+    reversal_job_id: UUID | None = None
+    reverted_content_count: int = Field(ge=0)
+    hidden_content_count: int = Field(ge=0)
+    retained_content_count: int = Field(ge=0)
+    skipped_content_count: int = Field(ge=0)
+    restored_evidence_count: int = Field(ge=0)
+    skipped_evidence_count: int = Field(ge=0)
 
 
 class CollectionRuntimeItemResponse(BaseModel):
@@ -1896,6 +1932,7 @@ __all__ = [
     "CanonicalReplayCreatedResponse",
     "CanonicalReplayAllCreateRequest",
     "CanonicalReplayAllCreatedResponse",
+    "CanonicalReplayAllOperationResponse",
     "CanonicalReplayJobResultResponse",
     "CanonicalReplayRunResponse",
     "CanonicalReplayStatsResponse",

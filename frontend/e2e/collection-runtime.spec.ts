@@ -81,6 +81,15 @@ const canonicalReplayRuntimeItem = {
     duplicates_removed: 30,
     rows_ingested: 420,
     existing_convergence: 2150,
+    reversible: true,
+    lifecycle_status: 'active',
+    reversal_job_id: null,
+    reverted_content_count: 0,
+    hidden_content_count: 0,
+    retained_content_count: 0,
+    skipped_content_count: 0,
+    restored_evidence_count: 0,
+    skipped_evidence_count: 0,
   },
   platforms: [],
   keywords: [],
@@ -257,6 +266,39 @@ test('shows canonical replay as one filterable runtime record with aggregate det
   await polled
   await expect(drawer.getByText('已完成', { exact: true }).first()).toBeVisible()
   await expect(drawer.getByText('2 / 2', { exact: true })).toBeVisible()
+})
+
+test('confirms cancel and revoke from the canonical replay modal', async ({ page }) => {
+  await page.route('**/api/v1/collection-runtime/runs*', (route) => route.fulfill({
+    json: { items: [canonicalReplayRuntimeItem], next_cursor: null, has_more: false },
+  }))
+  const operationRequest = page.waitForRequest((candidate) =>
+    new URL(candidate.url()).pathname ===
+      `/api/v1/canonical-replays/all/${canonicalReplayRequestId}/cancel-and-revoke`
+  )
+  await page.route(
+    `**/api/v1/canonical-replays/all/${canonicalReplayRequestId}/cancel-and-revoke`,
+    (route) => route.fulfill({
+      status: 202,
+      json: {
+        request_id: canonicalReplayRequestId,
+        lifecycle_status: 'cancelling',
+        reversible: true,
+        reversal_job_id: null,
+      },
+    }),
+  )
+  await page.goto('/collection-runtime')
+  await page.getByRole('region', { name: '采集运行记录' })
+    .getByRole('button', { name: '查看详情' })
+    .click()
+  const modal = page.getByRole('dialog', { name: '重筛详情' })
+  await modal.getByRole('button', { name: '取消并撤回' }).click()
+  const confirmation = page.getByRole('dialog', { name: '确认撤回历史重筛' })
+  await expect(confirmation.getByText('人工锁定及后续其他来源写入不会被覆盖', { exact: false }))
+    .toBeVisible()
+  await confirmation.getByRole('button', { name: '确认撤回' }).click()
+  await operationRequest
 })
 
 test('shows returned conflict fields separately from conflicting row totals', async ({ page }) => {

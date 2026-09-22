@@ -864,6 +864,46 @@ def _runtime_item_response(
                 record.canonical_replay_stats,
                 "existing_convergence",
             ),
+            reversible=bool(record.canonical_replay_stats.get("reversible", False)),
+            lifecycle_status=cast(
+                Literal[
+                    "active",
+                    "cancelling",
+                    "reverting",
+                    "reverted",
+                    "revert_failed",
+                ],
+                str(record.canonical_replay_stats.get("lifecycle_status", "active")),
+            ),
+            reversal_job_id=(
+                UUID(str(record.canonical_replay_stats["reversal_job_id"]))
+                if record.canonical_replay_stats.get("reversal_job_id")
+                else None
+            ),
+            reverted_content_count=_safe_count(
+                record.canonical_replay_stats,
+                "reverted_content_count",
+            ),
+            hidden_content_count=_safe_count(
+                record.canonical_replay_stats,
+                "hidden_content_count",
+            ),
+            retained_content_count=_safe_count(
+                record.canonical_replay_stats,
+                "retained_content_count",
+            ),
+            skipped_content_count=_safe_count(
+                record.canonical_replay_stats,
+                "skipped_content_count",
+            ),
+            restored_evidence_count=_safe_count(
+                record.canonical_replay_stats,
+                "restored_evidence_count",
+            ),
+            skipped_evidence_count=_safe_count(
+                record.canonical_replay_stats,
+                "skipped_evidence_count",
+            ),
         )
         if record.canonical_replay_request_id is not None
         and record.canonical_replay_stats is not None

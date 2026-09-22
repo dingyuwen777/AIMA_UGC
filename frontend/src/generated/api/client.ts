@@ -594,8 +594,33 @@ export interface CanonicalReplayAllCreatedResponse {
   artifact_count: number;
   artifacts_per_run?: 100;
   batch_size?: 1000;
+  request_id: string;
   /** @minimum 0 */
   run_count: number;
+}
+
+export type CanonicalReplayAllOperationResponseLifecycleStatus = typeof CanonicalReplayAllOperationResponseLifecycleStatus[keyof typeof CanonicalReplayAllOperationResponseLifecycleStatus];
+
+
+export const CanonicalReplayAllOperationResponseLifecycleStatus = {
+  active: 'active',
+  cancelling: 'cancelling',
+  reverting: 'reverting',
+  reverted: 'reverted',
+  revert_failed: 'revert_failed',
+} as const;
+
+/**
+ * 一次全历史 Replay 的取消/撤回生命周期快照。
+ */
+export interface CanonicalReplayAllOperationResponse {
+  cancellation_requested_at?: string | null;
+  lifecycle_status: CanonicalReplayAllOperationResponseLifecycleStatus;
+  request_id: string;
+  reversal_job_id?: string | null;
+  reversal_requested_at?: string | null;
+  reversed_at?: string | null;
+  reversible: boolean;
 }
 
 /**
@@ -769,6 +794,17 @@ export interface CanonicalReplayRunResponse {
   updated_at: string;
 }
 
+export type CanonicalReplayRuntimeStatsResponseLifecycleStatus = typeof CanonicalReplayRuntimeStatsResponseLifecycleStatus[keyof typeof CanonicalReplayRuntimeStatsResponseLifecycleStatus];
+
+
+export const CanonicalReplayRuntimeStatsResponseLifecycleStatus = {
+  active: 'active',
+  cancelling: 'cancelling',
+  reverting: 'reverting',
+  reverted: 'reverted',
+  revert_failed: 'revert_failed',
+} as const;
+
 /**
  * 一次全历史 Replay 请求聚合后的用户可见统计。
  */
@@ -784,7 +820,18 @@ export interface CanonicalReplayRuntimeStatsResponse {
   /** @minimum 0 */
   failed_run_count: number;
   /** @minimum 0 */
+  hidden_content_count: number;
+  lifecycle_status: CanonicalReplayRuntimeStatsResponseLifecycleStatus;
+  /** @minimum 0 */
   queued_run_count: number;
+  /** @minimum 0 */
+  restored_evidence_count: number;
+  /** @minimum 0 */
+  retained_content_count: number;
+  reversal_job_id?: string | null;
+  reversible: boolean;
+  /** @minimum 0 */
+  reverted_content_count: number;
   /** @minimum 0 */
   rows_filtered_out: number;
   /** @minimum 0 */
@@ -797,6 +844,10 @@ export interface CanonicalReplayRuntimeStatsResponse {
   run_count: number;
   /** @minimum 0 */
   running_run_count: number;
+  /** @minimum 0 */
+  skipped_content_count: number;
+  /** @minimum 0 */
+  skipped_evidence_count: number;
   /** @minimum 0 */
   succeeded_run_count: number;
 }
@@ -4180,6 +4231,70 @@ export const createAllCanonicalReplays = async (canonicalReplayAllCreateRequest:
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: CanonicalReplayAllCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelAndRevokeAllCanonicalReplaysUrl = (replayRequestId: string,) => {
+
+
+
+
+  return `/api/v1/canonical-replays/all/${replayRequestId}/cancel-and-revoke`
+}
+
+/**
+ * 取消父请求的全部活跃子任务，并排队撤回已提交贡献。
+ * @summary Cancel And Revoke All Canonical Replays
+ */
+export const cancelAndRevokeAllCanonicalReplays = async (replayRequestId: string, options?: RequestInit): Promise<CanonicalReplayAllOperationResponse> => {
+
+  const res = await fetch(getCancelAndRevokeAllCanonicalReplaysUrl(replayRequestId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayAllOperationResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRevokeAllCanonicalReplaysUrl = (replayRequestId: string,) => {
+
+
+
+
+  return `/api/v1/canonical-replays/all/${replayRequestId}/revoke`
+}
+
+/**
+ * 只对已经终止子任务的父请求排队撤回。
+ * @summary Revoke All Canonical Replays
+ */
+export const revokeAllCanonicalReplays = async (replayRequestId: string, options?: RequestInit): Promise<CanonicalReplayAllOperationResponse> => {
+
+  const res = await fetch(getRevokeAllCanonicalReplaysUrl(replayRequestId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayAllOperationResponse = body ? JSON.parse(body) : {}
   return data
 }
 
