@@ -69,7 +69,7 @@ Issue #566 固化了用户当前决定与七条验收标准。Canonical Replay �
 - [x] 排队、运行、成功、部分成功、失败、取消和空输入状态有稳定聚合语义。
 - [x] 列表和详情展示 Artifact、子任务与行级处理统计。
 - [x] KPI 按一次请求计数并汇总实际入库结果。
-- [x] Contract、集成、Browser、生成、静态、构建、文档与本地 Review 已完成；PR PostgreSQL/全量 CI 作为 Ready 后远程硬门禁继续执行。
+- [x] Contract、PostgreSQL 集成、Browser Mock、真实全栈、生成、静态、构建、文档、Review 与 PR CI 均已完成。
 
 ## 非目标
 
@@ -121,7 +121,7 @@ Issue #566 固化了用户当前决定与七条验收标准。Canonical Replay �
 | R4 | 纳入三项运行 KPI且按请求计数 | #566 / AC4 | satisfied | all-request 摘要查询与集成断言 |
 | R5 | 支持类型筛选和详情轮询同步 | #566 / AC5 | satisfied | Cursor/Contract、Store 同步和 Browser 筛选回归 |
 | R6 | 管理员提示运行中心可查看且不自动重筛 | #566 / AC6 | satisfied | 管理员配置 Browser 全量回归；保存路径未新增 Replay 调用 |
-| R7 | 完成分层验证、文档和交付门禁 | #566 / AC7 | explicitly_deferred | 本地分层验证、文档和两轮 Review 已完成；PR PostgreSQL/全量 CI、merge、archive 与 main-fresh 只能在 Ready 后执行 |
+| R7 | 完成分层验证、文档和交付门禁 | #566 / AC7 | satisfied | 本地分层验证、文档和两轮 Review 已完成；PR current-head PostgreSQL 集成、真实全栈、Compose、开发工具链与 CI Gate 全部通过 |
 
 # 计划改动
 
@@ -168,9 +168,9 @@ Issue #566 固化了用户当前决定与七条验收标准。Canonical Replay �
 # 完成审计
 
 - [x] upstream_re_read：Ready 前重新读取 #566、用户决定、Replay Schema/Repository/Worker、Runtime Contract/Query、前端消费者与产品文档，验收语义无漂移。
-- [x] change_coverage：R1—R6 均映射到实现、Contract/Integration/Browser 测试和文档；R7 只延期 Ready 后才能发生的远程生命周期动作。
+- [x] change_coverage：R1—R7 均映射到实现、Contract/PostgreSQL/Browser/真实全栈测试、文档、Review 与 PR CI；合并和自动归档按独立交付生命周期继续执行。
 - [x] reverse_audit：从“重筛入库”按钮反查 all-request/child Run/Job，再到统一 Query、列表、详情、轮询与任务中心；从每个前端动作反查真实 Contract/持久事实，未新增取消或逐 Run 管理假能力。
-- [x] unresolved_cleared：`not_satisfied` 已清零；本机缺少 PostgreSQL Secret 的执行缺口由 Ready 后 PR PostgreSQL Integration 硬门禁承接。
+- [x] unresolved_cleared：`not_satisfied` 已清零；本机缺少 PostgreSQL Secret 的执行缺口已由 PR PostgreSQL Integration 与真实全栈验收闭环。
 
 # 完成证据与状态
 
@@ -189,15 +189,17 @@ Issue #566 固化了用户当前决定与七条验收标准。Canonical Replay �
 | V9 | Windows 文档与仓库门禁 | docs/docs-facts、architecture、table ownership、Secret scan | 全部通过 | 文档事实、只读跨 Owner 聚合与 Secret 边界成立 |
 | V10 | Windows Playwright 轮询同步 | `collection-runtime.spec.ts --grep "canonical replay as one"` | 1 passed；运行中详情在 5 秒轮询后更新为已完成 2 / 2 | 打开详情复用统一列表轮询并同步最新聚合状态 |
 | V11 | base `1a9ecf2e` → head `382cc464` 两轮独立审查 | Issue #566、Schema、聚合 SQL、Contract、前端消费者、测试与文档双向审计 | 首轮发现数据库状态矩阵证据不足并补参数化集成回归；修复后 re-review 为 `NO_FINDINGS_WITHIN_SCOPE`，测试执行待 PR PostgreSQL CI | 防止用 Browser Mock 冒充持久状态映射证据，并复核修复没有扩大生产范围 |
+| V12 | PR PostgreSQL / 真实全栈根因闭环 | 首轮 CI 暴露 Runtime Summary 的 JSONB 投影类型缺失；修复后集成测试进一步暴露批量插入夹具未统一 `error_code` 列 | 显式 `JSONB` 投影后汇总接口不再 500；修正夹具后 Collection PostgreSQL 集成、真实 API + Worker + Browser 全栈和 CI Gate 全部通过 | 证明问题不是被 Mock 或放宽断言掩盖，原始症状和主要复发路径都已覆盖 |
+| V13 | 最终实现审查 | 重新审查 Issue #566、最终生产 diff、Contract、聚合状态/进度/KPI、前端轮询、测试和文档 | `NO_FINDINGS_WITHIN_SCOPE`；无 Schema、Migration、依赖、配置或自动重筛副作用 | 当前实现满足 R1—R7，交付生命周期由 GitHub PR 与 Change Archive 继续维护 |
 
 ## 未验证内容与剩余风险
 
-- 本地 PostgreSQL 集成环境缺少 Secret，数据库回归只能由有正式测试服务的 PR CI 运行。
-- 本地实现、非数据库分层验证与两轮 Review 已完成；PR PostgreSQL CI、合并、归档和 main-fresh 尚未完成。
+- 未执行生产部署、生产 Migration 或生产 Canonical Replay；这些动作不在本次范围内。
+- Implementation merge、仓库原生 Change Archive 与 main-fresh 属于 PR 合并后的交付生命周期，状态由 GitHub 与归档自动化维护。
 
 ## 交付状态
 
 - Issue：#566。
 - 分支：`feat/canonical-replay-runtime-records`。
-- PR：#567（Draft），当前 HEAD `382cc464`；Change 已进入 `ready_for_review`，待远程 CI。
+- PR：#567（Ready）；Change 保持 `ready_for_review`，等待 Maintainer merge 后由仓库原生自动化归档。
 - Schema / Migration / 依赖 / 配置：均不变。
