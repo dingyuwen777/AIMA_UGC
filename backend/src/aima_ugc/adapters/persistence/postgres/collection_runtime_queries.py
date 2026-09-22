@@ -590,7 +590,7 @@ def _canonical_replay_select() -> Any:
         literal(0).label("comment_count"),
         literal(0).label("filtered_count"),
         literal(None).cast(JSONB).label("config_snapshot"),
-        replay_stats.label("canonical_replay_stats"),
+        sql_cast(replay_stats, JSONB).label("canonical_replay_stats"),
         literal(None).cast(Text).label("error_summary"),
         child.c.error_code,
         request.c.created_at,
