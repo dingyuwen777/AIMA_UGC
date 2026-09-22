@@ -113,7 +113,9 @@ def test_first_parent_history_rejects_pr_only_merged_branch_path() -> None:
         subprocess.run(["git", "commit", "-qm", "remove pr-only workflow"], cwd=root, check=True)
 
         subprocess.run(["git", "switch", "-q", "main"], cwd=root, check=True)
-        subprocess.run(["git", "merge", "--no-ff", "-qm", "merge feature", "feature"], cwd=root, check=True)
+        subprocess.run(
+            ["git", "merge", "--no-ff", "-qm", "merge feature", "feature"], cwd=root, check=True
+        )
 
         assert PATH_IN_HISTORY(root, ".github/workflows/pr-only.yml") is False
 
@@ -132,11 +134,11 @@ def test_execute_deletes_snapshot_then_requires_fresh_zero_readback() -> None:
     try:
         MODULE["list_workflow_runs"] = lambda repository, token: snapshots.pop(0)
         MODULE["current_workflow_paths"] = lambda root: {".github/workflows/ci.yml"}
-        MODULE["main_history_workflow_paths"] = (
-            lambda root, observed: {".github/workflows/old.yml"} & set(observed)
+        MODULE["main_history_workflow_paths"] = lambda root, observed: (
+            {".github/workflows/old.yml"} & set(observed)
         )
-        MODULE["_api_request"] = (
-            lambda token, method, path: deletes.append(path) if method == "DELETE" else None
+        MODULE["_api_request"] = lambda token, method, path: (
+            deletes.append(path) if method == "DELETE" else None
         )
         payload = RUN_HYGIENE(
             ROOT,
@@ -165,8 +167,8 @@ def test_execute_fails_when_fresh_readback_still_has_eligible_run() -> None:
     try:
         MODULE["list_workflow_runs"] = lambda repository, token: [run]
         MODULE["current_workflow_paths"] = lambda root: {".github/workflows/ci.yml"}
-        MODULE["main_history_workflow_paths"] = (
-            lambda root, observed: {".github/workflows/old.yml"} & set(observed)
+        MODULE["main_history_workflow_paths"] = lambda root, observed: (
+            {".github/workflows/old.yml"} & set(observed)
         )
         MODULE["_api_request"] = lambda token, method, path: None
         import pytest
@@ -187,12 +189,15 @@ def test_execute_fails_when_fresh_readback_still_has_eligible_run() -> None:
 
 def test_actions_hygiene_script_uses_repository_quality_profile() -> None:
     """只修改 Hygiene 脚本和专属测试时应走 repository_quality，不启动产品全栈。"""
-    assert CLASSIFY_PATHS(
-        [
-            "scripts/quality/actions_hygiene.py",
-            "tests/unit/test_actions_hygiene.py",
-        ]
-    ) == "repository_quality"
+    assert (
+        CLASSIFY_PATHS(
+            [
+                "scripts/quality/actions_hygiene.py",
+                "tests/unit/test_actions_hygiene.py",
+            ]
+        )
+        == "repository_quality"
+    )
 
 
 def test_ci_owns_hygiene_with_job_level_actions_write_only() -> None:
