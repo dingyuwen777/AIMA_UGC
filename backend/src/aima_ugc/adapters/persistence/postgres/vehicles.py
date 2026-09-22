@@ -241,12 +241,15 @@ class PostgresVehicleCatalogRepository:
         status: str | None,
         actor_ref: str,
         classification: dict[str, object | None] | None = None,
+        current: VehicleModel | None = None,
     ) -> VehicleModel:
-        """更新车型并递增车型版本和全局目录版本。"""
+        """更新车型并递增目录版本；调用方可复用同一事务中已锁定的当前行。"""
 
-        current = self.get_model(model_id, for_update=True)
+        current = current or self.get_model(model_id, for_update=True)
         if current is None:
             raise LookupError(model_id)
+        if current.id != model_id:
+            raise ValueError("已锁定车型与更新目标不一致")
         if current.status == "merged":
             raise RuntimeError("已合并车型不能直接编辑")
         requested_brand_id = current.brand_id
@@ -351,17 +354,19 @@ class PostgresVehicleCatalogRepository:
         return True
 
     def is_referenced(self, model_id: UUID) -> bool:
-        """检查内容证据或合并重定向引用。"""
+        """用一次数据库往返检查内容证据或合并重定向引用。"""
 
-        checks = (
-            select(content_vehicle_evidence_table.c.id).where(
-                content_vehicle_evidence_table.c.vehicle_model_id == model_id
-            ),
-            select(vehicle_models_table.c.id).where(
-                vehicle_models_table.c.merged_into_id == model_id
-            ),
+        content_reference = (
+            select(content_vehicle_evidence_table.c.id)
+            .where(content_vehicle_evidence_table.c.vehicle_model_id == model_id)
+            .exists()
         )
-        return any(self._session.scalar(statement.limit(1)) is not None for statement in checks)
+        merged_reference = (
+            select(vehicle_models_table.c.id)
+            .where(vehicle_models_table.c.merged_into_id == model_id)
+            .exists()
+        )
+        return bool(self._session.scalar(select(or_(content_reference, merged_reference))))
 
     def referenced_model_ids(self, model_ids: tuple[UUID, ...]) -> frozenset[UUID]:
         """批量返回被历史内容证据或合并源引用的当前页车型 ID。"""

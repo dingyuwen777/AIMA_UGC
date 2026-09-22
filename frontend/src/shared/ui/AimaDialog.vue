@@ -2,7 +2,15 @@
 import { nextTick, ref, watch } from 'vue'
 
 defineOptions({ inheritAttrs: false })
-const props = withDefaults(defineProps<{ modelValue: boolean; label: string; width?: string }>(), { width: '620px' })
+const props = withDefaults(defineProps<{
+  modelValue: boolean
+  label: string
+  width?: string
+  dismissible?: boolean
+}>(), {
+  width: '620px',
+  dismissible: true,
+})
 const emit = defineEmits<{ 'update:modelValue': [open: boolean] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 
@@ -15,9 +23,14 @@ watch(() => props.modelValue, async (open) => {
 
 /** 只有点击面板外部的遮罩才关闭，面板内部空白保留当前输入。 */
 function backdrop(event: MouseEvent): void {
-  if (event.target !== dialog.value || !dialog.value) return
+  if (!props.dismissible || event.target !== dialog.value || !dialog.value) return
   const box = dialog.value.getBoundingClientRect()
   if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) emit('update:modelValue', false)
+}
+
+/** 关键请求执行时阻止原生 Escape 关闭，避免草稿与响应状态脱节。 */
+function cancel(event: Event): void {
+  if (!props.dismissible) event.preventDefault()
 }
 </script>
 
@@ -31,6 +44,7 @@ function backdrop(event: MouseEvent): void {
       :aria-label="label"
       @close="emit('update:modelValue', false)"
       @click="backdrop"
+      @cancel="cancel"
     >
       <header
         v-if="$slots.header"

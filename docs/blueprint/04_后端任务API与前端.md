@@ -436,7 +436,7 @@ v2 或 TikHub Discovery Search Attempt 的唯一 linked Canonical，随后原子
 `ingestion.canonical-replay.v1` Job。重复幂等键只有在 Artifact 顺序、Brand、批大小和创建者
 完全一致时返回原 Run；参数漂移返回 409。
 
-`POST /api/v1/canonical-replays/all` 是“品牌与车型”页面“重筛入库”按钮使用的全量编排入口。
+`POST /api/v1/canonical-replays/all` 只由“品牌与车型”页面显式点击并确认“重筛入库”后调用；新增或编辑 Brand、Vehicle、Alias 只更新目录，不得隐式调用该入口。
 调用方只提交客户端幂等键；后端在同一事务中稳定选择上述三类全部合法 linked Canonical，冻结
 当前全部 active Brand/Vehicle 目录，按每组最多 100 个 Artifact 建立多个 Replay Run/Job，并把
 每个 Run 的写入批大小固定为当前上限 1000。`canonical_replay_all_requests` 持久化选择摘要、总
@@ -472,7 +472,7 @@ PUT/POST /api/v1/analysis-scheme-versions/{version_id}...
 GET  /api/v1/audit-events
 ```
 
-车型无引用时允许物理删除；有引用后只能废弃、改车型名称或合并，合并把后续读取重定向到最终 active 车型并保留历史内容证据。`display_name` 是管理员和业务页面使用的车型名称，系列名用于声音广场的筛选分组；管理员页面不再新增或编辑类别名，后端 `category_name` 作为既有兼容字段继续保留，不改变车型 ID、匹配或合并规则。车型保存成功后，页面使用服务端返回的完整投影更新当前目录，不阻塞等待全目录重读；品牌和车型列表在 Repository 中按当前页批量装配别名与引用状态，历史内容证据和合并目标分别由匹配索引支持，避免目录规模放大逐条查询。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
+车型无引用时允许物理删除；有引用后只能废弃、改车型名称或合并，合并把后续读取重定向到最终 active 车型并保留历史内容证据。`display_name` 是管理员和业务页面使用的车型名称，系列名用于声音广场的筛选分组；管理员页面不再新增或编辑类别名，后端 `category_name` 作为既有兼容字段继续保留，不改变车型 ID、匹配或合并规则。编辑已有车型时，页面只发送相对当前服务端投影发生变化的字段；请求未完成前锁定编辑层并显示保存状态，成功后使用服务端返回的完整投影更新当前目录，失败保留草稿，不阻塞等待全目录重读。更新服务复用事务中已锁定的车型，并以一次数据库查询计算内容证据与合并引用状态；品牌和车型列表在 Repository 中按当前页批量装配别名与引用状态，历史内容证据和合并目标分别由匹配索引支持，避免目录规模放大逐条查询。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
 
 ---
 
