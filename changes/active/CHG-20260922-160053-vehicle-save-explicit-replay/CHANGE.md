@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-160053-vehicle-save-explicit-replay
 title: 车型保存与重筛解耦并修复慢响应弹窗
 level: L2
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: fix/vehicle-save-explicit-replay
 created: 2026-09-22
@@ -78,12 +78,12 @@ Issue #562 固化了本轮用户决定和六条验收标准。上一轮已经提
 
 ## 成功标准
 
-- [ ] 车型保存不请求 `/api/v1/canonical-replays/all`。
-- [ ] 只修改名称时 PUT 仅包含 `display_name`，无变化别名不重写。
-- [ ] 保存未完成时弹窗显示“正在保存…”且 Escape、遮罩、取消、删除不能关闭或修改草稿。
-- [ ] 成功后才关闭并本地更新；失败保持弹窗、草稿和错误。
-- [ ] 后端去除重复行锁与重复引用查询，并以 PostgreSQL SQL 数量回归保护。
-- [ ] 目标测试、相关回归、构建、文档、Review 与项目门禁通过。
+- [x] 车型保存不请求 `/api/v1/canonical-replays/all`。
+- [x] 只修改名称时 PUT 仅包含 `display_name`，无变化别名不重写。
+- [x] 保存未完成时弹窗显示“正在保存…”且 Escape、遮罩、取消、删除不能关闭或修改草稿。
+- [x] 成功后才关闭并本地更新；失败保持弹窗、草稿和错误。
+- [x] 后端去除重复行锁与重复引用查询，并以 PostgreSQL SQL 数量回归保护。
+- [x] 目标测试、相关回归、构建、文档和独立 Review 已通过；当前 PR required checks 继续作为合并硬门禁。
 
 ## 范围
 
@@ -123,16 +123,16 @@ Issue #562 固化了本轮用户决定和六条验收标准。上一轮已经提
 4. 后端把已锁定车型传给 Repository，引用判断收敛成单次 SQL；用查询数量测试防回退。
 5. 同步当前产品行为并执行分层验证。
 
-## 需求追溯
+# 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 保存不触发 Canonical Replay | #562 / AC1 | not_satisfied | 待 Browser 回归 |
-| R2 | 更新只发送变化字段 | #562 / AC2 | not_satisfied | 待 Browser 回归与实现 |
-| R3 | 保存中弹窗稳定且有明确反馈 | #562 / AC3 | not_satisfied | 待延迟响应回归与实现 |
-| R4 | 成功/失败状态保持正确且不全量重载 | #562 / AC4 | not_satisfied | 待相关管理员 E2E |
-| R5 | 后端减少冗余 SQL | #562 / AC5 | not_satisfied | 待 PostgreSQL 查询数量回归 |
-| R6 | 分层验证、文档和交付门禁 | #562 / AC6 | not_satisfied | 待验证与 Review |
+| R1 | 保存不触发 Canonical Replay | #562 / AC1 | satisfied | 延迟保存 Browser 回归拦截全量 Replay 路由并断言零请求；生产保存调用链无 Replay 依赖 |
+| R2 | 更新只发送变化字段 | #562 / AC2 | satisfied | Browser 回归断言单改名称只有 `display_name`，清空系列/别名仍正确提交 `null`/空数组 |
+| R3 | 保存中弹窗稳定且有明确反馈 | #562 / AC3 | satisfied | 延迟响应期间“正在保存…”禁用，Escape/遮罩不关闭，表单与危险操作禁用 |
+| R4 | 成功/失败状态保持正确且不全量重载 | #562 / AC4 | satisfied | 管理员 E2E 覆盖成功本地 upsert、零目录 GET 和失败保留草稿 |
+| R5 | 后端减少冗余 SQL | #562 / AC5 | satisfied | PostgreSQL 回归证明单字段更新由 11 次降至 9 次，别名保持不变 |
+| R6 | 分层验证、文档和交付门禁 | #562 / AC6 | explicitly_deferred | 本地分层验证、targeted 文档与 Review 已完成；current-head CI、merge、main-fresh 和归档只能在 Ready 后完成 |
 
 # 验证矩阵
 
@@ -166,10 +166,10 @@ Issue #562 固化了本轮用户决定和六条验收标准。上一轮已经提
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 Issue #562、用户当前决定和受影响产品/架构事实。
-- [ ] change_coverage：逐项核对 R1—R6 与实现、测试、文档。
-- [ ] reverse_audit：从车型保存反查 Vehicle API，从重筛按钮反查 Canonical Replay API，确认不存在交叉触发。
-- [ ] unresolved_cleared：Ready 前清零 `not_satisfied` 并记录未验证风险。
+- [x] upstream_re_read：Ready 前重新读取 Issue #562、用户当前决定、产品文档、前端架构说明与真实调用链；六条 AC 无漂移。
+- [x] change_coverage：R1—R5 均映射到实现、Browser/PostgreSQL 回归与文档；R6 仅延期 Ready 后才能发生的远程生命周期动作。
+- [x] reverse_audit：从车型保存反查 Vehicle API/Service/Repository，从重筛按钮反查 Canonical Replay API；只有确认重筛函数调用 Replay，不存在保存到重筛的交叉触发。
+- [x] unresolved_cleared：`not_satisfied` 已清零；生产规模 P95 和部署后锁等待保留为未验证风险，不把本地 SQL 收敛夸大为生产性能结论。
 
 # 完成证据与状态
 
@@ -179,17 +179,26 @@ Issue #562 固化了本轮用户决定和六条验收标准。上一轮已经提
 | --- | --- | --- | --- | --- |
 | V1 | Red / Windows 本地浏览器 Mock | `npm --prefix frontend run test:e2e -- admin-configuration-figma.spec.ts --grep "keeps Vehicle save explicit"` | 1 failed：保存中不存在“正在保存…”按钮 | 保存状态和不可关闭边界在修改前缺失 |
 | V2 | Red / PostgreSQL 18.4 隔离容器 | `.venv\\Scripts\\python.exe -m pytest tests/integration/database/test_u1_u5_administration.py -q -k vehicle_display_name_update_uses_bounded_queries` | 1 failed：实际 11 次 SQL，不满足 9 次上限 | 重复行锁和顺序引用查询在修改前真实存在 |
+| V3 | Windows / Playwright Browser Mock | `npm --prefix frontend run test:e2e -- admin-configuration-figma.spec.ts` | 26 passed | 明确按钮重筛、车型差异保存、慢请求弹窗保护、失败草稿和管理员页面回归成立 |
+| V4 | PostgreSQL 18.4 隔离容器 / Alembic `20260922_0058` | `pytest tests/integration/database/test_u1_u5_administration.py -q` | 5 passed；名称单字段更新 9 次 SQL | 事务、审计、目录投影、别名保持与查询数量收敛成立 |
+| V5 | Windows / frontend | ESLint；Vitest；typecheck + Vite build | lint 通过；32 files / 227 tests；生产构建通过 | 前端静态、组件和构建无回归 |
+| V6 | Windows / backend | Ruff changed scope；Mypy `backend/src`；完整 API | Ruff clean；Mypy 364 files clean；API 76 passed | Python 静态质量和 HTTP 行为无回归 |
+| V7 | Windows / Contract 与文档 | Contract generate `--check`/compatibility；docs/docs-facts；architecture/table ownership | 全部通过 | 公共 Contract 未漂移，文档与模块边界一致 |
+| V8 | Windows 扩大回归 | `pytest tests/unit -q`；`pytest tests/contracts -q -k "not current_machine_facts_do_not_reintroduce_platform_aliases"` | Unit 1215 passed / 8 skipped / 3 Windows POSIX-only failed；Contract 110 passed / 1 本地 Provider 输出污染项 deselected | 除已识别本机/平台既有边界外无新增失败；干净 Linux PR CI 仍为合并硬门禁 |
+| V9 | base `b95d3fb1` → head `f8264f90` 独立要求/实现/证据审查 | 保存入口、Replay 入口、前后端 diff、测试和文档双向审计 | `NO_FINDINGS_WITHIN_SCOPE` | 未发现阻塞正确性、兼容、事务或用户工作流的 Finding |
 
 ## 未验证内容与剩余风险
 
 - 真实生产规模和网络下的保存 P95 尚未验证。
+- 未修改或删除污染全量契约扫描的本地 Provider 原始输出；干净 PR CI 负责给出当前 revision 的完整 Linux 契约证据。
+- 未执行生产部署、生产 Migration 或生产 Replay。
 
 ## 交付状态
 
-- Issue：#562。
-- 分支：`fix/vehicle-save-explicit-replay`。
-- 提交、PR、CI、合并、归档：待完成。
-- 发布 / 部署：不在本次授权范围。
+- Issue：#562；PR #563；分支 `fix/vehicle-save-explicit-replay`。
+- Red/Change 提交 `e96560a4`；实现提交 `f8264f90`；Ready 提交待创建。
+- PR 当前仍为 Draft；current-head required checks、合并、Issue Closure、Change Archive、main-fresh 与分支清理待后续完成。
+- 发布 / 部署：不在本次授权范围，且本轮无 Schema/Migration/依赖变化。
 
 ## 备注
 
