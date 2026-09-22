@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
-import type { BrandResponse, VehicleModelResponse } from '../../../../../generated/api/client'
+import type {
+  BrandResponse,
+  VehicleModelResponse,
+  VehicleModelUpdateRequest,
+} from '../../../../../generated/api/client'
 import { apiErrorMessage } from '../../../../../shared/api/http'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
@@ -67,6 +71,11 @@ const vehicleFormValid = computed(() => Boolean(
   vehicleDraft.displayName.trim()
     && (vehicleDraft.status !== 'active' || vehicleDraft.brandId),
 ))
+const vehicleHasSavableChanges = computed(() => {
+  if (!vehicleDraft.id) return true
+  const current = vehicles.value.find((item) => item.id === vehicleDraft.id)
+  return current ? Object.keys(buildVehicleUpdateBody(current)).length > 0 : false
+})
 
 
 /** 比较品牌编辑区与当前服务端基线；新增弹窗只有真正输入后才算未保存。 */
@@ -103,14 +112,7 @@ const vehicleDraftDirty = computed(() => {
       || mergeTargetId.value,
     )
   }
-  return vehicleDraft.displayName.trim() !== current.display_name
-    || vehicleDraft.brandId !== (current.brand_id ?? '')
-    || vehicleDraft.seriesName.trim() !== (current.series_name ?? '')
-    || vehicleDraft.status !== (current.status === 'deprecated' ? 'deprecated' : 'active')
-    || JSON.stringify(splitLines(vehicleDraft.aliases)) !== JSON.stringify(
-      (current.aliases ?? []).map((alias) => alias.text),
-    )
-    || Boolean(mergeTargetId.value)
+  return Object.keys(buildVehicleUpdateBody(current)).length > 0 || Boolean(mergeTargetId.value)
 })
 
 const navigationDirty = computed(() => brandDraftDirty.value || vehicleDraftDirty.value)
@@ -144,6 +146,24 @@ async function load(): Promise<void> {
 /** 将文本输入收敛成去重后的非空识别词集合。 */
 function splitLines(value: string): string[] {
   return [...new Set(value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean))]
+}
+
+/** 只提交相对当前服务端车型投影发生变化的字段，保留 PUT Contract 的缺省语义。 */
+function buildVehicleUpdateBody(current: VehicleModelResponse): VehicleModelUpdateRequest {
+  const body: VehicleModelUpdateRequest = {}
+  const displayName = vehicleDraft.displayName.trim()
+  const brandId = vehicleDraft.brandId || null
+  const seriesName = vehicleDraft.seriesName.trim() || null
+  const aliases = splitLines(vehicleDraft.aliases)
+  const currentAliases = (current.aliases ?? []).map((alias) => alias.text)
+  const currentStatus = current.status === 'deprecated' ? 'deprecated' : 'active'
+
+  if (displayName !== current.display_name) body.display_name = displayName
+  if (brandId !== (current.brand_id ?? null)) body.brand_id = brandId
+  if (seriesName !== (current.series_name ?? null)) body.series_name = seriesName
+  if (JSON.stringify(aliases) !== JSON.stringify(currentAliases)) body.aliases = aliases
+  if (vehicleDraft.status !== currentStatus) body.status = vehicleDraft.status
+  return body
 }
 
 /** 目录为空时清空品牌与车型草稿。 */
@@ -366,7 +386,7 @@ function openVehicleEditor(item: VehicleModelResponse): void {
 
 /** 保存车型；品牌归属继续只通过 Vehicle API 修改。 */
 async function saveVehicle(): Promise<void> {
-  if (!vehicleFormValid.value || saving.value) return
+  if (!vehicleFormValid.value || !vehicleHasSavableChanges.value || saving.value) return
   const editing = Boolean(vehicleDraft.id)
   saving.value = true
   error.value = null
@@ -374,13 +394,9 @@ async function saveVehicle(): Promise<void> {
   try {
     let saved: VehicleModelResponse
     if (vehicleDraft.id) {
-      saved = await editVehicle(vehicleDraft.id, {
-        display_name: vehicleDraft.displayName.trim(),
-        brand_id: vehicleDraft.brandId || null,
-        series_name: vehicleDraft.seriesName.trim() || null,
-        aliases: splitLines(vehicleDraft.aliases),
-        status: vehicleDraft.status,
-      })
+      const current = vehicles.value.find((item) => item.id === vehicleDraft.id)
+      if (!current) throw new Error('当前车型已不在目录中，请刷新页面后重试。')
+      saved = await editVehicle(vehicleDraft.id, buildVehicleUpdateBody(current))
     } else {
       saved = await addVehicle({
         display_name: vehicleDraft.displayName.trim(),
@@ -878,6 +894,7 @@ async function mergeSelectedVehicle(): Promise<void> {
       v-model="vehicleEditorOpen"
       :label="vehicleDraft.id ? '编辑车型' : '新增车型'"
       width="420px"
+      :dismissible="!saving"
     >
       <section class="resource-dialog-form vehicle-dialog-form">
         <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
@@ -887,6 +904,7 @@ async function mergeSelectedVehicle(): Promise<void> {
             v-model="vehicleDraft.displayName"
             maxlength="200"
             placeholder="例如 爱玛 Q7"
+            :disabled="saving"
           >
         </label>
         <label>
@@ -894,6 +912,7 @@ async function mergeSelectedVehicle(): Promise<void> {
           <select
             v-model="vehicleDraft.brandId"
             aria-label="品牌"
+            :disabled="saving"
           >
             <option value="">
               请选择品牌
@@ -914,6 +933,7 @@ async function mergeSelectedVehicle(): Promise<void> {
             v-model="vehicleDraft.seriesName"
             maxlength="200"
             placeholder="用于车型筛选分组"
+            :disabled="saving"
           >
         </label>
         <label>
@@ -922,6 +942,7 @@ async function mergeSelectedVehicle(): Promise<void> {
             v-model="vehicleDraft.aliases"
             rows="4"
             placeholder="Q7&#10;爱玛Q7"
+            :disabled="saving"
           />
         </label>
 
@@ -935,6 +956,7 @@ async function mergeSelectedVehicle(): Promise<void> {
               v-model="vehicleDraft.status"
               type="radio"
               value="active"
+              :disabled="saving"
             >
             <span>已启用</span>
           </label>
@@ -943,6 +965,7 @@ async function mergeSelectedVehicle(): Promise<void> {
               v-model="vehicleDraft.status"
               type="radio"
               value="deprecated"
+              :disabled="saving"
             >
             <span>停用</span>
           </label>
@@ -960,7 +983,10 @@ async function mergeSelectedVehicle(): Promise<void> {
           class="merge-vehicle-details"
         >
           <summary>合并重复车型</summary>
-          <select v-model="mergeTargetId">
+          <select
+            v-model="mergeTargetId"
+            :disabled="saving"
+          >
             <option value="">
               选择目标车型
             </option>
@@ -974,7 +1000,7 @@ async function mergeSelectedVehicle(): Promise<void> {
           </select>
           <AimaButton
             size="small"
-            :disabled="!mergeTargetId"
+            :disabled="saving || !mergeTargetId"
             @click="mergeSelectedVehicle"
           >
             合并到目标车型
@@ -982,22 +1008,26 @@ async function mergeSelectedVehicle(): Promise<void> {
         </details>
 
         <div class="actions">
-          <AimaButton @click="vehicleEditorOpen = false">
+          <AimaButton
+            :disabled="saving"
+            @click="vehicleEditorOpen = false"
+          >
             取消
           </AimaButton>
           <AimaButton
             v-if="vehicleDraft.id"
             variant="text"
+            :disabled="saving"
             @click="requestCurrentVehicleDelete"
           >
             删除
           </AimaButton>
           <AimaButton
             variant="primary"
-            :disabled="saving || !vehicleFormValid"
+            :disabled="saving || !vehicleFormValid || !vehicleHasSavableChanges"
             @click="saveVehicle"
           >
-            保存
+            {{ saving ? '正在保存…' : '保存' }}
           </AimaButton>
         </div>
       </section>

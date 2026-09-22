@@ -131,6 +131,49 @@ def test_catalog_list_query_count_does_not_grow_with_page_size(runtime) -> None:
     }
 
 
+def test_vehicle_display_name_update_uses_bounded_queries(runtime) -> None:  # type: ignore[no-untyped-def]
+    """单字段编辑复用已锁定车型，并用单次查询返回引用状态。"""
+
+    principal = Principal(
+        principal_id="vehicle-update-query-admin",
+        display_name="管理员",
+        role="administrator",
+        source="development",
+    )
+    brand = _create_owned_brand(runtime, principal, code="UPDATE-QUERY")
+    service = PostgresAdministrationHttpService(runtime)
+    created = service.create_vehicle_model(
+        VehicleModelCreateRequest(
+            display_name="查询前车型",
+            brand_id=brand.id,
+            aliases=("保留别名",),
+        ),
+        principal=principal,
+        request_id="vehicle-update-query-create",
+    )
+    statements: list[str] = []
+
+    def capture_statement(*args: object, **_kwargs: object) -> None:
+        """记录一次正式更新服务调用产生的数据库往返。"""
+
+        statements.append(str(args[2]))
+
+    event.listen(runtime.database.engine, "before_cursor_execute", capture_statement)
+    try:
+        updated = service.update_vehicle_model(
+            created.id,
+            VehicleModelUpdateRequest(display_name="查询后车型"),
+            principal=principal,
+            request_id="vehicle-update-query-update",
+        )
+    finally:
+        event.remove(runtime.database.engine, "before_cursor_execute", capture_statement)
+
+    assert len(statements) == 9
+    assert updated.display_name == "查询后车型"
+    assert tuple(alias.text for alias in updated.aliases) == ("保留别名",)
+
+
 def test_vehicle_merge_redirects_identity_and_audits_mutations(runtime) -> None:  # type: ignore[no-untyped-def]
     """合并保留源车型身份并折叠链路，所有管理写入均可审计。"""
 

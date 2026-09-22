@@ -189,6 +189,7 @@ class PostgresAdministrationHttpService:
                             exclude_unset=True,
                         ),
                         actor_ref=principal.principal_id,
+                        current=previous,
                     )
                 except LookupError as exc:
                     raise AdministrationResourceNotFound from exc
