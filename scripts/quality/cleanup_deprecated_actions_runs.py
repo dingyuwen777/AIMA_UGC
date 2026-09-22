@@ -8,8 +8,6 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import sys
-import time
 from typing import Any, Iterable, Mapping
 from urllib.error import HTTPError
 from urllib.parse import urlencode
