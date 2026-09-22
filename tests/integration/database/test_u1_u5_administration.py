@@ -9,6 +9,7 @@ from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpServic
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.contracts.administration import (
     VehicleModelCreateRequest,
+    VehicleModelListQuery,
     VehicleModelMergeRequest,
     VehicleModelUpdateRequest,
 )
@@ -19,6 +20,7 @@ from aima_ugc.modules.administration import (
 )
 from aima_ugc.modules.identity import Principal
 from aima_ugc.platform.config import load_settings
+from sqlalchemy import event
 
 
 @pytest.fixture
@@ -50,6 +52,74 @@ def _create_owned_brand(runtime, principal: Principal, *, code: str):  # type: i
         principal=principal,
         request_id=f"brand-{code}",
     )
+
+
+def test_catalog_list_query_count_does_not_grow_with_page_size(runtime) -> None:  # type: ignore[no-untyped-def]
+    """目录关联投影必须按页批量读取，不能为每个品牌或车型追加 SQL。"""
+
+    principal = Principal(
+        principal_id="catalog-query-admin",
+        display_name="管理员",
+        role="administrator",
+        source="development",
+    )
+    brand_service = PostgresBrandVehicleHttpService(runtime)
+    vehicle_service = PostgresAdministrationHttpService(runtime)
+    for index in range(4):
+        brand = _create_owned_brand(runtime, principal, code=f"QUERY-{index}")
+        vehicle_service.create_vehicle_model(
+            VehicleModelCreateRequest(
+                display_name=f"查询车型 {index}",
+                brand_id=brand.id,
+                aliases=(f"查询别名 {index}",),
+            ),
+            principal=principal,
+            request_id=f"query-vehicle-{index}",
+        )
+
+    statements: list[str] = []
+
+    def capture_statement(*args: object, **_kwargs: object) -> None:
+        """记录 SQL 文本，只比较同一运行时下不同页大小的查询数量。"""
+
+        statements.append(str(args[2]))
+
+    event.listen(runtime.database.engine, "before_cursor_execute", capture_statement)
+    try:
+        vehicle_service.list_vehicle_models(VehicleModelListQuery(limit=1))
+        vehicle_one_count = len(statements)
+        statements.clear()
+        vehicle_page = vehicle_service.list_vehicle_models(VehicleModelListQuery(limit=4))
+        vehicle_four_count = len(statements)
+        statements.clear()
+        brand_service.list_brands(
+            search=None,
+            status_value=None,
+            role=None,
+            offset=0,
+            limit=1,
+        )
+        brand_one_count = len(statements)
+        statements.clear()
+        brand_page = brand_service.list_brands(
+            search=None,
+            status_value=None,
+            role=None,
+            offset=0,
+            limit=4,
+        )
+        brand_four_count = len(statements)
+    finally:
+        event.remove(runtime.database.engine, "before_cursor_execute", capture_statement)
+
+    assert vehicle_four_count == vehicle_one_count
+    assert brand_four_count == brand_one_count
+    assert {alias.text for item in vehicle_page.items for alias in item.aliases} == {
+        f"查询别名 {index}" for index in range(4)
+    }
+    assert {alias.text for item in brand_page.items for alias in item.aliases} == {
+        f"QUERY-{index}品牌" for index in range(4)
+    }
 
 
 def test_vehicle_merge_redirects_identity_and_audits_mutations(runtime) -> None:  # type: ignore[no-untyped-def]

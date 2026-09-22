@@ -161,7 +161,16 @@ test('brand and vehicle create dialogs do not expose internal code controls', as
 test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N path', async ({ page }) => {
   await mockAdmin(page)
   const brandRequests: Array<{ method: string; body?: unknown }> = []
+  const catalogListGets = { brands: 0, vehicles: 0 }
+  page.on('request', (request) => {
+    if (request.method() !== 'GET') return
+    const pathname = new URL(request.url()).pathname
+    if (pathname === '/api/v1/vehicle-brands') catalogListGets.brands += 1
+    if (pathname === '/api/v1/vehicle-models') catalogListGets.vehicles += 1
+  })
   let vehicleBody: unknown
+  let vehicleUpdateBody: unknown
+  const createdVehicleId = '7a111111-1111-4111-8111-111111111111'
   await page.route(`**/api/v1/vehicle-brands/${brandId}`, async (route) => {
     if (route.request().method() !== 'PUT') return route.fallback()
     brandRequests.push({ method: 'PUT', body: route.request().postDataJSON() })
@@ -178,7 +187,19 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
   await page.route('**/api/v1/vehicle-models', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback()
     vehicleBody = route.request().postDataJSON()
-    await json(route, { ...vehicles[0], ...vehicleBody, id: '7a111111-1111-4111-8111-111111111111', version: 1, referenced: false }, 201)
+    await json(route, { ...vehicles[0], ...vehicleBody, id: createdVehicleId, version: 1, referenced: false }, 201)
+  })
+  await page.route(`**/api/v1/vehicle-models/${createdVehicleId}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    vehicleUpdateBody = route.request().postDataJSON()
+    await json(route, {
+      ...vehicles[0],
+      ...vehicleBody as object,
+      ...vehicleUpdateBody as object,
+      id: createdVehicleId,
+      version: 2,
+      referenced: false,
+    })
   })
 
   await page.goto('/admin/configuration')
@@ -193,6 +214,7 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
     { method: 'POST', body: { text: 'AIMA' } },
   ]))
 
+  const listGetsBeforeVehicleCreate = { ...catalogListGets }
   await page.getByRole('button', { name: '新增车型', exact: true }).click()
   const vehicleEditor = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
   await expect(vehicleEditor.getByText('车型编码', { exact: true })).toHaveCount(0)
@@ -204,6 +226,21 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
     display_name: '爱玛 Q7 Pro', brand_id: brandId, aliases: ['Q7 Pro'],
   })
   expect(vehicleBody).not.toHaveProperty('code')
+  expect(vehicleBody).not.toHaveProperty('category_name')
+  const vehicleTable = page.getByRole('region', { name: '车型目录表格', exact: true })
+  await expect(vehicleTable.getByText('爱玛 Q7 Pro', { exact: true })).toBeVisible()
+  expect(catalogListGets).toEqual(listGetsBeforeVehicleCreate)
+
+  await vehicleTable.getByRole('row').filter({ hasText: '爱玛 Q7 Pro' })
+    .getByRole('button', { name: '编辑', exact: true }).click()
+  const editDialog = page.getByRole('dialog', { name: '编辑车型' })
+  await editDialog.getByLabel('车型名称', { exact: true }).fill('爱玛 Q7 Pro 2027')
+  await editDialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByText('车型已更新并记录操作。', { exact: true })).toBeVisible()
+  expect(vehicleUpdateBody).toMatchObject({ display_name: '爱玛 Q7 Pro 2027' })
+  expect(vehicleUpdateBody).not.toHaveProperty('category_name')
+  await expect(vehicleTable.getByText('爱玛 Q7 Pro 2027', { exact: true })).toBeVisible()
+  expect(catalogListGets).toEqual(listGetsBeforeVehicleCreate)
 })
 
 test('keeps the nested vehicle and audit tables reachable at supported desktop widths', async ({ page }) => {
