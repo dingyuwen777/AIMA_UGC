@@ -80,8 +80,21 @@ def test_catalog_contracts_normalize_and_deduplicate_aliases() -> None:
     update = VehicleModelUpdateRequest(aliases=["Q7", "q7", "爱玛  Q7", "爱玛 Q7"])
     assert update.aliases == ("Q7", "爱玛  Q7")
 
+    repeated = ["Q7", *(" q7 " for _ in range(100))]
+    assert VehicleModelCreateRequest(display_name="爱玛 Q7", aliases=repeated).aliases == ("Q7",)
+
+    with pytest.raises(ValidationError, match="品牌识别词不能为空"):
+        BrandCreateRequest(display_name="爱玛", role="owned", aliases=["爱玛", "   "])
+
     with pytest.raises(ValidationError, match="车型别名不能为空"):
         VehicleModelCreateRequest(display_name="爱玛 Q7", aliases=["Q7", "   "])
+
+    with pytest.raises(ValidationError):
+        BrandCreateRequest(
+            display_name="爱玛",
+            role="owned",
+            aliases=[f"唯一品牌识别词 {index}" for index in range(101)],
+        )
 
     with pytest.raises(ValidationError):
         VehicleModelCreateRequest(
