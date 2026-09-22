@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-222333-canonical-replay-cancel-revoke
 title: 历史数据重筛支持弹窗、取消与精确撤回
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: feat/canonical-replay-cancel-revoke
 created: 2026-09-22
