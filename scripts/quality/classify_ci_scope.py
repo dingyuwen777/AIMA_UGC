@@ -47,6 +47,7 @@ CI_SELF_EXACT = {
     "tests/unit/test_actions_runner_optimization.py",
 }
 REPOSITORY_QUALITY_EXACT = {
+    "scripts/quality/actions_hygiene.py",
     "scripts/quality/archive_change_after_merge.py",
     "scripts/quality/check_agent_governance.py",
     "scripts/quality/check_change_completion.py",
@@ -85,6 +86,7 @@ FRONTEND_PREFIXES = ("frontend/",)
 BACKEND_PREFIXES = ("backend/", "tests/unit/", "tests/api/", "tests/contracts/")
 API_CONTRACT_EXACT = {"backend/src/aima_ugc/entrypoints/api_main.py"}
 REPOSITORY_QUALITY_TEST_MARKERS = (
+    "actions_hygiene",
     "agent_governance",
     "change_archive",
     "change_completion",
