@@ -59,6 +59,7 @@ const vehicleDraft = reactive({
   status: 'active' as 'active' | 'deprecated',
 })
 const mergeTargetId = ref('')
+const aliasDeduplicatedNotice = '检测到重复识别词，已自动去重并保存。'
 
 const emit = defineEmits<{
   'dirty-change': [dirty: boolean]
@@ -74,7 +75,10 @@ const vehicleFormValid = computed(() => Boolean(
 const vehicleHasSavableChanges = computed(() => {
   if (!vehicleDraft.id) return true
   const current = vehicles.value.find((item) => item.id === vehicleDraft.id)
-  return current ? Object.keys(buildVehicleUpdateBody(current)).length > 0 : false
+  return current
+    ? Object.keys(buildVehicleUpdateBody(current)).length > 0
+      || parseAliases(vehicleDraft.aliases).duplicatesRemoved > 0
+    : false
 })
 
 
@@ -112,7 +116,9 @@ const vehicleDraftDirty = computed(() => {
       || mergeTargetId.value,
     )
   }
-  return Object.keys(buildVehicleUpdateBody(current)).length > 0 || Boolean(mergeTargetId.value)
+  return Object.keys(buildVehicleUpdateBody(current)).length > 0
+    || parseAliases(vehicleDraft.aliases).duplicatesRemoved > 0
+    || Boolean(mergeTargetId.value)
 })
 
 const navigationDirty = computed(() => brandDraftDirty.value || vehicleDraftDirty.value)
@@ -143,9 +149,31 @@ async function load(): Promise<void> {
   }
 }
 
-/** 将文本输入收敛成去重后的非空识别词集合。 */
+/** 生成与后端目录 Contract 一致的大小写不敏感、空白折叠身份。 */
+function normalizeAliasIdentity(value: string): string {
+  return value.trim().replace(/\s+/gu, ' ').toLowerCase()
+}
+
+/** 保留首项并统计规范化重复，供提交体和成功反馈共用。 */
+function parseAliases(value: string): { values: string[]; duplicatesRemoved: number } {
+  const values: string[] = []
+  const identities = new Set<string>()
+  let duplicatesRemoved = 0
+  for (const text of value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean)) {
+    const identity = normalizeAliasIdentity(text)
+    if (identities.has(identity)) {
+      duplicatesRemoved += 1
+      continue
+    }
+    identities.add(identity)
+    values.push(text)
+  }
+  return { values, duplicatesRemoved }
+}
+
+/** 返回规范化去重后的非空识别词集合。 */
 function splitLines(value: string): string[] {
-  return [...new Set(value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean))]
+  return parseAliases(value).values
 }
 
 /** 只提交相对当前服务端车型投影发生变化的字段，保留 PUT Contract 的缺省语义。 */
@@ -250,11 +278,12 @@ function cancelBrandChanges(): void {
 async function saveBrand(): Promise<void> {
   if (!brandFormValid.value || saving.value) return
   const creating = !brandDraft.id
+  const aliasInput = parseAliases(brandDraft.aliases)
   saving.value = true
   error.value = null
   notice.value = null
   try {
-    const requestedAliases = splitLines(brandDraft.aliases)
+    const requestedAliases = aliasInput.values
     let brandId = brandDraft.id
     if (!brandId) {
       const created = await addBrand({
@@ -286,7 +315,9 @@ async function saveBrand(): Promise<void> {
     }
     selectedBrandId.value = brandId
     brandCreateOpen.value = false
-    notice.value = creating ? '品牌已创建并记录操作。' : '品牌与识别词已更新并记录操作。'
+    notice.value = aliasInput.duplicatesRemoved > 0
+      ? aliasDeduplicatedNotice
+      : creating ? '品牌已创建并记录操作。' : '品牌与识别词已更新并记录操作。'
     await load()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -388,6 +419,7 @@ function openVehicleEditor(item: VehicleModelResponse): void {
 async function saveVehicle(): Promise<void> {
   if (!vehicleFormValid.value || !vehicleHasSavableChanges.value || saving.value) return
   const editing = Boolean(vehicleDraft.id)
+  const aliasInput = parseAliases(vehicleDraft.aliases)
   saving.value = true
   error.value = null
   notice.value = null
@@ -396,18 +428,23 @@ async function saveVehicle(): Promise<void> {
     if (vehicleDraft.id) {
       const current = vehicles.value.find((item) => item.id === vehicleDraft.id)
       if (!current) throw new Error('当前车型已不在目录中，请刷新页面后重试。')
-      saved = await editVehicle(vehicleDraft.id, buildVehicleUpdateBody(current))
+      const body = buildVehicleUpdateBody(current)
+      saved = Object.keys(body).length > 0
+        ? await editVehicle(vehicleDraft.id, body)
+        : current
     } else {
       saved = await addVehicle({
         display_name: vehicleDraft.displayName.trim(),
         brand_id: vehicleDraft.brandId,
         series_name: vehicleDraft.seriesName.trim() || null,
-        aliases: splitLines(vehicleDraft.aliases),
+        aliases: aliasInput.values,
       })
     }
     upsertVehicle(saved)
     vehicleEditorOpen.value = false
-    notice.value = editing ? '车型已更新并记录操作。' : '车型已创建并记录操作。'
+    notice.value = aliasInput.duplicatesRemoved > 0
+      ? aliasDeduplicatedNotice
+      : editing ? '车型已更新并记录操作。' : '车型已创建并记录操作。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {

@@ -226,6 +226,128 @@ test('brand and vehicle create dialogs do not expose internal code controls', as
   await expect(vehicleDialog).toContainText('内部编码由服务端自动生成')
 })
 
+test('deduplicates normalized Brand and Vehicle aliases and reports the saved result', async ({ page }) => {
+  await mockAdmin(page)
+  const brandBodies: Record<string, unknown>[] = []
+  const vehicleBodies: Record<string, unknown>[] = []
+  const createdBrandId = '7b111111-1111-4111-8111-111111111111'
+  const createdVehicleId = '7b222222-2222-4222-8222-222222222222'
+
+  await page.route('**/api/v1/vehicle-brands', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    brandBodies.push(body)
+    const aliases = body.aliases as string[]
+    await json(route, {
+      ...brands[0],
+      ...body,
+      id: createdBrandId,
+      code: 'AUTO-DEDUP-BRAND',
+      aliases: aliases.map((text, index) => ({
+        id: `7b333333-3333-4333-8333-${String(index).padStart(12, '0')}`,
+        text,
+        normalized_text: text.replace(/\s+/g, ' ').toLowerCase(),
+      })),
+    }, 201)
+  })
+  await page.route('**/api/v1/vehicle-models', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    vehicleBodies.push(body)
+    const aliases = body.aliases as string[]
+    await json(route, {
+      ...vehicles[0],
+      ...body,
+      id: createdVehicleId,
+      code: 'AUTO-DEDUP-VEHICLE',
+      referenced: false,
+      aliases: aliases.map((text, index) => ({
+        id: `7b444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+        text,
+        normalized_text: text.replace(/\s+/g, ' ').toLowerCase(),
+      })),
+    }, 201)
+  })
+
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: '新增品牌', exact: true }).click()
+  const brandDialog = page.getByRole('dialog', { name: '新增品牌' })
+  await brandDialog.getByLabel('品牌名称', { exact: true }).fill('自动去重品牌')
+  await brandDialog.getByPlaceholder('请输入识别词，每行一个')
+    .fill('AIMA\naima\n爱玛  电动车\n爱玛 电动车')
+  await brandDialog.getByRole('button', { name: '创建品牌', exact: true }).click()
+
+  await expect(page.getByText('检测到重复识别词，已自动去重并保存。', { exact: true })).toBeVisible()
+  expect(brandBodies).toEqual([{
+    display_name: '自动去重品牌',
+    role: 'owned',
+    aliases: ['AIMA', '爱玛  电动车'],
+  }])
+
+  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+  const vehicleDialog = page.getByRole('dialog', { name: '新增车型' })
+  await vehicleDialog.getByLabel('车型名称', { exact: true }).fill('自动去重车型')
+  await vehicleDialog.getByPlaceholder('Q7\n爱玛Q7')
+    .fill('Q7\nq7\n爱玛  Q7\n爱玛 Q7')
+  await vehicleDialog.getByRole('button', { name: '保存', exact: true }).click()
+
+  await expect(page.getByText('检测到重复识别词，已自动去重并保存。', { exact: true })).toBeVisible()
+  expect(vehicleBodies).toEqual([expect.objectContaining({
+    display_name: '自动去重车型',
+    aliases: ['Q7', '爱玛  Q7'],
+  })])
+})
+
+test('accepts duplicate-only alias cleanup when editing existing catalog entries', async ({ page }) => {
+  await mockAdmin(page)
+  const brandAliasCreates: string[] = []
+  let vehicleUpdates = 0
+
+  await page.route(`**/api/v1/vehicle-brands/${brandId}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    await json(route, { ...brands[0], ...route.request().postDataJSON(), version: 2 })
+  })
+  await page.route(`**/api/v1/vehicle-brands/${brandId}/aliases/*`, async (route) => {
+    await route.fulfill({ status: 204, body: '' })
+  })
+  await page.route(`**/api/v1/vehicle-brands/${brandId}/aliases`, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const text = String(route.request().postDataJSON().text)
+    brandAliasCreates.push(text)
+    await json(route, {
+      id: '7b555555-5555-4555-8555-555555555555',
+      brand_id: brandId,
+      text,
+      normalized_text: text.toLowerCase(),
+      created_at: now,
+    }, 201)
+  })
+  await page.route(`**/api/v1/vehicle-models/${vehicles[0]!.id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    vehicleUpdates += 1
+    await json(route, { ...vehicles[0], ...route.request().postDataJSON(), version: 2 })
+  })
+
+  await page.goto('/admin/configuration')
+  const brandEditor = page.locator('.brand-overview .form-card')
+  await brandEditor.locator('textarea').fill('AIMA\naima')
+  await brandEditor.getByRole('button', { name: '保存品牌', exact: true }).click()
+  await expect(page.getByText('检测到重复识别词，已自动去重并保存。', { exact: true })).toBeVisible()
+  expect(brandAliasCreates).toEqual(['AIMA'])
+
+  const vehicleTable = page.getByRole('region', { name: '车型目录表格', exact: true })
+  await vehicleTable.getByRole('row').filter({ hasText: vehicles[0]!.display_name })
+    .getByRole('button', { name: '编辑', exact: true }).click()
+  const vehicleDialog = page.getByRole('dialog', { name: '编辑车型' })
+  await vehicleDialog.getByPlaceholder('Q7\n爱玛Q7')
+    .fill('完整车型别名 1\n完整车型别名   1')
+  await vehicleDialog.getByRole('button', { name: '保存', exact: true }).click()
+
+  await expect(vehicleDialog).not.toBeVisible()
+  await expect(page.getByText('检测到重复识别词，已自动去重并保存。', { exact: true })).toBeVisible()
+  expect(vehicleUpdates).toBe(0)
+})
+
 test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N path', async ({ page }) => {
   await mockAdmin(page)
   const brandRequests: Array<{ method: string; body?: unknown }> = []

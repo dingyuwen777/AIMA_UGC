@@ -38,6 +38,27 @@ def _normalized_identity(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
+def _normalized_aliases(value: object) -> object:
+    """在数组长度校验前保留首项并收敛同一车型内的重复别名。"""
+
+    if value is None or not isinstance(value, (list, tuple)):
+        return value
+    cleaned: list[str] = []
+    identities: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            return value
+        text = item.strip()
+        if not text:
+            raise ValueError("车型别名不能为空")
+        identity = _normalized_identity(text)
+        if identity in identities:
+            continue
+        identities.add(identity)
+        cleaned.append(text)
+    return tuple(cleaned)
+
+
 class CurrentPrincipalResponse(BaseModel):
     """当前请求的 Provider-neutral Principal 投影。"""
 
@@ -113,18 +134,12 @@ class VehicleModelCreateRequest(BaseModel):
 
         return _trimmed(value)
 
-    @field_validator("aliases")
+    @field_validator("aliases", mode="before")
     @classmethod
-    def validate_aliases(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        """车型内别名必须非空且规范化后不重复。"""
+    def validate_aliases(cls, value: object) -> object:
+        """车型内别名必须非空，重复项按规范化身份保留首项。"""
 
-        cleaned = tuple(item.strip() for item in value)
-        if any(not item for item in cleaned):
-            raise ValueError("车型别名不能为空")
-        identities = tuple(_normalized_identity(item) for item in cleaned)
-        if len(identities) != len(set(identities)):
-            raise ValueError("同一车型的别名不能重复")
-        return cleaned
+        return _normalized_aliases(value)
 
 
 class VehicleModelUpdateRequest(BaseModel):
@@ -146,14 +161,12 @@ class VehicleModelUpdateRequest(BaseModel):
 
         return _trimmed(value)
 
-    @field_validator("aliases")
+    @field_validator("aliases", mode="before")
     @classmethod
-    def validate_aliases(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    def validate_aliases(cls, value: object) -> object:
         """复用创建时的别名唯一规则。"""
 
-        if value is None:
-            return None
-        return VehicleModelCreateRequest.validate_aliases(value)
+        return _normalized_aliases(value)
 
     @model_validator(mode="after")
     def require_change(self) -> VehicleModelUpdateRequest:
