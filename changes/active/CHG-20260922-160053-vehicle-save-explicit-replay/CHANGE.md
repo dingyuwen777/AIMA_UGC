@@ -134,6 +134,22 @@ Issue #562 固化了本轮用户决定和六条验收标准。上一轮已经提
 | R5 | 后端减少冗余 SQL | #562 / AC5 | satisfied | PostgreSQL 回归证明单字段更新由 11 次降至 9 次，别名保持不变 |
 | R6 | 分层验证、文档和交付门禁 | #562 / AC6 | explicitly_deferred | 本地分层验证、targeted 文档与 Review 已完成；current-head CI、merge、main-fresh 和归档只能在 Ready 后完成 |
 
+# 计划改动
+
+| 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
+| --- | --- | --- | --- |
+| 管理员品牌与车型页面、共享 Dialog | 差异提交车型字段，保存中锁定弹窗并显示进度 | 缩短保存链并避免请求中误关闭 | R1—R4 / V3、V5 |
+| Administration Service、Vehicle Repository | 复用已锁定车型并合并引用查询 | 去除确定性冗余数据库往返 | R5 / V4、V6 |
+| Browser/PostgreSQL 回归 | 覆盖零 Replay、最小请求体、清空语义、慢请求与 SQL 数量 | 固化用户可见和持久化边界 | R1—R5 / V1—V4 |
+| Product、Blueprint、Change | 同步只手动重筛、保存反馈、性能边界与证据 | 防止保存与重筛语义再次混淆 | R1—R6 / V7—V9 |
+
+- [x] 调查当前保存、Replay、Dialog 和数据库调用链
+- [x] 建立 Browser 与 PostgreSQL 失败回归
+- [x] 完成最小实现，不修改 Replay、Contract、Schema 或依赖
+- [x] 同步受影响长期文档
+- [x] 取得当前版本的分层验证证据
+- [x] 完成需求追溯、完成审计和独立 Review
+
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
