@@ -74,7 +74,9 @@ def path_existed_in_head_history(root: Path, workflow_path: str) -> bool:
 
 def main_history_workflow_paths(root: Path, observed_paths: Iterable[str]) -> set[str]:
     """从 HEAD first-parent 主线确认本轮观察到的 Workflow path 是否曾被默认分支持有。"""
-    return {path for path in sorted(set(observed_paths)) if path_existed_in_head_history(root, path)}
+    return {
+        path for path in sorted(set(observed_paths)) if path_existed_in_head_history(root, path)
+    }
 
 
 def build_cleanup_plan(
