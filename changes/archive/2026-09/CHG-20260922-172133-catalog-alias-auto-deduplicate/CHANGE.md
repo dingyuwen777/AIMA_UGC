@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-172133-catalog-alias-auto-deduplicate
 title: 品牌车型重复别名自动去重保存
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/catalog-alias-auto-deduplicate
 created: 2026-09-22
