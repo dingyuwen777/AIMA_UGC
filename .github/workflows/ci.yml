@@ -508,7 +508,7 @@ jobs:
       actions: write
       contents: read
     steps:
-      - name: Checkout current main
+      - name: Checkout current candidate
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
@@ -516,93 +516,23 @@ jobs:
       - name: Delete completed runs for removed workflow paths
         env:
           GH_TOKEN: ${{ github.token }}
+          KNOWN_STALE_RUN_ID: "35170356526"
         shell: bash
         run: |
           set -euo pipefail
 
           ALLOWLIST="${RUNNER_TEMP}/current-workflows.txt"
-          BEFORE="${RUNNER_TEMP}/actions-runs-before.tsv"
-          AFTER="${RUNNER_TEMP}/actions-runs-after.tsv"
-          STALE="${RUNNER_TEMP}/stale-runs.tsv"
+          WORKFLOWS="${RUNNER_TEMP}/repository-workflows.tsv"
+          STALE_WORKFLOWS="${RUNNER_TEMP}/stale-workflows.tsv"
+          STALE_RUNS="${RUNNER_TEMP}/stale-runs.tsv"
 
           find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) \
             -printf '%p\n' | sort -u > "${ALLOWLIST}"
 
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | [.id, .status, .name, .path] | @tsv' > "${BEFORE}"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/workflows?per_page=100" \
+            --jq '.workflows[] | [.id, .name, .path, .state] | @tsv' > "${WORKFLOWS}"
 
-          python3 - "${ALLOWLIST}" "${BEFORE}" "${STALE}" <<'PY'
-          from __future__ import annotations
-
-          from pathlib import Path
-          import sys
-
-          allowlist_path = Path(sys.argv[1])
-          runs_path = Path(sys.argv[2])
-          stale_path = Path(sys.argv[3])
-
-          allowed = {
-              line.strip()
-              for line in allowlist_path.read_text(encoding="utf-8").splitlines()
-              if line.strip()
-          }
-          stale: list[tuple[str, str, str, str]] = []
-          active_stale: list[tuple[str, str, str, str]] = []
-
-          for raw in runs_path.read_text(encoding="utf-8").splitlines():
-              if not raw.strip():
-                  continue
-              parts = raw.split("\t", 3)
-              if len(parts) != 4:
-                  raise SystemExit(f"Unexpected Actions run row: {raw!r}")
-              run_id, status, name, path = parts
-              if not path:
-                  raise SystemExit(f"Actions run {run_id} has no workflow path; refusing cleanup")
-              if path in allowed:
-                  continue
-              item = (run_id, status, name, path)
-              stale.append(item)
-              if status != "completed":
-                  active_stale.append(item)
-
-          print("Current workflow allowlist:")
-          for path in sorted(allowed):
-              print(f"  keep {path}")
-          print(f"Stale runs found: {len(stale)}")
-
-          if active_stale:
-              for run_id, status, name, path in active_stale:
-                  print(
-                      f"ACTIVE_STALE id={run_id} status={status} name={name!r} path={path!r}",
-                      file=sys.stderr,
-                  )
-              raise SystemExit(
-                  "Found stale workflow runs that are not completed; refusing all deletion"
-              )
-
-          stale_path.write_text(
-              "".join(
-                  f"{run_id}\t{status}\t{name}\t{path}\n"
-                  for run_id, status, name, path in stale
-              ),
-              encoding="utf-8",
-          )
-          PY
-
-          deleted=0
-          while IFS=$'\t' read -r run_id status name workflow_path; do
-            [[ -n "${run_id}" ]] || continue
-            echo "delete run=${run_id} workflow=${name} path=${workflow_path}"
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
-            deleted=$((deleted + 1))
-          done < "${STALE}"
-
-          echo "Deleted stale workflow runs: ${deleted}"
-
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | [.id, .status, .name, .path] | @tsv' > "${AFTER}"
-
-          python3 - "${ALLOWLIST}" "${AFTER}" <<'PY'
+          python3 - "${ALLOWLIST}" "${WORKFLOWS}" "${STALE_WORKFLOWS}" <<'PY'
           from __future__ import annotations
 
           from pathlib import Path
@@ -613,24 +543,126 @@ jobs:
               for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
               if line.strip()
           }
-          stale: list[str] = []
+          stale: list[tuple[str, str, str, str]] = []
 
           for raw in Path(sys.argv[2]).read_text(encoding="utf-8").splitlines():
               if not raw.strip():
                   continue
               parts = raw.split("\t", 3)
               if len(parts) != 4:
-                  raise SystemExit(f"Unexpected Actions run row after cleanup: {raw!r}")
-              run_id, status, name, path = parts
+                  raise SystemExit(f"Unexpected workflow row: {raw!r}")
+              workflow_id, name, path, state = parts
+              if not workflow_id or not path:
+                  raise SystemExit(f"Workflow row is missing id/path: {raw!r}")
               if path not in allowed:
-                  stale.append(
+                  stale.append((workflow_id, name, path, state))
+
+          print("Current workflow allowlist:")
+          for path in sorted(allowed):
+              print(f"  keep {path}")
+          print(f"Stale workflow records found: {len(stale)}")
+          for workflow_id, name, path, state in stale:
+              print(
+                  f"  stale workflow_id={workflow_id} state={state} "
+                  f"name={name!r} path={path!r}"
+              )
+
+          Path(sys.argv[3]).write_text(
+              "".join(
+                  f"{workflow_id}\t{name}\t{path}\t{state}\n"
+                  for workflow_id, name, path, state in stale
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+          # 用一个已确认存在的废弃 run 验证 deleted workflow 确实出现在
+          # repository workflows 列表中；否则在任何 DELETE 前失败关闭。
+          known_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${KNOWN_STALE_RUN_ID}")"
+          known_workflow_id="$(jq -r '.workflow_id' <<<"${known_json}")"
+          known_path="$(jq -r '.path' <<<"${known_json}")"
+          if grep -Fxq "${known_path}" "${ALLOWLIST}"; then
+            echo "Known stale sentinel unexpectedly belongs to current allowlist: ${known_path}" >&2
+            exit 1
+          fi
+          if ! awk -F '\t' -v id="${known_workflow_id}" '$1 == id {found=1} END {exit !found}' "${STALE_WORKFLOWS}"; then
+            echo "Deleted workflow listing omitted known stale workflow_id=${known_workflow_id}; refusing cleanup" >&2
+            exit 1
+          fi
+
+          : > "${STALE_RUNS}"
+          while IFS=$'\t' read -r workflow_id workflow_name workflow_path workflow_state; do
+            [[ -n "${workflow_id}" ]] || continue
+            echo "snapshot workflow_id=${workflow_id} state=${workflow_state} path=${workflow_path}"
+            gh api --paginate               "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=100"               --jq '.workflow_runs[] | [.id, .status, .name, .path] | @tsv'               >> "${STALE_RUNS}"
+          done < "${STALE_WORKFLOWS}"
+
+          python3 - "${ALLOWLIST}" "${STALE_RUNS}" <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          import sys
+
+          allowed = {
+              line.strip()
+              for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+              if line.strip()
+          }
+          active: list[str] = []
+          count = 0
+          for raw in Path(sys.argv[2]).read_text(encoding="utf-8").splitlines():
+              if not raw.strip():
+                  continue
+              parts = raw.split("\t", 3)
+              if len(parts) != 4:
+                  raise SystemExit(f"Unexpected stale run row: {raw!r}")
+              run_id, status, name, path = parts
+              if path in allowed:
+                  raise SystemExit(
+                      f"Refusing to delete current workflow run id={run_id} "
+                      f"name={name!r} path={path!r}"
+                  )
+              count += 1
+              if status != "completed":
+                  active.append(
                       f"id={run_id} status={status} name={name!r} path={path!r}"
                   )
 
-          if stale:
+          print(f"Stale runs ready for cleanup: {count}")
+          if active:
               raise SystemExit(
-                  "Stale workflow runs remain after cleanup:\n- " + "\n- ".join(stale)
+                  "Found stale workflow runs that are not completed; "
+                  "refusing all deletion:\n- " + "\n- ".join(active)
               )
-
-          print("Post-cleanup verification passed: all remaining runs use current workflow paths.")
           PY
+
+          deleted=0
+          while IFS=$'\t' read -r run_id status name workflow_path; do
+            [[ -n "${run_id}" ]] || continue
+            echo "delete run=${run_id} workflow=${name} path=${workflow_path}"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+            deleted=$((deleted + 1))
+          done < "${STALE_RUNS}"
+          echo "Deleted stale workflow runs: ${deleted}"
+
+          remaining=0
+          while IFS=$'\t' read -r workflow_id workflow_name workflow_path workflow_state; do
+            [[ -n "${workflow_id}" ]] || continue
+            count="$(gh api               "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=1"               --jq '.total_count')"
+            if [[ "${count}" != "0" ]]; then
+              echo "Stale workflow still has runs: id=${workflow_id} path=${workflow_path} count=${count}" >&2
+              remaining=$((remaining + count))
+            fi
+          done < "${STALE_WORKFLOWS}"
+
+          if [[ "${remaining}" -ne 0 ]]; then
+            echo "Stale workflow runs remain after cleanup: ${remaining}" >&2
+            exit 1
+          fi
+
+          if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${KNOWN_STALE_RUN_ID}" >/dev/null 2>&1; then
+            echo "Known stale sentinel still exists after cleanup" >&2
+            exit 1
+          fi
+
+          echo "Post-cleanup verification passed: all discovered stale workflow run sets are empty."
