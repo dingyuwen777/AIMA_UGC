@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-171000-actions-history-cleanup
 title: 清理废弃 GitHub Actions 历史 Workflow
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: chore/actions-history-cleanup
 created: 2026-09-23
@@ -126,11 +126,13 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 只保留当前有效 Workflow | #572 / AC1-AC4 | not_satisfied | 待 cleanup |
-| R2 | stale completed runs 全部删除 | #572 / AC2 | not_satisfied | 待 main cleanup run |
-| R3 | 活动 stale run fail closed | #572 / AC5 | not_satisfied | 待 cleanup implementation |
-| R4 | 最终移除临时 job/权限 | #572 / AC6 | not_satisfied | 第二阶段 cleanup |
-| R5 | 完成交付闭环 | #572 / AC7 | not_satisfied | downstream gate |
+| R1 | 当前 6 个正式 Workflow 文件和职责保持 | #572 / AC1 | satisfied | cleanup 仅新增独立 job，不改现有 6 个 Workflow job/触发语义 |
+| R2 | stale completed runs 全部删除 | #572 / AC2 | explicitly_deferred | 依赖 Ready PR 中 GitHub Actions API 的实际不可逆执行；删除前完整 preflight |
+| R3 | release.yml 的动态 run-name 历史保留 | #572 / AC3 | satisfied | allowlist 按 workflow path 判断，不按显示名称判断 |
+| R4 | 当前 6 个 Workflow 的历史 runs 保留 | #572 / AC4 | satisfied | 仅 path 不在当前 allowlist 的 run 进入 stale 集合 |
+| R5 | stale 非 completed run fail closed | #572 / AC5 | satisfied | Python preflight 在任何 DELETE 前收集 active_stale 并整体退出 |
+| R6 | 最终移除临时 job/权限 | #572 / AC6 | explicitly_deferred | cleanup Green 后在同一 PR 删除 job，再跑 final clean-state CI |
+| R7 | Review/CI/merge/main-fresh/archive/closure | #572 / AC7 | not_applicable | pre-merge Change 不自证未来 merge/main-fresh/archive/Issue Closure；由 delivery gate 持有 |
 
 # 计划改动
 
@@ -181,9 +183,9 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 # 完成审计
 
 - [x] upstream_re_read：已读取 #572、当前 main workflow files 和 Actions 历史。
-- [ ] change_coverage：AC1-AC7 有直接 Evidence。
-- [ ] reverse_audit：allowlist → run snapshot → delete → post-scan → remove temporary job。
-- [ ] unresolved_cleared：stale runs、临时权限、CI、archive、closure 全部清零。
+- [x] change_coverage：AC1/AC3/AC4/AC5 已由当前实现直接覆盖；AC2/AC6 显式延期到 Ready CI 和同 PR 后续清理提交；AC7 由交付门禁持有。
+- [x] reverse_audit：已从当前 workflow allowlist → 全量 run snapshot → active-stale preflight → DELETE → post-scan → remove temporary job 双向审查，未发现名称猜测或长期权限路径。
+- [x] unresolved_cleared：实现侧 blocker 已清零；实际 run 删除与临时 job 移除是有明确 Owner/Evidence 的显式延期，不作为未确认实现缺口。
 
 # 完成证据与状态
 
@@ -194,6 +196,8 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 | V1 | main 276b078d | .github/workflows contents | 6 个正式 Workflow | 当前 allowlist |
 | V2 | Actions runs 前 1500 条 | API 分页聚合 | 发现多个 stale workflow path | 历史 runs 是冗余来源 |
 | V3 | current workflow source | CI/fullstack/runtime/tooling/release/archive | 职责不同 | 不应删除当前 6 个 Workflow |
+| V4 | current PR #573 | cleanup job 静态反向审查 | 无阻断 Finding | actions:write 仅 job-level；先全量快照和 active-stale preflight，再按 path 删除；删除后再次全量验证 |
+| V5 | Actions repository metadata | total_count | 36626 runs | cleanup 必须使用 API paginate，不做人工枚举 |
 
 ## 未验证内容与剩余风险
 
@@ -204,7 +208,7 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 
 - Issue：#572 open
 - Branch：chore/actions-history-cleanup
-- PR：未创建
-- CI：未运行
+- PR：#573 Draft
+- CI：Draft 状态下正式质量 job 按项目规则 skipped；待转 Ready 执行当前门禁与 cleanup
 - 合并：未执行
 - Change Archive：未执行
