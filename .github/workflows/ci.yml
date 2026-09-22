@@ -495,3 +495,38 @@ jobs:
           }
           require_or_skip "${POSTGRES_REQUIRED}" "${POSTGRES_INTEGRATION_RESULT}" "PostgreSQL Integration"
           require_or_skip "${FULLSTACK_REQUIRED}" "${FULLSTACK_RESULT}" "Real Full-stack Golden Path"
+
+  actions-hygiene:
+    name: Actions Hygiene
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.ci-gate.result == 'success'
+    needs: ci-gate
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout current main history
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Reconcile obsolete workflow history
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/actions-hygiene.json"
+          if ! python3 scripts/quality/actions_hygiene.py \
+            --root . \
+            --repository "${GITHUB_REPOSITORY}" \
+            --execute \
+            --json | tee "${report}"; then
+            echo "::warning::Actions Hygiene failed; cleanup is deferred to the next healthy main push."
+            exit 0
+          fi
