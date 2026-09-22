@@ -19,6 +19,7 @@ affected_areas:
   - contracts
   - frontend
   - documentation
+  - governance
 affected_paths:
   - backend/src/aima_ugc/modules/ingestion/
   - backend/src/aima_ugc/modules/content/
@@ -35,6 +36,7 @@ affected_paths:
   - docs/product/
   - docs/blueprint/
   - docs/appendix/
+  - .github/PULL_REQUEST_TEMPLATE.md
 contracts:
   - CanonicalReplayAllRequest lifecycle
   - Canonical Replay all-request cancel and revoke API
@@ -249,3 +251,4 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 
 - 原工作区同步中断后有未确认残留；本任务在最新 `origin/main` 的隔离工作树施工，不触碰原工作区。
 - Issue #570 已按当前 Requirement Source Contract 补齐并恢复多行语义段；由后续 `synchronize` CI 读取 live Issue 复核。
+- CI 复核暴露 PR 模板文案与既有 GOV014 精确机器 marker 漂移；已将“当前仓库真实路径”同步为“仓库内真实存在的路径”，不改变允许来源范围。
