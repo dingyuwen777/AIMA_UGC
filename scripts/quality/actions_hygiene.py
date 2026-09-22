@@ -15,7 +15,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-
 API_ROOT = "https://api.github.com"
 WORKFLOW_PREFIX = ".github/workflows/"
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
