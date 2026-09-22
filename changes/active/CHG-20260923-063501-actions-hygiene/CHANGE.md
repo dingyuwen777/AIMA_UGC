@@ -145,15 +145,14 @@ GitHub 删除 Workflow YAML 不会自动删除历史 runs。Actions run 删除�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | current path 永不删除 | #575 / AC1 | not_satisfied | 待实现/测试 |
-| R2 | main history / PR-only | #575 / AC2 | not_satisfied | 待实现/测试 |
-| R3 | active skip / completed only | #575 / AC3 | not_satisfied | 待实现/测试 |
-| R4 | snapshot/delete/readback | #575 / AC4 | not_satisfied | 待实现/测试 |
-| R5 | main + CI Gate + minimal permission | #575 / AC5 | not_satisfied | 待 workflow |
-| R6 | best-effort | #575 / AC6 | satisfied | warning + later main retry wrapper 已落库 |
-| R7 | 保持 6 个 Workflow | #575 / AC7 | not_satisfied | 待 final readback |
-| R8 | 完整交付 | #575 / AC8 | not_applicable | pre-merge Change 不自证未来 merge/main-fresh/archive/closure；由 delivery gate 持有 |
-
+| R1 | current path 永不删除 | #575 / AC1 | satisfied | current-path 绝对保护由 build_cleanup_plan + 回归测试直接覆盖 |
+| R2 | main-history / PR-only 边界 | #575 / AC2 | satisfied | first-parent main-history 判定 + 直接 main 删除/merge-branch PR-only 两类真实 Git fixture 覆盖 |
+| R3 | active-run skip / completed only | #575 / AC3 | satisfied | candidate path 存在非 completed run 时整条 skip；completed-only deterministic plan 回归覆盖 |
+| R4 | snapshot/delete/readback + fail closed | #575 / AC4 | satisfied | execute 回归覆盖稳定 snapshot → DELETE → fresh zero readback；fresh 残留直接 RuntimeError；API/历史异常代码路径 fail closed |
+| R5 | main + Gate + minimal permission | #575 / AC5 | satisfied | CI main-push-only Actions Hygiene job 已接线；actions:write 仅 job-level，workflow 顶层保持只读 |
+| R6 | maintenance best-effort | #575 / AC6 | satisfied | 脚本 failure 由 job 输出 ::warning:: 并退出 0，后续 main push 自动重试；脚本自身仍 fail closed |
+| R7 | 保持 6 个长期 Workflow | #575 / AC7 | satisfied | 未新增 .github/workflows 文件；仅在现有 CI 中增加 job，当前正式 Workflow 文件数量保持 6 |
+| R8 | 完整交付闭环 | #575 / AC8 | not_applicable | pre-merge Change 不自证未来 Review/merge/main-fresh/archive/Issue closure；由 delivery downstream gate 持有 |
 # 计划改动
 
 | 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
@@ -223,8 +222,10 @@ GitHub 删除 Workflow YAML 不会自动删除历史 runs。Actions run 删除�
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | main | workflow responsibility/readback | confirmed | 6 个现役 Workflow 都应保留 |\n| V2 | current branch / PR #576 | current-head diff + static Contract audit | Green | 候选算法、CI Gate 依赖、权限最小化、AIMA Blueprint 生命周期事实均已落库；真实 API 待 Ready/main-fresh |
+| V1 | main | workflow responsibility/readback | confirmed | 6 个现役 Workflow 都应保留 |
+| V2 | current branch / PR #576 | current-head diff + static Contract audit | Green | 候选算法、CI Gate 依赖、权限最小化、AIMA Blueprint 生命周期事实均已落库；真实 API 待 Ready/main-fresh |
 | V3 | PR #576 / Issue #575 | canonical Requirement Source revalidation | fixed | 技术变更 Issue 已补齐动机/根因、兼容迁移、风险回滚、稳定 AC、验证要求和上游事实源 |
+| V4 | current branch | destructive boundary regression expansion | added | first-parent history、DELETE+fresh-zero、fresh-residual fail-closed 已加入 targeted tests |
 
 ## 未验证内容与剩余风险
 
@@ -234,8 +235,8 @@ GitHub 删除 Workflow YAML 不会自动删除历史 runs。Actions run 删除�
 ## 交付状态
 
 - 提交：实现、测试、Workflow 接线和文档已在 maintenance/actions-hygiene
-- 拉取请求：#576（Draft，准备转 Ready）
-- CI：Requirement Source 已修正；本 revision 触发 fresh current-head required CI
+- 拉取请求：#576（Ready）
+- CI：Requirement Source 已修正；本 revision 进入 current-head required CI
 - 合并：未执行
 - Change 归档：未执行
 - 发布 / 部署：不适用
