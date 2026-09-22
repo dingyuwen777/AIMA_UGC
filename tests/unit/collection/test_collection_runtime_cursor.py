@@ -52,3 +52,17 @@ def test_collection_runtime_cursor_rejects_tamper_and_expiry() -> None:
     )
     with pytest.raises(InvalidCollectionRuntimeCursor):
         expired.decode(cursor, query_hash="query")
+
+
+def test_runtime_cursor_round_trips_canonical_replay_record_type() -> None:
+    now = datetime(2026, 9, 22, 10, 0, tzinfo=UTC)
+    codec = CollectionRuntimeCursorCodec(secret=b"r" * 32, now=lambda: now)
+    position = CollectionRuntimeCursorPosition(
+        created_at=now,
+        record_id=UUID("00000000-0000-0000-0000-000000000566"),
+        record_type="canonical_replay",
+    )
+
+    token = codec.encode(position, query_hash="canonical-replay")
+
+    assert codec.decode(token, query_hash="canonical-replay") == position

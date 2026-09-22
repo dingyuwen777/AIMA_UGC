@@ -46,6 +46,14 @@ from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaigns_table,
     processing_import_batch_items_table,
 )
+from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
+    CANONICAL_REPLAY_JOB_TYPE,
+)
+from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_all_requests_table,
+    canonical_replay_runs_table,
+)
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_PAYLOAD_VERSION, IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.system.tables import (
@@ -75,7 +83,8 @@ def runtime():  # type: ignore[no-untyped-def]
     def cleanup() -> None:
         with value.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, "
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, accounts, "
                 "provider_configs, processing_import_batches, historical_import_campaigns "
                 "RESTART IDENTITY CASCADE"
             )
@@ -478,6 +487,151 @@ def test_unified_runtime_list_cursor_filters_and_summary_aggregate_both_owners(
     assert secret_ref_search.items == ()
     assert summary.processing_count == 0
     assert summary.completed_today_count == 2
+    assert summary.contents_ingested_today == 10
+
+
+def test_unified_runtime_aggregates_all_canonical_replay_children_once(runtime) -> None:  # type: ignore[no-untyped-def]
+    request_id = uuid4()
+    succeeded_job_id = uuid4()
+    failed_job_id = uuid4()
+    now = datetime.now(UTC)
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            insert(canonical_replay_all_requests_table).values(
+                id=request_id,
+                client_idempotency_key=f"runtime-replay-{request_id}",
+                selection_digest="a" * 64,
+                artifact_count=4,
+                run_count=2,
+                artifacts_per_run=100,
+                batch_size=1000,
+                created_by="admin:test",
+                created_at=now,
+            )
+        )
+        connection.execute(
+            insert(jobs_table),
+            [
+                {
+                    "id": succeeded_job_id,
+                    "job_type": CANONICAL_REPLAY_JOB_TYPE,
+                    "payload_version": CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
+                    "payload": {},
+                    "status": "succeeded",
+                    "internal_idempotency_key": f"runtime-replay-success-{request_id}",
+                    "priority": 0,
+                    "attempt": 1,
+                    "lease_takeover_count": 0,
+                    "max_attempts": 10,
+                    "timeout_seconds": 86400,
+                    "progress": 100,
+                    "available_at": now,
+                    "started_at": now,
+                    "finished_at": now,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                {
+                    "id": failed_job_id,
+                    "job_type": CANONICAL_REPLAY_JOB_TYPE,
+                    "payload_version": CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
+                    "payload": {},
+                    "status": "failed",
+                    "internal_idempotency_key": f"runtime-replay-failed-{request_id}",
+                    "priority": 0,
+                    "attempt": 1,
+                    "lease_takeover_count": 0,
+                    "max_attempts": 10,
+                    "timeout_seconds": 86400,
+                    "progress": 50,
+                    "available_at": now,
+                    "started_at": now,
+                    "finished_at": now,
+                    "error_code": "canonical_replay_artifact_invalid",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ],
+        )
+        connection.execute(
+            insert(canonical_replay_runs_table),
+            [
+                {
+                    "id": uuid4(),
+                    "job_id": succeeded_job_id,
+                    "client_idempotency_key": f"runtime-replay-run-success-{request_id}",
+                    "filter_snapshot": {},
+                    "requested_brand_ids": [],
+                    "artifact_count": 2,
+                    "checkpoint_artifact_ordinal": 2,
+                    "checkpoint_row_number": 0,
+                    "batch_size": 1000,
+                    "rows_seen": 20,
+                    "rows_matched": 15,
+                    "rows_filtered_out": 5,
+                    "duplicates_removed": 2,
+                    "rows_ingested": 8,
+                    "existing_convergence": 5,
+                    "created_by": "admin:test",
+                    "created_at": now,
+                    "updated_at": now,
+                    "all_request_id": request_id,
+                    "all_request_ordinal": 0,
+                },
+                {
+                    "id": uuid4(),
+                    "job_id": failed_job_id,
+                    "client_idempotency_key": f"runtime-replay-run-failed-{request_id}",
+                    "filter_snapshot": {},
+                    "requested_brand_ids": [],
+                    "artifact_count": 2,
+                    "checkpoint_artifact_ordinal": 1,
+                    "checkpoint_row_number": 0,
+                    "batch_size": 1000,
+                    "rows_seen": 10,
+                    "rows_matched": 6,
+                    "rows_filtered_out": 4,
+                    "duplicates_removed": 1,
+                    "rows_ingested": 2,
+                    "existing_convergence": 3,
+                    "created_by": "admin:test",
+                    "created_at": now,
+                    "updated_at": now,
+                    "all_request_id": request_id,
+                    "all_request_ordinal": 1,
+                },
+            ],
+        )
+
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    listing = service.list_runtime_runs(
+        CollectionRuntimeListQuery(record_types=("canonical_replay",))
+    )
+    summary = service.get_runtime_summary()
+
+    assert len(listing.items) == 1
+    item = listing.items[0]
+    assert item.record_id == request_id
+    assert item.canonical_replay_request_id == request_id
+    assert item.job_id is None
+    assert item.record_type == "canonical_replay"
+    assert item.display_name == "历史数据重筛"
+    assert item.status == "partial_success"
+    assert item.progress == 75
+    assert item.canonical_replay_stats is not None
+    assert item.canonical_replay_stats.artifact_count == 4
+    assert item.canonical_replay_stats.run_count == 2
+    assert item.canonical_replay_stats.succeeded_run_count == 1
+    assert item.canonical_replay_stats.failed_run_count == 1
+    assert item.canonical_replay_stats.rows_seen == 30
+    assert item.canonical_replay_stats.rows_matched == 21
+    assert item.canonical_replay_stats.rows_filtered_out == 9
+    assert item.canonical_replay_stats.duplicates_removed == 3
+    assert item.canonical_replay_stats.rows_ingested == 10
+    assert item.canonical_replay_stats.existing_convergence == 8
+    assert item.error_code == "canonical_replay_artifact_invalid"
+    assert summary.processing_count == 0
+    assert summary.completed_today_count == 1
     assert summary.contents_ingested_today == 10
 
 

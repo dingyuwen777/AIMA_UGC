@@ -11,6 +11,7 @@ const modelPackId = '92345678-1234-5678-1234-567812345678'
 const dataImportCampaignId = 'a2345678-1234-4678-9234-567812345678'
 const dataImportItemId = 'b2345678-1234-4678-9234-567812345678'
 const brandId = 'c2345678-1234-4678-9234-567812345678'
+const canonicalReplayRequestId = 'd2345678-1234-4678-9234-567812345678'
 
 const keywordPacks = {
   items: [
@@ -50,6 +51,44 @@ const failedImport = {
 const runtimeItem = {
   record_id: batchId, record_type: 'excel_import', display_name: '爱玛8月舆情.xlsx', source_filename: '爱玛8月舆情.xlsx', import_batch_id: batchId, collection_run_id: null, job_id: importJobId,
   status: 'running', stage: 'filtering', progress: 67, import_stats: importDetail.stats, collection_stats: null, platforms: [], keywords: [], created_at: '2026-08-21T01:30:42Z', started_at: '2026-08-21T01:30:42Z', finished_at: null, error_code: null, error_summary: null,
+}
+const canonicalReplayRuntimeItem = {
+  record_id: canonicalReplayRequestId,
+  record_type: 'canonical_replay',
+  display_name: '历史数据重筛',
+  source_filename: null,
+  import_batch_id: null,
+  data_import_campaign_id: null,
+  collection_run_id: null,
+  canonical_replay_request_id: canonicalReplayRequestId,
+  job_id: null,
+  status: 'running',
+  stage: 'replaying',
+  progress: 63,
+  import_stats: null,
+  collection_stats: null,
+  canonical_replay_stats: {
+    artifact_count: 121,
+    run_count: 2,
+    queued_run_count: 0,
+    running_run_count: 1,
+    succeeded_run_count: 1,
+    failed_run_count: 0,
+    cancelled_run_count: 0,
+    rows_seen: 3284,
+    rows_matched: 2600,
+    rows_filtered_out: 684,
+    duplicates_removed: 30,
+    rows_ingested: 420,
+    existing_convergence: 2150,
+  },
+  platforms: [],
+  keywords: [],
+  created_at: '2026-09-22T10:00:00Z',
+  started_at: '2026-09-22T10:00:02Z',
+  finished_at: null,
+  error_code: null,
+  error_summary: null,
 }
 const dataImportCampaign = {
   id: dataImportCampaignId,
@@ -161,6 +200,41 @@ test('keeps all runtime columns reachable at compact and wide Figma widths', asy
   }))
   expect(narrowFilterLayout.columns).toBe(1)
   expect(narrowFilterLayout.overflow).toBeLessThanOrEqual(1)
+})
+
+test('shows canonical replay as one filterable runtime record with aggregate details', async ({ page }) => {
+  await page.route('**/api/v1/collection-runtime/runs*', (route) => route.fulfill({
+    json: { items: [canonicalReplayRuntimeItem], next_cursor: null, has_more: false },
+  }))
+  await page.goto('/collection-runtime')
+
+  const table = page.getByRole('region', { name: '采集运行记录', exact: true })
+  await expect(table.getByText('历史数据重筛', { exact: true })).toBeVisible()
+  await expect(table.getByText('全部历史 Canonical', { exact: true })).toBeVisible()
+  await expect(table.getByText('完成 1 / 2 个子任务', { exact: true })).toBeVisible()
+  await expect(table.getByText('入库 420 条', { exact: true })).toBeVisible()
+
+  const request = page.waitForRequest((candidate) => {
+    const url = new URL(candidate.url())
+    return url.pathname === '/api/v1/collection-runtime/runs' &&
+      url.searchParams.getAll('record_types').includes('canonical_replay')
+  })
+  await page.getByRole('combobox', { name: '类型' }).selectOption('canonical_replay')
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await request
+
+  await table.getByRole('button', { name: '查看详情', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '重筛详情', exact: true })
+  await expect(drawer.getByText('总体进度')).toBeVisible()
+  await expect(drawer.getByText('63%', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('121', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('3,284', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('2,600', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('420', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('2,150', { exact: true })).toBeVisible()
+  await drawer.getByRole('button', { name: '任务信息', exact: true }).click()
+  await expect(drawer.getByText(canonicalReplayRequestId, { exact: true })).toBeVisible()
+  await expect(drawer.getByText('1 / 2', { exact: true })).toBeVisible()
 })
 
 test('shows returned conflict fields separately from conflicting row totals', async ({ page }) => {
