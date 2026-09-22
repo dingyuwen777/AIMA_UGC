@@ -74,11 +74,7 @@ def path_existed_in_head_history(root: Path, workflow_path: str) -> bool:
 
 def main_history_workflow_paths(root: Path, observed_paths: Iterable[str]) -> set[str]:
     """从 HEAD first-parent 主线确认本轮观察到的 Workflow path 是否曾被默认分支持有。"""
-    return {
-        path
-        for path in sorted(set(observed_paths))
-        if path_existed_in_head_history(root, path)
-    }
+    return {path for path in sorted(set(observed_paths)) if path_existed_in_head_history(root, path)}
 
 
 def build_cleanup_plan(
@@ -114,14 +110,10 @@ def build_cleanup_plan(
 
     protected_current = sorted(path for path in grouped if path in current_paths)
     skipped_not_main_history = sorted(
-        path
-        for path in grouped
-        if path not in current_paths and path not in main_history_paths
+        path for path in grouped if path not in current_paths and path not in main_history_paths
     )
     candidate_paths = sorted(
-        path
-        for path in grouped
-        if path not in current_paths and path in main_history_paths
+        path for path in grouped if path not in current_paths and path in main_history_paths
     )
 
     skipped_active: dict[str, list[str]] = {}
@@ -235,9 +227,7 @@ def run_hygiene(
     current_paths = current_workflow_paths(root)
     snapshot = list_workflow_runs(repository, token)
     observed_paths = {
-        path
-        for run in snapshot
-        if (path := _normalise_workflow_path(run.get("path"))) is not None
+        path for run in snapshot if (path := _normalise_workflow_path(run.get("path"))) is not None
     }
     history_paths = main_history_workflow_paths(root, observed_paths)
     plan = build_cleanup_plan(current_paths, history_paths, snapshot)
