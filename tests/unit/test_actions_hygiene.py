@@ -5,7 +5,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/quality/actions_hygiene.py"
 MODULE = runpy.run_path(str(SCRIPT))
