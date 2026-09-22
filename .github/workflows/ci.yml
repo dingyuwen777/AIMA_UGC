@@ -500,9 +500,9 @@ jobs:
   cleanup-deprecated-actions-history:
     name: One-off deprecated Actions history cleanup
     if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      contains(github.event.head_commit.message, '[actions-history-cleanup]')
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      github.head_ref == 'chore/actions-history-cleanup'
     runs-on: ubuntu-24.04
     permissions:
       actions: write
