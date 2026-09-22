@@ -248,3 +248,4 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 ## 备注
 
 - 原工作区同步中断后有未确认残留；本任务在最新 `origin/main` 的隔离工作树施工，不触碰原工作区。
+- Issue #570 已按当前 Requirement Source Contract 补齐并恢复多行语义段；由后续 `synchronize` CI 读取 live Issue 复核。
