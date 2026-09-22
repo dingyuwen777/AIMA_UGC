@@ -11,6 +11,7 @@ MODULE = runpy.run_path(str(SCRIPT))
 BUILD_PLAN = MODULE["build_cleanup_plan"]
 PATH_IN_HISTORY = MODULE["path_existed_in_head_history"]
 RUN_HYGIENE = MODULE["run_hygiene"]
+RUNTIME_GLOBALS = RUN_HYGIENE.__globals__
 CLASSIFIER_PATH = ROOT / "scripts/quality/classify_ci_scope.py"
 CLASSIFIER = runpy.run_path(str(CLASSIFIER_PATH))
 CLASSIFY_PATHS = CLASSIFIER["classify_paths"]
@@ -121,22 +122,22 @@ def test_first_parent_history_rejects_pr_only_merged_branch_path() -> None:
 
 def test_execute_deletes_snapshot_then_requires_fresh_zero_readback() -> None:
     """execute 必须基于稳定快照删除，并通过 fresh readback 证明零残留。"""
-    old_list = MODULE["list_workflow_runs"]
-    old_current = MODULE["current_workflow_paths"]
-    old_history = MODULE["main_history_workflow_paths"]
-    old_request = MODULE["_api_request"]
+    old_list = RUNTIME_GLOBALS["list_workflow_runs"]
+    old_current = RUNTIME_GLOBALS["current_workflow_paths"]
+    old_history = RUNTIME_GLOBALS["main_history_workflow_paths"]
+    old_request = RUNTIME_GLOBALS["_api_request"]
     snapshots = [
         [{"id": 10, "path": ".github/workflows/old.yml", "name": "Old", "status": "completed"}],
         [],
     ]
     deletes: list[str] = []
     try:
-        MODULE["list_workflow_runs"] = lambda repository, token: snapshots.pop(0)
-        MODULE["current_workflow_paths"] = lambda root: {".github/workflows/ci.yml"}
-        MODULE["main_history_workflow_paths"] = lambda root, observed: (
+        RUNTIME_GLOBALS["list_workflow_runs"] = lambda repository, token: snapshots.pop(0)
+        RUNTIME_GLOBALS["current_workflow_paths"] = lambda root: {".github/workflows/ci.yml"}
+        RUNTIME_GLOBALS["main_history_workflow_paths"] = lambda root, observed: (
             {".github/workflows/old.yml"} & set(observed)
         )
-        MODULE["_api_request"] = lambda token, method, path: (
+        RUNTIME_GLOBALS["_api_request"] = lambda token, method, path: (
             deletes.append(path) if method == "DELETE" else None
         )
         payload = RUN_HYGIENE(
@@ -146,10 +147,10 @@ def test_execute_deletes_snapshot_then_requires_fresh_zero_readback() -> None:
             execute=True,
         )
     finally:
-        MODULE["list_workflow_runs"] = old_list
-        MODULE["current_workflow_paths"] = old_current
-        MODULE["main_history_workflow_paths"] = old_history
-        MODULE["_api_request"] = old_request
+        RUNTIME_GLOBALS["list_workflow_runs"] = old_list
+        RUNTIME_GLOBALS["current_workflow_paths"] = old_current
+        RUNTIME_GLOBALS["main_history_workflow_paths"] = old_history
+        RUNTIME_GLOBALS["_api_request"] = old_request
 
     assert deletes == ["/repos/dingyuwen777/AIMA_UGC/actions/runs/10"]
     assert payload["deleted_run_count"] == 1
@@ -158,18 +159,18 @@ def test_execute_deletes_snapshot_then_requires_fresh_zero_readback() -> None:
 
 def test_execute_fails_when_fresh_readback_still_has_eligible_run() -> None:
     """DELETE 后仍见 eligible run 时必须失败关闭，不能伪造清理完成。"""
-    old_list = MODULE["list_workflow_runs"]
-    old_current = MODULE["current_workflow_paths"]
-    old_history = MODULE["main_history_workflow_paths"]
-    old_request = MODULE["_api_request"]
+    old_list = RUNTIME_GLOBALS["list_workflow_runs"]
+    old_current = RUNTIME_GLOBALS["current_workflow_paths"]
+    old_history = RUNTIME_GLOBALS["main_history_workflow_paths"]
+    old_request = RUNTIME_GLOBALS["_api_request"]
     run = {"id": 11, "path": ".github/workflows/old.yml", "name": "Old", "status": "completed"}
     try:
-        MODULE["list_workflow_runs"] = lambda repository, token: [run]
-        MODULE["current_workflow_paths"] = lambda root: {".github/workflows/ci.yml"}
-        MODULE["main_history_workflow_paths"] = lambda root, observed: (
+        RUNTIME_GLOBALS["list_workflow_runs"] = lambda repository, token: [run]
+        RUNTIME_GLOBALS["current_workflow_paths"] = lambda root: {".github/workflows/ci.yml"}
+        RUNTIME_GLOBALS["main_history_workflow_paths"] = lambda root, observed: (
             {".github/workflows/old.yml"} & set(observed)
         )
-        MODULE["_api_request"] = lambda token, method, path: None
+        RUNTIME_GLOBALS["_api_request"] = lambda token, method, path: None
         import pytest
 
         with pytest.raises(RuntimeError, match="fresh readback"):
@@ -180,10 +181,10 @@ def test_execute_fails_when_fresh_readback_still_has_eligible_run() -> None:
                 execute=True,
             )
     finally:
-        MODULE["list_workflow_runs"] = old_list
-        MODULE["current_workflow_paths"] = old_current
-        MODULE["main_history_workflow_paths"] = old_history
-        MODULE["_api_request"] = old_request
+        RUNTIME_GLOBALS["list_workflow_runs"] = old_list
+        RUNTIME_GLOBALS["current_workflow_paths"] = old_current
+        RUNTIME_GLOBALS["main_history_workflow_paths"] = old_history
+        RUNTIME_GLOBALS["_api_request"] = old_request
 
 
 def test_actions_hygiene_script_uses_repository_quality_profile() -> None:
