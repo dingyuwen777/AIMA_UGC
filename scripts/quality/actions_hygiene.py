@@ -147,7 +147,6 @@ def build_cleanup_plan(
 
 
 def _api_request(
-    repository: str,
     token: str,
     method: str,
     path: str,
@@ -189,7 +188,6 @@ def list_workflow_runs(repository: str, token: str) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for page in range(1, 1001):
         payload = _api_request(
-            repository,
             token,
             "GET",
             f"/repos/{repository}/actions/runs?per_page=100&page={page}",
@@ -246,7 +244,6 @@ def run_hygiene(
     if execute:
         for run in plan["eligible_runs"]:
             _api_request(
-                repository,
                 token,
                 "DELETE",
                 f"/repos/{repository}/actions/runs/{run['id']}",
