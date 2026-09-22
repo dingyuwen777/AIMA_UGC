@@ -153,6 +153,79 @@ def _seed_keyword(
         engine.dispose()
 
 
+def test_0059_adds_fail_closed_canonical_replay_reversal_ledger(
+    migration_database: str,
+) -> None:
+    """旧请求不可撤回，新 Schema 同时具备贡献账本和可见性归属。"""
+
+    _upgrade(migration_database, "20260922_0058")
+    request_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO canonical_replay_all_requests(id, "
+                    "client_idempotency_key, selection_digest, artifact_count, "
+                    "run_count, artifacts_per_run, batch_size, created_by, created_at) "
+                    "VALUES (:id, :key, :digest, 0, 0, 100, 1000, "
+                    "'migration-test', :now)"
+                ),
+                {
+                    "id": request_id,
+                    "key": f"legacy-replay-0059-{request_id}",
+                    "digest": "b" * 64,
+                    "now": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260922_0059")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_content_changes" in inspector.get_table_names()
+        request_columns = {
+            item["name"]
+            for item in inspector.get_columns("canonical_replay_all_requests")
+        }
+        assert {
+            "reversible",
+            "lifecycle_status",
+            "reversal_job_id",
+            "reversal_requested_at",
+            "reversed_at",
+        }.issubset(request_columns)
+        content_columns = {item["name"] for item in inspector.get_columns("contents")}
+        assert "replay_visibility_owner_id" in content_columns
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT reversible, lifecycle_status "
+                    "FROM canonical_replay_all_requests WHERE id = :id"
+                ),
+                {"id": request_id},
+            ).one() == (False, "active")
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260922_0058")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_content_changes" not in inspector.get_table_names()
+        assert "replay_visibility_owner_id" not in {
+            item["name"] for item in inspector.get_columns("contents")
+        }
+        assert "reversible" not in {
+            item["name"]
+            for item in inspector.get_columns("canonical_replay_all_requests")
+        }
+    finally:
+        engine.dispose()
+
+
 def _seed_budget_reservation(database: str, *, status: str) -> None:
     settled_amount = 1 if status == "settled" else None
     engine = _engine(database)

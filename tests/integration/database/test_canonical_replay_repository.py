@@ -23,9 +23,15 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
-from aima_ugc.modules.ingestion.canonical_replay import CanonicalReplayArtifactRecord
+from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
+    CanonicalReplayArtifactRecord,
+)
 from aima_ugc.modules.ingestion.canonical_replay_http import CanonicalReplayConflict
-from aima_ugc.modules.ingestion.canonical_replay_tables import canonical_replay_runs_table
+from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_all_requests_table,
+    canonical_replay_runs_table,
+)
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -42,6 +48,7 @@ from aima_ugc.platform.storage.canonical import (
     CANONICAL_CONTENT_ARTIFACT_CONTENT_TYPE,
     CANONICAL_CONTENT_ARTIFACT_KIND,
 )
+from aima_ugc.platform.storage.tables import canonical_artifact_links_table
 from sqlalchemy import func, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -49,14 +56,19 @@ from sqlalchemy.orm import Session
 _NOW = datetime(2026, 9, 11, 8, 0, tzinfo=UTC)
 
 
-def _job(session: Session, *, job_type: str) -> UUID:
+def _job(
+    session: Session,
+    *,
+    job_type: str,
+    payload: dict[str, object] | None = None,
+) -> UUID:
     job_id = uuid4()
     session.execute(
         insert(jobs_table).values(
             id=job_id,
             job_type=job_type,
             payload_version=job_type,
-            payload={},
+            payload=payload or {},
             status="succeeded",
             internal_idempotency_key=f"canonical-replay-source-{job_id}",
             priority=0,
@@ -157,6 +169,22 @@ def _campaign_source(session: Session) -> UUID:
             created_at=_NOW,
         )
     )
+    source_artifact = _artifact(session, kind="file-import.raw", linked=True)
+    batch_id = uuid4()
+    session.execute(
+        insert(processing_import_batches_table).values(
+            id=batch_id,
+            input_artifact_id=source_artifact.id,
+            status="succeeded",
+            stats={},
+            historical_mode=True,
+            historical_campaign_item_id=parent_id,
+            historical_policy_version="historical-fill-only.v1",
+            created_at=_NOW,
+            started_at=_NOW,
+            finished_at=_NOW,
+        )
+    )
     canonical = _artifact(session, kind=CANONICAL_CONTENT_ARTIFACT_KIND)
     chunk_id = uuid4()
     session.execute(
@@ -169,7 +197,15 @@ def _campaign_source(session: Session) -> UUID:
             manifest_identity="b" * 64,
             ordinal=0,
             artifact_id=canonical.id,
-            job_id=_job(session, job_type=HISTORICAL_IMPORT_CHUNK_JOB_TYPE),
+            job_id=_job(
+                session,
+                job_type=HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
+                payload={
+                    "schema_version": HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
+                    "batch_id": str(batch_id),
+                    "chunk_item_id": str(chunk_id),
+                },
+            ),
             sha256="a" * 64,
             row_start=2,
             row_end=2,
@@ -186,6 +222,87 @@ def _campaign_source(session: Session) -> UUID:
         linked_at=_NOW,
     )
     return canonical.id
+
+
+def test_campaign_replay_uses_chunk_job_batch_after_failed_batch_retry(tmp_path) -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                canonical_id = _campaign_source(session)
+                chunk = session.execute(
+                    select(
+                        historical_import_campaign_items_table.c.parent_item_id,
+                        jobs_table.c.payload,
+                    )
+                    .join(
+                        canonical_artifact_links_table,
+                        canonical_artifact_links_table.c.historical_import_campaign_item_id
+                        == historical_import_campaign_items_table.c.id,
+                    )
+                    .join(
+                        jobs_table,
+                        jobs_table.c.id == historical_import_campaign_items_table.c.job_id,
+                    )
+                    .where(canonical_artifact_links_table.c.artifact_id == canonical_id)
+                ).one()
+                expected_batch_id = UUID(str(chunk.payload["batch_id"]))
+                failed_batch_id = uuid4()
+                input_artifact_id = session.scalar(
+                    select(processing_import_batches_table.c.input_artifact_id).where(
+                        processing_import_batches_table.c.id == expected_batch_id
+                    )
+                )
+                session.execute(
+                    insert(processing_import_batches_table).values(
+                        id=failed_batch_id,
+                        input_artifact_id=input_artifact_id,
+                        status="failed",
+                        stats={},
+                        historical_mode=True,
+                        historical_campaign_item_id=chunk.parent_item_id,
+                        historical_policy_version="historical-fill-only.v1",
+                        created_at=_NOW,
+                        started_at=_NOW,
+                        finished_at=_NOW,
+                    )
+                )
+                artifact = PostgresArtifactMetadataRepository(session).get(canonical_id)
+                assert artifact is not None
+                executor = PostgresCanonicalReplayJobExecutor(
+                    SimpleNamespace(
+                        database=runtime,
+                        artifact_store=LocalArtifactStore(tmp_path),
+                    )
+                )
+                lineage = executor._load_import_lineage_context(  # noqa: SLF001
+                    session,
+                    CanonicalReplayArtifactRecord(
+                        run_id=uuid4(),
+                        ordinal=0,
+                        artifact_id=canonical_id,
+                        source_kind="data_import_canonical_chunk_v2",
+                    ),
+                    artifact,
+                )
+                assert lineage is not None
+                assert lineage.batch_id == expected_batch_id
+                assert lineage.batch_id != failed_batch_id
+        finally:
+            session.close()
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.engine.dispose()
 
 
 def _tikhub_attempt(
@@ -370,6 +487,7 @@ def test_all_replay_groups_every_supported_artifact_and_rejects_input_drift() ->
         )
 
         assert created.artifact_count == len(expected)
+        assert created.request_id is not None
         assert created.run_count == 2
         assert created.artifacts_per_run == 100
         assert created.batch_size == 1000
@@ -436,6 +554,7 @@ def test_all_replay_returns_zero_tasks_when_no_supported_canonical_exists() -> N
             request_id="all-history-empty",
         )
         assert response.artifact_count == 0
+        assert response.request_id is not None
         assert response.run_count == 0
         assert response.artifacts_per_run == 100
         assert response.batch_size == 1000
@@ -454,6 +573,130 @@ def test_all_replay_returns_zero_tasks_when_no_supported_canonical_exists() -> N
                 actor_ref="replay-admin",
                 request_id="all-history-empty-drift",
             )
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_all_replay_reversal_is_durable_idempotent_and_legacy_fail_closed() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                repository = PostgresCanonicalReplayRepository(session)
+                request = repository.enqueue_all(
+                    idempotency_key="empty-reversible-replay",
+                    created_by="replay-admin",
+                    request_id="create-empty-replay",
+                )
+                assert request.reversible is True
+                reverting = repository.request_all_reversal(
+                    request.id,
+                    cancel_active=False,
+                    actor_ref="replay-admin",
+                    http_request_id="revoke-empty-replay",
+                )
+                assert reverting.lifecycle_status == "reverting"
+                assert reverting.reversal_job_id is not None
+                repeated = repository.request_all_reversal(
+                    request.id,
+                    cancel_active=False,
+                    actor_ref="replay-admin",
+                    http_request_id="revoke-empty-replay-retry",
+                )
+                assert repeated.reversal_job_id == reverting.reversal_job_id
+                assert session.scalar(
+                    select(func.count())
+                    .select_from(jobs_table)
+                    .where(jobs_table.c.job_type == CANONICAL_REPLAY_REVERSAL_JOB_TYPE)
+                ) == 1
+
+                legacy_id = uuid4()
+                session.execute(
+                    insert(canonical_replay_all_requests_table).values(
+                        id=legacy_id,
+                        client_idempotency_key=f"legacy-{legacy_id}",
+                        selection_digest="c" * 64,
+                        artifact_count=0,
+                        run_count=0,
+                        artifacts_per_run=100,
+                        batch_size=1000,
+                        created_by="legacy-admin",
+                        created_at=_NOW,
+                    )
+                )
+                with pytest.raises(RuntimeError, match="没有精确贡献账本"):
+                    repository.request_all_reversal(
+                        legacy_id,
+                        cancel_active=False,
+                        actor_ref="replay-admin",
+                        http_request_id="reject-legacy-replay",
+                    )
+        finally:
+            session.close()
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_all_replay_cancel_immediately_cancels_queued_children_and_enqueues_reversal() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                _excel_source(session)
+                repository = PostgresCanonicalReplayRepository(session)
+                request = repository.enqueue_all(
+                    idempotency_key="cancel-queued-replay",
+                    created_by="replay-admin",
+                    request_id="create-cancel-queued-replay",
+                )
+                child_job_id = session.scalar(
+                    select(canonical_replay_runs_table.c.job_id).where(
+                        canonical_replay_runs_table.c.all_request_id == request.id
+                    )
+                )
+                assert child_job_id is not None
+
+                cancelling = repository.request_all_reversal(
+                    request.id,
+                    cancel_active=True,
+                    actor_ref="replay-admin",
+                    http_request_id="cancel-queued-replay",
+                )
+
+                child = PostgresJobRepository(session).get(child_job_id)
+                assert child is not None
+                assert child.status == "cancelled"
+                assert cancelling.lifecycle_status == "reverting"
+                assert cancelling.cancellation_requested_at is not None
+                assert cancelling.reversal_job_id is not None
+                reversal = PostgresJobRepository(session).get(cancelling.reversal_job_id)
+                assert reversal is not None
+                assert reversal.status == "queued"
+                assert reversal.job_type == CANONICAL_REPLAY_REVERSAL_JOB_TYPE
+        finally:
+            session.close()
     finally:
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(

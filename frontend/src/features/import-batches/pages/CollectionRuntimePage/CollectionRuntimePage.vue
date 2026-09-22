@@ -135,6 +135,18 @@ async function copy(value: string): Promise<void> {
   }
 }
 
+async function cancelAndRevokeReplay(): Promise<void> {
+  if (await store.cancelAndRevokeSelectedCanonicalReplay()) {
+    showNotice('已请求取消；所有子任务结束后会自动撤回本次已入库数据。')
+  }
+}
+
+async function revokeReplay(): Promise<void> {
+  if (await store.revokeSelectedCanonicalReplay()) {
+    showNotice('撤回任务已提交，可在本弹窗中持续查看进度和结果。')
+  }
+}
+
 /** 页面 Toast 使用单一短时状态，后来的消息不会被旧定时器提前清除。 */
 function showNotice(message: string): void {
   notice.value = message
@@ -263,8 +275,11 @@ async function viewRunResults(runId: string): Promise<void> {
     <CanonicalReplayDetailDrawer
       v-model="canonicalReplayDetailOpen"
       :item="store.selectedCanonicalReplay"
+      :acting="store.actingCanonicalReplay"
       @refresh="store.refresh(true)"
       @copy="copy"
+      @cancel-and-revoke="cancelAndRevokeReplay"
+      @revoke="revokeReplay"
     />
     <DataImportDialog
       v-model="dataImportOpen"

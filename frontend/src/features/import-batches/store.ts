@@ -31,6 +31,7 @@ import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import { createClientIdempotencyKey } from '../../shared/idempotency'
 import {
   createTikHubCollectionRun,
+  cancelAndRevokeCanonicalReplay,
   cancelHistoricalCampaign,
   createLocalCampaign,
   createHistoricalCampaign,
@@ -53,6 +54,7 @@ import {
   previewHistoricalCampaignRevocation,
   retryHistoricalCampaign,
   revokeHistoricalCampaign,
+  revokeCanonicalReplay,
   startHistoricalCampaign,
   uploadLocalCampaignFile,
   uploadImportBatch,
@@ -160,6 +162,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const actingHistorical = ref(false)
   const previewingHistoricalRevocation = ref(false)
   const revokingHistorical = ref(false)
+  const actingCanonicalReplay = ref(false)
   const localUploadCompleted = ref(0)
   const localUploadTotal = ref(0)
   const error = ref<string | null>(null)
@@ -335,6 +338,40 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedBatch.value = null
     selectedRun.value = null
     selectedCanonicalReplay.value = item
+  }
+
+  async function cancelAndRevokeSelectedCanonicalReplay(): Promise<boolean> {
+    const requestId = selectedCanonicalReplay.value?.canonical_replay_request_id
+    if (!requestId || actingCanonicalReplay.value) return false
+    actingCanonicalReplay.value = true
+    error.value = null
+    try {
+      await cancelAndRevokeCanonicalReplay(requestId)
+      await refresh(true)
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      actingCanonicalReplay.value = false
+    }
+  }
+
+  async function revokeSelectedCanonicalReplay(): Promise<boolean> {
+    const requestId = selectedCanonicalReplay.value?.canonical_replay_request_id
+    if (!requestId || actingCanonicalReplay.value) return false
+    actingCanonicalReplay.value = true
+    error.value = null
+    try {
+      await revokeCanonicalReplay(requestId)
+      await refresh(true)
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      actingCanonicalReplay.value = false
+    }
   }
 
   function closeDetail(): void {
@@ -776,6 +813,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     actingHistorical,
     previewingHistoricalRevocation,
     revokingHistorical,
+    actingCanonicalReplay,
     localUploadCompleted,
     localUploadTotal,
     error,
@@ -786,6 +824,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     openBatchDetail,
     openRunDetail,
     openCanonicalReplayDetail,
+    cancelAndRevokeSelectedCanonicalReplay,
+    revokeSelectedCanonicalReplay,
     closeDetail,
     upload,
     loadKeywordPacks,

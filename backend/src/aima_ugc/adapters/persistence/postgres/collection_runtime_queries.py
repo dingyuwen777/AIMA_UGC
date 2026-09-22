@@ -479,6 +479,7 @@ def _canonical_replay_select() -> Any:
     request = canonical_replay_all_requests_table
     run = canonical_replay_runs_table
     job = jobs_table
+    reversal_job = jobs_table.alias("runtime_canonical_replay_reversal_job")
     child = (
         select(
             run.c.all_request_id.label("request_id"),
@@ -515,7 +516,7 @@ def _canonical_replay_select() -> Any:
     failed_count = func.coalesce(child.c.failed_run_count, 0)
     cancelled_count = func.coalesce(child.c.cancelled_run_count, 0)
     terminal_count = succeeded_count + failed_count + cancelled_count
-    public_status = case(
+    replay_status = case(
         (request.c.run_count == 0, "succeeded"),
         (running_count > 0, "running"),
         (and_(queued_count > 0, terminal_count > 0), "running"),
@@ -525,7 +526,13 @@ def _canonical_replay_select() -> Any:
         (cancelled_count == request.c.run_count, "cancelled"),
         else_="partial_success",
     )
-    progress = case(
+    public_status = case(
+        (request.c.lifecycle_status.in_(("cancelling", "reverting")), "running"),
+        (request.c.lifecycle_status == "reverted", "succeeded"),
+        (request.c.lifecycle_status == "revert_failed", "failed"),
+        else_=replay_status,
+    )
+    replay_progress = case(
         (request.c.artifact_count == 0, 100),
         else_=func.least(
             100,
@@ -535,7 +542,16 @@ def _canonical_replay_select() -> Any:
             ),
         ),
     )
+    progress = case(
+        (request.c.lifecycle_status == "reverting", func.coalesce(reversal_job.c.progress, 0)),
+        (request.c.lifecycle_status == "reverted", 100),
+        else_=replay_progress,
+    )
     public_stage = case(
+        (request.c.lifecycle_status == "cancelling", "cancelling"),
+        (request.c.lifecycle_status == "reverting", "reverting"),
+        (request.c.lifecycle_status == "reverted", "reverted"),
+        (request.c.lifecycle_status == "revert_failed", "revert_failed"),
         (public_status == "queued", "queued"),
         (public_status == "running", "replaying"),
         else_=public_status,
@@ -567,10 +583,28 @@ def _canonical_replay_select() -> Any:
         func.coalesce(child.c.rows_ingested, 0),
         "existing_convergence",
         func.coalesce(child.c.existing_convergence, 0),
+        "reversible",
+        request.c.reversible,
+        "lifecycle_status",
+        request.c.lifecycle_status,
+        "reversal_job_id",
+        request.c.reversal_job_id,
+        "reverted_content_count",
+        request.c.reverted_content_count,
+        "hidden_content_count",
+        request.c.hidden_content_count,
+        "retained_content_count",
+        request.c.retained_content_count,
+        "skipped_content_count",
+        request.c.skipped_content_count,
+        "restored_evidence_count",
+        request.c.restored_evidence_count,
+        "skipped_evidence_count",
+        request.c.skipped_evidence_count,
     )
     return select(
         request.c.id.label("record_id"),
-        literal(None).cast(job.c.id.type).label("job_id"),
+        request.c.reversal_job_id.label("job_id"),
         literal("canonical_replay").label("record_type"),
         public_status.label("public_status"),
         progress.label("progress"),
@@ -592,10 +626,18 @@ def _canonical_replay_select() -> Any:
         literal(None).cast(JSONB).label("config_snapshot"),
         sql_cast(replay_stats, JSONB).label("canonical_replay_stats"),
         literal(None).cast(Text).label("error_summary"),
-        child.c.error_code,
+        case(
+            (
+                request.c.lifecycle_status == "revert_failed",
+                reversal_job.c.error_code,
+            ),
+            else_=child.c.error_code,
+        ).label("error_code"),
         request.c.created_at,
         child.c.started_at,
         case(
+            (request.c.lifecycle_status == "reverted", request.c.reversed_at),
+            (request.c.lifecycle_status == "revert_failed", reversal_job.c.finished_at),
             (request.c.run_count == 0, request.c.created_at),
             (terminal_count == request.c.run_count, child.c.finished_at),
             else_=None,
@@ -608,7 +650,12 @@ def _canonical_replay_select() -> Any:
             request.c.client_idempotency_key,
             sql_cast(request.c.id, Text),
         ).label("search_text"),
-    ).select_from(request.outerjoin(child, child.c.request_id == request.c.id))
+    ).select_from(
+        request.outerjoin(child, child.c.request_id == request.c.id).outerjoin(
+            reversal_job,
+            reversal_job.c.id == request.c.reversal_job_id,
+        )
+    )
 
 
 def _safe_json_count(column: Any, key: str) -> Any:

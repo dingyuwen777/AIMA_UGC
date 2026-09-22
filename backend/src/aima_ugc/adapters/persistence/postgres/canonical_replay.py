@@ -26,9 +26,12 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
     CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
     CANONICAL_REPLAY_JOB_TYPE,
+    CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION,
+    CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
     CanonicalReplayAllRequestRecord,
     CanonicalReplayArtifactRecord,
     CanonicalReplayCounters,
+    CanonicalReplayLifecycleStatus,
     CanonicalReplayRunRecord,
     CanonicalReplaySourceKind,
     dump_filter_snapshot,
@@ -207,6 +210,8 @@ class PostgresCanonicalReplayRepository:
                 batch_size=CANONICAL_REPLAY_FAST_BATCH_SIZE,
                 created_by=actor,
                 created_at=now,
+                reversible=True,
+                lifecycle_status="active",
             )
         )
         if candidates:
@@ -317,6 +322,22 @@ class PostgresCanonicalReplayRepository:
             .mappings()
             .one_or_none()
         )
+        return None if row is None else _all_request_from_row(row)
+
+    def get_all_request(
+        self,
+        request_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> CanonicalReplayAllRequestRecord | None:
+        """读取父请求；状态转换时由调用方显式要求行锁。"""
+
+        statement = select(canonical_replay_all_requests_table).where(
+            canonical_replay_all_requests_table.c.id == request_id
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        row = self._session.execute(statement).mappings().one_or_none()
         return None if row is None else _all_request_from_row(row)
 
     def _list_replayable_artifacts(
@@ -477,6 +498,152 @@ class PostgresCanonicalReplayRepository:
         if run is None:
             raise LookupError(run_id)
         return PostgresJobRepository(self._session).request_cancel(run.job_id)
+
+    def request_all_reversal(
+        self,
+        request_id: UUID,
+        *,
+        cancel_active: bool,
+        actor_ref: str,
+        http_request_id: str,
+    ) -> CanonicalReplayAllRequestRecord:
+        """幂等请求整次撤回；运行中请求先协作取消全部子 Job。"""
+
+        record = self.get_all_request(request_id, for_update=True)
+        if record is None:
+            raise LookupError(request_id)
+        if not record.reversible:
+            raise RuntimeError("该历史重筛创建时没有精确贡献账本，禁止撤回")
+        if record.lifecycle_status == "reverted":
+            return record
+
+        jobs = self._list_all_request_jobs(request_id)
+        active = tuple(job for job in jobs if job.status in {"queued", "running"})
+        if active and not cancel_active:
+            raise RuntimeError("历史重筛仍在运行，请使用取消并撤回")
+        now = beijing_now()
+        if cancel_active:
+            job_repository = PostgresJobRepository(self._session)
+            for job in active:
+                job_repository.request_cancel(job.id)
+            self._session.execute(
+                update(canonical_replay_all_requests_table)
+                .where(canonical_replay_all_requests_table.c.id == request_id)
+                .values(
+                    lifecycle_status="cancelling",
+                    cancellation_requested_at=func.coalesce(
+                        canonical_replay_all_requests_table.c.cancellation_requested_at,
+                        now,
+                    ),
+                    reversal_requested_at=func.coalesce(
+                        canonical_replay_all_requests_table.c.reversal_requested_at,
+                        now,
+                    ),
+                    reversal_requested_by=func.coalesce(
+                        canonical_replay_all_requests_table.c.reversal_requested_by,
+                        actor_ref,
+                    ),
+                    reversal_request_id=func.coalesce(
+                        canonical_replay_all_requests_table.c.reversal_request_id,
+                        http_request_id,
+                    ),
+                )
+            )
+        else:
+            self._session.execute(
+                update(canonical_replay_all_requests_table)
+                .where(canonical_replay_all_requests_table.c.id == request_id)
+                .values(
+                    reversal_requested_at=func.coalesce(
+                        canonical_replay_all_requests_table.c.reversal_requested_at,
+                        now,
+                    ),
+                    reversal_requested_by=func.coalesce(
+                        canonical_replay_all_requests_table.c.reversal_requested_by,
+                        actor_ref,
+                    ),
+                    reversal_request_id=func.coalesce(
+                        canonical_replay_all_requests_table.c.reversal_request_id,
+                        http_request_id,
+                    ),
+                )
+            )
+        self.ensure_reversal_job_if_ready(request_id)
+        refreshed = self.get_all_request(request_id)
+        if refreshed is None:
+            raise RuntimeError("历史重筛撤回请求更新后不可读")
+        return refreshed
+
+    def ensure_reversal_job_if_ready(
+        self,
+        request_id: UUID,
+    ) -> CanonicalReplayAllRequestRecord:
+        """最后一个子 Job 终态后，在同一事务排队唯一撤回 Job。"""
+
+        record = self.get_all_request(request_id, for_update=True)
+        if record is None:
+            raise LookupError(request_id)
+        if record.lifecycle_status in {"reverted", "reverting", "revert_failed"}:
+            return record
+        if record.reversal_requested_at is None:
+            return record
+        if any(
+            job.status in {"queued", "running"}
+            for job in self._list_all_request_jobs(request_id)
+        ):
+            return record
+        job = PostgresJobRepository(self._session).enqueue(
+            job_type=CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
+            payload_version=CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION,
+            payload={
+                "schema_version": CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION,
+                "request_id": str(request_id),
+            },
+            internal_idempotency_key=f"canonical-replay-reversal:{request_id}",
+            request_id=record.reversal_request_id,
+            priority=0,
+            max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
+            timeout_seconds=CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
+        )
+        self._session.execute(
+            update(canonical_replay_all_requests_table)
+            .where(canonical_replay_all_requests_table.c.id == request_id)
+            .values(lifecycle_status="reverting", reversal_job_id=job.id)
+        )
+        refreshed = self.get_all_request(request_id)
+        if refreshed is None:
+            raise RuntimeError("历史重筛撤回 Job 创建后父请求不可读")
+        return refreshed
+
+    def mark_reversal_failed(self, request_id: UUID) -> None:
+        """只有未成功结束的父请求可被撤回 Job 终态回调标记失败。"""
+
+        self._session.execute(
+            update(canonical_replay_all_requests_table)
+            .where(
+                canonical_replay_all_requests_table.c.id == request_id,
+                canonical_replay_all_requests_table.c.lifecycle_status == "reverting",
+            )
+            .values(lifecycle_status="revert_failed")
+        )
+
+    def _list_all_request_jobs(self, request_id: UUID) -> tuple[JobRecord, ...]:
+        job_ids = self._session.scalars(
+            select(jobs_table.c.id)
+            .select_from(
+                canonical_replay_runs_table.join(
+                    jobs_table,
+                    jobs_table.c.id == canonical_replay_runs_table.c.job_id,
+                )
+            )
+            .where(canonical_replay_runs_table.c.all_request_id == request_id)
+            .order_by(canonical_replay_runs_table.c.all_request_ordinal)
+        )
+        repository = PostgresJobRepository(self._session)
+        jobs = tuple(repository.get(cast(UUID, job_id)) for job_id in job_ids)
+        if any(job is None for job in jobs):
+            raise RuntimeError("全量 Replay 子 Run 缺少 Job")
+        return cast(tuple[JobRecord, ...], jobs)
 
     def claim_content_identity(
         self,
@@ -687,6 +854,20 @@ def _all_request_from_row(row: RowMapping) -> CanonicalReplayAllRequestRecord:
         batch_size=cast(int, row["batch_size"]),
         created_by=cast(str, row["created_by"]),
         created_at=cast(datetime, row["created_at"]),
+        reversible=cast(bool, row["reversible"]),
+        lifecycle_status=cast(CanonicalReplayLifecycleStatus, row["lifecycle_status"]),
+        reversal_job_id=cast(UUID | None, row["reversal_job_id"]),
+        cancellation_requested_at=cast(datetime | None, row["cancellation_requested_at"]),
+        reversal_requested_at=cast(datetime | None, row["reversal_requested_at"]),
+        reversed_at=cast(datetime | None, row["reversed_at"]),
+        reversal_requested_by=cast(str | None, row["reversal_requested_by"]),
+        reversal_request_id=cast(str | None, row["reversal_request_id"]),
+        reverted_content_count=cast(int, row["reverted_content_count"]),
+        hidden_content_count=cast(int, row["hidden_content_count"]),
+        retained_content_count=cast(int, row["retained_content_count"]),
+        skipped_content_count=cast(int, row["skipped_content_count"]),
+        restored_evidence_count=cast(int, row["restored_evidence_count"]),
+        skipped_evidence_count=cast(int, row["skipped_evidence_count"]),
     )
 
 
@@ -724,6 +905,8 @@ def _run_from_row(row: RowMapping) -> CanonicalReplayRunRecord:
         created_by=cast(str, row["created_by"]),
         created_at=cast(datetime, row["created_at"]),
         updated_at=cast(datetime, row["updated_at"]),
+        all_request_id=cast(UUID | None, row["all_request_id"]),
+        all_request_ordinal=cast(int | None, row["all_request_ordinal"]),
     )
 
 

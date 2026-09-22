@@ -3,8 +3,9 @@ import { computed, ref, watch } from 'vue'
 
 import type { CollectionRuntimeItemResponse } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
-import AimaDrawer from '../../../../../shared/ui/AimaDrawer.vue'
+import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
+import AimaModalContainer from '../../../../../shared/ui/AimaModalContainer.vue'
 import {
   elapsed,
   formatDateTime,
@@ -17,13 +18,17 @@ import {
 const props = defineProps<{
   modelValue: boolean
   item: CollectionRuntimeItemResponse | null
+  acting?: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   refresh: []
   copy: [value: string]
+  'cancel-and-revoke': []
+  revoke: []
 }>()
 const activeTab = ref<'overview' | 'status' | 'errors'>('overview')
+const confirmationOpen = ref(false)
 
 watch(
   () => props.item?.record_id,
@@ -38,6 +43,18 @@ const terminalRunCount = computed(() => {
   if (!value) return 0
   return value.succeeded_run_count + value.failed_run_count + value.cancelled_run_count
 })
+const actionKind = computed<'cancel-and-revoke' | 'revoke' | null>(() => {
+  const item = props.item
+  const value = stats.value
+  if (!item || !value?.reversible || value.lifecycle_status !== 'active') return null
+  return item.status === 'queued' || item.status === 'running' ? 'cancel-and-revoke' : 'revoke'
+})
+
+function confirmAction(): void {
+  confirmationOpen.value = false
+  if (actionKind.value === 'cancel-and-revoke') emit('cancel-and-revoke')
+  else if (actionKind.value === 'revoke') emit('revoke')
+}
 
 function failureMessage(item: CollectionRuntimeItemResponse): string {
   if ((stats.value?.failed_run_count ?? 0) > 0) {
@@ -48,10 +65,12 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
 </script>
 
 <template>
-  <AimaDrawer
+  <AimaModalContainer
     :model-value="modelValue"
     label="重筛详情"
-    width="470px"
+    width="820px"
+    height="780px"
+    :close-disabled="acting"
     @update:model-value="emit('update:modelValue', $event)"
   >
     <template #header>
@@ -130,6 +149,17 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
           <div><span>新入库</span><strong>{{ formatNumber(stats.rows_ingested) }}</strong></div>
           <div><span>已有内容收敛</span><strong>{{ formatNumber(stats.existing_convergence) }}</strong></div>
         </div>
+        <template v-if="stats.lifecycle_status !== 'active'">
+          <h3>撤回统计</h3>
+          <div class="stat-grid">
+            <div><span>已重算内容</span><strong>{{ formatNumber(stats.reverted_content_count) }}</strong></div>
+            <div><span>已隐藏</span><strong>{{ formatNumber(stats.hidden_content_count) }}</strong></div>
+            <div><span>保留共享/后写</span><strong>{{ formatNumber(stats.retained_content_count) }}</strong></div>
+            <div><span>跳过内容</span><strong>{{ formatNumber(stats.skipped_content_count) }}</strong></div>
+            <div><span>已恢复证据</span><strong>{{ formatNumber(stats.restored_evidence_count) }}</strong></div>
+            <div><span>保护性跳过证据</span><strong>{{ formatNumber(stats.skipped_evidence_count) }}</strong></div>
+          </div>
+        </template>
       </section>
 
       <section
@@ -151,6 +181,13 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
         >
           详情会跟随采集运行记录自动刷新；关闭页面后重筛任务仍会继续在后台执行。
         </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="!stats.reversible"
+          class="info-note"
+          tone="info"
+        >
+          这条记录创建于精确贡献账本启用前，系统不会猜测历史写入，因此不能撤回。
+        </AimaFeedbackBanner>
         <details class="technical-details">
           <summary>技术详情</summary>
           <div class="technical-grid">
@@ -165,6 +202,10 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
             </div>
             <div><span>记录类型</span><code>{{ item.record_type }}</code></div>
             <div><span>排队 / 运行</span><code>{{ stats.queued_run_count }} / {{ stats.running_run_count }}</code></div>
+            <div><span>撤回状态</span><code>{{ stats.lifecycle_status }}</code></div>
+            <div v-if="stats.reversal_job_id">
+              <span>撤回任务 ID</span><code>{{ stats.reversal_job_id }}</code>
+            </div>
           </div>
         </details>
       </section>
@@ -210,14 +251,58 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
         class="drawer-footer"
       >
         <AimaButton
+          v-if="actionKind"
+          class="danger-action"
+          variant="secondary"
+          :disabled="acting"
+          @click="confirmationOpen = true"
+        >
+          {{ actionKind === 'cancel-and-revoke' ? '取消并撤回' : '撤回本次入库' }}
+        </AimaButton>
+        <AimaButton
           variant="primary"
+          :disabled="acting"
           @click="emit('refresh')"
         >
           刷新详情
         </AimaButton>
       </footer>
     </template>
-  </AimaDrawer>
+  </AimaModalContainer>
+
+  <AimaDialog
+    v-model="confirmationOpen"
+    width="500px"
+    label="确认撤回历史重筛"
+    :dismissible="!acting"
+  >
+    <template #header>
+      <strong>确认{{ actionKind === 'cancel-and-revoke' ? '取消并撤回' : '撤回本次入库' }}？</strong>
+    </template>
+    <p>
+      系统会保留 Canonical、Raw、Content 历史版本与审计记录，仅撤回仍能证明属于本次重筛的 Current
+      字段、业务可见性和自动品牌/车型证据；人工锁定及后续其他来源写入不会被覆盖。
+    </p>
+    <template #footer>
+      <AimaButton
+        variant="secondary"
+        size="small"
+        :disabled="acting"
+        @click="confirmationOpen = false"
+      >
+        返回
+      </AimaButton>
+      <AimaButton
+        class="danger-action"
+        variant="secondary"
+        size="small"
+        :disabled="acting"
+        @click="confirmAction"
+      >
+        {{ acting ? '提交中…' : '确认撤回' }}
+      </AimaButton>
+    </template>
+  </AimaDialog>
 </template>
 
 <style scoped>
@@ -226,7 +311,7 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
 .detail-tabs { display: grid; height: 44px; grid-template-columns: repeat(3, 1fr); padding: 0 10px; border-bottom: 1px solid var(--aima-border); background: var(--aima-surface); }
 .detail-tabs button { height: 44px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; line-height: 20px; }
 .detail-tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
-.drawer-content { min-height: 696px; padding: 8px 20px 16px; }
+.drawer-content { min-height: 560px; padding: 8px 22px 16px; }
 .detail-title { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 10px; }
 .detail-title h2 { margin: 0; color: var(--aima-text); font-size: 18px; line-height: 26px; }
 .status-tag { flex: none; padding: 4px 10px; border-radius: 6px; color: var(--aima-color-info); background: var(--aima-color-bg-subtle); font-size: 12px; white-space: nowrap; }
@@ -259,6 +344,10 @@ h3 { margin: 16px 0 10px; color: var(--aima-text); font-size: 14px; font-weight:
 .technical-grid > div { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .technical-grid code { overflow-wrap: anywhere; color: var(--aima-text-secondary); font-size: 10px; }
 .technical-grid button { border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 10px; }
-.drawer-footer { display: flex; height: 72px; align-items: center; justify-content: flex-end; padding: 0 20px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
+.drawer-footer { display: flex; height: 72px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 20px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
 .drawer-footer :deep(.aima-button.is-primary) { min-width: 104px; }
+.danger-action { border-color: var(--aima-danger); color: var(--aima-danger); }
+:global(.aima-dialog[aria-label='确认撤回历史重筛'] .aima-dialog-header) { padding: 18px 20px 8px; }
+:global(.aima-dialog[aria-label='确认撤回历史重筛'] .aima-dialog-body) { padding: 8px 20px 18px; color: var(--aima-text-secondary); font-size: 13px; line-height: 22px; }
+:global(.aima-dialog[aria-label='确认撤回历史重筛'] .aima-dialog-footer) { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px 18px; }
 </style>

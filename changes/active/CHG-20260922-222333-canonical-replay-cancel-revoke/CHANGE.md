@@ -7,7 +7,7 @@ status: in_progress
 owner: codex
 branch: feat/canonical-replay-cancel-revoke
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-23
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -84,9 +84,9 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 
 ## 成功标准
 
-- [ ] AC1—AC8 均有直接实现与新鲜分层证据。
-- [ ] 旧 Replay 无操作账本时拒绝撤回。
-- [ ] 取消、撤回重试和 Worker 接管保持幂等、Lease/Fencing 与审计语义。
+- [x] AC1—AC7 已有直接实现与新鲜分层证据；AC8 等待 PR CI 与 main-fresh 收口。
+- [x] 旧 Replay 无操作账本时拒绝撤回。
+- [x] 取消、撤回重试和 Worker 接管保持幂等、Lease/Fencing 与审计语义。
 
 ## 范围
 
@@ -150,14 +150,14 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | Replay 详情用 Modal 并保持自动刷新 | #570 / AC1 | not_satisfied | 尚未实现与验证 |
-| R2 | all-request 取消全部子任务并撤回，幂等且有管理员审计 | #570 / AC2 | not_satisfied | 尚未实现与验证 |
-| R3 | 终态请求可显式撤回且不重复 | #570 / AC3 | not_satisfied | 尚未实现与验证 |
-| R4 | Current 只在 after/freshness 匹配时恢复并追加 Version | #570 / AC4 | not_satisfied | 尚未实现与验证 |
-| R5 | Replay 独占内容退出业务视图，共享内容保留 | #570 / AC5 | not_satisfied | 尚未实现与验证 |
-| R6 | 自动 Evidence 精确恢复，人工锁定和后续 Evidence 保持 | #570 / AC6 | not_satisfied | 尚未实现与验证 |
-| R7 | 运行中心展示取消/撤回过程、进度和统计 | #570 / AC7 | not_satisfied | 尚未实现与验证 |
-| R8 | Migration、分层验证、文档、Review、CI、main-fresh 完整 | #570 / AC8 | not_satisfied | 尚未实现与验证 |
+| R1 | Replay 详情用 Modal 并保持自动刷新 | #570 / AC1 | satisfied | Modal 组件与 Mock Browser 18 项通过；运行记录轮询保持 |
+| R2 | all-request 取消全部子任务并撤回，幂等且有管理员审计 | #570 / AC2 | satisfied | queued 子 Job 取消编排、运行中批边界取消、API 与审计集成回归通过 |
+| R3 | 终态请求可显式撤回且不重复 | #570 / AC3 | satisfied | 唯一 reversal Job、重复请求和真实 API→Worker→Runtime→Browser 路径通过 |
+| R4 | Current 只在 after/freshness 匹配时恢复并追加 Version | #570 / AC4 | satisfied | PostgreSQL Worker 回归覆盖生命周期 Version 与后来普通导入保护 |
+| R5 | Replay 独占内容退出业务视图，共享内容保留 | #570 / AC5 | satisfied | 可见性 Owner、独占隐藏与后来来源保留集成回归通过 |
+| R6 | 自动 Evidence 精确恢复，人工锁定和后续 Evidence 保持 | #570 / AC6 | satisfied | before/after 快照、版本/Owner 防护及人工品牌锁继承回归通过 |
+| R7 | 运行中心展示取消/撤回过程、进度和统计 | #570 / AC7 | satisfied | Runtime 聚合、Contract、Client、Modal 统计和无重复记录测试通过 |
+| R8 | Migration、分层验证、文档、Review、CI、main-fresh 完整 | #570 / AC8 | not_satisfied | Migration/Contract/PostgreSQL/Worker/Browser/全栈/文档/本地 Review 已通过；等待 PR CI 与 main-fresh |
 
 # 计划改动
 
@@ -211,9 +211,9 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 #570、用户确认、文档、Contract、Schema/Migration 和实现。
-- [ ] change_coverage：R1—R8 全覆盖，不把 Change/CI 当需求全集。
-- [ ] reverse_audit：前端动作反查 API/Job/Persistence/Owner，后端生命周期反查 UI 和结果。
+- [x] upstream_re_read：已于 2026-09-23 重读 #570、用户确认、文档、Contract、Schema/Migration 和实现。
+- [x] change_coverage：R1—R8 已逐项重建；R8 仅余外部 CI/main-fresh 门禁。
+- [x] reverse_audit：已完成 Modal→API→Job→账本/Owner 与后端 lifecycle→Runtime→Modal/统计双向审计。
 - [ ] unresolved_cleared：`not_satisfied` 清零；延期/不适用有正式依据。
 
 # 完成证据与状态
@@ -222,19 +222,27 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V0 | 当前任务分支 | 尚未执行实现验证 | in_progress | 仅证明 Change 已建立 |
+| V1 | 当前任务工作树 / PostgreSQL 18 dev | `pytest`：Replay API、Repository、Migration、Worker、Runtime | 62 passed | all-request 编排、账本、撤回、可见性、Evidence 与运行中心 |
+| V2 | 当前任务工作树 / PostgreSQL 18 dev | Replay Worker + Repository 定向复验 | 22 passed | queued 取消排队撤回、管理员审计、精确撤回与后写保护 |
+| V3 | 当前任务工作树 | Ruff + Mypy（16 个关键源文件） | passed | Python 静态质量和类型边界 |
+| V4 | 当前任务工作树 / Alembic | `alembic current` + `alembic check` | `20260922_0059 (head)`；无新差异 | 向前迁移及模型一致性 |
+| V5 | 当前任务工作树 | Contract 生成检查、兼容检查、Contract/Docs/CI Scope 测试 | 148 passed；生成与文档事实一致 | OpenAPI、生成 Client、兼容性和文档同步 |
+| V6 | 当前任务工作树 / Node 24 | ESLint、Typecheck、Vitest、Vite build | 32 files / 227 tests；build passed | 前端静态、组件与生产构建 |
+| V7 | 当前任务工作树 / Playwright Mock | `collection-runtime.spec.ts` | 18 passed | Modal、确认、取消并撤回与运行中心回归 |
+| V8 | 当前任务工作树 / 真实 API+Worker+PostgreSQL+Browser | `canonical-replay-reversal.spec.ts` | 1 passed | 终态 Replay 从 UI 到持久撤回再回显的跨组件关键路径 |
+| V9 | 当前任务工作树 | 独立 diff/根因/并发/迁移/回滚审查 | 无阻断 Finding；修正文档唯一键、重复导出、类型豁免并补取消/审计回归 | Review-and-fix 完成 |
 
 ## 未验证内容与剩余风险
 
 - 生产 Migration、生产数据撤回和生产部署不在授权范围。
-- R1—R8 在实现、测试和交付门禁完成前均未满足。
+- PR CI、合并后的 `main` 新鲜度、Change 自动归档和 Issue 关闭仍待交付阶段完成。
 
 ## 交付状态
 
 - Issue：#570（open）。
 - 分支：`feat/canonical-replay-cancel-revoke`。
-- PR：首个治理提交推送后创建。
-- CI / 合并 / 归档：尚未执行。
+- PR：#571（早期 PR 已创建，当前逻辑待推送）。
+- CI / 合并 / 归档：等待实现提交推送后的 CI 与 Ready 门禁。
 - 发布 / 部署：不适用；用户只授权合并源码到 `main`。
 
 ## 备注

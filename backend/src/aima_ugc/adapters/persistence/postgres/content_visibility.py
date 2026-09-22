@@ -17,7 +17,10 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
-from aima_ugc.modules.content.tables import content_versions_table
+from aima_ugc.modules.content.tables import content_versions_table, contents_table
+from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_all_requests_table,
+)
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
     processing_import_batch_items_table,
@@ -176,11 +179,28 @@ def content_has_active_source(
         )
     )
 
-    return or_(
-        direct_import_source,
-        collection_candidate_source,
-        import_version_source,
-        collection_version_source,
+    reverted_replay_owner = exists(
+        select(literal(1))
+        .select_from(
+            contents_table.join(
+                canonical_replay_all_requests_table,
+                canonical_replay_all_requests_table.c.id
+                == contents_table.c.replay_visibility_owner_id,
+            )
+        )
+        .where(
+            contents_table.c.id == content_id,
+            canonical_replay_all_requests_table.c.lifecycle_status == "reverted",
+        )
+    )
+    return and_(
+        or_(
+            direct_import_source,
+            collection_candidate_source,
+            import_version_source,
+            collection_version_source,
+        ),
+        ~reverted_replay_owner,
     )
 
 

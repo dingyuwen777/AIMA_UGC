@@ -94,6 +94,11 @@ contents_table = Table(
         server_default=text("'{}'::jsonb"),
     ),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column(
+        "replay_visibility_owner_id",
+        Uuid(),
+        ForeignKey("canonical_replay_all_requests.id"),
+    ),
     UniqueConstraint("platform", "external_content_id"),
     CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),
     CheckConstraint("current_version >= 1", name="current_version_positive"),
