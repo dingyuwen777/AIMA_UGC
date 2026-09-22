@@ -522,11 +522,20 @@ jobs:
         run: |
           set -euo pipefail
           report="${RUNNER_TEMP}/actions-hygiene.json"
-          if ! python3 scripts/quality/actions_hygiene.py \
+          set +e
+          python3 scripts/quality/actions_hygiene.py \
             --root . \
             --repository "${GITHUB_REPOSITORY}" \
             --execute \
-            --json | tee "${report}"; then
-            echo "::warning::Actions Hygiene failed; cleanup is deferred to the next healthy main push."
+            --json > "${report}"
+          status=$?
+          set -e
+          cat "${report}" || true
+          if [[ "${status}" -eq 75 ]]; then
+            echo "::warning::Actions Hygiene temporary GitHub API failure; cleanup is deferred to the next healthy main push."
             exit 0
+          fi
+          if [[ "${status}" -ne 0 ]]; then
+            echo "Actions Hygiene invariant/permission failure; refusing to hide the maintenance defect." >&2
+            exit "${status}"
           fi
