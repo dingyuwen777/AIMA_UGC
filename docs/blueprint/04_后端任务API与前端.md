@@ -451,7 +451,9 @@ Artifact 数、子 Run 数和创建者，使空选择也具有可验证的幂等
 `ingestion.canonical-replay-reversal.v1`；终态请求也可直接“撤回本次入库”。撤回按 Replay 写入事务
 同步冻结的 Content Delta、可见性归属和自动 Brand/Vehicle Evidence before/after 执行；仅修改仍归
 本请求所有且未被后续普通导入、其他重筛或人工锁接管的事实。Canonical、Raw、Content Version
-和审计历史保留。升级前没有精确账本的历史请求 `reversible=false`，必须失败关闭，不能推断撤回。
+和审计历史保留；只有自动 Evidence 幂等收敛而没有 Current Delta 时保留原 Content Version，
+避免使该版本仍有效的 Analysis 结果失效。升级前没有精确账本的历史请求 `reversible=false`，
+必须失败关闭，不能推断撤回。
 这些路由都执行后端管理员角色检查并记录创建、取消或撤回审计。单 Run 查询、取消和显式
 Artifact 选择仍由正式 API 提供，不能写成页面已经提供逐 Run 管理能力。
 

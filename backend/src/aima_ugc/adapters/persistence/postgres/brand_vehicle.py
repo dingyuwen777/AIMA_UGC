@@ -749,10 +749,21 @@ class PostgresBrandVehicleRepository:
             != expected_after
         ):
             return False
+        if source_version == target_version:
+            if before == expected_after:
+                return True
+            self._session.execute(
+                delete(content_brand_evidence_table).where(
+                    content_brand_evidence_table.c.content_id == content_id,
+                    content_brand_evidence_table.c.content_version == source_version,
+                    content_brand_evidence_table.c.is_manual_locked.is_(False),
+                )
+            )
         if before:
             values = [_decode_brand_evidence_row(row) for row in before]
             for value in values:
-                value["id"] = uuid4()
+                if source_version != target_version:
+                    value["id"] = uuid4()
                 value["content_version"] = target_version
             self._session.execute(
                 insert(content_brand_evidence_table),

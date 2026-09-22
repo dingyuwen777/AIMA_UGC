@@ -174,7 +174,9 @@ before/after。撤回 Job 以 100 个 Content 为一批执行，并在每批验�
 当前重筛归属仍是目标 request 时才回滚 Current 和证据：后续普通导入或其他重筛已经接管时只
 结清本次账本并保留现状；人工 Brand/Vehicle Review Lock 存在或证据 after 不再一致时跳过对应
 证据恢复。Replay 新建且仍由本请求独占的 Content 在整次撤回完成后从业务读取中隐藏；原有
-Content 恢复到重筛前可见性归属。Canonical、Raw、Content Version 与审计记录不会删除。
+Content 恢复到重筛前可见性归属。有 Current Delta 时会追加撤回 Version；纯 Evidence 幂等收敛
+保留原 Version 并恢复证据，因此原版本 Analysis 仍然有效。Canonical、Raw、Content Version 与
+审计记录不会删除。
 
 Migration `20260922_0059` 之前创建的全量 Replay 没有精确贡献账本，升级时标记为
 `reversible=false`。这类请求的撤回 API 会失败关闭；禁止用来源 ID、时间范围或手工 SQL 猜测

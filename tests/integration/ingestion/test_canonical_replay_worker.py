@@ -436,6 +436,112 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
         runtime.close()
 
 
+def test_all_replay_revoke_keeps_version_when_only_evidence_converged(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        _add_replay_alias(runtime, brand_id)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-evidence-only.xlsx",
+            rows=(("canonical-replay-evidence-only", "星曜证据幂等收敛"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+
+        snapshot_session = runtime.database.new_session()
+        try:
+            content = snapshot_session.execute(select(contents_table)).mappings().one()
+            content_id = cast(UUID, content["id"])
+            original_version = cast(int, content["current_version"])
+            evidence_before = PostgresBrandVehicleRepository(
+                snapshot_session
+            ).snapshot_automatic_brand_evidence(
+                content_id=content_id,
+                content_version=original_version,
+            )
+        finally:
+            snapshot_session.close()
+
+        created = _create_all_replay(
+            client,
+            idempotency_key=f"all-replay-evidence-only-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="evidence-only-replay").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            content = (
+                connection.execute(select(contents_table).where(contents_table.c.id == content_id))
+                .mappings()
+                .one()
+            )
+            change = (
+                connection.execute(
+                    select(canonical_replay_content_changes_table).where(
+                        canonical_replay_content_changes_table.c.all_request_id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        assert content["current_version"] == original_version
+        assert content["replay_visibility_owner_id"] == request_id
+        assert change["version_before"] == change["version_after"] == original_version
+        assert change["delta"] == {
+            "schema_version": "content-source-contribution.v1",
+            "created_content": False,
+            "content_fields": {},
+            "author_snapshot": None,
+            "collections": {},
+            "account": None,
+        }
+
+        requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
+        assert requested.status_code == 202
+        assert _worker(runtime, suffix="evidence-only-revoke").run_once() is True
+
+        verify_session = runtime.database.new_session()
+        try:
+            content = (
+                verify_session.execute(
+                    select(contents_table).where(contents_table.c.id == content_id)
+                )
+                .mappings()
+                .one()
+            )
+            evidence_after = PostgresBrandVehicleRepository(
+                verify_session
+            ).snapshot_automatic_brand_evidence(
+                content_id=content_id,
+                content_version=original_version,
+            )
+            version_count = verify_session.scalar(
+                select(func.count())
+                .select_from(content_versions_table)
+                .where(content_versions_table.c.content_id == content_id)
+            )
+        finally:
+            verify_session.close()
+        assert content["current_version"] == original_version
+        assert content["replay_visibility_owner_id"] is None
+        assert version_count == 1
+        assert evidence_after == evidence_before
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
 def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
     tmp_path: Path,
 ) -> None:

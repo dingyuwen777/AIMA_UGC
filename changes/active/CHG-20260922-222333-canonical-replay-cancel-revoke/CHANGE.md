@@ -128,7 +128,8 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 
 1. 先用 Contract、PostgreSQL、Worker 和 Browser 失败测试固定目标行为。
 2. 在 Replay 批事务中记录本次操作对 Content Current/可见性/自动 Evidence 的可逆事实。
-3. 新增持久撤回 Job；先收敛子 Replay Job，再按 freshness 条件恢复 Owner 数据并追加生命周期 Version。
+3. 新增持久撤回 Job；先收敛子 Replay Job，再按 freshness 条件恢复 Owner 数据；有 Current Delta
+   时追加生命周期 Version，纯 Evidence 幂等收敛时保留原 Version 和有效 Analysis。
 4. 扩展 all-request API、管理员审计和运行中心聚合，保持幂等且一次请求只计一次。
 5. 用 Modal 替换 Replay Drawer，提供确认、禁用、过程反馈和轮询。
 6. 生成 Contract/Client，完成分层验证、Review、CI、合并和 main-fresh。
@@ -155,7 +156,7 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 | R1 | Replay 详情用 Modal 并保持自动刷新 | #570 / AC1 | satisfied | Modal 组件与 Mock Browser 18 项通过；运行记录轮询保持 |
 | R2 | all-request 取消全部子任务并撤回，幂等且有管理员审计 | #570 / AC2 | satisfied | queued 子 Job 取消编排、运行中批边界取消、API 与审计集成回归通过 |
 | R3 | 终态请求可显式撤回且不重复 | #570 / AC3 | satisfied | 唯一 reversal Job、重复请求和真实 API→Worker→Runtime→Browser 路径通过 |
-| R4 | Current 只在 after/freshness 匹配时恢复并追加 Version | #570 / AC4 | satisfied | PostgreSQL Worker 回归覆盖生命周期 Version 与后来普通导入保护 |
+| R4 | Current 只在 after/freshness 匹配时恢复；有 Delta 才追加 Version | #570 / AC4 | satisfied | PostgreSQL Worker 回归覆盖生命周期 Version、纯 Evidence 不使 Analysis 失效及后来普通导入保护 |
 | R5 | Replay 独占内容退出业务视图，共享内容保留 | #570 / AC5 | satisfied | 可见性 Owner、独占隐藏与后来来源保留集成回归通过 |
 | R6 | 自动 Evidence 精确恢复，人工锁定和后续 Evidence 保持 | #570 / AC6 | satisfied | before/after 快照、版本/Owner 防护及人工品牌锁继承回归通过 |
 | R7 | 运行中心展示取消/撤回过程、进度和统计 | #570 / AC7 | satisfied | Runtime 聚合、Contract、Client、Modal 统计和无重复记录测试通过 |
@@ -224,8 +225,8 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 当前任务工作树 / PostgreSQL 18 dev | `pytest`：Replay API、Repository、Migration、Worker、Runtime | 62 passed | all-request 编排、账本、撤回、可见性、Evidence 与运行中心 |
-| V2 | 当前任务工作树 / PostgreSQL 18 dev | Replay Worker + Repository 定向复验 | 22 passed | queued 取消排队撤回、管理员审计、精确撤回与后写保护 |
+| V1 | 当前任务工作树 / PostgreSQL 18 dev | `pytest`：Replay API、Repository、Migration、Worker、Runtime | 63 passed | all-request 编排、账本、撤回、可见性、Evidence、纯 Evidence 版本稳定与运行中心 |
+| V2 | 当前任务工作树 / PostgreSQL 18 dev | Replay Worker 定向复验 | 14 passed | queued 取消排队撤回、管理员审计、精确撤回、后写保护及 Analysis 版本保持 |
 | V3 | 当前任务工作树 | Ruff format/check 全 CI 范围 + Mypy `backend/src` | 758 files formatted；lint passed；365 source files typed | Python 格式、静态质量和完整后端类型边界 |
 | V4 | 当前任务工作树 / Alembic | `alembic current` + `alembic check` | `20260922_0059 (head)`；无新差异 | 向前迁移及模型一致性 |
 | V5 | 当前任务工作树 | Contract 生成检查、兼容检查、Contract/Docs/CI Scope 测试 | 148 passed；生成与文档事实一致 | OpenAPI、生成 Client、兼容性和文档同步 |

@@ -405,6 +405,8 @@ POST /api/v1/canonical-replays
 排队撤回。Replay 的 Content/Evidence/checkpoint 事务同时写入精确贡献账本，Reversal 只回滚
 `replay_visibility_owner_id` 仍属于目标请求且 after/freshness 仍匹配的 Content Current，并按人工锁
 和 before/after 守卫恢复自动 Brand/Vehicle Evidence。后续普通导入、其他 Replay 和人工结论优先。
+如果账本证明 Content/Account Current 完全没有变化、只是自动 Evidence 被幂等收敛，撤回会在
+原 Content Version 上恢复 Evidence，不额外制造 Version，避免让原版本仍有效的 Analysis 结果失效。
 
 只有当前三种 lineage 可以创建任务：兼容单文件 `ingestion.import-excel.v2`、Data Import
 `ingestion.historical-import-chunk.v2` 的 Pure Canonical Chunk、TikHub Discovery Search
@@ -424,8 +426,9 @@ checkpoint 与统计，不会每批从第 0 行重读。接管时只对当前 Ar
 Job。正常 Replay 只把冻结 Snapshot 新命中的 Brand/Vehicle Evidence 追加或幂等恢复到当前
 Content Version；不会像普通新 Observation 的完整重分类那样停用 selected 范围外的既有自动
 证据，人工锁仍优先。撤回不删除 Canonical、Raw、Content Version 或审计：仅把仍独占的新建
-Content 从业务读取隐藏，并以新 Content Version 恢复可安全归因的 Current/自动证据。升级前没有
-贡献账本的旧 all-request 标记为不可撤回并失败关闭。
+Content 从业务读取隐藏；有 Current Delta 时追加新 Version 恢复 Current/自动证据，纯 Evidence
+幂等收敛时保留原 Version 并原位恢复自动证据。升级前没有贡献账本的旧 all-request 标记为
+不可撤回并失败关闭。
 
 ---
 

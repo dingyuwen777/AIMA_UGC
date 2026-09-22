@@ -208,17 +208,23 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         skipped += 1
                         skipped_evidence += 2
                         continue
-                    versions = lifecycle.apply_contributions(rows, revoked_at=now)
-                    if not versions:
-                        skipped += 1
-                        continue
-                    reversal_version = versions[0][1]
                     earliest = rows[0]
                     latest = rows[-1]
                     delta = earliest["delta"]
                     created_content = bool(
                         isinstance(delta, dict) and delta.get("created_content") is True
                     )
+                    has_content_delta = any(_has_content_delta(row["delta"]) for row in rows)
+                    if has_content_delta:
+                        versions = lifecycle.apply_contributions(rows, revoked_at=now)
+                        if not versions:
+                            skipped += 1
+                            continue
+                        reversal_version = versions[0][1]
+                    else:
+                        # Replay 可能只幂等重写自动 Brand/Vehicle Evidence。此时追加
+                        # Content Version 会把仍然有效的 AI/人工分析投影错误标成 stale。
+                        reversal_version = current_before
                     next_owner = (
                         request_id if created_content else earliest["visibility_owner_before"]
                     )
@@ -234,16 +240,17 @@ class PostgresCanonicalReplayReversalJobExecutor:
 
                     evidence_safe = current_before == latest["version_after"]
                     if evidence_safe:
-                        vehicle_repository.carry_manual_review(
-                            content_id=cast(UUID, content_id),
-                            source_version=cast(int, latest["version_after"]),
-                            target_version=reversal_version,
-                        )
-                        brand_repository.carry_manual_brand_review(
-                            content_id=cast(UUID, content_id),
-                            source_version=cast(int, latest["version_after"]),
-                            target_version=reversal_version,
-                        )
+                        if reversal_version != latest["version_after"]:
+                            vehicle_repository.carry_manual_review(
+                                content_id=cast(UUID, content_id),
+                                source_version=cast(int, latest["version_after"]),
+                                target_version=reversal_version,
+                            )
+                            brand_repository.carry_manual_brand_review(
+                                content_id=cast(UUID, content_id),
+                                source_version=cast(int, latest["version_after"]),
+                                target_version=reversal_version,
+                            )
                         vehicle_restored = vehicle_repository.restore_automatic_evidence(
                             content_id=cast(UUID, content_id),
                             source_version=cast(int, latest["version_after"]),
@@ -370,6 +377,22 @@ def _json_rows(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
         raise ValueError("Replay Evidence Snapshot 必须是对象数组")
     return [cast(dict[str, object], item) for item in value]
+
+
+def _has_content_delta(value: object) -> bool:
+    """判断 Replay 是否真的改变了 Content/Account Current，而非仅改 Evidence。"""
+
+    if not isinstance(value, dict) or value.get("schema_version") != (
+        "content-source-contribution.v1"
+    ):
+        raise ValueError("Replay Content Delta 版本不受支持")
+    return bool(
+        value.get("created_content") is True
+        or value.get("content_fields")
+        or value.get("author_snapshot")
+        or value.get("collections")
+        or value.get("account")
+    )
 
 
 __all__ = [
