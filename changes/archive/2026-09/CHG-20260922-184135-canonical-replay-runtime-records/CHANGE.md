@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-184135-canonical-replay-runtime-records
 title: 重筛入库纳入采集运行记录与进度详情
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: feat/canonical-replay-runtime-records
 created: 2026-09-22
