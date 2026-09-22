@@ -210,9 +210,7 @@ def create_collection_job_registry(
     )
     register_canonical_replay_reversal_job(
         registry,
-        CanonicalReplayReversalJobHandler(
-            PostgresCanonicalReplayReversalJobExecutor(runtime)
-        ),
+        CanonicalReplayReversalJobHandler(PostgresCanonicalReplayReversalJobExecutor(runtime)),
         terminal_callback=canonical_replay_reversal_terminal_callback,
     )
     register_voice_plaza_projection_job(

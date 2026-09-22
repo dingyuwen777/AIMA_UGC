@@ -226,7 +226,7 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 | --- | --- | --- | --- | --- |
 | V1 | 当前任务工作树 / PostgreSQL 18 dev | `pytest`：Replay API、Repository、Migration、Worker、Runtime | 62 passed | all-request 编排、账本、撤回、可见性、Evidence 与运行中心 |
 | V2 | 当前任务工作树 / PostgreSQL 18 dev | Replay Worker + Repository 定向复验 | 22 passed | queued 取消排队撤回、管理员审计、精确撤回与后写保护 |
-| V3 | 当前任务工作树 | Ruff + Mypy（16 个关键源文件） | passed | Python 静态质量和类型边界 |
+| V3 | 当前任务工作树 | Ruff format/check 全 CI 范围 + Mypy `backend/src` | 758 files formatted；lint passed；365 source files typed | Python 格式、静态质量和完整后端类型边界 |
 | V4 | 当前任务工作树 / Alembic | `alembic current` + `alembic check` | `20260922_0059 (head)`；无新差异 | 向前迁移及模型一致性 |
 | V5 | 当前任务工作树 | Contract 生成检查、兼容检查、Contract/Docs/CI Scope 测试 | 148 passed；生成与文档事实一致 | OpenAPI、生成 Client、兼容性和文档同步 |
 | V6 | 当前任务工作树 / Node 24 | ESLint、Typecheck、Vitest、Vite build | 32 files / 227 tests；build passed | 前端静态、组件与生产构建 |

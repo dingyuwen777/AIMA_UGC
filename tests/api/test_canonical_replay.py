@@ -243,9 +243,7 @@ def test_admin_can_cancel_and_revoke_or_revoke_terminal_all_request() -> None:
         )
     )
 
-    cancelling = client.post(
-        f"/api/v1/canonical-replays/all/{_REQUEST_ID}/cancel-and-revoke"
-    )
+    cancelling = client.post(f"/api/v1/canonical-replays/all/{_REQUEST_ID}/cancel-and-revoke")
     assert cancelling.status_code == 202
     assert cancelling.json()["lifecycle_status"] == "cancelling"
     assert service.all_action == (

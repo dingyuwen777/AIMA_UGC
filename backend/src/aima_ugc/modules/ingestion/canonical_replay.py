@@ -147,9 +147,9 @@ class CanonicalReplayReversalJobPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[
+    schema_version: Literal["ingestion.canonical-replay-reversal.v1"] = (
         "ingestion.canonical-replay-reversal.v1"
-    ] = "ingestion.canonical-replay-reversal.v1"
+    )
     request_id: UUID
 
 

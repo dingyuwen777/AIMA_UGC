@@ -588,8 +588,7 @@ class PostgresCanonicalReplayRepository:
         if record.reversal_requested_at is None:
             return record
         if any(
-            job.status in {"queued", "running"}
-            for job in self._list_all_request_jobs(request_id)
+            job.status in {"queued", "running"} for job in self._list_all_request_jobs(request_id)
         ):
             return record
         job = PostgresJobRepository(self._session).enqueue(

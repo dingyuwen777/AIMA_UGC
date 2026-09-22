@@ -61,9 +61,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                 completed = total - remaining
                 context.heartbeat(
                     progress=(
-                        100
-                        if remaining == 0
-                        else min(99, int(completed * 100 / max(total, 1)))
+                        100 if remaining == 0 else min(99, int(completed * 100 / max(total, 1)))
                     )
                 )
                 if processed == 0:
@@ -81,7 +79,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                     )
         except LeaseLostError:
             raise
-        except (LookupError, ValueError):
+        except LookupError, ValueError:
             return JobHandlerResult.failed("canonical_replay_reversal_invalid")
         except SQLAlchemyError:
             return JobHandlerResult.retry("canonical_replay_reversal_transient_error")
@@ -95,9 +93,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         func.count(
                             func.distinct(canonical_replay_content_changes_table.c.content_id)
                         )
-                    ).where(
-                        canonical_replay_content_changes_table.c.all_request_id == request_id
-                    )
+                    ).where(canonical_replay_content_changes_table.c.all_request_id == request_id)
                 )
                 or 0
             )
@@ -367,9 +363,7 @@ def canonical_replay_reversal_terminal_callback(
         return
     request_id = job.payload.get("request_id")
     if request_id is not None:
-        PostgresCanonicalReplayRepository(session).mark_reversal_failed(
-            UUID(str(request_id))
-        )
+        PostgresCanonicalReplayRepository(session).mark_reversal_failed(UUID(str(request_id)))
 
 
 def _json_rows(value: object) -> list[dict[str, object]]:

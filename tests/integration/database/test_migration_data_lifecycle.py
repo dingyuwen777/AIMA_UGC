@@ -187,8 +187,7 @@ def test_0059_adds_fail_closed_canonical_replay_reversal_ledger(
         inspector = inspect(engine)
         assert "canonical_replay_content_changes" in inspector.get_table_names()
         request_columns = {
-            item["name"]
-            for item in inspector.get_columns("canonical_replay_all_requests")
+            item["name"] for item in inspector.get_columns("canonical_replay_all_requests")
         }
         assert {
             "reversible",
@@ -219,8 +218,7 @@ def test_0059_adds_fail_closed_canonical_replay_reversal_ledger(
             item["name"] for item in inspector.get_columns("contents")
         }
         assert "reversible" not in {
-            item["name"]
-            for item in inspector.get_columns("canonical_replay_all_requests")
+            item["name"] for item in inspector.get_columns("canonical_replay_all_requests")
         }
     finally:
         engine.dispose()

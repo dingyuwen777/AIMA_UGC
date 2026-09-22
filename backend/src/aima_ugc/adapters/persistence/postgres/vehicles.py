@@ -528,10 +528,13 @@ class PostgresVehicleCatalogRepository:
         )
         if locked is True:
             return False
-        if self.snapshot_automatic_evidence(
-            content_id=content_id,
-            content_version=source_version,
-        ) != expected_after:
+        if (
+            self.snapshot_automatic_evidence(
+                content_id=content_id,
+                content_version=source_version,
+            )
+            != expected_after
+        ):
             return False
         if before:
             values = [_decode_evidence_row(row) for row in before]

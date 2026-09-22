@@ -352,61 +352,85 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
         assert _worker(runtime, suffix="reversible-ingest").run_once() is True
 
         with runtime.database.engine.connect() as connection:
-            content = connection.execute(
-                select(contents_table).where(
-                    contents_table.c.external_content_id == "canonical-replay-reversible"
+            content = (
+                connection.execute(
+                    select(contents_table).where(
+                        contents_table.c.external_content_id == "canonical-replay-reversible"
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             content_id = cast(UUID, content["id"])
             assert content["replay_visibility_owner_id"] == request_id
-            assert connection.scalar(
-                select(func.count())
-                .select_from(canonical_replay_content_changes_table)
-                .where(
-                    canonical_replay_content_changes_table.c.all_request_id == request_id
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(canonical_replay_content_changes_table)
+                    .where(canonical_replay_content_changes_table.c.all_request_id == request_id)
                 )
-            ) == 1
-            assert connection.scalar(
-                select(content_has_active_source(contents_table.c.id)).where(
-                    contents_table.c.id == content_id
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
                 )
-            ) is True
+                is True
+            )
 
         requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
         assert requested.status_code == 202
         assert requested.json()["lifecycle_status"] == "reverting"
         with runtime.database.engine.connect() as connection:
-            audit = connection.execute(
-                select(audit_events_table).where(
-                    audit_events_table.c.event_type == "canonical_replay_revoke_requested",
-                    audit_events_table.c.object_id == str(request_id),
+            audit = (
+                connection.execute(
+                    select(audit_events_table).where(
+                        audit_events_table.c.event_type == "canonical_replay_revoke_requested",
+                        audit_events_table.c.object_id == str(request_id),
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             assert audit["actor_ref"] == "local-administrator"
         assert _worker(runtime, suffix="reversible-revoke").run_once() is True
 
         with runtime.database.engine.connect() as connection:
-            request = connection.execute(
-                select(canonical_replay_all_requests_table).where(
-                    canonical_replay_all_requests_table.c.id == request_id
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
                 )
-            ).mappings().one()
-            content = connection.execute(
-                select(contents_table).where(contents_table.c.id == content_id)
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
+            content = (
+                connection.execute(select(contents_table).where(contents_table.c.id == content_id))
+                .mappings()
+                .one()
+            )
             assert request["lifecycle_status"] == "reverted"
             assert request["hidden_content_count"] == 1
             assert content["replay_visibility_owner_id"] == request_id
-            assert connection.scalar(
-                select(func.count())
-                .select_from(content_versions_table)
-                .where(content_versions_table.c.content_id == content_id)
-            ) == 2
-            assert connection.scalar(
-                select(content_has_active_source(contents_table.c.id)).where(
-                    contents_table.c.id == content_id
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(content_versions_table)
+                    .where(content_versions_table.c.content_id == content_id)
                 )
-            ) is False
+                == 2
+            )
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
+                )
+                is False
+            )
     finally:
         _truncate(runtime)
         runtime.close()
@@ -450,11 +474,15 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
             expected_rows_ingested=1,
         )
         with runtime.database.engine.connect() as connection:
-            content = connection.execute(
-                select(contents_table).where(
-                    contents_table.c.external_content_id == "canonical-replay-later-import"
+            content = (
+                connection.execute(
+                    select(contents_table).where(
+                        contents_table.c.external_content_id == "canonical-replay-later-import"
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             content_id = cast(UUID, content["id"])
             version_before_revoke = cast(int, content["current_version"])
             assert content["replay_visibility_owner_id"] is None
@@ -464,25 +492,34 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
         assert _worker(runtime, suffix="later-import-revoke").run_once() is True
 
         with runtime.database.engine.connect() as connection:
-            request = connection.execute(
-                select(canonical_replay_all_requests_table).where(
-                    canonical_replay_all_requests_table.c.id == request_id
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
                 )
-            ).mappings().one()
-            content = connection.execute(
-                select(contents_table).where(contents_table.c.id == content_id)
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
+            content = (
+                connection.execute(select(contents_table).where(contents_table.c.id == content_id))
+                .mappings()
+                .one()
+            )
             assert request["lifecycle_status"] == "reverted"
             assert request["retained_content_count"] == 1
             assert request["skipped_content_count"] == 1
             assert request["hidden_content_count"] == 0
             assert content["current_version"] == version_before_revoke
             assert content["replay_visibility_owner_id"] is None
-            assert connection.scalar(
-                select(content_has_active_source(contents_table.c.id)).where(
-                    contents_table.c.id == content_id
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
                 )
-            ) is True
+                is True
+            )
     finally:
         _truncate(runtime)
         runtime.close()
@@ -547,12 +584,16 @@ def test_all_replay_revoke_carries_manual_brand_lock_to_reversal_version(
                     )
                 ),
             )
-            lock = connection.execute(
-                select(content_brand_review_locks_table).where(
-                    content_brand_review_locks_table.c.content_id == content_id,
-                    content_brand_review_locks_table.c.content_version == current_version,
+            lock = (
+                connection.execute(
+                    select(content_brand_review_locks_table).where(
+                        content_brand_review_locks_table.c.content_id == content_id,
+                        content_brand_review_locks_table.c.content_version == current_version,
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             active = tuple(
                 connection.execute(
                     select(content_brand_evidence_table).where(

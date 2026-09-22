@@ -615,11 +615,14 @@ def test_all_replay_reversal_is_durable_idempotent_and_legacy_fail_closed() -> N
                     http_request_id="revoke-empty-replay-retry",
                 )
                 assert repeated.reversal_job_id == reverting.reversal_job_id
-                assert session.scalar(
-                    select(func.count())
-                    .select_from(jobs_table)
-                    .where(jobs_table.c.job_type == CANONICAL_REPLAY_REVERSAL_JOB_TYPE)
-                ) == 1
+                assert (
+                    session.scalar(
+                        select(func.count())
+                        .select_from(jobs_table)
+                        .where(jobs_table.c.job_type == CANONICAL_REPLAY_REVERSAL_JOB_TYPE)
+                    )
+                    == 1
+                )
 
                 legacy_id = uuid4()
                 session.execute(
