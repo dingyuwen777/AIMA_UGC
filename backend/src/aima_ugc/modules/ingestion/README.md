@@ -394,6 +394,12 @@ POST /api/v1/canonical-replays
 → Brand/Vehicle Evidence + checkpoint + 对账统计
 ```
 
+管理员“品牌与车型”页的“重筛入库”使用 `POST /api/v1/canonical-replays/all`。后端自动枚举
+全部合法历史 Canonical，在一个事务中冻结当前全部 active Brand/Vehicle 目录和选择摘要，并按
+100 个 Artifact 一组创建多个既有 Replay Run/Job；每个 Run 使用当前最大 `batch_size=1000`。
+所有 Job 一次排队，可由多个 Worker 并行领取；单 Worker 仍按队列逐个执行。100 表示每个 Run
+包含的 Canonical 文件上限，不是内容行数上限，单个文件仍以 Reader 流式读取。
+
 只有当前三种 lineage 可以创建任务：兼容单文件 `ingestion.import-excel.v2`、Data Import
 `ingestion.historical-import-chunk.v2` 的 Pure Canonical Chunk、TikHub Discovery Search
 Attempt。Scope-only 或其它无法证明的旧关系失败关闭；当前没有 legacy 转换分支。API 的空
@@ -407,8 +413,9 @@ checkpoint 与统计，不会每批从第 0 行重读。接管时只对当前 Ar
 第二条 Content：同一 Run 的重复输入计入 `duplicates_removed`，数据库已有 Content 计入
 `existing_convergence`，新建 Content 计入 `rows_ingested`。
 
-当前正式入口只有管理员 API 的创建、查询和取消；尚无前端页面。Replay 不自动创建 Analysis
-Job，也不会在规则变窄时删除、隐藏或撤销以前已进入业务库的 Content。Replay 只把冻结
+当前前端只提供全部历史 Canonical 的创建入口；显式 Artifact 创建、单 Run 查询和取消仍通过
+管理员 API。Replay 不自动创建 Analysis Job，也不会在规则变窄时删除、隐藏或撤销以前已进入
+业务库的 Content。Replay 只把冻结
 Snapshot 新命中的 Brand/Vehicle Evidence 追加或幂等恢复到当前 Content Version；不会像普通
 新 Observation 的完整重分类那样停用 selected 范围外的既有自动证据，人工锁仍优先。
 

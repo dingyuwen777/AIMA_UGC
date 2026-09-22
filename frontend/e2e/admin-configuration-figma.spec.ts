@@ -114,6 +114,7 @@ test('retries an uncertain all-Canonical request with the same idempotency key',
     keys.push(route.request().postDataJSON().idempotency_key)
     if (keys.length === 1) {
       return json(route, {
+        status: 409,
         title: 'Replay 请求冲突',
         detail: '暂时无法确认任务是否已创建，请使用原请求重试。',
         request_id: 'replay-all-failed',

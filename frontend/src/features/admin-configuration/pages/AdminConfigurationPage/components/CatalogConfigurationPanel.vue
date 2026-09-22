@@ -15,6 +15,7 @@ import {
   fetchVehicleBrandsForAdmin,
   fetchVehicles,
   mergeVehicle,
+  queueAllCanonicalReplays,
   removeBrand,
   removeBrandAlias,
   removeVehicle,
@@ -25,6 +26,9 @@ const saving = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const notice = ref<string | null>(null)
+const replayConfirmOpen = ref(false)
+const replaySubmitting = ref(false)
+const replayIdempotencyKey = ref('')
 const vehicles = ref<VehicleModelResponse[]>([])
 const brands = ref<BrandResponse[]>([])
 const selectedBrandId = ref('')
@@ -177,6 +181,43 @@ function closeBrandCreateDialog(): void {
   brandCreateOpen.value = false
   const current = selectedBrand.value
   if (current) selectBrand(current)
+}
+
+/** 打开全历史重筛确认层；失败重试期间保留同一个幂等键。 */
+function openReplayConfirmDialog(): void {
+  if (!replayIdempotencyKey.value) {
+    replayIdempotencyKey.value = `admin-catalog-all-${crypto.randomUUID()}`
+  }
+  replayConfirmOpen.value = true
+}
+
+/** 放弃本次重筛请求后，下次显式操作使用新的幂等身份。 */
+function closeReplayConfirmDialog(): void {
+  if (replaySubmitting.value) return
+  replayConfirmOpen.value = false
+  replayIdempotencyKey.value = ''
+}
+
+/** 把全部历史 Canonical 的选择与分组交给后端，不在浏览器复制 lineage 规则。 */
+async function confirmReplayAll(): Promise<void> {
+  if (replaySubmitting.value) return
+  replaySubmitting.value = true
+  error.value = null
+  notice.value = null
+  try {
+    const result = await queueAllCanonicalReplays({
+      idempotency_key: replayIdempotencyKey.value,
+    })
+    replayConfirmOpen.value = false
+    replayIdempotencyKey.value = ''
+    notice.value = result.artifact_count === 0
+      ? '当前没有符合条件的历史 Canonical 数据，无需创建重筛任务。'
+      : `已将 ${result.artifact_count} 个 Canonical 文件拆分为 ${result.run_count} 个重筛任务，Worker 将按可用并发处理。`
+  } catch (reason) {
+    error.value = apiErrorMessage(reason)
+  } finally {
+    replaySubmitting.value = false
+  }
 }
 
 /** 放弃当前品牌详情中的未保存输入。 */
@@ -426,7 +467,7 @@ async function mergeSelectedVehicle(): Promise<void> {
       tone="error"
       role="alert"
     >
-      <strong>品牌与车型加载或保存失败</strong>
+      <strong>品牌与车型操作失败</strong>
       <span>{{ error }}</span>
       <AimaButton
         v-if="!saving"
@@ -461,14 +502,24 @@ async function mergeSelectedVehicle(): Promise<void> {
             <h2>品牌目录</h2>
             <p>内部品牌编码由服务端生成并仅用于技术识别；品牌识别词用于统一匹配，旗下车型通过唯一品牌归属自动纳入过滤。</p>
           </div>
-          <AimaButton
-            variant="primary"
-            size="small"
-            :disabled="saving"
-            @click="openBrandCreateDialog"
-          >
-            新增品牌
-          </AimaButton>
+          <div class="catalog-header-actions">
+            <AimaButton
+              variant="secondary"
+              size="small"
+              :disabled="saving || replaySubmitting"
+              @click="openReplayConfirmDialog"
+            >
+              {{ replaySubmitting ? '正在排队…' : '重筛入库' }}
+            </AimaButton>
+            <AimaButton
+              variant="primary"
+              size="small"
+              :disabled="saving || replaySubmitting"
+              @click="openBrandCreateDialog"
+            >
+              新增品牌
+            </AimaButton>
+          </div>
         </header>
 
         <div
@@ -739,6 +790,34 @@ async function mergeSelectedVehicle(): Promise<void> {
     </div>
 
     <AimaDialog
+      :model-value="replayConfirmOpen"
+      label="重筛全部历史数据"
+      width="460px"
+      @update:model-value="(open) => { if (!open) closeReplayConfirmDialog() }"
+    >
+      <section class="confirm-dialog">
+        <h2>重筛全部历史数据</h2>
+        <p>系统会按当前全部启用的品牌、车型和识别词，重新筛选全部历史 Canonical 数据，并把新命中的内容幂等写入业务库。</p>
+        <p>任务会按每组最多 100 个文件拆分，并使用最大安全行批次在后台排队；可用 Worker 越多，并行处理速度越快。这个过程不会重新请求 TikHub，也不会自动触发 AI。</p>
+        <div class="actions">
+          <AimaButton
+            :disabled="replaySubmitting"
+            @click="closeReplayConfirmDialog"
+          >
+            取消
+          </AimaButton>
+          <AimaButton
+            variant="primary"
+            :disabled="replaySubmitting"
+            @click="confirmReplayAll"
+          >
+            {{ replaySubmitting ? '正在排队…' : '确认重筛入库' }}
+          </AimaButton>
+        </div>
+      </section>
+    </AimaDialog>
+
+    <AimaDialog
       v-model="brandCreateOpen"
       label="新增品牌"
       width="420px"
@@ -1001,6 +1080,7 @@ async function mergeSelectedVehicle(): Promise<void> {
 .brand-directory-card,
 .brand-detail-card { height: min(692px, calc(100dvh - 184px)); min-height: 420px; overflow-y: auto; }
 .card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.catalog-header-actions { display: flex; flex: none; gap: 8px; }
 h2, h3, p { margin: 0; }
 h2 { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24px; }
 h3 { color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }

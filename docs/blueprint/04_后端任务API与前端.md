@@ -424,6 +424,7 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 
 ```text
 POST /api/v1/canonical-replays
+POST /api/v1/canonical-replays/all
 GET  /api/v1/canonical-replays/{run_id}
 POST /api/v1/canonical-replays/{run_id}/cancel
 ```
@@ -435,10 +436,17 @@ v2 或 TikHub Discovery Search Attempt 的唯一 linked Canonical，随后原子
 `ingestion.canonical-replay.v1` Job。重复幂等键只有在 Artifact 顺序、Brand、批大小和创建者
 完全一致时返回原 Run；参数漂移返回 409。
 
+`POST /api/v1/canonical-replays/all` 是“品牌与车型”页面“重筛入库”按钮使用的全量编排入口。
+调用方只提交客户端幂等键；后端在同一事务中稳定选择上述三类全部合法 linked Canonical，冻结
+当前全部 active Brand/Vehicle 目录，按每组最多 100 个 Artifact 建立多个 Replay Run/Job，并把
+每个 Run 的写入批大小固定为当前上限 1000。`canonical_replay_all_requests` 持久化选择摘要、总
+Artifact 数、子 Run 数和创建者，使空选择也具有可验证的幂等身份；同一键下选择或创建者漂移
+返回 409。所有子 Job 一次入队，多个 Worker 可以并行领取，但单 Worker 仍会顺序执行。
+
 查询返回冻结目录版本、Artifact 顺序、checkpoint、Job 状态及对账统计。取消沿用统一 Job
 语义：排队任务立即进入取消终态，运行任务记录取消请求并由 Worker 在有界批次边界协作收敛。
-这三个路由都执行后端管理员角色检查并记录创建/取消审计；当前没有对应前端页面，不能写成
-采集运行中心已经提供的可视化操作。
+这些路由都执行后端管理员角色检查并记录创建/取消审计。当前前端只提供全量创建入口；单 Run
+查询、取消和显式 Artifact 选择仍由正式 API 提供，不能写成页面已经提供逐 Run 管理能力。
 
 代码：
 

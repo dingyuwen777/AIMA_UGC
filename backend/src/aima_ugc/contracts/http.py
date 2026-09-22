@@ -171,6 +171,35 @@ class CanonicalReplayCreateRequest(BaseModel):
         return self
 
 
+class CanonicalReplayAllCreateRequest(BaseModel):
+    """用一个幂等键冻结并排队全部可重筛 Canonical。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=120)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def normalize_idempotency_key(cls, value: str) -> str:
+        """去除无意义空白，并拒绝纯空白幂等键。"""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("idempotency_key 不能为空")
+        return normalized
+
+
+class CanonicalReplayAllCreatedResponse(BaseModel):
+    """全历史 Replay 已冻结并排队后的有界摘要。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_count: int = Field(ge=0)
+    run_count: int = Field(ge=0)
+    artifacts_per_run: Literal[100] = 100
+    batch_size: Literal[1000] = 1000
+
+
 class CanonicalReplayCreatedResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1842,6 +1871,8 @@ __all__ = [
     "ContentTargetSelection",
     "CanonicalReplayCreateRequest",
     "CanonicalReplayCreatedResponse",
+    "CanonicalReplayAllCreateRequest",
+    "CanonicalReplayAllCreatedResponse",
     "CanonicalReplayJobResultResponse",
     "CanonicalReplayRunResponse",
     "CanonicalReplayStatsResponse",

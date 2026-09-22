@@ -1399,6 +1399,57 @@
         "title": "BrandVehicleCatalogSnapshotResponse",
         "type": "object"
       },
+      "CanonicalReplayAllCreateRequest": {
+        "additionalProperties": false,
+        "description": "用一个幂等键冻结并排队全部可重筛 Canonical。",
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "CanonicalReplayAllCreateRequest",
+        "type": "object"
+      },
+      "CanonicalReplayAllCreatedResponse": {
+        "additionalProperties": false,
+        "description": "全历史 Replay 已冻结并排队后的有界摘要。",
+        "properties": {
+          "artifact_count": {
+            "minimum": 0.0,
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "artifacts_per_run": {
+            "const": 100,
+            "default": 100,
+            "title": "Artifacts Per Run",
+            "type": "integer"
+          },
+          "batch_size": {
+            "const": 1000,
+            "default": 1000,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "run_count": {
+            "minimum": 0.0,
+            "title": "Run Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_count",
+          "run_count"
+        ],
+        "title": "CanonicalReplayAllCreatedResponse",
+        "type": "object"
+      },
       "CanonicalReplayCreateRequest": {
         "additionalProperties": false,
         "description": "创建 Replay 时显式冻结的输入选择。",
@@ -10933,6 +10984,77 @@
           }
         },
         "summary": "Create Canonical Replay",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/all": {
+      "post": {
+        "operationId": "createAllCanonicalReplays",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalReplayAllCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayAllCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create All Canonical Replays",
         "tags": [
           "imports"
         ]

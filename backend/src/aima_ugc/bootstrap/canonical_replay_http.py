@@ -13,6 +13,8 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.contracts.http import (
+    CanonicalReplayAllCreatedResponse,
+    CanonicalReplayAllCreateRequest,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayJobResultResponse,
@@ -20,7 +22,11 @@ from aima_ugc.contracts.http import (
     CanonicalReplayStatsResponse,
     JobStatusResponse,
 )
-from aima_ugc.modules.ingestion.canonical_replay import CanonicalReplayRunRecord
+from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+    CANONICAL_REPLAY_FAST_BATCH_SIZE,
+    CanonicalReplayRunRecord,
+)
 from aima_ugc.modules.ingestion.canonical_replay_http import (
     CanonicalReplayConflict,
     CanonicalReplayInputInvalid,
@@ -38,6 +44,53 @@ class PostgresCanonicalReplayHttpService:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
+
+    def create_all_replays(
+        self,
+        body: CanonicalReplayAllCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllCreatedResponse:
+        """一次冻结全部合法 Canonical，并拆成可由多个 Worker 领取的有界 Run。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresCanonicalReplayRepository(session)
+                try:
+                    record = repository.enqueue_all(
+                        idempotency_key=body.idempotency_key,
+                        created_by=actor_ref,
+                        request_id=request_id,
+                    )
+                except (LookupError, ValueError) as exc:
+                    raise CanonicalReplayInputInvalid(str(exc)) from exc
+                except (JobIdempotencyConflict, RuntimeError) as exc:
+                    raise CanonicalReplayConflict(str(exc)) from exc
+                _audit(
+                    session,
+                    actor_ref=actor_ref,
+                    request_id=request_id,
+                    event_type="canonical_replay_all_created",
+                    object_id=str(record.id),
+                    detail={
+                        "artifact_count": record.artifact_count,
+                        "run_count": record.run_count,
+                        "artifacts_per_run": record.artifacts_per_run,
+                        "batch_size": record.batch_size,
+                    },
+                )
+                return CanonicalReplayAllCreatedResponse(
+                    artifact_count=record.artifact_count,
+                    run_count=record.run_count,
+                    artifacts_per_run=CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+                    batch_size=CANONICAL_REPLAY_FAST_BATCH_SIZE,
+                )
+        except IntegrityError as exc:
+            raise CanonicalReplayConflict from exc
+        finally:
+            session.close()
 
     def create_replay(
         self,

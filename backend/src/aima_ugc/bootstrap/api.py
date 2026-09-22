@@ -51,6 +51,8 @@ from aima_ugc.contracts.http import (
     AnalysisContentRunPreviewRequest,
     AnalysisContentRunPreviewResponse,
     AnalysisContentRunResponse,
+    CanonicalReplayAllCreatedResponse,
+    CanonicalReplayAllCreateRequest,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayRunResponse,
@@ -1912,6 +1914,30 @@ def create_app(
     ) -> CanonicalReplayCreatedResponse:
         principal = current_administrator(request)
         return current_canonical_replay_service().create_replay(
+            body,
+            actor_ref=principal.principal_id,
+            request_id=_request_id(request),
+        )
+
+    @application.post(
+        "/api/v1/canonical-replays/all",
+        operation_id="createAllCanonicalReplays",
+        response_model=CanonicalReplayAllCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def create_all_canonical_replays(
+        body: CanonicalReplayAllCreateRequest,
+        request: Request,
+    ) -> CanonicalReplayAllCreatedResponse:
+        principal = current_administrator(request)
+        return current_canonical_replay_service().create_all_replays(
             body,
             actor_ref=principal.principal_id,
             request_id=_request_id(request),

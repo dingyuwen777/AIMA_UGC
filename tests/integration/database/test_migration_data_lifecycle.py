@@ -1732,3 +1732,104 @@ def test_0055_creates_and_drops_voice_plaza_source_lookup_indexes(
             assert index_name not in indexes
     finally:
         engine.dispose()
+
+
+def test_0058_adds_all_replay_parent_without_breaking_existing_runs(
+    migration_database: str,
+) -> None:
+    """全量 Replay 父事实可升级、关联新请求、回滚且保留既有 Run。"""
+
+    _upgrade(migration_database, "20260922_0057")
+    job_id = uuid4()
+    run_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO jobs(id, job_type, payload_version, payload, status, "
+                    "internal_idempotency_key, priority, attempt, max_attempts, "
+                    "timeout_seconds, progress, available_at, created_at, updated_at) "
+                    "VALUES (:id, 'ingestion.canonical-replay.v1', "
+                    "'ingestion.canonical-replay.v1', '{}'::jsonb, 'queued', :key, "
+                    "0, 0, 10, 86400, 0, :now, :now, :now)"
+                ),
+                {"id": job_id, "key": f"replay-before-0058-{job_id}", "now": _NOW},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO canonical_replay_runs(id, job_id, "
+                    "client_idempotency_key, filter_snapshot, requested_brand_ids, "
+                    "artifact_count, batch_size, created_by, created_at, updated_at) "
+                    "VALUES (:id, :job_id, :key, '{}'::jsonb, ARRAY[]::uuid[], "
+                    "1, 1000, 'migration-test', :now, :now)"
+                ),
+                {
+                    "id": run_id,
+                    "job_id": job_id,
+                    "key": f"replay-before-0058-{run_id}",
+                    "now": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260922_0058")
+    request_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_all_requests" in inspector.get_table_names()
+        run_columns = {item["name"] for item in inspector.get_columns("canonical_replay_runs")}
+        assert {"all_request_id", "all_request_ordinal"}.issubset(run_columns)
+        with engine.begin() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT all_request_id, all_request_ordinal "
+                    "FROM canonical_replay_runs WHERE id = :id"
+                ),
+                {"id": run_id},
+            ).one() == (None, None)
+            connection.execute(
+                text(
+                    "INSERT INTO canonical_replay_all_requests(id, "
+                    "client_idempotency_key, selection_digest, artifact_count, "
+                    "run_count, artifacts_per_run, batch_size, created_by, created_at) "
+                    "VALUES (:id, :key, :digest, 1, 1, 100, 1000, "
+                    "'migration-test', :now)"
+                ),
+                {
+                    "id": request_id,
+                    "key": f"all-replay-0058-{request_id}",
+                    "digest": "a" * 64,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "UPDATE canonical_replay_runs SET all_request_id = :request_id, "
+                    "all_request_ordinal = 0 WHERE id = :run_id"
+                ),
+                {"request_id": request_id, "run_id": run_id},
+            )
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260922_0057")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_all_requests" not in inspector.get_table_names()
+        run_columns = {item["name"] for item in inspector.get_columns("canonical_replay_runs")}
+        assert "all_request_id" not in run_columns
+        assert "all_request_ordinal" not in run_columns
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM canonical_replay_runs WHERE id = :id"),
+                    {"id": run_id},
+                )
+                == 1
+            )
+    finally:
+        engine.dispose()
