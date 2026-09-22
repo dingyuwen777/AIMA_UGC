@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-111009-vehicle-catalog-save
 title: 简化车型配置并优化目录保存性能
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: perf/vehicle-catalog-save
 created: 2026-09-22
