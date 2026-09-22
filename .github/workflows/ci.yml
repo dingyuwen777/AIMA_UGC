@@ -13,6 +13,18 @@ on:
       - reopened
       - edited
       - ready_for_review
+  workflow_dispatch:
+    inputs:
+      maintenance_action:
+        description: 一次性仓库维护动作
+        required: false
+        type: choice
+        default: none
+        options:
+          - none
+          - cleanup-deprecated-actions-history
+  schedule:
+    - cron: "17 * * * *"
 
 permissions:
   contents: read
@@ -27,7 +39,10 @@ concurrency:
 jobs:
   quality-core:
     name: Requirement Traceability and Completion Audit
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: >-
+      github.event_name != 'schedule' &&
+      (github.event_name != 'workflow_dispatch' || inputs.maintenance_action != 'cleanup-deprecated-actions-history') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-24.04
     outputs:
       profile: ${{ steps.classify.outputs.profile }}
@@ -467,6 +482,8 @@ jobs:
     name: CI Gate
     if: >-
       always() &&
+      github.event_name != 'schedule' &&
+      (github.event_name != 'workflow_dispatch' || inputs.maintenance_action != 'cleanup-deprecated-actions-history') &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     needs:
       - quality-core
@@ -495,3 +512,77 @@ jobs:
           }
           require_or_skip "${POSTGRES_REQUIRED}" "${POSTGRES_INTEGRATION_RESULT}" "PostgreSQL Integration"
           require_or_skip "${FULLSTACK_REQUIRED}" "${FULLSTACK_RESULT}" "Real Full-stack Golden Path"
+
+  cleanup-deprecated-actions-history:
+    name: Cleanup Deprecated Actions History
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.maintenance_action == 'cleanup-deprecated-actions-history') ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[actions-history-cleanup]'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: change-archive-main
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Mint optional repository App token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CHANGE_ARCHIVE_APP_ID }}
+          private-key: ${{ secrets.CHANGE_ARCHIVE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Delete runs for workflows no longer present on main
+        id: cleanup
+        env:
+          ACTIONS_CLEANUP_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="${RUNNER_TEMP}/actions-history-cleanup.json"
+          python3 scripts/quality/cleanup_deprecated_actions_runs.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --root . \
+            --max-deletions 4000 \
+            --reserve-requests 150 \
+            --json | tee "${RESULT}"
+
+          deprecated="$(jq -r '.deprecated_runs' "${RESULT}")"
+          deleted="$(jq -r '.deleted' "${RESULT}")"
+          missing="$(jq -r '.already_missing' "${RESULT}")"
+          remaining="$(jq -r '.remaining' "${RESULT}")"
+          token_source="$(jq -r '.token_source // .scan_token_source' "${RESULT}")"
+          {
+            echo "deprecated=${deprecated}"
+            echo "deleted=${deleted}"
+            echo "already_missing=${missing}"
+            echo "remaining=${remaining}"
+            echo "token_source=${token_source}"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "### Deprecated Actions history cleanup"
+            echo
+            echo "- token source: ${token_source}"
+            echo "- selected before this pass: ${deprecated}"
+            echo "- deleted: ${deleted}"
+            echo "- already missing: ${missing}"
+            echo "- remaining: ${remaining}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Report continuation
+        if: steps.cleanup.outputs.remaining != '0'
+        shell: bash
+        run: |
+          echo "仍有 ${{ steps.cleanup.outputs.remaining }} 条废弃 Workflow run；下一次 hourly maintenance 将继续清理。"
+
