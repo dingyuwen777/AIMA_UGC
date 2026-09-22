@@ -125,6 +125,15 @@ All workflows 持续混杂失效入口；维护者难以区分当前正式 Workf
 | D3 exact path | 删除不可恢复 | 防误删正式历史证据 |
 | D4 临时复用 CI | 用户目标是减少 All workflows | 不制造新的长期 Workflow 条目 |
 
+<!-- governance:required-for=L3 -->
+## 备选方案与取舍
+
+- **直接删除当前 Workflow 文件**：拒绝。当前 6 个 Workflow 都有独立正式职责，UI 冗余来自历史 runs，不是现役文件。
+- **按 Workflow 显示名称删除**：拒绝。名称可动态变化且可能与正式 Workflow 重名，删除不可恢复，必须使用 exact path。
+- **一次性暴力删除全部历史 runs**：拒绝。会触碰现役 Workflow 历史，而且容易耗尽 GitHub API rate limit。
+- **降低全仓 Actions retention**：拒绝。会同时删除正式 CI/Release 证据，范围过宽。
+- **临时新增独立 cleanup Workflow**：不采用。会反向增加 All workflows 左侧条目；优先复用现有 CI 的临时 maintenance job。
+- **当前方案**：动态发现 current workflow paths，只删除不在集合中的 runs；分批、幂等、rate-limit aware，完成后移除维护代码。
 # 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
