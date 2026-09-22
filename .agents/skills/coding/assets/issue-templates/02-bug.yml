@@ -1,6 +1,3 @@
-# agent-skills:governance-issue-form:v1
-# 唯一人工维护源：Agent_Skills Coding governance assets。
-# 仓库根 .github/ISSUE_TEMPLATE 副本是受管投影，只修改 canonical source。
 name: 缺陷
 description: 报告当前可观察行为与已确认期望行为不一致的问题
 title: "[缺陷] "
