@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid5
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, literal, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -19,10 +20,13 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+    CANONICAL_REPLAY_FAST_BATCH_SIZE,
     CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
     CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
     CANONICAL_REPLAY_JOB_TYPE,
+    CanonicalReplayAllRequestRecord,
     CanonicalReplayArtifactRecord,
     CanonicalReplayCounters,
     CanonicalReplayRunRecord,
@@ -31,6 +35,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     load_filter_snapshot,
 )
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_all_requests_table,
     canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
     canonical_replay_seen_content_table,
@@ -51,6 +56,7 @@ from .brand_vehicle import PostgresBrandVehicleRepository
 from .jobs import PostgresJobRepository
 
 _RUN_NAMESPACE = UUID("6112f610-4803-4590-a121-9f225e729e95")
+_ALL_REQUEST_NAMESPACE = UUID("51f57b7c-40e0-41bb-8fb7-0d8bf723333d")
 
 
 class UnsupportedCanonicalReplaySource(ValueError):
@@ -83,13 +89,13 @@ class PostgresCanonicalReplayRepository:
             raise ValueError("idempotency_key 必须是 1—200 字符")
         if not actor or len(actor) > 200:
             raise ValueError("created_by 必须是 1—200 字符")
-        if not 1 <= len(normalized_artifact_ids) <= 100:
+        if not 1 <= len(normalized_artifact_ids) <= CANONICAL_REPLAY_ARTIFACTS_PER_RUN:
             raise ValueError("artifact_ids 必须包含 1—100 个 Artifact")
         if len(set(normalized_artifact_ids)) != len(normalized_artifact_ids):
             raise ValueError("artifact_ids 不能重复")
         if len(normalized_brand_ids) != len(brand_ids) or len(normalized_brand_ids) > 100:
             raise ValueError("brand_ids 必须不重复且不超过 100 个")
-        if not 1 <= batch_size <= 1000:
+        if not 1 <= batch_size <= CANONICAL_REPLAY_FAST_BATCH_SIZE:
             raise ValueError("batch_size 必须是 1—1000")
 
         self._lock_idempotency_key(key)
@@ -123,6 +129,133 @@ class PostgresCanonicalReplayRepository:
         if catalog.unresolved_active_vehicle_ids:
             raise RuntimeError("存在未完成品牌归属的 active 车型，不能启动 Replay")
         snapshot = BrandVehicleFilterSnapshot(catalog=catalog)
+        return self._create_run(
+            key=key,
+            artifact_ids=normalized_artifact_ids,
+            source_kinds=source_kinds,
+            snapshot=snapshot,
+            brand_ids=normalized_brand_ids,
+            batch_size=batch_size,
+            created_by=actor,
+            request_id=request_id,
+        )
+
+    def enqueue_all(
+        self,
+        *,
+        idempotency_key: str,
+        created_by: str,
+        request_id: str | None,
+    ) -> CanonicalReplayAllRequestRecord:
+        """冻结全部合法 Canonical，并按既有单 Run 上限原子拆分排队。"""
+
+        key = idempotency_key.strip()
+        actor = created_by.strip()
+        if not key or len(key) > 120:
+            raise ValueError("idempotency_key 必须是 1—120 字符")
+        if not actor or len(actor) > 200:
+            raise ValueError("created_by 必须是 1—200 字符")
+
+        self._lock_all_idempotency_key(key)
+        candidates = self._list_replayable_artifacts()
+        selection_digest = _selection_digest(candidates)
+        artifact_count = len(candidates)
+        run_count = (
+            artifact_count + CANONICAL_REPLAY_ARTIFACTS_PER_RUN - 1
+        ) // CANONICAL_REPLAY_ARTIFACTS_PER_RUN
+        all_request_id = uuid5(_ALL_REQUEST_NAMESPACE, key)
+        existing = self._get_all_request(all_request_id)
+        if existing is not None:
+            requested_identity = (
+                key,
+                selection_digest,
+                artifact_count,
+                run_count,
+                CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+                CANONICAL_REPLAY_FAST_BATCH_SIZE,
+                actor,
+            )
+            existing_identity = (
+                existing.client_idempotency_key,
+                existing.selection_digest,
+                existing.artifact_count,
+                existing.run_count,
+                existing.artifacts_per_run,
+                existing.batch_size,
+                existing.created_by,
+            )
+            if requested_identity != existing_identity:
+                raise RuntimeError("idempotency_key 已绑定不同的全量 Replay 输入或创建者")
+            actual_run_count = self._session.scalar(
+                select(func.count())
+                .select_from(canonical_replay_runs_table)
+                .where(canonical_replay_runs_table.c.all_request_id == existing.id)
+            )
+            if actual_run_count != existing.run_count:
+                raise RuntimeError("全量 Replay 请求缺少对应的子 Run")
+            return existing
+
+        now = beijing_now()
+        self._session.execute(
+            insert(canonical_replay_all_requests_table).values(
+                id=all_request_id,
+                client_idempotency_key=key,
+                selection_digest=selection_digest,
+                artifact_count=artifact_count,
+                run_count=run_count,
+                artifacts_per_run=CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+                batch_size=CANONICAL_REPLAY_FAST_BATCH_SIZE,
+                created_by=actor,
+                created_at=now,
+            )
+        )
+        if candidates:
+            catalog = PostgresBrandVehicleRepository(self._session).snapshot(brand_ids=None)
+            if catalog.unresolved_active_vehicle_ids:
+                raise RuntimeError("存在未完成品牌归属的 active 车型，不能启动 Replay")
+            snapshot = BrandVehicleFilterSnapshot(catalog=catalog)
+            for ordinal in range(run_count):
+                start = ordinal * CANONICAL_REPLAY_ARTIFACTS_PER_RUN
+                selected = candidates[start : start + CANONICAL_REPLAY_ARTIFACTS_PER_RUN]
+                child_key = f"canonical-replay-all:{all_request_id}:{ordinal}"
+                if self.get(uuid5(_RUN_NAMESPACE, child_key)) is not None:
+                    raise RuntimeError("全量 Replay 子 Run 幂等身份冲突")
+                self._create_run(
+                    key=child_key,
+                    artifact_ids=tuple(item[0] for item in selected),
+                    source_kinds=tuple(item[1] for item in selected),
+                    snapshot=snapshot,
+                    brand_ids=(),
+                    batch_size=CANONICAL_REPLAY_FAST_BATCH_SIZE,
+                    created_by=actor,
+                    request_id=request_id,
+                    all_request_id=all_request_id,
+                    all_request_ordinal=ordinal,
+                )
+        created = self._get_all_request(all_request_id)
+        if created is None:
+            raise RuntimeError("全量 Replay 请求创建后不可读")
+        return created
+
+    def _create_run(
+        self,
+        *,
+        key: str,
+        artifact_ids: tuple[UUID, ...],
+        source_kinds: tuple[CanonicalReplaySourceKind, ...],
+        snapshot: BrandVehicleFilterSnapshot,
+        brand_ids: tuple[UUID, ...],
+        batch_size: int,
+        created_by: str,
+        request_id: str | None,
+        all_request_id: UUID | None = None,
+        all_request_ordinal: int | None = None,
+    ) -> tuple[CanonicalReplayRunRecord, JobRecord]:
+        """把已校验并冻结的一个有界输入组与 Job 同事务落库。"""
+
+        if len(artifact_ids) != len(source_kinds):
+            raise ValueError("Canonical Replay Artifact 与来源分类数量不一致")
+        run_id = uuid5(_RUN_NAMESPACE, key)
         job = PostgresJobRepository(self._session).enqueue(
             job_type=CANONICAL_REPLAY_JOB_TYPE,
             payload_version=CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
@@ -143,14 +276,16 @@ class PostgresCanonicalReplayRepository:
                 job_id=job.id,
                 client_idempotency_key=key,
                 filter_snapshot=dump_filter_snapshot(snapshot),
-                requested_brand_ids=list(normalized_brand_ids),
-                artifact_count=len(normalized_artifact_ids),
+                requested_brand_ids=list(brand_ids),
+                artifact_count=len(artifact_ids),
                 checkpoint_artifact_ordinal=0,
                 checkpoint_row_number=0,
                 batch_size=batch_size,
-                created_by=actor,
+                created_by=created_by,
                 created_at=now,
                 updated_at=now,
+                all_request_id=all_request_id,
+                all_request_ordinal=all_request_ordinal,
             )
         )
         self._session.execute(
@@ -163,7 +298,7 @@ class PostgresCanonicalReplayRepository:
                     "source_kind": source_kind,
                 }
                 for ordinal, (artifact_id, source_kind) in enumerate(
-                    zip(normalized_artifact_ids, source_kinds, strict=True)
+                    zip(artifact_ids, source_kinds, strict=True)
                 )
             ],
         )
@@ -171,6 +306,137 @@ class PostgresCanonicalReplayRepository:
         if created is None:
             raise RuntimeError("Canonical Replay Run 创建后不可读")
         return created, job
+
+    def _get_all_request(self, request_id: UUID) -> CanonicalReplayAllRequestRecord | None:
+        row = (
+            self._session.execute(
+                select(canonical_replay_all_requests_table).where(
+                    canonical_replay_all_requests_table.c.id == request_id
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return None if row is None else _all_request_from_row(row)
+
+    def _list_replayable_artifacts(
+        self,
+    ) -> tuple[tuple[UUID, CanonicalReplaySourceKind], ...]:
+        """用一条确定性查询枚举当前三类可证明来源的 linked Canonical。"""
+
+        common_filters = (
+            artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND,
+            artifacts_table.c.storage_status == "linked",
+        )
+        excel = (
+            select(
+                artifacts_table.c.id.label("artifact_id"),
+                artifacts_table.c.created_at.label("created_at"),
+                literal("excel_import_v2").label("source_kind"),
+            )
+            .select_from(
+                artifacts_table.join(
+                    canonical_artifact_links_table,
+                    canonical_artifact_links_table.c.artifact_id == artifacts_table.c.id,
+                )
+                .join(
+                    processing_import_batches_table,
+                    processing_import_batches_table.c.id
+                    == canonical_artifact_links_table.c.processing_import_batch_id,
+                )
+                .join(
+                    jobs_table,
+                    jobs_table.c.id == processing_import_batches_table.c.job_id,
+                )
+            )
+            .where(
+                *common_filters,
+                processing_import_batches_table.c.historical_campaign_item_id.is_(None),
+                jobs_table.c.job_type == IMPORT_JOB_TYPE,
+            )
+        )
+        historical = (
+            select(
+                artifacts_table.c.id.label("artifact_id"),
+                artifacts_table.c.created_at.label("created_at"),
+                literal("data_import_canonical_chunk_v2").label("source_kind"),
+            )
+            .select_from(
+                artifacts_table.join(
+                    canonical_artifact_links_table,
+                    canonical_artifact_links_table.c.artifact_id == artifacts_table.c.id,
+                )
+                .join(
+                    historical_import_campaign_items_table,
+                    historical_import_campaign_items_table.c.id
+                    == canonical_artifact_links_table.c.historical_import_campaign_item_id,
+                )
+                .join(
+                    jobs_table,
+                    jobs_table.c.id == historical_import_campaign_items_table.c.job_id,
+                )
+            )
+            .where(
+                *common_filters,
+                historical_import_campaign_items_table.c.item_kind == "chunk",
+                historical_import_campaign_items_table.c.artifact_id == artifacts_table.c.id,
+                jobs_table.c.job_type == HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
+            )
+        )
+        tikhub = (
+            select(
+                artifacts_table.c.id.label("artifact_id"),
+                artifacts_table.c.created_at.label("created_at"),
+                literal("tikhub_search_attempt_v1").label("source_kind"),
+            )
+            .select_from(
+                artifacts_table.join(
+                    canonical_artifact_links_table,
+                    canonical_artifact_links_table.c.artifact_id == artifacts_table.c.id,
+                )
+                .join(
+                    provider_request_attempts_table,
+                    provider_request_attempts_table.c.id
+                    == canonical_artifact_links_table.c.provider_attempt_id,
+                )
+                .join(
+                    provider_requests_table,
+                    provider_requests_table.c.id
+                    == provider_request_attempts_table.c.provider_request_id,
+                )
+                .join(
+                    collection_scopes_table,
+                    collection_scopes_table.c.id == provider_requests_table.c.scope_id,
+                )
+                .join(
+                    collection_runs_table,
+                    collection_runs_table.c.id == collection_scopes_table.c.run_id,
+                )
+                .join(jobs_table, jobs_table.c.id == collection_runs_table.c.job_id)
+            )
+            .where(
+                *common_filters,
+                provider_request_attempts_table.c.dispatch_status == "completed",
+                provider_request_attempts_table.c.raw_artifact_id.is_not(None),
+                provider_requests_table.c.provider == "tikhub",
+                collection_scopes_table.c.operation_group == "content_discovery",
+                jobs_table.c.job_type == "collection.run.v1",
+            )
+        )
+        candidates = union_all(excel, historical, tikhub).subquery()
+        rows = self._session.execute(
+            select(candidates.c.artifact_id, candidates.c.source_kind).order_by(
+                candidates.c.created_at,
+                candidates.c.artifact_id,
+            )
+        )
+        return tuple(
+            (
+                cast(UUID, row.artifact_id),
+                cast(CanonicalReplaySourceKind, row.source_kind),
+            )
+            for row in rows
+        )
 
     def get(
         self,
@@ -400,6 +666,42 @@ class PostgresCanonicalReplayRepository:
         self._session.execute(
             select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
         )
+
+    def _lock_all_idempotency_key(self, key: str) -> None:
+        """串行化同一全量请求，使输入选择、父记录和全部子 Run 原子提交。"""
+
+        lock_key = f"canonical-replay-all:{key}"
+        self._session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+        )
+
+
+def _all_request_from_row(row: RowMapping) -> CanonicalReplayAllRequestRecord:
+    return CanonicalReplayAllRequestRecord(
+        id=cast(UUID, row["id"]),
+        client_idempotency_key=cast(str, row["client_idempotency_key"]),
+        selection_digest=cast(str, row["selection_digest"]),
+        artifact_count=cast(int, row["artifact_count"]),
+        run_count=cast(int, row["run_count"]),
+        artifacts_per_run=cast(int, row["artifacts_per_run"]),
+        batch_size=cast(int, row["batch_size"]),
+        created_by=cast(str, row["created_by"]),
+        created_at=cast(datetime, row["created_at"]),
+    )
+
+
+def _selection_digest(
+    candidates: tuple[tuple[UUID, CanonicalReplaySourceKind], ...],
+) -> str:
+    """对稳定有序的 Artifact/来源清单生成幂等输入摘要。"""
+
+    digest = hashlib.sha256()
+    for artifact_id, source_kind in candidates:
+        digest.update(artifact_id.bytes)
+        digest.update(b"\x00")
+        digest.update(source_kind.encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
 
 
 def _run_from_row(row: RowMapping) -> CanonicalReplayRunRecord:

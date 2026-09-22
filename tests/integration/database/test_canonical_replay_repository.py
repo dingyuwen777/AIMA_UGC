@@ -13,8 +13,10 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.storage.local import LocalArtifactStore
+from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
 from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
+from aima_ugc.contracts.http import CanonicalReplayAllCreateRequest
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
     collection_scopes_table,
@@ -22,6 +24,8 @@ from aima_ugc.modules.collection.tables import (
     provider_requests_table,
 )
 from aima_ugc.modules.ingestion.canonical_replay import CanonicalReplayArtifactRecord
+from aima_ugc.modules.ingestion.canonical_replay_http import CanonicalReplayConflict
+from aima_ugc.modules.ingestion.canonical_replay_tables import canonical_replay_runs_table
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -38,7 +42,7 @@ from aima_ugc.platform.storage.canonical import (
     CANONICAL_CONTENT_ARTIFACT_CONTENT_TYPE,
     CANONICAL_CONTENT_ARTIFACT_KIND,
 )
-from sqlalchemy import insert
+from sqlalchemy import func, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -299,7 +303,8 @@ def test_repository_accepts_only_the_three_current_canonical_lineages() -> None:
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts "
             "RESTART IDENTITY CASCADE"
         )
     session = runtime.new_session()
@@ -312,12 +317,148 @@ def test_repository_accepts_only_the_three_current_canonical_lineages() -> None:
                 "data_import_canonical_chunk_v2",
                 "tikhub_search_attempt_v1",
             )
+            all_request = repository.enqueue_all(
+                idempotency_key="all-three-lineages",
+                created_by="replay-admin",
+                request_id="all-three-lineages",
+            )
+            run_id = session.scalar(
+                select(canonical_replay_runs_table.c.id).where(
+                    canonical_replay_runs_table.c.all_request_id == all_request.id
+                )
+            )
+            assert run_id is not None
+            selected = repository.list_artifacts(run_id)
+            assert {item.artifact_id: item.source_kind for item in selected} == {
+                artifacts[0]: "excel_import_v2",
+                artifacts[1]: "data_import_canonical_chunk_v2",
+                artifacts[2]: "tikhub_search_attempt_v1",
+            }
     finally:
         session.close()
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts "
                 "RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_all_replay_groups_every_supported_artifact_and_rejects_input_drift() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
+        )
+    try:
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                expected = tuple(_excel_source(session) for _ in range(101))
+        finally:
+            session.close()
+
+        service = PostgresCanonicalReplayHttpService(SimpleNamespace(database=runtime))  # type: ignore[arg-type]
+        body = CanonicalReplayAllCreateRequest(idempotency_key="all-history-red")
+        created = service.create_all_replays(
+            body,
+            actor_ref="replay-admin",
+            request_id="all-history-red",
+        )
+
+        assert created.artifact_count == len(expected)
+        assert created.run_count == 2
+        assert created.artifacts_per_run == 100
+        assert created.batch_size == 1000
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                run_rows = tuple(
+                    session.execute(
+                        select(
+                            canonical_replay_runs_table.c.artifact_count,
+                            canonical_replay_runs_table.c.batch_size,
+                        ).order_by(canonical_replay_runs_table.c.client_idempotency_key)
+                    )
+                )
+                assert sorted(row.artifact_count for row in run_rows) == [1, 100]
+                assert {row.batch_size for row in run_rows} == {1000}
+                assert session.scalar(select(func.count()).select_from(jobs_table)) == 103
+        finally:
+            session.close()
+
+        replayed = service.create_all_replays(
+            body,
+            actor_ref="replay-admin",
+            request_id="all-history-retry",
+        )
+        assert replayed == created
+
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                _excel_source(session)
+        finally:
+            session.close()
+        with pytest.raises(CanonicalReplayConflict):
+            service.create_all_replays(
+                body,
+                actor_ref="replay-admin",
+                request_id="all-history-drift",
+            )
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts "
+                "RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_all_replay_returns_zero_tasks_when_no_supported_canonical_exists() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
+        )
+    try:
+        response = PostgresCanonicalReplayHttpService(
+            SimpleNamespace(database=runtime)  # type: ignore[arg-type]
+        ).create_all_replays(
+            CanonicalReplayAllCreateRequest(idempotency_key="all-history-empty"),
+            actor_ref="replay-admin",
+            request_id="all-history-empty",
+        )
+        assert response.artifact_count == 0
+        assert response.run_count == 0
+        assert response.artifacts_per_run == 100
+        assert response.batch_size == 1000
+
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                _excel_source(session)
+        finally:
+            session.close()
+        with pytest.raises(CanonicalReplayConflict):
+            PostgresCanonicalReplayHttpService(
+                SimpleNamespace(database=runtime)  # type: ignore[arg-type]
+            ).create_all_replays(
+                CanonicalReplayAllCreateRequest(idempotency_key="all-history-empty"),
+                actor_ref="replay-admin",
+                request_id="all-history-empty-drift",
+            )
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
 
@@ -326,7 +467,8 @@ def test_scope_only_canonical_is_rejected_by_database_after_clean_break() -> Non
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts "
             "RESTART IDENTITY CASCADE"
         )
     session = runtime.new_session()
@@ -367,7 +509,8 @@ def test_scope_only_canonical_is_rejected_by_database_after_clean_break() -> Non
         session.close()
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts "
                 "RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
@@ -379,7 +522,8 @@ def test_tikhub_preflight_accepts_search_and_detail_and_rejects_lineage_drift(
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts "
             "RESTART IDENTITY CASCADE"
         )
     session = runtime.new_session()
@@ -525,7 +669,8 @@ def test_tikhub_preflight_accepts_search_and_detail_and_rejects_lineage_drift(
         session.close()
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts "
                 "RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
@@ -537,7 +682,8 @@ def test_tikhub_preflight_rejects_row_from_another_scope_in_the_same_run(
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts "
             "RESTART IDENTITY CASCADE"
         )
     session = runtime.new_session()
@@ -623,7 +769,8 @@ def test_tikhub_preflight_rejects_row_from_another_scope_in_the_same_run(
         session.close()
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts "
                 "RESTART IDENTITY CASCADE"
             )
         runtime.dispose()

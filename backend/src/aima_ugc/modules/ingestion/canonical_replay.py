@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Protocol, cast
+from typing import Final, Literal, Protocol, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
@@ -20,6 +20,8 @@ CANONICAL_REPLAY_JOB_TYPE = "ingestion.canonical-replay.v1"
 CANONICAL_REPLAY_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay.v1"
 CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS = 86_400
 CANONICAL_REPLAY_JOB_MAX_ATTEMPTS = 10
+CANONICAL_REPLAY_ARTIFACTS_PER_RUN: Final[Literal[100]] = 100
+CANONICAL_REPLAY_FAST_BATCH_SIZE: Final[Literal[1000]] = 1000
 
 CanonicalReplaySourceKind = Literal[
     "excel_import_v2",
@@ -38,6 +40,21 @@ class CanonicalReplayArtifactRecord:
     ordinal: int
     artifact_id: UUID
     source_kind: CanonicalReplaySourceKind
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalReplayAllRequestRecord:
+    """一次全历史 Replay 请求冻结的输入清单摘要。"""
+
+    id: UUID
+    client_idempotency_key: str
+    selection_digest: str
+    artifact_count: int
+    run_count: int
+    artifacts_per_run: int
+    batch_size: int
+    created_by: str
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,11 +166,14 @@ def register_canonical_replay_job(
 
 
 __all__ = [
+    "CANONICAL_REPLAY_ARTIFACTS_PER_RUN",
+    "CANONICAL_REPLAY_FAST_BATCH_SIZE",
     "CANONICAL_REPLAY_JOB_MAX_ATTEMPTS",
     "CANONICAL_REPLAY_JOB_PAYLOAD_VERSION",
     "CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS",
     "CANONICAL_REPLAY_JOB_TYPE",
     "CanonicalReplayArtifactRecord",
+    "CanonicalReplayAllRequestRecord",
     "CanonicalReplayCounters",
     "CanonicalReplayJobExecutor",
     "CanonicalReplayJobHandler",

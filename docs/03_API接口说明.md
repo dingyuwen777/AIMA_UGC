@@ -394,16 +394,22 @@ POST /api/v1/historical-import-campaigns/{campaign_id}/retry-failed
 
 ```text
 POST /api/v1/canonical-replays
+POST /api/v1/canonical-replays/all
 GET  /api/v1/canonical-replays/{run_id}
 POST /api/v1/canonical-replays/{run_id}/cancel
 ```
 
-三个接口都要求后端确认管理员角色。创建请求提交客户端幂等键、1—100 个已知 Canonical
+四个接口都要求后端确认管理员角色。显式创建请求提交客户端幂等键、1—100 个已知 Canonical
 Artifact ID、可选 Brand ID 和有界批大小；空 Brand 集合表示冻结创建时全部 active Brand。
 服务只接受可证明属于当前 Excel Import v2、Data Import Pure Canonical Chunk v2 或 TikHub
 Discovery Search Attempt 的 linked Artifact，并在同一 PostgreSQL 事务创建 Replay Run 与
 `ingestion.canonical-replay.v1` Job。API 返回 202，Worker 才执行全输入预检、当前
 Brand/Vehicle Resolver/Filter、持久去重与 Content Owner 收敛。
+
+全量创建请求只提交客户端幂等键。后端自动选择全部合法历史 Canonical，冻结当前全部 active
+Brand/Vehicle 目录，按每 100 个 Artifact 建立一个 Replay Run，并固定使用 1000 行写入批次；
+响应返回选中 Artifact 数和创建的子 Run 数。全量请求的选择摘要和子 Run 归属持久化保存，同一
+幂等键下输入集合或创建者漂移返回 409，空选择返回零任务。
 
 查询响应包含冻结目录版本、Artifact 顺序、checkpoint、Job 状态与
 `rows_seen / rows_matched / rows_filtered_out / duplicates_removed / rows_ingested /

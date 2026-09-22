@@ -576,6 +576,29 @@ export interface BrandVehicleCatalogSnapshotResponse {
 }
 
 /**
+ * 用一个幂等键冻结并排队全部可重筛 Canonical。
+ */
+export interface CanonicalReplayAllCreateRequest {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  idempotency_key: string;
+}
+
+/**
+ * 全历史 Replay 已冻结并排队后的有界摘要。
+ */
+export interface CanonicalReplayAllCreatedResponse {
+  /** @minimum 0 */
+  artifact_count: number;
+  artifacts_per_run?: 100;
+  batch_size?: 1000;
+  /** @minimum 0 */
+  run_count: number;
+}
+
+/**
  * 创建 Replay 时显式冻结的输入选择。
  */
 export interface CanonicalReplayCreateRequest {
@@ -4091,6 +4114,37 @@ export const createCanonicalReplay = async (canonicalReplayCreateRequest: Canoni
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: CanonicalReplayCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateAllCanonicalReplaysUrl = () => {
+
+
+
+
+  return `/api/v1/canonical-replays/all`
+}
+
+/**
+ * @summary Create All Canonical Replays
+ */
+export const createAllCanonicalReplays = async (canonicalReplayAllCreateRequest: CanonicalReplayAllCreateRequest, options?: RequestInit): Promise<CanonicalReplayAllCreatedResponse> => {
+
+  const res = await fetch(getCreateAllCanonicalReplaysUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(canonicalReplayAllCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayAllCreatedResponse = body ? JSON.parse(body) : {}
   return data
 }
 

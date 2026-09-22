@@ -6,6 +6,8 @@ from uuid import UUID
 import pytest
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.contracts.http import (
+    CanonicalReplayAllCreatedResponse,
+    CanonicalReplayAllCreateRequest,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayRunResponse,
@@ -65,6 +67,7 @@ def _run_response(*, status: str = "running") -> CanonicalReplayRunResponse:
 class _ReplayService:
     def __init__(self) -> None:
         self.created: tuple[CanonicalReplayCreateRequest, str, str] | None = None
+        self.all_created: tuple[CanonicalReplayAllCreateRequest, str, str] | None = None
         self.cancelled: tuple[UUID, str, str] | None = None
         self.error: Exception | None = None
 
@@ -79,6 +82,23 @@ class _ReplayService:
             raise self.error
         self.created = (body, actor_ref, request_id)
         return CanonicalReplayCreatedResponse(run_id=_RUN_ID, job_id=_JOB_ID, status="queued")
+
+    def create_all_replays(
+        self,
+        body: CanonicalReplayAllCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllCreatedResponse:
+        if self.error is not None:
+            raise self.error
+        self.all_created = (body, actor_ref, request_id)
+        return CanonicalReplayAllCreatedResponse(
+            artifact_count=205,
+            run_count=3,
+            artifacts_per_run=100,
+            batch_size=1000,
+        )
 
     def get_replay(self, run_id: UUID) -> CanonicalReplayRunResponse:
         if self.error is not None:
@@ -150,6 +170,33 @@ def test_admin_can_create_query_and_cancel_replay() -> None:
     )
 
 
+def test_admin_can_queue_all_replayable_canonical_artifacts() -> None:
+    service = _ReplayService()
+    client = TestClient(
+        create_app(
+            canonical_replay_service=service,
+            identity_resolver=DevelopmentIdentityResolver(principal_id="replay-admin"),
+        )
+    )
+
+    response = client.post(
+        "/api/v1/canonical-replays/all",
+        json={"idempotency_key": " admin-catalog-all-1 "},
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "artifact_count": 205,
+        "run_count": 3,
+        "artifacts_per_run": 100,
+        "batch_size": 1000,
+    }
+    assert service.all_created is not None
+    assert service.all_created[0].idempotency_key == "admin-catalog-all-1"
+    assert service.all_created[1] == "replay-admin"
+    assert service.all_created[2] == response.headers["x-request-id"]
+
+
 def test_replay_routes_require_administrator_before_calling_service() -> None:
     service = _ReplayService()
     client = TestClient(
@@ -162,6 +209,10 @@ def test_replay_routes_require_administrator_before_calling_service() -> None:
 
     responses = (
         client.post("/api/v1/canonical-replays", json=_body()),
+        client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": "admin-catalog-all-1"},
+        ),
         client.get(f"/api/v1/canonical-replays/{_RUN_ID}"),
         client.post(f"/api/v1/canonical-replays/{_RUN_ID}/cancel"),
     )
@@ -171,6 +222,7 @@ def test_replay_routes_require_administrator_before_calling_service() -> None:
         response.json()["errors"][0]["code"] == "administrator_required" for response in responses
     )
     assert service.created is None
+    assert service.all_created is None
     assert service.cancelled is None
 
 

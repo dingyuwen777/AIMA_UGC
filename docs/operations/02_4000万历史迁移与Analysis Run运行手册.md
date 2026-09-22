@@ -120,13 +120,19 @@ uploading（仅本地）
 ## 4. Persistent Canonical Replay
 
 Replay 用于 Brand、Vehicle、Alias 或确定性 Resolver 扩展后，重筛已经持久化的
-`canonical-content.v1`。当前只有管理员 API，没有单独页面：
+`canonical-content.v1`。“品牌与车型”页提供全量排队入口，管理员 API 继续提供显式选择、查询
+和取消：
 
 ```text
 POST /api/v1/canonical-replays
 → 选择 1—100 个 linked Canonical Artifact
 → brand_ids 为空时冻结 all_active；非空时冻结 selected
 → 创建 canonical_replay_runs + ingestion.canonical-replay.v1
+
+POST /api/v1/canonical-replays/all
+→ 自动选择全部合法 linked Canonical Artifact
+→ 100 个 Artifact 一组，batch_size 固定为 1000
+→ 一次创建全部 canonical_replay_runs + ingestion.canonical-replay.v1
 
 GET /api/v1/canonical-replays/{run_id}
 → 查看 Job 状态、checkpoint 和累计统计
@@ -150,6 +156,11 @@ POST /api/v1/canonical-replays/{run_id}/cancel
 `batch_size` 或创建主体发生漂移时失败关闭。当前只接受 Excel Import v2、Data Import Campaign
 Pure Canonical Chunk v2 与 TikHub Discovery Search Attempt 三类可证明 lineage。旧 Job、旧 outcome
 Chunk、Scope-only、缺失或含糊父级不能手工改表绕过，也不能通过重新发送 TikHub 请求“修复”。
+
+页面“重筛入库”使用新的随机幂等键调用全量入口。100 是单个 Replay Run 的 Canonical 文件数
+上限，不是内容行数限制；一个文件可以包含任意多行并流式读取。全部子 Job 会立即排队，多个
+Worker 可以并行领取；增加 Worker 数以前必须先确认 Artifact Store、临时盘和 PostgreSQL/WAL
+容量，不能把“已拆分”误认为单 Worker 内部会自动并行。
 
 每次首次执行和 Lease 接管都会在下一笔 Content 写入前重新预检全部输入的 metadata、文件、
 SHA-256、byte size、gzip、JSON、Canonical Contract 和来源链。任一输入失败时先核对 Artifact/父级
