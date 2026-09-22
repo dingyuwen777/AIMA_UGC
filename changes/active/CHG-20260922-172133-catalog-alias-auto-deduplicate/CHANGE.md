@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-172133-catalog-alias-auto-deduplicate
 title: 品牌车型重复别名自动去重保存
 level: L2
-status: active
+status: ready_for_review
 owner: codex
 branch: fix/catalog-alias-auto-deduplicate
 created: 2026-09-22
@@ -52,11 +52,11 @@ Issue #564 固化了用户当前决定与六条验收标准。当前前端只按
 
 ## 成功标准
 
-- [ ] 品牌新增/编辑与车型新增/编辑不再因规范化重复别名失败。
-- [ ] 前端提交体只包含去重后的别名，重复被移除时显示明确成功提示。
-- [ ] 后端 Brand/Vehicle Contract 返回稳定、去重且保留首项的 tuple。
-- [ ] 空别名继续拒绝，最多 100 个规范化唯一别名的边界继续生效。
-- [ ] Contract、Browser、静态检查、构建和项目门禁通过。
+- [x] 品牌新增/编辑与车型新增/编辑不再因规范化重复别名失败。
+- [x] 前端提交体只包含去重后的别名，重复被移除时显示明确成功提示。
+- [x] 后端 Brand/Vehicle Contract 返回稳定、去重且保留首项的 tuple。
+- [x] 空别名继续拒绝，最多 100 个规范化唯一别名的边界继续生效。
+- [x] Contract、Browser、静态检查、构建和本地项目门禁通过；current-head CI 继续作为合并硬门禁。
 
 ## 非目标
 
@@ -81,12 +81,14 @@ Issue #564 固化了用户当前决定与六条验收标准。当前前端只按
 
 # 需求追溯
 
-| 编号 | 要求 | 来源 | 状态 | 计划证据 |
+| 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 发现规范化重复时自动删除重复项并继续保存 | #564 / AC1、AC2、AC4 | not_satisfied | Contract 与 Browser 回归 |
-| R2 | 保存成功后明确告知已去重 | #564 / AC3 | not_satisfied | Browser 可见提示断言 |
-| R3 | 保留空值、上限和跨对象同名等相邻语义 | #564 / AC5 | not_satisfied | Contract/相关回归 |
-| R4 | 完成分层验证、文档和交付门禁 | #564 / AC6 | not_satisfied | 本地验证、Review、PR CI |
+| R1 | 规范化重复的品牌别名自动去重并保存成功 | #564 / AC1 | satisfied | 品牌新增/编辑 Browser 回归与 Brand Create Contract |
+| R2 | 规范化重复的车型别名自动去重并保存成功 | #564 / AC2 | satisfied | 车型新增/编辑 Browser 回归与 Vehicle Create/Update Contract |
+| R3 | 保存成功后明确告知已去重 | #564 / AC3 | satisfied | Browser 精确断言“检测到重复识别词，已自动去重并保存。” |
+| R4 | 直接 API 请求保留首项并返回去重结果 | #564 / AC4 | satisfied | Brand/Vehicle Create 与 Vehicle Update Pydantic Contract 回归 |
+| R5 | 保留空值、唯一数量上限、跨对象同名与既有保存行为 | #564 / AC5 | satisfied | Contract 覆盖空项拒绝、101 个原始重复可收敛、101 个唯一项拒绝；Schema/Repository 不变 |
+| R6 | 完成分层验证、文档和交付门禁 | #564 / AC6 | explicitly_deferred | 本地分层验证、targeted 文档与 Review 已完成；current-head CI、merge、main-fresh 和归档只能在 Ready 后完成 |
 
 # 计划改动
 
@@ -122,10 +124,10 @@ Issue #564 固化了用户当前决定与六条验收标准。当前前端只按
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 #564、用户决定、Contract、页面与产品文档。
-- [ ] change_coverage：R1—R4 均映射到实现、测试、文档与交付证据。
-- [ ] reverse_audit：从前端四条保存路径反查 Contract 与 Repository，确认无旁路和无自动重筛。
-- [ ] unresolved_cleared：`not_satisfied` 清零，未验证风险单独披露。
+- [x] upstream_re_read：Ready 前重新读取 #564、用户决定、Contract、页面与产品文档，验收语义无漂移。
+- [x] change_coverage：R1—R5 均映射到实现、Contract/Browser 测试和文档；R6 只延期 Ready 后才能发生的远程生命周期动作。
+- [x] reverse_audit：从品牌/车型四条保存路径反查 Contract、API 与 Repository；只在单对象输入数组内去重，未新增保存到 Canonical Replay 的调用。
+- [x] unresolved_cleared：`not_satisfied` 已清零；本机既有 Provider 输出污染和 Pytest 临时目录权限噪声明确隔离，干净 Linux CI 仍为合并硬门禁。
 
 # 完成证据与状态
 
@@ -135,11 +137,23 @@ Issue #564 固化了用户当前决定与六条验收标准。当前前端只按
 | --- | --- | --- | --- | --- |
 | V1 | Red / Windows 本地 Contract | `pytest tests/contracts/test_u1_u5_contracts.py -q -k catalog_contracts_normalize_and_deduplicate_aliases` | 1 failed：`BrandCreateRequest.aliases` 对规范化重复仍抛 `value_error` | 后端当前拒绝重复，未满足自动收敛要求 |
 | V2 | Red / Playwright Browser Mock | `npm run test:e2e -- admin-configuration-figma.spec.ts --grep "deduplicates normalized\|duplicate-only"` | 2 failed：页面找不到自动去重成功提示 | 前端当前既未按目标提示，也未支持重复清理交互 |
+| V3 | Green / Windows 本地 Contract | `pytest tests/contracts/test_u1_u5_contracts.py -q -k catalog_contracts_normalize_and_deduplicate_aliases` | 1 passed | Brand Create、Vehicle Create/Update 保留首项去重，空项与唯一数量上限仍受约束 |
+| V4 | Windows / Contract 与 API | Contract suite 排除一个本地历史 Provider 输出污染项；`pytest tests/api/test_brand_vehicle_stage2_contract.py -q`；生成/兼容检查 | 110 passed / 1 deselected；4 passed；生成与兼容通过 | 公共输入收敛、API Schema 和生成物没有意外漂移 |
+| V5 | Windows / Frontend | ESLint；typecheck；Vitest；Vite build | lint/typecheck 通过；32 files / 227 tests；生产构建通过 | 前端静态、组件与构建无回归 |
+| V6 | Windows / Playwright Browser Mock | `npm run test:e2e -- admin-configuration-figma.spec.ts` | 28 passed | 品牌新增/编辑、车型新增/编辑均自动去重并显示目标成功提示；既有手动重筛与弹窗行为仍通过 |
+| V7 | Windows / Backend 与文档门禁 | Ruff changed scope；Mypy `backend/src`；architecture/table ownership；docs/docs-facts；Secret scan | 全部通过 | Python 静态质量、模块边界、文档导航和 Secret 边界成立 |
+| V8 | base `5f90d856` → head `95c35875` 独立要求/实现/证据审查 | 用户决定、Issue、Change、四条保存入口、Pydantic Contract、测试与文档双向审计 | `NO_FINDINGS_WITHIN_SCOPE` | 未发现阻塞正确性、兼容、持久化或用户工作流的 Finding |
 
-Green、静态检查、构建、Review 和 CI 证据待实现后填写。
+## 未验证内容与剩余风险
+
+- 本地全量 Contract 的一个机器事实扫描被既有、未跟踪的历史 Provider 输出污染；未修改这些用户本地数据，干净 PR CI 负责完整 Linux 证据。
+- 本地全量 Unit/API 初次运行受系统 Pytest 临时目录拒绝访问影响；相关 Contract/API 使用隔离临时目录已通过，完整干净环境仍以 PR CI 为准。
+- 未执行生产部署、生产 Migration、生产数据修改或 Canonical Replay。
 
 ## 交付状态
 
 - Issue：#564。
 - 分支：`fix/catalog-alias-auto-deduplicate`。
-- PR、CI、合并、Change Archive 与 main-fresh：待后续完成。
+- PR：#565，当前为 Draft；实现提交 `95c35875` 已推送。
+- current-head required checks、合并、Issue Closure、Change Archive、main-fresh 与分支清理待后续完成。
+- Schema / Migration / 依赖 / 配置：均不变；发布与生产操作不在本次执行范围。
