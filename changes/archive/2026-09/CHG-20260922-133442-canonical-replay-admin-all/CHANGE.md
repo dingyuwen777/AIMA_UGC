@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-133442-canonical-replay-admin-all
 title: 管理员页面支持全量 Canonical 重筛入库
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: feat/canonical-replay-admin-all
 created: 2026-09-22
