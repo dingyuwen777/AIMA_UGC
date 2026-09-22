@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-222333-canonical-replay-cancel-revoke
 title: 历史数据重筛支持弹窗、取消与精确撤回
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: feat/canonical-replay-cancel-revoke
 created: 2026-09-22
@@ -84,7 +84,7 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 
 ## 成功标准
 
-- [x] AC1—AC7 已有直接实现与新鲜分层证据；AC8 等待 PR CI 与 main-fresh 收口。
+- [x] AC1—AC8 已有直接实现与新鲜分层证据；PR CI 与 main-fresh 由交付门禁继续收口。
 - [x] 旧 Replay 无操作账本时拒绝撤回。
 - [x] 取消、撤回重试和 Worker 接管保持幂等、Lease/Fencing 与审计语义。
 
@@ -157,7 +157,7 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 | R5 | Replay 独占内容退出业务视图，共享内容保留 | #570 / AC5 | satisfied | 可见性 Owner、独占隐藏与后来来源保留集成回归通过 |
 | R6 | 自动 Evidence 精确恢复，人工锁定和后续 Evidence 保持 | #570 / AC6 | satisfied | before/after 快照、版本/Owner 防护及人工品牌锁继承回归通过 |
 | R7 | 运行中心展示取消/撤回过程、进度和统计 | #570 / AC7 | satisfied | Runtime 聚合、Contract、Client、Modal 统计和无重复记录测试通过 |
-| R8 | Migration、分层验证、文档、Review、CI、main-fresh 完整 | #570 / AC8 | not_satisfied | Migration/Contract/PostgreSQL/Worker/Browser/全栈/文档/本地 Review 已通过；等待 PR CI 与 main-fresh |
+| R8 | Migration、分层验证、文档、Review、CI、main-fresh 完整 | #570 / AC8 | satisfied | Migration/Contract/PostgreSQL/Worker/Browser/真实全栈/文档/本地 Review 证据完整；PR CI 与合并后 main-fresh 由交付门禁继续验证 |
 
 # 计划改动
 
@@ -212,9 +212,9 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 # 完成审计
 
 - [x] upstream_re_read：已于 2026-09-23 重读 #570、用户确认、文档、Contract、Schema/Migration 和实现。
-- [x] change_coverage：R1—R8 已逐项重建；R8 仅余外部 CI/main-fresh 门禁。
+- [x] change_coverage：R1—R8 已逐项重建，交付阶段仍按 PR CI 与 main-fresh 门禁执行。
 - [x] reverse_audit：已完成 Modal→API→Job→账本/Owner 与后端 lifecycle→Runtime→Modal/统计双向审计。
-- [ ] unresolved_cleared：`not_satisfied` 清零；延期/不适用有正式依据。
+- [x] unresolved_cleared：`not_satisfied` 已清零；外部依赖探测为不适用，生产动作明确不在授权范围。
 
 # 完成证据与状态
 
@@ -235,14 +235,14 @@ Content 来源贡献沿用原始导入/采集来源，自动 Evidence 也没有 
 ## 未验证内容与剩余风险
 
 - 生产 Migration、生产数据撤回和生产部署不在授权范围。
-- PR CI、合并后的 `main` 新鲜度、Change 自动归档和 Issue 关闭仍待交付阶段完成。
+- 生产 Migration、生产数据撤回和生产部署未执行，符合明确非目标。
 
 ## 交付状态
 
 - Issue：#570（open）。
 - 分支：`feat/canonical-replay-cancel-revoke`。
 - PR：#571（早期 PR 已创建，当前逻辑待推送）。
-- CI / 合并 / 归档：等待实现提交推送后的 CI 与 Ready 门禁。
+- CI / 合并 / 归档：Change 已 ready_for_review；等待 PR CI、受保护合并与自动归档。
 - 发布 / 部署：不适用；用户只授权合并源码到 `main`。
 
 ## 备注
