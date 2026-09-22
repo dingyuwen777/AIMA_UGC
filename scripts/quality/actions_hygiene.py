@@ -18,6 +18,12 @@ from urllib.request import Request, urlopen
 API_ROOT = "https://api.github.com"
 WORKFLOW_PREFIX = ".github/workflows/"
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+TRANSIENT_HTTP_STATUS = {429, 500, 502, 503, 504}
+
+
+class TransientGitHubApiError(RuntimeError):
+    """表示可以等待下一次 main push 自动重试的 GitHub 临时错误。"""
+
 
 
 def _normalise_workflow_path(value: Any) -> str | None:
@@ -164,11 +170,17 @@ def _api_request(
         if method == "DELETE" and error.code == 404:
             return None
         detail = error.read().decode("utf-8", errors="replace")
+        if error.code in TRANSIENT_HTTP_STATUS:
+            raise TransientGitHubApiError(
+                f"GitHub API {method} {path} 临时失败：HTTP {error.code} {detail}"
+            ) from error
         raise RuntimeError(
             f"GitHub API {method} {path} 失败：HTTP {error.code} {detail}"
         ) from error
-    except URLError as error:
-        raise RuntimeError(f"GitHub API {method} {path} 网络失败：{error}") from error
+    except (URLError, TimeoutError) as error:
+        raise TransientGitHubApiError(
+            f"GitHub API {method} {path} 临时网络失败：{error}"
+        ) from error
 
     if not payload:
         return None
@@ -312,6 +324,9 @@ def main() -> int:
             _token(),
             execute=args.execute,
         )
+    except TransientGitHubApiError as error:
+        print(f"temporary-error: {error}", file=sys.stderr)
+        return 75
     except (OSError, RuntimeError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
