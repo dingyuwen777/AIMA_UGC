@@ -6,11 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
-from typing import Any, Iterable
+from collections.abc import Iterable
+from pathlib import Path, PurePosixPath
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
