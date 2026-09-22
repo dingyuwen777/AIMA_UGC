@@ -49,11 +49,12 @@ def current_workflow_paths(root: Path) -> set[str]:
 
 
 def path_existed_in_head_history(root: Path, workflow_path: str) -> bool:
-    """确认某 Workflow path 曾真实进入当前 HEAD 的祖先历史，而不是仅存在于 PR 分支。"""
+    """确认 Workflow 曾进入 HEAD 的 first-parent 主线，而不是只存在于被合并的支线提交。"""
     completed = subprocess.run(
         [
             "git",
             "log",
+            "--first-parent",
             "--format=%H",
             "--max-count=1",
             "HEAD",
@@ -72,7 +73,7 @@ def path_existed_in_head_history(root: Path, workflow_path: str) -> bool:
 
 
 def main_history_workflow_paths(root: Path, observed_paths: Iterable[str]) -> set[str]:
-    """从当前 HEAD 祖先历史中确认本轮观察到的 Workflow path 是否曾被默认分支持有。"""
+    """从 HEAD first-parent 主线确认本轮观察到的 Workflow path 是否曾被默认分支持有。"""
     return {
         path
         for path in sorted(set(observed_paths))
