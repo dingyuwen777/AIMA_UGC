@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260922-111009-vehicle-catalog-save
 title: 简化车型配置并优化目录保存性能
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: perf/vehicle-catalog-save
 created: 2026-09-22
@@ -84,11 +84,11 @@ Issue #558 固化了本轮用户决定和五条验收标准。用户已明确授
 
 ## 成功标准
 
-- [ ] 车型表单显示“车型名称”，不展示或提交类别，后端兼容字段保持不变。
-- [ ] 新增/编辑车型成功后用响应更新本地列表并立即结束保存，不触发品牌或车型全量重读。
-- [ ] 品牌、车型列表按当前页批量装配 alias 与 referenced，查询次数不随条目数线性增长。
-- [ ] 两个索引通过可回滚 Migration 和 Table metadata 建立，不回填、不改写业务数据。
-- [ ] 目标回归、PostgreSQL 集成、Contract 漂移、前端构建、文档与就绪门禁通过，PR CI 通过后合并 main。
+- [x] 车型表单显示“车型名称”，不展示或提交类别，后端兼容字段保持不变。
+- [x] 新增/编辑车型成功后用响应更新本地列表并立即结束保存，不触发品牌或车型全量重读。
+- [x] 品牌、车型列表按当前页批量装配 alias 与 referenced，查询次数不随条目数线性增长。
+- [x] 两个索引通过可回滚 Migration 和 Table metadata 建立，不回填、不改写业务数据。
+- [x] 目标回归、PostgreSQL 集成、Contract 漂移、前端构建、文档、独立审查与本地就绪门禁通过；PR required checks 继续作为合并硬门禁。
 
 ## 范围
 
@@ -148,11 +148,11 @@ Issue #558 固化了本轮用户决定和五条验收标准。用户已明确授
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 车型字段改名并移除类别输入，保持后端兼容 | #558 / AC1 | not_satisfied | 现有本地实现待纳入目标回归与 Review |
-| R2 | 保存成功后本地更新且不阻塞全量重读，失败保留反馈 | #558 / AC2 | not_satisfied | 待建立 Browser Red/Green |
-| R3 | 品牌/车型列表批量装配，查询次数有界 | #558 / AC3 | not_satisfied | 待建立 PostgreSQL 查询计数 Red/Green |
-| R4 | 增加可回滚索引且不改写业务数据 | #558 / AC4 | not_satisfied | 待实现 metadata/Migration 与 Schema 回归 |
-| R5 | 分层验证、文档、Review、CI 与合并完成 | #558 / AC5 | not_satisfied | 待执行本轮新鲜门禁 |
+| R1 | 车型字段改名并移除类别输入，保持后端兼容 | #558 / AC1 | satisfied | `CatalogConfigurationPanel.vue` 只提交车型名称、品牌、系列、别名与状态；Browser 32/32 通过；Contract 生成无差异，`category_name` 仍保留 |
+| R2 | 保存成功后本地更新且不阻塞全量重读，失败保留反馈 | #558 / AC2 | satisfied | `saveVehicle()` 使用服务端响应本地 upsert；Browser 同时断言成功无额外目录 GET、失败保留草稿和错误 |
+| R3 | 品牌/车型列表批量装配，查询次数有界 | #558 / AC3 | satisfied | Repository 批量读取当前页关联投影；真实 PostgreSQL 回归固定车型 6 条、品牌 4 条 SQL，1 条和 4 条页面一致，并校验别名与合并引用语义 |
+| R4 | 增加可回滚索引且不改写业务数据 | #558 / AC4 | satisfied | Migration `20260922_0057` 与 Table metadata 一致；独立 PostgreSQL 18 上索引数量经 upgrade/downgrade/upgrade 为 `2/0/2`，无数据语句 |
+| R5 | 分层验证、文档、Review 与合并就绪 | #558 / AC5 | satisfied | 前端、API、数据库、Schema/Migration、Contract、静态检查、构建、Wheel、文档和项目门禁取得当前工作树证据；独立 A1/A2 Review 无 Finding；PR required checks 在合并前强制执行 |
 
 # 计划改动
 
@@ -166,10 +166,10 @@ Issue #558 固化了本轮用户决定和五条验收标准。用户已明确授
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
 - [x] 行为变化建立失败证据或说明测试例外
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档或明确不适用依据
+- [x] 取得仍覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -212,10 +212,10 @@ Issue #558 固化了本轮用户决定和五条验收标准。用户已明确授
 
 # 完成审计
 
-- [ ] upstream_re_read：待在 Ready 前重新读取 #558、用户决定和受影响正式文档。
-- [ ] change_coverage：待从上游 AC 独立重建完成定义并核对本 Change。
-- [ ] reverse_audit：待执行前端动作到 API/DB、批量读取到响应、Migration 到查询消费者的双向审计。
-- [ ] unresolved_cleared：当前 R1–R5 仍待本轮实现与证据闭合。
+- [x] upstream_re_read：Ready 前重新读取 Issue #558 当前正文、用户决定、`docs/product/02_当前产品能力与用户流程.md`、`docs/blueprint/04_后端任务API与前端.md` 与当前 PR #559；五条 AC、非目标和兼容/回滚边界无漂移。
+- [x] change_coverage：从 Issue #558 独立重建 AC1–AC5，对照本 Change 的 R1–R5、实现、测试和文档；没有把 Change 自身当作上游需求全集。
+- [x] reverse_audit：从车型表单新增/编辑反查正式 API 响应与 PostgreSQL 持久化，从品牌/车型列表响应反查批量 Repository，从删除/合并引用查询反查 Table metadata 与 Migration 索引；公共 Contract、Owner 与失败语义保持不变。
+- [x] unresolved_cleared：R1–R5 均为 `satisfied`；无延期或不适用的业务要求。真实生产数据规模下的 P50/P95 仍作为部署后观测边界，不被虚构为本轮已验证结论。
 
 # 完成证据与状态
 
@@ -224,6 +224,12 @@ Issue #558 固化了本轮用户决定和五条验收标准。用户已明确授
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | Red / Windows / Node 24.19 / Python 3.14 / 一次性 PostgreSQL 18 | `npm --prefix frontend run test:e2e -- admin-configuration-figma.spec.ts --grep "updates Brand aliases and creates a Vehicle"`；`.venv\\Scripts\\python.exe -m pytest tests/integration/database/test_u1_u5_administration.py -q -p no:cacheprovider -k "catalog_list_query_count"`；`.venv\\Scripts\\python.exe -m pytest tests/unit/database/test_u1_u5_schema.py -q -p no:cacheprovider` | Browser 1 failed：保存后响应车型未出现在列表；Integration 1 failed：4 个车型 15 条 SQL、1 个车型 6 条；Schema 1 failed、3 passed：两个索引未注册 | 旧实现确实存在保存后全量重读、列表 N+1 和索引缺口；数据库测试使用无持久卷独立容器，未接触本地开发数据 |
+| V2 | Green / Windows / Node 24.19 | `npm --prefix frontend run lint`；`npm --prefix frontend run test -- --run`；`npm --prefix frontend run build`；受影响的三个 Playwright spec | lint 通过；Vitest 32 files / 227 tests 通过；typecheck + Vite production build 通过；Playwright 32/32 通过 | 前端类型、组件回归、正式构建，以及管理员车型成功/失败、字段和无额外目录 GET 的用户可见行为正确 |
+| V3 | Green / Windows / Python 3.14 / 独立无卷 PostgreSQL 18.4 | `pytest tests/integration/database -q`；Alembic `upgrade head`、`downgrade 20260921_0056`、`upgrade head`、`current`、`check`；`pg_indexes` 核验 | Database 83/83 通过；head 为 `20260922_0057`；无待生成操作；目标索引数量 `2 → 0 → 2` | 真实 PostgreSQL 列表语义、固定查询数量、Schema 与 Migration 正反向路径成立，且不接触开发库 |
+| V4 | Green / Windows / Python 3.14 | Ruff format/check（仓库 CI 正式范围并额外包含新迁移）、Mypy、`pytest tests/api -q` | Ruff 758 files clean；Mypy 364 source files clean；API 75/75 通过 | Python 静态质量、类型和 API 行为无回归 |
+| V5 | 受限环境说明 / Windows | `pytest tests/unit -q`；`pytest tests/contracts -q` | Unit 1209 passed / 8 skipped / 9 failed；Contract 110 passed / 1 failed | 9 个 Unit failure 是现有 Linux/POSIX 或 Windows 文档扫描差异；1 个 Contract failure 只命中 Git 忽略的本机 Provider 原始输出。相关目标测试已通过，干净 Linux CI 仍为合并硬门禁，不把这些环境失败写成产品成功 |
+| V6 | Green / Windows | Contract generator + Orval + generated diff + compatibility；architecture/table ownership/docs/docs facts；`uv build --wheel` + 独立 venv `--no-deps` install/import | 生成物无差异，兼容检查通过；四类项目门禁通过；Wheel 构建、安装、导入 `0.1.0` 成功 | 公共 Contract 未变，架构/Owner/文档一致，构建产物可用 |
+| V7 | Review / base `0d587ac305936e8ada8cf7c41b03e840ceb285b7` → 当前工作树 | 独立重建 Issue #558 AC1–AC5；检查前端成功/失败状态、响应排序与归属、后端批量语义、历史引用、迁移回滚、兼容边界和测试真实性 | `NO_FINDINGS_WITHIN_SCOPE`；PR #559 当前 early revision 的失败门禁来自 Change 尚未 Ready，待本次提交触发 current-head checks | A1 上游要求无漏项；A2 实现均有匹配证据；最终可合并性仍由 current-head required checks 决定 |
 
 ## 未验证内容与剩余风险
 
@@ -231,9 +237,9 @@ Issue #558 固化了本轮用户决定和五条验收标准。用户已明确授
 
 ## 交付状态
 
-- 提交：待创建。
-- 拉取请求：待创建。
-- CI：待执行。
+- 提交：早期治理/Red 提交 `3faae03c`；实现与 Ready 证据提交待创建。
+- 拉取请求：#559，已建立 `Requirement-Source: #558`，当前等待实现提交更新。
+- CI：早期 revision 因 Change `in_progress` 按预期未通过 Completion/CI Gate；实现 revision 推送后重新执行全部 required checks。
 - 合并：待执行。
 - Change 归档：合并后由仓库自动化处理。
 - 发布 / 部署：不在本次授权范围。

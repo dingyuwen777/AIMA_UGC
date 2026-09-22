@@ -243,6 +243,41 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
   expect(catalogListGets).toEqual(listGetsBeforeVehicleCreate)
 })
 
+test('keeps the vehicle draft and catalog stable when save fails', async ({ page }) => {
+  await mockAdmin(page)
+  let catalogGets = 0
+  page.on('request', (request) => {
+    const pathname = new URL(request.url()).pathname
+    if (request.method() === 'GET' && [
+      '/api/v1/vehicle-brands',
+      '/api/v1/vehicle-models',
+    ].includes(pathname)) catalogGets += 1
+  })
+  await page.route('**/api/v1/vehicle-models', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    await json(route, {
+      status: 409,
+      title: '车型冲突',
+      detail: '该车型名称暂不能保存',
+      request_id: 'vehicle-save-conflict',
+    }, 409)
+  })
+
+  await page.goto('/admin/configuration')
+  await expect(page.getByRole('button', { name: '新增车型', exact: true })).toBeEnabled()
+  const initialCatalogGets = catalogGets
+  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+  const vehicleDialog = page.getByRole('dialog', { name: '新增车型' })
+  await vehicleDialog.getByLabel('车型名称', { exact: true }).fill('保存失败后保留的车型')
+  await vehicleDialog.getByRole('button', { name: '保存', exact: true }).click()
+
+  await expect(page.getByRole('alert')).toContainText('该车型名称暂不能保存')
+  await expect(vehicleDialog).toBeVisible()
+  await expect(vehicleDialog.getByLabel('车型名称', { exact: true }))
+    .toHaveValue('保存失败后保留的车型')
+  expect(catalogGets).toBe(initialCatalogGets)
+})
+
 test('keeps the nested vehicle and audit tables reachable at supported desktop widths', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')

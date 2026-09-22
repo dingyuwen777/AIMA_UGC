@@ -303,6 +303,14 @@ function editVehicleDraft(item: VehicleModelResponse): void {
   mergeTargetId.value = ''
 }
 
+/** 用服务端规范化响应替换或追加车型，避免成功保存后阻塞全目录重读。 */
+function upsertVehicle(item: VehicleModelResponse): void {
+  const remaining = vehicles.value.filter((vehicle) => vehicle.id !== item.id)
+  vehicles.value = [...remaining, item].sort((left, right) => (
+    left.display_name.localeCompare(right.display_name) || left.id.localeCompare(right.id)
+  ))
+}
+
 /** 打开新增车型弹窗。 */
 function openNewVehicleDialog(): void {
   resetVehicleDraft(selectedBrandId.value)
@@ -323,8 +331,9 @@ async function saveVehicle(): Promise<void> {
   error.value = null
   notice.value = null
   try {
+    let saved: VehicleModelResponse
     if (vehicleDraft.id) {
-      await editVehicle(vehicleDraft.id, {
+      saved = await editVehicle(vehicleDraft.id, {
         display_name: vehicleDraft.displayName.trim(),
         brand_id: vehicleDraft.brandId || null,
         series_name: vehicleDraft.seriesName.trim() || null,
@@ -332,16 +341,16 @@ async function saveVehicle(): Promise<void> {
         status: vehicleDraft.status,
       })
     } else {
-      await addVehicle({
+      saved = await addVehicle({
         display_name: vehicleDraft.displayName.trim(),
         brand_id: vehicleDraft.brandId,
         series_name: vehicleDraft.seriesName.trim() || null,
         aliases: splitLines(vehicleDraft.aliases),
       })
     }
+    upsertVehicle(saved)
     vehicleEditorOpen.value = false
     notice.value = editing ? '车型已更新并记录操作。' : '车型已创建并记录操作。'
-    await load()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {

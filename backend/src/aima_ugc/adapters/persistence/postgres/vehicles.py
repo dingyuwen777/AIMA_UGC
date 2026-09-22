@@ -203,6 +203,35 @@ class PostgresVehicleCatalogRepository:
             for row in rows
         )
 
+    def list_aliases_by_model_ids(
+        self,
+        model_ids: tuple[UUID, ...],
+    ) -> dict[UUID, tuple[VehicleAlias, ...]]:
+        """一次读取当前目录页的全部车型别名，并按车型稳定 ID 分组。"""
+
+        if not model_ids:
+            return {}
+        rows = self._session.execute(
+            select(vehicle_model_aliases_table)
+            .where(vehicle_model_aliases_table.c.vehicle_model_id.in_(model_ids))
+            .order_by(
+                vehicle_model_aliases_table.c.vehicle_model_id,
+                vehicle_model_aliases_table.c.normalized_text,
+            )
+        ).mappings()
+        grouped: defaultdict[UUID, list[VehicleAlias]] = defaultdict(list)
+        for row in rows:
+            model_id = cast(UUID, row["vehicle_model_id"])
+            grouped[model_id].append(
+                VehicleAlias(
+                    id=cast(UUID, row["id"]),
+                    vehicle_model_id=model_id,
+                    text=cast(str, row["text"]),
+                    normalized_text=cast(str, row["normalized_text"]),
+                )
+            )
+        return {model_id: tuple(aliases) for model_id, aliases in grouped.items()}
+
     def update_model(
         self,
         model_id: UUID,
@@ -333,6 +362,27 @@ class PostgresVehicleCatalogRepository:
             ),
         )
         return any(self._session.scalar(statement.limit(1)) is not None for statement in checks)
+
+    def referenced_model_ids(self, model_ids: tuple[UUID, ...]) -> frozenset[UUID]:
+        """批量返回被历史内容证据或合并源引用的当前页车型 ID。"""
+
+        if not model_ids:
+            return frozenset()
+        evidence_ids = self._session.scalars(
+            select(content_vehicle_evidence_table.c.vehicle_model_id)
+            .where(content_vehicle_evidence_table.c.vehicle_model_id.in_(model_ids))
+            .distinct()
+        )
+        merged_target_ids = self._session.scalars(
+            select(vehicle_models_table.c.merged_into_id)
+            .where(vehicle_models_table.c.merged_into_id.in_(model_ids))
+            .distinct()
+        )
+        return frozenset(
+            cast(UUID, model_id)
+            for model_id in (*tuple(evidence_ids), *tuple(merged_target_ids))
+            if model_id is not None
+        )
 
     def resolve_alias_candidates(self, text: str) -> dict[str, tuple[UUID, ...]]:
         """返回命中的规范化别名及候选车型；多个候选保持歧义。"""

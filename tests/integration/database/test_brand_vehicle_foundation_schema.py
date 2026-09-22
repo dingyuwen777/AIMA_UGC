@@ -71,6 +71,16 @@ def test_brand_vehicle_foundation_schema_matches_stage1_contract() -> None:
             "brand_id",
             "status",
         ]
+        assert model_indexes["ix_vehicle_models_merged_into_id"]["column_names"] == [
+            "merged_into_id"
+        ]
+
+        vehicle_evidence_indexes = {
+            item["name"]: item for item in inspector.get_indexes("content_vehicle_evidence")
+        }
+        assert vehicle_evidence_indexes["ix_content_vehicle_evidence_vehicle_model_id"][
+            "column_names"
+        ] == ["vehicle_model_id"]
 
         evidence_foreign_keys = _foreign_key_targets(inspector, "content_brand_evidence")
         assert evidence_foreign_keys[("content_id",)] == "contents"

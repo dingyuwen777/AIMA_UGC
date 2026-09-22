@@ -65,9 +65,10 @@ def test_catalog_list_query_count_does_not_grow_with_page_size(runtime) -> None:
     )
     brand_service = PostgresBrandVehicleHttpService(runtime)
     vehicle_service = PostgresAdministrationHttpService(runtime)
+    vehicle_ids = []
     for index in range(4):
         brand = _create_owned_brand(runtime, principal, code=f"QUERY-{index}")
-        vehicle_service.create_vehicle_model(
+        created = vehicle_service.create_vehicle_model(
             VehicleModelCreateRequest(
                 display_name=f"查询车型 {index}",
                 brand_id=brand.id,
@@ -76,6 +77,13 @@ def test_catalog_list_query_count_does_not_grow_with_page_size(runtime) -> None:
             principal=principal,
             request_id=f"query-vehicle-{index}",
         )
+        vehicle_ids.append(created.id)
+    vehicle_service.merge_vehicle_model(
+        vehicle_ids[3],
+        VehicleModelMergeRequest(target_vehicle_model_id=vehicle_ids[0]),
+        principal=principal,
+        request_id="query-vehicle-merge",
+    )
 
     statements: list[str] = []
 
@@ -112,8 +120,9 @@ def test_catalog_list_query_count_does_not_grow_with_page_size(runtime) -> None:
     finally:
         event.remove(runtime.database.engine, "before_cursor_execute", capture_statement)
 
-    assert vehicle_four_count == vehicle_one_count
-    assert brand_four_count == brand_one_count
+    assert vehicle_four_count == vehicle_one_count == 6
+    assert brand_four_count == brand_one_count == 4
+    assert next(item for item in vehicle_page.items if item.id == vehicle_ids[0]).referenced is True
     assert {alias.text for item in vehicle_page.items for alias in item.aliases} == {
         f"查询别名 {index}" for index in range(4)
     }
