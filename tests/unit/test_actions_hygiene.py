@@ -11,6 +11,9 @@ SCRIPT = ROOT / "scripts/quality/actions_hygiene.py"
 MODULE = runpy.run_path(str(SCRIPT))
 BUILD_PLAN = MODULE["build_cleanup_plan"]
 PATH_IN_HISTORY = MODULE["path_existed_in_head_history"]
+CLASSIFIER_PATH = ROOT / "scripts/quality/classify_ci_scope.py"
+CLASSIFIER = runpy.run_path(str(CLASSIFIER_PATH))
+CLASSIFY_PATHS = CLASSIFIER["classify_paths"]
 
 
 def test_current_workflow_is_always_protected() -> None:
@@ -85,6 +88,16 @@ def test_git_history_distinguishes_merged_deleted_from_pr_only_path() -> None:
 
         assert PATH_IN_HISTORY(root, ".github/workflows/old.yml") is True
         assert PATH_IN_HISTORY(root, ".github/workflows/pr-only.yml") is False
+
+
+def test_actions_hygiene_script_uses_repository_quality_profile() -> None:
+    """只修改 Hygiene 脚本和专属测试时应走 repository_quality，不启动产品全栈。"""
+    assert CLASSIFY_PATHS(
+        [
+            "scripts/quality/actions_hygiene.py",
+            "tests/unit/test_actions_hygiene.py",
+        ]
+    ) == "repository_quality"
 
 
 def test_ci_owns_hygiene_with_job_level_actions_write_only() -> None:
