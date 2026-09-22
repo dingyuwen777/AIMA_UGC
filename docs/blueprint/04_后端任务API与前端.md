@@ -448,6 +448,13 @@ Artifact 数、子 Run 数和创建者，使空选择也具有可验证的幂等
 这些路由都执行后端管理员角色检查并记录创建/取消审计。当前前端只提供全量创建入口；单 Run
 查询、取消和显式 Artifact 选择仍由正式 API 提供，不能写成页面已经提供逐 Run 管理能力。
 
+采集运行中心的统一只读模型同时把 `canonical_replay_all_requests` 投影为
+`canonical_replay` 记录；一次全量请求只出现一条，不把子 Run/Job 暴露成多条业务记录。状态由
+关联 Job 集合聚合，进度按每个子 Run 的 Artifact 数对 Job 进度加权，统计汇总 Artifact、子任务、
+读取、命中、过滤、去重、入库与已有内容收敛。空选择没有子 Job，但作为 100% 已完成请求展示。
+该投影只读现有 Replay/Job 表，不创建 Collection Run，也不改变 Replay Worker 状态机；列表、
+详情轮询和运行中心 KPI 使用同一聚合事实。
+
 代码：
 
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
@@ -509,7 +516,7 @@ frontend/src/features/task-center/
 
 - `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；“AI 相关性”可显式查看待复核 `irrelevant`，并支持单条/批量人工标记为相关；
 - `/voice-plaza`：Analysis Run 预检和显式创建仍由声音广场承担；正文只显示 `queued / running / cancelling` 活动 Run 的紧凑状态、加权进度和取消入口，终态 Run 不再作为历史大块持续占据声音记录上方；导出弹窗继续展示持久 Export Job 进度；
-- `/collection-runtime`：Data Import Campaign、兼容 Excel Import Batch 与辅助补采的统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；已完成 Campaign 可直接作为辅助补采来源，旧 Batch 仅作为兼容选项；
+- `/collection-runtime`：Data Import Campaign、兼容 Excel Import Batch、辅助补采与手动全历史 Canonical Replay 的统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；已完成 Campaign 可直接作为辅助补采来源，旧 Batch 仅作为兼容选项；一次全历史重筛按 all-request 展示一条记录和聚合详情；
 - 全局 `AppShell` 右上角提供任务中心 Drawer：通过现有 generated Client 聚合 Analysis Run、Collection Runtime 和 Data Export 三个既有 read model，显示活动任务数量、最近终态、进度/错误摘要和对应业务页入口；它没有独立路由，也不新增统一后端 Task API、Job 表或第二套状态机；
 - [`frontend/src/features/task-center/index.ts`](../../frontend/src/features/task-center/index.ts) 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
 - Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；

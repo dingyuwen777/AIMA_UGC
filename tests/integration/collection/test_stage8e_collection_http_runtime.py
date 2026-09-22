@@ -40,12 +40,6 @@ from aima_ugc.modules.content.extended_tables import (
     content_external_ids_table,
 )
 from aima_ugc.modules.content.tables import comments_table, content_versions_table, contents_table
-from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
-from aima_ugc.modules.ingestion.historical_tables import (
-    historical_import_campaign_items_table,
-    historical_import_campaigns_table,
-    processing_import_batch_items_table,
-)
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
     CANONICAL_REPLAY_JOB_TYPE,
@@ -53,6 +47,12 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
     canonical_replay_runs_table,
+)
+from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+    processing_import_batch_items_table,
 )
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_PAYLOAD_VERSION, IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
@@ -633,6 +633,43 @@ def test_unified_runtime_aggregates_all_canonical_replay_children_once(runtime) 
     assert summary.processing_count == 0
     assert summary.completed_today_count == 1
     assert summary.contents_ingested_today == 10
+
+
+def test_empty_canonical_replay_request_is_a_completed_runtime_record(runtime) -> None:  # type: ignore[no-untyped-def]
+    request_id = uuid4()
+    created_at = datetime.now(UTC)
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            insert(canonical_replay_all_requests_table).values(
+                id=request_id,
+                client_idempotency_key=f"runtime-empty-replay-{request_id}",
+                selection_digest="b" * 64,
+                artifact_count=0,
+                run_count=0,
+                artifacts_per_run=100,
+                batch_size=1000,
+                created_by="admin:test",
+                created_at=created_at,
+            )
+        )
+
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    listing = service.list_runtime_runs(
+        CollectionRuntimeListQuery(record_types=("canonical_replay",))
+    )
+
+    assert len(listing.items) == 1
+    item = listing.items[0]
+    assert item.record_id == request_id
+    assert item.status == "succeeded"
+    assert item.stage == "succeeded"
+    assert item.progress == 100
+    assert item.started_at is None
+    assert item.finished_at == created_at
+    assert item.canonical_replay_stats is not None
+    assert item.canonical_replay_stats.artifact_count == 0
+    assert item.canonical_replay_stats.run_count == 0
+    assert item.canonical_replay_stats.rows_seen == 0
 
 
 def _insert_import_content(

@@ -41,6 +41,7 @@ export const recordTypeLabels: Record<CollectionRuntimeRecordType, string> = {
   data_import_campaign: '数据导入',
   tikhub_discovery: '平台采集',
   tikhub_batch_supplement: '辅助补采',
+  canonical_replay: '历史重筛',
 }
 
 export const platformLabels: Record<CollectionPlatform, string> = PLATFORM_LABELS
@@ -61,6 +62,7 @@ const runtimeStageLabels: Record<string, string> = {
   ingesting: '保存内容',
   content_discovery: '平台采集中',
   content_enrichment: '补充内容信息',
+  replaying: '重筛并写入',
   succeeded: '已完成',
   failed: '处理失败',
   cancelled: '已取消',
@@ -74,6 +76,8 @@ const runtimeFailureMessages: Record<string, string> = {
   identity_ambiguous: '来源对应多个可能的评论目标，需先确认唯一原始内容后新建补采任务。',
   identity_conflict: '解析出的平台原生 ID 已归属于另一条内容；请核对导入来源，修正关联后新建补采任务。',
   identity_resolution_unknown: '身份解析结果暂时未知，后台将按任务重试策略处理。',
+  canonical_replay_artifact_invalid: '部分历史 Canonical 文件未通过完整性校验，请联系管理员检查问题记录。',
+  canonical_replay_input_invalid: '部分重筛输入已失效，请联系管理员检查历史数据来源。',
 }
 
 export function runtimeStageLabel(value: string): string {

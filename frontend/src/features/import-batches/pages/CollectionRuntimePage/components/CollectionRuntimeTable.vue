@@ -26,6 +26,7 @@ defineEmits<{
 
 /** 列表第二行只展示真实业务来源摘要，不把 Run/Job/Batch 等机器身份暴露到默认视图。 */
 function taskSubtitle(item: CollectionRuntimeItemResponse): string {
+  if (item.record_type === 'canonical_replay') return '全部历史 Canonical'
   if (item.record_type === 'excel_import') return '本地文件导入'
   if (item.record_type === 'data_import_campaign') return '统一数据导入'
   if (item.record_type === 'tikhub_discovery' && item.keywords?.length) {
@@ -105,7 +106,14 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
         {{ runtimeStageLabel(item.stage) }}
       </div>
       <div
-        v-if="item.import_stats"
+        v-if="item.canonical_replay_stats"
+        class="stats-cell"
+      >
+        <span>完成 {{ formatNumber(item.canonical_replay_stats.succeeded_run_count + item.canonical_replay_stats.failed_run_count + item.canonical_replay_stats.cancelled_run_count) }} / {{ formatNumber(item.canonical_replay_stats.run_count) }} 个子任务</span>
+        <span>入库 {{ formatNumber(item.canonical_replay_stats.rows_ingested) }} 条</span>
+      </div>
+      <div
+        v-else-if="item.import_stats"
         class="stats-cell"
       >
         <span>匹配 {{ formatNumber(item.import_stats.rows_matched) }} 条</span>

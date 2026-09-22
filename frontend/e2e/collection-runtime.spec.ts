@@ -233,6 +233,7 @@ test('shows canonical replay as one filterable runtime record with aggregate det
   await expect(drawer.getByText('420', { exact: true })).toBeVisible()
   await expect(drawer.getByText('2,150', { exact: true })).toBeVisible()
   await drawer.getByRole('button', { name: '任务信息', exact: true }).click()
+  await drawer.getByRole('group').filter({ has: page.locator('summary', { hasText: '技术详情' }) }).locator('summary').click()
   await expect(drawer.getByText(canonicalReplayRequestId, { exact: true })).toBeVisible()
   await expect(drawer.getByText('1 / 2', { exact: true })).toBeVisible()
 })

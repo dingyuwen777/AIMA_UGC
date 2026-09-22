@@ -115,12 +115,12 @@ Issue #566 固化了用户当前决定与七条验收标准。Canonical Replay �
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 一次重筛只产生一条运行记录 | #566 / AC1 | not_satisfied | 待实现与集成测试 |
-| R2 | 聚合状态与加权进度覆盖完整生命周期 | #566 / AC2 | not_satisfied | 待集成测试 |
-| R3 | 展示 Artifact、子任务与行级处理结果 | #566 / AC3 | not_satisfied | 待 Contract/Browser 测试 |
-| R4 | 纳入三项运行 KPI且按请求计数 | #566 / AC4 | not_satisfied | 待集成测试 |
-| R5 | 支持类型筛选和详情轮询同步 | #566 / AC5 | not_satisfied | 待 Cursor/Browser 测试 |
-| R6 | 管理员提示运行中心可查看且不自动重筛 | #566 / AC6 | not_satisfied | 待 Browser 回归 |
+| R1 | 一次重筛只产生一条运行记录 | #566 / AC1 | satisfied | all-request 聚合 SQL；PostgreSQL 集成测试；Browser 列表回归 |
+| R2 | 聚合状态与加权进度覆盖完整生命周期 | #566 / AC2 | satisfied | 状态优先级、Artifact 加权进度、空请求投影与集成测试 |
+| R3 | 展示 Artifact、子任务与行级处理结果 | #566 / AC3 | satisfied | 专用 Runtime Stats Contract、列表和详情抽屉 Browser 回归 |
+| R4 | 纳入三项运行 KPI且按请求计数 | #566 / AC4 | satisfied | all-request 摘要查询与集成断言 |
+| R5 | 支持类型筛选和详情轮询同步 | #566 / AC5 | satisfied | Cursor/Contract、Store 同步和 Browser 筛选回归 |
+| R6 | 管理员提示运行中心可查看且不自动重筛 | #566 / AC6 | satisfied | 管理员配置 Browser 全量回归；保存路径未新增 Replay 调用 |
 | R7 | 完成分层验证、文档和交付门禁 | #566 / AC7 | not_satisfied | 待验证与 CI |
 
 # 计划改动
@@ -181,15 +181,21 @@ Issue #566 固化了用户当前决定与七条验收标准。Canonical Replay �
 | V1 | Red / Windows 本地 Contract + Cursor | `pytest ... -k canonical_replay` | 2 failed：缺少 `CanonicalReplayRuntimeStatsResponse`；Cursor 拒绝 `canonical_replay` | 公共 Contract 与分页 Cursor 当前未纳入重筛 |
 | V2 | Red / Playwright Browser Mock | `npm run test:e2e -- collection-runtime.spec.ts admin-configuration-figma.spec.ts --grep "canonical replay as one\|queues every historical"` | 2 failed：缺少重筛列表/详情表现与目标成功提示 | 用户流程当前未满足 #566 |
 | V3 | Windows 本地 PostgreSQL 集成前置 | `pytest ... -k aggregates_all_canonical_replay_children_once` | setup error：本机缺少 `.runtime/secrets/postgres_password` | 本地无法形成数据库 Red/Green；干净 PR CI 必须执行该集成回归 |
+| V4 | Green / Windows Contract、Cursor、Replay API | 相关 Pytest + 生成/兼容检查 | 20 passed；Contract 生成和兼容通过 | 公共枚举、专用统计、Cursor 与既有 Replay API 兼容 |
+| V5 | Windows SQLAlchemy / PostgreSQL Dialect | 编译 `_canonical_replay_select` 与统一 UNION | 成功生成 9,701 / 20,565 字符 SQL | 新聚合查询可由 PostgreSQL Dialect 编译 |
+| V6 | Windows Backend 静态 | Ruff changed scope；Mypy `backend/src/aima_ugc` | 全部通过；364 source files 无类型问题 | 后端格式、类型和调用边界成立 |
+| V7 | Windows Frontend | ESLint；typecheck；Vitest；Vite build | 通过；32 files / 227 tests；生产构建成功 | 前端穷举、Store、组件和构建无回归 |
+| V8 | Windows Playwright Browser Mock | `collection-runtime.spec.ts admin-configuration-figma.spec.ts` | 45 passed | 重筛列表、筛选、详情、提示及既有导入/补采/目录流程成立 |
+| V9 | Windows 文档与仓库门禁 | docs/docs-facts、architecture、table ownership、Secret scan | 全部通过 | 文档事实、只读跨 Owner 聚合与 Secret 边界成立 |
 
 ## 未验证内容与剩余风险
 
 - 本地 PostgreSQL 集成环境缺少 Secret，数据库回归只能由有正式测试服务的 PR CI 运行。
-- 尚未执行实现、完整验证、Review、CI、合并、归档或 main-fresh。
+- 本地实现与非数据库分层验证已完成；独立 Review、PR PostgreSQL CI、合并、归档和 main-fresh 尚未完成。
 
 ## 交付状态
 
 - Issue：#566。
 - 分支：`feat/canonical-replay-runtime-records`。
-- PR：待首个 Red/Change 提交后创建。
-- Schema / Migration / 依赖 / 配置：预计均不变。
+- PR：#567（Draft），Red 基线 `21d7153e`；实现尚未推送。
+- Schema / Migration / 依赖 / 配置：均不变。
