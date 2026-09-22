@@ -300,6 +300,16 @@ jobs:
           uv run python scripts/contracts/generate.py --check
           uv run python scripts/contracts/check_compatibility.py
 
+      - name: Show Actions Hygiene Ruff import fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check --select I --fix \
+            scripts/quality/actions_hygiene.py \
+            tests/unit/test_actions_hygiene.py || true
+          git diff -- scripts/quality/actions_hygiene.py tests/unit/test_actions_hygiene.py
+          git checkout -- scripts/quality/actions_hygiene.py tests/unit/test_actions_hygiene.py
+
       - name: Python format, lint and type gates
         if: steps.classify.outputs.backend_required == 'true'
         shell: bash
