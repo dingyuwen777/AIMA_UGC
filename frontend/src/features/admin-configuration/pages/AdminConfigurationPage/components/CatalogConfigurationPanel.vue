@@ -260,7 +260,7 @@ async function confirmReplayAll(): Promise<void> {
     replayIdempotencyKey.value = ''
     notice.value = result.artifact_count === 0
       ? '当前没有符合条件的历史 Canonical 数据，无需创建重筛任务。'
-      : `已将 ${result.artifact_count} 个 Canonical 文件拆分为 ${result.run_count} 个重筛任务，Worker 将按可用并发处理。`
+      : `已将 ${result.artifact_count} 个 Canonical 文件拆分为 ${result.run_count} 个重筛任务，可在采集运行中心查看进度与结果。`
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {

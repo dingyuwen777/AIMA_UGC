@@ -324,6 +324,7 @@ type CollectionRuntimeRecordType = Literal[
     "data_import_campaign",
     "tikhub_discovery",
     "tikhub_batch_supplement",
+    "canonical_replay",
 ]
 type CollectionRuntimeStatus = Literal[
     "queued",
@@ -546,7 +547,7 @@ class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=4)
+    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=5)
     status: CollectionRuntimeStatus | None = None
     stage: str | None = Field(default=None, min_length=1, max_length=100)
     created_from: datetime | None = None
@@ -574,6 +575,26 @@ class CollectionRuntimeListQuery(BaseModel):
         return self
 
 
+class CanonicalReplayRuntimeStatsResponse(BaseModel):
+    """一次全历史 Replay 请求聚合后的用户可见统计。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_count: int = Field(ge=0)
+    run_count: int = Field(ge=0)
+    queued_run_count: int = Field(ge=0)
+    running_run_count: int = Field(ge=0)
+    succeeded_run_count: int = Field(ge=0)
+    failed_run_count: int = Field(ge=0)
+    cancelled_run_count: int = Field(ge=0)
+    rows_seen: int = Field(ge=0)
+    rows_matched: int = Field(ge=0)
+    rows_filtered_out: int = Field(ge=0)
+    duplicates_removed: int = Field(ge=0)
+    rows_ingested: int = Field(ge=0)
+    existing_convergence: int = Field(ge=0)
+
+
 class CollectionRuntimeItemResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -587,11 +608,13 @@ class CollectionRuntimeItemResponse(BaseModel):
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
     collection_run_id: UUID | None = None
+    canonical_replay_request_id: UUID | None = None
     source_filename: str | None = None
     platforms: tuple[CollectionPlatform, ...] = ()
     keywords: tuple[str, ...] = ()
     import_stats: ImportStatsResponse | None = None
     collection_stats: CollectionRunStatsResponse | None = None
+    canonical_replay_stats: CanonicalReplayRuntimeStatsResponse | None = None
     error_summary: str | None = None
     error_code: str | None = None
     created_at: datetime

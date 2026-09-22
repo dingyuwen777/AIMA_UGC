@@ -32,6 +32,7 @@ class CollectionRuntimeReadRecord:
     import_batch_id: UUID | None
     data_import_campaign_id: UUID | None
     collection_run_id: UUID | None
+    canonical_replay_request_id: UUID | None
     source_filename: str | None
     import_stats: dict[str, object] | None
     requested_count: int
@@ -41,6 +42,7 @@ class CollectionRuntimeReadRecord:
     comment_count: int
     filtered_count: int
     config_snapshot: dict[str, object] | None
+    canonical_replay_stats: dict[str, object] | None
     error_summary: str | None
     error_code: str | None
     created_at: datetime

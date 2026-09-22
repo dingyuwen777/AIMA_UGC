@@ -101,7 +101,7 @@ test('queues every historical Canonical Artifact from the catalog header', async
   await expect(dialog).toContainText('不会重新请求 TikHub，也不会自动触发 AI')
   await dialog.getByRole('button', { name: '确认重筛入库', exact: true }).click()
 
-  await expect(page.getByText('已将 205 个 Canonical 文件拆分为 3 个重筛任务，Worker 将按可用并发处理。', { exact: true })).toBeVisible()
+  await expect(page.getByText('已将 205 个 Canonical 文件拆分为 3 个重筛任务，可在采集运行中心查看进度与结果。', { exact: true })).toBeVisible()
   expect(submitted).toHaveLength(1)
   expect(submitted[0]!.idempotency_key).toMatch(/^admin-catalog-all-/)
 })

@@ -155,3 +155,29 @@ def test_stage8e_runtime_contract_includes_campaign_without_requiring_a_syntheti
     assert "data_import_campaign" in record_type["enum"]
     assert "data_import_campaign_id" in item["properties"]
     assert "job_id" not in item["required"]
+
+
+def test_runtime_contract_exposes_one_aggregate_canonical_replay_record() -> None:
+    schemas = create_app().openapi()["components"]["schemas"]
+    item = schemas["CollectionRuntimeItemResponse"]
+    record_type = schemas["CollectionRuntimeRecordType"]
+    replay_stats = schemas["CanonicalReplayRuntimeStatsResponse"]
+
+    assert "canonical_replay" in record_type["enum"]
+    assert "canonical_replay_request_id" in item["properties"]
+    assert "canonical_replay_stats" in item["properties"]
+    assert {
+        "artifact_count",
+        "run_count",
+        "queued_run_count",
+        "running_run_count",
+        "succeeded_run_count",
+        "failed_run_count",
+        "cancelled_run_count",
+        "rows_seen",
+        "rows_matched",
+        "rows_filtered_out",
+        "duplicates_removed",
+        "rows_ingested",
+        "existing_convergence",
+    } <= set(replay_stats["required"])

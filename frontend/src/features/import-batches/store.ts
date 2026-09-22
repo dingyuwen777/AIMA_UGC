@@ -127,6 +127,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const summary = ref<CollectionRuntimeSummaryResponse | null>(null)
   const selectedBatch = ref<ImportBatchResponse | null>(null)
   const selectedRun = ref<CollectionRunResponse | null>(null)
+  const selectedCanonicalReplay = ref<CollectionRuntimeItemResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
   const campaignOptions = ref<HistoricalCampaignResponse[]>([])
   const batchOptions = ref<ImportBatchResponse[]>([])
@@ -176,6 +177,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       selectedBatch.value?.status === 'running' ||
       selectedRun.value?.status === 'queued' ||
       selectedRun.value?.status === 'running' ||
+      selectedCanonicalReplay.value?.status === 'queued' ||
+      selectedCanonicalReplay.value?.status === 'running' ||
       historicalCampaigns.value.some((campaign) =>
         ['uploading', 'discovering', 'snapshotting', 'queued', 'running', 'cancelling'].includes(
           campaign.status,
@@ -256,6 +259,13 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       summary.value = kpis
       if (batchDetail !== null) selectedBatch.value = batchDetail
       if (runDetail !== null) selectedRun.value = runDetail
+      if (selectedCanonicalReplay.value) {
+        selectedCanonicalReplay.value = page.items.find(
+          (item) =>
+            item.record_type === 'canonical_replay' &&
+            item.record_id === selectedCanonicalReplay.value?.record_id,
+        ) ?? selectedCanonicalReplay.value
+      }
     } catch (reason) {
       if (version === refreshVersion) error.value = errorMessage(reason)
     } finally {
@@ -291,16 +301,18 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       filters.recordType !== 'excel_import' &&
       filters.recordType !== 'data_import_campaign'
     ) filters.recordType = ''
-    if (
-      tab === 'tikhub' &&
-      (filters.recordType === 'excel_import' || filters.recordType === 'data_import_campaign')
-    ) filters.recordType = ''
+    if (tab === 'tikhub' && ![
+      '',
+      'tikhub_discovery',
+      'tikhub_batch_supplement',
+    ].includes(filters.recordType)) filters.recordType = ''
     await refresh()
   }
 
   async function openBatchDetail(batchId: string): Promise<void> {
     error.value = null
     selectedRun.value = null
+    selectedCanonicalReplay.value = null
     try {
       selectedBatch.value = await fetchImportBatchDetail(batchId)
     } catch (reason) {
@@ -311,6 +323,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   async function openRunDetail(runId: string): Promise<void> {
     error.value = null
     selectedBatch.value = null
+    selectedCanonicalReplay.value = null
     try {
       selectedRun.value = await fetchCollectionRunDetail(runId)
     } catch (reason) {
@@ -318,9 +331,16 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
+  function openCanonicalReplayDetail(item: CollectionRuntimeItemResponse): void {
+    selectedBatch.value = null
+    selectedRun.value = null
+    selectedCanonicalReplay.value = item
+  }
+
   function closeDetail(): void {
     selectedBatch.value = null
     selectedRun.value = null
+    selectedCanonicalReplay.value = null
   }
 
   async function upload(
@@ -724,6 +744,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     summary,
     selectedBatch,
     selectedRun,
+    selectedCanonicalReplay,
     capabilities,
     campaignOptions,
     batchOptions,
@@ -764,6 +785,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     setTab,
     openBatchDetail,
     openRunDetail,
+    openCanonicalReplayDetail,
     closeDetail,
     upload,
     loadKeywordPacks,

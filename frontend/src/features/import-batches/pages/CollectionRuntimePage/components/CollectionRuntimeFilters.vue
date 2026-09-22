@@ -8,7 +8,7 @@ import AimaDateRange from '../../../../../shared/ui/AimaDateRange.vue'
 import type { CollectionRuntimeTab } from '../../../store'
 import { recordTypeLabels, runtimeStatusLabels } from '../../../format'
 
-defineProps<{ activeTab: CollectionRuntimeTab }>()
+const props = defineProps<{ activeTab: CollectionRuntimeTab }>()
 const search = defineModel<string>('search', { required: true })
 const status = defineModel<'' | CollectionRuntimeStatus>('status', { required: true })
 const recordType = defineModel<'' | CollectionRuntimeRecordType>('recordType', { required: true })
@@ -16,6 +16,14 @@ const createdFrom = defineModel<string>('createdFrom', { required: true })
 const createdTo = defineModel<string>('createdTo', { required: true })
 
 defineEmits<{ search: []; reset: [] }>()
+
+function recordTypeVisible(value: CollectionRuntimeRecordType): boolean {
+  if (props.activeTab === 'all') return true
+  if (props.activeTab === 'excel') {
+    return value === 'excel_import' || value === 'data_import_campaign'
+  }
+  return value === 'tikhub_discovery' || value === 'tikhub_batch_supplement'
+}
 </script>
 
 <template>
@@ -60,7 +68,7 @@ defineEmits<{ search: []; reset: [] }>()
         </option>
         <option
           v-for="(label, value) in recordTypeLabels"
-          v-show="activeTab === 'all' || (activeTab === 'excel' ? ['excel_import', 'data_import_campaign'].includes(value) : !['excel_import', 'data_import_campaign'].includes(value))"
+          v-show="recordTypeVisible(value)"
           :key="value"
           :value="value"
         >

@@ -769,6 +769,38 @@ export interface CanonicalReplayRunResponse {
   updated_at: string;
 }
 
+/**
+ * 一次全历史 Replay 请求聚合后的用户可见统计。
+ */
+export interface CanonicalReplayRuntimeStatsResponse {
+  /** @minimum 0 */
+  artifact_count: number;
+  /** @minimum 0 */
+  cancelled_run_count: number;
+  /** @minimum 0 */
+  duplicates_removed: number;
+  /** @minimum 0 */
+  existing_convergence: number;
+  /** @minimum 0 */
+  failed_run_count: number;
+  /** @minimum 0 */
+  queued_run_count: number;
+  /** @minimum 0 */
+  rows_filtered_out: number;
+  /** @minimum 0 */
+  rows_ingested: number;
+  /** @minimum 0 */
+  rows_matched: number;
+  /** @minimum 0 */
+  rows_seen: number;
+  /** @minimum 0 */
+  run_count: number;
+  /** @minimum 0 */
+  running_run_count: number;
+  /** @minimum 0 */
+  succeeded_run_count: number;
+}
+
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
 
 
@@ -1169,9 +1201,12 @@ export const CollectionRuntimeRecordType = {
   data_import_campaign: 'data_import_campaign',
   tikhub_discovery: 'tikhub_discovery',
   tikhub_batch_supplement: 'tikhub_batch_supplement',
+  canonical_replay: 'canonical_replay',
 } as const;
 
 export interface CollectionRuntimeItemResponse {
+  canonical_replay_request_id?: string | null;
+  canonical_replay_stats?: CanonicalReplayRuntimeStatsResponse | null;
   collection_run_id?: string | null;
   collection_stats?: CollectionRunStatsResponse | null;
   created_at: string;
@@ -3074,7 +3109,7 @@ limit?: number;
 export type ListCollectionRuntimeRunsParams = {
 search?: string | null;
 /**
- * @maxItems 4
+ * @maxItems 5
  */
 record_types?: CollectionRuntimeRecordType[];
 status?: CollectionRuntimeStatus | null;

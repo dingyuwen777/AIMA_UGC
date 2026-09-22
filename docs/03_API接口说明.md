@@ -225,7 +225,7 @@ HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Wor
 
 ## 4.4 `GET /api/v1/collection-runtime/runs`
 
-采集运行中心统一 Read Model，可投影 Data Import Campaign、兼容 Excel Import 与 TikHub Run。统一发生在 Query 层，不表示数据库把三类父事实合成万能表。Campaign 下的物理 Chunk Batch 不再作为兼容 Excel Import 重复投影或计入 KPI。
+采集运行中心统一 Read Model，可投影 Data Import Campaign、兼容 Excel Import、TikHub Run 与全历史 Canonical Replay Request。统一发生在 Query 层，不表示数据库把这些父事实合成万能表。Campaign 下的物理 Chunk Batch 不再作为兼容 Excel Import 重复投影或计入 KPI；同理，`canonical_replay_all_requests` 对应一条 `canonical_replay` 记录，关联的多个 Replay Run/Job 只提供聚合状态、按 Artifact 加权的进度和统计，不重复成为列表记录。
 
 ## 4.5 `GET /api/v1/collection-runtime/summary`
 
@@ -415,7 +415,10 @@ Brand/Vehicle 目录，按每 100 个 Artifact 建立一个 Replay Run，并固�
 `rows_seen / rows_matched / rows_filtered_out / duplicates_removed / rows_ingested /
 existing_convergence / invalid_artifact_rows` 统计。精确字段、状态和错误仍以生成 OpenAPI 为准，
 文档不复制完整 Schema。取消沿用统一 Job 协作取消语义。当前入口是正式管理员 API，尚无前端
-页面；它不会调用 Provider，也不会自动创建 AI 任务或因新规则变窄而删除既有 Content。
+逐 Run 页面；它不会调用 Provider，也不会自动创建 AI 任务或因新规则变窄而删除既有 Content。
+管理员页面提供全量创建入口；创建后可在采集运行中心按“历史重筛”类型查看一条请求级记录、
+聚合进度、子任务状态和处理统计。该运行中心投影复用现有 all-request、Run 和 Job 表，不新增
+写入接口或平行状态机。
 
 实现：
 

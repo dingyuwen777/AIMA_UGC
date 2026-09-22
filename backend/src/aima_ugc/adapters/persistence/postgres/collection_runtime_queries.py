@@ -20,6 +20,11 @@ from aima_ugc.modules.collection.runtime_query import (
     CollectionRuntimeSummary,
 )
 from aima_ugc.modules.collection.tables import collection_runs_table, collection_scopes_table
+from aima_ugc.modules.ingestion.canonical_replay import CANONICAL_REPLAY_JOB_TYPE
+from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_all_requests_table,
+    canonical_replay_runs_table,
+)
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
     historical_import_campaigns_table,
@@ -191,16 +196,43 @@ class PostgresCollectionRuntimeQueryRepository:
             .mappings()
             .one()
         )
+        replay = _canonical_replay_select().subquery("runtime_canonical_replay_summary")
+        replay_finished_today = and_(
+            replay.c.public_status.in_(("succeeded", "partial_success")),
+            replay.c.finished_at >= today_start_utc,
+            replay.c.finished_at < tomorrow_start_utc,
+        )
+        replay_summary = (
+            self._session.execute(
+                select(
+                    func.count()
+                    .filter(replay.c.public_status.in_(("queued", "running")))
+                    .label("processing"),
+                    func.count().filter(replay_finished_today).label("completed"),
+                    func.coalesce(
+                        func.sum(
+                            _safe_json_count(replay.c.canonical_replay_stats, "rows_ingested")
+                        ).filter(replay_finished_today),
+                        0,
+                    ).label("contents"),
+                ).select_from(replay)
+            )
+            .mappings()
+            .one()
+        )
         return CollectionRuntimeSummary(
             processing_count=cast(int, import_summary["processing"])
             + cast(int, campaign_summary["processing"])
-            + cast(int, collection_summary["processing"]),
+            + cast(int, collection_summary["processing"])
+            + cast(int, replay_summary["processing"]),
             completed_today_count=cast(int, import_summary["completed"])
             + cast(int, campaign_summary["completed"])
-            + cast(int, collection_summary["completed"]),
+            + cast(int, collection_summary["completed"])
+            + cast(int, replay_summary["completed"]),
             contents_ingested_today=cast(int, import_summary["contents"])
             + cast(int, campaign_summary["contents"])
-            + cast(int, collection_summary["contents"]),
+            + cast(int, collection_summary["contents"])
+            + cast(int, replay_summary["contents"]),
         )
 
     @staticmethod
@@ -231,6 +263,9 @@ class PostgresCollectionRuntimeQueryRepository:
                 batch.c.id.label("import_batch_id"),
                 literal(None).cast(campaign.c.id.type).label("data_import_campaign_id"),
                 literal(None).cast(run.c.id.type).label("collection_run_id"),
+                literal(None)
+                .cast(canonical_replay_all_requests_table.c.id.type)
+                .label("canonical_replay_request_id"),
                 batch.c.stats["source_filename"].astext.label("source_filename"),
                 batch.c.stats.label("import_stats"),
                 literal(0).label("requested_count"),
@@ -240,6 +275,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 literal(0).label("comment_count"),
                 literal(0).label("filtered_count"),
                 literal(None).cast(JSONB).label("config_snapshot"),
+                literal(None).cast(JSONB).label("canonical_replay_stats"),
                 batch.c.error_summary,
                 job.c.error_code,
                 batch.c.created_at,
@@ -326,6 +362,9 @@ class PostgresCollectionRuntimeQueryRepository:
             literal(None).cast(batch.c.id.type).label("import_batch_id"),
             campaign.c.id.label("data_import_campaign_id"),
             literal(None).cast(run.c.id.type).label("collection_run_id"),
+            literal(None)
+            .cast(canonical_replay_all_requests_table.c.id.type)
+            .label("canonical_replay_request_id"),
             campaign.c.root_relative_path.label("source_filename"),
             campaign_import_stats.label("import_stats"),
             literal(0).label("requested_count"),
@@ -335,6 +374,7 @@ class PostgresCollectionRuntimeQueryRepository:
             literal(0).label("comment_count"),
             literal(0).label("filtered_count"),
             literal(None).cast(JSONB).label("config_snapshot"),
+            literal(None).cast(JSONB).label("canonical_replay_stats"),
             campaign.c.error_summary,
             literal(None).cast(Text).label("error_code"),
             campaign.c.created_at,
@@ -387,6 +427,9 @@ class PostgresCollectionRuntimeQueryRepository:
                 run.c.import_batch_id,
                 run.c.data_import_campaign_id,
                 run.c.id.label("collection_run_id"),
+                literal(None)
+                .cast(canonical_replay_all_requests_table.c.id.type)
+                .label("canonical_replay_request_id"),
                 func.coalesce(
                     batch.c.stats["source_filename"].astext,
                     campaign.c.root_relative_path,
@@ -399,6 +442,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 run.c.comment_count,
                 func.coalesce(scope_filtered.c.filtered_count, 0).label("filtered_count"),
                 run.c.config_snapshot,
+                literal(None).cast(JSONB).label("canonical_replay_stats"),
                 run.c.error_summary,
                 job.c.error_code,
                 run.c.created_at,
@@ -421,7 +465,150 @@ class PostgresCollectionRuntimeQueryRepository:
             )
             .where(job.c.job_type == COLLECTION_RUN_JOB_TYPE)
         )
-        return union_all(import_select, campaign_select, collection_select)
+        return union_all(
+            import_select,
+            campaign_select,
+            collection_select,
+            _canonical_replay_select(),
+        )
+
+
+def _canonical_replay_select() -> Any:
+    """把一次全历史请求投影为一条记录，子 Job 只贡献真实进度与统计。"""
+
+    request = canonical_replay_all_requests_table
+    run = canonical_replay_runs_table
+    job = jobs_table
+    child = (
+        select(
+            run.c.all_request_id.label("request_id"),
+            func.count(run.c.id).label("observed_run_count"),
+            func.count(run.c.id).filter(job.c.status == "queued").label("queued_run_count"),
+            func.count(run.c.id).filter(job.c.status == "running").label("running_run_count"),
+            func.count(run.c.id).filter(job.c.status == "succeeded").label("succeeded_run_count"),
+            func.count(run.c.id).filter(job.c.status == "failed").label("failed_run_count"),
+            func.count(run.c.id).filter(job.c.status == "cancelled").label("cancelled_run_count"),
+            func.coalesce(func.sum(job.c.progress * run.c.artifact_count), 0).label(
+                "weighted_progress"
+            ),
+            func.coalesce(func.sum(run.c.rows_seen), 0).label("rows_seen"),
+            func.coalesce(func.sum(run.c.rows_matched), 0).label("rows_matched"),
+            func.coalesce(func.sum(run.c.rows_filtered_out), 0).label("rows_filtered_out"),
+            func.coalesce(func.sum(run.c.duplicates_removed), 0).label("duplicates_removed"),
+            func.coalesce(func.sum(run.c.rows_ingested), 0).label("rows_ingested"),
+            func.coalesce(func.sum(run.c.existing_convergence), 0).label("existing_convergence"),
+            func.min(job.c.started_at).label("started_at"),
+            func.max(job.c.finished_at).label("finished_at"),
+            func.min(job.c.error_code).filter(job.c.status == "failed").label("error_code"),
+        )
+        .select_from(run.join(job, run.c.job_id == job.c.id))
+        .where(
+            run.c.all_request_id.is_not(None),
+            job.c.job_type == CANONICAL_REPLAY_JOB_TYPE,
+        )
+        .group_by(run.c.all_request_id)
+        .subquery("runtime_canonical_replay_children")
+    )
+    queued_count = func.coalesce(child.c.queued_run_count, 0)
+    running_count = func.coalesce(child.c.running_run_count, 0)
+    succeeded_count = func.coalesce(child.c.succeeded_run_count, 0)
+    failed_count = func.coalesce(child.c.failed_run_count, 0)
+    cancelled_count = func.coalesce(child.c.cancelled_run_count, 0)
+    terminal_count = succeeded_count + failed_count + cancelled_count
+    public_status = case(
+        (request.c.run_count == 0, "succeeded"),
+        (running_count > 0, "running"),
+        (and_(queued_count > 0, terminal_count > 0), "running"),
+        (queued_count > 0, "queued"),
+        (succeeded_count == request.c.run_count, "succeeded"),
+        (failed_count == request.c.run_count, "failed"),
+        (cancelled_count == request.c.run_count, "cancelled"),
+        else_="partial_success",
+    )
+    progress = case(
+        (request.c.artifact_count == 0, 100),
+        else_=func.least(
+            100,
+            sql_cast(
+                func.floor(func.coalesce(child.c.weighted_progress, 0) / request.c.artifact_count),
+                Integer,
+            ),
+        ),
+    )
+    public_stage = case(
+        (public_status == "queued", "queued"),
+        (public_status == "running", "replaying"),
+        else_=public_status,
+    )
+    replay_stats = func.jsonb_build_object(
+        "artifact_count",
+        request.c.artifact_count,
+        "run_count",
+        request.c.run_count,
+        "queued_run_count",
+        queued_count,
+        "running_run_count",
+        running_count,
+        "succeeded_run_count",
+        succeeded_count,
+        "failed_run_count",
+        failed_count,
+        "cancelled_run_count",
+        cancelled_count,
+        "rows_seen",
+        func.coalesce(child.c.rows_seen, 0),
+        "rows_matched",
+        func.coalesce(child.c.rows_matched, 0),
+        "rows_filtered_out",
+        func.coalesce(child.c.rows_filtered_out, 0),
+        "duplicates_removed",
+        func.coalesce(child.c.duplicates_removed, 0),
+        "rows_ingested",
+        func.coalesce(child.c.rows_ingested, 0),
+        "existing_convergence",
+        func.coalesce(child.c.existing_convergence, 0),
+    )
+    return select(
+        request.c.id.label("record_id"),
+        literal(None).cast(job.c.id.type).label("job_id"),
+        literal("canonical_replay").label("record_type"),
+        public_status.label("public_status"),
+        progress.label("progress"),
+        public_stage.label("public_stage"),
+        literal(None).cast(processing_import_batches_table.c.id.type).label("import_batch_id"),
+        literal(None)
+        .cast(historical_import_campaigns_table.c.id.type)
+        .label("data_import_campaign_id"),
+        literal(None).cast(collection_runs_table.c.id.type).label("collection_run_id"),
+        request.c.id.label("canonical_replay_request_id"),
+        literal(None).cast(Text).label("source_filename"),
+        literal(None).cast(JSONB).label("import_stats"),
+        literal(0).label("requested_count"),
+        literal(0).label("succeeded_count"),
+        literal(0).label("failed_count"),
+        literal(0).label("content_count"),
+        literal(0).label("comment_count"),
+        literal(0).label("filtered_count"),
+        literal(None).cast(JSONB).label("config_snapshot"),
+        sql_cast(replay_stats, JSONB).label("canonical_replay_stats"),
+        literal(None).cast(Text).label("error_summary"),
+        child.c.error_code,
+        request.c.created_at,
+        child.c.started_at,
+        case(
+            (request.c.run_count == 0, request.c.created_at),
+            (terminal_count == request.c.run_count, child.c.finished_at),
+            else_=None,
+        ).label("finished_at"),
+        func.concat_ws(
+            " ",
+            "历史数据重筛",
+            "重筛入库",
+            "Canonical Replay",
+            request.c.client_idempotency_key,
+            sql_cast(request.c.id, Text),
+        ).label("search_text"),
+    ).select_from(request.outerjoin(child, child.c.request_id == request.c.id))
 
 
 def _safe_json_count(column: Any, key: str) -> Any:
@@ -526,6 +713,7 @@ def _row_to_record(row: RowMapping) -> CollectionRuntimeReadRecord:
         import_batch_id=cast(UUID | None, row["import_batch_id"]),
         data_import_campaign_id=cast(UUID | None, row["data_import_campaign_id"]),
         collection_run_id=cast(UUID | None, row["collection_run_id"]),
+        canonical_replay_request_id=cast(UUID | None, row["canonical_replay_request_id"]),
         source_filename=cast(str | None, row["source_filename"]),
         import_stats=cast(dict[str, object] | None, row["import_stats"]),
         requested_count=cast(int, row["requested_count"]),
@@ -535,6 +723,10 @@ def _row_to_record(row: RowMapping) -> CollectionRuntimeReadRecord:
         comment_count=cast(int, row["comment_count"]),
         filtered_count=cast(int, row["filtered_count"]),
         config_snapshot=cast(dict[str, object] | None, row["config_snapshot"]),
+        canonical_replay_stats=cast(
+            dict[str, object] | None,
+            row["canonical_replay_stats"],
+        ),
         error_summary=cast(str | None, row["error_summary"]),
         error_code=cast(str | None, row["error_code"]),
         created_at=cast(datetime, row["created_at"]),
