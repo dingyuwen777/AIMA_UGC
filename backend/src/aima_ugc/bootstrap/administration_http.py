@@ -45,7 +45,7 @@ from aima_ugc.modules.administration.http import (
 from aima_ugc.modules.analysis.schemes import AnalysisSchemeVersionRecord
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
-from aima_ugc.modules.vehicles.models import VehicleModel
+from aima_ugc.modules.vehicles.models import VehicleAlias, VehicleModel
 from aima_ugc.platform.security import SecretFileError, write_secret_ref
 from aima_ugc.platform.time import beijing_now
 
@@ -125,8 +125,19 @@ class PostgresAdministrationHttpService:
                     offset=query.offset,
                     limit=query.limit,
                 )
+                model_ids = tuple(model.id for model in models)
+                aliases_by_model = repository.list_aliases_by_model_ids(model_ids)
+                referenced_model_ids = repository.referenced_model_ids(model_ids)
                 return VehicleModelListResponse(
-                    items=tuple(_vehicle_response(repository, model) for model in models),
+                    items=tuple(
+                        _vehicle_response(
+                            repository,
+                            model,
+                            aliases=aliases_by_model.get(model.id, ()),
+                            referenced=model.id in referenced_model_ids,
+                        )
+                        for model in models
+                    ),
                     total=total,
                     catalog_version=repository.current_catalog_version(),
                     offset=query.offset,
@@ -596,8 +607,14 @@ class PostgresAdministrationHttpService:
 def _vehicle_response(
     repository: PostgresVehicleCatalogRepository,
     model: VehicleModel,
+    *,
+    aliases: tuple[VehicleAlias, ...] | None = None,
+    referenced: bool | None = None,
 ) -> VehicleModelResponse:
-    """组合车型、别名和引用摘要。"""
+    """组合车型、别名和引用摘要；目录页可传入批量预取结果。"""
+
+    resolved_aliases = repository.list_aliases(model.id) if aliases is None else aliases
+    resolved_referenced = repository.is_referenced(model.id) if referenced is None else referenced
 
     return VehicleModelResponse(
         id=model.id,
@@ -616,9 +633,9 @@ def _vehicle_response(
                 text=alias.text,
                 normalized_text=alias.normalized_text,
             )
-            for alias in repository.list_aliases(model.id)
+            for alias in resolved_aliases
         ),
-        referenced=repository.is_referenced(model.id),
+        referenced=resolved_referenced,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )

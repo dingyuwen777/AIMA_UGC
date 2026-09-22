@@ -47,7 +47,6 @@ const vehicleDraft = reactive({
   displayName: '',
   brandId: '',
   seriesName: '',
-  categoryName: '',
   aliases: '',
   status: 'active' as 'active' | 'deprecated',
 })
@@ -94,7 +93,6 @@ const vehicleDraftDirty = computed(() => {
     return Boolean(
       vehicleDraft.displayName.trim()
       || vehicleDraft.seriesName.trim()
-      || vehicleDraft.categoryName.trim()
       || vehicleDraft.aliases.trim()
       || vehicleDraft.status !== 'active'
       || vehicleDraft.brandId !== selectedBrandId.value
@@ -104,7 +102,6 @@ const vehicleDraftDirty = computed(() => {
   return vehicleDraft.displayName.trim() !== current.display_name
     || vehicleDraft.brandId !== (current.brand_id ?? '')
     || vehicleDraft.seriesName.trim() !== (current.series_name ?? '')
-    || vehicleDraft.categoryName.trim() !== (current.category_name ?? '')
     || vehicleDraft.status !== (current.status === 'deprecated' ? 'deprecated' : 'active')
     || JSON.stringify(splitLines(vehicleDraft.aliases)) !== JSON.stringify(
       (current.aliases ?? []).map((alias) => alias.text),
@@ -288,7 +285,7 @@ async function confirmDeleteBrand(): Promise<void> {
 /** 新车型默认继承当前品牌；内部编码由服务端创建时生成。 */
 function resetVehicleDraft(brandId = selectedBrandId.value): void {
   Object.assign(vehicleDraft, {
-    id: '', displayName: '', brandId, seriesName: '', categoryName: '', aliases: '', status: 'active',
+    id: '', displayName: '', brandId, seriesName: '', aliases: '', status: 'active',
   })
   mergeTargetId.value = ''
 }
@@ -300,11 +297,18 @@ function editVehicleDraft(item: VehicleModelResponse): void {
     displayName: item.display_name,
     brandId: item.brand_id ?? '',
     seriesName: item.series_name ?? '',
-    categoryName: item.category_name ?? '',
     aliases: (item.aliases ?? []).map((alias) => alias.text).join('\n'),
     status: item.status === 'deprecated' ? 'deprecated' : 'active',
   })
   mergeTargetId.value = ''
+}
+
+/** 用服务端规范化响应替换或追加车型，避免成功保存后阻塞全目录重读。 */
+function upsertVehicle(item: VehicleModelResponse): void {
+  const remaining = vehicles.value.filter((vehicle) => vehicle.id !== item.id)
+  vehicles.value = [...remaining, item].sort((left, right) => (
+    left.display_name.localeCompare(right.display_name) || left.id.localeCompare(right.id)
+  ))
 }
 
 /** 打开新增车型弹窗。 */
@@ -327,27 +331,26 @@ async function saveVehicle(): Promise<void> {
   error.value = null
   notice.value = null
   try {
+    let saved: VehicleModelResponse
     if (vehicleDraft.id) {
-      await editVehicle(vehicleDraft.id, {
+      saved = await editVehicle(vehicleDraft.id, {
         display_name: vehicleDraft.displayName.trim(),
         brand_id: vehicleDraft.brandId || null,
         series_name: vehicleDraft.seriesName.trim() || null,
-        category_name: vehicleDraft.categoryName.trim() || null,
         aliases: splitLines(vehicleDraft.aliases),
         status: vehicleDraft.status,
       })
     } else {
-      await addVehicle({
+      saved = await addVehicle({
         display_name: vehicleDraft.displayName.trim(),
         brand_id: vehicleDraft.brandId,
         series_name: vehicleDraft.seriesName.trim() || null,
-        category_name: vehicleDraft.categoryName.trim() || null,
         aliases: splitLines(vehicleDraft.aliases),
       })
     }
+    upsertVehicle(saved)
     vehicleEditorOpen.value = false
     notice.value = editing ? '车型已更新并记录操作。' : '车型已创建并记录操作。'
-    await load()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -670,7 +673,6 @@ async function mergeSelectedVehicle(): Promise<void> {
                 <td>{{ item.series_name || '—' }}</td>
                 <td>
                   <strong>{{ item.display_name }}</strong>
-                  <small v-if="item.category_name">{{ item.category_name }}</small>
                 </td>
                 <td>
                   <span
@@ -801,9 +803,10 @@ async function mergeSelectedVehicle(): Promise<void> {
       <section class="resource-dialog-form vehicle-dialog-form">
         <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
         <label>
-          显示名称
+          车型名称
           <input
             v-model="vehicleDraft.displayName"
+            maxlength="200"
             placeholder="例如 爱玛 Q7"
           >
         </label>
@@ -832,14 +835,6 @@ async function mergeSelectedVehicle(): Promise<void> {
             v-model="vehicleDraft.seriesName"
             maxlength="200"
             placeholder="用于车型筛选分组"
-          >
-        </label>
-        <label>
-          类别（可选）
-          <input
-            v-model="vehicleDraft.categoryName"
-            maxlength="200"
-            placeholder="用于车型信息展示"
           >
         </label>
         <label>

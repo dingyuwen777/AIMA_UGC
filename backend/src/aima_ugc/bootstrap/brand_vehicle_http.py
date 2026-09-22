@@ -37,7 +37,11 @@ from aima_ugc.modules.administration.http import (
 )
 from aima_ugc.modules.identity import DevelopmentIdentityResolver, IdentityResolver, Principal
 from aima_ugc.modules.system.models import AuditEvent
-from aima_ugc.modules.vehicles.brand_vehicle import BrandRecord, BrandVehicleCatalogSnapshot
+from aima_ugc.modules.vehicles.brand_vehicle import (
+    BrandAliasRecord,
+    BrandRecord,
+    BrandVehicleCatalogSnapshot,
+)
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime, create_platform_runtime
@@ -107,8 +111,18 @@ class PostgresBrandVehicleHttpService:
                     offset=offset,
                     limit=limit,
                 )
+                aliases_by_brand = repository.list_brand_aliases_by_brand_ids(
+                    tuple(brand.id for brand in brands)
+                )
                 return BrandListResponse(
-                    items=tuple(_brand_response(repository, brand) for brand in brands),
+                    items=tuple(
+                        _brand_response(
+                            repository,
+                            brand,
+                            aliases=aliases_by_brand.get(brand.id, ()),
+                        )
+                        for brand in brands
+                    ),
                     total=total,
                     catalog_version=repository.current_catalog_version(),
                     offset=offset,
@@ -531,7 +545,12 @@ def install_brand_vehicle_routes(
 def _brand_response(
     repository: PostgresBrandVehicleRepository,
     brand: BrandRecord,
+    *,
+    aliases: tuple[BrandAliasRecord, ...] | None = None,
 ) -> BrandResponse:
+    """组合品牌与别名；目录页可传入批量预取结果。"""
+
+    resolved_aliases = repository.list_brand_aliases(brand.id) if aliases is None else aliases
     return BrandResponse(
         id=brand.id,
         code=brand.code,
@@ -548,7 +567,7 @@ def _brand_response(
                 normalized_text=alias.normalized_text,
                 created_at=alias.created_at,
             )
-            for alias in repository.list_brand_aliases(brand.id)
+            for alias in resolved_aliases
         ),
         created_at=brand.created_at,
         updated_at=brand.updated_at,

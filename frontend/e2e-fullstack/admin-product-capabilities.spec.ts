@@ -133,10 +133,10 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
   await page.getByRole('button', { name: '新增车型', exact: true }).click()
   const vehicleForm = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
   await expect(vehicleForm.getByText('车型编码', { exact: true })).toHaveCount(0)
-  await vehicleForm.getByLabel('显示名称').fill(displayName)
+  await vehicleForm.getByLabel('车型名称').fill(displayName)
   await vehicleForm.getByLabel('品牌', { exact: true }).selectOption(brand.id)
   await vehicleForm.getByLabel('系列（可选）').fill('全栈系列')
-  await vehicleForm.getByLabel('类别（可选）').fill('电动两轮车')
+  await expect(vehicleForm.getByLabel('类别（可选）')).toHaveCount(0)
   await vehicleForm.getByLabel(/别名/).fill(alias)
   const vehicleCreatedPromise = page.waitForResponse((response) =>
     response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/vehicle-models')
@@ -150,13 +150,13 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
 
   const vehiclesResponse = await request.get('/api/v1/vehicle-models?limit=200')
   expect(vehiclesResponse.status()).toBe(200)
-  const vehicles = await vehiclesResponse.json() as { items: { id: string; code: string; brand_id: string | null; series_name: string; category_name: string }[] }
+  const vehicles = await vehiclesResponse.json() as { items: { id: string; code: string; brand_id: string | null; series_name: string; category_name: string | null }[] }
   const vehicle = vehicles.items.find((item) => item.id === createdVehicle.id)
   expect(vehicle, '浏览器创建的车型必须能从正式目录 API 重读').toBeTruthy()
   expect(vehicle?.code).toBe(createdVehicle.code)
   expect(vehicle?.brand_id).toBe(brand.id)
   expect(vehicle?.series_name).toBe('全栈系列')
-  expect(vehicle?.category_name).toBe('电动两轮车')
+  expect(vehicle?.category_name).toBeNull()
 
   await page.reload()
   await expect(page.getByRole('navigation', { name: '管理员配置分类' })).not.toContainText('词包关联')
@@ -203,7 +203,7 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
   await expect(contentRow).toContainText('仅自有品牌')
   await expect(contentRow.locator('.vehicle-cell')).toHaveAttribute(
     'title',
-    /全栈系列 · 电动两轮车/,
+    /全栈系列/,
   )
   const sortingResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/contents' && new URL(response.url()).searchParams.get('sort_by') === 'follower_count')
   await page.getByRole('button', { name: '按粉丝数排序' }).click()

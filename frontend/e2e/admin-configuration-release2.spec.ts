@@ -328,7 +328,7 @@ test('1440 provider and scheme layouts keep fixed readable lists plus flexible e
   await expectNoGlobalHorizontalScroll(page)
 })
 
-test('vehicle create and edit hide internal code while preserving real fields', async ({ page }) => {
+test('vehicle create and edit use the business vehicle name without exposing category', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockAdmin(page)
   await page.goto('/admin/configuration')
@@ -337,9 +337,11 @@ test('vehicle create and edit hide internal code while preserving real fields', 
   const createDialog = page.getByRole('dialog', { name: '新增车型' })
   await expect(createDialog).toBeVisible()
   await expect(createDialog.getByText('车型编码', { exact: true })).toHaveCount(0)
-  await expect(createDialog.getByPlaceholder('例如 爱玛 Q7')).toBeVisible()
+  await expect(createDialog.getByLabel('车型名称', { exact: true })).toBeVisible()
+  await expect(createDialog.getByText('显示名称', { exact: true })).toHaveCount(0)
   await expect(createDialog.getByPlaceholder('用于车型筛选分组')).toBeVisible()
-  await expect(createDialog.getByPlaceholder('用于车型信息展示')).toBeVisible()
+  await expect(createDialog.getByText('类别（可选）', { exact: true })).toHaveCount(0)
+  await expect(createDialog.getByPlaceholder('用于车型信息展示')).toHaveCount(0)
   await expect(createDialog.getByPlaceholder('Q7\n爱玛Q7')).toBeVisible()
   await expect(createDialog.getByText('内部编码由服务端自动生成', { exact: false })).toBeVisible()
   await createDialog.getByRole('button', { name: '取消', exact: true }).click()
@@ -350,6 +352,8 @@ test('vehicle create and edit hide internal code while preserving real fields', 
   const editDialog = page.getByRole('dialog', { name: '编辑车型' })
   await expect(editDialog).toBeVisible()
   await expect(editDialog.getByText('车型编码', { exact: true })).toHaveCount(0)
+  await expect(editDialog.getByLabel('车型名称', { exact: true })).toBeVisible()
+  await expect(editDialog.getByText('类别（可选）', { exact: true })).toHaveCount(0)
   await expect(editDialog.getByText('已启用', { exact: true })).toBeVisible()
   await expect(editDialog.getByText('合并重复车型', { exact: true })).toBeVisible()
 })

@@ -187,7 +187,7 @@ class PostgresBrandVehicleRepository:
         if role is not None:
             conditions.append(vehicle_brands_table.c.role == role)
         statement = select(vehicle_brands_table)
-        count_statement = select(vehicle_brands_table.c.id)
+        count_statement = select(func.count()).select_from(vehicle_brands_table)
         if conditions:
             statement = statement.where(*conditions)
             count_statement = count_statement.where(*conditions)
@@ -198,7 +198,7 @@ class PostgresBrandVehicleRepository:
         ).mappings()
         return (
             tuple(_brand_from_row(row) for row in rows),
-            len(tuple(self._session.scalars(count_statement))),
+            int(self._session.scalar(count_statement) or 0),
         )
 
     def list_brand_aliases(self, brand_id: UUID) -> tuple[BrandAliasRecord, ...]:
@@ -210,6 +210,29 @@ class PostgresBrandVehicleRepository:
             )
         ).mappings()
         return tuple(_brand_alias_from_row(row) for row in rows)
+
+    def list_brand_aliases_by_brand_ids(
+        self,
+        brand_ids: tuple[UUID, ...],
+    ) -> dict[UUID, tuple[BrandAliasRecord, ...]]:
+        """一次读取当前目录页的全部品牌别名，并按品牌稳定 ID 分组。"""
+
+        if not brand_ids:
+            return {}
+        rows = self._session.execute(
+            select(vehicle_brand_aliases_table)
+            .where(vehicle_brand_aliases_table.c.brand_id.in_(brand_ids))
+            .order_by(
+                vehicle_brand_aliases_table.c.brand_id,
+                vehicle_brand_aliases_table.c.normalized_text,
+                vehicle_brand_aliases_table.c.id,
+            )
+        ).mappings()
+        grouped: dict[UUID, list[BrandAliasRecord]] = {}
+        for row in rows:
+            brand_id = cast(UUID, row["brand_id"])
+            grouped.setdefault(brand_id, []).append(_brand_alias_from_row(row))
+        return {brand_id: tuple(aliases) for brand_id, aliases in grouped.items()}
 
     def update_brand(
         self,
