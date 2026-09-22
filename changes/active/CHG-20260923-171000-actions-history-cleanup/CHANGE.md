@@ -91,19 +91,19 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 | 删除判据 | workflow path 是否仍存在于当前 main | E1/E3/E4 | 不按 display name 猜测 |
 | 删除范围 | 仅 completed stale runs | E5 | 活动 stale run 直接阻塞 |
 | 权限 | 只在一次性 cleanup job 设置 job-level actions: write | 最小权限 | 其他 CI job 不获得写权限 |
-| 执行入口 | 复用 ci.yml main push | 不新增长期 Workflow | 不制造新的 Actions 左侧条目 |
+| 执行入口 | 复用 ci.yml Ready PR | 不新增长期 Workflow | 删除发生在已审查且 Ready 的同仓 PR |
 | 清理后状态 | 删除临时 job/权限 | 用户目标 | main 恢复长期最小结构 |
 
 # 修改方案与决策依据
 
 ## 最小充分方案
 
-1. PR 只增加一个 main-push + 提交标记触发的 cleanup job。
+1. Draft PR 先审查 cleanup job；PR 转 Ready 后，同一个 PR 的 Ready CI 才执行一次性 cleanup job。
 2. job checkout 当前 main，从 .github/workflows 下当前 yml/yaml 文件生成 allowlist。
 3. 先分页下载 Actions runs 到快照文件，再开始任何删除，避免分页在删除过程中漂移。
 4. path 在 allowlist 则保留；path 不在 allowlist 且 status=completed 则删除；path 不在 allowlist 且非 completed 则 fail closed。
 5. 删除后再次分页验证 stale path 数量为 0。
-6. 新 PR 删除 cleanup job，恢复最小权限。
+6. cleanup 成功后在同一分支删除 cleanup job，恢复最小权限，再跑 final clean-state CI。
 7. 最终 main-fresh + Actions 历史只读核验 + Change Archive + #572 Closure。
 
 ## 证据到决策
@@ -113,7 +113,7 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 | D1：按 path 动态 allowlist | E1/E4 | run-name 会变化，path 才代表 Workflow Owner |
 | D2：先快照后删除 | E5 | 避免分页列表被删除动作改变 |
 | D3：复用 CI | 用户目标 + E1 | 不新增新的长期/历史 Workflow 名 |
-| D4：两阶段添加/删除 | 最小权限 | 一次性 actions: write 不进入最终 main |
+| D4：同一 PR 内先执行再删除临时 job | 最小权限 | actions: write 不进入最终 main，也避免 Change 提前归档 |
 
 ## 备选方案与取舍
 
@@ -155,10 +155,10 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 
 ## 验证计划
 
-- PR CI：现有 CI、Runtime/Tooling path filters 与 Change Ready gate。
+- Draft PR：审查 cleanup job；Ready PR CI：执行一次性 cleanup，并同时跑现有 CI 门禁。
 - Cleanup run：输出 allowlist、stale run count、deleted count、post-delete count。
 - Post-scan：分页读取 Actions runs，确认不存在 path 不在 main 的 run。
-- Final CI：删除临时 job 后 main-fresh。
+- Final PR CI：删除临时 job 后验证最终 main 候选；merge 后再做 main-fresh。
 
 # 风险、兼容性、迁移与回滚
 
