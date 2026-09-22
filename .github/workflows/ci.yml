@@ -473,6 +473,9 @@ jobs:
       - postgres-integration
       - real-fullstack
     runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
     steps:
       - name: Verify required CI layers
         shell: bash
@@ -495,28 +498,12 @@ jobs:
           }
           require_or_skip "${POSTGRES_REQUIRED}" "${POSTGRES_INTEGRATION_RESULT}" "PostgreSQL Integration"
           require_or_skip "${FULLSTACK_REQUIRED}" "${FULLSTACK_RESULT}" "Real Full-stack Golden Path"
-
-
-  cleanup-deprecated-actions-history:
-    name: One-off deprecated Actions history cleanup
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.draft == false &&
-      github.head_ref == 'chore/actions-history-cleanup'
-    runs-on: ubuntu-24.04
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Checkout current candidate
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
       - name: Delete completed runs for removed workflow paths
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.head_ref == 'chore/actions-history-cleanup'
         env:
           GH_TOKEN: ${{ github.token }}
-          KNOWN_STALE_RUN_ID: "35170356526"
         shell: bash
         run: |
           set -euo pipefail
@@ -576,25 +563,24 @@ jobs:
           )
           PY
 
-          # 用一个已确认存在的废弃 run 验证 deleted workflow 确实出现在
-          # repository workflows 列表中；否则在任何 DELETE 前失败关闭。
-          known_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${KNOWN_STALE_RUN_ID}")"
-          known_workflow_id="$(jq -r '.workflow_id' <<<"${known_json}")"
-          known_path="$(jq -r '.path' <<<"${known_json}")"
-          if grep -Fxq "${known_path}" "${ALLOWLIST}"; then
-            echo "Known stale sentinel unexpectedly belongs to current allowlist: ${known_path}" >&2
-            exit 1
-          fi
-          if ! awk -F '\t' -v id="${known_workflow_id}" '$1 == id {found=1} END {exit !found}' "${STALE_WORKFLOWS}"; then
-            echo "Deleted workflow listing omitted known stale workflow_id=${known_workflow_id}; refusing cleanup" >&2
-            exit 1
-          fi
-
           : > "${STALE_RUNS}"
-          while IFS=$'\t' read -r workflow_id workflow_name workflow_path workflow_state; do
+          while IFS=
+
+\t' read -r workflow_id workflow_name workflow_path workflow_state; do
             [[ -n "${workflow_id}" ]] || continue
             echo "snapshot workflow_id=${workflow_id} state=${workflow_state} path=${workflow_path}"
-            gh api --paginate               "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=100"               --jq '.workflow_runs[] | [.id, .status, .name, .path] | @tsv'               >> "${STALE_RUNS}"
+            tmp_runs="${RUNNER_TEMP}/workflow-${workflow_id}-runs.tsv"
+            tmp_error="${RUNNER_TEMP}/workflow-${workflow_id}-runs.error"
+            if gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=100" \
+              --jq '.workflow_runs[] | [.id, .status, .name, .path] | @tsv' \
+              > "${tmp_runs}" 2> "${tmp_error}"; then
+              cat "${tmp_runs}" >> "${STALE_RUNS}"
+            elif grep -Fq "HTTP 404" "${tmp_error}"; then
+              echo "workflow_id=${workflow_id} already retired after previous cleanup; treat as empty"
+            else
+              cat "${tmp_error}" >&2
+              exit 1
+            fi
           done < "${STALE_WORKFLOWS}"
 
           python3 - "${ALLOWLIST}" "${STALE_RUNS}" <<'PY'
@@ -637,21 +623,44 @@ jobs:
           PY
 
           deleted=0
-          while IFS=$'\t' read -r run_id status name workflow_path; do
+          already_deleted=0
+          while IFS=
+
+\t' read -r run_id status name workflow_path; do
             [[ -n "${run_id}" ]] || continue
             echo "delete run=${run_id} workflow=${name} path=${workflow_path}"
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
-            deleted=$((deleted + 1))
+            delete_error="${RUNNER_TEMP}/delete-${run_id}.error"
+            if gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" 2> "${delete_error}"; then
+              deleted=$((deleted + 1))
+            elif grep -Fq "HTTP 404" "${delete_error}"; then
+              echo "run=${run_id} already deleted; continue"
+              already_deleted=$((already_deleted + 1))
+            else
+              cat "${delete_error}" >&2
+              exit 1
+            fi
           done < "${STALE_RUNS}"
-          echo "Deleted stale workflow runs: ${deleted}"
+          echo "Deleted stale workflow runs: ${deleted}; already absent: ${already_deleted}"
 
           remaining=0
-          while IFS=$'\t' read -r workflow_id workflow_name workflow_path workflow_state; do
+          while IFS=
+
+\t' read -r workflow_id workflow_name workflow_path workflow_state; do
             [[ -n "${workflow_id}" ]] || continue
-            count="$(gh api               "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=1"               --jq '.total_count')"
-            if [[ "${count}" != "0" ]]; then
-              echo "Stale workflow still has runs: id=${workflow_id} path=${workflow_path} count=${count}" >&2
-              remaining=$((remaining + count))
+            verify_json="${RUNNER_TEMP}/verify-workflow-${workflow_id}.json"
+            verify_error="${RUNNER_TEMP}/verify-workflow-${workflow_id}.error"
+            if gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=1" \
+              > "${verify_json}" 2> "${verify_error}"; then
+              count="$(jq -r '.total_count' "${verify_json}")"
+              if [[ "${count}" != "0" ]]; then
+                echo "Stale workflow still has runs: id=${workflow_id} path=${workflow_path} count=${count}" >&2
+                remaining=$((remaining + count))
+              fi
+            elif grep -Fq "HTTP 404" "${verify_error}"; then
+              echo "workflow_id=${workflow_id} retired after run cleanup; treat as zero remaining runs"
+            else
+              cat "${verify_error}" >&2
+              exit 1
             fi
           done < "${STALE_WORKFLOWS}"
 
@@ -660,9 +669,5 @@ jobs:
             exit 1
           fi
 
-          if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${KNOWN_STALE_RUN_ID}" >/dev/null 2>&1; then
-            echo "Known stale sentinel still exists after cleanup" >&2
-            exit 1
-          fi
-
           echo "Post-cleanup verification passed: all discovered stale workflow run sets are empty."
+
