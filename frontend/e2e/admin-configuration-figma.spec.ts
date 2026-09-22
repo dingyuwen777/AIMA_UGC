@@ -237,7 +237,8 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
     if (pathname === '/api/v1/vehicle-models') catalogListGets.vehicles += 1
   })
   let vehicleBody: unknown
-  let vehicleUpdateBody: unknown
+  const vehicleUpdateBodies: Record<string, unknown>[] = []
+  let createdVehicle: VehicleModelResponse | undefined
   const createdVehicleId = '7a111111-1111-4111-8111-111111111111'
   await page.route(`**/api/v1/vehicle-brands/${brandId}`, async (route) => {
     if (route.request().method() !== 'PUT') return route.fallback()
@@ -254,20 +255,46 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
   })
   await page.route('**/api/v1/vehicle-models', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback()
-    vehicleBody = route.request().postDataJSON()
-    await json(route, { ...vehicles[0], ...vehicleBody, id: createdVehicleId, version: 1, referenced: false }, 201)
+    const body = route.request().postDataJSON() as {
+      display_name: string
+      brand_id: string
+      series_name: string | null
+      aliases: string[]
+    }
+    vehicleBody = body
+    createdVehicle = {
+      ...vehicles[0]!,
+      ...body,
+      aliases: body.aliases.map((text, index) => ({
+        id: `7a222222-2222-4222-8222-${String(index).padStart(12, '0')}`,
+        text,
+        normalized_text: text.toLowerCase(),
+      })),
+      id: createdVehicleId,
+      version: 1,
+      referenced: false,
+    }
+    await json(route, createdVehicle, 201)
   })
   await page.route(`**/api/v1/vehicle-models/${createdVehicleId}`, async (route) => {
     if (route.request().method() !== 'PUT') return route.fallback()
-    vehicleUpdateBody = route.request().postDataJSON()
-    await json(route, {
-      ...vehicles[0],
-      ...vehicleBody as object,
-      ...vehicleUpdateBody as object,
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    vehicleUpdateBodies.push(body)
+    createdVehicle = {
+      ...createdVehicle!,
+      ...body,
+      aliases: Array.isArray(body.aliases)
+        ? body.aliases.map((text, index) => ({
+            id: `7a333333-3333-4333-8333-${String(index).padStart(12, '0')}`,
+            text: String(text),
+            normalized_text: String(text).toLowerCase(),
+          }))
+        : createdVehicle!.aliases,
       id: createdVehicleId,
-      version: 2,
+      version: createdVehicle!.version + 1,
       referenced: false,
-    })
+    }
+    await json(route, createdVehicle)
   })
 
   await page.goto('/admin/configuration')
@@ -287,6 +314,7 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
   const vehicleEditor = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
   await expect(vehicleEditor.getByText('车型编码', { exact: true })).toHaveCount(0)
   await page.getByPlaceholder('例如 爱玛 Q7').fill('爱玛 Q7 Pro')
+  await page.getByPlaceholder('用于车型筛选分组').fill('城市 Pro 系列')
   await page.getByPlaceholder('Q7\n爱玛Q7').fill('Q7 Pro')
   await vehicleEditor.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
@@ -305,10 +333,84 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
   await editDialog.getByLabel('车型名称', { exact: true }).fill('爱玛 Q7 Pro 2027')
   await editDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByText('车型已更新并记录操作。', { exact: true })).toBeVisible()
-  expect(vehicleUpdateBody).toMatchObject({ display_name: '爱玛 Q7 Pro 2027' })
-  expect(vehicleUpdateBody).not.toHaveProperty('category_name')
+  expect(vehicleUpdateBodies[0]).toEqual({ display_name: '爱玛 Q7 Pro 2027' })
   await expect(vehicleTable.getByText('爱玛 Q7 Pro 2027', { exact: true })).toBeVisible()
   expect(catalogListGets).toEqual(listGetsBeforeVehicleCreate)
+
+  await vehicleTable.getByRole('row').filter({ hasText: '爱玛 Q7 Pro 2027' })
+    .getByRole('button', { name: '编辑', exact: true }).click()
+  await editDialog.getByPlaceholder('用于车型筛选分组').fill('')
+  await editDialog.getByPlaceholder('Q7\n爱玛Q7').fill('')
+  await editDialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByText('车型已更新并记录操作。', { exact: true })).toBeVisible()
+  expect(vehicleUpdateBodies[1]).toEqual({ aliases: [], series_name: null })
+  expect(catalogListGets).toEqual(listGetsBeforeVehicleCreate)
+})
+
+test('keeps Vehicle save explicit and the editor stable while an update is pending', async ({ page }) => {
+  await mockAdmin(page)
+  let replayRequests = 0
+  let updateBody: Record<string, unknown> | undefined
+  let releaseUpdate!: () => void
+  let markUpdateStarted!: () => void
+  const updateGate = new Promise<void>((resolve) => { releaseUpdate = resolve })
+  const updateStarted = new Promise<void>((resolve) => { markUpdateStarted = resolve })
+
+  await page.route('**/api/v1/canonical-replays/all', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    replayRequests += 1
+    await json(route, {
+      artifact_count: 0,
+      run_count: 0,
+      artifacts_per_run: 100,
+      batch_size: 1000,
+    }, 202)
+  })
+  await page.route(`**/api/v1/vehicle-models/${vehicles[0]!.id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    updateBody = route.request().postDataJSON()
+    markUpdateStarted()
+    await updateGate
+    await json(route, {
+      ...vehicles[0],
+      ...updateBody,
+      version: 2,
+      catalog_version: 2,
+    })
+  })
+
+  await page.goto('/admin/configuration')
+  const vehicleTable = page.getByRole('region', { name: '车型目录表格', exact: true })
+  await vehicleTable.getByRole('row').filter({ hasText: vehicles[0]!.display_name })
+    .getByRole('button', { name: '编辑', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑车型' })
+  await dialog.getByLabel('车型名称', { exact: true }).fill('爱玛车型 1 新名称')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await updateStarted
+
+  try {
+    await expect(dialog.getByRole('button', { name: '正在保存…', exact: true })).toBeDisabled()
+    expect(updateBody).toEqual({ display_name: '爱玛车型 1 新名称' })
+    expect(replayRequests).toBe(0)
+
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeVisible()
+    await dialog.evaluate((element) => {
+      element.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+      }))
+    })
+    await expect(dialog).toBeVisible()
+  } finally {
+    releaseUpdate()
+  }
+
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByText('车型已更新并记录操作。', { exact: true })).toBeVisible()
+  await expect(vehicleTable.getByText('爱玛车型 1 新名称', { exact: true })).toBeVisible()
+  expect(replayRequests).toBe(0)
 })
 
 test('keeps the vehicle draft and catalog stable when save fails', async ({ page }) => {
