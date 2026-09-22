@@ -12,6 +12,9 @@ BUILD_PLAN = MODULE["build_cleanup_plan"]
 PATH_IN_HISTORY = MODULE["path_existed_in_head_history"]
 RUN_HYGIENE = MODULE["run_hygiene"]
 RUNTIME_GLOBALS = RUN_HYGIENE.__globals__
+MAIN = MODULE["main"]
+MAIN_GLOBALS = MAIN.__globals__
+TRANSIENT_ERROR = MODULE["TransientGitHubApiError"]
 CLASSIFIER_PATH = ROOT / "scripts/quality/classify_ci_scope.py"
 CLASSIFIER = runpy.run_path(str(CLASSIFIER_PATH))
 CLASSIFY_PATHS = CLASSIFIER["classify_paths"]
@@ -200,6 +203,34 @@ def test_actions_hygiene_script_uses_repository_quality_profile() -> None:
     )
 
 
+def test_cli_distinguishes_transient_and_hard_failures() -> None:
+    """CLI 只把临时 GitHub API 错误映射为 75，权限/不变量错误保持普通失败。"""
+    import sys
+
+    old_run = MAIN_GLOBALS["run_hygiene"]
+    old_token = MAIN_GLOBALS["_token"]
+    old_argv = sys.argv[:]
+    try:
+        MAIN_GLOBALS["_token"] = lambda: "fixture-token"
+        sys.argv = ["actions_hygiene.py", "--repository", "owner/repo"]
+
+        def transient(*args, **kwargs):
+            raise TRANSIENT_ERROR("temporary")
+
+        MAIN_GLOBALS["run_hygiene"] = transient
+        assert MAIN() == 75
+
+        def hard(*args, **kwargs):
+            raise RuntimeError("hard")
+
+        MAIN_GLOBALS["run_hygiene"] = hard
+        assert MAIN() == 1
+    finally:
+        MAIN_GLOBALS["run_hygiene"] = old_run
+        MAIN_GLOBALS["_token"] = old_token
+        sys.argv = old_argv
+
+
 def test_ci_owns_hygiene_with_job_level_actions_write_only() -> None:
     """AIMA 必须复用现有 CI，并把 destructive 权限限制在 main-only hygiene job。"""
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -217,6 +248,8 @@ def test_ci_owns_hygiene_with_job_level_actions_write_only() -> None:
         "fetch-depth: 0",
         "scripts/quality/actions_hygiene.py",
         "--execute",
-        "::warning::Actions Hygiene failed",
+        "::warning::Actions Hygiene temporary GitHub API failure",
+        "Actions Hygiene invariant/permission failure",
+        'status}" -eq 75',
     ):
         assert fragment in hygiene
