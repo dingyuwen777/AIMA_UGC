@@ -100,9 +100,9 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 
 1. Draft PR 先审查 cleanup job；PR 转 Ready 后，同一个 PR 的 Ready CI 才执行一次性 cleanup job。
 2. job checkout 当前 main，从 .github/workflows 下当前 yml/yaml 文件生成 allowlist。
-3. 先分页下载 Actions runs 到快照文件，再开始任何删除，避免分页在删除过程中漂移。
-4. path 在 allowlist 则保留；path 不在 allowlist 且 status=completed 则删除；path 不在 allowlist 且非 completed 则 fail closed。
-5. 删除后再次分页验证 stale path 数量为 0。
+3. 通过 repository workflows API 枚举 Workflow records，按 path 不在 allowlist 找到 stale workflow IDs；用已确认 stale run 作为 sentinel，若 GitHub 未返回 deleted workflow record 则在任何 DELETE 前 fail closed。
+4. 只对 stale workflow IDs 分页快照其 runs；run path 若意外回到当前 allowlist 立即失败，任一 stale run 非 completed 时在任何 DELETE 前整体 fail closed。
+5. 删除后逐个 stale workflow ID 查询 runs total_count，必须全部为 0，并确认 stale sentinel run 已不存在。
 6. cleanup 成功后在同一分支删除 cleanup job，恢复最小权限，再跑 final clean-state CI。
 7. 最终 main-fresh + Actions 历史只读核验 + Change Archive + #572 Closure。
 
@@ -111,7 +111,7 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 | 决策 | 依据 | 原因 |
 | --- | --- | --- |
 | D1：按 path 动态 allowlist | E1/E4 | run-name 会变化，path 才代表 Workflow Owner |
-| D2：先快照后删除 | E5 | 避免分页列表被删除动作改变 |
+| D2：先枚举 stale workflow ID，再按 ID 快照 runs | E3/E5 | 避免扫描全部 3.6 万正式历史，也避免删除过程中全局分页漂移 |
 | D3：复用 CI | 用户目标 + E1 | 不新增新的长期/历史 Workflow 名 |
 | D4：同一 PR 内先执行再删除临时 job | 最小权限 | actions: write 不进入最终 main，也避免 Change 提前归档 |
 
@@ -158,8 +158,8 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 ## 验证计划
 
 - Draft PR：审查 cleanup job；Ready PR CI：执行一次性 cleanup，并同时跑现有 CI 门禁。
-- Cleanup run：输出 allowlist、stale run count、deleted count、post-delete count。
-- Post-scan：分页读取 Actions runs，确认不存在 path 不在 main 的 run。
+- Cleanup run：输出 allowlist、stale workflow records、stale run count、deleted count，并逐 stale workflow 验证 post-delete total_count=0。
+- Post-scan：确认已发现的 stale workflow run sets 全部为空，且已知 stale sentinel run 已删除；最终再用只读 Actions 历史核验左侧名称。
 - Final PR CI：删除临时 job 后验证最终 main 候选；merge 后再做 main-fresh。
 
 # 风险、兼容性、迁移与回滚
@@ -197,11 +197,13 @@ Actions 历史仍存在已删除 Workflow 的 runs，例如 One-off server gener
 | V2 | Actions runs 前 1500 条 | API 分页聚合 | 发现多个 stale workflow path | 历史 runs 是冗余来源 |
 | V3 | current workflow source | CI/fullstack/runtime/tooling/release/archive | 职责不同 | 不应删除当前 6 个 Workflow |
 | V4 | current PR #573 | cleanup job 静态反向审查 | 无阻断 Finding | actions:write 仅 job-level；先全量快照和 active-stale preflight，再按 path 删除；删除后再次全量验证 |
-| V5 | Actions repository metadata | total_count | 36626 runs | cleanup 必须使用 API paginate，不做人工枚举 |
+| V5 | Actions repository metadata | total_count | 36626 runs | 全局 run 分页成本高，cleanup 不应人工枚举 |
+| V6 | Ready CI 首轮 cleanup | 全局 runs --paginate | 长时间无删除进展，方案中止 | 证明全量扫描路径成本不可接受；改为 stale workflow ID 定向分页 |
+| V7 | known stale run 35170356526 | Actions run API | workflow_id=360117523，path=oneoff-server-generated-catalog-codes.yml，completed | deleted workflow 可通过 workflow ID 定向查询其 runs |
 
 ## 未验证内容与剩余风险
 
-- 尚未执行不可逆 Actions run 删除。
+- 尚未完成不可逆 Actions run 删除；首轮全量扫描无删除进展，已由 synchronize 安全取消并优化为 stale workflow ID 定向分页。
 - 尚未验证 GitHub 左侧旧 Workflow 名在 runs 清空后消失。
 
 ## 交付状态
