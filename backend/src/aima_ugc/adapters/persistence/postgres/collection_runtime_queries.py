@@ -485,13 +485,9 @@ def _canonical_replay_select() -> Any:
             func.count(run.c.id).label("observed_run_count"),
             func.count(run.c.id).filter(job.c.status == "queued").label("queued_run_count"),
             func.count(run.c.id).filter(job.c.status == "running").label("running_run_count"),
-            func.count(run.c.id)
-            .filter(job.c.status == "succeeded")
-            .label("succeeded_run_count"),
+            func.count(run.c.id).filter(job.c.status == "succeeded").label("succeeded_run_count"),
             func.count(run.c.id).filter(job.c.status == "failed").label("failed_run_count"),
-            func.count(run.c.id)
-            .filter(job.c.status == "cancelled")
-            .label("cancelled_run_count"),
+            func.count(run.c.id).filter(job.c.status == "cancelled").label("cancelled_run_count"),
             func.coalesce(func.sum(job.c.progress * run.c.artifact_count), 0).label(
                 "weighted_progress"
             ),
@@ -500,14 +496,10 @@ def _canonical_replay_select() -> Any:
             func.coalesce(func.sum(run.c.rows_filtered_out), 0).label("rows_filtered_out"),
             func.coalesce(func.sum(run.c.duplicates_removed), 0).label("duplicates_removed"),
             func.coalesce(func.sum(run.c.rows_ingested), 0).label("rows_ingested"),
-            func.coalesce(func.sum(run.c.existing_convergence), 0).label(
-                "existing_convergence"
-            ),
+            func.coalesce(func.sum(run.c.existing_convergence), 0).label("existing_convergence"),
             func.min(job.c.started_at).label("started_at"),
             func.max(job.c.finished_at).label("finished_at"),
-            func.min(job.c.error_code)
-            .filter(job.c.status == "failed")
-            .label("error_code"),
+            func.min(job.c.error_code).filter(job.c.status == "failed").label("error_code"),
         )
         .select_from(run.join(job, run.c.job_id == job.c.id))
         .where(
@@ -538,9 +530,7 @@ def _canonical_replay_select() -> Any:
         else_=func.least(
             100,
             sql_cast(
-                func.floor(
-                    func.coalesce(child.c.weighted_progress, 0) / request.c.artifact_count
-                ),
+                func.floor(func.coalesce(child.c.weighted_progress, 0) / request.c.artifact_count),
                 Integer,
             ),
         ),
@@ -585,9 +575,7 @@ def _canonical_replay_select() -> Any:
         public_status.label("public_status"),
         progress.label("progress"),
         public_stage.label("public_stage"),
-        literal(None)
-        .cast(processing_import_batches_table.c.id.type)
-        .label("import_batch_id"),
+        literal(None).cast(processing_import_batches_table.c.id.type).label("import_batch_id"),
         literal(None)
         .cast(historical_import_campaigns_table.c.id.type)
         .label("data_import_campaign_id"),
