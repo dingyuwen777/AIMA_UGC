@@ -42,6 +42,15 @@ data_changes: []
 
 Issue #564 固化了用户当前决定与六条验收标准。当前前端只按修剪后的原字符串 `Set` 去重；后端则按首尾修剪、内部空白折叠与 `casefold` 生成身份，并在重复时拒绝请求。两端不一致导致部分看似不同的输入直到 HTTP Contract 校验才失败。
 
+# 事实与证据
+
+| 编号 | 已确认事实 | 来源 | 约束 |
+| --- | --- | --- | --- |
+| E1 | 前端 `splitLines` 只按原字符串去重 | 管理员品牌与车型页面 | 前端需补规范化身份去重 |
+| E2 | Brand/Vehicle Contract 对规范化重复抛 `ValueError` | Pydantic Contract 与本地复现 | 后端应改为保留首项 |
+| E3 | `Q7/q7` 与内部空格变体稳定复现 `body.aliases: value_error` | Issue #564、Contract 模型执行 | 建立回归测试 |
+| E4 | 数据库按对象内规范化身份有唯一约束，跨对象同名允许 | Vehicle/Brand Alias Schema 与 Repository | 只收敛单次请求内重复，不扩大唯一范围 |
+
 # 目标、成功标准与非目标
 
 ## 目标
@@ -97,15 +106,6 @@ Issue #564 固化了用户当前决定与六条验收标准。当前前端只按
 | D1：前端提交前去重并提示 | E1、E3 | 避免把可修复输入变成 HTTP 错误，同时给用户明确结果 |
 | D2：后端 Contract 同样去重 | E2、#564 / AC4 | 防止网页外调用绕过规则，并保持服务端最终守卫 |
 | D3：不改数据库唯一范围 | E4、#564 / AC5 | 问题只发生在单次请求内，没有 Schema 或历史数据缺陷 |
-
-# 事实与证据
-
-| 编号 | 已确认事实 | 来源 | 约束 |
-| --- | --- | --- | --- |
-| E1 | 前端 `splitLines` 只按原字符串去重 | 管理员品牌与车型页面 | 前端需补规范化身份去重 |
-| E2 | Brand/Vehicle Contract 对规范化重复抛 `ValueError` | Pydantic Contract 与本地复现 | 后端应改为保留首项 |
-| E3 | `Q7/q7` 与内部空格变体稳定复现 `body.aliases: value_error` | Issue #564、Contract 模型执行 | 建立回归测试 |
-| E4 | 数据库按对象内规范化身份有唯一约束，跨对象同名允许 | Vehicle/Brand Alias Schema 与 Repository | 只收敛单次请求内重复，不扩大唯一范围 |
 
 # 需求追溯
 
