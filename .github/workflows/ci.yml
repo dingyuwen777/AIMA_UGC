@@ -495,3 +495,142 @@ jobs:
           }
           require_or_skip "${POSTGRES_REQUIRED}" "${POSTGRES_INTEGRATION_RESULT}" "PostgreSQL Integration"
           require_or_skip "${FULLSTACK_REQUIRED}" "${FULLSTACK_RESULT}" "Real Full-stack Golden Path"
+
+
+  cleanup-deprecated-actions-history:
+    name: One-off deprecated Actions history cleanup
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      contains(github.event.head_commit.message, '[actions-history-cleanup]')
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Delete completed runs for removed workflow paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ALLOWLIST="${RUNNER_TEMP}/current-workflows.txt"
+          BEFORE="${RUNNER_TEMP}/actions-runs-before.tsv"
+          AFTER="${RUNNER_TEMP}/actions-runs-after.tsv"
+          STALE="${RUNNER_TEMP}/stale-runs.tsv"
+
+          find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) \
+            -printf '%p\n' | sort -u > "${ALLOWLIST}"
+
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+            --jq '.workflow_runs[] | [.id, .status, .name, .path] | @tsv' > "${BEFORE}"
+
+          python3 - "${ALLOWLIST}" "${BEFORE}" "${STALE}" <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          import sys
+
+          allowlist_path = Path(sys.argv[1])
+          runs_path = Path(sys.argv[2])
+          stale_path = Path(sys.argv[3])
+
+          allowed = {
+              line.strip()
+              for line in allowlist_path.read_text(encoding="utf-8").splitlines()
+              if line.strip()
+          }
+          stale: list[tuple[str, str, str, str]] = []
+          active_stale: list[tuple[str, str, str, str]] = []
+
+          for raw in runs_path.read_text(encoding="utf-8").splitlines():
+              if not raw.strip():
+                  continue
+              parts = raw.split("\t", 3)
+              if len(parts) != 4:
+                  raise SystemExit(f"Unexpected Actions run row: {raw!r}")
+              run_id, status, name, path = parts
+              if not path:
+                  raise SystemExit(f"Actions run {run_id} has no workflow path; refusing cleanup")
+              if path in allowed:
+                  continue
+              item = (run_id, status, name, path)
+              stale.append(item)
+              if status != "completed":
+                  active_stale.append(item)
+
+          print("Current workflow allowlist:")
+          for path in sorted(allowed):
+              print(f"  keep {path}")
+          print(f"Stale runs found: {len(stale)}")
+
+          if active_stale:
+              for run_id, status, name, path in active_stale:
+                  print(
+                      f"ACTIVE_STALE id={run_id} status={status} name={name!r} path={path!r}",
+                      file=sys.stderr,
+                  )
+              raise SystemExit(
+                  "Found stale workflow runs that are not completed; refusing all deletion"
+              )
+
+          stale_path.write_text(
+              "".join(
+                  f"{run_id}\t{status}\t{name}\t{path}\n"
+                  for run_id, status, name, path in stale
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+          deleted=0
+          while IFS=$'\t' read -r run_id status name workflow_path; do
+            [[ -n "${run_id}" ]] || continue
+            echo "delete run=${run_id} workflow=${name} path=${workflow_path}"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+            deleted=$((deleted + 1))
+          done < "${STALE}"
+
+          echo "Deleted stale workflow runs: ${deleted}"
+
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+            --jq '.workflow_runs[] | [.id, .status, .name, .path] | @tsv' > "${AFTER}"
+
+          python3 - "${ALLOWLIST}" "${AFTER}" <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          import sys
+
+          allowed = {
+              line.strip()
+              for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+              if line.strip()
+          }
+          stale: list[str] = []
+
+          for raw in Path(sys.argv[2]).read_text(encoding="utf-8").splitlines():
+              if not raw.strip():
+                  continue
+              parts = raw.split("\t", 3)
+              if len(parts) != 4:
+                  raise SystemExit(f"Unexpected Actions run row after cleanup: {raw!r}")
+              run_id, status, name, path = parts
+              if path not in allowed:
+                  stale.append(
+                      f"id={run_id} status={status} name={name!r} path={path!r}"
+                  )
+
+          if stale:
+              raise SystemExit(
+                  "Stale workflow runs remain after cleanup:\n- " + "\n- ".join(stale)
+              )
+
+          print("Post-cleanup verification passed: all remaining runs use current workflow paths.")
+          PY
