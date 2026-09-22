@@ -188,6 +188,7 @@ Issue #566 固化了用户当前决定与七条验收标准。Canonical Replay �
 | V8 | Windows Playwright Browser Mock | `collection-runtime.spec.ts admin-configuration-figma.spec.ts` | 45 passed | 重筛列表、筛选、详情、提示及既有导入/补采/目录流程成立 |
 | V9 | Windows 文档与仓库门禁 | docs/docs-facts、architecture、table ownership、Secret scan | 全部通过 | 文档事实、只读跨 Owner 聚合与 Secret 边界成立 |
 | V10 | Windows Playwright 轮询同步 | `collection-runtime.spec.ts --grep "canonical replay as one"` | 1 passed；运行中详情在 5 秒轮询后更新为已完成 2 / 2 | 打开详情复用统一列表轮询并同步最新聚合状态 |
+| V11 | base `1a9ecf2e` → head `56262a55` 独立审查 | Issue #566、Schema、聚合 SQL、Contract、前端消费者、测试与文档双向审计 | 发现数据库状态矩阵证据不足；已补排队/运行/成功/失败/取消参数化集成回归，待 PR PostgreSQL CI 执行 | 防止用 Browser Mock 冒充持久状态映射证据 |
 
 ## 未验证内容与剩余风险
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -670,6 +670,118 @@ def test_empty_canonical_replay_request_is_a_completed_runtime_record(runtime) -
     assert item.canonical_replay_stats.artifact_count == 0
     assert item.canonical_replay_stats.run_count == 0
     assert item.canonical_replay_stats.rows_seen == 0
+
+
+@pytest.mark.parametrize(
+    (
+        "job_status",
+        "job_progress",
+        "expected_status",
+        "expected_stage",
+        "expected_processing",
+        "expected_completed",
+    ),
+    [
+        ("queued", 0, "queued", "queued", 1, 0),
+        ("running", 40, "running", "replaying", 1, 0),
+        ("succeeded", 100, "succeeded", "succeeded", 0, 1),
+        ("failed", 40, "failed", "failed", 0, 0),
+        ("cancelled", 40, "cancelled", "cancelled", 0, 0),
+    ],
+)
+def test_canonical_replay_runtime_maps_single_child_job_states(
+    runtime,  # type: ignore[no-untyped-def]
+    job_status: str,
+    job_progress: int,
+    expected_status: str,
+    expected_stage: str,
+    expected_processing: int,
+    expected_completed: int,
+) -> None:
+    request_id = uuid4()
+    job_id = uuid4()
+    run_id = uuid4()
+    now = datetime.now(UTC)
+    terminal = job_status in {"succeeded", "failed", "cancelled"}
+    running = job_status == "running"
+    job_values = {
+        "id": job_id,
+        "job_type": CANONICAL_REPLAY_JOB_TYPE,
+        "payload_version": CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
+        "payload": {},
+        "status": job_status,
+        "internal_idempotency_key": f"runtime-replay-state-{job_status}-{request_id}",
+        "priority": 0,
+        "attempt": 0 if job_status == "queued" else 1,
+        "lease_takeover_count": 0,
+        "max_attempts": 10,
+        "timeout_seconds": 86400,
+        "progress": job_progress,
+        "available_at": now,
+        "attempt_started_at": now if running else None,
+        "attempt_deadline_at": now + timedelta(hours=1) if running else None,
+        "lease_owner": "runtime-test-worker" if running else None,
+        "lease_token": str(uuid4()) if running else None,
+        "lease_expires_at": now + timedelta(minutes=5) if running else None,
+        "started_at": now if job_status != "queued" else None,
+        "finished_at": now if terminal else None,
+        "error_code": "canonical_replay_artifact_invalid" if job_status == "failed" else None,
+        "created_at": now,
+        "updated_at": now,
+    }
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            insert(canonical_replay_all_requests_table).values(
+                id=request_id,
+                client_idempotency_key=f"runtime-replay-state-{request_id}",
+                selection_digest="c" * 64,
+                artifact_count=1,
+                run_count=1,
+                artifacts_per_run=100,
+                batch_size=1000,
+                created_by="admin:test",
+                created_at=now,
+            )
+        )
+        connection.execute(insert(jobs_table).values(**job_values))
+        connection.execute(
+            insert(canonical_replay_runs_table).values(
+                id=run_id,
+                job_id=job_id,
+                client_idempotency_key=f"runtime-replay-state-run-{request_id}",
+                filter_snapshot={},
+                requested_brand_ids=[],
+                artifact_count=1,
+                checkpoint_artifact_ordinal=0,
+                checkpoint_row_number=0,
+                batch_size=1000,
+                rows_seen=0,
+                rows_matched=0,
+                rows_filtered_out=0,
+                duplicates_removed=0,
+                rows_ingested=0,
+                existing_convergence=0,
+                created_by="admin:test",
+                created_at=now,
+                updated_at=now,
+                all_request_id=request_id,
+                all_request_ordinal=0,
+            )
+        )
+
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    item = service.list_runtime_runs(
+        CollectionRuntimeListQuery(record_types=("canonical_replay",))
+    ).items[0]
+    summary = service.get_runtime_summary()
+
+    assert item.record_id == request_id
+    assert item.status == expected_status
+    assert item.stage == expected_stage
+    assert item.progress == job_progress
+    assert item.finished_at == (now if terminal else None)
+    assert summary.processing_count == expected_processing
+    assert summary.completed_today_count == expected_completed
 
 
 def _insert_import_content(
