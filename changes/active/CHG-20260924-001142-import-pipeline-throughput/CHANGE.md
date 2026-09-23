@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260924-001142-import-pipeline-throughput
 title: 数据导入与 Canonical 重筛全链路性能改造
 level: L3
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: perf/import-pipeline-throughput
 created: 2026-09-24T00:11:42+08:00
@@ -101,14 +101,14 @@ Artifact 持久证据和首次写入前的完整预检是硬边界。优化可�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 建立一个全局任务覆盖三条数据链路并最终合并 main | #587 / 用户本轮决定 / AC8 | not_satisfied | 待实现、Review、CI、guarded merge、main-fresh、Archive 和 Closure |
-| R2 | 本地 Excel 代表性场景取得 3 倍或等价资源门槛，结果一致 | #587 / AC1-AC2 | not_satisfied | 待 main/候选三轮 p50 对照 |
-| R3 | 统一历史标准导入 3 倍、fill-only 混合 2 倍且 SQL 降低 70% | #587 / AC1、AC3 | not_satisfied | 待容量基准和数据库对账 |
-| R4 | Replay 已有内容 2 倍、SQL 降低 70%，全新快路径无明显回退 | #587 / AC1、AC4 | not_satisfied | 待新增混合场景和现有快路径回归 |
-| R5 | 三链路临时磁盘峰值降低 50%，本机临时预算不超过 512 MiB | #587 / AC5 | not_satisfied | 待统一空间计量、预算保护和异常清理证据 |
-| R6 | 业务结果、预检、Job、取消/恢复、fill-only、Replay 撤回等价 | #587 / AC6 | not_satisfied | 待 Unit/PostgreSQL/Workflow 回归和快照对账 |
-| R7 | 提供低噪声脱敏阶段日志和可复制的服务器排障命令 | #587 / AC7 | not_satisfied | 待日志测试与运行手册 |
-| R8 | 完成 Unit/Contract/PostgreSQL/Frontend/容量/文档/Review/CI 证据 | #587 / AC8 | not_satisfied | 待分层验证、Completion Audit 和 Deep Review |
+| R1 | 建立一个全局任务覆盖三条数据链路并最终合并 main | external:https://github.com/dingyuwen777/AIMA_UGC/issues/587#AC8 | explicitly_deferred | 同一 Issue、分支、Change 与 PR 已覆盖三链路；guarded merge、main-fresh、自动 Archive 与 Closure 必须在当前 HEAD 的 required CI 成功后按顺序完成，不能在 Change Ready 前伪造为已发生 |
+| R2 | 本地 Excel 代表性场景取得 3 倍或等价资源门槛，结果一致 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/587#AC2 | satisfied | 1000 行三轮 p50：main 24.095 秒、候选 5.401 秒，4.461 倍；SQL/千行 16073→85（-99.47%），监测临时峰值 6,671,564→1,742,801 字节（-73.88%）；PostgreSQL 集成与结果计数通过 |
+| R3 | 统一历史标准导入 3 倍、fill-only 混合 2 倍且 SQL 降低 70% | external:https://github.com/dingyuwen777/AIMA_UGC/issues/587#AC3 | satisfied | standard p50 41.31→173.87 行/秒（4.209 倍），SQL 16069→81；fill-only 54.38→188.54 行/秒（3.467 倍），SQL 12081→96；新旧/非空保留/账本/Evidence 集成覆盖通过 |
+| R4 | Replay 已有内容 2 倍、SQL 降低 70%，全新快路径无明显回退 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/587#AC4 | satisfied | 混合场景 p50 11.010→5.399 秒（2.039 倍），SQL 4860→82（-98.31%）；全新场景 5.985→5.490 秒，反而快 8.27%，SQL 保持 72 |
+| R5 | 三链路临时磁盘峰值降低 50%，本机临时预算不超过 512 MiB | external:https://github.com/dingyuwen777/AIMA_UGC/issues/587#AC5 | satisfied | Excel 可比临时峰值下降 73.88%；历史与 Replay 的 PostgreSQL `temp_bytes` 在 main/候选均为 0，比例数学上不适用且候选无 spill 回退；三脚本均强制默认 512 MiB 预算、最低剩余空间检查和失败清理，测试验证仅删除脚本自有输出、不误删成功报告 |
+| R6 | 业务结果、预检、Job、取消/恢复、fill-only、Replay 撤回等价 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/587#AC6 | satisfied | 相关 Content/Ingestion/Vehicles PostgreSQL 集成 132 通过；取消/lease/撤回 8 通过；本地导入最终集成 8 通过；新增已有内容 101 行集合更新回归验证 Version/来源账本并限制 SQL；Replay selected scope 修复并验证不会误停用范围外 Evidence |
+| R7 | 提供低噪声脱敏阶段日志和可复制的服务器排障命令 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/587#AC7 | satisfied | 新增 Excel、历史 discovery/snapshot/chunk、Replay preflight/ingestion/batch 稳定事件；日志只含关联 ID、计数、字节、耗时/吞吐和临时峰值；Operations 02 已提供按 job/run/event 过滤及 PostgreSQL 活动/等待/WAL 查询命令 |
+| R8 | 完成 Unit/Contract/PostgreSQL/Frontend/容量/文档/Review/CI 证据 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/587#AC8 | explicitly_deferred | 本地分层验证、三轮容量证据、文档检查与两阶段自审已完成；仅 PR 当前 HEAD required CI、合并后 main-fresh、Archive governance 与 Closure Audit 按交付顺序延后到 Ready 后执行 |
 
 # 计划改动
 
@@ -148,11 +148,28 @@ Docs Impact 为 full（限定在数据导入链路）：至少同步 Appendix 08
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 #587、用户决定、相关 Blueprint/Appendix/Operations 和最终代码，独立重建 AC1—AC8。
-- [ ] change_coverage：逐条确认 AC、硬不变量、非目标和三链路输入/输出均有实现与直接证据。
-- [ ] reverse_audit：从前端/API/Artifact/Job 输入正向追踪到 Content/Evidence/结果，再从取消/恢复/撤回/服务器日志反向核对实际消费者。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零；只有有正式依据且不削弱 Issue 的项可标 `explicitly_deferred` 或 `not_applicable`。
+- [x] upstream_re_read：Ready 前已重新读取 #587、本轮用户决定、相关 Blueprint/Appendix/Operations、归档流程和最终代码，独立重建 AC1—AC8。
+- [x] change_coverage：已逐条确认 AC、硬不变量、非目标和三链路输入/输出；性能原始样本、环境与比率固化在 `performance-results.json`。
+- [x] reverse_audit：已从前端有界上传/API/Artifact/Job 正向追踪到 Canonical、Content/Version/Metric、来源账本、Evidence 与结果，并从取消/lease/重试/撤回和服务器阶段日志反向核对实际消费者。
+- [x] unresolved_cleared：Requirement Traceability 已无 `not_satisfied`；仅把必须发生于 Ready 之后的 current-head CI、merge、main-fresh、Archive 与 Closure 按真实时序标为 `explicitly_deferred`。
 
 # 完成证据与状态
 
-当前分支 `perf/import-pipeline-throughput`，Requirement Source 为 #587。任务处于事实恢复与基准建立阶段，尚未取得性能、正确性、Review、CI 或交付结论。用户工作区 `.codex/config.toml`、既有不可访问 pytest 临时目录和任务外文件不属于本 Change，不得修改或提交。
+候选生产代码 revision 为 `3874067c2e4fd12f55c77b8f444b4762c1c953e6`，基线 revision 为 `cdd8482dd19c511fe9905794b9ef58de12a57db5`；详细环境、三轮原始样本、p50、SQL 与临时空间证据见同目录 `performance-results.json`。
+
+实现结果：本地 Excel 1000 行全新内容 p50 提升 4.461 倍；统一历史 standard 提升 4.209 倍，fill-only 混合提升 3.467 倍；Replay 混合提升 2.039 倍，全新快路径提升 8.27%。三条数据库写入路径的 SQL/千行分别从 16073→85、16069→81 / 12081→96、4860→82。Excel 可比临时峰值下降 73.88%；历史与 Replay 两侧 PostgreSQL 临时落盘均为 0，因此没有可计算的 50% 降幅，但候选保持零 spill，并由 512 MiB 硬预算、空闲空间保护和失败清理约束。
+
+实现保持 Canonical/HTTP/Job Contract、Schema、Migration、依赖和部署拓扑不变。首次业务写前的完整预检、持久 Raw/Input/Canonical 证据、Content Owner、唯一约束、事务 durability、Job lease/fencing/cancel/retry/progress 和 Replay reversal 均未被关闭。前端只把多文件上传改为固定 3 路有界并发；后端仍逐文件独立校验并维护原 Campaign/Item 事实。
+
+本轮新鲜验证：
+
+- `ruff format --check` 与 `ruff check` 覆盖 27 个改动 Python 文件，均通过；`mypy backend/src` 366 个源文件通过。
+- `tests/integration/content tests/integration/ingestion tests/integration/vehicles`：132 通过；其中取消/lease/撤回定向 8 通过，本地导入最终集成复验 8 通过。
+- 容量脚本/Resolver/离线处理相关 Unit：33 通过；三个脚本成功路径小样本 smoke 均通过，失败清理、专用数据库拒绝与报告保留均有回归。
+- Frontend 定向 Store：10 通过；`npm run lint`、`npm run build` 通过（Vite 220 modules）。
+- 文档导航和两项文档一致性检查通过；性能 JSON 已重新解析。
+- 非数据库全量测试：1430 通过、8 skipped、12 subtests 通过、4 失败。3 个失败来自 Windows 不具备 Linux `os.geteuid/os.chown`；1 个来自任务外用户 Provider 输出目录含原始 `xhsdiscover` 标识。相关产品测试、静态检查和构建均通过；未删除或改写该用户目录，也未把这些环境/任务外失败伪装为成功。
+
+两阶段自审先按需求、Contract、Owner 与异步语义审查，再按最终 diff 和证据复核。审查发现并修复：selected Replay 曾会停用范围外 Evidence；已有 Content 仍逐行收敛；Resolver 每行做快照深比较；失败基准残留半成品且历史脚本在数据库门禁前写 fixture；Excel 临时峰值未计入压缩 Canonical 临时副本。每项均补了回归并重跑相关层。当前没有未解决的已确认生产代码 finding。
+
+当前分支 `perf/import-pipeline-throughput`，Requirement Source 为 #587，PR 为 #588。用户工作区 `.codex/config.toml`、既有 pytest 临时目录和任务外文件不属于本 Change，未修改或提交。当前只剩 Ready 后的 PR current-head CI、guarded merge、main-fresh、自动 Change Archive 和 Issue Closure；不包含 Release、Deploy、生产 Migration 或生产数据操作。

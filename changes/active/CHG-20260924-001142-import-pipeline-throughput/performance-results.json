@@ -2,6 +2,7 @@
   "schema_version": "aima-import-pipeline-performance-evidence.v1",
   "recorded_at": "2026-09-24T03:32:00+08:00",
   "baseline_revision": "cdd8482dd19c511fe9905794b9ef58de12a57db5",
+  "candidate_code_revision": "3874067c2e4fd12f55c77b8f444b4762c1c953e6",
   "candidate_branch": "perf/import-pipeline-throughput",
   "environment": {
     "operating_system": "Windows 11",
