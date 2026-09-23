@@ -7,7 +7,7 @@ status: ready_for_review
 owner: yuwen.ding
 branch: diag/vehicle-save-timing
 created: 2026-09-23T16:50:50+08:00
-updated: 2026-09-23T17:45:41+08:00
+updated: 2026-09-23T18:09:57+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -62,7 +62,7 @@ data_changes: []
 | R1 | 保存日志具有 request_id 与完整阶段耗时 | #583 / AC1 | satisfied | `update_vehicle_model` 与 `update_model` 真实边界计时；单元快/慢/失败回归通过；PostgreSQL 集成回归已写，等待 CI 隔离数据库验证 |
 | R2 | 快请求低噪声、慢成功/失败可定位且不泄露业务文本 | #583 / AC2 | satisfied | 默认 1000 毫秒阈值；只记录字段名、ID、结果和毫秒值；无数据库单元 2/2 通过，敏感文本断言通过 |
 | R3 | 保存与审计语义不变，文档和回归同步 | #583 / AC3 | satisfied | 更新仍在原事务提交并写审计；新增集成断言成功更新有审计、失败无审计，既有 9 SQL 回归交由 PR CI；PostgreSQL 排障文档已同步；没有自动重筛调用 |
-| R4 | 与 #582 独立交付且排除本地工具设置 | #583 / AC4 | satisfied | 独立 `diag/vehicle-save-timing` / PR #584；仅显式添加项目路径，`.codex/config.toml` 保持工作区原样、不提交；合并仍等待两批各自门禁 |
+| R4 | 与 #582 独立交付且排除本地工具设置 | #583 / AC4 | satisfied | #582 已先合并并归档；PR #584 相对最新 main 仅有车型日志相关 7 个文件；`.codex/config.toml` 保持工作区原样、不提交；本 PR 自身仍等待最终 CI 与合并门禁 |
 
 # 计划改动
 
@@ -93,7 +93,7 @@ data_changes: []
 
 按 targeted 影响只更新 PostgreSQL 排障说明，解释如何关联 request_id、阶段含义及不能仅凭耗时推断根因。无新依赖、配置、Migration 或部署动作；正式服务器仍需独立部署授权。诊断代码发布后才能收集服务器真实慢请求证据。
 
-交付验证暂把 #582 已通过的重筛性能分支合入本诊断任务分支：当前 CI 只触发目标为 `main` 的 PR，合并后的 HEAD 可在 main 目标上验证两批组合；#584 的车型日志 diff 仍可用 #582 分支作为审查 base 单独查看。正式合并顺序必须是 #582 后 #584，不能把组合 CI 当成跨过前一批主分支规则的许可。
+交付验证曾把 #582 已通过的重筛性能分支合入本诊断任务分支，因为当前 CI 只触发目标为 `main` 的 PR；组合 HEAD 的 CI 已全绿。随后 #582 先合并到 main，归档流程成功；本分支已同步最新 main，#584 相对 main 恢复为仅有车型日志的独立 diff。最终合并仍以本 PR 最新 HEAD 的检查为准，不能用先前组合 CI 替代。
 
 # 完成审计
 
