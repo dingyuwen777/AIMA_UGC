@@ -943,37 +943,6 @@
         "title": "AuditEventResponse",
         "type": "object"
       },
-      "Body_createFeishuReportPublication": {
-        "properties": {
-          "current_file": {
-            "contentMediaType": "application/octet-stream",
-            "title": "Current File",
-            "type": "string"
-          },
-          "end_date": {
-            "title": "End Date",
-            "type": "string"
-          },
-          "previous_file": {
-            "contentMediaType": "application/octet-stream",
-            "title": "Previous File",
-            "type": "string"
-          },
-          "start_date": {
-            "title": "Start Date",
-            "type": "string"
-          }
-        },
-        "required": ["current_file", "previous_file", "start_date", "end_date"],
-        "title": "Body_createFeishuReportPublication",
-        "type": "object"
-      },
-      "Body_createFeishuRepresentativeSelection": {
-        "properties": {"file": {"contentMediaType": "application/octet-stream", "title": "File", "type": "string"}},
-        "required": ["file"],
-        "title": "Body_createFeishuRepresentativeSelection",
-        "type": "object"
-      },
       "AuthConnectorListResponse": {
         "additionalProperties": false,
         "description": "可登录企业列表。\n\n**顺序即配置顺序** —— 前端按它渲染，保证每次刷新按钮顺序一致。",
@@ -1016,17 +985,70 @@
         "title": "AuthConnectorResponse",
         "type": "object"
       },
+      "Body_createFeishuReportPublication": {
+        "properties": {
+          "current_file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Current File",
+            "type": "string"
+          },
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "previous_file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Previous File",
+            "type": "string"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_file",
+          "previous_file",
+          "start_date",
+          "end_date"
+        ],
+        "title": "Body_createFeishuReportPublication",
+        "type": "object"
+      },
+      "Body_createFeishuRepresentativeSelection": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_createFeishuRepresentativeSelection",
+        "type": "object"
+      },
       "Body_createImportBatch": {
         "properties": {
           "brand_ids": {
             "default": [],
-            "items": {"format": "uuid", "type": "string"},
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
             "title": "Brand Ids",
             "type": "array"
           },
-          "file": {"contentMediaType": "application/octet-stream", "title": "File", "type": "string"}
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
         },
-        "required": ["file"],
+        "required": [
+          "file"
+        ],
         "title": "Body_createImportBatch",
         "type": "object"
       },

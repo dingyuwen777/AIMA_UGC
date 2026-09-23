@@ -344,17 +344,6 @@ export interface AuditEventListResponse {
   total: number;
 }
 
-export interface BodyCreateFeishuReportPublication {
-  current_file: Blob;
-  end_date: string;
-  previous_file: Blob;
-  start_date: string;
-}
-
-export interface BodyCreateFeishuRepresentativeSelection {
-  file: Blob;
-}
-
 /**
  * 一个**可登录的飞书企业**，供前端登录页展示。
  *
@@ -382,6 +371,17 @@ export interface AuthConnectorResponse {
  */
 export interface AuthConnectorListResponse {
   items: AuthConnectorResponse[];
+}
+
+export interface BodyCreateFeishuReportPublication {
+  current_file: Blob;
+  end_date: string;
+  previous_file: Blob;
+  start_date: string;
+}
+
+export interface BodyCreateFeishuRepresentativeSelection {
+  file: Blob;
 }
 
 export interface BodyCreateImportBatch {
