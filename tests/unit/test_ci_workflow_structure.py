@@ -133,7 +133,7 @@ def test_dependency_caches_only_cover_package_downloads() -> None:
 
 
 def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_heavy_jobs() -> None:
-    """普通 Ready 保留三个产品证据 Runner；新增 Hygiene 只能在 main push 后占用第四个维护 Runner。"""
+    """普通 Ready 保留产品证据 Runner；Hygiene 只在 main push 后占用维护 Runner。"""
     ci = CI.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
     assert ci.count("runs-on: ubuntu-24.04") == 4
