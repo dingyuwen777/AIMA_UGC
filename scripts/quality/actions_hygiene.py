@@ -270,9 +270,7 @@ def build_cleanup_plan(
             if run_path is None:
                 raise ValueError(f"Workflow run 缺少合法 path：id={run_id}")
             if run_path in current_paths:
-                raise RuntimeError(
-                    f"拒绝清理当前 Workflow run：id={run_id}, path={run_path}"
-                )
+                raise RuntimeError(f"拒绝清理当前 Workflow run：id={run_id}, path={run_path}")
             normalised_runs.append(
                 {
                     "id": run_id,
