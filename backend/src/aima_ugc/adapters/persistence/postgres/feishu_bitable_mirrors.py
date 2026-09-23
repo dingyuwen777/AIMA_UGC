@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, insert, select, update
@@ -75,7 +75,7 @@ class PostgresFeishuBitableMirrorRepository:
             if actual != expected:
                 raise ValueError("同一飞书文档已注册不同的双向镜像表")
             return existing
-        values = {
+        values: dict[str, Any] = {
             "id": uuid4(),
             "publication_job_id": publication_job_id,
             "document_token": document_token,

@@ -67,7 +67,6 @@ class PlatformSettings(BaseModel):
     # ⚠️ 这一组**全部可选**：一个都不配时 `feishu_app_id is None`，进程沿用开发身份，
     # 行为与接入前逐字一致（既有测试与本地开发不受影响）。
     # App Secret **不在这里**：配置只保存"引用"（文件名），内容由 platform/security 读。
-    feishu_app_id: str | None = None
     feishu_app_secret_ref: str = Field(default=DEFAULT_FEISHU_APP_SECRET_REF, min_length=1)
     feishu_admin_group_id: str | None = None
     feishu_user_group_id: str | None = None

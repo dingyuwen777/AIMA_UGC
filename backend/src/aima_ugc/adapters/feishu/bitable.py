@@ -1143,7 +1143,7 @@ class FeishuBitableClient:
         del allow_auth_retry
         for attempt in range(self._config.max_retries + 1):
             try:
-                request_kwargs: dict[str, object] = {
+                request_kwargs: dict[str, Any] = {
                     "params": params,
                     "headers": headers,
                 }

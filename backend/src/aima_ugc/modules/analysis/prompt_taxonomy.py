@@ -364,14 +364,14 @@ def _parse_semantic_rules(
         raw_source_voice_types = payload["source_voice_types"]
         if not isinstance(raw_source_voice_types, dict) or not raw_source_voice_types:
             raise PromptTaxonomyError("source_voice_types 必须是非空 JSON object")
-        source_voice_types: dict[str, str] = {}
+        source_voice_types_v45: dict[str, str] = {}
         for source_type, voice_type in raw_source_voice_types.items():
             if source_type not in source_types or source_type == "ordinary_consumer":
                 raise PromptTaxonomyError("V4.5 source_voice_types 包含非法 source_type")
             if not isinstance(voice_type, str) or voice_type not in voice_types:
                 raise PromptTaxonomyError("V4.5 source_voice_types 包含非法 voice_type")
-            source_voice_types[source_type] = voice_type
-        if set(source_voice_types) != set(source_types) - {"ordinary_consumer"}:
+            source_voice_types_v45[source_type] = voice_type
+        if set(source_voice_types_v45) != set(source_types) - {"ordinary_consumer"}:
             raise PromptTaxonomyError(
                 "V4.5 每个非普通消费者 source_type 都必须声明 voice_type 映射"
             )
@@ -393,7 +393,7 @@ def _parse_semantic_rules(
             source_types=source_types,
             content_intents=content_intents,
             organic_intents=organic_intents,
-            source_voice_types=MappingProxyType(source_voice_types),
+            source_voice_types=MappingProxyType(source_voice_types_v45),
             ordinary_consumer_organic_voice_type=str(
                 payload["ordinary_consumer_organic_voice_type_when_real_user_qualified"]
             ),
