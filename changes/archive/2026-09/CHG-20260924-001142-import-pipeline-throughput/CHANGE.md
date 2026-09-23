@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260924-001142-import-pipeline-throughput
 title: 数据导入与 Canonical 重筛全链路性能改造
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: perf/import-pipeline-throughput
 created: 2026-09-24T00:11:42+08:00
