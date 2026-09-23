@@ -123,12 +123,12 @@ current path、first-parent history、active skip、completed-only、per-ID read
 
 # 需求追溯
 
-| 编号 | 要求 | 来源 | 状态 |
-| --- | --- | --- | --- |
-| R1 | rate-limit 403 transient | #575 / AC6 | satisfied | body/header 明确信号判定与回归资产已落库 |
-| R2 | permission 403 hard | #575 / AC4/AC6 | satisfied | 普通 403 不命中 rate-limit 证据时继续 RuntimeError；回归已覆盖 |
-| R3 | 既有语义不回归 | #575 | satisfied | 429/503 回归已覆盖，404 retired 与 v2 定向算法未修改 |
-| R4 | main-fresh/closure | #575 / AC8 | not_applicable | pre-merge 不自证未来 CI/merge/main-fresh/archive/closure；由 downstream gate 持有 |
+| 编号 | 要求 | 来源 | 状态 | 证据 |
+| --- | --- | --- | --- | --- |
+| R1 | 明确 rate-limit 403 transient | #575 / AC6 | satisfied | body/header 明确信号判定与回归资产已落库 |
+| R2 | 普通 permission 403 保持 hard fail | #575 / AC4 | satisfied | 普通 403 不命中 rate-limit 证据时继续 RuntimeError；负向回归已覆盖 |
+| R3 | 既有 429/5xx/network/404 retired 语义不回归 | #575 / AC4 | satisfied | 429/503 回归已覆盖，404 retired 与 v2 定向算法未修改 |
+| R4 | main-fresh 与 Issue closure 完整闭环 | #575 / AC8 | not_applicable | pre-merge Change 不自证未来 CI/merge/main-fresh/archive/closure；由 downstream gate 持有 |
 
 # 计划改动
 
