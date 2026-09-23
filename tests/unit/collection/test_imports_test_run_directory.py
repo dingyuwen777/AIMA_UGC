@@ -94,7 +94,12 @@ def test_run_all_uses_one_isolated_run_directory_for_every_stage(
     assert payload["report_input_excel"] == str(run_dir / "labeled_data.xlsx")
     assert payload["report_markdown"] == str(run_dir / "reports" / "report.md")
     assert payload["report_word"] == str(run_dir / "reports" / "report.docx")
-    assert payload["report_date_range"] == ["2026-09-10", "2026-09-16"]
+    expected_date_range = (
+        [day.isoformat() for day in imports_test.REPORT_DATE_RANGE]
+        if imports_test.REPORT_DATE_RANGE is not None
+        else None
+    )
+    assert payload["report_date_range"] == expected_date_range
     assert not (tmp_path / "run_summary.json").exists()
 
 

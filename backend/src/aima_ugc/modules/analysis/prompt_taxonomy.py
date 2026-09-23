@@ -508,10 +508,18 @@ def _parse_v46_taxonomy_payload(prompt_text: str) -> dict[str, Any]:
     if not labels:
         raise PromptTaxonomyError("V4.6 Prompt 的标签 Taxonomy 为空")
 
+    voice_section = _v46_section(prompt_text, heading=r"## 0\.")
+    voice_types = _v46_bulleted_values(
+        voice_section,
+        marker=r"`voice_type` 最终只允许：",
+    )
+    sentiment_section = _v46_section(prompt_text, heading=r"# 8\.")
+    sentiments = _v46_bulleted_values(sentiment_section, marker=r"只允许：")
+
     return {
         "schema_version": "aima-content-taxonomy.v2.1",
-        "sentiments": ["正面", "中性", "负面", "混合"],
-        "voice_types": ["真实用户发声", "品牌官方发声", "营销推广发声"],
+        "sentiments": list(sentiments),
+        "voice_types": list(voice_types),
         "labels": labels,
     }
 
@@ -544,10 +552,14 @@ def _parse_v46_semantic_rules(
     }
     if set(source_types) != required_sources or set(content_intents) != required_intents:
         raise PromptTaxonomyError("V4.6 Prompt 的 source_type/content_intent 闭集不完整")
-    marketing_voice = "营销推广发声"
-    real_user_voice = "真实用户发声"
-    official_voice = "品牌官方发声"
-    if not {marketing_voice, real_user_voice, official_voice}.issubset(voice_types):
+
+    official_voice = _v46_voice_assignment(prompt_text, heading=r"## 3\.1")
+    real_user_voice = _v46_voice_assignment(prompt_text, heading=r"## 3\.2")
+    marketing_voice = _v46_voice_assignment(prompt_text, heading=r"## 3\.3")
+    resolved_roles = (official_voice, real_user_voice, marketing_voice)
+    if len(set(resolved_roles)) != len(resolved_roles) or not set(resolved_roles).issubset(
+        voice_types
+    ):
         raise PromptTaxonomyError("V4.6 Prompt 的 voice_type 闭集不完整")
     return PromptSemanticRules(
         source_types=source_types,
@@ -586,6 +598,37 @@ def _v46_fenced_values(prompt_text: str, *, heading: str) -> tuple[str, ...]:
     if not values:
         raise PromptTaxonomyError(f"V4.6 Prompt 的 {heading} 闭集为空")
     return values
+
+
+def _v46_section(prompt_text: str, *, heading: str) -> str:
+    match = re.search(
+        rf"(?ms)^{heading}[^\n]*\n(?P<body>.*?)(?=^#{{1,2}}\s+\d+\.|\Z)",
+        prompt_text,
+    )
+    if match is None:
+        raise PromptTaxonomyError(f"V4.6 Prompt 缺少 {heading} 区块")
+    return str(match.group("body"))
+
+
+def _v46_bulleted_values(section: str, *, marker: str) -> tuple[str, ...]:
+    match = re.search(
+        rf"(?ms){marker}\s*\n(?P<values>(?:[ \t]*-[ \t]*`[^`]+`[ \t]*\n?)+)",
+        section,
+    )
+    if match is None:
+        raise PromptTaxonomyError("V4.6 Prompt 缺少闭集列表")
+    values = tuple(re.findall(r"(?m)^\s*-\s*`([^`]+)`\s*$", str(match.group("values"))))
+    if not values or len(set(values)) != len(values):
+        raise PromptTaxonomyError("V4.6 Prompt 闭集列表为空或包含重复项")
+    return values
+
+
+def _v46_voice_assignment(prompt_text: str, *, heading: str) -> str:
+    section = _v46_section(prompt_text, heading=heading)
+    match = re.search(r"(?m)^\s*voice_type\s*=\s*(?P<value>.+?)\s*$", section)
+    if match is None:
+        raise PromptTaxonomyError(f"V4.6 Prompt 缺少 {heading} 的 voice_type 定义")
+    return str(match.group("value")).strip()
 
 
 def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

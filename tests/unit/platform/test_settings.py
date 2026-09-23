@@ -49,7 +49,7 @@ def test_load_settings_uses_explicit_environment_and_resolves_paths(tmp_path) ->
     assert settings.feishu_app_token == "app-test"
     assert settings.feishu_wiki_token == "wiki-test"
     assert settings.feishu_table_id == "tbl-test"
-    assert settings.feishu_app_secret_file == "feishu_app_secret"
+    assert settings.feishu_app_secret_filename == "feishu_app_secret"
     assert settings.feishu_timeout_seconds == 45
     assert settings.feishu_max_retries == 4
     assert settings.feishu_dry_run is False

@@ -60,7 +60,7 @@ class PlatformSettings(BaseModel):
     feishu_app_token: str | None = None
     feishu_wiki_token: str | None = None
     feishu_table_id: str | None = None
-    feishu_app_secret_file: str = Field(default="feishu_app_secret", min_length=1)
+    feishu_app_secret_filename: str = Field(default="feishu_app_secret", min_length=1)
     feishu_timeout_seconds: float = Field(default=30.0, gt=0, le=1800)
     feishu_max_retries: int = Field(default=3, ge=0, le=8)
     # ── 飞书身份接入（单 ③）───────────────────────────────────────────────
@@ -152,6 +152,27 @@ class PlatformSettings(BaseModel):
         if self.feishu_app_id is None:
             return self
 
+        if self.feishu_app_id != self.feishu_app_id.strip():
+            raise ValueError("AIMA_FEISHU_APP_ID 不能有首尾空白")
+
+        # Report publishing uses an App ID + token/table configuration but does not
+        # enable the authentication resolver. Keep those settings independent from
+        # the login-only group and redirect URI requirements below.
+        publishing_configured = any(
+            value is not None and (not isinstance(value, str) or bool(value.strip()))
+            for value in (self.feishu_app_token, self.feishu_wiki_token, self.feishu_table_id)
+        )
+        login_configured = any(
+            value is not None and bool(value.strip())
+            for value in (
+                self.feishu_admin_group_id,
+                self.feishu_user_group_id,
+                self.feishu_redirect_uri,
+            )
+        )
+        if publishing_configured and not login_configured:
+            return self
+
         missing = [
             name
             for name, value in (
@@ -163,9 +184,6 @@ class PlatformSettings(BaseModel):
         ]
         if missing:
             raise ValueError("启用飞书登录必须同时配置 " + "、".join(missing))
-        if self.feishu_app_id != self.feishu_app_id.strip():
-            raise ValueError("AIMA_FEISHU_APP_ID 不能有首尾空白")
-
         # Secret 引用必须是**相对路径**（不能是绝对路径或含 ..），避免读到批准根之外的文件。
         from aima_ugc.platform.security import validate_secret_ref
 
@@ -255,10 +273,16 @@ class PlatformSettings(BaseModel):
         return self.external_secret_root / "llm_api_key"
 
     @property
-    def feishu_app_secret_path(self) -> Path:
-        """返回飞书 App Secret 文件路径，不读取 Secret 内容。"""
+    def feishu_app_secret_file(self) -> Path:
+        """返回身份登录使用的 App Secret 文件路径，不读取 Secret 内容。"""
 
-        return self.external_secret_root / self.feishu_app_secret_file
+        return self.external_secret_root / self.feishu_app_secret_ref
+
+    @property
+    def feishu_app_secret_path(self) -> Path:
+        """返回报告发布使用的 App Secret 文件路径，不读取 Secret 内容。"""
+
+        return self.external_secret_root / self.feishu_app_secret_filename
 
     # ── 多企业：解析与查询 ────────────────────────────────────────────────
 
@@ -320,7 +344,7 @@ _ENV_TO_FIELD = {
     "AIMA_FEISHU_APP_TOKEN": "feishu_app_token",
     "AIMA_FEISHU_WIKI_TOKEN": "feishu_wiki_token",
     "AIMA_FEISHU_TABLE_ID": "feishu_table_id",
-    "AIMA_FEISHU_APP_SECRET_FILE": "feishu_app_secret_file",
+    "AIMA_FEISHU_APP_SECRET_FILE": "feishu_app_secret_filename",
     "AIMA_FEISHU_TIMEOUT_SECONDS": "feishu_timeout_seconds",
     "AIMA_FEISHU_MAX_RETRIES": "feishu_max_retries",
     "AIMA_FEISHU_APP_SECRET_REF": "feishu_app_secret_ref",

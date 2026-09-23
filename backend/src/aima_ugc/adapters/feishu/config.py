@@ -87,7 +87,7 @@ class FeishuConfig(BaseModel):
             app_token=settings.feishu_app_token,
             wiki_token=settings.feishu_wiki_token,
             table_id=settings.feishu_table_id or "",
-            app_secret_file=settings.feishu_app_secret_file,
+            app_secret_file=settings.feishu_app_secret_filename,
             timeout_seconds=settings.feishu_timeout_seconds,
             max_retries=settings.feishu_max_retries,
         )

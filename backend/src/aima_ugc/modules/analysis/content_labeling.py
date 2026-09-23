@@ -102,6 +102,7 @@ class ContentLabelingLLMRequest:
     items: tuple[ContentLabelingModelItem, ...]
     request_kind: ContentLabelingRequestKind = "primary"
     previous_validation_error_codes: tuple[str, ...] = ()
+    require_excel_complete: bool = False
     logical_request_id: str | None = None
     stop_event: Event | None = field(default=None, repr=False, compare=False)
 
@@ -327,9 +328,12 @@ def _build_excel_complete_fallback(
 
     primary_label = taxonomy.primary_labels[0]
     secondary_label = taxonomy.labels[primary_label][0]
+    fallback_voice_type = (
+        taxonomy.semantic_rules.unknown_voice_type if taxonomy.semantic_rules is not None else ""
+    )
     return ContentLabelAnalysisV3(
         relevance="relevant",
-        voice_type=_taxonomy_value_or_first(taxonomy.voice_types, "营销推广发声"),
+        voice_type=_taxonomy_value_or_first(taxonomy.voice_types, fallback_voice_type),
         sentiment=_taxonomy_value_or_first(taxonomy.sentiments, "中性"),
         labels=(
             ContentLabelPairV2(
@@ -350,8 +354,9 @@ def _build_excel_complete_fallback(
 class RuntimeTaxonomyValidator:
     """用当前 PromptTaxonomy 做模型分类 membership 与标签父子关系校验。"""
 
-    def __init__(self, taxonomy: PromptTaxonomy) -> None:
+    def __init__(self, taxonomy: PromptTaxonomy, *, require_excel_complete: bool = False) -> None:
         self._taxonomy = taxonomy
+        self._require_excel_complete = require_excel_complete
 
     def validate_voice_type(self, *, voice_type: str) -> None:
         """严格校验发声类型属于当前 Prompt Taxonomy，不猜测或兼容未知值。"""
@@ -578,10 +583,10 @@ class RuntimeTaxonomyValidator:
                 self.validate_voice_type(voice_type=parsed.voice_type)
             except ContentLabelingValidationError as exc:
                 shape_errors.extend(exc.error_codes)
-            if "空白" in parsed.voice_type:
+            if self._require_excel_complete and "空白" in parsed.voice_type:
                 shape_errors.append("blank_excel_voice_type_marker")
 
-            if self._taxonomy.output_protocol_version != "content-labeling.v3":
+            if self._require_excel_complete:
                 # Excel 打标结果的四个字段禁止出现 null、空字符串或空数组。
                 # 即使 relevance=irrelevant，也必须补齐情感和至少一个标签，
                 # 但当前持久化契约不允许 irrelevant 携带这些字段；因此这类结果
@@ -739,7 +744,10 @@ class ContentLabelingService:
             raise ValueError("max_validation_retries 必须是大于等于 0 的整数")
 
         taxonomy = self._prompt_loader.load()
-        validator = RuntimeTaxonomyValidator(taxonomy)
+        validator = RuntimeTaxonomyValidator(
+            taxonomy,
+            require_excel_complete=self._force_excel_complete,
+        )
         model_items = tuple(
             _to_model_item(content, item_no=index)
             for index, content in enumerate(contents, start=1)
@@ -797,6 +805,7 @@ class ContentLabelingService:
                     items=request_items,
                     request_kind=request_kind,
                     previous_validation_error_codes=previous_errors,
+                    require_excel_complete=self._force_excel_complete,
                     logical_request_id=uuid4().hex,
                     stop_event=stop_event,
                 )

@@ -346,30 +346,41 @@ def resolve_openai_compatible_provider_name(
 
 
 def _user_message(request: ContentLabelingLLMRequest) -> str:
-    payload: dict[str, object] = {
-        "items": request.model_payload(),
-        "excel_output_contract": (
+    payload: dict[str, object] = {"items": request.model_payload()}
+    if request.require_excel_complete:
+        payload["excel_output_contract"] = (
             "发声类型、情感标签、一级标签、二级标签四列永远不得为空，也不得出现“空白”占位值。"
             "当前离线 Excel 持久化契约不接受 relevance=irrelevant；请输出 relevance=relevant，"
             "并始终输出合法的 sentiment 和至少一个合法 labels 标签对；"
             "禁止 null、空字符串、空数组、缺失 key 或“空白”占位值。"
-        ),
-    }
+        )
     if request.previous_validation_error_codes:
         error_codes = tuple(request.previous_validation_error_codes)
         payload["previous_validation_error_codes"] = list(error_codes)
-        payload["validation_repair_rules"] = _validation_repair_rules(error_codes)
-        if request.request_kind == "judge":
+        if request.require_excel_complete:
+            payload["validation_repair_rules"] = _validation_repair_rules(error_codes)
+        if request.request_kind == "judge" and request.require_excel_complete:
             payload["decision_mode"] = "judge"
             payload["retry_instruction"] = (
                 "上一响应未通过本地校验。请只基于本次 items 的五个文本字段独立重新判断，"
                 "不要沿用上一结论；按 validation_repair_rules 修正后返回完整 JSON。"
             )
-        else:
+        elif request.request_kind == "judge":
+            payload["decision_mode"] = "judge"
+            payload["retry_instruction"] = (
+                "上一响应存在证据、主体、意图或发声类型歧义。"
+                "请只基于本次 items 的五个文本字段独立重新判断，"
+                "逐项引用原文证据；不要沿用上一结论。证据不足时使用显式未知值并返回 clear。"
+            )
+        elif request.require_excel_complete:
             payload["retry_instruction"] = (
                 "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
                 "必须严格执行 validation_repair_rules，不能输出 unknown、无法判断、其他或空白"
                 "占位值。"
+            )
+        else:
+            payload["retry_instruction"] = (
+                "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
             )
     return json.dumps(
         payload,
