@@ -258,6 +258,17 @@ def test_vehicle_update_slow_log_records_stages_without_business_text(
         "brand_check",
     }
     assert "敏感" not in caplog.text
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            audit_events = PostgresAuditRepository(session).list_recent(limit=20)
+    finally:
+        session.close()
+    update_request_ids = {
+        event.request_id for event in audit_events if event.event_type == "vehicle_model_updated"
+    }
+    assert {"vehicle-timing-fast", "vehicle-timing-slow"} <= update_request_ids
+    assert "vehicle-timing-failed" not in update_request_ids
 
 
 def test_vehicle_merge_redirects_identity_and_audits_mutations(runtime) -> None:  # type: ignore[no-untyped-def]

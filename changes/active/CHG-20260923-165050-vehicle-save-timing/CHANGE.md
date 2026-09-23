@@ -7,7 +7,7 @@ status: ready_for_review
 owner: yuwen.ding
 branch: diag/vehicle-save-timing
 created: 2026-09-23T16:50:50+08:00
-updated: 2026-09-23T17:07:31+08:00
+updated: 2026-09-23T17:34:20+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -61,7 +61,7 @@ data_changes: []
 | --- | --- | --- | --- | --- |
 | R1 | 保存日志具有 request_id 与完整阶段耗时 | #583 / AC1 | satisfied | `update_vehicle_model` 与 `update_model` 真实边界计时；单元快/慢/失败回归通过；PostgreSQL 集成回归已写，等待 CI 隔离数据库验证 |
 | R2 | 快请求低噪声、慢成功/失败可定位且不泄露业务文本 | #583 / AC2 | satisfied | 默认 1000 毫秒阈值；只记录字段名、ID、结果和毫秒值；无数据库单元 2/2 通过，敏感文本断言通过 |
-| R3 | 保存与审计语义不变，文档和回归同步 | #583 / AC3 | satisfied | 更新仍在原事务提交并写审计；`test_vehicle_display_name_update_uses_bounded_queries` 既有回归与新增集成测试交由 PR CI；PostgreSQL 排障文档已同步；没有自动重筛调用 |
+| R3 | 保存与审计语义不变，文档和回归同步 | #583 / AC3 | satisfied | 更新仍在原事务提交并写审计；新增集成断言成功更新有审计、失败无审计，既有 9 SQL 回归交由 PR CI；PostgreSQL 排障文档已同步；没有自动重筛调用 |
 | R4 | 与 #582 独立交付且排除本地工具设置 | #583 / AC4 | satisfied | 独立 `diag/vehicle-save-timing` / PR #584；仅显式添加项目路径，`.codex/config.toml` 保持工作区原样、不提交；合并仍等待两批各自门禁 |
 
 # 计划改动
