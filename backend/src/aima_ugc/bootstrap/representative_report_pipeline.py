@@ -918,7 +918,7 @@ def _is_usable_screenshot(path: Path) -> bool:
                 return False
             sample = image.convert("L").resize((64, 64))
             pixels = list(sample.tobytes())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return False
     if not pixels:
         return False
@@ -956,7 +956,7 @@ def _read_edge_profile_directory(user_data_dir: Path) -> str:
         for candidate in candidates:
             if isinstance(candidate, str) and (user_data_dir / candidate).is_dir():
                 return candidate
-    except (OSError, TypeError, ValueError):
+    except OSError, TypeError, ValueError:
         pass
     return "Default"
 
@@ -1079,7 +1079,7 @@ def _integer_or_zero(values: tuple[object, ...], index: int | None) -> int:
         return 0
     try:
         return int(float(str(values[index]).strip()))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
 
 

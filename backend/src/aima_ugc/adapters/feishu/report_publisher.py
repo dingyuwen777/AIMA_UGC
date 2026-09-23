@@ -229,9 +229,7 @@ class FeishuReportPublisher:
             representative_bitable_token=(
                 None if embedded_bitable is None else embedded_bitable.token
             ),
-            representative_bitable_url=(
-                None if embedded_bitable is None else embedded_bitable.url
-            ),
+            representative_bitable_url=(None if embedded_bitable is None else embedded_bitable.url),
         )
 
     def _create_document(self, *, title: str) -> _ImportResult:

@@ -36,7 +36,7 @@ def active_llm_provider(session: Session, settings: PlatformSettings) -> Provide
             .relative_to(settings.external_secret_root.resolve())
             .as_posix()
         )
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     return ProviderConfig(
         id=_ENV_LLM_CONFIG_ID,

@@ -4,9 +4,8 @@ import runpy
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 import unittest
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/quality/actions_hygiene.py"
@@ -96,7 +95,9 @@ class ActionsHygieneTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
-            subprocess.run(["git", "config", "user.email", "ci@example.invalid"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "ci@example.invalid"], cwd=root, check=True
+            )
             subprocess.run(["git", "config", "user.name", "CI"], cwd=root, check=True)
 
             old = root / ".github/workflows/old.yml"
@@ -145,6 +146,7 @@ class ActionsHygieneTest(unittest.TestCase):
             {"workflow_runs": []},
         ]
         try:
+
             def fake_request(token, method, path, **kwargs):
                 requested.append(path)
                 return pages.pop(0)
@@ -175,23 +177,17 @@ class ActionsHygieneTest(unittest.TestCase):
         deleted: list[str] = []
         stale_path = ".github/workflows/old.yml"
         try:
-            RUNTIME_GLOBALS["current_workflow_paths"] = (
-                lambda root: {".github/workflows/ci.yml"}
-            )
+            RUNTIME_GLOBALS["current_workflow_paths"] = lambda root: {".github/workflows/ci.yml"}
             RUNTIME_GLOBALS["list_repository_workflows"] = lambda repository, token: [
                 {"id": 9, "path": stale_path, "name": "Old", "state": "disabled"}
             ]
-            RUNTIME_GLOBALS["main_history_workflow_paths"] = (
-                lambda root, observed: {stale_path}
-            )
+            RUNTIME_GLOBALS["main_history_workflow_paths"] = lambda root, observed: {stale_path}
             RUNTIME_GLOBALS["list_workflow_runs"] = lambda repository, token, workflow_id: [
                 {"id": 90, "path": stale_path, "name": "Old", "status": "completed"}
             ]
             RUNTIME_GLOBALS["workflow_run_count"] = lambda repository, token, workflow_id: 0
-            RUNTIME_GLOBALS["_api_request"] = (
-                lambda token, method, path, **kwargs: deleted.append(path)
-                if method == "DELETE"
-                else None
+            RUNTIME_GLOBALS["_api_request"] = lambda token, method, path, **kwargs: (
+                deleted.append(path) if method == "DELETE" else None
             )
             payload = RUN_HYGIENE(ROOT, "owner/repo", "token", execute=True)
         finally:
@@ -217,15 +213,11 @@ class ActionsHygieneTest(unittest.TestCase):
         }
         stale_path = ".github/workflows/old.yml"
         try:
-            RUNTIME_GLOBALS["current_workflow_paths"] = (
-                lambda root: {".github/workflows/ci.yml"}
-            )
+            RUNTIME_GLOBALS["current_workflow_paths"] = lambda root: {".github/workflows/ci.yml"}
             RUNTIME_GLOBALS["list_repository_workflows"] = lambda repository, token: [
                 {"id": 10, "path": stale_path, "name": "Old", "state": "disabled"}
             ]
-            RUNTIME_GLOBALS["main_history_workflow_paths"] = (
-                lambda root, observed: {stale_path}
-            )
+            RUNTIME_GLOBALS["main_history_workflow_paths"] = lambda root, observed: {stale_path}
             RUNTIME_GLOBALS["list_workflow_runs"] = lambda repository, token, workflow_id: [
                 {"id": 100, "path": stale_path, "name": "Old", "status": "completed"}
             ]

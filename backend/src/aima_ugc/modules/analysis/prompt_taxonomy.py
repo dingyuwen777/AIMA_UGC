@@ -194,9 +194,7 @@ class PromptTaxonomyLoader:
 
         schema_version = payload["schema_version"]
         if schema_version not in _SUPPORTED_TAXONOMY_SCHEMA_VERSIONS:
-            raise PromptTaxonomyError(
-                "Prompt Taxonomy schema_version 不受支持"
-            )
+            raise PromptTaxonomyError("Prompt Taxonomy schema_version 不受支持")
 
         sentiments = _clean_string_list(payload["sentiments"], field_name="sentiments")
         voice_types = _clean_string_list(payload["voice_types"], field_name="voice_types")
@@ -399,9 +397,7 @@ def _parse_semantic_rules(
             ordinary_consumer_organic_voice_type=str(
                 payload["ordinary_consumer_organic_voice_type_when_real_user_qualified"]
             ),
-            personal_transaction_voice_type=str(
-                payload["ordinary_consumer_nonorganic_voice_type"]
-            ),
+            personal_transaction_voice_type=str(payload["ordinary_consumer_nonorganic_voice_type"]),
             campaign_voice_type=str(payload["ordinary_consumer_nonorganic_voice_type"]),
             unknown_voice_type=str(payload["irrelevant_nonofficial_voice_type"]),
         )

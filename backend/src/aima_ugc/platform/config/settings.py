@@ -217,6 +217,7 @@ class PlatformSettings(BaseModel):
                 raise ValueError(
                     f"connector {connector.code!r} 的 app_secret_ref 不合法：{exc}"
                 ) from exc
+
     feishu_dry_run: bool = True
 
     @property
@@ -361,7 +362,7 @@ def _parse_connectors_or_none(raw: str) -> ConnectorRegistry | None:
 
     try:
         payload = json.loads(raw)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if not isinstance(payload, list):
         return None

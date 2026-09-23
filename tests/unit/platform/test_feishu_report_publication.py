@@ -171,7 +171,7 @@ def test_report_publisher_writes_real_bitable_block_payload() -> None:
                         {
                             "block_id": "bitable-block",
                             "block_type": 18,
-                                "bitable": {"token": "bascnExample_tblExample"},
+                            "bitable": {"token": "bascnExample_tblExample"},
                         }
                     ]
                 },
@@ -271,9 +271,7 @@ def test_report_publisher_creates_embedded_bitable_in_document_order() -> None:
     finally:
         client.close()
 
-    assert requests[1]["children"] == [
-        {"block_type": 18, "bitable": {"view_type": 1}}
-    ]
+    assert requests[1]["children"] == [{"block_type": 18, "bitable": {"view_type": 1}}]
     assert embedded is not None
     assert embedded.token == "bascnExample_tblTarget"
 
@@ -703,16 +701,17 @@ def test_publish_all_real_run_creates_embedded_bitable_before_sync(
         )()
 
     monkeypatch.setattr(publication_module, "publish_selected_representatives_to_feishu", fake_sync)
+
     def fake_publish(report: object, config: object, **kwargs: object):
         del report, config
         events.append("publish")
         captured["publish_kwargs"] = kwargs
         return type(
-                "Publication",
-                (),
-                {
-                    "native_document_token": "doc-token",
-                    "native_document_url": "https://feishu.example/doc",
+            "Publication",
+            (),
+            {
+                "native_document_token": "doc-token",
+                "native_document_url": "https://feishu.example/doc",
                 "editable_chart_sheet_url": "https://feishu.example/sheet",
                 "representative_bitable_token": "bascnEmbedded_tblEmbedded",
             },

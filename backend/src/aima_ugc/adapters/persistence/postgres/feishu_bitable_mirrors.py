@@ -49,11 +49,15 @@ class PostgresFeishuBitableMirrorRepository:
         embedded_app_token: str,
         embedded_table_id: str,
     ) -> FeishuBitableMirrorRecord:
-        existing_row = self._session.execute(
-            select(feishu_bitable_mirrors_table).where(
-                feishu_bitable_mirrors_table.c.document_token == document_token
+        existing_row = (
+            self._session.execute(
+                select(feishu_bitable_mirrors_table).where(
+                    feishu_bitable_mirrors_table.c.document_token == document_token
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if existing_row is not None:
             existing = _row_to_mirror(existing_row)
             expected = (
@@ -87,11 +91,15 @@ class PostgresFeishuBitableMirrorRepository:
             "created_at": func.clock_timestamp(),
             "updated_at": func.clock_timestamp(),
         }
-        row = self._session.execute(
-            insert(feishu_bitable_mirrors_table).values(**values).returning(
-                *feishu_bitable_mirrors_table.c
+        row = (
+            self._session.execute(
+                insert(feishu_bitable_mirrors_table)
+                .values(**values)
+                .returning(*feishu_bitable_mirrors_table.c)
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         return _row_to_mirror(row)
 
     def list_due(self, *, limit: int = 20) -> tuple[FeishuBitableMirrorRecord, ...]:
@@ -141,9 +149,7 @@ class PostgresFeishuBitableMirrorRepository:
             .where(feishu_bitable_mirrors_table.c.id == mirror_id)
             .values(
                 next_sync_at=next_sync_at,
-                consecutive_failures=(
-                    feishu_bitable_mirrors_table.c.consecutive_failures + 1
-                ),
+                consecutive_failures=(feishu_bitable_mirrors_table.c.consecutive_failures + 1),
                 last_error_code=error_code[:128],
                 updated_at=func.clock_timestamp(),
             )
@@ -152,9 +158,7 @@ class PostgresFeishuBitableMirrorRepository:
 
 def _row_to_mirror(row: RowMapping) -> FeishuBitableMirrorRecord:
     raw_hashes = row["known_key_hashes"]
-    if not isinstance(raw_hashes, list) or any(
-        not isinstance(item, str) for item in raw_hashes
-    ):
+    if not isinstance(raw_hashes, list) or any(not isinstance(item, str) for item in raw_hashes):
         raise ValueError("飞书镜像 known_key_hashes 数据损坏")
     return FeishuBitableMirrorRecord(
         id=cast(UUID, row["id"]),

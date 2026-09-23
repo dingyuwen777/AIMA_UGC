@@ -201,9 +201,7 @@ def publish_selected_representatives_to_feishu(
         target_table_url=external_table.url,
         mirror_app_token=None if embedded_table is None else embedded_table.app_token,
         mirror_table_id=None if embedded_table is None else embedded_table.table_id,
-        mirror_document_token=(
-            target_document_token.strip() if target_document_token else None
-        ),
+        mirror_document_token=(target_document_token.strip() if target_document_token else None),
         mirror_document_url=(target_document_url.strip() if target_document_url else None),
     )
     _write_json(target_dir / "feishu_new_table.json", external_table.as_dict())

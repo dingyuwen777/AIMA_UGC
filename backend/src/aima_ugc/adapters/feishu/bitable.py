@@ -516,8 +516,7 @@ class FeishuBitableClient:
         unexpected_fields = existing_names - desired_names - _EMBEDDED_DEFAULT_FIELD_NAMES
         if unexpected_fields:
             raise FeishuSyncError(
-                "飞书内嵌多维表包含非默认字段，已停止覆盖: "
-                + ", ".join(sorted(unexpected_fields))
+                "飞书内嵌多维表包含非默认字段，已停止覆盖: " + ", ".join(sorted(unexpected_fields))
             )
         primary = next((field for field in target_fields if field.is_primary), None)
         if primary is None:
@@ -575,9 +574,7 @@ class FeishuBitableClient:
         verified_names = {field.name for field in verified_fields}
         missing = desired_names - verified_names
         if missing:
-            raise FeishuSyncError(
-                "飞书内嵌多维表字段创建后回读缺失: " + ", ".join(sorted(missing))
-            )
+            raise FeishuSyncError("飞书内嵌多维表字段创建后回读缺失: " + ", ".join(sorted(missing)))
         return FeishuTableInfo(
             table_id=target_table_id,
             name=table_name,
@@ -763,18 +760,14 @@ class FeishuBitableClient:
                         embedded_updates.append(
                             {
                                 "record_id": embedded.record_id,
-                                "fields": {
-                                    name: external.fields.get(name) for name in differences
-                                },
+                                "fields": {name: external.fields.get(name) for name in differences},
                             }
                         )
                     else:
                         external_updates.append(
                             {
                                 "record_id": external.record_id,
-                                "fields": {
-                                    name: embedded.fields.get(name) for name in differences
-                                },
+                                "fields": {name: embedded.fields.get(name) for name in differences},
                             }
                         )
                 next_keys.add(key_hash)
@@ -1414,7 +1407,7 @@ def _parse_record(value: object) -> _FeishuRecord:
     raw_modified_time = value.get("last_modified_time", 0)
     try:
         last_modified_time = int(raw_modified_time)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         last_modified_time = 0
     return _FeishuRecord(
         record_id=record_id,
@@ -1549,9 +1542,7 @@ def _convert_field_value(
     if field.field_type in _FIELD_TYPES_MULTI_SELECT:
         if isinstance(value, (list, tuple)):
             raw_values = [
-                label
-                for item in value
-                for label in split_representative_labels(_value_text(item))
+                label for item in value for label in split_representative_labels(_value_text(item))
             ]
         else:
             raw_values = list(split_representative_labels(_value_text(value)))

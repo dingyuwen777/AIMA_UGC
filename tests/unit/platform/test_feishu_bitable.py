@@ -107,9 +107,7 @@ class _MirrorAPI:
             self.mutations.append((app_token, "delete", payload))
             deleted = set(payload)
             self.records[app_token][:] = [
-                item
-                for item in self.records[app_token]
-                if item["record_id"] not in deleted
+                item for item in self.records[app_token] if item["record_id"] not in deleted
             ]
             return httpx.Response(200, json={"code": 0, "data": {"records": []}})
         raise AssertionError(f"unexpected request: {request.method} {path}")
@@ -162,20 +160,12 @@ def _mirror_client(api: _MirrorAPI) -> FeishuBitableClient:
 def test_bidirectional_mirror_uses_newer_record_on_each_side() -> None:
     api = _MirrorAPI(
         external=[
-            _mirror_record(
-                "external-a", "item-a", progress="外部较新", modified_time=2_000
-            ),
-            _mirror_record(
-                "external-b", "item-b", progress="外部较旧", modified_time=1_000
-            ),
+            _mirror_record("external-a", "item-a", progress="外部较新", modified_time=2_000),
+            _mirror_record("external-b", "item-b", progress="外部较旧", modified_time=1_000),
         ],
         embedded=[
-            _mirror_record(
-                "embedded-a", "item-a", progress="内嵌较旧", modified_time=1_000
-            ),
-            _mirror_record(
-                "embedded-b", "item-b", progress="内嵌较新", modified_time=2_000
-            ),
+            _mirror_record("embedded-a", "item-a", progress="内嵌较旧", modified_time=1_000),
+            _mirror_record("embedded-b", "item-b", progress="内嵌较新", modified_time=2_000),
         ],
     )
 
@@ -198,16 +188,8 @@ def test_bidirectional_mirror_uses_newer_record_on_each_side() -> None:
 
 def test_bidirectional_mirror_creates_records_missing_from_either_side() -> None:
     api = _MirrorAPI(
-        external=[
-            _mirror_record(
-                "external-a", "item-a", progress="来自外部", modified_time=2_000
-            )
-        ],
-        embedded=[
-            _mirror_record(
-                "embedded-b", "item-b", progress="来自内嵌", modified_time=2_100
-            )
-        ],
+        external=[_mirror_record("external-a", "item-a", progress="来自外部", modified_time=2_000)],
+        embedded=[_mirror_record("embedded-b", "item-b", progress="来自内嵌", modified_time=2_100)],
     )
 
     with _mirror_client(api) as client:
@@ -221,26 +203,20 @@ def test_bidirectional_mirror_creates_records_missing_from_either_side() -> None
     assert result.external_created_count == 1
     assert result.embedded_created_count == 1
     assert result.verified_count == 2
-    assert {
-        item["fields"]["声音内容/连接"]["text"] for item in api.records["external"]
-    } == {"item-a", "item-b"}
-    assert {
-        item["fields"]["声音内容/连接"]["text"] for item in api.records["embedded"]
-    } == {"item-a", "item-b"}
+    assert {item["fields"]["声音内容/连接"]["text"] for item in api.records["external"]} == {
+        "item-a",
+        "item-b",
+    }
+    assert {item["fields"]["声音内容/连接"]["text"] for item in api.records["embedded"]} == {
+        "item-a",
+        "item-b",
+    }
 
 
 def test_bidirectional_mirror_propagates_known_safe_deletions() -> None:
     api = _MirrorAPI(
-        external=[
-            _mirror_record(
-                "external-a", "item-a", progress="待删除", modified_time=1_000
-            )
-        ],
-        embedded=[
-            _mirror_record(
-                "embedded-b", "item-b", progress="待删除", modified_time=1_000
-            )
-        ],
+        external=[_mirror_record("external-a", "item-a", progress="待删除", modified_time=1_000)],
+        embedded=[_mirror_record("embedded-b", "item-b", progress="待删除", modified_time=1_000)],
     )
     known_hashes = tuple(
         sha256(value.encode("utf-8")).hexdigest()
@@ -269,9 +245,7 @@ def test_bidirectional_mirror_propagates_known_safe_deletions() -> None:
 def test_bidirectional_mirror_restores_deleted_side_when_remaining_record_changed() -> None:
     api = _MirrorAPI(
         external=[
-            _mirror_record(
-                "external-a", "item-a", progress="删除后又修改", modified_time=2_000
-            )
+            _mirror_record("external-a", "item-a", progress="删除后又修改", modified_time=2_000)
         ],
         embedded=[],
     )
@@ -567,8 +541,7 @@ def test_configure_embedded_table_replaces_only_blank_default_schema() -> None:
     )
     assert primary_update == {"field_name": "声音内容/连接", "type": 15}
     assert {field["field_name"] for field in target_fields} == (
-        {field["field_name"] for field in _fields()}
-        | {"用户情绪", "处理进展", "声音截图"}
+        {field["field_name"] for field in _fields()} | {"用户情绪", "处理进展", "声音截图"}
     )
     assert not any(path.endswith("/tables") for _method, path, _body in calls)
     assert target_records == []

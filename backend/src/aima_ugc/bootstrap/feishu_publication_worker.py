@@ -142,9 +142,9 @@ class PostgresFeishuPublicationJobExecutor(FeishuPublicationJobExecutor):
             if exc.retriable:
                 return JobHandlerResult.retry("feishu_report_api_retry")
             return JobHandlerResult.failed("feishu_report_api_failed")
-        except (OSError, TimeoutError):
+        except OSError, TimeoutError:
             return JobHandlerResult.retry("feishu_report_io_error")
-        except (ValueError, RuntimeError):
+        except ValueError, RuntimeError:
             return JobHandlerResult.failed("feishu_report_publication_failed")
 
     def execute_representative_selection(
@@ -187,7 +187,7 @@ class PostgresFeishuPublicationJobExecutor(FeishuPublicationJobExecutor):
                 )
         except FileNotFoundError:
             return JobHandlerResult.failed("feishu_publication_artifact_missing")
-        except (RepresentativeSelectionPublicationConfigurationError, SecretFileError):
+        except RepresentativeSelectionPublicationConfigurationError, SecretFileError:
             return JobHandlerResult.failed("feishu_representative_config_unavailable")
         except FeishuAPIError as exc:
             _log_feishu_api_error(
@@ -198,9 +198,9 @@ class PostgresFeishuPublicationJobExecutor(FeishuPublicationJobExecutor):
             if exc.retryable:
                 return JobHandlerResult.retry("feishu_bitable_api_retry")
             return JobHandlerResult.failed("feishu_bitable_api_failed")
-        except (FeishuSyncError, ValueError):
+        except FeishuSyncError, ValueError:
             return JobHandlerResult.failed("feishu_representative_publication_failed")
-        except (OSError, TimeoutError):
+        except OSError, TimeoutError:
             return JobHandlerResult.retry("feishu_representative_io_error")
         except RuntimeError:
             return JobHandlerResult.failed("feishu_representative_publication_failed")

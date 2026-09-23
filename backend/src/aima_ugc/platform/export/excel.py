@@ -633,9 +633,7 @@ def _assert_complete_excel_analysis(content: UnifiedDataExcelContentV1) -> None:
 
     analysis = content.analysis
     if analysis is None:
-        raise ValueError(
-            f"禁止导出缺少 Analysis 的内容: content_id={content.external_content_id}"
-        )
+        raise ValueError(f"禁止导出缺少 Analysis 的内容: content_id={content.external_content_id}")
 
     missing: list[str] = []
     if _is_blank_excel_label(analysis.voice_type):
@@ -651,15 +649,9 @@ def _assert_complete_excel_analysis(content: UnifiedDataExcelContentV1) -> None:
     if not pairs:
         missing.extend(("一级标签", "二级标签"))
     else:
-        if any(
-            _is_blank_excel_label(pair.primary_label)
-            for pair in pairs
-        ):
+        if any(_is_blank_excel_label(pair.primary_label) for pair in pairs):
             missing.append("一级标签")
-        if any(
-            _is_blank_excel_label(pair.secondary_label)
-            for pair in pairs
-        ):
+        if any(_is_blank_excel_label(pair.secondary_label) for pair in pairs):
             missing.append("二级标签")
 
     if missing:
