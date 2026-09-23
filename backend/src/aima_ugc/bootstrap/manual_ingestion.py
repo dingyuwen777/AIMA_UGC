@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from itertools import batched
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID, uuid4
 
 from sqlalchemy import inspect
@@ -14,6 +16,7 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
+from aima_ugc.adapters.persistence.postgres.content import PostgresIngestionResult
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
 )
@@ -23,11 +26,13 @@ from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
 )
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
+from aima_ugc.contracts.canonical import CanonicalContentV1
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     BrandVehicleFilterSnapshot,
     resolve_canonical_brand_vehicle,
 )
+from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution, BrandVehicleResolver
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
@@ -322,74 +327,65 @@ def ingest_unified_content_batch(
     request_count = 0
     vehicle_repository = PostgresVehicleCatalogRepository(session)
     brand_repository = PostgresBrandVehicleRepository(session)
+    resolver = (
+        BrandVehicleResolver(brand_vehicle_filter_snapshot.catalog)
+        if brand_vehicle_filter_snapshot is not None
+        else None
+    )
 
     with unified_content_path.open("rb") as handle:
-        for line_number, raw_line in enumerate(handle, start=1):
-            if not raw_line.strip():
-                continue
-            try:
-                record = UnifiedContentRecordV1.model_validate_json(raw_line)
-            except Exception as exc:
-                raise ValueError(f"Unified Content JSONL 第 {line_number} 行无法解析") from exc
-            content = record.content
-            if (
-                source_value_filter is not None
-                and content.source.source_value != source_value_filter
-            ):
-                continue
-            lineage = lineage_by_platform.get(content.platform)
-            if lineage is None:
-                request_id, attempt_id = ensure_single_import_lineage(
-                    session=session,
-                    batch_id=batch_id,
-                    platform=content.platform,
-                    input_artifact=input_artifact,
-                    profile=content.source.source_type or "unknown",
-                )
-                lineage = (request_id, attempt_id)
-                lineage_by_platform[content.platform] = lineage
-                request_count += 1
-
-            request_id, attempt_id = lineage
-            source = content.source.model_copy(
-                update={
-                    "provider_name": "imports",
-                    "operation": "excel_import",
-                    "provider_request_id": str(request_id),
-                    "provider_attempt_id": str(attempt_id),
-                    "raw_artifact_id": input_artifact.id,
-                }
-            )
-            result = content_service.ingest_content(content.model_copy(update={"source": source}))
-            if result.target_id is not None and brand_vehicle_filter_snapshot is not None:
-                resolution = resolve_canonical_brand_vehicle(brand_vehicle_filter_snapshot, content)
-                if not resolution.matched:
-                    raise ValueError("过滤后 Content 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
-                for evidence in resolution.vehicle_evidence:
-                    vehicle_repository.append_evidence(
-                        ContentVehicleEvidence(
-                            id=uuid4(),
-                            content_id=result.target_id,
-                            content_version=result.version_no,
-                            vehicle_model_id=evidence.entity_id,
-                            source="import",
-                            matched_text=evidence.matched_text,
-                            source_field=evidence.source_field,
-                            catalog_version=brand_vehicle_filter_snapshot.catalog.catalog_version,
-                            confidence=1.0,
-                            is_manual_locked=False,
-                            is_active=True,
-                            created_at=beijing_now(),
-                        )
+        parsed = _iter_unified_content_lines(handle)
+        for records in batched(parsed, 500, strict=False):
+            pending: list[tuple[CanonicalContentV1, BrandVehicleResolution | None]] = []
+            for _line_number, record in records:
+                content = record.content
+                if (
+                    source_value_filter is not None
+                    and content.source.source_value != source_value_filter
+                ):
+                    continue
+                lineage = lineage_by_platform.get(content.platform)
+                if lineage is None:
+                    request_id, attempt_id = ensure_single_import_lineage(
+                        session=session,
+                        batch_id=batch_id,
+                        platform=content.platform,
+                        input_artifact=input_artifact,
+                        profile=content.source.source_type or "unknown",
                     )
-                brand_repository.replace_automatic_brand_evidence(
-                    content_id=result.target_id,
-                    content_version=result.version_no,
-                    evidence=resolution.brand_evidence,
-                    catalog_version=brand_vehicle_filter_snapshot.catalog.catalog_version,
-                    catalog_snapshot=brand_vehicle_filter_snapshot.catalog,
+                    lineage = (request_id, attempt_id)
+                    lineage_by_platform[content.platform] = lineage
+                    request_count += 1
+
+                request_id, attempt_id = lineage
+                source = content.source.model_copy(
+                    update={
+                        "provider_name": "imports",
+                        "operation": "excel_import",
+                        "provider_request_id": str(request_id),
+                        "provider_attempt_id": str(attempt_id),
+                        "raw_artifact_id": input_artifact.id,
+                    }
                 )
-            rows_ingested += 1
+                resolution = (
+                    resolve_canonical_brand_vehicle(
+                        brand_vehicle_filter_snapshot,
+                        content,
+                        resolver=resolver,
+                    )
+                    if brand_vehicle_filter_snapshot is not None
+                    else None
+                )
+                if resolution is not None and not resolution.matched:
+                    raise ValueError("过滤后 Content 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
+                pending.append((content.model_copy(update={"source": source}), resolution))
+            rows_ingested += _ingest_import_content_batch(
+                content_service=content_service,
+                vehicle_repository=vehicle_repository,
+                brand_repository=brand_repository,
+                pending=tuple(pending),
+                filter_snapshot=brand_vehicle_filter_snapshot,
+            )
 
     PostgresProcessingImportBatchRepository(session).mark_succeeded(
         batch_id,
@@ -401,6 +397,89 @@ def ingest_unified_content_batch(
         rows_ingested=rows_ingested,
         provider_request_count=request_count,
     )
+
+
+def _iter_unified_content_lines(
+    handle: BinaryIO,
+) -> Iterator[tuple[int, UnifiedContentRecordV1]]:
+    """逐行解析 Unified JSONL；错误仍保留稳定的输入行号。"""
+
+    for line_number, raw_line in enumerate(handle, start=1):
+        if not raw_line.strip():
+            continue
+        try:
+            yield line_number, UnifiedContentRecordV1.model_validate_json(raw_line)
+        except Exception as exc:
+            raise ValueError(f"Unified Content JSONL 第 {line_number} 行无法解析") from exc
+
+
+def _ingest_import_content_batch(
+    *,
+    content_service: ContentIngestionService[PostgresIngestionResult],
+    vehicle_repository: PostgresVehicleCatalogRepository,
+    brand_repository: PostgresBrandVehicleRepository,
+    pending: tuple[tuple[CanonicalContentV1, BrandVehicleResolution | None], ...],
+    filter_snapshot: BrandVehicleFilterSnapshot | None,
+) -> int:
+    """集合写安全新 Content/Evidence，既有或竞争行保持正式兼容语义。"""
+
+    if not pending:
+        return 0
+    results = content_service.ingest_contents_batch(tuple(item[0] for item in pending))
+    if filter_snapshot is None:
+        return len(results)
+    created_at = beijing_now()
+    initial_vehicle_entries = []
+    initial_brand_entries = []
+    existing_entries = []
+    for (_content, resolution), result in zip(pending, results, strict=True):
+        if resolution is None:
+            raise RuntimeError("Brand/Vehicle Snapshot 存在时批量结果缺少解析证据")
+        vehicle_evidence = tuple(
+            ContentVehicleEvidence(
+                id=uuid4(),
+                content_id=result.target_id,
+                content_version=result.version_no,
+                vehicle_model_id=evidence.entity_id,
+                source="import",
+                matched_text=evidence.matched_text,
+                source_field=evidence.source_field,
+                catalog_version=filter_snapshot.catalog.catalog_version,
+                confidence=1.0,
+                is_manual_locked=False,
+                is_active=True,
+                created_at=created_at,
+            )
+            for evidence in resolution.vehicle_evidence
+        )
+        entry = (result.target_id, result.version_no, vehicle_evidence)
+        if result.version_created and result.version_no == 1:
+            initial_vehicle_entries.append(entry)
+            initial_brand_entries.append(
+                (result.target_id, result.version_no, resolution.brand_evidence)
+            )
+        else:
+            existing_entries.append((result, resolution, vehicle_evidence))
+    vehicle_repository.append_initial_import_evidence_batch(entries=tuple(initial_vehicle_entries))
+    brand_repository.append_initial_automatic_brand_evidence_batch(
+        entries=tuple(initial_brand_entries),
+        catalog_snapshot=filter_snapshot.catalog,
+        return_snapshots=False,
+    )
+    vehicle_repository.append_import_evidence_batch(
+        entries=tuple(
+            (result.target_id, result.version_no, vehicle_evidence)
+            for result, _resolution, vehicle_evidence in existing_entries
+        )
+    )
+    brand_repository.replace_automatic_brand_evidence_batch(
+        entries=tuple(
+            (result.target_id, result.version_no, resolution.brand_evidence)
+            for result, resolution, _vehicle_evidence in existing_entries
+        ),
+        catalog_snapshot=filter_snapshot.catalog,
+    )
+    return len(results)
 
 
 def _safe_error_summary(error: Exception) -> str:

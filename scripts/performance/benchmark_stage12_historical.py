@@ -8,6 +8,7 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import time
 from datetime import datetime
@@ -39,7 +40,7 @@ from aima_ugc.platform.jobs.tables import jobs_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select, text
+from sqlalchemy import event, func, select, text
 
 CAPACITY_SCHEMA_VERSION = "stage12-historical-capacity.v1"
 _CAPACITY_DATABASE_SUFFIX = "_stage12_capacity"
@@ -58,6 +59,8 @@ _HISTORICAL_JOB_TYPES = (
     HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
 )
 _PROBE_JOB_TYPE = "stage12.capacity-ordinary-probe.v1"
+_DEFAULT_DISK_BUDGET_BYTES = 512 * 1024 * 1024
+_FREE_SPACE_RESERVE_BYTES = 64 * 1024 * 1024
 
 
 class _ProbePayload(BaseModel):
@@ -73,6 +76,11 @@ def run_benchmark(
     rows_per_file: int,
     chunk_rows: int,
     max_in_flight: int,
+    ingestion_policy: Literal["standard_observation", "historical_fill_only"] = (
+        "historical_fill_only"
+    ),
+    existing_rows: int = 0,
+    disk_budget_bytes: int = _DEFAULT_DISK_BUDGET_BYTES,
 ) -> dict[str, Any]:
     """生成有界 XLSX Fixture，并编排生产 Campaign/Worker 取得容量证据。"""
 
@@ -86,23 +94,44 @@ def run_benchmark(
         raise ValueError("chunk_rows 必须在 100 到 2000 之间")
     if not 1 <= max_in_flight <= 16:
         raise ValueError("max_in_flight 必须在 1 到 16 之间")
+    if ingestion_policy not in {"standard_observation", "historical_fill_only"}:
+        raise ValueError("ingestion_policy 不受支持")
+    if not 0 <= existing_rows < row_count:
+        raise ValueError("existing_rows 必须大于等于 0 且小于 rows")
+    if disk_budget_bytes <= 0:
+        raise ValueError("disk_budget_bytes 必须大于 0")
 
     root = Path(work_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
     _require_empty(root)
+    # XLSX 压缩率与 Canonical 大小取决于正文；使用保守上界并额外保留固定空间，
+    # 在生成 Fixture 前拒绝超过本机预算的运行。
+    estimated_bytes = 64 * 1024 * 1024 + row_count * 8192 + existing_rows * 4096
+    if estimated_bytes > disk_budget_bytes:
+        raise ValueError("历史容量基准预计临时数据超过磁盘预算")
+    if shutil.disk_usage(root).free < estimated_bytes + _FREE_SPACE_RESERVE_BYTES:
+        raise ValueError("历史容量基准可用磁盘不足，拒绝生成 Fixture")
+    base_settings = load_settings()
+    if not base_settings.db_name.endswith(_CAPACITY_DATABASE_SUFFIX):
+        raise RuntimeError(
+            f"容量脚本只允许专用数据库；AIMA_DB_NAME 必须以 {_CAPACITY_DATABASE_SUFFIX} 结尾"
+        )
     source_root = root / "input"
-    source_root.mkdir()
-
-    fixture_started = time.perf_counter()
-    source_files = _write_fixture(
-        source_root,
-        row_count=row_count,
-        rows_per_file=rows_per_file,
-    )
+    try:
+        source_root.mkdir()
+        fixture_started = time.perf_counter()
+        source_files = _write_fixture(
+            source_root,
+            row_count=row_count,
+            rows_per_file=rows_per_file,
+        )
+    except BaseException:
+        _cleanup_generated_outputs(root)
+        raise
     fixture_seconds = time.perf_counter() - fixture_started
     source_bytes = sum(path.stat().st_size for path in source_files)
 
-    settings = load_settings().model_copy(
+    settings = base_settings.model_copy(
         update={
             "data_dir": root / "data",
             "log_dir": root / "logs",
@@ -110,18 +139,17 @@ def run_benchmark(
             "historical_chunk_rows": chunk_rows,
             "historical_max_scan_files": max(len(source_files), 1),
             "historical_max_in_flight_jobs": max_in_flight,
-            "log_level": "WARNING",
+            "log_level": "INFO",
         }
     )
-    if not settings.db_name.endswith(_CAPACITY_DATABASE_SUFFIX):
-        raise RuntimeError(
-            f"容量脚本只允许专用数据库；AIMA_DB_NAME 必须以 {_CAPACITY_DATABASE_SUFFIX} 结尾"
-        )
-
-    runtime = create_worker_runtime(settings=settings)
+    try:
+        runtime = create_worker_runtime(settings=settings)
+    except BaseException:
+        _cleanup_generated_outputs(root)
+        raise
+    completed = False
     try:
         _reset_capacity_database(runtime)
-        before = _database_counters(runtime)
         registry = create_collection_job_registry(runtime=runtime)
         registry.register(
             job_type=_PROBE_JOB_TYPE,
@@ -146,6 +174,15 @@ def run_benchmark(
             )
         )
         brand_id = _create_capacity_brand(runtime)
+        if existing_rows:
+            _preseed_existing_contents(
+                client=client,
+                worker=worker,
+                root=root,
+                row_count=existing_rows,
+                brand_id=brand_id,
+            )
+        before = _database_counters(runtime)
 
         benchmark_started = time.perf_counter()
         cpu_started = time.process_time()
@@ -156,6 +193,7 @@ def run_benchmark(
                 "relative_paths": [path.name for path in source_files],
                 "recursive": False,
                 "brand_ids": [brand_id],
+                "ingestion_policy": ingestion_policy,
             },
         )
         _require_status(created, 202, "创建容量 Campaign")
@@ -191,17 +229,40 @@ def run_benchmark(
         if not ordinary_probe_passed:
             raise RuntimeError("历史低优先级 Job 抢占了普通探针 Job")
 
+        sql_statements = 0
+        sql_by_table: dict[str, int] = {}
+
+        def count_sql(
+            connection: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            nonlocal sql_statements
+            del connection, cursor, parameters, context, executemany
+            sql_statements += 1
+            first_table = re.search(r"\b(?:FROM|INTO|UPDATE)\s+([a-z_][a-z_0-9]*)", statement)
+            sql_kind = statement.lstrip().split(None, 1)[0].upper()
+            key = f"{sql_kind} {first_table.group(1) if first_table else 'other'}"
+            sql_by_table[key] = sql_by_table.get(key, 0) + 1
+
+        event.listen(runtime.database.engine, "before_cursor_execute", count_sql)
         import_started = time.perf_counter()
-        import_jobs, maximum_active, maximum_lock_waiters = _drain_until(
-            client=client,
-            runtime=runtime,
-            worker=worker,
-            campaign_id=campaign_id,
-            terminal_statuses={"succeeded", "partial_failed", "failed", "cancelled"},
-            maximum_active=maximum_active,
-            maximum_lock_waiters=maximum_lock_waiters,
-        )
-        import_seconds = time.perf_counter() - import_started
+        try:
+            import_jobs, maximum_active, maximum_lock_waiters = _drain_until(
+                client=client,
+                runtime=runtime,
+                worker=worker,
+                campaign_id=campaign_id,
+                terminal_statuses={"succeeded", "partial_failed", "failed", "cancelled"},
+                maximum_active=maximum_active,
+                maximum_lock_waiters=maximum_lock_waiters,
+            )
+        finally:
+            import_seconds = time.perf_counter() - import_started
+            event.remove(runtime.database.engine, "before_cursor_execute", count_sql)
         elapsed_seconds = time.perf_counter() - benchmark_started
         cpu_seconds = time.process_time() - cpu_started
 
@@ -230,8 +291,10 @@ def run_benchmark(
                 "files": len(source_files),
                 "source_bytes": source_bytes,
                 "profile": "aima-monitoring-excel.v1",
+                "ingestion_policy": ingestion_policy,
                 "distribution": {
-                    "candidate_expected": row_count,
+                    "candidate_expected": row_count - existing_rows,
+                    "existing_expected": existing_rows,
                     "duplicate_expected": 0,
                     "filtered_expected": 0,
                     "invalid_expected": 0,
@@ -243,6 +306,8 @@ def run_benchmark(
                 "max_in_flight_jobs": max_in_flight,
                 "worker_count": 1,
                 "worker_lease_seconds": 120,
+                "disk_budget_bytes": disk_budget_bytes,
+                "estimated_bytes": estimated_bytes,
                 "database": settings.db_name,
                 "postgresql": after["postgresql"],
             },
@@ -275,6 +340,11 @@ def run_benchmark(
                 "temp_bytes": max(after["temp_bytes"] - before["temp_bytes"], 0),
                 "deadlocks": max(after["deadlocks"] - before["deadlocks"], 0),
                 "maximum_lock_waiters": maximum_lock_waiters,
+                "sql_statements": sql_statements,
+                "sql_statements_per_1000_rows": sql_statements / row_count * 1000,
+                "top_sql_tables": sorted(
+                    sql_by_table.items(), key=lambda item: item[1], reverse=True
+                )[:15],
             },
             "storage": {
                 **storage,
@@ -289,7 +359,10 @@ def run_benchmark(
                 "ordinary_job_starvation_probe": ("passed" if ordinary_probe_passed else "failed"),
             },
             "limitations": [
-                "Fixture 为全新、全相关、无冲突的合成数据，主要覆盖最大全量新增存储路径。",
+                (
+                    "Fixture 为全相关合成数据；existing_rows=0 时覆盖最大全量新增存储路径，"
+                    "大于 0 时覆盖新增/既有混合路径。"
+                ),
                 "单 Worker 基准不能替代公司服务器真实硬件、真实文件分布和并发放量复测。",
                 "本脚本不调用 AI，也不代表已授权或已执行生产 4000 万迁移。",
             ],
@@ -307,9 +380,14 @@ def run_benchmark(
                 ensure_ascii=False,
             )
         )
+        completed = True
         return report
     finally:
-        runtime.close()
+        try:
+            runtime.close()
+        finally:
+            if not completed:
+                _cleanup_generated_outputs(root)
 
 
 def _write_fixture(root: Path, *, row_count: int, rows_per_file: int) -> tuple[Path, ...]:
@@ -338,6 +416,46 @@ def _write_fixture(root: Path, *, row_count: int, rows_per_file: int) -> tuple[P
         files.append(path)
         written += current_rows
     return tuple(files)
+
+
+def _preseed_existing_contents(
+    *,
+    client: TestClient,
+    worker: Any,
+    root: Path,
+    row_count: int,
+    brand_id: str,
+) -> None:
+    """用正式 Excel Import 在计时窗口前建立混合场景中的既有内容。"""
+
+    preseed_root = root / "preseed"
+    preseed_root.mkdir()
+    preseed_file = _write_fixture(
+        preseed_root,
+        row_count=row_count,
+        rows_per_file=row_count,
+    )[0]
+    created = client.post(
+        "/api/v1/import-batches",
+        files=[
+            (
+                "file",
+                (
+                    preseed_file.name,
+                    preseed_file.read_bytes(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            ),
+            ("brand_ids", (None, brand_id, None)),
+        ],
+    )
+    _require_status(created, 202, "预置混合场景 Content")
+    if not worker.run_once():
+        raise RuntimeError("预置混合场景 Import Job 未被 Worker 领取")
+    detail = client.get(f"/api/v1/import-batches/{created.json()['batch_id']}")
+    _require_status(detail, 200, "读取预置混合场景 Import")
+    if detail.json()["status"] != "succeeded":
+        raise RuntimeError(f"预置混合场景 Import 失败: {detail.json()}")
 
 
 def _create_capacity_brand(runtime: PlatformRuntime) -> str:
@@ -617,6 +735,26 @@ def _directory_bytes(path: Path) -> int:
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
 
+def _cleanup_generated_outputs(root: Path) -> None:
+    """异常时只清理由本次空目录基准创建的已知直属输出。"""
+
+    resolved_root = root.resolve()
+    for name in (
+        "input",
+        "data",
+        "logs",
+        "capacity_report.json",
+        ".capacity_report.json.tmp",
+    ):
+        candidate = (resolved_root / name).resolve()
+        if candidate.parent != resolved_root:
+            raise RuntimeError("历史容量基准清理目标越出工作目录")
+        if candidate.is_dir():
+            shutil.rmtree(candidate)
+        else:
+            candidate.unlink(missing_ok=True)
+
+
 def _require_status(response: Any, expected: int, action: str) -> None:
     if response.status_code != expected:
         raise RuntimeError(f"{action}失败: status={response.status_code}, body={response.text}")
@@ -654,6 +792,13 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--rows-per-file", type=int, default=250_000)
     parser.add_argument("--chunk-rows", type=int, default=1_000)
     parser.add_argument("--max-in-flight", type=int, default=2)
+    parser.add_argument(
+        "--ingestion-policy",
+        choices=("standard_observation", "historical_fill_only"),
+        default="historical_fill_only",
+    )
+    parser.add_argument("--existing-rows", type=int, default=0)
+    parser.add_argument("--disk-budget-mib", type=int, default=512)
     return parser.parse_args()
 
 
@@ -665,6 +810,9 @@ def main() -> int:
         rows_per_file=arguments.rows_per_file,
         chunk_rows=arguments.chunk_rows,
         max_in_flight=arguments.max_in_flight,
+        ingestion_policy=arguments.ingestion_policy,
+        existing_rows=arguments.existing_rows,
+        disk_budget_bytes=arguments.disk_budget_mib * 1024 * 1024,
     )
     return 0
 

@@ -29,7 +29,7 @@ from aima_ugc.adapters.persistence.postgres.content_complete import (
 )
 from aima_ugc.adapters.persistence.postgres.content_contributions import (
     build_content_contribution_delta,
-    capture_content_contribution_snapshot,
+    capture_content_contribution_snapshots_batch,
 )
 from aima_ugc.adapters.persistence.postgres.import_lineage import (
     ensure_campaign_import_lineage,
@@ -57,7 +57,10 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
 )
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
-from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution
+from aima_ugc.modules.vehicles.brand_vehicle import (
+    BrandVehicleResolution,
+    BrandVehicleResolver,
+)
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
@@ -509,8 +512,16 @@ class PostgresCanonicalReplayJobExecutor:
     ) -> CanonicalReplayRunRecord:
         batch_started = perf_counter()
         resolution_started = perf_counter()
+        resolver = BrandVehicleResolver(run.filter_snapshot.catalog)
         resolved = tuple(
-            (content, resolve_canonical_brand_vehicle(run.filter_snapshot, content))
+            (
+                content,
+                resolve_canonical_brand_vehicle(
+                    run.filter_snapshot,
+                    content,
+                    resolver=resolver,
+                ),
+            )
             for content in contents
         )
         resolution_ms = int((perf_counter() - resolution_started) * 1000)
@@ -538,12 +549,11 @@ class PostgresCanonicalReplayJobExecutor:
                 ):
                     raise LeaseLostError("Canonical Replay checkpoint 已不属于当前执行")
                 lineage = self._load_import_lineage_context(session, selected, artifact)
-                content_owner = ContentIngestionService(
-                    PostgresCompleteContentRepository(
-                        session,
-                        replay_visibility_owner_id=current.all_request_id,
-                    )
+                content_repository = PostgresCompleteContentRepository(
+                    session,
+                    replay_visibility_owner_id=current.all_request_id,
                 )
+                content_owner = ContentIngestionService(content_repository)
                 vehicle_repository = PostgresVehicleCatalogRepository(session)
                 brand_repository = PostgresBrandVehicleRepository(session)
                 matched = 0
@@ -688,91 +698,162 @@ class PostgresCanonicalReplayJobExecutor:
                             self._flush_ledger_rows(session, ledger_rows)
 
                 fallback_started = perf_counter()
-                for observation, resolution in pending:
-                    identity = (observation.platform, observation.external_content_id)
-                    if identity in created_by_identity:
-                        continue
-                    fallback_count += 1
-                    before = capture_content_contribution_snapshot(session, observation)
-                    owner_before = (
-                        session.scalar(
-                            select(contents_table.c.replay_visibility_owner_id).where(
-                                contents_table.c.id == before.content_id
+                fallback_pending = tuple(
+                    (observation, resolution)
+                    for observation, resolution in pending
+                    if (observation.platform, observation.external_content_id)
+                    not in created_by_identity
+                )
+                fallback_count = len(fallback_pending)
+                fallback_observations = tuple(item[0] for item in fallback_pending)
+                before_snapshots = capture_content_contribution_snapshots_batch(
+                    session,
+                    tuple((observation, None) for observation in fallback_observations),
+                )
+                before_pairs = tuple(
+                    (before.content_id, before.version_no)
+                    for before in before_snapshots
+                    if before.content_id is not None and before.version_no is not None
+                )
+                owner_before_by_content = (
+                    {
+                        cast(UUID, row.id): cast(UUID | None, row.replay_visibility_owner_id)
+                        for row in session.execute(
+                            select(
+                                contents_table.c.id,
+                                contents_table.c.replay_visibility_owner_id,
+                            ).where(
+                                contents_table.c.id.in_(tuple(item[0] for item in before_pairs))
                             )
                         )
-                        if before.content_id is not None
-                        else None
-                    )
-                    vehicle_before = (
-                        vehicle_repository.snapshot_automatic_evidence(
-                            content_id=before.content_id,
-                            content_version=before.version_no,
+                    }
+                    if before_pairs
+                    else {}
+                )
+                vehicle_before_by_pair = vehicle_repository.snapshot_automatic_evidence_batch(
+                    pairs=before_pairs
+                )
+                brand_before_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
+                    pairs=before_pairs
+                )
+                fallback_items = content_repository.ingest_contents_with_before_snapshots_batch(
+                    tuple(zip(fallback_observations, before_snapshots, strict=True))
+                )
+                fallback_vehicle_entries = []
+                fallback_brand_entries = []
+                evidence_created_at = beijing_now()
+                for fallback_item, (_, resolution) in zip(
+                    fallback_items,
+                    fallback_pending,
+                    strict=True,
+                ):
+                    result = fallback_item.result
+                    fallback_vehicle_entries.append(
+                        (
+                            result.target_id,
+                            result.version_no,
+                            tuple(
+                                ContentVehicleEvidence(
+                                    id=uuid4(),
+                                    content_id=result.target_id,
+                                    content_version=result.version_no,
+                                    vehicle_model_id=evidence.entity_id,
+                                    source="alias_match",
+                                    matched_text=evidence.matched_text,
+                                    source_field=evidence.source_field,
+                                    catalog_version=resolution.catalog_version,
+                                    confidence=1.0,
+                                    is_manual_locked=False,
+                                    is_active=True,
+                                    created_at=evidence_created_at,
+                                )
+                                for evidence in resolution.vehicle_evidence
+                            ),
                         )
-                        if before.content_id is not None and before.version_no is not None
-                        else []
                     )
-                    brand_before = (
-                        brand_repository.snapshot_automatic_brand_evidence(
-                            content_id=before.content_id,
-                            content_version=before.version_no,
+                    fallback_brand_entries.append(
+                        (result.target_id, result.version_no, resolution.brand_evidence)
+                    )
+                selected_scope = run.filter_snapshot.catalog.filter_scope == "selected"
+                if selected_scope:
+                    vehicle_repository.append_automatic_alias_evidence_batch(
+                        tuple(
+                            item for _, _, evidence in fallback_vehicle_entries for item in evidence
                         )
-                        if before.content_id is not None and before.version_no is not None
-                        else []
                     )
-                    result = content_owner.ingest_content_with_before_snapshot(observation, before)
-                    after = result.contribution_after or capture_content_contribution_snapshot(
-                        session, observation, content_id=result.target_id
+                else:
+                    vehicle_repository.replace_automatic_alias_evidence_batch(
+                        entries=tuple(fallback_vehicle_entries)
                     )
+                brand_repository.replace_automatic_brand_evidence_batch(
+                    entries=tuple(fallback_brand_entries),
+                    catalog_snapshot=run.filter_snapshot.catalog,
+                    preserve_unconfirmed=selected_scope,
+                )
+                after_pairs = tuple(
+                    (item.result.target_id, item.result.version_no) for item in fallback_items
+                )
+                vehicle_after_by_pair = vehicle_repository.snapshot_automatic_evidence_batch(
+                    pairs=after_pairs
+                )
+                brand_after_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
+                    pairs=after_pairs
+                )
+                for fallback_item in fallback_items:
+                    observation = fallback_item.observation
+                    before = fallback_item.before
+                    result = fallback_item.result
                     if result.version_created and result.version_no == 1:
                         inserted += 1
                     else:
                         existing += 1
-                    self._write_evidence(
-                        vehicle_repository=vehicle_repository,
-                        brand_repository=brand_repository,
-                        content_id=result.target_id,
-                        content_version=result.version_no,
-                        resolution=resolution,
-                        run=run,
+                    if current.all_request_id is None:
+                        continue
+                    attempt_id = observation.source.provider_attempt_id
+                    raw_id = observation.source.raw_artifact_id
+                    if attempt_id is None or raw_id is None:
+                        raise ValueError("Replay 贡献账本要求 Attempt 与 Raw 来源")
+                    before_pair = (
+                        (before.content_id, before.version_no)
+                        if before.content_id is not None and before.version_no is not None
+                        else None
                     )
-                    if current.all_request_id is not None:
-                        attempt_id = observation.source.provider_attempt_id
-                        raw_id = observation.source.raw_artifact_id
-                        if attempt_id is None or raw_id is None:
-                            raise ValueError("Replay 贡献账本要求 Attempt 与 Raw 来源")
-                        ledger_rows.append(
-                            {
-                                "id": uuid4(),
-                                "all_request_id": current.all_request_id,
-                                "run_id": current.id,
-                                "content_id": result.target_id,
-                                "provider_attempt_id": UUID(attempt_id),
-                                "raw_artifact_id": raw_id,
-                                "version_before": before.version_no,
-                                "version_after": result.version_no,
-                                "delta": build_content_contribution_delta(
-                                    observation, before, after
-                                ),
-                                "visibility_owner_before": owner_before,
-                                "vehicle_evidence_before": vehicle_before,
-                                "vehicle_evidence_after": (
-                                    vehicle_repository.snapshot_automatic_evidence(
-                                        content_id=result.target_id,
-                                        content_version=result.version_no,
-                                    )
-                                ),
-                                "brand_evidence_before": brand_before,
-                                "brand_evidence_after": (
-                                    brand_repository.snapshot_automatic_brand_evidence(
-                                        content_id=result.target_id,
-                                        content_version=result.version_no,
-                                    )
-                                ),
-                                "created_at": beijing_now(),
-                            }
-                        )
-                        if len(ledger_rows) >= _LEDGER_INSERT_ROWS:
-                            self._flush_ledger_rows(session, ledger_rows)
+                    after_pair = (result.target_id, result.version_no)
+                    ledger_rows.append(
+                        {
+                            "id": uuid4(),
+                            "all_request_id": current.all_request_id,
+                            "run_id": current.id,
+                            "content_id": result.target_id,
+                            "provider_attempt_id": UUID(attempt_id),
+                            "raw_artifact_id": raw_id,
+                            "version_before": before.version_no,
+                            "version_after": result.version_no,
+                            "delta": build_content_contribution_delta(
+                                observation,
+                                before,
+                                fallback_item.contribution_after,
+                            ),
+                            "visibility_owner_before": (
+                                owner_before_by_content.get(before.content_id)
+                                if before.content_id is not None
+                                else None
+                            ),
+                            "vehicle_evidence_before": (
+                                vehicle_before_by_pair[before_pair]
+                                if before_pair is not None
+                                else []
+                            ),
+                            "vehicle_evidence_after": vehicle_after_by_pair[after_pair],
+                            "brand_evidence_before": (
+                                brand_before_by_pair[before_pair] if before_pair is not None else []
+                            ),
+                            "brand_evidence_after": brand_after_by_pair[after_pair],
+                            "created_at": beijing_now(),
+                        }
+                    )
+                    if len(ledger_rows) >= _LEDGER_INSERT_ROWS:
+                        self._flush_ledger_rows(session, ledger_rows)
                 fallback_ms = int((perf_counter() - fallback_started) * 1000)
                 ledger_checkpoint_started = perf_counter()
                 self._flush_ledger_rows(session, ledger_rows)
@@ -825,7 +906,7 @@ class PostgresCanonicalReplayJobExecutor:
         """账本 SQL 合批但保持有界内存，所有片段仍属于同一 checkpoint 事务。"""
 
         if rows:
-            session.execute(insert(canonical_replay_content_changes_table).values(rows))
+            session.execute(insert(canonical_replay_content_changes_table), rows)
             rows.clear()
 
     def _load_import_lineage_context(

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, insert, or_, select, update
+from sqlalchemy import and_, bindparam, insert, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -130,6 +130,15 @@ class PostgresNewContentBatchItem:
     observation: CanonicalContentV1
     result: PostgresIngestionResult
     state: dict[str, Any] = dataclass_field(compare=False, repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class PostgresExistingContentBatchItem:
+    """集合更新一个安全既有 Content 后的结果与已接受 Collection。"""
+
+    observation: CanonicalContentV1
+    result: PostgresIngestionResult
+    accepted_collection_fields: frozenset[str]
 
 
 class PostgresContentRepository:
@@ -300,9 +309,8 @@ class PostgresContentRepository:
 
         created: dict[tuple[str, str], UUID] = {}
         for candidate_chunk in batched(candidates, _MULTI_VALUES_INSERT_ROWS, strict=False):
-            created_rows = self._session.execute(
+            statement = (
                 pg_insert(contents_table)
-                .values([item[2] for item in candidate_chunk])
                 .on_conflict_do_nothing(
                     index_elements=[
                         contents_table.c.platform,
@@ -314,6 +322,10 @@ class PostgresContentRepository:
                     contents_table.c.platform,
                     contents_table.c.external_content_id,
                 )
+            )
+            created_rows = self._session.execute(
+                statement,
+                [item[2] for item in candidate_chunk],
             )
             created.update(
                 {
@@ -358,7 +370,7 @@ class PostgresContentRepository:
             _MULTI_VALUES_INSERT_ROWS,
             strict=False,
         ):
-            self._session.execute(insert(content_versions_table).values(list(version_chunk)))
+            self._session.execute(insert(content_versions_table), list(version_chunk))
         metric_values = [
             {
                 "id": uuid4(),
@@ -385,9 +397,7 @@ class PostgresContentRepository:
             _MULTI_VALUES_INSERT_ROWS,
             strict=False,
         ):
-            self._session.execute(
-                insert(content_metric_observations_table).values(list(metric_chunk))
-            )
+            self._session.execute(insert(content_metric_observations_table), list(metric_chunk))
         return tuple(
             PostgresNewContentBatchItem(
                 observation=observation,
@@ -396,6 +406,248 @@ class PostgresContentRepository:
             )
             for observation, content_id, state, _attempt_id, _raw_id in accepted
         )
+
+    def ingest_existing_contents_batch(
+        self,
+        observations: tuple[CanonicalContentV1, ...],
+        *,
+        collection_fields: frozenset[str] = frozenset(),
+        replay_visibility_owner_id: UUID | None = None,
+    ) -> tuple[PostgresExistingContentBatchItem, ...]:
+        """集合更新无稳定账号且当前作者为空的既有 Content。"""
+
+        if not observations:
+            return ()
+        if any(
+            item.author is not None and item.author.external_account_id is not None
+            for item in observations
+        ):
+            raise ValueError("既有 Content 集合更新只接受无稳定账号身份的观察")
+        identities = tuple((item.platform, item.external_content_id) for item in observations)
+        if len(set(identities)) != len(identities):
+            raise ValueError("既有 Content 集合更新不接受重复身份")
+        current_by_identity = {
+            (cast(str, row["platform"]), cast(str, row["external_content_id"])): dict(row)
+            for row in self._session.execute(
+                select(contents_table)
+                .where(
+                    tuple_(contents_table.c.platform, contents_table.c.external_content_id).in_(
+                        identities
+                    )
+                )
+                .with_for_update()
+            ).mappings()
+        }
+        if set(current_by_identity) != set(identities):
+            raise ValueError("既有 Content 集合更新发现缺失身份")
+        if any(
+            current_by_identity[identity]["author_account_id"] is not None
+            and "author.external_account_id" in observation.observed_fields
+            for observation, identity in zip(observations, identities, strict=True)
+        ):
+            raise ValueError("既有 Content 集合更新不接受已绑定稳定作者的 Current")
+
+        source_by_identity = {
+            (item.platform, item.external_content_id): _source_ids(item) for item in observations
+        }
+        metric_candidates = tuple(
+            (
+                cast(UUID, current_by_identity[identity]["id"]),
+                *source_by_identity[identity],
+                observation.observed_at.astimezone(_BUSINESS_TZ).date(),
+            )
+            for observation, identity in zip(observations, identities, strict=True)
+            if any(f"metrics.{name}" in observation.observed_fields for name in _CONTENT_METRICS)
+        )
+        source_metric_keys = (
+            set(
+                self._session.execute(
+                    select(
+                        content_metric_observations_table.c.content_id,
+                        content_metric_observations_table.c.provider_attempt_id,
+                        content_metric_observations_table.c.raw_artifact_id,
+                    ).where(
+                        tuple_(
+                            content_metric_observations_table.c.content_id,
+                            content_metric_observations_table.c.provider_attempt_id,
+                            content_metric_observations_table.c.raw_artifact_id,
+                        ).in_(tuple(item[:3] for item in metric_candidates))
+                    )
+                )
+            )
+            if metric_candidates
+            else set()
+        )
+        daily_metric_keys = (
+            set(
+                self._session.execute(
+                    select(
+                        content_metric_observations_table.c.content_id,
+                        content_metric_observations_table.c.business_date,
+                    ).where(
+                        tuple_(
+                            content_metric_observations_table.c.content_id,
+                            content_metric_observations_table.c.business_date,
+                        ).in_(tuple((item[0], item[3]) for item in metric_candidates))
+                    )
+                )
+            )
+            if metric_candidates
+            else set()
+        )
+
+        update_values: list[dict[str, Any]] = []
+        version_values: list[dict[str, Any]] = []
+        metric_values: list[dict[str, Any]] = []
+        results: list[PostgresExistingContentBatchItem] = []
+        for observation, identity in zip(observations, identities, strict=True):
+            current = current_by_identity[identity]
+            content_id = cast(UUID, current["id"])
+            attempt_id, raw_id = source_by_identity[identity]
+            candidate_updates = _content_updates(observation, None)
+            if "author.external_account_id" in observation.observed_fields:
+                candidate_updates["author_account_id"] = None
+            metric_changed = _content_metric_changed(current, observation)
+            current_updates, field_observed_at = _fresh_updates(
+                current=current,
+                candidate_updates=candidate_updates,
+                observed_fields=observation.observed_fields,
+                field_columns=_CONTENT_FIELD_COLUMNS,
+                observed_at=observation.observed_at,
+            )
+            accepted_collections: set[str] = set()
+            for field_name in collection_fields:
+                if field_name not in observation.observed_fields:
+                    continue
+                accepted, field_observed_at = _accept_freshness_map(
+                    field_observed_at,
+                    field_name,
+                    observation.observed_at,
+                )
+                if accepted:
+                    accepted_collections.add(field_name)
+            merged = dict(current)
+            merged.update(current_updates)
+            business_changed = _business_tuple(
+                current, _CONTENT_BUSINESS_COLUMNS
+            ) != _business_tuple(merged, _CONTENT_BUSINESS_COLUMNS)
+            version_no = int(current["current_version"]) + (1 if business_changed else 0)
+            values: dict[str, Any] = {
+                "record_id": content_id,
+                "first_seen_at": min(current["first_seen_at"], observation.observed_at),
+                "last_seen_at": max(current["last_seen_at"], observation.observed_at),
+                "updated_at": max(current["updated_at"], observation.observed_at),
+                "field_observed_at": field_observed_at,
+                "current_version": version_no,
+                "replay_visibility_owner_id": replay_visibility_owner_id,
+                **current_updates,
+            }
+            merged.update(values)
+            update_values.append(values)
+            if business_changed:
+                version_values.append(
+                    {
+                        "id": uuid4(),
+                        "content_id": content_id,
+                        "version_no": version_no,
+                        "content_type": merged["content_type"],
+                        "title": merged.get("title"),
+                        "text": merged.get("text"),
+                        "canonical_url": merged.get("canonical_url"),
+                        "share_url": merged.get("share_url"),
+                        "author_snapshot": (
+                            observation.author.model_dump(mode="json")
+                            if observation.author is not None
+                            else None
+                        ),
+                        "published_at": merged.get("published_at"),
+                        "source_updated_at": merged.get("source_updated_at"),
+                        "status": merged.get("status"),
+                        "provider_attempt_id": attempt_id,
+                        "raw_artifact_id": raw_id,
+                        "observed_at": observation.observed_at,
+                    }
+                )
+            metric_recorded = False
+            if (
+                any(f"metrics.{name}" in observation.observed_fields for name in _CONTENT_METRICS)
+                and (content_id, attempt_id, raw_id) not in source_metric_keys
+            ):
+                day = observation.observed_at.astimezone(_BUSINESS_TZ).date()
+                reason = (
+                    "changed"
+                    if metric_changed
+                    else "daily_checkpoint"
+                    if (content_id, day) not in daily_metric_keys
+                    else None
+                )
+                if reason is not None:
+                    metric_values.append(
+                        {
+                            "id": uuid4(),
+                            "content_id": content_id,
+                            "provider_attempt_id": attempt_id,
+                            "raw_artifact_id": raw_id,
+                            "reason": reason,
+                            "business_date": day,
+                            "observation_key": _observation_key(observation, reason),
+                            "observed_at": observation.observed_at,
+                            **{
+                                name: (
+                                    getattr(observation.metrics, name)
+                                    if f"metrics.{name}" in observation.observed_fields
+                                    else None
+                                )
+                                for name in _CONTENT_METRICS
+                            },
+                        }
+                    )
+                    metric_recorded = True
+            results.append(
+                PostgresExistingContentBatchItem(
+                    observation=observation,
+                    result=PostgresIngestionResult(
+                        content_id,
+                        version_no,
+                        business_changed,
+                        metric_recorded,
+                    ),
+                    accepted_collection_fields=frozenset(accepted_collections),
+                )
+            )
+
+        self._execute_grouped_content_updates(update_values)
+        for version_chunk in batched(version_values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            self._session.execute(insert(content_versions_table).values(list(version_chunk)))
+        for metric_chunk in batched(metric_values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            self._session.execute(
+                insert(content_metric_observations_table).values(list(metric_chunk))
+            )
+        return tuple(results)
+
+    def _execute_grouped_content_updates(self, rows: list[dict[str, Any]]) -> None:
+        """按列集合分组 executemany，保持不同 observed_fields 的更新语义。"""
+
+        grouped: dict[frozenset[str], list[dict[str, Any]]] = {}
+        for row in rows:
+            columns = frozenset(row).difference({"record_id"})
+            grouped.setdefault(columns, []).append(row)
+        for columns, values in grouped.items():
+            statement = (
+                update(contents_table)
+                .where(contents_table.c.id == bindparam("_batch_content_id"))
+                .values({column: bindparam(column) for column in columns})
+            )
+            self._session.execute(
+                statement,
+                [
+                    {
+                        "_batch_content_id": value["record_id"],
+                        **{column: value[column] for column in columns},
+                    }
+                    for value in values
+                ],
+            )
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)
@@ -1136,6 +1388,25 @@ def _fresh_updates(
         accepted[column] = candidate_updates[column]
         freshness[field] = observed_at.isoformat()
     return accepted, freshness
+
+
+def _accept_freshness_map(
+    freshness: dict[str, str],
+    field_name: str,
+    observed_at: datetime,
+) -> tuple[bool, dict[str, str]]:
+    """在内存投影上应用与单行 Collection freshness 相同的判定。"""
+
+    updated = dict(freshness)
+    previous_raw = updated.get(field_name)
+    if previous_raw is not None:
+        previous_at = datetime.fromisoformat(previous_raw)
+        if previous_at.utcoffset() is None:
+            raise ValueError("Current field_observed_at 必须包含时区")
+        if observed_at < previous_at:
+            return False, updated
+    updated[field_name] = observed_at.isoformat()
+    return True, updated
 
 
 def _content_metric_changed(current: dict[str, Any], observation: CanonicalContentV1) -> bool:

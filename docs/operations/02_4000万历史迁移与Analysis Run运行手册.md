@@ -111,6 +111,11 @@ uploading（仅本地）
 
 本地重复 PUT 会核对冻结文件事实和 SHA-256，不能用不同内容静默复用 Item。服务器源文件快照完成前后必须复核 Manifest/Hash，源文件在发现到快照期间变化时 Campaign 失败为 `historical_source_changed`，不能把不同版本混入同一冻结输入。
 
+浏览器本地导入最多同时上传 3 个文件；这是上传 HTTP 的有界并发，不是把同一个 XLSX 拆成三份写库。
+任一上传失败后，页面停止派发尚未开始的文件，等待已在途请求收口并刷新持久 Campaign；只有全部
+文件成功才调用 finalize。服务端仍逐 Item 校验大小、SHA-256、冻结清单和 Campaign 状态，因此前端
+并发不会绕过 Artifact/取消边界。
+
 导入阶段按冻结的 `chunk_rows` 和 `max_in_flight_jobs` 有界调度。不同文件可以并行；同一文件保持稳定 Chunk 顺序，避免跨 Chunk 的首行身份顺序漂移。取消、人工重试、Lease 接管和终态回调继续复用 PostgreSQL Job Runtime 的 Lease/Fencing/Deadline 语义。
 
 页面运行中只轮询 Campaign 汇总，不重复读取全部 Chunk。Item/冲突页面可以是有界预览；完整逐行事实仍以 PostgreSQL 账本为准。
@@ -203,13 +208,14 @@ WAL。当前 CI/开发验证不能替代公司服务器的真实容量、Soak、
 动作，由对应正式入口另行发起。
 
 Replay 先用有界的冲突安全 INSERT 声明同批命中 identity。对没有稳定账号 ID、且由当前事务通过
-数据库唯一约束真实创建的新 Content，Content Owner 会集合写入 Current、Version、Metric、Canonical
-子实体和来源贡献；Vehicle/Brand Owner 随后集合写入首版本自动证据，Replay ledger 每最多 1000 行
-合并 INSERT。各业务 Owner 的多值 INSERT 每条 SQL 最多 500 行，避免单个 Canonical 携带大量
-media/topics/mentions/locations 或大量证据时形成超大参数语句；这些 SQL 片段仍属于同一个业务批次
-事务。数据库竞争冲突、稳定账号或已有 Content 仍回退到原 Owner 的完整逐行状态机，不能为
-追求吞吐跳过账号收敛、freshness、人工锁或版本语义。因此 `batch_size=1000` 表示最多 1000 行处于
-同一个有界原子批次，不表示所有数据形态都固定执行相同数量 SQL。
+数据库唯一约束真实创建的新 Content，Content Owner 集合写入 Current、Version、Metric、Canonical
+子实体和来源贡献；Vehicle/Brand Owner 随后集合写入首版本自动证据。对既有 Content，Owner 一次
+锁定本批 Current，批量计算 freshness、Version/Metric、扩展字段与来源贡献 before/after；Evidence
+Owner 一次批量加 advisory lock、读取人工锁/旧证据并集合替换自动证据。只有稳定账号、数据库竞争
+或其它不满足集合前提的行才回退完整兼容状态机，不能为吞吐跳过账号收敛、freshness、人工锁或版本
+语义。批量参数通过驱动参数集执行，避免在 Python 中编译数万占位符的巨大 SQL；Replay ledger 每
+最多 1000 行合并写入，扩展/证据仍按 500 行有界切片。因此 `batch_size=1000` 表示最多 1000 行处于
+同一个原子批次，不表示所有数据形态都固定执行相同数量 SQL。
 
 批次开始只做无锁 Fence 资格检查；业务写入、来源贡献、自动证据、Replay ledger 和 checkpoint 仍在
 同一事务中，提交前会锁住 Job 并再次验证 Fence。取消或 Lease 接管若先发生，本批全部写入回滚；若
@@ -230,21 +236,23 @@ Content 总数，随后按每批实际处理量推进进度；完成前仍会检
 容量演练只在专用空数据库上运行
 [`scripts/performance/benchmark_canonical_replay.py`](../../scripts/performance/benchmark_canonical_replay.py)，
 数据库名必须以 `_canonical_replay_capacity` 结尾，工作目录必须为空。脚本用正式导入路径生成
-Canonical，再用全量 Replay 执行；`--files`、`--rows-per-file`、`--workers` 可区分“很多小文件”与
-“少量大文件”，结果包含 Replay 耗时、SQL 次数及命中率相关的行数。基准不会清空数据库；每次
-对照使用新的专用空库和工作目录。扩大 Worker 时先以 1、2、4 个实例逐级测量，观察吞吐、锁等待、
+Canonical，再用全量 Replay 执行；`--files`、`--rows-per-file`、`--existing-rows-per-file`、
+`--workers` 可区分“很多小文件/少量大文件”和新旧内容比例，结果包含 Replay 耗时、SQL 次数与
+对账统计。脚本只会清空名称后缀通过校验的专用容量库，工作目录仍必须每轮使用新的空目录；默认
+磁盘预算为 512 MiB，并在生成 Fixture 前同时检查预算与固定可用空间余量。扩大 Worker 时先以
+1、2、4 个实例逐级测量，观察吞吐、锁等待、
 连接数、WAL、磁盘和正常 Job 延迟；并发不保证线性提速，不能只凭本地样本推算 25,819 个文件的
 服务器耗时。Linux Compose 可在完成正式发布与容量确认后用 `--scale worker=2` 调整副本，缩容也
 必须等在途 Job 完成或按正式取消流程处理，不能直接强杀后宣称数据已撤回。
 
-2026-09-23 的集合写入对照使用同一台开发机、同一 PostgreSQL 18.4、同一正式导入/全量 Replay
-路径、1 个 Worker、1 个 Canonical 文件和 1000 条全部命中新内容。修改前 3 轮为 25.061、25.402、
-25.067 秒，中位数 25.067 秒、18,069 条 SQL；最终有界集合写入实现 3 轮为 5.817、5.797、
-6.101 秒，中位数 5.817 秒、72 条 SQL。中位吞吐从约 39.9 提升到约 171.9 行/秒，约 4.31 倍；
-SQL 数量减少约 99.6%。每轮都重建专用空库和空工作目录，输入生成与初次导入不计入 Replay
-窗口。该结果证明集合
-路径切断了新内容主路径的逐行往返，但它仍只是隔离开发样本，不是公司服务器 SLO，也不能直接按
-比例承诺 25,819 个文件的完成时间。
+2026-09-24 的最终对照使用同一台开发机、同一 PostgreSQL 18.4、同一正式导入/全量 Replay 路径、
+1 个 Worker、1 个 Canonical 文件和 1000 行。`200 existing + 800 new` 混合场景 main 三轮为
+10.827 / 11.010 / 11.301 秒（p50 11.010 秒、90.83 行/秒、4860 条 SQL），候选三轮为
+5.426 / 5.399 / 5.373 秒（p50 5.399 秒、185.23 行/秒、82 条 SQL）：耗时缩短 2.039 倍，SQL 减少
+98.31%。全部新内容场景 main p50 5.985 秒，候选 p50 5.490 秒，快约 8.3%，没有以优化已有内容
+路径换取新内容回退。每轮都重置专用容量库和使用空工作目录，输入生成与初次导入不计入 Replay
+窗口。该结果证明当前混合主路径已经切断逐行往返，但仍只是隔离开发样本，不是公司服务器 SLO，
+也不能按比例承诺 25,819 个文件的完成时间。
 
 文件形态仍会改变收益：大量每件只有一行的小 Artifact 会由文件加载、来源复核、预检证明和 Job
 固定成本主导；稳定账号、已有 Content 或竞争冲突比例高时会更多进入兼容回退。正式容量演练必须先
@@ -339,8 +347,16 @@ Worker 在调用 LLM 前会校验 Run 冻结的 Prompt/Taxonomy/Provider/Model/�
 容量入口：
 
 - [`scripts/performance/benchmark_stage12_historical.py`](../../scripts/performance/benchmark_stage12_historical.py)
+- [`scripts/performance/benchmark_excel_import.py`](../../scripts/performance/benchmark_excel_import.py)
+- [`scripts/performance/benchmark_canonical_replay.py`](../../scripts/performance/benchmark_canonical_replay.py)
 
-脚本只允许使用专用容量数据库，生成测试 XLSX 并调用生产 Campaign/API/Artifact/Chunk/Worker/Content Owner；它不是裸 SQL benchmark。
+脚本只允许使用名称后缀匹配的专用容量数据库和空工作目录，生成有界测试 XLSX 并调用生产
+Campaign/API/Artifact/Chunk/Worker/Content Owner；它们不是裸 SQL benchmark。默认磁盘预算均为
+512 MiB，预计输入超过预算或本机空间不足时会在写 Fixture 前拒绝。扩大样本必须显式提高
+`--disk-budget-mib`，且不能指向生产数据库或已有工作目录。成功运行保留 `capacity_report.json` 和
+本轮输入/Artifact 供复核；异常运行只清理由脚本在原本空工作目录下创建的已知直属输出，不删除该
+工作目录本身或任何既有文件。报告固化后应删除不再需要的容量工作目录，避免把验证样本长期占用
+当作业务 Artifact 保留。
 
 容量报告至少需要记录：
 
@@ -355,6 +371,23 @@ Worker 在调用 LLM 前会校验 Run 冻结的 Prompt/Taxonomy/Provider/Model/�
 - 普通 Job 饥饿探针。
 
 本地已有容量实验只能作为软件基线证据，**公司服务器 500 万或业务 Owner 批准的等效比例演练仍是生产前门禁**。未形成完整报告的中断实验不能写成通过。
+
+本 Change 的 2026-09-24 开发机同口径三轮 p50（PostgreSQL 18.4、单 Worker、1000 行）如下；
+时间均包含对应正式 Job 执行窗口，不包含 Fixture 生成，结果已完成行数/账本对账：
+
+| 链路 | main p50 | 候选 p50 | 吞吐提升 | SQL/1000 行（main → 候选） |
+| --- | ---: | ---: | ---: | ---: |
+| 兼容本地 Excel，全新内容 | 41.50 行/秒（24.095 秒） | 185.15 行/秒（5.401 秒） | 4.46× | 16073 → 85（-99.47%） |
+| 历史 `standard_observation`，全新内容 | 41.31 行/秒 | 173.87 行/秒 | 4.21× | 16069 → 81（-99.50%） |
+| 历史 `historical_fill_only`，200 既有 + 800 新增 | 54.38 行/秒 | 188.54 行/秒 | 3.47× | 12081 → 96（-99.21%） |
+| Canonical Replay，200 既有 + 800 新增 | 90.83 行/秒（11.010 秒） | 185.23 行/秒（5.399 秒） | 2.04× | 4860 → 82（-98.31%） |
+
+历史两行的耗时可从容量 JSON 的 `elapsed_seconds / import_seconds` 复核。兼容 Excel 的受监控临时峰值从
+6,671,564 bytes 降到 1,742,801 bytes，下降约 73.9%。历史 Campaign 与 Replay 的基准工作目录
+主要包含需要保留的 Source/Canonical Artifact，不把持久证据冒充可删除临时文件；两者的 PostgreSQL
+`temp_bytes` 为 0，重点由 512 MiB Fixture 预算和阶段日志控制本机风险。`standard_observation` 的
+开发机改善不改变本手册的 4000 万生产授权范围。完整三轮样本、环境和计算口径保存在当前 Change 的
+`performance-results.json`，避免用单次最好结果替代 p50。
 
 ---
 
@@ -380,6 +413,57 @@ Worker 在调用 LLM 前会校验 Run 冻结的 Prompt/Taxonomy/Provider/Model/�
 ---
 
 ## 9. 排障顺序
+
+### 先用一组命令判断是 Worker、文件阶段还是 PostgreSQL
+
+以下命令在包含 [`compose.yaml`](../../compose.yaml) 的发布目录执行；不会修改数据库：
+
+```bash
+docker compose ps postgres worker
+docker stats --no-stream
+docker compose logs --since=60m --no-color worker \
+  | grep -E 'event=(excel_import\.pipeline_completed|historical_import\.(discovery|snapshot|chunk)_completed|canonical_replay\.(preflight|ingestion)_completed)'
+```
+
+正式文件日志位于 Worker 容器 `/app/logs/worker-*.log`。stdout 轮转或截断时可读取最近阶段事件：
+
+```bash
+docker compose exec worker sh -lc \
+  'grep -hE "event=(excel_import\.pipeline_completed|historical_import\.(discovery|snapshot|chunk)_completed|canonical_replay\.(preflight|ingestion|batch)_completed)" /app/logs/worker-*.log | tail -n 200'
+```
+
+解释顺序：
+
+| 事件 / 字段 | 主要判断 |
+| --- | --- |
+| `excel_import.pipeline_completed` | 比较 `source_read_ms`、`mapping_ms`、`canonical_write_ms`、`preparation_ms`、`ingestion_ms`；`temporary_peak_bytes` 判断本地临时峰值 |
+| `historical_import.discovery_completed` | `discovery_ms` 是目录枚举，`persistence_ms` 是冻结清单入库 |
+| `historical_import.snapshot_completed` | 比较 `source_snapshot_ms`、`conversion_ms`、`finalization_ms`，并看 `source_bytes/chunk_count/rows_seen` |
+| `historical_import.chunk_completed` | 比较 `loading_ms`、`row_preparation_ms`、`content_ingestion_ms`、`evidence_ms`、`finalization_ms/transaction_ms` |
+| `canonical_replay.preflight_completed` | 全输入预检/压缩字节与来源证明阶段 |
+| `canonical_replay.ingestion_completed` | 整个子 Run 的业务入库阶段与最终计数 |
+| `canonical_replay.batch_completed`（DEBUG） | `resolution_ms/content_batch_ms/evidence_batch_ms/fallback_ms/ledger_checkpoint_ms/transaction_ms` 定位单批瓶颈 |
+
+正常生产默认 INFO 已能区分 Excel、历史三阶段和 Replay 预检/入库。只有需要定位 Replay 单批时才在
+受控窗口把 `AIMA_LOG_LEVEL=DEBUG` 应用于 Worker 并重建 Worker 容器；DEBUG 会增加日志量，采样完成
+后恢复 INFO。不要为了拿阶段日志关闭完整性校验、Fencing 或数据库 durability。
+
+若日志显示 `content_ingestion_ms/evidence_ms/fallback_ms` 高，再查询持久 Job/Replay checkpoint；
+下面都是单条命令，不需要进入交互式 `psql`：
+
+```bash
+docker compose exec postgres sh -lc 'exec psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT job_type,status,count(*) AS jobs,min(created_at) AS oldest,max(heartbeat_at) AS newest_heartbeat FROM jobs WHERE job_type IN ('"'"'ingestion.import-excel.v2'"'"','"'"'ingestion.historical-import-chunk.v2'"'"','"'"'ingestion.canonical-replay.v1'"'"') GROUP BY job_type,status ORDER BY job_type,status;"'
+```
+
+已知 Replay `run_id` 时：
+
+```bash
+docker compose exec postgres sh -lc 'exec psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v run_id="替换为真实UUID" -c "SELECT r.checkpoint_artifact_ordinal,r.checkpoint_row_number,r.rows_seen,r.rows_matched,r.rows_ingested,r.existing_convergence,r.updated_at,j.status,j.progress,j.heartbeat_at,j.lease_expires_at,j.error_code FROM canonical_replay_runs r JOIN jobs j ON j.id=r.job_id WHERE r.id=CAST(:'"'"'run_id'"'"' AS uuid);"'
+```
+
+Worker CPU 很低、PostgreSQL CPU/Block I/O 很高且阶段耗时集中在 Content/Evidence 时，先检查慢 SQL、
+锁等待、WAL 与磁盘；不要先盲目增加 Worker。只有单 Worker 已不存在逐行回退且 PostgreSQL 仍有
+资源余量时，才用 `docker compose up -d --scale worker=2 worker` 做 1→2→4 逐级容量对照。
 
 ### Campaign 卡住
 

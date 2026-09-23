@@ -10,6 +10,12 @@ const featureApi = vi.hoisted(() => ({
   fetchImportBatchList: vi.fn(),
   fetchImportBatchDetail: vi.fn(),
   uploadImportBatch: vi.fn(),
+  createLocalCampaign: vi.fn(),
+  fetchHistoricalCampaign: vi.fn(),
+  fetchHistoricalCampaignItems: vi.fn(),
+  fetchHistoricalCampaignConflicts: vi.fn(),
+  uploadLocalCampaignFile: vi.fn(),
+  finalizeLocalCampaign: vi.fn(),
 }))
 
 vi.mock('../src/features/import-batches/api', async (importOriginal) => {
@@ -33,6 +39,13 @@ describe('import batches store', () => {
       completed_today_count: 0,
       contents_ingested_today: 0,
       as_of: '2026-08-21T00:00:00Z',
+    })
+    featureApi.fetchHistoricalCampaign.mockResolvedValue({ id: 'campaign-1', status: 'uploading' })
+    featureApi.fetchHistoricalCampaignItems.mockResolvedValue({ items: [], has_more: false })
+    featureApi.fetchHistoricalCampaignConflicts.mockResolvedValue({
+      items: [],
+      has_more: false,
+      total_count: 0,
     })
   })
 
@@ -92,6 +105,45 @@ describe('import batches store', () => {
     await expect(pendingUpload).resolves.toBeNull()
     expect(store.uploading).toBe(false)
     expect(store.error).toBe('Excel 导入创建失败')
+  })
+
+  it('uploads local campaign files with bounded concurrency before finalizing', async () => {
+    vi.useFakeTimers()
+    const files = Array.from({ length: 7 }, (_, index) => ({
+      file: { name: `input-${index}.xlsx`, size: 128 } as File,
+      relativePath: `input-${index}.xlsx`,
+    }))
+    featureApi.createLocalCampaign.mockResolvedValue({
+      campaign_id: 'campaign-1',
+      upload_items: files.map((item, index) => ({
+        item_id: `item-${index}`,
+        relative_path: item.relativePath,
+      })),
+    })
+    let activeUploads = 0
+    let maximumActiveUploads = 0
+    featureApi.uploadLocalCampaignFile.mockImplementation(async () => {
+      activeUploads += 1
+      maximumActiveUploads = Math.max(maximumActiveUploads, activeUploads)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      activeUploads -= 1
+      return { status: 'uploaded' }
+    })
+    featureApi.finalizeLocalCampaign.mockResolvedValue({
+      id: 'campaign-1',
+      status: 'snapshotting',
+    })
+    const store = useImportBatchesStore()
+
+    const pending = store.submitLocalCampaign(files, 'standard_observation', [])
+    await vi.runAllTimersAsync()
+    const result = await pending
+
+    expect(result?.status).toBe('snapshotting')
+    expect(featureApi.uploadLocalCampaignFile).toHaveBeenCalledTimes(7)
+    expect(maximumActiveUploads).toBe(3)
+    expect(store.localUploadCompleted).toBe(7)
+    expect(featureApi.finalizeLocalCampaign).toHaveBeenCalledOnce()
   })
 
   it('refreshes the loaded window without applying unfinished filter edits', async () => {

@@ -100,6 +100,8 @@ const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
   'kuaishou',
 ]
 
+const LOCAL_CAMPAIGN_UPLOAD_CONCURRENCY = 3
+
 function errorMessage(error: unknown): string {
   if (error instanceof ImportApiError) return error.message
   if (error instanceof Error && error.message) return error.message
@@ -649,16 +651,44 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
         profile: 'aima-monitoring-excel.v1',
       }
       const created = await createLocalCampaign(request)
-      campaignId = created.campaign_id
-      await refreshHistoricalCampaign(campaignId)
+      const campaignUploadId = created.campaign_id
+      campaignId = campaignUploadId
+      await refreshHistoricalCampaign(campaignUploadId)
       const selectedByPath = new Map(files.map((item) => [item.relativePath, item.file]))
-      for (const uploadItem of created.upload_items) {
-        const file = selectedByPath.get(uploadItem.relative_path)
-        if (!file) throw new Error(`服务器返回了未知上传项：${uploadItem.relative_path}`)
-        await uploadLocalCampaignFile(campaignId, uploadItem.item_id, file)
-        localUploadCompleted.value += 1
+      let nextUploadIndex = 0
+      const uploadState: { firstFailure: { reason: unknown } | null } = {
+        firstFailure: null,
       }
-      const campaign = await finalizeLocalCampaign(campaignId)
+      async function uploadNextFiles(): Promise<void> {
+        while (uploadState.firstFailure === null) {
+          const uploadIndex = nextUploadIndex
+          if (uploadIndex >= created.upload_items.length) return
+          nextUploadIndex += 1
+          const uploadItem = created.upload_items[uploadIndex]
+          const file = selectedByPath.get(uploadItem.relative_path)
+          if (!file) {
+            uploadState.firstFailure = {
+              reason: new Error(`服务器返回了未知上传项：${uploadItem.relative_path}`),
+            }
+            return
+          }
+          try {
+            await uploadLocalCampaignFile(campaignUploadId, uploadItem.item_id, file)
+            localUploadCompleted.value += 1
+          } catch (reason) {
+            // 停止派发尚未开始的文件，同时等待已经在途的请求收口后再刷新 Campaign。
+            uploadState.firstFailure = { reason }
+          }
+        }
+      }
+      await Promise.all(
+        Array.from(
+          { length: Math.min(LOCAL_CAMPAIGN_UPLOAD_CONCURRENCY, created.upload_items.length) },
+          () => uploadNextFiles(),
+        ),
+      )
+      if (uploadState.firstFailure !== null) throw uploadState.firstFailure.reason
+      const campaign = await finalizeLocalCampaign(campaignUploadId)
       selectedHistoricalCampaign.value = campaign
       historicalCampaigns.value = [
         campaign,

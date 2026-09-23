@@ -48,6 +48,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
     canonical_replay_content_changes_table,
+    canonical_replay_runs_table,
     canonical_replay_seen_content_table,
     canonical_replay_validation_proofs_table,
 )
@@ -662,6 +663,96 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
                     )
                     == "reverted"
                 )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_batches_existing_convergence_without_per_row_sql(tmp_path: Path) -> None:
+    """101 条既有内容必须保持集合收敛，防止 Current/Evidence/贡献退回逐行 SQL。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-existing-batch.xlsx",
+            rows=tuple(
+                (f"replay-existing-{index}", f"星曜已有第 {index} 条") for index in range(101)
+            ),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+        first = _create_all_replay(client, idempotency_key=f"replay-existing-first-{uuid4()}")
+        assert _worker(runtime, suffix="existing-first").run_once() is True
+
+        second = _create_all_replay(client, idempotency_key=f"replay-existing-second-{uuid4()}")
+        second_request_id = UUID(cast(str, second["request_id"]))
+        statement_count = 0
+
+        def count_sql(
+            connection: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            nonlocal statement_count
+            del connection, cursor, statement, parameters, context, executemany
+            statement_count += 1
+
+        event.listen(runtime.database.engine, "before_cursor_execute", count_sql)
+        try:
+            assert _worker(runtime, suffix="existing-second").run_once() is True
+        finally:
+            event.remove(runtime.database.engine, "before_cursor_execute", count_sql)
+
+        with runtime.database.engine.connect() as connection:
+            run = (
+                connection.execute(
+                    select(canonical_replay_runs_table).where(
+                        canonical_replay_runs_table.c.all_request_id == second_request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 101
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(canonical_replay_content_changes_table)
+                    .where(
+                        canonical_replay_content_changes_table.c.all_request_id == second_request_id
+                    )
+                )
+                == 101
+            )
+        assert run["rows_seen"] == 101
+        assert run["rows_ingested"] == 0
+        assert run["existing_convergence"] == 101
+        assert statement_count < 150
+
+        # 第二次撤回必须恢复第一次 Replay 的可见性归属，不能隐藏仍有前次贡献的内容。
+        first_request_id = UUID(cast(str, first["request_id"]))
+        assert (
+            client.post(f"/api/v1/canonical-replays/all/{second_request_id}/revoke").status_code
+            == 202
+        )
+        assert _worker(runtime, suffix="existing-second-reversal").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            assert set(connection.scalars(select(contents_table.c.replay_visibility_owner_id))) == {
+                first_request_id
+            }
     finally:
         _truncate(runtime)
         runtime.close()

@@ -1274,7 +1274,6 @@ class PostgresHistoricalImportRepository:
                 )
             ),
         )
-        batch_counts = self._batch_accounting_counts(batch_id, source_id)
         chunk_statuses = tuple(
             self._session.execute(
                 select(historical_import_campaign_items_table.c.status).where(
@@ -1286,6 +1285,9 @@ class PostgresHistoricalImportRepository:
         if chunk_statuses and all(
             value in {"succeeded", "failed", "cancelled"} for value in chunk_statuses
         ):
+            # Chunk 运行期间只读取轻量状态；完整账本聚合只在 Batch 收口时执行一次。
+            # 否则每完成一个 Chunk 都会重复扫描累计增长的逐行账本，整体退化为 O(n²)。
+            batch_counts = self._batch_accounting_counts(batch_id, source_id)
             has_failed = any(value == "failed" for value in chunk_statuses)
             has_cancelled = any(value == "cancelled" for value in chunk_statuses)
             batch_status = "failed" if has_failed or has_cancelled else "succeeded"

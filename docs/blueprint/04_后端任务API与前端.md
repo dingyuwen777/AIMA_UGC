@@ -415,7 +415,7 @@ GET  /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility
 
 页面以 `source_kind=local_upload / server_path` 区分文件怎样进入服务器，以 `ingestion_policy=standard_observation / historical_fill_only` 区分进入 Content Owner 后怎样写；两者相互独立并冻结在 Campaign。本地来源先提交安全相对路径和大小清单，再逐 Item 流式上传；服务器来源只收发管理员批准根目录内的相对路径。两者都必须先完成源文件 Artifact、SHA-256、流式预检和全部 Chunk 冻结，进入 `ready` 后页面才允许 start。Chunk 使用低优先级、有界窗口和逐行终态账本；导入不会自动创建 AI Job。
 
-既有 `/api/v1/import-batches` 和 `/api/v1/historical-import-*` 暂时保留兼容，页面不再调用它们建立平行入口。物理表和 Job type 沿用 `historical_*` 名称是兼容选择，不改变统一业务资源。4000 万容量门禁仅覆盖 `server_path + historical_fill_only`；普通 `standard_observation` 复用既有逐记录 Content Owner 行为，未取得同规模吞吐证据。
+既有 `/api/v1/import-batches` 和 `/api/v1/historical-import-*` 暂时保留兼容，页面不再调用它们建立平行入口。物理表和 Job type 沿用 `historical_*` 名称是兼容选择，不改变统一业务资源。`standard_observation` 与 `historical_fill_only` 都在有界 Chunk 内使用 Content、来源贡献和 Brand/Vehicle Evidence Owner 的集合写入；前者保留 freshness、Version 与 Metric 语义，后者保留只补空与冲突留账本语义。4000 万容量门禁仍仅覆盖 `server_path + historical_fill_only`，普通 `standard_observation` 尚未取得同规模吞吐证据。
 
 Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chunk Item 的持久状态集合式聚合，不由页面扫描有界明细或猜测。目录发现阶段尚不知道文件总数，页面显示不确定进度且不输出百分比；进入快照后按文件和 Snapshot Job 进度显示预检百分比；迁移阶段按已进入 `succeeded / failed / cancelled` 终态的 Chunk 行数除以冻结总行数显示，因此会按有界 Chunk 前进。终态进度表示“已完成对账”，成功、失败和取消仍由状态与统计分别表达。Analysis Run 列表不复制全部 Shard；页面只对活动 Run 补读既有详情接口，并以冻结的 Run `target_count` 为分母汇总 `Shard target_count × progress`，尚未进入有界调度窗口的目标因此保持 0%。Excel Export 和 Collection Scope 直接显示已有 Job/Scope 进度；普通 Excel Import 和 Collection Run 总进度继续复用原有实现。
 

@@ -10,6 +10,7 @@ from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     BrandVehicleFilterSnapshot,
+    filter_and_deduplicate_canonical_contents,
     filter_canonical_content_by_brand_vehicle_jsonl,
 )
 from aima_ugc.modules.vehicles.brand_vehicle import (
@@ -279,3 +280,33 @@ def test_stage3_jsonl_filter_uses_resolver_and_writes_only_matches(tmp_path: Pat
     assert summary.rows_written == 1
     assert summary.rows_filtered_out == 1
     assert [record.content.external_content_id for record in records] == ["matched"]
+
+
+def test_stage3_fused_filter_deduplicates_without_filtered_intermediate(tmp_path: Path) -> None:
+    output = tmp_path / "prepared" / "contents.jsonl"
+    first = _content(external_content_id="matched", title="爱玛露娜Air 新品")
+    conflict = _content(external_content_id="matched", title="爱玛露娜Air 标题变化")
+
+    summary = filter_and_deduplicate_canonical_contents(
+        (
+            first,
+            first.model_copy(deep=True),
+            conflict,
+            _content(external_content_id="unmatched", title="普通行业资讯"),
+        ),
+        output_path=output,
+        snapshot=BrandVehicleFilterSnapshot(catalog=_snapshot()),
+        input_label=Path("canonical-content.v1"),
+    )
+
+    assert summary.rows_seen == 4
+    assert summary.rows_matched == 3
+    assert summary.rows_filtered_out == 1
+    assert summary.rows_written == 1
+    assert summary.duplicates_removed == 2
+    assert summary.conflicts == 1
+    restored = UnifiedContentRecordV1.model_validate_json(
+        output.read_text(encoding="utf-8").strip()
+    )
+    assert restored.content.title == "爱玛露娜Air 新品"
+    assert not (tmp_path / "filtered").exists()
