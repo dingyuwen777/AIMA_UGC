@@ -90,6 +90,19 @@ _COMPOSE_LOCAL_KEYS = frozenset(
         "AIMA_FEISHU_APP_SECRET_REF",
         "AIMA_FEISHU_TIMEOUT_SECONDS",
         "AIMA_FEISHU_MAX_RETRIES",
+        # 飞书身份接入（单 ③）：源码开发也可直接配这组；留空即不启用。
+        # ⚠️ 与 TikHub/LLM 的本地约定一致：**App Secret 不经环境变量**传，
+        # 只写引用名，真实内容放 AIMA_EXTERNAL_SECRET_DIR 下的同名文件。
+        "AIMA_FEISHU_APP_ID",
+        "AIMA_FEISHU_APP_SECRET_REF",
+        "AIMA_FEISHU_ADMIN_GROUP_ID",
+        "AIMA_FEISHU_USER_GROUP_ID",
+        "AIMA_FEISHU_REDIRECT_URI",
+        "AIMA_FEISHU_SCOPE",
+        "AIMA_FEISHU_COOKIE_SECURE",
+        "AIMA_FEISHU_SESSION_TTL_HOURS",
+        "AIMA_FEISHU_STATE_TTL_SECONDS",
+        "AIMA_FEISHU_CONNECTORS",
     }
 )
 _KNOWN_LOCAL_KEYS = _SOURCE_LOCAL_KEYS | _COMPOSE_LOCAL_KEYS

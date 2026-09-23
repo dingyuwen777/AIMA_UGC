@@ -964,49 +964,69 @@
             "type": "string"
           }
         },
-        "required": [
-          "current_file",
-          "previous_file",
-          "start_date",
-          "end_date"
-        ],
+        "required": ["current_file", "previous_file", "start_date", "end_date"],
         "title": "Body_createFeishuReportPublication",
         "type": "object"
       },
       "Body_createFeishuRepresentativeSelection": {
+        "properties": {"file": {"contentMediaType": "application/octet-stream", "title": "File", "type": "string"}},
+        "required": ["file"],
+        "title": "Body_createFeishuRepresentativeSelection",
+        "type": "object"
+      },
+      "AuthConnectorListResponse": {
+        "additionalProperties": false,
+        "description": "可登录企业列表。\n\n**顺序即配置顺序** —— 前端按它渲染，保证每次刷新按钮顺序一致。",
         "properties": {
-          "file": {
-            "contentMediaType": "application/octet-stream",
-            "title": "File",
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuthConnectorResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AuthConnectorListResponse",
+        "type": "object"
+      },
+      "AuthConnectorResponse": {
+        "additionalProperties": false,
+        "description": "一个**可登录的飞书企业**，供前端登录页展示。\n\n⚠️ **只暴露展示所需的两个字段**。这个端点是**未认证**的（登录页要调它），\n因此绝不能返回 App Secret、Secret 引用、用户组 ID 或回调地址 ——\n那些都是服务端配置，泄露它们等于把接入细节告诉任何访问者。",
+        "properties": {
+          "code": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Display Name",
             "type": "string"
           }
         },
         "required": [
-          "file"
+          "code",
+          "display_name"
         ],
-        "title": "Body_createFeishuRepresentativeSelection",
+        "title": "AuthConnectorResponse",
         "type": "object"
       },
       "Body_createImportBatch": {
         "properties": {
           "brand_ids": {
             "default": [],
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
+            "items": {"format": "uuid", "type": "string"},
             "title": "Brand Ids",
             "type": "array"
           },
-          "file": {
-            "contentMediaType": "application/octet-stream",
-            "title": "File",
-            "type": "string"
-          }
+          "file": {"contentMediaType": "application/octet-stream", "title": "File", "type": "string"}
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_createImportBatch",
         "type": "object"
       },
@@ -1401,6 +1421,144 @@
         "title": "BrandVehicleCatalogSnapshotResponse",
         "type": "object"
       },
+      "CanonicalReplayAllCreateRequest": {
+        "additionalProperties": false,
+        "description": "用一个幂等键冻结并排队全部可重筛 Canonical。",
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "CanonicalReplayAllCreateRequest",
+        "type": "object"
+      },
+      "CanonicalReplayAllCreatedResponse": {
+        "additionalProperties": false,
+        "description": "全历史 Replay 已冻结并排队后的有界摘要。",
+        "properties": {
+          "artifact_count": {
+            "minimum": 0.0,
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "artifacts_per_run": {
+            "const": 100,
+            "default": 100,
+            "title": "Artifacts Per Run",
+            "type": "integer"
+          },
+          "batch_size": {
+            "const": 1000,
+            "default": 1000,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "run_count": {
+            "minimum": 0.0,
+            "title": "Run Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "artifact_count",
+          "run_count"
+        ],
+        "title": "CanonicalReplayAllCreatedResponse",
+        "type": "object"
+      },
+      "CanonicalReplayAllOperationResponse": {
+        "additionalProperties": false,
+        "description": "一次全历史 Replay 的取消/撤回生命周期快照。",
+        "properties": {
+          "cancellation_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancellation Requested At"
+          },
+          "lifecycle_status": {
+            "enum": [
+              "active",
+              "cancelling",
+              "reverting",
+              "reverted",
+              "revert_failed"
+            ],
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "reversal_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Job Id"
+          },
+          "reversal_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Requested At"
+          },
+          "reversed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed At"
+          },
+          "reversible": {
+            "title": "Reversible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "request_id",
+          "lifecycle_status",
+          "reversible"
+        ],
+        "title": "CanonicalReplayAllOperationResponse",
+        "type": "object"
+      },
       "CanonicalReplayCreateRequest": {
         "additionalProperties": false,
         "description": "创建 Replay 时显式冻结的输入选择。",
@@ -1639,6 +1797,159 @@
           "updated_at"
         ],
         "title": "CanonicalReplayRunResponse",
+        "type": "object"
+      },
+      "CanonicalReplayRuntimeStatsResponse": {
+        "additionalProperties": false,
+        "description": "一次全历史 Replay 请求聚合后的用户可见统计。",
+        "properties": {
+          "artifact_count": {
+            "minimum": 0.0,
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "cancelled_run_count": {
+            "minimum": 0.0,
+            "title": "Cancelled Run Count",
+            "type": "integer"
+          },
+          "duplicates_removed": {
+            "minimum": 0.0,
+            "title": "Duplicates Removed",
+            "type": "integer"
+          },
+          "existing_convergence": {
+            "minimum": 0.0,
+            "title": "Existing Convergence",
+            "type": "integer"
+          },
+          "failed_run_count": {
+            "minimum": 0.0,
+            "title": "Failed Run Count",
+            "type": "integer"
+          },
+          "hidden_content_count": {
+            "minimum": 0.0,
+            "title": "Hidden Content Count",
+            "type": "integer"
+          },
+          "lifecycle_status": {
+            "enum": [
+              "active",
+              "cancelling",
+              "reverting",
+              "reverted",
+              "revert_failed"
+            ],
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "queued_run_count": {
+            "minimum": 0.0,
+            "title": "Queued Run Count",
+            "type": "integer"
+          },
+          "restored_evidence_count": {
+            "minimum": 0.0,
+            "title": "Restored Evidence Count",
+            "type": "integer"
+          },
+          "retained_content_count": {
+            "minimum": 0.0,
+            "title": "Retained Content Count",
+            "type": "integer"
+          },
+          "reversal_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Job Id"
+          },
+          "reversible": {
+            "title": "Reversible",
+            "type": "boolean"
+          },
+          "reverted_content_count": {
+            "minimum": 0.0,
+            "title": "Reverted Content Count",
+            "type": "integer"
+          },
+          "rows_filtered_out": {
+            "minimum": 0.0,
+            "title": "Rows Filtered Out",
+            "type": "integer"
+          },
+          "rows_ingested": {
+            "minimum": 0.0,
+            "title": "Rows Ingested",
+            "type": "integer"
+          },
+          "rows_matched": {
+            "minimum": 0.0,
+            "title": "Rows Matched",
+            "type": "integer"
+          },
+          "rows_seen": {
+            "minimum": 0.0,
+            "title": "Rows Seen",
+            "type": "integer"
+          },
+          "run_count": {
+            "minimum": 0.0,
+            "title": "Run Count",
+            "type": "integer"
+          },
+          "running_run_count": {
+            "minimum": 0.0,
+            "title": "Running Run Count",
+            "type": "integer"
+          },
+          "skipped_content_count": {
+            "minimum": 0.0,
+            "title": "Skipped Content Count",
+            "type": "integer"
+          },
+          "skipped_evidence_count": {
+            "minimum": 0.0,
+            "title": "Skipped Evidence Count",
+            "type": "integer"
+          },
+          "succeeded_run_count": {
+            "minimum": 0.0,
+            "title": "Succeeded Run Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_count",
+          "run_count",
+          "queued_run_count",
+          "running_run_count",
+          "succeeded_run_count",
+          "failed_run_count",
+          "cancelled_run_count",
+          "rows_seen",
+          "rows_matched",
+          "rows_filtered_out",
+          "duplicates_removed",
+          "rows_ingested",
+          "existing_convergence",
+          "reversible",
+          "lifecycle_status",
+          "reverted_content_count",
+          "hidden_content_count",
+          "retained_content_count",
+          "skipped_content_count",
+          "restored_evidence_count",
+          "skipped_evidence_count"
+        ],
+        "title": "CanonicalReplayRuntimeStatsResponse",
         "type": "object"
       },
       "CanonicalReplayStatsResponse": {
@@ -2784,6 +3095,28 @@
       "CollectionRuntimeItemResponse": {
         "additionalProperties": false,
         "properties": {
+          "canonical_replay_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Replay Request Id"
+          },
+          "canonical_replay_stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CanonicalReplayRuntimeStatsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "collection_run_id": {
             "anyOf": [
               {
@@ -3006,7 +3339,8 @@
           "excel_import",
           "data_import_campaign",
           "tikhub_discovery",
-          "tikhub_batch_supplement"
+          "tikhub_batch_supplement",
+          "canonical_replay"
         ],
         "type": "string"
       },
@@ -4643,6 +4977,15 @@
             "title": "Analysis Statuses",
             "type": "array"
           },
+          "catalog_status": {
+            "default": "ready",
+            "enum": [
+              "building",
+              "ready"
+            ],
+            "title": "Catalog Status",
+            "type": "string"
+          },
           "content_types": {
             "items": {
               "type": "string"
@@ -5696,6 +6039,30 @@
         "additionalProperties": false,
         "description": "当前请求的 Provider-neutral Principal 投影。",
         "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "department_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department Name"
+          },
           "display_name": {
             "maxLength": 200,
             "minLength": 1,
@@ -10667,6 +11034,656 @@
         ]
       }
     },
+    "/api/v1/auth/connectors": {
+      "get": {
+        "description": "返回**可登录企业列表**（供前端登录页渲染企业选择）。\n\n⚠️ 这是一个**未认证**端点（登录页在未登录状态下要调它），因此：\n\n· **只返回 `code` 与显示名** —— 绝不含 Secret / 组 ID / 回调地址；\n· **不透露\"某企业是否可用\"** —— 那会变成配置探测接口。\n\n**顺序 = 配置顺序**（前端按钮顺序依赖它，见 `ConnectorRegistry` 的说明）。",
+        "operationId": "listAuthConnectors",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConnectorListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Listauthconnectors",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/feishu/callback": {
+      "get": {
+        "description": "旧回调入口；使用默认企业并完成飞书登录。",
+        "operationId": "completeFeishuLogin",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Completefeishulogin",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/feishu/login": {
+      "get": {
+        "description": "旧登录入口；`connector` 可显式选择企业，不传时使用默认企业。",
+        "operationId": "startFeishuLogin",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "connector",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Connector"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Startfeishulogin",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/feishu/{connector_code}/callback": {
+      "get": {
+        "description": "按路径中的企业标识完成飞书登录回调。",
+        "operationId": "completeFeishuLoginForConnector",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_code",
+            "required": true,
+            "schema": {
+              "title": "Connector Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Completefeishuloginforconnector",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/feishu/{connector_code}/login": {
+      "get": {
+        "description": "按路径中的企业标识发起登录。",
+        "operationId": "startFeishuLoginForConnector",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_code",
+            "required": true,
+            "schema": {
+              "title": "Connector Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Startfeishuloginforconnector",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "登出：**服务端撤销会话** + 清 Cookie（幂等，重复登出不报错）。",
+        "operationId": "logoutCurrentSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Logoutcurrentsession",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/v1/canonical-replays": {
       "post": {
         "operationId": "createCanonicalReplay",
@@ -10733,6 +11750,245 @@
           }
         },
         "summary": "Create Canonical Replay",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/all": {
+      "post": {
+        "operationId": "createAllCanonicalReplays",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalReplayAllCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayAllCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create All Canonical Replays",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke": {
+      "post": {
+        "description": "取消父请求的全部活跃子任务，并排队撤回已提交贡献。",
+        "operationId": "cancelAndRevokeAllCanonicalReplays",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "replay_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Replay Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayAllOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel And Revoke All Canonical Replays",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/canonical-replays/all/{replay_request_id}/revoke": {
+      "post": {
+        "description": "只对已经终止子任务的父请求排队撤回。",
+        "operationId": "revokeAllCanonicalReplays",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "replay_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Replay Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalReplayAllOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Revoke All Canonical Replays",
         "tags": [
           "imports"
         ]
@@ -11848,7 +13104,7 @@
               "items": {
                 "$ref": "#/components/schemas/CollectionRuntimeRecordType"
               },
-              "maxItems": 4,
+              "maxItems": 5,
               "title": "Record Types",
               "type": "array"
             }
@@ -12842,6 +14098,16 @@
               "format": "uuid",
               "title": "Content Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_comments",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Comments",
+              "type": "boolean"
             }
           }
         ],

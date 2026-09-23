@@ -171,6 +171,56 @@ class CanonicalReplayCreateRequest(BaseModel):
         return self
 
 
+class CanonicalReplayAllCreateRequest(BaseModel):
+    """用一个幂等键冻结并排队全部可重筛 Canonical。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=120)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def normalize_idempotency_key(cls, value: str) -> str:
+        """去除无意义空白，并拒绝纯空白幂等键。"""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("idempotency_key 不能为空")
+        return normalized
+
+
+class CanonicalReplayAllCreatedResponse(BaseModel):
+    """全历史 Replay 已冻结并排队后的有界摘要。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    artifact_count: int = Field(ge=0)
+    run_count: int = Field(ge=0)
+    artifacts_per_run: Literal[100] = 100
+    batch_size: Literal[1000] = 1000
+
+
+class CanonicalReplayAllOperationResponse(BaseModel):
+    """一次全历史 Replay 的取消/撤回生命周期快照。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    lifecycle_status: Literal[
+        "active",
+        "cancelling",
+        "reverting",
+        "reverted",
+        "revert_failed",
+    ]
+    reversible: bool
+    reversal_job_id: UUID | None = None
+    cancellation_requested_at: datetime | None = None
+    reversal_requested_at: datetime | None = None
+    reversed_at: datetime | None = None
+
+
 class CanonicalReplayCreatedResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -295,6 +345,7 @@ type CollectionRuntimeRecordType = Literal[
     "data_import_campaign",
     "tikhub_discovery",
     "tikhub_batch_supplement",
+    "canonical_replay",
 ]
 type CollectionRuntimeStatus = Literal[
     "queued",
@@ -517,7 +568,7 @@ class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=4)
+    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=5)
     status: CollectionRuntimeStatus | None = None
     stage: str | None = Field(default=None, min_length=1, max_length=100)
     created_from: datetime | None = None
@@ -545,6 +596,41 @@ class CollectionRuntimeListQuery(BaseModel):
         return self
 
 
+class CanonicalReplayRuntimeStatsResponse(BaseModel):
+    """一次全历史 Replay 请求聚合后的用户可见统计。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_count: int = Field(ge=0)
+    run_count: int = Field(ge=0)
+    queued_run_count: int = Field(ge=0)
+    running_run_count: int = Field(ge=0)
+    succeeded_run_count: int = Field(ge=0)
+    failed_run_count: int = Field(ge=0)
+    cancelled_run_count: int = Field(ge=0)
+    rows_seen: int = Field(ge=0)
+    rows_matched: int = Field(ge=0)
+    rows_filtered_out: int = Field(ge=0)
+    duplicates_removed: int = Field(ge=0)
+    rows_ingested: int = Field(ge=0)
+    existing_convergence: int = Field(ge=0)
+    reversible: bool
+    lifecycle_status: Literal[
+        "active",
+        "cancelling",
+        "reverting",
+        "reverted",
+        "revert_failed",
+    ]
+    reversal_job_id: UUID | None = None
+    reverted_content_count: int = Field(ge=0)
+    hidden_content_count: int = Field(ge=0)
+    retained_content_count: int = Field(ge=0)
+    skipped_content_count: int = Field(ge=0)
+    restored_evidence_count: int = Field(ge=0)
+    skipped_evidence_count: int = Field(ge=0)
+
+
 class CollectionRuntimeItemResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -558,11 +644,13 @@ class CollectionRuntimeItemResponse(BaseModel):
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
     collection_run_id: UUID | None = None
+    canonical_replay_request_id: UUID | None = None
     source_filename: str | None = None
     platforms: tuple[CollectionPlatform, ...] = ()
     keywords: tuple[str, ...] = ()
     import_stats: ImportStatsResponse | None = None
     collection_stats: CollectionRunStatsResponse | None = None
+    canonical_replay_stats: CanonicalReplayRuntimeStatsResponse | None = None
     error_summary: str | None = None
     error_code: str | None = None
     created_at: datetime
@@ -872,6 +960,7 @@ class ContentFilterOptionsResponse(BaseModel):
     sentiments: tuple[ContentFilterValueOptionResponse, ...]
     voice_types: tuple[ContentFilterValueOptionResponse, ...]
     labels: tuple[ContentFilterLabelOptionResponse, ...]
+    catalog_status: Literal["building", "ready"] = "ready"
 
 
 class ContentAnalysisResponse(BaseModel):
@@ -1841,6 +1930,9 @@ __all__ = [
     "ContentTargetSelection",
     "CanonicalReplayCreateRequest",
     "CanonicalReplayCreatedResponse",
+    "CanonicalReplayAllCreateRequest",
+    "CanonicalReplayAllCreatedResponse",
+    "CanonicalReplayAllOperationResponse",
     "CanonicalReplayJobResultResponse",
     "CanonicalReplayRunResponse",
     "CanonicalReplayStatsResponse",

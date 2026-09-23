@@ -162,7 +162,7 @@ Compose / Dockerfile 不包含第三方 Docker registry image reference。Docker
 
 ```text
 Debian   mirrors.aliyun.com
-PyPI     pypi.tuna.tsinghua.edu.cn
+PyPI     mirrors.aliyun.com/pypi
 npm      registry.npmmirror.com
 ```
 

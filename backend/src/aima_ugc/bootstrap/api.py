@@ -7,6 +7,7 @@ import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from functools import partial
+from time import perf_counter
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -61,6 +62,9 @@ from aima_ugc.contracts.http import (
     AnalysisContentRunPreviewRequest,
     AnalysisContentRunPreviewResponse,
     AnalysisContentRunResponse,
+    CanonicalReplayAllCreatedResponse,
+    CanonicalReplayAllCreateRequest,
+    CanonicalReplayAllOperationResponse,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayRunResponse,
@@ -207,6 +211,7 @@ from .runtime import PlatformRuntime, create_platform_runtime
 
 ReadinessCheck = Callable[[], ReadinessReport]
 _LOGGER = logging.getLogger("aima_ugc")
+_SLOW_HTTP_REQUEST_MS = 1_000
 
 
 class _RequestBodyTooLarge(RuntimeError):
@@ -223,6 +228,7 @@ class _RequestContextMiddleware:
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return
+        started = perf_counter()
         request_id = str(uuid4())
         scope.setdefault("state", {})["request_id"] = request_id
         headers = {key.lower(): value for key, value in scope.get("headers", ())}
@@ -252,9 +258,12 @@ class _RequestContextMiddleware:
         # Starlette 的 multipart 解析器会把接收流异常转换为 400。multipart 响应体在请求解析完成前
         # 暂存，才能在无 Content-Length 的实际字节超限时稳定改写为统一 413 Contract。
         buffered_messages: list[Message] = []
+        status_code: int | None = None
 
         async def response_send(message: Message) -> None:
+            nonlocal status_code
             if message["type"] == "http.response.start":
+                status_code = int(message["status"])
                 raw_headers = list(message.get("headers", ()))
                 if not any(key.lower() == b"x-request-id" for key, _ in raw_headers):
                     raw_headers.append((b"x-request-id", request_id.encode("ascii")))
@@ -268,11 +277,53 @@ class _RequestContextMiddleware:
             await self._app(scope, limited_receive, response_send)
         except _RequestBodyTooLarge:
             body_too_large = True
+        except Exception as error:
+            duration_ms = max(0, round((perf_counter() - started) * 1000))
+            log_exception_event(
+                _LOGGER,
+                logging.ERROR,
+                "api.response_failed",
+                "API 请求发生未处理异常。",
+                error,
+                request_id=request_id,
+                method=scope.get("method", ""),
+                # 查询参数可能含用户输入或筛选值，只记录路径用于定位接口。
+                path=scope.get("path", ""),
+                status_code=status_code or 500,
+                duration_ms=duration_ms,
+            )
+            raise
         if body_too_large:
             await _send_body_limit_error(scope, receive, send, request_id)
             return
         for message in buffered_messages:
             await send(message)
+
+        duration_ms = max(0, round((perf_counter() - started) * 1000))
+        fields = {
+            "request_id": request_id,
+            "method": scope.get("method", ""),
+            # 查询参数可能含用户输入或筛选值，只记录路径用于定位接口。
+            "path": scope.get("path", ""),
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+        }
+        if status_code is not None and status_code >= 500:
+            log_event(
+                _LOGGER,
+                logging.WARNING,
+                "api.response_failed",
+                "API 返回服务端错误响应。",
+                **fields,
+            )
+        elif duration_ms >= _SLOW_HTTP_REQUEST_MS:
+            log_event(
+                _LOGGER,
+                logging.WARNING,
+                "api.request_slow",
+                "API 请求处理耗时超过阈值。",
+                **fields,
+            )
 
 
 def _parse_content_length(value: bytes | None) -> int | None:
@@ -1232,8 +1283,14 @@ def create_app(
         },
         tags=["contents"],
     )
-    def get_content(content_id: UUID) -> ContentDetailResponse:
-        return current_content_service().get_content(content_id)
+    def get_content(
+        content_id: UUID,
+        include_comments: Annotated[bool, Query()] = True,
+    ) -> ContentDetailResponse:
+        return current_content_service().get_content(
+            content_id,
+            include_comments=include_comments,
+        )
 
     @application.get(
         "/api/v1/contents/{content_id}/comments",
@@ -1941,6 +1998,30 @@ def create_app(
             request_id=_request_id(request),
         )
 
+    @application.post(
+        "/api/v1/canonical-replays/all",
+        operation_id="createAllCanonicalReplays",
+        response_model=CanonicalReplayAllCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def create_all_canonical_replays(
+        body: CanonicalReplayAllCreateRequest,
+        request: Request,
+    ) -> CanonicalReplayAllCreatedResponse:
+        principal = current_administrator(request)
+        return current_canonical_replay_service().create_all_replays(
+            body,
+            actor_ref=principal.principal_id,
+            request_id=_request_id(request),
+        )
+
     @application.get(
         "/api/v1/canonical-replays/{run_id}",
         operation_id="getCanonicalReplay",
@@ -1980,6 +2061,60 @@ def create_app(
         principal = current_administrator(request)
         return current_canonical_replay_service().cancel_replay(
             run_id,
+            actor_ref=principal.principal_id,
+            request_id=_request_id(request),
+        )
+
+    @application.post(
+        "/api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke",
+        operation_id="cancelAndRevokeAllCanonicalReplays",
+        response_model=CanonicalReplayAllOperationResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def cancel_and_revoke_all_canonical_replays(
+        replay_request_id: UUID,
+        request: Request,
+    ) -> CanonicalReplayAllOperationResponse:
+        """取消父请求的全部活跃子任务，并排队撤回已提交贡献。"""
+
+        principal = current_administrator(request)
+        return current_canonical_replay_service().cancel_and_revoke_all(
+            replay_request_id,
+            actor_ref=principal.principal_id,
+            request_id=_request_id(request),
+        )
+
+    @application.post(
+        "/api/v1/canonical-replays/all/{replay_request_id}/revoke",
+        operation_id="revokeAllCanonicalReplays",
+        response_model=CanonicalReplayAllOperationResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            403: {"model": HttpErrorResponse},
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def revoke_all_canonical_replays(
+        replay_request_id: UUID,
+        request: Request,
+    ) -> CanonicalReplayAllOperationResponse:
+        """只对已经终止子任务的父请求排队撤回。"""
+
+        principal = current_administrator(request)
+        return current_canonical_replay_service().revoke_all(
+            replay_request_id,
             actor_ref=principal.principal_id,
             request_id=_request_id(request),
         )
@@ -2281,11 +2416,17 @@ def create_app(
         """返回当前 Provider-neutral Principal 与两角色投影。"""
 
         principal = current_principal(request)
+        # 头像与部门名由 Identity Resolver 经 `request.state` 附带
+        # （方案 §7B 头像、§5D 部门）：它们只服务前端展示，
+        # 不属于 Provider-neutral 的 `Principal` 本身。
+        # 开发身份不设置这两个属性，因此这里用 getattr 兜底为 None。
         return CurrentPrincipalResponse(
             principal_id=principal.principal_id,
             display_name=principal.display_name,
             role=principal.role,
             source=principal.source,
+            avatar_url=getattr(request.state, "principal_avatar_url", None),
+            department_name=getattr(request.state, "principal_department_name", None),
         )
 
     @application.get(

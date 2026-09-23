@@ -28,10 +28,16 @@ from aima_ugc.modules.collection.collection_run_job import (
     register_collection_run_job,
 )
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
+from aima_ugc.modules.content.read_model_job import (
+    VoicePlazaProjectionJobHandler,
+    register_voice_plaza_projection_job,
+)
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
 from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayJobHandler,
+    CanonicalReplayReversalJobHandler,
     register_canonical_replay_job,
+    register_canonical_replay_reversal_job,
 )
 from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
 from aima_ugc.modules.reporting.data_export_job import (
@@ -53,6 +59,11 @@ from .analysis_high_throughput_planner import (
     HighThroughputContentAnalysisPlanJobExecutor,
     create_high_throughput_analysis_job_terminal_callback,
 )
+from .canonical_replay_reversal_worker import (
+    PostgresCanonicalReplayReversalJobExecutor,
+    canonical_replay_job_terminal_callback,
+    canonical_replay_reversal_terminal_callback,
+)
 from .canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from .content_media_cache import PostgresContentMediaCacheService
 from .content_reclassification_worker import PostgresContentReclassificationJobExecutor
@@ -63,6 +74,10 @@ from .historical_import_worker import PostgresHistoricalImportJobExecutor
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
 from .media_cache_collection_scope import MediaCachingTikHubCollectionScopeExecutor
 from .runtime import PlatformRuntime, create_platform_runtime
+from .voice_plaza_projection_worker import (
+    PostgresVoicePlazaProjectionJobExecutor,
+    voice_plaza_projection_job_terminal_callback,
+)
 
 
 class _TikHubTransportPool:
@@ -195,6 +210,17 @@ def create_collection_job_registry(
     register_canonical_replay_job(
         registry,
         CanonicalReplayJobHandler(PostgresCanonicalReplayJobExecutor(runtime)),
+        terminal_callback=canonical_replay_job_terminal_callback,
+    )
+    register_canonical_replay_reversal_job(
+        registry,
+        CanonicalReplayReversalJobHandler(PostgresCanonicalReplayReversalJobExecutor(runtime)),
+        terminal_callback=canonical_replay_reversal_terminal_callback,
+    )
+    register_voice_plaza_projection_job(
+        registry,
+        VoicePlazaProjectionJobHandler(PostgresVoicePlazaProjectionJobExecutor(runtime)),
+        terminal_callback=voice_plaza_projection_job_terminal_callback,
     )
     register_feishu_publication_jobs(
         registry,

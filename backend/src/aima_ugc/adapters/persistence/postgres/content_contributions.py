@@ -188,6 +188,30 @@ def content_source_item_key(observation: CanonicalContentV1) -> str:
     ).hexdigest()
 
 
+def capture_content_contribution_snapshot(
+    session: Session,
+    observation: CanonicalContentV1,
+    *,
+    content_id: UUID | None = None,
+) -> ContentContributionSnapshot:
+    """为一次独立业务操作冻结 Current 投影，不复用来源幂等账本。"""
+
+    snapshot = _capture_snapshot(session, observation, content_id=content_id)
+    if snapshot is None:
+        raise RuntimeError("Content Current 投影不可读")
+    return snapshot
+
+
+def build_content_contribution_delta(
+    observation: CanonicalContentV1,
+    before: ContentContributionSnapshot,
+    after: ContentContributionSnapshot,
+) -> dict[str, object]:
+    """生成与 Data Import 撤销相同语义的 before/after Delta。"""
+
+    return _build_delta(observation, before, after)
+
+
 def _capture_snapshot(
     session: Session,
     observation: CanonicalContentV1,
@@ -449,6 +473,8 @@ def _source_ids(observation: CanonicalContentV1) -> tuple[UUID, UUID]:
 
 
 __all__ = [
+    "build_content_contribution_delta",
+    "capture_content_contribution_snapshot",
     "ContentContributionDraft",
     "ContentContributionSnapshot",
     "commit_content_contribution",

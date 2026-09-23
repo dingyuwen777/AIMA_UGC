@@ -49,10 +49,10 @@ const selectedReviewIds = computed<Record<RelevanceReviewDecision, string[]>>(()
   return grouped
 })
 const reviewNote = computed(() => {
-  if (store.filters.relevance === 'irrelevant') {
+  if (store.appliedFilters.relevance === 'irrelevant') {
     return '当前显示业务有效不相关内容：AI 原判不相关的内容可人工标记为相关；被人工排除的内容可撤销人工判断。AI 原始结果始终保留。'
   }
-  if (store.filters.relevance === 'relevant') {
+  if (store.appliedFilters.relevance === 'relevant') {
     return '当前显示业务有效相关内容：AI 原判相关的内容可人工标记为不相关；被人工纳入的内容可撤销人工判断。AI 原始结果始终保留。'
   }
   return null
@@ -73,20 +73,23 @@ const detailOpen = computed({
 
 onMounted(() => {
   const sourceIdentifier = route.query.source_identifier
-  if (typeof sourceIdentifier === 'string') store.filters.sourceIdentifier = sourceIdentifier
-  store.startPolling()
-  void refreshPage()
+  if (typeof sourceIdentifier === 'string') {
+    store.filters.sourceIdentifier = sourceIdentifier
+    store.applyFilters()
+  }
+  void refreshPage().finally(() => store.startPolling())
 })
-onBeforeUnmount(() => store.stopPolling())
+onBeforeUnmount(() => {
+  store.cancelCount()
+  store.stopPolling()
+})
 
-/** 先校准后端筛选目录，再并行刷新列表和独立业务资源。 */
+/** 首先展示最新倒序第一页，再在后台加载不会影响首屏的目录与任务资源。 */
 async function refreshPage(): Promise<void> {
-  const taxonomyRequest = store.refreshTaxonomy()
-  await store.refreshFilterOptions()
-  await Promise.all([
-    taxonomyRequest,
-    store.refresh(),
-    store.refreshCount('estimated'),
+  await store.refreshResults()
+  void Promise.allSettled([
+    store.refreshTaxonomy(),
+    store.refreshFilterOptions(),
     store.refreshExports(),
     store.refreshAnalysisCapabilities(),
     store.refreshAnalysisRuns(),
@@ -95,14 +98,14 @@ async function refreshPage(): Promise<void> {
 
 /** 提交当前筛选并清空旧选择，避免跨查询误操作。 */
 async function search(): Promise<void> {
-  store.clearSelection()
-  await Promise.all([store.refresh(), store.refreshCount('estimated')])
+  store.applyFilters()
+  await store.refreshResults()
 }
 
 /** 恢复默认筛选并重新获取第一页。 */
 async function reset(): Promise<void> {
   store.resetFilters()
-  await Promise.all([store.refresh(), store.refreshCount('estimated')])
+  await store.refreshResults()
 }
 
 /** 把人工相关性复核结果转换为用户可读反馈。 */
@@ -259,8 +262,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         tone="warning"
         role="alert"
       >
-        <strong>筛选项暂不可用</strong>
-        <span>动态筛选已暂时停用；内容浏览和其它操作仍可使用。</span>
+        <strong>部分动态筛选项暂不可用</strong>
+        <span>平台、相关性和状态仍可筛选；情感、标签等动态目录可稍后重试。</span>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="store.taxonomyError"
@@ -342,15 +345,28 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </section>
 
       <div
-        v-if="store.items.length > 0"
+        v-if="store.contentCount || store.countLoading || store.countError"
         class="list-heading"
       >
         <div class="selection-actions">
           <div class="count-summary">
             <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} <strong>{{ store.contentCount.count.toLocaleString('zh-CN') }} 条</strong></span>
-            <span v-else>已显示 <strong>{{ store.items.length }} 条</strong></span>
-            <small v-if="store.contentCount?.truncated">结果较多，当前显示估算总数</small>
-            <small v-else-if="store.countError">总数暂不可用</small>
+            <span v-else-if="store.countLoading">总数统计中…</span>
+            <span
+              v-else-if="store.countError"
+              class="count-error"
+            >
+              总数统计失败
+              <button
+                class="count-retry"
+                type="button"
+                @click="store.refreshCount('estimated')"
+              >
+                重试总数
+              </button>
+            </span>
+            <span v-else-if="store.contentCount?.count_kind === 'none'">总数数据准备中…</span>
+            <span v-else>总数暂不可用</span>
           </div>
           <button
             v-if="selectedReviewIds.relevant.length"
@@ -409,7 +425,17 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-if="store.items.length > 0"
         class="pagination"
       >
-        <span>已显示 {{ store.items.length }} 条</span>
+        <span class="pagination-count">
+          <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} {{ store.contentCount.count.toLocaleString('zh-CN') }} 条</span>
+          <span v-else-if="store.countLoading">总数统计中…</span>
+          <span
+            v-else-if="store.countError"
+            class="count-error"
+          >总数统计失败</span>
+          <span v-else-if="store.contentCount?.count_kind === 'none'">总数数据准备中…</span>
+          <span v-else>总数暂不可用</span>
+          <small>当前已加载 {{ store.items.length }} 条</small>
+        </span>
         <AimaButton
           size="small"
           :disabled="!store.hasMore || store.loadingNext"
@@ -491,6 +517,9 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .count-summary { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
 .count-summary strong { color: var(--aima-primary); }
 .count-summary small { color: var(--aima-text-disabled); font-size: 10px; }
+.count-summary .count-error,
+.pagination-count .count-error { color: var(--aima-danger); }
+.count-retry { color: var(--aima-danger); background: var(--aima-color-error-bg); }
 .capability-warning strong,
 .capability-warning span,
 .taxonomy-warning strong,
@@ -533,6 +562,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .selected-count { color: var(--aima-primary); background: var(--aima-primary-soft); }
 .selection-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .pagination { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 20px; color: var(--aima-text-muted); font-size: 11px; }
+.pagination-count { display: flex; align-items: baseline; gap: 8px; }
+.pagination-count small { color: var(--aima-text-disabled); font-size: 10px; }
 .pagination :deep(.aima-button) { height: 34px; }
 .notice { position: fixed; z-index: 200; top: 76px; left: 50%; min-width: 280px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
 @media (max-width: 1280px) {

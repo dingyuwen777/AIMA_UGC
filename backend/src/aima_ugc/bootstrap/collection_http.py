@@ -37,6 +37,7 @@ from aima_ugc.contracts.collection import (
 )
 from aima_ugc.contracts.collection.models import BusinessOperation
 from aima_ugc.contracts.http import (
+    CanonicalReplayRuntimeStatsResponse,
     CollectionBatchSupplementEligibilityResponse,
     CollectionBatchSupplementTargetResponse,
     CollectionCampaignSupplementEligibilityResponse,
@@ -833,6 +834,81 @@ def _runtime_item_response(
         if record.collection_run_id is not None
         else None
     )
+    canonical_replay_stats = (
+        CanonicalReplayRuntimeStatsResponse(
+            artifact_count=_safe_count(record.canonical_replay_stats, "artifact_count"),
+            run_count=_safe_count(record.canonical_replay_stats, "run_count"),
+            queued_run_count=_safe_count(record.canonical_replay_stats, "queued_run_count"),
+            running_run_count=_safe_count(record.canonical_replay_stats, "running_run_count"),
+            succeeded_run_count=_safe_count(
+                record.canonical_replay_stats,
+                "succeeded_run_count",
+            ),
+            failed_run_count=_safe_count(record.canonical_replay_stats, "failed_run_count"),
+            cancelled_run_count=_safe_count(
+                record.canonical_replay_stats,
+                "cancelled_run_count",
+            ),
+            rows_seen=_safe_count(record.canonical_replay_stats, "rows_seen"),
+            rows_matched=_safe_count(record.canonical_replay_stats, "rows_matched"),
+            rows_filtered_out=_safe_count(
+                record.canonical_replay_stats,
+                "rows_filtered_out",
+            ),
+            duplicates_removed=_safe_count(
+                record.canonical_replay_stats,
+                "duplicates_removed",
+            ),
+            rows_ingested=_safe_count(record.canonical_replay_stats, "rows_ingested"),
+            existing_convergence=_safe_count(
+                record.canonical_replay_stats,
+                "existing_convergence",
+            ),
+            reversible=bool(record.canonical_replay_stats.get("reversible", False)),
+            lifecycle_status=cast(
+                Literal[
+                    "active",
+                    "cancelling",
+                    "reverting",
+                    "reverted",
+                    "revert_failed",
+                ],
+                str(record.canonical_replay_stats.get("lifecycle_status", "active")),
+            ),
+            reversal_job_id=(
+                UUID(str(record.canonical_replay_stats["reversal_job_id"]))
+                if record.canonical_replay_stats.get("reversal_job_id")
+                else None
+            ),
+            reverted_content_count=_safe_count(
+                record.canonical_replay_stats,
+                "reverted_content_count",
+            ),
+            hidden_content_count=_safe_count(
+                record.canonical_replay_stats,
+                "hidden_content_count",
+            ),
+            retained_content_count=_safe_count(
+                record.canonical_replay_stats,
+                "retained_content_count",
+            ),
+            skipped_content_count=_safe_count(
+                record.canonical_replay_stats,
+                "skipped_content_count",
+            ),
+            restored_evidence_count=_safe_count(
+                record.canonical_replay_stats,
+                "restored_evidence_count",
+            ),
+            skipped_evidence_count=_safe_count(
+                record.canonical_replay_stats,
+                "skipped_evidence_count",
+            ),
+        )
+        if record.canonical_replay_request_id is not None
+        and record.canonical_replay_stats is not None
+        else None
+    )
     return CollectionRuntimeItemResponse(
         record_id=record.record_id,
         job_id=record.job_id,
@@ -844,11 +920,13 @@ def _runtime_item_response(
         import_batch_id=record.import_batch_id,
         data_import_campaign_id=record.data_import_campaign_id,
         collection_run_id=record.collection_run_id,
+        canonical_replay_request_id=record.canonical_replay_request_id,
         source_filename=record.source_filename,
         platforms=_runtime_platforms(record.config_snapshot),
         keywords=_snapshot_keywords(record.config_snapshot or {}),
         import_stats=import_stats,
         collection_stats=collection_stats,
+        canonical_replay_stats=canonical_replay_stats,
         error_summary=record.error_summary,
         error_code=record.error_code,
         created_at=record.created_at,
@@ -858,6 +936,8 @@ def _runtime_item_response(
 
 
 def _runtime_display_name(record: CollectionRuntimeReadRecord) -> str:
+    if record.record_type == "canonical_replay":
+        return "历史数据重筛"
     if record.record_type == "excel_import":
         return record.source_filename or "Excel 导入"
     if record.record_type == "data_import_campaign":

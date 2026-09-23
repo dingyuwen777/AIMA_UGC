@@ -13,6 +13,7 @@ import VoicePlazaTable from '../src/features/voice-plaza/pages/VoicePlazaPage/co
 import { useVoicePlazaStore } from '../src/features/voice-plaza/store'
 
 const filterOptions: ContentFilterOptionsResponse = {
+  catalog_status: 'ready',
   platforms: ['xiaohongshu', 'douyin', 'weibo', 'bilibili', 'kuaishou'],
   relevances: ['relevant', 'irrelevant'],
   analysis_statuses: ['completed', 'pending', 'stale'],
@@ -156,6 +157,18 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('快速估算数量')
   })
 
+  it('筛选目录在后台补齐时保持无感，不展示同步提示', async () => {
+    const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
+      useVoicePlazaStore(pinia).filterOptions = {
+        ...filterOptions,
+        catalog_status: 'building',
+      }
+    })
+
+    expect(html).not.toContain('筛选数据正在后台同步')
+    expect(html).not.toContain('历史情感与标签选项会自动补齐')
+  })
+
   it('终态 Analysis Run 不再作为历史大卡片占据声音广场正文', async () => {
     const terminalRun: AnalysisContentRunResponse = {
       ...baseAnalysisRun,
@@ -208,5 +221,38 @@ describe('声音广场正式 Figma 基线', () => {
     expect(empty).toContain('data-aima-icon="empty"')
     expect(error).toContain('暂时无法加载声音记录')
     expect(error).toContain('检查网络或服务状态后点击“刷新数据”重试')
+  })
+
+  it('列表为空时仍区分零总数、投影准备中和统计请求失败', async () => {
+    const zero = await renderComponent(VoicePlazaPage, {}, (pinia) => {
+      const store = useVoicePlazaStore(pinia)
+      store.contentCount = {
+        count_mode: 'estimated',
+        count: 0,
+        count_kind: 'exact',
+        as_of: '2026-09-21T12:00:00+08:00',
+        truncated: false,
+      }
+    })
+    const building = await renderComponent(VoicePlazaPage, {}, (pinia) => {
+      const store = useVoicePlazaStore(pinia)
+      store.contentCount = {
+        count_mode: 'estimated',
+        count: null,
+        count_kind: 'none',
+        as_of: '2026-09-21T12:00:00+08:00',
+        truncated: false,
+      }
+    })
+    const failed = await renderComponent(VoicePlazaPage, {}, (pinia) => {
+      const store = useVoicePlazaStore(pinia)
+      store.countError = 'request timeout'
+    })
+
+    expect(zero).toContain('共')
+    expect(zero).toMatch(/<strong[^>]*>0 条<\/strong>/)
+    expect(building).toContain('总数数据准备中')
+    expect(failed).toContain('总数统计失败')
+    expect(failed).toContain('重试总数')
   })
 })

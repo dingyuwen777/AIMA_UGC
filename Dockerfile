@@ -3,7 +3,7 @@
 # 本文件只使用 Dockerfile 稳定基础语法，不声明外部 syntax frontend。
 
 FROM python:3.14.7-slim-trixie AS backend-builder
-ARG AIMA_BUILD_PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG AIMA_BUILD_PYPI_INDEX=https://mirrors.aliyun.com/pypi/simple
 ENV UV_PYTHON_DOWNLOADS=0 \
     UV_LINK_MODE=copy
 WORKDIR /app

@@ -38,6 +38,27 @@ def _normalized_identity(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
+def _normalized_aliases(value: object) -> object:
+    """在数组长度校验前保留首项并收敛同一车型内的重复别名。"""
+
+    if value is None or not isinstance(value, (list, tuple)):
+        return value
+    cleaned: list[str] = []
+    identities: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            return value
+        text = item.strip()
+        if not text:
+            raise ValueError("车型别名不能为空")
+        identity = _normalized_identity(text)
+        if identity in identities:
+            continue
+        identities.add(identity)
+        cleaned.append(text)
+    return tuple(cleaned)
+
+
 class CurrentPrincipalResponse(BaseModel):
     """当前请求的 Provider-neutral Principal 投影。"""
 
@@ -47,6 +68,17 @@ class CurrentPrincipalResponse(BaseModel):
     display_name: str = Field(min_length=1, max_length=200)
     role: PrincipalRole
     source: PrincipalSource
+    # 展示用头像地址（可选）。**只用于前端展示，不参与任何授权判断**。
+    # 只有飞书身份会提供它；开发身份没有头像，保持 `None`。
+    # 以可选字段新增：既有消费者无需改动，属兼容变化（非破坏性）。
+    avatar_url: str | None = Field(default=None, max_length=1000)
+    # 展示用部门名（可选）。同样**不参与授权判断**，授权只看 `role`。
+    #
+    # ⚠️ 与 `Principal` 的边界：部门**不进** `modules/identity/models.py` 的
+    # `Principal`（那是全系统身份模型，205 处鉴权走它，不该带展示字段）。
+    # 这里只是在**HTTP 响应**上多给前端一个只读字段，与 `avatar_url` 同性质。
+    # 只有飞书身份可能提供；取不到时保持 `None`（部门失败不挡登录）。
+    department_name: str | None = Field(default=None, max_length=200)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -54,6 +86,34 @@ class CurrentPrincipalResponse(BaseModel):
         """返回当前 Principal 是否具备管理员角色。"""
 
         return self.role == "administrator"
+
+
+class AuthConnectorResponse(BaseModel):
+    """一个**可登录的飞书企业**，供前端登录页展示。
+
+    ⚠️ **只暴露展示所需的两个字段**。这个端点是**未认证**的（登录页要调它），
+    因此绝不能返回 App Secret、Secret 引用、用户组 ID 或回调地址 ——
+    那些都是服务端配置，泄露它们等于把接入细节告诉任何访问者。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=32)
+    """企业标识，用于构造登录路由（`/api/v1/auth/feishu/{code}/login`）。"""
+
+    display_name: str = Field(min_length=1, max_length=64)
+    """界面上显示的名字（如「爱玛科技」）。"""
+
+
+class AuthConnectorListResponse(BaseModel):
+    """可登录企业列表。
+
+    **顺序即配置顺序** —— 前端按它渲染，保证每次刷新按钮顺序一致。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AuthConnectorResponse]
 
 
 class VehicleModelCreateRequest(BaseModel):
@@ -74,18 +134,12 @@ class VehicleModelCreateRequest(BaseModel):
 
         return _trimmed(value)
 
-    @field_validator("aliases")
+    @field_validator("aliases", mode="before")
     @classmethod
-    def validate_aliases(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        """车型内别名必须非空且规范化后不重复。"""
+    def validate_aliases(cls, value: object) -> object:
+        """车型内别名必须非空，重复项按规范化身份保留首项。"""
 
-        cleaned = tuple(item.strip() for item in value)
-        if any(not item for item in cleaned):
-            raise ValueError("车型别名不能为空")
-        identities = tuple(_normalized_identity(item) for item in cleaned)
-        if len(identities) != len(set(identities)):
-            raise ValueError("同一车型的别名不能重复")
-        return cleaned
+        return _normalized_aliases(value)
 
 
 class VehicleModelUpdateRequest(BaseModel):
@@ -107,14 +161,12 @@ class VehicleModelUpdateRequest(BaseModel):
 
         return _trimmed(value)
 
-    @field_validator("aliases")
+    @field_validator("aliases", mode="before")
     @classmethod
-    def validate_aliases(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    def validate_aliases(cls, value: object) -> object:
         """复用创建时的别名唯一规则。"""
 
-        if value is None:
-            return None
-        return VehicleModelCreateRequest.validate_aliases(value)
+        return _normalized_aliases(value)
 
     @model_validator(mode="after")
     def require_change(self) -> VehicleModelUpdateRequest:
@@ -442,6 +494,8 @@ __all__ = [
     "AuditEventListQuery",
     "AuditEventListResponse",
     "AuditEventResponse",
+    "AuthConnectorListResponse",
+    "AuthConnectorResponse",
     "CurrentPrincipalResponse",
     "PrincipalRole",
     "ProviderConfigCreateRequest",

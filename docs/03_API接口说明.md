@@ -225,7 +225,7 @@ HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Wor
 
 ## 4.4 `GET /api/v1/collection-runtime/runs`
 
-采集运行中心统一 Read Model，可投影 Data Import Campaign、兼容 Excel Import 与 TikHub Run。统一发生在 Query 层，不表示数据库把三类父事实合成万能表。Campaign 下的物理 Chunk Batch 不再作为兼容 Excel Import 重复投影或计入 KPI。
+采集运行中心统一 Read Model，可投影 Data Import Campaign、兼容 Excel Import、TikHub Run 与全历史 Canonical Replay Request。统一发生在 Query 层，不表示数据库把这些父事实合成万能表。Campaign 下的物理 Chunk Batch 不再作为兼容 Excel Import 重复投影或计入 KPI；同理，`canonical_replay_all_requests` 对应一条 `canonical_replay` 记录，关联的多个 Replay Run/Job 只提供聚合状态、按 Artifact 加权的进度和统计，不重复成为列表记录。
 
 ## 4.5 `GET /api/v1/collection-runtime/summary`
 
@@ -394,27 +394,42 @@ POST /api/v1/historical-import-campaigns/{campaign_id}/retry-failed
 
 ```text
 POST /api/v1/canonical-replays
+POST /api/v1/canonical-replays/all
+POST /api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke
+POST /api/v1/canonical-replays/all/{replay_request_id}/revoke
 GET  /api/v1/canonical-replays/{run_id}
 POST /api/v1/canonical-replays/{run_id}/cancel
 ```
 
-三个接口都要求后端确认管理员角色。创建请求提交客户端幂等键、1—100 个已知 Canonical
+六个接口都要求后端确认管理员角色。显式创建请求提交客户端幂等键、1—100 个已知 Canonical
 Artifact ID、可选 Brand ID 和有界批大小；空 Brand 集合表示冻结创建时全部 active Brand。
 服务只接受可证明属于当前 Excel Import v2、Data Import Pure Canonical Chunk v2 或 TikHub
 Discovery Search Attempt 的 linked Artifact，并在同一 PostgreSQL 事务创建 Replay Run 与
 `ingestion.canonical-replay.v1` Job。API 返回 202，Worker 才执行全输入预检、当前
 Brand/Vehicle Resolver/Filter、持久去重与 Content Owner 收敛。
 
+全量创建请求只提交客户端幂等键。后端自动选择全部合法历史 Canonical，冻结当前全部 active
+Brand/Vehicle 目录，按每 100 个 Artifact 建立一个 Replay Run，并固定使用 1000 行写入批次；
+响应返回选中 Artifact 数和创建的子 Run 数。全量请求的选择摘要和子 Run 归属持久化保存，同一
+幂等键下输入集合或创建者漂移返回 409，空选择返回零任务。
+
 查询响应包含冻结目录版本、Artifact 顺序、checkpoint、Job 状态与
 `rows_seen / rows_matched / rows_filtered_out / duplicates_removed / rows_ingested /
 existing_convergence / invalid_artifact_rows` 统计。精确字段、状态和错误仍以生成 OpenAPI 为准，
-文档不复制完整 Schema。取消沿用统一 Job 协作取消语义。当前入口是正式管理员 API，尚无前端
-页面；它不会调用 Provider，也不会自动创建 AI 任务或因新规则变窄而删除既有 Content。
+文档不复制完整 Schema。单 Run 取消沿用统一 Job 协作取消语义；全量请求的取消会等待子 Job
+收敛后自动排队撤回，终态请求可直接排队撤回。撤回只根据本请求写入时原子记录的贡献账本，
+逆转仍归本请求所有的 Content Current、业务可见性和自动 Brand/Vehicle Evidence；后续其他来源
+写入、人工锁和历史版本不动。没有账本的旧请求失败关闭。当前入口是正式管理员 API，尚无前端
+逐 Run 页面；它不会调用 Provider，也不会自动创建 AI 任务。
+管理员页面提供全量创建入口；创建后可在采集运行中心按“历史重筛”类型查看一条请求级记录、
+聚合进度、子任务状态和处理统计。详情为 Modal，并提供全量请求级取消/撤回；撤回阶段与统计仍
+归入原记录。该运行中心投影复用现有 all-request、Run 和 Job 表，不新增平行状态机。
 
 实现：
 
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_worker.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py)
 - [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py)
 
 ---
@@ -436,7 +451,7 @@ frontend/src/features/voice-plaza/
 
 ## 7.1 `GET /api/v1/contents`
 
-用于声音广场列表、Analysis/Export 目标查询的基础 Read Model。
+用于声音广场列表、Analysis/Export 目标查询的基础 Read Model。`voice_plaza_projection_state=ready` 后，请求从一行一 Content 的增量投影按 Cursor 读取，不在请求内重建全库 Analysis/Review 窗口；回填完成前继续使用兼容查询以保证结果完整。
 
 查询层组合：
 
@@ -468,7 +483,7 @@ AI 原判仍在 `analysis_content_results.relevance`，没有复制为 `contents
 
 读取详情，包括 media、comments、coverage、source_records 等审计/展示数据。单条详情不会因为 AI irrelevant 物理删除或隐藏 Content 业务事实。
 
-详情内嵌的 `comments` 继续保留，用于兼容已有调用；它最多返回 100 条，不能作为完整评论浏览接口。
+可选查询参数 `include_comments` 默认是 `true`。详情内嵌的 `comments` 继续保留，用于兼容已有调用；它最多返回 100 条，不能作为完整评论浏览接口。已经使用独立评论分页的调用方应传 `include_comments=false`，避免在详情请求中重复读取评论；响应结构不变，`comments` 返回空数组。
 
 ## 7.3 `GET /api/v1/contents/{content_id}/comments`
 
@@ -543,7 +558,7 @@ Taxonomy 读取或校验失败时，接口使用统一 Problem Response 返回 `
 
 声音广场下拉选项的唯一后端目录。平台、相关性和分析状态来自正式 Contract，内容类型来自当前可见 Content Current；情感、发声类型和两级标签按 active Taxonomy 顺序优先，再追加当前可见最新 Analysis/人工覆盖中仍存在的历史值。历史项明确返回 `source=historical`，但不会写回或扩大 active Taxonomy。
 
-历史值查询复用内容列表的当前版本、有效来源、最新 Analysis、人工维度锁和有效相关性投影，不从旧 Content Version、失效来源或全表原始结果做无边界 `DISTINCT`。读取失败不阻断内容列表；前端禁用动态下拉并显示统一错误，不回退到业务值硬编码。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
+历史值来自由逐 Content 贡献增量维护的持久聚合目录，不从旧 Content Version、失效来源或全表原始结果做无边界 `DISTINCT`。Response 的 `catalog_status` 为 `building` 时表示历史目录仍在回填；已返回选项、平台、相关性、分析状态和 active Taxonomy 值仍可立即使用，前端只提示后台同步，不把平台筛选误报为不可用。真正读取失败仍不阻断内容列表。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
 
 ## 8.4 `POST /api/v1/analysis/content-runs/preview`
 
@@ -673,6 +688,21 @@ Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围
 完整 Scheduler 语义：[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)。
 
 ## 11.1 Principal、车型与管理员配置
+
+
+飞书登录与会话（Cookie 名 `aima_session`，属性 `HttpOnly` + `SameSite=Lax` + `Path=/`，`Secure` 按环境）：
+
+```text
+GET    /api/v1/auth/connectors
+GET    /api/v1/auth/feishu/login
+GET    /api/v1/auth/feishu/callback
+GET    /api/v1/auth/feishu/{connector_code}/login
+GET    /api/v1/auth/feishu/{connector_code}/callback
+POST   /api/v1/auth/logout
+```
+
+`/connectors` 只返回可登录企业的 `code/display_name`，单企业或未配置时返回空列表；带 `{connector_code}` 的路由按企业隔离 App ID、Secret 引用、用户组和 OAuth state。`/login` 生成一次性 state 后 302 到飞书授权页，`?return_to=` 只允许站内相对路径；`/callback` 校验并原子消费 state、用对应企业的授权码换令牌、取用户、查用户组、判角色、建会话后 302 回 `return_to`；`/logout` **在服务端撤销会话**并清 Cookie。无会话访问受保护接口返回 `401`，已登录但角色不足返回 `403`。未配置飞书时登录/回调返回 `503`、企业列表为空，进程沿用开发身份；登出保持幂等 `204`。
+
 
 ```text
 GET    /api/v1/principal
@@ -823,7 +853,6 @@ Pydantic Contract
 /api/v1/alerts
 /api/v1/reports
 /api/v1/client-events
-企业登录 / Session API
 LLM 配置编辑 / Secret 查询 API
 独立顶层 /api/v1/analysis-runs 资源
 ```

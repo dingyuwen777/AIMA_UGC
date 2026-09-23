@@ -1,6 +1,3 @@
-# agent-skills:governance-issue-form:v1
-# 唯一人工维护源：Agent_Skills Coding governance assets。
-# 仓库根 .github/ISSUE_TEMPLATE 副本是受管投影，只修改 canonical source。
 name: 需求
 description: 提交新增或调整可观察能力、行为或用户流程的需求
 title: "[需求] "

@@ -122,9 +122,21 @@ class PostgresContentLifecycleRepository:
     ) -> tuple[tuple[UUID, int], ...]:
         """逆序回退 Campaign Delta，并为每个受影响 Content 追加一个生命周期 Version。"""
 
+        return self.apply_contributions(
+            self.list_campaign_contributions(campaign_id),
+            revoked_at=revoked_at,
+        )
+
+    def apply_contributions(
+        self,
+        contributions: tuple[RowMapping, ...],
+        *,
+        revoked_at: datetime,
+    ) -> tuple[tuple[UUID, int], ...]:
+        """逆序回退调用方提供的不可变 Delta，并追加生命周期 Version。"""
+
         if revoked_at.utcoffset() is None:
             raise ValueError("revoked_at 必须包含时区")
-        contributions = self.list_campaign_contributions(campaign_id)
         by_content: dict[UUID, list[RowMapping]] = defaultdict(list)
         for contribution in contributions:
             by_content[cast(UUID, contribution["content_id"])].append(contribution)

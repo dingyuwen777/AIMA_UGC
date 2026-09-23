@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import cast
+from typing import Literal, cast
 from uuid import uuid4
 
 from sqlalchemy import insert, select, text
@@ -38,7 +38,10 @@ class PostgresContentProductRepository:
     def exact_count(self, filters: ContentFilterSnapshot, *, limit: int) -> tuple[int, bool]:
         """扫描至上限加一，返回范围内数量和是否被截断。"""
 
-        statement, _ = self._queries._base_statement(filters, targets_only=True)  # noqa: SLF001
+        statement, _ = self._queries._effective_base_statement(  # noqa: SLF001
+            filters,
+            targets_only=True,
+        )
         rows = tuple(self._session.scalars(select(statement.subquery().c.id).limit(limit + 1)))
         return min(len(rows), limit), len(rows) > limit
 
@@ -53,6 +56,25 @@ class PostgresContentProductRepository:
             )
         )
         return None if value is None else max(int(value), 0)
+
+    def display_count(
+        self, filters: ContentFilterSnapshot
+    ) -> tuple[int | None, Literal["none", "exact", "estimated"]]:
+        """优先读取投影精确总数；升级窗口仅对无筛选返回明确标注的估算。"""
+
+        count = self._queries.projection_count(filters)
+        if count is not None:
+            return count, "exact"
+        estimate = self.estimated_count(filters)
+        if estimate is not None:
+            return estimate, "estimated"
+        return None, "none"
+
+    @property
+    def last_projection_ready(self) -> bool | None:
+        """暴露本次读取观察到的派生读模型就绪状态。"""
+
+        return self._queries.last_projection_ready
 
     def append_availability(
         self,

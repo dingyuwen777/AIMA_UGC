@@ -4,6 +4,16 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const generated = vi.hoisted(() => ({
+  ContentAnalysisStatus: { completed: 'completed', pending: 'pending', stale: 'stale' },
+  ContentRelevance: { relevant: 'relevant', irrelevant: 'irrelevant' },
+  PlatformName: {
+    xiaohongshu: 'xiaohongshu',
+    douyin: 'douyin',
+    weibo: 'weibo',
+    bilibili: 'bilibili',
+    kuaishou: 'kuaishou',
+  },
+  countContents: vi.fn(),
   listContents: vi.fn(),
   listContentComments: vi.fn(),
   getContent: vi.fn(),
@@ -77,6 +87,7 @@ const taxonomy = {
 }
 
 const filterOptions: ContentFilterOptionsResponse = {
+  catalog_status: 'ready',
   platforms: ['xiaohongshu', 'douyin', 'weibo', 'bilibili', 'kuaishou'],
   relevances: ['relevant', 'irrelevant'],
   analysis_statuses: ['completed', 'pending', 'stale'],
@@ -102,10 +113,17 @@ describe('voice plaza', () => {
     store.toggleSelection(item.id)
     await store.changeSort('follower_count')
     expect(store.selectedIds).toEqual([])
-    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ sort_by: 'follower_count', sort_direction: 'desc' })
-    expect(generated.listContents.mock.lastCall?.[0].cursor).toBeUndefined()
+    expect(generated.listContents.mock.calls.some(([params]) =>
+      params.sort_by === 'follower_count' &&
+      params.sort_direction === 'desc' &&
+      params.cursor === undefined,
+    )).toBe(true)
     await store.changeSort('follower_count')
-    expect(generated.listContents.mock.lastCall?.[0].sort_direction).toBe('asc')
+    expect(generated.listContents.mock.calls.some(([params]) =>
+      params.sort_by === 'follower_count' &&
+      params.sort_direction === 'asc' &&
+      params.cursor === undefined,
+    )).toBe(true)
     await store.loadNext()
     expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ cursor: 'next-page', sort_by: 'follower_count', sort_direction: 'asc' })
   })
@@ -130,7 +148,88 @@ describe('voice plaza', () => {
     expect(store.detail).toBeNull()
   })
 
-  it('打开详情会预取已入库回复并保留数据库总数', async () => {
+  it('点击列表项时立即用当前摘要打开详情，再并行补齐详情和评论', async () => {
+    let resolveDetail!: (value: unknown) => void
+    let resolveComments!: (value: unknown) => void
+    generated.getContent.mockReturnValueOnce(new Promise((resolve) => { resolveDetail = resolve }))
+    generated.listContentComments.mockReturnValueOnce(
+      new Promise((resolve) => { resolveComments = resolve }),
+    )
+    const store = useVoicePlazaStore()
+    store.items = [item]
+
+    const loading = store.openDetail(item.id)
+
+    expect(store.detail).toMatchObject({ id: item.id, title: item.title })
+    expect(store.loadingDetail).toBe(true)
+    resolveDetail({ ...item, media: [], source_records: [item.source] })
+    resolveComments({
+      items: [], next_cursor: null, has_more: false, total_count: 0, ingested_total_count: 0,
+    })
+    await loading
+    expect(store.loadingDetail).toBe(false)
+  })
+
+  it('首屏完成后预取下一页，加载更多直接复用同一请求结果', async () => {
+    const nextItem = { ...item, id: '01991f80-6d5d-7dc8-95cb-c67c87654321' }
+    generated.listContents
+      .mockResolvedValueOnce({ items: [item], next_cursor: 'next-page', has_more: true })
+      .mockResolvedValueOnce({ items: [nextItem], has_more: false })
+    const store = useVoicePlazaStore()
+
+    await store.refresh()
+    await store.loadNext()
+
+    expect(generated.listContents).toHaveBeenCalledTimes(2)
+    expect(generated.listContents).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: 'next-page' }),
+    )
+    expect(store.items.map((entry) => entry.id)).toEqual([item.id, nextItem.id])
+  })
+
+  it('返回同一查询时先显示会话缓存，再用服务端最新第一页替换', async () => {
+    generated.listContents.mockResolvedValueOnce({ items: [item], has_more: false })
+    const store = useVoicePlazaStore()
+    await store.refresh()
+    let resolveLatest!: (value: unknown) => void
+    generated.listContents.mockReturnValueOnce(
+      new Promise((resolve) => { resolveLatest = resolve }),
+    )
+
+    const refreshing = store.refresh()
+
+    expect(store.items[0]?.title).toBe(item.title)
+    expect(store.loading).toBe(false)
+    resolveLatest({ items: [{ ...item, title: '服务端最新内容' }], has_more: false })
+    await refreshing
+    expect(store.items[0]?.title).toBe('服务端最新内容')
+  })
+
+  it('离开页面后用会话中已应用的平台筛选和排序恢复查询', () => {
+    const values = new Map<string, string>()
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      clear: () => values.clear(),
+    })
+    const first = useVoicePlazaStore()
+    first.filters.platform = 'douyin'
+    first.applyFilters()
+    first.sortBy = 'follower_count'
+    first.sortDirection = 'asc'
+    first.applyFilters()
+
+    setActivePinia(createPinia())
+    const restored = useVoicePlazaStore()
+
+    expect(restored.filters.platform).toBe('douyin')
+    expect(restored.appliedFilters.platform).toBe('douyin')
+    expect(restored.sortBy).toBe('follower_count')
+    expect(restored.sortDirection).toBe('asc')
+  })
+
+  it('打开详情先加载一级评论，展开后再读取回复并保留数据库总数', async () => {
     const root = {
       id: 'comment-root-id',
       external_comment_id: 'root-1',
@@ -167,14 +266,19 @@ describe('voice plaza', () => {
       cursor: undefined,
       limit: 10,
     })
+    expect(generated.listContentComments).toHaveBeenCalledTimes(1)
+    expect(store.commentRoots).toEqual([root])
+    expect(store.commentReplies['root-1']).toBeUndefined()
+    expect(store.commentsIngestedTotalCount).toBe(3)
+
+    await store.loadCommentReplies('root-1')
+
     expect(generated.listContentComments).toHaveBeenNthCalledWith(2, item.id, {
       root_comment_id: 'root-1',
       cursor: undefined,
       limit: 20,
     })
-    expect(store.commentRoots).toEqual([root])
     expect(store.commentReplies['root-1']).toEqual([reply])
-    expect(store.commentsIngestedTotalCount).toBe(3)
     expect(store.commentReplyStates['root-1']).toMatchObject({
       loaded: true,
       hasMore: false,
@@ -279,6 +383,7 @@ describe('voice plaza', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
+    if (typeof sessionStorage !== 'undefined') sessionStorage.clear()
     generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
     generated.getContentAnalysisTaxonomy.mockResolvedValue(taxonomy)
     generated.getContentFilterOptions.mockResolvedValue(filterOptions)
@@ -302,6 +407,118 @@ describe('voice plaza', () => {
       items: [item],
     })
     expect(generated.listContents).toHaveBeenCalledWith({ sentiment: '负面', limit: 20 })
+  })
+
+  it('requests the total for the applied filters independently from loaded pages', async () => {
+    generated.countContents.mockResolvedValue({
+      count_mode: 'estimated',
+      count: 1823565,
+      count_kind: 'exact',
+      as_of: '2026-09-21T12:00:00+08:00',
+      truncated: false,
+    })
+    const store = useVoicePlazaStore()
+    await store.refreshCount('estimated')
+    expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
+
+    store.filters.platform = 'douyin'
+    store.applyFilters()
+    expect(store.contentCount).toBeNull()
+    expect(store.countLoading).toBe(true)
+
+    await store.refreshCount('estimated')
+
+    expect(generated.countContents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({ platforms: ['douyin'] }),
+        count_mode: 'estimated',
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
+  })
+
+  it('starts the total request without waiting for the slow list request', async () => {
+    let finishList!: (value: unknown) => void
+    generated.listContents.mockReturnValueOnce(
+      new Promise((resolve) => { finishList = resolve }),
+    )
+    generated.countContents.mockResolvedValue({
+      count_mode: 'estimated',
+      count: 1823565,
+      count_kind: 'exact',
+      as_of: '2026-09-21T12:00:00+08:00',
+      truncated: false,
+    })
+    const store = useVoicePlazaStore()
+    store.filters.platform = 'douyin'
+    store.applyFilters()
+
+    const loading = store.refreshResults()
+
+    expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
+      platforms: ['douyin'],
+    }))
+    expect(generated.countContents).toHaveBeenCalledWith(
+      expect.objectContaining({ filters: expect.objectContaining({ platforms: ['douyin'] }) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    await vi.waitFor(() => {
+      expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
+    })
+
+    finishList({ items: [item], has_more: false })
+    await loading
+    expect(store.items).toEqual([item])
+  })
+
+  it('aborts the previous total request when a new applied filter starts counting', async () => {
+    let finishFirst!: (value: unknown) => void
+    generated.countContents
+      .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve }))
+      .mockResolvedValueOnce({
+        count_mode: 'estimated',
+        count: 42,
+        count_kind: 'exact',
+        as_of: '2026-09-21T12:01:00+08:00',
+        truncated: false,
+      })
+    const store = useVoicePlazaStore()
+
+    const first = store.refreshCount('estimated')
+    await Promise.resolve()
+    store.filters.platform = 'douyin'
+    store.applyFilters()
+    await store.refreshCount('estimated')
+
+    const firstSignal = generated.countContents.mock.calls[0]?.[1]?.signal
+    expect(firstSignal).toBeInstanceOf(AbortSignal)
+    expect(firstSignal?.aborted).toBe(true)
+    expect(store.contentCount).toMatchObject({ count: 42, count_kind: 'exact' })
+
+    finishFirst({
+      count_mode: 'estimated',
+      count: 1823565,
+      count_kind: 'exact',
+      as_of: '2026-09-21T12:00:00+08:00',
+      truncated: false,
+    })
+    await first
+    expect(store.contentCount).toMatchObject({ count: 42, count_kind: 'exact' })
+  })
+
+  it('keeps the loaded list when the independent total request fails', async () => {
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    generated.countContents.mockRejectedValue(new Error('count timeout'))
+    const store = useVoicePlazaStore()
+
+    await store.refreshResults()
+    await vi.waitFor(() => expect(store.countError).toBe('count timeout'))
+
+    expect(store.items).toEqual([item])
+    expect(store.listError).toBeNull()
+    expect(store.error).toBeNull()
+    expect(store.contentCount).toBeNull()
   })
 
   it('offers exactly the five supported content platforms in the platform filter', async () => {
@@ -379,7 +596,7 @@ describe('voice plaza', () => {
     expect(html).not.toContain('value="正面"')
   })
 
-  it('disables dynamic controls while newer filter options are loading', async () => {
+  it('keeps stable filters enabled while disabling dynamic controls during catalog loading', async () => {
     const html = await renderToString(
       createSSRApp({
         render: () => h(VoicePlazaFilters, {
@@ -401,7 +618,7 @@ describe('voice plaza', () => {
       }),
     )
 
-    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(8)
+    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(5)
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
@@ -436,6 +653,7 @@ describe('voice plaza', () => {
     store.filters.brandIds = ['brand-aima']
     store.filters.vehicleModelIds = ['vehicle-q7']
     store.filters.competitionScopes = ['owned_only', 'mixed']
+    store.applyFilters()
     await store.refresh()
 
     expect(store.filterOptions?.voice_types[0]?.value).toBe('真实用户发声')

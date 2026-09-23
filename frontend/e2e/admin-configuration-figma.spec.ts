@@ -72,6 +72,74 @@ async function openProvider(page: Page, name = 'AI 模型'): Promise<void> {
   await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue(name === 'AI 模型' ? '模型配置 1' : 'TikHub配置 1')
 }
 
+test('queues every historical Canonical Artifact from the catalog header', async ({ page }) => {
+  await mockAdmin(page)
+  const submitted: Record<string, unknown>[] = []
+  await page.route('**/api/v1/canonical-replays/all', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    submitted.push(route.request().postDataJSON())
+    await json(route, {
+      artifact_count: 205,
+      run_count: 3,
+      artifacts_per_run: 100,
+      batch_size: 1000,
+    }, 202)
+  })
+
+  await page.goto('/admin/configuration')
+  const replayButton = page.getByRole('button', { name: '重筛入库', exact: true })
+  const addButton = page.getByRole('button', { name: '新增品牌', exact: true })
+  const replayBox = await replayButton.boundingBox()
+  const addBox = await addButton.boundingBox()
+  expect(replayBox).not.toBeNull()
+  expect(addBox).not.toBeNull()
+  expect(replayBox!.x).toBeLessThan(addBox!.x)
+
+  await replayButton.click()
+  const dialog = page.getByRole('dialog', { name: '重筛全部历史数据' })
+  await expect(dialog).toContainText('全部历史 Canonical')
+  await expect(dialog).toContainText('不会重新请求 TikHub，也不会自动触发 AI')
+  await dialog.getByRole('button', { name: '确认重筛入库', exact: true }).click()
+
+  await expect(page.getByText('已将 205 个 Canonical 文件拆分为 3 个重筛任务，可在采集运行中心查看进度与结果。', { exact: true })).toBeVisible()
+  expect(submitted).toHaveLength(1)
+  expect(submitted[0]!.idempotency_key).toMatch(/^admin-catalog-all-/)
+})
+
+test('retries an uncertain all-Canonical request with the same idempotency key', async ({ page }) => {
+  await mockAdmin(page)
+  const keys: string[] = []
+  await page.route('**/api/v1/canonical-replays/all', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    keys.push(route.request().postDataJSON().idempotency_key)
+    if (keys.length === 1) {
+      return json(route, {
+        status: 409,
+        title: 'Replay 请求冲突',
+        detail: '暂时无法确认任务是否已创建，请使用原请求重试。',
+        request_id: 'replay-all-failed',
+      }, 409)
+    }
+    await json(route, {
+      artifact_count: 0,
+      run_count: 0,
+      artifacts_per_run: 100,
+      batch_size: 1000,
+    }, 202)
+  })
+
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: '重筛入库', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '重筛全部历史数据' })
+  await dialog.getByRole('button', { name: '确认重筛入库', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('暂时无法确认任务是否已创建')
+  await dialog.getByRole('button', { name: '确认重筛入库', exact: true }).click()
+
+  await expect(page.getByText('当前没有符合条件的历史 Canonical 数据，无需创建重筛任务。', { exact: true })).toBeVisible()
+  expect(keys).toHaveLength(2)
+  expect(keys[1]).toBe(keys[0])
+})
+
 for (const kind of ['llm', 'collection'] as const) {
   test(`${kind} tests only saved configuration and preserves unsaved input`, async ({ page }) => {
     await openProvider(page, kind === 'llm' ? 'AI 模型' : 'TikHub')
@@ -158,10 +226,142 @@ test('brand and vehicle create dialogs do not expose internal code controls', as
   await expect(vehicleDialog).toContainText('内部编码由服务端自动生成')
 })
 
+test('deduplicates normalized Brand and Vehicle aliases and reports the saved result', async ({ page }) => {
+  await mockAdmin(page)
+  const brandBodies: Record<string, unknown>[] = []
+  const vehicleBodies: Record<string, unknown>[] = []
+  const createdBrandId = '7b111111-1111-4111-8111-111111111111'
+  const createdVehicleId = '7b222222-2222-4222-8222-222222222222'
+
+  await page.route('**/api/v1/vehicle-brands', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    brandBodies.push(body)
+    const aliases = body.aliases as string[]
+    await json(route, {
+      ...brands[0],
+      ...body,
+      id: createdBrandId,
+      code: 'AUTO-DEDUP-BRAND',
+      aliases: aliases.map((text, index) => ({
+        id: `7b333333-3333-4333-8333-${String(index).padStart(12, '0')}`,
+        text,
+        normalized_text: text.replace(/\s+/g, ' ').toLowerCase(),
+      })),
+    }, 201)
+  })
+  await page.route('**/api/v1/vehicle-models', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    vehicleBodies.push(body)
+    const aliases = body.aliases as string[]
+    await json(route, {
+      ...vehicles[0],
+      ...body,
+      id: createdVehicleId,
+      code: 'AUTO-DEDUP-VEHICLE',
+      referenced: false,
+      aliases: aliases.map((text, index) => ({
+        id: `7b444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+        text,
+        normalized_text: text.replace(/\s+/g, ' ').toLowerCase(),
+      })),
+    }, 201)
+  })
+
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: '新增品牌', exact: true }).click()
+  const brandDialog = page.getByRole('dialog', { name: '新增品牌' })
+  await brandDialog.getByLabel('品牌名称', { exact: true }).fill('自动去重品牌')
+  await brandDialog.getByPlaceholder('请输入识别词，每行一个')
+    .fill('AIMA\naima\n爱玛  电动车\n爱玛 电动车')
+  await brandDialog.getByRole('button', { name: '创建品牌', exact: true }).click()
+
+  await expect(page.getByText('检测到重复识别词，已自动去重并保存。', { exact: true })).toBeVisible()
+  expect(brandBodies).toEqual([{
+    display_name: '自动去重品牌',
+    role: 'owned',
+    aliases: ['AIMA', '爱玛  电动车'],
+  }])
+
+  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+  const vehicleDialog = page.getByRole('dialog', { name: '新增车型' })
+  await vehicleDialog.getByLabel('车型名称', { exact: true }).fill('自动去重车型')
+  await vehicleDialog.getByPlaceholder('Q7\n爱玛Q7')
+    .fill('Q7\nq7\n爱玛  Q7\n爱玛 Q7')
+  await vehicleDialog.getByRole('button', { name: '保存', exact: true }).click()
+
+  await expect(page.getByText('检测到重复识别词，已自动去重并保存。', { exact: true })).toBeVisible()
+  expect(vehicleBodies).toEqual([expect.objectContaining({
+    display_name: '自动去重车型',
+    aliases: ['Q7', '爱玛  Q7'],
+  })])
+})
+
+test('accepts duplicate-only alias cleanup when editing existing catalog entries', async ({ page }) => {
+  await mockAdmin(page)
+  const brandAliasCreates: string[] = []
+  let vehicleUpdates = 0
+
+  await page.route(`**/api/v1/vehicle-brands/${brandId}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    await json(route, { ...brands[0], ...route.request().postDataJSON(), version: 2 })
+  })
+  await page.route(`**/api/v1/vehicle-brands/${brandId}/aliases/*`, async (route) => {
+    await route.fulfill({ status: 204, body: '' })
+  })
+  await page.route(`**/api/v1/vehicle-brands/${brandId}/aliases`, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    const text = String(route.request().postDataJSON().text)
+    brandAliasCreates.push(text)
+    await json(route, {
+      id: '7b555555-5555-4555-8555-555555555555',
+      brand_id: brandId,
+      text,
+      normalized_text: text.toLowerCase(),
+      created_at: now,
+    }, 201)
+  })
+  await page.route(`**/api/v1/vehicle-models/${vehicles[0]!.id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    vehicleUpdates += 1
+    await json(route, { ...vehicles[0], ...route.request().postDataJSON(), version: 2 })
+  })
+
+  await page.goto('/admin/configuration')
+  const brandEditor = page.locator('.brand-overview .form-card')
+  await brandEditor.locator('textarea').fill('AIMA\naima')
+  await brandEditor.getByRole('button', { name: '保存品牌', exact: true }).click()
+  await expect(page.getByText('检测到重复识别词，已自动去重并保存。', { exact: true })).toBeVisible()
+  expect(brandAliasCreates).toEqual(['AIMA'])
+
+  const vehicleTable = page.getByRole('region', { name: '车型目录表格', exact: true })
+  await vehicleTable.getByRole('row').filter({ hasText: vehicles[0]!.display_name })
+    .getByRole('button', { name: '编辑', exact: true }).click()
+  const vehicleDialog = page.getByRole('dialog', { name: '编辑车型' })
+  await vehicleDialog.getByPlaceholder('Q7\n爱玛Q7')
+    .fill('完整车型别名 1\n完整车型别名   1')
+  await vehicleDialog.getByRole('button', { name: '保存', exact: true }).click()
+
+  await expect(vehicleDialog).not.toBeVisible()
+  await expect(page.getByText('检测到重复识别词，已自动去重并保存。', { exact: true })).toBeVisible()
+  expect(vehicleUpdates).toBe(0)
+})
+
 test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N path', async ({ page }) => {
   await mockAdmin(page)
   const brandRequests: Array<{ method: string; body?: unknown }> = []
+  const catalogListGets = { brands: 0, vehicles: 0 }
+  page.on('request', (request) => {
+    if (request.method() !== 'GET') return
+    const pathname = new URL(request.url()).pathname
+    if (pathname === '/api/v1/vehicle-brands') catalogListGets.brands += 1
+    if (pathname === '/api/v1/vehicle-models') catalogListGets.vehicles += 1
+  })
   let vehicleBody: unknown
+  const vehicleUpdateBodies: Record<string, unknown>[] = []
+  let createdVehicle: VehicleModelResponse | undefined
+  const createdVehicleId = '7a111111-1111-4111-8111-111111111111'
   await page.route(`**/api/v1/vehicle-brands/${brandId}`, async (route) => {
     if (route.request().method() !== 'PUT') return route.fallback()
     brandRequests.push({ method: 'PUT', body: route.request().postDataJSON() })
@@ -177,8 +377,46 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
   })
   await page.route('**/api/v1/vehicle-models', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback()
-    vehicleBody = route.request().postDataJSON()
-    await json(route, { ...vehicles[0], ...vehicleBody, id: '7a111111-1111-4111-8111-111111111111', version: 1, referenced: false }, 201)
+    const body = route.request().postDataJSON() as {
+      display_name: string
+      brand_id: string
+      series_name: string | null
+      aliases: string[]
+    }
+    vehicleBody = body
+    createdVehicle = {
+      ...vehicles[0]!,
+      ...body,
+      aliases: body.aliases.map((text, index) => ({
+        id: `7a222222-2222-4222-8222-${String(index).padStart(12, '0')}`,
+        text,
+        normalized_text: text.toLowerCase(),
+      })),
+      id: createdVehicleId,
+      version: 1,
+      referenced: false,
+    }
+    await json(route, createdVehicle, 201)
+  })
+  await page.route(`**/api/v1/vehicle-models/${createdVehicleId}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    vehicleUpdateBodies.push(body)
+    createdVehicle = {
+      ...createdVehicle!,
+      ...body,
+      aliases: Array.isArray(body.aliases)
+        ? body.aliases.map((text, index) => ({
+            id: `7a333333-3333-4333-8333-${String(index).padStart(12, '0')}`,
+            text: String(text),
+            normalized_text: String(text).toLowerCase(),
+          }))
+        : createdVehicle!.aliases,
+      id: createdVehicleId,
+      version: createdVehicle!.version + 1,
+      referenced: false,
+    }
+    await json(route, createdVehicle)
   })
 
   await page.goto('/admin/configuration')
@@ -193,10 +431,12 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
     { method: 'POST', body: { text: 'AIMA' } },
   ]))
 
+  const listGetsBeforeVehicleCreate = { ...catalogListGets }
   await page.getByRole('button', { name: '新增车型', exact: true }).click()
   const vehicleEditor = page.getByRole('heading', { name: '新增车型', exact: true }).locator('..')
   await expect(vehicleEditor.getByText('车型编码', { exact: true })).toHaveCount(0)
   await page.getByPlaceholder('例如 爱玛 Q7').fill('爱玛 Q7 Pro')
+  await page.getByPlaceholder('用于车型筛选分组').fill('城市 Pro 系列')
   await page.getByPlaceholder('Q7\n爱玛Q7').fill('Q7 Pro')
   await vehicleEditor.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByText('车型已创建并记录操作。', { exact: true })).toBeVisible()
@@ -204,6 +444,130 @@ test('updates Brand aliases and creates a Vehicle through the Brand-owned 1:N pa
     display_name: '爱玛 Q7 Pro', brand_id: brandId, aliases: ['Q7 Pro'],
   })
   expect(vehicleBody).not.toHaveProperty('code')
+  expect(vehicleBody).not.toHaveProperty('category_name')
+  const vehicleTable = page.getByRole('region', { name: '车型目录表格', exact: true })
+  await expect(vehicleTable.getByText('爱玛 Q7 Pro', { exact: true })).toBeVisible()
+  expect(catalogListGets).toEqual(listGetsBeforeVehicleCreate)
+
+  await vehicleTable.getByRole('row').filter({ hasText: '爱玛 Q7 Pro' })
+    .getByRole('button', { name: '编辑', exact: true }).click()
+  const editDialog = page.getByRole('dialog', { name: '编辑车型' })
+  await editDialog.getByLabel('车型名称', { exact: true }).fill('爱玛 Q7 Pro 2027')
+  await editDialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByText('车型已更新并记录操作。', { exact: true })).toBeVisible()
+  expect(vehicleUpdateBodies[0]).toEqual({ display_name: '爱玛 Q7 Pro 2027' })
+  await expect(vehicleTable.getByText('爱玛 Q7 Pro 2027', { exact: true })).toBeVisible()
+  expect(catalogListGets).toEqual(listGetsBeforeVehicleCreate)
+
+  await vehicleTable.getByRole('row').filter({ hasText: '爱玛 Q7 Pro 2027' })
+    .getByRole('button', { name: '编辑', exact: true }).click()
+  await editDialog.getByPlaceholder('用于车型筛选分组').fill('')
+  await editDialog.getByPlaceholder('Q7\n爱玛Q7').fill('')
+  await editDialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByText('车型已更新并记录操作。', { exact: true })).toBeVisible()
+  expect(vehicleUpdateBodies[1]).toEqual({ aliases: [], series_name: null })
+  expect(catalogListGets).toEqual(listGetsBeforeVehicleCreate)
+})
+
+test('keeps Vehicle save explicit and the editor stable while an update is pending', async ({ page }) => {
+  await mockAdmin(page)
+  let replayRequests = 0
+  let updateBody: Record<string, unknown> | undefined
+  let releaseUpdate!: () => void
+  let markUpdateStarted!: () => void
+  const updateGate = new Promise<void>((resolve) => { releaseUpdate = resolve })
+  const updateStarted = new Promise<void>((resolve) => { markUpdateStarted = resolve })
+
+  await page.route('**/api/v1/canonical-replays/all', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    replayRequests += 1
+    await json(route, {
+      artifact_count: 0,
+      run_count: 0,
+      artifacts_per_run: 100,
+      batch_size: 1000,
+    }, 202)
+  })
+  await page.route(`**/api/v1/vehicle-models/${vehicles[0]!.id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    updateBody = route.request().postDataJSON()
+    markUpdateStarted()
+    await updateGate
+    await json(route, {
+      ...vehicles[0],
+      ...updateBody,
+      version: 2,
+      catalog_version: 2,
+    })
+  })
+
+  await page.goto('/admin/configuration')
+  const vehicleTable = page.getByRole('region', { name: '车型目录表格', exact: true })
+  await vehicleTable.getByRole('row').filter({ hasText: vehicles[0]!.display_name })
+    .getByRole('button', { name: '编辑', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑车型' })
+  await dialog.getByLabel('车型名称', { exact: true }).fill('爱玛车型 1 新名称')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await updateStarted
+
+  try {
+    await expect(dialog.getByRole('button', { name: '正在保存…', exact: true })).toBeDisabled()
+    expect(updateBody).toEqual({ display_name: '爱玛车型 1 新名称' })
+    expect(replayRequests).toBe(0)
+
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeVisible()
+    await dialog.evaluate((element) => {
+      element.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+      }))
+    })
+    await expect(dialog).toBeVisible()
+  } finally {
+    releaseUpdate()
+  }
+
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByText('车型已更新并记录操作。', { exact: true })).toBeVisible()
+  await expect(vehicleTable.getByText('爱玛车型 1 新名称', { exact: true })).toBeVisible()
+  expect(replayRequests).toBe(0)
+})
+
+test('keeps the vehicle draft and catalog stable when save fails', async ({ page }) => {
+  await mockAdmin(page)
+  let catalogGets = 0
+  page.on('request', (request) => {
+    const pathname = new URL(request.url()).pathname
+    if (request.method() === 'GET' && [
+      '/api/v1/vehicle-brands',
+      '/api/v1/vehicle-models',
+    ].includes(pathname)) catalogGets += 1
+  })
+  await page.route('**/api/v1/vehicle-models', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    await json(route, {
+      status: 409,
+      title: '车型冲突',
+      detail: '该车型名称暂不能保存',
+      request_id: 'vehicle-save-conflict',
+    }, 409)
+  })
+
+  await page.goto('/admin/configuration')
+  await expect(page.getByRole('button', { name: '新增车型', exact: true })).toBeEnabled()
+  const initialCatalogGets = catalogGets
+  await page.getByRole('button', { name: '新增车型', exact: true }).click()
+  const vehicleDialog = page.getByRole('dialog', { name: '新增车型' })
+  await vehicleDialog.getByLabel('车型名称', { exact: true }).fill('保存失败后保留的车型')
+  await vehicleDialog.getByRole('button', { name: '保存', exact: true }).click()
+
+  await expect(page.getByRole('alert')).toContainText('该车型名称暂不能保存')
+  await expect(vehicleDialog).toBeVisible()
+  await expect(vehicleDialog.getByLabel('车型名称', { exact: true }))
+    .toHaveValue('保存失败后保留的车型')
+  expect(catalogGets).toBe(initialCatalogGets)
 })
 
 test('keeps the nested vehicle and audit tables reachable at supported desktop widths', async ({ page }) => {

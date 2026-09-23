@@ -14,6 +14,7 @@ import type {
   ContentFilterSnapshot,
   ContentFilterSnapshotCompetitionScopesItem,
   ContentListItemResponse,
+  ContentListResponse,
   ContentRelevance,
   ContentRelevanceReviewRequestDecision,
   ContentRelevanceReviewResponse,
@@ -23,6 +24,11 @@ import type {
   ExportColumnKey,
   ListContentsParams,
   PlatformName,
+} from '../../generated/api/client'
+import {
+  ContentAnalysisStatus as ContentAnalysisStatusValues,
+  ContentRelevance as ContentRelevanceValues,
+  PlatformName as PlatformNameValues,
 } from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import { createClientIdempotencyKey } from '../../shared/idempotency'
@@ -93,6 +99,86 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   competitionScopes: [],
 }
 
+const FILTER_SESSION_KEY = 'aima.voice-plaza.applied-search.v1'
+const LIST_CACHE_TTL_MS = 60_000
+
+interface PersistedVoicePlazaSearch {
+  filters: VoicePlazaFilters
+  sortBy: 'published_at' | 'follower_count'
+  sortDirection: 'asc' | 'desc'
+}
+
+/** 复制筛选数组，避免草稿、已应用条件和默认值共享可变引用。 */
+function copyFilters(source: VoicePlazaFilters): VoicePlazaFilters {
+  return {
+    ...source,
+    brandIds: [...source.brandIds],
+    vehicleModelIds: [...source.vehicleModelIds],
+    competitionScopes: [...source.competitionScopes],
+  }
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+/** 只恢复本应用写入且仍符合当前 Contract 的会话筛选，损坏缓存直接回退默认值。 */
+function readPersistedSearch(): PersistedVoicePlazaSearch {
+  const fallback: PersistedVoicePlazaSearch = {
+    filters: copyFilters(EMPTY_FILTERS),
+    sortBy: 'published_at',
+    sortDirection: 'desc',
+  }
+  if (typeof sessionStorage === 'undefined') return fallback
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(FILTER_SESSION_KEY) ?? 'null') as unknown
+    if (!parsed || typeof parsed !== 'object') return fallback
+    const record = parsed as Record<string, unknown>
+    const raw = record.filters
+    if (!raw || typeof raw !== 'object') return fallback
+    const values = raw as Record<string, unknown>
+    const stringValue = (key: keyof VoicePlazaFilters): string =>
+      typeof values[key] === 'string' ? values[key] : ''
+    const platform = Object.values(PlatformNameValues).includes(values.platform as PlatformName)
+      ? values.platform as PlatformName
+      : ''
+    const analysisStatus = Object.values(ContentAnalysisStatusValues).includes(
+      values.analysisStatus as ContentAnalysisStatus,
+    ) ? values.analysisStatus as ContentAnalysisStatus : ''
+    const relevance = Object.values(ContentRelevanceValues).includes(
+      values.relevance as ContentRelevance,
+    ) ? values.relevance as ContentRelevance : ''
+    const competitionScopes = isStringArray(values.competitionScopes)
+      ? values.competitionScopes.filter((item): item is ContentFilterSnapshotCompetitionScopesItem =>
+        ['owned_only', 'competitor_only', 'mixed', 'other_only', 'none_detected'].includes(item),
+      )
+      : []
+    return {
+      filters: {
+        search: stringValue('search'),
+        platform,
+        contentType: stringValue('contentType'),
+        analysisStatus,
+        relevance,
+        voiceType: stringValue('voiceType'),
+        sentiment: stringValue('sentiment'),
+        primaryLabel: stringValue('primaryLabel'),
+        secondaryLabel: stringValue('secondaryLabel'),
+        publishedFrom: stringValue('publishedFrom'),
+        publishedTo: stringValue('publishedTo'),
+        sourceIdentifier: stringValue('sourceIdentifier'),
+        brandIds: isStringArray(values.brandIds) ? values.brandIds : [],
+        vehicleModelIds: isStringArray(values.vehicleModelIds) ? values.vehicleModelIds : [],
+        competitionScopes,
+      },
+      sortBy: record.sortBy === 'follower_count' ? 'follower_count' : 'published_at',
+      sortDirection: record.sortDirection === 'asc' ? 'asc' : 'desc',
+    }
+  } catch {
+    return fallback
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof VoicePlazaApiError) {
     return `${error.message}（request_id: ${error.requestId}）`
@@ -114,9 +200,11 @@ function relevanceReviewNotice(
 export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const taskCenter = useTaskCenterStore()
   const { analysisRuns, hasActiveAnalysisRuns, cancellingAnalysisRunId } = storeToRefs(taskCenter)
-  const filters = reactive<VoicePlazaFilters>({ ...EMPTY_FILTERS })
-  const sortBy = ref<'published_at' | 'follower_count'>('published_at')
-  const sortDirection = ref<'asc' | 'desc'>('desc')
+  const persistedSearch = readPersistedSearch()
+  const filters = reactive<VoicePlazaFilters>(copyFilters(persistedSearch.filters))
+  const appliedFilters = reactive<VoicePlazaFilters>(copyFilters(persistedSearch.filters))
+  const sortBy = ref<'published_at' | 'follower_count'>(persistedSearch.sortBy)
+  const sortDirection = ref<'asc' | 'desc'>(persistedSearch.sortDirection)
   const items = ref<ContentListItemResponse[]>([])
   const detail = ref<ContentDetailResponse | null>(null)
   const detailId = ref<string | null>(null)
@@ -160,6 +248,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const countLoading = ref(false)
   const countError = ref<string | null>(null)
   let countRevision = 0
+  let countAbortController: AbortController | null = null
   const error = ref<string | null>(null)
   const listError = ref<string | null>(null)
   const notice = ref<string | null>(null)
@@ -172,7 +261,14 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollRevision = 0
   let lastExportPollAt = 0
+  let lastFilterOptionsPollAt = 0
   let displayedAnalysisSignature = '[]'
+  const listPageCache = new Map<string, { page: ContentListResponse, cachedAt: number }>()
+  let nextPagePrefetch: {
+    revision: number
+    cursor: string
+    promise: Promise<ContentListResponse | null>
+  } | null = null
   const analysisSignature = computed(() => JSON.stringify(analysisRuns.value.map((run) => [
     run.id, run.status, run.stats?.succeeded, run.stats?.failed, run.stats?.stale,
     run.stats?.cancelled,
@@ -181,34 +277,72 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const allVisibleSelected = computed(
     () => items.value.length > 0 && items.value.every((item) => selectedIds.value.includes(item.id)),
   )
-const hasActiveExportJobs = computed(() =>
-  exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
-)
-const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExportJobs.value)
+  const hasActiveExportJobs = computed(() =>
+    exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
+  )
+  const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExportJobs.value)
+
+  /** 保存已应用条件而不是输入中的草稿，页面重载后仍从同一查询状态恢复。 */
+  function persistAppliedSearch(): void {
+    if (typeof sessionStorage === 'undefined') return
+    try {
+      sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify({
+        filters: copyFilters(appliedFilters),
+        sortBy: sortBy.value,
+        sortDirection: sortDirection.value,
+      } satisfies PersistedVoicePlazaSearch))
+    } catch {
+      // 浏览器禁用会话存储时保留当前 Pinia 状态，不阻断查询。
+    }
+  }
 
   function filterSnapshot(): ContentFilterSnapshot {
     return {
-      search: filters.search.trim() || undefined,
-      platforms: filters.platform ? [filters.platform] : undefined,
-      content_types: filters.contentType ? [filters.contentType] : undefined,
-      analysis_status: filters.analysisStatus || undefined,
-      relevance: filters.relevance || undefined,
-      voice_type: filters.voiceType.trim() || undefined,
-      sentiment: filters.sentiment.trim() || undefined,
-      primary_label: filters.primaryLabel.trim() || undefined,
-      secondary_label: filters.secondaryLabel.trim() || undefined,
-      published_from: beijingDayBoundary(filters.publishedFrom, 'start'),
-      published_to: beijingDayBoundary(filters.publishedTo, 'end'),
-      source_identifier: filters.sourceIdentifier.trim() || undefined,
-      brand_ids: filters.brandIds.length ? [...filters.brandIds] : undefined,
-      vehicle_model_ids: filters.vehicleModelIds.length ? [...filters.vehicleModelIds] : undefined,
-      competition_scopes: filters.competitionScopes.length ? [...filters.competitionScopes] : undefined,
+      search: appliedFilters.search.trim() || undefined,
+      platforms: appliedFilters.platform ? [appliedFilters.platform] : undefined,
+      content_types: appliedFilters.contentType ? [appliedFilters.contentType] : undefined,
+      analysis_status: appliedFilters.analysisStatus || undefined,
+      relevance: appliedFilters.relevance || undefined,
+      voice_type: appliedFilters.voiceType.trim() || undefined,
+      sentiment: appliedFilters.sentiment.trim() || undefined,
+      primary_label: appliedFilters.primaryLabel.trim() || undefined,
+      secondary_label: appliedFilters.secondaryLabel.trim() || undefined,
+      published_from: beijingDayBoundary(appliedFilters.publishedFrom, 'start'),
+      published_to: beijingDayBoundary(appliedFilters.publishedTo, 'end'),
+      source_identifier: appliedFilters.sourceIdentifier.trim() || undefined,
+      brand_ids: appliedFilters.brandIds.length ? [...appliedFilters.brandIds] : undefined,
+      vehicle_model_ids: appliedFilters.vehicleModelIds.length ? [...appliedFilters.vehicleModelIds] : undefined,
+      competition_scopes: appliedFilters.competitionScopes.length ? [...appliedFilters.competitionScopes] : undefined,
     }
   }
 
   function listParams(cursor?: string): ListContentsParams {
     // 排序参数仅用于列表，分析与导出继续使用既有筛选快照。
     return { ...filterSnapshot(), sort_by: sortBy.value, sort_direction: sortDirection.value, cursor, limit: 20 }
+  }
+
+  /** 提交一个完整列表页，并提前读取下一 Cursor 页以缩短“加载更多”的等待。 */
+  function commitListPage(page: ContentListResponse, revision: number): void {
+    items.value = page.items
+    nextCursor.value = page.next_cursor ?? null
+    hasMore.value = page.has_more
+    selectedIds.value = selectedIds.value.filter((id) => page.items.some((item) => item.id === id))
+    prefetchNextPage(revision)
+  }
+
+  function prefetchNextPage(revision: number): void {
+    const cursor = nextCursor.value
+    if (!hasMore.value || !cursor) {
+      nextPagePrefetch = null
+      return
+    }
+    if (nextPagePrefetch?.revision === revision && nextPagePrefetch.cursor === cursor) return
+    nextPagePrefetch = {
+      revision,
+      cursor,
+      // 预取失败不能产生未处理 Promise；用户点击时会执行一次正常重试。
+      promise: fetchContents(listParams(cursor)).catch(() => null),
+    }
   }
 
   /** 新字段首次按降序浏览，再次点击切换方向，并重置旧排序的分页边界。 */
@@ -219,7 +353,24 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
     items.value = []
     nextCursor.value = null
     hasMore.value = false
+    persistAppliedSearch()
     await refresh()
+  }
+
+  /** 提交筛选草稿；列表、统计、导出和轮询在下一次提交前只消费这份快照。 */
+  function applyFilters(): void {
+    Object.assign(appliedFilters, copyFilters(filters))
+    selectedIds.value = []
+    nextCursor.value = null
+    hasMore.value = false
+    // 已应用条件改变后旧总数立即失效，并在浏览器侧中止仍未完成的旧请求。
+    countRevision += 1
+    countAbortController?.abort()
+    countAbortController = null
+    contentCount.value = null
+    countError.value = null
+    countLoading.value = true
+    persistAppliedSearch()
   }
 
   function targetSelection(scope: 'query' | 'selected'): ContentTargetSelection {
@@ -237,16 +388,21 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
   async function refresh(silent = false): Promise<void> {
     // 新查询拥有列表提交权，迟到的旧筛选或排序请求不得覆盖当前画面。
     const revision = ++listRevision
-    if (!silent) loading.value = true
+    nextPagePrefetch = null
+    const params = listParams()
+    const cacheKey = JSON.stringify(params)
+    const cached = listPageCache.get(cacheKey)
+    const hasFreshCache = Boolean(cached && Date.now() - cached.cachedAt <= LIST_CACHE_TTL_MS)
+    if (cached && hasFreshCache) commitListPage(cached.page, revision)
+    if (!silent && !hasFreshCache) loading.value = true
     listError.value = null
     error.value = null
     try {
-      const page = await fetchContents(listParams())
+      // 即使命中缓存也重新获取第一页，确保最新倒序列表最终以服务端当前事实为准。
+      const page = await fetchContents(params)
       if (revision !== listRevision) return
-      items.value = page.items
-      nextCursor.value = page.next_cursor ?? null
-      hasMore.value = page.has_more
-      selectedIds.value = selectedIds.value.filter((id) => page.items.some((item) => item.id === id))
+      listPageCache.set(cacheKey, { page, cachedAt: Date.now() })
+      commitListPage(page, revision)
       if (detailId.value) await openDetail(detailId.value)
     } catch (reason) {
       if (revision !== listRevision) return
@@ -256,6 +412,13 @@ const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExp
     } finally {
       if (!silent && revision === listRevision) loading.value = false
     }
+  }
+
+  /** 先发起列表请求，再立即并行读取同一筛选快照的总数。 */
+  async function refreshResults(): Promise<void> {
+    const listRequest = refresh()
+    void refreshCount('estimated')
+    await listRequest
   }
 
   /** 重新读取当前已加载的 Cursor 窗口，刷新内容状态但不把列表折叠回第一页。 */
@@ -330,7 +493,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
-  /** 读取后端筛选目录，并清理已不再能命中当前可见内容的选择。 */
+  /** 读取后端动态筛选目录；失败时保留上次成功目录和已应用查询。 */
   async function refreshFilterOptions(): Promise<void> {
     const revision = ++filterOptionsRevision
     filterOptionsLoading.value = true
@@ -339,24 +502,8 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const loaded = await fetchContentFilterOptions()
       if (revision !== filterOptionsRevision) return
       filterOptions.value = loaded
-      if (!loaded.platforms.includes(filters.platform as PlatformName)) filters.platform = ''
-      if (!loaded.content_types.includes(filters.contentType)) filters.contentType = ''
-      if (!loaded.analysis_statuses.includes(filters.analysisStatus as ContentAnalysisStatus)) {
-        filters.analysisStatus = ''
-      }
-      if (!loaded.relevances.includes(filters.relevance as ContentRelevance)) filters.relevance = ''
-      if (!loaded.sentiments.some((item) => item.value === filters.sentiment)) filters.sentiment = ''
-      if (!loaded.voice_types.some((item) => item.value === filters.voiceType)) filters.voiceType = ''
-      const labelGroup = loaded.labels.find((item) => item.primary_label === filters.primaryLabel)
-      if (!labelGroup) {
-        filters.primaryLabel = ''
-        filters.secondaryLabel = ''
-      } else if (!labelGroup.secondary_labels.some((item) => item.value === filters.secondaryLabel)) {
-        filters.secondaryLabel = ''
-      }
     } catch (reason) {
       if (revision !== filterOptionsRevision) return
-      filterOptions.value = null
       filterOptionsError.value = errorMessage(reason)
     } finally {
       if (revision === filterOptionsRevision) filterOptionsLoading.value = false
@@ -367,14 +514,21 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     // 换序或重新查询期间不复用旧 Cursor；丢弃换序之前在途的下一页。
     if (!nextCursor.value || loadingNext.value || loading.value) return
     const revision = listRevision
+    const cursor = nextCursor.value
     loadingNext.value = true
     error.value = null
     try {
-      const page = await fetchContents(listParams(nextCursor.value))
+      const prefetched = nextPagePrefetch?.revision === revision && nextPagePrefetch.cursor === cursor
+        ? await nextPagePrefetch.promise
+        : null
+      nextPagePrefetch = null
+      const page = prefetched ?? await fetchContents(listParams(cursor))
       if (revision !== listRevision) return
-      items.value = [...items.value, ...page.items]
+      const seen = new Set(items.value.map((item) => item.id))
+      items.value = [...items.value, ...page.items.filter((item) => !seen.has(item.id))]
       nextCursor.value = page.next_cursor ?? null
       hasMore.value = page.has_more
+      prefetchNextPage(revision)
     } catch (reason) {
       if (revision !== listRevision) return
       error.value = errorMessage(reason)
@@ -384,9 +538,13 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   async function refreshCount(mode: 'exact' | 'estimated'): Promise<void> {
-    // 数量读取失败独立反馈，不覆盖正常内容；筛选变化后旧计数不能回写。
+    // 数量读取失败独立反馈，不覆盖正常内容；筛选变化后旧计数不能回写，并尽快中止浏览器请求。
     const revision = ++countRevision
+    countAbortController?.abort()
+    const abortController = new AbortController()
+    countAbortController = abortController
     const snapshot = filterSnapshot()
+    const snapshotSignature = JSON.stringify(snapshot)
     countLoading.value = true
     countError.value = null
     contentCount.value = null
@@ -395,13 +553,24 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         filters: snapshot,
         count_mode: mode,
         exact_limit: mode === 'exact' ? 100_000 : undefined,
-      })
-      if (revision === countRevision && JSON.stringify(snapshot) === JSON.stringify(filterSnapshot())) contentCount.value = result
+      }, { signal: abortController.signal })
+      if (revision === countRevision && snapshotSignature === JSON.stringify(filterSnapshot())) contentCount.value = result
     } catch (reason) {
-      if (revision === countRevision) countError.value = errorMessage(reason)
+      if (revision === countRevision && !abortController.signal.aborted) countError.value = errorMessage(reason)
     } finally {
-      if (revision === countRevision) countLoading.value = false
+      if (revision === countRevision) {
+        if (countAbortController === abortController) countAbortController = null
+        countLoading.value = false
+      }
     }
+  }
+
+  /** 页面离开时停止尚未完成的总数请求，避免无效网络与迟到状态写入。 */
+  function cancelCount(): void {
+    countRevision += 1
+    countAbortController?.abort()
+    countAbortController = null
+    countLoading.value = false
   }
 
   function resetComments(): void {
@@ -434,16 +603,6 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       commentsTotalCount.value = page.total_count
       commentsIngestedTotalCount.value = page.ingested_total_count
 
-      // 已入库回复是详情线程的一部分，不应要求用户再次点击后才能理解回复关系。
-      // 这里只读取本地 PostgreSQL 的首个回复页，不触发 TikHub/Provider 请求，也保留后续分页。
-      const rootsWithIngestedReplies = page.items.filter(
-        (root) => (root.ingested_reply_count ?? 0) > 0,
-      )
-      await Promise.all(
-        rootsWithIngestedReplies.map(
-          (root) => loadCommentReplies(root.external_comment_id, true, revision),
-        ),
-      )
     } catch (reason) {
       if (revision === detailRevision && detailId.value === contentId) {
         commentsError.value = errorMessage(reason)
@@ -504,7 +663,10 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   async function openDetail(contentId: string): Promise<void> {
     // 详情与评论独立失败；任一迟到响应都不能覆盖关闭或切换后的抽屉。
     const revision = ++detailRevision
-    if (detailId.value !== contentId) detail.value = null
+    if (detailId.value !== contentId) {
+      const summary = items.value.find((item) => item.id === contentId)
+      detail.value = summary ? { ...summary, source_records: [summary.source] } : null
+    }
     detailId.value = contentId
     detailError.value = null
     loadingDetail.value = true
@@ -752,9 +914,17 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   function resetFilters(): void {
-    Object.assign(filters, EMPTY_FILTERS)
+    Object.assign(filters, copyFilters(EMPTY_FILTERS))
+    Object.assign(appliedFilters, copyFilters(EMPTY_FILTERS))
     clearSelection()
     notice.value = null
+    countRevision += 1
+    countAbortController?.abort()
+    countAbortController = null
+    contentCount.value = null
+    countError.value = null
+    countLoading.value = true
+    persistAppliedSearch()
   }
 
   /** 先读落库进度再刷新内容；慢窗口未包含的新进度留到下一次，终态也不丢刷新。 */
@@ -764,6 +934,14 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     if (hasActiveExportJobs.value && Date.now() - lastExportPollAt >= 5000) {
       lastExportPollAt = Date.now()
       void refreshExports()
+    }
+    if (
+      filterOptions.value?.catalog_status === 'building' &&
+      !filterOptionsLoading.value &&
+      Date.now() - lastFilterOptionsPollAt >= 15_000
+    ) {
+      lastFilterOptionsPollAt = Date.now()
+      void refreshFilterOptions()
     }
     await taskCenter.pollAnalysisRuns()
     if (revision !== pollRevision || pageIsHidden()) return
@@ -783,6 +961,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   function startPolling(intervalMilliseconds = 1000): void {
     stopPolling()
     lastExportPollAt = Date.now()
+    lastFilterOptionsPollAt = Date.now()
     pollHandle = setInterval(() => void poll(), intervalMilliseconds)
   }
 
@@ -794,9 +973,11 @@ async function refreshAnalysisCapabilities(): Promise<void> {
 
   return {
     filters,
+    appliedFilters,
     sortBy,
     sortDirection,
     changeSort,
+    applyFilters,
     detailId,
     detailError,
     commentRoots,
@@ -841,10 +1022,12 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     listError,
     notice,
     refresh,
+    refreshResults,
     refreshAnalysisCapabilities,
     refreshTaxonomy,
     refreshFilterOptions,
     refreshCount,
+    cancelCount,
     loadNext,
     openDetail,
     closeDetail,

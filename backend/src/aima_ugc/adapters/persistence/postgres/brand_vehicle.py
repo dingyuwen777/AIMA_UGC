@@ -37,6 +37,34 @@ from aima_ugc.modules.vehicles.tables import (
 from aima_ugc.platform.time import beijing_now
 
 
+def _json_brand_evidence_row(row: RowMapping) -> dict[str, object]:
+    """把品牌证据转为 JSONB 稳定结构。"""
+
+    return {
+        str(key): (
+            value.isoformat()
+            if isinstance(value, datetime)
+            else str(value)
+            if isinstance(value, UUID)
+            else value
+        )
+        for key, value in row.items()
+    }
+
+
+def _decode_brand_evidence_row(row: dict[str, object]) -> dict[str, object]:
+    """恢复品牌证据 JSONB 中的 UUID 与时间类型。"""
+
+    values = dict(row)
+    for key in ("id", "content_id", "brand_id"):
+        values[key] = UUID(str(values[key]))
+    derived = values.get("derived_vehicle_model_id")
+    if derived is not None:
+        values["derived_vehicle_model_id"] = UUID(str(derived))
+    values["created_at"] = datetime.fromisoformat(str(values["created_at"]))
+    return values
+
+
 def _brand_from_row(row: RowMapping) -> BrandRecord:
     return BrandRecord(
         id=cast(UUID, row["id"]),
@@ -187,7 +215,7 @@ class PostgresBrandVehicleRepository:
         if role is not None:
             conditions.append(vehicle_brands_table.c.role == role)
         statement = select(vehicle_brands_table)
-        count_statement = select(vehicle_brands_table.c.id)
+        count_statement = select(func.count()).select_from(vehicle_brands_table)
         if conditions:
             statement = statement.where(*conditions)
             count_statement = count_statement.where(*conditions)
@@ -198,7 +226,7 @@ class PostgresBrandVehicleRepository:
         ).mappings()
         return (
             tuple(_brand_from_row(row) for row in rows),
-            len(tuple(self._session.scalars(count_statement))),
+            int(self._session.scalar(count_statement) or 0),
         )
 
     def list_brand_aliases(self, brand_id: UUID) -> tuple[BrandAliasRecord, ...]:
@@ -210,6 +238,29 @@ class PostgresBrandVehicleRepository:
             )
         ).mappings()
         return tuple(_brand_alias_from_row(row) for row in rows)
+
+    def list_brand_aliases_by_brand_ids(
+        self,
+        brand_ids: tuple[UUID, ...],
+    ) -> dict[UUID, tuple[BrandAliasRecord, ...]]:
+        """一次读取当前目录页的全部品牌别名，并按品牌稳定 ID 分组。"""
+
+        if not brand_ids:
+            return {}
+        rows = self._session.execute(
+            select(vehicle_brand_aliases_table)
+            .where(vehicle_brand_aliases_table.c.brand_id.in_(brand_ids))
+            .order_by(
+                vehicle_brand_aliases_table.c.brand_id,
+                vehicle_brand_aliases_table.c.normalized_text,
+                vehicle_brand_aliases_table.c.id,
+            )
+        ).mappings()
+        grouped: dict[UUID, list[BrandAliasRecord]] = {}
+        for row in rows:
+            brand_id = cast(UUID, row["brand_id"])
+            grouped.setdefault(brand_id, []).append(_brand_alias_from_row(row))
+        return {brand_id: tuple(aliases) for brand_id, aliases in grouped.items()}
 
     def update_brand(
         self,
@@ -649,6 +700,125 @@ class PostgresBrandVehicleRepository:
                 confidence=1.0,
                 is_manual_locked=False,
             )
+        return True
+
+    def snapshot_automatic_brand_evidence(
+        self,
+        *,
+        content_id: UUID,
+        content_version: int,
+    ) -> list[dict[str, object]]:
+        """冻结一个 Content Version 的非人工品牌证据。"""
+
+        rows = self._session.execute(
+            select(content_brand_evidence_table)
+            .where(
+                content_brand_evidence_table.c.content_id == content_id,
+                content_brand_evidence_table.c.content_version == content_version,
+                content_brand_evidence_table.c.is_manual_locked.is_(False),
+            )
+            .order_by(content_brand_evidence_table.c.id)
+        ).mappings()
+        return [_json_brand_evidence_row(row) for row in rows]
+
+    def restore_automatic_brand_evidence(
+        self,
+        *,
+        content_id: UUID,
+        source_version: int,
+        target_version: int,
+        expected_after: list[dict[str, object]],
+        before: list[dict[str, object]],
+    ) -> bool:
+        """仅在来源版本未被后写覆盖时，把 before 克隆到撤回后的新版本。"""
+
+        self._lock_brand_review_write(content_id=content_id, content_version=source_version)
+        locked = self._session.scalar(
+            select(content_brand_review_locks_table.c.is_locked).where(
+                content_brand_review_locks_table.c.content_id == content_id,
+                content_brand_review_locks_table.c.content_version == source_version,
+            )
+        )
+        if locked is True:
+            return False
+        if (
+            self.snapshot_automatic_brand_evidence(
+                content_id=content_id,
+                content_version=source_version,
+            )
+            != expected_after
+        ):
+            return False
+        if source_version == target_version:
+            if before == expected_after:
+                return True
+            self._session.execute(
+                delete(content_brand_evidence_table).where(
+                    content_brand_evidence_table.c.content_id == content_id,
+                    content_brand_evidence_table.c.content_version == source_version,
+                    content_brand_evidence_table.c.is_manual_locked.is_(False),
+                )
+            )
+        if before:
+            values = [_decode_brand_evidence_row(row) for row in before]
+            for value in values:
+                if source_version != target_version:
+                    value["id"] = uuid4()
+                value["content_version"] = target_version
+            self._session.execute(
+                insert(content_brand_evidence_table),
+                values,
+            )
+        return True
+
+    def carry_manual_brand_review(
+        self,
+        *,
+        content_id: UUID,
+        source_version: int,
+        target_version: int,
+    ) -> bool:
+        """把来源版本的人工品牌锁与有效结论原样继承到撤回版本。"""
+
+        self._lock_brand_review_write(content_id=content_id, content_version=source_version)
+        lock = (
+            self._session.execute(
+                select(content_brand_review_locks_table).where(
+                    content_brand_review_locks_table.c.content_id == content_id,
+                    content_brand_review_locks_table.c.content_version == source_version,
+                    content_brand_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if lock is None:
+            return False
+        self._session.execute(
+            insert(content_brand_review_locks_table).values(
+                content_id=content_id,
+                content_version=target_version,
+                is_locked=True,
+                actor_ref=lock["actor_ref"],
+                updated_at=lock["updated_at"],
+            )
+        )
+        rows = self._session.execute(
+            select(content_brand_evidence_table).where(
+                content_brand_evidence_table.c.content_id == content_id,
+                content_brand_evidence_table.c.content_version == source_version,
+                content_brand_evidence_table.c.is_manual_locked.is_(True),
+                content_brand_evidence_table.c.is_active.is_(True),
+            )
+        ).mappings()
+        values = []
+        for row in rows:
+            value = dict(row)
+            value["id"] = uuid4()
+            value["content_version"] = target_version
+            values.append(value)
+        if values:
+            self._session.execute(insert(content_brand_evidence_table), values)
         return True
 
     def replace_automatic_brand_evidence_batch(

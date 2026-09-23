@@ -355,6 +355,35 @@ export interface BodyCreateFeishuRepresentativeSelection {
   file: Blob;
 }
 
+/**
+ * 一个**可登录的飞书企业**，供前端登录页展示。
+ *
+ * ⚠️ **只暴露展示所需的两个字段**。这个端点是**未认证**的（登录页要调它），
+ * 因此绝不能返回 App Secret、Secret 引用、用户组 ID 或回调地址 ——
+ * 那些都是服务端配置，泄露它们等于把接入细节告诉任何访问者。
+ */
+export interface AuthConnectorResponse {
+  /**
+     * @minLength 1
+     * @maxLength 32
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 64
+     */
+  display_name: string;
+}
+
+/**
+ * 可登录企业列表。
+ *
+ * **顺序即配置顺序** —— 前端按它渲染，保证每次刷新按钮顺序一致。
+ */
+export interface AuthConnectorListResponse {
+  items: AuthConnectorResponse[];
+}
+
 export interface BodyCreateImportBatch {
   brand_ids?: string[];
   file: Blob;
@@ -558,6 +587,54 @@ export interface BrandVehicleCatalogSnapshotResponse {
 }
 
 /**
+ * 用一个幂等键冻结并排队全部可重筛 Canonical。
+ */
+export interface CanonicalReplayAllCreateRequest {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  idempotency_key: string;
+}
+
+/**
+ * 全历史 Replay 已冻结并排队后的有界摘要。
+ */
+export interface CanonicalReplayAllCreatedResponse {
+  /** @minimum 0 */
+  artifact_count: number;
+  artifacts_per_run?: 100;
+  batch_size?: 1000;
+  request_id: string;
+  /** @minimum 0 */
+  run_count: number;
+}
+
+export type CanonicalReplayAllOperationResponseLifecycleStatus = typeof CanonicalReplayAllOperationResponseLifecycleStatus[keyof typeof CanonicalReplayAllOperationResponseLifecycleStatus];
+
+
+export const CanonicalReplayAllOperationResponseLifecycleStatus = {
+  active: 'active',
+  cancelling: 'cancelling',
+  reverting: 'reverting',
+  reverted: 'reverted',
+  revert_failed: 'revert_failed',
+} as const;
+
+/**
+ * 一次全历史 Replay 的取消/撤回生命周期快照。
+ */
+export interface CanonicalReplayAllOperationResponse {
+  cancellation_requested_at?: string | null;
+  lifecycle_status: CanonicalReplayAllOperationResponseLifecycleStatus;
+  request_id: string;
+  reversal_job_id?: string | null;
+  reversal_requested_at?: string | null;
+  reversed_at?: string | null;
+  reversible: boolean;
+}
+
+/**
  * 创建 Replay 时显式冻结的输入选择。
  */
 export interface CanonicalReplayCreateRequest {
@@ -726,6 +803,64 @@ export interface CanonicalReplayRunResponse {
   job: JobStatusResponse;
   stats: CanonicalReplayStatsResponse;
   updated_at: string;
+}
+
+export type CanonicalReplayRuntimeStatsResponseLifecycleStatus = typeof CanonicalReplayRuntimeStatsResponseLifecycleStatus[keyof typeof CanonicalReplayRuntimeStatsResponseLifecycleStatus];
+
+
+export const CanonicalReplayRuntimeStatsResponseLifecycleStatus = {
+  active: 'active',
+  cancelling: 'cancelling',
+  reverting: 'reverting',
+  reverted: 'reverted',
+  revert_failed: 'revert_failed',
+} as const;
+
+/**
+ * 一次全历史 Replay 请求聚合后的用户可见统计。
+ */
+export interface CanonicalReplayRuntimeStatsResponse {
+  /** @minimum 0 */
+  artifact_count: number;
+  /** @minimum 0 */
+  cancelled_run_count: number;
+  /** @minimum 0 */
+  duplicates_removed: number;
+  /** @minimum 0 */
+  existing_convergence: number;
+  /** @minimum 0 */
+  failed_run_count: number;
+  /** @minimum 0 */
+  hidden_content_count: number;
+  lifecycle_status: CanonicalReplayRuntimeStatsResponseLifecycleStatus;
+  /** @minimum 0 */
+  queued_run_count: number;
+  /** @minimum 0 */
+  restored_evidence_count: number;
+  /** @minimum 0 */
+  retained_content_count: number;
+  reversal_job_id?: string | null;
+  reversible: boolean;
+  /** @minimum 0 */
+  reverted_content_count: number;
+  /** @minimum 0 */
+  rows_filtered_out: number;
+  /** @minimum 0 */
+  rows_ingested: number;
+  /** @minimum 0 */
+  rows_matched: number;
+  /** @minimum 0 */
+  rows_seen: number;
+  /** @minimum 0 */
+  run_count: number;
+  /** @minimum 0 */
+  running_run_count: number;
+  /** @minimum 0 */
+  skipped_content_count: number;
+  /** @minimum 0 */
+  skipped_evidence_count: number;
+  /** @minimum 0 */
+  succeeded_run_count: number;
 }
 
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
@@ -1128,9 +1263,12 @@ export const CollectionRuntimeRecordType = {
   data_import_campaign: 'data_import_campaign',
   tikhub_discovery: 'tikhub_discovery',
   tikhub_batch_supplement: 'tikhub_batch_supplement',
+  canonical_replay: 'canonical_replay',
 } as const;
 
 export interface CollectionRuntimeItemResponse {
+  canonical_replay_request_id?: string | null;
+  canonical_replay_stats?: CanonicalReplayRuntimeStatsResponse | null;
   collection_run_id?: string | null;
   collection_stats?: CollectionRunStatsResponse | null;
   created_at: string;
@@ -1757,11 +1895,20 @@ export interface ContentFilterLabelOptionResponse {
   source: ContentFilterOptionSource;
 }
 
+export type ContentFilterOptionsResponseCatalogStatus = typeof ContentFilterOptionsResponseCatalogStatus[keyof typeof ContentFilterOptionsResponseCatalogStatus];
+
+
+export const ContentFilterOptionsResponseCatalogStatus = {
+  building: 'building',
+  ready: 'ready',
+} as const;
+
 /**
  * 声音广场下拉选项；历史值不改变 active Taxonomy。
  */
 export interface ContentFilterOptionsResponse {
   analysis_statuses: ContentAnalysisStatus[];
+  catalog_status?: ContentFilterOptionsResponseCatalogStatus;
   content_types: string[];
   labels: ContentFilterLabelOptionResponse[];
   platforms: PlatformName[];
@@ -1884,6 +2031,8 @@ export const CurrentPrincipalResponseSource = {
  * 当前请求的 Provider-neutral Principal 投影。
  */
 export interface CurrentPrincipalResponse {
+  avatar_url?: string | null;
+  department_name?: string | null;
   /**
      * @minLength 1
      * @maxLength 200
@@ -3078,6 +3227,25 @@ offset?: number;
 limit?: number;
 };
 
+export type CompleteFeishuLoginParams = {
+code?: string | null;
+state?: string | null;
+};
+
+export type StartFeishuLoginParams = {
+return_to?: string | null;
+connector?: string | null;
+};
+
+export type CompleteFeishuLoginForConnectorParams = {
+code?: string | null;
+state?: string | null;
+};
+
+export type StartFeishuLoginForConnectorParams = {
+return_to?: string | null;
+};
+
 export type ListCollectionPlansParams = {
 search?: string | null;
 enabled?: boolean | null;
@@ -3096,7 +3264,7 @@ limit?: number;
 export type ListCollectionRuntimeRunsParams = {
 search?: string | null;
 /**
- * @maxItems 4
+ * @maxItems 5
  */
 record_types?: CollectionRuntimeRecordType[];
 status?: CollectionRuntimeStatus | null;
@@ -3178,6 +3346,10 @@ export const ListContentsSortDirection = {
   asc: 'asc',
   desc: 'desc',
 } as const;
+
+export type GetContentParams = {
+include_comments?: boolean;
+};
 
 export type ListContentCommentsParams = {
 root_comment_id?: string | null;
@@ -3977,6 +4149,237 @@ export const listAuditEvents = async (params?: ListAuditEventsParams, options?: 
 
 
 
+export const getListAuthConnectorsUrl = () => {
+
+
+
+
+  return `/api/v1/auth/connectors`
+}
+
+/**
+ * 返回**可登录企业列表**（供前端登录页渲染企业选择）。
+ *
+ * ⚠️ 这是一个**未认证**端点（登录页在未登录状态下要调它），因此：
+ *
+ * · **只返回 `code` 与显示名** —— 绝不含 Secret / 组 ID / 回调地址；
+ * · **不透露"某企业是否可用"** —— 那会变成配置探测接口。
+ *
+ * **顺序 = 配置顺序**（前端按钮顺序依赖它，见 `ConnectorRegistry` 的说明）。
+ * @summary Listauthconnectors
+ */
+export const listAuthConnectors = async ( options?: RequestInit): Promise<AuthConnectorListResponse> => {
+
+  const res = await fetch(getListAuthConnectorsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AuthConnectorListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCompleteFeishuLoginUrl = (params?: CompleteFeishuLoginParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/callback?${stringifiedParams}` : `/api/v1/auth/feishu/callback`
+}
+
+/**
+ * 旧回调入口；使用默认企业并完成飞书登录。
+ * @summary Completefeishulogin
+ */
+export const completeFeishuLogin = async (params?: CompleteFeishuLoginParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getCompleteFeishuLoginUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getStartFeishuLoginUrl = (params?: StartFeishuLoginParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/login?${stringifiedParams}` : `/api/v1/auth/feishu/login`
+}
+
+/**
+ * 旧登录入口；`connector` 可显式选择企业，不传时使用默认企业。
+ * @summary Startfeishulogin
+ */
+export const startFeishuLogin = async (params?: StartFeishuLoginParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getStartFeishuLoginUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCompleteFeishuLoginForConnectorUrl = (connectorCode: string,
+    params?: CompleteFeishuLoginForConnectorParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/${connectorCode}/callback?${stringifiedParams}` : `/api/v1/auth/feishu/${connectorCode}/callback`
+}
+
+/**
+ * 按路径中的企业标识完成飞书登录回调。
+ * @summary Completefeishuloginforconnector
+ */
+export const completeFeishuLoginForConnector = async (connectorCode: string,
+    params?: CompleteFeishuLoginForConnectorParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getCompleteFeishuLoginForConnectorUrl(connectorCode,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getStartFeishuLoginForConnectorUrl = (connectorCode: string,
+    params?: StartFeishuLoginForConnectorParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/feishu/${connectorCode}/login?${stringifiedParams}` : `/api/v1/auth/feishu/${connectorCode}/login`
+}
+
+/**
+ * 按路径中的企业标识发起登录。
+ * @summary Startfeishuloginforconnector
+ */
+export const startFeishuLoginForConnector = async (connectorCode: string,
+    params?: StartFeishuLoginForConnectorParams, options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getStartFeishuLoginForConnectorUrl(connectorCode,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getLogoutCurrentSessionUrl = () => {
+
+
+
+
+  return `/api/v1/auth/logout`
+}
+
+/**
+ * 登出：**服务端撤销会话** + 清 Cookie（幂等，重复登出不报错）。
+ * @summary Logoutcurrentsession
+ */
+export const logoutCurrentSession = async ( options?: RequestInit): Promise<unknown> => {
+
+  const res = await fetch(getLogoutCurrentSessionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: unknown = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getCreateCanonicalReplayUrl = () => {
 
 
@@ -4003,6 +4406,101 @@ export const createCanonicalReplay = async (canonicalReplayCreateRequest: Canoni
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: CanonicalReplayCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateAllCanonicalReplaysUrl = () => {
+
+
+
+
+  return `/api/v1/canonical-replays/all`
+}
+
+/**
+ * @summary Create All Canonical Replays
+ */
+export const createAllCanonicalReplays = async (canonicalReplayAllCreateRequest: CanonicalReplayAllCreateRequest, options?: RequestInit): Promise<CanonicalReplayAllCreatedResponse> => {
+
+  const res = await fetch(getCreateAllCanonicalReplaysUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(canonicalReplayAllCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayAllCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelAndRevokeAllCanonicalReplaysUrl = (replayRequestId: string,) => {
+
+
+
+
+  return `/api/v1/canonical-replays/all/${replayRequestId}/cancel-and-revoke`
+}
+
+/**
+ * 取消父请求的全部活跃子任务，并排队撤回已提交贡献。
+ * @summary Cancel And Revoke All Canonical Replays
+ */
+export const cancelAndRevokeAllCanonicalReplays = async (replayRequestId: string, options?: RequestInit): Promise<CanonicalReplayAllOperationResponse> => {
+
+  const res = await fetch(getCancelAndRevokeAllCanonicalReplaysUrl(replayRequestId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayAllOperationResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRevokeAllCanonicalReplaysUrl = (replayRequestId: string,) => {
+
+
+
+
+  return `/api/v1/canonical-replays/all/${replayRequestId}/revoke`
+}
+
+/**
+ * 只对已经终止子任务的父请求排队撤回。
+ * @summary Revoke All Canonical Replays
+ */
+export const revokeAllCanonicalReplays = async (replayRequestId: string, options?: RequestInit): Promise<CanonicalReplayAllOperationResponse> => {
+
+  const res = await fetch(getRevokeAllCanonicalReplaysUrl(replayRequestId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CanonicalReplayAllOperationResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -4856,20 +5354,29 @@ export const countContents = async (contentCountRequest: ContentCountRequest, op
 
 
 
-export const getGetContentUrl = (contentId: string,) => {
+export const getGetContentUrl = (contentId: string,
+    params?: GetContentParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/contents/${contentId}`
+  return stringifiedParams.length > 0 ? `/api/v1/contents/${contentId}?${stringifiedParams}` : `/api/v1/contents/${contentId}`
 }
 
 /**
  * @summary Get Content
  */
-export const getContent = async (contentId: string, options?: RequestInit): Promise<ContentDetailResponse> => {
+export const getContent = async (contentId: string,
+    params?: GetContentParams, options?: RequestInit): Promise<ContentDetailResponse> => {
 
-  const res = await fetch(getGetContentUrl(contentId),
+  const res = await fetch(getGetContentUrl(contentId,params),
   {
     ...options,
     method: 'GET'

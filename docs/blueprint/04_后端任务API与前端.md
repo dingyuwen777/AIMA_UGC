@@ -93,9 +93,11 @@ analysis.content-label.v1
 reporting.content-export-excel.v1
 vehicles.content-reclassification.v1
 ingestion.canonical-replay.v1
+ingestion.canonical-replay-reversal.v1
+content.voice-plaza-projection-backfill.v1
 ```
 
-`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
+`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务；`ingestion.canonical-replay-reversal.v1` 是全量重筛的可恢复精确撤回任务；`content.voice-plaza-projection-backfill.v1` 是声音广场历史读模型的可恢复分块回填。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
 注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
@@ -314,11 +316,15 @@ PUT  /api/v1/notifications/read
 
 `POST /api/v1/content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /api/v1/contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
 
-车型、发声类型、情感和标签的人工修订按 `content_id + content_version` 保存，并按维度锁住自动结果；只有显式人工 unlock 才允许后续自动结果重新成为当前投影。车型允许 0..N 个，不设主车型。Count 保持 Cursor 查询不变，通过独立请求表达 `none / exact / estimated`；exact 只在有界范围承诺。
+车型、发声类型、情感和标签的人工修订按 `content_id + content_version` 保存，并按维度锁住自动结果；只有显式人工 unlock 才允许后续自动结果重新成为当前投影。车型允许 0..N 个，不设主车型。Count 保持 Cursor 查询不变，通过独立请求表达 `none / exact / estimated`；exact 只在有界范围承诺。声音广场的后台 `estimated` 请求在读模型就绪后优先从一行一 Content 的投影按当前筛选执行精确计数，并以 `count_kind=exact` 明示；回填窗口内无筛选请求才允许回退为明确标注的 PostgreSQL 估算，有筛选但尚无可靠数字时返回 `none`，不拿已加载页数代替总数。
 
 Availability 使用追加式 Observation，不覆盖历史。只有明确 Provider 业务证据可以形成 `unavailable_confirmed`，技术失败只能是 `unknown/suspected`。Notification 是业务终态的按 Principal 收件箱投影，不替代 Job/Export/Run 状态机。
 
-声音广场内容详情中的评论区直接可见，不再藏在“更多信息”折叠项内。`GET /api/v1/contents/{content_id}/comments` 不带 `root_comment_id` 时稳定分页读取一级评论，带值时稳定分页读取该线程回复；响应保留根评论、直接父评论和父作者显示信息，页面据此缩进回复并明确显示“回复谁”。详情原有内嵌 `comments` 保持兼容但不承担完整浏览。页面数据只来自 PostgreSQL，并分别表达平台报告数、已采集数和当前显示数。
+声音广场首屏把列表作为唯一阻塞资源：首次进入先发起 `limit=20 + sort_by=published_at + sort_direction=desc` 列表请求，随后立即并行发起同一已应用筛选快照的计数请求，任一请求都不等待另一个完成；同一会话已有同查询页面时采用 stale-while-revalidate，先保留可用结果再取得服务端最新第一页。筛选目录、Taxonomy、计数、导出和任务状态在后台独立加载，任何一个失败都不阻断已经取得的内容。页面把当前筛选总数与当前已加载数分开表达，明确区分统计中、读模型准备中、统计失败和可靠数字；总数为零时仍显示 `0 条`，不回退成第一页条数。提交新筛选会取消上一条尚未完成的计数请求，迟到响应不能覆盖当前筛选结果。已点击“查询”的筛选快照和排序保存在浏览器会话中，离开再返回时自动恢复；筛选输入草稿在再次提交前不影响列表、统计、导出或轮询。取得下一页 Cursor 后前端预取一页；筛选或排序 revision 变化时旧预取不能提交。
+
+列表、平台筛选、加载更多和详情基础记录在 `voice_plaza_projection_state=ready` 后读取 `voice_plaza_content_projection`，请求内不再重建全库 `row_number()` Current；历史回填期间列表仍走旧路径保证完整，动态目录只读增量聚合小表并返回 `catalog_status=building/ready`。详情点击先把列表项提升为可显示摘要，再并行补齐完整详情和一级评论。服务端对列表、筛选目录、计数、详情和评论记录安全阶段耗时：正常完成是 DEBUG，超过 500ms 是 `voice_plaza.read_slow` WARNING；计数日志只记录筛选字段名，不记录搜索词、筛选值、正文或 Secret。
+
+声音广场内容详情中的评论区直接可见，不再藏在“更多信息”折叠项内。页面读取详情时传 `include_comments=false`，避免详情兼容字段与评论分页重复查询；该参数默认仍为 `true`，旧调用继续取得最多 100 条内嵌评论。`GET /api/v1/contents/{content_id}/comments` 不带 `root_comment_id` 时稳定分页读取一级评论，带值时稳定分页读取该线程回复；页面先显示一级评论，只有用户展开线程时才读取回复。响应保留根评论、直接父评论和父作者显示信息，页面据此缩进回复并明确显示“回复谁”。页面数据只来自 PostgreSQL，并分别表达平台报告数、已采集数和当前显示数。
 
 ### 5.4 正式 Excel Export
 
@@ -419,6 +425,9 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 
 ```text
 POST /api/v1/canonical-replays
+POST /api/v1/canonical-replays/all
+POST /api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke
+POST /api/v1/canonical-replays/all/{replay_request_id}/revoke
 GET  /api/v1/canonical-replays/{run_id}
 POST /api/v1/canonical-replays/{run_id}/cancel
 ```
@@ -430,15 +439,38 @@ v2 或 TikHub Discovery Search Attempt 的唯一 linked Canonical，随后原子
 `ingestion.canonical-replay.v1` Job。重复幂等键只有在 Artifact 顺序、Brand、批大小和创建者
 完全一致时返回原 Run；参数漂移返回 409。
 
-查询返回冻结目录版本、Artifact 顺序、checkpoint、Job 状态及对账统计。取消沿用统一 Job
-语义：排队任务立即进入取消终态，运行任务记录取消请求并由 Worker 在有界批次边界协作收敛。
-这三个路由都执行后端管理员角色检查并记录创建/取消审计；当前没有对应前端页面，不能写成
-采集运行中心已经提供的可视化操作。
+`POST /api/v1/canonical-replays/all` 只由“品牌与车型”页面显式点击并确认“重筛入库”后调用；新增或编辑 Brand、Vehicle、Alias 只更新目录，不得隐式调用该入口。
+调用方只提交客户端幂等键；后端在同一事务中稳定选择上述三类全部合法 linked Canonical，冻结
+当前全部 active Brand/Vehicle 目录，按每组最多 100 个 Artifact 建立多个 Replay Run/Job，并把
+每个 Run 的写入批大小固定为当前上限 1000。`canonical_replay_all_requests` 持久化选择摘要、总
+Artifact 数、子 Run 数和创建者，使空选择也具有可验证的幂等身份；同一键下选择或创建者漂移
+返回 409。所有子 Job 一次入队，多个 Worker 可以并行领取，但单 Worker 仍会顺序执行。
+
+查询返回冻结目录版本、Artifact 顺序、checkpoint、Job 状态及对账统计。单 Run 取消沿用统一 Job
+语义。全量请求的“取消并撤回”先对未终态子 Job 发出协作取消，再在全部子 Job 终态后排队
+`ingestion.canonical-replay-reversal.v1`；终态请求也可直接“撤回本次入库”。撤回按 Replay 写入事务
+同步冻结的 Content Delta、可见性归属和自动 Brand/Vehicle Evidence before/after 执行；仅修改仍归
+本请求所有且未被后续普通导入、其他重筛或人工锁接管的事实。Canonical、Raw、Content Version
+和审计历史保留；只有自动 Evidence 幂等收敛而没有 Current Delta 时保留原 Content Version，
+避免使该版本仍有效的 Analysis 结果失效。升级前没有精确账本的历史请求 `reversible=false`，
+必须失败关闭，不能推断撤回。
+这些路由都执行后端管理员角色检查并记录创建、取消或撤回审计。单 Run 查询、取消和显式
+Artifact 选择仍由正式 API 提供，不能写成页面已经提供逐 Run 管理能力。
+
+采集运行中心的统一只读模型同时把 `canonical_replay_all_requests` 投影为
+`canonical_replay` 记录；一次全量请求只出现一条，不把子 Run/Job 暴露成多条业务记录。状态由
+关联 Job 集合聚合，进度按每个子 Run 的 Artifact 数对 Job 进度加权，统计汇总 Artifact、子任务、
+读取、命中、过滤、去重、入库与已有内容收敛。空选择没有子 Job，但作为 100% 已完成请求展示。
+该投影只读现有 Replay/Job 表，不创建 Collection Run，也不改变 Replay Worker 状态机；列表、
+详情轮询和运行中心 KPI 使用同一聚合事实。历史重筛详情使用与数据导入一致的 Modal；活动请求
+提供“取消并撤回”，终态可撤回请求提供“撤回本次入库”，并持续展示撤回 Job 的阶段、进度、
+结果计数与失败信息，不把撤回 Job 再投影成一条重复运行记录。
 
 代码：
 
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
 - [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_worker.py)
+- [`backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py`](../../backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py)
 - [`backend/src/aima_ugc/modules/ingestion/canonical_replay.py`](../../backend/src/aima_ugc/modules/ingestion/canonical_replay.py)
 
 ### 5.10 Principal、车型目录与管理员配置
@@ -446,6 +478,12 @@ v2 或 TikHub Discovery Search Attempt 的唯一 linked Canonical，随后原子
 管理员能力的精确 Route/字段仍以 [`backend/src/aima_ugc/contracts/administration.py`](../../backend/src/aima_ugc/contracts/administration.py)、[`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 和生成 OpenAPI 为机器事实。稳定资源边界包括：
 
 ```text
+GET  /api/v1/auth/connectors
+GET  /api/v1/auth/feishu/login
+GET  /api/v1/auth/feishu/callback
+GET  /api/v1/auth/feishu/{connector_code}/login
+GET  /api/v1/auth/feishu/{connector_code}/callback
+POST /api/v1/auth/logout
 GET  /api/v1/principal
 GET/POST/PUT/DELETE /api/v1/vehicle-models...
 GET/POST /api/v1/analysis-schemes
@@ -453,7 +491,7 @@ PUT/POST /api/v1/analysis-scheme-versions/{version_id}...
 GET  /api/v1/audit-events
 ```
 
-车型无引用时允许物理删除；有引用后只能废弃、改显示名或合并，合并把后续读取重定向到最终 active 车型并保留历史内容证据。车型目录可配置系列名和类别名，作为筛选分组及列表展示信息；这两个可空属性不创建新的业务实体，也不改变车型 ID、匹配或合并规则。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
+车型无引用时允许物理删除；有引用后只能废弃、改车型名称或合并，合并把后续读取重定向到最终 active 车型并保留历史内容证据。`display_name` 是管理员和业务页面使用的车型名称，系列名用于声音广场的筛选分组；管理员页面不再新增或编辑类别名，后端 `category_name` 作为既有兼容字段继续保留，不改变车型 ID、匹配或合并规则。品牌与车型 Alias Contract 先清理首尾空白，再按折叠连续空白且忽略大小写的身份保留第一次出现的文本；规范化重复是可幂等收敛的输入，不再作为请求错误。前端提交前执行同一常用输入规则并在删除重复项后展示成功提示，后端仍负责直接 API 调用和 Unicode 边界的最终收敛。编辑已有车型时，页面只发送相对当前服务端投影发生变化的字段；请求未完成前锁定编辑层并显示保存状态，成功后使用服务端返回的完整投影更新当前目录，失败保留草稿，不阻塞等待全目录重读。更新服务复用事务中已锁定的车型，并以一次数据库查询计算内容证据与合并引用状态；品牌和车型列表在 Repository 中按当前页批量装配别名与引用状态，历史内容证据和合并目标分别由匹配索引支持，避免目录规模放大逐条查询。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
 
 ---
 
@@ -471,6 +509,8 @@ GET  /api/v1/audit-events
 /collection-runtime
 /collection-strategy
 /admin/configuration
+/login
+/no-access
 ```
 
 主要 Feature：
@@ -488,12 +528,14 @@ frontend/src/features/task-center/
 
 - `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；“AI 相关性”可显式查看待复核 `irrelevant`，并支持单条/批量人工标记为相关；
 - `/voice-plaza`：Analysis Run 预检和显式创建仍由声音广场承担；正文只显示 `queued / running / cancelling` 活动 Run 的紧凑状态、加权进度和取消入口，终态 Run 不再作为历史大块持续占据声音记录上方；导出弹窗继续展示持久 Export Job 进度；
-- `/collection-runtime`：Data Import Campaign、兼容 Excel Import Batch 与辅助补采的统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；已完成 Campaign 可直接作为辅助补采来源，旧 Batch 仅作为兼容选项；
+- `/collection-runtime`：Data Import Campaign、兼容 Excel Import Batch、辅助补采与手动全历史 Canonical Replay 的统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；已完成 Campaign 可直接作为辅助补采来源，旧 Batch 仅作为兼容选项；一次全历史重筛按 all-request 展示一条记录和聚合详情；
 - 全局 `AppShell` 右上角提供任务中心 Drawer：通过现有 generated Client 聚合 Analysis Run、Collection Runtime 和 Data Export 三个既有 read model，显示活动任务数量、最近终态、进度/错误摘要和对应业务页入口；它没有独立路由，也不新增统一后端 Task API、Job 表或第二套状态机；
 - [`frontend/src/features/task-center/index.ts`](../../frontend/src/features/task-center/index.ts) 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
 - Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
 - `/collection-strategy`：Keyword Pack Search Terms 与独立 Brand Filter 的 Collection Plan 管理；旧 Global Relevance 后端和产品入口均已删除；
 - `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本与审计；报告策略当前只有 XLSX/日期前端准备面并明确提示后端未接入，不属于现有 Worker Registry，也没有 Report Job/API 或飞书同步写链路；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
+- `/login`：读取可登录企业列表并发起对应 Connector 的飞书 OAuth；`return_to` 最终仍由后端站内路径白名单校验；
+- `/no-access`：展示“已登录但无权限”，不再次发起登录，避免 403 登录回环；
 - `/`：当前 HomeView。
 
 后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。任务中心同样不是一个新的后端 Job Domain，也没有独立路由；它只是所有业务页面共同使用的 `AppShell` 只读聚合入口。
@@ -545,7 +587,7 @@ Figma 到代码流程：
 - [`backend/src/aima_ugc/modules/content/content_cursor.py`](../../backend/src/aima_ugc/modules/content/content_cursor.py)
 - [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
 
-它会把查询过滤条件和排序方式绑定到 Cursor，防止把一个查询的 Cursor 拿去另一个查询继续翻页。发布时间和作者最近已采集粉丝数均由 PostgreSQL 排序，升降序都将缺失值放在最后，同值使用 Content ID 稳定续页。声音广场显式采用发布时间降序；旧调用不传排序时保留原先以发布时间、缺失时以最近采集时间降序的语义，原查询下未过期的旧 Cursor 继续可用。粉丝数来自账号当前已采集值，不额外调用 Provider，也不是发帖时快照；分页期间数据变化时不承诺冻结结果集。
+它会把查询过滤条件和排序方式绑定到 Cursor，防止把一个查询的 Cursor 拿去另一个查询继续翻页。发布时间和作者最近已采集粉丝数均由 PostgreSQL 排序，升降序都将缺失值放在最后，同值使用 Content ID 稳定续页。声音广场首屏显式采用发布时间降序，因此第一页代表请求时可见数据中的最新一页；旧调用不传排序时保留原先以发布时间、缺失时以最近采集时间降序的语义，原查询下未过期的旧 Cursor 继续可用。粉丝数来自账号当前已采集值，不额外调用 Provider，也不是发帖时快照；分页期间数据变化时不承诺冻结结果集。
 
 Import Batch 和 Collection Runtime 也有各自独立 Cursor/Secret；不能复用数据库密码，也不能让前端解析并自行构造。
 
@@ -700,18 +742,18 @@ HttpErrorResponse
 
 ## 13. 当前身份与认证边界
 
-当前代码已有 Provider-neutral `Principal/AuthContext` 和后端 Authorization；角色只允许 `administrator` 与 `user`。development Identity Adapter 为本地环境提供 Principal，不能被描述成公网生产认证。
+当前代码已有 Provider-neutral `Principal/AuthContext` 和后端 Authorization；角色只允许 `administrator` 与 `user`。未配置飞书时 Development Identity Adapter 为本地环境提供 Principal；配置飞书时，OAuth 回调、用户组判权、外部身份映射和 AIMA Session 进入同一身份边界。两种装配都不能自动被描述成已经通过公网 Production 验收。
 
 因此：
 
 - 不能把当前 API 描述成已具备公网生产权限控制；
 - 不能在业务模块绑定飞书 `open_id/union_id`；
-- 后续飞书身份源只通过 Identity Adapter 映射到既有 Principal；
+- 飞书身份源只通过 Identity Adapter 映射到既有 Principal；
 - Authentication 与 Authorization 分开；
 - 对象级下载/敏感资源权限最终由后端判断，不靠前端隐藏按钮。
 - 第一版不强制双人审批；配置修改、发布与回滚必须审计。
 
-飞书真实登录、回调、Session/OIDC、企业目录和生产部署接入属于后续独立高风险变更。
+当前会话不会在存续期自动回查飞书用户组；远端撤权/移组最迟在会话过期后重新判定。真实双企业应用、HTTPS 入口、浏览器安全、对象级授权和生产候选环境验收仍属于 Production 高风险门禁。
 
 ---
 
@@ -768,7 +810,7 @@ Job Payload / Handler
 /api/v1/reports
 独立 monitoring 模块
 独立 dashboard 模块
-飞书企业登录/公网生产认证
+公网 Production 认证正式验收
 Word Report 的正式 PostgreSQL Job/API
 LLM 配置编辑/Secret 查询 API
 ```

@@ -71,6 +71,7 @@ const COLLECTION_TYPE_LABELS: Record<string, string> = {
   data_import_campaign: '数据导入',
   tikhub_discovery: '主动采集',
   tikhub_batch_supplement: '辅助补采',
+  canonical_replay: '历史重筛',
 }
 
 const COLLECTION_STAGE_LABELS: Record<string, string> = {
@@ -88,6 +89,7 @@ const COLLECTION_STAGE_LABELS: Record<string, string> = {
   ingesting: '正在写入数据',
   content_discovery: '正在采集内容',
   content_enrichment: '正在补充内容',
+  replaying: '正在重筛入库',
   succeeded: '处理完成',
   failed: '处理失败',
   cancelled: '已取消',
@@ -136,12 +138,17 @@ function analysisTask(run: AnalysisContentRunResponse): TaskCenterItem {
 /** 将采集/导入只读模型转换为业务任务；失败的数据导入可深链到已有恢复入口。 */
 function collectionTask(run: CollectionRuntimeItemResponse): TaskCenterItem {
   const typeLabel = COLLECTION_TYPE_LABELS[run.record_type] ?? '数据处理'
-  const platformText = run.platforms?.length
+  const platformText = run.record_type === 'canonical_replay'
+    ? '全部历史 Canonical'
+    : run.platforms?.length
     ? run.platforms.map((platform) => platformLabel(platform)).join(' / ')
     : '平台未指定'
   const contentCount = run.collection_stats?.content_count
   const rowsIngested = run.import_stats?.rows_ingested
-  const resultText = typeof contentCount === 'number'
+  const replayRowsIngested = run.canonical_replay_stats?.rows_ingested
+  const resultText = typeof replayRowsIngested === 'number'
+    ? `${replayRowsIngested} 条入库`
+    : typeof contentCount === 'number'
     ? `${contentCount} 条内容`
     : typeof rowsIngested === 'number'
       ? `${rowsIngested} 行入库`

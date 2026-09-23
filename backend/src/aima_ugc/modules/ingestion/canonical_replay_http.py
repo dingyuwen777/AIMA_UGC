@@ -6,6 +6,9 @@ from typing import Protocol
 from uuid import UUID
 
 from aima_ugc.contracts.http import (
+    CanonicalReplayAllCreatedResponse,
+    CanonicalReplayAllCreateRequest,
+    CanonicalReplayAllOperationResponse,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayRunResponse,
@@ -25,6 +28,14 @@ class CanonicalReplayInputInvalid(ValueError):
 
 
 class CanonicalReplayHttpService(Protocol):
+    def create_all_replays(
+        self,
+        body: CanonicalReplayAllCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllCreatedResponse: ...
+
     def create_replay(
         self,
         body: CanonicalReplayCreateRequest,
@@ -42,6 +53,22 @@ class CanonicalReplayHttpService(Protocol):
         actor_ref: str,
         request_id: str,
     ) -> CanonicalReplayRunResponse: ...
+
+    def cancel_and_revoke_all(
+        self,
+        replay_request_id: UUID,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse: ...
+
+    def revoke_all(
+        self,
+        replay_request_id: UUID,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse: ...
 
 
 __all__ = [

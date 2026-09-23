@@ -49,6 +49,8 @@ src/main.ts
 | 路径 | 页面 | 代码入口 |
 | --- | --- | --- |
 | `/` | 工作台 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue)，当前仅展示“开发中”图片，功能后续实现 |
+| `/login` | 飞书登录 | [`frontend/src/views/LoginView.vue`](src/views/LoginView.vue)，未登录（后端 401）时由守卫改道至此 |
+| `/no-access` | 无访问权限 | [`frontend/src/views/NoAccessView.vue`](src/views/NoAccessView.vue)，已登录但无权限（后端 403）时改道至此 |
 | `/collection-runtime` | 采集运行中心 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue`](src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue) |
 | `/collection-strategy` | 采集策略 | [`frontend/src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue`](src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue) |
 | `/voice-plaza` | 声音广场 | [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue`](src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue) |
@@ -279,7 +281,11 @@ src/features/voice-plaza/
 当前组合：
 
 - Content 列表/详情；
-- 平台/文本/时间/Brand/Vehicle/Competition/Analysis 筛选；Brand/Vehicle 使用统一目录，AI 业务下拉值从后端 Filter Options Contract 动态加载；
+- 首次进入先请求最新发布时间倒序的第一页，列表返回后立即展示，不等待筛选目录、Taxonomy、计数、导出或任务状态；
+- 平台/文本/时间/Brand/Vehicle/Competition/Analysis 筛选；平台、相关性和分析状态直接使用 generated Contract 的稳定值，Brand/Vehicle 使用统一目录，其余 AI 业务下拉值从后端 Filter Options Contract 动态加载；
+- 已点击“查询”的筛选快照和排序保存在当前浏览器会话中，跨页面返回时自动恢复；输入中的草稿在提交前不影响当前查询；
+- 筛选总数在首屏列表之后独立加载，表示当前已应用筛选命中的全部内容；当前已加载条数单独展示，总数尚未返回或失败时不使用分页条数代替；
+- 详情正文与一级评论独立加载，线程回复在展开时按需读取；
 - Analysis current/stale/pending；
 - 显式选择内容并做 Analysis Run Preview；
 - 创建手动 Analysis Run；
@@ -311,7 +317,7 @@ Analysis Run 的历史、终态和跨页面任务摘要由全局任务中心读�
 → 详情人工纠正合法值
 ```
 
-前端不维护这些下拉框的业务值。Filter Options 先保留 active Taxonomy 顺序，再追加当前可见最新结果或人工覆盖中的历史分类并标记“历史数据”；历史项只用于查询，不会成为当前人工纠正合法值。Filter Options 暂不可用时只禁用动态筛选，active Taxonomy 暂不可用时只禁用人工纠正；两类错误都不会阻断当前内容列表。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。
+前端不手写平台、相关性、分析状态或 AI 分类枚举：前三者直接消费 generated Contract，动态目录则由 Filter Options 先保留 active Taxonomy 顺序，再追加当前可见最新结果或人工覆盖中的历史分类并标记“历史数据”；历史项只用于查询，不会成为当前人工纠正合法值。Filter Options 暂不可用时只禁用动态筛选，平台、相关性和分析状态仍可使用；active Taxonomy 暂不可用时只禁用人工纠正。两类错误都不会阻断当前内容列表。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。
 
 ### 5.4 `features/task-center`：跨页面后台任务只读聚合
 

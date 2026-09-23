@@ -97,7 +97,7 @@ export async function fetchContents(params: ListContentsParams): Promise<Content
 }
 
 export async function fetchContentDetail(contentId: string): Promise<ContentDetailResponse> {
-  return withLocalMediaPreview(unwrap(await getContent(contentId)))
+  return withLocalMediaPreview(unwrap(await getContent(contentId, { include_comments: false })))
 }
 
 export async function fetchContentComments(
@@ -111,8 +111,11 @@ export async function fetchContentAnalysisCapabilities(): Promise<ContentAnalysi
   return unwrap(await getContentAnalysisCapabilities())
 }
 
-export async function fetchContentCount(request: ContentCountRequest): Promise<ContentCountResponse> {
-  return unwrap(await countContents(request))
+export async function fetchContentCount(
+  request: ContentCountRequest,
+  options?: RequestInit,
+): Promise<ContentCountResponse> {
+  return unwrap(await countContents(request, options))
 }
 
 export async function reviewVehicles(

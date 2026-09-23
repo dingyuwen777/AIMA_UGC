@@ -94,6 +94,11 @@ contents_table = Table(
         server_default=text("'{}'::jsonb"),
     ),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column(
+        "replay_visibility_owner_id",
+        Uuid(),
+        ForeignKey("canonical_replay_all_requests.id"),
+    ),
     UniqueConstraint("platform", "external_content_id"),
     CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),
     CheckConstraint("current_version >= 1", name="current_version_positive"),
@@ -299,9 +304,28 @@ Index(
     contents_table.c.last_seen_at,
 )
 Index(
+    "ix_contents_published_at_id_desc",
+    contents_table.c.published_at.desc().nulls_last(),
+    contents_table.c.id.desc(),
+)
+Index(
     "ix_comments_content_id_last_seen",
     comments_table.c.content_id,
     comments_table.c.last_seen_at,
+)
+Index(
+    "ix_comments_content_roots_published_desc",
+    comments_table.c.content_id,
+    comments_table.c.published_at.desc().nulls_last(),
+    comments_table.c.id.desc(),
+    postgresql_where=text("root_comment_id IS NULL OR root_comment_id = external_comment_id"),
+)
+Index(
+    "ix_comments_content_thread_published",
+    comments_table.c.content_id,
+    comments_table.c.root_comment_id,
+    comments_table.c.published_at.asc().nulls_last(),
+    comments_table.c.id.asc(),
 )
 Index(
     "uq_content_metric_daily_checkpoint",

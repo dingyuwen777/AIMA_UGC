@@ -1,18 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import { useIdentityStore } from '../features/identity/store'
+import { identityGuard } from './identity-guard'
 import { routes } from './routes'
+
+export { identityGuard } from './identity-guard'
+export type { IdentityGuardResult } from './identity-guard'
 
 export const router = createRouter({
   history: createWebHistory(),
   routes,
 })
 
-router.beforeEach(async (to) => {
-  const identity = useIdentityStore()
-  const principal = await identity.ensurePrincipal()
-  if (to.meta.requiresAdministrator && principal?.role !== 'administrator') {
-    return { name: 'home', query: { access: 'administrator-required' } }
-  }
-  return true
-})
+router.beforeEach((to) => identityGuard(to))

@@ -3,6 +3,7 @@ import {
   archiveProviderConfig,
   addVehicleBrandAlias,
   copyAnalysisScheme,
+  createAllCanonicalReplays,
   createAnalysisSchemeDraft,
   createProviderConfig,
   createVehicleBrand,
@@ -41,6 +42,8 @@ import {
   type BrandCreateRequest,
   type BrandListResponse,
   type BrandUpdateRequest,
+  type CanonicalReplayAllCreatedResponse,
+  type CanonicalReplayAllCreateRequest,
   type ProviderConfigCreateRequest,
   type ProviderConfigListResponse,
   type ProviderConfigResponse,
@@ -108,6 +111,12 @@ export const removeVehicle = async (id: string): Promise<void> =>
 
 export const mergeVehicle = async (id: string, body: VehicleModelMergeRequest) =>
   unwrapResponse(await mergeVehicleModel(id, body))
+
+/** 由后端冻结全部合法 Canonical，并按既有安全上限拆分为持久 Replay 任务。 */
+export const queueAllCanonicalReplays = async (
+  body: CanonicalReplayAllCreateRequest,
+): Promise<CanonicalReplayAllCreatedResponse> =>
+  unwrapResponse(await createAllCanonicalReplays(body))
 
 export const fetchSchemes = async (): Promise<AnalysisSchemeListResponse> =>
   unwrapResponse(await listAnalysisSchemes())

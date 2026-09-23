@@ -153,6 +153,77 @@ def _seed_keyword(
         engine.dispose()
 
 
+def test_0059_adds_fail_closed_canonical_replay_reversal_ledger(
+    migration_database: str,
+) -> None:
+    """旧请求不可撤回，新 Schema 同时具备贡献账本和可见性归属。"""
+
+    _upgrade(migration_database, "20260922_0058")
+    request_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO canonical_replay_all_requests(id, "
+                    "client_idempotency_key, selection_digest, artifact_count, "
+                    "run_count, artifacts_per_run, batch_size, created_by, created_at) "
+                    "VALUES (:id, :key, :digest, 0, 0, 100, 1000, "
+                    "'migration-test', :now)"
+                ),
+                {
+                    "id": request_id,
+                    "key": f"legacy-replay-0059-{request_id}",
+                    "digest": "b" * 64,
+                    "now": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260922_0059")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_content_changes" in inspector.get_table_names()
+        request_columns = {
+            item["name"] for item in inspector.get_columns("canonical_replay_all_requests")
+        }
+        assert {
+            "reversible",
+            "lifecycle_status",
+            "reversal_job_id",
+            "reversal_requested_at",
+            "reversed_at",
+        }.issubset(request_columns)
+        content_columns = {item["name"] for item in inspector.get_columns("contents")}
+        assert "replay_visibility_owner_id" in content_columns
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT reversible, lifecycle_status "
+                    "FROM canonical_replay_all_requests WHERE id = :id"
+                ),
+                {"id": request_id},
+            ).one() == (False, "active")
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260922_0058")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_content_changes" not in inspector.get_table_names()
+        assert "replay_visibility_owner_id" not in {
+            item["name"] for item in inspector.get_columns("contents")
+        }
+        assert "reversible" not in {
+            item["name"] for item in inspector.get_columns("canonical_replay_all_requests")
+        }
+    finally:
+        engine.dispose()
+
+
 def _seed_budget_reservation(database: str, *, status: str) -> None:
     settled_amount = 1 if status == "settled" else None
     engine = _engine(database)
@@ -1685,5 +1756,151 @@ def test_0051_creates_and_drops_canonical_replay_schema(
         assert "canonical_replay_runs" not in inspector.get_table_names()
         assert "canonical_replay_run_artifacts" not in inspector.get_table_names()
         assert "canonical_replay_seen_content" not in inspector.get_table_names()
+    finally:
+        engine.dispose()
+
+
+def test_0055_creates_and_drops_voice_plaza_source_lookup_indexes(
+    migration_database: str,
+) -> None:
+    """声音广场来源反查索引可以从 0054 建立并无损回滚。"""
+
+    expected = {
+        "processing_import_batch_items": "ix_processing_import_batch_items_content_id",
+        "collection_candidate_ingestions": "ix_collection_candidate_ingestions_content_id",
+    }
+    _upgrade(migration_database, "20260920_0054")
+    _upgrade(migration_database, "20260921_0055")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        for table_name, index_name in expected.items():
+            indexes = {entry["name"] for entry in inspector.get_indexes(table_name)}
+            assert index_name in indexes
+        with engine.connect() as connection:
+            definitions = {
+                row.indexname: row.indexdef
+                for row in connection.execute(
+                    text(
+                        "SELECT indexname, indexdef FROM pg_indexes "
+                        "WHERE schemaname = current_schema() "
+                        "AND indexname = ANY(:index_names)"
+                    ),
+                    {"index_names": list(expected.values())},
+                )
+            }
+        assert set(definitions) == set(expected.values())
+        assert all("WHERE (content_id IS NOT NULL)" in value for value in definitions.values())
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260920_0054")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        for table_name, index_name in expected.items():
+            indexes = {entry["name"] for entry in inspector.get_indexes(table_name)}
+            assert index_name not in indexes
+    finally:
+        engine.dispose()
+
+
+def test_0058_adds_all_replay_parent_without_breaking_existing_runs(
+    migration_database: str,
+) -> None:
+    """全量 Replay 父事实可升级、关联新请求、回滚且保留既有 Run。"""
+
+    _upgrade(migration_database, "20260922_0057")
+    job_id = uuid4()
+    run_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO jobs(id, job_type, payload_version, payload, status, "
+                    "internal_idempotency_key, priority, attempt, max_attempts, "
+                    "timeout_seconds, progress, available_at, created_at, updated_at) "
+                    "VALUES (:id, 'ingestion.canonical-replay.v1', "
+                    "'ingestion.canonical-replay.v1', '{}'::jsonb, 'queued', :key, "
+                    "0, 0, 10, 86400, 0, :now, :now, :now)"
+                ),
+                {"id": job_id, "key": f"replay-before-0058-{job_id}", "now": _NOW},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO canonical_replay_runs(id, job_id, "
+                    "client_idempotency_key, filter_snapshot, requested_brand_ids, "
+                    "artifact_count, batch_size, created_by, created_at, updated_at) "
+                    "VALUES (:id, :job_id, :key, '{}'::jsonb, ARRAY[]::uuid[], "
+                    "1, 1000, 'migration-test', :now, :now)"
+                ),
+                {
+                    "id": run_id,
+                    "job_id": job_id,
+                    "key": f"replay-before-0058-{run_id}",
+                    "now": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260922_0058")
+    request_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_all_requests" in inspector.get_table_names()
+        run_columns = {item["name"] for item in inspector.get_columns("canonical_replay_runs")}
+        assert {"all_request_id", "all_request_ordinal"}.issubset(run_columns)
+        with engine.begin() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT all_request_id, all_request_ordinal "
+                    "FROM canonical_replay_runs WHERE id = :id"
+                ),
+                {"id": run_id},
+            ).one() == (None, None)
+            connection.execute(
+                text(
+                    "INSERT INTO canonical_replay_all_requests(id, "
+                    "client_idempotency_key, selection_digest, artifact_count, "
+                    "run_count, artifacts_per_run, batch_size, created_by, created_at) "
+                    "VALUES (:id, :key, :digest, 1, 1, 100, 1000, "
+                    "'migration-test', :now)"
+                ),
+                {
+                    "id": request_id,
+                    "key": f"all-replay-0058-{request_id}",
+                    "digest": "a" * 64,
+                    "now": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    "UPDATE canonical_replay_runs SET all_request_id = :request_id, "
+                    "all_request_ordinal = 0 WHERE id = :run_id"
+                ),
+                {"request_id": request_id, "run_id": run_id},
+            )
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260922_0057")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "canonical_replay_all_requests" not in inspector.get_table_names()
+        run_columns = {item["name"] for item in inspector.get_columns("canonical_replay_runs")}
+        assert "all_request_id" not in run_columns
+        assert "all_request_ordinal" not in run_columns
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM canonical_replay_runs WHERE id = :id"),
+                    {"id": run_id},
+                )
+                == 1
+            )
     finally:
         engine.dispose()

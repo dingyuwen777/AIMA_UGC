@@ -105,6 +105,11 @@ vehicle_models_table = Table(
         name="merged_target_consistent",
     ),
     Index("ix_vehicle_models_brand_id_status", "brand_id", "status"),
+    Index(
+        "ix_vehicle_models_merged_into_id",
+        "merged_into_id",
+        postgresql_where=text("merged_into_id IS NOT NULL"),
+    ),
     info={"owner": "vehicles"},
 )
 
@@ -162,6 +167,7 @@ content_vehicle_evidence_table = Table(
         "content_id",
         postgresql_where=text("is_active"),
     ),
+    Index("ix_content_vehicle_evidence_vehicle_model_id", "vehicle_model_id"),
     info={"owner": "vehicles"},
 )
 

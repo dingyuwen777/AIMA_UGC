@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
-import type { BrandResponse, VehicleModelResponse } from '../../../../../generated/api/client'
+import type {
+  BrandResponse,
+  VehicleModelResponse,
+  VehicleModelUpdateRequest,
+} from '../../../../../generated/api/client'
 import { apiErrorMessage } from '../../../../../shared/api/http'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
@@ -15,6 +19,7 @@ import {
   fetchVehicleBrandsForAdmin,
   fetchVehicles,
   mergeVehicle,
+  queueAllCanonicalReplays,
   removeBrand,
   removeBrandAlias,
   removeVehicle,
@@ -25,6 +30,9 @@ const saving = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const notice = ref<string | null>(null)
+const replayConfirmOpen = ref(false)
+const replaySubmitting = ref(false)
+const replayIdempotencyKey = ref('')
 const vehicles = ref<VehicleModelResponse[]>([])
 const brands = ref<BrandResponse[]>([])
 const selectedBrandId = ref('')
@@ -47,11 +55,11 @@ const vehicleDraft = reactive({
   displayName: '',
   brandId: '',
   seriesName: '',
-  categoryName: '',
   aliases: '',
   status: 'active' as 'active' | 'deprecated',
 })
 const mergeTargetId = ref('')
+const aliasDeduplicatedNotice = '检测到重复识别词，已自动去重并保存。'
 
 const emit = defineEmits<{
   'dirty-change': [dirty: boolean]
@@ -64,6 +72,14 @@ const vehicleFormValid = computed(() => Boolean(
   vehicleDraft.displayName.trim()
     && (vehicleDraft.status !== 'active' || vehicleDraft.brandId),
 ))
+const vehicleHasSavableChanges = computed(() => {
+  if (!vehicleDraft.id) return true
+  const current = vehicles.value.find((item) => item.id === vehicleDraft.id)
+  return current
+    ? Object.keys(buildVehicleUpdateBody(current)).length > 0
+      || parseAliases(vehicleDraft.aliases).duplicatesRemoved > 0
+    : false
+})
 
 
 /** 比较品牌编辑区与当前服务端基线；新增弹窗只有真正输入后才算未保存。 */
@@ -94,21 +110,14 @@ const vehicleDraftDirty = computed(() => {
     return Boolean(
       vehicleDraft.displayName.trim()
       || vehicleDraft.seriesName.trim()
-      || vehicleDraft.categoryName.trim()
       || vehicleDraft.aliases.trim()
       || vehicleDraft.status !== 'active'
       || vehicleDraft.brandId !== selectedBrandId.value
       || mergeTargetId.value,
     )
   }
-  return vehicleDraft.displayName.trim() !== current.display_name
-    || vehicleDraft.brandId !== (current.brand_id ?? '')
-    || vehicleDraft.seriesName.trim() !== (current.series_name ?? '')
-    || vehicleDraft.categoryName.trim() !== (current.category_name ?? '')
-    || vehicleDraft.status !== (current.status === 'deprecated' ? 'deprecated' : 'active')
-    || JSON.stringify(splitLines(vehicleDraft.aliases)) !== JSON.stringify(
-      (current.aliases ?? []).map((alias) => alias.text),
-    )
+  return Object.keys(buildVehicleUpdateBody(current)).length > 0
+    || parseAliases(vehicleDraft.aliases).duplicatesRemoved > 0
     || Boolean(mergeTargetId.value)
 })
 
@@ -140,9 +149,49 @@ async function load(): Promise<void> {
   }
 }
 
-/** 将文本输入收敛成去重后的非空识别词集合。 */
+/** 生成与后端目录 Contract 一致的大小写不敏感、空白折叠身份。 */
+function normalizeAliasIdentity(value: string): string {
+  return value.trim().replace(/\s+/gu, ' ').toLowerCase()
+}
+
+/** 保留首项并统计规范化重复，供提交体和成功反馈共用。 */
+function parseAliases(value: string): { values: string[]; duplicatesRemoved: number } {
+  const values: string[] = []
+  const identities = new Set<string>()
+  let duplicatesRemoved = 0
+  for (const text of value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean)) {
+    const identity = normalizeAliasIdentity(text)
+    if (identities.has(identity)) {
+      duplicatesRemoved += 1
+      continue
+    }
+    identities.add(identity)
+    values.push(text)
+  }
+  return { values, duplicatesRemoved }
+}
+
+/** 返回规范化去重后的非空识别词集合。 */
 function splitLines(value: string): string[] {
-  return [...new Set(value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean))]
+  return parseAliases(value).values
+}
+
+/** 只提交相对当前服务端车型投影发生变化的字段，保留 PUT Contract 的缺省语义。 */
+function buildVehicleUpdateBody(current: VehicleModelResponse): VehicleModelUpdateRequest {
+  const body: VehicleModelUpdateRequest = {}
+  const displayName = vehicleDraft.displayName.trim()
+  const brandId = vehicleDraft.brandId || null
+  const seriesName = vehicleDraft.seriesName.trim() || null
+  const aliases = splitLines(vehicleDraft.aliases)
+  const currentAliases = (current.aliases ?? []).map((alias) => alias.text)
+  const currentStatus = current.status === 'deprecated' ? 'deprecated' : 'active'
+
+  if (displayName !== current.display_name) body.display_name = displayName
+  if (brandId !== (current.brand_id ?? null)) body.brand_id = brandId
+  if (seriesName !== (current.series_name ?? null)) body.series_name = seriesName
+  if (JSON.stringify(aliases) !== JSON.stringify(currentAliases)) body.aliases = aliases
+  if (vehicleDraft.status !== currentStatus) body.status = vehicleDraft.status
+  return body
 }
 
 /** 目录为空时清空品牌与车型草稿。 */
@@ -182,6 +231,43 @@ function closeBrandCreateDialog(): void {
   if (current) selectBrand(current)
 }
 
+/** 打开全历史重筛确认层；失败重试期间保留同一个幂等键。 */
+function openReplayConfirmDialog(): void {
+  if (!replayIdempotencyKey.value) {
+    replayIdempotencyKey.value = `admin-catalog-all-${crypto.randomUUID()}`
+  }
+  replayConfirmOpen.value = true
+}
+
+/** 放弃本次重筛请求后，下次显式操作使用新的幂等身份。 */
+function closeReplayConfirmDialog(): void {
+  if (replaySubmitting.value) return
+  replayConfirmOpen.value = false
+  replayIdempotencyKey.value = ''
+}
+
+/** 把全部历史 Canonical 的选择与分组交给后端，不在浏览器复制 lineage 规则。 */
+async function confirmReplayAll(): Promise<void> {
+  if (replaySubmitting.value) return
+  replaySubmitting.value = true
+  error.value = null
+  notice.value = null
+  try {
+    const result = await queueAllCanonicalReplays({
+      idempotency_key: replayIdempotencyKey.value,
+    })
+    replayConfirmOpen.value = false
+    replayIdempotencyKey.value = ''
+    notice.value = result.artifact_count === 0
+      ? '当前没有符合条件的历史 Canonical 数据，无需创建重筛任务。'
+      : `已将 ${result.artifact_count} 个 Canonical 文件拆分为 ${result.run_count} 个重筛任务，可在采集运行中心查看进度与结果。`
+  } catch (reason) {
+    error.value = apiErrorMessage(reason)
+  } finally {
+    replaySubmitting.value = false
+  }
+}
+
 /** 放弃当前品牌详情中的未保存输入。 */
 function cancelBrandChanges(): void {
   const current = selectedBrand.value
@@ -192,11 +278,12 @@ function cancelBrandChanges(): void {
 async function saveBrand(): Promise<void> {
   if (!brandFormValid.value || saving.value) return
   const creating = !brandDraft.id
+  const aliasInput = parseAliases(brandDraft.aliases)
   saving.value = true
   error.value = null
   notice.value = null
   try {
-    const requestedAliases = splitLines(brandDraft.aliases)
+    const requestedAliases = aliasInput.values
     let brandId = brandDraft.id
     if (!brandId) {
       const created = await addBrand({
@@ -228,7 +315,9 @@ async function saveBrand(): Promise<void> {
     }
     selectedBrandId.value = brandId
     brandCreateOpen.value = false
-    notice.value = creating ? '品牌已创建并记录操作。' : '品牌与识别词已更新并记录操作。'
+    notice.value = aliasInput.duplicatesRemoved > 0
+      ? aliasDeduplicatedNotice
+      : creating ? '品牌已创建并记录操作。' : '品牌与识别词已更新并记录操作。'
     await load()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -288,7 +377,7 @@ async function confirmDeleteBrand(): Promise<void> {
 /** 新车型默认继承当前品牌；内部编码由服务端创建时生成。 */
 function resetVehicleDraft(brandId = selectedBrandId.value): void {
   Object.assign(vehicleDraft, {
-    id: '', displayName: '', brandId, seriesName: '', categoryName: '', aliases: '', status: 'active',
+    id: '', displayName: '', brandId, seriesName: '', aliases: '', status: 'active',
   })
   mergeTargetId.value = ''
 }
@@ -300,11 +389,18 @@ function editVehicleDraft(item: VehicleModelResponse): void {
     displayName: item.display_name,
     brandId: item.brand_id ?? '',
     seriesName: item.series_name ?? '',
-    categoryName: item.category_name ?? '',
     aliases: (item.aliases ?? []).map((alias) => alias.text).join('\n'),
     status: item.status === 'deprecated' ? 'deprecated' : 'active',
   })
   mergeTargetId.value = ''
+}
+
+/** 用服务端规范化响应替换或追加车型，避免成功保存后阻塞全目录重读。 */
+function upsertVehicle(item: VehicleModelResponse): void {
+  const remaining = vehicles.value.filter((vehicle) => vehicle.id !== item.id)
+  vehicles.value = [...remaining, item].sort((left, right) => (
+    left.display_name.localeCompare(right.display_name) || left.id.localeCompare(right.id)
+  ))
 }
 
 /** 打开新增车型弹窗。 */
@@ -321,33 +417,34 @@ function openVehicleEditor(item: VehicleModelResponse): void {
 
 /** 保存车型；品牌归属继续只通过 Vehicle API 修改。 */
 async function saveVehicle(): Promise<void> {
-  if (!vehicleFormValid.value || saving.value) return
+  if (!vehicleFormValid.value || !vehicleHasSavableChanges.value || saving.value) return
   const editing = Boolean(vehicleDraft.id)
+  const aliasInput = parseAliases(vehicleDraft.aliases)
   saving.value = true
   error.value = null
   notice.value = null
   try {
+    let saved: VehicleModelResponse
     if (vehicleDraft.id) {
-      await editVehicle(vehicleDraft.id, {
-        display_name: vehicleDraft.displayName.trim(),
-        brand_id: vehicleDraft.brandId || null,
-        series_name: vehicleDraft.seriesName.trim() || null,
-        category_name: vehicleDraft.categoryName.trim() || null,
-        aliases: splitLines(vehicleDraft.aliases),
-        status: vehicleDraft.status,
-      })
+      const current = vehicles.value.find((item) => item.id === vehicleDraft.id)
+      if (!current) throw new Error('当前车型已不在目录中，请刷新页面后重试。')
+      const body = buildVehicleUpdateBody(current)
+      saved = Object.keys(body).length > 0
+        ? await editVehicle(vehicleDraft.id, body)
+        : current
     } else {
-      await addVehicle({
+      saved = await addVehicle({
         display_name: vehicleDraft.displayName.trim(),
         brand_id: vehicleDraft.brandId,
         series_name: vehicleDraft.seriesName.trim() || null,
-        category_name: vehicleDraft.categoryName.trim() || null,
-        aliases: splitLines(vehicleDraft.aliases),
+        aliases: aliasInput.values,
       })
     }
+    upsertVehicle(saved)
     vehicleEditorOpen.value = false
-    notice.value = editing ? '车型已更新并记录操作。' : '车型已创建并记录操作。'
-    await load()
+    notice.value = aliasInput.duplicatesRemoved > 0
+      ? aliasDeduplicatedNotice
+      : editing ? '车型已更新并记录操作。' : '车型已创建并记录操作。'
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -423,7 +520,7 @@ async function mergeSelectedVehicle(): Promise<void> {
       tone="error"
       role="alert"
     >
-      <strong>品牌与车型加载或保存失败</strong>
+      <strong>品牌与车型操作失败</strong>
       <span>{{ error }}</span>
       <AimaButton
         v-if="!saving"
@@ -458,14 +555,24 @@ async function mergeSelectedVehicle(): Promise<void> {
             <h2>品牌目录</h2>
             <p>内部品牌编码由服务端生成并仅用于技术识别；品牌识别词用于统一匹配，旗下车型通过唯一品牌归属自动纳入过滤。</p>
           </div>
-          <AimaButton
-            variant="primary"
-            size="small"
-            :disabled="saving"
-            @click="openBrandCreateDialog"
-          >
-            新增品牌
-          </AimaButton>
+          <div class="catalog-header-actions">
+            <AimaButton
+              variant="secondary"
+              size="small"
+              :disabled="saving || replaySubmitting"
+              @click="openReplayConfirmDialog"
+            >
+              {{ replaySubmitting ? '正在排队…' : '重筛入库' }}
+            </AimaButton>
+            <AimaButton
+              variant="primary"
+              size="small"
+              :disabled="saving || replaySubmitting"
+              @click="openBrandCreateDialog"
+            >
+              新增品牌
+            </AimaButton>
+          </div>
         </header>
 
         <div
@@ -670,7 +777,6 @@ async function mergeSelectedVehicle(): Promise<void> {
                 <td>{{ item.series_name || '—' }}</td>
                 <td>
                   <strong>{{ item.display_name }}</strong>
-                  <small v-if="item.category_name">{{ item.category_name }}</small>
                 </td>
                 <td>
                   <span
@@ -737,6 +843,34 @@ async function mergeSelectedVehicle(): Promise<void> {
     </div>
 
     <AimaDialog
+      :model-value="replayConfirmOpen"
+      label="重筛全部历史数据"
+      width="460px"
+      @update:model-value="(open) => { if (!open) closeReplayConfirmDialog() }"
+    >
+      <section class="confirm-dialog">
+        <h2>重筛全部历史数据</h2>
+        <p>系统会按当前全部启用的品牌、车型和识别词，重新筛选全部历史 Canonical 数据，并把新命中的内容幂等写入业务库。</p>
+        <p>任务会按每组最多 100 个文件拆分，并使用最大安全行批次在后台排队；可用 Worker 越多，并行处理速度越快。这个过程不会重新请求 TikHub，也不会自动触发 AI。</p>
+        <div class="actions">
+          <AimaButton
+            :disabled="replaySubmitting"
+            @click="closeReplayConfirmDialog"
+          >
+            取消
+          </AimaButton>
+          <AimaButton
+            variant="primary"
+            :disabled="replaySubmitting"
+            @click="confirmReplayAll"
+          >
+            {{ replaySubmitting ? '正在排队…' : '确认重筛入库' }}
+          </AimaButton>
+        </div>
+      </section>
+    </AimaDialog>
+
+    <AimaDialog
       v-model="brandCreateOpen"
       label="新增品牌"
       width="420px"
@@ -797,14 +931,17 @@ async function mergeSelectedVehicle(): Promise<void> {
       v-model="vehicleEditorOpen"
       :label="vehicleDraft.id ? '编辑车型' : '新增车型'"
       width="420px"
+      :dismissible="!saving"
     >
       <section class="resource-dialog-form vehicle-dialog-form">
         <h2>{{ vehicleDraft.id ? '编辑车型' : '新增车型' }}</h2>
         <label>
-          显示名称
+          车型名称
           <input
             v-model="vehicleDraft.displayName"
+            maxlength="200"
             placeholder="例如 爱玛 Q7"
+            :disabled="saving"
           >
         </label>
         <label>
@@ -812,6 +949,7 @@ async function mergeSelectedVehicle(): Promise<void> {
           <select
             v-model="vehicleDraft.brandId"
             aria-label="品牌"
+            :disabled="saving"
           >
             <option value="">
               请选择品牌
@@ -832,14 +970,7 @@ async function mergeSelectedVehicle(): Promise<void> {
             v-model="vehicleDraft.seriesName"
             maxlength="200"
             placeholder="用于车型筛选分组"
-          >
-        </label>
-        <label>
-          类别（可选）
-          <input
-            v-model="vehicleDraft.categoryName"
-            maxlength="200"
-            placeholder="用于车型信息展示"
+            :disabled="saving"
           >
         </label>
         <label>
@@ -848,6 +979,7 @@ async function mergeSelectedVehicle(): Promise<void> {
             v-model="vehicleDraft.aliases"
             rows="4"
             placeholder="Q7&#10;爱玛Q7"
+            :disabled="saving"
           />
         </label>
 
@@ -861,6 +993,7 @@ async function mergeSelectedVehicle(): Promise<void> {
               v-model="vehicleDraft.status"
               type="radio"
               value="active"
+              :disabled="saving"
             >
             <span>已启用</span>
           </label>
@@ -869,6 +1002,7 @@ async function mergeSelectedVehicle(): Promise<void> {
               v-model="vehicleDraft.status"
               type="radio"
               value="deprecated"
+              :disabled="saving"
             >
             <span>停用</span>
           </label>
@@ -886,7 +1020,10 @@ async function mergeSelectedVehicle(): Promise<void> {
           class="merge-vehicle-details"
         >
           <summary>合并重复车型</summary>
-          <select v-model="mergeTargetId">
+          <select
+            v-model="mergeTargetId"
+            :disabled="saving"
+          >
             <option value="">
               选择目标车型
             </option>
@@ -900,7 +1037,7 @@ async function mergeSelectedVehicle(): Promise<void> {
           </select>
           <AimaButton
             size="small"
-            :disabled="!mergeTargetId"
+            :disabled="saving || !mergeTargetId"
             @click="mergeSelectedVehicle"
           >
             合并到目标车型
@@ -908,22 +1045,26 @@ async function mergeSelectedVehicle(): Promise<void> {
         </details>
 
         <div class="actions">
-          <AimaButton @click="vehicleEditorOpen = false">
+          <AimaButton
+            :disabled="saving"
+            @click="vehicleEditorOpen = false"
+          >
             取消
           </AimaButton>
           <AimaButton
             v-if="vehicleDraft.id"
             variant="text"
+            :disabled="saving"
             @click="requestCurrentVehicleDelete"
           >
             删除
           </AimaButton>
           <AimaButton
             variant="primary"
-            :disabled="saving || !vehicleFormValid"
+            :disabled="saving || !vehicleFormValid || !vehicleHasSavableChanges"
             @click="saveVehicle"
           >
-            保存
+            {{ saving ? '正在保存…' : '保存' }}
           </AimaButton>
         </div>
       </section>
@@ -1006,6 +1147,7 @@ async function mergeSelectedVehicle(): Promise<void> {
 .brand-directory-card,
 .brand-detail-card { height: min(692px, calc(100dvh - 184px)); min-height: 420px; overflow-y: auto; }
 .card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.catalog-header-actions { display: flex; flex: none; gap: 8px; }
 h2, h3, p { margin: 0; }
 h2 { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24px; }
 h3 { color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }

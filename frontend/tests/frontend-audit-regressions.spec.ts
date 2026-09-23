@@ -4,6 +4,15 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const generated = vi.hoisted(() => ({
+  ContentAnalysisStatus: { completed: 'completed', pending: 'pending', stale: 'stale' },
+  ContentRelevance: { relevant: 'relevant', irrelevant: 'irrelevant' },
+  PlatformName: {
+    xiaohongshu: 'xiaohongshu',
+    douyin: 'douyin',
+    weibo: 'weibo',
+    bilibili: 'bilibili',
+    kuaishou: 'kuaishou',
+  },
   addKeywordToPack: vi.fn(),
   cancelContentAnalysisRun: vi.fn(),
   cancelDataImportCampaign: vi.fn(),

@@ -41,14 +41,25 @@ def competition_scope_for_brand_roles(roles: Iterable[BrandRole]) -> BrandCompet
     return scope_by_role[role]
 
 
-def _normalize_aliases(value: tuple[str, ...]) -> tuple[str, ...]:
-    cleaned = tuple(item.strip() for item in value)
-    if any(not item for item in cleaned):
-        raise ValueError("品牌识别词不能为空")
-    normalized = tuple(" ".join(item.split()).casefold() for item in cleaned)
-    if len(normalized) != len(set(normalized)):
-        raise ValueError("同一品牌的识别词不能重复")
-    return cleaned
+def _normalize_aliases(value: object) -> object:
+    """在数组长度校验前保留首项并收敛同一品牌内的重复识别词。"""
+
+    if not isinstance(value, (list, tuple)):
+        return value
+    cleaned: list[str] = []
+    identities: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            return value
+        text = item.strip()
+        if not text:
+            raise ValueError("品牌识别词不能为空")
+        identity = " ".join(text.split()).casefold()
+        if identity in identities:
+            continue
+        identities.add(identity)
+        cleaned.append(text)
+    return tuple(cleaned)
 
 
 class BrandCreateRequest(BaseModel):
@@ -62,9 +73,11 @@ class BrandCreateRequest(BaseModel):
     def trim_display_name(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
 
-    @field_validator("aliases")
+    @field_validator("aliases", mode="before")
     @classmethod
-    def validate_aliases(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+    def validate_aliases(cls, value: object) -> object:
+        """按规范化身份自动去重，并保留第一次出现的显示文本。"""
+
         return _normalize_aliases(value)
 
 

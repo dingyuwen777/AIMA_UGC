@@ -24,23 +24,9 @@ description: 面向不同项目形态、研发阶段和编程语言的可靠软�
 
 ### 简单代码 Fast Path
 
-如果用户只是要求一段**一次性简单代码 / snippet / scratch code / 小脚本示例**，并且当前已确认：
+一次性 snippet / scratch code / 小脚本只在**无目标仓库持久修改、无 public/data/security/依赖/build/release 变化、无真实外部副作用、无正式交付门禁**时使用 Scratch Fast Path。完整前提、退出条件和“仓库持久修改不自动等于 L2/L3”的规则由 当前场景所需完整约束 §1.1–1.2 完整承担；进入 Repository L1 后再读取 当前场景所需完整约束。
 
-- 不对目标仓库做持久修改；
-- 不改变 public API/ABI/CLI、Schema、数据格式、权限、安全、依赖、构建、部署或发布边界；
-- 不对真实生产系统、外部 Provider、数据库、文件或其他资源执行有持久副作用的操作；
-- 没有正式 Docs、Review、PR、Release 或可审计交付要求；
-
-则不为了形式启动完整仓库治理。最小路径是：
-
-```text
-确认最少上下文与输入/输出
-→ 直接实现最小代码
-→ 使用最便宜且能直接证明目标的解析 / 编译 / 运行 / targeted test
-→ 如实报告验证证据和限制
-```
-
-这类任务不为形式创建 Change、扫描仓库文档、进入独立 Review 或启动 Git 流程。**Fast Path 不是降风险漏洞**：一旦发现需要持久改仓库，先退出 Scratch Fast Path 并按当前项目事实重新判断 L1/L2/L3；如果仍是行为不变机械修改或边界明确、影响隔离的极小修复，则进入 当前场景所需完整约束 的 `Repository L1 Fast Path`，不因“持久修改仓库”本身预付完整 Feature/Bug/Docs/Review 流程。只有发现公共/数据/安全/依赖/运行时边界、真实外部副作用或正式交付要求时，才按对应事实单调升级。
+最小路径仍是“最少输入/输出与运行约束 → 最小代码 → 最便宜的直接验证 → 如实报告证据/限制”。一旦发现不再满足 Scratch/L1 前提，立即按新事实重新路由，不能用 Fast Path 降低真实风险。
 
 本 规则 不是 Python、Web、Backend 或 PostgreSQL 专用流程。它的固定部分是“怎样可靠研发”；具体语言、框架、数据库、目录、包管理器、CI 和部署方式必须来自当前项目事实或 Greenfield 阶段经确认的新建工程决策。
 
@@ -122,6 +108,7 @@ CMakeLists.txt ≠ Linux-only
 | 跨模块、跨消费者、Contract/Schema/Migration/Owner/数据边界 | 当前场景所需完整约束 |
 | 多人、多 Agent、多个分支或 Active Change 并行 | 当前场景所需完整约束 |
 | 显式 Review/Audit、持久 Change/PR Ready、Git/Release 交付或项目明确要求独立复核 | 当前场景所需完整约束 |
+| Agent Outcome Eval / 跨模型规则效果 / 规则 heuristic 生命周期 | 当前场景所需完整约束 |
 | Git/PR/Release/Delivery、依赖变化、安全边界、最终交付报告或宿主能力降级 | 当前场景所需完整约束 |
 | 规则/完整约束/模板/项目 Overlay 的精简、重组、拆分、合并、改名、迁移或通用化 | 当前场景所需完整约束 |
 

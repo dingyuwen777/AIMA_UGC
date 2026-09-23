@@ -4,12 +4,16 @@ from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
 from threading import Barrier
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
+)
+from aima_ugc.adapters.persistence.postgres.content_visibility import (
+    content_has_active_source,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap import canonical_replay_worker as canonical_replay_worker_module
@@ -26,7 +30,7 @@ from aima_ugc.bootstrap.worker import (
 )
 from aima_ugc.contracts.brand_vehicle import BrandAliasCreateRequest, BrandCreateRequest
 from aima_ugc.contracts.http import CanonicalReplayCreateRequest
-from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_TYPE,
@@ -34,9 +38,15 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayJobPayload,
 )
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_all_requests_table,
+    canonical_replay_content_changes_table,
     canonical_replay_seen_content_table,
 )
-from aima_ugc.modules.vehicles.tables import content_brand_evidence_table
+from aima_ugc.modules.system.tables import audit_events_table
+from aima_ugc.modules.vehicles.tables import (
+    content_brand_evidence_table,
+    content_brand_review_locks_table,
+)
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
@@ -106,7 +116,7 @@ def _xlsx(*, rows: tuple[tuple[str, str], ...]) -> bytes:
 def _truncate(runtime: PlatformRuntime) -> None:
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "TRUNCATE TABLE audit_events, jobs, artifacts, keyword_packs, vehicle_brands, accounts "
             "RESTART IDENTITY CASCADE"
         )
 
@@ -222,6 +232,15 @@ def _create_replay(
     return response.json()
 
 
+def _create_all_replay(client: TestClient, *, idempotency_key: str) -> dict[str, object]:
+    response = client.post(
+        "/api/v1/canonical-replays/all",
+        json={"idempotency_key": idempotency_key},
+    )
+    assert response.status_code == 202
+    return response.json()
+
+
 def test_new_alias_replay_deduplicates_and_converges_through_content_owner(
     tmp_path: Path,
 ) -> None:
@@ -298,6 +317,404 @@ def test_new_alias_replay_deduplicates_and_converges_through_content_owner(
             evidence = connection.execute(select(content_brand_evidence_table)).mappings().all()
         assert {row["brand_id"] for row in evidence} == {brand_id}
         assert {row["catalog_version"] for row in evidence} == {catalog_version}
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-reversible.xlsx",
+            rows=(("canonical-replay-reversible", "星曜仅由重筛入库"),),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+
+        created = _create_all_replay(
+            client,
+            idempotency_key=f"all-replay-reversible-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="reversible-ingest").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            content = (
+                connection.execute(
+                    select(contents_table).where(
+                        contents_table.c.external_content_id == "canonical-replay-reversible"
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            content_id = cast(UUID, content["id"])
+            assert content["replay_visibility_owner_id"] == request_id
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(canonical_replay_content_changes_table)
+                    .where(canonical_replay_content_changes_table.c.all_request_id == request_id)
+                )
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
+                )
+                is True
+            )
+
+        requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
+        assert requested.status_code == 202
+        assert requested.json()["lifecycle_status"] == "reverting"
+        with runtime.database.engine.connect() as connection:
+            audit = (
+                connection.execute(
+                    select(audit_events_table).where(
+                        audit_events_table.c.event_type == "canonical_replay_revoke_requested",
+                        audit_events_table.c.object_id == str(request_id),
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert audit["actor_ref"] == "local-administrator"
+        assert _worker(runtime, suffix="reversible-revoke").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            content = (
+                connection.execute(select(contents_table).where(contents_table.c.id == content_id))
+                .mappings()
+                .one()
+            )
+            assert request["lifecycle_status"] == "reverted"
+            assert request["hidden_content_count"] == 1
+            assert content["replay_visibility_owner_id"] == request_id
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(content_versions_table)
+                    .where(content_versions_table.c.content_id == content_id)
+                )
+                == 2
+            )
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
+                )
+                is False
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_revoke_keeps_version_when_only_evidence_converged(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        _add_replay_alias(runtime, brand_id)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-evidence-only.xlsx",
+            rows=(("canonical-replay-evidence-only", "星曜证据幂等收敛"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+
+        snapshot_session = runtime.database.new_session()
+        try:
+            content = snapshot_session.execute(select(contents_table)).mappings().one()
+            content_id = cast(UUID, content["id"])
+            original_version = cast(int, content["current_version"])
+            evidence_before = PostgresBrandVehicleRepository(
+                snapshot_session
+            ).snapshot_automatic_brand_evidence(
+                content_id=content_id,
+                content_version=original_version,
+            )
+        finally:
+            snapshot_session.close()
+
+        created = _create_all_replay(
+            client,
+            idempotency_key=f"all-replay-evidence-only-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="evidence-only-replay").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            content = (
+                connection.execute(select(contents_table).where(contents_table.c.id == content_id))
+                .mappings()
+                .one()
+            )
+            change = (
+                connection.execute(
+                    select(canonical_replay_content_changes_table).where(
+                        canonical_replay_content_changes_table.c.all_request_id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        assert content["current_version"] == original_version
+        assert content["replay_visibility_owner_id"] == request_id
+        assert change["version_before"] == change["version_after"] == original_version
+        assert change["delta"] == {
+            "schema_version": "content-source-contribution.v1",
+            "created_content": False,
+            "content_fields": {},
+            "author_snapshot": None,
+            "collections": {},
+            "account": None,
+        }
+
+        requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
+        assert requested.status_code == 202
+        assert _worker(runtime, suffix="evidence-only-revoke").run_once() is True
+
+        verify_session = runtime.database.new_session()
+        try:
+            content = (
+                verify_session.execute(
+                    select(contents_table).where(contents_table.c.id == content_id)
+                )
+                .mappings()
+                .one()
+            )
+            evidence_after = PostgresBrandVehicleRepository(
+                verify_session
+            ).snapshot_automatic_brand_evidence(
+                content_id=content_id,
+                content_version=original_version,
+            )
+            version_count = verify_session.scalar(
+                select(func.count())
+                .select_from(content_versions_table)
+                .where(content_versions_table.c.content_id == content_id)
+            )
+        finally:
+            verify_session.close()
+        assert content["current_version"] == original_version
+        assert content["replay_visibility_owner_id"] is None
+        assert version_count == 1
+        assert evidence_after == evidence_before
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-before-later-import.xlsx",
+            rows=(("canonical-replay-later-import", "星曜后续导入保护"),),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+
+        created = _create_all_replay(
+            client,
+            idempotency_key=f"all-replay-later-import-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="later-import-replay").run_once() is True
+
+        _import_canonical(
+            client,
+            runtime,
+            filename="normal-import-after-replay.xlsx",
+            rows=(("canonical-replay-later-import", "星曜后续导入保护"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        with runtime.database.engine.connect() as connection:
+            content = (
+                connection.execute(
+                    select(contents_table).where(
+                        contents_table.c.external_content_id == "canonical-replay-later-import"
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            content_id = cast(UUID, content["id"])
+            version_before_revoke = cast(int, content["current_version"])
+            assert content["replay_visibility_owner_id"] is None
+
+        requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
+        assert requested.status_code == 202
+        assert _worker(runtime, suffix="later-import-revoke").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            content = (
+                connection.execute(select(contents_table).where(contents_table.c.id == content_id))
+                .mappings()
+                .one()
+            )
+            assert request["lifecycle_status"] == "reverted"
+            assert request["retained_content_count"] == 1
+            assert request["skipped_content_count"] == 1
+            assert request["hidden_content_count"] == 0
+            assert content["current_version"] == version_before_revoke
+            assert content["replay_visibility_owner_id"] is None
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
+                )
+                is True
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_revoke_carries_manual_brand_lock_to_reversal_version(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        selected_brand = _create_brand_without_matching_alias(runtime)
+        manual_brand = _create_brand_without_matching_alias(runtime)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-before-manual-lock.xlsx",
+            rows=(("canonical-replay-manual-lock", "星曜人工锁保护"),),
+            brand_ids=(selected_brand,),
+        )
+        _add_replay_alias(runtime, selected_brand)
+        created = _create_all_replay(
+            client,
+            idempotency_key=f"all-replay-manual-lock-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="manual-lock-replay").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            content = connection.execute(select(contents_table)).mappings().one()
+        content_id = cast(UUID, content["id"])
+        replay_version = cast(int, content["current_version"])
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                PostgresBrandVehicleRepository(session).replace_manual_brand_evidence(
+                    content_id=content_id,
+                    content_version=replay_version,
+                    brand_ids=(manual_brand,),
+                    unlock_existing=False,
+                    actor_ref="canonical-replay-manual-reviewer",
+                )
+        finally:
+            session.close()
+
+        requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
+        assert requested.status_code == 202
+        assert _worker(runtime, suffix="manual-lock-revoke").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            current_version = cast(
+                int,
+                connection.scalar(
+                    select(contents_table.c.current_version).where(
+                        contents_table.c.id == content_id
+                    )
+                ),
+            )
+            lock = (
+                connection.execute(
+                    select(content_brand_review_locks_table).where(
+                        content_brand_review_locks_table.c.content_id == content_id,
+                        content_brand_review_locks_table.c.content_version == current_version,
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            active = tuple(
+                connection.execute(
+                    select(content_brand_evidence_table).where(
+                        content_brand_evidence_table.c.content_id == content_id,
+                        content_brand_evidence_table.c.content_version == current_version,
+                        content_brand_evidence_table.c.is_active.is_(True),
+                    )
+                ).mappings()
+            )
+        assert current_version == replay_version + 1
+        assert lock["is_locked"] is True
+        assert lock["actor_ref"] == "canonical-replay-manual-reviewer"
+        assert [(row["brand_id"], row["source"], row["is_manual_locked"]) for row in active] == [
+            (manual_brand, "manual_review", True)
+        ]
     finally:
         _truncate(runtime)
         runtime.close()

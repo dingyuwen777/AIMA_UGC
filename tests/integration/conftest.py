@@ -26,6 +26,14 @@ def _restore_migration_seed_rows(connection: Connection) -> None:
             "ON CONFLICT (version) DO NOTHING"
         )
     )
+    connection.execute(
+        text(
+            "INSERT INTO voice_plaza_projection_state "
+            "(singleton, status, generation, projected_count, updated_at) "
+            "VALUES (true, 'pending', 1, 0, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (singleton) DO NOTHING"
+        )
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

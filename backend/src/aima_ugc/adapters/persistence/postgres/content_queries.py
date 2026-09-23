@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import BigInteger, and_, case, exists, func, literal, or_, select
+from sqlalchemy import BigInteger, and_, case, exists, func, literal, or_, select, true
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -63,6 +63,11 @@ from aima_ugc.modules.content.query import (
     ContentVehicleEvidenceRead,
     ContentVehicleRead,
 )
+from aima_ugc.modules.content.read_model_tables import (
+    voice_plaza_content_projection_table,
+    voice_plaza_filter_catalog_table,
+    voice_plaza_projection_state_table,
+)
 from aima_ugc.modules.content.tables import (
     accounts_table,
     comment_coverage_observations_table,
@@ -100,15 +105,22 @@ class PostgresContentQueryRepository:
     ) -> None:
         self._session = session
         self._analysis_identity = analysis_identity
+        self._last_projection_ready: bool | None = None
+
+    @property
+    def last_projection_ready(self) -> bool | None:
+        """返回本 Repository 最近一次查询实际选择的声音广场读取路径。"""
+
+        return self._last_projection_ready
 
     def list_contents(self, query: ContentReadQuery) -> tuple[ContentReadRecord, ...]:
         """在全量查询中排序分页；双向排序均将缺失值置后，以 ID 消除同值歧义。"""
-        statement, columns = self._base_statement(query.filters)
-        content = contents_table
+        statement, columns = self._effective_base_statement(query.filters)
+        content_id_column = columns["content_id"]
         sort_column = (
             columns["author_follower_count"]
             if query.sort_by == "follower_count"
-            else content.c.published_at
+            else columns["published_at"]
             if query.sort_by == "published_at"
             else columns["sort_at"]
         )
@@ -120,9 +132,9 @@ class PostgresContentQueryRepository:
                 else query.position.sort_at
             )
             id_after = (
-                content.c.id > query.position.content_id
+                content_id_column > query.position.content_id
                 if ascending
-                else content.c.id < query.position.content_id
+                else content_id_column < query.position.content_id
             )
             if boundary is None:
                 after = and_(sort_column.is_(None), id_after)
@@ -134,7 +146,7 @@ class PostgresContentQueryRepository:
                 )
             statement = statement.where(after)
         order = sort_column.asc() if ascending else sort_column.desc()
-        id_order = content.c.id.asc() if ascending else content.c.id.desc()
+        id_order = content_id_column.asc() if ascending else content_id_column.desc()
         rows = tuple(
             self._session.execute(
                 statement.order_by(order.nulls_last(), id_order).limit(query.limit)
@@ -143,7 +155,7 @@ class PostgresContentQueryRepository:
         return self._records(rows)
 
     def get_content(self, content_id: UUID) -> ContentReadRecord | None:
-        statement, _ = self._base_statement(
+        statement, _ = self._effective_base_statement(
             ContentFilterSnapshot(),
             include_irrelevant=True,
         )
@@ -156,65 +168,136 @@ class PostgresContentQueryRepository:
             return None
         return self._records((row,))[0]
 
-    def list_filter_values(self) -> ContentFilterValues:
-        """读取当前可见 Content 的有效筛选值，避免旧版本或失效来源泄漏。"""
+    def content_exists(self, content_id: UUID) -> bool:
+        """只判断业务可见 Content 是否存在，避免评论分页重复构造详情投影。"""
 
-        statement, _ = self._base_statement(
-            ContentFilterSnapshot(),
-            include_irrelevant=True,
+        return bool(
+            self._session.scalar(
+                select(
+                    exists(
+                        select(contents_table.c.id).where(
+                            contents_table.c.id == content_id,
+                            content_has_active_source(contents_table.c.id),
+                        )
+                    )
+                )
+            )
         )
-        current = statement.subquery("current_content_filter_values")
 
-        def distinct_strings(column: Any) -> tuple[str, ...]:
+    def _legacy_filter_value_statement(self) -> Any:
+        """构造筛选目录所需的最小当前态投影。"""
+
+        content = contents_table
+        analysis = _latest_analysis_subquery(self._analysis_identity)
+        manual = analysis_content_manual_overrides_table
+        current_analysis = and_(
+            analysis.c.content_id == content.c.id,
+            analysis.c.content_version == content.c.current_version,
+            analysis.c.rank == 1,
+        )
+        current_manual = and_(
+            manual.c.content_id == content.c.id,
+            manual.c.content_version == content.c.current_version,
+        )
+        effective_voice_type = case(
+            (manual.c.voice_type_locked.is_(True), manual.c.voice_type),
+            else_=analysis.c.voice_type,
+        )
+        effective_sentiment = case(
+            (manual.c.sentiment_locked.is_(True), manual.c.sentiment),
+            else_=analysis.c.sentiment,
+        )
+        return (
+            select(
+                content.c.content_type,
+                analysis.c.id.label("analysis_result_id"),
+                effective_voice_type.label("voice_type"),
+                effective_sentiment.label("sentiment"),
+                manual.c.labels.label("manual_labels"),
+                manual.c.labels_locked,
+            )
+            .select_from(
+                content.outerjoin(analysis, current_analysis).outerjoin(manual, current_manual)
+            )
+            .where(content_has_active_source(content.c.id))
+        )
+
+    def list_filter_values(self) -> ContentFilterValues:
+        """只读聚合筛选目录；回填中也返回已投影值而不扫描业务大表。"""
+
+        catalog = voice_plaza_filter_catalog_table
+
+        def values(dimension: str) -> tuple[str, ...]:
+            """按目录索引读取一个维度的稳定有序值。"""
+
             return tuple(
                 cast(str, value)
                 for value in self._session.scalars(
-                    select(column)
-                    .where(column.is_not(None), column != "")
-                    .distinct()
-                    .order_by(column)
+                    select(catalog.c.value)
+                    .where(catalog.c.dimension == dimension)
+                    .order_by(catalog.c.value)
                 )
             )
 
-        label_pair = analysis_content_label_pairs_table
-        ai_pairs = {
-            (cast(str, row[0]), cast(str, row[1]))
+        label_pairs = tuple(
+            (cast(str, row.value), cast(str, row.secondary_value))
             for row in self._session.execute(
-                select(label_pair.c.primary_label, label_pair.c.secondary_label)
-                .select_from(
-                    current.join(
-                        label_pair,
-                        label_pair.c.analysis_result_id == current.c.analysis_result_id,
-                    )
-                )
-                .where(or_(current.c.labels_locked.is_(False), current.c.labels_locked.is_(None)))
-                .distinct()
+                select(catalog.c.value, catalog.c.secondary_value)
+                .where(catalog.c.dimension == "label")
+                .order_by(catalog.c.value, catalog.c.secondary_value)
             )
-        }
-        manual_pairs: set[tuple[str, str]] = set()
-        for raw_labels in self._session.scalars(
-            select(current.c.manual_labels).where(current.c.labels_locked.is_(True))
-        ):
-            if not isinstance(raw_labels, list):
-                continue
-            for item in raw_labels:
-                if not isinstance(item, dict):
-                    continue
-                primary = item.get("primary_label")
-                secondary = item.get("secondary_label")
-                if (
-                    isinstance(primary, str)
-                    and primary
-                    and isinstance(secondary, str)
-                    and secondary
-                ):
-                    manual_pairs.add((primary, secondary))
-
+        )
         return ContentFilterValues(
-            content_types=distinct_strings(current.c.content_type),
-            sentiments=distinct_strings(current.c.sentiment),
-            voice_types=distinct_strings(current.c.voice_type),
-            label_pairs=tuple(sorted(ai_pairs | manual_pairs)),
+            catalog_status="ready" if self.projection_ready() else "building",
+            content_types=values("content_type"),
+            sentiments=values("sentiment"),
+            voice_types=values("voice_type"),
+            label_pairs=label_pairs,
+        )
+
+    def projection_ready(self) -> bool:
+        """读取单例回填状态；缺失状态按未就绪处理以保持升级安全。"""
+
+        status = self._session.scalar(
+            select(voice_plaza_projection_state_table.c.status).where(
+                voice_plaza_projection_state_table.c.singleton.is_(True)
+            )
+        )
+        ready = status == "ready"
+        self._last_projection_ready = ready
+        return ready
+
+    def projection_count(self, filters: ContentFilterSnapshot) -> int | None:
+        """投影就绪时返回与列表完全相同筛选语义的精确总数。"""
+
+        if not self.projection_ready():
+            return None
+        value = self._session.scalar(self._projection_count_statement(filters))
+        return 0 if value is None else int(value)
+
+    def _projection_count_statement(self, filters: ContentFilterSnapshot) -> Any:
+        """只在文本搜索需要时连接事实表，其余计数保持在窄投影上。"""
+
+        projection = voice_plaza_content_projection_table
+        content = contents_table
+        version = content_versions_table
+        source: Any = projection
+        if filters.search is not None:
+            source = projection.join(content, content.c.id == projection.c.content_id).join(
+                version,
+                and_(
+                    version.c.content_id == projection.c.content_id,
+                    version.c.version_no == projection.c.content_version,
+                ),
+            )
+        statement = select(func.count()).select_from(source)
+        return _apply_projection_filters(
+            statement,
+            filters=filters,
+            projection=projection,
+            content=content,
+            version=version,
+            include_irrelevant=False,
         )
 
     def freeze_targets(
@@ -252,7 +335,7 @@ class PostgresContentQueryRepository:
             raise ValueError("必须提供 filters 或 content_ids")
         content = contents_table
         if filters is not None:
-            statement, _ = self._base_statement(filters, targets_only=True)
+            statement, _ = self._effective_base_statement(filters, targets_only=True)
             selected = statement.subquery("analysis_target_selection")
             ordinal = (
                 func.row_number().over(order_by=(selected.c.sort_at.desc(), selected.c.id.desc()))
@@ -396,26 +479,15 @@ class PostgresContentQueryRepository:
         """返回当前分页范围数量与该内容全部已入库评论数量。"""
 
         comment = comments_table
-        scoped = cast(
-            int,
-            self._session.scalar(
-                select(func.count())
-                .select_from(comment)
-                .where(
-                    comment.c.content_id == content_id,
-                    _comment_scope_condition(root_comment_id),
-                )
+        row = self._session.execute(
+            select(
+                func.count().filter(_comment_scope_condition(root_comment_id)).label("scoped"),
+                func.count().label("ingested"),
             )
-            or 0,
-        )
-        ingested = cast(
-            int,
-            self._session.scalar(
-                select(func.count()).select_from(comment).where(comment.c.content_id == content_id)
-            )
-            or 0,
-        )
-        return scoped, ingested
+            .select_from(comment)
+            .where(comment.c.content_id == content_id)
+        ).one()
+        return int(row.scoped), int(row.ingested)
 
     def _comment_statement(self, content_id: UUID) -> Any:
         """统一评论响应投影，并在数据库内解析直接父评论作者。"""
@@ -426,16 +498,19 @@ class PostgresContentQueryRepository:
         parent_comment = comments_table.alias("parent_comment")
         parent_author = accounts_table.alias("parent_comment_author")
         reply_comment = comments_table.alias("thread_reply_comment")
-        ingested_reply_count = (
-            select(func.count())
-            .select_from(reply_comment)
-            .where(
-                reply_comment.c.content_id == comment.c.content_id,
-                reply_comment.c.root_comment_id == comment.c.external_comment_id,
-                reply_comment.c.external_comment_id != comment.c.external_comment_id,
+        reply_counts = (
+            select(
+                reply_comment.c.content_id,
+                reply_comment.c.root_comment_id,
+                func.count().label("ingested_reply_count"),
             )
-            .correlate(comment)
-            .scalar_subquery()
+            .where(
+                reply_comment.c.content_id == content_id,
+                reply_comment.c.root_comment_id.is_not(None),
+                reply_comment.c.external_comment_id != reply_comment.c.root_comment_id,
+            )
+            .group_by(reply_comment.c.content_id, reply_comment.c.root_comment_id)
+            .subquery("thread_reply_counts")
         )
         resolved_is_by_content_author = case(
             (
@@ -463,7 +538,7 @@ class PostgresContentQueryRepository:
                 comment.c.published_at,
                 comment.c.current_like_count,
                 comment.c.current_reply_count,
-                ingested_reply_count.label("ingested_reply_count"),
+                func.coalesce(reply_counts.c.ingested_reply_count, 0).label("ingested_reply_count"),
                 resolved_is_by_content_author,
             )
             .select_from(
@@ -477,6 +552,13 @@ class PostgresContentQueryRepository:
                     ),
                 )
                 .outerjoin(parent_author, parent_author.c.id == parent_comment.c.author_account_id)
+                .outerjoin(
+                    reply_counts,
+                    and_(
+                        reply_counts.c.content_id == comment.c.content_id,
+                        reply_counts.c.root_comment_id == comment.c.external_comment_id,
+                    ),
+                )
             )
             .where(comment.c.content_id == content_id)
         )
@@ -579,7 +661,164 @@ class PostgresContentQueryRepository:
             for row in rows
         )
 
+    def _effective_base_statement(
+        self,
+        filters: ContentFilterSnapshot,
+        *,
+        targets_only: bool = False,
+        include_irrelevant: bool = False,
+    ) -> tuple[Any, dict[str, Any]]:
+        """回填完成后使用固定成本投影，升级窗口内保留旧路径保证结果完整。"""
+
+        if self.projection_ready():
+            return self._base_statement(
+                filters,
+                targets_only=targets_only,
+                include_irrelevant=include_irrelevant,
+            )
+        return self._legacy_base_statement(
+            filters,
+            targets_only=targets_only,
+            include_irrelevant=include_irrelevant,
+        )
+
     def _base_statement(
+        self,
+        filters: ContentFilterSnapshot,
+        *,
+        targets_only: bool = False,
+        include_irrelevant: bool = False,
+    ) -> tuple[Any, dict[str, Any]]:
+        """从一行一内容的增量投影构造查询，不在请求内重建全库窗口。"""
+
+        projection = voice_plaza_content_projection_table
+        content = contents_table
+        version = content_versions_table
+        source_join = projection.join(content, content.c.id == projection.c.content_id).join(
+            version,
+            and_(
+                version.c.content_id == projection.c.content_id,
+                version.c.version_no == projection.c.content_version,
+            ),
+        )
+        columns: dict[str, Any] = {
+            "content_id": projection.c.content_id,
+            "sort_at": projection.c.sort_at,
+            "published_at": projection.c.published_at,
+        }
+
+        if targets_only:
+            selected: tuple[Any, ...] = (
+                projection.c.content_id.label("id"),
+                projection.c.content_version.label("current_version"),
+                projection.c.sort_at,
+            )
+        else:
+            attempt = provider_request_attempts_table
+            request = provider_requests_table
+            scope = collection_scopes_table
+            analysis = analysis_content_results_table
+            manual = analysis_content_manual_overrides_table
+            target = analysis_content_run_targets_table
+            run = analysis_content_runs_table
+            latest_run = (
+                select(
+                    run.c.id.label("run_id"),
+                    run.c.status.label("run_status"),
+                )
+                .select_from(target.join(run, run.c.id == target.c.run_id))
+                .where(
+                    target.c.content_id == projection.c.content_id,
+                    target.c.content_version == projection.c.content_version,
+                )
+                .order_by(run.c.sequence_no.desc(), run.c.id.desc())
+                .limit(1)
+                .lateral("latest_content_analysis_run")
+            )
+            source_join = (
+                source_join.join(attempt, attempt.c.id == version.c.provider_attempt_id)
+                .join(request, request.c.id == attempt.c.provider_request_id)
+                .outerjoin(scope, scope.c.id == request.c.scope_id)
+                .outerjoin(analysis, analysis.c.id == projection.c.analysis_result_id)
+                .outerjoin(
+                    manual,
+                    and_(
+                        manual.c.content_id == projection.c.content_id,
+                        manual.c.content_version == projection.c.content_version,
+                    ),
+                )
+                .outerjoin(latest_run, true())
+                .outerjoin(accounts_table, accounts_table.c.id == content.c.author_account_id)
+            )
+            snapshot_follower_count = case(
+                (
+                    func.jsonb_typeof(version.c.author_snapshot["follower_count"]) == "number",
+                    version.c.author_snapshot["follower_count"].astext.cast(BigInteger),
+                ),
+                else_=None,
+            )
+            author_follower_count = func.coalesce(
+                accounts_table.c.current_follower_count,
+                snapshot_follower_count,
+            )
+            columns["author_follower_count"] = author_follower_count
+            selected = (
+                projection.c.content_id.label("id"),
+                projection.c.content_version.label("current_version"),
+                projection.c.sort_at,
+                projection.c.platform,
+                content.c.external_content_id,
+                projection.c.content_type,
+                content.c.title,
+                content.c.text,
+                version.c.author_snapshot["display_name"].astext.label("author_display_name"),
+                author_follower_count.label("author_follower_count"),
+                projection.c.published_at,
+                content.c.last_seen_at,
+                content.c.canonical_url,
+                content.c.share_url,
+                content.c.current_like_count,
+                content.c.current_comment_count,
+                content.c.current_favorite_count,
+                content.c.current_share_count,
+                content.c.current_repost_count,
+                content.c.current_view_count,
+                content.c.current_play_count,
+                analysis.c.id.label("analysis_result_id"),
+                analysis.c.relevance,
+                projection.c.effective_voice_type.label("voice_type"),
+                projection.c.effective_sentiment.label("sentiment"),
+                projection.c.labels.label("effective_labels"),
+                manual.c.voice_type_locked,
+                manual.c.sentiment_locked,
+                manual.c.labels_locked,
+                analysis.c.analyzed_at,
+                analysis.c.model_provider,
+                analysis.c.model,
+                latest_run.c.run_id.label("latest_run_id"),
+                latest_run.c.run_status.label("latest_run_status"),
+                projection.c.effective_relevance,
+                projection.c.relevance_source,
+                (projection.c.analysis_status != "pending").label("has_any_analysis"),
+                request.c.provider.label("provider_name"),
+                attempt.c.id.label("provider_attempt_id"),
+                version.c.raw_artifact_id,
+                request.c.import_batch_id,
+                scope.c.run_id.label("collection_run_id"),
+            )
+
+        statement = select(*selected).select_from(source_join)
+        statement = _apply_projection_filters(
+            statement,
+            filters=filters,
+            projection=projection,
+            content=content,
+            version=version,
+            include_irrelevant=include_irrelevant,
+        )
+        return statement, columns
+
+    def _legacy_base_statement(
         self,
         filters: ContentFilterSnapshot,
         *,
@@ -655,7 +894,11 @@ class PostgresContentQueryRepository:
             .outerjoin(review, current_review)
             .outerjoin(manual, current_manual)
         )
-        columns: dict[str, Any] = {"sort_at": sort_at}
+        columns: dict[str, Any] = {
+            "content_id": content.c.id,
+            "sort_at": sort_at,
+            "published_at": content.c.published_at,
+        }
         if targets_only:
             selected: tuple[Any, ...] = (content.c.id, content.c.current_version, sort_at)
         else:
@@ -747,7 +990,8 @@ class PostgresContentQueryRepository:
             if row["analysis_result_id"] is not None
         )
         labels: dict[UUID, list[tuple[int, str, str]]] = defaultdict(list)
-        if result_ids:
+        uses_projection_labels = bool(rows) and "effective_labels" in rows[0]
+        if result_ids and not uses_projection_labels:
             label_rows = self._session.execute(
                 select(analysis_content_label_pairs_table).where(
                     analysis_content_label_pairs_table.c.analysis_result_id.in_(result_ids)
@@ -1066,7 +1310,16 @@ class PostgresContentQueryRepository:
                 latest_run_status=cast(str | None, row["latest_run_status"]),
                 manual_locked_dimensions=(),
             )
-        if bool(row["labels_locked"]):
+        if "effective_labels" in row:
+            raw_labels = row["effective_labels"]
+            ordered = tuple(
+                (cast(str, item["primary_label"]), cast(str, item["secondary_label"]))
+                for item in raw_labels
+                if isinstance(item, dict)
+                and isinstance(item.get("primary_label"), str)
+                and isinstance(item.get("secondary_label"), str)
+            )
+        elif bool(row["labels_locked"]):
             ordered = tuple(
                 (
                     item["primary_label"],
@@ -1161,6 +1414,117 @@ def _latest_relevance_review_subquery() -> Any:
         )
         .label("rank"),
     ).subquery("latest_content_relevance_review")
+
+
+def _apply_projection_filters(
+    statement: Any,
+    *,
+    filters: ContentFilterSnapshot,
+    projection: Any,
+    content: Any,
+    version: Any,
+    include_irrelevant: bool,
+) -> Any:
+    """把公共筛选映射到窄投影；仅来源追溯和文本搜索回到事实表。"""
+
+    statement = statement.where(projection.c.is_visible.is_(True))
+    if filters.relevance is None:
+        if not include_irrelevant:
+            statement = statement.where(
+                projection.c.effective_relevance.is_distinct_from("irrelevant")
+            )
+    else:
+        statement = statement.where(projection.c.effective_relevance == filters.relevance)
+    if filters.voice_type is not None:
+        statement = statement.where(projection.c.effective_voice_type == filters.voice_type)
+    if filters.search is not None:
+        pattern = f"%{_escape_like(filters.search)}%"
+        statement = statement.where(
+            or_(
+                content.c.title.ilike(pattern, escape="\\"),
+                content.c.text.ilike(pattern, escape="\\"),
+                content.c.external_content_id.ilike(pattern, escape="\\"),
+                version.c.author_snapshot["display_name"].astext.ilike(pattern, escape="\\"),
+            )
+        )
+    if filters.platforms:
+        statement = statement.where(projection.c.platform.in_(filters.platforms))
+    if filters.content_types:
+        statement = statement.where(projection.c.content_type.in_(filters.content_types))
+    if filters.brand_ids:
+        statement = statement.where(projection.c.brand_ids.overlap(list(filters.brand_ids)))
+    if filters.competition_scopes:
+        statement = statement.where(projection.c.competition_scope.in_(filters.competition_scopes))
+    if filters.vehicle_model_ids:
+        statement = statement.where(
+            projection.c.vehicle_model_ids.overlap(list(filters.vehicle_model_ids))
+        )
+    if filters.published_from is not None:
+        statement = statement.where(projection.c.published_at >= filters.published_from)
+    if filters.published_to is not None:
+        statement = statement.where(projection.c.published_at <= filters.published_to)
+    if filters.source_identifier is not None:
+        source_version = content_versions_table.alias("source_filter_version")
+        source_attempt = provider_request_attempts_table.alias("source_filter_attempt")
+        source_request = provider_requests_table.alias("source_filter_request")
+        source_scope = collection_scopes_table.alias("source_filter_scope")
+        source_lineage = (
+            source_version.join(
+                source_attempt,
+                source_attempt.c.id == source_version.c.provider_attempt_id,
+            )
+            .join(
+                source_request,
+                source_request.c.id == source_attempt.c.provider_request_id,
+            )
+            .outerjoin(source_scope, source_scope.c.id == source_request.c.scope_id)
+        )
+        historical_outcome = processing_import_batch_items_table.alias(
+            "source_filter_historical_outcome"
+        )
+        historical_item = historical_import_campaign_items_table.alias(
+            "source_filter_historical_item"
+        )
+        statement = statement.where(
+            or_(
+                exists(
+                    select(literal(1))
+                    .select_from(source_lineage)
+                    .where(
+                        source_version.c.content_id == projection.c.content_id,
+                        or_(
+                            source_request.c.import_batch_id == filters.source_identifier,
+                            source_scope.c.run_id == filters.source_identifier,
+                        ),
+                    )
+                ),
+                exists(
+                    select(literal(1))
+                    .select_from(
+                        historical_outcome.join(
+                            historical_item,
+                            historical_item.c.id == historical_outcome.c.campaign_item_id,
+                        )
+                    )
+                    .where(
+                        historical_outcome.c.content_id == projection.c.content_id,
+                        historical_item.c.campaign_id == filters.source_identifier,
+                    )
+                ),
+            )
+        )
+    if filters.analysis_status is not None:
+        statement = statement.where(projection.c.analysis_status == filters.analysis_status)
+    if filters.sentiment is not None:
+        statement = statement.where(projection.c.effective_sentiment == filters.sentiment)
+    if filters.primary_label is not None or filters.secondary_label is not None:
+        label: dict[str, str] = {}
+        if filters.primary_label is not None:
+            label["primary_label"] = filters.primary_label
+        if filters.secondary_label is not None:
+            label["secondary_label"] = filters.secondary_label
+        statement = statement.where(projection.c.labels.contains([label]))
+    return statement
 
 
 def _apply_filters(

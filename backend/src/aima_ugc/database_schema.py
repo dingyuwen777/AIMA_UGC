@@ -57,6 +57,12 @@ from aima_ugc.modules.content.extended_tables import (
     content_topics_table,
 )
 from aima_ugc.modules.content.media_cache_tables import content_media_cache_entries_table
+from aima_ugc.modules.content.read_model_tables import (
+    voice_plaza_content_projection_table,
+    voice_plaza_filter_catalog_entries_table,
+    voice_plaza_filter_catalog_table,
+    voice_plaza_projection_state_table,
+)
 from aima_ugc.modules.content.source_constraints import register_content_source_constraints
 from aima_ugc.modules.content.tables import (
     accounts_table,
@@ -68,7 +74,15 @@ from aima_ugc.modules.content.tables import (
     content_versions_table,
     contents_table,
 )
+from aima_ugc.modules.identity.tables import (
+    identity_external_identities_table,
+    identity_login_states_table,
+    identity_principals_table,
+    identity_sessions_table,
+)
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_all_requests_table,
+    canonical_replay_content_changes_table,
     canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
     canonical_replay_seen_content_table,
@@ -143,6 +157,8 @@ __all__ = [
     "accounts_table",
     "artifacts_table",
     "canonical_artifact_links_table",
+    "canonical_replay_all_requests_table",
+    "canonical_replay_content_changes_table",
     "canonical_replay_run_artifacts_table",
     "canonical_replay_runs_table",
     "canonical_replay_seen_content_table",
@@ -182,8 +198,16 @@ __all__ = [
     "content_source_contributions_table",
     "content_availability_observations_table",
     "content_topics_table",
+    "voice_plaza_content_projection_table",
+    "voice_plaza_filter_catalog_entries_table",
+    "voice_plaza_filter_catalog_table",
+    "voice_plaza_projection_state_table",
     "content_versions_table",
     "contents_table",
+    "identity_external_identities_table",
+    "identity_login_states_table",
+    "identity_principals_table",
+    "identity_sessions_table",
     "job_attempt_events_table",
     "jobs_table",
     "keyword_pack_items_table",

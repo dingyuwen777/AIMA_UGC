@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Protocol, cast
+from typing import Final, Literal, Protocol, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
@@ -20,11 +20,22 @@ CANONICAL_REPLAY_JOB_TYPE = "ingestion.canonical-replay.v1"
 CANONICAL_REPLAY_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay.v1"
 CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS = 86_400
 CANONICAL_REPLAY_JOB_MAX_ATTEMPTS = 10
+CANONICAL_REPLAY_ARTIFACTS_PER_RUN: Final[Literal[100]] = 100
+CANONICAL_REPLAY_FAST_BATCH_SIZE: Final[Literal[1000]] = 1000
+CANONICAL_REPLAY_REVERSAL_JOB_TYPE = "ingestion.canonical-replay-reversal.v1"
+CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay-reversal.v1"
 
 CanonicalReplaySourceKind = Literal[
     "excel_import_v2",
     "data_import_canonical_chunk_v2",
     "tikhub_search_attempt_v1",
+]
+CanonicalReplayLifecycleStatus = Literal[
+    "active",
+    "cancelling",
+    "reverting",
+    "reverted",
+    "revert_failed",
 ]
 
 _FILTER_SNAPSHOT_ADAPTER = TypeAdapter(BrandVehicleFilterSnapshot)
@@ -38,6 +49,35 @@ class CanonicalReplayArtifactRecord:
     ordinal: int
     artifact_id: UUID
     source_kind: CanonicalReplaySourceKind
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalReplayAllRequestRecord:
+    """一次全历史 Replay 请求冻结的输入清单摘要。"""
+
+    id: UUID
+    client_idempotency_key: str
+    selection_digest: str
+    artifact_count: int
+    run_count: int
+    artifacts_per_run: int
+    batch_size: int
+    created_by: str
+    created_at: datetime
+    reversible: bool
+    lifecycle_status: CanonicalReplayLifecycleStatus
+    reversal_job_id: UUID | None
+    cancellation_requested_at: datetime | None
+    reversal_requested_at: datetime | None
+    reversed_at: datetime | None
+    reversal_requested_by: str | None
+    reversal_request_id: str | None
+    reverted_content_count: int
+    hidden_content_count: int
+    retained_content_count: int
+    skipped_content_count: int
+    restored_evidence_count: int
+    skipped_evidence_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +102,8 @@ class CanonicalReplayRunRecord:
     created_by: str
     created_at: datetime
     updated_at: datetime
+    all_request_id: UUID | None = None
+    all_request_ordinal: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +142,17 @@ class CanonicalReplayJobPayload(BaseModel):
     run_id: UUID
 
 
+class CanonicalReplayReversalJobPayload(BaseModel):
+    """异步撤回只携带父请求身份，贡献账本留在数据库。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["ingestion.canonical-replay-reversal.v1"] = (
+        "ingestion.canonical-replay-reversal.v1"
+    )
+    request_id: UUID
+
+
 class CanonicalReplayJobExecutor(Protocol):
     """在当前 Fence 下执行可恢复 Replay。"""
 
@@ -107,6 +160,18 @@ class CanonicalReplayJobExecutor(Protocol):
         self,
         *,
         payload: CanonicalReplayJobPayload,
+        fence: JobExecutionFence,
+        context: JobExecutionContextProtocol,
+    ) -> JobHandlerResult: ...
+
+
+class CanonicalReplayReversalJobExecutor(Protocol):
+    """在当前 Fence 下逆序撤回一个全历史 Replay 的已提交贡献。"""
+
+    def execute(
+        self,
+        *,
+        payload: CanonicalReplayReversalJobPayload,
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult: ...
@@ -130,6 +195,22 @@ class CanonicalReplayJobHandler:
         return self._executor.execute(payload=payload, fence=context.fence, context=context)
 
 
+class CanonicalReplayReversalJobHandler:
+    """把统一 Job Runtime 委托给 Replay 撤回执行器。"""
+
+    def __init__(self, executor: CanonicalReplayReversalJobExecutor) -> None:
+        self._executor = executor
+
+    def __call__(
+        self,
+        payload: BaseModel,
+        context: JobExecutionContextProtocol,
+    ) -> JobHandlerResult:
+        if not isinstance(payload, CanonicalReplayReversalJobPayload):
+            raise TypeError("Canonical Replay Reversal Handler 收到错误 Payload 类型")
+        return self._executor.execute(payload=payload, fence=context.fence, context=context)
+
+
 def register_canonical_replay_job(
     registry: JobRegistry,
     handler: CanonicalReplayJobHandler,
@@ -148,19 +229,47 @@ def register_canonical_replay_job(
     )
 
 
+def register_canonical_replay_reversal_job(
+    registry: JobRegistry,
+    handler: CanonicalReplayReversalJobHandler,
+    *,
+    terminal_callback: Callable[[Session, JobRecord], None] | None = None,
+) -> None:
+    """注册可恢复、可重试的 Replay 撤回 Job。"""
+
+    registry.register(
+        job_type=CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
+        payload_version=CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION,
+        payload_model=CanonicalReplayReversalJobPayload,
+        handler=handler,
+        retry_on_timeout=True,
+        terminal_callback=terminal_callback,
+    )
+
+
 __all__ = [
+    "CANONICAL_REPLAY_ARTIFACTS_PER_RUN",
+    "CANONICAL_REPLAY_FAST_BATCH_SIZE",
     "CANONICAL_REPLAY_JOB_MAX_ATTEMPTS",
     "CANONICAL_REPLAY_JOB_PAYLOAD_VERSION",
     "CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS",
     "CANONICAL_REPLAY_JOB_TYPE",
+    "CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION",
+    "CANONICAL_REPLAY_REVERSAL_JOB_TYPE",
     "CanonicalReplayArtifactRecord",
+    "CanonicalReplayAllRequestRecord",
     "CanonicalReplayCounters",
+    "CanonicalReplayLifecycleStatus",
     "CanonicalReplayJobExecutor",
     "CanonicalReplayJobHandler",
     "CanonicalReplayJobPayload",
+    "CanonicalReplayReversalJobExecutor",
+    "CanonicalReplayReversalJobHandler",
+    "CanonicalReplayReversalJobPayload",
     "CanonicalReplayRunRecord",
     "CanonicalReplaySourceKind",
     "dump_filter_snapshot",
     "load_filter_snapshot",
     "register_canonical_replay_job",
+    "register_canonical_replay_reversal_job",
 ]

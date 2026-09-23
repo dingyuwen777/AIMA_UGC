@@ -13,6 +13,9 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.contracts.http import (
+    CanonicalReplayAllCreatedResponse,
+    CanonicalReplayAllCreateRequest,
+    CanonicalReplayAllOperationResponse,
     CanonicalReplayCreatedResponse,
     CanonicalReplayCreateRequest,
     CanonicalReplayJobResultResponse,
@@ -20,7 +23,12 @@ from aima_ugc.contracts.http import (
     CanonicalReplayStatsResponse,
     JobStatusResponse,
 )
-from aima_ugc.modules.ingestion.canonical_replay import CanonicalReplayRunRecord
+from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+    CANONICAL_REPLAY_FAST_BATCH_SIZE,
+    CanonicalReplayAllRequestRecord,
+    CanonicalReplayRunRecord,
+)
 from aima_ugc.modules.ingestion.canonical_replay_http import (
     CanonicalReplayConflict,
     CanonicalReplayInputInvalid,
@@ -38,6 +46,54 @@ class PostgresCanonicalReplayHttpService:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
+
+    def create_all_replays(
+        self,
+        body: CanonicalReplayAllCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllCreatedResponse:
+        """一次冻结全部合法 Canonical，并拆成可由多个 Worker 领取的有界 Run。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresCanonicalReplayRepository(session)
+                try:
+                    record = repository.enqueue_all(
+                        idempotency_key=body.idempotency_key,
+                        created_by=actor_ref,
+                        request_id=request_id,
+                    )
+                except (LookupError, ValueError) as exc:
+                    raise CanonicalReplayInputInvalid(str(exc)) from exc
+                except (JobIdempotencyConflict, RuntimeError) as exc:
+                    raise CanonicalReplayConflict(str(exc)) from exc
+                _audit(
+                    session,
+                    actor_ref=actor_ref,
+                    request_id=request_id,
+                    event_type="canonical_replay_all_created",
+                    object_id=str(record.id),
+                    detail={
+                        "artifact_count": record.artifact_count,
+                        "run_count": record.run_count,
+                        "artifacts_per_run": record.artifacts_per_run,
+                        "batch_size": record.batch_size,
+                    },
+                )
+                return CanonicalReplayAllCreatedResponse(
+                    request_id=record.id,
+                    artifact_count=record.artifact_count,
+                    run_count=record.run_count,
+                    artifacts_per_run=CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+                    batch_size=CANONICAL_REPLAY_FAST_BATCH_SIZE,
+                )
+        except IntegrityError as exc:
+            raise CanonicalReplayConflict from exc
+        finally:
+            session.close()
 
     def create_replay(
         self,
@@ -120,6 +176,86 @@ class PostgresCanonicalReplayHttpService:
         finally:
             session.close()
 
+    def cancel_and_revoke_all(
+        self,
+        replay_request_id: UUID,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse:
+        """协作取消全部活动子 Job，并在其终态后异步精确撤回。"""
+
+        return self._request_all_reversal(
+            replay_request_id,
+            cancel_active=True,
+            actor_ref=actor_ref,
+            request_id=request_id,
+        )
+
+    def revoke_all(
+        self,
+        replay_request_id: UUID,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse:
+        """对已结束的全量 Replay 排队异步精确撤回。"""
+
+        return self._request_all_reversal(
+            replay_request_id,
+            cancel_active=False,
+            actor_ref=actor_ref,
+            request_id=request_id,
+        )
+
+    def _request_all_reversal(
+        self,
+        replay_request_id: UUID,
+        *,
+        cancel_active: bool,
+        actor_ref: str,
+        request_id: str,
+    ) -> CanonicalReplayAllOperationResponse:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresCanonicalReplayRepository(session)
+                try:
+                    record = repository.request_all_reversal(
+                        replay_request_id,
+                        cancel_active=cancel_active,
+                        actor_ref=actor_ref,
+                        http_request_id=request_id,
+                    )
+                except LookupError as exc:
+                    raise CanonicalReplayResourceNotFound from exc
+                except (JobIdempotencyConflict, RuntimeError, ValueError) as exc:
+                    raise CanonicalReplayConflict(str(exc)) from exc
+                _audit(
+                    session,
+                    actor_ref=actor_ref,
+                    request_id=request_id,
+                    event_type=(
+                        "canonical_replay_cancel_and_revoke_requested"
+                        if cancel_active
+                        else "canonical_replay_revoke_requested"
+                    ),
+                    object_id=str(record.id),
+                    detail={
+                        "lifecycle_status": record.lifecycle_status,
+                        "reversal_job_id": (
+                            str(record.reversal_job_id)
+                            if record.reversal_job_id is not None
+                            else None
+                        ),
+                    },
+                )
+                return _operation_response(record)
+        except IntegrityError as exc:
+            raise CanonicalReplayConflict from exc
+        finally:
+            session.close()
+
 
 def _load_response(session: Session, run_id: UUID) -> CanonicalReplayRunResponse:
     repository = PostgresCanonicalReplayRepository(session)
@@ -184,6 +320,20 @@ def _job_response(job: JobRecord) -> JobStatusResponse:
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
+    )
+
+
+def _operation_response(
+    record: CanonicalReplayAllRequestRecord,
+) -> CanonicalReplayAllOperationResponse:
+    return CanonicalReplayAllOperationResponse(
+        request_id=record.id,
+        lifecycle_status=record.lifecycle_status,
+        reversible=record.reversible,
+        reversal_job_id=record.reversal_job_id,
+        cancellation_requested_at=record.cancellation_requested_at,
+        reversal_requested_at=record.reversal_requested_at,
+        reversed_at=record.reversed_at,
     )
 
 

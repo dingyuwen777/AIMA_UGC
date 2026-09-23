@@ -8,7 +8,9 @@ from aima_ugc.contracts.administration import (
     AnalysisSchemeDefinitionRequest,
     CurrentPrincipalResponse,
     VehicleModelCreateRequest,
+    VehicleModelUpdateRequest,
 )
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.contracts.http import (
     CollectionPlanCreateRequest,
     ContentFilterSnapshot,
@@ -58,20 +60,46 @@ def test_collection_plan_accepts_brand_scope_and_rejects_removed_vehicle_scope()
         )
 
 
-def test_vehicle_model_contract_normalizes_aliases_and_rejects_duplicates() -> None:
-    """车型别名以规范化身份去重，不能在同车型下重复。"""
+def test_catalog_contracts_normalize_and_deduplicate_aliases() -> None:
+    """品牌与车型别名保留首项，并按规范化身份幂等去重。"""
+
+    brand = BrandCreateRequest(
+        display_name="爱玛",
+        role="owned",
+        aliases=[" AIMA ", "aima", "爱玛  电动车", "爱玛 电动车"],
+    )
+    assert brand.aliases == ("AIMA", "爱玛  电动车")
 
     model = VehicleModelCreateRequest(
         display_name=" 爱玛 Q7 ",
-        aliases=["Q7", "爱玛Q7"],
+        aliases=["Q7", " q7 ", "爱玛  Q7", "爱玛 Q7"],
     )
     assert model.display_name == "爱玛 Q7"
-    assert model.aliases == ("Q7", "爱玛Q7")
+    assert model.aliases == ("Q7", "爱玛  Q7")
+
+    update = VehicleModelUpdateRequest(aliases=["Q7", "q7", "爱玛  Q7", "爱玛 Q7"])
+    assert update.aliases == ("Q7", "爱玛  Q7")
+
+    repeated = ["Q7", *(" q7 " for _ in range(100))]
+    assert VehicleModelCreateRequest(display_name="爱玛 Q7", aliases=repeated).aliases == ("Q7",)
+
+    with pytest.raises(ValidationError, match="品牌识别词不能为空"):
+        BrandCreateRequest(display_name="爱玛", role="owned", aliases=["爱玛", "   "])
+
+    with pytest.raises(ValidationError, match="车型别名不能为空"):
+        VehicleModelCreateRequest(display_name="爱玛 Q7", aliases=["Q7", "   "])
+
+    with pytest.raises(ValidationError):
+        BrandCreateRequest(
+            display_name="爱玛",
+            role="owned",
+            aliases=[f"唯一品牌识别词 {index}" for index in range(101)],
+        )
 
     with pytest.raises(ValidationError):
         VehicleModelCreateRequest(
             display_name="爱玛 Q7",
-            aliases=["Q7", " q7 "],
+            aliases=[f"唯一别名 {index}" for index in range(101)],
         )
 
 

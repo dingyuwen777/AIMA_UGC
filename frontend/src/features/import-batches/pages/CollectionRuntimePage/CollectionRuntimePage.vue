@@ -14,6 +14,7 @@ import {
   type SupplementSourceSelection,
   useImportBatchesStore,
 } from '../../store'
+import CanonicalReplayDetailDrawer from './components/CanonicalReplayDetailDrawer.vue'
 import CollectionRunDetailDrawer from './components/CollectionRunDetailDrawer.vue'
 import CollectionRuntimeFilters from './components/CollectionRuntimeFilters.vue'
 import CollectionRuntimeKpiCards from './components/CollectionRuntimeKpiCards.vue'
@@ -37,6 +38,12 @@ const batchDetailOpen = computed({
 })
 const runDetailOpen = computed({
   get: () => store.selectedRun !== null,
+  set: (open: boolean) => {
+    if (!open) store.closeDetail()
+  },
+})
+const canonicalReplayDetailOpen = computed({
+  get: () => store.selectedCanonicalReplay !== null,
   set: (open: boolean) => {
     if (!open) store.closeDetail()
   },
@@ -99,6 +106,10 @@ async function createRun(request: CollectionRunCreateRequest): Promise<void> {
 
 /** 根据统一运行记录的真实 record_type 进入对应详情 Owner。 */
 async function selectItem(item: CollectionRuntimeItemResponse): Promise<void> {
+  if (item.record_type === 'canonical_replay') {
+    store.openCanonicalReplayDetail(item)
+    return
+  }
   if (item.record_type === 'excel_import') {
     await store.openBatchDetail(item.import_batch_id ?? item.record_id)
     return
@@ -121,6 +132,18 @@ async function copy(value: string): Promise<void> {
     showNotice('ID 已复制。')
   } catch {
     showNotice('复制失败，请检查浏览器剪贴板权限。')
+  }
+}
+
+async function cancelAndRevokeReplay(): Promise<void> {
+  if (await store.cancelAndRevokeSelectedCanonicalReplay()) {
+    showNotice('已请求取消；所有子任务结束后会自动撤回本次已入库数据。')
+  }
+}
+
+async function revokeReplay(): Promise<void> {
+  if (await store.revokeSelectedCanonicalReplay()) {
+    showNotice('撤回任务已提交，可在本弹窗中持续查看进度和结果。')
   }
 }
 
@@ -248,6 +271,15 @@ async function viewRunResults(runId: string): Promise<void> {
       @refresh="store.selectedRun && store.openRunDetail(store.selectedRun.run_id)"
       @copy="copy"
       @view-results="viewRunResults"
+    />
+    <CanonicalReplayDetailDrawer
+      v-model="canonicalReplayDetailOpen"
+      :item="store.selectedCanonicalReplay"
+      :acting="store.actingCanonicalReplay"
+      @refresh="store.refresh(true)"
+      @copy="copy"
+      @cancel-and-revoke="cancelAndRevokeReplay"
+      @revoke="revokeReplay"
     />
     <DataImportDialog
       v-model="dataImportOpen"

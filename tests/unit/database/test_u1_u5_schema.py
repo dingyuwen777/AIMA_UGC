@@ -41,11 +41,15 @@ def test_u1_u5_query_indexes_are_registered_in_metadata() -> None:
     """迁移创建的查询索引也必须进入 MetaData，避免 Alembic 误判为待删除。"""
 
     evidence = metadata.tables["content_vehicle_evidence"]
+    vehicles = metadata.tables["vehicle_models"]
     inbox = metadata.tables["notification_inbox_items"]
 
-    assert "ix_content_vehicle_evidence_active_vehicle" in {
-        index.name for index in evidence.indexes
-    }
+    evidence_indexes = {index.name for index in evidence.indexes}
+    vehicle_indexes = {index.name for index in vehicles.indexes}
+
+    assert "ix_content_vehicle_evidence_active_vehicle" in evidence_indexes
+    assert "ix_content_vehicle_evidence_vehicle_model_id" in evidence_indexes
+    assert "ix_vehicle_models_merged_into_id" in vehicle_indexes
     assert "ix_notification_inbox_principal_created" in {index.name for index in inbox.indexes}
 
 
