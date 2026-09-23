@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import date, datetime
+from itertools import batched
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -36,6 +37,7 @@ from aima_ugc.modules.content.tables import (
 )
 
 _BUSINESS_TZ = ZoneInfo("Asia/Shanghai")
+_MULTI_VALUES_INSERT_ROWS = 500
 _CONTENT_METRICS = (
     "like_count",
     "comment_count",
@@ -119,6 +121,15 @@ class PostgresIngestionResult:
     contribution_after: ContentContributionSnapshot | None = dataclass_field(
         default=None, compare=False, repr=False
     )
+
+
+@dataclass(frozen=True, slots=True)
+class PostgresNewContentBatchItem:
+    """集合写入中由当前事务真实创建的一条 Content。"""
+
+    observation: CanonicalContentV1
+    result: PostgresIngestionResult
+    state: dict[str, Any] = dataclass_field(compare=False, repr=False)
 
 
 class PostgresContentRepository:
@@ -246,6 +257,144 @@ class PostgresContentRepository:
             version_no,
             business_changed,
             metric_recorded,
+        )
+
+    def ingest_new_contents_batch(
+        self,
+        observations: tuple[CanonicalContentV1, ...],
+        *,
+        collection_fields: frozenset[str] = frozenset(),
+        replay_visibility_owner_id: UUID | None = None,
+    ) -> tuple[PostgresNewContentBatchItem, ...]:
+        """集合创建无稳定账号身份的 Content；数据库冲突行由调用方回退。"""
+
+        if not observations:
+            return ()
+        if any(
+            item.author is not None and item.author.external_account_id is not None
+            for item in observations
+        ):
+            raise ValueError("Content 集合创建只接受无稳定账号身份的观察")
+        identities = tuple((item.platform, item.external_content_id) for item in observations)
+        if len(set(identities)) != len(identities):
+            raise ValueError("Content 集合创建不接受重复身份")
+
+        candidates: list[tuple[CanonicalContentV1, UUID, dict[str, Any], UUID, UUID]] = []
+        for observation in observations:
+            attempt_id, raw_id = _source_ids(observation)
+            content_id = uuid4()
+            state = _new_content_state(
+                content_id,
+                observation,
+                None,
+                collection_fields=collection_fields,
+            )
+            # Multi-values INSERT 要求每行拥有相同键；缺失字段与逐行 INSERT 的
+            # 数据库 NULL 语义一致，同时在初始写入中直接保存 Replay 可见性归属。
+            for column in _CONTENT_BUSINESS_COLUMNS:
+                state.setdefault(column, None)
+            for metric in _CONTENT_METRICS:
+                state.setdefault(f"current_{metric}", None)
+            state["replay_visibility_owner_id"] = replay_visibility_owner_id
+            candidates.append((observation, content_id, state, attempt_id, raw_id))
+
+        created: dict[tuple[str, str], UUID] = {}
+        for candidate_chunk in batched(candidates, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            created_rows = self._session.execute(
+                pg_insert(contents_table)
+                .values([item[2] for item in candidate_chunk])
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        contents_table.c.platform,
+                        contents_table.c.external_content_id,
+                    ]
+                )
+                .returning(
+                    contents_table.c.id,
+                    contents_table.c.platform,
+                    contents_table.c.external_content_id,
+                )
+            )
+            created.update(
+                {
+                    (row.platform, row.external_content_id): cast(UUID, row.id)
+                    for row in created_rows
+                }
+            )
+        accepted = [
+            item
+            for item in candidates
+            if created.get((item[0].platform, item[0].external_content_id)) == item[1]
+        ]
+        if not accepted:
+            return ()
+
+        version_values = [
+            {
+                "id": uuid4(),
+                "content_id": content_id,
+                "version_no": 1,
+                "content_type": state["content_type"],
+                "title": state.get("title"),
+                "text": state.get("text"),
+                "canonical_url": state.get("canonical_url"),
+                "share_url": state.get("share_url"),
+                "author_snapshot": (
+                    observation.author.model_dump(mode="json")
+                    if observation.author is not None
+                    else None
+                ),
+                "published_at": state.get("published_at"),
+                "source_updated_at": state.get("source_updated_at"),
+                "status": state.get("status"),
+                "provider_attempt_id": attempt_id,
+                "raw_artifact_id": raw_id,
+                "observed_at": observation.observed_at,
+            }
+            for observation, content_id, state, attempt_id, raw_id in accepted
+        ]
+        for version_chunk in batched(
+            version_values,
+            _MULTI_VALUES_INSERT_ROWS,
+            strict=False,
+        ):
+            self._session.execute(insert(content_versions_table).values(list(version_chunk)))
+        metric_values = [
+            {
+                "id": uuid4(),
+                "content_id": content_id,
+                "provider_attempt_id": attempt_id,
+                "raw_artifact_id": raw_id,
+                "reason": "initial",
+                "business_date": observation.observed_at.astimezone(_BUSINESS_TZ).date(),
+                "observation_key": _observation_key(observation, "initial"),
+                "observed_at": observation.observed_at,
+                **{
+                    metric: (
+                        getattr(observation.metrics, metric)
+                        if f"metrics.{metric}" in observation.observed_fields
+                        else None
+                    )
+                    for metric in _CONTENT_METRICS
+                },
+            }
+            for observation, content_id, _state, attempt_id, raw_id in accepted
+        ]
+        for metric_chunk in batched(
+            metric_values,
+            _MULTI_VALUES_INSERT_ROWS,
+            strict=False,
+        ):
+            self._session.execute(
+                insert(content_metric_observations_table).values(list(metric_chunk))
+            )
+        return tuple(
+            PostgresNewContentBatchItem(
+                observation=observation,
+                result=PostgresIngestionResult(content_id, 1, True, True),
+                state=state,
+            )
+            for observation, content_id, state, _attempt_id, _raw_id in accepted
         )
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> PostgresIngestionResult:

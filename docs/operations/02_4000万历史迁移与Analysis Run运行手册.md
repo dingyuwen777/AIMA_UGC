@@ -202,12 +202,24 @@ WAL。当前 CI/开发验证不能替代公司服务器的真实容量、Soak、
 备份恢复和生产授权门禁。Replay 不自动删除旧 Content，也不触发 AI、Export 或 Report；如需这些
 动作，由对应正式入口另行发起。
 
-SQL 优化限于不改变 Content Owner 语义的部分：同一批命中 identity 用一条冲突安全 INSERT 声明，
-可逆贡献账本每最多 100 行合并 INSERT 以限制额外内存；同一事务内来源对验证和 before/after 快照复用；新建 Content
-的集合字段 freshness 在初始 Current 中一次写入。Content Current、Version、Metric 和自动证据
-仍由原 Owner 按行处理，因此 `batch_size=1000` **不是**“一千行只执行一条 SQL”。Worker 会为每个
-子 Run 记录 `canonical_replay.preflight_completed` 和 `canonical_replay.ingestion_completed` 的耗时、
-文件数与行数；这些日志用于定位瓶颈，状态和撤回结果仍以持久 Job/账本为准。
+Replay 先用有界的冲突安全 INSERT 声明同批命中 identity。对没有稳定账号 ID、且由当前事务通过
+数据库唯一约束真实创建的新 Content，Content Owner 会集合写入 Current、Version、Metric、Canonical
+子实体和来源贡献；Vehicle/Brand Owner 随后集合写入首版本自动证据，Replay ledger 每最多 1000 行
+合并 INSERT。各业务 Owner 的多值 INSERT 每条 SQL 最多 500 行，避免单个 Canonical 携带大量
+media/topics/mentions/locations 或大量证据时形成超大参数语句；这些 SQL 片段仍属于同一个业务批次
+事务。数据库竞争冲突、稳定账号或已有 Content 仍回退到原 Owner 的完整逐行状态机，不能为
+追求吞吐跳过账号收敛、freshness、人工锁或版本语义。因此 `batch_size=1000` 表示最多 1000 行处于
+同一个有界原子批次，不表示所有数据形态都固定执行相同数量 SQL。
+
+批次开始只做无锁 Fence 资格检查；业务写入、来源贡献、自动证据、Replay ledger 和 checkpoint 仍在
+同一事务中，提交前会锁住 Job 并再次验证 Fence。取消或 Lease 接管若先发生，本批全部写入回滚；若
+提交锁先取得，则该批完整提交，取消从下一批生效。Worker 为每个子 Run 记录 INFO 级
+`canonical_replay.preflight_completed`、`canonical_replay.ingestion_completed`；需要进一步定位时可临时
+启用 DEBUG，查看每个 `canonical_replay.batch_completed` 的 `resolution_ms`、`content_batch_ms`、
+`evidence_batch_ms`、`fallback_ms`、`ledger_checkpoint_ms`、`transaction_ms`、集合创建数和回退数。
+日志仅用于性能诊断，状态和撤回结果仍以持久 Job/账本为准。Reversal 启动时只统计一次待撤回
+Content 总数，随后按每批实际处理量推进进度；完成前仍会检查是否存在未结清 ledger，不再每批重扫
+全部剩余账本。
 
 此实现新增内部表 `canonical_replay_validation_proofs`（Alembic `20260923_0060`）。部署时先按正式
 流程备份并升级数据库，再启动新 API/Worker；旧 Worker 不使用新表，回滚代码可保留该可再生表，
@@ -225,12 +237,23 @@ Canonical，再用全量 Replay 执行；`--files`、`--rows-per-file`、`--work
 服务器耗时。Linux Compose 可在完成正式发布与容量确认后用 `--scale worker=2` 调整副本，缩容也
 必须等在途 Job 完成或按正式取消流程处理，不能直接强杀后宣称数据已撤回。
 
-本轮本地对照说明文件形态会改变收益：单文件 100 行的首次重筛，未修改 main 与优化分支分别
-执行 2749、1858 条 SQL；301 个每件仅 1 行的冷启动样本则未观察到稳定耗时改善，因为每件
-Artifact 的固定预检、证明和 Job 成本占主导。上述数字仅是隔离数据库的开发样本，不是生产
-SLO；正式容量演练应先抽样统计文件大小与行数分布，并同时测试首次无证明及再次命中证明的场景。
+2026-09-23 的集合写入对照使用同一台开发机、同一 PostgreSQL 18.4、同一正式导入/全量 Replay
+路径、1 个 Worker、1 个 Canonical 文件和 1000 条全部命中新内容。修改前 3 轮为 25.061、25.402、
+25.067 秒，中位数 25.067 秒、18,069 条 SQL；最终有界集合写入实现 3 轮为 5.817、5.797、
+6.101 秒，中位数 5.817 秒、72 条 SQL。中位吞吐从约 39.9 提升到约 171.9 行/秒，约 4.31 倍；
+SQL 数量减少约 99.6%。每轮都重建专用空库和空工作目录，输入生成与初次导入不计入 Replay
+窗口。该结果证明集合
+路径切断了新内容主路径的逐行往返，但它仍只是隔离开发样本，不是公司服务器 SLO，也不能直接按
+比例承诺 25,819 个文件的完成时间。
 
-running 取消在预检批次和业务写入批次之间协作生效，已提交批次保持对账，后续批次不再写入。
+文件形态仍会改变收益：大量每件只有一行的小 Artifact 会由文件加载、来源复核、预检证明和 Job
+固定成本主导；稳定账号、已有 Content 或竞争冲突比例高时会更多进入兼容回退。正式容量演练必须先
+抽样统计每文件行数、新建/已有比例和稳定账号比例，并同时测试首次无证明、再次命中证明、取消/接管
+与撤回。扩大 Worker 前先确认单 Worker 的 `fallback_count`、批次阶段耗时和 PostgreSQL/WAL；不能
+用增加 Worker 掩盖回退路径或数据库瓶颈。
+
+running 取消在预检批次和业务写入批次之间协作生效；若取消在业务批次事务内到达，提交前 Fence
+复核会让该批整体回滚。已提交批次保持对账，后续批次不再写入。
 共享 Reader 为保证“坏件零业务写入”，每次打开都必须先复制并完整校验当前单件 Artifact，首个
 预检批次产出前不能中断这一次全件校验；因此取消响应可能等待当前 Artifact 的这段线性 I/O/解析
 完成。Excel/Campaign Canonical 的压缩文件上限沿用 500 MB，TikHub 页面 Artifact 使用页面内容

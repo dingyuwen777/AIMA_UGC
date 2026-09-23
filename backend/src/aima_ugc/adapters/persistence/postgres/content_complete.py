@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
+from itertools import batched
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, delete, insert, select, update
+from sqlalchemy import Table, delete, insert, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -35,6 +36,8 @@ from .content import PostgresContentRepository, PostgresIngestionResult
 from .content_contributions import (
     ContentContributionSnapshot,
     commit_content_contribution,
+    commit_new_content_contributions_batch,
+    new_content_contribution_snapshot,
     prepare_content_contribution,
 )
 
@@ -50,6 +53,16 @@ _COMMENT_COLLECTION_FIELDS = {
     "mentions": comment_mentions_table,
     "locations": comment_locations_table,
 }
+_MULTI_VALUES_INSERT_ROWS = 500
+
+
+@dataclass(frozen=True, slots=True)
+class PostgresCompleteNewContentBatchItem:
+    """Content Owner 集合路径成功创建的一条完整业务记录。"""
+
+    observation: CanonicalContentV1
+    result: PostgresIngestionResult
+    contribution_after: ContentContributionSnapshot
 
 
 class PostgresCompleteContentRepository:
@@ -85,6 +98,42 @@ class PostgresCompleteContentRepository:
                 self._session.get_nested_transaction(),
             )
             self._validated_source_pairs.add(pair)
+
+    def _require_source_pairs(self, pairs: set[tuple[UUID, UUID]]) -> None:
+        """一次共享锁验证批次中的全部 Attempt/Raw 关系。"""
+
+        transaction = (
+            self._session.get_transaction(),
+            self._session.get_nested_transaction(),
+        )
+        if transaction != self._source_pair_transaction:
+            self._validated_source_pairs.clear()
+            self._source_pair_transaction = transaction
+        pending = pairs - self._validated_source_pairs
+        if not pending:
+            return
+        rows = set(
+            self._session.execute(
+                select(
+                    provider_request_attempts_table.c.id,
+                    provider_request_attempts_table.c.raw_artifact_id,
+                )
+                .where(
+                    tuple_(
+                        provider_request_attempts_table.c.id,
+                        provider_request_attempts_table.c.raw_artifact_id,
+                    ).in_(tuple(pending))
+                )
+                .with_for_update(read=True)
+            )
+        )
+        if rows != pending:
+            raise ValueError("Canonical Provider Attempt 与 Raw Artifact 来源不一致")
+        self._source_pair_transaction = (
+            self._session.get_transaction(),
+            self._session.get_nested_transaction(),
+        )
+        self._validated_source_pairs.update(pending)
 
     def ingest_content(self, observation: CanonicalContentV1) -> PostgresIngestionResult:
         """完整写入 Content，并冻结同一来源实际施加的可逆 before/after Delta。"""
@@ -137,6 +186,76 @@ class PostgresCompleteContentRepository:
             .values(replay_visibility_owner_id=self._replay_visibility_owner_id)
         )
         return replace(result, contribution_after=contribution_after)
+
+    def ingest_new_contents_batch(
+        self,
+        observations: tuple[CanonicalContentV1, ...],
+    ) -> tuple[PostgresCompleteNewContentBatchItem, ...]:
+        """集合创建安全新内容；数据库冲突与稳定账号行由调用方走兼容路径。"""
+
+        eligible = tuple(
+            item
+            for item in observations
+            if item.author is None or item.author.external_account_id is None
+        )
+        if not eligible:
+            return ()
+        source_pairs = {_source_ids(item) for item in eligible}
+        self._require_source_pairs(source_pairs)
+        created = self._core.ingest_new_contents_batch(
+            eligible,
+            collection_fields=frozenset(_CONTENT_COLLECTION_FIELDS),
+            replay_visibility_owner_id=self._replay_visibility_owner_id,
+        )
+        if not created:
+            return ()
+
+        extension_values: dict[Table, list[dict[str, object]]] = {
+            table: [] for table in _CONTENT_COLLECTION_FIELDS.values()
+        }
+        snapshots: list[tuple[CanonicalContentV1, ContentContributionSnapshot]] = []
+        results: list[PostgresCompleteNewContentBatchItem] = []
+        for item in created:
+            attempt_id, raw_id = _source_ids(item.observation)
+            collections: dict[str, tuple[dict[str, object], ...]] = {}
+            for field_name, table in _CONTENT_COLLECTION_FIELDS.items():
+                if field_name not in item.observation.observed_fields:
+                    continue
+                rows = _content_extension_rows(
+                    field_name,
+                    item.result.target_id,
+                    item.observation,
+                    attempt_id=attempt_id,
+                    raw_id=raw_id,
+                )
+                extension_values[table].extend(rows)
+                snapshot_rows = [
+                    {str(key): value for key, value in row.items() if key != "content_id"}
+                    for row in rows
+                ]
+                order_key = "id_type" if field_name == "alternate_ids" else "position"
+                snapshot_rows.sort(key=lambda row: cast(str | int, row[order_key]))
+                collections[field_name] = tuple(snapshot_rows)
+            after = new_content_contribution_snapshot(
+                item.observation,
+                content_id=item.result.target_id,
+                state=item.state,
+                collections=collections,
+            )
+            snapshots.append((item.observation, after))
+            results.append(
+                PostgresCompleteNewContentBatchItem(
+                    observation=item.observation,
+                    result=replace(item.result, contribution_after=after),
+                    contribution_after=after,
+                )
+            )
+
+        for table, values in extension_values.items():
+            for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                self._session.execute(insert(table).values(list(chunk)))
+        commit_new_content_contributions_batch(self._session, tuple(snapshots))
+        return tuple(results)
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)

@@ -83,13 +83,13 @@ Content、来源贡献、品牌/车型证据仍由各自正式 Owner 写入；Re
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 同环境代表性负载的命中行端到端吞吐至少达到当前 main 基线 3 倍 | #585 / AC1 | not_satisfied | 待旧/新隔离 PostgreSQL 三轮中位数对照 |
-| R2 | 新旧路径对 Content、Version、Metric、来源贡献、自动证据、ledger、计数、checkpoint 等价且重跑幂等 | #585 / AC2 | not_satisfied | 待差分 PostgreSQL 集成与正式 Worker workflow |
-| R3 | 取消、Lease/Fencing 接管、异常回滚和重试保持事务边界 | #585 / AC3 | not_satisfied | 待取消/接管/失败注入回归 |
-| R4 | 精确撤回保持正确且移除逐批剩余总数全表扫描 | #585 / AC4 | not_satisfied | 待 reversal 结果对账与 SQL 计数回归 |
-| R5 | 完整性预检仍先于首笔业务写入，失败时业务/ledger/checkpoint 零变化 | #585 / AC5 | not_satisfied | 待后部坏文件与预检失败 PostgreSQL 回归 |
-| R6 | 不改公开 Contract、Schema、依赖或必填配置；同步性能观测与基准文档 | #585 / AC6 | not_satisfied | 待 diff、Schema/Contract、锁文件与文档检查 |
-| R7 | Unit/Contract/PostgreSQL/Job workflow、基准、静态检查、Deep Review、PR CI、main fresh CI 完成 | #585 / AC7 | not_satisfied | 待当前 HEAD 完整交付证据 |
+| R1 | 同环境代表性负载的命中行端到端吞吐至少达到当前 main 基线 3 倍 | #585 / AC1 | satisfied | 同一 PostgreSQL 18.4、1 Worker、1000 行全命中新内容：main 三轮中位数 25.067 秒 / 18,069 SQL；最终实现三轮中位数 5.817 秒 / 72 SQL，约 4.31 倍、SQL 减少约 99.6%；持久计数 rows_seen=1000、matched=1000、ingested=1000、existing=0 |
+| R2 | 新旧路径对 Content、Version、Metric、来源贡献、自动证据、ledger、计数、checkpoint 等价且重跑幂等 | #585 / AC2 | satisfied | `test_canonical_replay_worker.py` 21 passed；101 行验证 Current/Version/Metric/External ID/来源贡献/Brand/ledger 数量和 delta；富 Canonical Content 回归 6 passed，覆盖 media/topics/mentions/locations；车型与派生品牌证据进入 ledger；既有收敛与重复重跑仍走兼容路径 |
+| R3 | 取消、Lease/Fencing 接管、异常回滚和重试保持事务边界 | #585 / AC3 | satisfied | 21 项 Replay 集成覆盖批次间取消、业务写后 checkpoint 前取消整批回滚、Lease 接管和 stale fence 拒绝；业务、seen、ledger 与 checkpoint 零半批变化 |
+| R4 | 精确撤回保持正确且移除逐批剩余总数全表扫描 | #585 / AC4 | satisfied | 101 Content 跨两批撤回成功，精确恢复/隐藏语义既有回归通过；SQL listener 证明整个 Reversal 仅 1 条 `count(distinct ...)` 初始统计，结束仍检查未结清 ledger |
+| R5 | 完整性预检仍先于首笔业务写入，失败时业务/ledger/checkpoint 零变化 | #585 / AC5 | satisfied | Replay 集成的后部坏件、Import parent 失败、证明失效与文件只开一次等预检回归均通过；首笔业务写前验证边界未改 |
+| R6 | 不改公开 Contract、Schema、依赖或必填配置；同步性能观测与基准文档 | #585 / AC6 | satisfied | `generate.py --check`、`check_compatibility.py`、架构/表所有权/文档检查通过；无 Migration、Manifest、lock、配置、HTTP/Job/Canonical 变更；运行手册同步批量边界、DEBUG 阶段耗时和最终基准 |
+| R7 | Unit/Contract/PostgreSQL/Job workflow、基准、静态检查、Deep Review、PR CI、main fresh CI 完成 | #585 / AC7 | not_satisfied | 本地 targeted Unit、38 项相关 PostgreSQL 回归、Ruff、Mypy、Contract/Docs/Architecture 已通过；待独立 Deep Review、PR current-head CI、合并与 main fresh CI |
 
 # 计划改动
 
@@ -128,11 +128,19 @@ Docs Impact 为 targeted：更新 4000 万历史迁移运行手册中 Replay 批
 
 # Completion Audit
 
-- [ ] upstream_re_read：重新读取 #585、用户运行证据和相关 Blueprint/Operations，独立重建 AC1—AC7。
-- [ ] change_coverage：确认所有 AC、不变项、非目标、取消/接管/checkpoint/撤回与性能门槛均进入实现和验证。
-- [ ] reverse_audit：从 Canonical/Job 输入到 Content/证据/ledger/checkpoint，再从取消/接管/撤回和运行中心结果反向核对；复核所有 Validation Matrix 证据边界。
+- [x] upstream_re_read：重新读取 #585、用户运行证据和相关 Blueprint/Operations，独立重建 AC1—AC7。
+- [x] change_coverage：确认所有 AC、不变项、非目标、取消/接管/checkpoint/撤回与性能门槛均进入实现和验证。
+- [x] reverse_audit：从 Canonical/Job 输入到 Content/证据/ledger/checkpoint，再从取消/接管/撤回和运行中心结果反向核对；复核所有 Validation Matrix 证据边界。
 - [ ] unresolved_cleared：所有 `not_satisfied` 清零；没有用服务器未部署事实、不同环境样本或 CI 绿色替代 AC 的直接证据。
 
 # 完成证据与状态
 
-当前分支 `perf/canonical-replay-bulk-ingestion`，Requirement Source 为 #585。尚未实现或验证，禁止进入 `ready_for_review`、合并或关闭 Issue。用户工作区 `.codex/config.toml` 和既有本地 pytest 临时目录不属于本 Change，不得修改或提交。
+当前分支 `perf/canonical-replay-bulk-ingestion`，Requirement Source 为 #585。实现已完成本地正确性、性能、静态与文档验证，但 R7 仍等待独立 Deep Review、PR current-head CI、合并后 main fresh CI，当前保持 `in_progress`。用户工作区 `.codex/config.toml` 和既有本地 pytest 临时目录不属于本 Change，不得修改或提交。
+
+## 当前本地证据
+
+- Red：101 行 Replay 原实现出现 101 条 `UPDATE contents`，确认逐行状态机是可执行缺口，而非只凭日志推断。
+- Green：最终 Replay Worker PostgreSQL workflow `21 passed`；相邻 Replay Repository、Import Reversal、Content Audit 合计 `17 passed`（其中富 Canonical Content Audit `6 passed`）；Replay Benchmark/Job/Schema targeted Unit `6 passed`，更新后 benchmark guard `2 passed`。
+- 性能：main 三轮 25.061 / 25.402 / 25.067 秒、18,069 SQL；最终实现三轮 5.817 / 5.797 / 6.101 秒、72 SQL，中位吞吐约 171.9 行/秒，约 4.31 倍。每轮使用新的空数据库和空工作目录，输入导入不计 Replay 窗口。
+- 静态/边界：Ruff targeted、Mypy 366 source files、Contract 生成/兼容、架构、表 Owner、Docs/Facts 均通过；无 Migration、依赖、锁文件或公共 Contract 变化。
+- 广域测试：Unit 全量在 Windows 沙箱外为 `1228 passed, 8 skipped, 9 failed`；9 项均为仓库既有 Windows 平台/文档隔离路径断言（6 项文档导航，3 项 POSIX `geteuid/chown`），不触及本 Change。Contract/API 为 `188 passed, 1 failed`；唯一失败由仓库既有 Provider 调试输出中的 `xhsdiscover://` 原始链接触发平台别名扫描，不触及本 Change。Linux PR CI 仍是这些环境项的交付门禁。

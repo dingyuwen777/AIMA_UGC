@@ -221,6 +221,23 @@ def run_benchmark(
                 .scalars()
                 .all()
             )
+            counters = connection.execute(
+                select(
+                    func.coalesce(func.sum(canonical_replay_runs_table.c.rows_seen), 0).label(
+                        "rows_seen"
+                    ),
+                    func.coalesce(func.sum(canonical_replay_runs_table.c.rows_matched), 0).label(
+                        "rows_matched"
+                    ),
+                    func.coalesce(func.sum(canonical_replay_runs_table.c.rows_ingested), 0).label(
+                        "rows_ingested"
+                    ),
+                    func.coalesce(
+                        func.sum(canonical_replay_runs_table.c.existing_convergence),
+                        0,
+                    ).label("existing_convergence"),
+                ).where(canonical_replay_runs_table.c.all_request_id == request_id)
+            ).one()
             ledger_count = connection.scalar(
                 select(func.count())
                 .select_from(canonical_replay_content_changes_table)
@@ -231,10 +248,21 @@ def run_benchmark(
         expected_rows = file_count * rows_per_file
         if ledger_count != expected_rows:
             raise RuntimeError("基准 Replay 贡献账本行数与输入不一致")
+        if (
+            int(counters.rows_seen) != expected_rows
+            or int(counters.rows_matched) != expected_rows
+            or int(counters.rows_ingested) != expected_rows
+            or int(counters.existing_convergence) != 0
+        ):
+            raise RuntimeError("基准 Replay 持久计数与全命中新内容输入不一致")
         return {
             "schema_version": "canonical-replay-capacity.v1",
             "files": file_count,
             "rows": expected_rows,
+            "rows_seen": int(counters.rows_seen),
+            "rows_matched": int(counters.rows_matched),
+            "rows_ingested": int(counters.rows_ingested),
+            "existing_convergence": int(counters.existing_convergence),
             "workers": workers,
             "replay_runs": run_count,
             "elapsed_seconds": round(elapsed, 3),

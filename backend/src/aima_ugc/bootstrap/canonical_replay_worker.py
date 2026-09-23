@@ -25,6 +25,7 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 )
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
+    PostgresCompleteNewContentBatchItem,
 )
 from aima_ugc.adapters.persistence.postgres.content_contributions import (
     build_content_contribution_delta,
@@ -73,8 +74,9 @@ from aima_ugc.platform.time import beijing_now
 from .runtime import PlatformRuntime
 
 _PREFLIGHT_BATCH_SIZE = 500
-_LEDGER_INSERT_ROWS = 100
+_LEDGER_INSERT_ROWS = 1000
 _MAX_PROOF_SOURCE_EXPECTATIONS = 1000
+
 # 结构变动由 Schema 摘要检测；非 Schema 可见的来源/Validator 语义改变时须提升此版本。
 _VALIDATION_VERSION = (
     "replay-source-v1:"
@@ -505,14 +507,27 @@ class PostgresCanonicalReplayJobExecutor:
         *,
         fence: JobExecutionFence,
     ) -> CanonicalReplayRunRecord:
+        batch_started = perf_counter()
+        resolution_started = perf_counter()
         resolved = tuple(
             (content, resolve_canonical_brand_vehicle(run.filter_snapshot, content))
             for content in contents
         )
+        resolution_ms = int((perf_counter() - resolution_started) * 1000)
         session = self._runtime.database.new_session()
+        advanced: CanonicalReplayRunRecord | None = None
+        fast_created_count = 0
+        fallback_count = 0
+        content_batch_ms = 0
+        evidence_batch_ms = 0
+        fallback_ms = 0
+        ledger_checkpoint_ms = 0
+        transaction_started = perf_counter()
         try:
             with session.begin():
-                PostgresJobRepository(session).lock_current_execution(fence)
+                # 这里只做无锁资格检查；提交前由 repository.advance 获取 Job 行锁并
+                # 再次验证 Fence。取消/接管可在长批次中写入状态，旧事务随后整体回滚。
+                PostgresJobRepository(session).validate_current_execution(fence)
                 repository = PostgresCanonicalReplayRepository(session)
                 current = repository.get(run.id, for_update=True)
                 if (
@@ -537,6 +552,7 @@ class PostgresCanonicalReplayJobExecutor:
                 existing = 0
                 lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
                 ledger_rows: list[dict[str, object]] = []
+                pending: list[tuple[CanonicalContentV1, BrandVehicleResolution]] = []
                 claimed_identities = repository.claim_content_identities(
                     run_id=run.id,
                     identities=(
@@ -561,6 +577,122 @@ class PostgresCanonicalReplayJobExecutor:
                         lineage=lineage,
                         lineage_by_platform=lineage_by_platform,
                     )
+                    pending.append((observation, resolution))
+
+                content_batch_started = perf_counter()
+                fast_observations = tuple(
+                    observation
+                    for observation, _resolution in pending
+                    if observation.author is None or observation.author.external_account_id is None
+                )
+                batch_created: tuple[PostgresCompleteNewContentBatchItem, ...] = (
+                    content_owner.ingest_new_contents_batch(fast_observations)
+                )
+                content_batch_ms = int((perf_counter() - content_batch_started) * 1000)
+                fast_created_count = len(batch_created)
+                inserted += fast_created_count
+                created_by_identity = {
+                    (
+                        item.observation.platform,
+                        item.observation.external_content_id,
+                    ): item
+                    for item in batch_created
+                }
+                resolution_by_identity = {
+                    (observation.platform, observation.external_content_id): resolution
+                    for observation, resolution in pending
+                }
+
+                evidence_batch_started = perf_counter()
+                evidence_created_at = beijing_now()
+                vehicle_entries: list[tuple[UUID, int, tuple[ContentVehicleEvidence, ...]]] = []
+                brand_entries = []
+                for identity, item in created_by_identity.items():
+                    resolution = resolution_by_identity[identity]
+                    vehicle_entries.append(
+                        (
+                            item.result.target_id,
+                            item.result.version_no,
+                            tuple(
+                                ContentVehicleEvidence(
+                                    id=uuid4(),
+                                    content_id=item.result.target_id,
+                                    content_version=item.result.version_no,
+                                    vehicle_model_id=evidence.entity_id,
+                                    source="alias_match",
+                                    matched_text=evidence.matched_text,
+                                    source_field=evidence.source_field,
+                                    catalog_version=resolution.catalog_version,
+                                    confidence=1.0,
+                                    is_manual_locked=False,
+                                    is_active=True,
+                                    created_at=evidence_created_at,
+                                )
+                                for evidence in resolution.vehicle_evidence
+                            ),
+                        )
+                    )
+                    brand_entries.append(
+                        (
+                            item.result.target_id,
+                            item.result.version_no,
+                            resolution.brand_evidence,
+                        )
+                    )
+                vehicle_after_by_pair = (
+                    vehicle_repository.append_initial_automatic_alias_evidence_batch(
+                        entries=tuple(vehicle_entries)
+                    )
+                )
+                brand_after_by_pair = (
+                    brand_repository.append_initial_automatic_brand_evidence_batch(
+                        entries=tuple(brand_entries),
+                        catalog_snapshot=run.filter_snapshot.catalog,
+                    )
+                )
+                evidence_batch_ms = int((perf_counter() - evidence_batch_started) * 1000)
+
+                ledger_created_at = beijing_now()
+                for item in batch_created:
+                    observation = item.observation
+                    attempt_id = observation.source.provider_attempt_id
+                    raw_id = observation.source.raw_artifact_id
+                    if attempt_id is None or raw_id is None:
+                        raise ValueError("Replay 贡献账本要求 Attempt 与 Raw 来源")
+                    if current.all_request_id is not None:
+                        pair = (item.result.target_id, item.result.version_no)
+                        ledger_rows.append(
+                            {
+                                "id": uuid4(),
+                                "all_request_id": current.all_request_id,
+                                "run_id": current.id,
+                                "content_id": item.result.target_id,
+                                "provider_attempt_id": UUID(attempt_id),
+                                "raw_artifact_id": raw_id,
+                                "version_before": None,
+                                "version_after": item.result.version_no,
+                                "delta": build_content_contribution_delta(
+                                    observation,
+                                    None,
+                                    item.contribution_after,
+                                ),
+                                "visibility_owner_before": None,
+                                "vehicle_evidence_before": [],
+                                "vehicle_evidence_after": vehicle_after_by_pair[pair],
+                                "brand_evidence_before": [],
+                                "brand_evidence_after": brand_after_by_pair[pair],
+                                "created_at": ledger_created_at,
+                            }
+                        )
+                        if len(ledger_rows) >= _LEDGER_INSERT_ROWS:
+                            self._flush_ledger_rows(session, ledger_rows)
+
+                fallback_started = perf_counter()
+                for observation, resolution in pending:
+                    identity = (observation.platform, observation.external_content_id)
+                    if identity in created_by_identity:
+                        continue
+                    fallback_count += 1
                     before = capture_content_contribution_snapshot(session, observation)
                     owner_before = (
                         session.scalar(
@@ -641,6 +773,8 @@ class PostgresCanonicalReplayJobExecutor:
                         )
                         if len(ledger_rows) >= _LEDGER_INSERT_ROWS:
                             self._flush_ledger_rows(session, ledger_rows)
+                fallback_ms = int((perf_counter() - fallback_started) * 1000)
+                ledger_checkpoint_started = perf_counter()
                 self._flush_ledger_rows(session, ledger_rows)
                 counters = CanonicalReplayCounters(
                     rows_seen=len(contents),
@@ -650,7 +784,7 @@ class PostgresCanonicalReplayJobExecutor:
                     rows_ingested=inserted,
                     existing_convergence=existing,
                 )
-                return repository.advance(
+                advanced = repository.advance(
                     run_id=run.id,
                     expected_artifact_ordinal=selected.ordinal,
                     expected_row_number=run.checkpoint_row_number,
@@ -659,8 +793,32 @@ class PostgresCanonicalReplayJobExecutor:
                     counters=counters,
                     fence=fence,
                 )
+                ledger_checkpoint_ms = int((perf_counter() - ledger_checkpoint_started) * 1000)
         finally:
             session.close()
+        if advanced is None:
+            raise RuntimeError("Canonical Replay 批次提交后缺少 checkpoint")
+        log_event(
+            self._runtime.logger,
+            logging.DEBUG,
+            "canonical_replay.batch_completed",
+            "Canonical Replay 批次已原子提交",
+            run_id=str(run.id),
+            artifact_ordinal=selected.ordinal,
+            row_start=run.checkpoint_row_number,
+            row_count=len(contents),
+            matched_count=matched,
+            fast_created_count=fast_created_count,
+            fallback_count=fallback_count,
+            resolution_ms=resolution_ms,
+            content_batch_ms=content_batch_ms,
+            evidence_batch_ms=evidence_batch_ms,
+            fallback_ms=fallback_ms,
+            ledger_checkpoint_ms=ledger_checkpoint_ms,
+            transaction_ms=int((perf_counter() - transaction_started) * 1000),
+            duration_ms=int((perf_counter() - batch_started) * 1000),
+        )
+        return advanced
 
     @staticmethod
     def _flush_ledger_rows(session: Session, rows: list[dict[str, object]]) -> None:
