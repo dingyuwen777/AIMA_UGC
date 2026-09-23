@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-102001-actions-hygiene-rate-limit
 title: Actions Hygiene 403 Rate Limit 临时错误识别
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/actions-hygiene-rate-limit
 created: 2026-09-23
@@ -70,7 +70,7 @@ GitHub 安装级 quota 暂时耗尽时，产品/治理 CI 会被 maintenance 限
 - [ ] X-RateLimit-Remaining=0 / Retry-After 等明确 header 信号也可判 transient。
 - [ ] 普通 403 permission denied → exit 1。
 - [ ] 429/5xx/network/404 retired 语义不回归。
-- [ ] current-head CI/Review/merge/main-fresh/archive/#575 closure 完整闭环。
+- [ ] current-head CI（Ready gate 执行）/Review/merge/main-fresh/archive/#575 closure 完整闭环。
 
 ## 范围
 
@@ -125,10 +125,10 @@ current path、first-parent history、active skip、completed-only、per-ID read
 
 | 编号 | 要求 | 来源 | 状态 |
 | --- | --- | --- | --- |
-| R1 | rate-limit 403 transient | #575 / AC6 | not_satisfied |
-| R2 | permission 403 hard | #575 / AC4/AC6 | not_satisfied |
-| R3 | 既有语义不回归 | #575 | not_satisfied |
-| R4 | main-fresh/closure | #575 / AC8 | not_satisfied |
+| R1 | rate-limit 403 transient | #575 / AC6 | satisfied | body/header 明确信号判定与回归资产已落库 |
+| R2 | permission 403 hard | #575 / AC4/AC6 | satisfied | 普通 403 不命中 rate-limit 证据时继续 RuntimeError；回归已覆盖 |
+| R3 | 既有语义不回归 | #575 | satisfied | 429/503 回归已覆盖，404 retired 与 v2 定向算法未修改 |
+| R4 | main-fresh/closure | #575 / AC8 | not_applicable | pre-merge 不自证未来 CI/merge/main-fresh/archive/closure；由 downstream gate 持有 |
 
 # 计划改动
 
@@ -139,7 +139,7 @@ current path、first-parent history、active skip、completed-only、per-ID read
 
 - [x] 调查真实 main-fresh 失败
 - [x] 收敛最小方案
-- [ ] 完成实现
+- [x] 完成实现
 - [ ] current-head CI
 - [ ] merge/main-fresh/closure
 
@@ -167,10 +167,10 @@ current path、first-parent history、active skip、completed-only、per-ID read
 
 # 完成审计
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read：已重读 #575、#5534 真实限流日志与 current main
+- [x] change_coverage：AC6 相关错误分类与不回归已覆盖；最终 AC8 downstream
+- [x] reverse_audit：HTTP 403 → rate-limit 证据 → transient 75 → CI warning；普通 403 保持 hard fail
+- [x] unresolved_cleared：实现侧 blocker 清零；CI/Review/post-merge 由 delivery gate 持有
 
 # 完成证据与状态
 
@@ -184,6 +184,6 @@ current path、first-parent history、active skip、completed-only、per-ID read
 
 ## 交付状态
 
-- PR：未创建
-- CI：未执行
+- PR：待创建
+- CI：待 Ready PR current-head
 - merge/archive/#575 closure：未执行
