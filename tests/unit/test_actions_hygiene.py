@@ -20,6 +20,7 @@ RUNTIME_GLOBALS = RUN_HYGIENE.__globals__
 MAIN = MODULE["main"]
 MAIN_GLOBALS = MAIN.__globals__
 TRANSIENT_ERROR = MODULE["TransientGitHubApiError"]
+IS_TRANSIENT_HTTP = MODULE["_is_transient_http_error"]
 SCOPE_MODULE = runpy.run_path(str(ROOT / "scripts/quality/classify_ci_scope.py"))
 CLASSIFY_PATHS = SCOPE_MODULE["classify_paths"]
 
@@ -235,6 +236,34 @@ class ActionsHygieneTest(unittest.TestCase):
                 RUN_HYGIENE(ROOT, "owner/repo", "token", execute=True)
         finally:
             RUNTIME_GLOBALS.update(saved)
+
+    def test_http_error_classification_keeps_permission_403_hard(self) -> None:
+        """403 只有明确 rate-limit 证据时 transient；普通权限错误必须保持硬失败。"""
+        self.assertTrue(
+            IS_TRANSIENT_HTTP(
+                403,
+                '{"message":"API rate limit exceeded for installation."}',
+                {},
+            )
+        )
+        self.assertTrue(
+            IS_TRANSIENT_HTTP(
+                403,
+                '{"message":"You have exceeded a secondary rate limit."}',
+                {},
+            )
+        )
+        self.assertTrue(IS_TRANSIENT_HTTP(403, "", {"X-RateLimit-Remaining": "0"}))
+        self.assertTrue(IS_TRANSIENT_HTTP(403, "", {"Retry-After": "60"}))
+        self.assertFalse(
+            IS_TRANSIENT_HTTP(
+                403,
+                '{"message":"Resource not accessible by integration"}',
+                {},
+            )
+        )
+        self.assertTrue(IS_TRANSIENT_HTTP(429, "too many requests", {}))
+        self.assertTrue(IS_TRANSIENT_HTTP(503, "service unavailable", {}))
 
     def test_cli_distinguishes_transient_and_hard_failures(self) -> None:
         """CLI 只把临时 GitHub API 错误映射为 75，硬错误保持普通失败。"""
