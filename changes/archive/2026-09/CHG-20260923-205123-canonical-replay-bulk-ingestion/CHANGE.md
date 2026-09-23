@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-205123-canonical-replay-bulk-ingestion
 title: 全历史 Canonical 重筛集合式入库优化
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: perf/canonical-replay-bulk-ingestion
 created: 2026-09-23T20:51:23+08:00
