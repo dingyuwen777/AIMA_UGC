@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-205123-canonical-replay-bulk-ingestion
 title: 全历史 Canonical 重筛集合式入库优化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: perf/canonical-replay-bulk-ingestion
 created: 2026-09-23T20:51:23+08:00
@@ -89,7 +89,8 @@ Content、来源贡献、品牌/车型证据仍由各自正式 Owner 写入；Re
 | R4 | 精确撤回保持正确且移除逐批剩余总数全表扫描 | #585 / AC4 | satisfied | 101 Content 跨两批撤回成功，精确恢复/隐藏语义既有回归通过；SQL listener 证明整个 Reversal 仅 1 条 `count(distinct ...)` 初始统计，结束仍检查未结清 ledger |
 | R5 | 完整性预检仍先于首笔业务写入，失败时业务/ledger/checkpoint 零变化 | #585 / AC5 | satisfied | Replay 集成的后部坏件、Import parent 失败、证明失效与文件只开一次等预检回归均通过；首笔业务写前验证边界未改 |
 | R6 | 不改公开 Contract、Schema、依赖或必填配置；同步性能观测与基准文档 | #585 / AC6 | satisfied | `generate.py --check`、`check_compatibility.py`、架构/表所有权/文档检查通过；无 Migration、Manifest、lock、配置、HTTP/Job/Canonical 变更；运行手册同步批量边界、DEBUG 阶段耗时和最终基准 |
-| R7 | Unit/Contract/PostgreSQL/Job workflow、基准、静态检查、Deep Review、PR CI、main fresh CI 完成 | #585 / AC7 | not_satisfied | 本地 targeted Unit、38 项相关 PostgreSQL 回归、Ruff、Mypy、Contract/Docs/Architecture 已通过；待独立 Deep Review、PR current-head CI、合并与 main fresh CI |
+| R7 | Unit/Contract/PostgreSQL/Job workflow、基准、静态检查和独立 Deep Review 完成 | #585 / AC7 | satisfied | targeted Unit、38 项相关 PostgreSQL 回归、三轮基准、Ruff、Mypy、Contract/Docs/Architecture 已通过；Deep Review 发现的多值 SQL 上限、基准持久计数和车型证据覆盖缺口已修复并复验，当前无阻塞 Finding |
+| R8 | PR current-head CI、guarded merge 和合并后 main fresh CI 完成 | #585 / AC7 | explicitly_deferred | `.github/workflows/ci.yml` 只在 Change 先进入 `ready_for_review` 且 Draft 转 Ready 后运行完整 PR CI，main fresh CI 只能在合并后运行；这些步骤按必需交付顺序延后到本 Change 的外部 GitHub 门禁，不延期到未来功能、不豁免，PR 未绿禁止 merge，main 未绿禁止关闭 #585 |
 
 # 计划改动
 
@@ -131,11 +132,11 @@ Docs Impact 为 targeted：更新 4000 万历史迁移运行手册中 Replay 批
 - [x] upstream_re_read：重新读取 #585、用户运行证据和相关 Blueprint/Operations，独立重建 AC1—AC7。
 - [x] change_coverage：确认所有 AC、不变项、非目标、取消/接管/checkpoint/撤回与性能门槛均进入实现和验证。
 - [x] reverse_audit：从 Canonical/Job 输入到 Content/证据/ledger/checkpoint，再从取消/接管/撤回和运行中心结果反向核对；复核所有 Validation Matrix 证据边界。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零；没有用服务器未部署事实、不同环境样本或 CI 绿色替代 AC 的直接证据。
+- [x] unresolved_cleared：所有 `not_satisfied` 已清零；R8 仅因 GitHub 门禁顺序显式延后，未被豁免；没有用服务器未部署事实、不同环境样本或 CI 绿色替代 AC 的直接证据。
 
 # 完成证据与状态
 
-当前分支 `perf/canonical-replay-bulk-ingestion`，Requirement Source 为 #585。实现已完成本地正确性、性能、静态与文档验证，但 R7 仍等待独立 Deep Review、PR current-head CI、合并后 main fresh CI，当前保持 `in_progress`。用户工作区 `.codex/config.toml` 和既有本地 pytest 临时目录不属于本 Change，不得修改或提交。
+当前分支 `perf/canonical-replay-bulk-ingestion`，Requirement Source 为 #585。实现已完成本地正确性、性能、静态、文档和独立 Deep Review，当前进入 `ready_for_review`。PR current-head CI、guarded merge 和 main fresh CI 按 R8 的 GitHub 顺序门禁继续执行。用户工作区 `.codex/config.toml` 和既有本地 pytest 临时目录不属于本 Change，不得修改或提交。
 
 ## 当前本地证据
 
@@ -144,3 +145,4 @@ Docs Impact 为 targeted：更新 4000 万历史迁移运行手册中 Replay 批
 - 性能：main 三轮 25.061 / 25.402 / 25.067 秒、18,069 SQL；最终实现三轮 5.817 / 5.797 / 6.101 秒、72 SQL，中位吞吐约 171.9 行/秒，约 4.31 倍。每轮使用新的空数据库和空工作目录，输入导入不计 Replay 窗口。
 - 静态/边界：Ruff targeted、Mypy 366 source files、Contract 生成/兼容、架构、表 Owner、Docs/Facts 均通过；无 Migration、依赖、锁文件或公共 Contract 变化。
 - 广域测试：Unit 全量在 Windows 沙箱外为 `1228 passed, 8 skipped, 9 failed`；9 项均为仓库既有 Windows 平台/文档隔离路径断言（6 项文档导航，3 项 POSIX `geteuid/chown`），不触及本 Change。Contract/API 为 `188 passed, 1 failed`；唯一失败由仓库既有 Provider 调试输出中的 `xhsdiscover://` 原始链接触发平台别名扫描，不触及本 Change。Linux PR CI 仍是这些环境项的交付门禁。
+- Deep Review：重新以 #585 AC1—AC7 和 `origin/main@6c48fe6e` 审查 Owner、并发冲突、事务、Fencing、checkpoint、取消、撤回和容量证据；多值 SQL 改为每条最多 500 行，基准补齐持久计数，车型/派生品牌证据补齐集成覆盖，修复后无未解决阻塞 Finding。
