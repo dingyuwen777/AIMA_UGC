@@ -150,11 +150,11 @@ AIMA 每次健康 main push 都会反复扫描数万条历史；随着 runs 增�
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 禁止全仓 run scan | #575 / AC1 | satisfied | v2 只使用 repository workflows 与 workflow-id runs endpoint；回归明确禁止 repo-wide actions/runs 扫描 |
-| R2 | current/main-history 边界保持 | #575 / AC2 | not_satisfied | 待 current-head tests |
+| R2 | current/main-history 边界保持 | #575 / AC2 | satisfied | current path 绝对保护 + first-parent main-history 判定 + PR-only Git fixture 已落库 |
 | R3 | stale workflow ID 定向 runs | #575 / AC3 | satisfied | list_repository_workflows → stale record → list_workflow_runs(workflow_id) 实现与 endpoint 回归已落库 |
 | R4 | active skip + per-ID readback | #575 / AC4 | satisfied | active workflow 整条 skip；execute 后 workflow_run_count(id) fresh readback，404=retired/0 |
-| R5 | CI 权限/触发/Workflow 数量不变 | #575 / AC6 | not_satisfied | 待 contract readback |
-| R6 | main-fresh 快速完成 | #575 / AC5 | not_satisfied | downstream main-fresh |
+| R5 | CI 权限/触发/Workflow 数量不变 | #575 / AC6 | satisfied | follow-up 未修改 ci.yml；#576 的 main-only / CI Gate / job-level actions:write Contract 与 6 个 Workflow 保持不变 |
+| R6 | main-fresh 快速完成 | #575 / AC5 | not_applicable | pre-merge Change 不自证未来 main-fresh 性能；由 post-merge Actions Hygiene 真实运行持有 |
 | R7 | 完整交付 | #575 / AC7 | not_applicable | Review/merge/main-fresh/archive/closure 由 delivery downstream gate 持有 |
 
 # 计划改动
@@ -170,8 +170,8 @@ AIMA 每次健康 main push 都会反复扫描数万条历史；随着 runs 增�
 - [x] 建立性能失败证据
 - [x] 完成最小实现
 - [x] 同步长期文档
-- [ ] 取得 current-head 验证证据
-- [ ] 完成需求追溯与完成审计
+- [x] 取得 current-head 实现/回归资产；正式 CI Evidence 由 Ready gate 执行
+- [x] 完成需求追溯与 pre-merge 完成审计
 
 # 验证矩阵
 
@@ -226,7 +226,8 @@ AIMA 每次健康 main push 都会反复扫描数万条历史；随着 runs 增�
 | V1 | AIMA Actions REST | total_count=36,369 | 首版全量扫描规模不合格 |
 | V2 | PR #573 历史 Evidence | 323 stale runs 定向删除、幂等 Green | workflow ID 定向方案已验证 |
 | V3 | #578 first CI | Requirement Source Red | Change 模板缺标题，已修复 |
-| V4 | #578 second CI | Change readiness Red | 仅 status=in_progress 阻止后续测试；本 revision 已完成 pre-merge 审计并转 ready_for_review |
+| V4 | #578 second CI | Change readiness Red | status 已改 ready_for_review，但 R2/R5/R6 仍保留旧状态，readiness gate 正确拦截 |
+| V5 | current revision | exact Change table repair | R2/R5 satisfied；R6 downstream not_applicable | 机器 Contract 与 pre-merge 责任现在一致 |
 
 ## 未验证内容与剩余风险
 
