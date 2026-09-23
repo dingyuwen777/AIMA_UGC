@@ -387,7 +387,7 @@ Campaign/API/Artifact/Chunk/Worker/Content Owner；它们不是裸 SQL benchmark
 主要包含需要保留的 Source/Canonical Artifact，不把持久证据冒充可删除临时文件；两者的 PostgreSQL
 `temp_bytes` 为 0，重点由 512 MiB Fixture 预算和阶段日志控制本机风险。`standard_observation` 的
 开发机改善不改变本手册的 4000 万生产授权范围。完整三轮样本、环境和计算口径保存在当前 Change 的
-`performance-results.json`，避免用单次最好结果替代 p50。
+[`changes/active/CHG-20260924-001142-import-pipeline-throughput/performance-results.json`](../../changes/active/CHG-20260924-001142-import-pipeline-throughput/performance-results.json)，避免用单次最好结果替代 p50。
 
 ---
 
