@@ -7,7 +7,7 @@ status: ready_for_review
 owner: yuwen.ding
 branch: diag/vehicle-save-timing
 created: 2026-09-23T16:50:50+08:00
-updated: 2026-09-23T17:34:20+08:00
+updated: 2026-09-23T17:45:41+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -92,6 +92,8 @@ data_changes: []
 # 文档、依赖、部署与发布影响
 
 按 targeted 影响只更新 PostgreSQL 排障说明，解释如何关联 request_id、阶段含义及不能仅凭耗时推断根因。无新依赖、配置、Migration 或部署动作；正式服务器仍需独立部署授权。诊断代码发布后才能收集服务器真实慢请求证据。
+
+交付验证暂把 #582 已通过的重筛性能分支合入本诊断任务分支：当前 CI 只触发目标为 `main` 的 PR，合并后的 HEAD 可在 main 目标上验证两批组合；#584 的车型日志 diff 仍可用 #582 分支作为审查 base 单独查看。正式合并顺序必须是 #582 后 #584，不能把组合 CI 当成跨过前一批主分支规则的许可。
 
 # 完成审计
 
