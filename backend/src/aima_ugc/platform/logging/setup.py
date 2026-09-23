@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 from collections.abc import Mapping
+from uuid import UUID
 
 from aima_ugc.platform.config import PlatformSettings
 
@@ -48,6 +49,7 @@ def configure_service_logging(
     service: str,
     settings: PlatformSettings,
     logger_name: str = "aima_ugc",
+    log_instance: UUID | None = None,
 ) -> logging.Logger:
     """配置单进程应用文件日志和 stdout。"""
     settings.log_dir.mkdir(parents=True, exist_ok=True)
@@ -61,6 +63,9 @@ def configure_service_logging(
     formatter = AimaLogFormatter(service=service)
 
     log_file = _LOG_FILES.get(service)
+    if service == "worker" and log_instance is not None:
+        # 多 Worker 共享日志目录时，轮转文件必须由单进程独占。
+        log_file = f"worker-{log_instance.hex}.log"
     if log_file is not None:
         from logging.handlers import RotatingFileHandler
 

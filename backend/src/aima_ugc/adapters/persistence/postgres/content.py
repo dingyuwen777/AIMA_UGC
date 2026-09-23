@@ -5,14 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import date, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from .content_contributions import ContentContributionSnapshot
 
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
@@ -112,6 +116,9 @@ class PostgresIngestionResult:
     version_no: int
     version_created: bool
     metric_recorded: bool
+    contribution_after: ContentContributionSnapshot | None = dataclass_field(
+        default=None, compare=False, repr=False
+    )
 
 
 class PostgresContentRepository:
@@ -120,11 +127,18 @@ class PostgresContentRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def ingest_content(self, observation: CanonicalContentV1) -> PostgresIngestionResult:
+    def ingest_content(
+        self,
+        observation: CanonicalContentV1,
+        *,
+        collection_fields: frozenset[str] = frozenset(),
+    ) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)
         author_id = self._upsert_author(observation)
         content_id = uuid4()
-        state = _new_content_state(content_id, observation, author_id)
+        state = _new_content_state(
+            content_id, observation, author_id, collection_fields=collection_fields
+        )
         created = self._session.execute(
             pg_insert(contents_table)
             .values(**state)
@@ -820,6 +834,8 @@ def _new_content_state(
     content_id: UUID,
     observation: CanonicalContentV1,
     author_id: UUID | None,
+    *,
+    collection_fields: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     state: dict[str, Any] = {
         "id": content_id,
@@ -830,11 +846,18 @@ def _new_content_state(
         "first_seen_at": observation.observed_at,
         "last_seen_at": observation.observed_at,
         "current_version": 1,
-        "field_observed_at": _initial_freshness(
-            observation.observed_fields,
-            _CONTENT_FIELD_COLUMNS,
-            observation.observed_at,
-        ),
+        "field_observed_at": {
+            **_initial_freshness(
+                observation.observed_fields,
+                _CONTENT_FIELD_COLUMNS,
+                observation.observed_at,
+            ),
+            **{
+                field: observation.observed_at.isoformat()
+                for field in collection_fields
+                if field in observation.observed_fields
+            },
+        },
         "updated_at": observation.observed_at,
     }
     state.update(_content_updates(observation, author_id))

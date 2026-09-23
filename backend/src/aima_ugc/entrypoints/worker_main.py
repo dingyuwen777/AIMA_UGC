@@ -7,6 +7,7 @@ import os
 import socket
 import time
 from collections.abc import Callable
+from uuid import uuid4
 
 from aima_ugc.bootstrap.voice_plaza_projection_worker import (
     ensure_voice_plaza_projection_backfill_job,
@@ -59,7 +60,7 @@ def run_worker_loop(
 def main() -> None:
     """启动正式 PostgreSQL Job Worker；Ctrl+C 时关闭共享 Runtime。"""
 
-    runtime = create_worker_runtime()
+    runtime = create_worker_runtime(log_instance=uuid4())
     registry = create_collection_job_registry(runtime=runtime)
     projection_job = ensure_voice_plaza_projection_backfill_job(runtime)
     worker_id = f"{socket.gethostname()}:{os.getpid()}"

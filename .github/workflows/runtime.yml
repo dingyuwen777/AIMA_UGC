@@ -660,7 +660,7 @@ jobs:
 
           test "$(compose exec -T api stat -c '%u:%g:%a' /run/internal-secrets/postgres_password | tr -d '\r')" = "0:11001:440"
           sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
-          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/worker.log"
+          sudo find "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs" -maxdepth 1 -type f -name 'worker-*.log' -print -quit | grep -q .
           sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/scheduler.log"
 
           compose exec -T api sh -ec 'printf windows-host-persistence > /app/data/windows-host-marker'

@@ -581,7 +581,7 @@ Excel
 | [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v2` Payload/Handler | 改 Import Job 版本与冻结输入语义 |
 | [`backend/src/aima_ugc/modules/ingestion/brand_vehicle_filter.py`](brand_vehicle_filter.py) | Stage 3 Brand/Vehicle Filter Snapshot 与 JSONL 过滤 | 改统一品牌车型过滤语义 |
 | [`backend/src/aima_ugc/modules/ingestion/canonical_replay.py`](canonical_replay.py) | Replay Job/Payload/运行记录边界 | 改 Replay Job 与冻结输入语义 |
-| [`backend/src/aima_ugc/modules/ingestion/canonical_replay_tables.py`](canonical_replay_tables.py) | Replay Run、输入与持久去重表 | 改 Replay Schema/对账约束 |
+| [`backend/src/aima_ugc/modules/ingestion/canonical_replay_tables.py`](canonical_replay_tables.py) | Replay Run、输入、预检证明与持久去重表 | 改 Replay Schema/对账约束 |
 | [`backend/src/aima_ugc/modules/ingestion/canonical_replay_http.py`](canonical_replay_http.py) | Replay HTTP Service Port 与领域异常 | 改创建/查询/取消边界 |
 | [`backend/src/aima_ugc/modules/ingestion/http.py`](http.py) | Import Batch HTTP Port/领域异常 | 改兼容入口应用层边界 |
 | [`backend/src/aima_ugc/modules/ingestion/query.py`](query.py) | Import Batch Read Model | 改兼容 Batch 列表/摘要 |
