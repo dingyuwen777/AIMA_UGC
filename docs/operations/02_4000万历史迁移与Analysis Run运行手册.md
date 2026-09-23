@@ -167,7 +167,8 @@ Chunk、Scope-only、缺失或含糊父级不能手工改表绕过，也不能�
 页面“重筛入库”使用新的随机幂等键调用全量入口。100 是单个 Replay Run 的 Canonical 文件数
 上限，不是内容行数限制；一个文件可以包含任意多行并流式读取。全部子 Job 会立即排队，多个
 Worker 可以并行领取；增加 Worker 数以前必须先确认 Artifact Store、临时盘和 PostgreSQL/WAL
-容量，不能把“已拆分”误认为单 Worker 内部会自动并行。
+容量，不能把“已拆分”误认为单 Worker 内部会自动并行。正式 Worker 入口把每个进程的轮转日志写入
+独立的 `worker-<实例 UUID>.log`；共享 Host Root 下不应让多个进程轮转同一个 `worker.log`。
 
 全量 Replay 在每笔 Content 写入事务中同时保存可逆 Delta、可见性归属和 Brand/Vehicle 自动证据
 before/after。撤回 Job 以 100 个 Content 为一批执行，并在每批验证 Fencing Token。仅当内容的
@@ -184,17 +185,45 @@ Migration `20260922_0059` 之前创建的全量 Replay 没有精确贡献账本�
 不要把 Reversal Job 当成第二次导入或重复 KPI。
 
 每次首次执行和 Lease 接管都会在下一笔 Content 写入前重新预检全部输入的 metadata、文件、
-SHA-256、byte size、gzip、JSON、Canonical Contract 和来源链。任一输入失败时先核对 Artifact/父级
+SHA-256、byte size 和来源链；没有有效证明的文件还要完整验证 gzip、JSON 与 Canonical Contract。
+任一输入失败时先核对 Artifact/父级
 账本；不要删除 Run、修改 checkpoint 或把损坏文件替换到原 `storage_key`。已提交批次由
 `artifact ordinal + row number` checkpoint、每 Run Content identity 和 Job fencing 共同保护；接管
 从最后提交点继续，陈旧 Worker 不能推进统计或业务写入。
 
-容量估算必须计入“全输入预检 + 实际流式执行”两次 Reader 打开；每次打开内部还会完整复制到
-临时文件、全件预校验并正式流式解析。业务阶段对每件 Artifact 连续取批，不会每批从第 0 行重读；
+容量估算必须计入“全输入预检 + 实际流式执行”两次 Reader 打开；每次打开都要完整复制到
+临时文件并校验压缩字节摘要。历史 Artifact 首次完整预检后会写入可再生验证证明；再次重筛只有证明
+与当前压缩字节 SHA-256、Artifact 元数据、Contract/来源规则版本一致，且当前来源关系复核通过，
+才跳过预检的 gzip/JSON/Contract 解析。证明缺失或失效会退回完整预检；即使命中证明，业务阶段仍
+解析 Canonical。普通 Reader 的“首行输出前全件校验”行为保持不变。业务阶段对每件 Artifact 连续取批，
+不会每批从第 0 行重读；
 接管时只对当前 Artifact 从头线性跳过 checkpoint。还须测量 Content/Evidence 写入和 PostgreSQL
 WAL。当前 CI/开发验证不能替代公司服务器的真实容量、Soak、
 备份恢复和生产授权门禁。Replay 不自动删除旧 Content，也不触发 AI、Export 或 Report；如需这些
 动作，由对应正式入口另行发起。
+
+SQL 优化限于不改变 Content Owner 语义的部分：同一批命中 identity 用一条冲突安全 INSERT 声明，
+可逆贡献账本每最多 100 行合并 INSERT 以限制额外内存；同一事务内来源对验证和 before/after 快照复用；新建 Content
+的集合字段 freshness 在初始 Current 中一次写入。Content Current、Version、Metric 和自动证据
+仍由原 Owner 按行处理，因此 `batch_size=1000` **不是**“一千行只执行一条 SQL”。Worker 会为每个
+子 Run 记录 `canonical_replay.preflight_completed` 和 `canonical_replay.ingestion_completed` 的耗时、
+文件数与行数；这些日志用于定位瓶颈，状态和撤回结果仍以持久 Job/账本为准。
+
+此实现新增内部表 `canonical_replay_validation_proofs`（Alembic `20260923_0060`）。部署时先按正式
+流程备份并升级数据库，再启动新 API/Worker；旧 Worker 不使用新表，回滚代码可保留该可再生表，
+无需删除已形成的业务数据。历史文件不批量盲信原有摘要，也不要求停机一次性回填：首次重筛逐件
+完整验证后回填，文件被替换或元数据/验证规则变化会失效。当前验证规则的非 Schema 语义改变时，
+开发必须提升验证版本，避免沿用旧证明。这里不自动执行服务器 Migration 或全量重筛。
+
+容量演练只在专用空数据库上运行
+[`scripts/performance/benchmark_canonical_replay.py`](../../scripts/performance/benchmark_canonical_replay.py)，
+数据库名必须以 `_canonical_replay_capacity` 结尾，工作目录必须为空。脚本用正式导入路径生成
+Canonical，再用全量 Replay 执行；`--files`、`--rows-per-file`、`--workers` 可区分“很多小文件”与
+“少量大文件”，结果包含 Replay 耗时、SQL 次数及命中率相关的行数。基准不会清空数据库；每次
+对照使用新的专用空库和工作目录。扩大 Worker 时先以 1、2、4 个实例逐级测量，观察吞吐、锁等待、
+连接数、WAL、磁盘和正常 Job 延迟；并发不保证线性提速，不能只凭本地样本推算 25,819 个文件的
+服务器耗时。Linux Compose 可在完成正式发布与容量确认后用 `--scale worker=2` 调整副本，缩容也
+必须等在途 Job 完成或按正式取消流程处理，不能直接强杀后宣称数据已撤回。
 
 running 取消在预检批次和业务写入批次之间协作生效，已提交批次保持对账，后续批次不再写入。
 共享 Reader 为保证“坏件零业务写入”，每次打开都必须先复制并完整校验当前单件 Artifact，首个
@@ -333,7 +362,7 @@ historical_import_campaigns
 → artifacts
 → processing_import_batches
 → processing_import_batch_items
-→ worker.log
+→ worker-*.log
 ```
 
 ### Analysis Run 卡住
@@ -344,7 +373,7 @@ analysis_content_runs
 → analysis_content_requests / request_items
 → jobs
 → analysis_content_results
-→ worker.log / LLM 调用审计
+→ worker-*.log / LLM 调用审计
 ```
 
 不要手工 UPDATE 状态或删除账本“解卡”。先确认 Job Lease、Fencing Token、Attempt Deadline、error_code、Artifact 完整性和正式取消/重试入口。

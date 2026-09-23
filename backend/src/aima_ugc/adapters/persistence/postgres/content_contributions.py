@@ -96,6 +96,8 @@ class ContentContributionDraft:
 def prepare_content_contribution(
     session: Session,
     observation: CanonicalContentV1,
+    *,
+    before_snapshot: ContentContributionSnapshot | None = None,
 ) -> ContentContributionDraft:
     """在 Content 写入前冻结 before；同一来源重放时复用原贡献事实。"""
 
@@ -114,7 +116,11 @@ def prepare_content_contribution(
     return ContentContributionDraft(
         source_item_key=source_item_key,
         already_recorded=False,
-        before=_capture_snapshot(session, observation),
+        before=(
+            before_snapshot
+            if before_snapshot is not None
+            else _capture_snapshot(session, observation)
+        ),
     )
 
 
@@ -124,11 +130,11 @@ def commit_content_contribution(
     draft: ContentContributionDraft,
     observation: CanonicalContentV1,
     content_id: UUID,
-) -> None:
+) -> ContentContributionSnapshot | None:
     """在完整 Content + Extension 写入后追加不可变 Delta；与业务写处于同一事务。"""
 
     if draft.already_recorded:
-        return
+        return None
     attempt_raw = _source_ids(observation)
     after = _capture_snapshot(session, observation, content_id=content_id)
     if after is None or after.content_id != content_id or after.version_no is None:
@@ -170,6 +176,7 @@ def commit_content_contribution(
             or persisted["raw_artifact_id"] != attempt_raw[1]
         ):
             raise RuntimeError("Content 来源贡献幂等键发生身份冲突")
+    return after
 
 
 def content_source_item_key(observation: CanonicalContentV1) -> str:

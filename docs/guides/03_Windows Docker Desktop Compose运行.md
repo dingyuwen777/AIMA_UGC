@@ -218,7 +218,7 @@ AIMA_HOST_ROOT=./.runtime/compose
 ```text
 .runtime\compose\runtime\data\
 .runtime\compose\runtime\logs\api.log
-.runtime\compose\runtime\logs\worker.log
+.runtime\compose\runtime\logs\worker-<实例 UUID>.log
 .runtime\compose\runtime\logs\scheduler.log
 ```
 

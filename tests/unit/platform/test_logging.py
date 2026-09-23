@@ -164,3 +164,37 @@ def test_logging_redacts_escapes_and_rotates_to_gzip(tmp_path) -> None:
         r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} test_logging\.py L\d+\] \[INFO\]",
         output,
     )
+
+
+def test_worker_instances_write_separate_rotating_logs(tmp_path) -> None:
+    from uuid import uuid4
+
+    settings = PlatformSettings(
+        data_dir=tmp_path / "data",
+        log_dir=tmp_path / "logs",
+        secret_dir=tmp_path / "secrets",
+    )
+    first_id, second_id = uuid4(), uuid4()
+    first = configure_service_logging(
+        service="worker",
+        settings=settings,
+        logger_name="aima_ugc.test.worker.first",
+        log_instance=first_id,
+    )
+    second = configure_service_logging(
+        service="worker",
+        settings=settings,
+        logger_name="aima_ugc.test.worker.second",
+        log_instance=second_id,
+    )
+    try:
+        log_event(first, logging.INFO, "test.first", "first worker")
+        log_event(second, logging.INFO, "test.second", "second worker")
+    finally:
+        shutdown_service_logging(first)
+        shutdown_service_logging(second)
+
+    first_text = (settings.log_dir / f"worker-{first_id.hex}.log").read_text(encoding="utf-8")
+    second_text = (settings.log_dir / f"worker-{second_id.hex}.log").read_text(encoding="utf-8")
+    assert "test.first" in first_text and "test.second" not in first_text
+    assert "test.second" in second_text and "test.first" not in second_text

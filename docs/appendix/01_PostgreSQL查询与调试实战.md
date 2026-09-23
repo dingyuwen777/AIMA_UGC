@@ -898,7 +898,7 @@ uv run alembic check
 2. jobs
 3. job_attempt_events
 4. provider_requests / provider_request_attempts
-5. worker.log
+5. worker-*.log（正式 Worker 入口；手工 Runtime 可为 worker.log）
 ```
 
 ### TikHub 有 Run 但没有 Content

@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import json
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryFile
 from typing import BinaryIO, cast
@@ -108,9 +109,55 @@ class CanonicalArtifactReader:
 
     def __init__(self, *, store: ArtifactStore) -> None:
         self._store = store
+        self._preflighted: set[tuple[object, ...]] = set()
 
     def read(self, artifact: ArtifactRecord) -> Iterator[CanonicalContentV1]:
         """校验同一磁盘临时副本两遍，避免失败 Artifact 产生部分输出。"""
+
+        with self._verified_temporary(artifact) as stream:
+            # 普通消费者的首条输出仍以全文件 Contract 校验完成为前提。
+            for _ in self._read_validated_lines(stream):
+                pass
+            stream.seek(0)
+            yield from self._read_validated_lines(stream)
+
+    def read_for_preflight(self, artifact: ArtifactRecord) -> Iterator[CanonicalContentV1]:
+        """Replay 只读预检单遍解析；完整耗尽后才授予当前 Reader 复用资格。"""
+
+        with self._verified_temporary(artifact) as stream:
+            yield from self._read_validated_lines(stream)
+        self._preflighted.add(self._preflight_key(artifact))
+
+    def verify_bytes_for_preflight(self, artifact: ArtifactRecord) -> None:
+        """已有同版本验证证明时仍逐字节核对当前文件，避免只信数据库摘要。"""
+
+        with self._verified_temporary(artifact):
+            pass
+        self._preflighted.add(self._preflight_key(artifact))
+
+    def read_preflighted(self, artifact: ArtifactRecord) -> Iterator[CanonicalContentV1]:
+        """仅对同一 Reader 已完整预检的 Artifact 单遍读取，并重新核对字节摘要。"""
+
+        if self._preflight_key(artifact) not in self._preflighted:
+            raise CanonicalArtifactIntegrityError("Canonical Artifact 尚未完成当前 Replay 预检")
+        with self._verified_temporary(artifact) as stream:
+            yield from self._read_validated_lines(stream)
+
+    @staticmethod
+    def _preflight_key(artifact: ArtifactRecord) -> tuple[object, ...]:
+        """把复用资格绑定到 Artifact 身份、位置与压缩字节元数据。"""
+
+        return (
+            artifact.id,
+            artifact.storage_backend,
+            artifact.storage_key,
+            artifact.sha256,
+            artifact.byte_size,
+        )
+
+    @contextmanager
+    def _verified_temporary(self, artifact: ArtifactRecord) -> Iterator[BinaryIO]:
+        """每次打开仍复制并校验压缩字节，防止预检后文件被替换。"""
 
         self._validate_metadata(artifact)
         with TemporaryFile(mode="w+b") as temporary:
@@ -127,13 +174,8 @@ class CanonicalArtifactReader:
                 raise CanonicalArtifactIntegrityError("Canonical Artifact SHA-256 校验失败")
             if actual.byte_size != artifact.byte_size:
                 raise CanonicalArtifactIntegrityError("Canonical Artifact 字节大小校验失败")
-
-            # 第一遍遍历完整 gzip/JSON/Contract，但不向调用方暴露任何记录。
             stream.seek(0)
-            for _ in self._read_validated_lines(stream):
-                pass
-            stream.seek(0)
-            yield from self._read_validated_lines(stream)
+            yield stream
 
     def _validate_metadata(self, artifact: ArtifactRecord) -> None:
         """拒绝未绑定、格式不符或属于其他 Store 的 Artifact 元数据。"""
