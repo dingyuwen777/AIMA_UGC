@@ -495,6 +495,8 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
                 "exec",
                 POSTGRES_CONTAINER,
                 "pg_isready",
+                "-h",
+                "127.0.0.1",
                 "-U",
                 POSTGRES_USER,
                 "-d",

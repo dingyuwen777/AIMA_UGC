@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -23,6 +23,7 @@ _LOCAL_RUNTIME = _load_local_runtime()
 LocalDevError = _LOCAL_RUNTIME.LocalDevError
 build_runtime_environment = _LOCAL_RUNTIME.build_runtime_environment
 ensure_env_local = _LOCAL_RUNTIME.ensure_env_local
+ensure_postgres_container = _LOCAL_RUNTIME.ensure_postgres_container
 ensure_random_secret = _LOCAL_RUNTIME.ensure_random_secret
 frontend_dependencies_stale = _LOCAL_RUNTIME.frontend_dependencies_stale
 load_local_dev_config = _LOCAL_RUNTIME.load_local_dev_config
@@ -216,6 +217,42 @@ def test_runtime_environment_does_not_forward_ssl_key_log_file(
     environment = build_runtime_environment(paths=paths, config=config)
 
     assert environment.get("SSLKEYLOGFILE") is None
+
+
+def test_postgres_readiness_probe_uses_tcp_for_initialized_server(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    paths.postgres_password_file.write_text(f"{'p' * 48}\n", encoding="utf-8")
+    probe_commands: list[list[str]] = []
+
+    monkeypatch.setattr(_LOCAL_RUNTIME.shutil, "which", lambda _name: "docker")
+    monkeypatch.setattr(_LOCAL_RUNTIME, "_run_docker", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_LOCAL_RUNTIME, "_docker_inspect", lambda *_args: "existing")
+    monkeypatch.setattr(
+        _LOCAL_RUNTIME,
+        "_docker_field",
+        lambda _docker, _container, template: (
+            _LOCAL_RUNTIME.POSTGRES_IMAGE if template == "{{.Config.Image}}" else "true"
+        ),
+    )
+
+    def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        probe_commands.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(_LOCAL_RUNTIME.subprocess, "run", fake_run)
+
+    ensure_postgres_container(paths, timeout_seconds=1)
+
+    assert len(probe_commands) == 1
+    probe = probe_commands[0]
+    assert probe[probe.index("pg_isready") + 1 : probe.index("-U")] == [
+        "-h",
+        "127.0.0.1",
+    ]
 
 
 def test_legacy_postgres_password_is_not_reused_for_new_internal_root(
