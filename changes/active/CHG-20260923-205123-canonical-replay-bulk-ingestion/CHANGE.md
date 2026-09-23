@@ -79,7 +79,7 @@ Content、来源贡献、品牌/车型证据仍由各自正式 Owner 写入；Re
 2. 已采用：在各业务 Owner 内提供集合式新内容快路径，已有/冲突行回退。能覆盖当前约 87% 的匹配工作量，同时保留原有复杂更新语义和回滚边界；实现与测试成本中等。
 3. 使用临时 staging 表或 `COPY` 后用大型 SQL 全量合并全部 Content/证据/账本：理论吞吐更高，但会把多个 Owner 的状态机、版本/指标和证据规则压进新的数据库程序，形成第二套实现，正确性和长期维护风险过高，当前不采用。
 
-# Requirement Traceability
+# 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
@@ -101,7 +101,7 @@ Content、来源贡献、品牌/车型证据仍由各自正式 Owner 写入；Re
 5. 对照验证与调优：同库同数据运行旧/新至少三轮，只有结果等价且吞吐门槛满足才进入 Ready；否则回到瓶颈证据，不合并。
 6. targeted 文档同步、Completion Audit、Deep Review、PR current-head CI、guarded merge、main fresh CI、自动 Change 归档与 Issue Closure。
 
-# Validation Matrix
+# 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
@@ -127,7 +127,7 @@ Content、来源贡献、品牌/车型证据仍由各自正式 Owner 写入；Re
 
 Docs Impact 为 targeted：更新 4000 万历史迁移运行手册中 Replay 批量写入、阶段观测、同环境基准和 Worker 扩容顺序；其他架构文档只有在最终实现改变其当前事实时才修改。无新依赖、锁文件、Migration、公共 API 或前端生成物。合并不包含 Release/Deploy；服务器只有发布新镜像后才会获得新实现。
 
-# Completion Audit
+# 完成审计
 
 - [x] upstream_re_read：重新读取 #585、用户运行证据和相关 Blueprint/Operations，独立重建 AC1—AC7。
 - [x] change_coverage：确认所有 AC、不变项、非目标、取消/接管/checkpoint/撤回与性能门槛均进入实现和验证。
