@@ -140,11 +140,11 @@ main-only + CI Gate、job-level actions:write、current/main-history/active-run 
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 禁止全仓 runs 扫描 | 本 Change AC1 | satisfied | list_workflow_runs 只使用 /actions/workflows/<id>/runs；回归显式禁止 /actions/runs? |
-| R2 | stale workflow 定向分页 | AC2-AC5 | satisfied | stale selection / targeted runs / active skip / per-ID readback 回归已落库 |
-| R3 | 错误语义保持严格 | AC6 | satisfied | transient=75 与 hard=1 CLI 回归；Workflow 只吞 75 |
-| R4 | Workflow 结构不变 | AC7 | satisfied | 不修改 ci.yml |
-| R5 | 完整交付 | AC8 | not_satisfied | downstream |
+| R1 | 禁止全仓 runs 扫描 | #575 / AC4 | satisfied | list_workflow_runs 只使用 /actions/workflows/<id>/runs；回归显式禁止 /actions/runs?；#573 archive 提供性能失败事实 |
+| R2 | stale workflow 定向分页 | #575 / AC1-AC4 | satisfied | stale selection / targeted runs / active skip / per-ID readback 回归已落库 |
+| R3 | 错误语义保持严格 | #575 / AC6 | satisfied | transient=75 与 hard=1 CLI 回归；Workflow 只吞 75 |
+| R4 | Workflow 结构不变 | #575 / AC7 | satisfied | 不修改 ci.yml；AIMA 仍保持 6 个长期 Workflow |
+| R5 | 完整交付 | #575 / AC8 | not_applicable | pre-merge Change 不自证 Review/merge/main-fresh/archive/Issue closure；由 delivery downstream gate 持有 |
 
 # 计划改动
 
@@ -207,13 +207,13 @@ main-only + CI Gate、job-level actions:write、current/main-history/active-run 
 
 ## 未验证内容与剩余风险
 
-待 current-head CI 与修复后 main-fresh。
+current-head required CI 与修复后 main-fresh 尚未完成。
 
 ## 交付状态
 
 - Branch：fix/actions-hygiene-targeted-pagination
-- PR：未创建
-- Merge：未执行
+- PR：#577（Ready）
+- Merge：未执行；current-head required CI / Review Green 后 guarded merge
 - Issue #575：保持 open
 
 ## 备注
