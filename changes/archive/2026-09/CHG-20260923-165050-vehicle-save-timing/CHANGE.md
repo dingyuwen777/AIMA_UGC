@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260923-165050-vehicle-save-timing
 title: 车型编辑保存阶段耗时诊断
 level: L2
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: diag/vehicle-save-timing
 created: 2026-09-23T16:50:50+08:00
-updated: 2026-09-23T18:09:57+08:00
+updated: 2026-09-23
 completion_gate: required
 depends_on: []
 affected_areas:
