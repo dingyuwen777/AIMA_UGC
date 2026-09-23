@@ -1,13 +1,13 @@
 ---
 schema: coding-change/v1
-id: CHG-20260920-report-strategy-feishu-publication
+id: CHG-20260923-115743-report-strategy-feishu-publication
 title: 报告策略页面与飞书发布 Job 前后端接通
 level: L2
 status: ready_for_review
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-20
-updated: 2026-09-20
+updated: 2026-09-23
 completion_gate: required
 depends_on:
   - CHG-20260917-180708-representative-selection-feishu-sync
@@ -77,6 +77,23 @@ data_changes:
 - 不在普通测试中调用真实飞书或真实付费 LLM；真实租户写入仍需人工显式关闭 Dry Run。
 - 不把浏览器本地路径、Secret、完整内部路径或第三方响应正文返回给前端。
 
+# 约束与意图决策
+
+| 决策维度 | 当前决定 | 依据 | 影响 |
+| --- | --- | --- | --- |
+| 范围与执行 | 复用现有报告编排、Durable Job Runtime 与 Worker Registry | E2、E3 | 不新增平行队列或复制报告业务 |
+| 文件与数据 | XLSX 存入受控 Artifact，Job Payload 只保存稳定 ID 与参数 | E1、E2 | 不暴露本地路径或文件字节 |
+| 外部写入 | Dry Run 默认阻断飞书写入，真实发布需显式关闭 | E4 | 不生成伪造链接或静默写入 |
+| 接口与权限 | 使用专用管理员 multipart API 与 Job 查询入口 | E1、E5 | 权限由后端校验，前端不执行长任务 |
+| 兼容与回滚 | 保持现有报告口径和 Renderer；代码可回滚 | E3、E4 | 不改变历史报告语义 |
+
+# 修改方案与决策依据
+
+1. API 采用两个专用 multipart 管理员入口和一个 Job 查询入口，拒绝通用 shell 执行器。
+2. 上传先保存受控 Artifact，再入队通用 Job；Worker 从 Artifact 读入临时目录并校验 SHA-256。
+3. 报告路径复用 `prepare_representative_report()` 与统一报告 Renderer；Dry Run 在发布器之前返回，不调用任何飞书写入。
+4. 前端只通过 generated client 的 Feature API 调用 HTTP，使用 3 秒轮询并在组件卸载时停止轮询。
+
 # 需求追溯
 
 | ID | Requirement | Source | Status | Evidence |
@@ -89,12 +106,13 @@ data_changes:
 | R6 | 只有管理员可创建/查询发布 Job，Secret 不进入 Contract、Payload 或结果 | user:confirmed-report-strategy / AC6 | satisfied | `current_administrator()`、Contract 模型、HTTP/Worker 安全结果测试 |
 | R7 | OpenAPI/generated client、当前产品文档和 API 导航与实现一致 | user:confirmed-report-strategy / AC7 | satisfied | `contracts/openapi/openapi.json`、generated client、产品/Blueprint/Guide/Appendix 更新 |
 
-# 修改方案与决策依据
+# 计划改动
 
-1. API 采用两个专用 multipart 管理员入口和一个 Job 查询入口，拒绝通用 shell 执行器。
-2. 上传先保存受控 Artifact，再入队通用 Job；Worker 从 Artifact 读入临时目录并校验 SHA-256。
-3. 报告路径复用 `prepare_representative_report()` 与统一报告 Renderer；Dry Run 在发布器之前返回，不调用任何飞书写入。
-4. 前端只通过 generated client 的 Feature API 调用 HTTP，使用 3 秒轮询并在组件卸载时停止轮询。
+| 文件 / 模块 / 资产 | 计划修改 | 原因 |
+| --- | --- | --- |
+| Administration / API / frontend | 接通报告策略、上传、Job 查询和配置界面 | 提供管理员可观察的异步操作路径 |
+| Reporting / Artifact / Worker | 复用报告流程并通过受控 Artifact 执行 | 保持文件与任务边界清晰 |
+| Contracts / docs / tests | 同步 API、产品说明和回归覆盖 | 保持实现、契约和验证证据一致 |
 
 # 验证矩阵
 

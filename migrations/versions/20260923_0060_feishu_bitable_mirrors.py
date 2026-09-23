@@ -1,7 +1,7 @@
 """增加报告独立 Base 与文档内嵌 Base 的双向镜像状态。
 
-Revision ID: 20260922_0053
-Revises: 20260913_0052
+Revision ID: 20260923_0060
+Revises: 20260922_0059
 """
 
 from collections.abc import Sequence
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "20260922_0053"
-down_revision: str | Sequence[str] | None = "20260913_0052"
+revision: str = "20260923_0060"
+down_revision: str | Sequence[str] | None = "20260922_0059"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
