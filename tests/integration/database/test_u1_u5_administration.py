@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
+import aima_ugc.bootstrap.administration_http as administration_http
 import pytest
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
@@ -172,6 +175,100 @@ def test_vehicle_display_name_update_uses_bounded_queries(runtime) -> None:  # t
     assert len(statements) == 9
     assert updated.display_name == "查询后车型"
     assert tuple(alias.text for alias in updated.aliases) == ("保留别名",)
+
+
+def test_vehicle_update_slow_log_records_stages_without_business_text(
+    runtime, monkeypatch, caplog
+) -> None:  # type: ignore[no-untyped-def]
+    """慢成功与慢失败记录安全阶段字段，正常快速保存不产生告警。"""
+
+    principal = Principal(
+        principal_id="vehicle-timing-admin",
+        display_name="管理员",
+        role="administrator",
+        source="development",
+    )
+    brand = _create_owned_brand(runtime, principal, code="TIMING")
+    service = PostgresAdministrationHttpService(runtime)
+    created = service.create_vehicle_model(
+        VehicleModelCreateRequest(display_name="初始车型", brand_id=brand.id),
+        principal=principal,
+        request_id="vehicle-timing-create",
+    )
+    runtime.logger.addHandler(caplog.handler)
+    try:
+        monkeypatch.setattr(administration_http, "SLOW_VEHICLE_UPDATE_MS", 10**9)
+        service.update_vehicle_model(
+            created.id,
+            VehicleModelUpdateRequest(display_name="快速且敏感的车型名"),
+            principal=principal,
+            request_id="vehicle-timing-fast",
+        )
+        assert not any(
+            getattr(record, "event", None) == "administration.vehicle_model_update_slow"
+            for record in caplog.records
+        )
+
+        monkeypatch.setattr(administration_http, "SLOW_VEHICLE_UPDATE_MS", 0)
+        service.update_vehicle_model(
+            created.id,
+            VehicleModelUpdateRequest(display_name="慢速且敏感的车型名", aliases=("敏感别名",)),
+            principal=principal,
+            request_id="vehicle-timing-slow",
+        )
+        with pytest.raises(AdministrationConflict):
+            service.update_vehicle_model(
+                created.id,
+                VehicleModelUpdateRequest(display_name="失败且敏感的车型名", brand_id=uuid4()),
+                principal=principal,
+                request_id="vehicle-timing-failed",
+            )
+    finally:
+        runtime.logger.removeHandler(caplog.handler)
+
+    events = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "administration.vehicle_model_update_slow"
+    ]
+    assert [(record.request_id, record.outcome) for record in events] == [
+        ("vehicle-timing-slow", "success"),
+        ("vehicle-timing-failed", "failed"),
+    ]
+    stages = events[0].stage_ms
+    assert set(stages) == {
+        "session_create",
+        "db_checkout",
+        "vehicle_lock",
+        "brand_check",
+        "catalog_version",
+        "model_update",
+        "alias_replace",
+        "audit",
+        "response_projection",
+        "commit",
+    }
+    assert events[0].vehicle_model_id == str(created.id)
+    assert events[0].changed_fields == ["aliases", "display_name"]
+    assert events[1].changed_fields == ["brand_id", "display_name"]
+    assert set(events[1].stage_ms) == {
+        "session_create",
+        "db_checkout",
+        "vehicle_lock",
+        "brand_check",
+    }
+    assert "敏感" not in caplog.text
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            audit_events = PostgresAuditRepository(session).list_recent(limit=20)
+    finally:
+        session.close()
+    update_request_ids = {
+        event.request_id for event in audit_events if event.event_type == "vehicle_model_updated"
+    }
+    assert {"vehicle-timing-fast", "vehicle-timing-slow"} <= update_request_ids
+    assert "vehicle-timing-failed" not in update_request_ids
 
 
 def test_vehicle_merge_redirects_identity_and_audits_mutations(runtime) -> None:  # type: ignore[no-untyped-def]

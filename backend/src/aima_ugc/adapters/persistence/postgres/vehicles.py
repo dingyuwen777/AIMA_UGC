@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -27,6 +28,7 @@ from aima_ugc.modules.vehicles.tables import (
     vehicle_model_aliases_table,
     vehicle_models_table,
 )
+from aima_ugc.platform.logging.timing import StageTimings
 from aima_ugc.platform.time import beijing_now
 
 
@@ -267,6 +269,7 @@ class PostgresVehicleCatalogRepository:
         actor_ref: str,
         classification: dict[str, object | None] | None = None,
         current: VehicleModel | None = None,
+        timings: StageTimings | None = None,
     ) -> VehicleModel:
         """更新车型并递增目录版本；调用方可复用同一事务中已锁定的当前行。"""
 
@@ -284,14 +287,18 @@ class PostgresVehicleCatalogRepository:
         if effective_status == "active":
             if requested_brand_id is None:
                 raise RuntimeError("active 车型必须绑定 active 品牌")
-            brand_status = self._session.scalar(
-                select(vehicle_brands_table.c.status)
-                .where(vehicle_brands_table.c.id == requested_brand_id)
-                .with_for_update()
-            )
+            with timings.measure("brand_check") if timings else nullcontext():
+                brand_status = self._session.scalar(
+                    select(vehicle_brands_table.c.status)
+                    .where(vehicle_brands_table.c.id == requested_brand_id)
+                    .with_for_update()
+                )
             if brand_status != "active":
                 raise RuntimeError("active 车型只能绑定有效 active 品牌")
-        catalog_version = self.next_catalog_version(reason="vehicle_updated", actor_ref=actor_ref)
+        with timings.measure("catalog_version") if timings else nullcontext():
+            catalog_version = self.next_catalog_version(
+                reason="vehicle_updated", actor_ref=actor_ref
+            )
         values: dict[str, object] = {
             "version": current.version + 1,
             "catalog_version": catalog_version,
@@ -305,18 +312,20 @@ class PostgresVehicleCatalogRepository:
         for field in ("brand_id", "series_name", "category_name"):
             if classification is not None and field in classification:
                 values[field] = classification[field]
-        row = (
-            self._session.execute(
-                update(vehicle_models_table)
-                .where(vehicle_models_table.c.id == model_id)
-                .values(**values)
-                .returning(vehicle_models_table)
+        with timings.measure("model_update") if timings else nullcontext():
+            row = (
+                self._session.execute(
+                    update(vehicle_models_table)
+                    .where(vehicle_models_table.c.id == model_id)
+                    .values(**values)
+                    .returning(vehicle_models_table)
+                )
+                .mappings()
+                .one()
             )
-            .mappings()
-            .one()
-        )
         if aliases is not None:
-            self._replace_aliases(model_id, aliases, created_at=beijing_now())
+            with timings.measure("alias_replace") if timings else nullcontext():
+                self._replace_aliases(model_id, aliases, created_at=beijing_now())
         return _vehicle_from_row(row)
 
     def merge_model(self, source_id: UUID, target_id: UUID, *, actor_ref: str) -> VehicleModel:

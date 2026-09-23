@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from time import perf_counter
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -46,11 +48,15 @@ from aima_ugc.modules.analysis.schemes import AnalysisSchemeVersionRecord
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
 from aima_ugc.modules.vehicles.models import VehicleAlias, VehicleModel
+from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.logging.timing import StageTimings
 from aima_ugc.platform.security import SecretFileError, write_secret_ref
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
 from .runtime_config import new_secret_ref
+
+SLOW_VEHICLE_UPDATE_MS = 1_000
 
 
 class PostgresAdministrationHttpService:
@@ -171,11 +177,20 @@ class PostgresAdministrationHttpService:
         """更新车型并记录安全差异摘要。"""
 
         principal.require_administrator()
-        session = self._runtime.database.new_session()
+        timings = StageTimings()
+        outcome = "failed"
+        commit_started: float | None = None
+        session = None
         try:
+            with timings.measure("session_create"):
+                session = self._runtime.database.new_session()
             with session.begin():
                 repository = PostgresVehicleCatalogRepository(session)
-                previous = repository.get_model(vehicle_model_id, for_update=True)
+                # Session 惰性取连接；分开采样后，行锁等待不会被误算成连接池等待。
+                with timings.measure("db_checkout"):
+                    session.connection()
+                with timings.measure("vehicle_lock"):
+                    previous = repository.get_model(vehicle_model_id, for_update=True)
                 if previous is None:
                     raise AdministrationResourceNotFound
                 try:
@@ -190,32 +205,59 @@ class PostgresAdministrationHttpService:
                         ),
                         actor_ref=principal.principal_id,
                         current=previous,
+                        timings=timings,
                     )
                 except LookupError as exc:
                     raise AdministrationResourceNotFound from exc
                 except RuntimeError as exc:
                     raise AdministrationConflict from exc
-                _audit(
-                    session,
-                    principal=principal,
-                    request_id=request_id,
-                    event_type="vehicle_model_updated",
-                    object_type="vehicle_model",
-                    object_id=str(model.id),
-                    detail={
-                        "version": model.version,
-                        "catalog_version": model.catalog_version,
-                        "brand_id_before": (
-                            None if previous.brand_id is None else str(previous.brand_id)
-                        ),
-                        "brand_id_after": None if model.brand_id is None else str(model.brand_id),
-                    },
-                )
-                return _vehicle_response(repository, model)
+                with timings.measure("audit"):
+                    _audit(
+                        session,
+                        principal=principal,
+                        request_id=request_id,
+                        event_type="vehicle_model_updated",
+                        object_type="vehicle_model",
+                        object_id=str(model.id),
+                        detail={
+                            "version": model.version,
+                            "catalog_version": model.catalog_version,
+                            "brand_id_before": (
+                                None if previous.brand_id is None else str(previous.brand_id)
+                            ),
+                            "brand_id_after": (
+                                None if model.brand_id is None else str(model.brand_id)
+                            ),
+                        },
+                    )
+                with timings.measure("response_projection"):
+                    response = _vehicle_response(repository, model)
+                commit_started = perf_counter()
+            timings.record_elapsed("commit", commit_started)
+            commit_started = None
+            outcome = "success"
+            return response
         except IntegrityError as exc:
             raise AdministrationConflict from exc
         finally:
-            session.close()
+            if commit_started is not None:
+                timings.record_elapsed("commit", commit_started)
+            if session is not None:
+                session.close()
+            duration_ms = timings.total_ms
+            if duration_ms >= SLOW_VEHICLE_UPDATE_MS:
+                log_event(
+                    self._runtime.logger,
+                    logging.WARNING,
+                    "administration.vehicle_model_update_slow",
+                    "车型编辑保存耗时达到慢请求阈值",
+                    request_id=request_id,
+                    vehicle_model_id=str(vehicle_model_id),
+                    changed_fields=sorted(body.model_fields_set),
+                    outcome=outcome,
+                    duration_ms=duration_ms,
+                    stage_ms=timings.stage_ms,
+                )
 
     def delete_vehicle_model(
         self,
