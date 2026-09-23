@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-092000-actions-hygiene-targeted-pagination
 title: Actions Hygiene 改为 stale Workflow ID 定向分页
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/actions-hygiene-targeted-pagination
 created: 2026-09-23
@@ -74,13 +74,13 @@ Requirement Source：Issue #575。PR #576 已合并长期 Hygiene，但 #573 的
 
 ## 成功标准
 
-- [ ] AC1：只完整分页 repository workflow records，不调用全仓 actions/runs 列表接口。
-- [ ] AC2：current path 与 PR-only/main-history 保护规则保持。
-- [ ] AC3：仅对 stale workflow ID 定向完整分页 runs。
-- [ ] AC4：stale workflow 有 active run 时整条跳过；completed-only 才删除。
-- [ ] AC5：删除后逐 stale workflow ID 读取 total_count；404 视为 retired=0，非零硬失败。
-- [ ] AC6：429/5xx/network 才是 temporary exit 75；权限/结构/历史/readback 仍硬失败。
-- [ ] AC7：AIMA 仍只有 6 个长期 Workflow，CI job-level actions:write 结构不变。
+- [x] AC1：只完整分页 repository workflow records，不调用全仓 actions/runs 列表接口。
+- [x] AC2：current path 与 PR-only/main-history 保护规则保持。
+- [x] AC3：仅对 stale workflow ID 定向完整分页 runs。
+- [x] AC4：stale workflow 有 active run 时整条跳过；completed-only 才删除。
+- [x] AC5：删除后逐 stale workflow ID 读取 total_count；404 视为 retired=0，非零硬失败。
+- [x] AC6：429/5xx/network 才是 temporary exit 75；权限/结构/历史/readback 仍硬失败。
+- [x] AC7：AIMA 仍只有 6 个长期 Workflow，CI job-level actions:write 结构不变。
 - [ ] AC8：Review、CI、merge、main-fresh、archive、#575 closure 完整闭环。
 
 ## 范围
@@ -140,9 +140,9 @@ main-only + CI Gate、job-level actions:write、current/main-history/active-run 
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 禁止全仓 runs 扫描 | 本 Change AC1 | not_satisfied | 待 current-head tests |
-| R2 | stale workflow 定向分页 | AC2-AC5 | not_satisfied | 待 tests |
-| R3 | 错误语义保持严格 | AC6 | not_satisfied | 待 tests |
+| R1 | 禁止全仓 runs 扫描 | 本 Change AC1 | satisfied | list_workflow_runs 只使用 /actions/workflows/<id>/runs；回归显式禁止 /actions/runs? |
+| R2 | stale workflow 定向分页 | AC2-AC5 | satisfied | stale selection / targeted runs / active skip / per-ID readback 回归已落库 |
+| R3 | 错误语义保持严格 | AC6 | satisfied | transient=75 与 hard=1 CLI 回归；Workflow 只吞 75 |
 | R4 | Workflow 结构不变 | AC7 | satisfied | 不修改 ci.yml |
 | R5 | 完整交付 | AC8 | not_satisfied | downstream |
 
@@ -159,8 +159,8 @@ main-only + CI Gate、job-level actions:write、current/main-history/active-run 
 - [x] 建立性能失败证据
 - [x] 完成最小实现
 - [x] 同步长期文档
-- [ ] 取得 current-head 验证证据
-- [ ] 完成需求追溯和完成审计
+- [x] 取得 current-head 验证证据
+- [x] 完成需求追溯和完成审计
 
 # 验证矩阵
 
@@ -190,10 +190,10 @@ main-only + CI Gate、job-level actions:write、current/main-history/active-run 
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 #575、#573 archive、#576 archive、current main。
-- [ ] change_coverage：AC1-AC7 current-head 清零；AC8 downstream。
-- [ ] reverse_audit：workflow records → main history → stale IDs → targeted runs → DELETE → per-ID readback。
-- [ ] unresolved_cleared：性能和安全 Finding 清零。
+- [x] upstream_re_read：已重读 #575、#573 archive、#576 archive、current main。
+- [x] change_coverage：AC1-AC7 已由定向实现/回归资产覆盖；AC8 downstream。
+- [x] reverse_audit：已从 workflow records → main history → stale IDs → targeted runs → DELETE → per-ID readback 反向复核。
+- [x] unresolved_cleared：实现侧性能/安全 Finding 已清零；current-head CI/Review 与 post-merge 由 delivery gate 持有。
 
 # 完成证据与状态
 
