@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-102001-actions-hygiene-rate-limit
 title: Actions Hygiene 403 Rate Limit 临时错误识别
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/actions-hygiene-rate-limit
 created: 2026-09-23
