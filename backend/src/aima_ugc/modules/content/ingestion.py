@@ -39,6 +39,14 @@ class ContentIngestionSnapshotRepository(Protocol[_ResultT_co, _SnapshotT_contra
     ) -> _ResultT_co: ...
 
 
+class ContentIngestionBatchRepository(Protocol[_ResultT_co]):
+    """允许正式 Owner 集合创建可证明为新内容的观察。"""
+
+    def ingest_new_contents_batch(
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> tuple[_ResultT_co, ...]: ...
+
+
 class ContentIngestionService[ResultT]:
     """Canonical 摄取唯一生产入口；数据库细节由 Content Owner Repository 实现。"""
 
@@ -55,6 +63,14 @@ class ContentIngestionService[ResultT]:
 
         repository = cast(ContentIngestionSnapshotRepository[ResultT, SnapshotT], self._repository)
         return repository.ingest_content_with_before_snapshot(observation, before_snapshot)
+
+    def ingest_new_contents_batch[BatchResultT](
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> tuple[BatchResultT, ...]:
+        """把集合写入留在同一 Content Owner，不向编排层暴露表细节。"""
+
+        repository = cast(ContentIngestionBatchRepository[BatchResultT], self._repository)
+        return repository.ingest_new_contents_batch(observations)
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> ResultT:
         return self._repository.ingest_comment(observation)

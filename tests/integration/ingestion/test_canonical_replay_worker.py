@@ -17,6 +17,7 @@ from aima_ugc.adapters.persistence.postgres.content_visibility import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap import canonical_replay_worker as canonical_replay_worker_module
+from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
@@ -28,9 +29,16 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.contracts.administration import VehicleModelCreateRequest
 from aima_ugc.contracts.brand_vehicle import BrandAliasCreateRequest, BrandCreateRequest
 from aima_ugc.contracts.http import CanonicalReplayCreateRequest
-from aima_ugc.modules.content.tables import content_versions_table, contents_table
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
+from aima_ugc.modules.content.extended_tables import content_external_ids_table
+from aima_ugc.modules.content.tables import (
+    content_metric_observations_table,
+    content_versions_table,
+    contents_table,
+)
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_TYPE,
@@ -48,6 +56,7 @@ from aima_ugc.modules.system.tables import audit_events_table
 from aima_ugc.modules.vehicles.tables import (
     content_brand_evidence_table,
     content_brand_review_locks_table,
+    content_vehicle_evidence_table,
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
@@ -170,6 +179,19 @@ def _add_replay_alias(
         request_id="canonical-replay-alias",
     )
     return updated.catalog_version
+
+
+def _create_replay_vehicle(runtime: PlatformRuntime, *, brand_id: UUID) -> UUID:
+    created = PostgresAdministrationHttpService(runtime).create_vehicle_model(
+        VehicleModelCreateRequest(
+            display_name="Replay 星曜车型",
+            brand_id=brand_id,
+            aliases=("星曜",),
+        ),
+        principal=_principal(),
+        request_id="canonical-replay-vehicle",
+    )
+    return created.id
 
 
 def _import_canonical(
@@ -452,6 +474,60 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
         runtime.close()
 
 
+def test_new_content_batch_persists_vehicle_and_derived_brand_evidence(
+    tmp_path: Path,
+) -> None:
+    """车型匹配的新内容快路径必须同时保存车型证据、派生品牌证据和 Replay ledger。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-vehicle-evidence.xlsx",
+            rows=(("canonical-replay-vehicle", "星曜车型命中"),),
+            brand_ids=(brand_id,),
+        )
+        vehicle_id = _create_replay_vehicle(runtime, brand_id=brand_id)
+        created = _create_all_replay(
+            client,
+            idempotency_key=f"all-replay-vehicle-evidence-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="vehicle-evidence").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            vehicle = connection.execute(select(content_vehicle_evidence_table)).mappings().one()
+            brand = connection.execute(select(content_brand_evidence_table)).mappings().one()
+            ledger = (
+                connection.execute(
+                    select(canonical_replay_content_changes_table).where(
+                        canonical_replay_content_changes_table.c.all_request_id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        assert vehicle["vehicle_model_id"] == vehicle_id
+        assert vehicle["source"] == "alias_match"
+        assert brand["brand_id"] == brand_id
+        assert brand["source"] == "vehicle_match"
+        assert brand["derived_vehicle_model_id"] == vehicle_id
+        assert len(ledger["vehicle_evidence_after"]) == 1
+        assert len(ledger["brand_evidence_after"]) == 1
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
 @pytest.mark.parametrize("row_count", [2, 101])
 def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count: int) -> None:
     runtime = _runtime(tmp_path)
@@ -474,11 +550,12 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
             brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
-        _create_all_replay(client, idempotency_key=f"replay-ledger-{uuid4()}")
+        created = _create_all_replay(client, idempotency_key=f"replay-ledger-{uuid4()}")
         ledger_inserts: list[str] = []
         content_updates: list[str] = []
         source_pair_reads: list[str] = []
         content_reads: list[str] = []
+        statement_count = 0
 
         def count_ledger_insert(
             connection: object,
@@ -488,7 +565,9 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
             context: object,
             executemany: bool,
         ) -> None:
+            nonlocal statement_count
             del connection, cursor, parameters, context, executemany
+            statement_count += 1
             if statement.lstrip().startswith("INSERT INTO canonical_replay_content_changes"):
                 ledger_inserts.append(statement)
             if statement.lstrip().startswith("UPDATE contents"):
@@ -510,16 +589,79 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
 
         with runtime.database.engine.connect() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == row_count
+            for table in (
+                content_versions_table,
+                content_metric_observations_table,
+                content_external_ids_table,
+                content_source_contributions_table,
+                content_brand_evidence_table,
+            ):
+                assert connection.scalar(select(func.count()).select_from(table)) == row_count
             assert (
                 connection.scalar(
                     select(func.count()).select_from(canonical_replay_content_changes_table)
                 )
                 == row_count
             )
-        assert len(ledger_inserts) == (row_count + 99) // 100
-        assert len(content_updates) == row_count
-        assert len(source_pair_reads) == 1
-        assert len(content_reads) == 2 * row_count
+            deltas = connection.scalars(
+                select(canonical_replay_content_changes_table.c.delta)
+            ).all()
+            assert len(deltas) == row_count
+            assert all(
+                isinstance(delta, dict)
+                and delta.get("schema_version") == "content-source-contribution.v1"
+                and delta.get("created_content") is True
+                for delta in deltas
+            )
+        assert len(ledger_inserts) == (row_count + 999) // 1000
+        assert len(content_updates) == 0
+        assert len(source_pair_reads) <= 1
+        assert len(content_reads) == 0
+        if row_count == 101:
+            # 新内容主路径必须保持集合式 SQL；该上限同时防止 Content、来源贡献、
+            # 自动证据或 Replay ledger 中任一环节重新退化为逐行往返。
+            assert statement_count < 200
+            request_id = UUID(cast(str, created["request_id"]))
+            assert (
+                client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke").status_code == 202
+            )
+            remaining_scans = 0
+
+            def count_remaining_scan(
+                connection: object,
+                cursor: object,
+                statement: str,
+                parameters: object,
+                context: object,
+                executemany: bool,
+            ) -> None:
+                nonlocal remaining_scans
+                del connection, cursor, parameters, context, executemany
+                if (
+                    "count(distinct(canonical_replay_content_changes.content_id))"
+                    in statement.lower()
+                ):
+                    remaining_scans += 1
+
+            event.listen(runtime.database.engine, "before_cursor_execute", count_remaining_scan)
+            try:
+                assert _worker(runtime, suffix="ledger-batch-reversal").run_once() is True
+            finally:
+                event.remove(
+                    runtime.database.engine,
+                    "before_cursor_execute",
+                    count_remaining_scan,
+                )
+            assert remaining_scans == 1
+            with runtime.database.engine.connect() as connection:
+                assert (
+                    connection.scalar(
+                        select(canonical_replay_all_requests_table.c.lifecycle_status).where(
+                            canonical_replay_all_requests_table.c.id == request_id
+                        )
+                    )
+                    == "reverted"
+                )
     finally:
         _truncate(runtime)
         runtime.close()
@@ -1477,6 +1619,112 @@ def test_running_replay_cancels_between_committed_batches(tmp_path: Path) -> Non
             session.close()
         with runtime.database.engine.connect() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_cancellation_before_fenced_checkpoint_rolls_back_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """批次写入期间收到取消时，提交前 Fence 复核必须回滚整批。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        artifact_id = _import_canonical(
+            client,
+            runtime,
+            filename="replay-fenced-cancel.xlsx",
+            rows=(
+                ("canonical-replay-fenced-cancel-1", "星曜提交前取消一"),
+                ("canonical-replay-fenced-cancel-2", "星曜提交前取消二"),
+            ),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+        created = _create_replay(
+            client,
+            artifact_ids=(artifact_id,),
+            brand_id=brand_id,
+            idempotency_key=f"replay-fenced-cancel-{uuid4()}",
+            batch_size=2,
+        )
+        run_id = UUID(str(created["run_id"]))
+        job_id = UUID(str(created["job_id"]))
+        claim_session = runtime.database.new_session()
+        try:
+            with claim_session.begin():
+                claim = PostgresJobRepository(claim_session).claim_next(
+                    supported_job_types=(CANONICAL_REPLAY_JOB_TYPE,),
+                    worker_id="replay-fenced-cancel-worker",
+                    lease_seconds=30,
+                )
+                assert claim is not None and claim.lease_token is not None
+        finally:
+            claim_session.close()
+        fence = JobExecutionFence(job_id=job_id, lease_token=claim.lease_token)
+        original_advance = PostgresCanonicalReplayRepository.advance
+        cancellation_sent = False
+
+        def cancel_before_advance(
+            repository: PostgresCanonicalReplayRepository,
+            **kwargs: object,
+        ):
+            nonlocal cancellation_sent
+            if not cancellation_sent:
+                cancel_session = runtime.database.new_session()
+                try:
+                    with cancel_session.begin():
+                        PostgresJobRepository(cancel_session).request_cancel(job_id)
+                finally:
+                    cancel_session.close()
+                cancellation_sent = True
+            return original_advance(repository, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(
+            PostgresCanonicalReplayRepository,
+            "advance",
+            cancel_before_advance,
+        )
+        with pytest.raises(LeaseLostError):
+            PostgresCanonicalReplayJobExecutor(runtime).execute(
+                payload=CanonicalReplayJobPayload(run_id=run_id),
+                fence=fence,
+                context=_ExecutionContext(fence),
+            )
+
+        session = runtime.database.new_session()
+        try:
+            run = PostgresCanonicalReplayRepository(session).get(run_id)
+            assert run is not None
+            assert run.checkpoint_artifact_ordinal == 0
+            assert run.checkpoint_row_number == 0
+            assert run.rows_seen == 0
+        finally:
+            session.close()
+        with runtime.database.engine.connect() as connection:
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 0
+            assert (
+                connection.scalar(
+                    select(func.count()).select_from(canonical_replay_content_changes_table)
+                )
+                == 0
+            )
+            assert (
+                connection.scalar(
+                    select(func.count()).select_from(canonical_replay_seen_content_table)
+                )
+                == 0
+            )
     finally:
         _truncate(runtime)
         runtime.close()

@@ -6,10 +6,11 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import date, datetime
+from itertools import batched
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,8 @@ from aima_ugc.modules.content.extended_tables import (
 )
 from aima_ugc.modules.content.tables import accounts_table, content_versions_table, contents_table
 from aima_ugc.platform.time import beijing_now
+
+_MULTI_VALUES_INSERT_ROWS = 500
 
 _CONTENT_FIELD_COLUMNS = {
     "content_type": "content_type",
@@ -211,12 +214,82 @@ def capture_content_contribution_snapshot(
 
 def build_content_contribution_delta(
     observation: CanonicalContentV1,
-    before: ContentContributionSnapshot,
+    before: ContentContributionSnapshot | None,
     after: ContentContributionSnapshot,
 ) -> dict[str, object]:
     """生成与 Data Import 撤销相同语义的 before/after Delta。"""
 
     return _build_delta(observation, before, after)
+
+
+def new_content_contribution_snapshot(
+    observation: CanonicalContentV1,
+    *,
+    content_id: UUID,
+    state: dict[str, Any],
+    collections: dict[str, tuple[dict[str, object], ...]],
+) -> ContentContributionSnapshot:
+    """从同事务刚写入的确定值构造新 Content 投影，避免逐行回读。"""
+
+    raw_freshness = state.get("field_observed_at") or {}
+    if not isinstance(raw_freshness, dict):
+        raise ValueError("Content field_observed_at 必须是对象")
+    return ContentContributionSnapshot(
+        content_id=content_id,
+        version_no=1,
+        content_fields={
+            path: state.get(column)
+            for path, column in _CONTENT_FIELD_COLUMNS.items()
+            if path in observation.observed_fields
+        },
+        field_observed_at={str(key): str(value) for key, value in raw_freshness.items()},
+        author_snapshot=(
+            observation.author.model_dump(mode="json") if observation.author is not None else None
+        ),
+        collections=collections,
+        account_id=None,
+        account_fields={},
+        account_field_observed_at={},
+    )
+
+
+def commit_new_content_contributions_batch(
+    session: Session,
+    entries: tuple[tuple[CanonicalContentV1, ContentContributionSnapshot], ...],
+) -> None:
+    """集合追加当前事务新建 Content 的不可变来源贡献。"""
+
+    if not entries:
+        return
+    now = beijing_now()
+    values: list[dict[str, object]] = []
+    source_keys: set[str] = set()
+    for observation, after in entries:
+        if after.content_id is None or after.version_no != 1:
+            raise ValueError("新 Content 来源贡献要求已确定的首版本投影")
+        source_item_key = content_source_item_key(observation)
+        if source_item_key in source_keys:
+            raise ValueError("新 Content 来源贡献不接受重复来源身份")
+        source_keys.add(source_item_key)
+        attempt_id, raw_id = _source_ids(observation)
+        values.append(
+            {
+                "id": uuid4(),
+                "source_item_key": source_item_key,
+                "content_id": after.content_id,
+                "provider_attempt_id": attempt_id,
+                "raw_artifact_id": raw_id,
+                "version_before": None,
+                "version_after": 1,
+                "delta": _build_delta(observation, None, after),
+                "observed_at": observation.observed_at,
+                "created_at": now,
+            }
+        )
+    # 新 Content 在本事务前不可见，来源贡献冲突代表调用方破坏了批次前提；
+    # 直接失败并整体回滚，不能静默把不相干的既有贡献当成本批结果。
+    for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+        session.execute(insert(content_source_contributions_table).values(list(chunk)))
 
 
 def _capture_snapshot(
@@ -482,10 +555,12 @@ def _source_ids(observation: CanonicalContentV1) -> tuple[UUID, UUID]:
 __all__ = [
     "build_content_contribution_delta",
     "capture_content_contribution_snapshot",
+    "commit_new_content_contributions_batch",
     "ContentContributionDraft",
     "ContentContributionSnapshot",
     "commit_content_contribution",
     "content_source_item_key",
     "decode_contribution_value",
+    "new_content_contribution_snapshot",
     "prepare_content_contribution",
 ]

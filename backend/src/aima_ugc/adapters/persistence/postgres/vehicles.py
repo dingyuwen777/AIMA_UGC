@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from contextlib import nullcontext
 from datetime import datetime
+from itertools import batched
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -30,6 +31,8 @@ from aima_ugc.modules.vehicles.tables import (
 )
 from aima_ugc.platform.logging.timing import StageTimings
 from aima_ugc.platform.time import beijing_now
+
+_MULTI_VALUES_INSERT_ROWS = 500
 
 
 def _json_evidence_row(row: RowMapping) -> dict[str, object]:
@@ -681,6 +684,60 @@ class PostgresVehicleCatalogRepository:
             ),
         )
         return result.rowcount or 0, len(locked_pairs)
+
+    def append_initial_automatic_alias_evidence_batch(
+        self,
+        *,
+        entries: tuple[tuple[UUID, int, tuple[ContentVehicleEvidence, ...]], ...],
+    ) -> dict[tuple[UUID, int], list[dict[str, object]]]:
+        """集合追加本事务新建 Content 的首版本证据，并返回精确持久化投影。"""
+
+        snapshots: dict[tuple[UUID, int], list[dict[str, object]]] = {
+            (content_id, version): [] for content_id, version, _ in entries
+        }
+        values: list[dict[str, object]] = []
+        for content_id, content_version, evidence in entries:
+            if content_version != 1:
+                raise ValueError("初始车型证据只接受 Content 首版本")
+            for item in evidence:
+                if (
+                    item.content_id != content_id
+                    or item.content_version != content_version
+                    or item.source != "alias_match"
+                    or item.is_manual_locked
+                ):
+                    raise ValueError("初始自动车型证据身份非法")
+                values.append(
+                    {
+                        "id": item.id,
+                        "content_id": item.content_id,
+                        "content_version": item.content_version,
+                        "vehicle_model_id": item.vehicle_model_id,
+                        "source": item.source,
+                        "matched_text": item.matched_text,
+                        "source_field": item.source_field,
+                        "catalog_version": item.catalog_version,
+                        "confidence": item.confidence,
+                        "is_manual_locked": False,
+                        "is_active": item.is_active,
+                        "created_at": item.created_at,
+                    }
+                )
+        if not values:
+            return snapshots
+        for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            rows = self._session.execute(
+                pg_insert(content_vehicle_evidence_table)
+                .values(list(chunk))
+                .on_conflict_do_nothing(constraint="uq_content_vehicle_evidence_identity")
+                .returning(content_vehicle_evidence_table)
+            ).mappings()
+            for row in rows:
+                pair = (cast(UUID, row["content_id"]), cast(int, row["content_version"]))
+                snapshots[pair].append(_json_evidence_row(row))
+        for snapshot in snapshots.values():
+            snapshot.sort(key=lambda item: str(item["id"]))
+        return snapshots
 
     def replace_automatic_alias_evidence_batch(
         self,
