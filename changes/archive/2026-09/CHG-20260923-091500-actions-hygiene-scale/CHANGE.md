@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-091500-actions-hygiene-scale
 title: Actions Hygiene 定向扫描优化
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: maintenance/actions-hygiene-scale
 created: 2026-09-23
