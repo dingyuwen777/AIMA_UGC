@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""安全识别并按需清理已经从默认分支失效的 GitHub Actions Workflow 历史运行。"""
+"""安全识别并按 Workflow ID 定向清理失效 GitHub Actions 历史运行。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 API_ROOT = "https://api.github.com"
-WORKFLOW_PREFIX = ".github/workflows/"
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 TRANSIENT_HTTP_STATUS = {429, 500, 502, 503, 504}
 
@@ -45,15 +44,15 @@ def current_workflow_paths(root: Path) -> set[str]:
     directory = root / ".github" / "workflows"
     if not directory.is_dir():
         raise RuntimeError(f"Workflow 目录不存在：{directory}")
-    result: set[str] = set()
-    for path in directory.iterdir():
-        if path.is_file() and path.suffix in {".yml", ".yaml"}:
-            result.add(path.relative_to(root).as_posix())
-    return result
+    return {
+        path.relative_to(root).as_posix()
+        for path in directory.iterdir()
+        if path.is_file() and path.suffix in {".yml", ".yaml"}
+    }
 
 
 def path_existed_in_head_history(root: Path, workflow_path: str) -> bool:
-    """确认 Workflow 曾进入 HEAD 的 first-parent 主线，而不是只存在于被合并的支线提交。"""
+    """确认 Workflow 曾进入 HEAD first-parent 主线，而不是只存在于 PR 支线。"""
     completed = subprocess.run(
         [
             "git",
@@ -77,72 +76,9 @@ def path_existed_in_head_history(root: Path, workflow_path: str) -> bool:
 
 
 def main_history_workflow_paths(root: Path, observed_paths: Iterable[str]) -> set[str]:
-    """从 HEAD first-parent 主线确认本轮观察到的 Workflow path 是否曾被默认分支持有。"""
+    """只把 first-parent 主线真实拥有过的 observed Workflow path 标记为 main history。"""
     return {
         path for path in sorted(set(observed_paths)) if path_existed_in_head_history(root, path)
-    }
-
-
-def build_cleanup_plan(
-    current_paths: set[str],
-    main_history_paths: set[str],
-    runs: Iterable[dict[str, Any]],
-) -> dict[str, Any]:
-    """根据 current/main-history/run-status 三层事实形成确定性的安全删除计划。"""
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    ignored_non_workflow = 0
-
-    for raw_run in runs:
-        path = _normalise_workflow_path(raw_run.get("path"))
-        if path is None:
-            ignored_non_workflow += 1
-            continue
-
-        run_id = raw_run.get("id")
-        status = raw_run.get("status")
-        if not isinstance(run_id, int) or run_id <= 0:
-            raise ValueError(f"Workflow run 缺少合法 id：path={path}")
-        if not isinstance(status, str) or not status.strip():
-            raise ValueError(f"Workflow run 缺少合法 status：id={run_id}, path={path}")
-
-        grouped.setdefault(path, []).append(
-            {
-                "id": run_id,
-                "path": path,
-                "name": str(raw_run.get("name") or ""),
-                "status": status.strip(),
-            }
-        )
-
-    protected_current = sorted(path for path in grouped if path in current_paths)
-    skipped_not_main_history = sorted(
-        path for path in grouped if path not in current_paths and path not in main_history_paths
-    )
-    candidate_paths = sorted(
-        path for path in grouped if path not in current_paths and path in main_history_paths
-    )
-
-    skipped_active: dict[str, list[str]] = {}
-    eligible_runs: list[dict[str, Any]] = []
-    for path in candidate_paths:
-        path_runs = sorted(grouped[path], key=lambda item: item["id"])
-        active_statuses = sorted(
-            {item["status"] for item in path_runs if item["status"] != "completed"}
-        )
-        if active_statuses:
-            skipped_active[path] = active_statuses
-            continue
-        eligible_runs.extend(path_runs)
-
-    return {
-        "current_workflows": sorted(current_paths),
-        "observed_workflow_paths": sorted(grouped),
-        "protected_current_workflows": protected_current,
-        "skipped_not_main_history": skipped_not_main_history,
-        "candidate_workflows": candidate_paths,
-        "skipped_active_workflows": skipped_active,
-        "eligible_runs": eligible_runs,
-        "ignored_non_workflow_runs": ignored_non_workflow,
     }
 
 
@@ -150,8 +86,10 @@ def _api_request(
     token: str,
     method: str,
     path: str,
+    *,
+    allow_not_found: bool = False,
 ) -> Any:
-    """使用当前 GitHub Actions token 调用仓库 REST API，任何异常都失败关闭。"""
+    """调用 GitHub Actions REST；临时错误与硬失败使用不同异常语义。"""
     request = Request(
         f"{API_ROOT}{path}",
         method=method,
@@ -166,7 +104,7 @@ def _api_request(
         with urlopen(request, timeout=60) as response:
             payload = response.read()
     except HTTPError as error:
-        if method == "DELETE" and error.code == 404:
+        if error.code == 404 and (method == "DELETE" or allow_not_found):
             return None
         detail = error.read().decode("utf-8", errors="replace")
         if error.code in TRANSIENT_HTTP_STATUS:
@@ -189,30 +127,181 @@ def _api_request(
         raise RuntimeError(f"GitHub API {method} {path} 返回非法 JSON") from error
 
 
-def list_workflow_runs(repository: str, token: str) -> list[dict[str, Any]]:
-    """完整分页读取仓库 Workflow runs，删除前后都使用同一读取逻辑。"""
+def _page_items(
+    repository: str,
+    token: str,
+    endpoint: str,
+    list_key: str,
+    *,
+    allow_not_found: bool = False,
+) -> list[dict[str, Any]]:
+    """完整分页一个定向 Actions endpoint；404 可按已退休 Workflow 空集合处理。"""
     result: list[dict[str, Any]] = []
+    separator = "&" if "?" in endpoint else "?"
     for page in range(1, 1001):
         payload = _api_request(
             token,
             "GET",
-            f"/repos/{repository}/actions/runs?per_page=100&page={page}",
+            f"{endpoint}{separator}per_page=100&page={page}",
+            allow_not_found=allow_not_found,
         )
+        if payload is None and allow_not_found:
+            return []
         if not isinstance(payload, dict):
-            raise RuntimeError("Actions runs API 顶层返回格式非法")
-        runs = payload.get("workflow_runs")
-        if not isinstance(runs, list):
-            raise RuntimeError("Actions runs API 缺少 workflow_runs 列表")
-        if not runs:
+            raise RuntimeError(f"GitHub Actions API 顶层返回格式非法：{endpoint}")
+        items = payload.get(list_key)
+        if not isinstance(items, list):
+            raise RuntimeError(f"GitHub Actions API 缺少 {list_key} 列表：{endpoint}")
+        if not items:
             return result
-        if any(not isinstance(item, dict) for item in runs):
-            raise RuntimeError("Actions runs API 包含非 object 记录")
-        result.extend(runs)
-    raise RuntimeError("Actions runs 分页超过安全上限 1000 页，拒绝继续")
+        if any(not isinstance(item, dict) for item in items):
+            raise RuntimeError(f"GitHub Actions API {list_key} 包含非 object 记录")
+        result.extend(items)
+    raise RuntimeError(f"GitHub Actions API 分页超过安全上限：{endpoint}")
+
+
+def list_repository_workflows(repository: str, token: str) -> list[dict[str, Any]]:
+    """枚举仓库 Workflow records；数量通常远小于全量 workflow runs。"""
+    return _page_items(
+        repository,
+        token,
+        f"/repos/{repository}/actions/workflows",
+        "workflows",
+    )
+
+
+def list_workflow_runs(
+    repository: str,
+    token: str,
+    workflow_id: int,
+) -> list[dict[str, Any]]:
+    """只分页某一个 stale Workflow ID 的 runs，避免扫描整个仓库历史。"""
+    return _page_items(
+        repository,
+        token,
+        f"/repos/{repository}/actions/workflows/{workflow_id}/runs",
+        "workflow_runs",
+        allow_not_found=True,
+    )
+
+
+def workflow_run_count(repository: str, token: str, workflow_id: int) -> int:
+    """删除后读取 stale Workflow 剩余 run 数；Workflow 已退休的 404 视为 0。"""
+    payload = _api_request(
+        token,
+        "GET",
+        f"/repos/{repository}/actions/workflows/{workflow_id}/runs?per_page=1",
+        allow_not_found=True,
+    )
+    if payload is None:
+        return 0
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Workflow {workflow_id} run count 返回格式非法")
+    value = payload.get("total_count")
+    if not isinstance(value, int) or value < 0:
+        raise RuntimeError(f"Workflow {workflow_id} total_count 非法：{value!r}")
+    return value
+
+
+def select_stale_workflows(
+    current_paths: set[str],
+    main_history_paths: set[str],
+    workflow_records: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    """按 current path 与 main history 从 repository workflow records 选出 stale IDs。"""
+    stale: list[dict[str, Any]] = []
+    protected_current: list[str] = []
+    skipped_not_main_history: list[str] = []
+
+    for raw in workflow_records:
+        workflow_id = raw.get("id")
+        path = _normalise_workflow_path(raw.get("path"))
+        if not isinstance(workflow_id, int) or workflow_id <= 0:
+            raise ValueError(f"Workflow record 缺少合法 id：{raw!r}")
+        if path is None:
+            raise ValueError(f"Workflow record 缺少合法 path：id={workflow_id}")
+
+        record = {
+            "id": workflow_id,
+            "path": path,
+            "name": str(raw.get("name") or ""),
+            "state": str(raw.get("state") or ""),
+        }
+        if path in current_paths:
+            protected_current.append(path)
+            continue
+        if path not in main_history_paths:
+            skipped_not_main_history.append(path)
+            continue
+        stale.append(record)
+
+    stale.sort(key=lambda item: (item["path"], item["id"]))
+    return {
+        "stale_workflows": stale,
+        "protected_current_workflows": sorted(set(protected_current)),
+        "skipped_not_main_history": sorted(set(skipped_not_main_history)),
+    }
+
+
+def build_cleanup_plan(
+    current_paths: set[str],
+    stale_workflows: Iterable[dict[str, Any]],
+    runs_by_workflow: dict[int, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    """对 stale Workflow ID 的定向 run 快照做 active preflight 与删除计划。"""
+    skipped_active: dict[str, list[str]] = {}
+    eligible_runs: list[dict[str, Any]] = []
+    targeted_run_count = 0
+
+    for workflow in stale_workflows:
+        workflow_id = int(workflow["id"])
+        workflow_path = str(workflow["path"])
+        path_runs = runs_by_workflow.get(workflow_id, [])
+        normalised_runs: list[dict[str, Any]] = []
+
+        for raw_run in path_runs:
+            run_id = raw_run.get("id")
+            status = raw_run.get("status")
+            run_path = _normalise_workflow_path(raw_run.get("path"))
+            if not isinstance(run_id, int) or run_id <= 0:
+                raise ValueError(f"Workflow run 缺少合法 id：workflow_id={workflow_id}")
+            if not isinstance(status, str) or not status.strip():
+                raise ValueError(f"Workflow run 缺少合法 status：id={run_id}")
+            if run_path is None:
+                raise ValueError(f"Workflow run 缺少合法 path：id={run_id}")
+            if run_path in current_paths:
+                raise RuntimeError(
+                    f"拒绝清理当前 Workflow run：id={run_id}, path={run_path}"
+                )
+            normalised_runs.append(
+                {
+                    "id": run_id,
+                    "workflow_id": workflow_id,
+                    "workflow_path": workflow_path,
+                    "path": run_path,
+                    "name": str(raw_run.get("name") or ""),
+                    "status": status.strip(),
+                }
+            )
+
+        targeted_run_count += len(normalised_runs)
+        active_statuses = sorted(
+            {item["status"] for item in normalised_runs if item["status"] != "completed"}
+        )
+        if active_statuses:
+            skipped_active[workflow_path] = active_statuses
+            continue
+        eligible_runs.extend(sorted(normalised_runs, key=lambda item: item["id"]))
+
+    return {
+        "eligible_runs": eligible_runs,
+        "skipped_active_workflows": skipped_active,
+        "targeted_run_count": targeted_run_count,
+    }
 
 
 def _repository(value: str | None) -> str:
-    """解析 owner/name 仓库身份，避免把任意 URL 拼入 GitHub API。"""
+    """解析 owner/name 仓库身份，避免任意 URL 拼入 API。"""
     repository = (value or os.environ.get("GITHUB_REPOSITORY") or "").strip()
     if not REPOSITORY_PATTERN.fullmatch(repository):
         raise ValueError(f"repository 必须是 owner/name：{repository!r}")
@@ -223,7 +312,7 @@ def _token() -> str:
     """读取 GitHub Actions 自动 token；不打印、不持久化该值。"""
     token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
     if not token:
-        raise RuntimeError("缺少 GITHUB_TOKEN/GH_TOKEN，无法读取 Actions runs")
+        raise RuntimeError("缺少 GITHUB_TOKEN/GH_TOKEN，无法读取 Actions")
     return token
 
 
@@ -234,16 +323,29 @@ def run_hygiene(
     *,
     execute: bool,
 ) -> dict[str, Any]:
-    """生成清理计划；显式 execute 时删除 eligible completed runs 并 fresh readback。"""
+    """定向枚举 stale Workflow IDs；显式 execute 时删除并逐 ID fresh readback。"""
     root = root.resolve()
     current_paths = current_workflow_paths(root)
-    snapshot = list_workflow_runs(repository, token)
+    workflow_records = list_repository_workflows(repository, token)
     observed_paths = {
-        path for run in snapshot if (path := _normalise_workflow_path(run.get("path"))) is not None
+        path
+        for record in workflow_records
+        if (path := _normalise_workflow_path(record.get("path"))) is not None
     }
     history_paths = main_history_workflow_paths(root, observed_paths)
-    plan = build_cleanup_plan(current_paths, history_paths, snapshot)
+    selection = select_stale_workflows(current_paths, history_paths, workflow_records)
+    stale_workflows = selection["stale_workflows"]
 
+    runs_by_workflow: dict[int, list[dict[str, Any]]] = {}
+    for workflow in stale_workflows:
+        workflow_id = int(workflow["id"])
+        runs_by_workflow[workflow_id] = list_workflow_runs(
+            repository,
+            token,
+            workflow_id,
+        )
+
+    plan = build_cleanup_plan(current_paths, stale_workflows, runs_by_workflow)
     deleted_runs = 0
     if execute:
         for run in plan["eligible_runs"]:
@@ -254,33 +356,31 @@ def run_hygiene(
             )
             deleted_runs += 1
 
-    fresh_snapshot = list_workflow_runs(repository, token) if execute else snapshot
-    fresh_observed_paths = {
-        path
-        for run in fresh_snapshot
-        if (path := _normalise_workflow_path(run.get("path"))) is not None
-    }
-    fresh_history_paths = main_history_workflow_paths(root, fresh_observed_paths)
-    fresh_plan = build_cleanup_plan(current_paths, fresh_history_paths, fresh_snapshot)
-    remaining_eligible = len(fresh_plan["eligible_runs"])
-
-    if execute and remaining_eligible:
-        raise RuntimeError(
-            f"Actions Hygiene fresh readback 仍有 {remaining_eligible} 个 eligible obsolete runs"
-        )
+    remaining = 0
+    if execute:
+        skipped_paths = set(plan["skipped_active_workflows"])
+        for workflow in stale_workflows:
+            if workflow["path"] in skipped_paths:
+                continue
+            remaining += workflow_run_count(repository, token, int(workflow["id"]))
+        if remaining:
+            raise RuntimeError(
+                f"Actions Hygiene fresh readback 仍有 {remaining} 个 eligible obsolete runs"
+            )
 
     return {
-        "schema": "repository-actions-hygiene/v1",
+        "schema": "repository-actions-hygiene/v2",
         "execute": execute,
         "repository": repository,
         "current_workflow_count": len(current_paths),
-        "observed_run_count": len(snapshot),
-        "candidate_workflow_count": len(plan["candidate_workflows"]),
+        "workflow_record_count": len(workflow_records),
+        "candidate_workflow_count": len(stale_workflows),
+        "targeted_run_count": plan["targeted_run_count"],
         "eligible_run_count": len(plan["eligible_runs"]),
         "deleted_run_count": deleted_runs,
-        "skipped_active_workflows": fresh_plan["skipped_active_workflows"],
-        "skipped_not_main_history": fresh_plan["skipped_not_main_history"],
-        "remaining_eligible_run_count": remaining_eligible,
+        "skipped_active_workflows": plan["skipped_active_workflows"],
+        "skipped_not_main_history": selection["skipped_not_main_history"],
+        "remaining_eligible_run_count": remaining if execute else len(plan["eligible_runs"]),
     }
 
 
@@ -289,8 +389,9 @@ def _print_human(payload: dict[str, Any]) -> None:
     print(
         "Actions Hygiene: "
         f"current={payload['current_workflow_count']} "
-        f"observed={payload['observed_run_count']} "
+        f"records={payload['workflow_record_count']} "
         f"candidates={payload['candidate_workflow_count']} "
+        f"targeted_runs={payload['targeted_run_count']} "
         f"eligible={payload['eligible_run_count']} "
         f"deleted={payload['deleted_run_count']} "
         f"remaining={payload['remaining_eligible_run_count']}"
