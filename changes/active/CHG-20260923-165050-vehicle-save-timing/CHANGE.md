@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260923-165050-vehicle-save-timing
 title: 车型编辑保存阶段耗时诊断
 level: L2
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: diag/vehicle-save-timing
 created: 2026-09-23T16:50:50+08:00
-updated: 2026-09-23T16:50:50+08:00
+updated: 2026-09-23T17:07:31+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -57,10 +57,10 @@ data_changes: []
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 保存日志具有 request_id 与完整阶段耗时 | #583 / AC1 | not_satisfied | 实现及测试后补充 |
-| R2 | 快请求低噪声、慢成功/失败可定位且不泄露业务文本 | #583 / AC2 | not_satisfied | 实现及测试后补充 |
-| R3 | 保存与审计语义不变，文档和回归同步 | #583 / AC3 | not_satisfied | 实现及测试后补充 |
-| R4 | 与 #582 独立交付且排除本地工具设置 | #583 / AC4 | not_satisfied | PR diff 与 Git 状态后补充 |
+| R1 | 保存日志具有 request_id 与完整阶段耗时 | #583 / AC1 | satisfied | `update_vehicle_model` 与 `update_model` 真实边界计时；单元快/慢/失败回归通过；PostgreSQL 集成回归已写，等待 CI 隔离数据库验证 |
+| R2 | 快请求低噪声、慢成功/失败可定位且不泄露业务文本 | #583 / AC2 | satisfied | 默认 1000 毫秒阈值；只记录字段名、ID、结果和毫秒值；无数据库单元 2/2 通过，敏感文本断言通过 |
+| R3 | 保存与审计语义不变，文档和回归同步 | #583 / AC3 | satisfied | 更新仍在原事务提交并写审计；`test_vehicle_display_name_update_uses_bounded_queries` 既有回归与新增集成测试交由 PR CI；PostgreSQL 排障文档已同步；没有自动重筛调用 |
+| R4 | 与 #582 独立交付且排除本地工具设置 | #583 / AC4 | satisfied | 独立 `diag/vehicle-save-timing` / PR #584；仅显式添加项目路径，`.codex/config.toml` 保持工作区原样、不提交；合并仍等待两批各自门禁 |
 
 # 验证矩阵
 
@@ -77,13 +77,14 @@ data_changes: []
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取 #583 的 AC1—AC4 和保存不自动重筛的正式产品事实。
-- [ ] change_coverage：确认本 Change 未遗漏上游要求，也未纳入 .codex/config.toml。
-- [ ] reverse_audit：从日志字段回查真实阶段，从更新服务回查日志可定位性，并核对验证矩阵。
-- [ ] unresolved_cleared：所有 not_satisfied 清零；未验证服务器性能根因仍如实保留。
+- [x] upstream_re_read：重新读取 #583 的 AC1—AC4 和 `docs/product/02_当前产品能力与用户流程.md` 中保存不自动重筛的正式事实。
+- [x] change_coverage：AC1—AC4 均在实现、测试、文档及分批 PR 边界中覆盖；`.codex/config.toml` 未纳入提交范围。
+- [x] reverse_audit：从日志字段回查各真实阶段，从更新服务回查慢成功/失败日志、事务提交和既有整体 API 慢请求关联；没有新前端入口或重筛行为。
+- [x] unresolved_cleared：所有本 Change 实现项无 `not_satisfied`；PostgreSQL 集成运行与 PR CI/Review/merge 仍是交付门禁，不能因本地单元通过声称已验证服务器性能根因。
 
 # 风险与交付
 
 - 主要风险：记录原始文本或正常高频日志；通过字段白名单与慢请求阈值控制。
 - 兼容 / Migration / 数据：无公共 Contract 或 Schema 变化；日志增加可通过回退代码撤销。
-- 验证、Review、CI、PR、merge、main-fresh 和 Issue Closure：施工中，待真实证据更新。
+- 本地证据：`tests/unit/platform/test_vehicle_update_timing.py` 2/2 通过；修改文件 Ruff check/format 与三个生产模块 Mypy 通过；`git diff --check` 通过。PostgreSQL Secret 文件缺失使本机集成测试无法启动，新增集成及既有 9 SQL 查询回归等待 PR 的隔离数据库 CI。日志旧测试因本机 pytest 临时目录权限失败，非断言失败。
+- Review、CI、PR #584、merge、main-fresh 和 Issue Closure：未完成前禁止合并或声称已交付。
