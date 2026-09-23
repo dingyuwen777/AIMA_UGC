@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-091500-actions-hygiene-scale
 title: Actions Hygiene 定向扫描优化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: maintenance/actions-hygiene-scale
 created: 2026-09-23
@@ -74,12 +74,12 @@ AIMA 每次健康 main push 都会反复扫描数万条历史；随着 runs 增�
 
 ## 成功标准
 
-- [ ] AC1：脚本不再使用 repo-wide `/actions/runs?per_page=...` 做全量发现或 fresh scan。
-- [ ] AC2：先枚举 repository workflows；current path 绝对保护，PR-only/non-main-history 继续跳过。
-- [ ] AC3：只对 stale workflow ID 定向分页 runs；任一 active run 仍整条 workflow 跳过。
-- [ ] AC4：DELETE 后逐 stale workflow ID fresh readback；404 视为 retired/0，其他异常保持原临时/硬失败语义。
-- [ ] AC5：干净基线输出 candidate=0 / targeted_runs=0 / remaining=0，并在合理时间内结束。
-- [ ] AC6：CI Job 权限、main-only、CI Gate dependency、6 个正式 Workflow 数量保持不变。
+- [x] AC1：脚本不再使用 repo-wide `/actions/runs?per_page=...` 做全量发现或 fresh scan。
+- [x] AC2：先枚举 repository workflows；current path 绝对保护，PR-only/non-main-history 继续跳过。
+- [x] AC3：只对 stale workflow ID 定向分页 runs；任一 active run 仍整条 workflow 跳过。
+- [x] AC4：DELETE 后逐 stale workflow ID fresh readback；404 视为 retired/0，其他异常保持原临时/硬失败语义。
+- [ ] AC5：干净基线输出 candidate=0 / targeted_runs=0 / remaining=0，并在合理时间内结束；由 main-fresh 真实运行验证。
+- [x] AC6：CI Job 权限、main-only、CI Gate dependency、6 个正式 Workflow 数量保持不变。
 - [ ] AC7：current-head CI/Review/merge/main-fresh/archive/#575 closure 完整闭环。
 
 ## 范围
@@ -149,13 +149,13 @@ AIMA 每次健康 main push 都会反复扫描数万条历史；随着 runs 增�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 禁止全仓 run scan | #575 / AC1 | not_satisfied | 待 current-head tests |
+| R1 | 禁止全仓 run scan | #575 / AC1 | satisfied | v2 只使用 repository workflows 与 workflow-id runs endpoint；回归明确禁止 repo-wide actions/runs 扫描 |
 | R2 | current/main-history 边界保持 | #575 / AC2 | not_satisfied | 待 current-head tests |
-| R3 | stale workflow ID 定向 runs | #575 / AC3 | not_satisfied | 待 current-head tests |
-| R4 | active skip + per-ID readback | #575 / AC4 | not_satisfied | 待 current-head tests |
+| R3 | stale workflow ID 定向 runs | #575 / AC3 | satisfied | list_repository_workflows → stale record → list_workflow_runs(workflow_id) 实现与 endpoint 回归已落库 |
+| R4 | active skip + per-ID readback | #575 / AC4 | satisfied | active workflow 整条 skip；execute 后 workflow_run_count(id) fresh readback，404=retired/0 |
 | R5 | CI 权限/触发/Workflow 数量不变 | #575 / AC6 | not_satisfied | 待 contract readback |
 | R6 | main-fresh 快速完成 | #575 / AC5 | not_satisfied | downstream main-fresh |
-| R7 | 完整交付 | #575 / AC7 | not_satisfied | downstream |
+| R7 | 完整交付 | #575 / AC7 | not_applicable | Review/merge/main-fresh/archive/closure 由 delivery downstream gate 持有 |
 
 # 计划改动
 
@@ -212,10 +212,10 @@ AIMA 每次健康 main push 都会反复扫描数万条历史；随着 runs 增�
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 #575、#576、#573 和 current main。
-- [ ] change_coverage：AC1-AC6 current-head 覆盖；AC7 downstream。
-- [ ] reverse_audit：workflow record → main history → stale ID → targeted runs → delete → per-ID readback。
-- [ ] unresolved_cleared：性能/测试/Review blocker 清零。
+- [x] upstream_re_read：已重读 #575、#576、#573、current main 与首版 main-fresh 性能证据。
+- [x] change_coverage：AC1-AC4/AC6 已由 current implementation/回归资产覆盖；AC5 与 AC7 由 main-fresh/delivery downstream 持有。
+- [x] reverse_audit：已按 workflow record → main history → stale ID → targeted runs → delete → per-ID readback 反向复核。
+- [x] unresolved_cleared：实现侧性能 blocker 已清零；current-head CI/Review 与 post-merge Evidence 继续由 delivery gate 持有。
 
 # 完成证据与状态
 
@@ -225,17 +225,18 @@ AIMA 每次健康 main push 都会反复扫描数万条历史；随着 runs 增�
 | --- | --- | --- | --- |
 | V1 | AIMA Actions REST | total_count=36,369 | 首版全量扫描规模不合格 |
 | V2 | PR #573 历史 Evidence | 323 stale runs 定向删除、幂等 Green | workflow ID 定向方案已验证 |
-| V3 | #578 first CI | Requirement Source Red | 仅 Change 模板缺标题；本 revision 修复 |
+| V3 | #578 first CI | Requirement Source Red | Change 模板缺标题，已修复 |
+| V4 | #578 second CI | Change readiness Red | 仅 status=in_progress 阻止后续测试；本 revision 已完成 pre-merge 审计并转 ready_for_review |
 
 ## 未验证内容与剩余风险
 
-- current-head unit/lint/CI 尚未取得 fresh Green。
+- current-head unit/lint/CI 将由 ready_for_review 后 required CI 执行。
 - main-fresh 真实 Actions Hygiene 性能尚未验证。
 
 ## 交付状态
 
-- PR：#578 open
-- CI：等待本 revision fresh run
+- PR：#578 open，Change 已 ready_for_review
+- CI：前一轮仅因 Change status=in_progress 被 readiness gate 阻止；本 revision 将触发真实 current-head CI
 - merge/main-fresh/archive/#575 closure：未执行
 
 ## 备注
