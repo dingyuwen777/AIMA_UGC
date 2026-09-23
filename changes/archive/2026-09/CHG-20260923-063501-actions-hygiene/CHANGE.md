@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-063501-actions-hygiene
 title: GitHub Actions 失效 Workflow 自动清理
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: maintenance/actions-hygiene
 created: 2026-09-23
