@@ -20,8 +20,12 @@ from sqlalchemy import func, insert, select
 _NOW = datetime(2026, 9, 11, 2, 0, tzinfo=UTC)
 
 
-def test_excel_lineage_reuses_completed_attempts_for_multi_platform_batch() -> None:
-    """同一文件的多平台逻辑 Request 可合并，但每个平台 Attempt 必须可重放复用。"""
+def test_excel_lineage_reuses_completed_attempts_for_multi_platform_batch(monkeypatch) -> None:
+    """多平台来源可重放，且应用时钟落后数据库时也能完成非计费 Attempt。"""
+
+    monkeypatch.setattr(
+        "aima_ugc.adapters.persistence.postgres.import_lineage.beijing_now", lambda: _NOW
+    )
 
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()

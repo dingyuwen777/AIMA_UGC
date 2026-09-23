@@ -147,6 +147,9 @@ def _ensure_import_lineage(
     dispatching = repository.mark_dispatching(prepared.attempt.id)
     if dispatching.dispatch_started_at is None:
         raise RuntimeError("Import Attempt 未进入 dispatching")
+    # 开始时间由数据库生成，应用与数据库时钟可能有微小偏差；非计费来源的
+    # 完成时间必须至少覆盖同一 Attempt 已持久化的创建和开始时间。
+    completed_at = max(beijing_now(), dispatching.created_at, dispatching.dispatch_started_at)
     repository.finalize_dispatch(
         attempt=ProviderAttemptV1(
             attempt_id=dispatching.id,
@@ -154,7 +157,7 @@ def _ensure_import_lineage(
             attempt_no=dispatching.attempt_no,
             dispatch_status="completed",
             dispatch_started_at=dispatching.dispatch_started_at,
-            completed_at=beijing_now(),
+            completed_at=completed_at,
             raw_artifact_id=raw_artifact.id,
             billing=ProviderBillingV1(status="not_billable"),
             created_at=dispatching.created_at,

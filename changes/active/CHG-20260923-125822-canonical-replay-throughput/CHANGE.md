@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260923-125822-canonical-replay-throughput
 title: 全历史 Canonical 重筛吞吐优化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: perf/canonical-replay-throughput
 created: 2026-09-23T12:58:22+08:00
-updated: 2026-09-23T14:51:00+08:00
+updated: 2026-09-23T15:37:00+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -33,11 +33,11 @@ data_changes:
 
 # 变更摘要
 
-通过可失效的 Canonical 预检证明、Replay/Content Owner 低风险 SQL 合批与多 Worker 独立日志提高全历史重筛吞吐；保持首笔业务写入前全输入验证、检查点、取消与精确撤回。当前尚有一次未解释的本地基准失败，PR 未 Ready、未合并。
+通过可失效的 Canonical 预检证明、Replay/Content Owner SQL 合批与多 Worker 独立日志提高多行文件的重筛吞吐；保持首笔业务写入前全输入验证、检查点、取消与精确撤回。隔离基准中的来源时间戳失败已复现并修复；稀疏文件的冷启动性能未证明显著改善，生产效果仍须按真实分布测量。
 
 # 背景、现状与问题
 
-全历史重筛需在不削弱预检、Content Owner、检查点、取消和精确撤回语义的前提下提高总吞吐。当前每文件重复完整解析，每条命中行又产生多次数据库往返；多 Worker 虽可领不同子任务，却共享数据库和同名日志文件。本 Change 记录预检、数据库、并发与基准的完整施工边界；不执行生产迁移或全量重筛。用户随后同意“没问题的话合并主分支”，因此仅在完成审计、Review、CI 与未解释异常闭环后才可合并。
+全历史重筛需在不削弱预检、Content Owner、检查点、取消和精确撤回语义的前提下提高总吞吐。当前每文件重复完整解析，每条命中行又产生多次数据库往返；多 Worker 虽可领不同子任务，却共享数据库和同名日志文件。本 Change 记录预检、数据库、并发与基准的完整施工边界；不执行生产迁移或全量重筛。用户随后同意“没问题的话合并主分支”，因此仅在完成审计、Review 与 CI 后才可合并。
 
 # 事实与证据
 
@@ -79,9 +79,9 @@ data_changes:
 | --- | --- | --- | --- | --- |
 | R1 | 任一坏文件在子任务首笔写入前被发现，取消/重试/Fence 仍有效 | #581 / AC1 | satisfied | 后部坏文件及导入父级失效零业务写入、证明命中后篡改零写入、原有取消/接管/Fence 集成测试通过 |
 | R2 | 消除无必要的重复解析，历史和新 Artifact 均有安全验证路径 | #581 / AC2 | satisfied | `CanonicalArtifactReader` 单遍专用预检；证明复用、版本失效、篡改回归通过；`20260923_0060` |
-| R3 | 减少逐行数据库往返，保持内容、证据、来源、账本及撤回等价 | #581 / AC3 | satisfied | 100 行样本 SQL 2551→1852；摄取、内容、采集集成 260 项及撤回/账本用例通过 |
+| R3 | 减少逐行数据库往返，保持内容、证据、来源、账本及撤回等价 | #581 / AC3 | satisfied | 未修改 main 与当前分支同结构 100 行样本：SQL 2749→1858、Replay 3.603→3.067 秒；摄取、内容、采集集成 262 项及撤回/账本用例通过 |
 | R4 | 多 Worker 日志安全轮转，并按真实负载控制并发 | #581 / AC4 | satisfied | 正式入口进程独立 UUID 日志；301 文件本地 1/2/4 Worker 对照，运行手册限制服务器扩容条件 |
-| R5 | 可重复基准和相关集成、迁移验证证明改进与兼容 | #581 / AC5 | not_satisfied | 基准脚本与迁移/Schema 检查通过，但第一次 301 文件单 Worker 运行出现一次 `canonical_replay_input_invalid`，同库重试与新库复测成功；原始具体异常未被记录，尚未闭环；旧 main 同样本基线尚未取得 |
+| R5 | 可重复基准和相关集成、迁移验证证明改进与兼容 | #581 / AC5 | satisfied | 全新测试库带异常定位复现：数据库开始时间晚于应用完成时间，`ProviderAttemptV1` 拒绝非计费来源；强制时钟落后回归 Red→Green，同路径 301 文件完整复测 301/301 成功。main/当前 100 行同结构基准 SQL 2749→1858；迁移回环/Schema 与相关集成通过。301 个单行文件 main 31.575 秒、当前样本 28.676/34.148 秒，不能认定冷启动稀疏文件已提速。 |
 
 # 计划改动
 
@@ -115,11 +115,11 @@ data_changes:
 
 # 完成审计
 
-- [ ] upstream_re_read：重读 #581 和相关正式文档，独立重建完成定义。
-- [ ] change_coverage：核对上游要求均进入本 Change。
-- [ ] reverse_audit：从 Artifact/数据库生产者到运行中心结果及撤回反向核对。
-- [ ] unresolved_cleared：所有要求已满足或有正式延期依据。
+- [x] upstream_re_read：重读 #581 和相关正式文档，独立重建完成定义。
+- [x] change_coverage：核对 AC1–AC5 均进入本 Change；原始时钟失败和 CI 旧日志路径也进入回归边界。
+- [x] reverse_audit：从 Artifact/数据库生产者到运行中心结果及撤回反向核对，保持原 API、Job 结果和可逆账本。
+- [x] unresolved_cleared：AC1–AC5 的本地可验证要求满足；服务器真实文件分布与容量未确认，按运行手册上线前测量。
 
 # 完成证据与状态
 
-当前分支 `perf/canonical-replay-throughput`，Issue #581，早期 PR #582，尚未 Ready/合并。隔离 PostgreSQL 到 `20260923_0060 (head)` 且 `alembic check` 无差异；独立一次性数据库完成 `0059→0060→0059→0060` 回环及 Schema 检查。单元/Contract/API 1,397 通过、8 跳过（排除三个与本任务无关的 Windows/本地原始输出失败文件）；摄取/内容/采集集成 261 通过，后部导入父级失效与证明回归另 2 通过；Ruff、Mypy、文档事实/导航、架构与表 Owner 检查通过。301 文件本地样本：1 Worker 28.676s、2 Worker 21.786s、4 Worker 15.879s；首次 1 Worker 运行在第 3 个子 Run 的第 90 件附近失败，同库第二次重筛和新库单 Worker 复测成功，原因未确认，不得当作已解决。以上仅本机样本，不可推算服务器 25,819 件的完成时间。Review、CI 与失败根因仍待闭环，禁止据此声称可合并。
+当前分支 `perf/canonical-replay-throughput`，Issue #581，PR #582，尚未合并。隔离 PostgreSQL 到 `20260923_0060 (head)` 且 `alembic check` 无差异；独立一次性数据库完成 `0059→0060→0059→0060` 回环及 Schema 检查。单元/Contract/API 1,397 通过、8 跳过（排除三个与本任务无关的 Windows/本地原始输出失败文件）；最新摄取/内容/采集集成 262 通过；Ruff、Mypy、文档事实/导航、架构与表 Owner 检查通过。未修改 main 与当前分支的 100 行单文件本地样本：Replay 3.603→3.067 秒，SQL 2749→1858（约少 32%）；301 个单行文件 main 31.575 秒，当前分支不同运行 28.676/34.148 秒，冷启动稀疏场景没有稳定加速证据。旧失败在新隔离库精确复现为应用/数据库时钟偏差：`dispatch_started_at` 比应用生成的 `completed_at` 晚；参照同仓撤销来源逻辑将完成时间约束为至少等于已持久化的创建/开始时间，强制偏差测试先失败后通过，修复后全新 301 文件运行全部成功且账本 301 行。以上仅本机样本，不可推算服务器 25,819 件的完成时间。CI 曾因正式 Worker 改为实例日志后验收脚本仍检查 `worker.log` 而失败；已同步新文件名，等待新提交的 CI 验证。正式 Review 与 CI 未完成前禁止合并。
