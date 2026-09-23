@@ -133,10 +133,15 @@ def test_dependency_caches_only_cover_package_downloads() -> None:
 
 
 def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_heavy_jobs() -> None:
-    """普通 Ready 仍保留独立证据 Owner；Draft 不预付产品/Runtime/Tooling/Release 重工作。"""
+    """普通 Ready 保留产品证据 Runner；Hygiene 只在 main push 后占用维护 Runner。"""
     ci = CI.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
-    assert ci.count("runs-on: ubuntu-24.04") == 3
+    assert ci.count("runs-on: ubuntu-24.04") == 4
+    assert "  actions-hygiene:" in ci
+    hygiene = ci.split("  actions-hygiene:", 1)[1]
+    assert "github.event_name == 'push'" in hygiene
+    assert "github.ref == 'refs/heads/main'" in hygiene
+    assert "needs: ci-gate" in hygiene
     assert runtime.count("runs-on: ubuntu-24.04") == 1
     assert "needs: quality-core" in ci
     assert "github.event.pull_request.draft == false" in ci

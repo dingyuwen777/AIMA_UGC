@@ -495,3 +495,47 @@ jobs:
           }
           require_or_skip "${POSTGRES_REQUIRED}" "${POSTGRES_INTEGRATION_RESULT}" "PostgreSQL Integration"
           require_or_skip "${FULLSTACK_REQUIRED}" "${FULLSTACK_RESULT}" "Real Full-stack Golden Path"
+
+  actions-hygiene:
+    name: Actions Hygiene
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.ci-gate.result == 'success'
+    needs: ci-gate
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout current main history
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Reconcile obsolete workflow history
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/actions-hygiene.json"
+          set +e
+          python3 scripts/quality/actions_hygiene.py \
+            --root . \
+            --repository "${GITHUB_REPOSITORY}" \
+            --execute \
+            --json > "${report}"
+          status=$?
+          set -e
+          cat "${report}" || true
+          if [[ "${status}" -eq 75 ]]; then
+            echo "::warning::Actions Hygiene temporary GitHub API failure; cleanup is deferred to the next healthy main push."
+            exit 0
+          fi
+          if [[ "${status}" -ne 0 ]]; then
+            echo "Actions Hygiene invariant/permission failure; refusing to hide the maintenance defect." >&2
+            exit "${status}"
+          fi
