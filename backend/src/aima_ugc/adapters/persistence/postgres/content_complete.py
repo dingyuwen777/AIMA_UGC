@@ -32,13 +32,20 @@ from aima_ugc.modules.content.tables import (
     contents_table,
 )
 
-from .content import PostgresContentRepository, PostgresIngestionResult
+from .content import (
+    PostgresContentRepository,
+    PostgresExistingContentBatchItem,
+    PostgresIngestionResult,
+)
 from .content_contributions import (
     ContentContributionSnapshot,
+    capture_content_contribution_snapshots_batch,
     commit_content_contribution,
+    commit_content_contributions_batch,
     commit_new_content_contributions_batch,
     new_content_contribution_snapshot,
     prepare_content_contribution,
+    prepare_content_contributions_batch,
 )
 
 _CONTENT_COLLECTION_FIELDS = {
@@ -61,6 +68,16 @@ class PostgresCompleteNewContentBatchItem:
     """Content Owner 集合路径成功创建的一条完整业务记录。"""
 
     observation: CanonicalContentV1
+    result: PostgresIngestionResult
+    contribution_after: ContentContributionSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class PostgresCompleteExistingContentBatchItem:
+    """Content Owner 兼容路径批量提交后的一条 before/result/after。"""
+
+    observation: CanonicalContentV1
+    before: ContentContributionSnapshot
     result: PostgresIngestionResult
     contribution_after: ContentContributionSnapshot
 
@@ -253,9 +270,193 @@ class PostgresCompleteContentRepository:
 
         for table, values in extension_values.items():
             for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
-                self._session.execute(insert(table).values(list(chunk)))
+                self._session.execute(insert(table), list(chunk))
         commit_new_content_contributions_batch(self._session, tuple(snapshots))
         return tuple(results)
+
+    def ingest_contents_batch(
+        self,
+        observations: tuple[CanonicalContentV1, ...],
+    ) -> tuple[PostgresIngestionResult, ...]:
+        """批量创建安全新内容，并集合处理既有内容的兼容语义。"""
+
+        if not observations:
+            return ()
+        identities = tuple(
+            (observation.platform, observation.external_content_id) for observation in observations
+        )
+        if len(set(identities)) != len(identities):
+            raise ValueError("Content 有序批量不接受重复身份")
+        created = self.ingest_new_contents_batch(observations)
+        created_by_identity = {
+            (item.observation.platform, item.observation.external_content_id): item.result
+            for item in created
+        }
+        existing_observations = tuple(
+            observation
+            for observation in observations
+            if (observation.platform, observation.external_content_id) not in created_by_identity
+        )
+        existing_results = self.ingest_contents_with_before_snapshots_batch(
+            tuple(
+                zip(
+                    existing_observations,
+                    capture_content_contribution_snapshots_batch(
+                        self._session,
+                        tuple((observation, None) for observation in existing_observations),
+                    ),
+                    strict=True,
+                )
+            )
+        )
+        existing_by_identity = {
+            (item.observation.platform, item.observation.external_content_id): item.result
+            for item in existing_results
+        }
+        results_by_identity = created_by_identity | existing_by_identity
+        return tuple(
+            results_by_identity[(observation.platform, observation.external_content_id)]
+            for observation in observations
+        )
+
+    def ingest_contents_with_before_snapshots_batch(
+        self,
+        entries: tuple[tuple[CanonicalContentV1, ContentContributionSnapshot], ...],
+    ) -> tuple[PostgresCompleteExistingContentBatchItem, ...]:
+        """批量复用 before、合并来源贡献与可见性写入，核心业务语义仍由 Owner 执行。"""
+
+        if not entries:
+            return ()
+        observations = tuple(item[0] for item in entries)
+        identities = tuple(
+            (observation.platform, observation.external_content_id) for observation in observations
+        )
+        if len(set(identities)) != len(identities):
+            raise ValueError("Content before 批量不接受重复身份")
+        source_pairs = {_source_ids(item) for item in observations}
+        self._require_source_pairs(source_pairs)
+        before_snapshots = tuple(item[1] for item in entries)
+        eligible_indices = tuple(
+            index
+            for index, (observation, before) in enumerate(entries)
+            if before.content_id is not None
+            and (observation.author is None or observation.author.external_account_id is None)
+            and not (
+                "author.external_account_id" in observation.observed_fields
+                and before.content_fields.get("author.external_account_id") is not None
+            )
+        )
+        eligible_observations = tuple(observations[index] for index in eligible_indices)
+        eligible_before = tuple(before_snapshots[index] for index in eligible_indices)
+        core_items = self._core.ingest_existing_contents_batch(
+            eligible_observations,
+            collection_fields=frozenset(_CONTENT_COLLECTION_FIELDS),
+            replay_visibility_owner_id=self._replay_visibility_owner_id,
+        )
+        self._sync_existing_content_extensions_batch(core_items)
+        drafts = prepare_content_contributions_batch(
+            self._session,
+            eligible_observations,
+            before_snapshots=eligible_before,
+        )
+        eligible_after = commit_content_contributions_batch(
+            self._session,
+            entries=tuple(
+                (draft, observation, item.result.target_id)
+                for draft, observation, item in zip(
+                    drafts,
+                    eligible_observations,
+                    core_items,
+                    strict=True,
+                )
+            ),
+        )
+        completed: dict[int, PostgresCompleteExistingContentBatchItem] = {
+            index: PostgresCompleteExistingContentBatchItem(
+                observation=observation,
+                before=before,
+                result=replace(item.result, contribution_after=after),
+                contribution_after=after,
+            )
+            for index, observation, before, item, after in zip(
+                eligible_indices,
+                eligible_observations,
+                eligible_before,
+                core_items,
+                eligible_after,
+                strict=True,
+            )
+        }
+        fallback_indices = tuple(
+            index for index in range(len(entries)) if index not in set(eligible_indices)
+        )
+        for index in fallback_indices:
+            observation, before = entries[index]
+            result = self._ingest_content(observation, before_snapshot=before)
+            after = result.contribution_after
+            if after is None:
+                after = capture_content_contribution_snapshots_batch(
+                    self._session,
+                    ((observation, result.target_id),),
+                )[0]
+            completed[index] = PostgresCompleteExistingContentBatchItem(
+                observation=observation,
+                before=before,
+                result=replace(result, contribution_after=after),
+                contribution_after=after,
+            )
+        return tuple(completed[index] for index in range(len(entries)))
+
+    def _sync_existing_content_extensions_batch(
+        self,
+        items: tuple[PostgresExistingContentBatchItem, ...],
+    ) -> None:
+        """按 Collection 类型集合替换既有 Content 扩展，保留 freshness 语义。"""
+
+        for field_name, table in _CONTENT_COLLECTION_FIELDS.items():
+            accepted_items = tuple(
+                item
+                for item in items
+                if field_name in item.observation.observed_fields
+                and (field_name == "alternate_ids" or field_name in item.accepted_collection_fields)
+            )
+            if not accepted_items:
+                continue
+            values: list[dict[str, object]] = []
+            for item in accepted_items:
+                attempt_id, raw_id = _source_ids(item.observation)
+                values.extend(
+                    _content_extension_rows(
+                        field_name,
+                        item.result.target_id,
+                        item.observation,
+                        attempt_id=attempt_id,
+                        raw_id=raw_id,
+                    )
+                )
+            if field_name == "alternate_ids":
+                for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                    statement = pg_insert(table).values(list(chunk))
+                    self._session.execute(
+                        statement.on_conflict_do_update(
+                            index_elements=[table.c.content_id, table.c.id_type],
+                            set_={
+                                "external_id": statement.excluded.external_id,
+                                "provider_attempt_id": statement.excluded.provider_attempt_id,
+                                "raw_artifact_id": statement.excluded.raw_artifact_id,
+                                "observed_at": statement.excluded.observed_at,
+                            },
+                            where=table.c.observed_at <= statement.excluded.observed_at,
+                        )
+                    )
+                continue
+            self._session.execute(
+                delete(table).where(
+                    table.c.content_id.in_(tuple(item.result.target_id for item in accepted_items))
+                )
+            )
+            for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                self._session.execute(insert(table).values(list(chunk)))
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)

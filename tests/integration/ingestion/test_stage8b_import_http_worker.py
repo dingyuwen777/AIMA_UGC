@@ -59,7 +59,7 @@ from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact
 from fastapi.testclient import TestClient
 from httpx import Response
 from openpyxl import Workbook
-from sqlalchemy import func, select, update
+from sqlalchemy import event, func, select, update
 
 
 class _ExecutionContext:
@@ -92,6 +92,29 @@ def _xlsx() -> bytes:
             "https://www.xiaohongshu.com/explore/stage8b-content-1",
         ]
     )
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
+
+
+def _xlsx_rows(row_count: int) -> bytes:
+    """生成身份互异且全部命中品牌的有界 Excel Fixture。"""
+
+    workbook = Workbook(write_only=True)
+    sheet = workbook.create_sheet("文章")
+    sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
+    for index in range(row_count):
+        sheet.append(
+            [
+                "小红书",
+                f"爱玛批量导入 {index}",
+                "批量导入正文",
+                f"批量作者 {index}",
+                "2026-08-20 10:00:00",
+                f"https://www.xiaohongshu.com/explore/stage8b-batch-{index}",
+            ]
+        )
     output = BytesIO()
     workbook.save(output)
     workbook.close()
@@ -217,6 +240,86 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
         assert persisted_job["payload"]["filter_snapshot"] == snapshot
         assert persisted_job["job_type"] == IMPORT_JOB_TYPE
         assert "keyword_selection" not in persisted_job["payload"]
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_worker_batches_safe_new_content_and_brand_evidence(tmp_path: Path) -> None:
+    """本地 Excel 全新内容必须集合写入 Content 与初始品牌证据。"""
+
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    _truncate(runtime)
+    statement_count = 0
+    content_updates: list[str] = []
+
+    def count_statements(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        nonlocal statement_count
+        del connection, cursor, parameters, context, executemany
+        statement_count += 1
+        if statement.lstrip().startswith("UPDATE contents"):
+            content_updates.append(statement)
+
+    try:
+        client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
+        brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+            BrandCreateRequest(
+                display_name="爱玛",
+                role="owned",
+                aliases=("爱玛",),
+            ),
+            principal=_principal(),
+            request_id="stage3-import-batch-brand",
+        )
+        created = client.post(
+            "/api/v1/import-batches",
+            files=[
+                (
+                    "file",
+                    (
+                        "stage8b-batch.xlsx",
+                        _xlsx_rows(101),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ),
+                ),
+                ("brand_ids", (None, str(brand.id))),
+            ],
+        )
+        assert created.status_code == 202
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage3-import-batch-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        event.listen(runtime.database.engine, "before_cursor_execute", count_statements)
+        try:
+            assert worker.run_once() is True
+        finally:
+            event.remove(runtime.database.engine, "before_cursor_execute", count_statements)
+
+        detail = client.get(f"/api/v1/import-batches/{created.json()['batch_id']}").json()
+        assert detail["status"] == "succeeded"
+        assert detail["stats"]["rows_ingested"] == 101
+        assert content_updates == []
+        assert statement_count <= 100
+        with runtime.database.engine.connect() as connection:
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 101
+            assert (
+                connection.scalar(select(func.count()).select_from(content_brand_evidence_table))
+                == 101
+            )
     finally:
         _truncate(runtime)
         runtime.close()
@@ -396,7 +499,7 @@ def test_import_retry_after_filter_io_failure_reuses_canonical(
     runtime = create_worker_runtime(settings=settings)
     _truncate(runtime)
     original_convert = import_worker_module.convert_excel_to_canonical_jsonl
-    original_filter = import_worker_module.filter_canonical_content_by_brand_vehicle_jsonl
+    original_filter = import_worker_module.filter_and_deduplicate_canonical_contents
     conversion_calls = 0
 
     def track_conversion(**kwargs):
@@ -404,8 +507,8 @@ def test_import_retry_after_filter_io_failure_reuses_canonical(
         conversion_calls += 1
         return original_convert(**kwargs)
 
-    def fail_filter(**kwargs):
-        del kwargs
+    def fail_filter(*args, **kwargs):
+        del args, kwargs
         raise OSError("simulated filter I/O failure")
 
     monkeypatch.setattr(
@@ -415,7 +518,7 @@ def test_import_retry_after_filter_io_failure_reuses_canonical(
     )
     monkeypatch.setattr(
         import_worker_module,
-        "filter_canonical_content_by_brand_vehicle_jsonl",
+        "filter_and_deduplicate_canonical_contents",
         fail_filter,
     )
     try:
@@ -431,7 +534,7 @@ def test_import_retry_after_filter_io_failure_reuses_canonical(
         assert worker.run_once() is True
         monkeypatch.setattr(
             import_worker_module,
-            "filter_canonical_content_by_brand_vehicle_jsonl",
+            "filter_and_deduplicate_canonical_contents",
             original_filter,
         )
         assert worker.run_once() is True

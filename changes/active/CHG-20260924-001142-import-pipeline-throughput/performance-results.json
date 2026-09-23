@@ -1,0 +1,227 @@
+{
+  "schema_version": "aima-import-pipeline-performance-evidence.v1",
+  "recorded_at": "2026-09-24T03:32:00+08:00",
+  "baseline_revision": "cdd8482dd19c511fe9905794b9ef58de12a57db5",
+  "candidate_code_revision": "3874067c2e4fd12f55c77b8f444b4762c1c953e6",
+  "candidate_branch": "perf/import-pipeline-throughput",
+  "environment": {
+    "operating_system": "Windows 11",
+    "python": "3.14.7",
+    "postgresql": "18.4",
+    "postgresql_container": "aima-issue587-postgres",
+    "worker_count": 1,
+    "cpu_count": 12,
+    "shared_buffers": "128MB",
+    "work_mem": "4MB"
+  },
+  "methodology": {
+    "same_machine": true,
+    "same_postgresql_container": true,
+    "same_fixture_shape": true,
+    "rows_per_sample": 1000,
+    "samples_per_comparison": 3,
+    "comparison_statistic": "p50",
+    "disk_budget_bytes": 536870912,
+    "production_authorization": false,
+    "notes": [
+      "每次样本前只清空名称带容量测试后缀的专用数据库；不连接生产数据库。",
+      "历史导入和 Canonical 重筛的 PostgreSQL temp_bytes 在 main 与候选三轮均为 0，因此 50% 比例在数学上不适用；候选保持 0 临时落盘并受 512 MiB 写前预算约束。",
+      "work_dir_bytes 包含必须保留到任务终态的输入与持久 Artifact，不等同于临时副本。",
+      "服务器真实 25,819 个 Canonical 文件的绝对吞吐仍需发布后依据阶段日志复测；本证据只证明同机同数据的代码差异。"
+    ]
+  },
+  "scenarios": {
+    "local_excel_standard_new": {
+      "input": {
+        "rows": 1000,
+        "existing_rows": 0
+      },
+      "baseline": {
+        "elapsed_seconds": [
+          24.094812100003764,
+          24.079695500004163,
+          24.300170000002254
+        ],
+        "elapsed_seconds_p50": 24.094812100003764,
+        "rows_per_second_p50": 41.50271003772815,
+        "sql_statements_per_1000_rows_p50": 16073.0,
+        "monitored_temporary_peak_bytes": 6671564
+      },
+      "candidate": {
+        "elapsed_seconds": [
+          5.316394899993611,
+          5.4883011000056285,
+          5.401099199996679
+        ],
+        "elapsed_seconds_p50": 5.401099199996679,
+        "rows_per_second_p50": 185.14749738360942,
+        "sql_statements_per_1000_rows_p50": 85.0,
+        "monitored_temporary_peak_bytes_max": 1742801
+      },
+      "comparison": {
+        "elapsed_speedup": 4.461094141728561,
+        "sql_statement_reduction_ratio": 0.9947116281963542,
+        "temporary_peak_reduction_ratio": 0.7387717482737182,
+        "accepted": true
+      }
+    },
+    "historical_standard_new": {
+      "input": {
+        "rows": 1000,
+        "existing_rows": 0,
+        "chunk_rows": 1000
+      },
+      "baseline": {
+        "elapsed_seconds": [
+          23.664561499994306,
+          24.249477799996384,
+          24.209862499999872
+        ],
+        "rows_per_second": [
+          42.25727994158018,
+          41.238001422040895,
+          41.30548035950247
+        ],
+        "rows_per_second_p50": 41.30548035950247,
+        "sql_statements_per_1000_rows_p50": 16068.999999999998,
+        "postgresql_temp_bytes_max": 0
+      },
+      "candidate": {
+        "elapsed_seconds": [
+          5.82097920000524,
+          5.725090600004478,
+          5.751460899999074
+        ],
+        "rows_per_second": [
+          171.79240221286133,
+          174.66972487723038,
+          173.86886869041584
+        ],
+        "rows_per_second_p50": 173.86886869041584,
+        "sql_statements_per_1000_rows_p50": 81.0,
+        "postgresql_temp_bytes_max": 0,
+        "work_dir_bytes_max": 108425
+      },
+      "comparison": {
+        "throughput_speedup": 4.2093414040255,
+        "sql_statement_reduction_ratio": 0.9949592382848964,
+        "temporary_spill_regression": false,
+        "accepted": true
+      }
+    },
+    "historical_fill_only_mixed": {
+      "input": {
+        "rows": 1000,
+        "existing_rows": 200,
+        "new_rows": 800,
+        "chunk_rows": 1000
+      },
+      "baseline": {
+        "elapsed_seconds": [
+          18.3902894999992,
+          18.66681239999889,
+          18.171877000000677
+        ],
+        "rows_per_second": [
+          54.37652300144832,
+          53.571010334901075,
+          55.03008852635106
+        ],
+        "rows_per_second_p50": 54.37652300144832,
+        "sql_statements_per_1000_rows_p50": 12081.0,
+        "postgresql_temp_bytes_max": 0
+      },
+      "candidate": {
+        "elapsed_seconds": [
+          5.303958700002113,
+          5.290763199998764,
+          5.789181399995869
+        ],
+        "rows_per_second": [
+          188.5384213115388,
+          189.00864812854098,
+          172.73599338253828
+        ],
+        "rows_per_second_p50": 188.5384213115388,
+        "sql_statements_per_1000_rows_p50": 96.0,
+        "postgresql_temp_bytes_max": 0,
+        "work_dir_bytes_max": 139824
+      },
+      "comparison": {
+        "throughput_speedup": 3.4672761497920175,
+        "sql_statement_reduction_ratio": 0.9920536379438788,
+        "temporary_spill_regression": false,
+        "accepted": true
+      }
+    },
+    "canonical_replay_mixed": {
+      "input": {
+        "files": 1,
+        "rows": 1000,
+        "existing_rows": 200,
+        "new_rows": 800,
+        "workers": 1
+      },
+      "baseline": {
+        "elapsed_seconds": [
+          10.827,
+          11.01,
+          11.301
+        ],
+        "elapsed_seconds_p50": 11.01,
+        "rows_per_second_p50": 90.83,
+        "sql_statements_per_1000_rows_p50": 4860.0
+      },
+      "candidate": {
+        "elapsed_seconds": [
+          5.426,
+          5.399,
+          5.373
+        ],
+        "elapsed_seconds_p50": 5.399,
+        "rows_per_second_p50": 185.23,
+        "sql_statements_per_1000_rows_p50": 82.0,
+        "work_dir_bytes_max": 55800
+      },
+      "comparison": {
+        "elapsed_speedup": 2.0392665308390443,
+        "sql_statement_reduction_ratio": 0.983127572016461,
+        "accepted": true
+      }
+    },
+    "canonical_replay_all_new_regression_guard": {
+      "input": {
+        "files": 1,
+        "rows": 1000,
+        "existing_rows": 0,
+        "workers": 1
+      },
+      "baseline": {
+        "elapsed_seconds": [
+          5.983,
+          6.147,
+          5.985
+        ],
+        "elapsed_seconds_p50": 5.985,
+        "rows_per_second_p50": 167.09,
+        "sql_statements_per_1000_rows_p50": 72.0
+      },
+      "candidate": {
+        "elapsed_seconds": [
+          5.263,
+          5.49,
+          5.521
+        ],
+        "elapsed_seconds_p50": 5.49,
+        "rows_per_second_p50": 182.14,
+        "sql_statements_per_1000_rows_p50": 72.0,
+        "work_dir_bytes_max": 55780
+      },
+      "comparison": {
+        "elapsed_improvement_ratio": 0.08270676691729328,
+        "regression_ratio": -0.08270676691729328,
+        "accepted": true
+      }
+    }
+  }
+}

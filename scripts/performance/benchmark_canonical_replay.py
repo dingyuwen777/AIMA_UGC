@@ -6,10 +6,12 @@ import argparse
 import json
 import logging
 import re
+import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from aima_ugc.bootstrap.api import create_app
@@ -37,6 +39,8 @@ from openpyxl import Workbook
 from sqlalchemy import event, func, select
 
 _DATABASE_SUFFIX = "_canonical_replay_capacity"
+_DEFAULT_DISK_BUDGET_BYTES = 512 * 1024 * 1024
+_FREE_SPACE_RESERVE_BYTES = 64 * 1024 * 1024
 
 
 def _require_capacity_database(name: str) -> None:
@@ -46,16 +50,23 @@ def _require_capacity_database(name: str) -> None:
         raise ValueError(f"Replay 容量基准仅允许数据库名以 {_DATABASE_SUFFIX} 结尾")
 
 
-def _fixture_xlsx(*, file_index: int, rows_per_file: int, nonce: str) -> bytes:
+def _fixture_xlsx(
+    *,
+    file_index: int,
+    rows_per_file: int,
+    existing_rows_per_file: int,
+    nonce: str,
+) -> bytes:
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet("文章")
     sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
     for row_index in range(rows_per_file):
         external_id = f"replay-bench-{nonce}-{file_index}-{row_index}"
+        keyword = "预置" if row_index < existing_rows_per_file else "星曜"
         sheet.append(
             [
                 "小红书",
-                f"星曜容量样本 {file_index}-{row_index}",
+                f"{keyword}容量样本 {file_index}-{row_index}",
                 "容量测试正文",
                 "容量测试账号",
                 "2026-09-11 08:00:00",
@@ -74,6 +85,8 @@ def run_benchmark(
     file_count: int,
     rows_per_file: int,
     workers: int,
+    existing_rows_per_file: int = 0,
+    disk_budget_bytes: int = _DEFAULT_DISK_BUDGET_BYTES,
 ) -> dict[str, object]:
     """只测 Replay 执行窗口；输入生成与初次导入不计时。"""
 
@@ -83,18 +96,36 @@ def run_benchmark(
         raise ValueError("rows_per_file 必须在 1 到 10000 之间")
     if not 1 <= workers <= 8:
         raise ValueError("workers 必须在 1 到 8 之间")
+    if not 0 <= existing_rows_per_file <= rows_per_file:
+        raise ValueError("existing_rows_per_file 必须在 0 到 rows_per_file 之间")
+    if disk_budget_bytes <= 0:
+        raise ValueError("disk_budget_bytes 必须大于 0")
     settings = load_settings()
     _require_capacity_database(settings.db_name)
     root = work_dir.resolve()
     root.mkdir(parents=True, exist_ok=True)
     if any(root.iterdir()):
         raise ValueError("Replay 容量基准工作目录必须为空")
+    estimated_bytes = file_count * (4 * 1024 * 1024 + rows_per_file * 4096)
+    if estimated_bytes > disk_budget_bytes:
+        raise ValueError("Replay 容量基准预计临时数据超过磁盘预算")
+    free_bytes = shutil.disk_usage(root).free
+    if estimated_bytes + _FREE_SPACE_RESERVE_BYTES > free_bytes:
+        raise ValueError("Replay 容量基准预计临时数据超过当前可用磁盘")
 
-    runtime = create_worker_runtime(
-        settings=settings.model_copy(update={"data_dir": root / "data", "log_dir": root / "logs"})
-    )
+    try:
+        runtime = create_worker_runtime(
+            settings=settings.model_copy(
+                update={"data_dir": root / "data", "log_dir": root / "logs"}
+            )
+        )
+    except BaseException:
+        _cleanup_generated_outputs(root)
+        raise
+    completed = False
     try:
         runtime.logger.setLevel(logging.WARNING)
+        _reset_capacity_database(runtime)
         with runtime.database.engine.connect() as connection:
             for table in (artifacts_table, jobs_table, vehicle_brands_table, contents_table):
                 if connection.scalar(select(func.count()).select_from(table)):
@@ -116,7 +147,7 @@ def run_benchmark(
             BrandCreateRequest(
                 display_name=f"Replay 容量品牌 {uuid4().hex[:8]}",
                 role="owned",
-                aliases=("导入阶段不会命中的品牌词",),
+                aliases=(("预置",) if existing_rows_per_file else ("导入阶段不会命中的品牌词",)),
             ),
             principal=principal,
             request_id="canonical-replay-capacity-brand",
@@ -124,13 +155,16 @@ def run_benchmark(
         registry = create_collection_job_registry(runtime=runtime)
 
         def run_one_job(index: int) -> bool:
-            return create_job_worker(
-                runtime=runtime,
-                registry=registry,
-                worker_id=f"canonical-replay-capacity-{index}",
-                lease_seconds=120,
-                retry_delay_seconds=0,
-            ).run_once()
+            return cast(
+                bool,
+                create_job_worker(
+                    runtime=runtime,
+                    registry=registry,
+                    worker_id=f"canonical-replay-capacity-{index}",
+                    lease_seconds=120,
+                    retry_delay_seconds=0,
+                ).run_once(),
+            )
 
         nonce = uuid4().hex
         for file_index in range(file_count):
@@ -144,6 +178,7 @@ def run_benchmark(
                             _fixture_xlsx(
                                 file_index=file_index,
                                 rows_per_file=rows_per_file,
+                                existing_rows_per_file=existing_rows_per_file,
                                 nonce=nonce,
                             ),
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -163,7 +198,11 @@ def run_benchmark(
             principal=principal,
             request_id="canonical-replay-capacity-alias",
         )
-        runtime.logger.setLevel(logging.INFO)
+        # 容量基准需要保留每个原子批次的阶段耗时，便于区分解析、Content、
+        # Evidence 与账本/checkpoint 瓶颈；正式服务仍由部署日志级别控制。
+        runtime.logger.setLevel(logging.DEBUG)
+        for handler in runtime.logger.handlers:
+            handler.setLevel(logging.DEBUG)
         created = client.post(
             "/api/v1/canonical-replays/all",
             json={"idempotency_key": f"replay-capacity-{nonce}"},
@@ -176,6 +215,7 @@ def run_benchmark(
         seen_inserts = 0
         ledger_inserts = 0
         statements_by_table: dict[str, int] = {}
+        statement_examples: dict[str, str] = {}
 
         def count_sql(
             connection: object,
@@ -192,6 +232,7 @@ def run_benchmark(
             sql_kind = statement.lstrip().split(None, 1)[0].upper()
             table_key = f"{sql_kind} {first_table.group(1) if first_table else 'other'}"
             statements_by_table[table_key] = statements_by_table.get(table_key, 0) + 1
+            statement_examples.setdefault(table_key, " ".join(statement.split())[:500])
             if statement.startswith("INSERT INTO canonical_replay_seen_content"):
                 seen_inserts += 1
             if statement.startswith("INSERT INTO canonical_replay_content_changes"):
@@ -246,19 +287,23 @@ def run_benchmark(
         if len(statuses) != run_count or any(status != "succeeded" for status in statuses):
             raise RuntimeError("基准 Replay 子任务未全部成功")
         expected_rows = file_count * rows_per_file
+        expected_existing = file_count * existing_rows_per_file
+        expected_ingested = expected_rows - expected_existing
         if ledger_count != expected_rows:
             raise RuntimeError("基准 Replay 贡献账本行数与输入不一致")
         if (
             int(counters.rows_seen) != expected_rows
             or int(counters.rows_matched) != expected_rows
-            or int(counters.rows_ingested) != expected_rows
-            or int(counters.existing_convergence) != 0
+            or int(counters.rows_ingested) != expected_ingested
+            or int(counters.existing_convergence) != expected_existing
         ):
-            raise RuntimeError("基准 Replay 持久计数与全命中新内容输入不一致")
-        return {
+            raise RuntimeError("基准 Replay 持久计数与新增/既有分布不一致")
+        report = {
             "schema_version": "canonical-replay-capacity.v1",
             "files": file_count,
             "rows": expected_rows,
+            "existing_rows": expected_existing,
+            "new_rows": expected_ingested,
             "rows_seen": int(counters.rows_seen),
             "rows_matched": int(counters.rows_matched),
             "rows_ingested": int(counters.rows_ingested),
@@ -270,12 +315,83 @@ def run_benchmark(
             "sql_statements": statement_count,
             "seen_identity_inserts": seen_inserts,
             "contribution_ledger_inserts": ledger_inserts,
+            "disk_budget_bytes": disk_budget_bytes,
+            "estimated_bytes": estimated_bytes,
+            "work_directory_bytes": _directory_bytes(root),
             "top_sql_tables": sorted(
                 statements_by_table.items(), key=lambda item: item[1], reverse=True
             )[:15],
+            "top_sql_examples": {
+                key: statement_examples[key]
+                for key, _ in sorted(
+                    statements_by_table.items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )[:15]
+            },
         }
+        _atomic_write_json(root / "capacity_report.json", report)
+        completed = True
+        return report
     finally:
-        runtime.close()
+        try:
+            runtime.close()
+        finally:
+            if not completed:
+                _cleanup_generated_outputs(root)
+
+
+def _reset_capacity_database(runtime: Any) -> None:
+    """只清空后缀已校验的专用容量库，保留 Migration seed。"""
+
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, accounts "
+            "RESTART IDENTITY CASCADE"
+        )
+
+
+def _directory_bytes(root: Path) -> int:
+    """统计本次专用工作目录大小；无法读取的瞬态文件按零处理。"""
+
+    total = 0
+    for path in root.rglob("*"):
+        try:
+            if path.is_file():
+                total += path.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _cleanup_generated_outputs(root: Path) -> None:
+    """异常时只清理由本次空目录基准创建的已知直属输出。"""
+
+    resolved_root = root.resolve()
+    for name in (
+        "data",
+        "logs",
+        "capacity_report.json",
+        "capacity_report.json.tmp",
+    ):
+        candidate = (resolved_root / name).resolve()
+        if candidate.parent != resolved_root:
+            raise RuntimeError("Replay 容量基准清理目标越出工作目录")
+        if candidate.is_dir():
+            shutil.rmtree(candidate)
+        else:
+            candidate.unlink(missing_ok=True)
+
+
+def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
+    """原子写入容量报告，避免中途中断留下半份 JSON。"""
+
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    temporary.replace(path)
 
 
 def main() -> None:
@@ -284,6 +400,8 @@ def main() -> None:
     parser.add_argument("--files", type=int, default=1)
     parser.add_argument("--rows-per-file", type=int, default=100)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--existing-rows-per-file", type=int, default=0)
+    parser.add_argument("--disk-budget-mib", type=int, default=512)
     args = parser.parse_args()
     print(
         json.dumps(
@@ -292,6 +410,8 @@ def main() -> None:
                 file_count=args.files,
                 rows_per_file=args.rows_per_file,
                 workers=args.workers,
+                existing_rows_per_file=args.existing_rows_per_file,
+                disk_budget_bytes=args.disk_budget_mib * 1024 * 1024,
             ),
             ensure_ascii=False,
             sort_keys=True,

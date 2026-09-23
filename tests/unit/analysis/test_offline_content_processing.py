@@ -9,6 +9,7 @@ from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.modules.analysis.offline_content import (
     deduplicate_content_jsonl,
+    deduplicate_unified_content_records,
     filter_canonical_content_jsonl,
 )
 
@@ -297,3 +298,51 @@ def test_deduplicate_keeps_first_non_equivalent_record_and_audits_difference(
     ]
     assert "爱玛新品发布" not in summary.conflict_path.read_text(encoding="utf-8")
     assert "同一身份但标题发生变化" not in summary.conflict_path.read_text(encoding="utf-8")
+
+
+def test_streaming_deduplicate_preserves_contract_without_intermediate_input(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "prepared" / "contents.jsonl"
+    first = UnifiedContentRecordV1(
+        content=_content(
+            external_content_id="content-1",
+            title="爱玛新品发布",
+            text="正文",
+            item_locator="sheet=文章;row=2",
+        ),
+        matched_keywords=["爱玛"],
+    )
+    equivalent = first.model_copy(
+        update={
+            "content": first.content.model_copy(
+                update={
+                    "source": first.content.source.model_copy(
+                        update={"item_locator": "sheet=文章;row=8"}
+                    )
+                }
+            )
+        }
+    )
+    conflict = first.model_copy(
+        update={"content": first.content.model_copy(update={"title": "爱玛标题已变化"})}
+    )
+
+    summary = deduplicate_unified_content_records(
+        iter((first, equivalent, conflict)),
+        input_path=Path("canonical-content.v1"),
+        output_path=output,
+    )
+
+    assert summary.rows_seen == 3
+    assert summary.rows_written == 1
+    assert summary.duplicates_removed == 2
+    assert summary.conflicts == 1
+    restored = UnifiedContentRecordV1.model_validate_json(
+        output.read_text(encoding="utf-8").strip()
+    )
+    assert restored.content.source.item_locator == "sheet=文章;row=2"
+    conflict_payload = json.loads(summary.conflict_path.read_text(encoding="utf-8"))
+    assert conflict_payload["different_fields"] == ["content.title"]
+    assert not output.with_name(f".{output.name}.tmp").exists()
+    assert not summary.conflict_path.with_name(f".{summary.conflict_path.name}.tmp").exists()

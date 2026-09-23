@@ -227,6 +227,89 @@ def deduplicate_content_jsonl(
     return summary
 
 
+def deduplicate_unified_content_records(
+    records: Iterable[UnifiedContentRecordV1],
+    *,
+    input_path: Path,
+    output_path: Path,
+) -> ContentDeduplicationSummary:
+    """把上游流式记录直接去重到单一 JSONL，避免先物化过滤中间文件。"""
+
+    source_path = Path(input_path)
+    target_path = Path(output_path)
+    conflict_path = target_path.with_name("deduplication_conflicts.jsonl")
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = target_path.with_name(f".{target_path.name}.tmp")
+    temp_conflict_path = conflict_path.with_name(f".{conflict_path.name}.tmp")
+    for path in (temp_path, temp_conflict_path, target_path, conflict_path):
+        path.unlink(missing_ok=True)
+
+    rows_seen = 0
+    rows_written = 0
+    duplicates_removed = 0
+    conflicts = 0
+    seen: dict[tuple[str, str], _SeenIdentity] = {}
+    try:
+        with (
+            temp_path.open("w+b") as output_file,
+            temp_conflict_path.open("w", encoding="utf-8", newline="\n") as conflict_file,
+        ):
+            for line_number, record in enumerate(records, start=1):
+                rows_seen += 1
+                identity = (record.content.platform, record.content.external_content_id)
+                fingerprint = _business_fingerprint(record)
+                previous = seen.get(identity)
+                if previous is None:
+                    byte_offset = output_file.tell()
+                    encoded = (record.model_dump_json() + "\n").encode("utf-8")
+                    output_file.write(encoded)
+                    seen[identity] = _SeenIdentity(
+                        fingerprint=fingerprint,
+                        line_number=line_number,
+                        byte_offset=byte_offset,
+                    )
+                    rows_written += 1
+                    continue
+                duplicates_removed += 1
+                if previous.fingerprint == fingerprint:
+                    continue
+                conflicts += 1
+                output_file.flush()
+                first_record = _read_record_at(
+                    output_file,
+                    source_path,
+                    previous.byte_offset,
+                    previous.line_number,
+                )
+                _write_conflict(
+                    conflict_file,
+                    first_record=first_record,
+                    duplicate_record=record,
+                    first_line=previous.line_number,
+                    duplicate_line=line_number,
+                )
+            output_file.flush()
+            os.fsync(output_file.fileno())
+            _flush_and_sync(conflict_file)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        temp_conflict_path.unlink(missing_ok=True)
+        raise
+
+    summary = ContentDeduplicationSummary(
+        input_path=source_path,
+        output_path=target_path,
+        conflict_path=conflict_path,
+        rows_seen=rows_seen,
+        rows_written=rows_written,
+        duplicates_removed=duplicates_removed,
+        conflicts=conflicts,
+    )
+    temp_conflict_path.replace(conflict_path)
+    temp_path.replace(target_path)
+    return summary
+
+
 def _parse_canonical_line(raw_line: bytes, path: Path, line_number: int) -> CanonicalContentV1:
     if not raw_line.strip():
         raise ValueError(f"{path}: 第 {line_number} 行为空，拒绝继续处理")

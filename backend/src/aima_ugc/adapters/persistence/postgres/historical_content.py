@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from itertools import batched
 from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
@@ -24,10 +25,24 @@ from aima_ugc.modules.ingestion.historical_tables import (
 from aima_ugc.platform.time import beijing_now
 
 from .content_complete import PostgresCompleteContentRepository
-from .content_contributions import commit_content_contribution, prepare_content_contribution
+from .content_contributions import (
+    ContentContributionSnapshot,
+    commit_content_contributions_batch,
+    commit_new_content_contributions_batch,
+    new_content_contribution_snapshot,
+    prepare_content_contributions_batch,
+)
 
 _POLICY_VERSION = "historical-fill-only.v1"
 _MAX_BATCH_ROWS = 2_000
+_MULTI_VALUES_INSERT_ROWS = 500
+_CONTRIBUTION_COLLECTION_FIELDS = (
+    "alternate_ids",
+    "media",
+    "topics",
+    "mentions",
+    "locations",
+)
 _CONTENT_FIELDS = {
     "content_type": "content_type",
     "title": "title",
@@ -177,25 +192,31 @@ class PostgresHistoricalContentRepository:
         winners = [
             item for item in planned if item.outcome not in {"duplicate", "filtered", "invalid"}
         ]
-        contribution_drafts = {
-            item.row.source_row_ordinal: prepare_content_contribution(
-                self._session,
-                cast(CanonicalContentV1, item.row.content),
-            )
-            for item in winners
-        }
-        self._upsert_authors(winners)
-        self._plan_and_write_contents(winners)
-        for item in winners:
+        fast_created_ids = {item.ledger_id for item in self._insert_new_contents_batch(winners)}
+        remaining = [item for item in winners if item.ledger_id not in fast_created_ids]
+        remaining_observations = tuple(
+            cast(CanonicalContentV1, item.row.content) for item in remaining
+        )
+        contribution_drafts = prepare_content_contributions_batch(
+            self._session,
+            remaining_observations,
+        )
+        self._upsert_authors(remaining)
+        self._plan_and_write_contents(remaining)
+        contribution_entries = []
+        for item, observation, draft in zip(
+            remaining,
+            remaining_observations,
+            contribution_drafts,
+            strict=True,
+        ):
             if item.content_id is None:
                 raise RuntimeError("历史导入写入后缺少 Content ID")
-            content = cast(CanonicalContentV1, item.row.content)
-            commit_content_contribution(
-                self._session,
-                draft=contribution_drafts[item.row.source_row_ordinal],
-                observation=content,
-                content_id=item.content_id,
-            )
+            contribution_entries.append((draft, observation, item.content_id))
+        commit_content_contributions_batch(
+            self._session,
+            entries=tuple(contribution_entries),
+        )
         self._write_ledgers(
             batch_id=batch_id,
             campaign_item_id=campaign_item_id,
@@ -217,6 +238,119 @@ class PostgresHistoricalContentRepository:
             failed=counts.get("failed", 0),
             skipped_terminal=skipped,
         )
+
+    def _insert_new_contents_batch(self, rows: list[_PlannedRow]) -> list[_PlannedRow]:
+        """按历史填充语义集合创建安全新内容；冲突身份留给兼容路径。"""
+
+        candidates: list[
+            tuple[_PlannedRow, CanonicalContentV1, UUID, dict[str, Any], UUID, UUID]
+        ] = []
+        for planned in rows:
+            content = cast(CanonicalContentV1, planned.row.content)
+            if content.author is not None and content.author.external_account_id is not None:
+                continue
+            source_attempt_id = content.source.provider_attempt_id
+            source_raw_artifact_id = content.source.raw_artifact_id
+            if source_attempt_id is None or source_raw_artifact_id is None:
+                raise ValueError("历史 Content 来源必须包含 provider_attempt_id 与 raw_artifact_id")
+            content_id = uuid4()
+            candidates.append(
+                (
+                    planned,
+                    content,
+                    content_id,
+                    _new_content_values(content_id, content, None),
+                    UUID(source_attempt_id),
+                    source_raw_artifact_id,
+                )
+            )
+        if not candidates:
+            return []
+
+        created_ids: set[UUID] = set()
+        for candidate_chunk in batched(candidates, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            created_ids.update(
+                self._session.execute(
+                    pg_insert(contents_table)
+                    .values([item[3] for item in candidate_chunk])
+                    .on_conflict_do_nothing(
+                        index_elements=[
+                            contents_table.c.platform,
+                            contents_table.c.external_content_id,
+                        ]
+                    )
+                    .returning(contents_table.c.id)
+                ).scalars()
+            )
+        accepted = [item for item in candidates if item[2] in created_ids]
+        if not accepted:
+            return []
+
+        version_values: list[dict[str, Any]] = []
+        external_id_values: list[dict[str, Any]] = []
+        contribution_entries: list[tuple[CanonicalContentV1, ContentContributionSnapshot]] = []
+        for planned, content, content_id, state, attempt_id, raw_artifact_id in accepted:
+            planned.content_id = content_id
+            planned.content_version = 1
+            planned.outcome = "created"
+            version_values.append(
+                _version_values(
+                    content_id=content_id,
+                    version_no=1,
+                    state=state,
+                    author_snapshot=_historical_author_snapshot(content.author),
+                    content=content,
+                )
+            )
+            collections: dict[str, tuple[dict[str, object], ...]] = {}
+            for field_name in _CONTRIBUTION_COLLECTION_FIELDS:
+                if field_name in content.observed_fields:
+                    collections[field_name] = ()
+            if "alternate_ids" in content.observed_fields:
+                snapshot_rows: list[dict[str, object]] = []
+                for id_type, external_id in sorted(content.alternate_ids.items()):
+                    value: dict[str, object] = {
+                        "content_id": content_id,
+                        "id_type": id_type,
+                        "external_id": external_id,
+                        "provider_attempt_id": attempt_id,
+                        "raw_artifact_id": raw_artifact_id,
+                        "observed_at": content.observed_at,
+                    }
+                    external_id_values.append(value)
+                    snapshot_rows.append(
+                        {key: child for key, child in value.items() if key != "content_id"}
+                    )
+                collections["alternate_ids"] = tuple(snapshot_rows)
+            after = new_content_contribution_snapshot(
+                content,
+                content_id=content_id,
+                state=state,
+                collections=collections,
+                author_snapshot=_historical_author_snapshot(content.author),
+            )
+            contribution_entries.append((content, after))
+
+        for version_chunk in batched(version_values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            self._session.execute(insert(content_versions_table).values(list(version_chunk)))
+        for external_id_chunk in batched(
+            external_id_values, _MULTI_VALUES_INSERT_ROWS, strict=False
+        ):
+            self._session.execute(
+                pg_insert(content_external_ids_table)
+                .values(list(external_id_chunk))
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        content_external_ids_table.c.content_id,
+                        content_external_ids_table.c.id_type,
+                    ]
+                )
+            )
+        commit_new_content_contributions_batch(
+            self._session,
+            tuple(contribution_entries),
+        )
+        return [item[0] for item in accepted]
 
     def _claim_identities(
         self,
@@ -807,11 +941,13 @@ class PostgresStandardContentRepository(PostgresHistoricalContentRepository):
         candidates = [item for item in pending if item.preclassified_outcome is None]
         planned.extend(self._claim_identities(batch_id=batch_id, rows=candidates))
         service = ContentIngestionService(PostgresCompleteContentRepository(self._session))
-        for item in planned:
-            if item.outcome in {"duplicate", "filtered", "invalid"}:
-                continue
-            content = cast(CanonicalContentV1, item.row.content)
-            result = service.ingest_content(content)
+        writable = [
+            item for item in planned if item.outcome not in {"duplicate", "filtered", "invalid"}
+        ]
+        results = service.ingest_contents_batch(
+            tuple(cast(CanonicalContentV1, item.row.content) for item in writable)
+        )
+        for item, result in zip(writable, results, strict=True):
             item.content_id = result.target_id
             item.content_version = result.version_no
             if result.version_created and result.version_no == 1:

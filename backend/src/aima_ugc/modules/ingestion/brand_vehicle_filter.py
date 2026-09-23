@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -10,7 +12,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1
-from aima_ugc.modules.analysis import ContentFilterSummary
+from aima_ugc.modules.analysis import (
+    ContentFilterSummary,
+    deduplicate_unified_content_records,
+)
 from aima_ugc.modules.vehicles.brand_vehicle import (
     BrandVehicleCatalogSnapshot,
     BrandVehicleResolution,
@@ -28,13 +33,29 @@ class BrandVehicleFilterSnapshot(BaseModel):
     catalog: BrandVehicleCatalogSnapshot
 
 
+@dataclass(frozen=True, slots=True)
+class CanonicalFilterDeduplicationSummary:
+    """Canonical 流过滤与去重的一次物化摘要。"""
+
+    output_path: Path
+    conflict_path: Path
+    rows_seen: int
+    rows_matched: int
+    rows_filtered_out: int
+    rows_written: int
+    duplicates_removed: int
+    conflicts: int
+
+
 def resolve_canonical_brand_vehicle(
     snapshot: BrandVehicleFilterSnapshot,
     content: CanonicalContentV1,
+    *,
+    resolver: BrandVehicleResolver | None = None,
 ) -> BrandVehicleResolution:
     """用冻结目录解析一条 Canonical Content；Excel `text` 对应 Resolver `raw_text`。"""
 
-    return BrandVehicleResolver().resolve(
+    return (resolver or BrandVehicleResolver(snapshot.catalog)).resolve(
         snapshot.catalog,
         title=content.title,
         raw_text=content.text,
@@ -58,6 +79,7 @@ def filter_canonical_content_by_brand_vehicle_jsonl(
     target_path.unlink(missing_ok=True)
     rows_seen = 0
     rows_written = 0
+    resolver = BrandVehicleResolver(snapshot.catalog)
     try:
         with (
             source_path.open("rb") as input_file,
@@ -66,7 +88,11 @@ def filter_canonical_content_by_brand_vehicle_jsonl(
             for line_number, raw_line in enumerate(input_file, start=1):
                 rows_seen += 1
                 content = _parse_canonical_line(raw_line, source_path, line_number)
-                resolution = resolve_canonical_brand_vehicle(snapshot, content)
+                resolution = resolve_canonical_brand_vehicle(
+                    snapshot,
+                    content,
+                    resolver=resolver,
+                )
                 if not resolution.matched:
                     continue
                 record = UnifiedContentRecordV1(content=content)
@@ -87,6 +113,50 @@ def filter_canonical_content_by_brand_vehicle_jsonl(
     )
 
 
+def filter_and_deduplicate_canonical_contents(
+    contents: Iterable[CanonicalContentV1],
+    *,
+    output_path: Path,
+    snapshot: BrandVehicleFilterSnapshot,
+    input_label: Path | None = None,
+) -> CanonicalFilterDeduplicationSummary:
+    """单次遍历完成目录过滤与身份去重，只发布一个 Unified JSONL。"""
+
+    rows_seen = 0
+    rows_matched = 0
+    resolver = BrandVehicleResolver(snapshot.catalog)
+
+    def matched_records() -> Iterator[UnifiedContentRecordV1]:
+        nonlocal rows_seen, rows_matched
+        for content in contents:
+            rows_seen += 1
+            resolution = resolve_canonical_brand_vehicle(
+                snapshot,
+                content,
+                resolver=resolver,
+            )
+            if not resolution.matched:
+                continue
+            rows_matched += 1
+            yield UnifiedContentRecordV1(content=content)
+
+    deduplication = deduplicate_unified_content_records(
+        matched_records(),
+        input_path=input_label or Path("canonical-content.v1"),
+        output_path=output_path,
+    )
+    return CanonicalFilterDeduplicationSummary(
+        output_path=deduplication.output_path,
+        conflict_path=deduplication.conflict_path,
+        rows_seen=rows_seen,
+        rows_matched=rows_matched,
+        rows_filtered_out=rows_seen - rows_matched,
+        rows_written=deduplication.rows_written,
+        duplicates_removed=deduplication.duplicates_removed,
+        conflicts=deduplication.conflicts,
+    )
+
+
 def _parse_canonical_line(raw_line: bytes, path: Path, line_number: int) -> CanonicalContentV1:
     """Fail-closed 解析单行 Canonical JSONL，避免坏行被过滤阶段静默吞掉。"""
 
@@ -100,6 +170,8 @@ def _parse_canonical_line(raw_line: bytes, path: Path, line_number: int) -> Cano
 
 __all__ = [
     "BrandVehicleFilterSnapshot",
+    "CanonicalFilterDeduplicationSummary",
+    "filter_and_deduplicate_canonical_contents",
     "filter_canonical_content_by_brand_vehicle_jsonl",
     "resolve_canonical_brand_vehicle",
 ]

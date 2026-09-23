@@ -47,6 +47,14 @@ class ContentIngestionBatchRepository(Protocol[_ResultT_co]):
     ) -> tuple[_ResultT_co, ...]: ...
 
 
+class ContentIngestionOrderedBatchRepository(Protocol[_ResultT_co]):
+    """允许正式 Owner 批量处理观察，并按输入顺序返回逐条结果。"""
+
+    def ingest_contents_batch(
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> tuple[_ResultT_co, ...]: ...
+
+
 class ContentIngestionService[ResultT]:
     """Canonical 摄取唯一生产入口；数据库细节由 Content Owner Repository 实现。"""
 
@@ -71,6 +79,14 @@ class ContentIngestionService[ResultT]:
 
         repository = cast(ContentIngestionBatchRepository[BatchResultT], self._repository)
         return repository.ingest_new_contents_batch(observations)
+
+    def ingest_contents_batch(
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> tuple[ResultT, ...]:
+        """集合创建安全新内容，并让冲突或复杂行在同一 Owner 内兼容回退。"""
+
+        repository = cast(ContentIngestionOrderedBatchRepository[ResultT], self._repository)
+        return repository.ingest_contents_batch(observations)
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> ResultT:
         return self._repository.ingest_comment(observation)
