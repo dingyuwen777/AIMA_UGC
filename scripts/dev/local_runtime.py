@@ -44,6 +44,7 @@ _SOURCE_LOCAL_KEYS = frozenset(
         "AIMA_FEISHU_APP_SECRET_REF",
         "AIMA_FEISHU_TIMEOUT_SECONDS",
         "AIMA_FEISHU_MAX_RETRIES",
+        "AIMA_FEISHU_DRY_RUN",
     }
 )
 _COMPOSE_LOCAL_KEYS = frozenset(
@@ -103,6 +104,7 @@ _COMPOSE_LOCAL_KEYS = frozenset(
         "AIMA_FEISHU_SESSION_TTL_HOURS",
         "AIMA_FEISHU_STATE_TTL_SECONDS",
         "AIMA_FEISHU_CONNECTORS",
+        "AIMA_FEISHU_DRY_RUN",
     }
 )
 _KNOWN_LOCAL_KEYS = _SOURCE_LOCAL_KEYS | _COMPOSE_LOCAL_KEYS
@@ -142,6 +144,7 @@ class LocalDevConfig:
     feishu_app_secret_ref: str | None = None
     feishu_timeout_seconds: str | None = None
     feishu_max_retries: str | None = None
+    feishu_dry_run: str | None = None
 
     @property
     def tikhub_configured(self) -> bool:
@@ -302,6 +305,7 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
         feishu_app_secret_ref=_clean(values.get("AIMA_FEISHU_APP_SECRET_REF")),
         feishu_timeout_seconds=_clean(values.get("AIMA_FEISHU_TIMEOUT_SECONDS")),
         feishu_max_retries=_clean(values.get("AIMA_FEISHU_MAX_RETRIES")),
+        feishu_dry_run=_clean(values.get("AIMA_FEISHU_DRY_RUN")),
     )
 
 
@@ -390,6 +394,7 @@ def build_runtime_environment(
         ("AIMA_FEISHU_APP_SECRET_REF", config.feishu_app_secret_ref),
         ("AIMA_FEISHU_TIMEOUT_SECONDS", config.feishu_timeout_seconds),
         ("AIMA_FEISHU_MAX_RETRIES", config.feishu_max_retries),
+        ("AIMA_FEISHU_DRY_RUN", config.feishu_dry_run),
     ):
         if value is not None:
             environment[key] = value

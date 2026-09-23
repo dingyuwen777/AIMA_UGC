@@ -346,25 +346,89 @@ def resolve_openai_compatible_provider_name(
 
 
 def _user_message(request: ContentLabelingLLMRequest) -> str:
-    payload: dict[str, object] = {"items": request.model_payload()}
+    payload: dict[str, object] = {
+        "items": request.model_payload(),
+        "excel_output_contract": (
+            "发声类型、情感标签、一级标签、二级标签四列永远不得为空，也不得出现“空白”占位值。"
+            "当前离线 Excel 持久化契约不接受 relevance=irrelevant；请输出 relevance=relevant，"
+            "并始终输出合法的 sentiment 和至少一个合法 labels 标签对；"
+            "禁止 null、空字符串、空数组、缺失 key 或“空白”占位值。"
+        ),
+    }
     if request.previous_validation_error_codes:
-        payload["previous_validation_error_codes"] = list(request.previous_validation_error_codes)
+        error_codes = tuple(request.previous_validation_error_codes)
+        payload["previous_validation_error_codes"] = list(error_codes)
+        payload["validation_repair_rules"] = _validation_repair_rules(error_codes)
         if request.request_kind == "judge":
             payload["decision_mode"] = "judge"
             payload["retry_instruction"] = (
-                "上一响应存在证据、主体、意图或发声类型歧义。"
-                "请只基于本次 items 的五个文本字段独立重新判断，"
-                "逐项引用原文证据；不要沿用上一结论。证据不足时使用显式未知值并返回 clear。"
+                "上一响应未通过本地校验。请只基于本次 items 的五个文本字段独立重新判断，"
+                "不要沿用上一结论；按 validation_repair_rules 修正后返回完整 JSON。"
             )
         else:
             payload["retry_instruction"] = (
                 "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
+                "必须严格执行 validation_repair_rules，不能输出 unknown、无法判断、其他或空白"
+                "占位值。"
             )
     return json.dumps(
         payload,
         ensure_ascii=False,
         separators=(",", ":"),
     )
+
+
+def _validation_repair_rules(error_codes: tuple[str, ...]) -> list[str]:
+    """把本地校验错误翻译成模型可执行的修复动作。"""
+
+    codes = set(error_codes)
+    rules = [
+        (
+            "最终 Excel 的发声类型、情感标签、一级标签、二级标签都必须是非空合法值，"
+            "不能出现 null、空数组、空字符串或“空白”。"
+        ),
+        (
+            "当前离线 Excel 契约要求 relevance=relevant；必须同时返回合法 sentiment "
+            "和至少一个合法 labels 标签对。"
+        ),
+    ]
+    if "unknown_sentiment" in codes or "missing_excel_sentiment" in codes:
+        rules.append(
+            "sentiment 只能逐字使用 Prompt Taxonomy 的四个值：正面、中性、负面、混合；"
+            "没有明确正负态度时使用中性，禁止输出未知、无法判断、无明显情绪或其他近义词。"
+        )
+    if "unknown_primary_label" in codes or "missing_excel_labels" in codes:
+        rules.append(
+            "primary_label 只能从 Prompt Taxonomy 的一级标签原样复制；"
+            "不确定时选择最接近的合法一级标签，"
+            "禁止自行创造其他、无法分类、无法判断或空标签。"
+        )
+    if "invalid_secondary_for_primary" in codes:
+        rules.append(
+            "secondary_label 必须从所选 primary_label 下面列出的二级标签原样复制，"
+            "不能把别的一级标签下的二级标签拼过来。"
+        )
+    if "fabricated_evidence" in codes or "missing_evidence" in codes:
+        rules.append(
+            "所有 evidence 必须是当前 item 的 title、text、author.display_name、author.bio 或 "
+            "author.verification_label 中连续出现的原文片段；不要总结、改写或补造证据。"
+        )
+    if "invalid_item_structure" in codes:
+        rules.append(
+            "必须返回完整 item 对象及所有协议要求的 key，不能只返回修正字段，也不能增加额外 key。"
+        )
+    if "irrelevant_not_exportable" in codes:
+        rules.append(
+            "不要返回 relevance=irrelevant；即使内容相关性弱，也要按现有 Taxonomy "
+            "选择最接近的合法情感和标签。"
+        )
+    if "blank_excel_voice_type_marker" in codes:
+        rules.append(
+            "voice_type 只能使用 Prompt Taxonomy 中的合法发声类型，禁止输出“空白”或未知值。"
+        )
+    if "blank_excel_label_marker" in codes:
+        rules.append("一级和二级标签都必须使用 Taxonomy 原名，禁止任何包含“空白”的值。")
+    return rules
 
 
 def _protocol_error(

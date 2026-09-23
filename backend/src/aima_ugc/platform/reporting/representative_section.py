@@ -24,6 +24,10 @@ REPRESENTATIVE_TABLE_HEADERS: tuple[str, ...] = (
     "处理进展",
 )
 
+DEFAULT_PRIMARY_LABEL = "无法分类"
+DEFAULT_SECONDARY_LABEL = "无法判断"
+_LABELS_CONTAINING_SEPARATOR = ("电池、续航与充电",)
+
 
 @dataclass(frozen=True, slots=True)
 class RepresentativeReportRow:
@@ -139,17 +143,37 @@ def _markdown_cell(value: str) -> str:
 def format_representative_labels(value: str) -> str:
     """按飞书多选字段的语义展示标签：拆分、去重并保留输入顺序。"""
 
+    raw_values = split_representative_labels(value)
+    labels: list[str] = []
+    for raw_value in raw_values:
+        label = _collapse_adjacent_repeated_label(raw_value)
+        if label and label not in labels:
+            labels.append(label)
+    return "、".join(labels)
+
+
+def split_representative_labels(value: str) -> tuple[str, ...]:
+    """拆分多选标签，同时保留 Taxonomy 中含顿号的完整标签。"""
+
+    normalized = str(value)
+    protected: dict[str, str] = {}
+    for index, label in enumerate(_LABELS_CONTAINING_SEPARATOR):
+        marker = f"\x00AIMA_LABEL_{index}\x00"
+        normalized = normalized.replace(label, marker)
+        protected[marker] = label
     raw_values = re.split(
         r"(?:\r?\n|<br\s*/?>|[,，、;；])+",
-        str(value),
+        normalized,
         flags=re.IGNORECASE,
     )
     labels: list[str] = []
     for raw_value in raw_values:
-        label = _collapse_adjacent_repeated_label(raw_value.strip())
-        if label and label not in labels:
-            labels.append(label)
-    return "、".join(labels)
+        for marker, label in protected.items():
+            raw_value = raw_value.replace(marker, label)
+        normalized_value = _collapse_adjacent_repeated_label(raw_value.strip())
+        if normalized_value:
+            labels.append(normalized_value)
+    return tuple(labels)
 
 
 def _collapse_adjacent_repeated_label(value: str) -> str:
@@ -183,10 +207,13 @@ def normalize_representative_content_url(platform: str, value: str) -> str:
 
 
 __all__ = [
+    "DEFAULT_PRIMARY_LABEL",
+    "DEFAULT_SECONDARY_LABEL",
     "REPRESENTATIVE_GROUP_ORDER",
     "REPRESENTATIVE_TABLE_HEADERS",
     "RepresentativeReportRow",
     "build_representative_section",
     "format_representative_labels",
     "normalize_representative_content_url",
+    "split_representative_labels",
 ]

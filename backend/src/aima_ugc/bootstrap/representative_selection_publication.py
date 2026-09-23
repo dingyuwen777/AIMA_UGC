@@ -10,7 +10,12 @@ from pathlib import Path
 
 from pydantic import SecretStr
 
-from aima_ugc.adapters.feishu import FeishuBitableClient, FeishuConfig, FeishuSyncSummary
+from aima_ugc.adapters.feishu import (
+    FeishuBitableClient,
+    FeishuConfig,
+    FeishuSyncSummary,
+    FeishuTableInfo,
+)
 from aima_ugc.adapters.llm import (
     OpenAICompatibleContentLabelingLLM,
     RetryingContentLabelingLLM,
@@ -28,6 +33,9 @@ from aima_ugc.modules.analysis.representative_selection import (
 )
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.reporting.representative_section import (
+    DEFAULT_PRIMARY_LABEL,
+    DEFAULT_SECONDARY_LABEL,
+    RepresentativeReportRow,
     format_representative_labels,
     normalize_representative_content_url,
 )
@@ -103,13 +111,37 @@ def publish_selected_representatives_to_feishu(
     selected: Sequence[SelectedRepresentative],
     output_dir: Path,
     settings: PlatformSettings,
+    report_rows: Sequence[RepresentativeReportRow] | None = None,
+    target_bitable_block_token: str | None = None,
+    target_document_token: str | None = None,
+    target_document_url: str | None = None,
     progress: Callable[[int], None] | None = None,
 ) -> FeishuSyncSummary:
-    """把已完成筛选的结果发布到新建飞书多维表。"""
+    """把已完成筛选的结果发布到新建或文档内嵌的飞书多维表。
+
+    ``report_rows`` 是同一轮报告生成得到的第 6 节投影；提供它时，
+    把报告中的行动建议写入多维表“处理建议”字段，避免重新生成或猜测建议。
+    ``target_bitable_block_token`` 来自 Docx 创建块响应；提供它时同时创建
+    模板 Base 中可独立编辑的新表和文档内嵌镜像表，并返回双向镜像身份。
+    """
 
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    rows = tuple(selected_representative_to_row(item) for item in selected)
+    advice_by_identity = _report_action_advice(report_rows)
+    screenshot_by_identity = _report_screenshot_paths(report_rows)
+    rows = tuple(
+        selected_representative_to_row(
+            item,
+            action_advice=advice_by_identity.get(
+                (item.candidate.content.platform, item.candidate.content.content_id),
+                "",
+            ),
+            screenshot_path=screenshot_by_identity.get(
+                (item.candidate.content.platform, item.candidate.content.content_id)
+            ),
+        )
+        for item in selected
+    )
     if not rows:
         raise ValueError("没有可写入的代表性结果，未创建飞书新表")
     feishu_config = FeishuConfig.from_settings(settings)
@@ -123,28 +155,97 @@ def publish_selected_representatives_to_feishu(
         app_secret=app_secret,
         upsert_key_fields=_FEISHU_TARGET_KEY_FIELDS,
     ) as template_feishu:
-        new_table = template_feishu.create_table_from_current(name=table_name)
+        external_table = template_feishu.create_table_from_current(name=table_name)
+        embedded_table = None
+        if target_bitable_block_token is not None:
+            normalized_token = target_bitable_block_token.strip()
+            table_marker = normalized_token.rfind("_tbl")
+            app_token = normalized_token[:table_marker]
+            table_id = normalized_token[table_marker + 1 :]
+            if table_marker <= 0 or not app_token or not table_id.startswith("tbl"):
+                raise ValueError("飞书文档内嵌多维表 token 格式不合法")
+            embedded_table = template_feishu.configure_embedded_table_from_current(
+                app_token=app_token,
+                table_id=table_id,
+                name=table_name,
+            )
 
-    target_config = feishu_config.model_copy(update={"table_id": new_table.table_id})
+    sync_summary = _sync_rows_to_table(
+        rows=rows,
+        table=external_table,
+        feishu_config=feishu_config,
+        app_secret=app_secret,
+        output_dir=target_dir,
+        artifact_prefix="external",
+    )
+    embedded_summary = None
+    if embedded_table is not None:
+        embedded_summary = _sync_rows_to_table(
+            rows=rows,
+            table=embedded_table,
+            feishu_config=feishu_config,
+            app_secret=app_secret,
+            output_dir=target_dir,
+            artifact_prefix="embedded",
+        )
+        if embedded_summary.verification_errors:
+            raise RuntimeError("飞书文档内嵌镜像表写入后回读不一致")
+    sync_summary = replace(
+        sync_summary,
+        target_table_id=external_table.table_id,
+        target_table_name=external_table.name,
+        target_app_token=external_table.app_token,
+        target_bitable_block_token=(
+            None if embedded_table is None else embedded_table.bitable_block_token
+        ),
+        target_table_url=external_table.url,
+        mirror_app_token=None if embedded_table is None else embedded_table.app_token,
+        mirror_table_id=None if embedded_table is None else embedded_table.table_id,
+        mirror_document_token=(
+            target_document_token.strip() if target_document_token else None
+        ),
+        mirror_document_url=(target_document_url.strip() if target_document_url else None),
+    )
+    _write_json(target_dir / "feishu_new_table.json", external_table.as_dict())
+    if embedded_table is not None:
+        _write_json(target_dir / "feishu_embedded_table.json", embedded_table.as_dict())
+    _write_json(target_dir / "feishu_sync_summary.json", sync_summary.as_dict())
+    if progress is not None:
+        progress(100)
+    return sync_summary
+
+
+def _sync_rows_to_table(
+    *,
+    rows: Sequence[Mapping[str, object]],
+    table: FeishuTableInfo,
+    feishu_config: FeishuConfig,
+    app_secret: str,
+    output_dir: Path,
+    artifact_prefix: str,
+) -> FeishuSyncSummary:
+    target_config = feishu_config.model_copy(
+        update={
+            "app_token": table.app_token,
+            "wiki_token": None,
+            "table_id": table.table_id,
+        }
+    )
     with FeishuBitableClient(
         config=target_config,
         app_secret=app_secret,
         upsert_key_fields=_FEISHU_TARGET_KEY_FIELDS,
     ) as feishu:
         prepared = feishu.preflight(rows)
-        _write_json(target_dir / "feishu_field_mapping.json", prepared.field_mapping.as_dict())
-        _write_jsonl(target_dir / "feishu_before_update.jsonl", prepared.before_snapshot)
-        sync_summary = feishu.apply(prepared)
-    sync_summary = replace(
-        sync_summary,
-        target_table_id=new_table.table_id,
-        target_table_name=new_table.name,
-    )
-    _write_json(target_dir / "feishu_new_table.json", new_table.as_dict())
-    _write_json(target_dir / "feishu_sync_summary.json", sync_summary.as_dict())
-    if progress is not None:
-        progress(100)
-    return sync_summary
+        _write_json(
+            output_dir / f"feishu_{artifact_prefix}_field_mapping.json",
+            prepared.field_mapping.as_dict(),
+        )
+        _write_jsonl(
+            output_dir / f"feishu_{artifact_prefix}_before_update.jsonl",
+            prepared.before_snapshot,
+        )
+        return feishu.apply(prepared)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -211,7 +312,12 @@ def _read_llm_secret(
     )
 
 
-def selected_representative_to_row(item: SelectedRepresentative) -> dict[str, object]:
+def selected_representative_to_row(
+    item: SelectedRepresentative,
+    *,
+    action_advice: str = "",
+    screenshot_path: Path | None = None,
+) -> dict[str, object]:
     content = item.candidate.content
     decision = item.decision
     if content.platform not in _TARGET_PLATFORMS:
@@ -224,14 +330,54 @@ def selected_representative_to_row(item: SelectedRepresentative) -> dict[str, ob
     )
     return {
         "声音内容/连接": _content_reference(content.title, content_url, content.content_id),
+        "声音截图": screenshot_path,
         "典型评论示例": None,
         "来源": content.platform,
         "发布时间": content.published_at,
-        "一级标签": format_representative_labels(content.primary_label),
-        "二级标签": format_representative_labels(content.secondary_label),
+        "一级标签": _representative_label(content.primary_label, DEFAULT_PRIMARY_LABEL),
+        "二级标签": _representative_label(content.secondary_label, DEFAULT_SECONDARY_LABEL),
         "用户情绪": decision.sentiment,
-        "处理进展": "待处理",
+        "处理建议": action_advice.strip(),
+        "处理进展": "",
     }
+
+
+def _report_action_advice(
+    report_rows: Sequence[RepresentativeReportRow] | None,
+) -> dict[tuple[str, str], str]:
+    if report_rows is None:
+        return {}
+    advice_by_identity: dict[tuple[str, str], str] = {}
+    for row in report_rows:
+        identity = (row.platform, row.content_id)
+        if identity in advice_by_identity:
+            raise ValueError("报告第 6 节存在重复的代表性内容身份")
+        advice_by_identity[identity] = row.action_advice.strip()
+    return advice_by_identity
+
+
+def _report_screenshot_paths(
+    report_rows: Sequence[RepresentativeReportRow] | None,
+) -> dict[tuple[str, str], Path]:
+    if report_rows is None:
+        return {}
+    screenshot_by_identity: dict[tuple[str, str], Path] = {}
+    for row in report_rows:
+        if row.platform != "抖音" or row.screenshot_path is None:
+            continue
+        if not row.screenshot_path.is_file():
+            continue
+        identity = (row.platform, row.content_id)
+        if identity in screenshot_by_identity:
+            raise ValueError("报告第 6 节存在重复的抖音截图身份")
+        screenshot_by_identity[identity] = row.screenshot_path
+    return screenshot_by_identity
+
+
+def _representative_label(value: str, fallback: str) -> str:
+    """返回去重后的标签；输入缺失时使用 Taxonomy 的合法兜底值。"""
+
+    return format_representative_labels(value) or fallback
 
 
 def _content_reference(title: str, content_url: str, content_id: str) -> str:

@@ -41,10 +41,10 @@ def _label_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
         "item_no": item_no,
         "relevance": "relevant",
         "relevance_evidence": ["爱玛体验"],
-        "source_type": "unknown",
-        "content_intent": "unknown",
+        "source_type": taxonomy.semantic_rules.source_types[0],
+        "content_intent": taxonomy.semantic_rules.content_intents[0],
         "voice_type": taxonomy.semantic_rules.unknown_voice_type,
-        "voice_evidence": [],
+        "voice_evidence": ["正文"],
         "sentiment": taxonomy.sentiments[0],
         "sentiment_evidence": ["正文"],
         "labels": [
@@ -185,3 +185,43 @@ def test_item_order_mismatch_retries_the_whole_unresolved_batch() -> None:
     assert len(fake.calls) == 2
     assert result.attempts[0].validation_error_codes == ("item_order_mismatch",)
     assert [item.item_no for item in fake.calls[1].items] == [1, 2]
+
+
+def test_excel_complete_fallback_keeps_unrecoverable_item_exportable() -> None:
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    fake = FakeContentLabelingLLM(responses=["not-json"])
+
+    result = ContentLabelingService(
+        prompt_loader=loader,
+        llm=fake,
+        force_excel_complete=True,
+    ).label_contents(
+        [_content("content-fallback")],
+        max_validation_retries=0,
+    )
+
+    item_result = result.items[0]
+    assert item_result.analysis_status == "succeeded"
+    assert item_result.analysis is not None
+    assert item_result.analysis.relevance == "relevant"
+    assert item_result.analysis.sentiment in loader.load().sentiments
+    assert item_result.analysis.labels
+    assert item_result.analysis.primary_label
+    assert item_result.analysis.secondary_label
+
+
+def test_excel_complete_fallback_also_handles_terminal_provider_error() -> None:
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    fake = FakeContentLabelingLLM(responses=[])
+
+    result = ContentLabelingService(
+        prompt_loader=loader,
+        llm=fake,
+        force_excel_complete=True,
+    ).label_contents(
+        [_content("content-provider-error")],
+        max_validation_retries=4,
+    )
+
+    assert result.items[0].analysis_status == "succeeded"
+    assert len(fake.calls) == 1

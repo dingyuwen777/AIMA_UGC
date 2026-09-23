@@ -20,8 +20,15 @@ class FeishuReportPublicationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["report"] = "report"
-    native_document_url: str
+    dry_run: bool = False
+    native_document_url: str | None = None
     editable_chart_sheet_url: str | None = None
+    representative_table_url: str | None = None
+    representative_table_name: str | None = None
+    representative_count: int = Field(default=0, ge=0)
+    representative_created_count: int = Field(default=0, ge=0)
+    representative_updated_count: int = Field(default=0, ge=0)
+    representative_verified_count: int = Field(default=0, ge=0)
     content_rows: int = Field(ge=0)
     label_rows: int = Field(ge=0)
     comment_rows: int = Field(ge=0)

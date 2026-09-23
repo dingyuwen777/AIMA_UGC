@@ -65,8 +65,8 @@ os.environ.pop("SSLKEYLOGFILE", None)
 
 # 配置一个 Path 走单文件转换；配置多个 Path 的有序元组合并到同一个 run。
 INPUT_XLSX_FILES: Path | tuple[Path, ...] = (
-    Path(r"C:\Users\BOLL\Desktop\惠科data(0910-0913).xlsx"),
-    Path(r"C:\Users\BOLL\Desktop\惠科data(0914-0916).xlsx"),
+    Path(r"C:\Users\BOLL\Downloads\公司品牌0922151250.xlsx"),
+    # Path(r"C:\Users\BOLL\Desktop\惠科data(0914-0916).xlsx"),
 )
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
@@ -79,8 +79,8 @@ WRITE_TO_DATABASE = False
 # 只限制报告统计，不影响转换、关键词过滤、去重、AI 打标或最终 Excel 全量数据。
 # None 表示报告使用 Excel 内全部日期；日期范围包含开始日和结束日。
 REPORT_DATE_RANGE: tuple[date, date] | None = (
-    date(2026, 9, 10),
-    date(2026, 9, 16),
+    date(2026, 9, 21),
+    date(2026, 9, 21),
 )
 
 # 最终 Excel 的“内容”Sheet 展示列；顺序就是导出顺序。
@@ -137,7 +137,8 @@ ENABLE_REAL_LLM = True
 LLM_CONCURRENCY = 80
 # Ark 对突发并发请求返回 HTTP 429；对每个物理请求（包括重试）做无 burst 限流。
 LLM_MAX_RPS = 5
-MAX_VALIDATION_RETRIES = 2
+# 复杂、低信息量或标签边界模糊的内容允许更多次定向修复；仍无法收敛时不导出空白 Excel。
+MAX_VALIDATION_RETRIES = 4
 MAX_TRANSPORT_RETRIES = DEFAULT_LLM_TRANSPORT_MAX_RETRIES
 
 ENV_FILE = Path(__file__).with_name(".env")
@@ -325,6 +326,7 @@ def label_sentiment(*, run_dir: Path | None = None) -> OfflineContentLabelingSum
             service = ContentLabelingService(
                 prompt_loader=prompt_loader,
                 llm=llm,
+                force_excel_complete=True,
             )
             summary = label_unified_content_jsonl(
                 input_path=actual_run_dir / "deduplicated" / "contents.jsonl",
@@ -379,6 +381,7 @@ def export_labeled_excel(
         input_path=actual_run_dir / "deduplicated" / "contents.jsonl",
         output_path=_labeled_output_path(actual_run_dir),
         include_analysis=True,
+        require_complete_analysis=True,
         content_columns=EXCEL_CONTENT_COLUMNS,
         label_detail_columns=EXCEL_LABEL_DETAIL_COLUMNS,
         comment_columns=EXCEL_COMMENT_COLUMNS,
@@ -452,8 +455,9 @@ def publish_generated_report_to_feishu(
     *,
     config: FeishuReportPublisherConfig,
     title: str = "AIMA 舆情报告",
+    embed_representative_bitable: bool = False,
 ) -> FeishuPublicationSummary:
-    """把同一报告发布为原生文档、原始 Word 下载件和可编辑图表 Sheet。"""
+    """把同一报告发布为在线文档，并按需嵌入代表性多维表。"""
 
     publication = FeishuReportPublisher(config).publish(
         word_path=report.word_path,
@@ -461,6 +465,7 @@ def publish_generated_report_to_feishu(
         chart_specs=report.chart_specs,
         chart_workbook_path=report.chart_workbook_path,
         title=title,
+        embed_representative_bitable=embed_representative_bitable,
     )
     chart_workbook_path = report.chart_workbook_path
     if (
@@ -504,6 +509,11 @@ def run_all(
 
     labeling = label_sentiment(run_dir=run_dir)
     stages.append(_stage_payload("label_sentiment", labeling))
+    if getattr(labeling, "rows_failed", 0):
+        raise RuntimeError(
+            "打标存在未成功收敛的记录，已停止导出；为保证最终 Excel 四个打标字段绝不为空，"
+            f"请根据 {labeling.analysis_dir / 'failed.jsonl'} 修复后继续本次 run。"
+        )
 
     labeled_export = export_labeled_excel(run_dir=run_dir)
     stages.append(_stage_payload("export_labeled_excel", labeled_export))

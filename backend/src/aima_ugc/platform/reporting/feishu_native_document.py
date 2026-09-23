@@ -44,6 +44,8 @@ class FeishuNativeDocument:
 def build_feishu_native_document(
     markdown_path: Path,
     chart_specs: tuple[ChartSpec, ...],
+    *,
+    embed_representative_bitable: bool = False,
 ) -> FeishuNativeDocument:
     """解析项目受支持的报告 Markdown，而非实现通用 Markdown 渲染器。"""
 
@@ -97,6 +99,23 @@ def build_feishu_native_document(
             continue
         heading = _HEADING_RE.match(line)
         if heading:
+            if (
+                embed_representative_bitable
+                and len(heading.group(1)) == 2
+                and heading.group(2).strip() == "6. 代表性评论与关联页面"
+            ):
+                blocks.extend(
+                    (
+                        FeishuNativeBlock(
+                            kind="heading",
+                            text=heading.group(2).strip(),
+                            level=2,
+                        ),
+                        FeishuNativeBlock(kind="bitable"),
+                    )
+                )
+                index = _skip_heading_section(lines, index + 1)
+                continue
             blocks.append(
                 FeishuNativeBlock(
                     kind="heading", text=heading.group(2).strip(), level=len(heading.group(1))
@@ -160,6 +179,8 @@ def build_feishu_native_document(
 
     if chart_index != len(chart_specs):
         raise ValueError("报告 Markdown Mermaid 图表数量与图表规格不一致")
+    if embed_representative_bitable and not any(block.kind == "bitable" for block in blocks):
+        raise ValueError("报告缺少可替换为飞书多维表格的第 6 节")
     return FeishuNativeDocument(source, tuple(blocks), chart_specs)
 
 
@@ -172,6 +193,18 @@ def _collect_fence(lines: list[str], start: int) -> tuple[str, int]:
         collected.append(lines[index])
         index += 1
     raise ValueError("Markdown 代码块没有闭合")
+
+
+def _skip_heading_section(lines: list[str], start: int) -> int:
+    """跳过一个二级标题直到下一个二级标题，供在线文档替换专用章节。"""
+
+    index = start
+    while index < len(lines):
+        heading = _HEADING_RE.match(lines[index])
+        if heading is not None and len(heading.group(1)) == 2:
+            break
+        index += 1
+    return index
 
 
 def _looks_like_table(lines: list[str], index: int) -> bool:

@@ -37,9 +37,22 @@ _TABLE_IMAGE_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)$")
 class FeishuApiError(RuntimeError):
     """飞书接口未返回可安全消费的成功结果。"""
 
-    def __init__(self, message: str, *, retriable: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        retriable: bool = False,
+        status_code: int | None = None,
+        api_code: int | None = None,
+        http_method: str | None = None,
+        endpoint: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.retriable = retriable
+        self.status_code = status_code
+        self.api_code = api_code
+        self.http_method = http_method
+        self.endpoint = endpoint
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +95,8 @@ class FeishuPublicationSummary:
     chart_image_block_ids: tuple[str, ...] = ()
     chart_image_sizes: tuple[tuple[int, int], ...] = ()
     import_warnings: tuple[str, ...] = ()
+    representative_bitable_token: str | None = None
+    representative_bitable_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +114,16 @@ class _ImportResult:
     token: str
     url: str
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _EmbeddedBitable:
+    """在线文档中由 Docx API 创建的原生多维表格身份。"""
+
+    token: str
+    app_token: str
+    table_id: str
+    url: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,13 +163,18 @@ class FeishuReportPublisher:
         chart_specs: tuple[ChartSpec, ...],
         chart_workbook_path: Path | None,
         title: str,
+        embed_representative_bitable: bool = False,
     ) -> FeishuPublicationSummary:
-        """上传原始 Word，直接以原生块重建正文、表格、图片和图表入口。"""
+        """上传原始 Word，并按需在报告第 6 节创建原生多维表格。"""
 
         source_word = _validate_upload_path(word_path, suffix=".docx")
         if not title.strip():
             raise ValueError("飞书报告标题不能为空")
-        document = build_feishu_native_document(markdown_path, chart_specs)
+        document = build_feishu_native_document(
+            markdown_path,
+            chart_specs,
+            embed_representative_bitable=embed_representative_bitable,
+        )
         word_bytes = source_word.read_bytes()
         word_sha256 = hashlib.sha256(word_bytes).hexdigest()
         word_file_token = self._upload_file(
@@ -174,7 +204,7 @@ class FeishuReportPublisher:
             self._delete_file(file_token=chart_file_token)
             chart_file_token = None
         native_document = self._create_document(title=f"{title}（在线编辑）")
-        self._write_native_document(
+        embedded_bitable = self._write_native_document(
             native_document=native_document,
             document=document,
             sheet_url=None if sheet is None else sheet.url,
@@ -196,6 +226,12 @@ class FeishuReportPublisher:
             editable_chart_sheet_url=None if sheet is None else sheet.url,
             chart_workbook_file_token=chart_file_token,
             import_warnings=() if sheet is None else sheet.warnings,
+            representative_bitable_token=(
+                None if embedded_bitable is None else embedded_bitable.token
+            ),
+            representative_bitable_url=(
+                None if embedded_bitable is None else embedded_bitable.url
+            ),
         )
 
     def _create_document(self, *, title: str) -> _ImportResult:
@@ -227,11 +263,12 @@ class FeishuReportPublisher:
         document: FeishuNativeDocument,
         sheet_url: str | None,
         idempotency_source: str,
-    ) -> None:
+    ) -> _EmbeddedBitable | None:
         """按 Markdown 顺序落块；表格使用 descendant API 保持可编辑单元格结构。"""
 
         buffered: list[dict[str, Any]] = []
         batch_number = 0
+        embedded_bitable: _EmbeddedBitable | None = None
 
         def flush() -> None:
             nonlocal batch_number
@@ -253,6 +290,15 @@ class FeishuReportPublisher:
                     document_token=native_document.token,
                     rows=block.rows,
                     idempotency_source=f"{idempotency_source}:table:{batch_number + 1}",
+                )
+                continue
+            if block.kind == "bitable":
+                flush()
+                if embedded_bitable is not None:
+                    raise ValueError("一份飞书报告只能创建一个代表性多维表格")
+                embedded_bitable = self._append_bitable_block(
+                    document_token=native_document.token,
+                    idempotency_source=f"{idempotency_source}:bitable:{content_index}",
                 )
                 continue
             if block.kind in {"image", "chart"}:
@@ -306,6 +352,55 @@ class FeishuReportPublisher:
             if len(buffered) >= 40:
                 flush()
         flush()
+        return embedded_bitable
+
+    def _append_bitable_block(
+        self,
+        *,
+        document_token: str,
+        idempotency_source: str,
+    ) -> _EmbeddedBitable:
+        """在在线文档内创建原生 Bitable，并返回飞书生成的真实资源身份。"""
+
+        # 创建接口的请求结构只允许 view_type；token 是响应中的只读字段。
+        # 把已有 Base 的 token 回传给创建接口会稳定触发 1770001 invalid param。
+        payload = self._request_json(
+            "创建飞书原生报告多维表格块",
+            "POST",
+            f"/open-apis/docx/v1/documents/{document_token}/blocks/{document_token}/children",
+            params={
+                "document_revision_id": -1,
+                "client_token": _stable_client_token(idempotency_source),
+            },
+            json={
+                "index": -1,
+                "children": [{"block_type": 18, "bitable": {"view_type": 1}}],
+            },
+        )
+        children = _nested_list(payload, "data", "children")
+        if children is None or len(children) != 1 or not isinstance(children[0], Mapping):
+            raise FeishuApiError("创建飞书原生报告多维表格块：响应缺少 Bitable block")
+        bitable = children[0].get("bitable")
+        if not isinstance(bitable, Mapping):
+            raise FeishuApiError("创建飞书原生报告多维表格块：响应缺少 bitable")
+        token = bitable.get("token")
+        if not isinstance(token, str) or not token.strip():
+            raise FeishuApiError("创建飞书原生报告多维表格块：响应缺少 token")
+        normalized_token = token.strip()
+        table_marker = normalized_token.rfind("_tbl")
+        app_token = normalized_token[:table_marker]
+        table_id = normalized_token[table_marker + 1 :]
+        if table_marker <= 0 or not app_token or not table_id.startswith("tbl"):
+            raise FeishuApiError("创建飞书原生报告多维表格块：token 格式不合法")
+        return _EmbeddedBitable(
+            token=normalized_token,
+            app_token=app_token,
+            table_id=table_id,
+            # Docx API 创建的是文档内嵌 Base，不是云空间中的独立 Base 文件。
+            # 它可通过 Bitable API 读写，但拼接 /base/{app_token} 会得到 404。
+            # 对外入口必须使用承载它的在线文档 URL。
+            url=None,
+        )
 
     def _native_block_payloads(
         self,
@@ -378,7 +473,7 @@ class FeishuReportPublisher:
             f"/open-apis/docx/v1/documents/{document_token}/blocks/{document_token}/children",
             params={
                 "document_revision_id": -1,
-                "client_token": str(uuid.uuid5(uuid.NAMESPACE_URL, idempotency_source)),
+                "client_token": _stable_client_token(idempotency_source),
             },
             json={"index": -1, "children": [{"block_type": 27, "image": {}}]},
         )
@@ -406,9 +501,7 @@ class FeishuReportPublisher:
                 f"/open-apis/docx/v1/documents/{document_token}/blocks/{parent_block_id}/children",
                 params={
                     "document_revision_id": -1,
-                    "client_token": str(
-                        uuid.uuid5(uuid.NAMESPACE_URL, f"{idempotency_source}:{offset}")
-                    ),
+                    "client_token": _stable_client_token(f"{idempotency_source}:{offset}"),
                 },
                 json={"index": -1, "children": list(chunk)},
             )
@@ -468,7 +561,7 @@ class FeishuReportPublisher:
             f"/open-apis/docx/v1/documents/{document_token}/blocks/{document_token}/descendant",
             params={
                 "document_revision_id": -1,
-                "client_token": str(uuid.uuid5(uuid.NAMESPACE_URL, idempotency_source)),
+                "client_token": _stable_client_token(idempotency_source),
             },
             json={
                 "index": -1,
@@ -716,7 +809,7 @@ class FeishuReportPublisher:
             f"/open-apis/docx/v1/documents/{document_token}/blocks/{block_id}",
             params={
                 "document_revision_id": -1,
-                "client_token": str(uuid.uuid5(uuid.NAMESPACE_URL, idempotency_source)),
+                "client_token": _stable_client_token(idempotency_source),
             },
             json={
                 "replace_image": {
@@ -846,7 +939,7 @@ class FeishuReportPublisher:
         sheet_url: str | None,
         idempotency_source: str,
     ) -> None:
-        client_token = str(uuid.uuid5(uuid.NAMESPACE_URL, idempotency_source))
+        client_token = _stable_client_token(idempotency_source)
         children: list[dict[str, Any]] = [
             {
                 "block_type": 2,
@@ -885,11 +978,8 @@ class FeishuReportPublisher:
         """在每个原位图表的同级下一行加入对应 Sheet 的编辑入口。"""
 
         for chart_index, block in reversed(tuple(enumerate(chart_blocks, start=1))):
-            client_token = str(
-                uuid.uuid5(
-                    uuid.NAMESPACE_URL,
-                    f"{idempotency_source}:{block.parent_id}:{block.child_index}",
-                )
+            client_token = _stable_client_token(
+                f"{idempotency_source}:{block.parent_id}:{block.child_index}"
             )
             self._request_json(
                 "在飞书原生文档图表下方添加编辑入口",
@@ -941,6 +1031,8 @@ class FeishuReportPublisher:
             raise FeishuApiError(
                 self._redact(f"{operation}：网络请求失败 ({type(exc).__name__})"),
                 retriable=True,
+                http_method=method,
+                endpoint=path,
             ) from exc
         try:
             payload = response.json()
@@ -948,9 +1040,17 @@ class FeishuReportPublisher:
             raise FeishuApiError(
                 f"{operation}：飞书返回非 JSON 响应，HTTP {response.status_code}",
                 retriable=response.status_code == 429 or response.status_code >= 500,
+                status_code=response.status_code,
+                http_method=method,
+                endpoint=path,
             ) from exc
         if not isinstance(payload, Mapping):
-            raise FeishuApiError(f"{operation}：飞书返回的 JSON 不是对象")
+            raise FeishuApiError(
+                f"{operation}：飞书返回的 JSON 不是对象",
+                status_code=response.status_code,
+                http_method=method,
+                endpoint=path,
+            )
         code = payload.get("code")
         if response.is_error or code not in {0, None}:
             message = self._redact(str(payload.get("msg", "unknown error")))
@@ -962,6 +1062,10 @@ class FeishuReportPublisher:
             raise FeishuApiError(
                 f"{operation}失败：HTTP {response.status_code}, code={code}, msg={message}",
                 retriable=retriable,
+                status_code=response.status_code,
+                api_code=code if isinstance(code, int) else None,
+                http_method=method,
+                endpoint=path,
             )
         return payload
 
@@ -1124,6 +1228,13 @@ def _nested_string(payload: Mapping[str, Any], *path: str) -> str | None:
             return None
         value = value.get(key)
     return value if isinstance(value, str) and value else None
+
+
+def _stable_client_token(value: str) -> str:
+    """把幂等键稳定映射为飞书要求的 UUID v4 字符串。"""
+
+    digest = hashlib.sha256(value.encode("utf-8")).digest()[:16]
+    return str(uuid.UUID(bytes=digest, version=4))
 
 
 def _required_env(environ: Mapping[str, str], key: str) -> str:

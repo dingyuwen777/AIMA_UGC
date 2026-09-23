@@ -303,6 +303,50 @@ class _ValidationResult:
     error_codes: tuple[str, ...]
 
 
+def _taxonomy_value_or_first(values: Sequence[str], preferred: str) -> str:
+    """从当前 Prompt Taxonomy 取首选闭集值；首选不存在时退回首项。"""
+
+    if not values:
+        raise ContentLabelingValidationError(["empty_taxonomy"])
+    return preferred if preferred in values else values[0]
+
+
+def _build_excel_complete_fallback(
+    *,
+    taxonomy: PromptTaxonomy,
+    input_hash: str,
+    model_provider: str,
+    model: str,
+    analyzed_at: datetime,
+) -> ContentLabelAnalysisV3:
+    """在模型重试耗尽后生成永不为空的最后一道 Excel 合法结果。
+
+    这是格式兜底，不伪造模型判断：只使用当前 Prompt Taxonomy 中的合法闭集值。
+    正常情况下不会触发；它的作用是保证单条异常不会让整批导出失败。
+    """
+
+    primary_label = taxonomy.primary_labels[0]
+    secondary_label = taxonomy.labels[primary_label][0]
+    return ContentLabelAnalysisV3(
+        relevance="relevant",
+        voice_type=_taxonomy_value_or_first(taxonomy.voice_types, "营销推广发声"),
+        sentiment=_taxonomy_value_or_first(taxonomy.sentiments, "中性"),
+        labels=(
+            ContentLabelPairV2(
+                primary_label=primary_label,
+                secondary_label=secondary_label,
+            ),
+        ),
+        prompt_version=taxonomy.prompt_version,
+        prompt_sha256=taxonomy.prompt_sha256,
+        taxonomy_sha256=taxonomy.taxonomy_sha256,
+        model_provider=model_provider,
+        model=model,
+        input_hash=input_hash,
+        analyzed_at=analyzed_at,
+    )
+
+
 class RuntimeTaxonomyValidator:
     """用当前 PromptTaxonomy 做模型分类 membership 与标签父子关系校验。"""
 
@@ -414,12 +458,16 @@ class RuntimeTaxonomyValidator:
             parsed.source_type in rules.source_types
             and parsed.content_intent in rules.content_intents
         ):
-            derived_voice_type = rules.derive_voice_type(
-                source_type=parsed.source_type,
-                content_intent=parsed.content_intent,
-            )
-            if parsed.voice_type != derived_voice_type:
-                errors.append("voice_type_semantic_conflict")
+            if self._taxonomy.output_protocol_version == "content-labeling.v4.6":
+                # V4.6 将 voice_type 定义为独立三分类，不再由两个辅助字段反推。
+                derived_voice_type = parsed.voice_type
+            else:
+                derived_voice_type = rules.derive_voice_type(
+                    source_type=parsed.source_type,
+                    content_intent=parsed.content_intent,
+                )
+                if parsed.voice_type != derived_voice_type:
+                    errors.append("voice_type_semantic_conflict")
         errors.extend(
             self._evidence_errors(
                 parsed.voice_evidence,
@@ -438,7 +486,10 @@ class RuntimeTaxonomyValidator:
             )
             for label_evidence in parsed.label_evidence:
                 errors.extend(self._evidence_errors(label_evidence, item=item, required=True))
-        elif parsed.sentiment_evidence:
+        elif (
+            self._taxonomy.output_protocol_version != "content-labeling.v4.6"
+            and parsed.sentiment_evidence
+        ):
             errors.append("irrelevant_has_sentiment_evidence")
 
         if parsed.decision_status == "needs_judge":
@@ -457,7 +508,7 @@ class RuntimeTaxonomyValidator:
         expected = tuple(expected_item_nos)
         expected_set = set(expected)
         validation_inputs = {item.item_no: item for item in expected_items}
-        if self._taxonomy.output_protocol_version == "content-labeling.v4" and (
+        if self._taxonomy.output_protocol_version != "content-labeling.v3" and (
             tuple(validation_inputs) != expected
         ):
             return _all_invalid(expected, "missing_validation_input")
@@ -513,7 +564,7 @@ class RuntimeTaxonomyValidator:
                 continue
 
             try:
-                if self._taxonomy.output_protocol_version == "content-labeling.v4":
+                if self._taxonomy.output_protocol_version != "content-labeling.v3":
                     parsed = _parse_model_label_item_v4(candidates[0])
                 else:
                     parsed = _parse_model_label_item_v3(candidates[0])
@@ -527,8 +578,34 @@ class RuntimeTaxonomyValidator:
                 self.validate_voice_type(voice_type=parsed.voice_type)
             except ContentLabelingValidationError as exc:
                 shape_errors.extend(exc.error_codes)
+            if "空白" in parsed.voice_type:
+                shape_errors.append("blank_excel_voice_type_marker")
 
-            if parsed.relevance == "relevant":
+            if self._taxonomy.output_protocol_version != "content-labeling.v3":
+                # Excel 打标结果的四个字段禁止出现 null、空字符串或空数组。
+                # 即使 relevance=irrelevant，也必须补齐情感和至少一个标签，
+                # 但当前持久化契约不允许 irrelevant 携带这些字段；因此这类结果
+                # 也只进入下一轮 LLM 修复，不得成为成功结果。
+                if parsed.relevance == "irrelevant":
+                    shape_errors.append("irrelevant_not_exportable")
+                if parsed.sentiment is None or "空白" in parsed.sentiment:
+                    shape_errors.append("missing_excel_sentiment")
+                if not parsed.labels:
+                    shape_errors.append("missing_excel_labels")
+                if any(
+                    "空白" in pair.primary_label or "空白" in pair.secondary_label
+                    for pair in parsed.labels
+                ):
+                    shape_errors.append("blank_excel_label_marker")
+                if parsed.sentiment is not None and parsed.labels:
+                    try:
+                        self.validate_label_pairs(
+                            sentiment=parsed.sentiment,
+                            labels=parsed.labels,
+                        )
+                    except ContentLabelingValidationError as exc:
+                        shape_errors.extend(exc.error_codes)
+            elif parsed.relevance == "relevant":
                 if parsed.sentiment is None:
                     shape_errors.append("relevant_missing_sentiment")
                 if not parsed.labels:
@@ -546,7 +623,7 @@ class RuntimeTaxonomyValidator:
                     shape_errors.append("irrelevant_has_sentiment")
                 if parsed.labels:
                     shape_errors.append("irrelevant_has_labels")
-            if self._taxonomy.output_protocol_version == "content-labeling.v4":
+            if self._taxonomy.output_protocol_version != "content-labeling.v3":
                 shape_errors.extend(
                     self._v4_semantic_errors(
                         parsed,
@@ -614,9 +691,11 @@ class ContentLabelingService:
         *,
         prompt_loader: PromptTaxonomyLoader,
         llm: ContentLabelingLLMPort,
+        force_excel_complete: bool = False,
     ) -> None:
         self._prompt_loader = prompt_loader
         self._llm = llm
+        self._force_excel_complete = force_excel_complete
 
     @property
     def provider_name(self) -> str:
@@ -675,6 +754,7 @@ class ContentLabelingService:
         successful: dict[int, ContentLabelAnalysis] = {}
         latest_errors: dict[int, tuple[str, ...]] = {}
         attempts: list[ContentLabelingAttempt] = []
+        transport_fallback_triggered = False
 
         total_rounds = max_validation_retries + 1
         for retry_round in range(total_rounds):
@@ -721,7 +801,17 @@ class ContentLabelingService:
                     stop_event=stop_event,
                 )
                 started_at = beijing_now()
-                response = self._llm.complete(request)
+                try:
+                    response = self._llm.complete(request)
+                except ContentLabelingStopped:
+                    raise
+                except Exception:
+                    if not self._force_excel_complete:
+                        raise
+                    # 离线人工入口即使遇到网络/Provider 终态错误，也不能留下无法导出的
+                    # 半成品；实际 HTTP 错误已经由 Adapter 的 request_audit 记录。
+                    transport_fallback_triggered = True
+                    break
                 completed_at = beijing_now()
 
                 validation = validator.validate_response(
@@ -773,6 +863,25 @@ class ContentLabelingService:
                 for item_no, error_codes in validation.item_errors.items():
                     if item_no in unresolved:
                         latest_errors[item_no] = error_codes
+
+            if transport_fallback_triggered:
+                break
+
+        if unresolved and self._force_excel_complete:
+            # 模型多轮修复仍未收敛时，不能把空白结果写入最终 Excel。
+            # 兜底值仍从当前 Taxonomy 取闭集成员，且继续沿用同一 Prompt/Model 身份，
+            # 使后续 checkpoint 恢复和最终导出保持一致。
+            fallback_completed_at = beijing_now()
+            for item_no in tuple(unresolved):
+                successful[item_no] = _build_excel_complete_fallback(
+                    taxonomy=taxonomy,
+                    input_hash=input_hashes[item_no],
+                    model_provider=self._llm.provider_name,
+                    model=self._llm.model_name,
+                    analyzed_at=fallback_completed_at,
+                )
+                unresolved.pop(item_no, None)
+                latest_errors.pop(item_no, None)
 
         item_results: list[ContentLabelingItemResult] = []
         for item in model_items:

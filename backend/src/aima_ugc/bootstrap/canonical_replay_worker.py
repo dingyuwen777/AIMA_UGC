@@ -136,9 +136,9 @@ class PostgresCanonicalReplayJobExecutor:
             raise
         except CanonicalArtifactIntegrityError:
             return JobHandlerResult.failed("canonical_replay_artifact_invalid")
-        except LookupError, ValueError:
+        except (LookupError, ValueError):
             return JobHandlerResult.failed("canonical_replay_input_invalid")
-        except OSError, SQLAlchemyError:
+        except (OSError, SQLAlchemyError):
             return JobHandlerResult.retry("canonical_replay_transient_error")
 
     def _load_execution(

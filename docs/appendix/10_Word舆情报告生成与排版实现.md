@@ -943,7 +943,7 @@ reporting_reports PostgreSQL 表
 - Word 转换只支持当前报告需要的 Markdown/图表子集，不是通用 Markdown→DOCX 引擎；
 - 词云是 PNG，柱/折/饼主要是 Office Chart；
 - 不修改输入 Excel；
-- 当前没有正式 Report Job / API / PostgreSQL 父事实。
+- 管理员配置页已有正式的飞书报告发布 Job/API；它复用通用 `jobs` 父事实，不新增独立 Report PostgreSQL Read Model 或报告中心页面。
 
 ---
 
@@ -1022,8 +1022,8 @@ DOCX 上传 body 直接使用本地字节并记录 SHA-256。网络错误、限�
 
 ## 30.6 当前范围
 
-- 当前接在离线 `imports_test` / [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py)，不是正式 Report API/Job；
-- 不保存飞书发布事实到 PostgreSQL；
+- 报告统计/渲染仍接在离线 `imports_test` / [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py)；管理员配置页通过正式飞书发布 API/Job 调用同一套 `--publish-all` 等价编排；
+- 离线 Renderer 本身不保存飞书发布事实；管理员发布 Job 复用通用 `jobs` 表保存安全结果，不新增独立 Report Read Model；
 - 不自动同步飞书修改回本地 Word；
 - [`backend/src/aima_ugc/platform/reporting/chart_png.py`](../../backend/src/aima_ugc/platform/reporting/chart_png.py) 生成的 PNG 使用真实 CJK 字体并包含标题、坐标轴、日期/分类、数值标签、饼图标签和图例；
 - 不修改飞书权限；重跑发布可能创建新的 Word、原生文档和 Sheet 副本。每次发布成功导入 Sheet 后只清理本次上传的临时 XLSX 源文件。

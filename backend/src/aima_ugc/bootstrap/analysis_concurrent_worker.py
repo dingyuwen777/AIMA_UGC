@@ -108,7 +108,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
             return JobHandlerResult.cancelled()
         try:
             execution = self._create_service_runtime(payload.run_id)
-        except OSError, SecretFileError, ValueError:
+        except (OSError, SecretFileError, ValueError):
             return JobHandlerResult.failed("analysis_configuration_unavailable")
 
         setup_seconds = monotonic() - started

@@ -217,6 +217,7 @@ class PlatformSettings(BaseModel):
                 raise ValueError(
                     f"connector {connector.code!r} 的 app_secret_ref 不合法：{exc}"
                 ) from exc
+    feishu_dry_run: bool = True
 
     @property
     def artifact_dir(self) -> Path:
@@ -331,6 +332,7 @@ _ENV_TO_FIELD = {
     "AIMA_FEISHU_SESSION_TTL_HOURS": "feishu_session_ttl_hours",
     "AIMA_FEISHU_STATE_TTL_SECONDS": "feishu_state_ttl_seconds",
     "AIMA_FEISHU_CONNECTORS": "feishu_connectors_json",
+    "AIMA_FEISHU_DRY_RUN": "feishu_dry_run",
 }
 
 _DEFAULTS = {

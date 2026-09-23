@@ -8,10 +8,14 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from hashlib import sha256
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
 import httpx
+
+from aima_ugc.platform.reporting.representative_section import split_representative_labels
 
 from .config import FeishuConfig
 
@@ -21,7 +25,27 @@ _FIELD_TYPES_SINGLE_SELECT = frozenset({3})
 _FIELD_TYPES_MULTI_SELECT = frozenset({4})
 _FIELD_TYPES_DATETIME = frozenset({5})
 _FIELD_TYPES_URL = frozenset({15})
+_FIELD_TYPES_ATTACHMENT = frozenset({17})
 _TABLE_CLONE_FIELD_TYPES = frozenset({1, 2, 3, 4, 5, 7, 11, 13, 15, 17})
+_TABLE_FIELD_ORDER: tuple[str, ...] = (
+    "声音内容/连接",
+    "来源",
+    "用户情绪",
+    "声音截图",
+    "典型评论示例",
+    "处理进展",
+    "进展描述",
+    "发布时间",
+    "一级标签",
+    "二级标签",
+    "优先级",
+    "处理人",
+    "处理人.直属上级",
+    "处理建议",
+    "实际完成时间",
+    "期望完成时间",
+)
+_TABLE_FIELD_ORDER_INDEX = {name: index for index, name in enumerate(_TABLE_FIELD_ORDER)}
 _REQUIRED_TEMPLATE_SELECT_FIELDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "一级标签",
@@ -87,6 +111,7 @@ _REQUIRED_TEMPLATE_SELECT_FIELDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("处理进展", ("待处理",)),
 )
 _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES = frozenset({"一级标签", "二级标签"})
+_EMBEDDED_DEFAULT_FIELD_NAMES = frozenset({"Multiline", "Multiline 1", "Single option"})
 _RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 DEFAULT_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -102,14 +127,20 @@ DEFAULT_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "入选理由": ("入选理由", "理由"),
     "代表性评分": ("代表性评分", "评分"),
     "声音内容/连接": ("声音内容/连接",),
+    "声音截图": ("声音截图",),
     "典型评论示例": ("典型评论示例",),
+    "进展描述": ("进展描述",),
     "优先级": ("优先级",),
+    "处理人": ("处理人",),
+    "处理人.直属上级": ("处理人.直属上级",),
     "来源": ("来源",),
     "一级标签": ("一级标签",),
     "二级标签": ("二级标签",),
     "用户情绪": ("用户情绪",),
     "处理建议": ("处理建议",),
     "处理进展": ("处理进展",),
+    "实际完成时间": ("实际完成时间",),
+    "期望完成时间": ("期望完成时间",),
 }
 DEFAULT_UPSERT_KEY_FIELDS = ("平台", "情感", "内容ID")
 
@@ -124,11 +155,15 @@ class FeishuAPIError(RuntimeError):
         status_code: int | None = None,
         api_code: int | None = None,
         retryable: bool = False,
+        http_method: str | None = None,
+        endpoint: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.api_code = api_code
         self.retryable = retryable
+        self.http_method = http_method
+        self.endpoint = endpoint
 
 
 class FeishuSyncError(RuntimeError):
@@ -144,6 +179,7 @@ class FeishuField:
     field_type: int
     options: tuple[str, ...] = ()
     field_property: Mapping[str, object] | None = None
+    is_primary: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,13 +189,23 @@ class FeishuTableInfo:
     table_id: str
     name: str
     skipped_fields: tuple[str, ...] = ()
+    app_token: str | None = None
+    bitable_block_token: str | None = None
+    url: str | None = None
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "table_id": self.table_id,
             "name": self.name,
             "skipped_fields": list(self.skipped_fields),
         }
+        if self.app_token is not None:
+            payload["app_token"] = self.app_token
+        if self.bitable_block_token is not None:
+            payload["bitable_block_token"] = self.bitable_block_token
+        if self.url is not None:
+            payload["url"] = self.url
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,6 +234,7 @@ class FeishuFieldMapping:
 class _FeishuRecord:
     record_id: str
     fields: Mapping[str, object]
+    last_modified_time: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +277,13 @@ class FeishuSyncSummary:
     field_mapping: FeishuFieldMapping
     target_table_id: str | None = None
     target_table_name: str | None = None
+    target_app_token: str | None = None
+    target_bitable_block_token: str | None = None
+    target_table_url: str | None = None
+    mirror_app_token: str | None = None
+    mirror_table_id: str | None = None
+    mirror_document_token: str | None = None
+    mirror_document_url: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -243,7 +297,36 @@ class FeishuSyncSummary:
             payload["target_table_id"] = self.target_table_id
         if self.target_table_name is not None:
             payload["target_table_name"] = self.target_table_name
+        if self.target_app_token is not None:
+            payload["target_app_token"] = self.target_app_token
+        if self.target_bitable_block_token is not None:
+            payload["target_bitable_block_token"] = self.target_bitable_block_token
+        if self.target_table_url is not None:
+            payload["target_table_url"] = self.target_table_url
+        if self.mirror_app_token is not None:
+            payload["mirror_app_token"] = self.mirror_app_token
+        if self.mirror_table_id is not None:
+            payload["mirror_table_id"] = self.mirror_table_id
+        if self.mirror_document_token is not None:
+            payload["mirror_document_token"] = self.mirror_document_token
+        if self.mirror_document_url is not None:
+            payload["mirror_document_url"] = self.mirror_document_url
         return payload
+
+
+@dataclass(frozen=True, slots=True)
+class FeishuMirrorSyncSummary:
+    """一次独立 Base 与文档内嵌 Base 的双向对账结果。"""
+
+    external_created_count: int
+    external_updated_count: int
+    external_deleted_count: int
+    embedded_created_count: int
+    embedded_updated_count: int
+    embedded_deleted_count: int
+    verified_count: int
+    known_key_hashes: tuple[str, ...]
+    excluded_fields: tuple[str, ...] = ()
 
 
 class FeishuBitableClient:
@@ -279,6 +362,7 @@ class FeishuBitableClient:
         )
         self._tenant_token: str | None = None
         self._tenant_token_expires_at = 0.0
+        self._uploaded_attachment_tokens: dict[tuple[str, int, int], str] = {}
 
     def close(self) -> None:
         """关闭内部 HTTP Client。"""
@@ -332,43 +416,11 @@ class FeishuBitableClient:
 
         app_token = self.resolve_app_token()
         source_fields = self.list_fields(app_token)
-        source_mapping = resolve_field_mapping(
+        field_definitions, skipped_fields = _target_field_definitions(
             source_fields,
             aliases={**DEFAULT_FIELD_ALIASES, **self._config.field_aliases},
+            upsert_key_fields=self._upsert_key_fields,
         )
-        missing_keys = [
-            logical for logical in self._upsert_key_fields if logical not in source_mapping.resolved
-        ]
-        if missing_keys:
-            raise FeishuSyncError("模板数据表缺少必需字段: " + ", ".join(missing_keys))
-        field_definitions = [
-            _table_field_definition(field)
-            for field in source_fields
-            if field.field_type in _TABLE_CLONE_FIELD_TYPES
-        ]
-        existing_field_names = {field.name for field in source_fields}
-        for field_name, options in _REQUIRED_TEMPLATE_SELECT_FIELDS:
-            if field_name not in existing_field_names:
-                field_definitions.append(
-                    {
-                        "field_name": field_name,
-                        "type": (
-                            4 if field_name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES else 3
-                        ),
-                        "property": {"options": [{"name": option} for option in options]},
-                    }
-                )
-        skipped_fields = tuple(
-            field.name
-            for field in source_fields
-            if field.field_type not in _TABLE_CLONE_FIELD_TYPES
-        )
-        if skipped_fields:
-            raise FeishuSyncError(
-                "模板数据表存在无法复制的字段，已停止创建新表: " + ", ".join(skipped_fields)
-            )
-        if not field_definitions:
-            raise FeishuSyncError("模板数据表没有可复制的字段")
 
         payload = self._request(
             "POST",
@@ -392,12 +444,160 @@ class FeishuBitableClient:
             table_id=table_id.strip(),
             name=table_name,
             skipped_fields=skipped_fields,
+            app_token=app_token,
+            # Docx Bitable block 的 token 是 app_token_table_id 组合；这与
+            # 飞书文档块 API 返回的 bitable.token 格式一致。table_id 同时
+            # 仍用于本轮数据表的字段/记录写入。
+            bitable_block_token=f"{app_token}_{table_id.strip()}",
+            url=f"https://feishu.cn/base/{app_token}?table={table_id.strip()}",
         )
 
-    def list_fields(self, app_token: str | None = None) -> tuple[FeishuField, ...]:
+    def configure_embedded_table_from_current(
+        self,
+        *,
+        app_token: str,
+        table_id: str,
+        name: str,
+    ) -> FeishuTableInfo:
+        """把文档内新建 Bitable 的默认表安全转换为当前模板结构。"""
+
+        target_app_token = app_token.strip()
+        target_table_id = table_id.strip()
+        table_name = name.strip()
+        if not target_app_token or not target_table_id:
+            raise ValueError("飞书内嵌多维表 token 不完整")
+        if not table_name:
+            raise ValueError("飞书内嵌多维表名称不能为空")
+
+        source_app_token = self.resolve_app_token()
+        source_fields = self.list_fields(source_app_token)
+        field_definitions, skipped_fields = _target_field_definitions(
+            source_fields,
+            aliases={**DEFAULT_FIELD_ALIASES, **self._config.field_aliases},
+            upsert_key_fields=self._upsert_key_fields,
+        )
+        desired_names = {str(item["field_name"]) for item in field_definitions}
+        target_fields = self.list_fields(target_app_token, table_id=target_table_id)
+        target_records = self.list_records(target_app_token, table_id=target_table_id)
+        existing_names = {field.name for field in target_fields}
+
+        if target_records:
+            nonempty_records = tuple(
+                record for record in target_records if not _record_is_blank(record)
+            )
+            if nonempty_records:
+                missing = desired_names - existing_names
+                if missing:
+                    raise FeishuSyncError(
+                        "飞书内嵌多维表已有记录且缺少模板字段，已停止修改: "
+                        + ", ".join(sorted(missing))
+                    )
+                return FeishuTableInfo(
+                    table_id=target_table_id,
+                    name=table_name,
+                    skipped_fields=skipped_fields,
+                    app_token=target_app_token,
+                    bitable_block_token=f"{target_app_token}_{target_table_id}",
+                    # 文档内嵌 Base 没有可独立打开的 /base URL。
+                    url=None,
+                )
+            # Docx 创建的原生 Bitable 默认带三条空记录。它们不是用户数据，
+            # 在配置字段前精确删除，避免最终表格顶部残留空白行。
+            for chunk in _chunks(target_records, 500):
+                self._request(
+                    "POST",
+                    (
+                        f"open-apis/bitable/v1/apps/{target_app_token}/tables/"
+                        f"{target_table_id}/records/batch_delete"
+                    ),
+                    json_body={"records": [record.record_id for record in chunk]},
+                )
+
+        unexpected_fields = existing_names - desired_names - _EMBEDDED_DEFAULT_FIELD_NAMES
+        if unexpected_fields:
+            raise FeishuSyncError(
+                "飞书内嵌多维表包含非默认字段，已停止覆盖: "
+                + ", ".join(sorted(unexpected_fields))
+            )
+        primary = next((field for field in target_fields if field.is_primary), None)
+        if primary is None:
+            raise FeishuSyncError("飞书内嵌多维表缺少主字段，已停止修改")
+
+        primary_definition = field_definitions[0]
+        self._request(
+            "PUT",
+            (
+                f"open-apis/bitable/v1/apps/{target_app_token}/tables/"
+                f"{target_table_id}/fields/{primary.field_id}"
+            ),
+            json_body=primary_definition,
+        )
+        refreshed = self.list_fields(target_app_token, table_id=target_table_id)
+        for field in refreshed:
+            if (
+                not field.is_primary
+                and field.name in _EMBEDDED_DEFAULT_FIELD_NAMES
+                and field.name not in desired_names
+            ):
+                self._request(
+                    "DELETE",
+                    (
+                        f"open-apis/bitable/v1/apps/{target_app_token}/tables/"
+                        f"{target_table_id}/fields/{field.field_id}"
+                    ),
+                )
+
+        refreshed = self.list_fields(target_app_token, table_id=target_table_id)
+        by_name = {field.name: field for field in refreshed}
+        for definition in field_definitions[1:]:
+            field_name = str(definition["field_name"])
+            existing = by_name.get(field_name)
+            if existing is None:
+                self._request(
+                    "POST",
+                    (
+                        f"open-apis/bitable/v1/apps/{target_app_token}/tables/"
+                        f"{target_table_id}/fields"
+                    ),
+                    json_body=definition,
+                )
+            else:
+                self._request(
+                    "PUT",
+                    (
+                        f"open-apis/bitable/v1/apps/{target_app_token}/tables/"
+                        f"{target_table_id}/fields/{existing.field_id}"
+                    ),
+                    json_body=definition,
+                )
+
+        verified_fields = self.list_fields(target_app_token, table_id=target_table_id)
+        verified_names = {field.name for field in verified_fields}
+        missing = desired_names - verified_names
+        if missing:
+            raise FeishuSyncError(
+                "飞书内嵌多维表字段创建后回读缺失: " + ", ".join(sorted(missing))
+            )
+        return FeishuTableInfo(
+            table_id=target_table_id,
+            name=table_name,
+            skipped_fields=skipped_fields,
+            app_token=target_app_token,
+            bitable_block_token=f"{target_app_token}_{target_table_id}",
+            # 文档内嵌 Base 的用户入口是承载它的 Docx 文档。
+            url=None,
+        )
+
+    def list_fields(
+        self,
+        app_token: str | None = None,
+        *,
+        table_id: str | None = None,
+    ) -> tuple[FeishuField, ...]:
         """分页读取多维表字段定义。"""
 
         token = app_token or self.resolve_app_token()
+        target_table_id = table_id or self._config.table_id
         fields: list[FeishuField] = []
         page_token: str | None = None
         while True:
@@ -406,7 +606,7 @@ class FeishuBitableClient:
                 params["page_token"] = page_token
             payload = self._request(
                 "GET",
-                f"open-apis/bitable/v1/apps/{token}/tables/{self._config.table_id}/fields",
+                f"open-apis/bitable/v1/apps/{token}/tables/{target_table_id}/fields",
                 params=params,
             )
             data = payload.get("data")
@@ -425,19 +625,28 @@ class FeishuBitableClient:
             page_token = next_page_token
         return tuple(fields)
 
-    def list_records(self, app_token: str | None = None) -> tuple[_FeishuRecord, ...]:
+    def list_records(
+        self,
+        app_token: str | None = None,
+        *,
+        table_id: str | None = None,
+        automatic_fields: bool = False,
+    ) -> tuple[_FeishuRecord, ...]:
         """分页读取多维表记录。"""
 
         token = app_token or self.resolve_app_token()
+        target_table_id = table_id or self._config.table_id
         records: list[_FeishuRecord] = []
         page_token: str | None = None
         while True:
             params: dict[str, str | int] = {"page_size": 500}
+            if automatic_fields:
+                params["automatic_fields"] = "true"
             if page_token:
                 params["page_token"] = page_token
             payload = self._request(
                 "GET",
-                f"open-apis/bitable/v1/apps/{token}/tables/{self._config.table_id}/records",
+                f"open-apis/bitable/v1/apps/{token}/tables/{target_table_id}/records",
                 params=params,
             )
             data = payload.get("data")
@@ -455,6 +664,221 @@ class FeishuBitableClient:
                 raise FeishuAPIError("飞书记录分页响应缺少 page_token", api_code=0)
             page_token = next_page_token
         return tuple(records)
+
+    def mirror_records_bidirectionally(
+        self,
+        *,
+        external_app_token: str,
+        external_table_id: str,
+        embedded_app_token: str,
+        embedded_table_id: str,
+        known_key_hashes: Sequence[str] = (),
+        last_synced_at_ms: int = 0,
+    ) -> FeishuMirrorSyncSummary:
+        """按主字段双向同步两张同构表，冲突时以最后修改时间较新的一侧为准。
+
+        飞书附件 token 绑定所属 Base，不能直接跨 Base 写入。因此附件在报告生成时
+        分别上传到两侧，持续镜像只处理其余业务字段，避免产生失效附件 token。
+        """
+
+        external_fields = self.list_fields(
+            external_app_token,
+            table_id=external_table_id,
+        )
+        embedded_fields = self.list_fields(
+            embedded_app_token,
+            table_id=embedded_table_id,
+        )
+        external_by_name = {field.name: field for field in external_fields}
+        embedded_by_name = {field.name: field for field in embedded_fields}
+        external_primary = next((field for field in external_fields if field.is_primary), None)
+        embedded_primary = next((field for field in embedded_fields if field.is_primary), None)
+        if external_primary is None or embedded_primary is None:
+            raise FeishuSyncError("双向镜像表缺少主字段")
+        if external_primary.name != embedded_primary.name:
+            raise FeishuSyncError("双向镜像表主字段名称不一致")
+
+        shared_names = set(external_by_name) & set(embedded_by_name)
+        incompatible = sorted(
+            name
+            for name in shared_names
+            if external_by_name[name].field_type != embedded_by_name[name].field_type
+        )
+        if incompatible:
+            raise FeishuSyncError("双向镜像表字段类型不一致: " + ", ".join(incompatible))
+        excluded_fields = tuple(
+            sorted(
+                name
+                for name in shared_names
+                if external_by_name[name].field_type in _FIELD_TYPES_ATTACHMENT
+            )
+        )
+        syncable_names = tuple(
+            sorted(
+                name
+                for name in shared_names
+                if external_by_name[name].field_type not in _FIELD_TYPES_ATTACHMENT
+            )
+        )
+        if external_primary.name not in syncable_names:
+            raise FeishuSyncError("双向镜像表主字段不可同步")
+
+        external_records = self.list_records(
+            external_app_token,
+            table_id=external_table_id,
+            automatic_fields=True,
+        )
+        embedded_records = self.list_records(
+            embedded_app_token,
+            table_id=embedded_table_id,
+            automatic_fields=True,
+        )
+        external_by_key = _mirror_records_by_key(external_records, external_primary.name)
+        embedded_by_key = _mirror_records_by_key(embedded_records, embedded_primary.name)
+        previous_keys = set(known_key_hashes)
+        next_keys: set[str] = set()
+
+        external_updates: list[dict[str, object]] = []
+        embedded_updates: list[dict[str, object]] = []
+        external_creates: list[dict[str, object]] = []
+        embedded_creates: list[dict[str, object]] = []
+        external_deletes: list[str] = []
+        embedded_deletes: list[str] = []
+
+        for key in sorted(set(external_by_key) | set(embedded_by_key)):
+            external = external_by_key.get(key)
+            embedded = embedded_by_key.get(key)
+            key_hash = _mirror_key_hash(key)
+            if external is not None and embedded is not None:
+                differences = tuple(
+                    name
+                    for name in syncable_names
+                    if not _field_values_equal(
+                        external.fields.get(name),
+                        embedded.fields.get(name),
+                    )
+                )
+                if differences:
+                    if external.last_modified_time >= embedded.last_modified_time:
+                        embedded_updates.append(
+                            {
+                                "record_id": embedded.record_id,
+                                "fields": {
+                                    name: external.fields.get(name) for name in differences
+                                },
+                            }
+                        )
+                    else:
+                        external_updates.append(
+                            {
+                                "record_id": external.record_id,
+                                "fields": {
+                                    name: embedded.fields.get(name) for name in differences
+                                },
+                            }
+                        )
+                next_keys.add(key_hash)
+                continue
+
+            present = external if external is not None else embedded
+            assert present is not None
+            if key_hash in previous_keys and present.last_modified_time <= last_synced_at_ms:
+                if external is not None:
+                    external_deletes.append(external.record_id)
+                else:
+                    assert embedded is not None
+                    embedded_deletes.append(embedded.record_id)
+                continue
+
+            fields = {
+                name: present.fields.get(name)
+                for name in syncable_names
+                if present.fields.get(name) is not None
+            }
+            if external is None:
+                external_creates.append({"fields": fields})
+            else:
+                embedded_creates.append({"fields": fields})
+            next_keys.add(key_hash)
+
+        self._apply_mirror_mutations(
+            app_token=external_app_token,
+            table_id=external_table_id,
+            creates=external_creates,
+            updates=external_updates,
+            deletes=external_deletes,
+        )
+        self._apply_mirror_mutations(
+            app_token=embedded_app_token,
+            table_id=embedded_table_id,
+            creates=embedded_creates,
+            updates=embedded_updates,
+            deletes=embedded_deletes,
+        )
+
+        verified_external = _mirror_records_by_key(
+            self.list_records(external_app_token, table_id=external_table_id),
+            external_primary.name,
+        )
+        verified_embedded = _mirror_records_by_key(
+            self.list_records(embedded_app_token, table_id=embedded_table_id),
+            embedded_primary.name,
+        )
+        if set(verified_external) != set(verified_embedded):
+            raise FeishuSyncError("双向镜像回读后的记录集合不一致")
+        mismatched = [
+            key
+            for key in verified_external
+            if any(
+                not _field_values_equal(
+                    verified_external[key].fields.get(name),
+                    verified_embedded[key].fields.get(name),
+                )
+                for name in syncable_names
+            )
+        ]
+        if mismatched:
+            raise FeishuSyncError(f"双向镜像回读仍有 {len(mismatched)} 条记录不一致")
+        verified_hashes = tuple(sorted(_mirror_key_hash(key) for key in verified_external))
+        return FeishuMirrorSyncSummary(
+            external_created_count=len(external_creates),
+            external_updated_count=len(external_updates),
+            external_deleted_count=len(external_deletes),
+            embedded_created_count=len(embedded_creates),
+            embedded_updated_count=len(embedded_updates),
+            embedded_deleted_count=len(embedded_deletes),
+            verified_count=len(verified_external),
+            known_key_hashes=verified_hashes,
+            excluded_fields=excluded_fields,
+        )
+
+    def _apply_mirror_mutations(
+        self,
+        *,
+        app_token: str,
+        table_id: str,
+        creates: Sequence[Mapping[str, object]],
+        updates: Sequence[Mapping[str, object]],
+        deletes: Sequence[str],
+    ) -> None:
+        for chunk in _chunks(creates, 500):
+            self._request(
+                "POST",
+                f"open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_create",
+                json_body={"records": [dict(item) for item in chunk]},
+            )
+        for chunk in _chunks(updates, 500):
+            self._request(
+                "POST",
+                f"open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_update",
+                json_body={"records": [dict(item) for item in chunk]},
+            )
+        for chunk in _chunks(deletes, 500):
+            self._request(
+                "POST",
+                f"open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_delete",
+                json_body={"records": list(chunk)},
+            )
 
     def preflight(self, rows: Sequence[Mapping[str, object]]) -> FeishuPreparedSync:
         """读取字段和已有记录，生成不会清空其他字段的写入计划。"""
@@ -494,7 +918,11 @@ class FeishuBitableClient:
             if key in seen_input_keys:
                 raise FeishuSyncError("待同步结果存在重复的 " + " + ".join(self._upsert_key_fields))
             seen_input_keys.add(key)
-            fields_payload = _row_fields(row, mapping)
+            fields_payload = _row_fields(
+                row,
+                mapping,
+                upload_attachment=self.upload_bitable_attachment,
+            )
             for logical in self._upsert_key_fields:
                 actual = mapping.resolved[logical].name
                 if actual not in fields_payload:
@@ -587,6 +1015,47 @@ class FeishuBitableClient:
         prepared = self.preflight(rows)
         return prepared, self.apply(prepared)
 
+    def upload_bitable_attachment(self, path: Path) -> str:
+        """上传一张本地截图，返回可写入附件字段的 file_token。"""
+
+        attachment_path = Path(path)
+        if not attachment_path.is_file():
+            raise FeishuSyncError(f"飞书附件文件不存在: {attachment_path.name}")
+        stat = attachment_path.stat()
+        cache_key = (str(attachment_path.resolve()), stat.st_size, stat.st_mtime_ns)
+        cached = self._uploaded_attachment_tokens.get(cache_key)
+        if cached is not None:
+            return cached
+        if stat.st_size <= 0:
+            raise FeishuSyncError(f"飞书附件文件为空: {attachment_path.name}")
+        if stat.st_size > 20 * 1024 * 1024:
+            raise FeishuSyncError(f"飞书附件文件超过 20 MB: {attachment_path.name}")
+        content = attachment_path.read_bytes()
+        app_token = self.resolve_app_token()
+        payload = self._request_multipart(
+            "POST",
+            "open-apis/drive/v1/medias/upload_all",
+            data={
+                "file_name": attachment_path.name,
+                "parent_type": "bitable_file",
+                "parent_node": app_token,
+                "size": str(len(content)),
+            },
+            files={
+                "file": (
+                    attachment_path.name,
+                    content,
+                    _attachment_content_type(attachment_path),
+                )
+            },
+        )
+        data = payload.get("data")
+        file_token = data.get("file_token") if isinstance(data, dict) else None
+        if not isinstance(file_token, str) or not file_token.strip():
+            raise FeishuAPIError("飞书附件上传响应缺少 file_token", api_code=0)
+        self._uploaded_attachment_tokens[cache_key] = file_token.strip()
+        return file_token.strip()
+
     def _request(
         self,
         method: str,
@@ -605,6 +1074,37 @@ class FeishuBitableClient:
                     headers=headers,
                     params=params,
                     json_body=json_body,
+                    allow_auth_retry=auth_round == 0,
+                )
+            except FeishuAPIError as exc:
+                if exc.status_code == 401 and auth_round == 0:
+                    self._tenant_token = None
+                    self._tenant_token_expires_at = 0.0
+                    continue
+                raise
+        raise FeishuAPIError("飞书认证重试状态异常")
+
+    def _request_multipart(
+        self,
+        method: str,
+        path: str,
+        *,
+        data: Mapping[str, str],
+        files: Mapping[str, object],
+    ) -> dict[str, object]:
+        """执行需要 multipart/form-data 的飞书请求，并复用认证重试边界。"""
+
+        for auth_round in range(2):
+            token = self._tenant_access_token()
+            try:
+                return self._request_with_retry(
+                    method,
+                    path,
+                    headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                    params=None,
+                    json_body=None,
+                    data=data,
+                    files=files,
                     allow_auth_retry=auth_round == 0,
                 )
             except FeishuAPIError as exc:
@@ -644,20 +1144,31 @@ class FeishuBitableClient:
         params: Mapping[str, str | int | float | bool | None] | None,
         json_body: Mapping[str, object] | None,
         allow_auth_retry: bool,
+        data: Mapping[str, str] | None = None,
+        files: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
         del allow_auth_retry
         for attempt in range(self._config.max_retries + 1):
             try:
-                response = self._client.request(
-                    method,
-                    path,
-                    params=params,
-                    headers=headers,
-                    json=json_body,
-                )
+                request_kwargs: dict[str, object] = {
+                    "params": params,
+                    "headers": headers,
+                }
+                if json_body is not None:
+                    request_kwargs["json"] = json_body
+                if data is not None:
+                    request_kwargs["data"] = data
+                if files is not None:
+                    request_kwargs["files"] = files
+                response = self._client.request(method, path, **request_kwargs)
             except httpx.HTTPError as exc:
                 if attempt >= self._config.max_retries:
-                    raise FeishuAPIError("飞书网络请求失败", retryable=True) from exc
+                    raise FeishuAPIError(
+                        "飞书网络请求失败",
+                        retryable=True,
+                        http_method=method,
+                        endpoint=path,
+                    ) from exc
                 self._sleep(_retry_delay(attempt))
                 continue
             if response.status_code not in range(200, 300):
@@ -669,6 +1180,8 @@ class FeishuBitableClient:
                     f"飞书请求失败: HTTP {response.status_code}",
                     status_code=response.status_code,
                     retryable=retryable,
+                    http_method=method,
+                    endpoint=path,
                 )
             try:
                 payload = response.json()
@@ -676,15 +1189,24 @@ class FeishuBitableClient:
                 raise FeishuAPIError(
                     "飞书响应不是合法 JSON",
                     status_code=response.status_code,
+                    http_method=method,
+                    endpoint=path,
                 ) from exc
             if not isinstance(payload, dict):
                 raise FeishuAPIError(
                     "飞书响应根节点不是 JSON object",
                     status_code=response.status_code,
+                    http_method=method,
+                    endpoint=path,
                 )
             code = payload.get("code")
             if isinstance(code, bool) or (code is not None and not isinstance(code, int)):
-                raise FeishuAPIError("飞书响应 code 类型错误", status_code=response.status_code)
+                raise FeishuAPIError(
+                    "飞书响应 code 类型错误",
+                    status_code=response.status_code,
+                    http_method=method,
+                    endpoint=path,
+                )
             if isinstance(code, int) and code != 0:
                 if code in {1254290, 1254291} and attempt < self._config.max_retries:
                     self._sleep(_retry_delay(attempt))
@@ -694,6 +1216,8 @@ class FeishuBitableClient:
                     status_code=response.status_code,
                     api_code=code,
                     retryable=code in {1254290, 1254291},
+                    http_method=method,
+                    endpoint=path,
                 )
             return {str(key): value for key, value in payload.items()}
         raise FeishuAPIError("飞书请求重试状态异常")
@@ -730,6 +1254,7 @@ def _field_type_supported(field_type: int) -> bool:
         | _FIELD_TYPES_MULTI_SELECT
         | _FIELD_TYPES_DATETIME
         | _FIELD_TYPES_URL
+        | _FIELD_TYPES_ATTACHMENT
     )
 
 
@@ -763,7 +1288,52 @@ def _parse_field(value: object) -> FeishuField:
         field_type=field_type,
         options=tuple(options),
         field_property=field_property,
+        is_primary=value.get("is_primary") is True,
     )
+
+
+def _target_field_definitions(
+    source_fields: Sequence[FeishuField],
+    *,
+    aliases: Mapping[str, Sequence[str]],
+    upsert_key_fields: Sequence[str],
+) -> tuple[list[dict[str, object]], tuple[str, ...]]:
+    """从模板字段构造新表或文档内嵌表共用的确定性字段定义。"""
+
+    source_mapping = resolve_field_mapping(source_fields, aliases=aliases)
+    missing_keys = [
+        logical for logical in upsert_key_fields if logical not in source_mapping.resolved
+    ]
+    if missing_keys:
+        raise FeishuSyncError("模板数据表缺少必需字段: " + ", ".join(missing_keys))
+    field_definitions = [
+        _table_field_definition(field)
+        for field in source_fields
+        if field.field_type in _TABLE_CLONE_FIELD_TYPES
+    ]
+    existing_field_names = {field.name for field in source_fields}
+    for field_name, options in _REQUIRED_TEMPLATE_SELECT_FIELDS:
+        if field_name not in existing_field_names:
+            field_definitions.append(
+                {
+                    "field_name": field_name,
+                    "type": 4 if field_name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES else 3,
+                    "property": {"options": [{"name": option} for option in options]},
+                }
+            )
+    if "声音截图" not in existing_field_names:
+        field_definitions.append({"field_name": "声音截图", "type": 17})
+    field_definitions = _order_table_field_definitions(field_definitions)
+    skipped_fields = tuple(
+        field.name for field in source_fields if field.field_type not in _TABLE_CLONE_FIELD_TYPES
+    )
+    if skipped_fields:
+        raise FeishuSyncError(
+            "模板数据表存在无法复制的字段，已停止创建新表: " + ", ".join(skipped_fields)
+        )
+    if not field_definitions:
+        raise FeishuSyncError("模板数据表没有可复制的字段")
+    return field_definitions, skipped_fields
 
 
 def _table_field_definition(field: FeishuField) -> dict[str, object]:
@@ -771,6 +1341,8 @@ def _table_field_definition(field: FeishuField) -> dict[str, object]:
 
     if field.name == "声音内容/连接":
         field_type = 15
+    elif field.name == "声音截图":
+        field_type = 17
     elif field.name in dict(_REQUIRED_TEMPLATE_SELECT_FIELDS):
         field_type = 4 if field.name in _REQUIRED_TEMPLATE_MULTI_SELECT_FIELD_NAMES else 3
     else:
@@ -803,6 +1375,33 @@ def _table_field_definition(field: FeishuField) -> dict[str, object]:
     return definition
 
 
+def _order_table_field_definitions(
+    definitions: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """按报告使用的固定列顺序排列新表字段，未列出的模板字段置于末尾。"""
+
+    indexed = list(enumerate(definitions))
+    indexed.sort(
+        key=lambda item: (
+            _TABLE_FIELD_ORDER_INDEX.get(
+                str(item[1].get("field_name", "")),
+                len(_TABLE_FIELD_ORDER_INDEX),
+            ),
+            item[0],
+        )
+    )
+    return [dict(definition) for _, definition in indexed]
+
+
+def _attachment_content_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    return {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(suffix, "image/png")
+
+
 def _parse_record(value: object) -> _FeishuRecord:
     if not isinstance(value, dict):
         raise FeishuAPIError("飞书记录项不是 object", api_code=0)
@@ -812,10 +1411,49 @@ def _parse_record(value: object) -> _FeishuRecord:
         raise FeishuAPIError("飞书记录项缺少 record_id", api_code=0)
     if not isinstance(fields, dict):
         raise FeishuAPIError("飞书记录 fields 类型错误", api_code=0)
+    raw_modified_time = value.get("last_modified_time", 0)
+    try:
+        last_modified_time = int(raw_modified_time)
+    except (TypeError, ValueError):
+        last_modified_time = 0
     return _FeishuRecord(
         record_id=record_id,
         fields={str(key): item for key, item in fields.items()},
+        last_modified_time=max(last_modified_time, 0),
     )
+
+
+def _record_is_blank(record: _FeishuRecord) -> bool:
+    """识别 Docx 新建内嵌表自动生成的空白记录，不把 0/false 当作空值。"""
+
+    for value in record.fields.values():
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        if isinstance(value, (list, tuple, dict, set)) and not value:
+            continue
+        return False
+    return True
+
+
+def _mirror_records_by_key(
+    records: Sequence[_FeishuRecord],
+    primary_field_name: str,
+) -> dict[str, _FeishuRecord]:
+    indexed: dict[str, _FeishuRecord] = {}
+    for record in records:
+        key = _key_value("声音内容/连接", record.fields.get(primary_field_name))
+        if not key:
+            continue
+        if key in indexed:
+            raise FeishuSyncError("双向镜像表存在重复主字段，已停止同步")
+        indexed[key] = record
+    return indexed
+
+
+def _mirror_key_hash(key: str) -> str:
+    return sha256(key.encode("utf-8")).hexdigest()
 
 
 def _row_key(
@@ -840,6 +1478,14 @@ def _record_key(
 def _key_value(field: str, value: object) -> str:
     """提取幂等键文本；目标表的内容/连接字段优先使用其中的 URL。"""
 
+    if field == "声音内容/连接":
+        url_value = value
+        if isinstance(url_value, list) and len(url_value) == 1:
+            url_value = url_value[0]
+        if isinstance(url_value, Mapping):
+            link = url_value.get("link")
+            if isinstance(link, str) and link.strip():
+                return link.strip().rstrip("，。；、,.;:：）)]}>")
     text = _value_text(value)
     if field == "声音内容/连接":
         match = re.search(r"https?://[^\s]+", text)
@@ -848,19 +1494,33 @@ def _key_value(field: str, value: object) -> str:
     return text
 
 
-def _row_fields(row: Mapping[str, object], mapping: FeishuFieldMapping) -> dict[str, object]:
+def _row_fields(
+    row: Mapping[str, object],
+    mapping: FeishuFieldMapping,
+    *,
+    upload_attachment: Callable[[Path], str] | None = None,
+) -> dict[str, object]:
     converted: dict[str, object] = {}
     for logical, field in mapping.resolved.items():
         value = row.get(logical)
         if value is None or (isinstance(value, str) and not value.strip()):
             continue
-        converted_value = _convert_field_value(field, value)
+        converted_value = _convert_field_value(
+            field,
+            value,
+            upload_attachment=upload_attachment,
+        )
         if converted_value is not None:
             converted[field.name] = converted_value
     return converted
 
 
-def _convert_field_value(field: FeishuField, value: object) -> object | None:
+def _convert_field_value(
+    field: FeishuField,
+    value: object,
+    *,
+    upload_attachment: Callable[[Path], str] | None = None,
+) -> object | None:
     if field.field_type in _FIELD_TYPES_TEXT:
         return _value_text(value)
     if field.field_type in _FIELD_TYPES_URL:
@@ -888,9 +1548,13 @@ def _convert_field_value(field: FeishuField, value: object) -> object | None:
         return text if text in field.options else None
     if field.field_type in _FIELD_TYPES_MULTI_SELECT:
         if isinstance(value, (list, tuple)):
-            raw_values = [_value_text(item) for item in value]
+            raw_values = [
+                label
+                for item in value
+                for label in split_representative_labels(_value_text(item))
+            ]
         else:
-            raw_values = re.split(r"(?:\r?\n|[,，、;；])+", _value_text(value))
+            raw_values = list(split_representative_labels(_value_text(value)))
         values: list[str] = []
         for item in raw_values:
             normalized = item.strip()
@@ -901,6 +1565,25 @@ def _convert_field_value(field: FeishuField, value: object) -> object | None:
         return values
     if field.field_type in _FIELD_TYPES_DATETIME:
         return _datetime_milliseconds(value)
+    if field.field_type in _FIELD_TYPES_ATTACHMENT:
+        if isinstance(value, Path):
+            if upload_attachment is None:
+                return None
+            return [{"file_token": upload_attachment(value)}]
+        if isinstance(value, Mapping):
+            file_token = value.get("file_token")
+            if isinstance(file_token, str) and file_token:
+                return [{"file_token": file_token}]
+            return None
+        if isinstance(value, (list, tuple)):
+            attachments: list[dict[str, str]] = []
+            for item in value:
+                if isinstance(item, Mapping) and isinstance(item.get("file_token"), str):
+                    attachments.append({"file_token": item["file_token"]})
+                elif isinstance(item, Path) and upload_attachment is not None:
+                    attachments.append({"file_token": upload_attachment(item)})
+            return attachments or None
+        return None
     return None
 
 
@@ -936,7 +1619,7 @@ def _value_text(value: object) -> str:
     if value is None:
         return ""
     if isinstance(value, dict):
-        for key in ("text", "link", "name", "value"):
+        for key in ("file_token", "text", "link", "name", "value"):
             if key in value:
                 return _value_text(value[key])
         return ""
@@ -954,6 +1637,8 @@ def _field_values_equal(actual: object, expected: object) -> bool:
             _value_text(item) for item in expected
         )
     if isinstance(expected, dict):
+        if isinstance(actual, list) and len(actual) == 1:
+            actual = actual[0]
         if not isinstance(actual, dict):
             return False
         return all(
@@ -986,6 +1671,7 @@ __all__ = [
     "FeishuBitableClient",
     "FeishuField",
     "FeishuFieldMapping",
+    "FeishuMirrorSyncSummary",
     "FeishuPreparedSync",
     "FeishuTableInfo",
     "FeishuSyncError",

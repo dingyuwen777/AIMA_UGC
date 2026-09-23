@@ -69,7 +69,7 @@ def test_provider_connection(
                     "User-Agent": "AIMA_UGC/1.0",
                 },
             )
-        except httpx.ConnectError, httpx.ConnectTimeout:
+        except (httpx.ConnectError, httpx.ConnectTimeout):
             return ProviderConnectionTestResult(False, "无法连接服务地址", None)
         except httpx.TimeoutException:
             return ProviderConnectionTestResult(False, "服务响应超时", None)

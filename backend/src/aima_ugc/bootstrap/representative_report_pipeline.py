@@ -36,6 +36,8 @@ from aima_ugc.modules.analysis.representative_selection import (
 )
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.reporting import (
+    DEFAULT_PRIMARY_LABEL,
+    DEFAULT_SECONDARY_LABEL,
     RepresentativeReportRow,
     format_representative_labels,
     normalize_representative_content_url,
@@ -154,8 +156,8 @@ def _advice_input(
         item_no=item_no,
         platform=content.platform,
         sentiment=sentiment,
-        primary_label=format_representative_labels(content.primary_label),
-        secondary_label=format_representative_labels(content.secondary_label),
+        primary_label=_representative_label(content.primary_label, DEFAULT_PRIMARY_LABEL),
+        secondary_label=_representative_label(content.secondary_label, DEFAULT_SECONDARY_LABEL),
         comment_text=_representative_comment(content, comment_map),
         content_title=content.title,
         content_text=content.text,
@@ -245,11 +247,17 @@ def _row_without_screenshot(
         ),
         link_text=content.title.strip() or content.text.strip() or content.content_url.strip(),
         comment_text=_representative_comment(content, comment_map),
-        primary_label=format_representative_labels(content.primary_label),
-        secondary_label=format_representative_labels(content.secondary_label),
+        primary_label=_representative_label(content.primary_label, DEFAULT_PRIMARY_LABEL),
+        secondary_label=_representative_label(content.secondary_label, DEFAULT_SECONDARY_LABEL),
         action_advice=advice_by_index.get(index, ""),
         processing_progress="",
     )
+
+
+def _representative_label(value: str, fallback: str) -> str:
+    """返回去重后的标签；输入缺失时使用 Taxonomy 的合法兜底值。"""
+
+    return format_representative_labels(value) or fallback
 
 
 def _load_comment_map(
@@ -910,7 +918,7 @@ def _is_usable_screenshot(path: Path) -> bool:
                 return False
             sample = image.convert("L").resize((64, 64))
             pixels = list(sample.tobytes())
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return False
     if not pixels:
         return False
@@ -948,7 +956,7 @@ def _read_edge_profile_directory(user_data_dir: Path) -> str:
         for candidate in candidates:
             if isinstance(candidate, str) and (user_data_dir / candidate).is_dir():
                 return candidate
-    except OSError, TypeError, ValueError:
+    except (OSError, TypeError, ValueError):
         pass
     return "Default"
 
@@ -1071,7 +1079,7 @@ def _integer_or_zero(values: tuple[object, ...], index: int | None) -> int:
         return 0
     try:
         return int(float(str(values[index]).strip()))
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return 0
 
 

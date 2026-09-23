@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from aima_ugc.adapters.feishu import FeishuAPIError
+from aima_ugc.adapters.feishu import FeishuAPIError, FeishuApiError
 from aima_ugc.bootstrap import feishu_publication_worker as worker_module
 from aima_ugc.bootstrap.feishu_publication_worker import (
     PostgresFeishuPublicationJobExecutor,
@@ -58,15 +59,15 @@ def test_report_worker_reads_both_artifacts_and_returns_safe_result(
     monkeypatch.setattr(worker_module, "validate_xlsx_archive", lambda path: None)
     monkeypatch.setattr(
         worker_module,
-        "publish_report_to_feishu",
+        "publish_all_report_to_feishu",
         lambda **kwargs: (
             calls.append((kwargs["input_path"], kwargs["previous_input_path"]))
             or SimpleNamespace(
                 report=SimpleNamespace(content_rows=3, label_rows=2, comment_rows=1),
-                publication=SimpleNamespace(
-                    native_document_url="https://feishu.example/doc",
-                    editable_chart_sheet_url=None,
-                ),
+                publication=None,
+                representative_sync=None,
+                representative_count=2,
+                dry_run=True,
             )
         ),
     )
@@ -85,8 +86,15 @@ def test_report_worker_reads_both_artifacts_and_returns_safe_result(
     assert result.outcome == "succeeded"
     assert result.result == {
         "kind": "report",
-        "native_document_url": "https://feishu.example/doc",
+        "dry_run": True,
+        "native_document_url": None,
         "editable_chart_sheet_url": None,
+        "representative_table_url": None,
+        "representative_table_name": None,
+        "representative_count": 2,
+        "representative_created_count": 0,
+        "representative_updated_count": 0,
+        "representative_verified_count": 0,
         "content_rows": 3,
         "label_rows": 2,
         "comment_rows": 1,
@@ -150,3 +158,48 @@ def test_representative_worker_delegates_and_maps_retryable_feishu_error(
     )
     assert retry.outcome == "retry"
     assert retry.error_code == "feishu_bitable_api_retry"
+
+
+def test_report_worker_logs_specific_feishu_endpoint_and_error_details(
+    executor: PostgresFeishuPublicationJobExecutor,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(worker_module, "validate_xlsx_archive", lambda path: None)
+    monkeypatch.setattr(
+        worker_module,
+        "publish_all_report_to_feishu",
+        lambda **kwargs: (_ for _ in ()).throw(
+            FeishuApiError(
+                "在飞书原生文档中添加报告交付入口失败：HTTP 403, code=99991672, msg=Access denied",
+                status_code=403,
+                api_code=99991672,
+                http_method="POST",
+                endpoint="/open-apis/docx/v1/documents/doc/blocks/doc/children",
+            )
+        ),
+    )
+    payload = FeishuReportPublicationJobPayload(
+        input_artifact_id=uuid4(),
+        previous_input_artifact_id=uuid4(),
+        input_filename="current.xlsx",
+        previous_input_filename="previous.xlsx",
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 9),
+    )
+    context = _Context()
+
+    with caplog.at_level(logging.ERROR, logger=worker_module.logger.name):
+        result = executor.execute_report(payload=payload, fence=context.fence, context=context)
+
+    assert result.outcome == "failed"
+    assert result.error_code == "feishu_report_api_failed"
+    record = next(record for record in caplog.records if record.event == "feishu.api_error")
+    assert record.job_id == str(context.fence.job_id)
+    assert record.publication_kind == "report"
+    assert record.http_method == "POST"
+    assert record.endpoint == "/open-apis/docx/v1/documents/doc/blocks/doc/children"
+    assert record.status_code == 403
+    assert record.api_code == 99991672
+    assert "添加报告交付入口" in record.error_message
+    assert "Access denied" in record.error_message

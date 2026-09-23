@@ -10,12 +10,14 @@ from aima_ugc.adapters.providers.imports_test.test import (
     load_feishu_publication_config,
     publish_generated_report_to_feishu,
 )
+from aima_ugc.bootstrap.feishu_bitable_mirror import register_feishu_bitable_mirror
 from aima_ugc.bootstrap.representative_report_pipeline import (
     prepare_representative_report,
 )
 from aima_ugc.bootstrap.representative_selection_publication import (
     publish_selected_representatives_to_feishu,
 )
+from aima_ugc.bootstrap.runtime import create_platform_runtime
 from aima_ugc.entrypoints.representative_selection_main import (
     DEFAULT_ENV_FILE,
     _load_entrypoint_settings,
@@ -128,19 +130,51 @@ def main(argv: Sequence[str] | None = None) -> int:
         "representative_count": len(preparation.rows),
         "warnings": list(preparation.warnings),
     }
+    publication = None
     if feishu_config is not None:
-        publication = publish_generated_report_to_feishu(result, config=feishu_config)
+        publication = publish_generated_report_to_feishu(
+            result,
+            config=feishu_config,
+            embed_representative_bitable=arguments.publish_all,
+        )
         status["report_feishu"] = asdict(publication)
         print(publication.native_document_url)
         if publication.editable_chart_sheet_url is not None:
             print(publication.editable_chart_sheet_url)
     if arguments.publish_all:
+        if publication is None or publication.representative_bitable_token is None:
+            raise RuntimeError("飞书在线报告未返回内嵌多维表 token")
+        # Docx 创建接口只接受 view_type，并在响应中生成新的 token。必须先在
+        # 在线文档内创建原生多维表，再用该 token 配置字段并写入代表性数据。
         sync_summary = publish_selected_representatives_to_feishu(
             selected=preparation.selection_run.selected,
+            report_rows=preparation.rows,
             output_dir=output_dir / "representative_selection",
             settings=settings,
+            target_bitable_block_token=publication.representative_bitable_token,
+            target_document_token=publication.native_document_token,
+            target_document_url=publication.native_document_url,
         )
         status["representative_feishu"] = sync_summary.as_dict()
+        mirror_settings = settings
+        local_internal_secrets = settings.secret_dir.parent / "internal-secrets"
+        if (
+            not settings.postgres_password_file.is_file()
+            and (local_internal_secrets / "postgres_password").is_file()
+        ):
+            mirror_settings = settings.model_copy(update={"secret_dir": local_internal_secrets})
+        mirror_runtime = create_platform_runtime(
+            "feishu-report-cli",
+            settings=mirror_settings,
+        )
+        try:
+            register_feishu_bitable_mirror(
+                mirror_runtime,
+                sync_summary,
+                publication_job_id=None,
+            )
+        finally:
+            mirror_runtime.close()
         print(json.dumps(sync_summary.as_dict(), ensure_ascii=False))
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "publication_status.json").write_text(

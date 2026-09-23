@@ -2267,12 +2267,23 @@ export interface FeishuReportPublicationResult {
   comment_rows: number;
   /** @minimum 0 */
   content_rows: number;
+  dry_run?: boolean;
   editable_chart_sheet_url?: string | null;
   end_date: string;
   kind?: 'report';
   /** @minimum 0 */
   label_rows: number;
-  native_document_url: string;
+  native_document_url?: string | null;
+  /** @minimum 0 */
+  representative_count?: number;
+  /** @minimum 0 */
+  representative_created_count?: number;
+  representative_table_name?: string | null;
+  representative_table_url?: string | null;
+  /** @minimum 0 */
+  representative_updated_count?: number;
+  /** @minimum 0 */
+  representative_verified_count?: number;
   start_date: string;
 }
 

@@ -6755,6 +6755,11 @@
             "title": "Content Rows",
             "type": "integer"
           },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
           "editable_chart_sheet_url": {
             "anyOf": [
               {
@@ -6783,8 +6788,61 @@
             "type": "integer"
           },
           "native_document_url": {
-            "title": "Native Document Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Document Url"
+          },
+          "representative_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Representative Count",
+            "type": "integer"
+          },
+          "representative_created_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Representative Created Count",
+            "type": "integer"
+          },
+          "representative_table_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Representative Table Name"
+          },
+          "representative_table_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Representative Table Url"
+          },
+          "representative_updated_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Representative Updated Count",
+            "type": "integer"
+          },
+          "representative_verified_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Representative Verified Count",
+            "type": "integer"
           },
           "start_date": {
             "format": "date",
@@ -6793,7 +6851,6 @@
           }
         },
         "required": [
-          "native_document_url",
           "content_rows",
           "label_rows",
           "comment_rows",

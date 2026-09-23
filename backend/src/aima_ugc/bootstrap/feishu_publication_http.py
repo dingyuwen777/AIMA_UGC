@@ -129,6 +129,7 @@ class PostgresFeishuPublicationHttpService:
             previous_input_filename=previous_name,
             start_date=actual_start,
             end_date=actual_end,
+            dry_run=self._runtime.settings.feishu_dry_run,
         )
         with self._runtime.database.new_session() as session:
             with session.begin():

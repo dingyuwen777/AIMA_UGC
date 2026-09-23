@@ -404,7 +404,7 @@ def create_app(
         if runtime is None and not runtime_failed:
             try:
                 runtime = create_platform_runtime("api")
-            except OSError, ValueError:
+            except (OSError, ValueError):
                 runtime_failed = True
         return runtime
 

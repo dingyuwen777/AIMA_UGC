@@ -18,16 +18,21 @@ from .markdown_word import (
     extract_chart_specs,
 )
 from .representative_section import (
+    DEFAULT_PRIMARY_LABEL,
+    DEFAULT_SECONDARY_LABEL,
     REPRESENTATIVE_GROUP_ORDER,
     REPRESENTATIVE_TABLE_HEADERS,
     RepresentativeReportRow,
     build_representative_section,
     format_representative_labels,
     normalize_representative_content_url,
+    split_representative_labels,
 )
 
 __all__ = [
     "DEFAULT_REPORT_TEMPLATE_PATH",
+    "DEFAULT_PRIMARY_LABEL",
+    "DEFAULT_SECONDARY_LABEL",
     "ChartSpec",
     "ChartWorkbookSummary",
     "FeishuNativeBlock",
@@ -45,4 +50,5 @@ __all__ = [
     "build_representative_section",
     "format_representative_labels",
     "normalize_representative_content_url",
+    "split_representative_labels",
 ]

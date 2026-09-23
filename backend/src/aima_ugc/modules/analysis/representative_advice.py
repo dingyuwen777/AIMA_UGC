@@ -38,6 +38,16 @@ _TRANSLATE_PROMPT = """
 必须为输入中的每个 item_no 返回且只返回一次；item_no 不得新增、遗漏或重复。
 """.strip()
 
+_REPAIR_PROMPT = """
+上一次行动建议输出无法解析。请根据输入的代表性内容重新生成结构化行动建议。
+建议必须使用简体中文，单条不超过 80 个汉字，不要编造评论中没有的事实。
+
+只允许返回以下 JSON，不要输出 Markdown、解释或其他字段：
+{"items":[{"item_no":1,"action_advice":"中文行动建议"}]}
+
+必须为输入中的每个 item_no 返回且只返回一次；item_no 不得新增、遗漏或重复。
+""".strip()
+
 
 @dataclass(frozen=True, slots=True)
 class RepresentativeAdviceInput:
@@ -96,6 +106,7 @@ class RepresentativeAdviceService:
             )
             for item in inputs
         )
+        expected = set(item_nos)
         response = self._llm.complete(
             ContentLabelingLLMRequest(
                 prompt=_ADVICE_PROMPT,
@@ -103,7 +114,14 @@ class RepresentativeAdviceService:
                 request_kind="primary",
             )
         )
-        result = _parse_advice_response(response.raw_text, expected=set(item_nos))
+        try:
+            result = _parse_advice_response(response.raw_text, expected=expected)
+        except ValueError:
+            result = self._repair_or_fallback(
+                inputs,
+                request_items=request_items,
+                expected=expected,
+            )
         untranslated = tuple(
             item for item in inputs if not _is_chinese_advice(result[item.item_no])
         )
@@ -115,6 +133,28 @@ class RepresentativeAdviceService:
                     candidate if _is_chinese_advice(candidate) else _fallback_chinese_advice(item)
                 )
         return result
+
+    def _repair_or_fallback(
+        self,
+        inputs: Sequence[RepresentativeAdviceInput],
+        *,
+        request_items: tuple[ContentLabelingModelItem, ...],
+        expected: set[int],
+    ) -> dict[int, str]:
+        """修复一次结构化输出；模型仍失败时保证报告可继续生成。"""
+
+        response = self._llm.complete(
+            ContentLabelingLLMRequest(
+                prompt=_REPAIR_PROMPT,
+                items=request_items,
+                request_kind="repair",
+                previous_validation_error_codes=("invalid_response_structure",),
+            )
+        )
+        try:
+            return _parse_advice_response(response.raw_text, expected=expected)
+        except ValueError:
+            return {item.item_no: _fallback_chinese_advice(item) for item in inputs}
 
     def _translate(
         self,

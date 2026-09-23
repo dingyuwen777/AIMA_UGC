@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -13,13 +15,20 @@ from aima_ugc.adapters.feishu import (
     FeishuReportPublisherConfig,
     load_feishu_report_publisher_config,
 )
-from aima_ugc.adapters.feishu.report_publisher import _table_cell_text_block
+from aima_ugc.adapters.feishu.report_publisher import _ImportResult, _table_cell_text_block
+from aima_ugc.bootstrap import feishu_report_publication as publication_module
+from aima_ugc.bootstrap.feishu_report_publication import publish_all_report_to_feishu
+from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.reporting import (
     ChartSpec,
     build_editable_chart_workbook,
     build_feishu_native_document,
 )
 from aima_ugc.platform.reporting.chart_png import render_chart_png
+from aima_ugc.platform.reporting.feishu_native_document import (
+    FeishuNativeBlock,
+    FeishuNativeDocument,
+)
 from openpyxl import load_workbook
 from pydantic import SecretStr
 
@@ -109,6 +118,203 @@ def test_native_document_parser_normalizes_empty_table_cells(tmp_path: Path) -> 
     document = build_feishu_native_document(markdown_path, (_spec(),))
 
     assert document.blocks[0].rows == (("指标", "数量"), ("暂无数据", "—"))
+
+
+def test_native_document_parser_replaces_representative_section_with_bitable(
+    tmp_path: Path,
+) -> None:
+    markdown_path = tmp_path / "report.md"
+    markdown_path.write_text(
+        "# AIMA 舆情报告\n\n"
+        "## 6. 代表性评论与关联页面\n\n"
+        "### 6.1 抖音正面评价\n\n"
+        "| 原文链接 | 评论内容 | 处理建议 |\n"
+        "| --- | --- | --- |\n"
+        "| 打开原文 |  | 建议跟进 |\n\n"
+        "## 7. 后续说明\n\n"
+        "```mermaid\nxychart-beta\n```\n",
+        encoding="utf-8",
+    )
+
+    document = build_feishu_native_document(
+        markdown_path,
+        (_spec(),),
+        embed_representative_bitable=True,
+    )
+
+    assert [block.kind for block in document.blocks] == [
+        "heading",
+        "heading",
+        "bitable",
+        "heading",
+        "chart",
+    ]
+    assert document.blocks[1].text == "6. 代表性评论与关联页面"
+    assert document.blocks[3].text == "7. 后续说明"
+
+
+def test_report_publisher_writes_real_bitable_block_payload() -> None:
+    requests: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "tenant-token"})
+        assert request.url.path == "/open-apis/docx/v1/documents/doc/blocks/doc/children"
+        assert request.headers["Authorization"] == "Bearer tenant-token"
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "children": [
+                        {
+                            "block_id": "bitable-block",
+                            "block_type": 18,
+                                "bitable": {"token": "bascnExample_tblExample"},
+                        }
+                    ]
+                },
+            },
+        )
+
+    client = httpx.Client(
+        base_url="https://open.feishu.cn",
+        transport=httpx.MockTransport(handler),
+    )
+    publisher = FeishuReportPublisher(
+        FeishuReportPublisherConfig(
+            app_id="app-id",
+            app_secret=SecretStr("app-secret"),
+            folder_token="folder-token",
+        ),
+        client=client,
+    )
+    try:
+        embedded = publisher._append_bitable_block(  # noqa: SLF001
+            document_token="doc",
+            idempotency_source="test-bitable",
+        )
+    finally:
+        client.close()
+
+    assert requests == [
+        {
+            "index": -1,
+            "children": [
+                {
+                    "block_type": 18,
+                    "bitable": {"view_type": 1},
+                }
+            ],
+        }
+    ]
+    assert embedded.token == "bascnExample_tblExample"
+    assert embedded.app_token == "bascnExample"
+    assert embedded.table_id == "tblExample"
+
+
+def test_report_publisher_creates_embedded_bitable_in_document_order() -> None:
+    requests: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "tenant-token"})
+        assert request.url.path == "/open-apis/docx/v1/documents/doc/blocks/doc/children"
+        body = json.loads(request.content)
+        requests.append(body)
+        if body["children"] == [{"block_type": 18, "bitable": {"view_type": 1}}]:
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "children": [
+                            {
+                                "block_id": "bitable-block",
+                                "block_type": 18,
+                                "bitable": {"token": "bascnExample_tblTarget"},
+                            }
+                        ]
+                    },
+                },
+            )
+        return httpx.Response(200, json={"code": 0, "data": {}})
+
+    client = httpx.Client(
+        base_url="https://open.feishu.cn",
+        transport=httpx.MockTransport(handler),
+    )
+    publisher = FeishuReportPublisher(
+        FeishuReportPublisherConfig(
+            app_id="app-id",
+            app_secret=SecretStr("app-secret"),
+            folder_token="folder-token",
+        ),
+        client=client,
+    )
+    document = FeishuNativeDocument(
+        markdown_path=Path("report.md"),
+        blocks=(
+            FeishuNativeBlock(kind="heading", text="6. 代表性评论与关联页面", level=2),
+            FeishuNativeBlock(kind="bitable"),
+        ),
+        chart_specs=(),
+    )
+    try:
+        embedded = publisher._write_native_document(  # noqa: SLF001
+            native_document=_ImportResult("doc", "https://feishu.example/doc", ()),
+            document=document,
+            sheet_url=None,
+            idempotency_source="test-embedded-bitable",
+        )
+    finally:
+        client.close()
+
+    assert requests[1]["children"] == [
+        {"block_type": 18, "bitable": {"view_type": 1}}
+    ]
+    assert embedded is not None
+    assert embedded.token == "bascnExample_tblTarget"
+
+
+def test_docx_client_tokens_are_stable_uuid_v4() -> None:
+    from aima_ugc.adapters.feishu.report_publisher import _stable_client_token
+
+    first = _stable_client_token("same-operation")
+    second = _stable_client_token("same-operation")
+
+    assert first == second
+    assert uuid.UUID(first).version == 4
+
+
+def test_report_publisher_rejects_bitable_response_without_token() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "tenant-token"})
+        return httpx.Response(
+            200,
+            json={"code": 0, "data": {"children": [{"block_type": 18, "bitable": {}}]}},
+        )
+
+    client = httpx.Client(
+        base_url="https://open.feishu.cn",
+        transport=httpx.MockTransport(handler),
+    )
+    publisher = FeishuReportPublisher(
+        FeishuReportPublisherConfig(
+            app_id="app-id",
+            app_secret=SecretStr("app-secret"),
+            folder_token="folder-token",
+        ),
+        client=client,
+    )
+    with pytest.raises(FeishuApiError, match="响应缺少 token"):
+        publisher._append_bitable_block(  # noqa: SLF001
+            document_token="doc",
+            idempotency_source="test-bitable-compat",
+        )
+    client.close()
 
 
 def test_native_document_parser_keeps_word_ranking_limits_for_wordcloud_sections(
@@ -345,6 +551,10 @@ def test_report_publisher_fails_closed_and_redacts_app_secret(tmp_path: Path) ->
 
     assert "app-secret-value" not in str(error.value)
     assert "[REDACTED]" in str(error.value)
+    assert error.value.status_code == 400
+    assert error.value.api_code == 10003
+    assert error.value.http_method == "POST"
+    assert error.value.endpoint == "/open-apis/auth/v3/tenant_access_token/internal"
 
 
 def test_load_feishu_config_is_opt_in_and_reads_secret_from_approved_root(tmp_path: Path) -> None:
@@ -362,3 +572,176 @@ def test_load_feishu_config_is_opt_in_and_reads_secret_from_approved_root(tmp_pa
     config = load_feishu_report_publisher_config(environ, secret_root=secret_root)
     assert config is not None
     assert config.app_secret.get_secret_value() == "secret-from-file"
+
+
+def test_publish_all_dry_run_generates_report_without_loading_or_calling_feishu(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "current.xlsx"
+    previous = tmp_path / "previous.xlsx"
+    source.write_bytes(b"current")
+    previous.write_bytes(b"previous")
+    settings = PlatformSettings(
+        data_dir=tmp_path / "data",
+        log_dir=tmp_path / "logs",
+        secret_dir=tmp_path / "secrets",
+        llm_base_url="https://llm.example/v1",
+        llm_model="fake-model",
+    )
+    rows = (object(), object())
+    monkeypatch.setattr(
+        publication_module,
+        "prepare_representative_report",
+        lambda **_kwargs: type(
+            "Preparation",
+            (),
+            {"rows": rows, "selection_run": type("Selection", (), {"selected": ()})()},
+        )(),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_generate_report(**kwargs: object):
+        captured.update(kwargs)
+        return publication_module.ReportGenerationSummary(
+            source_excel_path=source,
+            template_path=tmp_path / "template.docx",
+            markdown_path=tmp_path / "report.md",
+            word_path=tmp_path / "report.docx",
+            content_rows=3,
+            label_rows=2,
+            comment_rows=1,
+            start_date="2026-09-01",
+            end_date="2026-09-09",
+            word_chart_count=1,
+        )
+
+    monkeypatch.setattr(publication_module, "generate_excel_report", fake_generate_report)
+    monkeypatch.setattr(
+        publication_module,
+        "_load_publisher_config",
+        lambda *_args, **_kwargs: pytest.fail("Dry Run 不应读取飞书发布配置"),
+    )
+
+    result = publish_all_report_to_feishu(
+        input_path=source,
+        previous_input_path=previous,
+        output_dir=tmp_path / "output",
+        report_date_range=(date(2026, 9, 1), date(2026, 9, 9)),
+        settings=settings,
+        environ={},
+        dry_run=True,
+    )
+
+    assert result.dry_run is True
+    assert result.publication is None
+    assert result.representative_count == 2
+    assert captured["representative_rows"] == rows
+
+
+def test_publish_all_real_run_creates_embedded_bitable_before_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "current.xlsx"
+    previous = tmp_path / "previous.xlsx"
+    source.write_bytes(b"current")
+    previous.write_bytes(b"previous")
+    settings = PlatformSettings(
+        data_dir=tmp_path / "data",
+        log_dir=tmp_path / "logs",
+        secret_dir=tmp_path / "secrets",
+    )
+    rows = (object(),)
+    monkeypatch.setattr(
+        publication_module,
+        "prepare_representative_report",
+        lambda **_kwargs: type(
+            "Preparation",
+            (),
+            {"rows": rows, "selection_run": type("Selection", (), {"selected": ("selected",)})()},
+        )(),
+    )
+    monkeypatch.setattr(
+        publication_module,
+        "generate_excel_report",
+        lambda **_kwargs: publication_module.ReportGenerationSummary(
+            source_excel_path=source,
+            template_path=tmp_path / "template.docx",
+            markdown_path=tmp_path / "report.md",
+            word_path=tmp_path / "report.docx",
+            content_rows=3,
+            label_rows=2,
+            comment_rows=1,
+            start_date="2026-09-01",
+            end_date="2026-09-09",
+            word_chart_count=1,
+        ),
+    )
+    monkeypatch.setattr(
+        publication_module,
+        "_load_publisher_config",
+        lambda *_args, **_kwargs: object(),
+    )
+    captured: dict[str, object] = {}
+    events: list[str] = []
+
+    def fake_sync(**kwargs: object):
+        events.append("sync")
+        captured.update(kwargs)
+        return type(
+            "Sync",
+            (),
+            {
+                "target_bitable_block_token": "bitable-token",
+                "target_table_url": "https://feishu.example/table",
+                "target_table_name": "代表性内容",
+                "created_count": 1,
+                "updated_count": 0,
+                "verified_count": 1,
+            },
+        )()
+
+    monkeypatch.setattr(publication_module, "publish_selected_representatives_to_feishu", fake_sync)
+    def fake_publish(report: object, config: object, **kwargs: object):
+        del report, config
+        events.append("publish")
+        captured["publish_kwargs"] = kwargs
+        return type(
+                "Publication",
+                (),
+                {
+                    "native_document_token": "doc-token",
+                    "native_document_url": "https://feishu.example/doc",
+                "editable_chart_sheet_url": "https://feishu.example/sheet",
+                "representative_bitable_token": "bascnEmbedded_tblEmbedded",
+            },
+        )()
+
+    monkeypatch.setattr(
+        publication_module,
+        "_publish_generated_report",
+        fake_publish,
+    )
+
+    result = publish_all_report_to_feishu(
+        input_path=source,
+        previous_input_path=previous,
+        output_dir=tmp_path / "output",
+        report_date_range=(date(2026, 9, 1), date(2026, 9, 9)),
+        settings=settings,
+        environ={},
+        dry_run=False,
+    )
+
+    assert result.dry_run is False
+    assert result.representative_sync is not None
+    assert result.publication is not None
+    assert captured["settings"] is settings
+    assert captured["selected"] == ("selected",)
+    assert captured["report_rows"] == rows
+    assert captured["target_bitable_block_token"] == "bascnEmbedded_tblEmbedded"
+    assert captured["target_document_token"] == "doc-token"
+    assert captured["target_document_url"] == "https://feishu.example/doc"
+    assert captured["publish_kwargs"] == {"embed_representative_bitable": True}
+    assert events == ["publish", "sync"]

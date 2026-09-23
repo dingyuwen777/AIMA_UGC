@@ -1,12 +1,30 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
+import type {
+  FeishuPublicationJobResponse,
+  FeishuReportPublicationResult,
+} from '../../../../../generated/api/client'
+import { apiErrorMessage } from '../../../../../shared/api/http'
+import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
+import {
+  createReportPublication,
+  fetchReportPublicationJob,
+} from '../../../api'
 
 type FileSlot = 'current' | 'previous'
-type ReportFormStatus = 'idle' | 'validation-error' | 'backend-unavailable'
+type ReportFormStatus =
+  | 'idle'
+  | 'validation-error'
+  | 'submitting'
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
 
 const currentFile = ref<File | null>(null)
 const previousFile = ref<File | null>(null)
@@ -14,14 +32,17 @@ const startDate = ref('')
 const endDate = ref('')
 const status = ref<ReportFormStatus>('idle')
 const validationMessage = ref('')
+const job = ref<FeishuPublicationJobResponse | null>(null)
 const currentInput = ref<HTMLInputElement | null>(null)
 const previousInput = ref<HTMLInputElement | null>(null)
+const pollError = ref('')
+const pollHandle = ref<ReturnType<typeof setInterval> | null>(null)
+let pollInFlight = false
 
 const emit = defineEmits<{
   'dirty-change': [dirty: boolean]
 }>()
 
-/** 任何本地报告输入都属于尚未提交的草稿；后端未接入时尤其不能静默丢失。 */
 const navigationDirty = computed(() => Boolean(
   currentFile.value
   || previousFile.value
@@ -36,26 +57,40 @@ const formComplete = computed(() => Boolean(
   && endDate.value,
 ))
 
-const submitLabel = computed(() => status.value === 'backend-unavailable'
-  ? '后端服务未接入'
-  : '生成报告并同步到飞书')
+const busy = computed(() => ['submitting', 'queued', 'running'].includes(status.value))
+const reportResult = computed<FeishuReportPublicationResult | null>(() => {
+  const result = job.value?.result
+  return result?.kind === 'report' ? result : null
+})
+const statusLabel = computed(() => {
+  const labels: Partial<Record<ReportFormStatus, string>> = {
+    submitting: '正在上传',
+    queued: '排队中',
+    running: '生成中',
+    succeeded: '已完成',
+    failed: '失败',
+    cancelled: '已取消',
+  }
+  return labels[status.value] ?? ''
+})
+const submitLabel = computed(() => busy.value ? statusLabel.value : '生成报告并同步到飞书')
 
-/** 将本地报告草稿状态上送给管理员 Page Owner。 */
 watch(navigationDirty, (dirty) => emit('dirty-change', dirty), { immediate: true })
 
-/** 返回文件槽当前持有的本地文件。 */
 function selectedFile(slot: FileSlot): File | null {
   return slot === 'current' ? currentFile.value : previousFile.value
 }
 
-/** 用户修改输入后回到可校验状态，不保留过期反馈。 */
 function clearFeedback(): void {
+  if (busy.value) return
   status.value = 'idle'
   validationMessage.value = ''
+  pollError.value = ''
+  job.value = null
 }
 
-/** 仅接受本地可确认的 .xlsx 扩展名，不冒充工作簿内容校验。 */
 function setFile(slot: FileSlot, file: File | null): void {
+  if (busy.value) return
   clearFeedback()
   if (file && !file.name.toLocaleLowerCase().endsWith('.xlsx')) {
     validationMessage.value = '表单校验未通过：报告文件必须使用 .xlsx 格式。'
@@ -67,48 +102,76 @@ function setFile(slot: FileSlot, file: File | null): void {
   else previousFile.value = file
 }
 
-/** 将原生文件选择结果写入对应报告周期。 */
 function onFileChange(slot: FileSlot, event: Event): void {
   const input = event.currentTarget as HTMLInputElement
   setFile(slot, input.files?.[0] ?? null)
 }
 
-/** 支持把单个 XLSX 直接拖入对应报告周期。 */
 function onFileDrop(slot: FileSlot, event: DragEvent): void {
   setFile(slot, event.dataTransfer?.files[0] ?? null)
 }
 
-/** 清空原生文件控件，保证移除后仍可重新选择同名文件。 */
 function clearNativeInput(slot: FileSlot): void {
   const input = slot === 'current' ? currentInput.value : previousInput.value
   if (input) input.value = ''
 }
 
-/** 移除一个已选文件，并清除与旧输入相关的反馈。 */
 function removeFile(slot: FileSlot): void {
   setFile(slot, null)
   clearNativeInput(slot)
 }
 
-/** 重新打开对应的系统文件选择器。 */
 function replaceFile(slot: FileSlot): void {
   const input = slot === 'current' ? currentInput.value : previousInput.value
   input?.click()
 }
 
-/** 重置本地输入；当前阶段不会触发报告任务或服务端写请求。 */
+function stopPolling(): void {
+  if (pollHandle.value !== null) clearInterval(pollHandle.value)
+  pollHandle.value = null
+}
+
+function applyJob(next: FeishuPublicationJobResponse): void {
+  job.value = next
+  status.value = next.status
+  if (['succeeded', 'failed', 'cancelled'].includes(next.status)) stopPolling()
+}
+
+async function pollJob(): Promise<void> {
+  const jobId = job.value?.id
+  if (!jobId || pollInFlight || !['queued', 'running'].includes(status.value)) return
+  pollInFlight = true
+  try {
+    pollError.value = ''
+    applyJob(await fetchReportPublicationJob(jobId))
+  } catch (error) {
+    pollError.value = apiErrorMessage(error)
+  } finally {
+    pollInFlight = false
+  }
+}
+
+function startPolling(): void {
+  stopPolling()
+  pollHandle.value = setInterval(() => void pollJob(), 3000)
+}
+
 function resetForm(): void {
+  if (busy.value) return
+  stopPolling()
   currentFile.value = null
   previousFile.value = null
   startDate.value = ''
   endDate.value = ''
-  clearFeedback()
+  status.value = 'idle'
+  validationMessage.value = ''
+  pollError.value = ''
+  job.value = null
   clearNativeInput('current')
   clearNativeInput('previous')
 }
 
-/** 执行本地表单校验，并在真实后端缺席时明确停止提交。 */
-function submitReport(): void {
+async function submitReport(): Promise<void> {
   clearFeedback()
   if (!formComplete.value || !currentFile.value || !previousFile.value) {
     validationMessage.value = '表单校验未通过：请补充两份 .xlsx 文件和完整日期范围。'
@@ -120,8 +183,26 @@ function submitReport(): void {
     status.value = 'validation-error'
     return
   }
-  status.value = 'backend-unavailable'
+  status.value = 'submitting'
+  try {
+    const created = await createReportPublication({
+      current_file: currentFile.value,
+      previous_file: previousFile.value,
+      start_date: startDate.value,
+      end_date: endDate.value,
+    })
+    job.value = await fetchReportPublicationJob(created.job_id)
+    applyJob(job.value)
+    if (['queued', 'running'].includes(status.value)) {
+      startPolling()
+    }
+  } catch (error) {
+    status.value = 'failed'
+    validationMessage.value = apiErrorMessage(error)
+  }
 }
+
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>
@@ -154,6 +235,7 @@ function submitReport(): void {
             ref="currentInput"
             class="visually-hidden"
             type="file"
+            :disabled="busy"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             aria-label="本期 XLSX"
             @change="onFileChange('current', $event)"
@@ -173,12 +255,14 @@ function submitReport(): void {
             <div class="file-actions">
               <button
                 type="button"
+                :disabled="busy"
                 @click="replaceFile('current')"
               >
                 替换
               </button>
               <button
                 type="button"
+                :disabled="busy"
                 @click="removeFile('current')"
               >
                 移除
@@ -208,6 +292,7 @@ function submitReport(): void {
             ref="previousInput"
             class="visually-hidden"
             type="file"
+            :disabled="busy"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             aria-label="上期 XLSX"
             @change="onFileChange('previous', $event)"
@@ -227,12 +312,14 @@ function submitReport(): void {
             <div class="file-actions">
               <button
                 type="button"
+                :disabled="busy"
                 @click="replaceFile('previous')"
               >
                 替换
               </button>
               <button
                 type="button"
+                :disabled="busy"
                 @click="removeFile('previous')"
               >
                 移除
@@ -273,6 +360,7 @@ function submitReport(): void {
           <input
             v-model="startDate"
             type="date"
+            :disabled="busy"
             aria-label="开始日期"
             @input="clearFeedback"
           >
@@ -282,6 +370,7 @@ function submitReport(): void {
           <input
             v-model="endDate"
             type="date"
+            :disabled="busy"
             aria-label="结束日期"
             @input="clearFeedback"
           >
@@ -290,18 +379,34 @@ function submitReport(): void {
     </section>
 
     <AimaFeedbackBanner
-      v-if="status === 'validation-error'"
+      v-if="status === 'validation-error' || status === 'failed'"
       tone="error"
       role="alert"
     >
-      {{ validationMessage }}
+      {{ validationMessage || `报告任务失败：${job?.error_code || '请稍后重试。'}` }}
     </AimaFeedbackBanner>
     <AimaFeedbackBanner
-      v-else-if="status === 'backend-unavailable'"
+      v-else-if="status === 'succeeded'"
+      tone="success"
+      role="status"
+    >
+      {{ reportResult?.dry_run
+        ? 'Dry Run 已完成：报告和代表性内容已生成，未写入飞书。'
+        : '报告已生成，并已同步到飞书文档和飞书多维表格。' }}
+    </AimaFeedbackBanner>
+    <AimaFeedbackBanner
+      v-else-if="status === 'cancelled'"
       tone="warning"
       role="alert"
     >
-      前端表单已准备就绪；报告服务尚未接入，暂不可提交。请勿生成假任务或假飞书链接。
+      报告任务已取消。
+    </AimaFeedbackBanner>
+    <AimaFeedbackBanner
+      v-else-if="status === 'submitting' || status === 'queued' || status === 'running'"
+      tone="info"
+    >
+      {{ status === 'submitting' ? '正在上传两份报告文件…' : `报告任务${statusLabel}，请稍候。` }}
+      <span v-if="pollError">{{ pollError }}</span>
     </AimaFeedbackBanner>
     <AimaFeedbackBanner
       v-else
@@ -310,17 +415,62 @@ function submitReport(): void {
       提交后任务将在后台执行。报告生成完成后，会同时上传至飞书文档和飞书多维表格。
     </AimaFeedbackBanner>
 
+    <section
+      v-if="job && ['submitting', 'queued', 'running'].includes(status)"
+      class="report-progress"
+      aria-label="报告任务进度"
+    >
+      <TaskProgressBar
+        :label="`报告任务 ${statusLabel}`"
+        :value="job.progress"
+        :detail="job.source_filenames?.join('、') ?? ''"
+        :tone="status === 'running' ? 'primary' : 'warning'"
+      />
+    </section>
+
+    <section
+      v-if="status === 'succeeded' && reportResult"
+      class="report-result"
+      aria-label="报告任务结果"
+    >
+      <div>
+        <strong>处理结果</strong>
+        <span>内容 {{ reportResult.content_rows }} 条 · 标签 {{ reportResult.label_rows }} 条 · 评论 {{ reportResult.comment_rows }} 条 · 代表性内容 {{ reportResult.representative_count }} 条</span>
+      </div>
+      <div class="report-result-links">
+        <a
+          v-if="reportResult.native_document_url"
+          :href="reportResult.native_document_url"
+          target="_blank"
+          rel="noopener noreferrer"
+        >打开飞书报告</a>
+        <a
+          v-if="reportResult.representative_table_url
+            && reportResult.representative_table_url !== reportResult.native_document_url"
+          :href="reportResult.representative_table_url"
+          target="_blank"
+          rel="noopener noreferrer"
+        >打开代表性多维表</a>
+        <span
+          v-if="reportResult.representative_table_url
+            && reportResult.representative_table_url === reportResult.native_document_url"
+        >代表性多维表已内嵌在报告第 6 节，可在报告中直接编辑。</span>
+        <span v-if="reportResult.dry_run">Dry Run 未生成真实飞书链接。</span>
+      </div>
+    </section>
+
     <footer class="report-actions">
       <AimaButton
         variant="secondary"
+        :disabled="busy"
         @click="resetForm"
       >
         重置
       </AimaButton>
       <AimaButton
         variant="primary"
-        :disabled="!formComplete || status === 'backend-unavailable'"
-        @click="submitReport"
+        :disabled="!formComplete || busy"
+        @click="void submitReport()"
       >
         {{ submitLabel }}
       </AimaButton>
@@ -467,6 +617,30 @@ function submitReport(): void {
   border-color: var(--aima-primary);
   outline: 2px solid var(--aima-primary-soft-strong);
 }
+.report-progress,
+.report-result {
+  padding: 14px 16px;
+  border: 1px solid var(--aima-border);
+  border-radius: var(--aima-radius-lg);
+  background: var(--aima-surface-subtle);
+}
+.report-progress :deep(.task-progress__heading span) { color: var(--aima-text-muted); }
+.report-result {
+  display: grid;
+  gap: 8px;
+  color: var(--aima-text-muted);
+  font-size: var(--aima-font-size-caption);
+  line-height: 18px;
+}
+.report-result > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.report-result strong { color: var(--aima-text); font-size: var(--aima-font-size-body-small); }
+.report-result-links { align-items: center; }
+.report-result-links a {
+  color: var(--aima-primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+.report-result-links a:hover { text-decoration: underline; }
 .report-actions {
   display: flex;
   justify-content: flex-end;

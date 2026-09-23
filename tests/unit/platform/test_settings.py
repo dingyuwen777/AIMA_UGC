@@ -24,6 +24,7 @@ def test_load_settings_uses_explicit_environment_and_resolves_paths(tmp_path) ->
             "AIMA_FEISHU_APP_SECRET_FILE": "feishu_app_secret",
             "AIMA_FEISHU_TIMEOUT_SECONDS": "45",
             "AIMA_FEISHU_MAX_RETRIES": "4",
+            "AIMA_FEISHU_DRY_RUN": "false",
             "AIMA_UNRELATED": "ignored",
         },
         base_dir=tmp_path,
@@ -51,6 +52,7 @@ def test_load_settings_uses_explicit_environment_and_resolves_paths(tmp_path) ->
     assert settings.feishu_app_secret_file == "feishu_app_secret"
     assert settings.feishu_timeout_seconds == 45
     assert settings.feishu_max_retries == 4
+    assert settings.feishu_dry_run is False
     assert settings.feishu_app_secret_path == (tmp_path / "var/secrets/feishu_app_secret").resolve()
 
 

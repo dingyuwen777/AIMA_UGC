@@ -99,7 +99,7 @@ content.voice-plaza-projection-backfill.v1
 
 `ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务；`ingestion.canonical-replay-reversal.v1` 是全量重筛的可恢复精确撤回任务；`content.voice-plaza-projection-backfill.v1` 是声音广场历史读模型的可恢复分块回填。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
-注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
+报告内容仍由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供统计与渲染事实；管理员报告发布已经产品化为 `administration.feishu-report-publication.v1` 持久 Job，Worker 内调用等价的 `--publish-all` 编排。它复用通用 `jobs` 表，不新增独立 Report 数据库表或第二套队列。
 
 ---
 
@@ -533,7 +533,7 @@ frontend/src/features/task-center/
 - [`frontend/src/features/task-center/index.ts`](../../frontend/src/features/task-center/index.ts) 是任务中心允许跨 Feature 使用的公共前端入口；业务 Feature 可以通过它打开/刷新任务中心，但不能深层导入另一个 Feature 的私有 Store/API。Analysis 创建/取消仍归声音广场，Collection 详情/管理仍归采集运行中心，任务中心不接管这些业务 Owner；
 - Notification Inbox 继续表达需要用户关注的业务通知，任务中心表达后台运行状态；Notification 不替代 Job/Export/Run 状态机，任务中心也不替代 Notification；
 - `/collection-strategy`：Keyword Pack Search Terms 与独立 Brand Filter 的 Collection Plan 管理；旧 Global Relevance 后端和产品入口均已删除；
-- `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本与审计；报告策略当前只有 XLSX/日期前端准备面并明确提示后端未接入，不属于现有 Worker Registry，也没有 Report Job/API 或飞书同步写链路；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
+- `/admin/configuration`：管理员 Brand/Alias 与旗下 Vehicle 的 1:N 目录、Provider、Analysis Scheme 版本、报告发布 Job 与审计；报告策略通过双 XLSX 上传、`/api/v1/admin/feishu-report-publications` 和 `/api/v1/admin/feishu-publication-jobs/{job_id}` 接入现有 Worker Registry，默认 Dry Run；不再暴露 Keyword Pack↔Vehicle 第二写 Owner，路由守卫只改善交互，后端仍独立鉴权；
 - `/login`：读取可登录企业列表并发起对应 Connector 的飞书 OAuth；`return_to` 最终仍由后端站内路径白名单校验；
 - `/no-access`：展示“已登录但无权限”，不再次发起登录，避免 403 登录回环；
 - `/`：当前 HomeView。

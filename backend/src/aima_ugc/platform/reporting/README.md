@@ -425,8 +425,10 @@ uv run python backend/src/aima_ugc/adapters/providers/imports_test/generate_repo
 ```
 
 该入口会复用同一份已打标 Excel，按抖音/小红书和正面/负面四组各筛选最多 10 条，
-生成行动建议并追加报告第 6 节。`--publish-all` 会在本地报告成功后发布飞书在线报告和
-代表性评论多维表；不带发布参数时只生成本地报告。截图获取失败不会阻断报告生成。
+生成行动建议并追加报告第 6 节。`--publish-all` 会在本地报告成功后先创建并写入代表性评论
+多维表，再把同一张可编辑多维表嵌入飞书在线报告第 6 节；多维表“处理建议”取自报告中的
+“行动建议”，修改在线文档内的多维表会同步到这张表。不带发布参数时只生成本地报告。
+截图获取失败不会阻断报告生成。
 抖音截图默认先用干净的 Playwright/Edge 会话打开公开页面，不依赖本机 Edge 是否登录，也不要求关闭
 Edge 窗口。页面加载完成后会关闭延迟出现的登录提示遮罩，再只截取帖子区域；只有页面确实被登录门槛拦截时，
 才会按需使用 Edge 登录配置的临时副本。如果浏览器不可用、页面仍被登录拦截或截图失败，会留空该行截图，
@@ -533,7 +535,7 @@ uv run pytest \
 - 当前是离线文件报告，不是正式网页报告中心；
 - 不生成新的 AI 结论，只统计已有结构化数据；
 - Word 转换只支持当前报告需要的 Markdown/Mermaid/Office Chart 子集，不是通用转换引擎；
-- 当前没有正式 Report Job、Report PostgreSQL Read Model 或 Report Web 页面；
+- 当前没有独立 Report PostgreSQL Read Model 或 Report Web 中心；管理员配置页的飞书发布使用通用 PostgreSQL Job Runtime，并由专用管理端点查询发布状态；
 - 正式 Excel Data Export 由 `modules/reporting/` 负责，不应和本目录混为一个 Owner。
 
 ---

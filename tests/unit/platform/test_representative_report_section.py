@@ -71,6 +71,44 @@ class _EnglishThenChineseAdviceLLM:
         )
 
 
+class _InvalidThenValidAdviceLLM:
+    provider_name = "fake"
+    model_name = "fake-model"
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.request_kinds: list[str] = []
+
+    def complete(self, request: object) -> ContentLabelingLLMResponse:
+        self.calls += 1
+        self.request_kinds.append(request.request_kind)  # type: ignore[attr-defined]
+        if self.calls == 1:
+            return ContentLabelingLLMResponse(raw_text="{}")
+        items = request.items  # type: ignore[attr-defined]
+        return ContentLabelingLLMResponse(
+            raw_text=(
+                '{"items":['
+                + ",".join(
+                    f'{{"item_no":{item.item_no},"action_advice":"修复后建议{item.item_no}"}}'
+                    for item in items
+                )
+                + "]}"
+            )
+        )
+
+
+class _AlwaysInvalidAdviceLLM:
+    provider_name = "fake"
+    model_name = "fake-model"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def complete(self, request: object) -> ContentLabelingLLMResponse:
+        self.calls += 1
+        return ContentLabelingLLMResponse(raw_text="{}")
+
+
 def test_action_advice_service_keeps_item_identity() -> None:
     result = RepresentativeAdviceService(llm=_FakeAdviceLLM()).run(
         (
@@ -112,6 +150,56 @@ def test_action_advice_service_rewrites_english_to_chinese() -> None:
     )
 
     assert result == {1: "请核查相关问题并及时跟进处理。"}
+    assert llm.calls == 2
+
+
+def test_action_advice_service_repairs_invalid_primary_response() -> None:
+    llm = _InvalidThenValidAdviceLLM()
+    result = RepresentativeAdviceService(llm=llm).run(
+        (
+            RepresentativeAdviceInput(
+                item_no=1,
+                platform="抖音",
+                sentiment="负面",
+                primary_label="售后服务",
+                secondary_label="客服与服务态度",
+                comment_text="服务态度有待改善",
+            ),
+        )
+    )
+
+    assert result == {1: "修复后建议1"}
+    assert llm.calls == 2
+    assert llm.request_kinds == ["primary", "repair"]
+
+
+def test_action_advice_service_falls_back_when_both_responses_are_invalid() -> None:
+    llm = _AlwaysInvalidAdviceLLM()
+    result = RepresentativeAdviceService(llm=llm).run(
+        (
+            RepresentativeAdviceInput(
+                item_no=1,
+                platform="抖音",
+                sentiment="负面",
+                primary_label="售后服务",
+                secondary_label="客服与服务态度",
+                comment_text="服务态度有待改善",
+            ),
+            RepresentativeAdviceInput(
+                item_no=2,
+                platform="小红书",
+                sentiment="正面",
+                primary_label="品牌评价",
+                secondary_label="口碑与信任",
+                comment_text="整体体验不错",
+            ),
+        )
+    )
+
+    assert result == {
+        1: "围绕售后服务、客服与服务态度核查具体原因，及时联系用户并跟进处理结果。",
+        2: "围绕品牌评价、口碑与信任总结用户认可点，优化相关服务并持续收集反馈。",
+    }
     assert llm.calls == 2
 
 
@@ -179,6 +267,7 @@ def test_representative_labels_split_feishu_multi_select_values_and_deduplicate(
     )
     assert format_representative_labels("骑行性能骑行性能") == "骑行性能"
     assert format_representative_labels("舒适性舒适性、品牌评价") == "舒适性、品牌评价"
+    assert format_representative_labels("电池、续航与充电") == "电池、续航与充电"
 
 
 def test_xiaohongshu_legacy_discovery_url_is_normalized() -> None:

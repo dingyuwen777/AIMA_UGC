@@ -37,6 +37,7 @@ class FeishuReportPublicationJobPayload(BaseModel):
     previous_input_filename: str = Field(min_length=1, max_length=255)
     start_date: date
     end_date: date
+    dry_run: bool = True
 
     @model_validator(mode="after")
     def validate_date_range(self) -> FeishuReportPublicationJobPayload:
