@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Table,
     Text,
@@ -42,6 +43,12 @@ feishu_bitable_mirrors_table = Table(
     CheckConstraint("status in ('active','paused')", name="status_allowed"),
     CheckConstraint("consecutive_failures >= 0", name="consecutive_failures_nonnegative"),
     info={"owner": "administration"},
+)
+
+Index(
+    "ix_feishu_bitable_mirrors_status_next_sync_at",
+    feishu_bitable_mirrors_table.c.status,
+    feishu_bitable_mirrors_table.c.next_sync_at,
 )
 
 
