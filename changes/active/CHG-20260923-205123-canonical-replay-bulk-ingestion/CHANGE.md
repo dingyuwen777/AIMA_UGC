@@ -1,0 +1,138 @@
+---
+schema: coding-change/v1
+id: CHG-20260923-205123-canonical-replay-bulk-ingestion
+title: 全历史 Canonical 重筛集合式入库优化
+level: L3
+status: in_progress
+owner: yuwen.ding
+branch: perf/canonical-replay-bulk-ingestion
+created: 2026-09-23T20:51:23+08:00
+updated: 2026-09-23
+completion_gate: required
+depends_on: []
+affected_areas:
+  - ingestion
+  - content
+  - vehicles
+  - jobs
+  - persistence
+  - logging
+affected_paths:
+  - backend/src/aima_ugc/bootstrap/canonical_replay_worker.py
+  - backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py
+  - backend/src/aima_ugc/modules/content/
+  - backend/src/aima_ugc/adapters/persistence/postgres/
+  - tests/
+  - scripts/performance/
+  - docs/operations/02_4000万历史迁移与Analysis Run运行手册.md
+contracts:
+  - canonical-content.v1
+  - ingestion.canonical-replay.v1
+  - ingestion.canonical-replay-reversal.v1
+data_changes: []
+---
+
+# 变更摘要
+
+把全历史 Canonical 重筛的命中新内容主路径从逐行数据库往返改为现有业务 Owner 内的集合式批量写入；对并发冲突和已有内容保留兼容回退。同步收紧事务、checkpoint、取消/Fencing 和撤回性能边界，并用同一 PostgreSQL、同一数据形态的旧/新对照证明端到端吞吐，而不是再以局部 SQL 减少量代替真实改善。
+
+# 背景、现状与问题
+
+服务器以当前 `main` 处理 25,819 个 Canonical 文件时，一个子任务在约 22 分钟只读取 17,017 行；后续状态为读取 28,151、匹配 6,188、新入库 5,379、已有收敛 809。同期 PostgreSQL 约 185% CPU、Worker 约 5.9% CPU。当前证据表明预检和文件读取不是主要耗时，命中行进入 Content、来源贡献、品牌/车型证据、贡献账本时的逐行查询/写入/快照才是主要瓶颈。
+
+上一轮优化已经批量认领 Replay 身份、批量插入部分账本并复用事务内快照，但本地 100 行样本只从 3.603 秒降到 3.067 秒，服务器端仍不可接受。它切掉了部分往返，没有切断“每个命中行分别经历完整数据库状态机”的主要机制，因此本任务必须建立真实批量 Owner 能力和同环境回归门槛。
+
+# 事实与证据
+
+| 编号 | 已确认事实 | 来源 | 决策作用 |
+| --- | --- | --- | --- |
+| E1 | Replay 在首笔业务写入前对当前子任务全部 Canonical 执行完整性预检 | `backend/src/aima_ugc/bootstrap/canonical_replay_worker.py` | 预检是安全边界，不能为提速删除 |
+| E2 | 命中行虽共享事务和部分缓存，仍逐行完成 Content、贡献快照、自动证据和 ledger 构造 | `backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`、`backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py` | 真实批量必须落在表 Owner 内，不能由 Worker 直写业务表 |
+| E3 | 服务器样本中命中行约 87% 是新入库，PostgreSQL CPU 显著高于 Worker | user:#585 的运行证据 | 优先批量化新内容主路径能直接覆盖当前主要工作量 |
+| E4 | Replay checkpoint、业务写入和贡献 ledger 需要同事务且受 Fencing 保护 | 现有 Replay/Job Repository 与集成测试 | 不能以长事务、异步补账或提前 checkpoint 换吞吐 |
+| E5 | Reversal 每个 100 Content 批次都会重新统计全部剩余 ledger | `backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py` | 撤回大任务存在可消除的重复全表统计 |
+
+仍待本任务用隔离 PostgreSQL 确认：逐阶段墙钟与 SQL 分布、不同新内容比例下的实际加速、事务批大小的最优安全范围。服务器完整硬件/I/O/WAL 状态未提供，因此本地改善不能被推算为服务器固定耗时承诺。
+
+# 目标、成功标准与非目标
+
+- 在现有 Owner 内批量写入新 Content、Version/Metric、来源贡献、自动品牌/车型证据和 Replay ledger，消除主路径逐行往返。
+- 同一输入的新旧实现数据库结果等价；已有内容、并发冲突或无法安全批量处理的行回退到既有语义。
+- 业务写入、账本、checkpoint 和 Fencing 在有界事务内原子提交；取消、接管、异常和重试不会产生半批可见结果。
+- 保留第一次业务写入前的完整预检和精确撤回；撤回不再在每批后重复统计全部剩余账本。
+- 在同一 PostgreSQL、同一数据集与配置下取得至少 3 倍命中行端到端吞吐，并报告墙钟、SQL 和结果对账。
+- 不修改公开 HTTP/Job/Canonical Contract，不新增 Migration、依赖、必填配置或前端行为；不部署、不操作生产数据。
+
+# 约束与意图决策
+
+Content、来源贡献、品牌/车型证据仍由各自正式 Owner 写入；Replay Worker 只能编排，不得通过临时 SQL 绕过业务表 Owner。完整预检、Job Lease/Fencing、取消、幂等、checkpoint、贡献 ledger 和精确撤回是硬不变量。性能门槛以同环境旧/新端到端结果为准，不能只用查询数、单个 helper 微基准或不同机器结果声称满足。
+
+本次不预先授权 Schema 变化。如果现有表约束不能支持安全集合写入，必须回到用户决策门禁重新评估，而不是在实施中顺手增加 Migration。用户授权 Git 分支、提交、PR 和完成门禁后的主分支合并；未授权 Release、部署、生产 Migration 或服务器数据操作。
+
+# 修改方案与决策依据
+
+采用方案 2：为现有写 Owner 增加针对 Replay 的集合式批量能力。先批量预取/认领输入状态，按“可证明为新内容的安全快路径”与“已有或竞争行兼容路径”分区；快路径使用集合式 SQL 并由数据库冲突结果决定是否回退，不能仅依赖先查后写。业务写入、来源贡献、自动证据、ledger 与 checkpoint 仍在一个有界事务内完成。阶段耗时使用 DEBUG 级安全字段，批次结束才记录一次。
+
+## 备选方案与取舍
+
+1. 继续调大批次、减少少量查询并直接增加 Worker：改动小，但服务器已经证明单 Worker 主要耗在逐行数据库写入；更多 Worker 会先放大 PostgreSQL CPU、WAL 和锁竞争，不能切断主因。
+2. 已采用：在各业务 Owner 内提供集合式新内容快路径，已有/冲突行回退。能覆盖当前约 87% 的匹配工作量，同时保留原有复杂更新语义和回滚边界；实现与测试成本中等。
+3. 使用临时 staging 表或 `COPY` 后用大型 SQL 全量合并全部 Content/证据/账本：理论吞吐更高，但会把多个 Owner 的状态机、版本/指标和证据规则压进新的数据库程序，形成第二套实现，正确性和长期维护风险过高，当前不采用。
+
+# Requirement Traceability
+
+| 编号 | 要求 | 来源 | 状态 | 证据 |
+| --- | --- | --- | --- | --- |
+| R1 | 同环境代表性负载的命中行端到端吞吐至少达到当前 main 基线 3 倍 | #585 / AC1 | not_satisfied | 待旧/新隔离 PostgreSQL 三轮中位数对照 |
+| R2 | 新旧路径对 Content、Version、Metric、来源贡献、自动证据、ledger、计数、checkpoint 等价且重跑幂等 | #585 / AC2 | not_satisfied | 待差分 PostgreSQL 集成与正式 Worker workflow |
+| R3 | 取消、Lease/Fencing 接管、异常回滚和重试保持事务边界 | #585 / AC3 | not_satisfied | 待取消/接管/失败注入回归 |
+| R4 | 精确撤回保持正确且移除逐批剩余总数全表扫描 | #585 / AC4 | not_satisfied | 待 reversal 结果对账与 SQL 计数回归 |
+| R5 | 完整性预检仍先于首笔业务写入，失败时业务/ledger/checkpoint 零变化 | #585 / AC5 | not_satisfied | 待后部坏文件与预检失败 PostgreSQL 回归 |
+| R6 | 不改公开 Contract、Schema、依赖或必填配置；同步性能观测与基准文档 | #585 / AC6 | not_satisfied | 待 diff、Schema/Contract、锁文件与文档检查 |
+| R7 | Unit/Contract/PostgreSQL/Job workflow、基准、静态检查、Deep Review、PR CI、main fresh CI 完成 | #585 / AC7 | not_satisfied | 待当前 HEAD 完整交付证据 |
+
+# 计划改动
+
+1. 建立基线与 Red：固定代表性 Canonical 数据形态，记录当前 main 的端到端墙钟、SQL 分布和结果摘要；新增批量等价、失败回滚、取消/接管和撤回回归并确认目标缺口。
+2. Content/贡献 Owner：增加集合式新内容写入与贡献快照构造；数据库唯一约束决定并发冲突，冲突行回退正式逐行路径。
+3. 证据/Replay 编排：批量写入自动品牌/车型证据和 Replay ledger；按安全批次原子推进 checkpoint/Fencing，补阶段级低噪声观测。
+4. Reversal：一次取得剩余规模并按已处理量推进进度，避免每批重扫；保持独占贡献判断和精确前态恢复。
+5. 对照验证与调优：同库同数据运行旧/新至少三轮，只有结果等价且吞吐门槛满足才进入 Ready；否则回到瓶颈证据，不合并。
+6. targeted 文档同步、Completion Audit、Deep Review、PR current-head CI、guarded merge、main fresh CI、自动 Change 归档与 Issue Closure。
+
+# Validation Matrix
+
+| 验证层 | 是否要求 | 范围 / 证据 |
+| --- | --- | --- |
+| 行为 / Unit / Component | required | 批量分区、结果聚合、checkpoint 计算、阶段统计和 reversal 进度 |
+| 接口 / Contract | required | Canonical/Job/HTTP Contract 与生成物不变，Schema 无漂移 |
+| 集成 / Persistence / Runtime Dependency | required | 真实 PostgreSQL 下集合写入、唯一约束竞争、事务回滚、幂等、Fencing、取消、checkpoint、撤回和 SQL 计数 |
+| 用户 / Workflow Acceptance | required | 正式 Replay Worker 从预检到成功/取消/撤回的 operator 可观察状态与结果 |
+| 跨组件 Golden Path | required | API/Job/Worker/Artifact/Content/Replay result 的代表性真实链；不在此层穷举所有错误状态 |
+| External Dependency / Provider Probe | not_applicable | Replay 不调用 TikHub、LLM 或其他远端 Provider，当前问题不依赖外部协议事实 |
+| Build / Package / Runtime | required | Python 静态检查、正式 Worker 装配、Docker/Runtime 受影响入口检查 |
+| Docs / Governance / Other | required | Operations 文档、Issue/Change/PR 追溯、Completion Gate、Deep Review、PR/main CI |
+
+# 风险、兼容性、迁移与回滚
+
+- 正确性风险：批量状态构造与逐行语义漂移。通过同输入双路径数据库快照/账本差分和现有 Owner 回退控制。
+- 并发风险：预取后其他写入者抢占身份。批量插入必须以数据库冲突返回为准，冲突行不能被当作已成功新建。
+- 事务风险：批次过大会阻塞 Heartbeat 或延长 Job 行锁。使用有界匹配行批次，并避免重复锁 Job；以取消/接管和阶段时长测试确定上限。
+- 性能风险：测试数据不能代表生产新/旧内容比例。基准显式报告比例并至少覆盖服务器当前以新内容为主的形态；服务器真实耗时仍需部署后测量。
+- 兼容 / Migration：无公开 Contract、Schema、Migration、依赖和配置变化；旧代码路径保留为兼容回退。
+- 回滚：合并前性能或正确性门槛失败则不合并；发布后异常由正式 Release 回退镜像。已产生 Replay 贡献由现有 reversal 操作撤回，不使用手工 SQL。
+
+# 文档、依赖、部署与发布影响
+
+Docs Impact 为 targeted：更新 4000 万历史迁移运行手册中 Replay 批量写入、阶段观测、同环境基准和 Worker 扩容顺序；其他架构文档只有在最终实现改变其当前事实时才修改。无新依赖、锁文件、Migration、公共 API 或前端生成物。合并不包含 Release/Deploy；服务器只有发布新镜像后才会获得新实现。
+
+# Completion Audit
+
+- [ ] upstream_re_read：重新读取 #585、用户运行证据和相关 Blueprint/Operations，独立重建 AC1—AC7。
+- [ ] change_coverage：确认所有 AC、不变项、非目标、取消/接管/checkpoint/撤回与性能门槛均进入实现和验证。
+- [ ] reverse_audit：从 Canonical/Job 输入到 Content/证据/ledger/checkpoint，再从取消/接管/撤回和运行中心结果反向核对；复核所有 Validation Matrix 证据边界。
+- [ ] unresolved_cleared：所有 `not_satisfied` 清零；没有用服务器未部署事实、不同环境样本或 CI 绿色替代 AC 的直接证据。
+
+# 完成证据与状态
+
+当前分支 `perf/canonical-replay-bulk-ingestion`，Requirement Source 为 #585。尚未实现或验证，禁止进入 `ready_for_review`、合并或关闭 Issue。用户工作区 `.codex/config.toml` 和既有本地 pytest 临时目录不属于本 Change，不得修改或提交。
