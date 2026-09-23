@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260923-125822-canonical-replay-throughput
 title: 全历史 Canonical 重筛吞吐优化
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: perf/canonical-replay-throughput
 created: 2026-09-23T12:58:22+08:00
-updated: 2026-09-23T15:37:00+08:00
+updated: 2026-09-23
 completion_gate: required
 depends_on: []
 affected_areas:
