@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -32,6 +33,7 @@ from aima_ugc.modules.content.tables import (
 
 from .content import PostgresContentRepository, PostgresIngestionResult
 from .content_contributions import (
+    ContentContributionSnapshot,
     commit_content_contribution,
     prepare_content_contribution,
 )
@@ -62,22 +64,68 @@ class PostgresCompleteContentRepository:
         self._session = session
         self._core = PostgresContentRepository(session)
         self._replay_visibility_owner_id = replay_visibility_owner_id
+        self._source_pair_transaction: tuple[object | None, object | None] | None = None
+        self._validated_source_pairs: set[tuple[UUID, UUID]] = set()
+
+    def _require_source_pair(self, *, attempt_id: UUID, raw_id: UUID) -> None:
+        """同一事务内只查验一次来源对；共享锁阻止事务内关系漂移。"""
+
+        transaction = (
+            self._session.get_transaction(),
+            self._session.get_nested_transaction(),
+        )
+        if transaction != self._source_pair_transaction:
+            self._validated_source_pairs.clear()
+            self._source_pair_transaction = transaction
+        pair = (attempt_id, raw_id)
+        if pair not in self._validated_source_pairs:
+            _require_attempt_raw_pair(self._session, attempt_id=attempt_id, raw_id=raw_id)
+            self._source_pair_transaction = (
+                self._session.get_transaction(),
+                self._session.get_nested_transaction(),
+            )
+            self._validated_source_pairs.add(pair)
 
     def ingest_content(self, observation: CanonicalContentV1) -> PostgresIngestionResult:
         """完整写入 Content，并冻结同一来源实际施加的可逆 before/after Delta。"""
 
+        return self._ingest_content(observation, before_snapshot=None)
+
+    def ingest_content_with_before_snapshot(
+        self,
+        observation: CanonicalContentV1,
+        before_snapshot: ContentContributionSnapshot,
+    ) -> PostgresIngestionResult:
+        """复用同一事务内调用方刚读取的 before 投影，避免重复数据库快照。"""
+
+        return self._ingest_content(observation, before_snapshot=before_snapshot)
+
+    def _ingest_content(
+        self,
+        observation: CanonicalContentV1,
+        *,
+        before_snapshot: ContentContributionSnapshot | None,
+    ) -> PostgresIngestionResult:
+        """保持普通导入与 Replay 共用同一 Content Owner 写入语义。"""
+
         attempt_id, raw_id = _source_ids(observation)
-        _require_attempt_raw_pair(self._session, attempt_id=attempt_id, raw_id=raw_id)
-        contribution = prepare_content_contribution(self._session, observation)
-        result = self._core.ingest_content(observation)
+        self._require_source_pair(attempt_id=attempt_id, raw_id=raw_id)
+        contribution = prepare_content_contribution(
+            self._session, observation, before_snapshot=before_snapshot
+        )
+        result = self._core.ingest_content(
+            observation,
+            collection_fields=frozenset(_CONTENT_COLLECTION_FIELDS),
+        )
         result = self._apply_content_null_author(observation, result, attempt_id, raw_id)
         self._sync_content_extensions(
             result.target_id,
             observation,
             attempt_id=attempt_id,
             raw_id=raw_id,
+            is_new=result.version_created and result.version_no == 1,
         )
-        commit_content_contribution(
+        contribution_after = commit_content_contribution(
             self._session,
             draft=contribution,
             observation=observation,
@@ -88,11 +136,11 @@ class PostgresCompleteContentRepository:
             .where(contents_table.c.id == result.target_id)
             .values(replay_visibility_owner_id=self._replay_visibility_owner_id)
         )
-        return result
+        return replace(result, contribution_after=contribution_after)
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)
-        _require_attempt_raw_pair(self._session, attempt_id=attempt_id, raw_id=raw_id)
+        self._require_source_pair(attempt_id=attempt_id, raw_id=raw_id)
         result = self._core.ingest_comment(observation)
         result = self._apply_comment_null_author(observation, result, attempt_id, raw_id)
         self._sync_comment_extensions(
@@ -177,19 +225,21 @@ class PostgresCompleteContentRepository:
         *,
         attempt_id: UUID,
         raw_id: UUID,
+        is_new: bool,
     ) -> None:
         for field_name, table in _CONTENT_COLLECTION_FIELDS.items():
             if field_name not in observation.observed_fields:
                 continue
             if field_name == "alternate_ids":
                 # 父级 freshness 只记录最近观察时刻，不阻止较旧来源补充此前缺失的 id_type。
-                _claim_collection_freshness(
-                    self._session,
-                    parent_table=contents_table,
-                    parent_id=content_id,
-                    field_name=field_name,
-                    observed_at=observation.observed_at,
-                )
+                if not is_new:
+                    _claim_collection_freshness(
+                        self._session,
+                        parent_table=contents_table,
+                        parent_id=content_id,
+                        field_name=field_name,
+                        observed_at=observation.observed_at,
+                    )
                 rows = _content_extension_rows(
                     field_name,
                     content_id,
@@ -212,15 +262,16 @@ class PostgresCompleteContentRepository:
                         )
                     )
                 continue
-            if not _claim_collection_freshness(
-                self._session,
-                parent_table=contents_table,
-                parent_id=content_id,
-                field_name=field_name,
-                observed_at=observation.observed_at,
-            ):
-                continue
-            self._session.execute(delete(table).where(table.c.content_id == content_id))
+            if not is_new:
+                if not _claim_collection_freshness(
+                    self._session,
+                    parent_table=contents_table,
+                    parent_id=content_id,
+                    field_name=field_name,
+                    observed_at=observation.observed_at,
+                ):
+                    continue
+                self._session.execute(delete(table).where(table.c.content_id == content_id))
             rows = _content_extension_rows(
                 field_name,
                 content_id,
@@ -271,6 +322,9 @@ class PostgresCompleteContentRepository:
         if "author.external_account_id" not in observation.observed_fields:
             return result
         if observation.author is not None and observation.author.external_account_id is not None:
+            return result
+        if result.version_created and result.version_no == 1:
+            # 新建 Current 已在初始写入中保存 NULL 作者及该字段观测时间。
             return result
         row = _lock_parent(self._session, contents_table, result.target_id)
         accepted, freshness = _accept_field_freshness(
@@ -395,9 +449,9 @@ def _source_ids(
 
 def _require_attempt_raw_pair(session: Session, *, attempt_id: UUID, raw_id: UUID) -> None:
     persisted = session.scalar(
-        select(provider_request_attempts_table.c.raw_artifact_id).where(
-            provider_request_attempts_table.c.id == attempt_id
-        )
+        select(provider_request_attempts_table.c.raw_artifact_id)
+        .where(provider_request_attempts_table.c.id == attempt_id)
+        .with_for_update(read=True)
     )
     if persisted != raw_id:
         raise ValueError("Canonical Provider Attempt 与 Raw Artifact 来源不一致")

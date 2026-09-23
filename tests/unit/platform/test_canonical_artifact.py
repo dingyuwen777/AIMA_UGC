@@ -172,6 +172,46 @@ def test_writer_store_reader_round_trip_preserves_current_contract(tmp_path: Pat
     assert tuple(CanonicalArtifactReader(store=store).read(artifact)) == records
 
 
+def test_replay_preflight_and_verified_read_parse_once_each(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replay 已完整预检的同一字节副本不应再做内部双遍解析。"""
+
+    _, store, artifacts = _runtime(tmp_path)
+    record = _content("note-replay", title="爱玛", text="预检复用")
+    artifact = CanonicalArtifactWriter(artifacts=artifacts).write(
+        [record],
+        parent=CanonicalArtifactParent(processing_import_batch_id=uuid4()),
+        retention_class="canonical",
+        max_bytes=1024 * 1024,
+    )
+    reader = CanonicalArtifactReader(store=store)
+    original = CanonicalArtifactReader._read_validated_lines
+    passes = 0
+
+    def counted(source):  # type: ignore[no-untyped-def]
+        """统计真实 Contract 解析遍数，不复制解析规则。"""
+
+        nonlocal passes
+        passes += 1
+        yield from original(source)
+
+    monkeypatch.setattr(CanonicalArtifactReader, "_read_validated_lines", staticmethod(counted))
+
+    with pytest.raises(CanonicalArtifactIntegrityError, match="预检"):
+        tuple(reader.read_preflighted(artifact))
+    assert tuple(reader.read_for_preflight(artifact)) == (record,)
+    assert passes == 1
+    assert tuple(reader.read_preflighted(artifact)) == (record,)
+    assert passes == 2
+
+    target = store.root.joinpath(*artifact.storage_key.split("/"))
+    target.write_bytes(b"changed-after-preflight")
+    with pytest.raises(CanonicalArtifactIntegrityError, match="SHA-256"):
+        tuple(reader.read_preflighted(artifact))
+
+
 def test_writer_output_is_reproducible_for_semantically_equal_records(tmp_path: Path) -> None:
     _, store, artifacts = _runtime(tmp_path)
     record = _content("note-1", title="爱玛", text="同一份输入")

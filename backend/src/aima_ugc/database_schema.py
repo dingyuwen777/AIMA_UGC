@@ -86,6 +86,7 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
     canonical_replay_seen_content_table,
+    canonical_replay_validation_proofs_table,
 )
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -162,6 +163,7 @@ __all__ = [
     "canonical_replay_run_artifacts_table",
     "canonical_replay_runs_table",
     "canonical_replay_seen_content_table",
+    "canonical_replay_validation_proofs_table",
     "audit_events_table",
     "historical_import_campaign_items_table",
     "historical_import_campaign_revocations_table",

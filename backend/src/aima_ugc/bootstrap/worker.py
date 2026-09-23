@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from threading import Lock
+from uuid import UUID
 
 from pydantic import SecretStr
 
@@ -130,10 +131,14 @@ def _default_secret_resolver(runtime: PlatformRuntime) -> Callable[[str], Secret
     return resolve
 
 
-def create_worker_runtime(*, settings: PlatformSettings | None = None) -> PlatformRuntime:
+def create_worker_runtime(
+    *,
+    settings: PlatformSettings | None = None,
+    log_instance: UUID | None = None,
+) -> PlatformRuntime:
     """创建 Worker 所需的业务无关 Platform runtime。"""
 
-    return create_platform_runtime("worker", settings=settings)
+    return create_platform_runtime("worker", settings=settings, log_instance=log_instance)
 
 
 def create_collection_job_registry(

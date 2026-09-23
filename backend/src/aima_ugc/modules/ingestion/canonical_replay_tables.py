@@ -160,6 +160,24 @@ canonical_replay_run_artifacts_table = Table(
     info={"owner": "ingestion"},
 )
 
+canonical_replay_validation_proofs_table = Table(
+    "canonical_replay_validation_proofs",
+    metadata,
+    Column("artifact_id", Uuid(), ForeignKey("artifacts.id", ondelete="CASCADE"), primary_key=True),
+    Column("sha256", Text(), nullable=False),
+    Column("byte_size", BigInteger(), nullable=False),
+    Column("validation_version", Text(), nullable=False),
+    Column("source_kind", Text(), nullable=False),
+    Column("source_expectations", JSONB(), nullable=False),
+    Column("validated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("char_length(sha256) = 64", name="sha256_length"),
+    CheckConstraint("byte_size >= 0", name="byte_size_nonnegative"),
+    CheckConstraint(
+        "jsonb_typeof(source_expectations) = 'array'", name="source_expectations_array"
+    ),
+    info={"owner": "ingestion"},
+)
+
 canonical_replay_seen_content_table = Table(
     "canonical_replay_seen_content",
     metadata,
@@ -262,4 +280,5 @@ __all__ = [
     "canonical_replay_run_artifacts_table",
     "canonical_replay_runs_table",
     "canonical_replay_seen_content_table",
+    "canonical_replay_validation_proofs_table",
 ]

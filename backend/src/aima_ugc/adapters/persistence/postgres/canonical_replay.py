@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid5
@@ -42,6 +43,7 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
     canonical_replay_seen_content_table,
+    canonical_replay_validation_proofs_table,
 )
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
@@ -71,6 +73,49 @@ class PostgresCanonicalReplayRepository:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def get_validation_proof(self, artifact_id: UUID) -> RowMapping | None:
+        """读取已持久化证明；调用方还须复核实际字节及当前来源关系。"""
+
+        return (
+            self._session.execute(
+                select(canonical_replay_validation_proofs_table).where(
+                    canonical_replay_validation_proofs_table.c.artifact_id == artifact_id
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+
+    def save_validation_proof(
+        self,
+        *,
+        artifact: ArtifactRecord,
+        validation_version: str,
+        source_kind: CanonicalReplaySourceKind,
+        source_expectations: list[dict[str, str]],
+    ) -> None:
+        """仅在完整预检及来源验证成功后保存可再生证明。"""
+
+        if artifact.sha256 is None or artifact.byte_size is None:
+            raise ValueError("Canonical Artifact 缺少完整性元数据")
+        values = {
+            "artifact_id": artifact.id,
+            "sha256": artifact.sha256,
+            "byte_size": artifact.byte_size,
+            "validation_version": validation_version,
+            "source_kind": source_kind,
+            "source_expectations": source_expectations,
+            "validated_at": beijing_now(),
+        }
+        self._session.execute(
+            pg_insert(canonical_replay_validation_proofs_table)
+            .values(**values)
+            .on_conflict_do_update(
+                index_elements=[canonical_replay_validation_proofs_table.c.artifact_id],
+                set_={key: value for key, value in values.items() if key != "artifact_id"},
+            )
+        )
 
     def enqueue(
         self,
@@ -670,6 +715,43 @@ class PostgresCanonicalReplayRepository:
             .returning(canonical_replay_seen_content_table.c.run_id)
         ).scalar_one_or_none()
         return claimed is not None
+
+    def claim_content_identities(
+        self,
+        *,
+        run_id: UUID,
+        identities: Iterable[tuple[str, str]],
+    ) -> set[tuple[str, str]]:
+        """一次声明当前事务中的匹配 identity，并返回本 Run 新取得的声明。"""
+
+        distinct = tuple(dict.fromkeys(identities))
+        if not distinct:
+            return set()
+        rows = self._session.execute(
+            pg_insert(canonical_replay_seen_content_table)
+            .values(
+                [
+                    {
+                        "run_id": run_id,
+                        "platform": platform,
+                        "external_content_id": external_content_id,
+                    }
+                    for platform, external_content_id in distinct
+                ]
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    canonical_replay_seen_content_table.c.run_id,
+                    canonical_replay_seen_content_table.c.platform,
+                    canonical_replay_seen_content_table.c.external_content_id,
+                ]
+            )
+            .returning(
+                canonical_replay_seen_content_table.c.platform,
+                canonical_replay_seen_content_table.c.external_content_id,
+            )
+        )
+        return {(row.platform, row.external_content_id) for row in rows}
 
     def advance(
         self,

@@ -342,7 +342,7 @@ PlatformSettings 的 LLM base_url/provider/model
 → <AIMA_SECRET_DIR>/llm_api_key
 → bootstrap/analysis_concurrent_worker.py
 → openai_compatible.py 错误分类
-→ worker.log 中 analysis.llm_request_completed / Job 终态
+→ worker-*.log 中 analysis.llm_request_completed / Job 终态
 ```
 
 ### 离线任务模型请求数异常

@@ -458,7 +458,7 @@ Unified JSONL
 
 ```text
 analysis_content_runs / planner Job
-→ worker.log
+→ worker-*.log
 → analysis_content_run_targets 连续 ordinal
 → analysis_content_requests / Shard jobs
 → Provider snapshot max_concurrency / max_rps
