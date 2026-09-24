@@ -510,6 +510,7 @@ Release identity / Workflow
 - [`compose.windows.yaml`](../../compose.windows.yaml)：Windows storage-only override；
 - [`env.production.example`](../../env.production.example)：服务器配置 Schema；
 - [`scripts/deploy/prepare_host.py`](../../scripts/deploy/prepare_host.py)：Host Root/权限初始化；
+- [`scripts/deploy/start_compose.py`](../../scripts/deploy/start_compose.py) 与 [`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py)：离线 Release 的跨平台资源规划及启停入口，外部 env 长期保持不变；
 - [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py)：Worker Registry；
 - [`docs/blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)：长期运行、安全和恢复边界；
 - [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)：尚未完成的 Production 门禁。

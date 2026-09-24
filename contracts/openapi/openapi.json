@@ -6384,6 +6384,17 @@
             "title": "Eligible",
             "type": "boolean"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "impact": {
             "$ref": "#/components/schemas/DataImportRevocationImpactResponse"
           },
@@ -6401,20 +6412,50 @@
               }
             ],
             "title": "Ineligible Reason"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "recomputed_content_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Recomputed Content Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "not_requested",
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
           }
         },
         "required": [
           "campaign_id",
           "eligible",
           "already_revoked",
-          "impact"
+          "impact",
+          "status"
         ],
         "title": "DataImportRevocationPreviewResponse",
         "type": "object"
       },
       "DataImportRevocationResponse": {
         "additionalProperties": false,
-        "description": "已经提交的不可变撤销事实。",
+        "description": "撤销请求与执行状态；只有 succeeded 才表示撤销真正完成。",
         "properties": {
           "already_revoked": {
             "title": "Already Revoked",
@@ -6425,12 +6466,58 @@
             "title": "Campaign Id",
             "type": "string"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "impact": {
             "$ref": "#/components/schemas/DataImportRevocationImpactResponse"
           },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "recomputed_content_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Recomputed Content Count",
+            "type": "integer"
+          },
           "revoked_at": {
-            "format": "date-time",
-            "title": "Revoked At",
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
             "type": "string"
           }
         },
@@ -6438,7 +6525,7 @@
           "campaign_id",
           "already_revoked",
           "impact",
-          "revoked_at"
+          "status"
         ],
         "title": "DataImportRevocationResponse",
         "type": "object"
@@ -7203,7 +7290,9 @@
           "cancelled",
           "succeeded",
           "partial_failed",
-          "failed"
+          "failed",
+          "revoking",
+          "revoked"
         ],
         "type": "string"
       },

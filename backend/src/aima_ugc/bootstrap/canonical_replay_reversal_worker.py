@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from time import perf_counter
 from typing import cast
 from uuid import UUID
 
@@ -33,8 +35,10 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
     canonical_replay_content_changes_table,
 )
+from aima_ugc.platform.capacity import AdaptiveTierBatchController, detect_resources
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
+from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
@@ -47,6 +51,17 @@ class PostgresCanonicalReplayReversalJobExecutor:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
+        self._retry_jobs: set[UUID] = set()
+
+    def _new_batch_tuner(self, job_id: UUID) -> AdaptiveTierBatchController:
+        tuner = AdaptiveTierBatchController(
+            improvement_margin=0.20,
+            rows_per_cpu_core=250,
+            memory_mib_per_1000_rows=6144,
+        )
+        if job_id in self._retry_jobs:
+            tuner.database_retry()
+        return tuner
 
     def execute(
         self,
@@ -55,11 +70,37 @@ class PostgresCanonicalReplayReversalJobExecutor:
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult:
+        execution_started = perf_counter()
+        batch_durations_ms: list[int] = []
+        batch_tuner = self._new_batch_tuner(fence.job_id)
         try:
             total, remaining = self._content_counts(payload.request_id)
             completed = total - remaining
             while True:
-                processed = self._reverse_batch(payload.request_id, fence=fence)
+                resources = detect_resources()
+                batch_size, reason, previous = batch_tuner.choose(resources)
+                if previous != batch_size:
+                    log_event(
+                        self._runtime.logger,
+                        logging.INFO,
+                        "capacity.reversal_batch_selected",
+                        "重筛撤回批量调整",
+                        request_id=str(payload.request_id),
+                        previous_contents=previous,
+                        selected_contents=batch_size,
+                        reason=reason,
+                        available_memory_mib=(
+                            resources.memory_available_bytes // (1024 * 1024)
+                            if resources.memory_available_bytes is not None
+                            else None
+                        ),
+                    )
+                batch_started = perf_counter()
+                processed = self._reverse_batch(payload.request_id, fence=fence, limit=batch_size)
+                batch_ms = int((perf_counter() - batch_started) * 1000)
+                if processed:
+                    batch_durations_ms.append(batch_ms)
+                    batch_tuner.succeeded(size=batch_size, rows=processed, duration_ms=batch_ms)
                 completed += processed
                 remaining = max(total - completed, 0)
                 context.heartbeat(
@@ -69,6 +110,19 @@ class PostgresCanonicalReplayReversalJobExecutor:
                 )
                 if processed == 0:
                     record = self._finish(payload.request_id, fence=fence)
+                    self._retry_jobs.discard(fence.job_id)
+                    log_event(
+                        self._runtime.logger,
+                        logging.INFO,
+                        "canonical_replay.reversal_completed",
+                        "历史重筛撤回完成",
+                        request_id=str(payload.request_id),
+                        reverted_content_count=record.reverted_content_count,
+                        skipped_content_count=record.skipped_content_count,
+                        batch_count=len(batch_durations_ms),
+                        slowest_batch_ms=max(batch_durations_ms, default=0),
+                        duration_ms=int((perf_counter() - execution_started) * 1000),
+                    )
                     return JobHandlerResult.succeeded(
                         {
                             "request_id": str(record.id),
@@ -85,6 +139,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
         except LookupError, ValueError:
             return JobHandlerResult.failed("canonical_replay_reversal_invalid")
         except SQLAlchemyError:
+            self._retry_jobs.add(fence.job_id)
             return JobHandlerResult.retry("canonical_replay_reversal_transient_error")
 
     def _content_counts(self, request_id: UUID) -> tuple[int, int]:
@@ -112,6 +167,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
         request_id: UUID,
         *,
         fence: JobExecutionFence,
+        limit: int = _CONTENT_BATCH_SIZE,
     ) -> int:
         session = self._runtime.database.new_session()
         try:
@@ -137,7 +193,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         )
                         .distinct()
                         .order_by(canonical_replay_content_changes_table.c.content_id)
-                        .limit(_CONTENT_BATCH_SIZE)
+                        .limit(limit)
                     )
                 )
                 if not content_ids:

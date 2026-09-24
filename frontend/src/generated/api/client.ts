@@ -2156,6 +2156,17 @@ export const DataImportRevocationPreviewResponseIneligibleReason = {
   reversible_evidence_missing: 'reversible_evidence_missing',
 } as const;
 
+export type DataImportRevocationPreviewResponseStatus = typeof DataImportRevocationPreviewResponseStatus[keyof typeof DataImportRevocationPreviewResponseStatus];
+
+
+export const DataImportRevocationPreviewResponseStatus = {
+  not_requested: 'not_requested',
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+} as const;
+
 /**
  * 执行撤销前的只读影响预览。
  */
@@ -2163,18 +2174,38 @@ export interface DataImportRevocationPreviewResponse {
   already_revoked: boolean;
   campaign_id: string;
   eligible: boolean;
+  error_code?: string | null;
   impact: DataImportRevocationImpactResponse;
   ineligible_reason?: DataImportRevocationPreviewResponseIneligibleReason;
+  job_id?: string | null;
+  /** @minimum 0 */
+  recomputed_content_count?: number;
+  status: DataImportRevocationPreviewResponseStatus;
 }
 
+export type DataImportRevocationResponseStatus = typeof DataImportRevocationResponseStatus[keyof typeof DataImportRevocationResponseStatus];
+
+
+export const DataImportRevocationResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+} as const;
+
 /**
- * 已经提交的不可变撤销事实。
+ * 撤销请求与执行状态；只有 succeeded 才表示撤销真正完成。
  */
 export interface DataImportRevocationResponse {
   already_revoked: boolean;
   campaign_id: string;
+  error_code?: string | null;
   impact: DataImportRevocationImpactResponse;
-  revoked_at: string;
+  job_id?: string | null;
+  /** @minimum 0 */
+  recomputed_content_count?: number;
+  revoked_at?: string | null;
+  status: DataImportRevocationResponseStatus;
 }
 
 /**
@@ -2387,6 +2418,8 @@ export const HistoricalCampaignStatus = {
   succeeded: 'succeeded',
   partial_failed: 'partial_failed',
   failed: 'failed',
+  revoking: 'revoking',
+  revoked: 'revoked',
 } as const;
 
 export interface HistoricalCampaignResponse {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Generator
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -10,6 +11,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import Select
 
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
@@ -86,6 +88,37 @@ class PostgresContentLifecycleRepository:
     def list_campaign_contributions(self, campaign_id: UUID) -> tuple[RowMapping, ...]:
         """按实际写入顺序读取 Campaign 文件导入与后续补采的来源 Delta。"""
 
+        return tuple(
+            self._session.execute(self._campaign_contributions_query(campaign_id)).mappings()
+        )
+
+    def iter_campaign_contributions(
+        self, campaign_id: UUID, *, after_content_id: UUID | None = None
+    ) -> Generator[RowMapping]:
+        """按 Content 连续流式读取撤销账本，避免 Campaign 全量驻留应用内存。"""
+
+        statement = self._campaign_contributions_query(campaign_id)
+        if after_content_id is not None:
+            statement = statement.where(
+                content_source_contributions_table.c.content_id > after_content_id
+            )
+        result = self._session.execute(
+            statement.order_by(None)
+            .order_by(
+                content_source_contributions_table.c.content_id,
+                content_source_contributions_table.c.created_at,
+                content_source_contributions_table.c.id,
+            )
+            .execution_options(stream_results=True, yield_per=500)
+        ).mappings()
+        try:
+            yield from result
+        finally:
+            result.close()
+
+    def _campaign_contributions_query(self, campaign_id: UUID) -> Select[Any]:
+        """复用同一来源归属条件，供全量兼容入口和流式撤销入口使用。"""
+
         contribution = content_source_contributions_table
         attempt = provider_request_attempts_table
         request = provider_requests_table
@@ -93,7 +126,7 @@ class PostgresContentLifecycleRepository:
         campaign_item = historical_import_campaign_items_table
         scope = collection_scopes_table
         run = collection_runs_table
-        rows = self._session.execute(
+        return (
             select(contribution)
             .select_from(
                 contribution.join(attempt, attempt.c.id == contribution.c.provider_attempt_id)
@@ -111,8 +144,7 @@ class PostgresContentLifecycleRepository:
                 | (run.c.data_import_campaign_id == campaign_id)
             )
             .order_by(contribution.c.created_at, contribution.c.id)
-        ).mappings()
-        return tuple(rows)
+        )
 
     def apply_campaign_revocation(
         self,

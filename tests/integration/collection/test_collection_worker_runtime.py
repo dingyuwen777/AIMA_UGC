@@ -208,6 +208,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "vehicles.content-reclassification.v1",
             "ingestion.canonical-replay.v1",
             "ingestion.canonical-replay-reversal.v1",
+            "ingestion.data-import-revocation.v1",
             "content.voice-plaza-projection-backfill.v1",
         )
         assert worker.run_once() is True

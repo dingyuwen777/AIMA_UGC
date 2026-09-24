@@ -35,6 +35,7 @@ class PlatformSettings(BaseModel):
     secret_dir: Path
     external_secret_dir: Path | None = None
     historical_import_root: Path | None = None
+    # 运行容量与目录安全边界只由代码管理；旧 env 值不得在不同机器上造成行为漂移。
     historical_chunk_rows: int = Field(default=2000, ge=100, le=2000)
     historical_max_scan_files: int = Field(default=10_000, ge=1, le=100_000)
     historical_max_directory_depth: int = Field(default=8, ge=1, le=32)
@@ -285,10 +286,6 @@ _ENV_TO_FIELD = {
     "AIMA_SECRET_DIR": "secret_dir",
     "AIMA_EXTERNAL_SECRET_DIR": "external_secret_dir",
     "AIMA_HISTORICAL_IMPORT_ROOT": "historical_import_root",
-    "AIMA_HISTORICAL_CHUNK_ROWS": "historical_chunk_rows",
-    "AIMA_HISTORICAL_MAX_SCAN_FILES": "historical_max_scan_files",
-    "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH": "historical_max_directory_depth",
-    "AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS": "historical_max_in_flight_jobs",
     "AIMA_LOG_LEVEL": "log_level",
     "AIMA_LOG_MAX_BYTES": "log_max_bytes",
     "AIMA_LOG_BACKUP_COUNT": "log_backup_count",
@@ -304,7 +301,6 @@ _ENV_TO_FIELD = {
     "AIMA_LLM_TIMEOUT_SECONDS": "llm_timeout_seconds",
     "AIMA_LLM_MAX_CONNECTIONS": "llm_max_connections",
     "AIMA_LLM_VALIDATION_RETRIES": "llm_validation_retries",
-    "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS": "analysis_run_max_in_flight_jobs",
     "AIMA_FEISHU_APP_ID": "feishu_app_id",
     "AIMA_FEISHU_APP_SECRET_REF": "feishu_app_secret_ref",
     "AIMA_FEISHU_ADMIN_GROUP_ID": "feishu_admin_group_id",

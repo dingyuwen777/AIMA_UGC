@@ -98,6 +98,7 @@ from aima_ugc.modules.ingestion.historical_tables import (
 from aima_ugc.modules.ingestion.revocation_tables import (
     historical_import_campaign_revocations_table,
     historical_import_revocation_content_versions_table,
+    historical_import_revocation_requests_table,
 )
 from aima_ugc.modules.ingestion.tables import (
     processing_import_batches_table,
@@ -168,6 +169,7 @@ __all__ = [
     "historical_import_campaign_items_table",
     "historical_import_campaign_revocations_table",
     "historical_import_revocation_content_versions_table",
+    "historical_import_revocation_requests_table",
     "historical_import_campaigns_table",
     "collection_candidate_ingestions_table",
     "collection_candidates_table",

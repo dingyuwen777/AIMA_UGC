@@ -49,6 +49,7 @@ _COMPOSE_LOCAL_KEYS = frozenset(
         "AIMA_HOST_ROOT",
         "AIMA_HISTORICAL_IMPORT_HOST_ROOT",
         "AIMA_HISTORICAL_IMPORT_ROOT",
+        # 旧 env.local 可能仍有这些字段；识别但不透传，后端始终使用代码策略。
         "AIMA_HISTORICAL_CHUNK_ROWS",
         "AIMA_HISTORICAL_MAX_SCAN_FILES",
         "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH",

@@ -10,10 +10,14 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
+from aima_ugc.adapters.persistence.postgres.import_revocation_lifecycle import (
+    PostgresImportRevocationLifecycleRepository,
+)
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.import_revocation_http import PostgresImportRevocationHttpService
+from aima_ugc.bootstrap.import_revocation_worker import PostgresImportRevocationJobExecutor
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_worker,
@@ -31,13 +35,14 @@ from aima_ugc.modules.content.tables import content_versions_table, contents_tab
 from aima_ugc.modules.ingestion.revocation_tables import (
     historical_import_campaign_revocations_table,
     historical_import_revocation_content_versions_table,
+    historical_import_revocation_requests_table,
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.storage.tables import artifacts_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import and_, delete, event, func, select, update
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy import and_, delete, event, func, insert, select, update
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
@@ -177,6 +182,29 @@ def test_revocation_batches_common_contributions_without_per_content_sql(
             runtime.database.new_session, runtime.artifact_store
         )
         assert service.preview(campaign_id).impact.affected_content_count == 101
+        with runtime.database.new_session() as session:
+            lifecycle = PostgresImportRevocationLifecycleRepository(session)
+            first, checkpoint = lifecycle.next_campaign_contribution_batch(
+                campaign_id, after_content_id=None, content_limit=1
+            )
+            second, _ = lifecycle.next_campaign_contribution_batch(
+                campaign_id, after_content_id=checkpoint, content_limit=1
+            )
+            assert len(first) == len(second) == 1
+            assert first[0]["content_id"] != second[0]["content_id"]
+            duplicate = dict(first[0])
+            duplicate["id"] = uuid4()
+            duplicate["source_item_key"] = uuid4().hex + uuid4().hex
+            savepoint = session.begin_nested()
+            try:
+                session.execute(insert(content_source_contributions_table).values(**duplicate))
+                complete_group, _ = lifecycle.next_campaign_contribution_batch(
+                    campaign_id, after_content_id=None, content_limit=1
+                )
+                assert len(complete_group) == 2
+                assert {row["content_id"] for row in complete_group} == {first[0]["content_id"]}
+            finally:
+                savepoint.rollback()
         statement_count = 0
         per_content_updates = 0
         per_content_inserts = 0
@@ -213,6 +241,9 @@ def test_revocation_batches_common_contributions_without_per_content_sql(
                 actor_ref="integration-admin",
                 request_id="revocation-batch-request",
             )
+            assert revoked.status == "queued"
+            assert revoked.job_id is not None
+            assert _drain(worker) == 1
         finally:
             event.remove(runtime.database.engine, "before_cursor_execute", count_sql)
         assert revoked.impact.hidden_content_count == 101
@@ -349,9 +380,19 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
             actor_ref="integration-admin",
             request_id="revocation-request-2",
         )
-        assert first.already_revoked is False
-        assert second.already_revoked is True
-        assert second.revoked_at == first.revoked_at
+        assert first.status == "queued"
+        assert second.status == "queued"
+        assert first.job_id == second.job_id
+        assert _drain(worker) == 1
+        completed_revocation = service.revoke(
+            campaign_id,
+            DataImportRevokeRequest(reason="完成后重复点击"),
+            actor_ref="integration-admin",
+            request_id="revocation-request-3",
+        )
+        assert completed_revocation.status == "succeeded"
+        assert completed_revocation.already_revoked is True
+        assert completed_revocation.revoked_at is not None
         assert second.impact == first.impact
 
         after_session = runtime.database.new_session()
@@ -555,7 +596,10 @@ def test_revocation_restores_field_filled_by_historical_fill_only(tmp_path: Path
             request_id="revocation-fill-request",
         )
         assert result.already_revoked is False
+        assert result.status == "queued"
         assert result.impact.retained_shared_content_count == 1
+        assert _drain(worker) == 1
+        assert service.preview(campaign_id).status == "succeeded"
 
         session = runtime.database.new_session()
         try:
@@ -593,5 +637,102 @@ def test_revocation_restores_field_filled_by_historical_fill_only(tmp_path: Path
                 )
         finally:
             session.close()
+    finally:
+        _cleanup(runtime)
+
+
+def test_revocation_retries_from_committed_batch_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """第二批瞬时失败后，同一请求从已提交断点继续且不重复创建 Version。"""
+
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    (historical_root / "resume.xlsx").write_bytes(
+        _xlsx(
+            tuple(
+                (f"爱玛断点撤销 {index}", f"revocation-resume-{uuid4()}-{index}", "正文")
+                for index in range(501)
+            )
+        )
+    )
+    runtime = _runtime(tmp_path, historical_root)
+    try:
+        client = _client(runtime)
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="revocation-resume-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        created = client.post(
+            "/api/v1/historical-import-campaigns",
+            json={
+                "client_idempotency_key": f"revocation-resume-{uuid4()}",
+                "relative_paths": ["resume.xlsx"],
+                "recursive": False,
+                "brand_ids": [stage3_filter_brand_id(runtime)],
+                "ingestion_policy": "standard_observation",
+            },
+        )
+        campaign_id = UUID(created.json()["campaign_id"])
+        assert _drain(worker) == 2
+        assert (
+            client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/start").status_code
+            == 200
+        )
+        assert _drain(worker) == 6
+        service = PostgresImportRevocationHttpService(
+            runtime.database.new_session, runtime.artifact_store
+        )
+        requested = service.revoke(
+            campaign_id,
+            DataImportRevokeRequest(reason="断点恢复验证"),
+            actor_ref="integration-admin",
+            request_id="revocation-resume-request",
+        )
+        assert requested.status == "queued"
+        original = PostgresImportRevocationJobExecutor._apply_batch
+        calls = 0
+
+        def fail_second_batch(self: PostgresImportRevocationJobExecutor, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise SQLAlchemyError("injected transient failure")
+            return original(self, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(PostgresImportRevocationJobExecutor, "_apply_batch", fail_second_batch)
+            assert worker.run_once()
+        with runtime.database.engine.connect() as connection:
+            checkpoint = (
+                connection.execute(
+                    select(historical_import_revocation_requests_table).where(
+                        historical_import_revocation_requests_table.c.campaign_id == campaign_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert checkpoint["recomputed_content_count"] == 500
+            assert checkpoint["checkpoint_content_id"] is not None
+        assert worker.run_once()
+        completed = service.preview(campaign_id)
+        assert completed.status == "succeeded"
+        assert completed.recomputed_content_count == 501
+        with runtime.database.engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(historical_import_revocation_content_versions_table)
+                    .where(
+                        historical_import_revocation_content_versions_table.c.campaign_id
+                        == campaign_id
+                    )
+                )
+                == 501
+            )
     finally:
         _cleanup(runtime)

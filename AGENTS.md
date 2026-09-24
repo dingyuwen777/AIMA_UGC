@@ -47,7 +47,7 @@
 
 ## 治理校准后的项目边界
 
-- Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；当前正式架构文档已经同步十二种 Job，不再保留旧版本摘要。
+- Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；正式架构文档与当前 Registry 保持同步，不在本文件冻结数量。
 - 当前正式项目文档只维护 AIMA 自己的产品、架构、Contract、Schema、测试、CI、部署和开发导航；不在 AIMA 文档树复制外部通用治理规则或其安装、运行实现说明。
 - 永久 CI 只验证 AIMA 自己可维护的项目治理接线、文档/Secret、Change Ready 和产品质量；外部通用治理能力自身的源码回归不复制到业务仓库。
 - 项目中由安装流程维护的受管文件不作为 AIMA 项目事实源；普通业务开发不直接改写，版本更新通过正式安装/升级流程完成。
@@ -362,6 +362,7 @@ ingestion.import-excel.v2
 ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
 ingestion.historical-import-chunk.v2
+ingestion.data-import-revocation.v1
 analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
@@ -370,6 +371,8 @@ ingestion.canonical-replay.v1
 ingestion.canonical-replay-reversal.v1
 content.voice-plaza-projection-backfill.v1
 ```
+
+`ingestion.data-import-revocation.v1` 按持久断点分批撤销已完成 Campaign 的来源贡献；运行中根据已提交批次耗时与有效资源调整下一批大小。
 
 三个 `ingestion.historical-*` 是统一 Data Import Campaign 沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 负责按冻结目录对旧 Content 补齐 Brand/Vehicle Evidence；`ingestion.canonical-replay.v1` 负责用任务创建时冻结的当前 Brand/Vehicle 目录重放已持久化 Canonical，`ingestion.canonical-replay-reversal.v1` 负责根据同事务贡献账本撤回该次全历史重筛仍独占的业务变化；`content.voice-plaza-projection-backfill.v1` 负责按 UUID keyset 分块补齐声音广场派生读模型，增量写入仍由 Content 事实变更同步刷新。物理名称保留兼容，不构成平行任务系统。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
 

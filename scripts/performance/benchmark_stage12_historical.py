@@ -403,13 +403,28 @@ def run_benchmark(
                     actor_ref="stage12-capacity",
                     request_id="stage12-capacity-revoke",
                 )
+                request_seconds = time.perf_counter() - revoke_started
+                if revoked.status != "queued" or revoked.job_id is None:
+                    raise RuntimeError("容量 Campaign 撤销未持久入队")
+                job_started = time.perf_counter()
+                if not worker.run_once():
+                    raise RuntimeError("撤销 Job 未被 Worker 认领")
+                job_seconds = time.perf_counter() - job_started
+                completed_revocation = service.preview(revocation_campaign_id)
                 revoke_seconds = time.perf_counter() - revoke_started
             finally:
                 event.remove(runtime.database.engine, "before_cursor_execute", count_revocation_sql)
-            if revoked.already_revoked or revoked.impact != preview.impact:
+            if (
+                completed_revocation.status != "succeeded"
+                or completed_revocation.recomputed_content_count
+                != preview.impact.affected_content_count
+                or revoked.impact != preview.impact
+            ):
                 raise RuntimeError("容量 Campaign 撤销影响未对账")
             report["revocation"] = {
                 "preview_seconds": round(preview_seconds, 3),
+                "request_seconds": round(request_seconds, 3),
+                "job_seconds": round(job_seconds, 3),
                 "revoke_seconds": round(revoke_seconds, 3),
                 "sql_statements": revocation_sql,
                 "affected_content_count": revoked.impact.affected_content_count,

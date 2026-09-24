@@ -214,6 +214,8 @@ async function revokeHistoricalCampaign(
   expect(revokeResponse.status()).toBe(200)
   const revoked = await revokeResponse.json() as {
     already_revoked: boolean
+    status: string
+    job_id: string | null
     impact: {
       affected_content_count: number
       hidden_content_count: number
@@ -221,12 +223,23 @@ async function revokeHistoricalCampaign(
     }
   }
   expect(revoked.already_revoked).toBe(false)
+  expect(revoked.status).toBe('queued')
+  expect(revoked.job_id).toBeTruthy()
   expect(revoked.impact).toMatchObject({
     affected_content_count: preview.impact.affected_content_count,
     hidden_content_count: preview.impact.hidden_content_count,
     retained_shared_content_count: preview.impact.retained_shared_content_count,
   })
-  await expect(dialog.getByText(/撤销完成：影响 \d+ 条内容/)).toBeVisible()
+  await expect(dialog.getByText('撤销请求已提交，服务器正在分批处理。')).toBeVisible()
+  await expect.poll(async () => {
+    const status = await request.get(
+      `/api/v1/data-import-campaigns/${campaignId}/revocation-preview`,
+    )
+    expect(status.status()).toBe(200)
+    return (await status.json() as { status: string }).status
+  }, { timeout: 60_000 }).toBe('succeeded')
+  await expect(dialog.getByText('这次导入已经撤销；导入记录、来源证据和审计历史仍会保留。'))
+    .toBeVisible({ timeout: 15_000 })
 
   const repeated = await request.post(`/api/v1/data-import-campaigns/${campaignId}/revoke`, {
     data: { reason: 'full-stack idempotency check' },
@@ -265,6 +278,7 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await migration.getByRole('button', { name: '服务器目录', exact: true }).click()
   await migration.getByRole('radio', { name: /历史补空/ }).check()
   await migration.getByLabel('选择 history.xlsx').check()
+  await migration.getByLabel('选择 z-history-filler.xlsx').check()
   await expect(migration).toContainText('创建后冻结品牌车型目录快照并执行预检；Excel 不执行 Provider 搜索，导入完成后不会自动触发智能分析。')
   const campaignResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url())

@@ -48,7 +48,7 @@ historical_import_campaigns_table = Table(
     CheckConstraint(
         "status in ('uploading','discovering','snapshotting','ready','queued','running',"
         "'cancelling',"
-        "'cancelled','succeeded','partial_failed','failed')",
+        "'cancelled','succeeded','partial_failed','failed','revoking','revoked')",
         name="status_allowed",
     ),
     CheckConstraint(

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import closing
 from datetime import datetime
-from itertools import batched
+from itertools import batched, groupby
 from typing import Any, cast
 from uuid import UUID, uuid5
 
@@ -15,6 +16,7 @@ from sqlalchemy.engine import RowMapping
 
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
@@ -30,6 +32,43 @@ from .provider import PostgresProviderRepository
 
 class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleRepository):
     """复用 Content Owner Delta 规则，并把撤销重组记录成真实内部 imports 来源。"""
+
+    def next_campaign_contribution_batch(
+        self,
+        campaign_id: UUID,
+        *,
+        after_content_id: UUID | None,
+        content_limit: int,
+    ) -> tuple[tuple[RowMapping, ...], UUID | None]:
+        """断点后读取最多 content_limit 个完整 Content 的来源 Delta。"""
+
+        if content_limit < 1:
+            raise ValueError("撤销批量必须为正数")
+        contribution = content_source_contributions_table
+        campaign_query = self._campaign_contributions_query(campaign_id).order_by(None)
+        if after_content_id is not None:
+            campaign_query = campaign_query.where(contribution.c.content_id > after_content_id)
+        # 先只排序 UUID 并在数据库侧限页；完整 JSON Delta 只对本批 Content 排序。
+        # 同一 Content 的多条来源贡献必须留在一个事务内，不能直接对 Delta 行 LIMIT。
+        content_page = (
+            campaign_query.with_only_columns(contribution.c.content_id)
+            .distinct()
+            .order_by(contribution.c.content_id)
+            .limit(content_limit)
+            .subquery()
+        )
+        statement = (
+            campaign_query.where(contribution.c.content_id.in_(select(content_page.c.content_id)))
+            .order_by(contribution.c.content_id, contribution.c.created_at, contribution.c.id)
+            .execution_options(stream_results=True, yield_per=500)
+        )
+        result = self._session.execute(statement).mappings()
+        try:
+            contributions = tuple(result)
+        finally:
+            result.close()
+        last_content_id = cast(UUID, contributions[-1]["content_id"]) if contributions else None
+        return contributions, last_content_id
 
     def parent_import_batch_id(self, campaign_id: UUID) -> UUID | None:
         """选择 Campaign 最早的真实 Processing Batch 作为内部撤销 Request 父事实。"""
@@ -55,15 +94,17 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
     def campaign_contribution_platforms(self, campaign_id: UUID) -> tuple[str, ...]:
         """返回真正需要重组 Current 的 Content 平台集合。"""
 
-        contributions = self.list_campaign_contributions(campaign_id)
-        content_ids = tuple({cast(UUID, row["content_id"]) for row in contributions})
-        if not content_ids:
-            return ()
+        content_ids = (
+            self._campaign_contributions_query(campaign_id)
+            .with_only_columns(content_source_contributions_table.c.content_id)
+            .order_by(None)
+            .subquery()
+        )
         return tuple(
             cast(str, value)
             for value in self._session.scalars(
                 select(contents_table.c.platform)
-                .where(contents_table.c.id.in_(content_ids))
+                .join(content_ids, contents_table.c.id == content_ids.c.content_id)
                 .distinct()
                 .order_by(contents_table.c.platform)
             )
@@ -136,12 +177,46 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
         *,
         revoked_at: datetime,
         lifecycle_sources: dict[str, tuple[UUID, UUID]],
-    ) -> tuple[tuple[UUID, int], ...]:
+    ) -> int:
         """逆序回退 Campaign Delta，并以内部撤销来源追加 Current Version 与追溯记录。"""
 
         if revoked_at.utcoffset() is None:
             raise ValueError("revoked_at 必须包含时区")
-        contributions = self.list_campaign_contributions(campaign_id)
+        completed = 0
+        batch: list[RowMapping] = []
+        content_count = 0
+        with closing(self.iter_campaign_contributions(campaign_id)) as rows:
+            for _, group in groupby(rows, key=lambda row: row["content_id"]):
+                if content_count == 500:
+                    completed += self.apply_campaign_contribution_batch(
+                        campaign_id,
+                        contributions=tuple(batch),
+                        revoked_at=revoked_at,
+                        lifecycle_sources=lifecycle_sources,
+                    )
+                    batch.clear()
+                    content_count = 0
+                batch.extend(group)
+                content_count += 1
+            if batch:
+                completed += self.apply_campaign_contribution_batch(
+                    campaign_id,
+                    contributions=tuple(batch),
+                    revoked_at=revoked_at,
+                    lifecycle_sources=lifecycle_sources,
+                )
+        return completed
+
+    def apply_campaign_contribution_batch(
+        self,
+        campaign_id: UUID,
+        *,
+        contributions: tuple[RowMapping, ...],
+        revoked_at: datetime,
+        lifecycle_sources: dict[str, tuple[UUID, UUID]],
+    ) -> int:
+        """逐批选择集合或完整 Delta 路径，不在内存里保留全部撤销结果。"""
+
         if all(
             isinstance(row["delta"], dict)
             and not row["delta"].get("account")
@@ -149,12 +224,33 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
             and set(row["delta"].get("collections") or {}) <= {"alternate_ids"}
             for row in contributions
         ):
-            return self._apply_common_campaign_revocation(
+            return len(
+                self._apply_common_campaign_revocation(
+                    campaign_id,
+                    contributions=contributions,
+                    revoked_at=revoked_at,
+                    lifecycle_sources=lifecycle_sources,
+                )
+            )
+        return len(
+            self._apply_complex_campaign_revocation(
                 campaign_id,
                 contributions=contributions,
                 revoked_at=revoked_at,
                 lifecycle_sources=lifecycle_sources,
             )
+        )
+
+    def _apply_complex_campaign_revocation(
+        self,
+        campaign_id: UUID,
+        *,
+        contributions: tuple[RowMapping, ...],
+        revoked_at: datetime,
+        lifecycle_sources: dict[str, tuple[UUID, UUID]],
+    ) -> tuple[tuple[UUID, int], ...]:
+        """保留复杂 Delta 的逐 Content 回退语义。"""
+
         by_content: dict[UUID, list[RowMapping]] = defaultdict(list)
         for contribution in contributions:
             by_content[cast(UUID, contribution["content_id"])].append(contribution)
