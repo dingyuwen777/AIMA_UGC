@@ -134,6 +134,6 @@ Issue #598 和本轮用户决定要求从入口、预检、入库、重筛到撤
 
 # 完成证据与状态
 
-- 当前提交 `e373ead3`：容量/脚本单测、隔离 PostgreSQL 集成、前端单测、Ruff/Mypy、文档与本地 Ready Check 已通过；真实 Full-stack 两 Chunk 的独立运行是 36012858186。
+- 实现提交 `e373ead3`：容量/脚本单测、隔离 PostgreSQL 集成、前端单测、Ruff/Mypy、文档与本地 Ready Check 已通过；本轮新增的 Change 文档提交另由 canonical Change 校验验证。真实 Full-stack 两 Chunk 的独立运行是 36012858186。
 - PR #599 已进入 Ready；2026-09-24 首轮必需 CI 的 Requirement Source 检查指出本 Change 缺少 canonical 标题，本次补齐后需以新提交重新验证。Runtime/Release 与最终 Review 仍待最新提交完成。
 - 已知界限：另一轮全流程复测本机负载波动较大，不能据此声明普通撤销后台已提速；高配服务器和实际用户文件尚未做现场容量验收。
