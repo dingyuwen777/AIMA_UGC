@@ -10,6 +10,7 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.historical_content import (
     HistoricalBatchRow,
     PostgresHistoricalContentRepository,
+    PostgresStandardContentRepository,
 )
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
@@ -21,6 +22,7 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.content.tables import (
     accounts_table,
@@ -39,7 +41,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
-from sqlalchemy import insert, select
+from sqlalchemy import event, func, insert, select
 
 
 @pytest.fixture
@@ -247,6 +249,383 @@ def _content(
         source=source,
         observed_fields=fields,
     )
+
+
+def test_standard_observation_batches_safe_new_contents(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """标准导入的全新行必须走集合 Owner，不能退化成每行 UPDATE/往返。"""
+
+    observed_at = datetime(2026, 9, 24, 0, 0, tzinfo=UTC)
+    session = database_runtime.new_session()
+    content_updates: list[str] = []
+    statement_count = 0
+
+    def count_statements(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        nonlocal statement_count
+        del connection, cursor, parameters, context, executemany
+        statement_count += 1
+        if statement.lstrip().startswith("UPDATE contents"):
+            content_updates.append(statement)
+
+    try:
+        with session.begin():
+            batch_id, item_id, artifact_id = _setup_batch(session, observed_at=observed_at)
+            source = _historical_source(
+                session,
+                batch_id=batch_id,
+                artifact_id=artifact_id,
+                observed_at=observed_at,
+            )
+            rows = tuple(
+                HistoricalBatchRow(
+                    source_row_ordinal=index + 1,
+                    content=_content(
+                        source=source.model_copy(
+                            update={"item_locator": f"sheet=文章;row={index + 2}"}
+                        ),
+                        external_id=f"standard-batch-{index}",
+                        title=f"爱玛批量样本 {index}",
+                        text="批量标准观测正文",
+                        author_name=None,
+                    ),
+                )
+                for index in range(101)
+            )
+            event.listen(database_runtime.engine, "before_cursor_execute", count_statements)
+            try:
+                summary = PostgresStandardContentRepository(session).ingest_rows(
+                    batch_id=batch_id,
+                    campaign_item_id=item_id,
+                    chunk_ordinal=0,
+                    rows=rows,
+                )
+            finally:
+                event.remove(
+                    database_runtime.engine,
+                    "before_cursor_execute",
+                    count_statements,
+                )
+
+        assert summary.created == 101
+        assert summary.updated == summary.unchanged == 0
+        assert content_updates == []
+        assert statement_count <= 30
+        assert session.scalar(select(func.count()).select_from(contents_table)) == 101
+        assert session.scalar(select(func.count()).select_from(content_versions_table)) == 101
+        assert (
+            session.scalar(select(func.count()).select_from(processing_import_batch_items_table))
+            == 101
+        )
+    finally:
+        session.close()
+
+
+def test_standard_observation_batches_existing_contents(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """标准导入更新既有 Content 时也必须保持集合写入，而不是逐行 SQL。"""
+
+    first_observed_at = datetime(2026, 9, 24, 0, 0, tzinfo=UTC)
+    second_observed_at = datetime(2026, 9, 24, 0, 1, tzinfo=UTC)
+    session = database_runtime.new_session()
+    content_updates: list[str] = []
+    statement_count = 0
+
+    def count_statements(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        nonlocal statement_count
+        del connection, cursor, parameters, context, executemany
+        statement_count += 1
+        if statement.lstrip().startswith("UPDATE contents"):
+            content_updates.append(statement)
+
+    try:
+        with session.begin():
+            first_batch_id, first_item_id, first_artifact_id = _setup_batch(
+                session,
+                observed_at=first_observed_at,
+            )
+            first_source = _historical_source(
+                session,
+                batch_id=first_batch_id,
+                artifact_id=first_artifact_id,
+                observed_at=first_observed_at,
+            )
+            first_rows = tuple(
+                HistoricalBatchRow(
+                    source_row_ordinal=index + 1,
+                    content=_content(
+                        source=first_source.model_copy(
+                            update={"item_locator": f"sheet=文章;row={index + 2}"}
+                        ),
+                        external_id=f"standard-existing-batch-{index}",
+                        title=f"初始标题 {index}",
+                        text="批量既有观测正文",
+                        author_name=None,
+                    ),
+                )
+                for index in range(101)
+            )
+            first_summary = PostgresStandardContentRepository(session).ingest_rows(
+                batch_id=first_batch_id,
+                campaign_item_id=first_item_id,
+                chunk_ordinal=0,
+                rows=first_rows,
+            )
+
+        assert first_summary.created == 101
+
+        with session.begin():
+            second_batch_id, second_item_id, second_artifact_id = _setup_batch(
+                session,
+                observed_at=second_observed_at,
+            )
+            second_source = _historical_source(
+                session,
+                batch_id=second_batch_id,
+                artifact_id=second_artifact_id,
+                observed_at=second_observed_at,
+            )
+            second_rows = tuple(
+                HistoricalBatchRow(
+                    source_row_ordinal=index + 1,
+                    content=_content(
+                        source=second_source.model_copy(
+                            update={"item_locator": f"sheet=文章;row={index + 2}"}
+                        ),
+                        external_id=f"standard-existing-batch-{index}",
+                        title=f"更新标题 {index}",
+                        text="批量既有观测正文",
+                        author_name=None,
+                    ),
+                )
+                for index in range(101)
+            )
+            event.listen(database_runtime.engine, "before_cursor_execute", count_statements)
+            try:
+                second_summary = PostgresStandardContentRepository(session).ingest_rows(
+                    batch_id=second_batch_id,
+                    campaign_item_id=second_item_id,
+                    chunk_ordinal=0,
+                    rows=second_rows,
+                )
+            finally:
+                event.remove(
+                    database_runtime.engine,
+                    "before_cursor_execute",
+                    count_statements,
+                )
+
+        assert second_summary.updated == 101
+        assert second_summary.created == second_summary.unchanged == 0
+        assert len(content_updates) == 1
+        assert statement_count <= 35
+        assert session.scalar(select(func.count()).select_from(contents_table)) == 101
+        assert session.scalar(select(func.count()).select_from(content_versions_table)) == 202
+        assert (
+            session.scalar(select(func.count()).select_from(processing_import_batch_items_table))
+            == 202
+        )
+    finally:
+        session.close()
+
+
+def test_fill_only_batches_safe_new_contents(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """历史填充的全新行同样复用集合 Owner；复杂既有行才走兼容路径。"""
+
+    observed_at = datetime(2026, 9, 24, 0, 0, tzinfo=UTC)
+    session = database_runtime.new_session()
+    content_updates: list[str] = []
+    statement_count = 0
+
+    def count_statements(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        nonlocal statement_count
+        del connection, cursor, parameters, context, executemany
+        statement_count += 1
+        if statement.lstrip().startswith("UPDATE contents"):
+            content_updates.append(statement)
+
+    try:
+        with session.begin():
+            batch_id, item_id, artifact_id = _setup_batch(session, observed_at=observed_at)
+            source = _historical_source(
+                session,
+                batch_id=batch_id,
+                artifact_id=artifact_id,
+                observed_at=observed_at,
+            )
+            rows = tuple(
+                HistoricalBatchRow(
+                    source_row_ordinal=index + 1,
+                    content=_content(
+                        source=source.model_copy(
+                            update={"item_locator": f"sheet=文章;row={index + 2}"}
+                        ),
+                        external_id=f"fill-batch-{index}",
+                        title=f"爱玛历史批量样本 {index}",
+                        text="批量历史填充正文",
+                        author_name=None,
+                    ),
+                )
+                for index in range(101)
+            )
+            event.listen(database_runtime.engine, "before_cursor_execute", count_statements)
+            try:
+                summary = PostgresHistoricalContentRepository(session).ingest_rows(
+                    batch_id=batch_id,
+                    campaign_item_id=item_id,
+                    chunk_ordinal=0,
+                    rows=rows,
+                )
+            finally:
+                event.remove(
+                    database_runtime.engine,
+                    "before_cursor_execute",
+                    count_statements,
+                )
+
+        assert summary.created == 101
+        assert summary.filled == summary.unchanged == 0
+        assert content_updates == []
+        assert statement_count <= 30
+        assert session.scalar(select(func.count()).select_from(contents_table)) == 101
+        assert session.scalar(select(func.count()).select_from(content_versions_table)) == 101
+        assert (
+            session.scalar(select(func.count()).select_from(processing_import_batch_items_table))
+            == 101
+        )
+    finally:
+        session.close()
+
+
+def test_fill_only_batches_unchanged_existing_content_contributions(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """既有无变化行的 before/after 与来源贡献必须集合处理且仍逐来源留痕。"""
+
+    observed_at = datetime(2026, 9, 24, 0, 0, tzinfo=UTC)
+    session = database_runtime.new_session()
+    statement_count = 0
+
+    def count_statements(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        nonlocal statement_count
+        del connection, cursor, statement, parameters, context, executemany
+        statement_count += 1
+
+    try:
+        with session.begin():
+            first_batch_id, first_item_id, first_artifact_id = _setup_batch(
+                session,
+                observed_at=observed_at,
+            )
+            first_source = _historical_source(
+                session,
+                batch_id=first_batch_id,
+                artifact_id=first_artifact_id,
+                observed_at=observed_at,
+            )
+            first_rows = tuple(
+                HistoricalBatchRow(
+                    source_row_ordinal=index + 1,
+                    content=_content(
+                        source=first_source.model_copy(
+                            update={"item_locator": f"sheet=文章;row={index + 2}"}
+                        ),
+                        external_id=f"fill-existing-batch-{index}",
+                        title=f"爱玛历史既有样本 {index}",
+                        text="既有批量历史正文",
+                        author_name=None,
+                    ),
+                )
+                for index in range(101)
+            )
+            created = PostgresHistoricalContentRepository(session).ingest_rows(
+                batch_id=first_batch_id,
+                campaign_item_id=first_item_id,
+                chunk_ordinal=0,
+                rows=first_rows,
+            )
+            assert created.created == 101
+
+            second_batch_id, second_item_id, second_artifact_id = _setup_batch(
+                session,
+                observed_at=observed_at,
+            )
+            second_source = _historical_source(
+                session,
+                batch_id=second_batch_id,
+                artifact_id=second_artifact_id,
+                observed_at=observed_at,
+            )
+            second_rows = tuple(
+                HistoricalBatchRow(
+                    source_row_ordinal=index + 1,
+                    content=_content(
+                        source=second_source.model_copy(
+                            update={"item_locator": f"sheet=文章;row={index + 2}"}
+                        ),
+                        external_id=f"fill-existing-batch-{index}",
+                        title=f"爱玛历史既有样本 {index}",
+                        text="既有批量历史正文",
+                        author_name=None,
+                    ),
+                )
+                for index in range(101)
+            )
+            event.listen(database_runtime.engine, "before_cursor_execute", count_statements)
+            try:
+                summary = PostgresHistoricalContentRepository(session).ingest_rows(
+                    batch_id=second_batch_id,
+                    campaign_item_id=second_item_id,
+                    chunk_ordinal=0,
+                    rows=second_rows,
+                )
+            finally:
+                event.remove(
+                    database_runtime.engine,
+                    "before_cursor_execute",
+                    count_statements,
+                )
+
+        assert summary.unchanged == 101
+        assert summary.created == summary.filled == summary.conflict == 0
+        assert statement_count <= 35
+        assert (
+            session.scalar(select(func.count()).select_from(content_source_contributions_table))
+            == 202
+        )
+    finally:
+        session.close()
 
 
 def test_historical_bulk_fill_only_preserves_nonempty_current_and_metrics(

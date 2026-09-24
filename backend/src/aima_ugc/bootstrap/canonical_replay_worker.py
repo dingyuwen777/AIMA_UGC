@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from collections.abc import Generator
 from dataclasses import dataclass
 from itertools import islice
+from time import perf_counter
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -21,10 +25,11 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 )
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
+    PostgresCompleteNewContentBatchItem,
 )
 from aima_ugc.adapters.persistence.postgres.content_contributions import (
     build_content_contribution_delta,
-    capture_content_contribution_snapshot,
+    capture_content_contribution_snapshots_batch,
 )
 from aima_ugc.adapters.persistence.postgres.import_lineage import (
     ensure_campaign_import_lineage,
@@ -52,11 +57,15 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
 )
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
-from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution
+from aima_ugc.modules.vehicles.brand_vehicle import (
+    BrandVehicleResolution,
+    BrandVehicleResolver,
+)
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
+from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.storage import (
     ArtifactRecord,
     CanonicalArtifactIntegrityError,
@@ -68,6 +77,16 @@ from aima_ugc.platform.time import beijing_now
 from .runtime import PlatformRuntime
 
 _PREFLIGHT_BATCH_SIZE = 500
+_LEDGER_INSERT_ROWS = 1000
+_MAX_PROOF_SOURCE_EXPECTATIONS = 1000
+
+# 结构变动由 Schema 摘要检测；非 Schema 可见的来源/Validator 语义改变时须提升此版本。
+_VALIDATION_VERSION = (
+    "replay-source-v1:"
+    + hashlib.sha256(
+        json.dumps(CanonicalContentV1.model_json_schema(), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +101,6 @@ class PostgresCanonicalReplayJobExecutor:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
-        self._reader = CanonicalArtifactReader(store=runtime.artifact_store)
 
     def execute(
         self,
@@ -98,9 +116,22 @@ class PostgresCanonicalReplayJobExecutor:
             if run.checkpoint_artifact_ordinal >= run.artifact_count:
                 return JobHandlerResult.succeeded(_result(run))
 
-            if not self._preflight_all(selected, fence=fence, context=context):
+            # 预检资格仅属于本次 Attempt；接管必须重新证明输入全集。
+            reader = CanonicalArtifactReader(store=self._runtime.artifact_store)
+            preflight_started = perf_counter()
+            if not self._preflight_all(selected, reader=reader, fence=fence, context=context):
                 return JobHandlerResult.cancelled()
+            log_event(
+                self._runtime.logger,
+                logging.INFO,
+                "canonical_replay.preflight_completed",
+                "Canonical Replay 全输入预检完成",
+                run_id=str(run.id),
+                artifact_count=run.artifact_count,
+                duration_ms=int((perf_counter() - preflight_started) * 1000),
+            )
 
+            ingestion_started = perf_counter()
             while run.checkpoint_artifact_ordinal < run.artifact_count:
                 if context.cancel_requested():
                     return JobHandlerResult.cancelled()
@@ -108,7 +139,7 @@ class PostgresCanonicalReplayJobExecutor:
                 artifact = self._load_artifact(current, fence=fence)
                 iterator = cast(
                     Generator[CanonicalContentV1],
-                    self._reader.read(artifact),
+                    reader.read_preflighted(artifact),
                 )
                 try:
                     for _ in islice(iterator, run.checkpoint_row_number):
@@ -131,6 +162,18 @@ class PostgresCanonicalReplayJobExecutor:
                 finally:
                     iterator.close()
                 context.heartbeat(progress=_progress(run))
+            log_event(
+                self._runtime.logger,
+                logging.INFO,
+                "canonical_replay.ingestion_completed",
+                "Canonical Replay 入库完成",
+                run_id=str(run.id),
+                duration_ms=int((perf_counter() - ingestion_started) * 1000),
+                rows_seen=run.rows_seen,
+                rows_matched=run.rows_matched,
+                rows_ingested=run.rows_ingested,
+                existing_convergence=run.existing_convergence,
+            )
             return JobHandlerResult.succeeded(_result(run))
         except LeaseLostError:
             raise
@@ -187,6 +230,7 @@ class PostgresCanonicalReplayJobExecutor:
         self,
         selected: tuple[CanonicalReplayArtifactRecord, ...],
         *,
+        reader: CanonicalArtifactReader,
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> bool:
@@ -194,21 +238,110 @@ class PostgresCanonicalReplayJobExecutor:
 
         for item in selected:
             artifact = self._load_artifact(item, fence=fence)
+            proof = self._check_parent_and_load_validation_proof(item, artifact, fence=fence)
+            if proof is not None:
+                reader.verify_bytes_for_preflight(artifact)
+                self._validate_source_rows(item, (), fence=fence, source_expectations=proof)
+                if context.cancel_requested():
+                    return False
+                continue
+            expectations: dict[UUID, tuple[UUID, UUID, str, str]] = {}
+            cacheable = True
             iterator = cast(
                 Generator[CanonicalContentV1],
-                self._reader.read(artifact),
+                reader.read_for_preflight(artifact),
             )
             try:
                 while True:
                     batch = tuple(islice(iterator, _PREFLIGHT_BATCH_SIZE))
                     if not batch:
                         break
-                    self._validate_source_rows(item, batch, fence=fence)
+                    batch_expectations = self._validate_source_rows(item, batch, fence=fence)
+                    if cacheable:
+                        for attempt_id, lineage in batch_expectations.items():
+                            previous = expectations.setdefault(attempt_id, lineage)
+                            if previous != lineage:
+                                raise ValueError("同一 Canonical 文件的 Attempt 跨批来源不一致")
+                        if len(expectations) > _MAX_PROOF_SOURCE_EXPECTATIONS:
+                            expectations.clear()
+                            cacheable = False
                     if context.cancel_requested():
                         return False
             finally:
                 iterator.close()
+            if cacheable:
+                self._save_validation_proof(item, artifact, expectations, fence=fence)
         return True
+
+    def _check_parent_and_load_validation_proof(
+        self,
+        selected: CanonicalReplayArtifactRecord,
+        artifact: ArtifactRecord,
+        *,
+        fence: JobExecutionFence,
+    ) -> dict[UUID, tuple[UUID, UUID, str, str]] | None:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                PostgresJobRepository(session).validate_current_execution(fence)
+                if selected.source_kind != "tikhub_search_attempt_v1":
+                    self._load_import_lineage_context(session, selected, artifact)
+                proof = PostgresCanonicalReplayRepository(session).get_validation_proof(artifact.id)
+                if (
+                    proof is None
+                    or proof["sha256"] != artifact.sha256
+                    or proof["byte_size"] != artifact.byte_size
+                    or proof["validation_version"] != _VALIDATION_VERSION
+                    or proof["source_kind"] != selected.source_kind
+                ):
+                    return None
+                raw = proof["source_expectations"]
+                if not isinstance(raw, list) or len(raw) > _MAX_PROOF_SOURCE_EXPECTATIONS:
+                    return None
+                try:
+                    return {
+                        UUID(item["attempt_id"]): (
+                            UUID(item["request_id"]),
+                            UUID(item["raw_id"]),
+                            item["platform"],
+                            item["operation"],
+                        )
+                        for item in raw
+                    }
+                except KeyError, TypeError, ValueError:
+                    return None
+        finally:
+            session.close()
+
+    def _save_validation_proof(
+        self,
+        selected: CanonicalReplayArtifactRecord,
+        artifact: ArtifactRecord,
+        expectations: dict[UUID, tuple[UUID, UUID, str, str]],
+        *,
+        fence: JobExecutionFence,
+    ) -> None:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                PostgresJobRepository(session).validate_current_execution(fence)
+                PostgresCanonicalReplayRepository(session).save_validation_proof(
+                    artifact=artifact,
+                    validation_version=_VALIDATION_VERSION,
+                    source_kind=selected.source_kind,
+                    source_expectations=[
+                        {
+                            "attempt_id": str(attempt_id),
+                            "request_id": str(value[0]),
+                            "raw_id": str(value[1]),
+                            "platform": value[2],
+                            "operation": value[3],
+                        }
+                        for attempt_id, value in sorted(expectations.items())
+                    ],
+                )
+        finally:
+            session.close()
 
     def _validate_source_rows(
         self,
@@ -216,7 +349,8 @@ class PostgresCanonicalReplayJobExecutor:
         contents: tuple[CanonicalContentV1, ...],
         *,
         fence: JobExecutionFence,
-    ) -> None:
+        source_expectations: dict[UUID, tuple[UUID, UUID, str, str]] | None = None,
+    ) -> dict[UUID, tuple[UUID, UUID, str, str]]:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -235,7 +369,7 @@ class PostgresCanonicalReplayJobExecutor:
                             or source.raw_artifact_id is not None
                         ):
                             raise ValueError("Import Canonical Source 不符合当前持久格式")
-                    return
+                    return {}
 
                 parent = session.execute(
                     select(collection_scopes_table.c.run_id)
@@ -262,33 +396,33 @@ class PostgresCanonicalReplayJobExecutor:
                     raise ValueError("TikHub Canonical 缺少父级 Collection Scope/Run")
                 parent_run_id = cast(UUID, parent.run_id)
                 parent_scope_id = cast(UUID, parent.id)
-                attempt_ids: set[UUID] = set()
-                expected: dict[UUID, tuple[UUID, UUID, str, str]] = {}
-                for content in contents:
-                    source = content.source
-                    if (
-                        source.provider_name != "tikhub"
-                        or source.operation is None
-                        or source.provider_request_id is None
-                        or source.provider_attempt_id is None
-                        or source.raw_artifact_id is None
-                    ):
-                        raise ValueError("TikHub Canonical Source 缺少 Request/Attempt/Raw")
-                    try:
-                        request_id = UUID(source.provider_request_id)
-                        attempt_id = UUID(source.provider_attempt_id)
-                    except ValueError as exc:
-                        raise ValueError("TikHub Canonical Request/Attempt 不是 UUID") from exc
-                    lineage = (
-                        request_id,
-                        source.raw_artifact_id,
-                        content.platform,
-                        source.operation,
-                    )
-                    previous = expected.setdefault(attempt_id, lineage)
-                    if previous != lineage:
-                        raise ValueError("同一 TikHub Attempt 的行级来源不一致")
-                    attempt_ids.add(attempt_id)
+                expected = dict(source_expectations or {})
+                if source_expectations is None:
+                    for content in contents:
+                        source = content.source
+                        if (
+                            source.provider_name != "tikhub"
+                            or source.operation is None
+                            or source.provider_request_id is None
+                            or source.provider_attempt_id is None
+                            or source.raw_artifact_id is None
+                        ):
+                            raise ValueError("TikHub Canonical Source 缺少 Request/Attempt/Raw")
+                        try:
+                            request_id = UUID(source.provider_request_id)
+                            attempt_id = UUID(source.provider_attempt_id)
+                        except ValueError as exc:
+                            raise ValueError("TikHub Canonical Request/Attempt 不是 UUID") from exc
+                        lineage = (
+                            request_id,
+                            source.raw_artifact_id,
+                            content.platform,
+                            source.operation,
+                        )
+                        previous = expected.setdefault(attempt_id, lineage)
+                        if previous != lineage:
+                            raise ValueError("同一 TikHub Attempt 的行级来源不一致")
+                attempt_ids = set(expected)
                 rows = session.execute(
                     select(
                         provider_request_attempts_table.c.id,
@@ -341,6 +475,7 @@ class PostgresCanonicalReplayJobExecutor:
                     raise ValueError(
                         "TikHub Canonical 行级来源不属于父级 Scope 或与 Request/Attempt/Raw 不一致"
                     )
+                return expected
         finally:
             session.close()
 
@@ -375,14 +510,35 @@ class PostgresCanonicalReplayJobExecutor:
         *,
         fence: JobExecutionFence,
     ) -> CanonicalReplayRunRecord:
+        batch_started = perf_counter()
+        resolution_started = perf_counter()
+        resolver = BrandVehicleResolver(run.filter_snapshot.catalog)
         resolved = tuple(
-            (content, resolve_canonical_brand_vehicle(run.filter_snapshot, content))
+            (
+                content,
+                resolve_canonical_brand_vehicle(
+                    run.filter_snapshot,
+                    content,
+                    resolver=resolver,
+                ),
+            )
             for content in contents
         )
+        resolution_ms = int((perf_counter() - resolution_started) * 1000)
         session = self._runtime.database.new_session()
+        advanced: CanonicalReplayRunRecord | None = None
+        fast_created_count = 0
+        fallback_count = 0
+        content_batch_ms = 0
+        evidence_batch_ms = 0
+        fallback_ms = 0
+        ledger_checkpoint_ms = 0
+        transaction_started = perf_counter()
         try:
             with session.begin():
-                PostgresJobRepository(session).lock_current_execution(fence)
+                # 这里只做无锁资格检查；提交前由 repository.advance 获取 Job 行锁并
+                # 再次验证 Fence。取消/接管可在长批次中写入状态，旧事务随后整体回滚。
+                PostgresJobRepository(session).validate_current_execution(fence)
                 repository = PostgresCanonicalReplayRepository(session)
                 current = repository.get(run.id, for_update=True)
                 if (
@@ -393,12 +549,11 @@ class PostgresCanonicalReplayJobExecutor:
                 ):
                     raise LeaseLostError("Canonical Replay checkpoint 已不属于当前执行")
                 lineage = self._load_import_lineage_context(session, selected, artifact)
-                content_owner = ContentIngestionService(
-                    PostgresCompleteContentRepository(
-                        session,
-                        replay_visibility_owner_id=current.all_request_id,
-                    )
+                content_repository = PostgresCompleteContentRepository(
+                    session,
+                    replay_visibility_owner_id=current.all_request_id,
                 )
+                content_owner = ContentIngestionService(content_repository)
                 vehicle_repository = PostgresVehicleCatalogRepository(session)
                 brand_repository = PostgresBrandVehicleRepository(session)
                 matched = 0
@@ -406,17 +561,25 @@ class PostgresCanonicalReplayJobExecutor:
                 inserted = 0
                 existing = 0
                 lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
+                ledger_rows: list[dict[str, object]] = []
+                pending: list[tuple[CanonicalContentV1, BrandVehicleResolution]] = []
+                claimed_identities = repository.claim_content_identities(
+                    run_id=run.id,
+                    identities=(
+                        (content.platform, content.external_content_id)
+                        for content, resolution in resolved
+                        if resolution.matched
+                    ),
+                )
                 for content, resolution in resolved:
                     if not resolution.matched:
                         continue
                     matched += 1
-                    if not repository.claim_content_identity(
-                        run_id=run.id,
-                        platform=content.platform,
-                        external_content_id=content.external_content_id,
-                    ):
+                    identity = (content.platform, content.external_content_id)
+                    if identity not in claimed_identities:
                         duplicates += 1
                         continue
+                    claimed_identities.remove(identity)
                     observation = self._content_with_lineage(
                         session,
                         content,
@@ -424,88 +587,276 @@ class PostgresCanonicalReplayJobExecutor:
                         lineage=lineage,
                         lineage_by_platform=lineage_by_platform,
                     )
-                    before = capture_content_contribution_snapshot(session, observation)
-                    owner_before = (
-                        session.scalar(
-                            select(contents_table.c.replay_visibility_owner_id).where(
-                                contents_table.c.id == before.content_id
+                    pending.append((observation, resolution))
+
+                content_batch_started = perf_counter()
+                fast_observations = tuple(
+                    observation
+                    for observation, _resolution in pending
+                    if observation.author is None or observation.author.external_account_id is None
+                )
+                batch_created: tuple[PostgresCompleteNewContentBatchItem, ...] = (
+                    content_owner.ingest_new_contents_batch(fast_observations)
+                )
+                content_batch_ms = int((perf_counter() - content_batch_started) * 1000)
+                fast_created_count = len(batch_created)
+                inserted += fast_created_count
+                created_by_identity = {
+                    (
+                        item.observation.platform,
+                        item.observation.external_content_id,
+                    ): item
+                    for item in batch_created
+                }
+                resolution_by_identity = {
+                    (observation.platform, observation.external_content_id): resolution
+                    for observation, resolution in pending
+                }
+
+                evidence_batch_started = perf_counter()
+                evidence_created_at = beijing_now()
+                vehicle_entries: list[tuple[UUID, int, tuple[ContentVehicleEvidence, ...]]] = []
+                brand_entries = []
+                for identity, item in created_by_identity.items():
+                    resolution = resolution_by_identity[identity]
+                    vehicle_entries.append(
+                        (
+                            item.result.target_id,
+                            item.result.version_no,
+                            tuple(
+                                ContentVehicleEvidence(
+                                    id=uuid4(),
+                                    content_id=item.result.target_id,
+                                    content_version=item.result.version_no,
+                                    vehicle_model_id=evidence.entity_id,
+                                    source="alias_match",
+                                    matched_text=evidence.matched_text,
+                                    source_field=evidence.source_field,
+                                    catalog_version=resolution.catalog_version,
+                                    confidence=1.0,
+                                    is_manual_locked=False,
+                                    is_active=True,
+                                    created_at=evidence_created_at,
+                                )
+                                for evidence in resolution.vehicle_evidence
+                            ),
+                        )
+                    )
+                    brand_entries.append(
+                        (
+                            item.result.target_id,
+                            item.result.version_no,
+                            resolution.brand_evidence,
+                        )
+                    )
+                vehicle_after_by_pair = (
+                    vehicle_repository.append_initial_automatic_alias_evidence_batch(
+                        entries=tuple(vehicle_entries)
+                    )
+                )
+                brand_after_by_pair = (
+                    brand_repository.append_initial_automatic_brand_evidence_batch(
+                        entries=tuple(brand_entries),
+                        catalog_snapshot=run.filter_snapshot.catalog,
+                    )
+                )
+                evidence_batch_ms = int((perf_counter() - evidence_batch_started) * 1000)
+
+                ledger_created_at = beijing_now()
+                for item in batch_created:
+                    observation = item.observation
+                    attempt_id = observation.source.provider_attempt_id
+                    raw_id = observation.source.raw_artifact_id
+                    if attempt_id is None or raw_id is None:
+                        raise ValueError("Replay 贡献账本要求 Attempt 与 Raw 来源")
+                    if current.all_request_id is not None:
+                        pair = (item.result.target_id, item.result.version_no)
+                        ledger_rows.append(
+                            {
+                                "id": uuid4(),
+                                "all_request_id": current.all_request_id,
+                                "run_id": current.id,
+                                "content_id": item.result.target_id,
+                                "provider_attempt_id": UUID(attempt_id),
+                                "raw_artifact_id": raw_id,
+                                "version_before": None,
+                                "version_after": item.result.version_no,
+                                "delta": build_content_contribution_delta(
+                                    observation,
+                                    None,
+                                    item.contribution_after,
+                                ),
+                                "visibility_owner_before": None,
+                                "vehicle_evidence_before": [],
+                                "vehicle_evidence_after": vehicle_after_by_pair[pair],
+                                "brand_evidence_before": [],
+                                "brand_evidence_after": brand_after_by_pair[pair],
+                                "created_at": ledger_created_at,
+                            }
+                        )
+                        if len(ledger_rows) >= _LEDGER_INSERT_ROWS:
+                            self._flush_ledger_rows(session, ledger_rows)
+
+                fallback_started = perf_counter()
+                fallback_pending = tuple(
+                    (observation, resolution)
+                    for observation, resolution in pending
+                    if (observation.platform, observation.external_content_id)
+                    not in created_by_identity
+                )
+                fallback_count = len(fallback_pending)
+                fallback_observations = tuple(item[0] for item in fallback_pending)
+                before_snapshots = capture_content_contribution_snapshots_batch(
+                    session,
+                    tuple((observation, None) for observation in fallback_observations),
+                )
+                before_pairs = tuple(
+                    (before.content_id, before.version_no)
+                    for before in before_snapshots
+                    if before.content_id is not None and before.version_no is not None
+                )
+                owner_before_by_content = (
+                    {
+                        cast(UUID, row.id): cast(UUID | None, row.replay_visibility_owner_id)
+                        for row in session.execute(
+                            select(
+                                contents_table.c.id,
+                                contents_table.c.replay_visibility_owner_id,
+                            ).where(
+                                contents_table.c.id.in_(tuple(item[0] for item in before_pairs))
                             )
                         )
-                        if before.content_id is not None
-                        else None
-                    )
-                    vehicle_before = (
-                        vehicle_repository.snapshot_automatic_evidence(
-                            content_id=before.content_id,
-                            content_version=before.version_no,
+                    }
+                    if before_pairs
+                    else {}
+                )
+                vehicle_before_by_pair = vehicle_repository.snapshot_automatic_evidence_batch(
+                    pairs=before_pairs
+                )
+                brand_before_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
+                    pairs=before_pairs
+                )
+                fallback_items = content_repository.ingest_contents_with_before_snapshots_batch(
+                    tuple(zip(fallback_observations, before_snapshots, strict=True))
+                )
+                fallback_vehicle_entries = []
+                fallback_brand_entries = []
+                evidence_created_at = beijing_now()
+                for fallback_item, (_, resolution) in zip(
+                    fallback_items,
+                    fallback_pending,
+                    strict=True,
+                ):
+                    result = fallback_item.result
+                    fallback_vehicle_entries.append(
+                        (
+                            result.target_id,
+                            result.version_no,
+                            tuple(
+                                ContentVehicleEvidence(
+                                    id=uuid4(),
+                                    content_id=result.target_id,
+                                    content_version=result.version_no,
+                                    vehicle_model_id=evidence.entity_id,
+                                    source="alias_match",
+                                    matched_text=evidence.matched_text,
+                                    source_field=evidence.source_field,
+                                    catalog_version=resolution.catalog_version,
+                                    confidence=1.0,
+                                    is_manual_locked=False,
+                                    is_active=True,
+                                    created_at=evidence_created_at,
+                                )
+                                for evidence in resolution.vehicle_evidence
+                            ),
                         )
-                        if before.content_id is not None and before.version_no is not None
-                        else []
                     )
-                    brand_before = (
-                        brand_repository.snapshot_automatic_brand_evidence(
-                            content_id=before.content_id,
-                            content_version=before.version_no,
+                    fallback_brand_entries.append(
+                        (result.target_id, result.version_no, resolution.brand_evidence)
+                    )
+                selected_scope = run.filter_snapshot.catalog.filter_scope == "selected"
+                if selected_scope:
+                    vehicle_repository.append_automatic_alias_evidence_batch(
+                        tuple(
+                            item for _, _, evidence in fallback_vehicle_entries for item in evidence
                         )
-                        if before.content_id is not None and before.version_no is not None
-                        else []
                     )
-                    result = content_owner.ingest_content(observation)
-                    after = capture_content_contribution_snapshot(
-                        session,
-                        observation,
-                        content_id=result.target_id,
+                else:
+                    vehicle_repository.replace_automatic_alias_evidence_batch(
+                        entries=tuple(fallback_vehicle_entries)
                     )
+                brand_repository.replace_automatic_brand_evidence_batch(
+                    entries=tuple(fallback_brand_entries),
+                    catalog_snapshot=run.filter_snapshot.catalog,
+                    preserve_unconfirmed=selected_scope,
+                )
+                after_pairs = tuple(
+                    (item.result.target_id, item.result.version_no) for item in fallback_items
+                )
+                vehicle_after_by_pair = vehicle_repository.snapshot_automatic_evidence_batch(
+                    pairs=after_pairs
+                )
+                brand_after_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
+                    pairs=after_pairs
+                )
+                for fallback_item in fallback_items:
+                    observation = fallback_item.observation
+                    before = fallback_item.before
+                    result = fallback_item.result
                     if result.version_created and result.version_no == 1:
                         inserted += 1
                     else:
                         existing += 1
-                    self._write_evidence(
-                        vehicle_repository=vehicle_repository,
-                        brand_repository=brand_repository,
-                        content_id=result.target_id,
-                        content_version=result.version_no,
-                        resolution=resolution,
-                        run=run,
+                    if current.all_request_id is None:
+                        continue
+                    attempt_id = observation.source.provider_attempt_id
+                    raw_id = observation.source.raw_artifact_id
+                    if attempt_id is None or raw_id is None:
+                        raise ValueError("Replay 贡献账本要求 Attempt 与 Raw 来源")
+                    before_pair = (
+                        (before.content_id, before.version_no)
+                        if before.content_id is not None and before.version_no is not None
+                        else None
                     )
-                    if current.all_request_id is not None:
-                        attempt_id = observation.source.provider_attempt_id
-                        raw_id = observation.source.raw_artifact_id
-                        if attempt_id is None or raw_id is None:
-                            raise ValueError("Replay 贡献账本要求 Attempt 与 Raw 来源")
-                        session.execute(
-                            insert(canonical_replay_content_changes_table).values(
-                                id=uuid4(),
-                                all_request_id=current.all_request_id,
-                                run_id=current.id,
-                                content_id=result.target_id,
-                                provider_attempt_id=UUID(attempt_id),
-                                raw_artifact_id=raw_id,
-                                version_before=before.version_no,
-                                version_after=result.version_no,
-                                delta=build_content_contribution_delta(
-                                    observation,
-                                    before,
-                                    after,
-                                ),
-                                visibility_owner_before=owner_before,
-                                vehicle_evidence_before=vehicle_before,
-                                vehicle_evidence_after=(
-                                    vehicle_repository.snapshot_automatic_evidence(
-                                        content_id=result.target_id,
-                                        content_version=result.version_no,
-                                    )
-                                ),
-                                brand_evidence_before=brand_before,
-                                brand_evidence_after=(
-                                    brand_repository.snapshot_automatic_brand_evidence(
-                                        content_id=result.target_id,
-                                        content_version=result.version_no,
-                                    )
-                                ),
-                                created_at=beijing_now(),
-                            )
-                        )
+                    after_pair = (result.target_id, result.version_no)
+                    ledger_rows.append(
+                        {
+                            "id": uuid4(),
+                            "all_request_id": current.all_request_id,
+                            "run_id": current.id,
+                            "content_id": result.target_id,
+                            "provider_attempt_id": UUID(attempt_id),
+                            "raw_artifact_id": raw_id,
+                            "version_before": before.version_no,
+                            "version_after": result.version_no,
+                            "delta": build_content_contribution_delta(
+                                observation,
+                                before,
+                                fallback_item.contribution_after,
+                            ),
+                            "visibility_owner_before": (
+                                owner_before_by_content.get(before.content_id)
+                                if before.content_id is not None
+                                else None
+                            ),
+                            "vehicle_evidence_before": (
+                                vehicle_before_by_pair[before_pair]
+                                if before_pair is not None
+                                else []
+                            ),
+                            "vehicle_evidence_after": vehicle_after_by_pair[after_pair],
+                            "brand_evidence_before": (
+                                brand_before_by_pair[before_pair] if before_pair is not None else []
+                            ),
+                            "brand_evidence_after": brand_after_by_pair[after_pair],
+                            "created_at": beijing_now(),
+                        }
+                    )
+                    if len(ledger_rows) >= _LEDGER_INSERT_ROWS:
+                        self._flush_ledger_rows(session, ledger_rows)
+                fallback_ms = int((perf_counter() - fallback_started) * 1000)
+                ledger_checkpoint_started = perf_counter()
+                self._flush_ledger_rows(session, ledger_rows)
                 counters = CanonicalReplayCounters(
                     rows_seen=len(contents),
                     rows_matched=matched,
@@ -514,7 +865,7 @@ class PostgresCanonicalReplayJobExecutor:
                     rows_ingested=inserted,
                     existing_convergence=existing,
                 )
-                return repository.advance(
+                advanced = repository.advance(
                     run_id=run.id,
                     expected_artifact_ordinal=selected.ordinal,
                     expected_row_number=run.checkpoint_row_number,
@@ -523,8 +874,40 @@ class PostgresCanonicalReplayJobExecutor:
                     counters=counters,
                     fence=fence,
                 )
+                ledger_checkpoint_ms = int((perf_counter() - ledger_checkpoint_started) * 1000)
         finally:
             session.close()
+        if advanced is None:
+            raise RuntimeError("Canonical Replay 批次提交后缺少 checkpoint")
+        log_event(
+            self._runtime.logger,
+            logging.DEBUG,
+            "canonical_replay.batch_completed",
+            "Canonical Replay 批次已原子提交",
+            run_id=str(run.id),
+            artifact_ordinal=selected.ordinal,
+            row_start=run.checkpoint_row_number,
+            row_count=len(contents),
+            matched_count=matched,
+            fast_created_count=fast_created_count,
+            fallback_count=fallback_count,
+            resolution_ms=resolution_ms,
+            content_batch_ms=content_batch_ms,
+            evidence_batch_ms=evidence_batch_ms,
+            fallback_ms=fallback_ms,
+            ledger_checkpoint_ms=ledger_checkpoint_ms,
+            transaction_ms=int((perf_counter() - transaction_started) * 1000),
+            duration_ms=int((perf_counter() - batch_started) * 1000),
+        )
+        return advanced
+
+    @staticmethod
+    def _flush_ledger_rows(session: Session, rows: list[dict[str, object]]) -> None:
+        """账本 SQL 合批但保持有界内存，所有片段仍属于同一 checkpoint 事务。"""
+
+        if rows:
+            session.execute(insert(canonical_replay_content_changes_table), rows)
+            rows.clear()
 
     def _load_import_lineage_context(
         self,

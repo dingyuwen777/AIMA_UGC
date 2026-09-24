@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from itertools import batched
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, insert, or_, select, tuple_, update
+from sqlalchemy import delete, func, insert, or_, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -36,8 +37,10 @@ from aima_ugc.modules.vehicles.tables import (
 )
 from aima_ugc.platform.time import beijing_now
 
+_MULTI_VALUES_INSERT_ROWS = 500
 
-def _json_brand_evidence_row(row: RowMapping) -> dict[str, object]:
+
+def _json_brand_evidence_row(row: RowMapping | dict[str, object]) -> dict[str, object]:
     """把品牌证据转为 JSONB 稳定结构。"""
 
     return {
@@ -139,6 +142,26 @@ class PostgresBrandVehicleRepository:
         lock_key = f"brand-review:{content_id}:{content_version}"
         self._session.execute(
             select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+        )
+
+    def _lock_brand_review_writes(self, pairs: tuple[tuple[UUID, int], ...]) -> None:
+        """按稳定顺序用一次数据库往返锁住多个 Content Version。"""
+
+        lock_keys = sorted(
+            {
+                f"brand-review:{content_id}:{content_version}"
+                for content_id, content_version in pairs
+            }
+        )
+        if not lock_keys:
+            return
+        self._session.execute(
+            text(
+                "SELECT pg_advisory_xact_lock(hashtextextended(lock_key, 0)) "
+                "FROM unnest(CAST(:lock_keys AS text[])) AS lock_values(lock_key) "
+                "ORDER BY lock_key"
+            ),
+            {"lock_keys": lock_keys},
         )
 
     def create_brand(
@@ -721,6 +744,39 @@ class PostgresBrandVehicleRepository:
         ).mappings()
         return [_json_brand_evidence_row(row) for row in rows]
 
+    def snapshot_automatic_brand_evidence_batch(
+        self,
+        *,
+        pairs: tuple[tuple[UUID, int], ...],
+    ) -> dict[tuple[UUID, int], list[dict[str, object]]]:
+        """集合冻结多个 Content Version 的非人工品牌证据。"""
+
+        unique_pairs = tuple(sorted(set(pairs), key=str))
+        snapshots: dict[tuple[UUID, int], list[dict[str, object]]] = {
+            pair: [] for pair in unique_pairs
+        }
+        if not unique_pairs:
+            return snapshots
+        rows = self._session.execute(
+            select(content_brand_evidence_table)
+            .where(
+                tuple_(
+                    content_brand_evidence_table.c.content_id,
+                    content_brand_evidence_table.c.content_version,
+                ).in_(unique_pairs),
+                content_brand_evidence_table.c.is_manual_locked.is_(False),
+            )
+            .order_by(
+                content_brand_evidence_table.c.content_id,
+                content_brand_evidence_table.c.content_version,
+                content_brand_evidence_table.c.id,
+            )
+        ).mappings()
+        for row in rows:
+            pair = (cast(UUID, row["content_id"]), cast(int, row["content_version"]))
+            snapshots[pair].append(_json_brand_evidence_row(row))
+        return snapshots
+
     def restore_automatic_brand_evidence(
         self,
         *,
@@ -826,17 +882,14 @@ class PostgresBrandVehicleRepository:
         *,
         entries: tuple[tuple[UUID, int, tuple[ResolverEvidence, ...]], ...],
         catalog_snapshot: BrandVehicleCatalogSnapshot,
+        preserve_unconfirmed: bool = False,
     ) -> tuple[int, int]:
-        """按冻结目录批量替换自动 Brand Evidence，并保持人工锁优先。"""
+        """按冻结目录批量收敛自动 Brand Evidence，并保持人工锁优先。"""
 
         if not entries:
             return 0, 0
         pairs = tuple(sorted({(item[0], item[1]) for item in entries}, key=str))
-        for content_id, content_version in pairs:
-            self._lock_brand_review_write(
-                content_id=content_id,
-                content_version=content_version,
-            )
+        self._lock_brand_review_writes(pairs)
         locked_pairs = set(
             self._session.execute(
                 select(
@@ -853,18 +906,38 @@ class PostgresBrandVehicleRepository:
         )
         unlocked_pairs = tuple(item for item in pairs if item not in locked_pairs)
         if unlocked_pairs:
-            self._session.execute(
-                update(content_brand_evidence_table)
-                .where(
-                    tuple_(
-                        content_brand_evidence_table.c.content_id,
-                        content_brand_evidence_table.c.content_version,
-                    ).in_(unlocked_pairs),
-                    content_brand_evidence_table.c.is_active.is_(True),
-                    content_brand_evidence_table.c.is_manual_locked.is_(False),
-                )
-                .values(is_active=False)
+            deactivation_statement = update(content_brand_evidence_table).where(
+                content_brand_evidence_table.c.is_active.is_(True),
+                content_brand_evidence_table.c.is_manual_locked.is_(False),
             )
+            if preserve_unconfirmed:
+                confirmed = tuple(
+                    {
+                        (content_id, content_version, item.entity_id)
+                        for content_id, content_version, evidence in entries
+                        if (content_id, content_version) not in locked_pairs
+                        for item in evidence
+                    }
+                )
+                if confirmed:
+                    self._session.execute(
+                        deactivation_statement.where(
+                            tuple_(
+                                content_brand_evidence_table.c.content_id,
+                                content_brand_evidence_table.c.content_version,
+                                content_brand_evidence_table.c.brand_id,
+                            ).in_(confirmed)
+                        ).values(is_active=False)
+                    )
+            else:
+                self._session.execute(
+                    deactivation_statement.where(
+                        tuple_(
+                            content_brand_evidence_table.c.content_id,
+                            content_brand_evidence_table.c.content_version,
+                        ).in_(unlocked_pairs)
+                    ).values(is_active=False)
+                )
 
         now = beijing_now()
         direct_values: list[dict[str, object]] = []
@@ -955,6 +1028,75 @@ class PostgresBrandVehicleRepository:
                 )
             )
         return len(direct_values) + len(vehicle_values), len(locked_pairs)
+
+    def append_initial_automatic_brand_evidence_batch(
+        self,
+        *,
+        entries: tuple[tuple[UUID, int, tuple[ResolverEvidence, ...]], ...],
+        catalog_snapshot: BrandVehicleCatalogSnapshot,
+        return_snapshots: bool = True,
+    ) -> dict[tuple[UUID, int], list[dict[str, object]]]:
+        """集合追加本事务新建 Content 的首版本品牌证据。"""
+
+        snapshots: dict[tuple[UUID, int], list[dict[str, object]]] = {
+            (content_id, version): [] for content_id, version, _ in entries
+        }
+        now = beijing_now()
+        values: list[dict[str, object]] = []
+        seen: set[tuple[object, ...]] = set()
+        for content_id, content_version, evidence in entries:
+            if content_version != 1:
+                raise ValueError("初始品牌证据只接受 Content 首版本")
+            for item in evidence:
+                if item.source not in ("alias_match", "vehicle_match"):
+                    raise ValueError("自动 Brand Evidence 只接受 alias_match/vehicle_match")
+                self._validate_brand_evidence_against_snapshot(item, catalog_snapshot)
+                identity = (
+                    content_id,
+                    content_version,
+                    item.entity_id,
+                    item.source,
+                    item.derived_vehicle_model_id,
+                    catalog_snapshot.catalog_version,
+                )
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                values.append(
+                    {
+                        "id": uuid4(),
+                        "content_id": content_id,
+                        "content_version": content_version,
+                        "brand_id": item.entity_id,
+                        "source": item.source,
+                        "matched_text": item.matched_text,
+                        "source_field": item.source_field,
+                        "derived_vehicle_model_id": item.derived_vehicle_model_id,
+                        "catalog_version": catalog_snapshot.catalog_version,
+                        "confidence": 1.0,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": now,
+                    }
+                )
+        if not values:
+            return snapshots
+        if not return_snapshots:
+            for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                self._session.execute(
+                    insert(content_brand_evidence_table),
+                    list(chunk),
+                )
+            return snapshots
+        for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            chunk_values = list(chunk)
+            self._session.execute(insert(content_brand_evidence_table), chunk_values)
+            for row in chunk_values:
+                pair = (cast(UUID, row["content_id"]), cast(int, row["content_version"]))
+                snapshots[pair].append(_json_brand_evidence_row(row))
+        for snapshot in snapshots.values():
+            snapshot.sort(key=lambda item: str(item["id"]))
+        return snapshots
 
     def replace_manual_brand_evidence(
         self,

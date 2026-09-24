@@ -18,10 +18,29 @@ from urllib.request import Request, urlopen
 API_ROOT = "https://api.github.com"
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 TRANSIENT_HTTP_STATUS = {429, 500, 502, 503, 504}
+RATE_LIMIT_DETAIL_MARKERS = ("rate limit exceeded", "secondary rate limit")
 
 
 class TransientGitHubApiError(RuntimeError):
     """表示可以等待下一次 main push 自动重试的 GitHub 临时错误。"""
+
+
+def _is_transient_http_error(status: int, detail: str, headers: Any) -> bool:
+    """只把明确的 GitHub 临时 HTTP 错误判为可重试，普通 403 权限错误保持硬失败。"""
+    if status in TRANSIENT_HTTP_STATUS:
+        return True
+    if status != 403:
+        return False
+
+    lowered = detail.lower()
+    if any(marker in lowered for marker in RATE_LIMIT_DETAIL_MARKERS):
+        return True
+
+    if headers is None:
+        return False
+    retry_after = headers.get("Retry-After")
+    remaining = headers.get("X-RateLimit-Remaining")
+    return bool(retry_after) or str(remaining or "").strip() == "0"
 
 
 def _normalise_workflow_path(value: Any) -> str | None:
@@ -107,7 +126,7 @@ def _api_request(
         if error.code == 404 and (method == "DELETE" or allow_not_found):
             return None
         detail = error.read().decode("utf-8", errors="replace")
-        if error.code in TRANSIENT_HTTP_STATUS:
+        if _is_transient_http_error(error.code, detail, error.headers):
             raise TransientGitHubApiError(
                 f"GitHub API {method} {path} 临时失败：HTTP {error.code} {detail}"
             ) from error

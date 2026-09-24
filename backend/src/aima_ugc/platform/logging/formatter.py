@@ -118,7 +118,7 @@ class AimaLogFormatter(logging.Formatter):
     """输出北京时间毫秒时间、调用文件/行号和安全的一行结构化日志。"""
 
     def __init__(self, *, service: str) -> None:
-        # 保留 service 参数以兼容既有配置入口；进程身份由 api.log/worker.log/scheduler.log 表达，
+        # 保留 service 参数以兼容既有配置入口；进程身份由各服务日志文件名表达，
         # 不再把同一事实重复写入每一行。
         super().__init__()
         self._service = service

@@ -488,7 +488,7 @@ Dry Run 会在输入 Excel 同目录生成带时间戳的运行目录，包含�
 
 ```text
 analysis_content_runs / planner Job
-→ worker.log
+→ worker-*.log
 → analysis_content_run_targets 连续 ordinal
 → analysis_content_requests / Shard jobs
 → Provider snapshot max_concurrency / max_rps

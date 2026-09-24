@@ -27,6 +27,7 @@ from .offline_content import (
     ContentDeduplicationSummary,
     ContentFilterSummary,
     deduplicate_content_jsonl,
+    deduplicate_unified_content_records,
     filter_canonical_content_jsonl,
 )
 from .offline_labeling import (
@@ -87,6 +88,7 @@ __all__ = [
     "RelevanceKeyword",
     "RelevanceService",
     "deduplicate_content_jsonl",
+    "deduplicate_unified_content_records",
     "filter_canonical_content_jsonl",
     "label_unified_content_jsonl",
     "normalize_keyword_match_text",

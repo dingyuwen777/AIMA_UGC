@@ -108,10 +108,26 @@ class BrandVehicleResolution:
     conflicts: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _ResolverCatalogIndex:
+    """冻结目录的批次级索引，避免每条内容重复重建相同映射。"""
+
+    active_brands: dict[UUID, BrandRecord]
+    active_vehicles: dict[UUID, VehicleRecord]
+    brand_aliases_by_text: dict[str, tuple[BrandAliasRecord, ...]]
+    vehicle_aliases_by_text: dict[str, tuple[VehicleAliasRecord, ...]]
+
+
 class BrandVehicleResolver:
     """只依赖冻结目录和输入文本的纯确定性 Brand/Vehicle Resolver。"""
 
     _FIELDS: tuple[ResolverField, ...] = ("title", "raw_text", "transcript_text")
+
+    def __init__(self, snapshot: BrandVehicleCatalogSnapshot | None = None) -> None:
+        """可选预编译冻结目录；单条兼容调用仍可在 resolve 时传入。"""
+
+        self._snapshot = snapshot
+        self._compiled = _compile_catalog(snapshot) if snapshot is not None else None
 
     def resolve(
         self,
@@ -130,8 +146,13 @@ class BrandVehicleResolver:
             "raw_text": raw_text,
             "transcript_text": transcript_text,
         }
-        active_brands = {item.id: item for item in snapshot.brands if item.status == "active"}
-        active_vehicles = {item.id: item for item in snapshot.vehicles if item.status == "active"}
+        index = (
+            self._compiled
+            if self._snapshot is snapshot and self._compiled is not None
+            else _compile_catalog(snapshot)
+        )
+        active_brands = index.active_brands
+        active_vehicles = index.active_vehicles
         conflicts: list[str] = []
 
         if manual_vehicle_ids is None:
@@ -139,6 +160,7 @@ class BrandVehicleResolver:
                 snapshot,
                 texts=texts,
                 active_vehicles=active_vehicles,
+                aliases_by_text=index.vehicle_aliases_by_text,
                 conflicts=conflicts,
             )
         else:
@@ -166,6 +188,7 @@ class BrandVehicleResolver:
                 texts=texts,
                 active_brands=active_brands,
                 active_vehicles=active_vehicles,
+                aliases_by_text=index.brand_aliases_by_text,
                 conflicts=conflicts,
             )
         else:
@@ -203,12 +226,9 @@ class BrandVehicleResolver:
         *,
         texts: dict[str, str | None],
         active_vehicles: dict[UUID, VehicleRecord],
+        aliases_by_text: dict[str, tuple[VehicleAliasRecord, ...]],
         conflicts: list[str],
     ) -> tuple[tuple[UUID, ...], tuple[ResolverEvidence, ...]]:
-        aliases_by_text: dict[str, list[VehicleAliasRecord]] = {}
-        for alias in snapshot.vehicle_aliases:
-            if alias.vehicle_model_id in active_vehicles:
-                aliases_by_text.setdefault(alias.normalized_text, []).append(alias)
         for field in self._FIELDS:
             normalized = _normalize_optional(texts[field])
             if normalized is None:
@@ -250,6 +270,7 @@ class BrandVehicleResolver:
         texts: dict[str, str | None],
         active_brands: dict[UUID, BrandRecord],
         active_vehicles: dict[UUID, VehicleRecord],
+        aliases_by_text: dict[str, tuple[BrandAliasRecord, ...]],
         conflicts: list[str],
     ) -> tuple[tuple[UUID, ...], tuple[ResolverEvidence, ...]]:
         resolved: set[UUID] = set()
@@ -274,10 +295,6 @@ class BrandVehicleResolver:
                 )
             )
 
-        aliases_by_text: dict[str, list[BrandAliasRecord]] = {}
-        for alias in snapshot.brand_aliases:
-            if alias.brand_id in active_brands:
-                aliases_by_text.setdefault(alias.normalized_text, []).append(alias)
         for field in self._FIELDS:
             normalized = _normalize_optional(texts[field])
             if normalized is None:
@@ -328,6 +345,27 @@ def _normalize_optional(value: str | None) -> str | None:
     if value is None or not value.strip():
         return None
     return normalize_vehicle_text(value)
+
+
+def _compile_catalog(snapshot: BrandVehicleCatalogSnapshot) -> _ResolverCatalogIndex:
+    """把稳定目录投影编译为只读批次索引；解析过程不再重复分组别名。"""
+
+    active_brands = {item.id: item for item in snapshot.brands if item.status == "active"}
+    active_vehicles = {item.id: item for item in snapshot.vehicles if item.status == "active"}
+    brand_aliases: dict[str, list[BrandAliasRecord]] = {}
+    for brand_alias in snapshot.brand_aliases:
+        if brand_alias.brand_id in active_brands:
+            brand_aliases.setdefault(brand_alias.normalized_text, []).append(brand_alias)
+    vehicle_aliases: dict[str, list[VehicleAliasRecord]] = {}
+    for vehicle_alias in snapshot.vehicle_aliases:
+        if vehicle_alias.vehicle_model_id in active_vehicles:
+            vehicle_aliases.setdefault(vehicle_alias.normalized_text, []).append(vehicle_alias)
+    return _ResolverCatalogIndex(
+        active_brands=active_brands,
+        active_vehicles=active_vehicles,
+        brand_aliases_by_text={key: tuple(value) for key, value in brand_aliases.items()},
+        vehicle_aliases_by_text={key: tuple(value) for key, value in vehicle_aliases.items()},
+    )
 
 
 __all__ = [

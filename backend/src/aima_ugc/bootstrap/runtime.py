@@ -7,7 +7,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -100,10 +100,15 @@ def create_platform_runtime(
     service: str,
     *,
     settings: PlatformSettings | None = None,
+    log_instance: UUID | None = None,
 ) -> PlatformRuntime:
     """从同一配置装配 DB、Local Store 与日志。"""
     resolved_settings = load_settings() if settings is None else settings
-    logger = configure_service_logging(service=service, settings=resolved_settings)
+    logger = configure_service_logging(
+        service=service,
+        settings=resolved_settings,
+        log_instance=log_instance,
+    )
     runtime = PlatformRuntime(
         service=service,
         settings=resolved_settings,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -12,6 +12,7 @@ from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 
 _BUSINESS_TZ = ZoneInfo("Asia/Shanghai")
 _ResultT_co = TypeVar("_ResultT_co", covariant=True)
+_SnapshotT_contra = TypeVar("_SnapshotT_contra", contravariant=True)
 _INMEMORY_FIELD_NAMES = frozenset(
     {
         "content_type",
@@ -30,6 +31,30 @@ class ContentIngestionRepository(Protocol[_ResultT_co]):
     def ingest_comment(self, observation: CanonicalCommentV1) -> _ResultT_co: ...
 
 
+class ContentIngestionSnapshotRepository(Protocol[_ResultT_co, _SnapshotT_contra]):
+    """允许同一事务的调用方把已冻结的 before 投影交给 Content Owner 复用。"""
+
+    def ingest_content_with_before_snapshot(
+        self, observation: CanonicalContentV1, before_snapshot: _SnapshotT_contra
+    ) -> _ResultT_co: ...
+
+
+class ContentIngestionBatchRepository(Protocol[_ResultT_co]):
+    """允许正式 Owner 集合创建可证明为新内容的观察。"""
+
+    def ingest_new_contents_batch(
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> tuple[_ResultT_co, ...]: ...
+
+
+class ContentIngestionOrderedBatchRepository(Protocol[_ResultT_co]):
+    """允许正式 Owner 批量处理观察，并按输入顺序返回逐条结果。"""
+
+    def ingest_contents_batch(
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> tuple[_ResultT_co, ...]: ...
+
+
 class ContentIngestionService[ResultT]:
     """Canonical 摄取唯一生产入口；数据库细节由 Content Owner Repository 实现。"""
 
@@ -38,6 +63,30 @@ class ContentIngestionService[ResultT]:
 
     def ingest_content(self, observation: CanonicalContentV1) -> ResultT:
         return self._repository.ingest_content(observation)
+
+    def ingest_content_with_before_snapshot[SnapshotT](
+        self, observation: CanonicalContentV1, before_snapshot: SnapshotT
+    ) -> ResultT:
+        """仅当 Owner 支持快照复用时使用；业务写入仍经过同一 Service。"""
+
+        repository = cast(ContentIngestionSnapshotRepository[ResultT, SnapshotT], self._repository)
+        return repository.ingest_content_with_before_snapshot(observation, before_snapshot)
+
+    def ingest_new_contents_batch[BatchResultT](
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> tuple[BatchResultT, ...]:
+        """把集合写入留在同一 Content Owner，不向编排层暴露表细节。"""
+
+        repository = cast(ContentIngestionBatchRepository[BatchResultT], self._repository)
+        return repository.ingest_new_contents_batch(observations)
+
+    def ingest_contents_batch(
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> tuple[ResultT, ...]:
+        """集合创建安全新内容，并让冲突或复杂行在同一 Owner 内兼容回退。"""
+
+        repository = cast(ContentIngestionOrderedBatchRepository[ResultT], self._repository)
+        return repository.ingest_contents_batch(observations)
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> ResultT:
         return self._repository.ingest_comment(observation)

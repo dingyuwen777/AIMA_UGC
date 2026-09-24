@@ -54,11 +54,12 @@ class PostgresCanonicalReplayReversalJobExecutor:
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult:
         try:
-            total = self._total_contents(payload.request_id)
+            total, remaining = self._content_counts(payload.request_id)
+            completed = total - remaining
             while True:
                 processed = self._reverse_batch(payload.request_id, fence=fence)
-                remaining = self._remaining_contents(payload.request_id)
-                completed = total - remaining
+                completed += processed
+                remaining = max(total - completed, 0)
                 context.heartbeat(
                     progress=(
                         100 if remaining == 0 else min(99, int(completed * 100 / max(total, 1)))
@@ -84,37 +85,22 @@ class PostgresCanonicalReplayReversalJobExecutor:
         except SQLAlchemyError:
             return JobHandlerResult.retry("canonical_replay_reversal_transient_error")
 
-    def _total_contents(self, request_id: UUID) -> int:
-        session = self._runtime.database.new_session()
-        try:
-            return int(
-                session.scalar(
-                    select(
-                        func.count(
-                            func.distinct(canonical_replay_content_changes_table.c.content_id)
-                        )
-                    ).where(canonical_replay_content_changes_table.c.all_request_id == request_id)
-                )
-                or 0
-            )
-        finally:
-            session.close()
+    def _content_counts(self, request_id: UUID) -> tuple[int, int]:
+        """一次扫描取得总量与未结清量，支持 Reversal Attempt 断点恢复。"""
 
-    def _remaining_contents(self, request_id: UUID) -> int:
         session = self._runtime.database.new_session()
         try:
-            return int(
-                session.scalar(
-                    select(
-                        func.count(
-                            func.distinct(canonical_replay_content_changes_table.c.content_id)
-                        )
-                    ).where(
-                        canonical_replay_content_changes_table.c.all_request_id == request_id,
-                        canonical_replay_content_changes_table.c.reverted_at.is_(None),
-                    )
-                )
-                or 0
+            row = session.execute(
+                select(
+                    func.count(func.distinct(canonical_replay_content_changes_table.c.content_id)),
+                    func.count(
+                        func.distinct(canonical_replay_content_changes_table.c.content_id)
+                    ).filter(canonical_replay_content_changes_table.c.reverted_at.is_(None)),
+                ).where(canonical_replay_content_changes_table.c.all_request_id == request_id)
+            ).one()
+            return (
+                int(row[0] or 0),
+                int(row[1] or 0),
             )
         finally:
             session.close()

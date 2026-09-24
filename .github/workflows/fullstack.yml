@@ -205,8 +205,8 @@ jobs:
           cat "${RUNNER_TEMP}/stage8f-worker.stdout.log" 2>/dev/null || true
           echo '--- api.log ---'
           cat "${AIMA_LOG_DIR}/api.log" 2>/dev/null || true
-          echo '--- worker.log ---'
-          cat "${AIMA_LOG_DIR}/worker.log" 2>/dev/null || true
+          echo '--- worker-*.log ---'
+          find "${AIMA_LOG_DIR}" -maxdepth 1 -type f -name 'worker-*.log' -exec cat {} + 2>/dev/null || true
           echo '--- fake LLM stdout ---'
           cat "${RUNNER_TEMP}/stage12-llm.stdout.log" 2>/dev/null || true
 
