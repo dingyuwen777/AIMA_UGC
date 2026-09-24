@@ -106,6 +106,10 @@ data_changes:
 4. 前端只通过 generated client 的 Feature API 调用 HTTP，使用 3 秒轮询并在组件卸载时停止轮询；POST 成功后先保存 job_id，首个 GET 失败仍继续轮询。
 5. 报告外部副作用使用跨 Attempt durable checkpoint；镜像同步在 PostgreSQL 中 claim 后才访问飞书。
 
+## 备选方案与取舍
+
+不采用同步 HTTP 长任务、独立报告表或第二套队列：上传和报告生成需要受控 Artifact、持久 Job 与现有 Worker Registry 承载。也不在每次重试时重新创建飞书资源；使用稳定操作键、跨 Attempt checkpoint 和镜像 claim/lease/fencing，使已确认的外部资源可恢复且并发执行者不能越权写回。
+
 # 需求追溯
 
 | ID | Requirement | Source | Status | Evidence |
