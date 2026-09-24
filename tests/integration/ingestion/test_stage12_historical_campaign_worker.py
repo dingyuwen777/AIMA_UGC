@@ -62,6 +62,7 @@ from aima_ugc.platform.storage.canonical import (
     CanonicalArtifactParent,
     CanonicalArtifactReader,
 )
+from aima_ugc.platform.storage.retention import IMPORT_SOURCE_RETENTION
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
@@ -1446,8 +1447,29 @@ def test_historical_failed_retry_preserves_cross_chunk_duplicate_identity(
             original_read_chunk,
         )
 
+        retention_session = runtime.database.new_session()
+        try:
+            with retention_session.begin():
+                retention_repository = PostgresArtifactMetadataRepository(retention_session)
+                retention_repository.backfill_retention_deadlines()
+                source_expiry_before_retry = retention_session.scalar(
+                    select(artifacts_table.c.expires_at).where(
+                        artifacts_table.c.kind == "historical-import.source"
+                    )
+                )
+            assert source_expiry_before_retry is not None
+        finally:
+            retention_session.close()
+
         retried = client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/retry-failed")
         assert retried.status_code == 200
+        with runtime.database.engine.begin() as connection:
+            source_expiry_after_retry = connection.scalar(
+                select(artifacts_table.c.expires_at).where(
+                    artifacts_table.c.kind == "historical-import.source"
+                )
+            )
+        assert source_expiry_after_retry is None
         with runtime.database.engine.begin() as connection:
             batches = tuple(
                 connection.execute(
@@ -1479,6 +1501,29 @@ def test_historical_failed_retry_preserves_cross_chunk_duplicate_identity(
                 ).scalars()
             )
         assert retry_outcomes == ("duplicate",)
+
+        retention_session = runtime.database.new_session()
+        try:
+            with retention_session.begin():
+                retention_repository = PostgresArtifactMetadataRepository(retention_session)
+                retention_repository.backfill_retention_deadlines()
+                source_expiry_after_completion = retention_session.scalar(
+                    select(artifacts_table.c.expires_at).where(
+                        artifacts_table.c.kind == "historical-import.source"
+                    )
+                )
+                campaign_finished_at = retention_session.scalar(
+                    select(historical_import_campaigns_table.c.finished_at).where(
+                        historical_import_campaigns_table.c.id == UUID(campaign_id)
+                    )
+                )
+            assert campaign_finished_at is not None
+            assert source_expiry_after_completion == (
+                campaign_finished_at + IMPORT_SOURCE_RETENTION
+            )
+            assert source_expiry_after_completion > source_expiry_before_retry
+        finally:
+            retention_session.close()
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
