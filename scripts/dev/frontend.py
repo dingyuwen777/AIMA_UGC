@@ -91,13 +91,16 @@ def _required_command(name: str) -> str:
 
 
 def _npm_command(npm: str, *arguments: str) -> list[str]:
-    """Windows 的 npm 是 `.cmd`；显式经 cmd.exe 执行，Linux/macOS 直接执行。"""
+    """Windows 下必须把整个 npm 命令作为一个字符串传给 cmd.exe；否则 /c 会把空格后的参数拆坏。"""
 
     if os.name == "nt" and npm.lower().endswith((".cmd", ".bat")):
         command_shell = os.environ.get("COMSPEC") or shutil.which("cmd.exe")
         if command_shell is None:
             raise LocalDevError("Windows 找不到 cmd.exe，无法执行 npm.cmd。")
-        return [command_shell, "/d", "/s", "/c", npm, *arguments]
+        command = f'"{npm}"'
+        if arguments:
+            command = f'{command} {subprocess.list2cmdline(list(arguments))}'
+        return [command_shell, "/d", "/s", "/c", command]
     return [npm, *arguments]
 
 

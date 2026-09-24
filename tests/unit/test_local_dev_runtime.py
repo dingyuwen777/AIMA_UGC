@@ -25,6 +25,16 @@ def _load_script_module(name: str, relative_path: str) -> ModuleType:
 local_runtime = _load_script_module("aima_local_runtime_test", "scripts/dev/local_runtime.py")
 sys.modules["local_runtime"] = local_runtime
 backend = _load_script_module("aima_backend_test", "scripts/dev/backend.py")
+frontend = _load_script_module("aima_frontend_test", "scripts/dev/frontend.py")
+
+
+def test_local_dev_frontend_windows_npm_cmd_is_quoted() -> None:
+    """Windows 的 npm.cmd 路径中有空格时，必须作为一个 cmd 命令字符串传给 /c。"""
+
+    command = frontend._npm_command(r"C:\Program Files\nodejs\npm.CMD", "--version")
+
+    assert command[:4] == ["C:\\WINDOWS\\system32\\cmd.exe", "/d", "/s", "/c"]
+    assert command[4] == '"C:\\Program Files\\nodejs\\npm.CMD" --version'
 
 
 def test_local_dev_env_template_has_no_unknown_keys() -> None:
