@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from threading import Barrier
+from uuid import UUID, uuid4
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.content import PostgresContentRepository
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
+)
+from aima_ugc.adapters.persistence.postgres.content_contributions import (
+    capture_content_contribution_snapshots_batch,
 )
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
@@ -37,6 +42,11 @@ from aima_ugc.modules.content.extended_tables import (
     content_mentions_table,
     content_topics_table,
 )
+from aima_ugc.modules.content.read_model_tables import (
+    voice_plaza_content_projection_table,
+    voice_plaza_filter_catalog_entries_table,
+    voice_plaza_filter_catalog_table,
+)
 from aima_ugc.modules.content.tables import (
     accounts_table,
     comments_table,
@@ -48,7 +58,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
-from sqlalchemy import insert, select
+from sqlalchemy import delete, event, func, insert, select, text
 
 
 @pytest.fixture
@@ -384,6 +394,336 @@ def test_older_sparse_account_can_fill_field_never_seen_by_newer_observation(
     assert account["display_name"] == "NEW NAME"
     assert account["bio"] == "OLDER BIO"
     assert account["last_seen_at"] == newer_at
+
+
+def test_new_content_batch_converges_stable_authors_with_freshness(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """稳定作者不能迫使 Content 批次退化成逐行写入，字段新鲜度仍与单行路径一致。"""
+
+    older_at = datetime(2026, 8, 17, 9, 0, tzinfo=UTC)
+    newer_at = datetime(2026, 8, 17, 11, 0, tzinfo=UTC)
+    newer = CanonicalContentV1(
+        platform="xiaohongshu",
+        external_content_id="batch-stable-author-newer",
+        content_type="note",
+        author=CanonicalAuthorV1(
+            external_account_id="batch-stable-author",
+            alternate_ids={"red_id": "batch-stable-red"},
+            display_name="较新名称",
+        ),
+        observed_at=newer_at,
+        source=_source(database_runtime, observed_at=newer_at, suffix="batch-author-newer"),
+        observed_fields=[
+            "content_type",
+            "author.external_account_id",
+            "author.alternate_ids",
+            "author.display_name",
+        ],
+    )
+    older = CanonicalContentV1(
+        platform="xiaohongshu",
+        external_content_id="batch-stable-author-older",
+        content_type="note",
+        author=CanonicalAuthorV1(
+            external_account_id="batch-stable-author",
+            alternate_ids={"red_id": "batch-stable-red"},
+            display_name="较旧名称",
+            bio="较旧观察补充的简介",
+        ),
+        observed_at=older_at,
+        source=_source(database_runtime, observed_at=older_at, suffix="batch-author-older"),
+        observed_fields=[
+            "content_type",
+            "author.external_account_id",
+            "author.alternate_ids",
+            "author.display_name",
+            "author.bio",
+        ],
+    )
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            results = PostgresContentRepository(session).ingest_new_contents_batch((newer, older))
+        assert len(results) == 2
+        account = session.execute(select(accounts_table)).mappings().one()
+        external_id = session.execute(select(account_external_ids_table)).mappings().one()
+        author_ids = set(session.scalars(select(contents_table.c.author_account_id)))
+    finally:
+        session.close()
+
+    assert author_ids == {account["id"]}
+    assert account["display_name"] == "较新名称"
+    assert account["bio"] == "较旧观察补充的简介"
+    assert account["first_seen_at"] == older_at
+    assert account["last_seen_at"] == newer_at
+    assert external_id["account_id"] == account["id"]
+    assert external_id["id_type"] == "red_id"
+    assert external_id["external_id"] == "batch-stable-red"
+
+
+def test_new_content_batch_rolls_back_conflicting_alternate_author_ids(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """同一稳定账号在一个批次给出矛盾备用 ID 时必须失败关闭且不留半成品。"""
+
+    observed_at = datetime(2026, 9, 24, 8, 0, tzinfo=UTC)
+    observations = tuple(
+        CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id=f"batch-conflicting-author-{index}",
+            content_type="note",
+            author=CanonicalAuthorV1(
+                external_account_id="batch-conflicting-primary",
+                alternate_ids={"red_id": f"batch-conflicting-red-{index}"},
+            ),
+            observed_at=observed_at + timedelta(seconds=index),
+            source=_source(
+                database_runtime,
+                observed_at=observed_at + timedelta(seconds=index),
+                suffix=f"batch-conflicting-author-{index}",
+            ),
+            observed_fields=[
+                "content_type",
+                "author.external_account_id",
+                "author.alternate_ids",
+            ],
+        )
+        for index in range(2)
+    )
+
+    session = database_runtime.new_session()
+    try:
+        with pytest.raises(ValueError, match="账号稳定外部 ID 冲突"), session.begin():
+            PostgresContentRepository(session).ingest_new_contents_batch(observations)
+        assert session.scalar(select(func.count()).select_from(accounts_table)) == 0
+        assert session.scalar(select(func.count()).select_from(account_external_ids_table)) == 0
+        assert session.scalar(select(func.count()).select_from(contents_table)) == 0
+    finally:
+        session.close()
+
+
+def test_complete_batch_with_stable_author_is_immediately_visible_in_voice_plaza(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """稳定作者保持集合写入，且事务提交后声音广场投影与筛选计数立即可读。"""
+
+    observed_at = datetime(2026, 9, 24, 8, 30, tzinfo=UTC)
+    observations = tuple(
+        CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id=f"batch-visible-content-{index}",
+            content_type="note",
+            title=f"批量可见内容 {index}",
+            author=CanonicalAuthorV1(
+                external_account_id="batch-visible-author",
+                display_name="声音广场批量作者",
+            ),
+            observed_at=observed_at + timedelta(seconds=index),
+            source=_source(
+                database_runtime,
+                observed_at=observed_at + timedelta(seconds=index),
+                suffix=f"batch-visible-{index}",
+            ),
+            observed_fields=[
+                "content_type",
+                "title",
+                "author.external_account_id",
+                "author.display_name",
+            ],
+        )
+        for index in range(2)
+    )
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            session.execute(delete(voice_plaza_filter_catalog_table))
+            before = capture_content_contribution_snapshots_batch(
+                session,
+                tuple((observation, None) for observation in observations),
+            )
+            items = PostgresCompleteContentRepository(
+                session
+            ).ingest_contents_with_before_snapshots_batch(
+                tuple(zip(observations, before, strict=True))
+            )
+        projection_rows = tuple(
+            session.execute(
+                select(
+                    voice_plaza_content_projection_table.c.content_id,
+                    voice_plaza_content_projection_table.c.is_visible,
+                ).where(
+                    voice_plaza_content_projection_table.c.content_id.in_(
+                        tuple(item.result.target_id for item in items)
+                    )
+                )
+            )
+        )
+        catalog_count = session.scalar(
+            select(voice_plaza_filter_catalog_table.c.content_count).where(
+                voice_plaza_filter_catalog_table.c.dimension == "content_type",
+                voice_plaza_filter_catalog_table.c.value == "note",
+                voice_plaza_filter_catalog_table.c.secondary_value == "",
+            )
+        )
+    finally:
+        session.close()
+
+    assert len(items) == 2
+    assert all(not item.used_scalar_fallback for item in items)
+    assert len(projection_rows) == 2
+    assert all(row.is_visible is True for row in projection_rows)
+    assert catalog_count == 2
+
+
+def test_voice_plaza_filter_catalog_concurrent_deletes_converge(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """并行 Worker 删除同一筛选值的最后两条 Entry 时，计数必须收敛且不违反约束。"""
+
+    observed_at = datetime(2026, 9, 24, 8, 45, tzinfo=UTC)
+    observations = tuple(
+        CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id=f"concurrent-catalog-content-{index}",
+            content_type="note",
+            observed_at=observed_at + timedelta(seconds=index),
+            source=_source(
+                database_runtime,
+                observed_at=observed_at + timedelta(seconds=index),
+                suffix=f"concurrent-catalog-{index}",
+            ),
+            observed_fields=["content_type"],
+        )
+        for index in range(2)
+    )
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            session.execute(delete(voice_plaza_filter_catalog_table))
+            before = capture_content_contribution_snapshots_batch(
+                session,
+                tuple((observation, None) for observation in observations),
+            )
+            items = PostgresCompleteContentRepository(
+                session
+            ).ingest_contents_with_before_snapshots_batch(
+                tuple(zip(observations, before, strict=True))
+            )
+    finally:
+        session.close()
+
+    barrier = Barrier(2)
+
+    def remove_entry(content_id: UUID) -> None:
+        worker_session = database_runtime.new_session()
+        try:
+            with worker_session.begin():
+                barrier.wait(timeout=5)
+                worker_session.execute(
+                    delete(voice_plaza_filter_catalog_entries_table).where(
+                        voice_plaza_filter_catalog_entries_table.c.content_id == content_id,
+                        voice_plaza_filter_catalog_entries_table.c.dimension == "content_type",
+                        voice_plaza_filter_catalog_entries_table.c.value == "note",
+                    )
+                )
+                worker_session.execute(text("SELECT pg_sleep(0.1)"))
+        finally:
+            worker_session.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = tuple(executor.submit(remove_entry, item.result.target_id) for item in items)
+        for future in futures:
+            future.result(timeout=10)
+
+    with database_runtime.engine.connect() as connection:
+        entry_count = connection.scalar(
+            select(func.count()).select_from(voice_plaza_filter_catalog_entries_table)
+        )
+        catalog_count = connection.scalar(
+            select(func.count())
+            .select_from(voice_plaza_filter_catalog_table)
+            .where(
+                voice_plaza_filter_catalog_table.c.dimension == "content_type",
+                voice_plaza_filter_catalog_table.c.value == "note",
+                voice_plaza_filter_catalog_table.c.secondary_value == "",
+            )
+        )
+
+    assert entry_count == 0
+    assert catalog_count == 0
+
+
+def test_complete_batch_stable_authors_use_bounded_database_round_trips(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """稳定作者数量增长不能重新引入每条 Content 一组 SQL 的退化路径。"""
+
+    observed_at = datetime(2026, 9, 24, 9, 0, tzinfo=UTC)
+    shared_source = _source(
+        database_runtime,
+        observed_at=observed_at,
+        suffix="bounded-stable-authors",
+    )
+    observations = tuple(
+        CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id=f"bounded-stable-content-{index}",
+            content_type="note",
+            author=CanonicalAuthorV1(
+                external_account_id=f"bounded-stable-author-{index}",
+                alternate_ids={"red_id": f"bounded-red-{index}"},
+                display_name=f"批量作者 {index}",
+            ),
+            observed_at=observed_at + timedelta(seconds=index),
+            source=shared_source.model_copy(
+                update={"item_locator": f"bounded-stable-authors:{index}"}
+            ),
+            observed_fields=[
+                "content_type",
+                "author.external_account_id",
+                "author.alternate_ids",
+                "author.display_name",
+            ],
+        )
+        for index in range(101)
+    )
+    statement_count = 0
+
+    def count_statement(*_args: object) -> None:
+        nonlocal statement_count
+        statement_count += 1
+
+    event.listen(database_runtime.engine, "before_cursor_execute", count_statement)
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            before = capture_content_contribution_snapshots_batch(
+                session,
+                tuple((observation, None) for observation in observations),
+            )
+            items = PostgresCompleteContentRepository(
+                session
+            ).ingest_contents_with_before_snapshots_batch(
+                tuple(zip(observations, before, strict=True))
+            )
+    finally:
+        session.close()
+        event.remove(database_runtime.engine, "before_cursor_execute", count_statement)
+
+    with database_runtime.engine.connect() as connection:
+        account_count = connection.scalar(select(func.count()).select_from(accounts_table))
+        external_id_count = connection.scalar(
+            select(func.count()).select_from(account_external_ids_table)
+        )
+
+    assert len(items) == 101
+    assert all(not item.used_scalar_fallback for item in items)
+    assert account_count == 101
+    assert external_id_count == 101
+    assert statement_count < 70
 
 
 def test_alternate_stable_id_conflict_fails_closed_instead_of_overwriting(

@@ -207,29 +207,37 @@ WAL。当前 CI/开发验证不能替代公司服务器的真实容量、Soak、
 备份恢复和生产授权门禁。Replay 不自动删除旧 Content，也不触发 AI、Export 或 Report；如需这些
 动作，由对应正式入口另行发起。
 
-Replay 先用有界的冲突安全 INSERT 声明同批命中 identity。对没有稳定账号 ID、且由当前事务通过
-数据库唯一约束真实创建的新 Content，Content Owner 集合写入 Current、Version、Metric、Canonical
-子实体和来源贡献；Vehicle/Brand Owner 随后集合写入首版本自动证据。对既有 Content，Owner 一次
-锁定本批 Current，批量计算 freshness、Version/Metric、扩展字段与来源贡献 before/after；Evidence
-Owner 一次批量加 advisory lock、读取人工锁/旧证据并集合替换自动证据。只有稳定账号、数据库竞争
-或其它不满足集合前提的行才回退完整兼容状态机，不能为吞吐跳过账号收敛、freshness、人工锁或版本
-语义。批量参数通过驱动参数集执行，避免在 Python 中编译数万占位符的巨大 SQL；Replay ledger 每
+Replay 先用有界的冲突安全 INSERT 声明同批命中 identity。Content Owner 集合写入全新或既有
+Content 的 Current、Version、Metric、Canonical 子实体和来源贡献；稳定账号的主 ID、备用 ID 与字段
+freshness 也在同一批次内集合读取、锁定、冲突校验和写入。Vehicle/Brand Owner 随后集合写入自动
+证据。显式清空已绑定作者、并发创建竞争或其它无法安全集合化的少数行才回退完整兼容状态机，不能
+为吞吐跳过账号收敛、freshness、人工锁或版本语义。批量参数通过驱动参数集执行，避免在 Python 中
+编译数万占位符的巨大 SQL；Replay ledger 每
 最多 1000 行合并写入，扩展/证据仍按 500 行有界切片。因此 `batch_size=1000` 表示最多 1000 行处于
 同一个原子批次，不表示所有数据形态都固定执行相同数量 SQL。
+
+声音广场投影仍在同一业务事务内同步刷新，任务提交后下一次页面查询即可看到数据，不依赖异步回填
+Job。Alembic
+[`migrations/versions/20260924_0061_voice_plaza_statement_triggers.py`](../../migrations/versions/20260924_0061_voice_plaza_statement_triggers.py)
+把逐行 Trigger 收敛为语句级 transition-table Trigger：一条批量 SQL 只触发一次集合刷新，同时维护
+投影和筛选计数。部署必须先备份并执行数据库升级，再启动使用本版本代码的 API/Worker；代码回滚时
+按正式流程 downgrade 可恢复旧逐行 Trigger，不能只回滚镜像而留下未确认的数据库状态。
 
 批次开始只做无锁 Fence 资格检查；业务写入、来源贡献、自动证据、Replay ledger 和 checkpoint 仍在
 同一事务中，提交前会锁住 Job 并再次验证 Fence。取消或 Lease 接管若先发生，本批全部写入回滚；若
 提交锁先取得，则该批完整提交，取消从下一批生效。Worker 为每个子 Run 记录 INFO 级
 `canonical_replay.preflight_completed`、`canonical_replay.ingestion_completed`；需要进一步定位时可临时
 启用 DEBUG，查看每个 `canonical_replay.batch_completed` 的 `resolution_ms`、`content_batch_ms`、
-`evidence_batch_ms`、`fallback_ms`、`ledger_checkpoint_ms`、`transaction_ms`、集合创建数和回退数。
+`evidence_batch_ms`、`fallback_ms`、`ledger_checkpoint_ms`、`transaction_ms`、集合创建数，以及
+`stable_author_count / batched_remainder_count / scalar_fallback_count`。`fallback_count` 只表示未被
+最早新建快路径接收的数量，其中仍可能全部由后续集合路径处理；判断是否退化必须看
+`scalar_fallback_count`。
 日志仅用于性能诊断，状态和撤回结果仍以持久 Job/账本为准。Reversal 启动时只统计一次待撤回
 Content 总数，随后按每批实际处理量推进进度；完成前仍会检查是否存在未结清 ledger，不再每批重扫
 全部剩余账本。
 
-此实现新增内部表 `canonical_replay_validation_proofs`（Alembic `20260923_0060`）。部署时先按正式
-流程备份并升级数据库，再启动新 API/Worker；旧 Worker 不使用新表，回滚代码可保留该可再生表，
-无需删除已形成的业务数据。历史文件不批量盲信原有摘要，也不要求停机一次性回填：首次重筛逐件
+预检证明表由 Alembic `20260923_0060` 建立，语句级声音广场同步由 `20260924_0061` 建立。部署时先
+按正式流程备份并升级数据库，再启动新 API/Worker；历史文件不批量盲信原有摘要，也不要求停机一次性回填：首次重筛逐件
 完整验证后回填，文件被替换或元数据/验证规则变化会失效。当前验证规则的非 Schema 语义改变时，
 开发必须提升验证版本，避免沿用旧证明。这里不自动执行服务器 Migration 或全量重筛。
 
@@ -237,25 +245,38 @@ Content 总数，随后按每批实际处理量推进进度；完成前仍会检
 [`scripts/performance/benchmark_canonical_replay.py`](../../scripts/performance/benchmark_canonical_replay.py)，
 数据库名必须以 `_canonical_replay_capacity` 结尾，工作目录必须为空。脚本用正式导入路径生成
 Canonical，再用全量 Replay 执行；`--files`、`--rows-per-file`、`--existing-rows-per-file`、
-`--workers` 可区分“很多小文件/少量大文件”和新旧内容比例，结果包含 Replay 耗时、SQL 次数与
-对账统计。脚本只会清空名称后缀通过校验的专用容量库，工作目录仍必须每轮使用新的空目录；默认
+`--workers` 可区分“很多小文件/少量大文件”和新旧内容比例；`--stable-authors` 在正式 lineage
+完成后注入代表 TikHub 形态的稳定作者与备用 ID。`--scalar-stable-authors` 只允许和前者一起用于
+同机 A/B 复现旧逐行参考路径，正常应用与生产 Worker 不读取这个开关。结果包含 Replay 耗时、SQL
+次数与对账统计。脚本只会清空名称后缀通过校验的专用容量库，工作目录仍必须每轮使用新的空目录；默认
 磁盘预算为 512 MiB，并在生成 Fixture 前同时检查预算与固定可用空间余量。扩大 Worker 时先以
 1、2、4 个实例逐级测量，观察吞吐、锁等待、
 连接数、WAL、磁盘和正常 Job 延迟；并发不保证线性提速，不能只凭本地样本推算 25,819 个文件的
 服务器耗时。Linux Compose 可在完成正式发布与容量确认后用 `--scale worker=2` 调整副本，缩容也
 必须等在途 Job 完成或按正式取消流程处理，不能直接强杀后宣称数据已撤回。
 
+2026-09-24 的稳定作者同机 A/B 使用 1 个 Worker、1 个 Canonical 文件、1000 行（200 已有 + 800
+新增），每行均含稳定作者主 ID 和备用 ID。包含最终声音广场目录并发锁修复后，旧逐行参考路径三轮为 21.910 / 21.991 / 23.676 秒，
+p50 为 21.991 秒（45.47 行/秒、16,464 条应用 SQL）；新集合路径三轮为 3.147 / 3.124 / 3.314 秒，
+p50 为 3.147 秒（317.75 行/秒、110 条应用 SQL），吞吐提升 6.99 倍，SQL 减少 99.33%。新路径三轮
+均为 `stable_author_count=1000 / batched_remainder_count=1000 / scalar_fallback_count=0`。另一组
+单变量诊断把旧声音广场逐行 Trigger 替换为语句级 Trigger 后，同一 1000 行混合 Replay 从 200.38
+提升到 463.83 行/秒（2.32 倍）；完全关闭投影只用于确认根因，不是可部署方案。完整口径与限制保存在
+[`changes/active/CHG-20260924-084100-import-throughput-evidence/performance-results.json`](../../changes/active/CHG-20260924-084100-import-throughput-evidence/performance-results.json)。这些结果证明目标代码路径被切断，
+但不是生产 SLO；25,819 个文件仍要在服务器按真实文件大小、WAL、锁和磁盘吞吐复测。
+
 2026-09-24 的最终对照使用同一台开发机、同一 PostgreSQL 18.4、同一正式导入/全量 Replay 路径、
 1 个 Worker、1 个 Canonical 文件和 1000 行。`200 existing + 800 new` 混合场景 main 三轮为
-10.827 / 11.010 / 11.301 秒（p50 11.010 秒、90.83 行/秒、4860 条 SQL），候选三轮为
-5.426 / 5.399 / 5.373 秒（p50 5.399 秒、185.23 行/秒、82 条 SQL）：耗时缩短 2.039 倍，SQL 减少
-98.31%。全部新内容场景 main p50 5.985 秒，候选 p50 5.490 秒，快约 8.3%，没有以优化已有内容
-路径换取新内容回退。每轮都重置专用容量库和使用空工作目录，输入生成与初次导入不计入 Replay
+10.827 / 11.010 / 11.301 秒（p50 11.010 秒、90.83 行/秒、4860 条 SQL）；包含最终投影并发修复的候选三轮为
+2.704 / 2.459 / 2.716 秒（p50 2.704 秒、369.84 行/秒、82 条 SQL）：耗时缩短 4.07 倍，SQL 减少
+98.31%。全部新内容场景 main p50 5.985 秒，最终候选三轮为 2.799 / 2.791 / 3.126 秒，p50
+2.799 秒（357.28 行/秒、72 条 SQL），耗时减少 53.23%。这证明新建与混合场景都没有因稳定作者优化而回退。每轮都重置专用容量库和使用空工作目录，输入生成与初次导入不计入 Replay
 窗口。该结果证明当前混合主路径已经切断逐行往返，但仍只是隔离开发样本，不是公司服务器 SLO，
 也不能按比例承诺 25,819 个文件的完成时间。
 
 文件形态仍会改变收益：大量每件只有一行的小 Artifact 会由文件加载、来源复核、预检证明和 Job
-固定成本主导；稳定账号、已有 Content 或竞争冲突比例高时会更多进入兼容回退。正式容量演练必须先
+固定成本主导；稳定账号现已进入集合路径，但显式清空作者、数据库竞争、已有 Content 和复杂 Evidence
+分布仍会改变阶段成本。正式容量演练必须先
 抽样统计每文件行数、新建/已有比例和稳定账号比例，并同时测试首次无证明、再次命中证明、取消/接管
 与撤回。扩大 Worker 前先确认单 Worker 的 `fallback_count`、批次阶段耗时和 PostgreSQL/WAL；不能
 用增加 Worker 掩盖回退路径或数据库瓶颈。
@@ -437,12 +458,13 @@ docker compose exec worker sh -lc \
 | 事件 / 字段 | 主要判断 |
 | --- | --- |
 | `excel_import.pipeline_completed` | 比较 `source_read_ms`、`mapping_ms`、`canonical_write_ms`、`preparation_ms`、`ingestion_ms`；`temporary_peak_bytes` 判断本地临时峰值 |
+| `excel_import.io_failed` | 用 `stage/operation/error_type/errno/error_path` 定位可重试 I/O 失败；`error_path` 只含文件名，不含绝对路径 |
 | `historical_import.discovery_completed` | `discovery_ms` 是目录枚举，`persistence_ms` 是冻结清单入库 |
 | `historical_import.snapshot_completed` | 比较 `source_snapshot_ms`、`conversion_ms`、`finalization_ms`，并看 `source_bytes/chunk_count/rows_seen` |
 | `historical_import.chunk_completed` | 比较 `loading_ms`、`row_preparation_ms`、`content_ingestion_ms`、`evidence_ms`、`finalization_ms/transaction_ms` |
 | `canonical_replay.preflight_completed` | 全输入预检/压缩字节与来源证明阶段 |
 | `canonical_replay.ingestion_completed` | 整个子 Run 的业务入库阶段与最终计数 |
-| `canonical_replay.batch_completed`（DEBUG） | `resolution_ms/content_batch_ms/evidence_batch_ms/fallback_ms/ledger_checkpoint_ms/transaction_ms` 定位单批瓶颈 |
+| `canonical_replay.batch_completed`（DEBUG） | 阶段耗时定位单批瓶颈；`stable_author_count/batched_remainder_count/scalar_fallback_count` 判断稳定作者是否仍逐行退化 |
 
 正常生产默认 INFO 已能区分 Excel、历史三阶段和 Replay 预检/入库。只有需要定位 Replay 单批时才在
 受控窗口把 `AIMA_LOG_LEVEL=DEBUG` 应用于 Worker 并重建 Worker 容器；DEBUG 会增加日志量，采样完成

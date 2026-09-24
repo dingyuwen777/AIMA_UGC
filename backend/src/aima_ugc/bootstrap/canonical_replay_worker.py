@@ -529,6 +529,9 @@ class PostgresCanonicalReplayJobExecutor:
         advanced: CanonicalReplayRunRecord | None = None
         fast_created_count = 0
         fallback_count = 0
+        stable_author_count = 0
+        batched_remainder_count = 0
+        scalar_fallback_count = 0
         content_batch_ms = 0
         evidence_batch_ms = 0
         fallback_ms = 0
@@ -706,6 +709,12 @@ class PostgresCanonicalReplayJobExecutor:
                 )
                 fallback_count = len(fallback_pending)
                 fallback_observations = tuple(item[0] for item in fallback_pending)
+                stable_author_count = sum(
+                    1
+                    for observation in fallback_observations
+                    if observation.author is not None
+                    and observation.author.external_account_id is not None
+                )
                 before_snapshots = capture_content_contribution_snapshots_batch(
                     session,
                     tuple((observation, None) for observation in fallback_observations),
@@ -739,6 +748,10 @@ class PostgresCanonicalReplayJobExecutor:
                 fallback_items = content_repository.ingest_contents_with_before_snapshots_batch(
                     tuple(zip(fallback_observations, before_snapshots, strict=True))
                 )
+                scalar_fallback_count = sum(
+                    1 for item in fallback_items if item.used_scalar_fallback
+                )
+                batched_remainder_count = fallback_count - scalar_fallback_count
                 fallback_vehicle_entries = []
                 fallback_brand_entries = []
                 evidence_created_at = beijing_now()
@@ -891,6 +904,9 @@ class PostgresCanonicalReplayJobExecutor:
             matched_count=matched,
             fast_created_count=fast_created_count,
             fallback_count=fallback_count,
+            stable_author_count=stable_author_count,
+            batched_remainder_count=batched_remainder_count,
+            scalar_fallback_count=scalar_fallback_count,
             resolution_ms=resolution_ms,
             content_batch_ms=content_batch_ms,
             evidence_batch_ms=evidence_batch_ms,

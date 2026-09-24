@@ -1904,3 +1904,82 @@ def test_0058_adds_all_replay_parent_without_breaking_existing_runs(
             )
     finally:
         engine.dispose()
+
+
+def test_0061_batches_voice_plaza_projection_triggers_per_statement(
+    migration_database: str,
+) -> None:
+    """声音广场同步触发器按 SQL 语句合批，并可回滚到逐行兼容实现。"""
+
+    row_trigger_names = {
+        "trg_contents_voice_plaza_projection",
+        "trg_content_versions_voice_plaza_projection",
+        "trg_content_contributions_voice_plaza_projection",
+        "trg_voice_plaza_filter_catalog_entry_delta",
+    }
+    _upgrade(migration_database, "20260923_0060")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            before = {
+                row.tgname: row.tgtype
+                for row in connection.execute(
+                    text(
+                        "SELECT tgname, tgtype FROM pg_trigger "
+                        "WHERE NOT tgisinternal AND tgname = ANY(:trigger_names)"
+                    ),
+                    {"trigger_names": list(row_trigger_names)},
+                )
+            }
+        assert set(before) == row_trigger_names
+        assert all(tgtype & 1 for tgtype in before.values())
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260924_0061")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            triggers = tuple(
+                connection.execute(
+                    text(
+                        "SELECT tgname, tgtype, pg_get_triggerdef(oid) AS definition "
+                        "FROM pg_trigger WHERE NOT tgisinternal "
+                        "AND (tgname LIKE '%voice_plaza%' OR tgname LIKE 'trg_vp_%') "
+                        "ORDER BY tgname"
+                    )
+                ).mappings()
+            )
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260924_0061"
+            )
+        assert triggers
+        assert all(not (int(row["tgtype"]) & 1) for row in triggers)
+        assert all("FOR EACH STATEMENT" in str(row["definition"]) for row in triggers)
+        assert any(
+            row["tgname"] == "trg_contents_voice_plaza_projection_insert_statement"
+            and "REFERENCING NEW TABLE AS new_rows" in str(row["definition"])
+            for row in triggers
+        )
+        assert any(row["tgname"] == "trg_vp_content_contributions_ins" for row in triggers)
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260923_0060")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            restored = {
+                row.tgname: row.tgtype
+                for row in connection.execute(
+                    text(
+                        "SELECT tgname, tgtype FROM pg_trigger "
+                        "WHERE NOT tgisinternal AND tgname = ANY(:trigger_names)"
+                    ),
+                    {"trigger_names": list(row_trigger_names)},
+                )
+            }
+        assert set(restored) == row_trigger_names
+        assert all(tgtype & 1 for tgtype in restored.values())
+    finally:
+        engine.dispose()

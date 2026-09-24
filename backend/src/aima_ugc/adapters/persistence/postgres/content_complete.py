@@ -36,6 +36,7 @@ from .content import (
     PostgresContentRepository,
     PostgresExistingContentBatchItem,
     PostgresIngestionResult,
+    PostgresNewContentBatchItem,
 )
 from .content_contributions import (
     ContentContributionSnapshot,
@@ -80,6 +81,7 @@ class PostgresCompleteExistingContentBatchItem:
     before: ContentContributionSnapshot
     result: PostgresIngestionResult
     contribution_after: ContentContributionSnapshot
+    used_scalar_fallback: bool = False
 
 
 class PostgresCompleteContentRepository:
@@ -336,18 +338,55 @@ class PostgresCompleteContentRepository:
         source_pairs = {_source_ids(item) for item in observations}
         self._require_source_pairs(source_pairs)
         before_snapshots = tuple(item[1] for item in entries)
-        eligible_indices = tuple(
+        new_indices = tuple(
+            index
+            for index, (_observation, before) in enumerate(entries)
+            if before.content_id is None
+        )
+        new_observations = tuple(observations[index] for index in new_indices)
+        new_core_items = self._core.ingest_new_contents_batch(
+            new_observations,
+            collection_fields=frozenset(_CONTENT_COLLECTION_FIELDS),
+            replay_visibility_owner_id=self._replay_visibility_owner_id,
+        )
+        self._sync_new_content_extensions_batch(new_core_items)
+        new_index_by_identity = {
+            (
+                observations[index].platform,
+                observations[index].external_content_id,
+            ): index
+            for index in new_indices
+        }
+        created_indices = tuple(
+            new_index_by_identity[(item.observation.platform, item.observation.external_content_id)]
+            for item in new_core_items
+        )
+        created_before = tuple(before_snapshots[index] for index in created_indices)
+        created_drafts = prepare_content_contributions_batch(
+            self._session,
+            tuple(item.observation for item in new_core_items),
+            before_snapshots=created_before,
+        )
+        created_after = commit_content_contributions_batch(
+            self._session,
+            entries=tuple(
+                (draft, item.observation, item.result.target_id)
+                for draft, item in zip(created_drafts, new_core_items, strict=True)
+            ),
+        )
+
+        existing_indices = tuple(
             index
             for index, (observation, before) in enumerate(entries)
             if before.content_id is not None
-            and (observation.author is None or observation.author.external_account_id is None)
             and not (
                 "author.external_account_id" in observation.observed_fields
                 and before.content_fields.get("author.external_account_id") is not None
+                and (observation.author is None or observation.author.external_account_id is None)
             )
         )
-        eligible_observations = tuple(observations[index] for index in eligible_indices)
-        eligible_before = tuple(before_snapshots[index] for index in eligible_indices)
+        eligible_observations = tuple(observations[index] for index in existing_indices)
+        eligible_before = tuple(before_snapshots[index] for index in existing_indices)
         core_items = self._core.ingest_existing_contents_batch(
             eligible_observations,
             collection_fields=frozenset(_CONTENT_COLLECTION_FIELDS),
@@ -379,7 +418,7 @@ class PostgresCompleteContentRepository:
                 contribution_after=after,
             )
             for index, observation, before, item, after in zip(
-                eligible_indices,
+                existing_indices,
                 eligible_observations,
                 eligible_before,
                 core_items,
@@ -387,8 +426,26 @@ class PostgresCompleteContentRepository:
                 strict=True,
             )
         }
+        completed.update(
+            {
+                index: PostgresCompleteExistingContentBatchItem(
+                    observation=item.observation,
+                    before=before,
+                    result=replace(item.result, contribution_after=after),
+                    contribution_after=after,
+                )
+                for index, item, before, after in zip(
+                    created_indices,
+                    new_core_items,
+                    created_before,
+                    created_after,
+                    strict=True,
+                )
+            }
+        )
+        completed_indices = set(completed)
         fallback_indices = tuple(
-            index for index in range(len(entries)) if index not in set(eligible_indices)
+            index for index in range(len(entries)) if index not in completed_indices
         )
         for index in fallback_indices:
             observation, before = entries[index]
@@ -404,8 +461,36 @@ class PostgresCompleteContentRepository:
                 before=before,
                 result=replace(result, contribution_after=after),
                 contribution_after=after,
+                used_scalar_fallback=True,
             )
         return tuple(completed[index] for index in range(len(entries)))
+
+    def _sync_new_content_extensions_batch(
+        self,
+        items: tuple[PostgresNewContentBatchItem, ...],
+    ) -> None:
+        """集合写入本事务刚创建 Content 的全部扩展实体。"""
+
+        extension_values: dict[Table, list[dict[str, object]]] = {
+            table: [] for table in _CONTENT_COLLECTION_FIELDS.values()
+        }
+        for item in items:
+            attempt_id, raw_id = _source_ids(item.observation)
+            for field_name, table in _CONTENT_COLLECTION_FIELDS.items():
+                if field_name not in item.observation.observed_fields:
+                    continue
+                extension_values[table].extend(
+                    _content_extension_rows(
+                        field_name,
+                        item.result.target_id,
+                        item.observation,
+                        attempt_id=attempt_id,
+                        raw_id=raw_id,
+                    )
+                )
+        for table, values in extension_values.items():
+            for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                self._session.execute(insert(table), list(chunk))
 
     def _sync_existing_content_extensions_batch(
         self,

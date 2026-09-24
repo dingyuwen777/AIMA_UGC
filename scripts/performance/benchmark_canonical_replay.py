@@ -11,12 +11,21 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from uuid import UUID, uuid4
 
+from aima_ugc.adapters.persistence.postgres.content_complete import (
+    PostgresCompleteContentRepository,
+    PostgresCompleteExistingContentBatchItem,
+)
+from aima_ugc.adapters.persistence.postgres.content_contributions import (
+    ContentContributionSnapshot,
+    capture_content_contribution_snapshots_batch,
+)
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
+from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
@@ -24,6 +33,7 @@ from aima_ugc.bootstrap.worker import (
     create_worker_runtime,
 )
 from aima_ugc.contracts.brand_vehicle import BrandAliasCreateRequest, BrandCreateRequest
+from aima_ugc.contracts.canonical import CanonicalAuthorV1, CanonicalContentV1
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
@@ -86,6 +96,8 @@ def run_benchmark(
     rows_per_file: int,
     workers: int,
     existing_rows_per_file: int = 0,
+    stable_authors: bool = False,
+    scalar_stable_authors: bool = False,
     disk_budget_bytes: int = _DEFAULT_DISK_BUDGET_BYTES,
 ) -> dict[str, object]:
     """只测 Replay 执行窗口；输入生成与初次导入不计时。"""
@@ -98,6 +110,8 @@ def run_benchmark(
         raise ValueError("workers 必须在 1 到 8 之间")
     if not 0 <= existing_rows_per_file <= rows_per_file:
         raise ValueError("existing_rows_per_file 必须在 0 到 rows_per_file 之间")
+    if scalar_stable_authors and not stable_authors:
+        raise ValueError("scalar_stable_authors 要求同时启用 stable_authors")
     if disk_budget_bytes <= 0:
         raise ValueError("disk_budget_bytes 必须大于 0")
     settings = load_settings()
@@ -155,16 +169,13 @@ def run_benchmark(
         registry = create_collection_job_registry(runtime=runtime)
 
         def run_one_job(index: int) -> bool:
-            return cast(
-                bool,
-                create_job_worker(
-                    runtime=runtime,
-                    registry=registry,
-                    worker_id=f"canonical-replay-capacity-{index}",
-                    lease_seconds=120,
-                    retry_delay_seconds=0,
-                ).run_once(),
-            )
+            return create_job_worker(
+                runtime=runtime,
+                registry=registry,
+                worker_id=f"canonical-replay-capacity-{index}",
+                lease_seconds=120,
+                retry_delay_seconds=0,
+            ).run_once()
 
         nonce = uuid4().hex
         for file_index in range(file_count):
@@ -238,6 +249,80 @@ def run_benchmark(
             if statement.startswith("INSERT INTO canonical_replay_content_changes"):
                 ledger_inserts += 1
 
+        original_lineage = PostgresCanonicalReplayJobExecutor._content_with_lineage
+        lineage_method_name = "_content_with_lineage"
+        content_batch_method_name = "ingest_contents_with_before_snapshots_batch"
+        original_content_batch = (
+            PostgresCompleteContentRepository.ingest_contents_with_before_snapshots_batch
+        )
+
+        def inject_stable_author(
+            session: object,
+            content: CanonicalContentV1,
+            **kwargs: object,
+        ) -> CanonicalContentV1:
+            """在正式 lineage 完成后为容量样本注入 TikHub 形态的稳定作者。"""
+
+            mapped = original_lineage(session, content, **kwargs)  # type: ignore[arg-type]
+            identity = mapped.external_content_id
+            return mapped.model_copy(
+                update={
+                    "author": CanonicalAuthorV1(
+                        external_account_id=f"capacity-author-{identity}",
+                        alternate_ids={"red_id": f"capacity-red-{identity}"},
+                        display_name=f"容量作者 {identity}",
+                    ),
+                    "observed_fields": [
+                        *mapped.observed_fields,
+                        "author.external_account_id",
+                        "author.alternate_ids",
+                        "author.display_name",
+                    ],
+                }
+            )
+
+        if stable_authors:
+            setattr(
+                PostgresCanonicalReplayJobExecutor,
+                lineage_method_name,
+                staticmethod(inject_stable_author),
+            )
+
+        def ingest_stable_authors_one_by_one(
+            repository: PostgresCompleteContentRepository,
+            entries: tuple[tuple[CanonicalContentV1, ContentContributionSnapshot], ...],
+        ) -> tuple[PostgresCompleteExistingContentBatchItem, ...]:
+            """仅供同机 A/B 复现旧兼容路径，不改变正式 Worker 的默认行为。"""
+
+            completed: list[PostgresCompleteExistingContentBatchItem] = []
+            for observation, before in entries:
+                result = repository._ingest_content(  # noqa: SLF001
+                    observation,
+                    before_snapshot=before,
+                )
+                after = result.contribution_after
+                if after is None:
+                    after = capture_content_contribution_snapshots_batch(
+                        repository._session,  # noqa: SLF001
+                        ((observation, result.target_id),),
+                    )[0]
+                completed.append(
+                    PostgresCompleteExistingContentBatchItem(
+                        observation=observation,
+                        before=before,
+                        result=result,
+                        contribution_after=after,
+                        used_scalar_fallback=True,
+                    )
+                )
+            return tuple(completed)
+
+        if scalar_stable_authors:
+            setattr(
+                PostgresCompleteContentRepository,
+                content_batch_method_name,
+                ingest_stable_authors_one_by_one,
+            )
         event.listen(runtime.database.engine, "before_cursor_execute", count_sql)
         started = time.perf_counter()
         try:
@@ -247,6 +332,16 @@ def run_benchmark(
         finally:
             elapsed = time.perf_counter() - started
             event.remove(runtime.database.engine, "before_cursor_execute", count_sql)
+            setattr(
+                PostgresCanonicalReplayJobExecutor,
+                lineage_method_name,
+                staticmethod(original_lineage),
+            )
+            setattr(
+                PostgresCompleteContentRepository,
+                content_batch_method_name,
+                original_content_batch,
+            )
 
         with runtime.database.engine.connect() as connection:
             statuses = (
@@ -309,6 +404,8 @@ def run_benchmark(
             "rows_ingested": int(counters.rows_ingested),
             "existing_convergence": int(counters.existing_convergence),
             "workers": workers,
+            "stable_authors": stable_authors,
+            "scalar_stable_authors": scalar_stable_authors,
             "replay_runs": run_count,
             "elapsed_seconds": round(elapsed, 3),
             "rows_per_second": round(expected_rows / elapsed, 2),
@@ -401,6 +498,8 @@ def main() -> None:
     parser.add_argument("--rows-per-file", type=int, default=100)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--existing-rows-per-file", type=int, default=0)
+    parser.add_argument("--stable-authors", action="store_true")
+    parser.add_argument("--scalar-stable-authors", action="store_true")
     parser.add_argument("--disk-budget-mib", type=int, default=512)
     args = parser.parse_args()
     print(
@@ -411,6 +510,8 @@ def main() -> None:
                 rows_per_file=args.rows_per_file,
                 workers=args.workers,
                 existing_rows_per_file=args.existing_rows_per_file,
+                stable_authors=args.stable_authors,
+                scalar_stable_authors=args.scalar_stable_authors,
                 disk_budget_bytes=args.disk_budget_mib * 1024 * 1024,
             ),
             ensure_ascii=False,

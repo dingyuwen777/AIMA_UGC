@@ -102,6 +102,8 @@ class PostgresImportJobExecutor:
         """按 mapping→Brand/Vehicle filtering→dedup→ingestion 执行 v2 Attempt。"""
 
         execution: _ImportExecution | None = None
+        diagnostic_stage = "loading"
+        diagnostic_operation = "load_execution"
         execution_started = perf_counter()
         try:
             execution = self._load_v2(fence, payload)
@@ -121,6 +123,7 @@ class PostgresImportJobExecutor:
             if not isinstance(profile, str) or not profile:
                 raise ValueError("Import Batch 缺少冻结 Excel Profile")
             with TemporaryDirectory(prefix="aima-import-") as directory:
+                diagnostic_operation = "open_temporary_directory"
                 work_dir = Path(directory)
                 canonical_artifact = execution.canonical_artifact
                 canonical_contents: Iterable[CanonicalContentV1]
@@ -134,15 +137,19 @@ class PostgresImportJobExecutor:
                     if not isinstance(source_filename, str) or not source_filename:
                         raise ValueError("Import Batch 缺少冻结源文件名")
                     input_path = work_dir / "source.xlsx"
+                    diagnostic_stage = "reading"
                     self._stage(execution.batch, fence=fence, stage="reading")
                     source_read_started = perf_counter()
+                    diagnostic_operation = "open_staged_source"
                     with input_path.open("xb") as destination:
+                        diagnostic_operation = "copy_source_artifact"
                         copied = self._runtime.artifact_store.copy_to(
                             artifact.storage_key,
                             destination,
                         )
                     if copied.sha256 != artifact.sha256 or copied.byte_size != artifact.byte_size:
                         raise InvalidXlsxError("Artifact 完整性校验失败")
+                    diagnostic_operation = "validate_xlsx"
                     validate_xlsx_archive(input_path)
                     temporary_peak_bytes = max(
                         temporary_peak_bytes,
@@ -154,6 +161,8 @@ class PostgresImportJobExecutor:
                         return JobHandlerResult.cancelled()
 
                     self._stage(execution.batch, fence=fence, stage="mapping")
+                    diagnostic_stage = "mapping"
+                    diagnostic_operation = "map_excel_to_canonical"
                     mapping_started = perf_counter()
                     conversion = convert_excel_to_canonical_jsonl(
                         input_path=input_path,
@@ -166,6 +175,8 @@ class PostgresImportJobExecutor:
                     )
                     mapping_ms = int((perf_counter() - mapping_started) * 1000)
                     canonical_write_started = perf_counter()
+                    diagnostic_stage = "canonical_writing"
+                    diagnostic_operation = "write_canonical_artifact"
                     try:
                         canonical_artifact = self._canonical_writer.write(
                             _iter_canonical_jsonl(conversion.output_path),
@@ -188,6 +199,8 @@ class PostgresImportJobExecutor:
                     canonical_contents = self._canonical_reader.read(canonical_artifact)
                     canonical_write_ms = int((perf_counter() - canonical_write_started) * 1000)
                 else:
+                    diagnostic_stage = "canonical_reading"
+                    diagnostic_operation = "read_canonical_artifact"
                     canonical_contents = self._canonical_reader.read(canonical_artifact)
                 context.heartbeat(progress=40)
                 if context.cancel_requested():
@@ -198,6 +211,8 @@ class PostgresImportJobExecutor:
                     fence=fence,
                     stage="filtering",
                 )
+                diagnostic_stage = "preparing"
+                diagnostic_operation = "filter_and_deduplicate_canonical"
                 preparation_started = perf_counter()
                 preparation = filter_and_deduplicate_canonical_contents(
                     canonical_contents,
@@ -226,6 +241,8 @@ class PostgresImportJobExecutor:
                     return JobHandlerResult.cancelled()
 
                 ingestion_started = perf_counter()
+                diagnostic_stage = "ingesting"
+                diagnostic_operation = "persist_content_batch"
                 rows_ingested = self._ingest_v2(
                     execution,
                     artifact=artifact,
@@ -277,9 +294,22 @@ class PostgresImportJobExecutor:
                 raise
             self._fail(execution.batch, fence=fence, error_code="invalid_import")
             return JobHandlerResult.failed("invalid_import")
-        except OSError:
+        except OSError as exc:
             if execution is None:
                 raise
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "excel_import.io_failed",
+                "Excel 导入发生可重试 I/O 错误",
+                job_id=str(fence.job_id),
+                batch_id=str(execution.batch.id),
+                stage=diagnostic_stage,
+                operation=diagnostic_operation,
+                error_type=type(exc).__name__,
+                errno=exc.errno,
+                error_path=(Path(exc.filename).name if exc.filename is not None else None),
+            )
             if execution.job.attempt >= execution.job.max_attempts:
                 self._fail(execution.batch, fence=fence, error_code="import_io_failed")
                 return JobHandlerResult.failed("import_io_failed")
