@@ -35,7 +35,7 @@ class PlatformSettings(BaseModel):
     secret_dir: Path
     external_secret_dir: Path | None = None
     historical_import_root: Path | None = None
-    historical_chunk_rows: int = Field(default=1000, ge=100, le=2000)
+    historical_chunk_rows: int = Field(default=2000, ge=100, le=2000)
     historical_max_scan_files: int = Field(default=10_000, ge=1, le=100_000)
     historical_max_directory_depth: int = Field(default=8, ge=1, le=32)
     historical_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)

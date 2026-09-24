@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 from threading import Barrier
@@ -20,6 +21,7 @@ from aima_ugc.adapters.persistence.postgres.content_visibility import (
     content_has_active_source,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.bootstrap import canonical_replay_worker as canonical_replay_worker_module
 from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.api import create_app
@@ -59,6 +61,7 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
 )
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.system.tables import audit_events_table
+from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.modules.vehicles.tables import (
     content_brand_evidence_table,
     content_brand_review_locks_table,
@@ -629,6 +632,130 @@ def test_new_content_batch_persists_vehicle_and_derived_brand_evidence(
         runtime.close()
 
 
+def test_vehicle_evidence_owner_deduplicates_same_identity_before_upsert(
+    tmp_path: Path,
+) -> None:
+    """Owner 合批写入不能让同一唯一键在单条 SQL 内更新两次。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
+        brand_id = _create_brand(runtime, alias="星曜")
+        _create_replay_vehicle(runtime, brand_id=brand_id)
+        _import_canonical(
+            client,
+            runtime,
+            filename="vehicle-owner-duplicate.xlsx",
+            rows=(("vehicle-owner-duplicate", "星曜车型"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                row = session.execute(select(content_vehicle_evidence_table)).mappings().one()
+                first = replace(
+                    ContentVehicleEvidence(**dict(row)),
+                    id=uuid4(),
+                    source="alias_match",
+                    is_manual_locked=False,
+                )
+                second = replace(first, id=uuid4(), matched_text="同车型另一别名")
+                written, locked = PostgresVehicleCatalogRepository(
+                    session
+                ).replace_automatic_alias_evidence_batch(
+                    entries=((first.content_id, first.content_version, (first, second)),)
+                )
+                assert (written, locked) == (1, 0)
+        finally:
+            session.close()
+        with runtime.database.engine.connect() as connection:
+            rows = (
+                connection.execute(
+                    select(content_vehicle_evidence_table).where(
+                        content_vehicle_evidence_table.c.source == "alias_match"
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        assert len(rows) == 1
+        assert rows[0]["is_active"] is True
+        assert rows[0]["matched_text"] == first.matched_text
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_existing_content_replay_with_two_aliases_for_same_vehicle_finishes(
+    tmp_path: Path,
+) -> None:
+    """已有内容重筛同时命中同车型两别名时应一次成功并只留下代表证据。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-existing-two-aliases.xlsx",
+            rows=(("existing-two-aliases", "星曜车型"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        vehicle = PostgresAdministrationHttpService(runtime).create_vehicle_model(
+            VehicleModelCreateRequest(
+                display_name="Replay 星曜车型",
+                brand_id=brand_id,
+                aliases=("星曜", "星曜车型"),
+            ),
+            principal=_principal(),
+            request_id="replay-existing-two-aliases-vehicle",
+        )
+        created = _create_all_replay(
+            client,
+            idempotency_key=f"replay-existing-two-aliases-{uuid4()}",
+        )
+        assert _worker(runtime, suffix="existing-two-aliases").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            job = connection.execute(
+                select(jobs_table.c.status, jobs_table.c.attempt)
+                .join(
+                    canonical_replay_runs_table,
+                    canonical_replay_runs_table.c.job_id == jobs_table.c.id,
+                )
+                .where(
+                    canonical_replay_runs_table.c.all_request_id
+                    == UUID(cast(str, created["request_id"]))
+                )
+            ).one()
+            evidence = (
+                connection.execute(
+                    select(content_vehicle_evidence_table).where(
+                        content_vehicle_evidence_table.c.source == "alias_match",
+                        content_vehicle_evidence_table.c.is_active.is_(True),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        assert job == ("succeeded", 1)
+        assert len(evidence) == 1
+        assert evidence[0]["vehicle_model_id"] == vehicle.id
+        assert evidence[0]["matched_text"] == "星曜车型"
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
 @pytest.mark.parametrize("row_count", [2, 101])
 def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count: int) -> None:
     runtime = _runtime(tmp_path)
@@ -959,6 +1086,103 @@ def test_all_replay_revoke_keeps_version_when_only_evidence_converged(
         assert content["replay_visibility_owner_id"] is None
         assert version_count == 1
         assert evidence_after == evidence_before
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_revoke_batches_changed_evidence_without_per_content_sql(
+    tmp_path: Path,
+) -> None:
+    """多条既有内容的自动证据撤回应集合执行，且恢复原快照。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        _add_replay_alias(runtime, brand_id)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-evidence-batch.xlsx",
+            rows=tuple(
+                (f"replay-evidence-batch-{index}", f"星曜证据集合样本 {index}")
+                for index in range(101)
+            ),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=101,
+        )
+        _add_replay_alias(runtime, brand_id, text="证据集合")
+        created = _create_all_replay(
+            client,
+            idempotency_key=f"all-replay-evidence-batch-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="evidence-batch-replay").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            changes = (
+                connection.execute(
+                    select(canonical_replay_content_changes_table).where(
+                        canonical_replay_content_changes_table.c.all_request_id == request_id
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            assert len(changes) == 101
+            assert all(
+                row["brand_evidence_before"] != row["brand_evidence_after"]
+                and row["version_before"] == row["version_after"]
+                for row in changes
+            )
+
+        assert client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke").status_code == 202
+        statement_count = 0
+
+        def count_sql(
+            connection: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            nonlocal statement_count
+            del connection, cursor, statement, parameters, context, executemany
+            statement_count += 1
+
+        event.listen(runtime.database.engine, "before_cursor_execute", count_sql)
+        try:
+            assert _worker(runtime, suffix="evidence-batch-revoke").run_once() is True
+        finally:
+            event.remove(runtime.database.engine, "before_cursor_execute", count_sql)
+        assert statement_count < 100
+        with runtime.database.engine.connect() as connection:
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert request["lifecycle_status"] == "reverted"
+            assert request["retained_content_count"] == 101
+            assert request["restored_evidence_count"] == 202
+            assert (
+                connection.scalar(select(func.count()).select_from(content_brand_evidence_table))
+                == 101
+            )
+            assert set(connection.scalars(select(content_brand_evidence_table.c.matched_text))) == {
+                "星曜"
+            }
     finally:
         _truncate(runtime)
         runtime.close()

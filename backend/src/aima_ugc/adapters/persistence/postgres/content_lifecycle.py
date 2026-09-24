@@ -242,6 +242,8 @@ class PostgresContentLifecycleRepository:
         freshness: dict[str, str],
         author_snapshot: dict[str, Any] | None,
         delta: dict[str, Any],
+        collection_cache: dict[str, tuple[dict[str, object], ...]] | None = None,
+        collection_updates: dict[str, list[dict[str, object]]] | None = None,
     ) -> dict[str, Any] | None:
         """仅当 Current 仍匹配来源写入后的值/marker 时回退该字段。"""
 
@@ -284,18 +286,29 @@ class PostgresContentLifecycleRepository:
             before_rows = decode_contribution_value(change.get("before"))
             if not isinstance(after_rows, list) or not isinstance(before_rows, list):
                 raise ValueError("Contribution Collection rows 必须是数组")
-            if self._collection_rows(content_id, field_name) != tuple(after_rows):
+            current_rows = (
+                self._collection_rows(content_id, field_name)
+                if collection_cache is None
+                else collection_cache.get(field_name, ())
+            )
+            if current_rows != tuple(after_rows):
                 continue
-            table = _COLLECTION_TABLES[field_name]
-            self._session.execute(delete(table).where(table.c.content_id == content_id))
-            if before_rows:
-                self._session.execute(
-                    insert(table),
-                    [
-                        {"content_id": content_id, **cast(dict[str, object], row)}
-                        for row in before_rows
-                    ],
-                )
+            if collection_cache is None:
+                table = _COLLECTION_TABLES[field_name]
+                self._session.execute(delete(table).where(table.c.content_id == content_id))
+                if before_rows:
+                    self._session.execute(
+                        insert(table),
+                        [
+                            {"content_id": content_id, **cast(dict[str, object], row)}
+                            for row in before_rows
+                        ],
+                    )
+            else:
+                if collection_updates is None:
+                    raise ValueError("集合预读必须同时提供写入缓冲")
+                collection_cache[field_name] = tuple(before_rows)
+                collection_updates[field_name] = before_rows
             _restore_freshness(freshness, field_name, change.get("before_freshness"))
 
         account_change = delta.get("account")

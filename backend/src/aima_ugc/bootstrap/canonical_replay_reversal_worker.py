@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
+from sqlalchemy import cast as sql_cast
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -141,36 +143,130 @@ class PostgresCanonicalReplayReversalJobExecutor:
                 if not content_ids:
                     return 0
 
+                ledger_rows = tuple(
+                    session.execute(
+                        select(canonical_replay_content_changes_table)
+                        .where(
+                            canonical_replay_content_changes_table.c.all_request_id == request_id,
+                            canonical_replay_content_changes_table.c.content_id.in_(content_ids),
+                            canonical_replay_content_changes_table.c.reverted_at.is_(None),
+                        )
+                        .order_by(
+                            canonical_replay_content_changes_table.c.content_id,
+                            canonical_replay_content_changes_table.c.created_at,
+                            canonical_replay_content_changes_table.c.id,
+                        )
+                        .with_for_update()
+                    ).mappings()
+                )
+                rows_by_content: dict[UUID, list[RowMapping]] = {}
+                for row in ledger_rows:
+                    rows_by_content.setdefault(cast(UUID, row["content_id"]), []).append(row)
+                states = {
+                    cast(UUID, row.id): row
+                    for row in session.execute(
+                        select(
+                            contents_table.c.id,
+                            contents_table.c.current_version,
+                            contents_table.c.replay_visibility_owner_id,
+                        )
+                        .where(contents_table.c.id.in_(content_ids))
+                        .order_by(contents_table.c.id)
+                        .with_for_update()
+                    )
+                }
+
                 lifecycle = PostgresContentLifecycleRepository(session)
                 vehicle_repository = PostgresVehicleCatalogRepository(session)
                 brand_repository = PostgresBrandVehicleRepository(session)
                 now = beijing_now()
                 reverted = hidden = retained = skipped = restored_evidence = skipped_evidence = 0
-                for content_id in content_ids:
-                    rows = tuple(
-                        session.execute(
-                            select(canonical_replay_content_changes_table)
-                            .where(
-                                canonical_replay_content_changes_table.c.all_request_id
-                                == request_id,
-                                canonical_replay_content_changes_table.c.content_id == content_id,
-                                canonical_replay_content_changes_table.c.reverted_at.is_(None),
-                            )
-                            .order_by(
-                                canonical_replay_content_changes_table.c.created_at,
-                                canonical_replay_content_changes_table.c.id,
-                            )
-                            .with_for_update()
-                        ).mappings()
+                # 同版本、仅 Evidence 变化是实测主路径。先按 Owner 的锁/快照规则
+                # 集合恢复，再一次结清归属和账本，避免每条内容重复往返数据库。
+                evidence_only = tuple(
+                    content_id
+                    for content_id in content_ids
+                    if content_id in rows_by_content
+                    and states[content_id].replay_visibility_owner_id == request_id
+                    and not any(
+                        _has_content_delta(row["delta"]) for row in rows_by_content[content_id]
                     )
+                )
+                safe_evidence = tuple(
+                    content_id
+                    for content_id in evidence_only
+                    if states[content_id].current_version
+                    == rows_by_content[content_id][-1]["version_after"]
+                )
+                vehicle_restored_ids = vehicle_repository.restore_automatic_evidence_batch(
+                    tuple(
+                        (
+                            content_id,
+                            cast(int, states[content_id].current_version),
+                            _json_rows(rows_by_content[content_id][-1]["vehicle_evidence_after"]),
+                            _json_rows(rows_by_content[content_id][0]["vehicle_evidence_before"]),
+                        )
+                        for content_id in safe_evidence
+                    )
+                )
+                brand_restored_ids = brand_repository.restore_automatic_brand_evidence_batch(
+                    tuple(
+                        (
+                            content_id,
+                            cast(int, states[content_id].current_version),
+                            _json_rows(rows_by_content[content_id][-1]["brand_evidence_after"]),
+                            _json_rows(rows_by_content[content_id][0]["brand_evidence_before"]),
+                        )
+                        for content_id in safe_evidence
+                    )
+                )
+                if evidence_only:
+                    owner_before = {
+                        content_id: rows_by_content[content_id][0]["visibility_owner_before"]
+                        for content_id in evidence_only
+                    }
+                    session.execute(
+                        update(contents_table)
+                        .where(contents_table.c.id.in_(evidence_only))
+                        .values(
+                            replay_visibility_owner_id=sql_cast(
+                                case(owner_before, value=contents_table.c.id),
+                                contents_table.c.replay_visibility_owner_id.type,
+                            )
+                        )
+                    )
+                    session.execute(
+                        update(canonical_replay_content_changes_table)
+                        .where(
+                            canonical_replay_content_changes_table.c.all_request_id == request_id,
+                            canonical_replay_content_changes_table.c.content_id.in_(evidence_only),
+                            canonical_replay_content_changes_table.c.reverted_at.is_(None),
+                        )
+                        .values(
+                            reverted_at=now,
+                            reversal_version_no=case(
+                                {
+                                    content_id: states[content_id].current_version
+                                    for content_id in evidence_only
+                                },
+                                value=canonical_replay_content_changes_table.c.content_id,
+                            ),
+                        )
+                    )
+                    reverted += len(evidence_only)
+                    retained += len(evidence_only)
+                    restored_evidence += len(vehicle_restored_ids) + len(brand_restored_ids)
+                    skipped_evidence += 2 * len(evidence_only) - (
+                        len(vehicle_restored_ids) + len(brand_restored_ids)
+                    )
+                evidence_only_set = set(evidence_only)
+                for content_id in content_ids:
+                    if content_id in evidence_only_set:
+                        continue
+                    rows = tuple(rows_by_content.get(content_id, ()))
                     if not rows:
                         continue
-                    current_state = session.execute(
-                        select(
-                            contents_table.c.current_version,
-                            contents_table.c.replay_visibility_owner_id,
-                        ).where(contents_table.c.id == content_id)
-                    ).one()
+                    current_state = states[content_id]
                     current_before = cast(int, current_state.current_version)
                     owner = current_state.replay_visibility_owner_id
                     if owner != request_id:

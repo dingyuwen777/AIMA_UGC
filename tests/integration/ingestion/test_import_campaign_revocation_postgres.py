@@ -36,7 +36,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.storage.tables import artifacts_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, event, func, select, update
 from sqlalchemy.exc import DBAPIError
 
 from tests.integration.stage3_brand_support import stage3_filter_brand_id
@@ -127,6 +127,115 @@ def _cleanup(runtime) -> None:
             "RESTART IDENTITY CASCADE"
         )
     runtime.close()
+
+
+def test_revocation_batches_common_contributions_without_per_content_sql(
+    tmp_path: Path,
+) -> None:
+    """批量历史导入撤销保持每条 Version/来源追溯，同时限制数据库往返。"""
+
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    (historical_root / "batch.xlsx").write_bytes(
+        _xlsx(
+            tuple(
+                (f"爱玛批量撤销 {index}", f"revocation-batch-{uuid4()}-{index}", "正文")
+                for index in range(101)
+            )
+        )
+    )
+    runtime = _runtime(tmp_path, historical_root)
+    try:
+        client = _client(runtime)
+        brand_id = stage3_filter_brand_id(runtime)
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="revocation-batch-integration-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        created = client.post(
+            "/api/v1/historical-import-campaigns",
+            json={
+                "client_idempotency_key": f"revocation-batch-{uuid4()}",
+                "relative_paths": ["batch.xlsx"],
+                "recursive": False,
+                "brand_ids": [brand_id],
+                "ingestion_policy": "standard_observation",
+            },
+        )
+        assert created.status_code == 202
+        campaign_id = UUID(created.json()["campaign_id"])
+        assert _drain(worker) == 2
+        assert (
+            client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/start").status_code
+            == 200
+        )
+        assert _drain(worker) == 2
+        service = PostgresImportRevocationHttpService(
+            runtime.database.new_session, runtime.artifact_store
+        )
+        assert service.preview(campaign_id).impact.affected_content_count == 101
+        statement_count = 0
+        per_content_updates = 0
+        per_content_inserts = 0
+
+        def count_sql(
+            connection: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            nonlocal statement_count, per_content_updates, per_content_inserts
+            del connection, cursor, parameters, context
+            statement_count += 1
+            if statement.lstrip().startswith("UPDATE contents") and executemany:
+                per_content_updates += 1
+            if (
+                statement.lstrip().startswith(
+                    (
+                        "INSERT INTO content_versions",
+                        "INSERT INTO historical_import_revocation_content_versions",
+                    )
+                )
+                and executemany
+            ):
+                per_content_inserts += 1
+
+        event.listen(runtime.database.engine, "before_cursor_execute", count_sql)
+        try:
+            revoked = service.revoke(
+                campaign_id,
+                DataImportRevokeRequest(reason="批量撤销回归"),
+                actor_ref="integration-admin",
+                request_id="revocation-batch-request",
+            )
+        finally:
+            event.remove(runtime.database.engine, "before_cursor_execute", count_sql)
+        assert revoked.impact.hidden_content_count == 101
+        assert statement_count < 100
+        assert per_content_updates == 0
+        assert per_content_inserts == 0
+        with runtime.database.engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(historical_import_revocation_content_versions_table)
+                    .where(
+                        historical_import_revocation_content_versions_table.c.campaign_id
+                        == campaign_id
+                    )
+                )
+                == 101
+            )
+            assert (
+                connection.scalar(select(func.count()).select_from(content_versions_table)) == 202
+            )
+    finally:
+        _cleanup(runtime)
 
 
 def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path: Path) -> None:
@@ -267,16 +376,22 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
                 assert [target.content_id for target in selected] == [shared_id]
                 assert (
                     after_session.scalar(
-                        select(func.count()).select_from(
-                            historical_import_campaign_revocations_table
+                        select(func.count())
+                        .select_from(historical_import_campaign_revocations_table)
+                        .where(
+                            historical_import_campaign_revocations_table.c.campaign_id
+                            == campaign_id
                         )
                     )
                     == 1
                 )
                 assert (
                     after_session.scalar(
-                        select(func.count()).select_from(
-                            historical_import_revocation_content_versions_table
+                        select(func.count())
+                        .select_from(historical_import_revocation_content_versions_table)
+                        .where(
+                            historical_import_revocation_content_versions_table.c.campaign_id
+                            == campaign_id
                         )
                     )
                     == 2

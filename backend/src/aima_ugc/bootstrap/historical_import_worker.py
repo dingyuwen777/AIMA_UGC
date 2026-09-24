@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from collections.abc import Iterator
 from dataclasses import asdict
 from datetime import datetime
 from itertools import zip_longest
@@ -15,10 +14,9 @@ from time import perf_counter
 from typing import cast
 from uuid import UUID, uuid4
 
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -280,7 +278,6 @@ class PostgresHistoricalImportJobExecutor:
 
                 summary = convert_historical_excel_to_chunks(
                     input_path=frozen_path,
-                    output_dir=work_dir / "chunks",
                     profile_name=_required_string(profile, "profile"),
                     observed_at=cast(datetime, campaign["created_at"]),
                     chunk_rows=_required_int(profile, "chunk_rows"),
@@ -376,7 +373,7 @@ class PostgresHistoricalImportJobExecutor:
         try:
             loading_started = perf_counter()
             item, artifact, campaign_id = self._load_import_chunk(payload, fence)
-            campaign_snapshot = self._campaign_filter_payload(campaign_id)
+            campaign_snapshot, frozen_chunk_rows = self._campaign_import_snapshot(campaign_id)
             filter_snapshot = BrandVehicleFilterSnapshot.model_validate(campaign_snapshot)
             if item["status"] == "succeeded":
                 return JobHandlerResult.succeeded(
@@ -387,7 +384,7 @@ class PostgresHistoricalImportJobExecutor:
             contents = _read_bounded_canonical_artifact(
                 reader=self._canonical_reader,
                 artifact=artifact,
-                max_rows=self._runtime.settings.historical_chunk_rows,
+                max_rows=frozen_chunk_rows,
             )
             loading_ms = int((perf_counter() - loading_started) * 1000)
             canonical_row_ordinals, invalid_rows = _chunk_row_facts(item)
@@ -403,7 +400,9 @@ class PostgresHistoricalImportJobExecutor:
                     jobs.validate_current_execution(fence)
                     lock_historical_campaign_cancel_gate(session, campaign_id, shared=True)
                     repository = PostgresHistoricalImportRepository(session)
-                    campaign = repository.get_campaign(campaign_id)
+                    # 两个 Chunk 可以属于同一 Campaign；先锁父记录再锁 Item/Content，
+                    # 避免各自持有业务锁后在调度阶段争夺父锁形成死锁。
+                    campaign = repository.get_campaign(campaign_id, for_update=True)
                     if campaign is None:
                         return JobHandlerResult.failed("historical_campaign_not_found")
                     if campaign["status"] == "cancelling":
@@ -523,9 +522,11 @@ class PostgresHistoricalImportJobExecutor:
             return JobHandlerResult.failed("historical_chunk_invalid")
         except OSError:
             return JobHandlerResult.retry("historical_chunk_io_failed")
+        except OperationalError:
+            return JobHandlerResult.retry("historical_chunk_database_transient")
 
-    def _campaign_filter_payload(self, campaign_id: UUID) -> dict[str, object]:
-        """只读取已冻结的 Campaign JSON Snapshot，不触碰实时 Brand/Vehicle 目录。"""
+    def _campaign_import_snapshot(self, campaign_id: UUID) -> tuple[dict[str, object], int]:
+        """读取 Campaign 冻结的目录与 Chunk 行数，避免运行配置漂移影响重试。"""
 
         session = self._runtime.database.new_session()
         try:
@@ -533,7 +534,11 @@ class PostgresHistoricalImportJobExecutor:
                 campaign = PostgresHistoricalImportRepository(session).get_campaign(campaign_id)
                 if campaign is None:
                     raise ValueError("Historical Campaign 不存在")
-                return cast(dict[str, object], campaign["keyword_pack_snapshot"])
+                profile = cast(dict[str, object], campaign["profile_snapshot"])
+                return (
+                    cast(dict[str, object], campaign["keyword_pack_snapshot"]),
+                    _required_int(profile, "chunk_rows"),
+                )
         finally:
             session.close()
 
@@ -666,10 +671,11 @@ class PostgresHistoricalImportJobExecutor:
             session.close()
 
         artifact = self._canonical_for_historical_item(chunk_item_id)
+        reused_artifact = artifact is not None
         if artifact is None:
             try:
                 artifact = self._canonical_writer.write(
-                    _iter_temporary_canonical_jsonl(descriptor.path),
+                    descriptor.contents,
                     parent=CanonicalArtifactParent(
                         historical_import_campaign_item_id=chunk_item_id
                     ),
@@ -680,11 +686,15 @@ class PostgresHistoricalImportJobExecutor:
                 artifact = self._canonical_for_historical_item(chunk_item_id)
                 if artifact is None:
                     raise
-        _assert_canonical_matches_descriptor(
-            reader=self._canonical_reader,
-            artifact=artifact,
-            descriptor=descriptor,
-        )
+                reused_artifact = True
+        if reused_artifact:
+            # 首次写入已由 Writer 完整校验 Mapper 的逐行 Canonical；只有
+            # 崩溃恢复复用旧 Artifact 时才需要再次证明本轮输出完全相同。
+            _assert_canonical_matches_descriptor(
+                reader=self._canonical_reader,
+                artifact=artifact,
+                descriptor=descriptor,
+            )
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -999,27 +1009,16 @@ def _source_entry(root: Path | None, path: Path) -> HistoricalDirectoryEntry:
     )
 
 
-def _iter_temporary_canonical_jsonl(path: Path) -> Iterator[CanonicalContentV1]:
-    """逐行验证 Mapper 临时输出，交给共享 Canonical Writer。"""
-
-    with path.open("rb") as source:
-        for raw_line in source:
-            try:
-                yield CanonicalContentV1.model_validate_json(raw_line)
-            except ValidationError as exc:
-                raise ValueError("Historical Mapper 输出不是合法 CanonicalContentV1") from exc
-
-
 def _read_bounded_canonical_artifact(
     *,
     reader: CanonicalArtifactReader,
     artifact: ArtifactRecord,
     max_rows: int,
 ) -> tuple[CanonicalContentV1, ...]:
-    """在共享 Reader 完整预检后，最多保留一个批准 Chunk 的 Canonical。"""
+    """事务外完整验证并装入有界 Chunk，不再为流式输出重复解析。"""
 
     rows: list[CanonicalContentV1] = []
-    for content in reader.read(artifact):
+    for content in reader.read_for_bounded_staging(artifact):
         rows.append(content)
         if len(rows) > max_rows:
             raise ValueError("Historical Canonical Artifact 行数超过冻结上限")
@@ -1082,7 +1081,7 @@ def _assert_canonical_matches_descriptor(
     sentinel = object()
     for existing, expected in zip_longest(
         reader.read(artifact),
-        _iter_temporary_canonical_jsonl(descriptor.path),
+        descriptor.contents,
         fillvalue=sentinel,
     ):
         if existing != expected:

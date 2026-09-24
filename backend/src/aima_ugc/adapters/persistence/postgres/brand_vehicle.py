@@ -827,6 +827,61 @@ class PostgresBrandVehicleRepository:
             )
         return True
 
+    def restore_automatic_brand_evidence_batch(
+        self,
+        entries: tuple[tuple[UUID, int, list[dict[str, object]], list[dict[str, object]]], ...],
+    ) -> set[UUID]:
+        """集合撤回未改变 Content Version 的自动品牌证据。"""
+
+        if not entries:
+            return set()
+        pairs = tuple((content_id, version) for content_id, version, _, _ in entries)
+        if len(set(pairs)) != len(pairs):
+            raise ValueError("批量撤回品牌证据包含重复 Content Version")
+        self._lock_brand_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_brand_review_locks_table.c.content_id,
+                    content_brand_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_brand_review_locks_table.c.content_id,
+                        content_brand_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_brand_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        snapshots = self.snapshot_automatic_brand_evidence_batch(
+            pairs=tuple(pair for pair in pairs if pair not in locked)
+        )
+        restored: set[UUID] = set()
+        changed: list[tuple[UUID, int]] = []
+        values: list[dict[str, object]] = []
+        for content_id, version, expected_after, before in entries:
+            pair = (content_id, version)
+            if pair in locked or snapshots[pair] != expected_after:
+                continue
+            restored.add(content_id)
+            if before == expected_after:
+                continue
+            changed.append(pair)
+            values.extend(_decode_brand_evidence_row(row) for row in before)
+        if changed:
+            self._session.execute(
+                delete(content_brand_evidence_table).where(
+                    tuple_(
+                        content_brand_evidence_table.c.content_id,
+                        content_brand_evidence_table.c.content_version,
+                    ).in_(changed),
+                    content_brand_evidence_table.c.is_manual_locked.is_(False),
+                )
+            )
+        if values:
+            self._session.execute(insert(content_brand_evidence_table), values)
+        return restored
+
     def carry_manual_brand_review(
         self,
         *,

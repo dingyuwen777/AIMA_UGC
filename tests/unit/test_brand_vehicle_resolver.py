@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -142,6 +143,36 @@ def test_vehicle_alias_resolves_vehicle_and_derives_its_brand() -> None:
     assert [item.source for item in resolution.vehicle_evidence] == ["alias_match"]
     assert [item.source for item in resolution.brand_evidence] == ["vehicle_match"]
     assert resolution.conflicts == ()
+
+
+def test_vehicle_multiple_aliases_emit_one_evidence_per_model() -> None:
+    """同一车型多个别名同时命中时只保留优先级最高的持久证据。"""
+
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        vehicle_aliases=(
+            *snapshot.vehicle_aliases,
+            VehicleAliasRecord(
+                id=UUID("00000000-0000-0000-0000-000000000112"),
+                vehicle_model_id=VEHICLE_A,
+                text="露娜",
+                normalized_text="露娜",
+                created_at=NOW,
+            ),
+        ),
+    )
+    resolution = BrandVehicleResolver(snapshot).resolve(
+        snapshot,
+        title="爱玛露娜Air，就是露娜",
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert resolution.vehicle_matches == (VEHICLE_A,)
+    assert len(resolution.vehicle_evidence) == 1
+    assert resolution.vehicle_evidence[0].matched_text == "露娜Air"
+    assert resolution.brand_evidence[0].matched_text == "露娜Air"
 
 
 def test_brand_alias_supplements_vehicle_derived_brand_and_supports_multiple_brands() -> None:
