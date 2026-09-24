@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260924-152229-import-replay-reversal-throughput
 title: 历史数据导入、重筛与精确撤回后端吞吐修复
 level: L3
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: perf/593-import-replay-reversal-throughput
 created: 2026-09-24T15:22:29+08:00
-updated: 2026-09-24T17:14:11+08:00
+updated: 2026-09-24T17:34:14+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -73,13 +73,13 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 本地手工与服务器历史文件预检、转换和入库显著提速且结果对账一致 | #593；user:20260924-导入性能 | satisfied | 原日志两份 110,571 行 Snapshot 合计 82.883 秒、Chunk 完成总计 69.044 秒；本轮同文件顺序服务器入口预检 17.068+12.820 秒、入库 31.895+29.883 秒，整体约 151.9→91.7 秒；0831.xlsx 本机上传 API 完整入口上传/冻结 0.132 秒、预检 18.200 秒、入库 28.673 秒；两份 XLSX 每字段与旧 Reader 全量一致，行账本与统计对账；纯入库阶段提升较小，主要收益在预检 |
-| R2 | 历史重筛显著提速，多别名同车型批量 Evidence 不再永久重试 | #593；user:20260924-重筛性能 | satisfied | 多别名去重单元+真实 PostgreSQL 回归；确定性 SQL 错误终态分类；5,000 行混合 Replay 17.198 秒，Job 全成功且贡献账本 5,000 行对账；原日志相同类型 100 Artifact 因同键冲突重复 9 次，修后不重复 |
-| R3 | “取消并撤回”显著提速，撤回精确性、恢复与后续事实保护不变 | #593；user:20260924-撤回性能 | satisfied | 原日志 5,203 Content 99.752 秒；隔离库 5,000 行（4,100 既有 Evidence、900 新建）26.029 秒；5,000 行纯 Evidence 8.208 秒；101 行精确恢复与 SQL 数上界集成测试；完整 Replay 集成集覆盖接管、幂等和恢复 |
-| R4 | 仅改后端，不改 UI/等待过程，不改正式业务语义与生产数据 | user:20260924-范围；AGENTS.md；docs/blueprint/07_技术决策与实施门禁.md | satisfied | 当前 diff 仅后端、配置、测试、基准和技术文档；公共 Contract、Schema、依赖未改；实验只写 aima_ugc_task593_* 隔离库，用户 aima_ugc 只读 |
-| R5 | 当前 PR 的测试、文档、Review、CI 与完成审计闭环 | AGENTS.md；#593 | not_satisfied | 待当前 HEAD 证据 |
-| R6 | 其他数据导入的取消及撤销同样检查并提速 | user:20260924-其他导入撤销 | satisfied | Campaign 取消并发集成回归；正式容量脚本 1,000 条普通导入撤销 8.797→1.669 秒、SQL 7038→52；同输入 0901.xlsx 撤销 5,530 条从 14.879 秒降到 7.161 秒，预览最终 0.194 秒；其余 Delta 保留精确回退路径 |
-| R7 | 同一 Campaign 的多文件与多 Worker 不得以死锁或重复数据换吞吐 | #593；user:20260924-全流程；本轮两 Worker 真实文件故障 | satisfied | 两份 110,571 行真实文件双 Worker 曾在 `schedule_import_jobs()` 触发 PostgreSQL deadlock；改为共享取消门后先锁 Campaign、再锁 Chunk/Content，新增双 Worker 集成回归；相同两文件再次运行成功、110,571 行/56 Chunk 全量对账，预检 33.838 秒、入库 61.233 秒；同 Campaign 并发无稳定吞吐收益，不作为本次提速建议 |
+| R1 | 本地手工与服务器历史文件预检、转换和入库显著提速且结果对账一致 | #593 / AC1 | satisfied | 原日志两份 110,571 行 Snapshot 合计 82.883 秒、Chunk 完成总计 69.044 秒；本轮同文件顺序服务器入口预检 17.068+12.820 秒、入库 31.895+29.883 秒，整体约 151.9→91.7 秒；0831.xlsx 本机上传 API 完整入口上传/冻结 0.132 秒、预检 18.200 秒、入库 28.673 秒；两份 XLSX 每字段与旧 Reader 全量一致，行账本与统计对账；纯入库阶段提升较小，主要收益在预检 |
+| R2 | 历史重筛显著提速，多别名同车型批量 Evidence 不再永久重试 | #593 / AC2 | satisfied | 多别名去重单元+真实 PostgreSQL 回归；确定性 SQL 错误终态分类；5,000 行混合 Replay 17.198 秒，Job 全成功且贡献账本 5,000 行对账；原日志相同类型 100 Artifact 因同键冲突重复 9 次，修后不重复 |
+| R3 | “取消并撤回”显著提速，撤回精确性、恢复与后续事实保护不变 | #593 / AC3 | satisfied | 原日志 5,203 Content 99.752 秒；隔离库 5,000 行（4,100 既有 Evidence、900 新建）26.029 秒；5,000 行纯 Evidence 8.208 秒；101 行精确恢复与 SQL 数上界集成测试；完整 Replay 集成集覆盖接管、幂等和恢复 |
+| R4 | 仅改后端，不改 UI/等待过程，不改正式业务语义与生产数据 | #593 / AC4 | satisfied | 当前 diff 仅后端、配置、测试、基准和技术文档；公共 Contract、Schema、依赖未改；实验只写 aima_ugc_task593_* 隔离库，用户 aima_ugc 只读 |
+| R5 | 当前 PR 的测试、文档、Review、CI 与完成审计闭环 | #593 / AC5 | explicitly_deferred | 本机完整相关回归、静态/文档/Change 校验和两阶段本地复核已完成；current-head CI 必须先将本 Change 标记 Ready 才会执行，是 PR merge 前硬门禁，不将先前失败或本地证据冒充为通过 |
+| R6 | 其他数据导入的取消及撤销同样检查并提速 | #593 / AC6 | satisfied | Campaign 取消并发集成回归；正式容量脚本 1,000 条普通导入撤销 8.797→1.669 秒、SQL 7038→52；同输入 0901.xlsx 撤销 5,530 条从 14.879 秒降到 7.161 秒，预览最终 0.194 秒；其余 Delta 保留精确回退路径 |
+| R7 | 同一 Campaign 的多文件与多 Worker 不得以死锁或重复数据换吞吐 | #593 / AC7 | satisfied | 两份 110,571 行真实文件双 Worker 曾在 `schedule_import_jobs()` 触发 PostgreSQL deadlock；改为共享取消门后先锁 Campaign、再锁 Chunk/Content，新增双 Worker 集成回归；相同两文件再次运行成功、110,571 行/56 Chunk 全量对账，预检 33.838 秒、入库 61.233 秒；同 Campaign 并发无稳定吞吐收益，不作为本次提速建议 |
 
 # 计划改动
 
@@ -122,7 +122,7 @@ data_changes:
 - [x] upstream_re_read：2026-09-24 重新读取用户全部补充范围、#593、根 AGENTS 和 Blueprint 07；完成定义包含本机/服务器入口、预检/入库、重筛、两类撤回及取消/多 Worker。
 - [x] change_coverage：逐项核对 R1–R7 与真实日志慢段；两份真实 XLSX 的旧 Reader 值、Campaign 总行数与各分类计数逐项一致；实测预检、入库、撤回和双 Worker。
 - [x] reverse_audit：由本机上传/服务器目录、Source/Canonical Artifact、Campaign/Chunk/Job、Content/Evidence/来源账本及撤回结果反查消费与恢复；共享字符串、损坏坐标、已复用 Artifact、Job 重试、手工锁和后续事实均有对应测试或全量实验。
-- [ ] unresolved_cleared：清零 not_satisfied，或以正式依据记录延期/不适用；证据覆盖当前 HEAD。
+- [x] unresolved_cleared：R1–R4、R6–R7 有本轮直接证据；R5 的 current-head CI 自指门禁按仓库流程明确延期到 Ready 后运行，CI 未通过前不得合并。
 
 # 当前证据边界与剩余风险
 
@@ -133,4 +133,9 @@ data_changes:
 
 # 完成证据与状态
 
-Issue #593；分支 `perf/593-import-replay-reversal-throughput`；PR #594。实现提交 `162ed226`，本机 ingestion/unit 回归 131 passed、1 skipped，Ruff、mypy、文档检查和隔离库性能实验通过。CI 首轮因本 Change 缺少 canonical 章节标题被挡在 Requirement Traceability 门禁，已按机器契约补齐；当前 HEAD 的 CI 与最终 Review 待重跑。未获合并授权，本 Change 在实现 PR 中保持 Active。
+Issue #593；分支 `perf/593-import-replay-reversal-throughput`；PR #594。实现提交 `162ed226`，本机 ingestion/unit 回归 131 passed、1 skipped，Ruff、mypy、文档检查和隔离库性能实验通过。CI 首轮因本 Change 缺少 canonical 章节标题被挡在 Requirement Traceability 门禁，已按机器契约补齐；当前 HEAD 的 CI 待重跑。未获合并授权，本 Change 在实现 PR 中保持 Active。
+
+## 两阶段 Review
+
+1. 实现复核：从真实日志慢段反查 Reader → Artifact → Campaign/Chunk → Content/Evidence → 两种撤回调用链，核对输入/输出、锁顺序、Artifact 恢复与账户/集合 Delta 回退；本地未发现阻塞性代码 Finding。
+2. 证据复核：重读 #593 与用户补充、R1–R7、实验报告、测试和当前 diff；真实文件全量值/统计对账、隔离库导入/撤回回归成立。生产环境性能与 current-head CI 尚不能宣称通过，保留为合并前门禁。
