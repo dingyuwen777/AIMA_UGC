@@ -156,10 +156,10 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 情感、发声类型支持多选 | user:声音广场筛选多选改版需求 / AC1 | satisfied | E1/E2 + Contract 多值 + IN 过滤 |
-| R2 | 历史筛选快照兼容 | user:声音广场筛选多选改版需求 / AC2 | satisfied | E3 + 0062 Migration |
-| R3 | 前端筛选区多选并移除冗余维度 | user:声音广场筛选多选改版需求 / AC3 | satisfied | 前端 VoicePlazaFilters/store 改动 |
-| R4 | 生成物与 Contract 一致 | user:声音广场筛选多选改版需求 / AC4 | satisfied | OpenAPI/Client 重新生成 |
+| R1 | 情感、发声类型支持多选 | #592 / AC1 | satisfied | E1/E2 + Contract 多值 + IN 过滤 |
+| R2 | 历史筛选快照兼容 | #592 / AC2 | satisfied | E3 + 0062 Migration |
+| R3 | 前端筛选区多选并移除冗余维度 | #592 / AC3 | satisfied | 前端 VoicePlazaFilters/store 改动 |
+| R4 | 生成物与 Contract 一致 | #592 / AC4 | satisfied | OpenAPI/Client 重新生成 |
 
 # 完成审计
 
