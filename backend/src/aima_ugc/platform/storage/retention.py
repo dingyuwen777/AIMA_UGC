@@ -12,6 +12,7 @@ PROVIDER_RAW_RETENTION = timedelta(days=30)
 IMPORT_SOURCE_RETENTION = timedelta(days=7)
 UNIFIED_IMPORT_SOURCE_KINDS = ("data-import.source", "historical-import.source")
 EXPORT_RETENTION = timedelta(days=7)
+FEISHU_PUBLICATION_INPUT_RETENTION = timedelta(days=7)
 ORPHAN_RETENTION = timedelta(days=1)
 MEDIA_CACHE_RETENTION = timedelta(days=30)
 MEDIA_CACHE_ITEM_MAX_BYTES = 10 * 1024 * 1024
@@ -21,6 +22,7 @@ MEDIA_CACHE_TARGET_BYTES = 24 * 1024 * 1024 * 1024
 _INITIAL_RETENTION_BY_KIND = {
     "provider-raw": PROVIDER_RAW_RETENTION,
     "content-media-cache": MEDIA_CACHE_RETENTION,
+    "feishu-publication.input": FEISHU_PUBLICATION_INPUT_RETENTION,
 }
 
 
@@ -48,6 +50,7 @@ def import_source_expiry(finished_at: datetime) -> datetime:
 
 __all__ = [
     "EXPORT_RETENTION",
+    "FEISHU_PUBLICATION_INPUT_RETENTION",
     "IMPORT_SOURCE_RETENTION",
     "UNIFIED_IMPORT_SOURCE_KINDS",
     "MEDIA_CACHE_ITEM_MAX_BYTES",

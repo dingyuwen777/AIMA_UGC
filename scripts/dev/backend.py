@@ -133,6 +133,16 @@ def _run(
         )
         print("[OK] Worker started")
 
+        children.append(
+            _start_child(
+                "Feishu Bitable Mirror",
+                [sys.executable, "-m", "aima_ugc.entrypoints.feishu_bitable_mirror_main"],
+                root=root,
+                environment=runtime_environment,
+            )
+        )
+        print("[OK] Feishu Bitable Mirror started")
+
         if config.scheduler_enabled:
             children.append(
                 _start_child(

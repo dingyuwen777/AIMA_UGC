@@ -292,6 +292,7 @@ def export_unified_content_jsonl_to_excel(
     input_path: Path,
     output_path: Path,
     include_analysis: bool,
+    require_complete_analysis: bool = False,
     content_columns: Iterable[str] | None = None,
     label_detail_columns: Iterable[str] | None = None,
     comment_columns: Iterable[str] | None = None,
@@ -302,6 +303,7 @@ def export_unified_content_jsonl_to_excel(
         _iter_unified_content_jsonl(Path(input_path)),
         Path(output_path),
         include_analysis=include_analysis,
+        require_complete_analysis=require_complete_analysis,
         content_columns=content_columns,
         label_detail_columns=label_detail_columns,
         comment_columns=comment_columns,
@@ -313,6 +315,7 @@ def export_unified_data_excel(
     output_path: Path,
     *,
     include_analysis: bool,
+    require_complete_analysis: bool = False,
     content_columns: Iterable[str] | None = None,
     label_detail_columns: Iterable[str] | None = None,
     comment_columns: Iterable[str] | None = None,
@@ -365,6 +368,8 @@ def export_unified_data_excel(
         for record in records:
             content = record.content
             content_analysis = content.analysis if include_analysis else None
+            if include_analysis and require_complete_analysis:
+                _assert_complete_excel_analysis(content)
             _set_secondary_label_row_height(
                 content_sheet,
                 row_number=content_rows + 2,
@@ -421,6 +426,12 @@ def export_unified_data_excel(
         _set_auto_filter(comment_sheet, len(comment_headers), comment_rows)
         workbook.save(temp_path)
     except BaseException:
+        # Write-only worksheets need one final save to close their XML generators;
+        # the partially written temporary workbook is removed immediately below.
+        try:
+            workbook.save(temp_path)
+        except BaseException:
+            pass
         temp_path.unlink(missing_ok=True)
         raise
     finally:
@@ -615,6 +626,46 @@ def _analysis_label_pairs(
             secondary_label=analysis.secondary_label,
         ),
     )
+
+
+def _assert_complete_excel_analysis(content: UnifiedDataExcelContentV1) -> None:
+    """导出前拒绝四个打标列中的任何空值。"""
+
+    analysis = content.analysis
+    if analysis is None:
+        raise ValueError(f"禁止导出缺少 Analysis 的内容: content_id={content.external_content_id}")
+
+    missing: list[str] = []
+    if _is_blank_excel_label(analysis.voice_type):
+        missing.append("发声类型")
+    if _is_blank_excel_label(analysis.sentiment):
+        missing.append("情感标签")
+    if _is_blank_excel_label(analysis.primary_label):
+        missing.append("一级标签")
+    if _is_blank_excel_label(analysis.secondary_label):
+        missing.append("二级标签")
+
+    pairs = _analysis_label_pairs(analysis)
+    if not pairs:
+        missing.extend(("一级标签", "二级标签"))
+    else:
+        if any(_is_blank_excel_label(pair.primary_label) for pair in pairs):
+            missing.append("一级标签")
+        if any(_is_blank_excel_label(pair.secondary_label) for pair in pairs):
+            missing.append("二级标签")
+
+    if missing:
+        unique_missing = tuple(dict.fromkeys(missing))
+        raise ValueError(
+            f"禁止导出空白打标字段: content_id={content.external_content_id}; "
+            f"fields={'、'.join(unique_missing)}"
+        )
+
+
+def _is_blank_excel_label(value: object) -> bool:
+    """识别最终四个 Excel 打标列中的空值和“空白”占位值。"""
+
+    return not isinstance(value, str) or not value.strip() or "空白" in value
 
 
 def _content_cells(

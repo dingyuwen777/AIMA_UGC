@@ -985,6 +985,50 @@
         "title": "AuthConnectorResponse",
         "type": "object"
       },
+      "Body_createFeishuReportPublication": {
+        "properties": {
+          "current_file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Current File",
+            "type": "string"
+          },
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "previous_file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Previous File",
+            "type": "string"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_file",
+          "previous_file",
+          "start_date",
+          "end_date"
+        ],
+        "title": "Body_createFeishuReportPublication",
+        "type": "object"
+      },
+      "Body_createFeishuRepresentativeSelection": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_createFeishuRepresentativeSelection",
+        "type": "object"
+      },
       "Body_createImportBatch": {
         "properties": {
           "brand_ids": {
@@ -6569,6 +6613,327 @@
         "title": "ExportColumnResponse",
         "type": "object"
       },
+      "FeishuPublicationCreatedResponse": {
+        "additionalProperties": false,
+        "description": "管理员发布请求入队后的 202 响应。",
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "report",
+              "representative_selection"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "const": "queued",
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind"
+        ],
+        "title": "FeishuPublicationCreatedResponse",
+        "type": "object"
+      },
+      "FeishuPublicationJobResponse": {
+        "additionalProperties": false,
+        "description": "管理员发布任务查询响应。",
+        "properties": {
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "report",
+              "representative_selection"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_attempts": {
+            "exclusiveMinimum": 0.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "progress": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeishuReportPublicationResult"
+              },
+              {
+                "$ref": "#/components/schemas/FeishuRepresentativeSelectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "source_filenames": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Filenames",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "attempt",
+          "max_attempts",
+          "progress",
+          "created_at"
+        ],
+        "title": "FeishuPublicationJobResponse",
+        "type": "object"
+      },
+      "FeishuReportPublicationResult": {
+        "additionalProperties": false,
+        "description": "报告发布成功后的安全结果；不暴露本地临时路径或 Secret。",
+        "properties": {
+          "comment_rows": {
+            "minimum": 0.0,
+            "title": "Comment Rows",
+            "type": "integer"
+          },
+          "content_rows": {
+            "minimum": 0.0,
+            "title": "Content Rows",
+            "type": "integer"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "editable_chart_sheet_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Editable Chart Sheet Url"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "kind": {
+            "const": "report",
+            "default": "report",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label_rows": {
+            "minimum": 0.0,
+            "title": "Label Rows",
+            "type": "integer"
+          },
+          "native_document_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Document Url"
+          },
+          "representative_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Representative Count",
+            "type": "integer"
+          },
+          "representative_created_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Representative Created Count",
+            "type": "integer"
+          },
+          "representative_table_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Representative Table Name"
+          },
+          "representative_table_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Representative Table Url"
+          },
+          "representative_updated_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Representative Updated Count",
+            "type": "integer"
+          },
+          "representative_verified_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Representative Verified Count",
+            "type": "integer"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_rows",
+          "label_rows",
+          "comment_rows",
+          "start_date",
+          "end_date"
+        ],
+        "title": "FeishuReportPublicationResult",
+        "type": "object"
+      },
+      "FeishuRepresentativeSelectionResult": {
+        "additionalProperties": false,
+        "description": "代表性筛选多维表发布后的安全结果。",
+        "properties": {
+          "created_count": {
+            "minimum": 0.0,
+            "title": "Created Count",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "representative_selection",
+            "default": "representative_selection",
+            "title": "Kind",
+            "type": "string"
+          },
+          "target_table_id": {
+            "title": "Target Table Id",
+            "type": "string"
+          },
+          "target_table_name": {
+            "title": "Target Table Name",
+            "type": "string"
+          },
+          "updated_count": {
+            "minimum": 0.0,
+            "title": "Updated Count",
+            "type": "integer"
+          },
+          "verification_errors": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification Errors",
+            "type": "array"
+          },
+          "verified_count": {
+            "minimum": 0.0,
+            "title": "Verified Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_table_id",
+          "target_table_name",
+          "created_count",
+          "updated_count",
+          "verified_count"
+        ],
+        "title": "FeishuRepresentativeSelectionResult",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -9411,6 +9776,223 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/feishu-publication-jobs/{job_id}": {
+      "get": {
+        "operationId": "getFeishuPublicationJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeishuPublicationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Feishu Publication Job",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/admin/feishu-report-publications": {
+      "post": {
+        "description": "上传本期/上期 Excel 和必填日期范围，异步发布报告到飞书。",
+        "operationId": "createFeishuReportPublication",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_createFeishuReportPublication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeishuPublicationCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Content Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Feishu Report Publication",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/admin/feishu-representative-selections": {
+      "post": {
+        "description": "上传已打标 Excel，异步筛选并发布到飞书多维表。",
+        "operationId": "createFeishuRepresentativeSelection",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_createFeishuRepresentativeSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeishuPublicationCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Content Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Feishu Representative Selection",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
     "/api/v1/analysis-scheme-versions/{version_id}": {
       "put": {
         "description": "管理员更新尚未发布的 Scheme Version。",

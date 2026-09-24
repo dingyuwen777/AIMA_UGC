@@ -36,15 +36,21 @@ def _content(external_content_id: str) -> CanonicalContentV1:
 
 def _label_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
     primary = taxonomy.primary_labels[0]
-    assert taxonomy.semantic_rules is not None
+    rules = taxonomy.semantic_rules
+    assert rules is not None
+    source_type = rules.source_types[0]
+    content_intent = rules.content_intents[0]
     return {
         "item_no": item_no,
         "relevance": "relevant",
         "relevance_evidence": ["爱玛体验"],
-        "source_type": "unknown",
-        "content_intent": "unknown",
-        "voice_type": taxonomy.semantic_rules.unknown_voice_type,
-        "voice_evidence": [],
+        "source_type": source_type,
+        "content_intent": content_intent,
+        "voice_type": rules.derive_voice_type(
+            source_type=source_type,
+            content_intent=content_intent,
+        ),
+        "voice_evidence": ["正文"],
         "sentiment": taxonomy.sentiments[0],
         "sentiment_evidence": ["正文"],
         "labels": [
@@ -185,3 +191,83 @@ def test_item_order_mismatch_retries_the_whole_unresolved_batch() -> None:
     assert len(fake.calls) == 2
     assert result.attempts[0].validation_error_codes == ("item_order_mismatch",)
     assert [item.item_no for item in fake.calls[1].items] == [1, 2]
+
+
+def test_irrelevant_results_remain_valid_outside_excel_complete_mode() -> None:
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    taxonomy = loader.load()
+    item = _label_item(taxonomy, item_no=1)
+    item.update(
+        relevance="irrelevant",
+        sentiment=None,
+        sentiment_evidence=[],
+        labels=[],
+    )
+    fake = FakeContentLabelingLLM(responses=[json.dumps({"items": [item]}, ensure_ascii=False)])
+
+    result = ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
+        [_content("unrelated-content")],
+        max_validation_retries=0,
+    )
+
+    assert result.items[0].analysis_status == "succeeded"
+    assert result.items[0].analysis is not None
+    assert result.items[0].analysis.relevance == "irrelevant"
+
+
+def test_v46_prompt_asset_builds_taxonomy_without_python_voice_literals() -> None:
+    prompt_path = CONTENT_LABELING_PROMPT_PATH.with_name(
+        "content_labeling_v4.6_豆包零空白_发声类型闭环版 (1).md"
+    )
+    taxonomy = PromptTaxonomyLoader(prompt_path).load()
+    rules = taxonomy.semantic_rules
+
+    assert taxonomy.output_protocol_version == "content-labeling.v4.6"
+    assert len(taxonomy.voice_types) == 3
+    assert rules is not None
+    assert {
+        rules.ordinary_consumer_organic_voice_type,
+        rules.personal_transaction_voice_type,
+        rules.unknown_voice_type,
+        *rules.source_voice_types.values(),
+    } <= set(taxonomy.voice_types)
+
+
+def test_excel_complete_fallback_keeps_unrecoverable_item_exportable() -> None:
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    fake = FakeContentLabelingLLM(responses=["not-json"])
+
+    result = ContentLabelingService(
+        prompt_loader=loader,
+        llm=fake,
+        force_excel_complete=True,
+    ).label_contents(
+        [_content("content-fallback")],
+        max_validation_retries=0,
+    )
+
+    item_result = result.items[0]
+    assert item_result.analysis_status == "succeeded"
+    assert item_result.analysis is not None
+    assert item_result.analysis.relevance == "relevant"
+    assert item_result.analysis.sentiment in loader.load().sentiments
+    assert item_result.analysis.labels
+    assert item_result.analysis.primary_label
+    assert item_result.analysis.secondary_label
+
+
+def test_excel_complete_fallback_also_handles_terminal_provider_error() -> None:
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    fake = FakeContentLabelingLLM(responses=[])
+
+    result = ContentLabelingService(
+        prompt_loader=loader,
+        llm=fake,
+        force_excel_complete=True,
+    ).label_contents(
+        [_content("content-provider-error")],
+        max_validation_retries=4,
+    )
+
+    assert result.items[0].analysis_status == "succeeded"
+    assert len(fake.calls) == 1

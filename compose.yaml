@@ -240,6 +240,30 @@ services:
     init: true
     restart: unless-stopped
 
+  feishu-bitable-mirror:
+    <<: *backend-service
+    command: ["python", "-m", "aima_ugc.entrypoints.feishu_bitable_mirror_main"]
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
+        target: /app/data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
+        target: /app/logs
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
+        target: /run/internal-secrets
+        read_only: true
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/provider-secrets
+        target: /run/provider-secrets
+        read_only: true
+    depends_on:
+      configure:
+        condition: service_completed_successfully
+    init: true
+    restart: unless-stopped
+
   scheduler:
     <<: *backend-service
     command: ["python", "-m", "aima_ugc.entrypoints.scheduler_main"]

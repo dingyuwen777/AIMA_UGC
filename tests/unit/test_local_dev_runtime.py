@@ -174,4 +174,9 @@ def test_backend_ctrl_c_stops_children_then_postgres(
     )
 
     assert result == 0
-    assert cleanup_order == ["child:API", "child:Worker", "postgres"]
+    assert cleanup_order == [
+        "child:API",
+        "child:Feishu Bitable Mirror",
+        "child:Worker",
+        "postgres",
+    ]

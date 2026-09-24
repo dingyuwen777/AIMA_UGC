@@ -104,7 +104,7 @@ def test_wordcloud_fails_closed_when_cjk_font_is_unavailable(
         wordcloud.render_wordcloud_png({"品牌评价": 10}, tmp_path / "cloud.png")
 
 
-def test_default_report_generates_landscape_ranking_and_wordcloud_assets(tmp_path: Path) -> None:
+def test_default_report_generates_portrait_ranking_and_wordcloud_assets(tmp_path: Path) -> None:
     workbook_path = tmp_path / "labeled_data.xlsx"
     _make_visual_workbook(workbook_path)
     before = _sha256(workbook_path)
@@ -113,14 +113,18 @@ def test_default_report_generates_landscape_ranking_and_wordcloud_assets(tmp_pat
 
     assert _sha256(workbook_path) == before
     markdown = summary.markdown_path.read_text(encoding="utf-8")
-    assert "<!-- aima:table-style=kpi -->" in markdown
-    assert markdown.count("<!-- aima:table-style=ranking -->") >= 9
+    assert "<!-- aima:table-style=compact-daily -->" in markdown
+    assert markdown.count("<!-- aima:table-style=ranking -->") >= 3
     assert "![一级议题词云](assets/primary_topics_wordcloud.png)" in markdown
+    assert "![二级议题词云](assets/secondary_topics_wordcloud.png)" in markdown
     assert "![热点关键词词云](assets/keyword_wordcloud.png)" in markdown
-    assert "<!-- aima:chart-presentation=sentiment-split -->" in markdown
 
     assets = summary.markdown_path.parent / "assets"
-    for name in ("primary_topics_wordcloud.png", "keyword_wordcloud.png"):
+    for name in (
+        "primary_topics_wordcloud.png",
+        "secondary_topics_wordcloud.png",
+        "keyword_wordcloud.png",
+    ):
         path = assets / name
         assert path.is_file()
         with Image.open(path) as image:
@@ -134,7 +138,9 @@ def test_default_report_generates_landscape_ranking_and_wordcloud_assets(tmp_pat
         document = ET.fromstring(archive.read("word/document.xml"))
         page = document.find(f".//{{{_W}}}sectPr/{{{_W}}}pgSz")
         assert page is not None
-        assert page.get(f"{{{_W}}}orient") == "landscape"
+        assert page.get(f"{{{_W}}}w") == "11906"
+        assert page.get(f"{{{_W}}}h") == "16838"
+        assert page.get(f"{{{_W}}}orient") is None
         assert "01" in archive.read("word/document.xml").decode("utf-8")
         chart_parts = sorted(
             name for name in names if name.startswith("word/charts/chart") and name.endswith(".xml")

@@ -15,6 +15,9 @@ from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+from aima_ugc.modules.administration.feishu_publication_jobs import (
+    register_feishu_publication_jobs,
+)
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
     ContentAnalysisPlanJobHandler,
@@ -66,6 +69,7 @@ from .canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from .content_media_cache import PostgresContentMediaCacheService
 from .content_reclassification_worker import PostgresContentReclassificationJobExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
+from .feishu_publication_worker import PostgresFeishuPublicationJobExecutor
 from .historical_cancellation import historical_cancellation_terminal_callback
 from .historical_import_worker import PostgresHistoricalImportJobExecutor
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
@@ -222,6 +226,10 @@ def create_collection_job_registry(
         registry,
         VoicePlazaProjectionJobHandler(PostgresVoicePlazaProjectionJobExecutor(runtime)),
         terminal_callback=voice_plaza_projection_job_terminal_callback,
+    )
+    register_feishu_publication_jobs(
+        registry,
+        PostgresFeishuPublicationJobExecutor(runtime),
     )
     return registry
 

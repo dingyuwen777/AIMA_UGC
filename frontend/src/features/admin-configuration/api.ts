@@ -4,6 +4,7 @@ import {
   addVehicleBrandAlias,
   copyAnalysisScheme,
   createAllCanonicalReplays,
+  createFeishuReportPublication,
   createAnalysisSchemeDraft,
   createProviderConfig,
   createVehicleBrand,
@@ -14,6 +15,7 @@ import {
   deleteVehicleBrandAlias,
   deleteVehicleModel,
   getAnalysisSchemeDeleteEligibility,
+  getFeishuPublicationJob,
   getProviderConfigDeleteEligibility,
   listAnalysisSchemes,
   listArchivedAnalysisSchemes,
@@ -38,12 +40,15 @@ import {
   type AnalysisSchemeResponse,
   type AnalysisSchemeUpdateDraftRequest,
   type AuditEventListResponse,
+  type BodyCreateFeishuReportPublication,
   type BrandAliasCreateRequest,
   type BrandCreateRequest,
   type BrandListResponse,
   type BrandUpdateRequest,
   type CanonicalReplayAllCreatedResponse,
   type CanonicalReplayAllCreateRequest,
+  type FeishuPublicationCreatedResponse,
+  type FeishuPublicationJobResponse,
   type ProviderConfigCreateRequest,
   type ProviderConfigListResponse,
   type ProviderConfigResponse,
@@ -199,6 +204,23 @@ export const fetchProviderDeleteEligibility = async (
 
 export const deleteArchivedProvider = async (id: string): Promise<void> =>
   unwrapResponse(await deleteProviderConfig(id))
+
+export const createReportPublication = async (
+  body: BodyCreateFeishuReportPublication,
+): Promise<FeishuPublicationCreatedResponse> =>
+  unwrapResponse(await createFeishuReportPublication(body))
+
+export const fetchReportPublicationJob = async (
+  jobId: string,
+): Promise<FeishuPublicationJobResponse> => {
+  // Job 状态是轮询读模型，不能复用浏览器/代理缓存里的旧 queued 响应。
+  // 同时加时间戳，兼容忽略 Cache-Control 的本地代理/静态开发中间件。
+  const cacheBuster = Date.now().toString(36)
+  return unwrapResponse(await getFeishuPublicationJob(
+    `${jobId}?_=${cacheBuster}`,
+    { cache: 'no-store' },
+  ))
+}
 
 export type {
   ProviderConfigCreateRequest,

@@ -1,5 +1,8 @@
 """当前应用 Schema 的机器注册入口。"""
 
+from aima_ugc.modules.administration.feishu_mirror_tables import (
+    feishu_bitable_mirrors_table,
+)
 from aima_ugc.modules.analysis.lifecycle_schema import register_analysis_lifecycle_schema
 from aima_ugc.modules.analysis.manual_override_tables import (
     analysis_content_manual_overrides_table,
@@ -157,6 +160,7 @@ __all__ = [
     "account_external_ids_table",
     "accounts_table",
     "artifacts_table",
+    "feishu_bitable_mirrors_table",
     "canonical_artifact_links_table",
     "canonical_replay_all_requests_table",
     "canonical_replay_content_changes_table",

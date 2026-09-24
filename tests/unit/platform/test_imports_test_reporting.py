@@ -43,8 +43,10 @@ def test_generate_report_accepts_explicit_processed_excel(
     tmp_path: Path,
 ) -> None:
     excel_path = tmp_path / "finished.xlsx"
+    previous_excel_path = tmp_path / "previous.xlsx"
     output_dir = tmp_path / "custom-reports"
     excel_path.write_bytes(b"xlsx")
+    previous_excel_path.write_bytes(b"xlsx")
     report_date_range = (date(2026, 8, 13), date(2026, 8, 19))
     captured: dict[str, object] = {}
 
@@ -54,10 +56,12 @@ def test_generate_report_accepts_explicit_processed_excel(
         output_dir: Path,
         template_path: Path | None = None,
         report_date_range: tuple[date, date] | None = None,
+        previous_input_path: Path | None = None,
     ) -> ReportGenerationSummary:
         captured["input_path"] = input_path
         captured["output_dir"] = output_dir
         captured["report_date_range"] = report_date_range
+        captured["previous_input_path"] = previous_input_path
         assert template_path is None
         return _report_summary(excel_path=input_path, output_dir=output_dir)
 
@@ -67,6 +71,7 @@ def test_generate_report_accepts_explicit_processed_excel(
         excel_path=excel_path,
         output_dir=output_dir,
         report_date_range=report_date_range,
+        previous_excel_path=previous_excel_path,
     )
 
     assert result.source_excel_path == excel_path
@@ -76,6 +81,7 @@ def test_generate_report_accepts_explicit_processed_excel(
         "input_path": excel_path,
         "output_dir": output_dir,
         "report_date_range": report_date_range,
+        "previous_input_path": previous_excel_path,
     }
 
 
@@ -118,6 +124,7 @@ def test_run_all_appends_report_after_labeled_excel(
         return _StageSummary()
 
     monkeypatch.setattr(imports_entry, "export_labeled_excel", fake_export)
+    monkeypatch.setattr(imports_entry, "load_feishu_publication_config", lambda: None)
 
     def fake_generate_report(
         *,
@@ -178,6 +185,7 @@ def test_run_all_can_override_report_input_excel(
         return _StageSummary()
 
     monkeypatch.setattr(imports_entry, "export_labeled_excel", fake_export)
+    monkeypatch.setattr(imports_entry, "load_feishu_publication_config", lambda: None)
 
     captured: dict[str, Path] = {}
 

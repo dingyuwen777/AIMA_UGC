@@ -36,6 +36,7 @@ class WordConversionSummary:
     table_count: int
     chart_count: int
     image_count: int = 0
+    chart_specs: tuple[ChartSpec, ...] = ()
 
 
 def convert_markdown_to_docx(markdown_path: Path, output_path: Path) -> WordConversionSummary:
@@ -53,20 +54,44 @@ def convert_markdown_to_docx(markdown_path: Path, output_path: Path) -> WordConv
     builder = ReportDocxBuilder()
     _parse_markdown(source.read_text(encoding="utf-8"), builder, asset_root=source.parent)
     target.parent.mkdir(parents=True, exist_ok=True)
-    builder.save(target)
+    actual_target = builder.save(target)
     verify_docx(
-        target,
+        actual_target,
         expected_charts=builder.chart_count,
         expected_images=builder.image_count,
     )
     return WordConversionSummary(
         markdown_path=source,
-        output_path=target,
+        output_path=actual_target,
         paragraph_count=builder.paragraph_count,
         table_count=builder.table_count,
         chart_count=builder.chart_count,
         image_count=builder.image_count,
+        chart_specs=tuple(builder.charts),
     )
+
+
+def extract_chart_specs(markdown_path: Path) -> tuple[ChartSpec, ...]:
+    """提取 Markdown 中按出现顺序排列的原始 Mermaid 图表规格。"""
+
+    source = Path(markdown_path)
+    if source.suffix.lower() != ".md":
+        raise ValueError("图表规格输入必须是 .md 文件")
+    if not source.is_file():
+        raise FileNotFoundError(source)
+
+    lines = source.read_text(encoding="utf-8").splitlines()
+    specs: list[ChartSpec] = []
+    index = 0
+    while index < len(lines):
+        fence = _FENCE_RE.match(lines[index])
+        if fence is None:
+            index += 1
+            continue
+        block, index = _collect_fence(lines, index + 1)
+        if fence.group(1).lower() == "mermaid":
+            specs.append(_parse_mermaid(block))
+    return tuple(specs)
 
 
 def _parse_markdown(markdown: str, builder: ReportDocxBuilder, *, asset_root: Path) -> None:
@@ -157,6 +182,16 @@ def _parse_markdown(markdown: str, builder: ReportDocxBuilder, *, asset_root: Pa
                 table_style = None
                 layout_style = None
                 continue
+            if headers and headers[0] == "原文链接" and len(headers) == 7:
+                builder.add_rich_table(
+                    headers,
+                    rows,
+                    asset_root=asset_root,
+                    column_widths=(1450, 1600, 250, 1400, 1400, 1600, 606),
+                )
+                table_style = None
+                index = after_table
+                continue
             if table_style is None or table_style == "editorial":
                 builder.add_table(headers, rows)
             elif table_style == "ranking":
@@ -229,12 +264,12 @@ def _render_layout_table(
             alt_text=image[1],
         )
         return next_index
-    if layout_style == "ranking-image":
+    if layout_style in {"ranking-image", "ranking-image-top8", "ranking-image-top10"}:
         image, next_index = _consume_image(lines, visual_index, asset_root=asset_root)
         builder.add_ranking_visual(
             headers,
             rows,
-            top_n=10,
+            top_n=8 if layout_style == "ranking-image-top8" else 10,
             image_path=image[0],
             alt_text=image[1],
         )

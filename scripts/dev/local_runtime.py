@@ -33,6 +33,18 @@ _SOURCE_LOCAL_KEYS = frozenset(
         "AIMA_HISTORICAL_IMPORT_HOST_ROOT",
         "AIMA_HISTORICAL_IMPORT_ROOT",
         "AIMA_DEV_ENABLE_SCHEDULER",
+        "AIMA_FEISHU_BASE_URL",
+        "AIMA_FEISHU_APP_ID",
+        "AIMA_FEISHU_APP_TOKEN",
+        "AIMA_FEISHU_WIKI_TOKEN",
+        "AIMA_FEISHU_TABLE_ID",
+        "AIMA_FEISHU_APP_SECRET_FILE",
+        "AIMA_FEISHU_REPORT_ENABLED",
+        "AIMA_FEISHU_FOLDER_TOKEN",
+        "AIMA_FEISHU_APP_SECRET_REF",
+        "AIMA_FEISHU_TIMEOUT_SECONDS",
+        "AIMA_FEISHU_MAX_RETRIES",
+        "AIMA_FEISHU_DRY_RUN",
     }
 )
 _COMPOSE_LOCAL_KEYS = frozenset(
@@ -68,11 +80,20 @@ _COMPOSE_LOCAL_KEYS = frozenset(
         "AIMA_LLM_PROVIDER_NAME",
         "AIMA_LLM_MODEL",
         "AIMA_LLM_API_KEY",
+        "AIMA_FEISHU_BASE_URL",
+        "AIMA_FEISHU_APP_ID",
+        "AIMA_FEISHU_APP_TOKEN",
+        "AIMA_FEISHU_WIKI_TOKEN",
+        "AIMA_FEISHU_TABLE_ID",
+        "AIMA_FEISHU_APP_SECRET_FILE",
+        "AIMA_FEISHU_REPORT_ENABLED",
+        "AIMA_FEISHU_FOLDER_TOKEN",
+        "AIMA_FEISHU_APP_SECRET_REF",
+        "AIMA_FEISHU_TIMEOUT_SECONDS",
+        "AIMA_FEISHU_MAX_RETRIES",
         # 飞书身份接入（单 ③）：源码开发也可直接配这组；留空即不启用。
         # ⚠️ 与 TikHub/LLM 的本地约定一致：**App Secret 不经环境变量**传，
         # 只写引用名，真实内容放 AIMA_EXTERNAL_SECRET_DIR 下的同名文件。
-        "AIMA_FEISHU_APP_ID",
-        "AIMA_FEISHU_APP_SECRET_REF",
         "AIMA_FEISHU_ADMIN_GROUP_ID",
         "AIMA_FEISHU_USER_GROUP_ID",
         "AIMA_FEISHU_REDIRECT_URI",
@@ -81,6 +102,7 @@ _COMPOSE_LOCAL_KEYS = frozenset(
         "AIMA_FEISHU_SESSION_TTL_HOURS",
         "AIMA_FEISHU_STATE_TTL_SECONDS",
         "AIMA_FEISHU_CONNECTORS",
+        "AIMA_FEISHU_DRY_RUN",
     }
 )
 _KNOWN_LOCAL_KEYS = _SOURCE_LOCAL_KEYS | _COMPOSE_LOCAL_KEYS
@@ -109,6 +131,18 @@ class LocalDevConfig:
     historical_import_root: str | None
     scheduler_enabled: bool
     unknown_keys: tuple[str, ...]
+    feishu_base_url: str | None = None
+    feishu_app_id: str | None = None
+    feishu_app_token: str | None = None
+    feishu_wiki_token: str | None = None
+    feishu_table_id: str | None = None
+    feishu_app_secret_file: str | None = None
+    feishu_report_enabled: str | None = None
+    feishu_folder_token: str | None = None
+    feishu_app_secret_ref: str | None = None
+    feishu_timeout_seconds: str | None = None
+    feishu_max_retries: str | None = None
+    feishu_dry_run: str | None = None
 
     @property
     def tikhub_configured(self) -> bool:
@@ -258,6 +292,18 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
             key="AIMA_DEV_ENABLE_SCHEDULER",
         ),
         unknown_keys=unknown,
+        feishu_base_url=_clean(values.get("AIMA_FEISHU_BASE_URL")),
+        feishu_app_id=_clean(values.get("AIMA_FEISHU_APP_ID")),
+        feishu_app_token=_clean(values.get("AIMA_FEISHU_APP_TOKEN")),
+        feishu_wiki_token=_clean(values.get("AIMA_FEISHU_WIKI_TOKEN")),
+        feishu_table_id=_clean(values.get("AIMA_FEISHU_TABLE_ID")),
+        feishu_app_secret_file=_clean(values.get("AIMA_FEISHU_APP_SECRET_FILE")),
+        feishu_report_enabled=_clean(values.get("AIMA_FEISHU_REPORT_ENABLED")),
+        feishu_folder_token=_clean(values.get("AIMA_FEISHU_FOLDER_TOKEN")),
+        feishu_app_secret_ref=_clean(values.get("AIMA_FEISHU_APP_SECRET_REF")),
+        feishu_timeout_seconds=_clean(values.get("AIMA_FEISHU_TIMEOUT_SECONDS")),
+        feishu_max_retries=_clean(values.get("AIMA_FEISHU_MAX_RETRIES")),
+        feishu_dry_run=_clean(values.get("AIMA_FEISHU_DRY_RUN")),
     )
 
 
@@ -333,6 +379,23 @@ def build_runtime_environment(
     source_historical_import_root = config.source_historical_import_root
     if source_historical_import_root is not None:
         environment["AIMA_HISTORICAL_IMPORT_ROOT"] = source_historical_import_root
+
+    for key, value in (
+        ("AIMA_FEISHU_BASE_URL", config.feishu_base_url),
+        ("AIMA_FEISHU_APP_ID", config.feishu_app_id),
+        ("AIMA_FEISHU_APP_TOKEN", config.feishu_app_token),
+        ("AIMA_FEISHU_WIKI_TOKEN", config.feishu_wiki_token),
+        ("AIMA_FEISHU_TABLE_ID", config.feishu_table_id),
+        ("AIMA_FEISHU_APP_SECRET_FILE", config.feishu_app_secret_file),
+        ("AIMA_FEISHU_REPORT_ENABLED", config.feishu_report_enabled),
+        ("AIMA_FEISHU_FOLDER_TOKEN", config.feishu_folder_token),
+        ("AIMA_FEISHU_APP_SECRET_REF", config.feishu_app_secret_ref),
+        ("AIMA_FEISHU_TIMEOUT_SECONDS", config.feishu_timeout_seconds),
+        ("AIMA_FEISHU_MAX_RETRIES", config.feishu_max_retries),
+        ("AIMA_FEISHU_DRY_RUN", config.feishu_dry_run),
+    ):
+        if value is not None:
+            environment[key] = value
 
     if config.llm_configured:
         assert config.llm_base_url is not None
@@ -432,6 +495,8 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
                 "exec",
                 POSTGRES_CONTAINER,
                 "pg_isready",
+                "-h",
+                "127.0.0.1",
                 "-U",
                 POSTGRES_USER,
                 "-d",

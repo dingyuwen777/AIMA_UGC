@@ -28,6 +28,7 @@ def _request(
     *,
     previous_errors: tuple[str, ...] = (),
     request_kind: Literal["primary", "repair", "judge"] = "primary",
+    require_excel_complete: bool = False,
 ) -> ContentLabelingLLMRequest:
     return ContentLabelingLLMRequest(
         prompt="PROMPT-TEXT",
@@ -43,6 +44,7 @@ def _request(
         ),
         request_kind=request_kind,
         previous_validation_error_codes=previous_errors,
+        require_excel_complete=require_excel_complete,
     )
 
 
@@ -111,6 +113,35 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
     assert response.output_tokens == 17
     assert response.cost_amount is None
     assert response.cost_currency is None
+
+
+def test_excel_output_contract_is_scoped_to_excel_complete_requests() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"items": []}'}}]},
+        )
+
+    client = httpx.Client(
+        base_url="https://llm.example/v1/",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        adapter = OpenAICompatibleContentLabelingLLM(
+            api_key=SecretStr("secret"),
+            model="model-a",
+            client=client,
+        )
+        adapter.complete(_request(require_excel_complete=True))
+    finally:
+        client.close()
+
+    user_payload = json.loads(json.loads(captured[0].content)["messages"][1]["content"])
+    assert set(user_payload) == {"items", "excel_output_contract"}
+    assert "relevance=irrelevant" in user_payload["excel_output_contract"]
 
 
 def test_openai_compatible_adapter_derives_non_default_port_in_provider_identity() -> None:

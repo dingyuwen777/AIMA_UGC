@@ -121,6 +121,23 @@ services:
         target: /run/provider-secrets
         read_only: true
 
+  feishu-bitable-mirror:
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
+        target: /app/data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
+        target: /app/logs
+      - type: volume
+        source: windows_internal_secrets
+        target: /run/internal-secrets
+        read_only: true
+      - type: volume
+        source: windows_provider_secrets
+        target: /run/provider-secrets
+        read_only: true
+
   scheduler:
     volumes: *windows-backend-volumes
 
