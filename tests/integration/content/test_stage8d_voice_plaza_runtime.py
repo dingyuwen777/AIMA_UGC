@@ -556,8 +556,8 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             ContentListQuery(
                 analysis_status="completed",
                 relevance="relevant",
-                voice_type="真实用户发声",
-                sentiment="负面",
+                voice_types=("真实用户发声",),
+                sentiments=("负面",),
                 primary_label="电池、续航与充电",
                 secondary_label="实际续航表现",
             )
@@ -835,7 +835,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
         audited_page = content_service.list_contents(
             ContentListQuery(
                 relevance="irrelevant",
-                voice_type="媒体机构发声",
+                voice_types=("媒体机构发声",),
             )
         )
         assert [item.id for item in audited_page.items] == [content_ids[0]]
