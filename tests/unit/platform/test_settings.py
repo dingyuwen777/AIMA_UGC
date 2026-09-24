@@ -43,3 +43,24 @@ def test_load_settings_defaults_are_repository_relative(tmp_path) -> None:
     assert settings.data_dir == (tmp_path / ".runtime/data").resolve()
     assert settings.log_dir == (tmp_path / ".runtime/logs").resolve()
     assert settings.secret_dir == (tmp_path / ".runtime/secrets").resolve()
+
+
+def test_runtime_sizing_ignores_legacy_environment_values(tmp_path) -> None:
+    """历史环境值不能覆盖代码统一管理的事务与安全边界。"""
+
+    settings = load_settings(
+        {
+            "AIMA_HISTORICAL_CHUNK_ROWS": "100",
+            "AIMA_HISTORICAL_MAX_SCAN_FILES": "100000",
+            "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH": "32",
+            "AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS": "16",
+            "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS": "16",
+        },
+        base_dir=tmp_path,
+    )
+
+    assert settings.historical_chunk_rows == 2000
+    assert settings.historical_max_scan_files == 10_000
+    assert settings.historical_max_directory_depth == 8
+    assert settings.historical_max_in_flight_jobs == 2
+    assert settings.analysis_run_max_in_flight_jobs == 2

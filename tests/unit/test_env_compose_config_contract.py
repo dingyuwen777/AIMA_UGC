@@ -13,6 +13,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 HISTORICAL_RUNTIME_INTERPOLATION = "${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}"
 _COMPOSE_INTERPOLATION_PATTERN = re.compile(r"\$\{(AIMA_[A-Z0-9_]+)(?::-[^}]*)?\}")
+CODE_OWNED_RUNTIME_KEYS = (
+    "AIMA_HISTORICAL_CHUNK_ROWS",
+    "AIMA_HISTORICAL_MAX_SCAN_FILES",
+    "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH",
+    "AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS",
+    "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS",
+)
 
 
 def _load_local_runtime() -> ModuleType:
@@ -119,6 +126,19 @@ def test_env_examples_cover_all_public_compose_interpolations() -> None:
 
     assert interpolated <= local_keys
     assert interpolated <= production_keys
+
+
+def test_code_owned_runtime_sizing_is_absent_from_env_and_compose() -> None:
+    """部署模板和 Compose 不应再维护运行容量的第二套数值。"""
+
+    local = _env_keys(ROOT / "env.local.example")
+    production = _env_keys(ROOT / "env.production.example")
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    for key in CODE_OWNED_RUNTIME_KEYS:
+        assert key not in local
+        assert key not in production
+        assert key not in compose
 
 
 def test_compose_uses_one_configurable_historical_runtime_root() -> None:
