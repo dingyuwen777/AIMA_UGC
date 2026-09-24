@@ -22,6 +22,17 @@ def test_replay_benchmark_requires_dedicated_database_name() -> None:
     benchmark_canonical_replay._require_capacity_database("test_canonical_replay_capacity")
 
 
+def test_scalar_reference_requires_stable_author_fixture(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="stable_authors"):
+        benchmark_canonical_replay.run_benchmark(
+            work_dir=tmp_path,
+            file_count=1,
+            rows_per_file=1,
+            workers=1,
+            scalar_stable_authors=True,
+        )
+
+
 def test_replay_benchmark_refuses_nonempty_work_directory(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

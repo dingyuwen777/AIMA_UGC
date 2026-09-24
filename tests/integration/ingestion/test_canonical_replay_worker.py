@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
@@ -11,6 +12,9 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
+)
+from aima_ugc.adapters.persistence.postgres.content_complete import (
+    PostgresCompleteContentRepository,
 )
 from aima_ugc.adapters.persistence.postgres.content_visibility import (
     content_has_active_source,
@@ -31,6 +35,7 @@ from aima_ugc.bootstrap.worker import (
 )
 from aima_ugc.contracts.administration import VehicleModelCreateRequest
 from aima_ugc.contracts.brand_vehicle import BrandAliasCreateRequest, BrandCreateRequest
+from aima_ugc.contracts.canonical import CanonicalAuthorV1, CanonicalContentV1
 from aima_ugc.contracts.http import CanonicalReplayCreateRequest
 from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.extended_tables import content_external_ids_table
@@ -356,6 +361,101 @@ def test_new_alias_replay_deduplicates_and_converges_through_content_owner(
             evidence = connection.execute(select(content_brand_evidence_table)).mappings().all()
         assert {row["brand_id"] for row in evidence} == {brand_id}
         assert {row["catalog_version"] for row in evidence} == {catalog_version}
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_replay_batches_stable_authors_without_scalar_content_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """真实 Replay 循环中的稳定作者进入集合路径，并输出可核验的回退计数。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        artifact_id = _import_canonical(
+            client,
+            runtime,
+            filename="replay-stable-authors.xlsx",
+            rows=tuple(
+                (f"replay-stable-author-{index}", f"星曜稳定作者 {index}") for index in range(3)
+            ),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+
+        original_lineage = PostgresCanonicalReplayJobExecutor._content_with_lineage
+
+        def inject_stable_author(
+            session: object,
+            content: CanonicalContentV1,
+            **kwargs: object,
+        ) -> CanonicalContentV1:
+            mapped = original_lineage(session, content, **kwargs)  # type: ignore[arg-type]
+            index = mapped.external_content_id.rsplit("-", 1)[-1]
+            return mapped.model_copy(
+                update={
+                    "author": CanonicalAuthorV1(
+                        external_account_id=f"stable-account-{index}",
+                        alternate_ids={"red_id": f"stable-red-{index}"},
+                        display_name=f"稳定作者 {index}",
+                    ),
+                    "observed_fields": [
+                        *mapped.observed_fields,
+                        "author.external_account_id",
+                        "author.alternate_ids",
+                        "author.display_name",
+                    ],
+                }
+            )
+
+        def reject_scalar_content_write(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("稳定作者 Replay 不应进入逐行 Content 写入")
+
+        monkeypatch.setattr(
+            PostgresCanonicalReplayJobExecutor,
+            "_content_with_lineage",
+            staticmethod(inject_stable_author),
+        )
+        monkeypatch.setattr(
+            PostgresCompleteContentRepository,
+            "_ingest_content",
+            reject_scalar_content_write,
+        )
+        runtime.logger.setLevel(logging.DEBUG)
+        for handler in runtime.logger.handlers:
+            handler.setLevel(logging.DEBUG)
+
+        created = _create_replay(
+            client,
+            artifact_ids=(artifact_id,),
+            brand_id=brand_id,
+            idempotency_key=f"replay-stable-authors-{uuid4()}",
+            batch_size=100,
+        )
+        assert _worker(runtime, suffix="stable-authors").run_once() is True
+        detail = client.get(f"/api/v1/canonical-replays/{created['run_id']}")
+        assert detail.status_code == 200
+        assert detail.json()["stats"]["rows_ingested"] == 3
+
+        worker_log = (runtime.settings.log_dir / "worker.log").read_text(encoding="utf-8")
+        completed_line = next(
+            line
+            for line in worker_log.splitlines()
+            if "event=canonical_replay.batch_completed" in line
+        )
+        assert "stable_author_count=3" in completed_line
+        assert "batched_remainder_count=3" in completed_line
+        assert "scalar_fallback_count=0" in completed_line
     finally:
         _truncate(runtime)
         runtime.close()

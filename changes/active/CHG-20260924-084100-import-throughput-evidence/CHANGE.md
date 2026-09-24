@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260924-084100-import-throughput-evidence
 title: 数据导入真实负载吞吐与确定性性能证据
 level: L3
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: perf/import-throughput-evidence
 created: 2026-09-24T08:41:00+08:00
@@ -86,12 +86,13 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 系统修改三条导入链路并用确定性证据证明提速 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/589 | not_satisfied | 待完成 current-main/候选同口径容量对照 |
-| R2 | 目标瓶颈场景至少 2 倍 p50，既有场景回退不超过 10% | external:https://github.com/dingyuwen777/AIMA_UGC/issues/589 | not_satisfied | 待保存三轮原始样本与计算结果 |
-| R3 | 结果、取消、接管、重试和撤回语义保持一致 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/589 | not_satisfied | 待完成 PostgreSQL 对账和失败注入回归 |
-| R4 | 增加可用于服务器排障的低噪声阶段日志 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/589 | not_satisfied | 待实现并更新运行手册 |
-| R5 | 有界验证并清理此前/本次测试数据，避免撑爆磁盘 | external:https://github.com/dingyuwen777/AIMA_UGC/issues/589 | not_satisfied | 待记录空间门禁、清理目标和释放量 |
-| R6 | required gate 后通过 PR 合并 main | external:https://github.com/dingyuwen777/AIMA_UGC/issues/589 | explicitly_deferred | 必须在实现、Review 与 current-head CI 完成后执行 |
+| R1 | 建立覆盖稳定作者、新旧 Content、Evidence、声音广场和 Canonical 的代表性容量场景 | #589 / AC1 | satisfied | 基准使用正式 Excel→Canonical→Replay 路径、1 个 Worker、1000 行、200 已有 + 800 新建，可切换每行稳定作者/备用 ID；同机最终三轮数据见 `performance-results.json` |
+| R2 | 目标瓶颈场景至少 2 倍 p50，既有场景回退不超过 10% | #589 / AC3 | satisfied | 稳定作者 p50 `21.991s → 3.147s`（6.99×）、SQL `16,464 → 110`；无稳定作者混合场景 `11.010s → 2.704s`（4.07×）；全新内容 `5.985s → 2.799s`（2.14×） |
+| R3 | 新旧实现对 Content、Version、Metric、账号/备用身份、来源贡献、Evidence、Replay ledger 和声音广场结果一致 | #589 / AC4 | satisfied | 受影响 PostgreSQL/Worker/Migration 集合 `77 passed`；最终关键子集 `13 passed`；覆盖账号冲突整事务回滚、投影提交后立即可见与并发目录计数 |
+| R4 | 增加可用于服务器排障的低噪声阶段日志 | #589 / AC2 | satisfied | Replay DEBUG 批次摘要新增 `stable_author_count / batched_remainder_count / scalar_fallback_count`；Excel I/O Retry 记录 stage/operation/type/errno/脱敏文件名；Appendix/Operations 已同步 |
+| R5 | 有界验证并清理此前/本次测试数据，避免撑爆磁盘 | #589 / AC6 | satisfied | 每轮基准 64 MiB 硬预算；结束后删除 49 个经过父目录/名称/非重解析点校验的临时目录（7,074 个文件，23,989,050 bytes），删除专用容量库并停止本任务启动的 PostgreSQL 容器；未删除 Canonical/业务 Artifact 或用户文件 |
+| R6 | required gate 后通过 PR 合并 main | #589 / AC7 | explicitly_deferred | 必须在实现、Review 与 current-head CI 完成后执行 |
+| R7 | 取消、Lease/Fencing 接管、重试、Replay 撤回、PostgreSQL durability 和持久证据保持 | #589 / AC5 | satisfied | 受影响回归覆盖 running 取消、提交前 Fence 失效整批回滚、Lease 接管 checkpoint 恢复、I/O Retry、撤回与贡献账本；未关闭 fsync/WAL/synchronous_commit，未删除 Raw/Input/Canonical |
 
 # Validation Matrix
 
@@ -130,11 +131,16 @@ Docs Impact 为 targeted：同步统一入库实现、4000 万容量/排障运�
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重新读取 #589、本轮用户磁盘决定、相关 Blueprint/Appendix/Operations 和最终代码。
-- [ ] change_coverage：逐条比较 Issue 验收、硬不变量和当前 Change，确认没有用合成快路径遗漏真实稳定作者/投影场景。
-- [ ] reverse_audit：从三种入口正向追到数据库/投影，并从取消/接管/撤回/服务器日志反向核对真实消费者。
-- [ ] unresolved_cleared：`not_satisfied` 清零，延期/不适用有正式依据，性能与清理证据已固化。
+- [x] upstream_re_read：Ready 前重新读取 #589、本轮用户对磁盘和声音广场时效的决定、相关 Appendix/Operations、实际 Schema/Migration 和最终代码。
+- [x] change_coverage：对 Issue 与最终实现重建覆盖，稳定作者、无稳定作者、新建/已有 Content、Evidence、贡献账本、投影和并发筛选目录都有独立证据。
+- [x] reverse_audit：Excel/历史 Campaign/Replay 共用 Content Owner；投影在同事务中刷新；取消、Fence 接管、撤回、日志和运行中心原有消费者保持。
+- [x] unresolved_cleared：`not_satisfied` 已清零；只有 PR current-head CI/合并/main-fresh 按生命周期正常延后，性能原始 JSON、测试、Review 和清理证据已固化。
+
+# Review 与验证结论
+
+- 第一阶段语义 Review 发现并修复了批量/单行路径 Account→Content 锁顺序不一致、备用 ID 冲突未显式回归、过长 Trigger 名被 PostgreSQL 截断和并发删除最后一条筛选值时的计数竞态；均已有回归。
+- 第二阶段代码/证据 Review 未发现剩余阻断项。Ruff、mypy `367` 个源文件、Unit `1247 passed / 8 skipped / 12 subtests passed`、Contract `112 passed`、API `77 passed`、受影响 PostgreSQL `77 passed`、最终关键子集 `13 passed`、Migration `downgrade → upgrade → current → check`、架构/归属/Secret/文档/Contract 门禁均通过。Windows 不支持的 POSIX host 权限测试本地未执行，由 Linux CI 负责。
 
 # 当前状态
 
-Requirement Source 为 #589，分支为 `perf/import-throughput-evidence`。尚未修改生产代码；当前只完成主分支同步、Issue 和施工契约建立。用户工作区 `.codex/config.toml` 属于任务外修改，必须保留且不得提交。
+Requirement Source 为 #589，分支为 `perf/import-throughput-evidence`，PR #590 已建立。生产实现、Migration、回归、性能证据、文档、Review 与清理已完成，当前进入 `ready_for_review`；待 current-head required CI 通过后执行用户已授权的合并、main-fresh 和自动归档。用户工作区 `.codex/config.toml` 属于任务外修改，已保留且不会提交。
