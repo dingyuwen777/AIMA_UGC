@@ -329,6 +329,28 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         class="list-heading"
       >
         <div class="selection-actions">
+          <div
+            v-if="store.items.length === 0"
+            class="count-summary"
+          >
+            <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} <strong>{{ store.contentCount.count.toLocaleString('zh-CN') }} 条</strong></span>
+            <span v-else-if="store.countLoading">总数统计中…</span>
+            <span
+              v-else-if="store.countError"
+              class="count-error"
+            >
+              总数统计失败
+              <button
+                class="count-retry"
+                type="button"
+                @click="store.refreshCount('estimated')"
+              >
+                重试总数
+              </button>
+            </span>
+            <span v-else-if="store.contentCount?.count_kind === 'none'">总数数据准备中…</span>
+            <span v-else>总数暂不可用</span>
+          </div>
           <button
             v-if="selectedReviewIds.relevant.length"
             class="review-selected review-selected--relevant"
@@ -517,6 +539,10 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .selection-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .pagination { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 20px; color: var(--aima-text-muted); font-size: 11px; }
 .pagination-count { display: flex; align-items: baseline; gap: 8px; }
+.count-summary { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+.count-summary strong { color: var(--aima-primary); }
+.count-summary .count-error { color: var(--aima-danger); }
+.count-retry { color: var(--aima-danger); background: var(--aima-color-error-bg); }
 .pagination-count .count-error { color: var(--aima-danger); }
 .pagination-count small { color: var(--aima-text-disabled); font-size: 10px; }
 .pagination :deep(.aima-button) { height: 34px; }
