@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260924-152229-import-replay-reversal-throughput
 title: 历史数据导入、重筛与精确撤回后端吞吐修复
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: perf/593-import-replay-reversal-throughput
 created: 2026-09-24T15:22:29+08:00
-updated: 2026-09-24T17:34:14+08:00
+updated: 2026-09-24
 completion_gate: required
 depends_on: []
 affected_areas:
