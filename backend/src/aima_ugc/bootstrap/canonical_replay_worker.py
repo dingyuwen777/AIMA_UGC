@@ -62,6 +62,7 @@ from aima_ugc.modules.vehicles.brand_vehicle import (
     BrandVehicleResolver,
 )
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
+from aima_ugc.platform.capacity import AdaptiveBatchController, detect_resources
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
@@ -111,8 +112,15 @@ class PostgresCanonicalReplayJobExecutor:
     ) -> JobHandlerResult:
         """接管先重新预检全部输入；随后从已提交 checkpoint 继续。"""
 
+        batch_tuner: AdaptiveBatchController | None = None
         try:
             run, selected = self._load_execution(payload.run_id, fence)
+            if run.batch_size > 1:
+                batch_tuner = AdaptiveBatchController(
+                    lower=max(1, run.batch_size // 2),
+                    upper=run.batch_size,
+                    improvement_margin=0.20,
+                )
             if run.checkpoint_artifact_ordinal >= run.artifact_count:
                 return JobHandlerResult.succeeded(_result(run))
 
@@ -147,10 +155,35 @@ class PostgresCanonicalReplayJobExecutor:
                     while True:
                         if context.cancel_requested():
                             return JobHandlerResult.cancelled()
-                        batch = tuple(islice(iterator, run.batch_size))
+                        resources = detect_resources()
+                        if batch_tuner is None:
+                            proposed_size, reason, previous = (
+                                run.batch_size,
+                                "frozen_single_row",
+                                None,
+                            )
+                        else:
+                            proposed_size, reason, previous = batch_tuner.choose(resources)
+                        effective_size = proposed_size
+                        if previous != proposed_size:
+                            log_event(
+                                self._runtime.logger,
+                                logging.INFO,
+                                "capacity.replay_batch_selected",
+                                "历史重筛批量调整",
+                                run_id=str(run.id),
+                                previous_rows=(
+                                    min(run.batch_size, previous) if previous is not None else None
+                                ),
+                                selected_rows=effective_size,
+                                frozen_max_rows=run.batch_size,
+                                reason=reason,
+                            )
+                        batch = tuple(islice(iterator, effective_size))
                         if not batch:
                             run = self._advance_empty_artifact(run, current, fence=fence)
                             break
+                        batch_started = perf_counter()
                         run = self._ingest_batch(
                             run,
                             current,
@@ -158,6 +191,12 @@ class PostgresCanonicalReplayJobExecutor:
                             batch,
                             fence=fence,
                         )
+                        if batch_tuner is not None:
+                            batch_tuner.succeeded(
+                                size=proposed_size,
+                                rows=len(batch),
+                                duration_ms=int((perf_counter() - batch_started) * 1000),
+                            )
                         context.heartbeat(progress=_progress(run))
                 finally:
                     iterator.close()
@@ -194,6 +233,8 @@ class PostgresCanonicalReplayJobExecutor:
             )
             return JobHandlerResult.failed("canonical_replay_persistence_invalid")
         except OSError, SQLAlchemyError:
+            if batch_tuner is not None:
+                batch_tuner.database_retry()
             return JobHandlerResult.retry("canonical_replay_transient_error")
 
     def _load_execution(

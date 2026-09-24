@@ -116,7 +116,7 @@ uploading（仅本地）
 文件成功才调用 finalize。服务端仍逐 Item 校验大小、SHA-256、冻结清单和 Campaign 状态，因此前端
 并发不会绕过 Artifact/取消边界。
 
-导入阶段按冻结的 `chunk_rows` 和 `max_in_flight_jobs` 有界调度。不同文件可以并行；同一文件保持稳定 Chunk 顺序，避免跨 Chunk 的首行身份顺序漂移。取消、人工重试、Lease 接管和终态回调继续复用 PostgreSQL Job Runtime 的 Lease/Fencing/Deadline 语义。
+导入阶段按 Campaign 冻结的 `chunk_rows` 切分，并按当前代码管理的 Job 窗口有界调度。不同文件可以并行；同一文件保持稳定 Chunk 顺序，避免跨 Chunk 的首行身份顺序漂移。取消、人工重试、Lease 接管和终态回调继续复用 PostgreSQL Job Runtime 的 Lease/Fencing/Deadline 语义。
 
 页面运行中只轮询 Campaign 汇总，不重复读取全部 Chunk。Item/冲突页面可以是有界预览；完整逐行事实仍以 PostgreSQL 账本为准。
 

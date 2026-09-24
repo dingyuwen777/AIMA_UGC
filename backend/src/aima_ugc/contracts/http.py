@@ -1569,6 +1569,8 @@ type HistoricalCampaignStatus = Literal[
     "succeeded",
     "partial_failed",
     "failed",
+    "revoking",
+    "revoked",
 ]
 type DataImportSourceKind = Literal["local_upload", "server_path"]
 type DataImportIngestionPolicy = Literal["standard_observation", "historical_fill_only"]

@@ -206,12 +206,14 @@ def test_offline_release_preserves_server_compose_start_command() -> None:
     assert 'shutil.copy2(root / "compose.yaml", bundle_dir / "compose.yaml")' in core
     assert '"docker", "load", "-i"' in core
     assert '"--no-build", "--pull", "never", "--wait"' in core
-    assert "docker compose --env-file env.production up -d --no-build --pull never --wait" in core
+    assert "python3 start_compose.py --env-file /data/AIMA_UGC/env.production" in core
     build_step = workflow.split("Build replay-tested Linux AMD64 release bundle", 1)[1].split(
         "Upload replay-tested release candidate", 1
     )[0]
     assert "compose.windows.yaml" not in build_step
-    assert "compose.windows.yaml" in core  # 只用于 Windows 本地 smoke overlay，不进入 Bundle。
+    assert (
+        'shutil.copy2(root / "compose.windows.yaml", bundle_dir / "compose.windows.yaml")' in core
+    )
 
 
 def test_publish_job_uses_explicit_repository_context_without_checkout() -> None:

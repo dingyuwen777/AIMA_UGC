@@ -136,7 +136,12 @@ def test_bundle_uses_latest_runtime_alias_and_saves_both_application_tags(
     root = tmp_path / "repo"
     root.mkdir()
     (root / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
+    (root / "compose.windows.yaml").write_text("services: {}\n", encoding="utf-8")
     (root / "env.production.example").write_text("AIMA_IMAGE_TAG=internal-v1a\n", encoding="utf-8")
+    deploy_scripts = root / "scripts" / "deploy"
+    deploy_scripts.mkdir(parents=True)
+    for name in ("start_compose.py", "stop_compose.py"):
+        (deploy_scripts / name).write_text("# deployment entry\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
     def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
@@ -175,6 +180,7 @@ def test_bundle_uses_latest_runtime_alias_and_saves_both_application_tags(
     assert "AIMA_IMAGE_TAG=latest\n" in (bundle / "env.production.example").read_text(
         encoding="utf-8"
     )
+    assert (bundle / "compose.windows.yaml").is_file()
     save_call = next(call for call in calls if call[:3] == ("docker", "save", "-o"))
     assert save_call[4:] == (
         "aima-ugc-backend:v3.2.0",

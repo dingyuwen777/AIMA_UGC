@@ -18,6 +18,7 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.platform.capacity import detect_resources
 from aima_ugc.platform.jobs import JobReaper, JobWorker
 from aima_ugc.platform.logging import log_event
 
@@ -85,6 +86,26 @@ def main() -> None:
         supported_job_types=registry.supported_types,
         voice_plaza_projection_job_id=(
             str(projection_job.id) if projection_job is not None else None
+        ),
+    )
+    resources = detect_resources()
+    log_event(
+        runtime.logger,
+        logging.INFO,
+        "worker.capacity_detected",
+        "Worker 可用资源已探测",
+        worker_id=worker_id,
+        source=resources.source,
+        cpu_cores=resources.cpu_cores,
+        memory_limit_mib=(
+            resources.memory_limit_bytes // (1024 * 1024)
+            if resources.memory_limit_bytes is not None
+            else None
+        ),
+        memory_available_mib=(
+            resources.memory_available_bytes // (1024 * 1024)
+            if resources.memory_available_bytes is not None
+            else None
         ),
     )
     try:

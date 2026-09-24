@@ -113,7 +113,8 @@ def main() -> int:
             common[2],
             "https://www.xiaohongshu.com/explore/stage12-fullstack-conflict",
         ),
-    ) + tuple(
+    )
+    filler_rows = tuple(
         (
             common[0],
             f"爱玛 Stage12 恢复填充 {index:03d}",
@@ -128,6 +129,7 @@ def main() -> int:
         historical_root / "history.xlsx",
         historical_rows,
     )
+    _write_xlsx(historical_root / "z-history-filler.xlsx", filler_rows)
     return 0
 
 

@@ -38,6 +38,10 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     register_canonical_replay_reversal_job,
 )
 from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
+from aima_ugc.modules.ingestion.revocation_jobs import (
+    DataImportRevocationJobHandler,
+    register_data_import_revocation_job,
+)
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
     register_data_export_job,
@@ -68,6 +72,10 @@ from .content_reclassification_worker import PostgresContentReclassificationJobE
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
 from .historical_cancellation import historical_cancellation_terminal_callback
 from .historical_import_worker import PostgresHistoricalImportJobExecutor
+from .import_revocation_worker import (
+    PostgresImportRevocationJobExecutor,
+    data_import_revocation_terminal_callback,
+)
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
 from .media_cache_collection_scope import MediaCachingTikHubCollectionScopeExecutor
 from .runtime import PlatformRuntime, create_platform_runtime
@@ -217,6 +225,11 @@ def create_collection_job_registry(
         registry,
         CanonicalReplayReversalJobHandler(PostgresCanonicalReplayReversalJobExecutor(runtime)),
         terminal_callback=canonical_replay_reversal_terminal_callback,
+    )
+    register_data_import_revocation_job(
+        registry,
+        DataImportRevocationJobHandler(PostgresImportRevocationJobExecutor(runtime)),
+        terminal_callback=data_import_revocation_terminal_callback,
     )
     register_voice_plaza_projection_job(
         registry,

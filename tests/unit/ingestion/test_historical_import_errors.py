@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 from aima_ugc.bootstrap.historical_import_worker import PostgresHistoricalImportJobExecutor
 from aima_ugc.modules.ingestion.historical_jobs import HistoricalImportChunkJobPayload
+from aima_ugc.platform.capacity import AdaptiveBatchController
 from aima_ugc.platform.jobs import JobExecutionFence
 from sqlalchemy.exc import OperationalError
 
@@ -15,6 +16,7 @@ def test_chunk_database_operational_error_is_retryable(monkeypatch: pytest.Monke
     """数据库死锁等临时故障应交给持久 Job 退避重试，不能使 Worker 直接中断。"""
 
     executor = object.__new__(PostgresHistoricalImportJobExecutor)
+    executor._sql_batch_tuner = AdaptiveBatchController(lower=250, upper=500)
 
     def fail_load(*args: object, **kwargs: object) -> None:
         del args, kwargs

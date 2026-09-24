@@ -15,6 +15,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.modules.collection.tables import (
+    collection_runs_table,
+    collection_scopes_table,
+    provider_request_attempts_table,
+    provider_requests_table,
+)
 from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.extended_tables import (
     content_external_ids_table,
@@ -24,6 +30,11 @@ from aima_ugc.modules.content.extended_tables import (
     content_topics_table,
 )
 from aima_ugc.modules.content.tables import accounts_table, content_versions_table, contents_table
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+)
+from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.platform.time import beijing_now
 
 _MULTI_VALUES_INSERT_ROWS = 500
@@ -195,6 +206,7 @@ def commit_content_contribution(
     if draft.already_recorded:
         return None
     attempt_raw = _source_ids(observation)
+    _guard_revoking_campaign_attempts(session, (attempt_raw[0],))
     after = _capture_snapshot(session, observation, content_id=content_id)
     if after is None or after.content_id != content_id or after.version_no is None:
         raise RuntimeError("Content 来源贡献写入后无法读取 Current 投影")
@@ -259,6 +271,10 @@ def commit_content_contributions_batch(
     )
     if not pending:
         return after_snapshots
+    _guard_revoking_campaign_attempts(
+        session,
+        tuple({_source_ids(entry[1])[0] for _, entry in pending}),
+    )
     now = beijing_now()
     values: list[dict[str, object]] = []
     expected: dict[str, tuple[UUID, UUID, UUID]] = {}
@@ -408,6 +424,10 @@ def commit_new_content_contributions_batch(
 
     if not entries:
         return
+    _guard_revoking_campaign_attempts(
+        session,
+        tuple({_source_ids(observation)[0] for observation, _ in entries}),
+    )
     now = beijing_now()
     values: list[dict[str, object]] = []
     source_keys: set[str] = set()
@@ -437,6 +457,52 @@ def commit_new_content_contributions_batch(
     # 直接失败并整体回滚，不能静默把不相干的既有贡献当成本批结果。
     for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
         session.execute(insert(content_source_contributions_table), list(chunk))
+
+
+def _guard_revoking_campaign_attempts(session: Session, attempt_ids: tuple[UUID, ...]) -> None:
+    """与撤销请求的父 Campaign 行锁串行，禁止撤销开始后再写入同源贡献。"""
+
+    transaction = session.get_transaction()
+    if transaction is None:
+        raise RuntimeError("来源贡献需要在数据库事务中写入")
+    cache = session.info.get("campaign_attempt_guard")
+    if not isinstance(cache, tuple) or cache[0] is not transaction:
+        validated: set[UUID] = set()
+        session.info["campaign_attempt_guard"] = (transaction, validated)
+    else:
+        validated = cast(set[UUID], cache[1])
+    pending = tuple(set(attempt_ids).difference(validated))
+    if not pending:
+        return
+    attempt = provider_request_attempts_table
+    request = provider_requests_table
+    batch = processing_import_batches_table
+    item = historical_import_campaign_items_table
+    scope = collection_scopes_table
+    run = collection_runs_table
+    campaign = historical_import_campaigns_table
+    rows = session.execute(
+        select(campaign.c.id, campaign.c.status)
+        .select_from(
+            attempt.join(request, request.c.id == attempt.c.provider_request_id)
+            .outerjoin(batch, batch.c.id == request.c.import_batch_id)
+            .outerjoin(item, item.c.id == batch.c.historical_campaign_item_id)
+            .outerjoin(scope, scope.c.id == request.c.scope_id)
+            .outerjoin(run, run.c.id == scope.c.run_id)
+            .join(
+                campaign,
+                or_(
+                    campaign.c.id == item.c.campaign_id,
+                    campaign.c.id == run.c.data_import_campaign_id,
+                ),
+            )
+        )
+        .where(attempt.c.id.in_(pending))
+        .with_for_update(read=True, of=campaign)
+    )
+    if any(row.status in {"revoking", "revoked"} for row in rows):
+        raise ValueError("数据导入已申请撤销，不能继续写入同 Campaign 来源贡献")
+    validated.update(pending)
 
 
 def _capture_snapshot(

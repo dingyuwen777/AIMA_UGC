@@ -75,6 +75,7 @@ from aima_ugc.modules.ingestion.xlsx_security import (
 )
 from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolver
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
+from aima_ugc.platform.capacity import AdaptiveBatchController, detect_resources
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.logging import log_event
@@ -99,6 +100,7 @@ class PostgresHistoricalImportJobExecutor:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
+        self._sql_batch_tuner = AdaptiveBatchController(lower=250, upper=500)
         self._browser = HistoricalDirectoryBrowser(runtime.settings.historical_import_root)
         self._artifacts = ArtifactService(
             metadata=PostgresArtifactMetadataGateway(runtime.database.new_session),
@@ -155,7 +157,10 @@ class PostgresHistoricalImportJobExecutor:
                         )
                     repository.schedule_snapshot_jobs(
                         payload.campaign_id,
-                        max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                        max_in_flight=self._runtime.job_window(
+                            "historical",
+                            ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                        ),
                     )
             finally:
                 session.close()
@@ -313,7 +318,10 @@ class PostgresHistoricalImportJobExecutor:
                         )
                     repository.schedule_snapshot_jobs(
                         cast(UUID, item["campaign_id"]),
-                        max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                        max_in_flight=self._runtime.job_window(
+                            "historical",
+                            ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                        ),
                     )
                     repository.finalize_preflight(cast(UUID, item["campaign_id"]))
             finally:
@@ -394,6 +402,7 @@ class PostgresHistoricalImportJobExecutor:
 
             session = self._runtime.database.new_session()
             transaction_started = perf_counter()
+            sql_insert_rows = 500
             try:
                 with session.begin():
                     jobs = PostgresJobRepository(session)
@@ -440,11 +449,30 @@ class PostgresHistoricalImportJobExecutor:
                         filter_snapshot=filter_snapshot,
                     )
                     row_preparation_ms = int((perf_counter() - row_preparation_started) * 1000)
-                    writer = (
-                        PostgresHistoricalContentRepository(session)
-                        if policy_version == "historical-fill-only.v1"
-                        else PostgresStandardContentRepository(session)
-                    )
+                    if policy_version == "historical-fill-only.v1":
+                        resources = detect_resources()
+                        sql_insert_rows, reason, previous = self._sql_batch_tuner.choose(resources)
+                        if previous != sql_insert_rows:
+                            log_event(
+                                self._runtime.logger,
+                                logging.INFO,
+                                "capacity.historical_sql_batch_selected",
+                                "历史入库 SQL 批量调整",
+                                campaign_id=str(campaign_id),
+                                previous_rows=previous,
+                                selected_rows=sql_insert_rows,
+                                reason=reason,
+                                available_memory_mib=(
+                                    resources.memory_available_bytes // (1024 * 1024)
+                                    if resources.memory_available_bytes is not None
+                                    else None
+                                ),
+                            )
+                        writer = PostgresHistoricalContentRepository(
+                            session, insert_batch_rows=sql_insert_rows
+                        )
+                    else:
+                        writer = PostgresStandardContentRepository(session)
                     content_ingestion_started = perf_counter()
                     summary = writer.ingest_rows(
                         batch_id=payload.batch_id,
@@ -467,7 +495,10 @@ class PostgresHistoricalImportJobExecutor:
                     repository.schedule_import_jobs(
                         campaign_id=campaign_id,
                         source_batches=source_batches,
-                        max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                        max_in_flight=self._runtime.job_window(
+                            "historical",
+                            ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                        ),
                     )
                     status = repository.refresh_batch_and_campaign(
                         campaign_id=campaign_id,
@@ -478,6 +509,12 @@ class PostgresHistoricalImportJobExecutor:
             finally:
                 session.close()
             transaction_ms = int((perf_counter() - transaction_started) * 1000)
+            if policy_version == "historical-fill-only.v1":
+                self._sql_batch_tuner.succeeded(
+                    size=sql_insert_rows,
+                    rows=summary.created,
+                    duration_ms=content_ingestion_ms,
+                )
             log_event(
                 self._runtime.logger,
                 logging.INFO,
@@ -499,6 +536,9 @@ class PostgresHistoricalImportJobExecutor:
                 loading_ms=loading_ms,
                 row_preparation_ms=row_preparation_ms,
                 content_ingestion_ms=content_ingestion_ms,
+                sql_insert_rows=(
+                    sql_insert_rows if policy_version == "historical-fill-only.v1" else None
+                ),
                 evidence_ms=evidence_ms,
                 finalization_ms=finalization_ms,
                 transaction_ms=transaction_ms,
@@ -523,6 +563,7 @@ class PostgresHistoricalImportJobExecutor:
         except OSError:
             return JobHandlerResult.retry("historical_chunk_io_failed")
         except OperationalError:
+            self._sql_batch_tuner.database_retry()
             return JobHandlerResult.retry("historical_chunk_database_transient")
 
     def _campaign_import_snapshot(self, campaign_id: UUID) -> tuple[dict[str, object], int]:

@@ -236,5 +236,6 @@ desktop.ini
 
 # Stage 2 local runtime state / secrets / logs / artifacts
 .runtime/
+compose.auto.yaml
 
 .agents/project-context.json

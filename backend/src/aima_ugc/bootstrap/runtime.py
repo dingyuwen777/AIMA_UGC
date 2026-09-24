@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import SQLAlchemyError
 
 from aima_ugc.adapters.storage.local import LocalArtifactStore
+from aima_ugc.platform.capacity import detect_resources, select_job_window
 from aima_ugc.platform.config import PlatformSettings, load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.health import CheckStatus, ReadinessReport
@@ -48,6 +49,33 @@ class PlatformRuntime:
     artifact_store: LocalArtifactStore
     logger: logging.Logger
     _resource_closers: list[Callable[[], None]] = field(default_factory=list, repr=False)
+    _last_job_windows: dict[str, int] = field(default_factory=dict, repr=False)
+
+    def job_window(self, kind: str, *, ceiling: int) -> int:
+        """每次投放前读取实际配额/内存压力，只在值变化时记录调节事件。"""
+
+        resources = detect_resources()
+        selected = select_job_window(resources, ceiling=ceiling)
+        previous = self._last_job_windows.get(kind)
+        if previous != selected:
+            log_event(
+                self.logger,
+                logging.INFO,
+                "capacity.job_window_selected",
+                "Job 投放窗口调整",
+                kind=kind,
+                previous_jobs=previous,
+                selected_jobs=selected,
+                reason=("resource_pressure" if selected < ceiling else "resource_available"),
+                cpu_cores=resources.cpu_cores,
+                memory_available_mib=(
+                    resources.memory_available_bytes // (1024 * 1024)
+                    if resources.memory_available_bytes is not None
+                    else None
+                ),
+            )
+            self._last_job_windows[kind] = selected
+        return selected
 
     def check_readiness(self) -> ReadinessReport:
         database_status: CheckStatus = "error"

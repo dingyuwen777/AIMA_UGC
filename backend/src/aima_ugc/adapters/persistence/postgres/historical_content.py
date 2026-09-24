@@ -137,8 +137,13 @@ class PostgresHistoricalContentRepository:
 
     policy_version = _POLICY_VERSION
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self, session: Session, *, insert_batch_rows: int = _MULTI_VALUES_INSERT_ROWS
+    ) -> None:
+        if not 1 <= insert_batch_rows <= _MULTI_VALUES_INSERT_ROWS:
+            raise ValueError("历史 SQL 批量大小超出安全上限")
         self._session = session
+        self._insert_batch_rows = insert_batch_rows
 
     def ingest_rows(
         self,
@@ -268,7 +273,7 @@ class PostgresHistoricalContentRepository:
             return []
 
         created_ids: set[UUID] = set()
-        for candidate_chunk in batched(candidates, _MULTI_VALUES_INSERT_ROWS, strict=False):
+        for candidate_chunk in batched(candidates, self._insert_batch_rows, strict=False):
             created_ids.update(
                 self._session.execute(
                     pg_insert(contents_table)
@@ -331,11 +336,9 @@ class PostgresHistoricalContentRepository:
             )
             contribution_entries.append((content, after))
 
-        for version_chunk in batched(version_values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+        for version_chunk in batched(version_values, self._insert_batch_rows, strict=False):
             self._session.execute(insert(content_versions_table).values(list(version_chunk)))
-        for external_id_chunk in batched(
-            external_id_values, _MULTI_VALUES_INSERT_ROWS, strict=False
-        ):
+        for external_id_chunk in batched(external_id_values, self._insert_batch_rows, strict=False):
             self._session.execute(
                 pg_insert(content_external_ids_table)
                 .values(list(external_id_chunk))

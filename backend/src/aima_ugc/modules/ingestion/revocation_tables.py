@@ -53,6 +53,30 @@ historical_import_campaign_revocations_table = Table(
     info={"owner": "ingestion"},
 )
 
+historical_import_revocation_requests_table = Table(
+    "historical_import_revocation_requests",
+    metadata,
+    Column(
+        "campaign_id",
+        Uuid(),
+        ForeignKey("historical_import_campaign_revocations.campaign_id"),
+        primary_key=True,
+    ),
+    Column("status", Text(), nullable=False),
+    Column("job_id", Uuid(), ForeignKey("jobs.id"), nullable=False, unique=True),
+    Column("raw_artifact_id", Uuid(), ForeignKey("artifacts.id")),
+    Column("checkpoint_content_id", Uuid()),
+    Column("recomputed_content_count", Integer(), nullable=False, server_default="0"),
+    Column("completed_at", DateTime(timezone=True)),
+    Column("error_code", Text()),
+    CheckConstraint(
+        "status in ('queued','running','succeeded','failed')",
+        name="status_allowed",
+    ),
+    CheckConstraint("recomputed_content_count >= 0", name="recomputed_nonnegative"),
+    info={"owner": "ingestion"},
+)
+
 historical_import_revocation_content_versions_table = Table(
     "historical_import_revocation_content_versions",
     metadata,
@@ -77,5 +101,6 @@ historical_import_revocation_content_versions_table = Table(
 
 __all__ = [
     "historical_import_campaign_revocations_table",
+    "historical_import_revocation_requests_table",
     "historical_import_revocation_content_versions_table",
 ]

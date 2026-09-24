@@ -88,6 +88,7 @@ ingestion.import-excel.v2
 ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
 ingestion.historical-import-chunk.v2
+ingestion.data-import-revocation.v1
 analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
@@ -96,6 +97,8 @@ ingestion.canonical-replay.v1
 ingestion.canonical-replay-reversal.v1
 content.voice-plaza-projection-backfill.v1
 ```
+
+Data Import Campaign 撤销由 `ingestion.data-import-revocation.v1` 执行：HTTP 登记请求与 Job，Worker 分批提交 Content 重组和持久断点，预览接口返回 queued/running/succeeded/failed。每批依据已测吞吐与有效资源选择下一档；只有 succeeded 才表示全部撤销完成。
 
 `ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务；`ingestion.canonical-replay-reversal.v1` 是全量重筛的可恢复精确撤回任务；`content.voice-plaza-projection-backfill.v1` 是声音广场历史读模型的可恢复分块回填。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 

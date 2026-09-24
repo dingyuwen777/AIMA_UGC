@@ -601,6 +601,9 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       campaign,
       ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
     ]
+    if (['revoking', 'revoked'].includes(campaign.status)) {
+      historicalRevocationPreview.value = await previewHistoricalCampaignRevocation(campaignId)
+    }
   }
 
   async function refreshHistoricalCampaignSummary(campaignId: string): Promise<void> {

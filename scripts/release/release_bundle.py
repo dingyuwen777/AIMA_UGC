@@ -33,6 +33,9 @@ EXPECTED_BUNDLE_ENTRIES = frozenset(
         "DEPLOY.md",
         "SHA256SUMS",
         "compose.yaml",
+        "compose.windows.yaml",
+        "start_compose.py",
+        "stop_compose.py",
         "env.production.example",
         "images.tar",
         "migration-manifest.json",
@@ -42,6 +45,9 @@ EXPECTED_BUNDLE_ENTRIES = frozenset(
 CHECKSUM_TARGETS = (
     "images.tar",
     "compose.yaml",
+    "compose.windows.yaml",
+    "start_compose.py",
+    "stop_compose.py",
     "env.production.example",
     "release-manifest.json",
     "migration-manifest.json",
@@ -483,32 +489,43 @@ docker load -i images.tar
 ## 2. 准备运行配置
 
 ```bash
-cp env.production.example env.production
-chmod 0600 env.production
+install -m 0600 env.production.example /data/AIMA_UGC/env.production
 ```
 
-编辑 `env.production`：公司服务器保持 `AIMA_HOST_ROOT=/data/AIMA_UGC`，
+只需在代码目录外长期维护 `/data/AIMA_UGC/env.production`；其中保持 `AIMA_HOST_ROOT=/data/AIMA_UGC`，
 并可长期保持 `AIMA_IMAGE_TAG=latest`；每次 `docker load` 当前 Release 的 `images.tar` 会恢复
 该版本对应的 `latest` 运行别名。TikHub/LLM 等其它机器配置仍按实际环境填写。
 真实 `env.production` 属于敏感文件，不得提交 Git 或放回 Release 包。
+Windows 上可把它放在代码目录外的受保护路径，启动与停止脚本均用 `--env-file` 指定。
 
 ## 3. 启动
 
 ```bash
-docker compose --env-file env.production config --quiet
-docker compose --env-file env.production up -d --no-build --pull never --wait
+python3 start_compose.py --env-file /data/AIMA_UGC/env.production
 ```
 
-`--no-build --pull never` 是 Release 部署门禁：只运行本包已经导入的镜像。
+脚本读取 Docker Engine 实际 CPU/内存，生成与 env 同目录的 `compose.auto.yaml`，
+先校验合并后的配置，再执行 `--no-build --pull never --wait`，只运行本包已导入的镜像。
+常驻服务与一个启动任务同时运行时，内存硬上限合计最多占 Engine 额度的 75%，
+CPU 硬上限合计最多占 80%；不足 6 GiB 内存或 2 CPU 时自动拒绝启动。
+这些是基于 Docker Engine 额度的上限，不代表能识别同机其他进程的全部实时需求；
+部署前仍需确认宿主机和其它容器有可用余量。Windows 可使用 `py -3 start_compose.py`；
+脚本会自动叠加包内的 `compose.windows.yaml`，沿用 Windows named-volume 权限边界。
+单 Worker 是当前有实测依据的默认。
 PostgreSQL、Artifact、日志和内部 Secret 始终保存在 `AIMA_HOST_ROOT`，不属于 Release 生命周期。
 
 ## 4. 验证
 
 ```bash
-docker compose --env-file env.production ps -a
-docker compose --env-file env.production exec -T frontend \
+ENV=/data/AIMA_UGC/env.production
+AUTO=/data/AIMA_UGC/compose.auto.yaml
+docker compose --env-file "$ENV" -f compose.yaml -f "$AUTO" ps -a
+docker compose --env-file "$ENV" -f compose.yaml -f "$AUTO" exec -T frontend \
   wget -qO- http://127.0.0.1:8080/health/ready
 ```
+
+停止时运行 `python3 stop_compose.py --env-file /data/AIMA_UGC/env.production`；脚本只执行
+`docker compose stop`，不会删除数据库或业务文件。Windows 使用对应绝对路径即可。
 
 不要删除 `AIMA_HOST_ROOT`，不要用带 `-v` 的 Compose 清理命令处理真实业务环境。
 当前 Release Builder 不提供 PostgreSQL + Artifact 协调 Backup/Restore 或数据库自动回滚；
@@ -623,6 +640,9 @@ def build_bundle_files(
         shutil.rmtree(bundle_dir)
     bundle_dir.mkdir(parents=True)
     shutil.copy2(root / "compose.yaml", bundle_dir / "compose.yaml")
+    shutil.copy2(root / "compose.windows.yaml", bundle_dir / "compose.windows.yaml")
+    shutil.copy2(root / "scripts/deploy/start_compose.py", bundle_dir / "start_compose.py")
+    shutil.copy2(root / "scripts/deploy/stop_compose.py", bundle_dir / "stop_compose.py")
     _replace_env_values(
         root / "env.production.example",
         bundle_dir / "env.production.example",
