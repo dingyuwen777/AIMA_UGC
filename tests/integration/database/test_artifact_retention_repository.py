@@ -22,7 +22,7 @@ from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactStateConflict
 from aima_ugc.platform.storage.canonical import CANONICAL_CONTENT_ARTIFACT_KIND
 from aima_ugc.platform.storage.retention import IMPORT_SOURCE_RETENTION
-from sqlalchemy import insert
+from sqlalchemy import insert, update
 
 
 def _store_record(
@@ -54,6 +54,73 @@ def _store_record(
     )
 
 
+def _create_unified_import_source(
+    session,
+    repository: PostgresArtifactMetadataRepository,
+    *,
+    kind: str,
+    source_kind: str,
+    campaign_status: str,
+    created_at: datetime,
+    finished_at: datetime | None,
+    expires_at: datetime | None = None,
+) -> tuple[ArtifactRecord, object]:
+    """建立统一导入 Source Artifact 与 Campaign 关系，供生命周期回归复用。"""
+
+    source = _store_record(
+        repository,
+        kind=kind,
+        created_at=created_at,
+        expires_at=expires_at,
+    )
+    campaign_id = uuid4()
+    item_id = uuid4()
+    item_status = (
+        "queued"
+        if campaign_status in {"uploading", "discovering", "snapshotting", "ready", "queued", "running", "cancelling"}
+        else "failed"
+    )
+    session.execute(
+        insert(historical_import_campaigns_table).values(
+            id=campaign_id,
+            client_idempotency_key=f"artifact-retention-unified-{campaign_id}",
+            source_kind=source_kind,
+            ingestion_policy="historical_fill_only",
+            declared_file_count=1,
+            root_relative_path="",
+            recursive=False,
+            profile_snapshot={},
+            keyword_pack_snapshot={},
+            status=campaign_status,
+            discovered_file_count=1,
+            ready_item_count=1,
+            total_rows=1,
+            stats={},
+            created_at=created_at,
+            finished_at=finished_at,
+        )
+    )
+    session.execute(
+        insert(historical_import_campaign_items_table).values(
+            id=item_id,
+            campaign_id=campaign_id,
+            item_kind="source_file",
+            relative_path="retention.xlsx",
+            manifest_identity="b" * 64,
+            artifact_id=source.id,
+            sha256="a" * 64,
+            row_count=1,
+            status=item_status,
+            attempt_count=1,
+            stats={},
+            created_at=created_at,
+            finished_at=finished_at,
+        )
+    )
+    repository.mark_linked(source.id, linked_at=created_at)
+    return source, campaign_id
+
+
 def test_provider_raw_is_not_a_one_day_orphan() -> None:
     runtime = DatabaseRuntime(load_settings())
     now = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
@@ -70,6 +137,12 @@ def test_provider_raw_is_not_a_one_day_orphan() -> None:
             import_orphan = _store_record(
                 repository,
                 kind="file-import.raw",
+                created_at=now - timedelta(days=2),
+                expires_at=None,
+            )
+            data_import_source_orphan = _store_record(
+                repository,
+                kind="data-import.source",
                 created_at=now - timedelta(days=2),
                 expires_at=None,
             )
@@ -143,6 +216,7 @@ def test_provider_raw_is_not_a_one_day_orphan() -> None:
 
         candidate_ids = {item.id for item in candidates}
         assert import_orphan.id in candidate_ids
+        assert data_import_source_orphan.id in candidate_ids
         assert historical_source_orphan.id in candidate_ids
         assert historical_chunk_orphan.id in candidate_ids
         assert canonical_orphan.id in candidate_ids
@@ -302,6 +376,101 @@ def test_import_source_waits_for_terminal_job_and_uses_cancel_time() -> None:
             terminal = repository.get(source.id)
             assert terminal is not None
             assert terminal.expires_at == cancelled.finished_at + IMPORT_SOURCE_RETENTION
+    finally:
+        session.close()
+        runtime.dispose()
+
+
+@pytest.mark.parametrize(
+    ("kind", "source_kind"),
+    (
+        ("data-import.source", "local_upload"),
+        ("historical-import.source", "server_path"),
+    ),
+)
+@pytest.mark.parametrize("campaign_status", ("succeeded", "failed", "partial_failed", "cancelled"))
+def test_unified_import_source_gets_seven_day_retention_from_campaign_terminal(
+    kind: str,
+    source_kind: str,
+    campaign_status: str,
+) -> None:
+    """统一导入源文件必须从 Campaign 当前终态时间开始保留七天。"""
+
+    runtime = DatabaseRuntime(load_settings())
+    created_at = datetime(2026, 9, 24, 0, 0, tzinfo=UTC)
+    finished_at = created_at + timedelta(hours=2)
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            source, _ = _create_unified_import_source(
+                session,
+                repository,
+                kind=kind,
+                source_kind=source_kind,
+                campaign_status=campaign_status,
+                created_at=created_at,
+                finished_at=finished_at,
+            )
+
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            repository.backfill_retention_deadlines()
+            current = repository.get(source.id)
+            assert current is not None
+            assert current.expires_at == finished_at + IMPORT_SOURCE_RETENTION
+    finally:
+        session.close()
+        runtime.dispose()
+
+
+@pytest.mark.parametrize(
+    ("kind", "source_kind"),
+    (
+        ("data-import.source", "local_upload"),
+        ("historical-import.source", "server_path"),
+    ),
+)
+def test_unified_import_source_clears_stale_expiry_while_campaign_is_active(
+    kind: str,
+    source_kind: str,
+) -> None:
+    """Campaign 重新进入活动态时旧截止时间必须失效，不能继续被清理认领。"""
+
+    runtime = DatabaseRuntime(load_settings())
+    now = datetime(2026, 9, 24, 12, 0, tzinfo=UTC)
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            source, campaign_id = _create_unified_import_source(
+                session,
+                repository,
+                kind=kind,
+                source_kind=source_kind,
+                campaign_status="failed",
+                created_at=now - timedelta(days=8),
+                finished_at=now - timedelta(days=8),
+                expires_at=now - timedelta(days=1),
+            )
+            session.execute(
+                update(historical_import_campaigns_table)
+                .where(historical_import_campaigns_table.c.id == campaign_id)
+                .values(status="queued", finished_at=None)
+            )
+
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            repository.backfill_retention_deadlines()
+            current = repository.get(source.id)
+            assert current is not None
+            assert current.expires_at is None
+            candidates = repository.list_cleanup_candidates(
+                now=now,
+                orphan_before=now - timedelta(days=1),
+                limit=100,
+            )
+            assert source.id not in {candidate.id for candidate in candidates}
     finally:
         session.close()
         runtime.dispose()
