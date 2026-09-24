@@ -1,6 +1,6 @@
 # Windows Docker Desktop 完整 Compose 运行
 
-本文说明在 Windows 开发机上，不进入 WSL 终端，直接从 CMD 或 PowerShell 使用标准 Docker Compose CLI 启动、停止和维护 AIMA_UGC 的完整 Docker Runtime。
+本文说明在 Windows 开发机上，不进入 WSL 终端，直接从 CMD 或 PowerShell 使用 Docker Compose CLI 或仓库启停脚本运行和维护 AIMA_UGC 的完整 Docker Runtime。
 
 它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)、[`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)、[`docs/operations/01_生产部署与离线Release方案.md`](../operations/01_生产部署与离线Release方案.md) 为准。
 
@@ -137,13 +137,28 @@ PostgreSQL 和内部 Secret 不进入这个目录，仍由 Docker named volume �
 
 ---
 
-## 4. Windows 正式启动命令
+## 4. Windows 启动命令
 
 CMD 和 PowerShell 使用同一条命令：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local up -d --build --wait
 ```
+
+需要自动计算 Docker Desktop 资源配额时，在**源码仓库根目录**运行 [`scripts/deploy/start_compose.py`](../../scripts/deploy/start_compose.py)。它会读取 `env.local`、自动叠加 [`compose.windows.yaml`](../../compose.windows.yaml)，并在 `env.local` 同目录生成已被 Git 忽略的 `compose.auto.yaml`。脚本使用本机镜像，不负责构建或拉取；首次没有镜像时，先准备后端、前端和 PostgreSQL 镜像：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local build
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local pull postgres
+```
+
+随后启动：
+
+```powershell
+python .\scripts\deploy\start_compose.py --env-file .\env.local
+```
+
+这里的 `python` 应指向项目要求的 Python 3。`--env-file` 可换为带引号的 Windows 绝对路径；从源码仓库运行时，脚本位于 `scripts\deploy`，离线 Release 包内的同名脚本才位于包根目录。
 
 当前基础镜像固定为：
 
@@ -175,6 +190,16 @@ curl.exe -f http://127.0.0.1:8080/health/ready
 ---
 
 ## 5. 日常停止命令
+
+若使用上述资源脚本启动，同样从源码仓库根目录停止：
+
+```powershell
+python .\scripts\deploy\stop_compose.py --env-file .\env.local
+```
+
+[`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py) 调用 Compose `stop`，保留容器、网络和持久数据；下一次可用启动脚本重新计算配额并启动。
+
+若使用标准 Compose CLI 并希望同时删除容器和网络，可运行：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local down
