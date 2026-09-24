@@ -221,6 +221,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:search="store.filters.search"
         v-model:platforms="store.filters.platforms"
         v-model:analysis-status="store.filters.analysisStatus"
+        v-model:relevance="store.filters.relevance"
         v-model:voice-types="store.filters.voiceTypes"
         v-model:sentiments="store.filters.sentiments"
         v-model:primary-label="store.filters.primaryLabel"

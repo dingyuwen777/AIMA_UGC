@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import {
   ContentAnalysisStatus,
+  ContentRelevance,
   PlatformName,
   type ContentFilterOptionsResponse,
 } from '../../../../../generated/api/client'
@@ -13,12 +14,14 @@ import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import {
   analysisStatusLabel,
   platformLabel,
+  relevanceLabel,
 } from '../../../format'
 
 const props = withDefaults(defineProps<{
   search: string
   platforms: PlatformName[]
   analysisStatus: '' | ContentAnalysisStatus
+  relevance: '' | ContentRelevance
   voiceTypes: string[]
   sentiments: string[]
   primaryLabel: string
@@ -36,6 +39,7 @@ const emit = defineEmits<{
   'update:search': [value: string]
   'update:platforms': [value: PlatformName[]]
   'update:analysisStatus': [value: '' | ContentAnalysisStatus]
+  'update:relevance': [value: '' | ContentRelevance]
   'update:voiceTypes': [value: string[]]
   'update:sentiments': [value: string[]]
   'update:primaryLabel': [value: string]
@@ -54,6 +58,7 @@ const secondaryLabels = computed(
     ?.secondary_labels ?? [],
 )
 const platformOptions = Object.values(PlatformName)
+const relevanceOptions = Object.values(ContentRelevance)
 const platformsSummary = computed(() => {
   if (!props.platforms.length) return '全部平台'
   if (props.platforms.length === 1) return platformLabel(props.platforms[0])
@@ -144,6 +149,15 @@ function updatePrimaryLabel(event: Event): void {
           </div>
         </details>
       </div>
+      <label class="field field--relevance"><span>相关性</span><select
+        aria-label="相关性"
+        :value="relevance"
+        @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
+      ><option value="">默认业务数据</option><option
+        v-for="item in relevanceOptions"
+        :key="item"
+        :value="item"
+      >{{ relevanceLabel(item) }}</option></select></label>
       <div class="field field--sentiment">
         <span>情感</span>
         <details class="multi-select">
@@ -286,6 +300,7 @@ function updatePrimaryLabel(event: Event): void {
 .filter-row { display: flex; min-width: 0; flex-wrap: wrap; align-items: flex-start; gap: 12px 16px; }
 .filter-row--primary .field--search { min-width: 280px; flex: 1 1 280px; }
 .filter-row--primary .field--platform { flex: 0 0 180px; }
+.filter-row--primary .field--relevance { flex: 0 0 150px; }
 .filter-row--primary .field--sentiment { flex: 0 0 120px; }
 .filter-row--primary .field--status { flex: 0 0 130px; }
 .filter-row--primary .field--date { flex: 0 0 200px; }

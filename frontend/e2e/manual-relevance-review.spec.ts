@@ -88,10 +88,11 @@ test('marks AI irrelevant content as relevant through the explicit decision cont
   let reviewRequest: unknown
   await routeShared(page)
   await page.route('**/api/v1/contents**', async (route) => {
+    const relevance = new URL(route.request().url()).searchParams.get('relevance')
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: [irrelevantItem],
+        items: relevance === 'irrelevant' ? [irrelevantItem] : [],
         next_cursor: null,
         has_more: false,
       }),
@@ -106,6 +107,7 @@ test('marks AI irrelevant content as relevant through the explicit decision cont
   })
 
   await page.goto('/voice-plaza')
+  await page.getByLabel('相关性').selectOption('irrelevant')
   await page.getByRole('button', { name: '查询' }).click()
   await page.getByRole('button', { name: '人工标记为相关' }).click()
 
@@ -117,10 +119,11 @@ test('marks AI relevant content as irrelevant from the business-relevant list', 
   let reviewRequest: unknown
   await routeShared(page)
   await page.route('**/api/v1/contents**', async (route) => {
+    const relevance = new URL(route.request().url()).searchParams.get('relevance')
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: [relevantItem],
+        items: relevance === 'relevant' ? [relevantItem] : [],
         next_cursor: null,
         has_more: false,
       }),
@@ -135,6 +138,7 @@ test('marks AI relevant content as irrelevant from the business-relevant list', 
   })
 
   await page.goto('/voice-plaza')
+  await page.getByLabel('相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
   await page.getByRole('button', { name: '人工标记为不相关' }).click()
 
@@ -146,10 +150,11 @@ test('undoes a manual relevant override without deleting the AI irrelevant fact'
   let reviewRequest: unknown
   await routeShared(page)
   await page.route('**/api/v1/contents**', async (route) => {
+    const relevance = new URL(route.request().url()).searchParams.get('relevance')
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: [manuallyIncludedItem],
+        items: relevance === 'relevant' ? [manuallyIncludedItem] : [],
         next_cursor: null,
         has_more: false,
       }),
@@ -164,6 +169,7 @@ test('undoes a manual relevant override without deleting the AI irrelevant fact'
   })
 
   await page.goto('/voice-plaza')
+  await page.getByLabel('相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByTitle('人工复核相关', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '撤销人工判断' }).click()
@@ -176,10 +182,11 @@ test('keeps manual override undoable when the current AI result is stale', async
   let reviewRequest: unknown
   await routeShared(page)
   await page.route('**/api/v1/contents**', async (route) => {
+    const relevance = new URL(route.request().url()).searchParams.get('relevance')
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: [staleManuallyIncludedItem],
+        items: relevance === 'relevant' ? [staleManuallyIncludedItem] : [],
         next_cursor: null,
         has_more: false,
       }),
@@ -194,6 +201,7 @@ test('keeps manual override undoable when the current AI result is stale', async
   })
 
   await page.goto('/voice-plaza')
+  await page.getByLabel('相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByTitle('人工复核相关', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '撤销人工判断' }).click()
@@ -206,10 +214,11 @@ test('batch marks selected AI relevant content as irrelevant through the same en
   let reviewRequest: unknown
   await routeShared(page)
   await page.route('**/api/v1/contents**', async (route) => {
+    const relevance = new URL(route.request().url()).searchParams.get('relevance')
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: [relevantItem],
+        items: relevance === 'relevant' ? [relevantItem] : [],
         next_cursor: null,
         has_more: false,
       }),
@@ -224,6 +233,7 @@ test('batch marks selected AI relevant content as irrelevant through the same en
   })
 
   await page.goto('/voice-plaza')
+  await page.getByLabel('相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
   await page.getByLabel('选择 爱玛 Q7 误判相关').check()
   await page.getByRole('button', { name: '批量标记为不相关' }).click()

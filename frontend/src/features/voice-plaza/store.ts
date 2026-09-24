@@ -14,6 +14,7 @@ import type {
   ContentFilterSnapshot,
   ContentListItemResponse,
   ContentListResponse,
+  ContentRelevance,
   ContentRelevanceReviewRequestDecision,
   ContentRelevanceReviewResponse,
   ContentTargetSelection,
@@ -25,6 +26,7 @@ import type {
 } from '../../generated/api/client'
 import {
   ContentAnalysisStatus as ContentAnalysisStatusValues,
+  ContentRelevance as ContentRelevanceValues,
   PlatformName as PlatformNameValues,
 } from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
@@ -64,6 +66,7 @@ export interface VoicePlazaFilters {
   search: string
   platforms: PlatformName[]
   analysisStatus: '' | ContentAnalysisStatus
+  relevance: '' | ContentRelevance
   voiceTypes: string[]
   sentiments: string[]
   primaryLabel: string
@@ -79,6 +82,7 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   search: '',
   platforms: [],
   analysisStatus: '',
+  relevance: '',
   voiceTypes: [],
   sentiments: [],
   primaryLabel: '',
@@ -147,6 +151,9 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
       : typeof values.sentiment === 'string'
         ? [values.sentiment]
         : []
+    const relevance = Object.values(ContentRelevanceValues).includes(
+      values.relevance as ContentRelevance,
+    ) ? values.relevance as ContentRelevance : ''
     const analysisStatus = Object.values(ContentAnalysisStatusValues).includes(
       values.analysisStatus as ContentAnalysisStatus,
     ) ? values.analysisStatus as ContentAnalysisStatus : ''
@@ -155,6 +162,7 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
         search: stringValue('search'),
         platforms,
         analysisStatus,
+        relevance,
         voiceTypes,
         sentiments,
         primaryLabel: stringValue('primaryLabel'),
@@ -295,6 +303,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       search: appliedFilters.search.trim() || undefined,
       platforms: appliedFilters.platforms.length ? [...appliedFilters.platforms] : undefined,
       analysis_status: appliedFilters.analysisStatus || undefined,
+      relevance: appliedFilters.relevance || undefined,
       voice_types: appliedFilters.voiceTypes.length ? [...appliedFilters.voiceTypes] : undefined,
       sentiments: appliedFilters.sentiments.length ? [...appliedFilters.sentiments] : undefined,
       primary_label: appliedFilters.primaryLabel.trim() || undefined,

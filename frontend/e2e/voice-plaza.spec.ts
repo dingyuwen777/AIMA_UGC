@@ -537,7 +537,7 @@ test('keeps stable filters and content usable when dynamic filter options are un
 
   await expect(page.getByRole('alert').getByText('部分动态筛选项暂不可用', { exact: true })).toBeVisible()
   const filters = page.locator('section.filters')
-  for (const label of ['平台', '状态']) {
+  for (const label of ['平台', '相关性', '状态']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeEnabled()
   }
   for (const label of ['一级标签', '二级标签']) {
