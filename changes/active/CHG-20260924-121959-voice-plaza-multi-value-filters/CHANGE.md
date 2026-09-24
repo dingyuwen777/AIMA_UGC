@@ -66,6 +66,10 @@ data_changes:
 | E4 | 远端 main 新增 0060/0061 两个 migration | `git ls-tree main migrations/versions/` | 新 migration 排到 0062，`down_revision=20260924_0061` |
 | E5 | 生成目录需与 Contract 一致 | CI `generate.py --check` + `check_compatibility.py` | OpenAPI/Client 需重新生成 |
 
+## 推断与待确认
+
+无。
+
 # 目标、成功标准与非目标
 
 ## 目标
@@ -74,10 +78,10 @@ data_changes:
 
 ## 成功标准
 
-- [ ] 筛选快照 `voice_types`/`sentiments` 多值，后端 `IN` 过滤，历史快照回填正确。
-- [ ] OpenAPI/TypeScript Client 重新生成且 `generate.py --check`、`check_compatibility.py` 通过。
-- [ ] 前端平台/情感/发声类型多选，移除内容类型/相关性/竞争范围筛选 UI。
-- [ ] 后端契约测试与前端 voice-plaza 测试通过，CI 绿色。
+- [ ] AC1：情感、发声类型支持多选组合筛选，后端按多值过滤
+- [ ] AC2：历史已保存筛选快照经 Migration 回填后仍能正确解析
+- [ ] AC3：前端筛选区多选，并移除内容类型/相关性/竞争范围筛选 UI
+- [ ] AC4：OpenAPI/TypeScript Client 重新生成且检查通过，CI 绿色
 
 ## 范围
 
@@ -104,6 +108,8 @@ data_changes:
 
 # 修改方案与决策依据
 
+## 最小充分方案
+
 ```text
 步骤 1：Contract 单值改多值
 → 修改 ContentFilterSnapshot
@@ -126,7 +132,52 @@ data_changes:
 → 多选并移除冗余筛选 UI
 ```
 
-# 验证计划
+## 证据到决策
+
+| 决策 | 依据证据 | 为什么采用这个方案 |
+| --- | --- | --- |
+| D1 | E1/E2 | 单值改多值 + IN 过滤是最小充分实现 |
+| D2 | E3/E4 | 新增 0062 Migration 回填，避免破坏历史快照 |
+| D3 | E5 | 重新生成 OpenAPI/Client 保持机器一致性 |
+
+## 备选方案与取舍
+
+- 备选：保留单值字段、前端组合多个请求。未采用：会产生多次查询且无法表达组合筛选语义，复杂度更高且不满足需求。故采用单值改多值 + 数据回填的最小方案。
+
+# 需求追溯
+
+| 编号 | 要求 | 来源 | 状态 | 证据 |
+| --- | --- | --- | --- | --- |
+| R1 | 情感、发声类型支持多选 | #592 / AC1 | satisfied | E1/E2 + Contract 多值 + IN 过滤 |
+| R2 | 历史筛选快照兼容 | #592 / AC2 | satisfied | E3 + 0062 Migration |
+| R3 | 前端筛选区多选并移除冗余维度 | #592 / AC3 | satisfied | 前端 VoicePlazaFilters/store 改动 |
+| R4 | 生成物与 Contract 一致 | #592 / AC4 | satisfied | OpenAPI/Client 重新生成 |
+
+# 计划改动
+
+| 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
+| --- | --- | --- | --- |
+| backend/src/aima_ugc/contracts/http.py | voice_type/sentiment 改多值元组 | 多选 | R1 / E1 |
+| backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py | 过滤改 `.in_()` | 多值过滤 | R1 / E2 |
+| migrations/versions/20260924_0062_voice_plaza_multi_value_filters.py | 新增数据 Migration 回填 | 历史快照兼容 | R2 / E3 |
+| contracts/openapi/openapi.json、frontend/src/generated/api/client.ts | 重新生成 | 机器一致性 | R4 / E5 |
+| frontend/src/features/voice-plaza/ | 多选 + 移除冗余筛选 UI | 前端交互 | R3 |
+| frontend/tests/、tests/contracts/ | 同步测试 | 回归 | R1/R3 |
+
+# 验证矩阵
+
+| 验证层 | 是否要求 | 范围 / 证据 |
+| --- | --- | --- |
+| 行为 / 单元 / 组件 | required | 后端契约测试、前端 voice-plaza 单元测试 |
+| 接口 / 契约 | required | OpenAPI/Client 生成一致性与兼容检查 |
+| 集成 / 持久化 / 运行依赖 | required | PostgreSQL 集成 + `alembic check` + Migration upgrade/downgrade |
+| 用户 / 工作流验收 | required | 前端 Browser Mock 多选筛选流程 |
+| 跨组件关键路径 | not_applicable | 无跨进程新接线，不新增真实关键路径 |
+| 外部依赖 / 供应方探测 | not_applicable | 不涉及 TikHub/LLM 外部事实变化 |
+| 构建 / 打包 / 运行 | required | 前端 build、后端 Wheel 构建 |
+| 文档 / 治理 / 其他 | required | Change 记录与机器门禁证据 |
+
+## 验证计划
 
 - 目标测试：后端契约测试、前端 voice-plaza 测试。
 - 相关回归：`pytest tests/contracts`、`pytest tests/api`、`npm run test`。
@@ -152,18 +203,9 @@ data_changes:
 - **部署 / Release**：不适用。
 - **兼容 / 消费方通知**：前端与后端同仓库同步，无外部消费方。
 
-# 需求追溯
-
-| ID | Requirement | Source | Status | Evidence |
-| --- | --- | --- | --- | --- |
-| R1 | 情感、发声类型支持多选 | #592 / AC1 | satisfied | E1/E2 + Contract 多值 + IN 过滤 |
-| R2 | 历史筛选快照兼容 | #592 / AC2 | satisfied | E3 + 0062 Migration |
-| R3 | 前端筛选区多选并移除冗余维度 | #592 / AC3 | satisfied | 前端 VoicePlazaFilters/store 改动 |
-| R4 | 生成物与 Contract 一致 | #592 / AC4 | satisfied | OpenAPI/Client 重新生成 |
-
 # 完成审计
 
-- [x] upstream_re_read：已重读 Contract、migration 链与远端 main 最新状态。
+- [x] upstream_re_read：已重读 Contract、migration 链与远端 main 最新状态，并关联 Issue #592。
 - [x] change_coverage：Contract/后端/迁移/生成/前端/测试均已覆盖。
 - [x] reverse_audit：后端能力（多值筛选）→ 前端多选入口；前端动作 → 后端 IN 过滤真实支持。
 - [x] unresolved_cleared：无 not_satisfied，延期/不适用项已注明。
@@ -176,7 +218,7 @@ data_changes:
 | --- | --- | --- | --- | --- |
 | V1 | git | `git diff main...feature` | 仅 12 个声音广场文件 | 无无关改动 |
 | V2 | git | `git ls-tree main migrations/versions/` | 远端 0060/0061 保留 | 迁移链正确 |
-| V3 | 待 CI | CI 全套 | 待运行 | 契约/前端/集成回归 |
+| V3 | 本地 | `check_change_completion.py --require-active-ready` | exit 0 | Change 结构门禁通过 |
 
 ## 未验证内容与剩余风险
 
@@ -184,8 +226,8 @@ data_changes:
 
 ## 交付状态
 
-- 提交：待提交 Change 记录。
-- 拉取请求：待创建。
+- 提交：已提交。
+- 拉取请求：#591。
 - CI：待运行。
 - 合并：未合并。
 - Change 归档：待 merge 后自动归档。
