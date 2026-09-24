@@ -973,9 +973,15 @@ def _xlsx_three_voice_types() -> bytes:
     sheet = workbook.active
     sheet.title = "文章"
     sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
-    sheet.append(["小红书", "爱玛真实用户发声", "第一条", "用户甲", "2026-08-20 10:00:00", "https://x/1"])
-    sheet.append(["小红书", "爱玛媒体机构发声", "第二条", "用户乙", "2026-08-20 11:00:00", "https://x/2"])
-    sheet.append(["小红书", "爱玛无法判断发声", "第三条", "用户丙", "2026-08-20 12:00:00", "https://x/3"])
+    sheet.append(
+        ["小红书", "爱玛真实用户发声", "第一条", "用户甲", "2026-08-20 10:00:00", "https://x/1"]
+    )
+    sheet.append(
+        ["小红书", "爱玛媒体机构发声", "第二条", "用户乙", "2026-08-20 11:00:00", "https://x/2"]
+    )
+    sheet.append(
+        ["小红书", "爱玛无法判断发声", "第三条", "用户丙", "2026-08-20 12:00:00", "https://x/3"]
+    )
     output = BytesIO()
     workbook.save(output)
     workbook.close()
