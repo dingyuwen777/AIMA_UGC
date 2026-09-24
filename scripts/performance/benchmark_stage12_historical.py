@@ -14,13 +14,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
+from aima_ugc.bootstrap.import_revocation_http import PostgresImportRevocationHttpService
 from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
@@ -28,6 +29,7 @@ from aima_ugc.bootstrap.worker import (
     create_worker_runtime,
 )
 from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
+from aima_ugc.contracts.lifecycle import DataImportRevokeRequest
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.historical_jobs import (
     HISTORICAL_DISCOVER_JOB_TYPE,
@@ -80,6 +82,7 @@ def run_benchmark(
         "historical_fill_only"
     ),
     existing_rows: int = 0,
+    measure_revocation: bool = False,
     disk_budget_bytes: int = _DEFAULT_DISK_BUDGET_BYTES,
 ) -> dict[str, Any]:
     """生成有界 XLSX Fixture，并编排生产 Campaign/Worker 取得容量证据。"""
@@ -367,6 +370,50 @@ def run_benchmark(
                 "本脚本不调用 AI，也不代表已授权或已执行生产 4000 万迁移。",
             ],
         }
+        if measure_revocation:
+            service = PostgresImportRevocationHttpService(
+                runtime.database.new_session, runtime.artifact_store
+            )
+            revocation_campaign_id = UUID(campaign_id)
+            revocation_sql = 0
+
+            def count_revocation_sql(
+                connection: object,
+                cursor: object,
+                statement: str,
+                parameters: object,
+                context: object,
+                executemany: bool,
+            ) -> None:
+                nonlocal revocation_sql
+                del connection, cursor, statement, parameters, context, executemany
+                revocation_sql += 1
+
+            event.listen(runtime.database.engine, "before_cursor_execute", count_revocation_sql)
+            try:
+                preview_started = time.perf_counter()
+                preview = service.preview(revocation_campaign_id)
+                preview_seconds = time.perf_counter() - preview_started
+                if not preview.eligible:
+                    raise RuntimeError("容量 Campaign 不可安全撤销")
+                revoke_started = time.perf_counter()
+                revoked = service.revoke(
+                    revocation_campaign_id,
+                    DataImportRevokeRequest(reason="容量基准"),
+                    actor_ref="stage12-capacity",
+                    request_id="stage12-capacity-revoke",
+                )
+                revoke_seconds = time.perf_counter() - revoke_started
+            finally:
+                event.remove(runtime.database.engine, "before_cursor_execute", count_revocation_sql)
+            if revoked.already_revoked or revoked.impact != preview.impact:
+                raise RuntimeError("容量 Campaign 撤销影响未对账")
+            report["revocation"] = {
+                "preview_seconds": round(preview_seconds, 3),
+                "revoke_seconds": round(revoke_seconds, 3),
+                "sql_statements": revocation_sql,
+                "affected_content_count": revoked.impact.affected_content_count,
+            }
         report_path = root / "capacity_report.json"
         _atomic_write_json(report_path, report)
         print(
@@ -798,6 +845,7 @@ def _parse_args() -> argparse.Namespace:
         default="historical_fill_only",
     )
     parser.add_argument("--existing-rows", type=int, default=0)
+    parser.add_argument("--measure-revocation", action="store_true")
     parser.add_argument("--disk-budget-mib", type=int, default=512)
     return parser.parse_args()
 
@@ -812,6 +860,7 @@ def main() -> int:
         max_in_flight=arguments.max_in_flight,
         ingestion_policy=arguments.ingestion_policy,
         existing_rows=arguments.existing_rows,
+        measure_revocation=arguments.measure_revocation,
         disk_budget_bytes=arguments.disk_budget_mib * 1024 * 1024,
     )
     return 0

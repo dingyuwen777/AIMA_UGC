@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -55,14 +54,13 @@ def test_historical_converter_publishes_pure_canonical_and_separate_invalid_fact
         return _content(row.row_number)
 
     monkeypatch.setattr(historical_chunk, "map_excel_row", map_row)
-    published: list[tuple[HistoricalChunkDescriptor, bytes]] = []
+    published: list[HistoricalChunkDescriptor] = []
 
     def publish(descriptor: HistoricalChunkDescriptor) -> None:
-        published.append((descriptor, descriptor.path.read_bytes()))
+        published.append(descriptor)
 
     summary = convert_historical_excel_to_chunks(
         input_path=tmp_path / "fixture.xlsx",
-        output_dir=tmp_path / "chunks",
         profile_name="aima-monitoring-v1",
         observed_at=_NOW,
         chunk_rows=3,
@@ -73,11 +71,10 @@ def test_historical_converter_publishes_pure_canonical_and_separate_invalid_fact
     assert summary.canonical_rows == 2
     assert summary.invalid == 1
     assert summary.chunks == 1
-    descriptor, payload = published[0]
+    descriptor = published[0]
     assert descriptor.canonical_row_ordinals == (2, 3)
     assert [(item.source_row_ordinal, item.error_code) for item in descriptor.invalid_rows] == [
         (4, "fixture_invalid")
     ]
-    records = [json.loads(line) for line in payload.splitlines()]
-    assert [record["external_content_id"] for record in records] == ["row-2", "row-3"]
-    assert all("outcome" not in record and "content" not in record for record in records)
+    assert [record.external_content_id for record in descriptor.contents] == ["row-2", "row-3"]
+    assert all(isinstance(record, CanonicalContentV1) for record in descriptor.contents)

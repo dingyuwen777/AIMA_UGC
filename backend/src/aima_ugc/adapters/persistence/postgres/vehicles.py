@@ -623,6 +623,61 @@ class PostgresVehicleCatalogRepository:
             )
         return True
 
+    def restore_automatic_evidence_batch(
+        self,
+        entries: tuple[tuple[UUID, int, list[dict[str, object]], list[dict[str, object]]], ...],
+    ) -> set[UUID]:
+        """集合撤回未改变 Content Version 的自动车型证据。"""
+
+        if not entries:
+            return set()
+        pairs = tuple((content_id, version) for content_id, version, _, _ in entries)
+        if len(set(pairs)) != len(pairs):
+            raise ValueError("批量撤回车型证据包含重复 Content Version")
+        self._lock_vehicle_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        snapshots = self.snapshot_automatic_evidence_batch(
+            pairs=tuple(pair for pair in pairs if pair not in locked)
+        )
+        restored: set[UUID] = set()
+        changed: list[tuple[UUID, int]] = []
+        values: list[dict[str, object]] = []
+        for content_id, version, expected_after, before in entries:
+            pair = (content_id, version)
+            if pair in locked or snapshots[pair] != expected_after:
+                continue
+            restored.add(content_id)
+            if before == expected_after:
+                continue
+            changed.append(pair)
+            values.extend(_decode_evidence_row(row) for row in before)
+        if changed:
+            self._session.execute(
+                delete(content_vehicle_evidence_table).where(
+                    tuple_(
+                        content_vehicle_evidence_table.c.content_id,
+                        content_vehicle_evidence_table.c.content_version,
+                    ).in_(changed),
+                    content_vehicle_evidence_table.c.is_manual_locked.is_(False),
+                )
+            )
+        if values:
+            self._session.execute(insert(content_vehicle_evidence_table), values)
+        return restored
+
     def carry_manual_review(
         self,
         *,
@@ -959,25 +1014,39 @@ class PostgresVehicleCatalogRepository:
                 .values(is_active=False)
             )
 
-        values = [
-            {
-                "id": item.id,
-                "content_id": item.content_id,
-                "content_version": item.content_version,
-                "vehicle_model_id": item.vehicle_model_id,
-                "source": item.source,
-                "matched_text": item.matched_text,
-                "source_field": item.source_field,
-                "catalog_version": item.catalog_version,
-                "confidence": item.confidence,
-                "is_manual_locked": False,
-                "is_active": True,
-                "created_at": item.created_at,
-            }
-            for content_id, content_version, evidence in entries
-            if (content_id, content_version) not in locked_pairs
-            for item in evidence
-        ]
+        values: list[dict[str, object]] = []
+        seen: set[tuple[UUID, int, UUID, str, int]] = set()
+        for content_id, content_version, evidence in entries:
+            if (content_id, content_version) in locked_pairs:
+                continue
+            for item in evidence:
+                identity = (
+                    item.content_id,
+                    item.content_version,
+                    item.vehicle_model_id,
+                    item.source,
+                    item.catalog_version,
+                )
+                # PostgreSQL 单条 ON CONFLICT UPDATE 不允许同一唯一键出现两次。
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                values.append(
+                    {
+                        "id": item.id,
+                        "content_id": item.content_id,
+                        "content_version": item.content_version,
+                        "vehicle_model_id": item.vehicle_model_id,
+                        "source": item.source,
+                        "matched_text": item.matched_text,
+                        "source_field": item.source_field,
+                        "catalog_version": item.catalog_version,
+                        "confidence": item.confidence,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": item.created_at,
+                    }
+                )
         if values:
             statement = pg_insert(content_vehicle_evidence_table).values(values)
             self._session.execute(

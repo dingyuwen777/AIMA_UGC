@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
     CANONICAL_REPLAY_JOB_TYPE,
@@ -11,6 +15,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 )
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRegistry
 from pydantic import BaseModel
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 
 class _Executor:
@@ -82,3 +87,48 @@ def test_replay_job_registration_uses_current_payload_contract() -> None:
         assert "Replay" in str(exc)
     else:  # pragma: no cover - 明确要求失败关闭
         raise AssertionError("错误 Payload 必须失败关闭")
+
+
+@pytest.mark.parametrize(
+    ("error", "outcome", "error_code"),
+    [
+        (
+            ProgrammingError("INSERT", {}, RuntimeError("cardinality violation")),
+            "failed",
+            "canonical_replay_persistence_invalid",
+        ),
+        (
+            OperationalError("INSERT", {}, RuntimeError("connection lost")),
+            "retry",
+            "canonical_replay_transient_error",
+        ),
+    ],
+)
+def test_replay_persistence_errors_distinguish_permanent_from_transient(
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    outcome: str,
+    error_code: str,
+) -> None:
+    """确定性 SQL 错误应及时失败，只有运行时故障才进入退避重试。"""
+
+    executor = PostgresCanonicalReplayJobExecutor(
+        SimpleNamespace(logger=logging.getLogger("replay-error-test"))  # type: ignore[arg-type]
+    )
+
+    def fail_load(*args: object, **kwargs: object) -> None:
+        """模拟预检前的数据库错误，避免测试复制 Job 状态机。"""
+
+        del args, kwargs
+        raise error
+
+    monkeypatch.setattr(executor, "_load_execution", fail_load)
+    context = _Context()
+    result = executor.execute(
+        payload=CanonicalReplayJobPayload(run_id=uuid4()),
+        fence=context.fence,
+        context=context,  # type: ignore[arg-type]
+    )
+
+    assert result.outcome == outcome
+    assert result.error_code == error_code

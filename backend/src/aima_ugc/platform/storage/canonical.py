@@ -128,6 +128,12 @@ class CanonicalArtifactReader:
             yield from self._read_validated_lines(stream)
         self._preflighted.add(self._preflight_key(artifact))
 
+    def read_for_bounded_staging(self, artifact: ArtifactRecord) -> Iterator[CanonicalContentV1]:
+        """供事务外完整装入有界 Chunk 的调用方单遍校验，不缓存预检资格。"""
+
+        with self._verified_temporary(artifact) as stream:
+            yield from self._read_validated_lines(stream)
+
     def verify_bytes_for_preflight(self, artifact: ArtifactRecord) -> None:
         """已有同版本验证证明时仍逐字节核对当前文件，避免只信数据库摘要。"""
 

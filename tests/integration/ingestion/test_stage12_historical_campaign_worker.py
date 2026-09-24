@@ -194,6 +194,105 @@ def _drain(worker, *, maximum: int = 20) -> int:
     return executed
 
 
+def test_two_workers_complete_two_source_campaign_without_deadlock(tmp_path: Path) -> None:
+    """同 Campaign 的两个 Worker 同时处理 Chunk 时，父级结算不形成锁环。"""
+
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    (historical_root / "first.xlsx").write_bytes(
+        _xlsx(title="爱玛并发首文件", text="并发首文件正文")
+    )
+    (historical_root / "second.xlsx").write_bytes(
+        _xlsx(title="爱玛并发次文件", text="并发次文件正文")
+    )
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "historical_import_root": historical_root,
+            "historical_chunk_rows": 100,
+            "historical_max_in_flight_jobs": 2,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        client = TestClient(
+            create_app(
+                historical_import_service=PostgresHistoricalImportHttpService(runtime),
+                import_service=PostgresImportHttpService(runtime),
+            )
+        )
+        brand_id = _brand(runtime)
+        created = client.post(
+            "/api/v1/historical-import-campaigns",
+            json={
+                "client_idempotency_key": f"two-worker-import-{uuid4()}",
+                "relative_paths": ["first.xlsx", "second.xlsx"],
+                "recursive": False,
+                "brand_ids": [brand_id],
+                "ingestion_policy": "standard_observation",
+            },
+        )
+        assert created.status_code == 202
+        campaign_id = created.json()["campaign_id"]
+        registry = create_collection_job_registry(runtime=runtime)
+        workers = tuple(
+            create_job_worker(
+                runtime=runtime,
+                registry=registry,
+                worker_id=f"two-source-worker-{index}",
+                lease_seconds=120,
+                retry_delay_seconds=0,
+            )
+            for index in range(2)
+        )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            for _ in range(8):
+                campaign = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()
+                if campaign["status"] == "ready":
+                    break
+                outcomes = tuple(executor.map(lambda worker: worker.run_once(), workers))
+                assert any(outcomes), campaign
+            else:
+                raise AssertionError("两个 Source 未完成预检")
+            assert (
+                client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/start").status_code
+                == 200
+            )
+            for _ in range(8):
+                campaign = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()
+                if campaign["status"] == "succeeded":
+                    break
+                outcomes = tuple(executor.map(lambda worker: worker.run_once(), workers))
+                assert any(outcomes), campaign
+            else:
+                raise AssertionError("两个 Source 未完成导入")
+        assert campaign["total_rows"] == 2
+        assert sum(campaign["stats"].values()) == 2
+        with runtime.database.engine.connect() as connection:
+            statuses = tuple(
+                connection.scalars(
+                    select(jobs_table.c.status).where(
+                        jobs_table.c.job_type == HISTORICAL_IMPORT_CHUNK_JOB_TYPE
+                    )
+                )
+            )
+        assert statuses == ("succeeded", "succeeded")
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
+
+
 def test_source_manifest_identity_is_database_unique_when_ordinal_is_null(
     tmp_path: Path,
 ) -> None:
@@ -1017,6 +1116,17 @@ def test_historical_snapshot_retry_reuses_linked_canonical_chunk(
         )
     original_publish = historical_worker_module.PostgresHistoricalImportJobExecutor._publish_chunk
     publish_calls = 0
+    original_compare = historical_worker_module._assert_canonical_matches_descriptor
+    compare_calls = 0
+
+    def count_reused_compare(**kwargs):  # type: ignore[no-untyped-def]
+        nonlocal compare_calls
+        compare_calls += 1
+        return original_compare(**kwargs)
+
+    monkeypatch.setattr(
+        historical_worker_module, "_assert_canonical_matches_descriptor", count_reused_compare
+    )
 
     def publish_then_fail(self, **kwargs):  # type: ignore[no-untyped-def]
         nonlocal publish_calls
@@ -1057,6 +1167,7 @@ def test_historical_snapshot_retry_reuses_linked_canonical_chunk(
         )
         assert worker.run_once() is True
         assert worker.run_once() is True
+        assert compare_calls == 0
         with runtime.database.engine.begin() as connection:
             assert (
                 connection.scalar(
@@ -1068,6 +1179,7 @@ def test_historical_snapshot_retry_reuses_linked_canonical_chunk(
             )
         assert worker.run_once() is True
         assert publish_calls == 2
+        assert compare_calls == 1
         assert (
             client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()["status"]
             == "ready"
@@ -1152,6 +1264,8 @@ def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row
         ]
         assert [item["status"] for item in chunks] == ["queued", "ready"]
 
+        # 已生成的 Chunk 应按 Campaign 冻结行数读取，进程重启后的配置不改变其上限。
+        runtime.settings = settings.model_copy(update={"historical_chunk_rows": 1})
         assert worker.run_once() is True
         in_progress = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()
         assert in_progress["status"] == "running"

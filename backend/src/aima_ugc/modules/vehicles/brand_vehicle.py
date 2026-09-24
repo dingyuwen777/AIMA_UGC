@@ -248,6 +248,9 @@ class BrandVehicleResolver:
                     conflicts.append(f"ambiguous_vehicle_alias:{normalized_alias}")
                     continue
                 vehicle_id = next(iter(candidates))
+                # 同一车型只留最长别名的首个命中；数据库唯一键不包含 matched_text。
+                if vehicle_id in resolved:
+                    continue
                 resolved.add(vehicle_id)
                 representative = sorted(aliases, key=lambda item: (item.text, str(item.id)))[0]
                 evidence.append(

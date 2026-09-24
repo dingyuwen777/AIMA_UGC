@@ -37,6 +37,7 @@ from aima_ugc.contracts.canonical import CanonicalAuthorV1, CanonicalContentV1
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
+    canonical_replay_all_requests_table,
     canonical_replay_content_changes_table,
     canonical_replay_runs_table,
 )
@@ -98,6 +99,8 @@ def run_benchmark(
     existing_rows_per_file: int = 0,
     stable_authors: bool = False,
     scalar_stable_authors: bool = False,
+    measure_reversal: bool = False,
+    existing_evidence_change: bool = False,
     disk_budget_bytes: int = _DEFAULT_DISK_BUDGET_BYTES,
 ) -> dict[str, object]:
     """只测 Replay 执行窗口；输入生成与初次导入不计时。"""
@@ -112,6 +115,8 @@ def run_benchmark(
         raise ValueError("existing_rows_per_file 必须在 0 到 rows_per_file 之间")
     if scalar_stable_authors and not stable_authors:
         raise ValueError("scalar_stable_authors 要求同时启用 stable_authors")
+    if existing_evidence_change and existing_rows_per_file == 0:
+        raise ValueError("证据撤回基准要求包含既有内容")
     if disk_budget_bytes <= 0:
         raise ValueError("disk_budget_bytes 必须大于 0")
     settings = load_settings()
@@ -205,10 +210,17 @@ def run_benchmark(
                 raise RuntimeError("基准输入未成功产生 Canonical")
         PostgresBrandVehicleHttpService(runtime).add_alias(
             brand.id,
-            BrandAliasCreateRequest(text="星曜"),
+            BrandAliasCreateRequest(text="预置容量" if existing_evidence_change else "星曜"),
             principal=principal,
             request_id="canonical-replay-capacity-alias",
         )
+        if existing_evidence_change and existing_rows_per_file < rows_per_file:
+            PostgresBrandVehicleHttpService(runtime).add_alias(
+                brand.id,
+                BrandAliasCreateRequest(text="星曜"),
+                principal=principal,
+                request_id="canonical-replay-capacity-new-alias",
+            )
         # 容量基准需要保留每个原子批次的阶段耗时，便于区分解析、Content、
         # Evidence 与账本/checkpoint 瓶颈；正式服务仍由部署日志级别控制。
         runtime.logger.setLevel(logging.DEBUG)
@@ -379,6 +391,15 @@ def run_benchmark(
                 .select_from(canonical_replay_content_changes_table)
                 .where(canonical_replay_content_changes_table.c.all_request_id == request_id)
             )
+            changed_evidence = connection.scalar(
+                select(func.count())
+                .select_from(canonical_replay_content_changes_table)
+                .where(
+                    canonical_replay_content_changes_table.c.all_request_id == request_id,
+                    canonical_replay_content_changes_table.c.brand_evidence_before
+                    != canonical_replay_content_changes_table.c.brand_evidence_after,
+                )
+            )
         if len(statuses) != run_count or any(status != "succeeded" for status in statuses):
             raise RuntimeError("基准 Replay 子任务未全部成功")
         expected_rows = file_count * rows_per_file
@@ -386,6 +407,8 @@ def run_benchmark(
         expected_ingested = expected_rows - expected_existing
         if ledger_count != expected_rows:
             raise RuntimeError("基准 Replay 贡献账本行数与输入不一致")
+        if existing_evidence_change and changed_evidence != expected_rows:
+            raise RuntimeError("证据撤回基准没有产生预期的品牌证据变化")
         if (
             int(counters.rows_seen) != expected_rows
             or int(counters.rows_matched) != expected_rows
@@ -403,6 +426,7 @@ def run_benchmark(
             "rows_matched": int(counters.rows_matched),
             "rows_ingested": int(counters.rows_ingested),
             "existing_convergence": int(counters.existing_convergence),
+            "changed_brand_evidence": changed_evidence,
             "workers": workers,
             "stable_authors": stable_authors,
             "scalar_stable_authors": scalar_stable_authors,
@@ -427,6 +451,67 @@ def run_benchmark(
                 )[:15]
             },
         }
+        if measure_reversal:
+            reversal_sql: dict[str, int] = {}
+
+            def count_reversal_sql(
+                connection: object,
+                cursor: object,
+                statement: str,
+                parameters: object,
+                context: object,
+                executemany: bool,
+            ) -> None:
+                """按表统计撤回 SQL 往返，不记录参数或业务正文。"""
+
+                del connection, cursor, parameters, context, executemany
+                first_table = re.search(
+                    r"\b(?:FROM|INTO|UPDATE|DELETE FROM)\s+([a-z_][a-z_0-9]*)",
+                    statement,
+                )
+                kind = statement.lstrip().split(None, 1)[0].upper()
+                key = f"{kind} {first_table.group(1) if first_table else 'other'}"
+                reversal_sql[key] = reversal_sql.get(key, 0) + 1
+
+            revoked = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
+            if revoked.status_code != 202:
+                raise RuntimeError("基准撤回请求未被接受")
+            event.listen(runtime.database.engine, "before_cursor_execute", count_reversal_sql)
+            reversal_started = time.perf_counter()
+            try:
+                if not run_one_job(file_count + run_count + 1):
+                    raise RuntimeError("基准撤回 Job 未被领取")
+            finally:
+                reversal_seconds = time.perf_counter() - reversal_started
+                event.remove(runtime.database.engine, "before_cursor_execute", count_reversal_sql)
+            with runtime.database.engine.connect() as connection:
+                reversal = (
+                    connection.execute(
+                        select(canonical_replay_all_requests_table).where(
+                            canonical_replay_all_requests_table.c.id == request_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                reverted_rows = connection.scalar(
+                    select(func.count())
+                    .select_from(canonical_replay_content_changes_table)
+                    .where(
+                        canonical_replay_content_changes_table.c.all_request_id == request_id,
+                        canonical_replay_content_changes_table.c.reverted_at.is_not(None),
+                    )
+                )
+            if reversal["lifecycle_status"] != "reverted" or reverted_rows != expected_rows:
+                raise RuntimeError("基准撤回状态与贡献账本未对账")
+            report["reversal"] = {
+                "elapsed_seconds": round(reversal_seconds, 3),
+                "reverted_rows": reverted_rows,
+                "sql_statements": sum(reversal_sql.values()),
+                "top_sql_tables": sorted(
+                    reversal_sql.items(), key=lambda item: item[1], reverse=True
+                )[:15],
+            }
         _atomic_write_json(root / "capacity_report.json", report)
         completed = True
         return report
@@ -500,6 +585,8 @@ def main() -> None:
     parser.add_argument("--existing-rows-per-file", type=int, default=0)
     parser.add_argument("--stable-authors", action="store_true")
     parser.add_argument("--scalar-stable-authors", action="store_true")
+    parser.add_argument("--measure-reversal", action="store_true")
+    parser.add_argument("--existing-evidence-change", action="store_true")
     parser.add_argument("--disk-budget-mib", type=int, default=512)
     args = parser.parse_args()
     print(
@@ -512,6 +599,8 @@ def main() -> None:
                 existing_rows_per_file=args.existing_rows_per_file,
                 stable_authors=args.stable_authors,
                 scalar_stable_authors=args.scalar_stable_authors,
+                measure_reversal=args.measure_reversal,
+                existing_evidence_change=args.existing_evidence_change,
                 disk_budget_bytes=args.disk_budget_mib * 1024 * 1024,
             ),
             ensure_ascii=False,

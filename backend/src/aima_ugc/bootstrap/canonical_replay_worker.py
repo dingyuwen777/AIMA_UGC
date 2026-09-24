@@ -13,7 +13,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import insert, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -181,6 +181,18 @@ class PostgresCanonicalReplayJobExecutor:
             return JobHandlerResult.failed("canonical_replay_artifact_invalid")
         except LookupError, ValueError:
             return JobHandlerResult.failed("canonical_replay_input_invalid")
+        except (DataError, IntegrityError, ProgrammingError) as exc:
+            # 约束/SQL 结构错误重试不会自愈；只记录错误类别和 SQLSTATE，不泄露行内容。
+            log_event(
+                self._runtime.logger,
+                logging.ERROR,
+                "canonical_replay.persistence_invalid",
+                "Canonical Replay 遇到不可重试的数据库错误",
+                job_id=str(fence.job_id),
+                error_class=type(exc).__name__,
+                sqlstate=getattr(exc.orig, "sqlstate", None),
+            )
+            return JobHandlerResult.failed("canonical_replay_persistence_invalid")
         except OSError, SQLAlchemyError:
             return JobHandlerResult.retry("canonical_replay_transient_error")
 
