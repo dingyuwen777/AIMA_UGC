@@ -1332,8 +1332,29 @@ def test_historical_failed_retry_preserves_cross_chunk_duplicate_identity(
             original_read_chunk,
         )
 
+        retention_session = runtime.database.new_session()
+        try:
+            with retention_session.begin():
+                retention_repository = PostgresArtifactMetadataRepository(retention_session)
+                retention_repository.backfill_retention_deadlines()
+                source_expiry_before_retry = retention_session.scalar(
+                    select(artifacts_table.c.expires_at).where(
+                        artifacts_table.c.kind == "historical-import.source"
+                    )
+                )
+            assert source_expiry_before_retry is not None
+        finally:
+            retention_session.close()
+
         retried = client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/retry-failed")
         assert retried.status_code == 200
+        with runtime.database.engine.begin() as connection:
+            source_expiry_after_retry = connection.scalar(
+                select(artifacts_table.c.expires_at).where(
+                    artifacts_table.c.kind == "historical-import.source"
+                )
+            )
+        assert source_expiry_after_retry is None
         with runtime.database.engine.begin() as connection:
             batches = tuple(
                 connection.execute(
