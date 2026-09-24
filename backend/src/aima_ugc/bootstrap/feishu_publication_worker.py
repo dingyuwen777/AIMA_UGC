@@ -10,9 +10,11 @@ from tempfile import TemporaryDirectory
 from uuid import UUID
 
 from aima_ugc.adapters.feishu import FeishuAPIError, FeishuApiError, FeishuSyncError
+from aima_ugc.adapters.feishu.report_publisher import FeishuPublicationCheckpointStore
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap.feishu_bitable_mirror import register_feishu_bitable_mirror
 from aima_ugc.bootstrap.feishu_report_publication import (
     FeishuReportPublicationConfigurationError,
@@ -36,6 +38,45 @@ from aima_ugc.platform.security import SecretFileError
 from .runtime import PlatformRuntime
 
 logger = logging.getLogger(__name__)
+
+
+class _JobPublicationCheckpoint(FeishuPublicationCheckpointStore):
+    """把每个已确认的飞书资源身份立即写回当前 Job Payload。"""
+
+    def __init__(
+        self,
+        runtime: PlatformRuntime,
+        *,
+        payload: FeishuReportPublicationJobPayload,
+        fence: JobExecutionFence,
+    ) -> None:
+        self._runtime = runtime
+        self._payload = payload
+        self._fence = fence
+        self._values = dict(payload.publication_checkpoint)
+
+    def get(self, key: str) -> object | None:
+        return self._values.get(key)
+
+    def set(self, key: str, value: object | None) -> None:
+        if value is None:
+            self._values.pop(key, None)
+        else:
+            self._values[key] = value
+        next_payload = self._payload.model_copy(
+            update={"publication_checkpoint": dict(self._values)}
+        )
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                PostgresJobRepository(session).update_payload(
+                    job_id=self._fence.job_id,
+                    lease_token=self._fence.lease_token,
+                    payload=next_payload.model_dump(mode="json"),
+                )
+        finally:
+            session.close()
+        self._payload = next_payload
 
 
 class PostgresFeishuPublicationJobExecutor(FeishuPublicationJobExecutor):
@@ -68,6 +109,11 @@ class PostgresFeishuPublicationJobExecutor(FeishuPublicationJobExecutor):
                 if context.cancel_requested():
                     return JobHandlerResult.cancelled()
                 context.heartbeat(progress=10)
+                checkpoint = _JobPublicationCheckpoint(
+                    self._runtime,
+                    payload=payload,
+                    fence=fence,
+                )
                 result = publish_all_report_to_feishu(
                     input_path=input_path,
                     previous_input_path=previous_path,
@@ -76,6 +122,8 @@ class PostgresFeishuPublicationJobExecutor(FeishuPublicationJobExecutor):
                     settings=self._runtime.settings,
                     environ=os.environ,
                     dry_run=payload.dry_run,
+                    idempotency_key=f"feishu-report:{fence.job_id}",
+                    checkpoint=checkpoint,
                     progress=lambda value: context.heartbeat(progress=value),
                 )
                 context.heartbeat(progress=100)

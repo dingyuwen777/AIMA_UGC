@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from aima_ugc.adapters.feishu import (
     FeishuAPIError,
@@ -18,6 +18,7 @@ from aima_ugc.adapters.persistence.postgres.feishu_bitable_mirrors import (
     FeishuBitableMirrorRecord,
     PostgresFeishuBitableMirrorRepository,
 )
+from aima_ugc.platform.jobs.models import LeaseLostError
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.security import read_secret_file
 from aima_ugc.platform.time import beijing_now
@@ -73,12 +74,17 @@ def register_feishu_bitable_mirror(
 class PostgresFeishuBitableMirrorService:
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
+        self._worker_id = f"feishu-mirror-{uuid4().hex}"
 
     def run_once(self, *, limit: int = 20) -> FeishuBitableMirrorTickResult:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                mirrors = PostgresFeishuBitableMirrorRepository(session).list_due(limit=limit)
+                mirrors = PostgresFeishuBitableMirrorRepository(session).claim_due(
+                    worker_id=self._worker_id,
+                    limit=limit,
+                    lease_seconds=60,
+                )
         finally:
             session.close()
         if not mirrors:
@@ -114,7 +120,16 @@ class PostgresFeishuBitableMirrorService:
                     )
                 except (FeishuAPIError, FeishuSyncError, OSError, ValueError) as exc:
                     failed += 1
-                    self._mark_failed(mirror, type(exc).__name__)
+                    try:
+                        self._mark_failed(mirror, type(exc).__name__)
+                    except LeaseLostError:
+                        log_event(
+                            logger,
+                            logging.WARNING,
+                            "feishu.bitable_mirror.claim_lost",
+                            "镜像失败结果未写回，因为同步 Lease 已被其他 Worker 接管。",
+                            mirror_id=str(mirror.id),
+                        )
                     log_event(
                         logger,
                         logging.ERROR,
@@ -136,7 +151,17 @@ class PostgresFeishuBitableMirrorService:
                 )
                 changed += mutation_count
                 succeeded += 1
-                self._mark_succeeded(mirror, result.known_key_hashes)
+                try:
+                    self._mark_succeeded(mirror, result.known_key_hashes)
+                except LeaseLostError:
+                    log_event(
+                        logger,
+                        logging.WARNING,
+                        "feishu.bitable_mirror.claim_lost",
+                        "镜像成功结果未写回，因为同步 Lease 已被其他 Worker 接管。",
+                        mirror_id=str(mirror.id),
+                    )
+                    continue
                 if mutation_count:
                     log_event(
                         logger,
@@ -164,6 +189,7 @@ class PostgresFeishuBitableMirrorService:
                     known_key_hashes=known_key_hashes,
                     synced_at=now,
                     next_sync_at=now + timedelta(seconds=_MIRROR_INTERVAL_SECONDS),
+                    claim_token=mirror.claim_token or "",
                 )
         finally:
             session.close()
@@ -180,6 +206,7 @@ class PostgresFeishuBitableMirrorService:
                     mirror.id,
                     error_code=error_code,
                     next_sync_at=beijing_now() + timedelta(seconds=delay),
+                    claim_token=mirror.claim_token or "",
                 )
         finally:
             session.close()

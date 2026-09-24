@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import quote
 
 import httpx
@@ -99,6 +99,14 @@ class FeishuPublicationSummary:
     representative_bitable_url: str | None = None
 
 
+class FeishuPublicationCheckpointStore(Protocol):
+    """跨 Job Attempt 保存外部资源身份的最小持久接口。"""
+
+    def get(self, key: str) -> object | None: ...
+
+    def set(self, key: str, value: object | None) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class FeishuChartSyncSummary:
     """一次人工同步实际替换的原生文档图片块。"""
@@ -164,8 +172,10 @@ class FeishuReportPublisher:
         chart_workbook_path: Path | None,
         title: str,
         embed_representative_bitable: bool = False,
+        idempotency_key: str | None = None,
+        checkpoint: FeishuPublicationCheckpointStore | None = None,
     ) -> FeishuPublicationSummary:
-        """上传原始 Word，并按需在报告第 6 节创建原生多维表格。"""
+        """上传报告并按稳定身份恢复已确认的外部资源。"""
 
         source_word = _validate_upload_path(word_path, suffix=".docx")
         if not title.strip():
@@ -177,44 +187,76 @@ class FeishuReportPublisher:
         )
         word_bytes = source_word.read_bytes()
         word_sha256 = hashlib.sha256(word_bytes).hexdigest()
-        word_file_token = self._upload_file(
-            file_name=f"{title}（原始Word下载）.docx",
-            content=word_bytes,
-            content_type=(
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            ),
-        )
+        operation_key = (idempotency_key or word_sha256).strip()
+        word_file_token = _checkpoint_string(checkpoint, "word_file_token")
+        if word_file_token is None:
+            word_file_token = self._upload_file(
+                file_name=f"{title}（原始Word下载）.docx",
+                content=word_bytes,
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+                idempotency_source=f"{operation_key}:word",
+            )
+            _checkpoint_set(checkpoint, "word_file_token", word_file_token)
         sheet: _ImportResult | None = None
-        chart_file_token: str | None = None
         if chart_workbook_path is not None:
             source_charts = _validate_upload_path(chart_workbook_path, suffix=".xlsx")
-            chart_file_token = self._upload_file(
-                file_name=f"{title}（可编辑图表源）.xlsx",
-                content=source_charts.read_bytes(),
-                content_type=("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            chart_file_token = _checkpoint_string(checkpoint, "chart_file_token")
+            if sheet is None:
+                sheet = _checkpoint_import_result(checkpoint)
+            if sheet is None:
+                if chart_file_token is None:
+                    chart_file_token = self._upload_file(
+                        file_name=f"{title}（可编辑图表源）.xlsx",
+                        content=source_charts.read_bytes(),
+                        content_type=(
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        ),
+                        idempotency_source=f"{operation_key}:chart",
+                    )
+                    _checkpoint_set(checkpoint, "chart_file_token", chart_file_token)
+                import_ticket = _checkpoint_string(checkpoint, "chart_import_ticket")
+                if import_ticket is None:
+                    import_ticket = self._create_import_task(
+                        file_token=chart_file_token,
+                        file_extension="xlsx",
+                        target_type="sheet",
+                        file_name=f"{title}（可编辑图表）",
+                        idempotency_source=f"{operation_key}:chart-import",
+                    )
+                    _checkpoint_set(checkpoint, "chart_import_ticket", import_ticket)
+                sheet = self._wait_for_import(import_ticket)
+                _checkpoint_set(checkpoint, "chart_import_ticket", None)
+                _checkpoint_set(checkpoint, "chart_sheet", _import_result_payload(sheet))
+            if chart_file_token is not None and not _checkpoint_bool(
+                checkpoint, "chart_file_deleted"
+            ):
+                # import_tasks 已完成后，导入源仅是中间件；删除本次精确上传的文件。
+                self._delete_file(file_token=chart_file_token)
+                _checkpoint_set(checkpoint, "chart_file_deleted", True)
+                _checkpoint_set(checkpoint, "chart_file_token", None)
+        else:
+            sheet = _checkpoint_import_result(checkpoint)
+        native_document = _checkpoint_import_result(checkpoint, key="native_document")
+        if native_document is None:
+            native_document = self._create_document(
+                title=f"{title}（在线编辑）",
+                idempotency_source=f"{operation_key}:document",
             )
-            sheet = self._import_file(
-                file_token=chart_file_token,
-                file_extension="xlsx",
-                target_type="sheet",
-                file_name=f"{title}（可编辑图表）",
-            )
-            # import_tasks 已完成后，导入源仅是中间件；删除本次精确上传的文件，避免
-            # 用户在目标文件夹看到“可编辑图表源.xlsx”，同时保留已创建的原生 Sheet。
-            self._delete_file(file_token=chart_file_token)
-            chart_file_token = None
-        native_document = self._create_document(title=f"{title}（在线编辑）")
+            _checkpoint_set(checkpoint, "native_document", _import_result_payload(native_document))
         embedded_bitable = self._write_native_document(
             native_document=native_document,
             document=document,
             sheet_url=None if sheet is None else sheet.url,
-            idempotency_source=word_sha256,
+            idempotency_source=operation_key,
+            checkpoint=checkpoint,
         )
         self._append_delivery_links(
             document_token=native_document.token,
             word_file_token=word_file_token,
             sheet_url=None if sheet is None else sheet.url,
-            idempotency_source=word_sha256,
+            idempotency_source=operation_key,
         )
 
         return FeishuPublicationSummary(
@@ -224,7 +266,7 @@ class FeishuReportPublisher:
             word_sha256=word_sha256,
             editable_chart_sheet_token=None if sheet is None else sheet.token,
             editable_chart_sheet_url=None if sheet is None else sheet.url,
-            chart_workbook_file_token=chart_file_token,
+            chart_workbook_file_token=_checkpoint_string(checkpoint, "chart_file_token"),
             import_warnings=() if sheet is None else sheet.warnings,
             representative_bitable_token=(
                 None if embedded_bitable is None else embedded_bitable.token
@@ -232,13 +274,20 @@ class FeishuReportPublisher:
             representative_bitable_url=(None if embedded_bitable is None else embedded_bitable.url),
         )
 
-    def _create_document(self, *, title: str) -> _ImportResult:
+    def _create_document(
+        self, *, title: str, idempotency_source: str | None = None
+    ) -> _ImportResult:
         """创建空白原生文档；正文必须随后使用 block API 写入，不能走 DOCX 导入。"""
 
         payload = self._request_json(
             "创建飞书原生报告文档",
             "POST",
             "/open-apis/docx/v1/documents",
+            params=(
+                None
+                if idempotency_source is None
+                else {"client_token": _stable_client_token(idempotency_source)}
+            ),
             json={"folder_token": self._config.folder_token, "title": title},
         )
         document = _nested_mapping(payload, "data", "document")
@@ -261,6 +310,7 @@ class FeishuReportPublisher:
         document: FeishuNativeDocument,
         sheet_url: str | None,
         idempotency_source: str,
+        checkpoint: FeishuPublicationCheckpointStore | None = None,
     ) -> _EmbeddedBitable | None:
         """按 Markdown 顺序落块；表格使用 descendant API 保持可编辑单元格结构。"""
 
@@ -294,10 +344,17 @@ class FeishuReportPublisher:
                 flush()
                 if embedded_bitable is not None:
                     raise ValueError("一份飞书报告只能创建一个代表性多维表格")
-                embedded_bitable = self._append_bitable_block(
-                    document_token=native_document.token,
-                    idempotency_source=f"{idempotency_source}:bitable:{content_index}",
-                )
+                embedded_bitable = _checkpoint_embedded_bitable(checkpoint)
+                if embedded_bitable is None:
+                    embedded_bitable = self._append_bitable_block(
+                        document_token=native_document.token,
+                        idempotency_source=f"{idempotency_source}:bitable:{content_index}",
+                    )
+                    _checkpoint_set(
+                        checkpoint,
+                        "embedded_bitable",
+                        _embedded_bitable_payload(embedded_bitable),
+                    )
                 continue
             if block.kind in {"image", "chart"}:
                 # 飞书不允许在普通 children 请求中直接带图片 token；必须先创建
@@ -839,7 +896,14 @@ class FeishuReportPublisher:
         self._tenant_access_token = token
         return token
 
-    def _upload_file(self, *, file_name: str, content: bytes, content_type: str) -> str:
+    def _upload_file(
+        self,
+        *,
+        file_name: str,
+        content: bytes,
+        content_type: str,
+        idempotency_source: str | None = None,
+    ) -> str:
         if not content:
             raise ValueError("飞书不允许上传空文件")
         if len(content) > _MAX_UPLOAD_BYTES:
@@ -848,6 +912,11 @@ class FeishuReportPublisher:
             "上传报告文件",
             "POST",
             "/open-apis/drive/v1/files/upload_all",
+            params=(
+                None
+                if idempotency_source is None
+                else {"request_id": _stable_client_token(idempotency_source)}
+            ),
             data={
                 "file_name": file_name,
                 "parent_type": "explorer",
@@ -881,11 +950,35 @@ class FeishuReportPublisher:
         file_extension: str,
         target_type: str,
         file_name: str,
+        idempotency_source: str | None = None,
     ) -> _ImportResult:
+        ticket = self._create_import_task(
+            file_token=file_token,
+            file_extension=file_extension,
+            target_type=target_type,
+            file_name=file_name,
+            idempotency_source=idempotency_source,
+        )
+        return self._wait_for_import(ticket)
+
+    def _create_import_task(
+        self,
+        *,
+        file_token: str,
+        file_extension: str,
+        target_type: str,
+        file_name: str,
+        idempotency_source: str | None = None,
+    ) -> str:
         payload = self._request_json(
             "创建飞书原生文档导入任务",
             "POST",
             "/open-apis/drive/v1/import_tasks",
+            params=(
+                None
+                if idempotency_source is None
+                else {"client_token": _stable_client_token(idempotency_source)}
+            ),
             json={
                 "file_extension": file_extension,
                 "file_token": file_token,
@@ -897,7 +990,7 @@ class FeishuReportPublisher:
         ticket = _nested_string(payload, "data", "ticket")
         if ticket is None:
             raise FeishuApiError("创建飞书原生文档导入任务：响应缺少 ticket")
-        return self._wait_for_import(ticket)
+        return ticket
 
     def _wait_for_import(self, ticket: str) -> _ImportResult:
         for attempt in range(self._config.max_poll_attempts):
@@ -1233,6 +1326,108 @@ def _stable_client_token(value: str) -> str:
 
     digest = hashlib.sha256(value.encode("utf-8")).digest()[:16]
     return str(uuid.UUID(bytes=digest, version=4))
+
+
+def _checkpoint_set(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+    key: str,
+    value: object | None,
+) -> None:
+    """把已确认的外部身份写入持久 checkpoint；无 checkpoint 时保持旧调用兼容。"""
+
+    if checkpoint is not None:
+        checkpoint.set(key, value)
+
+
+def _checkpoint_string(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+    key: str,
+) -> str | None:
+    if checkpoint is None:
+        return None
+    value = checkpoint.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _checkpoint_bool(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+    key: str,
+) -> bool:
+    return checkpoint is not None and checkpoint.get(key) is True
+
+
+def _import_result_payload(result: _ImportResult) -> dict[str, object]:
+    """将外部导入结果编码为不含 Secret 的 JSON checkpoint。"""
+
+    return {
+        "token": result.token,
+        "url": result.url,
+        "warnings": list(result.warnings),
+    }
+
+
+def _embedded_bitable_payload(value: _EmbeddedBitable) -> dict[str, object]:
+    """将内嵌多维表的外部身份编码为可持久化的 JSON checkpoint。"""
+
+    return {
+        "token": value.token,
+        "app_token": value.app_token,
+        "table_id": value.table_id,
+        "url": value.url,
+    }
+
+
+def _checkpoint_embedded_bitable(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+) -> _EmbeddedBitable | None:
+    if checkpoint is None:
+        return None
+    value = checkpoint.get("embedded_bitable")
+    if not isinstance(value, Mapping):
+        return None
+    token = value.get("token")
+    app_token = value.get("app_token")
+    table_id = value.get("table_id")
+    url = value.get("url")
+    if (
+        not isinstance(token, str)
+        or not token.strip()
+        or not isinstance(app_token, str)
+        or not app_token.strip()
+        or not isinstance(table_id, str)
+        or not table_id.strip()
+    ):
+        return None
+    if url is not None and not isinstance(url, str):
+        return None
+    return _EmbeddedBitable(
+        token=token,
+        app_token=app_token,
+        table_id=table_id,
+        url=url,
+    )
+
+
+def _checkpoint_import_result(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+    *,
+    key: str = "chart_sheet",
+) -> _ImportResult | None:
+    if checkpoint is None:
+        return None
+    value = checkpoint.get(key)
+    if not isinstance(value, Mapping):
+        return None
+    token = value.get("token")
+    url = value.get("url")
+    warnings = value.get("warnings", [])
+    if not isinstance(token, str) or not token.strip():
+        return None
+    if not isinstance(url, str) or not url.strip():
+        return None
+    if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
+        return None
+    return _ImportResult(token=token, url=url, warnings=tuple(warnings))
 
 
 def _required_env(environ: Mapping[str, str], key: str) -> str:

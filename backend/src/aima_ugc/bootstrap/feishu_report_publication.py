@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from aima_ugc.adapters.feishu import (
+    FeishuPublicationCheckpointStore,
     FeishuPublicationSummary,
     FeishuReportPublisher,
     FeishuReportPublisherConfig,
@@ -51,6 +52,8 @@ def publish_report_to_feishu(
     settings: PlatformSettings,
     environ: Mapping[str, str] | None = None,
     embed_representative_bitable: bool = False,
+    idempotency_key: str | None = None,
+    checkpoint: FeishuPublicationCheckpointStore | None = None,
 ) -> FeishuReportPublicationResult:
     """从两份上传 Excel 生成本期报告并发布到飞书。"""
 
@@ -68,11 +71,20 @@ def publish_report_to_feishu(
         report_date_range=report_date_range,
         chart_workbook_name="report-charts.xlsx",
     )
-    publication = _publish_generated_report(
-        report,
-        publisher_config,
-        embed_representative_bitable=embed_representative_bitable,
-    )
+    if idempotency_key is None and checkpoint is None:
+        publication = _publish_generated_report(
+            report,
+            publisher_config,
+            embed_representative_bitable=embed_representative_bitable,
+        )
+    else:
+        publication = _publish_generated_report(
+            report,
+            publisher_config,
+            embed_representative_bitable=embed_representative_bitable,
+            idempotency_key=idempotency_key,
+            checkpoint=checkpoint,
+        )
     return FeishuReportPublicationResult(report=report, publication=publication)
 
 
@@ -86,6 +98,8 @@ def publish_all_report_to_feishu(
     environ: Mapping[str, str] | None = None,
     dry_run: bool = False,
     progress: Callable[[int], None] | None = None,
+    idempotency_key: str | None = None,
+    checkpoint: FeishuPublicationCheckpointStore | None = None,
 ) -> FeishuReportPublicationResult:
     """执行网页按钮对应的完整 ``generate_report.py --publish-all`` 流程。
 
@@ -131,11 +145,20 @@ def publish_all_report_to_feishu(
         )
 
     assert publisher_config is not None
-    publication = _publish_generated_report(
-        report,
-        publisher_config,
-        embed_representative_bitable=True,
-    )
+    if idempotency_key is None and checkpoint is None:
+        publication = _publish_generated_report(
+            report,
+            publisher_config,
+            embed_representative_bitable=True,
+        )
+    else:
+        publication = _publish_generated_report(
+            report,
+            publisher_config,
+            embed_representative_bitable=True,
+            idempotency_key=idempotency_key,
+            checkpoint=checkpoint,
+        )
     embedded_token = publication.representative_bitable_token
     if embedded_token is None:
         raise RuntimeError("飞书在线报告未返回内嵌多维表 token")
@@ -149,6 +172,8 @@ def publish_all_report_to_feishu(
         target_bitable_block_token=embedded_token,
         target_document_token=publication.native_document_token,
         target_document_url=publication.native_document_url,
+        idempotency_key=idempotency_key,
+        checkpoint=checkpoint,
     )
     if progress is not None:
         progress(100)
@@ -183,15 +208,30 @@ def _publish_generated_report(
     publisher_config: FeishuReportPublisherConfig,
     *,
     embed_representative_bitable: bool,
+    idempotency_key: str | None = None,
+    checkpoint: FeishuPublicationCheckpointStore | None = None,
 ) -> FeishuPublicationSummary:
-    publication = FeishuReportPublisher(publisher_config).publish(
-        word_path=report.word_path,
-        markdown_path=report.markdown_path,
-        chart_specs=report.chart_specs,
-        chart_workbook_path=report.chart_workbook_path,
-        title="AIMA 舆情报告",
-        embed_representative_bitable=embed_representative_bitable,
-    )
+    publisher = FeishuReportPublisher(publisher_config)
+    if idempotency_key is None and checkpoint is None:
+        publication = publisher.publish(
+            word_path=report.word_path,
+            markdown_path=report.markdown_path,
+            chart_specs=report.chart_specs,
+            chart_workbook_path=report.chart_workbook_path,
+            title="AIMA 舆情报告",
+            embed_representative_bitable=embed_representative_bitable,
+        )
+    else:
+        publication = publisher.publish(
+            word_path=report.word_path,
+            markdown_path=report.markdown_path,
+            chart_specs=report.chart_specs,
+            chart_workbook_path=report.chart_workbook_path,
+            title="AIMA 舆情报告",
+            embed_representative_bitable=embed_representative_bitable,
+            idempotency_key=idempotency_key,
+            checkpoint=checkpoint,
+        )
     chart_workbook_path = report.chart_workbook_path
     if (
         chart_workbook_path is not None

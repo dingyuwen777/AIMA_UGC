@@ -238,11 +238,23 @@ test('report strategy submits the two workbooks and renders the dry-run Job resu
 
   await page.getByLabel('结束日期').fill('2026-09-17')
   const jobId = '89111111-1111-4111-8111-111111111111'
+  let publicationPosts = 0
   await page.route('**/api/v1/admin/feishu-report-publications', async (route) => {
     expect(route.request().method()).toBe('POST')
+    publicationPosts += 1
     await json(route, { job_id: jobId, kind: 'report', status: 'queued' }, 202)
   })
+  let jobReads = 0
   await page.route(`**/api/v1/admin/feishu-publication-jobs/${jobId}`, async (route) => {
+    jobReads += 1
+    if (jobReads === 1) {
+      return json(route, {
+        status: 503,
+        detail: 'job status temporarily unavailable',
+        request_id: 'e2e-temporary-job-read',
+        errors: [],
+      }, 503)
+    }
     await json(route, {
       id: jobId,
       kind: 'report',
@@ -275,7 +287,9 @@ test('report strategy submits the two workbooks and renders the dry-run Job resu
     })
   })
   await submit.click()
-  await expect(page.getByRole('status')).toContainText('Dry Run 已完成')
+  await expect(page.getByRole('status')).toContainText('Dry Run 已完成', { timeout: 12_000 })
+  expect(publicationPosts).toBe(1)
+  expect(jobReads).toBeGreaterThanOrEqual(2)
   await expect(page.getByRole('region', { name: '报告任务结果' })).toContainText('代表性内容 4 条')
   await expect(page.getByText('Dry Run 未生成真实飞书链接。')).toBeVisible()
 

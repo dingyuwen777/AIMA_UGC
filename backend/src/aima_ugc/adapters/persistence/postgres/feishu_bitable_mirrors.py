@@ -7,13 +7,14 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, select, update
-from sqlalchemy.engine import RowMapping
+from sqlalchemy import func, insert, select, text, update
+from sqlalchemy.engine import CursorResult, RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.administration.feishu_mirror_tables import (
     feishu_bitable_mirrors_table,
 )
+from aima_ugc.platform.jobs.models import LeaseLostError
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,9 @@ class FeishuBitableMirrorRecord:
     next_sync_at: datetime
     consecutive_failures: int
     last_error_code: str | None
+    claim_owner: str | None
+    claim_token: str | None
+    claim_expires_at: datetime | None
 
 
 class PostgresFeishuBitableMirrorRepository:
@@ -102,17 +106,56 @@ class PostgresFeishuBitableMirrorRepository:
         )
         return _row_to_mirror(row)
 
-    def list_due(self, *, limit: int = 20) -> tuple[FeishuBitableMirrorRecord, ...]:
+    def claim_due(
+        self,
+        *,
+        worker_id: str,
+        limit: int = 20,
+        lease_seconds: int = 60,
+    ) -> tuple[FeishuBitableMirrorRecord, ...]:
+        """原子认领到期镜像，避免多个常驻实例重复同步。"""
+
+        if not worker_id.strip():
+            raise ValueError("镜像 worker_id 不能为空")
         if limit < 1:
             raise ValueError("镜像扫描数量必须大于 0")
+        if lease_seconds <= 0:
+            raise ValueError("镜像 lease_seconds 必须大于 0")
+        claim_token = uuid4().hex
         rows = self._session.execute(
-            select(feishu_bitable_mirrors_table)
-            .where(
-                feishu_bitable_mirrors_table.c.status == "active",
-                feishu_bitable_mirrors_table.c.next_sync_at <= func.clock_timestamp(),
-            )
-            .order_by(feishu_bitable_mirrors_table.c.next_sync_at)
-            .limit(limit)
+            text(
+                """
+                WITH mirror_clock AS MATERIALIZED (
+                    SELECT clock_timestamp() AS now_at
+                ), candidates AS (
+                    SELECT m.id
+                    FROM feishu_bitable_mirrors AS m, mirror_clock AS c
+                    WHERE m.status = 'active'
+                      AND m.next_sync_at <= c.now_at
+                      AND (
+                          m.claim_expires_at IS NULL
+                          OR m.claim_expires_at <= c.now_at
+                      )
+                    ORDER BY m.next_sync_at, m.id
+                    FOR UPDATE OF m SKIP LOCKED
+                    LIMIT :limit
+                )
+                UPDATE feishu_bitable_mirrors AS m
+                SET claim_owner = :worker_id,
+                    claim_token = :claim_token,
+                    claim_expires_at = c.now_at + make_interval(secs => :lease_seconds),
+                    updated_at = c.now_at
+                FROM candidates, mirror_clock AS c
+                WHERE m.id = candidates.id
+                RETURNING m.*
+                """
+            ),
+            {
+                "worker_id": worker_id,
+                "claim_token": claim_token,
+                "lease_seconds": lease_seconds,
+                "limit": limit,
+            },
         ).mappings()
         return tuple(_row_to_mirror(row) for row in rows)
 
@@ -123,19 +166,29 @@ class PostgresFeishuBitableMirrorRepository:
         known_key_hashes: tuple[str, ...],
         synced_at: datetime,
         next_sync_at: datetime,
+        claim_token: str,
     ) -> None:
-        self._session.execute(
+        result = cast(CursorResult[Any], self._session.execute(
             update(feishu_bitable_mirrors_table)
-            .where(feishu_bitable_mirrors_table.c.id == mirror_id)
+            .where(
+                feishu_bitable_mirrors_table.c.id == mirror_id,
+                feishu_bitable_mirrors_table.c.claim_token == claim_token,
+                feishu_bitable_mirrors_table.c.claim_expires_at > func.clock_timestamp(),
+            )
             .values(
                 known_key_hashes=list(known_key_hashes),
                 last_synced_at=synced_at,
                 next_sync_at=next_sync_at,
                 consecutive_failures=0,
                 last_error_code=None,
+                claim_owner=None,
+                claim_token=None,
+                claim_expires_at=None,
                 updated_at=func.clock_timestamp(),
             )
-        )
+        ))
+        if result.rowcount != 1:
+            raise LeaseLostError("飞书镜像 claim 已失效")
 
     def mark_failed(
         self,
@@ -143,17 +196,27 @@ class PostgresFeishuBitableMirrorRepository:
         *,
         error_code: str,
         next_sync_at: datetime,
+        claim_token: str,
     ) -> None:
-        self._session.execute(
+        result = cast(CursorResult[Any], self._session.execute(
             update(feishu_bitable_mirrors_table)
-            .where(feishu_bitable_mirrors_table.c.id == mirror_id)
+            .where(
+                feishu_bitable_mirrors_table.c.id == mirror_id,
+                feishu_bitable_mirrors_table.c.claim_token == claim_token,
+                feishu_bitable_mirrors_table.c.claim_expires_at > func.clock_timestamp(),
+            )
             .values(
                 next_sync_at=next_sync_at,
                 consecutive_failures=(feishu_bitable_mirrors_table.c.consecutive_failures + 1),
                 last_error_code=error_code[:128],
+                claim_owner=None,
+                claim_token=None,
+                claim_expires_at=None,
                 updated_at=func.clock_timestamp(),
             )
-        )
+        ))
+        if result.rowcount != 1:
+            raise LeaseLostError("飞书镜像 claim 已失效")
 
 
 def _row_to_mirror(row: RowMapping) -> FeishuBitableMirrorRecord:
@@ -175,6 +238,9 @@ def _row_to_mirror(row: RowMapping) -> FeishuBitableMirrorRecord:
         next_sync_at=cast(datetime, row["next_sync_at"]),
         consecutive_failures=cast(int, row["consecutive_failures"]),
         last_error_code=cast(str | None, row["last_error_code"]),
+        claim_owner=cast(str | None, row["claim_owner"]),
+        claim_token=cast(str | None, row["claim_token"]),
+        claim_expires_at=cast(datetime | None, row["claim_expires_at"]),
     )
 
 

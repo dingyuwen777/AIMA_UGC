@@ -2,24 +2,36 @@
 schema: coding-change/v1
 id: CHG-20260917-180708-representative-selection-feishu-sync
 title: 代表性正负面内容筛选与飞书多维表同步
-level: L2
+level: L3
 status: ready_for_review
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-17
-updated: 2026-09-17
+updated: 2026-09-24
 completion_gate: required
 depends_on: []
 affected_areas:
   - analysis
   - imports
   - external-provider
+  - database
+  - runtime
+  - api
+  - dependencies
   - configuration
   - documentation
 affected_paths:
   - backend/src/aima_ugc/modules/analysis/
   - backend/src/aima_ugc/adapters/providers/imports/
   - backend/src/aima_ugc/adapters/feishu/
+  - backend/src/aima_ugc/adapters/persistence/postgres/feishu_bitable_mirrors.py
+  - backend/src/aima_ugc/bootstrap/feishu_bitable_mirror.py
+  - backend/src/aima_ugc/bootstrap/feishu_report_publication.py
+  - backend/src/aima_ugc/bootstrap/representative_selection_publication.py
+  - backend/src/aima_ugc/modules/administration/feishu_mirror_tables.py
+  - migrations/versions/20260923_0060_feishu_bitable_mirrors.py
+  - migrations/versions/20260924_0061_voice_plaza_statement_triggers.py
+  - migrations/versions/20260924_0062_feishu_mirror_claims.py
   - backend/src/aima_ugc/entrypoints/representative_selection_main.py
   - backend/src/aima_ugc/platform/config/settings.py
   - tests/unit/analysis/
@@ -30,6 +42,8 @@ contracts: []
 data_changes:
   - 本地代表性筛选运行审计文件
   - 飞书多维表记录的 Upsert（仅显式 write-feishu 模式）
+  - PostgreSQL `feishu_bitable_mirrors` claim_owner/claim_token/claim_expires_at 字段与索引
+  - 报告 Job Payload 中不含 Secret 的飞书外部资源 checkpoint
 ---
 
 # 变更摘要
@@ -89,7 +103,7 @@ data_changes:
 ## 非目标
 
 - 不修改原始 Excel、既有导入/打标/报告主流程的业务口径。
-- 不新增数据库表、Alembic Migration、公共 HTTP API 或第三方依赖。
+- 不新增与代表性筛选无关的业务表；本次包含镜像 claim 所需的 Alembic Migration，并复用已有公共管理 API 与锁定依赖。
 - 不删除飞书旧记录，不把 Dry Run 变成真实外部写入。
 - 不把真实飞书或付费 LLM Probe 加入普通 CI。
 
@@ -105,10 +119,10 @@ data_changes:
 | --- | --- | --- | --- |
 | 范围与负责人边界 | 复用现有 analysis、Feishu adapter、离线 imports_test 和 reporting Owner | E1、E2、E3 | 不新建平行任务系统 |
 | 接口与契约 | 复用现有 Python 入口和配置，增加 `--input-xlsx` 与已有写入模式边界 | E1、E4 | 不新增公共 HTTP Contract |
-| 数据与迁移 | 不修改 PostgreSQL Schema；本地运行审计和新飞书表写入只在显式模式产生 | E2 | 无 Migration，保留外部写入保护 |
+| 数据与迁移 | 为镜像增加 claim/lease/fencing 字段和 Alembic upgrade/downgrade；本地运行审计和新飞书表写入只在显式模式产生 | E2 | migration 可回滚，外部写入仍保留显式开关 |
 | 错误与失败语义 | 字段预检、回读不一致和外部失败均 fail closed；LLM/网络失败保留稳定错误摘要 | E2、E3 | 不隐藏部分成功或 Secret |
 | 兼容性 | 保持已有 Excel、平台 ID、报告和 Dry Run 行为；`xhs` 文档缩写统一为 `xiaohongshu` | E1、E3、E4 | 旧输入和离线调用继续可用 |
-| 部署与回滚 | 代码提交可回滚；不需要数据库迁移或生产部署步骤 | E2、E3 | 外部写入只由人工显式触发 |
+| 部署与回滚 | 发布前执行 0060→0061→0062 migration；回滚先停止镜像 Worker，再执行 downgrade；外部写入按稳定幂等键恢复 | E2、E3 | claim 过期后由新 Worker 接管，旧 Worker 不能写回 |
 
 # 修改方案与决策依据
 
@@ -169,6 +183,9 @@ data_changes:
 | --- | --- | --- |
 | 行为 / Unit | required | Excel Sheet/去重、候选池、Prompt、四组选择、配置和不足数量目标测试 |
 | 外部 Adapter Mock | required | Token、字段、创建/写入/回读和失败边界 Mock 测试 |
+| PostgreSQL / Migration | required | 0060→0061→0062 upgrade、0062 downgrade、再 upgrade；两个独立 Session claim 并发验证 |
+| API / Runtime | required | Job Payload checkpoint、lease fencing、管理 API 和 Worker 重试回归 |
+| Frontend / E2E | required | 报告策略首个 GET 失败后的 job_id 恢复和构建/E2E |
 | Build / Runtime | required | Ruff format/check、Mypy、目标 pytest |
 | External Provider Probe | not_applicable | 真实 LLM/飞书不进入普通 CI；人工 Probe 受外部网络和租户权限控制 |
 | Docs / Governance | required | 文档导航、Change Completion、架构、表 Owner、Secret 扫描 |
@@ -187,16 +204,16 @@ data_changes:
 | --- | --- | --- |
 | 主要风险 | 外部飞书字段或权限变化导致写入失败 | 写入前动态预检，失败时不开始批量写入；写入后回读 |
 | 兼容性 | 保持已有 Excel、平台 ID、报告和 Dry Run 行为 | 相关单元/API 测试与文档同步 |
-| 数据 / Migration | 不适用 | 不修改 PostgreSQL Schema，不新增 Migration |
-| 部署 / 运行 | 不需额外部署步骤 | 代码路径和配置边界保持现有方式，真实写入显式开启 |
-| 回滚 / 恢复 | 代码可按提交回滚，外部旧表不被修改 | 新表写入和本地审计产物提供人工核对边界 |
+| 数据 / Migration | 需要 0062 | 镜像 claim 字段通过 Alembic 管理，升级/降级均可重复验证 |
+| 部署 / 运行 | 需要先升级 Schema 并运行常驻镜像 Worker | Worker 使用 claim/lease/fencing，真实写入仍显式开启 |
+| 回滚 / 恢复 | 代码与 migration 可按顺序回滚，外部旧表不被修改 | Job Payload checkpoint、稳定 client_token 和 Bitable Upsert 键支持重试收敛 |
 
 # 文档、依赖、部署与发布影响
 
 - **长期文档**：同步 imports、analysis、reporting README 和报告 Appendix 导航，确保真实仓库文件链接可点击。
-- **依赖 / Runtime**：不新增、不升级第三方依赖；继续使用锁定的 Python/Node 工具链。
+- **依赖 / Runtime**：复用锁定的 Python/Node 工具链；PR 已实际依赖 Playwright 前端 E2E 和现有常驻 Worker 运行时。
 - **配置 / Secret**：增加/明确飞书和报告非 Secret 配置读取边界，Secret 仍通过外部文件读取。
-- **部署 / Release**：不需要数据库迁移、停机或额外 Release 步骤；真实飞书写入仍由人工显式触发。
+- **部署 / Release**：先执行 Alembic migration，再滚动重启镜像 Worker；回滚按 0062→0061→0060 逆序执行。真实飞书写入仍由人工显式触发。
 - **兼容 / 消费方通知**：现有离线入口、报告统计和稳定平台 ID 保持兼容。
 
 # 完成审计
@@ -204,7 +221,7 @@ data_changes:
 - [x] upstream_re_read：已重新核对用户确认的筛选规则、Prompt、Excel 表头、飞书字段和现有 LLM/Secret 边界。
 - [x] change_coverage：R1—R13 均有实现、测试或明确不适用证据，未把本 Change 作为需求来源。
 - [x] reverse_audit：已核对入口参数、Dry Run/写入开关、新表创建、字段预检、回读和失败边界。
-- [x] unresolved_cleared：代码级关键字段、Secret、幂等、导航和质量门禁问题已清零；真实外部 Probe 的环境限制已明确记录。
+- [x] unresolved_cleared：代码级关键字段、Secret、跨 Attempt checkpoint、镜像 claim fencing、导航和质量门禁问题已清零；真实外部 Probe 的环境限制已明确记录。
 
 # 完成证据与状态
 
@@ -212,10 +229,11 @@ data_changes:
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | Windows 本地 `.venv` | Ruff format/check、Mypy | 751 files formatted；363 个源文件无错误；Ruff 通过 | 静态质量和类型边界 |
-| V2 | Windows 本地 `.venv` | 相关 pytest | 56 passed | 代表性筛选、飞书、报告和配置回归 |
-| V3 | 仓库质量脚本 | check_docs、check_docs_facts、scan_secrets、architecture、table ownership | 全部通过 | 文档、事实源、安全和 Owner 门禁 |
-| V4 | 仓库治理脚本 | check_change_completion --require-active-ready | Ready Check 通过 | Active Change 追溯和完成审计 |
+| V1 | Windows 本地 `.uv-venv` | 目标后端 Ruff/Mypy | 目标发布、镜像、Job 和 migration 相关源文件通过 | 静态质量和类型边界 |
+| V2 | Windows 本地 `.uv-venv` | `pytest tests/unit/platform/test_feishu_report_publication.py tests/unit/platform/test_feishu_publication_worker.py tests/unit/platform/test_feishu_bitable.py -q` | 36 passed | 发布 checkpoint、Dry Run、飞书和 Worker 回归 |
+| V3 | Windows 本地 Node 工具链 | `npm run lint`、`npm run build`；报告策略 Playwright E2E | lint/build 通过；报告策略回归 1 passed | 前端类型、构建和首个 GET 失败恢复 |
+| V4 | 仓库质量脚本 | `check_docs.py`、`check_architecture.py`、`check_table_ownership.py`、`check_change_completion.py --require-active-ready` | 全部通过 | 文档、架构、表 Owner 和 Active Change 门禁 |
+| V5 | Windows 本地 PostgreSQL | `alembic current`、mirror claim integration | 本地 127.0.0.1:5432 连接超时，已保留为 required CI 项 | Migration cycle 和多实例 claim 需在 CI PostgreSQL 复跑 |
 
 ## 未验证内容与剩余风险
 
@@ -223,9 +241,9 @@ data_changes:
 
 ## 交付状态
 
-- 提交：当前分支提交并推送到 PR #530。
-- 拉取请求：PR #530，Requirement Source 指向本 Change 文件。
-- CI：等待当前最新提交的 CI 重新完成。
+- 提交：当前工作树待提交，完成后推送到既有 PR #580。
+- 拉取请求：PR #580，Requirement Source 指向本 Change 文件。
+- CI：本地静态/目标回归已通过；新 HEAD 的 required CI 待推送后重新执行。
 - 合并：未合并，等待维护者审核。
 - Change 归档：未归档，保持 `ready_for_review`。
 - 发布 / 部署：不适用；本变更未执行生产发布或真实业务写入。

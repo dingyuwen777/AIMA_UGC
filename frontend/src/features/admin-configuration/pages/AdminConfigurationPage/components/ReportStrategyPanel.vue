@@ -33,6 +33,7 @@ const endDate = ref('')
 const status = ref<ReportFormStatus>('idle')
 const validationMessage = ref('')
 const job = ref<FeishuPublicationJobResponse | null>(null)
+const jobId = ref<string | null>(null)
 const currentInput = ref<HTMLInputElement | null>(null)
 const previousInput = ref<HTMLInputElement | null>(null)
 const pollError = ref('')
@@ -87,6 +88,7 @@ function clearFeedback(): void {
   validationMessage.value = ''
   pollError.value = ''
   job.value = null
+  jobId.value = null
 }
 
 function setFile(slot: FileSlot, file: File | null): void {
@@ -133,17 +135,18 @@ function stopPolling(): void {
 
 function applyJob(next: FeishuPublicationJobResponse): void {
   job.value = next
+  jobId.value = next.id
   status.value = next.status
   if (['succeeded', 'failed', 'cancelled'].includes(next.status)) stopPolling()
 }
 
 async function pollJob(): Promise<void> {
-  const jobId = job.value?.id
-  if (!jobId || pollInFlight || !['queued', 'running'].includes(status.value)) return
+  const currentJobId = job.value?.id ?? jobId.value
+  if (!currentJobId || pollInFlight || !['queued', 'running'].includes(status.value)) return
   pollInFlight = true
   try {
     pollError.value = ''
-    applyJob(await fetchReportPublicationJob(jobId))
+    applyJob(await fetchReportPublicationJob(currentJobId))
   } catch (error) {
     pollError.value = apiErrorMessage(error)
   } finally {
@@ -167,6 +170,7 @@ function resetForm(): void {
   validationMessage.value = ''
   pollError.value = ''
   job.value = null
+  jobId.value = null
   clearNativeInput('current')
   clearNativeInput('previous')
 }
@@ -191,8 +195,15 @@ async function submitReport(): Promise<void> {
       start_date: startDate.value,
       end_date: endDate.value,
     })
-    job.value = await fetchReportPublicationJob(created.job_id)
-    applyJob(job.value)
+    jobId.value = created.job_id
+    status.value = 'queued'
+    try {
+      applyJob(await fetchReportPublicationJob(created.job_id))
+    } catch (error) {
+      // POST 已成功，必须保留 job_id 并继续轮询；首次 GET 失败不能
+      // 让用户重复提交产生第二个后台任务。
+      pollError.value = apiErrorMessage(error)
+    }
     if (['queued', 'running'].includes(status.value)) {
       startPolling()
     }

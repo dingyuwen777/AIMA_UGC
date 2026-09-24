@@ -15,6 +15,7 @@ from .config import FeishuConfig, FeishuConfigError
 from .report_publisher import (
     FeishuApiError,
     FeishuChartSyncSummary,
+    FeishuPublicationCheckpointStore,
     FeishuPublicationSummary,
     FeishuReportPublisher,
     FeishuReportPublisherConfig,
@@ -26,6 +27,7 @@ __all__ = [
     "FeishuApiError",
     "FeishuBitableClient",
     "FeishuChartSyncSummary",
+    "FeishuPublicationCheckpointStore",
     "FeishuConfig",
     "FeishuConfigError",
     "FeishuField",

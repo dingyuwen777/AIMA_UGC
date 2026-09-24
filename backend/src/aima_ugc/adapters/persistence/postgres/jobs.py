@@ -105,6 +105,36 @@ class PostgresJobRepository:
         )
         return _row_to_job(row) if row is not None else None
 
+    def update_payload(
+        self,
+        *,
+        job_id: UUID,
+        lease_token: str,
+        payload: dict[str, object],
+    ) -> JobRecord:
+        """在当前 Fencing Lease 下持久化可恢复的 Job Payload。"""
+
+        row = (
+            self._session.execute(
+                update(jobs_table)
+                .where(
+                    jobs_table.c.id == job_id,
+                    jobs_table.c.status == "running",
+                    jobs_table.c.lease_token == lease_token,
+                    jobs_table.c.cancel_requested_at.is_(None),
+                    jobs_table.c.lease_expires_at > func.clock_timestamp(),
+                    jobs_table.c.attempt_deadline_at > func.clock_timestamp(),
+                )
+                .values(payload=payload, updated_at=func.clock_timestamp())
+                .returning(*jobs_table.c)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise LeaseLostError("job lease is no longer current")
+        return _row_to_job(row)
+
     def list_events(self, job_id: UUID) -> list[JobAttemptEvent]:
         rows = self._session.execute(
             select(job_attempt_events_table)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -13,6 +14,7 @@ from pydantic import SecretStr
 from aima_ugc.adapters.feishu import (
     FeishuBitableClient,
     FeishuConfig,
+    FeishuPublicationCheckpointStore,
     FeishuSyncSummary,
     FeishuTableInfo,
 )
@@ -62,6 +64,8 @@ def publish_representative_selection_to_feishu(
     max_per_group: int = 10,
     selector_pool_size: int = 50,
     progress: Callable[[int], None] | None = None,
+    idempotency_key: str | None = None,
+    checkpoint: FeishuPublicationCheckpointStore | None = None,
 ) -> FeishuSyncSummary:
     """读取已打标 Excel，筛选代表性内容并写入新建飞书多维表。"""
 
@@ -103,6 +107,8 @@ def publish_representative_selection_to_feishu(
         output_dir=target_dir,
         settings=settings,
         progress=progress,
+        idempotency_key=idempotency_key,
+        checkpoint=checkpoint,
     )
 
 
@@ -116,6 +122,8 @@ def publish_selected_representatives_to_feishu(
     target_document_token: str | None = None,
     target_document_url: str | None = None,
     progress: Callable[[int], None] | None = None,
+    idempotency_key: str | None = None,
+    checkpoint: FeishuPublicationCheckpointStore | None = None,
 ) -> FeishuSyncSummary:
     """把已完成筛选的结果发布到新建或文档内嵌的飞书多维表。
 
@@ -149,14 +157,17 @@ def publish_selected_representatives_to_feishu(
         settings.external_secret_root / feishu_config.app_secret_file,
         root=settings.external_secret_root,
     ).get_secret_value()
-    table_name = beijing_now().strftime("%Y%m%dT%H%M%S.%f%z")
+    table_name = _stable_table_name(idempotency_key)
     with FeishuBitableClient(
         config=feishu_config,
         app_secret=app_secret,
         upsert_key_fields=_FEISHU_TARGET_KEY_FIELDS,
     ) as template_feishu:
-        external_table = template_feishu.create_table_from_current(name=table_name)
-        embedded_table = None
+        external_table = _checkpoint_table(checkpoint, "external_table")
+        if external_table is None:
+            external_table = template_feishu.create_table_from_current(name=table_name)
+            _checkpoint_set(checkpoint, "external_table", external_table.as_dict())
+        embedded_table = _checkpoint_table(checkpoint, "embedded_table")
         if target_bitable_block_token is not None:
             normalized_token = target_bitable_block_token.strip()
             table_marker = normalized_token.rfind("_tbl")
@@ -164,11 +175,13 @@ def publish_selected_representatives_to_feishu(
             table_id = normalized_token[table_marker + 1 :]
             if table_marker <= 0 or not app_token or not table_id.startswith("tbl"):
                 raise ValueError("飞书文档内嵌多维表 token 格式不合法")
-            embedded_table = template_feishu.configure_embedded_table_from_current(
-                app_token=app_token,
-                table_id=table_id,
-                name=table_name,
-            )
+            if embedded_table is None:
+                embedded_table = template_feishu.configure_embedded_table_from_current(
+                    app_token=app_token,
+                    table_id=table_id,
+                    name=table_name,
+                )
+                _checkpoint_set(checkpoint, "embedded_table", embedded_table.as_dict())
 
     sync_summary = _sync_rows_to_table(
         rows=rows,
@@ -222,6 +235,8 @@ def _sync_rows_to_table(
     output_dir: Path,
     artifact_prefix: str,
 ) -> FeishuSyncSummary:
+    if not table.app_token:
+        raise ValueError("飞书目标表缺少 app_token")
     target_config = feishu_config.model_copy(
         update={
             "app_token": table.app_token,
@@ -393,3 +408,59 @@ __all__ = [
     "publish_representative_selection_to_feishu",
     "selected_representative_to_row",
 ]
+
+
+def _stable_table_name(idempotency_key: str | None) -> str:
+    if idempotency_key and idempotency_key.strip():
+        digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:12]
+        return f"AIMA代表性内容-{digest}"
+    return beijing_now().strftime("%Y%m%dT%H%M%S.%f%z")
+
+
+def _checkpoint_set(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+    key: str,
+    value: object,
+) -> None:
+    if checkpoint is not None:
+        checkpoint.set(key, value)
+
+
+def _checkpoint_table(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+    key: str,
+) -> FeishuTableInfo | None:
+    if checkpoint is None:
+        return None
+    value = checkpoint.get(key)
+    if not isinstance(value, Mapping):
+        return None
+    table_id = value.get("table_id")
+    name = value.get("name")
+    skipped_fields = value.get("skipped_fields", [])
+    app_token = value.get("app_token")
+    bitable_block_token = value.get("bitable_block_token")
+    url = value.get("url")
+    if (
+        not isinstance(table_id, str)
+        or not table_id.strip()
+        or not isinstance(name, str)
+        or not name.strip()
+        or not isinstance(skipped_fields, list)
+        or any(not isinstance(item, str) for item in skipped_fields)
+    ):
+        return None
+    if app_token is not None and not isinstance(app_token, str):
+        return None
+    if bitable_block_token is not None and not isinstance(bitable_block_token, str):
+        return None
+    if url is not None and not isinstance(url, str):
+        return None
+    return FeishuTableInfo(
+        table_id=table_id,
+        name=name,
+        skipped_fields=tuple(skipped_fields),
+        app_token=app_token,
+        bitable_block_token=bitable_block_token,
+        url=url,
+    )

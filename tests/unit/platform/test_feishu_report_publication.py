@@ -15,7 +15,11 @@ from aima_ugc.adapters.feishu import (
     FeishuReportPublisherConfig,
     load_feishu_report_publisher_config,
 )
-from aima_ugc.adapters.feishu.report_publisher import _ImportResult, _table_cell_text_block
+from aima_ugc.adapters.feishu.report_publisher import (
+    _EmbeddedBitable,
+    _ImportResult,
+    _table_cell_text_block,
+)
 from aima_ugc.bootstrap import feishu_report_publication as publication_module
 from aima_ugc.bootstrap.feishu_report_publication import publish_all_report_to_feishu
 from aima_ugc.platform.config import PlatformSettings
@@ -259,7 +263,7 @@ def test_report_publisher_creates_embedded_bitable_in_document_order() -> None:
             FeishuNativeBlock(kind="heading", text="6. 代表性评论与关联页面", level=2),
             FeishuNativeBlock(kind="bitable"),
         ),
-        chart_specs=(),
+        chart_specs=(_spec(),),
     )
     try:
         embedded = publisher._write_native_document(  # noqa: SLF001
@@ -284,6 +288,83 @@ def test_docx_client_tokens_are_stable_uuid_v4() -> None:
 
     assert first == second
     assert uuid.UUID(first).version == 4
+
+
+def test_report_publisher_reuses_durable_external_resource_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    word_path = tmp_path / "report.docx"
+    word_path.write_bytes(b"word")
+    markdown_path = _report_markdown(tmp_path)
+    checkpoint: dict[str, object] = {
+        "word_file_token": "word-existing",
+        "native_document": {
+            "token": "doc-existing",
+            "url": "https://feishu.cn/docx/doc-existing",
+            "warnings": [],
+        },
+        "embedded_bitable": {
+            "token": "bascnExisting_tblExisting",
+            "app_token": "bascnExisting",
+            "table_id": "tblExisting",
+            "url": None,
+        },
+    }
+
+    class _Checkpoint:
+        def get(self, key: str) -> object | None:
+            return checkpoint.get(key)
+
+        def set(self, key: str, value: object | None) -> None:
+            if value is None:
+                checkpoint.pop(key, None)
+            else:
+                checkpoint[key] = value
+
+    publisher = FeishuReportPublisher(
+        FeishuReportPublisherConfig(
+            app_id="app-id",
+            app_secret=SecretStr("app-secret"),
+            folder_token="folder-token",
+        ),
+        client=httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(500))),
+    )
+    monkeypatch.setattr(
+        publisher,
+        "_upload_file",
+        lambda **_: pytest.fail("已确认的 Word 不应再次上传"),
+    )
+    monkeypatch.setattr(
+        publisher,
+        "_create_document",
+        lambda **_: pytest.fail("已确认的文档不应再次创建"),
+    )
+    monkeypatch.setattr(
+        publisher,
+        "_write_native_document",
+        lambda **_: _EmbeddedBitable(
+            token="bascnExisting_tblExisting",
+            app_token="bascnExisting",
+            table_id="tblExisting",
+            url=None,
+        ),
+    )
+    monkeypatch.setattr(publisher, "_append_delivery_links", lambda **_: None)
+
+    result = publisher.publish(
+        word_path=word_path,
+        markdown_path=markdown_path,
+        chart_specs=(_spec(),),
+        chart_workbook_path=None,
+        title="AIMA 舆情报告",
+        idempotency_key="feishu-report:job-1",
+        checkpoint=_Checkpoint(),
+    )
+
+    assert result.native_document_token == "doc-existing"
+    assert result.word_file_token == "word-existing"
+    assert result.representative_bitable_token == "bascnExisting_tblExisting"
 
 
 def test_report_publisher_rejects_bitable_response_without_token() -> None:

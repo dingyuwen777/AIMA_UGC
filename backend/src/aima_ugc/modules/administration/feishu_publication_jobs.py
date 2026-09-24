@@ -38,6 +38,9 @@ class FeishuReportPublicationJobPayload(BaseModel):
     start_date: date
     end_date: date
     dry_run: bool = True
+    # Worker 在外部副作用成功后写回的 durable resource identities。
+    # 允许为空以兼容已经入队但尚未开始执行的旧 Job。
+    publication_checkpoint: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_date_range(self) -> FeishuReportPublicationJobPayload:
