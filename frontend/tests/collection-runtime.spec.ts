@@ -26,6 +26,7 @@ import {
   fetchCollectionRuntimeList,
 } from '../src/features/import-batches/api'
 import { useImportBatchesStore } from '../src/features/import-batches/store'
+import { runtimeStageLabel } from '../src/features/import-batches/format'
 
 function batch(id: string, status: 'succeeded' | 'failed', rowsIngested: number) {
   return {
@@ -81,6 +82,11 @@ describe('collection runtime feature', () => {
       offset: 0,
       limit: 100,
     })
+  })
+
+  it('shows distinct import revocation stages', () => {
+    expect(runtimeStageLabel('revoking')).toBe('正在撤销导入')
+    expect(runtimeStageLabel('revoked')).toBe('已撤销导入')
   })
 
   it('delegates the unified list query to the Orval client', async () => {

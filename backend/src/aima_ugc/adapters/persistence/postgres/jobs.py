@@ -105,6 +105,36 @@ class PostgresJobRepository:
         )
         return _row_to_job(row) if row is not None else None
 
+    def pool_pressure(
+        self,
+        *,
+        lease_owners: set[str],
+        queued_limit: int,
+        now: datetime,
+    ) -> tuple[int, set[str]]:
+        """只读可领取 Job 和指定 Worker 的在途 Lease，供进程池有界伸缩。"""
+
+        if queued_limit < 1:
+            raise ValueError("queued_limit 必须为正整数")
+        queued = self._session.execute(
+            select(jobs_table.c.id)
+            .where(jobs_table.c.status == "queued", jobs_table.c.available_at <= now)
+            .limit(queued_limit)
+        ).all()
+        busy = (
+            set(
+                self._session.execute(
+                    select(jobs_table.c.lease_owner).where(
+                        jobs_table.c.status == "running",
+                        jobs_table.c.lease_owner.in_(lease_owners),
+                    )
+                ).scalars()
+            )
+            if lease_owners
+            else set()
+        )
+        return len(queued), busy
+
     def list_events(self, job_id: UUID) -> list[JobAttemptEvent]:
         rows = self._session.execute(
             select(job_attempt_events_table)

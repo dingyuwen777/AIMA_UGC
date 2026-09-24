@@ -1194,6 +1194,10 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
     runtime = _runtime(tmp_path)
     _truncate(runtime)
     try:
+        rows = tuple(
+            (f"canonical-replay-later-import-{index}", f"星曜后续导入保护 {index}")
+            for index in range(101)
+        )
         client = TestClient(
             create_app(
                 import_service=PostgresImportHttpService(runtime),
@@ -1205,7 +1209,7 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
             client,
             runtime,
             filename="replay-before-later-import.xlsx",
-            rows=(("canonical-replay-later-import", "星曜后续导入保护"),),
+            rows=rows,
             brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
@@ -1221,16 +1225,14 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
             client,
             runtime,
             filename="normal-import-after-replay.xlsx",
-            rows=(("canonical-replay-later-import", "星曜后续导入保护"),),
+            rows=rows,
             brand_ids=(brand_id,),
-            expected_rows_ingested=1,
+            expected_rows_ingested=len(rows),
         )
         with runtime.database.engine.connect() as connection:
             content = (
                 connection.execute(
-                    select(contents_table).where(
-                        contents_table.c.external_content_id == "canonical-replay-later-import"
-                    )
+                    select(contents_table).where(contents_table.c.external_content_id == rows[0][0])
                 )
                 .mappings()
                 .one()
@@ -1241,7 +1243,26 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
 
         requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
         assert requested.status_code == 202
-        assert _worker(runtime, suffix="later-import-revoke").run_once() is True
+        statement_count = 0
+
+        def count_sql(
+            connection: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            nonlocal statement_count
+            del connection, cursor, statement, parameters, context, executemany
+            statement_count += 1
+
+        event.listen(runtime.database.engine, "before_cursor_execute", count_sql)
+        try:
+            assert _worker(runtime, suffix="later-import-revoke").run_once() is True
+        finally:
+            event.remove(runtime.database.engine, "before_cursor_execute", count_sql)
+        assert statement_count < 100
 
         with runtime.database.engine.connect() as connection:
             request = (
@@ -1259,8 +1280,8 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
                 .one()
             )
             assert request["lifecycle_status"] == "reverted"
-            assert request["retained_content_count"] == 1
-            assert request["skipped_content_count"] == 1
+            assert request["retained_content_count"] == len(rows)
+            assert request["skipped_content_count"] == len(rows)
             assert request["hidden_content_count"] == 0
             assert content["current_version"] == version_before_revoke
             assert content["replay_visibility_owner_id"] is None

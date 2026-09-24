@@ -66,6 +66,8 @@ const runtimeStageLabels: Record<string, string> = {
   reverting: '正在撤回入库数据',
   reverted: '已撤回入库数据',
   revert_failed: '撤回失败',
+  revoking: '正在撤销导入',
+  revoked: '已撤销导入',
   succeeded: '已完成',
   failed: '处理失败',
   cancelled: '已取消',

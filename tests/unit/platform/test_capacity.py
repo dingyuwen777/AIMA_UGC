@@ -8,8 +8,10 @@ from aima_ugc.platform.capacity import (
     AdaptiveTierBatchController,
     ResourceSnapshot,
     detect_resources,
+    planned_worker_resources,
     select_chunk_rows,
     select_job_window,
+    worker_process_limit,
 )
 
 
@@ -42,14 +44,46 @@ def test_detect_resources_preserves_zero_host_available_memory(tmp_path: Path) -
     assert select_chunk_rows(resources) == 500
 
 
-def test_chunk_selection_is_bounded_by_memory_and_cpu() -> None:
+def test_chunk_selection_uses_memory_without_confusing_api_cpu_with_worker_cpu() -> None:
     ample = ResourceSnapshot(8, 8 * 1024**3, 4 * 1024**3, "host")
+    api_with_small_cpu_quota = ResourceSnapshot(0.96, 1582 * 1024**2, 1400 * 1024**2, "cgroup_v2")
     small = ResourceSnapshot(1, 512 * 1024**2, 180 * 1024**2, "cgroup_v2")
 
     assert select_chunk_rows(ample) == 2000
+    assert select_chunk_rows(api_with_small_cpu_quota) == 2000
     assert select_chunk_rows(small) == 500
     assert select_job_window(ample, ceiling=2) == 2
+    assert select_job_window(api_with_small_cpu_quota, ceiling=2) == 1
     assert select_job_window(small, ceiling=2) == 1
+
+
+def test_job_window_tracks_generated_worker_budget_across_machine_sizes() -> None:
+    api = ResourceSnapshot(0.96, 1582 * 1024**2, 1400 * 1024**2, "cgroup_v2")
+    local = planned_worker_resources(
+        api,
+        environment={
+            "AIMA_AUTO_WORKER_CPU_CORES": "3.59",
+            "AIMA_AUTO_WORKER_MEMORY_MIB": "3164",
+        },
+    )
+    server = ResourceSnapshot(4.8, 12 * 1024**3, 11 * 1024**3, "cgroup_v2")
+    future = ResourceSnapshot(9.6, 25 * 1024**3, 24 * 1024**3, "cgroup_v2")
+
+    assert select_job_window(local) == worker_process_limit(local) == 2
+    assert select_job_window(server) == worker_process_limit(server) == 3
+    assert select_job_window(future) == worker_process_limit(future) == 6
+    assert select_job_window(server, ceiling=2) == 2
+    assert planned_worker_resources(api, environment={}) == api
+    assert (
+        planned_worker_resources(
+            api,
+            environment={
+                "AIMA_AUTO_WORKER_CPU_CORES": "invalid",
+                "AIMA_AUTO_WORKER_MEMORY_MIB": "3164",
+            },
+        )
+        == api
+    )
 
 
 def test_campaign_retry_keeps_original_automatic_choice() -> None:
@@ -195,14 +229,16 @@ def test_replay_reversal_shares_start_and_step_but_uses_its_own_resource_budget(
     executor._retry_jobs = set()
     tuner = executor._new_batch_tuner(uuid4())
     assert tuner.tiers[:4] == (250, 500, 1000, 1500)
+    local = ResourceSnapshot(3.59, 3164 * 1024**2, 2938 * 1024**2, "cgroup_v2")
     worker = ResourceSnapshot(4.8, 12 * 1024**3, 11 * 1024**3, "cgroup_v2")
     future = ResourceSnapshot(9.6, 25 * 1024**3, 24 * 1024**3, "cgroup_v2")
+    assert tuner.choose(local)[0] == 500
     for index, size in enumerate((500, 1000)):
         duration = max(1, int(size * 0.75**index))
         for _ in range(3):
             assert tuner.choose(worker)[0] == size
             tuner.succeeded(size=size, rows=size, duration_ms=duration)
-    assert tuner.choose(worker)[0] == 1000
+    assert tuner.choose(worker)[0] == 1500
     assert tuner.choose(future)[0] == 1500
     assert tuner.choose(ResourceSnapshot(4.8, 12 * 1024**3, 256 * 1024**2, "cgroup_v2"))[:2] == (
         250,

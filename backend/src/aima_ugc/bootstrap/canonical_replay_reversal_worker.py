@@ -56,8 +56,8 @@ class PostgresCanonicalReplayReversalJobExecutor:
     def _new_batch_tuner(self, job_id: UUID) -> AdaptiveTierBatchController:
         tuner = AdaptiveTierBatchController(
             improvement_margin=0.20,
-            rows_per_cpu_core=250,
-            memory_mib_per_1000_rows=6144,
+            rows_per_cpu_core=500,
+            memory_mib_per_1000_rows=3072,
         )
         if job_id in self._retry_jobs:
             tuner.database_retry()
@@ -72,6 +72,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
     ) -> JobHandlerResult:
         execution_started = perf_counter()
         batch_durations_ms: list[int] = []
+        batch_observations: dict[int, list[int]] = {}
         batch_tuner = self._new_batch_tuner(fence.job_id)
         try:
             total, remaining = self._content_counts(payload.request_id)
@@ -100,6 +101,10 @@ class PostgresCanonicalReplayReversalJobExecutor:
                 batch_ms = int((perf_counter() - batch_started) * 1000)
                 if processed:
                     batch_durations_ms.append(batch_ms)
+                    observation = batch_observations.setdefault(batch_size, [0, 0, 0])
+                    observation[0] += 1
+                    observation[1] += processed
+                    observation[2] += batch_ms
                     batch_tuner.succeeded(size=batch_size, rows=processed, duration_ms=batch_ms)
                 completed += processed
                 remaining = max(total - completed, 0)
@@ -120,6 +125,15 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         reverted_content_count=record.reverted_content_count,
                         skipped_content_count=record.skipped_content_count,
                         batch_count=len(batch_durations_ms),
+                        batch_observations=[
+                            {
+                                "batch_size": size,
+                                "batch_count": values[0],
+                                "content_count": values[1],
+                                "duration_ms": values[2],
+                            }
+                            for size, values in sorted(batch_observations.items())
+                        ],
                         slowest_batch_ms=max(batch_durations_ms, default=0),
                         duration_ms=int((perf_counter() - execution_started) * 1000),
                     )
@@ -316,36 +330,47 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         len(vehicle_restored_ids) + len(brand_restored_ids)
                     )
                 evidence_only_set = set(evidence_only)
+                # 已由后续写入接管的内容只需结清本次账本。批量更新保留各自的
+                # 当前版本，避免为每条内容发送一次相同结构的 SQL。
+                later_owned = tuple(
+                    content_id
+                    for content_id in content_ids
+                    if content_id in rows_by_content
+                    and content_id not in evidence_only_set
+                    and states[content_id].replay_visibility_owner_id != request_id
+                )
+                if later_owned:
+                    session.execute(
+                        update(canonical_replay_content_changes_table)
+                        .where(
+                            canonical_replay_content_changes_table.c.all_request_id == request_id,
+                            canonical_replay_content_changes_table.c.content_id.in_(later_owned),
+                            canonical_replay_content_changes_table.c.reverted_at.is_(None),
+                        )
+                        .values(
+                            reverted_at=now,
+                            reversal_version_no=case(
+                                {
+                                    content_id: states[content_id].current_version
+                                    for content_id in later_owned
+                                },
+                                value=canonical_replay_content_changes_table.c.content_id,
+                            ),
+                        )
+                    )
+                    reverted += len(later_owned)
+                    retained += len(later_owned)
+                    skipped += len(later_owned)
+                    skipped_evidence += 2 * len(later_owned)
+                later_owned_set = set(later_owned)
                 for content_id in content_ids:
-                    if content_id in evidence_only_set:
+                    if content_id in evidence_only_set or content_id in later_owned_set:
                         continue
                     rows = tuple(rows_by_content.get(content_id, ()))
                     if not rows:
                         continue
                     current_state = states[content_id]
                     current_before = cast(int, current_state.current_version)
-                    owner = current_state.replay_visibility_owner_id
-                    if owner != request_id:
-                        # 后续普通导入或另一轮重筛已接管该内容时，当前、可见性和证据
-                        # 都不再归属于本次重筛；只结清账本，避免撤回覆盖后续事实。
-                        session.execute(
-                            update(canonical_replay_content_changes_table)
-                            .where(
-                                canonical_replay_content_changes_table.c.all_request_id
-                                == request_id,
-                                canonical_replay_content_changes_table.c.content_id == content_id,
-                                canonical_replay_content_changes_table.c.reverted_at.is_(None),
-                            )
-                            .values(
-                                reverted_at=now,
-                                reversal_version_no=current_before,
-                            )
-                        )
-                        reverted += 1
-                        retained += 1
-                        skipped += 1
-                        skipped_evidence += 2
-                        continue
                     earliest = rows[0]
                     latest = rows[-1]
                     delta = earliest["delta"]

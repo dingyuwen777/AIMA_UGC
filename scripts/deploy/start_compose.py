@@ -75,6 +75,15 @@ def render_override(limits_mib: dict[str, int], cpu_limits: dict[str, float]) ->
         lines.extend(
             (f"  {service}:", f"    mem_limit: {mib}m", f"    cpus: {cpu_limits[service]}")
         )
+        if service == "api":
+            # API 冻结 Campaign 时必须看到 Worker 配额，而不是把自己的较小 CPU 当成吞吐上界。
+            lines.extend(
+                (
+                    "    environment:",
+                    f'      AIMA_AUTO_WORKER_CPU_CORES: "{cpu_limits["worker"]}"',
+                    f'      AIMA_AUTO_WORKER_MEMORY_MIB: "{limits_mib["worker"]}"',
+                )
+            )
     return "\n".join(lines) + "\n"
 
 

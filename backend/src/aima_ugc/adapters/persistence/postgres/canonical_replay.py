@@ -46,7 +46,10 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_validation_proofs_table,
 )
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
-from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+)
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.platform.jobs import JobExecutionFence, JobRecord
@@ -66,6 +69,10 @@ _ALL_REQUEST_NAMESPACE = UUID("51f57b7c-40e0-41bb-8fb7-0d8bf723333d")
 
 class UnsupportedCanonicalReplaySource(ValueError):
     """Artifact 不是当前三种可证明 lineage 的 Persistent Canonical。"""
+
+
+class RevokedCanonicalReplaySource(UnsupportedCanonicalReplaySource):
+    """冻结输入的 Data Import 来源已进入撤销状态，可跳过继续其他来源。"""
 
 
 class PostgresCanonicalReplayRepository:
@@ -438,6 +445,11 @@ class PostgresCanonicalReplayRepository:
                     == canonical_artifact_links_table.c.historical_import_campaign_item_id,
                 )
                 .join(
+                    historical_import_campaigns_table,
+                    historical_import_campaigns_table.c.id
+                    == historical_import_campaign_items_table.c.campaign_id,
+                )
+                .join(
                     jobs_table,
                     jobs_table.c.id == historical_import_campaign_items_table.c.job_id,
                 )
@@ -446,6 +458,7 @@ class PostgresCanonicalReplayRepository:
                 *common_filters,
                 historical_import_campaign_items_table.c.item_kind == "chunk",
                 historical_import_campaign_items_table.c.artifact_id == artifacts_table.c.id,
+                historical_import_campaigns_table.c.status.notin_(("revoking", "revoked")),
                 jobs_table.c.job_type == HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
             )
         )
@@ -853,8 +866,16 @@ class PostgresCanonicalReplayRepository:
                 raise UnsupportedCanonicalReplaySource("Canonical 不属于当前 Excel Import v2")
             return "excel_import_v2"
         if historical_item_id is not None:
-            valid = self._session.scalar(
-                select(historical_import_campaign_items_table.c.id)
+            source = self._session.execute(
+                select(
+                    historical_import_campaign_items_table.c.id,
+                    historical_import_campaigns_table.c.status,
+                )
+                .join(
+                    historical_import_campaigns_table,
+                    historical_import_campaigns_table.c.id
+                    == historical_import_campaign_items_table.c.campaign_id,
+                )
                 .join(
                     jobs_table,
                     historical_import_campaign_items_table.c.job_id == jobs_table.c.id,
@@ -865,11 +886,11 @@ class PostgresCanonicalReplayRepository:
                     historical_import_campaign_items_table.c.artifact_id == artifact_id,
                     jobs_table.c.job_type == HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
                 )
-            )
-            if valid is None:
-                raise UnsupportedCanonicalReplaySource(
-                    "Canonical 不属于当前 Data Import Pure Canonical Chunk v2"
-                )
+            ).one_or_none()
+            if source is None:
+                raise UnsupportedCanonicalReplaySource("Canonical 不属于可重筛的 Data Import Chunk")
+            if source.status in ("revoking", "revoked"):
+                raise RevokedCanonicalReplaySource("Data Import 来源正在撤销或已撤销")
             return "data_import_canonical_chunk_v2"
         if provider_attempt_id is not None:
             valid = self._session.scalar(
@@ -1000,4 +1021,8 @@ def _artifact_from_row(row: RowMapping) -> CanonicalReplayArtifactRecord:
     )
 
 
-__all__ = ["PostgresCanonicalReplayRepository", "UnsupportedCanonicalReplaySource"]
+__all__ = [
+    "PostgresCanonicalReplayRepository",
+    "RevokedCanonicalReplaySource",
+    "UnsupportedCanonicalReplaySource",
+]

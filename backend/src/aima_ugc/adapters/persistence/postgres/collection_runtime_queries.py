@@ -49,6 +49,7 @@ _CAMPAIGN_ACTIVE_STATUSES = (
     "queued",
     "running",
     "cancelling",
+    "revoking",
 )
 _CAMPAIGN_COMPLETED_STATUSES = ("succeeded", "partial_failed")
 
@@ -334,8 +335,9 @@ class PostgresCollectionRuntimeQueryRepository:
         campaign_status = case(
             (campaign.c.status.in_(("uploading", "discovering", "snapshotting")), "running"),
             (campaign.c.status.in_(("ready", "queued")), "queued"),
-            (campaign.c.status.in_(("running", "cancelling")), "running"),
+            (campaign.c.status.in_(("running", "cancelling", "revoking")), "running"),
             (campaign.c.status == "partial_failed", "partial_success"),
+            (campaign.c.status == "revoked", "cancelled"),
             else_=campaign.c.status,
         )
         campaign_import_stats = func.jsonb_build_object(

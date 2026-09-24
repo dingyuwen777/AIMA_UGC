@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
-from aima_ugc.entrypoints.worker_main import run_worker_loop
+from aima_ugc.entrypoints.worker_main import (
+    desired_worker_processes,
+    run_worker_loop,
+)
+from aima_ugc.platform.capacity import ResourceSnapshot, worker_process_limit
 
 
 class _FakeWorker:
@@ -66,3 +70,23 @@ def test_worker_loop_rejects_non_positive_intervals(
             idle_sleep_seconds=idle_sleep_seconds,
             reaper_interval_seconds=reaper_interval_seconds,
         )
+
+
+def test_worker_pool_limit_tracks_container_resources_without_a_fixed_machine_tier() -> None:
+    local = ResourceSnapshot(3.59, 3164 * 1024**2, 3000 * 1024**2, "cgroup_v2")
+    server = ResourceSnapshot(4.8, 12 * 1024**3, 11 * 1024**3, "cgroup_v2")
+    future = ResourceSnapshot(9.6, 25 * 1024**3, 24 * 1024**3, "cgroup_v2")
+    constrained = ResourceSnapshot(0.6, 512 * 1024**2, 300 * 1024**2, "cgroup_v2")
+
+    assert worker_process_limit(local) == 2
+    assert worker_process_limit(server) == 3
+    assert worker_process_limit(future) == 6
+    assert worker_process_limit(constrained) == 1
+    assert worker_process_limit(ResourceSnapshot(16, None, None, "host")) == 1
+
+
+def test_worker_pool_scales_only_for_available_and_busy_jobs() -> None:
+    assert desired_worker_processes(maximum=3, queued=0, busy=0) == 1
+    assert desired_worker_processes(maximum=3, queued=1, busy=1) == 2
+    assert desired_worker_processes(maximum=3, queued=2, busy=1) == 3
+    assert desired_worker_processes(maximum=3, queued=10, busy=1) == 3

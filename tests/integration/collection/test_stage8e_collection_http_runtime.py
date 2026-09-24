@@ -13,6 +13,7 @@ from aima_ugc.adapters.persistence.postgres.collection_content import (
     PostgresCollectionContentStateReader,
 )
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
+from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.contracts.http import (
@@ -66,6 +67,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.security import SecretFileError
 from aima_ugc.platform.storage.tables import artifacts_table
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import func, insert, select, update
 
@@ -1024,6 +1026,43 @@ def test_ready_campaign_is_reported_as_queued_and_processing(runtime) -> None:  
     assert listing.items[0].status == "queued"
     assert listing.items[0].progress == 100
     assert summary.processing_count == 1
+
+
+@pytest.mark.parametrize(
+    ("campaign_status", "runtime_status", "processing_count"),
+    (("revoking", "running", 1), ("revoked", "cancelled", 0)),
+)
+def test_revoked_campaign_keeps_runtime_list_queryable(
+    runtime, campaign_status: str, runtime_status: str, processing_count: int
+) -> None:  # type: ignore[no-untyped-def]
+    _seed_config_and_search_pack(runtime)
+    campaign_id, _ = _insert_campaign_content(runtime, outcome="updated")
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            update(historical_import_campaigns_table)
+            .where(historical_import_campaigns_table.c.id == campaign_id)
+            .values(status=campaign_status)
+        )
+
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    listing = service.list_runtime_runs(CollectionRuntimeListQuery())
+    filtered = service.list_runtime_runs(CollectionRuntimeListQuery(status=runtime_status))
+    summary = service.get_runtime_summary()
+
+    assert len(listing.items) == 1
+    assert listing.items[0].record_id == campaign_id
+    assert listing.items[0].status == runtime_status
+    assert listing.items[0].stage == campaign_status
+    assert [item.record_id for item in filtered.items] == [campaign_id]
+    assert summary.processing_count == processing_count
+    assert summary.completed_today_count == 0
+    assert summary.contents_ingested_today == 0
+
+    response = TestClient(create_app(collection_service=service)).get(
+        "/api/v1/collection-runtime/runs"
+    )
+    assert response.status_code == 200
+    assert response.json()["items"][0]["status"] == runtime_status
 
 
 def test_campaign_unchanged_ledger_is_eligible_and_persisted_as_run_source(runtime) -> None:  # type: ignore[no-untyped-def]

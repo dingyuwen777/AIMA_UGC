@@ -75,7 +75,11 @@ from aima_ugc.modules.ingestion.xlsx_security import (
 )
 from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolver
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
-from aima_ugc.platform.capacity import AdaptiveBatchController, detect_resources
+from aima_ugc.platform.capacity import (
+    AdaptiveBatchController,
+    detect_resources,
+    select_job_window,
+)
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.logging import log_event
@@ -258,9 +262,11 @@ class PostgresHistoricalImportJobExecutor:
 
             profile = cast(dict[str, object], campaign["profile_snapshot"])
             conversion_started = perf_counter()
+            chunk_publish_seconds = 0.0
             with TemporaryDirectory(prefix="aima-historical-snapshot-") as directory:
                 work_dir = Path(directory)
                 frozen_path = work_dir / "source.xlsx"
+                frozen_copy_started = perf_counter()
                 with frozen_path.open("xb") as destination:
                     copied = self._runtime.artifact_store.copy_to(
                         source_artifact.storage_key,
@@ -271,16 +277,23 @@ class PostgresHistoricalImportJobExecutor:
                     or copied.byte_size != source_artifact.byte_size
                 ):
                     raise InvalidXlsxError("Historical Source Artifact 完整性校验失败")
+                frozen_copy_ms = int((perf_counter() - frozen_copy_started) * 1000)
+                archive_validation_started = perf_counter()
                 validate_xlsx_archive(frozen_path)
+                archive_validation_ms = int((perf_counter() - archive_validation_started) * 1000)
 
                 def publish(descriptor: HistoricalChunkDescriptor) -> None:
+                    nonlocal chunk_publish_seconds
+                    publish_started = perf_counter()
                     self._publish_chunk(
                         source_item=item,
                         descriptor=descriptor,
                         fence=fence,
                     )
+                    chunk_publish_seconds += perf_counter() - publish_started
                     context.heartbeat(progress=min(90, 20 + descriptor.ordinal))
 
+                reader_mapper_started = perf_counter()
                 summary = convert_historical_excel_to_chunks(
                     input_path=frozen_path,
                     profile_name=_required_string(profile, "profile"),
@@ -288,6 +301,7 @@ class PostgresHistoricalImportJobExecutor:
                     chunk_rows=_required_int(profile, "chunk_rows"),
                     publish=publish,
                 )
+                reader_mapper_and_publish_seconds = perf_counter() - reader_mapper_started
                 temporary_bytes = _directory_bytes(work_dir)
             conversion_ms = int((perf_counter() - conversion_started) * 1000)
             if context.cancel_requested():
@@ -341,6 +355,12 @@ class PostgresHistoricalImportJobExecutor:
                 chunk_count=summary.chunks,
                 source_snapshot_ms=source_snapshot_ms,
                 conversion_ms=conversion_ms,
+                frozen_copy_ms=frozen_copy_ms,
+                archive_validation_ms=archive_validation_ms,
+                reader_mapper_ms=max(
+                    0, int((reader_mapper_and_publish_seconds - chunk_publish_seconds) * 1000)
+                ),
+                chunk_publish_ms=int(chunk_publish_seconds * 1000),
                 finalization_ms=int((perf_counter() - finalization_started) * 1000),
                 duration_ms=int((perf_counter() - execution_started) * 1000),
                 temporary_bytes=temporary_bytes,
@@ -988,7 +1008,7 @@ def historical_job_terminal_callback(session: Session, job: JobRecord) -> None:
         if campaign is not None and campaign["status"] == "snapshotting":
             repository.schedule_snapshot_jobs(
                 campaign_id,
-                max_in_flight=_campaign_max_in_flight(campaign),
+                max_in_flight=select_job_window(detect_resources()),
             )
             repository.finalize_preflight(campaign_id)
         return
@@ -1011,7 +1031,7 @@ def historical_job_terminal_callback(session: Session, job: JobRecord) -> None:
         repository.schedule_import_jobs(
             campaign_id=campaign_id,
             source_batches=repository.source_batches(campaign_id),
-            max_in_flight=_campaign_max_in_flight(campaign),
+            max_in_flight=select_job_window(detect_resources()),
         )
     repository.refresh_batch_and_campaign(
         campaign_id=campaign_id,
@@ -1173,11 +1193,6 @@ def _directory_bytes(path: Path) -> int:
     """统计单个 Snapshot Attempt 的有界临时文件占用。"""
 
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
-
-
-def _campaign_max_in_flight(campaign: RowMapping) -> int:
-    profile = cast(dict[str, object], campaign["profile_snapshot"])
-    return _required_int(profile, "max_in_flight_jobs")
 
 
 __all__ = [

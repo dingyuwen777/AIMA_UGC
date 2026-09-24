@@ -62,5 +62,5 @@ def test_runtime_sizing_ignores_legacy_environment_values(tmp_path) -> None:
     assert settings.historical_chunk_rows == 2000
     assert settings.historical_max_scan_files == 10_000
     assert settings.historical_max_directory_depth == 8
-    assert settings.historical_max_in_flight_jobs == 2
-    assert settings.analysis_run_max_in_flight_jobs == 2
+    assert settings.historical_max_in_flight_jobs is None
+    assert settings.analysis_run_max_in_flight_jobs is None
