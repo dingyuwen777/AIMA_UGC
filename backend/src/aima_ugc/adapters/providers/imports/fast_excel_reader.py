@@ -5,10 +5,10 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterator
 from typing import Any
-from xml.etree.ElementTree import iterparse
 
 from openpyxl.cell.text import Text
 from openpyxl.utils.datetime import from_excel, from_ISO8601
+from openpyxl.xml.functions import iterparse
 
 _NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _ROW = f"{_NS}row"
