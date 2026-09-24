@@ -878,8 +878,11 @@ class PostgresHistoricalImportRepository:
         )
         return tuple(batches)
 
-    def prepare_failed_retry(self, campaign_id: UUID) -> dict[UUID, UUID]:
-        """只重置失败 Chunk，并为其来源创建引用同一快照 Artifact 的新 Batch。"""
+    def prepare_failed_retry(
+        self,
+        campaign_id: UUID,
+    ) -> tuple[dict[UUID, UUID], tuple[UUID, ...]]:
+        """重置失败 Chunk，并返回新 Batch 与需要重新激活的不可变 Source Artifact。"""
 
         campaign = self.get_campaign(campaign_id, for_update=True)
         if campaign is None:
@@ -910,12 +913,14 @@ class PostgresHistoricalImportRepository:
             ).mappings()
         }
         batches: dict[UUID, UUID] = {}
+        source_artifact_ids: set[UUID] = set()
         policy_version = _batch_policy_version(cast(str, campaign["ingestion_policy"]))
         for source_id in sorted(source_ids, key=str):
             source = source_rows[source_id]
             artifact_id = cast(UUID | None, source["artifact_id"])
             if artifact_id is None:
                 raise HistoricalCampaignConflict("失败项来源缺少不可变 Artifact")
+            source_artifact_ids.add(artifact_id)
             previous_batch_id = previous.get(source_id)
             batch_id = uuid4()
             self._session.execute(
@@ -965,7 +970,7 @@ class PostgresHistoricalImportRepository:
             .where(historical_import_campaigns_table.c.id == campaign_id)
             .values(status="queued", error_summary=None, finished_at=None)
         )
-        return batches
+        return batches, tuple(sorted(source_artifact_ids, key=str))
 
     def schedule_import_jobs(
         self,

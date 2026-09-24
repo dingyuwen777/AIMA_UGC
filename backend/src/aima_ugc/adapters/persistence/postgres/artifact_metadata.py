@@ -13,6 +13,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
+    historical_import_campaigns_table,
 )
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.reporting.tables import reporting_data_exports_table
@@ -27,6 +28,7 @@ from aima_ugc.platform.storage.retention import (
     EXPORT_RETENTION,
     IMPORT_SOURCE_RETENTION,
     PROVIDER_RAW_RETENTION,
+    UNIFIED_IMPORT_SOURCE_KINDS,
 )
 from aima_ugc.platform.storage.tables import (
     artifacts_table,
@@ -83,10 +85,28 @@ def _cleanup_eligibility(*, now: datetime, orphan_before: datetime) -> ColumnEle
             historical_import_campaign_items_table.c.artifact_id == artifacts_table.c.id
         )
     )
+    historical_source_parent = historical_import_campaign_items_table.join(
+        historical_import_campaigns_table,
+        historical_import_campaigns_table.c.id
+        == historical_import_campaign_items_table.c.campaign_id,
+    )
+    unified_import_source_active = exists(
+        select(historical_import_campaign_items_table.c.id)
+        .select_from(historical_source_parent)
+        .where(
+            historical_import_campaign_items_table.c.artifact_id == artifacts_table.c.id,
+            historical_import_campaign_items_table.c.item_kind == "source_file",
+            historical_import_campaigns_table.c.finished_at.is_(None),
+        )
+    ).correlate(artifacts_table)
     expired = and_(
         artifacts_table.c.storage_status.in_(("stored", "linked")),
         artifacts_table.c.expires_at.is_not(None),
         artifacts_table.c.expires_at <= now,
+        or_(
+            ~artifacts_table.c.kind.in_(UNIFIED_IMPORT_SOURCE_KINDS),
+            ~unified_import_source_active,
+        ),
     )
     orphaned = and_(
         artifacts_table.c.storage_status == "stored",
@@ -96,7 +116,9 @@ def _cleanup_eligibility(*, now: datetime, orphan_before: datetime) -> ColumnEle
             and_(artifacts_table.c.kind == "content-export.xlsx", ~export_referenced),
             artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND,
             and_(
-                artifacts_table.c.kind.in_(("historical-import.source", "historical-import.chunk")),
+                artifacts_table.c.kind.in_(
+                    (*UNIFIED_IMPORT_SOURCE_KINDS, "historical-import.chunk")
+                ),
                 ~historical_referenced,
             ),
         ),
@@ -278,6 +300,27 @@ class PostgresArtifactMetadataRepository:
         )
         return _artifact_from_row(row)
 
+    def reactivate_import_source(self, artifact_id: UUID) -> ArtifactRecord:
+        """重试事务内撤销统一 Source 的旧到期时间，并与 cleanup 认领串行化。"""
+
+        row = (
+            self._session.execute(
+                update(artifacts_table)
+                .where(
+                    artifacts_table.c.id == artifact_id,
+                    artifacts_table.c.kind.in_(UNIFIED_IMPORT_SOURCE_KINDS),
+                    artifacts_table.c.storage_status.in_(("stored", "linked")),
+                )
+                .values(expires_at=None)
+                .returning(artifacts_table)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise ArtifactStateConflict("统一导入 Source Artifact 当前不可用于重试")
+        return _artifact_from_row(row)
+
     def mark_error(self, artifact_id: UUID) -> ArtifactRecord:
         row = (
             self._session.execute(
@@ -297,7 +340,7 @@ class PostgresArtifactMetadataRepository:
         return _artifact_from_row(row)
 
     def backfill_retention_deadlines(self) -> int:
-        """幂等补齐历史 Artifact 的 expires_at，不改已经显式存在的截止时间。"""
+        """按当前业务父事实幂等收敛 Artifact 的 expires_at。"""
 
         mutable_statuses = ("stored", "linked", "delete_pending")
         provider_result = self._session.execute(
@@ -385,10 +428,64 @@ class PostgresArtifactMetadataRepository:
             )
             .values(expires_at=terminal_at + IMPORT_SOURCE_RETENTION)
         )
+
+        historical_source_parent = historical_import_campaign_items_table.join(
+            historical_import_campaigns_table,
+            historical_import_campaigns_table.c.id
+            == historical_import_campaign_items_table.c.campaign_id,
+        )
+        unified_terminal_at = (
+            select(func.max(historical_import_campaigns_table.c.finished_at))
+            .select_from(historical_source_parent)
+            .where(
+                historical_import_campaign_items_table.c.artifact_id == artifacts_table.c.id,
+                historical_import_campaign_items_table.c.item_kind == "source_file",
+                historical_import_campaigns_table.c.finished_at.is_not(None),
+            )
+            .correlate(artifacts_table)
+            .scalar_subquery()
+        )
+        unified_active = exists(
+            select(historical_import_campaign_items_table.c.id)
+            .select_from(historical_source_parent)
+            .where(
+                historical_import_campaign_items_table.c.artifact_id == artifacts_table.c.id,
+                historical_import_campaign_items_table.c.item_kind == "source_file",
+                historical_import_campaigns_table.c.finished_at.is_(None),
+            )
+        ).correlate(artifacts_table)
+        unified_mutable_statuses = ("stored", "linked")
+        unified_active_result = self._session.execute(
+            update(artifacts_table)
+            .where(
+                artifacts_table.c.kind.in_(UNIFIED_IMPORT_SOURCE_KINDS),
+                artifacts_table.c.storage_status.in_(unified_mutable_statuses),
+                unified_active,
+                artifacts_table.c.expires_at.is_not(None),
+            )
+            .values(expires_at=None)
+        )
+        unified_terminal_expiry = unified_terminal_at + IMPORT_SOURCE_RETENTION
+        unified_terminal_result = self._session.execute(
+            update(artifacts_table)
+            .where(
+                artifacts_table.c.kind.in_(UNIFIED_IMPORT_SOURCE_KINDS),
+                artifacts_table.c.storage_status.in_(unified_mutable_statuses),
+                ~unified_active,
+                unified_terminal_at.is_not(None),
+                or_(
+                    artifacts_table.c.expires_at.is_(None),
+                    artifacts_table.c.expires_at != unified_terminal_expiry,
+                ),
+            )
+            .values(expires_at=unified_terminal_expiry)
+        )
         return (
             _affected_rows(provider_result)
             + _affected_rows(export_result)
             + _affected_rows(import_result)
+            + _affected_rows(unified_active_result)
+            + _affected_rows(unified_terminal_result)
         )
 
     def list_cleanup_candidates(
