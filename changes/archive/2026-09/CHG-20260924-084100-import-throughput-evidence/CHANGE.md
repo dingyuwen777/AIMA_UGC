@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260924-084100-import-throughput-evidence
 title: 数据导入真实负载吞吐与确定性性能证据
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: perf/import-throughput-evidence
 created: 2026-09-24T08:41:00+08:00
