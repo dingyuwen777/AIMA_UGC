@@ -44,19 +44,31 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
 
         if content_limit < 1:
             raise ValueError("撤销批量必须为正数")
-        contributions: list[RowMapping] = []
-        last_content_id: UUID | None = None
-        count = 0
-        with closing(
-            self.iter_campaign_contributions(campaign_id, after_content_id=after_content_id)
-        ) as rows:
-            for content_id, group in groupby(rows, key=lambda row: row["content_id"]):
-                if count == content_limit:
-                    break
-                contributions.extend(group)
-                last_content_id = cast(UUID, content_id)
-                count += 1
-        return tuple(contributions), last_content_id
+        contribution = content_source_contributions_table
+        campaign_query = self._campaign_contributions_query(campaign_id).order_by(None)
+        if after_content_id is not None:
+            campaign_query = campaign_query.where(contribution.c.content_id > after_content_id)
+        # 先只排序 UUID 并在数据库侧限页；完整 JSON Delta 只对本批 Content 排序。
+        # 同一 Content 的多条来源贡献必须留在一个事务内，不能直接对 Delta 行 LIMIT。
+        content_page = (
+            campaign_query.with_only_columns(contribution.c.content_id)
+            .distinct()
+            .order_by(contribution.c.content_id)
+            .limit(content_limit)
+            .subquery()
+        )
+        statement = (
+            campaign_query.where(contribution.c.content_id.in_(select(content_page.c.content_id)))
+            .order_by(contribution.c.content_id, contribution.c.created_at, contribution.c.id)
+            .execution_options(stream_results=True, yield_per=500)
+        )
+        result = self._session.execute(statement).mappings()
+        try:
+            contributions = tuple(result)
+        finally:
+            result.close()
+        last_content_id = cast(UUID, contributions[-1]["content_id"]) if contributions else None
+        return contributions, last_content_id
 
     def parent_import_batch_id(self, campaign_id: UUID) -> UUID | None:
         """选择 Campaign 最早的真实 Processing Batch 作为内部撤销 Request 父事实。"""

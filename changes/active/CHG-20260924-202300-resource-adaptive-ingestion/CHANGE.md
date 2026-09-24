@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260924-202300-resource-adaptive-ingestion
 title: 导入、重筛与撤回的资源感知运行调节
 level: L3
-status: developing
+status: ready_for_review
 owner: yuwen.ding
 branch: fix/598-code-owned-runtime-sizing
 created: 2026-09-24T20:23:00+08:00
@@ -43,6 +43,8 @@ Issue #598 和本轮用户决定要求从入口、预检、入库、重筛到撤
 
 2026-09-24 的隔离 PostgreSQL 合成数据试验：12,000 行、单 Worker，同口径 Chunk 1000/2000/4000/8000 的预检+导入分别为 25.00/22.05/22.33/41.58 秒，进程峰值内存为 162/181/220/298 MiB；因此生产初始 Chunk 不提高到 4000/8000。普通导入撤销同步基线 8.359 秒；分批 Job 以 500/1000/2000/4000 为候选的请求+后台完成实测约 9.14/9.14/8.92/9.02 秒，其中请求约 0.25 秒。逐级探测策略约 9.16 秒，自动拒绝本机无收益的 1000 档；最新等差版 12,000 行的预检、导入、撤销请求与后台完成分别为 1.62/20.89/0.26/9.10 秒。另用 1,200 条含证据变化的重筛撤回数据对照固定 100/500 条批量：完成耗时 1.52/1.31 秒、SQL 220/67 次，500 条最慢单批约 0.54 秒；因此两种撤销统一从 500 条起步、每次加 500 条。异步重试与批次提交增加少量总耗时，不能把请求响应变快表述成后台吞吐提升。报告在本机 `.runtime/dev/bench-598-*/capacity_report.json`，不提交含运行 ID 的报告；高配服务器仍需独立实测。
 
+额外核对撤销账本的读取计划发现：旧查询在 12,000 条、单批 500 Content 时会把剩余完整 JSON Delta 排序，首批约 20 MiB 落盘；先限量选择 Content UUID 再读取完整 Delta 后，同一隔离库首批 EXPLAIN ANALYZE 从约 23.5 ms 降到 8.0 ms，中途从约 11.8 ms 降到 5.9 ms。重复完整读取全部 12,000 条账本为旧路径 0.76–0.83 秒、新路径约 0.69 秒；断点和同一 Content 多 Delta 的完整性由集成测试覆盖。另一轮全流程复测受本机负载波动影响，未证实撤销总耗时提升，不将查询局部收益外推为整体吞吐或千万级最优性能。
+
 # 目标、范围与非目标
 
 目标：部署时读取 Docker Engine 的有效资源；运行时根据容器配额、阶段耗时、错误和压力调整安全可变的参数；对预检、入库、重筛和撤销实施观测、正确性与回退验证。范围为后端、Compose 启停入口、普通导入撤销的 API/页面状态、Migration、测试、基准与文档。外部 Provider 调用和生产数据不在范围。页面仅修正异步状态，不扩展等待体验。
@@ -63,11 +65,11 @@ Issue #598 和本轮用户决定要求从入口、预检、入库、重筛到撤
 | R2 | 不同 Docker 配额下自动选择有意义的运行参数与反馈规则 | #598 / AC2 | satisfied | Docker Engine 资源计划、cgroup 探测、Job/SQL 调节和容量单测；未知资源保守运行 |
 | R3 | 普通导入撤销和重筛撤回统一在本次运行内等差升降档 | #598 / AC6 | satisfied | 两种撤销 500 起步、+500，资源/事务护栏单测 10 个；4,000 条重筛撤回日志证实 500→1000 |
 | R4 | 已发布 Chunk 的冻结、幂等和逐行账本保持稳定 | #598 / AC3 | satisfied | Campaign profile 选择/重试单测与隔离 PostgreSQL ingestion 集成 69 个通过；未在线重切 |
-| R5 | 调节日志和可复现全链路基准准确区分请求与后台耗时 | #598 / AC8 | satisfied | capacity.* 日志；12,000 行导入/撤销、1,200/4,000 行重筛撤回报告及账本对账；高配机器未实测 |
-| R6 | 普通撤销短请求、可恢复 Job 和页面状态准确；重筛撤回共享调节机制 | #598 / AC6 | not_satisfied | Job/断点/Contract/页面已实现，前端 228 单测与真实数据库 30 相关集成通过；Full-stack/CI 尚待运行 |
+| R5 | 调节日志和可复现全链路基准准确区分请求与后台耗时 | #598 / AC8 | satisfied | capacity.* 日志；12,000 行导入/撤销、1,200/4,000 行重筛撤回报告及账本对账；分页读取 EXPLAIN 与完整读取微基准；高配机器未实测 |
+| R6 | 普通撤销短请求、可恢复 Job 和页面状态准确；重筛撤回共享调节机制 | #598 / AC6 | satisfied | Job/断点/Contract/页面已实现，前端 228 单测与真实数据库 30 相关集成通过；真实 Full-stack run 36012858186 通过 |
 | R7 | 跨平台启停只依赖外部稳定 env，资源不足拒绝启动 | #598 / AC7 | satisfied | start/stop 脚本、Windows overlay 和 Release 打包，资源计划/外部 env 单测通过 |
 | R8 | Job 窗口不冒充物理 Worker/LLM 并发，保持安全扫描护栏 | #598 / AC4 | satisfied | Compose 仍为单 Worker；Analysis Provider Snapshot 不变；Discover 文件/深度限额固定且失败关闭 |
-| R9 | 单/双 Worker、低资源、取消/重试、Full-stack 两 Chunk 与性能对账 | #598 / AC5 | not_satisfied | 隔离库 ingestion 69 个、容量/低资源单测和实测报告已覆盖大部分；Full-stack/CI 尚待运行 |
+| R9 | 单/双 Worker、低资源、取消/重试、Full-stack 两 Chunk 与性能对账 | #598 / AC5 | satisfied | 隔离库 ingestion 69 个、容量/低资源单测和实测报告；真实 Full-stack run 36012858186 通过；PR 必需 CI 仍是合并门禁 |
 
 # 计划改动
 
@@ -83,8 +85,8 @@ Issue #598 和本轮用户决定要求从入口、预检、入库、重筛到撤
 | --- | --- | --- |
 | Unit / 静态 | required | 容量与脚本单测 33 个通过，相关回归 42 个通过；Ruff/Mypy 通过；完整后端 Unit/API 在 Windows 有 9 个既有 POSIX/路径测试不适用问题，相关新增失败已修复，Linux CI 待确认 |
 | Contract / API | required | OpenAPI 生成与兼容检查通过；API 单测主体已运行，前端 generated client 与 TypeScript typecheck 通过 |
-| PostgreSQL / Job | required | 专用隔离库 Migration 至 0063、Alembic check 无差异；ingestion 集成 69 个、撤销与重筛相关 30 个通过，覆盖双 Worker/取消/断点恢复 |
-| 用户 / 浏览器 | required | 前端 228 个单测、lint/typecheck 通过；真实 Full-stack 浏览器验收等待 CI |
+| PostgreSQL / Job | required | 专用隔离库 Migration 至 0063、Alembic check 无差异；ingestion 集成 69 个、撤销与重筛相关 30 个通过，覆盖双 Worker/取消/断点恢复；分页读取改动后普通撤销集成 4 个通过 |
+| 用户 / 浏览器 | required | 前端 228 个单测、lint/typecheck 通过；独立真实 Full-stack run 36012858186 通过，PR CI 待运行 |
 | 部署 / Runtime | required | 跨平台脚本单测与 Release Bundle 测试通过；实际 Docker Compose 和 Windows/Linux 机器部署等待 CI/目标服务器验证 |
 | 性能 / 观测 | required | 12,000 行导入/撤销及 1,200/4,000 行重筛撤回隔离库报告；日志可见档位调整与结果，不外推高配服务器 |
 | 外部 Provider | not_applicable | 不改 TikHub/LLM 调用、额度和模型快照；无需付费探测 |
@@ -95,4 +97,4 @@ Issue #598 和本轮用户决定要求从入口、预检、入库、重筛到撤
 - [x] upstream_re_read：已重新读取 Issue #598 的 AC1–AC8、用户追加决定、项目 Blueprint/Operations 与实际 API/Worker/Compose 调用链。
 - [x] change_coverage：AC1–AC8 已映射到实现、Contract、文档和分层测试；高配机器性能明确标为待现场验证，不宣称绝对最优。
 - [x] reverse_audit：已从导入入口、Campaign/Chunk、SQL/Job、两种撤销、API/页面状态反查所有新增能力及旧路径；单/双 Worker 与取消/重试集成覆盖已运行。
-- [ ] unresolved_cleared：当前 PR 仍为 Draft，Full-stack、Runtime、CI 和最终独立 Review 未完成；R6/R9 暂不标记满足，也不进入 Ready。
+- [x] unresolved_cleared：要求的实现、Contract、隔离库、真实 Full-stack 与文档证据已核对；PR 必需 CI、Release/Runtime Workflow 和最终 Review 仍为合并门禁，尚未声称可合并。高配生产服务器性能留待现场容量验收。

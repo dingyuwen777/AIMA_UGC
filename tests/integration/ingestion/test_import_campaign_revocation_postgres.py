@@ -10,6 +10,9 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
+from aima_ugc.adapters.persistence.postgres.import_revocation_lifecycle import (
+    PostgresImportRevocationLifecycleRepository,
+)
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -38,7 +41,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.storage.tables import artifacts_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import and_, delete, event, func, select, update
+from sqlalchemy import and_, delete, event, func, insert, select, update
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from tests.integration.stage3_brand_support import stage3_filter_brand_id
@@ -179,6 +182,31 @@ def test_revocation_batches_common_contributions_without_per_content_sql(
             runtime.database.new_session, runtime.artifact_store
         )
         assert service.preview(campaign_id).impact.affected_content_count == 101
+        with runtime.database.new_session() as session:
+            lifecycle = PostgresImportRevocationLifecycleRepository(session)
+            first, checkpoint = lifecycle.next_campaign_contribution_batch(
+                campaign_id, after_content_id=None, content_limit=1
+            )
+            second, _ = lifecycle.next_campaign_contribution_batch(
+                campaign_id, after_content_id=checkpoint, content_limit=1
+            )
+            assert len(first) == len(second) == 1
+            assert first[0]["content_id"] != second[0]["content_id"]
+            duplicate = dict(first[0])
+            duplicate["id"] = uuid4()
+            duplicate["source_item_key"] = uuid4().hex + uuid4().hex
+            savepoint = session.begin_nested()
+            try:
+                session.execute(insert(content_source_contributions_table).values(**duplicate))
+                complete_group, _ = lifecycle.next_campaign_contribution_batch(
+                    campaign_id, after_content_id=None, content_limit=1
+                )
+                assert len(complete_group) == 2
+                assert {row["content_id"] for row in complete_group} == {
+                    first[0]["content_id"]
+                }
+            finally:
+                savepoint.rollback()
         statement_count = 0
         per_content_updates = 0
         per_content_inserts = 0
