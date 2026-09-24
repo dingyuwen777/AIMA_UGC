@@ -16,6 +16,7 @@ from aima_ugc.platform.jobs import (
     JobWorker,
     LeaseLostError,
 )
+from aima_ugc.platform.time import beijing_now
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -96,6 +97,34 @@ def test_enqueue_is_idempotent_and_rejects_conflicting_payload(
         with session.begin():
             with pytest.raises(JobIdempotencyConflict):
                 _enqueue(repository, key="same-key", value="different")
+    finally:
+        session.close()
+
+
+def test_worker_pool_pressure_counts_ready_queue_and_its_own_leases(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    session = database_runtime.new_session()
+    repository = PostgresJobRepository(session)
+    try:
+        with session.begin():
+            _enqueue(repository, key="pool-running")
+            _enqueue(repository, key="pool-queued")
+        with session.begin():
+            claimed = repository.claim_next(
+                supported_job_types=("test.echo.v1",),
+                worker_id="worker-a",
+                lease_seconds=30,
+            )
+        assert claimed is not None
+
+        with session.begin():
+            assert repository.pool_pressure(
+                lease_owners={"worker-a"}, queued_limit=1, now=beijing_now()
+            ) == (1, {"worker-a"})
+            assert repository.pool_pressure(
+                lease_owners={"worker-b"}, queued_limit=2, now=beijing_now()
+            ) == (1, set())
     finally:
         session.close()
 

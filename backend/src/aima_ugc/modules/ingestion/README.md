@@ -377,6 +377,8 @@ AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动
 
 原 Campaign、Source/Chunk Artifact、逐行 outcome、Raw、旧 Content Version 和审计继续保留；同一 Campaign 重复撤销幂等。`standard_observation` 与 `historical_fill_only` 都在各自业务写事务中记录 Contribution，因此机制上线后的新导入进入同一可撤销模型。
 
+撤销导入只排队执行该 Campaign 的贡献撤销，不自动发起全量重筛。采集运行中心把撤销中、已撤销的 Campaign 分别呈现为运行中、已取消，同时保留原始阶段，便于区分普通取消与数据撤销。
+
 ### 8.2 Persistent Canonical Replay 怎样补入新命中内容
 
 Replay 用于 Brand、Vehicle、Alias 或确定性 Resolver 扩展后重筛以前已经成功归一化、但当时
@@ -412,6 +414,8 @@ POST /api/v1/canonical-replays
 `ingestion.historical-import-chunk.v2` 的 Pure Canonical Chunk、TikHub Discovery Search
 Attempt。Scope-only 或其它无法证明的旧关系失败关闭；当前没有 legacy 转换分支。API 的空
 `brand_ids` 表示冻结当时全部 active Brand，非空集合表示只冻结明确选择的 active Brand。
+
+全量重筛创建时排除正在撤销或已撤销 Campaign 的 Chunk；显式选择同类来源失败关闭。已经排队的全量重筛在 Worker 预检和逐件读取前重新核对来源资格：失效的 Chunk 跳过并推进检查点，其余有效输入继续。若撤销与同一 Chunk 的入库批次并发，批次事务读取并锁定 Campaign 状态，撤销中的来源不会继续写入。撤销前已提交的重筛写入不会因此自动回滚，需要对该全量重筛请求使用现有的请求级撤回。
 
 Worker 在第一次写 Content 前预检**全部**所选 Artifact，而不只是第一个；预检因此会额外完整
 打开一次输入集，容量规划必须把这部分 Artifact I/O 算入。业务阶段每件 Artifact 只打开一次并

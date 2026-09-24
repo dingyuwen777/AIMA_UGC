@@ -103,17 +103,17 @@ class PostgresHistoricalImportHttpService:
         source_kind: str,
         profile: dict[str, object],
     ) -> None:
-        """记录真正落库的冻结粒度，包括幂等重试复用的旧值。"""
+        """记录冻结 Chunk 与创建时窗口；后续投放会重新读取 Worker 资源。"""
 
         log_event(
             self._runtime.logger,
             logging.INFO,
             "capacity.campaign_profile_frozen",
-            "历史导入 Campaign 使用冻结资源参数",
+            "历史导入 Campaign 已冻结 Chunk 粒度和创建时窗口",
             campaign_id=str(campaign_id),
             source_kind=source_kind,
             chunk_rows=profile.get("chunk_rows"),
-            max_in_flight_jobs=profile.get("max_in_flight_jobs"),
+            initial_max_in_flight_jobs=profile.get("max_in_flight_jobs"),
         )
 
     def list_directories(

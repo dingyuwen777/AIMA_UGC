@@ -10,6 +10,7 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
 )
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
+    RevokedCanonicalReplaySource,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.storage.local import LocalArtifactStore
@@ -30,6 +31,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 from aima_ugc.modules.ingestion.canonical_replay_http import CanonicalReplayConflict
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
+    canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
 )
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
@@ -49,7 +51,7 @@ from aima_ugc.platform.storage.canonical import (
     CANONICAL_CONTENT_ARTIFACT_KIND,
 )
 from aima_ugc.platform.storage.tables import canonical_artifact_links_table
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -458,6 +460,71 @@ def test_repository_accepts_only_the_three_current_canonical_lineages() -> None:
                 "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
                 "keyword_packs, vehicle_brands, accounts "
                 "RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+@pytest.mark.parametrize("campaign_status", ("revoking", "revoked"))
+def test_replay_excludes_revoked_campaign_source(campaign_status: str) -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            valid_artifact_id = _excel_source(session)
+            revoked_artifact_id = _campaign_source(session)
+            repository = PostgresCanonicalReplayRepository(session)
+            queued_run, _ = repository.enqueue(
+                idempotency_key=f"queued-before-{campaign_status}",
+                artifact_ids=(revoked_artifact_id,),
+                brand_ids=(),
+                batch_size=1000,
+                created_by="replay-admin",
+                request_id=f"queued-before-{campaign_status}",
+            )
+            campaign_id = session.scalar(
+                select(historical_import_campaign_items_table.c.campaign_id)
+                .join(
+                    canonical_artifact_links_table,
+                    canonical_artifact_links_table.c.historical_import_campaign_item_id
+                    == historical_import_campaign_items_table.c.id,
+                )
+                .where(canonical_artifact_links_table.c.artifact_id == revoked_artifact_id)
+            )
+            assert campaign_id is not None
+            session.execute(
+                update(historical_import_campaigns_table)
+                .where(historical_import_campaigns_table.c.id == campaign_id)
+                .values(status=campaign_status)
+            )
+            assert repository.list_artifacts(queued_run.id)[0].artifact_id == revoked_artifact_id
+            with pytest.raises(RevokedCanonicalReplaySource):
+                repository.classify_artifact(revoked_artifact_id)
+            request = repository.enqueue_all(
+                idempotency_key=f"exclude-{campaign_status}",
+                created_by="replay-admin",
+                request_id=f"exclude-{campaign_status}",
+            )
+            selected = session.scalars(
+                select(canonical_replay_run_artifacts_table.c.artifact_id)
+                .join(
+                    canonical_replay_runs_table,
+                    canonical_replay_run_artifacts_table.c.run_id
+                    == canonical_replay_runs_table.c.id,
+                )
+                .where(canonical_replay_runs_table.c.all_request_id == request.id)
+            ).all()
+            assert selected == [valid_artifact_id]
+    finally:
+        session.close()
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
 

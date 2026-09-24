@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import socket
+import subprocess
+import sys
 import time
 from collections.abc import Callable
 from uuid import uuid4
 
+from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.voice_plaza_projection_worker import (
     ensure_voice_plaza_projection_backfill_job,
 )
@@ -18,14 +23,18 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
-from aima_ugc.platform.capacity import detect_resources
+from aima_ugc.platform.capacity import detect_resources, worker_process_limit
 from aima_ugc.platform.jobs import JobReaper, JobWorker
 from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.time import beijing_now
 
 _WORKER_LEASE_SECONDS = 120
 _RETRY_DELAY_SECONDS = 5
 _IDLE_SLEEP_SECONDS = 0.2
 _REAPER_INTERVAL_SECONDS = 5.0
+_POOL_POLL_SECONDS = 2.0
+_POOL_IDLE_DOWNSHIFT_SECONDS = 30.0
+_MIB = 1024 * 1024
 
 
 def run_worker_loop(
@@ -58,8 +67,14 @@ def run_worker_loop(
             sleep(idle_sleep_seconds)
 
 
-def main() -> None:
-    """启动正式 PostgreSQL Job Worker；Ctrl+C 时关闭共享 Runtime。"""
+def desired_worker_processes(*, maximum: int, queued: int, busy: int) -> int:
+    """只为真实等待和运行中的 Job 扩容，至少保留一个常驻进程。"""
+
+    return min(maximum, max(1, queued + busy))
+
+
+def _run_single_worker() -> None:
+    """每个子进程独立持有 Runtime、数据库连接和 Job Lease。"""
 
     runtime = create_worker_runtime(log_instance=uuid4())
     registry = create_collection_job_registry(runtime=runtime)
@@ -108,8 +123,15 @@ def main() -> None:
             else None
         ),
     )
+    stopping = False
+
+    def request_stop(_signum: int, _frame: object) -> None:
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGTERM, request_stop)
     try:
-        run_worker_loop(worker, reaper)
+        run_worker_loop(worker, reaper, stop_requested=lambda: stopping)
     except KeyboardInterrupt:
         log_event(
             runtime.logger,
@@ -120,6 +142,160 @@ def main() -> None:
         )
     finally:
         runtime.close()
+
+
+def _pool_pressure(
+    runtime: PlatformRuntime,
+    children: dict[int, subprocess.Popen[bytes]],
+    maximum: int,
+) -> tuple[int, set[str]]:
+    """只读当前可领取队列和本容器在途 Lease，不扫描历史 Job。"""
+
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            owners = {f"{socket.gethostname()}:{pid}" for pid in children}
+            return PostgresJobRepository(session).pool_pressure(
+                lease_owners=owners,
+                queued_limit=maximum,
+                now=beijing_now(),
+            )
+    finally:
+        session.close()
+
+
+def _run_worker_pool() -> None:
+    """在容器总配额内按队列升档，空闲时只收缩没有在途 Job 的进程。"""
+
+    runtime = create_worker_runtime(log_instance=uuid4())
+    children: dict[int, subprocess.Popen[bytes]] = {}
+    stopping = False
+    idle_since: float | None = None
+    recent_failures = 0
+
+    def request_stop(_signum: int, _frame: object) -> None:
+        nonlocal stopping
+        stopping = True
+
+    def spawn() -> None:
+        child = subprocess.Popen(
+            [sys.executable, "-m", "aima_ugc.entrypoints.worker_main", "--child"]
+        )
+        children[child.pid] = child
+
+    signal.signal(signal.SIGTERM, request_stop)
+    try:
+        initial_resources = detect_resources()
+        log_event(
+            runtime.logger,
+            logging.INFO,
+            "capacity.worker_pool_started",
+            "Worker 自适应进程池已启动",
+            maximum_processes=worker_process_limit(initial_resources),
+            cpu_cores=initial_resources.cpu_cores,
+            memory_limit_mib=(
+                initial_resources.memory_limit_bytes // _MIB
+                if initial_resources.memory_limit_bytes is not None
+                else None
+            ),
+        )
+        spawn()
+        while not stopping:
+            for pid, child in tuple(children.items()):
+                if (exit_code := child.poll()) is not None:
+                    del children[pid]
+                    if exit_code != 0:
+                        recent_failures += 1
+                        log_event(
+                            runtime.logger,
+                            logging.WARNING,
+                            "capacity.worker_process_exited",
+                            "Worker 子进程异常退出",
+                            worker_pid=pid,
+                            exit_code=exit_code,
+                            recent_failures=recent_failures,
+                        )
+            if recent_failures >= 3 and not children:
+                raise RuntimeError("Worker 子进程连续异常退出")
+            resources = detect_resources()
+            maximum = worker_process_limit(resources)
+            queued, busy_owners = _pool_pressure(runtime, children, maximum)
+            desired = desired_worker_processes(
+                maximum=maximum, queued=queued, busy=len(busy_owners)
+            )
+            memory_pressure = (
+                resources.memory_available_bytes is not None
+                and resources.memory_available_bytes < 768 * _MIB
+            )
+            if memory_pressure:
+                desired = 1
+            if len(children) < desired:
+                spawn()
+                idle_since = None
+                log_event(
+                    runtime.logger,
+                    logging.INFO,
+                    "capacity.worker_pool_resized",
+                    "Worker 并行进程已扩容",
+                    active_processes=len(children),
+                    desired_processes=desired,
+                    maximum_processes=maximum,
+                    queued_jobs=queued,
+                    busy_processes=len(busy_owners),
+                    available_memory_mib=(
+                        resources.memory_available_bytes // _MIB
+                        if resources.memory_available_bytes is not None
+                        else None
+                    ),
+                )
+            elif len(children) > desired:
+                now = time.monotonic()
+                if idle_since is None:
+                    idle_since = now - _POOL_IDLE_DOWNSHIFT_SECONDS if memory_pressure else now
+                elif now - idle_since >= _POOL_IDLE_DOWNSHIFT_SECONDS:
+                    idle = next(
+                        (
+                            child
+                            for pid, child in reversed(tuple(children.items()))
+                            if f"{socket.gethostname()}:{pid}" not in busy_owners
+                        ),
+                        None,
+                    )
+                    if idle is not None:
+                        idle.terminate()
+                        idle_since = now
+                        log_event(
+                            runtime.logger,
+                            logging.INFO,
+                            "capacity.worker_pool_resized",
+                            "空闲 Worker 进程开始缩容",
+                            active_processes=len(children),
+                            desired_processes=desired,
+                            maximum_processes=maximum,
+                            queued_jobs=queued,
+                            busy_processes=len(busy_owners),
+                        )
+            else:
+                idle_since = None
+            time.sleep(_POOL_POLL_SECONDS)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for child in children.values():
+            if child.poll() is None:
+                child.terminate()
+        for child in children.values():
+            child.wait()
+        runtime.close()
+
+
+def main() -> None:
+    """启动按有效资源和 Job 队列调节的 Worker 进程池。"""
+
+    if sys.argv[1:] == ["--child"]:
+        _run_single_worker()
+    else:
+        _run_worker_pool()
 
 
 __all__ = [

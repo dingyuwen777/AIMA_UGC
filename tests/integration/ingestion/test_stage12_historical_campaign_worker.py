@@ -23,6 +23,8 @@ from aima_ugc.bootstrap import historical_import_worker as historical_worker_mod
 from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
+from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
+from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.runtime import PlatformRuntime
@@ -40,6 +42,7 @@ from aima_ugc.contracts.http import ContentFilterSnapshot
 from aima_ugc.modules.content.query import ContentReadQuery
 from aima_ugc.modules.content.tables import content_metric_observations_table, contents_table
 from aima_ugc.modules.identity import Principal
+from aima_ugc.modules.ingestion.canonical_replay_tables import canonical_replay_runs_table
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_IMPORT_CHUNK_JOB_TYPE
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -1967,6 +1970,217 @@ def _stage3_run_historical_campaign(
             return payload
         assert worker.run_once() is True
     pytest.fail("Historical Campaign 未在测试预算内进入终态")
+
+
+@pytest.mark.parametrize("revocation_status", ("revoking", "revoked"))
+def test_queued_all_replay_skips_later_revoked_campaign_and_keeps_other_sources(
+    tmp_path: Path, revocation_status: str
+) -> None:
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    for name in ("first.xlsx", "second.xlsx"):
+        (historical_root / name).write_bytes(_xlsx(title=f"爱玛 {name}", text="保留有效来源"))
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "historical_import_root": historical_root,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        client = TestClient(
+            create_app(
+                historical_import_service=PostgresHistoricalImportHttpService(runtime),
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _brand(runtime)
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id=f"replay-skip-{revocation_status}",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        campaign_ids: list[str] = []
+        for name in ("first.xlsx", "second.xlsx"):
+            created = client.post(
+                "/api/v1/historical-import-campaigns",
+                json={
+                    "client_idempotency_key": f"replay-skip-{name}-{uuid4()}",
+                    "relative_paths": [name],
+                    "recursive": False,
+                    "brand_ids": [brand_id],
+                },
+            )
+            assert created.status_code == 202
+            campaign_id = created.json()["campaign_id"]
+            campaign_ids.append(campaign_id)
+            assert (
+                _stage3_run_historical_campaign(client, worker, campaign_id=campaign_id)["status"]
+                == "succeeded"
+            )
+
+        replay = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": f"replay-skip-{uuid4()}"},
+        )
+        assert replay.status_code == 202
+        assert replay.json()["artifact_count"] == 2
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(historical_import_campaigns_table)
+                .where(historical_import_campaigns_table.c.id == UUID(campaign_ids[0]))
+                .values(status=revocation_status)
+            )
+        assert worker.run_once() is True
+        with runtime.database.engine.connect() as connection:
+            result = connection.execute(
+                select(
+                    canonical_replay_runs_table.c.artifact_count,
+                    canonical_replay_runs_table.c.checkpoint_artifact_ordinal,
+                    canonical_replay_runs_table.c.rows_seen,
+                    jobs_table.c.status,
+                )
+                .join(jobs_table, jobs_table.c.id == canonical_replay_runs_table.c.job_id)
+                .where(
+                    canonical_replay_runs_table.c.all_request_id
+                    == UUID(replay.json()["request_id"])
+                )
+            ).one()
+        assert result == (2, 2, 1, "succeeded")
+        worker_log = (runtime.settings.log_dir / "worker.log").read_text(encoding="utf-8")
+        assert "skipped_revoked_artifacts=1" in worker_log
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
+
+
+def test_replay_skips_remaining_rows_when_campaign_revocation_starts_between_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    (historical_root / "two-rows.xlsx").write_bytes(_xlsx_with_cross_chunk_duplicates(rows=2))
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "historical_import_root": historical_root,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+            "accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        client = TestClient(
+            create_app(
+                historical_import_service=PostgresHistoricalImportHttpService(runtime),
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _brand(runtime)
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="replay-mid-revocation",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        created = client.post(
+            "/api/v1/historical-import-campaigns",
+            json={
+                "client_idempotency_key": f"replay-mid-revocation-{uuid4()}",
+                "relative_paths": ["two-rows.xlsx"],
+                "recursive": False,
+                "brand_ids": [brand_id],
+            },
+        )
+        assert created.status_code == 202
+        campaign_id = UUID(created.json()["campaign_id"])
+        assert (
+            _stage3_run_historical_campaign(client, worker, campaign_id=str(campaign_id))["status"]
+            == "succeeded"
+        )
+        with runtime.database.engine.connect() as connection:
+            artifact_id = connection.scalar(
+                select(historical_import_campaign_items_table.c.artifact_id).where(
+                    historical_import_campaign_items_table.c.campaign_id == campaign_id,
+                    historical_import_campaign_items_table.c.item_kind == "chunk",
+                )
+            )
+        assert artifact_id is not None
+        replay = client.post(
+            "/api/v1/canonical-replays",
+            json={
+                "idempotency_key": f"replay-mid-revocation-{uuid4()}",
+                "artifact_ids": [str(artifact_id)],
+                "brand_ids": [brand_id],
+                "batch_size": 1,
+            },
+        )
+        assert replay.status_code == 202
+        original_ingest = PostgresCanonicalReplayJobExecutor._ingest_batch
+
+        def revoke_after_first_batch(  # type: ignore[no-untyped-def]
+            executor, run, selected, artifact, contents, *, fence, batch_metrics
+        ):
+            advanced = original_ingest(
+                executor,
+                run,
+                selected,
+                artifact,
+                contents,
+                fence=fence,
+                batch_metrics=batch_metrics,
+            )
+            if advanced.checkpoint_row_number == 1:
+                with runtime.database.engine.begin() as connection:
+                    connection.execute(
+                        update(historical_import_campaigns_table)
+                        .where(historical_import_campaigns_table.c.id == campaign_id)
+                        .values(status="revoking")
+                    )
+            return advanced
+
+        monkeypatch.setattr(
+            PostgresCanonicalReplayJobExecutor, "_ingest_batch", revoke_after_first_batch
+        )
+        assert worker.run_once() is True
+        with runtime.database.engine.connect() as connection:
+            result = connection.execute(
+                select(
+                    canonical_replay_runs_table.c.checkpoint_artifact_ordinal,
+                    canonical_replay_runs_table.c.checkpoint_row_number,
+                    canonical_replay_runs_table.c.rows_seen,
+                    jobs_table.c.status,
+                )
+                .join(jobs_table, jobs_table.c.id == canonical_replay_runs_table.c.job_id)
+                .where(canonical_replay_runs_table.c.id == UUID(replay.json()["run_id"]))
+            ).one()
+        assert result == (1, 0, 1, "succeeded")
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, vehicle_brands, "
+                "accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
 
 
 def test_historical_stage3_freezes_catalog_and_preserves_manual_evidence(

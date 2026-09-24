@@ -22,6 +22,7 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
+    RevokedCanonicalReplaySource,
 )
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
@@ -55,7 +56,10 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_content_changes_table,
 )
-from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+)
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.vehicles.brand_vehicle import (
     BrandVehicleResolution,
@@ -113,6 +117,22 @@ class PostgresCanonicalReplayJobExecutor:
         """接管先重新预检全部输入；随后从已提交 checkpoint 继续。"""
 
         batch_tuner: AdaptiveBatchController | None = None
+        phase = "load_execution"
+        artifact_ordinal: int | None = None
+        skipped_revoked_artifacts = 0
+        batch_metrics: dict[str, int] = {
+            "batch_count": 0,
+            "artifact_read_ms": 0,
+            "batch_elapsed_ms": 0,
+            "resolution_ms": 0,
+            "content_batch_ms": 0,
+            "evidence_batch_ms": 0,
+            "fallback_ms": 0,
+            "ledger_checkpoint_ms": 0,
+            "transaction_ms": 0,
+            "fast_created_count": 0,
+            "fallback_count": 0,
+        }
         try:
             run, selected = self._load_execution(payload.run_id, fence)
             if run.batch_size > 1:
@@ -127,6 +147,7 @@ class PostgresCanonicalReplayJobExecutor:
             # 预检资格仅属于本次 Attempt；接管必须重新证明输入全集。
             reader = CanonicalArtifactReader(store=self._runtime.artifact_store)
             preflight_started = perf_counter()
+            phase = "preflight"
             if not self._preflight_all(selected, reader=reader, fence=fence, context=context):
                 return JobHandlerResult.cancelled()
             log_event(
@@ -140,11 +161,19 @@ class PostgresCanonicalReplayJobExecutor:
             )
 
             ingestion_started = perf_counter()
+            phase = "ingestion"
             while run.checkpoint_artifact_ordinal < run.artifact_count:
                 if context.cancel_requested():
                     return JobHandlerResult.cancelled()
                 current = selected[run.checkpoint_artifact_ordinal]
-                artifact = self._load_artifact(current, fence=fence)
+                artifact_ordinal = current.ordinal
+                try:
+                    artifact = self._load_artifact(current, fence=fence)
+                except RevokedCanonicalReplaySource:
+                    run = self._advance_empty_artifact(run, current, fence=fence)
+                    skipped_revoked_artifacts += 1
+                    context.heartbeat(progress=_progress(run))
+                    continue
                 iterator = cast(
                     Generator[CanonicalContentV1],
                     reader.read_preflighted(artifact),
@@ -179,18 +208,28 @@ class PostgresCanonicalReplayJobExecutor:
                                 frozen_max_rows=run.batch_size,
                                 reason=reason,
                             )
+                        artifact_read_started = perf_counter()
                         batch = tuple(islice(iterator, effective_size))
+                        batch_metrics["artifact_read_ms"] += int(
+                            (perf_counter() - artifact_read_started) * 1000
+                        )
                         if not batch:
                             run = self._advance_empty_artifact(run, current, fence=fence)
                             break
                         batch_started = perf_counter()
-                        run = self._ingest_batch(
-                            run,
-                            current,
-                            artifact,
-                            batch,
-                            fence=fence,
-                        )
+                        try:
+                            run = self._ingest_batch(
+                                run,
+                                current,
+                                artifact,
+                                batch,
+                                fence=fence,
+                                batch_metrics=batch_metrics,
+                            )
+                        except RevokedCanonicalReplaySource:
+                            run = self._advance_empty_artifact(run, current, fence=fence)
+                            skipped_revoked_artifacts += 1
+                            break
                         if batch_tuner is not None:
                             batch_tuner.succeeded(
                                 size=proposed_size,
@@ -212,13 +251,26 @@ class PostgresCanonicalReplayJobExecutor:
                 rows_matched=run.rows_matched,
                 rows_ingested=run.rows_ingested,
                 existing_convergence=run.existing_convergence,
+                skipped_revoked_artifacts=skipped_revoked_artifacts,
+                **batch_metrics,
             )
             return JobHandlerResult.succeeded(_result(run))
         except LeaseLostError:
             raise
         except CanonicalArtifactIntegrityError:
             return JobHandlerResult.failed("canonical_replay_artifact_invalid")
-        except LookupError, ValueError:
+        except (LookupError, ValueError) as exc:
+            log_event(
+                self._runtime.logger,
+                logging.ERROR,
+                "canonical_replay.input_invalid",
+                "Canonical Replay 输入已失效",
+                job_id=str(fence.job_id),
+                run_id=str(payload.run_id),
+                phase=phase,
+                artifact_ordinal=artifact_ordinal,
+                error_class=type(exc).__name__,
+            )
             return JobHandlerResult.failed("canonical_replay_input_invalid")
         except (DataError, IntegrityError, ProgrammingError) as exc:
             # 约束/SQL 结构错误重试不会自愈；只记录错误类别和 SQLSTATE，不泄露行内容。
@@ -290,8 +342,11 @@ class PostgresCanonicalReplayJobExecutor:
         """在首个 Content 写入前验证全部字节、Contract 与逐行来源。"""
 
         for item in selected:
-            artifact = self._load_artifact(item, fence=fence)
-            proof = self._check_parent_and_load_validation_proof(item, artifact, fence=fence)
+            try:
+                artifact = self._load_artifact(item, fence=fence)
+                proof = self._check_parent_and_load_validation_proof(item, artifact, fence=fence)
+            except RevokedCanonicalReplaySource:
+                continue
             if proof is not None:
                 reader.verify_bytes_for_preflight(artifact)
                 self._validate_source_rows(item, (), fence=fence, source_expectations=proof)
@@ -562,6 +617,7 @@ class PostgresCanonicalReplayJobExecutor:
         contents: tuple[CanonicalContentV1, ...],
         *,
         fence: JobExecutionFence,
+        batch_metrics: dict[str, int],
     ) -> CanonicalReplayRunRecord:
         batch_started = perf_counter()
         resolution_started = perf_counter()
@@ -968,6 +1024,16 @@ class PostgresCanonicalReplayJobExecutor:
             transaction_ms=int((perf_counter() - transaction_started) * 1000),
             duration_ms=int((perf_counter() - batch_started) * 1000),
         )
+        batch_metrics["batch_count"] += 1
+        batch_metrics["batch_elapsed_ms"] += int((perf_counter() - batch_started) * 1000)
+        batch_metrics["resolution_ms"] += resolution_ms
+        batch_metrics["content_batch_ms"] += content_batch_ms
+        batch_metrics["evidence_batch_ms"] += evidence_batch_ms
+        batch_metrics["fallback_ms"] += fallback_ms
+        batch_metrics["ledger_checkpoint_ms"] += ledger_checkpoint_ms
+        batch_metrics["transaction_ms"] += int((perf_counter() - transaction_started) * 1000)
+        batch_metrics["fast_created_count"] += fast_created_count
+        batch_metrics["fallback_count"] += fallback_count
         return advanced
 
     @staticmethod
@@ -1010,21 +1076,31 @@ class PostgresCanonicalReplayJobExecutor:
             select(
                 historical_import_campaign_items_table.c.parent_item_id,
                 jobs_table.c.payload,
+                historical_import_campaigns_table.c.status,
             )
             .select_from(
                 canonical_artifact_links_table.join(
                     historical_import_campaign_items_table,
                     canonical_artifact_links_table.c.historical_import_campaign_item_id
                     == historical_import_campaign_items_table.c.id,
-                ).join(
+                )
+                .join(
+                    historical_import_campaigns_table,
+                    historical_import_campaigns_table.c.id
+                    == historical_import_campaign_items_table.c.campaign_id,
+                )
+                .join(
                     jobs_table,
                     jobs_table.c.id == historical_import_campaign_items_table.c.job_id,
                 )
             )
             .where(canonical_artifact_links_table.c.artifact_id == artifact.id)
+            .with_for_update(read=True, of=historical_import_campaigns_table)
         ).one_or_none()
         if chunk is None or chunk.parent_item_id is None:
             raise ValueError("Data Import Canonical 缺少 Chunk Job")
+        if chunk.status in ("revoking", "revoked"):
+            raise RevokedCanonicalReplaySource("Data Import 来源正在撤销或已撤销")
         payload = cast(dict[str, object], chunk.payload)
         try:
             batch_id = UUID(str(payload["batch_id"]))

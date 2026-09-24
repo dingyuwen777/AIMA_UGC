@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from aima_ugc.platform.capacity import ResourceSnapshot, select_job_window, worker_process_limit
 
 _ROOT = Path(__file__).resolve().parents[2]
 _START = runpy.run_path(str(_ROOT / "scripts/deploy/start_compose.py"))
@@ -31,6 +32,24 @@ def test_memory_plan_keeps_headroom_and_refuses_too_small_engine() -> None:
     assert limits["postgres"] > limits["api"]
     cpu = compute_cpu_limits(12)
     assert sum(cpu[name] for name in steady) + cpu["migrate"] <= 12 * 0.80
+
+    server_memory = compute_memory_limits(64 * 1024**3)["worker"]
+    server_cpu = compute_cpu_limits(16)["worker"]
+    server_worker = ResourceSnapshot(
+        server_cpu,
+        server_memory * 1024**2,
+        (server_memory - 512) * 1024**2,
+        "cgroup_v2",
+    )
+    assert worker_process_limit(server_worker) == select_job_window(server_worker) == 3
+    future_memory = compute_memory_limits(128 * 1024**3)["worker"]
+    future_worker = ResourceSnapshot(
+        compute_cpu_limits(32)["worker"],
+        future_memory * 1024**2,
+        (future_memory - 1024) * 1024**2,
+        "cgroup_v2",
+    )
+    assert worker_process_limit(future_worker) == select_job_window(future_worker) == 6
 
 
 def test_start_and_stop_use_external_env_without_copying_it(tmp_path: Path, monkeypatch) -> None:
@@ -56,6 +75,8 @@ def test_start_and_stop_use_external_env_without_copying_it(tmp_path: Path, monk
     assert override.is_file()
     assert "must-not-appear" not in override.read_text(encoding="utf-8")
     assert "cpus:" in override.read_text(encoding="utf-8")
+    assert 'AIMA_AUTO_WORKER_CPU_CORES: "' in override.read_text(encoding="utf-8")
+    assert 'AIMA_AUTO_WORKER_MEMORY_MIB: "' in override.read_text(encoding="utf-8")
     assert ["docker", "compose", "--env-file", str(env), "-f", str(compose)] == calls[1][:6]
     if os.name == "nt":
         assert ["-f", str(windows_overlay)] == calls[1][6:8]

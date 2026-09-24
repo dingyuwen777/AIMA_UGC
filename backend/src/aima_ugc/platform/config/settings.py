@@ -39,7 +39,7 @@ class PlatformSettings(BaseModel):
     historical_chunk_rows: int = Field(default=2000, ge=100, le=2000)
     historical_max_scan_files: int = Field(default=10_000, ge=1, le=100_000)
     historical_max_directory_depth: int = Field(default=8, ge=1, le=32)
-    historical_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)
+    historical_max_in_flight_jobs: int | None = Field(default=None, ge=1)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_max_bytes: int = Field(default=20_971_520, gt=0)
     log_backup_count: int = Field(default=10, ge=0)
@@ -55,7 +55,7 @@ class PlatformSettings(BaseModel):
     llm_timeout_seconds: float = Field(default=60.0, gt=0, le=1800)
     llm_max_connections: int = Field(default=10, ge=1, le=100)
     llm_validation_retries: int = Field(default=1, ge=0, le=3)
-    analysis_run_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)
+    analysis_run_max_in_flight_jobs: int | None = Field(default=None, ge=1)
     # ── 飞书身份接入（单 ③）───────────────────────────────────────────────
     # ⚠️ 这一组**全部可选**：一个都不配时 `feishu_app_id is None`，进程沿用开发身份，
     # 行为与接入前逐字一致（既有测试与本地开发不受影响）。

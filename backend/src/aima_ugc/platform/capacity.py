@@ -5,7 +5,9 @@ from __future__ import annotations
 import ctypes
 import os
 from bisect import bisect_right
+from collections.abc import Mapping
 from dataclasses import dataclass
+from math import floor, isfinite
 from pathlib import Path
 from statistics import median
 
@@ -74,25 +76,58 @@ def detect_resources(
 
 
 def select_chunk_rows(resources: ResourceSnapshot) -> int:
-    """只在资源明显不足时缩小冻结事务；充足资源沿用经测量的 2000 行。"""
+    """按可用内存选择冻结粒度；API 的 CPU 配额不代表实际执行的 Worker。"""
 
     available = resources.memory_available_bytes
     if available is not None and available < 256 * _MIB:
         return 500
-    if resources.cpu_cores < 1 or (available is not None and available < 768 * _MIB):
+    if available is not None and available < 768 * _MIB:
         return 1000
     return 2000
 
 
-def select_job_window(resources: ResourceSnapshot, *, ceiling: int) -> int:
-    """资源紧张时收窄未完成 Job 积压；不把窗口误当物理 Worker 并发。"""
+def worker_process_limit(resources: ResourceSnapshot) -> int:
+    """按 Worker 容器有效配额给进程池设资源上界。"""
 
-    if ceiling < 1:
+    memory = resources.memory_limit_bytes
+    if memory is None:
+        return 1
+    return max(1, min(floor(resources.cpu_cores / 1.5), memory // (1024 * _MIB)))
+
+
+def planned_worker_resources(
+    api_resources: ResourceSnapshot,
+    *,
+    environment: Mapping[str, str] | None = None,
+) -> ResourceSnapshot:
+    """从启动脚本生成的 Compose 环境读取 Worker 预算；缺失时保守使用本进程配额。"""
+
+    values = os.environ if environment is None else environment
+    try:
+        cpu = float(values["AIMA_AUTO_WORKER_CPU_CORES"])
+        memory_mib = int(values["AIMA_AUTO_WORKER_MEMORY_MIB"])
+    except KeyError, ValueError:
+        return api_resources
+    if not isfinite(cpu) or cpu <= 0 or memory_mib <= 0:
+        return api_resources
+    return ResourceSnapshot(
+        cpu_cores=cpu,
+        memory_limit_bytes=memory_mib * _MIB,
+        memory_available_bytes=api_resources.memory_available_bytes,
+        source="compose_worker_budget",
+    )
+
+
+def select_job_window(resources: ResourceSnapshot, *, ceiling: int | None = None) -> int:
+    """内存紧张时收窄 Job 积压；API 的 CPU 配额不限制 Worker 并发。"""
+
+    if ceiling is not None and ceiling < 1:
         raise ValueError("Job 窗口上限必须为正整数")
     available = resources.memory_available_bytes
-    if resources.cpu_cores < 1 or (available is not None and available < 768 * _MIB):
+    if available is not None and available < 768 * _MIB:
         return 1
-    return ceiling
+    selected = worker_process_limit(resources)
+    return min(selected, ceiling) if ceiling is not None else selected
 
 
 class AdaptiveBatchController:
