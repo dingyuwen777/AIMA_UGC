@@ -49,7 +49,7 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
     expect(discovery).not.toContain('vehicle_model_ids: mode.value === \'discovery\'')
   })
 
-  it('声音广场发送品牌与竞争范围筛选并展示品牌证据', async () => {
+  it('声音广场发送品牌筛选并展示品牌证据', async () => {
     const [store, filters, detail] = await Promise.all([
       readSource('features/voice-plaza/store.ts'),
       readSource('features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue'),
@@ -57,9 +57,7 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
     ])
 
     expect(store).toContain('brand_ids: appliedFilters.brandIds.length ? [...appliedFilters.brandIds] : undefined')
-    expect(store).toContain('competition_scopes: appliedFilters.competitionScopes.length ? [...appliedFilters.competitionScopes] : undefined')
     expect(filters).toContain('品牌')
-    expect(filters).toContain('竞争范围')
     expect(detail).toContain('品牌识别证据')
     expect(detail).toContain('车型识别证据')
   })

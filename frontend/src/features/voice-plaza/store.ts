@@ -12,10 +12,8 @@ import type {
   ContentDetailResponse,
   ContentFilterOptionsResponse,
   ContentFilterSnapshot,
-  ContentFilterSnapshotCompetitionScopesItem,
   ContentListItemResponse,
   ContentListResponse,
-  ContentRelevance,
   ContentRelevanceReviewRequestDecision,
   ContentRelevanceReviewResponse,
   ContentTargetSelection,
@@ -27,7 +25,6 @@ import type {
 } from '../../generated/api/client'
 import {
   ContentAnalysisStatus as ContentAnalysisStatusValues,
-  ContentRelevance as ContentRelevanceValues,
   PlatformName as PlatformNameValues,
 } from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
@@ -65,12 +62,10 @@ export interface CommentReplyState {
 
 export interface VoicePlazaFilters {
   search: string
-  platform: '' | PlatformName
-  contentType: string
+  platforms: PlatformName[]
   analysisStatus: '' | ContentAnalysisStatus
-  relevance: '' | ContentRelevance
-  voiceType: string
-  sentiment: string
+  voiceTypes: string[]
+  sentiments: string[]
   primaryLabel: string
   secondaryLabel: string
   publishedFrom: string
@@ -78,17 +73,14 @@ export interface VoicePlazaFilters {
   sourceIdentifier: string
   brandIds: string[]
   vehicleModelIds: string[]
-  competitionScopes: ContentFilterSnapshotCompetitionScopesItem[]
 }
 
 const EMPTY_FILTERS: VoicePlazaFilters = {
   search: '',
-  platform: '',
-  contentType: '',
+  platforms: [],
   analysisStatus: '',
-  relevance: '',
-  voiceType: '',
-  sentiment: '',
+  voiceTypes: [],
+  sentiments: [],
   primaryLabel: '',
   secondaryLabel: '',
   publishedFrom: '',
@@ -96,7 +88,6 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   sourceIdentifier: '',
   brandIds: [],
   vehicleModelIds: [],
-  competitionScopes: [],
 }
 
 const FILTER_SESSION_KEY = 'aima.voice-plaza.applied-search.v1'
@@ -112,9 +103,11 @@ interface PersistedVoicePlazaSearch {
 function copyFilters(source: VoicePlazaFilters): VoicePlazaFilters {
   return {
     ...source,
+    platforms: [...source.platforms],
+    voiceTypes: [...source.voiceTypes],
+    sentiments: [...source.sentiments],
     brandIds: [...source.brandIds],
     vehicleModelIds: [...source.vehicleModelIds],
-    competitionScopes: [...source.competitionScopes],
   }
 }
 
@@ -139,29 +132,31 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     const values = raw as Record<string, unknown>
     const stringValue = (key: keyof VoicePlazaFilters): string =>
       typeof values[key] === 'string' ? values[key] : ''
-    const platform = Object.values(PlatformNameValues).includes(values.platform as PlatformName)
-      ? values.platform as PlatformName
-      : ''
+    const platforms = isStringArray(values.platforms)
+      ? values.platforms.filter((item) => Object.values(PlatformNameValues).includes(item as PlatformName)) as PlatformName[]
+      : typeof values.platform === 'string' && Object.values(PlatformNameValues).includes(values.platform as PlatformName)
+        ? [values.platform as PlatformName]
+        : []
+    const voiceTypes = isStringArray(values.voiceTypes)
+      ? values.voiceTypes
+      : typeof values.voiceType === 'string'
+        ? [values.voiceType]
+        : []
+    const sentiments = isStringArray(values.sentiments)
+      ? values.sentiments
+      : typeof values.sentiment === 'string'
+        ? [values.sentiment]
+        : []
     const analysisStatus = Object.values(ContentAnalysisStatusValues).includes(
       values.analysisStatus as ContentAnalysisStatus,
     ) ? values.analysisStatus as ContentAnalysisStatus : ''
-    const relevance = Object.values(ContentRelevanceValues).includes(
-      values.relevance as ContentRelevance,
-    ) ? values.relevance as ContentRelevance : ''
-    const competitionScopes = isStringArray(values.competitionScopes)
-      ? values.competitionScopes.filter((item): item is ContentFilterSnapshotCompetitionScopesItem =>
-        ['owned_only', 'competitor_only', 'mixed', 'other_only', 'none_detected'].includes(item),
-      )
-      : []
     return {
       filters: {
         search: stringValue('search'),
-        platform,
-        contentType: stringValue('contentType'),
+        platforms,
         analysisStatus,
-        relevance,
-        voiceType: stringValue('voiceType'),
-        sentiment: stringValue('sentiment'),
+        voiceTypes,
+        sentiments,
         primaryLabel: stringValue('primaryLabel'),
         secondaryLabel: stringValue('secondaryLabel'),
         publishedFrom: stringValue('publishedFrom'),
@@ -169,7 +164,6 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
         sourceIdentifier: stringValue('sourceIdentifier'),
         brandIds: isStringArray(values.brandIds) ? values.brandIds : [],
         vehicleModelIds: isStringArray(values.vehicleModelIds) ? values.vehicleModelIds : [],
-        competitionScopes,
       },
       sortBy: record.sortBy === 'follower_count' ? 'follower_count' : 'published_at',
       sortDirection: record.sortDirection === 'asc' ? 'asc' : 'desc',
@@ -299,12 +293,10 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   function filterSnapshot(): ContentFilterSnapshot {
     return {
       search: appliedFilters.search.trim() || undefined,
-      platforms: appliedFilters.platform ? [appliedFilters.platform] : undefined,
-      content_types: appliedFilters.contentType ? [appliedFilters.contentType] : undefined,
+      platforms: appliedFilters.platforms.length ? [...appliedFilters.platforms] : undefined,
       analysis_status: appliedFilters.analysisStatus || undefined,
-      relevance: appliedFilters.relevance || undefined,
-      voice_type: appliedFilters.voiceType.trim() || undefined,
-      sentiment: appliedFilters.sentiment.trim() || undefined,
+      voice_types: appliedFilters.voiceTypes.length ? [...appliedFilters.voiceTypes] : undefined,
+      sentiments: appliedFilters.sentiments.length ? [...appliedFilters.sentiments] : undefined,
       primary_label: appliedFilters.primaryLabel.trim() || undefined,
       secondary_label: appliedFilters.secondaryLabel.trim() || undefined,
       published_from: beijingDayBoundary(appliedFilters.publishedFrom, 'start'),
@@ -312,7 +304,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       source_identifier: appliedFilters.sourceIdentifier.trim() || undefined,
       brand_ids: appliedFilters.brandIds.length ? [...appliedFilters.brandIds] : undefined,
       vehicle_model_ids: appliedFilters.vehicleModelIds.length ? [...appliedFilters.vehicleModelIds] : undefined,
-      competition_scopes: appliedFilters.competitionScopes.length ? [...appliedFilters.competitionScopes] : undefined,
     }
   }
 

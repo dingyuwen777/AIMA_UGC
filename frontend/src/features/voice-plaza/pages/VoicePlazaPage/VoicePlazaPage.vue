@@ -48,15 +48,6 @@ const selectedReviewIds = computed<Record<RelevanceReviewDecision, string[]>>(()
   }
   return grouped
 })
-const reviewNote = computed(() => {
-  if (store.appliedFilters.relevance === 'irrelevant') {
-    return '当前显示业务有效不相关内容：AI 原判不相关的内容可人工标记为相关；被人工排除的内容可撤销人工判断。AI 原始结果始终保留。'
-  }
-  if (store.appliedFilters.relevance === 'relevant') {
-    return '当前显示业务有效相关内容：AI 原判相关的内容可人工标记为不相关；被人工纳入的内容可撤销人工判断。AI 原始结果始终保留。'
-  }
-  return null
-})
 const runStatusLabels: Record<AnalysisContentRunResponse['status'], string> = {
   queued: '排队中',
   running: '处理中',
@@ -228,12 +219,10 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 
       <VoicePlazaFilters
         v-model:search="store.filters.search"
-        v-model:platform="store.filters.platform"
-        v-model:content-type="store.filters.contentType"
+        v-model:platforms="store.filters.platforms"
         v-model:analysis-status="store.filters.analysisStatus"
-        v-model:relevance="store.filters.relevance"
-        v-model:voice-type="store.filters.voiceType"
-        v-model:sentiment="store.filters.sentiment"
+        v-model:voice-types="store.filters.voiceTypes"
+        v-model:sentiments="store.filters.sentiments"
         v-model:primary-label="store.filters.primaryLabel"
         v-model:secondary-label="store.filters.secondaryLabel"
         v-model:published-from="store.filters.publishedFrom"
@@ -241,7 +230,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:source-identifier="store.filters.sourceIdentifier"
         v-model:brand-ids="store.filters.brandIds"
         v-model:vehicle-model-ids="store.filters.vehicleModelIds"
-        v-model:competition-scopes="store.filters.competitionScopes"
         :filter-options="store.filterOptions"
         :filter-options-loading="store.filterOptionsLoading"
         @search="search"
@@ -273,13 +261,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       >
         <strong>当前 AI 分析规则暂不可用</strong>
         <span>分析结果人工纠正已暂时停用；内容浏览与筛选仍可使用。</span>
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="reviewNote"
-        class="review-note"
-        tone="info"
-      >
-        {{ reviewNote }}
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="store.listError || store.error"
@@ -345,29 +326,9 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </section>
 
       <div
-        v-if="store.contentCount || store.countLoading || store.countError"
         class="list-heading"
       >
         <div class="selection-actions">
-          <div class="count-summary">
-            <span v-if="store.contentCount?.count != null">{{ store.contentCount.count_kind === 'estimated' ? '约' : '共' }} <strong>{{ store.contentCount.count.toLocaleString('zh-CN') }} 条</strong></span>
-            <span v-else-if="store.countLoading">总数统计中…</span>
-            <span
-              v-else-if="store.countError"
-              class="count-error"
-            >
-              总数统计失败
-              <button
-                class="count-retry"
-                type="button"
-                @click="store.refreshCount('estimated')"
-              >
-                重试总数
-              </button>
-            </span>
-            <span v-else-if="store.contentCount?.count_kind === 'none'">总数数据准备中…</span>
-            <span v-else>总数暂不可用</span>
-          </div>
           <button
             v-if="selectedReviewIds.relevant.length"
             class="review-selected review-selected--relevant"
@@ -396,12 +357,12 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             批量撤销人工判断（{{ selectedReviewIds.inherit_ai.length }}）
           </button>
           <button
-            v-if="store.selectedIds.length"
             class="selected-count"
+            :class="{ 'selected-count--empty': store.selectedIds.length === 0 }"
             type="button"
             @click="store.clearSelection()"
           >
-            已选 {{ store.selectedIds.length }} 条 · 清除
+            {{ store.selectedIds.length ? `已选 ${store.selectedIds.length} 条 · 清除` : '已选 0 条' }}
           </button>
         </div>
       </div>
@@ -514,12 +475,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
   font-size: 13px;
   font-weight: 500;
 }
-.count-summary { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
-.count-summary strong { color: var(--aima-primary); }
-.count-summary small { color: var(--aima-text-disabled); font-size: 10px; }
-.count-summary .count-error,
-.pagination-count .count-error { color: var(--aima-danger); }
-.count-retry { color: var(--aima-danger); background: var(--aima-color-error-bg); }
 .capability-warning strong,
 .capability-warning span,
 .taxonomy-warning strong,
@@ -553,16 +508,16 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .run-counts { color: var(--aima-text-muted); font-size: 10px; white-space: nowrap; }
 .list-heading { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 16px; }
 .selection-actions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; }
-.list-heading strong { color: var(--aima-text); font-size: 14px; }
-.list-heading span { color: var(--aima-text-muted); font-size: 11px; }
 .selection-actions button { min-height: 20px; padding: 2px 8px; border: 0; border-radius: 4px; cursor: pointer; font-size: 10px; }
 .review-selected--relevant { color: #12804b; background: #e8fff3; }
 .review-selected--irrelevant { color: #f04438; background: #fff1f0; }
 .review-selected--undo { color: var(--aima-text-muted); background: #f2f4f7; }
 .selected-count { color: var(--aima-primary); background: var(--aima-primary-soft); }
+.selected-count--empty { color: var(--aima-text-disabled); background: var(--aima-color-bg-hover); }
 .selection-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .pagination { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 20px; color: var(--aima-text-muted); font-size: 11px; }
 .pagination-count { display: flex; align-items: baseline; gap: 8px; }
+.pagination-count .count-error { color: var(--aima-danger); }
 .pagination-count small { color: var(--aima-text-disabled); font-size: 10px; }
 .pagination :deep(.aima-button) { height: 34px; }
 .notice { position: fixed; z-index: 200; top: 76px; left: 50%; min-width: 280px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }

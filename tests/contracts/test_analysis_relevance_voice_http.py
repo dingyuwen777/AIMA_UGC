@@ -60,8 +60,8 @@ def test_content_analysis_response_exposes_relevance_and_voice_type_only() -> No
 def test_content_filter_snapshot_can_explicitly_query_relevance_and_voice_type() -> None:
     filters = ContentFilterSnapshot(
         relevance="irrelevant",
-        voice_type="媒体机构发声",
+        voice_types=("媒体机构发声",),
     )
 
     assert filters.relevance == "irrelevant"
-    assert filters.voice_type == "媒体机构发声"
+    assert filters.voice_types == ("媒体机构发声",)

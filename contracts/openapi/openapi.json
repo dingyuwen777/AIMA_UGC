@@ -5150,18 +5150,14 @@
             ],
             "title": "Secondary Label"
           },
-          "sentiment": {
-            "anyOf": [
-              {
-                "maxLength": 128,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sentiment"
+          "sentiments": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Sentiments",
+            "type": "array"
           },
           "source_identifier": {
             "anyOf": [
@@ -5185,15 +5181,14 @@
             "title": "Vehicle Model Ids",
             "type": "array"
           },
-          "voice_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ContentVoiceType"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "voice_types": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentVoiceType"
+            },
+            "maxItems": 20,
+            "title": "Voice Types",
+            "type": "array"
           }
         },
         "title": "ContentFilterSnapshot",
@@ -13239,36 +13234,30 @@
           },
           {
             "in": "query",
-            "name": "voice_type",
+            "name": "voice_types",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/ContentVoiceType"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Voice Type"
+              "default": [],
+              "items": {
+                "$ref": "#/components/schemas/ContentVoiceType"
+              },
+              "maxItems": 20,
+              "title": "Voice Types",
+              "type": "array"
             }
           },
           {
             "in": "query",
-            "name": "sentiment",
+            "name": "sentiments",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Sentiment"
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Sentiments",
+              "type": "array"
             }
           },
           {

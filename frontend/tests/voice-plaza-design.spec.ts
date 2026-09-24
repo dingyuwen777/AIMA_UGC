@@ -105,7 +105,7 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('>⇩ 导出记录<')
   })
 
-  it('Figma 三行筛选全部直达，包含品牌、车型和竞争范围', async () => {
+  it('Figma 三行筛选全部直达，包含品牌和车型', async () => {
     const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
       useVoicePlazaStore(pinia).filterOptions = filterOptions
     })
@@ -113,11 +113,9 @@ describe('声音广场正式 Figma 基线', () => {
     for (const label of [
       '搜索内容',
       '平台',
-      '相关性',
       '发声类型',
       '品牌',
       '车型',
-      '竞争范围',
       '情感',
       '状态',
       '内容类型',
@@ -126,10 +124,10 @@ describe('声音广场正式 Figma 基线', () => {
       '发布时间范围',
     ]) expect(html).toContain(label)
 
-    for (const label of ['相关性', '情感', '状态']) {
+    for (const label of ['情感', '状态']) {
       expect(html).toContain(`aria-label="${label}"`)
     }
-    for (const obsoleteLabel of ['AI 相关性', 'AI 情感', 'AI 状态']) {
+    for (const obsoleteLabel of ['AI 情感', 'AI 状态']) {
       expect(html).not.toContain(obsoleteLabel)
     }
     expect(html).toContain('AI 分析')

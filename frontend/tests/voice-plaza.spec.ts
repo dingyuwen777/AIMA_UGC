@@ -214,7 +214,7 @@ describe('voice plaza', () => {
       clear: () => values.clear(),
     })
     const first = useVoicePlazaStore()
-    first.filters.platform = 'douyin'
+    first.filters.platforms = ['douyin']
     first.applyFilters()
     first.sortBy = 'follower_count'
     first.sortDirection = 'asc'
@@ -223,8 +223,8 @@ describe('voice plaza', () => {
     setActivePinia(createPinia())
     const restored = useVoicePlazaStore()
 
-    expect(restored.filters.platform).toBe('douyin')
-    expect(restored.appliedFilters.platform).toBe('douyin')
+    expect(restored.filters.platforms).toEqual(['douyin'])
+    expect(restored.appliedFilters.platforms).toEqual(['douyin'])
     expect(restored.sortBy).toBe('follower_count')
     expect(restored.sortDirection).toBe('asc')
   })
@@ -403,10 +403,10 @@ describe('voice plaza', () => {
   it('queries contents only through the generated Orval client', async () => {
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
 
-    await expect(fetchContents({ sentiment: '负面', limit: 20 })).resolves.toMatchObject({
+    await expect(fetchContents({ sentiments: ['负面'], limit: 20 })).resolves.toMatchObject({
       items: [item],
     })
-    expect(generated.listContents).toHaveBeenCalledWith({ sentiment: '负面', limit: 20 })
+    expect(generated.listContents).toHaveBeenCalledWith({ sentiments: ['负面'], limit: 20 })
   })
 
   it('requests the total for the applied filters independently from loaded pages', async () => {
@@ -421,7 +421,7 @@ describe('voice plaza', () => {
     await store.refreshCount('estimated')
     expect(store.contentCount).toMatchObject({ count: 1823565, count_kind: 'exact' })
 
-    store.filters.platform = 'douyin'
+    store.filters.platforms = ['douyin']
     store.applyFilters()
     expect(store.contentCount).toBeNull()
     expect(store.countLoading).toBe(true)
@@ -451,7 +451,7 @@ describe('voice plaza', () => {
       truncated: false,
     })
     const store = useVoicePlazaStore()
-    store.filters.platform = 'douyin'
+    store.filters.platforms = ['douyin']
     store.applyFilters()
 
     const loading = store.refreshResults()
@@ -487,7 +487,7 @@ describe('voice plaza', () => {
 
     const first = store.refreshCount('estimated')
     await Promise.resolve()
-    store.filters.platform = 'douyin'
+    store.filters.platforms = ['douyin']
     store.applyFilters()
     await store.refreshCount('estimated')
 
@@ -526,12 +526,10 @@ describe('voice plaza', () => {
       createSSRApp({
         render: () => h(VoicePlazaFilters, {
           search: '',
-          platform: '',
-          contentType: '',
+          platforms: [],
           analysisStatus: '',
-          relevance: '',
-          voiceType: '',
-          sentiment: '',
+          voiceTypes: [],
+          sentiments: [],
           primaryLabel: '',
           secondaryLabel: '',
           publishedFrom: '',
@@ -543,17 +541,10 @@ describe('voice plaza', () => {
       }),
     )
 
-    for (const [value, label] of [
-      ['xiaohongshu', '小红书'],
-      ['douyin', '抖音'],
-      ['weibo', '微博'],
-      ['bilibili', 'B站'],
-      ['kuaishou', '快手'],
-    ]) {
-      expect(html).toContain(`value="${value}"`)
+    for (const label of ['小红书', '抖音', '微博', 'B站', '快手']) {
       expect(html).toContain(label)
     }
-    expect(html).not.toContain('value="file"')
+    expect(html).not.toContain('file')
   })
 
   it('renders active and historical values from the backend filter options', async () => {
@@ -571,12 +562,10 @@ describe('voice plaza', () => {
       createSSRApp({
         render: () => h(VoicePlazaFilters, {
           search: '',
-          platform: '',
-          contentType: '',
+          platforms: [],
           analysisStatus: '',
-          relevance: '',
-          voiceType: '',
-          sentiment: '',
+          voiceTypes: [],
+          sentiments: [],
           primaryLabel: '社区反馈',
           secondaryLabel: '',
           publishedFrom: '',
@@ -601,12 +590,10 @@ describe('voice plaza', () => {
       createSSRApp({
         render: () => h(VoicePlazaFilters, {
           search: '',
-          platform: '',
-          contentType: '',
+          platforms: [],
           analysisStatus: '',
-          relevance: '',
-          voiceType: '',
-          sentiment: '',
+          voiceTypes: [],
+          sentiments: [],
           primaryLabel: '',
           secondaryLabel: '',
           publishedFrom: '',
@@ -618,7 +605,7 @@ describe('voice plaza', () => {
       }),
     )
 
-    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(5)
+    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(2)
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
@@ -641,30 +628,28 @@ describe('voice plaza', () => {
     expect(labels).toContain('真实用户发声')
   })
 
-  it('loads filter options and sends brand, vehicle, competition, and AI query filters', async () => {
+  it('loads filter options and sends brand, vehicle, and AI query filters', async () => {
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
     const store = useVoicePlazaStore()
 
     await store.refreshFilterOptions()
-    store.filters.voiceType = '真实用户发声'
-    store.filters.sentiment = '负面'
+    store.filters.voiceTypes = ['真实用户发声']
+    store.filters.sentiments = ['负面']
     store.filters.primaryLabel = '产品体验'
     store.filters.secondaryLabel = '续航表现'
     store.filters.brandIds = ['brand-aima']
     store.filters.vehicleModelIds = ['vehicle-q7']
-    store.filters.competitionScopes = ['owned_only', 'mixed']
     store.applyFilters()
     await store.refresh()
 
     expect(store.filterOptions?.voice_types[0]?.value).toBe('真实用户发声')
     expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
-      voice_type: '真实用户发声',
-      sentiment: '负面',
+      voice_types: ['真实用户发声'],
+      sentiments: ['负面'],
       primary_label: '产品体验',
       secondary_label: '续航表现',
       brand_ids: ['brand-aima'],
       vehicle_model_ids: ['vehicle-q7'],
-      competition_scopes: ['owned_only', 'mixed'],
     }))
   })
 
@@ -699,11 +684,11 @@ describe('voice plaza', () => {
       ],
     })
     const store = useVoicePlazaStore()
-    store.filters.sentiment = '旧情感'
+    store.filters.sentiments = ['旧情感']
 
     await Promise.all([store.refreshTaxonomy(), store.refreshFilterOptions()])
 
-    expect(store.filters.sentiment).toBe('旧情感')
+    expect(store.filters.sentiments).toEqual(['旧情感'])
   })
 
   it('ignores an older filter-options response after a newer refresh finishes', async () => {
