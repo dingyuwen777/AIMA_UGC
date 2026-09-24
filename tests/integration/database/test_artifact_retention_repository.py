@@ -1,6 +1,6 @@
 import logging
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -64,7 +64,7 @@ def _create_unified_import_source(
     created_at: datetime,
     finished_at: datetime | None,
     expires_at: datetime | None = None,
-) -> tuple[ArtifactRecord, object]:
+) -> tuple[ArtifactRecord, UUID]:
     """建立统一导入 Source Artifact 与 Campaign 关系，供生命周期回归复用。"""
 
     source = _store_record(
