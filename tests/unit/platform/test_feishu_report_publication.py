@@ -375,8 +375,7 @@ def test_report_publisher_retry_reuses_resources_after_partial_success(
     word_path.write_bytes(b"word")
     markdown_path = _report_markdown(tmp_path)
     markdown_path.write_text(
-        markdown_path.read_text(encoding="utf-8")
-        + "\n\n## 6. 代表性评论与关联页面\n\n暂无数据\n",
+        markdown_path.read_text(encoding="utf-8") + "\n\n## 6. 代表性评论与关联页面\n\n暂无数据\n",
         encoding="utf-8",
     )
     checkpoint: dict[str, object] = {}

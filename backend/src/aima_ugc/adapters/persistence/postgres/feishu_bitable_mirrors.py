@@ -168,25 +168,28 @@ class PostgresFeishuBitableMirrorRepository:
         next_sync_at: datetime,
         claim_token: str,
     ) -> None:
-        result = cast(CursorResult[Any], self._session.execute(
-            update(feishu_bitable_mirrors_table)
-            .where(
-                feishu_bitable_mirrors_table.c.id == mirror_id,
-                feishu_bitable_mirrors_table.c.claim_token == claim_token,
-                feishu_bitable_mirrors_table.c.claim_expires_at > func.clock_timestamp(),
-            )
-            .values(
-                known_key_hashes=list(known_key_hashes),
-                last_synced_at=synced_at,
-                next_sync_at=next_sync_at,
-                consecutive_failures=0,
-                last_error_code=None,
-                claim_owner=None,
-                claim_token=None,
-                claim_expires_at=None,
-                updated_at=func.clock_timestamp(),
-            )
-        ))
+        result = cast(
+            CursorResult[Any],
+            self._session.execute(
+                update(feishu_bitable_mirrors_table)
+                .where(
+                    feishu_bitable_mirrors_table.c.id == mirror_id,
+                    feishu_bitable_mirrors_table.c.claim_token == claim_token,
+                    feishu_bitable_mirrors_table.c.claim_expires_at > func.clock_timestamp(),
+                )
+                .values(
+                    known_key_hashes=list(known_key_hashes),
+                    last_synced_at=synced_at,
+                    next_sync_at=next_sync_at,
+                    consecutive_failures=0,
+                    last_error_code=None,
+                    claim_owner=None,
+                    claim_token=None,
+                    claim_expires_at=None,
+                    updated_at=func.clock_timestamp(),
+                )
+            ),
+        )
         if result.rowcount != 1:
             raise LeaseLostError("飞书镜像 claim 已失效")
 
@@ -198,23 +201,26 @@ class PostgresFeishuBitableMirrorRepository:
         next_sync_at: datetime,
         claim_token: str,
     ) -> None:
-        result = cast(CursorResult[Any], self._session.execute(
-            update(feishu_bitable_mirrors_table)
-            .where(
-                feishu_bitable_mirrors_table.c.id == mirror_id,
-                feishu_bitable_mirrors_table.c.claim_token == claim_token,
-                feishu_bitable_mirrors_table.c.claim_expires_at > func.clock_timestamp(),
-            )
-            .values(
-                next_sync_at=next_sync_at,
-                consecutive_failures=(feishu_bitable_mirrors_table.c.consecutive_failures + 1),
-                last_error_code=error_code[:128],
-                claim_owner=None,
-                claim_token=None,
-                claim_expires_at=None,
-                updated_at=func.clock_timestamp(),
-            )
-        ))
+        result = cast(
+            CursorResult[Any],
+            self._session.execute(
+                update(feishu_bitable_mirrors_table)
+                .where(
+                    feishu_bitable_mirrors_table.c.id == mirror_id,
+                    feishu_bitable_mirrors_table.c.claim_token == claim_token,
+                    feishu_bitable_mirrors_table.c.claim_expires_at > func.clock_timestamp(),
+                )
+                .values(
+                    next_sync_at=next_sync_at,
+                    consecutive_failures=(feishu_bitable_mirrors_table.c.consecutive_failures + 1),
+                    last_error_code=error_code[:128],
+                    claim_owner=None,
+                    claim_token=None,
+                    claim_expires_at=None,
+                    updated_at=func.clock_timestamp(),
+                )
+            ),
+        )
         if result.rowcount != 1:
             raise LeaseLostError("飞书镜像 claim 已失效")
 
