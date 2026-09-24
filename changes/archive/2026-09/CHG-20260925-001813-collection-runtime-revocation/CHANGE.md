@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260925-001813-collection-runtime-revocation
 title: 修复撤销后采集运行故障并按资源提升历史数据吞吐
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: fix/601-collection-runtime-revocation
 created: 2026-09-25T00:18:13+08:00
