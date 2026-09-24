@@ -77,7 +77,8 @@ def _create_unified_import_source(
     item_id = uuid4()
     item_status = (
         "queued"
-        if campaign_status in {"uploading", "discovering", "snapshotting", "ready", "queued", "running", "cancelling"}
+        if campaign_status
+        in {"uploading", "discovering", "snapshotting", "ready", "queued", "running", "cancelling"}
         else "failed"
     )
     session.execute(
