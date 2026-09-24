@@ -367,6 +367,110 @@ def test_report_publisher_reuses_durable_external_resource_checkpoint(
     assert result.representative_bitable_token == "bascnExisting_tblExisting"
 
 
+def test_report_publisher_retry_reuses_resources_after_partial_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    word_path = tmp_path / "report.docx"
+    word_path.write_bytes(b"word")
+    markdown_path = _report_markdown(tmp_path)
+    markdown_path.write_text(
+        markdown_path.read_text(encoding="utf-8")
+        + "\n\n## 6. 代表性评论与关联页面\n\n暂无数据\n",
+        encoding="utf-8",
+    )
+    checkpoint: dict[str, object] = {}
+
+    class _Checkpoint:
+        def get(self, key: str) -> object | None:
+            return checkpoint.get(key)
+
+        def set(self, key: str, value: object | None) -> None:
+            if value is None:
+                checkpoint.pop(key, None)
+            else:
+                checkpoint[key] = value
+
+    store = _Checkpoint()
+    publisher = FeishuReportPublisher(
+        FeishuReportPublisherConfig(
+            app_id="app-id",
+            app_secret=SecretStr("app-secret"),
+            folder_token="folder-token",
+        ),
+        client=httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(500))),
+    )
+    upload_calls: list[str] = []
+    document_calls: list[str] = []
+    delivery_calls = 0
+
+    def upload_file(**_: object) -> str:
+        upload_calls.append("word")
+        return "word-created-once"
+
+    def create_document(**_: object) -> _ImportResult:
+        document_calls.append("document")
+        return _ImportResult("doc-created-once", "https://feishu.cn/docx/doc-created-once", ())
+
+    def write_native(**_: object) -> _EmbeddedBitable:
+        store.set(
+            "embedded_bitable",
+            {
+                "token": "bascn-created-once_tbl-created-once",
+                "app_token": "bascn-created-once",
+                "table_id": "tbl-created-once",
+                "url": None,
+            },
+        )
+        return _EmbeddedBitable(
+            token="bascn-created-once_tbl-created-once",
+            app_token="bascn-created-once",
+            table_id="tbl-created-once",
+            url=None,
+        )
+
+    def append_links(**_: object) -> None:
+        nonlocal delivery_calls
+        delivery_calls += 1
+        if delivery_calls == 1:
+            raise FeishuApiError("temporary", retriable=True)
+
+    monkeypatch.setattr(publisher, "_upload_file", upload_file)
+    monkeypatch.setattr(publisher, "_create_document", create_document)
+    monkeypatch.setattr(publisher, "_write_native_document", write_native)
+    monkeypatch.setattr(publisher, "_append_delivery_links", append_links)
+
+    with pytest.raises(FeishuApiError, match="temporary"):
+        publisher.publish(
+            word_path=word_path,
+            markdown_path=markdown_path,
+            chart_specs=(_spec(),),
+            chart_workbook_path=None,
+            title="AIMA 舆情报告",
+            embed_representative_bitable=True,
+            idempotency_key="feishu-report:retry-test",
+            checkpoint=store,
+        )
+
+    result = publisher.publish(
+        word_path=word_path,
+        markdown_path=markdown_path,
+        chart_specs=(_spec(),),
+        chart_workbook_path=None,
+        title="AIMA 舆情报告",
+        embed_representative_bitable=True,
+        idempotency_key="feishu-report:retry-test",
+        checkpoint=store,
+    )
+
+    assert upload_calls == ["word"]
+    assert document_calls == ["document"]
+    assert delivery_calls == 2
+    assert result.native_document_token == "doc-created-once"
+    assert result.word_file_token == "word-created-once"
+    assert result.representative_bitable_token == "bascn-created-once_tbl-created-once"
+
+
 def test_report_publisher_rejects_bitable_response_without_token() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":

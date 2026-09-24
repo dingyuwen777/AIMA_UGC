@@ -7,7 +7,8 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
@@ -84,6 +85,7 @@ def prepare_representative_report(
     selector_pool_size: int = 50,
     screenshots_dir: Path | None = None,
     capture_screenshots: bool = True,
+    progress: Callable[[int], None] | None = None,
 ) -> RepresentativeReportPreparation:
     """一次读取 Excel，完成代表性筛选、建议生成和可选截图。"""
 
@@ -98,6 +100,8 @@ def prepare_representative_report(
         contents,
         real_user_voice_type=REAL_USER_VOICE_TYPE,
     )
+    if progress is not None:
+        progress(12)
 
     warnings: list[str] = []
     with LLMRequestAuditWriter(target / "representative_llm_requests.jsonl") as audit_writer:
@@ -113,12 +117,16 @@ def prepare_representative_report(
                 max_per_group=max_per_group,
                 selector_pool_size=selector_pool_size,
             ).run(candidate_pool.candidates)
+            if progress is not None:
+                progress(22)
             comment_map = _load_comment_map(source, warnings)
             advice_inputs = tuple(
                 _advice_input(item_no=index, selected=selected, comment_map=comment_map)
                 for index, selected in enumerate(selection_run.selected, start=1)
             )
             advice_by_index = RepresentativeAdviceService(llm=llm).run(advice_inputs)
+            if progress is not None:
+                progress(30)
         finally:
             raw_llm.close()
 
@@ -130,7 +138,10 @@ def prepare_representative_report(
         screenshots_dir=screenshots_dir,
         capture_screenshots=capture_screenshots,
         screenshot_output_dir=target,
+        progress=progress,
     )
+    if progress is not None:
+        progress(40)
     _write_selection_artifacts(target, selection_run, rows, warnings)
     return RepresentativeReportPreparation(
         selection_run=selection_run,
@@ -173,6 +184,7 @@ def _build_report_rows(
     screenshots_dir: Path | None,
     capture_screenshots: bool,
     screenshot_output_dir: Path,
+    progress: Callable[[int], None] | None,
 ) -> tuple[RepresentativeReportRow, ...]:
     screenshot_session = (
         _OptionalScreenshotSession(warnings, target_dir=screenshot_output_dir)
@@ -193,7 +205,12 @@ def _build_report_rows(
 
     with screenshot_session as session:
         rows = []
+        total = max(1, len(selection_run.selected))
         for index, selected in enumerate(selection_run.selected, start=1):
+            if progress is not None:
+                # 在开始处理当前代表性内容时先推进一次，避免单页等待期间
+                # 前端看起来像完全没有变化。
+                progress(min(39, 30 + round((index - 1) * 9 / total)))
             row = _row_without_screenshot(
                 index=index,
                 selected=selected,
@@ -221,6 +238,10 @@ def _build_report_rows(
                     processing_progress="",
                 )
             )
+            if progress is not None:
+                # 截图是可选增强内容；它只能占用报告准备阶段的尾部，
+                # 每完成一行就把真实处理位置反馈给前端。
+                progress(min(39, 30 + round(index * 9 / total)))
     return tuple(rows)
 
 
@@ -338,12 +359,16 @@ class _OptionalScreenshotSession:
 
     _DOUYIN_PLATFORM = "抖音"
     _VIEWPORT: _ViewportSize = {"width": 1440, "height": 810}
-    # 抖音公开页的登录遮罩不是首屏同步渲染，通常在 5～7 秒后才出现。
-    # 先等待动态首屏，再用下面的有界轮询确认媒体已完成绘制，避免把二维码弹窗、
-    # 加载中骨架屏或视频黑帧截进报告。
-    _PAGE_RENDER_WAIT_MS = 7_000
-    _PAGE_READY_TIMEOUT_MS = 20_000
-    _PAGE_READY_POLL_MS = 800
+    # 抖音公开页的登录遮罩不是首屏同步渲染。先短暂等待动态首屏，再用下面的
+    # 有界轮询确认媒体已完成绘制，避免把二维码弹窗、加载中骨架屏或视频黑帧截进报告。
+    # 截图是报告的可选增强内容，不能阻塞报告和多维表同步。
+    # 每页最多等待约 12 秒，整个批次最多尝试 90 秒；超出预算直接留空。
+    _PAGE_RENDER_WAIT_MS = 3_000
+    _PAGE_READY_TIMEOUT_MS = 6_000
+    _PAGE_READY_POLL_MS = 500
+    _PAGE_NAVIGATION_TIMEOUT_MS = 12_000
+    _SCREENSHOT_BUDGET_SECONDS = 90.0
+    _MAX_SCREENSHOTS = 20
     _PAGE_READY_STABLE_POLLS = 2
     _AFTER_DISMISS_WAIT_MS = 800
     # 去掉抖音网页左侧导航和顶部账号区；保留帖子主体、右侧作者、评论和推荐区。
@@ -371,6 +396,20 @@ class _OptionalScreenshotSession:
         self._browser_user_data_dir: Path | None = None
         self._browser_profile_directory: str | None = None
         self._authenticated_fallback_attempted = False
+        self._started_at = time.monotonic()
+        self._screenshot_count = 0
+        self._budget_warning_emitted = False
+
+    def _budget_exhausted(self) -> bool:
+        return (
+            self._screenshot_count >= self._MAX_SCREENSHOTS
+            or time.monotonic() - self._started_at >= self._SCREENSHOT_BUDGET_SECONDS
+        )
+
+    def _warn_budget_exhausted(self) -> None:
+        if not self._budget_warning_emitted:
+            self._warnings.append("抖音截图达到时间预算，已跳过剩余截图并继续生成报告")
+            self._budget_warning_emitted = True
 
     def __enter__(self) -> _OptionalScreenshotSession | None:
         try:
@@ -416,6 +455,10 @@ class _OptionalScreenshotSession:
             or not row.content_url.strip()
         ):
             return None
+        if self._budget_exhausted():
+            self._warn_budget_exhausted()
+            return None
+        self._screenshot_count += 1
         target_dir = self._target_dir / "screenshots"
         target_dir.mkdir(parents=True, exist_ok=True)
         safe_id = "".join(
@@ -497,7 +540,7 @@ class _OptionalScreenshotSession:
         evaluate = getattr(page, "evaluate", None)
         if not callable(goto) or not callable(wait_for_timeout) or not callable(evaluate):
             raise TypeError("Playwright 页面对象缺少截图所需方法")
-        goto(url, wait_until="domcontentloaded", timeout=30_000)
+        goto(url, wait_until="domcontentloaded", timeout=self._PAGE_NAVIGATION_TIMEOUT_MS)
         # 抖音正文、评论区和右侧互动栏都是动态渲染，且登录遮罩会延迟弹出。
         wait_for_timeout(self._PAGE_RENDER_WAIT_MS)
         evaluate("window.scrollTo(0, 0)")
@@ -612,7 +655,7 @@ class _OptionalScreenshotSession:
             text=True,
             encoding="utf-8",
             errors="ignore",
-            timeout=30,
+            timeout=12,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if dom_result.returncode != 0 or not dom_result.stdout:
@@ -626,7 +669,7 @@ class _OptionalScreenshotSession:
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=30,
+            timeout=12,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         _crop_screenshot_to_post_area(target, clip=self._POST_CLIP)

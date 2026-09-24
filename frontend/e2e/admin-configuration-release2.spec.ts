@@ -245,7 +245,7 @@ test('report strategy submits the two workbooks and renders the dry-run Job resu
     await json(route, { job_id: jobId, kind: 'report', status: 'queued' }, 202)
   })
   let jobReads = 0
-  await page.route(`**/api/v1/admin/feishu-publication-jobs/${jobId}`, async (route) => {
+  await page.route(`**/api/v1/admin/feishu-publication-jobs/${jobId}**`, async (route) => {
     jobReads += 1
     if (jobReads === 1) {
       return json(route, {

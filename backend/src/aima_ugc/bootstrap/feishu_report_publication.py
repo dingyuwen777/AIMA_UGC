@@ -120,6 +120,7 @@ def publish_all_report_to_feishu(
         output_dir=target / "representative_selection",
         settings=settings,
         environment=actual_environment,
+        progress=progress,
     )
     if progress is not None:
         progress(40)

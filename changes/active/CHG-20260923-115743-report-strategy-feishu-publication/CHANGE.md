@@ -160,22 +160,23 @@ data_changes:
 - [x] upstream_re_read：已重新核对用户确认的双 Excel/日期/Dry Run 要求、现有报告入口、Job Runtime、Artifact 边界和管理员 Contract。
 - [x] change_coverage：R1—R7 均已映射到 API、Worker、前端、Contract、测试或文档证据。
 - [x] reverse_audit：已从前端上传动作反查 API/Artifact/Job/Worker/结果轮询，并从 Worker 报告编排反查页面入口和 Dry Run 边界。
-- [x] unresolved_cleared：代码与文档范围内无 `not_satisfied`；checkpoint、claim fencing、首个 GET 失败恢复和真实飞书租户 Probe 边界均已记录。
+- [x] unresolved_cleared：前一轮 Review 的外部资源 checkpoint/重试收敛、镜像 claim fencing、首个 GET 失败恢复三条行为线程均有最终回归；前端 query cache-buster 与页面恢复边界已记录，真实飞书租户 Probe 仍明确不适用。
 
 # 完成证据与状态
 
 | ID | 环境 | 检查 | 结果 | 证明边界 |
 | --- | --- | --- | --- | --- |
-| V1 | Windows 本地 `.uv-venv` | 后端报告/飞书/Job 目标 pytest | 36 passed | checkpoint、API 编排、Dry Run、真实发布分支和 Worker 回归 |
+| V1 | Windows 本地 `.uv-venv` | 报告/飞书/Job 目标 pytest | 37 passed | checkpoint、部分成功后 retry 只复用一组逻辑资源、API 编排、Dry Run、真实发布分支和 Worker 回归 |
 | V2 | Windows 本地 Node 工具链 | TypeScript、ESLint、Frontend build | 全部通过 | 前端类型、静态质量和构建 |
-| V3 | Windows 本地 Node 工具链 | 报告策略 Playwright E2E，首个 Job GET 返回 503 后继续轮询 | 1 passed；全文件其余 7 项既有场景也通过 | job_id 保留且没有重复 POST |
+| V3 | Windows 本地 Node 工具链 | 报告策略 Playwright E2E，首个 Job GET 返回 503 后继续轮询；route 覆盖 cache-buster query | 8 passed | job_id 保留、没有重复 POST，轮询 query 不会落入未声明 mock |
 | V4 | Windows 本地 `.uv-venv` | 目标后端 Ruff/Mypy | 相关源文件无错误 | Python 静态质量和类型边界 |
-| V5 | 仓库质量脚本 | docs、architecture、table ownership、Change completion | 全部通过 | 文档、架构、表 Owner 和治理门禁 |
-| V6 | Windows 本地 PostgreSQL | Alembic migration cycle、mirror claim integration | 127.0.0.1:5432 连接超时；required CI 待新 HEAD 复跑 | 真实 Schema upgrade/downgrade 与多实例 claim |
+| V5 | Prompt / 入口兼容性 | analysis taxonomy API + voice taxonomy/relevance unit | 30 passed | 当前受管 Prompt 指针继续满足 v4 taxonomy/voice contract；未把不兼容 v4.6 文件切成全局基线 |
+| V6 | 仓库质量脚本 | docs、architecture、table ownership、Change completion | UTF-8 终端复跑后记录 | 文档、架构、表 Owner 和治理门禁 |
+| V7 | Windows 本地 PostgreSQL | Alembic migration cycle、mirror claim integration | 127.0.0.1:5432 连接超时；required CI 待新 HEAD 复跑 | 真实 Schema upgrade/downgrade 与多实例 claim |
 
 ## 未验证内容与剩余风险
 
-真实 PostgreSQL、真实飞书租户权限、真实 LLM 账号和生产 Worker 部署不在本地 Fake/Dry Run 验证范围内。Mypy 需要修复/重建本地工具环境后补跑；Playwright 测试本身已执行通过，但 Windows 上 Vite/Playwright 退出清理仍需单独环境治理。
+真实 PostgreSQL、真实飞书租户权限、真实 LLM 账号和生产 Worker 部署不在本地 Fake/Dry Run 验证范围内。目标源文件的 Mypy 已通过；PostgreSQL migration/claim 集成仍需由 required CI 提供 Linux/数据库证据，Windows 上 Vite/Playwright 退出清理仍需单独环境治理。
 
 ## 交付状态
 

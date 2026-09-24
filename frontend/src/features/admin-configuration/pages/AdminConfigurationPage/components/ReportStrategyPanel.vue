@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type {
   FeishuPublicationJobResponse,
@@ -26,6 +26,8 @@ type ReportFormStatus =
   | 'failed'
   | 'cancelled'
 
+const REPORT_JOB_STORAGE_KEY = 'aima.admin.report-publication-job-id'
+
 const currentFile = ref<File | null>(null)
 const previousFile = ref<File | null>(null)
 const startDate = ref('')
@@ -39,6 +41,7 @@ const previousInput = ref<HTMLInputElement | null>(null)
 const pollError = ref('')
 const pollHandle = ref<ReturnType<typeof setInterval> | null>(null)
 let pollInFlight = false
+let pollFailureCount = 0
 
 const emit = defineEmits<{
   'dirty-change': [dirty: boolean]
@@ -74,6 +77,11 @@ const statusLabel = computed(() => {
   }
   return labels[status.value] ?? ''
 })
+const statusMessage = computed(() => {
+  if (status.value === 'submitting') return '正在上传两份报告文件…'
+  if (pollError.value) return '报告任务状态同步中，正在重试…'
+  return `报告任务${statusLabel.value}，请稍候。`
+})
 const submitLabel = computed(() => busy.value ? statusLabel.value : '生成报告并同步到飞书')
 
 watch(navigationDirty, (dirty) => emit('dirty-change', dirty), { immediate: true })
@@ -89,6 +97,31 @@ function clearFeedback(): void {
   pollError.value = ''
   job.value = null
   jobId.value = null
+  clearStoredJobId()
+}
+
+function readStoredJobId(): string | null {
+  try {
+    return window.sessionStorage.getItem(REPORT_JOB_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function storeJobId(id: string): void {
+  try {
+    window.sessionStorage.setItem(REPORT_JOB_STORAGE_KEY, id)
+  } catch {
+    // 状态持久化失败不应阻止当前页面继续轮询。
+  }
+}
+
+function clearStoredJobId(): void {
+  try {
+    window.sessionStorage.removeItem(REPORT_JOB_STORAGE_KEY)
+  } catch {
+    // 某些浏览器隐私模式可能禁止 sessionStorage。
+  }
 }
 
 function setFile(slot: FileSlot, file: File | null): void {
@@ -137,7 +170,14 @@ function applyJob(next: FeishuPublicationJobResponse): void {
   job.value = next
   jobId.value = next.id
   status.value = next.status
-  if (['succeeded', 'failed', 'cancelled'].includes(next.status)) stopPolling()
+  pollFailureCount = 0
+  pollError.value = ''
+  if (['succeeded', 'failed', 'cancelled'].includes(next.status)) {
+    stopPolling()
+    clearStoredJobId()
+  } else {
+    storeJobId(next.id)
+  }
 }
 
 async function pollJob(): Promise<void> {
@@ -145,10 +185,10 @@ async function pollJob(): Promise<void> {
   if (!currentJobId || pollInFlight || !['queued', 'running'].includes(status.value)) return
   pollInFlight = true
   try {
-    pollError.value = ''
     applyJob(await fetchReportPublicationJob(currentJobId))
   } catch (error) {
-    pollError.value = apiErrorMessage(error)
+    pollFailureCount += 1
+    pollError.value = `状态同步失败（第 ${pollFailureCount} 次），正在重试：${apiErrorMessage(error)}`
   } finally {
     pollInFlight = false
   }
@@ -156,7 +196,26 @@ async function pollJob(): Promise<void> {
 
 function startPolling(): void {
   stopPolling()
+  // 先立即读取一次，避免提交后至少等待一个完整轮询周期。
+  void pollJob()
   pollHandle.value = setInterval(() => void pollJob(), 3000)
+}
+
+function handleVisibilityChange(): void {
+  if (document.visibilityState === 'visible') void pollJob()
+}
+
+async function restoreStoredJob(): Promise<void> {
+  const storedJobId = readStoredJobId()
+  if (!storedJobId) return
+  jobId.value = storedJobId
+  status.value = 'queued'
+  try {
+    applyJob(await fetchReportPublicationJob(storedJobId))
+  } catch (error) {
+    pollError.value = `状态同步失败，正在重试：${apiErrorMessage(error)}`
+  }
+  if (['queued', 'running'].includes(status.value)) startPolling()
 }
 
 function resetForm(): void {
@@ -171,6 +230,7 @@ function resetForm(): void {
   pollError.value = ''
   job.value = null
   jobId.value = null
+  clearStoredJobId()
   clearNativeInput('current')
   clearNativeInput('previous')
 }
@@ -196,6 +256,7 @@ async function submitReport(): Promise<void> {
       end_date: endDate.value,
     })
     jobId.value = created.job_id
+    storeJobId(created.job_id)
     status.value = 'queued'
     try {
       applyJob(await fetchReportPublicationJob(created.job_id))
@@ -213,7 +274,17 @@ async function submitReport(): Promise<void> {
   }
 }
 
-onBeforeUnmount(stopPolling)
+onMounted(() => {
+  void restoreStoredJob()
+  window.addEventListener('focus', handleVisibilityChange)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
+  window.removeEventListener('focus', handleVisibilityChange)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+})
 </script>
 
 <template>
@@ -416,7 +487,7 @@ onBeforeUnmount(stopPolling)
       v-else-if="status === 'submitting' || status === 'queued' || status === 'running'"
       tone="info"
     >
-      {{ status === 'submitting' ? '正在上传两份报告文件…' : `报告任务${statusLabel}，请稍候。` }}
+      {{ statusMessage }}
       <span v-if="pollError">{{ pollError }}</span>
     </AimaFeedbackBanner>
     <AimaFeedbackBanner

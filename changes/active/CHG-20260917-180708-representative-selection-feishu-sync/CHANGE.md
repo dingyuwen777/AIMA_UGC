@@ -118,7 +118,7 @@ data_changes:
 | 决策维度 | 当前决定 | 依据 | 影响 |
 | --- | --- | --- | --- |
 | 范围与负责人边界 | 复用现有 analysis、Feishu adapter、离线 imports_test 和 reporting Owner | E1、E2、E3 | 不新建平行任务系统 |
-| 接口与契约 | 复用现有 Python 入口和配置，增加 `--input-xlsx` 与已有写入模式边界 | E1、E4 | 不新增公共 HTTP Contract |
+| 接口与契约 | 复用现有 Python 入口和配置，增加 `--input-xlsx` 与已有写入模式边界；管理员报告发布 HTTP Contract 由依赖 Change 统一维护 | E1、E4 | 代表性筛选自身不复制另一套公共 HTTP Contract |
 | 数据与迁移 | 为镜像增加 claim/lease/fencing 字段和 Alembic upgrade/downgrade；本地运行审计和新飞书表写入只在显式模式产生 | E2 | migration 可回滚，外部写入仍保留显式开关 |
 | 错误与失败语义 | 字段预检、回读不一致和外部失败均 fail closed；LLM/网络失败保留稳定错误摘要 | E2、E3 | 不隐藏部分成功或 Secret |
 | 兼容性 | 保持已有 Excel、平台 ID、报告和 Dry Run 行为；`xhs` 文档缩写统一为 `xiaohongshu` | E1、E3、E4 | 旧输入和离线调用继续可用 |
@@ -159,7 +159,7 @@ data_changes:
 | R6 | 每次写入在同一 Base 内新建按生成时间命名的数据表，旧表和旧记录不更新、不删除 | user:follow-up-confirmation / AC6 | satisfied | `create_table_from_current()` 和新表写入/回读测试 |
 | R7 | 飞书字段动态读取、类型转换、写入前快照和写入后回读核验 | user:confirmed-requirements / AC7 | satisfied | 字段映射、类型转换、快照和回读测试 |
 | R8 | Secret 不进入日志或运行结果，默认 Dry Run | user:security-boundary / AC8 | satisfied | Secret 文件边界、默认入口和稳定错误输出测试 |
-| R9 | 不新增第三方依赖、不新增数据库 Migration 或公共 HTTP API | user:confirmed-implementation-plan / AC9 | satisfied | 依赖、Migration 和 API 差异检查 |
+| R9 | 复用锁定的第三方依赖；为镜像 claim 接入 0060→0061→0062 Migration，并复用管理员发布 API/Contract | user:confirmed-implementation-plan / AC9 | satisfied | `20260923_0060_feishu_bitable_mirrors.py`、`20260924_0061_voice_plaza_statement_triggers.py`、`20260924_0062_feishu_mirror_claims.py`；无额外依赖或平行 HTTP Contract。Review threads `2769479400`、`2769479407` 已纳入实现与回归证据 |
 | R10 | 运行入口、配置、README 和测试同步 | user:confirmed-implementation-plan / AC10 | satisfied | 独立入口、配置、模块文档和相关测试 |
 | R11 | 已完成 Dry Run 后可只同步已有结果，避免重复调用大模型 | user:follow-up-confirmation / AC11 | satisfied | `--write-feishu-from-run` 和入口测试 |
 | R12 | 支持直接使用飞书 `/base/` 链接中的 app_token，不强制依赖 Wiki Token | user:follow-up-confirmation / AC12 | satisfied | `AIMA_FEISHU_APP_TOKEN` 及 Base 直连测试 |
@@ -175,7 +175,7 @@ data_changes:
 | tests/unit、tests/integration | 增加/调整行为和配置回归 | 固化真实行为 | R1—R13 |
 | docs/ 与本 Change | 更新导航、事实说明和追溯结构 | 满足文档/治理门禁 | R10 / E3 |
 
-执行过程中已完成调查、方案、实现、验证和交付前门禁，未扩大到数据库迁移、公共 API 或真实外部 Probe。
+执行过程中已完成调查、方案、实现、验证和交付前门禁；真实范围包含镜像 Schema/Migration 与依赖 Change 提供的管理员发布 API，未扩大到新的业务表、第二套队列或真实外部 Probe。
 
 # 验证矩阵
 
@@ -221,7 +221,7 @@ data_changes:
 - [x] upstream_re_read：已重新核对用户确认的筛选规则、Prompt、Excel 表头、飞书字段和现有 LLM/Secret 边界。
 - [x] change_coverage：R1—R13 均有实现、测试或明确不适用证据，未把本 Change 作为需求来源。
 - [x] reverse_audit：已核对入口参数、Dry Run/写入开关、新表创建、字段预检、回读和失败边界。
-- [x] unresolved_cleared：代码级关键字段、Secret、跨 Attempt checkpoint、镜像 claim fencing、导航和质量门禁问题已清零；真实外部 Probe 的环境限制已明确记录。
+- [x] unresolved_cleared：前一轮 Review 的 Change 范围、跨 Attempt checkpoint、镜像 claim/lease/fencing、前端首个 GET 失败恢复四条线程均已映射到最终实现和回归；真实外部 Probe 的环境限制已明确记录。
 
 # 完成证据与状态
 
@@ -229,11 +229,12 @@ data_changes:
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | Windows 本地 `.uv-venv` | 目标后端 Ruff/Mypy | 目标发布、镜像、Job 和 migration 相关源文件通过 | 静态质量和类型边界 |
-| V2 | Windows 本地 `.uv-venv` | `pytest tests/unit/platform/test_feishu_report_publication.py tests/unit/platform/test_feishu_publication_worker.py tests/unit/platform/test_feishu_bitable.py -q` | 36 passed | 发布 checkpoint、Dry Run、飞书和 Worker 回归 |
-| V3 | Windows 本地 Node 工具链 | `npm run lint`、`npm run build`；报告策略 Playwright E2E | lint/build 通过；报告策略回归 1 passed | 前端类型、构建和首个 GET 失败恢复 |
-| V4 | 仓库质量脚本 | `check_docs.py`、`check_architecture.py`、`check_table_ownership.py`、`check_change_completion.py --require-active-ready` | 全部通过 | 文档、架构、表 Owner 和 Active Change 门禁 |
-| V5 | Windows 本地 PostgreSQL | `alembic current`、mirror claim integration | 本地 127.0.0.1:5432 连接超时，已保留为 required CI 项 | Migration cycle 和多实例 claim 需在 CI PostgreSQL 复跑 |
+| V1 | Windows 本地 `.uv-venv` | `pytest tests/unit/platform/test_feishu_report_publication.py tests/unit/platform/test_feishu_publication_worker.py tests/unit/platform/test_feishu_bitable.py -q` | 37 passed | checkpoint、部分成功后 retry 只复用一组外部资源、Dry Run、飞书和 Worker 回归 |
+| V2 | Windows 本地 `.uv-venv` | `pytest tests/api/test_feishu_publication.py -q`；Prompt taxonomy `pytest tests/api/test_analysis_taxonomy.py tests/unit/analysis/test_analysis_relevance_voice_v4.py tests/unit/analysis/test_voice_type_taxonomy.py -q` | 6 passed；30 passed | API Contract、受管 Prompt 指针与 taxonomy 保持兼容 |
+| V3 | Windows 本地 Node 工具链 | `npm run lint`、`npm run build`；`npm run test:e2e -- admin-configuration-release2.spec.ts` | lint/build 通过；8 passed | 前端类型、构建、query cache-buster mock 和首个 GET 失败恢复 |
+| V4 | Windows 本地 `.uv-venv` | Ruff、Mypy 目标源文件 | 全部通过 | 静态质量和类型边界 |
+| V5 | 仓库质量脚本 | `check_docs.py`、`check_architecture.py`、`check_table_ownership.py`、`check_change_completion.py --require-active-ready`、`scan_secrets.py`、`check_agent_governance.py` | 全部通过 | 文档、架构、表 Owner、Secret、Agent governance 和 Active Change 门禁 |
+| V6 | Windows 本地 PostgreSQL | `alembic current`、mirror claim integration | 本地 127.0.0.1:5432 连接超时，已保留为 required CI 项 | Migration cycle 和多实例 claim 需在 CI PostgreSQL 复跑 |
 
 ## 未验证内容与剩余风险
 
@@ -241,7 +242,7 @@ data_changes:
 
 ## 交付状态
 
-- 提交：当前工作树待提交，完成后推送到既有 PR #580。
+- 提交：本轮修复待提交，完成后推送到既有 PR #580。
 - 拉取请求：PR #580，Requirement Source 指向本 Change 文件。
 - CI：本地静态/目标回归已通过；新 HEAD 的 required CI 待推送后重新执行。
 - 合并：未合并，等待维护者审核。

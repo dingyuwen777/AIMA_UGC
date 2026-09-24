@@ -212,8 +212,15 @@ export const createReportPublication = async (
 
 export const fetchReportPublicationJob = async (
   jobId: string,
-): Promise<FeishuPublicationJobResponse> =>
-  unwrapResponse(await getFeishuPublicationJob(jobId))
+): Promise<FeishuPublicationJobResponse> => {
+  // Job 状态是轮询读模型，不能复用浏览器/代理缓存里的旧 queued 响应。
+  // 同时加时间戳，兼容忽略 Cache-Control 的本地代理/静态开发中间件。
+  const cacheBuster = Date.now().toString(36)
+  return unwrapResponse(await getFeishuPublicationJob(
+    `${jobId}?_=${cacheBuster}`,
+    { cache: 'no-store' },
+  ))
+}
 
 export type {
   ProviderConfigCreateRequest,

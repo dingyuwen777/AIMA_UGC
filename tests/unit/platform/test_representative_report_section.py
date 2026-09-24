@@ -365,6 +365,27 @@ def test_douyin_screenshot_uses_fixed_16_9_viewport(tmp_path: Path) -> None:
     assert session.fetch(xiaohongshu_row) is None
 
 
+def test_douyin_screenshot_budget_skips_remaining_rows_once(tmp_path: Path) -> None:
+    warnings: list[str] = []
+    session = _OptionalScreenshotSession(warnings, target_dir=tmp_path)
+    session._page = object()  # type: ignore[assignment]
+    session._screenshot_count = session._MAX_SCREENSHOTS
+    row = RepresentativeReportRow(
+        platform="抖音",
+        sentiment="正面",
+        content_id="douyin-budget",
+        content_url="https://www.douyin.com/video/1",
+        comment_text="",
+        primary_label="品牌评价",
+        secondary_label="口碑与信任",
+        action_advice="建议跟进",
+    )
+
+    assert session.fetch(row) is None
+    assert session.fetch(row) is None
+    assert warnings == ["抖音截图达到时间预算，已跳过剩余截图并继续生成报告"]
+
+
 def test_douyin_screenshot_skips_login_overlay(tmp_path: Path) -> None:
     class _LoginPage:
         def goto(self, url: str, **_: object) -> None:

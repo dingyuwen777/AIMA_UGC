@@ -24,9 +24,9 @@ from aima_ugc.entrypoints.representative_selection_main import (
 )
 
 OUTPUT_ROOT = Path(__file__).with_name("output")
-INPUT_EXCEL = OUTPUT_ROOT / "runs" / "20260917T093549.030465+0800" / "labeled_data.xlsx"
-PREVIOUS_INPUT_EXCEL = OUTPUT_ROOT / "runs" / "20260910T092503.286116+0800" / "labeled_data.xlsx"
-REPORT_DATE_RANGE = (date(2026, 9, 10), date(2026, 9, 16))
+INPUT_EXCEL = OUTPUT_ROOT / "runs" / "20260924T094600.093347+0800" / "labeled_data.xlsx"
+PREVIOUS_INPUT_EXCEL = OUTPUT_ROOT / "runs" / "20260917T093549.030465+0800" / "labeled_data.xlsx"
+REPORT_DATE_RANGE = (date(2026, 9, 17), date(2026, 9, 23))
 REPORT_OUTPUT_DIR = (
     OUTPUT_ROOT
     / "reports"
