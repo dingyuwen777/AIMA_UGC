@@ -1465,7 +1465,11 @@ export interface ContentFilterSnapshot {
   relevance?: ContentRelevance | null;
   search?: string | null;
   secondary_label?: string | null;
-  /** @maxItems 20 */
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 128
+     */
   sentiments?: string[];
   source_identifier?: string | null;
   /** @maxItems 100 */
@@ -3195,6 +3199,8 @@ relevance?: ContentRelevance | null;
 voice_types?: ContentVoiceType[];
 /**
  * @maxItems 20
+ * @items.minLength 1
+ * @items.maxLength 128
  */
 sentiments?: string[];
 primary_label?: string | null;

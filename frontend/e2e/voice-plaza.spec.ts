@@ -414,8 +414,10 @@ test('loads backend filter options and submits voice type with dependent labels'
   await expect(page.getByLabel('发声类型', { exact: true })).toBeVisible()
   await page.locator('summary[aria-label="发声类型"]').click()
   await page.getByRole('checkbox', { name: '真实用户发声' }).check()
+  await page.getByRole('checkbox', { name: '媒体机构发声' }).check()
   await page.locator('summary[aria-label="情感"]').click()
   await page.getByRole('checkbox', { name: '负面' }).check()
+  await page.getByRole('checkbox', { name: '正面' }).check()
   await page.locator('label.field--label select').nth(0).selectOption('电池、续航与充电')
   await page.locator('label.field--label select').nth(1).selectOption('实际续航表现')
   await page.getByRole('button', { name: '选择品牌', exact: true }).click()
@@ -430,8 +432,8 @@ test('loads backend filter options and submits voice type with dependent labels'
   const request = await requestPromise
   const params = new URL(request.url()).searchParams
 
-  expect(params.get('voice_types')).toBe('真实用户发声')
-  expect(params.get('sentiments')).toBe('负面')
+  expect(params.getAll('voice_types')).toEqual(expect.arrayContaining(['真实用户发声', '媒体机构发声']))
+  expect(params.getAll('sentiments')).toEqual(expect.arrayContaining(['负面', '正面']))
   expect(params.get('primary_label')).toBe('电池、续航与充电')
   expect(params.get('secondary_label')).toBe('实际续航表现')
   expect(params.get('brand_ids')).toBe(brandId)

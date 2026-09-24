@@ -965,3 +965,92 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
                 "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
+
+
+def _xlsx_three_voice_types() -> bytes:
+    """三条内容用于验证同一维度多值 IN 查询。"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "文章"
+    sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
+    sheet.append(["小红书", "爱玛真实用户发声", "第一条", "用户甲", "2026-08-20 10:00:00", "https://x/1"])
+    sheet.append(["小红书", "爱玛媒体机构发声", "第二条", "用户乙", "2026-08-20 11:00:00", "https://x/2"])
+    sheet.append(["小红书", "爱玛无法判断发声", "第三条", "用户丙", "2026-08-20 12:00:00", "https://x/3"])
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
+
+
+def test_voice_plaza_multi_value_voice_type_filter_returns_all_matches(tmp_path: Path) -> None:
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "llm_base_url": "https://fake.example/v1",
+            "llm_provider_name": "fake",
+            "llm_model": "fake-content-labeler-v1",
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        import_service = PostgresImportHttpService(runtime)
+        import_client = TestClient(create_app(import_service=import_service))
+        _seed_import(import_client, runtime, workbook=_xlsx_three_voice_types())
+        import_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage8d-import-multi",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert import_worker.run_once() is True
+
+        with runtime.database.engine.begin() as connection:
+            content_ids = tuple(
+                connection.execute(
+                    select(contents_table.c.id).order_by(contents_table.c.published_at)
+                ).scalars()
+            )
+        assert len(content_ids) == 3
+
+        content_service = PostgresContentHttpService(
+            runtime,
+            cursor_signing_secret=b"stage8d-test-content-cursor-key-32-bytes-minimum",
+        )
+        responses = (
+            _relevant_response(voice_type="真实用户发声", sentiment="负面"),
+            _relevant_response(voice_type="媒体机构发声", sentiment="正面"),
+            _relevant_response(voice_type="无法判断", sentiment="中性"),
+        )
+        for content_id, response in zip(content_ids, responses, strict=True):
+            created = content_service.create_analysis(
+                ContentAnalysisSubmitRequest(
+                    targets=ContentTargetSelection(scope="selected", content_ids=(content_id,))
+                ),
+                request_id=f"stage8d-multi-{content_id}",
+            )
+            worker = create_job_worker(
+                runtime=runtime,
+                registry=_analysis_registry(runtime, response),
+                worker_id=f"stage8d-analysis-{content_id}",
+                lease_seconds=120,
+                retry_delay_seconds=0,
+            )
+            assert worker.run_once() is True
+            assert worker.run_once() is True
+            assert content_service.get_analysis_job(created.job_id).status == "succeeded"
+
+        page = content_service.list_contents(
+            ContentListQuery(voice_types=("真实用户发声", "媒体机构发声"))
+        )
+        returned_ids = {item.id for item in page.items}
+        assert content_ids[0] in returned_ids
+        assert content_ids[1] in returned_ids
+        assert content_ids[2] not in returned_ids
+    finally:
+        runtime.close()
