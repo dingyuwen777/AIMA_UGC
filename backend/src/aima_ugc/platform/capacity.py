@@ -350,7 +350,10 @@ def _host_memory() -> tuple[int | None, int | None]:
 
         status = _MemoryStatus()
         status.length = ctypes.sizeof(status)
-        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        windows_api = getattr(ctypes, "windll", None)
+        if windows_api is not None and windows_api.kernel32.GlobalMemoryStatusEx(
+            ctypes.byref(status)
+        ):
             return int(status.total_physical), int(status.available_physical)
         return None, None
     try:
