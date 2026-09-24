@@ -116,12 +116,12 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 非终态统一 Source 不可被 7 天 TTL 清理 | #595 AC1 | satisfied | Red Run `35974241664` 证明旧行为失败；Green Run `35975130935` 通过；deadline reconcile 与删除认领均检查活动 Campaign |
-| R2 | 四种 Campaign 终态均从 `finished_at` 起保留 7 天 | #595 AC2 | satisfied | 两种 Source kind × 四类终态 PostgreSQL 回归通过 |
-| R3 | retry-failed 使旧 expiry 失效，再终态重新计时 | #595 AC3 | satisfied | 真实 Historical Campaign retry HTTP + Worker Golden Path：失败终态有 expiry，retry 同事务清空，成功后按新 `finished_at + 7d` 重算 |
-| R4 | 未引用 `data-import.source` 使用现有 1 天 orphan | #595 AC4 | satisfied | PostgreSQL orphan 回归覆盖新 kind，并保持既有 historical source/chunk/Canonical 行为 |
-| R5 | 旧 Artifact/Canonical/业务事实兼容 | #595 AC5 | satisfied | Green Run `35975130935`：CI Gate、PostgreSQL Integration、Real Full-stack、Runtime Acceptance、Developer Tooling Compatibility 均成功；无 Schema/Contract/依赖变化 |
-| R6 | Review / CI / merge / main-fresh / archive / closure 完整交付 | #595 AC6 | explicitly_deferred | 当前进入正式 PR #596 Review / current-head CI；merge 后继续 main-fresh / 自动归档 / Issue closure |
+| R1 | 非终态统一 Source 不可被 7 天 TTL 清理 | #595 / AC1 | satisfied | Red Run `35974241664` 证明旧行为失败；Green Run `35975130935` 通过；deadline reconcile 与删除认领均检查活动 Campaign |
+| R2 | 四种 Campaign 终态均从 `finished_at` 起保留 7 天 | #595 / AC2 | satisfied | 两种 Source kind × 四类终态 PostgreSQL 回归通过 |
+| R3 | retry-failed 使旧 expiry 失效，再终态重新计时 | #595 / AC3 | satisfied | 真实 Historical Campaign retry HTTP + Worker Golden Path：失败终态有 expiry，retry 同事务清空，成功后按新 `finished_at + 7d` 重算 |
+| R4 | 未引用 `data-import.source` 使用现有 1 天 orphan | #595 / AC4 | satisfied | PostgreSQL orphan 回归覆盖新 kind，并保持既有 historical source/chunk/Canonical 行为 |
+| R5 | 旧 Artifact/Canonical/业务事实兼容 | #595 / AC5 | satisfied | Green Run `35975130935`：CI Gate、PostgreSQL Integration、Real Full-stack、Runtime Acceptance、Developer Tooling Compatibility 均成功；无 Schema/Contract/依赖变化 |
+| R6 | Review / CI / merge / main-fresh / archive / closure 完整交付 | #595 / AC6 | explicitly_deferred | 当前进入正式 PR #596 Review / current-head CI；merge 后继续 main-fresh / 自动归档 / Issue closure |
 
 # 计划改动
 
