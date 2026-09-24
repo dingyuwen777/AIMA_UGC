@@ -202,9 +202,7 @@ def test_revocation_batches_common_contributions_without_per_content_sql(
                     campaign_id, after_content_id=None, content_limit=1
                 )
                 assert len(complete_group) == 2
-                assert {row["content_id"] for row in complete_group} == {
-                    first[0]["content_id"]
-                }
+                assert {row["content_id"] for row in complete_group} == {first[0]["content_id"]}
             finally:
                 savepoint.rollback()
         statement_count = 0
