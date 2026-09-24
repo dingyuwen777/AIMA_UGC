@@ -45,21 +45,16 @@ Artifact 到期时只删除 ArtifactStore 中的字节，不因为文件过期�
 | Artifact | `kind` | 保留起点 | 字节保留期限 | 过期后 |
 | --- | --- | --- | ---: | --- |
 | TikHub Provider Raw | `provider-raw` | Artifact 创建时 | 30 天 | 删除 Raw 字节，保留来源和元数据 |
-| Excel 上传源文件 | `file-import.raw` | Import 任务进入终态时 | 7 天 | 删除原始 Excel 字节，保留 Batch、入库数据和来源事实 |
+| 兼容 Excel Import 源文件 | `file-import.raw` | Import Batch 进入终态时 | 7 天 | 删除原始 Excel 字节，保留 Batch、入库数据和来源事实 |
+| 统一 Data Import 源文件 | `data-import.source` / `historical-import.source` | Campaign 当前终态的 `finished_at` | 7 天 | 删除原始 Excel 字节，保留 Campaign、逐行账本、Artifact metadata 和来源关系 |
 | Excel 正式导出文件 | `content-export.xlsx` | Export `completed_at` | 7 天 | 下载失效并删除 Excel 字节，保留 Export 请求和统计 |
-| 未建立业务引用的 Excel Import/Export Artifact | 上述两种 Excel kind | Artifact 创建后 | 1 天 | 作为孤儿字节清理 |
+| 未建立业务引用的 Import/Export Source Artifact | `file-import.raw` / `data-import.source` / `historical-import.source` / `content-export.xlsx` | Artifact 创建后 | 1 天 | 作为孤儿字节清理 |
 
-这里的 Import 终态包括：
+兼容 Excel Import Batch 的终态包括 `succeeded / failed / cancelled`；统一 Data Import Campaign 的终态包括 `succeeded / failed / partial_failed / cancelled`。
 
-```text
-succeeded
-failed
-cancelled
-```
+统一 Campaign 仍处于 `uploading / discovering / snapshotting / ready / queued / running / cancelling` 时不启动 7 天倒计时，因为预检、Worker 或失败重试仍可能依赖 Source Artifact。失败或部分失败 Campaign 执行重试时，旧 `expires_at` 在重试事务内撤销；再次进入终态后，以新的 `finished_at` 重新计算 7 天。
 
-Import 仍处于 queued/running/retry 时不启动 7 天倒计时，因为 Worker 仍可能依赖源 Artifact 重试。
-
-当前 1 天孤儿规则只覆盖能够通过现有业务父事实明确判断“未建立引用”的 Excel Import/Export Artifact。其他未来 Artifact kind 不能只因为长期处于 `stored` 就自动当作孤儿，必须先有可验证的引用关系和恢复语义。
+当前 1 天孤儿规则只覆盖能够通过现有业务父事实明确判断“未建立引用”的 Artifact kind。其他未来 Artifact kind 不能只因为长期处于 `stored` 就自动当作孤儿，必须先有可验证的引用关系和恢复语义。
 
 ---
 
@@ -122,8 +117,8 @@ Local ArtifactStore 的 `delete()` 是幂等的。如果实例已经删掉文件
 Housekeeping 查询清理候选和真正认领删除之间存在时间窗口。例如：
 
 ```text
-T1：扫描发现一个 Excel Artifact 尚无业务引用
-T2：业务事务建立 Import Batch / Export 引用
+T1：扫描发现一个 Import/Export Artifact 已到期或尚无业务引用
+T2：业务事务建立 Import Batch、Data Import Campaign Source 或 Export 引用，或失败 Campaign 开始重试
 T3：housekeeping 开始删除
 ```
 
@@ -137,11 +132,12 @@ T3：housekeeping 开始删除
 
 真正认领 delete_pending
 → 在同一 PostgreSQL UPDATE CAS 中重新检查
-   - 当前仍已到期；或
-   - 当前仍是无业务引用的 Excel Import/Export 孤儿
+   - 当前仍已到期；
+   - 若是统一 Data Import Source，当前没有活动 Campaign；或
+   - 当前仍是无业务引用的安全孤儿
 ```
 
-如果扫描后已经建立正式引用且文件尚未到期，CAS 不成功，本轮放弃删除。反过来，如果 cleanup 已先成功认领 `delete_pending`，后续正常 `stored → linked` 状态转换也会失败并使业务事务回滚，不会形成“业务引用已提交但文件被删除”的状态。
+如果扫描后已经建立正式引用、统一 Campaign 已重新进入活动态，或文件尚未到期，CAS 不成功，本轮放弃删除。失败 Campaign 重试时还会在同一数据库事务中把 Source Artifact 的旧 `expires_at` 清空：如果 cleanup 已先认领 `delete_pending`，重试事务会失败回滚；如果重试先取得 Artifact 行，后续 cleanup 会看到新的活动状态/空截止时间而放弃删除。这样不会形成“正在重试但源文件被后台清掉”的状态。
 
 ---
 
@@ -157,21 +153,38 @@ expires_at = created_at + 30 days
 
 历史 Raw 如果 `expires_at` 为空，由 housekeeping 使用 `stored_at`，必要时回退 `created_at`，补齐 30 天截止时间。
 
-### Excel Import
+### Excel / Data Import Source
 
-上传时：
+创建 Source Artifact 时：
 
 ```text
 expires_at = null
 ```
 
-任务仍运行时保持为空。任务终态后使用：
+兼容 Excel Import 继续按 Batch/Job 终态计算：
 
 ```text
 Import terminal_at + 7 days
 ```
 
 `terminal_at` 优先使用 `processing_import_batches.finished_at`；如果 Batch 因取消语义没有独立结束时间，则使用对应终态 Job 的 `finished_at`。只要同一个输入 Artifact 仍有未终态 Import 引用，就不会开始清理倒计时。
+
+统一 Data Import 的 `data-import.source` 与 `historical-import.source` 改由 Campaign 生命周期决定：
+
+```text
+Campaign 活动态
+→ expires_at = null
+
+Campaign succeeded / failed / partial_failed / cancelled
+→ expires_at = Campaign.finished_at + 7 days
+
+retry-failed
+→ 同一事务重新进入活动态
+→ 清空旧 expires_at
+→ 新终态后重新计算 7 days
+```
+
+Housekeeping 会幂等对账这一状态，因此升级前已经存在且 `expires_at = null` 的统一 Source Artifact，在 Campaign 已终态时也会补齐截止时间。Canonical Artifact 的保留策略不随这项规则改变。
 
 ### Excel Export
 
@@ -279,6 +292,8 @@ CAS 失败
 进入终态后显示实际截止时间；过期后明确说明文件进入自动清理，但 Batch、入库数据和来源元数据继续保留。
 
 取消任务如果 Batch 自身没有 `finished_at`，前端使用终态 Job 的 `finished_at`，与后端保留时间语义一致。
+
+统一 Data Import Campaign 当前不提供 Source 文件下载入口；本地上传和服务器目录冻结的原始 Excel 字节由后台按上述 Campaign 生命周期自动清理，Campaign、入库数据、逐行账本和来源元数据继续保留。
 
 ### Excel Export
 
