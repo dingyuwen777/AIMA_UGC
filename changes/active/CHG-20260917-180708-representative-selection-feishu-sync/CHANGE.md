@@ -234,7 +234,7 @@ data_changes:
 | V3 | Windows 本地 Node 工具链 | `npm run lint`、`npm run build`；`npm run test:e2e -- admin-configuration-release2.spec.ts` | lint/build 通过；8 passed | 前端类型、构建、query cache-buster mock 和首个 GET 失败恢复 |
 | V4 | Windows 本地 `.uv-venv` | Ruff、Mypy 目标源文件 | 全部通过 | 静态质量和类型边界 |
 | V5 | 仓库质量脚本 | `check_docs.py`、`check_architecture.py`、`check_table_ownership.py`、`check_change_completion.py --require-active-ready`、`scan_secrets.py`、`check_agent_governance.py` | 全部通过 | 文档、架构、表 Owner、Secret、Agent governance 和 Active Change 门禁 |
-| V6 | Windows 本地 PostgreSQL | `alembic current`、mirror claim integration | 本地 127.0.0.1:5432 连接超时，已保留为 required CI 项 | Migration cycle 和多实例 claim 需在 CI PostgreSQL 复跑 |
+| V6 | GitHub Actions（提交 `f1255499`） | CI run `35974601442`：Requirement Traceability `107552005101`、PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、CI Gate `107555251372` | 全部通过；Developer Tooling `35974601114`、Runtime Acceptance `35974601104`、Release `35974601101` 也通过 | 新 HEAD 的 migration cycle、镜像 claim 并发、完整质量门禁和运行时验收 |
 
 ## 未验证内容与剩余风险
 
@@ -244,7 +244,7 @@ data_changes:
 
 - 提交：本轮修复待提交，完成后推送到既有 PR #580。
 - 拉取请求：PR #580，Requirement Source 指向本 Change 文件。
-- CI：本地静态/目标回归已通过；新 HEAD 的 required CI 待推送后重新执行。
+- CI：本地静态/目标回归已通过；提交 `f1255499` 的 required CI 已全部通过（CI run `35974601442`，并通过 Developer Tooling、Runtime Acceptance、Release suites）。
 - 合并：未合并，等待维护者审核。
 - Change 归档：未归档，保持 `ready_for_review`。
 - 发布 / 部署：不适用；本变更未执行生产发布或真实业务写入。

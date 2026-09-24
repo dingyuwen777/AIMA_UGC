@@ -176,7 +176,7 @@ data_changes:
 | V4 | Windows 本地 `.uv-venv` | 目标后端 Ruff/Mypy | 相关源文件无错误 | Python 静态质量和类型边界 |
 | V5 | Prompt / 入口兼容性 | analysis taxonomy API + voice taxonomy/relevance unit | 30 passed | 当前受管 Prompt 指针继续满足 v4 taxonomy/voice contract；未把不兼容 v4.6 文件切成全局基线 |
 | V6 | 仓库质量脚本 | docs、architecture、table ownership、Change completion | UTF-8 终端复跑后记录 | 文档、架构、表 Owner 和治理门禁 |
-| V7 | Windows 本地 PostgreSQL | Alembic migration cycle、mirror claim integration | 127.0.0.1:5432 连接超时；required CI 待新 HEAD 复跑 | 真实 Schema upgrade/downgrade 与多实例 claim |
+| V7 | GitHub Actions（提交 `f1255499`） | CI run `35974601442`：PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、Requirement Traceability `107552005101`、CI Gate `107555251372` | 全部通过；Developer Tooling、Runtime Acceptance、Release suites 同步通过 | 真实 Schema upgrade/downgrade、多实例 claim、完整发布构建和治理门禁 |
 
 ## 未验证内容与剩余风险
 
@@ -184,4 +184,4 @@ data_changes:
 
 ## 交付状态
 
-实现、目标测试、前端构建、Contract 和文档同步已完成。按用户授权，本 Change 与同分支飞书多维表同步改动将提交并推送到既有 PR #580，供维护者通过 PR 审核；PR 合并和真实飞书写入不在本次授权范围内。新 HEAD 推送后会重新运行 required CI，再请求复审。
+实现、目标测试、前端构建、Contract 和文档同步已完成。提交 `f1255499` 已推送到既有 PR #580；required CI run `35974601442` 及 Developer Tooling、Runtime Acceptance、Release suites 已全部通过，等待逐条 review 回复和复审。
