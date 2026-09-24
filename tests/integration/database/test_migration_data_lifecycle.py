@@ -2003,9 +2003,9 @@ def _seed_voice_plaza_legacy_filters(database: str) -> None:
                       generation_config, generation_config_hash, created_at
                     ) VALUES (
                       :id, 1, :key, :job_id, 'manual_reanalysis', 'query',
-                      :snapshot::jsonb, 'succeeded', 1, 1, 1,
+                      cast(:snapshot as jsonb), 'succeeded', 1, 1, 1,
                       'content_labeling_v4', :sha1, :sha2, 'fake', 'fake-model',
-                      '{}'::jsonb, :sha3, :now
+                      cast('{}' as jsonb), :sha3, :now
                     )
                     """
                 ),
@@ -2031,7 +2031,7 @@ def _seed_voice_plaza_legacy_filters(database: str) -> None:
                       id, job_id, format, request_snapshot, columns,
                       column_catalog_version, created_at
                     ) VALUES (
-                      :id, :job_id, 'xlsx', :snapshot::jsonb, :columns::jsonb,
+                      :id, :job_id, 'xlsx', cast(:snapshot as jsonb), cast(:columns as jsonb),
                       1, :now
                     )
                     """
