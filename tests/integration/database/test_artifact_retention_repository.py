@@ -75,12 +75,23 @@ def _create_unified_import_source(
     )
     campaign_id = uuid4()
     item_id = uuid4()
-    item_status = (
-        "queued"
-        if campaign_status
-        in {"uploading", "discovering", "snapshotting", "ready", "queued", "running", "cancelling"}
-        else "failed"
-    )
+    if campaign_status in {
+        "uploading",
+        "discovering",
+        "snapshotting",
+        "ready",
+        "queued",
+        "running",
+        "cancelling",
+    }:
+        item_status = "queued"
+    else:
+        item_status = {
+            "succeeded": "succeeded",
+            "failed": "failed",
+            "partial_failed": "failed",
+            "cancelled": "cancelled",
+        }[campaign_status]
     session.execute(
         insert(historical_import_campaigns_table).values(
             id=campaign_id,

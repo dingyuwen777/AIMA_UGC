@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260924-160644-import-source-retention
 title: 统一数据导入源 Artifact 七天生命周期
 level: L2
-status: proposed
+status: ready_for_review
 owner: yuwen.ding
 branch: fix/595-import-source-retention
 created: 2026-09-24T16:06:44+08:00
@@ -72,12 +72,12 @@ data_changes:
 
 ## 成功标准
 
-- [ ] `data-import.source` / `historical-import.source` 非终态不进入 7 天到期清理。
-- [ ] `succeeded / failed / partial_failed / cancelled` 终态使用当前 Campaign `finished_at + 7 days`。
-- [ ] retry-failed 重新活动时旧截止时间同步失效，再次终态后重新计算。
-- [ ] 未引用 `data-import.source` 复用现有 1 天 orphan 清理。
-- [ ] 旧 Import / Provider Raw / Export / Canonical 行为保持。
-- [ ] required 测试、Review、CI、main-fresh、Change archive 与 Issue closure 完成。
+- [x] `data-import.source` / `historical-import.source` 非终态不进入 7 天到期清理。
+- [x] `succeeded / failed / partial_failed / cancelled` 终态使用当前 Campaign `finished_at + 7 days`。
+- [x] retry-failed 重新活动时旧截止时间同步失效，再次终态后重新计算。
+- [x] 未引用 `data-import.source` 复用现有 1 天 orphan 清理。
+- [x] 旧 Import / Provider Raw / Export / Canonical 行为保持。
+- [ ] required 独立 Review、正式 current-head CI、merge、main-fresh、Change archive 与 Issue closure 完成。
 
 ## 范围
 
@@ -113,12 +113,12 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 非终态统一 Source 不可被 7 天 TTL 清理 | #595 AC1 | not_satisfied | Red integration 待取得 |
-| R2 | 四种 Campaign 终态均从 `finished_at` 起保留 7 天 | #595 AC2 | not_satisfied | Red integration 待取得 |
-| R3 | retry-failed 使旧 expiry 失效，再终态重新计时 | #595 AC3 | not_satisfied | Red Golden Path 待取得 |
-| R4 | 未引用 `data-import.source` 使用现有 1 天 orphan | #595 AC4 | not_satisfied | Red integration 待取得 |
-| R5 | 旧 Artifact/Canonical/业务事实兼容 | #595 AC5 | not_satisfied | 相关回归与 Review 待取得 |
-| R6 | Review / CI / merge / main-fresh / archive / closure 完整交付 | #595 AC6 | not_satisfied | 交付阶段待取得 |
+| R1 | 非终态统一 Source 不可被 7 天 TTL 清理 | #595 AC1 | satisfied | Red PR #597 Run 35974241664 证明旧行为失败；Green Run 35975130935 PostgreSQL Integration 通过；`artifact_metadata.py` 在 deadline reconcile 与删除认领两处检查活动 Campaign |
+| R2 | 四种 Campaign 终态均从 `finished_at` 起保留 7 天 | #595 AC2 | satisfied | 两种 Source kind × 四类终态 PostgreSQL 回归通过；统一 deadline 使用 Campaign 当前 `finished_at + IMPORT_SOURCE_RETENTION` |
+| R3 | retry-failed 使旧 expiry 失效，再终态重新计时 | #595 AC3 | satisfied | 真实 Historical Campaign retry Golden Path：失败终态先得到 expiry，retry HTTP 同事务清空，成功后按新 `finished_at + 7d` 重算；Green Run 35975130935 ingestion / Full-stack 通过 |
+| R4 | 未引用 `data-import.source` 使用现有 1 天 orphan | #595 AC4 | satisfied | PostgreSQL orphan 回归覆盖 `data-import.source`，同时保留既有 `historical-import.source` / chunk / Canonical 行为 |
+| R5 | 旧 Artifact/Canonical/业务事实兼容 | #595 AC5 | satisfied | Green Run 35975130935：CI Gate、PostgreSQL Integration、Real Full-stack、Runtime Acceptance、Developer Tooling Compatibility 均成功；无 Schema/Contract/依赖变化 |
+| R6 | Review / CI / merge / main-fresh / archive / closure 完整交付 | #595 AC6 | explicitly_deferred | 属于实现 Ready 后的交付生命周期；独立 Standard Review 与正式 PR #596 current-head CI 后再 guarded merge，并在 merge 后完成 main-fresh / 自动归档 / Issue closure |
 
 # 实施计划
 
@@ -132,14 +132,14 @@ data_changes:
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | Retention policy / deadline reconciliation 的直接回归 |
-| 接口 / Contract | not_applicable | 不改变 HTTP/Pydantic/OpenAPI/generated client |
-| 集成 / Persistence / Runtime Dependency | required | 真实 PostgreSQL 下 terminal/active/orphan/CAS 与 retry expiry |
-| 用户 / Workflow Acceptance | required | 现有 Historical Campaign retry HTTP + Worker Golden Path |
-| 跨组件 Golden Path | required | Source Artifact → Campaign → Worker/retry → PostgreSQL retention |
-| External Dependency / Provider Probe | not_applicable | 不改变 TikHub/LLM/外部 API |
-| Build / Package / Runtime | required | PR CI 的 Python / deployable stack 等现有 required checks |
-| Docs / Governance / Other | required | targeted docs、Completion Audit、Review、Change gate、main-fresh |
+| 行为 / Unit / Component | required | Artifact retention 回归已覆盖新 kind、四类终态、活动态和 orphan；Red/Green 证据来自 #597 |
+| 接口 / Contract | not_applicable | 不改变 HTTP/Pydantic/OpenAPI/generated client；Green CI contract/generated drift 通过 |
+| 集成 / Persistence / Runtime Dependency | required | Green Run 35975130935 在真实 PostgreSQL 18 上全部成功；分组结果含 53 / 103 / 141 / 73 / 63 / 2 passed |
+| 用户 / Workflow Acceptance | required | 现有 Historical Campaign retry HTTP + Worker Golden Path 已验证旧 expiry 清空与新终态重新计时 |
+| 跨组件 Golden Path | required | Green Run 35975130935 Real Full-stack Golden Path / Excel Browser Full-stack 成功 |
+| External Dependency / Provider Probe | not_applicable | 不改变 TikHub/LLM/外部 API，不需要付费 Probe |
+| Build / Package / Runtime | required | Green Run 35975130935 Wheel、Runtime Acceptance、Developer Tooling Compatibility 成功；正式 #596 current-head CI 待 Ready 后取得 |
+| Docs / Governance / Other | required | Blueprint 03 与 Artifact 生命周期专题已 targeted 同步；Completion Audit 已完成；独立 Review、正式 CI、main-fresh 按交付阶段继续 |
 
 # 风险、兼容性与回滚
 
@@ -151,11 +151,18 @@ data_changes:
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重读 #595、相关 Blueprint/Appendix 与最终机器事实。
-- [ ] change_coverage：逐条映射 AC1-AC6，不以当前 Change 自证完整。
-- [ ] reverse_audit：从 cleanup 反查 Campaign retry/活动态，从 retry 反查 Artifact delete_pending/expiry。
-- [ ] unresolved_cleared：Ready 前 `not_satisfied` 清零或有正式延期依据。
+- [x] upstream_re_read：已重新读取 #595、Blueprint 03、Artifact 生命周期专题、最终 PR diff 与 Artifact/Campaign 生产调用链。
+- [x] change_coverage：AC1-AC5 均有生产实现与直接回归；AC6 仅保留真实交付生命周期步骤，不把 CI Green 冒充 merge/main-fresh/archive/closure。
+- [x] reverse_audit：从 cleanup 反查活动 Campaign 与 retry，从 retry 反查 `expires_at` / `delete_pending`；cleanup 先认领时 retry fail-closed，retry 先重入时 cleanup 当前事实重检拒绝删除。
+- [x] unresolved_cleared：R1-R5 已 satisfied；R6 仅按生命周期 `explicitly_deferred`，没有 `not_satisfied`。
+
+# Red / Green 证据
+
+- Red：临时诊断 PR #597，commit `2353d519b6a8a777c0161fb962403bd9be2d9d8d`，CI Run `35974241664`。静态/Unit/API/架构门禁先通过，PostgreSQL Integration 因目标生命周期缺口得到 `11 failed / 92 passed`。
+- Green：同一诊断 PR commit `21de7f9d55147e0b2fb1e19c0ef433833eda9d6a`，CI Run `35975130935`。CI Gate、PostgreSQL Integration、Real Full-stack、Runtime Acceptance、Developer Tooling Compatibility 均成功。
+- Green PostgreSQL 分组输出：`53 / 103 / 141 / 73 / 63 / 2 passed`。
+- 诊断 PR #597 已关闭且未合并；正式交付仅由 PR #596 承担。
 
 # 当前状态
 
-当前为 Red 阶段：先提交 Change 与失败回归，不包含生产修复。PR 在 Green、Docs、Completion、Review 和 required CI 完成前不得合并。
+生产实现、回归、targeted 文档和 Completion Audit 已闭环，当前进入 `ready_for_review`。下一步执行独立 Standard Review 与 PR #596 最终 current-head required CI；只有两者均无阻断后才执行用户已授权的 guarded merge、main-fresh、repository-native Change archive 与 #595 closure。
