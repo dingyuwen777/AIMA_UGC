@@ -766,6 +766,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
         reason: reason?.trim() || null,
       })
       historicalRevocation.value = result
+      // 短请求已把 Campaign 改为 revoking；同步父状态才能让详情轮询继续跟进完成。
+      await refreshHistoricalCampaignSummary(campaignId)
       historicalRevocationPreview.value = await previewHistoricalCampaignRevocation(campaignId)
       await refresh(true)
       return result
