@@ -53,6 +53,12 @@ Index(
     feishu_bitable_mirrors_table.c.status,
     feishu_bitable_mirrors_table.c.next_sync_at,
 )
+Index(
+    "ix_feishu_bitable_mirrors_claim_expires_at",
+    feishu_bitable_mirrors_table.c.status,
+    feishu_bitable_mirrors_table.c.next_sync_at,
+    feishu_bitable_mirrors_table.c.claim_expires_at,
+)
 
 
 __all__ = ["feishu_bitable_mirrors_table"]
