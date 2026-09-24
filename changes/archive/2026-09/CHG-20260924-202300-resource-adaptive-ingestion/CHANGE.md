@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260924-202300-resource-adaptive-ingestion
 title: 导入、重筛与撤回的资源感知运行调节
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: fix/598-code-owned-runtime-sizing
 created: 2026-09-24T20:23:00+08:00
