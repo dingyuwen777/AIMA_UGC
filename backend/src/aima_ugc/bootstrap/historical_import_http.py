@@ -75,7 +75,12 @@ from aima_ugc.modules.ingestion.http import (
 )
 from aima_ugc.modules.ingestion.xlsx_security import MAX_XLSX_FILE_BYTES
 from aima_ugc.modules.system.models import AuditEvent
-from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactSizeLimitError
+from aima_ugc.platform.storage import (
+    ArtifactRecord,
+    ArtifactService,
+    ArtifactSizeLimitError,
+    ArtifactStateConflict,
+)
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
@@ -619,7 +624,11 @@ class PostgresHistoricalImportHttpService:
                     if scheduled == 0:
                         raise HistoricalCampaignConflict("Campaign 没有可执行 Chunk")
                 elif action == "retry":
-                    batches = repository.prepare_failed_retry(campaign_id)
+                    batches, source_artifact_ids = repository.prepare_failed_retry(campaign_id)
+                    artifacts = PostgresArtifactMetadataRepository(session)
+                    for artifact_id in source_artifact_ids:
+                        # 与 Campaign 重入同事务撤销旧 TTL；cleanup 已认领时整次重试回滚。
+                        artifacts.reactivate_import_source(artifact_id)
                     scheduled = repository.schedule_import_jobs(
                         campaign_id=campaign_id,
                         source_batches=batches,
@@ -643,7 +652,7 @@ class PostgresHistoricalImportHttpService:
                 return _campaign_response(row, progress)
         except RepositoryCampaignNotFound as exc:
             raise HistoricalCampaignNotFound from exc
-        except HistoricalCampaignConflict as exc:
+        except (HistoricalCampaignConflict, ArtifactStateConflict) as exc:
             raise HistoricalCampaignStateConflict from exc
         finally:
             session.close()
