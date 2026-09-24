@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260924-160644-import-source-retention
 title: 统一数据导入源 Artifact 七天生命周期
 level: L2
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: fix/595-import-source-retention
 created: 2026-09-24T16:06:44+08:00
