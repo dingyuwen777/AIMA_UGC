@@ -1,0 +1,95 @@
+{
+  "schema_version": "import-throughput-evidence.v1",
+  "measured_at": "2026-09-24T10:12:24+08:00",
+  "environment": {
+    "database": "PostgreSQL 18.4",
+    "worker_count": 1,
+    "database_scope": "dedicated-empty-capacity-database",
+    "disk_budget_bytes_per_run": 67108864,
+    "fixture": {
+      "canonical_files": 1,
+      "rows": 1000,
+      "existing_rows": 200,
+      "new_rows": 800,
+      "stable_author_rows": 1000,
+      "alternate_id_rows": 1000
+    },
+    "timing_scope": "canonical replay job execution; fixture generation and initial import excluded"
+  },
+  "stable_author_same_machine_ab": {
+    "scalar_reference": {
+      "purpose": "benchmark-only reproduction of the former row-by-row compatibility path",
+      "elapsed_seconds": [21.91, 21.991, 23.676],
+      "rows_per_second": [45.64, 45.47, 42.24],
+      "p50_elapsed_seconds": 21.991,
+      "p50_rows_per_second": 45.47,
+      "sql_statements_per_run": 16464
+    },
+    "batched_candidate": {
+      "elapsed_seconds": [3.147, 3.124, 3.314],
+      "rows_per_second": [317.75, 320.05, 301.72],
+      "p50_elapsed_seconds": 3.147,
+      "p50_rows_per_second": 317.75,
+      "sql_statements_per_run": 110,
+      "stable_author_count_per_run": 1000,
+      "batched_remainder_count_per_run": 1000,
+      "scalar_fallback_count_per_run": 0
+    },
+    "p50_speedup": 6.988,
+    "sql_statement_reduction_percent": 99.332
+  },
+  "non_stable_regression_guards": {
+    "mixed_200_existing_800_new": {
+      "current_main_elapsed_seconds": [10.827, 11.01, 11.301],
+      "current_main_p50_elapsed_seconds": 11.01,
+      "final_candidate_elapsed_seconds": [2.704, 2.459, 2.716],
+      "final_candidate_p50_elapsed_seconds": 2.704,
+      "final_candidate_p50_rows_per_second": 369.84,
+      "final_candidate_sql_statements_per_run": 82,
+      "p50_speedup": 4.072
+    },
+    "all_1000_new": {
+      "current_main_p50_elapsed_seconds": 5.985,
+      "final_candidate_elapsed_seconds": [2.799, 2.791, 3.126],
+      "final_candidate_p50_elapsed_seconds": 2.799,
+      "final_candidate_p50_rows_per_second": 357.28,
+      "final_candidate_sql_statements_per_run": 72,
+      "p50_speedup": 2.138,
+      "elapsed_reduction_percent": 53.233
+    },
+    "note": "Each final candidate run included the statement-level voice-plaza trigger and the concurrent filter-catalog correctness lock. The current-main baseline and final candidate used the same machine, PostgreSQL version, fixture shape and one-worker execution scope."
+  },
+  "voice_plaza_trigger_root_cause_ab": {
+    "fixture": "1000 rows, 200 existing, no stable account IDs",
+    "row_trigger_baseline": {
+      "elapsed_seconds": 4.99,
+      "rows_per_second": 200.38,
+      "sql_statements": 82,
+      "transaction_ms": 4858
+    },
+    "projection_triggers_disabled_diagnostic": {
+      "elapsed_seconds": 0.943,
+      "rows_per_second": 1060.87,
+      "sql_statements": 82,
+      "transaction_ms": 816
+    },
+    "statement_trigger_candidate": {
+      "elapsed_seconds": 2.156,
+      "rows_per_second": 463.83,
+      "transaction_ms": 2027
+    },
+    "candidate_speedup_over_row_trigger_baseline": 2.315,
+    "note": "The trigger-disabled result is diagnostic only; production keeps synchronous projection updates through statement-level transition-table triggers."
+  },
+  "correctness_evidence": {
+    "voice_plaza_visibility": "The integration test queries the projection and filter catalog after the ingest transaction commits; both are immediately updated without a background projection job. A two-session regression also verifies that concurrent deletion of the last rows for one filter-catalog key converges to an exact zero count.",
+    "replay_fallback": "The replay integration test rejects any scalar content write and observes stable_author_count=3, batched_remainder_count=3, scalar_fallback_count=0.",
+    "bounded_sql": "The 101-row stable-author integration test requires fewer than 70 application SQL executions and verifies 101 accounts plus 101 alternate IDs.",
+    "migration": "Alembic 20260924_0061 upgrade/downgrade/upgrade and alembic check passed on the dedicated capacity database."
+  },
+  "interpretation_limits": [
+    "These measurements prove the code-path improvement on the controlled fixture; they are not a production SLO.",
+    "A 25,819-file production run still depends on file-size distribution, storage throughput, PostgreSQL WAL and lock contention.",
+    "The benchmark-only scalar reference is never enabled by normal application configuration or production code paths."
+  ]
+}

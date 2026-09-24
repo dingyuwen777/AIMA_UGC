@@ -85,6 +85,7 @@ _ACCOUNT_FIELD_COLUMNS = {
     "author.content_count": "current_content_count",
     "author.total_like_count": "current_total_like_count",
 }
+_ACCOUNT_COLUMNS = tuple(_ACCOUNT_FIELD_COLUMNS.values())
 _CONTENT_FIELD_COLUMNS = {
     "content_type": "content_type",
     "title": "title",
@@ -275,27 +276,23 @@ class PostgresContentRepository:
         collection_fields: frozenset[str] = frozenset(),
         replay_visibility_owner_id: UUID | None = None,
     ) -> tuple[PostgresNewContentBatchItem, ...]:
-        """集合创建无稳定账号身份的 Content；数据库冲突行由调用方回退。"""
+        """集合创建 Content，并批量收敛稳定作者；数据库冲突行由调用方回退。"""
 
         if not observations:
             return ()
-        if any(
-            item.author is not None and item.author.external_account_id is not None
-            for item in observations
-        ):
-            raise ValueError("Content 集合创建只接受无稳定账号身份的观察")
         identities = tuple((item.platform, item.external_content_id) for item in observations)
         if len(set(identities)) != len(identities):
             raise ValueError("Content 集合创建不接受重复身份")
+        author_ids = self._upsert_content_authors_batch(observations)
 
         candidates: list[tuple[CanonicalContentV1, UUID, dict[str, Any], UUID, UUID]] = []
-        for observation in observations:
+        for observation, author_id in zip(observations, author_ids, strict=True):
             attempt_id, raw_id = _source_ids(observation)
             content_id = uuid4()
             state = _new_content_state(
                 content_id,
                 observation,
-                None,
+                author_id,
                 collection_fields=collection_fields,
             )
             # Multi-values INSERT 要求每行拥有相同键；缺失字段与逐行 INSERT 的
@@ -414,18 +411,16 @@ class PostgresContentRepository:
         collection_fields: frozenset[str] = frozenset(),
         replay_visibility_owner_id: UUID | None = None,
     ) -> tuple[PostgresExistingContentBatchItem, ...]:
-        """集合更新无稳定账号且当前作者为空的既有 Content。"""
+        """集合更新既有 Content，并以批量账号解析保留稳定作者语义。"""
 
         if not observations:
             return ()
-        if any(
-            item.author is not None and item.author.external_account_id is not None
-            for item in observations
-        ):
-            raise ValueError("既有 Content 集合更新只接受无稳定账号身份的观察")
         identities = tuple((item.platform, item.external_content_id) for item in observations)
         if len(set(identities)) != len(identities):
             raise ValueError("既有 Content 集合更新不接受重复身份")
+        # 与单行 ingest_content 保持 Account → Content 的锁顺序，避免批量与
+        # 兼容路径并发处理同一作者和内容时形成交叉等待。
+        author_ids = self._upsert_content_authors_batch(observations)
         current_by_identity = {
             (cast(str, row["platform"]), cast(str, row["external_content_id"])): dict(row)
             for row in self._session.execute(
@@ -435,6 +430,7 @@ class PostgresContentRepository:
                         identities
                     )
                 )
+                .order_by(contents_table.c.id)
                 .with_for_update()
             ).mappings()
         }
@@ -443,9 +439,10 @@ class PostgresContentRepository:
         if any(
             current_by_identity[identity]["author_account_id"] is not None
             and "author.external_account_id" in observation.observed_fields
+            and (observation.author is None or observation.author.external_account_id is None)
             for observation, identity in zip(observations, identities, strict=True)
         ):
-            raise ValueError("既有 Content 集合更新不接受已绑定稳定作者的 Current")
+            raise ValueError("既有 Content 集合更新不接受清空已绑定稳定作者")
 
         source_by_identity = {
             (item.platform, item.external_content_id): _source_ids(item) for item in observations
@@ -500,12 +497,19 @@ class PostgresContentRepository:
         version_values: list[dict[str, Any]] = []
         metric_values: list[dict[str, Any]] = []
         results: list[PostgresExistingContentBatchItem] = []
-        for observation, identity in zip(observations, identities, strict=True):
+        for observation, identity, author_id in zip(
+            observations,
+            identities,
+            author_ids,
+            strict=True,
+        ):
             current = current_by_identity[identity]
             content_id = cast(UUID, current["id"])
             attempt_id, raw_id = source_by_identity[identity]
-            candidate_updates = _content_updates(observation, None)
-            if "author.external_account_id" in observation.observed_fields:
+            candidate_updates = _content_updates(observation, author_id)
+            if "author.external_account_id" in observation.observed_fields and (
+                observation.author is None or observation.author.external_account_id is None
+            ):
                 candidate_updates["author_account_id"] = None
             metric_changed = _content_metric_changed(current, observation)
             current_updates, field_observed_at = _fresh_updates(
@@ -624,6 +628,299 @@ class PostgresContentRepository:
                 insert(content_metric_observations_table).values(list(metric_chunk))
             )
         return tuple(results)
+
+    def _upsert_content_authors_batch(
+        self,
+        observations: tuple[CanonicalContentV1, ...],
+    ) -> tuple[UUID | None, ...]:
+        """按主 ID 与备用稳定 ID 的连通分量批量收敛账号并应用字段新鲜度。"""
+
+        entries = tuple(
+            (index, observation, observation.author)
+            for index, observation in enumerate(observations)
+            if observation.author is not None and observation.author.external_account_id is not None
+        )
+        if not entries:
+            return tuple(None for _ in observations)
+
+        parent: dict[tuple[str, str, str], tuple[str, str, str]] = {}
+
+        def find(token: tuple[str, str, str]) -> tuple[str, str, str]:
+            """查找并压缩当前稳定身份的并查集根。"""
+
+            parent.setdefault(token, token)
+            root = token
+            while parent[root] != root:
+                root = parent[root]
+            while parent[token] != token:
+                following = parent[token]
+                parent[token] = root
+                token = following
+            return root
+
+        def union(left: tuple[str, str, str], right: tuple[str, str, str]) -> None:
+            """合并同一 Canonical 作者声明中的主身份和备用身份。"""
+
+            left_root = find(left)
+            right_root = find(right)
+            if left_root != right_root:
+                parent[right_root] = left_root
+
+        primary_tokens: dict[int, tuple[str, str, str]] = {}
+        alternate_tokens: set[tuple[str, str, str]] = set()
+        for index, observation, raw_author in entries:
+            author = raw_author
+            primary = (
+                "primary",
+                observation.platform,
+                cast(str, author.external_account_id),
+            )
+            primary_tokens[index] = primary
+            find(primary)
+            if "author.alternate_ids" not in observation.observed_fields:
+                continue
+            for id_type, external_id in sorted(author.alternate_ids.items()):
+                alternate = ("alternate", id_type, external_id)
+                alternate_tokens.add(alternate)
+                union(primary, alternate)
+
+        primary_keys = tuple((token[1], token[2]) for token in set(primary_tokens.values()))
+        alternate_keys = tuple((token[1], token[2]) for token in alternate_tokens)
+
+        def load_identity_accounts() -> dict[tuple[str, str, str], tuple[UUID, str]]:
+            """集合读取当前主身份和备用身份绑定的账号。"""
+
+            resolved: dict[tuple[str, str, str], tuple[UUID, str]] = {}
+            if primary_keys:
+                for row in self._session.execute(
+                    select(
+                        accounts_table.c.id,
+                        accounts_table.c.platform,
+                        accounts_table.c.external_account_id,
+                    ).where(
+                        tuple_(
+                            accounts_table.c.platform,
+                            accounts_table.c.external_account_id,
+                        ).in_(primary_keys)
+                    )
+                ):
+                    resolved[("primary", row.platform, row.external_account_id)] = (
+                        cast(UUID, row.id),
+                        cast(str, row.platform),
+                    )
+            if alternate_keys:
+                for row in self._session.execute(
+                    select(
+                        account_external_ids_table.c.id_type,
+                        account_external_ids_table.c.external_id,
+                        accounts_table.c.id,
+                        accounts_table.c.platform,
+                    )
+                    .select_from(
+                        account_external_ids_table.join(
+                            accounts_table,
+                            accounts_table.c.id == account_external_ids_table.c.account_id,
+                        )
+                    )
+                    .where(
+                        tuple_(
+                            account_external_ids_table.c.id_type,
+                            account_external_ids_table.c.external_id,
+                        ).in_(alternate_keys)
+                    )
+                ):
+                    resolved[("alternate", row.id_type, row.external_id)] = (
+                        cast(UUID, row.id),
+                        cast(str, row.platform),
+                    )
+            return resolved
+
+        def resolve_components(
+            identity_accounts: dict[tuple[str, str, str], tuple[UUID, str]],
+        ) -> dict[tuple[str, str, str], UUID]:
+            """验证组件只命中一个同平台账号，并返回已有绑定。"""
+
+            account_ids: dict[tuple[str, str, str], set[UUID]] = {}
+            account_platforms: dict[tuple[str, str, str], set[str]] = {}
+            primary_platforms: dict[tuple[str, str, str], set[str]] = {}
+            for token in parent:
+                root = find(token)
+                if token[0] == "primary":
+                    primary_platforms.setdefault(root, set()).add(token[1])
+                match = identity_accounts.get(token)
+                if match is not None:
+                    account_ids.setdefault(root, set()).add(match[0])
+                    account_platforms.setdefault(root, set()).add(match[1])
+            resolved: dict[tuple[str, str, str], UUID] = {}
+            for root, platforms in primary_platforms.items():
+                ids = account_ids.get(root, set())
+                matched_platforms = account_platforms.get(root, set())
+                if len(platforms) != 1 or matched_platforms.difference(platforms):
+                    raise ValueError("账号备用稳定 ID 指向不同账号或平台")
+                if len(ids) > 1:
+                    raise ValueError("账号主 ID 与备用稳定 ID 指向不同账号")
+                if ids:
+                    resolved[root] = next(iter(ids))
+            return resolved
+
+        identity_accounts = load_identity_accounts()
+        component_accounts = resolve_components(identity_accounts)
+        first_entry_by_component: dict[
+            tuple[str, str, str], tuple[int, CanonicalContentV1, CanonicalAuthorV1]
+        ] = {}
+        for index, observation, raw_author in entries:
+            root = find(primary_tokens[index])
+            first_entry_by_component.setdefault(
+                root,
+                (index, observation, raw_author),
+            )
+        inserts: list[dict[str, Any]] = []
+        for root, (_index, observation, author) in first_entry_by_component.items():
+            if root in component_accounts:
+                continue
+            inserts.append(
+                {
+                    "id": uuid4(),
+                    "platform": observation.platform,
+                    "external_account_id": author.external_account_id,
+                    "first_seen_at": observation.observed_at,
+                    "last_seen_at": observation.observed_at,
+                    "field_observed_at": _initial_freshness(
+                        observation.observed_fields,
+                        _ACCOUNT_FIELD_COLUMNS,
+                        observation.observed_at,
+                    ),
+                    "updated_at": observation.observed_at,
+                    **_account_candidate_updates(author, observation.observed_fields),
+                }
+            )
+        for chunk in batched(inserts, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            self._session.execute(
+                pg_insert(accounts_table)
+                .values(list(chunk))
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        accounts_table.c.platform,
+                        accounts_table.c.external_account_id,
+                    ]
+                )
+            )
+
+        identity_accounts = load_identity_accounts()
+        component_accounts = resolve_components(identity_accounts)
+        unresolved = set(first_entry_by_component).difference(component_accounts)
+        if unresolved:
+            raise RuntimeError("账号集合写入后无法读取稳定身份")
+        locked_accounts = {
+            cast(UUID, row["id"]): dict(row)
+            for row in self._session.execute(
+                select(accounts_table)
+                .where(accounts_table.c.id.in_(tuple(set(component_accounts.values()))))
+                .order_by(accounts_table.c.id)
+                .with_for_update()
+            ).mappings()
+        }
+        for index, observation, raw_author in entries:
+            author = raw_author
+            account_id = component_accounts[find(primary_tokens[index])]
+            current = locked_accounts[account_id]
+            fresh_updates, freshness = _fresh_updates(
+                current=current,
+                candidate_updates=_account_candidate_updates(
+                    author,
+                    observation.observed_fields,
+                ),
+                observed_fields=observation.observed_fields,
+                field_columns=_ACCOUNT_FIELD_COLUMNS,
+                observed_at=observation.observed_at,
+            )
+            current.update(fresh_updates)
+            current["first_seen_at"] = min(current["first_seen_at"], observation.observed_at)
+            current["last_seen_at"] = max(current["last_seen_at"], observation.observed_at)
+            current["updated_at"] = max(current["updated_at"], observation.observed_at)
+            current["field_observed_at"] = freshness
+
+        update_statement = (
+            update(accounts_table)
+            .where(accounts_table.c.id == bindparam("_batch_account_id"))
+            .values(
+                first_seen_at=bindparam("first_seen_at"),
+                last_seen_at=bindparam("last_seen_at"),
+                updated_at=bindparam("updated_at"),
+                field_observed_at=bindparam("field_observed_at"),
+                **{column: bindparam(column) for column in _ACCOUNT_COLUMNS},
+            )
+        )
+        self._session.execute(
+            update_statement,
+            [
+                {
+                    "_batch_account_id": account_id,
+                    "first_seen_at": row["first_seen_at"],
+                    "last_seen_at": row["last_seen_at"],
+                    "updated_at": row["updated_at"],
+                    "field_observed_at": row["field_observed_at"],
+                    **{column: row[column] for column in _ACCOUNT_COLUMNS},
+                }
+                for account_id, row in locked_accounts.items()
+            ],
+        )
+
+        desired_alternates: dict[tuple[UUID, str], str] = {}
+        for index, observation, raw_author in entries:
+            if "author.alternate_ids" not in observation.observed_fields:
+                continue
+            author = raw_author
+            account_id = component_accounts[find(primary_tokens[index])]
+            for id_type, external_id in sorted(author.alternate_ids.items()):
+                key = (account_id, id_type)
+                previous = desired_alternates.setdefault(key, external_id)
+                if previous != external_id:
+                    raise ValueError(
+                        f"账号稳定外部 ID 冲突: account_id={account_id} id_type={id_type}"
+                    )
+        existing_alternates = {
+            (cast(UUID, row.account_id), cast(str, row.id_type)): cast(str, row.external_id)
+            for row in self._session.execute(
+                select(account_external_ids_table).where(
+                    account_external_ids_table.c.account_id.in_(
+                        tuple(set(component_accounts.values()))
+                    )
+                )
+            )
+        }
+        alternate_inserts: list[dict[str, object]] = []
+        for key, external_id in desired_alternates.items():
+            persisted_external_id = existing_alternates.get(key)
+            if persisted_external_id is not None and persisted_external_id != external_id:
+                raise ValueError(f"账号稳定外部 ID 冲突: account_id={key[0]} id_type={key[1]}")
+            if persisted_external_id is None:
+                alternate_inserts.append(
+                    {"account_id": key[0], "id_type": key[1], "external_id": external_id}
+                )
+        for chunk in batched(alternate_inserts, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            self._session.execute(
+                pg_insert(account_external_ids_table).values(list(chunk)).on_conflict_do_nothing()
+            )
+        if desired_alternates:
+            persisted = {
+                (cast(UUID, row.account_id), cast(str, row.id_type)): cast(str, row.external_id)
+                for row in self._session.execute(
+                    select(account_external_ids_table).where(
+                        tuple_(
+                            account_external_ids_table.c.account_id,
+                            account_external_ids_table.c.id_type,
+                        ).in_(tuple(desired_alternates))
+                    )
+                )
+            }
+            if persisted != desired_alternates:
+                raise ValueError("账号备用稳定 ID 指向不同账号或平台")
+
+        author_ids: list[UUID | None] = [None] * len(observations)
+        for index, _observation, _author in entries:
+            author_ids[index] = component_accounts[find(primary_tokens[index])]
+        return tuple(author_ids)
 
     def _execute_grouped_content_updates(self, rows: list[dict[str, Any]]) -> None:
         """按列集合分组 executemany，保持不同 observed_fields 的更新语义。"""
@@ -868,25 +1165,7 @@ class PostgresContentRepository:
     ) -> UUID | None:
         if author is None or author.external_account_id is None:
             return None
-        author_values = {
-            "display_name": author.display_name,
-            "handle": author.handle,
-            "profile_url": str(author.profile_url) if author.profile_url else None,
-            "avatar_url": str(author.avatar_url) if author.avatar_url else None,
-            "bio": author.bio,
-            "verified": author.verified,
-            "verification_label": author.verification_label,
-            "region": author.region,
-            "follower_count": author.follower_count,
-            "following_count": author.following_count,
-            "content_count": author.content_count,
-            "total_like_count": author.total_like_count,
-        }
-        candidate_updates = {
-            _ACCOUNT_FIELD_COLUMNS[path]: author_values[path.removeprefix("author.")]
-            for path in _ACCOUNT_FIELD_COLUMNS
-            if path in observed_fields
-        }
+        candidate_updates = _account_candidate_updates(author, observed_fields)
         alternate_ids = author.alternate_ids if "author.alternate_ids" in observed_fields else {}
         primary_account_id = self._session.scalar(
             select(accounts_table.c.id).where(
@@ -1229,6 +1508,33 @@ def _source_ids(
     if observation.source.provider_attempt_id is None or observation.source.raw_artifact_id is None:
         raise ValueError("持久化 Canonical 必须包含 provider_attempt_id 与 raw_artifact_id")
     return UUID(observation.source.provider_attempt_id), observation.source.raw_artifact_id
+
+
+def _account_candidate_updates(
+    author: CanonicalAuthorV1,
+    observed_fields: list[str],
+) -> dict[str, Any]:
+    """把 Canonical Author 的已观测字段转换成 Account Current 列。"""
+
+    author_values = {
+        "display_name": author.display_name,
+        "handle": author.handle,
+        "profile_url": str(author.profile_url) if author.profile_url else None,
+        "avatar_url": str(author.avatar_url) if author.avatar_url else None,
+        "bio": author.bio,
+        "verified": author.verified,
+        "verification_label": author.verification_label,
+        "region": author.region,
+        "follower_count": author.follower_count,
+        "following_count": author.following_count,
+        "content_count": author.content_count,
+        "total_like_count": author.total_like_count,
+    }
+    return {
+        _ACCOUNT_FIELD_COLUMNS[path]: author_values[path.removeprefix("author.")]
+        for path in _ACCOUNT_FIELD_COLUMNS
+        if path in observed_fields
+    }
 
 
 def _new_content_state(

@@ -532,6 +532,13 @@ def test_import_retry_after_filter_io_failure_reuses_canonical(
             retry_delay_seconds=0,
         )
         assert worker.run_once() is True
+        worker_log = (runtime.settings.log_dir / "worker.log").read_text(encoding="utf-8")
+        io_failure_line = next(
+            line for line in worker_log.splitlines() if "event=excel_import.io_failed" in line
+        )
+        assert 'stage="preparing"' in io_failure_line
+        assert 'operation="filter_and_deduplicate_canonical"' in io_failure_line
+        assert 'error_type="OSError"' in io_failure_line
         monkeypatch.setattr(
             import_worker_module,
             "filter_and_deduplicate_canonical_contents",
