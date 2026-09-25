@@ -916,12 +916,27 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
             reset_script = bundle_dir / "reset_keep_vehicle_catalog.sh"
             reset_env = {**os.environ, "COMPOSE_PROJECT_NAME": project}
             _run(
-                ["bash", str(reset_script), "--env-file", str(env_path), "--dry-run"],
+                [
+                    "bash",
+                    str(reset_script),
+                    "--env-file",
+                    str(env_path),
+                    "--dry-run",
+                    "--allow-empty-catalog",
+                ],
                 cwd=bundle_dir,
                 env=reset_env,
             )
             _run(
-                ["bash", str(reset_script), "--env-file", str(env_path), "--execute", "--yes"],
+                [
+                    "bash",
+                    str(reset_script),
+                    "--env-file",
+                    str(env_path),
+                    "--execute",
+                    "--yes",
+                    "--allow-empty-catalog",
+                ],
                 cwd=bundle_dir,
                 env=reset_env,
             )

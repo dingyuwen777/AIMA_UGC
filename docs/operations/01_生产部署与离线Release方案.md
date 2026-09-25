@@ -431,7 +431,7 @@ Backup Set = PostgreSQL + ArtifactStore
 
 ### 明确要求清空业务数据时
 
-Linux Release 包提供 [`reset_keep_vehicle_catalog.sh`](../../scripts/deploy/reset_keep_vehicle_catalog.sh)。它是**重置工具，不是 Backup/Restore**。从 Release 根目录运行，先预检，再在确认不需要保留既有业务数据和 Artifact 后执行：
+Linux Release 包提供 [`scripts/deploy/reset_keep_vehicle_catalog.sh`](../../scripts/deploy/reset_keep_vehicle_catalog.sh)。它是**重置工具，不是 Backup/Restore**。从 Release 根目录运行，先预检，再在确认不需要保留既有业务数据和 Artifact 后执行：
 
 ```bash
 bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --dry-run

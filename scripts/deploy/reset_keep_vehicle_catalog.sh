@@ -9,6 +9,7 @@ usage() {
 默认只检查，不修改。--execute 会停止业务容器、备份保留目录、事务性清库并清空 Artifact 实体；
 完成后业务容器保持停止。--yes 仅用于明确授权的非交互执行。
 原始 Excel 目录、PostgreSQL 数据目录、Secret、日志、env 文件和车型目录不会删除。
+--allow-empty-catalog 仅供已确认空目录的隔离回放使用；生产默认拒绝空品牌或车型表。
 USAGE
 }
 
@@ -19,12 +20,14 @@ ENV_FILE=""
 EXECUTE=0
 MODE_SET=0
 ASSUME_YES=0
+ALLOW_EMPTY_CATALOG=0
 while (($#)); do
   case "$1" in
     --env-file) (($# >= 2)) || die '--env-file 缺少路径'; ENV_FILE="$2"; shift 2 ;;
     --dry-run) ((MODE_SET == 0)) || die '运行模式重复'; MODE_SET=1; EXECUTE=0; shift ;;
     --execute) ((MODE_SET == 0)) || die '运行模式重复'; MODE_SET=1; EXECUTE=1; shift ;;
     --yes) ASSUME_YES=1; shift ;;
+    --allow-empty-catalog) ALLOW_EMPTY_CATALOG=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "未知参数：$1" ;;
   esac
@@ -122,14 +125,17 @@ SQL
 [[ -n "$CATALOG_COUNTS" ]] || die '车型目录或 Alembic 版本状态不可读取'
 DB_IDENTITY="$(printf '%s\n' 'SELECT current_database() || '\''|'\'' || current_user;' | db)"
 log "目标 PostgreSQL 容器：$POSTGRES_ID；数据库/用户：$DB_IDENTITY"
-CATALOG_NONEMPTY="$(cat <<'SQL' | db
+ALEMBIC_VALID="$(printf '%s\n' 'SELECT count(*) = 1 FROM alembic_version;' | db)"
+[[ "$ALEMBIC_VALID" == t ]] || die 'Alembic 版本状态异常，拒绝清空'
+if ((ALLOW_EMPTY_CATALOG == 0)); then
+  CATALOG_NONEMPTY="$(cat <<'SQL' | db
 SELECT (SELECT count(*) FROM vehicle_catalog_versions) > 0
    AND (SELECT count(*) FROM vehicle_brands) > 0
-   AND (SELECT count(*) FROM vehicle_models) > 0
-   AND (SELECT count(*) FROM alembic_version) = 1;
+   AND (SELECT count(*) FROM vehicle_models) > 0;
 SQL
 )"
-[[ "$CATALOG_NONEMPTY" == t ]] || die '车型目录或 Alembic 版本为空，拒绝清空'
+  [[ "$CATALOG_NONEMPTY" == t ]] || die '车型目录为空，拒绝清空；隔离空库可显式使用 --allow-empty-catalog'
+fi
 log "保留目录计数（version|brand|brand_alias|model|model_alias|alembic）：$CATALOG_COUNTS"
 TARGET_TABLES="$(cat <<'SQL' | db
 SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
