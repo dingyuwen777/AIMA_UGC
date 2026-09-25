@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260925-212025-worker-reset-startup
 title: 修复严格重置后 Worker 启动失败与重复拉起
 level: L2
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: fix/607-worker-reset-startup
 created: 2026-09-25T21:20:25+08:00
