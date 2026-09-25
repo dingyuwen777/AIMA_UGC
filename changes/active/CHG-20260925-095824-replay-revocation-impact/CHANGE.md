@@ -41,6 +41,7 @@ affected_paths:
   - frontend/tests/collection-runtime-design.spec.ts
   - frontend/tests/collection-runtime-release2.spec.ts
   - frontend/tests/task-center.spec.ts
+  - frontend/e2e/collection-runtime.spec.ts
   - docs/appendix/08_数据入口与统一入库实现.md
   - docs/product/02_当前产品能力与用户流程.md
   - docs/guides/07_采集运行中心Figma开发基线.md
@@ -155,7 +156,7 @@ data_changes: []
 
 第一阶段按用户要求和 #603 独立核对六条现场记录：4 条 Campaign 全部过滤，2 条 Replay 分别新增 39,189/0，第二条处理已有记录 40,304 次、去重 6,875 次，撤回重组 39,189 个 Content；后两条 Campaign 各重组 5,747 个 Content。检查 SQL 来源、状态、不同计数单位，发现并修正“相关性过滤”误称品牌车型过滤、Collection 跨 Scope 累计与 Excel/Campaign `rows_ingested` 语义混同。
 
-第二阶段审查最终 diff、事务与索引边界、测试证据：500 行 `UPDATE ... FROM VALUES` 保留不同 `observed_fields` 的列集合，原行按稳定 ID 加锁且批次拒绝重复身份；贡献预览与 Worker 使用同一 Campaign 归属条件；API 增加可选只读字段无迁移；前端旧版预估差异通过真实组件 SSR 验证。重筛撤回按 Content 锁/版本/备用 ID/人工审查锁/自动证据/可见性/账本的原有守卫顺序执行，新增集合路径仅接纳无 Account、最多备用 ID 的 Delta；其余逐条精确路径保留。隔离 PostgreSQL 覆盖数据事实，前端测试覆盖渲染；尚未在用户 Compose 或不同规格服务器上重放本次大型 XLSX，性能百分比不能外推。普通导入撤销已具集合写入和动态批次，实测候选 SQL 页放大及列集缩小没有稳定收益，未将无收益候选提交。
+第二阶段审查最终 diff、事务与索引边界、测试证据：500 行 `UPDATE ... FROM VALUES` 保留不同 `observed_fields` 的列集合，原行按稳定 ID 加锁且批次拒绝重复身份；贡献预览与 Worker 使用同一 Campaign 归属条件；API 增加可选只读字段无迁移；前端旧版预估差异通过真实组件 SSR 验证。重筛撤回按 Content 锁/版本/备用 ID/人工审查锁/自动证据/可见性/账本的原有守卫顺序执行，新增集合路径仅接纳无 Account、最多备用 ID 的 Delta；其余逐条精确路径保留。隔离 PostgreSQL 覆盖数据事实，前端测试覆盖渲染；已用用户第四次导入的原始 XLSX 在独立数据库重放，但尚未在用户 Compose 或不同规格服务器上重放，性能百分比不能外推。普通导入撤销已具集合写入和动态批次，实测候选 SQL 页放大及列集缩小没有稳定收益，未将无收益候选提交。
 
 # 完成证据与状态
 
@@ -163,8 +164,9 @@ data_changes: []
 | --- | --- | --- |
 | V1 | Windows 隔离 PostgreSQL 18；`uv run --no-sync pytest` 的 Content/Replay/撤销/运行查询相关集成集 | 95 passed，证明当前代码的真实持久化路径；不等于用户 Compose 重放。 |
 | V2 | `npm run test -- --run`、`npm run lint`、`npm run build` | 233 passed、lint 及生产构建通过，覆盖列表五类型及旧预估终态 SSR。 |
-| V3 | Ruff format/check、mypy、Contract 生成/兼容、架构/Owner、文档和 Change 检查 | 本地通过；首轮 CI 发现 Change 模板结构错误，现已按 canonical 标题顺序修正并由本地严格校验通过，等待新 Head CI。 |
+| V3 | Ruff format/check、mypy、Contract 生成/兼容、架构/Owner、文档和 Change 检查；`npm run test:e2e -- collection-runtime.spec.ts` | 静态/Contract/Change 本地通过；CI 发现三处旧文案 E2E 断言，本地修正后 18 passed，等待新 Head CI。 |
 | V4 | 现场日志/API/只读 SQL 与隔离 3,000 行 Replay 基准 | 现场六条数字对账；本机样本第二轮由 6.744s 降至 4.620s/4.326s。 |
 | V5 | 同一隔离 PostgreSQL 3,000 Content 的 Replay 撤回及普通导入撤销基准 | Replay 撤回初始 52.023s，集合生命周期后 34.889s，归属/账本集合结清后 23.386s，证据集合恢复后 3.012s，计数均 3,000；普通导入撤销约 2.5s，两个候选改动无收益已撤回。两种撤回的批次仍由运行时资源和实测吞吐调节。 |
+| V6 | 用户第四次导入的 66,139 行 XLSX；独立 PostgreSQL 18，当前 Worker 逐阶段重放 | 普通导入 34 Chunk 约 9.73s、66,139 行均过滤；添加品牌别名后重筛读取 66,139 行、命中 7,056 行、新增 5,965 条约 28.04s；随后撤回 5,965 个 Content 约 7.11s。此为当前实现端到端实测，未取得该文件修改前的对照。 |
 
 未验证：本次大型 XLSX 在更新后的 Compose 上重放、不同服务器配置下的性能增益；隔离基准不能保证现场 39,189 条同比例缩短。PR #604 分支 `fix/603-replay-revocation-impact` 首个实现提交为 `4dd76bc4`；后续 CI、merge、main-fresh、归档、Issue Closure 与分支清理仍待执行。本任务未实施 Release 或生产部署。
