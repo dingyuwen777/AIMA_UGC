@@ -27,6 +27,7 @@ affected_paths:
   - scripts/release/release_bundle.py
   - tests/unit/test_release_bundle.py
   - tests/unit/test_ci_test_impact_optimization.py
+  - tests/unit/test_env_compose_config_contract.py
   - docs/operations/01_生产部署与离线Release方案.md
   - docs/operations/04_声音广场读模型回填与性能验证.md
 contracts: []
@@ -85,6 +86,8 @@ Worker 子进程在启动时读取声音广场单例状态，`get_state(...).one
 | PostgreSQL 集成 | 并发状态恢复、现有检查点、缺失来源 Artifact 终态 | 测试已加入，等待 Linux CI |
 | Linux Release 回放 | 隔离 Compose 中实际执行脚本 dry-run 和 execute，脚本自身校验所有业务表及目录 | 回放步骤已加入，等待 Linux CI |
 | 生产服务器 | 新镜像部署后由用户显式运行脚本及重导 | 未执行；不宣称生产已恢复 |
+
+同步最新 `main` 时，文档 Owner 调整使旧测试仍要求总入口复制专项手册的命令。已把该测试改为核对总入口导航及 Windows、生产专项 Owner 中的命令；没有修改运行代码。
 
 # 风险、兼容性、迁移与回滚
 
