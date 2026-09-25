@@ -1,662 +1,288 @@
 # TikHub 多接口验证与备用策略
 
-同一个平台在 TikHub 里可能同时存在 App、Web、V1、V2、V3。**接口名相似，不代表业务语义、内容集合、排序、分页、字段结构或价格相同。**
+本文只维护：
 
-本文说明：
+> **同一平台存在 App/Web/V1/V2/V3 等多个 API family 时，怎样验证它们、怎样定义候选状态、什么条件下允许切换生产主链。**
 
-- 当前生产主链和候选接口如何区分；
-- 怎样做可复现 A/B；
-- `verified_backup` 到底代表什么；
-- 为什么当前不做自动 fallback；
-- 要把备用切成主链时需要改哪些代码、Fixture、Pricing 和测试。
+当前到底选了哪个 Endpoint、历史 Probe 返回了什么、当时价格是多少，统一由证据台账维护：
 
-真实响应字段见：
+- [docs/appendix/04_TikHub接口选型与真实验证台账.md](04_TikHub接口选型与真实验证台账.md)
 
-[`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md)
+真实字段和 Mapper 路径统一看：
 
-真实验证台账见：
+- [docs/appendix/02_TikHub五平台真实响应与字段映射.md](02_TikHub五平台真实响应与字段映射.md)
 
-[`docs/appendix/04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md)
+五个平台当前代码导航看：
 
----
+- [docs/collection/README.md](../collection/README.md)
 
-## 1. 当前代码把“主链”和“候选”怎样分开
+本文不再复制当前平台 Endpoint/价格矩阵。
 
-主 Operation / Candidate Builder 都位于：
+## 1. 接口名相似不等于业务等价
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/
-```
+TikHub 中可能同时存在：
 
-当前代码使用清晰命名防止候选被 Runtime 误用，例如：
+~~~text
+App
+Web
+V1
+V2
+V3
+~~~
 
-```text
-build_video_search_request(...)
-→ 正式主 Operation
+即使名字都叫 Search / Detail / Comments，也可能不同：
 
-build_video_search_v1_candidate_request(...)
-→ 只用于显式 A/B Candidate
-```
+- 内容集合；
+- 排序；
+- 时间筛选；
+- 分页；
+- ID 类型；
+- 评论层级；
+- 字段完整度；
+- 限流；
+- 单次价格；
+- 风控与稳定性。
 
-当前生产能力登记：
+所以不能因为“新版本号更大”或“单页看起来一样”就替换生产主链。
 
-- [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py)
+## 2. 三种状态
 
-当前运行装配：
+### production
 
-- [`backend/src/aima_ugc/adapters/providers/tikhub/runtime.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/runtime.py)
+当前正式 Collection/补采会使用的接口。
 
-集合比较工具：
+要求代码、Capability、Mapper、Fixture、测试和当前运维事实已经接线。
 
-- [`backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py)
+### verified_candidate
 
-备用 builder：
+已经有足够真实证据表明它在某个明确 Operation 上可作为候选，但**不会自动进入生产 fallback**。
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/backup.py
-以及各平台 operations/*.py 中显式 candidate/web builder
-```
+候选只能说明：
 
-关键原则：
+> 在已验证范围内值得继续比较或可以人工切换评估。
 
-> Candidate Builder 存在 ≠ Capability 已启用 ≠ Runtime 会自动 fallback。
+不能说明所有参数、所有分页、所有内容类型都等价。
 
----
+### unverified / rejected
 
-## 2. 为什么当前不做自动 fallback
+证据不足，或已经确认不满足当前业务语义。
 
-表面上看：
+这类接口不能因为生产接口暂时失败就临时接入。
 
-```text
-App 失败
-→ 自动请求 Web
-```
+## 3. 为什么当前不做自动 fallback
 
-似乎更“稳定”，但这里有几个实际风险。
+如果主接口失败后系统自动切另一个 family，需要同时证明：
 
-### 2.1 可能不是同一个业务语义
+- Request 业务语义等价；
+- Pagination 可以安全续接；
+- Mapper 能稳定解释两种结构；
+- Content identity 不会漂移；
+- Capability 对用户没有说谎；
+- Pricing / 限流 / 费用风险可控；
+- 重试不会造成重复计费或重复写入；
+- 日志能明确说明真正使用了哪个 Operation。
 
-例如快手：
+这些条件缺一项，自动 fallback 可能把“可见失败”变成“静默写错数据”。
 
-```text
-search_video_v2
+因此候选默认只用于显式验证或正式批准后的切换，不形成隐藏自动降级链。
+
+## 4. A/B 验证先固定业务 Operation
+
+比较必须是同一个业务目标，例如：
+
+~~~text
+平台 X 的关键词搜索
+App Search vs Web Search
+~~~
+
+不能拿：
+
+~~~text
+Search
 vs
-search_comprehensive
-```
+Trending
+~~~
 
-后者语义更宽，可能混入非视频对象。自动切换后即使 HTTP 200，也可能悄悄改变采集口径。
+然后因为都有帖子列表就宣布等价。
 
-### 2.2 Pagination 不一定能直接续
+开始前至少固定：
 
-App 的：
+- 平台；
+- Operation；
+- 关键词/目标 ID；
+- 排序；
+- 时间条件；
+- 内容类型；
+- 页数/停止条件；
+- 运行时间；
+- 当前 Provider Config；
+- 候选 Endpoint；
+- 需要对比的费用/限流事实。
 
-```text
-cursor / pcursor / search_id
-```
+## 5. 不只比较“有没有返回数据”
 
-不能假设可以直接交给 Web family 继续下一页。
+至少比较：
 
-### 2.3 字段密度可能不同
+### 内容集合
 
-备用接口可能不返回：
-
-- comment_count；
-- reply_count；
-- 某类作者信息；
-- 当前主链依赖的分页元数据。
-
-如果不显式验证，会出现“HTTP 成功但业务事实悄悄变少”。
-
-### 2.4 费用可能差很多
-
-同一业务动作在不同 endpoint 上价格可能不同。快手历史 Probe 就出现 Web 二级评论明显高于 App 的情况。
-
-因此当前原则是：
-
-```text
-主接口失败
-→ 按主接口自己的失败/Retry 语义处理
-→ 不自动跨 family
-```
-
-要切换 family，必须形成可审计变更。
-
----
-
-## 3. 候选接口的三个状态
-
-| 状态 | 含义 | 当前能否被 Runtime 自动调用 |
-| --- | --- | --- |
-| `verified_backup` | 使用同业务输入做过受限真实 A/B，稳定 ID/结构可以归一化，价格已核验 | **不能** |
-| `candidate_pending_probe` | 当前代码能构造候选，但还没有足够真实 A/B 证据 | 不能 |
-| `not_equivalent` | 当前没有同语义候选，或者候选明显是不同业务口径 | 不能 |
-
-`verified_backup` 的意思只是：
-
-> 如果以后要人工切换/正式变更，我们已经有一组真实兼容证据。
-
-它不是：
-
-> 生产代码可以在异常时偷偷切过去。
-
----
-
-## 4. A/B 验证必须比较什么
-
-搜索类使用：
-
-```text
-同一个 keyword
-尽可能相同的排序
-尽可能相同的发布时间过滤
-尽可能相同的内容类型
-尽可能接近的执行时间
-```
-
-内容/评论类使用：
-
-```text
-同一个 content_id
-同一个 root_comment_id（回复场景）
-```
-
-至少记录：
-
-```text
-platform
-business_operation
-input identity
-executed_at
-primary_endpoint
-candidate_endpoint
-primary_filters
-candidate_filters
-primary_endpoint_price
-candidate_endpoint_price
-primary_count
-candidate_count
-primary_unique_count
-candidate_unique_count
-primary_duplicate_count
-candidate_duplicate_count
-shared_count
-primary_only_count
-candidate_only_count
-union_count
-jaccard
-same_unique_content
-pagination_semantics
-ordering_semantics
-shape_compatibility
-verification_status
-```
-
-### 为什么按稳定 ID，不按标题比较
-
-内容集合比较的主键必须是稳定外部 ID：
-
-```text
-Content → external_content_id
-Comment → external_comment_id
-```
-
-标题、作者名、URL 都可能变化或格式化不同，不适合作为 A/B 集合身份。
-
-### Jaccard
-
-```text
-shared / union
-```
-
-两边都是空集合时：
-
-```text
-union = 0
-→ jaccard = null / inconclusive
-```
-
-不能写成 1.0，因为“两个接口都没返回任何东西”不等于“证明两者完全等价”。
-
----
-
-## 5. 单页一样，为什么仍不能宣布接口完全等价
-
-一次 A/B 通常只验证一页。
-
-例如：
-
-```text
-Primary page 1 IDs = A,B,C
-Candidate page 1 IDs = A,B,C
-```
-
-只能说明：
-
-> 在这个关键词、这个时间、这个第一页窗口下，两者集合一致。
-
-不能证明：
-
-- 第二页以后也一致；
-- 排序永久一致；
-- 全量结果一致；
-- 过滤语义完全一致；
-- 未来 Provider 实现不会漂移。
-
-如果要验证“全量等价”，需要两边分别分页到终止，并记录：
-
-- 请求数；
-- 总费用；
-- 最终稳定 ID 集合；
-- 分页终止语义；
+- 总数；
+- 稳定内容 ID；
+- 交集/差集；
+- 重复；
 - 排序差异。
 
----
+### 分页
 
-# 6. 当前平台矩阵
+- 首游标；
+- 下一页游标；
+- 游标是否稳定；
+- 是否重复/漏页；
+- 是否有最大页数或奇怪终止条件。
 
-## 6.1 快手
+### 字段
 
-### 正式主链
+- 内容身份；
+- 作者身份；
+- 时间；
+-标题/正文；
+-互动指标；
+-媒体；
+-评论 identity；
+-二级回复 parent/root identity。
 
-当前 `operations/kuaishou.py`：
+### 业务能力
 
-```text
-Search
-GET /api/v1/kuaishou/app/search_video_v2
+- 原生时间筛选是否真的存在；
+- 排序是否支持；
+- 内容类型是否支持；
+- 评论是否有可安全停止的时间/排序语义；
+- Detail 是否补足 Search 缺失字段。
 
-Detail
-GET /api/v1/kuaishou/app/fetch_one_video
+### 成本和稳定性
 
-Comments
-GET /api/v1/kuaishou/app/fetch_video_comment
+- 当前官方/Provider 定价；
+- 限流；
+- 超时；
+- 错误码；
+- 实际请求次数；
+- 重试是否改变费用。
 
-SubComments
-GET /api/v1/kuaishou/app/fetch_video_sub_comments
-```
+价格与限流必须记录核验日期，长期结果进入 [docs/appendix/04_TikHub接口选型与真实验证台账.md](04_TikHub接口选型与真实验证台账.md)，不留在方法文档。
 
-### 已验证 Web 备用
+## 6. 单页高度相似仍然不够
 
-```text
-GET /api/v1/kuaishou/web/fetch_one_video_comment
-GET /api/v1/kuaishou/web/fetch_one_video_sub_comment
+只比较第一页，最多说明：
 
-status = verified_backup
-```
+> 在这一组输入、这一页数据、这次时间窗口里结果近似。
 
-同一真实作品、同一确实有回复的根评论 A/B：
+它不能证明：
 
-```text
-App 一级 → 200 / 非空
-Web 一级 → 200 / 非空
-App 二级 → 200 / 非空
-Web 二级 → 200 / 非空
-```
+- 下一页也一致；
+- 深分页不会漏；
+- 新旧内容排序一致；
+- 时间筛选边界一致；
+- 所有内容类型一致；
+- 后续字段不会漂移。
 
-历史 2026-08-16 endpoint-info 快照：
+需要切生产主链时，应按实际风险继续扩大验证到分页、字段、失败边界和稳定 identity。
 
-```text
-App 一级 0.001 USD
-App 二级 0.001 USD
-Web 一级 0.002 USD
-Web 二级 0.010 USD
-```
+## 7. Fixture 与 Probe 的职责
 
-这些数字只属于当时 Probe 证据。当前生产价格必须看：
+真实 Probe 用来确认外部事实。
 
-- [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../../backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml)
+Sanitized Fixture 用来把已确认结构固定成稳定回归证据。
 
-当前正式 builder：
+正确顺序：
 
-```python
-build_video_comments_request(...)
-→ 委托 App builder
+~~~text
+真实 Probe
+→ 脱敏保存必要结构
+→ 更新/新增 Fixture
+→ Mapper / Operation / Capability Test
+~~~
 
-build_video_sub_comments_request(...)
-→ 委托 App builder
-```
+不能手写一份“看起来像 TikHub”的 Fixture，然后据此宣布真实接口可用。
 
-所以 Web 备用不会被异常路径自动调用。
+真实响应中 Secret、账号私密信息和不应提交的用户数据必须脱敏。
 
-### 搜索为什么没有 App/Web A/B
+## 8. Candidate Builder 不能偷偷进入主链
 
-当前快手 Web family 没有和关键词视频 Search V2 同语义的 Web Search。
+项目可以保留 Candidate Builder 方便 A/B，但生产 Runtime 只有在正式决策后才切换。
 
-因此状态：
+需要同时确认：
 
-```text
-not_equivalent / no_same_semantic_web_search
-```
+- 正式 Builder/Operation；
+- Capability；
+- Mapper；
+- Fixture；
+- Pricing；
+- Tests；
+- Collection/平台文档；
+- 相关 API/前端能力投影。
 
-不能说“一致”，也不能说“不一致”，因为根本没有合法对照对象。
+如果只是增加候选验证入口，不应该顺便改变生产接口。
 
-### `search_comprehensive`
+## 9. 切换生产主链的最小证据
 
-代码有候选：
+候选要升级为 production，至少回答：
 
-```text
-/api/v1/kuaishou/app/search_comprehensive
-```
+1. 为什么现有主链接口需要切？
+2. 新接口在哪些真实样本上验证？
+3. Search/Detail/Comments/SubComments 的业务语义是否对应？
+4. 稳定 ID 和分页如何保证？
+5. Mapper/Canonical 是否需要变化？
+6. Capability 是否需要变化？
+7. 费用和限流影响是什么？
+8. 哪些 Fixture/Test 能挡住回归？
+9. 失败后如何回滚到旧 Operation？
+10. 文档证据台账是否更新？
 
-但它是综合搜索，业务口径比纯视频更宽：
+这不是固定测试数量要求，而是生产切换前必须解释的风险边界。
 
-```text
-status = candidate_pending_probe
-```
+## 10. 什么时候允许“只切一个 Operation”
 
-未来只能比较可识别视频子集，不能拿综合总数和视频 Search V2 总数直接比。
+完全允许一个平台混合使用不同 family。
 
----
+例如业务上可能出现：
 
-## 6.2 抖音
+~~~text
+Search → Web
+Detail → App
+Comments → App
+SubComments → Web
+~~~
 
-正式：
+只要每个 Operation 都有自己的真实证据、稳定 identity 和 Mapper 适配即可。
 
-```text
-POST /api/v1/douyin/search/fetch_video_search_v2
-```
+不要为了版本整齐强制“一个平台全部用 App”或“全部用 Web”。
 
-候选：
+## 11. 当前验证结果去哪里查
 
-```text
-POST /api/v1/douyin/search/fetch_video_search_v1
-status = candidate_pending_probe
-```
+本文故意不维护“小红书现在是哪条 Search”“微博评论当前哪个版本”之类状态。
 
-代码：
+当前/历史证据统一去：
 
-```text
-operations/douyin.py
-build_video_search_request(...)
-build_video_search_v1_candidate_request(...)
-```
+- [docs/appendix/04_TikHub接口选型与真实验证台账.md](04_TikHub接口选型与真实验证台账.md)
 
-V1/V2 都能接受同一组核心条件：
+当前生产代码和平台差异统一去：
 
-```text
-keyword
-cursor
-sort
-publish_time
-duration
-content_type
-```
+- [docs/collection/01_xiaohongshu.md](../collection/01_xiaohongshu.md)
+- [docs/collection/02_douyin.md](../collection/02_douyin.md)
+- [docs/collection/03_weibo.md](../collection/03_weibo.md)
+- [docs/collection/04_bilibili.md](../collection/04_bilibili.md)
+- [docs/collection/05_kuaishou.md](../collection/05_kuaishou.md)
 
-因此这是目前比较适合做真实搜索 A/B 的候选。
+这样接口切换时：
 
----
+~~~text
+方法
+→ 本文
 
-## 6.3 微博
+真实证据
+→ 04 台账
 
-正式搜索：
+当前生产实现
+→ collection 平台文档 + code
+~~~
 
-```text
-GET /api/v1/weibo/web/fetch_search
-```
-
-候选：
-
-```text
-GET /api/v1/weibo/app/fetch_search_all
-status = candidate_pending_probe
-```
-
-代码显式保留一个差异：
-
-```text
-Web 可以 time_scope
-App candidate 不伪造 Web 私有 time_scope
-```
-
-因此只能在双方真正可对齐的条件下比较。
-
-一级评论：
-
-```text
-正式 App
-/api/v1/weibo/app/fetch_status_comments
-
-候选 Web V2
-/api/v1/weibo/web_v2/fetch_post_comments
-status = candidate_pending_probe
-```
-
-二级评论当前正式本身就是：
-
-```text
-/api/v1/weibo/web_v2/fetch_post_sub_comments
-```
-
-所以“微博 App/Web 哪个是主链”不能按整个平台笼统下结论，必须按业务 Operation 分开。
-
----
-
-## 6.4 B站
-
-正式主链当前使用 App：
-
-```text
-Search
-/api/v1/bilibili/app/fetch_search_by_type
-
-Detail
-/api/v1/bilibili/app/fetch_one_video
-
-Comments
-/api/v1/bilibili/app/fetch_video_comments
-
-Reply
-/api/v1/bilibili/app/fetch_reply_detail
-```
-
-当前 Web Candidate：
-
-```text
-Search   /api/v1/bilibili/web/fetch_general_search
-Detail   /api/v1/bilibili/web/fetch_one_video
-Comments /api/v1/bilibili/web/fetch_video_comments
-Reply    /api/v1/bilibili/web/fetch_comment_reply
-```
-
-状态仍按 endpoint/operation 真实验证结果决定；当前不能因为 builder 已存在就自动升级为生产 fallback。
-
-搜索排序只对齐明确映射：
-
-```text
-latest  ↔ pubdate
-general ↔ totalrank
-```
-
-评论/回复要用同一 BV ID、同一根评论对照。
-
----
-
-## 6.5 小红书
-
-当前正式主链：
-
-```text
-App V2
-```
-
-代码同时有：
-
-```text
-App V1 Search Candidate
-Web V3 Search Candidate
-```
-
-位置：
-
-```text
-operations/xiaohongshu.py
-```
-
-但是小红书多代接口的参数/字段/能力持续演进，因此不能拿旧 endpoint 名称或历史文档直接宣布它们是备用。
-
-当前原则：
-
-```text
-primary = App V2
-alternate family = endpoint-specific verification required
-```
-
-要升级为 `verified_backup`，必须对目标 Endpoint 单独重新确认。
-
----
-
-# 7. 当前候选状态表
-
-这张表记录当前仓库文档已经有的结论；如果后续新 Real Probe 改变状态，要同时更新台账和测试证据。
-
-| 平台 | 对照 | 状态 | 当前结论 |
-| --- | --- | --- | --- |
-| 快手 | App Comments/SubComments vs Web | `verified_backup` | 同作品/根评论均 200 非空；App 历史 Probe 成本更低；生产主链是 App |
-| 快手 | App Search V2 vs Web Search | `not_equivalent` | 无同语义 Web Search |
-| 快手 | App Search V2 vs App Comprehensive | `candidate_pending_probe` | 综合搜索更宽，只可比视频子集 |
-| 抖音 | Video Search V2 vs V1 | `candidate_pending_probe` | 同业务候选 builder 已存在 |
-| 微博 | Web Search vs App Search All | `candidate_pending_probe` | 只能在可对齐过滤条件下比较 |
-| 微博 | App Comments vs Web V2 Comments | `candidate_pending_probe` | 同内容候选已存在 |
-| B站 | App vs Web Search/Detail/Comments/Reply | `candidate_pending_probe` | 候选 builder 已存在，需按 operation 真实验证 |
-| 小红书 | App V2 vs App V1/Web V3 等 | `candidate_pending_probe` | 需 endpoint-specific 当前验证 |
-
-注意：本表不是 Runtime 配置。Runtime 当前主链仍看 [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py) 和各主 builder。
-
----
-
-# 8. 一个 Candidate 怎样升级为 `verified_backup`
-
-必须同时满足：
-
-1. 当前 Endpoint/参数由代码和 Provider 当前资料确认；
-2. 真实查到 endpoint-level Pricing；
-3. 使用同关键词/同内容 ID/同根评论做受限 A/B；
-4. 两边都成功；
-5. 两边都能提取稳定内容/评论 ID；
-6. 记录数量、交集、only 集合、Jaccard；
-7. 记录排序/分页差异；
-8. 响应结构能进入现有或候选 Extractor/Mapper；
-9. 不需要把 Provider 私有字段污染到 Canonical；
-10. Fixture/测试/Secret Scan 通过；
-11. 更新真实验证台账和本策略文档。
-
-即使全部满足：
-
-```text
-verified_backup
-≠ 自动 fallback
-```
-
-正式切主仍是独立变更。
-
----
-
-# 9. 实际做一次 A/B 应该怎么走
-
-## 9.1 先确认主链代码
-
-例如抖音：
-
-```text
-operations/douyin.py
-→ build_video_search_request()
-```
-
-## 9.2 找 Candidate Builder
-
-```text
-build_video_search_v1_candidate_request()
-```
-
-不要自己在临时脚本里手写 endpoint/参数，否则测的不是生产代码候选。
-
-## 9.3 控制真实请求边界
-
-Real Probe 必须：
-
-- 显式运行；
-- 有请求上限；
-- 有费用意识；
-- 不进普通 CI；
-- 不打印 Secret；
-- 不默认写生产业务库。
-
-## 9.4 保存脱敏证据
-
-```text
-tests/fixtures/providers/tikhub/endpoint_ledger/<date>/
-```
-
-或当前对应平台 Fixture 目录。
-
-## 9.5 比较稳定 ID
-
-使用：
-
-- [`backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py)
-
-它只做稳定 ID 集合比较，不访问网络、不访问数据库、不读 Secret。
-
-## 9.6 再决定状态
-
-```text
-真实对照不足
-→ candidate_pending_probe
-
-没有同语义对象
-→ not_equivalent
-
-真实同输入可归一化且价格/结构已确认
-→ verified_backup
-```
-
----
-
-# 10. 正式切换主接口时应该改什么
-
-不要只改一个 URL。
-
-至少检查：
-
-```text
-operations/<platform>.py
-→ 正式 builder / pagination / extractor
-
-capabilities.py
-→ 主 Operation 能力声明
-
-runtime.py
-→ Operation / Mapper 装配
-
-pricing.toml
-→ 当前正式 endpoint 价格
-
-mappers/<platform>.py
-→ 如果 shape 有差异
-
-tests/fixtures/providers/tikhub/
-→ 新真实 Sanitized Fixture
-
-unit / contract / integration
-→ 结构、Canonical、Ingestion
-
-docs/collection/<platform>.md
-本策略文档
-02_TikHub五平台真实响应与字段映射.md
-04_TikHub接口选型与真实验证台账.md
-```
-
-如果响应业务事实无法由当前 Canonical 表达，再单独评估 Contract 变化；不要为了切接口顺手扩大公共 Schema。
-
----
-
-# 11. 当前明确禁止的做法
-
-- `transport.py` 捕获 App 错误后自动改发 Web；
-- 同一个 Attempt 内隐藏第二次真实 HTTP；
-- 仅凭 Endpoint 名称相似宣布等价；
-- 两边空结果就记 Jaccard 1.0；
-- 用标题/作者名替代稳定 ID 比较；
-- 未查价格就升级 `verified_backup`；
-- Candidate 尚未验证就登记到默认 Capability；
-- 把历史 Probe 价格当当前 Pricing 配置；
-- 把 TikHub 官方示例响应伪造成仓库“真实 Fixture”。
+三层不会互相复制。
