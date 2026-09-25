@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 CHECKER = runpy.run_path(str(ROOT / "scripts" / "quality" / "check_docs_facts.py"))
 CHECK_REPOSITORY = CHECKER["check_repository"]
 CURRENT_JOB_TYPES = CHECKER["_current_job_types"]
+CURRENT_TABLE_NAMES = CHECKER["_current_table_names"]
+FRONTEND_ROUTES = CHECKER["_frontend_routes"]
 OPENAPI_PATHS = CHECKER["_openapi_paths"]
 WORKER_JOB_SOURCE_FILES = CHECKER["_worker_job_source_files"]
 REQUIRE_EXACT_BLOCK = CHECKER["_require_exact_block"]
@@ -54,6 +56,27 @@ def test_api_guide_links_machine_contract_without_mirroring_full_route_surface()
     assert "frontend/src/generated/api/" in api_guide
     assert openapi_paths
     assert any(path not in api_guide for path in openapi_paths)
+
+
+def test_architecture_docs_link_machine_owners_without_mirroring_full_inventories() -> None:
+    """Blueprint 应解释稳定机制，不由文档事实门禁逼迫复制完整机器清单。"""
+    blueprint_01 = (ROOT / "docs/blueprint/01_总体架构与技术选型.md").read_text(encoding="utf-8")
+    blueprint_03 = (ROOT / "docs/blueprint/03_数据库与文件存储.md").read_text(encoding="utf-8")
+    blueprint_07 = (ROOT / "docs/blueprint/07_技术决策与实施门禁.md").read_text(encoding="utf-8")
+
+    assert "backend/src/aima_ugc/bootstrap/worker.py" in blueprint_01
+    assert "frontend/src/app/routes.ts" in blueprint_01
+    assert "frontend/src/app/routes.ts" in blueprint_07
+    assert "backend/src/aima_ugc/database_schema.py" in blueprint_03
+    assert "migrations/versions/" in blueprint_03
+    assert "scripts/quality/check_table_ownership.py" in blueprint_03
+
+    assert CURRENT_JOB_TYPES()
+    assert CURRENT_TABLE_NAMES()
+    assert FRONTEND_ROUTES()
+    assert any(job_type not in blueprint_01 for job_type in CURRENT_JOB_TYPES())
+    assert any(table_name not in blueprint_03 for table_name in CURRENT_TABLE_NAMES())
+    assert any(route not in blueprint_01 for route in FRONTEND_ROUTES())
 
 def test_worker_job_sources_follow_production_registry_imports() -> None:
     """Worker Job 事实源应能跟随生产 register_* 导入及 package re-export。"""
