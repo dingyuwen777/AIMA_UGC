@@ -238,8 +238,10 @@ async function revokeHistoricalCampaign(
     expect(status.status()).toBe(200)
     return (await status.json() as { status: string }).status
   }, { timeout: 60_000 }).toBe('succeeded')
-  await expect(dialog.getByText('这次导入已经撤销；导入记录、来源证据和审计历史仍会保留。'))
-    .toBeVisible({ timeout: 15_000 })
+  await expect(dialog.locator('.revocation-panel'))
+    .toContainText('这次导入已经撤销；', { timeout: 15_000 })
+  await expect(dialog.locator('.revocation-panel'))
+    .toContainText('导入记录、来源证据和审计历史仍会保留。')
 
   const repeated = await request.post(`/api/v1/data-import-campaigns/${campaignId}/revoke`, {
     data: { reason: 'full-stack idempotency check' },
