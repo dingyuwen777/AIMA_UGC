@@ -1,46 +1,34 @@
 # AIMA_UGC Operations
 
-`docs/operations/` 承担**已经存在的运行/部署能力怎样操作，以及真实生产动作需要满足什么门禁**。它与 Roadmap 的区别是：
+docs/operations/ 承担：**已经存在的运行/部署/迁移能力怎样安全操作，以及真实生产动作需要满足哪些当前门禁。**
 
-```text
-Operations
-→ 当前能力怎么运行、部署、恢复、迁移、排障
+它不定义未来产品路线；尚未完成、但已经批准的目标由 [docs/roadmap/](../roadmap/) 负责。
 
-Roadmap
-→ 还有哪些已经批准但尚未完成的生产目标
-```
+## 当前运行文档
 
-当前运行文档：
+1. [docs/operations/01_生产部署与离线Release方案.md](01_生产部署与离线Release方案.md)：Docker/Compose、Host Root、Secret、离线 Release、发布/回滚边界；
+2. [docs/operations/02_4000万历史迁移与Analysis Run运行手册.md](02_4000万历史迁移与Analysis%20Run运行手册.md)：Data Import Campaign、Persistent Canonical Replay、Historical Fill Only、容量验证、迁移对账与手动 Analysis Run；
+3. [docs/operations/03_内容重分类与Legacy_Cleanup运行手册.md](03_内容重分类与Legacy_Cleanup运行手册.md)：内容重分类与 Legacy Cleanup 的 fail-closed 操作；
+4. [docs/operations/04_声音广场读模型回填与性能验证.md](04_声音广场读模型回填与性能验证.md)：当前仍需要的声音广场读模型部署后回填与验证步骤。
 
-- [`docs/operations/01_生产部署与离线Release方案.md`](01_生产部署与离线Release方案.md)：Docker/Compose、宿主目录、Secret、离线 Release、发布/回滚边界；
-- [`docs/operations/02_4000万历史迁移与Analysis Run运行手册.md`](02_4000万历史迁移与Analysis%20Run运行手册.md)：统一 Data Import Campaign、Persistent Canonical Replay、Historical Fill-Only、容量门禁、迁移对账和手动 Analysis Run；
-- [`docs/operations/03_内容重分类与Legacy_Cleanup运行手册.md`](03_内容重分类与Legacy_Cleanup运行手册.md)：旧 Content Brand/Vehicle Evidence 重分类、Legacy Cleanup 前置检查、Migration/回滚和对账。
-- [`docs/operations/04_声音广场读模型回填与性能验证.md`](04_声音广场读模型回填与性能验证.md)：声音广场投影回填状态、Job 排障、阶段耗时日志和服务器验收。
+## Operations 与 Roadmap 的区别
 
-常用开发/本地运行命令仍由 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md) 维护；Windows Docker Desktop 操作见 [`docs/guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_Windows%20Docker%20Desktop%20Compose运行.md)。
+“代码已经有了，我现在怎样安全执行？”属于 Operations；“还有哪些批准的门禁没有完成？”属于 Roadmap。
 
-## 当前部署结论
+同一个状态不要两边完整维护。Operations 可以说明执行前必须满足某个 Roadmap Gate，但完成状态仍由 Roadmap / 正式环境证据持有。
 
-当前仓库已经具备 Internal V1 的 Docker/Compose 运行基线和 GitHub 离线 Release 基础。不能再把 [`Dockerfile`](../../Dockerfile)、[`compose.yaml`](../../compose.yaml)、[`env.production.example`](../../env.production.example)、`images.tar`、manifest、`SHA256SUMS`、`DEPLOY.md` 或 no-build/no-pull 回放整体描述成“尚未实现”。
+## 运行手册的内容边界
 
-完整 Production 仍是 No-Go。未完成事项由 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md) 维护，Operations 文档不能把未来 Backup/Restore、企业认证、供应链强化或生产实机验收写成已经完成的命令。
+长期 Operations 优先保留：前置条件与授权、可执行入口、正常路径、观察与对账、失败边界、恢复/回滚、精确机器事实位置。
 
-## 当前 4000 万结论
+不复制架构原理、完整 Schema、完整 API 或历史 PR/CI 流水。
 
-大规模历史导入的软件能力已经完成。当前未完成的是：
+## 临时 Migration / 回填手册必须退出
 
-- 公司服务器 500 万或业务批准的等效比例容量演练；
-- 生产写授权；
-- 4000 万正式 Campaign；
-- 全量结果/冲突/资源账本对账。
+当最后一个需要该过程的目标环境完成后：
 
-这些未完成门禁由 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../roadmap/03_4000万历史数据迁移实施方案.md) 维护；运行细节由本目录的运行手册维护。
+1. 把仍长期有效的操作知识合并到正式 Operations / Appendix Owner；
+2. 把本次执行、验收、异常和 SHA 证据留在 [changes/archive/](../../changes/archive/) 与 Git；
+3. 删除该临时 live 文档。
 
-## Operations 文档规则
-
-1. 命令必须来自当前仓库真实脚本/Compose/Workflow；
-2. 不伪造服务器执行证据；
-3. 不把开发机/CI 证据当作生产实机证据；
-4. 破坏性操作、生产写入、Secret、备份恢复必须明确授权和回滚边界；
-5. 已实现能力与待实现目标必须分段写；
-6. 精确机器事实回到当前代码、配置、Workflow 和锁文件。
+因此 docs/operations/ 不是“每做一次 Migration 永久加一篇”的归档目录。

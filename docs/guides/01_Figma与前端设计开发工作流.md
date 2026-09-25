@@ -1,904 +1,152 @@
-# Figma 与前端设计开发工作流
+# AIMA Figma 与前端开发接线
 
-这篇 Guide 说明 AIMA_UGC 后续怎样把 Figma 设计稳定地转成当前 Vue 代码，同时避免页面改版破坏后端 Contract、复制 Store/API，或因为 MCP 示例代码改变项目技术栈。
+本文只说明 **AIMA 的设计事实怎样映射到当前 Vue 工程**。
 
-当前技术基线：
+通用 Figma 创建、审查、Owner 治理、Design-to-Code、Evidence 和交付方法由 Agent_Skills 通过 [AGENTS.md](../../AGENTS.md) 的项目治理入口提供；本文不维护第二套通用 Figma/MCP 规则。
 
-```text
-Vue 3
-TypeScript
-Vite
-Vue Router
-Pinia
-Element Plus
-ECharts
-OpenAPI / Orval generated client
-```
+## 1. 三类事实不要混在一起
 
-长期前后端边界见：
-
-- [`docs/blueprint/04_后端任务API与前端.md`](../blueprint/04_后端任务API与前端.md)
-- [`docs/blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)
-- [`frontend/README.md`](../../frontend/README.md)
-
----
-
-## 1. 先区分三种事实源
-
-| 事实 | 当前事实源 | 不负责什么 |
+| 事实 | AIMA Owner | 说明 |
 | --- | --- | --- |
-| 页面视觉、布局、交互意图 | 已确认 Figma Frame/Component/Variable；没有正式 Figma 时使用明确批准的一次性视觉参考 | API 字段、数据库表、后端业务规则 |
-| HTTP 数据和错误语义 | Pydantic Request/Response → OpenAPI → Orval generated client | 页面布局/视觉 |
-| 当前实际运行行为 | Vue 源码、Store/API、generated client、测试和 build | 自动替代尚未实现的产品设计 |
+| 页面视觉、布局、交互意图 | 已确认 Figma 文件/Frame/Component/Variable | 设计事实，不定义后端业务 |
+| HTTP / Schema / 权限 / 状态机 | 后端 Contract、OpenAPI、代码、测试 | Figma 不能虚构 |
+| 当前前端工程结构 | [frontend/README.md](../../frontend/README.md) + Vue 源码 | 设计落地必须复用 |
 
-所以：
+发生冲突时先判断是哪一类事实落后；不要为了让截图和代码“看起来一致”而修改正确的业务 Contract。
 
-```text
-Figma 有字段
-≠ 后端已经有字段
+## 2. 当前前端技术边界
 
-后端有 API
-≠ 前端已经有独立页面
+当前项目是 Vue + TypeScript + Vite，页面状态使用 Pinia / local state，组件基于 Element Plus，HTTP 类型来自 OpenAPI/Orval 生成链。
 
-MCP 生成了代码
-≠ 代码可以直接提交
-```
+精确技术栈和页面入口看 [frontend/README.md](../../frontend/README.md)。
 
-还要区分一个容易混淆的边界：
+公共 HTTP 类型链：
 
-```text
-Figma 目标信息架构（Target IA）
-≠
-当前已经实现的 Vue Route
-```
-
-Figma 可以先表达已经确认的长期产品方向，例如公共 Sidebar 中可以先出现未来页面入口；但 Design-to-Code 时只能为 [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts) 当前真实存在的页面接通可点击导航。未来入口在代码中不得被实现成死链、伪路由、空白假页面或仅为了“和设计一致”而增加的无效菜单动作。真正新增页面时再按：
-
-```text
-Feature
-→ Page
-→ Route
-→ App Shell
-→ Test
-```
-
-同步接通。
-
----
-
-## 2. 当前真实前端结构
-
-真实 Router：
-
-- [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)
-
-当前路由：
-
-```text
-/
-/collection-runtime
-/collection-strategy
-/voice-plaza
-```
-
-当前业务 Feature：
-
-```text
-frontend/src/features/import-batches/
-frontend/src/features/collection-strategy/
-frontend/src/features/voice-plaza/
-```
-
-当前通用分层：
-
-```text
-App / Router / Layout
-→ Page / 页面私有组件
-→ Pinia Store / local state
-→ Feature api.ts
-→ frontend/src/generated/api/
-→ FastAPI
-```
-
-不要从早期 Stage 的目录示例猜现在存在 `features/content`、`features/system` 等目录；当前目录只以仓库实际内容为准。
-
----
-
-## 3. 页面独立不等于复制工程
-
-AIMA_UGC 使用一个 Vue SPA。
-
-“页面独立”指：
-
-```text
-页面组合独立
-页面私有组件独立
-局部交互状态独立
-修改页面时尽量只影响真实 Owner
-```
-
-不表示：
-
-- 一页一个 npm 工程；
-- 微前端；
-- 每页复制一套 API；
-- 每页复制一套 Store；
-- 同时维护 Vue/React 两套前端。
-
-只有真实团队/发布/性能边界证明有必要时，才重新评估微前端。
-
----
-
-## 4. App / Shared / Feature / Page 怎样分
-
-### App
-
-```text
-frontend/src/app/
-```
-
-负责：
-
-- Router；
-- App Shell；
-- 全局 Layout；
-- 应用级 Plugin 装配。
-
-不保存某个 Feature 的业务规则。
-
-### Shared
-
-```text
-frontend/src/shared/
-```
-
-只放真实跨 Feature 复用的内容：
-
-- Design Token；
-- 无单一业务 Owner 的组件；
-- 无业务语义的工具/composable。
-
-不要因为“以后可能复用”提前抽象。
-
-### Feature
-
-一个 Feature 典型拥有：
-
-```text
-api.ts
-store.ts
-format.ts（需要时）
-pages/
-Feature 级公共组件（真实复用后）
-```
-
-### Page
-
-页面私有组件优先留在 Page 目录。
-
-只有：
-
-```text
-同 Feature 多页面真实复用
-→ 提升到 Feature component
-
-跨 Feature 真实复用
-→ 再考虑 shared
-```
-
-不要先做一套“看起来完整”的组件库再找使用场景。
-
-Figma 组件也使用同样边界：
-
-```text
-AIMA/顶部栏
-AIMA/侧边栏
-AIMA/页面标题区
-AIMA/按钮
-AIMA/输入框
-AIMA/下拉选择
-AIMA/页签项
-AIMA/反馈横幅
-AIMA/空状态
-AIMA/模态框外壳
-→ 适合作为跨页面公共组件
-
-采集策略 KPI
-Keyword Pack Workspace
-Brand Filter Config
-Collection Plan Table / Form
-→ 保持 Feature 级组件或 Pattern
-```
-
-设计系统和代码组件不要求机械 1:1；目标是同一种稳定模式只有一种实现方式，而不是把所有业务块都提升成全局万能组件。
-
----
-
-## 5. Store 和 local state 怎样选
-
-页面局部状态优先 local：
-
-```text
-Drawer 展开
-Tab
-表单草稿
-一次 hover/open
-```
-
-Pinia Store 更适合：
-
-```text
-列表数据和筛选
-Cursor
-详情状态
-多个组件共享的 Job/Run 状态
-页面轮询
-同 Feature 的共享业务交互状态
-```
-
-Store 不缓存一套服务端业务事实来替代 PostgreSQL，也不复制后端 Analysis/统计规则。
-
----
-
-## 6. Generated Client 是硬边界
-
-目录：
-
-```text
-frontend/src/generated/api/
-```
-
-唯一生成链：
-
-```text
-后端 Pydantic Contract
-→ FastAPI OpenAPI
+~~~text
+Pydantic / FastAPI
 → contracts/openapi/openapi.json
 → Orval
-→ generated client
-```
-
-禁止：
-
-- Figma MCP 修改 generated 文件；
-- Page 手写长期 `/api/v1/...` URL；
-- Feature 自己复制 Request/Response interface；
-- 前端 Mock 字段长期脱离后端 Contract。
-
-如果页面需要当前 API 没有的新数据：
-
-```text
-确认业务语义
-→ 后端 Pydantic Contract
-→ API/Contract Test
-→ OpenAPI
-→ generated Client
-→ Feature api.ts / Store
-→ Page
-```
-
-### 6.1 Figma 示例数据不是服务器事实
-
-Figma 为了让 Normal/Data 状态可设计、可演示、可被 Codex读取，可以放代表性示例值，例如：
-
-```text
-词包数量
-Plan 数量
-Plan ID
-Provider 显示名
-Cron
-下次运行时间
-词包版本
-相关性配置版本
-有效关键词
-分页页码
-状态
-```
-
-这些示例只说明：
-
-```text
-这个字段在什么位置
-怎样排版
-长短文本怎样处理
-Data / Empty / Loading / Error 怎样表现
-```
-
-它们不说明服务器当前一定存在这些记录，也不能成为前端常量。正式代码必须按当前调用链读取：
-
-```text
-Page
-→ Store
+→ frontend/src/generated/api/
 → Feature api.ts
-→ generated client
-→ FastAPI
-```
+→ Store / Page
+~~~
 
-Provider Config、平台可执行能力和 Search 参数尤其不能从 Figma 示例反推。当前 Collection 页面仍必须使用：
+机器入口：
 
-```text
-GET /api/v1/collection-capabilities
-→ generated client
-→ CollectionSearchConfigFields
-```
+- [contracts/openapi/openapi.json](../../contracts/openapi/openapi.json)
+- [frontend/src/generated/api/](../../frontend/src/generated/api/)
 
-动态决定 Provider 和合法参数，不在 Vue 中维护第二套五平台 `if/else` 参数表。
+Generated Client 不手改。设计需要新字段时，先确认后端真实能力；如果 Contract 不存在，必须回到正式需求/研发流程，而不是在前端伪造长期字段。
 
----
+## 3. AIMA 页面 Owner 的落地顺序
 
-## 7. 当前 Figma / 图片基线
+设计落地时按当前项目结构定位：
 
-当前部分正式页面是在完整 Figma 设计系统建立前落地。早期经批准的一次性视觉参考及其尺寸、哈希和采用原因仍由对应的归档 Change 保存；这些二进制图片已于 2026-08-27 经用户授权从当前仓库删除，不再作为可访问的现行资产。当前可运行的 Vue 页面是实际视觉实现，但仍不能冒充正式 Figma 设计系统。
-
-以后建立正式 Figma Frame 后应明确：
-
-```text
-Figma 接管哪些视觉/交互事实
-当前 Vue 哪些业务语义必须保持
-旧 PNG 是否只保留历史参考意义
-```
-
-不要让：
-
-```text
-PNG
-Figma
-当前 Vue
-```
-
-长期成为三套没有优先级的设计事实。
-
-### 7.1 采集策略正式 Figma 基线
-
-“采集策略”已经形成正式 Figma 基线，并已由当前 Vue 页面落地；这套基线继续用于后续维护和 targeted re-review，覆盖：
-
-```text
-采集策略 / 关键词包
-采集策略 / 采集计划
-关键词包 / 新建弹窗
-采集计划 / 新建抽屉
-采集计划 / 详情抽屉
-采集策略开发状态规格
-```
-
-这套 Figma 接管：
-
-- App Shell 在该页面中的视觉表现；
-- 页面标题、KPI、Tab、筛选、表格、Modal、Drawer 的布局与视觉；
-- Normal / Data / Loading / Empty / Error / Disabled 等状态表达；
-- 公共组件的视觉 API 和设计 Token；
-- 关键 Prototype 交互意图。
-
-它不接管：
-
-- Keyword Pack / Plan 的 HTTP Schema；
-- Provider Capability；
-- Scheduler、Plan 启停、冻结 Relevance 等后端状态机；
-- 当前服务器里到底有多少条 Plan、哪个 Provider Config 可用；
-- 当前真实 Route 列表。
-
-当前实现位于 `frontend/src/features/collection-strategy/`，真实 Route 仍是 `/collection-strategy`。页面通过 Pinia Store、Feature API 和 generated client 读取动态数据；关键词包分页、完整引用目录、Capability 表单、计划资格和历史配置摘要都由现有 Owner 维护，没有把 Figma 示例值写成生产事实。公共页面头、按钮、图标和反馈样式位于 `frontend/src/shared/ui/`，Feature KPI、表格、Modal、Drawer 和业务表单保持独立边界。
-
-实现或维护该页面时必须继续执行：
-
-```text
-当前 AGENTS.md / Coding 规则
-→ 当前 Contract / Service / Store / API / Route
-→ 目标 Figma Design Context
-→ 公共组件与 Feature 组件映射
-→ Vue 实现 / 当前实现差异
-→ 测试 / Build / Browser / 视觉验收
-```
-
-不能只看截图或只复制 Figma MCP 返回的 React/Tailwind 参考代码。每次涉及视觉或交互的变更，都要重新取得目标画板的 Fresh Screenshot，并用真实浏览器页面做 targeted 对照；浏览器 Mock 用于覆盖状态空间，真实 Full-stack Golden Path 只证明关键 Frontend/API/PostgreSQL 接线，两者不能互相冒充。
-
-### 7.2 声音广场正式 Figma 基线
-
-“声音广场”的正式设计文件为 release-2 的 `qmZEFvPrB8u9JX5fyqc93S`，页面节点为 `4627:7429`。Design-to-Code 和后续 targeted re-review 使用以下正式节点：
-
-```text
-Normal / Data              4627:7431
-Compact 1180               4725:1325
-Wide 1920                  4725:1781
-Loading                    4627:7811
-Empty                      4627:8105
-Error                      4627:8307
-内容详情 Drawer / Loaded   4627:8510
-内容详情 Drawer / Loading  4627:8612
-内容详情 Drawer / Error    4627:8682
-AI Analysis Preview        4627:9110
-Excel Export               4627:8786
-Vehicle Picker             4627:9362
-AI Runtime 未配置          4627:9678
-```
-
-这套 Figma 接管 `/voice-plaza` 的页面布局、视觉层级、状态表达和 Overlay 几何关系；当前 HTTP Contract、Pinia Store、Cursor、Analysis Run、人工相关性复核、Detail supplement、Export Job/Artifact 和错误语义仍以当前代码、generated client 与后端事实为准。Figma 中的帖子、Run 状态、选择数量、模型名、互动数和分页示例只用于说明布局，不得写成生产常量。
-
-当前代码 Owner 保持：
-
-```text
-App Shell
-→ frontend/src/app/layouts/AppShell.vue
-
-跨页面视觉 Owner
-→ frontend/src/shared/ui/
-→ frontend/src/shared/styles/
-
-声音广场业务 Owner
-→ frontend/src/features/voice-plaza/
-→ 页面私有 Filter / Table / Drawer / Dialog 留在 Voice Plaza Page
-```
-
-正式桌面视觉复核使用 `1440×900` 作为参考 Viewport，Compact 1180 下七列表格应直接展示日期与详情，标题列收窄后允许换行或省略而不缩小字号；只有更窄的窗口才由表格区域局部横滚兜底。生产代码不得因此写死页面宽高。浏览器原生控件（例如 `input[type=date]`）的系统 Chrome 可以随浏览器/平台变化；验收关注其语义、尺寸、布局和可操作性，不用 Figma 静态占位符替代真实原生行为。
-
-声音广场视觉或交互变更至少按以下证据分层验证：
-
-```text
-Fresh Figma Design Context / Screenshot
-→ Browser Mock：Normal / Loading / Empty / Error / Runtime unavailable / Overlay
-→ Lint / Typecheck / Unit / Build / Contract / generated drift gate
-→ Real Full-stack Golden Path：只证明真实 Frontend/API/Worker/PostgreSQL 接线
-```
-
-Browser Mock 可以覆盖广泛的用户可见状态和请求语义，但不能冒充真实后端、PostgreSQL 或 Worker；Real Full-stack 也不需要机械复制全部视觉状态。
-
-### 7.3 管理员配置正式 Figma 基线
-
-管理员配置使用 release-2 正式设计文件 `qmZEFvPrB8u9JX5fyqc93S`，页面级事实源为 `3957:2`：
-
-```text
-品牌与车型              7511:10359
-AI 模型                 4804:15203
-TikHub                  7708:12501
-AI 分析规则             4804:15542
-操作记录                4804:15700
-报告策略默认态           7434:40097
-报告策略 Feature Owner   7434:40096
-```
-
-代码 Owner 是 [`frontend/src/features/admin-configuration/`](../../frontend/src/features/admin-configuration/)；Provider-neutral Principal 和管理员路由守卫分别由 [`frontend/src/features/identity/`](../../frontend/src/features/identity/) 与 [`frontend/src/app/router.ts`](../../frontend/src/app/router.ts) 负责。Brand/Vehicle 选择分别复用 [`frontend/src/shared/BrandMultiSelect.vue`](../../frontend/src/shared/BrandMultiSelect.vue) 与 [`frontend/src/shared/VehicleMultiSelect.vue`](../../frontend/src/shared/VehicleMultiSelect.vue)。
-
-这组 Figma 只定义信息架构、布局、状态和组件复用。角色固定为管理员/普通用户，Brand/Vehicle Owner、发布/回滚审计、车型删除限制、Scheme 版本冲突、动态目录和错误语义以当前 Contract/代码为准；示例品牌、车型、Prompt、Hash 和审计记录不构成生产事实。正式页面现为六个 Tab，旧“词包关联”画板不回到正式流程。
-
-报告策略当前只落地文件、日期、本地校验和后端未接入边界。Figma 中提交中、同步失败和成功结果保留为后续真实 Report Job/API 与飞书同步接通后的验收目标；前端不得通过延时、永久 Mock、假任务或假链接提前宣称端到端完成。更细的节点、Owner 和响应式验收见 [`docs/guides/02_管理员配置Figma开发基线.md`](02_管理员配置Figma开发基线.md)。
-
-### 7.4 Stage 6 采集页面基线
-
-同一设计文件中的 Stage 6 采集入口使用以下关键节点：
-
-```text
-采集策略 Page             4627:13214
-采集策略 / 关键词包       4627:13216
-采集策略 / 采集计划       4627:13336
-采集运行 Page             3500:2023
-采集运行 / 正式主页面      3500:2025
-采集运行 / Excel 导入     3500:2875
-采集运行 / TikHub 发现    3500:4257
-采集运行 / Compact 1180   4742:2404
-采集运行 / Wide 1920      4742:2603
-采集运行 / Owner 规范      7840:9761
-```
-
-Keyword Pack 只表达 Provider Search Terms；Plan 和 TikHub Discovery 独立表达 Brand Filter；Excel 的 Search 字段必须 Disabled 并说明不适用。Batch Supplement 保持已有内容补采语义。Figma 的示例品牌、词包、平台和数量不构成运行事实。
-
-采集运行中心已经按“设计规范/公共组件 → 页面模板 → 页面公共组件/Feature Owner → 正式页面实例”形成正式同步链路。页面节点、代码 Owner、状态、响应式和实施顺序的完整基线见 [`docs/guides/07_采集运行中心Figma开发基线.md`](07_采集运行中心Figma开发基线.md)。后续先更新长期设计 Owner，再由正式页面实例和代码消费；只属于真实运行数据、API、Capability 或后端状态机的事实仍由代码 Contract 决定，不回填为 Figma 常量。
-
----
-
-## 8. Figma 文件建议怎样组织
-
-AIMA 当前设计系统页面使用中文职责名：
-
-```text
-00 AIMA 设计系统使用说明
-01 设计规范
-02 公共组件
-03 页面模板
-```
-
-设计资产内部长期按职责组织：
-
-```text
-设计规范
-├─ 颜色
-├─ 字体
-├─ 间距
-└─ 圆角
-
-公共组件
-→ 稳定跨页面组件
-
-页面模板 / Pattern
-→ 列表 / 详情 / 筛选 / 任务进度 / 空状态 / 错误状态
-
-业务页面
-→ 正式 Screen
-
-关键流程
-→ Prototype / Flow
-```
-
-规则：
-
-- 重复组件使用 Component/Variant；
-- 组件可变文字优先使用 Component Property，不在实例上叠加额外 Text 模拟值；
-- 重复视觉值使用 Variable/Style；
-- 布局优先 Auto Layout；
-- Layer/Frame 名称表达业务含义；
-- 交付开发时必须给明确目标 Frame/Node；
-- 页面至少考虑 Normal / Loading / Empty / Error；
-- Disabled / Partial / Permission 按实际业务需要设计；
-- Figma 不复制完整 API Schema；
-- Prototype Variable 只服务演示，不成为 Vue 状态模型或后端 Contract。
-
----
-
-## 9. Design Token
-
-Figma 中稳定重复的：
-
-```text
-Color
-Typography
-Spacing
-Radius
-```
-
-应使用有语义的 Variable/Style。
-
-代码侧统一放真正公共 Token，例如：
-
-```text
-frontend/src/shared/styles/
-```
-
-代码侧优先：
-
-- CSS Custom Properties；
-- 当前 UI Library 可配置变量。
-
-当前没有必要为 Token 引入：
-
-- Tailwind；
-- CSS-in-JS；
-- 第二套主题 Runtime。
-
-一次性页面尺寸不需要机械 Token 化。
-
-Figma 已经存在对应 AIMA Design Token 时，页面和公共组件应优先绑定现有变量，不继续散落语义相同的 Raw Hex。不能确定语义是否相同的颜色不要为了“Token 覆盖率”强行合并。
-
----
-
-## 10. Element Plus 当前兼容边界
-
-当前依赖事实以 [`frontend/package.json`](../../frontend/package.json) / lock 为准，目前包括：
-
-```text
-element-plus = 2.14.4
-@typescript/native = TypeScript 7.0.2
-```
-
-当前：
-
-```text
-skipLibCheck = false
-```
-
-Stage 8C 实现时已发现：当前锁定组合下直接使用部分 Element Plus 类型声明会暴露 TypeScript 7 兼容问题。
-
-当时的处理原则今天仍有效：
-
-```text
-不能为了页面开发：
-→ 静默升级依赖
-→ skipLibCheck=true
-→ 降低 typecheck
-```
-
-这不表示永久禁止 Element Plus。
-
-如果未来 Figma 改版确实需要系统性使用 Element Plus：
-
-```text
-独立技术 Change
-→ 核对当时 Element Plus / TypeScript 兼容性
-→ 必要时升级 package + lock
-→ typecheck / unit / build / E2E
-→ 再扩展业务页面
-```
-
-不要在普通页面 PR 顺手改变全局类型基线。
-
----
-
-## 11. Figma MCP → Vue 的固定流程
-
-```text
-AGENTS.md / Coding Skill
-→ 当前 Route / Feature / Store / API / Contract / Capability
-→ 目标 Figma Frame 的 Design Context
-→ 当前 Shared / App Shell / Design Token
-→ 区分全局公共组件、Feature 组件、页面私有组合
-→ 把设计意图适配成 Vue 3 + TypeScript
-→ 接入既有 Feature api.ts / Store / generated client
-→ Lint / Typecheck / Unit / Build / E2E
-→ 浏览器与 Figma 做视觉核对
-```
-
-顺序不能反过来。尤其不能先让 MCP 生成一套组件/数据模型，再要求仓库迁就生成结果。
-
-MCP 输出如果出现：
-
-```text
-React
-Tailwind
-其他 UI Library
-手写 fetch
-```
-
-只能作为设计结构参考，未经独立技术决策不得直接引入 AIMA。
-
-对于 Figma 公共 Sidebar：
-
-```text
-设计中存在未来入口
-→ 保留目标 IA 视觉
-
-当前 routes.ts 没有该 Route
-→ 不接 clickable route
-→ 不创建 placeholder Page
-→ 不制造 disabled 假功能
-
-未来页面真实完成
-→ 再同步 Route + App Shell
-```
-
----
-
-## 12. Figma MCP 使用硬规则
-
-1. 先读仓库当前事实，再读设计上下文；
-2. Design-to-Code 优先调用目标 Frame 的 Design Context，不用截图替代结构上下文；
-3. 优先复用当前 Feature/Shared 真实实现；
-4. generated API 目录禁止手改；
-5. Figma 文字、Prototype Variable 和演示数据不自动成为 HTTP Contract；
-6. Figma 中的 Provider、Capability、时间、状态、数量等示例值不得硬编码为生产事实；
-7. Figma 完整 Sidebar 可以表达目标 IA，但当前代码只接通真实 Route；
-8. Component Property 应表达可变文本/状态，业务页不要用额外覆盖文字伪装公共组件内容；
-9. 资产使用真实导出或当前仓库已有资产；Unicode 图标不能因为出现在设计示例中就成为生产 Icon 实现；
-10. MCP 生成结果必须 Review；
-11. 视觉接近不能替代 Type/Test/Build/E2E；
-12. 不因为 MCP 示例技术栈改变仓库长期技术选型。
-
----
-
-## 13. Code Connect
-
-当 AIMA 已经形成稳定的：
-
-```text
-Figma Component
-↔ Vue Shared/Feature Component
-```
-
-映射，并且当前 Figma 工具链支持可靠 Code Connect 时，可以为高复用组件建立 Code Connect/等价映射。
-
-它是增强项，不是开发页面的前置条件。
-
-没有稳定公共组件前，不批量创建占位映射；当前 Figma 席位/计划如果不支持 Code Connect，也不能为了获得映射能力阻塞正常的 Design Context → Vue 工作流。
-
----
-
-## 14. 不承诺自动双向同步
-
-项目不承诺：
-
-```text
-改 Figma
-→ 自动无损改 Vue
-
-改 Vue
-→ 自动无损回写 Figma
-```
-
-如果紧急修复先改代码：
-
-```text
-代码修正
-→ 测试/浏览器验证
-→ 把确认的视觉/交互变化同步回 Figma
-→ 下一次设计继续以更新后的 Frame 为目标
-```
-
-自动工具可以辅助，但不能代替业务/设计确认。
-
----
-
-## 15. 三类常见改动
-
-### 15.1 只改视觉
-
-```text
-Figma Frame
-→ 判断 Page / Feature Component / Shared / App Shell
-→ 修改最小 Owner
-→ 前端验证
-→ 视觉核对
-```
-
-不改数据库、Pydantic Contract 或 Service。
-
-### 15.2 页面需要新字段/新行为
-
-```text
-页面需求
-→ 当前 Capability / Contract 调查
-→ 明确业务语义
-→ Pydantic Contract
-→ API/Contract Test
-→ OpenAPI
-→ generated Client
-→ Feature API / Store
+~~~text
+App / Layout
+→ Shared Component / Token
+→ Feature
 → Page
-→ E2E
-```
+→ Page-private Component
+~~~
 
-### 15.3 多页面一起变化
+先复用已有 Owner，再新增。
 
-先找真实公共 Owner：
+当前页面和 Feature 入口以 [frontend/src/app/routes.ts](../../frontend/src/app/routes.ts) 和 [frontend/README.md](../../frontend/README.md) 为准。历史目录名不为“看起来更统一”在无关任务中重命名。
 
-```text
-App Layout？
-Shared Component？
-Design Token？
-Feature 级组件？
-```
+## 4. Figma 在 AIMA 负责什么
 
-只改 Owner，不到每个 Page 复制修复。
+Figma 应表达：
 
----
+- 页面信息层级；
+- 布局、间距、字号和视觉重点；
+- 组件状态与交互；
+- Responsive 意图；
+- Empty / Loading / Error / Disabled 等用户状态；
+- 页面之间可以在演示模式完成的验收交互。
 
-## 16. 前后端怎样并行
+Figma 不负责：
 
-切分点不是“后端所有 API 都做完”，而是：
+- 定义不存在的 API；
+- 发明数据库字段；
+- 改写后端权限；
+- 把示例数据当生产事实；
+- 复制完整 Schema；
+- 决定 Release / Migration 行为。
 
-> 页面需要的 HTTP Contract 已经稳定，并能生成 TypeScript Client。
+## 5. AIMA 的页面专项事实
 
-之后：
+页面专项基线不再全部堆进本 Guide：
 
-```text
-前端
-→ generated type + Fake/Mock
-→ Page/Store
+- 管理员配置 → [docs/guides/02_管理员配置Figma开发基线.md](02_管理员配置Figma开发基线.md)
+- 采集运行中心 → [docs/guides/07_采集运行中心Figma开发基线.md](07_采集运行中心Figma开发基线.md)
+- 其他页面的当前真实代码入口 → [frontend/README.md](../../frontend/README.md) 与对应 Feature
 
-后端
-→ Router/Service/Repository
+专项 Guide 只维护 AIMA 的 Figma Node/Owner/页面 Contract，不复制本页的共性边界。
 
-合流
-→ Real API / E2E
-```
+## 6. 设计到代码的 AIMA 接线
 
-这样可以并行，又不会两边分别手写接口语义。
+通用执行方法由 Agent_Skills 负责；AIMA 项目中需要确保以下项目事实被接上：
 
----
+1. 从正式 Figma Owner 定位页面/组件，而不是从截图猜；
+2. 对照当前 Route 和 Feature Owner；
+3. 优先复用现有 App / Shared / Feature 公共组件；
+4. 数据只通过当前 Feature API / Generated Client；
+5. 需要后端新能力时回到 Contract Owner；
+6. 页面交互与当前产品能力保持一致；
+7. 视觉、组件和真实用户行为使用 AIMA 当前测试入口验证；
+8. 如果 Figma 和正确实现都发生变化，同一任务同步两边承担的事实。
 
-## 17. 当前测试和视觉验收
+这里不重复 Agent_Skills 的 Review、修复循环、Owner 四层方法或 MCP 调用细则。
 
-提交正式页面前至少：
+## 7. Store、local state 与 API 的项目边界
 
-```bash
-npm --prefix frontend run lint
-npm --prefix frontend run typecheck
-npm --prefix frontend run test -- --run
-npm --prefix frontend run build
-npm --prefix frontend run test:e2e
-```
+具体结构由 [frontend/README.md](../../frontend/README.md) 维护。稳定原则只有三条：
 
-具体脚本以 [`frontend/package.json`](../../frontend/package.json) 为准。
+- 多组件/跨页面共享且需要生命周期管理的业务状态才进入 Store；
+- 页面瞬时 UI 状态优先留在页面/组件；
+- Feature API 是页面语义与 Generated Client 的薄边界，不重新定义公共 Contract。
 
-页面状态按实际需要检查：
+如果一个设计改动要求 Store 开始理解 SQL、Provider 私有字段或 Secret，说明 Owner 已经错位。
 
-- Normal；
-- Loading；
-- Empty；
-- Error；
-- Disabled / Partial / Permission（需求存在时）。
+## 8. Shared 与 Feature 的边界
 
-视觉核对：
+适合 Shared：
 
-- 布局；
-- 字号层级；
-- 间距；
-- 颜色/状态；
-- 文本溢出；
-- 表格超宽；
-- 图片比例；
-- 错误反馈；
-- 关键交互。
+- 与业务领域弱耦合、多个页面复用的视觉/交互组件；
+- 通用日期选择、Shell、基础反馈等已经形成稳定共性能力。
 
-自动像素 Snapshot 不作为所有高频页面强制门禁；稳定 App Shell/Shared Component 或明确需要严格回归时再建立 Visual Regression。
+适合 Feature：
 
-响应式断点只按批准需求实现，不由 Agent 自己猜移动端产品要求。Figma 1440×900 等桌面 Frame 是设计参考 Viewport，不等于生产代码必须写死 `width: 1440px; height: 900px`；生产布局仍按当前 App Shell 与真实响应式需求实现。
+- 只服务一个业务域的表格、Drawer、筛选、状态解释和业务交互。
 
----
+不要因为两个页面“长得像”就提前抽象；也不要在多个页面复制已经稳定存在的 Shared Owner。
 
-## 18. 新页面的推荐 Vertical Slice
+## 9. 设计 Token 与组件库
 
-Stage 8 已经完成主要业务纵切，但其开发方法继续作为长期规则：
+AIMA 当前设计样式必须以真实前端代码和正式 Figma Variables/Components 交叉确认。Element Plus 是实现基础，不代表页面直接接受默认视觉，也不意味着为了设计一致性可以替换当前技术栈。
 
-```text
-业务目标
-→ 当前 Capability 调查
-→ 信息结构 / Figma
-→ HTTP Contract（需要变化时）
-→ API/Contract Test
-→ OpenAPI / generated Client
-→ 后端实现与前端并行
-→ Feature API / Store
-→ Vue Page
-→ Unit / E2E
-→ 视觉验收
-```
+新增或修改全局视觉规则时，先确认它是否真的属于全局 Owner；只服务一个 Feature 的样式留在 Feature。
 
-不采用：
+## 10. 验证入口
 
-```text
-Figma 一次生成全部未来页面
-→ 再追着补后端
-```
+通用测试策略由 Agent_Skills Testing/Coding 负责；AIMA 的现有入口见：
 
-也不采用：
+- [docs/04_测试与调试说明.md](../04_测试与调试说明.md)
+- [frontend/package.json](../../frontend/package.json)
+- [frontend/README.md](../../frontend/README.md)
 
-```text
-后端提前实现全部未来 API
-→ 页面以后再决定怎么用
-```
+Figma 改动本身不证明生产页面正确；代码测试通过也不证明视觉与交互意图已经对齐。需要哪种证据由当前任务风险和实际变更边界决定。
 
-每次完成一个可以独立验收的纵切。
+## 11. 本文不再保存的内容
 
----
+为了避免和 Agent_Skills 形成第二套治理，本 Guide 不再维护：
 
-## 19. 当前前端仍未实现的能力
+- 通用 Figma MCP 使用规则；
+- 通用 Design-to-Code 步骤模板；
+- 通用 Owner 分层方法论；
+- 通用 Review/修复收敛规则；
+- 通用截图比较方法；
+- 其它项目也成立的前端最佳实践大全。
 
-当前没有正式：
-
-- 企业登录/认证页面闭环；
-- 独立 Analysis 管理中心；
-- 独立 Job 管理中心；
-- 独立 Word Report 中心；
-- Monitoring/Alert/VOC/Ticket/Dashboard 页面。
-
-是否以及何时实现看：
-
-[`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
-
-不要从历史 Stage 8 的 Screens 示例自动生成一批新页面。
-
-同样，不要因为 Figma 公共 Sidebar 已经展示某个未来入口，就把它写成“当前已实现”。Figma 可以先保存长期产品 IA；代码事实仍以当前 Route / Feature / Test 为准。
-
----
-
-## 20. 最终原则
-
-```text
-Figma
-→ 已确认视觉、交互目标和目标信息架构
-
-Pydantic/OpenAPI
-→ HTTP 数据语义
-
-Vue + tests
-→ 当前可运行行为
-
-MCP
-→ 传递设计上下文并辅助实现
-
-公共的只共享一次
-业务的归 Feature
-页面私有的留 Page
-动态服务器事实不写死在设计实现里
-未来 IA 不冒充当前 Route
-局部状态不要全局化
-先做一个可验证纵切
-再复用成熟模式
-```
+这些内容变化时只更新 Agent_Skills；AIMA 只维护自己的事实和接线。

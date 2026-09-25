@@ -1,159 +1,122 @@
 # 多人协作与 Change 自动归档
 
-本文说明 AIMA_UGC 在多人使用 Agent_Skills 开发时，代码提交、Review、main 合并、Change 归档和 Requirement Closure 的实际职责边界。
+本文只说明 **AIMA_UGC 的多人协作机器接线和角色边界**。通用 Coding / Review / Testing / Git / Delivery 方法由 Agent_Skills 通过 [AGENTS.md](../../AGENTS.md) 取得，不在这里再写一套。
 
-精确机器事实以以下入口为准：
+## 1. AIMA 的协作链
 
-- [`scripts/quality/check_change_completion.py`](../../scripts/quality/check_change_completion.py)
-- [`scripts/quality/archive_change_after_merge.py`](../../scripts/quality/archive_change_after_merge.py)
-- [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
-- [`.github/workflows/change-archive.yml`](../../.github/workflows/change-archive.yml)
-- 当前 GitHub Ruleset / App / Environment 配置
+需要持久 Change 的任务，在 AIMA 中形成：
 
-其中 Requirement Traceability / Completion Audit 已由 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) 的 CI Core 承担；不再维护独立 Completion Workflow。
-
-## 1. 目标
-
-普通业务变更只需要一个 Implementation PR 和一次有意义的 Maintainer merge：
-
-```text
+~~~text
 Requirement / Issue
 → changes/active/<ID>/CHANGE.md
-→ 开发 / 测试 / 文档 / Completion Audit
-→ status: ready_for_review
-→ Implementation PR Ready
-→ Maintainer Review
-├─ CHANGES_REQUIRED → Change 继续 active，作者修复后 re-review
-└─ PASS → merge Implementation PR 一次
-           ↓
-           Change Archive Automation
-           ↓
-           active/<ID> → archive/YYYY-MM/<ID>
-           ready_for_review → done
-           ↓
-           implementation main-fresh + archive governance fresh
-           ↓
-           Closure Audit / Acceptance 回写 / Issue close
-```
+→ task branch
+→ Implementation PR
+→ current-head CI + Review
+→ merge main
+→ Change Archive Automation
+→ changes/archive/YYYY-MM/<ID>/CHANGE.md
+→ main-fresh / Acceptance / Issue Closure
+~~~
 
-不再为普通任务创建第二个 Finalization/Archive PR。
+不需要持久 Change 的轻量任务仍按当前治理完成 Requirement、验证和交付，但不会为了形式创建 Change。
 
 ## 2. 开发者负责到哪里
 
-团队成员使用 Agent_Skills 开发时，正常请求是：
+开发者在 AIMA 负责把当前 PR 做到可审查/可交付状态，包括：
 
-```text
-修复这个功能，然后提交 PR
-```
+- 关联正式 Requirement Source；
+- 需要时建立 AIMA 顶层 Change carrier；
+- 完成本次实现、测试和文档；
+- 让 Change 满足项目 Completion Gate；
+- push 当前 task branch 并保持 PR Head 与证据一致；
+- 处理 Review finding 后重新提交同一 PR。
 
-开发者负责：
+开发者不手工把 Active Change 移入 archive，也不为归档再开第二个 PR。
 
-- 建立/复用 Requirement Source；
-- 建立需要的持久 Change；
-- Coding / Testing / Docs；
-- Requirement Traceability、Validation Matrix、Completion Audit；
-- 把 Change 做到 `changes/active/...` + `status: ready_for_review`；
-- push / PR / current-head CI；
-- 把 PR 交付到 Ready。
+## 3. Maintainer 做什么
 
-开发者**不负责**：
+Maintainer 的项目动作很简单：
 
-- 把 Change 手工移入 `archive/`；
-- 将 Change 手工改为 `done`；
-- 为归档再创建第二个 PR；
-- 在没有 main delivery authority 时自行合并 main。
+~~~text
+审当前 PR / 当前 Head
+→ 不满足：要求作者在原 PR 修复
+→ 满足且 required checks 通过：merge Implementation PR
+~~~
 
-普通 PR 如果尝试 `active → archive`，`Requirement Traceability and Completion Audit` 会失败。
+Review 的专业方法、Finding 分类和修复收敛遵守当前 Agent_Skills，不由本 Guide 定义。
 
-## 3. Maintainer Review
+## 4. AIMA Change Archive 的机器 Owner
 
-Maintainer 可以人工 Review，也可以使用 Agent_Skills：
+机器入口：
 
-```text
-评审 PR #<number>，通过后合并
-```
+- [.github/workflows/change-archive.yml](../../.github/workflows/change-archive.yml)
+- [scripts/quality/archive_change_after_merge.py](../../scripts/quality/archive_change_after_merge.py)
+- [scripts/quality/check_change_completion.py](../../scripts/quality/check_change_completion.py)
 
-Review 不通过：
+Workflow 从 merged PR 的 changed files 中只接受：
 
-```text
-Change 保持 active/ready_for_review
-→ 原作者修复
-→ push 新 head
-→ re-review
-```
+- 没有 Active Change → 明确 not-applicable；
+- 恰好一个 Active Change → 可以确定性归档；
+- 多个 Active Change → fail closed，不猜归属。
 
-Review 通过：
+归档只允许改变同一 Change 的路径和生命周期字段，不修改产品代码、Migration、Docs、Workflow 或其他 Change。
 
-```text
-确认 current Requirement / current head / current base / required checks
-→ merge Implementation PR
-```
+## 5. 为什么归档不由开发者手工完成
 
-Maintainer 不需要手工修改 Change 目录。
+AIMA 需要同时证明：
 
-## 4. merge 后自动归档
+~~~text
+哪一个 merged PR
+→ 携带哪一个 ready_for_review Change
+→ 该 Change 内容就是 merged revision 中的版本
+→ 当前 main 没有被另一次修改抢先改变
+~~~
 
-`Change Archive` Workflow 监听合并到 `main` 的 PR，也支持 `workflow_dispatch(pr_number)` 重跑。
+所以由 repository-native automation 在 merge 事实发生后执行，比开发者提前把 Change 移到 archive 更可靠。
 
-自动化从 merged PR 的 changed files 中定位：
+## 6. archive/done 不等于 Requirement 完成
 
-```text
-changes/active/<CHANGE_ID>/CHANGE.md
-```
+archive/done 只表示：
 
-规则：
+> 这一次施工交付已经进入 main，施工记录已被冻结。
 
-- 没有 Active Change：明确 `not_applicable`，不为形式创建 Change；
-- 恰好一个：允许继续；
-- 多个：fail closed，不猜哪一个属于本次交付；
-- merged PR 的 `merge_commit_sha` 必须属于当前 main 历史，且当前 Active Change 内容必须与该 merged revision 完全一致；后续 main 若改写同一 Change，则 fail closed，不归档错误版本；
-- 当前 main 上 source 与 target 同时存在：fail closed；
-- source 不存在、合法 archive 已存在：只有 archive 可由该 merged revision 按同一 lifecycle 冻结结果精确重建时才幂等 no-op；
-- source 为 `ready_for_review`：只允许把 `status` 改为 `done`、把 `updated` 改为 merge 的北京时间日期并移动目录；
-- 其他正文、产品文件、Migration、Docs、Workflow、其他 Change 都不能被归档程序修改。
+最终 Requirement / Issue 是否关闭仍取决于上游 Acceptance、implementation main-fresh、归档结果和当前治理要求的 Closure Evidence。
 
-归档 commit 由专用 `AIMA Change Archivist` GitHub App 身份直接写入 main。该身份只用于 Change lifecycle 基础设施，不承担产品开发、Review、Release 或 Deploy。
+如果实现已经 merge，但 main-fresh 或后续 Closure 失败，不把原 Change 移回 active；修复或 Revert 建立新的工作单元。
 
-## 5. archive 不等于 Requirement 完成
+## 7. 归档失败怎么办
 
-`archive/done` 表示：
+归档失败时，Implementation merge 是历史事实，但 Closure 不能伪装完成。
 
-> 这一次施工交付已经真实进入 main，并且施工记录已经冻结。
+先查：
 
-它不表示：
+- GitHub App / Environment 权限；
+- merged PR changed files；
+- Change 当前 main 内容是否漂移；
+- 自动归档 Workflow 日志。
 
-> 整个 Issue 的所有 Acceptance Criteria 已经最终满足。
+修复基础设施后，通过 Change Archive 的 workflow_dispatch 对原 merged PR 重跑。不要用手工 git mv、第二个 Archive PR 或 direct main commit 掩盖问题。
 
-最终 Requirement 完成仍然需要：
+## 8. GitHub 权限边界
 
-```text
-Implementation merge revision
-+ 该 revision 的 required main-fresh Evidence
-+ Change archive 成功
-+ archive revision 的 required governance fresh Evidence（当前项目要求时）
-+ Closure Audit
-+ Acceptance 状态回写并重读
-+ Issue close 并重读
-```
+Change Archive 使用专用 AIMA Change Archivist 身份，只用于 Change lifecycle。它不是通用开发、Review、Release 或 Deploy 身份。
 
-如果 main-fresh 失败，已经发生的 merge/archive 保持历史事实，Issue 继续 open；修复或回滚建立新的工作单元，不把旧 Change 移回 active。
+普通开发写权限也不自动等于 main bypass、Release、Deploy 或生产操作授权。
 
-## 6. 归档失败
+## 9. 想知道“我应该怎么和 AI 说”
 
-归档 Workflow 失败时：
+用户只需要描述真实目标，例如：
 
-```text
-Implementation merged     ✓
-Change archive             ✗
-Requirement Closure        STOP
-```
+~~~text
+修复这个问题并提交 PR
+~~~
 
-不能让 Agent 为了“完成任务”自行接管 `git mv` / direct main commit 来掩盖基础设施故障。
+或：
 
-先修复权限、配置、并发漂移或 Change 数据问题，然后从 GitHub Actions 手工运行 `Change Archive`，填写原 merged PR 编号重试。
+~~~text
+评审 PR #123，通过后合并
+~~~
 
-## 7. GitHub 权限边界
+Agent 应按 [AGENTS.md](../../AGENTS.md) 和当前 Agent_Skills 自行恢复 AIMA 的规则、事实和交付范围；已经由规则决定的分支名、Change carrier、验证路径等不应再机械反问用户。
 
-仓库平台层负责“谁能更新 main”，Agent_Skills 负责“当前 Agent 在已授权范围内怎样可靠工作”。两者不能互相替代。
-
-归档自动化所需的 GitHub App 凭证只放在 `change-archive-main` Environment 中；仓库源码不保存私钥或个人 Token。普通开发者不得因为拥有 Write 权限而进入 main 更新 bypass；归档 App 也不得被当作通用开发身份使用。
+本 Guide 只解释为什么 AIMA 最终会出现这些仓库对象，不要求用户手工执行 Git 命令。

@@ -1,71 +1,32 @@
 # AIMA_UGC Roadmap
 
-`docs/roadmap/` 只回答一个问题：
+docs/roadmap/ 只回答：**当前已经明确批准、尚未完成、仍需要真实实施或验收的工作是什么？**
 
-> **当前已经明确批准、尚未完成、下一步仍需要真实实施或验收的工作是什么？**
-
-这里不再保存已完成 Stage、单次 PR/CI 过程、历史验收流水，也不把“以后也许可以做”的候选产品方向写成当前施工计划。
+它不保存已完成 Stage、单次 PR/CI、历史验收流水，也不收纳“以后也许做”的候选方向。
 
 ## 当前 Active Roadmap
 
-1. [`docs/roadmap/02_生产上线实施路线.md`](02_生产上线实施路线.md)：从已完成公司内网 V1 继续到完整 Production Go-Live 的生产强化；
-2. [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](03_4000万历史数据迁移实施方案.md)：完成公司服务器容量门禁、独立生产写授权、4000 万正式 Campaign 和全量对账；
+1. [docs/roadmap/02_生产上线实施路线.md](02_生产上线实施路线.md)：从已完成公司内网基线继续到完整 Production Go-Live；
+2. [docs/roadmap/03_4000万历史数据迁移实施方案.md](03_4000万历史数据迁移实施方案.md)：完成服务器容量门禁、独立生产写授权、正式 4000 万 Campaign 和全量对账。
 
-公司内网 V1、Stage 8F、Internal V1-A/V1-B、Stage 12 软件建设、Brand/Vehicle Filter 与 Persistent Canonical Replay 等已经完成的施工阶段不再继续占用 live Roadmap。需要理解历史原因或当时证据时，查 [`changes/archive/`](../../changes/archive/) 和 Git 历史。
+## Roadmap 准入
 
-## Roadmap 文件最低要求
+一项内容只有同时满足以下条件才进入本目录：
 
-每个 live Roadmap 文件都必须明确：
+- 已被业务/技术 Owner 明确批准；
+- 尚未完成；
+- 有当前价值，不只是“值得研究”；
+- 有可观察退出条件；
+- 依赖、授权和不可逆边界清楚。
 
-```text
-- 状态：Active
-- 目标：...
-- 退出条件：...
-- 依赖：...
-```
+研究文档中的推荐、外部最佳实践、AI 优化候选、Monitoring / Dashboard / Gold Set 等内容，不会因为被写出来就自动获得 Roadmap 身份。
 
-并同时满足：
+## 每篇 live Roadmap 的最低要求
 
-- 目标尚未完成；
-- 目标已经被业务/项目正式批准；
-- 有明确业务或生产价值；
-- 有可观察的完成条件；
-- 授权、外部环境或上游依赖清楚；
-- 不把已完成历史包装成“背景很长的当前计划”。
+前 20 行必须声明“- 状态：Active”，并至少能回答目标、当前已完成基线、仍未完成 Gate、退出条件、依赖和授权、非目标。
 
-完成后必须先把仍有效的长期知识迁移到 Blueprint、Operations、Appendix、Product 或模块 README，再从 live Roadmap 删除。历史施工记录不复制到新的 `docs/archive` / `docs/history`。
+## 完成后的生命周期
 
-## 不自动进入 Roadmap 的候选方向
+长期有效知识迁到 Product / Blueprint / Operations / Appendix；施工、PR、CI、SHA、验收历史进入 [changes/archive/](../../changes/archive/) 与 Git；完成的 Roadmap 从 docs/roadmap/ 删除。
 
-下列方向只有在后续被明确批准并形成可验收需求时才建立独立 Issue/Change/Roadmap；旧 Stage 文档曾经提到它们不构成当前承诺：
-
-- Monitoring / Alert / VOC / Ticket；
-- Web Report Center；
-- 通用 Dashboard / 工作台数据驾驶舱；
-- Gold Set / 自动模型评测；
-- 双人审批；
-- 个人导出列配置；
-- Provider 自动 Availability 观测；
-- 大范围 Count 估算基础设施/SLO；
-- 其他没有当前需求来源和退出条件的产品愿望。
-
-## 与其他文档的边界
-
-```text
-Product
-→ 当前用户能做什么
-
-Blueprint
-→ 长期架构和已经拍板的技术边界
-
-Operations
-→ 当前能力怎样部署、运行、恢复、迁移
-
-Roadmap
-→ 已批准且未完成的目标
-
-Change / Git
-→ 某次施工为什么发生、怎样验证
-```
-
-总导航见 [`docs/README.md`](../README.md)。
+不要把完成文档改成 Completed 后永久留在 live Roadmap。
