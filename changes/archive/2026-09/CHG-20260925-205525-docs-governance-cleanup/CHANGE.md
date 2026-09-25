@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260925-205525-docs-governance-cleanup
 title: 收敛 AIMA 文档 Owner 与重复事实源
 level: L2
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: docs/605-docs-governance-cleanup
 created: 2026-09-25T20:55:25+08:00
