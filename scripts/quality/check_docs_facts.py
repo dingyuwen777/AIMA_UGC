@@ -330,7 +330,7 @@ def _fact_block_values(owner_doc: str, key: str) -> tuple[str, ...]:
     values: list[str] = []
     for line in text[start_index:end_index].splitlines():
         value = line.strip()
-        if not value or value.startswith("```"):
+        if not value or value.startswith(("```", "~~~")):
             continue
         link_match = FACT_LINK_RE.fullmatch(value)
         if link_match is not None:

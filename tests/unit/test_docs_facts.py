@@ -151,6 +151,28 @@ def test_exact_fact_block_accepts_markdown_link_values(tmp_path: Path) -> None:
     assert errors == []
 
 
+
+def test_exact_fact_block_accepts_tilde_fence(tmp_path: Path) -> None:
+    """受控事实块允许 Markdown 的 tilde fence，不把 fence 本身当作事实。"""
+    _write(
+        tmp_path / "docs/facts.md",
+        "# Facts\n\n<!-- docs-facts:example:start -->\n~~~text\nalpha\nbeta\n~~~\n<!-- docs-facts:example:end -->\n",
+    )
+    errors: list[str] = []
+
+    _with_root(
+        REQUIRE_EXACT_BLOCK,
+        tmp_path,
+        errors,
+        code="TEST",
+        owner_doc="docs/facts.md",
+        key="example",
+        values={"alpha", "beta"},
+        label="示例",
+    )
+
+    assert errors == []
+
 def test_exact_fact_block_rejects_duplicate_values(tmp_path: Path) -> None:
     """受控事实块中的重复值不能被 set 比较静默吞掉。"""
     _write(
