@@ -369,10 +369,12 @@ reporting.content-export-excel.v1
 vehicles.content-reclassification.v1
 ingestion.canonical-replay.v1
 ingestion.canonical-replay-reversal.v1
+ingestion.canonical-replay-shard.v1
+ingestion.reversal-shard.v1
 content.voice-plaza-projection-backfill.v1
 ```
 
-`ingestion.data-import-revocation.v1` 按持久断点分批撤销已完成 Campaign 的来源贡献；运行中根据已提交批次耗时与有效资源调整下一批大小。
+`ingestion.data-import-revocation.v1` 按持久断点分批撤销已完成 Campaign 的来源贡献；运行中根据已提交批次耗时与有效资源调整下一批大小。大任务的父 Job 可通过 `ingestion.reversal-shard.v1` 按互斥 Content 范围分片；Replay Run 可通过 `ingestion.canonical-replay-shard.v1` 在原 Run 内按稳定内容身份分片。两种子 Job 均由通用 Job Runtime 领取，父任务完成前必须结清全部子 Job 与业务分片。
 
 三个 `ingestion.historical-*` 是统一 Data Import Campaign 沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 负责按冻结目录对旧 Content 补齐 Brand/Vehicle Evidence；`ingestion.canonical-replay.v1` 负责用任务创建时冻结的当前 Brand/Vehicle 目录重放已持久化 Canonical，`ingestion.canonical-replay-reversal.v1` 负责根据同事务贡献账本撤回该次全历史重筛仍独占的业务变化；`content.voice-plaza-projection-backfill.v1` 负责按 UUID keyset 分块补齐声音广场派生读模型，增量写入仍由 Content 事实变更同步刷新。物理名称保留兼容，不构成平行任务系统。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
 

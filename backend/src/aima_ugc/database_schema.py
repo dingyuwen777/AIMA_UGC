@@ -95,6 +95,8 @@ from aima_ugc.modules.ingestion.historical_tables import (
     processing_import_batch_item_conflicts_table,
     processing_import_batch_items_table,
 )
+from aima_ugc.modules.ingestion.replay_shard_tables import canonical_replay_run_shards_table
+from aima_ugc.modules.ingestion.reversal_shard_tables import reversal_shards_table
 from aima_ugc.modules.ingestion.revocation_tables import (
     historical_import_campaign_revocations_table,
     historical_import_revocation_content_versions_table,
@@ -162,6 +164,7 @@ __all__ = [
     "canonical_replay_all_requests_table",
     "canonical_replay_content_changes_table",
     "canonical_replay_run_artifacts_table",
+    "canonical_replay_run_shards_table",
     "canonical_replay_runs_table",
     "canonical_replay_seen_content_table",
     "canonical_replay_validation_proofs_table",
@@ -170,6 +173,7 @@ __all__ = [
     "historical_import_campaign_revocations_table",
     "historical_import_revocation_content_versions_table",
     "historical_import_revocation_requests_table",
+    "reversal_shards_table",
     "historical_import_campaigns_table",
     "collection_candidate_ingestions_table",
     "collection_candidates_table",

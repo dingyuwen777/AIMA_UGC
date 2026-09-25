@@ -6,13 +6,13 @@ import hashlib
 import json
 import logging
 from collections.abc import Generator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import islice
 from time import perf_counter
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,7 @@ from aima_ugc.adapters.persistence.postgres.import_lineage import (
     ensure_single_import_lineage,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.replay_shards import PostgresReplayShardRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.canonical import CanonicalContentV1
 from aima_ugc.modules.collection.tables import (
@@ -60,13 +61,18 @@ from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
     historical_import_campaigns_table,
 )
+from aima_ugc.modules.ingestion.replay_shards import select_replay_shard_count
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.vehicles.brand_vehicle import (
     BrandVehicleResolution,
     BrandVehicleResolver,
 )
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
-from aima_ugc.platform.capacity import AdaptiveBatchController, detect_resources
+from aima_ugc.platform.capacity import (
+    AdaptiveBatchController,
+    detect_resources,
+    worker_process_limit,
+)
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
@@ -76,12 +82,17 @@ from aima_ugc.platform.storage import (
     CanonicalArtifactIntegrityError,
     CanonicalArtifactReader,
 )
-from aima_ugc.platform.storage.tables import canonical_artifact_links_table
+from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
 
+if TYPE_CHECKING:
+    from .adaptive_shard_worker import AdaptiveShardCoordinator
+
 _PREFLIGHT_BATCH_SIZE = 500
+_SHARD_SAMPLE_ROWS_PER_ARTIFACT = 64
+_PROVEN_SAMPLE_ROWS_LIMIT = 256
 _LEDGER_INSERT_ROWS = 1000
 _MAX_PROOF_SOURCE_EXPECTATIONS = 1000
 
@@ -106,6 +117,7 @@ class PostgresCanonicalReplayJobExecutor:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
+        self.shard_coordinator: AdaptiveShardCoordinator | None = None
 
     def execute(
         self,
@@ -153,7 +165,10 @@ class PostgresCanonicalReplayJobExecutor:
             reader = CanonicalArtifactReader(store=self._runtime.artifact_store)
             preflight_started = perf_counter()
             phase = "preflight"
-            if not self._preflight_all(selected, reader=reader, fence=fence, context=context):
+            preflight_ok, sampled_rows, matched_rows = self._preflight_all(
+                selected, run=run, reader=reader, fence=fence, context=context
+            )
+            if not preflight_ok:
                 return JobHandlerResult.cancelled()
             log_event(
                 self._runtime.logger,
@@ -164,6 +179,33 @@ class PostgresCanonicalReplayJobExecutor:
                 artifact_count=run.artifact_count,
                 duration_ms=int((perf_counter() - preflight_started) * 1000),
             )
+
+            shard_count = self._shard_count(run, selected, sampled_rows, matched_rows)
+            if self.shard_coordinator is not None and shard_count >= 2:
+
+                def finish() -> JobHandlerResult:
+                    completed = self._finish_sharded_run(run.id, fence=fence)
+                    log_event(
+                        self._runtime.logger,
+                        logging.INFO,
+                        "canonical_replay.ingestion_completed",
+                        "Canonical Replay 分片入库完成",
+                        run_id=str(run.id),
+                        shard_count=shard_count,
+                        rows_seen=completed.rows_seen,
+                        rows_ingested=completed.rows_ingested,
+                        existing_convergence=completed.existing_convergence,
+                    )
+                    return JobHandlerResult.succeeded(_result(completed))
+
+                return self.shard_coordinator.execute_parent(
+                    kind="replay_run",
+                    parent_id=run.id,
+                    remaining_contents=shard_count,
+                    fence=fence,
+                    context=context,
+                    finish=finish,
+                )
 
             ingestion_started = perf_counter()
             phase = "ingestion"
@@ -298,6 +340,8 @@ class PostgresCanonicalReplayJobExecutor:
         self,
         run_id: UUID,
         fence: JobExecutionFence,
+        *,
+        shard_id: UUID | None = None,
     ) -> tuple[CanonicalReplayRunRecord, tuple[CanonicalReplayArtifactRecord, ...]]:
         session = self._runtime.database.new_session()
         try:
@@ -305,14 +349,207 @@ class PostgresCanonicalReplayJobExecutor:
                 PostgresJobRepository(session).validate_current_execution(fence)
                 repository = PostgresCanonicalReplayRepository(session)
                 run = repository.get(run_id)
-                if run is None or run.job_id != fence.job_id:
+                if run is None or (shard_id is None and run.job_id != fence.job_id):
                     raise LookupError("Canonical Replay Run 不属于当前 Job")
+                if shard_id is not None:
+                    shard = PostgresReplayShardRepository(session).get(shard_id)
+                    if (
+                        shard is None
+                        or shard["run_id"] != run_id
+                        or shard["job_id"] != fence.job_id
+                    ):
+                        raise LeaseLostError("Canonical Replay 分片不属于当前 Job")
                 selected = repository.list_artifacts(run_id)
                 if len(selected) != run.artifact_count or tuple(
                     item.ordinal for item in selected
                 ) != tuple(range(run.artifact_count)):
                     raise ValueError("Canonical Replay 输入顺序不完整")
                 return run, selected
+        finally:
+            session.close()
+
+    def _shard_count(
+        self,
+        run: CanonicalReplayRunRecord,
+        selected: tuple[CanonicalReplayArtifactRecord, ...],
+        sampled_rows: int,
+        matched_rows: int,
+    ) -> int:
+        session = self._runtime.database.new_session()
+        try:
+            existing = PostgresReplayShardRepository(session).list(run.id)
+            if existing:
+                return len(existing)
+            if run.checkpoint_artifact_ordinal or run.checkpoint_row_number:
+                return 1
+            bytes_total = session.scalar(
+                select(func.sum(artifacts_table.c.byte_size)).where(
+                    artifacts_table.c.id.in_(tuple(item.artifact_id for item in selected))
+                )
+            )
+            # 每片都会按原序重读输入；过多工作单元会让解析开销盖过并行收益。
+            # 两片在单路起步后没有双路试档机会；直接串行可少读一次输入。
+            # 更大的输入保留后续工作单元，供同一次运行中逐级试档。
+            count = select_replay_shard_count(
+                compressed_bytes=int(bytes_total or 0),
+                available_workers=worker_process_limit(detect_resources()),
+                sampled_rows=sampled_rows,
+                matched_rows=matched_rows,
+            )
+            log_event(
+                self._runtime.logger,
+                logging.INFO,
+                "capacity.replay_shard_plan_selected",
+                "Replay 按预检样本和资源选择分片数",
+                run_id=str(run.id),
+                compressed_bytes=int(bytes_total or 0),
+                sampled_rows=sampled_rows,
+                matched_rows=matched_rows,
+                selected_shards=count,
+            )
+            return count
+        finally:
+            session.close()
+
+    def _finish_sharded_run(
+        self, run_id: UUID, *, fence: JobExecutionFence
+    ) -> CanonicalReplayRunRecord:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                shards = PostgresReplayShardRepository(session).list(run_id)
+                if not shards or any(item["status"] != "succeeded" for item in shards):
+                    raise RuntimeError("Replay 子工作单元尚未全部完成")
+                repository = PostgresCanonicalReplayRepository(session)
+                run = repository.get(run_id)
+                if run is None or run.job_id != fence.job_id:
+                    raise LeaseLostError("Replay 父 Run 不属于当前 Job")
+                for field in (
+                    "rows_seen",
+                    "rows_matched",
+                    "rows_filtered_out",
+                    "duplicates_removed",
+                    "rows_ingested",
+                    "existing_convergence",
+                ):
+                    if sum(int(item[field]) for item in shards) != getattr(run, field):
+                        raise RuntimeError(f"Replay 分片与父 Run 的 {field} 计数不一致")
+                return repository.advance(
+                    run_id=run.id,
+                    expected_artifact_ordinal=run.checkpoint_artifact_ordinal,
+                    expected_row_number=run.checkpoint_row_number,
+                    next_artifact_ordinal=run.artifact_count,
+                    next_row_number=0,
+                    counters=_zero_counters(),
+                    fence=fence,
+                )
+        finally:
+            session.close()
+
+    def process_shard(
+        self,
+        shard_id: UUID,
+        *,
+        fence: JobExecutionFence,
+        context: JobExecutionContextProtocol,
+    ) -> int:
+        """一个身份分片重读冻结输入，但只提交自己负责的内容，保持原始顺序。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            shard = PostgresReplayShardRepository(session).get(shard_id)
+            if shard is None:
+                raise LookupError("Replay 分片不存在")
+            run_id = cast(UUID, shard["run_id"])
+        finally:
+            session.close()
+        run, selected = self._load_execution(run_id, fence, shard_id=shard_id)
+        run = replace(
+            run,
+            checkpoint_artifact_ordinal=int(shard["checkpoint_artifact_ordinal"]),
+            checkpoint_row_number=int(shard["checkpoint_row_number"]),
+        )
+        ordinal = int(shard["ordinal"])
+        shard_count = int(shard["shard_count"])
+        reader = CanonicalArtifactReader(store=self._runtime.artifact_store)
+        metrics = {
+            "batch_count": 0,
+            "artifact_read_ms": 0,
+            "batch_elapsed_ms": 0,
+            "resolution_ms": 0,
+            "content_batch_ms": 0,
+            "evidence_batch_ms": 0,
+            "fallback_ms": 0,
+            "fallback_snapshot_ms": 0,
+            "fallback_content_ms": 0,
+            "fallback_evidence_ms": 0,
+            "fallback_ledger_ms": 0,
+            "scalar_fallback_count": 0,
+            "ledger_checkpoint_ms": 0,
+            "transaction_ms": 0,
+            "fast_created_count": 0,
+            "fallback_count": 0,
+        }
+        while run.checkpoint_artifact_ordinal < run.artifact_count:
+            if context.cancel_requested():
+                raise LeaseLostError("Replay 分片已取消")
+            current = selected[run.checkpoint_artifact_ordinal]
+            try:
+                artifact = self._load_artifact(current, fence=fence)
+            except RevokedCanonicalReplaySource:
+                run = self._advance_empty_artifact(run, current, fence=fence, shard_id=shard_id)
+                continue
+            # 子 Worker 持有独立 Reader；先逐字节核验冻结 Artifact，再复用父 Attempt
+            # 已完成的来源/Contract 全量预检，不能把跨进程资格当成本地 Reader 状态。
+            reader.verify_bytes_for_preflight(artifact)
+            iterator = cast(Generator[CanonicalContentV1], reader.read_preflighted(artifact))
+            try:
+                for _ in islice(iterator, run.checkpoint_row_number):
+                    pass
+                while True:
+                    if context.cancel_requested():
+                        raise LeaseLostError("Replay 分片已取消")
+                    raw_batch = tuple(islice(iterator, run.batch_size))
+                    if not raw_batch:
+                        run = self._advance_empty_artifact(
+                            run, current, fence=fence, shard_id=shard_id
+                        )
+                        break
+                    owned = tuple(
+                        content
+                        for content in raw_batch
+                        if _identity_shard(content, shard_count) == ordinal
+                    )
+                    if owned:
+                        try:
+                            run = self._ingest_batch(
+                                run,
+                                current,
+                                artifact,
+                                owned,
+                                fence=fence,
+                                batch_metrics=metrics,
+                                shard_id=shard_id,
+                                raw_row_count=len(raw_batch),
+                            )
+                        except RevokedCanonicalReplaySource:
+                            run = self._advance_empty_artifact(
+                                run, current, fence=fence, shard_id=shard_id
+                            )
+                            break
+                    else:
+                        run = self._advance_filtered_batch(
+                            run, current, len(raw_batch), fence=fence, shard_id=shard_id
+                        )
+                    context.heartbeat(progress=_progress(run))
+            finally:
+                iterator.close()
+        session = self._runtime.database.new_session()
+        try:
+            completed = PostgresReplayShardRepository(session).get(shard_id)
+            if completed is None or completed["status"] != "succeeded":
+                raise RuntimeError("Replay 分片断点未到终点")
+            return int(completed["rows_seen"])
         finally:
             session.close()
 
@@ -340,12 +577,16 @@ class PostgresCanonicalReplayJobExecutor:
         self,
         selected: tuple[CanonicalReplayArtifactRecord, ...],
         *,
+        run: CanonicalReplayRunRecord,
         reader: CanonicalArtifactReader,
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
-    ) -> bool:
+    ) -> tuple[bool, int, int]:
         """在首个 Content 写入前验证全部字节、Contract 与逐行来源。"""
 
+        resolver = BrandVehicleResolver(run.filter_snapshot.catalog)
+        sampled_rows = 0
+        matched_rows = 0
         for item in selected:
             try:
                 artifact = self._load_artifact(item, fence=fence)
@@ -355,11 +596,35 @@ class PostgresCanonicalReplayJobExecutor:
             if proof is not None:
                 reader.verify_bytes_for_preflight(artifact)
                 self._validate_source_rows(item, (), fence=fence, source_expectations=proof)
+                if sampled_rows < _PROVEN_SAMPLE_ROWS_LIMIT:
+                    iterator = cast(
+                        Generator[CanonicalContentV1], reader.read_preflighted(artifact)
+                    )
+                    try:
+                        sample = tuple(
+                            islice(
+                                iterator,
+                                min(
+                                    _SHARD_SAMPLE_ROWS_PER_ARTIFACT,
+                                    _PROVEN_SAMPLE_ROWS_LIMIT - sampled_rows,
+                                ),
+                            )
+                        )
+                    finally:
+                        iterator.close()
+                    for content in sample:
+                        sampled_rows += 1
+                        matched_rows += int(
+                            resolve_canonical_brand_vehicle(
+                                run.filter_snapshot, content, resolver=resolver
+                            ).matched
+                        )
                 if context.cancel_requested():
-                    return False
+                    return False, sampled_rows, matched_rows
                 continue
             expectations: dict[UUID, tuple[UUID, UUID, str, str]] = {}
             cacheable = True
+            sampled_from_artifact = 0
             iterator = cast(
                 Generator[CanonicalContentV1],
                 reader.read_for_preflight(artifact),
@@ -370,6 +635,17 @@ class PostgresCanonicalReplayJobExecutor:
                     if not batch:
                         break
                     batch_expectations = self._validate_source_rows(item, batch, fence=fence)
+                    sample = batch[
+                        : max(0, _SHARD_SAMPLE_ROWS_PER_ARTIFACT - sampled_from_artifact)
+                    ]
+                    for content in sample:
+                        sampled_rows += 1
+                        matched_rows += int(
+                            resolve_canonical_brand_vehicle(
+                                run.filter_snapshot, content, resolver=resolver
+                            ).matched
+                        )
+                    sampled_from_artifact += len(sample)
                     if cacheable:
                         for attempt_id, lineage in batch_expectations.items():
                             previous = expectations.setdefault(attempt_id, lineage)
@@ -379,12 +655,12 @@ class PostgresCanonicalReplayJobExecutor:
                             expectations.clear()
                             cacheable = False
                     if context.cancel_requested():
-                        return False
+                        return False, sampled_rows, matched_rows
             finally:
                 iterator.close()
             if cacheable:
                 self._save_validation_proof(item, artifact, expectations, fence=fence)
-        return True
+        return True, sampled_rows, matched_rows
 
     def _check_parent_and_load_validation_proof(
         self,
@@ -598,10 +874,23 @@ class PostgresCanonicalReplayJobExecutor:
         selected: CanonicalReplayArtifactRecord,
         *,
         fence: JobExecutionFence,
+        shard_id: UUID | None = None,
     ) -> CanonicalReplayRunRecord:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                if shard_id is not None:
+                    return PostgresReplayShardRepository(session).advance(
+                        shard_id=shard_id,
+                        run_id=run.id,
+                        expected_artifact_ordinal=selected.ordinal,
+                        expected_row_number=run.checkpoint_row_number,
+                        next_artifact_ordinal=selected.ordinal + 1,
+                        next_row_number=0,
+                        counters=_zero_counters(),
+                        fence=fence,
+                        finished=selected.ordinal + 1 == run.artifact_count,
+                    )
                 return PostgresCanonicalReplayRepository(session).advance(
                     run_id=run.id,
                     expected_artifact_ordinal=selected.ordinal,
@@ -610,6 +899,32 @@ class PostgresCanonicalReplayJobExecutor:
                     next_row_number=0,
                     counters=_zero_counters(),
                     fence=fence,
+                )
+        finally:
+            session.close()
+
+    def _advance_filtered_batch(
+        self,
+        run: CanonicalReplayRunRecord,
+        selected: CanonicalReplayArtifactRecord,
+        raw_row_count: int,
+        *,
+        fence: JobExecutionFence,
+        shard_id: UUID,
+    ) -> CanonicalReplayRunRecord:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                return PostgresReplayShardRepository(session).advance(
+                    shard_id=shard_id,
+                    run_id=run.id,
+                    expected_artifact_ordinal=selected.ordinal,
+                    expected_row_number=run.checkpoint_row_number,
+                    next_artifact_ordinal=selected.ordinal,
+                    next_row_number=run.checkpoint_row_number + raw_row_count,
+                    counters=_zero_counters(),
+                    fence=fence,
+                    finished=False,
                 )
         finally:
             session.close()
@@ -623,6 +938,8 @@ class PostgresCanonicalReplayJobExecutor:
         *,
         fence: JobExecutionFence,
         batch_metrics: dict[str, int],
+        shard_id: UUID | None = None,
+        raw_row_count: int | None = None,
     ) -> CanonicalReplayRunRecord:
         batch_started = perf_counter()
         resolution_started = perf_counter()
@@ -661,12 +978,30 @@ class PostgresCanonicalReplayJobExecutor:
                 # 再次验证 Fence。取消/接管可在长批次中写入状态，旧事务随后整体回滚。
                 PostgresJobRepository(session).validate_current_execution(fence)
                 repository = PostgresCanonicalReplayRepository(session)
-                current = repository.get(run.id, for_update=True)
+                shard = (
+                    PostgresReplayShardRepository(session).assert_owner(shard_id, fence)
+                    if shard_id is not None
+                    else None
+                )
+                current = repository.get(run.id, for_update=shard is None)
                 if (
                     current is None
-                    or current.job_id != fence.job_id
-                    or current.checkpoint_artifact_ordinal != selected.ordinal
-                    or current.checkpoint_row_number != run.checkpoint_row_number
+                    or (
+                        shard is None
+                        and (
+                            current.job_id != fence.job_id
+                            or current.checkpoint_artifact_ordinal != selected.ordinal
+                            or current.checkpoint_row_number != run.checkpoint_row_number
+                        )
+                    )
+                    or (
+                        shard is not None
+                        and (
+                            shard["run_id"] != run.id
+                            or shard["checkpoint_artifact_ordinal"] != selected.ordinal
+                            or shard["checkpoint_row_number"] != run.checkpoint_row_number
+                        )
+                    )
                 ):
                     raise LeaseLostError("Canonical Replay checkpoint 已不属于当前执行")
                 lineage = self._load_import_lineage_context(session, selected, artifact)
@@ -1004,15 +1339,31 @@ class PostgresCanonicalReplayJobExecutor:
                     rows_ingested=inserted,
                     existing_convergence=existing,
                 )
-                advanced = repository.advance(
-                    run_id=run.id,
-                    expected_artifact_ordinal=selected.ordinal,
-                    expected_row_number=run.checkpoint_row_number,
-                    next_artifact_ordinal=selected.ordinal,
-                    next_row_number=run.checkpoint_row_number + len(contents),
-                    counters=counters,
-                    fence=fence,
+                next_row = run.checkpoint_row_number + (
+                    raw_row_count if raw_row_count is not None else len(contents)
                 )
+                if shard_id is None:
+                    advanced = repository.advance(
+                        run_id=run.id,
+                        expected_artifact_ordinal=selected.ordinal,
+                        expected_row_number=run.checkpoint_row_number,
+                        next_artifact_ordinal=selected.ordinal,
+                        next_row_number=next_row,
+                        counters=counters,
+                        fence=fence,
+                    )
+                else:
+                    advanced = PostgresReplayShardRepository(session).advance(
+                        shard_id=shard_id,
+                        run_id=run.id,
+                        expected_artifact_ordinal=selected.ordinal,
+                        expected_row_number=run.checkpoint_row_number,
+                        next_artifact_ordinal=selected.ordinal,
+                        next_row_number=next_row,
+                        counters=counters,
+                        fence=fence,
+                        finished=False,
+                    )
                 ledger_checkpoint_ms = int((perf_counter() - ledger_checkpoint_started) * 1000)
         finally:
             session.close()
@@ -1027,6 +1378,7 @@ class PostgresCanonicalReplayJobExecutor:
             artifact_ordinal=selected.ordinal,
             row_start=run.checkpoint_row_number,
             row_count=len(contents),
+            raw_row_count=raw_row_count if raw_row_count is not None else len(contents),
             matched_count=matched,
             fast_created_count=fast_created_count,
             fallback_count=fallback_count,
@@ -1237,6 +1589,14 @@ class PostgresCanonicalReplayJobExecutor:
 
 def _zero_counters() -> CanonicalReplayCounters:
     return CanonicalReplayCounters(0, 0, 0, 0, 0, 0)
+
+
+def _identity_shard(content: CanonicalContentV1, shard_count: int) -> int:
+    """同一平台内容身份在所有 Artifact 中必须进入相同且有序的工作单元。"""
+
+    identity = f"{content.platform}\0{content.external_content_id}".encode()
+    digest = hashlib.blake2b(identity, digest_size=8).digest()
+    return int.from_bytes(digest, "big") % shard_count
 
 
 def _progress(run: CanonicalReplayRunRecord) -> int:

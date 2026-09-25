@@ -130,6 +130,110 @@ def select_job_window(resources: ResourceSnapshot, *, ceiling: int | None = None
     return min(selected, ceiling) if ceiling is not None else selected
 
 
+class AdaptiveJobWindowController:
+    """按已完成工作量的墙钟吞吐逐级试探持久 Job 并发窗口。"""
+
+    def __init__(
+        self,
+        *,
+        improvement_margin: float = 0.08,
+        reprobe_after: int = 8,
+        initial_window: int = 1,
+    ) -> None:
+        if not 0 < improvement_margin < 1 or reprobe_after < 1 or initial_window < 1:
+            raise ValueError("Job 并发反馈参数无效")
+        self.improvement_margin = improvement_margin
+        self.reprobe_after = reprobe_after
+        self._current = initial_window
+        self._probe: int | None = None
+        self._samples: dict[int, list[float]] = {}
+        self._stable_waves = 0
+        self._probe_blocked = False
+        self._lower_checked = False
+        self._cooldown = 0
+        self._last_choice: int | None = None
+
+    def choose(
+        self,
+        resources: ResourceSnapshot,
+        *,
+        remaining_units: int,
+        database_headroom: int | None = None,
+    ) -> tuple[int, str, int | None]:
+        """资源只限制上界；升档必须由本次任务的已完成吞吐证明。"""
+
+        if remaining_units < 0 or (database_headroom is not None and database_headroom < 1):
+            raise ValueError("Job 剩余量和数据库连接余量必须有效")
+        maximum = select_job_window(resources)
+        if database_headroom is not None:
+            maximum = min(maximum, database_headroom)
+        maximum = max(1, min(maximum, max(1, remaining_units)))
+        if self._cooldown:
+            choice, reason = min(maximum, max(1, self._current - 1)), "database_retry_cooldown"
+        elif maximum < self._current:
+            choice, reason = maximum, "resource_limit"
+        elif self._probe is not None and self._probe <= maximum:
+            choice, reason = self._probe, "throughput_probe"
+        elif (
+            not self._probe_blocked
+            and self._current < maximum
+            and len(self._samples.get(self._current, ())) >= 1
+        ):
+            self._probe = self._current + 1
+            choice, reason = self._probe, "throughput_probe"
+        elif (
+            self._current > 1
+            and not self._lower_checked
+            and len(self._samples.get(self._current, ())) >= 2
+            and remaining_units >= 2
+        ):
+            self._probe = self._current - 1
+            self._samples.pop(self._probe, None)
+            choice, reason = self._probe, "throughput_probe"
+        else:
+            choice, reason = self._current, "measured_throughput"
+        previous = self._last_choice
+        self._last_choice = choice
+        return choice, reason, previous
+
+    def succeeded(self, *, window: int, contents: int, duration_ms: int) -> None:
+        """只比较有实际工作的完整波次，稳定后重新试探上一个失败档。"""
+
+        if self._cooldown:
+            self._cooldown -= 1
+        if contents < 1 or duration_ms < 1:
+            return
+        samples = self._samples.setdefault(window, [])
+        samples.append(contents * 1000 / duration_ms)
+        del samples[:-3]
+        if self._probe == window and len(samples) >= 2:
+            baseline = self._samples.get(self._current, [])
+            if baseline and median(samples) > median(baseline) * (1 + self.improvement_margin):
+                lowered = window < self._current
+                self._current = window
+                self._probe_blocked = lowered
+                self._lower_checked = False
+            else:
+                if window > self._current:
+                    self._probe_blocked = True
+                else:
+                    self._lower_checked = True
+            self._probe = None
+            self._stable_waves = 0
+        elif window == self._current and self._probe is None:
+            self._stable_waves += 1
+            if self._probe_blocked and self._stable_waves >= self.reprobe_after:
+                self._samples.pop(self._current + 1, None)
+                self._probe_blocked = False
+                self._stable_waves = 0
+
+    def database_retry(self) -> None:
+        """瞬时数据库错误后先降档，连续成功波次再恢复探索。"""
+
+        self._cooldown = 3
+        self._probe = None
+
+
 class AdaptiveBatchController:
     """用同一 Worker 的成功批次比较两档吞吐，并在资源压力/数据库重试时降档。"""
 

@@ -10,6 +10,7 @@ import CollectionRuntimePage from '../src/features/import-batches/pages/Collecti
 import CollectionRuntimeFilters from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeFilters.vue'
 import CollectionRuntimeKpiCards from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeKpiCards.vue'
 import CollectionRuntimeTable from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeTable.vue'
+import CanonicalReplayDetailDrawer from '../src/features/import-batches/pages/CollectionRuntimePage/components/CanonicalReplayDetailDrawer.vue'
 import DataImportDialog from '../src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue'
 import { useImportBatchesStore } from '../src/features/import-batches/store'
 
@@ -190,6 +191,27 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(html).toContain('过滤 389,920 条')
     expect(html).toContain('去重 6,875 条')
     expect(html).not.toContain('入库 0 条')
+  })
+
+  it('历史重筛撤回失败后提供继续撤回入口', async () => {
+    const html = await renderComponent(CanonicalReplayDetailDrawer, {
+      modelValue: true,
+      item: {
+        record_id: 'replay-retry', record_type: 'canonical_replay',
+        display_name: '历史数据重筛', status: 'failed', stage: 'failed', progress: 85,
+        created_at: '2026-09-25T09:36:32+08:00',
+        canonical_replay_stats: {
+          artifact_count: 1, run_count: 1, queued_run_count: 0, running_run_count: 0,
+          succeeded_run_count: 1, failed_run_count: 0, cancelled_run_count: 0,
+          rows_seen: 100, rows_matched: 10, rows_filtered_out: 90,
+          duplicates_removed: 0, rows_ingested: 10, existing_convergence: 0,
+          reversible: true, lifecycle_status: 'revert_failed', reversal_job_id: 'job-old',
+          reverted_content_count: 5, hidden_content_count: 5, retained_content_count: 0,
+          skipped_content_count: 0, restored_evidence_count: 0, skipped_evidence_count: 0,
+        },
+      },
+    })
+    expect(html).toContain('重试撤回')
   })
 
   it('五类运行记录的列表分别展示输入量、处理结果和撤回实绩', async () => {

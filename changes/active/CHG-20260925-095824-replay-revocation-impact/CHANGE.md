@@ -14,6 +14,8 @@ affected_areas:
   - ingestion
   - collection
   - frontend
+  - jobs
+  - database
 affected_paths:
   - backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py
   - backend/src/aima_ugc/adapters/persistence/postgres/content.py
@@ -24,6 +26,17 @@ affected_paths:
   - backend/src/aima_ugc/bootstrap/canonical_replay_worker.py
   - backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py
   - backend/src/aima_ugc/bootstrap/import_revocation_worker.py
+  - backend/src/aima_ugc/bootstrap/adaptive_shard_worker.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/replay_shards.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/reversal_shards.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/import_lineage.py
+  - backend/src/aima_ugc/modules/ingestion/replay_shards.py
+  - backend/src/aima_ugc/modules/ingestion/reversal_shards.py
+  - backend/src/aima_ugc/modules/ingestion/replay_shard_tables.py
+  - backend/src/aima_ugc/modules/ingestion/reversal_shard_tables.py
+  - backend/src/aima_ugc/platform/capacity.py
+  - migrations/versions/20260925_0064_reversal_shards.py
+  - migrations/versions/20260925_0065_replay_run_shards.py
   - backend/src/aima_ugc/bootstrap/collection_http.py
   - backend/src/aima_ugc/contracts/http.py
   - backend/src/aima_ugc/modules/collection/runtime_query.py
@@ -38,24 +51,48 @@ affected_paths:
   - frontend/src/features/task-center/store.ts
   - tests/integration/ingestion/test_import_campaign_revocation_postgres.py
   - tests/integration/ingestion/test_canonical_replay_worker.py
+  - tests/integration/ingestion/test_import_lineage_replay.py
+  - tests/unit/ingestion/test_replay_shards.py
+  - tests/unit/ingestion/test_reversal_shards.py
+  - tests/unit/platform/test_capacity.py
   - frontend/tests/collection-runtime-design.spec.ts
   - frontend/tests/collection-runtime-release2.spec.ts
   - frontend/tests/task-center.spec.ts
   - frontend/e2e/collection-runtime.spec.ts
   - frontend/e2e-fullstack/stage12-historical-analysis.spec.ts
   - docs/appendix/08_数据入口与统一入库实现.md
+  - docs/blueprint/01_总体架构与技术选型.md
+  - docs/blueprint/03_数据库与文件存储.md
+  - docs/blueprint/04_后端任务API与前端.md
   - docs/product/02_当前产品能力与用户流程.md
   - docs/guides/07_采集运行中心Figma开发基线.md
 contracts:
   - CollectionRuntimeItemResponse.revocation_recomputed_content_count
-data_changes: []
+  - ingestion.canonical-replay-shard.v1
+  - ingestion.reversal-shard.v1
+data_changes:
+  - ingestion_reversal_shards 持久撤回工作单元
+  - canonical_replay_run_shards 持久重筛工作单元
 ---
 
 # 变更摘要
 
+## 2026-09-25 扩展：统一分片调度与自适应并行
+
+用户进一步要求在本 PR 中实现一套可维护的通用持久 Job 调度与资源/吞吐反馈机制，分别优化历史导入、全历史重筛入库、普通导入撤销、重筛撤回，并在 CI 通过后合并 main。既有 R1–R7 的完成证据只覆盖原范围，不能用于宣称这项扩展已完成；本 Change 在新实现和验收前恢复为 `in_progress`。
+
+当前事实：历史 Campaign 已按 Canonical Chunk 建 Item/Job；全历史 Replay 每 100 个 Artifact 建一个 Run/Job，本次 34 个 Artifact 只有一个 Run。Replay 去重身份以 `run_id` 为键，直接缩小 Artifact 分组会改变跨组重复行的归属和统计。两种撤回各只有一个父 Job。隔离 PostgreSQL 的同一次普通导入撤销原型，3,000 Content 单/双进程为 2.430/2.900 秒，10,000 为 8.571/6.401 秒（四进程 7.093 秒），20,000 为 17.373/11.727 秒（四进程 11.582 秒）；原型沿用正式来源重组和 Job 认领，但尚未实现生产父任务完成屏障。重筛撤回 20,000 Content 的真实 Job 原型，单/双/四/八进程为 24.688/17.094/18.256/18.653 秒。不同并行度不是单调收益，也不能把本机数字外推到服务器。
+
+扩展完成条件：
+
+- R8：四类任务继续只使用通用 `jobs` Runtime、Worker 进程池和同一资源检测。Replay Run、普通导入撤销与重筛撤回共用持久分片调度及吞吐反馈；历史导入沿既有 Campaign/Chunk 背压和批量反馈，避免改写冻结的恢复粒度与锁顺序。并行度从单路逐级探索，受有效 CPU、内存、数据库连接余量和待处理分片数限制，稳定后复探。
+- R9：历史导入保留已冻结 Chunk 和已验证的 Campaign 锁顺序；Replay 在现有 Run 的去重边界内按稳定来源内容身份分片，同一身份的全部输入顺序不变，预检只做必要重复工作；普通导入撤销和重筛撤回按 Content 分片，不按来源行 Chunk 分片。小任务单 Job 回退。
+- R10：每个子 Job 有幂等身份、独立 Fence、持久断点；父任务汇总只在全部子工作结清后完成。覆盖取消/撤回交错、Worker 崩溃接管、重试、并发后续写入、共享 Content、人工锁、空任务和多来源重复，并比较入口至入库/撤回终态的墙钟时间。
+- R11：刷新正式文档、Change Completion Audit 与 Review，并在当前 PR Head 的 CI 通过后合并；合并后核查 main、归档、关闭 Issue 和清理本地分支。未有正式多 Job 实现和对应验证之前，不把隔离原型当作交付结果。CI 与合并是 Ready 之后的独立交付门禁，不作为 Change 自身的循环前置条件。
+
 本机 2026-09-25 的第二次全历史重筛新增入库为 0，但三个子任务分别收敛 16,469、22,780、1,055 条既有内容。采集运行与任务中心只显示“入库 0”，导致用户误以为没有处理。第四次本地导入 66,139 行全部过滤，但同 Campaign 后续重筛形成 6,757 条来源贡献、涉及 5,747 个 Content；撤销预览按原导入逐行账本显示影响 0，实际 Worker 重组 5,747 个 Content。
 
-目标是让预览与真实贡献账本、执行进度一致，逐类核对采集运行的列表、详情及总览数字，并根据日志拆分慢阶段后验证可行优化。保持不可变历史审计事实、既有公共 API 字段语义、Schema、依赖和用户现有数据不变；只增加兼容的可选只读字段。生产部署与改写既有审计不在范围内。
+目标是让预览与真实贡献账本、执行进度一致，逐类核对采集运行的列表、详情及总览数字，并根据日志拆分慢阶段后验证可行优化。保持不可变历史审计事实、既有公共 API 字段语义、依赖和用户现有数据不变；新增兼容的可选只读字段与两张持久分片表。生产部署与改写既有审计不在范围内。
 
 # 背景、现状与问题
 
@@ -84,7 +121,7 @@ data_changes: []
 | 维度 | 决策与依据 |
 | --- | --- |
 | Contract | 仅新增可选只读字段，旧客户端与既有统计字段语义不变；生成 OpenAPI/Client 同步。 |
-| 数据与迁移 | 撤销事实不可变，终态展示 Worker 已提交实绩；无 Schema/Migration。 |
+| 数据与迁移 | 撤销事实不可变，终态展示 Worker 已提交实绩；0064/0065 只新增持久分片表，不改写既有业务行。 |
 | 性能与正确性 | 更新已锁定的不同 Content，按相同列集合分组并以 500 行集合 SQL 提交；不改变来源、版本与观测字段规则。 |
 | 兼容与回滚 | API、Worker、Frontend 可按正常镜像回滚；历史预估留存，新增可选响应字段无需数据回填。 |
 
@@ -113,6 +150,10 @@ data_changes: []
 | R5 | 回归、文档和 Review 保持数据正确性；PR CI 作为独立合并门禁 | #603 / AC5 | satisfied | PostgreSQL 95 测试、前端 233 测试、构建、lint、类型、Contract/架构/Owner/文档检查；CI 待 PR Head 提交后验证 |
 | R6 | 普通导入撤销与重筛撤回的实际耗时和慢段都有实测依据；减少逐条 SQL 往返并维持版本、证据和断点正确性 | #603 / AC6 | satisfied | 隔离库同量重筛撤回由 52.023s 降至 3.012s（Worker），101 Content SQL 次数回归、95 个 PostgreSQL 回归通过；普通导入撤销 3,000 Content 基线约 2.5s，两个候选改动无稳定收益已撤回，仅保留分段日志 |
 | R7 | 核对全链路 Job/Worker 并行边界，实验判断单次撤回拆分的收益、正确性前提和当前方案 | #603 / AC7 | satisfied | 本地/服务器入口与快照/Chunk/Replay Job 代码及现场日志；独立 Campaign 两 Job 串行 5.708s、并行 4.591s，单 Job 20,000 Content 重筛撤回 23.108s；同请求 10,000 Content 两轮顺序反转原型串行 10.565/10.307s、两分区 9.009/9.002s；原型未覆盖 Fence/恢复，故不进入生产；技术文档记录取舍 |
+| R8 | 通用 Job Runtime、资源检测和三类大任务共用单路起步的持久分片吞吐反馈；历史 Chunk 保持既有恢复语义 | #603 / AC8 | satisfied | `AdaptiveShardCoordinator` 与 `AdaptiveJobWindowController`；容量单元测试证明单路起步、按实测逐级升降档、资源/连接上界及稳定后复探；78 个 ingestion 集成测试通过 |
+| R9 | Replay 保留 Run 内去重顺序；两种撤回按 Content 分片；小任务沿原路径 | #603 / AC9 | satisfied | 隔离 PostgreSQL 覆盖跨 Artifact 去重及父计数、两种撤回持久分片及小任务路径；低命中 Replay 经正式 Worker 实测保留串行以避免重复读取 |
+| R10 | 子 Job Fence/断点/完成屏障及故障恢复、取消、交错写入正确性和正式墙钟对照 | #603 / AC10 | satisfied | 两类撤回父 Job 失败重试、子 Job 业务提交后终态失败、Replay 分片去重与既有取消/并发写入回归通过；正式 Worker 对照见 V8、V12、V13，收益边界明确 |
+| R11 | 文档、完成审计、Review 与本地交付检查 | #603 / AC11 | satisfied | 本 Change 完成上游与反向审计；静态/Contract/文档/Migration 检查及前后端回归通过；PR #604 的新 Head CI、合并和清理仍是后续交付门禁 |
 
 # 计划改动
 
@@ -129,49 +170,53 @@ data_changes: []
 
 | 层 | 要求 | 证据 |
 | --- | --- | --- |
-| PostgreSQL / Worker | required | 隔离 PostgreSQL 95 个相关回归通过（Content、Replay、Campaign 撤销、运行查询） |
-| 前端行为 | required | 全量 Vitest 233 个通过；渲染五类记录与旧预估差异；lint、类型检查及生产构建通过 |
-| 静态检查与生成一致性 | required | Ruff format/check、mypy、生成 Contract check/兼容检查、架构/表 Owner、文档检查通过；CI 待新 Head |
+| PostgreSQL / Worker | required | 扩展后的 ingestion 全量 78 passed；Content 清理独立测试库后单独 73 passed；父子失败重试、提交后子 Job 终态失败、Replay 去重及恢复均由隔离 PostgreSQL 覆盖 |
+| 前端行为 | required | 全量 Vitest 234 passed、采集运行 Playwright 18 passed，lint 和生产构建通过；失败撤回的重试入口 SSR 覆盖 |
+| 静态检查与生成一致性 | required | Ruff format/check、mypy、Contract 生成检查、架构/表 Owner、文档、Alembic check 通过；新 Head Linux CI 待提交后验证 |
 | 当前日志与隔离性能实验 | required | 现场 6 记录与 Worker 日志对账；3,000 行重复重筛改动前 6.744s、改动后 4.620s/4.326s（单机样本） |
 | 外部 Provider | not_applicable | 当前链路不发送外部请求 |
 
 # 风险、兼容性、迁移与回滚
 
-无 Schema/Migration/依赖或既有公共字段语义变动；新增可选只读 `revocation_recomputed_content_count` 并同步生成 Contract。历史已落地的错误撤销预估是不可变审计事实，本轮不追溯改写；终态展示实际重组量及预估差异。顶部入库量仍是不同任务原计数的累计，不代表全库不同 Content 数。
+无依赖或既有公共字段语义变动；新增可选只读 `revocation_recomputed_content_count` 并同步生成 Contract。0064/0065 Migration 新增两张业务分片表，既有 Campaign/Run/内容行不回填或重写。历史已落地的错误撤销预估是不可变审计事实，本轮不追溯改写；终态展示实际重组量及预估差异。顶部入库量仍是不同任务原计数的累计，不代表全库不同 Content 数。
 
-集合 UPDATE 的主要风险是列集分组、JSONB/时间戳类型及并发锁语义漂移；PostgreSQL Content 并发与 Replay 集成回归覆盖该边界。回滚为恢复原版本 API/Worker/Frontend 镜像；无迁移需要逆转。当前用户 Compose 未部署此提交，也未改变其数据库。
+集合 UPDATE 的主要风险是列集分组、JSONB/时间戳类型及并发锁语义漂移；PostgreSQL Content 并发与 Replay 集成回归覆盖该边界。新增分片表与旧镜像并存时不改变旧业务表，回滚代码应先停新 Worker 并让已受理父子 Job 结清或明确接管，保留分片表；不能在活跃 Job 期间直接 downgrade。当前用户 Compose 未部署此提交，也未改变其数据库。
 
 # 文档、依赖、部署与发布影响
 
-同步 `docs/product/02_当前产品能力与用户流程.md` 的五类运行计数语义、`docs/appendix/08_数据入口与统一入库实现.md` 的 Replay/撤销单位，以及运行中心设计基线的 KPI 与表宽。未新增、删除或升级依赖、Runtime、配置、Secret；正常镜像更新即可应用代码，无额外 Migration/Release 操作。本轮没有执行部署。
+同步 `docs/product/02_当前产品能力与用户流程.md` 的五类运行计数语义、`docs/appendix/08_数据入口与统一入库实现.md` 的 Replay/撤销单位和新分片恢复边界、`docs/blueprint/04_后端任务API与前端.md` 的 Job 类型，以及运行中心设计基线的 KPI 与表宽。未新增、删除或升级依赖、Runtime、配置、Secret；部署需先运行 0064/0065 Migration，再启动新 Worker/API。回滚代码前需让新版父子 Job 结清或明确恢复方案，保留新表。本轮没有执行用户 Compose 或生产部署。
 
 # 完成审计
 
-重新读取 #603 的 AC1–AC7、当前手写 Contract、生成 OpenAPI、采集运行只读 UNION、Content/撤销 Owner、Worker 进程池、页面五类型分支及本轮 diff。上游→实现：AC1 由来源贡献统一查询和预览覆盖；AC2 由 Replay 列表及任务中心覆盖；AC3 由聚合分段日志和 500 行集合 UPDATE 覆盖；AC4 由五类型列表/详情、可选撤销实绩字段及汇总口径提示覆盖；AC5 由测试、文档和 PR 门禁覆盖；AC6 由普通导入撤销和重筛撤回同环境对照、集合撤回及分段日志覆盖；AC7 由实际 Job 调度与父锁审计、独立 Campaign 并行对照和大单 Job 基准覆盖。实现→测试：新增字段经真实 PostgreSQL API 与前端类型/渲染验证，批量 UPDATE 经 Content 并发/Replay 集成回归及隔离基准验证；重筛撤回经来源账本、人工锁和 101 行 SQL 次数回归，普通导入撤销未见收益的 SQL 页/列集候选均已撤回。没有同一撤回请求的安全分片实测，因此没有宣称拆分会提升单任务吞吐，也没有改写持久 Job 模型。无新 Job 类型、迁移、依赖、配置或 Provider 网络调用。新增后端字段为可选只读字段，旧客户端兼容；生成文件已从事实源重新生成。
+本次扩展重新核对用户关于统一 Job、自适应调度、历史重筛单路起步、普通导入撤销和重筛撤回的决定，并反查当前业务表、Job 注册、两个 Migration、前端撤回入口与测试。R1–R7 的原有事实、统计口径和既有测试继续有效；R8–R11 已用本轮工作树验证，不复用旧 Head 的 Ready 声明。
 
-反向能力审计：列表五类型都有对应 API 只读分支；Replay 撤回与 Campaign 撤销的终态实绩分别来自持久请求计数，不能以原导入行统计或旧预估替代。历史已提交的旧预估不改写，终态仅提示预估差异并展示后台事实。顶部入库量继续采用既有混合任务统计，只明确标注为任务累计、可能重复；它不承诺“全库去重内容数”。
+上游→实现：历史导入继续沿冻结 Chunk 与 Campaign 锁顺序调度；较大、预检样本主要命中的 Replay Run 按稳定来源身份在原 Run 去重边界内分片；两类大撤回按互不重叠的 Content UUID 范围分片。Replay Run 与两类撤回共用父子 Job、Fence、完成屏障和单路起步的资源/吞吐反馈控制；各业务执行器保存自己的来源、断点、计数和结果。两片 Replay 因没有运行中试双路的机会而沿串行路径，低命中率输入也沿串行路径，避免各片重复读取拖慢整次 Run。
 
-- [x] upstream_re_read：已重新读取用户问题、追加的全类型记录、撤回性能与并行拆分要求、Issue #603 AC1–AC7 和当前 Contract/调用链。
-- [x] change_coverage：R1–R7 均与上游稳定验收对应；当前 Change 未充当自身的需求来源。
-- [x] reverse_audit：五类型 API 投影→列表/详情、撤销/撤回请求→持久实绩→UI、Content 批量写→版本/贡献及测试均已反查。
-- [x] unresolved_cleared：本 Change 没有 `not_satisfied`；PR CI、合并和归档保留为独立交付门禁，不冒充已完成。
+实现→测试：跨 Artifact 同身份去重、两类撤回父 Job 失败后的持久断点接管，以及正式 Worker 的两片 Replay 墙钟对照已有证据。父任务重试时，完成屏障曾把旧父 Job 当作子 Job；本轮按 Job 类型区分后，两类撤回的父失败重试测试均通过。子 Job 在业务提交后终态失败时，以已原子结清的业务分片为准；针对性故障注入已通过。Replay 首次并发创建来源尝试的请求行锁问题已修复并有集成测试。ingestion 全量 78 个回归通过；当前 Head CI 仍是合并前独立门禁。
+
+反向能力审计：用户可见父请求只在所有业务分片已提交、关联子 Job 到终态及父计数对账后报告成功；子 Job 在业务提交后终态失败由已提交分片证明并记 WARNING，未结清的失败仍阻止父任务成功。失败的 Replay 撤回提供重试入口。列表、详情及任务中心的原统计口径继续由 API/页面对应分支提供。新分片表只保存工作单元身份与断点，业务 Current/Version/来源仍由原 Owner 写入；旧串行断点不被新分片重切。新增两个持久 Job 类型已注册到同一个 Worker Registry，没有新队列。
+
+- [x] upstream_re_read：已重新读取用户扩展决定、#603 原验收与当前实现边界。
+- [x] change_coverage：R1–R11 均有对应上游来源和本轮证据。
+- [x] reverse_audit：已反查四类流程的 API/Worker/业务表/页面与父子完成状态。
+- [x] unresolved_cleared：本地全量 ingestion、针对性故障恢复及两阶段 Review 已完成；新 Head CI、合并和清理仍为交付门禁。
 
 # 两阶段 Review
 
-第一阶段按用户要求和 #603 独立核对六条现场记录：4 条 Campaign 全部过滤，2 条 Replay 分别新增 39,189/0，第二条处理已有记录 40,304 次、去重 6,875 次，撤回重组 39,189 个 Content；后两条 Campaign 各重组 5,747 个 Content。检查 SQL 来源、状态、不同计数单位，发现并修正“相关性过滤”误称品牌车型过滤、Collection 跨 Scope 累计与 Excel/Campaign `rows_ingested` 语义混同。
+第一阶段复核原现场六条记录、贡献归属及五类运行计数，证据见 R1–R7。扩展阶段复核冻结输入、来源身份、Content 范围、事务 Fence/断点、父子终态与资源反馈。已发现并修复旧父 Job 误判、Replay 首次来源尝试并发冲突；同文件正式 Worker 实测自动七片 45.882 秒慢于串行约 30–31 秒，因此增加有界预检命中样本与小输入保护。新策略在该文件抽样 2,176/239 行后选单路，正式 Worker 29.974 秒、结果对账不变。
 
-第二阶段审查最终 diff、事务与索引边界、测试证据：500 行 `UPDATE ... FROM VALUES` 保留不同 `observed_fields` 的列集合，原行按稳定 ID 加锁且批次拒绝重复身份；贡献预览与 Worker 使用同一 Campaign 归属条件；API 增加可选只读字段无迁移；前端旧版预估差异通过真实组件 SSR 验证。重筛撤回按 Content 锁/版本/备用 ID/人工审查锁/自动证据/可见性/账本的原有守卫顺序执行，新增集合路径仅接纳无 Account、最多备用 ID 的 Delta；其余逐条精确路径保留。隔离 PostgreSQL 覆盖数据事实，前端测试覆盖渲染；已用用户第四次导入的原始 XLSX 在独立数据库重放，但尚未在用户 Compose 或不同规格服务器上重放，性能百分比不能外推。普通导入撤销已具集合写入和动态批次，实测候选 SQL 页放大及列集缩小没有稳定收益，未将无收益候选提交。
+第二阶段复核最终 diff、取消和重试时序、Migration 降级、文档、静态检查及集成测试，未发现当前范围内的阻塞问题。全历史重筛保留单路起步；仅在冻结输入大、预检样本命中较多且资源足够时创建足够的持久片，同一次 Run 才有逐级试档的工作量。低命中或小输入沿串行路径，以避免每片重新解析全部输入造成已实测的回退。不得用原型单/双路速度推算正式实现或其他服务器收益。
 
 # 完成证据与状态
 
 | 证据 | 环境与命令 | 结果与边界 |
 | --- | --- | --- |
-| V1 | Windows 隔离 PostgreSQL 18；`uv run --no-sync pytest` 的 Content/Replay/撤销/运行查询相关集成集 | 95 passed，证明当前代码的真实持久化路径；不等于用户 Compose 重放。 |
-| V2 | `npm run test -- --run`、`npm run lint`、`npm run build` | 233 passed、lint 及生产构建通过，覆盖列表五类型及旧预估终态 SSR。 |
-| V3 | Ruff format/check、mypy、Contract 生成/兼容、架构/Owner、文档和 Change 检查；`npm run test:e2e -- collection-runtime.spec.ts` | 静态/Contract/Change 本地通过；CI 发现三处旧文案 E2E 断言，本地修正后 18 passed，等待新 Head CI。 |
-| V4 | 现场日志/API/只读 SQL 与隔离 3,000 行 Replay 基准 | 现场六条数字对账；本机样本第二轮由 6.744s 降至 4.620s/4.326s。 |
-| V5 | 同一隔离 PostgreSQL 3,000 Content 的 Replay 撤回及普通导入撤销基准 | Replay 撤回初始 52.023s，集合生命周期后 34.889s，归属/账本集合结清后 23.386s，证据集合恢复后 3.012s，计数均 3,000；普通导入撤销约 2.5s，两个候选改动无收益已撤回。两种撤回的批次仍由运行时资源和实测吞吐调节。 |
-| V6 | 用户第四次导入的 66,139 行 XLSX；独立 PostgreSQL 18，当前 Worker 逐阶段重放 | 普通导入 34 Chunk 约 9.73s、66,139 行均过滤；添加品牌别名后重筛读取 66,139 行、命中 7,056 行、新增 5,965 条约 28.04s；随后撤回 5,965 个 Content 约 7.11s。此为当前实现端到端实测，未取得该文件修改前的对照。 |
-| V7 | 隔离 PostgreSQL 18 的 Job 并行对照、大单 Job、同请求两分区容量原型；`frontend/e2e-fullstack/stage12-historical-analysis.spec.ts` | 不同 Campaign 各 3,000 Content 串行 5.708s、并行 4.591s；一个重筛撤回 20,000 Content 23.108s，其中常见生命周期 13.206s。同请求 10,000 Content 两轮顺序反转：串行 10.565/10.307s、两分区 9.009/9.002s，均结清 10,000 个 Content/账本；原型跳过正式 Fence/故障恢复，不能作为交付实现。真实全链路测试旧文案断言已修正，待新 Head CI 验证。 |
+| V1–V7 | 原范围采集运行计数、撤销预览、集合写入与现场/隔离实验 | 证据详见 R1–R7；发生于扩展前的 revision，不证明新增分片实现。 |
+| V8 | Windows 隔离 PostgreSQL 18；正式 Worker 的同一份 66,139 行 XLSX | 串行 30.106/30.922 秒，双 Worker/两片 26.140/30.664/31.341 秒，自动七片 45.882 秒；加入有界命中样本后自动选单路 29.974 秒。四种路径均为 5,965 新增、1,091 去重；双路收益不稳定，不能宣称已找到服务器最优并行度。 |
+| V9 | 当前工作树；容量单元测试、两类撤回父失败重试及 Replay 分片去重集成测试 | 容量/分片单元 15+11 passed，两类撤回父失败重试与 Replay 分片去重针对性集成通过；ingestion 全量 78 passed，Content 在清理隔离测试库后单独 73 passed。 |
+| V10 | 当前工作树；Ruff format/check、mypy、前端 lint/Vitest/build | 已通过；前端 234 tests passed，生产构建通过。Windows 合跑的 9 个文档路径/宿主准备单元断言仍失败，待 Linux CI 复核。 |
+| V11 | 隔离 PostgreSQL 18；Migration 0064→0065 | 升级、非空表降级拒绝及 Alembic check 已完成；部署前仍需正常备份和既有迁移门禁。 |
+| V12 | Windows 隔离 PostgreSQL 18；正式 Job/独立 Worker 进程执行重筛撤回 | 10,000 Content 单路 11.085 秒、自适应双 Worker 10.140 秒；20,000 Content 单路 24.110 秒、自适应双 Worker 23.754 秒。计数及未撤回账本分别为全部结清/0；单轮样本收益小，不能外推。 |
+| V13 | 同一隔离库；正式 Job/独立 Worker 进程执行普通导入撤销 | 10,000 Content 先单路 19.394 秒、后自适应双 Worker 9.177 秒；20,000 Content 反向顺序先自适应 15.266 秒、后单路 20.759 秒。两边重组计数均与输入相等。10,000 单路的贡献读取累计约 10.24 秒；分片降低反复扫描成本。幅度随数据和缓存变化，不作生产百分比承诺。 |
 
-未验证：本次大型 XLSX 在更新后的 Compose 上重放、不同服务器配置下的性能增益；隔离基准不能保证现场 39,189 条同比例缩短。PR #604 分支 `fix/603-replay-revocation-impact` 首个实现提交为 `4dd76bc4`；后续 CI、merge、main-fresh、归档、Issue Closure 与分支清理仍待执行。本任务未实施 Release 或生产部署。
+未验证：新版在用户 Compose、不同规格服务器上的持续吞吐收益，动态窗口的跨机器最优性，正式生产数据负载。新增分片对大撤回的正确性已有针对性证据，但不能把早期无父子调度原型数字当成正式耗时。PR #604 当前工作树尚未提交到新 Head，CI、merge、main-fresh、归档、Issue Closure 与分支清理均待完成；本轮未执行 Release 或生产部署。

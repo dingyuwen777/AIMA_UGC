@@ -5,6 +5,7 @@ from pathlib import Path
 from aima_ugc.bootstrap.historical_import_http import _same_requested_profile
 from aima_ugc.platform.capacity import (
     AdaptiveBatchController,
+    AdaptiveJobWindowController,
     AdaptiveTierBatchController,
     ResourceSnapshot,
     detect_resources,
@@ -13,6 +14,58 @@ from aima_ugc.platform.capacity import (
     select_job_window,
     worker_process_limit,
 )
+
+
+def test_job_window_controller_probes_one_lane_at_a_time_and_reprobes_after_stability() -> None:
+    worker = ResourceSnapshot(16, 64 * 1024**3, 48 * 1024**3, "cgroup_v2")
+    tuner = AdaptiveJobWindowController(reprobe_after=3)
+    assert tuner.choose(worker, remaining_units=100)[0] == 1
+    tuner.succeeded(window=1, contents=2500, duration_ms=2500)
+    for _ in range(2):
+        assert tuner.choose(worker, remaining_units=100)[:2] == (2, "throughput_probe")
+        tuner.succeeded(window=2, contents=5000, duration_ms=3000)
+    assert tuner.choose(worker, remaining_units=100)[:2] == (3, "throughput_probe")
+    tuner.succeeded(window=3, contents=7500, duration_ms=5000)
+    assert tuner.choose(worker, remaining_units=100)[0] == 3
+    tuner.succeeded(window=3, contents=7500, duration_ms=5000)
+    for _ in range(2):
+        assert tuner.choose(worker, remaining_units=100)[:2] == (1, "throughput_probe")
+        tuner.succeeded(window=1, contents=2500, duration_ms=2500)
+    assert tuner.choose(worker, remaining_units=100)[:2] == (2, "measured_throughput")
+    for _ in range(3):
+        tuner.succeeded(window=2, contents=5000, duration_ms=3000)
+        tuner.choose(worker, remaining_units=100)
+    assert tuner.choose(worker, remaining_units=100)[:2] == (3, "throughput_probe")
+
+
+def test_job_window_controller_respects_resource_database_and_work_limits() -> None:
+    worker = ResourceSnapshot(16, 64 * 1024**3, 48 * 1024**3, "cgroup_v2")
+    tuner = AdaptiveJobWindowController()
+    tuner.choose(worker, remaining_units=100)
+    tuner.succeeded(window=1, contents=2500, duration_ms=2500)
+    assert tuner.choose(worker, remaining_units=100, database_headroom=1)[:2] == (
+        1,
+        "measured_throughput",
+    )
+    assert tuner.choose(worker, remaining_units=100, database_headroom=2)[0] == 2
+    tuner.database_retry()
+    assert tuner.choose(worker, remaining_units=100)[1] == "database_retry_cooldown"
+    assert tuner.choose(worker, remaining_units=1)[0] == 1
+
+
+def test_job_window_controller_can_lower_a_two_lane_start_after_measuring_throughput() -> None:
+    worker = ResourceSnapshot(16, 64 * 1024**3, 48 * 1024**3, "cgroup_v2")
+    tuner = AdaptiveJobWindowController(initial_window=2)
+    for _ in range(2):
+        assert tuner.choose(worker, remaining_units=20, database_headroom=2)[0] == 2
+        tuner.succeeded(window=2, contents=2000, duration_ms=3000)
+    for _ in range(2):
+        assert tuner.choose(worker, remaining_units=20, database_headroom=2)[:2] == (
+            1,
+            "throughput_probe",
+        )
+        tuner.succeeded(window=1, contents=1000, duration_ms=1000)
+    assert tuner.choose(worker, remaining_units=20, database_headroom=2)[0] == 1
 
 
 def test_detect_resources_uses_cgroup_v2_effective_limits(tmp_path: Path) -> None:

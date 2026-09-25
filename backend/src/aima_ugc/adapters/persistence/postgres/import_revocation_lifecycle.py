@@ -39,6 +39,8 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
         *,
         after_content_id: UUID | None,
         content_limit: int,
+        lower_content_id: UUID | None = None,
+        upper_content_id: UUID | None = None,
     ) -> tuple[tuple[RowMapping, ...], UUID | None]:
         """断点后读取最多 content_limit 个完整 Content 的来源 Delta。"""
 
@@ -48,6 +50,10 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
         campaign_query = self._campaign_contributions_query(campaign_id).order_by(None)
         if after_content_id is not None:
             campaign_query = campaign_query.where(contribution.c.content_id > after_content_id)
+        if lower_content_id is not None:
+            campaign_query = campaign_query.where(contribution.c.content_id >= lower_content_id)
+        if upper_content_id is not None:
+            campaign_query = campaign_query.where(contribution.c.content_id < upper_content_id)
         # 先只排序 UUID 并在数据库侧限页；完整 JSON Delta 只对本批 Content 排序。
         # 同一 Content 的多条来源贡献必须留在一个事务内，不能直接对 Delta 行 LIMIT。
         content_page = (
