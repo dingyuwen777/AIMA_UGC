@@ -45,7 +45,6 @@ def test_current_document_facts_match_machine_sources() -> None:
     assert CHECK_REPOSITORY() == []
 
 
-
 def test_api_guide_links_machine_contract_without_mirroring_full_route_surface() -> None:
     """API Guide 只解释调用语义；完整 Route 集合由 OpenAPI 机器事实持有。"""
     api_guide = (ROOT / "docs/03_API接口说明.md").read_text(encoding="utf-8")
@@ -77,6 +76,7 @@ def test_architecture_docs_link_machine_owners_without_mirroring_full_inventorie
     assert any(job_type not in blueprint_01 for job_type in CURRENT_JOB_TYPES())
     assert any(table_name not in blueprint_03 for table_name in CURRENT_TABLE_NAMES())
     assert any(route not in blueprint_01 for route in FRONTEND_ROUTES())
+
 
 def test_worker_job_sources_follow_production_registry_imports() -> None:
     """Worker Job 事实源应能跟随生产 register_* 导入及 package re-export。"""
@@ -151,7 +151,6 @@ def test_exact_fact_block_accepts_markdown_link_values(tmp_path: Path) -> None:
     assert errors == []
 
 
-
 def test_exact_fact_block_accepts_tilde_fence(tmp_path: Path) -> None:
     """受控事实块允许 Markdown 的 tilde fence，不把 fence 本身当作事实。"""
     _write(
@@ -172,6 +171,7 @@ def test_exact_fact_block_accepts_tilde_fence(tmp_path: Path) -> None:
     )
 
     assert errors == []
+
 
 def test_exact_fact_block_rejects_duplicate_values(tmp_path: Path) -> None:
     """受控事实块中的重复值不能被 set 比较静默吞掉。"""
