@@ -391,8 +391,12 @@ def check_repository() -> list[str]:
         errors,
         code="DOCF001",
         owner_doc="docs/03_API接口说明.md",
-        values=_openapi_paths(),
-        label="OpenAPI 路径",
+        values={
+            "backend/src/aima_ugc/contracts/http.py",
+            "contracts/openapi/openapi.json",
+            "frontend/src/generated/api/",
+        },
+        label="API 机器事实入口",
     )
     _require_all(
         errors,
