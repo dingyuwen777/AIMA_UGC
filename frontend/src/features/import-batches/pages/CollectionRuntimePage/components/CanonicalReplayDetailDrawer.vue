@@ -46,8 +46,14 @@ const terminalRunCount = computed(() => {
 const actionKind = computed<'cancel-and-revoke' | 'revoke' | null>(() => {
   const item = props.item
   const value = stats.value
-  if (!item || !value?.reversible || value.lifecycle_status !== 'active') return null
+  if (!item || !value?.reversible) return null
+  if (value.lifecycle_status === 'revert_failed') return 'revoke'
+  if (value.lifecycle_status !== 'active') return null
   return item.status === 'queued' || item.status === 'running' ? 'cancel-and-revoke' : 'revoke'
+})
+const actionLabel = computed(() => {
+  if (stats.value?.lifecycle_status === 'revert_failed') return '重试撤回'
+  return actionKind.value === 'cancel-and-revoke' ? '取消并撤回' : '撤回本次入库'
 })
 
 function confirmAction(): void {
@@ -146,10 +152,16 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
           <div><span>相关命中</span><strong>{{ formatNumber(stats.rows_matched) }}</strong></div>
           <div><span>已过滤</span><strong>{{ formatNumber(stats.rows_filtered_out) }}</strong></div>
           <div><span>去重</span><strong>{{ formatNumber(stats.duplicates_removed) }}</strong></div>
-          <div><span>新入库</span><strong>{{ formatNumber(stats.rows_ingested) }}</strong></div>
-          <div><span>已有内容收敛</span><strong>{{ formatNumber(stats.existing_convergence) }}</strong></div>
+          <div><span>新增记录</span><strong>{{ formatNumber(stats.rows_ingested) }}</strong></div>
+          <div><span>处理已有记录</span><strong>{{ formatNumber(stats.existing_convergence) }}</strong></div>
         </div>
-        <template v-if="stats.lifecycle_status !== 'active'">
+        <AimaFeedbackBanner
+          class="info-note"
+          tone="info"
+        >
+          处理已有记录按输入记录累计；同一内容在不同来源重复出现时会分别计数。撤回统计按不同内容计数。
+        </AimaFeedbackBanner>
+        <template v-if="['reverting', 'reverted', 'revert_failed'].includes(stats.lifecycle_status)">
           <h3>撤回统计</h3>
           <div class="stat-grid">
             <div><span>已重算内容</span><strong>{{ formatNumber(stats.reverted_content_count) }}</strong></div>
@@ -257,7 +269,7 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
           :disabled="acting"
           @click="confirmationOpen = true"
         >
-          {{ actionKind === 'cancel-and-revoke' ? '取消并撤回' : '撤回本次入库' }}
+          {{ actionLabel }}
         </AimaButton>
         <AimaButton
           variant="primary"
@@ -277,7 +289,7 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
     :dismissible="!acting"
   >
     <template #header>
-      <strong>确认{{ actionKind === 'cancel-and-revoke' ? '取消并撤回' : '撤回本次入库' }}？</strong>
+      <strong>确认{{ actionLabel }}？</strong>
     </template>
     <p>
       系统会保留 Canonical、Raw、Content 历史版本与审计记录，仅撤回仍能证明属于本次重筛的 Current

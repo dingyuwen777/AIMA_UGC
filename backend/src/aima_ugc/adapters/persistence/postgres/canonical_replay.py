@@ -6,7 +6,7 @@ import hashlib
 from collections.abc import Iterable
 from datetime import datetime
 from typing import cast
-from uuid import UUID, uuid5
+from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import func, insert, literal, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -641,7 +641,7 @@ class PostgresCanonicalReplayRepository:
         record = self.get_all_request(request_id, for_update=True)
         if record is None:
             raise LookupError(request_id)
-        if record.lifecycle_status in {"reverted", "reverting", "revert_failed"}:
+        if record.lifecycle_status in {"reverted", "reverting"}:
             return record
         if record.reversal_requested_at is None:
             return record
@@ -656,7 +656,11 @@ class PostgresCanonicalReplayRepository:
                 "schema_version": CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION,
                 "request_id": str(request_id),
             },
-            internal_idempotency_key=f"canonical-replay-reversal:{request_id}",
+            internal_idempotency_key=(
+                f"canonical-replay-reversal:{request_id}:{uuid4()}"
+                if record.lifecycle_status == "revert_failed"
+                else f"canonical-replay-reversal:{request_id}"
+            ),
             request_id=record.reversal_request_id,
             priority=0,
             max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,

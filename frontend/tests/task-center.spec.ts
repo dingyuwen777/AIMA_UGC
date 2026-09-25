@@ -225,6 +225,28 @@ describe('全局任务中心聚合', () => {
     })
   })
 
+  it('历史重筛任务区分新增记录与处理已有记录', () => {
+    const store = useTaskCenterStore()
+    store.collectionRuns = [{
+      ...collectionRun,
+      record_id: 'replay-2',
+      record_type: 'canonical_replay',
+      status: 'succeeded',
+      collection_stats: null,
+      canonical_replay_stats: {
+        artifact_count: 1, run_count: 1, queued_run_count: 0, running_run_count: 0,
+        succeeded_run_count: 1, failed_run_count: 0, cancelled_run_count: 0,
+        rows_seen: 10, rows_matched: 7, rows_filtered_out: 3, duplicates_removed: 0,
+        rows_ingested: 0, existing_convergence: 7,
+        reversible: true, lifecycle_status: 'active', reversal_job_id: null,
+        reverted_content_count: 0, hidden_content_count: 0, retained_content_count: 0,
+        skipped_content_count: 0, restored_evidence_count: 0, skipped_evidence_count: 0,
+      },
+    }]
+
+    expect(store.recentItems[0]?.progressDetail).toBe('新增记录 0 条 · 处理已有记录 7 条')
+  })
+
   it('终态任务不计入活动数量，并只保留最近 12 条作为界面历史', () => {
     const store = useTaskCenterStore()
     store.analysisRuns = Array.from({ length: 14 }, (_, index) => ({

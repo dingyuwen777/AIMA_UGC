@@ -3236,6 +3236,18 @@
           "record_type": {
             "$ref": "#/components/schemas/CollectionRuntimeRecordType"
           },
+          "revocation_recomputed_content_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revocation Recomputed Content Count"
+          },
           "source_filename": {
             "anyOf": [
               {

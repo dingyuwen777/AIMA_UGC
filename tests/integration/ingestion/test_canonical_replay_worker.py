@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from io import BytesIO
@@ -27,6 +28,9 @@ from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpSer
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
+from aima_ugc.bootstrap.canonical_replay_reversal_worker import (
+    PostgresCanonicalReplayReversalJobExecutor,
+)
 from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.runtime import PlatformRuntime
@@ -59,6 +63,8 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_seen_content_table,
     canonical_replay_validation_proofs_table,
 )
+from aima_ugc.modules.ingestion.replay_shard_tables import canonical_replay_run_shards_table
+from aima_ugc.modules.ingestion.reversal_shard_tables import reversal_shards_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.system.tables import audit_events_table
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
@@ -272,6 +278,326 @@ def _create_all_replay(client: TestClient, *, idempotency_key: str) -> dict[str,
     )
     assert response.status_code == 202
     return response.json()
+
+
+def test_large_replay_reversal_uses_durable_content_shards_and_completion_barrier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同一次撤回由正式 jobs/两个 Worker 结清，父任务不能先于子任务完成。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        row_count = 10_000
+        rows = tuple(
+            (f"durable-reversal-{uuid4()}-{index}", "星曜重筛") for index in range(row_count)
+        )
+        _import_canonical(
+            client, runtime, filename="durable-reversal.xlsx", rows=rows, brand_ids=(brand_id,)
+        )
+        _add_replay_alias(runtime, brand_id)
+        created = _create_all_replay(client, idempotency_key=f"durable-reversal-{uuid4()}")
+        assert _worker(runtime, suffix="durable-ingest").run_once()
+        request_id = UUID(str(created["request_id"]))
+        queued = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
+        assert queued.status_code == 202
+        with runtime.database.engine.connect() as connection:
+            parent_id = connection.scalar(
+                select(canonical_replay_all_requests_table.c.reversal_job_id).where(
+                    canonical_replay_all_requests_table.c.id == request_id
+                )
+            )
+        assert isinstance(parent_id, UUID)
+        original_process = PostgresCanonicalReplayReversalJobExecutor.process_shard
+        fault_injected = False
+
+        def fail_after_child_commit(self, shard_id, *, fence, context):  # type: ignore[no-untyped-def]
+            nonlocal fault_injected
+            processed = original_process(self, shard_id, fence=fence, context=context)
+            if fence.job_id != parent_id and not fault_injected:
+                fault_injected = True
+                raise ValueError("模拟分片业务已提交但子 Job 终态失败")
+            return processed
+
+        monkeypatch.setattr(
+            PostgresCanonicalReplayReversalJobExecutor, "process_shard", fail_after_child_commit
+        )
+        parent = _worker(runtime, suffix="durable-parent")
+        child = _worker(runtime, suffix="durable-child")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            parent_result = pool.submit(parent.run_once)
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                with runtime.database.engine.connect() as connection:
+                    status = connection.scalar(
+                        select(jobs_table.c.status).where(jobs_table.c.id == parent_id)
+                    )
+                if status == "running":
+                    break
+                time.sleep(0.01)
+            else:
+                pytest.fail("撤回父 Job 未进入运行状态")
+            while not parent_result.done() and time.monotonic() < deadline:
+                if not child.run_once():
+                    time.sleep(0.02)
+            assert parent_result.result(timeout=1) is True
+        with runtime.database.engine.connect() as connection:
+            units = (
+                connection.execute(
+                    select(reversal_shards_table).where(
+                        reversal_shards_table.c.replay_request_id == request_id
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            remaining = connection.scalar(
+                select(func.count())
+                .select_from(canonical_replay_content_changes_table)
+                .where(
+                    canonical_replay_content_changes_table.c.all_request_id == request_id,
+                    canonical_replay_content_changes_table.c.reverted_at.is_(None),
+                )
+            )
+            child_jobs = connection.scalar(
+                select(func.count())
+                .select_from(jobs_table)
+                .where(jobs_table.c.job_type == "ingestion.reversal-shard.v1")
+            )
+        assert len(units) == 4
+        assert all(unit["status"] == "succeeded" for unit in units)
+        assert sum(unit["processed_content_count"] for unit in units) == row_count
+        assert child_jobs >= 1
+        assert fault_injected
+        assert request["lifecycle_status"] == "reverted"
+        assert request["reverted_content_count"] == row_count
+        assert remaining == 0
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_replay_reversal_failed_parent_retries_from_persisted_shard_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """用户重试失败撤回时，新父 Job 接管旧片断点与已结清账本。"""
+
+    monkeypatch.setattr(
+        "aima_ugc.bootstrap.canonical_replay_reversal_worker.REVERSAL_MIN_PARALLEL_CONTENTS",
+        1,
+    )
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        row_count = 3_000
+        _import_canonical(
+            client,
+            runtime,
+            filename="reversal-retry.xlsx",
+            rows=tuple(
+                (f"reversal-retry-{uuid4()}-{index}", "星曜重筛") for index in range(row_count)
+            ),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+        created = _create_all_replay(client, idempotency_key=f"reversal-retry-{uuid4()}")
+        assert _worker(runtime, suffix="reversal-retry-ingest").run_once()
+        request_id = UUID(str(created["request_id"]))
+        assert client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke").status_code == 202
+        with runtime.database.engine.connect() as connection:
+            old_job_id = connection.scalar(
+                select(canonical_replay_all_requests_table.c.reversal_job_id).where(
+                    canonical_replay_all_requests_table.c.id == request_id
+                )
+            )
+        assert isinstance(old_job_id, UUID)
+        original_process = PostgresCanonicalReplayReversalJobExecutor.process_shard
+        fault_injected = False
+
+        def fail_parent_after_commit(self, shard_id, *, fence, context):  # type: ignore[no-untyped-def]
+            nonlocal fault_injected
+            processed = original_process(self, shard_id, fence=fence, context=context)
+            if fence.job_id == old_job_id and not fault_injected:
+                fault_injected = True
+                raise ValueError("模拟撤回父 Job 首片提交后终态失败")
+            return processed
+
+        monkeypatch.setattr(
+            PostgresCanonicalReplayReversalJobExecutor, "process_shard", fail_parent_after_commit
+        )
+        worker = _worker(runtime, suffix="reversal-retry-parent")
+        assert worker.run_once()
+        assert fault_injected
+        _worker(runtime, suffix="reversal-retry-old-child").run_once()
+        retried = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
+        assert retried.status_code == 202, retried.text
+        with runtime.database.engine.connect() as connection:
+            new_job_id = connection.scalar(
+                select(canonical_replay_all_requests_table.c.reversal_job_id).where(
+                    canonical_replay_all_requests_table.c.id == request_id
+                )
+            )
+        assert isinstance(new_job_id, UUID) and new_job_id != old_job_id
+        assert worker.run_once()
+        with runtime.database.engine.connect() as connection:
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            shards = (
+                connection.execute(
+                    select(reversal_shards_table).where(
+                        reversal_shards_table.c.replay_request_id == request_id
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            remaining = connection.scalar(
+                select(func.count())
+                .select_from(canonical_replay_content_changes_table)
+                .where(
+                    canonical_replay_content_changes_table.c.all_request_id == request_id,
+                    canonical_replay_content_changes_table.c.reverted_at.is_(None),
+                )
+            )
+        assert request["lifecycle_status"] == "reverted"
+        assert request["reverted_content_count"] == row_count
+        assert sum(int(shard["processed_content_count"]) for shard in shards) == row_count
+        assert all(shard["status"] == "succeeded" for shard in shards)
+        assert remaining == 0
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_replay_run_shards_preserve_cross_artifact_deduplication_and_row_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """同一身份跨 Artifact 重复时，分片只能让原始顺序的首条入库。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        shared = f"sharded-shared-{uuid4()}"
+        first_artifact = _import_canonical(
+            client,
+            runtime,
+            filename="shard-first.xlsx",
+            rows=((shared, "星曜首条"), (f"sharded-first-{uuid4()}", "星曜独立一")),
+            brand_ids=(brand_id,),
+        )
+        second_artifact = _import_canonical(
+            client,
+            runtime,
+            filename="shard-second.xlsx",
+            rows=((shared, "星曜后条"), (f"sharded-second-{uuid4()}", "星曜独立二")),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+        monkeypatch.setattr(PostgresCanonicalReplayJobExecutor, "_shard_count", lambda *_: 4)
+        created = _create_replay(
+            client,
+            artifact_ids=(first_artifact, second_artifact),
+            brand_id=brand_id,
+            idempotency_key=f"shard-dedup-{uuid4()}",
+            batch_size=2,
+        )
+        run_id = UUID(str(created["run_id"]))
+        parent = _worker(runtime, suffix="shard-ingest-parent")
+        child = _worker(runtime, suffix="shard-ingest-child")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            parent_result = pool.submit(parent.run_once)
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                with runtime.database.engine.connect() as connection:
+                    shard_count = connection.scalar(
+                        select(func.count())
+                        .select_from(canonical_replay_run_shards_table)
+                        .where(canonical_replay_run_shards_table.c.run_id == run_id)
+                    )
+                if shard_count == 4:
+                    break
+                time.sleep(0.01)
+            else:
+                pytest.fail("Replay 子工作单元未创建")
+            while not parent_result.done() and time.monotonic() < deadline:
+                if not child.run_once():
+                    time.sleep(0.02)
+            assert parent_result.result(timeout=1) is True
+        result = client.get(f"/api/v1/canonical-replays/{run_id}")
+        assert result.status_code == 200
+        assert result.json()["job"]["status"] == "succeeded"
+        assert result.json()["stats"] == {
+            "rows_seen": 4,
+            "rows_matched": 4,
+            "rows_filtered_out": 0,
+            "duplicates_removed": 1,
+            "rows_ingested": 3,
+            "existing_convergence": 0,
+            "invalid_artifact_rows": 0,
+        }
+        with runtime.database.engine.connect() as connection:
+            saved = (
+                connection.execute(
+                    select(contents_table).where(contents_table.c.external_content_id == shared)
+                )
+                .mappings()
+                .one()
+            )
+            shards = (
+                connection.execute(
+                    select(canonical_replay_run_shards_table).where(
+                        canonical_replay_run_shards_table.c.run_id == run_id
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        assert saved["title"] == "星曜首条"
+        assert len(shards) == 4
+        assert all(item["status"] == "succeeded" for item in shards)
+        assert sum(item["rows_seen"] for item in shards) == 4
+    finally:
+        _truncate(runtime)
+        runtime.close()
 
 
 @pytest.mark.parametrize("batch_size", [1, 2])
@@ -854,6 +1180,7 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
                 client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke").status_code == 202
             )
             remaining_scans = 0
+            reversal_statement_count = 0
 
             def count_remaining_scan(
                 connection: object,
@@ -863,8 +1190,9 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
                 context: object,
                 executemany: bool,
             ) -> None:
-                nonlocal remaining_scans
+                nonlocal remaining_scans, reversal_statement_count
                 del connection, cursor, parameters, context, executemany
+                reversal_statement_count += 1
                 if (
                     "count(distinct(canonical_replay_content_changes.content_id))"
                     in statement.lower()
@@ -881,6 +1209,7 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
                     count_remaining_scan,
                 )
             assert remaining_scans == 1
+            assert reversal_statement_count < 200
             with runtime.database.engine.connect() as connection:
                 assert (
                     connection.scalar(

@@ -30,6 +30,9 @@ from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaigns_table,
 )
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
+from aima_ugc.modules.ingestion.revocation_tables import (
+    historical_import_revocation_requests_table,
+)
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.platform.jobs.tables import jobs_table
 
@@ -277,6 +280,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 literal(0).label("filtered_count"),
                 literal(None).cast(JSONB).label("config_snapshot"),
                 literal(None).cast(JSONB).label("canonical_replay_stats"),
+                literal(None).cast(Integer).label("revocation_recomputed_content_count"),
                 batch.c.error_summary,
                 job.c.error_code,
                 batch.c.created_at,
@@ -354,6 +358,7 @@ class PostgresCollectionRuntimeQueryRepository:
             "rows_rejected",
             _campaign_rows_rejected(campaign.c.stats),
         )
+        revocation_request = historical_import_revocation_requests_table
         campaign_select = select(
             campaign.c.id.label("record_id"),
             literal(None).cast(job.c.id.type).label("job_id"),
@@ -377,6 +382,9 @@ class PostgresCollectionRuntimeQueryRepository:
             literal(0).label("filtered_count"),
             literal(None).cast(JSONB).label("config_snapshot"),
             literal(None).cast(JSONB).label("canonical_replay_stats"),
+            revocation_request.c.recomputed_content_count.label(
+                "revocation_recomputed_content_count"
+            ),
             campaign.c.error_summary,
             literal(None).cast(Text).label("error_code"),
             campaign.c.created_at,
@@ -393,9 +401,14 @@ class PostgresCollectionRuntimeQueryRepository:
             campaign.outerjoin(
                 campaign_source_totals,
                 campaign_source_totals.c.campaign_id == campaign.c.id,
-            ).outerjoin(
+            )
+            .outerjoin(
                 campaign_chunk_totals,
                 campaign_chunk_totals.c.campaign_id == campaign.c.id,
+            )
+            .outerjoin(
+                revocation_request,
+                revocation_request.c.campaign_id == campaign.c.id,
             )
         )
 
@@ -445,6 +458,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 func.coalesce(scope_filtered.c.filtered_count, 0).label("filtered_count"),
                 run.c.config_snapshot,
                 literal(None).cast(JSONB).label("canonical_replay_stats"),
+                literal(None).cast(Integer).label("revocation_recomputed_content_count"),
                 run.c.error_summary,
                 job.c.error_code,
                 run.c.created_at,
@@ -627,6 +641,7 @@ def _canonical_replay_select() -> Any:
         literal(0).label("filtered_count"),
         literal(None).cast(JSONB).label("config_snapshot"),
         sql_cast(replay_stats, JSONB).label("canonical_replay_stats"),
+        literal(None).cast(Integer).label("revocation_recomputed_content_count"),
         literal(None).cast(Text).label("error_summary"),
         case(
             (
@@ -775,6 +790,9 @@ def _row_to_record(row: RowMapping) -> CollectionRuntimeReadRecord:
         canonical_replay_stats=cast(
             dict[str, object] | None,
             row["canonical_replay_stats"],
+        ),
+        revocation_recomputed_content_count=cast(
+            int | None, row["revocation_recomputed_content_count"]
         ),
         error_summary=cast(str | None, row["error_summary"]),
         error_code=cast(str | None, row["error_code"]),

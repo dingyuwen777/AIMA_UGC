@@ -731,6 +731,84 @@ class PostgresVehicleCatalogRepository:
             self._session.execute(insert(content_vehicle_evidence_table), values)
         return True
 
+    def carry_manual_review_batch(self, entries: tuple[tuple[UUID, int, int], ...]) -> set[UUID]:
+        """先集合锁定并筛选人工锁，仅对确有人工结论的版本执行继承。"""
+
+        pairs = tuple((content_id, source) for content_id, source, _ in entries)
+        if not pairs:
+            return set()
+        self._lock_vehicle_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        carried: set[UUID] = set()
+        for content_id, source, target in entries:
+            if (content_id, source) in locked and self.carry_manual_review(
+                content_id=content_id, source_version=source, target_version=target
+            ):
+                carried.add(content_id)
+        return carried
+
+    def restore_automatic_evidence_new_version_batch(
+        self,
+        entries: tuple[
+            tuple[UUID, int, int, list[dict[str, object]], list[dict[str, object]]], ...
+        ],
+    ) -> set[UUID]:
+        """集合核对来源快照，并把撤回前自动证据克隆到新 Content Version。"""
+
+        pairs = tuple((content_id, source) for content_id, source, _, _, _ in entries)
+        if not pairs:
+            return set()
+        if len(set(pairs)) != len(pairs) or any(
+            source == target for _, source, target, _, _ in entries
+        ):
+            raise ValueError("新版本车型证据批量撤回的版本对不合法")
+        self._lock_vehicle_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        snapshots = self.snapshot_automatic_evidence_batch(
+            pairs=tuple(pair for pair in pairs if pair not in locked)
+        )
+        restored: set[UUID] = set()
+        values: list[dict[str, object]] = []
+        for content_id, source, target, expected_after, before in entries:
+            pair = (content_id, source)
+            if pair in locked or snapshots[pair] != expected_after:
+                continue
+            restored.add(content_id)
+            for row in before:
+                value = _decode_evidence_row(row)
+                value["id"] = uuid4()
+                value["content_version"] = target
+                values.append(value)
+        if values:
+            self._session.execute(insert(content_vehicle_evidence_table), values)
+        return restored
+
     def append_automatic_alias_evidence_batch(
         self,
         evidence: tuple[ContentVehicleEvidence, ...],

@@ -223,7 +223,7 @@ test('shows canonical replay as one filterable runtime record with aggregate det
   await expect(table.getByText('历史数据重筛', { exact: true })).toBeVisible()
   await expect(table.getByText('全部历史 Canonical', { exact: true })).toBeVisible()
   await expect(table.getByText('完成 1 / 2 个子任务', { exact: true })).toBeVisible()
-  await expect(table.getByText('入库 420 条', { exact: true })).toBeVisible()
+  await expect(table.getByText('新增记录 420 条 · 处理已有记录 2,150 条', { exact: true })).toBeVisible()
 
   const request = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url())
@@ -377,7 +377,8 @@ test('previews revocation, respects confirmation cancellation, and recovers from
   await expect(dialog.getByRole('alert')).toBeInViewport()
   await dialog.getByRole('button', { name: '撤销本次导入', exact: true }).click()
   await confirmation.getByRole('button', { name: '确认撤销', exact: true }).click()
-  await expect(dialog.getByText('这次导入已经撤销；导入记录、来源证据和审计历史仍会保留。')).toBeVisible()
+  await expect(dialog.locator('.revocation-panel')).toContainText('这次导入已经撤销；')
+  await expect(dialog.locator('.revocation-panel')).toContainText('导入记录、来源证据和审计历史仍会保留。')
   await expect(dialog.getByRole('button', { name: '撤销本次导入', exact: true })).toHaveCount(0)
   expect(submissions).toBe(2)
 })
@@ -594,7 +595,7 @@ test('shows a Data Import Campaign without a synthetic Job and opens its persist
 
   await page.goto('/collection-runtime')
   await expect(page.getByText('数据导入 · 历史导入/campaign.xlsx')).toBeVisible()
-  await expect(page.getByText('匹配 2 条')).toBeVisible()
+  await expect(page.getByText('读取 2 行 · 匹配 2 行')).toBeVisible()
   await page.getByRole('button', { name: '查看详情' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
   await expect(dialog.locator('.campaign-status')).toHaveText('正在上传文件')

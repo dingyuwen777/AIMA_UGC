@@ -38,6 +38,14 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     register_canonical_replay_reversal_job,
 )
 from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
+from aima_ugc.modules.ingestion.replay_shards import (
+    CanonicalReplayShardJobHandler,
+    register_replay_shard_job,
+)
+from aima_ugc.modules.ingestion.reversal_shards import (
+    ReversalShardJobHandler,
+    register_reversal_shard_job,
+)
 from aima_ugc.modules.ingestion.revocation_jobs import (
     DataImportRevocationJobHandler,
     register_data_import_revocation_job,
@@ -56,6 +64,11 @@ from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
 from aima_ugc.platform.storage import ArtifactService
 
+from .adaptive_shard_worker import (
+    AdaptiveShardCoordinator,
+    replay_shard_terminal_callback,
+    reversal_shard_terminal_callback,
+)
 from .analysis_concurrent_worker import ConcurrentPostgresContentAnalysisJobExecutor
 from .analysis_high_throughput_planner import (
     HighThroughputContentAnalysisPlanJobExecutor,
@@ -216,20 +229,42 @@ def create_collection_job_registry(
         registry,
         ContentReclassificationJobHandler(PostgresContentReclassificationJobExecutor(runtime)),
     )
+    replay_executor = PostgresCanonicalReplayJobExecutor(runtime)
     register_canonical_replay_job(
         registry,
-        CanonicalReplayJobHandler(PostgresCanonicalReplayJobExecutor(runtime)),
+        CanonicalReplayJobHandler(replay_executor),
         terminal_callback=canonical_replay_job_terminal_callback,
     )
+    replay_reversal_executor = PostgresCanonicalReplayReversalJobExecutor(runtime)
+    import_revocation_executor = PostgresImportRevocationJobExecutor(runtime)
+    adaptive_shards = AdaptiveShardCoordinator(
+        runtime,
+        import_processor=import_revocation_executor,
+        replay_processor=replay_reversal_executor,
+        replay_run_processor=replay_executor,
+    )
+    import_revocation_executor.shard_coordinator = adaptive_shards
+    replay_reversal_executor.shard_coordinator = adaptive_shards
+    replay_executor.shard_coordinator = adaptive_shards
     register_canonical_replay_reversal_job(
         registry,
-        CanonicalReplayReversalJobHandler(PostgresCanonicalReplayReversalJobExecutor(runtime)),
+        CanonicalReplayReversalJobHandler(replay_reversal_executor),
         terminal_callback=canonical_replay_reversal_terminal_callback,
     )
     register_data_import_revocation_job(
         registry,
-        DataImportRevocationJobHandler(PostgresImportRevocationJobExecutor(runtime)),
+        DataImportRevocationJobHandler(import_revocation_executor),
         terminal_callback=data_import_revocation_terminal_callback,
+    )
+    register_reversal_shard_job(
+        registry,
+        ReversalShardJobHandler(adaptive_shards),
+        terminal_callback=reversal_shard_terminal_callback,
+    )
+    register_replay_shard_job(
+        registry,
+        CanonicalReplayShardJobHandler(adaptive_shards),
+        terminal_callback=replay_shard_terminal_callback,
     )
     register_voice_plaza_projection_job(
         registry,

@@ -932,6 +932,86 @@ class PostgresBrandVehicleRepository:
             self._session.execute(insert(content_brand_evidence_table), values)
         return True
 
+    def carry_manual_brand_review_batch(
+        self, entries: tuple[tuple[UUID, int, int], ...]
+    ) -> set[UUID]:
+        """集合筛选人工品牌锁，避免普通内容逐条检查空锁。"""
+
+        pairs = tuple((content_id, source) for content_id, source, _ in entries)
+        if not pairs:
+            return set()
+        self._lock_brand_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_brand_review_locks_table.c.content_id,
+                    content_brand_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_brand_review_locks_table.c.content_id,
+                        content_brand_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_brand_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        carried: set[UUID] = set()
+        for content_id, source, target in entries:
+            if (content_id, source) in locked and self.carry_manual_brand_review(
+                content_id=content_id, source_version=source, target_version=target
+            ):
+                carried.add(content_id)
+        return carried
+
+    def restore_automatic_brand_evidence_new_version_batch(
+        self,
+        entries: tuple[
+            tuple[UUID, int, int, list[dict[str, object]], list[dict[str, object]]], ...
+        ],
+    ) -> set[UUID]:
+        """集合校验原版本自动品牌证据并克隆撤回前快照到新版本。"""
+
+        pairs = tuple((content_id, source) for content_id, source, _, _, _ in entries)
+        if not pairs:
+            return set()
+        if len(set(pairs)) != len(pairs) or any(
+            source == target for _, source, target, _, _ in entries
+        ):
+            raise ValueError("新版本品牌证据批量撤回的版本对不合法")
+        self._lock_brand_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_brand_review_locks_table.c.content_id,
+                    content_brand_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_brand_review_locks_table.c.content_id,
+                        content_brand_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_brand_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        snapshots = self.snapshot_automatic_brand_evidence_batch(
+            pairs=tuple(pair for pair in pairs if pair not in locked)
+        )
+        restored: set[UUID] = set()
+        values: list[dict[str, object]] = []
+        for content_id, source, target, expected_after, before in entries:
+            pair = (content_id, source)
+            if pair in locked or snapshots[pair] != expected_after:
+                continue
+            restored.add(content_id)
+            for row in before:
+                value = _decode_brand_evidence_row(row)
+                value["id"] = uuid4()
+                value["content_version"] = target
+                values.append(value)
+        if values:
+            self._session.execute(insert(content_brand_evidence_table), values)
+        return restored
+
     def replace_automatic_brand_evidence_batch(
         self,
         *,

@@ -95,12 +95,14 @@ reporting.content-export-excel.v1
 vehicles.content-reclassification.v1
 ingestion.canonical-replay.v1
 ingestion.canonical-replay-reversal.v1
+ingestion.canonical-replay-shard.v1
+ingestion.reversal-shard.v1
 content.voice-plaza-projection-backfill.v1
 ```
 
-Data Import Campaign 撤销由 `ingestion.data-import-revocation.v1` 执行：HTTP 登记请求与 Job，Worker 分批提交 Content 重组和持久断点，预览接口返回 queued/running/succeeded/failed。每批依据已测吞吐与有效资源选择下一档；只有 succeeded 才表示全部撤销完成。
+Data Import Campaign 撤销由 `ingestion.data-import-revocation.v1` 执行：HTTP 登记请求与 Job，Worker 分批提交 Content 重组和持久断点。大任务把互不重叠的 Content 范围交给 `ingestion.reversal-shard.v1` 子 Job；父请求只在所有分片与子 Job 成功后结清。预览接口返回 queued/running/succeeded/failed；只有 succeeded 才表示全部撤销完成。每批依据已测吞吐与有效资源选择下一档。
 
-`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务；`ingestion.canonical-replay-reversal.v1` 是全量重筛的可恢复精确撤回任务；`content.voice-plaza-projection-backfill.v1` 是声音广场历史读模型的可恢复分块回填。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
+`ingestion.import-excel.v2` 是单文件 Excel Import 的 Brand/Vehicle Filter Job。三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 是旧 Content Evidence 补齐任务；`ingestion.canonical-replay.v1` 是 Persistent Canonical 重筛与幂等收敛任务；`ingestion.canonical-replay-reversal.v1` 是全量重筛的可恢复精确撤回任务。`ingestion.canonical-replay-shard.v1` 和 `ingestion.reversal-shard.v1` 是大任务在原业务父事实下的持久子 Job，使用同一 Lease/Fence/取消/重试 Runtime；`content.voice-plaza-projection-backfill.v1` 是声音广场历史读模型的可恢复分块回填。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
 注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
