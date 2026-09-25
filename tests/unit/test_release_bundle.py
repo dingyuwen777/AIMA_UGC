@@ -3,6 +3,7 @@ from __future__ import annotations
 import codecs
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -116,8 +117,10 @@ def test_build_images_adds_latest_aliases(monkeypatch: pytest.MonkeyPatch) -> No
     module = _load_module()
     calls: list[tuple[str, ...]] = []
 
-    def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
-        del cwd
+    def fake_run(
+        arguments, *, cwd: Path, capture: bool = False, env: dict[str, str] | None = None
+    ) -> str:
+        del cwd, env
         normalized = tuple(str(item) for item in arguments)
         calls.append(normalized)
         if normalized[:4] == ("docker", "image", "inspect", "-f") and capture:
@@ -227,8 +230,10 @@ def test_strict_replay_removes_version_and_latest_aliases(
         def __init__(self, returncode: int) -> None:
             self.returncode = returncode
 
-    def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
-        del cwd
+    def fake_run(
+        arguments, *, cwd: Path, capture: bool = False, env: dict[str, str] | None = None
+    ) -> str:
+        del cwd, env
         normalized = tuple(str(item) for item in arguments)
         calls.append(normalized)
         if normalized[:5] == ("docker", "compose", "ps", "-a", "-q"):
@@ -281,6 +286,15 @@ def test_strict_replay_removes_version_and_latest_aliases(
         "postgres:18.4",
     ) in calls
     assert ("docker", "load", "-i", str(bundle / "images.tar")) in calls
+    if os.name != "nt":
+        assert (
+            "bash",
+            str(bundle / "reset_keep_vehicle_catalog.sh"),
+            "--env-file",
+            str(smoke_parent / "smoke.env"),
+            "--execute",
+            "--yes",
+        ) in calls
 
 
 def test_manifest_records_profile_upstreams_and_verification_state() -> None:

@@ -255,8 +255,6 @@ def _run_worker_pool() -> None:
                             recent_failures=restart_backoff.consecutive_failures,
                             restart_delay_seconds=delay,
                         )
-            if restart_backoff.consecutive_failures >= 3 and not children:
-                raise RuntimeError("Worker 子进程连续异常退出")
             resources = detect_resources()
             maximum = worker_process_limit(resources)
             queued, busy_owners = _pool_pressure(runtime, children, maximum)

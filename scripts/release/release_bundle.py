@@ -99,13 +99,20 @@ def _format_command(arguments: Sequence[str]) -> str:
     return " ".join(arguments)
 
 
-def _run(arguments: Sequence[str], *, cwd: Path, capture: bool = False) -> str:
+def _run(
+    arguments: Sequence[str],
+    *,
+    cwd: Path,
+    capture: bool = False,
+    env: dict[str, str] | None = None,
+) -> str:
     """执行外部命令，并把失败转换成稳定的 Release Bundle 错误。"""
     print(f"> {_format_command(arguments)}", flush=True)
     try:
         result = subprocess.run(
             list(arguments),
             cwd=cwd,
+            env=env,
             check=False,
             capture_output=capture,
             text=True,
@@ -233,7 +240,7 @@ def _replace_env_values(
         key = line.split("=", 1)[0] if "=" in line and not line.startswith("#") else None
         if key in drop_keys:
             continue
-        if key in replacements:
+        if key is not None and key in replacements:
             output.append(f"{key}={replacements[key]}")
             seen.add(key)
         else:
@@ -905,6 +912,19 @@ def replay_bundle(*, root: Path, bundle_dir: Path, version: str, strict_replay: 
         api_log = smoke_root / "runtime" / "logs" / "api.log"
         if not api_log.is_file() or api_log.stat().st_size <= 0:
             raise ReleaseBundleError(f"Smoke API 日志不存在或为空：{api_log}")
+        if not windows_overlay:
+            reset_script = bundle_dir / "reset_keep_vehicle_catalog.sh"
+            reset_env = {**os.environ, "COMPOSE_PROJECT_NAME": project}
+            _run(
+                ["bash", str(reset_script), "--env-file", str(env_path), "--dry-run"],
+                cwd=bundle_dir,
+                env=reset_env,
+            )
+            _run(
+                ["bash", str(reset_script), "--env-file", str(env_path), "--execute", "--yes"],
+                cwd=bundle_dir,
+                env=reset_env,
+            )
     except Exception:
         subprocess.run([*compose, "ps", "-a"], cwd=root, check=False)
         subprocess.run([*compose, "logs", "--no-color"], cwd=root, check=False)

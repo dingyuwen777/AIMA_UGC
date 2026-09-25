@@ -120,6 +120,8 @@ SELECT (SELECT count(*) FROM vehicle_catalog_versions) || '|' ||
 SQL
 )"
 [[ -n "$CATALOG_COUNTS" ]] || die '车型目录或 Alembic 版本状态不可读取'
+DB_IDENTITY="$(printf '%s\n' 'SELECT current_database() || '\''|'\'' || current_user;' | db)"
+log "目标 PostgreSQL 容器：$POSTGRES_ID；数据库/用户：$DB_IDENTITY"
 CATALOG_NONEMPTY="$(cat <<'SQL' | db
 SELECT (SELECT count(*) FROM vehicle_catalog_versions) > 0
    AND (SELECT count(*) FROM vehicle_brands) > 0

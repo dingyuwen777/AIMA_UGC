@@ -274,10 +274,10 @@ def test_worker_recovers_missing_projection_seed_once_with_concurrent_startup(
     runtime = create_worker_runtime(settings=settings)
     try:
         with runtime.database.engine.begin() as connection:
-            if connection.scalar(select(func.count()).select_from(contents_table)):
-                pytest.skip("本场景只在空业务库验证，不删除已有 Content")
-            if connection.scalar(select(func.count()).select_from(jobs_table)):
-                pytest.skip("本场景只在空 Job 表验证，不删除已有任务")
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, "
+                "contents RESTART IDENTITY CASCADE"
+            )
             connection.execute(delete(voice_plaza_projection_state_table))
 
         try:

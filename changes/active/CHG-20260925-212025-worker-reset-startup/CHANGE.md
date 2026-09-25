@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260925-212025-worker-reset-startup
 title: 修复严格重置后 Worker 启动失败与重复拉起
 level: L2
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: fix/607-worker-reset-startup
 created: 2026-09-25T21:20:25+08:00
@@ -26,6 +26,7 @@ affected_paths:
   - scripts/deploy/reset_keep_vehicle_catalog.sh
   - scripts/release/release_bundle.py
   - tests/unit/test_release_bundle.py
+  - tests/unit/test_ci_test_impact_optimization.py
   - docs/operations/01_生产部署与离线Release方案.md
   - docs/operations/04_声音广场读模型回填与性能验证.md
 contracts: []
@@ -41,14 +42,14 @@ Worker 子进程在启动时读取声音广场单例状态，`get_state(...).one
 
 # 需求追溯
 
-| ID | 上游要求 | 状态 | 实现与验证 |
-| --- | --- | --- | --- |
-| R1 | 空业务库保留车型目录后 Worker 能启动、继续处理新导入 Job | not_satisfied | 恢复缺失的派生状态，集成验证 |
-| R2 | 多 Worker 同时启动不生成重复状态或回填 Job | not_satisfied | 唯一键与事务锁，集成验证 |
-| R3 | 子进程持续失败时不再每两秒无限拉起 | not_satisfied | 父进程故障退避，单元验证 |
-| R4 | 给出现场恢复与重导边界，不误称原业务数据仍在 | not_satisfied | 运维文档与服务器回执 |
-| R5 | 提供 Linux 严格重置脚本，只保留五张完整品牌/车型目录和 Alembic，清空采集运行、管理员操作审计等全部其它数据 | not_satisfied | Compose 目标校验、表级清空校验、Artifact 清理、Release 包验收 |
-| R6 | 已绑定的源 Artifact 实体缺失时不做无效五次重试，并留下可定位的安全日志 | not_satisfied | 快照 Job 集成测试与日志事件 |
+| 编号 | 要求 | 来源 | 状态 | 证据 |
+| --- | --- | --- | --- | --- |
+| R1 | 缺失派生状态时安全恢复，并发 Worker 只生成一个状态和回填 Job，现有检查点不覆盖 | #607 / AC1 | satisfied | Repository 原子插入及 Worker 同事务锁定；PostgreSQL 并发启动集成场景已加入 |
+| R2 | 持续快速退出时有界退避，稳定后正常扩容，不影响运行中 Job | #607 / AC2 | satisfied | Worker 父进程退避及单元场景；本地单元回归 31 passed |
+| R3 | Linux 脚本显式确认后保留完整车型目录与 Alembic、清空所有其它业务表和 Artifact、恢复种子，失败保持服务停止 | #607 / AC3 | satisfied | 脚本枚举全部非保留 public 表并事务清空；检查目录计数、系统种子、采集运行和管理员审计；隔离 Release 回放增加实际 dry-run/execute |
+| R4 | 脚本进入 Release 包与校验和，文档说明操作和数据不可恢复边界 | #607 / AC4 | satisfied | Release Bundle 清单与 SHA256、DEPLOY 生成文本和运维文档同步；本地 Release 单元通过 |
+| R5 | 已绑定来源 Artifact 实体缺失时终态失败并记录安全关联字段 | #607 / AC5 | satisfied | 快照 Worker 错误分类和日志事件；PostgreSQL 集成场景已加入 |
+| R6 | 单元、PostgreSQL 集成、Linux Bash/Release CI 覆盖机制，公共 HTTP Contract、依赖和 Migration 不改变 | #607 / AC6 | satisfied | 本地 31 passed、1 Windows Bash skip，Ruff/Mypy 通过；Linux CI 作为 PR Ready 后的独立交付门禁 |
 
 # 范围与计划
 
@@ -62,7 +63,11 @@ Worker 子进程在启动时读取声音广场单例状态，`get_state(...).one
 
 # 完成审计
 
-- [ ] 重新核对上游用户决定与当前代码/迁移/日志
-- [ ] R1–R6 满足且无未解释缺口
-- [ ] 适用的测试、文档和独立 Review 完成
-- [ ] 当前 PR HEAD 的 CI 与交付状态记录
+- [x] upstream_re_read：已重新核对本轮用户明确的“脚本主处理、代码兜底”、Issue #607 的 AC1–AC6、服务器 Traceback/SQL 回执、当前迁移和 Compose 实现。
+- [x] change_coverage：缺种子、快速退出、完整清库、Release 交付、Artifact 缺失和验证要求均映射至代码、测试及文档；Linux CI 仍是后续合并门禁。
+- [x] reverse_audit：从脚本的保留和删除动作反查真实 Compose 挂载、Artifact 根目录、迁移种子和数据库表；从 Worker 入口反查 Job 启动与并发恢复。
+- [x] unresolved_cleared：需求语义无未决项，R1–R6 无 `not_satisfied`；生产服务器尚未运行新脚本，不能把本地实现当成部署成功。
+
+# 验证与交付状态
+
+本地单元测试 `31 passed, 1 skipped`；跳过项为 Windows 无可用 Bash。Ruff 与目标 Mypy 通过。PostgreSQL 集成和 Linux Release 回放需要 PR Ready 后在 Linux CI 中验证；本 Change Ready 不代表 CI 已完成或可直接合并。当前服务器仅完成旧版镜像的一次性状态补行，仍需新版本部署和显式脚本执行才具备长期修复。
