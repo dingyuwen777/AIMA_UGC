@@ -4,6 +4,7 @@ from collections.abc import Iterator
 
 import pytest
 from aima_ugc.entrypoints.worker_main import (
+    _WorkerRestartBackoff,
     desired_worker_processes,
     run_worker_loop,
 )
@@ -90,3 +91,17 @@ def test_worker_pool_scales_only_for_available_and_busy_jobs() -> None:
     assert desired_worker_processes(maximum=3, queued=1, busy=1) == 2
     assert desired_worker_processes(maximum=3, queued=2, busy=1) == 3
     assert desired_worker_processes(maximum=3, queued=10, busy=1) == 3
+
+
+def test_worker_pool_backs_off_repeated_startup_crashes_and_recovers_after_stable_run() -> None:
+    backoff = _WorkerRestartBackoff()
+    assert backoff.record_exit(started_at=0, now=1, exit_code=1) == 0
+    assert backoff.record_exit(started_at=1, now=2, exit_code=1) == 0
+    assert backoff.record_exit(started_at=2, now=3, exit_code=1) == 4
+    assert backoff.can_spawn(now=6.9) is False
+    assert backoff.can_spawn(now=7) is True
+    assert backoff.record_exit(started_at=7, now=8, exit_code=1) == 8
+    assert backoff.can_spawn(now=15) is False
+    assert backoff.record_exit(started_at=16, now=47, exit_code=1) == 0
+    assert backoff.consecutive_failures == 0
+    assert backoff.can_spawn(now=47) is True

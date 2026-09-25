@@ -429,6 +429,22 @@ Backup Set = PostgreSQL + ArtifactStore
 
 正式实现目标包括：维护/写屏障、一致性点、PostgreSQL 捕获、Artifact manifest/snapshot、校验和、Restore、数据库↔Artifact reconciliation、RPO/RTO 和恢复演练。具体实施属于 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md) 中独立高风险工作。
 
+### 明确要求清空业务数据时
+
+Linux Release 包提供 [`scripts/deploy/reset_keep_vehicle_catalog.sh`](../../scripts/deploy/reset_keep_vehicle_catalog.sh)。它是**重置工具，不是 Backup/Restore**。从 Release 根目录运行，先预检，再在确认不需要保留既有业务数据和 Artifact 后执行：
+
+```bash
+bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --dry-run
+bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --execute
+python3 start_compose.py --env-file /data/AIMA_UGC/env.production
+```
+
+脚本停止 Frontend/API/Worker/Scheduler/Configure/Migrate，备份五张品牌/车型目录表，并在一个事务里清空其余 public 表；因此采集运行、历史导入、Job、管理员操作审计、Content、Provider 配置和 Artifact 元数据都会归零。它随后恢复被清库删除的声音广场单例状态种子，并清空当前 Compose 挂载的 `runtime/data/artifacts` 实体文件；`alembic_version` 和完整品牌/车型目录保留。原始 Excel 目录、Secret、env、日志和 PostgreSQL 数据目录不删除。失败或成功都保持业务服务停止，须核对结果后使用该 Release 的启动脚本重新装配 Configure。目录备份只覆盖品牌/车型，不能恢复被删除的业务数据和 Artifact。
+
+脚本会拒绝不认识的非 public 持久表、Extension 管理的 public 表、保留目录指向待清空表的外键，以及 Artifact 目录中的嵌套挂载点。执行前应核对 dry-run 列出的待清空表；若原始 Excel 不齐全，业务数据无法通过本工具恢复。旧 Release 不包含该脚本，不能把仓库新脚本直接当作已部署版本的运行事实。
+
+若数据库仍保留历史来源 Artifact 元数据，但对应实体文件已经被外部脚本删除，快照 Job 会以 `historical_source_artifact_missing` 失败并记录 `historical_import.snapshot_io_failed` 的安全诊断字段；它不会凭数据库元数据臆造原文件，也不会重复进行无收益的 I/O 重试。需要从保留的原始 Excel 重新创建导入任务，或按已验证的一致性备份同时恢复数据库与 Artifact。
+
 ---
 
 ## 13. 回滚

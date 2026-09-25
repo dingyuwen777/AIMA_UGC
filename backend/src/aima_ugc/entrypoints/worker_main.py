@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from uuid import uuid4
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
@@ -35,6 +36,37 @@ _REAPER_INTERVAL_SECONDS = 5.0
 _POOL_POLL_SECONDS = 2.0
 _POOL_IDLE_DOWNSHIFT_SECONDS = 30.0
 _MIB = 1024 * 1024
+_STARTUP_FAILURE_WINDOW_SECONDS = 30.0
+_MAX_RESTART_DELAY_SECONDS = 60.0
+
+
+@dataclass(slots=True)
+class _WorkerRestartBackoff:
+    """连续快速退出时放慢补位；稳定运行后的退出重新计数。"""
+
+    consecutive_failures: int = 0
+    retry_not_before: float = 0.0
+
+    def record_exit(self, *, started_at: float, now: float, exit_code: int) -> float:
+        """返回下一次补位前的等待秒数。"""
+
+        if exit_code == 0 or now - started_at >= _STARTUP_FAILURE_WINDOW_SECONDS:
+            self.consecutive_failures = 0
+            self.retry_not_before = now
+            return 0.0
+        self.consecutive_failures += 1
+        delay = (
+            min(_MAX_RESTART_DELAY_SECONDS, float(2 ** min(self.consecutive_failures - 1, 6)))
+            if self.consecutive_failures >= 3
+            else 0.0
+        )
+        self.retry_not_before = now + delay
+        return delay
+
+    def can_spawn(self, *, now: float) -> bool:
+        """退避未结束时不补位，已运行的子进程继续执行。"""
+
+        return now >= self.retry_not_before
 
 
 def run_worker_loop(
@@ -169,9 +201,10 @@ def _run_worker_pool() -> None:
 
     runtime = create_worker_runtime(log_instance=uuid4())
     children: dict[int, subprocess.Popen[bytes]] = {}
+    child_started_at: dict[int, float] = {}
     stopping = False
     idle_since: float | None = None
-    recent_failures = 0
+    restart_backoff = _WorkerRestartBackoff()
 
     def request_stop(_signum: int, _frame: object) -> None:
         nonlocal stopping
@@ -182,6 +215,7 @@ def _run_worker_pool() -> None:
             [sys.executable, "-m", "aima_ugc.entrypoints.worker_main", "--child"]
         )
         children[child.pid] = child
+        child_started_at[child.pid] = time.monotonic()
 
     signal.signal(signal.SIGTERM, request_stop)
     try:
@@ -204,8 +238,13 @@ def _run_worker_pool() -> None:
             for pid, child in tuple(children.items()):
                 if (exit_code := child.poll()) is not None:
                     del children[pid]
+                    now = time.monotonic()
+                    delay = restart_backoff.record_exit(
+                        started_at=child_started_at.pop(pid),
+                        now=now,
+                        exit_code=exit_code,
+                    )
                     if exit_code != 0:
-                        recent_failures += 1
                         log_event(
                             runtime.logger,
                             logging.WARNING,
@@ -213,10 +252,9 @@ def _run_worker_pool() -> None:
                             "Worker 子进程异常退出",
                             worker_pid=pid,
                             exit_code=exit_code,
-                            recent_failures=recent_failures,
+                            recent_failures=restart_backoff.consecutive_failures,
+                            restart_delay_seconds=delay,
                         )
-            if recent_failures >= 3 and not children:
-                raise RuntimeError("Worker 子进程连续异常退出")
             resources = detect_resources()
             maximum = worker_process_limit(resources)
             queued, busy_owners = _pool_pressure(runtime, children, maximum)
@@ -230,24 +268,25 @@ def _run_worker_pool() -> None:
             if memory_pressure:
                 desired = 1
             if len(children) < desired:
-                spawn()
-                idle_since = None
-                log_event(
-                    runtime.logger,
-                    logging.INFO,
-                    "capacity.worker_pool_resized",
-                    "Worker 并行进程已扩容",
-                    active_processes=len(children),
-                    desired_processes=desired,
-                    maximum_processes=maximum,
-                    queued_jobs=queued,
-                    busy_processes=len(busy_owners),
-                    available_memory_mib=(
-                        resources.memory_available_bytes // _MIB
-                        if resources.memory_available_bytes is not None
-                        else None
-                    ),
-                )
+                if restart_backoff.can_spawn(now=time.monotonic()):
+                    spawn()
+                    idle_since = None
+                    log_event(
+                        runtime.logger,
+                        logging.INFO,
+                        "capacity.worker_pool_resized",
+                        "Worker 并行进程已扩容",
+                        active_processes=len(children),
+                        desired_processes=desired,
+                        maximum_processes=maximum,
+                        queued_jobs=queued,
+                        busy_processes=len(busy_owners),
+                        available_memory_mib=(
+                            resources.memory_available_bytes // _MIB
+                            if resources.memory_available_bytes is not None
+                            else None
+                        ),
+                    )
             elif len(children) > desired:
                 now = time.monotonic()
                 if idle_since is None:

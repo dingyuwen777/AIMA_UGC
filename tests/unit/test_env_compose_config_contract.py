@@ -178,29 +178,32 @@ def test_env_examples_expose_only_real_runtime_boundaries() -> None:
 
 
 def test_runtime_documentation_uses_env_local_for_local_compose() -> None:
-    """长期运行文档必须把本地源码、本地 Compose 与服务器 Compose 的 env 入口写清楚。"""
+    """总入口与专项 Owner 必须分别说明本地和服务器 Compose 的 env 入口。"""
 
     documentation = (ROOT / "docs" / "02_环境运行与部署.md").read_text(encoding="utf-8")
     windows_guide = (
         ROOT / "docs" / "guides" / "03_Windows Docker Desktop Compose运行.md"
     ).read_text(encoding="utf-8")
+    production_guide = (ROOT / "docs" / "operations" / "01_生产部署与离线Release方案.md").read_text(
+        encoding="utf-8"
+    )
 
     local_linux = "docker compose --env-file env.local up -d --build --wait"
     local_windows = (
         "docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local "
         "up -d --build --wait"
     )
-    production = "docker compose --env-file env.production up -d --build --wait"
+    production = "python3 start_compose.py --env-file /data/AIMA_UGC/env.production"
 
     assert local_linux in documentation
-    assert local_windows in documentation
-    assert production in documentation
+    assert "docs/guides/03_Windows Docker Desktop Compose运行.md" in documentation
+    assert "docs/operations/01_生产部署与离线Release方案.md" in documentation
     assert "env.local **只属于源码开发 launcher 的输入界面" not in documentation
 
     assert "copy env.local.example env.local" in windows_guide
     assert "Copy-Item env.local.example env.local" in windows_guide
     assert local_windows in windows_guide
-    assert production in windows_guide
+    assert production in production_guide
 
 
 def test_windows_tooling_validates_the_local_compose_env() -> None:

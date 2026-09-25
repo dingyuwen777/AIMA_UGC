@@ -3,6 +3,9 @@ from __future__ import annotations
 import codecs
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tarfile
 from pathlib import Path
@@ -12,6 +15,18 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 CORE = ROOT / "scripts" / "release" / "release_bundle.py"
 POWERSHELL = ROOT / "scripts" / "release" / "build_local_release.ps1"
+
+
+def test_catalog_reset_script_parses_in_linux_bash() -> None:
+    bash = shutil.which("bash")
+    if bash is None or sys.platform == "win32":
+        pytest.skip("Bash 语法在 Linux CI 校验")
+    subprocess.run(
+        [bash, "-n", str(ROOT / "scripts" / "deploy" / "reset_keep_vehicle_catalog.sh")],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _load_module():
@@ -102,8 +117,10 @@ def test_build_images_adds_latest_aliases(monkeypatch: pytest.MonkeyPatch) -> No
     module = _load_module()
     calls: list[tuple[str, ...]] = []
 
-    def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
-        del cwd
+    def fake_run(
+        arguments, *, cwd: Path, capture: bool = False, env: dict[str, str] | None = None
+    ) -> str:
+        del cwd, env
         normalized = tuple(str(item) for item in arguments)
         calls.append(normalized)
         if normalized[:4] == ("docker", "image", "inspect", "-f") and capture:
@@ -142,6 +159,9 @@ def test_bundle_uses_latest_runtime_alias_and_saves_both_application_tags(
     deploy_scripts.mkdir(parents=True)
     for name in ("start_compose.py", "stop_compose.py"):
         (deploy_scripts / name).write_text("# deployment entry\n", encoding="utf-8")
+    (deploy_scripts / "reset_keep_vehicle_catalog.sh").write_text(
+        "#!/usr/bin/env bash\n", encoding="utf-8"
+    )
     calls: list[tuple[str, ...]] = []
 
     def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
@@ -210,8 +230,10 @@ def test_strict_replay_removes_version_and_latest_aliases(
         def __init__(self, returncode: int) -> None:
             self.returncode = returncode
 
-    def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:
-        del cwd
+    def fake_run(
+        arguments, *, cwd: Path, capture: bool = False, env: dict[str, str] | None = None
+    ) -> str:
+        del cwd, env
         normalized = tuple(str(item) for item in arguments)
         calls.append(normalized)
         if normalized[:5] == ("docker", "compose", "ps", "-a", "-q"):
@@ -264,6 +286,16 @@ def test_strict_replay_removes_version_and_latest_aliases(
         "postgres:18.4",
     ) in calls
     assert ("docker", "load", "-i", str(bundle / "images.tar")) in calls
+    if os.name != "nt":
+        assert (
+            "bash",
+            str(bundle / "reset_keep_vehicle_catalog.sh"),
+            "--env-file",
+            str(smoke_parent / "smoke.env"),
+            "--execute",
+            "--yes",
+            "--allow-empty-catalog",
+        ) in calls
 
 
 def test_manifest_records_profile_upstreams_and_verification_state() -> None:
