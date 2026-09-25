@@ -155,7 +155,15 @@ def test_exact_fact_block_accepts_tilde_fence(tmp_path: Path) -> None:
     """受控事实块允许 Markdown 的 tilde fence，不把 fence 本身当作事实。"""
     _write(
         tmp_path / "docs/facts.md",
-        "# Facts\n\n<!-- docs-facts:example:start -->\n~~~text\nalpha\nbeta\n~~~\n<!-- docs-facts:example:end -->\n",
+        """# Facts
+
+<!-- docs-facts:example:start -->
+~~~text
+alpha
+beta
+~~~
+<!-- docs-facts:example:end -->
+""",
     )
     errors: list[str] = []
 
