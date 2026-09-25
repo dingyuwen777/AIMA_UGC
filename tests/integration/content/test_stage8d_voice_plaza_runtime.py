@@ -291,14 +291,20 @@ def test_worker_recovers_missing_projection_seed_once_with_concurrent_startup(
             assert all(record is not None for record in records)
             assert len({record.id for record in records if record is not None}) == 1
             with runtime.database.engine.connect() as connection:
-                assert connection.scalar(
-                    select(func.count()).select_from(voice_plaza_projection_state_table)
-                ) == 1
-                assert connection.scalar(
-                    select(func.count())
-                    .select_from(jobs_table)
-                    .where(jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE)
-                ) == 1
+                assert (
+                    connection.scalar(
+                        select(func.count()).select_from(voice_plaza_projection_state_table)
+                    )
+                    == 1
+                )
+                assert (
+                    connection.scalar(
+                        select(func.count())
+                        .select_from(jobs_table)
+                        .where(jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE)
+                    )
+                    == 1
+                )
             worker = create_job_worker(
                 runtime=runtime,
                 registry=create_collection_job_registry(runtime=runtime),
