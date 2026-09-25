@@ -53,6 +53,9 @@ class PostgresImportRevocationJobExecutor:
             tuner.database_retry()
         batch_count = 0
         slowest_ms = 0
+        contribution_read_ms = 0
+        content_apply_ms = 0
+        batch_observations: dict[int, list[int]] = {}
         try:
             impact_count, revoked_at, sources = self._load_setup(payload.campaign_id)
             while True:
@@ -75,7 +78,7 @@ class PostgresImportRevocationJobExecutor:
                         ),
                     )
                 batch_started = perf_counter()
-                processed, total, completed = self._apply_batch(
+                processed, total, completed, read_ms, apply_ms = self._apply_batch(
                     campaign_id=payload.campaign_id,
                     fence=fence,
                     limit=batch_size,
@@ -83,6 +86,8 @@ class PostgresImportRevocationJobExecutor:
                     sources=sources,
                 )
                 batch_ms = int((perf_counter() - batch_started) * 1000)
+                contribution_read_ms += read_ms
+                content_apply_ms += apply_ms
                 if completed:
                     self._retry_jobs.discard(fence.job_id)
                     context.heartbeat(progress=100)
@@ -95,6 +100,17 @@ class PostgresImportRevocationJobExecutor:
                         recomputed_content_count=total,
                         batch_count=batch_count,
                         slowest_batch_ms=slowest_ms,
+                        contribution_read_ms=contribution_read_ms,
+                        content_apply_ms=content_apply_ms,
+                        batch_observations=[
+                            {
+                                "batch_size": size,
+                                "batch_count": values[0],
+                                "content_count": values[1],
+                                "duration_ms": values[2],
+                            }
+                            for size, values in sorted(batch_observations.items())
+                        ],
                         duration_ms=int((perf_counter() - started) * 1000),
                     )
                     return JobHandlerResult.succeeded(
@@ -102,6 +118,10 @@ class PostgresImportRevocationJobExecutor:
                     )
                 batch_count += 1
                 slowest_ms = max(slowest_ms, batch_ms)
+                observation = batch_observations.setdefault(batch_size, [0, 0, 0])
+                observation[0] += 1
+                observation[1] += processed
+                observation[2] += batch_ms
                 tuner.succeeded(size=batch_size, rows=processed, duration_ms=batch_ms)
                 context.heartbeat(progress=min(99, int(total * 100 / max(1, impact_count))))
         except LeaseLostError:
@@ -160,7 +180,7 @@ class PostgresImportRevocationJobExecutor:
         limit: int,
         revoked_at: datetime,
         sources: dict[str, tuple[UUID, UUID]],
-    ) -> tuple[int, int, bool]:
+    ) -> tuple[int, int, bool, int, int]:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -180,15 +200,17 @@ class PostgresImportRevocationJobExecutor:
                 if request is None or request["job_id"] != fence.job_id:
                     raise LeaseLostError("数据导入撤销请求不属于当前 Job")
                 if request["status"] == "succeeded":
-                    return 0, int(request["recomputed_content_count"]), True
+                    return 0, int(request["recomputed_content_count"]), True, 0, 0
                 if request["status"] not in {"queued", "running"}:
                     raise LeaseLostError("数据导入撤销请求已结束")
                 lifecycle = PostgresImportRevocationLifecycleRepository(session)
+                read_started = perf_counter()
                 contributions, last_content_id = lifecycle.next_campaign_contribution_batch(
                     campaign_id,
                     after_content_id=cast(UUID | None, request["checkpoint_content_id"]),
                     content_limit=limit,
                 )
+                read_ms = int((perf_counter() - read_started) * 1000)
                 if not contributions:
                     now = beijing_now()
                     session.execute(
@@ -237,15 +259,17 @@ class PostgresImportRevocationJobExecutor:
                         )
                     )
                     jobs.lock_current_execution(fence)
-                    return 0, int(request["recomputed_content_count"]), True
+                    return 0, int(request["recomputed_content_count"]), True, read_ms, 0
                 if last_content_id is None:
                     raise ValueError("撤销批次缺少断点")
+                apply_started = perf_counter()
                 processed = lifecycle.apply_campaign_contribution_batch(
                     campaign_id,
                     contributions=contributions,
                     revoked_at=revoked_at,
                     lifecycle_sources=sources,
                 )
+                apply_ms = int((perf_counter() - apply_started) * 1000)
                 total = int(request["recomputed_content_count"]) + processed
                 session.execute(
                     update(historical_import_revocation_requests_table)
@@ -257,7 +281,7 @@ class PostgresImportRevocationJobExecutor:
                     )
                 )
                 jobs.lock_current_execution(fence)
-                return processed, total, False
+                return processed, total, False, read_ms, apply_ms
         finally:
             session.close()
 

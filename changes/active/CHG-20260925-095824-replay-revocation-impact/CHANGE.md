@@ -19,7 +19,11 @@ affected_paths:
   - backend/src/aima_ugc/adapters/persistence/postgres/content.py
   - backend/src/aima_ugc/adapters/persistence/postgres/historical_revocation.py
   - backend/src/aima_ugc/adapters/persistence/postgres/content_lifecycle.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py
   - backend/src/aima_ugc/bootstrap/canonical_replay_worker.py
+  - backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py
+  - backend/src/aima_ugc/bootstrap/import_revocation_worker.py
   - backend/src/aima_ugc/bootstrap/collection_http.py
   - backend/src/aima_ugc/contracts/http.py
   - backend/src/aima_ugc/modules/collection/runtime_query.py
@@ -33,6 +37,7 @@ affected_paths:
   - frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeTable.vue
   - frontend/src/features/task-center/store.ts
   - tests/integration/ingestion/test_import_campaign_revocation_postgres.py
+  - tests/integration/ingestion/test_canonical_replay_worker.py
   - frontend/tests/collection-runtime-design.spec.ts
   - frontend/tests/collection-runtime-release2.spec.ts
   - frontend/tests/task-center.spec.ts
@@ -69,7 +74,7 @@ data_changes: []
 
 - 成功：撤销预览与贡献账本及 Worker 实际处理对象对齐；五类列表和详情使用与真实计数单位一致的标签；旧错误预估明确显示差异；第二次重筛的已有处理量可见；单机隔离实验在结果不变的条件下减少重复重筛耗时。
 - 范围：导入撤销预览、采集运行只读投影、前端统计文案与组件、重筛聚合计时、既有 Content 批量更新、测试和相关正式文档。
-- 非目标：改写已提交撤销审计、改变重筛/导入的持久语义、重新设计全库唯一 Content KPI、生产部署或完整重筛撤回性能专项。
+- 非目标：改写已提交撤销审计、改变重筛/导入的持久语义、重新设计全库唯一 Content KPI 或生产部署。
 - 保持：历史文件与来源账本、Job Fencing/Checkpoint、用户数据、既有 API 字段和失败语义、无外部 Provider 调用。
 
 # 约束与意图决策
@@ -86,8 +91,9 @@ data_changes: []
 1. 从 Content Owner 的 Campaign 贡献查询复用归属条件，合并到撤销预览的受影响 Content 集合；用真实 Campaign→Replay→撤销路径验证。
 2. 运行中心按五种类型分别呈现输入、过滤、重复、处理、撤销实绩；给 Campaign 增加只读实绩字段；用现场六条记录和组件测试对账。
 3. 在已有低频 Replay 完成日志拆分 Content、证据与账本阶段；确认 Content 为慢段后采用有界集合 UPDATE；用隔离数据库回归和重复基准验证。
+4. 对导入撤销和重筛撤回分别做隔离数据基准及分段取证；重筛撤回的常见 Content Delta、自动证据、人工锁、可见性归属和账本改用有界集合读写，复杂 Delta 保留精确路径。普通导入撤销的两个候选改动未改善总时长，故保留原集合写入和动态批次，仅增加读取/应用/批次耗时日志。
 
-# 备选方案与取舍
+## 备选方案与取舍
 
 - 直接改写旧撤销影响审计会丢失“当时系统预估为何错误”的事实，故保留旧值并在终态展示实际重组量。
 - 用统一的“入库条数”概括全部五种任务会混合输入记录次数、按 Scope 累计目标与不同 Content，故保留各来源原始语义并在界面标明计数单位。
@@ -102,6 +108,7 @@ data_changes: []
 | R3 | 分析全链路日志和贡献归属，拆分关键慢阶段并以实验决定优化 | #603 / AC3 | satisfied | 新增聚合分段日志；隔离数据库 3,000 行两轮实验及 Content 更新回归 |
 | R4 | 六条现场记录与五种类型的列表/详情/总览计数和标签对齐真实统计对象，旧预估漏算时可见实际量 | #603 / AC4 | satisfied | 六条现场 API/数据库只读对账；五类型列表测试、旧预估差异详情 SSR、汇总语义文案 |
 | R5 | 回归、文档和 Review 保持数据正确性；PR CI 作为独立合并门禁 | #603 / AC5 | satisfied | PostgreSQL 95 测试、前端 233 测试、构建、lint、类型、Contract/架构/Owner/文档检查；CI 待 PR Head 提交后验证 |
+| R6 | 普通导入撤销与重筛撤回的实际耗时和慢段都有实测依据；减少逐条 SQL 往返并维持版本、证据和断点正确性 | #603 / AC6 | satisfied | 隔离库同量重筛撤回由 52.023s 降至 3.012s（Worker），101 Content SQL 次数回归、95 个 PostgreSQL 回归通过；普通导入撤销 3,000 Content 基线约 2.5s，两个候选改动无稳定收益已撤回，仅保留分段日志 |
 
 # 计划改动
 
@@ -110,6 +117,7 @@ data_changes: []
 | 来源对齐 | 撤销影响查询、贡献查询、PostgreSQL 集成测试 | 预览受影响数量等于实际处理的独立 Content 数，普通/补采场景不回退 |
 | 口径修正 | 采集运行只读投影、列表/详情/总览、任务中心及其测试 | 六条现场记录和五种类型的数字能对账；区分任务处理次数、范围累计和不同 Content；旧撤销记录展示实际处理量 |
 | 性能取证 | 重筛 Worker 聚合阶段日志、Content 批量更新、隔离数据库实验 | 找到慢阶段，实测同数据结果不变且第二轮重筛加快 |
+| 撤回优化 | Content 生命周期撤回、重筛撤回 Worker、导入撤销 Worker 日志及集成/基准 | 减少逐条 SQL 往返；改前改后业务计数、版本、证据及耗时可对照 |
 | 完成检查 | 文档、测试、Review、CI | 需求与结果逐项对齐，不改写旧审计事实 |
 
 # 验证矩阵
@@ -122,23 +130,6 @@ data_changes: []
 | 当前日志与隔离性能实验 | required | 现场 6 记录与 Worker 日志对账；3,000 行重复重筛改动前 6.744s、改动后 4.620s/4.326s（单机样本） |
 | 外部 Provider | not_applicable | 当前链路不发送外部请求 |
 
-# 完成审计
-
-重新读取 #603 的 AC1–AC5、当前手写 Contract、生成 OpenAPI、采集运行只读 UNION、Content/撤销 Owner、页面五类型分支及本轮 diff。上游→实现：AC1 由来源贡献统一查询和预览覆盖；AC2 由 Replay 列表及任务中心覆盖；AC3 由聚合分段日志和 500 行集合 UPDATE 覆盖；AC4 由五类型列表/详情、可选撤销实绩字段及汇总口径提示覆盖；AC5 由测试、文档和 PR 门禁覆盖。实现→测试：新增字段经真实 PostgreSQL API 与前端类型/渲染验证，批量 UPDATE 经 Content 并发/Replay 集成回归及隔离基准验证。无新 Job 类型、迁移、依赖、配置或 Provider 网络调用。新增后端字段为可选只读字段，旧客户端兼容；生成文件已从事实源重新生成。
-
-反向能力审计：列表五类型都有对应 API 只读分支；Replay 撤回与 Campaign 撤销的终态实绩分别来自持久请求计数，不能以原导入行统计或旧预估替代。历史已提交的旧预估不改写，终态仅提示预估差异并展示后台事实。顶部入库量继续采用既有混合任务统计，只明确标注为任务累计、可能重复；它不承诺“全库去重内容数”。
-
-- [x] upstream_re_read：已重新读取用户问题、追加的全类型记录要求、Issue #603 AC1–AC5 和当前 Contract/调用链。
-- [x] change_coverage：R1–R5 均与上游稳定验收对应；当前 Change 未充当自身的需求来源。
-- [x] reverse_audit：五类型 API 投影→列表/详情、撤销/撤回请求→持久实绩→UI、Content 批量写→版本/贡献及测试均已反查。
-- [x] unresolved_cleared：本 Change 没有 `not_satisfied`；PR CI、合并和归档保留为独立交付门禁，不冒充已完成。
-
-# 两阶段 Review
-
-第一阶段按用户要求和 #603 独立核对六条现场记录：4 条 Campaign 全部过滤，2 条 Replay 分别新增 39,189/0，第二条处理已有记录 40,304 次、去重 6,875 次，撤回重组 39,189 个 Content；后两条 Campaign 各重组 5,747 个 Content。检查 SQL 来源、状态、不同计数单位，发现并修正“相关性过滤”误称品牌车型过滤、Collection 跨 Scope 累计与 Excel/Campaign `rows_ingested` 语义混同。
-
-第二阶段审查最终 diff、事务与索引边界、测试证据：500 行 `UPDATE ... FROM VALUES` 保留不同 `observed_fields` 的列集合，原行按稳定 ID 加锁且批次拒绝重复身份；贡献预览与 Worker 使用同一 Campaign 归属条件；API 增加可选只读字段无迁移；前端旧版预估差异通过真实组件 SSR 验证。隔离 PostgreSQL 覆盖数据事实，前端测试覆盖渲染；尚未在用户 Compose 或不同规格服务器上重放本次大型 XLSX，性能百分比不能外推。未发现本轮范围内的确定性阻塞问题；旧重筛撤回现场 39,189 个 Content 用时 151.7 秒仍是独立可优化瓶颈，不以这次 3,000 行实验声称已解决。
-
 # 风险、兼容性、迁移与回滚
 
 无 Schema/Migration/依赖或既有公共字段语义变动；新增可选只读 `revocation_recomputed_content_count` 并同步生成 Contract。历史已落地的错误撤销预估是不可变审计事实，本轮不追溯改写；终态展示实际重组量及预估差异。顶部入库量仍是不同任务原计数的累计，不代表全库不同 Content 数。
@@ -149,13 +140,31 @@ data_changes: []
 
 同步 `docs/product/02_当前产品能力与用户流程.md` 的五类运行计数语义、`docs/appendix/08_数据入口与统一入库实现.md` 的 Replay/撤销单位，以及运行中心设计基线的 KPI 与表宽。未新增、删除或升级依赖、Runtime、配置、Secret；正常镜像更新即可应用代码，无额外 Migration/Release 操作。本轮没有执行部署。
 
+# 完成审计
+
+重新读取 #603 的 AC1–AC6、当前手写 Contract、生成 OpenAPI、采集运行只读 UNION、Content/撤销 Owner、页面五类型分支及本轮 diff。上游→实现：AC1 由来源贡献统一查询和预览覆盖；AC2 由 Replay 列表及任务中心覆盖；AC3 由聚合分段日志和 500 行集合 UPDATE 覆盖；AC4 由五类型列表/详情、可选撤销实绩字段及汇总口径提示覆盖；AC5 由测试、文档和 PR 门禁覆盖；AC6 由普通导入撤销和重筛撤回同环境对照、集合撤回及分段日志覆盖。实现→测试：新增字段经真实 PostgreSQL API 与前端类型/渲染验证，批量 UPDATE 经 Content 并发/Replay 集成回归及隔离基准验证；重筛撤回经来源账本、人工锁和 101 行 SQL 次数回归，普通导入撤销未见收益的 SQL 页/列集候选均已撤回。无新 Job 类型、迁移、依赖、配置或 Provider 网络调用。新增后端字段为可选只读字段，旧客户端兼容；生成文件已从事实源重新生成。
+
+反向能力审计：列表五类型都有对应 API 只读分支；Replay 撤回与 Campaign 撤销的终态实绩分别来自持久请求计数，不能以原导入行统计或旧预估替代。历史已提交的旧预估不改写，终态仅提示预估差异并展示后台事实。顶部入库量继续采用既有混合任务统计，只明确标注为任务累计、可能重复；它不承诺“全库去重内容数”。
+
+- [x] upstream_re_read：已重新读取用户问题、追加的全类型记录与撤回性能要求、Issue #603 AC1–AC6 和当前 Contract/调用链。
+- [x] change_coverage：R1–R6 均与上游稳定验收对应；当前 Change 未充当自身的需求来源。
+- [x] reverse_audit：五类型 API 投影→列表/详情、撤销/撤回请求→持久实绩→UI、Content 批量写→版本/贡献及测试均已反查。
+- [x] unresolved_cleared：本 Change 没有 `not_satisfied`；PR CI、合并和归档保留为独立交付门禁，不冒充已完成。
+
+# 两阶段 Review
+
+第一阶段按用户要求和 #603 独立核对六条现场记录：4 条 Campaign 全部过滤，2 条 Replay 分别新增 39,189/0，第二条处理已有记录 40,304 次、去重 6,875 次，撤回重组 39,189 个 Content；后两条 Campaign 各重组 5,747 个 Content。检查 SQL 来源、状态、不同计数单位，发现并修正“相关性过滤”误称品牌车型过滤、Collection 跨 Scope 累计与 Excel/Campaign `rows_ingested` 语义混同。
+
+第二阶段审查最终 diff、事务与索引边界、测试证据：500 行 `UPDATE ... FROM VALUES` 保留不同 `observed_fields` 的列集合，原行按稳定 ID 加锁且批次拒绝重复身份；贡献预览与 Worker 使用同一 Campaign 归属条件；API 增加可选只读字段无迁移；前端旧版预估差异通过真实组件 SSR 验证。重筛撤回按 Content 锁/版本/备用 ID/人工审查锁/自动证据/可见性/账本的原有守卫顺序执行，新增集合路径仅接纳无 Account、最多备用 ID 的 Delta；其余逐条精确路径保留。隔离 PostgreSQL 覆盖数据事实，前端测试覆盖渲染；尚未在用户 Compose 或不同规格服务器上重放本次大型 XLSX，性能百分比不能外推。普通导入撤销已具集合写入和动态批次，实测候选 SQL 页放大及列集缩小没有稳定收益，未将无收益候选提交。
+
 # 完成证据与状态
 
 | 证据 | 环境与命令 | 结果与边界 |
 | --- | --- | --- |
 | V1 | Windows 隔离 PostgreSQL 18；`uv run --no-sync pytest` 的 Content/Replay/撤销/运行查询相关集成集 | 95 passed，证明当前代码的真实持久化路径；不等于用户 Compose 重放。 |
 | V2 | `npm run test -- --run`、`npm run lint`、`npm run build` | 233 passed、lint 及生产构建通过，覆盖列表五类型及旧预估终态 SSR。 |
-| V3 | Ruff format/check、mypy、Contract 生成/兼容、架构/Owner、文档和 Change 检查 | 本地通过；PR #604 首轮 CI 的 Change 文档结构门禁失败，正在补齐正式章节后重新运行。 |
+| V3 | Ruff format/check、mypy、Contract 生成/兼容、架构/Owner、文档和 Change 检查 | 本地通过；首轮 CI 发现 Change 模板结构错误，现已按 canonical 标题顺序修正并由本地严格校验通过，等待新 Head CI。 |
 | V4 | 现场日志/API/只读 SQL 与隔离 3,000 行 Replay 基准 | 现场六条数字对账；本机样本第二轮由 6.744s 降至 4.620s/4.326s。 |
+| V5 | 同一隔离 PostgreSQL 3,000 Content 的 Replay 撤回及普通导入撤销基准 | Replay 撤回初始 52.023s，集合生命周期后 34.889s，归属/账本集合结清后 23.386s，证据集合恢复后 3.012s，计数均 3,000；普通导入撤销约 2.5s，两个候选改动无收益已撤回。两种撤回的批次仍由运行时资源和实测吞吐调节。 |
 
-未验证：本次大型 XLSX 在更新后的 Compose 上重放、不同服务器配置下的性能增益和旧重筛撤回 151.7 秒瓶颈的专项优化。PR #604 分支 `fix/603-replay-revocation-impact` 首个实现提交为 `4dd76bc4`；后续补齐 Change 模板、CI、merge、main-fresh、归档、Issue Closure 与分支清理仍待执行。本任务未实施 Release 或生产部署。
+未验证：本次大型 XLSX 在更新后的 Compose 上重放、不同服务器配置下的性能增益；隔离基准不能保证现场 39,189 条同比例缩短。PR #604 分支 `fix/603-replay-revocation-impact` 首个实现提交为 `4dd76bc4`；后续 CI、merge、main-fresh、归档、Issue Closure 与分支清理仍待执行。本任务未实施 Release 或生产部署。

@@ -5,10 +5,13 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Generator
 from datetime import datetime
+from itertools import batched
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import cast as sql_cast
+from sqlalchemy import column, delete, insert, select, tuple_, update
+from sqlalchemy import values as sql_values
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
@@ -271,6 +274,174 @@ class PostgresContentLifecycleRepository:
             )
             versions.append((content_id, version_no))
         return tuple(versions)
+
+    def apply_simple_contributions_batch(
+        self,
+        contributions: tuple[RowMapping, ...],
+        *,
+        revoked_at: datetime,
+    ) -> dict[UUID, int]:
+        """集合回退无 Account/复杂 Collection Delta 的 Content，保留逐字段归属判断。"""
+
+        if revoked_at.utcoffset() is None:
+            raise ValueError("revoked_at 必须包含时区")
+        by_content: dict[UUID, list[RowMapping]] = defaultdict(list)
+        for contribution in contributions:
+            delta = contribution["delta"]
+            if (
+                not isinstance(delta, dict)
+                or delta.get("schema_version") != "content-source-contribution.v1"
+                or delta.get("account")
+                or not isinstance(delta.get("collections") or {}, dict)
+                or set(delta.get("collections") or {}) - {"alternate_ids"}
+            ):
+                raise ValueError("集合撤回只支持无 Account 且最多含备用 ID 的 Content Delta")
+            by_content[cast(UUID, contribution["content_id"])].append(contribution)
+
+        versions: dict[UUID, int] = {}
+        field_columns = tuple(sorted(set(_CONTENT_FIELD_COLUMNS.values())))
+        for page in batched(sorted(by_content, key=str), 500, strict=False):
+            content_ids = tuple(page)
+            currents = {
+                cast(UUID, row["id"]): dict(row)
+                for row in self._session.execute(
+                    select(contents_table)
+                    .where(contents_table.c.id.in_(content_ids))
+                    .order_by(contents_table.c.id)
+                    .with_for_update()
+                ).mappings()
+            }
+            version_rows = {
+                cast(UUID, row["content_id"]): row
+                for row in self._session.execute(
+                    select(content_versions_table).where(
+                        tuple_(
+                            content_versions_table.c.content_id,
+                            content_versions_table.c.version_no,
+                        ).in_(
+                            tuple(
+                                (content_id, currents[content_id]["current_version"])
+                                for content_id in content_ids
+                            )
+                        )
+                    )
+                ).mappings()
+            }
+            alternate_rows: dict[UUID, list[dict[str, object]]] = defaultdict(list)
+            for row in self._session.execute(
+                select(content_external_ids_table)
+                .where(content_external_ids_table.c.content_id.in_(content_ids))
+                .order_by(
+                    content_external_ids_table.c.content_id, content_external_ids_table.c.id_type
+                )
+            ).mappings():
+                alternate_rows[cast(UUID, row["content_id"])].append(
+                    {str(key): value for key, value in row.items() if key != "content_id"}
+                )
+            updates: list[dict[str, object]] = []
+            new_versions: list[dict[str, object]] = []
+            changed_alternate_ids: list[UUID] = []
+            restored_alternate_ids: list[dict[str, object]] = []
+            for content_id in content_ids:
+                current = currents[content_id]
+                version_row = version_rows[content_id]
+                author_snapshot = (
+                    dict(cast(dict[str, Any], version_row["author_snapshot"]))
+                    if isinstance(version_row["author_snapshot"], dict)
+                    else None
+                )
+                raw_freshness = current.get("field_observed_at") or {}
+                if not isinstance(raw_freshness, dict):
+                    raise ValueError("Content field_observed_at 必须是对象")
+                freshness = {str(key): str(value) for key, value in raw_freshness.items()}
+                ordered = sorted(
+                    by_content[content_id],
+                    key=lambda row: (row["created_at"], str(row["id"])),
+                    reverse=True,
+                )
+                collection_cache = {"alternate_ids": tuple(alternate_rows[content_id])}
+                collection_updates: dict[str, list[dict[str, object]]] = {}
+                for contribution in ordered:
+                    author_snapshot = self._apply_delta(
+                        content_id=content_id,
+                        current=current,
+                        freshness=freshness,
+                        author_snapshot=author_snapshot,
+                        delta=cast(dict[str, Any], contribution["delta"]),
+                        collection_cache=collection_cache,
+                        collection_updates=collection_updates,
+                    )
+                if "alternate_ids" in collection_updates:
+                    changed_alternate_ids.append(content_id)
+                    restored_alternate_ids.extend(
+                        {"content_id": content_id, **row}
+                        for row in collection_updates["alternate_ids"]
+                    )
+                version_no = cast(int, current["current_version"]) + 1
+                source = ordered[0]
+                updates.append(
+                    {
+                        "target_content_id": content_id,
+                        **{name: current[name] for name in field_columns},
+                        "field_observed_at": freshness,
+                        "current_version": version_no,
+                        "updated_at": revoked_at,
+                    }
+                )
+                new_versions.append(
+                    {
+                        "id": uuid4(),
+                        "content_id": content_id,
+                        "version_no": version_no,
+                        "content_type": current["content_type"],
+                        "title": current["title"],
+                        "text": current["text"],
+                        "canonical_url": current["canonical_url"],
+                        "share_url": current["share_url"],
+                        "author_snapshot": author_snapshot,
+                        "published_at": current["published_at"],
+                        "source_updated_at": current["source_updated_at"],
+                        "status": current["status"],
+                        "provider_attempt_id": source["provider_attempt_id"],
+                        "raw_artifact_id": source["raw_artifact_id"],
+                        "observed_at": revoked_at,
+                    }
+                )
+                versions[content_id] = version_no
+            if changed_alternate_ids:
+                self._session.execute(
+                    delete(content_external_ids_table).where(
+                        content_external_ids_table.c.content_id.in_(changed_alternate_ids)
+                    )
+                )
+            if restored_alternate_ids:
+                self._session.execute(insert(content_external_ids_table), restored_alternate_ids)
+            updated_columns = (*field_columns, "field_observed_at", "current_version", "updated_at")
+            batch_values = sql_values(
+                column("target_content_id", contents_table.c.id.type),
+                *(column(name, contents_table.c[name].type) for name in updated_columns),
+                name="reversal_values",
+            ).data(
+                tuple(
+                    (row["target_content_id"], *(row[name] for name in updated_columns))
+                    for row in updates
+                )
+            )
+            self._session.execute(
+                update(contents_table)
+                .where(
+                    contents_table.c.id
+                    == sql_cast(batch_values.c.target_content_id, contents_table.c.id.type)
+                )
+                .values(
+                    {
+                        name: sql_cast(batch_values.c[name], contents_table.c[name].type)
+                        for name in updated_columns
+                    }
+                )
+            )
+            self._session.execute(insert(content_versions_table).values(new_versions))
+        return versions
 
     def _apply_delta(
         self,

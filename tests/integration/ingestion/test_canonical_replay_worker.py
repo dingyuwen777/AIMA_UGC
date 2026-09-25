@@ -854,6 +854,7 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
                 client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke").status_code == 202
             )
             remaining_scans = 0
+            reversal_statement_count = 0
 
             def count_remaining_scan(
                 connection: object,
@@ -863,8 +864,9 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
                 context: object,
                 executemany: bool,
             ) -> None:
-                nonlocal remaining_scans
+                nonlocal remaining_scans, reversal_statement_count
                 del connection, cursor, parameters, context, executemany
+                reversal_statement_count += 1
                 if (
                     "count(distinct(canonical_replay_content_changes.content_id))"
                     in statement.lower()
@@ -881,6 +883,7 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
                     count_remaining_scan,
                 )
             assert remaining_scans == 1
+            assert reversal_statement_count < 200
             with runtime.database.engine.connect() as connection:
                 assert (
                     connection.scalar(
