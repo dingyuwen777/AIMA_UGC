@@ -1,45 +1,25 @@
 # AIMA_UGC 开发指南
 
-`docs/guides/` 只放**开发或协作过程中怎么操作**的说明，不承担当前 Stage、数据库 Schema、API 字段或业务状态的事实源职责。
+docs/guides/ 只放**开发者或协作者在 AIMA 项目里怎么操作**的说明。
+
+通用 Analysis / Coding / Testing / Review / Figma / Git / Delivery 方法继续由 Agent_Skills 通过 [AGENTS.md](../../AGENTS.md) 的项目治理入口取得；Guide 只解释 AIMA 自己的技术栈、目录、Figma 文件、脚本、Workflow 和协作接线。
 
 ## 当前指南
 
-- [`docs/guides/01_Figma与前端设计开发工作流.md`](01_Figma与前端设计开发工作流.md)：Figma/原型如何与当前 Vue、真实后端 Contract、公共组件和设计系统协作；
-- [`docs/guides/02_管理员配置Figma开发基线.md`](02_管理员配置Figma开发基线.md)：管理员配置六个正式页签、设计节点、代码 Owner 与报告策略前后端边界；
-- [`docs/guides/03_Windows Docker Desktop Compose运行.md`](03_Windows%20Docker%20Desktop%20Compose运行.md)：Windows Docker Desktop 如何运行 canonical Compose + storage-only override；
-- [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)：网络受限环境的构建源和开发机重置边界；
-- [`docs/guides/05_多人协作与Change自动归档.md`](05_多人协作与Change自动归档.md)：多人协作、Requirement/Change、PR、Review、合并和自动归档的仓库工作流；
-- [`docs/guides/06_本地Release离线包构建.md`](06_本地Release离线包构建.md)：Windows/PowerShell 如何用国内源一键构建与 GitHub Release 共用 Contract 的 Linux/AMD64 离线部署包，并按需执行离线回放验证。
-- [`docs/guides/07_采集运行中心Figma开发基线.md`](07_采集运行中心Figma开发基线.md)：采集运行中心四层 Figma Owner、正式节点、代码映射、响应式和 Design-to-Code 验收边界。
+1. [docs/guides/01_Figma与前端设计开发工作流.md](01_Figma与前端设计开发工作流.md)：AIMA Figma 与 Vue / Generated Client / Feature Owner 的项目接线；
+2. [docs/guides/02_管理员配置Figma开发基线.md](02_管理员配置Figma开发基线.md)：管理员配置正式节点与代码 Owner；
+3. [docs/guides/03_Windows Docker Desktop Compose运行.md](03_Windows Docker Desktop Compose运行.md)：Windows Docker Desktop 完整 Runtime；
+4. [docs/guides/04_Docker国内构建源与本地重置.md](04_Docker国内构建源与本地重置.md)：镜像/包下载通道、缓存和项目级重置；
+5. [docs/guides/05_多人协作与Change自动归档.md](05_多人协作与Change自动归档.md)：AIMA 的 Requirement / Change / PR / 归档机器接线；
+6. [docs/guides/06_本地Release离线包构建.md](06_本地Release离线包构建.md)：Windows 本地生成和验证离线 Release Bundle；
+7. [docs/guides/07_采集运行中心Figma开发基线.md](07_采集运行中心Figma开发基线.md)：采集运行中心正式 Figma Owner 链和 Design-to-Code 基线。
 
-## 不再维护“固定持续开发提示词”
+## Guide 不承担什么
 
-公司内网 V1 已完成，继续保存一份写死“Stage 8F → V1-A → V1-B → 上线”的通用提示词会把历史路线重新带回新会话。
+Guide 不保存动态 Stage/PR/SHA、完整 API/Schema/Job 集合、通用 Agent_Skills 方法、已批准但未完成的产品路线或一次 Migration 的永久历史证据。
 
-新的开发任务统一从当前事实恢复：
+这些内容分别回到机器事实、Agent_Skills、Roadmap 或 [changes/archive/](../../changes/archive/)。
 
-```text
-根 AGENTS.md
-→ Agent_Skills 当前 canonical Source Mode
-→ docs/README.md
-→ 当前代码 / Contract / Migration / tests / locks
-→ 仅在任务确实涉及未完成目标时读取 docs/roadmap/
-```
+## 临时 Guide 的退出
 
-因此新的 Agent 会话不需要复制一份仓库内固定大提示词。全局/团队使用方式由 Agent_Skills 与项目 [`AGENTS.md`](../../AGENTS.md) 治理，项目文档只维护当前项目事实和开发导航。
-
-## 文档分工
-
-```text
-产品当前能做什么       → docs/product/
-为什么系统这样设计       → docs/blueprint/
-当前模块具体怎么实现       → 模块 README
-专题实现、排障和深挖       → docs/appendix/
-开发过程中怎么操作         → docs/guides/
-生产部署/运行/迁移          → docs/operations/
-已批准且未完成目标          → docs/roadmap/
-历史为什么改过             → changes/archive/
-精确字段/Schema/接口        → 代码、Migration、Contract、生成物、测试
-```
-
-如果目标是“我应该改哪个代码文件”，先读 [`docs/01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)；总文档导航见 [`docs/README.md`](../README.md)。
+只服务一次安装、迁移、升级或工具过渡的 Guide，在过程退出后要把仍有效知识迁入长期 Owner，再删除临时文档；操作文档不能只增不减。
