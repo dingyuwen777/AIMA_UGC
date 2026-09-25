@@ -414,6 +414,8 @@ AI Runtime 未配置          4627:9678
 
 这套 Figma 接管 `/voice-plaza` 的页面布局、视觉层级、状态表达和 Overlay 几何关系；当前 HTTP Contract、Pinia Store、Cursor、Analysis Run、人工相关性复核、Detail supplement、Export Job/Artifact 和错误语义仍以当前代码、generated client 与后端事实为准。Figma 中的帖子、Run 状态、选择数量、模型名、互动数和分页示例只用于说明布局，不得写成生产常量。
 
+> 2026-09-24 设计变更（Owner 批准，Figma 待同步）：筛选区移除「内容类型、竞争范围」，相关性筛选保留；平台/情感/发声类型改为多选；数量显示「共 N 条」移至分页区，空列表仍保留「共 0 条」。对应实现见 `frontend/src/features/voice-plaza/` 与 `voice-plaza-design.spec.ts`。
+
 当前代码 Owner 保持：
 
 ```text

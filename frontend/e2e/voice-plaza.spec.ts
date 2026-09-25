@@ -412,30 +412,31 @@ test('loads backend filter options and submits voice type with dependent labels'
   await page.goto('/voice-plaza')
 
   await expect(page.getByLabel('发声类型', { exact: true })).toBeVisible()
-  await page.locator('label.field--voice-type select').selectOption('真实用户发声')
-  await page.locator('label.field--sentiment select').selectOption('负面')
+  await page.locator('summary[aria-label="发声类型"]').click()
+  await page.getByRole('checkbox', { name: '真实用户发声' }).check()
+  await page.getByRole('checkbox', { name: '媒体机构发声' }).check()
+  await page.locator('summary[aria-label="情感"]').click()
+  await page.getByRole('checkbox', { name: '负面' }).check()
+  await page.getByRole('checkbox', { name: '正面' }).check()
   await page.locator('label.field--label select').nth(0).selectOption('电池、续航与充电')
   await page.locator('label.field--label select').nth(1).selectOption('实际续航表现')
   await page.getByRole('button', { name: '选择品牌', exact: true }).click()
   const brandDialog = page.getByRole('dialog', { name: '选择品牌', exact: true })
   await brandDialog.getByLabel(/爱玛/).check()
   await brandDialog.getByRole('button', { name: '确定', exact: true }).click()
-  await page.locator('.field--competition summary').click()
-  await page.getByLabel('仅自有品牌', { exact: true }).check()
   const requestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
-    return url.pathname === '/api/v1/contents' && url.searchParams.has('voice_type')
+    return url.pathname === '/api/v1/contents' && url.searchParams.has('voice_types')
   })
   await page.getByRole('button', { name: '查询' }).click()
   const request = await requestPromise
   const params = new URL(request.url()).searchParams
 
-  expect(params.get('voice_type')).toBe('真实用户发声')
-  expect(params.get('sentiment')).toBe('负面')
+  expect(params.getAll('voice_types')).toEqual(expect.arrayContaining(['真实用户发声', '媒体机构发声']))
+  expect(params.getAll('sentiments')).toEqual(expect.arrayContaining(['负面', '正面']))
   expect(params.get('primary_label')).toBe('电池、续航与充电')
   expect(params.get('secondary_label')).toBe('实际续航表现')
   expect(params.get('brand_ids')).toBe(brandId)
-  expect(params.get('competition_scopes')).toBe('owned_only')
 })
 
 test('renders the newest first page before slow filter options are ready', async ({ page }) => {
@@ -465,7 +466,8 @@ test('renders the newest first page before slow filter options are ready', async
   })
   await expect(page.locator('section.filters').getByLabel('平台', { exact: true })).toBeEnabled()
   releaseFilterOptions()
-  await expect(page.locator('label.field--voice-type select')).toBeEnabled()
+  await page.locator('summary[aria-label="发声类型"]').click()
+  await expect(page.getByRole('checkbox', { name: '真实用户发声' })).toBeEnabled()
 })
 
 test('keeps filters and content usable when manual-edit taxonomy is unavailable', async ({ page }) => {
@@ -491,7 +493,8 @@ test('keeps filters and content usable when manual-edit taxonomy is unavailable'
   const taxonomyWarning = page.locator('.taxonomy-warning')
   await expect(taxonomyWarning.getByText('技术详情', { exact: true })).toHaveCount(0)
   await expect(taxonomyWarning.getByText(/request-taxonomy/)).toHaveCount(0)
-  await expect(page.locator('label.field--voice-type select')).toBeEnabled()
+  await page.locator('summary[aria-label="发声类型"]').click()
+  await expect(page.getByRole('checkbox', { name: '真实用户发声' })).toBeEnabled()
   await expect(page.getByText(item.title)).toBeVisible()
   await expect(page.getByRole('button', { name: /导出记录/ })).toBeEnabled()
 })
@@ -539,16 +542,18 @@ test('keeps stable filters and content usable when dynamic filter options are un
   for (const label of ['平台', '相关性', '状态']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeEnabled()
   }
-  for (const label of ['情感', '发声类型', '内容类型', '一级标签', '二级标签']) {
+  for (const label of ['一级标签', '二级标签']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeDisabled()
   }
+  await expect(filters.getByText('筛选项暂不可用').first()).toBeVisible()
   await expect(page.getByText(item.title)).toBeVisible()
 })
 
 test('restores the applied platform filter after leaving and reloading the page', async ({ page }) => {
   await page.goto('/voice-plaza')
   const voicePlaza = page.getByRole('main', { name: '声音广场' })
-  await voicePlaza.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
+  await voicePlaza.locator('summary[aria-label="平台"]').click()
+  await voicePlaza.getByRole('checkbox', { name: '小红书' }).check()
   await page.getByRole('button', { name: '查询' }).click()
 
   const restoredRequest = page.waitForRequest((request) => {
@@ -561,7 +566,7 @@ test('restores the applied platform filter after leaving and reloading the page'
   await page.goto('/voice-plaza')
   await restoredRequest
 
-  await expect(voicePlaza.getByLabel('平台', { exact: true })).toHaveValue('xiaohongshu')
+  await expect(voicePlaza.locator('summary[aria-label="平台"]')).toContainText('小红书')
   await expect(page.getByText(item.title)).toBeVisible()
 })
 

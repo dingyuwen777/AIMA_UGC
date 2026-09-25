@@ -185,14 +185,11 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
   await vehicleFilter.getByRole('button', { name: /全栈系列/ }).click()
   await vehicleFilter.getByLabel(displayName, { exact: true }).check()
   await vehicleFilter.getByRole('button', { name: '确定', exact: true }).click()
-  await page.locator('.field--competition summary').click()
-  await page.getByLabel('仅自有品牌', { exact: true }).check()
   const filteredResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return url.pathname === '/api/v1/contents' &&
       url.searchParams.get('brand_ids') === brand.id &&
-      url.searchParams.get('vehicle_model_ids') === vehicle!.id &&
-      url.searchParams.get('competition_scopes') === 'owned_only'
+      url.searchParams.get('vehicle_model_ids') === vehicle!.id
   })
   await page.getByRole('button', { name: '查询', exact: true }).click()
   expect((await filteredResponsePromise).status()).toBe(200)
@@ -250,7 +247,6 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
     filters: {
       brand_ids: [brand.id],
       vehicle_model_ids: [vehicle!.id],
-      competition_scopes: ['owned_only'],
     },
   })
 })

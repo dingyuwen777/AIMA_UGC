@@ -105,7 +105,7 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('>⇩ 导出记录<')
   })
 
-  it('Figma 三行筛选全部直达，包含品牌、车型和竞争范围', async () => {
+  it('Figma 三行筛选全部直达，包含品牌和车型', async () => {
     const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
       useVoicePlazaStore(pinia).filterOptions = filterOptions
     })
@@ -117,10 +117,8 @@ describe('声音广场正式 Figma 基线', () => {
       '发声类型',
       '品牌',
       '车型',
-      '竞争范围',
       '情感',
       '状态',
-      '内容类型',
       '一级标签',
       '二级标签',
       '发布时间范围',
@@ -138,16 +136,6 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).toContain('filter-row--primary')
     expect(html).toContain('filter-row--secondary')
     expect(html).toContain('filter-row--tertiary')
-    for (const [value, label] of [
-      ['note', '笔记'],
-      ['image', '图文 / 图片'],
-      ['video', '视频'],
-      ['text', '纯文本'],
-      ['unknown', '未识别'],
-    ]) {
-      expect(html).toContain(`value="${value}"`)
-      expect(html).toContain(label)
-    }
     expect(html).not.toContain('来源 Batch / Run ID')
     expect(html).not.toContain('UUID / 来源标识')
     expect(html).not.toContain('Analysis Scheme')

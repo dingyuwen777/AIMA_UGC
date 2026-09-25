@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
+from aima_ugc.contracts.http import ContentFilterSnapshot
 from aima_ugc.modules.analysis.schemes import compile_analysis_scheme
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.security import read_secret_file
@@ -1981,5 +1982,125 @@ def test_0061_batches_voice_plaza_projection_triggers_per_statement(
             }
         assert set(restored) == row_trigger_names
         assert all(tgtype & 1 for tgtype in restored.values())
+    finally:
+        engine.dispose()
+
+
+def _seed_voice_plaza_legacy_filters(database: str) -> None:
+    """写入 0061 时代的单值 voice_type/sentiment JSONB 快照。"""
+    engine = _engine(database)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+            run_id = uuid4()
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_content_runs(
+                      id, sequence_no, client_idempotency_key, planner_job_id, run_intent, scope,
+                      filter_snapshot, status, target_count, shard_count, shard_size,
+                      prompt_version, prompt_sha256, taxonomy_sha256, model_provider, model,
+                      generation_config, generation_config_hash, created_at
+                    ) VALUES (
+                      :id, 1, :key, :job_id, 'manual_reanalysis', 'query',
+                      cast(:snapshot as jsonb), 'succeeded', 1, 1, 1,
+                      'content_labeling_v4', :sha1, :sha2, 'fake', 'fake-model',
+                      cast('{}' as jsonb), :sha3, :now
+                    )
+                    """
+                ),
+                {
+                    "id": run_id,
+                    "key": f"legacy-run-{run_id}",
+                    "job_id": uuid4(),
+                    "snapshot": json.dumps(
+                        {"voice_type": "真实用户发声", "sentiment": "负面"},
+                        ensure_ascii=False,
+                    ),
+                    "sha1": "a" * 64,
+                    "sha2": "b" * 64,
+                    "sha3": "c" * 64,
+                    "now": _NOW,
+                },
+            )
+            export_id = uuid4()
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO reporting_data_exports(
+                      id, job_id, format, request_snapshot, columns,
+                      column_catalog_version, created_at
+                    ) VALUES (
+                      :id, :job_id, 'xlsx', cast(:snapshot as jsonb), cast(:columns as jsonb),
+                      1, :now
+                    )
+                    """
+                ),
+                {
+                    "id": export_id,
+                    "job_id": uuid4(),
+                    "snapshot": json.dumps(
+                        {
+                            "scope": "query",
+                            "target_count": 1,
+                            "filters": {"voice_type": "媒体机构发声", "sentiment": "正面"},
+                        },
+                        ensure_ascii=False,
+                    ),
+                    "columns": json.dumps(["platform"]),
+                    "now": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0062_rewrites_single_value_filters_to_multi_value(
+    migration_database: str,
+) -> None:
+    """0062 把历史单值 voice_type/sentiment 改写成多值并支持 downgrade 回退。"""
+
+    _upgrade(migration_database, "20260924_0061")
+    _seed_voice_plaza_legacy_filters(migration_database)
+
+    _upgrade(migration_database, "20260924_0062")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            run_snapshot = connection.execute(
+                text("SELECT filter_snapshot FROM analysis_content_runs")
+            ).scalar_one()
+            export_snapshot = connection.execute(
+                text("SELECT request_snapshot FROM reporting_data_exports")
+            ).scalar_one()
+
+        assert run_snapshot["voice_types"] == ["真实用户发声"]
+        assert run_snapshot["sentiments"] == ["负面"]
+        assert "voice_type" not in run_snapshot
+        assert "sentiment" not in run_snapshot
+
+        assert export_snapshot["filters"]["voice_types"] == ["媒体机构发声"]
+        assert export_snapshot["filters"]["sentiments"] == ["正面"]
+
+        ContentFilterSnapshot.model_validate(run_snapshot)
+        ContentFilterSnapshot.model_validate(export_snapshot["filters"])
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260924_0061")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            run_snapshot = connection.execute(
+                text("SELECT filter_snapshot FROM analysis_content_runs")
+            ).scalar_one()
+            export_snapshot = connection.execute(
+                text("SELECT request_snapshot FROM reporting_data_exports")
+            ).scalar_one()
+
+        assert run_snapshot["voice_type"] == "真实用户发声"
+        assert run_snapshot["sentiment"] == "负面"
+        assert export_snapshot["filters"]["voice_type"] == "媒体机构发声"
+        assert export_snapshot["filters"]["sentiment"] == "正面"
     finally:
         engine.dispose()

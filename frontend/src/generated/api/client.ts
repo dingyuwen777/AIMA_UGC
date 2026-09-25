@@ -1466,11 +1466,17 @@ export interface ContentFilterSnapshot {
   relevance?: ContentRelevance | null;
   search?: string | null;
   secondary_label?: string | null;
-  sentiment?: string | null;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 128
+     */
+  sentiments?: string[];
   source_identifier?: string | null;
   /** @maxItems 100 */
   vehicle_model_ids?: string[];
-  voice_type?: ContentVoiceType | null;
+  /** @maxItems 20 */
+  voice_types?: ContentVoiceType[];
 }
 
 export type ContentTargetSelectionScope = typeof ContentTargetSelectionScope[keyof typeof ContentTargetSelectionScope];
@@ -3221,8 +3227,16 @@ platforms?: PlatformName[];
 content_types?: string[];
 analysis_status?: ContentAnalysisStatus | null;
 relevance?: ContentRelevance | null;
-voice_type?: ContentVoiceType | null;
-sentiment?: string | null;
+/**
+ * @maxItems 20
+ */
+voice_types?: ContentVoiceType[];
+/**
+ * @maxItems 20
+ * @items.minLength 1
+ * @items.maxLength 128
+ */
+sentiments?: string[];
 primary_label?: string | null;
 secondary_label?: string | null;
 published_from?: string | null;
@@ -5109,7 +5123,7 @@ export const getListContentsUrl = (params?: ListContentsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-    const explodeParameters = ["platforms","content_types","brand_ids","vehicle_model_ids","competition_scopes"];
+    const explodeParameters = ["platforms","content_types","voice_types","sentiments","brand_ids","vehicle_model_ids","competition_scopes"];
 
     if (Array.isArray(value) && explodeParameters.includes(key)) {
       value.forEach((v) => {

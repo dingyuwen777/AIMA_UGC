@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
@@ -1150,8 +1150,10 @@ class ContentFilterSnapshot(BaseModel):
     content_types: tuple[str, ...] = Field(default=(), max_length=20)
     analysis_status: ContentAnalysisStatus | None = None
     relevance: ContentRelevance | None = None
-    voice_type: ContentVoiceType | None = None
-    sentiment: str | None = Field(default=None, min_length=1, max_length=128)
+    voice_types: tuple[ContentVoiceType, ...] = Field(default=(), max_length=20)
+    sentiments: tuple[Annotated[str, Field(min_length=1, max_length=128)], ...] = Field(
+        default=(), max_length=20
+    )
     primary_label: str | None = Field(default=None, min_length=1, max_length=256)
     secondary_label: str | None = Field(default=None, min_length=1, max_length=256)
     published_from: datetime | None = None

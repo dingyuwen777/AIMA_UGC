@@ -1435,8 +1435,8 @@ def _apply_projection_filters(
             )
     else:
         statement = statement.where(projection.c.effective_relevance == filters.relevance)
-    if filters.voice_type is not None:
-        statement = statement.where(projection.c.effective_voice_type == filters.voice_type)
+    if filters.voice_types:
+        statement = statement.where(projection.c.effective_voice_type.in_(filters.voice_types))
     if filters.search is not None:
         pattern = f"%{_escape_like(filters.search)}%"
         statement = statement.where(
@@ -1515,8 +1515,8 @@ def _apply_projection_filters(
         )
     if filters.analysis_status is not None:
         statement = statement.where(projection.c.analysis_status == filters.analysis_status)
-    if filters.sentiment is not None:
-        statement = statement.where(projection.c.effective_sentiment == filters.sentiment)
+    if filters.sentiments:
+        statement = statement.where(projection.c.effective_sentiment.in_(filters.sentiments))
     if filters.primary_label is not None or filters.secondary_label is not None:
         label: dict[str, str] = {}
         if filters.primary_label is not None:
@@ -1548,8 +1548,8 @@ def _apply_filters(
             )
     else:
         statement = statement.where(effective_relevance == filters.relevance)
-    if filters.voice_type is not None:
-        statement = statement.where(effective_voice_type == filters.voice_type)
+    if filters.voice_types:
+        statement = statement.where(effective_voice_type.in_(filters.voice_types))
     if filters.search is not None:
         pattern = f"%{_escape_like(filters.search)}%"
         statement = statement.where(
@@ -1702,8 +1702,8 @@ def _apply_filters(
         statement = statement.where(analysis.c.id.is_(None), has_any_analysis)
     elif filters.analysis_status == "pending":
         statement = statement.where(~has_any_analysis)
-    if filters.sentiment is not None:
-        statement = statement.where(effective_sentiment == filters.sentiment)
+    if filters.sentiments:
+        statement = statement.where(effective_sentiment.in_(filters.sentiments))
     if filters.primary_label is not None or filters.secondary_label is not None:
         pair = analysis_content_label_pairs_table
         label_conditions = [pair.c.analysis_result_id == analysis.c.id]
