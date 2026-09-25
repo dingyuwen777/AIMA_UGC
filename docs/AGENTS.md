@@ -2,6 +2,8 @@
 
 本文件只适用于 docs/ 及其子目录，是根 [AGENTS.md](../AGENTS.md) 的文档 Overlay。AIMA 继续使用 Agent_Skills 的通用 Docs / Coding / Review 等治理；这里仅维护 AIMA 文档树自己的 Owner、命名、生命周期和知识迁移规则。
 
+先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则，再进入本文的文档 Owner 与知识迁移约束；本文件不覆盖更高层项目规则，也不把本地 Agent_Skills 安装副本当作通用治理事实源。
+
 ## 1. Owner Gate
 
 新建、拆分、合并或大改文档前，先确定目标读者的问题属于哪个 Owner：
