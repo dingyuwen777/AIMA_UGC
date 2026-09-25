@@ -36,6 +36,7 @@ EXPECTED_BUNDLE_ENTRIES = frozenset(
         "compose.windows.yaml",
         "start_compose.py",
         "stop_compose.py",
+        "reset_keep_vehicle_catalog.sh",
         "env.production.example",
         "images.tar",
         "migration-manifest.json",
@@ -48,6 +49,7 @@ CHECKSUM_TARGETS = (
     "compose.windows.yaml",
     "start_compose.py",
     "stop_compose.py",
+    "reset_keep_vehicle_catalog.sh",
     "env.production.example",
     "release-manifest.json",
     "migration-manifest.json",
@@ -530,6 +532,21 @@ docker compose --env-file "$ENV" -f compose.yaml -f "$AUTO" exec -T frontend \
 不要删除 `AIMA_HOST_ROOT`，不要用带 `-v` 的 Compose 清理命令处理真实业务环境。
 当前 Release Builder 不提供 PostgreSQL + Artifact 协调 Backup/Restore 或数据库自动回滚；
 有 Migration 的升级仍需按正式备份/回滚策略执行。
+
+## 5. 仅在明确要求清空业务数据时重置
+
+Linux 上运行包内脚本，先 dry-run 核对目标，再确认执行：
+
+```bash
+bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --dry-run
+bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --execute
+python3 start_compose.py --env-file /data/AIMA_UGC/env.production
+```
+
+脚本保留 Alembic 版本和完整品牌/车型目录，清空其它业务表、采集运行与管理员操作审计、
+Job、Provider 配置及 Artifact 实体；它恢复声音广场系统种子。原始 Excel、Secret、env、
+日志与 PostgreSQL 数据目录不删除。脚本只备份车型目录，不能恢复被清空的业务数据。
+执行成功或失败后业务服务都保持停止，必须核对状态再运行启动脚本。
 """
 
 
@@ -643,6 +660,10 @@ def build_bundle_files(
     shutil.copy2(root / "compose.windows.yaml", bundle_dir / "compose.windows.yaml")
     shutil.copy2(root / "scripts/deploy/start_compose.py", bundle_dir / "start_compose.py")
     shutil.copy2(root / "scripts/deploy/stop_compose.py", bundle_dir / "stop_compose.py")
+    shutil.copy2(
+        root / "scripts/deploy/reset_keep_vehicle_catalog.sh",
+        bundle_dir / "reset_keep_vehicle_catalog.sh",
+    )
     _replace_env_values(
         root / "env.production.example",
         bundle_dir / "env.production.example",

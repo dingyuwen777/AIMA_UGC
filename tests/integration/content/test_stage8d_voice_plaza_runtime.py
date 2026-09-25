@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -66,6 +67,7 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
 )
 from aima_ugc.modules.content.content_cursor import InvalidContentCursor
+from aima_ugc.modules.content.read_model_job import VOICE_PLAZA_PROJECTION_JOB_TYPE
 from aima_ugc.modules.content.read_model_tables import (
     voice_plaza_content_projection_table,
     voice_plaza_filter_catalog_table,
@@ -78,6 +80,7 @@ from aima_ugc.modules.reporting.data_export_job import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, JobRegistry, LeaseLostError
+from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import delete, func, insert, select, update
@@ -256,6 +259,82 @@ def test_voice_plaza_global_sort_pagination_and_nulls(
                     )
         assert found == expected
         assert cursor is None
+    finally:
+        runtime.close()
+
+
+def test_worker_recovers_missing_projection_seed_once_with_concurrent_startup(
+    tmp_path: Path,
+) -> None:
+    """严格重置删除派生单例后，多个 Worker 只创建一个可执行回填 Job。"""
+
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    try:
+        with runtime.database.engine.begin() as connection:
+            if connection.scalar(select(func.count()).select_from(contents_table)):
+                pytest.skip("本场景只在空业务库验证，不删除已有 Content")
+            if connection.scalar(select(func.count()).select_from(jobs_table)):
+                pytest.skip("本场景只在空 Job 表验证，不删除已有任务")
+            connection.execute(delete(voice_plaza_projection_state_table))
+
+        try:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                records = list(
+                    executor.map(
+                        lambda _: ensure_voice_plaza_projection_backfill_job(runtime),
+                        range(4),
+                    )
+                )
+            assert all(record is not None for record in records)
+            assert len({record.id for record in records if record is not None}) == 1
+            with runtime.database.engine.connect() as connection:
+                assert connection.scalar(
+                    select(func.count()).select_from(voice_plaza_projection_state_table)
+                ) == 1
+                assert connection.scalar(
+                    select(func.count())
+                    .select_from(jobs_table)
+                    .where(jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE)
+                ) == 1
+            worker = create_job_worker(
+                runtime=runtime,
+                registry=create_collection_job_registry(runtime=runtime),
+                worker_id="voice-projection-reset-recovery",
+                lease_seconds=120,
+                retry_delay_seconds=0,
+            )
+            assert worker.run_once() is True
+            with runtime.database.engine.connect() as connection:
+                status = connection.scalar(select(voice_plaza_projection_state_table.c.status))
+                assert status == "ready"
+        finally:
+            with runtime.database.engine.begin() as connection:
+                job_ids = select(jobs_table.c.id).where(
+                    jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE
+                )
+                connection.execute(
+                    delete(job_attempt_events_table).where(
+                        job_attempt_events_table.c.job_id.in_(job_ids)
+                    )
+                )
+                connection.execute(
+                    delete(jobs_table).where(
+                        jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE
+                    )
+                )
+                connection.execute(delete(voice_plaza_projection_state_table))
+                connection.execute(
+                    insert(voice_plaza_projection_state_table).values(
+                        singleton=True,
+                        status="pending",
+                        generation=1,
+                        projected_count=0,
+                        updated_at=datetime.now(UTC),
+                    )
+                )
     finally:
         runtime.close()
 

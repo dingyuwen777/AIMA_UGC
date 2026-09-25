@@ -3,6 +3,8 @@ from __future__ import annotations
 import codecs
 import importlib.util
 import json
+import shutil
+import subprocess
 import sys
 import tarfile
 from pathlib import Path
@@ -12,6 +14,18 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 CORE = ROOT / "scripts" / "release" / "release_bundle.py"
 POWERSHELL = ROOT / "scripts" / "release" / "build_local_release.ps1"
+
+
+def test_catalog_reset_script_parses_in_linux_bash() -> None:
+    bash = shutil.which("bash")
+    if bash is None or sys.platform == "win32":
+        pytest.skip("Bash 语法在 Linux CI 校验")
+    subprocess.run(
+        [bash, "-n", str(ROOT / "scripts" / "deploy" / "reset_keep_vehicle_catalog.sh")],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _load_module():
@@ -142,6 +156,9 @@ def test_bundle_uses_latest_runtime_alias_and_saves_both_application_tags(
     deploy_scripts.mkdir(parents=True)
     for name in ("start_compose.py", "stop_compose.py"):
         (deploy_scripts / name).write_text("# deployment entry\n", encoding="utf-8")
+    (deploy_scripts / "reset_keep_vehicle_catalog.sh").write_text(
+        "#!/usr/bin/env bash\n", encoding="utf-8"
+    )
     calls: list[tuple[str, ...]] = []
 
     def fake_run(arguments, *, cwd: Path, capture: bool = False) -> str:

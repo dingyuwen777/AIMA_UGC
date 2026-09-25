@@ -983,9 +983,11 @@ def test_historical_snapshot_fails_closed_when_source_changes_after_discovery(
         runtime.close()
 
 
+@pytest.mark.parametrize("missing_bound_artifact", [False, True])
 def test_historical_snapshot_technical_retry_reuses_bound_source_artifact(
     tmp_path: Path,
     monkeypatch,
+    missing_bound_artifact: bool,
 ) -> None:
     historical_root = tmp_path / "approved-history"
     historical_root.mkdir()
@@ -1066,12 +1068,28 @@ def test_historical_snapshot_technical_retry_reuses_bound_source_artifact(
                 .select_from(artifacts_table)
                 .where(artifacts_table.c.kind == "historical-import.source")
             )
+            source_storage_key = connection.scalar(
+                select(artifacts_table.c.storage_key).where(
+                    artifacts_table.c.id == source_item["artifact_id"]
+                )
+            )
         assert source_item["status"] == "snapshotting"
         assert source_item["artifact_id"] is not None
         assert source_item["sha256"] is not None
         assert source_artifact_count == 1
+        assert source_storage_key is not None
+
+        if missing_bound_artifact:
+            runtime.artifact_store.delete(source_storage_key)
 
         assert worker.run_once() is True
+        if missing_bound_artifact:
+            with runtime.database.engine.connect() as connection:
+                error_code = connection.scalar(
+                    select(jobs_table.c.error_code).where(jobs_table.c.id == source_item["job_id"])
+                )
+            assert error_code == "historical_source_artifact_missing"
+            return
         ready = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()
         assert ready["status"] == "ready"
         assert ready["total_rows"] == 1

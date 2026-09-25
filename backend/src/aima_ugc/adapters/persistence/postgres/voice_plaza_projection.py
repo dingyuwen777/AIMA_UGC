@@ -7,7 +7,7 @@ from typing import Literal, cast
 from uuid import UUID
 
 from sqlalchemy import Uuid, bindparam, func, select, text, update
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, insert
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
@@ -35,6 +35,17 @@ class PostgresVoicePlazaProjectionRepository:
         """绑定一个由调用方持有的短事务。"""
 
         self._session = session
+
+    def ensure_state(self) -> bool:
+        """恢复被外部重置清空的派生单例，不覆盖现有回填检查点。"""
+
+        inserted = self._session.execute(
+            insert(voice_plaza_projection_state_table)
+            .values(singleton=True, status="pending", updated_at=beijing_now())
+            .on_conflict_do_nothing(index_elements=[voice_plaza_projection_state_table.c.singleton])
+            .returning(voice_plaza_projection_state_table.c.singleton)
+        ).scalar_one_or_none()
+        return inserted is True
 
     def get_state(self, *, for_update: bool = False) -> VoicePlazaProjectionState:
         """读取单例状态；Worker 启动与批次推进可选择行锁。"""

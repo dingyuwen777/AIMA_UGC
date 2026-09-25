@@ -385,7 +385,40 @@ class PostgresHistoricalImportJobExecutor:
             ValueError,
         ):
             return JobHandlerResult.failed("historical_snapshot_invalid")
-        except OSError:
+        except FileNotFoundError as exc:
+            missing_bound_artifact = (
+                source_artifact is not None
+                and not self._runtime.artifact_store.exists(source_artifact.storage_key)
+            )
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "historical_import.snapshot_io_failed",
+                "历史源文件快照发生 I/O 错误",
+                job_id=str(fence.job_id),
+                campaign_item_id=str(payload.campaign_item_id),
+                source_artifact_id=(str(item["artifact_id"]) if item["artifact_id"] else None),
+                error_type=type(exc).__name__,
+                error_errno=exc.errno,
+                missing_bound_artifact=missing_bound_artifact,
+                duration_ms=int((perf_counter() - execution_started) * 1000),
+            )
+            if missing_bound_artifact:
+                return JobHandlerResult.failed("historical_source_artifact_missing")
+            return JobHandlerResult.retry("historical_snapshot_io_failed")
+        except OSError as exc:
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "historical_import.snapshot_io_failed",
+                "历史源文件快照发生 I/O 错误，等待统一 Job 重试",
+                job_id=str(fence.job_id),
+                campaign_item_id=str(payload.campaign_item_id),
+                source_artifact_id=(str(item["artifact_id"]) if item["artifact_id"] else None),
+                error_type=type(exc).__name__,
+                error_errno=exc.errno,
+                duration_ms=int((perf_counter() - execution_started) * 1000),
+            )
             return JobHandlerResult.retry("historical_snapshot_io_failed")
 
     def import_chunk(

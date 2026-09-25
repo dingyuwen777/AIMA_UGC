@@ -43,6 +43,7 @@ on:
       - scripts/release/release_bundle.py
       - scripts/deploy/start_compose.py
       - scripts/deploy/stop_compose.py
+      - scripts/deploy/reset_keep_vehicle_catalog.sh
       - scripts/release/build_local_release.ps1
       - tests/unit/test_docker_build_sources.py
       - tests/unit/test_release_workflow.py
