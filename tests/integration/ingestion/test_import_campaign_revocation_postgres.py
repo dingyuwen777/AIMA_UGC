@@ -14,6 +14,9 @@ from aima_ugc.adapters.persistence.postgres.import_revocation_lifecycle import (
     PostgresImportRevocationLifecycleRepository,
 )
 from aima_ugc.bootstrap.api import create_app
+from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
+from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
+from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.import_revocation_http import PostgresImportRevocationHttpService
@@ -23,7 +26,8 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
-from aima_ugc.contracts.http import ContentFilterSnapshot
+from aima_ugc.contracts.brand_vehicle import BrandAliasCreateRequest
+from aima_ugc.contracts.http import CollectionRuntimeListQuery, ContentFilterSnapshot
 from aima_ugc.contracts.lifecycle import DataImportRevokeRequest
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
@@ -32,6 +36,7 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.query import ContentReadQuery
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
+from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.revocation_tables import (
     historical_import_campaign_revocations_table,
     historical_import_revocation_content_versions_table,
@@ -119,6 +124,7 @@ def _client(runtime) -> TestClient:
         create_app(
             historical_import_service=PostgresHistoricalImportHttpService(runtime),
             import_service=PostgresImportHttpService(runtime),
+            canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
         )
     )
 
@@ -132,6 +138,108 @@ def _cleanup(runtime) -> None:
             "RESTART IDENTITY CASCADE"
         )
     runtime.close()
+
+
+def test_revocation_preview_counts_replay_contributions_after_filtered_import(
+    tmp_path: Path,
+) -> None:
+    """原导入行全过滤时，后续重筛的同源贡献仍应进入撤销预览与进度。"""
+
+    historical_root = tmp_path / "approved-history"
+    historical_root.mkdir()
+    (historical_root / "filtered.xlsx").write_bytes(
+        _xlsx(
+            (
+                ("星曜重筛第一条", f"replay-revocation-{uuid4()}", "星曜正文"),
+                ("星曜重筛第二条", f"replay-revocation-{uuid4()}", "星曜正文"),
+            )
+        )
+    )
+    runtime = _runtime(tmp_path, historical_root)
+    try:
+        client = _client(runtime)
+        brand_id = stage3_filter_brand_id(runtime, alias="暂不命中的测试词")
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="replay-revocation-integration-worker",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        created = client.post(
+            "/api/v1/historical-import-campaigns",
+            json={
+                "client_idempotency_key": f"filtered-replay-revocation-{uuid4()}",
+                "relative_paths": ["filtered.xlsx"],
+                "recursive": False,
+                "brand_ids": [brand_id],
+                "ingestion_policy": "standard_observation",
+            },
+        )
+        assert created.status_code == 202
+        campaign_id = UUID(created.json()["campaign_id"])
+        assert _drain(worker) == 2
+        assert (
+            client.post(f"/api/v1/historical-import-campaigns/{campaign_id}/start").status_code
+            == 200
+        )
+        assert _drain(worker) >= 1
+        imported = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()
+        assert imported["status"] == "succeeded"
+        assert imported["stats"]["filtered"] == 2
+        assert imported["stats"]["created"] == 0
+
+        PostgresBrandVehicleHttpService(runtime).add_alias(
+            UUID(brand_id),
+            BrandAliasCreateRequest(text="星曜"),
+            principal=Principal(
+                principal_id="replay-revocation-integration",
+                display_name="重筛撤销测试",
+                role="administrator",
+                source="development",
+            ),
+            request_id="replay-revocation-alias",
+        )
+        replay = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": f"filtered-replay-{uuid4()}"},
+        )
+        assert replay.status_code == 202
+        assert _drain(worker) >= 1
+
+        service = PostgresImportRevocationHttpService(
+            runtime.database.new_session, runtime.artifact_store
+        )
+        preview = service.preview(campaign_id)
+        assert preview.eligible is True
+        assert preview.impact.affected_content_count == 2
+        assert preview.impact.hidden_content_count == 2
+        assert preview.impact.retained_shared_content_count == 0
+        assert preview.impact.unreversible_content_count == 0
+
+        queued = service.revoke(
+            campaign_id,
+            DataImportRevokeRequest(reason="全过滤后重筛贡献撤销回归"),
+            actor_ref="integration-admin",
+            request_id="replay-revocation-request",
+        )
+        assert queued.status == "queued"
+        assert _drain(worker) == 1
+        completed = service.preview(campaign_id)
+        assert completed.status == "succeeded"
+        assert completed.recomputed_content_count == 2
+        assert completed.impact.affected_content_count == 2
+        runtime_row = (
+            PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+            .list_runtime_runs(CollectionRuntimeListQuery(record_types=("data_import_campaign",)))
+            .items[0]
+        )
+        assert runtime_row.import_stats is not None
+        assert runtime_row.import_stats.rows_seen == 2
+        assert runtime_row.import_stats.rows_filtered_out == 2
+        assert runtime_row.revocation_recomputed_content_count == 2
+    finally:
+        _cleanup(runtime)
 
 
 def test_revocation_batches_common_contributions_without_per_content_sql(

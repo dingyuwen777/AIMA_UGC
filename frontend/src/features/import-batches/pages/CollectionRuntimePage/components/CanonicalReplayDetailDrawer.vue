@@ -146,10 +146,16 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
           <div><span>相关命中</span><strong>{{ formatNumber(stats.rows_matched) }}</strong></div>
           <div><span>已过滤</span><strong>{{ formatNumber(stats.rows_filtered_out) }}</strong></div>
           <div><span>去重</span><strong>{{ formatNumber(stats.duplicates_removed) }}</strong></div>
-          <div><span>新入库</span><strong>{{ formatNumber(stats.rows_ingested) }}</strong></div>
-          <div><span>已有内容收敛</span><strong>{{ formatNumber(stats.existing_convergence) }}</strong></div>
+          <div><span>新增记录</span><strong>{{ formatNumber(stats.rows_ingested) }}</strong></div>
+          <div><span>处理已有记录</span><strong>{{ formatNumber(stats.existing_convergence) }}</strong></div>
         </div>
-        <template v-if="stats.lifecycle_status !== 'active'">
+        <AimaFeedbackBanner
+          class="info-note"
+          tone="info"
+        >
+          处理已有记录按输入记录累计；同一内容在不同来源重复出现时会分别计数。撤回统计按不同内容计数。
+        </AimaFeedbackBanner>
+        <template v-if="['reverting', 'reverted', 'revert_failed'].includes(stats.lifecycle_status)">
           <h3>撤回统计</h3>
           <div class="stat-grid">
             <div><span>已重算内容</span><strong>{{ formatNumber(stats.reverted_content_count) }}</strong></div>

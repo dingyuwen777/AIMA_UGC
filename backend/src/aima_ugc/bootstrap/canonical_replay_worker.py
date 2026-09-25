@@ -128,6 +128,11 @@ class PostgresCanonicalReplayJobExecutor:
             "content_batch_ms": 0,
             "evidence_batch_ms": 0,
             "fallback_ms": 0,
+            "fallback_snapshot_ms": 0,
+            "fallback_content_ms": 0,
+            "fallback_evidence_ms": 0,
+            "fallback_ledger_ms": 0,
+            "scalar_fallback_count": 0,
             "ledger_checkpoint_ms": 0,
             "transaction_ms": 0,
             "fast_created_count": 0,
@@ -644,6 +649,10 @@ class PostgresCanonicalReplayJobExecutor:
         content_batch_ms = 0
         evidence_batch_ms = 0
         fallback_ms = 0
+        fallback_snapshot_ms = 0
+        fallback_content_ms = 0
+        fallback_evidence_ms = 0
+        fallback_ledger_ms = 0
         ledger_checkpoint_ms = 0
         transaction_started = perf_counter()
         try:
@@ -824,6 +833,7 @@ class PostgresCanonicalReplayJobExecutor:
                     if observation.author is not None
                     and observation.author.external_account_id is not None
                 )
+                fallback_snapshot_started = perf_counter()
                 before_snapshots = capture_content_contribution_snapshots_batch(
                     session,
                     tuple((observation, None) for observation in fallback_observations),
@@ -854,13 +864,17 @@ class PostgresCanonicalReplayJobExecutor:
                 brand_before_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
                     pairs=before_pairs
                 )
+                fallback_snapshot_ms = int((perf_counter() - fallback_snapshot_started) * 1000)
+                fallback_content_started = perf_counter()
                 fallback_items = content_repository.ingest_contents_with_before_snapshots_batch(
                     tuple(zip(fallback_observations, before_snapshots, strict=True))
                 )
+                fallback_content_ms = int((perf_counter() - fallback_content_started) * 1000)
                 scalar_fallback_count = sum(
                     1 for item in fallback_items if item.used_scalar_fallback
                 )
                 batched_remainder_count = fallback_count - scalar_fallback_count
+                fallback_evidence_started = perf_counter()
                 fallback_vehicle_entries = []
                 fallback_brand_entries = []
                 evidence_created_at = beijing_now()
@@ -921,6 +935,8 @@ class PostgresCanonicalReplayJobExecutor:
                 brand_after_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
                     pairs=after_pairs
                 )
+                fallback_evidence_ms = int((perf_counter() - fallback_evidence_started) * 1000)
+                fallback_ledger_started = perf_counter()
                 for fallback_item in fallback_items:
                     observation = fallback_item.observation
                     before = fallback_item.before
@@ -976,6 +992,7 @@ class PostgresCanonicalReplayJobExecutor:
                     )
                     if len(ledger_rows) >= _LEDGER_INSERT_ROWS:
                         self._flush_ledger_rows(session, ledger_rows)
+                fallback_ledger_ms = int((perf_counter() - fallback_ledger_started) * 1000)
                 fallback_ms = int((perf_counter() - fallback_started) * 1000)
                 ledger_checkpoint_started = perf_counter()
                 self._flush_ledger_rows(session, ledger_rows)
@@ -1020,6 +1037,10 @@ class PostgresCanonicalReplayJobExecutor:
             content_batch_ms=content_batch_ms,
             evidence_batch_ms=evidence_batch_ms,
             fallback_ms=fallback_ms,
+            fallback_snapshot_ms=fallback_snapshot_ms,
+            fallback_content_ms=fallback_content_ms,
+            fallback_evidence_ms=fallback_evidence_ms,
+            fallback_ledger_ms=fallback_ledger_ms,
             ledger_checkpoint_ms=ledger_checkpoint_ms,
             transaction_ms=int((perf_counter() - transaction_started) * 1000),
             duration_ms=int((perf_counter() - batch_started) * 1000),
@@ -1030,6 +1051,11 @@ class PostgresCanonicalReplayJobExecutor:
         batch_metrics["content_batch_ms"] += content_batch_ms
         batch_metrics["evidence_batch_ms"] += evidence_batch_ms
         batch_metrics["fallback_ms"] += fallback_ms
+        batch_metrics["fallback_snapshot_ms"] += fallback_snapshot_ms
+        batch_metrics["fallback_content_ms"] += fallback_content_ms
+        batch_metrics["fallback_evidence_ms"] += fallback_evidence_ms
+        batch_metrics["fallback_ledger_ms"] += fallback_ledger_ms
+        batch_metrics["scalar_fallback_count"] += scalar_fallback_count
         batch_metrics["ledger_checkpoint_ms"] += ledger_checkpoint_ms
         batch_metrics["transaction_ms"] += int((perf_counter() - transaction_started) * 1000)
         batch_metrics["fast_created_count"] += fast_created_count

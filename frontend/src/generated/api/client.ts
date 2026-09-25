@@ -1278,6 +1278,7 @@ export interface CollectionRuntimeItemResponse {
   progress: number;
   record_id: string;
   record_type: CollectionRuntimeRecordType;
+  revocation_recomputed_content_count?: number | null;
   source_filename?: string | null;
   stage: string;
   started_at?: string | null;

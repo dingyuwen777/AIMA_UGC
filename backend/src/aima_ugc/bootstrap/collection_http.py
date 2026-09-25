@@ -927,6 +927,7 @@ def _runtime_item_response(
         import_stats=import_stats,
         collection_stats=collection_stats,
         canonical_replay_stats=canonical_replay_stats,
+        revocation_recomputed_content_count=record.revocation_recomputed_content_count,
         error_summary=record.error_summary,
         error_code=record.error_code,
         created_at=record.created_at,

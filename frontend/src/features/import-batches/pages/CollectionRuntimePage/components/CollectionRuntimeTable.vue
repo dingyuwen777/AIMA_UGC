@@ -110,21 +110,27 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
         class="stats-cell"
       >
         <span>完成 {{ formatNumber(item.canonical_replay_stats.succeeded_run_count + item.canonical_replay_stats.failed_run_count + item.canonical_replay_stats.cancelled_run_count) }} / {{ formatNumber(item.canonical_replay_stats.run_count) }} 个子任务</span>
-        <span>入库 {{ formatNumber(item.canonical_replay_stats.rows_ingested) }} 条</span>
+        <span>读取 {{ formatNumber(item.canonical_replay_stats.rows_seen) }} 条 · 命中 {{ formatNumber(item.canonical_replay_stats.rows_matched) }} 条</span>
+        <span>过滤 {{ formatNumber(item.canonical_replay_stats.rows_filtered_out) }} 条 · 去重 {{ formatNumber(item.canonical_replay_stats.duplicates_removed) }} 条</span>
+        <span>新增记录 {{ formatNumber(item.canonical_replay_stats.rows_ingested) }} 条 · 处理已有记录 {{ formatNumber(item.canonical_replay_stats.existing_convergence) }} 条</span>
+        <span v-if="['reverting', 'reverted', 'revert_failed'].includes(item.canonical_replay_stats.lifecycle_status)">撤回已重组 {{ formatNumber(item.canonical_replay_stats.reverted_content_count) }} 个内容</span>
       </div>
       <div
         v-else-if="item.import_stats"
         class="stats-cell"
       >
-        <span>匹配 {{ formatNumber(item.import_stats.rows_matched) }} 条</span>
-        <span>入库 {{ formatNumber(item.import_stats.rows_ingested) }} 条</span>
+        <span>读取 {{ formatNumber(item.import_stats.rows_seen) }} 行 · 匹配 {{ formatNumber(item.import_stats.rows_matched) }} 行</span>
+        <span>过滤 {{ formatNumber(item.import_stats.rows_filtered_out) }} 行 · 重复 {{ formatNumber(item.import_stats.duplicates_removed) }} 行</span>
+        <span>{{ item.record_type === 'data_import_campaign' ? '新建/补空/更新' : '本次处理' }} {{ formatNumber(item.import_stats.rows_ingested) }} 行 · 异常 {{ formatNumber(item.import_stats.rows_rejected) }} 行</span>
+        <span v-if="item.record_type === 'data_import_campaign' && ['revoking', 'revoked'].includes(item.stage) && item.revocation_recomputed_content_count != null">撤销已重组 {{ formatNumber(item.revocation_recomputed_content_count) }} 个内容</span>
       </div>
       <div
         v-else
         class="stats-cell"
       >
-        <span>{{ item.status === 'succeeded' ? '采集完成' : `完成 ${formatNumber(item.collection_stats?.succeeded_count)} · 失败 ${formatNumber(item.collection_stats?.failed_count)}` }}</span>
-        <span>内容 {{ formatNumber(item.collection_stats?.content_count) }} · 评论 {{ formatNumber(item.collection_stats?.comment_count) }}</span>
+        <span>请求 {{ formatNumber(item.collection_stats?.requested_count) }} · 成功 {{ formatNumber(item.collection_stats?.succeeded_count) }} · 失败 {{ formatNumber(item.collection_stats?.failed_count) }}</span>
+        <span>内容（按范围累计）{{ formatNumber(item.collection_stats?.content_count) }} · 评论（按范围累计）{{ formatNumber(item.collection_stats?.comment_count) }}</span>
+        <span>品牌车型过滤 {{ formatNumber(item.collection_stats?.filtered_count) }}</span>
       </div>
       <div class="time-cell">
         {{ formatDateTime(item.created_at) }}
@@ -160,7 +166,7 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
 
 <style scoped>
 .runtime-list { overflow-x: auto; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-lg); background: var(--aima-surface); }
-.table-head, .table-row { display: grid; min-width: 1212px; grid-template-columns: minmax(180px, 1fr) 120px minmax(235px, 1fr) 134px 175px 130px 110px; align-items: center; column-gap: 16px; }
+.table-head, .table-row { display: grid; min-width: 1400px; grid-template-columns: minmax(180px, 1fr) 120px minmax(235px, 1fr) 134px minmax(280px, 1fr) 130px 110px; align-items: center; column-gap: 16px; }
 .table-head { min-height: 44px; padding: 0 16px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-muted); background: var(--aima-color-bg-table-header); font-size: 12px; font-weight: 500; }
 .table-head span { text-align: center; }
 .table-row { position: relative; min-height: 78px; padding: 16px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-secondary); font-size: 13px; line-height: 20px; }

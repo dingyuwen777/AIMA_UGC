@@ -10,12 +10,20 @@ import CollectionRuntimePage from '../src/features/import-batches/pages/Collecti
 import CollectionRuntimeFilters from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeFilters.vue'
 import CollectionRuntimeKpiCards from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeKpiCards.vue'
 import CollectionRuntimeTable from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeTable.vue'
+import DataImportDialog from '../src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue'
+import { useImportBatchesStore } from '../src/features/import-batches/store'
 
 const blankRoute = { render: () => h('div') }
 
-async function renderComponent(component: Component, props: Record<string, unknown> = {}): Promise<string> {
+async function renderComponent(
+  component: Component,
+  props: Record<string, unknown> = {},
+  setupStore?: (pinia: ReturnType<typeof createPinia>) => void,
+): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) })
-  app.use(createPinia())
+  const pinia = createPinia()
+  app.use(pinia)
+  setupStore?.(pinia)
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -28,7 +36,9 @@ async function renderComponent(component: Component, props: Record<string, unkno
   app.use(router)
   await router.push('/collection-runtime')
   await router.isReady()
-  return renderToString(app)
+  const context: { teleports?: Record<string, string> } = {}
+  const html = await renderToString(app, context)
+  return html + Object.values(context.teleports ?? {}).join('')
 }
 
 async function readCollectionRuntimeSource(filename: string): Promise<string> {
@@ -66,7 +76,8 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(html.match(/class="kpi-card/g)).toHaveLength(3)
     expect(html).toContain('处理中')
     expect(html).toContain('今日完成')
-    expect(html).toContain('今日入库内容')
+    expect(html).toContain('今日任务入库量')
+    expect(html).toContain('各任务累计，可能包含重复内容')
   })
 
   it('默认筛选只展示任务、北京时间日期、状态和类型，不暴露内部处理阶段', async () => {
@@ -147,6 +158,125 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(html).toContain('关键词：爱玛品牌')
     expect(html).toContain('status-pill')
     expect(html).not.toContain(recordId)
+  })
+
+  it('第二次历史重筛新增为零时仍展示处理已有记录的数量', async () => {
+    const html = await renderComponent(CollectionRuntimeTable, {
+      items: [{
+        record_id: 'replay-2',
+        record_type: 'canonical_replay',
+        display_name: '历史数据重筛',
+        status: 'succeeded',
+        stage: 'succeeded',
+        progress: 100,
+        created_at: '2026-09-25T09:36:32+08:00',
+        canonical_replay_stats: {
+          artifact_count: 223, run_count: 3, queued_run_count: 0, running_run_count: 0,
+          succeeded_run_count: 3, failed_run_count: 0, cancelled_run_count: 0,
+          rows_seen: 437099, rows_matched: 47179, rows_filtered_out: 389920,
+          duplicates_removed: 6875, rows_ingested: 0, existing_convergence: 40304,
+          reversible: true, lifecycle_status: 'active', reversal_job_id: null,
+          reverted_content_count: 0, hidden_content_count: 0, retained_content_count: 0,
+          skipped_content_count: 0, restored_evidence_count: 0, skipped_evidence_count: 0,
+        },
+      }],
+      loading: false,
+      error: null,
+    })
+
+    expect(html).toContain('新增记录 0 条')
+    expect(html).toContain('处理已有记录 40,304 条')
+    expect(html).toContain('读取 437,099 条')
+    expect(html).toContain('过滤 389,920 条')
+    expect(html).toContain('去重 6,875 条')
+    expect(html).not.toContain('入库 0 条')
+  })
+
+  it('五类运行记录的列表分别展示输入量、处理结果和撤回实绩', async () => {
+    const common = {
+      status: 'succeeded', stage: 'succeeded', progress: 100,
+      created_at: '2026-09-25T09:00:00+08:00',
+    }
+    const html = await renderComponent(CollectionRuntimeTable, {
+      items: [
+        {
+          ...common, record_id: 'import-1', record_type: 'excel_import', display_name: '单文件导入',
+          import_stats: {
+            rows_seen: 5, rows_matched: 3, rows_filtered_out: 2,
+            duplicates_removed: 1, rows_ingested: 2, rows_rejected: 0,
+          },
+        },
+        {
+          ...common, record_id: 'campaign-1', record_type: 'data_import_campaign',
+          display_name: '第四次导入', status: 'cancelled', stage: 'revoked',
+          revocation_recomputed_content_count: 5747,
+          import_stats: {
+            rows_seen: 66139, rows_matched: 0, rows_filtered_out: 66139,
+            duplicates_removed: 0, rows_ingested: 0, rows_rejected: 0,
+          },
+        },
+        {
+          ...common, record_id: 'discovery-1', record_type: 'tikhub_discovery',
+          display_name: '主动发现', collection_stats: {
+            requested_count: 12, succeeded_count: 10, failed_count: 2,
+            content_count: 7, comment_count: 4, filtered_count: 3,
+          },
+        },
+        {
+          ...common, record_id: 'supplement-1', record_type: 'tikhub_batch_supplement',
+          display_name: '辅助补采', collection_stats: {
+            requested_count: 3, succeeded_count: 3, failed_count: 0,
+            content_count: 2, comment_count: 5, filtered_count: 1,
+          },
+        },
+      ],
+      loading: false,
+      error: null,
+    })
+
+    expect(html).toContain('读取 5 行 · 匹配 3 行')
+    expect(html).toContain('过滤 2 行 · 重复 1 行')
+    expect(html).toContain('本次处理 2 行')
+    expect(html).toContain('读取 66,139 行')
+    expect(html).toContain('过滤 66,139 行')
+    expect(html).toContain('新建/补空/更新 0 行')
+    expect(html).toContain('撤销已重组 5,747 个内容')
+    expect(html).toContain('请求 12 · 成功 10 · 失败 2')
+    expect(html).toContain('内容（按范围累计）7 · 评论（按范围累计）4')
+    expect(html).toContain('品牌车型过滤 3')
+    expect(html).toContain('请求 3 · 成功 3 · 失败 0')
+    expect(html).toContain('内容（按范围累计）2 · 评论（按范围累计）5')
+    expect(html).toContain('品牌车型过滤 1')
+  })
+
+  it('旧版撤销预估为零时，详情展示已提交的实际重组量', async () => {
+    const html = await renderComponent(DataImportDialog, { modelValue: true }, (pinia) => {
+      const store = useImportBatchesStore(pinia)
+      store.selectedHistoricalCampaign = {
+        id: 'campaign-4', status: 'revoked', source_kind: 'local_upload',
+        ingestion_policy: 'standard_observation', root_relative_path: 'fourth.xlsx',
+        created_at: '2026-09-25T09:35:55+08:00', total_rows: 66139,
+        discovered_file_count: 1, ready_item_count: 1, recursive: false, can_start: false,
+        progress: {
+          preflight_completed_file_count: 1, preflight_percent: 100,
+          migration_completed_row_count: 66139, migration_percent: 100,
+        },
+        stats: { filtered: 66139 },
+      }
+      store.historicalRevocationPreview = {
+        campaign_id: 'campaign-4', already_revoked: true, eligible: false,
+        status: 'succeeded', recomputed_content_count: 5747,
+        impact: {
+          affected_content_count: 0, hidden_content_count: 0,
+          retained_shared_content_count: 0, unreversible_content_count: 0,
+        },
+      }
+    })
+
+    expect(html).toContain('实际重组内容')
+    expect(html).toContain('5747')
+    expect(html).toContain('创建撤销时的影响预估与后台实际处理量不一致')
+    expect(html).not.toContain('受影响内容<b>0</b>')
   })
 
   it('运行记录覆盖 Loading、Empty 和 Error/Retry 正式状态', async () => {

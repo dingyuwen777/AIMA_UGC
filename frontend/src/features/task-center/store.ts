@@ -147,7 +147,7 @@ function collectionTask(run: CollectionRuntimeItemResponse): TaskCenterItem {
   const rowsIngested = run.import_stats?.rows_ingested
   const replayRowsIngested = run.canonical_replay_stats?.rows_ingested
   const resultText = typeof replayRowsIngested === 'number'
-    ? `${replayRowsIngested} 条入库`
+    ? `新增记录 ${replayRowsIngested} 条 · 处理已有记录 ${run.canonical_replay_stats?.existing_convergence ?? 0} 条`
     : typeof contentCount === 'number'
     ? `${contentCount} 条内容`
     : typeof rowsIngested === 'number'

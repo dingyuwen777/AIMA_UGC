@@ -79,6 +79,37 @@ _COLLECTION_TABLES = {
 }
 
 
+def campaign_contributions_query(campaign_id: UUID) -> Select[Any]:
+    """按 Campaign 的两种来源身份选择真实写入的 Contribution Delta。"""
+
+    contribution = content_source_contributions_table
+    attempt = provider_request_attempts_table
+    request = provider_requests_table
+    batch = processing_import_batches_table
+    campaign_item = historical_import_campaign_items_table
+    scope = collection_scopes_table
+    run = collection_runs_table
+    return (
+        select(contribution)
+        .select_from(
+            contribution.join(attempt, attempt.c.id == contribution.c.provider_attempt_id)
+            .join(request, request.c.id == attempt.c.provider_request_id)
+            .outerjoin(batch, batch.c.id == request.c.import_batch_id)
+            .outerjoin(
+                campaign_item,
+                campaign_item.c.id == batch.c.historical_campaign_item_id,
+            )
+            .outerjoin(scope, scope.c.id == request.c.scope_id)
+            .outerjoin(run, run.c.id == scope.c.run_id)
+        )
+        .where(
+            (campaign_item.c.campaign_id == campaign_id)
+            | (run.c.data_import_campaign_id == campaign_id)
+        )
+        .order_by(contribution.c.created_at, contribution.c.id)
+    )
+
+
 class PostgresContentLifecycleRepository:
     """Content Owner 唯一执行来源撤销后的 Current/Version 重组。"""
 
@@ -119,32 +150,7 @@ class PostgresContentLifecycleRepository:
     def _campaign_contributions_query(self, campaign_id: UUID) -> Select[Any]:
         """复用同一来源归属条件，供全量兼容入口和流式撤销入口使用。"""
 
-        contribution = content_source_contributions_table
-        attempt = provider_request_attempts_table
-        request = provider_requests_table
-        batch = processing_import_batches_table
-        campaign_item = historical_import_campaign_items_table
-        scope = collection_scopes_table
-        run = collection_runs_table
-        return (
-            select(contribution)
-            .select_from(
-                contribution.join(attempt, attempt.c.id == contribution.c.provider_attempt_id)
-                .join(request, request.c.id == attempt.c.provider_request_id)
-                .outerjoin(batch, batch.c.id == request.c.import_batch_id)
-                .outerjoin(
-                    campaign_item,
-                    campaign_item.c.id == batch.c.historical_campaign_item_id,
-                )
-                .outerjoin(scope, scope.c.id == request.c.scope_id)
-                .outerjoin(run, run.c.id == scope.c.run_id)
-            )
-            .where(
-                (campaign_item.c.campaign_id == campaign_id)
-                | (run.c.data_import_campaign_id == campaign_id)
-            )
-            .order_by(contribution.c.created_at, contribution.c.id)
-        )
+        return campaign_contributions_query(campaign_id)
 
     def apply_campaign_revocation(
         self,

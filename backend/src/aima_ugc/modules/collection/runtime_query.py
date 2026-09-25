@@ -43,6 +43,7 @@ class CollectionRuntimeReadRecord:
     filtered_count: int
     config_snapshot: dict[str, object] | None
     canonical_replay_stats: dict[str, object] | None
+    revocation_recomputed_content_count: int | None
     error_summary: str | None
     error_code: str | None
     created_at: datetime

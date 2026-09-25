@@ -651,6 +651,7 @@ class CollectionRuntimeItemResponse(BaseModel):
     import_stats: ImportStatsResponse | None = None
     collection_stats: CollectionRunStatsResponse | None = None
     canonical_replay_stats: CanonicalReplayRuntimeStatsResponse | None = None
+    revocation_recomputed_content_count: int | None = Field(default=None, ge=0)
     error_summary: str | None = None
     error_code: str | None = None
     created_at: datetime

@@ -138,7 +138,7 @@ function importFailureMessage(summary: string | null | undefined): string {
           <div><span>相关命中</span><strong>{{ formatNumber(item.stats.rows_matched) }}</strong></div>
           <div><span>已过滤</span><strong>{{ formatNumber(item.stats.rows_filtered_out) }}</strong></div>
           <div><span>去重</span><strong>{{ formatNumber(item.stats.duplicates_removed) }}</strong></div>
-          <div><span>已入库</span><strong>{{ formatNumber(item.stats.rows_ingested) }}</strong></div>
+          <div><span>本次处理</span><strong>{{ formatNumber(item.stats.rows_ingested) }}</strong></div>
           <div><span>拒绝</span><strong>{{ formatNumber(item.stats.rows_rejected) }}</strong></div>
         </div>
       </section>

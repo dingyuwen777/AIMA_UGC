@@ -35,6 +35,7 @@ from aima_ugc.modules.ingestion.revocation_tables import (
     historical_import_revocation_requests_table,
 )
 
+from .content_lifecycle import campaign_contributions_query
 from .content_visibility import content_has_active_source
 
 
@@ -166,7 +167,7 @@ class PostgresImportCampaignRevocationRepository:
 
 
 def _affected_content_ids(campaign_id: UUID) -> Any:
-    """合并直接文件导入与基于 Campaign 的在线补采贡献，按 Content 去重。"""
+    """合并导入行、在线补采及重筛沿原来源写入的贡献，按 Content 去重。"""
 
     direct = (
         select(processing_import_batch_items_table.c.content_id.label("content_id"))
@@ -203,7 +204,12 @@ def _affected_content_ids(campaign_id: UUID) -> Any:
             ingestion.c.content_id.is_not(None),
         )
     )
-    return union(direct, supplemented)
+    contributions = (
+        campaign_contributions_query(campaign_id)
+        .with_only_columns(content_source_contributions_table.c.content_id.label("content_id"))
+        .order_by(None)
+    )
+    return union(direct, supplemented, contributions)
 
 
 def _unreversible_content_ids(campaign_id: UUID) -> Any:
