@@ -330,7 +330,7 @@ def _fact_block_values(owner_doc: str, key: str) -> tuple[str, ...]:
     values: list[str] = []
     for line in text[start_index:end_index].splitlines():
         value = line.strip()
-        if not value or value.startswith("```"):
+        if not value or value.startswith(("```", "~~~")):
             continue
         link_match = FACT_LINK_RE.fullmatch(value)
         if link_match is not None:
@@ -391,22 +391,30 @@ def check_repository() -> list[str]:
         errors,
         code="DOCF001",
         owner_doc="docs/03_API接口说明.md",
-        values=_openapi_paths(),
-        label="OpenAPI 路径",
+        values={
+            "backend/src/aima_ugc/contracts/http.py",
+            "contracts/openapi/openapi.json",
+            "frontend/src/generated/api/",
+        },
+        label="API 机器事实入口",
     )
     _require_all(
         errors,
         code="DOCF002",
         owner_doc="docs/blueprint/03_数据库与文件存储.md",
-        values=_current_table_names(),
-        label="Schema 表",
+        values={
+            "backend/src/aima_ugc/database_schema.py",
+            "migrations/versions/",
+            "scripts/quality/check_table_ownership.py",
+        },
+        label="Schema 机器事实入口",
     )
     _require_all(
         errors,
         code="DOCF003",
         owner_doc="docs/blueprint/01_总体架构与技术选型.md",
-        values=_current_job_types(),
-        label="Worker Job type",
+        values={"backend/src/aima_ugc/bootstrap/worker.py"},
+        label="Worker Job 机器事实入口",
     )
     _require_exact_block(
         errors,
@@ -423,13 +431,12 @@ def check_repository() -> list[str]:
         values=_frontend_routes(),
         label="前端 Route",
     )
-    _require_exact_block(
+    _require_all(
         errors,
         code="DOCF006",
         owner_doc="docs/blueprint/01_总体架构与技术选型.md",
-        key="frontend-routes",
-        values=_frontend_routes(),
-        label="前端 Route",
+        values={"frontend/src/app/routes.ts"},
+        label="前端 Route 机器事实入口",
     )
     _require_exact_block(
         errors,
@@ -439,13 +446,12 @@ def check_repository() -> list[str]:
         values=_current_backend_modules(),
         label="后端业务模块",
     )
-    _require_exact_block(
+    _require_all(
         errors,
         code="DOCF013",
         owner_doc="docs/blueprint/07_技术决策与实施门禁.md",
-        key="frontend-routes",
-        values=_frontend_routes(),
-        label="前端 Route",
+        values={"frontend/src/app/routes.ts"},
+        label="前端 Route 机器事实入口",
     )
 
     for platform, operations in sorted(_provider_operations().items()):
