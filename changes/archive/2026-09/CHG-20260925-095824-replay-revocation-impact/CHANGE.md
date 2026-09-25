@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260925-095824-replay-revocation-impact
 title: 校正采集运行全类型计数与数据导入撤销影响
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: fix/603-replay-revocation-impact
 created: 2026-09-25T09:58:24+08:00
