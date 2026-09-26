@@ -123,6 +123,15 @@ Issue #609 在 Implementation PR #612 合并后收到用户新增明确要求：
 | R2 | 重新完成 current-head CI/Review/Delivery | #609 / AC8 | explicitly_deferred | Ready 后由后续 PR current-head CI、独立 Review、merge/main-fresh/archive/closure 实际完成 |
 | R3 | 脚本优先且启停成对，三篇运行入口一致 | #609 / AC9 | satisfied | docs/02、Windows Guide、Production Operations 已统一脚本优先；start/stop 成对；Compose CLI 仅保留镜像准备、down/调试或脚本内部语义 |
 
+# 计划改动
+
+| 文件 | 修改 | 目的 |
+| --- | --- | --- |
+| docs/02_环境运行与部署.md | Linux/WSL、Windows、Section 10 改为 start/stop 脚本优先；Compose CLI 作为首次镜像准备/down 备用 | 统一总入口 |
+| docs/guides/03_Windows_Docker_Desktop_Compose运行.md | 推荐日常启停、WSL、服务器、真实 Windows 验证统一脚本优先且启停成对 | 统一 Windows 专项说明 |
+| docs/operations/01_生产部署与离线Release方案.md | 服务器运行成对展示 start/stop；Bundle 清单补齐脚本；清库特殊流程解释为何只需重新启动 | 统一 Production 说明 |
+| 当前 Change / PR | Requirement Traceability、CI/Review/Delivery | 完成交付闭环 |
+
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
@@ -135,6 +144,14 @@ Issue #609 在 Implementation PR #612 合并后收到用户新增明确要求：
 | 外部依赖 / 供应方探测 | not_applicable | 无外部事实 |
 | 构建 / 打包 / 运行 | not_applicable | 不改产物 |
 | 文档 / 治理 / 其他 | required | 链接、docs gates、Change Ready、CI/Review |
+
+# 文档、依赖、部署与发布影响
+
+- **长期文档**：仅同步三个现有运行文档的推荐入口；不新增新的运行手册。
+- **依赖 / Runtime**：不适用；没有新增、删除或升级依赖，也不修改 Runtime。
+- **配置 / Secret**：不适用；env.local / env.production 与 Secret 处理不变。
+- **部署 / Release**：不执行任何真实部署或 Release；只说明现有脚本的正确日常使用方式。
+- **兼容 / 消费方通知**：Compose CLI 仍保留用于首次镜像准备、down/清理和底层排障；已有操作方式没有被删除，只是不再作为首选日常入口。
 
 # 风险、兼容性、迁移与回滚
 
