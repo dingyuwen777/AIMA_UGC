@@ -51,6 +51,7 @@ Linux v3.1.1 上正在导入 24,874,335 行。Worker cgroup 的 `memory.current`
 | E4 | Chunk 在业务写入前锁 Campaign 父行；取消已有共享/独占 advisory 门 | `historical_import_worker.py`、`historical_cancellation.py` | 可保持取消互斥，把父行锁移至调度阶段 |
 | E5 | 两次 Replay 预检约 15 秒；一次完成入库约 96.7 秒，样本命中 428/6400 与 867/6400 | 同组服务器日志、`replay_shards.py` | 低命中单分片有依据，批量误降档仍需修正 |
 | E6 | PR 开始后 main 将 Windows Compose 指南改名，两处单元测试仍读旧路径 | main 文档导航提交与 CI 失败日志 | 合入 main 后同步测试引用，避免主分支漂移阻断性能回归 |
+| E7 | main 改为优先使用仓库启停脚本，旧测试仍要求日常 `docker compose up` 命令 | main 部署文档提交与第二轮 CI 失败日志 | 合入 main 后让文档 Contract 测试核对当前启动和停止入口 |
 
 推断：E1 与 E2 高度吻合，但旧版未记录脏页和宿主余量的同步快照；同类输入的真实提速需新版本复测。日志没有普通撤销/重筛撤回完成事件，不能量化其速度。
 
@@ -90,7 +91,7 @@ E1/E2 支持修正 cgroup 探测而非增加固定 Worker 数；E3/E4 支持缩�
 5. 对照 Issue 与上游要求完成审计，取得 PR/CI 和 Review 证据；服务器真实吞吐留待部署后对比。
 
 路径限定在 frontmatter 的 `affected_paths`。`tests/unit/jobs/test_worker_entrypoint.py` 复用既有回归，未作无关修改。
-同步最新 main 后，两处文档 Contract 测试只更新指南路径，不改变断言语义。
+同步最新 main 后，两处文档 Contract 测试更新指南路径；后续 main 更改日常启停入口，测试改为核对启动与停止脚本，保持其“文档与真实入口一致”的原有目的。
 
 # 验证矩阵
 
@@ -132,7 +133,7 @@ E1/E2 支持修正 cgroup 探测而非增加固定 Worker 数；E3/E4 支持缩�
 # 完成证据与状态
 
 - 本地：容量与 Worker 单元 24 passed；Ruff、Mypy、文档与项目 Ready Check 通过。原实现的服务器数值回归先红后绿。
-- main-fresh：已合入 main 文档导航提交；新指南路径的两处目标单元 2 passed。
+- main-fresh：已合入 main 文档导航与日常启停指南提交；新指南路径的两处目标单元 2 passed，启停入口目标单元 1 passed。
 - PostgreSQL 集成：首轮双 Worker 测试失败，定位到 `mark_chunk_running` 在写入前更新 Campaign 父行，使第二个 Worker 阻塞。已把此更新移到写入后的调度阶段，待 Linux CI 重新验证；本地 Docker daemon 不可用，现有集成 fixture 会清库，因此未触碰用户本地库。
 - PR：[ #611 ](https://github.com/dingyuwen777/AIMA_UGC/pull/611) 已创建；首次正式 CI 因 canonical Change 标题缺失失败，此文件补齐后需重新运行。
 - 生产：未部署、未重启、未操作正在运行的导入；无法声称真实吞吐已提升。合并、归档、清理均须在必需 CI/Review 后完成。
