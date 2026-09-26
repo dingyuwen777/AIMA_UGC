@@ -353,6 +353,19 @@ def test_all_replay_planner_freezes_admission_artifact_boundary(tmp_path: Path) 
         assert accepted.json()["planning_status"] == "queued"
         assert accepted.json()["artifact_count"] == 0
         request_id = UUID(accepted.json()["request_id"])
+        with runtime.database.engine.begin() as connection:
+            planner_job_id = connection.scalar(
+                select(canonical_replay_all_requests_table.c.planner_job_id).where(
+                    canonical_replay_all_requests_table.c.id == request_id
+                )
+            )
+            assert isinstance(planner_job_id, UUID)
+            # 测试显式控制调度：让“受理后新 Import”先完成，避免依赖 queued Job 的领取顺序。
+            connection.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == planner_job_id)
+                .values(available_at=text("clock_timestamp() + interval '5 minutes'"))
+            )
 
         later_artifact = _import_canonical(
             client,
@@ -362,6 +375,13 @@ def test_all_replay_planner_freezes_admission_artifact_boundary(tmp_path: Path) 
             brand_ids=(brand_id,),
             expected_rows_ingested=1,
         )
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == planner_job_id)
+                .values(available_at=text("clock_timestamp()"))
+            )
+
         planned = _run_until_all_replay_planned(
             client,
             runtime,
