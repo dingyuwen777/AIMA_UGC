@@ -2,7 +2,7 @@
 
 本文说明在 Windows 开发机上，不进入 WSL 终端，直接从 CMD 或 PowerShell 使用 Docker Compose CLI 或仓库启停脚本运行和维护 AIMA_UGC 的完整 Docker Runtime。
 
-它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)、[`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)、[`docs/operations/01_生产部署与离线Release方案.md`](../operations/01_生产部署与离线Release方案.md) 为准。
+它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)、[`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md)、[`docs/operations/01_生产部署与离线Release方案.md`](../operations/01_生产部署与离线Release方案.md) 为准。
 
 Docker Hub mirrors、构建期包源、缓存和项目级重置见 [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
 

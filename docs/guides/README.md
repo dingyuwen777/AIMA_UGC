@@ -8,7 +8,7 @@ docs/guides/ 只放**开发者或协作者在 AIMA 项目里怎么操作**的说
 
 1. [docs/guides/01_Figma与前端设计开发工作流.md](01_Figma与前端设计开发工作流.md)：AIMA Figma 与 Vue / Generated Client / Feature Owner 的项目接线；
 2. [docs/guides/02_管理员配置Figma开发基线.md](02_管理员配置Figma开发基线.md)：管理员配置正式节点与代码 Owner；
-3. [docs/guides/03_Windows Docker Desktop Compose运行.md](03_Windows Docker Desktop Compose运行.md)：Windows Docker Desktop 完整 Runtime；
+3. [docs/guides/03_Windows_Docker_Desktop_Compose运行.md](03_Windows_Docker_Desktop_Compose运行.md)：Windows Docker Desktop 完整 Runtime；
 4. [docs/guides/04_Docker国内构建源与本地重置.md](04_Docker国内构建源与本地重置.md)：镜像/包下载通道、缓存和项目级重置；
 5. [docs/guides/05_多人协作与Change自动归档.md](05_多人协作与Change自动归档.md)：AIMA 的 Requirement / Change / PR / 归档机器接线；
 6. [docs/guides/06_本地Release离线包构建.md](06_本地Release离线包构建.md)：Windows 本地生成和验证离线 Release Bundle；
