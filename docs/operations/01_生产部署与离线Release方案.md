@@ -264,6 +264,10 @@ SHA256SUMS
 ```text
 images.tar
 compose.yaml
+compose.windows.yaml
+start_compose.py
+stop_compose.py
+reset_keep_vehicle_catalog.sh
 env.production.example
 release-manifest.json
 migration-manifest.json
@@ -445,7 +449,9 @@ Backup Set = PostgreSQL + ArtifactStore
 
 ### 明确要求清空业务数据时
 
-Linux Release 包提供 [`scripts/deploy/reset_keep_vehicle_catalog.sh`](../../scripts/deploy/reset_keep_vehicle_catalog.sh)。它是**重置工具，不是 Backup/Restore**。从 Release 根目录运行，先预检，再在确认不需要保留既有业务数据和 Artifact 后执行：
+Linux Release 包提供 [`scripts/deploy/reset_keep_vehicle_catalog.sh`](../../scripts/deploy/reset_keep_vehicle_catalog.sh)。它是**重置工具，不是 Backup/Restore**。重置脚本本身会先停止业务服务并在结束后保持停止状态，因此这里**不需要再额外执行 `stop_compose.py`**；确认结果后只用启动脚本恢复服务。
+
+从 Release 根目录运行，先预检，再在确认不需要保留既有业务数据和 Artifact 后执行：
 
 ```bash
 bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --dry-run

@@ -367,19 +367,20 @@ docker system prune -a --volumes
 
 ## 10. WSL2 模式
 
-如果仓库位于 WSL2 Linux 文件系统并从 WSL shell 运行 Compose，可直接使用根 [`compose.yaml`](../../compose.yaml)。同样先使用 `env.local`，模板默认：
+如果仓库位于 WSL2 Linux 文件系统并从 WSL shell 运行完整 Compose，同样优先使用仓库启停脚本：
+
+```bash
+python scripts/deploy/start_compose.py --env-file env.local
+python scripts/deploy/stop_compose.py --env-file env.local
+```
+
+模板默认：
 
 ```dotenv
 AIMA_HOST_ROOT=./.runtime/compose
 ```
 
-启动：
-
-```bash
-docker compose --env-file env.local up -d --build --wait
-```
-
-这是 Linux bind-mount 模型，包括 PostgreSQL、Artifact、日志和内部 Secret 都位于该 Linux Host Root 下。
+这是 Linux bind-mount 模型，包括 PostgreSQL、Artifact、日志和内部 Secret 都位于该 Linux Host Root 下。首次没有镜像时仍需先使用根 [`compose.yaml`](../../compose.yaml) 完成 build / pull；脚本本身不负责拉取或构建镜像。
 
 如果直接从 Windows CMD / PowerShell 启动，则使用：
 
@@ -401,11 +402,14 @@ AIMA_HISTORICAL_IMPORT_HOST_ROOT=/data/aima-historical-input
 AIMA_HISTORICAL_IMPORT_ROOT=/data/aima-historical-input
 ```
 
-服务器启动仍是：
+正式服务器使用离线 Release 包时，推荐启停入口同样是成对脚本：
 
 ```bash
-docker compose --env-file env.production up -d --build --wait
+python3 start_compose.py --env-file /data/AIMA_UGC/env.production
+python3 stop_compose.py --env-file /data/AIMA_UGC/env.production
 ```
+
+这里的脚本位于解压后的 Release 包根目录；它们使用已导入镜像，不在服务器现场 build / pull。完整部署语义见 [`docs/operations/01_生产部署与离线Release方案.md`](../operations/01_生产部署与离线Release方案.md)。
 
 服务器继续使用 Linux bind mount：
 
@@ -436,11 +440,17 @@ GitHub Hosted Windows Runner 本身不提供当前仓库可依赖的 Docker Desk
 
 - [`scripts/setup_dev_environment.cmd`](../../scripts/setup_dev_environment.cmd)
 
-随后：
+首次需要镜像时先按第 4 节完成 build / pull；随后使用推荐脚本启动并验证：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local up -d --build --wait
+python .\scripts\deploy\start_compose.py --env-file .\env.local
 curl.exe -f http://127.0.0.1:8080/health/ready
+```
+
+验证结束后如需停止：
+
+```powershell
+python .\scripts\deploy\stop_compose.py --env-file .\env.local
 ```
 
 并检查：
