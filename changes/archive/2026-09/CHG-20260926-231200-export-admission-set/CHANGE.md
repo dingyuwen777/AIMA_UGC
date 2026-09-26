@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260926-231200-export-admission-set
 title: 用数据库集合操作冻结 Excel 导出目标
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/618-export-admission
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 completion_gate: required
 depends_on: []
 affected_areas:
