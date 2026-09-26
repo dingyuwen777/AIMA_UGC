@@ -119,9 +119,15 @@ Issue #609 在 Implementation PR #612 合并后收到用户新增明确要求：
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 前一轮路径/编号/速查基础保持成立 | #609 / AC1-AC7 | satisfied | 当前 main 0ff0359 已包含 PR #612 + Archive |
-| R2 | 重新完成 current-head CI/Review/Delivery | #609 / AC8 | explicitly_deferred | Ready 后由后续 PR current-head CI、独立 Review、merge/main-fresh/archive/closure 实际完成 |
-| R3 | 脚本优先且启停成对，三篇运行入口一致 | #609 / AC9 | satisfied | docs/02、Windows Guide、Production Operations 已统一脚本优先；start/stop 成对；Compose CLI 仅保留镜像准备、down/调试或脚本内部语义 |
+| R1 | Windows Guide 无空格路径且旧引用清零 | #609 / AC1 | satisfied | 当前 main 0ff0359 已包含 PR #612；Guide 为 `03_Windows_Docker_Desktop_Compose运行.md` |
+| R2 | Active Roadmap 连续编号并同步引用 | #609 / AC2 | satisfied | 当前 main 0ff0359 已为 01 生产上线、02 4000万迁移 |
+| R3 | docs/02 第一屏覆盖四种环境启停 | #609 / AC3 | satisfied | 当前 main 0ff0359 已交付四类速查；本次进一步将 Compose 场景改为脚本优先 |
+| R4 | 速查来自真实入口、启停成对、专项 Owner 不重复 | #609 / AC4 | satisfied | 本次对照 start/stop/release bundle；三篇文档脚本成对，专项细节仍留原 Owner |
+| R5 | docs/02 顶部为唯一快速导航 | #609 / AC5 | satisfied | 当前 main 已删除末尾重复“一句话导航” |
+| R6 | 链接可解析且旧路径无残留 | #609 / AC6 | satisfied | PR #612 current-head docs gates 与独立 Review 已通过；当前 main 保持该结构 |
+| R7 | 不改变产品/Runtime/Contract/Schema/Compose/Deploy 语义 | #609 / AC7 | satisfied | 前一轮和本次均仅文档/Change；本次不修改任何运行脚本或 Compose |
+| R8 | current-head CI/Review 与交付闭环 | #609 / AC8 | explicitly_deferred | Ready 后由本 PR current-head CI、独立 Review、merge/main-fresh/archive/closure 实际完成 |
+| R9 | Compose/Release 脚本优先且启停成对 | #609 / AC9 | satisfied | docs/02、Windows Guide、Production Operations 已统一脚本优先；start/stop 成对；Compose CLI 仅保留镜像准备、down/调试或脚本内部语义 |
 
 # 计划改动
 
