@@ -3,10 +3,6 @@ import type { RouteRecordRaw } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
 import NoAccessView from '../views/NoAccessView.vue'
-import CollectionRuntimePage from '../features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue'
-import CollectionStrategyPage from '../features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue'
-import VoicePlazaPage from '../features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue'
-import AdminConfigurationPage from '../features/admin-configuration/pages/AdminConfigurationPage.vue'
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -30,22 +26,24 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/voice-plaza',
     name: 'voice-plaza',
-    component: VoicePlazaPage,
+    component: () => import('../features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue'),
   },
   {
     path: '/collection-runtime',
     name: 'collection-runtime',
-    component: CollectionRuntimePage,
+    component: () =>
+      import('../features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue'),
   },
   {
     path: '/collection-strategy',
     name: 'collection-strategy',
-    component: CollectionStrategyPage,
+    component: () =>
+      import('../features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue'),
   },
   {
     path: '/admin/configuration',
     name: 'admin-configuration',
-    component: AdminConfigurationPage,
+    component: () => import('../features/admin-configuration/pages/AdminConfigurationPage.vue'),
     meta: { requiresAdministrator: true },
   },
 ]
