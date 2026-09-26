@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from aima_ugc.contracts.administration import VehicleModelCreateRequest
-from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest, BrandUpdateRequest
 from aima_ugc.entrypoints.api_main import create_app
 from pydantic import ValidationError
 
@@ -90,3 +90,19 @@ def test_vehicle_contract_exposes_brand_id_and_snapshot_has_stage2_scope() -> No
         "ambiguous_vehicle_aliases",
         "unresolved_active_vehicle_ids",
     } <= set(snapshot["properties"])
+
+
+def test_brand_update_contract_accepts_atomic_alias_replacement() -> None:
+    """品牌编辑必须能在一个业务事务中同时提交基础字段与完整识别词集合。"""
+
+    request = BrandUpdateRequest.model_validate(
+        {
+            "display_name": "爱玛更新",
+            "role": "owned",
+            "aliases": ["爱玛", " AIMA ", "爱玛"],
+        }
+    )
+
+    assert request.aliases == ("爱玛", "AIMA")
+    schema = create_app().openapi()["components"]["schemas"]["BrandUpdateRequest"]
+    assert "aliases" in schema["properties"]

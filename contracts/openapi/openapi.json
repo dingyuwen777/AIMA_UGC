@@ -1231,6 +1231,21 @@
       "BrandUpdateRequest": {
         "additionalProperties": false,
         "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -1418,7 +1433,7 @@
       },
       "CanonicalReplayAllCreatedResponse": {
         "additionalProperties": false,
-        "description": "全历史 Replay 已冻结并排队后的有界摘要。",
+        "description": "全历史 Replay 的快速受理或已完成规划摘要。",
         "properties": {
           "artifact_count": {
             "minimum": 0.0,
@@ -1436,6 +1451,15 @@
             "default": 1000,
             "title": "Batch Size",
             "type": "integer"
+          },
+          "planning_status": {
+            "default": "planned",
+            "enum": [
+              "queued",
+              "planned"
+            ],
+            "title": "Planning Status",
+            "type": "string"
           },
           "request_id": {
             "format": "uuid",

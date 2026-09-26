@@ -155,34 +155,40 @@ class PostgresVehicleCatalogRepository:
         brand_id: UUID | None = None,
         series_name: str | None = None,
         category_name: str | None = None,
+        timings: StageTimings | None = None,
     ) -> VehicleModel:
-        """创建车型并在同一事务追加目录版本和别名。"""
+        """创建车型并在同一事务追加目录版本和别名；可选记录真实数据库阶段。"""
 
-        catalog_version = self.next_catalog_version(reason="vehicle_created", actor_ref=actor_ref)
+        with timings.measure("catalog_version") if timings else nullcontext():
+            catalog_version = self.next_catalog_version(
+                reason="vehicle_created", actor_ref=actor_ref
+            )
         model_id = uuid4()
         now = beijing_now()
-        row = (
-            self._session.execute(
-                insert(vehicle_models_table)
-                .values(
-                    id=model_id,
-                    code=code,
-                    display_name=display_name,
-                    brand_id=brand_id,
-                    series_name=series_name,
-                    category_name=category_name,
-                    status="active",
-                    version=1,
-                    catalog_version=catalog_version,
-                    created_at=now,
-                    updated_at=now,
+        with timings.measure("model_insert") if timings else nullcontext():
+            row = (
+                self._session.execute(
+                    insert(vehicle_models_table)
+                    .values(
+                        id=model_id,
+                        code=code,
+                        display_name=display_name,
+                        brand_id=brand_id,
+                        series_name=series_name,
+                        category_name=category_name,
+                        status="active",
+                        version=1,
+                        catalog_version=catalog_version,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    .returning(vehicle_models_table)
                 )
-                .returning(vehicle_models_table)
+                .mappings()
+                .one()
             )
-            .mappings()
-            .one()
-        )
-        self._replace_aliases(model_id, aliases, created_at=now)
+        with timings.measure("alias_replace") if timings else nullcontext():
+            self._replace_aliases(model_id, aliases, created_at=now)
         return _vehicle_from_row(row)
 
     def get_model(self, model_id: UUID, *, for_update: bool = False) -> VehicleModel | None:
@@ -314,7 +320,7 @@ class PostgresVehicleCatalogRepository:
                 brand_status = self._session.scalar(
                     select(vehicle_brands_table.c.status)
                     .where(vehicle_brands_table.c.id == requested_brand_id)
-                    .with_for_update()
+                    .with_for_update(key_share=True)
                 )
             if brand_status != "active":
                 raise RuntimeError("active 车型只能绑定有效 active 品牌")

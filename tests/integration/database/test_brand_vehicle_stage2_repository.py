@@ -24,6 +24,7 @@ from aima_ugc.modules.vehicles.tables import (
     content_brand_evidence_table,
     content_brand_review_locks_table,
     content_vehicle_review_locks_table,
+    vehicle_brands_table,
     vehicle_catalog_versions_table,
 )
 from aima_ugc.platform.config import load_settings
@@ -304,3 +305,103 @@ def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_l
             assert active_brand_evidence == (("manual_review", None, None, True),)
     finally:
         session.close()
+
+
+def test_active_brand_guard_is_compatible_with_foreign_key_key_share(runtime) -> None:  # type: ignore[no-untyped-def]
+    """Replay/FK 的 KEY SHARE 不应把只验证 active Brand 的车型保存阻塞成慢请求。"""
+
+    principal = _principal()
+    brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+        BrandCreateRequest(
+            display_name="并发品牌",
+            role="owned",
+            aliases=("并发品牌",),
+        ),
+        principal=principal,
+        request_id="stage2-key-share-brand",
+    )
+    key_share = runtime.database.new_session()
+    guard = runtime.database.new_session()
+    try:
+        with key_share.begin():
+            key_share.execute(
+                select(vehicle_brands_table.c.id)
+                .where(vehicle_brands_table.c.id == brand.id)
+                .with_for_update(read=True, key_share=True)
+            )
+            with guard.begin():
+                guard.execute(text("SET LOCAL lock_timeout = '100ms'"))
+                active = PostgresBrandVehicleRepository(guard).require_active_brand(brand.id)
+                assert active.id == brand.id
+                assert active.status == "active"
+    finally:
+        key_share.close()
+        guard.close()
+
+
+def test_brand_update_replaces_aliases_with_one_catalog_version(runtime) -> None:  # type: ignore[no-untyped-def]
+    """一次品牌编辑原子替换 Alias，且只推进一个 Catalog Version。"""
+
+    principal = _principal()
+    service = PostgresBrandVehicleHttpService(runtime)
+    created = service.create_brand(
+        BrandCreateRequest(
+            display_name="原品牌",
+            role="owned",
+            aliases=("旧词一", "旧词二"),
+        ),
+        principal=principal,
+        request_id="brand-atomic-create",
+    )
+    updated = service.update_brand(
+        created.id,
+        BrandUpdateRequest(
+            display_name="新品牌",
+            aliases=("新词", " NEW ", "新词"),
+        ),
+        principal=principal,
+        request_id="brand-atomic-update",
+    )
+
+    assert updated.display_name == "新品牌"
+    assert updated.catalog_version == created.catalog_version + 1
+    assert {alias.text for alias in updated.aliases} == {"新词", "NEW"}
+    assert service.get_brand(created.id).aliases == updated.aliases
+
+
+def test_active_brand_guard_still_blocks_concurrent_brand_deprecation(runtime) -> None:  # type: ignore[no-untyped-def]
+    """NO KEY UPDATE 可与 FK KEY SHARE 共存，但仍阻止会改变 Brand 行的停用写。"""
+
+    principal = _principal()
+    brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+        BrandCreateRequest(
+            display_name="互斥品牌",
+            role="owned",
+            aliases=("互斥品牌",),
+        ),
+        principal=principal,
+        request_id="stage2-brand-write-guard",
+    )
+    guard = runtime.database.new_session()
+    writer = runtime.database.new_session()
+    guard_transaction = guard.begin()
+    try:
+        active = PostgresBrandVehicleRepository(guard).require_active_brand(brand.id)
+        assert active.status == "active"
+        writer.execute(text("SET LOCAL lock_timeout = '100ms'"))
+        with pytest.raises(OperationalError):
+            PostgresBrandVehicleRepository(writer).update_brand(
+                brand.id,
+                display_name=None,
+                role=None,
+                status="deprecated",
+                actor_ref=principal.principal_id,
+            )
+        writer.rollback()
+    finally:
+        if guard_transaction.is_active:
+            guard_transaction.rollback()
+        guard.close()
+        writer.close()
+
+    assert PostgresBrandVehicleHttpService(runtime).get_brand(brand.id).status == "active"

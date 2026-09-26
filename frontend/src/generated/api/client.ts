@@ -483,6 +483,7 @@ export const BrandUpdateRequestStatus = {
 } as const;
 
 export interface BrandUpdateRequest {
+  aliases?: string[] | null;
   display_name?: string | null;
   role?: BrandUpdateRequestRole;
   status?: BrandUpdateRequestStatus;
@@ -586,14 +587,23 @@ export interface CanonicalReplayAllCreateRequest {
   idempotency_key: string;
 }
 
+export type CanonicalReplayAllCreatedResponsePlanningStatus = typeof CanonicalReplayAllCreatedResponsePlanningStatus[keyof typeof CanonicalReplayAllCreatedResponsePlanningStatus];
+
+
+export const CanonicalReplayAllCreatedResponsePlanningStatus = {
+  queued: 'queued',
+  planned: 'planned',
+} as const;
+
 /**
- * 全历史 Replay 已冻结并排队后的有界摘要。
+ * 全历史 Replay 的快速受理或已完成规划摘要。
  */
 export interface CanonicalReplayAllCreatedResponse {
   /** @minimum 0 */
   artifact_count: number;
   artifacts_per_run?: 100;
   batch_size?: 1000;
+  planning_status?: CanonicalReplayAllCreatedResponsePlanningStatus;
   request_id: string;
   /** @minimum 0 */
   run_count: number;

@@ -223,6 +223,7 @@ def test_admin_can_queue_all_replayable_canonical_artifacts() -> None:
     assert response.status_code == 202
     assert response.json() == {
         "request_id": str(_REQUEST_ID),
+        "planning_status": "planned",
         "artifact_count": 205,
         "run_count": 3,
         "artifacts_per_run": 100,
@@ -352,3 +353,11 @@ def test_replay_request_rejects_ambiguous_selection_before_service(body: dict[st
 
     assert response.status_code == 422
     assert service.created is None
+
+
+def test_all_replay_admission_exposes_planning_state() -> None:
+    """全历史重筛受理与后台规划必须能被调用方区分。"""
+
+    schema = create_app().openapi()["components"]["schemas"]["CanonicalReplayAllCreatedResponse"]
+    assert "planning_status" in schema["properties"]
+    assert set(schema["properties"]["planning_status"]["enum"]) == {"queued", "planned"}

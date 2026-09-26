@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, text
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -73,7 +73,7 @@ from aima_ugc.modules.vehicles.brand_vehicle import (
 )
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.capacity import (
-    AdaptiveBatchController,
+    AdaptiveTierBatchController,
     detect_resources,
     worker_process_limit,
 )
@@ -99,6 +99,38 @@ _SHARD_SAMPLE_ROWS_PER_ARTIFACT = 64
 _PROVEN_SAMPLE_ROWS_LIMIT = 256
 _LEDGER_INSERT_ROWS = 1000
 _MAX_PROOF_SOURCE_EXPECTATIONS = 1000
+_REPLAY_LOCK_TIMEOUT = "3s"
+
+
+def _replay_batch_tiers(max_rows: int) -> tuple[int, ...]:
+    """从冻结上限生成逐级批量；1000 行默认先从 125 行开始验证墙钟。"""
+
+    if max_rows < 1:
+        raise ValueError("Replay 批量上限必须为正整数")
+    candidates = (
+        max(1, max_rows // 16),
+        max(1, max_rows // 8),
+        max(1, max_rows // 4),
+        max(1, max_rows // 2),
+        max_rows,
+    )
+    return tuple(sorted(set(candidates)))
+
+
+def _new_replay_batch_tuner(max_rows: int) -> AdaptiveTierBatchController | None:
+    """父 Replay 与持久分片共用相同墙钟/资源反馈，不留下固定大批次旁路。"""
+
+    tiers = _replay_batch_tiers(max_rows)
+    if len(tiers) == 1:
+        return None
+    return AdaptiveTierBatchController(
+        tiers=tiers,
+        improvement_margin=0.20,
+        transaction_ceiling_ms=3_000,
+        rows_per_cpu_core=1_000,
+        memory_mib_per_1000_rows=1_024,
+    )
+
 
 # 结构变动由 Schema 摘要检测；非 Schema 可见的来源/Validator 语义改变时须提升此版本。
 _VALIDATION_VERSION = (
@@ -132,7 +164,7 @@ class PostgresCanonicalReplayJobExecutor:
     ) -> JobHandlerResult:
         """接管先重新预检全部输入；随后从已提交 checkpoint 继续。"""
 
-        batch_tuner: AdaptiveBatchController | None = None
+        batch_tuner: AdaptiveTierBatchController | None = None
         phase = "load_execution"
         artifact_ordinal: int | None = None
         skipped_revoked_artifacts = 0
@@ -156,12 +188,7 @@ class PostgresCanonicalReplayJobExecutor:
         }
         try:
             run, selected = self._load_execution(payload.run_id, fence)
-            if run.batch_size > 1:
-                batch_tuner = AdaptiveBatchController(
-                    lower=max(1, run.batch_size // 2),
-                    upper=run.batch_size,
-                    improvement_margin=0.20,
-                )
+            batch_tuner = _new_replay_batch_tuner(run.batch_size)
             if run.checkpoint_artifact_ordinal >= run.artifact_count:
                 return JobHandlerResult.succeeded(_result(run))
 
@@ -476,6 +503,7 @@ class PostgresCanonicalReplayJobExecutor:
         ordinal = int(shard["ordinal"])
         shard_count = int(shard["shard_count"])
         reader = CanonicalArtifactReader(store=self._runtime.artifact_store)
+        batch_tuner = _new_replay_batch_tuner(run.batch_size)
         metrics = {
             "batch_count": 0,
             "artifact_read_ms": 0,
@@ -513,7 +541,33 @@ class PostgresCanonicalReplayJobExecutor:
                 while True:
                     if context.cancel_requested():
                         raise LeaseLostError("Replay 分片已取消")
-                    raw_batch = tuple(islice(iterator, run.batch_size))
+                    resources = detect_resources()
+                    if batch_tuner is None:
+                        proposed_size, reason, previous = (
+                            run.batch_size,
+                            "frozen_single_row",
+                            None,
+                        )
+                    else:
+                        proposed_size, reason, previous = batch_tuner.choose(resources)
+                    if previous != proposed_size:
+                        log_event(
+                            self._runtime.logger,
+                            logging.INFO,
+                            "capacity.replay_shard_batch_selected",
+                            "Replay 分片批量调整",
+                            run_id=str(run.id),
+                            shard_id=str(shard_id),
+                            previous_rows=previous,
+                            selected_rows=proposed_size,
+                            frozen_max_rows=run.batch_size,
+                            reason=reason,
+                        )
+                    artifact_read_started = perf_counter()
+                    raw_batch = tuple(islice(iterator, proposed_size))
+                    metrics["artifact_read_ms"] += int(
+                        (perf_counter() - artifact_read_started) * 1000
+                    )
                     if not raw_batch:
                         run = self._advance_empty_artifact(
                             run, current, fence=fence, shard_id=shard_id
@@ -525,6 +579,7 @@ class PostgresCanonicalReplayJobExecutor:
                         if _identity_shard(content, shard_count) == ordinal
                     )
                     if owned:
+                        batch_started = perf_counter()
                         try:
                             run = self._ingest_batch(
                                 run,
@@ -541,6 +596,12 @@ class PostgresCanonicalReplayJobExecutor:
                                 run, current, fence=fence, shard_id=shard_id
                             )
                             break
+                        if batch_tuner is not None:
+                            batch_tuner.succeeded(
+                                size=proposed_size,
+                                rows=len(raw_batch),
+                                duration_ms=int((perf_counter() - batch_started) * 1000),
+                            )
                     else:
                         run = self._advance_filtered_batch(
                             run, current, len(raw_batch), fence=fence, shard_id=shard_id
@@ -980,6 +1041,8 @@ class PostgresCanonicalReplayJobExecutor:
         transaction_started = perf_counter()
         try:
             with session.begin():
+                # 后台重筛遇到在线事务锁竞争时主动让路；超时会回滚本批并进入 Job retry。
+                session.execute(text(f"SET LOCAL lock_timeout = '{_REPLAY_LOCK_TIMEOUT}'"))
                 # 这里只做无锁资格检查；提交前由 repository.advance 获取 Job 行锁并
                 # 再次验证 Fence。取消/接管可在长批次中写入状态，旧事务随后整体回滚。
                 PostgresJobRepository(session).validate_current_execution(fence)

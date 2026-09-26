@@ -292,9 +292,10 @@ class PostgresBrandVehicleRepository:
         display_name: str | None,
         role: BrandRole | None,
         status: BrandStatus | None,
+        aliases: tuple[str, ...] | None = None,
         actor_ref: str,
     ) -> BrandRecord:
-        """更新 Brand；仍有 active Vehicle 时禁止停用，避免悬空语义。"""
+        """原子更新 Brand 与完整 Alias 集合；一次用户保存只推进一个 Catalog Version。"""
 
         current = self.get_brand(brand_id, for_update=True)
         if current is None:
@@ -313,10 +314,11 @@ class PostgresBrandVehicleRepository:
         catalog_version = self._vehicle_catalog.next_catalog_version(
             reason="brand_updated", actor_ref=actor_ref
         )
+        now = beijing_now()
         values: dict[str, object] = {
             "version": current.version + 1,
             "catalog_version": catalog_version,
-            "updated_at": beijing_now(),
+            "updated_at": now,
         }
         if display_name is not None:
             values["display_name"] = display_name
@@ -334,6 +336,8 @@ class PostgresBrandVehicleRepository:
             .mappings()
             .one()
         )
+        if aliases is not None:
+            self._replace_brand_aliases(brand_id, aliases, created_at=now)
         return _brand_from_row(row)
 
     def delete_unreferenced_brand(self, brand_id: UUID, *, actor_ref: str) -> bool:
@@ -430,10 +434,20 @@ class PostgresBrandVehicleRepository:
         return True
 
     def require_active_brand(self, brand_id: UUID) -> BrandRecord:
-        # 与 Brand 停用/删除串行化，避免并发产生 active Vehicle -> deprecated Brand。
-        brand = self.get_brand(brand_id, for_update=True)
-        if brand is None:
+        """用 NO KEY UPDATE 验证 active Brand，兼容 Evidence 外键的 KEY SHARE。"""
+
+        row = (
+            self._session.execute(
+                select(vehicle_brands_table)
+                .where(vehicle_brands_table.c.id == brand_id)
+                .with_for_update(key_share=True)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
             raise LookupError(brand_id)
+        brand = _brand_from_row(row)
         if brand.status != "active":
             raise RuntimeError("车型只能绑定 active 品牌")
         return brand
@@ -1447,6 +1461,22 @@ class PostgresBrandVehicleRepository:
                     for alias in aliases
                 ],
             )
+
+    def _replace_brand_aliases(
+        self,
+        brand_id: UUID,
+        aliases: tuple[str, ...],
+        *,
+        created_at: datetime,
+    ) -> None:
+        """在调用方同一目录事务中替换完整 Alias 集合，不额外推进 Catalog Version。"""
+
+        self._session.execute(
+            delete(vehicle_brand_aliases_table).where(
+                vehicle_brand_aliases_table.c.brand_id == brand_id
+            )
+        )
+        self._insert_brand_aliases(brand_id, aliases, created_at=created_at)
 
     def _touch_brand(
         self,

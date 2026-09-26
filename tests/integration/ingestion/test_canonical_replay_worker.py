@@ -28,6 +28,9 @@ from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpSer
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
+from aima_ugc.bootstrap.canonical_replay_planner_worker import (
+    PostgresCanonicalReplayPlanJobExecutor,
+)
 from aima_ugc.bootstrap.canonical_replay_reversal_worker import (
     PostgresCanonicalReplayReversalJobExecutor,
 )
@@ -63,6 +66,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
     canonical_replay_content_changes_table,
+    canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
     canonical_replay_seen_content_table,
     canonical_replay_validation_proofs_table,
@@ -78,7 +82,7 @@ from aima_ugc.modules.vehicles.tables import (
     content_vehicle_evidence_table,
 )
 from aima_ugc.platform.config import load_settings
-from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
+from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from fastapi.testclient import TestClient
@@ -275,13 +279,191 @@ def _create_replay(
     return response.json()
 
 
-def _create_all_replay(client: TestClient, *, idempotency_key: str) -> dict[str, object]:
+def _run_until_all_replay_planned(
+    client: TestClient,
+    runtime: PlatformRuntime,
+    *,
+    idempotency_key: str,
+    max_jobs: int = 8,
+) -> dict[str, object]:
+    """异步队列允许先处理其它 Job；只以父请求 planned 事实判定 Planner 完成。"""
+
+    worker = _worker(runtime, suffix=f"plan-{uuid4()}")
+    for _ in range(max_jobs):
+        assert worker.run_once() is True
+        planned = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": idempotency_key},
+        )
+        assert planned.status_code == 202, planned.text
+        if planned.json()["planning_status"] == "planned":
+            return planned.json()
+    pytest.fail("全历史 Replay Planner 未在测试预算内完成")
+
+
+def _create_all_replay(
+    client: TestClient,
+    runtime: PlatformRuntime,
+    *,
+    idempotency_key: str,
+) -> dict[str, object]:
+    """测试辅助入口先验证快速受理，再等待正式 Planner 持久化规划结果。"""
+
     response = client.post(
         "/api/v1/canonical-replays/all",
         json={"idempotency_key": idempotency_key},
     )
     assert response.status_code == 202
-    return response.json()
+    assert response.json()["planning_status"] == "queued"
+    return _run_until_all_replay_planned(
+        client,
+        runtime,
+        idempotency_key=idempotency_key,
+    )
+
+
+def test_all_replay_planner_freezes_admission_artifact_boundary(tmp_path: Path) -> None:
+    """受理后新建的 Canonical 不得被后台 Planner 静默加入既有全量请求。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        first_artifact = _import_canonical(
+            client,
+            runtime,
+            filename="planner-before.xlsx",
+            rows=(("planner-before", "星曜规划前"),),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+
+        key = f"planner-boundary-{uuid4()}"
+        accepted = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": key},
+        )
+        assert accepted.status_code == 202
+        assert accepted.json()["planning_status"] == "queued"
+        assert accepted.json()["artifact_count"] == 0
+        request_id = UUID(accepted.json()["request_id"])
+        with runtime.database.engine.begin() as connection:
+            planner_job_id = connection.scalar(
+                select(canonical_replay_all_requests_table.c.planner_job_id).where(
+                    canonical_replay_all_requests_table.c.id == request_id
+                )
+            )
+            assert isinstance(planner_job_id, UUID)
+            # 测试显式控制调度：让“受理后新 Import”先完成，避免依赖 queued Job 的领取顺序。
+            connection.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == planner_job_id)
+                .values(available_at=text("clock_timestamp() + interval '5 minutes'"))
+            )
+
+        later_artifact = _import_canonical(
+            client,
+            runtime,
+            filename="planner-after.xlsx",
+            rows=(("planner-after", "星曜规划后"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == planner_job_id)
+                .values(available_at=text("clock_timestamp()"))
+            )
+
+        planned = _run_until_all_replay_planned(
+            client,
+            runtime,
+            idempotency_key=key,
+        )
+        assert planned["artifact_count"] == 1
+        with runtime.database.engine.connect() as connection:
+            selected = set(
+                connection.scalars(
+                    select(canonical_replay_run_artifacts_table.c.artifact_id)
+                    .join(
+                        canonical_replay_runs_table,
+                        canonical_replay_runs_table.c.id
+                        == canonical_replay_run_artifacts_table.c.run_id,
+                    )
+                    .where(canonical_replay_runs_table.c.all_request_id == request_id)
+                )
+            )
+        assert selected == {first_artifact}
+        assert later_artifact not in selected
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_planner_failure_is_persisted_and_same_key_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Planner 永久失败必须进入父状态；同幂等键不能伪装成仍在排队。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(canonical_replay_service=PostgresCanonicalReplayHttpService(runtime))
+        )
+
+        def fail_plan(self, *, payload, fence, context):  # type: ignore[no-untyped-def]
+            del self, payload, fence, context
+            return JobHandlerResult.failed("forced_planner_failure")
+
+        monkeypatch.setattr(PostgresCanonicalReplayPlanJobExecutor, "execute", fail_plan)
+        key = f"planner-failure-{uuid4()}"
+        accepted = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": key},
+        )
+        assert accepted.status_code == 202
+        request_id = UUID(accepted.json()["request_id"])
+        assert _worker(runtime, suffix="planner-failure").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            job = (
+                connection.execute(
+                    select(jobs_table).where(jobs_table.c.id == request["planner_job_id"])
+                )
+                .mappings()
+                .one()
+            )
+        assert request["planning_status"] == "failed"
+        assert job["status"] == "failed"
+        assert job["error_code"] == "forced_planner_failure"
+
+        retried = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": key},
+        )
+        assert retried.status_code == 409
+        assert retried.json()["errors"][0]["code"] == "canonical_replay_conflict"
+    finally:
+        _truncate(runtime)
+        runtime.close()
 
 
 def test_large_replay_reversal_uses_durable_content_shards_and_completion_barrier(
@@ -308,7 +490,7 @@ def test_large_replay_reversal_uses_durable_content_shards_and_completion_barrie
             client, runtime, filename="durable-reversal.xlsx", rows=rows, brand_ids=(brand_id,)
         )
         _add_replay_alias(runtime, brand_id)
-        created = _create_all_replay(client, idempotency_key=f"durable-reversal-{uuid4()}")
+        created = _create_all_replay(client, runtime, idempotency_key=f"durable-reversal-{uuid4()}")
         assert _worker(runtime, suffix="durable-ingest").run_once()
         request_id = UUID(str(created["request_id"]))
         queued = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
@@ -446,7 +628,7 @@ def test_replay_reversal_failed_parent_retries_from_persisted_shard_checkpoint(
             brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
-        created = _create_all_replay(client, idempotency_key=f"reversal-retry-{uuid4()}")
+        created = _create_all_replay(client, runtime, idempotency_key=f"reversal-retry-{uuid4()}")
         assert _worker(runtime, suffix="reversal-retry-ingest").run_once()
         request_id = UUID(str(created["request_id"]))
         assert client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke").status_code == 202
@@ -835,6 +1017,7 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
 
         created = _create_all_replay(
             client,
+            runtime,
             idempotency_key=f"all-replay-reversible-{uuid4()}",
         )
         request_id = UUID(cast(str, created["request_id"]))
@@ -974,6 +1157,7 @@ def test_new_content_batch_persists_vehicle_and_derived_brand_evidence(
         vehicle_id = _create_replay_vehicle(runtime, brand_id=brand_id)
         created = _create_all_replay(
             client,
+            runtime,
             idempotency_key=f"all-replay-vehicle-evidence-{uuid4()}",
         )
         request_id = UUID(cast(str, created["request_id"]))
@@ -1093,6 +1277,7 @@ def test_existing_content_replay_with_two_aliases_for_same_vehicle_finishes(
         )
         created = _create_all_replay(
             client,
+            runtime,
             idempotency_key=f"replay-existing-two-aliases-{uuid4()}",
         )
         assert _worker(runtime, suffix="existing-two-aliases").run_once() is True
@@ -1149,7 +1334,7 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
             brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
-        created = _create_all_replay(client, idempotency_key=f"replay-ledger-{uuid4()}")
+        created = _create_all_replay(client, runtime, idempotency_key=f"replay-ledger-{uuid4()}")
         ledger_inserts: list[str] = []
         content_updates: list[str] = []
         source_pair_reads: list[str] = []
@@ -1292,10 +1477,14 @@ def test_all_replay_batches_existing_convergence_without_per_row_sql(tmp_path: P
             brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
-        first = _create_all_replay(client, idempotency_key=f"replay-existing-first-{uuid4()}")
+        first = _create_all_replay(
+            client, runtime, idempotency_key=f"replay-existing-first-{uuid4()}"
+        )
         assert _worker(runtime, suffix="existing-first").run_once() is True
 
-        second = _create_all_replay(client, idempotency_key=f"replay-existing-second-{uuid4()}")
+        second = _create_all_replay(
+            client, runtime, idempotency_key=f"replay-existing-second-{uuid4()}"
+        )
         second_request_id = UUID(cast(str, second["request_id"]))
         statement_count = 0
 
@@ -1398,6 +1587,7 @@ def test_all_replay_revoke_keeps_version_when_only_evidence_converged(
 
         created = _create_all_replay(
             client,
+            runtime,
             idempotency_key=f"all-replay-evidence-only-{uuid4()}",
         )
         request_id = UUID(cast(str, created["request_id"]))
@@ -1495,6 +1685,7 @@ def test_all_replay_revoke_batches_changed_evidence_without_per_content_sql(
         _add_replay_alias(runtime, brand_id, text="证据集合")
         created = _create_all_replay(
             client,
+            runtime,
             idempotency_key=f"all-replay-evidence-batch-{uuid4()}",
         )
         request_id = UUID(cast(str, created["request_id"]))
@@ -1590,6 +1781,7 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
 
         created = _create_all_replay(
             client,
+            runtime,
             idempotency_key=f"all-replay-later-import-{uuid4()}",
         )
         request_id = UUID(cast(str, created["request_id"]))
@@ -1696,6 +1888,7 @@ def test_all_replay_revoke_carries_manual_brand_lock_to_reversal_version(
         _add_replay_alias(runtime, selected_brand)
         created = _create_all_replay(
             client,
+            runtime,
             idempotency_key=f"all-replay-manual-lock-{uuid4()}",
         )
         request_id = UUID(cast(str, created["request_id"]))
