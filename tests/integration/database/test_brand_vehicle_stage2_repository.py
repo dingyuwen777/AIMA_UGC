@@ -24,6 +24,7 @@ from aima_ugc.modules.vehicles.tables import (
     content_brand_evidence_table,
     content_brand_review_locks_table,
     content_vehicle_review_locks_table,
+    vehicle_brands_table,
     vehicle_catalog_versions_table,
 )
 from aima_ugc.platform.config import load_settings
@@ -304,3 +305,35 @@ def test_brand_manual_lock_blocks_automatic_overwrite_without_touching_vehicle_l
             assert active_brand_evidence == (("manual_review", None, None, True),)
     finally:
         session.close()
+
+
+def test_active_brand_guard_is_compatible_with_foreign_key_key_share(runtime) -> None:  # type: ignore[no-untyped-def]
+    """Replay/FK 的 KEY SHARE 不应把只验证 active Brand 的车型保存阻塞成慢请求。"""
+
+    principal = _principal()
+    brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+        BrandCreateRequest(
+            display_name="并发品牌",
+            role="owned",
+            aliases=("并发品牌",),
+        ),
+        principal=principal,
+        request_id="stage2-key-share-brand",
+    )
+    key_share = runtime.database.new_session()
+    guard = runtime.database.new_session()
+    try:
+        with key_share.begin():
+            key_share.execute(
+                select(vehicle_brands_table.c.id)
+                .where(vehicle_brands_table.c.id == brand.id)
+                .with_for_update(read=True, key_share=True)
+            )
+            with guard.begin():
+                guard.execute(text("SET LOCAL lock_timeout = '100ms'"))
+                active = PostgresBrandVehicleRepository(guard).require_active_brand(brand.id)
+                assert active.id == brand.id
+                assert active.status == "active"
+    finally:
+        key_share.close()
+        guard.close()

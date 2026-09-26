@@ -352,3 +352,11 @@ def test_replay_request_rejects_ambiguous_selection_before_service(body: dict[st
 
     assert response.status_code == 422
     assert service.created is None
+
+
+def test_all_replay_admission_exposes_planning_state() -> None:
+    """全历史重筛受理与后台规划必须能被调用方区分。"""
+
+    schema = create_app().openapi()["components"]["schemas"]["CanonicalReplayAllCreatedResponse"]
+    assert "planning_status" in schema["properties"]
+    assert set(schema["properties"]["planning_status"]["enum"]) == {"queued", "planned"}
