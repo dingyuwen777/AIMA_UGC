@@ -23,6 +23,8 @@ class ResourceSnapshot:
     memory_limit_bytes: int | None
     memory_available_bytes: int | None
     source: str
+    memory_accounted_bytes: int | None = None
+    memory_reclaimable_bytes: int | None = None
 
 
 def detect_resources(
@@ -45,6 +47,7 @@ def detect_resources(
     quota = _cpu_quota_v2(root)
     limit = _positive_int(root / "memory.max")
     used = _positive_int(root / "memory.current")
+    reclaimable = _reclaimable_inactive_file(root / "memory.stat") if used is not None else 0
     source = "host"
     if quota is not None or (limit is not None and limit < _CGROUP_UNLIMITED):
         source = "cgroup_v2"
@@ -52,6 +55,7 @@ def detect_resources(
         quota = _cpu_quota_v1(root)
         limit = _positive_int(root / "memory" / "memory.limit_in_bytes")
         used = _positive_int(root / "memory" / "memory.usage_in_bytes")
+        reclaimable = 0
         if quota is not None or (limit is not None and limit < _CGROUP_UNLIMITED):
             source = "cgroup_v1"
 
@@ -63,7 +67,9 @@ def detect_resources(
     )
     effective_available: int | None
     if limit is not None and limit < _CGROUP_UNLIMITED and used is not None:
-        remaining = max(limit - used, 0)
+        # inactive_file 中的干净文件页可由内核回收；脏页和写回页仍计入用量。
+        reclaimable = min(reclaimable, used)
+        remaining = max(limit - used + reclaimable, 0)
         effective_available = min(available, remaining) if available is not None else remaining
     else:
         effective_available = available
@@ -72,6 +78,8 @@ def detect_resources(
         memory_limit_bytes=effective_limit,
         memory_available_bytes=effective_available,
         source=source,
+        memory_accounted_bytes=used if source != "host" else None,
+        memory_reclaimable_bytes=reclaimable if source == "cgroup_v2" else None,
     )
 
 
@@ -452,6 +460,22 @@ def _positive_int(path: Path) -> int | None:
     except OSError, ValueError:
         return None
     return value if value >= 0 else None
+
+
+def _reclaimable_inactive_file(path: Path) -> int:
+    """仅折减 cgroup v2 中可回收的干净 inactive_file；统计不完整时保守返回零。"""
+
+    fields: dict[str, int] = {}
+    try:
+        for line in path.read_text(encoding="ascii").splitlines():
+            key, _, value = line.partition(" ")
+            if key in {"inactive_file", "file_dirty", "file_writeback"}:
+                fields[key] = int(value.strip())
+    except OSError, ValueError:
+        return 0
+    if len(fields) != 3 or any(value < 0 for value in fields.values()):
+        return 0
+    return max(0, fields["inactive_file"] - fields["file_dirty"] - fields["file_writeback"])
 
 
 def _cpu_quota_v2(root: Path) -> float | None:
