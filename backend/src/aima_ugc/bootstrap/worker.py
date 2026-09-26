@@ -292,6 +292,7 @@ def create_job_worker(
     worker_id: str,
     lease_seconds: int,
     retry_delay_seconds: int,
+    supported_job_types: tuple[str, ...] | None = None,
 ) -> JobWorker:
     """用正式 DatabaseRuntime 组装一个 Job Worker。"""
 
@@ -301,6 +302,7 @@ def create_job_worker(
         worker_id=worker_id,
         lease_seconds=lease_seconds,
         retry_delay_seconds=retry_delay_seconds,
+        supported_job_types=supported_job_types,
     )
 
 
