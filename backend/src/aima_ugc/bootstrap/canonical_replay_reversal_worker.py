@@ -28,6 +28,10 @@ from aima_ugc.adapters.persistence.postgres.reversal_shards import PostgresRever
 from aima_ugc.adapters.persistence.postgres.vehicles import (
     PostgresVehicleCatalogRepository,
 )
+from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
+    defer_voice_plaza_projection,
+    flush_deferred_voice_plaza_projection,
+)
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayAllRequestRecord,
@@ -327,6 +331,8 @@ class PostgresCanonicalReplayReversalJobExecutor:
                             cast(UUID, shard_id), checkpoint=None, processed=0, finished=True
                         )
                     return 0, 0, 0
+
+                defer_voice_plaza_projection(session)
 
                 ledger_rows = tuple(
                     session.execute(
@@ -717,6 +723,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         processed=len(content_ids),
                         finished=False,
                     )
+                flush_deferred_voice_plaza_projection(session, content_ids)
                 return len(content_ids), len(simple_versions), simple_ms
         finally:
             session.close()

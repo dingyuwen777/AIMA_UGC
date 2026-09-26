@@ -481,25 +481,41 @@ def _guard_revoking_campaign_attempts(session: Session, attempt_ids: tuple[UUID,
     scope = collection_scopes_table
     run = collection_runs_table
     campaign = historical_import_campaigns_table
-    rows = session.execute(
-        select(campaign.c.id, campaign.c.status)
-        .select_from(
-            attempt.join(request, request.c.id == attempt.c.provider_request_id)
-            .outerjoin(batch, batch.c.id == request.c.import_batch_id)
-            .outerjoin(item, item.c.id == batch.c.historical_campaign_item_id)
-            .outerjoin(scope, scope.c.id == request.c.scope_id)
-            .outerjoin(run, run.c.id == scope.c.run_id)
-            .join(
-                campaign,
-                or_(
-                    campaign.c.id == item.c.campaign_id,
-                    campaign.c.id == run.c.data_import_campaign_id,
-                ),
+    gate = session.info.get("historical_shared_cancel_gate")
+    gated_campaign_id = (
+        gate[1]
+        if isinstance(gate, tuple) and gate[0] is transaction and isinstance(gate[1], UUID)
+        else None
+    )
+    # 共享取消门保护同一 Campaign 的状态；KEY SHARE 可与调度的
+    # NO KEY UPDATE 并存，避免并行 Chunk 读写父行时锁升级死锁。
+    rows = tuple(
+        session.execute(
+            select(campaign.c.id, campaign.c.status)
+            .select_from(
+                attempt.join(request, request.c.id == attempt.c.provider_request_id)
+                .outerjoin(batch, batch.c.id == request.c.import_batch_id)
+                .outerjoin(item, item.c.id == batch.c.historical_campaign_item_id)
+                .outerjoin(scope, scope.c.id == request.c.scope_id)
+                .outerjoin(run, run.c.id == scope.c.run_id)
+                .join(
+                    campaign,
+                    or_(
+                        campaign.c.id == item.c.campaign_id,
+                        campaign.c.id == run.c.data_import_campaign_id,
+                    ),
+                )
+            )
+            .where(attempt.c.id.in_(pending))
+            .with_for_update(
+                read=True,
+                key_share=gated_campaign_id is not None,
+                of=campaign,
             )
         )
-        .where(attempt.c.id.in_(pending))
-        .with_for_update(read=True, of=campaign)
     )
+    if gated_campaign_id is not None and any(row.id != gated_campaign_id for row in rows):
+        raise ValueError("历史导入取消门与来源 Campaign 不匹配")
     if any(row.status in {"revoking", "revoked"} for row in rows):
         raise ValueError("数据导入已申请撤销，不能继续写入同 Campaign 来源贡献")
     validated.update(pending)

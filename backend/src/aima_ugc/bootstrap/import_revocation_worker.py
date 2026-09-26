@@ -19,6 +19,10 @@ from aima_ugc.adapters.persistence.postgres.import_revocation_lifecycle import (
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.reversal_shards import PostgresReversalShardRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
+from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
+    defer_voice_plaza_projection,
+    flush_deferred_voice_plaza_projection,
+)
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaigns_table
 from aima_ugc.modules.ingestion.reversal_shards import REVERSAL_MIN_PARALLEL_CONTENTS
 from aima_ugc.modules.ingestion.revocation_jobs import DataImportRevocationJobPayload
@@ -392,6 +396,10 @@ class PostgresImportRevocationJobExecutor:
                     return 0, int(request["recomputed_content_count"]), True, read_ms, 0
                 if last_content_id is None:
                     raise ValueError("撤销批次缺少断点")
+                affected_content_ids = tuple(
+                    dict.fromkeys(cast(UUID, row["content_id"]) for row in contributions)
+                )
+                defer_voice_plaza_projection(session)
                 apply_started = perf_counter()
                 processed = lifecycle.apply_campaign_contribution_batch(
                     campaign_id,
@@ -443,6 +451,7 @@ class PostgresImportRevocationJobExecutor:
                         )
                     )
                 jobs.lock_current_execution(fence)
+                flush_deferred_voice_plaza_projection(session, affected_content_ids)
                 return processed, total, False, read_ms, apply_ms
         finally:
             session.close()

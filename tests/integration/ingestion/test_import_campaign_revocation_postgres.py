@@ -37,6 +37,10 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.query import ContentReadQuery
+from aima_ugc.modules.content.read_model_tables import (
+    voice_plaza_content_projection_table,
+    voice_plaza_filter_catalog_entries_table,
+)
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.reversal_shard_tables import reversal_shards_table
@@ -644,6 +648,18 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
                 shared_id = by_title["爱玛共享来源"].id
                 exclusive_id = by_title["爱玛独占来源"].id
                 assert before_repository.count_all_analysis_targets() == 2
+                assert dict(
+                    before_session.execute(
+                        select(
+                            voice_plaza_content_projection_table.c.content_id,
+                            voice_plaza_content_projection_table.c.is_visible,
+                        ).where(
+                            voice_plaza_content_projection_table.c.content_id.in_(
+                                (shared_id, exclusive_id)
+                            )
+                        )
+                    ).all()
+                ) == {shared_id: True, exclusive_id: True}
         finally:
             before_session.close()
 
@@ -705,6 +721,28 @@ def test_revocation_hides_exclusive_content_and_retains_shared_content(tmp_path:
                 assert after_repository.get_content(shared_id) is not None
                 assert after_repository.get_content(exclusive_id) is None
                 assert after_repository.count_all_analysis_targets() == 1
+                assert dict(
+                    after_session.execute(
+                        select(
+                            voice_plaza_content_projection_table.c.content_id,
+                            voice_plaza_content_projection_table.c.is_visible,
+                        ).where(
+                            voice_plaza_content_projection_table.c.content_id.in_(
+                                (shared_id, exclusive_id)
+                            )
+                        )
+                    ).all()
+                ) == {shared_id: True, exclusive_id: False}
+                assert (
+                    after_session.scalar(
+                        select(func.count())
+                        .select_from(voice_plaza_filter_catalog_entries_table)
+                        .where(
+                            voice_plaza_filter_catalog_entries_table.c.content_id == exclusive_id
+                        )
+                    )
+                    == 0
+                )
                 selected = after_repository.freeze_targets(content_ids=(shared_id, exclusive_id))
                 assert [target.content_id for target in selected] == [shared_id]
                 assert (

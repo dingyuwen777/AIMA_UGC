@@ -29,6 +29,7 @@ from aima_ugc.contracts.administration import (
     VehicleModelUpdateRequest,
 )
 from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
+from aima_ugc.modules.content.read_model_tables import voice_plaza_content_projection_table
 from aima_ugc.modules.content.tables import (
     content_metric_observations_table,
     content_versions_table,
@@ -211,6 +212,14 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
         with runtime.database.engine.begin() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
             assert connection.scalar(select(func.count()).select_from(content_versions_table)) == 1
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(voice_plaza_content_projection_table)
+                    .where(voice_plaza_content_projection_table.c.is_visible.is_(True))
+                )
+                == 1
+            )
             assert (
                 connection.scalar(
                     select(func.count()).select_from(content_metric_observations_table)

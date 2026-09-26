@@ -20,6 +20,7 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
+    canonical_replay_content_changes_table,
 )
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -179,6 +180,14 @@ def content_has_active_source(
         )
     )
 
+    reverted_replay_change = exists(
+        select(literal(1)).where(
+            canonical_replay_content_changes_table.c.all_request_id
+            == contents_table.c.replay_visibility_owner_id,
+            canonical_replay_content_changes_table.c.content_id == content_id,
+            canonical_replay_content_changes_table.c.reverted_at.is_not(None),
+        )
+    )
     reverted_replay_owner = exists(
         select(literal(1))
         .select_from(
@@ -190,7 +199,10 @@ def content_has_active_source(
         )
         .where(
             contents_table.c.id == content_id,
-            canonical_replay_all_requests_table.c.lifecycle_status == "reverted",
+            or_(
+                canonical_replay_all_requests_table.c.lifecycle_status == "reverted",
+                reverted_replay_change,
+            ),
         )
     )
     return and_(

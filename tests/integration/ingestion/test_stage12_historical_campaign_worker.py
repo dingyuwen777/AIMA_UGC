@@ -40,6 +40,7 @@ from aima_ugc.contracts.administration import (
 from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
 from aima_ugc.contracts.http import ContentFilterSnapshot
 from aima_ugc.modules.content.query import ContentReadQuery
+from aima_ugc.modules.content.read_model_tables import voice_plaza_content_projection_table
 from aima_ugc.modules.content.tables import content_metric_observations_table, contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.ingestion.canonical_replay_tables import canonical_replay_runs_table
@@ -1292,6 +1293,15 @@ def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row
         assert in_progress["status"] == "running"
         assert in_progress["progress"]["migration_completed_row_count"] == 100
         assert in_progress["progress"]["migration_percent"] == 99
+        with runtime.database.engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(voice_plaza_content_projection_table)
+                    .where(voice_plaza_content_projection_table.c.is_visible.is_(True))
+                )
+                == 1
+            )
         assert worker.run_once() is True
         completed = client.get(f"/api/v1/historical-import-campaigns/{campaign_id}").json()
         assert completed["progress"]["migration_completed_row_count"] == 101

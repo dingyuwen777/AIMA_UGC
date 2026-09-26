@@ -43,6 +43,11 @@ def lock_historical_campaign_cancel_gate(
         key -= 1 << 64
     lock = func.pg_advisory_xact_lock_shared(key) if shared else func.pg_advisory_xact_lock(key)
     session.execute(select(lock))
+    if shared:
+        session.info["historical_shared_cancel_gate"] = (
+            session.get_transaction(),
+            campaign_id,
+        )
 
 
 class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepository):

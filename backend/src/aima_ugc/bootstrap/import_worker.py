@@ -11,6 +11,7 @@ from time import perf_counter
 from uuid import UUID
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,11 +23,20 @@ from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
     PostgresProcessingImportBatchRepository,
 )
+from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
+    defer_voice_plaza_projection,
+    flush_deferred_voice_plaza_projection,
+)
 from aima_ugc.adapters.providers.imports import (
     ExcelImportRejectedRowsError,
     convert_excel_to_canonical_jsonl,
 )
 from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.modules.collection.tables import (
+    provider_request_attempts_table,
+    provider_requests_table,
+)
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
 from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     BrandVehicleFilterSnapshot,
@@ -391,6 +401,7 @@ class PostgresImportJobExecutor:
                     raise LookupError("Import Source Artifact 不存在")
                 if current_artifact.id != artifact.id:
                     raise RuntimeError("Import Source Artifact 在 Attempt 内发生变化")
+                defer_voice_plaza_projection(session)
                 write = ingest_unified_content_batch(
                     session=session,
                     batch_id=batch.id,
@@ -401,6 +412,25 @@ class PostgresImportJobExecutor:
                     brand_vehicle_filter_snapshot=execution.payload.filter_snapshot,
                 )
                 jobs.lock_current_execution(fence)
+                affected_content_ids = tuple(
+                    session.scalars(
+                        select(content_source_contributions_table.c.content_id)
+                        .select_from(
+                            content_source_contributions_table.join(
+                                provider_request_attempts_table,
+                                provider_request_attempts_table.c.id
+                                == content_source_contributions_table.c.provider_attempt_id,
+                            ).join(
+                                provider_requests_table,
+                                provider_requests_table.c.id
+                                == provider_request_attempts_table.c.provider_request_id,
+                            )
+                        )
+                        .where(provider_requests_table.c.import_batch_id == batch.id)
+                        .distinct()
+                    )
+                )
+                flush_deferred_voice_plaza_projection(session, affected_content_ids)
                 return write.rows_ingested
         finally:
             session.close()
