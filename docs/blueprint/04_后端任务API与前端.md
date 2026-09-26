@@ -106,7 +106,7 @@ Pydantic
 | --- | --- | --- |
 | Collection | Plan / Run / Scope / Runtime Read Model | Run 创建 Job，Runtime 聚合多类父事实 |
 | Data Import | Campaign / Source Item / Conflict / Revocation | Discover / Snapshot / Chunk / Revocation Job |
-| Replay | Replay Request / Run / Reversal | Replay / Shard / Reversal Job |
+| Replay | Replay Request / Run / Reversal | Planner / Replay / Shard / Reversal Job |
 | Content | Content / Comment / Filter / Manual Review | 主要是 Query；部分人工动作短事务 |
 | Analysis | Scheme / Run / Result / Manual Override | Planner / Label Shard Job |
 | Reporting | Export Request / Artifact | Export Job |
@@ -220,7 +220,7 @@ Job Runtime 长期必须保证：
 → 父资源成功
 ~~~
 
-Replay / 撤销等具体恢复语义见 [docs/appendix/08_数据入口与统一入库实现.md](../appendix/08_数据入口与统一入库实现.md)。
+Replay / 撤销等具体恢复语义见 [docs/appendix/08_数据入口与统一入库实现.md](../appendix/08_数据入口与统一入库实现.md)。全历史 Replay 的 HTTP 只负责冻结目录与受理边界并排队 Planner；历史 Artifact 枚举和子 Run 创建属于 Worker 长任务，不能重新塞回 API 短事务。
 
 ## 12. Scheduler 和 Worker 的区别
 
