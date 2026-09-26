@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-100600-doc-navigation-quickstart
 title: 修正文档导航、Roadmap 编号与运行速查入口
 level: L2
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: docs/609-doc-navigation-quickstart
 created: 2026-09-26T10:06:00+08:00
