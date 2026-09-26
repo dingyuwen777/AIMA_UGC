@@ -223,6 +223,7 @@ def test_admin_can_queue_all_replayable_canonical_artifacts() -> None:
     assert response.status_code == 202
     assert response.json() == {
         "request_id": str(_REQUEST_ID),
+        "planning_status": "planned",
         "artifact_count": 205,
         "run_count": 3,
         "artifacts_per_run": 100,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 from datetime import datetime
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import func, insert, literal, select, union_all, update
@@ -266,7 +266,9 @@ class PostgresCanonicalReplayRepository:
         return created, planner
 
     @staticmethod
-    def planning_status(record: CanonicalReplayAllRequestRecord) -> str:
+    def planning_status(
+        record: CanonicalReplayAllRequestRecord,
+    ) -> Literal["queued", "planned"]:
         """由持久 selection digest 判断父请求是否仍处于后台规划阶段。"""
 
         return "queued" if record.selection_digest == _PENDING_SELECTION_DIGEST else "planned"

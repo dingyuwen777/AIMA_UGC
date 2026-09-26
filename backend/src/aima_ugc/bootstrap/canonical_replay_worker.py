@@ -995,7 +995,7 @@ class PostgresCanonicalReplayJobExecutor:
         try:
             with session.begin():
                 # 后台重筛遇到在线事务锁竞争时主动让路；超时会回滚本批并进入 Job retry。
-                session.execute(text("SET LOCAL lock_timeout = :timeout"), {"timeout": _REPLAY_LOCK_TIMEOUT})
+                session.execute(text(f"SET LOCAL lock_timeout = '{_REPLAY_LOCK_TIMEOUT}'"))
                 # 这里只做无锁资格检查；提交前由 repository.advance 获取 Job 行锁并
                 # 再次验证 Fence。取消/接管可在长批次中写入状态，旧事务随后整体回滚。
                 PostgresJobRepository(session).validate_current_execution(fence)
