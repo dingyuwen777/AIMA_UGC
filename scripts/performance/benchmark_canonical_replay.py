@@ -66,6 +66,7 @@ def _fixture_xlsx(
     file_index: int,
     rows_per_file: int,
     existing_rows_per_file: int,
+    matched_rows_per_file: int,
     nonce: str,
 ) -> bytes:
     workbook = Workbook(write_only=True)
@@ -73,7 +74,13 @@ def _fixture_xlsx(
     sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
     for row_index in range(rows_per_file):
         external_id = f"replay-bench-{nonce}-{file_index}-{row_index}"
-        keyword = "预置" if row_index < existing_rows_per_file else "星曜"
+        keyword = (
+            "预置"
+            if row_index < existing_rows_per_file
+            else "星曜"
+            if row_index < matched_rows_per_file
+            else "完全无关容量样本"
+        )
         sheet.append(
             [
                 "小红书",
@@ -97,6 +104,7 @@ def run_benchmark(
     rows_per_file: int,
     workers: int,
     existing_rows_per_file: int = 0,
+    matched_rows_per_file: int | None = None,
     stable_authors: bool = False,
     scalar_stable_authors: bool = False,
     measure_reversal: bool = False,
@@ -113,6 +121,13 @@ def run_benchmark(
         raise ValueError("workers 必须在 1 到 8 之间")
     if not 0 <= existing_rows_per_file <= rows_per_file:
         raise ValueError("existing_rows_per_file 必须在 0 到 rows_per_file 之间")
+    resolved_matched_rows = (
+        rows_per_file if matched_rows_per_file is None else matched_rows_per_file
+    )
+    if not existing_rows_per_file <= resolved_matched_rows <= rows_per_file:
+        raise ValueError(
+            "matched_rows_per_file 必须在 existing_rows_per_file 到 rows_per_file 之间"
+        )
     if scalar_stable_authors and not stable_authors:
         raise ValueError("scalar_stable_authors 要求同时启用 stable_authors")
     if existing_evidence_change and existing_rows_per_file == 0:
@@ -195,6 +210,7 @@ def run_benchmark(
                                 file_index=file_index,
                                 rows_per_file=rows_per_file,
                                 existing_rows_per_file=existing_rows_per_file,
+                                matched_rows_per_file=resolved_matched_rows,
                                 nonce=nonce,
                             ),
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -403,15 +419,16 @@ def run_benchmark(
         if len(statuses) != run_count or any(status != "succeeded" for status in statuses):
             raise RuntimeError("基准 Replay 子任务未全部成功")
         expected_rows = file_count * rows_per_file
+        expected_matched = file_count * resolved_matched_rows
         expected_existing = file_count * existing_rows_per_file
-        expected_ingested = expected_rows - expected_existing
-        if ledger_count != expected_rows:
-            raise RuntimeError("基准 Replay 贡献账本行数与输入不一致")
-        if existing_evidence_change and changed_evidence != expected_rows:
+        expected_ingested = expected_matched - expected_existing
+        if ledger_count != expected_matched:
+            raise RuntimeError("基准 Replay 贡献账本行数与命中输入不一致")
+        if existing_evidence_change and changed_evidence != expected_matched:
             raise RuntimeError("证据撤回基准没有产生预期的品牌证据变化")
         if (
             int(counters.rows_seen) != expected_rows
-            or int(counters.rows_matched) != expected_rows
+            or int(counters.rows_matched) != expected_matched
             or int(counters.rows_ingested) != expected_ingested
             or int(counters.existing_convergence) != expected_existing
         ):
@@ -420,6 +437,8 @@ def run_benchmark(
             "schema_version": "canonical-replay-capacity.v1",
             "files": file_count,
             "rows": expected_rows,
+            "matched_rows": expected_matched,
+            "match_rate": round(expected_matched / expected_rows, 4),
             "existing_rows": expected_existing,
             "new_rows": expected_ingested,
             "rows_seen": int(counters.rows_seen),
@@ -433,6 +452,7 @@ def run_benchmark(
             "replay_runs": run_count,
             "elapsed_seconds": round(elapsed, 3),
             "rows_per_second": round(expected_rows / elapsed, 2),
+            "matched_rows_per_second": round(expected_matched / elapsed, 2),
             "sql_statements": statement_count,
             "seen_identity_inserts": seen_inserts,
             "contribution_ledger_inserts": ledger_inserts,
@@ -502,7 +522,7 @@ def run_benchmark(
                         canonical_replay_content_changes_table.c.reverted_at.is_not(None),
                     )
                 )
-            if reversal["lifecycle_status"] != "reverted" or reverted_rows != expected_rows:
+            if reversal["lifecycle_status"] != "reverted" or reverted_rows != expected_matched:
                 raise RuntimeError("基准撤回状态与贡献账本未对账")
             report["reversal"] = {
                 "elapsed_seconds": round(reversal_seconds, 3),
@@ -583,6 +603,7 @@ def main() -> None:
     parser.add_argument("--rows-per-file", type=int, default=100)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--existing-rows-per-file", type=int, default=0)
+    parser.add_argument("--matched-rows-per-file", type=int)
     parser.add_argument("--stable-authors", action="store_true")
     parser.add_argument("--scalar-stable-authors", action="store_true")
     parser.add_argument("--measure-reversal", action="store_true")
@@ -597,6 +618,7 @@ def main() -> None:
                 rows_per_file=args.rows_per_file,
                 workers=args.workers,
                 existing_rows_per_file=args.existing_rows_per_file,
+                matched_rows_per_file=args.matched_rows_per_file,
                 stable_authors=args.stable_authors,
                 scalar_stable_authors=args.scalar_stable_authors,
                 measure_reversal=args.measure_reversal,
