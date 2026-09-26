@@ -104,3 +104,32 @@ def test_replay_benchmark_cleans_generated_runtime_after_failure(
         )
 
     assert list(tmp_path.iterdir()) == []
+
+
+
+def test_replay_benchmark_validates_low_hit_fixture_bounds(tmp_path: Path) -> None:
+    """低命中容量场景不能少于已经预置为 Existing 的命中行。"""
+
+    with pytest.raises(ValueError, match="matched_rows_per_file"):
+        benchmark_canonical_replay.run_benchmark(
+            work_dir=tmp_path,
+            file_count=1,
+            rows_per_file=100,
+            workers=1,
+            existing_rows_per_file=20,
+            matched_rows_per_file=10,
+        )
+
+
+def test_replay_benchmark_fixture_can_model_low_hit_input() -> None:
+    """容量夹具可显式构造低命中 raw rows，供 5%/25% 场景复测。"""
+
+    payload = benchmark_canonical_replay._fixture_xlsx(
+        file_index=0,
+        rows_per_file=20,
+        existing_rows_per_file=1,
+        matched_rows_per_file=5,
+        nonce="unit",
+    )
+
+    assert payload
