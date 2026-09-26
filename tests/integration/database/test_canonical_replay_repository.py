@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -593,6 +593,78 @@ def test_all_replay_http_admission_only_enqueues_planner_and_freezes_retry_bound
                 ).mappings().one()
                 assert request["accepted_before"] == accepted_before
                 assert session.scalar(select(func.count()).select_from(canonical_replay_runs_table)) == 0
+        finally:
+            session.close()
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_planner_cutoff_excludes_artifact_created_before_but_linked_after_admission() -> None:
+    """selection 以受理前已完成 linked 为边界，不能只看 Artifact 创建时间。"""
+
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                raw = _artifact(session, kind="file-import.raw", linked=True)
+                batch_id = uuid4()
+                session.execute(
+                    insert(processing_import_batches_table).values(
+                        id=batch_id,
+                        job_id=_job(session, job_type=IMPORT_JOB_TYPE),
+                        input_artifact_id=raw.id,
+                        status="succeeded",
+                        stats={},
+                        created_at=_NOW,
+                        started_at=_NOW,
+                        finished_at=_NOW,
+                    )
+                )
+                canonical = _artifact(session, kind=CANONICAL_CONTENT_ARTIFACT_KIND)
+        finally:
+            session.close()
+
+        service = PostgresCanonicalReplayHttpService(SimpleNamespace(database=runtime))  # type: ignore[arg-type]
+        accepted = service.create_all_replays(
+            CanonicalReplayAllCreateRequest(idempotency_key="late-link-cutoff"),
+            actor_ref="replay-admin",
+            request_id="late-link-cutoff",
+        )
+        assert accepted.planning_status == "queued"
+
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                request = session.execute(
+                    select(canonical_replay_all_requests_table)
+                ).mappings().one()
+                accepted_before = request["accepted_before"]
+                PostgresArtifactMetadataRepository(session).link_canonical(
+                    canonical.id,
+                    parent=CanonicalArtifactParent(processing_import_batch_id=batch_id),
+                    linked_at=accepted_before + timedelta(microseconds=1),
+                )
+        finally:
+            session.close()
+
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                selected = PostgresCanonicalReplayRepository(session).list_replayable_artifacts(
+                    accepted_before=accepted_before
+                )
+            assert canonical.id not in {artifact_id for artifact_id, _ in selected}
         finally:
             session.close()
     finally:

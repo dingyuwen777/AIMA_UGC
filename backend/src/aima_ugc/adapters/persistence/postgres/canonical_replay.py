@@ -618,7 +618,13 @@ class PostgresCanonicalReplayRepository:
             artifacts_table.c.storage_status == "linked",
         ]
         if accepted_before is not None:
-            common_filter_items.append(artifacts_table.c.created_at <= accepted_before)
+            common_filter_items.extend(
+                (
+                    artifacts_table.c.created_at <= accepted_before,
+                    artifacts_table.c.linked_at <= accepted_before,
+                    canonical_artifact_links_table.c.created_at <= accepted_before,
+                )
+            )
         common_filters = tuple(common_filter_items)
         excel = (
             select(
