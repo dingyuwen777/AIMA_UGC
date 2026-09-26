@@ -147,19 +147,27 @@ class _ReplayScanBatchController:
 
         return self._hit_ratio
 
-    def choose(self, *, matched_target_rows: int) -> int:
-        """低命中时扩大只读扫描，但绝不超过冻结批量的有界倍数。"""
+    def choose(
+        self,
+        *,
+        matched_target_rows: int,
+        scan_ceiling_rows: int | None = None,
+    ) -> int:
+        """低命中时扩大只读扫描，但绝不超过冻结批量和当前资源给出的上界。"""
 
         if matched_target_rows < 1:
             raise ValueError("Replay matched target 必须为正整数")
+        ceiling = self.max_scan_rows if scan_ceiling_rows is None else scan_ceiling_rows
+        if ceiling < matched_target_rows or ceiling > self.max_scan_rows:
+            raise ValueError("Replay scan ceiling 超出允许边界")
         if self._hit_ratio <= 0:
-            return self.max_scan_rows
+            return ceiling
         estimated = int(matched_target_rows / self._hit_ratio)
         if estimated * self._hit_ratio < matched_target_rows:
             estimated += 1
         return max(
             matched_target_rows,
-            min(self.max_scan_rows, estimated),
+            min(ceiling, estimated),
         )
 
     def observe(self, *, raw_rows: int, matched_rows: int) -> None:
@@ -330,8 +338,17 @@ class PostgresCanonicalReplayJobExecutor:
                                 unit="matched_rows",
                                 reason=reason,
                             )
+                        scan_ceiling_rows = (
+                            min(
+                                scan_controller.max_scan_rows,
+                                max(matched_target, matched_target * 4),
+                            )
+                            if reason in {"memory_pressure", "resource_limit"}
+                            else scan_controller.max_scan_rows
+                        )
                         scan_rows = scan_controller.choose(
-                            matched_target_rows=matched_target
+                            matched_target_rows=matched_target,
+                            scan_ceiling_rows=scan_ceiling_rows,
                         )
                         scan_signature = (matched_target, scan_rows)
                         if previous_scan_signature != scan_signature:
@@ -344,6 +361,7 @@ class PostgresCanonicalReplayJobExecutor:
                                 matched_target_rows=matched_target,
                                 raw_scan_rows=scan_rows,
                                 max_scan_rows=scan_controller.max_scan_rows,
+                                resource_scan_ceiling_rows=scan_ceiling_rows,
                                 estimated_hit_ratio=round(
                                     scan_controller.estimated_hit_ratio, 4
                                 ),
