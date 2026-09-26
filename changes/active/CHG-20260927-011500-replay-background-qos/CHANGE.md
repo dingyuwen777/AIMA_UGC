@@ -58,6 +58,7 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 | E4 | 当前 Replay batch controller 以 raw batch size 作为 size/rows 反馈 | canonical_replay_worker.py / capacity.py | 低命中时小 raw batch 会浪费事务能力 |
 | E5 | 用户日志中 Existing-heavy Replay 的 transaction / Evidence 阶段占主要耗时，scalar_fallback_count=0 | user:2026-09-27-replay-logs | 应优化集合 Evidence 往返而不是继续做逐行 fallback 修复 |
 | E6 | 用户要求保留 Host 余量并不得降低其他数据链路处理过程 | user:2026-09-27-resource-isolation | 不修改 Compose 资源预算或其他链路控制器 |
+| E7 | Issue #624 已按当前技术变更 Project Profile 维护完整动机、当前/目标状态、兼容/回滚与 AC | #624 | PR Requirement Source 可由 CI 直接核验 |
 
 # 方案比较与决策
 
