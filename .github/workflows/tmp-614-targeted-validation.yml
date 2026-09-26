@@ -1,0 +1,106 @@
+name: Temporary 614 Targeted Validation
+
+on:
+  push:
+    branches:
+      - fix/614-admin-replay-latency
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: ci-postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-614/data
+      AIMA_LOG_DIR: .runtime/ci-614/logs
+      AIMA_SECRET_DIR: .runtime/ci-614/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - name: Checkout task branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/614-admin-replay-latency
+          fetch-depth: 0
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(npm --version)" = "11.17.0"
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          test "$(uv --version | awk '{print $2}')" = "${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+      - name: Prepare isolated runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'ci-postgres' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+          uv run alembic upgrade head
+          uv run alembic current
+          uv run alembic check
+      - name: Verify generated contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/contracts/check_compatibility.py
+          npm --prefix frontend run generate:api
+          git diff --exit-code -- contracts frontend/src/generated/api
+      - name: Python targeted static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check             backend/src/aima_ugc/contracts/brand_vehicle.py             backend/src/aima_ugc/contracts/http.py             backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py             backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py             backend/src/aima_ugc/adapters/persistence/postgres/canonical_replay.py             backend/src/aima_ugc/adapters/persistence/postgres/jobs.py             backend/src/aima_ugc/bootstrap/administration_http.py             backend/src/aima_ugc/bootstrap/brand_vehicle_http.py             backend/src/aima_ugc/bootstrap/canonical_replay_http.py             backend/src/aima_ugc/bootstrap/canonical_replay_planner_worker.py             backend/src/aima_ugc/bootstrap/canonical_replay_worker.py             backend/src/aima_ugc/bootstrap/worker.py             backend/src/aima_ugc/modules/ingestion/canonical_replay.py             backend/src/aima_ugc/platform/jobs/worker.py             tests/api/test_brand_vehicle_stage2_contract.py             tests/api/test_canonical_replay.py             tests/integration/database/test_brand_vehicle_stage2_repository.py             tests/integration/database/test_u1_u5_administration.py             tests/integration/ingestion/test_canonical_replay_worker.py             tests/integration/jobs/test_job_runtime.py
+          uv run ruff check             backend/src/aima_ugc/contracts/brand_vehicle.py             backend/src/aima_ugc/contracts/http.py             backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py             backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py             backend/src/aima_ugc/adapters/persistence/postgres/canonical_replay.py             backend/src/aima_ugc/adapters/persistence/postgres/jobs.py             backend/src/aima_ugc/bootstrap/administration_http.py             backend/src/aima_ugc/bootstrap/brand_vehicle_http.py             backend/src/aima_ugc/bootstrap/canonical_replay_http.py             backend/src/aima_ugc/bootstrap/canonical_replay_planner_worker.py             backend/src/aima_ugc/bootstrap/canonical_replay_worker.py             backend/src/aima_ugc/bootstrap/worker.py             backend/src/aima_ugc/modules/ingestion/canonical_replay.py             backend/src/aima_ugc/platform/jobs/worker.py             tests/api/test_brand_vehicle_stage2_contract.py             tests/api/test_canonical_replay.py             tests/integration/database/test_brand_vehicle_stage2_repository.py             tests/integration/database/test_u1_u5_administration.py             tests/integration/ingestion/test_canonical_replay_worker.py             tests/integration/jobs/test_job_runtime.py
+          uv run mypy backend/src
+      - name: Unit Contract API
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest             tests/api/test_brand_vehicle_stage2_contract.py             tests/api/test_canonical_replay.py             tests/unit/platform/test_vehicle_update_timing.py             -q
+      - name: PostgreSQL targeted integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest             tests/integration/database/test_brand_vehicle_stage2_repository.py             tests/integration/database/test_u1_u5_administration.py             tests/integration/jobs/test_job_runtime.py             tests/integration/ingestion/test_canonical_replay_worker.py             -q
+      - name: Frontend targeted and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend test -- --run tests/stage6-brand-productization.spec.ts
+          npm --prefix frontend run lint
+          npm --prefix frontend run build
