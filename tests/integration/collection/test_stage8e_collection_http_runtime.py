@@ -509,6 +509,8 @@ def test_unified_runtime_aggregates_all_canonical_replay_children_once(runtime) 
                 batch_size=1000,
                 created_by="admin:test",
                 created_at=now,
+                accepted_before=now,
+                planning_status="planned",
             )
         )
         connection.execute(
@@ -653,6 +655,8 @@ def test_empty_canonical_replay_request_is_a_completed_runtime_record(runtime) -
                 batch_size=1000,
                 created_by="admin:test",
                 created_at=created_at,
+                accepted_before=created_at,
+                planning_status="planned",
             )
         )
 
@@ -744,6 +748,8 @@ def test_canonical_replay_runtime_maps_single_child_job_states(
                 batch_size=1000,
                 created_by="admin:test",
                 created_at=now,
+                accepted_before=now,
+                planning_status="planned",
             )
         )
         connection.execute(insert(jobs_table).values(**job_values))
