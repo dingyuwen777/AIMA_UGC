@@ -128,12 +128,8 @@ class PostgresHistoricalImportRepository:
                 .filter(item.c.status.not_in(("discovered", "snapshotting")))
                 .label("completed_file_count"),
                 func.coalesce(func.sum(source_progress), 0).label("progress_points"),
-                func.coalesce(func.sum(item.c.completed_row_count), 0).label(
-                    "completed_row_count"
-                ),
-                func.coalesce(func.sum(item.c.failed_chunk_count), 0).label(
-                    "failed_chunk_count"
-                ),
+                func.coalesce(func.sum(item.c.completed_row_count), 0).label("completed_row_count"),
+                func.coalesce(func.sum(item.c.failed_chunk_count), 0).label("failed_chunk_count"),
             )
             .select_from(item.outerjoin(jobs_table, jobs_table.c.id == item.c.job_id))
             .where(
@@ -1346,16 +1342,20 @@ class PostgresHistoricalImportRepository:
                     chunk_exists(source=False, statuses=("failed",)),
                     chunk_exists(source=False, statuses=("cancelled",)),
                     chunk_exists(source=False, statuses=("succeeded",)),
-                    select(literal(1)).where(
+                    select(literal(1))
+                    .where(
                         item.c.campaign_id == campaign_id,
                         item.c.item_kind == "source_file",
                         item.c.status == "failed",
-                    ).exists(),
-                    select(literal(1)).where(
+                    )
+                    .exists(),
+                    select(literal(1))
+                    .where(
                         item.c.campaign_id == campaign_id,
                         item.c.item_kind == "source_file",
                         item.c.status == "cancelled",
-                    ).exists(),
+                    )
+                    .exists(),
                 )
             ).one()
             has_failed = has_failed_chunk or has_failed_source

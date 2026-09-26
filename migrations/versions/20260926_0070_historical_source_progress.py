@@ -40,9 +40,7 @@ def upgrade() -> None:
         )
     )
     if invalid_chunk_count:
-        raise RuntimeError(
-            "历史 Chunk 缺少同 Campaign 的 Source Item，无法安全建立进度计数"
-        )
+        raise RuntimeError("历史 Chunk 缺少同 Campaign 的 Source Item，无法安全建立进度计数")
     op.create_check_constraint(
         op.f("ck_historical_import_campaign_items_completed_rows_nonnegative"),
         "historical_import_campaign_items",

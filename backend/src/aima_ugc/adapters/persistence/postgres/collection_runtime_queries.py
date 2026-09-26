@@ -401,8 +401,7 @@ class PostgresCollectionRuntimeQueryRepository:
             campaign.outerjoin(
                 campaign_source_totals,
                 campaign_source_totals.c.campaign_id == campaign.c.id,
-            )
-            .outerjoin(
+            ).outerjoin(
                 revocation_request,
                 revocation_request.c.campaign_id == campaign.c.id,
             )
@@ -739,9 +738,7 @@ def _campaign_progress_subquery() -> Any:
         select(
             item.c.campaign_id.label("campaign_id"),
             func.coalesce(func.sum(source_progress), 0).label("progress_points"),
-            func.coalesce(func.sum(item.c.completed_row_count), 0).label(
-                "completed_row_count"
-            ),
+            func.coalesce(func.sum(item.c.completed_row_count), 0).label("completed_row_count"),
         )
         .select_from(item.outerjoin(jobs_table, jobs_table.c.id == item.c.job_id))
         .where(item.c.item_kind == "source_file")
