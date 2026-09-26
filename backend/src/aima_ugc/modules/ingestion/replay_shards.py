@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord, JobRegistry
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 
+from .canonical_replay import CANONICAL_REPLAY_BACKGROUND_PRIORITY
+
 REPLAY_SHARD_JOB_TYPE = "ingestion.canonical-replay-shard.v1"
+REPLAY_SHARD_JOB_PRIORITY = CANONICAL_REPLAY_BACKGROUND_PRIORITY
 
 
 def select_replay_shard_count(
@@ -88,6 +91,7 @@ def register_replay_shard_job(
 __all__ = [
     "CanonicalReplayShardJobHandler",
     "CanonicalReplayShardJobPayload",
+    "REPLAY_SHARD_JOB_PRIORITY",
     "register_replay_shard_job",
     "select_replay_shard_count",
 ]

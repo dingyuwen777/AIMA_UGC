@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord, JobRegistry
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 
+from .canonical_replay import CANONICAL_REPLAY_BACKGROUND_PRIORITY
+
 REVERSAL_SHARD_JOB_TYPE = "ingestion.reversal-shard.v1"
+IMPORT_REVERSAL_SHARD_PRIORITY = 40
+REPLAY_REVERSAL_SHARD_PRIORITY = CANONICAL_REPLAY_BACKGROUND_PRIORITY
 REVERSAL_TARGET_CONTENTS_PER_SHARD = 2500
 REVERSAL_MIN_PARALLEL_CONTENTS = 3 * REVERSAL_TARGET_CONTENTS_PER_SHARD + 1
 
@@ -64,4 +68,10 @@ def register_reversal_shard_job(
     )
 
 
-__all__ = ["ReversalShardJobHandler", "ReversalShardJobPayload", "register_reversal_shard_job"]
+__all__ = [
+    "IMPORT_REVERSAL_SHARD_PRIORITY",
+    "REPLAY_REVERSAL_SHARD_PRIORITY",
+    "ReversalShardJobHandler",
+    "ReversalShardJobPayload",
+    "register_reversal_shard_job",
+]

@@ -129,6 +129,59 @@ def test_worker_pool_pressure_counts_ready_queue_and_its_own_leases(
         session.close()
 
 
+
+def test_worker_supported_type_override_leaves_background_job_queued(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """保留 Worker 只领取允许类型；默认 Worker 行为仍由完整 Registry 决定。"""
+
+    registry = JobRegistry()
+
+    def echo_handler(payload, context):  # type: ignore[no-untyped-def]
+        del context
+        return JobHandlerResult.succeeded({"value": payload.value})
+
+    for job_type in ("test.foreground.v1", "test.background.v1"):
+        registry.register(
+            job_type=job_type,
+            payload_version="echo.v1",
+            payload_model=EchoPayloadV1,
+            handler=echo_handler,
+            retry_on_timeout=True,
+        )
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            repository = PostgresJobRepository(session)
+            foreground = _enqueue(
+                repository,
+                key="foreground-reserve",
+                job_type="test.foreground.v1",
+            )
+            background = _enqueue(
+                repository,
+                key="background-reserve",
+                job_type="test.background.v1",
+            )
+        worker = JobWorker(
+            session_factory=database_runtime.new_session,
+            registry=registry,
+            worker_id="foreground-only",
+            lease_seconds=30,
+            retry_delay_seconds=0,
+            supported_job_types=("test.foreground.v1",),
+        )
+
+        assert worker.run_once() is True
+
+        with session.begin():
+            assert PostgresJobRepository(session).get(foreground.id).status == "succeeded"  # type: ignore[union-attr]
+            assert PostgresJobRepository(session).get(background.id).status == "queued"  # type: ignore[union-attr]
+    finally:
+        session.close()
+
+
 def test_claim_is_atomic_takeover_keeps_attempt_and_stale_token_is_fenced(
     database_runtime: DatabaseRuntime,
 ) -> None:

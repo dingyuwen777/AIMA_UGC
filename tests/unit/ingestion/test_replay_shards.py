@@ -1,7 +1,11 @@
 """Replay 分片数量遵守单路起步和重复读取成本的边界。"""
 
 import pytest
-from aima_ugc.modules.ingestion.replay_shards import select_replay_shard_count
+from aima_ugc.modules.ingestion.canonical_replay import CANONICAL_REPLAY_BACKGROUND_PRIORITY
+from aima_ugc.modules.ingestion.replay_shards import (
+    REPLAY_SHARD_JOB_PRIORITY,
+    select_replay_shard_count,
+)
 
 
 @pytest.mark.parametrize(
@@ -44,3 +48,11 @@ def test_replay_shards_skip_low_confidence_or_low_match_input(sampled: int, matc
         )
         == 1
     )
+
+
+
+def test_replay_shard_priority_is_background_work() -> None:
+    """Replay 子任务不能再以高于正常 Collection 的优先级抢占 Worker。"""
+
+    assert CANONICAL_REPLAY_BACKGROUND_PRIORITY < 0
+    assert REPLAY_SHARD_JOB_PRIORITY == CANONICAL_REPLAY_BACKGROUND_PRIORITY

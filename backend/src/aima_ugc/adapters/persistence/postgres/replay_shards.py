@@ -20,7 +20,10 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 )
 from aima_ugc.modules.ingestion.canonical_replay_tables import canonical_replay_runs_table
 from aima_ugc.modules.ingestion.replay_shard_tables import canonical_replay_run_shards_table
-from aima_ugc.modules.ingestion.replay_shards import REPLAY_SHARD_JOB_TYPE
+from aima_ugc.modules.ingestion.replay_shards import (
+    REPLAY_SHARD_JOB_PRIORITY,
+    REPLAY_SHARD_JOB_TYPE,
+)
 from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.jobs.models import LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
@@ -106,7 +109,7 @@ class PostgresReplayShardRepository:
                 payload={"shard_id": str(shard_id)},
                 internal_idempotency_key=f"canonical-replay-shard:{shard_id}",
                 request_id=None,
-                priority=40,
+                priority=REPLAY_SHARD_JOB_PRIORITY,
                 max_attempts=10,
                 timeout_seconds=86_400,
             )

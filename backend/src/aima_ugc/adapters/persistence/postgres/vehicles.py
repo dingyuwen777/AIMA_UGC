@@ -1148,6 +1148,158 @@ class PostgresVehicleCatalogRepository:
             )
         return len(values), len(locked_pairs)
 
+    def converge_automatic_alias_evidence_for_replay(
+        self,
+        *,
+        entries: tuple[tuple[UUID, int, tuple[ContentVehicleEvidence, ...]], ...],
+        source_pairs: tuple[tuple[UUID, int] | None, ...],
+        replace_existing: bool,
+    ) -> tuple[
+        dict[tuple[UUID, int], list[dict[str, object]]],
+        dict[tuple[UUID, int], list[dict[str, object]]],
+    ]:
+        """一次锁定、一次快照并收敛 Replay 车型证据，直接返回精确 before/after。"""
+
+        if len(entries) != len(source_pairs):
+            raise ValueError("Replay 车型证据 source pair 数量不一致")
+        if not entries:
+            return {}, {}
+        target_pairs = tuple(sorted({(item[0], item[1]) for item in entries}, key=str))
+        source_pair_values = tuple(item for item in source_pairs if item is not None)
+        lock_pairs = tuple(sorted(set(target_pairs).union(source_pair_values), key=str))
+        for content_id, content_version, evidence in entries:
+            if any(
+                item.content_id != content_id
+                or item.content_version != content_version
+                or item.source != "alias_match"
+                or item.is_manual_locked
+                for item in evidence
+            ):
+                raise ValueError("Replay 自动车型证据身份非法")
+
+        self._lock_vehicle_review_writes(lock_pairs)
+        frozen = self.snapshot_automatic_evidence_batch(pairs=lock_pairs)
+        before_by_pair = {
+            pair: [dict(row) for row in frozen[pair]]
+            for pair in source_pair_values
+        }
+        after_by_pair = {
+            pair: [dict(row) for row in frozen[pair]]
+            for pair in target_pairs
+        }
+        locked_pairs = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(target_pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        unlocked_pairs = tuple(item for item in target_pairs if item not in locked_pairs)
+
+        def merge_after(row: RowMapping) -> None:
+            """把数据库实际持久行并入目标快照，保留真实 ID 与时间。"""
+
+            pair = (cast(UUID, row["content_id"]), cast(int, row["content_version"]))
+            rendered = _json_evidence_row(row)
+            rows = after_by_pair[pair]
+            for index, current in enumerate(rows):
+                if current["id"] == rendered["id"]:
+                    rows[index] = rendered
+                    break
+            else:
+                rows.append(rendered)
+
+        if replace_existing and unlocked_pairs:
+            updated = (
+                self._session.execute(
+                    update(content_vehicle_evidence_table)
+                    .where(
+                        tuple_(
+                            content_vehicle_evidence_table.c.content_id,
+                            content_vehicle_evidence_table.c.content_version,
+                        ).in_(unlocked_pairs),
+                        content_vehicle_evidence_table.c.source == "alias_match",
+                        content_vehicle_evidence_table.c.is_active.is_(True),
+                        content_vehicle_evidence_table.c.is_manual_locked.is_(False),
+                    )
+                    .values(is_active=False)
+                    .returning(content_vehicle_evidence_table)
+                )
+                .mappings()
+            )
+            for row in updated:
+                merge_after(row)
+
+        values: list[dict[str, object]] = []
+        seen: set[tuple[UUID, int, UUID, str, int]] = set()
+        for content_id, content_version, evidence in entries:
+            if (content_id, content_version) in locked_pairs:
+                continue
+            for item in evidence:
+                identity = (
+                    item.content_id,
+                    item.content_version,
+                    item.vehicle_model_id,
+                    item.source,
+                    item.catalog_version,
+                )
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                values.append(
+                    {
+                        "id": item.id,
+                        "content_id": item.content_id,
+                        "content_version": item.content_version,
+                        "vehicle_model_id": item.vehicle_model_id,
+                        "source": item.source,
+                        "matched_text": item.matched_text,
+                        "source_field": item.source_field,
+                        "catalog_version": item.catalog_version,
+                        "confidence": item.confidence,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": item.created_at,
+                    }
+                )
+        if values:
+            statement = pg_insert(content_vehicle_evidence_table).values(values)
+            persistence = (
+                statement.on_conflict_do_update(
+                    constraint="uq_content_vehicle_evidence_identity",
+                    set_={
+                        "matched_text": statement.excluded.matched_text,
+                        "source_field": statement.excluded.source_field,
+                        "confidence": statement.excluded.confidence,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": statement.excluded.created_at,
+                    },
+                )
+                if replace_existing
+                else statement.on_conflict_do_nothing(
+                    constraint="uq_content_vehicle_evidence_identity"
+                )
+            )
+            persisted = (
+                self._session.execute(
+                    persistence.returning(content_vehicle_evidence_table)
+                )
+                .mappings()
+            )
+            for row in persisted:
+                merge_after(row)
+        for rows in after_by_pair.values():
+            rows.sort(key=lambda item: str(item["id"]))
+        return before_by_pair, after_by_pair
+
     def replace_manual_evidence(
         self,
         *,

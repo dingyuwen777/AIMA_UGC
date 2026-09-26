@@ -863,6 +863,40 @@ def test_new_alias_replay_deduplicates_and_converges_through_content_owner(
             "invalid_artifact_rows": 0,
         }
 
+        vehicle_snapshot_calls = 0
+        brand_snapshot_calls = 0
+        original_vehicle_snapshot = PostgresVehicleCatalogRepository.snapshot_automatic_evidence_batch
+        original_brand_snapshot = (
+            PostgresBrandVehicleRepository.snapshot_automatic_brand_evidence_batch
+        )
+
+        def count_vehicle_snapshot(self, *, pairs):  # type: ignore[no-untyped-def]
+            """只统计真实非空 Evidence 快照查询。"""
+
+            nonlocal vehicle_snapshot_calls
+            if pairs:
+                vehicle_snapshot_calls += 1
+            return original_vehicle_snapshot(self, pairs=pairs)
+
+        def count_brand_snapshot(self, *, pairs):  # type: ignore[no-untyped-def]
+            """只统计真实非空 Brand Evidence 快照查询。"""
+
+            nonlocal brand_snapshot_calls
+            if pairs:
+                brand_snapshot_calls += 1
+            return original_brand_snapshot(self, pairs=pairs)
+
+        monkeypatch.setattr(
+            PostgresVehicleCatalogRepository,
+            "snapshot_automatic_evidence_batch",
+            count_vehicle_snapshot,
+        )
+        monkeypatch.setattr(
+            PostgresBrandVehicleRepository,
+            "snapshot_automatic_brand_evidence_batch",
+            count_brand_snapshot,
+        )
+
         replay_again = _create_replay(
             client,
             artifact_ids=(artifact_id,),
@@ -893,6 +927,8 @@ def test_new_alias_replay_deduplicates_and_converges_through_content_owner(
             evidence = connection.execute(select(content_brand_evidence_table)).mappings().all()
         assert {row["brand_id"] for row in evidence} == {brand_id}
         assert {row["catalog_version"] for row in evidence} == {catalog_version}
+        assert vehicle_snapshot_calls == 1
+        assert brand_snapshot_calls == 1
     finally:
         _truncate(runtime)
         runtime.close()

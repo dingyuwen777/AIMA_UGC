@@ -132,6 +132,53 @@ def _new_replay_batch_tuner(max_rows: int) -> AdaptiveTierBatchController | None
     )
 
 
+class _ReplayScanBatchController:
+    """按实际命中率把 matched 事务目标换算成有界 raw 扫描窗口。"""
+
+    def __init__(self, *, max_scan_rows: int, sampled_rows: int, matched_rows: int) -> None:
+        if max_scan_rows < 1 or sampled_rows < 0 or not 0 <= matched_rows <= sampled_rows:
+            raise ValueError("Replay 扫描批量参数无效")
+        self.max_scan_rows = max_scan_rows
+        self._hit_ratio = matched_rows / sampled_rows if sampled_rows else 1.0
+
+    @property
+    def estimated_hit_ratio(self) -> float:
+        """返回仅用于批量决策和脱敏日志的当前命中率估计。"""
+
+        return self._hit_ratio
+
+    def choose(
+        self,
+        *,
+        matched_target_rows: int,
+        scan_ceiling_rows: int | None = None,
+    ) -> int:
+        """低命中时扩大只读扫描，但绝不超过冻结批量和当前资源给出的上界。"""
+
+        if matched_target_rows < 1:
+            raise ValueError("Replay matched target 必须为正整数")
+        ceiling = self.max_scan_rows if scan_ceiling_rows is None else scan_ceiling_rows
+        if ceiling < matched_target_rows or ceiling > self.max_scan_rows:
+            raise ValueError("Replay scan ceiling 超出允许边界")
+        if self._hit_ratio <= 0:
+            return ceiling
+        estimated = int(matched_target_rows / self._hit_ratio)
+        if estimated * self._hit_ratio < matched_target_rows:
+            estimated += 1
+        return max(
+            matched_target_rows,
+            min(ceiling, estimated),
+        )
+
+    def observe(self, *, raw_rows: int, matched_rows: int) -> None:
+        """用最近完整批次缓慢修正命中率，避免单个异常批次造成窗口震荡。"""
+
+        if raw_rows < 1 or not 0 <= matched_rows <= raw_rows:
+            raise ValueError("Replay 实际批次命中统计无效")
+        observed = matched_rows / raw_rows
+        self._hit_ratio = self._hit_ratio * 0.75 + observed * 0.25
+
+
 # 结构变动由 Schema 摘要检测；非 Schema 可见的来源/Validator 语义改变时须提升此版本。
 _VALIDATION_VERSION = (
     "replay-source-v1:"
@@ -238,6 +285,13 @@ class PostgresCanonicalReplayJobExecutor:
                     finish=finish,
                 )
 
+            scan_controller = _ReplayScanBatchController(
+                max_scan_rows=max(run.batch_size, run.batch_size * 4),
+                sampled_rows=sampled_rows,
+                matched_rows=matched_rows,
+            )
+            resolver = BrandVehicleResolver(run.filter_snapshot.catalog)
+            previous_scan_signature: tuple[int, int] | None = None
             ingestion_started = perf_counter()
             phase = "ingestion"
             while run.checkpoint_artifact_ordinal < run.artifact_count:
@@ -264,36 +318,79 @@ class PostgresCanonicalReplayJobExecutor:
                             return JobHandlerResult.cancelled()
                         resources = detect_resources()
                         if batch_tuner is None:
-                            proposed_size, reason, previous = (
+                            matched_target, reason, previous = (
                                 run.batch_size,
                                 "frozen_single_row",
                                 None,
                             )
                         else:
-                            proposed_size, reason, previous = batch_tuner.choose(resources)
-                        effective_size = proposed_size
-                        if previous != proposed_size:
+                            matched_target, reason, previous = batch_tuner.choose(resources)
+                        if previous != matched_target:
                             log_event(
                                 self._runtime.logger,
                                 logging.INFO,
                                 "capacity.replay_batch_selected",
-                                "历史重筛批量调整",
+                                "历史重筛数据库目标批量调整",
                                 run_id=str(run.id),
-                                previous_rows=(
-                                    min(run.batch_size, previous) if previous is not None else None
-                                ),
-                                selected_rows=effective_size,
+                                previous_rows=previous,
+                                selected_rows=matched_target,
                                 frozen_max_rows=run.batch_size,
+                                unit="matched_rows",
                                 reason=reason,
                             )
+                        scan_ceiling_rows = (
+                            min(
+                                scan_controller.max_scan_rows,
+                                max(matched_target, matched_target * 4),
+                            )
+                            if reason in {"memory_pressure", "resource_limit"}
+                            else scan_controller.max_scan_rows
+                        )
+                        scan_rows = scan_controller.choose(
+                            matched_target_rows=matched_target,
+                            scan_ceiling_rows=scan_ceiling_rows,
+                        )
+                        scan_signature = (matched_target, scan_rows)
+                        if previous_scan_signature != scan_signature:
+                            log_event(
+                                self._runtime.logger,
+                                logging.INFO,
+                                "capacity.replay_scan_batch_selected",
+                                "历史重筛按命中率调整扫描窗口",
+                                run_id=str(run.id),
+                                matched_target_rows=matched_target,
+                                raw_scan_rows=scan_rows,
+                                max_scan_rows=scan_controller.max_scan_rows,
+                                resource_scan_ceiling_rows=scan_ceiling_rows,
+                                estimated_hit_ratio=round(
+                                    scan_controller.estimated_hit_ratio, 4
+                                ),
+                            )
+                            previous_scan_signature = scan_signature
                         artifact_read_started = perf_counter()
-                        batch = tuple(islice(iterator, effective_size))
+                        batch = tuple(islice(iterator, scan_rows))
                         batch_metrics["artifact_read_ms"] += int(
                             (perf_counter() - artifact_read_started) * 1000
                         )
                         if not batch:
                             run = self._advance_empty_artifact(run, current, fence=fence)
                             break
+                        resolution_started = perf_counter()
+                        resolved = tuple(
+                            (
+                                content,
+                                resolve_canonical_brand_vehicle(
+                                    run.filter_snapshot,
+                                    content,
+                                    resolver=resolver,
+                                ),
+                            )
+                            for content in batch
+                        )
+                        resolution_ms = int((perf_counter() - resolution_started) * 1000)
+                        actual_matched = sum(
+                            resolution.matched for _content, resolution in resolved
+                        )
                         batch_started = perf_counter()
                         try:
                             run = self._ingest_batch(
@@ -303,15 +400,22 @@ class PostgresCanonicalReplayJobExecutor:
                                 batch,
                                 fence=fence,
                                 batch_metrics=batch_metrics,
+                                resolved=resolved,
+                                resolution_ms=resolution_ms,
                             )
                         except RevokedCanonicalReplaySource:
                             run = self._advance_empty_artifact(run, current, fence=fence)
                             skipped_revoked_artifacts += 1
                             break
+                        if len(batch) == scan_rows:
+                            scan_controller.observe(
+                                raw_rows=len(batch),
+                                matched_rows=actual_matched,
+                            )
                         if batch_tuner is not None:
                             batch_tuner.succeeded(
-                                size=proposed_size,
-                                rows=len(batch),
+                                size=matched_target,
+                                rows=actual_matched,
                                 duration_ms=int((perf_counter() - batch_started) * 1000),
                             )
                         context.heartbeat(progress=_progress(run))
@@ -1005,22 +1109,29 @@ class PostgresCanonicalReplayJobExecutor:
         batch_metrics: dict[str, int],
         shard_id: UUID | None = None,
         raw_row_count: int | None = None,
+        resolved: tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...] | None = None,
+        resolution_ms: int | None = None,
     ) -> CanonicalReplayRunRecord:
         batch_started = perf_counter()
-        resolution_started = perf_counter()
-        resolver = BrandVehicleResolver(run.filter_snapshot.catalog)
-        resolved = tuple(
-            (
-                content,
-                resolve_canonical_brand_vehicle(
-                    run.filter_snapshot,
+        if resolved is None:
+            resolution_started = perf_counter()
+            resolver = BrandVehicleResolver(run.filter_snapshot.catalog)
+            resolved = tuple(
+                (
                     content,
-                    resolver=resolver,
-                ),
+                    resolve_canonical_brand_vehicle(
+                        run.filter_snapshot,
+                        content,
+                        resolver=resolver,
+                    ),
+                )
+                for content in contents
             )
-            for content in contents
-        )
-        resolution_ms = int((perf_counter() - resolution_started) * 1000)
+            resolution_ms = int((perf_counter() - resolution_started) * 1000)
+        elif len(resolved) != len(contents):
+            raise ValueError("Replay 预解析结果与 raw batch 数量不一致")
+        if resolution_ms is None:
+            resolution_ms = 0
         session = self._runtime.database.new_session()
         advanced: CanonicalReplayRunRecord | None = None
         fast_created_count = 0
@@ -1263,12 +1374,6 @@ class PostgresCanonicalReplayJobExecutor:
                     if before_pairs
                     else {}
                 )
-                vehicle_before_by_pair = vehicle_repository.snapshot_automatic_evidence_batch(
-                    pairs=before_pairs
-                )
-                brand_before_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
-                    pairs=before_pairs
-                )
                 fallback_snapshot_ms = int((perf_counter() - fallback_snapshot_started) * 1000)
                 fallback_content_started = perf_counter()
                 fallback_items = content_repository.ingest_contents_with_before_snapshots_batch(
@@ -1316,29 +1421,31 @@ class PostgresCanonicalReplayJobExecutor:
                         (result.target_id, result.version_no, resolution.brand_evidence)
                     )
                 selected_scope = run.filter_snapshot.catalog.filter_scope == "selected"
-                if selected_scope:
-                    vehicle_repository.append_automatic_alias_evidence_batch(
-                        tuple(
-                            item for _, _, evidence in fallback_vehicle_entries for item in evidence
-                        )
+                source_pairs = tuple(
+                    (
+                        (item.before.content_id, item.before.version_no)
+                        if item.before.content_id is not None
+                        and item.before.version_no is not None
+                        else None
                     )
-                else:
-                    vehicle_repository.replace_automatic_alias_evidence_batch(
-                        entries=tuple(fallback_vehicle_entries)
-                    )
-                brand_repository.replace_automatic_brand_evidence_batch(
+                    for item in fallback_items
+                )
+                (
+                    vehicle_before_by_pair,
+                    vehicle_after_by_pair,
+                ) = vehicle_repository.converge_automatic_alias_evidence_for_replay(
+                    entries=tuple(fallback_vehicle_entries),
+                    source_pairs=source_pairs,
+                    replace_existing=not selected_scope,
+                )
+                (
+                    brand_before_by_pair,
+                    brand_after_by_pair,
+                ) = brand_repository.converge_automatic_brand_evidence_for_replay(
                     entries=tuple(fallback_brand_entries),
+                    source_pairs=source_pairs,
                     catalog_snapshot=run.filter_snapshot.catalog,
                     preserve_unconfirmed=selected_scope,
-                )
-                after_pairs = tuple(
-                    (item.result.target_id, item.result.version_no) for item in fallback_items
-                )
-                vehicle_after_by_pair = vehicle_repository.snapshot_automatic_evidence_batch(
-                    pairs=after_pairs
-                )
-                brand_after_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
-                    pairs=after_pairs
                 )
                 fallback_evidence_ms = int((perf_counter() - fallback_evidence_started) * 1000)
                 fallback_ledger_started = perf_counter()
