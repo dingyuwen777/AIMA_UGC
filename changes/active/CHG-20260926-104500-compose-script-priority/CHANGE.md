@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-104500-compose-script-priority
 title: 统一文档 Compose 启停脚本优先级
 level: L2
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: docs/609-compose-script-priority
 created: 2026-09-26T10:45:00+08:00
@@ -120,8 +120,8 @@ Issue #609 在 Implementation PR #612 合并后收到用户新增明确要求：
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 前一轮路径/编号/速查基础保持成立 | #609 / AC1-AC7 | satisfied | 当前 main 0ff0359 已包含 PR #612 + Archive |
-| R2 | 重新完成 current-head CI/Review/Delivery | #609 / AC8 | not_satisfied | 待后续 PR |
-| R3 | 脚本优先且启停成对，三篇运行入口一致 | #609 / AC9 | not_satisfied | 待实现 |
+| R2 | 重新完成 current-head CI/Review/Delivery | #609 / AC8 | explicitly_deferred | Ready 后由后续 PR current-head CI、独立 Review、merge/main-fresh/archive/closure 实际完成 |
+| R3 | 脚本优先且启停成对，三篇运行入口一致 | #609 / AC9 | satisfied | docs/02、Windows Guide、Production Operations 已统一脚本优先；start/stop 成对；Compose CLI 仅保留镜像准备、down/调试或脚本内部语义 |
 
 # 验证矩阵
 
@@ -148,10 +148,10 @@ Issue #609 在 Implementation PR #612 合并后收到用户新增明确要求：
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取 #609 AC1-AC9、三篇最终文档、start/stop/release bundle。
-- [ ] change_coverage：AC9 实现，AC8 用新 PR current-head 重新证明。
-- [ ] reverse_audit：三篇文档推荐一致，不重复整套专项内容，不出现只启动无停止。
-- [ ] unresolved_cleared：Ready 前无 not_satisfied，交付后置门禁可明确 deferred。
+- [x] upstream_re_read：已重新读取 #609 AC1-AC9、三篇最终文档、start/stop/release bundle。
+- [x] change_coverage：AC9 已实现；AC8 明确绑定 Ready 后新 PR 的 current-head CI/Review/Delivery。
+- [x] reverse_audit：三篇文档推荐一致；日常入口不复制完整专项内容；start/stop 成对；清库场景明确说明 reset 脚本已先停止，因此只需后续启动。
+- [x] unresolved_cleared：Requirement Traceability 无 not_satisfied；AC8 使用 explicitly_deferred 绑定真实后置门禁。
 
 # 完成证据与状态
 
@@ -160,16 +160,19 @@ Issue #609 在 Implementation PR #612 合并后收到用户新增明确要求：
 | 证据 | 版本 | 检查 | 结果 | 证明 |
 | --- | --- | --- | --- | --- |
 | V1 | main 0ff0359 | 文档/脚本读取 | confirmed | E1-E5 |
+| V2 | branch 11926a2 | 三篇运行文档脚本配对审计 | pass | docs/02=7/7、Windows Guide=7/7、Operations=6/6 个 start/stop_compose.py 引用；日常推荐均脚本优先 |
+| V3 | branch 11926a2 | direct Compose 启动审计 | pass | docs/02 与 Windows Guide 不再把 docker compose up 作为日常推荐；Operations 仅在脚本内部流程说明保留 no-build up |
+| V4 | branch 11926a2 | reset 语义审计 | pass | 清库段明确 reset_keep_vehicle_catalog.sh 自身先停止服务，因此不需要额外 stop_compose.py |
 
 ## 未验证内容与剩余风险
 
-- 实现、PR current-head CI/Review、merge/main-fresh/archive/closure 待执行。
+- 实现与静态一致性审计已完成；PR current-head CI/Review、merge/main-fresh/archive/closure 待执行。
 
 ## 交付状态
 
-- 提交：待实现
-- PR：待建立
-- CI：待执行
-- 合并：待执行
-- Change 归档：待执行
+- 提交：三篇运行文档脚本优先启停已提交到任务分支
+- PR：Ready 后建立
+- CI：由 PR current-head required checks 执行
+- 合并：仅在 current-head CI/Review Green 后 guarded merge
+- Change 归档：merge 后由 repository-native Archivist 执行
 - Release/Deploy：不适用
