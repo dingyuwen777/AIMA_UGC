@@ -25,6 +25,7 @@ affected_paths:
   - backend/src/aima_ugc/adapters/persistence/postgres/
   - migrations/versions/
   - tests/integration/
+  - tests/unit/ingestion/test_historical_import_errors.py
   - docs/appendix/08_数据入口与统一入库实现.md
 contracts: []
 data_changes:
