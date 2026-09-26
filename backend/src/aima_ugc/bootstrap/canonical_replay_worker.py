@@ -1356,12 +1356,6 @@ class PostgresCanonicalReplayJobExecutor:
                     if before_pairs
                     else {}
                 )
-                vehicle_before_by_pair = vehicle_repository.snapshot_automatic_evidence_batch(
-                    pairs=before_pairs
-                )
-                brand_before_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
-                    pairs=before_pairs
-                )
                 fallback_snapshot_ms = int((perf_counter() - fallback_snapshot_started) * 1000)
                 fallback_content_started = perf_counter()
                 fallback_items = content_repository.ingest_contents_with_before_snapshots_batch(
@@ -1409,29 +1403,31 @@ class PostgresCanonicalReplayJobExecutor:
                         (result.target_id, result.version_no, resolution.brand_evidence)
                     )
                 selected_scope = run.filter_snapshot.catalog.filter_scope == "selected"
-                if selected_scope:
-                    vehicle_repository.append_automatic_alias_evidence_batch(
-                        tuple(
-                            item for _, _, evidence in fallback_vehicle_entries for item in evidence
-                        )
+                source_pairs = tuple(
+                    (
+                        (item.before.content_id, item.before.version_no)
+                        if item.before.content_id is not None
+                        and item.before.version_no is not None
+                        else None
                     )
-                else:
-                    vehicle_repository.replace_automatic_alias_evidence_batch(
-                        entries=tuple(fallback_vehicle_entries)
-                    )
-                brand_repository.replace_automatic_brand_evidence_batch(
+                    for item in fallback_items
+                )
+                (
+                    vehicle_before_by_pair,
+                    vehicle_after_by_pair,
+                ) = vehicle_repository.converge_automatic_alias_evidence_for_replay(
+                    entries=tuple(fallback_vehicle_entries),
+                    source_pairs=source_pairs,
+                    replace_existing=not selected_scope,
+                )
+                (
+                    brand_before_by_pair,
+                    brand_after_by_pair,
+                ) = brand_repository.converge_automatic_brand_evidence_for_replay(
                     entries=tuple(fallback_brand_entries),
+                    source_pairs=source_pairs,
                     catalog_snapshot=run.filter_snapshot.catalog,
                     preserve_unconfirmed=selected_scope,
-                )
-                after_pairs = tuple(
-                    (item.result.target_id, item.result.version_no) for item in fallback_items
-                )
-                vehicle_after_by_pair = vehicle_repository.snapshot_automatic_evidence_batch(
-                    pairs=after_pairs
-                )
-                brand_after_by_pair = brand_repository.snapshot_automatic_brand_evidence_batch(
-                    pairs=after_pairs
                 )
                 fallback_evidence_ms = int((perf_counter() - fallback_evidence_started) * 1000)
                 fallback_ledger_started = perf_counter()
