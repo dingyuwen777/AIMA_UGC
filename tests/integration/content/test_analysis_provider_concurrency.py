@@ -681,11 +681,9 @@ def test_stop_during_http_prevents_retries_and_stale_writes(
                     assert observed.wait(2), "等待 HTTP 时没有检查执行控制状态"
                 finally:
                     release.set()
-                if stop_kind == "cancel":
-                    assert future.result(timeout=3)
-                else:
-                    with pytest.raises(LeaseLostError):
-                        future.result(timeout=3)
+                # 外部取消收敛为 cancelled；Lease/Deadline 已真正失权时，
+                # JobWorker 由数据库 Fence 证明旧执行失效后安全放弃，不再让子进程级异常冒泡。
+                assert future.result(timeout=3)
             assert len(bodies) == 2
         with runtime.database.engine.begin() as connection:
             assert (
