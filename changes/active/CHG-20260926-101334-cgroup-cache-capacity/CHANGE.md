@@ -28,15 +28,43 @@ contracts: []
 data_changes: []
 ---
 
-# 背景与目标
+# 变更摘要
+
+- 问题：服务器的干净文件缓存触发错误的 Worker 降档，同 Campaign 的 Chunk 又被父行锁串行化。
+- 修改：修正公共 cgroup 余量估算，缩短父行锁区间并补充性能阶段日志和并发回归。
+- 结果：资源调节不再被可回收缓存误导，互不冲突的 Chunk 可以同时写入；生产吞吐待部署后复测。
+
+# 背景、现状与问题
 
 Linux v3.1.1 上正在导入 24,874,335 行。Worker cgroup 的 `memory.current` 接近 12.55 GiB 上限，但 `inactive_file` 约 12.06 GiB、`anon` 约 228 MiB，Docker stats 显示约 496 MiB，`memory.events` 无 OOM。代码以 `memory.max - memory.current` 判断可用内存，运行日志显示历史 Job 窗口由 6 降到 1，重筛批量由 1000 降到 500。同一 Campaign 的每个 Chunk 还在整个 Content 写入期间持有 Campaign 父行锁，限制恢复 Worker 后的并行收益。目标是同时修正资源估算和此串行边界，保持取消/恢复语义。
 
-服务器日志复核：361 个 Snapshot 覆盖 24,874,335 行；前 177 个在约 11 分钟内完成，窗口降至 1 后的 184 个在约 90 分钟内完成。当前日志仅包含该 Campaign 180 个 Chunk（355,122 行），其中 `transaction_ms` 累计 264.7 秒、`content_ingestion_ms` 154.0 秒、`finalization_ms` 44.5 秒。两次 Replay 预检各约 15 秒，唯一完成的一次 Replay 入库约 96.7 秒，样本命中率低而选择单分片。此份日志没有普通撤销或重筛撤回的完成记录，不能宣称它们已有生产测速结果。
+# 事实与证据
 
-# 范围与约束
+| 证据编号 | 已确认事实 | 来源 | 支撑决策 |
+| --- | --- | --- | --- |
+| E1 | `memory.current` 接近硬上限，其中约 12.06 GiB 是 `inactive_file`；`oom=0` | 用户提供的服务器 cgroup 和 docker stats | 有效余量须区分干净文件缓存与不可回收用量 |
+| E2 | Snapshot 前 177 文件约 11 分钟，Job 窗口从 6 降到 1 后 184 文件约 90 分钟 | `E:/Desktop/logs/logs/` 的 361 条 Snapshot 与容量事件 | 修正误降档是预检的直接优先项 |
+| E3 | 180 Chunk / 355,122 行，`transaction_ms`、`content_ingestion_ms`、`finalization_ms` 分别累计约 264.7、154.0、44.5 秒 | 同组服务器日志 | 入库有独立事务瓶颈 |
+| E4 | Chunk 在业务写入前锁 Campaign 父行；取消已有共享/独占 advisory 门 | `historical_import_worker.py`、`historical_cancellation.py` | 可保持取消互斥，把父行锁移至调度阶段 |
+| E5 | 两次 Replay 预检约 15 秒；一次完成入库约 96.7 秒，样本命中 428/6400 与 867/6400 | 同组服务器日志、`replay_shards.py` | 低命中单分片有依据，批量误降档仍需修正 |
+
+推断：E1 与 E2 高度吻合，但旧版未记录脏页和宿主余量的同步快照；同类输入的真实提速需新版本复测。日志没有普通撤销/重筛撤回完成事件，不能量化其速度。
+
+# 目标、成功标准与非目标
+
+成功标准：服务器数值下 Job 窗口不因干净页缓存掉到 1；真实压力下保守降档；两个来源 Chunk 可同时进入 Content 写入；取消/恢复和逐行账本保持正确；日志能区分关键阶段。
+
+非目标：重切既有 Chunk、变更 Replay 分片命中门槛、重写数据库 Schema/公共 API、部署新版本或触碰正在运行的服务器导入。
+
+# 约束与意图决策
 
 复用现有资源探测和控制器；Chunk 业务阶段共享取消门，父行锁只用于末尾调度与终态收口。不改历史 Chunk 冻结语义、Job/断点/Fencing、业务结果、HTTP Contract、Schema、Migration、依赖和启动方式。正在运行的服务器任务不重启；真实服务器吞吐只能在新版本部署后的同类输入上验证。
+
+优先修改公共资源入口，避免每个业务流程形成不同的内存解释。父行锁只延后到现有 `schedule_import_jobs` 已有的串行化点，维持同事务结果/Job 提交与取消门线性化。保留物理 Worker 上界，吞吐是否继续受数据库约束由新增阶段日志和部署后实测判断。
+
+# 修改方案与决策依据
+
+E1/E2 支持修正 cgroup 探测而非增加固定 Worker 数；E3/E4 支持缩短父锁而非无依据地放大 SQL 批量；E5 支持保留现有低命中 Replay 单分片决策。每项改动均有直接回归或运行日志观察点。
 
 # 需求追溯
 
@@ -49,13 +77,15 @@ Linux v3.1.1 上正在导入 24,874,335 行。Worker cgroup 的 `memory.current`
 | R5 | 同一 Campaign 的不同来源 Chunk 能并发进入业务写入，取消仍线性化 | #610 / AC4 | satisfied | `historical_import_worker.py`；双 Worker PostgreSQL 并发与既有取消回归已编写，待 CI 执行 |
 | R6 | 分别审查预检、入库、重筛、撤销/撤回与进程池，区分已测和未测 | #610 / AC5 | satisfied | 下方完成审计；未测生产吞吐明确保留 |
 
-# 实施计划
+# 计划改动
 
 1. 用服务器数值写资源探测失败测试，并覆盖匿名内存、宿主压力、统计缺失与边界值；观察预期失败。
 2. 在公共 cgroup 探测处修正有效余量，保持回退保守；在现有低频资源调整日志中记录原始用量与可回收缓存。
 3. 用 PostgreSQL 双 Worker 测试验证同 Campaign Chunk 可并发进入 Content 写入，再缩短 Campaign 父行锁覆盖的事务区间；保留并发取消回归。
 4. 运行目标单元、相关回归和静态检查，审查 Worker、导入、重筛、撤回消费者；同步数据链路排障文档。
 5. 对照 Issue 与上游要求完成审计，取得 PR/CI 和 Review 证据；服务器真实吞吐留待部署后对比。
+
+路径限定在 frontmatter 的 `affected_paths`。`tests/unit/jobs/test_worker_entrypoint.py` 复用既有回归，未作无关修改。
 
 # 验证矩阵
 
@@ -67,9 +97,16 @@ Linux v3.1.1 上正在导入 24,874,335 行。Worker cgroup 的 `memory.current`
 | Linux CI | 目标回归及仓库必需检查 | 待运行 |
 | 服务器 | 同类导入和重筛吞吐、OOM/压力事件 | 未部署，不宣称已提速 |
 
-# 风险、回滚与完成审计
+# 风险、兼容性、迁移与回滚
 
 风险一是把不可回收内存错判为缓存而过度升档，因此仅对 Linux 报告的 `inactive_file` 扣除脏页/写回页后作有界折减，读取异常回退原计算，且宿主可用内存仍约束最终结果。风险二是 Chunk 并发引起 Content 共享身份锁竞争，需用真实 PostgreSQL 集成和现有取消回归验证，数据库瞬时冲突沿现有 Job 重试恢复。回滚为恢复旧镜像，Job/数据格式无迁移。
+
+# 文档、依赖、部署与发布影响
+
+- 长期文档：同步 `docs/appendix/08_数据入口与统一入库实现.md` 的资源和 Chunk 并发机制。
+- 依赖、Runtime、Secret、配置、HTTP Contract、Schema、Migration：均未修改，已有部署文件和启动方式保持一致。
+- 部署：本任务不部署生产；新镜像上线后用相近输入比较分阶段吞吐，异常时回滚镜像，不需数据回滚。
+- 消费方：页面与生成 Client 均无变更。
 
 # 完成审计
 
@@ -86,3 +123,10 @@ Linux v3.1.1 上正在导入 24,874,335 行。Worker cgroup 的 `memory.current`
 - 普通导入撤销、重筛撤回：所给日志没有完整事件，不能量化它们的实际速度。两者的分片准入和逐批升降档均读取公共 `detect_resources()`；新资源快照使可回收缓存不再阻止分片/升档，批次收益仍由各自控制器测量。数据库连接余量、取消/Fencing/断点边界未改。
 - Worker 进程池：服务器配额允许上限 6，日志显示已扩到 6 后因错误内存压力回落到 1；新快照进入同一进程池循环与 Job 投放窗口。进程数仍受实际 CPU/内存配额、排队 Job 和数据库竞争约束，未宣称固定六路最优。
 - 公共 Contract / 依赖 / Migration / 部署：无变化。现有服务器导入没有重启、部署或生产数据操作；跨环境真实提速需新版本同类输入与 CPU、内存、数据库和 OOM 指标对比。
+
+# 完成证据与状态
+
+- 本地：容量与 Worker 单元 24 passed；Ruff、Mypy、文档与项目 Ready Check 通过。原实现的服务器数值回归先红后绿。
+- PostgreSQL 集成：双 Worker 与并发取消测试已编写，须由 Linux CI 执行；本地 Docker daemon 不可用，现有集成 fixture 会清库，因此未触碰用户本地库。
+- PR：[ #611 ](https://github.com/dingyuwen777/AIMA_UGC/pull/611) 已创建；首次正式 CI 因 canonical Change 标题缺失失败，此文件补齐后需重新运行。
+- 生产：未部署、未重启、未操作正在运行的导入；无法声称真实吞吐已提升。合并、归档、清理均须在必需 CI/Review 后完成。
