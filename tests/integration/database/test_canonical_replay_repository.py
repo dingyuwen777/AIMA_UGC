@@ -768,6 +768,8 @@ def test_all_replay_reversal_is_durable_idempotent_and_legacy_fail_closed() -> N
                         batch_size=1000,
                         created_by="legacy-admin",
                         created_at=_NOW,
+                        accepted_before=_NOW,
+                        planning_status="planned",
                     )
                 )
                 with pytest.raises(RuntimeError, match="没有精确贡献账本"):
