@@ -67,9 +67,9 @@ class PostgresCanonicalReplayPlanJobExecutor:
             try:
                 with session.begin():
                     PostgresJobRepository(session).validate_current_execution(fence)
-                    candidates = PostgresCanonicalReplayRepository(session).list_replayable_artifacts(
-                        accepted_before=payload.accepted_before
-                    )
+                    candidates = PostgresCanonicalReplayRepository(
+                        session
+                    ).list_replayable_artifacts(accepted_before=payload.accepted_before)
             finally:
                 session.close()
 
@@ -95,9 +95,9 @@ class PostgresCanonicalReplayPlanJobExecutor:
                 session.close()
         except LeaseLostError:
             raise
-        except (LookupError, ValueError, DataError, IntegrityError, ProgrammingError):
+        except LookupError, ValueError, DataError, IntegrityError, ProgrammingError:
             return JobHandlerResult.failed("canonical_replay_plan_invalid")
-        except (OSError, SQLAlchemyError):
+        except OSError, SQLAlchemyError:
             return JobHandlerResult.retry("canonical_replay_plan_transient_error")
 
         if planned.lifecycle_status != "active":

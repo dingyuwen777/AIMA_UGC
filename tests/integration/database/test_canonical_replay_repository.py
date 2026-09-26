@@ -560,14 +560,19 @@ def test_all_replay_http_admission_only_enqueues_planner_and_freezes_retry_bound
         session = runtime.new_session()
         try:
             with session.begin():
-                request = session.execute(
-                    select(canonical_replay_all_requests_table)
-                ).mappings().one()
+                request = (
+                    session.execute(select(canonical_replay_all_requests_table))
+                    .mappings()
+                    .one()
+                )
                 planner = PostgresJobRepository(session).get(request["planner_job_id"])
                 assert planner is not None
                 assert planner.job_type == "ingestion.canonical-replay-plan.v1"
                 assert planner.status == "queued"
-                assert session.scalar(select(func.count()).select_from(canonical_replay_runs_table)) == 0
+                assert (
+                    session.scalar(select(func.count()).select_from(canonical_replay_runs_table))
+                    == 0
+                )
                 accepted_before = request["accepted_before"]
         finally:
             session.close()
@@ -588,11 +593,16 @@ def test_all_replay_http_admission_only_enqueues_planner_and_freezes_retry_bound
         session = runtime.new_session()
         try:
             with session.begin():
-                request = session.execute(
-                    select(canonical_replay_all_requests_table)
-                ).mappings().one()
+                request = (
+                    session.execute(select(canonical_replay_all_requests_table))
+                    .mappings()
+                    .one()
+                )
                 assert request["accepted_before"] == accepted_before
-                assert session.scalar(select(func.count()).select_from(canonical_replay_runs_table)) == 0
+                assert (
+                    session.scalar(select(func.count()).select_from(canonical_replay_runs_table))
+                    == 0
+                )
         finally:
             session.close()
     finally:
@@ -646,9 +656,11 @@ def test_planner_cutoff_excludes_artifact_created_before_but_linked_after_admiss
         session = runtime.new_session()
         try:
             with session.begin():
-                request = session.execute(
-                    select(canonical_replay_all_requests_table)
-                ).mappings().one()
+                request = (
+                    session.execute(select(canonical_replay_all_requests_table))
+                    .mappings()
+                    .one()
+                )
                 accepted_before = request["accepted_before"]
                 PostgresArtifactMetadataRepository(session).link_canonical(
                     canonical.id,

@@ -5,7 +5,10 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from aima_ugc.bootstrap.canonical_replay_worker import (\n    PostgresCanonicalReplayJobExecutor,\n    _replay_batch_tiers,\n)
+from aima_ugc.bootstrap.canonical_replay_worker import (
+    PostgresCanonicalReplayJobExecutor,
+    _replay_batch_tiers,
+)
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
     CANONICAL_REPLAY_JOB_TYPE,

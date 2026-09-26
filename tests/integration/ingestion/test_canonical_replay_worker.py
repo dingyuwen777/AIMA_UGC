@@ -1396,10 +1396,14 @@ def test_all_replay_batches_existing_convergence_without_per_row_sql(tmp_path: P
             brand_ids=(brand_id,),
         )
         _add_replay_alias(runtime, brand_id)
-        first = _create_all_replay(client, runtime, idempotency_key=f"replay-existing-first-{uuid4()}")
+        first = _create_all_replay(
+            client, runtime, idempotency_key=f"replay-existing-first-{uuid4()}"
+        )
         assert _worker(runtime, suffix="existing-first").run_once() is True
 
-        second = _create_all_replay(client, runtime, idempotency_key=f"replay-existing-second-{uuid4()}")
+        second = _create_all_replay(
+            client, runtime, idempotency_key=f"replay-existing-second-{uuid4()}"
+        )
         second_request_id = UUID(cast(str, second["request_id"]))
         statement_count = 0
 

@@ -369,7 +369,6 @@ def test_brand_update_replaces_aliases_with_one_catalog_version(runtime) -> None
     assert service.get_brand(created.id).aliases == updated.aliases
 
 
-
 def test_active_brand_guard_still_blocks_concurrent_brand_deprecation(runtime) -> None:  # type: ignore[no-untyped-def]
     """NO KEY UPDATE 可与 FK KEY SHARE 共存，但仍阻止会改变 Brand 行的停用写。"""
 
