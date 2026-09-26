@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-104500-compose-script-priority
 title: 统一文档 Compose 启停脚本优先级
 level: L2
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: docs/609-compose-script-priority
 created: 2026-09-26T10:45:00+08:00
