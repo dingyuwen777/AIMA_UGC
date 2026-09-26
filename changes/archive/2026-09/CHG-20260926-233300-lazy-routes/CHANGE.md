@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260926-233300-lazy-routes
 title: 按需加载重页面路由
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/618-lazy-routes
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 completion_gate: required
 depends_on: []
 affected_areas:
