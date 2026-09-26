@@ -279,13 +279,35 @@ def _create_replay(
     return response.json()
 
 
+def _run_until_all_replay_planned(
+    client: TestClient,
+    runtime: PlatformRuntime,
+    *,
+    idempotency_key: str,
+    max_jobs: int = 8,
+) -> dict[str, object]:
+    """异步队列允许先处理其它 Job；只以父请求 planned 事实判定 Planner 完成。"""
+
+    worker = _worker(runtime, suffix=f"plan-{uuid4()}")
+    for _ in range(max_jobs):
+        assert worker.run_once() is True
+        planned = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": idempotency_key},
+        )
+        assert planned.status_code == 202, planned.text
+        if planned.json()["planning_status"] == "planned":
+            return planned.json()
+    pytest.fail("全历史 Replay Planner 未在测试预算内完成")
+
+
 def _create_all_replay(
     client: TestClient,
     runtime: PlatformRuntime,
     *,
     idempotency_key: str,
 ) -> dict[str, object]:
-    """测试辅助入口先验证快速受理，再让正式 Worker 完成 Planner 后返回规划摘要。"""
+    """测试辅助入口先验证快速受理，再等待正式 Planner 持久化规划结果。"""
 
     response = client.post(
         "/api/v1/canonical-replays/all",
@@ -293,14 +315,11 @@ def _create_all_replay(
     )
     assert response.status_code == 202
     assert response.json()["planning_status"] == "queued"
-    assert _worker(runtime, suffix=f"plan-{uuid4()}").run_once() is True
-    planned = client.post(
-        "/api/v1/canonical-replays/all",
-        json={"idempotency_key": idempotency_key},
+    return _run_until_all_replay_planned(
+        client,
+        runtime,
+        idempotency_key=idempotency_key,
     )
-    assert planned.status_code == 202
-    assert planned.json()["planning_status"] == "planned"
-    return planned.json()
 
 
 def test_all_replay_planner_freezes_admission_artifact_boundary(tmp_path: Path) -> None:
@@ -343,15 +362,12 @@ def test_all_replay_planner_freezes_admission_artifact_boundary(tmp_path: Path) 
             brand_ids=(brand_id,),
             expected_rows_ingested=1,
         )
-        assert _worker(runtime, suffix="planner-boundary").run_once() is True
-
-        planned = client.post(
-            "/api/v1/canonical-replays/all",
-            json={"idempotency_key": key},
+        planned = _run_until_all_replay_planned(
+            client,
+            runtime,
+            idempotency_key=key,
         )
-        assert planned.status_code == 202
-        assert planned.json()["planning_status"] == "planned"
-        assert planned.json()["artifact_count"] == 1
+        assert planned["artifact_count"] == 1
         with runtime.database.engine.connect() as connection:
             selected = set(
                 connection.scalars(

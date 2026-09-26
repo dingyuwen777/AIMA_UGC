@@ -2056,12 +2056,30 @@ def test_queued_all_replay_skips_later_revoked_campaign_and_keeps_other_sources(
                 == "succeeded"
             )
 
+        replay_key = f"replay-skip-{uuid4()}"
         replay = client.post(
             "/api/v1/canonical-replays/all",
-            json={"idempotency_key": f"replay-skip-{uuid4()}"},
+            json={"idempotency_key": replay_key},
         )
         assert replay.status_code == 202
-        assert replay.json()["artifact_count"] == 2
+        assert replay.json()["planning_status"] == "queued"
+        assert replay.json()["artifact_count"] == 0
+
+        planned = None
+        for _ in range(8):
+            assert worker.run_once() is True
+            planned_response = client.post(
+                "/api/v1/canonical-replays/all",
+                json={"idempotency_key": replay_key},
+            )
+            assert planned_response.status_code == 202, planned_response.text
+            if planned_response.json()["planning_status"] == "planned":
+                planned = planned_response.json()
+                break
+        assert planned is not None
+        assert planned["artifact_count"] == 2
+
+        # Planner 已冻结两个来源；随后撤销其中一个，Replay 执行阶段必须跳过它。
         with runtime.database.engine.begin() as connection:
             connection.execute(
                 update(historical_import_campaigns_table)
