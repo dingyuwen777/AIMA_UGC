@@ -28,7 +28,6 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
     CanonicalReplayArtifactRecord,
 )
-from aima_ugc.modules.ingestion.canonical_replay_http import CanonicalReplayConflict
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
     canonical_replay_run_artifacts_table,

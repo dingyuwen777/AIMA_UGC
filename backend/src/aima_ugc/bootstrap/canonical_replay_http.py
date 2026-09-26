@@ -8,6 +8,7 @@ from pydantic import JsonValue, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
 )
@@ -30,7 +31,6 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayAllRequestRecord,
     CanonicalReplayRunRecord,
 )
-from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.modules.ingestion.canonical_replay_http import (
     CanonicalReplayConflict,
     CanonicalReplayInputInvalid,
