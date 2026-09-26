@@ -32,6 +32,9 @@ canonical_replay_all_requests_table = Table(
     Column("batch_size", Integer(), nullable=False),
     Column("created_by", Text(), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("accepted_before", DateTime(timezone=True), nullable=False),
+    Column("planning_status", Text(), nullable=False, server_default=text("'planned'")),
+    Column("planner_job_id", Uuid(), ForeignKey("jobs.id"), unique=True),
     Column("reversible", Boolean(), nullable=False, server_default=text("false")),
     Column("lifecycle_status", Text(), nullable=False, server_default=text("'active'")),
     Column("reversal_job_id", Uuid(), ForeignKey("jobs.id"), unique=True),
@@ -56,6 +59,10 @@ canonical_replay_all_requests_table = Table(
     CheckConstraint("artifacts_per_run = 100", name="artifacts_per_run_fixed"),
     CheckConstraint("batch_size = 1000", name="batch_size_fixed"),
     CheckConstraint("char_length(created_by) between 1 and 200", name="created_by_length"),
+    CheckConstraint(
+        "planning_status in ('queued','running','planned','failed','cancelled')",
+        name="planning_status_allowed",
+    ),
     CheckConstraint(
         "lifecycle_status in ('active','cancelling','reverting','reverted','revert_failed')",
         name="lifecycle_status_allowed",

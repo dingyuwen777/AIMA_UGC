@@ -65,7 +65,7 @@ class PostgresCanonicalReplayHttpService:
                 try:
                     catalog = PostgresBrandVehicleRepository(session).snapshot(brand_ids=None)
                     snapshot = BrandVehicleFilterSnapshot(catalog=catalog)
-                    record, _planner = repository.enqueue_all(
+                    record, _planner = repository.enqueue_all_request(
                         idempotency_key=body.idempotency_key,
                         created_by=actor_ref,
                         request_id=request_id,

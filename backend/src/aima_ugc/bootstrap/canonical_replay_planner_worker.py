@@ -37,12 +37,14 @@ class PostgresCanonicalReplayPlanJobExecutor:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                PostgresJobRepository(session).validate_current_execution(fence)
                 repository = PostgresCanonicalReplayRepository(session)
-                record = repository.get_all_request(payload.request_id)
+                record = repository.mark_all_plan_running(
+                    payload.request_id,
+                    fence=fence,
+                )
                 if record is None:
                     return JobHandlerResult.failed("canonical_replay_plan_not_found")
-                if repository.planning_status(record) == "planned":
+                if record.planning_status == "planned":
                     return JobHandlerResult.succeeded(
                         {
                             "request_id": str(record.id),
@@ -91,9 +93,12 @@ def canonical_replay_plan_terminal_callback(session, job: JobRecord) -> None:  #
 
     request_id = job.payload.get("request_id")
     if request_id is not None:
-        PostgresCanonicalReplayRepository(session).ensure_reversal_job_if_ready(
-            UUID(str(request_id))
-        )
+        repository = PostgresCanonicalReplayRepository(session)
+        normalized = UUID(str(request_id))
+        if repository.get_all_request(normalized) is None:
+            return
+        repository.mark_all_plan_terminal(normalized, job=job)
+        repository.ensure_reversal_job_if_ready(normalized)
 
 
 __all__ = [

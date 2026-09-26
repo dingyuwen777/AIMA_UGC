@@ -62,6 +62,7 @@ const runtimeStageLabels: Record<string, string> = {
   ingesting: '保存内容',
   content_discovery: '平台采集中',
   content_enrichment: '补充内容信息',
+  planning: '规划重筛任务',
   replaying: '重筛并写入',
   reverting: '正在撤回入库数据',
   reverted: '已撤回入库数据',

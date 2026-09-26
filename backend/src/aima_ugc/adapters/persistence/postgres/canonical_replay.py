@@ -35,6 +35,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayArtifactRecord,
     CanonicalReplayCounters,
     CanonicalReplayLifecycleStatus,
+    CanonicalReplayPlanningStatus,
     CanonicalReplayRunRecord,
     CanonicalReplaySourceKind,
     dump_filter_snapshot,
@@ -204,9 +205,111 @@ class PostgresCanonicalReplayRepository:
         idempotency_key: str,
         created_by: str,
         request_id: str | None,
+    ) -> CanonicalReplayAllRequestRecord:
+        """内部同步原语：冻结全部合法 Canonical 并立即创建子 Run。"""
+
+        key = idempotency_key.strip()
+        actor = created_by.strip()
+        if not key or len(key) > 120:
+            raise ValueError("idempotency_key 必须是 1—120 字符")
+        if not actor or len(actor) > 200:
+            raise ValueError("created_by 必须是 1—200 字符")
+
+        self._lock_all_idempotency_key(key)
+        candidates = self._list_replayable_artifacts()
+        selection_digest = _selection_digest(candidates)
+        artifact_count = len(candidates)
+        run_count = (
+            artifact_count + CANONICAL_REPLAY_ARTIFACTS_PER_RUN - 1
+        ) // CANONICAL_REPLAY_ARTIFACTS_PER_RUN
+        all_request_id = uuid5(_ALL_REQUEST_NAMESPACE, key)
+        existing = self._get_all_request(all_request_id)
+        if existing is not None:
+            requested_identity = (
+                key,
+                selection_digest,
+                artifact_count,
+                run_count,
+                CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+                CANONICAL_REPLAY_FAST_BATCH_SIZE,
+                actor,
+            )
+            existing_identity = (
+                existing.client_idempotency_key,
+                existing.selection_digest,
+                existing.artifact_count,
+                existing.run_count,
+                existing.artifacts_per_run,
+                existing.batch_size,
+                existing.created_by,
+            )
+            if requested_identity != existing_identity:
+                raise RuntimeError("idempotency_key 已绑定不同的全量 Replay 输入或创建者")
+            actual_run_count = self._session.scalar(
+                select(func.count())
+                .select_from(canonical_replay_runs_table)
+                .where(canonical_replay_runs_table.c.all_request_id == existing.id)
+            )
+            if actual_run_count != existing.run_count:
+                raise RuntimeError("全量 Replay 请求缺少对应的子 Run")
+            return existing
+
+        now = cast(datetime, self._session.scalar(select(func.clock_timestamp())))
+        self._session.execute(
+            insert(canonical_replay_all_requests_table).values(
+                id=all_request_id,
+                client_idempotency_key=key,
+                selection_digest=selection_digest,
+                artifact_count=artifact_count,
+                run_count=run_count,
+                artifacts_per_run=CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+                batch_size=CANONICAL_REPLAY_FAST_BATCH_SIZE,
+                created_by=actor,
+                created_at=now,
+                accepted_before=now,
+                planning_status="planned",
+                planner_job_id=None,
+                reversible=True,
+                lifecycle_status="active",
+            )
+        )
+        if candidates:
+            catalog = PostgresBrandVehicleRepository(self._session).snapshot(brand_ids=None)
+            if catalog.unresolved_active_vehicle_ids:
+                raise RuntimeError("存在未完成品牌归属的 active 车型，不能启动 Replay")
+            snapshot = BrandVehicleFilterSnapshot(catalog=catalog)
+            for ordinal in range(run_count):
+                offset = ordinal * CANONICAL_REPLAY_ARTIFACTS_PER_RUN
+                selected = candidates[offset : offset + CANONICAL_REPLAY_ARTIFACTS_PER_RUN]
+                child_key = f"canonical-replay-all:{all_request_id}:{ordinal}"
+                if self.get(uuid5(_RUN_NAMESPACE, child_key)) is not None:
+                    raise RuntimeError("全量 Replay 子 Run 幂等身份冲突")
+                self._create_run(
+                    key=child_key,
+                    artifact_ids=tuple(item[0] for item in selected),
+                    source_kinds=tuple(item[1] for item in selected),
+                    snapshot=snapshot,
+                    brand_ids=(),
+                    batch_size=CANONICAL_REPLAY_FAST_BATCH_SIZE,
+                    created_by=actor,
+                    request_id=request_id,
+                    all_request_id=all_request_id,
+                    all_request_ordinal=ordinal,
+                )
+        created = self._get_all_request(all_request_id)
+        if created is None:
+            raise RuntimeError("全量 Replay 请求创建后不可读")
+        return created
+
+    def enqueue_all_request(
+        self,
+        *,
+        idempotency_key: str,
+        created_by: str,
+        request_id: str | None,
         filter_snapshot: BrandVehicleFilterSnapshot,
     ) -> tuple[CanonicalReplayAllRequestRecord, JobRecord | None]:
-        """只受理父请求并排队 Planner；不在 HTTP 事务扫描历史 Artifact。"""
+        """HTTP 快速受理：冻结目录与时间边界，只创建父请求和 Planner Job。"""
 
         key = idempotency_key.strip()
         actor = created_by.strip()
@@ -224,10 +327,10 @@ class PostgresCanonicalReplayRepository:
         if existing is not None:
             if existing.client_idempotency_key != key or existing.created_by != actor:
                 raise RuntimeError("idempotency_key 已绑定不同的全量 Replay 创建者")
-            return existing, jobs.get_by_identity(
-                job_type=CANONICAL_REPLAY_PLAN_JOB_TYPE,
-                internal_idempotency_key=f"canonical-replay-plan:{all_request_id}",
+            planner = (
+                jobs.get(existing.planner_job_id) if existing.planner_job_id is not None else None
             )
+            return existing, planner
 
         accepted_before = cast(datetime, self._session.scalar(select(func.clock_timestamp())))
         self._session.execute(
@@ -241,7 +344,10 @@ class PostgresCanonicalReplayRepository:
                 batch_size=CANONICAL_REPLAY_FAST_BATCH_SIZE,
                 created_by=actor,
                 created_at=accepted_before,
-                reversible=False,
+                accepted_before=accepted_before,
+                planning_status="queued",
+                planner_job_id=None,
+                reversible=True,
                 lifecycle_status="active",
             )
         )
@@ -260,6 +366,11 @@ class PostgresCanonicalReplayRepository:
             max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
             timeout_seconds=CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
         )
+        self._session.execute(
+            update(canonical_replay_all_requests_table)
+            .where(canonical_replay_all_requests_table.c.id == all_request_id)
+            .values(planner_job_id=planner.id)
+        )
         created = self._get_all_request(all_request_id)
         if created is None:
             raise RuntimeError("全量 Replay 请求创建后不可读")
@@ -269,9 +380,59 @@ class PostgresCanonicalReplayRepository:
     def planning_status(
         record: CanonicalReplayAllRequestRecord,
     ) -> Literal["queued", "planned"]:
-        """由持久 selection digest 判断父请求是否仍处于后台规划阶段。"""
+        """HTTP 只暴露已受理/已规划；失败或取消要求换新幂等键重试。"""
 
-        return "queued" if record.selection_digest == _PENDING_SELECTION_DIGEST else "planned"
+        if record.planning_status == "planned":
+            return "planned"
+        if record.planning_status in {"queued", "running"}:
+            return "queued"
+        raise RuntimeError("全量 Replay 规划已终止，请使用新的幂等键重新提交")
+
+    def mark_all_plan_running(
+        self,
+        request_id: UUID,
+        *,
+        fence: JobExecutionFence,
+    ) -> CanonicalReplayAllRequestRecord:
+        """Planner 真正开始时持久化 running；旧 Fence 不能修改父请求。"""
+
+        PostgresJobRepository(self._session).validate_current_execution(fence)
+        record = self.get_all_request(request_id, for_update=True)
+        if record is None:
+            raise LookupError(request_id)
+        if record.planner_job_id != fence.job_id:
+            raise RuntimeError("Replay Planner Job 与父请求不匹配")
+        if record.planning_status == "queued":
+            self._session.execute(
+                update(canonical_replay_all_requests_table)
+                .where(canonical_replay_all_requests_table.c.id == request_id)
+                .values(planning_status="running")
+            )
+            refreshed = self._get_all_request(request_id)
+            if refreshed is None:
+                raise RuntimeError("Replay Planner 状态更新后父请求不可读")
+            return refreshed
+        return record
+
+    def mark_all_plan_terminal(
+        self,
+        request_id: UUID,
+        *,
+        job: JobRecord,
+    ) -> None:
+        """Planner 失败/取消写回父状态；planned 由业务提交事务本身写入。"""
+
+        if job.status not in {"failed", "cancelled"}:
+            return
+        self._session.execute(
+            update(canonical_replay_all_requests_table)
+            .where(
+                canonical_replay_all_requests_table.c.id == request_id,
+                canonical_replay_all_requests_table.c.planner_job_id == job.id,
+                canonical_replay_all_requests_table.c.planning_status.in_(("queued", "running")),
+            )
+            .values(planning_status=job.status)
+        )
 
     def list_replayable_artifacts(
         self,
@@ -291,16 +452,18 @@ class PostgresCanonicalReplayRepository:
         snapshot: BrandVehicleFilterSnapshot,
         http_request_id: str | None,
     ) -> CanonicalReplayAllRequestRecord:
-        """在后台原子提交 selection 摘要及所有子 Run；取消先到达时不再派生工作。"""
+        """后台原子提交 selection 摘要及所有子 Run；取消先到达时不再派生工作。"""
 
         record = self.get_all_request(request_id, for_update=True)
         if record is None:
             raise LookupError(request_id)
-        if record.selection_digest != _PENDING_SELECTION_DIGEST:
+        if record.planning_status == "planned":
+            return record
+        if record.planning_status in {"failed", "cancelled"}:
             return record
         if record.lifecycle_status != "active":
             return record
-        if record.created_at != accepted_before:
+        if record.accepted_before != accepted_before:
             raise RuntimeError("Replay Planner 受理时间边界发生漂移")
 
         selection_digest = _selection_digest(candidates)
@@ -309,8 +472,8 @@ class PostgresCanonicalReplayRepository:
             artifact_count + CANONICAL_REPLAY_ARTIFACTS_PER_RUN - 1
         ) // CANONICAL_REPLAY_ARTIFACTS_PER_RUN
         for ordinal in range(run_count):
-            start = ordinal * CANONICAL_REPLAY_ARTIFACTS_PER_RUN
-            selected = candidates[start : start + CANONICAL_REPLAY_ARTIFACTS_PER_RUN]
+            offset = ordinal * CANONICAL_REPLAY_ARTIFACTS_PER_RUN
+            selected = candidates[offset : offset + CANONICAL_REPLAY_ARTIFACTS_PER_RUN]
             child_key = f"canonical-replay-all:{request_id}:{ordinal}"
             if self.get(uuid5(_RUN_NAMESPACE, child_key)) is not None:
                 raise RuntimeError("全量 Replay 子 Run 幂等身份冲突")
@@ -330,13 +493,13 @@ class PostgresCanonicalReplayRepository:
             update(canonical_replay_all_requests_table)
             .where(
                 canonical_replay_all_requests_table.c.id == request_id,
-                canonical_replay_all_requests_table.c.selection_digest
-                == _PENDING_SELECTION_DIGEST,
+                canonical_replay_all_requests_table.c.planning_status.in_(("queued", "running")),
             )
             .values(
                 selection_digest=selection_digest,
                 artifact_count=artifact_count,
                 run_count=run_count,
+                planning_status="planned",
                 reversible=True,
             )
         )
@@ -446,15 +609,17 @@ class PostgresCanonicalReplayRepository:
     def _list_replayable_artifacts(
         self,
         *,
-        accepted_before: datetime,
+        accepted_before: datetime | None = None,
     ) -> tuple[tuple[UUID, CanonicalReplaySourceKind], ...]:
-        """用确定性查询枚举受理时间边界内三类可证明来源的 linked Canonical。"""
+        """枚举三类可证明来源；Planner 可附加受理时间上界冻结 selection。"""
 
-        common_filters = (
+        common_filter_items = [
             artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND,
             artifacts_table.c.storage_status == "linked",
-            artifacts_table.c.created_at <= accepted_before,
-        )
+        ]
+        if accepted_before is not None:
+            common_filter_items.append(artifacts_table.c.created_at <= accepted_before)
+        common_filters = tuple(common_filter_items)
         excel = (
             select(
                 artifacts_table.c.id.label("artifact_id"),
@@ -637,7 +802,12 @@ class PostgresCanonicalReplayRepository:
         if cancel_active:
             job_repository = PostgresJobRepository(self._session)
             for job in active:
-                job_repository.request_cancel(job.id)
+                cancelled_or_requested = job_repository.request_cancel(job.id)
+                if (
+                    job.job_type == CANONICAL_REPLAY_PLAN_JOB_TYPE
+                    and cancelled_or_requested.status == "cancelled"
+                ):
+                    self.mark_all_plan_terminal(request_id, job=cancelled_or_requested)
             self._session.execute(
                 update(canonical_replay_all_requests_table)
                 .where(canonical_replay_all_requests_table.c.id == request_id)
@@ -746,9 +916,11 @@ class PostgresCanonicalReplayRepository:
         """返回 Planner 与全部子 Run Job，供取消/撤回完成屏障统一判断。"""
 
         repository = PostgresJobRepository(self._session)
-        planner = repository.get_by_identity(
-            job_type=CANONICAL_REPLAY_PLAN_JOB_TYPE,
-            internal_idempotency_key=f"canonical-replay-plan:{request_id}",
+        record = self.get_all_request(request_id)
+        planner = (
+            repository.get(record.planner_job_id)
+            if record is not None and record.planner_job_id is not None
+            else None
         )
         job_ids = self._session.scalars(
             select(jobs_table.c.id)
@@ -1021,6 +1193,9 @@ def _all_request_from_row(row: RowMapping) -> CanonicalReplayAllRequestRecord:
         batch_size=cast(int, row["batch_size"]),
         created_by=cast(str, row["created_by"]),
         created_at=cast(datetime, row["created_at"]),
+        accepted_before=cast(datetime, row["accepted_before"]),
+        planning_status=cast(CanonicalReplayPlanningStatus, row["planning_status"]),
+        planner_job_id=cast(UUID | None, row["planner_job_id"]),
         reversible=cast(bool, row["reversible"]),
         lifecycle_status=cast(CanonicalReplayLifecycleStatus, row["lifecycle_status"]),
         reversal_job_id=cast(UUID | None, row["reversal_job_id"]),

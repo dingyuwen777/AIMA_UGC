@@ -495,6 +495,7 @@ def _canonical_replay_select() -> Any:
     request = canonical_replay_all_requests_table
     run = canonical_replay_runs_table
     job = jobs_table
+    planner_job = jobs_table.alias("runtime_canonical_replay_planner_job")
     reversal_job = jobs_table.alias("runtime_canonical_replay_reversal_job")
     child = (
         select(
@@ -533,6 +534,10 @@ def _canonical_replay_select() -> Any:
     cancelled_count = func.coalesce(child.c.cancelled_run_count, 0)
     terminal_count = succeeded_count + failed_count + cancelled_count
     replay_status = case(
+        (request.c.planning_status == "queued", "queued"),
+        (request.c.planning_status == "running", "running"),
+        (request.c.planning_status == "failed", "failed"),
+        (request.c.planning_status == "cancelled", "cancelled"),
         (request.c.run_count == 0, "succeeded"),
         (running_count > 0, "running"),
         (and_(queued_count > 0, terminal_count > 0), "running"),
@@ -549,6 +554,10 @@ def _canonical_replay_select() -> Any:
         else_=replay_status,
     )
     replay_progress = case(
+        (
+            request.c.planning_status.in_(("queued", "running", "failed", "cancelled")),
+            func.coalesce(planner_job.c.progress, 0),
+        ),
         (request.c.artifact_count == 0, 100),
         else_=func.least(
             100,
@@ -568,6 +577,9 @@ def _canonical_replay_select() -> Any:
         (request.c.lifecycle_status == "reverting", "reverting"),
         (request.c.lifecycle_status == "reverted", "reverted"),
         (request.c.lifecycle_status == "revert_failed", "revert_failed"),
+        (request.c.planning_status.in_(("queued", "running")), "planning"),
+        (request.c.planning_status == "failed", "failed"),
+        (request.c.planning_status == "cancelled", "cancelled"),
         (public_status == "queued", "queued"),
         (public_status == "running", "replaying"),
         else_=public_status,
@@ -620,7 +632,7 @@ def _canonical_replay_select() -> Any:
     )
     return select(
         request.c.id.label("record_id"),
-        request.c.reversal_job_id.label("job_id"),
+        func.coalesce(request.c.reversal_job_id, request.c.planner_job_id).label("job_id"),
         literal("canonical_replay").label("record_type"),
         public_status.label("public_status"),
         progress.label("progress"),
@@ -648,14 +660,25 @@ def _canonical_replay_select() -> Any:
                 request.c.lifecycle_status == "revert_failed",
                 reversal_job.c.error_code,
             ),
+            (
+                request.c.planning_status == "failed",
+                planner_job.c.error_code,
+            ),
             else_=child.c.error_code,
         ).label("error_code"),
         request.c.created_at,
-        child.c.started_at,
+        func.coalesce(child.c.started_at, planner_job.c.started_at).label("started_at"),
         case(
             (request.c.lifecycle_status == "reverted", request.c.reversed_at),
             (request.c.lifecycle_status == "revert_failed", reversal_job.c.finished_at),
-            (request.c.run_count == 0, request.c.created_at),
+            (
+                request.c.planning_status.in_(("failed", "cancelled")),
+                planner_job.c.finished_at,
+            ),
+            (
+                and_(request.c.planning_status == "planned", request.c.run_count == 0),
+                func.coalesce(planner_job.c.finished_at, request.c.created_at),
+            ),
             (terminal_count == request.c.run_count, child.c.finished_at),
             else_=None,
         ).label("finished_at"),
@@ -668,7 +691,9 @@ def _canonical_replay_select() -> Any:
             sql_cast(request.c.id, Text),
         ).label("search_text"),
     ).select_from(
-        request.outerjoin(child, child.c.request_id == request.c.id).outerjoin(
+        request.outerjoin(child, child.c.request_id == request.c.id)
+        .outerjoin(planner_job, planner_job.c.id == request.c.planner_job_id)
+        .outerjoin(
             reversal_job,
             reversal_job.c.id == request.c.reversal_job_id,
         )

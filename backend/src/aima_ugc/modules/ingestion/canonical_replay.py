@@ -32,6 +32,7 @@ CanonicalReplaySourceKind = Literal[
     "data_import_canonical_chunk_v2",
     "tikhub_search_attempt_v1",
 ]
+CanonicalReplayPlanningStatus = Literal["queued", "running", "planned", "failed", "cancelled"]
 CanonicalReplayLifecycleStatus = Literal[
     "active",
     "cancelling",
@@ -66,6 +67,9 @@ class CanonicalReplayAllRequestRecord:
     batch_size: int
     created_by: str
     created_at: datetime
+    accepted_before: datetime
+    planning_status: CanonicalReplayPlanningStatus
+    planner_job_id: UUID | None
     reversible: bool
     lifecycle_status: CanonicalReplayLifecycleStatus
     reversal_job_id: UUID | None
@@ -325,6 +329,7 @@ __all__ = [
     "CanonicalReplayAllRequestRecord",
     "CanonicalReplayCounters",
     "CanonicalReplayLifecycleStatus",
+    "CanonicalReplayPlanningStatus",
     "CanonicalReplayJobExecutor",
     "CanonicalReplayPlanJobExecutor",
     "CanonicalReplayPlanJobHandler",

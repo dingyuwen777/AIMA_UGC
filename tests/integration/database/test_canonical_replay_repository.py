@@ -529,58 +529,48 @@ def test_replay_excludes_revoked_campaign_source(campaign_status: str) -> None:
         runtime.dispose()
 
 
-def test_all_replay_groups_every_supported_artifact_and_rejects_input_drift() -> None:
+def test_all_replay_http_admission_only_enqueues_planner_and_freezes_retry_boundary() -> None:
+    """HTTP 受理不创建子 Run；同幂等键恢复第一次受理边界。"""
+
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
             "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
-            "keyword_packs, vehicle_brands, accounts "
-            "RESTART IDENTITY CASCADE"
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
         )
     try:
         session = runtime.new_session()
         try:
             with session.begin():
-                expected = tuple(_excel_source(session) for _ in range(101))
+                tuple(_excel_source(session) for _ in range(101))
         finally:
             session.close()
 
         service = PostgresCanonicalReplayHttpService(SimpleNamespace(database=runtime))  # type: ignore[arg-type]
-        body = CanonicalReplayAllCreateRequest(idempotency_key="all-history-red")
+        body = CanonicalReplayAllCreateRequest(idempotency_key="all-history-admission")
         created = service.create_all_replays(
             body,
             actor_ref="replay-admin",
-            request_id="all-history-red",
+            request_id="all-history-admission",
         )
+        assert created.planning_status == "queued"
+        assert created.artifact_count == 0
+        assert created.run_count == 0
 
-        assert created.artifact_count == len(expected)
-        assert created.request_id is not None
-        assert created.run_count == 2
-        assert created.artifacts_per_run == 100
-        assert created.batch_size == 1000
         session = runtime.new_session()
         try:
             with session.begin():
-                run_rows = tuple(
-                    session.execute(
-                        select(
-                            canonical_replay_runs_table.c.artifact_count,
-                            canonical_replay_runs_table.c.batch_size,
-                        ).order_by(canonical_replay_runs_table.c.client_idempotency_key)
-                    )
-                )
-                assert sorted(row.artifact_count for row in run_rows) == [1, 100]
-                assert {row.batch_size for row in run_rows} == {1000}
-                assert session.scalar(select(func.count()).select_from(jobs_table)) == 103
+                request = session.execute(
+                    select(canonical_replay_all_requests_table)
+                ).mappings().one()
+                planner = PostgresJobRepository(session).get(request["planner_job_id"])
+                assert planner is not None
+                assert planner.job_type == "ingestion.canonical-replay-plan.v1"
+                assert planner.status == "queued"
+                assert session.scalar(select(func.count()).select_from(canonical_replay_runs_table)) == 0
+                accepted_before = request["accepted_before"]
         finally:
             session.close()
-
-        replayed = service.create_all_replays(
-            body,
-            actor_ref="replay-admin",
-            request_id="all-history-retry",
-        )
-        assert replayed == created
 
         session = runtime.new_session()
         try:
@@ -588,58 +578,56 @@ def test_all_replay_groups_every_supported_artifact_and_rejects_input_drift() ->
                 _excel_source(session)
         finally:
             session.close()
-        with pytest.raises(CanonicalReplayConflict):
-            service.create_all_replays(
-                body,
-                actor_ref="replay-admin",
-                request_id="all-history-drift",
-            )
+
+        repeated = service.create_all_replays(
+            body,
+            actor_ref="replay-admin",
+            request_id="all-history-admission-retry",
+        )
+        assert repeated == created
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                request = session.execute(
+                    select(canonical_replay_all_requests_table)
+                ).mappings().one()
+                assert request["accepted_before"] == accepted_before
+                assert session.scalar(select(func.count()).select_from(canonical_replay_runs_table)) == 0
+        finally:
+            session.close()
     finally:
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
                 "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
-                "keyword_packs, vehicle_brands, accounts "
-                "RESTART IDENTITY CASCADE"
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
 
 
-def test_all_replay_returns_zero_tasks_when_no_supported_canonical_exists() -> None:
+def test_sync_repository_enqueue_all_keeps_zero_input_compatibility() -> None:
+    """内部同步原语仍可直接冻结空 selection，避免扩大 Repository Contract 破坏面。"""
+
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
             "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
-            "keyword_packs, vehicle_brands, accounts "
-            "RESTART IDENTITY CASCADE"
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
         )
     try:
-        response = PostgresCanonicalReplayHttpService(
-            SimpleNamespace(database=runtime)  # type: ignore[arg-type]
-        ).create_all_replays(
-            CanonicalReplayAllCreateRequest(idempotency_key="all-history-empty"),
-            actor_ref="replay-admin",
-            request_id="all-history-empty",
-        )
-        assert response.artifact_count == 0
-        assert response.request_id is not None
-        assert response.run_count == 0
-        assert response.artifacts_per_run == 100
-        assert response.batch_size == 1000
-
         session = runtime.new_session()
         try:
             with session.begin():
-                _excel_source(session)
+                request = PostgresCanonicalReplayRepository(session).enqueue_all(
+                    idempotency_key="sync-empty",
+                    created_by="replay-admin",
+                    request_id="sync-empty",
+                )
+                assert request.artifact_count == 0
+                assert request.run_count == 0
+                assert request.planning_status == "planned"
+                assert request.planner_job_id is None
         finally:
             session.close()
-        with pytest.raises(CanonicalReplayConflict):
-            PostgresCanonicalReplayHttpService(
-                SimpleNamespace(database=runtime)  # type: ignore[arg-type]
-            ).create_all_replays(
-                CanonicalReplayAllCreateRequest(idempotency_key="all-history-empty"),
-                actor_ref="replay-admin",
-                request_id="all-history-empty-drift",
-            )
     finally:
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
