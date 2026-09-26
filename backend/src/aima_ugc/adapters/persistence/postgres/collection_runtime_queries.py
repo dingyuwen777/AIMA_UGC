@@ -246,7 +246,7 @@ class PostgresCollectionRuntimeQueryRepository:
         run = collection_runs_table
         job = jobs_table
         scope_filtered = _scope_filtered_subquery()
-        campaign_source_totals, campaign_chunk_totals = _campaign_progress_subqueries()
+        campaign_source_totals = _campaign_progress_subquery()
 
         import_stage_value = batch.c.stats["stage"].astext
         import_stage = case(
@@ -319,7 +319,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 func.least(
                     100,
                     sql_cast(
-                        func.coalesce(campaign_chunk_totals.c.completed_row_count, 0)
+                        func.coalesce(campaign_source_totals.c.completed_row_count, 0)
                         * 100
                         / campaign.c.total_rows,
                         Integer,
@@ -401,10 +401,6 @@ class PostgresCollectionRuntimeQueryRepository:
             campaign.outerjoin(
                 campaign_source_totals,
                 campaign_source_totals.c.campaign_id == campaign.c.id,
-            )
-            .outerjoin(
-                campaign_chunk_totals,
-                campaign_chunk_totals.c.campaign_id == campaign.c.id,
             )
             .outerjoin(
                 revocation_request,
@@ -732,7 +728,7 @@ def _campaign_rows_rejected(stats: Any) -> Any:
     )
 
 
-def _campaign_progress_subqueries() -> tuple[Any, Any]:
+def _campaign_progress_subquery() -> Any:
     item = historical_import_campaign_items_table
     source_progress = case(
         (item.c.status == "discovered", 0),
@@ -743,33 +739,16 @@ def _campaign_progress_subqueries() -> tuple[Any, Any]:
         select(
             item.c.campaign_id.label("campaign_id"),
             func.coalesce(func.sum(source_progress), 0).label("progress_points"),
+            func.coalesce(func.sum(item.c.completed_row_count), 0).label(
+                "completed_row_count"
+            ),
         )
         .select_from(item.outerjoin(jobs_table, jobs_table.c.id == item.c.job_id))
         .where(item.c.item_kind == "source_file")
         .group_by(item.c.campaign_id)
         .subquery("runtime_campaign_source_progress")
     )
-    chunk_totals = (
-        select(
-            item.c.campaign_id.label("campaign_id"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (
-                            item.c.status.in_(("succeeded", "failed", "cancelled")),
-                            item.c.row_count,
-                        ),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("completed_row_count"),
-        )
-        .where(item.c.item_kind == "chunk")
-        .group_by(item.c.campaign_id)
-        .subquery("runtime_campaign_chunk_progress")
-    )
-    return source_totals, chunk_totals
+    return source_totals
 
 
 def _scope_filtered_subquery() -> Any:

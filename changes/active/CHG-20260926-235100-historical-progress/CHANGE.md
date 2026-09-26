@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260926-235100-historical-progress
 title: 消除大 Campaign 的逐 Chunk 重复扫描
 level: L3
-status: proposed
+status: ready_for_review
 owner: codex
 branch: fix/618-historical-progress
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -21,6 +21,7 @@ affected_paths:
   - migrations/versions/
   - tests/integration/ingestion/
   - docs/appendix/08_数据入口与统一入库实现.md
+  - docs/operations/05_性能审计服务器复测.md
 contracts: []
 data_changes:
   - Source Item 增加触发器维护的已完成行数和失败 Chunk 数派生计数
@@ -50,10 +51,10 @@ Issue #618 / AC2、AC5 的工作包。每个 Chunk 收口不再读取整组 Chun
 
 目标：Chunk 完成/失败及列表轮询不再随已经存在的 Chunk 数重复全量扫描；同一 Source 的顺序和不同 Source 的并发保持。
 
-- [ ] 新 Migration 对存量终态 Chunk 回填计数，升降级可逆；所有状态转换后计数与底层项一致。
-- [ ] Source/Campaign 收口和调度按索引查未完成状态/首个 ready，既有终态、取消和重试结果保持。
-- [ ] Campaign API 与运行中心在大 Campaign 下不再聚合全部 Chunk；本地真实 PostgreSQL 给出执行计划/耗时对照。
-- [ ] 不增加每个并发 Chunk 争用的 Campaign 计数行，回归/并发测试通过。
+- [x] 新 Migration 对存量终态 Chunk 回填计数，升降级可逆；所有状态转换后计数与底层项一致。
+- [x] Source/Campaign 收口和调度按索引查未完成状态/首个 ready，既有终态、取消和重试结果保持。
+- [x] Campaign API 与运行中心在大 Campaign 下不再聚合全部 Chunk；本地真实 PostgreSQL 给出执行计划/耗时对照。
+- [x] 不增加每个并发 Chunk 争用的 Campaign 计数行，回归/并发测试通过。
 
 范围：Ingestion Owner 的 Item 派生计数与状态/调度查询、Collection 只读进度、Migration、相关测试和运行文档。非目标：Provider 并发预算、Content 写入、声音广场投影或任务调度语义重设计。必须保持公共 HTTP/Job Contract、错误及现有 Archive/撤销路径。
 
@@ -73,8 +74,9 @@ Migration 0070 给 Source/Item 增加计数列、回填历史终态；语句级 
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 大 Campaign 状态/进度不再重复全量扫 Chunk，取消/失败/恢复/并发和运行中心一致，不造新长热锁 | #618 / AC2 | not_satisfied | 待迁移和真实 PostgreSQL 回归 |
-| R2 | 集成、迁移与性能对照 | #618 / AC5 | not_satisfied | 待验证 |
+| R1 | 大 Campaign 状态/进度不再重复全量扫 Chunk，取消/失败/恢复/并发和运行中心一致，不造新长热锁 | #618 / AC2 | satisfied | 0070 Source 分片计数、索引 EXISTS/LATERAL、39 项 PostgreSQL 工作流回归；双 Worker 不同 Source 并行测试通过 |
+| R2 | 集成、迁移与性能对照 | #618 / AC5 | satisfied | 0069→0070→0069→0070 存量回填均为 20 行/1 失败；2 万 Chunk 隔离库对照和 EXPLAIN；ruff/mypy/Alembic check |
+| R3 | 服务器只读观察与脱敏日志说明 | #618 / AC6 | satisfied | `docs/operations/05_性能审计服务器复测.md` 复用既有 Chunk 分段耗时与全局慢请求事件 |
 
 # 计划改动
 
@@ -108,11 +110,11 @@ Migration 0070 给 Source/Item 增加计数列、回填历史终态；语句级 
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 #618 / AC2、AC5 和当前状态、调度、查询事实。
-- [ ] change_coverage：状态收口、进度、取消、重试、并发、迁移和回滚。
-- [ ] reverse_audit：Job 状态到 API 与运行中心；每个页面进度字段有真实后端来源。
-- [ ] unresolved_cleared：Ready 前清零 `not_satisfied`。
+- [x] upstream_re_read：Ready 前重读 #618 / AC2、AC5、AC6 和当前状态、调度、查询事实。
+- [x] change_coverage：状态收口、进度、取消、重试、并发、迁移和回滚。
+- [x] reverse_audit：Job 状态到 API 与运行中心；两处进度都由 Source 派生计数汇总。
+- [x] unresolved_cleared：Ready 前清零 `not_satisfied`。
 
 # 完成证据与状态
 
-早期施工记录。真实 PostgreSQL Red/Green、执行计划、Migration 升降级、回归、PR 当前 HEAD CI 和生产服务器实测均待完成。
+新增计数测试在旧 Schema 上先因缺列失败；修正触发器递归后通过。隔离 PostgreSQL 18.4：Stage 12 Worker/运行中心 24 项，取消、部分预检和撤销 15 项通过；0069→0070→0069→0070 存量 3 Chunk 回填两次均为已完成 20 行、失败 1 Chunk；`alembic check` 无差异；`ruff check` 和 378 文件 mypy 通过。2 万 Chunk 预热后，旧状态查询返回 2 万行耗时 10–16 ms，新活跃状态探测返回 1 行耗时约 2.5–4.0 ms；旧进度聚合 3.1 ms / 607 shared hit blocks，新 Source 聚合 0.02 ms / 2 blocks；旧下一 Chunk 排名 1.9 ms / 313 blocks，新索引查找 0.03 ms / 5 blocks。新旧返回进度数与首个 ready Chunk ID 相同。PR 当前 HEAD CI、两阶段 Review、生产服务器实测与合并后主分支验证仍需完成；本 Change 不声称生产收益已实测。

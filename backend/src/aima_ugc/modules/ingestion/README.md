@@ -326,6 +326,7 @@ failed
 - 结构失败/取消但尚未逐行进入业务事务的整段行，由冻结 Chunk 行范围/row_count 形成可对账失败/取消事实，不制造海量伪行账本；
 - 人工 retry 的新 Batch 使用当前集合式数据库逻辑继承前一 Batch 已提交身份集合，失败 Chunk 中跨 Chunk 重复行仍稳定为 `duplicate`；
 - 同一文件按当前调度只执行最早 ready Chunk，保证跨 Chunk 身份的稳定首行胜出；不同文件可以利用有界窗口并行；
+- 历史 Campaign 的完成行数和失败 Chunk 数由 Chunk 终态在同事务增量维护到各 Source Item；详情与运行中心汇总 Source，调度按 Source 索引取最早 ready Chunk，避免大文件每次收口和轮询重扫全部 Chunk；
 - 排队 Chunk 取消时同步收敛 Item/Batch/Campaign 终态和行数汇总，不依赖不会发生的 Worker 回调；
 - 不同 Chunk 的来源 Request/Attempt 按不可变 Chunk Artifact 区分。
 

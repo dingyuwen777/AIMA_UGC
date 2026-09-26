@@ -99,6 +99,8 @@ historical_import_campaign_items_table = Table(
     Column("row_start", BigInteger()),
     Column("row_end", BigInteger()),
     Column("row_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("completed_row_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column("failed_chunk_count", BigInteger(), nullable=False, server_default=text("0")),
     Column("status", Text(), nullable=False),
     Column("attempt_count", Integer(), nullable=False, server_default=text("0")),
     Column("stats", JSONB(), nullable=False, server_default=text("'{}'::jsonb")),
@@ -125,6 +127,8 @@ historical_import_campaign_items_table = Table(
     CheckConstraint("ordinal is null or ordinal >= 0", name="ordinal_nonnegative"),
     CheckConstraint("file_size is null or file_size >= 0", name="file_size_nonnegative"),
     CheckConstraint("row_count >= 0", name="row_count_nonnegative"),
+    CheckConstraint("completed_row_count >= 0", name="completed_rows_nonnegative"),
+    CheckConstraint("failed_chunk_count >= 0", name="failed_chunks_nonnegative"),
     CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),
     CheckConstraint("jsonb_typeof(stats) = 'object'", name="stats_object"),
     info={"owner": "ingestion"},
@@ -232,6 +236,13 @@ Index(
     "ix_historical_import_campaign_items_campaign_status",
     historical_import_campaign_items_table.c.campaign_id,
     historical_import_campaign_items_table.c.status,
+)
+Index(
+    "ix_historical_items_chunk_parent_status_ordinal",
+    historical_import_campaign_items_table.c.parent_item_id,
+    historical_import_campaign_items_table.c.status,
+    historical_import_campaign_items_table.c.ordinal,
+    postgresql_where=historical_import_campaign_items_table.c.item_kind == "chunk",
 )
 Index(
     "uq_historical_import_campaign_items_source_manifest",
