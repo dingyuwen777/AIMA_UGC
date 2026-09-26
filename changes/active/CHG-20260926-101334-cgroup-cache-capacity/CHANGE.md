@@ -20,6 +20,7 @@ affected_paths:
   - backend/src/aima_ugc/bootstrap/runtime.py
   - backend/src/aima_ugc/entrypoints/worker_main.py
   - backend/src/aima_ugc/bootstrap/historical_import_worker.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py
   - tests/unit/platform/test_capacity.py
   - tests/unit/jobs/test_worker_entrypoint.py
   - tests/unit/test_docker_build_sources.py
@@ -77,7 +78,7 @@ E1/E2 支持修正 cgroup 探测而非增加固定 Worker 数；E3/E4 支持缩�
 | R2 | 真实匿名内存压力、宿主可用内存不足或统计缺失时保守降档 | #610 / AC2 | satisfied | 脏页、宿主余量、统计缺失单元测试 |
 | R3 | Worker 进程池、Job 窗口、批量控制器共用修正后的资源快照并可观测 | #610 / AC3 | satisfied | `worker_main.py`、`runtime.py` 调用链与新低频日志字段 |
 | R4 | 数据/恢复语义不变，现有导入不中断，目标回归覆盖 | #610 / AC6 | satisfied | 无 Contract/Schema/部署变更；现有服务器任务未操作；单元已通过，PostgreSQL/CI 待执行 |
-| R5 | 同一 Campaign 的不同来源 Chunk 能并发进入业务写入，取消仍线性化 | #610 / AC4 | satisfied | `historical_import_worker.py`；双 Worker PostgreSQL 并发与既有取消回归已编写，待 CI 执行 |
+| R5 | 同一 Campaign 的不同来源 Chunk 能并发进入业务写入，取消仍线性化 | #610 / AC4 | satisfied | `historical_import_worker.py`、`historical_import.py`；双 Worker PostgreSQL 并发与既有取消回归；CI 重新验证中 |
 | R6 | 分别审查预检、入库、重筛、撤销/撤回与进程池，区分已测和未测 | #610 / AC5 | satisfied | 下方完成审计；未测生产吞吐明确保留 |
 
 # 计划改动
@@ -96,7 +97,7 @@ E1/E2 支持修正 cgroup 探测而非增加固定 Worker 数；E3/E4 支持缩�
 | 层次 | 验证内容 | 当前状态 |
 | --- | --- | --- |
 | 单元 | cgroup v2 数值、压力与回退；Job/Worker 消费 | 24 passed |
-| PostgreSQL 集成 | 同 Campaign 双 Worker 并行写入、取消与恢复状态 | 待 Linux CI 运行；本地 Docker daemon 不可用，且现有集成 fixture 会清库，不对用户本地库执行 |
+| PostgreSQL 集成 | 同 Campaign 双 Worker 并行写入、取消与恢复状态 | 首轮 CI 发现 `mark_chunk_running` 仍在写入前更新父行；已移到末尾调度阶段，待重新运行；本地 Docker daemon 不可用，且现有集成 fixture 会清库，不对用户本地库执行 |
 | 静态 | Ruff、Mypy、文档、Change 校验 | Ruff / Mypy / docs 已通过；Change 在 Ready 后检查 |
 | Linux CI | 目标回归及仓库必需检查 | 待运行 |
 | 服务器 | 同类导入和重筛吞吐、OOM/压力事件 | 未部署，不宣称已提速 |
@@ -132,6 +133,6 @@ E1/E2 支持修正 cgroup 探测而非增加固定 Worker 数；E3/E4 支持缩�
 
 - 本地：容量与 Worker 单元 24 passed；Ruff、Mypy、文档与项目 Ready Check 通过。原实现的服务器数值回归先红后绿。
 - main-fresh：已合入 main 文档导航提交；新指南路径的两处目标单元 2 passed。
-- PostgreSQL 集成：双 Worker 与并发取消测试已编写，须由 Linux CI 执行；本地 Docker daemon 不可用，现有集成 fixture 会清库，因此未触碰用户本地库。
+- PostgreSQL 集成：首轮双 Worker 测试失败，定位到 `mark_chunk_running` 在写入前更新 Campaign 父行，使第二个 Worker 阻塞。已把此更新移到写入后的调度阶段，待 Linux CI 重新验证；本地 Docker daemon 不可用，现有集成 fixture 会清库，因此未触碰用户本地库。
 - PR：[ #611 ](https://github.com/dingyuwen777/AIMA_UGC/pull/611) 已创建；首次正式 CI 因 canonical Change 标题缺失失败，此文件补齐后需重新运行。
 - 生产：未部署、未重启、未操作正在运行的导入；无法声称真实吞吐已提升。合并、归档、清理均须在必需 CI/Review 后完成。

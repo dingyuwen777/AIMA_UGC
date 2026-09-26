@@ -1245,20 +1245,18 @@ class PostgresHistoricalImportRepository:
                 )
                 .values(status="running", started_at=func.clock_timestamp())
             )
-        campaign_id = self._session.scalar(
-            select(historical_import_campaign_items_table.c.campaign_id).where(
-                historical_import_campaign_items_table.c.id == item_id
+
+    def mark_campaign_running(self, campaign_id: UUID) -> None:
+        """内容写入结束后再更新父状态，避免并行 Chunk 提前争用父行。"""
+
+        self._session.execute(
+            update(historical_import_campaigns_table)
+            .where(
+                historical_import_campaigns_table.c.id == campaign_id,
+                historical_import_campaigns_table.c.status == "queued",
             )
+            .values(status="running")
         )
-        if campaign_id is not None:
-            self._session.execute(
-                update(historical_import_campaigns_table)
-                .where(
-                    historical_import_campaigns_table.c.id == campaign_id,
-                    historical_import_campaigns_table.c.status == "queued",
-                )
-                .values(status="running")
-            )
 
     def complete_chunk(self, item_id: UUID, *, stats: dict[str, object]) -> None:
         self._session.execute(

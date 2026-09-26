@@ -555,6 +555,7 @@ class PostgresHistoricalImportJobExecutor:
                             ceiling=self._runtime.settings.historical_max_in_flight_jobs,
                         ),
                     )
+                    repository.mark_campaign_running(campaign_id)
                     scheduling_ms = int((perf_counter() - scheduling_started) * 1000)
                     refresh_started = perf_counter()
                     status = repository.refresh_batch_and_campaign(
