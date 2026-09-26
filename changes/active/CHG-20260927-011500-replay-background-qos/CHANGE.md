@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-011500-replay-background-qos
 title: 低命中历史重筛后台 QoS 与单位资源吞吐优化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: perf/624-replay-background-qos
 created: 2026-09-27
@@ -70,14 +70,14 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 保留现有 Host/Compose 安全余量与 Worker/PostgreSQL 总资源预算 | #624 / AC1 | not_satisfied | 待实现与 diff 审计 |
-| R2 | Replay 不能占满全部 Worker，非 Replay 保留执行能力且自身不降级 | #624 / AC2-AC3 | not_satisfied | 待 Job/Worker 回归 |
-| R3 | 修复 Replay Shard / Replay Reversal Shard 优先级倒置且 Import Reversal 不变 | #624 / AC4 | not_satisfied | 待 Job 优先级回归 |
-| R4 | 低命中以 hit ratio 放大 scan，而 matched rows/事务墙钟仍有界 | #624 / AC5 | not_satisfied | 待 5%/25% batch 回归与 benchmark |
-| R5 | Existing Evidence 减少冗余往返且精确撤回语义不变 | #624 / AC6 | not_satisfied | 待 PostgreSQL Replay/Reversal 回归 |
-| R6 | 增加安全、低频、可定位日志 | #624 / AC7 | not_satisfied | 待日志回归/静态审查 |
-| R7 | Replay 自身与 mixed-load 性能、正确性和其他链路不回退 | #624 / AC8-AC9 | not_satisfied | 待 Validation Matrix |
-| R8 | PR merge、main-fresh、Change Archive、Issue Closure | #624 / AC10 | not_satisfied | 待交付 |
+| R1 | 保留现有 Host/Compose 安全余量与 Worker/PostgreSQL 总资源预算 | #624 / AC1 | satisfied | 本 PR 未修改 start_compose.py / compose 资源预算；Worker reserve 只在既有进程上限内分配角色 |
+| R2 | Replay 不能占满全部 Worker，非 Replay 保留执行能力且自身不降级 | #624 / AC2-AC3 | satisfied | 多进程 Worker Pool 增加 foreground-reserve；通用 Worker 仍支持全部 Job，单进程自动回退完整类型集；回归已加入 |
+| R3 | 修复 Replay Shard / Replay Reversal Shard 优先级倒置且 Import Reversal 不变 | #624 / AC4 | satisfied | Replay 父/Planner/Shard 使用 background=-30；Replay Reversal Shard=-30；Import Reversal Shard 保持 40；回归已加入 |
+| R4 | 低命中以 hit ratio 放大 scan，而 matched rows/事务墙钟仍有界 | #624 / AC5 | satisfied | _ReplayScanBatchController 由预检+最近完整批次命中率反推 raw scan；最大 4× frozen batch，资源压力进一步收紧；5%/25% 单元回归和低命中 benchmark fixture 已加入 |
+| R5 | Existing Evidence 减少冗余往返且精确撤回语义不变 | #624 / AC6 | satisfied | Vehicle/Brand Replay convergence 在审核锁内各做一次联合 before/target 快照，DML RETURNING 直接形成 after；原 Replay/Reversal 回归及单次快照断言覆盖 |
+| R6 | 增加安全、低频、可定位日志 | #624 / AC7 | satisfied | worker.started/capacity_detected 记录 worker_role；pool resize 记录 reserve/role；capacity.replay_scan_batch_selected 记录 matched/raw/resource ceiling/命中率估计，不记录正文或 Secret |
+| R7 | Replay 自身与 mixed-load 性能、正确性和其他链路不回退 | #624 / AC8-AC9 | explicitly_deferred | 已建立 targeted Unit/PostgreSQL/Job/Replay/Reversal/benchmark 回归；current-head CI 与完整机器验证是本 PR merge 前硬门禁，未绿禁止合并 |
+| R8 | PR merge、main-fresh、Change Archive、Issue Closure | #624 / AC10 | explicitly_deferred | 仅在 current-head CI 与独立 Review 通过后执行；merge 后仍需 main-fresh / Archive / Issue Closure |
 
 # Validation Matrix
 
@@ -111,11 +111,11 @@ targeted 更新 Replay 并发/批量/排障说明；不新增部署配置，不�
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重读 #624 和当前 main 相关实现。
-- [ ] change_coverage：逐项核对 R1-R8。
-- [ ] reverse_audit：非 Replay Job → reserve worker；Replay → QoS/priority/batch/Evidence → ledger/reversal。
-- [ ] unresolved_cleared：Ready 前 not_satisfied 清零。
+- [x] upstream_re_read：已重新读取 #624、当前 main 的 Worker/Job/Replay/Evidence/资源与文档 Owner。
+- [x] change_coverage：R1-R6 已落实现/回归；R7-R8 仅按 required gate 显式延期。
+- [x] reverse_audit：已反查非 Replay Job → reserve/general Worker；Replay → QoS/priority/batch/Evidence → ledger/reversal。
+- [x] unresolved_cleared：当前无 not_satisfied；CI/Review/merge 收尾仅以 explicitly_deferred 保留。
 
 # 完成证据与状态
 
-当前仅建立施工契约，尚无 Green Evidence，禁止合并。
+实现、回归与 targeted 文档已落分支。当前尚未取得 current-head CI / 独立 Review，因此只进入 ready_for_review，未满足合并门禁。
