@@ -1271,19 +1271,26 @@ class PostgresVehicleCatalogRepository:
                 )
         if values:
             statement = pg_insert(content_vehicle_evidence_table).values(values)
+            persistence = (
+                statement.on_conflict_do_update(
+                    constraint="uq_content_vehicle_evidence_identity",
+                    set_={
+                        "matched_text": statement.excluded.matched_text,
+                        "source_field": statement.excluded.source_field,
+                        "confidence": statement.excluded.confidence,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": statement.excluded.created_at,
+                    },
+                )
+                if replace_existing
+                else statement.on_conflict_do_nothing(
+                    constraint="uq_content_vehicle_evidence_identity"
+                )
+            )
             persisted = (
                 self._session.execute(
-                    statement.on_conflict_do_update(
-                        constraint="uq_content_vehicle_evidence_identity",
-                        set_={
-                            "matched_text": statement.excluded.matched_text,
-                            "source_field": statement.excluded.source_field,
-                            "confidence": statement.excluded.confidence,
-                            "is_manual_locked": False,
-                            "is_active": True,
-                            "created_at": statement.excluded.created_at,
-                        },
-                    ).returning(content_vehicle_evidence_table)
+                    persistence.returning(content_vehicle_evidence_table)
                 )
                 .mappings()
             )
