@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-224053-catalog-trigger-precision
 title: 收窄声音广场目录更新触发的投影刷新
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/618-catalog-trigger
 created: 2026-09-26
