@@ -203,3 +203,19 @@ def test_replay_scan_controller_tracks_recent_hit_ratio() -> None:
     controller.observe(raw_rows=500, matched_rows=25)
 
     assert controller.choose(matched_target_rows=125) > 500
+
+
+
+def test_low_resource_replay_caps_raw_scan_even_when_hit_rate_is_zero() -> None:
+    """资源压力下低命中不能用更大的 raw window 抵消批次降档。"""
+
+    controller = _ReplayScanBatchController(
+        max_scan_rows=4000,
+        sampled_rows=100,
+        matched_rows=0,
+    )
+
+    assert controller.choose(
+        matched_target_rows=62,
+        scan_ceiling_rows=248,
+    ) == 248
