@@ -167,7 +167,9 @@ class JobWorker:
             raise ValueError("retry_delay_seconds must be nonnegative")
         self._session_factory = session_factory
         self._registry = registry
-        resolved_job_types = registry.supported_types if supported_job_types is None else supported_job_types
+        resolved_job_types = (
+            registry.supported_types if supported_job_types is None else supported_job_types
+        )
         unknown_job_types = set(resolved_job_types).difference(registry.supported_types)
         if unknown_job_types:
             raise ValueError("supported_job_types contains unregistered job types")
