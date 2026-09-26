@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
+from aima_ugc.bootstrap.canonical_replay_worker import (\n    PostgresCanonicalReplayJobExecutor,\n    _replay_batch_tiers,\n)
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
     CANONICAL_REPLAY_JOB_TYPE,
@@ -132,3 +132,12 @@ def test_replay_persistence_errors_distinguish_permanent_from_transient(
 
     assert result.outcome == outcome
     assert result.error_code == error_code
+
+
+def test_replay_default_fast_batch_starts_from_small_measured_tier() -> None:
+    """1000 行冻结上限不能再次从大事务起步；先用约八分之一批次验证墙钟。"""
+
+    tiers = _replay_batch_tiers(1000)
+
+    assert tiers == (62, 125, 250, 500, 1000)
+    assert tiers[1] == 125
