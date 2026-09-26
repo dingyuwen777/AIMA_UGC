@@ -86,7 +86,7 @@ ingestion_policy
 完整跨模块链路：
 
 - [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
-- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/02_4000万历史数据迁移实施方案.md)
 
 ---
 
@@ -661,7 +661,7 @@ historical_content.py（历史批量补空专用实现）
 先看：
 
 ```text
-docs/roadmap/03_4000万历史数据迁移实施方案.md
+docs/roadmap/02_4000万历史数据迁移实施方案.md
 docs/operations/02_4000万历史迁移与Analysis Run运行手册.md
 ```
 
@@ -750,7 +750,7 @@ frontend/e2e-fullstack/stage12-historical-analysis.spec.ts
 ## 17. 深入阅读
 
 - [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
-- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/02_4000万历史数据迁移实施方案.md)
 - [`docs/operations/02_4000万历史迁移与Analysis Run运行手册.md`](../../../../../docs/operations/02_4000万历史迁移与Analysis%20Run运行手册.md)
 - [`docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
 - [`docs/blueprint/02_采集系统与数据标准化.md`](../../../../../docs/blueprint/02_采集系统与数据标准化.md)
