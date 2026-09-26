@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-113720-admin-replay-latency
 title: 收敛管理员品牌车型保存与全历史重筛交互卡顿
 level: L3
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: fix/614-admin-replay-latency
 created: 2026-09-26T11:37:20+08:00
