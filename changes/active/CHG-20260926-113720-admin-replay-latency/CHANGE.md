@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-113720-admin-replay-latency
 title: 收敛管理员品牌车型保存与全历史重筛交互卡顿
 level: L3
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: fix/614-admin-replay-latency
 created: 2026-09-26T11:37:20+08:00
@@ -156,16 +156,16 @@ Issue #614 来自用户对真实服务器日志和当前 main 的联合排查，
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | Replay/FK 并发时车型保存不被 Brand 校验强锁长期阻塞，停用/删除互斥仍成立 | #614 / AC1 | not_satisfied | 已建立 KEY SHARE 并发 Green 候选；待 CI 与反向互斥补证 |
-| R2 | 新增/编辑车型均有安全阶段耗时 | #614 / AC2 | not_satisfied | 新增 create 分段日志实现已落分支；待 CI |
-| R3 | Brand 基础字段+aliases 原子更新，前端局部更新且不全目录刷新 | #614 / AC3 | not_satisfied | Contract/Repository/UI 已实现；生成 Contract 已同步；待 CI |
-| R4 | Replay all HTTP 只创建父请求+Planner Job，历史扫描/子 Run 规划异步 | #614 / AC4 | not_satisfied | Planner/HTTP 已实现；待 PostgreSQL/Full-stack 证据 |
-| R5 | Planner 冻结 click-time Catalog 与 admission-time Artifact cutoff，幂等/可恢复 | #614 / AC5 | not_satisfied | admission boundary 集成已建立；0066 状态实现待验证 |
-| R6 | Replay 后台事务有锁竞争让路和批次墙钟反馈，不靠放大 Lease | #614 / AC6 | not_satisfied | tier batch + 3s lock_timeout 已实现；待测试/CI |
-| R7 | 非取消 LeaseLost 安全放弃旧执行，不杀 Worker；Fencing 保持 | #614 / AC7 | not_satisfied | Worker 改动已实现；待真实 stale/active Lease 回归 |
-| R8 | Replay 分片/取消/接管/撤回/账本/checkpoint 现有语义保持 | #614 / AC8 | not_satisfied | 相关完整 PostgreSQL/Worker 回归待 CI |
-| R9 | 前端、PostgreSQL、Job、Contract、Full-stack、静态、Docs、Review、CI 完整验证 | #614 / AC9 | not_satisfied | 待完成 |
-| R10 | Merge 后 main-fresh、原生 Change Archive、Closure Audit、Issue close | #614 / AC10 | not_satisfied | post-merge 门禁，当前未到达 |
+| R1 | Replay/FK 并发时车型保存不被 Brand 校验强锁长期阻塞，停用/删除互斥仍成立 | #614 / AC1 | satisfied | 实现使用 FOR NO KEY UPDATE；真实 PostgreSQL 回归同时覆盖 FK KEY SHARE 兼容与品牌停用写互斥；执行结果由 R9 current-head CI 验证 |
+| R2 | 新增/编辑车型均有安全阶段耗时 | #614 / AC2 | satisfied | create/update 均有 StageTimings 与安全字段测试；不记录品牌/车型名、别名或正文；执行结果由 R9 CI 验证 |
+| R3 | Brand 基础字段+aliases 原子更新，前端局部更新且不全目录刷新 | #614 / AC3 | satisfied | BrandUpdate additive aliases、Repository 单 Catalog Version 原子替换、前端 upsertBrand 且保存路径无 await load；旧 Alias API 未删除；生成 Contract 已同步 |
+| R4 | Replay all HTTP 只创建父请求+Planner Job，历史扫描/子 Run 规划异步 | #614 / AC4 | satisfied | HTTP 改走 enqueue_all_request，只冻结 Catalog/accepted_before 并排 Planner；历史枚举与子 Run 创建在 Planner Worker；对应 API/Repository/Worker 回归已覆盖 |
+| R5 | Planner 冻结 click-time Catalog 与 admission-time Artifact cutoff，幂等/可恢复 | #614 / AC5 | satisfied | 0066 持久 accepted_before/planning_status/planner_job_id；selection 同时限制 created_at、linked_at、Canonical link created_at，覆盖受理后 late-link；失败/取消/同幂等键 fail-closed 有回归 |
+| R6 | Replay 后台事务有锁竞争让路和批次墙钟反馈，不靠放大 Lease | #614 / AC6 | satisfied | Replay 1000 上限从 125 行档起步，3 秒 lock_timeout，3 秒 transaction ceiling 反馈降档，SQLAlchemy/OSError 走 retry；Tier/Replay 回归已覆盖 |
+| R7 | 非取消 LeaseLost 安全放弃旧执行，不杀 Worker；Fencing 保持 | #614 / AC7 | satisfied | Worker 仅在数据库 validate_current_execution 证明 Fence 已失效时 abandon；当前 Fence 仍有效的 LeaseLost 继续抛出；stale/current 两类回归已覆盖 |
+| R8 | Replay 分片/取消/接管/撤回/账本/checkpoint 现有语义保持 | #614 / AC8 | satisfied | 复用现有 Job Runtime/Shard/Reversal；Planner 提交前重新 lock_current_execution，原 Replay/Fencing/ledger/checkpoint/reversal 回归仍在正式 PostgreSQL suite 中 |
+| R9 | 前端、PostgreSQL、Job、Contract、Full-stack、静态、Docs、Review、CI 完整验证 | #614 / AC9 | explicitly_deferred | 当前项目 CI 只有 Change=ready_for_review 后才运行 PostgreSQL Integration、Real Full-stack、静态/生成/前端全层；这是本 PR merge 前硬门禁，不延期功能、不豁免，未绿禁止 merge |
+| R10 | Merge 后 main-fresh、原生 Change Archive、Closure Audit、Issue close | #614 / AC10 | explicitly_deferred | main-fresh、repository-native Change Archive、Closure Audit 与 Issue Closure 只能在 guarded merge 后取得；它们仍是本次端到端交付必需门禁 |
 
 # 计划改动
 
@@ -229,10 +229,10 @@ Issue #614 来自用户对真实服务器日志和当前 main 的联合排查，
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 #614、当前 main/PR head 与受影响正式文档。
-- [ ] change_coverage：Ready 前逐项核对 R1—R10，不能用 Change 自身替代上游 AC。
-- [ ] reverse_audit：Ready 前执行后端→前端、前端→后端、请求→Planner→Run→结果/取消/撤回的反向审计。
-- [ ] unresolved_cleared：Ready 前所有 not_satisfied 清零，post-merge R10 保持正式交付门禁而非提前声称完成。
+- [x] upstream_re_read：已重新读取 #614、main=`1b25241d`、PR #615 当前 head 与受影响正式文档；main 与任务分支无漂移。
+- [x] change_coverage：从 #614 AC1—AC10 重新映射到 Brand/Vehicle、Planner、Replay/Job、运行中心、Contract/Migration、前端、Docs 与交付门禁。
+- [x] reverse_audit：已从前端保存/重筛入口反查后端真实支持，也从 Brand/Vehicle 写与 Replay Request→Planner→Run→Content/Evidence/ledger/checkpoint/reversal 反查用户可见状态；发现并修复受理前创建、受理后才 linked 的 Artifact 漏洞及 Planner Fencing/失败状态缺口。
+- [x] unresolved_cleared：实现范围 R1—R8 无未处理缺口；R9 仅延期到 Ready 后正式 current-head CI，R10 仅延期到 merge 后事实，两者都不是功能延期或豁免。
 
 # 完成证据与状态
 
@@ -243,18 +243,20 @@ Issue #614 来自用户对真实服务器日志和当前 main 的联合排查，
 | V1 | base main + 用户日志 | 日志时间线与当前调用链审计 | 已定位后台锁竞争、品牌请求放大、Replay HTTP 同步规划 | Red/根因边界 |
 | V2 | PR 分支中间 revision | Contract 正式生成链 | OpenAPI 与 Orval 已同步 Brand aliases / planning_status | 生成链已接线；不替代最终 CI |
 | V3 | PR 早期 CI | Requirement gate | 发现 Change 结构不满足最新机器 Contract | 已据 canonical template 重写；最终 CI 待执行 |
+| V4 | `a6327cb0` 中间 revision / GitHub Actions | Developer Tooling Compatibility | Linux + Windows Tooling 全绿，Linux 执行 Alembic current/check | 证明工具链与 Migration 结构在该中间 revision 可运行；不替代最终 head CI |
+| V5 | `a6327cb0` 中间 revision / GitHub Actions | Runtime Acceptance / Compose Golden Path | 全绿，正式 migrate 容器多轮退出码 0、API/Worker/Scheduler/Compose 启停与持久性通过 | 证明 0066 所在 Runtime 链可构建和迁移；后续 `linked_at` 测试提交未改变 Schema，但仍要求最新 head CI |
 
 ## 未验证内容与剩余风险
 
-- 0066 Migration、完整 PostgreSQL/Full-stack、最终 static/build 尚未在包含本轮最终实现的 revision 上通过。
+- 最新 head 的完整 PostgreSQL Integration、Real Full-stack、最终 Ruff/Mypy/生成一致性/前端测试尚未运行；R9 明确由 Ready 后 current-head CI 持有。
 - 用户生产服务器未部署本分支，不能宣称生产 p95 已达到目标；发布后仍需独立运行验收。
 - Release、生产 Migration、Deploy 和生产数据操作不在本次授权范围。
 
 ## 交付状态
 
-- 提交：实现仍在进行。
-- 拉取请求：#615，逻辑未就绪。
-- CI：早期治理失败已定位；最终 current-head CI 未完成。
+- 提交：实现与开发侧 Completion Audit 已收口，Change 进入 `ready_for_review`。
+- 拉取请求：#615，等待正式 current-head CI 与独立 Review。
+- CI：`a6327cb0` 的 Tooling/Runtime 已绿；最新 head required CI 将由本 Ready 提交触发。
 - 合并：未执行。
 - Change 归档：未执行，必须由 merge 后原生 automation 完成。
 - 发布 / 部署：不适用；用户未授权 Release/Deploy/生产 Migration。
