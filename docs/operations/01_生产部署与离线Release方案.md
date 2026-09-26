@@ -316,7 +316,7 @@ python3 stop_compose.py --env-file /data/AIMA_UGC/env.production
 → health / business smoke
 ```
 
-`stop_compose.py` 与启动脚本使用同一份 env / Compose / `compose.auto.yaml`，执行有序 `stop`。只有明确需要删除容器/网络、做底层排障或恢复时，才直接使用对应 `docker compose down` 等命令。
+[`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py) 与启动脚本使用同一份 env / Compose / `compose.auto.yaml`，执行有序 `stop`。只有明确需要删除容器/网络、做底层排障或恢复时，才直接使用对应 `docker compose down` 等命令。
 
 服务器实际 `env.production` 可以长期保持：
 
@@ -449,7 +449,7 @@ Backup Set = PostgreSQL + ArtifactStore
 
 ### 明确要求清空业务数据时
 
-Linux Release 包提供 [`scripts/deploy/reset_keep_vehicle_catalog.sh`](../../scripts/deploy/reset_keep_vehicle_catalog.sh)。它是**重置工具，不是 Backup/Restore**。重置脚本本身会先停止业务服务并在结束后保持停止状态，因此这里**不需要再额外执行 `stop_compose.py`**；确认结果后只用启动脚本恢复服务。
+Linux Release 包提供 [`scripts/deploy/reset_keep_vehicle_catalog.sh`](../../scripts/deploy/reset_keep_vehicle_catalog.sh)。它是**重置工具，不是 Backup/Restore**。重置脚本本身会先停止业务服务并在结束后保持停止状态，因此这里**不需要再额外执行 [`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py)**；确认结果后只用启动脚本恢复服务。
 
 从 Release 根目录运行，先预检，再在确认不需要保留既有业务数据和 Artifact 后执行：
 

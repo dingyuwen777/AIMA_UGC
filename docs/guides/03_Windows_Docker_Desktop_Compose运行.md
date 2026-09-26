@@ -137,9 +137,9 @@ PostgreSQL 和内部 Secret 不进入这个目录，仍由 Docker named volume �
 
 ---
 
-## 4. 推荐日常启停：`start_compose.py` / `stop_compose.py`
+## 4. 推荐日常启停：仓库脚本
 
-Windows 完整 Compose 的日常启动和停止统一优先使用仓库脚本。在**源码仓库根目录**执行：
+Windows 完整 Compose 的日常启动和停止统一优先使用 [`scripts/deploy/start_compose.py`](../../scripts/deploy/start_compose.py) 与 [`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py)。在**源码仓库根目录**执行：
 
 ```powershell
 python .\scripts\deploy\start_compose.py --env-file .\env.local
