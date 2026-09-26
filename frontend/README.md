@@ -730,7 +730,7 @@ npm --prefix frontend run test:e2e:fullstack
 
 后续是否实现、何时实现看：
 
-[`docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)
+[`docs/roadmap/01_生产上线实施路线.md`](../docs/roadmap/01_生产上线实施路线.md)
 
 ---
 
@@ -742,7 +742,7 @@ npm --prefix frontend run test:e2e:fullstack
 - Collection 策略：[`docs/blueprint/08_采集策略与平台能力.md`](../docs/blueprint/08_采集策略与平台能力.md)
 - AI：[`docs/appendix/07_AI舆情打标与分析实现.md`](../docs/appendix/07_AI舆情打标与分析实现.md)
 - Data Import：[`docs/appendix/08_数据入口与统一入库实现.md`](../docs/appendix/08_数据入口与统一入库实现.md)
-- Stage 12 软件与生产门禁：[`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- Stage 12 软件与生产门禁：[`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../docs/roadmap/02_4000万历史数据迁移实施方案.md)
 - Excel Export：[`docs/appendix/06_Excel统一数据导出与离线调试.md`](../docs/appendix/06_Excel统一数据导出与离线调试.md)
 - 测试分层与真实验收边界：[`docs/04_测试与调试说明.md`](../docs/04_测试与调试说明.md)
-- 后续阶段/Production Go-Live：[`docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)
+- 后续阶段/Production Go-Live：[`docs/roadmap/01_生产上线实施路线.md`](../docs/roadmap/01_生产上线实施路线.md)

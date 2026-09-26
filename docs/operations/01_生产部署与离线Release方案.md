@@ -2,7 +2,7 @@
 
 本文维护 AIMA_UGC **当前已经存在的部署与离线 Release 能力、服务器运行方法，以及尚未闭环的 Production 操作边界**。
 
-本文不是施工阶段记录。历史上 Internal V1、Release 建设过程和当时的 CI/PR 证据由 [`changes/archive/`](../../changes/archive/) 与 Git 历史承载；完整 Production 尚未完成的目标统一由 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md) 维护。
+本文不是施工阶段记录。历史上 Internal V1、Release 建设过程和当时的 CI/PR 证据由 [`changes/archive/`](../../changes/archive/) 与 Git 历史承载；完整 Production 尚未完成的目标统一由 [`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md) 维护。
 
 ## 1. 当前结论
 
@@ -26,9 +26,9 @@
 
 因此不能再把 Dockerfile、Compose、离线 Bundle 或 no-build/no-pull 重放整体描述成“尚未实现”。
 
-完整 Production 仍是 **No-Go**。当前未闭环项包括企业 Authentication、真实公网/企业入口的 TLS 与浏览器安全验收、协调 PostgreSQL + Artifact Backup/Restore、SBOM/独立签名/provenance、正式服务器发布/回滚闭环，以及真实生产安全、容量、Soak 和恢复验收。详见 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)。
+完整 Production 仍是 **No-Go**。当前未闭环项包括企业 Authentication、真实公网/企业入口的 TLS 与浏览器安全验收、协调 PostgreSQL + Artifact Backup/Restore、SBOM/独立签名/provenance、正式服务器发布/回滚闭环，以及真实生产安全、容量、Soak 和恢复验收。详见 [`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md)。
 
-日常源码/本地运行见 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)；Windows Docker Desktop 见 [`docs/guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_Windows%20Docker%20Desktop%20Compose运行.md)。
+日常源码/本地运行见 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)；Windows Docker Desktop 见 [`docs/guides/03_Windows_Docker_Desktop_Compose运行.md`](../guides/03_Windows_Docker_Desktop_Compose运行.md)。
 
 ---
 
@@ -427,7 +427,7 @@ Backup Set = PostgreSQL + ArtifactStore
 
 当前完整协调 Backup/Restore **尚未实现**。不能把独立数据库 dump、独立文件拷贝或 Release Bundle 称为已经验证的一致性 Backup Set。
 
-正式实现目标包括：维护/写屏障、一致性点、PostgreSQL 捕获、Artifact manifest/snapshot、校验和、Restore、数据库↔Artifact reconciliation、RPO/RTO 和恢复演练。具体实施属于 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md) 中独立高风险工作。
+正式实现目标包括：维护/写屏障、一致性点、PostgreSQL 捕获、Artifact manifest/snapshot、校验和、Restore、数据库↔Artifact reconciliation、RPO/RTO 和恢复演练。具体实施属于 [`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md) 中独立高风险工作。
 
 ### 明确要求清空业务数据时
 
@@ -529,6 +529,6 @@ Release identity / Workflow
 - [`scripts/deploy/start_compose.py`](../../scripts/deploy/start_compose.py) 与 [`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py)：离线 Release 的跨平台资源规划及启停入口，外部 env 长期保持不变；
 - [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py)：Worker Registry；
 - [`docs/blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)：长期运行、安全和恢复边界；
-- [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)：尚未完成的 Production 门禁。
+- [`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md)：尚未完成的 Production 门禁。
 
 不要用历史 Stage 编号、旧 PR 日志或单次 CI 结果代替当前代码、Workflow、Manifest 和目标服务器证据。

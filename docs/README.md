@@ -107,8 +107,8 @@ AIMA docs / code / Contract / Schema / CI
 
 当前只保留两条：
 
-1. [docs/roadmap/02_生产上线实施路线.md](roadmap/02_生产上线实施路线.md)：完整 Production Hardening / Go-Live；
-2. [docs/roadmap/03_4000万历史数据迁移实施方案.md](roadmap/03_4000万历史数据迁移实施方案.md)：容量门禁、生产授权、正式执行和全量对账。
+1. [docs/roadmap/01_生产上线实施路线.md](roadmap/01_生产上线实施路线.md)：完整 Production Hardening / Go-Live；
+2. [docs/roadmap/02_4000万历史数据迁移实施方案.md](roadmap/02_4000万历史数据迁移实施方案.md)：容量门禁、生产授权、正式执行和全量对账。
 
 未批准的 AI 降本、本地分类器、Monitoring、Dashboard、Gold Set 等候选方向**不因为在研究文档里出现就自动成为 Roadmap**。
 
