@@ -28,6 +28,9 @@ from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpSer
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
+from aima_ugc.bootstrap.canonical_replay_planner_worker import (
+    PostgresCanonicalReplayPlanJobExecutor,
+)
 from aima_ugc.bootstrap.canonical_replay_reversal_worker import (
     PostgresCanonicalReplayReversalJobExecutor,
 )
@@ -75,7 +78,7 @@ from aima_ugc.modules.vehicles.tables import (
     content_vehicle_evidence_table,
 )
 from aima_ugc.platform.config import load_settings
-from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
+from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from fastapi.testclient import TestClient
@@ -359,6 +362,65 @@ def test_all_replay_planner_freezes_admission_artifact_boundary(tmp_path: Path) 
             )
         assert selected == {first_artifact}
         assert later_artifact not in selected
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_planner_failure_is_persisted_and_same_key_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Planner 永久失败必须进入父状态；同幂等键不能伪装成仍在排队。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(canonical_replay_service=PostgresCanonicalReplayHttpService(runtime))
+        )
+
+        def fail_plan(self, *, payload, fence, context):  # type: ignore[no-untyped-def]
+            del self, payload, fence, context
+            return JobHandlerResult.failed("forced_planner_failure")
+
+        monkeypatch.setattr(PostgresCanonicalReplayPlanJobExecutor, "execute", fail_plan)
+        key = f"planner-failure-{uuid4()}"
+        accepted = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": key},
+        )
+        assert accepted.status_code == 202
+        request_id = UUID(accepted.json()["request_id"])
+        assert _worker(runtime, suffix="planner-failure").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            job = (
+                connection.execute(
+                    select(jobs_table).where(jobs_table.c.id == request["planner_job_id"])
+                )
+                .mappings()
+                .one()
+            )
+        assert request["planning_status"] == "failed"
+        assert job["status"] == "failed"
+        assert job["error_code"] == "forced_planner_failure"
+
+        retried = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": key},
+        )
+        assert retried.status_code == 409
+        assert retried.json()["errors"][0]["code"] == "canonical_replay_conflict"
     finally:
         _truncate(runtime)
         runtime.close()

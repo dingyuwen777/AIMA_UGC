@@ -448,14 +448,20 @@ def test_worker_skips_unknown_job_type_and_reaper_uses_registry_policy(
 def test_worker_abandons_stale_lease_without_crashing_process(
     database_runtime: DatabaseRuntime,
 ) -> None:
-    """非取消 LeaseLost 只放弃旧执行；同一 Worker 仍能继续领取后续 Job。"""
+    """数据库已证明 Fence 失效时只放弃旧执行；同一 Worker 仍可处理后续 Job。"""
 
     registry = JobRegistry()
 
     def handler(payload: BaseModel, context) -> JobHandlerResult:
         assert isinstance(payload, EchoPayloadV1)
         if payload.value == "lose":
-            raise LeaseLostError("模拟旧执行已失效")
+            session = database_runtime.new_session()
+            try:
+                with session.begin():
+                    _expire_deadline(session, context.fence.job_id)
+            finally:
+                session.close()
+            raise LeaseLostError("模拟数据库已确认的旧执行失效")
         return JobHandlerResult.succeeded({"echo": payload.value})
 
     registry.register(
@@ -468,7 +474,8 @@ def test_worker_abandons_stale_lease_without_crashing_process(
     session = database_runtime.new_session()
     try:
         with session.begin():
-            lost = _enqueue(repository := PostgresJobRepository(session), key="lease-lost", value="lose")
+            repository = PostgresJobRepository(session)
+            lost = _enqueue(repository, key="lease-lost", value="lose")
             next_job = _enqueue(repository, key="lease-next", value="next")
     finally:
         session.close()
@@ -490,5 +497,52 @@ def test_worker_abandons_stale_lease_without_crashing_process(
             next_state = PostgresJobRepository(session).get(next_job.id)
         assert lost_state is not None and lost_state.status == "running"
         assert next_state is not None and next_state.status == "succeeded"
+    finally:
+        session.close()
+
+
+def test_worker_does_not_hide_handler_lease_error_while_fence_is_still_current(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """Handler 错抛 LeaseLost 时若当前 Fence 仍有效，必须继续暴露为实现错误。"""
+
+    registry = JobRegistry()
+
+    def handler(payload: BaseModel, context) -> JobHandlerResult:
+        del context
+        assert isinstance(payload, EchoPayloadV1)
+        raise LeaseLostError("模拟 Handler 内部错误")
+
+    registry.register(
+        job_type="test.echo.v1",
+        payload_version="echo.v1",
+        payload_model=EchoPayloadV1,
+        handler=handler,
+        retry_on_timeout=True,
+    )
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            job = _enqueue(PostgresJobRepository(session), key="lease-current", value="current")
+    finally:
+        session.close()
+
+    worker = JobWorker(
+        session_factory=database_runtime.new_session,
+        registry=registry,
+        worker_id="lease-current-worker",
+        lease_seconds=10,
+        retry_delay_seconds=0,
+    )
+    with pytest.raises(LeaseLostError, match="Handler 内部错误"):
+        worker.run_once()
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            current = PostgresJobRepository(session).get(job.id)
+        assert current is not None
+        assert current.status == "running"
+        assert current.lease_token is not None
     finally:
         session.close()

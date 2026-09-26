@@ -367,3 +367,42 @@ def test_brand_update_replaces_aliases_with_one_catalog_version(runtime) -> None
     assert updated.catalog_version == created.catalog_version + 1
     assert {alias.text for alias in updated.aliases} == {"新词", "NEW"}
     assert service.get_brand(created.id).aliases == updated.aliases
+
+
+
+def test_active_brand_guard_still_blocks_concurrent_brand_deprecation(runtime) -> None:  # type: ignore[no-untyped-def]
+    """NO KEY UPDATE 可与 FK KEY SHARE 共存，但仍阻止会改变 Brand 行的停用写。"""
+
+    principal = _principal()
+    brand = PostgresBrandVehicleHttpService(runtime).create_brand(
+        BrandCreateRequest(
+            display_name="互斥品牌",
+            role="owned",
+            aliases=("互斥品牌",),
+        ),
+        principal=principal,
+        request_id="stage2-brand-write-guard",
+    )
+    guard = runtime.database.new_session()
+    writer = runtime.database.new_session()
+    guard_transaction = guard.begin()
+    try:
+        active = PostgresBrandVehicleRepository(guard).require_active_brand(brand.id)
+        assert active.status == "active"
+        writer.execute(text("SET LOCAL lock_timeout = '100ms'"))
+        with pytest.raises(OperationalError):
+            PostgresBrandVehicleRepository(writer).update_brand(
+                brand.id,
+                display_name=None,
+                role=None,
+                status="deprecated",
+                actor_ref=principal.principal_id,
+            )
+        writer.rollback()
+    finally:
+        if guard_transaction.is_active:
+            guard_transaction.rollback()
+        guard.close()
+        writer.close()
+
+    assert PostgresBrandVehicleHttpService(runtime).get_brand(brand.id).status == "active"

@@ -247,6 +247,11 @@ class JobWorker:
                 lease_token=job.lease_token,
             )
             if cancelled is None:
+                if not self._execution_is_stale(
+                    job_id=job.id,
+                    lease_token=job.lease_token,
+                ):
+                    raise handler_lease_loss
                 log_event(
                     logger,
                     logging.WARNING,
@@ -278,12 +283,17 @@ class JobWorker:
                 lease_token=job.lease_token,
                 result=result,
             )
-        except LeaseLostError:
+        except LeaseLostError as exc:
             cancelled = self._converge_cancelled_lease_loss(
                 job_id=job.id,
                 lease_token=job.lease_token,
             )
             if cancelled is None:
+                if not self._execution_is_stale(
+                    job_id=job.id,
+                    lease_token=job.lease_token,
+                ):
+                    raise exc
                 log_event(
                     logger,
                     logging.WARNING,
@@ -314,6 +324,27 @@ class JobWorker:
             duration_ms=_elapsed_ms(started),
         )
         return True
+
+    def _execution_is_stale(
+        self,
+        *,
+        job_id: UUID,
+        lease_token: str,
+    ) -> bool:
+        """只有数据库确认当前 Fence 已失效时，LeaseLost 才能被安全视为旧执行。"""
+
+        session = self._session_factory()
+        try:
+            with session.begin():
+                try:
+                    _repository(session).validate_current_execution(
+                        JobExecutionFence(job_id=job_id, lease_token=lease_token)
+                    )
+                except LeaseLostError:
+                    return True
+                return False
+        finally:
+            session.close()
 
     def _converge_cancelled_lease_loss(
         self,
