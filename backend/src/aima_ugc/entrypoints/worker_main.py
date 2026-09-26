@@ -18,6 +18,12 @@ from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.voice_plaza_projection_worker import (
     ensure_voice_plaza_projection_backfill_job,
 )
+from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_JOB_TYPE,
+    CANONICAL_REPLAY_PLAN_JOB_TYPE,
+    CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
+)
+from aima_ugc.modules.ingestion.replay_shards import REPLAY_SHARD_JOB_TYPE
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_reaper,
@@ -38,6 +44,14 @@ _POOL_IDLE_DOWNSHIFT_SECONDS = 30.0
 _MIB = 1024 * 1024
 _STARTUP_FAILURE_WINDOW_SECONDS = 30.0
 _MAX_RESTART_DELAY_SECONDS = 60.0
+_REPLAY_BACKGROUND_JOB_TYPES = frozenset(
+    {
+        CANONICAL_REPLAY_PLAN_JOB_TYPE,
+        CANONICAL_REPLAY_JOB_TYPE,
+        REPLAY_SHARD_JOB_TYPE,
+        CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
+    }
+)
 
 
 @dataclass(slots=True)
@@ -105,12 +119,38 @@ def desired_worker_processes(*, maximum: int, queued: int, busy: int) -> int:
     return min(maximum, max(1, queued + busy))
 
 
-def _run_single_worker() -> None:
+def _foreground_supported_job_types(
+    all_job_types: tuple[str, ...],
+    *,
+    maximum_processes: int,
+) -> tuple[str, ...]:
+    """多进程时保留一个不领取 Replay 长任务的 Worker；单进程时保持全部任务可执行。"""
+
+    if maximum_processes <= 1:
+        return all_job_types
+    foreground = tuple(
+        job_type for job_type in all_job_types if job_type not in _REPLAY_BACKGROUND_JOB_TYPES
+    )
+    return foreground or all_job_types
+
+
+def _run_single_worker(*, foreground_only: bool = False) -> None:
     """每个子进程独立持有 Runtime、数据库连接和 Job Lease。"""
 
     runtime = create_worker_runtime(log_instance=uuid4())
     registry = create_collection_job_registry(runtime=runtime)
     projection_job = ensure_voice_plaza_projection_backfill_job(runtime)
+    resources = detect_resources()
+    maximum_processes = worker_process_limit(resources)
+    supported_job_types = (
+        _foreground_supported_job_types(
+            registry.supported_types,
+            maximum_processes=maximum_processes,
+        )
+        if foreground_only
+        else registry.supported_types
+    )
+    worker_role = "foreground-reserve" if foreground_only and maximum_processes > 1 else "general"
     worker_id = f"{socket.gethostname()}:{os.getpid()}"
     worker = create_job_worker(
         runtime=runtime,
@@ -118,6 +158,7 @@ def _run_single_worker() -> None:
         worker_id=worker_id,
         lease_seconds=_WORKER_LEASE_SECONDS,
         retry_delay_seconds=_RETRY_DELAY_SECONDS,
+        supported_job_types=supported_job_types,
     )
     reaper = create_job_reaper(
         runtime=runtime,
@@ -130,18 +171,20 @@ def _run_single_worker() -> None:
         "worker.started",
         "Worker 已启动",
         worker_id=worker_id,
-        supported_job_types=registry.supported_types,
+        worker_role=worker_role,
+        supported_job_types=supported_job_types,
         voice_plaza_projection_job_id=(
             str(projection_job.id) if projection_job is not None else None
         ),
     )
-    resources = detect_resources()
     log_event(
         runtime.logger,
         logging.INFO,
         "worker.capacity_detected",
         "Worker 可用资源已探测",
         worker_id=worker_id,
+        worker_role=worker_role,
+        maximum_processes=maximum_processes,
         source=resources.source,
         cpu_cores=resources.cpu_cores,
         memory_limit_mib=(
@@ -212,6 +255,7 @@ def _run_worker_pool() -> None:
     runtime = create_worker_runtime(log_instance=uuid4())
     children: dict[int, subprocess.Popen[bytes]] = {}
     child_started_at: dict[int, float] = {}
+    child_roles: dict[int, str] = {}
     stopping = False
     idle_since: float | None = None
     restart_backoff = _WorkerRestartBackoff()
@@ -220,12 +264,14 @@ def _run_worker_pool() -> None:
         nonlocal stopping
         stopping = True
 
-    def spawn() -> None:
-        child = subprocess.Popen(
-            [sys.executable, "-m", "aima_ugc.entrypoints.worker_main", "--child"]
-        )
+    def spawn(*, role: str) -> None:
+        """按角色启动子进程；foreground-reserve 只限制 Replay，其他 Job 仍可使用全部进程。"""
+
+        argument = "--foreground-child" if role == "foreground-reserve" else "--child"
+        child = subprocess.Popen([sys.executable, "-m", "aima_ugc.entrypoints.worker_main", argument])
         children[child.pid] = child
         child_started_at[child.pid] = time.monotonic()
+        child_roles[child.pid] = role
 
     signal.signal(signal.SIGTERM, request_stop)
     try:
@@ -258,11 +304,12 @@ def _run_worker_pool() -> None:
                 else None
             ),
         )
-        spawn()
+        spawn(role="general")
         while not stopping:
             for pid, child in tuple(children.items()):
                 if (exit_code := child.poll()) is not None:
                     del children[pid]
+                    child_roles.pop(pid, None)
                     now = time.monotonic()
                     delay = restart_backoff.record_exit(
                         started_at=child_started_at.pop(pid),
@@ -286,6 +333,10 @@ def _run_worker_pool() -> None:
             desired = desired_worker_processes(
                 maximum=maximum, queued=queued, busy=len(busy_owners)
             )
+            # 只要仍有在途 Job 且资源允许，就保留一个可立即领取前台/非 Replay Job 的进程。
+            # 这不增加容器总预算；Replay 最多使用 N-1 个进程，其他 Job 仍可使用全部 N 个。
+            if maximum >= 2 and busy_owners:
+                desired = max(desired, min(maximum, len(busy_owners) + 1))
             memory_pressure = (
                 resources.memory_available_bytes is not None
                 and resources.memory_available_bytes < 768 * _MIB
@@ -294,7 +345,18 @@ def _run_worker_pool() -> None:
                 desired = 1
             if len(children) < desired:
                 if restart_backoff.can_spawn(now=time.monotonic()):
-                    spawn()
+                    needs_foreground_reserve = (
+                        maximum >= 2
+                        and desired >= 2
+                        and "foreground-reserve" not in child_roles.values()
+                    )
+                    spawn(
+                        role=(
+                            "foreground-reserve"
+                            if needs_foreground_reserve
+                            else "general"
+                        )
+                    )
                     idle_since = None
                     log_event(
                         runtime.logger,
@@ -302,6 +364,9 @@ def _run_worker_pool() -> None:
                         "capacity.worker_pool_resized",
                         "Worker 并行进程已扩容",
                         active_processes=len(children),
+                        foreground_reserve_processes=sum(
+                            role == "foreground-reserve" for role in child_roles.values()
+                        ),
                         desired_processes=desired,
                         maximum_processes=maximum,
                         queued_jobs=queued,
@@ -327,15 +392,22 @@ def _run_worker_pool() -> None:
                 if idle_since is None:
                     idle_since = now - _POOL_IDLE_DOWNSHIFT_SECONDS if memory_pressure else now
                 elif now - idle_since >= _POOL_IDLE_DOWNSHIFT_SECONDS:
-                    idle = next(
-                        (
-                            child
-                            for pid, child in reversed(tuple(children.items()))
-                            if f"{socket.gethostname()}:{pid}" not in busy_owners
-                        ),
-                        None,
+                    idle_candidates = tuple(
+                        (pid, child)
+                        for pid, child in reversed(tuple(children.items()))
+                        if f"{socket.gethostname()}:{pid}" not in busy_owners
                     )
-                    if idle is not None:
+                    preferred_role = "foreground-reserve" if desired < 2 else "general"
+                    idle_entry = next(
+                        (
+                            item
+                            for item in idle_candidates
+                            if child_roles.get(item[0]) == preferred_role
+                        ),
+                        idle_candidates[0] if idle_candidates else None,
+                    )
+                    if idle_entry is not None:
+                        idle_pid, idle = idle_entry
                         idle.terminate()
                         idle_since = now
                         log_event(
@@ -344,6 +416,10 @@ def _run_worker_pool() -> None:
                             "capacity.worker_pool_resized",
                             "空闲 Worker 进程开始缩容",
                             active_processes=len(children),
+                            terminating_worker_role=child_roles.get(idle_pid),
+                            foreground_reserve_processes=sum(
+                                role == "foreground-reserve" for role in child_roles.values()
+                            ),
                             desired_processes=desired,
                             maximum_processes=maximum,
                             queued_jobs=queued,
@@ -383,11 +459,14 @@ def main() -> None:
 
     if sys.argv[1:] == ["--child"]:
         _run_single_worker()
+    elif sys.argv[1:] == ["--foreground-child"]:
+        _run_single_worker(foreground_only=True)
     else:
         _run_worker_pool()
 
 
 __all__ = [
+    "_foreground_supported_job_types",
     "create_collection_job_registry",
     "create_job_reaper",
     "create_job_worker",
