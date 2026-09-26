@@ -18,18 +18,18 @@ from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.voice_plaza_projection_worker import (
     ensure_voice_plaza_projection_backfill_job,
 )
-from aima_ugc.modules.ingestion.canonical_replay import (
-    CANONICAL_REPLAY_JOB_TYPE,
-    CANONICAL_REPLAY_PLAN_JOB_TYPE,
-    CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
-)
-from aima_ugc.modules.ingestion.replay_shards import REPLAY_SHARD_JOB_TYPE
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_reaper,
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_JOB_TYPE,
+    CANONICAL_REPLAY_PLAN_JOB_TYPE,
+    CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
+)
+from aima_ugc.modules.ingestion.replay_shards import REPLAY_SHARD_JOB_TYPE
 from aima_ugc.platform.capacity import detect_resources, worker_process_limit
 from aima_ugc.platform.jobs import JobReaper, JobWorker
 from aima_ugc.platform.logging import log_event
@@ -309,7 +309,7 @@ def _run_worker_pool() -> None:
             for pid, child in tuple(children.items()):
                 if (exit_code := child.poll()) is not None:
                     del children[pid]
-                    child_roles.pop(pid, None)
+                    exited_role = child_roles.pop(pid, None)
                     now = time.monotonic()
                     delay = restart_backoff.record_exit(
                         started_at=child_started_at.pop(pid),
@@ -323,6 +323,7 @@ def _run_worker_pool() -> None:
                             "capacity.worker_process_exited",
                             "Worker 子进程异常退出",
                             worker_pid=pid,
+                            worker_role=exited_role,
                             exit_code=exit_code,
                             recent_failures=restart_backoff.consecutive_failures,
                             restart_delay_seconds=delay,
