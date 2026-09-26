@@ -182,7 +182,7 @@ def test_runtime_documentation_uses_env_local_for_local_compose() -> None:
 
     documentation = (ROOT / "docs" / "02_环境运行与部署.md").read_text(encoding="utf-8")
     windows_guide = (
-        ROOT / "docs" / "guides" / "03_Windows Docker Desktop Compose运行.md"
+        ROOT / "docs" / "guides" / "03_Windows_Docker_Desktop_Compose运行.md"
     ).read_text(encoding="utf-8")
     production_guide = (ROOT / "docs" / "operations" / "01_生产部署与离线Release方案.md").read_text(
         encoding="utf-8"
@@ -196,7 +196,7 @@ def test_runtime_documentation_uses_env_local_for_local_compose() -> None:
     production = "python3 start_compose.py --env-file /data/AIMA_UGC/env.production"
 
     assert local_linux in documentation
-    assert "docs/guides/03_Windows Docker Desktop Compose运行.md" in documentation
+    assert "docs/guides/03_Windows_Docker_Desktop_Compose运行.md" in documentation
     assert "docs/operations/01_生产部署与离线Release方案.md" in documentation
     assert "env.local **只属于源码开发 launcher 的输入界面" not in documentation
 
