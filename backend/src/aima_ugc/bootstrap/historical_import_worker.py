@@ -462,9 +462,10 @@ class PostgresHistoricalImportJobExecutor:
                     jobs.validate_current_execution(fence)
                     lock_historical_campaign_cancel_gate(session, campaign_id, shared=True)
                     repository = PostgresHistoricalImportRepository(session)
-                    # 两个 Chunk 可以属于同一 Campaign；先锁父记录再锁 Item/Content，
-                    # 避免各自持有业务锁后在调度阶段争夺父锁形成死锁。
-                    campaign = repository.get_campaign(campaign_id, for_update=True)
+                    # 共享取消门已阻止 Campaign 在本事务内进入 cancelling。
+                    # 业务写入期间不锁父行，避免同一 Campaign 的不同 Chunk 被串行化；
+                    # 调度阶段再由 schedule_import_jobs 锁父行并结清状态。
+                    campaign = repository.get_campaign(campaign_id)
                     if campaign is None:
                         return JobHandlerResult.failed("historical_campaign_not_found")
                     if campaign["status"] == "cancelling":
@@ -544,6 +545,7 @@ class PostgresHistoricalImportJobExecutor:
                     evidence_ms = int((perf_counter() - evidence_started) * 1000)
                     finalization_started = perf_counter()
                     repository.complete_chunk(payload.chunk_item_id, stats=asdict(summary))
+                    scheduling_started = perf_counter()
                     source_batches = repository.source_batches(campaign_id)
                     repository.schedule_import_jobs(
                         campaign_id=campaign_id,
@@ -553,10 +555,14 @@ class PostgresHistoricalImportJobExecutor:
                             ceiling=self._runtime.settings.historical_max_in_flight_jobs,
                         ),
                     )
+                    repository.mark_campaign_running(campaign_id)
+                    scheduling_ms = int((perf_counter() - scheduling_started) * 1000)
+                    refresh_started = perf_counter()
                     status = repository.refresh_batch_and_campaign(
                         campaign_id=campaign_id,
                         batch_id=payload.batch_id,
                     )
+                    status_refresh_ms = int((perf_counter() - refresh_started) * 1000)
                     jobs.lock_current_execution(fence)
                     finalization_ms = int((perf_counter() - finalization_started) * 1000)
             finally:
@@ -594,6 +600,8 @@ class PostgresHistoricalImportJobExecutor:
                 ),
                 evidence_ms=evidence_ms,
                 finalization_ms=finalization_ms,
+                scheduling_ms=scheduling_ms,
+                status_refresh_ms=status_refresh_ms,
                 transaction_ms=transaction_ms,
                 duration_ms=int((perf_counter() - execution_started) * 1000),
             )

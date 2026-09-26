@@ -154,6 +154,16 @@ def _run_single_worker() -> None:
             if resources.memory_available_bytes is not None
             else None
         ),
+        memory_accounted_mib=(
+            resources.memory_accounted_bytes // _MIB
+            if resources.memory_accounted_bytes is not None
+            else None
+        ),
+        memory_reclaimable_mib=(
+            resources.memory_reclaimable_bytes // _MIB
+            if resources.memory_reclaimable_bytes is not None
+            else None
+        ),
     )
     stopping = False
 
@@ -232,6 +242,21 @@ def _run_worker_pool() -> None:
                 if initial_resources.memory_limit_bytes is not None
                 else None
             ),
+            memory_available_mib=(
+                initial_resources.memory_available_bytes // _MIB
+                if initial_resources.memory_available_bytes is not None
+                else None
+            ),
+            memory_accounted_mib=(
+                initial_resources.memory_accounted_bytes // _MIB
+                if initial_resources.memory_accounted_bytes is not None
+                else None
+            ),
+            memory_reclaimable_mib=(
+                initial_resources.memory_reclaimable_bytes // _MIB
+                if initial_resources.memory_reclaimable_bytes is not None
+                else None
+            ),
         )
         spawn()
         while not stopping:
@@ -286,6 +311,16 @@ def _run_worker_pool() -> None:
                             if resources.memory_available_bytes is not None
                             else None
                         ),
+                        memory_accounted_mib=(
+                            resources.memory_accounted_bytes // _MIB
+                            if resources.memory_accounted_bytes is not None
+                            else None
+                        ),
+                        memory_reclaimable_mib=(
+                            resources.memory_reclaimable_bytes // _MIB
+                            if resources.memory_reclaimable_bytes is not None
+                            else None
+                        ),
                     )
             elif len(children) > desired:
                 now = time.monotonic()
@@ -313,6 +348,21 @@ def _run_worker_pool() -> None:
                             maximum_processes=maximum,
                             queued_jobs=queued,
                             busy_processes=len(busy_owners),
+                            available_memory_mib=(
+                                resources.memory_available_bytes // _MIB
+                                if resources.memory_available_bytes is not None
+                                else None
+                            ),
+                            memory_accounted_mib=(
+                                resources.memory_accounted_bytes // _MIB
+                                if resources.memory_accounted_bytes is not None
+                                else None
+                            ),
+                            memory_reclaimable_mib=(
+                                resources.memory_reclaimable_bytes // _MIB
+                                if resources.memory_reclaimable_bytes is not None
+                                else None
+                            ),
                         )
             else:
                 idle_since = None

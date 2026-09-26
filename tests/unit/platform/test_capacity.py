@@ -86,6 +86,112 @@ def test_detect_resources_uses_cgroup_v2_effective_limits(tmp_path: Path) -> Non
     assert resources.source == "cgroup_v2"
 
 
+def test_detect_resources_reclaims_clean_inactive_file_cache_before_downshifting(
+    tmp_path: Path,
+) -> None:
+    """服务器的文件缓存接近硬上限时仍应给 Worker 留出真实可用预算。"""
+
+    (tmp_path / "cpu.max").write_text("960000 100000\n", encoding="ascii")
+    (tmp_path / "memory.max").write_text("13475250176\n", encoding="ascii")
+    (tmp_path / "memory.current").write_text("13468921856\n", encoding="ascii")
+    (tmp_path / "memory.stat").write_text(
+        "anon 239484928\nfile 12946735104\ninactive_file 12946477056\n"
+        "file_dirty 0\nfile_writeback 0\nslab 279926496\n",
+        encoding="ascii",
+    )
+
+    resources = detect_resources(
+        cgroup_root=tmp_path,
+        host_cpu_count=32,
+        host_memory_total_bytes=62 * 1024**3,
+        host_memory_available_bytes=60 * 1024**3,
+    )
+
+    assert resources.memory_available_bytes == 13475250176 - 13468921856 + 12946477056
+    assert select_job_window(resources) == 6
+    assert worker_process_limit(resources) == 6
+    assert select_chunk_rows(resources) == 2000
+    assert AdaptiveBatchController(lower=500, upper=1000).choose(resources)[:2] == (
+        1000,
+        "baseline_probe",
+    )
+    assert AdaptiveTierBatchController().choose(resources)[:2] == (500, "measured_throughput")
+    assert AdaptiveJobWindowController().choose(resources, remaining_units=20)[0] == 1
+    assert resources.memory_accounted_bytes == 13468921856
+    assert resources.memory_reclaimable_bytes == 12946477056
+
+
+def test_detect_resources_keeps_dirty_cache_and_real_memory_pressure(
+    tmp_path: Path,
+) -> None:
+    """未写回的文件页和匿名内存不能被误认为可立即回收。"""
+
+    gib = 1024**3
+    (tmp_path / "cpu.max").write_text("400000 100000\n", encoding="ascii")
+    (tmp_path / "memory.max").write_text(str(4 * gib), encoding="ascii")
+    (tmp_path / "memory.current").write_text(str(4 * gib - 256 * 1024**2), encoding="ascii")
+    (tmp_path / "memory.stat").write_text(
+        f"inactive_file {gib}\nfile_dirty {gib // 2}\nfile_writeback {gib // 2}\n",
+        encoding="ascii",
+    )
+
+    resources = detect_resources(
+        cgroup_root=tmp_path,
+        host_cpu_count=16,
+        host_memory_total_bytes=16 * gib,
+        host_memory_available_bytes=8 * gib,
+    )
+
+    assert resources.memory_available_bytes == 256 * 1024**2
+    assert select_job_window(resources) == 1
+
+
+def test_detect_resources_never_exceeds_host_available_even_with_file_cache(
+    tmp_path: Path,
+) -> None:
+    """宿主机本身紧张时，容器缓存可回收也不能继续升档。"""
+
+    gib = 1024**3
+    (tmp_path / "cpu.max").write_text("400000 100000\n", encoding="ascii")
+    (tmp_path / "memory.max").write_text(str(4 * gib), encoding="ascii")
+    (tmp_path / "memory.current").write_text(str(4 * gib - 256 * 1024**2), encoding="ascii")
+    (tmp_path / "memory.stat").write_text(
+        f"inactive_file {3 * gib}\nfile_dirty 0\nfile_writeback 0\n",
+        encoding="ascii",
+    )
+
+    resources = detect_resources(
+        cgroup_root=tmp_path,
+        host_cpu_count=16,
+        host_memory_total_bytes=16 * gib,
+        host_memory_available_bytes=512 * 1024**2,
+    )
+
+    assert resources.memory_available_bytes == 512 * 1024**2
+    assert select_job_window(resources) == 1
+
+
+def test_detect_resources_keeps_conservative_budget_when_cgroup_stat_is_incomplete(
+    tmp_path: Path,
+) -> None:
+    mib = 1024**2
+    (tmp_path / "cpu.max").write_text("400000 100000\n", encoding="ascii")
+    (tmp_path / "memory.max").write_text(str(4 * 1024 * mib), encoding="ascii")
+    (tmp_path / "memory.current").write_text(str(4 * 1024 * mib - 128 * mib), encoding="ascii")
+    (tmp_path / "memory.stat").write_text("inactive_file 3000000000\n", encoding="ascii")
+
+    resources = detect_resources(
+        cgroup_root=tmp_path,
+        host_cpu_count=16,
+        host_memory_total_bytes=16 * 1024**3,
+        host_memory_available_bytes=8 * 1024**3,
+    )
+
+    assert resources.memory_available_bytes == 128 * mib
+    assert resources.memory_reclaimable_bytes == 0
+    assert select_job_window(resources) == 1
+
+
 def test_detect_resources_preserves_zero_host_available_memory(tmp_path: Path) -> None:
     resources = detect_resources(
         cgroup_root=tmp_path,

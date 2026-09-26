@@ -85,6 +85,16 @@ class PlatformRuntime:
                     if resources.memory_available_bytes is not None
                     else None
                 ),
+                memory_accounted_mib=(
+                    resources.memory_accounted_bytes // (1024 * 1024)
+                    if resources.memory_accounted_bytes is not None
+                    else None
+                ),
+                memory_reclaimable_mib=(
+                    resources.memory_reclaimable_bytes // (1024 * 1024)
+                    if resources.memory_reclaimable_bytes is not None
+                    else None
+                ),
             )
             self._last_job_windows[kind] = selected
         return selected
