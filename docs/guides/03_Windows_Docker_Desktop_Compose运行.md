@@ -137,25 +137,24 @@ PostgreSQL 和内部 Secret 不进入这个目录，仍由 Docker named volume �
 
 ---
 
-## 4. Windows 启动命令
+## 4. 推荐日常启停：`start_compose.py` / `stop_compose.py`
 
-CMD 和 PowerShell 使用同一条命令：
+Windows 完整 Compose 的日常启动和停止统一优先使用仓库脚本。在**源码仓库根目录**执行：
 
 ```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local up -d --build --wait
+python .\scripts\deploy\start_compose.py --env-file .\env.local
+python .\scripts\deploy\stop_compose.py --env-file .\env.local
 ```
 
-需要自动计算 Docker Desktop 资源配额时，在**源码仓库根目录**运行 [`scripts/deploy/start_compose.py`](../../scripts/deploy/start_compose.py)。它会读取 `env.local`、自动叠加 [`compose.windows.yaml`](../../compose.windows.yaml)，并在 `env.local` 同目录生成已被 Git 忽略的 `compose.auto.yaml`。脚本使用本机镜像，不负责构建或拉取；首次没有镜像时，先准备后端、前端和 PostgreSQL 镜像：
+[`scripts/deploy/start_compose.py`](../../scripts/deploy/start_compose.py) 会读取 `env.local`、自动叠加 [`compose.windows.yaml`](../../compose.windows.yaml)，并在 `env.local` 同目录生成已被 Git 忽略的 `compose.auto.yaml`，按 Docker Engine 实际 CPU / 内存计算资源配额。
+
+[`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py) 会复用同一份 env / Compose / `compose.auto.yaml`，执行有序停止并保留容器、网络和持久数据；下一次直接重新运行启动脚本即可。
+
+两个脚本都使用当前本机镜像，**不负责构建或拉取镜像**。第一次没有镜像时先准备后端、前端和 PostgreSQL：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local build
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local pull postgres
-```
-
-随后启动：
-
-```powershell
-python .\scripts\deploy\start_compose.py --env-file .\env.local
 ```
 
 这里的 `python` 应指向项目要求的 Python 3。`--env-file` 可换为带引号的 Windows 绝对路径；从源码仓库运行时，脚本位于 `scripts\deploy`，离线 Release 包内的同名脚本才位于包根目录。
@@ -189,17 +188,11 @@ curl.exe -f http://127.0.0.1:8080/health/ready
 
 ---
 
-## 5. 日常停止命令
+## 5. Compose CLI 备用与 `down` 边界
 
-若使用上述资源脚本启动，同样从源码仓库根目录停止：
+日常停止已经在第 4 节和启动脚本成对给出。只有需要直接操作底层 Compose，或者明确要删除本项目容器和 Compose 网络时，才使用 Compose CLI。
 
-```powershell
-python .\scripts\deploy\stop_compose.py --env-file .\env.local
-```
-
-[`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py) 调用 Compose `stop`，保留容器、网络和持久数据；下一次可用启动脚本重新计算配额并启动。
-
-若使用标准 Compose CLI 并希望同时删除容器和网络，可运行：
+如果希望同时删除容器和网络，可运行：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local down

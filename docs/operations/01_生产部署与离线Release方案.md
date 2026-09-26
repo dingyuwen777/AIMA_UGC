@@ -288,17 +288,31 @@ Bundle **不得包含**：
 
 ## 9. 服务器离线部署
 
-正式服务器取得已经验证的 Bundle 后，运行原则是：
+正式服务器取得已经验证的 Bundle 后，先校验并导入镜像，再使用 Bundle 自带的启停脚本。日常运行入口统一为：
+
+```bash
+# 启动
+python3 start_compose.py --env-file /data/AIMA_UGC/env.production
+
+# 停止：保留容器、网络和全部持久数据
+python3 stop_compose.py --env-file /data/AIMA_UGC/env.production
+```
+
+完整启动流程是：
 
 ```text
 校验 SHA256SUMS
 → docker load -i images.tar
 → 使用服务器自己的受保护 env.production
 → 对新环境填写模板默认启用的 TikHub / LLM API Key
-→ docker compose config --quiet
-→ docker compose up --no-build --pull never --wait
+→ start_compose.py
+   → 生成 compose.auto.yaml
+   → docker compose config --quiet
+   → docker compose up --no-build --pull never --wait
 → health / business smoke
 ```
+
+`stop_compose.py` 与启动脚本使用同一份 env / Compose / `compose.auto.yaml`，执行有序 `stop`。只有明确需要删除容器/网络、做底层排障或恢复时，才直接使用对应 `docker compose down` 等命令。
 
 服务器实际 `env.production` 可以长期保持：
 
