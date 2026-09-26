@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-101334-cgroup-cache-capacity
 title: 修复容器资源误降档与导入 Chunk 父锁串行
 level: L2
-status: ready_for_review
+status: done
 owner: yuwen.ding
 branch: fix/610-cgroup-cache-pressure
 created: 2026-09-26T10:13:34+08:00
