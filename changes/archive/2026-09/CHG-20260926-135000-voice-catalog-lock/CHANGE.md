@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-135000-voice-catalog-lock
 title: 缩短导入事务持有声音广场筛选目录热行锁的时间
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/616-voice-catalog-lock
 created: 2026-09-26
