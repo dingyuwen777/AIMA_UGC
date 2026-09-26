@@ -51,6 +51,12 @@ data_changes: []
 
 现场日志显示车型新增/编辑可等待 18—126 秒，并与旧运行版本 Canonical Replay 的 LeaseLost/事务回滚时刻高度重合。当前 main 已有 Replay 分片和资源反馈，但 active Brand 校验仍使用 FOR UPDATE；品牌编辑仍拆成基础字段与多个 Alias API，并在完成后重读全部品牌/车型；全历史 Replay admission 仍同步枚举全部 Artifact 并创建全部子 Run。
 
+# 事实与证据
+
+- 用户提供的旧运行日志中，车型新增/编辑出现 18—126 秒等待，并与 Canonical Replay LeaseLost/回滚释放资源高度重合。
+- 当前 main 已有持久分片、自适应 Worker/批次和资源检测，但 active Brand 校验仍使用过强行锁；品牌保存仍多事务并全目录刷新；全历史 Replay admission 仍同步扫描全部 Artifact。
+- 本任务不把旧日志直接当作当前 main 仍会复现 243 次 LeaseLost；只修当前源码仍存在、且能解释用户等待链的机制。
+
 # 目标、成功标准与非目标
 
 - 目标：切断后台 Replay 对在线 Brand/Vehicle 管理写的非必要锁阻塞；品牌一次保存成为单业务事务；Replay all admission 快速返回并由 Planner Job 完成历史规划；LeaseLost 不再导致 Worker 进程级崩溃。
@@ -65,7 +71,7 @@ data_changes: []
 - Generated OpenAPI/Orval 只能来自仓库正式生成链；本任务不手工维护第二套 Contract。
 - 后台事务竞争优先让路和缩短事务，不以扩大 Lease/timeout 掩盖根因。
 
-# Requirement Traceability
+# 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
@@ -80,7 +86,21 @@ data_changes: []
 | R9 | 前端、PostgreSQL、Job、Contract、Full-stack、静态、Docs、Review、CI 完整验证 | #614 AC9 | not_satisfied | 待验证 |
 | R10 | Merge 后 main-fresh、原生 Change Archive、Closure Audit、Issue close | #614 AC10 | not_satisfied | 交付后置门禁 |
 
-# 实施计划
+# 修改方案与决策依据
+
+1. active Brand 只读校验使用 PostgreSQL `FOR NO KEY UPDATE`，与 Evidence FK 的 `KEY SHARE` 兼容，同时继续阻止会改变 Brand 行的并发写。
+2. BrandUpdate additive 增加 aliases，由 Brand Owner 在一次目录版本事务中原子替换；前端使用响应局部 upsert。
+3. 全历史 Replay HTTP 只冻结 Catalog Snapshot 和数据库受理时间并排队 Planner；Planner 用受理时间限制 Artifact selection，再原子创建子 Run。
+4. Replay 单事务使用有界 lock timeout 与低档起步的墙钟反馈；LeaseLost 依赖 Fencing 放弃旧执行，不再杀 Worker 进程。
+
+## 备选方案与取舍
+
+- 仅增加 loading/延长 Lease：不能切断锁竞争和同步规划，拒绝。
+- 直接删除 Brand 锁：会破坏 active Vehicle→active Brand 并发不变量，拒绝。
+- 新建独立队列/Redis：与现有 Durable Job Runtime 重复，拒绝。
+- 当前采用最小充分方案：保留 PostgreSQL/Job Owner，只收敛锁强度、事务边界和交互调用链。
+
+# 计划改动
 
 1. PostgreSQL 锁：用 FOR NO KEY UPDATE 替代 active Brand 校验的过强 FOR UPDATE，并补 KEY SHARE 兼容与停用竞态测试。
 2. 管理写：BrandUpdateRequest 增加可选 aliases；Repository 一次目录版本内同步 Alias；前端使用返回 BrandResponse 做局部 upsert；车型 create/update 统一阶段计时。
@@ -88,7 +108,7 @@ data_changes: []
 4. Replay/Job 可靠性：后台批事务设置有界 lock_timeout 并按实际事务耗时降档；非取消 LeaseLost 记录并安全结束当前 run_once，不使进程退出。
 5. 生成 Contract、targeted Docs、Completion Audit、Deep Review、PR CI、guarded merge、main-fresh 与原生归档/Closure。
 
-# Validation Matrix
+# 验证矩阵
 
 | 验证层 | 是否要求 | 范围 |
 | --- | --- | --- |
@@ -100,20 +120,24 @@ data_changes: []
 | Build / Runtime | required | Ruff、Mypy、Alembic、frontend lint/build、Worker Registry |
 | Docs / Governance | required | targeted 技术文档、Completion、Review、PR/main CI、Archive/Closure |
 
-# 风险、兼容、迁移与回滚
+# 风险、兼容性、迁移与回滚
 
 - Contract 仅 additive；旧 Brand Alias API 保留。
 - 优先不新增 Schema：父 Replay Request 现有 created_at 作为 Artifact cutoff，Job payload 持久冻结 Catalog Snapshot；若真实实现证明现有 Schema 无法安全承载再进入 Re-plan。
 - 锁降级通过真实 PostgreSQL 并发反例证明，不以静态 SQL 字符串替代。
 - 回滚为正常应用版本回退；不删除业务数据，不执行生产 downgrade。
 
-# Completion Audit
+# 文档、依赖、部署与发布影响
+
+Docs Impact=targeted：同步管理员配置保存语义、Replay admission/Planner 与 PostgreSQL 排障说明。无新依赖、Runtime 升级或生产操作；当前方案不新增 Migration。部署新代码时需 API/Worker 同版本，但本任务不执行 Release/Deploy。
+
+# 完成审计
 
 - [ ] upstream_re_read
 - [ ] change_coverage
 - [ ] reverse_audit
 - [ ] unresolved_cleared
 
-# 当前证据
+# 完成证据与状态
 
 Red 已建立：BrandUpdateRequest 尚无 aliases；CanonicalReplayAllCreatedResponse 尚无 planning_status；active Brand guard 在 KEY SHARE 下当前使用 FOR UPDATE，预期被 PostgreSQL lock_timeout 证伪。实现、Green、Review、CI 和交付尚未完成。
