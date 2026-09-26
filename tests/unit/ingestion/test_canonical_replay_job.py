@@ -147,7 +147,6 @@ def test_replay_default_fast_batch_starts_from_small_measured_tier() -> None:
     assert tiers[1] == 125
 
 
-
 def test_replay_shards_share_the_same_small_batch_tuner() -> None:
     """父/子 Replay 共用 3 秒墙钟控制；分片不能退回固定 1000 行大事务。"""
 
