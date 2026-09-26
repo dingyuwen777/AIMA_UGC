@@ -71,11 +71,11 @@ class PostgresCanonicalReplayHttpService:
                         request_id=request_id,
                         filter_snapshot=snapshot,
                     )
+                    planning_status = repository.planning_status(record)
                 except (LookupError, ValueError) as exc:
                     raise CanonicalReplayInputInvalid(str(exc)) from exc
                 except (JobIdempotencyConflict, RuntimeError) as exc:
                     raise CanonicalReplayConflict(str(exc)) from exc
-                planning_status = repository.planning_status(record)
                 _audit(
                     session,
                     actor_ref=actor_ref,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError, SQLAlchemyError
+
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
 )
@@ -12,7 +14,12 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayPlanJobPayload,
     load_filter_snapshot,
 )
-from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
+from aima_ugc.platform.jobs import (
+    JobExecutionFence,
+    JobHandlerResult,
+    JobRecord,
+    LeaseLostError,
+)
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 
 from .runtime import PlatformRuntime
@@ -31,52 +38,68 @@ class PostgresCanonicalReplayPlanJobExecutor:
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult:
-        """扫描受理边界内 Artifact，再用短提交阶段原子生成全部子 Run。"""
+        """父状态、历史扫描和子 Run 提交分离；提交前重新验证当前 Fence。"""
 
-        snapshot = load_filter_snapshot(payload.filter_snapshot)
-        session = self._runtime.database.new_session()
         try:
-            with session.begin():
-                repository = PostgresCanonicalReplayRepository(session)
-                record = repository.mark_all_plan_running(
-                    payload.request_id,
-                    fence=fence,
-                )
-                if record is None:
-                    return JobHandlerResult.failed("canonical_replay_plan_not_found")
-                if record.planning_status == "planned":
-                    return JobHandlerResult.succeeded(
-                        {
-                            "request_id": str(record.id),
-                            "artifact_count": record.artifact_count,
-                            "run_count": record.run_count,
-                        }
+            snapshot = load_filter_snapshot(payload.filter_snapshot)
+            session = self._runtime.database.new_session()
+            try:
+                with session.begin():
+                    record = PostgresCanonicalReplayRepository(session).mark_all_plan_running(
+                        payload.request_id,
+                        fence=fence,
                     )
-                if record.lifecycle_status != "active":
-                    return JobHandlerResult.cancelled()
-                candidates = repository.list_replayable_artifacts(
-                    accepted_before=payload.accepted_before
-                )
-        finally:
-            session.close()
+            finally:
+                session.close()
 
-        if context.cancel_requested():
-            return JobHandlerResult.cancelled()
-        context.heartbeat(progress=50)
-
-        session = self._runtime.database.new_session()
-        try:
-            with session.begin():
-                PostgresJobRepository(session).validate_current_execution(fence)
-                planned = PostgresCanonicalReplayRepository(session).complete_all_plan(
-                    request_id=payload.request_id,
-                    accepted_before=payload.accepted_before,
-                    candidates=candidates,
-                    snapshot=snapshot,
-                    http_request_id=None,
+            if record.planning_status == "planned":
+                return JobHandlerResult.succeeded(
+                    {
+                        "request_id": str(record.id),
+                        "artifact_count": record.artifact_count,
+                        "run_count": record.run_count,
+                    }
                 )
-        finally:
-            session.close()
+            if record.lifecycle_status != "active" or context.cancel_requested():
+                return JobHandlerResult.cancelled()
+
+            session = self._runtime.database.new_session()
+            try:
+                with session.begin():
+                    PostgresJobRepository(session).validate_current_execution(fence)
+                    candidates = PostgresCanonicalReplayRepository(session).list_replayable_artifacts(
+                        accepted_before=payload.accepted_before
+                    )
+            finally:
+                session.close()
+
+            if context.cancel_requested():
+                return JobHandlerResult.cancelled()
+            context.heartbeat(progress=50)
+
+            session = self._runtime.database.new_session()
+            try:
+                with session.begin():
+                    jobs = PostgresJobRepository(session)
+                    jobs.validate_current_execution(fence)
+                    planned = PostgresCanonicalReplayRepository(session).complete_all_plan(
+                        request_id=payload.request_id,
+                        accepted_before=payload.accepted_before,
+                        candidates=candidates,
+                        snapshot=snapshot,
+                        http_request_id=None,
+                    )
+                    # 历史枚举与子 Run 创建期间 Lease 可能变化；提交前必须再次锁定当前执行。
+                    jobs.lock_current_execution(fence)
+            finally:
+                session.close()
+        except LeaseLostError:
+            raise
+        except (LookupError, ValueError, DataError, IntegrityError, ProgrammingError):
+            return JobHandlerResult.failed("canonical_replay_plan_invalid")
+        except (OSError, SQLAlchemyError):
+            return JobHandlerResult.retry("canonical_replay_plan_transient_error")
+
         if planned.lifecycle_status != "active":
             return JobHandlerResult.cancelled()
         return JobHandlerResult.succeeded(
