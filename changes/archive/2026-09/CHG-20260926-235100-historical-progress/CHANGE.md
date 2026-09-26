@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-235100-historical-progress
 title: 消除大 Campaign 的逐 Chunk 重复扫描
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/618-historical-progress
 created: 2026-09-26
