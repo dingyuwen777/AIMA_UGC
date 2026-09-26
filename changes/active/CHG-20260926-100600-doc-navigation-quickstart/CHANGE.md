@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-100600-doc-navigation-quickstart
 title: 修正文档导航、Roadmap 编号与运行速查入口
 level: L2
-status: in_progress
+status: ready_for_review
 owner: yuwen.ding
 branch: docs/609-doc-navigation-quickstart
 created: 2026-09-26T10:06:00+08:00
@@ -24,6 +24,9 @@ affected_paths:
   - docs/README.md
   - docs/01_代码结构与修改导航.md
   - AGENTS.md
+  - README.md
+  - frontend/README.md
+  - backend/src/aima_ugc/modules/ingestion/README.md
 contracts: []
 data_changes: []
 ---
@@ -132,14 +135,14 @@ Issue #609 来自用户对当前文档可用性的直接反馈：Windows Guide �
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | Windows Guide 无空格路径且旧引用清零 | #609 / AC1 | not_satisfied | 待实现 |
-| R2 | Active Roadmap 连续编号并同步引用 | #609 / AC2 | not_satisfied | 待实现 |
-| R3 | docs/02 顶部列四种环境启动/停止 | #609 / AC3 | not_satisfied | 待实现 |
-| R4 | 速查命令来自真实入口且详细内容仍归专项 Owner | #609 / AC4 | not_satisfied | 待实现 |
-| R5 | 删除 docs/02 末尾重复导航 | #609 / AC5 | not_satisfied | 待实现 |
-| R6 | 相对链接可解析且旧路径无残留 | #609 / AC6 | not_satisfied | 待验证 |
-| R7 | 不改变产品/Runtime/Contract/Schema/Compose/Deploy 语义 | #609 / AC7 | not_satisfied | 待验证 |
-| R8 | current-head CI/Review 与交付闭环 | #609 / AC8 | not_satisfied | 待交付 |
+| R1 | Windows Guide 无空格路径且旧引用清零 | #609 / AC1 | satisfied | Guide 已重命名为 `docs/guides/03_Windows_Docker_Desktop_Compose运行.md`；旧文件不存在，当前消费者引用已迁移 |
+| R2 | Active Roadmap 连续编号并同步引用 | #609 / AC2 | satisfied | `docs/roadmap/` 当前仅有 01 生产上线、02 4000万迁移和 README；当前消费者已迁移 |
+| R3 | docs/02 顶部列四种环境启动/停止 | #609 / AC3 | satisfied | docs/02 Section 1 已包含源码、Linux/WSL、Windows Docker Desktop、Linux Release 启停命令 |
+| R4 | 速查命令来自真实入口且详细内容仍归专项 Owner | #609 / AC4 | satisfied | 命令已对照 compose、Windows Guide、release_bundle.py、start/stop_compose.py；详细配置继续链接 Guide/Operations |
+| R5 | 删除 docs/02 末尾重复导航 | #609 / AC5 | satisfied | `## 14. 一句话导航` 已删除；顶部 Section 1.5 为唯一快速导航 |
+| R6 | 相对链接可解析且旧路径无残留 | #609 / AC6 | satisfied | 受影响文档相对链接逐一解析到当前分支 tree；旧 Windows/旧 Roadmap 路径扫描无残留，根 README 等外层消费者也已同步 |
+| R7 | 不改变产品/Runtime/Contract/Schema/Compose/Deploy 语义 | #609 / AC7 | satisfied | base→head diff 仅文档、AGENTS 与 Change；无应用代码、Contract、Migration、Compose 或 Deploy 脚本修改 |
+| R8 | current-head CI/Review 与交付闭环 | #609 / AC8 | explicitly_deferred | Ready 后由 PR current-head required CI、独立 Review、merge/main-fresh/archive/closure 实际完成 |
 
 # 计划改动
 
@@ -192,10 +195,10 @@ Issue #609 来自用户对当前文档可用性的直接反馈：Windows Guide �
 
 # 完成审计
 
-- [ ] upstream_re_read：完成前重新读取 #609 与最终文档/脚本事实。
-- [ ] change_coverage：完成前按 AC1–AC8 逐条核对。
-- [ ] reverse_audit：检查本次速查是否复制专项全文、重命名后是否出现第二 Owner/断链。
-- [ ] unresolved_cleared：Ready 前清零 not_satisfied 或有正式延期依据。
+- [x] upstream_re_read：已重新读取 #609、最终 docs/02、Compose/Windows Guide、Release Bundle 与 start/stop 脚本事实。
+- [x] change_coverage：已按 AC1–AC8 重建；AC1–AC7 有实现/静态证据，AC8 明确保留给 Ready 后 CI/Review/Delivery。
+- [x] reverse_audit：docs/02 只保留速查命令和导航，没有复制专项配置/排障全文；旧文档不保留重复副本，重命名消费者已迁移。
+- [x] unresolved_cleared：Requirement Traceability 无 not_satisfied；AC8 使用 explicitly_deferred 绑定真实后置交付门禁。
 
 # 完成证据与状态
 
@@ -204,16 +207,20 @@ Issue #609 来自用户对当前文档可用性的直接反馈：Windows Guide �
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | main c0e90c4 | 当前文档/脚本读取 | confirmed | E1-E6 基线成立 |
+| V2 | branch d6fbe82 | tree/path audit | pass | Guide 无空格；Roadmap 为 01/02；旧三个路径不存在于当前 tree |
+| V3 | branch d6fbe82 | old-reference scan + changed Markdown link resolution | pass | 当前导航旧路径无残留；受影响相对链接均解析到真实文件 |
+| V4 | branch d6fbe82 | docs/02 quick-start audit | pass | 四类环境启动/停止命令存在，末尾重复导航已删除 |
+| V5 | main→branch diff | scope audit | pass | 仅文档、AGENTS、README 与 Change；无 Runtime/Contract/Schema/Compose/Deploy 逻辑修改 |
 
 ## 未验证内容与剩余风险
 
-- 实现、current-head CI、独立 Review、合并后归档/关闭尚待执行。
+- current-head CI、独立 Review、merge/main-fresh/archive/closure 尚待 Ready 后执行；实现与静态文档验证已完成。
 
 ## 交付状态
 
-- 提交：待实现
-- 拉取请求：待建立
-- CI：待执行
-- 合并：待执行
-- Change 归档：待执行
+- 提交：文档路径、引用和 docs/02 速查实现已在任务分支提交
+- 拉取请求：Ready 后建立
+- CI：由 PR current-head required checks 执行
+- 合并：仅在 current-head CI/Review Green 后 guarded merge
+- Change 归档：merge 后由 repository-native Archivist 执行
 - 发布 / 部署：不适用
