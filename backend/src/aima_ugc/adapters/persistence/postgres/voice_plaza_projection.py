@@ -28,6 +28,24 @@ class VoicePlazaProjectionState:
     total_content_count: int | None
 
 
+def defer_voice_plaza_projection(session: Session) -> None:
+    """在当前事务内延迟业务事实触发的投影刷新，调用方必须在提交前显式结清。"""
+
+    session.execute(text("SELECT set_config('aima.defer_voice_plaza', 'on', true)"))
+
+
+def flush_deferred_voice_plaza_projection(session: Session, content_ids: tuple[UUID, ...]) -> int:
+    """用同事务最终业务事实一次刷新受影响 Content，并恢复默认触发器行为。"""
+
+    if content_ids:
+        refresh_batch = text(
+            "SELECT refresh_voice_plaza_content_projection_batch(:content_ids)"
+        ).bindparams(bindparam("content_ids", type_=ARRAY(Uuid())))
+        session.execute(refresh_batch, {"content_ids": list(dict.fromkeys(content_ids))}).all()
+    session.execute(text("SELECT set_config('aima.defer_voice_plaza', 'off', true)"))
+    return len(set(content_ids))
+
+
 class PostgresVoicePlazaProjectionRepository:
     """以 Job Fence 和 UUID Keyset 推进派生投影，不持有长事务。"""
 

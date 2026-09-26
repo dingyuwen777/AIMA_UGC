@@ -1,6 +1,6 @@
 """为全历史 Replay Planner 增加显式持久规划状态与受理边界。
 
-Revision ID: 20260926_0066
+Revision ID: 20260926_0068
 Revises: 20260925_0065
 """
 
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260926_0066"
-down_revision: str | Sequence[str] | None = "20260925_0065"
+revision: str = "20260926_0068"
+down_revision: str | Sequence[str] | None = "20260926_0067"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -75,7 +75,7 @@ def downgrade() -> None:
         )
     ).first()
     if pending is not None:
-        raise RuntimeError("仍存在未完成的 Replay Planner 请求，不能安全 downgrade 0066")
+        raise RuntimeError("仍存在未完成的 Replay Planner 请求，不能安全 downgrade 0068")
     op.drop_constraint(
         op.f("fk_canonical_replay_all_requests_planner_job_id_jobs"),
         "canonical_replay_all_requests",

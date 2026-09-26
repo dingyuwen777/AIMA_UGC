@@ -280,6 +280,12 @@ Index(
     canonical_replay_content_changes_table.c.created_at,
     canonical_replay_content_changes_table.c.id,
 )
+Index(
+    "ix_canonical_replay_content_changes_reverted_visibility",
+    canonical_replay_content_changes_table.c.all_request_id,
+    canonical_replay_content_changes_table.c.content_id,
+    postgresql_where=canonical_replay_content_changes_table.c.reverted_at.is_not(None),
+)
 
 __all__ = [
     "canonical_replay_all_requests_table",

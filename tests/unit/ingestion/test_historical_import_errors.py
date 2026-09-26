@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -16,6 +18,7 @@ def test_chunk_database_operational_error_is_retryable(monkeypatch: pytest.Monke
     """数据库死锁等临时故障应交给持久 Job 退避重试，不能使 Worker 直接中断。"""
 
     executor = object.__new__(PostgresHistoricalImportJobExecutor)
+    executor._runtime = SimpleNamespace(logger=logging.getLogger(__name__))  # type: ignore[assignment]
     executor._sql_batch_tuner = AdaptiveBatchController(lower=250, upper=500)
 
     def fail_load(*args: object, **kwargs: object) -> None:

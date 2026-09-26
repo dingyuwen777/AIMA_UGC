@@ -65,12 +65,21 @@ class PostgresHistoricalImportRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get_campaign(self, campaign_id: UUID, *, for_update: bool = False) -> RowMapping | None:
+    def get_campaign(
+        self,
+        campaign_id: UUID,
+        *,
+        for_update: bool = False,
+        for_no_key_update: bool = False,
+    ) -> RowMapping | None:
         statement = select(historical_import_campaigns_table).where(
             historical_import_campaigns_table.c.id == campaign_id
         )
         if for_update:
             statement = statement.with_for_update()
+        elif for_no_key_update:
+            # Chunk 外键写入持有父行 KEY SHARE；调度只改非键列，避免锁升级死锁。
+            statement = statement.with_for_update(key_share=True)
         return self._session.execute(statement).mappings().one_or_none()
 
     def get_campaign_by_idempotency_key(self, key: str) -> RowMapping | None:
@@ -430,7 +439,7 @@ class PostgresHistoricalImportRepository:
         )
 
     def schedule_snapshot_jobs(self, campaign_id: UUID, *, max_in_flight: int) -> int:
-        if self.get_campaign(campaign_id, for_update=True) is None:
+        if self.get_campaign(campaign_id, for_no_key_update=True) is None:
             raise HistoricalCampaignNotFound
         active = cast(
             int,
@@ -979,7 +988,7 @@ class PostgresHistoricalImportRepository:
         source_batches: dict[UUID, UUID],
         max_in_flight: int,
     ) -> int:
-        if self.get_campaign(campaign_id, for_update=True) is None:
+        if self.get_campaign(campaign_id, for_no_key_update=True) is None:
             raise HistoricalCampaignNotFound
         active = cast(
             int,
