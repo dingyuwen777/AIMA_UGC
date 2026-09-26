@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-224053-catalog-trigger-precision
 title: 收窄声音广场目录更新触发的投影刷新
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: fix/618-catalog-trigger
 created: 2026-09-26
@@ -17,6 +17,7 @@ affected_areas:
 affected_paths:
   - migrations/versions/
   - tests/integration/content/
+  - docs/operations/04_声音广场读模型回填与性能验证.md
 contracts: []
 data_changes:
   - vehicle_brands/vehicle_models UPDATE 后声音广场投影的同步刷新条件
@@ -45,9 +46,9 @@ Migration 只替换函数，降级恢复 0061 的函数逻辑；无需回填或�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 无关字段更新不刷新关联 Content | #618 / AC1 | not_satisfied | 待 PostgreSQL 失败用例与修复验证 |
-| R2 | 真实依赖字段变化保持投影结果和事务一致 | #618 / AC1；项目投影规则 | not_satisfied | 待 PostgreSQL 回归 |
-| R3 | 功能、Contract、迁移兼容且性能有提升证据 | 用户本轮要求；#618 | not_satisfied | 待迁移升降级、对照和 CI |
+| R1 | 无关字段更新不刷新关联 Content | #618 / AC1 | satisfied | 真实 PostgreSQL：别名与车型显示名更新保持投影 `updated_at` 不变；1000 条 Content 对照重写 1000→0 |
+| R2 | 真实依赖字段变化保持投影结果和事务一致 | #618 / AC1 | satisfied | 角色 owned→competitor 与车型 merge 后，同事务提交的投影维度变化；集成测试 2 passed |
+| R3 | 功能、Contract、迁移兼容且性能有提升证据 | #618 / AC5 | satisfied | 0069 降级/升级成功，`alembic check` 无差异，品牌车型回归 6 passed；1000 条同数据基准三次耗时见下方 |
 
 # 计划改动与验证矩阵
 
@@ -69,7 +70,15 @@ Migration 只替换函数，降级恢复 0061 的函数逻辑；无需回填或�
 
 # 完成审计
 
-- [ ] upstream_re_read：重读 #618 与项目投影事实。
-- [ ] change_coverage：逐项比较 R1–R3 与实现/测试。
-- [ ] reverse_audit：从目录写入到声音广场结果、从投影维度反查目录依赖。
-- [ ] unresolved_cleared：无未满足要求，记录剩余服务器验证边界。
+- [x] upstream_re_read：重读 #618、Blueprint 的同事务投影约束和 0061/0067 当前函数；投影 SQL 使用品牌 `role` 与车型 `merged_into_id`。
+- [x] change_coverage：R1–R3 分别有失败回归、修复后的真实数据库结果、迁移和同数据性能对照。
+- [x] reverse_audit：管理员别名/角色、车型显示名/合并入口经 Catalog → Trigger → Projection → 声音广场维度覆盖；投影使用字段反查目录更新条件。无公共前端 Contract 变化。
+- [x] unresolved_cleared：本工作包无 `not_satisfied`；服务器实际规模与 P95 仍待部署后实测，不把本地基准当生产结论。
+
+# 新鲜证据与剩余边界
+
+隔离 PostgreSQL 18.4、同一千条关联 Content：原 0068 目录版本 touch 三次事务为 33.919/36.879/43.920 ms，每次重写 1000 条投影；0069 为 9.370/4.399/6.105 ms，每次重写 0 条。测量脚本使用生产导入入口准备相同数据，位于本地忽略目录且不作为发布物。结果只证明无关目录更新的增长项被切断，不代表生产服务器的绝对时延。
+
+Red：新增 PostgreSQL 回归在 0068 因别名 touch 改写投影时间而失败。Green：0069 后该测试和原有 Stage 5 纵切共 2 passed；品牌车型仓储回归 6 passed。Migration 降级至 0068、再升级 0069 成功；`alembic check` 报告无新升级操作。`ruff check`/`ruff format --check`、文档导航和事实检查通过。正式 PR 当前 HEAD CI 仍须验证。
+
+公共 HTTP/Job Contract、依赖与业务表结构均未改变。部署只需遵循现有先 Migration 后应用/Worker 顺序；若回滚至 0068，目录无关更新的旧性能问题会重现，但业务事实和派生数据不丢失。生产部署、生产迁移与真实大规模 P95 尚未执行。

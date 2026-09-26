@@ -26,7 +26,7 @@ from aima_ugc.bootstrap.worker import (
     create_worker_runtime,
 )
 from aima_ugc.contracts.administration import VehicleModelCreateRequest
-from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest, BrandUpdateRequest
 from aima_ugc.contracts.http import (
     ContentAnalysisSubmitRequest,
     ContentCountRequest,
@@ -36,6 +36,7 @@ from aima_ugc.contracts.http import (
     DataExportSubmitRequest,
 )
 from aima_ugc.modules.analysis.tables import analysis_content_run_targets_table
+from aima_ugc.modules.content.read_model_tables import voice_plaza_content_projection_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.reporting.data_export_job import (
@@ -46,6 +47,7 @@ from aima_ugc.modules.reporting.tables import reporting_data_export_items_table
 from aima_ugc.modules.vehicles.tables import (
     content_brand_evidence_table,
     content_vehicle_evidence_table,
+    vehicle_models_table,
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobRegistry
@@ -107,6 +109,109 @@ def _import(runtime, workbook: bytes, *, worker_id: str) -> None:  # type: ignor
         retry_delay_seconds=0,
     )
     assert worker.run_once() is True
+
+
+def test_catalog_metadata_update_does_not_rewrite_voice_plaza_projection(
+    tmp_path: Path,
+) -> None:
+    """别名或显示名 touch 不写投影，角色/合并变化仍同步更新维度。"""
+
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, vehicle_brands, "
+            "vehicle_models RESTART IDENTITY CASCADE"
+        )
+    try:
+        principal = _principal()
+        brand_service = PostgresBrandVehicleHttpService(runtime)
+        vehicle_service = PostgresAdministrationHttpService(runtime)
+        brand = brand_service.create_brand(
+            BrandCreateRequest(
+                display_name="爱玛触发器测试", role="owned", aliases=("触发品牌词",)
+            ),
+            principal=principal,
+            request_id="trigger-brand",
+        )
+        source_vehicle = vehicle_service.create_vehicle_model(
+            VehicleModelCreateRequest(
+                display_name="旧车型触发器测试",
+                brand_id=brand.id,
+                aliases=("触发车型词",),
+            ),
+            principal=principal,
+            request_id="trigger-source-vehicle",
+        )
+        target_vehicle = vehicle_service.create_vehicle_model(
+            VehicleModelCreateRequest(display_name="新车型触发器测试", brand_id=brand.id),
+            principal=principal,
+            request_id="trigger-target-vehicle",
+        )
+        _import(
+            runtime,
+            _xlsx((("触发品牌词 触发车型词", "trigger-metadata-update"),)),
+            worker_id="trigger-import",
+        )
+
+        def projection() -> tuple[datetime, str, tuple[UUID, ...]]:
+            """读取用户可见的派生维度及投影写入时间。"""
+
+            with runtime.database.engine.begin() as connection:
+                row = connection.execute(
+                    select(
+                        voice_plaza_content_projection_table.c.updated_at,
+                        voice_plaza_content_projection_table.c.competition_scope,
+                        voice_plaza_content_projection_table.c.vehicle_model_ids,
+                    )
+                ).one()
+                return row.updated_at, row.competition_scope, tuple(row.vehicle_model_ids)
+
+        initial = projection()
+        assert initial[1:] == ("owned_only", (source_vehicle.id,))
+        brand_service.update_brand(
+            brand.id,
+            BrandUpdateRequest(aliases=("触发品牌词", "新别名")),
+            principal=principal,
+            request_id="trigger-alias-touch",
+        )
+        assert projection() == initial
+
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(vehicle_models_table)
+                .where(vehicle_models_table.c.id == source_vehicle.id)
+                .values(display_name="旧车型改名")
+            )
+        assert projection() == initial
+
+        brand_service.update_brand(
+            brand.id,
+            BrandUpdateRequest(role="competitor"),
+            principal=principal,
+            request_id="trigger-role-change",
+        )
+        after_role = projection()
+        assert after_role[1] == "competitor_only"
+        assert after_role[0] != initial[0]
+
+        with runtime.database.new_session() as session:
+            with session.begin():
+                PostgresVehicleCatalogRepository(session).merge_model(
+                    source_vehicle.id, target_vehicle.id, actor_ref=principal.principal_id
+                )
+        after_merge = projection()
+        assert after_merge[2] == (target_vehicle.id,)
+        assert after_merge[0] != after_role[0]
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, vehicle_brands, "
+                "vehicle_models RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
 
 
 def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path: Path) -> None:
