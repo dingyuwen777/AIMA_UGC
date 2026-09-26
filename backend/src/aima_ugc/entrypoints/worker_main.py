@@ -351,13 +351,10 @@ def _run_worker_pool() -> None:
                         and desired >= 2
                         and "foreground-reserve" not in child_roles.values()
                     )
-                    spawn(
-                        role=(
-                            "foreground-reserve"
-                            if needs_foreground_reserve
-                            else "general"
-                        )
+                    spawned_role = (
+                        "foreground-reserve" if needs_foreground_reserve else "general"
                     )
+                    spawn(role=spawned_role)
                     idle_since = None
                     log_event(
                         runtime.logger,
@@ -365,6 +362,7 @@ def _run_worker_pool() -> None:
                         "capacity.worker_pool_resized",
                         "Worker 并行进程已扩容",
                         active_processes=len(children),
+                        spawned_worker_role=spawned_role,
                         foreground_reserve_processes=sum(
                             role == "foreground-reserve" for role in child_roles.values()
                         ),
