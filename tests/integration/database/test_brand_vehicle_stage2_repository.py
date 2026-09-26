@@ -337,3 +337,33 @@ def test_active_brand_guard_is_compatible_with_foreign_key_key_share(runtime) ->
     finally:
         key_share.close()
         guard.close()
+
+
+def test_brand_update_replaces_aliases_with_one_catalog_version(runtime) -> None:  # type: ignore[no-untyped-def]
+    """一次品牌编辑原子替换 Alias，且只推进一个 Catalog Version。"""
+
+    principal = _principal()
+    service = PostgresBrandVehicleHttpService(runtime)
+    created = service.create_brand(
+        BrandCreateRequest(
+            display_name="原品牌",
+            role="owned",
+            aliases=("旧词一", "旧词二"),
+        ),
+        principal=principal,
+        request_id="brand-atomic-create",
+    )
+    updated = service.update_brand(
+        created.id,
+        BrandUpdateRequest(
+            display_name="新品牌",
+            aliases=("新词", " NEW ", "新词"),
+        ),
+        principal=principal,
+        request_id="brand-atomic-update",
+    )
+
+    assert updated.display_name == "新品牌"
+    assert updated.catalog_version == created.catalog_version + 1
+    assert {alias.text for alias in updated.aliases} == {"新词", "NEW"}
+    assert service.get_brand(created.id).aliases == updated.aliases
