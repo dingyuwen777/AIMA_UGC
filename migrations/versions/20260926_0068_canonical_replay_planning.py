@@ -1,7 +1,7 @@
 """为全历史 Replay Planner 增加显式持久规划状态与受理边界。
 
 Revision ID: 20260926_0068
-Revises: 20260925_0065
+Revises: 20260926_0067
 """
 
 from collections.abc import Sequence
