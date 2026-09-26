@@ -7,8 +7,12 @@ from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import pytest
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
     PostgresBrandVehicleRepository,
+)
+from aima_ugc.adapters.persistence.postgres.content_queries import (
+    PostgresContentQueryRepository,
 )
 from aima_ugc.adapters.persistence.postgres.reporting import PostgresDataExportRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
@@ -36,6 +40,7 @@ from aima_ugc.contracts.http import (
     DataExportSubmitRequest,
 )
 from aima_ugc.modules.analysis.tables import analysis_content_run_targets_table
+from aima_ugc.modules.content.http import ContentSelectionEmpty
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.reporting.data_export_job import (
@@ -49,10 +54,11 @@ from aima_ugc.modules.vehicles.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobRegistry
+from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.time import beijing_now
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 
 
 def _principal() -> Principal:
@@ -109,7 +115,9 @@ def _import(runtime, workbook: bytes, *, worker_id: str) -> None:  # type: ignor
     assert worker.run_once() is True
 
 
-def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path: Path) -> None:
+def test_brand_vehicle_filters_share_targets_and_export_frozen_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """五种竞品范围、Brand/Vehicle AND、四消费者与冻结导出保持同一事实。"""
 
     settings = load_settings().model_copy(
@@ -294,20 +302,73 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         assert analysis.run_id is not None
 
         reporting = PostgresReportingHttpService(runtime)
-        export = reporting.create_export(
-            DataExportSubmitRequest(
-                targets=ContentTargetSelection(scope="query", filters=shared_filter),
-                columns=(
-                    "matched_keywords",
-                    "brands",
-                    "brand_roles",
-                    "competition_scope",
-                    "vehicles",
+        with monkeypatch.context() as context:
+            context.setattr(
+                PostgresContentQueryRepository,
+                "freeze_targets",
+                lambda *_args, **_kwargs: pytest.fail(
+                    "导出受理不应在 Python 中物化全部 ContentTarget"
                 ),
-            ),
-            request_id="stage5-export-targets",
-            actor_ref="user:stage5",
-        )
+            )
+            export = reporting.create_export(
+                DataExportSubmitRequest(
+                    targets=ContentTargetSelection(scope="query", filters=shared_filter),
+                    columns=(
+                        "matched_keywords",
+                        "brands",
+                        "brand_roles",
+                        "competition_scope",
+                        "vehicles",
+                    ),
+                ),
+                request_id="stage5-export-targets",
+                actor_ref="user:stage5",
+            )
+            selected_export = reporting.create_export(
+                DataExportSubmitRequest(
+                    targets=ContentTargetSelection(
+                        scope="selected",
+                        content_ids=(
+                            uuid4(),
+                            content_by_title["竞品舞台"],
+                            projected.id,
+                        ),
+                    )
+                ),
+                request_id="stage5-selected-export-targets",
+                actor_ref="user:stage5",
+            )
+        assert selected_export.target_count == 2
+        with runtime.database.engine.begin() as connection:
+            frozen_selected = connection.execute(
+                select(
+                    reporting_data_export_items_table.c.content_id,
+                    reporting_data_export_items_table.c.ordinal,
+                )
+                .where(reporting_data_export_items_table.c.export_id == selected_export.export_id)
+                .order_by(reporting_data_export_items_table.c.ordinal)
+            ).all()
+        assert frozen_selected == [
+            (content_by_title["竞品舞台"], 0),
+            (projected.id, 1),
+        ]
+        with pytest.raises(ContentSelectionEmpty):
+            reporting.create_export(
+                DataExportSubmitRequest(
+                    targets=ContentTargetSelection(scope="selected", content_ids=(uuid4(),))
+                ),
+                request_id="stage5-empty-export-targets",
+                actor_ref="user:stage5",
+            )
+        with runtime.database.engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(jobs_table)
+                    .where(jobs_table.c.request_id == "stage5-empty-export-targets")
+                )
+                == 0
+            )
         expected_ids = {projected.id}
         with runtime.database.engine.begin() as connection:
             analysis_ids = set(

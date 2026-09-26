@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import and_, func, insert, or_, select, update
+from sqlalchemy import Integer, and_, func, insert, literal, or_, select, update
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
@@ -42,7 +42,6 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.availability_tables import (
     content_availability_observations_table,
 )
-from aima_ugc.modules.content.query import ContentTarget
 from aima_ugc.modules.content.tables import (
     comment_coverage_observations_table,
     comment_versions_table,
@@ -101,36 +100,48 @@ class PostgresDataExportRepository:
         export_id: UUID,
         job_id: UUID,
         request_snapshot: dict[str, object],
-        targets: tuple[ContentTarget, ...],
+        target_statement: Any,
         columns: tuple[str, ...],
         column_catalog_version: int,
-    ) -> None:
-        if not targets:
-            raise ValueError("Data Export 至少需要一个目标")
+    ) -> int:
+        snapshot = {**request_snapshot, "target_count": 0}
         self._session.execute(
             insert(reporting_data_exports_table).values(
                 id=export_id,
                 job_id=job_id,
                 artifact_id=None,
                 format="xlsx",
-                request_snapshot=request_snapshot,
+                request_snapshot=snapshot,
                 columns=list(columns),
                 column_catalog_version=column_catalog_version,
                 created_at=beijing_now(),
             )
         )
-        self._session.execute(
-            insert(reporting_data_export_items_table),
-            [
-                {
-                    "export_id": export_id,
-                    "content_id": target.content_id,
-                    "content_version": target.content_version,
-                    "ordinal": ordinal,
-                }
-                for ordinal, target in enumerate(targets)
-            ],
+        target = target_statement.subquery("export_target_selection")
+        frozen = (
+            insert(reporting_data_export_items_table)
+            .from_select(
+                ("export_id", "content_id", "content_version", "ordinal"),
+                select(
+                    literal(export_id, type_=reporting_data_export_items_table.c.export_id.type),
+                    target.c.content_id,
+                    target.c.content_version,
+                    # 显式选择过滤无效 ID 后，仍须从 0 开始连续编号。
+                    (func.row_number().over(order_by=target.c.target_ordinal) - 1).cast(Integer),
+                ).order_by(target.c.target_ordinal),
+            )
+            .execution_options(preserve_rowcount=True)
         )
+        target_count = self._session.execute(frozen).rowcount
+        if target_count < 0:
+            raise RuntimeError("Data Export 冻结目标数不可用")
+        if target_count:
+            self._session.execute(
+                update(reporting_data_exports_table)
+                .where(reporting_data_exports_table.c.id == export_id)
+                .values(request_snapshot={**snapshot, "target_count": target_count})
+            )
+        return target_count
 
     def get(self, export_id: UUID) -> DataExportRecord | None:
         row = (

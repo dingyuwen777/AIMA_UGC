@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-231200-export-admission-set
 title: 用数据库集合操作冻结 Excel 导出目标
 level: L3
-status: proposed
+status: ready_for_review
 owner: codex
 branch: fix/618-export-admission
 created: 2026-09-26
@@ -45,9 +45,9 @@ Issue #618 / AC3、AC5 的工作包。导出受理使用已有 Content 查询 SQ
 
 目标：导出受理内存不随目标对象数线性增长，仍在提交事务内冻结 ID、Version 和连续 Ordinal。
 
-- [ ] 空选择继续返回相同错误，且无 Job/Export 残留。
-- [ ] query 与 selected 的顺序、过滤、版本冻结和 `target_count` 与旧行为一致。
-- [ ] 真实 PostgreSQL 与相同数据性能对照证明集合插入减少 Python 对象化和受理开销。
+- [x] 空选择继续返回相同错误，且无 Job/Export 残留。
+- [x] query 与 selected 的顺序、过滤、版本冻结和 `target_count` 与旧行为一致。
+- [x] 真实 PostgreSQL 与相同数据性能对照证明集合插入减少 Python 对象化和受理开销。
 
 范围：Reporting API Service、Repository、相关集成测试与模块文档。非目标：Worker Excel 渲染、列选择、公共 Contract、依赖或表结构。必须保持 Job 与 Export 原子提交、无效来源过滤及既有错误类型。
 
@@ -67,8 +67,8 @@ Reporting 仍是 Export 表唯一写 Owner；Content 查询仍是目标筛选唯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 集合冻结 ID/Version/Ordinal，空集/排序/错误不变 | #618 / AC3 | not_satisfied | 待 PostgreSQL 回归 |
-| R2 | 回归与性能对照 | #618 / AC5 | not_satisfied | 待验证 |
+| R1 | 集合冻结 ID/Version/Ordinal，空集/排序/错误不变 | #618 / AC3 | satisfied | PostgreSQL 纵切覆盖 query、selected 过滤后 Ordinal、空集回滚、旧版本冻结及 Worker 下载 |
+| R2 | 回归与性能对照 | #618 / AC5 | satisfied | Stage5 + Stage8D 共 11 passed；同一千条内容交替对照的耗时和峰值内存见下文 |
 
 # 计划改动
 
@@ -101,11 +101,15 @@ Reporting 模块 README 更新目标冻结路径。依赖、Runtime、配置、S
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 #618 / AC3、AC5 与当前 Contract。
-- [ ] change_coverage：核对空集、顺序、版本、数量、错误、原子性。
-- [ ] reverse_audit：Content 查询入口到 Reporting Item、Job 和 Worker；前端导出动作仍有真实后端支持。
-- [ ] unresolved_cleared：Ready 前清零 `not_satisfied`。
+- [x] upstream_re_read：重读 #618 / AC3、AC5、ContentTargetSelection Contract 与 Reporting 当前调用链。
+- [x] change_coverage：空集、顺序、版本、数量、错误、原子性均在纵切或代码证据中覆盖。
+- [x] reverse_audit：Content 查询入口到 Reporting Item、Job 和 Worker；前端导出动作仍有真实后端支持，公共接口未变。
+- [x] unresolved_cleared：`not_satisfied` 清零；生产实测是 Issue AC6 的后续工作包。
 
 # 完成证据与状态
 
-当前为早期 PR 施工记录；实现、测试、性能对照和当前 HEAD CI 待完成。生产服务器实测由用户后续提供。
+Red：在原实现上，PostgreSQL 纵切因导出调用 `freeze_targets()` 而失败。Green：集合冻结后 Stage5 + Stage8D 相关测试共 11 passed，包含空集无 Job 残留、筛选过滤后的连续 Ordinal、冻结版本和 Worker Excel 结果。`ruff check` / `ruff format --check`、文档与 Change 检查待最终提交前复核；PR 当前 HEAD CI 待运行。
+
+隔离 PostgreSQL 18.4、同一千条经生产导入入口建立的 Content，交替执行旧路径仿真和新受理服务。预热后旧路径三次为 284.306/264.595/278.038 ms，Python `tracemalloc` 峰值约 1102–1104 KiB；新路径三次为 111.380/109.073/97.836 ms，峰值约 249–253 KiB。旧路径仿真逐句复现受理时的目标查询、Job、Export 和 Items 插入；脚本在本地忽略目录。这个对照证明本地同数据下目标对象化与网络往返的成本下降，不代表生产服务器 P95。
+
+公共 API、Job Payload、Schema、依赖和配置均未变。无 Migration；应用回滚可恢复旧受理路径，既有 Export 冻结项仍可读取。未执行生产部署或服务器实测。
