@@ -63,4 +63,22 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
     expect(detail).toContain('品牌识别证据')
     expect(detail).toContain('车型识别证据')
   })
+
+  it('品牌保存使用单一原子请求并局部更新，重筛确认只等待后台受理', async () => {
+    const panel = await readSource(
+      'features/admin-configuration/pages/AdminConfigurationPage/components/CatalogConfigurationPanel.vue',
+    )
+    const saveStart = panel.indexOf('async function saveBrand')
+    const saveEnd = panel.indexOf('/** 目录行快捷启停', saveStart)
+    const saveBrand = panel.slice(saveStart, saveEnd)
+
+    expect(saveBrand).toContain('aliases: aliasInput.values')
+    expect(saveBrand).toContain('upsertBrand(saved)')
+    expect(saveBrand).not.toContain('addBrandAlias(')
+    expect(saveBrand).not.toContain('removeBrandAlias(')
+    expect(saveBrand).not.toContain('await load()')
+    expect(panel).toContain("result.planning_status === 'queued'")
+    expect(panel).toContain('全历史重筛已受理')
+  })
+
 })
