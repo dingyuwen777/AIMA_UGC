@@ -117,6 +117,21 @@ def _replay_batch_tiers(max_rows: int) -> tuple[int, ...]:
     return tuple(sorted(set(candidates)))
 
 
+def _new_replay_batch_tuner(max_rows: int) -> AdaptiveTierBatchController | None:
+    """父 Replay 与持久分片共用相同墙钟/资源反馈，不留下固定大批次旁路。"""
+
+    tiers = _replay_batch_tiers(max_rows)
+    if len(tiers) == 1:
+        return None
+    return AdaptiveTierBatchController(
+        tiers=tiers,
+        improvement_margin=0.20,
+        transaction_ceiling_ms=3_000,
+        rows_per_cpu_core=1_000,
+        memory_mib_per_1000_rows=1_024,
+    )
+
+
 # 结构变动由 Schema 摘要检测；非 Schema 可见的来源/Validator 语义改变时须提升此版本。
 _VALIDATION_VERSION = (
     "replay-source-v1:"
@@ -173,15 +188,7 @@ class PostgresCanonicalReplayJobExecutor:
         }
         try:
             run, selected = self._load_execution(payload.run_id, fence)
-            tiers = _replay_batch_tiers(run.batch_size)
-            if len(tiers) > 1:
-                batch_tuner = AdaptiveTierBatchController(
-                    tiers=tiers,
-                    improvement_margin=0.20,
-                    transaction_ceiling_ms=3_000,
-                    rows_per_cpu_core=1_000,
-                    memory_mib_per_1000_rows=1_024,
-                )
+            batch_tuner = _new_replay_batch_tuner(run.batch_size)
             if run.checkpoint_artifact_ordinal >= run.artifact_count:
                 return JobHandlerResult.succeeded(_result(run))
 
@@ -496,6 +503,7 @@ class PostgresCanonicalReplayJobExecutor:
         ordinal = int(shard["ordinal"])
         shard_count = int(shard["shard_count"])
         reader = CanonicalArtifactReader(store=self._runtime.artifact_store)
+        batch_tuner = _new_replay_batch_tuner(run.batch_size)
         metrics = {
             "batch_count": 0,
             "artifact_read_ms": 0,
@@ -533,7 +541,33 @@ class PostgresCanonicalReplayJobExecutor:
                 while True:
                     if context.cancel_requested():
                         raise LeaseLostError("Replay 分片已取消")
-                    raw_batch = tuple(islice(iterator, run.batch_size))
+                    resources = detect_resources()
+                    if batch_tuner is None:
+                        proposed_size, reason, previous = (
+                            run.batch_size,
+                            "frozen_single_row",
+                            None,
+                        )
+                    else:
+                        proposed_size, reason, previous = batch_tuner.choose(resources)
+                    if previous != proposed_size:
+                        log_event(
+                            self._runtime.logger,
+                            logging.INFO,
+                            "capacity.replay_shard_batch_selected",
+                            "Replay 分片批量调整",
+                            run_id=str(run.id),
+                            shard_id=str(shard_id),
+                            previous_rows=previous,
+                            selected_rows=proposed_size,
+                            frozen_max_rows=run.batch_size,
+                            reason=reason,
+                        )
+                    artifact_read_started = perf_counter()
+                    raw_batch = tuple(islice(iterator, proposed_size))
+                    metrics["artifact_read_ms"] += int(
+                        (perf_counter() - artifact_read_started) * 1000
+                    )
                     if not raw_batch:
                         run = self._advance_empty_artifact(
                             run, current, fence=fence, shard_id=shard_id
@@ -545,6 +579,7 @@ class PostgresCanonicalReplayJobExecutor:
                         if _identity_shard(content, shard_count) == ordinal
                     )
                     if owned:
+                        batch_started = perf_counter()
                         try:
                             run = self._ingest_batch(
                                 run,
@@ -561,6 +596,12 @@ class PostgresCanonicalReplayJobExecutor:
                                 run, current, fence=fence, shard_id=shard_id
                             )
                             break
+                        if batch_tuner is not None:
+                            batch_tuner.succeeded(
+                                size=proposed_size,
+                                rows=len(raw_batch),
+                                duration_ms=int((perf_counter() - batch_started) * 1000),
+                            )
                     else:
                         run = self._advance_filtered_batch(
                             run, current, len(raw_batch), fence=fence, shard_id=shard_id

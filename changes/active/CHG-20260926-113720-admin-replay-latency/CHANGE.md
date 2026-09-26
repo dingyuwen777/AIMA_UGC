@@ -129,7 +129,7 @@ Issue #614 来自用户对真实服务器日志和当前 main 的联合排查，
 1. Brand/Vehicle 锁与保存：把 active Brand 只读校验收敛为 PostgreSQL FOR NO KEY UPDATE；BrandUpdate 在一个事务/一个 Catalog Version 中替换完整 aliases；前端用返回投影局部 upsert。
 2. Replay admission：HTTP 冻结 click-time Catalog Snapshot 与数据库 accepted_before，只创建父请求和 canonical-replay-plan Job；Planner 只枚举 accepted_before 以内 Artifact，再原子生成子 Run/Job。
 3. Planner 可恢复状态：0068 显式保存 queued/running/planned/failed/cancelled、planner_job_id 与 accepted_before；运行中心在规划阶段读取 Planner Job 的状态、进度和错误。
-4. 后台让路：Replay 批次按冻结上限从低档开始逐级试探，事务超过 3 秒反馈降档；数据库 lock_timeout=3s，锁竞争回滚当前批并走 Job retry。
+4. 后台让路：Replay 父路径与持久分片子 Worker 都按冻结上限从低档开始逐级试探，事务超过 3 秒反馈降档；数据库 lock_timeout=3s，锁竞争回滚当前批并走 Job retry。
 5. LeaseLost：只有数据库证明当前 Fence 已失效时才安全放弃旧执行；仍持有有效 Lease 的内部 LeaseLost 继续作为异常暴露。
 6. 完成 Contract/Docs/测试/Review/CI，再 guarded merge 和 post-merge 收尾。
 
@@ -161,7 +161,7 @@ Issue #614 来自用户对真实服务器日志和当前 main 的联合排查，
 | R3 | Brand 基础字段+aliases 原子更新，前端局部更新且不全目录刷新 | #614 / AC3 | satisfied | BrandUpdate additive aliases、Repository 单 Catalog Version 原子替换、前端 upsertBrand 且保存路径无 await load；旧 Alias API 未删除；生成 Contract 已同步 |
 | R4 | Replay all HTTP 只创建父请求+Planner Job，历史扫描/子 Run 规划异步 | #614 / AC4 | satisfied | HTTP 改走 enqueue_all_request，只冻结 Catalog/accepted_before 并排 Planner；历史枚举与子 Run 创建在 Planner Worker；对应 API/Repository/Worker 回归已覆盖 |
 | R5 | Planner 冻结 click-time Catalog 与 admission-time Artifact cutoff，幂等/可恢复 | #614 / AC5 | satisfied | 0068 持久 accepted_before/planning_status/planner_job_id；selection 同时限制 created_at、linked_at、Canonical link created_at，覆盖受理后 late-link；失败/取消/同幂等键 fail-closed 有回归 |
-| R6 | Replay 后台事务有锁竞争让路和批次墙钟反馈，不靠放大 Lease | #614 / AC6 | satisfied | Replay 1000 上限从 125 行档起步，3 秒 lock_timeout，3 秒 transaction ceiling 反馈降档，SQLAlchemy/OSError 走 retry；Tier/Replay 回归已覆盖 |
+| R6 | Replay 后台事务有锁竞争让路和批次墙钟反馈，不靠放大 Lease | #614 / AC6 | satisfied | Replay 父路径与持久分片共用 Tier Controller；1000 上限从 125 行档起步，3 秒 lock_timeout，3 秒 transaction ceiling 反馈降档，SQLAlchemy/OSError 走 retry；Tier/Replay 回归已覆盖 |
 | R7 | 非取消 LeaseLost 安全放弃旧执行，不杀 Worker；Fencing 保持 | #614 / AC7 | satisfied | Worker 仅在数据库 validate_current_execution 证明 Fence 已失效时 abandon；当前 Fence 仍有效的 LeaseLost 继续抛出；stale/current 两类回归已覆盖 |
 | R8 | Replay 分片/取消/接管/撤回/账本/checkpoint 现有语义保持 | #614 / AC8 | satisfied | 复用现有 Job Runtime/Shard/Reversal；Planner 提交前重新 lock_current_execution，原 Replay/Fencing/ledger/checkpoint/reversal 回归仍在正式 PostgreSQL suite 中 |
 | R9 | 前端、PostgreSQL、Job、Contract、Full-stack、静态、Docs、Review、CI 完整验证 | #614 / AC9 | explicitly_deferred | 当前项目 CI 只有 Change=ready_for_review 后才运行 PostgreSQL Integration、Real Full-stack、静态/生成/前端全层；这是本 PR merge 前硬门禁，不延期功能、不豁免，未绿禁止 merge |
