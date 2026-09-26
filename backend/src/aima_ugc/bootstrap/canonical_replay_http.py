@@ -23,12 +23,14 @@ from aima_ugc.contracts.http import (
     CanonicalReplayStatsResponse,
     JobStatusResponse,
 )
+from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
     CANONICAL_REPLAY_FAST_BATCH_SIZE,
     CanonicalReplayAllRequestRecord,
     CanonicalReplayRunRecord,
 )
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.modules.ingestion.canonical_replay_http import (
     CanonicalReplayConflict,
     CanonicalReplayInputInvalid,
@@ -54,29 +56,34 @@ class PostgresCanonicalReplayHttpService:
         actor_ref: str,
         request_id: str,
     ) -> CanonicalReplayAllCreatedResponse:
-        """一次冻结全部合法 Canonical，并拆成可由多个 Worker 领取的有界 Run。"""
+        """短事务冻结点击时目录与受理边界，只排队 Planner 后立即返回。"""
 
         session = self._runtime.database.new_session()
         try:
             with session.begin():
                 repository = PostgresCanonicalReplayRepository(session)
                 try:
-                    record = repository.enqueue_all(
+                    catalog = PostgresBrandVehicleRepository(session).snapshot(brand_ids=None)
+                    snapshot = BrandVehicleFilterSnapshot(catalog=catalog)
+                    record, _planner = repository.enqueue_all(
                         idempotency_key=body.idempotency_key,
                         created_by=actor_ref,
                         request_id=request_id,
+                        filter_snapshot=snapshot,
                     )
                 except (LookupError, ValueError) as exc:
                     raise CanonicalReplayInputInvalid(str(exc)) from exc
                 except (JobIdempotencyConflict, RuntimeError) as exc:
                     raise CanonicalReplayConflict(str(exc)) from exc
+                planning_status = repository.planning_status(record)
                 _audit(
                     session,
                     actor_ref=actor_ref,
                     request_id=request_id,
-                    event_type="canonical_replay_all_created",
+                    event_type="canonical_replay_all_requested",
                     object_id=str(record.id),
                     detail={
+                        "planning_status": planning_status,
                         "artifact_count": record.artifact_count,
                         "run_count": record.run_count,
                         "artifacts_per_run": record.artifacts_per_run,
@@ -85,6 +92,7 @@ class PostgresCanonicalReplayHttpService:
                 )
                 return CanonicalReplayAllCreatedResponse(
                     request_id=record.id,
+                    planning_status=planning_status,
                     artifact_count=record.artifact_count,
                     run_count=record.run_count,
                     artifacts_per_run=CANONICAL_REPLAY_ARTIFACTS_PER_RUN,

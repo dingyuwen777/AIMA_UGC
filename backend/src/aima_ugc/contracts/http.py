@@ -190,11 +190,12 @@ class CanonicalReplayAllCreateRequest(BaseModel):
 
 
 class CanonicalReplayAllCreatedResponse(BaseModel):
-    """全历史 Replay 已冻结并排队后的有界摘要。"""
+    """全历史 Replay 的快速受理或已完成规划摘要。"""
 
     model_config = ConfigDict(extra="forbid")
 
     request_id: UUID
+    planning_status: Literal["queued", "planned"] = "planned"
     artifact_count: int = Field(ge=0)
     run_count: int = Field(ge=0)
     artifacts_per_run: Literal[100] = 100

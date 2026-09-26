@@ -105,6 +105,26 @@ class PostgresJobRepository:
         )
         return _row_to_job(row) if row is not None else None
 
+    def get_by_identity(
+        self,
+        *,
+        job_type: str,
+        internal_idempotency_key: str,
+    ) -> JobRecord | None:
+        """按 Runtime 唯一幂等身份读取 Job，供业务父事实恢复关联工作项。"""
+
+        row = (
+            self._session.execute(
+                select(jobs_table).where(
+                    jobs_table.c.job_type == job_type,
+                    jobs_table.c.internal_idempotency_key == internal_idempotency_key,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _row_to_job(row) if row is not None else None
+
     def pool_pressure(
         self,
         *,
