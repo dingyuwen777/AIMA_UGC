@@ -22,6 +22,7 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+    CANONICAL_REPLAY_BACKGROUND_PRIORITY,
     CANONICAL_REPLAY_FAST_BATCH_SIZE,
     CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
@@ -362,7 +363,7 @@ class PostgresCanonicalReplayRepository:
             },
             internal_idempotency_key=f"canonical-replay-plan:{all_request_id}",
             request_id=request_id,
-            priority=0,
+            priority=CANONICAL_REPLAY_BACKGROUND_PRIORITY,
             max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
             timeout_seconds=CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
         )
@@ -536,7 +537,7 @@ class PostgresCanonicalReplayRepository:
             },
             internal_idempotency_key=f"canonical-replay:{key}",
             request_id=request_id,
-            priority=0,
+            priority=CANONICAL_REPLAY_BACKGROUND_PRIORITY,
             max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
             timeout_seconds=CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
         )
@@ -892,7 +893,7 @@ class PostgresCanonicalReplayRepository:
                 else f"canonical-replay-reversal:{request_id}"
             ),
             request_id=record.reversal_request_id,
-            priority=0,
+            priority=CANONICAL_REPLAY_BACKGROUND_PRIORITY,
             max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
             timeout_seconds=CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
         )
