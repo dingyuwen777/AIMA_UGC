@@ -39,6 +39,10 @@ from aima_ugc.adapters.persistence.postgres.import_lineage import (
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.replay_shards import PostgresReplayShardRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
+from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
+    defer_voice_plaza_projection,
+    flush_deferred_voice_plaza_projection,
+)
 from aima_ugc.contracts.canonical import CanonicalContentV1
 from aima_ugc.modules.collection.tables import (
     collection_scopes_table,
@@ -971,6 +975,8 @@ class PostgresCanonicalReplayJobExecutor:
         fallback_evidence_ms = 0
         fallback_ledger_ms = 0
         ledger_checkpoint_ms = 0
+        projection_refresh_ms = 0
+        projection_content_count = 0
         transaction_started = perf_counter()
         try:
             with session.begin():
@@ -1045,6 +1051,7 @@ class PostgresCanonicalReplayJobExecutor:
                     )
                     pending.append((observation, resolution))
 
+                defer_voice_plaza_projection(session)
                 content_batch_started = perf_counter()
                 fast_observations = tuple(
                     observation
@@ -1365,6 +1372,13 @@ class PostgresCanonicalReplayJobExecutor:
                         finished=False,
                     )
                 ledger_checkpoint_ms = int((perf_counter() - ledger_checkpoint_started) * 1000)
+                projection_started = perf_counter()
+                projection_content_count = flush_deferred_voice_plaza_projection(
+                    session,
+                    tuple(item.result.target_id for item in batch_created)
+                    + tuple(item.result.target_id for item in fallback_items),
+                )
+                projection_refresh_ms = int((perf_counter() - projection_started) * 1000)
         finally:
             session.close()
         if advanced is None:
@@ -1394,6 +1408,8 @@ class PostgresCanonicalReplayJobExecutor:
             fallback_evidence_ms=fallback_evidence_ms,
             fallback_ledger_ms=fallback_ledger_ms,
             ledger_checkpoint_ms=ledger_checkpoint_ms,
+            projection_content_count=projection_content_count,
+            projection_refresh_ms=projection_refresh_ms,
             transaction_ms=int((perf_counter() - transaction_started) * 1000),
             duration_ms=int((perf_counter() - batch_started) * 1000),
         )

@@ -40,6 +40,10 @@ from aima_ugc.adapters.persistence.postgres.import_lineage import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
+from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
+    defer_voice_plaza_projection,
+    flush_deferred_voice_plaza_projection,
+)
 from aima_ugc.adapters.providers.imports.historical_chunk import (
     HistoricalChunkDescriptor,
     HistoricalInvalidRow,
@@ -527,6 +531,9 @@ class PostgresHistoricalImportJobExecutor:
                         )
                     else:
                         writer = PostgresStandardContentRepository(session)
+                    # 声音广场筛选目录的共享计数行只在事务末尾更新，
+                    # 避免其他 Chunk 等待本事务的来源账本、证据及调度收尾。
+                    defer_voice_plaza_projection(session)
                     content_ingestion_started = perf_counter()
                     summary = writer.ingest_rows(
                         batch_id=payload.batch_id,
@@ -565,6 +572,22 @@ class PostgresHistoricalImportJobExecutor:
                     status_refresh_ms = int((perf_counter() - refresh_started) * 1000)
                     jobs.lock_current_execution(fence)
                     finalization_ms = int((perf_counter() - finalization_started) * 1000)
+                    projection_started = perf_counter()
+                    projection_content_ids = tuple(
+                        session.scalars(
+                            select(processing_import_batch_items_table.c.content_id)
+                            .where(
+                                processing_import_batch_items_table.c.campaign_item_id
+                                == payload.chunk_item_id,
+                                processing_import_batch_items_table.c.content_id.is_not(None),
+                            )
+                            .distinct()
+                        )
+                    )
+                    projection_content_count = flush_deferred_voice_plaza_projection(
+                        session, projection_content_ids
+                    )
+                    projection_refresh_ms = int((perf_counter() - projection_started) * 1000)
             finally:
                 session.close()
             transaction_ms = int((perf_counter() - transaction_started) * 1000)
@@ -602,6 +625,8 @@ class PostgresHistoricalImportJobExecutor:
                 finalization_ms=finalization_ms,
                 scheduling_ms=scheduling_ms,
                 status_refresh_ms=status_refresh_ms,
+                projection_content_count=projection_content_count,
+                projection_refresh_ms=projection_refresh_ms,
                 transaction_ms=transaction_ms,
                 duration_ms=int((perf_counter() - execution_started) * 1000),
             )
@@ -623,7 +648,16 @@ class PostgresHistoricalImportJobExecutor:
             return JobHandlerResult.failed("historical_chunk_invalid")
         except OSError:
             return JobHandlerResult.retry("historical_chunk_io_failed")
-        except OperationalError:
+        except OperationalError as exc:
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "historical_import.chunk_database_retry",
+                "历史数据 Chunk 数据库事务将重试",
+                job_id=str(fence.job_id),
+                chunk_item_id=str(payload.chunk_item_id),
+                sqlstate=getattr(exc.orig, "sqlstate", None),
+            )
             self._sql_batch_tuner.database_retry()
             return JobHandlerResult.retry("historical_chunk_database_transient")
 

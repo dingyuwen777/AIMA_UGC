@@ -45,6 +45,10 @@ from aima_ugc.contracts.canonical import CanonicalAuthorV1, CanonicalContentV1
 from aima_ugc.contracts.http import CanonicalReplayCreateRequest
 from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.extended_tables import content_external_ids_table
+from aima_ugc.modules.content.read_model_tables import (
+    voice_plaza_content_projection_table,
+    voice_plaza_filter_catalog_entries_table,
+)
 from aima_ugc.modules.content.tables import (
     content_metric_observations_table,
     content_versions_table,
@@ -323,6 +327,23 @@ def test_large_replay_reversal_uses_durable_content_shards_and_completion_barrie
             nonlocal fault_injected
             processed = original_process(self, shard_id, fence=fence, context=context)
             if fence.job_id != parent_id and not fault_injected:
+                with runtime.database.engine.connect() as connection:
+                    assert (
+                        connection.scalar(
+                            select(canonical_replay_all_requests_table.c.lifecycle_status).where(
+                                canonical_replay_all_requests_table.c.id == request_id
+                            )
+                        )
+                        == "reverting"
+                    )
+                    assert (
+                        connection.scalar(
+                            select(func.count())
+                            .select_from(voice_plaza_content_projection_table)
+                            .where(voice_plaza_content_projection_table.c.is_visible.is_(False))
+                        )
+                        >= processed
+                    )
                 fault_injected = True
                 raise ValueError("模拟分片业务已提交但子 Job 终态失败")
             return processed
@@ -847,6 +868,14 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
                 )
                 is True
             )
+            assert (
+                connection.scalar(
+                    select(voice_plaza_content_projection_table.c.is_visible).where(
+                        voice_plaza_content_projection_table.c.content_id == content_id
+                    )
+                )
+                is True
+            )
 
         requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")
         assert requested.status_code == 202
@@ -898,6 +927,22 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
                     )
                 )
                 is False
+            )
+            assert (
+                connection.scalar(
+                    select(voice_plaza_content_projection_table.c.is_visible).where(
+                        voice_plaza_content_projection_table.c.content_id == content_id
+                    )
+                )
+                is False
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(voice_plaza_filter_catalog_entries_table)
+                    .where(voice_plaza_filter_catalog_entries_table.c.content_id == content_id)
+                )
+                == 0
             )
     finally:
         _truncate(runtime)

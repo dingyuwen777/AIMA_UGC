@@ -1983,3 +1983,68 @@ def test_0061_batches_voice_plaza_projection_triggers_per_statement(
         assert all(tgtype & 1 for tgtype in restored.values())
     finally:
         engine.dispose()
+
+
+def test_0067_defers_bulk_projection_and_preserves_default_triggers(
+    migration_database: str,
+) -> None:
+    """批量事务可延迟刷新；普通事务仍由触发器同步维护。"""
+
+    _upgrade(migration_database, "20260925_0065")
+    _upgrade(migration_database, "20260926_0067")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            definitions = {
+                row.tgname: row.definition
+                for row in connection.execute(
+                    text(
+                        "SELECT tgname, pg_get_triggerdef(oid) AS definition "
+                        "FROM pg_trigger WHERE NOT tgisinternal "
+                        "AND tgname IN ("
+                        "'trg_contents_voice_plaza_projection_insert_statement', "
+                        "'trg_vp_content_contributions_ins')"
+                    )
+                )
+            }
+            assert len(definitions) == 2
+            assert all("aima.defer_voice_plaza" in value for value in definitions.values())
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_indexes WHERE indexname = "
+                        "'ix_canonical_replay_content_changes_reverted_visibility'"
+                    )
+                )
+                == 1
+            )
+            assert "canonical_replay_content_changes" in connection.scalar(
+                text(
+                    "SELECT pg_get_functiondef('voice_plaza_has_active_source(uuid)'::regprocedure)"
+                )
+            )
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260925_0065")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            definition = connection.scalar(
+                text(
+                    "SELECT pg_get_triggerdef(oid) FROM pg_trigger "
+                    "WHERE tgname = 'trg_vp_content_contributions_ins'"
+                )
+            )
+            assert "aima.defer_voice_plaza" not in definition
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_indexes WHERE indexname = "
+                        "'ix_canonical_replay_content_changes_reverted_visibility'"
+                    )
+                )
+                == 0
+            )
+    finally:
+        engine.dispose()

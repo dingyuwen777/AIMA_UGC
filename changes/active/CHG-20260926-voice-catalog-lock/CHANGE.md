@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260926-voice-catalog-lock
 title: 缩短导入事务持有声音广场筛选目录热行锁的时间
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: fix/616-voice-catalog-lock
 created: 2026-09-26
@@ -17,6 +17,11 @@ affected_areas:
   - documentation
 affected_paths:
   - backend/src/aima_ugc/bootstrap/historical_import_worker.py
+  - backend/src/aima_ugc/bootstrap/import_worker.py
+  - backend/src/aima_ugc/bootstrap/canonical_replay_worker.py
+  - backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py
+  - backend/src/aima_ugc/bootstrap/import_revocation_worker.py
+  - backend/src/aima_ugc/modules/ingestion/canonical_replay_tables.py
   - backend/src/aima_ugc/adapters/persistence/postgres/
   - migrations/versions/
   - tests/integration/
@@ -54,12 +59,12 @@ Issue #616。Linux 导入期间多数 PostgreSQL 活动写事务等待 `voice_pl
 
 # Requirement Traceability
 
-| Requirement | 上游依据 | 状态 | 实现/验证 |
-| --- | --- | --- | --- |
-| R1：解除已确认的目录计数热行锁长事务占用 | Issue #616、用户采样 | not_satisfied | 待并发回归与对照测量 |
-| R2：入口、重筛、撤回与投影账本保持正确 | 用户全链路要求、项目数据规则 | not_satisfied | 待调用链审计与事务回归 |
-| R3：资源适应不同机器，不以这台服务器的数值硬编码 | 用户明确要求 | not_satisfied | 待资源控制审计与文档 |
-| R4：迁移可升级、可回滚，CI 与 PR 可审查 | 项目 AGENTS.md、Issue #616 | not_satisfied | 待隔离 PostgreSQL、PR CI |
+| ID | Requirement | Source | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| R1 | 解除已确认的目录计数热行锁长事务占用 | #616 / AC1 | satisfied | PostgreSQL 并发回归：第二事务在第一事务收尾前完成 Content 写入；同机每路 500 行、六路总计 3000 行，旧版 6.548 秒，新版 2.259 秒；服务器吞吐待部署后复测。 |
+| R2 | 入口、重筛、撤回与投影账本保持正确 | #616 / AC2 | satisfied | 统一 Campaign Chunk、兼容单文件 Job、Replay 批次、普通撤销批次、重筛撤回批次均在事务尾结清投影；隔离 PostgreSQL 71 条受影响回归、8 条单文件回归与可见性断言通过；撤回部分提交与既有投影不一致的缺陷同步修复。 |
+| R3 | 资源适应不同机器，不以这台服务器的数值硬编码 | #616 / AC3 | satisfied | 沿 `detect_resources`、`worker_process_limit`、`AdaptiveJobWindowController`、Batch Tuner 与 Compose 预算检查；本次没有写入任何主机专用档位，投影尾刷新使现有吞吐探索不再被已确认热行锁过早压制。 |
+| R4 | 迁移可升级、可回滚，CI 与 PR 可审查 | #616 / AC4 | satisfied | Migration 0067 在隔离 PostgreSQL 反复降级/升级、相邻迁移集成 2 条通过；包含已撤回重筛旧投影的定向修复和可见性索引；Draft PR #617 已建立。Current-head CI 属 Ready 后平台门禁，不把未发生的结果写成本地验证。 |
 
 # 实施步骤
 
@@ -70,4 +75,14 @@ Issue #616。Linux 导入期间多数 PostgreSQL 活动写事务等待 `voice_pl
 
 # Completion Audit
 
-待实现和新鲜证据完成后独立复核 R1–R4、异步状态、取消与反向读取能力。
+- [x] upstream_re_read：重读 Issue #616、用户服务器锁采样、项目数据与 Job 规则及当前入口调用链。
+- [x] change_coverage：R1–R4 的机制、迁移、测试和文档均有对应落点。
+- [x] reverse_audit：从已提交 Chunk、单文件 Job、Replay 批次和两类撤回反查声音广场；从投影可见性反查 Content 来源判断，补齐撤回部分提交时的差异。无前端 Contract 改动。
+- [x] unresolved_cleared：本地实现要求无 `not_satisfied`；生产服务器全量速度、锁等待、CI 与合并后验证仍由各自环境的新鲜证据证明。
+
+# 验证与边界
+
+- 隔离 PostgreSQL：受影响导入/重筛/撤销/取消 71 条、兼容单文件导入 8 条、迁移 2 条，以及 Campaign 运行中投影和 1 万条撤回分片的定向回归，均通过；六路每路 500 行同条件对照 6.548 秒 → 2.259 秒。
+- `ruff check`、`mypy backend/src/aima_ugc` 已通过；最终格式和当前 HEAD CI 仍需检查。
+- 投影仍是每个业务事务的同库同步工作，不声明服务器 24,874,335 行全程已经达到最优；上线后需比较 `projection_refresh_ms`、`content_ingestion_ms`、Worker/PG 活动等待及完整吞吐。
+- Migration 升级会定向修复已撤回重筛但仍显示可见的旧投影；回滚至 0065 会恢复旧触发器与旧可见性函数，可能重现原问题。

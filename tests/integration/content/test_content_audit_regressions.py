@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from threading import Barrier
+from threading import Barrier, Event
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,6 +15,10 @@ from aima_ugc.adapters.persistence.postgres.content_complete import (
 )
 from aima_ugc.adapters.persistence.postgres.content_contributions import (
     capture_content_contribution_snapshots_batch,
+)
+from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
+    defer_voice_plaza_projection,
+    flush_deferred_voice_plaza_projection,
 )
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
@@ -654,6 +658,98 @@ def test_voice_plaza_filter_catalog_concurrent_deletes_converge(
 
     assert entry_count == 0
     assert catalog_count == 0
+
+
+def test_deferred_voice_plaza_projection_allows_parallel_content_writes(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """业务写入期间不得因相同筛选值的计数行阻塞另一个事务。"""
+
+    observed_at = datetime(2026, 9, 26, 8, 0, tzinfo=UTC)
+    with database_runtime.engine.connect() as connection:
+        previous_catalog_count = (
+            connection.scalar(
+                select(voice_plaza_filter_catalog_table.c.content_count).where(
+                    voice_plaza_filter_catalog_table.c.dimension == "content_type",
+                    voice_plaza_filter_catalog_table.c.value == "note",
+                    voice_plaza_filter_catalog_table.c.secondary_value == "",
+                )
+            )
+            or 0
+        )
+    observations = tuple(
+        CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id=f"deferred-catalog-{index}-{uuid4()}",
+            content_type="note",
+            observed_at=observed_at,
+            source=_source(
+                database_runtime,
+                observed_at=observed_at,
+                suffix=f"deferred-catalog-{index}",
+            ),
+            observed_fields=["content_type"],
+        )
+        for index in range(2)
+    )
+    first_written = Event()
+    second_written = Event()
+    release_first = Event()
+
+    def write_content(index: int) -> UUID:
+        worker_session = database_runtime.new_session()
+        try:
+            with worker_session.begin():
+                worker_session.execute(text("SET LOCAL lock_timeout = '2s'"))
+                defer_voice_plaza_projection(worker_session)
+                observation = observations[index]
+                before = capture_content_contribution_snapshots_batch(
+                    worker_session, ((observation, None),)
+                )
+                item = PostgresCompleteContentRepository(
+                    worker_session
+                ).ingest_contents_with_before_snapshots_batch(((observation, before[0]),))[0]
+                if index == 0:
+                    first_written.set()
+                    assert release_first.wait(timeout=5)
+                else:
+                    second_written.set()
+                assert (
+                    flush_deferred_voice_plaza_projection(worker_session, (item.result.target_id,))
+                    == 1
+                )
+                return item.result.target_id
+        finally:
+            worker_session.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(write_content, 0)
+        assert first_written.wait(timeout=5)
+        second = executor.submit(write_content, 1)
+        try:
+            assert second_written.wait(timeout=3), "第二个 Content 被筛选目录热行锁阻塞"
+        finally:
+            release_first.set()
+        content_ids = (first.result(timeout=10), second.result(timeout=10))
+
+    with database_runtime.engine.connect() as connection:
+        visible = connection.scalar(
+            select(func.count())
+            .select_from(voice_plaza_content_projection_table)
+            .where(
+                voice_plaza_content_projection_table.c.content_id.in_(content_ids),
+                voice_plaza_content_projection_table.c.is_visible.is_(True),
+            )
+        )
+        catalog_count = connection.scalar(
+            select(voice_plaza_filter_catalog_table.c.content_count).where(
+                voice_plaza_filter_catalog_table.c.dimension == "content_type",
+                voice_plaza_filter_catalog_table.c.value == "note",
+                voice_plaza_filter_catalog_table.c.secondary_value == "",
+            )
+        )
+    assert visible == 2
+    assert catalog_count == previous_catalog_count + 2
 
 
 def test_complete_batch_stable_authors_use_bounded_database_round_trips(
