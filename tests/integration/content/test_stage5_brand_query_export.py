@@ -7,8 +7,12 @@ from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import pytest
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import (
     PostgresBrandVehicleRepository,
+)
+from aima_ugc.adapters.persistence.postgres.content_queries import (
+    PostgresContentQueryRepository,
 )
 from aima_ugc.adapters.persistence.postgres.reporting import PostgresDataExportRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
@@ -26,7 +30,7 @@ from aima_ugc.bootstrap.worker import (
     create_worker_runtime,
 )
 from aima_ugc.contracts.administration import VehicleModelCreateRequest
-from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
+from aima_ugc.contracts.brand_vehicle import BrandCreateRequest, BrandUpdateRequest
 from aima_ugc.contracts.http import (
     ContentAnalysisSubmitRequest,
     ContentCountRequest,
@@ -36,6 +40,8 @@ from aima_ugc.contracts.http import (
     DataExportSubmitRequest,
 )
 from aima_ugc.modules.analysis.tables import analysis_content_run_targets_table
+from aima_ugc.modules.content.http import ContentSelectionEmpty
+from aima_ugc.modules.content.read_model_tables import voice_plaza_content_projection_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.reporting.data_export_job import (
@@ -46,13 +52,15 @@ from aima_ugc.modules.reporting.tables import reporting_data_export_items_table
 from aima_ugc.modules.vehicles.tables import (
     content_brand_evidence_table,
     content_vehicle_evidence_table,
+    vehicle_models_table,
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobRegistry
+from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.time import beijing_now
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 
 
 def _principal() -> Principal:
@@ -109,7 +117,112 @@ def _import(runtime, workbook: bytes, *, worker_id: str) -> None:  # type: ignor
     assert worker.run_once() is True
 
 
-def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path: Path) -> None:
+def test_catalog_metadata_update_does_not_rewrite_voice_plaza_projection(
+    tmp_path: Path,
+) -> None:
+    """别名或显示名 touch 不写投影，角色/合并变化仍同步更新维度。"""
+
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, vehicle_brands, "
+            "vehicle_models RESTART IDENTITY CASCADE"
+        )
+    try:
+        principal = _principal()
+        brand_service = PostgresBrandVehicleHttpService(runtime)
+        vehicle_service = PostgresAdministrationHttpService(runtime)
+        brand = brand_service.create_brand(
+            BrandCreateRequest(
+                display_name="爱玛触发器测试", role="owned", aliases=("触发品牌词",)
+            ),
+            principal=principal,
+            request_id="trigger-brand",
+        )
+        source_vehicle = vehicle_service.create_vehicle_model(
+            VehicleModelCreateRequest(
+                display_name="旧车型触发器测试",
+                brand_id=brand.id,
+                aliases=("触发车型词",),
+            ),
+            principal=principal,
+            request_id="trigger-source-vehicle",
+        )
+        target_vehicle = vehicle_service.create_vehicle_model(
+            VehicleModelCreateRequest(display_name="新车型触发器测试", brand_id=brand.id),
+            principal=principal,
+            request_id="trigger-target-vehicle",
+        )
+        _import(
+            runtime,
+            _xlsx((("触发品牌词 触发车型词", "trigger-metadata-update"),)),
+            worker_id="trigger-import",
+        )
+
+        def projection() -> tuple[datetime, str, tuple[UUID, ...]]:
+            """读取用户可见的派生维度及投影写入时间。"""
+
+            with runtime.database.engine.begin() as connection:
+                row = connection.execute(
+                    select(
+                        voice_plaza_content_projection_table.c.updated_at,
+                        voice_plaza_content_projection_table.c.competition_scope,
+                        voice_plaza_content_projection_table.c.vehicle_model_ids,
+                    )
+                ).one()
+                return row.updated_at, row.competition_scope, tuple(row.vehicle_model_ids)
+
+        initial = projection()
+        assert initial[1:] == ("owned_only", (source_vehicle.id,))
+        brand_service.update_brand(
+            brand.id,
+            BrandUpdateRequest(aliases=("触发品牌词", "新别名")),
+            principal=principal,
+            request_id="trigger-alias-touch",
+        )
+        assert projection() == initial
+
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(vehicle_models_table)
+                .where(vehicle_models_table.c.id == source_vehicle.id)
+                .values(display_name="旧车型改名")
+            )
+        assert projection() == initial
+
+        brand_service.update_brand(
+            brand.id,
+            BrandUpdateRequest(role="competitor"),
+            principal=principal,
+            request_id="trigger-role-change",
+        )
+        after_role = projection()
+        assert after_role[1] == "competitor_only"
+        assert after_role[0] != initial[0]
+
+        with runtime.database.new_session() as session:
+            with session.begin():
+                PostgresVehicleCatalogRepository(session).merge_model(
+                    source_vehicle.id, target_vehicle.id, actor_ref=principal.principal_id
+                )
+        after_merge = projection()
+        assert after_merge[2] == (target_vehicle.id,)
+        assert after_merge[0] != after_role[0]
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, vehicle_brands, "
+                "vehicle_models RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
+
+
+def test_brand_vehicle_filters_share_targets_and_export_frozen_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """五种竞品范围、Brand/Vehicle AND、四消费者与冻结导出保持同一事实。"""
 
     settings = load_settings().model_copy(
@@ -294,20 +407,73 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(tmp_path:
         assert analysis.run_id is not None
 
         reporting = PostgresReportingHttpService(runtime)
-        export = reporting.create_export(
-            DataExportSubmitRequest(
-                targets=ContentTargetSelection(scope="query", filters=shared_filter),
-                columns=(
-                    "matched_keywords",
-                    "brands",
-                    "brand_roles",
-                    "competition_scope",
-                    "vehicles",
+        with monkeypatch.context() as context:
+            context.setattr(
+                PostgresContentQueryRepository,
+                "freeze_targets",
+                lambda *_args, **_kwargs: pytest.fail(
+                    "导出受理不应在 Python 中物化全部 ContentTarget"
                 ),
-            ),
-            request_id="stage5-export-targets",
-            actor_ref="user:stage5",
-        )
+            )
+            export = reporting.create_export(
+                DataExportSubmitRequest(
+                    targets=ContentTargetSelection(scope="query", filters=shared_filter),
+                    columns=(
+                        "matched_keywords",
+                        "brands",
+                        "brand_roles",
+                        "competition_scope",
+                        "vehicles",
+                    ),
+                ),
+                request_id="stage5-export-targets",
+                actor_ref="user:stage5",
+            )
+            selected_export = reporting.create_export(
+                DataExportSubmitRequest(
+                    targets=ContentTargetSelection(
+                        scope="selected",
+                        content_ids=(
+                            uuid4(),
+                            content_by_title["竞品舞台"],
+                            projected.id,
+                        ),
+                    )
+                ),
+                request_id="stage5-selected-export-targets",
+                actor_ref="user:stage5",
+            )
+        assert selected_export.target_count == 2
+        with runtime.database.engine.begin() as connection:
+            frozen_selected = connection.execute(
+                select(
+                    reporting_data_export_items_table.c.content_id,
+                    reporting_data_export_items_table.c.ordinal,
+                )
+                .where(reporting_data_export_items_table.c.export_id == selected_export.export_id)
+                .order_by(reporting_data_export_items_table.c.ordinal)
+            ).all()
+        assert frozen_selected == [
+            (content_by_title["竞品舞台"], 0),
+            (projected.id, 1),
+        ]
+        with pytest.raises(ContentSelectionEmpty):
+            reporting.create_export(
+                DataExportSubmitRequest(
+                    targets=ContentTargetSelection(scope="selected", content_ids=(uuid4(),))
+                ),
+                request_id="stage5-empty-export-targets",
+                actor_ref="user:stage5",
+            )
+        with runtime.database.engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(jobs_table)
+                    .where(jobs_table.c.request_id == "stage5-empty-export-targets")
+                )
+                == 0
+            )
         expected_ids = {projected.id}
         with runtime.database.engine.begin() as connection:
             analysis_ids = set(
