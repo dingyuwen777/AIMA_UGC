@@ -33,8 +33,10 @@ from aima_ugc.modules.content.read_model_job import (
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
 from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayJobHandler,
+    CanonicalReplayPlanJobHandler,
     CanonicalReplayReversalJobHandler,
     register_canonical_replay_job,
+    register_canonical_replay_plan_job,
     register_canonical_replay_reversal_job,
 )
 from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
@@ -73,6 +75,10 @@ from .analysis_concurrent_worker import ConcurrentPostgresContentAnalysisJobExec
 from .analysis_high_throughput_planner import (
     HighThroughputContentAnalysisPlanJobExecutor,
     create_high_throughput_analysis_job_terminal_callback,
+)
+from .canonical_replay_planner_worker import (
+    PostgresCanonicalReplayPlanJobExecutor,
+    canonical_replay_plan_terminal_callback,
 )
 from .canonical_replay_reversal_worker import (
     PostgresCanonicalReplayReversalJobExecutor,
@@ -228,6 +234,11 @@ def create_collection_job_registry(
     register_content_reclassification_job(
         registry,
         ContentReclassificationJobHandler(PostgresContentReclassificationJobExecutor(runtime)),
+    )
+    register_canonical_replay_plan_job(
+        registry,
+        CanonicalReplayPlanJobHandler(PostgresCanonicalReplayPlanJobExecutor(runtime)),
+        terminal_callback=canonical_replay_plan_terminal_callback,
     )
     replay_executor = PostgresCanonicalReplayJobExecutor(runtime)
     register_canonical_replay_job(

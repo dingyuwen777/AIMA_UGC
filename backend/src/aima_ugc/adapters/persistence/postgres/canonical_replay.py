@@ -741,6 +741,13 @@ class PostgresCanonicalReplayRepository:
         )
 
     def _list_all_request_jobs(self, request_id: UUID) -> tuple[JobRecord, ...]:
+        """返回 Planner 与全部子 Run Job，供取消/撤回完成屏障统一判断。"""
+
+        repository = PostgresJobRepository(self._session)
+        planner = repository.get_by_identity(
+            job_type=CANONICAL_REPLAY_PLAN_JOB_TYPE,
+            internal_idempotency_key=f"canonical-replay-plan:{request_id}",
+        )
         job_ids = self._session.scalars(
             select(jobs_table.c.id)
             .select_from(
@@ -752,11 +759,11 @@ class PostgresCanonicalReplayRepository:
             .where(canonical_replay_runs_table.c.all_request_id == request_id)
             .order_by(canonical_replay_runs_table.c.all_request_ordinal)
         )
-        repository = PostgresJobRepository(self._session)
-        jobs = tuple(repository.get(cast(UUID, job_id)) for job_id in job_ids)
-        if any(job is None for job in jobs):
+        run_jobs = tuple(repository.get(cast(UUID, job_id)) for job_id in job_ids)
+        if any(job is None for job in run_jobs):
             raise RuntimeError("全量 Replay 子 Run 缺少 Job")
-        return cast(tuple[JobRecord, ...], jobs)
+        normalized = cast(tuple[JobRecord, ...], run_jobs)
+        return ((planner,) if planner is not None else ()) + normalized
 
     def claim_content_identity(
         self,

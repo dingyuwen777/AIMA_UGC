@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
 )
@@ -90,9 +92,8 @@ def canonical_replay_plan_terminal_callback(session, job: JobRecord) -> None:  #
     request_id = job.payload.get("request_id")
     if request_id is not None:
         PostgresCanonicalReplayRepository(session).ensure_reversal_job_if_ready(
-            payload_id := __import__("uuid").UUID(str(request_id))
+            UUID(str(request_id))
         )
-        _ = payload_id
 
 
 __all__ = [

@@ -443,3 +443,52 @@ def test_worker_skips_unknown_job_type_and_reaper_uses_registry_policy(
         retry_delay_seconds=0,
     )
     assert reaper.run_once() is False
+
+
+def test_worker_abandons_stale_lease_without_crashing_process(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """非取消 LeaseLost 只放弃旧执行；同一 Worker 仍能继续领取后续 Job。"""
+
+    registry = JobRegistry()
+
+    def handler(payload: BaseModel, context) -> JobHandlerResult:
+        assert isinstance(payload, EchoPayloadV1)
+        if payload.value == "lose":
+            raise LeaseLostError("模拟旧执行已失效")
+        return JobHandlerResult.succeeded({"echo": payload.value})
+
+    registry.register(
+        job_type="test.echo.v1",
+        payload_version="echo.v1",
+        payload_model=EchoPayloadV1,
+        handler=handler,
+        retry_on_timeout=True,
+    )
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            lost = _enqueue(repository := PostgresJobRepository(session), key="lease-lost", value="lose")
+            next_job = _enqueue(repository, key="lease-next", value="next")
+    finally:
+        session.close()
+
+    worker = JobWorker(
+        session_factory=database_runtime.new_session,
+        registry=registry,
+        worker_id="lease-worker",
+        lease_seconds=10,
+        retry_delay_seconds=0,
+    )
+    assert worker.run_once() is True
+    assert worker.run_once() is True
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            lost_state = PostgresJobRepository(session).get(lost.id)
+            next_state = PostgresJobRepository(session).get(next_job.id)
+        assert lost_state is not None and lost_state.status == "running"
+        assert next_state is not None and next_state.status == "succeeded"
+    finally:
+        session.close()

@@ -247,19 +247,19 @@ class JobWorker:
                 lease_token=job.lease_token,
             )
             if cancelled is None:
-                log_exception_event(
+                log_event(
                     logger,
-                    logging.ERROR,
-                    "job.execution_failed",
-                    "Job Handler 因非取消原因失去 Lease。",
-                    handler_lease_loss,
+                    logging.WARNING,
+                    "job.execution_abandoned",
+                    "Job Handler 已失去 Lease，旧执行由 Fencing 安全放弃。",
                     job_id=str(job.id),
                     job_type=job.job_type,
                     worker_id=self._worker_id,
                     attempt=job.attempt,
+                    phase="handler",
                     duration_ms=_elapsed_ms(started),
                 )
-                raise handler_lease_loss
+                return True
             _log_job_terminal(
                 cancelled,
                 event="job.cancelled",
@@ -284,7 +284,19 @@ class JobWorker:
                 lease_token=job.lease_token,
             )
             if cancelled is None:
-                raise
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "job.execution_abandoned",
+                    "Job 结果提交前已失去 Lease，旧执行由 Fencing 安全放弃。",
+                    job_id=str(job.id),
+                    job_type=job.job_type,
+                    worker_id=self._worker_id,
+                    attempt=job.attempt,
+                    phase="result",
+                    duration_ms=_elapsed_ms(started),
+                )
+                return True
             persisted = cancelled
             result = JobHandlerResult.cancelled()
 

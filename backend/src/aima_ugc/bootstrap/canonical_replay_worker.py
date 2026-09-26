@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, text
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -69,7 +69,7 @@ from aima_ugc.modules.vehicles.brand_vehicle import (
 )
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.capacity import (
-    AdaptiveBatchController,
+    AdaptiveTierBatchController,
     detect_resources,
     worker_process_limit,
 )
@@ -95,6 +95,23 @@ _SHARD_SAMPLE_ROWS_PER_ARTIFACT = 64
 _PROVEN_SAMPLE_ROWS_LIMIT = 256
 _LEDGER_INSERT_ROWS = 1000
 _MAX_PROOF_SOURCE_EXPECTATIONS = 1000
+_REPLAY_LOCK_TIMEOUT = "3s"
+
+
+def _replay_batch_tiers(max_rows: int) -> tuple[int, ...]:
+    """从冻结上限生成逐级批量；1000 行默认先从 125 行开始验证墙钟。"""
+
+    if max_rows < 1:
+        raise ValueError("Replay 批量上限必须为正整数")
+    candidates = (
+        max(1, max_rows // 16),
+        max(1, max_rows // 8),
+        max(1, max_rows // 4),
+        max(1, max_rows // 2),
+        max_rows,
+    )
+    return tuple(sorted(set(candidates)))
+
 
 # 结构变动由 Schema 摘要检测；非 Schema 可见的来源/Validator 语义改变时须提升此版本。
 _VALIDATION_VERSION = (
@@ -128,7 +145,7 @@ class PostgresCanonicalReplayJobExecutor:
     ) -> JobHandlerResult:
         """接管先重新预检全部输入；随后从已提交 checkpoint 继续。"""
 
-        batch_tuner: AdaptiveBatchController | None = None
+        batch_tuner: AdaptiveTierBatchController | None = None
         phase = "load_execution"
         artifact_ordinal: int | None = None
         skipped_revoked_artifacts = 0
@@ -152,11 +169,14 @@ class PostgresCanonicalReplayJobExecutor:
         }
         try:
             run, selected = self._load_execution(payload.run_id, fence)
-            if run.batch_size > 1:
-                batch_tuner = AdaptiveBatchController(
-                    lower=max(1, run.batch_size // 2),
-                    upper=run.batch_size,
+            tiers = _replay_batch_tiers(run.batch_size)
+            if len(tiers) > 1:
+                batch_tuner = AdaptiveTierBatchController(
+                    tiers=tiers,
                     improvement_margin=0.20,
+                    transaction_ceiling_ms=3_000,
+                    rows_per_cpu_core=1_000,
+                    memory_mib_per_1000_rows=1_024,
                 )
             if run.checkpoint_artifact_ordinal >= run.artifact_count:
                 return JobHandlerResult.succeeded(_result(run))
@@ -974,6 +994,8 @@ class PostgresCanonicalReplayJobExecutor:
         transaction_started = perf_counter()
         try:
             with session.begin():
+                # 后台重筛遇到在线事务锁竞争时主动让路；超时会回滚本批并进入 Job retry。
+                session.execute(text("SET LOCAL lock_timeout = :timeout"), {"timeout": _REPLAY_LOCK_TIMEOUT})
                 # 这里只做无锁资格检查；提交前由 repository.advance 获取 Job 行锁并
                 # 再次验证 Fence。取消/接管可在长批次中写入状态，旧事务随后整体回滚。
                 PostgresJobRepository(session).validate_current_execution(fence)
