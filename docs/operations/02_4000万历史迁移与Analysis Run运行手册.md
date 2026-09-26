@@ -1,6 +1,6 @@
 # 4000 万历史迁移与 Analysis Run 运行手册
 
-本文负责**当前已经实现的软件怎样安全运行、排障和进入生产 Go/No-Go**。软件能力已完成；公司服务器容量门禁、生产写授权、正式 4000 万执行与全量对账仍未完成，当前状态见 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../roadmap/03_4000万历史数据迁移实施方案.md)。
+本文负责**当前已经实现的软件怎样安全运行、排障和进入生产 Go/No-Go**。软件能力已完成；公司服务器容量门禁、生产写授权、正式 4000 万执行与全量对账仍未完成，当前状态见 [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../roadmap/02_4000万历史数据迁移实施方案.md)。
 
 精确字段以 Pydantic Contract、SQLAlchemy Table、Alembic Migration 和生成 OpenAPI/Client 为准；本文不复制第二套 Schema。
 
@@ -539,4 +539,4 @@ analysis_content_runs
 
 - `tests/**/test_stage12_*.py`
 - [`frontend/e2e-fullstack/stage12-historical-analysis.spec.ts`](../../frontend/e2e-fullstack/stage12-historical-analysis.spec.ts)
-- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../roadmap/02_4000万历史数据迁移实施方案.md)
