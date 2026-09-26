@@ -9,6 +9,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import Integer, and_, func, insert, literal, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
@@ -132,7 +133,7 @@ class PostgresDataExportRepository:
             )
             .execution_options(preserve_rowcount=True)
         )
-        target_count = self._session.execute(frozen).rowcount
+        target_count = cast(CursorResult[Any], self._session.execute(frozen)).rowcount
         if target_count < 0:
             raise RuntimeError("Data Export 冻结目标数不可用")
         if target_count:
