@@ -242,6 +242,7 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 | V8 | Chromium Browser Mock / 1440×900 / 当前分支 | `npm --prefix frontend run test:e2e -- e2e/workbench.spec.ts` | 4 passed；默认态、Figma 卡片几何、布局草稿/保存、声音广场深链、Analysis Run 新结果及终态刷新 | 工作台可见用户路径与自动刷新接线 |
 | V9 | 当前分支 / 2026-09-27 | 趋势空数据边界代码复核；`uv run ruff format --check backend/src/aima_ugc/bootstrap/workbench_http.py`、`uv run ruff check backend/src/aima_ugc/bootstrap/workbench_http.py`、`uv run mypy backend/src`、`uv run pytest tests/api/test_workbench.py -q` | 静态检查通过；相关 API 回归 2 passed | 代码在总量为零时返回 null `peak_day`，避免无数据日期被当作可下钻峰值；完整运行回归以最终 CI 为准 |
 | V10 | PR #627 CI / 本地 Browser Mock / 2026-09-27 | CI 的全量 E2E 发现声音广场旧用例访问 `/` 时未声明新增工作台 API；在该用例中显式模拟中途首页的工作台 503，重跑 `npm --prefix frontend run test:e2e -- e2e/voice-plaza.spec.ts -g "restores the applied platform filter"` | 定向 1 passed；原声音广场筛选恢复断言保持不变 | 旧用例已按首页真实请求清单更新；最终全量 CI 仍需重跑 |
+| V11 | PR #627 PostgreSQL CI / 本地 PostgreSQL 18.4 / 2026-09-27 | 旧声音广场集成夹具的临时 Scheme 补齐 Contract 要求的“正面”，保持新情感与历史负面值断言；`uv run pytest tests/integration/content/test_stage8d_voice_plaza_runtime.py::test_voice_plaza_analysis_idempotency_and_export_artifact -q --tb=short` | 定向 1 passed | 当前 active Taxonomy 强制正面后，跨模块旧测试的合法 Scheme 能继续验证历史筛选值；最终全量 CI 仍需重跑 |
 
 ## 未验证内容与剩余风险
 

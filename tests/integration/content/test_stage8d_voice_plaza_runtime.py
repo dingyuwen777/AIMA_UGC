@@ -726,7 +726,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
                 original_scheme_version = active.version
                 next_definition = active.definition.model_copy(
                     update={
-                        "sentiments": ("新情感", "无法判断"),
+                        "sentiments": ("新情感", "正面", "无法判断"),
                         "labels": {
                             "新分类": ("新标签",),
                             "无法分类": ("无法判断",),
@@ -747,6 +747,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         options = content_service.get_filter_options()
         assert [(item.value, item.source) for item in options.sentiments] == [
             ("新情感", "active"),
+            ("正面", "active"),
             ("无法判断", "active"),
             ("负面", "historical"),
         ]
