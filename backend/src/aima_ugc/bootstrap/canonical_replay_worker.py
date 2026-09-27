@@ -388,9 +388,7 @@ class PostgresCanonicalReplayJobExecutor:
                                 raw_scan_rows=scan_rows,
                                 max_scan_rows=scan_controller.max_scan_rows,
                                 resource_scan_ceiling_rows=scan_ceiling_rows,
-                                estimated_hit_ratio=round(
-                                    scan_controller.estimated_hit_ratio, 4
-                                ),
+                                estimated_hit_ratio=round(scan_controller.estimated_hit_ratio, 4),
                             )
                             previous_scan_signature = scan_signature
                         artifact_read_started = perf_counter()
@@ -432,8 +430,7 @@ class PostgresCanonicalReplayJobExecutor:
                                 content for content, _resolution in resolved_chunk
                             )
                             transaction_matched = sum(
-                                resolution.matched
-                                for _content, resolution in resolved_chunk
+                                resolution.matched for _content, resolution in resolved_chunk
                             )
                             batch_started = perf_counter()
                             try:
@@ -456,9 +453,7 @@ class PostgresCanonicalReplayJobExecutor:
                                 batch_tuner.succeeded(
                                     size=matched_target,
                                     rows=transaction_matched,
-                                    duration_ms=int(
-                                        (perf_counter() - batch_started) * 1000
-                                    ),
+                                    duration_ms=int((perf_counter() - batch_started) * 1000),
                                 )
                             context.heartbeat(progress=_progress(run))
                         if revoked_during_batch:
@@ -1468,8 +1463,7 @@ class PostgresCanonicalReplayJobExecutor:
                 source_pairs = tuple(
                     (
                         (item.before.content_id, item.before.version_no)
-                        if item.before.content_id is not None
-                        and item.before.version_no is not None
+                        if item.before.content_id is not None and item.before.version_no is not None
                         else None
                     )
                     for item in fallback_items
