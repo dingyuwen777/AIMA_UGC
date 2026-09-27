@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import runpy
 from pathlib import Path
 
@@ -19,6 +20,16 @@ def _check(
         "completed_at": completed_at,
         "started_at": completed_at,
     }
+
+
+
+def test_resolver_source_is_compatible_with_runner_bootstrap_python() -> None:
+    """main reuse 在 setup-python 前运行，必须保持 Python 3.12 grammar 可解析。"""
+    source = (ROOT / "scripts" / "quality" / "resolve_main_evidence.py").read_text(
+        encoding="utf-8"
+    )
+
+    ast.parse(source, filename="resolve_main_evidence.py", feature_version=(3, 12))
 
 
 def test_same_tree_and_latest_required_check_success_can_reuse() -> None:
