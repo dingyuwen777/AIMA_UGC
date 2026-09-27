@@ -332,45 +332,67 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
             WorkbenchQuery(vehicle_model_ids=(uuid4(),)),
         )
         for excluded_query in excluded_queries:
-            assert repository.stream_rows(
-                active_scheme_version_id=active_version_id,
-                query=excluded_query,
-                start_at=start_at,
-                end_at=end_at,
-            ) == ()
-            assert int(repository.period_summary(
-                active_scheme_version_id=active_version_id,
-                query=excluded_query,
-                start_at=start_at,
-                end_at=end_at,
-            )["total_count"]) == 0
-            assert repository.mind_counts(
-                active_scheme_version_id=active_version_id,
-                query=excluded_query,
-                start_at=start_at,
-                end_at=end_at,
-            ) == ()
+            assert (
+                repository.stream_rows(
+                    active_scheme_version_id=active_version_id,
+                    query=excluded_query,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                == ()
+            )
+            assert (
+                int(
+                    repository.period_summary(
+                        active_scheme_version_id=active_version_id,
+                        query=excluded_query,
+                        start_at=start_at,
+                        end_at=end_at,
+                    )["total_count"]
+                )
+                == 0
+            )
+            assert (
+                repository.mind_counts(
+                    active_scheme_version_id=active_version_id,
+                    query=excluded_query,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                == ()
+            )
 
         earlier = WorkbenchQuery(date_from=date(2026, 9, 20), date_to=date(2026, 9, 21))
         _, _, earlier_start, earlier_end = _period(earlier)
-        assert repository.stream_rows(
-            active_scheme_version_id=active_version_id,
-            query=earlier,
-            start_at=earlier_start,
-            end_at=earlier_end,
-        ) == ()
-        assert int(repository.period_summary(
-            active_scheme_version_id=active_version_id,
-            query=earlier,
-            start_at=earlier_start,
-            end_at=earlier_end,
-        )["total_count"]) == 0
-        assert repository.mind_counts(
-            active_scheme_version_id=active_version_id,
-            query=earlier,
-            start_at=earlier_start,
-            end_at=earlier_end,
-        ) == ()
+        assert (
+            repository.stream_rows(
+                active_scheme_version_id=active_version_id,
+                query=earlier,
+                start_at=earlier_start,
+                end_at=earlier_end,
+            )
+            == ()
+        )
+        assert (
+            int(
+                repository.period_summary(
+                    active_scheme_version_id=active_version_id,
+                    query=earlier,
+                    start_at=earlier_start,
+                    end_at=earlier_end,
+                )["total_count"]
+            )
+            == 0
+        )
+        assert (
+            repository.mind_counts(
+                active_scheme_version_id=active_version_id,
+                query=earlier,
+                start_at=earlier_start,
+                end_at=earlier_end,
+            )
+            == ()
+        )
     finally:
         transaction.rollback()
         session.close()

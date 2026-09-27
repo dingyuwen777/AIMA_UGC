@@ -114,8 +114,15 @@ class PostgresHistoricalImportRepository:
             return {}
         item = historical_import_campaign_items_table
         fields = (
-            "created", "filled", "updated", "unchanged", "conflict",
-            "filtered", "duplicate", "invalid", "failed",
+            "created",
+            "filled",
+            "updated",
+            "unchanged",
+            "conflict",
+            "filtered",
+            "duplicate",
+            "invalid",
+            "failed",
         )
 
         def safe_count(key: str) -> Any:

@@ -1306,9 +1306,7 @@ def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row
             for item in in_progress_items
         )
         runtime_rows = client.get("/api/v1/collection-runtime/runs").json()["items"]
-        campaign_runtime = next(
-            item for item in runtime_rows if item["record_id"] == campaign_id
-        )
+        campaign_runtime = next(item for item in runtime_rows if item["record_id"] == campaign_id)
         assert campaign_runtime["import_stats"]["rows_ingested"] == 1
         assert campaign_runtime["import_stats"]["duplicates_removed"] == 99
         with runtime.database.engine.connect() as connection:

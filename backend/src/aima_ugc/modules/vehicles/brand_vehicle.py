@@ -180,13 +180,10 @@ class _AliasAutomaton:
             state = self.transitions[state].get(character, 0)
             for pattern in self.outputs[state]:
                 start = index - len(pattern) + 1
-                if (
-                    (start > 0 and _ascii_word(pattern[0]) and _ascii_word(text[start - 1]))
-                    or (
-                        index + 1 < len(text)
-                        and _ascii_word(pattern[-1])
-                        and _ascii_word(text[index + 1])
-                    )
+                if (start > 0 and _ascii_word(pattern[0]) and _ascii_word(text[start - 1])) or (
+                    index + 1 < len(text)
+                    and _ascii_word(pattern[-1])
+                    and _ascii_word(text[index + 1])
                 ):
                     continue
                 matched.add(pattern)

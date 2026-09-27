@@ -524,7 +524,8 @@ class PostgresHistoricalImportHttpService:
                 rows = repository.list_campaigns()
                 progresses = repository.campaign_progresses(row["id"] for row in rows)
                 live_ids = (
-                    row["id"] for row in rows
+                    row["id"]
+                    for row in rows
                     if row["status"] in {"queued", "running", "cancelling"}
                 )
                 live_stats = repository.settled_campaign_stats(live_ids)

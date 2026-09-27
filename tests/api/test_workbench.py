@@ -143,11 +143,14 @@ def _client(service: FakeWorkbenchService) -> TestClient:
     )
 
 
-@pytest.mark.parametrize("path", (
-    "/api/v1/workbench/stream",
-    "/api/v1/workbench/mind",
-    "/api/v1/workbench/trend",
-))
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/api/v1/workbench/stream",
+        "/api/v1/workbench/mind",
+        "/api/v1/workbench/trend",
+    ),
+)
 def test_workbench_query_arrays_and_beijing_dates_reach_service(path: str) -> None:
     """三个模块 GET 必须把完整筛选按同一 Contract 传给 Service。"""
 
