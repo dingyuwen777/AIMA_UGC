@@ -208,6 +208,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "vehicles.content-reclassification.v1",
             "ingestion.canonical-replay-plan.v1",
             "ingestion.canonical-replay.v1",
+            "ingestion.canonical-replay-cancellation.v1",
             "ingestion.canonical-replay-reversal.v1",
             "ingestion.data-import-revocation.v1",
             "ingestion.reversal-shard.v1",
