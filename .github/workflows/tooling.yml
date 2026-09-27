@@ -59,17 +59,61 @@ on:
       - "backend/src/aima_ugc/modules/system/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
 
+  schedule:
+    - cron: "0 20 * * 0"
+
 permissions:
   contents: read
+  pull-requests: read
+  checks: read
 
 concurrency:
   group: tooling-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  main-evidence:
+    name: Reuse merged PR Tooling Evidence
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      linux_reusable: ${{ steps.linux.outputs.reusable }}
+      windows_reusable: ${{ steps.windows.outputs.reusable }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Resolve Linux Tooling evidence
+        id: linux
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/resolve_main_evidence.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --commit "${GITHUB_SHA}" \
+            --required-check "Linux Local Development Tooling" \
+            --github-output "${GITHUB_OUTPUT}"
+      - name: Resolve Windows Tooling evidence
+        id: windows
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/resolve_main_evidence.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --commit "${GITHUB_SHA}" \
+            --required-check "Windows Development and Compose Tooling" \
+            --github-output "${GITHUB_OUTPUT}"
+
   linux-tooling:
     name: Linux Local Development Tooling
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: main-evidence
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      (github.event_name != 'push' || needs.main-evidence.outputs.linux_reusable != 'true')
     runs-on: ubuntu-24.04
     env:
       AIMA_DATA_DIR: .runtime/data
@@ -271,7 +315,11 @@ jobs:
 
   windows-tooling:
     name: Windows Development and Compose Tooling
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: main-evidence
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      (github.event_name != 'push' || needs.main-evidence.outputs.windows_reusable != 'true')
     runs-on: windows-2025
     steps:
       - name: Checkout

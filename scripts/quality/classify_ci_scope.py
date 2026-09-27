@@ -41,9 +41,11 @@ CI_SELF_EXACT = {
     ".github/workflows/ci.yml",
     ".github/workflows/fullstack.yml",
     "scripts/quality/classify_ci_scope.py",
+    "scripts/quality/resolve_main_evidence.py",
     "tests/unit/test_ci_scope.py",
     "tests/unit/test_ci_test_impact_optimization.py",
     "tests/unit/test_ci_workflow_structure.py",
+    "tests/unit/test_ci_main_evidence_reuse.py",
     "tests/unit/test_actions_runner_optimization.py",
 }
 REPOSITORY_QUALITY_EXACT = {
@@ -65,6 +67,18 @@ FULL_EXACT = {
     "compose.windows.yaml",
     "Dockerfile",
     "frontend/playwright.fullstack.config.ts",
+}
+FRONTEND_DEPENDENCY_AUDIT_EXACT = {
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    ".node-version",
+}
+PACKAGE_BUILD_EXACT = {
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    ".uv-version",
+    "backend/src/aima_ugc/__init__.py",
 }
 FULL_PREFIXES = (
     "migrations/",
@@ -112,6 +126,9 @@ class CiRequirements:
     fullstack_required: bool
     stack_smoke_required: bool
     report_font_required: bool
+    frontend_audit_required: bool
+    package_required: bool
+    postgres_targets: tuple[str, ...]
     postgres_suites: tuple[str, ...]
     fullstack_specs: tuple[str, ...]
 
@@ -184,14 +201,20 @@ def _is_report_font_path(path: str) -> bool:
     )
 
 
-def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
-    """把明确 persistence 叶子变化映射到最小充分 PostgreSQL suite；未知边界返回 all。"""
-    if path in PERSISTENCE_EXACT:
-        return POSTGRES_ALL
-    if path == MIGRATION_COMPATIBILITY_TEST:
-        return ("migration",)
+def _postgres_targets_for_path(path: str) -> tuple[str, ...]:
+    """优先把明确叶子变化映射到可直接证明风险的 PostgreSQL 测试文件。"""
+    exact: dict[str, tuple[str, ...]] = {
+        "backend/src/aima_ugc/adapters/persistence/postgres/workbench.py": (
+            "tests/integration/content/test_workbench_runtime.py",
+            "tests/integration/content/test_workbench_scheme_bootstrap.py",
+        ),
+    }
+    if path in exact:
+        return exact[path]
 
-    if path.startswith("tests/integration/"):
+    if path.startswith("tests/integration/") and path.endswith(".py"):
+        if path == MIGRATION_COMPATIBILITY_TEST or Path(path).name == "conftest.py":
+            return ()
         relative = path.removeprefix("tests/integration/")
         suite = relative.split("/", 1)[0]
         if suite in {
@@ -203,10 +226,38 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
             "ingestion",
             "vehicles",
         }:
-            return (suite,)
+            return (path,)
+    return ()
+
+
+def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
+    """把共享 persistence 变化映射到最小充分 PostgreSQL suite；未知边界返回 all。"""
+    if _postgres_targets_for_path(path):
+        return ()
+    if path in PERSISTENCE_EXACT:
+        return POSTGRES_ALL
+    if path == MIGRATION_COMPATIBILITY_TEST:
+        return ("migration",)
+
+    if path.startswith("tests/integration/"):
+        relative = path.removeprefix("tests/integration/")
+        suite = relative.split("/", 1)[0]
+        if Path(path).name == "conftest.py":
+            return POSTGRES_ALL
+        if suite in {
+            "platform",
+            "database",
+            "jobs",
+            "collection",
+            "content",
+            "ingestion",
+            "vehicles",
+        }:
+            return ()
         return POSTGRES_ALL
 
     markers: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+        (("/postgres/historical_import",), ("content", "ingestion")),
         (("/modules/collection/", "/postgres/collection"), ("collection",)),
         (
             (
@@ -231,11 +282,11 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
     return POSTGRES_ALL
 
 
-def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
-    """把高价值真实用户链路映射到 Golden Path；未知 Full-stack 场景失败关闭为全量。"""
+def _fullstack_mapping_for_path(path: str) -> tuple[tuple[str, ...], bool]:
+    """返回用户 Journey 对应 spec 与“该路径是否已被显式分类”。"""
     if path.startswith("frontend/e2e-fullstack/") and path.endswith(".spec.ts"):
         spec = Path(path).name
-        return (spec,) if spec in ALL_FULLSTACK_SPECS else FULLSTACK_ALL
+        return ((spec,) if spec in ALL_FULLSTACK_SPECS else FULLSTACK_ALL), True
 
     collection_markers = ("/collection/", "collection-plan", "collection_strategy")
     ingestion_markers = ("/ingestion/", "import", "historical")
@@ -245,7 +296,7 @@ def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
         "/analysis/schemes.py",
         "/analysis/scheme_tables.py",
     )
-    content_markers = ("/content/", "relevance")
+    content_markers = ("/content/", "relevance", "voice-plaza", "voice_plaza")
     administration_markers = (
         "/administration",
         "/vehicles/",
@@ -256,23 +307,57 @@ def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
 
     if any(marker in path for marker in analysis_scheme_markers):
         return (
-            "admin-product-capabilities.spec.ts",
-            "stage12-historical-analysis.spec.ts",
+            (
+                "admin-product-capabilities.spec.ts",
+                "stage12-historical-analysis.spec.ts",
+            ),
+            True,
         )
     if any(marker in path for marker in administration_markers):
-        return ("admin-product-capabilities.spec.ts",)
+        return ("admin-product-capabilities.spec.ts",), True
     if any(marker in path for marker in collection_markers):
         return (
-            "collection-plan-search-config.spec.ts",
-            "comment-supplement.spec.ts",
+            (
+                "collection-plan-search-config.spec.ts",
+                "comment-supplement.spec.ts",
+            ),
+            True,
         )
     if any(marker in path for marker in ingestion_markers):
-        return ("excel-import.spec.ts", "stage12-historical-analysis.spec.ts")
+        return ("excel-import.spec.ts", "stage12-historical-analysis.spec.ts"), True
     if any(marker in path for marker in analysis_markers):
-        return ("analysis-streaming.spec.ts", "stage12-historical-analysis.spec.ts")
+        return ("analysis-streaming.spec.ts", "stage12-historical-analysis.spec.ts"), True
     if any(marker in path for marker in content_markers):
-        return ("manual-relevance-review.spec.ts",)
-    return FULLSTACK_ALL
+        return ("manual-relevance-review.spec.ts",), True
+    if "workbench" in path:
+        return (), True
+    if path.startswith(
+        (
+            "backend/src/aima_ugc/platform/",
+            "backend/src/aima_ugc/adapters/",
+            "tests/unit/",
+            "tests/api/",
+            "tests/contracts/",
+        )
+    ):
+        return (), True
+    return (), False
+
+
+def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
+    """兼容调用者，仅返回已经显式分类的 Real Full-stack spec 集合。"""
+    return _fullstack_mapping_for_path(path)[0]
+
+
+def _is_unmapped_user_journey_path(path: str) -> bool:
+    """识别需要 fail-closed 的未知用户入口，而不是把任意技术文件都升级为 Full-stack。"""
+    if path.startswith("frontend/src/features/"):
+        return not _fullstack_mapping_for_path(path)[1]
+    if path.startswith("backend/src/aima_ugc/bootstrap/") and (
+        path.endswith("_http.py") or path.endswith("/http.py") or "/http/" in path
+    ):
+        return not _fullstack_mapping_for_path(path)[1]
+    return False
 
 
 def _ordered_specs(specs: set[str]) -> tuple[str, ...]:
@@ -280,6 +365,11 @@ def _ordered_specs(specs: set[str]) -> tuple[str, ...]:
     if "all" in specs:
         return FULLSTACK_ALL
     return tuple(spec for spec in ALL_FULLSTACK_SPECS if spec in specs)
+
+
+def _ordered_postgres_targets(targets: set[str]) -> tuple[str, ...]:
+    """稳定输出精确 PostgreSQL 测试目标，便于 Workflow 复现与审计。"""
+    return tuple(sorted(targets))
 
 
 def _ordered_postgres_suites(suites: set[str]) -> tuple[str, ...]:
@@ -302,6 +392,9 @@ def _full_requirements() -> CiRequirements:
         fullstack_required=True,
         stack_smoke_required=True,
         report_font_required=True,
+        frontend_audit_required=True,
+        package_required=True,
+        postgres_targets=(),
         postgres_suites=POSTGRES_ALL,
         fullstack_specs=FULLSTACK_ALL,
     )
@@ -333,6 +426,9 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
             fullstack_required=False,
             stack_smoke_required=False,
             report_font_required=False,
+            frontend_audit_required=False,
+            package_required=False,
+            postgres_targets=(),
             postgres_suites=(),
             fullstack_specs=(),
         )
@@ -343,8 +439,13 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
     contract_required = False
     postgres_required = False
     report_font_required = False
+    frontend_audit_required = any(path in FRONTEND_DEPENDENCY_AUDIT_EXACT for path in product_paths)
+    package_required = any(path in PACKAGE_BUILD_EXACT for path in product_paths)
+    postgres_targets: set[str] = set()
     postgres_suites: set[str] = set()
     fullstack_specs: set[str] = set()
+    journey_specs: set[str] = set()
+    has_unmapped_user_journey = False
     kinds: set[str] = set()
 
     for path in product_paths:
@@ -374,13 +475,21 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
             backend_required = True
             frontend_required = True
             contract_required = True
-            fullstack_specs.update(FULLSTACK_ALL)
+            if path == API_CONTRACT_EXACT or path.startswith(CONTRACT_PREFIXES):
+                fullstack_specs.update(FULLSTACK_ALL)
+            else:
+                mapped_specs, mapped = _fullstack_mapping_for_path(path)
+                if mapped:
+                    fullstack_specs.update(mapped_specs)
+                else:
+                    fullstack_specs.update(FULLSTACK_ALL)
             kinds.add("contract")
             continue
 
         if path.startswith("tests/integration/"):
             backend_required = True
             postgres_required = True
+            postgres_targets.update(_postgres_targets_for_path(path))
             postgres_suites.update(_postgres_suites_for_path(path))
             kinds.add("persistence")
             continue
@@ -388,18 +497,33 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         if _is_persistence_path(path):
             backend_required = True
             postgres_required = True
-            postgres_suites.update(_postgres_suites_for_path(path))
-            fullstack_specs.update(_fullstack_specs_for_path(path))
+            targets = _postgres_targets_for_path(path)
+            suites = _postgres_suites_for_path(path)
+            postgres_targets.update(targets)
+            postgres_suites.update(suites)
+            mapped_specs = _fullstack_specs_for_path(path)
+            if mapped_specs:
+                fullstack_specs.update(mapped_specs)
+            elif not targets and suites == POSTGRES_ALL:
+                fullstack_specs.update(FULLSTACK_ALL)
             kinds.add("persistence")
             continue
 
         if path.startswith(FRONTEND_PREFIXES):
             frontend_required = True
+            journey_specs.update(_fullstack_specs_for_path(path))
+            has_unmapped_user_journey = has_unmapped_user_journey or _is_unmapped_user_journey_path(
+                path
+            )
             kinds.add("frontend")
             continue
 
         if path.startswith(BACKEND_PREFIXES):
             backend_required = True
+            journey_specs.update(_fullstack_specs_for_path(path))
+            has_unmapped_user_journey = has_unmapped_user_journey or _is_unmapped_user_journey_path(
+                path
+            )
             kinds.add("backend")
             continue
 
@@ -419,10 +543,14 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         profile = "cross_component"
 
     if frontend_required and backend_required and not contract_required:
-        fullstack_specs.update(FULLSTACK_ALL)
+        if has_unmapped_user_journey:
+            fullstack_specs.update(FULLSTACK_ALL)
+        else:
+            fullstack_specs.update(journey_specs)
 
+    selected_postgres_targets = _ordered_postgres_targets(postgres_targets)
     selected_postgres_suites = _ordered_postgres_suites(postgres_suites)
-    if postgres_required and not selected_postgres_suites:
+    if postgres_required and not selected_postgres_targets and not selected_postgres_suites:
         selected_postgres_suites = POSTGRES_ALL
     selected_specs = _ordered_specs(fullstack_specs)
     return CiRequirements(
@@ -436,6 +564,9 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         fullstack_required=bool(selected_specs),
         stack_smoke_required=False,
         report_font_required=report_font_required,
+        frontend_audit_required=frontend_audit_required,
+        package_required=package_required,
+        postgres_targets=selected_postgres_targets,
         postgres_suites=selected_postgres_suites,
         fullstack_specs=selected_specs,
     )
@@ -483,6 +614,9 @@ def _write_github_output(path: Path, requirements: CiRequirements, changed_count
         "fullstack_required": _bool_output(requirements.fullstack_required),
         "stack_smoke_required": _bool_output(requirements.stack_smoke_required),
         "report_font_required": _bool_output(requirements.report_font_required),
+        "frontend_audit_required": _bool_output(requirements.frontend_audit_required),
+        "package_required": _bool_output(requirements.package_required),
+        "postgres_targets": " ".join(requirements.postgres_targets),
         "postgres_suites": " ".join(requirements.postgres_suites),
         "fullstack_specs": " ".join(requirements.fullstack_specs),
         "changed_count": str(changed_count),
@@ -519,6 +653,8 @@ def main() -> int:
         )
         for changed_path in changed_paths:
             print(f"- {changed_path}")
+        if requirements.postgres_targets:
+            print("PostgreSQL targets: " + " ".join(requirements.postgres_targets))
         if requirements.postgres_suites:
             print("PostgreSQL suites: " + " ".join(requirements.postgres_suites))
         if requirements.fullstack_specs:
