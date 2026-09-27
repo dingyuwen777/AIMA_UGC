@@ -459,7 +459,9 @@ bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --ex
 python3 start_compose.py --env-file /data/AIMA_UGC/env.production
 ```
 
-脚本停止 Frontend/API/Worker/Scheduler/Configure/Migrate，备份五张品牌/车型目录表，并在一个事务里清空其余 public 表；因此采集运行、历史导入、Job、管理员操作审计、Content、Provider 配置和 Artifact 元数据都会归零。它随后恢复被清库删除的声音广场单例状态种子，并清空当前 Compose 挂载的 `runtime/data/artifacts` 实体文件；`alembic_version` 和完整品牌/车型目录保留。原始 Excel 目录、Secret、env、日志和 PostgreSQL 数据目录不删除。失败或成功都保持业务服务停止，须核对结果后使用该 Release 的启动脚本重新装配 Configure。目录备份只覆盖品牌/车型，不能恢复被删除的业务数据和 Artifact。
+`--execute` 默认要求交互输入 `RESET-AIMA-BUSINESS-DATA`；只有明确授权的非交互场景才使用 `--yes`。品牌/车型目录按执行前现状原样保留，允许品牌、车型或别名部分或全部为空，不需要额外“允许空目录”参数。
+
+脚本停止 Frontend/API/Worker/Scheduler/Configure/Migrate，备份五张品牌/车型目录表，并在一个事务里清空其余 public 表；因此采集运行、历史导入、Job、管理员操作审计、Content、Provider 配置和 Artifact 元数据都会归零。它随后恢复被清库删除的声音广场单例状态种子，并清空当前 Compose 挂载的 `runtime/data/artifacts` 实体文件；`alembic_version` 和完整品牌/车型目录保留。执行后会同时核对目录行数与五张目录表的内容指纹，任一不一致都失败关闭并保持业务服务停止。原始 Excel 目录、Secret、env、日志和 PostgreSQL 数据目录不删除。失败或成功都保持业务服务停止，须核对结果后使用该 Release 的启动脚本重新装配 Configure。目录备份只覆盖品牌/车型，不能恢复被删除的业务数据和 Artifact。
 
 脚本会拒绝不认识的非 public 持久表、Extension 管理的 public 表、保留目录指向待清空表的外键，以及 Artifact 目录中的嵌套挂载点。执行前应核对 dry-run 列出的待清空表；若原始 Excel 不齐全，业务数据无法通过本工具恢复。旧 Release 不包含该脚本，不能把仓库新脚本直接当作已部署版本的运行事实。
 
