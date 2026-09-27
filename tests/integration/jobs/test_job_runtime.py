@@ -47,6 +47,7 @@ def _enqueue(
     job_type: str = "test.echo.v1",
     max_attempts: int = 2,
     timeout_seconds: int = 30,
+    priority: int = 10,
 ):
     return repository.enqueue(
         job_type=job_type,
@@ -54,7 +55,7 @@ def _enqueue(
         payload={"schema_version": "echo.v1", "value": value},
         internal_idempotency_key=key,
         request_id=None,
-        priority=10,
+        priority=priority,
         max_attempts=max_attempts,
         timeout_seconds=timeout_seconds,
     )
@@ -178,6 +179,59 @@ def test_worker_supported_type_override_leaves_background_job_queued(
         with session.begin():
             assert PostgresJobRepository(session).get(foreground.id).status == "succeeded"  # type: ignore[union-attr]
             assert PostgresJobRepository(session).get(background.id).status == "queued"  # type: ignore[union-attr]
+    finally:
+        session.close()
+
+
+def test_worker_priority_floor_preserves_shared_foreground_job_type(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """同一 Job Type 的后台重筛工作不能占用保留 Worker，较高优先级任务仍可领取。"""
+
+    registry = JobRegistry()
+
+    def echo_handler(payload, context):  # type: ignore[no-untyped-def]
+        del context
+        return JobHandlerResult.succeeded({"value": payload.value})
+
+    registry.register(
+        job_type="test.shared.v1",
+        payload_version="echo.v1",
+        payload_model=EchoPayloadV1,
+        handler=echo_handler,
+        retry_on_timeout=True,
+    )
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            repository = PostgresJobRepository(session)
+            background = _enqueue(
+                repository,
+                key="shared-background",
+                job_type="test.shared.v1",
+                priority=-30,
+            )
+            foreground = _enqueue(
+                repository,
+                key="shared-foreground",
+                job_type="test.shared.v1",
+                priority=-20,
+            )
+        worker = JobWorker(
+            session_factory=database_runtime.new_session,
+            registry=registry,
+            worker_id="foreground-priority-floor",
+            lease_seconds=30,
+            retry_delay_seconds=0,
+            minimum_priority=-29,
+        )
+
+        assert worker.run_once() is True
+
+        with session.begin():
+            jobs = PostgresJobRepository(session)
+            assert jobs.get(foreground.id).status == "succeeded"  # type: ignore[union-attr]
+            assert jobs.get(background.id).status == "queued"  # type: ignore[union-attr]
     finally:
         session.close()
 
