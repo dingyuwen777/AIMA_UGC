@@ -9,6 +9,7 @@ from aima_ugc.bootstrap.canonical_replay_worker import (
     PostgresCanonicalReplayJobExecutor,
     _ReplayScanBatchController,
     _new_replay_batch_tuner,
+    _partition_resolved_batch,
     _replay_batch_tiers,
 )
 from aima_ugc.modules.ingestion.canonical_replay import (
@@ -219,3 +220,30 @@ def test_low_resource_replay_caps_raw_scan_even_when_hit_rate_is_zero() -> None:
         matched_target_rows=62,
         scan_ceiling_rows=248,
     ) == 248
+
+
+
+def test_replay_scan_partition_caps_each_database_transaction_by_matches() -> None:
+    """扫描命中率突然升高时，仍按 matched target 切成多个连续事务。"""
+
+    matched = SimpleNamespace(matched=True)
+    filtered = SimpleNamespace(matched=False)
+    rows = tuple(
+        (SimpleNamespace(external_content_id=str(index)), resolution)
+        for index, resolution in enumerate(
+            (filtered, matched, matched, matched, filtered, matched, matched)
+        )
+    )
+
+    chunks = _partition_resolved_batch(rows, matched_target_rows=2)  # type: ignore[arg-type]
+
+    assert [len(chunk) for chunk in chunks] == [3, 3, 1]
+    assert [
+        sum(resolution.matched for _content, resolution in chunk)
+        for chunk in chunks
+    ] == [2, 2, 1]
+    assert [
+        item.external_content_id
+        for chunk in chunks
+        for item, _resolution in chunk
+    ] == [str(index) for index in range(7)]
