@@ -3,8 +3,6 @@
 from datetime import date
 
 import pytest
-from pydantic import ValidationError
-
 from aima_ugc.bootstrap.workbench_http import _previous_period
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
 from aima_ugc.contracts.workbench import (
@@ -12,6 +10,7 @@ from aima_ugc.contracts.workbench import (
     WorkbenchLayoutUpdateRequest,
     WorkbenchQuery,
 )
+from pydantic import ValidationError
 
 
 def test_workbench_query_rejects_reversed_period_and_duplicate_filter_values() -> None:

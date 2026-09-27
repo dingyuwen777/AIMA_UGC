@@ -171,10 +171,13 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
                 )
             )
 
-        session.execute(jobs_table.insert(), [
-            _job_values(active_job_id, now=now, suffix="active"),
-            _job_values(old_job_id, now=now, suffix="old"),
-        ])
+        session.execute(
+            jobs_table.insert(),
+            [
+                _job_values(active_job_id, now=now, suffix="active"),
+                _job_values(old_job_id, now=now, suffix="old"),
+            ],
+        )
         session.execute(
             accounts_table.insert().values(
                 id=account_id,
@@ -264,8 +267,9 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
             ],
         )
         session.execute(
-            voice_plaza_content_projection_table.insert().values(
-                content_id=content_id,
+            voice_plaza_content_projection_table.update()
+            .where(voice_plaza_content_projection_table.c.content_id == content_id)
+            .values(
                 content_version=1,
                 platform="xiaohongshu",
                 content_type="note",
@@ -278,9 +282,7 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
                 relevance_source="ai",
                 effective_voice_type="真实用户发声",
                 effective_sentiment="负面",
-                labels=[
-                    {"primary_label": "售后服务", "secondary_label": "维修体验"}
-                ],
+                labels=[{"primary_label": "售后服务", "secondary_label": "维修体验"}],
                 brand_ids=[],
                 vehicle_model_ids=[],
                 competition_scope="none_detected",
@@ -317,9 +319,7 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
         assert stream[0]["effective_labels"] == [
             {"primary_label": "外观设计", "secondary_label": "颜色与配色"}
         ]
-        assert [(row["primary_label"], int(row["user_count"])) for row in mind] == [
-            ("外观设计", 1)
-        ]
+        assert [(row["primary_label"], int(row["user_count"])) for row in mind] == [("外观设计", 1)]
     finally:
         transaction.rollback()
         session.close()
@@ -335,15 +335,9 @@ def test_workbench_layout_create_and_revision_conflict_are_persistent() -> None:
     principal_id = f"workbench-layout-{uuid4().hex}"
     now = datetime(2026, 9, 27, 0, 0, tzinfo=UTC)
     modules = (
-        WorkbenchLayoutModule(
-            module_id="sound-stream", order=0, column_span=6, row_units=48
-        ),
-        WorkbenchLayoutModule(
-            module_id="brand-mind", order=1, column_span=6, row_units=48
-        ),
-        WorkbenchLayoutModule(
-            module_id="ugc-trend", order=2, column_span=6, row_units=48
-        ),
+        WorkbenchLayoutModule(module_id="sound-stream", order=0, column_span=6, row_units=48),
+        WorkbenchLayoutModule(module_id="brand-mind", order=1, column_span=6, row_units=48),
+        WorkbenchLayoutModule(module_id="ugc-trend", order=2, column_span=6, row_units=48),
     )
     try:
         session.execute(

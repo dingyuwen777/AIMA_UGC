@@ -165,8 +165,8 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 | R7 | 显式编辑草稿/保存取消/CAS | #626 / AC7 | satisfied | Workbench Store/Page 草稿模型；`workbench_layouts` + revision CAS；Unit/API/PostgreSQL 测试资产 |
 | R8 | Analysis Run 进展驱动合并刷新 | #626 / AC8 | satisfied | Workbench Page 复用 TaskCenter Analysis Run 指纹，750ms 合并刷新并覆盖终态变化 |
 | R9 | Workbench → Voice Plaza 深链恢复 | #626 / AC9 | satisfied | Workbench Route Query 构造 + VoicePlazaPage hydration + Browser Mock 深链场景 |
-| R10 | Contract/Migration/测试/Figma/Docs/CI | #626 / AC10 | satisfied | Pydantic/HTTP/0071/前端/Unit/API/PG/E2E/Docs 已进入当前分支；Generated Contract 与 CI 在 Ready 后由仓库机器门禁验证并按结果收口 |
-| R11 | PostgreSQL 性能证据后再决定预聚合 | #626 / AC11 | satisfied | 当前实现先使用 projection 可见维度 + active Result 专用查询，并新增 Scheme+sequence 索引；真实 PG CI/查询证据是合并前门禁，未在无证据时引入预聚合/新基础设施 |
+| R10 | Contract/Migration/测试/Figma/Docs/CI | #626 / AC10 | satisfied | Pydantic/HTTP/0071、生成 OpenAPI/Client、前后端测试与长期文档已同步；Figma 六个正式节点 Annotation 已按最终 Contract 回填；current-head CI/Review 是独立交付门禁 |
+| R11 | PostgreSQL 性能证据后再决定预聚合 | #626 / AC11 | satisfied | PostgreSQL 18.4 隔离库 5 万 Content/1 万 Account/10 万标签对，30 天窗口 8339 条：EXPLAIN (ANALYZE, BUFFERS) 心智聚合 185.686 ms，period summary 80.727 ms；按日期先限缩 projection 再做 active Result 局部查找，未引入预聚合 |
 
 # 计划改动
 
@@ -234,10 +234,13 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 | V1 | branch `feature/626-workbench-active-taxonomy` / base `8778f8e...` | GitHub compare base...branch | 当前分支覆盖 Workbench Contract、0071、Backend/Frontend、Voice Plaza deep link、Unit/API/PG/E2E 与 targeted Docs | 施工范围已完整进入 Review/CI |
 | V2 | Figma Page `3433:834` | Design Context + Prototype/Geometry 审计 | active Taxonomy/心智/趋势/编辑态基线已收口，旧固定五维/假 API/自动保存语义已清理 | 生产实现的 UI/交互上游事实稳定 |
 | V3 | PR #627 当前分支 | 仓库 CI 设计核对 | CI 对 changed Active Change 要求先 `ready_for_review`；转 Ready 后将运行 Contract generation、Python/Frontend、PostgreSQL 与 Full-stack 层 | 当前 Ready 是进入机器验证的前置，不代表 CI 已通过 |
+| V4 | PostgreSQL 18.4 / 本地隔离容器 / 2026-09-27 | 对 5 万条合成 Content（跨 180 天）、1 万账号、每条 2 个标签执行 `EXPLAIN (ANALYZE, BUFFERS)`；30 天窗口 8339 条 | 心智聚合 185.686 ms、period summary 80.727 ms；计划从日期过滤后的 projection 开始，只对窗口内 Content 查 active Result | 当前数据形状下无需预聚合；合成数据不能代表未知生产规模与真实分布 |
+| V5 | 全新 PostgreSQL 18.4 空库 / 当前分支 | `uv run alembic upgrade head`；`uv run pytest tests/integration/content/test_workbench_runtime.py -q --tb=short` | 2 passed | 0071 后 active Scheme 与布局 CAS 的真实数据库行为 |
+| V6 | Figma Page `3433:834` / 2026-09-27 | 回读并更新正式默认态、声音流、心智、趋势、标题、编辑态六个 Annotation | 六节点均回读到最终 GET/PUT Workbench Contract 与 409、active Scheme 口径 | 设计交接不再保留待定 endpoint/分页说明 |
 
 ## 未验证内容与剩余风险
 
-当前生产实现与自动化测试资产已落分支；PR current-head CI、独立 Review、Figma 最终 Contract 回填、merge 后 main-fresh/Archive/Closure 尚未完成，因此此处不声称可合并或完整交付。
+当前生产实现与自动化测试资产已落分支；PR current-head CI、独立 Review、merge 后 main-fresh/Archive/Closure 尚未完成。性能证据来自有界合成数据，未知生产数据量和分布仍需上线后观察。
 
 ## 交付状态
 
@@ -250,4 +253,4 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 
 ## 备注
 
-Figma Page `3433:834` 已按本 Issue 的业务口径同步；最终 Contract 生成后还需 targeted 回填 Annotation。
+Figma Page `3433:834` 已按本 Issue 的业务口径同步，最终 Contract Annotation 已针对正式默认态与关键模块回填并回读。

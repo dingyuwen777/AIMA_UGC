@@ -187,6 +187,27 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.filters.secondaryLabels).toEqual(['颜色与配色'])
   })
 
+  it('active Scheme 切换时不会展示混合口径的三个模块', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+    const nextStream = {
+      ...stream,
+      analysis_scheme_version_id: '22222222-2222-4222-8222-222222222222',
+      taxonomy_sha256: 'c'.repeat(64),
+    }
+    api.fetchWorkbenchStream.mockResolvedValue(nextStream)
+    api.fetchWorkbenchMind.mockRejectedValue(new Error('mind unavailable'))
+    api.fetchWorkbenchTrend.mockRejectedValue(new Error('trend unavailable'))
+
+    await store.refreshData()
+
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(3)
+    expect(store.stream).toBeNull()
+    expect(store.mind).toBeNull()
+    expect(store.trend).toBeNull()
+    expect(store.globalError).toContain('同一 Analysis Scheme Version')
+  })
+
   it('正式页面呈现动态心智和情感结构，不再展示首页占位图', async () => {
     const pinia: Pinia = createPinia()
     setActivePinia(pinia)

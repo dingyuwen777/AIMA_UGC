@@ -8,6 +8,8 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, cast
 from uuid import UUID
 
+from sqlalchemy.engine import RowMapping
+
 from aima_ugc.adapters.persistence.postgres.workbench import (
     PostgresWorkbenchRepository,
     WorkbenchLayoutRevisionConflict,
@@ -213,10 +215,12 @@ class PostgresWorkbenchHttpService:
             for primary in configuration.taxonomy.primary_labels:
                 if primary == "无法分类":
                     continue
-                row = current.get(primary)
-                user_count = 0 if row is None else int(row["user_count"])
-                content_count = 0 if row is None else int(row["content_count"])
-                positive_count = 0 if row is None else int(row["positive_content_count"])
+                current_row = current.get(primary)
+                user_count = 0 if current_row is None else int(current_row["user_count"])
+                content_count = 0 if current_row is None else int(current_row["content_count"])
+                positive_count = (
+                    0 if current_row is None else int(current_row["positive_content_count"])
+                )
                 user_share = _ratio(user_count, current_users) or 0.0
                 previous_row = previous.get(primary)
                 previous_count = 0 if previous_row is None else int(previous_row["user_count"])
@@ -364,7 +368,7 @@ def _mind_summary(
     return f"{primary}用户占比较紧邻等长上期{direction} {abs(change_pp):.2f}pp{detail}。"
 
 
-def _stream_item(row: Mapping[str, Any]) -> WorkbenchStreamItemResponse:
+def _stream_item(row: RowMapping) -> WorkbenchStreamItemResponse:
     labels = row["effective_labels"] or ()
     return WorkbenchStreamItemResponse(
         content_id=cast(UUID, row["content_id"]),
@@ -390,7 +394,7 @@ def _stream_item(row: Mapping[str, Any]) -> WorkbenchStreamItemResponse:
     )
 
 
-def _layout_response(row: Mapping[str, Any] | None) -> WorkbenchLayoutResponse:
+def _layout_response(row: RowMapping | None) -> WorkbenchLayoutResponse:
     if row is None:
         return WorkbenchLayoutResponse(
             schema_version=1,

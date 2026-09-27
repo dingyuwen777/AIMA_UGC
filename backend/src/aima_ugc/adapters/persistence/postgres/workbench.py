@@ -315,7 +315,7 @@ class PostgresWorkbenchRepository:
         start_at: datetime,
         end_at: datetime,
     ) -> tuple[str, dict[str, Any]]:
-        clauses = [
+        projection_clauses = [
             "projection.is_visible IS TRUE",
             "projection.published_at >= :start_at",
             "projection.published_at < :end_at",
@@ -326,74 +326,41 @@ class PostgresWorkbenchRepository:
             "end_at": end_at,
         }
         if query.platforms:
-            clauses.append("projection.platform = ANY(CAST(:platforms AS text[]))")
+            projection_clauses.append("projection.platform = ANY(CAST(:platforms AS text[]))")
             params["platforms"] = list(query.platforms)
         if query.brand_ids:
-            clauses.append("projection.brand_ids && CAST(:brand_ids AS uuid[])")
+            projection_clauses.append("projection.brand_ids && CAST(:brand_ids AS uuid[])")
             params["brand_ids"] = list(query.brand_ids)
         if query.vehicle_model_ids:
-            clauses.append("projection.vehicle_model_ids && CAST(:vehicle_model_ids AS uuid[])")
+            projection_clauses.append(
+                "projection.vehicle_model_ids && CAST(:vehicle_model_ids AS uuid[])"
+            )
             params["vehicle_model_ids"] = list(query.vehicle_model_ids)
+        effective_clauses = ["TRUE"]
         if query.voice_types:
-            clauses.append("effective_voice_type = ANY(CAST(:voice_types AS text[]))")
+            effective_clauses.append("effective_voice_type = ANY(CAST(:voice_types AS text[]))")
             params["voice_types"] = list(query.voice_types)
         if query.sentiments:
-            clauses.append("effective_sentiment = ANY(CAST(:sentiments AS text[]))")
+            effective_clauses.append("effective_sentiment = ANY(CAST(:sentiments AS text[]))")
             params["sentiments"] = list(query.sentiments)
         if query.primary_labels:
-            clauses.append(
+            effective_clauses.append(
                 "EXISTS (SELECT 1 FROM jsonb_array_elements(effective_labels) AS f(item) "
                 "WHERE f.item ->> 'primary_label' = ANY(CAST(:primary_labels AS text[])))"
             )
             params["primary_labels"] = list(query.primary_labels)
         if query.secondary_labels:
-            clauses.append(
+            effective_clauses.append(
                 "EXISTS (SELECT 1 FROM jsonb_array_elements(effective_labels) AS f(item) "
                 "WHERE f.item ->> 'secondary_label' = ANY(CAST(:secondary_labels AS text[])))"
             )
             params["secondary_labels"] = list(query.secondary_labels)
 
-        where_sql = "\n              AND ".join(clauses)
+        projection_where_sql = "\n                  AND ".join(projection_clauses)
+        effective_where_sql = "\n                  AND ".join(effective_clauses)
         return (
             f"""
-            WITH active_result AS (
-                SELECT DISTINCT ON (result.content_id, result.content_version)
-                       result.*
-                FROM analysis_content_results AS result
-                JOIN analysis_content_runs AS run ON run.id = result.analysis_run_id
-                WHERE run.analysis_scheme_version_id = :active_scheme_version_id
-                ORDER BY result.content_id, result.content_version,
-                         run.sequence_no DESC, result.id DESC
-            ),
-            latest_review AS (
-                SELECT DISTINCT ON (review.content_id, review.content_version)
-                       review.content_id, review.content_version, review.decision
-                FROM analysis_content_relevance_reviews AS review
-                ORDER BY review.content_id, review.content_version,
-                         review.review_no DESC, review.reviewed_at DESC, review.id DESC
-            ),
-            result_labels AS (
-                SELECT pair.analysis_result_id,
-                       jsonb_agg(
-                           jsonb_build_object(
-                               'primary_label', pair.primary_label,
-                               'secondary_label', pair.secondary_label
-                           )
-                           ORDER BY pair.ordinal
-                       ) AS items
-                FROM analysis_content_label_pairs AS pair
-                GROUP BY pair.analysis_result_id
-            ),
-            vehicle_names AS (
-                SELECT evidence.content_id,
-                       array_agg(DISTINCT model.display_name ORDER BY model.display_name)
-                           AS names
-                FROM content_vehicle_evidence AS evidence
-                JOIN vehicle_models AS model ON model.id = evidence.vehicle_model_id
-                WHERE model.merged_into_id IS NULL
-                GROUP BY evidence.content_id
-            ),
-            source AS (
+            WITH source AS (
                 SELECT projection.content_id,
                        projection.content_version,
                        projection.platform,
@@ -433,22 +400,51 @@ class PostgresWorkbenchRepository:
                   ON content.id = projection.content_id
                  AND content.current_version = projection.content_version
                 LEFT JOIN accounts AS account ON account.id = content.author_account_id
-                LEFT JOIN active_result
-                  ON active_result.content_id = projection.content_id
-                 AND active_result.content_version = projection.content_version
-                LEFT JOIN latest_review AS review
-                  ON review.content_id = projection.content_id
-                 AND review.content_version = projection.content_version
+                LEFT JOIN LATERAL (
+                    SELECT result.*
+                    FROM analysis_content_results AS result
+                    JOIN analysis_content_runs AS run ON run.id = result.analysis_run_id
+                    WHERE result.content_id = projection.content_id
+                      AND result.content_version = projection.content_version
+                      AND run.analysis_scheme_version_id = :active_scheme_version_id
+                    ORDER BY run.sequence_no DESC, result.id DESC
+                    LIMIT 1
+                ) AS active_result ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT review.decision
+                    FROM analysis_content_relevance_reviews AS review
+                    WHERE review.content_id = projection.content_id
+                      AND review.content_version = projection.content_version
+                    ORDER BY review.review_no DESC, review.reviewed_at DESC, review.id DESC
+                    LIMIT 1
+                ) AS review ON TRUE
                 LEFT JOIN analysis_content_manual_overrides AS manual
                   ON manual.content_id = projection.content_id
                  AND manual.content_version = projection.content_version
-                LEFT JOIN result_labels ON result_labels.analysis_result_id = active_result.id
-                LEFT JOIN vehicle_names ON vehicle_names.content_id = projection.content_id
+                LEFT JOIN LATERAL (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'primary_label', pair.primary_label,
+                            'secondary_label', pair.secondary_label
+                        ) ORDER BY pair.ordinal
+                    ) AS items
+                    FROM analysis_content_label_pairs AS pair
+                    WHERE pair.analysis_result_id = active_result.id
+                ) AS result_labels ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT array_agg(DISTINCT model.display_name ORDER BY model.display_name)
+                        AS names
+                    FROM content_vehicle_evidence AS evidence
+                    JOIN vehicle_models AS model ON model.id = evidence.vehicle_model_id
+                    WHERE evidence.content_id = projection.content_id
+                      AND model.merged_into_id IS NULL
+                ) AS vehicle_names ON TRUE
+                WHERE {projection_where_sql}
             ),
             base AS (
                 SELECT *
-                FROM source AS projection
-                WHERE {where_sql}
+                FROM source
+                WHERE {effective_where_sql}
             )
             """,
             params,

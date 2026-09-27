@@ -237,9 +237,13 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     }
   }
 
-  /** 校验三个独立模块是否仍来自同一个 active Scheme Version / Taxonomy。 */
-  function dataIdentityConsistent(): boolean {
-    const responses = [stream.value, mind.value, trend.value].filter(
+  /** 提交响应前校验三个模块是否仍来自同一个 active Scheme Version / Taxonomy。 */
+  function dataIdentityConsistent(
+    nextStream: WorkbenchStreamResponse | null,
+    nextMind: WorkbenchMindResponse | null,
+    nextTrend: WorkbenchTrendResponse | null,
+  ): boolean {
+    const responses = [nextStream, nextMind, nextTrend].filter(
       (value): value is WorkbenchStreamResponse | WorkbenchMindResponse | WorkbenchTrendResponse =>
         value !== null,
     )
@@ -255,6 +259,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       ?? stream.value?.taxonomy_sha256
     if (!responseHash || taxonomy.value?.taxonomy_sha256 === responseHash) return
     await refreshTaxonomy()
+    if (taxonomy.value?.taxonomy_sha256 !== responseHash) {
+      taxonomy.value = null
+      globalError.value = '当前 Analysis Scheme 的 Taxonomy 暂未同步，请稍后重试。'
+    }
   }
 
   /** 独立刷新三个模块；单模块失败不抹掉其它模块上次成功快照。 */
@@ -272,30 +280,32 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     ])
     if (revision !== dataRevision) return
     const [streamResult, mindResult, trendResult] = results
-    if (streamResult.status === 'fulfilled') {
-      stream.value = streamResult.value
-      moduleErrors.value.stream = null
-    } else moduleErrors.value.stream = apiErrorMessage(streamResult.reason)
-    if (mindResult.status === 'fulfilled') {
-      mind.value = mindResult.value
-      moduleErrors.value.mind = null
-    } else moduleErrors.value.mind = apiErrorMessage(mindResult.reason)
-    if (trendResult.status === 'fulfilled') {
-      trend.value = trendResult.value
-      moduleErrors.value.trend = null
-    } else moduleErrors.value.trend = apiErrorMessage(trendResult.reason)
-    moduleLoading.value = { stream: false, mind: false, trend: false }
-
-    if (!dataIdentityConsistent()) {
+    const nextStream = streamResult.status === 'fulfilled' ? streamResult.value : stream.value
+    const nextMind = mindResult.status === 'fulfilled' ? mindResult.value : mind.value
+    const nextTrend = trendResult.status === 'fulfilled' ? trendResult.value : trend.value
+    if (!dataIdentityConsistent(nextStream, nextMind, nextTrend)) {
       globalError.value = 'Analysis Scheme 已切换，正在重新同步工作台口径。'
       if (!retried) {
         await refreshTaxonomy()
         await refreshData(true, true)
         return
       }
+      stream.value = null
+      mind.value = null
+      trend.value = null
+      moduleLoading.value = { stream: false, mind: false, trend: false }
       globalError.value = '工作台模块暂未取得同一 Analysis Scheme Version，请稍后重试。'
       return
     }
+    stream.value = nextStream
+    mind.value = nextMind
+    trend.value = nextTrend
+    moduleErrors.value = {
+      stream: streamResult.status === 'fulfilled' ? null : apiErrorMessage(streamResult.reason),
+      mind: mindResult.status === 'fulfilled' ? null : apiErrorMessage(mindResult.reason),
+      trend: trendResult.status === 'fulfilled' ? null : apiErrorMessage(trendResult.reason),
+    }
+    moduleLoading.value = { stream: false, mind: false, trend: false }
     await alignTaxonomyWithData()
     if (mind.value?.dimensions.length) {
       if (!mind.value.dimensions.some((item) => item.primary_label === selectedMind.value)) {

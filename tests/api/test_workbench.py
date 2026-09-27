@@ -119,15 +119,9 @@ def _layout_response() -> WorkbenchLayoutResponse:
     return WorkbenchLayoutResponse(
         revision=0,
         modules=(
-            WorkbenchLayoutModule(
-                module_id="sound-stream", order=0, column_span=6, row_units=48
-            ),
-            WorkbenchLayoutModule(
-                module_id="brand-mind", order=1, column_span=6, row_units=48
-            ),
-            WorkbenchLayoutModule(
-                module_id="ugc-trend", order=2, column_span=6, row_units=48
-            ),
+            WorkbenchLayoutModule(module_id="sound-stream", order=0, column_span=6, row_units=48),
+            WorkbenchLayoutModule(module_id="brand-mind", order=1, column_span=6, row_units=48),
+            WorkbenchLayoutModule(module_id="ugc-trend", order=2, column_span=6, row_units=48),
         ),
     )
 
