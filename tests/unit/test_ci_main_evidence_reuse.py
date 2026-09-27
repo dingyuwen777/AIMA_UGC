@@ -25,9 +25,7 @@ def _check(
 
 def test_resolver_source_is_compatible_with_runner_bootstrap_python() -> None:
     """main reuse 在 setup-python 前运行，必须保持 Python 3.12 grammar 可解析。"""
-    source = (ROOT / "scripts" / "quality" / "resolve_main_evidence.py").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "scripts" / "quality" / "resolve_main_evidence.py").read_text(encoding="utf-8")
 
     ast.parse(source, filename="resolve_main_evidence.py", feature_version=(3, 12))
 
