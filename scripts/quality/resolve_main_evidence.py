@@ -180,9 +180,7 @@ def resolve_main_evidence(
         current_tree = str(
             ((current_commit.get("commit") or {}).get("tree") or {}).get("sha") or ""
         )
-        source_tree = str(
-            ((source_commit.get("commit") or {}).get("tree") or {}).get("sha") or ""
-        )
+        source_tree = str(((source_commit.get("commit") or {}).get("tree") or {}).get("sha") or "")
 
         checks_payload = _api_get(
             _repo_api(
