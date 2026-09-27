@@ -61,6 +61,21 @@ Issue #624 的合并后复测。用户明确要求同时解决：（1）历史�
 
 最终代码另跑一轮 20,000 raw / 4,440 matched / 1,960 Existing 的交错样本：Replay 10.15 秒、撤回 3.67 秒；100 raw Excel Import 在 Replay 前 / 并行 / 后分别为 0.210 / 0.473 / 0.214 秒，排队分别为 0.007 / 0.067 / 0.008 秒。方向与前两轮相同；共享数据库写入下执行时间仍约增加 2.3 倍。这不支持“所有慢都是机器硬上限”，也不支持在缺少当前版本生产对照时继续盲目改变批量或全局资源预算。
 
+# 事实与证据
+
+| 证据编号 | 已确认事实 | 来源 / 定位 / 命令 | 支撑的约束或决策 |
+| --- | --- | --- | --- |
+| E1 | 旧生产 Replay 的主要墙钟在数据库写事务内，Content 批量新建阶段主导 | 用户提供的 28 份日志，44 个完成 Run 的阶段统计 | 入库排障聚焦数据库事务，不把读取 Canonical 误判为主因 |
+| E2 | 生产运行的是早于 #625 的 Release 和 Migration 0065 | 用户提供的 Release manifest 路径、服务器只读 `alembic_version` 与任务创建时间 | 旧生产截图不能证明当前 main 的吞吐 |
+| E3 | 相同 20,000 raw 交错夹具三组旧/当前 A/B 均是当前代码更快 | 同机隔离 PostgreSQL 18.4 的 `benchmark_canonical_replay.py` 报告 | 当前已有有方向性的代码改进；仍不外推生产库 |
+| E4 | 旧取消请求受锁可超时；浏览器 POST 504 后父请求最终进入撤回 | PostgreSQL 行锁并发红绿测试、用户 Network 截图和只读状态快照 | HTTP 只持久化意图，未知响应以父状态核对 |
+| E5 | 通用 Job retry 使用指数退避 | `adapters/persistence/postgres/jobs.py::retry_transient` 与 PostgreSQL 回归 | 取消协调需要单类型 5 秒上限，其他类型保持默认 |
+| E6 | 当前撤回 A/B 更快，真实 Import 在 Replay 并行时执行变慢但仍可领取 | 两轮旧/当前撤回基准与三轮 Excel mixed load | 保留资源保护并公开共享数据库争用，不盲目扩大全局预算 |
+
+## 推断与待确认
+
+旧 Release 缺少投影延期刷新与生产 Content 写阶段主导吻合，但不能据此断言它是线上全部耗时的唯一原因；新代码部署后大库吞吐、六 Worker mixed load 尾延迟及旧任务最终撤回总时长仍缺可比实测。本 PR 不部署，以上缺口不作为已验证收益。
+
 # 目标、成功标准与非目标
 
 - 把生产日志、初次入库和 Replay 阶段耗时、旧版/当前版同机对照归一到相同输入/实际写入量；只优化有可复现收益的代码瓶颈。
@@ -72,6 +87,26 @@ Issue #624 的合并后复测。用户明确要求同时解决：（1）历史�
 非目标：提高全局 CPU/内存配额，删除低命中 shard gate，升级依赖或框架，生产部署或生产数据操作。
 
 兼容与回滚：公共 HTTP/Canonical/数据库 Schema 不变；新增内部持久 Job Payload `ingestion.canonical-replay-cancellation.v1`。旧 Worker 不认识该类型，故不能在取消协调 Job 仍 queued/running、父请求仍 cancelling 时直接回滚 Worker；须让新 Worker 完成协调，确认父请求已进入撤回或撤回终态后，再按 Release 流程回滚。若协调持续失败，先保留新 Worker 并以修复版本前滚，不用生产手工 SQL 冒充正常撤回。
+
+# 约束与意图决策
+
+| 决策维度 | 当前决定 | 依据 | 影响 |
+| --- | --- | --- | --- |
+| 范围与 Owner | 只改 Replay/API、Job Runtime 必要的按类型重试上限和运行中心反馈 | E1、E4、E5；#624 / AC11–AC13 | 继续由 Job Owner 写 jobs，Replay Repository 写父请求，前端只读 API |
+| 接口与契约 | 公共 HTTP 不变；新增版本化内部取消 Job Payload | E4；现有持久 Job Runtime | 无生成 Client 变化，旧 Worker 回滚受新 Job 类型约束 |
+| 数据与迁移 | 不改 Schema、不迁移生产数据 | 当前父请求和 jobs 表已具备所需列 | 仅应用代码部署；本轮不执行部署 |
+| 失败语义 | 504 属结果未知，协调失败可见且重试；锁忙短事务重试 | E4、E5 | 不伪报成功/失败，保持幂等与 Fencing |
+| 资源 | 保持 Host/Compose 预算与正常 Job 配额 | E6；#624 / AC1–AC3 | 导入有 Worker 可领取，DB 争用仍需线上观测 |
+
+# 修改方案与决策依据
+
+取消 API 先提交父意图和唯一协调 Job，协调 Job 分批通过现有 Job Owner 通知子任务、跳过锁忙行并按 5 秒上限重试；最终屏障沿用现有撤回 Job。只有一个 Worker 时，单路 Replay 在提交边界读取父取消意图。前端以持久父状态解释 504 和阶段进度。入库路径保留 #625 已合并的投影与批次优化，本轮用同机对照判断继续改写数据库热路径的收益。
+
+## 备选方案与取舍
+
+- 继续在 HTTP 事务中逐个取消 127 个子 Job：行锁复现实测会超过一秒，且可能碰到反向锁顺序，故不采用。
+- 提高 Worker/PostgreSQL 全局配额或扩大 Replay 固定批次：真实 Import mixed load 已显示共享 DB 争用，生产当前代码尚无大库对照，故不采用。
+- 为取消引入第二套线程/队列：现有持久 Job Runtime 已提供重试、Lease、Fencing 和审计；复用现有机制更便于恢复。
 
 # 需求追溯
 
@@ -92,7 +127,7 @@ Issue #624 的合并后复测。用户明确要求同时解决：（1）历史�
 | R13 | Review、current-head required CI | #624 / AC9 | explicitly_deferred | 项目 AGENTS.md 规定 Ready 后触发 PR CI；本地分层验证与 Review 先完成，CI 仍为合并硬门禁，归档时补填实际 run/HEAD |
 | R14 | 合并后 main-fresh、Change Archive、Issue Closure 和分支清理 | #624 / AC10 | explicitly_deferred | 项目 AGENTS.md 规定 PR 合并后执行归档和 main-fresh；本项按交付顺序执行，不能在 Ready 前伪称已完成 |
 
-# 实施计划
+# 计划改动
 
 1. 完成初次入库与 Replay 的可比口径及撤回 A/B；结合生产表规模和状态判断当前代码已修复多少、剩余瓶颈是否值得改。
 2. 在 PostgreSQL 并发测试中复现取消 HTTP 被运行 Job 行锁拖过网关 timeout；将父取消意图短事务持久化，子 Job 的协作取消由现有持久 Job Runtime 异步执行。
@@ -109,9 +144,38 @@ Issue #624 的合并后复测。用户明确要求同时解决：（1）历史�
 | 静态 / 文档 | required | Ruff、mypy、前端类型检查、Change 检查、目标排障文档 |
 | 生产实测 | limited | 已取得旧版生产日志、DB 版本/锁/状态/规模；新代码尚未部署，线上收益不得宣称已验证 |
 
-# Completion Audit
+# 风险、兼容性、迁移与回滚
+
+| 项目 | 结论 | 依据 / 处理方式 |
+| --- | --- | --- |
+| 主要风险 | 取消协调在锁竞争下延迟；正常 Import 在 Replay 并行时变慢 | E4、E6；锁等待最多 3 秒、按类型退避封顶 5 秒；mixed load 明示争用 |
+| 兼容性 | 公共 HTTP/Schema 不变，内部持久 Job 类型新增 | Contract 生成检查通过；旧 Worker 不认识取消协调类型 |
+| 数据 / Migration | 无 Schema Migration 或数据回填 | 使用现有父意图、Job 与贡献账本 |
+| 部署 / 运行 | 沿既有 API/Worker/PostgreSQL 拓扑发布；本 PR 不部署 | 用户授权范围与项目 Release 门禁 |
+| 回滚 / 恢复 | 不直接回滚仍有取消协调任务的 Worker；先结清或前滚修复 | 新 Job 类型回滚兼容约束；只读检查已写入长期文档 |
+
+# 文档、依赖、部署与发布影响
+
+- 长期文档：同步 `AGENTS.md` 的 Worker 注册导航和 `docs/appendix/08_数据入口与统一入库实现.md` 的取消、状态、回滚检查。
+- 依赖 / Runtime：无新增依赖或版本升级；`uv.lock`、前端 lock 文件均不变。
+- 配置 / Secret：无新增配置或 Secret，基准数据只在未跟踪本地临时目录，未提交。
+- 部署 / Release：无生产 Migration；未来部署按既有 Release 流程，并在回滚前执行新 Job/父状态只读检查。本任务不部署。
+- 消费方：生成 OpenAPI/Client 无变化；运行中心状态反馈属于已有响应字段的新展示。
+
+# 完成审计
 
 - [x] upstream_re_read：重读用户三个问题、Issue #624 的 AC1–AC13、项目 AGENTS.md 和当前 Replay/API/Job/前端代码；旧生产 Release 与当前 main 分开判断。
 - [x] change_coverage：R1–R14 分别映射入库证据、前端反馈、取消与撤回、资源/其他链路、CI 与交付；本地 PostgreSQL、前端、静态、Contract 和同机基准均有实际结果；CI/合并按正式顺序仍须执行。
 - [x] reverse_audit：检查前端动作到 API、父状态到取消协调 Job、子 Job 终态到撤回、单 Worker 和预留 Worker、真实 Import mixed load；没有修改 Host/Compose 与其他链路预算，DB 写竞争仍作为实测限制公开。
 - [x] unresolved_cleared：独立复核发现的指数退避无上限、单 Worker 取消、取消失败重试、前端旧失败误判及新 Job 回滚限制均已修复或记录；定向回归、Ruff、mypy、前端类型/ESLint/构建、Contract 检查已通过；生产新版本吞吐须部署后核验，不作为当前 PR 已验证结论。
+
+# 完成证据与状态
+
+| 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
+| --- | --- | --- | --- | --- |
+| V1 | 本分支 `6f5920c0`，本地 PostgreSQL 18.4 | Job/Replay/API 组合 pytest；取消边界和失败重试复测 | 组合 97 passed、一个断言因新增提交前检查需调整；调整后的两项取消边界及失败重试均通过 | 真实 PostgreSQL 的受理、取消、撤回屏障与恢复行为 |
+| V2 | 本分支，前端本地 | Vitest 定向 31 项、typecheck、ESLint、Vite build | 全部成功 | 504、阶段状态、失败重试入口与前端产物 |
+| V3 | 本分支，同机隔离 PostgreSQL 18.4 | 旧/当前交错 A/B、初次导入与 New/Existing、撤回 A/B、Excel mixed load | 实测数值见 E3/E6 和上文 | 性能判断与共享 DB 争用的适用范围 |
+| V4 | 本分支 | Ruff check/format、mypy、Contract generate --check、Change Ready Check | 全部成功 | 静态、公共生成事实和本地就绪 |
+
+未验证：新代码尚未在 270 万 Content 的生产库部署；无法声称线上吞吐或最终撤回速度已改善。交付状态：PR #629 Ready；current-head required CI、merge、main-fresh、机器 Change Archive 与 Issue Closure 仍按正式顺序完成；本任务不部署。
