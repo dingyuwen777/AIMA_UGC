@@ -279,7 +279,9 @@ def _run_worker_pool() -> None:
         """按角色启动子进程；foreground-reserve 只限制 Replay，其他 Job 仍可使用全部进程。"""
 
         argument = "--foreground-child" if role == "foreground-reserve" else "--child"
-        child = subprocess.Popen([sys.executable, "-m", "aima_ugc.entrypoints.worker_main", argument])
+        child = subprocess.Popen(
+            [sys.executable, "-m", "aima_ugc.entrypoints.worker_main", argument]
+        )
         children[child.pid] = child
         child_started_at[child.pid] = time.monotonic()
         child_roles[child.pid] = role
@@ -362,9 +364,7 @@ def _run_worker_pool() -> None:
                         and desired >= 2
                         and "foreground-reserve" not in child_roles.values()
                     )
-                    spawned_role = (
-                        "foreground-reserve" if needs_foreground_reserve else "general"
-                    )
+                    spawned_role = "foreground-reserve" if needs_foreground_reserve else "general"
                     spawn(role=spawned_role)
                     idle_since = None
                     log_event(
