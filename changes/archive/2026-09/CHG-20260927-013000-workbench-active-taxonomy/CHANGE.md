@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-013000-workbench-active-taxonomy
 title: 工作台按 active Analysis Scheme 落地
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: feature/626-workbench-active-taxonomy
 created: 2026-09-27
