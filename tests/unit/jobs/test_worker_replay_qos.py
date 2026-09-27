@@ -7,6 +7,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
 )
 from aima_ugc.modules.ingestion.replay_shards import REPLAY_SHARD_JOB_TYPE
+from aima_ugc.modules.ingestion.reversal_shards import REVERSAL_SHARD_JOB_TYPE
 
 
 def test_foreground_worker_excludes_long_replay_work_when_pool_can_reserve_capacity() -> None:
@@ -19,9 +20,13 @@ def test_foreground_worker_excludes_long_replay_work_when_pool_can_reserve_capac
         CANONICAL_REPLAY_JOB_TYPE,
         REPLAY_SHARD_JOB_TYPE,
         CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
+        REVERSAL_SHARD_JOB_TYPE,
     )
 
-    assert _foreground_supported_job_types(all_types, maximum_processes=6) == (foreground_type,)
+    assert _foreground_supported_job_types(all_types, maximum_processes=6) == (
+        foreground_type,
+        REVERSAL_SHARD_JOB_TYPE,
+    )
 
 
 def test_single_process_worker_keeps_replay_executable() -> None:
