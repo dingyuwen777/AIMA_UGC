@@ -266,3 +266,17 @@ def test_main_evidence_reuse_keeps_main_specific_cheap_governance_gates() -> Non
         "      - name: Setup Python\n",
     )
     assert "steps.reuse.outputs.reusable" not in docs_gate
+
+
+def test_main_evidence_resolver_process_failure_falls_back_in_all_workflows() -> None:
+    """resolver 进程自身失败必须转为 reusable=false，而不是中断 main 验证。"""
+    ci = CI.read_text(encoding="utf-8")
+    runtime = RUNTIME.read_text(encoding="utf-8")
+    tooling = TOOLING.read_text(encoding="utf-8")
+
+    assert "if ! python3 scripts/quality/resolve_main_evidence.py" in ci
+    assert "reason=resolver_process_failed" in ci
+    assert "if ! python3 scripts/quality/resolve_main_evidence.py" in runtime
+    assert "reason=resolver_process_failed" in runtime
+    assert tooling.count("if ! python3 scripts/quality/resolve_main_evidence.py") == 2
+    assert tooling.count("reason=resolver_process_failed") >= 2
