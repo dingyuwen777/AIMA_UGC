@@ -12,11 +12,14 @@ completion_gate: required
 depends_on: []
 affected_areas:
   - deployment
+  - release
   - operations
   - testing
 affected_paths:
   - scripts/deploy/reset_keep_vehicle_catalog.sh
+  - scripts/release/release_bundle.py
   - tests/unit/platform/test_reset_keep_vehicle_catalog.py
+  - tests/unit/test_release_bundle.py
   - tests/integration/database/test_reset_keep_vehicle_catalog_script.py
   - docs/operations/01_生产部署与离线Release方案.md
 contracts: []
@@ -57,7 +60,7 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 | --- | --- | --- | --- |
 | E1 | 目标环境目录计数为 `8|3|6|0|0` | 用户本轮只读 PostgreSQL 查询 | 车型为空是合法目录状态 |
 | E2 | 原实现要求 catalog version、brand、model 均非空 | 原 `scripts/deploy/reset_keep_vehicle_catalog.sh` | 非空判断是本次根因 |
-| E3 | Release workflow 已包含同名脚本 | `.github/workflows/release.yml` | 不改变 Release 结构 |
+| E3 | Release bundle smoke 会调用同名脚本，原调用仍携带旧的空目录特例参数 | `scripts/release/release_bundle.py` / Release dry-run #426 | 必须同步真实 CLI 消费者但不改变 Release 结构 |
 | E4 | 新增隔离回归覆盖品牌有数据/车型为空、停写后稳定基线、正常执行和内容变化失败关闭 | `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | Shell 控制流和时序有可重复验证入口 |
 | E5 | 正式目录指纹 SQL 可由测试直接从脚本提取并在隔离 PostgreSQL 执行 | `tests/integration/database/test_reset_keep_vehicle_catalog_script.py` | PostgreSQL 专属 SQL 不由 Fake 冒充 |
 | E6 | 脚本头部与 help 已包含 dry-run、执行确认、保留范围和重启说明 | 当前分支脚本 | 使用方式已落到交付物 |
@@ -154,6 +157,7 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 | --- | --- | --- | --- |
 | `scripts/deploy/reset_keep_vehicle_catalog.sh` | 放宽目录状态、增加内容指纹和使用说明 | 修复根因并加强验收 | R1-R4 / E1-E4 |
 | `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | 增加四条隔离 Shell 工作流回归 | 无真实数据副作用地验证行为与停写基线时序 | R1-R3 / E4 |
+| `scripts/release/release_bundle.py`、`tests/unit/test_release_bundle.py` | 移除 Release smoke 对旧空目录特例参数的调用与期望 | 同步真实 CLI 消费者 | R3-R5 / E3 |
 | `tests/integration/database/test_reset_keep_vehicle_catalog_script.py` | 在隔离 PostgreSQL 运行正式指纹 SQL | 验证真实 PostgreSQL 语义 | R2-R3 / E5 |
 | `docs/operations/01_生产部署与离线Release方案.md` | 同步合法目录状态和验收语义 | 保持运维说明一致 | R4-R5 / E6 |
 
@@ -175,7 +179,7 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 | 用户 / 工作流验收 | required | Bash syntax/help + 隔离脚本工作流 |
 | 跨组件关键路径 | not_applicable | 真实数据维护操作有副作用，不作为常规 PR 验证 |
 | 外部依赖 / 供应方探测 | not_applicable | 无外部 Provider 变化 |
-| 构建 / 打包 / 运行 | required | Release workflow 继续包含同名脚本；PR CI 验证当前 head |
+| 构建 / 打包 / 运行 | required | Release bundle smoke 使用新 CLI 参数；PR Release dry-run 与 CI 验证当前 head |
 | 文档 / 治理 / 其他 | required | Operations、Change Completion、Review、PR CI |
 
 ## 验证计划
@@ -183,7 +187,7 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 - 目标测试：`tests/unit/platform/test_reset_keep_vehicle_catalog.py`。
 - 集成测试：`tests/integration/database/test_reset_keep_vehicle_catalog_script.py`。
 - 相关回归：仓库 unit/quality gate 按 CI changed-scope 执行。
-- 静态检查或构建：Bash syntax、Ruff、仓库 CI。
+- 静态检查或构建：Bash syntax、Ruff、Release bundle smoke、仓库 CI。
 - 专项真实边界：隔离 PostgreSQL 只验证正式指纹 SQL；不执行真实业务数据维护。
 - 就绪检查：仓库 Change Completion gate 与 PR required checks。
 
