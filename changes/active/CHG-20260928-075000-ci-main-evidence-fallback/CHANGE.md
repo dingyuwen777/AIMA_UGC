@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-075000-ci-main-evidence-fallback
 title: 修复main证据复用控制面兼容与故障回退
 level: L2
-status: proposed
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/636-main-evidence-fallback
 created: 2026-09-28
@@ -132,8 +132,8 @@ main push 会继续在复用控制面直接失败，无法获得 CI Gate / Compo
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | Evidence Reuse 任何不可确认/失败情况都回退真实验证 | #636 / AC1 | not_satisfied | 待 process fallback |
-| R2 | merge 后 main 行为真实完成并收尾 | #636 / AC7 | not_satisfied | 待修复后 main-fresh |
+| R1 | Evidence Reuse 任何不可确认/失败情况都回退真实验证 | #636 / AC1 | satisfied | resolver 已恢复 Python 3.12 grammar；CI/Runtime/Tooling 四个调用均以 shell `if ! python3 ...` 捕获进程失败并写 `reusable=false` / `reason=resolver_process_failed`。 |
+| R2 | merge 后 main 行为真实完成并收尾 | #636 / AC7 | explicitly_deferred | 该要求只能在修复 PR 合并后读取 main Actions / Archive 才能证明；PR Ready 阶段不能伪造 post-merge Evidence。 |
 
 # 计划改动
 
@@ -146,10 +146,10 @@ main push 会继续在复用控制面直接失败，无法获得 CI Gate / Compo
 
 - [x] 调查 main 真实失败日志。
 - [x] 根因闭合到解释器兼容 + 进程级 fallback 缺口。
-- [ ] 建立 Red。
-- [ ] 完成最小 Green。
-- [ ] PR current-head CI / Review。
-- [ ] merge 后 main reuse / Archive / Issue closure。
+- [x] 建立 Red：Python 3.12 grammar 与四个 workflow process fallback 回归。
+- [x] 完成最小 Green：兼容异常语法 + resolver 进程级 fail-closed wrapper。
+- [ ] PR current-head CI / Review：Ready 后执行，作为 merge gate。
+- [ ] merge 后 main reuse / Archive / Issue closure：仅 post-merge 可执行。
 
 # 验证矩阵
 
@@ -183,10 +183,10 @@ main push 会继续在复用控制面直接失败，无法获得 CI Gate / Compo
 
 # 完成审计
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read：已重读 #636 AC1/AC7、main 失败日志和当前 resolver/workflow。
+- [x] change_coverage：R1 已实现；R2 有正式 post-merge 生命周期依据。
+- [x] reverse_audit：resolver 内部 API fail-closed 与 workflow 进程级 fail-closed 均存在；false 路径继续原真实 CI/Runtime/Tooling。
+- [x] unresolved_cleared：无 `not_satisfied`；R2 按 #636 AC7 明确为 post-merge `explicitly_deferred`。
 
 # 完成证据与状态
 
@@ -194,20 +194,20 @@ main push 会继续在复用控制面直接失败，无法获得 CI Gate / Compo
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明 |
 | --- | --- | --- | --- | --- |
-| V1 | 待填写 | Python 3.12 grammar regression | 待执行 | pre-setup compatibility |
-| V2 | 待填写 | Workflow structure regression | 待执行 | process fail-closed |
-| V3 | 待填写 | PR CI/Runtime | 待执行 | current-head |
-| V4 | 待填写 | main Actions | 待执行 | actual reuse |
+| V1 | 当前分支 | `test_resolver_source_is_compatible_with_runner_bootstrap_python` readback | Red/Green 资产已建立，待 PR CI 执行 | pre-setup Python 3.12 grammar compatibility |
+| V2 | 当前分支 | `test_main_evidence_resolver_process_failure_falls_back_in_all_workflows` readback | 四个调用均存在 process fallback，待 PR CI 执行 | resolver process failure 不再阻塞真实验证 |
+| V3 | PR #638 current HEAD | GitHub CI / Runtime / Tooling | Ready 后执行 | current-head formal evidence |
+| V4 | merge 后 main | GitHub Actions | explicitly_deferred 到 #636 AC7 | actual reuse + expensive layers skipped |
 
 ## 未验证内容与剩余风险
 
-当前尚未修复，不能声明 Issue #636 完成。
+实现已完成但 PR current-head 与 post-merge main Evidence 尚未取得；CI/Review 未绿前不得合并，main reuse 未实证前不得关闭 AC7。
 
 ## 交付状态
 
 - 分支：`fix/636-main-evidence-fallback`
-- PR：待创建
-- CI：待执行
-- merge：待 current-head gates
-- Archive：待 merge 后
+- PR：#638，Draft，关联 #636
+- CI：待 Ready 后 current-head 执行
+- merge：待 current-head required gates 与独立 Review
+- Archive：待 merge 后 repository-native workflow
 - Release/Deploy：不适用
