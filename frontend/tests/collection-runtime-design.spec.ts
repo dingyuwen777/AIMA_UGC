@@ -214,6 +214,63 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(html).toContain('重试撤回')
   })
 
+  it('历史重筛取消与撤回时区分阶段进度和重筛子任务', async () => {
+    const base = {
+      record_id: 'replay-cancelling', record_type: 'canonical_replay',
+      display_name: '历史数据重筛', status: 'running', progress: 50,
+      created_at: '2026-09-27T00:05:13+08:00',
+      canonical_replay_stats: {
+        artifact_count: 12_695, run_count: 127, queued_run_count: 0, running_run_count: 0,
+        succeeded_run_count: 45, failed_run_count: 0, cancelled_run_count: 82,
+        rows_seen: 8_005_915, rows_matched: 1_776_798, rows_filtered_out: 6_229_117,
+        duplicates_removed: 25_642, rows_ingested: 970_296, existing_convergence: 780_860,
+        reversible: true, reversal_job_id: null, reverted_content_count: 0,
+        hidden_content_count: 0, retained_content_count: 0, skipped_content_count: 0,
+        restored_evidence_count: 0, skipped_evidence_count: 0,
+      },
+    }
+    const cancelling = await renderComponent(CanonicalReplayDetailDrawer, {
+      modelValue: true,
+      item: {
+        ...base, stage: 'cancelling',
+        canonical_replay_stats: { ...base.canonical_replay_stats, lifecycle_status: 'cancelling' },
+      },
+    })
+    expect(cancelling).toContain('取消中')
+    expect(cancelling).toContain('重筛子任务已结束')
+    expect(cancelling).not.toContain('总体进度')
+
+    const reverting = await renderComponent(CanonicalReplayDetailDrawer, {
+      modelValue: true,
+      item: {
+        ...base, stage: 'reverting',
+        canonical_replay_stats: {
+          ...base.canonical_replay_stats, lifecycle_status: 'reverting',
+          reversal_job_id: 'reversal-1', reverted_content_count: 6250,
+        },
+      },
+    })
+    expect(reverting).toContain('撤回中')
+    expect(reverting).toContain('撤回进度')
+    expect(reverting).toContain('重筛子任务已结束')
+    expect(reverting).toContain('已重算内容')
+    expect(reverting).not.toContain('总体进度')
+
+    const cancelFailed = await renderComponent(CanonicalReplayDetailDrawer, {
+      modelValue: true,
+      item: {
+        ...base, status: 'failed', stage: 'revert_failed',
+        canonical_replay_stats: {
+          ...base.canonical_replay_stats, lifecycle_status: 'revert_failed',
+          queued_run_count: 0, run_count: 0, artifact_count: 0,
+        },
+      },
+    })
+    expect(cancelFailed).toContain('取消失败')
+    expect(cancelFailed).toContain('重试取消并撤回')
+    expect(cancelFailed).not.toContain('撤回进度')
+  })
+
   it('五类运行记录的列表分别展示输入量、处理结果和撤回实绩', async () => {
     const common = {
       status: 'succeeded', stage: 'succeeded', progress: 100,

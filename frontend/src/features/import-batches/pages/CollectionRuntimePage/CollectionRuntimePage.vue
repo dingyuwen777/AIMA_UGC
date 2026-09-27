@@ -136,8 +136,11 @@ async function copy(value: string): Promise<void> {
 }
 
 async function cancelAndRevokeReplay(): Promise<void> {
-  if (await store.cancelAndRevokeSelectedCanonicalReplay()) {
+  const result = await store.cancelAndRevokeSelectedCanonicalReplay()
+  if (result === 'accepted') {
     showNotice('已请求取消；所有子任务结束后会自动撤回本次已入库数据。')
+  } else if (result === 'unconfirmed') {
+    showNotice('请求结果暂未确认，请查看任务状态。')
   }
 }
 

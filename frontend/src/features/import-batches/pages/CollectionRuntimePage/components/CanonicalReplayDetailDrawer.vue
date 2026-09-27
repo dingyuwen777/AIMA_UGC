@@ -38,6 +38,21 @@ watch(
 )
 
 const stats = computed(() => props.item?.canonical_replay_stats ?? null)
+const displayStatus = computed(() => {
+  const lifecycle = stats.value?.lifecycle_status
+  if (lifecycle === 'cancelling') return '取消中'
+  if (lifecycle === 'reverting') return '撤回中'
+  if (lifecycle === 'reverted') return '已撤回'
+  if (lifecycle === 'revert_failed') {
+    return stats.value?.reversal_job_id ? '撤回失败' : '取消失败'
+  }
+  return props.item ? runtimeStatusLabels[props.item.status] : ''
+})
+const reversing = computed(() => {
+  const lifecycle = stats.value?.lifecycle_status
+  return lifecycle === 'reverting' || lifecycle === 'reverted' ||
+    (lifecycle === 'revert_failed' && !!stats.value?.reversal_job_id)
+})
 const terminalRunCount = computed(() => {
   const value = stats.value
   if (!value) return 0
@@ -47,12 +62,16 @@ const actionKind = computed<'cancel-and-revoke' | 'revoke' | null>(() => {
   const item = props.item
   const value = stats.value
   if (!item || !value?.reversible) return null
-  if (value.lifecycle_status === 'revert_failed') return 'revoke'
+  if (value.lifecycle_status === 'revert_failed') {
+    return value.reversal_job_id ? 'revoke' : 'cancel-and-revoke'
+  }
   if (value.lifecycle_status !== 'active') return null
   return item.status === 'queued' || item.status === 'running' ? 'cancel-and-revoke' : 'revoke'
 })
 const actionLabel = computed(() => {
-  if (stats.value?.lifecycle_status === 'revert_failed') return '重试撤回'
+  if (stats.value?.lifecycle_status === 'revert_failed') {
+    return actionKind.value === 'cancel-and-revoke' ? '重试取消并撤回' : '重试撤回'
+  }
   return actionKind.value === 'cancel-and-revoke' ? '取消并撤回' : '撤回本次入库'
 })
 
@@ -131,7 +150,7 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
       >
         <div class="detail-title">
           <h2>{{ item.display_name }}</h2>
-          <span :class="`status-tag status-tag--${item.status}`">{{ runtimeStatusLabels[item.status] }}</span>
+          <span :class="`status-tag status-tag--${item.status}`">{{ displayStatus }}</span>
         </div>
         <div class="fact-grid">
           <div><span>处理范围</span><strong>全部历史 Canonical</strong></div>
@@ -140,11 +159,22 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
           <div><span>总耗时</span><strong>{{ elapsed(item.started_at, item.finished_at) }}</strong></div>
         </div>
         <div class="progress-panel">
-          <div><strong>总体进度</strong><span>{{ item.progress }}%</span></div>
-          <div class="detail-progress">
-            <span :style="{ width: `${Math.max(0, Math.min(100, item.progress))}%` }" />
-          </div>
-          <small>已结束 {{ formatNumber(terminalRunCount) }} / {{ formatNumber(stats.run_count) }} 个子任务</small>
+          <template v-if="stats.lifecycle_status === 'cancelling'">
+            <div><strong>取消中</strong></div>
+            <small>重筛子任务已结束 {{ formatNumber(terminalRunCount) }} / {{ formatNumber(stats.run_count) }}；全部结束后自动开始撤回。</small>
+          </template>
+          <template v-else-if="stats.lifecycle_status === 'revert_failed' && !stats.reversal_job_id">
+            <div><strong>取消失败</strong></div>
+            <small>重筛子任务已结束 {{ formatNumber(terminalRunCount) }} / {{ formatNumber(stats.run_count) }}；可重试取消并撤回。</small>
+          </template>
+          <template v-else>
+            <div><strong>{{ reversing ? '撤回进度' : '重筛进度' }}</strong><span>{{ item.progress }}%</span></div>
+            <div class="detail-progress">
+              <span :style="{ width: `${Math.max(0, Math.min(100, item.progress))}%` }" />
+            </div>
+            <small>重筛子任务已结束 {{ formatNumber(terminalRunCount) }} / {{ formatNumber(stats.run_count) }}</small>
+            <small v-if="reversing">撤回进度按任务执行状态统计；下方“已重算内容”为实际已处理数量。</small>
+          </template>
         </div>
         <h3>处理统计</h3>
         <div class="stat-grid">
@@ -161,7 +191,7 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
         >
           处理已有记录按输入记录累计；同一内容在不同来源重复出现时会分别计数。撤回统计按不同内容计数。
         </AimaFeedbackBanner>
-        <template v-if="['reverting', 'reverted', 'revert_failed'].includes(stats.lifecycle_status)">
+        <template v-if="reversing">
           <h3>撤回统计</h3>
           <div class="stat-grid">
             <div><span>已重算内容</span><strong>{{ formatNumber(stats.reverted_content_count) }}</strong></div>
@@ -180,7 +210,7 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
       >
         <h3>任务信息</h3>
         <div class="fact-grid fact-grid--single">
-          <div><span>当前状态</span><strong>{{ runtimeStatusLabels[item.status] }}</strong></div>
+          <div><span>当前状态</span><strong>{{ displayStatus }}</strong></div>
           <div><span>处理环节</span><strong>{{ runtimeStageLabel(item.stage) }}</strong></div>
           <div><span>开始时间</span><strong>{{ formatDateTime(item.started_at) }}</strong></div>
           <div><span>结束时间</span><strong>{{ formatDateTime(item.finished_at) }}</strong></div>

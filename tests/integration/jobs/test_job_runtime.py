@@ -47,6 +47,7 @@ def _enqueue(
     job_type: str = "test.echo.v1",
     max_attempts: int = 2,
     timeout_seconds: int = 30,
+    priority: int = 10,
 ):
     return repository.enqueue(
         job_type=job_type,
@@ -54,7 +55,7 @@ def _enqueue(
         payload={"schema_version": "echo.v1", "value": value},
         internal_idempotency_key=key,
         request_id=None,
-        priority=10,
+        priority=priority,
         max_attempts=max_attempts,
         timeout_seconds=timeout_seconds,
     )
@@ -125,6 +126,160 @@ def test_worker_pool_pressure_counts_ready_queue_and_its_own_leases(
             assert repository.pool_pressure(
                 lease_owners={"worker-b"}, queued_limit=2, now=beijing_now()
             ) == (1, set())
+    finally:
+        session.close()
+
+
+def test_worker_supported_type_override_leaves_background_job_queued(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """保留 Worker 只领取允许类型；默认 Worker 行为仍由完整 Registry 决定。"""
+
+    registry = JobRegistry()
+
+    def echo_handler(payload, context):  # type: ignore[no-untyped-def]
+        del context
+        return JobHandlerResult.succeeded({"value": payload.value})
+
+    for job_type in ("test.foreground.v1", "test.background.v1"):
+        registry.register(
+            job_type=job_type,
+            payload_version="echo.v1",
+            payload_model=EchoPayloadV1,
+            handler=echo_handler,
+            retry_on_timeout=True,
+        )
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            repository = PostgresJobRepository(session)
+            foreground = _enqueue(
+                repository,
+                key="foreground-reserve",
+                job_type="test.foreground.v1",
+            )
+            background = _enqueue(
+                repository,
+                key="background-reserve",
+                job_type="test.background.v1",
+            )
+        worker = JobWorker(
+            session_factory=database_runtime.new_session,
+            registry=registry,
+            worker_id="foreground-only",
+            lease_seconds=30,
+            retry_delay_seconds=0,
+            supported_job_types=("test.foreground.v1",),
+        )
+
+        assert worker.run_once() is True
+
+        with session.begin():
+            assert PostgresJobRepository(session).get(foreground.id).status == "succeeded"  # type: ignore[union-attr]
+            assert PostgresJobRepository(session).get(background.id).status == "queued"  # type: ignore[union-attr]
+    finally:
+        session.close()
+
+
+def test_worker_priority_floor_preserves_shared_foreground_job_type(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """同一 Job Type 的后台重筛工作不能占用保留 Worker，较高优先级任务仍可领取。"""
+
+    registry = JobRegistry()
+
+    def echo_handler(payload, context):  # type: ignore[no-untyped-def]
+        del context
+        return JobHandlerResult.succeeded({"value": payload.value})
+
+    registry.register(
+        job_type="test.shared.v1",
+        payload_version="echo.v1",
+        payload_model=EchoPayloadV1,
+        handler=echo_handler,
+        retry_on_timeout=True,
+    )
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            repository = PostgresJobRepository(session)
+            background = _enqueue(
+                repository,
+                key="shared-background",
+                job_type="test.shared.v1",
+                priority=-30,
+            )
+            foreground = _enqueue(
+                repository,
+                key="shared-foreground",
+                job_type="test.shared.v1",
+                priority=-20,
+            )
+        worker = JobWorker(
+            session_factory=database_runtime.new_session,
+            registry=registry,
+            worker_id="foreground-priority-floor",
+            lease_seconds=30,
+            retry_delay_seconds=0,
+            minimum_priority=-29,
+        )
+
+        assert worker.run_once() is True
+
+        with session.begin():
+            jobs = PostgresJobRepository(session)
+            assert jobs.get(foreground.id).status == "succeeded"  # type: ignore[union-attr]
+            assert jobs.get(background.id).status == "queued"  # type: ignore[union-attr]
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize(("cap_seconds", "second_delay"), [(5, 5), (None, 10)])
+def test_job_type_retry_cap_bounds_exponential_delay_without_changing_default(
+    database_runtime: DatabaseRuntime,
+    cap_seconds: int | None,
+    second_delay: int,
+) -> None:
+    registry = JobRegistry()
+    registry.register(
+        job_type="test.echo.v1",
+        payload_version="echo.v1",
+        payload_model=EchoPayloadV1,
+        handler=lambda payload, context: JobHandlerResult.retry("row_busy"),
+        retry_on_timeout=True,
+        retry_delay_cap_seconds=cap_seconds,
+    )
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            job = _enqueue(
+                PostgresJobRepository(session), key=f"retry-cap-{cap_seconds}", max_attempts=3
+            )
+        worker = JobWorker(
+            session_factory=database_runtime.new_session,
+            registry=registry,
+            worker_id="retry-cap-worker",
+            lease_seconds=30,
+            retry_delay_seconds=5,
+        )
+        assert worker.run_once() is True
+        with session.begin():
+            first = PostgresJobRepository(session).get(job.id)
+            assert first is not None
+            assert first.status == "queued"
+            assert (first.available_at - first.updated_at).total_seconds() == 5
+            session.execute(
+                text("UPDATE jobs SET available_at = clock_timestamp() WHERE id = :job_id"),
+                {"job_id": job.id},
+            )
+        assert worker.run_once() is True
+        with session.begin():
+            second = PostgresJobRepository(session).get(job.id)
+            assert second is not None
+            assert second.status == "queued"
+            assert second.attempt == 2
+            assert (second.available_at - second.updated_at).total_seconds() == second_delay
     finally:
         session.close()
 

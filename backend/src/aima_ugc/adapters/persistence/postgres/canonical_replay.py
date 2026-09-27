@@ -12,6 +12,7 @@ from sqlalchemy import func, insert, literal, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.selectable import Subquery
 
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
@@ -22,6 +23,12 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_ARTIFACTS_PER_RUN,
+    CANONICAL_REPLAY_BACKGROUND_PRIORITY,
+    CANONICAL_REPLAY_CANCELLATION_JOB_MAX_ATTEMPTS,
+    CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
+    CANONICAL_REPLAY_CANCELLATION_JOB_PRIORITY,
+    CANONICAL_REPLAY_CANCELLATION_JOB_TIMEOUT_SECONDS,
+    CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
     CANONICAL_REPLAY_FAST_BATCH_SIZE,
     CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
@@ -362,7 +369,7 @@ class PostgresCanonicalReplayRepository:
             },
             internal_idempotency_key=f"canonical-replay-plan:{all_request_id}",
             request_id=request_id,
-            priority=0,
+            priority=CANONICAL_REPLAY_BACKGROUND_PRIORITY,
             max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
             timeout_seconds=CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
         )
@@ -536,7 +543,7 @@ class PostgresCanonicalReplayRepository:
             },
             internal_idempotency_key=f"canonical-replay:{key}",
             request_id=request_id,
-            priority=0,
+            priority=CANONICAL_REPLAY_BACKGROUND_PRIORITY,
             max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
             timeout_seconds=CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
         )
@@ -800,20 +807,12 @@ class PostgresCanonicalReplayRepository:
         if record.lifecycle_status == "reverted":
             return record
 
-        jobs = self._list_all_request_jobs(request_id)
-        active = tuple(job for job in jobs if job.status in {"queued", "running"})
-        if active and not cancel_active:
+        if self._has_active_all_request_jobs(request_id) and not cancel_active:
             raise RuntimeError("历史重筛仍在运行，请使用取消并撤回")
         now = beijing_now()
         if cancel_active:
-            job_repository = PostgresJobRepository(self._session)
-            for job in active:
-                cancelled_or_requested = job_repository.request_cancel(job.id)
-                if (
-                    job.job_type == CANONICAL_REPLAY_PLAN_JOB_TYPE
-                    and cancelled_or_requested.status == "cancelled"
-                ):
-                    self.mark_all_plan_terminal(request_id, job=cancelled_or_requested)
+            if record.lifecycle_status in {"cancelling", "reverting"}:
+                return record
             self._session.execute(
                 update(canonical_replay_all_requests_table)
                 .where(canonical_replay_all_requests_table.c.id == request_id)
@@ -837,6 +836,23 @@ class PostgresCanonicalReplayRepository:
                     ),
                 )
             )
+            PostgresJobRepository(self._session).enqueue(
+                job_type=CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
+                payload_version=CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
+                payload={
+                    "schema_version": CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
+                    "request_id": str(request_id),
+                },
+                internal_idempotency_key=(
+                    f"canonical-replay-cancellation:{request_id}:{uuid4()}"
+                    if record.lifecycle_status == "revert_failed"
+                    else f"canonical-replay-cancellation:{request_id}"
+                ),
+                request_id=record.reversal_request_id or http_request_id,
+                priority=CANONICAL_REPLAY_CANCELLATION_JOB_PRIORITY,
+                max_attempts=CANONICAL_REPLAY_CANCELLATION_JOB_MAX_ATTEMPTS,
+                timeout_seconds=CANONICAL_REPLAY_CANCELLATION_JOB_TIMEOUT_SECONDS,
+            )
         else:
             self._session.execute(
                 update(canonical_replay_all_requests_table)
@@ -856,7 +872,8 @@ class PostgresCanonicalReplayRepository:
                     ),
                 )
             )
-        self.ensure_reversal_job_if_ready(request_id)
+        if not cancel_active:
+            self.ensure_reversal_job_if_ready(request_id)
         refreshed = self.get_all_request(request_id)
         if refreshed is None:
             raise RuntimeError("历史重筛撤回请求更新后不可读")
@@ -875,9 +892,7 @@ class PostgresCanonicalReplayRepository:
             return record
         if record.reversal_requested_at is None:
             return record
-        if any(
-            job.status in {"queued", "running"} for job in self._list_all_request_jobs(request_id)
-        ):
+        if self._has_active_all_request_jobs(request_id):
             return record
         job = PostgresJobRepository(self._session).enqueue(
             job_type=CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
@@ -892,7 +907,7 @@ class PostgresCanonicalReplayRepository:
                 else f"canonical-replay-reversal:{request_id}"
             ),
             request_id=record.reversal_request_id,
-            priority=0,
+            priority=CANONICAL_REPLAY_BACKGROUND_PRIORITY,
             max_attempts=CANONICAL_REPLAY_JOB_MAX_ATTEMPTS,
             timeout_seconds=CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS,
         )
@@ -918,32 +933,78 @@ class PostgresCanonicalReplayRepository:
             .values(lifecycle_status="revert_failed")
         )
 
-    def _list_all_request_jobs(self, request_id: UUID) -> tuple[JobRecord, ...]:
-        """返回 Planner 与全部子 Run Job，供取消/撤回完成屏障统一判断。"""
+    def mark_cancellation_failed(self, request_id: UUID) -> None:
+        """取消协调耗尽重试后显示失败，允许再次请求继续取消。"""
 
-        repository = PostgresJobRepository(self._session)
-        record = self.get_all_request(request_id)
-        planner = (
-            repository.get(record.planner_job_id)
-            if record is not None and record.planner_job_id is not None
-            else None
+        self._session.execute(
+            update(canonical_replay_all_requests_table)
+            .where(
+                canonical_replay_all_requests_table.c.id == request_id,
+                canonical_replay_all_requests_table.c.lifecycle_status == "cancelling",
+            )
+            .values(lifecycle_status="revert_failed")
         )
+
+    def _all_request_job_ids(self, request_id: UUID) -> Subquery:
+        """Planner 与 Run 的 Job ID 统一由数据库集合查询，避免逐个读取。"""
+
+        return union_all(
+            select(canonical_replay_all_requests_table.c.planner_job_id.label("job_id")).where(
+                canonical_replay_all_requests_table.c.id == request_id,
+                canonical_replay_all_requests_table.c.planner_job_id.is_not(None),
+            ),
+            select(canonical_replay_runs_table.c.job_id.label("job_id")).where(
+                canonical_replay_runs_table.c.all_request_id == request_id
+            ),
+        ).subquery()
+
+    def _has_active_all_request_jobs(self, request_id: UUID) -> bool:
+        ids = self._all_request_job_ids(request_id)
+        return (
+            self._session.scalar(
+                select(jobs_table.c.id)
+                .join(ids, jobs_table.c.id == ids.c.job_id)
+                .where(jobs_table.c.status.in_(("queued", "running")))
+                .limit(1)
+            )
+            is not None
+        )
+
+    def cancel_available_all_request_jobs(
+        self, request_id: UUID, *, limit: int
+    ) -> tuple[int, bool]:
+        """只锁可用的子 Job；每批独立提交，使长任务与 API 不共用锁链。"""
+
+        ids = self._all_request_job_ids(request_id)
         job_ids = self._session.scalars(
             select(jobs_table.c.id)
-            .select_from(
-                canonical_replay_runs_table.join(
-                    jobs_table,
-                    jobs_table.c.id == canonical_replay_runs_table.c.job_id,
-                )
+            .join(ids, jobs_table.c.id == ids.c.job_id)
+            .where(
+                jobs_table.c.status.in_(("queued", "running")),
+                jobs_table.c.cancel_requested_at.is_(None),
             )
-            .where(canonical_replay_runs_table.c.all_request_id == request_id)
-            .order_by(canonical_replay_runs_table.c.all_request_ordinal)
+            .order_by(jobs_table.c.id)
+            .limit(limit)
+            .with_for_update(of=jobs_table, skip_locked=True)
+        ).all()
+        job_repository = PostgresJobRepository(self._session)
+        for job_id in job_ids:
+            changed = job_repository.request_cancel(cast(UUID, job_id))
+            if changed.job_type == CANONICAL_REPLAY_PLAN_JOB_TYPE and changed.status == "cancelled":
+                self.mark_all_plan_terminal(request_id, job=changed)
+        pending = (
+            self._session.scalar(
+                select(jobs_table.c.id)
+                .join(ids, jobs_table.c.id == ids.c.job_id)
+                .where(
+                    jobs_table.c.status.in_(("queued", "running")),
+                    jobs_table.c.cancel_requested_at.is_(None),
+                )
+                .limit(1)
+            )
+            is not None
         )
-        run_jobs = tuple(repository.get(cast(UUID, job_id)) for job_id in job_ids)
-        if any(job is None for job in run_jobs):
-            raise RuntimeError("全量 Replay 子 Run 缺少 Job")
-        normalized = cast(tuple[JobRecord, ...], run_jobs)
-        return ((planner,) if planner is not None else ()) + normalized
+        return len(job_ids), pending
 
     def claim_content_identity(
         self,

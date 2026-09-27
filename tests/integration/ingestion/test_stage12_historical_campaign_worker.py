@@ -2184,8 +2184,10 @@ def test_replay_skips_remaining_rows_when_campaign_revocation_starts_between_bat
         original_ingest = PostgresCanonicalReplayJobExecutor._ingest_batch
 
         def revoke_after_first_batch(  # type: ignore[no-untyped-def]
-            executor, run, selected, artifact, contents, *, fence, batch_metrics
+            executor, run, selected, artifact, contents, *, fence, batch_metrics, **kwargs
         ):
+            """透传 Replay 批次参数，并在首批提交后模拟 Campaign 撤销。"""
+
             advanced = original_ingest(
                 executor,
                 run,
@@ -2194,6 +2196,7 @@ def test_replay_skips_remaining_rows_when_campaign_revocation_starts_between_bat
                 contents,
                 fence=fence,
                 batch_metrics=batch_metrics,
+                **kwargs,
             )
             if advanced.checkpoint_row_number == 1:
                 with runtime.database.engine.begin() as connection:

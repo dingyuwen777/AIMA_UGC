@@ -14,6 +14,8 @@ from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.modules.ingestion.canonical_replay_tables import canonical_replay_all_requests_table
 from aima_ugc.modules.ingestion.reversal_shard_tables import reversal_shards_table
 from aima_ugc.modules.ingestion.reversal_shards import (
+    IMPORT_REVERSAL_SHARD_PRIORITY,
+    REPLAY_REVERSAL_SHARD_PRIORITY,
     REVERSAL_SHARD_JOB_TYPE,
     REVERSAL_TARGET_CONTENTS_PER_SHARD,
 )
@@ -169,7 +171,11 @@ class PostgresReversalShardRepository:
                 payload={"shard_id": str(shard_id)},
                 internal_idempotency_key=f"reversal-shard:{parent_fence.job_id}:{shard_id}",
                 request_id=None,
-                priority=40,
+                priority=(
+                    REPLAY_REVERSAL_SHARD_PRIORITY
+                    if kind == "replay"
+                    else IMPORT_REVERSAL_SHARD_PRIORITY
+                ),
                 max_attempts=10,
                 timeout_seconds=86_400,
             )

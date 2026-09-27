@@ -159,6 +159,8 @@ class JobWorker:
         worker_id: str,
         lease_seconds: int,
         retry_delay_seconds: int,
+        supported_job_types: tuple[str, ...] | None = None,
+        minimum_priority: int | None = None,
     ) -> None:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
@@ -166,6 +168,14 @@ class JobWorker:
             raise ValueError("retry_delay_seconds must be nonnegative")
         self._session_factory = session_factory
         self._registry = registry
+        resolved_job_types = (
+            registry.supported_types if supported_job_types is None else supported_job_types
+        )
+        unknown_job_types = set(resolved_job_types).difference(registry.supported_types)
+        if unknown_job_types:
+            raise ValueError("supported_job_types contains unregistered job types")
+        self._supported_job_types = resolved_job_types
+        self._minimum_priority = minimum_priority
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
         self._retry_delay_seconds = retry_delay_seconds
@@ -176,9 +186,10 @@ class JobWorker:
         try:
             with session.begin():
                 job = _repository(session).claim_next(
-                    supported_job_types=self._registry.supported_types,
+                    supported_job_types=self._supported_job_types,
                     worker_id=self._worker_id,
                     lease_seconds=self._lease_seconds,
+                    minimum_priority=self._minimum_priority,
                 )
         finally:
             session.close()
@@ -280,6 +291,7 @@ class JobWorker:
             context._raise_heartbeat_error()
             persisted = self._apply_result(
                 job_id=job.id,
+                job_type=job.job_type,
                 lease_token=job.lease_token,
                 result=result,
             )
@@ -402,6 +414,7 @@ class JobWorker:
         self,
         *,
         job_id: UUID,
+        job_type: str,
         lease_token: str,
         result: JobHandlerResult,
     ) -> JobRecord:
@@ -423,6 +436,9 @@ class JobWorker:
                         lease_token=lease_token,
                         error_code=result.error_code,
                         retry_delay_seconds=self._retry_delay_seconds,
+                        retry_delay_cap_seconds=self._registry.get(
+                            job_type
+                        ).retry_delay_cap_seconds,
                     )
                 elif result.outcome == "failed":
                     if result.error_code is None:

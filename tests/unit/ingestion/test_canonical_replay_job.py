@@ -8,7 +8,9 @@ import pytest
 from aima_ugc.bootstrap.canonical_replay_worker import (
     PostgresCanonicalReplayJobExecutor,
     _new_replay_batch_tuner,
+    _partition_resolved_batch,
     _replay_batch_tiers,
+    _ReplayScanBatchController,
 )
 from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_JOB_PAYLOAD_VERSION,
@@ -162,3 +164,86 @@ def test_replay_shards_share_the_same_small_batch_tuner() -> None:
         )
     )
     assert (selected, reason, previous) == (125, "measured_throughput", None)
+
+
+@pytest.mark.parametrize(
+    ("sampled_rows", "matched_rows", "expected_scan_rows"),
+    [
+        (100, 80, 157),
+        (100, 25, 500),
+        (100, 5, 2500),
+        (100, 0, 4000),
+    ],
+)
+def test_low_hit_replay_expands_scan_without_expanding_matched_transaction(
+    sampled_rows: int,
+    matched_rows: int,
+    expected_scan_rows: int,
+) -> None:
+    """低命中只扩大只读扫描，数据库目标批量仍保持 125 条命中记录。"""
+
+    controller = _ReplayScanBatchController(
+        max_scan_rows=4000,
+        sampled_rows=sampled_rows,
+        matched_rows=matched_rows,
+    )
+
+    assert controller.choose(matched_target_rows=125) == expected_scan_rows
+
+
+def test_replay_scan_controller_tracks_recent_hit_ratio() -> None:
+    """实际批次命中率变化后，后续扫描窗口应向新负载收敛而不是冻结预检比例。"""
+
+    controller = _ReplayScanBatchController(
+        max_scan_rows=4000,
+        sampled_rows=100,
+        matched_rows=25,
+    )
+    assert controller.choose(matched_target_rows=125) == 500
+
+    controller.observe(raw_rows=500, matched_rows=25)
+
+    assert controller.choose(matched_target_rows=125) > 500
+
+
+def test_low_resource_replay_caps_raw_scan_even_when_hit_rate_is_zero() -> None:
+    """资源压力下低命中不能用更大的 raw window 抵消批次降档。"""
+
+    controller = _ReplayScanBatchController(
+        max_scan_rows=4000,
+        sampled_rows=100,
+        matched_rows=0,
+    )
+
+    assert (
+        controller.choose(
+            matched_target_rows=62,
+            scan_ceiling_rows=248,
+        )
+        == 248
+    )
+
+
+def test_replay_scan_partition_caps_each_database_transaction_by_matches() -> None:
+    """扫描命中率突然升高时，仍按 matched target 切成多个连续事务。"""
+
+    matched = SimpleNamespace(matched=True)
+    filtered = SimpleNamespace(matched=False)
+    rows = tuple(
+        (SimpleNamespace(external_content_id=str(index)), resolution)
+        for index, resolution in enumerate(
+            (filtered, matched, matched, matched, filtered, matched, matched)
+        )
+    )
+
+    chunks = _partition_resolved_batch(rows, matched_target_rows=2)  # type: ignore[arg-type]
+
+    assert [len(chunk) for chunk in chunks] == [3, 3, 1]
+    assert [sum(resolution.matched for _content, resolution in chunk) for chunk in chunks] == [
+        2,
+        2,
+        1,
+    ]
+    assert [item.external_content_id for chunk in chunks for item, _resolution in chunk] == [
+        str(index) for index in range(7)
+    ]

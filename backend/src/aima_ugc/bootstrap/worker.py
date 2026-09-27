@@ -32,9 +32,11 @@ from aima_ugc.modules.content.read_model_job import (
 )
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
 from aima_ugc.modules.ingestion.canonical_replay import (
+    CanonicalReplayCancellationJobHandler,
     CanonicalReplayJobHandler,
     CanonicalReplayPlanJobHandler,
     CanonicalReplayReversalJobHandler,
+    register_canonical_replay_cancellation_job,
     register_canonical_replay_job,
     register_canonical_replay_plan_job,
     register_canonical_replay_reversal_job,
@@ -75,6 +77,10 @@ from .analysis_concurrent_worker import ConcurrentPostgresContentAnalysisJobExec
 from .analysis_high_throughput_planner import (
     HighThroughputContentAnalysisPlanJobExecutor,
     create_high_throughput_analysis_job_terminal_callback,
+)
+from .canonical_replay_cancellation_worker import (
+    PostgresCanonicalReplayCancellationJobExecutor,
+    canonical_replay_cancellation_terminal_callback,
 )
 from .canonical_replay_planner_worker import (
     PostgresCanonicalReplayPlanJobExecutor,
@@ -246,6 +252,13 @@ def create_collection_job_registry(
         CanonicalReplayJobHandler(replay_executor),
         terminal_callback=canonical_replay_job_terminal_callback,
     )
+    register_canonical_replay_cancellation_job(
+        registry,
+        CanonicalReplayCancellationJobHandler(
+            PostgresCanonicalReplayCancellationJobExecutor(runtime)
+        ),
+        terminal_callback=canonical_replay_cancellation_terminal_callback,
+    )
     replay_reversal_executor = PostgresCanonicalReplayReversalJobExecutor(runtime)
     import_revocation_executor = PostgresImportRevocationJobExecutor(runtime)
     adaptive_shards = AdaptiveShardCoordinator(
@@ -292,6 +305,8 @@ def create_job_worker(
     worker_id: str,
     lease_seconds: int,
     retry_delay_seconds: int,
+    supported_job_types: tuple[str, ...] | None = None,
+    minimum_priority: int | None = None,
 ) -> JobWorker:
     """用正式 DatabaseRuntime 组装一个 Job Worker。"""
 
@@ -301,6 +316,8 @@ def create_job_worker(
         worker_id=worker_id,
         lease_seconds=lease_seconds,
         retry_delay_seconds=retry_delay_seconds,
+        supported_job_types=supported_job_types,
+        minimum_priority=minimum_priority,
     )
 
 
