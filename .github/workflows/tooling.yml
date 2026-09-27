@@ -89,11 +89,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/quality/resolve_main_evidence.py \
+          if ! python3 scripts/quality/resolve_main_evidence.py \
             --repository "${GITHUB_REPOSITORY}" \
             --commit "${GITHUB_SHA}" \
             --required-check "Linux Local Development Tooling" \
-            --github-output "${GITHUB_OUTPUT}"
+            --github-output "${GITHUB_OUTPUT}"; then
+            {
+              echo "reusable=false"
+              echo "reason=resolver_process_failed"
+              echo "source_pr="
+              echo "source_head="
+              echo "current_tree="
+              echo "source_tree="
+            } >> "${GITHUB_OUTPUT}"
+            echo "::warning::Main Evidence resolver process failed; falling back to normal tooling validation."
+          fi
       - name: Resolve Windows Tooling evidence
         id: windows
         env:
@@ -101,11 +111,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/quality/resolve_main_evidence.py \
+          if ! python3 scripts/quality/resolve_main_evidence.py \
             --repository "${GITHUB_REPOSITORY}" \
             --commit "${GITHUB_SHA}" \
             --required-check "Windows Development and Compose Tooling" \
-            --github-output "${GITHUB_OUTPUT}"
+            --github-output "${GITHUB_OUTPUT}"; then
+            {
+              echo "reusable=false"
+              echo "reason=resolver_process_failed"
+              echo "source_pr="
+              echo "source_head="
+              echo "current_tree="
+              echo "source_tree="
+            } >> "${GITHUB_OUTPUT}"
+            echo "::warning::Main Evidence resolver process failed; falling back to normal tooling validation."
+          fi
 
   linux-tooling:
     name: Linux Local Development Tooling
