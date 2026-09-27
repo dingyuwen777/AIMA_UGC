@@ -277,7 +277,7 @@ def test_unknown_new_fullstack_spec_fails_closed_to_entire_suite() -> None:
     assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
-def test_mixed_frontend_and_backend_change_does_not_mechanically_promote_fullstack() -> None:
+def test_mixed_frontend_and_backend_change_selects_known_journey_instead_of_all() -> None:
     requirements = _requirements(
         "frontend/src/features/voice-plaza/store.ts",
         "backend/src/aima_ugc/platform/time.py",
@@ -286,8 +286,8 @@ def test_mixed_frontend_and_backend_change_does_not_mechanically_promote_fullsta
     assert requirements.profile == "cross_component"
     assert requirements.frontend_required is True
     assert requirements.backend_required is True
-    assert requirements.fullstack_required is False
-    assert requirements.fullstack_specs == ()
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("manual-relevance-review.spec.ts",)
 
 
 def test_workbench_persistence_change_uses_exact_postgres_targets() -> None:
@@ -302,21 +302,29 @@ def test_workbench_persistence_change_uses_exact_postgres_targets() -> None:
     assert requirements.fullstack_required is False
 
 
-def test_historical_import_persistence_uses_exact_targets_and_known_journeys() -> None:
+def test_historical_import_persistence_uses_owned_domain_suites_and_known_journeys() -> None:
     requirements = _requirements(
         "backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py"
     )
 
     assert requirements.postgres_required is True
-    assert requirements.postgres_targets == (
-        "tests/integration/content/test_stage12_historical_bulk_ingestion.py",
-        "tests/integration/ingestion/test_stage12_historical_campaign_worker.py",
-    )
-    assert requirements.postgres_suites == ()
+    assert requirements.postgres_targets == ()
+    assert requirements.postgres_suites == ("content", "ingestion")
     assert requirements.fullstack_specs == (
         "excel-import.spec.ts",
         "stage12-historical-analysis.spec.ts",
     )
+
+
+def test_unknown_new_user_journey_fails_closed_to_fullstack() -> None:
+    requirements = _requirements(
+        "frontend/src/features/new-critical-flow/page.vue",
+        "backend/src/aima_ugc/bootstrap/new_critical_flow_http.py",
+    )
+
+    assert requirements.profile == "contract"
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
 def test_workbench_frontend_and_backend_change_has_no_unrelated_real_fullstack() -> None:
