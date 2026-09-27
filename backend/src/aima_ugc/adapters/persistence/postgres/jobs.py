@@ -170,7 +170,10 @@ class PostgresJobRepository:
                     FROM jobs AS j, job_clock AS c
                     WHERE j.cancel_requested_at IS NULL
                       AND j.job_type = ANY(CAST(:supported_job_types AS text[]))
-                      AND (:minimum_priority IS NULL OR j.priority >= :minimum_priority)
+                      AND (
+                          CAST(:minimum_priority AS integer) IS NULL
+                          OR j.priority >= CAST(:minimum_priority AS integer)
+                      )
                       AND (
                           (
                               j.status = 'queued'
