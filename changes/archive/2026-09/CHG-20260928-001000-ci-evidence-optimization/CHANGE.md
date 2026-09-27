@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-001000-ci-evidence-optimization
 title: CI证据复用与数据库测试精准化
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: tech/636-ci-evidence-optimization
 created: 2026-09-28
