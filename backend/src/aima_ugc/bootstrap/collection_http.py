@@ -485,6 +485,7 @@ class PostgresCollectionHttpService:
                     campaign_stats=live_campaign_stats.get(row.data_import_campaign_id, {})
                     if row.record_type == "data_import_campaign"
                     and row.stage in {"queued", "running", "cancelling"}
+                    and row.data_import_campaign_id is not None
                     else None,
                 )
                 for row in page
@@ -814,7 +815,9 @@ def _run_stats(
     )
 
 
-def _safe_count(payload: dict[str, object], key: str) -> int:
+def _safe_count(payload: Mapping[str, object] | None, key: str) -> int:
+    if payload is None:
+        return 0
     value = payload.get(key, 0)
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
