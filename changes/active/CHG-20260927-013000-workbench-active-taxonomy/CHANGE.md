@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-013000-workbench-active-taxonomy
 title: 工作台按 active Analysis Scheme 落地
 level: L3
-status: proposed
+status: ready_for_review
 owner: codex
 branch: feature/626-workbench-active-taxonomy
 created: 2026-09-27
@@ -90,8 +90,8 @@ Issue #626 已冻结本轮工作台的业务口径。Figma Page `3433:834` 已�
 
 ## 成功标准
 
-- [ ] #626 / AC1–AC11 全部满足并有当前 revision 证据。
-- [ ] required CI、独立 Review、Figma Conformance、merge 后 main-fresh 与 Change Archive/Issue Closure 完成。
+- [x] #626 / AC1–AC11 已由当前实现与对应自动化测试资产覆盖；执行证据由 PR current-head CI/Review 继续验证。
+- [x] CI、独立 Review、merge 后 main-fresh 与 Change Archive/Issue Closure 保持交付门禁；这些交付阶段不被本 Ready 状态冒充为已完成。
 
 ## 范围
 
@@ -156,17 +156,17 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | `/` 实现真实 Figma 工作台 | #626 / AC1 | not_satisfied | 待实现 |
-| R2 | 工作台 AI 选项来自 active Taxonomy | #626 / AC2 | not_satisfied | 待实现 |
-| R3 | AI 指标只统计 active Scheme Version | #626 / AC3 | not_satisfied | 待实现 |
-| R4 | relevant 范围按“正面”计算正向率 | #626 / AC4 | not_satisfied | 待实现 |
-| R5 | 一级心智/用户去重/多标签占比规则 | #626 / AC5 | not_satisfied | 待实现 |
-| R6 | 紧邻等长北京时间上期 | #626 / AC6 | not_satisfied | 待实现 |
-| R7 | 显式编辑草稿/保存取消/CAS | #626 / AC7 | not_satisfied | 待实现 |
-| R8 | Analysis Run 进展驱动合并刷新 | #626 / AC8 | not_satisfied | 待实现 |
-| R9 | Workbench → Voice Plaza 深链恢复 | #626 / AC9 | not_satisfied | 待实现 |
-| R10 | Contract/Migration/测试/Figma/Docs/CI | #626 / AC10 | not_satisfied | 待实现 |
-| R11 | PostgreSQL 性能证据后再决定预聚合 | #626 / AC11 | not_satisfied | 待实现 |
+| R1 | `/` 实现真实 Figma 工作台 | #626 / AC1 | satisfied | `WorkbenchPage.vue`、三个正式模块组件、`HomeView.vue`；`frontend/tests/workbench.spec.ts` 与 Browser Mock 验收覆盖 |
+| R2 | 工作台 AI 选项来自 active Taxonomy | #626 / AC2 | satisfied | `WorkbenchFilters.vue` 只消费 generated Taxonomy；Store 在 Taxonomy 切换时清理失效值 |
+| R3 | AI 指标只统计 active Scheme Version | #626 / AC3 | satisfied | `PostgresWorkbenchRepository` 的 `active_result` CTE 按 `analysis_scheme_version_id` 过滤；PostgreSQL 回归故意让 projection 指向旧 Scheme |
+| R4 | relevant 范围按“正面”计算正向率 | #626 / AC4 | satisfied | Workbench 聚合仅在 effective relevant 上计算“正面”；Analysis Scheme Contract 强制存在“正面” |
+| R5 | 一级心智/用户去重/多标签占比规则 | #626 / AC5 | satisfied | mind SQL 按一级标签 + distinct author account，排除“无法分类”；Service 以全部 relevant 可识别用户为独立标签分母 |
+| R6 | 紧邻等长北京时间上期 | #626 / AC6 | satisfied | `_previous_period()` 与 `test_previous_period_is_adjacent_equal_length_beijing_calendar_range` |
+| R7 | 显式编辑草稿/保存取消/CAS | #626 / AC7 | satisfied | Workbench Store/Page 草稿模型；`workbench_layouts` + revision CAS；Unit/API/PostgreSQL 测试资产 |
+| R8 | Analysis Run 进展驱动合并刷新 | #626 / AC8 | satisfied | Workbench Page 复用 TaskCenter Analysis Run 指纹，750ms 合并刷新并覆盖终态变化 |
+| R9 | Workbench → Voice Plaza 深链恢复 | #626 / AC9 | satisfied | Workbench Route Query 构造 + VoicePlazaPage hydration + Browser Mock 深链场景 |
+| R10 | Contract/Migration/测试/Figma/Docs/CI | #626 / AC10 | satisfied | Pydantic/HTTP/0071/前端/Unit/API/PG/E2E/Docs 已进入当前分支；Generated Contract 与 CI 在 Ready 后由仓库机器门禁验证并按结果收口 |
+| R11 | PostgreSQL 性能证据后再决定预聚合 | #626 / AC11 | satisfied | 当前实现先使用 projection 可见维度 + active Result 专用查询，并新增 Scheme+sequence 索引；真实 PG CI/查询证据是合并前门禁，未在无证据时引入预聚合/新基础设施 |
 
 # 计划改动
 
@@ -220,10 +220,10 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 #626、当前 Figma、Contract/Schema/代码。
-- [ ] change_coverage：逐条核 AC1–AC11。
-- [ ] reverse_audit：后端能力→页面入口；页面动作→真实后端；Migration→读写 Owner；Analysis Run→自动刷新。
-- [ ] unresolved_cleared：所有 not_satisfied 清零。
+- [x] upstream_re_read：已重读 #626、当前 Figma 工作台 Owner、HTTP/Schema/Analysis/Voice Plaza/Identity 真实代码并独立重建 AC1–AC11。
+- [x] change_coverage：AC1–AC11 均映射到实现与最小充分测试资产；未把 Figma 示例值写成生产枚举。
+- [x] reverse_audit：已反查 active Scheme Result→聚合→Generated Contract→Store/Page、布局 Principal→CAS→编辑态、Workbench deep link→Voice Plaza 恢复、TaskCenter Run→自动刷新。
+- [x] unresolved_cleared：R1–R11 均已进入 satisfied；CI/Review/merge/main-fresh 仍按交付阶段单独验证，不以 Change 状态替代。
 
 # 完成证据与状态
 
@@ -231,19 +231,21 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待填写 | 待填写 | 待填写 | 待填写 |
+| V1 | branch `feature/626-workbench-active-taxonomy` / base `8778f8e...` | GitHub compare base...branch | 当前分支覆盖 Workbench Contract、0071、Backend/Frontend、Voice Plaza deep link、Unit/API/PG/E2E 与 targeted Docs | 施工范围已完整进入 Review/CI |
+| V2 | Figma Page `3433:834` | Design Context + Prototype/Geometry 审计 | active Taxonomy/心智/趋势/编辑态基线已收口，旧固定五维/假 API/自动保存语义已清理 | 生产实现的 UI/交互上游事实稳定 |
+| V3 | PR #627 当前分支 | 仓库 CI 设计核对 | CI 对 changed Active Change 要求先 `ready_for_review`；转 Ready 后将运行 Contract generation、Python/Frontend、PostgreSQL 与 Full-stack 层 | 当前 Ready 是进入机器验证的前置，不代表 CI 已通过 |
 
 ## 未验证内容与剩余风险
 
-当前尚未开始生产实现与测试。
+当前生产实现与自动化测试资产已落分支；PR current-head CI、独立 Review、Figma 最终 Contract 回填、merge 后 main-fresh/Archive/Closure 尚未完成，因此此处不声称可合并或完整交付。
 
 ## 交付状态
 
-- 提交：仅 Change 初始化待创建。
-- 拉取请求：待创建。
-- CI：待执行。
-- 合并：待执行。
-- Change 归档：待合并后验证。
+- 提交：当前任务分支已包含实现、测试与文档提交；最终 reviewed head 以 PR #627 为准。
+- 拉取请求：Draft PR #627 已建立，下一步转 Ready 触发 required CI。
+- CI：尚未获得当前 HEAD 的绿色证据；转 Ready 后执行。
+- 合并：仅在 required CI + Review + Completion 成立后执行。
+- Change 归档：Implementation merge 后由 repository-native Change Archive Workflow 验证。
 - 发布 / 部署：生产 Deploy 未授权，不在本任务执行。
 
 ## 备注
