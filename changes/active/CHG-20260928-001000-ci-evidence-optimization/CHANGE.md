@@ -126,8 +126,8 @@ Issue #636 / AC1–AC7 来自用户对当前 Actions 成本的直接要求。用
 
 1. 新增纯标准库 main Evidence Resolver：只在 main push 上解析已合并 PR，比较 current/pr-head tree，并核验指定 check 的最终成功状态；输出可复用/原因。
 2. CI Core 在 main 可复用时只执行 resolver/classification fast path，令 PostgreSQL/Full-stack 按不适用跳过；不可复用时保持原 changed-scope。
-3. PostgreSQL classifier 增加 exact target：已知 leaf adapter / integration test 优先跑目标文件；共享 domain 才跑 suite；真正横切或未知 persistence 才 `all`。
-4. Full-stack 从 Owner/Journey 映射选择 specs，移除“backend+frontend=all”的机械升级；全局 Contract/显式未知 Full-stack control plane 继续 fail closed。
+3. PostgreSQL classifier 增加 target → domain suite → all：已知窄 leaf adapter / 单个 integration test 优先跑目标文件；Historical Import 等宽 Repository 运行拥有其真实失败边界的相关 domain suites；真正横切或未知 persistence 才 `all`。
+4. Full-stack 使用显式三态 Owner/Journey 映射：已知 journey 选择 specs、已知无需真实全栈则不运行、未知用户入口 fail closed 到 `all`；移除“任意 backend+frontend=all”的机械升级。
 5. Runtime 与 Linux/Windows Tooling 在同 tree main 上分别核验其 PR check 后走轻量复用；不满足条件继续原验证。
 6. npm audit 仅依赖清单/锁变化时执行；Wheel 仅 Python package/build 输入变化时执行。Reporting 字体暂保留，因为当前完整 backend unit suite仍包含 Reporting 渲染测试，不能在未拆 test impact 前删先决条件。
 7. 加每日 CI 全量回归、每周 Runtime/Tooling 全量回归，作为 impact mapping 安全网；更新当前测试说明。
@@ -147,7 +147,7 @@ Issue #636 / AC1–AC7 来自用户对当前 Actions 成本的直接要求。用
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | main 只在同 tree + 来源 required Evidence 成功时复用，否则重跑 | #636 / AC1 | satisfied | `resolve_main_evidence.py` + CI/Runtime/Tooling reuse gate；API/tree/check 任一不可确认时返回 reusable=false。 |
-| R2 | Workbench/Historical Import PostgreSQL 精准选择 | #636 / AC2 | satisfied | classifier 增加 exact `postgres_targets`，分别绑定 Workbench 与 Historical Import 直接 PostgreSQL 回归。 |
+| R2 | Workbench/Historical Import PostgreSQL 精准选择 | #636 / AC2 | satisfied | Workbench 使用两个直接 `postgres_targets`；Historical Import 经 Review 证明属于宽 Repository，改为 `content + ingestion` 两个 owned domain suites，避免错误过度收窄。 |
 | R3 | Full-stack 按真实 journey 选择，普通混合 diff 不自动 all | #636 / AC3 | satisfied | 删除普通 frontend+backend→all 机械升级；已知 collection/ingestion/analysis/content/admin journey 继续映射 spec，全局 Contract/显式未知 fullstack spec 保持 all。 |
 | R4 | 专项 Core 成本按真实依赖/打包风险运行 | #636 / AC4 | satisfied | npm audit 绑定 frontend dependency inputs；Wheel 绑定 Python package inputs。Reporting 字体因完整 Unit suite 真实依赖保留并在 Change 中记录边界。 |
 | R5 | CI Gate / Runtime 继续 fail closed | #636 / AC5 | satisfied | check 名称/聚合责任不变；resolver 单元回归覆盖 tree mismatch、check missing/failure；Runtime 独立核验 Compose Golden Path。 |
@@ -217,7 +217,7 @@ Issue #636 / AC1–AC7 来自用户对当前 Actions 成本的直接要求。用
 
 - [x] upstream_re_read：已重读 #636 / AC1–AC7、当前 Ruleset、CI/Runtime/Tooling workflows 与 classifier。
 - [x] change_coverage：R1–R5 已实现；R6 是 PR Ready 后 merge gate，R7 是 merge 后收尾，均有 #636 正式阶段依据。
-- [x] reverse_audit：PostgreSQL、Real Full-stack、CI Gate、Runtime、Linux/Windows Tooling 均保留独立 Owner；每个 reuse 路径都有无法确认即回退的 fail-closed 机制。
+- [x] reverse_audit：PostgreSQL、Real Full-stack、CI Gate、Runtime、Linux/Windows Tooling 均保留独立 Owner；每个 reuse 路径都有无法确认即回退的 fail-closed 机制。独立 Review 另发现并修复两处过度优化风险：Historical Import 从过窄 target 提升为 Content+Ingestion suites；main Evidence reuse 继续运行 Active Change / governance / Secret+Docs 轻量门禁。
 - [x] unresolved_cleared：无 `not_satisfied`；R6/R7 按 #636 明确生命周期阶段记录为 `explicitly_deferred`。
 
 # 完成证据与状态
