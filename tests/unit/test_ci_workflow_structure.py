@@ -237,3 +237,25 @@ def test_tooling_main_push_uses_lightweight_evidence_gate_before_os_jobs() -> No
     assert "needs: main-evidence" in tooling
     assert "needs.main-evidence.outputs.linux_reusable != 'true'" in tooling
     assert "needs.main-evidence.outputs.windows_reusable != 'true'" in tooling
+
+
+def test_main_evidence_reuse_keeps_main_specific_cheap_governance_gates() -> None:
+    """复用昂贵产品 Evidence 时仍保留 main 专属 Active Change 与仓库治理检查。"""
+    ci = CI.read_text(encoding="utf-8")
+
+    assert (
+        "      - name: Enforce main Active Change readiness\n"
+        "        if: github.event_name == 'push'\n" in ci
+    )
+    governance = _section(
+        ci,
+        "      - name: Verify AIMA project governance wiring\n",
+        "      - name: Enforce changed PR Change readiness\n",
+    )
+    assert "steps.reuse.outputs.reusable" not in governance
+    docs_gate = _section(
+        ci,
+        "      - name: Secret and docs gates\n",
+        "      - name: Setup Python\n",
+    )
+    assert "steps.reuse.outputs.reusable" not in docs_gate
