@@ -170,3 +170,70 @@ def test_backend_unit_suite_installs_cjk_font_prerequisite() -> None:
     assert text.index("Install report validation CJK font") < text.index(
         "Unit, Contract and API tests"
     )
+
+
+def test_main_push_reuses_same_tree_pr_evidence_without_changing_required_names() -> None:
+    """main 只复用同 tree 且来源 check 绿色的 PR Evidence；required check identity 保持稳定。"""
+    ci = CI.read_text(encoding="utf-8")
+    runtime = RUNTIME.read_text(encoding="utf-8")
+
+    assert "Resolve reusable PR evidence on main" in ci
+    assert "scripts/quality/resolve_main_evidence.py" in ci
+    assert '--required-check "CI Gate"' in ci
+    assert "profile=main_evidence_reuse" in ci
+    assert "name: CI Gate" in ci
+
+    assert "Resolve reusable Runtime evidence on main" in runtime
+    assert '--required-check "Compose Golden Path"' in runtime
+    assert "Reuse merged PR Runtime evidence" in runtime
+    assert "name: Compose Golden Path" in runtime
+
+
+def test_postgres_workflow_executes_exact_targets_before_domain_suites() -> None:
+    """PostgreSQL job 支持精确 target，同时保留 suite/all 作为更宽风险的 fallback。"""
+    ci = CI.read_text(encoding="utf-8")
+    postgres_job = _section(ci, "  postgres-integration:\n", "  real-fullstack:\n")
+
+    assert "POSTGRES_TARGETS" in postgres_job
+    assert 'read -r -a targets <<< "${POSTGRES_TARGETS}"' in postgres_job
+    assert 'uv run pytest "${targets[@]}" -q' in postgres_job
+    assert "uv run pytest tests/integration/content -q" in postgres_job
+    assert "uv run pytest tests/integration/ingestion -q" in postgres_job
+
+
+def test_special_core_costs_are_conditioned_on_actual_inputs() -> None:
+    """依赖审计与 Wheel 只在对应风险输入变化时运行，不再跟随所有前后端业务修改。"""
+    ci = CI.read_text(encoding="utf-8")
+
+    assert (
+        "      - name: Audit frontend dependencies\n"
+        "        if: steps.classify.outputs.frontend_audit_required == 'true'\n" in ci
+    )
+    assert (
+        "      - name: Build and verify Wheel\n"
+        "        if: steps.classify.outputs.package_required == 'true'\n" in ci
+    )
+
+
+def test_nightly_and_weekly_full_safety_nets_remain_available() -> None:
+    """精准 PR 证据由低频全量 CI/Runtime/Tooling 回归提供安全网。"""
+    ci = CI.read_text(encoding="utf-8")
+    runtime = RUNTIME.read_text(encoding="utf-8")
+    tooling = TOOLING.read_text(encoding="utf-8")
+
+    assert 'cron: "0 18 * * *"' in ci
+    assert 'cron: "0 19 * * 0"' in runtime
+    assert 'cron: "0 20 * * 0"' in tooling
+
+
+def test_tooling_main_push_uses_lightweight_evidence_gate_before_os_jobs() -> None:
+    """main 先在 Ubuntu 轻量核验 PR Tooling Evidence，同 tree 时不再启动 Linux/Windows 完整任务。"""
+    tooling = TOOLING.read_text(encoding="utf-8")
+
+    assert "  main-evidence:\n" in tooling
+    assert "name: Reuse merged PR Tooling Evidence" in tooling
+    assert '--required-check "Linux Local Development Tooling"' in tooling
+    assert '--required-check "Windows Development and Compose Tooling"' in tooling
+    assert "needs: main-evidence" in tooling
+    assert "needs.main-evidence.outputs.linux_reusable != 'true'" in tooling
+    assert "needs.main-evidence.outputs.windows_reusable != 'true'" in tooling
