@@ -25,6 +25,7 @@ from aima_ugc.bootstrap.worker import (
     create_worker_runtime,
 )
 from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_BACKGROUND_PRIORITY,
     CANONICAL_REPLAY_JOB_TYPE,
     CANONICAL_REPLAY_PLAN_JOB_TYPE,
     CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
