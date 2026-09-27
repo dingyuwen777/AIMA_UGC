@@ -179,6 +179,32 @@ class _ReplayScanBatchController:
         self._hit_ratio = self._hit_ratio * 0.75 + observed * 0.25
 
 
+def _partition_resolved_batch(
+    resolved: tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...],
+    *,
+    matched_target_rows: int,
+) -> tuple[tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...], ...]:
+    """把一次大扫描按命中数切成连续事务块，避免命中率突升制造超大数据库事务。"""
+
+    if matched_target_rows < 1:
+        raise ValueError("Replay matched target 必须为正整数")
+    if not resolved:
+        return ()
+    chunks: list[tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...]] = []
+    start = 0
+    matched = 0
+    for index, (_content, resolution) in enumerate(resolved):
+        if resolution.matched:
+            matched += 1
+        if matched >= matched_target_rows:
+            chunks.append(resolved[start : index + 1])
+            start = index + 1
+            matched = 0
+    if start < len(resolved):
+        chunks.append(resolved[start:])
+    return tuple(chunks)
+
+
 # 结构变动由 Schema 摘要检测；非 Schema 可见的来源/Validator 语义改变时须提升此版本。
 _VALIDATION_VERSION = (
     "replay-source-v1:"
@@ -391,34 +417,52 @@ class PostgresCanonicalReplayJobExecutor:
                         actual_matched = sum(
                             resolution.matched for _content, resolution in resolved
                         )
-                        batch_started = perf_counter()
-                        try:
-                            run = self._ingest_batch(
-                                run,
-                                current,
-                                artifact,
-                                batch,
-                                fence=fence,
-                                batch_metrics=batch_metrics,
-                                resolved=resolved,
-                                resolution_ms=resolution_ms,
-                            )
-                        except RevokedCanonicalReplaySource:
-                            run = self._advance_empty_artifact(run, current, fence=fence)
-                            skipped_revoked_artifacts += 1
-                            break
                         if len(batch) == scan_rows:
                             scan_controller.observe(
                                 raw_rows=len(batch),
                                 matched_rows=actual_matched,
                             )
-                        if batch_tuner is not None:
-                            batch_tuner.succeeded(
-                                size=matched_target,
-                                rows=actual_matched,
-                                duration_ms=int((perf_counter() - batch_started) * 1000),
+                        resolved_chunks = _partition_resolved_batch(
+                            resolved,
+                            matched_target_rows=matched_target,
+                        )
+                        revoked_during_batch = False
+                        for chunk_index, resolved_chunk in enumerate(resolved_chunks):
+                            transaction_contents = tuple(
+                                content for content, _resolution in resolved_chunk
                             )
-                        context.heartbeat(progress=_progress(run))
+                            transaction_matched = sum(
+                                resolution.matched
+                                for _content, resolution in resolved_chunk
+                            )
+                            batch_started = perf_counter()
+                            try:
+                                run = self._ingest_batch(
+                                    run,
+                                    current,
+                                    artifact,
+                                    transaction_contents,
+                                    fence=fence,
+                                    batch_metrics=batch_metrics,
+                                    resolved=resolved_chunk,
+                                    resolution_ms=resolution_ms if chunk_index == 0 else 0,
+                                )
+                            except RevokedCanonicalReplaySource:
+                                run = self._advance_empty_artifact(run, current, fence=fence)
+                                skipped_revoked_artifacts += 1
+                                revoked_during_batch = True
+                                break
+                            if batch_tuner is not None:
+                                batch_tuner.succeeded(
+                                    size=matched_target,
+                                    rows=transaction_matched,
+                                    duration_ms=int(
+                                        (perf_counter() - batch_started) * 1000
+                                    ),
+                                )
+                            context.heartbeat(progress=_progress(run))
+                        if revoked_during_batch:
+                            break
                 finally:
                     iterator.close()
                 context.heartbeat(progress=_progress(run))
