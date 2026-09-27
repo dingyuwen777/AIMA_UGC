@@ -114,8 +114,8 @@ class PostgresWorkbenchHttpService:
                 WorkbenchDailyPointResponse(day=day, count=day_counts.get(day, 0))
                 for day in _days(date_from, date_to)
             )
-            peak = max(daily, key=lambda item: item.count, default=None)
             total = int(current["total_count"])
+            peak = max(daily, key=lambda item: item.count, default=None) if total else None
             relevant = int(current["relevant_count"])
             positive = int(current["positive_count"])
             previous_relevant = int(previous["relevant_count"])

@@ -240,6 +240,7 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 | V6 | Figma Page `3433:834` / 2026-09-27 | 回读并更新正式默认态、声音流、心智、趋势、标题、编辑态六个 Annotation | 六节点均回读到最终 GET/PUT Workbench Contract 与 409、active Scheme 口径 | 设计交接不再保留待定 endpoint/分页说明 |
 | V7 | 全新 PostgreSQL 18.4 空库 / 当前分支 | 0071 降级再升级；`uv run pytest tests/integration/content/test_workbench_runtime.py -q --tb=short`，布局测试使用未预建身份行的开发 Principal | 2 passed；首次保存 revision=1、旧 revision 冲突 | 默认开发身份无需 Identity 表预建行即可持久化布局 |
 | V8 | Chromium Browser Mock / 1440×900 / 当前分支 | `npm --prefix frontend run test:e2e -- e2e/workbench.spec.ts` | 4 passed；默认态、Figma 卡片几何、布局草稿/保存、声音广场深链、Analysis Run 新结果及终态刷新 | 工作台可见用户路径与自动刷新接线 |
+| V9 | 当前分支 / 2026-09-27 | 趋势空数据边界代码复核；`uv run ruff format --check backend/src/aima_ugc/bootstrap/workbench_http.py`、`uv run ruff check backend/src/aima_ugc/bootstrap/workbench_http.py`、`uv run mypy backend/src`、`uv run pytest tests/api/test_workbench.py -q` | 静态检查通过；相关 API 回归 2 passed | 代码在总量为零时返回 null `peak_day`，避免无数据日期被当作可下钻峰值；完整运行回归以最终 CI 为准 |
 
 ## 未验证内容与剩余风险
 
@@ -248,8 +249,8 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 ## 交付状态
 
 - 提交：当前任务分支已包含实现、测试与文档提交；最终 reviewed head 以 PR #627 为准。
-- 拉取请求：Draft PR #627 已建立，下一步转 Ready 触发 required CI。
-- CI：尚未获得当前 HEAD 的绿色证据；转 Ready 后执行。
+- 拉取请求：PR #627 已转 Ready，当前 HEAD 的 required CI 正在执行。
+- CI：尚未获得最终 HEAD 的绿色证据。
 - 合并：仅在 required CI + Review + Completion 成立后执行。
 - Change 归档：Implementation merge 后由 repository-native Change Archive Workflow 验证。
 - 发布 / 部署：生产 Deploy 未授权，不在本任务执行。
