@@ -23,7 +23,7 @@ workbench_layouts_table = Table(
     CheckConstraint("schema_version = 1", name="schema_version_v1"),
     CheckConstraint("revision >= 1", name="revision_positive"),
     CheckConstraint("jsonb_typeof(layout) = 'array'", name="layout_array"),
-    info={"owner": "workbench"},
+    info={"owner": "dashboard"},
 )
 
 
