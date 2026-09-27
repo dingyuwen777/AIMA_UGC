@@ -9,6 +9,13 @@ FULLSTACK = ROOT / ".github" / "workflows" / "fullstack.yml"
 LEGACY_COMPLETION = ROOT / ".github" / "workflows" / "change-completion-gate.yml"
 
 
+def _section(text: str, start: str, end: str) -> str:
+    """提取唯一 Workflow 文本区段，供结构回归限定断言范围。"""
+    start_index = text.index(start)
+    end_index = text.index(end, start_index)
+    return text[start_index:end_index]
+
+
 def test_ci_consolidates_ubuntu_core_without_losing_required_contexts() -> None:
     """统一 Core 必须承接 Scope/Governance/Completion/Repository Quality 责任。"""
     text = CI.read_text(encoding="utf-8")
