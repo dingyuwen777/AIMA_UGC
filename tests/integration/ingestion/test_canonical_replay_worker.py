@@ -865,7 +865,9 @@ def test_new_alias_replay_deduplicates_and_converges_through_content_owner(
 
         vehicle_snapshot_calls = 0
         brand_snapshot_calls = 0
-        original_vehicle_snapshot = PostgresVehicleCatalogRepository.snapshot_automatic_evidence_batch
+        original_vehicle_snapshot = (
+            PostgresVehicleCatalogRepository.snapshot_automatic_evidence_batch
+        )
         original_brand_snapshot = (
             PostgresBrandVehicleRepository.snapshot_automatic_brand_evidence_batch
         )
