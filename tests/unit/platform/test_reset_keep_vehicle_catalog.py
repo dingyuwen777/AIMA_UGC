@@ -10,10 +10,7 @@ import pytest
 
 
 SCRIPT_SOURCE = (
-    Path(__file__).resolve().parents[3]
-    / "scripts"
-    / "deploy"
-    / "reset_keep_vehicle_catalog.sh"
+    Path(__file__).resolve().parents[3] / "scripts" / "deploy" / "reset_keep_vehicle_catalog.sh"
 )
 POSIX_BASH_ONLY = pytest.mark.skipif(
     os.name != "posix" or shutil.which("bash") is None,
