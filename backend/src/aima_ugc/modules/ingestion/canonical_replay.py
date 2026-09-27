@@ -27,6 +27,13 @@ CANONICAL_REPLAY_ARTIFACTS_PER_RUN: Final[Literal[100]] = 100
 CANONICAL_REPLAY_FAST_BATCH_SIZE: Final[Literal[1000]] = 1000
 CANONICAL_REPLAY_REVERSAL_JOB_TYPE = "ingestion.canonical-replay-reversal.v1"
 CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay-reversal.v1"
+CANONICAL_REPLAY_CANCELLATION_JOB_TYPE = "ingestion.canonical-replay-cancellation.v1"
+CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay-cancellation.v1"
+# 取消协调只处理短批次；锁忙时将指数退避封顶为 5 秒，约一小时后显式报失败。
+CANONICAL_REPLAY_CANCELLATION_JOB_PRIORITY = 20
+CANONICAL_REPLAY_CANCELLATION_JOB_MAX_ATTEMPTS = 720
+CANONICAL_REPLAY_CANCELLATION_JOB_TIMEOUT_SECONDS = 600
+CANONICAL_REPLAY_CANCELLATION_RETRY_DELAY_CAP_SECONDS = 5
 
 CanonicalReplaySourceKind = Literal[
     "excel_import_v2",
@@ -173,6 +180,17 @@ class CanonicalReplayReversalJobPayload(BaseModel):
     request_id: UUID
 
 
+class CanonicalReplayCancellationJobPayload(BaseModel):
+    """持久取消协调只保存父请求身份。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["ingestion.canonical-replay-cancellation.v1"] = (
+        "ingestion.canonical-replay-cancellation.v1"
+    )
+    request_id: UUID
+
+
 class CanonicalReplayPlanJobExecutor(Protocol):
     """在当前 Fence 下把已受理的全历史请求规划成有界 Replay Run。"""
 
@@ -204,6 +222,18 @@ class CanonicalReplayReversalJobExecutor(Protocol):
         self,
         *,
         payload: CanonicalReplayReversalJobPayload,
+        fence: JobExecutionFence,
+        context: JobExecutionContextProtocol,
+    ) -> JobHandlerResult: ...
+
+
+class CanonicalReplayCancellationJobExecutor(Protocol):
+    """逐批通知子 Job 取消并推进撤回屏障。"""
+
+    def execute(
+        self,
+        *,
+        payload: CanonicalReplayCancellationJobPayload,
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult: ...
@@ -261,6 +291,22 @@ class CanonicalReplayReversalJobHandler:
         return self._executor.execute(payload=payload, fence=context.fence, context=context)
 
 
+class CanonicalReplayCancellationJobHandler:
+    """把取消协调交给统一持久 Job Runtime。"""
+
+    def __init__(self, executor: CanonicalReplayCancellationJobExecutor) -> None:
+        self._executor = executor
+
+    def __call__(
+        self,
+        payload: BaseModel,
+        context: JobExecutionContextProtocol,
+    ) -> JobHandlerResult:
+        if not isinstance(payload, CanonicalReplayCancellationJobPayload):
+            raise TypeError("Canonical Replay Cancellation Handler 收到错误 Payload 类型")
+        return self._executor.execute(payload=payload, fence=context.fence, context=context)
+
+
 def register_canonical_replay_plan_job(
     registry: JobRegistry,
     handler: CanonicalReplayPlanJobHandler,
@@ -315,6 +361,25 @@ def register_canonical_replay_reversal_job(
     )
 
 
+def register_canonical_replay_cancellation_job(
+    registry: JobRegistry,
+    handler: CanonicalReplayCancellationJobHandler,
+    *,
+    terminal_callback: Callable[[Session, JobRecord], None] | None = None,
+) -> None:
+    """注册可恢复的子任务取消协调 Job。"""
+
+    registry.register(
+        job_type=CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
+        payload_version=CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
+        payload_model=CanonicalReplayCancellationJobPayload,
+        handler=handler,
+        retry_on_timeout=False,
+        terminal_callback=terminal_callback,
+        retry_delay_cap_seconds=CANONICAL_REPLAY_CANCELLATION_RETRY_DELAY_CAP_SECONDS,
+    )
+
+
 __all__ = [
     "CANONICAL_REPLAY_ARTIFACTS_PER_RUN",
     "CANONICAL_REPLAY_BACKGROUND_PRIORITY",
@@ -327,6 +392,12 @@ __all__ = [
     "CANONICAL_REPLAY_JOB_TYPE",
     "CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION",
     "CANONICAL_REPLAY_REVERSAL_JOB_TYPE",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_TYPE",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_MAX_ATTEMPTS",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_PRIORITY",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_TIMEOUT_SECONDS",
+    "CANONICAL_REPLAY_CANCELLATION_RETRY_DELAY_CAP_SECONDS",
     "CanonicalReplayArtifactRecord",
     "CanonicalReplayAllRequestRecord",
     "CanonicalReplayCounters",
@@ -341,6 +412,9 @@ __all__ = [
     "CanonicalReplayReversalJobExecutor",
     "CanonicalReplayReversalJobHandler",
     "CanonicalReplayReversalJobPayload",
+    "CanonicalReplayCancellationJobExecutor",
+    "CanonicalReplayCancellationJobHandler",
+    "CanonicalReplayCancellationJobPayload",
     "CanonicalReplayRunRecord",
     "CanonicalReplaySourceKind",
     "dump_filter_snapshot",
@@ -348,4 +422,5 @@ __all__ = [
     "register_canonical_replay_job",
     "register_canonical_replay_plan_job",
     "register_canonical_replay_reversal_job",
+    "register_canonical_replay_cancellation_job",
 ]

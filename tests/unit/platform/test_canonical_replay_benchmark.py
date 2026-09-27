@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from openpyxl import load_workbook
 
 _SCRIPT = Path(__file__).resolve().parents[3] / "scripts/performance/benchmark_canonical_replay.py"
 _SPEC = importlib.util.spec_from_file_location("benchmark_canonical_replay", _SCRIPT)
@@ -132,3 +133,26 @@ def test_replay_benchmark_fixture_can_model_low_hit_input() -> None:
     )
 
     assert payload
+
+
+def test_replay_benchmark_fixture_can_interleave_existing_new_and_filtered() -> None:
+    """低命中夹具不能总把命中行排在开头，误导首批采样。"""
+
+    from io import BytesIO
+
+    payload = benchmark_canonical_replay._fixture_xlsx(
+        file_index=0,
+        rows_per_file=100,
+        existing_rows_per_file=10,
+        matched_rows_per_file=25,
+        nonce="unit",
+        match_layout="interleaved",
+    )
+    workbook = load_workbook(BytesIO(payload), read_only=True)
+    titles = [row[1] for row in workbook.active.iter_rows(min_row=2, values_only=True)]
+    workbook.close()
+
+    assert sum("预置容量样本" in title for title in titles) == 10
+    assert sum("星曜容量样本" in title for title in titles) == 15
+    assert any("完全无关" in title for title in titles[:10])
+    assert any("星曜" in title or "预置" in title for title in titles[10:30])

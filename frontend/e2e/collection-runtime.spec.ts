@@ -236,7 +236,7 @@ test('shows canonical replay as one filterable runtime record with aggregate det
 
   await table.getByRole('button', { name: '查看详情', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '重筛详情', exact: true })
-  await expect(drawer.getByText('总体进度')).toBeVisible()
+  await expect(drawer.getByText('重筛进度')).toBeVisible()
   await expect(drawer.getByText('63%', { exact: true })).toBeVisible()
   await expect(drawer.getByText('121', { exact: true })).toBeVisible()
   await expect(drawer.getByText('3,284', { exact: true })).toBeVisible()

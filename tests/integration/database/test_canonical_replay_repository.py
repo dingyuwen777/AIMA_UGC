@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from threading import Event, Thread
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -14,6 +15,10 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.storage.local import LocalArtifactStore
+from aima_ugc.bootstrap.canonical_replay_cancellation_worker import (
+    PostgresCanonicalReplayCancellationJobExecutor,
+    canonical_replay_cancellation_terminal_callback,
+)
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
 from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
@@ -25,8 +30,11 @@ from aima_ugc.modules.collection.tables import (
     provider_requests_table,
 )
 from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
     CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
     CanonicalReplayArtifactRecord,
+    CanonicalReplayCancellationJobHandler,
+    register_canonical_replay_cancellation_job,
 )
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
@@ -42,7 +50,7 @@ from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
-from aima_ugc.platform.jobs import JobExecutionFence
+from aima_ugc.platform.jobs import JobExecutionFence, JobRegistry, JobWorker
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage import ArtifactRecord, CanonicalArtifactParent
 from aima_ugc.platform.storage.canonical import (
@@ -790,7 +798,7 @@ def test_all_replay_reversal_is_durable_idempotent_and_legacy_fail_closed() -> N
         runtime.dispose()
 
 
-def test_all_replay_cancel_immediately_cancels_queued_children_and_enqueues_reversal() -> None:
+def test_all_replay_cancel_enqueues_coordinator_then_reversal_after_children() -> None:
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
@@ -824,14 +832,336 @@ def test_all_replay_cancel_immediately_cancels_queued_children_and_enqueues_reve
 
                 child = PostgresJobRepository(session).get(child_job_id)
                 assert child is not None
-                assert child.status == "cancelled"
-                assert cancelling.lifecycle_status == "reverting"
+                assert child.status == "queued"
+                assert cancelling.lifecycle_status == "cancelling"
                 assert cancelling.cancellation_requested_at is not None
-                assert cancelling.reversal_job_id is not None
-                reversal = PostgresJobRepository(session).get(cancelling.reversal_job_id)
+                assert cancelling.reversal_job_id is None
+                repeated = repository.request_all_reversal(
+                    request.id,
+                    cancel_active=True,
+                    actor_ref="replay-admin",
+                    http_request_id="repeat-cancel-queued-replay",
+                )
+                assert repeated.cancellation_requested_at == cancelling.cancellation_requested_at
+                assert (
+                    session.scalar(
+                        select(func.count())
+                        .select_from(jobs_table)
+                        .where(jobs_table.c.job_type == CANONICAL_REPLAY_CANCELLATION_JOB_TYPE)
+                    )
+                    == 1
+                )
+                processed, pending = repository.cancel_available_all_request_jobs(
+                    request.id, limit=32
+                )
+                assert processed == 1
+                assert pending is False
+                assert PostgresJobRepository(session).get(child_job_id).status == "cancelled"
+                reverting = repository.ensure_reversal_job_if_ready(request.id)
+                assert reverting.lifecycle_status == "reverting"
+                assert reverting.reversal_job_id is not None
+                reversal = PostgresJobRepository(session).get(reverting.reversal_job_id)
                 assert reversal is not None
                 assert reversal.status == "queued"
                 assert reversal.job_type == CANONICAL_REPLAY_REVERSAL_JOB_TYPE
+        finally:
+            session.close()
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_all_replay_cancel_accepts_while_a_child_job_row_is_locked() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        setup = runtime.new_session()
+        try:
+            with setup.begin():
+                _excel_source(setup)
+                request = PostgresCanonicalReplayRepository(setup).enqueue_all(
+                    idempotency_key="cancel-locked-replay",
+                    created_by="replay-admin",
+                    request_id="create-cancel-locked-replay",
+                )
+                child_job_id = setup.scalar(
+                    select(canonical_replay_runs_table.c.job_id).where(
+                        canonical_replay_runs_table.c.all_request_id == request.id
+                    )
+                )
+                assert child_job_id is not None
+        finally:
+            setup.close()
+
+        locked = runtime.new_session()
+        finished = Event()
+        errors: list[BaseException] = []
+
+        def cancel() -> None:
+            session = runtime.new_session()
+            try:
+                with session.begin():
+                    result = PostgresCanonicalReplayRepository(session).request_all_reversal(
+                        request.id,
+                        cancel_active=True,
+                        actor_ref="replay-admin",
+                        http_request_id="cancel-locked-replay",
+                    )
+                    assert result.cancellation_requested_at is not None
+            except BaseException as exc:
+                errors.append(exc)
+            finally:
+                session.close()
+                finished.set()
+
+        try:
+            locked.begin()
+            locked.execute(
+                select(jobs_table.c.id).where(jobs_table.c.id == child_job_id).with_for_update()
+            ).scalar_one()
+            thread = Thread(target=cancel, daemon=True)
+            thread.start()
+            assert finished.wait(1), "取消请求被运行中的 Job 行锁拖住"
+        finally:
+            locked.rollback()
+            locked.close()
+            thread.join(timeout=10)
+        assert not thread.is_alive()
+        assert errors == []
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_cancellation_worker_cancels_children_and_starts_reversal() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                _excel_source(session)
+                repository = PostgresCanonicalReplayRepository(session)
+                request = repository.enqueue_all(
+                    idempotency_key="cancel-worker-replay",
+                    created_by="replay-admin",
+                    request_id="create-cancel-worker-replay",
+                )
+                child_id = session.scalar(
+                    select(canonical_replay_runs_table.c.job_id).where(
+                        canonical_replay_runs_table.c.all_request_id == request.id
+                    )
+                )
+                assert child_id is not None
+                repository.request_all_reversal(
+                    request.id,
+                    cancel_active=True,
+                    actor_ref="replay-admin",
+                    http_request_id="cancel-worker-replay",
+                )
+        finally:
+            session.close()
+
+        registry = JobRegistry()
+        register_canonical_replay_cancellation_job(
+            registry,
+            CanonicalReplayCancellationJobHandler(
+                PostgresCanonicalReplayCancellationJobExecutor(SimpleNamespace(database=runtime))
+            ),
+            terminal_callback=canonical_replay_cancellation_terminal_callback,
+        )
+        worker = JobWorker(
+            session_factory=runtime.new_session,
+            registry=registry,
+            worker_id="cancel-worker-test",
+            lease_seconds=30,
+            retry_delay_seconds=0,
+        )
+        assert worker.run_once() is True
+
+        session = runtime.new_session()
+        try:
+            record = PostgresCanonicalReplayRepository(session).get_all_request(request.id)
+            assert record is not None
+            assert record.lifecycle_status == "reverting"
+            assert record.reversal_job_id is not None
+            assert PostgresJobRepository(session).get(child_id).status == "cancelled"
+            assert (
+                session.scalar(
+                    select(jobs_table.c.status).where(
+                        jobs_table.c.job_type == CANONICAL_REPLAY_CANCELLATION_JOB_TYPE
+                    )
+                )
+                == "succeeded"
+            )
+        finally:
+            session.close()
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_cancellation_worker_retries_locked_child_without_blocking_foreground_slot() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        setup = runtime.new_session()
+        try:
+            with setup.begin():
+                _excel_source(setup)
+                repository = PostgresCanonicalReplayRepository(setup)
+                request = repository.enqueue_all(
+                    idempotency_key="cancel-busy-child",
+                    created_by="replay-admin",
+                    request_id="create-cancel-busy-child",
+                )
+                child_id = setup.scalar(
+                    select(canonical_replay_runs_table.c.job_id).where(
+                        canonical_replay_runs_table.c.all_request_id == request.id
+                    )
+                )
+                assert child_id is not None
+                repository.request_all_reversal(
+                    request.id,
+                    cancel_active=True,
+                    actor_ref="replay-admin",
+                    http_request_id="cancel-busy-child",
+                )
+        finally:
+            setup.close()
+
+        registry = JobRegistry()
+        register_canonical_replay_cancellation_job(
+            registry,
+            CanonicalReplayCancellationJobHandler(
+                PostgresCanonicalReplayCancellationJobExecutor(SimpleNamespace(database=runtime))
+            ),
+            terminal_callback=canonical_replay_cancellation_terminal_callback,
+        )
+        worker = JobWorker(
+            session_factory=runtime.new_session,
+            registry=registry,
+            worker_id="cancel-busy-child-test",
+            lease_seconds=30,
+            retry_delay_seconds=0,
+        )
+        locked = runtime.new_session()
+        try:
+            locked.begin()
+            locked.execute(
+                select(jobs_table.c.id).where(jobs_table.c.id == child_id).with_for_update()
+            ).scalar_one()
+            assert worker.run_once() is True
+            inspect = runtime.new_session()
+            try:
+                record = PostgresCanonicalReplayRepository(inspect).get_all_request(request.id)
+                assert record is not None and record.lifecycle_status == "cancelling"
+            finally:
+                inspect.close()
+        finally:
+            locked.rollback()
+            locked.close()
+
+        assert worker.run_once() is True
+        inspect = runtime.new_session()
+        try:
+            record = PostgresCanonicalReplayRepository(inspect).get_all_request(request.id)
+            assert record is not None and record.lifecycle_status == "reverting"
+            assert PostgresJobRepository(inspect).get(child_id).status == "cancelled"
+        finally:
+            inspect.close()
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
+def test_failed_cancellation_can_be_retried_without_losing_parent_intent() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        session = runtime.new_session()
+        try:
+            with session.begin():
+                _excel_source(session)
+                repository = PostgresCanonicalReplayRepository(session)
+                request = repository.enqueue_all(
+                    idempotency_key="cancel-failure-retry",
+                    created_by="replay-admin",
+                    request_id="create-cancel-failure-retry",
+                )
+                first_intent = repository.request_all_reversal(
+                    request.id,
+                    cancel_active=True,
+                    actor_ref="replay-admin",
+                    http_request_id="cancel-failure-retry",
+                )
+            with session.begin():
+                jobs = PostgresJobRepository(session)
+                claimed = jobs.claim_next(
+                    supported_job_types=(CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,),
+                    worker_id="failed-cancellation-test",
+                    lease_seconds=30,
+                )
+                assert claimed is not None and claimed.lease_token is not None
+                failed = jobs.fail_permanent(
+                    job_id=claimed.id,
+                    lease_token=claimed.lease_token,
+                    error_code="test-cancellation-failure",
+                )
+                canonical_replay_cancellation_terminal_callback(session, failed)
+            with session.begin():
+                repository = PostgresCanonicalReplayRepository(session)
+                visible = repository.get_all_request(request.id)
+                assert visible is not None and visible.lifecycle_status == "revert_failed"
+                assert visible.reversal_job_id is None
+                retried = repository.request_all_reversal(
+                    request.id,
+                    cancel_active=True,
+                    actor_ref="replay-admin",
+                    http_request_id="retry-cancel-failure",
+                )
+                assert retried.lifecycle_status == "cancelling"
+                assert retried.cancellation_requested_at == first_intent.cancellation_requested_at
+                assert (
+                    session.scalar(
+                        select(func.count())
+                        .select_from(jobs_table)
+                        .where(jobs_table.c.job_type == CANONICAL_REPLAY_CANCELLATION_JOB_TYPE)
+                    )
+                    == 2
+                )
         finally:
             session.close()
     finally:

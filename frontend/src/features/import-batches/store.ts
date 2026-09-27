@@ -77,6 +77,7 @@ export interface DataImportLocalFileSelection {
 }
 
 export type SupplementSourceKind = 'campaign' | 'batch'
+export type CanonicalReplayCancelResult = 'accepted' | 'unconfirmed' | 'rejected'
 
 export interface SupplementSourceSelection {
   kind: SupplementSourceKind
@@ -101,6 +102,12 @@ const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
 ]
 
 const LOCAL_CAMPAIGN_UPLOAD_CONCURRENCY = 3
+const REPLAY_CANCEL_UNCONFIRMED = '取消请求结果暂未确认；请查看任务状态，稍后可再次点击取消并撤回。'
+
+function replayCancelStateConfirmsRequest(lifecycle: string | undefined, initial: string | null): boolean {
+  return lifecycle === 'cancelling' || lifecycle === 'reverting' || lifecycle === 'reverted' ||
+    (lifecycle === 'revert_failed' && initial !== 'revert_failed')
+}
 
 function errorMessage(error: unknown): string {
   if (error instanceof ImportApiError) return error.message
@@ -174,6 +181,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   let refreshInFlight = false
   let appliedListParams: ListCollectionRuntimeRunsParams = { limit: 20 }
   let supplementPlatformVersion = 0
+  const unconfirmedReplayRequestId = ref<string | null>(null)
+  const unconfirmedReplayInitialLifecycle = ref<string | null>(null)
 
   const hasActiveJobs = computed(
     () =>
@@ -184,6 +193,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       selectedRun.value?.status === 'running' ||
       selectedCanonicalReplay.value?.status === 'queued' ||
       selectedCanonicalReplay.value?.status === 'running' ||
+      (selectedCanonicalReplay.value?.canonical_replay_request_id ===
+        unconfirmedReplayRequestId.value && unconfirmedReplayRequestId.value !== null) ||
       historicalCampaigns.value.some((campaign) =>
         ['uploading', 'discovering', 'snapshotting', 'queued', 'running', 'cancelling'].includes(
           campaign.status,
@@ -243,7 +254,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       loadingNext.value = false
     }
     refreshInFlight = true
-    error.value = null
+    error.value = unconfirmedReplayRequestId.value ? REPLAY_CANCEL_UNCONFIRMED : null
     try {
       const [page, kpis, batchDetail, runDetail] = await Promise.all([
         refreshWindow(version, silent ? items.value.length : 0, params),
@@ -270,6 +281,18 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
             item.record_type === 'canonical_replay' &&
             item.record_id === selectedCanonicalReplay.value?.record_id,
         ) ?? selectedCanonicalReplay.value
+      }
+      if (
+        unconfirmedReplayRequestId.value &&
+        selectedCanonicalReplay.value?.canonical_replay_request_id === unconfirmedReplayRequestId.value &&
+        replayCancelStateConfirmsRequest(
+          selectedCanonicalReplay.value.canonical_replay_stats?.lifecycle_status,
+          unconfirmedReplayInitialLifecycle.value,
+        )
+      ) {
+        unconfirmedReplayRequestId.value = null
+        unconfirmedReplayInitialLifecycle.value = null
+        error.value = null
       }
     } catch (reason) {
       if (version === refreshVersion) error.value = errorMessage(reason)
@@ -342,18 +365,40 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedCanonicalReplay.value = item
   }
 
-  async function cancelAndRevokeSelectedCanonicalReplay(): Promise<boolean> {
+  async function cancelAndRevokeSelectedCanonicalReplay(): Promise<CanonicalReplayCancelResult> {
     const requestId = selectedCanonicalReplay.value?.canonical_replay_request_id
-    if (!requestId || actingCanonicalReplay.value) return false
+    const initialLifecycle = selectedCanonicalReplay.value?.canonical_replay_stats?.lifecycle_status ?? null
+    if (!requestId || actingCanonicalReplay.value) return 'rejected'
     actingCanonicalReplay.value = true
+    unconfirmedReplayRequestId.value = null
+    unconfirmedReplayInitialLifecycle.value = null
     error.value = null
     try {
       await cancelAndRevokeCanonicalReplay(requestId)
       await refresh(true)
-      return true
+      return 'accepted'
     } catch (reason) {
-      error.value = errorMessage(reason)
-      return false
+      if (reason instanceof ImportApiError && reason.status < 500) {
+        error.value = errorMessage(reason)
+        return 'rejected'
+      }
+      // 代理超时或断网无法证明请求未提交；以新鲜的父任务状态核对。
+      await refresh(true)
+      const selected = selectedCanonicalReplay.value
+      if (
+        selected?.canonical_replay_request_id === requestId &&
+        replayCancelStateConfirmsRequest(
+          selected.canonical_replay_stats?.lifecycle_status,
+          initialLifecycle,
+        )
+      ) {
+        error.value = null
+        return 'accepted'
+      }
+      unconfirmedReplayRequestId.value = requestId
+      unconfirmedReplayInitialLifecycle.value = initialLifecycle
+      error.value = REPLAY_CANCEL_UNCONFIRMED
+      return 'unconfirmed'
     } finally {
       actingCanonicalReplay.value = false
     }

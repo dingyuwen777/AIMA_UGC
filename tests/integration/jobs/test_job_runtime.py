@@ -235,6 +235,55 @@ def test_worker_priority_floor_preserves_shared_foreground_job_type(
         session.close()
 
 
+@pytest.mark.parametrize(("cap_seconds", "second_delay"), [(5, 5), (None, 10)])
+def test_job_type_retry_cap_bounds_exponential_delay_without_changing_default(
+    database_runtime: DatabaseRuntime,
+    cap_seconds: int | None,
+    second_delay: int,
+) -> None:
+    registry = JobRegistry()
+    registry.register(
+        job_type="test.echo.v1",
+        payload_version="echo.v1",
+        payload_model=EchoPayloadV1,
+        handler=lambda payload, context: JobHandlerResult.retry("row_busy"),
+        retry_on_timeout=True,
+        retry_delay_cap_seconds=cap_seconds,
+    )
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            job = _enqueue(
+                PostgresJobRepository(session), key=f"retry-cap-{cap_seconds}", max_attempts=3
+            )
+        worker = JobWorker(
+            session_factory=database_runtime.new_session,
+            registry=registry,
+            worker_id="retry-cap-worker",
+            lease_seconds=30,
+            retry_delay_seconds=5,
+        )
+        assert worker.run_once() is True
+        with session.begin():
+            first = PostgresJobRepository(session).get(job.id)
+            assert first is not None
+            assert first.status == "queued"
+            assert (first.available_at - first.updated_at).total_seconds() == 5
+            session.execute(
+                text("UPDATE jobs SET available_at = clock_timestamp() WHERE id = :job_id"),
+                {"job_id": job.id},
+            )
+        assert worker.run_once() is True
+        with session.begin():
+            second = PostgresJobRepository(session).get(job.id)
+            assert second is not None
+            assert second.status == "queued"
+            assert second.attempt == 2
+            assert (second.available_at - second.updated_at).total_seconds() == second_delay
+    finally:
+        session.close()
+
+
 def test_claim_is_atomic_takeover_keeps_attempt_and_stale_token_is_fenced(
     database_runtime: DatabaseRuntime,
 ) -> None:
