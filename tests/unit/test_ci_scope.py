@@ -118,7 +118,9 @@ def test_collection_persistence_change_runs_only_collection_postgres_and_relevan
     )
 
 
-def test_content_integration_test_change_runs_only_changed_postgres_target_without_fullstack() -> None:
+def test_content_integration_test_change_runs_only_changed_postgres_target_without_fullstack() -> (
+    None
+):
     requirements = _requirements("tests/integration/content/test_postgres_ingestion.py")
 
     assert requirements.profile == "persistence"
@@ -289,9 +291,7 @@ def test_mixed_frontend_and_backend_change_does_not_mechanically_promote_fullsta
 
 
 def test_workbench_persistence_change_uses_exact_postgres_targets() -> None:
-    requirements = _requirements(
-        "backend/src/aima_ugc/adapters/persistence/postgres/workbench.py"
-    )
+    requirements = _requirements("backend/src/aima_ugc/adapters/persistence/postgres/workbench.py")
 
     assert requirements.postgres_required is True
     assert requirements.postgres_targets == (
