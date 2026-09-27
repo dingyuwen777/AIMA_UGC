@@ -160,6 +160,7 @@ class JobWorker:
         lease_seconds: int,
         retry_delay_seconds: int,
         supported_job_types: tuple[str, ...] | None = None,
+        minimum_priority: int | None = None,
     ) -> None:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
@@ -174,6 +175,7 @@ class JobWorker:
         if unknown_job_types:
             raise ValueError("supported_job_types contains unregistered job types")
         self._supported_job_types = resolved_job_types
+        self._minimum_priority = minimum_priority
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
         self._retry_delay_seconds = retry_delay_seconds
@@ -187,6 +189,7 @@ class JobWorker:
                     supported_job_types=self._supported_job_types,
                     worker_id=self._worker_id,
                     lease_seconds=self._lease_seconds,
+                    minimum_priority=self._minimum_priority,
                 )
         finally:
             session.close()
