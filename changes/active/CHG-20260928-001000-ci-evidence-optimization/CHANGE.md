@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-001000-ci-evidence-optimization
 title: CI证据复用与数据库测试精准化
 level: L2
-status: proposed
+status: ready_for_review
 owner: dingyuwen777
 branch: tech/636-ci-evidence-optimization
 created: 2026-09-28
@@ -146,13 +146,13 @@ Issue #636 / AC1–AC7 来自用户对当前 Actions 成本的直接要求。用
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | main 只在同 tree + 来源 required Evidence 成功时复用，否则重跑 | #636 / AC1 | not_satisfied | 待实现与 CI 实跑 |
-| R2 | Workbench/Historical Import PostgreSQL 精准选择 | #636 / AC2 | not_satisfied | 待 classifier target 回归 |
-| R3 | Full-stack 按真实 journey 选择，普通混合 diff 不自动 all | #636 / AC3 | not_satisfied | 待 classifier 回归 |
-| R4 | 专项 Core 成本按真实依赖/打包风险运行 | #636 / AC4 | not_satisfied | 待 workflow structure 回归 |
-| R5 | CI Gate / Runtime 继续 fail closed | #636 / AC5 | not_satisfied | 待正负路径测试和当前 HEAD CI |
-| R6 | CI impact / workflow / evidence reuse tests 与 PR CI 绿色 | #636 / AC6 | not_satisfied | 待当前 HEAD Evidence |
-| R7 | merge 后 main 行为、归档与 Issue Closure 完成 | #636 / AC7 | not_satisfied | 待 post-merge Evidence |
+| R1 | main 只在同 tree + 来源 required Evidence 成功时复用，否则重跑 | #636 / AC1 | satisfied | `resolve_main_evidence.py` + CI/Runtime/Tooling reuse gate；API/tree/check 任一不可确认时返回 reusable=false。 |
+| R2 | Workbench/Historical Import PostgreSQL 精准选择 | #636 / AC2 | satisfied | classifier 增加 exact `postgres_targets`，分别绑定 Workbench 与 Historical Import 直接 PostgreSQL 回归。 |
+| R3 | Full-stack 按真实 journey 选择，普通混合 diff 不自动 all | #636 / AC3 | satisfied | 删除普通 frontend+backend→all 机械升级；已知 collection/ingestion/analysis/content/admin journey 继续映射 spec，全局 Contract/显式未知 fullstack spec 保持 all。 |
+| R4 | 专项 Core 成本按真实依赖/打包风险运行 | #636 / AC4 | satisfied | npm audit 绑定 frontend dependency inputs；Wheel 绑定 Python package inputs。Reporting 字体因完整 Unit suite 真实依赖保留并在 Change 中记录边界。 |
+| R5 | CI Gate / Runtime 继续 fail closed | #636 / AC5 | satisfied | check 名称/聚合责任不变；resolver 单元回归覆盖 tree mismatch、check missing/failure；Runtime 独立核验 Compose Golden Path。 |
+| R6 | CI impact / workflow / evidence reuse tests 与 PR CI 绿色 | #636 / AC6 | explicitly_deferred | 结构/行为回归已写入当前分支；#636 / AC6 明确 PR Ready 后由 GitHub Actions 执行并作为 merge gate，当前不得提前声称 CI 绿色。 |
+| R7 | merge 后 main 行为、归档与 Issue Closure 完成 | #636 / AC7 | explicitly_deferred | #636 / AC7 明确只能在 merge 后验证；repository-native Archive 与 Issue Closure 属于 post-merge 收尾。 |
 
 # 计划改动
 
@@ -168,11 +168,11 @@ Issue #636 / AC1–AC7 来自用户对当前 Actions 成本的直接要求。用
 
 - [x] 调查当前实现和事实源。
 - [x] 建立与风险相称的任务路由和验证矩阵。
-- [ ] 行为变化建立失败证据。
-- [ ] 完成最小实现，不静默扩大范围。
-- [ ] 同步受影响的长期文档。
-- [ ] 取得仍覆盖当前版本的验证证据。
-- [ ] 完成需求追溯、完成审计和适用复核。
+- [x] 行为变化建立失败证据：先提交 resolver Red 测试，再实现。
+- [x] 完成最小实现，不静默扩大范围。
+- [x] 同步受影响的长期文档。
+- [x] 当前分支已完成代码/测试/文档 readback；PR current-head CI 按 #636 / AC6 作为 Ready 后 merge gate。
+- [x] 完成需求追溯与 pre-merge 完成审计；post-merge 条目按 #636 / AC7 延后。
 
 # 验证矩阵
 
@@ -215,10 +215,10 @@ Issue #636 / AC1–AC7 来自用户对当前 Actions 成本的直接要求。用
 
 # 完成审计
 
-- [ ] upstream_re_read：待 Ready 前重读 #636 / AC1–AC7 与当前 workflows/classifier。
-- [ ] change_coverage：待实现后逐项核对 R1–R7。
-- [ ] reverse_audit：待核对每个昂贵 Evidence Owner 都有新位置/复用证明及 fail-closed fallback。
-- [ ] unresolved_cleared：待清零所有 not_satisfied。
+- [x] upstream_re_read：已重读 #636 / AC1–AC7、当前 Ruleset、CI/Runtime/Tooling workflows 与 classifier。
+- [x] change_coverage：R1–R5 已实现；R6 是 PR Ready 后 merge gate，R7 是 merge 后收尾，均有 #636 正式阶段依据。
+- [x] reverse_audit：PostgreSQL、Real Full-stack、CI Gate、Runtime、Linux/Windows Tooling 均保留独立 Owner；每个 reuse 路径都有无法确认即回退的 fail-closed 机制。
+- [x] unresolved_cleared：无 `not_satisfied`；R6/R7 按 #636 明确生命周期阶段记录为 `explicitly_deferred`。
 
 # 完成证据与状态
 
@@ -226,21 +226,21 @@ Issue #636 / AC1–AC7 来自用户对当前 Actions 成本的直接要求。用
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待填写 | resolver unit tests | 待执行 | 同 tree/check 复用正负路径 |
-| V2 | 待填写 | classifier/structure tests | 待执行 | 精准 impact 与 Evidence preservation |
-| V3 | 待填写 | GitHub PR CI | 待执行 | 当前 HEAD workflow 可运行且 required gates 绿色 |
-| V4 | 待填写 | merge 后 main Actions | 待执行 | 实际 tree-based reuse/fallback 与 archive |
+| V1 | `tech/636-ci-evidence-optimization` | `tests/unit/test_ci_main_evidence_reuse.py` readback | 正负路径回归已建立，等待 Ready 后 CI 执行 | 同 tree/check 成功、tree mismatch、missing/failed check 的预期语义 |
+| V2 | 当前分支 | classifier / workflow structure test readback | 精确 target/journey/special-cost 与 schedule/reuse 断言已建立，等待 Ready 后 CI 执行 | Evidence Preservation Mapping 已转成自动回归 |
+| V3 | 当前 PR HEAD | GitHub PR CI | explicitly_deferred 到 #636 / AC6 merge gate | 当前 HEAD workflow 可运行且 required gates 绿色 |
+| V4 | merge 后 main | GitHub Actions + Change Archive | explicitly_deferred 到 #636 / AC7 | 实际 tree-based reuse/fallback 与 archive |
 
 ## 未验证内容与剩余风险
 
-- 当前为施工初期，尚未取得实现后 Evidence；进入 ready_for_review 前必须全部补齐。
+- 尚未取得 PR current-head CI 与 post-merge main Evidence；两者分别由 #636 / AC6、AC7 明确绑定到 Ready 后 merge gate 与 post-merge 阶段，不能提前伪造。当前实现仍需以 GitHub Actions 实跑结果决定是否可合并。
 
 ## 交付状态
 
-- 提交：待建立失败测试与实现提交。
-- 拉取请求：待创建并关联 #636。
-- CI：待当前 PR HEAD 实跑。
-- 合并：待 Review/CI 通过并以 expected head merge。
+- 提交：Red、resolver、classifier、workflow、回归与文档提交已在 `tech/636-ci-evidence-optimization`。
+- 拉取请求：#637，Draft；关联 #636。
+- CI：待切换 Ready 后由当前 HEAD 实跑。
+- 合并：待独立 Review / required CI 通过并以 expected head merge。
 - Change 归档：待 merge 后 repository-native workflow。
 - 发布 / 部署：不适用；本任务只改变仓库 CI，不执行生产发布。
 
