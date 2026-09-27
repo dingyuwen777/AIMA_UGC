@@ -1354,7 +1354,9 @@ class PostgresBrandVehicleRepository:
                         content_brand_evidence_table.c.derived_vehicle_model_id,
                         content_brand_evidence_table.c.catalog_version,
                     ],
-                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(None),
+                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(
+                        None
+                    ),
                     set_={
                         "matched_text": statement.excluded.matched_text,
                         "source_field": statement.excluded.source_field,
