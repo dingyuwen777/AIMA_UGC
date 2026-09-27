@@ -85,7 +85,7 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 | R5 | 5%/25% 低命中按 hit ratio 扩大 raw scan，数据库事务仍按 matched target/墙钟有界 | user:2026-09-27-replay-qos / AC5 | satisfied | _ReplayScanBatchController + _partition_resolved_batch；5%/25%/0% 与突升命中单元回归、低命中 benchmark fixture |
 | R6 | Existing Brand/Vehicle Evidence 减少冗余往返且精确撤回不变 | user:2026-09-27-replay-qos / AC6 | satisfied | Replay convergence 在审核锁内各一次联合 before/target 快照，DML RETURNING 形成 after；Replay/Reversal 与单次快照断言覆盖 |
 | R7 | 新日志安全且能解释 Worker QoS、scan/matched 与 Evidence/transaction 热点 | user:2026-09-27-replay-qos / AC7 | satisfied | worker role/reserve、capacity.replay_scan_batch_selected、resource ceiling 与既有 batch_completed 阶段耗时；不记录正文/Secret |
-| R8 | Replay 性能基准覆盖低/高命中 Existing/New，mixed-load 证明正常链路无持续退化 | user:2026-09-27-replay-qos / AC8 | explicitly_deferred | 低命中容量 fixture 与 QoS 回归已落；current-head CI/集成是 Ready 后硬门禁，生产服务器吞吐仅在新 Release 后按运维文档复测 |
+| R8 | Replay 性能基准覆盖低/高命中 Existing/New，mixed-load 证明正常链路无持续退化 | user:2026-09-27-replay-qos / AC8 | satisfied | 同机 PostgreSQL 18.4 专用库的 main/PR 对照见下表；Replay 运行期间的普通 Excel 导入均成功，Worker reserve/优先级有回归覆盖；生产环境收益仍须发布后复测 |
 | R9 | Unit、PostgreSQL Integration、Job/Worker、Replay/Reversal、静态、文档、Completion Audit、Review 与 required CI 通过 | user:2026-09-27-replay-qos / AC9 | explicitly_deferred | 当前实现已进入 ready_for_review；current-head required CI 与独立 Review 未通过前禁止 merge |
 | R10 | PR merge 后完成 main-fresh、Change Archive、Issue Closure 与分支清理 | user:2026-09-27-replay-qos / AC10 | explicitly_deferred | 按项目交付状态机在 merge 后执行；未完成前不得声明端到端交付完成 |
 
@@ -99,6 +99,19 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 6. 补结构化日志、targeted 文档、性能/mixed-load benchmark 与完整回归。
 
 # 验证矩阵
+
+2026-09-27 同机隔离基准：Windows Docker PostgreSQL 18.4，main `8778f8e7` 与本 Change 分支使用同一版基准夹具，交替运行；Planner 完成后才开始 Replay 计时。每个场景运行一次，秒数受机器噪声影响，不能把小幅差异当成稳定收益。SQL 为 Replay 计时窗口内语句数。
+
+| 样本 | main Replay | PR Replay | main / PR SQL |
+| --- | ---: | ---: | ---: |
+| 5000 raw / 5% 命中 / 80% Existing | 1.139 s | 1.188 s | 248 / 244 |
+| 5000 raw / 5% 命中 / 10% Existing | 1.133 s | 1.053 s | 232 / 230 |
+| 5000 raw / 25% 命中 / 80% Existing | 3.190 s | 2.617 s | 614 / 404 |
+| 5000 raw / 80% 命中 / 80% Existing | 7.488 s | 6.552 s | 1150 / 606 |
+| 5000 raw / 80% 命中 / 10% Existing | 5.315 s | 5.407 s | 394 / 494 |
+| 20000 raw / 5% 命中 / 80% Existing | 3.584 s | 3.571 s | 582 / 508 |
+
+混合负载中，在 10000 raw / 80% 命中 Replay 开始批次后启动独立专用库的 5000 行正式 Excel 导入；main Replay / 导入分别为 17.178 / 6.242 s，PR 为 16.705 / 6.199 s，两版导入与 Replay 都成功。独立导入参考耗时为 5.350 s。该样本与 Worker 领取回归支持“正常导入未失去执行能力”，不替代生产多用户容量验收，也不能证明所有正常链路的实际吞吐完全相同。
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
@@ -122,9 +135,9 @@ targeted 更新 Replay 并发/批量/排障说明；不新增部署配置，不�
 # 完成审计
 
 - [x] upstream_re_read：已重新读取 #624、当前 main 的 Worker/Job/Replay/Evidence/资源与文档 Owner。
-- [x] change_coverage：R1-R7 已落实实现/回归；R8-R10 明确保留为 Ready/merge 后交付门禁，不把未运行 CI 或未部署生产复测冒充已通过。
+- [x] change_coverage：R1-R8 已落实实现、回归和隔离同机基准；R9-R10 保留为 CI/Review 与 merge 后交付门禁，不把尚未完成的门禁冒充已通过。
 - [x] reverse_audit：已反查非 Replay Job → reserve/general Worker；Replay → QoS/priority/batch/Evidence → ledger/reversal。
-- [x] unresolved_cleared：Ready 前无 not_satisfied；R8-R10 仅因项目交付状态机后置 current-head CI/Review/merge/生产复测，以 explicitly_deferred 保留且未降低门禁。
+- [x] unresolved_cleared：Ready 前无 not_satisfied；R9-R10 仅因项目交付状态机后置 current-head CI/Review/merge，以 explicitly_deferred 保留且未降低门禁。生产复测属于后续 Release 验收，不计入本次未部署变更的当前性能证明。
 
 # 完成证据与状态
 

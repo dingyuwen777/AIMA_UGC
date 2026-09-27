@@ -249,7 +249,15 @@ def run_benchmark(
         if created.status_code != 202:
             raise RuntimeError("基准全量 Replay 创建失败")
         request_id = UUID(created.json()["request_id"])
-        run_count = int(created.json()["run_count"])
+        if created.json()["planning_status"] != "queued" or not run_one_job(file_count):
+            raise RuntimeError("基准全量 Replay Planner 未被领取")
+        planned = client.post(
+            "/api/v1/canonical-replays/all",
+            json={"idempotency_key": f"replay-capacity-{nonce}"},
+        )
+        if planned.status_code != 202 or planned.json()["planning_status"] != "planned":
+            raise RuntimeError("基准全量 Replay Planner 未完成")
+        run_count = int(planned.json()["run_count"])
         statement_count = 0
         seen_inserts = 0
         ledger_inserts = 0
