@@ -106,7 +106,6 @@ def test_replay_benchmark_cleans_generated_runtime_after_failure(
     assert list(tmp_path.iterdir()) == []
 
 
-
 def test_replay_benchmark_validates_low_hit_fixture_bounds(tmp_path: Path) -> None:
     """低命中容量场景不能少于已经预置为 Existing 的命中行。"""
 
