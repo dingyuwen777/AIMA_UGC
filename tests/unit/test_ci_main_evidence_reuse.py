@@ -8,7 +8,9 @@ RESOLVER = runpy.run_path(str(ROOT / "scripts" / "quality" / "resolve_main_evide
 EVALUATE_REUSE = RESOLVER["evaluate_reuse"]
 
 
-def _check(name: str, *, conclusion: str = "success", completed_at: str = "2026-09-28T00:00:00Z") -> dict[str, object]:
+def _check(
+    name: str, *, conclusion: str = "success", completed_at: str = "2026-09-28T00:00:00Z"
+) -> dict[str, object]:
     """构造最小 GitHub check fixture，覆盖最终成功与失败状态。"""
     return {
         "name": name,
