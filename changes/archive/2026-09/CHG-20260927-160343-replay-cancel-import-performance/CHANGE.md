@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-160343-replay-cancel-import-performance
 title: 历史重筛、取消撤回与数据导入性能修复
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/630-replay-import-performance
 created: 2026-09-27
