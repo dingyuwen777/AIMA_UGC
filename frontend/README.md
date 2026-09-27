@@ -50,7 +50,7 @@ src/main.ts
 
 | 路径 | 页面 | 代码入口 |
 | --- | --- | --- |
-| `/` | 工作台 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue)，当前仅展示“开发中”图片，功能后续实现 |
+| `/` | 工作台 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue) → [`frontend/src/features/workbench/pages/WorkbenchPage.vue`](src/features/workbench/pages/WorkbenchPage.vue)，展示声音流、品牌用户心智、UGC 趋势与用户布局 |
 | `/login` | 飞书登录 | [`frontend/src/views/LoginView.vue`](src/views/LoginView.vue)，未登录（后端 401）时由守卫改道至此 |
 | `/no-access` | 无访问权限 | [`frontend/src/views/NoAccessView.vue`](src/views/NoAccessView.vue)，已登录但无权限（后端 403）时改道至此 |
 | `/collection-runtime` | 采集运行中心 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue`](src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue) |
@@ -76,7 +76,7 @@ settings/
 dashboard/
 ```
 
-页面。Analysis Run 的创建与取消仍由声音广场承担，Data Import Campaign 仍由采集运行中心承担；全局任务中心只是 `AppShell` 内的跨页面只读聚合入口，不新增独立 `/jobs` 路由，也不代表后端已经存在一个万能 Task/Job 业务资源。
+独立 Route。工作台已经由 `features/workbench/` 承担，但继续复用根路径 `/`，没有另建 `/dashboard`。Analysis Run 的创建与取消仍由声音广场承担，Data Import Campaign 仍由采集运行中心承担；全局任务中心只是 `AppShell` 内的跨页面只读聚合入口，不新增独立 `/jobs` 路由，也不代表后端已经存在一个万能 Task/Job 业务资源。
 
 ---
 
@@ -399,7 +399,7 @@ src/shared/
 
 任务中心固定入口只占顶部工具区，不在每个页面正文重复一块“任务历史”；业务页面只在当前任务会直接影响本页操作时显示必要的 contextual 状态，例如声音广场的活动 Analysis Run。通知中心仍负责需要用户关注的消息，任务中心负责后台运行状态，两者不合并语义。
 
-工作台当前按用户确认展示静态“开发中”图片，图片内的示意数据和控件没有接入业务功能；采集操作仍从采集运行中心进入。除此以外，未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
+工作台由 `src/features/workbench/` 负责：页面消费 Generated Client，按当前 active Analysis Scheme/Taxonomy 展示声音流、一级用户心智和 UGC 趋势；个人布局通过显式编辑草稿保存，Analysis Run 进度复用全局任务中心轮询后合并刷新。工作台不会替代采集运行中心或声音广场：采集动作仍从采集运行中心进入，聚合洞察可深链到声音广场核对原声。除此以外，未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
 
 全局样式只放真正跨页面 Token/reset。当前 `src/shared/ui/` 提供页面头、按钮、代码内 SVG 图标、反馈 Banner 和模态弹窗；采集策略 KPI、表格、弹窗/抽屉的业务内容和表单仍留在 Feature 内，不把业务规则塞进万能公共组件。
 
