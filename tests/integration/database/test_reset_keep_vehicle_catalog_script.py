@@ -10,7 +10,6 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from sqlalchemy import text
 
-
 _SCRIPT = (
     Path(__file__).resolve().parents[3] / "scripts" / "deploy" / "reset_keep_vehicle_catalog.sh"
 )
