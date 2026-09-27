@@ -35,6 +35,18 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 
 生产日志已确认：Replay Worker 已达到当前容器配额允许的最大并发；典型命中率约 20%—30%，Run 内 identity shard 因重复读取完整输入而在低于 50% 命中时强制单片。Existing-heavy Run 中 PostgreSQL transaction / Evidence 收敛占主要耗时，Artifact read 不是首要瓶颈。同时未来多用户并发要求 Replay 不能占满全部 Worker，也不能通过提高 Host/Compose 资源预算换速度。
 
+# 事实与证据
+
+| 编号 | 已确认事实 | 来源 | 决策依据 |
+| --- | --- | --- | --- |
+| E1 | 当前 Worker Pool 按容器有效资源计算总进程上限，所有子进程默认支持全部 Job 类型 | worker_main.py / JobWorker | Replay QoS 应在既有 Worker 预算内实现 |
+| E2 | Collection Job priority=10；Replay Run priority=0；Replay Shard priority=40；Historical priority=-20 | 当前 Job enqueue 实现 | Replay Shard 存在优先级倒置 |
+| E3 | 当前 Replay identity shard 会让每片重读完整冻结输入，低命中时因此直接返回 shard_count=1 | replay_shards.py / canonical_replay_worker.py | 不能简单删除 50% gate |
+| E4 | 当前 Replay batch controller 以 raw batch size 作为 size/rows 反馈 | canonical_replay_worker.py / capacity.py | 低命中时小 raw batch 会浪费事务能力 |
+| E5 | 用户日志中 Existing-heavy Replay 的 transaction / Evidence 阶段占主要耗时，scalar_fallback_count=0 | user:2026-09-27-replay-logs | 应优化集合 Evidence 往返而不是继续做逐行 fallback 修复 |
+| E6 | 用户要求保留 Host 余量并不得降低其他数据链路处理过程 | user:2026-09-27-resource-isolation | 不修改 Compose 资源预算或其他链路控制器 |
+| E7 | Issue #624 已按当前技术变更 Project Profile 维护完整动机、当前/目标状态、兼容/回滚与 AC | #624 | PR Requirement Source 可由 CI 直接核验 |
+
 # 目标、成功标准与非目标
 
 目标：在总资源预算不变的前提下，提高 Replay 单位资源吞吐，并让 Replay 主动为其他业务让路。
@@ -47,18 +59,6 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 - [ ] mixed-load 回归证明 Collection/Import/Historical/Analysis/Export 不出现由本变更导致的持续性能退化。
 
 非目标：不修改 scripts/deploy/start_compose.py 资源分配，不提高 Worker/PostgreSQL 全局配额，不升级依赖/Runtime，不重构为新的两阶段 Scan/Match Staging/Writer 架构，不执行生产部署或生产数据操作。
-
-# 事实与证据
-
-| 编号 | 已确认事实 | 来源 | 决策依据 |
-| --- | --- | --- | --- |
-| E1 | 当前 Worker Pool 按容器有效资源计算总进程上限，所有子进程默认支持全部 Job 类型 | worker_main.py / JobWorker | Replay QoS 应在既有 Worker 预算内实现 |
-| E2 | Collection Job priority=10；Replay Run priority=0；Replay Shard priority=40；Historical priority=-20 | 当前 Job enqueue 实现 | Replay Shard 存在优先级倒置 |
-| E3 | 当前 Replay identity shard 会让每片重读完整冻结输入，低命中时因此直接返回 shard_count=1 | replay_shards.py / canonical_replay_worker.py | 不能简单删除 50% gate |
-| E4 | 当前 Replay batch controller 以 raw batch size 作为 size/rows 反馈 | canonical_replay_worker.py / capacity.py | 低命中时小 raw batch 会浪费事务能力 |
-| E5 | 用户日志中 Existing-heavy Replay 的 transaction / Evidence 阶段占主要耗时，scalar_fallback_count=0 | user:2026-09-27-replay-logs | 应优化集合 Evidence 往返而不是继续做逐行 fallback 修复 |
-| E6 | 用户要求保留 Host 余量并不得降低其他数据链路处理过程 | user:2026-09-27-resource-isolation | 不修改 Compose 资源预算或其他链路控制器 |
-| E7 | Issue #624 已按当前技术变更 Project Profile 维护完整动机、当前/目标状态、兼容/回滚与 AC | #624 | PR Requirement Source 可由 CI 直接核验 |
 
 # 约束与意图决策
 
@@ -87,6 +87,15 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 | R7 | Replay 自身与 mixed-load 性能、正确性和其他链路不回退 | #624 / AC8-AC9 | explicitly_deferred | 实现侧回归与容量夹具已建立；current-head CI / PostgreSQL / Full-stack / 独立 Review 属于 Ready 后交付门禁，未通过前禁止 merge |
 | R8 | PR merge、main-fresh、Change Archive、Issue Closure | #624 / AC10 | explicitly_deferred | 按项目交付状态机在 Ready 后执行；current-head CI 与 Review 通过前禁止 merge，merge 后继续 main-fresh / Archive / Closure |
 
+# 计划改动
+
+1. 先建立失败回归：Replay reserve worker、优先级、低命中 scan/matched 控制与 Evidence 查询次数。
+2. 在 Worker 子进程支持集上增加一个非 Replay reserve role；总 Worker 上限及其他链路 supported types 不变。
+3. 收敛 Replay 后台 priority，按 reversal kind 区分 Replay 与 Import 子任务。
+4. 在 Replay Worker 内实现 matched-aware scan controller；高命中/现有 shard 路径保持兼容。
+5. 在 Evidence Repository 增加 Replay 所需的原子 before/after 集合能力，减少 after 重查；保持现有 Import 等调用接口不变。
+6. 补结构化日志、targeted 文档、性能/mixed-load benchmark 与完整回归。
+
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
@@ -99,15 +108,6 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 | 外部依赖 / Provider | not_applicable | 不调用 TikHub/LLM |
 | 构建 / 打包 / 运行 | required | ruff、mypy、相关 tests、CI；Compose 资源文件无 diff |
 | 文档 / 治理 / 其他 | required | 数据入口/运行排障文档、Completion Audit、Review |
-
-# 计划改动
-
-1. 先建立失败回归：Replay reserve worker、优先级、低命中 scan/matched 控制与 Evidence 查询次数。
-2. 在 Worker 子进程支持集上增加一个非 Replay reserve role；总 Worker 上限及其他链路 supported types 不变。
-3. 收敛 Replay 后台 priority，按 reversal kind 区分 Replay 与 Import 子任务。
-4. 在 Replay Worker 内实现 matched-aware scan controller；高命中/现有 shard 路径保持兼容。
-5. 在 Evidence Repository 增加 Replay 所需的原子 before/after 集合能力，减少 after 重查；保持现有 Import 等调用接口不变。
-6. 补结构化日志、targeted 文档、性能/mixed-load benchmark 与完整回归。
 
 # 风险、兼容性、迁移与回滚
 
