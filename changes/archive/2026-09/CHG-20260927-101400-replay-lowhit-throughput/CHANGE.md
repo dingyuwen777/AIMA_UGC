@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-101400-replay-lowhit-throughput
 title: 历史重筛入库与取消撤回性能及状态反馈
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: perf/624-replay-lowhit-throughput
 created: 2026-09-27
