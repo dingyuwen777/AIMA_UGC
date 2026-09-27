@@ -2644,7 +2644,7 @@ def test_running_replay_cancels_between_committed_batches(tmp_path: Path) -> Non
         result = PostgresCanonicalReplayJobExecutor(runtime).execute(
             payload=CanonicalReplayJobPayload(run_id=run_id),
             fence=fence,
-            context=_ExecutionContext(fence, cancel_after_checks=3),
+            context=_ExecutionContext(fence, cancel_after_checks=4),
         )
 
         assert result.outcome == "cancelled"
@@ -2660,6 +2660,111 @@ def test_running_replay_cancels_between_committed_batches(tmp_path: Path) -> Non
             session.close()
         with runtime.database.engine.connect() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_stops_on_parent_cancellation_without_a_free_worker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """唯一 Worker 正在执行 Replay 时，父取消意图也能在已提交批次后生效。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand_without_matching_alias(runtime)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-parent-cancel.xlsx",
+            rows=(
+                ("canonical-replay-parent-cancel-1", "星曜取消第一条"),
+                ("canonical-replay-parent-cancel-2", "星曜取消第二条"),
+            ),
+            brand_ids=(brand_id,),
+        )
+        _add_replay_alias(runtime, brand_id)
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresCanonicalReplayRepository(session)
+                request = repository.enqueue_all(
+                    idempotency_key=f"replay-parent-cancel-{uuid4()}",
+                    created_by="replay-admin",
+                    request_id="create-parent-cancel",
+                )
+                row = session.execute(
+                    select(
+                        canonical_replay_runs_table.c.id, canonical_replay_runs_table.c.job_id
+                    ).where(canonical_replay_runs_table.c.all_request_id == request.id)
+                ).one()
+                session.execute(
+                    update(canonical_replay_runs_table)
+                    .where(canonical_replay_runs_table.c.id == row.id)
+                    .values(batch_size=1)
+                )
+        finally:
+            session.close()
+
+        claim_session = runtime.database.new_session()
+        try:
+            with claim_session.begin():
+                claim = PostgresJobRepository(claim_session).claim_next(
+                    supported_job_types=(CANONICAL_REPLAY_JOB_TYPE,),
+                    worker_id="replay-parent-cancel-worker",
+                    lease_seconds=30,
+                )
+                assert claim is not None and claim.id == row.job_id
+                assert claim.lease_token is not None
+        finally:
+            claim_session.close()
+        fence = JobExecutionFence(job_id=row.job_id, lease_token=claim.lease_token)
+        monkeypatch.setattr(canonical_replay_worker_module, "_PARENT_CANCELLATION_CHECK_SECONDS", 0)
+        original_ingest = PostgresCanonicalReplayJobExecutor._ingest_batch
+        committed = 0
+
+        def cancel_after_first_batch(executor, *args, **kwargs):  # type: ignore[no-untyped-def]
+            nonlocal committed
+            completed = original_ingest(executor, *args, **kwargs)
+            committed += 1
+            if committed == 1:
+                cancel_session = runtime.database.new_session()
+                try:
+                    with cancel_session.begin():
+                        PostgresCanonicalReplayRepository(cancel_session).request_all_reversal(
+                            request.id,
+                            cancel_active=True,
+                            actor_ref="replay-admin",
+                            http_request_id="cancel-parent-running",
+                        )
+                finally:
+                    cancel_session.close()
+            return completed
+
+        monkeypatch.setattr(
+            PostgresCanonicalReplayJobExecutor, "_ingest_batch", cancel_after_first_batch
+        )
+        result = PostgresCanonicalReplayJobExecutor(runtime).execute(
+            payload=CanonicalReplayJobPayload(run_id=row.id),
+            fence=fence,
+            context=_ExecutionContext(fence),
+        )
+        assert result.outcome == "cancelled"
+        assert committed == 1
+        session = runtime.database.new_session()
+        try:
+            run = PostgresCanonicalReplayRepository(session).get(row.id)
+            assert run is not None and run.rows_seen == 1
+        finally:
+            session.close()
     finally:
         _truncate(runtime)
         runtime.close()

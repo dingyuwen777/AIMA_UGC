@@ -5,13 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import re
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from threading import get_ident
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from aima_ugc.adapters.persistence.postgres.content_complete import (
@@ -27,6 +29,7 @@ from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpServic
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
 from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
+from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_worker,
@@ -41,8 +44,10 @@ from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_content_changes_table,
     canonical_replay_runs_table,
 )
+from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
 from aima_ugc.modules.vehicles.tables import vehicle_brands_table
 from aima_ugc.platform.config import load_settings
+from aima_ugc.platform.jobs import JobRegistry
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
 from fastapi.testclient import TestClient
@@ -68,17 +73,22 @@ def _fixture_xlsx(
     existing_rows_per_file: int,
     matched_rows_per_file: int,
     nonce: str,
+    match_layout: Literal["clustered", "interleaved"] = "clustered",
 ) -> bytes:
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet("文章")
     sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
+    stride = max(1, round(rows_per_file * 0.61803398875))
+    while math.gcd(stride, rows_per_file) != 1:
+        stride += 1
     for row_index in range(rows_per_file):
         external_id = f"replay-bench-{nonce}-{file_index}-{row_index}"
+        rank = (row_index * stride) % rows_per_file if match_layout == "interleaved" else row_index
         keyword = (
             "预置"
-            if row_index < existing_rows_per_file
+            if rank < existing_rows_per_file
             else "星曜"
-            if row_index < matched_rows_per_file
+            if rank < matched_rows_per_file
             else "完全无关容量样本"
         )
         sheet.append(
@@ -97,6 +107,67 @@ def _fixture_xlsx(
     return output.getvalue()
 
 
+def _run_foreground_import(
+    *,
+    client: TestClient,
+    runtime: PlatformRuntime,
+    registry: JobRegistry,
+    brand_id: UUID,
+    nonce: str,
+    file_index: int,
+) -> dict[str, object]:
+    """用正式 Excel Import Job 测量 Replay 期间正常入库的排队与执行。"""
+
+    created = client.post(
+        "/api/v1/import-batches",
+        files=[
+            (
+                "file",
+                (
+                    f"mixed-{file_index}.xlsx",
+                    _fixture_xlsx(
+                        file_index=file_index,
+                        rows_per_file=100,
+                        existing_rows_per_file=0,
+                        matched_rows_per_file=25,
+                        nonce=nonce,
+                        match_layout="interleaved",
+                    ),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            ),
+            ("brand_ids", (None, str(brand_id), None)),
+        ],
+    )
+    if created.status_code != 202:
+        raise RuntimeError("混合负载 Excel Import 未入队")
+    job_id = UUID(created.json()["job_id"])
+    started = time.perf_counter()
+    foreground = create_job_worker(
+        runtime=runtime,
+        registry=registry,
+        worker_id=f"canonical-replay-foreground-{file_index}",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+        supported_job_types=(IMPORT_JOB_TYPE,),
+    )
+    if not foreground.run_once():
+        raise RuntimeError("混合负载预留 Worker 未领取 Excel Import")
+    elapsed = time.perf_counter() - started
+    with runtime.database.engine.connect() as connection:
+        job = (
+            connection.execute(select(jobs_table).where(jobs_table.c.id == job_id)).mappings().one()
+        )
+    if job["status"] != "succeeded" or job["started_at"] is None:
+        raise RuntimeError("混合负载 Excel Import 未完成")
+    return {
+        "input_rows": 100,
+        "matched_rows": 25,
+        "queue_seconds": round((job["started_at"] - job["created_at"]).total_seconds(), 3),
+        "worker_seconds": round(elapsed, 3),
+    }
+
+
 def run_benchmark(
     *,
     work_dir: Path,
@@ -105,9 +176,11 @@ def run_benchmark(
     workers: int,
     existing_rows_per_file: int = 0,
     matched_rows_per_file: int | None = None,
+    match_layout: Literal["clustered", "interleaved"] = "clustered",
     stable_authors: bool = False,
     scalar_stable_authors: bool = False,
     measure_reversal: bool = False,
+    mixed_load: bool = False,
     existing_evidence_change: bool = False,
     disk_budget_bytes: int = _DEFAULT_DISK_BUDGET_BYTES,
 ) -> dict[str, object]:
@@ -128,6 +201,8 @@ def run_benchmark(
         raise ValueError(
             "matched_rows_per_file 必须在 existing_rows_per_file 到 rows_per_file 之间"
         )
+    if match_layout not in {"clustered", "interleaved"}:
+        raise ValueError("match_layout 必须为 clustered 或 interleaved")
     if scalar_stable_authors and not stable_authors:
         raise ValueError("scalar_stable_authors 要求同时启用 stable_authors")
     if existing_evidence_change and existing_rows_per_file == 0:
@@ -198,6 +273,7 @@ def run_benchmark(
             ).run_once()
 
         nonce = uuid4().hex
+        import_worker_seconds = 0.0
         for file_index in range(file_count):
             created = client.post(
                 "/api/v1/import-batches",
@@ -212,6 +288,7 @@ def run_benchmark(
                                 existing_rows_per_file=existing_rows_per_file,
                                 matched_rows_per_file=resolved_matched_rows,
                                 nonce=nonce,
+                                match_layout=match_layout,
                             ),
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         ),
@@ -219,7 +296,12 @@ def run_benchmark(
                     ("brand_ids", (None, str(brand.id), None)),
                 ],
             )
-            if created.status_code != 202 or not run_one_job(file_index):
+            if created.status_code != 202:
+                raise RuntimeError("基准输入导入请求失败")
+            import_started = time.perf_counter()
+            imported = run_one_job(file_index)
+            import_worker_seconds += time.perf_counter() - import_started
+            if not imported:
                 raise RuntimeError("基准输入导入失败")
             detail = client.get(f"/api/v1/import-batches/{created.json()['batch_id']}")
             if detail.status_code != 200 or detail.json()["status"] != "succeeded":
@@ -249,20 +331,36 @@ def run_benchmark(
         if created.status_code != 202:
             raise RuntimeError("基准全量 Replay 创建失败")
         request_id = UUID(created.json()["request_id"])
-        if created.json()["planning_status"] != "queued" or not run_one_job(file_count):
-            raise RuntimeError("基准全量 Replay Planner 未被领取")
-        planned = client.post(
-            "/api/v1/canonical-replays/all",
-            json={"idempotency_key": f"replay-capacity-{nonce}"},
+        baseline_before = (
+            _run_foreground_import(
+                client=client,
+                runtime=runtime,
+                registry=registry,
+                brand_id=brand.id,
+                nonce=nonce,
+                file_index=899,
+            )
+            if mixed_load
+            else None
         )
-        if planned.status_code != 202 or planned.json()["planning_status"] != "planned":
-            raise RuntimeError("基准全量 Replay Planner 未完成")
+        if "planning_status" in created.json():
+            if created.json()["planning_status"] != "queued" or not run_one_job(file_count):
+                raise RuntimeError("基准全量 Replay Planner 未被领取")
+            planned = client.post(
+                "/api/v1/canonical-replays/all",
+                json={"idempotency_key": f"replay-capacity-{nonce}"},
+            )
+            if planned.status_code != 202 or planned.json()["planning_status"] != "planned":
+                raise RuntimeError("基准全量 Replay Planner 未完成")
+        else:
+            planned = created
         run_count = int(planned.json()["run_count"])
         statement_count = 0
         seen_inserts = 0
         ledger_inserts = 0
         statements_by_table: dict[str, int] = {}
         statement_examples: dict[str, str] = {}
+        replay_thread_ids: set[int] = set()
 
         def count_sql(
             connection: object,
@@ -274,6 +372,8 @@ def run_benchmark(
         ) -> None:
             nonlocal statement_count, seen_inserts, ledger_inserts
             del connection, cursor, parameters, context, executemany
+            if mixed_load and get_ident() not in replay_thread_ids:
+                return
             statement_count += 1
             first_table = re.search(r"\b(?:FROM|INTO|UPDATE)\s+([a-z_][a-z_0-9]*)", statement)
             sql_kind = statement.lstrip().split(None, 1)[0].upper()
@@ -361,9 +461,49 @@ def run_benchmark(
             )
         event.listen(runtime.database.engine, "before_cursor_execute", count_sql)
         started = time.perf_counter()
+        mixed_measurement: dict[str, object] | None = None
         try:
             with ThreadPoolExecutor(max_workers=workers) as executor:
-                if not all(executor.map(run_one_job, range(file_count, file_count + run_count))):
+
+                def run_replay_job(index: int) -> bool:
+                    replay_thread_ids.add(get_ident())
+                    return run_one_job(index)
+
+                futures = tuple(
+                    executor.submit(run_replay_job, index)
+                    for index in range(file_count, file_count + run_count)
+                )
+                if mixed_load:
+                    until = time.monotonic() + 10
+                    while time.monotonic() < until:
+                        with runtime.database.engine.connect() as connection:
+                            running = connection.scalar(
+                                select(func.count())
+                                .select_from(
+                                    canonical_replay_runs_table.join(
+                                        jobs_table,
+                                        jobs_table.c.id == canonical_replay_runs_table.c.job_id,
+                                    )
+                                )
+                                .where(
+                                    canonical_replay_runs_table.c.all_request_id == request_id,
+                                    jobs_table.c.status == "running",
+                                )
+                            )
+                        if running:
+                            break
+                        time.sleep(0.01)
+                    if not running:
+                        raise RuntimeError("混合负载基准未观察到运行中的 Replay")
+                    mixed_measurement = _run_foreground_import(
+                        client=client,
+                        runtime=runtime,
+                        registry=registry,
+                        brand_id=brand.id,
+                        nonce=nonce,
+                        file_index=900,
+                    )
+                if not all(future.result() for future in futures):
                     raise RuntimeError("基准 Replay Job 未被领取")
         finally:
             elapsed = time.perf_counter() - started
@@ -447,7 +587,10 @@ def run_benchmark(
             "rows": expected_rows,
             "matched_rows": expected_matched,
             "match_rate": round(expected_matched / expected_rows, 4),
+            "match_layout": match_layout,
             "existing_rows": expected_existing,
+            "initial_import_ingested_rows": expected_existing,
+            "initial_import_worker_seconds": round(import_worker_seconds, 3),
             "new_rows": expected_ingested,
             "rows_seen": int(counters.rows_seen),
             "rows_matched": int(counters.rows_matched),
@@ -479,6 +622,20 @@ def run_benchmark(
                 )[:15]
             },
         }
+        if mixed_load:
+            baseline = _run_foreground_import(
+                client=client,
+                runtime=runtime,
+                registry=registry,
+                brand_id=brand.id,
+                nonce=nonce,
+                file_index=901,
+            )
+            report["mixed_load"] = {
+                "without_replay_before": baseline_before,
+                "while_replay": mixed_measurement,
+                "without_replay_after": baseline,
+            }
         if measure_reversal:
             reversal_sql: dict[str, int] = {}
 
@@ -612,9 +769,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--existing-rows-per-file", type=int, default=0)
     parser.add_argument("--matched-rows-per-file", type=int)
+    parser.add_argument("--match-layout", choices=("clustered", "interleaved"), default="clustered")
     parser.add_argument("--stable-authors", action="store_true")
     parser.add_argument("--scalar-stable-authors", action="store_true")
     parser.add_argument("--measure-reversal", action="store_true")
+    parser.add_argument("--mixed-load", action="store_true")
     parser.add_argument("--existing-evidence-change", action="store_true")
     parser.add_argument("--disk-budget-mib", type=int, default=512)
     args = parser.parse_args()
@@ -627,9 +786,11 @@ def main() -> None:
                 workers=args.workers,
                 existing_rows_per_file=args.existing_rows_per_file,
                 matched_rows_per_file=args.matched_rows_per_file,
+                match_layout=args.match_layout,
                 stable_authors=args.stable_authors,
                 scalar_stable_authors=args.scalar_stable_authors,
                 measure_reversal=args.measure_reversal,
+                mixed_load=args.mixed_load,
                 existing_evidence_change=args.existing_evidence_change,
                 disk_budget_bytes=args.disk_budget_mib * 1024 * 1024,
             ),

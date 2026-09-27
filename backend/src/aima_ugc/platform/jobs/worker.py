@@ -291,6 +291,7 @@ class JobWorker:
             context._raise_heartbeat_error()
             persisted = self._apply_result(
                 job_id=job.id,
+                job_type=job.job_type,
                 lease_token=job.lease_token,
                 result=result,
             )
@@ -413,6 +414,7 @@ class JobWorker:
         self,
         *,
         job_id: UUID,
+        job_type: str,
         lease_token: str,
         result: JobHandlerResult,
     ) -> JobRecord:
@@ -434,6 +436,9 @@ class JobWorker:
                         lease_token=lease_token,
                         error_code=result.error_code,
                         retry_delay_seconds=self._retry_delay_seconds,
+                        retry_delay_cap_seconds=self._registry.get(
+                            job_type
+                        ).retry_delay_cap_seconds,
                     )
                 elif result.outcome == "failed":
                     if result.error_code is None:

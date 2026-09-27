@@ -2,6 +2,7 @@
 
 from aima_ugc.entrypoints.worker_main import _foreground_supported_job_types
 from aima_ugc.modules.ingestion.canonical_replay import (
+    CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
     CANONICAL_REPLAY_JOB_TYPE,
     CANONICAL_REPLAY_PLAN_JOB_TYPE,
     CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
@@ -20,11 +21,13 @@ def test_foreground_worker_excludes_long_replay_work_when_pool_can_reserve_capac
         CANONICAL_REPLAY_JOB_TYPE,
         REPLAY_SHARD_JOB_TYPE,
         CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
+        CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
         REVERSAL_SHARD_JOB_TYPE,
     )
 
     assert _foreground_supported_job_types(all_types, maximum_processes=6) == (
         foreground_type,
+        CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
         REVERSAL_SHARD_JOB_TYPE,
     )
 

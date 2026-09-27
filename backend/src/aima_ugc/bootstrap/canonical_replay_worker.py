@@ -100,6 +100,31 @@ _PROVEN_SAMPLE_ROWS_LIMIT = 256
 _LEDGER_INSERT_ROWS = 1000
 _MAX_PROOF_SOURCE_EXPECTATIONS = 1000
 _REPLAY_LOCK_TIMEOUT = "3s"
+_PARENT_CANCELLATION_CHECK_SECONDS = 1.0
+
+
+class _ReplayParentCancellationProbe:
+    """按时间节流读取父取消意图，供只有一个 Worker 时及时让出执行槽。"""
+
+    def __init__(self, runtime: PlatformRuntime, request_id: UUID | None) -> None:
+        self._runtime = runtime
+        self._request_id = request_id
+        self._next_check_at = 0.0
+        self._cancelled = False
+
+    def requested(self, context: JobExecutionContextProtocol) -> bool:
+        if context.cancel_requested() or self._cancelled:
+            return True
+        if self._request_id is None or perf_counter() < self._next_check_at:
+            return False
+        self._next_check_at = perf_counter() + _PARENT_CANCELLATION_CHECK_SECONDS
+        session = self._runtime.database.new_session()
+        try:
+            record = PostgresCanonicalReplayRepository(session).get_all_request(self._request_id)
+            self._cancelled = record is not None and record.lifecycle_status != "active"
+            return self._cancelled
+        finally:
+            session.close()
 
 
 def _replay_batch_tiers(max_rows: int) -> tuple[int, ...]:
@@ -261,6 +286,7 @@ class PostgresCanonicalReplayJobExecutor:
         }
         try:
             run, selected = self._load_execution(payload.run_id, fence)
+            cancel_probe = _ReplayParentCancellationProbe(self._runtime, run.all_request_id)
             batch_tuner = _new_replay_batch_tuner(run.batch_size)
             if run.checkpoint_artifact_ordinal >= run.artifact_count:
                 return JobHandlerResult.succeeded(_result(run))
@@ -270,7 +296,12 @@ class PostgresCanonicalReplayJobExecutor:
             preflight_started = perf_counter()
             phase = "preflight"
             preflight_ok, sampled_rows, matched_rows = self._preflight_all(
-                selected, run=run, reader=reader, fence=fence, context=context
+                selected,
+                run=run,
+                reader=reader,
+                fence=fence,
+                context=context,
+                cancel_probe=cancel_probe,
             )
             if not preflight_ok:
                 return JobHandlerResult.cancelled()
@@ -321,7 +352,7 @@ class PostgresCanonicalReplayJobExecutor:
             ingestion_started = perf_counter()
             phase = "ingestion"
             while run.checkpoint_artifact_ordinal < run.artifact_count:
-                if context.cancel_requested():
+                if cancel_probe.requested(context):
                     return JobHandlerResult.cancelled()
                 current = selected[run.checkpoint_artifact_ordinal]
                 artifact_ordinal = current.ordinal
@@ -340,7 +371,7 @@ class PostgresCanonicalReplayJobExecutor:
                     for _ in islice(iterator, run.checkpoint_row_number):
                         pass
                     while True:
-                        if context.cancel_requested():
+                        if cancel_probe.requested(context):
                             return JobHandlerResult.cancelled()
                         resources = detect_resources()
                         if batch_tuner is None:
@@ -426,6 +457,8 @@ class PostgresCanonicalReplayJobExecutor:
                         )
                         revoked_during_batch = False
                         for chunk_index, resolved_chunk in enumerate(resolved_chunks):
+                            if cancel_probe.requested(context):
+                                return JobHandlerResult.cancelled()
                             transaction_contents = tuple(
                                 content for content, _resolution in resolved_chunk
                             )
@@ -789,6 +822,7 @@ class PostgresCanonicalReplayJobExecutor:
         reader: CanonicalArtifactReader,
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
+        cancel_probe: _ReplayParentCancellationProbe,
     ) -> tuple[bool, int, int]:
         """在首个 Content 写入前验证全部字节、Contract 与逐行来源。"""
 
@@ -827,7 +861,7 @@ class PostgresCanonicalReplayJobExecutor:
                                 run.filter_snapshot, content, resolver=resolver
                             ).matched
                         )
-                if context.cancel_requested():
+                if cancel_probe.requested(context):
                     return False, sampled_rows, matched_rows
                 continue
             expectations: dict[UUID, tuple[UUID, UUID, str, str]] = {}
@@ -862,7 +896,7 @@ class PostgresCanonicalReplayJobExecutor:
                         if len(expectations) > _MAX_PROOF_SOURCE_EXPECTATIONS:
                             expectations.clear()
                             cacheable = False
-                    if context.cancel_requested():
+                    if cancel_probe.requested(context):
                         return False, sampled_rows, matched_rows
             finally:
                 iterator.close()

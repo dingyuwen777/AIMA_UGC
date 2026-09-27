@@ -16,6 +16,7 @@ const featureApi = vi.hoisted(() => ({
   fetchHistoricalCampaignConflicts: vi.fn(),
   uploadLocalCampaignFile: vi.fn(),
   finalizeLocalCampaign: vi.fn(),
+  cancelAndRevokeCanonicalReplay: vi.fn(),
 }))
 
 vi.mock('../src/features/import-batches/api', async (importOriginal) => {
@@ -24,6 +25,18 @@ vi.mock('../src/features/import-batches/api', async (importOriginal) => {
 })
 
 import { useImportBatchesStore } from '../src/features/import-batches/store'
+import { ImportApiError } from '../src/features/import-batches/api'
+import type { CollectionRuntimeItemResponse } from '../src/generated/api/client'
+
+function replayItem(lifecycleStatus: 'active' | 'cancelling' | 'revert_failed'): CollectionRuntimeItemResponse {
+  return {
+    record_id: 'replay-1',
+    record_type: 'canonical_replay',
+    canonical_replay_request_id: 'replay-1',
+    status: 'running',
+    canonical_replay_stats: { lifecycle_status: lifecycleStatus },
+  } as CollectionRuntimeItemResponse
+}
 
 describe('import batches store', () => {
   beforeEach(() => {
@@ -63,6 +76,92 @@ describe('import batches store', () => {
     expect(featureApi.fetchCollectionRuntimeSummary).toHaveBeenCalledOnce()
     expect(store.summary?.processing_count).toBe(0)
     expect(store.loading).toBe(false)
+  })
+
+  it('treats a timed-out cancellation response as unconfirmed until state is visible', async () => {
+    const store = useImportBatchesStore()
+    store.openCanonicalReplayDetail(replayItem('active'))
+    featureApi.cancelAndRevokeCanonicalReplay.mockRejectedValue(new SyntaxError('504 HTML response'))
+    featureApi.fetchCollectionRuntimeList.mockResolvedValue({
+      items: [replayItem('active')], has_more: false, next_cursor: null,
+    })
+
+    expect(await store.cancelAndRevokeSelectedCanonicalReplay()).toBe('unconfirmed')
+    expect(store.error).toContain('结果暂未确认')
+    expect(store.selectedCanonicalReplay?.canonical_replay_stats?.lifecycle_status).toBe('active')
+    await store.refresh(true)
+    expect(store.error).toContain('结果暂未确认')
+  })
+
+  it('confirms a timed-out cancellation from the fresh parent state', async () => {
+    const store = useImportBatchesStore()
+    store.openCanonicalReplayDetail(replayItem('active'))
+    featureApi.cancelAndRevokeCanonicalReplay.mockRejectedValue(new SyntaxError('504 HTML response'))
+    featureApi.fetchCollectionRuntimeList.mockResolvedValue({
+      items: [replayItem('cancelling')], has_more: false, next_cursor: null,
+    })
+
+    expect(await store.cancelAndRevokeSelectedCanonicalReplay()).toBe('accepted')
+    expect(store.error).toBeNull()
+  })
+
+  it('recognizes a fast cancellation failure after a timed-out request', async () => {
+    const store = useImportBatchesStore()
+    store.openCanonicalReplayDetail(replayItem('active'))
+    featureApi.cancelAndRevokeCanonicalReplay.mockRejectedValue(new SyntaxError('504 HTML response'))
+    featureApi.fetchCollectionRuntimeList.mockResolvedValue({
+      items: [replayItem('revert_failed')], has_more: false, next_cursor: null,
+    })
+
+    expect(await store.cancelAndRevokeSelectedCanonicalReplay()).toBe('accepted')
+    expect(store.error).toBeNull()
+  })
+
+  it('does not mistake an unchanged prior cancellation failure for a successful retry', async () => {
+    const store = useImportBatchesStore()
+    store.openCanonicalReplayDetail(replayItem('revert_failed'))
+    featureApi.cancelAndRevokeCanonicalReplay.mockRejectedValue(new SyntaxError('504 HTML response'))
+    featureApi.fetchCollectionRuntimeList.mockResolvedValue({
+      items: [replayItem('revert_failed')], has_more: false, next_cursor: null,
+    })
+
+    expect(await store.cancelAndRevokeSelectedCanonicalReplay()).toBe('unconfirmed')
+    expect(store.error).toContain('结果暂未确认')
+  })
+
+  it('keeps checking an unconfirmed cancellation after all replay children finish', async () => {
+    const store = useImportBatchesStore()
+    const finished = { ...replayItem('active'), status: 'succeeded' as const }
+    store.openCanonicalReplayDetail(finished)
+    featureApi.cancelAndRevokeCanonicalReplay.mockRejectedValue(new SyntaxError('504 HTML response'))
+    featureApi.fetchCollectionRuntimeList.mockResolvedValue({
+      items: [finished], has_more: false, next_cursor: null,
+    })
+
+    expect(await store.cancelAndRevokeSelectedCanonicalReplay()).toBe('unconfirmed')
+    expect(store.hasActiveJobs).toBe(true)
+
+    featureApi.fetchCollectionRuntimeList.mockResolvedValue({
+      items: [{ ...replayItem('cancelling'), status: 'running' }],
+      has_more: false, next_cursor: null,
+    })
+    await store.refresh(true)
+    expect(store.error).toBeNull()
+  })
+
+  it('shows a definite validation rejection without claiming cancellation', async () => {
+    const store = useImportBatchesStore()
+    store.openCanonicalReplayDetail(replayItem('active'))
+    featureApi.cancelAndRevokeCanonicalReplay.mockRejectedValue(
+      new ImportApiError({
+        status: 409, title: 'Conflict', type: 'about:blank',
+        detail: '请求冲突', request_id: 'request-1',
+      }),
+    )
+
+    expect(await store.cancelAndRevokeSelectedCanonicalReplay()).toBe('rejected')
+    expect(store.error).toContain('请求冲突')
+    expect(featureApi.fetchCollectionRuntimeList).not.toHaveBeenCalled()
   })
 
   it('appends the next cursor page without replacing existing rows', async () => {

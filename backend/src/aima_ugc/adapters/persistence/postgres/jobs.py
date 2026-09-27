@@ -477,9 +477,12 @@ class PostgresJobRepository:
         lease_token: str,
         error_code: str,
         retry_delay_seconds: int,
+        retry_delay_cap_seconds: int | None = None,
     ) -> JobRecord:
         if retry_delay_seconds < 0:
             raise ValueError("retry_delay_seconds must be nonnegative")
+        if retry_delay_cap_seconds is not None and retry_delay_cap_seconds < 0:
+            raise ValueError("retry_delay_cap_seconds must be nonnegative")
         row = (
             self._session.execute(
                 text(
@@ -495,10 +498,14 @@ class PostgresJobRepository:
                     END,
                     available_at = CASE
                         WHEN j.attempt < j.max_attempts
-                            THEN c.now_at + make_interval(
-                                secs => :retry_delay_seconds
-                                    * power(2, GREATEST(j.attempt - 1, 0))
-                            )
+                            THEN c.now_at + make_interval(secs => CASE
+                                WHEN CAST(:retry_delay_cap_seconds AS DOUBLE PRECISION) IS NULL THEN
+                                    :retry_delay_seconds * power(2, GREATEST(j.attempt - 1, 0))
+                                ELSE LEAST(
+                                    :retry_delay_seconds * power(2, GREATEST(j.attempt - 1, 0)),
+                                    CAST(:retry_delay_cap_seconds AS DOUBLE PRECISION)
+                                )
+                            END)
                         ELSE j.available_at
                     END,
                     attempt_started_at = CASE
@@ -538,6 +545,7 @@ class PostgresJobRepository:
                     "lease_token": lease_token,
                     "error_code": error_code,
                     "retry_delay_seconds": retry_delay_seconds,
+                    "retry_delay_cap_seconds": retry_delay_cap_seconds,
                 },
             )
             .mappings()
