@@ -19,6 +19,8 @@ const props = defineProps<{
   modelValue: boolean
   item: CollectionRuntimeItemResponse | null
   acting?: boolean
+  cancelUnconfirmed?: boolean
+  cancelPending?: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -69,6 +71,9 @@ const actionKind = computed<'cancel-and-revoke' | 'revoke' | null>(() => {
   return item.status === 'queued' || item.status === 'running' ? 'cancel-and-revoke' : 'revoke'
 })
 const actionLabel = computed(() => {
+  if (props.cancelUnconfirmed && actionKind.value === 'cancel-and-revoke') {
+    return '重试取消并撤回'
+  }
   if (stats.value?.lifecycle_status === 'revert_failed') {
     return actionKind.value === 'cancel-and-revoke' ? '重试取消并撤回' : '重试撤回'
   }
@@ -185,6 +190,22 @@ function failureMessage(item: CollectionRuntimeItemResponse): string {
           <div><span>新增记录</span><strong>{{ formatNumber(stats.rows_ingested) }}</strong></div>
           <div><span>处理已有记录</span><strong>{{ formatNumber(stats.existing_convergence) }}</strong></div>
         </div>
+        <AimaFeedbackBanner
+          v-if="cancelPending"
+          class="info-note"
+          tone="info"
+          role="status"
+        >
+          取消请求已受理，后台正在停止重筛入库；当前批次提交完成后会自动进入撤回。
+        </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="cancelUnconfirmed"
+          class="info-note"
+          tone="warning"
+          role="status"
+        >
+          上次取消请求的结果尚未确认。系统会继续刷新服务端状态；重复提交是安全的，可点击“重试取消并撤回”。
+        </AimaFeedbackBanner>
         <AimaFeedbackBanner
           class="info-note"
           tone="info"

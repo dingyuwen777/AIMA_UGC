@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from time import perf_counter
 from uuid import UUID, uuid4
 
 from pydantic import JsonValue, ValidationError
@@ -38,9 +40,13 @@ from aima_ugc.modules.ingestion.canonical_replay_http import (
 )
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.jobs import JobIdempotencyConflict, JobRecord
+from aima_ugc.platform.logging import log_event, log_exception_event
+from aima_ugc.platform.logging.timing import StageTimings
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
+
+_LOGGER = logging.getLogger("aima_ugc")
 
 
 class PostgresCanonicalReplayHttpService:
@@ -224,43 +230,104 @@ class PostgresCanonicalReplayHttpService:
         actor_ref: str,
         request_id: str,
     ) -> CanonicalReplayAllOperationResponse:
+        operation = "cancel_and_revoke" if cancel_active else "revoke"
+        timings = StageTimings()
+        phase = "session_open"
         session = self._runtime.database.new_session()
         try:
-            with session.begin():
-                repository = PostgresCanonicalReplayRepository(session)
-                try:
-                    record = repository.request_all_reversal(
-                        replay_request_id,
-                        cancel_active=cancel_active,
-                        actor_ref=actor_ref,
-                        http_request_id=request_id,
-                    )
-                except LookupError as exc:
-                    raise CanonicalReplayResourceNotFound from exc
-                except (JobIdempotencyConflict, RuntimeError, ValueError) as exc:
-                    raise CanonicalReplayConflict(str(exc)) from exc
-                _audit(
-                    session,
-                    actor_ref=actor_ref,
-                    request_id=request_id,
-                    event_type=(
-                        "canonical_replay_cancel_and_revoke_requested"
-                        if cancel_active
-                        else "canonical_replay_revoke_requested"
-                    ),
-                    object_id=str(record.id),
-                    detail={
-                        "lifecycle_status": record.lifecycle_status,
-                        "reversal_job_id": (
-                            str(record.reversal_job_id)
-                            if record.reversal_job_id is not None
-                            else None
-                        ),
-                    },
-                )
-                return _operation_response(record)
+            log_event(
+                _LOGGER,
+                logging.INFO,
+                f"canonical_replay.{operation}_database_started",
+                "历史重筛取消或撤回开始写入数据库。",
+                request_id=request_id,
+                replay_request_id=str(replay_request_id),
+            )
+            transaction_started = perf_counter()
+            try:
+                with session.begin():
+                    repository = PostgresCanonicalReplayRepository(session)
+                    phase = "request_transition"
+                    try:
+                        record = repository.request_all_reversal(
+                            replay_request_id,
+                            cancel_active=cancel_active,
+                            actor_ref=actor_ref,
+                            http_request_id=request_id,
+                            timings=timings,
+                        )
+                    except LookupError as exc:
+                        raise CanonicalReplayResourceNotFound from exc
+                    except (JobIdempotencyConflict, RuntimeError, ValueError) as exc:
+                        raise CanonicalReplayConflict(str(exc)) from exc
+                    phase = "audit"
+                    with timings.measure("audit"):
+                        _audit(
+                            session,
+                            actor_ref=actor_ref,
+                            request_id=request_id,
+                            event_type=(
+                                "canonical_replay_cancel_and_revoke_requested"
+                                if cancel_active
+                                else "canonical_replay_revoke_requested"
+                            ),
+                            object_id=str(record.id),
+                            detail={
+                                "lifecycle_status": record.lifecycle_status,
+                                "reversal_job_id": (
+                                    str(record.reversal_job_id)
+                                    if record.reversal_job_id is not None
+                                    else None
+                                ),
+                            },
+                        )
+                    response = _operation_response(record)
+                    phase = "transaction_commit"
+            finally:
+                timings.record_elapsed("transaction", transaction_started)
+            log_event(
+                _LOGGER,
+                logging.INFO,
+                f"canonical_replay.{operation}_database_committed",
+                "历史重筛取消或撤回数据库事务已提交。",
+                request_id=request_id,
+                replay_request_id=str(replay_request_id),
+                lifecycle_status=response.lifecycle_status,
+                reversal_job_id=(
+                    str(response.reversal_job_id) if response.reversal_job_id is not None else None
+                ),
+                stage_ms=timings.stage_ms,
+                duration_ms=timings.total_ms,
+            )
+            return response
         except IntegrityError as exc:
+            log_exception_event(
+                _LOGGER,
+                logging.WARNING,
+                f"canonical_replay.{operation}_database_failed",
+                "历史重筛取消或撤回数据库事务失败。",
+                error=exc,
+                request_id=request_id,
+                replay_request_id=str(replay_request_id),
+                stage=phase,
+                stage_ms=timings.stage_ms,
+                duration_ms=timings.total_ms,
+            )
             raise CanonicalReplayConflict from exc
+        except Exception as exc:
+            log_exception_event(
+                _LOGGER,
+                logging.WARNING,
+                f"canonical_replay.{operation}_database_failed",
+                "历史重筛取消或撤回数据库事务失败。",
+                error=exc,
+                request_id=request_id,
+                replay_request_id=str(replay_request_id),
+                stage=phase,
+                stage_ms=timings.stage_ms,
+                duration_ms=timings.total_ms,
+            )
+            raise
         finally:
             session.close()
 

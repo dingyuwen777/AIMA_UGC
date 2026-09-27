@@ -269,6 +269,19 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(cancelFailed).toContain('取消失败')
     expect(cancelFailed).toContain('重试取消并撤回')
     expect(cancelFailed).not.toContain('撤回进度')
+
+    const unconfirmed = await renderComponent(CanonicalReplayDetailDrawer, {
+      modelValue: true,
+      item: {
+        ...base, status: 'running', stage: 'running',
+        canonical_replay_stats: {
+          ...base.canonical_replay_stats, lifecycle_status: 'active',
+        },
+      },
+      cancelUnconfirmed: true,
+    })
+    expect(unconfirmed).toContain('上次取消请求的结果尚未确认')
+    expect(unconfirmed).toContain('重试取消并撤回')
   })
 
   it('五类运行记录的列表分别展示输入量、处理结果和撤回实绩', async () => {

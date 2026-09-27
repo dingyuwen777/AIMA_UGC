@@ -43,6 +43,9 @@ from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
     defer_voice_plaza_projection,
     flush_deferred_voice_plaza_projection,
 )
+from aima_ugc.adapters.persistence.postgres.workload_slots import (
+    acquire_background_write_slot,
+)
 from aima_ugc.contracts.canonical import CanonicalContentV1
 from aima_ugc.modules.collection.tables import (
     collection_scopes_table,
@@ -99,6 +102,7 @@ _SHARD_SAMPLE_ROWS_PER_ARTIFACT = 64
 _PROVEN_SAMPLE_ROWS_LIMIT = 256
 _LEDGER_INSERT_ROWS = 1000
 _MAX_PROOF_SOURCE_EXPECTATIONS = 1000
+_REPLAY_RESOURCE_GROWTH_ABSOLUTE_CEILING = 64_000
 _REPLAY_LOCK_TIMEOUT = "3s"
 _PARENT_CANCELLATION_CHECK_SECONDS = 1.0
 
@@ -113,47 +117,76 @@ class _ReplayParentCancellationProbe:
         self._cancelled = False
 
     def requested(self, context: JobExecutionContextProtocol) -> bool:
-        if context.cancel_requested() or self._cancelled:
+        if context.cancel_requested():
+            return True
+        if self._cancelled:
             return True
         if self._request_id is None or perf_counter() < self._next_check_at:
             return False
         self._next_check_at = perf_counter() + _PARENT_CANCELLATION_CHECK_SECONDS
         session = self._runtime.database.new_session()
         try:
-            record = PostgresCanonicalReplayRepository(session).get_all_request(self._request_id)
-            self._cancelled = record is not None and record.lifecycle_status != "active"
+            with session.begin():
+                self._cancelled = PostgresCanonicalReplayRepository(
+                    session
+                ).is_all_cancellation_requested(self._request_id)
+                if self._cancelled:
+                    # 父取消意图可以先于协调 Job 到达当前运行中的子 Job。这里同步写入
+                    # 当前 Job 的取消位，让执行器停止与通用 Job 状态收敛保持同一事实。
+                    PostgresJobRepository(session).request_cancel(context.fence.job_id)
             return self._cancelled
         finally:
             session.close()
 
 
-def _replay_batch_tiers(max_rows: int) -> tuple[int, ...]:
-    """从冻结上限生成逐级批量；1000 行默认先从 125 行开始验证墙钟。"""
+def _replay_batch_tiers(
+    max_rows: int,
+    *,
+    allow_resource_growth: bool = False,
+) -> tuple[int, ...]:
+    """从兼容提示生成逐级批量；全历史任务可继续按资源和实测收益升档。"""
 
     if max_rows < 1:
         raise ValueError("Replay 批量上限必须为正整数")
-    candidates = (
+    candidates = [
         max(1, max_rows // 16),
         max(1, max_rows // 8),
         max(1, max_rows // 4),
         max(1, max_rows // 2),
         max_rows,
-    )
+    ]
+    if allow_resource_growth:
+        candidate = max_rows * 2
+        while candidate <= _REPLAY_RESOURCE_GROWTH_ABSOLUTE_CEILING:
+            candidates.append(candidate)
+            candidate *= 2
     return tuple(sorted(set(candidates)))
 
 
-def _new_replay_batch_tuner(max_rows: int) -> AdaptiveTierBatchController | None:
+def _new_replay_batch_tuner(
+    max_rows: int,
+    *,
+    allow_resource_growth: bool = False,
+) -> AdaptiveTierBatchController | None:
     """父 Replay 与持久分片共用相同墙钟/资源反馈，不留下固定大批次旁路。"""
 
-    tiers = _replay_batch_tiers(max_rows)
+    tiers = _replay_batch_tiers(
+        max_rows,
+        allow_resource_growth=allow_resource_growth,
+    )
     if len(tiers) == 1:
         return None
+    # 历史任务可能保存了非常小的批量。先按原提示安全起步，再依靠吞吐探测
+    # 逐级增长，避免固定下标把 1 行提示直接放大到 4 行。
+    initial_target = max(1, max_rows // 4)
+    initial_index = max(index for index, tier in enumerate(tiers) if tier <= initial_target)
     return AdaptiveTierBatchController(
         tiers=tiers,
-        improvement_margin=0.20,
+        improvement_margin=0.08,
         transaction_ceiling_ms=3_000,
         rows_per_cpu_core=1_000,
         memory_mib_per_1000_rows=1_024,
+        initial_index=initial_index,
     )
 
 
@@ -246,6 +279,14 @@ class _ImportLineageContext:
     operation: str
 
 
+@dataclass(frozen=True, slots=True)
+class _ReplaySourceRecord:
+    """跨 Artifact 聚合批次中一行 Canonical 对应的冻结来源。"""
+
+    selected: CanonicalReplayArtifactRecord
+    artifact: ArtifactRecord
+
+
 class PostgresCanonicalReplayJobExecutor:
     """先预检完整输入集，再按有界批次和当前 Fence 幂等 Replay。"""
 
@@ -283,11 +324,16 @@ class PostgresCanonicalReplayJobExecutor:
             "transaction_ms": 0,
             "fast_created_count": 0,
             "fallback_count": 0,
+            "workload_slot_wait_ms": 0,
+            "foreground_pressure_batches": 0,
         }
         try:
             run, selected = self._load_execution(payload.run_id, fence)
             cancel_probe = _ReplayParentCancellationProbe(self._runtime, run.all_request_id)
-            batch_tuner = _new_replay_batch_tuner(run.batch_size)
+            batch_tuner = _new_replay_batch_tuner(
+                run.batch_size,
+                allow_resource_growth=True,
+            )
             if run.checkpoint_artifact_ordinal >= run.artifact_count:
                 return JobHandlerResult.succeeded(_result(run))
 
@@ -342,158 +388,242 @@ class PostgresCanonicalReplayJobExecutor:
                     finish=finish,
                 )
 
+            adaptive_ceiling_rows = (
+                batch_tuner.tiers[-1] if batch_tuner is not None else run.batch_size
+            )
             scan_controller = _ReplayScanBatchController(
-                max_scan_rows=max(run.batch_size, run.batch_size * 4),
+                max_scan_rows=max(adaptive_ceiling_rows, adaptive_ceiling_rows * 4),
                 sampled_rows=sampled_rows,
                 matched_rows=matched_rows,
             )
             resolver = BrandVehicleResolver(run.filter_snapshot.catalog)
             previous_scan_signature: tuple[int, int] | None = None
             ingestion_started = perf_counter()
+            next_progress_log_at = ingestion_started + 60.0
             phase = "ingestion"
-            while run.checkpoint_artifact_ordinal < run.artifact_count:
-                if cancel_probe.requested(context):
-                    return JobHandlerResult.cancelled()
-                current = selected[run.checkpoint_artifact_ordinal]
-                artifact_ordinal = current.ordinal
-                try:
-                    artifact = self._load_artifact(current, fence=fence)
-                except RevokedCanonicalReplaySource:
-                    run = self._advance_empty_artifact(run, current, fence=fence)
-                    skipped_revoked_artifacts += 1
-                    context.heartbeat(progress=_progress(run))
-                    continue
-                iterator = cast(
-                    Generator[CanonicalContentV1],
-                    reader.read_preflighted(artifact),
-                )
-                try:
-                    for _ in islice(iterator, run.checkpoint_row_number):
-                        pass
-                    while True:
+            cursor_ordinal = run.checkpoint_artifact_ordinal
+            cursor_row_number = run.checkpoint_row_number
+            iterator: Generator[CanonicalContentV1] | None = None
+            iterator_selected: CanonicalReplayArtifactRecord | None = None
+            iterator_artifact: ArtifactRecord | None = None
+            try:
+                while run.checkpoint_artifact_ordinal < run.artifact_count:
+                    if cancel_probe.requested(context):
+                        return JobHandlerResult.cancelled()
+                    resources = detect_resources()
+                    if batch_tuner is None:
+                        matched_target, reason, previous = (
+                            run.batch_size,
+                            "frozen_single_row",
+                            None,
+                        )
+                    else:
+                        matched_target, reason, previous = batch_tuner.choose(resources)
+                    if previous != matched_target:
+                        log_event(
+                            self._runtime.logger,
+                            logging.INFO,
+                            "capacity.replay_batch_selected",
+                            "历史重筛数据库目标批量调整",
+                            run_id=str(run.id),
+                            previous_rows=previous,
+                            selected_rows=matched_target,
+                            configured_batch_hint=run.batch_size,
+                            adaptive_ceiling_rows=adaptive_ceiling_rows,
+                            unit="matched_rows",
+                            reason=reason,
+                        )
+                    scan_ceiling_rows = min(
+                        scan_controller.max_scan_rows,
+                        max(matched_target, matched_target * 4),
+                    )
+                    scan_rows = scan_controller.choose(
+                        matched_target_rows=matched_target,
+                        scan_ceiling_rows=scan_ceiling_rows,
+                    )
+                    scan_signature = (matched_target, scan_rows)
+                    if previous_scan_signature != scan_signature:
+                        log_event(
+                            self._runtime.logger,
+                            logging.INFO,
+                            "capacity.replay_scan_batch_selected",
+                            "历史重筛按命中率调整扫描窗口",
+                            run_id=str(run.id),
+                            matched_target_rows=matched_target,
+                            raw_scan_rows=scan_rows,
+                            max_scan_rows=scan_controller.max_scan_rows,
+                            resource_scan_ceiling_rows=scan_ceiling_rows,
+                            estimated_hit_ratio=round(scan_controller.estimated_hit_ratio, 4),
+                        )
+                        previous_scan_signature = scan_signature
+
+                    artifact_read_started = perf_counter()
+                    batch: list[CanonicalContentV1] = []
+                    source_records: list[_ReplaySourceRecord] = []
+                    checkpoints: list[tuple[int, int]] = []
+                    while len(batch) < scan_rows and cursor_ordinal < run.artifact_count:
+                        candidate = selected[cursor_ordinal]
+                        # 统一 Data Import 的 Canonical 本身已经是有界 Chunk，且 Campaign
+                        # 允许并发撤销；不把它与相邻 Artifact 放进同一事务。兼容单文件
+                        # 与 Provider Canonical 则可跨文件聚合，消除小文件事务放大。
+                        if batch and (
+                            candidate.source_kind == "data_import_canonical_chunk_v2"
+                            or source_records[-1].selected.source_kind
+                            == "data_import_canonical_chunk_v2"
+                        ):
+                            break
+                        if iterator is None:
+                            artifact_ordinal = candidate.ordinal
+                            try:
+                                loaded = self._load_artifact(candidate, fence=fence)
+                            except RevokedCanonicalReplaySource:
+                                if batch:
+                                    break
+                                run = self._advance_empty_artifact(run, candidate, fence=fence)
+                                skipped_revoked_artifacts += 1
+                                cursor_ordinal = run.checkpoint_artifact_ordinal
+                                cursor_row_number = run.checkpoint_row_number
+                                context.heartbeat(progress=_progress(run))
+                                continue
+                            iterator_selected = candidate
+                            iterator_artifact = loaded
+                            iterator = cast(
+                                Generator[CanonicalContentV1],
+                                reader.read_preflighted(loaded),
+                            )
+                            for _ in islice(iterator, cursor_row_number):
+                                pass
+                        if iterator_selected is None or iterator_artifact is None:
+                            raise RuntimeError("Replay Artifact 读取游标未初始化")
+                        remaining = scan_rows - len(batch)
+                        rows = tuple(islice(iterator, remaining))
+                        if not rows:
+                            iterator.close()
+                            iterator = None
+                            iterator_selected = None
+                            iterator_artifact = None
+                            cursor_ordinal += 1
+                            cursor_row_number = 0
+                            continue
+                        for content in rows:
+                            cursor_row_number += 1
+                            batch.append(content)
+                            source_records.append(
+                                _ReplaySourceRecord(
+                                    selected=iterator_selected,
+                                    artifact=iterator_artifact,
+                                )
+                            )
+                            checkpoints.append((cursor_ordinal, cursor_row_number))
+                    batch_metrics["artifact_read_ms"] += int(
+                        (perf_counter() - artifact_read_started) * 1000
+                    )
+                    if not batch:
+                        run = self._advance_checkpoint(
+                            run,
+                            next_artifact_ordinal=cursor_ordinal,
+                            next_row_number=cursor_row_number,
+                            fence=fence,
+                        )
+                        context.heartbeat(progress=_progress(run))
+                        continue
+
+                    resolution_started = perf_counter()
+                    resolved = tuple(
+                        (
+                            content,
+                            resolve_canonical_brand_vehicle(
+                                run.filter_snapshot,
+                                content,
+                                resolver=resolver,
+                            ),
+                        )
+                        for content in batch
+                    )
+                    resolution_ms = int((perf_counter() - resolution_started) * 1000)
+                    actual_matched = sum(resolution.matched for _content, resolution in resolved)
+                    if len(batch) == scan_rows:
+                        scan_controller.observe(
+                            raw_rows=len(batch),
+                            matched_rows=actual_matched,
+                        )
+                    resolved_chunks = _partition_resolved_batch(
+                        resolved,
+                        matched_target_rows=matched_target,
+                    )
+                    chunk_start = 0
+                    revoked_during_batch = False
+                    for chunk_index, resolved_chunk in enumerate(resolved_chunks):
                         if cancel_probe.requested(context):
                             return JobHandlerResult.cancelled()
-                        resources = detect_resources()
-                        if batch_tuner is None:
-                            matched_target, reason, previous = (
-                                run.batch_size,
-                                "frozen_single_row",
-                                None,
+                        chunk_end = chunk_start + len(resolved_chunk)
+                        chunk_sources = tuple(source_records[chunk_start:chunk_end])
+                        next_artifact_ordinal, next_row_number = checkpoints[chunk_end - 1]
+                        transaction_contents = tuple(
+                            content for content, _resolution in resolved_chunk
+                        )
+                        transaction_matched = sum(
+                            resolution.matched for _content, resolution in resolved_chunk
+                        )
+                        batch_started = perf_counter()
+                        try:
+                            run = self._ingest_batch(
+                                run,
+                                chunk_sources[0].selected,
+                                chunk_sources[0].artifact,
+                                transaction_contents,
+                                fence=fence,
+                                batch_metrics=batch_metrics,
+                                source_records=chunk_sources,
+                                next_artifact_ordinal=next_artifact_ordinal,
+                                next_row_number=next_row_number,
+                                resolved=resolved_chunk,
+                                resolution_ms=resolution_ms if chunk_index == 0 else 0,
                             )
-                        else:
-                            matched_target, reason, previous = batch_tuner.choose(resources)
-                        if previous != matched_target:
+                        except RevokedCanonicalReplaySource:
+                            revoked = chunk_sources[0].selected
+                            run = self._advance_empty_artifact(run, revoked, fence=fence)
+                            skipped_revoked_artifacts += 1
+                            if iterator is not None:
+                                iterator.close()
+                            iterator = None
+                            iterator_selected = None
+                            iterator_artifact = None
+                            cursor_ordinal = run.checkpoint_artifact_ordinal
+                            cursor_row_number = run.checkpoint_row_number
+                            revoked_during_batch = True
+                            break
+                        if batch_tuner is not None:
+                            batch_tuner.succeeded(
+                                size=matched_target,
+                                rows=transaction_matched,
+                                duration_ms=int((perf_counter() - batch_started) * 1000),
+                            )
+                        chunk_start = chunk_end
+                        context.heartbeat(progress=_progress(run))
+                        now = perf_counter()
+                        if now >= next_progress_log_at:
                             log_event(
                                 self._runtime.logger,
                                 logging.INFO,
-                                "capacity.replay_batch_selected",
-                                "历史重筛数据库目标批量调整",
+                                "canonical_replay.progress_sample",
+                                "Canonical Replay 周期进度与阶段耗时。",
+                                job_id=str(fence.job_id),
                                 run_id=str(run.id),
-                                previous_rows=previous,
-                                selected_rows=matched_target,
-                                frozen_max_rows=run.batch_size,
-                                unit="matched_rows",
-                                reason=reason,
+                                progress=_progress(run),
+                                rows_seen=run.rows_seen,
+                                rows_matched=run.rows_matched,
+                                rows_ingested=run.rows_ingested,
+                                existing_convergence=run.existing_convergence,
+                                duration_ms=int((now - ingestion_started) * 1000),
+                                **batch_metrics,
                             )
-                        scan_ceiling_rows = (
-                            min(
-                                scan_controller.max_scan_rows,
-                                max(matched_target, matched_target * 4),
-                            )
-                            if reason in {"memory_pressure", "resource_limit"}
-                            else scan_controller.max_scan_rows
-                        )
-                        scan_rows = scan_controller.choose(
-                            matched_target_rows=matched_target,
-                            scan_ceiling_rows=scan_ceiling_rows,
-                        )
-                        scan_signature = (matched_target, scan_rows)
-                        if previous_scan_signature != scan_signature:
-                            log_event(
-                                self._runtime.logger,
-                                logging.INFO,
-                                "capacity.replay_scan_batch_selected",
-                                "历史重筛按命中率调整扫描窗口",
-                                run_id=str(run.id),
-                                matched_target_rows=matched_target,
-                                raw_scan_rows=scan_rows,
-                                max_scan_rows=scan_controller.max_scan_rows,
-                                resource_scan_ceiling_rows=scan_ceiling_rows,
-                                estimated_hit_ratio=round(scan_controller.estimated_hit_ratio, 4),
-                            )
-                            previous_scan_signature = scan_signature
-                        artifact_read_started = perf_counter()
-                        batch = tuple(islice(iterator, scan_rows))
-                        batch_metrics["artifact_read_ms"] += int(
-                            (perf_counter() - artifact_read_started) * 1000
-                        )
-                        if not batch:
-                            run = self._advance_empty_artifact(run, current, fence=fence)
-                            break
-                        resolution_started = perf_counter()
-                        resolved = tuple(
-                            (
-                                content,
-                                resolve_canonical_brand_vehicle(
-                                    run.filter_snapshot,
-                                    content,
-                                    resolver=resolver,
-                                ),
-                            )
-                            for content in batch
-                        )
-                        resolution_ms = int((perf_counter() - resolution_started) * 1000)
-                        actual_matched = sum(
-                            resolution.matched for _content, resolution in resolved
-                        )
-                        if len(batch) == scan_rows:
-                            scan_controller.observe(
-                                raw_rows=len(batch),
-                                matched_rows=actual_matched,
-                            )
-                        resolved_chunks = _partition_resolved_batch(
-                            resolved,
-                            matched_target_rows=matched_target,
-                        )
-                        revoked_during_batch = False
-                        for chunk_index, resolved_chunk in enumerate(resolved_chunks):
-                            if cancel_probe.requested(context):
-                                return JobHandlerResult.cancelled()
-                            transaction_contents = tuple(
-                                content for content, _resolution in resolved_chunk
-                            )
-                            transaction_matched = sum(
-                                resolution.matched for _content, resolution in resolved_chunk
-                            )
-                            batch_started = perf_counter()
-                            try:
-                                run = self._ingest_batch(
-                                    run,
-                                    current,
-                                    artifact,
-                                    transaction_contents,
-                                    fence=fence,
-                                    batch_metrics=batch_metrics,
-                                    resolved=resolved_chunk,
-                                    resolution_ms=resolution_ms if chunk_index == 0 else 0,
-                                )
-                            except RevokedCanonicalReplaySource:
-                                run = self._advance_empty_artifact(run, current, fence=fence)
-                                skipped_revoked_artifacts += 1
-                                revoked_during_batch = True
-                                break
-                            if batch_tuner is not None:
-                                batch_tuner.succeeded(
-                                    size=matched_target,
-                                    rows=transaction_matched,
-                                    duration_ms=int((perf_counter() - batch_started) * 1000),
-                                )
-                            context.heartbeat(progress=_progress(run))
-                        if revoked_during_batch:
-                            break
-                finally:
+                            next_progress_log_at = now + 60.0
+                    if revoked_during_batch:
+                        continue
+            finally:
+                if iterator is not None:
                     iterator.close()
-                context.heartbeat(progress=_progress(run))
             log_event(
                 self._runtime.logger,
                 logging.INFO,
@@ -538,7 +668,20 @@ class PostgresCanonicalReplayJobExecutor:
                 sqlstate=getattr(exc.orig, "sqlstate", None),
             )
             return JobHandlerResult.failed("canonical_replay_persistence_invalid")
-        except OSError, SQLAlchemyError:
+        except (OSError, SQLAlchemyError) as exc:
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "canonical_replay.transient_retry",
+                "Canonical Replay 遇到可重试的 I/O 或数据库异常。",
+                job_id=str(fence.job_id),
+                run_id=str(payload.run_id),
+                phase=phase,
+                artifact_ordinal=artifact_ordinal,
+                error_class=type(exc).__name__,
+                sqlstate=getattr(getattr(exc, "orig", None), "sqlstate", None),
+                batch_metrics=batch_metrics,
+            )
             if batch_tuner is not None:
                 batch_tuner.database_retry()
             return JobHandlerResult.retry("canonical_replay_transient_error")
@@ -679,7 +822,11 @@ class PostgresCanonicalReplayJobExecutor:
         ordinal = int(shard["ordinal"])
         shard_count = int(shard["shard_count"])
         reader = CanonicalArtifactReader(store=self._runtime.artifact_store)
-        batch_tuner = _new_replay_batch_tuner(run.batch_size)
+        batch_tuner = _new_replay_batch_tuner(
+            run.batch_size,
+            allow_resource_growth=True,
+        )
+        adaptive_ceiling_rows = batch_tuner.tiers[-1] if batch_tuner is not None else run.batch_size
         metrics = {
             "batch_count": 0,
             "artifact_read_ms": 0,
@@ -697,6 +844,8 @@ class PostgresCanonicalReplayJobExecutor:
             "transaction_ms": 0,
             "fast_created_count": 0,
             "fallback_count": 0,
+            "workload_slot_wait_ms": 0,
+            "foreground_pressure_batches": 0,
         }
         while run.checkpoint_artifact_ordinal < run.artifact_count:
             if context.cancel_requested():
@@ -736,7 +885,8 @@ class PostgresCanonicalReplayJobExecutor:
                             shard_id=str(shard_id),
                             previous_rows=previous,
                             selected_rows=proposed_size,
-                            frozen_max_rows=run.batch_size,
+                            configured_batch_hint=run.batch_size,
+                            adaptive_ceiling_rows=adaptive_ceiling_rows,
                             reason=reason,
                         )
                     artifact_read_started = perf_counter()
@@ -1135,10 +1285,45 @@ class PostgresCanonicalReplayJobExecutor:
                     )
                 return PostgresCanonicalReplayRepository(session).advance(
                     run_id=run.id,
-                    expected_artifact_ordinal=selected.ordinal,
+                    expected_artifact_ordinal=run.checkpoint_artifact_ordinal,
                     expected_row_number=run.checkpoint_row_number,
                     next_artifact_ordinal=selected.ordinal + 1,
                     next_row_number=0,
+                    counters=_zero_counters(),
+                    fence=fence,
+                )
+        finally:
+            session.close()
+
+    def _advance_checkpoint(
+        self,
+        run: CanonicalReplayRunRecord,
+        *,
+        next_artifact_ordinal: int,
+        next_row_number: int,
+        fence: JobExecutionFence,
+    ) -> CanonicalReplayRunRecord:
+        """原子越过一段没有业务行的 Artifact 尾部，不制造逐文件事务。"""
+
+        if (
+            next_artifact_ordinal < run.checkpoint_artifact_ordinal
+            or next_artifact_ordinal > run.artifact_count
+            or next_row_number < 0
+            or (
+                next_artifact_ordinal == run.checkpoint_artifact_ordinal
+                and next_row_number <= run.checkpoint_row_number
+            )
+        ):
+            raise ValueError("Replay 空区间 checkpoint 没有前进")
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                return PostgresCanonicalReplayRepository(session).advance(
+                    run_id=run.id,
+                    expected_artifact_ordinal=run.checkpoint_artifact_ordinal,
+                    expected_row_number=run.checkpoint_row_number,
+                    next_artifact_ordinal=next_artifact_ordinal,
+                    next_row_number=next_row_number,
                     counters=_zero_counters(),
                     fence=fence,
                 )
@@ -1182,6 +1367,9 @@ class PostgresCanonicalReplayJobExecutor:
         batch_metrics: dict[str, int],
         shard_id: UUID | None = None,
         raw_row_count: int | None = None,
+        source_records: tuple[_ReplaySourceRecord, ...] | None = None,
+        next_artifact_ordinal: int | None = None,
+        next_row_number: int | None = None,
         resolved: tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...] | None = None,
         resolution_ms: int | None = None,
     ) -> CanonicalReplayRunRecord:
@@ -1203,6 +1391,12 @@ class PostgresCanonicalReplayJobExecutor:
             resolution_ms = int((perf_counter() - resolution_started) * 1000)
         elif len(resolved) != len(contents):
             raise ValueError("Replay 预解析结果与 raw batch 数量不一致")
+        if source_records is None:
+            source_records = tuple(
+                _ReplaySourceRecord(selected=selected, artifact=artifact) for _ in contents
+            )
+        elif len(source_records) != len(contents):
+            raise ValueError("Replay 来源记录与 raw batch 数量不一致")
         if resolution_ms is None:
             resolution_ms = 0
         session = self._runtime.database.new_session()
@@ -1223,8 +1417,14 @@ class PostgresCanonicalReplayJobExecutor:
         projection_refresh_ms = 0
         projection_content_count = 0
         transaction_started = perf_counter()
+        workload_slot = None
         try:
             with session.begin():
+                workload_slot = acquire_background_write_slot(
+                    session,
+                    resources=detect_resources(),
+                    work_id=shard_id or fence.job_id,
+                )
                 # 后台重筛遇到在线事务锁竞争时主动让路；超时会回滚本批并进入 Job retry。
                 session.execute(text(f"SET LOCAL lock_timeout = '{_REPLAY_LOCK_TIMEOUT}'"))
                 # 这里只做无锁资格检查；提交前由 repository.advance 获取 Job 行锁并
@@ -1243,7 +1443,8 @@ class PostgresCanonicalReplayJobExecutor:
                         shard is None
                         and (
                             current.job_id != fence.job_id
-                            or current.checkpoint_artifact_ordinal != selected.ordinal
+                            or current.checkpoint_artifact_ordinal
+                            != run.checkpoint_artifact_ordinal
                             or current.checkpoint_row_number != run.checkpoint_row_number
                         )
                     )
@@ -1257,7 +1458,18 @@ class PostgresCanonicalReplayJobExecutor:
                     )
                 ):
                     raise LeaseLostError("Canonical Replay checkpoint 已不属于当前执行")
-                lineage = self._load_import_lineage_context(session, selected, artifact)
+                source_contexts: dict[UUID, _ImportLineageContext | None] = {}
+                lineage_by_artifact: dict[UUID, dict[str, tuple[UUID, UUID]]] = {}
+                for source in source_records:
+                    if source.selected.artifact_id not in source_contexts:
+                        source_contexts[source.selected.artifact_id] = (
+                            self._load_import_lineage_context(
+                                session,
+                                source.selected,
+                                source.artifact,
+                            )
+                        )
+                        lineage_by_artifact[source.selected.artifact_id] = {}
                 content_repository = PostgresCompleteContentRepository(
                     session,
                     replay_visibility_owner_id=current.all_request_id,
@@ -1269,7 +1481,6 @@ class PostgresCanonicalReplayJobExecutor:
                 duplicates = 0
                 inserted = 0
                 existing = 0
-                lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
                 ledger_rows: list[dict[str, object]] = []
                 pending: list[tuple[CanonicalContentV1, BrandVehicleResolution]] = []
                 claimed_identities = repository.claim_content_identities(
@@ -1280,7 +1491,11 @@ class PostgresCanonicalReplayJobExecutor:
                         if resolution.matched
                     ),
                 )
-                for content, resolution in resolved:
+                for (content, resolution), source in zip(
+                    resolved,
+                    source_records,
+                    strict=True,
+                ):
                     if not resolution.matched:
                         continue
                     matched += 1
@@ -1292,9 +1507,9 @@ class PostgresCanonicalReplayJobExecutor:
                     observation = self._content_with_lineage(
                         session,
                         content,
-                        selected=selected,
-                        lineage=lineage,
-                        lineage_by_platform=lineage_by_platform,
+                        selected=source.selected,
+                        lineage=source_contexts[source.selected.artifact_id],
+                        lineage_by_platform=lineage_by_artifact[source.selected.artifact_id],
                     )
                     pending.append((observation, resolution))
 
@@ -1588,16 +1803,22 @@ class PostgresCanonicalReplayJobExecutor:
                     rows_ingested=inserted,
                     existing_convergence=existing,
                 )
-                next_row = run.checkpoint_row_number + (
-                    raw_row_count if raw_row_count is not None else len(contents)
+                checkpoint_artifact = (
+                    selected.ordinal if next_artifact_ordinal is None else next_artifact_ordinal
+                )
+                checkpoint_row = (
+                    run.checkpoint_row_number
+                    + (raw_row_count if raw_row_count is not None else len(contents))
+                    if next_row_number is None
+                    else next_row_number
                 )
                 if shard_id is None:
                     advanced = repository.advance(
                         run_id=run.id,
-                        expected_artifact_ordinal=selected.ordinal,
+                        expected_artifact_ordinal=run.checkpoint_artifact_ordinal,
                         expected_row_number=run.checkpoint_row_number,
-                        next_artifact_ordinal=selected.ordinal,
-                        next_row_number=next_row,
+                        next_artifact_ordinal=checkpoint_artifact,
+                        next_row_number=checkpoint_row,
                         counters=counters,
                         fence=fence,
                     )
@@ -1607,8 +1828,8 @@ class PostgresCanonicalReplayJobExecutor:
                         run_id=run.id,
                         expected_artifact_ordinal=selected.ordinal,
                         expected_row_number=run.checkpoint_row_number,
-                        next_artifact_ordinal=selected.ordinal,
-                        next_row_number=next_row,
+                        next_artifact_ordinal=checkpoint_artifact,
+                        next_row_number=checkpoint_row,
                         counters=counters,
                         fence=fence,
                         finished=False,
@@ -1631,8 +1852,10 @@ class PostgresCanonicalReplayJobExecutor:
             "canonical_replay.batch_completed",
             "Canonical Replay 批次已原子提交",
             run_id=str(run.id),
-            artifact_ordinal=selected.ordinal,
+            artifact_ordinal=run.checkpoint_artifact_ordinal,
+            next_artifact_ordinal=advanced.checkpoint_artifact_ordinal,
             row_start=run.checkpoint_row_number,
+            next_row_number=advanced.checkpoint_row_number,
             row_count=len(contents),
             raw_row_count=raw_row_count if raw_row_count is not None else len(contents),
             matched_count=matched,
@@ -1652,6 +1875,12 @@ class PostgresCanonicalReplayJobExecutor:
             ledger_checkpoint_ms=ledger_checkpoint_ms,
             projection_content_count=projection_content_count,
             projection_refresh_ms=projection_refresh_ms,
+            workload_slot=workload_slot.slot if workload_slot is not None else None,
+            workload_slot_count=(workload_slot.slot_count if workload_slot is not None else None),
+            workload_slot_wait_ms=(workload_slot.wait_ms if workload_slot is not None else None),
+            foreground_pressure=(
+                workload_slot.foreground_pressure if workload_slot is not None else None
+            ),
             transaction_ms=int((perf_counter() - transaction_started) * 1000),
             duration_ms=int((perf_counter() - batch_started) * 1000),
         )
@@ -1670,6 +1899,9 @@ class PostgresCanonicalReplayJobExecutor:
         batch_metrics["transaction_ms"] += int((perf_counter() - transaction_started) * 1000)
         batch_metrics["fast_created_count"] += fast_created_count
         batch_metrics["fallback_count"] += fallback_count
+        if workload_slot is not None:
+            batch_metrics["workload_slot_wait_ms"] += workload_slot.wait_ms
+            batch_metrics["foreground_pressure_batches"] += int(workload_slot.foreground_pressure)
         return advanced
 
     @staticmethod

@@ -34,6 +34,17 @@ def test_scalar_reference_requires_stable_author_fixture(tmp_path: Path) -> None
         )
 
 
+def test_catalog_after_import_requires_a_catalog_fixture(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="catalog_brands"):
+        benchmark_canonical_replay.run_benchmark(
+            work_dir=tmp_path,
+            file_count=1,
+            rows_per_file=1,
+            workers=1,
+            catalog_after_import=True,
+        )
+
+
 def test_replay_benchmark_refuses_nonempty_work_directory(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

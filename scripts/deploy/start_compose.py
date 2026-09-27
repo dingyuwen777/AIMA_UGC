@@ -44,23 +44,23 @@ def compute_memory_limits(memory_bytes: int) -> dict[str, int]:
 
 
 def compute_cpu_limits(cpu_count: int) -> dict[str, float]:
-    """常驻服务与一个启动任务同时运行时保留至少五分之一 CPU。"""
+    """按服务峰值设置可重叠上限，让 Docker 在真实并发时调度宿主 CPU。"""
 
     if cpu_count < 2:
         raise RuntimeError("Docker Engine 少于 2 个可用 CPU，无法安全自动分配 AIMA 服务")
     fractions = {
-        "postgres": 0.25,
-        "worker": 0.30,
-        "api": 0.08,
-        "scheduler": 0.03,
-        "frontend": 0.04,
+        "postgres": 0.75,
+        "worker": 0.75,
+        "api": 0.25,
+        "scheduler": 0.10,
+        "frontend": 0.10,
     }
     limits = {
         service: int(cpu_count * fraction * 100) / 100 for service, fraction in fractions.items()
     }
     limits.update(
         {
-            service: max(0.2, int(cpu_count * 0.08 * 100) / 100)
+            service: max(0.2, int(cpu_count * 0.25 * 100) / 100)
             for service in ("bootstrap", "migrate", "configure")
         }
     )

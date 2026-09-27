@@ -110,7 +110,7 @@ def test_detect_resources_reclaims_clean_inactive_file_cache_before_downshifting
     assert resources.memory_available_bytes == 13475250176 - 13468921856 + 12946477056
     assert select_job_window(resources) == 6
     assert worker_process_limit(resources) == 6
-    assert select_chunk_rows(resources) == 2000
+    assert select_chunk_rows(resources) == 4000
     assert AdaptiveBatchController(lower=500, upper=1000).choose(resources)[:2] == (
         1000,
         "baseline_probe",
@@ -203,13 +203,13 @@ def test_detect_resources_preserves_zero_host_available_memory(tmp_path: Path) -
     assert select_chunk_rows(resources) == 500
 
 
-def test_chunk_selection_uses_memory_without_confusing_api_cpu_with_worker_cpu() -> None:
+def test_chunk_selection_uses_effective_worker_cpu_and_memory_budget() -> None:
     ample = ResourceSnapshot(8, 8 * 1024**3, 4 * 1024**3, "host")
     api_with_small_cpu_quota = ResourceSnapshot(0.96, 1582 * 1024**2, 1400 * 1024**2, "cgroup_v2")
     small = ResourceSnapshot(1, 512 * 1024**2, 180 * 1024**2, "cgroup_v2")
 
-    assert select_chunk_rows(ample) == 2000
-    assert select_chunk_rows(api_with_small_cpu_quota) == 2000
+    assert select_chunk_rows(ample) == 4000
+    assert select_chunk_rows(api_with_small_cpu_quota) == 500
     assert select_chunk_rows(small) == 500
     assert select_job_window(ample, ceiling=2) == 2
     assert select_job_window(api_with_small_cpu_quota, ceiling=2) == 1

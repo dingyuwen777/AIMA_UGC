@@ -36,9 +36,11 @@ from aima_ugc.modules.ingestion.historical_jobs import (
     HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
     HISTORICAL_SNAPSHOT_JOB_TYPE,
 )
+from aima_ugc.platform.capacity import select_chunk_rows
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobHandlerResult
 from aima_ugc.platform.jobs.tables import jobs_table
+from aima_ugc.platform.performance_catalog_fixture import seed_catalog_fixture
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from pydantic import BaseModel, ConfigDict
@@ -78,11 +80,14 @@ def run_benchmark(
     rows_per_file: int,
     chunk_rows: int,
     max_in_flight: int,
+    source_kind: Literal["server_path", "local_upload"] = "server_path",
     ingestion_policy: Literal["standard_observation", "historical_fill_only"] = (
         "historical_fill_only"
     ),
     existing_rows: int = 0,
     measure_revocation: bool = False,
+    catalog_brands: int = 0,
+    vehicles_per_brand: int = 0,
     disk_budget_bytes: int = _DEFAULT_DISK_BUDGET_BYTES,
 ) -> dict[str, Any]:
     """生成有界 XLSX Fixture，并编排生产 Campaign/Worker 取得容量证据。"""
@@ -93,14 +98,22 @@ def run_benchmark(
     _require_positive(max_in_flight, "max_in_flight")
     if rows_per_file > 1_048_575:
         raise ValueError("rows_per_file 不能超过 XLSX 单 Sheet 数据行上限")
-    if not 100 <= chunk_rows <= 2_000:
-        raise ValueError("chunk_rows 必须在 100 到 2000 之间")
+    if not 100 <= chunk_rows <= 4_000:
+        raise ValueError("chunk_rows 必须在 100 到 4000 之间")
     if not 1 <= max_in_flight <= 16:
         raise ValueError("max_in_flight 必须在 1 到 16 之间")
+    if source_kind not in {"server_path", "local_upload"}:
+        raise ValueError("source_kind 必须为 server_path 或 local_upload")
     if ingestion_policy not in {"standard_observation", "historical_fill_only"}:
         raise ValueError("ingestion_policy 不受支持")
     if not 0 <= existing_rows < row_count:
         raise ValueError("existing_rows 必须大于等于 0 且小于 rows")
+    if not 0 <= catalog_brands <= 1_000:
+        raise ValueError("catalog_brands 必须在 0 到 1000 之间")
+    if not 0 <= vehicles_per_brand <= 1_000:
+        raise ValueError("vehicles_per_brand 必须在 0 到 1000 之间")
+    if catalog_brands * vehicles_per_brand > 50_000:
+        raise ValueError("目录车型总数不能超过 50000")
     if disk_budget_bytes <= 0:
         raise ValueError("disk_budget_bytes 必须大于 0")
 
@@ -151,6 +164,10 @@ def run_benchmark(
         _cleanup_generated_outputs(root)
         raise
     completed = False
+    effective_chunk_rows = min(
+        settings.historical_chunk_rows,
+        select_chunk_rows(runtime.worker_resources()),
+    )
     try:
         _reset_capacity_database(runtime)
         registry = create_collection_job_registry(runtime=runtime)
@@ -177,6 +194,11 @@ def run_benchmark(
             )
         )
         brand_id = _create_capacity_brand(runtime)
+        catalog_fixture = seed_catalog_fixture(
+            runtime,
+            brand_count=catalog_brands,
+            vehicles_per_brand=vehicles_per_brand,
+        )
         if existing_rows:
             _preseed_existing_contents(
                 client=client,
@@ -189,18 +211,59 @@ def run_benchmark(
 
         benchmark_started = time.perf_counter()
         cpu_started = time.process_time()
-        created = client.post(
-            "/api/v1/historical-import-campaigns",
-            json={
-                "client_idempotency_key": f"stage12-capacity-{uuid4()}",
-                "relative_paths": [path.name for path in source_files],
-                "recursive": False,
-                "brand_ids": [brand_id],
-                "ingestion_policy": ingestion_policy,
-            },
-        )
-        _require_status(created, 202, "创建容量 Campaign")
-        campaign_id = created.json()["campaign_id"]
+        upload_seconds = 0.0
+        if source_kind == "server_path":
+            created = client.post(
+                "/api/v1/historical-import-campaigns",
+                json={
+                    "client_idempotency_key": f"stage12-capacity-{uuid4()}",
+                    "relative_paths": [path.name for path in source_files],
+                    "recursive": False,
+                    "brand_ids": ([] if catalog_brands else [brand_id]),
+                    "ingestion_policy": ingestion_policy,
+                },
+            )
+            _require_status(created, 202, "创建服务器目录容量 Campaign")
+            campaign_id = created.json()["campaign_id"]
+        else:
+            created = client.post(
+                "/api/v1/data-import-campaigns/local",
+                json={
+                    "client_idempotency_key": f"stage12-local-capacity-{uuid4()}",
+                    "files": [
+                        {"relative_path": path.name, "byte_size": path.stat().st_size}
+                        for path in source_files
+                    ],
+                    "brand_ids": ([] if catalog_brands else [brand_id]),
+                    "ingestion_policy": ingestion_policy,
+                },
+            )
+            _require_status(created, 201, "创建本地上传容量 Campaign")
+            campaign_id = created.json()["campaign_id"]
+            upload_started = time.perf_counter()
+            upload_items = {
+                item["relative_path"]: item["item_id"] for item in created.json()["upload_items"]
+            }
+            for path in source_files:
+                with path.open("rb") as source:
+                    uploaded = client.put(
+                        f"/api/v1/data-import-campaigns/{campaign_id}/items/"
+                        f"{upload_items[path.name]}/content",
+                        files={
+                            "file": (
+                                path.name,
+                                source,
+                                (
+                                    "application/vnd.openxmlformats-officedocument."
+                                    "spreadsheetml.sheet"
+                                ),
+                            )
+                        },
+                    )
+                _require_status(uploaded, 200, "上传本地容量文件")
+            finalized = client.post(f"/api/v1/data-import-campaigns/{campaign_id}/finalize")
+            _require_status(finalized, 202, "完成本地容量 Campaign 上传")
+            upload_seconds = time.perf_counter() - upload_started
 
         maximum_active = _historical_active_jobs(runtime)
         maximum_lock_waiters = _lock_waiters(runtime)
@@ -294,6 +357,7 @@ def run_benchmark(
                 "files": len(source_files),
                 "source_bytes": source_bytes,
                 "profile": "aima-monitoring-excel.v1",
+                "source_kind": source_kind,
                 "ingestion_policy": ingestion_policy,
                 "distribution": {
                     "candidate_expected": row_count - existing_rows,
@@ -305,7 +369,8 @@ def run_benchmark(
                 },
             },
             "configuration": {
-                "chunk_rows": chunk_rows,
+                "requested_chunk_rows": chunk_rows,
+                "chunk_rows": effective_chunk_rows,
                 "max_in_flight_jobs": max_in_flight,
                 "worker_count": 1,
                 "worker_lease_seconds": 120,
@@ -313,6 +378,13 @@ def run_benchmark(
                 "estimated_bytes": estimated_bytes,
                 "database": settings.db_name,
                 "postgresql": after["postgresql"],
+            },
+            "catalog_fixture": {
+                "scope": "all_active" if catalog_brands else "selected",
+                "distractor_brands": catalog_fixture.brand_count,
+                "distractor_vehicles": catalog_fixture.vehicle_count,
+                "distractor_aliases": catalog_fixture.alias_count,
+                "setup_seconds": catalog_fixture.setup_seconds,
             },
             "runtime": {
                 "python": platform.python_version(),
@@ -328,6 +400,7 @@ def run_benchmark(
             },
             "measurements": {
                 "fixture_seconds": fixture_seconds,
+                "upload_seconds": upload_seconds,
                 "preflight_seconds": preflight_seconds,
                 "import_seconds": import_seconds,
                 "elapsed_seconds": elapsed_seconds,
@@ -855,12 +928,19 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--chunk-rows", type=int, default=1_000)
     parser.add_argument("--max-in-flight", type=int, default=2)
     parser.add_argument(
+        "--source-kind",
+        choices=("server_path", "local_upload"),
+        default="server_path",
+    )
+    parser.add_argument(
         "--ingestion-policy",
         choices=("standard_observation", "historical_fill_only"),
         default="historical_fill_only",
     )
     parser.add_argument("--existing-rows", type=int, default=0)
     parser.add_argument("--measure-revocation", action="store_true")
+    parser.add_argument("--catalog-brands", type=int, default=0)
+    parser.add_argument("--vehicles-per-brand", type=int, default=0)
     parser.add_argument("--disk-budget-mib", type=int, default=512)
     return parser.parse_args()
 
@@ -873,9 +953,12 @@ def main() -> int:
         rows_per_file=arguments.rows_per_file,
         chunk_rows=arguments.chunk_rows,
         max_in_flight=arguments.max_in_flight,
+        source_kind=arguments.source_kind,
         ingestion_policy=arguments.ingestion_policy,
         existing_rows=arguments.existing_rows,
         measure_revocation=arguments.measure_revocation,
+        catalog_brands=arguments.catalog_brands,
+        vehicles_per_brand=arguments.vehicles_per_brand,
         disk_budget_bytes=arguments.disk_budget_mib * 1024 * 1024,
     )
     return 0

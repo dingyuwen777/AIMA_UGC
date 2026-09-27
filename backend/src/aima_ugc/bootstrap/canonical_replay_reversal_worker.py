@@ -32,6 +32,9 @@ from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
     defer_voice_plaza_projection,
     flush_deferred_voice_plaza_projection,
 )
+from aima_ugc.adapters.persistence.postgres.workload_slots import (
+    acquire_background_write_slot,
+)
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayAllRequestRecord,
@@ -88,9 +91,17 @@ class PostgresCanonicalReplayReversalJobExecutor:
         execution_started = perf_counter()
         batch_durations_ms: list[int] = []
         batch_observations: dict[int, list[int]] = {}
-        simple_lifecycle_count = 0
-        simple_lifecycle_ms = 0
+        batched_lifecycle_count = 0
+        batched_lifecycle_ms = 0
         batch_tuner = self._new_batch_tuner(fence.job_id)
+        log_event(
+            self._runtime.logger,
+            logging.INFO,
+            "canonical_replay.reversal_started",
+            "历史重筛撤回开始。",
+            job_id=str(fence.job_id),
+            replay_request_id=str(payload.request_id),
+        )
         try:
             total, remaining = self._content_counts(payload.request_id)
             if self.shard_coordinator is not None and (
@@ -149,11 +160,11 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         ),
                     )
                 batch_started = perf_counter()
-                processed, simple_count, simple_ms = self._reverse_batch(
+                processed, batched_count, batched_ms = self._reverse_batch(
                     payload.request_id, fence=fence, limit=batch_size
                 )
-                simple_lifecycle_count += simple_count
-                simple_lifecycle_ms += simple_ms
+                batched_lifecycle_count += batched_count
+                batched_lifecycle_ms += batched_ms
                 batch_ms = int((perf_counter() - batch_started) * 1000)
                 if processed:
                     batch_durations_ms.append(batch_ms)
@@ -191,8 +202,8 @@ class PostgresCanonicalReplayReversalJobExecutor:
                             for size, values in sorted(batch_observations.items())
                         ],
                         slowest_batch_ms=max(batch_durations_ms, default=0),
-                        simple_lifecycle_count=simple_lifecycle_count,
-                        simple_lifecycle_ms=simple_lifecycle_ms,
+                        batched_lifecycle_count=batched_lifecycle_count,
+                        batched_lifecycle_ms=batched_lifecycle_ms,
                         duration_ms=int((perf_counter() - execution_started) * 1000),
                     )
                     return JobHandlerResult.succeeded(
@@ -208,10 +219,31 @@ class PostgresCanonicalReplayReversalJobExecutor:
                     )
         except LeaseLostError:
             raise
-        except LookupError, ValueError:
+        except (LookupError, ValueError) as exc:
+            log_event(
+                self._runtime.logger,
+                logging.ERROR,
+                "canonical_replay.reversal_invalid",
+                "历史重筛撤回输入或持久状态无效。",
+                job_id=str(fence.job_id),
+                replay_request_id=str(payload.request_id),
+                error_class=type(exc).__name__,
+                duration_ms=int((perf_counter() - execution_started) * 1000),
+            )
             return JobHandlerResult.failed("canonical_replay_reversal_invalid")
-        except SQLAlchemyError:
+        except SQLAlchemyError as exc:
             self._retry_jobs.add(fence.job_id)
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "canonical_replay.reversal_database_retry",
+                "历史重筛撤回遇到数据库异常，将重试。",
+                job_id=str(fence.job_id),
+                replay_request_id=str(payload.request_id),
+                error_class=type(exc).__name__,
+                sqlstate=getattr(getattr(exc, "orig", None), "sqlstate", None),
+                duration_ms=int((perf_counter() - execution_started) * 1000),
+            )
             return JobHandlerResult.retry("canonical_replay_reversal_transient_error")
 
     def _has_shards(self, request_id: UUID) -> bool:
@@ -288,6 +320,11 @@ class PostgresCanonicalReplayReversalJobExecutor:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                acquire_background_write_slot(
+                    session,
+                    resources=detect_resources(),
+                    work_id=shard_id or fence.job_id,
+                )
                 PostgresJobRepository(session).lock_current_execution(fence)
                 shards = PostgresReversalShardRepository(session)
                 shard = shards.assert_owner(shard_id, fence) if shard_id is not None else None
@@ -484,36 +521,29 @@ class PostgresCanonicalReplayReversalJobExecutor:
                     skipped += len(later_owned)
                     skipped_evidence += 2 * len(later_owned)
                 later_owned_set = set(later_owned)
-                simple_content_ids = tuple(
+                batched_content_ids = tuple(
                     content_id
                     for content_id in content_ids
                     if content_id not in evidence_only_set
                     and content_id not in later_owned_set
                     and any(_has_content_delta(row["delta"]) for row in rows_by_content[content_id])
-                    and all(
-                        isinstance(row["delta"], dict)
-                        and not row["delta"].get("account")
-                        and isinstance(row["delta"].get("collections") or {}, dict)
-                        and set(row["delta"].get("collections") or {}) <= {"alternate_ids"}
-                        for row in rows_by_content[content_id]
-                    )
                 )
-                simple_started = perf_counter()
-                simple_versions = lifecycle.apply_simple_contributions_batch(
+                batched_started = perf_counter()
+                batched_versions = lifecycle.apply_contributions_batch(
                     tuple(
                         row
-                        for content_id in simple_content_ids
+                        for content_id in batched_content_ids
                         for row in rows_by_content[content_id]
                     ),
                     revoked_at=now,
                 )
-                simple_ms = int((perf_counter() - simple_started) * 1000)
-                simple_owners: dict[UUID, UUID | None] = {}
-                simple_review_entries: list[tuple[UUID, int, int]] = []
-                simple_vehicle_entries: list[
+                batched_ms = int((perf_counter() - batched_started) * 1000)
+                batched_owners: dict[UUID, UUID | None] = {}
+                batched_review_entries: list[tuple[UUID, int, int]] = []
+                batched_vehicle_entries: list[
                     tuple[UUID, int, int, list[dict[str, object]], list[dict[str, object]]]
                 ] = []
-                simple_brand_entries: list[
+                batched_brand_entries: list[
                     tuple[UUID, int, int, list[dict[str, object]], list[dict[str, object]]]
                 ] = []
                 for content_id in content_ids:
@@ -531,8 +561,8 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         isinstance(delta, dict) and delta.get("created_content") is True
                     )
                     has_content_delta = any(_has_content_delta(row["delta"]) for row in rows)
-                    if content_id in simple_versions:
-                        reversal_version = simple_versions[content_id]
+                    if content_id in batched_versions:
+                        reversal_version = batched_versions[content_id]
                     elif has_content_delta:
                         versions = lifecycle.apply_contributions(rows, revoked_at=now)
                         if not versions:
@@ -546,8 +576,8 @@ class PostgresCanonicalReplayReversalJobExecutor:
                     next_owner = (
                         request_id if created_content else earliest["visibility_owner_before"]
                     )
-                    if content_id in simple_versions:
-                        simple_owners[content_id] = cast(UUID | None, next_owner)
+                    if content_id in batched_versions:
+                        batched_owners[content_id] = cast(UUID | None, next_owner)
                     else:
                         session.execute(
                             update(contents_table)
@@ -560,12 +590,12 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         retained += 1
 
                     evidence_safe = current_before == latest["version_after"]
-                    if evidence_safe and content_id in simple_versions:
+                    if evidence_safe and content_id in batched_versions:
                         source_version = cast(int, latest["version_after"])
-                        simple_review_entries.append(
+                        batched_review_entries.append(
                             (cast(UUID, content_id), source_version, reversal_version)
                         )
-                        simple_vehicle_entries.append(
+                        batched_vehicle_entries.append(
                             (
                                 cast(UUID, content_id),
                                 source_version,
@@ -574,7 +604,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                                 _json_rows(earliest["vehicle_evidence_before"]),
                             )
                         )
-                        simple_brand_entries.append(
+                        batched_brand_entries.append(
                             (
                                 cast(UUID, content_id),
                                 source_version,
@@ -618,7 +648,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                     if not evidence_batched:
                         restored_evidence += int(vehicle_restored) + int(brand_restored)
                         skipped_evidence += int(not vehicle_restored) + int(not brand_restored)
-                    if content_id not in simple_versions:
+                    if content_id not in batched_versions:
                         session.execute(
                             update(canonical_replay_content_changes_table)
                             .where(
@@ -631,32 +661,32 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         )
                     reverted += 1
 
-                if simple_review_entries:
-                    review_entries = tuple(simple_review_entries)
+                if batched_review_entries:
+                    review_entries = tuple(batched_review_entries)
                     vehicle_repository.carry_manual_review_batch(review_entries)
                     brand_repository.carry_manual_brand_review_batch(review_entries)
                     vehicle_restored_ids = (
                         vehicle_repository.restore_automatic_evidence_new_version_batch(
-                            tuple(simple_vehicle_entries)
+                            tuple(batched_vehicle_entries)
                         )
                     )
                     brand_restored_ids = (
                         brand_repository.restore_automatic_brand_evidence_new_version_batch(
-                            tuple(simple_brand_entries)
+                            tuple(batched_brand_entries)
                         )
                     )
                     restored_evidence += len(vehicle_restored_ids) + len(brand_restored_ids)
                     skipped_evidence += 2 * len(review_entries) - (
                         len(vehicle_restored_ids) + len(brand_restored_ids)
                     )
-                if simple_owners:
-                    simple_ids = tuple(simple_owners)
+                if batched_owners:
+                    batched_ids = tuple(batched_owners)
                     session.execute(
                         update(contents_table)
-                        .where(contents_table.c.id.in_(simple_ids))
+                        .where(contents_table.c.id.in_(batched_ids))
                         .values(
                             replay_visibility_owner_id=sql_cast(
-                                case(simple_owners, value=contents_table.c.id),
+                                case(batched_owners, value=contents_table.c.id),
                                 contents_table.c.replay_visibility_owner_id.type,
                             )
                         )
@@ -665,13 +695,13 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         update(canonical_replay_content_changes_table)
                         .where(
                             canonical_replay_content_changes_table.c.all_request_id == request_id,
-                            canonical_replay_content_changes_table.c.content_id.in_(simple_ids),
+                            canonical_replay_content_changes_table.c.content_id.in_(batched_ids),
                             canonical_replay_content_changes_table.c.reverted_at.is_(None),
                         )
                         .values(
                             reverted_at=now,
                             reversal_version_no=case(
-                                simple_versions,
+                                batched_versions,
                                 value=canonical_replay_content_changes_table.c.content_id,
                             ),
                         )
@@ -724,7 +754,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                         finished=False,
                     )
                 flush_deferred_voice_plaza_projection(session, content_ids)
-                return len(content_ids), len(simple_versions), simple_ms
+                return len(content_ids), len(batched_versions), batched_ms
         finally:
             session.close()
 

@@ -105,7 +105,7 @@ def test_source_launcher_preserves_inherited_runtime_overrides(
     assert environment["AIMA_HISTORICAL_CHUNK_ROWS"] == "777"
     from aima_ugc.platform.config import load_settings
 
-    assert load_settings(environment, base_dir=tmp_path).historical_chunk_rows == 2000
+    assert load_settings(environment, base_dir=tmp_path).historical_chunk_rows == 4_000
 
 
 def test_removed_analysis_shard_env_is_rejected_as_unknown(tmp_path: Path) -> None:

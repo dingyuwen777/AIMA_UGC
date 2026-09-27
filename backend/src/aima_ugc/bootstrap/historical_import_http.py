@@ -76,7 +76,7 @@ from aima_ugc.modules.ingestion.http import (
 )
 from aima_ugc.modules.ingestion.xlsx_security import MAX_XLSX_FILE_BYTES
 from aima_ugc.modules.system.models import AuditEvent
-from aima_ugc.platform.capacity import detect_resources, select_chunk_rows
+from aima_ugc.platform.capacity import select_chunk_rows
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.storage import (
     ArtifactRecord,
@@ -171,7 +171,7 @@ class PostgresHistoricalImportHttpService:
             "relative_paths": list(request.relative_paths),
             "chunk_rows": min(
                 self._runtime.settings.historical_chunk_rows,
-                select_chunk_rows(detect_resources()),
+                select_chunk_rows(self._runtime.worker_resources()),
             ),
             "max_in_flight_jobs": self._runtime.job_window(
                 "historical", ceiling=self._runtime.settings.historical_max_in_flight_jobs
@@ -267,7 +267,7 @@ class PostgresHistoricalImportHttpService:
             ],
             "chunk_rows": min(
                 self._runtime.settings.historical_chunk_rows,
-                select_chunk_rows(detect_resources()),
+                select_chunk_rows(self._runtime.worker_resources()),
             ),
             "max_in_flight_jobs": self._runtime.job_window(
                 "historical", ceiling=self._runtime.settings.historical_max_in_flight_jobs

@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable
+from contextlib import nullcontext
+from dataclasses import replace
 from datetime import datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4, uuid5
 
-from sqlalchemy import func, insert, literal, select, union_all, update
+from sqlalchemy import func, insert, literal, select, text, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.selectable import Subquery
 
@@ -62,8 +65,9 @@ from aima_ugc.modules.ingestion.historical_tables import (
 )
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
-from aima_ugc.platform.jobs import JobExecutionFence, JobRecord
+from aima_ugc.platform.jobs import JobExecutionFence, JobIdempotencyConflict, JobRecord
 from aima_ugc.platform.jobs.tables import jobs_table
+from aima_ugc.platform.logging.timing import StageTimings
 from aima_ugc.platform.storage.canonical import CANONICAL_CONTENT_ARTIFACT_KIND
 from aima_ugc.platform.storage.models import ArtifactRecord
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
@@ -76,6 +80,7 @@ from .jobs import PostgresJobRepository
 _RUN_NAMESPACE = UUID("6112f610-4803-4590-a121-9f225e729e95")
 _ALL_REQUEST_NAMESPACE = UUID("51f57b7c-40e0-41bb-8fb7-0d8bf723333d")
 _PENDING_SELECTION_DIGEST = hashlib.sha256(b"canonical-replay-plan-pending-v1").hexdigest()
+_CANCELLATION_PARENT_LOCK_TIMEOUT = "250ms"
 
 
 class UnsupportedCanonicalReplaySource(ValueError):
@@ -796,10 +801,12 @@ class PostgresCanonicalReplayRepository:
         cancel_active: bool,
         actor_ref: str,
         http_request_id: str,
+        timings: StageTimings | None = None,
     ) -> CanonicalReplayAllRequestRecord:
         """幂等请求整次撤回；运行中请求先协作取消全部子 Job。"""
 
-        record = self.get_all_request(request_id, for_update=True)
+        with timings.measure("parent_read") if timings else nullcontext():
+            record = self.get_all_request(request_id, for_update=not cancel_active)
         if record is None:
             raise LookupError(request_id)
         if not record.reversible:
@@ -813,46 +820,60 @@ class PostgresCanonicalReplayRepository:
         if cancel_active:
             if record.lifecycle_status in {"cancelling", "reverting"}:
                 return record
-            self._session.execute(
-                update(canonical_replay_all_requests_table)
-                .where(canonical_replay_all_requests_table.c.id == request_id)
-                .values(
+            with timings.measure("cancellation_job_enqueue") if timings else nullcontext():
+                try:
+                    PostgresJobRepository(self._session).enqueue(
+                        job_type=CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
+                        payload_version=CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
+                        payload={
+                            "schema_version": CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
+                            "request_id": str(request_id),
+                            "actor_ref": actor_ref,
+                            "http_request_id": http_request_id,
+                            "requested_at": now.isoformat(),
+                        },
+                        internal_idempotency_key=(
+                            f"canonical-replay-cancellation:v2:{request_id}:{uuid4()}"
+                            if record.lifecycle_status == "revert_failed"
+                            else f"canonical-replay-cancellation:v2:{request_id}"
+                        ),
+                        request_id=record.reversal_request_id or http_request_id,
+                        priority=CANONICAL_REPLAY_CANCELLATION_JOB_PRIORITY,
+                        max_attempts=CANONICAL_REPLAY_CANCELLATION_JOB_MAX_ATTEMPTS,
+                        timeout_seconds=CANONICAL_REPLAY_CANCELLATION_JOB_TIMEOUT_SECONDS,
+                    )
+                except JobIdempotencyConflict:
+                    # 父行仍被 Replay 持有时，用户安全重试会带来新的 HTTP 元数据。
+                    # 稳定幂等键已经证明同一父请求存在协调 Job，保留第一次受理事实即可。
+                    pass
+            try:
+                with self._session.begin_nested():
+                    self._session.execute(
+                        text(f"SET LOCAL lock_timeout = '{_CANCELLATION_PARENT_LOCK_TIMEOUT}'")
+                    )
+                    with timings.measure("parent_update") if timings else nullcontext():
+                        refreshed = self.ensure_cancellation_requested(
+                            request_id,
+                            actor_ref=actor_ref,
+                            http_request_id=http_request_id,
+                            requested_at=now,
+                        )
+            except DBAPIError as exc:
+                if getattr(exc.orig, "sqlstate", None) != "55P03":
+                    raise
+                if timings is not None:
+                    timings.stage_ms["parent_update_deferred"] = timings.stage_ms.pop(
+                        "parent_update", 0.0
+                    )
+                return replace(
+                    record,
                     lifecycle_status="cancelling",
-                    cancellation_requested_at=func.coalesce(
-                        canonical_replay_all_requests_table.c.cancellation_requested_at,
-                        now,
-                    ),
-                    reversal_requested_at=func.coalesce(
-                        canonical_replay_all_requests_table.c.reversal_requested_at,
-                        now,
-                    ),
-                    reversal_requested_by=func.coalesce(
-                        canonical_replay_all_requests_table.c.reversal_requested_by,
-                        actor_ref,
-                    ),
-                    reversal_request_id=func.coalesce(
-                        canonical_replay_all_requests_table.c.reversal_request_id,
-                        http_request_id,
-                    ),
+                    cancellation_requested_at=record.cancellation_requested_at or now,
+                    reversal_requested_at=record.reversal_requested_at or now,
+                    reversal_requested_by=record.reversal_requested_by or actor_ref,
+                    reversal_request_id=record.reversal_request_id or http_request_id,
                 )
-            )
-            PostgresJobRepository(self._session).enqueue(
-                job_type=CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
-                payload_version=CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
-                payload={
-                    "schema_version": CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
-                    "request_id": str(request_id),
-                },
-                internal_idempotency_key=(
-                    f"canonical-replay-cancellation:{request_id}:{uuid4()}"
-                    if record.lifecycle_status == "revert_failed"
-                    else f"canonical-replay-cancellation:{request_id}"
-                ),
-                request_id=record.reversal_request_id or http_request_id,
-                priority=CANONICAL_REPLAY_CANCELLATION_JOB_PRIORITY,
-                max_attempts=CANONICAL_REPLAY_CANCELLATION_JOB_MAX_ATTEMPTS,
-                timeout_seconds=CANONICAL_REPLAY_CANCELLATION_JOB_TIMEOUT_SECONDS,
-            )
+            return refreshed
         else:
             self._session.execute(
                 update(canonical_replay_all_requests_table)
@@ -874,10 +895,80 @@ class PostgresCanonicalReplayRepository:
             )
         if not cancel_active:
             self.ensure_reversal_job_if_ready(request_id)
+        with timings.measure("response_reload") if timings else nullcontext():
+            response_record = self.get_all_request(request_id)
+        if response_record is None:
+            raise RuntimeError("历史重筛撤回请求更新后不可读")
+        return response_record
+
+    def ensure_cancellation_requested(
+        self,
+        request_id: UUID,
+        *,
+        actor_ref: str,
+        http_request_id: str,
+        requested_at: datetime,
+    ) -> CanonicalReplayAllRequestRecord:
+        """把已持久受理的取消意图投影到父状态；协调 Job 可安全重试。"""
+
+        record = self.get_all_request(request_id, for_update=True)
+        if record is None:
+            raise LookupError(request_id)
+        if record.lifecycle_status in {"cancelling", "reverting", "reverted"}:
+            return record
+        self._session.execute(
+            update(canonical_replay_all_requests_table)
+            .where(canonical_replay_all_requests_table.c.id == request_id)
+            .values(
+                lifecycle_status="cancelling",
+                cancellation_requested_at=func.coalesce(
+                    canonical_replay_all_requests_table.c.cancellation_requested_at,
+                    requested_at,
+                ),
+                reversal_requested_at=func.coalesce(
+                    canonical_replay_all_requests_table.c.reversal_requested_at,
+                    requested_at,
+                ),
+                reversal_requested_by=func.coalesce(
+                    canonical_replay_all_requests_table.c.reversal_requested_by,
+                    actor_ref,
+                ),
+                reversal_request_id=func.coalesce(
+                    canonical_replay_all_requests_table.c.reversal_request_id,
+                    http_request_id,
+                ),
+            )
+        )
         refreshed = self.get_all_request(request_id)
         if refreshed is None:
-            raise RuntimeError("历史重筛撤回请求更新后不可读")
+            raise RuntimeError("历史重筛取消意图更新后不可读")
         return refreshed
+
+    def is_all_cancellation_requested(self, request_id: UUID) -> bool:
+        """父状态尚被锁住时也识别已提交的取消协调 Job。"""
+
+        record = self.get_all_request(request_id)
+        if record is None:
+            return False
+        if record.lifecycle_status != "active":
+            return True
+        return (
+            self._session.scalar(
+                select(jobs_table.c.id)
+                .where(
+                    jobs_table.c.job_type == CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
+                    jobs_table.c.internal_idempotency_key.in_(
+                        (
+                            f"canonical-replay-cancellation:{request_id}",
+                            f"canonical-replay-cancellation:v2:{request_id}",
+                        )
+                    ),
+                    jobs_table.c.status.in_(("queued", "running", "succeeded")),
+                )
+                .limit(1)
+            )
+            is not None
+        )
 
     def ensure_reversal_job_if_ready(
         self,
@@ -940,7 +1031,9 @@ class PostgresCanonicalReplayRepository:
             update(canonical_replay_all_requests_table)
             .where(
                 canonical_replay_all_requests_table.c.id == request_id,
-                canonical_replay_all_requests_table.c.lifecycle_status == "cancelling",
+                canonical_replay_all_requests_table.c.lifecycle_status.in_(
+                    ("active", "cancelling")
+                ),
             )
             .values(lifecycle_status="revert_failed")
         )

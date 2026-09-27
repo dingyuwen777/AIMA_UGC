@@ -1449,6 +1449,7 @@
           "batch_size": {
             "const": 1000,
             "default": 1000,
+            "description": "Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。",
             "title": "Batch Size",
             "type": "integer"
           },
@@ -1577,6 +1578,7 @@
           },
           "batch_size": {
             "default": 500,
+            "description": "Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。",
             "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Batch Size",
@@ -1720,6 +1722,7 @@
             "type": "array"
           },
           "batch_size": {
+            "description": "该 Run 持久化的自适应起始批量提示。",
             "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Batch Size",

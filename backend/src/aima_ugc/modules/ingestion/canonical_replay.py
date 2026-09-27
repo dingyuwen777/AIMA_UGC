@@ -181,7 +181,7 @@ class CanonicalReplayReversalJobPayload(BaseModel):
 
 
 class CanonicalReplayCancellationJobPayload(BaseModel):
-    """持久取消协调只保存父请求身份。"""
+    """持久取消协调保存父请求身份与审计所需的安全元数据。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -189,6 +189,9 @@ class CanonicalReplayCancellationJobPayload(BaseModel):
         "ingestion.canonical-replay-cancellation.v1"
     )
     request_id: UUID
+    actor_ref: str | None = None
+    http_request_id: str | None = None
+    requested_at: datetime | None = None
 
 
 class CanonicalReplayPlanJobExecutor(Protocol):

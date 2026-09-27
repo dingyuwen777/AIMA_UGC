@@ -148,7 +148,12 @@ class CanonicalReplayCreateRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=200)
     artifact_ids: tuple[UUID, ...] = Field(min_length=1, max_length=100)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-    batch_size: int = Field(default=500, ge=1, le=1000)
+    batch_size: int = Field(
+        default=500,
+        ge=1,
+        le=1000,
+        description="Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。",
+    )
 
     @field_validator("idempotency_key")
     @classmethod
@@ -199,7 +204,10 @@ class CanonicalReplayAllCreatedResponse(BaseModel):
     artifact_count: int = Field(ge=0)
     run_count: int = Field(ge=0)
     artifacts_per_run: Literal[100] = 100
-    batch_size: Literal[1000] = 1000
+    batch_size: Literal[1000] = Field(
+        default=1000,
+        description="Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。",
+    )
 
 
 class CanonicalReplayAllOperationResponse(BaseModel):
@@ -253,7 +261,11 @@ class CanonicalReplayRunResponse(BaseModel):
     artifact_count: int = Field(ge=1)
     checkpoint_artifact_ordinal: int = Field(ge=0)
     checkpoint_row_number: int = Field(ge=0)
-    batch_size: int = Field(ge=1, le=1000)
+    batch_size: int = Field(
+        ge=1,
+        le=1000,
+        description="该 Run 持久化的自适应起始批量提示。",
+    )
     stats: CanonicalReplayStatsResponse
     job: JobStatusResponse
     created_by: str
