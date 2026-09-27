@@ -1206,14 +1206,8 @@ class PostgresBrandVehicleRepository:
 
         self._lock_brand_review_writes(lock_pairs)
         frozen = self.snapshot_automatic_brand_evidence_batch(pairs=lock_pairs)
-        before_by_pair = {
-            pair: [dict(row) for row in frozen[pair]]
-            for pair in source_pair_values
-        }
-        after_by_pair = {
-            pair: [dict(row) for row in frozen[pair]]
-            for pair in target_pairs
-        }
+        before_by_pair = {pair: [dict(row) for row in frozen[pair]] for pair in source_pair_values}
+        after_by_pair = {pair: [dict(row) for row in frozen[pair]] for pair in target_pairs}
         locked_pairs = set(
             self._session.execute(
                 select(
@@ -1258,36 +1252,30 @@ class PostgresBrandVehicleRepository:
                     }
                 )
                 if confirmed:
-                    updated = (
-                        self._session.execute(
-                            deactivation_statement.where(
-                                tuple_(
-                                    content_brand_evidence_table.c.content_id,
-                                    content_brand_evidence_table.c.content_version,
-                                    content_brand_evidence_table.c.brand_id,
-                                ).in_(confirmed)
-                            )
-                            .values(is_active=False)
-                            .returning(content_brand_evidence_table)
-                        )
-                        .mappings()
-                    )
-                    for row in updated:
-                        merge_after(row)
-            else:
-                updated = (
-                    self._session.execute(
+                    updated = self._session.execute(
                         deactivation_statement.where(
                             tuple_(
                                 content_brand_evidence_table.c.content_id,
                                 content_brand_evidence_table.c.content_version,
-                            ).in_(unlocked_pairs)
+                                content_brand_evidence_table.c.brand_id,
+                            ).in_(confirmed)
                         )
                         .values(is_active=False)
                         .returning(content_brand_evidence_table)
+                    ).mappings()
+                    for row in updated:
+                        merge_after(row)
+            else:
+                updated = self._session.execute(
+                    deactivation_statement.where(
+                        tuple_(
+                            content_brand_evidence_table.c.content_id,
+                            content_brand_evidence_table.c.content_version,
+                        ).in_(unlocked_pairs)
                     )
-                    .mappings()
-                )
+                    .values(is_active=False)
+                    .returning(content_brand_evidence_table)
+                ).mappings()
                 for row in updated:
                     merge_after(row)
 
@@ -1332,59 +1320,51 @@ class PostgresBrandVehicleRepository:
 
         if direct_values:
             statement = pg_insert(content_brand_evidence_table).values(direct_values)
-            persisted = (
-                self._session.execute(
-                    statement.on_conflict_do_update(
-                        index_elements=[
-                            content_brand_evidence_table.c.content_id,
-                            content_brand_evidence_table.c.content_version,
-                            content_brand_evidence_table.c.brand_id,
-                            content_brand_evidence_table.c.source,
-                            content_brand_evidence_table.c.catalog_version,
-                        ],
-                        index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_(None),
-                        set_={
-                            "matched_text": statement.excluded.matched_text,
-                            "source_field": statement.excluded.source_field,
-                            "confidence": 1.0,
-                            "is_manual_locked": False,
-                            "is_active": True,
-                            "created_at": now,
-                        },
-                    ).returning(content_brand_evidence_table)
-                )
-                .mappings()
-            )
+            persisted = self._session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[
+                        content_brand_evidence_table.c.content_id,
+                        content_brand_evidence_table.c.content_version,
+                        content_brand_evidence_table.c.brand_id,
+                        content_brand_evidence_table.c.source,
+                        content_brand_evidence_table.c.catalog_version,
+                    ],
+                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_(None),
+                    set_={
+                        "matched_text": statement.excluded.matched_text,
+                        "source_field": statement.excluded.source_field,
+                        "confidence": 1.0,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": now,
+                    },
+                ).returning(content_brand_evidence_table)
+            ).mappings()
             for row in persisted:
                 merge_after(row)
         if vehicle_values:
             statement = pg_insert(content_brand_evidence_table).values(vehicle_values)
-            persisted = (
-                self._session.execute(
-                    statement.on_conflict_do_update(
-                        index_elements=[
-                            content_brand_evidence_table.c.content_id,
-                            content_brand_evidence_table.c.content_version,
-                            content_brand_evidence_table.c.brand_id,
-                            content_brand_evidence_table.c.source,
-                            content_brand_evidence_table.c.derived_vehicle_model_id,
-                            content_brand_evidence_table.c.catalog_version,
-                        ],
-                        index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(
-                            None
-                        ),
-                        set_={
-                            "matched_text": statement.excluded.matched_text,
-                            "source_field": statement.excluded.source_field,
-                            "confidence": 1.0,
-                            "is_manual_locked": False,
-                            "is_active": True,
-                            "created_at": now,
-                        },
-                    ).returning(content_brand_evidence_table)
-                )
-                .mappings()
-            )
+            persisted = self._session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[
+                        content_brand_evidence_table.c.content_id,
+                        content_brand_evidence_table.c.content_version,
+                        content_brand_evidence_table.c.brand_id,
+                        content_brand_evidence_table.c.source,
+                        content_brand_evidence_table.c.derived_vehicle_model_id,
+                        content_brand_evidence_table.c.catalog_version,
+                    ],
+                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(None),
+                    set_={
+                        "matched_text": statement.excluded.matched_text,
+                        "source_field": statement.excluded.source_field,
+                        "confidence": 1.0,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": now,
+                    },
+                ).returning(content_brand_evidence_table)
+            ).mappings()
             for row in persisted:
                 merge_after(row)
         for rows in after_by_pair.values():
