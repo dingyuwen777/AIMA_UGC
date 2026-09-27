@@ -159,6 +159,11 @@ def _run_single_worker(*, foreground_only: bool = False) -> None:
         lease_seconds=_WORKER_LEASE_SECONDS,
         retry_delay_seconds=_RETRY_DELAY_SECONDS,
         supported_job_types=supported_job_types,
+        minimum_priority=(
+            CANONICAL_REPLAY_BACKGROUND_PRIORITY + 1
+            if worker_role == "foreground-reserve"
+            else None
+        ),
     )
     reaper = create_job_reaper(
         runtime=runtime,
@@ -173,6 +178,11 @@ def _run_single_worker(*, foreground_only: bool = False) -> None:
         worker_id=worker_id,
         worker_role=worker_role,
         supported_job_types=supported_job_types,
+        minimum_priority=(
+            CANONICAL_REPLAY_BACKGROUND_PRIORITY + 1
+            if worker_role == "foreground-reserve"
+            else None
+        ),
         voice_plaza_projection_job_id=(
             str(projection_job.id) if projection_job is not None else None
         ),
