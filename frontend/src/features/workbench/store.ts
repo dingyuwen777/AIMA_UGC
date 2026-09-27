@@ -94,6 +94,24 @@ function queryParams(filters: WorkbenchFilters): GetWorkbenchStreamParams {
   }
 }
 
+/** active Taxonomy 切换后移除已失效的 AI 筛选值，避免隐藏旧条件把新数据筛空。 */
+function sanitizeTaxonomyFilters(
+  filters: WorkbenchFilters,
+  taxonomy: ContentAnalysisTaxonomyResponse,
+): WorkbenchFilters {
+  const sentiments = new Set(taxonomy.sentiments)
+  const voiceTypes = new Set(taxonomy.voice_types)
+  const primaryLabels = new Set(taxonomy.labels.map((item) => item.primary_label))
+  const secondaryLabels = new Set(taxonomy.labels.flatMap((item) => item.secondary_labels))
+  return {
+    ...filters,
+    sentiments: filters.sentiments.filter((value) => sentiments.has(value)),
+    voiceTypes: filters.voiceTypes.filter((value) => voiceTypes.has(value)),
+    primaryLabels: filters.primaryLabels.filter((value) => primaryLabels.has(value)),
+    secondaryLabels: filters.secondaryLabels.filter((value) => secondaryLabels.has(value)),
+  }
+}
+
 /** 复制布局模块，编辑草稿不得与服务端已保存快照共享对象引用。 */
 function cloneModules(modules: readonly WorkbenchLayoutModule[]): WorkbenchLayoutModule[] {
   return modules.map((item) => ({ ...item }))
@@ -189,8 +207,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     if (revision !== referenceRevision) return
     const [taxonomyResult, brandResult, vehicleResult, layoutResult] = results
     const errors: string[] = []
-    if (taxonomyResult.status === 'fulfilled') taxonomy.value = taxonomyResult.value
-    else errors.push(apiErrorMessage(taxonomyResult.reason))
+    if (taxonomyResult.status === 'fulfilled') {
+      taxonomy.value = taxonomyResult.value
+      filters.value = sanitizeTaxonomyFilters(filters.value, taxonomyResult.value)
+    } else errors.push(apiErrorMessage(taxonomyResult.reason))
     if (brandResult.status === 'fulfilled') brands.value = brandResult.value
     else errors.push(apiErrorMessage(brandResult.reason))
     if (vehicleResult.status === 'fulfilled') vehicleModels.value = vehicleResult.value
@@ -209,7 +229,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   /** 重新读取 Taxonomy，用于 active Scheme 切换后的口径同步。 */
   async function refreshTaxonomy(): Promise<void> {
     try {
-      taxonomy.value = await fetchWorkbenchTaxonomy()
+      const current = await fetchWorkbenchTaxonomy()
+      taxonomy.value = current
+      filters.value = sanitizeTaxonomyFilters(filters.value, current)
     } catch (error) {
       referenceError.value = apiErrorMessage(error)
     }
