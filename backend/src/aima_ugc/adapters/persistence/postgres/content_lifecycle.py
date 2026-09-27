@@ -275,13 +275,13 @@ class PostgresContentLifecycleRepository:
             versions.append((content_id, version_no))
         return tuple(versions)
 
-    def apply_simple_contributions_batch(
+    def apply_contributions_batch(
         self,
         contributions: tuple[RowMapping, ...],
         *,
         revoked_at: datetime,
     ) -> dict[UUID, int]:
-        """集合回退无 Account/复杂 Collection Delta 的 Content，保留逐字段归属判断。"""
+        """批量回退 Content、Account 与 Collection Delta，保留逐字段归属判断。"""
 
         if revoked_at.utcoffset() is None:
             raise ValueError("revoked_at 必须包含时区")
@@ -291,11 +291,10 @@ class PostgresContentLifecycleRepository:
             if (
                 not isinstance(delta, dict)
                 or delta.get("schema_version") != "content-source-contribution.v1"
-                or delta.get("account")
                 or not isinstance(delta.get("collections") or {}, dict)
-                or set(delta.get("collections") or {}) - {"alternate_ids"}
+                or set(delta.get("collections") or {}) - set(_COLLECTION_TABLES)
             ):
-                raise ValueError("集合撤回只支持无 Account 且最多含备用 ID 的 Content Delta")
+                raise ValueError("Content 来源贡献 Delta 版本或 Collection 不受支持")
             by_content[cast(UUID, contribution["content_id"])].append(contribution)
 
         versions: dict[UUID, int] = {}
@@ -327,21 +326,63 @@ class PostgresContentLifecycleRepository:
                     )
                 ).mappings()
             }
-            alternate_rows: dict[UUID, list[dict[str, object]]] = defaultdict(list)
-            for row in self._session.execute(
-                select(content_external_ids_table)
-                .where(content_external_ids_table.c.content_id.in_(content_ids))
-                .order_by(
-                    content_external_ids_table.c.content_id, content_external_ids_table.c.id_type
+            requested_collection_fields = {
+                str(field_name)
+                for content_id in content_ids
+                for contribution in by_content[content_id]
+                for field_name in cast(
+                    dict[str, object],
+                    cast(dict[str, object], contribution["delta"]).get("collections") or {},
                 )
-            ).mappings():
-                alternate_rows[cast(UUID, row["content_id"])].append(
-                    {str(key): value for key, value in row.items() if key != "content_id"}
+            }
+            collection_rows: dict[str, dict[UUID, list[dict[str, object]]]] = {}
+            for field_name in sorted(requested_collection_fields):
+                table = _COLLECTION_TABLES[field_name]
+                order_column = (
+                    table.c.id_type if field_name == "alternate_ids" else table.c.position
                 )
+                rows_by_content: dict[UUID, list[dict[str, object]]] = defaultdict(list)
+                for row in self._session.execute(
+                    select(table)
+                    .where(table.c.content_id.in_(content_ids))
+                    .order_by(table.c.content_id, order_column)
+                ).mappings():
+                    rows_by_content[cast(UUID, row["content_id"])].append(
+                        {str(key): value for key, value in row.items() if key != "content_id"}
+                    )
+                collection_rows[field_name] = rows_by_content
+
+            account_ids = sorted(
+                {
+                    UUID(str(account_change["account_id"]))
+                    for content_id in content_ids
+                    for contribution in by_content[content_id]
+                    if isinstance(
+                        account_change := cast(dict[str, Any], contribution["delta"]).get(
+                            "account"
+                        ),
+                        dict,
+                    )
+                    and account_change.get("account_id")
+                },
+                key=str,
+            )
+            account_cache = {
+                cast(UUID, row["id"]): dict(row)
+                for row in self._session.execute(
+                    select(accounts_table)
+                    .where(accounts_table.c.id.in_(account_ids))
+                    .order_by(accounts_table.c.id)
+                    .with_for_update()
+                ).mappings()
+            }
+            if set(account_ids) != set(account_cache):
+                raise ValueError("Content 来源贡献引用的 Account 不存在")
+            changed_account_ids: set[UUID] = set()
             updates: list[dict[str, object]] = []
             new_versions: list[dict[str, object]] = []
-            changed_alternate_ids: list[UUID] = []
-            restored_alternate_ids: list[dict[str, object]] = []
+            changed_collections: dict[str, list[UUID]] = defaultdict(list)
+            restored_collections: dict[str, list[dict[str, object]]] = defaultdict(list)
             for content_id in content_ids:
                 current = currents[content_id]
                 version_row = version_rows[content_id]
@@ -359,7 +400,10 @@ class PostgresContentLifecycleRepository:
                     key=lambda row: (row["created_at"], str(row["id"])),
                     reverse=True,
                 )
-                collection_cache = {"alternate_ids": tuple(alternate_rows[content_id])}
+                collection_cache = {
+                    field_name: tuple(collection_rows[field_name][content_id])
+                    for field_name in requested_collection_fields
+                }
                 collection_updates: dict[str, list[dict[str, object]]] = {}
                 for contribution in ordered:
                     author_snapshot = self._apply_delta(
@@ -370,12 +414,13 @@ class PostgresContentLifecycleRepository:
                         delta=cast(dict[str, Any], contribution["delta"]),
                         collection_cache=collection_cache,
                         collection_updates=collection_updates,
+                        account_cache=account_cache,
+                        changed_account_ids=changed_account_ids,
                     )
-                if "alternate_ids" in collection_updates:
-                    changed_alternate_ids.append(content_id)
-                    restored_alternate_ids.extend(
-                        {"content_id": content_id, **row}
-                        for row in collection_updates["alternate_ids"]
+                for field_name, restored_rows in collection_updates.items():
+                    changed_collections[field_name].append(content_id)
+                    restored_collections[field_name].extend(
+                        {"content_id": content_id, **row} for row in restored_rows
                     )
                 version_no = cast(int, current["current_version"]) + 1
                 source = ordered[0]
@@ -408,14 +453,45 @@ class PostgresContentLifecycleRepository:
                     }
                 )
                 versions[content_id] = version_no
-            if changed_alternate_ids:
+            for field_name in sorted(changed_collections):
+                table = _COLLECTION_TABLES[field_name]
                 self._session.execute(
-                    delete(content_external_ids_table).where(
-                        content_external_ids_table.c.content_id.in_(changed_alternate_ids)
+                    delete(table).where(table.c.content_id.in_(changed_collections[field_name]))
+                )
+                if restored_collections[field_name]:
+                    self._session.execute(insert(table), restored_collections[field_name])
+
+            if changed_account_ids:
+                account_columns = (
+                    *tuple(sorted(set(_ACCOUNT_FIELD_COLUMNS.values()))),
+                    "field_observed_at",
+                )
+                account_values = sql_values(
+                    column("target_account_id", accounts_table.c.id.type),
+                    *(column(name, accounts_table.c[name].type) for name in account_columns),
+                    name="account_reversal_values",
+                ).data(
+                    tuple(
+                        (
+                            account_id,
+                            *(account_cache[account_id][name] for name in account_columns),
+                        )
+                        for account_id in sorted(changed_account_ids, key=str)
                     )
                 )
-            if restored_alternate_ids:
-                self._session.execute(insert(content_external_ids_table), restored_alternate_ids)
+                self._session.execute(
+                    update(accounts_table)
+                    .where(
+                        accounts_table.c.id
+                        == sql_cast(account_values.c.target_account_id, accounts_table.c.id.type)
+                    )
+                    .values(
+                        {
+                            name: sql_cast(account_values.c[name], accounts_table.c[name].type)
+                            for name in account_columns
+                        }
+                    )
+                )
             updated_columns = (*field_columns, "field_observed_at", "current_version", "updated_at")
             batch_values = sql_values(
                 column("target_content_id", contents_table.c.id.type),
@@ -443,6 +519,16 @@ class PostgresContentLifecycleRepository:
             self._session.execute(insert(content_versions_table).values(new_versions))
         return versions
 
+    def apply_simple_contributions_batch(
+        self,
+        contributions: tuple[RowMapping, ...],
+        *,
+        revoked_at: datetime,
+    ) -> dict[UUID, int]:
+        """兼容既有调用；批量实现已支持完整 Account 与 Collection Delta。"""
+
+        return self.apply_contributions_batch(contributions, revoked_at=revoked_at)
+
     def _apply_delta(
         self,
         *,
@@ -453,6 +539,8 @@ class PostgresContentLifecycleRepository:
         delta: dict[str, Any],
         collection_cache: dict[str, tuple[dict[str, object], ...]] | None = None,
         collection_updates: dict[str, list[dict[str, object]]] | None = None,
+        account_cache: dict[UUID, dict[str, Any]] | None = None,
+        changed_account_ids: set[UUID] | None = None,
     ) -> dict[str, Any] | None:
         """仅当 Current 仍匹配来源写入后的值/marker 时回退该字段。"""
 
@@ -522,10 +610,20 @@ class PostgresContentLifecycleRepository:
 
         account_change = delta.get("account")
         if isinstance(account_change, dict):
-            self._apply_account_delta(account_change)
+            self._apply_account_delta(
+                account_change,
+                account_cache=account_cache,
+                changed_account_ids=changed_account_ids,
+            )
         return author_snapshot
 
-    def _apply_account_delta(self, account_change: dict[str, Any]) -> None:
+    def _apply_account_delta(
+        self,
+        account_change: dict[str, Any],
+        *,
+        account_cache: dict[UUID, dict[str, Any]] | None = None,
+        changed_account_ids: set[UUID] | None = None,
+    ) -> None:
         """按 Account 自己的 field_observed_at 只回退仍由目标来源独占的账号字段。"""
 
         account_id_raw = account_change.get("account_id")
@@ -533,13 +631,20 @@ class PostgresContentLifecycleRepository:
         if not account_id_raw or not isinstance(fields, dict):
             return
         account_id = UUID(str(account_id_raw))
-        row = dict(
-            self._session.execute(
-                select(accounts_table).where(accounts_table.c.id == account_id).with_for_update()
+        if account_cache is None:
+            row = dict(
+                self._session.execute(
+                    select(accounts_table)
+                    .where(accounts_table.c.id == account_id)
+                    .with_for_update()
+                )
+                .mappings()
+                .one()
             )
-            .mappings()
-            .one()
-        )
+        else:
+            if changed_account_ids is None:
+                raise ValueError("Account 预读必须同时提供写入缓冲")
+            row = account_cache[account_id]
         raw_freshness = row.get("field_observed_at") or {}
         if not isinstance(raw_freshness, dict):
             raise ValueError("Account field_observed_at 必须是对象")
@@ -555,11 +660,16 @@ class PostgresContentLifecycleRepository:
             updates[column] = decode_contribution_value(change.get("before"))
             _restore_freshness(freshness, path, change.get("before_freshness"))
         if updates:
-            self._session.execute(
-                update(accounts_table)
-                .where(accounts_table.c.id == account_id)
-                .values(**updates, field_observed_at=freshness)
-            )
+            if account_cache is None:
+                self._session.execute(
+                    update(accounts_table)
+                    .where(accounts_table.c.id == account_id)
+                    .values(**updates, field_observed_at=freshness)
+                )
+            else:
+                row.update(updates)
+                row["field_observed_at"] = freshness
+                cast(set[UUID], changed_account_ids).add(account_id)
 
     def _collection_rows(
         self,

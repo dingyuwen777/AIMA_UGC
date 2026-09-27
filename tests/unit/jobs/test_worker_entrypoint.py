@@ -8,7 +8,11 @@ from aima_ugc.entrypoints.worker_main import (
     desired_worker_processes,
     run_worker_loop,
 )
-from aima_ugc.platform.capacity import ResourceSnapshot, worker_process_limit
+from aima_ugc.platform.capacity import (
+    ResourceSnapshot,
+    foreground_reserve_processes,
+    worker_process_limit,
+)
 
 
 class _FakeWorker:
@@ -91,6 +95,16 @@ def test_worker_pool_scales_only_for_available_and_busy_jobs() -> None:
     assert desired_worker_processes(maximum=3, queued=1, busy=1) == 2
     assert desired_worker_processes(maximum=3, queued=2, busy=1) == 3
     assert desired_worker_processes(maximum=3, queued=10, busy=1) == 3
+
+
+def test_foreground_reserve_scales_with_worker_pool_capacity() -> None:
+    assert foreground_reserve_processes(1) == 0
+    assert foreground_reserve_processes(2) == 1
+    assert foreground_reserve_processes(3) == 1
+    assert foreground_reserve_processes(8) == 2
+    assert foreground_reserve_processes(16) == 4
+    with pytest.raises(ValueError):
+        foreground_reserve_processes(0)
 
 
 def test_worker_pool_backs_off_repeated_startup_crashes_and_recovers_after_stable_run() -> None:

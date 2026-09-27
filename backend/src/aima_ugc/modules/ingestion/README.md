@@ -399,9 +399,17 @@ POST /api/v1/canonical-replays
 
 管理员“品牌与车型”页的“重筛入库”使用 `POST /api/v1/canonical-replays/all`。后端自动枚举
 全部合法历史 Canonical，在一个事务中冻结当前全部 active Brand/Vehicle 目录和选择摘要，并按
-100 个 Artifact 一组创建多个既有 Replay Run/Job；每个 Run 使用当前最大 `batch_size=1000`。
+100 个 Artifact 一组创建多个既有 Replay Run/Job；每个 Run 持久化兼容提示
+`batch_size=1000`。所有 Replay Worker 都把持久 `batch_size` 作为起始提示，而不是运行时
+硬上限，并根据有效 CPU、可用内存、相邻档实测吞吐、事务墙钟和前台压力继续升档或回落；
+升级前尚未完成的任务在新 Worker 接管后也使用同一控制器。
 所有 Job 一次排队，可由多个 Worker 并行领取；单 Worker 仍按队列逐个执行。100 表示每个 Run
 包含的 Canonical 文件上限，不是内容行数上限，单个文件仍以 Reader 流式读取。
+
+统一 Data Import 在创建 Campaign 时按 Worker 有效资源从 500、1,000、2,000、4,000 行中
+冻结 Chunk 大小；重试和接管继续使用相同边界。4,000 是当前事务安全护栏，扩容优先增加受
+全局预算约束的 Job 并发。Worker 进程池为导入和取消协调保留前台进程，Replay/撤回使用后台
+写槽；前台任务出现压力后，新后台事务收缩，避免数据处理吞吐增长挤占 API 稳定性。
 
 全量请求可以通过请求级 `cancel-and-revoke` 或 `revoke` 管理接口撤回。前者先请求未终态子 Job
 协作取消，全部子 Job 终态后再创建 `ingestion.canonical-replay-reversal.v1`；后者直接对终态请求
@@ -420,9 +428,10 @@ Attempt。Scope-only 或其它无法证明的旧关系失败关闭；当前没�
 
 Worker 在第一次写 Content 前预检**全部**所选 Artifact，而不只是第一个；预检因此会额外完整
 打开一次输入集，容量规划必须把这部分 Artifact I/O 算入。业务阶段每件 Artifact 只打开一次并
-连续流式取批，按 `batch_size` 在当前 Fencing Token 下原子写 Content/Evidence、Run 内去重身份、
-checkpoint 与统计，不会每批从第 0 行重读。接管时只对当前 Artifact 从头线性跳过已提交行；未
-提交事务不会留下去重身份或统计。重复 Replay 不产生
+连续流式读取；兼容单文件和 Provider Canonical 可以跨 Artifact 累计到自适应 `batch_size`，
+再在当前 Fencing Token 下原子写 Content/Evidence、Run 内去重身份、跨文件 checkpoint 与统计。
+统一 Data Import 的 Canonical 已是有界 Chunk，继续按单 Chunk 聚合，避免与 Campaign 撤销跨界。
+接管时只对当前 Artifact 从头线性跳过已提交行；未提交事务不会留下去重身份或统计。重复 Replay 不产生
 第二条 Content：同一 Run 的重复输入计入 `duplicates_removed`，数据库已有 Content 计入
 `existing_convergence`，新建 Content 计入 `rows_ingested`。
 

@@ -44,6 +44,9 @@ from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
     defer_voice_plaza_projection,
     flush_deferred_voice_plaza_projection,
 )
+from aima_ugc.adapters.persistence.postgres.workload_slots import (
+    acquire_foreground_write_priority,
+)
 from aima_ugc.adapters.providers.imports.historical_chunk import (
     HistoricalChunkDescriptor,
     HistoricalInvalidRow,
@@ -87,6 +90,7 @@ from aima_ugc.platform.capacity import (
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.logging.timing import StageTimings
 from aima_ugc.platform.storage import (
     ArtifactRecord,
     ArtifactService,
@@ -435,6 +439,7 @@ class PostgresHistoricalImportJobExecutor:
         """当前 Chunk 与 Brand/Vehicle Snapshot 强配对后进入 Content Owner。"""
 
         execution_started = perf_counter()
+        evidence_timings = StageTimings()
         try:
             loading_started = perf_counter()
             item, artifact, campaign_id = self._load_import_chunk(payload, fence)
@@ -446,6 +451,7 @@ class PostgresHistoricalImportJobExecutor:
                 )
             if context.cancel_requested():
                 return JobHandlerResult.cancelled()
+            resolver = BrandVehicleResolver(filter_snapshot.catalog)
             contents = _read_bounded_canonical_artifact(
                 reader=self._canonical_reader,
                 artifact=artifact,
@@ -460,10 +466,16 @@ class PostgresHistoricalImportJobExecutor:
             session = self._runtime.database.new_session()
             transaction_started = perf_counter()
             sql_insert_rows = 500
+            foreground_wait_ms = 0
             try:
                 with session.begin():
                     jobs = PostgresJobRepository(session)
                     jobs.validate_current_execution(fence)
+                    foreground_priority = acquire_foreground_write_priority(
+                        session,
+                        resources=detect_resources(),
+                    )
+                    foreground_wait_ms = foreground_priority.wait_ms
                     lock_historical_campaign_cancel_gate(session, campaign_id, shared=True)
                     repository = PostgresHistoricalImportRepository(session)
                     # 共享取消门已阻止 Campaign 在本事务内进入 cancelling。
@@ -505,6 +517,7 @@ class PostgresHistoricalImportJobExecutor:
                         invalid_rows=invalid_rows,
                         policy_version=policy_version,
                         filter_snapshot=filter_snapshot,
+                        resolver=resolver,
                     )
                     row_preparation_ms = int((perf_counter() - row_preparation_started) * 1000)
                     if policy_version == "historical-fill-only.v1":
@@ -548,6 +561,8 @@ class PostgresHistoricalImportJobExecutor:
                         batch_id=payload.batch_id,
                         rows=rows,
                         filter_snapshot=filter_snapshot,
+                        resolver=resolver,
+                        timings=evidence_timings,
                     )
                     evidence_ms = int((perf_counter() - evidence_started) * 1000)
                     finalization_started = perf_counter()
@@ -594,7 +609,7 @@ class PostgresHistoricalImportJobExecutor:
             if policy_version == "historical-fill-only.v1":
                 self._sql_batch_tuner.succeeded(
                     size=sql_insert_rows,
-                    rows=summary.created,
+                    rows=len(rows),
                     duration_ms=content_ingestion_ms,
                 )
             log_event(
@@ -622,12 +637,14 @@ class PostgresHistoricalImportJobExecutor:
                     sql_insert_rows if policy_version == "historical-fill-only.v1" else None
                 ),
                 evidence_ms=evidence_ms,
+                evidence_stage_ms=evidence_timings.stage_ms,
                 finalization_ms=finalization_ms,
                 scheduling_ms=scheduling_ms,
                 status_refresh_ms=status_refresh_ms,
                 projection_content_count=projection_content_count,
                 projection_refresh_ms=projection_refresh_ms,
                 transaction_ms=transaction_ms,
+                foreground_wait_ms=foreground_wait_ms,
                 duration_ms=int((perf_counter() - execution_started) * 1000),
             )
             return JobHandlerResult.succeeded(
@@ -657,6 +674,7 @@ class PostgresHistoricalImportJobExecutor:
                 job_id=str(fence.job_id),
                 chunk_item_id=str(payload.chunk_item_id),
                 sqlstate=getattr(exc.orig, "sqlstate", None),
+                evidence_stage_ms=evidence_timings.stage_ms,
             )
             self._sql_batch_tuner.database_retry()
             return JobHandlerResult.retry("historical_chunk_database_transient")
@@ -879,6 +897,7 @@ class PostgresHistoricalImportJobExecutor:
         invalid_rows: tuple[HistoricalInvalidRow, ...],
         policy_version: str,
         filter_snapshot: BrandVehicleFilterSnapshot,
+        resolver: BrandVehicleResolver,
     ) -> tuple[HistoricalBatchRow, ...]:
         if policy_version == "historical-fill-only.v1":
             operation = "historical_excel_import"
@@ -886,7 +905,6 @@ class PostgresHistoricalImportJobExecutor:
             operation = "excel_import"
         else:
             raise ValueError("Data Import Campaign 写入策略不受支持")
-        resolver = BrandVehicleResolver(filter_snapshot.catalog)
         resolved = tuple(
             (
                 ordinal,
@@ -960,6 +978,8 @@ def _append_historical_brand_vehicle_evidence(
     batch_id: UUID,
     rows: tuple[HistoricalBatchRow, ...],
     filter_snapshot: BrandVehicleFilterSnapshot,
+    resolver: BrandVehicleResolver,
+    timings: StageTimings,
 ) -> None:
     """按行账本把同一冻结 Snapshot 的 Resolver 结果写回 Brand/Vehicle Evidence。"""
 
@@ -970,79 +990,87 @@ def _append_historical_brand_vehicle_evidence(
     }
     if not candidate_by_ordinal:
         return
-    ledgers = tuple(
-        session.execute(
-            select(
-                processing_import_batch_items_table.c.source_row_ordinal,
-                processing_import_batch_items_table.c.content_id,
-                processing_import_batch_items_table.c.outcome,
-                contents_table.c.current_version,
-            )
-            .join(
-                contents_table,
-                contents_table.c.id == processing_import_batch_items_table.c.content_id,
-            )
-            .where(
-                processing_import_batch_items_table.c.batch_id == batch_id,
-                processing_import_batch_items_table.c.source_row_ordinal.in_(
-                    tuple(candidate_by_ordinal)
-                ),
-                processing_import_batch_items_table.c.content_id.is_not(None),
-            )
-        ).mappings()
-    )
+    with timings.measure("ledger_read"):
+        ledgers = tuple(
+            session.execute(
+                select(
+                    processing_import_batch_items_table.c.source_row_ordinal,
+                    processing_import_batch_items_table.c.content_id,
+                    processing_import_batch_items_table.c.outcome,
+                    contents_table.c.current_version,
+                )
+                .join(
+                    contents_table,
+                    contents_table.c.id == processing_import_batch_items_table.c.content_id,
+                )
+                .where(
+                    processing_import_batch_items_table.c.batch_id == batch_id,
+                    processing_import_batch_items_table.c.source_row_ordinal.in_(
+                        tuple(candidate_by_ordinal)
+                    ),
+                    processing_import_batch_items_table.c.content_id.is_not(None),
+                )
+            ).mappings()
+        )
     vehicle_repository = PostgresVehicleCatalogRepository(session)
     brand_repository = PostgresBrandVehicleRepository(session)
-    resolver = BrandVehicleResolver(filter_snapshot.catalog)
     initial_vehicle_entries = []
     initial_brand_entries = []
     existing_entries = []
     created_at = beijing_now()
-    for ledger in ledgers:
-        ordinal = cast(int, ledger["source_row_ordinal"])
-        content = candidate_by_ordinal[ordinal]
-        resolution = resolve_canonical_brand_vehicle(
-            filter_snapshot,
-            content,
-            resolver=resolver,
-        )
-        if not resolution.matched:
-            raise ValueError("Historical candidate 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
-        content_id = cast(UUID, ledger["content_id"])
-        content_version = cast(int, ledger["current_version"])
-        vehicle_evidence = tuple(
-            ContentVehicleEvidence(
-                id=uuid4(),
-                content_id=content_id,
-                content_version=content_version,
-                vehicle_model_id=evidence.entity_id,
-                source="import",
-                matched_text=evidence.matched_text,
-                source_field=evidence.source_field,
-                catalog_version=filter_snapshot.catalog.catalog_version,
-                confidence=1.0,
-                is_manual_locked=False,
-                is_active=True,
-                created_at=created_at,
+    with timings.measure("resolve"):
+        for ledger in ledgers:
+            ordinal = cast(int, ledger["source_row_ordinal"])
+            content = candidate_by_ordinal[ordinal]
+            resolution = resolve_canonical_brand_vehicle(
+                filter_snapshot,
+                content,
+                resolver=resolver,
             )
-            for evidence in resolution.vehicle_evidence
+            if not resolution.matched:
+                raise ValueError("Historical candidate 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
+            content_id = cast(UUID, ledger["content_id"])
+            content_version = cast(int, ledger["current_version"])
+            vehicle_evidence = tuple(
+                ContentVehicleEvidence(
+                    id=uuid4(),
+                    content_id=content_id,
+                    content_version=content_version,
+                    vehicle_model_id=evidence.entity_id,
+                    source="import",
+                    matched_text=evidence.matched_text,
+                    source_field=evidence.source_field,
+                    catalog_version=filter_snapshot.catalog.catalog_version,
+                    confidence=1.0,
+                    is_manual_locked=False,
+                    is_active=True,
+                    created_at=created_at,
+                )
+                for evidence in resolution.vehicle_evidence
+            )
+            if ledger["outcome"] == "created" and content_version == 1:
+                initial_vehicle_entries.append((content_id, content_version, vehicle_evidence))
+                initial_brand_entries.append(
+                    (content_id, content_version, resolution.brand_evidence)
+                )
+            else:
+                existing_entries.append((content_id, content_version, resolution, vehicle_evidence))
+    with timings.measure("vehicle_initial"):
+        vehicle_repository.append_initial_import_evidence_batch(
+            entries=tuple(initial_vehicle_entries)
         )
-        if ledger["outcome"] == "created" and content_version == 1:
-            initial_vehicle_entries.append((content_id, content_version, vehicle_evidence))
-            initial_brand_entries.append((content_id, content_version, resolution.brand_evidence))
-        else:
-            existing_entries.append((content_id, content_version, resolution, vehicle_evidence))
-    vehicle_repository.append_initial_import_evidence_batch(entries=tuple(initial_vehicle_entries))
-    brand_repository.append_initial_automatic_brand_evidence_batch(
-        entries=tuple(initial_brand_entries),
-        catalog_snapshot=filter_snapshot.catalog,
-        return_snapshots=False,
-    )
+    with timings.measure("brand_initial"):
+        brand_repository.append_initial_automatic_brand_evidence_batch(
+            entries=tuple(initial_brand_entries),
+            catalog_snapshot=filter_snapshot.catalog,
+            return_snapshots=False,
+        )
     vehicle_repository.append_import_evidence_batch(
         entries=tuple(
             (content_id, content_version, vehicle_evidence)
             for content_id, content_version, _, vehicle_evidence in existing_entries
-        )
+        ),
+        timings=timings,
     )
     brand_repository.replace_automatic_brand_evidence_batch(
         entries=tuple(
@@ -1050,6 +1078,7 @@ def _append_historical_brand_vehicle_evidence(
             for content_id, content_version, resolution, _ in existing_entries
         ),
         catalog_snapshot=filter_snapshot.catalog,
+        timings=timings,
     )
 
 

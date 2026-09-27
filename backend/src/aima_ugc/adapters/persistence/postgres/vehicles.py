@@ -986,6 +986,7 @@ class PostgresVehicleCatalogRepository:
         self,
         *,
         entries: tuple[tuple[UUID, int, tuple[ContentVehicleEvidence, ...]], ...],
+        timings: StageTimings | None = None,
     ) -> tuple[int, int]:
         """集合追加既有 Content Version 的 Import 车型证据，并保持人工锁优先。"""
 
@@ -1001,21 +1002,23 @@ class PostgresVehicleCatalogRepository:
                 for item in evidence
             ):
                 raise ValueError("批量 Import 车型证据身份非法")
-        self._lock_vehicle_review_writes(pairs)
-        locked_pairs = set(
-            self._session.execute(
-                select(
-                    content_vehicle_review_locks_table.c.content_id,
-                    content_vehicle_review_locks_table.c.content_version,
-                ).where(
-                    tuple_(
+        with timings.measure("vehicle_advisory_lock") if timings else nullcontext():
+            self._lock_vehicle_review_writes(pairs)
+        with timings.measure("vehicle_manual_lock_read") if timings else nullcontext():
+            locked_pairs = set(
+                self._session.execute(
+                    select(
                         content_vehicle_review_locks_table.c.content_id,
                         content_vehicle_review_locks_table.c.content_version,
-                    ).in_(pairs),
-                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                    ).where(
+                        tuple_(
+                            content_vehicle_review_locks_table.c.content_id,
+                            content_vehicle_review_locks_table.c.content_version,
+                        ).in_(pairs),
+                        content_vehicle_review_locks_table.c.is_locked.is_(True),
+                    )
                 )
             )
-        )
         values = [
             {
                 "id": item.id,
@@ -1036,16 +1039,17 @@ class PostgresVehicleCatalogRepository:
             for item in evidence
         ]
         inserted = 0
-        for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
-            result = cast(
-                CursorResult[Any],
-                self._session.execute(
-                    pg_insert(content_vehicle_evidence_table)
-                    .values(list(chunk))
-                    .on_conflict_do_nothing(constraint="uq_content_vehicle_evidence_identity")
-                ),
-            )
-            inserted += result.rowcount or 0
+        with timings.measure("vehicle_upsert") if timings else nullcontext():
+            for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                result = cast(
+                    CursorResult[Any],
+                    self._session.execute(
+                        pg_insert(content_vehicle_evidence_table)
+                        .values(list(chunk))
+                        .on_conflict_do_nothing(constraint="uq_content_vehicle_evidence_identity")
+                    ),
+                )
+                inserted += result.rowcount or 0
         return inserted, len(locked_pairs)
 
     def replace_automatic_alias_evidence_batch(

@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+import aima_ugc.modules.vehicles.brand_vehicle as brand_vehicle_module
+import pytest
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.modules.ingestion.brand_vehicle_filter import (
@@ -259,6 +261,111 @@ def test_manual_brand_lock_is_independent_from_vehicle_resolution() -> None:
     assert resolution.brand_matches == (BRAND_B,)
     assert resolution.brand_evidence[0].source == "manual_review"
     assert resolution.vehicle_evidence[0].source == "alias_match"
+
+
+def test_precompiled_resolver_does_not_scan_every_alias_for_each_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """大目录解析必须按正文字符推进，不能对每条内容遍历全部别名。"""
+
+    alias_count = 2_000
+    base = _snapshot()
+    snapshot = replace(
+        base,
+        brand_aliases=tuple(
+            BrandAliasRecord(
+                id=UUID(int=10_000 + index),
+                brand_id=BRAND_A,
+                text=f"目录别名{index}",
+                normalized_text=f"目录别名{index}",
+                created_at=NOW,
+            )
+            for index in range(alias_count)
+        ),
+        vehicle_aliases=(),
+    )
+
+    class CountedText(str):
+        contains_calls = 0
+
+        def __contains__(self, item: object) -> bool:
+            type(self).contains_calls += 1
+            return super().__contains__(item)
+
+    def counted_normalize(value: str | None) -> str | None:
+        return None if value is None else CountedText(value)
+
+    monkeypatch.setattr(brand_vehicle_module, "_normalize_optional", counted_normalize)
+    resolution = BrandVehicleResolver(snapshot).resolve(
+        snapshot,
+        title=f"正在介绍目录别名{alias_count - 1}",
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert resolution.brand_matches == (BRAND_A,)
+    assert CountedText.contains_calls == 0
+
+
+def test_precompiled_resolver_reuses_index_after_snapshot_round_trip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """持久化快照恢复成新对象后，稳定目录仍只能编译一次。"""
+
+    snapshot = _snapshot()
+    resolver = BrandVehicleResolver(snapshot)
+    restored = BrandVehicleFilterSnapshot.model_validate_json(
+        BrandVehicleFilterSnapshot(catalog=snapshot).model_dump_json()
+    ).catalog
+    compile_calls = 0
+    original_compile = brand_vehicle_module._compile_catalog
+
+    def counted_compile(
+        candidate: BrandVehicleCatalogSnapshot,
+    ) -> brand_vehicle_module._ResolverCatalogIndex:
+        nonlocal compile_calls
+        compile_calls += 1
+        return original_compile(candidate)
+
+    monkeypatch.setattr(brand_vehicle_module, "_compile_catalog", counted_compile)
+    resolution = resolver.resolve(
+        restored,
+        title="爱玛露娜Air",
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert resolution.vehicle_matches == (VEHICLE_A,)
+    assert compile_calls == 0
+
+
+def test_precompiled_resolver_recompiles_for_different_catalog_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """目录版本或过滤范围改变时不能错误复用旧索引。"""
+
+    snapshot = _snapshot()
+    resolver = BrandVehicleResolver(snapshot)
+    changed = replace(snapshot, catalog_version=snapshot.catalog_version + 1)
+    compile_calls = 0
+    original_compile = brand_vehicle_module._compile_catalog
+
+    def counted_compile(
+        candidate: BrandVehicleCatalogSnapshot,
+    ) -> brand_vehicle_module._ResolverCatalogIndex:
+        nonlocal compile_calls
+        compile_calls += 1
+        return original_compile(candidate)
+
+    monkeypatch.setattr(brand_vehicle_module, "_compile_catalog", counted_compile)
+    resolver.resolve(
+        changed,
+        title="爱玛露娜Air",
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert compile_calls == 1
 
 
 def test_stage3_filter_snapshot_round_trip_preserves_frozen_catalog() -> None:

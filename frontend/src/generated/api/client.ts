@@ -602,6 +602,7 @@ export interface CanonicalReplayAllCreatedResponse {
   /** @minimum 0 */
   artifact_count: number;
   artifacts_per_run?: 100;
+  /** Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。 */
   batch_size?: 1000;
   planning_status?: CanonicalReplayAllCreatedResponsePlanningStatus;
   request_id: string;
@@ -643,6 +644,7 @@ export interface CanonicalReplayCreateRequest {
      */
   artifact_ids: string[];
   /**
+     * Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。
      * @minimum 1
      * @maximum 1000
      */
@@ -784,6 +786,7 @@ export interface CanonicalReplayRunResponse {
   artifact_count: number;
   artifact_ids: string[];
   /**
+     * 该 Run 持久化的自适应起始批量提示。
      * @minimum 1
      * @maximum 1000
      */

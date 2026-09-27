@@ -31,7 +31,8 @@ def test_memory_plan_keeps_headroom_and_refuses_too_small_engine() -> None:
     assert sum(limits[name] for name in steady) + limits["migrate"] <= 16 * 1024 * 0.75
     assert limits["postgres"] > limits["api"]
     cpu = compute_cpu_limits(12)
-    assert sum(cpu[name] for name in steady) + cpu["migrate"] <= 12 * 0.80
+    assert cpu["postgres"] == cpu["worker"] == 9.0
+    assert cpu["api"] == cpu["migrate"] == 3.0
 
     server_memory = compute_memory_limits(64 * 1024**3)["worker"]
     server_cpu = compute_cpu_limits(16)["worker"]
@@ -41,7 +42,8 @@ def test_memory_plan_keeps_headroom_and_refuses_too_small_engine() -> None:
         (server_memory - 512) * 1024**2,
         "cgroup_v2",
     )
-    assert worker_process_limit(server_worker) == select_job_window(server_worker) == 3
+    assert server_cpu == 12.0
+    assert worker_process_limit(server_worker) == select_job_window(server_worker) == 8
     future_memory = compute_memory_limits(128 * 1024**3)["worker"]
     future_worker = ResourceSnapshot(
         compute_cpu_limits(32)["worker"],
@@ -49,7 +51,7 @@ def test_memory_plan_keeps_headroom_and_refuses_too_small_engine() -> None:
         (future_memory - 1024) * 1024**2,
         "cgroup_v2",
     )
-    assert worker_process_limit(future_worker) == select_job_window(future_worker) == 6
+    assert worker_process_limit(future_worker) == select_job_window(future_worker) == 16
 
 
 def test_start_and_stop_use_external_env_without_copying_it(tmp_path: Path, monkeypatch) -> None:

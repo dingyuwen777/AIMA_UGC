@@ -945,6 +945,108 @@ def test_all_replay_cancel_accepts_while_a_child_job_row_is_locked() -> None:
         runtime.dispose()
 
 
+def test_all_replay_cancel_persists_intent_while_parent_row_is_locked() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+            "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        setup = runtime.new_session()
+        try:
+            with setup.begin():
+                _excel_source(setup)
+                request = PostgresCanonicalReplayRepository(setup).enqueue_all(
+                    idempotency_key="cancel-parent-locked-replay",
+                    created_by="replay-admin",
+                    request_id="create-cancel-parent-locked-replay",
+                )
+        finally:
+            setup.close()
+
+        locked = runtime.new_session()
+        finished = Event()
+        results = []
+        errors: list[BaseException] = []
+
+        def cancel() -> None:
+            session = runtime.new_session()
+            try:
+                with session.begin():
+                    results.append(
+                        PostgresCanonicalReplayRepository(session).request_all_reversal(
+                            request.id,
+                            cancel_active=True,
+                            actor_ref="replay-admin",
+                            http_request_id="cancel-parent-locked-replay",
+                        )
+                    )
+            except BaseException as exc:
+                errors.append(exc)
+            finally:
+                session.close()
+                finished.set()
+
+        try:
+            locked.begin()
+            locked.execute(
+                select(canonical_replay_all_requests_table.c.id)
+                .where(canonical_replay_all_requests_table.c.id == request.id)
+                .with_for_update()
+            ).scalar_one()
+            thread = Thread(target=cancel, daemon=True)
+            thread.start()
+            assert finished.wait(2), "取消请求被 Replay 父行锁拖到代理超时"
+
+            repeated_session = runtime.new_session()
+            try:
+                with repeated_session.begin():
+                    repeated = PostgresCanonicalReplayRepository(
+                        repeated_session
+                    ).request_all_reversal(
+                        request.id,
+                        cancel_active=True,
+                        actor_ref="replay-admin",
+                        http_request_id="repeat-cancel-parent-locked-replay",
+                    )
+                assert repeated.lifecycle_status == "cancelling"
+            finally:
+                repeated_session.close()
+
+            inspect = runtime.new_session()
+            try:
+                persisted = PostgresCanonicalReplayRepository(
+                    inspect
+                ).is_all_cancellation_requested(request.id)
+                lifecycle = inspect.scalar(
+                    select(canonical_replay_all_requests_table.c.lifecycle_status).where(
+                        canonical_replay_all_requests_table.c.id == request.id
+                    )
+                )
+                assert persisted is True
+                assert lifecycle == "active"
+            finally:
+                inspect.close()
+        finally:
+            locked.rollback()
+            locked.close()
+            thread.join(timeout=10)
+
+        assert not thread.is_alive()
+        assert errors == []
+        assert len(results) == 1
+        assert results[0].lifecycle_status == "cancelling"
+        assert results[0].cancellation_requested_at is not None
+    finally:
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE canonical_replay_all_requests, jobs, artifacts, "
+                "keyword_packs, vehicle_brands, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.dispose()
+
+
 def test_cancellation_worker_cancels_children_and_starts_reversal() -> None:
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:

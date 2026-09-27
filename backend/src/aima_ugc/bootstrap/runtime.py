@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from aima_ugc.adapters.storage.local import LocalArtifactStore
 from aima_ugc.platform.capacity import (
+    ResourceSnapshot,
     detect_resources,
     planned_worker_resources,
     select_job_window,
@@ -55,12 +56,16 @@ class PlatformRuntime:
     _resource_closers: list[Callable[[], None]] = field(default_factory=list, repr=False)
     _last_job_windows: dict[str, int] = field(default_factory=dict, repr=False)
 
+    def worker_resources(self) -> ResourceSnapshot:
+        """返回执行数据任务的 Worker 预算，避免 API 容器配额误导容量选择。"""
+
+        resources = detect_resources()
+        return planned_worker_resources(resources) if self.service == "api" else resources
+
     def job_window(self, kind: str, *, ceiling: int | None = None) -> int:
         """每次投放前读取实际配额/内存压力，只在值变化时记录调节事件。"""
 
-        resources = detect_resources()
-        if self.service == "api":
-            resources = planned_worker_resources(resources)
+        resources = self.worker_resources()
         selected = select_job_window(resources, ceiling=ceiling)
         previous = self._last_job_windows.get(kind)
         if previous != selected:

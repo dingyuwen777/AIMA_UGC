@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
@@ -14,6 +15,7 @@ BrandStatus = Literal["active", "deprecated"]
 FilterScope = Literal["all_active", "selected"]
 ResolverSource = Literal["manual_review", "vehicle_match", "alias_match"]
 ResolverField = Literal["title", "raw_text", "transcript_text"]
+_CatalogIdentity = tuple[int, FilterScope, tuple[UUID, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +118,68 @@ class _ResolverCatalogIndex:
     active_vehicles: dict[UUID, VehicleRecord]
     brand_aliases_by_text: dict[str, tuple[BrandAliasRecord, ...]]
     vehicle_aliases_by_text: dict[str, tuple[VehicleAliasRecord, ...]]
+    brand_alias_matcher: _AliasAutomaton
+    vehicle_alias_matcher: _AliasAutomaton
+
+
+@dataclass(frozen=True, slots=True)
+class _AliasAutomaton:
+    """冻结别名的 Aho-Corasick 自动机；一次扫描返回正文中的全部别名。"""
+
+    transitions: tuple[dict[str, int], ...]
+    failures: tuple[int, ...]
+    outputs: tuple[tuple[str, ...], ...]
+
+    @classmethod
+    def compile(cls, patterns: tuple[str, ...]) -> _AliasAutomaton:
+        """目录冻结时构建自动机，把逐内容复杂度从别名数中解耦。"""
+
+        transitions: list[dict[str, int]] = [{}]
+        failures = [0]
+        outputs: list[list[str]] = [[]]
+        for pattern in sorted(set(patterns)):
+            if not pattern:
+                continue
+            state = 0
+            for character in pattern:
+                target = transitions[state].get(character)
+                if target is None:
+                    target = len(transitions)
+                    transitions[state][character] = target
+                    transitions.append({})
+                    failures.append(0)
+                    outputs.append([])
+                state = target
+            outputs[state].append(pattern)
+
+        pending: deque[int] = deque(transitions[0].values())
+        while pending:
+            state = pending.popleft()
+            for character, target in transitions[state].items():
+                pending.append(target)
+                fallback = failures[state]
+                while fallback and character not in transitions[fallback]:
+                    fallback = failures[fallback]
+                failures[target] = transitions[fallback].get(character, 0)
+                outputs[target].extend(outputs[failures[target]])
+
+        return cls(
+            transitions=tuple(transitions),
+            failures=tuple(failures),
+            outputs=tuple(tuple(items) for items in outputs),
+        )
+
+    def find(self, text: str) -> tuple[str, ...]:
+        """按正文字符单次推进；去重后由调用方继续应用既有最长别名规则。"""
+
+        state = 0
+        matched: set[str] = set()
+        for character in text:
+            while state and character not in self.transitions[state]:
+                state = self.failures[state]
+            state = self.transitions[state].get(character, 0)
+            matched.update(self.outputs[state])
+        return tuple(matched)
 
 
 class BrandVehicleResolver:
@@ -126,7 +190,7 @@ class BrandVehicleResolver:
     def __init__(self, snapshot: BrandVehicleCatalogSnapshot | None = None) -> None:
         """可选预编译冻结目录；单条兼容调用仍可在 resolve 时传入。"""
 
-        self._snapshot = snapshot
+        self._snapshot_identity = _catalog_identity(snapshot) if snapshot is not None else None
         self._compiled = _compile_catalog(snapshot) if snapshot is not None else None
 
     def resolve(
@@ -148,7 +212,10 @@ class BrandVehicleResolver:
         }
         index = (
             self._compiled
-            if self._snapshot is snapshot and self._compiled is not None
+            if (
+                self._snapshot_identity == _catalog_identity(snapshot)
+                and self._compiled is not None
+            )
             else _compile_catalog(snapshot)
         )
         active_brands = index.active_brands
@@ -161,6 +228,7 @@ class BrandVehicleResolver:
                 texts=texts,
                 active_vehicles=active_vehicles,
                 aliases_by_text=index.vehicle_aliases_by_text,
+                alias_matcher=index.vehicle_alias_matcher,
                 conflicts=conflicts,
             )
         else:
@@ -189,6 +257,7 @@ class BrandVehicleResolver:
                 active_brands=active_brands,
                 active_vehicles=active_vehicles,
                 aliases_by_text=index.brand_aliases_by_text,
+                alias_matcher=index.brand_alias_matcher,
                 conflicts=conflicts,
             )
         else:
@@ -227,13 +296,14 @@ class BrandVehicleResolver:
         texts: dict[str, str | None],
         active_vehicles: dict[UUID, VehicleRecord],
         aliases_by_text: dict[str, tuple[VehicleAliasRecord, ...]],
+        alias_matcher: _AliasAutomaton,
         conflicts: list[str],
     ) -> tuple[tuple[UUID, ...], tuple[ResolverEvidence, ...]]:
         for field in self._FIELDS:
             normalized = _normalize_optional(texts[field])
             if normalized is None:
                 continue
-            matched = [key for key in aliases_by_text if key in normalized]
+            matched = alias_matcher.find(normalized)
             if not matched:
                 continue
             evidence: list[ResolverEvidence] = []
@@ -274,6 +344,7 @@ class BrandVehicleResolver:
         active_brands: dict[UUID, BrandRecord],
         active_vehicles: dict[UUID, VehicleRecord],
         aliases_by_text: dict[str, tuple[BrandAliasRecord, ...]],
+        alias_matcher: _AliasAutomaton,
         conflicts: list[str],
     ) -> tuple[tuple[UUID, ...], tuple[ResolverEvidence, ...]]:
         resolved: set[UUID] = set()
@@ -302,7 +373,7 @@ class BrandVehicleResolver:
             normalized = _normalize_optional(texts[field])
             if normalized is None:
                 continue
-            matched = [key for key in aliases_by_text if key in normalized]
+            matched = alias_matcher.find(normalized)
             if not matched:
                 continue
             for normalized_alias in sorted(matched, key=lambda item: (-len(item), item)):
@@ -350,6 +421,16 @@ def _normalize_optional(value: str | None) -> str | None:
     return normalize_vehicle_text(value)
 
 
+def _catalog_identity(snapshot: BrandVehicleCatalogSnapshot) -> _CatalogIdentity:
+    """返回冻结目录的稳定身份，避免反序列化后因对象地址变化而重复编译。"""
+
+    return (
+        snapshot.catalog_version,
+        snapshot.filter_scope,
+        tuple(sorted(set(snapshot.selected_brand_ids), key=str)),
+    )
+
+
 def _compile_catalog(snapshot: BrandVehicleCatalogSnapshot) -> _ResolverCatalogIndex:
     """把稳定目录投影编译为只读批次索引；解析过程不再重复分组别名。"""
 
@@ -368,6 +449,8 @@ def _compile_catalog(snapshot: BrandVehicleCatalogSnapshot) -> _ResolverCatalogI
         active_vehicles=active_vehicles,
         brand_aliases_by_text={key: tuple(value) for key, value in brand_aliases.items()},
         vehicle_aliases_by_text={key: tuple(value) for key, value in vehicle_aliases.items()},
+        brand_alias_matcher=_AliasAutomaton.compile(tuple(brand_aliases)),
+        vehicle_alias_matcher=_AliasAutomaton.compile(tuple(vehicle_aliases)),
     )
 
 

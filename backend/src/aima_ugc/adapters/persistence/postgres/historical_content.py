@@ -34,7 +34,8 @@ from .content_contributions import (
 )
 
 _POLICY_VERSION = "historical-fill-only.v1"
-_MAX_BATCH_ROWS = 2_000
+# 运行工作单元由容量选择器按 Worker 资源决定；这里只保留内存/重试成本的绝对护栏。
+_MAX_BATCH_ROWS = 4_000
 _MULTI_VALUES_INSERT_ROWS = 500
 _CONTRIBUTION_COLLECTION_FIELDS = (
     "alternate_ids",

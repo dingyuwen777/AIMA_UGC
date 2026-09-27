@@ -2058,11 +2058,48 @@ def create_app(
         """取消父请求的全部活跃子任务，并排队撤回已提交贡献。"""
 
         principal = current_administrator(request)
-        return current_canonical_replay_service().cancel_and_revoke_all(
-            replay_request_id,
-            actor_ref=principal.principal_id,
-            request_id=_request_id(request),
+        request_id = _request_id(request)
+        started = perf_counter()
+        log_event(
+            _LOGGER,
+            logging.INFO,
+            "canonical_replay.cancel_and_revoke_received",
+            "历史重筛取消并撤回请求已进入应用。",
+            request_id=request_id,
+            replay_request_id=str(replay_request_id),
         )
+        try:
+            response = current_canonical_replay_service().cancel_and_revoke_all(
+                replay_request_id,
+                actor_ref=principal.principal_id,
+                request_id=request_id,
+            )
+        except Exception as exc:
+            log_exception_event(
+                _LOGGER,
+                logging.WARNING,
+                "canonical_replay.cancel_and_revoke_failed",
+                "历史重筛取消并撤回请求处理失败。",
+                error=exc,
+                request_id=request_id,
+                replay_request_id=str(replay_request_id),
+                duration_ms=int((perf_counter() - started) * 1000),
+            )
+            raise
+        log_event(
+            _LOGGER,
+            logging.INFO,
+            "canonical_replay.cancel_and_revoke_accepted",
+            "历史重筛取消并撤回请求已提交。",
+            request_id=request_id,
+            replay_request_id=str(replay_request_id),
+            lifecycle_status=response.lifecycle_status,
+            reversal_job_id=(
+                str(response.reversal_job_id) if response.reversal_job_id is not None else None
+            ),
+            duration_ms=int((perf_counter() - started) * 1000),
+        )
+        return response
 
     @application.post(
         "/api/v1/canonical-replays/all/{replay_request_id}/revoke",

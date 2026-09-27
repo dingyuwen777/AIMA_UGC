@@ -279,6 +279,8 @@ async function viewRunResults(runId: string): Promise<void> {
       v-model="canonicalReplayDetailOpen"
       :item="store.selectedCanonicalReplay"
       :acting="store.actingCanonicalReplay"
+      :cancel-unconfirmed="store.selectedCanonicalReplayCancellationUnconfirmed"
+      :cancel-pending="store.selectedCanonicalReplayCancellationPending"
       @refresh="store.refresh(true)"
       @copy="copy"
       @cancel-and-revoke="cancelAndRevokeReplay"

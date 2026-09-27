@@ -31,7 +31,11 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CANONICAL_REPLAY_REVERSAL_JOB_TYPE,
 )
 from aima_ugc.modules.ingestion.replay_shards import REPLAY_SHARD_JOB_TYPE
-from aima_ugc.platform.capacity import detect_resources, worker_process_limit
+from aima_ugc.platform.capacity import (
+    detect_resources,
+    foreground_reserve_processes,
+    worker_process_limit,
+)
 from aima_ugc.platform.jobs import JobReaper, JobWorker
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.time import beijing_now
@@ -347,10 +351,14 @@ def _run_worker_pool() -> None:
             desired = desired_worker_processes(
                 maximum=maximum, queued=queued, busy=len(busy_owners)
             )
-            # 只要仍有在途 Job 且资源允许，就保留一个可立即领取前台/非 Replay Job 的进程。
-            # 这不增加容器总预算；Replay 最多使用 N-1 个进程，其他 Job 仍可使用全部 N 个。
-            if maximum >= 2 and busy_owners:
-                desired = max(desired, min(maximum, len(busy_owners) + 1))
+            reserve_target = foreground_reserve_processes(maximum)
+            # 在途后台任务不能占满进程池。16 核档保留两个前台进程，使两个导入
+            # 或导入与取消协调能并行领取；空闲时仍收缩到一个常驻进程。
+            if reserve_target and busy_owners:
+                desired = max(
+                    desired,
+                    min(maximum, len(busy_owners) + reserve_target),
+                )
             memory_pressure = (
                 resources.memory_available_bytes is not None
                 and resources.memory_available_bytes < 768 * _MIB
@@ -360,9 +368,9 @@ def _run_worker_pool() -> None:
             if len(children) < desired:
                 if restart_backoff.can_spawn(now=time.monotonic()):
                     needs_foreground_reserve = (
-                        maximum >= 2
-                        and desired >= 2
-                        and "foreground-reserve" not in child_roles.values()
+                        desired >= 2
+                        and sum(role == "foreground-reserve" for role in child_roles.values())
+                        < reserve_target
                     )
                     spawned_role = "foreground-reserve" if needs_foreground_reserve else "general"
                     spawn(role=spawned_role)

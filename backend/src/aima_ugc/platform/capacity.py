@@ -13,6 +13,7 @@ from statistics import median
 
 _MIB = 1024 * 1024
 _CGROUP_UNLIMITED = 1 << 60
+_CHUNK_ROW_TIERS = (500, 1_000, 2_000, 4_000)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,14 +85,24 @@ def detect_resources(
 
 
 def select_chunk_rows(resources: ResourceSnapshot) -> int:
-    """按可用内存选择冻结粒度；API 的 CPU 配额不代表实际执行的 Worker。"""
+    """按实际 Worker CPU/内存选择工作单元；并发增长由 Job 窗口另行控制。"""
 
     available = resources.memory_available_bytes
     if available is not None and available < 256 * _MIB:
-        return 500
+        return _CHUNK_ROW_TIERS[0]
     if available is not None and available < 768 * _MIB:
-        return 1000
-    return 2000
+        return _CHUNK_ROW_TIERS[1]
+    # 单个 Chunk 只使用机器预算的一小部分；大机器优先通过更多 Job 并发扩展，
+    # 同时允许工作单元逐档增大以摊薄 Artifact、调度和事务收尾成本。
+    cpu_ceiling = max(_CHUNK_ROW_TIERS[0], int(resources.cpu_cores * 500))
+    memory_budget = available or resources.memory_limit_bytes
+    memory_ceiling = (
+        max(_CHUNK_ROW_TIERS[0], int(memory_budget // (512 * _MIB)) * 1_000)
+        if memory_budget is not None
+        else _CHUNK_ROW_TIERS[1]
+    )
+    ceiling = min(cpu_ceiling, memory_ceiling)
+    return max(rows for rows in _CHUNK_ROW_TIERS if rows <= ceiling)
 
 
 def worker_process_limit(resources: ResourceSnapshot) -> int:
@@ -101,6 +112,16 @@ def worker_process_limit(resources: ResourceSnapshot) -> int:
     if memory is None:
         return 1
     return max(1, min(floor(resources.cpu_cores / 1.5), memory // (1024 * _MIB)))
+
+
+def foreground_reserve_processes(maximum_processes: int) -> int:
+    """大进程池保留四分之一给导入、取消等前台 Job，小机器至少保留一个。"""
+
+    if maximum_processes < 1:
+        raise ValueError("Worker 最大进程数必须为正整数")
+    if maximum_processes == 1:
+        return 0
+    return max(1, maximum_processes // 4)
 
 
 def planned_worker_resources(
@@ -337,6 +358,7 @@ class AdaptiveTierBatchController:
         transaction_ceiling_ms: int = 3000,
         rows_per_cpu_core: int = 2000,
         memory_mib_per_1000_rows: int = 1536,
+        initial_index: int = 1,
     ) -> None:
         if (
             len(tiers) < 2
@@ -345,6 +367,7 @@ class AdaptiveTierBatchController:
             or transaction_ceiling_ms < 100
             or rows_per_cpu_core < 1
             or memory_mib_per_1000_rows < 1
+            or not 0 <= initial_index < len(tiers)
         ):
             raise ValueError("批量升档阶梯无效")
         self.tiers = tiers
@@ -352,7 +375,7 @@ class AdaptiveTierBatchController:
         self.transaction_ceiling_ms = transaction_ceiling_ms
         self.rows_per_cpu_core = rows_per_cpu_core
         self.memory_mib_per_1000_rows = memory_mib_per_1000_rows
-        self._current = 1
+        self._current = initial_index
         self._probe: int | None = None
         self._samples: dict[int, list[float]] = {index: [] for index in range(len(tiers))}
         self._stable_successes = 0

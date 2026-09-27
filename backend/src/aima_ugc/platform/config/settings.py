@@ -36,7 +36,7 @@ class PlatformSettings(BaseModel):
     external_secret_dir: Path | None = None
     historical_import_root: Path | None = None
     # 运行容量与目录安全边界只由代码管理；旧 env 值不得在不同机器上造成行为漂移。
-    historical_chunk_rows: int = Field(default=2000, ge=100, le=2000)
+    historical_chunk_rows: int = Field(default=4_000, ge=100, le=4_000)
     historical_max_scan_files: int = Field(default=10_000, ge=1, le=100_000)
     historical_max_directory_depth: int = Field(default=8, ge=1, le=32)
     historical_max_in_flight_jobs: int | None = Field(default=None, ge=1)

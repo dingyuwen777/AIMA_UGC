@@ -27,6 +27,9 @@ from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
     defer_voice_plaza_projection,
     flush_deferred_voice_plaza_projection,
 )
+from aima_ugc.adapters.persistence.postgres.workload_slots import (
+    acquire_foreground_write_priority,
+)
 from aima_ugc.adapters.providers.imports import (
     ExcelImportRejectedRowsError,
     convert_excel_to_canonical_jsonl,
@@ -51,6 +54,7 @@ from aima_ugc.modules.ingestion.xlsx_security import (
     XlsxResourceLimitError,
     validate_xlsx_archive,
 )
+from aima_ugc.platform.capacity import detect_resources
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.logging import log_event
@@ -253,7 +257,7 @@ class PostgresImportJobExecutor:
                 ingestion_started = perf_counter()
                 diagnostic_stage = "ingesting"
                 diagnostic_operation = "persist_content_batch"
-                rows_ingested = self._ingest_v2(
+                rows_ingested, foreground_wait_ms = self._ingest_v2(
                     execution,
                     artifact=artifact,
                     fence=fence,
@@ -283,6 +287,7 @@ class PostgresImportJobExecutor:
                     canonical_write_ms=canonical_write_ms,
                     preparation_ms=preparation_ms,
                     ingestion_ms=ingestion_ms,
+                    foreground_wait_ms=foreground_wait_ms,
                     duration_ms=duration_ms,
                     temporary_bytes=_directory_bytes(work_dir),
                     temporary_peak_bytes=temporary_peak_bytes,
@@ -367,7 +372,7 @@ class PostgresImportJobExecutor:
         rows_matched: int,
         rows_filtered_out: int,
         duplicates_removed: int,
-    ) -> int:
+    ) -> tuple[int, int]:
         """在 Job/Batch 当前执行锁内完成 Content 与 Brand/Vehicle Evidence 同事务写入。"""
 
         self._stage(
@@ -386,6 +391,10 @@ class PostgresImportJobExecutor:
             with session.begin():
                 jobs = PostgresJobRepository(session)
                 jobs.validate_current_execution(fence)
+                foreground_priority = acquire_foreground_write_priority(
+                    session,
+                    resources=detect_resources(),
+                )
                 batch = PostgresProcessingImportBatchRepository(session).get_by_job_id(
                     fence.job_id,
                     for_update=True,
@@ -393,7 +402,7 @@ class PostgresImportJobExecutor:
                 if batch is None:
                     raise LookupError("Import Batch 不存在")
                 if batch.status == "succeeded":
-                    return _stat(batch.stats, "rows_ingested")
+                    return _stat(batch.stats, "rows_ingested"), foreground_priority.wait_ms
                 current_artifact = PostgresArtifactMetadataRepository(session).get(
                     batch.input_artifact_id
                 )
@@ -431,7 +440,7 @@ class PostgresImportJobExecutor:
                     )
                 )
                 flush_deferred_voice_plaza_projection(session, affected_content_ids)
-                return write.rows_ingested
+                return write.rows_ingested, foreground_priority.wait_ms
         finally:
             session.close()
 

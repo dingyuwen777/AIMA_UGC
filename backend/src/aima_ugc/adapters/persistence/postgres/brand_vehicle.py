@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import datetime
 from itertools import batched
 from typing import cast
@@ -35,6 +36,7 @@ from aima_ugc.modules.vehicles.tables import (
     vehicle_model_aliases_table,
     vehicle_models_table,
 )
+from aima_ugc.platform.logging.timing import StageTimings
 from aima_ugc.platform.time import beijing_now
 
 _MULTI_VALUES_INSERT_ROWS = 500
@@ -1032,27 +1034,30 @@ class PostgresBrandVehicleRepository:
         entries: tuple[tuple[UUID, int, tuple[ResolverEvidence, ...]], ...],
         catalog_snapshot: BrandVehicleCatalogSnapshot,
         preserve_unconfirmed: bool = False,
+        timings: StageTimings | None = None,
     ) -> tuple[int, int]:
         """按冻结目录批量收敛自动 Brand Evidence，并保持人工锁优先。"""
 
         if not entries:
             return 0, 0
         pairs = tuple(sorted({(item[0], item[1]) for item in entries}, key=str))
-        self._lock_brand_review_writes(pairs)
-        locked_pairs = set(
-            self._session.execute(
-                select(
-                    content_brand_review_locks_table.c.content_id,
-                    content_brand_review_locks_table.c.content_version,
-                ).where(
-                    tuple_(
+        with timings.measure("brand_advisory_lock") if timings else nullcontext():
+            self._lock_brand_review_writes(pairs)
+        with timings.measure("brand_manual_lock_read") if timings else nullcontext():
+            locked_pairs = set(
+                self._session.execute(
+                    select(
                         content_brand_review_locks_table.c.content_id,
                         content_brand_review_locks_table.c.content_version,
-                    ).in_(pairs),
-                    content_brand_review_locks_table.c.is_locked.is_(True),
+                    ).where(
+                        tuple_(
+                            content_brand_review_locks_table.c.content_id,
+                            content_brand_review_locks_table.c.content_version,
+                        ).in_(pairs),
+                        content_brand_review_locks_table.c.is_locked.is_(True),
+                    )
                 )
             )
-        )
         unlocked_pairs = tuple(item for item in pairs if item not in locked_pairs)
         if unlocked_pairs:
             deactivation_statement = update(content_brand_evidence_table).where(
@@ -1079,14 +1084,15 @@ class PostgresBrandVehicleRepository:
                         ).values(is_active=False)
                     )
             else:
-                self._session.execute(
-                    deactivation_statement.where(
-                        tuple_(
-                            content_brand_evidence_table.c.content_id,
-                            content_brand_evidence_table.c.content_version,
-                        ).in_(unlocked_pairs)
-                    ).values(is_active=False)
-                )
+                with timings.measure("brand_deactivate") if timings else nullcontext():
+                    self._session.execute(
+                        deactivation_statement.where(
+                            tuple_(
+                                content_brand_evidence_table.c.content_id,
+                                content_brand_evidence_table.c.content_version,
+                            ).in_(unlocked_pairs)
+                        ).values(is_active=False)
+                    )
 
         now = beijing_now()
         direct_values: list[dict[str, object]] = []
@@ -1131,51 +1137,55 @@ class PostgresBrandVehicleRepository:
                     vehicle_values.append(values)
         if direct_values:
             statement = pg_insert(content_brand_evidence_table).values(direct_values)
-            self._session.execute(
-                statement.on_conflict_do_update(
-                    index_elements=[
-                        content_brand_evidence_table.c.content_id,
-                        content_brand_evidence_table.c.content_version,
-                        content_brand_evidence_table.c.brand_id,
-                        content_brand_evidence_table.c.source,
-                        content_brand_evidence_table.c.catalog_version,
-                    ],
-                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_(None),
-                    set_={
-                        "matched_text": statement.excluded.matched_text,
-                        "source_field": statement.excluded.source_field,
-                        "confidence": 1.0,
-                        "is_manual_locked": False,
-                        "is_active": True,
-                        "created_at": now,
-                    },
+            with timings.measure("brand_direct_upsert") if timings else nullcontext():
+                self._session.execute(
+                    statement.on_conflict_do_update(
+                        index_elements=[
+                            content_brand_evidence_table.c.content_id,
+                            content_brand_evidence_table.c.content_version,
+                            content_brand_evidence_table.c.brand_id,
+                            content_brand_evidence_table.c.source,
+                            content_brand_evidence_table.c.catalog_version,
+                        ],
+                        index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_(
+                            None
+                        ),
+                        set_={
+                            "matched_text": statement.excluded.matched_text,
+                            "source_field": statement.excluded.source_field,
+                            "confidence": 1.0,
+                            "is_manual_locked": False,
+                            "is_active": True,
+                            "created_at": now,
+                        },
+                    )
                 )
-            )
         if vehicle_values:
             statement = pg_insert(content_brand_evidence_table).values(vehicle_values)
-            self._session.execute(
-                statement.on_conflict_do_update(
-                    index_elements=[
-                        content_brand_evidence_table.c.content_id,
-                        content_brand_evidence_table.c.content_version,
-                        content_brand_evidence_table.c.brand_id,
-                        content_brand_evidence_table.c.source,
-                        content_brand_evidence_table.c.derived_vehicle_model_id,
-                        content_brand_evidence_table.c.catalog_version,
-                    ],
-                    index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(
-                        None
-                    ),
-                    set_={
-                        "matched_text": statement.excluded.matched_text,
-                        "source_field": statement.excluded.source_field,
-                        "confidence": 1.0,
-                        "is_manual_locked": False,
-                        "is_active": True,
-                        "created_at": now,
-                    },
+            with timings.measure("brand_vehicle_upsert") if timings else nullcontext():
+                self._session.execute(
+                    statement.on_conflict_do_update(
+                        index_elements=[
+                            content_brand_evidence_table.c.content_id,
+                            content_brand_evidence_table.c.content_version,
+                            content_brand_evidence_table.c.brand_id,
+                            content_brand_evidence_table.c.source,
+                            content_brand_evidence_table.c.derived_vehicle_model_id,
+                            content_brand_evidence_table.c.catalog_version,
+                        ],
+                        index_where=content_brand_evidence_table.c.derived_vehicle_model_id.is_not(
+                            None
+                        ),
+                        set_={
+                            "matched_text": statement.excluded.matched_text,
+                            "source_field": statement.excluded.source_field,
+                            "confidence": 1.0,
+                            "is_manual_locked": False,
+                            "is_active": True,
+                            "created_at": now,
+                        },
+                    )
                 )
-            )
         return len(direct_values) + len(vehicle_values), len(locked_pairs)
 
     def converge_automatic_brand_evidence_for_replay(
