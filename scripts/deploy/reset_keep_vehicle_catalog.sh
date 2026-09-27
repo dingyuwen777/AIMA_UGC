@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
-# 清空当前 Compose 数据库的业务数据和 Artifact 实体，仅保留 Alembic 与完整品牌/车型目录。
+# AIMA_UGC 业务数据重置工具：保留当前 Alembic 与完整品牌/车型目录，清空其他业务数据和 Artifact 实体。
+#
+# 使用方法（建议在当前 Release 根目录执行）：
+#   1. 只检查，不修改：
+#      bash ./reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --dry-run
+#   2. 确认 dry-run 输出后执行：
+#      bash ./reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --execute
+#      交互确认时输入：RESET-AIMA-BUSINESS-DATA
+#   3. 成功后业务容器保持停止；核对结果后重新启动：
+#      python3 ./start_compose.py --env-file /data/AIMA_UGC/env.production
+#
+# 保留：alembic_version、vehicle_catalog_versions、vehicle_brands、vehicle_brand_aliases、
+#       vehicle_models、vehicle_model_aliases；这些目录当前有多少数据都原样保留，允许部分或全部为空。
+# 清理：除上述表外的 public 业务表数据，以及当前 Compose runtime/data/artifacts 下的 Artifact 实体。
+# 不删除：原始 Excel/历史导入源目录、PostgreSQL 数据目录、Secret、日志、env 文件。
 set -Eeuo pipefail
 
 usage() {
@@ -7,9 +21,12 @@ usage() {
 用法：bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production [--dry-run | --execute [--yes]]
 
 默认只检查，不修改。--execute 会停止业务容器、备份保留目录、事务性清库并清空 Artifact 实体；
-完成后业务容器保持停止。--yes 仅用于明确授权的非交互执行。
-原始 Excel 目录、PostgreSQL 数据目录、Secret、日志、env 文件和车型目录不会删除。
---allow-empty-catalog 仅供已确认空目录的隔离回放使用；生产默认拒绝空品牌或车型表。
+完成后业务容器保持停止。交互执行时必须输入 RESET-AIMA-BUSINESS-DATA 确认；
+--yes 仅用于明确授权的非交互执行。
+原始 Excel 目录、PostgreSQL 数据目录、Secret、日志、env 文件和品牌/车型目录不会删除。
+品牌、车型、别名当前无论是否为空都按现状原样保留；脚本不会要求目录必须非空。
+执行成功后业务容器保持停止；核对结果后运行：
+  python3 ./start_compose.py --env-file /data/AIMA_UGC/env.production
 USAGE
 }
 
@@ -20,14 +37,12 @@ ENV_FILE=""
 EXECUTE=0
 MODE_SET=0
 ASSUME_YES=0
-ALLOW_EMPTY_CATALOG=0
 while (($#)); do
   case "$1" in
     --env-file) (($# >= 2)) || die '--env-file 缺少路径'; ENV_FILE="$2"; shift 2 ;;
     --dry-run) ((MODE_SET == 0)) || die '运行模式重复'; MODE_SET=1; EXECUTE=0; shift ;;
     --execute) ((MODE_SET == 0)) || die '运行模式重复'; MODE_SET=1; EXECUTE=1; shift ;;
     --yes) ASSUME_YES=1; shift ;;
-    --allow-empty-catalog) ALLOW_EMPTY_CATALOG=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "未知参数：$1" ;;
   esac
@@ -122,21 +137,23 @@ SELECT (SELECT count(*) FROM vehicle_catalog_versions) || '|' ||
        (SELECT string_agg(version_num, ',' ORDER BY version_num) FROM alembic_version);
 SQL
 )"
-[[ -n "$CATALOG_COUNTS" ]] || die '车型目录或 Alembic 版本状态不可读取'
+[[ -n "$CATALOG_COUNTS" ]] || die '品牌/车型目录或 Alembic 版本状态不可读取'
 DB_IDENTITY="$(printf '%s\n' 'SELECT current_database() || '\''|'\'' || current_user;' | db)"
 log "目标 PostgreSQL 容器：$POSTGRES_ID；数据库/用户：$DB_IDENTITY"
 ALEMBIC_VALID="$(printf '%s\n' 'SELECT count(*) = 1 FROM alembic_version;' | db)"
 [[ "$ALEMBIC_VALID" == t ]] || die 'Alembic 版本状态异常，拒绝清空'
-if ((ALLOW_EMPTY_CATALOG == 0)); then
-  CATALOG_NONEMPTY="$(cat <<'SQL' | db
-SELECT (SELECT count(*) FROM vehicle_catalog_versions) > 0
-   AND (SELECT count(*) FROM vehicle_brands) > 0
-   AND (SELECT count(*) FROM vehicle_models) > 0;
+log "将原样保留当前品牌/车型目录；目录为空也是合法状态。"
+log "保留目录计数（catalog_version|brand|brand_alias|model|model_alias|alembic）：$CATALOG_COUNTS"
+CATALOG_FINGERPRINT="$(cat <<'SQL' | db
+SELECT
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY version) FROM vehicle_catalog_versions t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_brands t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_brand_aliases t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_models t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_model_aliases t), ''));
 SQL
 )"
-  [[ "$CATALOG_NONEMPTY" == t ]] || die '车型目录为空，拒绝清空；隔离空库可显式使用 --allow-empty-catalog'
-fi
-log "保留目录计数（version|brand|brand_alias|model|model_alias|alembic）：$CATALOG_COUNTS"
+[[ -n "$CATALOG_FINGERPRINT" ]] || die '品牌/车型目录内容指纹不可读取'
 TARGET_TABLES="$(cat <<'SQL' | db
 SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
 WHERE n.nspname='public' AND c.relkind IN ('r','p')
@@ -178,10 +195,10 @@ compose exec -T postgres sh -c '
     --table=public.vehicle_brand_aliases --table=public.vehicle_models \
     --table=public.vehicle_model_aliases
 ' | gzip -c > "$BACKUP_TMP"
-[[ -s "$BACKUP_TMP" ]] || die '车型目录备份为空，数据库未清空'
+[[ -s "$BACKUP_TMP" ]] || die '品牌/车型目录备份文件为空，数据库未清空'
 chmod 600 -- "$BACKUP_TMP"
 mv -- "$BACKUP_TMP" "$BACKUP_FILE"
-log "车型目录备份：$BACKUP_FILE"
+log "品牌/车型目录备份：$BACKUP_FILE"
 
 # 校验、TRUNCATE 与系统种子恢复属于同一事务；失败自动回滚。
 cat <<'SQL' | db
@@ -252,7 +269,18 @@ SELECT (SELECT count(*) FROM vehicle_catalog_versions) || '|' ||
        (SELECT string_agg(version_num, ',' ORDER BY version_num) FROM alembic_version);
 SQL
 )"
-[[ "$AFTER_COUNTS" == "$CATALOG_COUNTS" ]] || die '清空后目录计数异常，业务容器保持停止'
+[[ "$AFTER_COUNTS" == "$CATALOG_COUNTS" ]] || die '清空后品牌/车型目录计数异常，业务容器保持停止'
+AFTER_CATALOG_FINGERPRINT="$(cat <<'SQL' | db
+SELECT
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY version) FROM vehicle_catalog_versions t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_brands t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_brand_aliases t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_models t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_model_aliases t), ''));
+SQL
+)"
+[[ "$AFTER_CATALOG_FINGERPRINT" == "$CATALOG_FINGERPRINT" ]] || \
+  die '清空后品牌/车型目录内容发生变化，业务容器保持停止'
 
 SEED_COUNT="$(printf '%s\n' 'SELECT count(*) FROM voice_plaza_projection_state WHERE singleton AND status='\''pending'\'' AND generation=1;' | db)"
 [[ "$SEED_COUNT" == 1 ]] || die '声音广场系统种子恢复失败，业务容器保持停止'
@@ -276,6 +304,6 @@ if [[ -d "$ARTIFACT_DIR" ]]; then
     die 'Artifact 目录仍有残留，业务容器保持停止'
 fi
 
-log '业务数据及 Artifact 实体已清空，车型目录与 Alembic 版本保持不变，系统种子已恢复。'
+log '业务数据及 Artifact 实体已清空，品牌/车型目录与 Alembic 版本保持不变，系统种子已恢复。'
 log "验收计数（采集运行|历史导入|Job|管理员审计|Content|Provider|Artifact）：$BUSINESS_COUNTS"
 log '业务容器保持停止。请使用本 Release 的 start_compose.py 重新装配 configure 并启动。'
