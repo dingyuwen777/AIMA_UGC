@@ -78,14 +78,16 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 保留现有 Host/Compose 安全余量与 Worker/PostgreSQL 总资源预算 | user:2026-09-27-replay-qos | satisfied | 本 PR 未修改 start_compose.py / compose 资源预算；Worker reserve 只在既有进程上限内分配角色 |
-| R2 | Replay 不能占满全部 Worker，非 Replay 保留执行能力且自身不降级 | user:2026-09-27-replay-qos | satisfied | 多进程 Worker Pool 增加 foreground-reserve；通用 Worker 仍支持全部 Job，单进程自动回退完整类型集；回归已加入 |
-| R3 | 修复 Replay Shard / Replay Reversal Shard 优先级倒置且 Import Reversal 不变 | user:2026-09-27-replay-qos | satisfied | Replay 父/Planner/Shard 使用 background=-30；Replay Reversal Shard=-30；Import Reversal Shard 保持 40；回归已加入 |
-| R4 | 低命中以 hit ratio 放大 scan，而 matched rows/事务墙钟仍有界 | user:2026-09-27-replay-qos | satisfied | _ReplayScanBatchController 由预检+最近完整批次命中率反推 raw scan；最大 4× frozen batch，资源压力进一步收紧；5%/25% 单元回归和低命中 benchmark fixture 已加入 |
-| R5 | Existing Evidence 减少冗余往返且精确撤回语义不变 | user:2026-09-27-replay-qos | satisfied | Vehicle/Brand Replay convergence 在审核锁内各做一次联合 before/target 快照，DML RETURNING 直接形成 after；原 Replay/Reversal 回归及单次快照断言覆盖 |
-| R6 | 增加安全、低频、可定位日志 | user:2026-09-27-replay-qos | satisfied | worker.started/capacity_detected 记录 worker_role；pool resize 记录 reserve/role；capacity.replay_scan_batch_selected 记录 matched/raw/resource ceiling/命中率估计，不记录正文或 Secret |
-| R7 | Replay 自身与 mixed-load 性能、正确性和其他链路不回退 | user:2026-09-27-replay-qos | explicitly_deferred | 实现侧回归与容量夹具已建立；current-head CI / PostgreSQL / Full-stack / 独立 Review 属于 Ready 后交付门禁，未通过前禁止 merge |
-| R8 | PR merge、main-fresh、Change Archive、Issue Closure | user:2026-09-27-replay-qos0 | explicitly_deferred | 按项目交付状态机在 Ready 后执行；current-head CI 与 Review 通过前禁止 merge，merge 后继续 main-fresh / Archive / Closure |
+| R1 | 保留现有 Host/Compose 安全余量与 Worker/PostgreSQL 总资源预算 | user:2026-09-27-replay-qos / AC1 | satisfied | 本 PR 未修改 start_compose.py / compose 资源预算；Worker reserve 只在既有进程上限内分配角色 |
+| R2 | Worker 上限 >=2 时 Replay 不得占满全部 Worker；单进程仍可执行 Replay | user:2026-09-27-replay-qos / AC2 | satisfied | 多进程 Worker Pool 增加 foreground-reserve；单进程自动回退完整类型集；回归已加入 |
+| R3 | Collection / Import / Historical / Analysis / Export 的现有调度与业务 Contract 不因 Replay 优化降低 | user:2026-09-27-replay-qos / AC3 | satisfied | 非 Replay Job 类型、优先级和控制器未修改；reserve 允许 priority>-30 的 Historical(-20)及普通任务，general Worker 仍支持全部 Job |
+| R4 | Replay Shard 与 Replay Reversal 后台让路，同时 Import Reversal 保持原优先级 | user:2026-09-27-replay-qos / AC4 | satisfied | Replay 父/Planner/Shard=-30；Replay Reversal Shard=-30；Import Reversal Shard=40；共享 shard 用 reserve priority floor 隔离 |
+| R5 | 5%/25% 低命中按 hit ratio 扩大 raw scan，数据库事务仍按 matched target/墙钟有界 | user:2026-09-27-replay-qos / AC5 | satisfied | _ReplayScanBatchController + _partition_resolved_batch；5%/25%/0% 与突升命中单元回归、低命中 benchmark fixture |
+| R6 | Existing Brand/Vehicle Evidence 减少冗余往返且精确撤回不变 | user:2026-09-27-replay-qos / AC6 | satisfied | Replay convergence 在审核锁内各一次联合 before/target 快照，DML RETURNING 形成 after；Replay/Reversal 与单次快照断言覆盖 |
+| R7 | 新日志安全且能解释 Worker QoS、scan/matched 与 Evidence/transaction 热点 | user:2026-09-27-replay-qos / AC7 | satisfied | worker role/reserve、capacity.replay_scan_batch_selected、resource ceiling 与既有 batch_completed 阶段耗时；不记录正文/Secret |
+| R8 | Replay 性能基准覆盖低/高命中 Existing/New，mixed-load 证明正常链路无持续退化 | user:2026-09-27-replay-qos / AC8 | explicitly_deferred | 低命中容量 fixture 与 QoS 回归已落；current-head CI/集成是 Ready 后硬门禁，生产服务器吞吐仅在新 Release 后按运维文档复测 |
+| R9 | Unit、PostgreSQL Integration、Job/Worker、Replay/Reversal、静态、文档、Completion Audit、Review 与 required CI 通过 | user:2026-09-27-replay-qos / AC9 | explicitly_deferred | 当前实现已进入 ready_for_review；current-head required CI 与独立 Review 未通过前禁止 merge |
+| R10 | PR merge 后完成 main-fresh、Change Archive、Issue Closure 与分支清理 | user:2026-09-27-replay-qos / AC10 | explicitly_deferred | 按项目交付状态机在 merge 后执行；未完成前不得声明端到端交付完成 |
 
 # 计划改动
 
@@ -120,9 +122,9 @@ targeted 更新 Replay 并发/批量/排障说明；不新增部署配置，不�
 # 完成审计
 
 - [x] upstream_re_read：已重新读取 #624、当前 main 的 Worker/Job/Replay/Evidence/资源与文档 Owner。
-- [x] change_coverage：R1-R6 已落实现/回归；R7-R8 明确保留为 Ready 后交付门禁，不把未运行 CI 冒充已通过。
+- [x] change_coverage：R1-R7 已落实实现/回归；R8-R10 明确保留为 Ready/merge 后交付门禁，不把未运行 CI 或未部署生产复测冒充已通过。
 - [x] reverse_audit：已反查非 Replay Job → reserve/general Worker；Replay → QoS/priority/batch/Evidence → ledger/reversal。
-- [x] unresolved_cleared：Ready 前无 not_satisfied；R7-R8 仅因项目交付状态机后置 current-head CI/Review/merge，以 explicitly_deferred 保留且未降低门禁。
+- [x] unresolved_cleared：Ready 前无 not_satisfied；R8-R10 仅因项目交付状态机后置 current-head CI/Review/merge/生产复测，以 explicitly_deferred 保留且未降低门禁。
 
 # 完成证据与状态
 
