@@ -12,10 +12,7 @@ from sqlalchemy import text
 
 
 _SCRIPT = (
-    Path(__file__).resolve().parents[3]
-    / "scripts"
-    / "deploy"
-    / "reset_keep_vehicle_catalog.sh"
+    Path(__file__).resolve().parents[3] / "scripts" / "deploy" / "reset_keep_vehicle_catalog.sh"
 )
 
 
