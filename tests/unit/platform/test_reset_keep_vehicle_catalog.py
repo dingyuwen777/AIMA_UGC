@@ -124,13 +124,32 @@ def _write_fake_runtime(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
                         count = 0
                     with open(counter_path, "w", encoding="utf-8") as handle:
                         handle.write(str(count + 1))
+                    with open(
+                        os.environ["FAKE_DOCKER_LOG"], "a", encoding="utf-8"
+                    ) as handle:
+                        handle.write(f"FINGERPRINT {count + 1}\\n")
                     if count == 0:
-                        print("fp1|fp2|fp3|fp4|fp5")
+                        print(
+                            os.environ.get(
+                                "FAKE_PRE_FINGERPRINT",
+                                "fp1|fp2|fp3|fp4|fp5",
+                            )
+                        )
+                    elif count == 1:
+                        print(
+                            os.environ.get(
+                                "FAKE_BASELINE_FINGERPRINT",
+                                "fp1|fp2|fp3|fp4|fp5",
+                            )
+                        )
                     else:
                         print(
                             os.environ.get(
                                 "FAKE_AFTER_FINGERPRINT",
-                                "fp1|fp2|fp3|fp4|fp5",
+                                os.environ.get(
+                                    "FAKE_BASELINE_FINGERPRINT",
+                                    "fp1|fp2|fp3|fp4|fp5",
+                                ),
                             )
                         )
                 elif (
@@ -227,10 +246,44 @@ def test_reset_keep_vehicle_catalog_execute_preserves_catalog_fingerprint(
     assert len(backups) == 1
     assert backups[0].stat().st_size > 0
     calls = Path(env["FAKE_DOCKER_LOG"]).read_text(encoding="utf-8").splitlines()
-    assert any(
-        " stop frontend api worker scheduler configure migrate" in line
-        for line in calls
+    stop_index = next(
+        index
+        for index, line in enumerate(calls)
+        if " stop frontend api worker scheduler configure migrate" in line
     )
+    baseline_index = calls.index("FINGERPRINT 2")
+    assert stop_index < baseline_index
+
+
+@POSIX_BASH_ONLY
+def test_reset_keep_vehicle_catalog_execute_uses_post_stop_catalog_baseline(
+    tmp_path: Path,
+) -> None:
+    """停写窗口内目录变化时，应以停止写入后的目录状态作为最终保留基线。"""
+
+    script, env_file, env = _write_fake_runtime(tmp_path)
+    env["FAKE_PRE_FINGERPRINT"] = "before-stop"
+    env["FAKE_BASELINE_FINGERPRINT"] = "after-stop"
+    env["FAKE_AFTER_FINGERPRINT"] = "after-stop"
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(script),
+            "--env-file",
+            str(env_file),
+            "--execute",
+            "--yes",
+        ],
+        cwd=script.parents[2],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "停写后保留目录计数" in result.stdout
 
 
 @POSIX_BASH_ONLY
