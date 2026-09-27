@@ -27,6 +27,7 @@ affected_paths:
   - backend/src/aima_ugc/bootstrap/worker.py
   - backend/src/aima_ugc/entrypoints/worker_main.py
   - frontend/src/features/import-batches/
+  - frontend/e2e/collection-runtime.spec.ts
   - scripts/performance/benchmark_canonical_replay.py
   - tests/
   - docs/appendix/08_数据入口与统一入库实现.md
@@ -113,7 +114,7 @@ Issue #624 的合并后复测。用户明确要求同时解决：（1）历史�
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 系统排查入库吞吐，给出初次入库及旧/当前代码可重复证据，只优化可证明有收益的瓶颈 | #624 / AC11 | satisfied | 生产 44 Run 日志；三组旧/当前 A/B；两轮初次入库与重筛 New/Existing 对照；最终代码复测 10.15 秒；生产新版本尚未部署，线上收益不作断言 |
-| R2 | “取消并撤回”的前端状态、进度、超时反馈与数据库事实一致 | #624 / AC12 | satisfied | 前端 31 项定向测试、类型检查、ESLint 与构建；504 未知结果、快速失败状态确认、既有失败重试及无 Run 的正确入口 |
+| R2 | “取消并撤回”的前端状态、进度、超时反馈与数据库事实一致 | #624 / AC12 | satisfied | 前端 31 项定向测试、目标浏览器场景 1 passed、类型检查、ESLint 与构建；504 未知结果、快速失败状态确认、既有失败重试及无 Run 的正确入口 |
 | R3 | 取消请求在重负载及锁等待时短时持久受理，子任务取消与撤回自动幂等收敛 | #624 / AC13 | satisfied | 旧实现锁等待红测；新实现锁冲突、幂等、协调重试、最终失败后重试、自动排队撤回、单 Worker 协作退出、5 秒退避封顶 PostgreSQL 测试；线上新版本尚待部署 |
 | R4 | 撤回执行吞吐有同机证据，剩余优化按收益判断 | #624 / AC13 | satisfied | 两轮 Release/当前同机撤回 A/B、New/Existing 单独对照；最终代码撤回 3.67 秒；服务器旧版最终耗时未取得，不外推大库 |
 | R5 | Host/Compose 总资源预算不变 | #624 / AC1 | satisfied | 本分支无 Host/Compose 资源分配文件 diff；Worker 现有容量测试保留，未提高全局配额 |
@@ -174,7 +175,7 @@ Issue #624 的合并后复测。用户明确要求同时解决：（1）历史�
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | 本分支 `6f5920c0`，本地 PostgreSQL 18.4 | Job/Replay/API 组合 pytest；取消边界和失败重试复测 | 组合 97 passed、一个断言因新增提交前检查需调整；调整后的两项取消边界及失败重试均通过 | 真实 PostgreSQL 的受理、取消、撤回屏障与恢复行为 |
-| V2 | 本分支，前端本地 | Vitest 定向 31 项、typecheck、ESLint、Vite build | 全部成功 | 504、阶段状态、失败重试入口与前端产物 |
+| V2 | 本分支，前端本地 | Vitest 定向 31 项、目标 Playwright 场景 1 项、typecheck、ESLint、Vite build | 全部成功 | 504、阶段状态、失败重试入口、浏览器详情与前端产物 |
 | V3 | 本分支，同机隔离 PostgreSQL 18.4 | 旧/当前交错 A/B、初次导入与 New/Existing、撤回 A/B、Excel mixed load | 实测数值见 E3/E6 和上文 | 性能判断与共享 DB 争用的适用范围 |
 | V4 | 本分支 | Ruff check/format、mypy、Contract generate --check、Change Ready Check | 全部成功 | 静态、公共生成事实和本地就绪 |
 
