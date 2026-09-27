@@ -286,7 +286,7 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
 
 
 def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
-    """把高价值真实用户链路映射到 Golden Path；未知 Full-stack 场景失败关闭为全量。"""
+    """把已知高价值用户链路映射到 Golden Path；显式未知 Full-stack spec 才回退全量。"""
     if path.startswith("frontend/e2e-fullstack/") and path.endswith(".spec.ts"):
         spec = Path(path).name
         return (spec,) if spec in ALL_FULLSTACK_SPECS else FULLSTACK_ALL
