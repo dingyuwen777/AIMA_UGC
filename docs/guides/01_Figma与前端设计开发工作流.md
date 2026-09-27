@@ -80,9 +80,10 @@ Figma 不负责：
 
 - 管理员配置 → [docs/guides/02_管理员配置Figma开发基线.md](02_管理员配置Figma开发基线.md)
 - 采集运行中心 → [docs/guides/07_采集运行中心Figma开发基线.md](07_采集运行中心Figma开发基线.md)
+- 工作台 → Figma 文件 `qmZEFvPrB8u9JX5fyqc93S` 的 Page `3433:834`，正式默认状态 `7356:19479`；代码 Owner 为 [frontend/src/features/workbench/](../../frontend/src/features/workbench/)
 - 其他页面的当前真实代码入口 → [frontend/README.md](../../frontend/README.md) 与对应 Feature
 
-专项 Guide 只维护 AIMA 的 Figma Node/Owner/页面 Contract，不复制本页的共性边界。
+专项 Guide 只维护 AIMA 的 Figma Node/Owner/页面 Contract，不复制本页的共性边界。工作台当前只有一个页面级基线，因此先在本 Guide 保留最小 Owner 导航；只有后续形成独立长期设计任务和多状态维护面时再拆专项 Guide，避免为单页重复建文档 Owner。
 
 ## 6. 设计到代码的 AIMA 接线
 
