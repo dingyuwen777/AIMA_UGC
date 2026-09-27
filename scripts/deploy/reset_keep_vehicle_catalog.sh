@@ -183,6 +183,29 @@ fi
 compose stop frontend api worker scheduler configure migrate
 log '业务写入方已停止；失败时请先核对状态，不要直接重启。'
 
+# 停止业务写入后重新冻结保留基线，避免停写窗口内的合法目录更新被误判。
+CATALOG_COUNTS="$(cat <<'SQL' | db
+SELECT (SELECT count(*) FROM vehicle_catalog_versions) || '|' ||
+       (SELECT count(*) FROM vehicle_brands) || '|' ||
+       (SELECT count(*) FROM vehicle_brand_aliases) || '|' ||
+       (SELECT count(*) FROM vehicle_models) || '|' ||
+       (SELECT count(*) FROM vehicle_model_aliases) || '|' ||
+       (SELECT string_agg(version_num, ',' ORDER BY version_num) FROM alembic_version);
+SQL
+)"
+[[ -n "$CATALOG_COUNTS" ]] || die '停写后品牌/车型目录或 Alembic 版本状态不可读取'
+CATALOG_FINGERPRINT="$(cat <<'SQL' | db
+SELECT
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY version) FROM vehicle_catalog_versions t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_brands t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_brand_aliases t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_models t), '')) || '|' ||
+  md5(COALESCE((SELECT string_agg(to_jsonb(t)::text, E'\n' ORDER BY id) FROM vehicle_model_aliases t), ''));
+SQL
+)"
+[[ -n "$CATALOG_FINGERPRINT" ]] || die '停写后品牌/车型目录内容指纹不可读取'
+log "停写后保留目录计数（catalog_version|brand|brand_alias|model|model_alias|alembic）：$CATALOG_COUNTS"
+
 BACKUP_ROOT="$(realpath -m -- "$DATA_ROOT/../../backups")"
 mkdir -p -- "$BACKUP_ROOT"
 chmod 700 -- "$BACKUP_ROOT"
