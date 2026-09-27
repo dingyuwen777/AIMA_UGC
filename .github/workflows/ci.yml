@@ -188,9 +188,7 @@ jobs:
           PY
 
       - name: Verify AIMA project governance wiring
-        if: >-
-          (github.event_name != 'pull_request' || github.event.action != 'edited') &&
-          steps.reuse.outputs.reusable != 'true'
+        if: github.event_name != 'pull_request' || github.event.action != 'edited'
         shell: bash
         run: |
           set -euo pipefail
@@ -206,7 +204,7 @@ jobs:
             --changed-since "${{ github.event.pull_request.base.sha }}"
 
       - name: Enforce main Active Change readiness
-        if: github.event_name == 'push' && steps.reuse.outputs.reusable != 'true'
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
@@ -215,9 +213,7 @@ jobs:
             --require-active-ready
 
       - name: Secret and docs gates
-        if: >-
-          (github.event_name != 'pull_request' || github.event.action != 'edited') &&
-          steps.reuse.outputs.reusable != 'true'
+        if: github.event_name != 'pull_request' || github.event.action != 'edited'
         shell: bash
         run: |
           set -euo pipefail
