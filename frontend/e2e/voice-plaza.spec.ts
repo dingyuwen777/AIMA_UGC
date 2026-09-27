@@ -557,6 +557,19 @@ test('restores the applied platform filter after leaving and reloading the page'
       && url.pathname === '/api/v1/contents'
       && url.searchParams.get('platforms') === 'xiaohongshu'
   })
+  // 中途访问的首页已是工作台；本用例只验证声音广场筛选恢复，明确模拟工作台暂不可用。
+  await page.route('**/api/v1/workbench/**', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 503,
+        title: '工作台暂不可用',
+        detail: '测试中途页面不提供工作台数据。',
+        request_id: 'voice-plaza-home-navigation',
+      }),
+    })
+  })
   await page.goto('/')
   await page.goto('/voice-plaza')
   await restoredRequest
