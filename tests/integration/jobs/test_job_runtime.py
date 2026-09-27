@@ -130,7 +130,6 @@ def test_worker_pool_pressure_counts_ready_queue_and_its_own_leases(
         session.close()
 
 
-
 def test_worker_supported_type_override_leaves_background_job_queued(
     database_runtime: DatabaseRuntime,
 ) -> None:
