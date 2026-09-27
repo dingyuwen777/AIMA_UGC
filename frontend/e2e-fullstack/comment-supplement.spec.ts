@@ -93,7 +93,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   await expect(page).toHaveURL((url) =>
     url.pathname === '/voice-plaza' && url.searchParams.get('source_identifier') === runId,
   )
-  await expect(page.getByLabel('平台')).toBeEnabled()
+  await expect(page.getByRole('region', { name: '声音广场筛选条件' }).getByLabel('平台')).toBeEnabled()
 
   for (const label of labels) {
     const title = `爱玛评论补采全栈${label}`
