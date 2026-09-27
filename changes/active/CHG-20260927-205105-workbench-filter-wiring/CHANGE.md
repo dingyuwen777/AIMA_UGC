@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-205105-workbench-filter-wiring
 title: 修复工作台真实数据筛选、滚动与趋势展示
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/634-workbench-filters
 created: 2026-09-27
@@ -70,19 +70,19 @@ Issue #634：工作台三个模块已有真实后端接口及 PostgreSQL 筛选�
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 声音流筛选项可点击并能看到可选项 | 用户请求 / Issue #634 | satisfied | Browser 测试确认弹层位于顶层、选项可点击。 |
-| R2 | 日期确认后起止日期完整且有序地进入三个模块查询，反向选日不再触发 422 | 用户截图 / Issue #634 | satisfied | Browser 正反向日期请求、Store 单元测试、后端 Query 校验。 |
-| R3 | 多选、重置和三模块呈现与当前 PostgreSQL 筛选口径保持一致 | 用户请求 / docs/product/02 | satisfied | Browser 三模块筛选/空态/重置、API 参数转发、PostgreSQL 集成筛选。 |
-| R4 | 声音流按 Figma 连续向上滚动，悬停或聚焦暂停，并使用声音广场平台标识 | 用户决定 / Figma 4052:200 | satisfied | Browser 长短列表滚动、暂停和共享标识断言。 |
-| R5 | 折线图按 Figma 的平滑粉线、渐变面积、点状网格与悬停提示呈现，值仍来自后端 | 用户决定 / Figma 4190:4215 | satisfied | Design Context 对照、ECharts 配置复核与浏览器真实 daily 响应渲染。 |
-| R6 | 筛选确认后及时显示新数据，可见页持续检查新入库结果 | 用户请求 / Issue #634 | satisfied | 日期直接请求、选项 100ms 合并、15 秒轮询 Browser 测试。 |
-| R7 | 慢模块不拖住已返回模块；正确筛选与空库首次读取不产生口径漂移错误 | 用户补充 / Issue #634 | satisfied | Store 延迟请求回归；独立数据库三接口并发 bootstrap 测试。 |
-| R8 | Excel 单文件导入完成后，已提交内容可在声音广场立即查询，来源深链不继承旧筛选 | 用户反馈 / docs/appendix/08 | satisfied | Import Worker PostgreSQL 测试同提交投影；Browser 旧筛选深链请求回归。实际已部署环境时延待环境证据复核。 |
-| R9 | 声音流显示真实作者，与声音广场同源；点击笔记可定位对应详情 | 用户补充 / Issue #634 | satisfied | Excel 真实入库作者快照集成测试；Workbench → Voice Plaza Browser 深链及跨分页详情测试。 |
-| R10 | 日期反向、取消、单日、清空均有一致的显示与请求口径 | 用户补充 / Issue #634 | satisfied | Browser 日期生命周期回归；空日期恢复默认近 30 天。 |
-| R11 | 尽可能快地展示已入库数据，保持其它处理吞吐与动态前台优先机制 | 用户补充 / docs/appendix/08 | satisfied | 三模块独立响应；前台优先屏障、后台槽与 Job Priority 现有实现/测试复核，不增加常态数据库轮询频率。 |
-| R12 | 采集运行中心导入期间持续更新处理统计和数据处理结果 | 用户补充 / docs/product/02 | satisfied | PostgreSQL 分段导入中 Campaign 详情、来源项与统一运行列表 API 均返回已提交 Chunk 统计；运行期 5 秒轮询同步两者，Store 与 Browser 回归。 |
-| R13 | 品牌命中后只匹配该品牌车型；没有品牌时才由车型回推品牌；英文短别名不命中更长英文词；历史重筛沿用同一规则 | 用户补充 / Issue #634 | satisfied | Resolver 单元回归覆盖同品牌、跨品牌、车型回退及 `O` 正反边界；PostgreSQL 重分类 Worker 回归确认历史内容按同一规则重写 Evidence。 |
+| R1 | 声音流筛选项可点击并能看到可选项 | #634 / AC1 | satisfied | Browser 测试确认弹层位于顶层、选项可点击。 |
+| R2 | 日期确认后起止日期完整且有序地进入三个模块查询，反向选日不再触发 422 | #634 / AC2 | satisfied | Browser 正反向日期请求、Store 单元测试、后端 Query 校验。 |
+| R3 | 多选、重置和三模块呈现与当前 PostgreSQL 筛选口径保持一致 | #634 / AC3 | satisfied | Browser 三模块筛选/空态/重置、API 参数转发、PostgreSQL 集成筛选。 |
+| R4 | 声音流按 Figma 连续向上滚动，悬停或聚焦暂停，并使用声音广场平台标识 | #634 / AC4 | satisfied | Browser 长短列表滚动、暂停和共享标识断言。 |
+| R5 | 折线图按 Figma 的平滑粉线、渐变面积、点状网格与悬停提示呈现，值仍来自后端 | #634 / AC5 | satisfied | Design Context 对照、ECharts 配置复核与浏览器真实 daily 响应渲染。 |
+| R6 | 筛选确认后及时显示新数据，可见页持续检查新入库结果 | #634 / AC6 | satisfied | 日期直接请求、选项 100ms 合并、15 秒轮询 Browser 测试。 |
+| R7 | 慢模块不拖住已返回模块；正确筛选与空库首次读取不产生口径漂移错误 | #634 / AC7 | satisfied | Store 延迟请求回归；独立数据库三接口并发 bootstrap 测试。 |
+| R8 | Excel 单文件导入完成后，已提交内容可在声音广场立即查询，来源深链不继承旧筛选 | #634 / AC8 | satisfied | Import Worker PostgreSQL 测试同提交投影；Browser 旧筛选深链请求回归。实际已部署环境时延待环境证据复核。 |
+| R9 | 声音流显示真实作者，与声音广场同源；点击笔记可定位对应详情 | #634 / AC9 | satisfied | Excel 真实入库作者快照集成测试；Workbench → Voice Plaza Browser 深链及跨分页详情测试。 |
+| R10 | 日期反向、取消、单日、清空均有一致的显示与请求口径 | #634 / AC10 | satisfied | Browser 日期生命周期回归；空日期恢复默认近 30 天。 |
+| R11 | 尽可能快地展示已入库数据，保持其它处理吞吐与动态前台优先机制 | #634 / AC11 | satisfied | 三模块独立响应；前台优先屏障、后台槽与 Job Priority 现有实现/测试复核，不增加常态数据库轮询频率。 |
+| R12 | 采集运行中心导入期间持续更新处理统计和数据处理结果 | #634 / AC12 | satisfied | PostgreSQL 分段导入中 Campaign 详情、来源项与统一运行列表 API 均返回已提交 Chunk 统计；运行期 5 秒轮询同步两者，Store 与 Browser 回归。 |
+| R13 | 品牌命中后只匹配该品牌车型；没有品牌时才由车型回推品牌；英文短别名不命中更长英文词；历史重筛沿用同一规则 | #634 / AC13 | satisfied | Resolver 单元回归覆盖同品牌、跨品牌、车型回退及 `O` 正反边界；PostgreSQL 重分类 Worker 回归确认历史内容按同一规则重写 Evidence。 |
 
 # Validation Matrix
 
@@ -106,11 +106,28 @@ Issue #634：工作台三个模块已有真实后端接口及 PostgreSQL 筛选�
 
 # Completion Audit
 
-- [ ] upstream_re_read：交付前重读 Issue #634 与产品工作台能力。
-- [ ] change_coverage：逐条检查 R1-R13 无遗漏；合并动作在 Ready / CI 后执行。
-- [ ] reverse_audit：前端动作到真实 API、后端筛选到前端入口双向核对。
-- [ ] unresolved_cleared：全部需求满足且 required 验证有新鲜证据。
+- [x] upstream_re_read：交付前已重读 Issue #634、产品工作台能力和数据入口品牌/车型语义。
+- [x] change_coverage：R1-R13 均有实现与验证证据；未把仓库外部署状态写成已验证。
+- [x] reverse_audit：已核对筛选/日期/深链/轮询到真实 API，也核对 Workbench、导入投影、运行统计和 Resolver 后端能力均有前端入口或明确不适用边界。
+- [x] unresolved_cleared：required 本地验证全部通过，独立 Review 无未解决 finding；合并仍以当前提交 GitHub CI 通过为门禁。
 
 # 交付状态
 
-当前为早期施工记录；实现、Review、CI、PR Ready 均待完成。
+实现与本地 Review 已完成，PR #635 已可进入当前提交 CI。未修改公共 Contract、生成 Client、Schema、Migration、依赖、部署配置或生产数据；未调用 TikHub/LLM。用户暂不能提供实际部署环境，因此“部署后端到端时延”未伪造为已验证，仓库内用真实 PostgreSQL 证明 Import/投影同事务提交后立即可查询。
+
+## 新鲜验证证据
+
+- `uv run pytest tests/api/test_workbench.py tests/unit/test_brand_vehicle_resolver.py tests/integration/content/test_workbench_runtime.py tests/integration/content/test_workbench_scheme_bootstrap.py tests/integration/ingestion/test_stage8b_import_http_worker.py tests/integration/ingestion/test_stage12_historical_campaign_worker.py tests/integration/collection/test_stage8e_collection_http_runtime.py tests/integration/vehicles/test_content_reclassification_postgres.py -q`：111 passed。
+- `uv run ruff check ...`（本次全部 Python 生产与测试文件）：通过。
+- `npm run test -- --run tests/workbench.spec.ts tests/collection-runtime.spec.ts tests/voice-plaza.spec.ts`：3 files / 51 tests passed。
+- `npm run test:e2e -- e2e/workbench.spec.ts e2e/voice-plaza.spec.ts e2e/historical-migration.spec.ts`：36 passed。
+- `npm run lint`、`npm run typecheck`：通过。
+- `npm run build`：通过，835 modules transformed；仅保留仓库既有大 Chunk 提示。
+- `git diff --check`：通过；Windows 工作区仅报告 Git 的 LF/CRLF 提示，无 whitespace error。
+
+## Review 结论
+
+- 已修复 Review 中发现的三项问题：面板内部滚动不应关闭 Popover；声音流视觉副本不应重复暴露可交互语义；已有成功快照时错误提示应紧凑展示且继续显示真实结果。
+- Scheme 首次 bootstrap 由 PostgreSQL advisory lock 串行化并在 HTTP 成功响应前提交；三模块仍校验 Scheme/Taxonomy 身份，未引入混合口径。
+- 运行中 Campaign 统计只聚合当前可见活动 Campaign 的已提交 Chunk 摘要；不扫描逐行账本、不写父 Campaign 热行，终态继续使用既有精确结算。
+- 品牌优先、车型回退与 ASCII 边界由同一 Resolver 承载，Excel、历史导入与历史重分类继续复用该生产实现。
