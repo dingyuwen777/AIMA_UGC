@@ -208,10 +208,6 @@ def _postgres_targets_for_path(path: str) -> tuple[str, ...]:
             "tests/integration/content/test_workbench_runtime.py",
             "tests/integration/content/test_workbench_scheme_bootstrap.py",
         ),
-        "backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py": (
-            "tests/integration/content/test_stage12_historical_bulk_ingestion.py",
-            "tests/integration/ingestion/test_stage12_historical_campaign_worker.py",
-        ),
     }
     if path in exact:
         return exact[path]
@@ -261,6 +257,7 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
         return POSTGRES_ALL
 
     markers: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+        (("/postgres/historical_import",), ("content", "ingestion")),
         (("/modules/collection/", "/postgres/collection"), ("collection",)),
         (
             (
@@ -285,11 +282,11 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
     return POSTGRES_ALL
 
 
-def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
-    """把已知高价值用户链路映射到 Golden Path；显式未知 Full-stack spec 才回退全量。"""
+def _fullstack_mapping_for_path(path: str) -> tuple[tuple[str, ...], bool]:
+    """返回用户 Journey 对应 spec 与“该路径是否已被显式分类”。"""
     if path.startswith("frontend/e2e-fullstack/") and path.endswith(".spec.ts"):
         spec = Path(path).name
-        return (spec,) if spec in ALL_FULLSTACK_SPECS else FULLSTACK_ALL
+        return ((spec,) if spec in ALL_FULLSTACK_SPECS else FULLSTACK_ALL), True
 
     collection_markers = ("/collection/", "collection-plan", "collection_strategy")
     ingestion_markers = ("/ingestion/", "import", "historical")
@@ -299,7 +296,7 @@ def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
         "/analysis/schemes.py",
         "/analysis/scheme_tables.py",
     )
-    content_markers = ("/content/", "relevance")
+    content_markers = ("/content/", "relevance", "voice-plaza", "voice_plaza")
     administration_markers = (
         "/administration",
         "/vehicles/",
@@ -310,25 +307,57 @@ def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
 
     if any(marker in path for marker in analysis_scheme_markers):
         return (
-            "admin-product-capabilities.spec.ts",
-            "stage12-historical-analysis.spec.ts",
+            (
+                "admin-product-capabilities.spec.ts",
+                "stage12-historical-analysis.spec.ts",
+            ),
+            True,
         )
     if any(marker in path for marker in administration_markers):
-        return ("admin-product-capabilities.spec.ts",)
+        return ("admin-product-capabilities.spec.ts",), True
     if any(marker in path for marker in collection_markers):
         return (
-            "collection-plan-search-config.spec.ts",
-            "comment-supplement.spec.ts",
+            (
+                "collection-plan-search-config.spec.ts",
+                "comment-supplement.spec.ts",
+            ),
+            True,
         )
     if any(marker in path for marker in ingestion_markers):
-        return ("excel-import.spec.ts", "stage12-historical-analysis.spec.ts")
+        return ("excel-import.spec.ts", "stage12-historical-analysis.spec.ts"), True
     if any(marker in path for marker in analysis_markers):
-        return ("analysis-streaming.spec.ts", "stage12-historical-analysis.spec.ts")
+        return ("analysis-streaming.spec.ts", "stage12-historical-analysis.spec.ts"), True
     if any(marker in path for marker in content_markers):
-        return ("manual-relevance-review.spec.ts",)
+        return ("manual-relevance-review.spec.ts",), True
     if "workbench" in path:
-        return ()
-    return ()
+        return (), True
+    if path.startswith(
+        (
+            "backend/src/aima_ugc/platform/",
+            "backend/src/aima_ugc/adapters/",
+            "tests/unit/",
+            "tests/api/",
+            "tests/contracts/",
+        )
+    ):
+        return (), True
+    return (), False
+
+
+def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
+    """兼容调用者，仅返回已经显式分类的 Real Full-stack spec 集合。"""
+    return _fullstack_mapping_for_path(path)[0]
+
+
+def _is_unmapped_user_journey_path(path: str) -> bool:
+    """识别需要 fail-closed 的未知用户入口，而不是把任意技术文件都升级为 Full-stack。"""
+    if path.startswith("frontend/src/features/"):
+        return not _fullstack_mapping_for_path(path)[1]
+    if path.startswith("backend/src/aima_ugc/bootstrap/") and (
+        path.endswith("_http.py") or path.endswith("/http.py") or "/http/" in path
+    ):
+        return not _fullstack_mapping_for_path(path)[1]
+    return False
 
 
 def _ordered_specs(specs: set[str]) -> tuple[str, ...]:
@@ -416,6 +445,7 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
     postgres_suites: set[str] = set()
     fullstack_specs: set[str] = set()
     journey_specs: set[str] = set()
+    has_unmapped_user_journey = False
     kinds: set[str] = set()
 
     for path in product_paths:
@@ -448,7 +478,11 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
             if path == API_CONTRACT_EXACT or path.startswith(CONTRACT_PREFIXES):
                 fullstack_specs.update(FULLSTACK_ALL)
             else:
-                fullstack_specs.update(_fullstack_specs_for_path(path))
+                mapped_specs, mapped = _fullstack_mapping_for_path(path)
+                if mapped:
+                    fullstack_specs.update(mapped_specs)
+                else:
+                    fullstack_specs.update(FULLSTACK_ALL)
             kinds.add("contract")
             continue
 
@@ -478,12 +512,18 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         if path.startswith(FRONTEND_PREFIXES):
             frontend_required = True
             journey_specs.update(_fullstack_specs_for_path(path))
+            has_unmapped_user_journey = has_unmapped_user_journey or _is_unmapped_user_journey_path(
+                path
+            )
             kinds.add("frontend")
             continue
 
         if path.startswith(BACKEND_PREFIXES):
             backend_required = True
             journey_specs.update(_fullstack_specs_for_path(path))
+            has_unmapped_user_journey = has_unmapped_user_journey or _is_unmapped_user_journey_path(
+                path
+            )
             kinds.add("backend")
             continue
 
@@ -503,7 +543,10 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         profile = "cross_component"
 
     if frontend_required and backend_required and not contract_required:
-        fullstack_specs.update(journey_specs)
+        if has_unmapped_user_journey:
+            fullstack_specs.update(FULLSTACK_ALL)
+        else:
+            fullstack_specs.update(journey_specs)
 
     selected_postgres_targets = _ordered_postgres_targets(postgres_targets)
     selected_postgres_suites = _ordered_postgres_suites(postgres_suites)
