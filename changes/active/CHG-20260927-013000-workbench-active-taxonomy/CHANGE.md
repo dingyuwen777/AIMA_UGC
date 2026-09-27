@@ -77,6 +77,7 @@ Issue #626 已冻结本轮工作台的业务口径。Figma Page `3433:834` 已�
 | E5 | Principal 使用稳定内部 `principal_id` | `modules/identity/tables.py` | 用户布局以 Principal 为 Owner |
 | E6 | HTTP 类型链固定为 Pydantic → OpenAPI → Orval | `docs/blueprint/04_后端任务API与前端.md` | 不手写第二套前端 Contract |
 | E7 | Figma 已完成 active Taxonomy/编辑草稿/上期口径收口 | Figma `3433:834` | 作为 UI/交互 Requirement Baseline |
+| E8 | 默认开发身份 `local-administrator` 不预建 `identity_principals` 行；通知收件箱已按稳定 Principal 文本标识持久化 | `modules/identity/models.py`、`modules/notification/tables.py` | 工作台布局首次保存不能依赖 Principal FK 的预建行 |
 
 ## 推断与待确认
 
@@ -111,7 +112,7 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 | --- | --- | --- | --- |
 | 范围与负责人边界 | Workbench 新 Read/Preference Owner；复用 Analysis/Content/Identity 事实 | E1–E7 / #626 | 不改变采集或历史审计 Owner |
 | 接口与契约 | 新 Workbench API 先 Pydantic，再生成 OpenAPI/Client | E6 / #626 AC10 | Contract 兼容与生成门禁 required |
-| 数据与迁移 | 仅新增用户工作台布局事实；AI 聚合实时读当前事实，先不建预聚合 | E2–E5 / #626 AC11 | 需要 0071 Migration；预聚合由性能证据决定 |
+| 数据与迁移 | 仅新增用户工作台布局事实；按稳定 Principal 文本标识索引并检查非空，兼容开发身份；AI 聚合实时读当前事实，先不建预聚合 | E2–E5、E8 / #626 AC7、AC11 | 需要 0071 Migration；预聚合由性能证据决定 |
 | 错误与失败语义 | 模块独立失败；布局 CAS 冲突显式 409；active Taxonomy 不可用按现有 503 语义收口 | Figma / 项目 HTTP 规则 | 不静默覆盖或伪造空数据 |
 | 兼容性 | 保留 `/` Route；不改变声音广场既有 API 语义 | #626 / E1 | Workbench 使用专用 Contract |
 | 部署与回滚 | 应用与 0071 Schema 一起升级；回滚先旧应用再降级布局表 | 当前 Migration 策略 | 不涉及生产部署授权 |
@@ -237,6 +238,7 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 | V4 | PostgreSQL 18.4 / 本地隔离容器 / 2026-09-27 | 对 5 万条合成 Content（跨 180 天）、1 万账号、每条 2 个标签执行 `EXPLAIN (ANALYZE, BUFFERS)`；30 天窗口 8339 条 | 心智聚合 185.686 ms、period summary 80.727 ms；计划从日期过滤后的 projection 开始，只对窗口内 Content 查 active Result | 当前数据形状下无需预聚合；合成数据不能代表未知生产规模与真实分布 |
 | V5 | 全新 PostgreSQL 18.4 空库 / 当前分支 | `uv run alembic upgrade head`；`uv run pytest tests/integration/content/test_workbench_runtime.py -q --tb=short` | 2 passed | 0071 后 active Scheme 与布局 CAS 的真实数据库行为 |
 | V6 | Figma Page `3433:834` / 2026-09-27 | 回读并更新正式默认态、声音流、心智、趋势、标题、编辑态六个 Annotation | 六节点均回读到最终 GET/PUT Workbench Contract 与 409、active Scheme 口径 | 设计交接不再保留待定 endpoint/分页说明 |
+| V7 | 全新 PostgreSQL 18.4 空库 / 当前分支 | 0071 降级再升级；`uv run pytest tests/integration/content/test_workbench_runtime.py -q --tb=short`，布局测试使用未预建身份行的开发 Principal | 2 passed；首次保存 revision=1、旧 revision 冲突 | 默认开发身份无需 Identity 表预建行即可持久化布局 |
 
 ## 未验证内容与剩余风险
 

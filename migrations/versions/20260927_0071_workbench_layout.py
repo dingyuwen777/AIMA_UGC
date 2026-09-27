@@ -19,12 +19,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "workbench_layouts",
-        sa.Column(
-            "principal_id",
-            sa.Text(),
-            sa.ForeignKey("identity_principals.id", ondelete="CASCADE"),
-            primary_key=True,
-        ),
+        sa.Column("principal_id", sa.Text(), primary_key=True),
         sa.Column("schema_version", sa.Integer(), server_default="1", nullable=False),
         sa.Column("revision", sa.Integer(), nullable=False),
         sa.Column("layout", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
@@ -47,6 +42,10 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "revision >= 1",
             name=op.f("ck_workbench_layouts_revision_positive"),
+        ),
+        sa.CheckConstraint(
+            "char_length(principal_id) > 0",
+            name=op.f("ck_workbench_layouts_principal_id_nonempty"),
         ),
         sa.CheckConstraint(
             "jsonb_typeof(layout) = 'array'",

@@ -20,7 +20,6 @@ from aima_ugc.modules.analysis.tables import (
 )
 from aima_ugc.modules.content.read_model_tables import voice_plaza_content_projection_table
 from aima_ugc.modules.content.tables import accounts_table, contents_table
-from aima_ugc.modules.identity.tables import identity_principals_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
@@ -332,7 +331,8 @@ def test_workbench_layout_create_and_revision_conflict_are_persistent() -> None:
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()
     transaction = session.begin()
-    principal_id = f"workbench-layout-{uuid4().hex}"
+    # 开发身份尚无 identity_principals 行，首次布局保存仍须可用。
+    principal_id = f"local-administrator-{uuid4().hex}"
     now = datetime(2026, 9, 27, 0, 0, tzinfo=UTC)
     modules = (
         WorkbenchLayoutModule(module_id="sound-stream", order=0, column_span=6, row_units=48),
@@ -340,14 +340,6 @@ def test_workbench_layout_create_and_revision_conflict_are_persistent() -> None:
         WorkbenchLayoutModule(module_id="ugc-trend", order=2, column_span=6, row_units=48),
     )
     try:
-        session.execute(
-            identity_principals_table.insert().values(
-                id=principal_id,
-                display_name="工作台测试用户",
-                created_at=now,
-                updated_at=now,
-            )
-        )
         repository = PostgresWorkbenchRepository(session)
         first = repository.save_layout(
             principal_id=principal_id,

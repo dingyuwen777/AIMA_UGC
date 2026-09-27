@@ -15,6 +15,7 @@ def test_workbench_layout_table_has_dashboard_owner_and_revision_constraints() -
 
     assert table.info["owner"] == "dashboard"
     assert "ck_workbench_layouts_revision_positive" in checks
+    assert "ck_workbench_layouts_principal_id_nonempty" in checks
     assert "ck_workbench_layouts_layout_array" in checks
 
 
