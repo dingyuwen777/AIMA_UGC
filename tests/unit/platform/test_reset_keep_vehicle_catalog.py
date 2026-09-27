@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT_SOURCE = (
     Path(__file__).resolve().parents[3] / "scripts" / "deploy" / "reset_keep_vehicle_catalog.sh"
 )
