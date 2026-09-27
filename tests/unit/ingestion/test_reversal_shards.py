@@ -14,7 +14,6 @@ def test_reversal_shards_keep_small_jobs_small_and_bound_large_campaigns_by_reso
     assert select_reversal_shard_count(40_000_000, max_shards=128) == 128
 
 
-
 def test_replay_reversal_yields_without_lowering_import_reversal_priority() -> None:
     """只让 Replay 撤回成为后台工作，普通导入撤销维持原有优先级。"""
 
