@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-205105-workbench-filter-wiring
 title: 修复工作台真实数据筛选、滚动与趋势展示
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/634-workbench-filters
 created: 2026-09-27
