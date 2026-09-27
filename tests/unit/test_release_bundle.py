@@ -294,7 +294,6 @@ def test_strict_replay_removes_version_and_latest_aliases(
             str(smoke_parent / "smoke.env"),
             "--execute",
             "--yes",
-            "--allow-empty-catalog",
         ) in calls
 
 
