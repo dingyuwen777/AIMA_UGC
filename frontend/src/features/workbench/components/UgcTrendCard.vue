@@ -172,7 +172,9 @@ onBeforeUnmount(() => {
           <div><span>总声量</span><strong>{{ trend.total_count.toLocaleString('zh-CN') }}</strong></div>
           <div><span>日均声量</span><strong>{{ trend.daily_average.toLocaleString('zh-CN') }}</strong></div>
           <div><span>单日峰值</span><strong>{{ trend.peak_count.toLocaleString('zh-CN') }}</strong></div>
-          <div class="emphasis"><span>较上期</span><strong>{{ changeRate(trend.period_change_rate) }}</strong></div>
+          <div class="emphasis">
+            <span>较上期</span><strong>{{ changeRate(trend.period_change_rate) }}</strong>
+          </div>
         </div>
         <div
           ref="chartElement"

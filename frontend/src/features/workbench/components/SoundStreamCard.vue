@@ -114,8 +114,8 @@ function contentText(item: WorkbenchStreamResponse['items'][number]): string {
         </div>
         <div class="stream-tags">
           <span v-if="item.sentiment">{{ item.sentiment }}</span>
-          <span v-if="item.vehicle_names[0]">{{ item.vehicle_names[0] }}</span>
-          <span v-if="item.labels[0]">{{ item.labels[0].primary_label }}</span>
+          <span v-if="item.vehicle_names?.[0]">{{ item.vehicle_names[0] }}</span>
+          <span v-if="item.labels?.[0]">{{ item.labels[0].primary_label }}</span>
           <em v-if="!item.analysis_current">待当前规则分析</em>
         </div>
       </article>

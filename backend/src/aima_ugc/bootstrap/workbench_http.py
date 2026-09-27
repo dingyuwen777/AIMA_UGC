@@ -33,7 +33,6 @@ from aima_ugc.platform.time import BEIJING_TIMEZONE, beijing_now, beijing_today
 
 from .runtime import PlatformRuntime
 
-
 _DEFAULT_LAYOUT = (
     WorkbenchLayoutModule(
         module_id="sound-stream", visible=True, order=0, column_span=6, row_units=48

@@ -5,7 +5,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from aima_ugc.platform.database.metadata import metadata
 
-
 workbench_layouts_table = Table(
     "workbench_layouts",
     metadata,

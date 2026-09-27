@@ -29,7 +29,11 @@ class WorkbenchQuery(BaseModel):
 
     @model_validator(mode="after")
     def validate_query(self) -> WorkbenchQuery:
-        if self.date_from is not None and self.date_to is not None and self.date_from > self.date_to:
+        if (
+            self.date_from is not None
+            and self.date_to is not None
+            and self.date_from > self.date_to
+        ):
             raise ValueError("date_from 不能晚于 date_to")
         for field_name in (
             "platforms",
