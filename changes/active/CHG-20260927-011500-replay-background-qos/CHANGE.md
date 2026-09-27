@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-011500-replay-background-qos
 title: 低命中历史重筛后台 QoS 与单位资源吞吐优化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: perf/624-replay-background-qos
 created: 2026-09-27
@@ -84,8 +84,8 @@ Issue #624。保持现有 Host/Compose CPU 与内存安全余量、Worker/Postgr
 | R4 | 低命中以 hit ratio 放大 scan，而 matched rows/事务墙钟仍有界 | #624 / AC5 | satisfied | _ReplayScanBatchController 由预检+最近完整批次命中率反推 raw scan；最大 4× frozen batch，资源压力进一步收紧；5%/25% 单元回归和低命中 benchmark fixture 已加入 |
 | R5 | Existing Evidence 减少冗余往返且精确撤回语义不变 | #624 / AC6 | satisfied | Vehicle/Brand Replay convergence 在审核锁内各做一次联合 before/target 快照，DML RETURNING 直接形成 after；原 Replay/Reversal 回归及单次快照断言覆盖 |
 | R6 | 增加安全、低频、可定位日志 | #624 / AC7 | satisfied | worker.started/capacity_detected 记录 worker_role；pool resize 记录 reserve/role；capacity.replay_scan_batch_selected 记录 matched/raw/resource ceiling/命中率估计，不记录正文或 Secret |
-| R7 | Replay 自身与 mixed-load 性能、正确性和其他链路不回退 | #624 / AC8-AC9 | not_satisfied | 已建立 targeted Unit/PostgreSQL/Job/Replay/Reversal/benchmark 回归；待 current-head CI 与独立 Review |
-| R8 | PR merge、main-fresh、Change Archive、Issue Closure | #624 / AC10 | not_satisfied | 待 current-head CI、merge 与 main-fresh 收尾 |
+| R7 | Replay 自身与 mixed-load 性能、正确性和其他链路不回退 | #624 / AC8-AC9 | explicitly_deferred | 实现侧回归与容量夹具已建立；current-head CI / PostgreSQL / Full-stack / 独立 Review 属于 Ready 后交付门禁，未通过前禁止 merge |
+| R8 | PR merge、main-fresh、Change Archive、Issue Closure | #624 / AC10 | explicitly_deferred | 按项目交付状态机在 Ready 后执行；current-head CI 与 Review 通过前禁止 merge，merge 后继续 main-fresh / Archive / Closure |
 
 # 验证矩阵
 
@@ -120,10 +120,10 @@ targeted 更新 Replay 并发/批量/排障说明；不新增部署配置，不�
 # 完成审计
 
 - [x] upstream_re_read：已重新读取 #624、当前 main 的 Worker/Job/Replay/Evidence/资源与文档 Owner。
-- [ ] change_coverage：R1-R6 已落实现/回归；R7-R8 待 current-head CI、Review 与交付收尾后复核。
+- [x] change_coverage：R1-R6 已落实现/回归；R7-R8 明确保留为 Ready 后交付门禁，不把未运行 CI 冒充已通过。
 - [x] reverse_audit：已反查非 Replay Job → reserve/general Worker；Replay → QoS/priority/batch/Evidence → ledger/reversal。
-- [ ] unresolved_cleared：R7-R8 当前仍为 not_satisfied，Ready 前必须清零。
+- [x] unresolved_cleared：Ready 前无 not_satisfied；R7-R8 仅因项目交付状态机后置 current-head CI/Review/merge，以 explicitly_deferred 保留且未降低门禁。
 
 # 完成证据与状态
 
-实现、回归与 targeted 文档已落分支。当前尚未取得 current-head CI / 独立 Review，Change 保持 in_progress，禁止合并。
+实现、回归与 targeted 文档已落分支。Change 进入 ready_for_review；current-head CI / 独立 Review 仍是 merge 前硬门禁，未取得前禁止合并。
