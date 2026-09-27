@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-011500-replay-background-qos
 title: 低命中历史重筛后台 QoS 与单位资源吞吐优化
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: perf/624-replay-background-qos
 created: 2026-09-27
