@@ -112,6 +112,7 @@ Pydantic
 | Reporting | Export Request / Artifact | Export Job |
 | Administration | Provider / Brand / Vehicle / Scheme / Audit | 多为配置短事务 |
 | Identity | Connector / Principal / Session | 登录、登出和授权边界 |
+| Workbench | 声音流 / 品牌用户心智 / UGC 趋势 / 用户布局 | 从 Content/Analysis/Identity 读取当前口径，只有用户布局属于 Workbench 写事实 |
 
 调用者需要精确 Path 时直接查 [contracts/openapi/openapi.json](../../contracts/openapi/openapi.json)，不要从 Blueprint 复制 URL。
 
@@ -187,6 +188,22 @@ Content 是 UGC 事实，Analysis 是对某个 Content Version 的推理结果�
 但不能把这些结果反向写回 Provider Canonical，也不能为了筛选方便破坏历史 Analysis Result。
 
 声音广场当前用户语义见 [docs/product/02_当前产品能力与用户流程.md](../product/02_当前产品能力与用户流程.md)。
+
+### 工作台为什么不用声音广场的“最新 AI 结果”直接聚合
+
+声音广场需要兼容当前可见内容中的历史分类值，因此它的读模型可以投影“该 Content Version 最近一次 Analysis”。工作台的 AI 指标口径不同：它必须严格对应**当前 active Analysis Scheme Version**。
+
+因此工作台读取链是：
+
+~~~text
+当前业务可见 Content / 品牌车型维度
++ 当前 active Analysis Scheme Version
+→ 只选择该 Version 下当前 Content Version 的最新 Result
+→ 叠加现有人工相关性与 Analysis 维度纠正
+→ 工作台趋势 / 心智 / 声音流
+~~~
+
+这不会改写历史 Analysis Result，也不会把 Workbench 口径反向强加给声音广场。用户布局则以 Provider-neutral Principal 为 Owner 单独持久化，并用 revision 防止多会话静默覆盖。
 
 ## 10. Durable Job 的核心保证
 

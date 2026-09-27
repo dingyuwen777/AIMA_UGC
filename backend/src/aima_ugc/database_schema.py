@@ -135,6 +135,7 @@ from aima_ugc.modules.vehicles.tables import (
     vehicle_model_aliases_table,
     vehicle_models_table,
 )
+from aima_ugc.modules.workbench.tables import workbench_layouts_table
 from aima_ugc.platform.database.metadata import metadata
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
@@ -210,6 +211,7 @@ __all__ = [
     "voice_plaza_filter_catalog_entries_table",
     "voice_plaza_filter_catalog_table",
     "voice_plaza_projection_state_table",
+    "workbench_layouts_table",
     "content_versions_table",
     "contents_table",
     "identity_external_identities_table",

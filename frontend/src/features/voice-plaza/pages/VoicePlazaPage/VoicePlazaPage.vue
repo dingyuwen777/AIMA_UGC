@@ -3,11 +3,12 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AppShell from '../../../../app/layouts/AppShell.vue'
-import type {
-  AnalysisContentRunResponse,
-  ContentRelevanceReviewResponse,
-  DataExportResponse,
-  ExportColumnKey,
+import {
+  PlatformName,
+  type AnalysisContentRunResponse,
+  type ContentRelevanceReviewResponse,
+  type DataExportResponse,
+  type ExportColumnKey,
 } from '../../../../generated/api/client'
 import TaskProgressBar from '../../../../shared/TaskProgressBar.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
@@ -71,12 +72,57 @@ const detailOpen = computed({
   set: (open: boolean) => { if (!open) store.closeDetail() },
 })
 
-onMounted(() => {
-  const sourceIdentifier = route.query.source_identifier
-  if (typeof sourceIdentifier === 'string') {
-    store.filters.sourceIdentifier = sourceIdentifier
-    store.applyFilters()
+/** 把 Router Query 的单值/数组统一为非空字符串数组，供工作台深链恢复使用。 */
+function routeValues(value: unknown): string[] {
+  if (typeof value === 'string') return value.trim() ? [value.trim()] : []
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+}
+
+/** 从真实可表达的声音广场筛选字段恢复工作台深链，不解析未知参数。 */
+function hydrateRouteFilters(): void {
+  let changed = false
+  const setString = (
+    queryKey: string,
+    filterKey: 'sourceIdentifier' | 'sentiment' | 'voiceType' | 'primaryLabel'
+      | 'secondaryLabel' | 'publishedFrom' | 'publishedTo',
+  ): void => {
+    const value = routeValues(route.query[queryKey])[0]
+    if (!value) return
+    store.filters[filterKey] = value
+    changed = true
   }
+
+  setString('source_identifier', 'sourceIdentifier')
+  setString('sentiment', 'sentiment')
+  setString('voice_type', 'voiceType')
+  setString('primary_label', 'primaryLabel')
+  setString('secondary_label', 'secondaryLabel')
+  setString('published_from', 'publishedFrom')
+  setString('published_to', 'publishedTo')
+
+  const platform = routeValues(route.query.platform)[0]
+  if (platform && Object.values(PlatformName).includes(platform as PlatformName)) {
+    store.filters.platform = platform as PlatformName
+    changed = true
+  }
+
+  const brandIds = routeValues(route.query.brand_ids)
+  if (brandIds.length) {
+    store.filters.brandIds = brandIds
+    changed = true
+  }
+  const vehicleModelIds = routeValues(route.query.vehicle_model_ids)
+  if (vehicleModelIds.length) {
+    store.filters.vehicleModelIds = vehicleModelIds
+    changed = true
+  }
+
+  if (changed) store.applyFilters()
+}
+
+onMounted(() => {
+  hydrateRouteFilters()
   void refreshPage().finally(() => store.startPolling())
 })
 onBeforeUnmount(() => {
