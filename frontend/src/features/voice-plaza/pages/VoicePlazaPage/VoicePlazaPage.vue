@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AppShell from '../../../../app/layouts/AppShell.vue'
@@ -81,6 +81,14 @@ function routeValues(value: unknown): string[] {
 
 /** 从真实可表达的声音广场筛选字段恢复工作台深链，不解析未知参数。 */
 function hydrateRouteFilters(): void {
+  const deepLinkKeys = [
+    'source_identifier', 'sentiment', 'voice_type', 'primary_label', 'secondary_label',
+    'published_from', 'published_to', 'platform', 'brand_ids', 'vehicle_model_ids', 'content_id',
+  ]
+  if (deepLinkKeys.some((key) => routeValues(route.query[key]).length > 0)) {
+    // 深链是完整入口；会话里遗留的其他条件不能隐式排除本次目标内容。
+    store.resetFilters()
+  }
   let changed = false
   const setString = (
     queryKey: string,
@@ -120,6 +128,13 @@ function hydrateRouteFilters(): void {
 
   if (changed) store.applyFilters()
 }
+
+/** 工作台笔记深链直接打开对应 Content 详情，跨分页时仍能定位真实记录。 */
+watch(() => route.query.content_id, (value) => {
+  const contentId = routeValues(value)[0]
+  if (!contentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contentId)) return
+  if (store.detailId !== contentId) void store.openDetail(contentId)
+}, { immediate: true })
 
 onMounted(() => {
   hydrateRouteFilters()

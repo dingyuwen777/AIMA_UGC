@@ -25,6 +25,7 @@ from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.canonical_replay_http import PostgresCanonicalReplayHttpService
 from aima_ugc.bootstrap.canonical_replay_worker import PostgresCanonicalReplayJobExecutor
+from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.runtime import PlatformRuntime
@@ -1250,6 +1251,9 @@ def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row
             create_app(
                 historical_import_service=PostgresHistoricalImportHttpService(runtime),
                 import_service=PostgresImportHttpService(runtime),
+                collection_service=PostgresCollectionHttpService(
+                    runtime, cursor_signing_secret=b"stage12-runtime-cursor-signing-key-32"
+                ),
             )
         )
         brand_id = _brand(runtime)
@@ -1293,6 +1297,20 @@ def test_historical_single_source_schedules_chunks_in_order_for_stable_first_row
         assert in_progress["status"] == "running"
         assert in_progress["progress"]["migration_completed_row_count"] == 100
         assert in_progress["progress"]["migration_percent"] == 99
+        assert in_progress["stats"]["created"] == 1
+        in_progress_items = client.get(
+            f"/api/v1/historical-import-campaigns/{campaign_id}/items"
+        ).json()["items"]
+        assert any(
+            item["item_kind"] == "chunk" and item["status"] == "succeeded"
+            for item in in_progress_items
+        )
+        runtime_rows = client.get("/api/v1/collection-runtime/runs").json()["items"]
+        campaign_runtime = next(
+            item for item in runtime_rows if item["record_id"] == campaign_id
+        )
+        assert campaign_runtime["import_stats"]["rows_ingested"] == 1
+        assert campaign_runtime["import_stats"]["duplicates_removed"] == 99
         with runtime.database.engine.connect() as connection:
             assert (
                 connection.scalar(
@@ -2331,8 +2349,8 @@ def test_historical_stage3_freezes_catalog_and_preserves_manual_evidence(
         assert vehicle_rows[0]["catalog_version"] == frozen_catalog_version
         assert len(brand_rows) == 1
         assert brand_rows[0]["brand_id"] == brand_id
-        assert brand_rows[0]["source"] == "vehicle_match"
-        assert brand_rows[0]["derived_vehicle_model_id"] == vehicle_id
+        assert brand_rows[0]["source"] == "alias_match"
+        assert brand_rows[0]["derived_vehicle_model_id"] is None
         assert brand_rows[0]["catalog_version"] == frozen_catalog_version
 
         _stage3_historical_lock_evidence(

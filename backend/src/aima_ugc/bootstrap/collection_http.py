@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import UTC, timedelta
 from typing import Literal, cast
 from uuid import UUID, uuid4
@@ -20,6 +21,9 @@ from aima_ugc.adapters.persistence.postgres.collection_runtime_queries import (
 )
 from aima_ugc.adapters.persistence.postgres.collection_targets import (
     PostgresCollectionTargetReader,
+)
+from aima_ugc.adapters.persistence.postgres.historical_import import (
+    PostgresHistoricalImportRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
@@ -450,6 +454,15 @@ class PostgresCollectionHttpService:
                         limit=query.limit + 1,
                     )
                 )
+                live_campaign_stats = PostgresHistoricalImportRepository(
+                    session
+                ).settled_campaign_stats(
+                    row.data_import_campaign_id
+                    for row in rows
+                    if row.record_type == "data_import_campaign"
+                    and row.stage in {"queued", "running", "cancelling"}
+                    and row.data_import_campaign_id is not None
+                )
         finally:
             session.close()
         has_more = len(rows) > query.limit
@@ -466,7 +479,16 @@ class PostgresCollectionHttpService:
                 query_hash=query_hash,
             )
         return CollectionRuntimeListResponse(
-            items=tuple(_runtime_item_response(row) for row in page),
+            items=tuple(
+                _runtime_item_response(
+                    row,
+                    campaign_stats=live_campaign_stats.get(row.data_import_campaign_id, {})
+                    if row.record_type == "data_import_campaign"
+                    and row.stage in {"queued", "running", "cancelling"}
+                    else None,
+                )
+                for row in page
+            ),
             next_cursor=next_cursor,
             has_more=has_more,
         )
@@ -809,17 +831,36 @@ def _runtime_query_hash(query: CollectionRuntimeListQuery) -> str:
 
 def _runtime_item_response(
     record: CollectionRuntimeReadRecord,
+    *,
+    campaign_stats: Mapping[str, int] | None = None,
 ) -> CollectionRuntimeItemResponse:
+    raw_import_stats = record.import_stats
+    if campaign_stats is not None:
+        raw_import_stats = {
+            "rows_seen": _safe_count(record.import_stats, "rows_seen"),
+            "rows_matched": sum(
+                campaign_stats.get(key, 0)
+                for key in ("created", "filled", "updated", "unchanged", "conflict")
+            ),
+            "rows_filtered_out": campaign_stats.get("filtered", 0),
+            "duplicates_removed": campaign_stats.get("duplicate", 0),
+            "rows_ingested": sum(
+                campaign_stats.get(key, 0) for key in ("created", "filled", "updated")
+            ),
+            "rows_rejected": sum(
+                campaign_stats.get(key, 0) for key in ("conflict", "invalid", "failed")
+            ),
+        }
     import_stats = (
         ImportStatsResponse(
-            rows_seen=_safe_count(record.import_stats, "rows_seen"),
-            rows_matched=_safe_count(record.import_stats, "rows_matched"),
-            rows_filtered_out=_safe_count(record.import_stats, "rows_filtered_out"),
-            duplicates_removed=_safe_count(record.import_stats, "duplicates_removed"),
-            rows_ingested=_safe_count(record.import_stats, "rows_ingested"),
-            rows_rejected=_safe_count(record.import_stats, "rows_rejected"),
+            rows_seen=_safe_count(raw_import_stats, "rows_seen"),
+            rows_matched=_safe_count(raw_import_stats, "rows_matched"),
+            rows_filtered_out=_safe_count(raw_import_stats, "rows_filtered_out"),
+            duplicates_removed=_safe_count(raw_import_stats, "duplicates_removed"),
+            rows_ingested=_safe_count(raw_import_stats, "rows_ingested"),
+            rows_rejected=_safe_count(raw_import_stats, "rows_rejected"),
         )
-        if record.import_stats is not None
+        if raw_import_stats is not None
         else None
     )
     collection_stats = (

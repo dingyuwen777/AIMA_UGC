@@ -17,11 +17,11 @@ const props = defineProps<{
   taxonomy: ContentAnalysisTaxonomyResponse | null
   brands: BrandResponse[]
   vehicleModels: VehicleModelResponse[]
-  loading?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: WorkbenchFilters]
+  'update:date': [value: WorkbenchFilters]
   reset: []
 }>()
 
@@ -66,9 +66,13 @@ function updateArray(
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
 
-/** 日期范围始终成对写回同一筛选快照。 */
-function updateDate(key: 'dateFrom' | 'dateTo', value: string): void {
-  emit('update:modelValue', { ...props.modelValue, [key]: value })
+/** 一次性写回日期对，防止两个同步事件各自读取旧 props 覆盖另一个端点。 */
+function updateDateRange(value: { from: string; to: string }): void {
+  emit('update:date', {
+    ...props.modelValue,
+    dateFrom: value.from,
+    dateTo: value.to,
+  })
 }
 </script>
 
@@ -78,7 +82,6 @@ function updateDate(key: 'dateFrom' | 'dateTo', value: string): void {
       label="情感"
       :model-value="modelValue.sentiments"
       :options="sentimentOptions"
-      :disabled="loading"
       @update:model-value="updateArray('sentiments', $event)"
     />
     <WorkbenchMultiSelect
@@ -86,42 +89,36 @@ function updateDate(key: 'dateFrom' | 'dateTo', value: string): void {
       all-label="全部平台"
       :model-value="modelValue.platforms"
       :options="platformOptions"
-      :disabled="loading"
       @update:model-value="updateArray('platforms', $event)"
     />
     <WorkbenchMultiSelect
       label="品牌"
       :model-value="modelValue.brandIds"
       :options="brandOptions"
-      :disabled="loading"
       @update:model-value="updateArray('brandIds', $event)"
     />
     <WorkbenchMultiSelect
       label="车型"
       :model-value="modelValue.vehicleModelIds"
       :options="vehicleOptions"
-      :disabled="loading"
       @update:model-value="updateArray('vehicleModelIds', $event)"
     />
     <WorkbenchMultiSelect
       label="发声"
       :model-value="modelValue.voiceTypes"
       :options="voiceTypeOptions"
-      :disabled="loading"
       @update:model-value="updateArray('voiceTypes', $event)"
     />
     <WorkbenchMultiSelect
       label="一级标签"
       :model-value="modelValue.primaryLabels"
       :options="primaryLabelOptions"
-      :disabled="loading"
       @update:model-value="updateArray('primaryLabels', $event)"
     />
     <WorkbenchMultiSelect
       label="二级标签"
       :model-value="modelValue.secondaryLabels"
       :options="secondaryLabelOptions"
-      :disabled="loading"
       @update:model-value="updateArray('secondaryLabels', $event)"
     />
     <AimaDateRange
@@ -129,8 +126,7 @@ function updateDate(key: 'dateFrom' | 'dateTo', value: string): void {
       label="工作台时间范围"
       :from="modelValue.dateFrom"
       :to="modelValue.dateTo"
-      @update:from="updateDate('dateFrom', $event)"
-      @update:to="updateDate('dateTo', $event)"
+      @update:range="updateDateRange"
     />
     <button
       class="reset"

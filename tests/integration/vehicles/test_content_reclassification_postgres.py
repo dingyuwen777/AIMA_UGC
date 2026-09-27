@@ -45,6 +45,7 @@ type _Fixture = tuple[
     UUID,
     UUID,
     UUID,
+    UUID,
     tuple[UUID, ...],
     int,
 ]
@@ -97,7 +98,7 @@ def _insert_content(
 
 
 def _enqueue_fixture(runtime: PlatformRuntime) -> _Fixture:
-    content_ids = tuple(uuid4() for _ in range(4))
+    content_ids = tuple(uuid4() for _ in range(6))
     session = runtime.database.new_session()
     try:
         with session.begin():
@@ -123,6 +124,13 @@ def _enqueue_fixture(runtime: PlatformRuntime) -> _Fixture:
                 aliases=("露娜Air",),
                 actor_ref="test",
                 brand_id=aima.id,
+            )
+            competitor_vehicle = vehicle_repository.create_model(
+                code="COMP-O-RECLASS",
+                display_name="竞品 O 重分类",
+                aliases=("竞速X", "O"),
+                actor_ref="test",
+                brand_id=competitor.id,
             )
             _insert_content(
                 session,
@@ -151,6 +159,20 @@ def _enqueue_fixture(runtime: PlatformRuntime) -> _Fixture:
                 external_id="reclass-existing-vehicle",
                 title="无直接别名",
                 body="仅依赖既有车型证据",
+            )
+            _insert_content(
+                session,
+                content_ids[4],
+                external_id="reclass-brand-first",
+                title="爱玛 model 竞速X",
+                body="品牌优先且英文短词不能误命中",
+            )
+            _insert_content(
+                session,
+                content_ids[5],
+                external_id="reclass-vehicle-word-boundary",
+                title="O",
+                body="没有品牌时由完整车型词回推品牌",
             )
             brand_repository.replace_manual_brand_evidence(
                 content_id=content_ids[2],
@@ -252,15 +274,31 @@ def _enqueue_fixture(runtime: PlatformRuntime) -> _Fixture:
             )
     finally:
         session.close()
-    return run.id, job.id, aima.id, competitor.id, vehicle.id, content_ids, frozen_catalog_version
+    return (
+        run.id,
+        job.id,
+        aima.id,
+        competitor.id,
+        vehicle.id,
+        competitor_vehicle.id,
+        content_ids,
+        frozen_catalog_version,
+    )
 
 
 def test_reclassification_job_uses_frozen_snapshot_preserves_locks_and_current(runtime) -> None:  # type: ignore[no-untyped-def]
     """正式 Worker 分批写 Evidence，并保留人工锁与 Content Current。"""
 
-    run_id, job_id, aima_id, competitor_id, vehicle_id, content_ids, frozen_version = (
-        _enqueue_fixture(runtime)
-    )
+    (
+        run_id,
+        job_id,
+        aima_id,
+        competitor_id,
+        vehicle_id,
+        competitor_vehicle_id,
+        content_ids,
+        frozen_version,
+    ) = _enqueue_fixture(runtime)
     registry = JobRegistry()
     register_content_reclassification_job(
         registry,
@@ -286,8 +324,8 @@ def test_reclassification_job_uses_frozen_snapshot_preserves_locks_and_current(r
             assert job.status == "succeeded"
             assert job.progress == 100
             assert run.catalog_snapshot.catalog_version == frozen_version
-            assert run.processed_count == 4
-            assert run.matched_count == 4
+            assert run.processed_count == 6
+            assert run.matched_count == 6
             assert run.unmatched_count == 0
             assert run.checkpoint_content_id == max(content_ids)
             assert run.brand_locked_count == 1
@@ -332,10 +370,21 @@ def test_reclassification_job_uses_frozen_snapshot_preserves_locks_and_current(r
     assert (content_ids[2], competitor_id, "manual_review", None, True) in brand_rows
     assert not any(row[0] == content_ids[2] and row[1] == aima_id for row in brand_rows)
     assert (content_ids[3], aima_id, "vehicle_match", vehicle_id, False) in brand_rows
+    assert (content_ids[4], aima_id, "alias_match", None, False) in brand_rows
+    assert not any(row[0] == content_ids[4] and row[1] == competitor_id for row in brand_rows)
+    assert (
+        content_ids[5],
+        competitor_id,
+        "vehicle_match",
+        competitor_vehicle_id,
+        False,
+    ) in brand_rows
     assert (content_ids[1], vehicle_id, "alias_match") in vehicle_rows
     assert not any(row[0] == content_ids[0] for row in vehicle_rows)
     assert not any(row[0] == content_ids[2] for row in vehicle_rows)
     assert (content_ids[3], vehicle_id, "import") in vehicle_rows
+    assert not any(row[0] == content_ids[4] for row in vehicle_rows)
+    assert (content_ids[5], competitor_vehicle_id, "alias_match") in vehicle_rows
     assert current_rows[content_ids[0]] == (1, "爱玛新品发布", "普通正文")
     assert current_rows[content_ids[2]] == (1, "爱玛露娜Air", "人工结论必须优先")
 

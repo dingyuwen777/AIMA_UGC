@@ -187,6 +187,38 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.filters.secondaryLabels).toEqual(['颜色与配色'])
   })
 
+  it('反向日期在进入三个模块请求前统一规范为有序区间', async () => {
+    const store = useWorkbenchStore()
+    store.setFilters({ ...store.filters, dateFrom: '2026-08-29', dateTo: '2026-08-28' })
+    expect(store.filters.dateFrom).toBe('2026-08-28')
+    expect(store.filters.dateTo).toBe('2026-08-29')
+    await store.refreshData()
+    for (const call of [api.fetchWorkbenchStream, api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
+      expect(call).toHaveBeenCalledWith(expect.objectContaining({
+        date_from: '2026-08-28',
+        date_to: '2026-08-29',
+      }))
+    }
+  })
+
+  it('声音流和趋势先返回时无需等待较慢的品牌心智请求', async () => {
+    let finishMind: (value: typeof mind) => void = () => {}
+    api.fetchWorkbenchMind.mockImplementation(() => new Promise<typeof mind>((resolve) => {
+      finishMind = resolve
+    }))
+    const store = useWorkbenchStore()
+    const pending = store.refreshData()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(store.stream).toEqual(stream)
+    expect(store.trend).toEqual(trend)
+    expect(store.moduleLoading.mind).toBe(true)
+    finishMind(mind)
+    await pending
+    expect(store.mind).toEqual(mind)
+    expect(store.moduleLoading.mind).toBe(false)
+  })
+
   it('active Scheme 切换时不会展示混合口径的三个模块', async () => {
     const store = useWorkbenchStore()
     await store.initialize()
@@ -201,11 +233,11 @@ describe('工作台状态与 Figma 基线', () => {
 
     await store.refreshData()
 
-    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(3)
-    expect(store.stream).toBeNull()
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(2)
+    expect(store.stream).toEqual(nextStream)
     expect(store.mind).toBeNull()
     expect(store.trend).toBeNull()
-    expect(store.globalError).toContain('同一 Analysis Scheme Version')
+    expect(store.globalError).toContain('Taxonomy 暂未同步')
   })
 
   it('正式页面呈现动态心智和情感结构，不再展示首页占位图', async () => {

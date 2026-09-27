@@ -66,12 +66,14 @@ class PostgresWorkbenchHttpService:
                 start_at=start_at,
                 end_at=end_at,
             )
-            return WorkbenchStreamResponse(
+            response = WorkbenchStreamResponse(
                 analysis_scheme_version_id=configuration.scheme.id,
                 taxonomy_sha256=configuration.taxonomy.taxonomy_sha256,
                 as_of=beijing_now(),
                 items=tuple(_stream_item(row) for row in rows),
             )
+            session.commit()
+            return response
         finally:
             session.close()
 
@@ -131,7 +133,7 @@ class PostgresWorkbenchHttpService:
                 )
                 for row in sentiment_rows
             )
-            return WorkbenchTrendResponse(
+            response = WorkbenchTrendResponse(
                 analysis_scheme_version_id=configuration.scheme.id,
                 taxonomy_sha256=configuration.taxonomy.taxonomy_sha256,
                 as_of=beijing_now(),
@@ -152,6 +154,8 @@ class PostgresWorkbenchHttpService:
                 sentiments=sentiments,
                 summary=_trend_summary(peak, total, int(previous["total_count"])),
             )
+            session.commit()
+            return response
         finally:
             session.close()
 
@@ -244,7 +248,7 @@ class PostgresWorkbenchHttpService:
                 )
             dimensions.sort(key=lambda item: (-item.user_share, item.primary_label))
             total = int(current_summary["total_count"])
-            return WorkbenchMindResponse(
+            response = WorkbenchMindResponse(
                 analysis_scheme_version_id=configuration.scheme.id,
                 taxonomy_sha256=configuration.taxonomy.taxonomy_sha256,
                 as_of=beijing_now(),
@@ -258,6 +262,8 @@ class PostgresWorkbenchHttpService:
                 analysis_coverage_rate=_ratio(int(current_summary["analyzed_count"]), total) or 0.0,
                 dimensions=tuple(dimensions),
             )
+            session.commit()
+            return response
         finally:
             session.close()
 

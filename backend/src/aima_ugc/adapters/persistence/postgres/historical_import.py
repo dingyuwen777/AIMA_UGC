@@ -6,10 +6,11 @@ import hashlib
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import case, func, insert, literal, select, true, update
+from sqlalchemy import BigInteger, case, func, insert, literal, select, true, update
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -104,6 +105,54 @@ class PostgresHistoricalImportRepository:
                 .limit(limit)
             ).mappings()
         )
+
+    def settled_campaign_stats(self, campaign_ids: Iterable[UUID]) -> dict[UUID, dict[str, int]]:
+        """按已结算 Chunk 摘要读取运行中统计，不反复扫描逐行账本或争用父行。"""
+
+        ids = tuple(dict.fromkeys(campaign_ids))
+        if not ids:
+            return {}
+        item = historical_import_campaign_items_table
+        fields = (
+            "created", "filled", "updated", "unchanged", "conflict",
+            "filtered", "duplicate", "invalid", "failed",
+        )
+
+        def safe_count(key: str) -> Any:
+            value = item.c.stats[key].astext
+            return case(
+                (value.op("~")(r"^[0-9]{1,18}$"), sql_cast(value, BigInteger)),
+                else_=0,
+            )
+
+        counts = [
+            func.coalesce(
+                func.sum(case((item.c.status == "succeeded", safe_count(key)), else_=0)),
+                0,
+            ).label(key)
+            for key in fields
+        ]
+        failed_rows = func.coalesce(
+            func.sum(
+                case(
+                    (item.c.status.in_(("failed", "cancelled")), item.c.row_count),
+                    else_=0,
+                )
+            ),
+            0,
+        ).label("unprocessed_failed")
+        rows = self._session.execute(
+            select(item.c.campaign_id, *counts, failed_rows)
+            .where(item.c.campaign_id.in_(ids), item.c.item_kind == "chunk")
+            .group_by(item.c.campaign_id)
+        ).mappings()
+        return {
+            cast(UUID, row["campaign_id"]): {
+                key: int(row[key]) + (int(row["unprocessed_failed"]) if key == "failed" else 0)
+                for key in fields
+            }
+            for row in rows
+        }
 
     def campaign_progresses(
         self,

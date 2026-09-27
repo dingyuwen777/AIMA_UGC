@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Mapping
 from pathlib import PurePosixPath
 from typing import BinaryIO, Literal, cast
 from uuid import UUID, uuid4
@@ -522,8 +523,22 @@ class PostgresHistoricalImportHttpService:
                 repository = PostgresHistoricalImportRepository(session)
                 rows = repository.list_campaigns()
                 progresses = repository.campaign_progresses(row["id"] for row in rows)
+                live_ids = (
+                    row["id"] for row in rows
+                    if row["status"] in {"queued", "running", "cancelling"}
+                )
+                live_stats = repository.settled_campaign_stats(live_ids)
                 return HistoricalCampaignListResponse(
-                    items=tuple(_campaign_response(row, progresses[row["id"]]) for row in rows)
+                    items=tuple(
+                        _campaign_response(
+                            row,
+                            progresses[row["id"]],
+                            stats_override=live_stats.get(row["id"], {})
+                            if row["status"] in {"queued", "running", "cancelling"}
+                            else None,
+                        )
+                        for row in rows
+                    )
                 )
         finally:
             session.close()
@@ -537,7 +552,12 @@ class PostgresHistoricalImportHttpService:
                 if row is None:
                     raise HistoricalCampaignNotFound
                 progress = repository.campaign_progresses((campaign_id,))[campaign_id]
-                return _campaign_response(row, progress)
+                live_stats = (
+                    repository.settled_campaign_stats((campaign_id,)).get(campaign_id, {})
+                    if row["status"] in {"queued", "running", "cancelling"}
+                    else None
+                )
+                return _campaign_response(row, progress, stats_override=live_stats)
         finally:
             session.close()
 
@@ -737,8 +757,14 @@ class PostgresHistoricalImportHttpService:
 def _campaign_response(
     row: RowMapping,
     progress: HistoricalCampaignProgress,
+    *,
+    stats_override: Mapping[str, object] | None = None,
 ) -> HistoricalCampaignResponse:
-    raw_stats = cast(dict[str, object], row["stats"] or {})
+    raw_stats = (
+        stats_override
+        if stats_override is not None
+        else cast(dict[str, object], row["stats"] or {})
+    )
     stats = HistoricalCampaignStatsResponse(
         **{
             name: value
