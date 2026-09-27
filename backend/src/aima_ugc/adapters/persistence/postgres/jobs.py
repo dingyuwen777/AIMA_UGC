@@ -149,6 +149,7 @@ class PostgresJobRepository:
         supported_job_types: tuple[str, ...],
         worker_id: str,
         lease_seconds: int,
+        minimum_priority: int | None = None,
     ) -> JobRecord | None:
         """原子认领 queued Job，或接管 Deadline 尚未到达的过期 Lease。"""
         if lease_seconds <= 0:
@@ -169,6 +170,7 @@ class PostgresJobRepository:
                     FROM jobs AS j, job_clock AS c
                     WHERE j.cancel_requested_at IS NULL
                       AND j.job_type = ANY(CAST(:supported_job_types AS text[]))
+                      AND (:minimum_priority IS NULL OR j.priority >= :minimum_priority)
                       AND (
                           (
                               j.status = 'queued'
@@ -237,6 +239,7 @@ class PostgresJobRepository:
                     "worker_id": worker_id,
                     "lease_token": new_token,
                     "lease_seconds": lease_seconds,
+                    "minimum_priority": minimum_priority,
                 },
             )
             .mappings()
