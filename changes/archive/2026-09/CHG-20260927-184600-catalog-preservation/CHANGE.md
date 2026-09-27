@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260927-184600-catalog-preservation
 title: 调整重置脚本的品牌车型目录保留语义
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/632-catalog-preservation
 created: 2026-09-27
