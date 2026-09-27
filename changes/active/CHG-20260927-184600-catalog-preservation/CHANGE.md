@@ -17,6 +17,7 @@ affected_areas:
 affected_paths:
   - scripts/deploy/reset_keep_vehicle_catalog.sh
   - tests/unit/platform/test_reset_keep_vehicle_catalog.py
+  - tests/integration/database/test_reset_keep_vehicle_catalog_script.py
   - docs/operations/01_生产部署与离线Release方案.md
 contracts: []
 data_changes:
@@ -57,8 +58,9 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 | E1 | 目标环境目录计数为 `8|3|6|0|0` | 用户本轮只读 PostgreSQL 查询 | 车型为空是合法目录状态 |
 | E2 | 原实现要求 catalog version、brand、model 均非空 | 原 `scripts/deploy/reset_keep_vehicle_catalog.sh` | 非空判断是本次根因 |
 | E3 | Release workflow 已包含同名脚本 | `.github/workflows/release.yml` | 不改变 Release 结构 |
-| E4 | 新增隔离回归覆盖品牌有数据/车型为空、正常执行和内容变化失败关闭 | `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | 新行为和保护边界有可重复验证入口 |
-| E5 | 脚本头部与 help 已包含 dry-run、执行确认、保留范围和重启说明 | 当前分支脚本 | 使用方式已落到交付物 |
+| E4 | 新增隔离回归覆盖品牌有数据/车型为空、停写后稳定基线、正常执行和内容变化失败关闭 | `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | Shell 控制流和时序有可重复验证入口 |
+| E5 | 正式目录指纹 SQL 可由测试直接从脚本提取并在隔离 PostgreSQL 执行 | `tests/integration/database/test_reset_keep_vehicle_catalog_script.py` | PostgreSQL 专属 SQL 不由 Fake 冒充 |
+| E6 | 脚本头部与 help 已包含 dry-run、执行确认、保留范围和重启说明 | 当前分支脚本 | 使用方式已落到交付物 |
 
 ## 推断与待确认
 
@@ -141,7 +143,7 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 品牌有数据、车型为空时 dry-run 成功且不停止业务容器 | #632 / AC1 | satisfied | `test_reset_keep_vehicle_catalog_dry_run_accepts_brand_only_catalog` |
-| R2 | 任意当前目录状态都按现状保留，并验证内容一致 | #632 / AC2 | satisfied | 非空门禁已移除；before/after count + fingerprint；两条 execute 隔离回归 |
+| R2 | 任意当前目录状态都按现状保留，并验证内容一致 | #632 / AC2 | satisfied | 非空门禁已移除；停写后重新冻结 count + fingerprint；execute 时序/一致性回归 + PostgreSQL 指纹 SQL 集成验证 |
 | R3 | 既有安全检查和重置范围不退化 | #632 / AC3 | satisfied | PR diff 保留原有安全检查，仅调整目录资格与新增验收 |
 | R4 | 脚本开头写明使用方法 | #632 / AC4 | satisfied | 当前脚本头部与 `--help` |
 | R5 | 运行文档与验证入口同步 | #632 / AC5 | satisfied | Operations targeted 更新；新增独立回归文件；正式 PR CI 作为合并门禁 |
@@ -151,8 +153,9 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 | 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
 | --- | --- | --- | --- |
 | `scripts/deploy/reset_keep_vehicle_catalog.sh` | 放宽目录状态、增加内容指纹和使用说明 | 修复根因并加强验收 | R1-R4 / E1-E4 |
-| `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | 增加三条隔离 Shell 工作流回归 | 无真实数据副作用地验证行为 | R1-R3 / E4 |
-| `docs/operations/01_生产部署与离线Release方案.md` | 同步合法目录状态和验收语义 | 保持运维说明一致 | R4-R5 / E5 |
+| `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | 增加四条隔离 Shell 工作流回归 | 无真实数据副作用地验证行为与停写基线时序 | R1-R3 / E4 |
+| `tests/integration/database/test_reset_keep_vehicle_catalog_script.py` | 在隔离 PostgreSQL 运行正式指纹 SQL | 验证真实 PostgreSQL 语义 | R2-R3 / E5 |
+| `docs/operations/01_生产部署与离线Release方案.md` | 同步合法目录状态和验收语义 | 保持运维说明一致 | R4-R5 / E6 |
 
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
@@ -168,7 +171,7 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 | --- | --- | --- |
 | 行为 / 单元 / 组件 | required | fake Docker/psql 覆盖 dry-run、正常执行、内容变化失败关闭 |
 | 接口 / 契约 | required | Shell CLI 的正式参数和 help 行为；HTTP/API/Schema 不受影响 |
-| 集成 / 持久化 / 运行依赖 | not_applicable | 不在真实业务数据库执行维护动作；本次 SQL 只增加只读内容指纹计算 |
+| 集成 / 持久化 / 运行依赖 | required | 在 CI 隔离 PostgreSQL 中直接执行从正式脚本提取的目录指纹 SQL，不执行业务数据重置 |
 | 用户 / 工作流验收 | required | Bash syntax/help + 隔离脚本工作流 |
 | 跨组件关键路径 | not_applicable | 真实数据维护操作有副作用，不作为常规 PR 验证 |
 | 外部依赖 / 供应方探测 | not_applicable | 无外部 Provider 变化 |
@@ -177,10 +180,11 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 
 ## 验证计划
 
-- 目标测试：`tests/unit/platform/test_reset_keep_vehicle_catalog.py`
+- 目标测试：`tests/unit/platform/test_reset_keep_vehicle_catalog.py`。
+- 集成测试：`tests/integration/database/test_reset_keep_vehicle_catalog_script.py`。
 - 相关回归：仓库 unit/quality gate 按 CI changed-scope 执行。
 - 静态检查或构建：Bash syntax、Ruff、仓库 CI。
-- 专项真实边界：不执行真实业务数据维护；由隔离 harness 验证 Shell 控制流。
+- 专项真实边界：隔离 PostgreSQL 只验证正式指纹 SQL；不执行真实业务数据维护。
 - 就绪检查：仓库 Change Completion gate 与 PR required checks。
 
 # 风险、兼容性、迁移与回滚
@@ -215,9 +219,10 @@ Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要�
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | 本轮 Linux Bash 隔离副本 | `bash -n` + `--help` | exit 0 | Shell 语法与帮助入口有效 |
-| V2 | 本轮 fake Docker/psql 隔离环境 | 目标 pytest 文件 | 3 passed | 合法空车型、正常执行、内容变化失败关闭 |
-| V3 | PR #633 当前 diff | 逐文件 patch 复核 | 范围与 Issue #632 一致 | 未引入无关实现或依赖变化 |
-| V4 | GitHub PR current-head | 仓库 required checks | 由合并门禁强制 | 正式 CI 不被本地证据替代 |
+| V2 | 本轮 fake Docker/psql 隔离环境 | 目标 pytest 文件 | 永久回归资产覆盖 4 条路径 | 合法空车型、停写后基线、正常执行、内容变化失败关闭 |
+| V3 | CI 隔离 PostgreSQL | 指纹 SQL Integration | 永久集成测试资产已纳入当前 head | 正式脚本中的 PostgreSQL SQL 有真实依赖验证入口 |
+| V4 | PR #633 当前 diff | 逐文件 patch 复核 | 第一轮 Review Finding 已修复并加回归 | 停写前目录变化不会造成事后误判 |
+| V5 | GitHub PR current-head | 仓库 required checks | 由合并门禁强制 | 正式 CI 不被本地证据替代 |
 
 ## 未验证内容与剩余风险
 
