@@ -258,12 +258,24 @@ test('工作台按 active Taxonomy 展示真实模块，并使用后端 as_of', 
   await expect(page.getByRole('heading', { name: '品牌用户心智' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'UGC 声量与情感趋势' })).toBeVisible()
   await expect(page.getByText('基于当前 active Taxonomy，动态查看一级用户心智')).toBeVisible()
-  await expect(page.getByText('外观设计', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('电池、续航与充电', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('混合', { exact: true })).toBeVisible()
-  await expect(page.getByText('无法判断', { exact: true })).toBeVisible()
+  await expect(page.locator('.mind-card .ranking').getByRole('button', { name: /外观设计/ })).toBeVisible()
+  await expect(page.locator('.mind-card .ranking').getByRole('button', { name: /电池、续航与充电/ })).toBeVisible()
+  await expect(page.locator('.trend-card .sentiment-list').getByText('混合', { exact: true })).toBeVisible()
+  await expect(page.locator('.trend-card .sentiment-list').getByText('无法判断', { exact: true })).toBeVisible()
   await expect(page.getByText(/2026.*09.*27.*08.*10.*自动刷新/)).toBeVisible()
   await expect(page.getByAltText('工作台开发中')).toHaveCount(0)
+
+  // Figma 默认态 1440×900：侧栏后两张主卡同排，页面留白不能叠加两层。
+  const [streamBox, mindBox] = await Promise.all([
+    page.locator('.module-shell').nth(0).boundingBox(),
+    page.locator('.module-shell').nth(1).boundingBox(),
+  ])
+  expect(streamBox).not.toBeNull()
+  expect(mindBox).not.toBeNull()
+  expect(Math.abs((streamBox?.x ?? 0) - 199)).toBeLessThanOrEqual(12)
+  expect(Math.abs((streamBox?.y ?? 0) - 112)).toBeLessThanOrEqual(12)
+  expect(Math.abs((mindBox?.x ?? 0) - 818)).toBeLessThanOrEqual(12)
+  expect(Math.abs((mindBox?.y ?? 0) - 112)).toBeLessThanOrEqual(12)
 
   const metrics = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
@@ -314,4 +326,36 @@ test('品牌心智深链把当前日期和一级标签恢复到声音广场', as
   expect(url.searchParams.get('published_from')).toBeTruthy()
   expect(url.searchParams.get('published_to')).toBeTruthy()
   await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
+})
+
+test('Analysis Run 新结果及终态分别触发工作台合并刷新', async ({ page }) => {
+  let runPolls = 0
+  let streamReads = 0
+  await page.route('**/api/v1/analysis/content-runs', async (route) => {
+    runPolls += 1
+    const finished = runPolls >= 3
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [{
+          id: '55555555-5555-4555-8555-555555555555',
+          sequence_no: 1,
+          status: finished ? 'succeeded' : 'running',
+          target_count: 1,
+          stats: { succeeded: runPolls >= 2 ? 1 : 0, failed: 0, stale: 0, cancelled: 0 },
+          created_at: '2026-09-27T08:00:00+08:00',
+          finished_at: finished ? '2026-09-27T08:10:00+08:00' : null,
+        }],
+      }),
+    })
+  })
+  await page.route('**/api/v1/workbench/stream**', async (route) => {
+    streamReads += 1
+    await route.fallback()
+  })
+
+  await page.goto('/')
+  await expect.poll(() => runPolls).toBeGreaterThanOrEqual(3)
+  await expect.poll(() => streamReads).toBeGreaterThanOrEqual(3)
+  expect(streamReads).toBeLessThanOrEqual(4)
 })

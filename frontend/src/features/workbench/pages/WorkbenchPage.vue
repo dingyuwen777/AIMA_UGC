@@ -342,20 +342,20 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.workbench-page { display: grid; gap: 20px; }
-.workbench-header { display: flex; min-height: 92px; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 24px; }
+.workbench-page { display: grid; gap: 8px; }
+.workbench-header { display: flex; min-height: 80px; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 0; }
 .workbench-header h1, .workbench-header p { margin: 0; }
 .workbench-header h1 { color: var(--aima-text); font-size: var(--aima-font-size-page-title); line-height: 32px; }
 .workbench-header p { margin-top: 6px; color: var(--aima-text-secondary); font-size: 12px; line-height: 18px; }
 .header-actions { display: flex; flex: none; align-items: center; gap: 8px; }
 .refresh-status { margin-right: 8px; color: #e03d6f; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.edit-toolbar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; margin: -8px 20px 0; padding: 10px 12px; border: 1px solid var(--aima-primary-soft-strong); border-radius: 8px; background: var(--aima-primary-soft); }
+.edit-toolbar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 1px solid var(--aima-primary-soft-strong); border-radius: 8px; background: var(--aima-primary-soft); }
 .edit-toolbar > div:first-child { display: grid; gap: 2px; }
 .edit-toolbar strong { color: var(--aima-text); font-size: 12px; }
 .edit-toolbar span { color: var(--aima-text-secondary); font-size: 10px; }
 .hidden-modules { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .hidden-modules button { padding: 3px 7px; border: 1px solid var(--aima-border-strong); border-radius: 5px; color: var(--aima-primary); background: #fff; cursor: pointer; font-size: 10px; }
-.workbench-grid { display: grid; min-width: 0; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; padding: 0 20px 20px; align-items: stretch; }
+.workbench-grid { display: grid; min-width: 0; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; padding-bottom: 20px; align-items: stretch; }
 .module-shell { position: relative; min-width: 0; }
 .module-shell--editing { padding: 5px; border: 1px dashed var(--aima-primary); border-radius: 10px; background: rgb(255 238 246 / 35%); cursor: grab; }
 .module-shell--editing:active { cursor: grabbing; }

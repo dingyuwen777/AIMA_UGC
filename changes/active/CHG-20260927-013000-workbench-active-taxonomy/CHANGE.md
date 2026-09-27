@@ -157,14 +157,14 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | `/` 实现真实 Figma 工作台 | #626 / AC1 | satisfied | `WorkbenchPage.vue`、三个正式模块组件、`HomeView.vue`；`frontend/tests/workbench.spec.ts` 与 Browser Mock 验收覆盖 |
+| R1 | `/` 实现真实 Figma 工作台 | #626 / AC1 | satisfied | `WorkbenchPage.vue`、三个正式模块组件、`HomeView.vue`；Browser Mock 在 1440×900 校验默认态卡片几何与 Figma 基线 |
 | R2 | 工作台 AI 选项来自 active Taxonomy | #626 / AC2 | satisfied | `WorkbenchFilters.vue` 只消费 generated Taxonomy；Store 在 Taxonomy 切换时清理失效值 |
 | R3 | AI 指标只统计 active Scheme Version | #626 / AC3 | satisfied | `PostgresWorkbenchRepository` 的 `active_result` CTE 按 `analysis_scheme_version_id` 过滤；PostgreSQL 回归故意让 projection 指向旧 Scheme |
 | R4 | relevant 范围按“正面”计算正向率 | #626 / AC4 | satisfied | Workbench 聚合仅在 effective relevant 上计算“正面”；Analysis Scheme Contract 强制存在“正面” |
 | R5 | 一级心智/用户去重/多标签占比规则 | #626 / AC5 | satisfied | mind SQL 按一级标签 + distinct author account，排除“无法分类”；Service 以全部 relevant 可识别用户为独立标签分母 |
 | R6 | 紧邻等长北京时间上期 | #626 / AC6 | satisfied | `_previous_period()` 与 `test_previous_period_is_adjacent_equal_length_beijing_calendar_range` |
 | R7 | 显式编辑草稿/保存取消/CAS | #626 / AC7 | satisfied | Workbench Store/Page 草稿模型；`workbench_layouts` + revision CAS；Unit/API/PostgreSQL 测试资产 |
-| R8 | Analysis Run 进展驱动合并刷新 | #626 / AC8 | satisfied | Workbench Page 复用 TaskCenter Analysis Run 指纹，750ms 合并刷新并覆盖终态变化 |
+| R8 | Analysis Run 进展驱动合并刷新 | #626 / AC8 | satisfied | Workbench Page 复用 TaskCenter Analysis Run 指纹，750ms 合并刷新；Browser Mock 实测新结果及终态分别触发刷新 |
 | R9 | Workbench → Voice Plaza 深链恢复 | #626 / AC9 | satisfied | Workbench Route Query 构造 + VoicePlazaPage hydration + Browser Mock 深链场景 |
 | R10 | Contract/Migration/测试/Figma/Docs/CI | #626 / AC10 | satisfied | Pydantic/HTTP/0071、生成 OpenAPI/Client、前后端测试与长期文档已同步；Figma 六个正式节点 Annotation 已按最终 Contract 回填；current-head CI/Review 是独立交付门禁 |
 | R11 | PostgreSQL 性能证据后再决定预聚合 | #626 / AC11 | satisfied | PostgreSQL 18.4 隔离库 5 万 Content/1 万 Account/10 万标签对，30 天窗口 8339 条：EXPLAIN (ANALYZE, BUFFERS) 心智聚合 185.686 ms，period summary 80.727 ms；按日期先限缩 projection 再做 active Result 局部查找，未引入预聚合 |
@@ -239,6 +239,7 @@ Issue #626 明确范围，以及完成这些 AC 所需的 Contract、Migration�
 | V5 | 全新 PostgreSQL 18.4 空库 / 当前分支 | `uv run alembic upgrade head`；`uv run pytest tests/integration/content/test_workbench_runtime.py -q --tb=short` | 2 passed | 0071 后 active Scheme 与布局 CAS 的真实数据库行为 |
 | V6 | Figma Page `3433:834` / 2026-09-27 | 回读并更新正式默认态、声音流、心智、趋势、标题、编辑态六个 Annotation | 六节点均回读到最终 GET/PUT Workbench Contract 与 409、active Scheme 口径 | 设计交接不再保留待定 endpoint/分页说明 |
 | V7 | 全新 PostgreSQL 18.4 空库 / 当前分支 | 0071 降级再升级；`uv run pytest tests/integration/content/test_workbench_runtime.py -q --tb=short`，布局测试使用未预建身份行的开发 Principal | 2 passed；首次保存 revision=1、旧 revision 冲突 | 默认开发身份无需 Identity 表预建行即可持久化布局 |
+| V8 | Chromium Browser Mock / 1440×900 / 当前分支 | `npm --prefix frontend run test:e2e -- e2e/workbench.spec.ts` | 4 passed；默认态、Figma 卡片几何、布局草稿/保存、声音广场深链、Analysis Run 新结果及终态刷新 | 工作台可见用户路径与自动刷新接线 |
 
 ## 未验证内容与剩余风险
 
