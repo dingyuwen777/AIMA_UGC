@@ -13,6 +13,8 @@ on:
       - reopened
       - edited
       - ready_for_review
+  schedule:
+    - cron: "0 18 * * *"
 
 permissions:
   contents: read
@@ -41,13 +43,31 @@ jobs:
       fullstack_required: ${{ steps.classify.outputs.fullstack_required }}
       stack_smoke_required: ${{ steps.classify.outputs.stack_smoke_required }}
       report_font_required: ${{ steps.classify.outputs.report_font_required }}
+      frontend_audit_required: ${{ steps.classify.outputs.frontend_audit_required }}
+      package_required: ${{ steps.classify.outputs.package_required }}
+      postgres_targets: ${{ steps.classify.outputs.postgres_targets }}
       fullstack_specs: ${{ steps.classify.outputs.fullstack_specs }}
       changed_count: ${{ steps.classify.outputs.changed_count }}
+      evidence_reused: ${{ steps.reuse.outputs.reusable }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Resolve reusable PR evidence on main
+        id: reuse
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/resolve_main_evidence.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --commit "${GITHUB_SHA}" \
+            --required-check "CI Gate" \
+            --github-output "${GITHUB_OUTPUT}"
 
       - name: Classify changed scope
         id: classify
@@ -63,14 +83,40 @@ jobs:
               echo "frontend_required=false"
               echo "contract_required=false"
               echo "postgres_required=false"
+              echo "postgres_targets="
               echo "postgres_suites="
               echo "fullstack_required=false"
               echo "stack_smoke_required=false"
               echo "report_font_required=false"
+              echo "frontend_audit_required=false"
+              echo "package_required=false"
               echo "fullstack_specs="
               echo "changed_count=0"
             } >> "${GITHUB_OUTPUT}"
             echo "PR metadata edit detected; revalidate metadata against the already-green same-SHA baseline."
+            exit 0
+          fi
+
+          if [[ "${{ steps.reuse.outputs.reusable }}" == "true" ]]; then
+            {
+              echo "profile=main_evidence_reuse"
+              echo "repository_required=false"
+              echo "repository_quality_required=false"
+              echo "backend_required=false"
+              echo "frontend_required=false"
+              echo "contract_required=false"
+              echo "postgres_required=false"
+              echo "postgres_targets="
+              echo "postgres_suites="
+              echo "fullstack_required=false"
+              echo "stack_smoke_required=false"
+              echo "report_font_required=false"
+              echo "frontend_audit_required=false"
+              echo "package_required=false"
+              echo "fullstack_specs="
+              echo "changed_count=0"
+            } >> "${GITHUB_OUTPUT}"
+            echo "main tree matches merged PR #${{ steps.reuse.outputs.source_pr }} and source CI Gate is green; reuse product evidence."
             exit 0
           fi
 
@@ -142,7 +188,9 @@ jobs:
           PY
 
       - name: Verify AIMA project governance wiring
-        if: github.event_name != 'pull_request' || github.event.action != 'edited'
+        if: >-
+          (github.event_name != 'pull_request' || github.event.action != 'edited') &&
+          steps.reuse.outputs.reusable != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -158,7 +206,7 @@ jobs:
             --changed-since "${{ github.event.pull_request.base.sha }}"
 
       - name: Enforce main Active Change readiness
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.reuse.outputs.reusable != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -167,7 +215,9 @@ jobs:
             --require-active-ready
 
       - name: Secret and docs gates
-        if: github.event_name != 'pull_request' || github.event.action != 'edited'
+        if: >-
+          (github.event_name != 'pull_request' || github.event.action != 'edited') &&
+          steps.reuse.outputs.reusable != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -255,7 +305,7 @@ jobs:
         run: npm ci --prefix frontend
 
       - name: Audit frontend dependencies
-        if: steps.classify.outputs.frontend_required == 'true'
+        if: steps.classify.outputs.frontend_audit_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -327,7 +377,7 @@ jobs:
           uv run python scripts/quality/check_table_ownership.py
 
       - name: Build and verify Wheel
-        if: steps.classify.outputs.backend_required == 'true'
+        if: steps.classify.outputs.package_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -375,6 +425,7 @@ jobs:
       AIMA_DB_NAME: aima_ugc
       AIMA_DB_USER: aima_ugc
       AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+      POSTGRES_TARGETS: ${{ needs.quality-core.outputs.postgres_targets }}
       POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}
     steps:
       - name: Checkout
@@ -419,6 +470,10 @@ jobs:
             [[ " ${POSTGRES_SUITES} " == *" all "* || " ${POSTGRES_SUITES} " == *" ${suite} "* ]]
           }
 
+          if [[ -n "${POSTGRES_TARGETS}" ]]; then
+            read -r -a targets <<< "${POSTGRES_TARGETS}"
+            uv run pytest "${targets[@]}" -q
+          fi
           if selected migration; then
             uv run python tests/integration/database/verify_migration_compatibility.py
           fi
