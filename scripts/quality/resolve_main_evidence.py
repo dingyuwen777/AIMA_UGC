@@ -177,8 +177,12 @@ def resolve_main_evidence(
             ),
             token=token,
         )
-        current_tree = str(((current_commit.get("commit") or {}).get("tree") or {}).get("sha") or "")
-        source_tree = str(((source_commit.get("commit") or {}).get("tree") or {}).get("sha") or "")
+        current_tree = str(
+            ((current_commit.get("commit") or {}).get("tree") or {}).get("sha") or ""
+        )
+        source_tree = str(
+            ((source_commit.get("commit") or {}).get("tree") or {}).get("sha") or ""
+        )
 
         checks_payload = _api_get(
             _repo_api(
@@ -210,7 +214,7 @@ def resolve_main_evidence(
             }
         )
         return result
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError, KeyError, TypeError):
+    except HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError, KeyError, TypeError:
         result["reason"] = "github_api_unavailable"
         return result
 
