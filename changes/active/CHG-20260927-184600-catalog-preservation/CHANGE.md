@@ -20,187 +20,219 @@ affected_paths:
   - docs/operations/01_生产部署与离线Release方案.md
 contracts: []
 data_changes:
-  - 重置脚本允许品牌/车型目录处于任意当前状态并原样保留五张目录表
+  - 品牌车型目录允许任意当前内容状态并在业务数据重置时保持不变
 ---
 
 # 变更摘要
 
-- **要解决的问题**：部署重置脚本把“品牌/车型目录可保留”错误收紧为“catalog version、品牌、车型都必须非空”，导致合法的“有品牌、无车型”状态无法通过 dry-run。
-- **拟议修改**：删除 `--allow-empty-catalog` 与非空资格门禁，按现状原样保留五张品牌/车型目录表；执行前后增加内容指纹一致性校验；补隔离回归与运行说明。
-- **预期结果**：品牌、车型或别名无论当前是否为空，都不影响重置资格；其他业务数据重置范围和既有 fail-closed 安全边界保持不变。
+- **要解决的问题**：现有脚本把品牌和车型都非空作为前置条件，会拒绝合法的“有品牌、无车型”目录状态。
+- **拟议修改**：目录是否为空不再影响执行资格；五张目录表继续备份，并增加执行前后内容一致性校验；同步测试和运行说明。
+- **预期结果**：无论当前品牌、车型和别名数量如何，目录按现状保留，其他既有重置和安全边界不变。
 
 # 背景、现状与问题
 
 ## 背景
 
-Issue #632 固化了本轮用户决定：只重置其他业务数据，当前品牌/车型目录无论怎样配置都必须原样保留。
+Issue #632 固化了用户要求：当前品牌/车型配置本身就是需要保留的事实，不应由维护脚本再判断“应该非空”。
 
 ## 当前现状
 
-- `scripts/deploy/reset_keep_vehicle_catalog.sh` 已保留 `vehicle_catalog_versions`、`vehicle_brands`、`vehicle_brand_aliases`、`vehicle_models`、`vehicle_model_aliases` 与 `alembic_version`。
-- 原实现额外要求 `vehicle_catalog_versions > 0 AND vehicle_brands > 0 AND vehicle_models > 0`，否则拒绝继续。
-- 用户在目标环境只读查询确认：`catalog_versions=8`、`brands=3`、`brand_aliases=6`、`models=0`、`model_aliases=0`；该状态是明确需要保留的合法状态。
-- 现有 Release workflow 已包含同名 `scripts/deploy/reset_keep_vehicle_catalog.sh`，无需修改打包结构。
+- 当前脚本固定保留五张品牌/车型目录表与 Alembic 状态。
+- 原门禁额外要求 catalog version、brand、model 三者均非空。
+- 用户只读查询确认目标环境目录计数为 `8|3|6|0|0`，其中车型为空是合法现状。
+- Release workflow 已携带同名脚本，不需要调整打包结构。
 
 ## 问题、根因或约束
 
-问题不是数据库目录真的损坏，而是脚本把“保留对象存在且可读取”与“品牌、车型都必须非空”混成一个前置条件。目录是否为空属于合法业务状态，不应成为维护脚本的执行资格判断。安全边界仍应由表存在性、Alembic 状态、未知表/Extension/危险外键/嵌套挂载检查和执行后验收承担。
+根因是“目录可读取、应被保留”与“目录内容必须非空”被错误绑定。正确安全边界应由表存在性、Alembic 状态、未知持久表、Extension、外键、挂载边界和执行后验收承担，而不是业务目录数量。
+
+## 不修改的后果
+
+合法目录状态会继续被拒绝，维护人员只能依赖额外绕过参数，增加误判和操作成本。
 
 # 事实与证据
 
 | 证据编号 | 已确认事实 | 来源 / 定位 / 命令 | 支撑的约束或决策 |
 | --- | --- | --- | --- |
-| E1 | 目标环境真实目录计数为 `8|3|6|0|0`，车型为空但品牌存在 | 用户本轮只读 PostgreSQL 查询 | 空车型是合法现状，不能用非空门禁阻塞 |
-| E2 | 原脚本显式要求 version、brand、model 三者都大于 0 | `scripts/deploy/reset_keep_vehicle_catalog.sh` 原实现 | 根因是脚本门禁过严 |
-| E3 | Release workflow 已携带同名脚本 | `.github/workflows/release.yml` 当前事实 | 只需替换同名脚本，不改 Release 结构 |
-| E4 | 隔离 fake Docker/psql harness 对品牌有数据、车型为空的 dry-run/execute/fingerprint-fail 三条路径通过 | 本轮临时验证：`pytest -q /mnt/data/test_reset_keep_vehicle_catalog.py` → 3 passed | 新语义和 fail-closed 指纹检查可执行 |
-| E5 | Shell 语法与 help 已验证，help 明确确认文本和目录可为空 | 本轮临时验证：`bash -n /mnt/data/reset_keep_vehicle_catalog_repo.sh`、`--help` | 脚本语法与用户操作说明成立 |
+| E1 | 目标环境目录计数为 `8|3|6|0|0` | 用户本轮只读 PostgreSQL 查询 | 车型为空是合法目录状态 |
+| E2 | 原实现要求 catalog version、brand、model 均非空 | 原 `scripts/deploy/reset_keep_vehicle_catalog.sh` | 非空判断是本次根因 |
+| E3 | Release workflow 已包含同名脚本 | `.github/workflows/release.yml` | 不改变 Release 结构 |
+| E4 | 新增隔离回归覆盖品牌有数据/车型为空、正常执行和内容变化失败关闭 | `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | 新行为和保护边界有可重复验证入口 |
+| E5 | 脚本头部与 help 已包含 dry-run、执行确认、保留范围和重启说明 | 当前分支脚本 | 使用方式已落到交付物 |
+
+## 推断与待确认
+
+无。真实业务环境的实际重置不属于本次验证范围，避免引入数据副作用。
 
 # 目标、成功标准与非目标
 
 ## 目标
 
-无论当前品牌/车型目录是“都有数据 / 只有品牌 / 只有车型（若数据库约束允许）/ 全空”，五张目录表都按当前状态原样保留；只重置其他既有业务数据和 Artifact 实体。
+让品牌/车型目录的当前状态成为唯一保留事实：目录可以部分或全部为空，维护脚本仍按现状保留五张目录表。
 
 ## 成功标准
 
-- [x] `brands=3、models=0` 时 dry-run 成功，不再需要任何空目录绕过参数。
-- [x] 五张目录表仍在 execute 前备份，清理后同时校验计数与内容指纹。
-- [x] 原有未知持久表、Extension、危险外键、Artifact 嵌套挂载、Alembic 等安全门禁保持。
-- [x] 脚本开头和 `--help` 明确 dry-run、execute、确认文本、保留/重置范围与重启方式。
-- [x] Operations 文档同步“目录允许部分或全部为空”和内容指纹验收语义。
-- [ ] PR current-head required CI 全部通过后才允许合并。
+- [x] 品牌有数据、车型为空时 dry-run 可正常完成，且不停止业务容器。
+- [x] 五张目录表继续纳入备份，执行后同时校验行数和内容一致性。
+- [x] 既有安全检查、业务表范围和 Artifact 边界保持不变。
+- [x] 脚本开头和 help 可直接指导 dry-run、执行确认和重启。
+- [x] Operations 文档与当前行为一致。
+
+## 范围
+
+- 重置脚本的目录资格判断、目录一致性验收和内联使用说明。
+- 对应隔离回归测试。
+- 对应生产运行说明。
 
 ## 非目标
 
 - 不改变数据库 Schema/Migration。
-- 不新增完整 Backup/Restore。
-- 不扩大或缩小其他 public 业务表的既有重置范围。
-- 不执行真实环境 `--execute`。
-- 不升级依赖、Runtime 或改造 Release 结构。
+- 不增加完整 Backup/Restore 能力。
+- 不改变既有业务表重置范围。
+- 不在真实业务环境执行数据重置。
+- 不升级依赖或 Runtime。
 
 ## 必须保持不变
 
 - `--env-file`、`--dry-run`、`--execute`、`--yes` 语义。
-- 执行阶段先停止 Frontend/API/Worker/Scheduler/Configure/Migrate；失败或成功后业务容器保持停止。
-- 原始 Excel/历史导入源目录、PostgreSQL 数据目录、Secret、日志、env 文件不删除。
-- Release 继续携带同名 `reset_keep_vehicle_catalog.sh`。
+- 现有表/schema/Extension/外键/挂载/Alembic fail-closed 检查。
+- 失败或成功后业务容器保持停止。
+- 原始 Excel、PostgreSQL 数据目录、Secret、日志和 env 文件不在重置范围。
+- Release 继续使用同名脚本。
 
 # 约束与意图决策
 
 | 决策维度 | 当前决定 | 依据 | 影响 |
 | --- | --- | --- | --- |
-| 合法目录状态 | 不要求品牌、车型或别名非空 | Issue #632、E1 | 删除 `--allow-empty-catalog` 与非空门禁 |
-| 保留边界 | 五张品牌/车型目录表和 Alembic 原样保留 | 用户目标、原脚本设计 | 不修改保留表集合 |
-| 安全验收 | 计数一致之外增加内容指纹一致 | L3 破坏性运维风险 | 目录内容意外变化时 fail closed |
-| 测试边界 | 不执行真实数据重置，用 fake Docker/psql 隔离验证 Shell 工作流 | 非目标与数据安全约束 | 无真实环境副作用 |
-| Release | 沿用同名脚本与现有打包入口 | E3 | 不改 workflow/产物结构 |
+| 范围与负责人边界 | 仅调整部署维护脚本、测试和 Operations Owner | E1-E5 | 不进入业务 API/页面实现 |
+| 接口与契约 | HTTP/API 不变；移除不再需要的空目录特例参数 | E1、E2 | 合法空目录无需额外参数 |
+| 数据与迁移 | Schema/Migration 不变 | E3 | 无迁移和回填 |
+| 错误与失败语义 | 目录内容变化仍失败关闭 | E4 | 不降低数据保护 |
+| 兼容性 | 既有正式参数和保留/重置边界保持 | E2-E4 | 仅移除错误限制 |
+| 部署与回滚 | 随下一 Release 携带；代码回滚即可 | E3 | 本任务不执行部署 |
 
 # 修改方案与决策依据
 
 ## 最小充分方案
 
-1. 删除 `ALLOW_EMPTY_CATALOG`、`--allow-empty-catalog` 和三表必须非空的资格判断。
-2. 保留表存在性、Alembic、未知 schema、Extension、危险外键和 Artifact mount 检查。
-3. dry-run 前打印真实目录计数，并计算五张目录表稳定内容指纹。
-4. execute 后继续校验目录计数，并新增内容指纹一致性校验；不一致立即失败并保持业务容器停止。
-5. 在脚本 shebang 后和 `--help` 中写清安全使用流程；targeted 同步 Operations Owner。
-6. 新增隔离回归，覆盖“品牌存在/车型为空”、执行成功和指纹变化 fail-closed。
+1. 移除目录必须非空的判断和对应特例参数。
+2. 保留现有结构、安全和范围校验。
+3. 对五张目录表计算执行前后稳定内容指纹，并继续比较行数。
+4. 在脚本头部和 help 写明安全操作流程。
+5. 用 fake Docker/psql 隔离测试覆盖合法空车型和失败关闭路径。
+6. targeted 更新 Operations Owner。
 
-## 决策依据
+## 证据到决策
 
-- 目录为空与否不决定是否应该保留，保留策略只依赖当前事实与用户目标。
-- 不增加新的数据恢复机制；当前脚本仍不是 Backup/Restore。
-- 内容指纹比只比较行数更直接证明“原样保留”，且不改变数据库 Schema 或持久状态。
+| 决策 | 依据证据 | 为什么采用这个方案 |
+| --- | --- | --- |
+| D1：目录为空不影响资格 | E1、E2 | 用户要保留的是当前事实，不是某个预设非空状态 |
+| D2：增加内容指纹 | E4 | 比只比较行数更直接证明目录内容未变化 |
+| D3：不改 Release 结构 | E3 | 现有流程已打包同名脚本 |
 
-# 备选方案与取舍
+## 备选方案与取舍
 
-- **保留 `--allow-empty-catalog`**：未采用。合法业务状态不应要求额外绕过参数，且容易把真正异常和正常空状态混淆。
-- **只允许 `vehicle_models=0`**：未采用。用户要求的是任意当前品牌/车型配置均原样保留，不应继续硬编码“哪些表必须非空”。
-- **完全取消目录校验**：未采用。仍保留表存在、Alembic、计数和内容指纹验收，避免为了放宽合法状态而降低数据安全。
+- 保留空目录特例参数：未采用；合法状态不应依赖绕过参数。
+- 只特判车型为空：未采用；会继续把其他合法组合硬编码进脚本。
+- 取消目录验收：未采用；会降低现有保护强度。
 
 # 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 任意当前品牌/车型目录状态都能进入 dry-run/execute 资格判断 | #632 / AC1-AC2 | satisfied | 脚本已移除非空门禁和 `--allow-empty-catalog`；隔离 dry-run 覆盖 `8|3|6|0|0` |
-| R2 | 五张目录表继续备份并在 execute 后内容完全一致 | #632 / AC2 | satisfied | pg_dump 范围不变；新增 before/after fingerprint；成功与 fingerprint mismatch 回归均已建立 |
-| R3 | 既有重置范围与安全边界不退化 | #632 / AC3 | satisfied | PR diff 只删除非空资格判断；未知表/Extension/外键/mount/Alembic/停机/事务/验收逻辑保留 |
-| R4 | 脚本开头写明直接使用方法 | #632 / AC4 | satisfied | shebang 后新增 dry-run/execute/确认文本/保留范围/重启说明，`--help` 同步 |
-| R5 | 运行文档和目标验证闭环 | #632 / AC5 | satisfied | Operations targeted 更新；本轮隔离 harness 3/3、Shell syntax/help 通过；PR current-head CI 作为合并硬门禁 |
+| R1 | 品牌有数据、车型为空时 dry-run 成功且不停止业务容器 | #632 / AC1 | satisfied | `test_reset_keep_vehicle_catalog_dry_run_accepts_brand_only_catalog` |
+| R2 | 任意当前目录状态都按现状保留，并验证内容一致 | #632 / AC2 | satisfied | 非空门禁已移除；before/after count + fingerprint；两条 execute 隔离回归 |
+| R3 | 既有安全检查和重置范围不退化 | #632 / AC3 | satisfied | PR diff 保留原有安全检查，仅调整目录资格与新增验收 |
+| R4 | 脚本开头写明使用方法 | #632 / AC4 | satisfied | 当前脚本头部与 `--help` |
+| R5 | 运行文档与验证入口同步 | #632 / AC5 | satisfied | Operations targeted 更新；新增独立回归文件；正式 PR CI 作为合并门禁 |
 
 # 计划改动
 
-| 文件 / 模块 / 资产 | 修改 | 原因 | 对应要求 |
+| 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
 | --- | --- | --- | --- |
-| `scripts/deploy/reset_keep_vehicle_catalog.sh` | 放宽目录空状态、增加指纹校验和顶部使用说明 | 修复合法目录被误拒并加强原样保留验收 | R1-R4 |
-| `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | 新增 fake Docker/psql 的三条 Shell 工作流回归 | 无真实数据副作用地验证 dry-run/execute/fail-closed | R1-R3 |
-| `docs/operations/01_生产部署与离线Release方案.md` | 说明目录可为空、确认文本和指纹验收 | 同步当前运维行为 | R4-R5 |
-| 本 Change / PR | Requirement、Evidence、Review、CI 追溯 | L3 交付门禁 | R1-R5 |
+| `scripts/deploy/reset_keep_vehicle_catalog.sh` | 放宽目录状态、增加内容指纹和使用说明 | 修复根因并加强验收 | R1-R4 / E1-E4 |
+| `tests/unit/platform/test_reset_keep_vehicle_catalog.py` | 增加三条隔离 Shell 工作流回归 | 无真实数据副作用地验证行为 | R1-R3 / E4 |
+| `docs/operations/01_生产部署与离线Release方案.md` | 同步合法目录状态和验收语义 | 保持运维说明一致 | R4-R5 / E5 |
+
+- [x] 调查当前实现和事实源
+- [x] 建立与风险相称的任务路由和验证矩阵
+- [x] 行为变化建立回归证据
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档
+- [x] 建立当前实现的直接验证入口
+- [x] 完成需求追溯和完成审计
 
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | fake Docker/psql：dry-run 合法空车型、execute 成功、指纹变化失败 |
-| 接口 / 契约 | not_applicable | 无 HTTP/API/Schema Contract；Shell 参数除删除错误特例外保持 |
-| 集成 / 持久化 / 运行依赖 | not_applicable | 不对真实 PostgreSQL 执行 destructive path；本轮不需要真实数据库写入证明 |
-| 用户 / 工作流验收 | required | `bash -n`、`--help`、隔离 Shell 工作流 |
-| 跨组件 Golden Path | not_applicable | 真实重置会产生数据副作用，不作为本次验证手段 |
-| 外部依赖 Probe | not_applicable | 无第三方 Provider 变化 |
-| Build / Package / Runtime | required | Release workflow 继续包含同名脚本；PR current-head CI |
-| Docs / Governance / Other | required | Operations targeted、Change machine contract、Completion Audit、Review、PR CI |
+| 行为 / 单元 / 组件 | required | fake Docker/psql 覆盖 dry-run、正常执行、内容变化失败关闭 |
+| 接口 / 契约 | required | Shell CLI 的正式参数和 help 行为；HTTP/API/Schema 不受影响 |
+| 集成 / 持久化 / 运行依赖 | not_applicable | 不在真实业务数据库执行维护动作；本次 SQL 只增加只读内容指纹计算 |
+| 用户 / 工作流验收 | required | Bash syntax/help + 隔离脚本工作流 |
+| 跨组件关键路径 | not_applicable | 真实数据维护操作有副作用，不作为常规 PR 验证 |
+| 外部依赖 / 供应方探测 | not_applicable | 无外部 Provider 变化 |
+| 构建 / 打包 / 运行 | required | Release workflow 继续包含同名脚本；PR CI 验证当前 head |
+| 文档 / 治理 / 其他 | required | Operations、Change Completion、Review、PR CI |
+
+## 验证计划
+
+- 目标测试：`tests/unit/platform/test_reset_keep_vehicle_catalog.py`
+- 相关回归：仓库 unit/quality gate 按 CI changed-scope 执行。
+- 静态检查或构建：Bash syntax、Ruff、仓库 CI。
+- 专项真实边界：不执行真实业务数据维护；由隔离 harness 验证 Shell 控制流。
+- 就绪检查：仓库 Change Completion gate 与 PR required checks。
 
 # 风险、兼容性、迁移与回滚
 
-| 项目 | 结论 | 处理方式 |
+| 项目 | 结论 | 依据 / 处理方式 |
 | --- | --- | --- |
-| 主要风险 | 破坏性脚本误改保留目录或扩大重置范围 | 保留所有原 fail-closed 边界，增加内容指纹和隔离回归 |
-| CLI 兼容 | 移除 `--allow-empty-catalog` | 该参数只用于绕过错误非空门禁；合法空目录现在无需参数 |
-| 数据 / Schema / Migration | 无 Schema/Migration 变化 | 不修改表结构和持久数据模型 |
-| 部署 | 下一 Release 自动携带同名脚本 | 不修改 Release workflow |
-| 回滚 | 代码回滚到上一版本 | 本任务不执行真实重置，因此没有生产数据回滚动作 |
+| 主要风险 | 维护脚本误改变保留目录 | 保留原有 fail-closed 边界并增加内容指纹 |
+| 兼容性 | 保持现有正式操作方式 | 空目录特例参数因根因消失而移除 |
+| 数据 / Migration | 不适用 | Schema 和 Migration 均不变化 |
+| 部署 / 运行 | 下一 Release 携带同名脚本 | Release workflow 已有该入口 |
+| 回滚 / 恢复 | 代码可回滚 | 本任务不执行真实业务环境维护动作 |
 
 # 文档、依赖、部署与发布影响
 
-- **Docs Impact：targeted**。Operations 是该生产维护行为的单一解释 Owner，已同步“目录允许为空”和内容指纹验收。
-- **依赖 / Runtime**：不新增、删除或升级。
-- **配置 / Secret**：无变化。
-- **部署 / Release**：同名脚本由现有 Release workflow 打包；本任务不执行 Release、Deploy 或真实重置。
-- **Contract / Schema / Migration**：无。
+- **长期文档**：targeted 更新 Operations 单一 Owner。
+- **依赖 / Runtime**：不适用；无新增、删除或升级。
+- **配置 / Secret**：不适用；配置与 Secret 边界不变。
+- **部署 / Release**：不修改流程；同名脚本随正式 Release 携带。
+- **兼容 / 消费方通知**：人工维护流程以脚本头部与 Operations 为准，无 API 消费方变化。
 
 # 完成审计
 
-- [x] upstream_re_read：重新读取 Issue #632、用户本轮决定、当前脚本、Release workflow 和 Operations Owner。
-- [x] change_coverage：AC1-AC5 已映射到 R1-R5、三个实现文件和验证矩阵，没有遗漏“无论当前配置如何都原样保留”。
-- [x] reverse_audit：从参数→目录资格→dry-run→execute 停机/备份→事务重置→目录计数/指纹→Artifact→启动说明反查，既有安全边界仍可达。
-- [x] unresolved_cleared：R1-R5 均为 satisfied；PR current-head CI 属于合并门禁，不伪造为已通过。
+- [x] upstream_re_read：已重新读取 Issue #632、用户决定、脚本、Release workflow 和 Operations Owner。
+- [x] change_coverage：AC1-AC5 均显式映射到 R1-R5。
+- [x] reverse_audit：已从参数、目录资格、dry-run、执行、备份、目录验收、Artifact 和重启说明反查当前链路。
+- [x] unresolved_cleared：R1-R5 无 `not_satisfied`、延期或无依据的不适用项。
 
 # 完成证据与状态
 
 ## 新鲜证据
 
-| 证据 | revision / 环境 | 命令 / 检查 | 结果 | 证明范围 |
+| 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 本轮隔离临时目录 / Linux Bash | `bash -n /mnt/data/reset_keep_vehicle_catalog_repo.sh` | exit 0 | Shell 语法有效 |
-| V2 | 本轮隔离临时目录 / Linux Bash | `bash /mnt/data/reset_keep_vehicle_catalog_repo.sh --help` | exit 0；包含确认文本、目录可为空和重启命令 | 用户操作说明 |
-| V3 | 本轮隔离 fake Docker/psql | `pytest -q /mnt/data/test_reset_keep_vehicle_catalog.py` | 3 passed | 空车型 dry-run、execute 成功、fingerprint mismatch fail-closed |
-| V4 | PR #633 diff | 逐文件 patch 复核 | 脚本、测试、Operations 仅覆盖 Issue #632 范围 | 无无关改动；既有安全边界保留 |
-| V5 | PR #633 current head | GitHub Actions | 待 current-head required checks；合并前硬门禁 | 仓库正式 CI |
+| V1 | 本轮 Linux Bash 隔离副本 | `bash -n` + `--help` | exit 0 | Shell 语法与帮助入口有效 |
+| V2 | 本轮 fake Docker/psql 隔离环境 | 目标 pytest 文件 | 3 passed | 合法空车型、正常执行、内容变化失败关闭 |
+| V3 | PR #633 当前 diff | 逐文件 patch 复核 | 范围与 Issue #632 一致 | 未引入无关实现或依赖变化 |
+| V4 | GitHub PR current-head | 仓库 required checks | 由合并门禁强制 | 正式 CI 不被本地证据替代 |
 
 ## 未验证内容与剩余风险
 
-- 未对真实 PostgreSQL 或真实 Artifact 数据执行 `--execute`；这是刻意的安全边界，不把破坏性真实运行作为普通 CI 验证。
-- current-head PR CI 尚需通过后才允许 merge。
+- 未在真实业务数据上执行维护动作；这是有意的安全边界。
+- 正式 PR CI、独立 Review、main-fresh 和 repository-native Change archive 由交付阶段继续验证。
 
-## Git / PR / 交付状态
+## 交付状态
 
-- Branch: `fix/632-catalog-preservation`
-- Requirement Source: #632
-- PR: #633
-- Review: 待 current-head CI 后独立复核
-- Merge: 待 required checks
-- Main-fresh: 待 merge 后验证
-- Change Archive: 待 repository-native archive
-- Issue Closure: 待 post-merge Closure Audit
-- Release / Deploy: 不在本次授权范围
+- 提交：实现、测试、文档与 Change 已推送到 `fix/632-catalog-preservation`。
+- 拉取请求：#633。
+- CI：required checks 作为 merge 前硬门禁。
+- 合并：仅在 current-head Review/CI 满足后执行。
+- Change 归档：合并后由 repository-native 自动化处理。
+- 发布 / 部署：不在本次授权范围。
+
+## 备注
+
+无。
