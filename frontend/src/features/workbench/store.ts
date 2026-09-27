@@ -287,6 +287,11 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     await Promise.all([refreshReferenceData(), refreshData()])
   }
 
+  /** 恢复近 30 个北京时间自然日和全维度未筛选状态。 */
+  function resetFilters(): void {
+    filters.value = defaultFilters()
+  }
+
   /** 替换筛选快照；页面用 debounce 合并连续勾选后再触发查询。 */
   function setFilters(value: WorkbenchFilters): void {
     filters.value = {
@@ -423,6 +428,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     refreshReferenceData,
     refreshTaxonomy,
     refreshData,
+    resetFilters,
     setFilters,
     startEditing,
     cancelEditing,
