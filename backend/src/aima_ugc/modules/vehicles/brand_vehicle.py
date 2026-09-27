@@ -170,15 +170,23 @@ class _AliasAutomaton:
         )
 
     def find(self, text: str) -> tuple[str, ...]:
-        """按正文字符单次推进；去重后由调用方继续应用既有最长别名规则。"""
+        """按正文字符单次推进；英数字别名只匹配完整词，避免短车型误命中。"""
 
         state = 0
         matched: set[str] = set()
-        for character in text:
+        for index, character in enumerate(text):
             while state and character not in self.transitions[state]:
                 state = self.failures[state]
             state = self.transitions[state].get(character, 0)
-            matched.update(self.outputs[state])
+            for pattern in self.outputs[state]:
+                start = index - len(pattern) + 1
+                if (start > 0 and _ascii_word(pattern[0]) and _ascii_word(text[start - 1])) or (
+                    index + 1 < len(text)
+                    and _ascii_word(pattern[-1])
+                    and _ascii_word(text[index + 1])
+                ):
+                    continue
+                matched.add(pattern)
         return tuple(matched)
 
 
@@ -203,7 +211,7 @@ class BrandVehicleResolver:
         manual_brand_ids: tuple[UUID, ...] | None = None,
         manual_vehicle_ids: tuple[UUID, ...] | None = None,
     ) -> BrandVehicleResolution:
-        """按人工锁 > 车型派生品牌 > 品牌别名，且 title > raw > transcript 解析。"""
+        """自动解析先品牌再其车型；无品牌别名时用车型回推品牌，人工锁优先。"""
 
         texts = {
             "title": title,
@@ -222,6 +230,21 @@ class BrandVehicleResolver:
         active_vehicles = index.active_vehicles
         conflicts: list[str] = []
 
+        anchor_brands: tuple[UUID, ...] = ()
+        anchor_evidence: tuple[ResolverEvidence, ...] = ()
+        if manual_brand_ids is None and manual_vehicle_ids is None:
+            anchor_brands, anchor_evidence = self._resolve_brands(
+                snapshot,
+                vehicle_ids=(),
+                vehicle_evidence=(),
+                texts=texts,
+                active_brands=active_brands,
+                active_vehicles=active_vehicles,
+                aliases_by_text=index.brand_aliases_by_text,
+                alias_matcher=index.brand_alias_matcher,
+                conflicts=conflicts,
+            )
+
         if manual_vehicle_ids is None:
             vehicle_ids, vehicle_evidence = self._resolve_vehicle_aliases(
                 snapshot,
@@ -229,6 +252,7 @@ class BrandVehicleResolver:
                 active_vehicles=active_vehicles,
                 aliases_by_text=index.vehicle_aliases_by_text,
                 alias_matcher=index.vehicle_alias_matcher,
+                allowed_brand_ids=set(anchor_brands) if anchor_brands else None,
                 conflicts=conflicts,
             )
         else:
@@ -249,17 +273,20 @@ class BrandVehicleResolver:
             )
 
         if manual_brand_ids is None:
-            brand_ids, brand_evidence = self._resolve_brands(
-                snapshot,
-                vehicle_ids=vehicle_ids,
-                vehicle_evidence=vehicle_evidence,
-                texts=texts,
-                active_brands=active_brands,
-                active_vehicles=active_vehicles,
-                aliases_by_text=index.brand_aliases_by_text,
-                alias_matcher=index.brand_alias_matcher,
-                conflicts=conflicts,
-            )
+            if anchor_brands:
+                brand_ids, brand_evidence = anchor_brands, anchor_evidence
+            else:
+                brand_ids, brand_evidence = self._resolve_brands(
+                    snapshot,
+                    vehicle_ids=vehicle_ids,
+                    vehicle_evidence=vehicle_evidence,
+                    texts=texts if manual_vehicle_ids is not None else dict.fromkeys(texts),
+                    active_brands=active_brands,
+                    active_vehicles=active_vehicles,
+                    aliases_by_text=index.brand_aliases_by_text,
+                    alias_matcher=index.brand_alias_matcher,
+                    conflicts=conflicts,
+                )
         else:
             brand_ids = self._validated_manual_ids(
                 manual_brand_ids,
@@ -297,6 +324,7 @@ class BrandVehicleResolver:
         active_vehicles: dict[UUID, VehicleRecord],
         aliases_by_text: dict[str, tuple[VehicleAliasRecord, ...]],
         alias_matcher: _AliasAutomaton,
+        allowed_brand_ids: set[UUID] | None,
         conflicts: list[str],
     ) -> tuple[tuple[UUID, ...], tuple[ResolverEvidence, ...]]:
         for field in self._FIELDS:
@@ -309,11 +337,21 @@ class BrandVehicleResolver:
             evidence: list[ResolverEvidence] = []
             resolved: set[UUID] = set()
             for normalized_alias in sorted(matched, key=lambda item: (-len(item), item)):
-                if normalized_alias in snapshot.ambiguous_vehicle_aliases:
+                if (
+                    allowed_brand_ids is None
+                    and normalized_alias in snapshot.ambiguous_vehicle_aliases
+                ):
                     conflicts.append(f"ambiguous_vehicle_alias:{normalized_alias}")
                     continue
                 aliases = aliases_by_text[normalized_alias]
-                candidates = {item.vehicle_model_id for item in aliases}
+                candidates = {
+                    item.vehicle_model_id
+                    for item in aliases
+                    if allowed_brand_ids is None
+                    or active_vehicles[item.vehicle_model_id].brand_id in allowed_brand_ids
+                }
+                if not candidates:
+                    continue
                 if len(candidates) != 1:
                     conflicts.append(f"ambiguous_vehicle_alias:{normalized_alias}")
                     continue
@@ -419,6 +457,12 @@ def _normalize_optional(value: str | None) -> str | None:
     if value is None or not value.strip():
         return None
     return normalize_vehicle_text(value)
+
+
+def _ascii_word(character: str) -> bool:
+    """中文相邻允许车型命中；英文字母、数字和下划线构成同一个词。"""
+
+    return character.isascii() and (character.isalnum() or character == "_")
 
 
 def _catalog_identity(snapshot: BrandVehicleCatalogSnapshot) -> _CatalogIdentity:

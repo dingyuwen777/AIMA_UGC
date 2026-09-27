@@ -183,7 +183,7 @@ async function pollCampaign(): Promise<void> {
   ) return
   pollInFlight = true
   try {
-    await store.refreshHistoricalCampaignSummary(campaign.id)
+    await store.refreshHistoricalCampaignLive(campaign.id)
     if (store.selectedHistoricalCampaign?.status === 'revoking') {
       await store.previewHistoricalRevocation()
     }

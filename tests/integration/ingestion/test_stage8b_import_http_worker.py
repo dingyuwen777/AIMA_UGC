@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -13,10 +13,12 @@ from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVe
 from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
+from aima_ugc.adapters.persistence.postgres.workbench import PostgresWorkbenchRepository
 from aima_ugc.bootstrap import import_worker as import_worker_module
 from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
+from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.import_worker import PostgresImportJobExecutor
 from aima_ugc.bootstrap.worker import (
@@ -29,6 +31,7 @@ from aima_ugc.contracts.administration import (
     VehicleModelUpdateRequest,
 )
 from aima_ugc.contracts.brand_vehicle import BrandCreateRequest
+from aima_ugc.contracts.workbench import WorkbenchQuery
 from aima_ugc.modules.content.read_model_tables import voice_plaza_content_projection_table
 from aima_ugc.modules.content.tables import (
     content_metric_observations_table,
@@ -175,7 +178,14 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
     _truncate(runtime)
     try:
         service = PostgresImportHttpService(runtime)
-        client = TestClient(create_app(import_service=service))
+        client = TestClient(
+            create_app(
+                import_service=service,
+                content_service=PostgresContentHttpService(
+                    runtime, cursor_signing_secret=b"stage8b-import-test-cursor-key-32-bytes"
+                ),
+            )
+        )
         created = _configure_and_upload(client, runtime)
 
         worker = create_job_worker(
@@ -197,6 +207,12 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
         assert job.json()["status"] == "succeeded"
         assert job.json()["attempt"] == 1
 
+        # 用户所见的声音广场 API 必须在任务成功时立即读到同一提交的投影。
+        plaza = client.get("/api/v1/contents")
+        assert plaza.status_code == 200
+        assert len(plaza.json()["items"]) == 1
+        assert plaza.json()["items"][0]["author_display_name"] == "官方账号"
+
         session = runtime.database.new_session()
         try:
             with session.begin():
@@ -208,6 +224,20 @@ def test_http_upload_worker_and_status_query_use_stage3_brand_filter(tmp_path) -
             session.close()
         assert len(supplement_targets) == 1
         assert supplement_targets[0].external_content_id == "stage8b-content-1"
+
+        # Batch 成功和投影提交后立即可读；Excel 只有作者名而无稳定账号 ID。
+        session = runtime.database.new_session()
+        try:
+            stream = PostgresWorkbenchRepository(session).stream_rows(
+                active_scheme_version_id=uuid4(),
+                query=WorkbenchQuery(),
+                start_at=datetime(2026, 8, 20, tzinfo=UTC),
+                end_at=datetime(2026, 8, 21, tzinfo=UTC),
+            )
+            assert len(stream) == 1
+            assert stream[0]["author_display_name"] == "官方账号"
+        finally:
+            session.close()
 
         with runtime.database.engine.begin() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
@@ -867,8 +897,8 @@ def test_stage3_import_freezes_catalog_and_preserves_manual_evidence(tmp_path: P
         assert vehicle_rows[0]["catalog_version"] == frozen_catalog_version
         assert len(brand_rows) == 1
         assert brand_rows[0]["brand_id"] == brand_id
-        assert brand_rows[0]["source"] == "vehicle_match"
-        assert brand_rows[0]["derived_vehicle_model_id"] == vehicle_id
+        assert brand_rows[0]["source"] == "alias_match"
+        assert brand_rows[0]["derived_vehicle_model_id"] is None
         assert brand_rows[0]["catalog_version"] == frozen_catalog_version
 
         _stage3_lock_manual_evidence(

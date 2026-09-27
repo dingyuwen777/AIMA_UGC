@@ -56,9 +56,15 @@ function renderChart(): void {
   const daily = props.trend?.daily ?? []
   chart.setOption({
     animationDuration: 280,
-    grid: { left: 42, right: 10, top: 18, bottom: 24 },
+    grid: { left: 46, right: 14, top: 24, bottom: 28 },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: '#fff',
+      borderColor: '#ffeef6',
+      borderWidth: 1,
+      padding: [7, 9],
+      textStyle: { color: '#8e9aa8', fontSize: 11 },
+      axisPointer: { type: 'line', lineStyle: { color: '#e8447a', type: 'dotted', width: 1 } },
       formatter: (params: unknown) => {
         const list = Array.isArray(params) ? params : []
         const first = list[0] as { axisValue?: string; data?: number } | undefined
@@ -69,28 +75,33 @@ function renderChart(): void {
       type: 'category',
       boundaryGap: false,
       data: daily.map((item) => item.day.slice(5).replace('-', '/')),
-      axisLine: { lineStyle: { color: '#e6eaf0' } },
+      axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: { color: '#8e9aa8', fontSize: 10 },
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      splitLine: { lineStyle: { color: '#eef1f5' } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitNumber: 4,
+      splitLine: { lineStyle: { color: '#e6eaf0', type: 'dotted', width: 1 } },
       axisLabel: { color: '#8e9aa8', fontSize: 10 },
     },
     series: [{
       type: 'line',
       smooth: true,
+      showSymbol: false,
       symbol: 'circle',
-      symbolSize: 6,
+      symbolSize: 7,
+      emphasis: { focus: 'series', scale: true },
       data: daily.map((item) => item.count),
-      lineStyle: { width: 2, color: '#e6005c' },
-      itemStyle: { color: '#e6005c' },
+      lineStyle: { width: 2.5, color: '#e8447a' },
+      itemStyle: { color: '#fff', borderColor: '#e8447a', borderWidth: 2 },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(230,0,92,.22)' },
-          { offset: 1, color: 'rgba(230,0,92,.01)' },
+          { offset: 0, color: 'rgba(232,68,122,.24)' },
+          { offset: 1, color: 'rgba(232,68,122,0)' },
         ]),
       },
     }],
@@ -124,7 +135,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="trend-card">
+  <section
+    class="trend-card"
+    :aria-busy="loading"
+  >
     <header>
       <div class="title">
         <span>↗</span>
@@ -136,9 +150,18 @@ onBeforeUnmount(() => {
       <small>{{ trend ? `${trend.date_from} — ${trend.date_to}` : '近30天' }}</small>
     </header>
 
+    <p
+      v-if="loading && trend"
+      class="refresh-note"
+      role="status"
+    >
+      正在按当前筛选更新，以下为上次结果…
+    </p>
+
     <div
       v-if="error"
       class="module-state module-state--error"
+      :class="{ 'module-state--inline': trend }"
       role="alert"
     >
       <strong>趋势数据暂时无法更新</strong>
@@ -274,6 +297,8 @@ aside { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 
 .module-state { display: grid; min-height: 220px; place-content: center; gap: 5px; color: var(--aima-text-disabled); text-align: center; font-size: 12px; }
 .module-state--error { color: var(--aima-danger); }
 .module-state--error span { color: var(--aima-text-secondary); }
+.module-state--inline { min-height: 0; grid-template-columns: auto auto auto; align-items: center; justify-content: start; margin: 5px 12px 0; padding: 5px 8px; border-radius: 5px; background: var(--aima-primary-soft); text-align: left; font-size: 10px; }
+.refresh-note { margin: 5px 12px 0; color: var(--aima-text-secondary); font-size: 10px; }
 @media (max-width: 1050px) {
   .trend-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   aside { display: grid; grid-template-columns: minmax(130px, .8fr) 110px minmax(150px, 1fr); align-items: center; }

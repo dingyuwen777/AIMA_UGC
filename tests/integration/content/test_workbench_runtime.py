@@ -1,6 +1,6 @@
 """工作台 active Scheme 过滤与布局 CAS 的真实 PostgreSQL 回归。"""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -8,6 +8,7 @@ from aima_ugc.adapters.persistence.postgres.workbench import (
     PostgresWorkbenchRepository,
     WorkbenchLayoutRevisionConflict,
 )
+from aima_ugc.bootstrap.workbench_http import _period
 from aima_ugc.contracts.workbench import WorkbenchLayoutModule, WorkbenchQuery
 from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,
@@ -319,6 +320,79 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
             {"primary_label": "外观设计", "secondary_label": "颜色与配色"}
         ]
         assert [(row["primary_label"], int(row["user_count"])) for row in mind] == [("外观设计", 1)]
+
+        # 同一筛选源必须同时改变声音流、声量/情感聚合与心智聚合。
+        excluded_queries = (
+            WorkbenchQuery(platforms=("douyin",)),
+            WorkbenchQuery(voice_types=("品牌官方发声",)),
+            WorkbenchQuery(sentiments=("负面",)),
+            WorkbenchQuery(primary_labels=("售后服务",)),
+            WorkbenchQuery(secondary_labels=("维修体验",)),
+            WorkbenchQuery(brand_ids=(uuid4(),)),
+            WorkbenchQuery(vehicle_model_ids=(uuid4(),)),
+        )
+        for excluded_query in excluded_queries:
+            assert (
+                repository.stream_rows(
+                    active_scheme_version_id=active_version_id,
+                    query=excluded_query,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                == ()
+            )
+            assert (
+                int(
+                    repository.period_summary(
+                        active_scheme_version_id=active_version_id,
+                        query=excluded_query,
+                        start_at=start_at,
+                        end_at=end_at,
+                    )["total_count"]
+                )
+                == 0
+            )
+            assert (
+                repository.mind_counts(
+                    active_scheme_version_id=active_version_id,
+                    query=excluded_query,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                == ()
+            )
+
+        earlier = WorkbenchQuery(date_from=date(2026, 9, 20), date_to=date(2026, 9, 21))
+        _, _, earlier_start, earlier_end = _period(earlier)
+        assert (
+            repository.stream_rows(
+                active_scheme_version_id=active_version_id,
+                query=earlier,
+                start_at=earlier_start,
+                end_at=earlier_end,
+            )
+            == ()
+        )
+        assert (
+            int(
+                repository.period_summary(
+                    active_scheme_version_id=active_version_id,
+                    query=earlier,
+                    start_at=earlier_start,
+                    end_at=earlier_end,
+                )["total_count"]
+            )
+            == 0
+        )
+        assert (
+            repository.mind_counts(
+                active_scheme_version_id=active_version_id,
+                query=earlier,
+                start_at=earlier_start,
+                end_at=earlier_end,
+            )
+            == ()
+        )
     finally:
         transaction.rollback()
         session.close()

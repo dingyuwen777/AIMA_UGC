@@ -19,6 +19,8 @@ const router = useRouter()
 const draggedModule = ref<WorkbenchModuleId | null>(null)
 let filterRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let analysisRefreshHandle: ReturnType<typeof setTimeout> | undefined
+let periodicRefreshHandle: ReturnType<typeof setInterval> | undefined
+let periodicRefreshPending = false
 let resizeCleanup: (() => void) | null = null
 
 const analysisFingerprint = computed(() =>
@@ -34,26 +36,26 @@ const analysisFingerprint = computed(() =>
     .join('|'),
 )
 
-/** 布局 Contract 的 12 栏列宽与 row_units 转成当前 CSS Grid 几何。 */
+/** 布局 Contract 的 row_units 决定卡片实际高度，固定视窗让内部列表独立滚动。 */
 function moduleStyle(module: WorkbenchLayoutModule): Record<string, string> {
   return {
     gridColumn: `span ${module.column_span}`,
-    minHeight: `${Math.max(382, module.row_units * 8)}px`,
+    height: `${Math.max(382, module.row_units * 8)}px`,
   }
 }
 
 /** 工作台数据更新时间按北京时间显示，值来自后端模块 as_of。 */
 function refreshLabel(): string {
-  return store.latestAsOf ? `${formatDateTime(store.latestAsOf)} 自动刷新` : '等待首次同步'
+  return store.latestAsOf ? `${formatDateTime(store.latestAsOf)} · 每 15 秒检查更新` : '等待首次同步'
 }
 
-/** 连续多选/日期操作合并成一次聚合刷新，避免每个 Checkbox 都触发重查询。 */
+/** 连续多选操作短暂合并，日期确认则在当前事件中直接刷新。 */
 function scheduleFilterRefresh(): void {
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
   filterRefreshHandle = setTimeout(() => {
     filterRefreshHandle = undefined
     void store.refreshData()
-  }, 280)
+  }, 100)
 }
 
 /** Analysis Run 每秒轮询可能连续变化，750ms 内合并成一次 Workbench 刷新。 */
@@ -69,6 +71,31 @@ function scheduleAnalysisRefresh(): void {
 function updateFilters(value: WorkbenchFilters): void {
   store.setFilters(value)
   scheduleFilterRefresh()
+}
+
+/** 页面可见时按任务中心既有频率检查入库变化，慢请求不会叠加。 */
+async function refreshPeriodically(): Promise<void> {
+  if (periodicRefreshPending || document.visibilityState !== 'visible'
+    || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend) return
+  periodicRefreshPending = true
+  try {
+    await store.refreshData(true)
+  } finally {
+    periodicRefreshPending = false
+  }
+}
+
+/** 后台标签页恢复时立即追上最新业务事实。 */
+function onVisibilityChange(): void {
+  if (document.visibilityState === 'visible') void refreshPeriodically()
+}
+
+/** 日期是一次确认动作，立即向后端请求三个模块。 */
+function updateDateFilters(value: WorkbenchFilters): void {
+  store.setFilters(value)
+  if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
+  filterRefreshHandle = undefined
+  void store.refreshData()
 }
 
 /** 重置为北京时间近 30 天后立即刷新，避免旧筛选结果继续停留。 */
@@ -92,7 +119,7 @@ function dropOn(targetId: WorkbenchModuleId): void {
 
 /** 从当前筛选构造声音广场可真实恢复的 Route Query；不可表达的多平台条件不伪造。 */
 function voicePlazaQuery(
-  extra: { primaryLabel?: string; day?: string } = {},
+  extra: { primaryLabel?: string; day?: string; contentId?: string } = {},
 ): LocationQueryRaw {
   const filters = store.filters
   const query: LocationQueryRaw = {
@@ -107,11 +134,12 @@ function voicePlazaQuery(
   if (filters.secondaryLabels.length === 1) query.secondary_label = filters.secondaryLabels[0]
   if (filters.brandIds.length) query.brand_ids = [...filters.brandIds]
   if (filters.vehicleModelIds.length) query.vehicle_model_ids = [...filters.vehicleModelIds]
+  if (extra.contentId) query.content_id = extra.contentId
   return query
 }
 
 /** 打开声音广场并携带当前可表达筛选，形成 Workbench → 原声闭环。 */
-async function openVoicePlaza(extra: { primaryLabel?: string; day?: string } = {}): Promise<void> {
+async function openVoicePlaza(extra: { primaryLabel?: string; day?: string; contentId?: string } = {}): Promise<void> {
   await router.push({ path: '/voice-plaza', query: voicePlazaQuery(extra) })
 }
 
@@ -157,11 +185,15 @@ watch(analysisFingerprint, (current, previous) => {
 
 onMounted(() => {
   void store.initialize()
+  periodicRefreshHandle = setInterval(() => { void refreshPeriodically() }, 15_000)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
 onBeforeUnmount(() => {
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
+  if (periodicRefreshHandle) clearInterval(periodicRefreshHandle)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   resizeCleanup?.()
 })
 </script>
@@ -300,9 +332,11 @@ onBeforeUnmount(() => {
             :loading="store.moduleLoading.stream"
             :error="store.moduleErrors.stream"
             @update:filters="updateFilters"
+            @update:date-filters="updateDateFilters"
             @reset="resetFilters"
             @retry="store.refreshData()"
             @open-all="openVoicePlaza()"
+            @open-content="openVoicePlaza({ contentId: $event })"
           />
           <BrandMindCard
             v-else-if="module.module_id === 'brand-mind'"
@@ -356,7 +390,7 @@ onBeforeUnmount(() => {
 .hidden-modules { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .hidden-modules button { padding: 3px 7px; border: 1px solid var(--aima-border-strong); border-radius: 5px; color: var(--aima-primary); background: #fff; cursor: pointer; font-size: 10px; }
 .workbench-grid { display: grid; min-width: 0; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; padding-bottom: 20px; align-items: stretch; }
-.module-shell { position: relative; min-width: 0; }
+.module-shell { position: relative; min-width: 0; box-sizing: border-box; }
 .module-shell--editing { padding: 5px; border: 1px dashed var(--aima-primary); border-radius: 10px; background: rgb(255 238 246 / 35%); cursor: grab; }
 .module-shell--editing:active { cursor: grabbing; }
 .module-edit-controls { position: absolute; z-index: 30; top: 10px; right: 10px; display: flex; align-items: center; gap: 5px; padding: 3px 5px; border: 1px solid var(--aima-border); border-radius: 6px; background: rgb(255 255 255 / 94%); box-shadow: 0 2px 8px rgb(23 35 61 / 10%); }
@@ -367,7 +401,7 @@ onBeforeUnmount(() => {
   .workbench-header { align-items: flex-start; flex-wrap: wrap; }
   .header-actions { width: 100%; justify-content: flex-end; }
   .workbench-grid { grid-template-columns: minmax(0, 1fr); }
-  .module-shell { grid-column: 1 / -1 !important; min-height: 430px !important; }
+  .module-shell { grid-column: 1 / -1 !important; height: 430px !important; }
   .edit-toolbar { align-items: flex-start; flex-direction: column; }
 }
 </style>

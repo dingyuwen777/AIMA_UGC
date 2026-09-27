@@ -733,11 +733,31 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
 
   async function refreshHistoricalCampaignSummary(campaignId: string): Promise<void> {
     const campaign = await fetchHistoricalCampaign(campaignId)
+    if (selectedHistoricalCampaign.value?.id !== campaignId) return
     selectedHistoricalCampaign.value = campaign
     historicalCampaigns.value = [
       campaign,
       ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
     ]
+  }
+
+  /** 运行中同步最新统计与已结算来源项，避免详情只在终态才显示处理结果。 */
+  async function refreshHistoricalCampaignLive(campaignId: string): Promise<void> {
+    await Promise.all([
+      fetchHistoricalCampaign(campaignId).then((campaign) => {
+        if (selectedHistoricalCampaign.value?.id !== campaignId) return
+        selectedHistoricalCampaign.value = campaign
+        historicalCampaigns.value = [
+          campaign,
+          ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
+        ]
+      }),
+      fetchHistoricalCampaignItems(campaignId).then((campaignItems) => {
+        if (selectedHistoricalCampaign.value?.id !== campaignId) return
+        historicalCampaignItems.value = campaignItems.items
+        historicalCampaignItemsHasMore.value = Boolean(campaignItems.has_more)
+      }),
+    ])
   }
 
   async function submitHistoricalCampaign(
@@ -1000,6 +1020,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     loadMoreHistoricalDirectory,
     refreshHistoricalCampaign,
     refreshHistoricalCampaignSummary,
+    refreshHistoricalCampaignLive,
     submitHistoricalCampaign,
     submitLocalCampaign,
     actOnHistoricalCampaign,

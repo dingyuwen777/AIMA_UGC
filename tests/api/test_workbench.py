@@ -4,6 +4,7 @@ from datetime import date, datetime
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+import pytest
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.contracts.workbench import (
     WorkbenchDailyPointResponse,
@@ -142,30 +143,50 @@ def _client(service: FakeWorkbenchService) -> TestClient:
     )
 
 
-def test_workbench_query_arrays_and_beijing_dates_reach_service() -> None:
-    """GET Query 必须把数组与日期按正式 Workbench Contract 传给 Service。"""
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/api/v1/workbench/stream",
+        "/api/v1/workbench/mind",
+        "/api/v1/workbench/trend",
+    ),
+)
+def test_workbench_query_arrays_and_beijing_dates_reach_service(path: str) -> None:
+    """三个模块 GET 必须把完整筛选按同一 Contract 传给 Service。"""
 
     service = FakeWorkbenchService()
     client = _client(service)
+    brand_id = uuid4()
+    vehicle_id = uuid4()
 
     response = client.get(
-        "/api/v1/workbench/stream",
+        path,
         params=[
             ("date_from", "2026-09-21"),
             ("date_to", "2026-09-27"),
             ("platforms", "xiaohongshu"),
             ("platforms", "douyin"),
+            ("brand_ids", str(brand_id)),
+            ("vehicle_model_ids", str(vehicle_id)),
+            ("voice_types", "真实用户发声"),
             ("sentiments", "正面"),
             ("primary_labels", "外观设计"),
+            ("secondary_labels", "颜色与配色"),
         ],
     )
 
     assert response.status_code == 200
     assert response.json()["analysis_scheme_version_id"] == str(service.scheme_version_id)
     assert service.last_query is not None
+    assert service.last_query.date_from == date(2026, 9, 21)
+    assert service.last_query.date_to == date(2026, 9, 27)
     assert service.last_query.platforms == ("xiaohongshu", "douyin")
+    assert service.last_query.brand_ids == (brand_id,)
+    assert service.last_query.vehicle_model_ids == (vehicle_id,)
+    assert service.last_query.voice_types == ("真实用户发声",)
     assert service.last_query.sentiments == ("正面",)
     assert service.last_query.primary_labels == ("外观设计",)
+    assert service.last_query.secondary_labels == ("颜色与配色",)
 
 
 def test_workbench_layout_uses_current_principal_and_returns_409_on_revision_conflict() -> None:

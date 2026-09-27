@@ -408,6 +408,38 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   }
 })
 
+test('工作台内容深链跨分页直接定位声音广场真实笔记', async ({ page }) => {
+  await page.route('**/api/v1/contents?*', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], next_cursor: null, has_more: false }),
+    })
+  })
+  await page.goto(`/voice-plaza?content_id=${contentId}`)
+  const detail = page.getByRole('dialog', { name: '内容详情' })
+  await expect(detail).toBeVisible()
+  await expect(detail).toContainText('小满的通勤日记')
+  await expect(detail).toContainText('爱玛 Q7 的坐垫舒适')
+})
+
+test('导入记录查看声音时不继承会话中陈旧筛选', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
+      filters: { search: '旧关键词', publishedFrom: '2020-01-01', sourceIdentifier: '旧来源' },
+      sortBy: 'published_at',
+      sortDirection: 'desc',
+    }))
+  })
+  const listRequest = page.waitForRequest((request) =>
+    new URL(request.url()).pathname === '/api/v1/contents'
+      && request.method() === 'GET')
+  await page.goto('/voice-plaza?source_identifier=12345678-1234-5678-1234-567812345678')
+  const url = new URL((await listRequest).url())
+  expect(url.searchParams.get('source_identifier')).toBe('12345678-1234-5678-1234-567812345678')
+  expect(url.searchParams.get('published_from')).toBeNull()
+  expect(url.searchParams.get('search')).toBeNull()
+})
+
 test('loads backend filter options and submits voice type with dependent labels', async ({ page }) => {
   await page.goto('/voice-plaza')
 

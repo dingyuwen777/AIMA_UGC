@@ -385,10 +385,15 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(
         assert projected.title == "爱玛舞台 旧车型舞台"
         assert projected.competition_scope == "owned_only"
         assert projected.brands[0].display_name == "爱玛 Stage5"
-        # Resolver 已由车型派生同一 Brand 时不会再写重复 alias_match Evidence。
-        assert {evidence.source for evidence in projected.brands[0].evidences} == {"vehicle_match"}
+        # 正文直接命中品牌时保留品牌别名证据，再只在该品牌目录内解析车型。
+        assert {evidence.source for evidence in projected.brands[0].evidences} == {"alias_match"}
+        assert all(
+            evidence.derived_vehicle_model_id is None for evidence in projected.brands[0].evidences
+        )
         assert projected.vehicles[0].vehicle_model_id == target_vehicle.id
         assert projected.vehicles[0].display_name == "新车型 Stage5"
+        # 合并车型后应重定向原导入 Evidence 到目标车型，同时保留原始来源。
+        assert {evidence.source for evidence in projected.vehicles[0].evidences} == {"import"}
         assert projected.vehicles[0].brand is not None
         assert projected.vehicles[0].brand.id == owned.id
 

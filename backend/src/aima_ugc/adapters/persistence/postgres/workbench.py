@@ -371,7 +371,10 @@ class PostgresWorkbenchRepository:
                        content.title,
                        content.text AS body_text,
                        content.author_account_id,
-                       account.display_name AS author_display_name,
+                       COALESCE(
+                           NULLIF(version.author_snapshot ->> 'display_name', ''),
+                           account.display_name
+                       ) AS author_display_name,
                        active_result.id AS result_id,
                        CASE
                            WHEN active_result.id IS NULL THEN NULL
@@ -399,6 +402,9 @@ class PostgresWorkbenchRepository:
                 JOIN contents AS content
                   ON content.id = projection.content_id
                  AND content.current_version = projection.content_version
+                LEFT JOIN content_versions AS version
+                  ON version.content_id = content.id
+                 AND version.version_no = content.current_version
                 LEFT JOIN accounts AS account ON account.id = content.author_account_id
                 LEFT JOIN LATERAL (
                     SELECT result.*

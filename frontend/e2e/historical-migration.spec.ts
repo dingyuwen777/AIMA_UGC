@@ -335,6 +335,46 @@ test('keeps polling a cancelling campaign until it reaches cancelled', async ({ 
   expect(postCancelReadCount).toBeGreaterThanOrEqual(2)
 })
 
+test('refreshes running import statistics and settled source results before completion', async ({ page }) => {
+  let processed = false
+  await page.route(`**/api/v1/data-import-campaigns/${campaignId}`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...readyCampaign,
+        status: 'running',
+        can_start: false,
+        stats: { ...readyCampaign.stats, created: processed ? 12 : 0 },
+      }),
+    })
+  })
+  await page.route(`**/api/v1/data-import-campaigns/${campaignId}/items`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: processed ? [{
+          id: '41111111-2222-4333-8444-555555555555',
+          item_kind: 'source_file',
+          relative_path: 'processed.xlsx',
+          status: 'succeeded',
+        }] : [],
+        total_count: processed ? 1 : 0,
+        has_more: false,
+      }),
+    })
+  })
+
+  await page.goto(`/collection-runtime?data_import_campaign_id=${campaignId}`)
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
+  await expect(dialog.locator('.campaign-stats')).toContainText('新建 0')
+  await expect(dialog.getByText('文件 · processed.xlsx')).toHaveCount(0)
+
+  processed = true
+  await expect(dialog.locator('.campaign-stats')).toContainText('新建 12', { timeout: 10_000 })
+  await expect(dialog.getByText('文件 · processed.xlsx')).toBeVisible()
+  await expect(dialog.locator('.campaign-status')).toHaveText('正在导入')
+})
+
 test('uses campaign failed-chunk facts even when bounded detail omits failed chunks', async ({ page }) => {
   const partialCampaign = {
     ...readyCampaign,

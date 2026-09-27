@@ -29,6 +29,7 @@ NOW = datetime(2026, 9, 9, tzinfo=UTC)
 BRAND_A = UUID("00000000-0000-0000-0000-000000000001")
 BRAND_B = UUID("00000000-0000-0000-0000-000000000002")
 VEHICLE_A = UUID("00000000-0000-0000-0000-000000000101")
+VEHICLE_B = UUID("00000000-0000-0000-0000-000000000102")
 
 
 def _snapshot(*, ambiguous_brand_alias: bool = False) -> BrandVehicleCatalogSnapshot:
@@ -97,6 +98,15 @@ def _snapshot(*, ambiguous_brand_alias: bool = False) -> BrandVehicleCatalogSnap
                 version=3,
                 catalog_version=8,
             ),
+            VehicleRecord(
+                id=VEHICLE_B,
+                code="RACE-X",
+                display_name="竞速 X",
+                brand_id=BRAND_B,
+                status="active",
+                version=1,
+                catalog_version=8,
+            ),
         ),
         vehicle_aliases=(
             VehicleAliasRecord(
@@ -104,6 +114,13 @@ def _snapshot(*, ambiguous_brand_alias: bool = False) -> BrandVehicleCatalogSnap
                 vehicle_model_id=VEHICLE_A,
                 text="露娜Air",
                 normalized_text="露娜air",
+                created_at=NOW,
+            ),
+            VehicleAliasRecord(
+                id=UUID("00000000-0000-0000-0000-000000000121"),
+                vehicle_model_id=VEHICLE_B,
+                text="竞速X",
+                normalized_text="竞速x",
                 created_at=NOW,
             ),
         ),
@@ -132,7 +149,7 @@ def _content(*, external_content_id: str, title: str) -> CanonicalContentV1:
 def test_vehicle_alias_resolves_vehicle_and_derives_its_brand() -> None:
     resolution = BrandVehicleResolver().resolve(
         _snapshot(),
-        title="刚提爱玛露娜Air",
+        title="刚提露娜Air",
         raw_text="正文不重要",
         transcript_text=None,
     )
@@ -166,7 +183,7 @@ def test_vehicle_multiple_aliases_emit_one_evidence_per_model() -> None:
     )
     resolution = BrandVehicleResolver(snapshot).resolve(
         snapshot,
-        title="爱玛露娜Air，就是露娜",
+        title="露娜Air，就是露娜",
         raw_text=None,
         transcript_text=None,
     )
@@ -177,7 +194,7 @@ def test_vehicle_multiple_aliases_emit_one_evidence_per_model() -> None:
     assert resolution.brand_evidence[0].matched_text == "露娜Air"
 
 
-def test_brand_alias_supplements_vehicle_derived_brand_and_supports_multiple_brands() -> None:
+def test_brand_match_limits_vehicle_resolution_to_that_brand() -> None:
     resolution = BrandVehicleResolver().resolve(
         _snapshot(),
         title="露娜Air 对比竞品B",
@@ -185,9 +202,36 @@ def test_brand_alias_supplements_vehicle_derived_brand_and_supports_multiple_bra
         transcript_text=None,
     )
 
-    assert resolution.vehicle_matches == (VEHICLE_A,)
-    assert set(resolution.brand_matches) == {BRAND_A, BRAND_B}
-    assert {item.source for item in resolution.brand_evidence} == {"vehicle_match", "alias_match"}
+    assert resolution.vehicle_matches == ()
+    assert resolution.brand_matches == (BRAND_B,)
+    assert [item.source for item in resolution.brand_evidence] == ["alias_match"]
+
+
+def test_brand_match_allows_vehicle_from_same_brand() -> None:
+    resolution = BrandVehicleResolver().resolve(
+        _snapshot(),
+        title="竞品B 竞速X",
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert resolution.vehicle_matches == (VEHICLE_B,)
+    assert resolution.brand_matches == (BRAND_B,)
+    assert resolution.vehicle_evidence[0].matched_text == "竞速X"
+    assert resolution.brand_evidence[0].matched_text == "竞品B"
+
+
+def test_vehicle_match_falls_back_globally_when_no_brand_matches() -> None:
+    resolution = BrandVehicleResolver().resolve(
+        _snapshot(),
+        title="竞速X 新品",
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert resolution.vehicle_matches == (VEHICLE_B,)
+    assert resolution.brand_matches == (BRAND_B,)
+    assert resolution.brand_evidence[0].source == "vehicle_match"
 
 
 def test_ambiguous_brand_alias_is_observable_and_never_guessed() -> None:
@@ -212,15 +256,65 @@ def test_title_has_priority_over_lower_fields() -> None:
         transcript_text="爱玛",
     )
 
-    assert resolution.vehicle_matches == (VEHICLE_A,)
-    assert set(resolution.brand_matches) == {BRAND_A, BRAND_B}
-    vehicle_evidence = resolution.vehicle_evidence[0]
-    assert vehicle_evidence.source_field == "raw_text"
-    brand_alias_evidence = next(
-        item for item in resolution.brand_evidence if item.source == "alias_match"
+    assert resolution.vehicle_matches == ()
+    assert resolution.brand_matches == (BRAND_B,)
+    assert resolution.brand_evidence[0].source == "alias_match"
+    assert resolution.brand_evidence[0].source_field == "title"
+
+
+@pytest.mark.parametrize("title", ["model", "hello", "go9", "o_model"])
+def test_ascii_short_vehicle_alias_does_not_match_inside_word(title: str) -> None:
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        vehicle_aliases=(
+            *snapshot.vehicle_aliases,
+            VehicleAliasRecord(
+                id=UUID("00000000-0000-0000-0000-000000000113"),
+                vehicle_model_id=VEHICLE_A,
+                text="O",
+                normalized_text="o",
+                created_at=NOW,
+            ),
+        ),
     )
-    assert brand_alias_evidence.entity_id == BRAND_B
-    assert brand_alias_evidence.source_field == "title"
+
+    resolution = BrandVehicleResolver(snapshot).resolve(
+        snapshot,
+        title=title,
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert resolution.matched is False
+
+
+@pytest.mark.parametrize("title", ["O", "车型 O 发布", "车型（O）", "车型O"])
+def test_ascii_short_vehicle_alias_matches_standalone_token(title: str) -> None:
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        vehicle_aliases=(
+            *snapshot.vehicle_aliases,
+            VehicleAliasRecord(
+                id=UUID("00000000-0000-0000-0000-000000000113"),
+                vehicle_model_id=VEHICLE_A,
+                text="O",
+                normalized_text="o",
+                created_at=NOW,
+            ),
+        ),
+    )
+
+    resolution = BrandVehicleResolver(snapshot).resolve(
+        snapshot,
+        title=title,
+        raw_text=None,
+        transcript_text=None,
+    )
+
+    assert resolution.vehicle_matches == (VEHICLE_A,)
+    assert resolution.brand_matches == (BRAND_A,)
 
 
 def test_selected_scope_does_not_hide_global_brand_alias_ambiguity() -> None:

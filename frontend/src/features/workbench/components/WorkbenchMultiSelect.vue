@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 export interface WorkbenchSelectOption {
   value: string
@@ -18,6 +18,10 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
+const trigger = ref<HTMLButtonElement | null>(null)
+const panel = ref<HTMLElement | null>(null)
+const open = ref(false)
+const position = ref({ left: '0px', top: '0px' })
 
 const selectedText = computed(() => {
   if (props.modelValue.length === 0) return props.allLabel
@@ -39,14 +43,56 @@ function toggle(value: string, checked: boolean): void {
 function toggleAll(): void {
   emit('update:modelValue', props.modelValue.length ? [] : props.options.map((item) => item.value))
 }
+
+/** Popover 进入浏览器顶层，避免横向滚动的筛选条裁切选项。 */
+function togglePanel(): void {
+  if (open.value) {
+    panel.value?.hidePopover()
+    return
+  }
+  const box = trigger.value?.getBoundingClientRect()
+  if (!box) return
+  const left = Math.max(12, Math.min(box.left, window.innerWidth - 232))
+  const top = box.bottom + 275 < window.innerHeight
+    ? box.bottom + 5
+    : Math.max(12, box.top - 275)
+  position.value = { left: `${left}px`, top: `${top}px` }
+  panel.value?.showPopover()
+}
+
+/** 页面滚动时关闭浮层；用户在选项面板内滚动时保持可操作。 */
+function dismissOnScroll(event: Event): void {
+  if (event.target instanceof Node && panel.value?.contains(event.target)) return
+  if (open.value) panel.value?.hidePopover()
+}
+
+onMounted(() => window.addEventListener('scroll', dismissOnScroll, true))
+onBeforeUnmount(() => window.removeEventListener('scroll', dismissOnScroll, true))
 </script>
 
 <template>
-  <details class="workbench-select">
-    <summary :aria-label="label">
+  <div class="workbench-select">
+    <button
+      ref="trigger"
+      class="workbench-select__trigger"
+      type="button"
+      :aria-label="label"
+      aria-haspopup="dialog"
+      :aria-expanded="open"
+      :disabled="disabled"
+      @click="togglePanel"
+    >
       <span>{{ label }}：</span><strong>{{ selectedText }}</strong><i>▾</i>
-    </summary>
-    <div class="workbench-select__panel">
+    </button>
+    <div
+      ref="panel"
+      popover="auto"
+      class="workbench-select__panel"
+      :style="position"
+      role="dialog"
+      :aria-label="`选择${label}`"
+      @toggle="open = $event.newState === 'open'"
+    >
       <button
         class="workbench-select__all"
         type="button"
@@ -71,12 +117,11 @@ function toggleAll(): void {
         暂无可选项
       </p>
     </div>
-  </details>
+  </div>
 </template>
 
 <style scoped>
-.workbench-select { position: relative; }
-.workbench-select summary {
+.workbench-select__trigger {
   display: flex;
   height: 30px;
   align-items: center;
@@ -87,22 +132,17 @@ function toggleAll(): void {
   color: var(--aima-text-disabled);
   background: var(--aima-surface);
   cursor: pointer;
-  list-style: none;
   white-space: nowrap;
   font-size: 11px;
 }
-.workbench-select summary::-webkit-details-marker { display: none; }
-.workbench-select summary strong { max-width: 118px; overflow: hidden; color: var(--aima-text); font-weight: 600; text-overflow: ellipsis; }
-.workbench-select summary i { margin-left: 2px; color: var(--aima-text-disabled); font-style: normal; }
-.workbench-select[open] summary { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-color-focus-ring); }
+.workbench-select__trigger strong { max-width: 118px; overflow: hidden; color: var(--aima-text); font-weight: 600; text-overflow: ellipsis; }
+.workbench-select__trigger i { margin-left: 2px; color: var(--aima-text-disabled); font-style: normal; }
+.workbench-select__trigger[aria-expanded="true"] { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-color-focus-ring); }
 .workbench-select__panel {
-  position: absolute;
-  z-index: 60;
-  top: calc(100% + 5px);
-  left: 0;
+  position: fixed;
   display: grid;
   width: 220px;
-  max-height: 270px;
+  max-height: min(270px, calc(100dvh - 24px));
   gap: 1px;
   overflow: auto;
   padding: 6px;

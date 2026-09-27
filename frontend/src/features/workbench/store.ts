@@ -265,7 +265,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     }
   }
 
-  /** 独立刷新三个模块；单模块失败不抹掉其它模块上次成功快照。 */
+  /** 三个接口并发请求、各自完成即更新；慢聚合不能拖住已返回的声音流。 */
   async function refreshData(silent = false, retried = false): Promise<void> {
     const revision = ++dataRevision
     globalError.value = null
@@ -273,17 +273,46 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       moduleLoading.value = { stream: true, mind: true, trend: true }
     }
     const params = queryParams(filters.value)
-    const results = await Promise.allSettled([
-      fetchWorkbenchStream(params as GetWorkbenchStreamParams),
-      fetchWorkbenchMind(params as GetWorkbenchMindParams),
-      fetchWorkbenchTrend(params as GetWorkbenchTrendParams),
+    const seenIdentities = new Set<string>()
+    const responseIdentity = (
+      response: WorkbenchStreamResponse | WorkbenchMindResponse | WorkbenchTrendResponse,
+    ): string => `${response.analysis_scheme_version_id}:${response.taxonomy_sha256}`
+    const settle = async (
+      key: WorkbenchModuleKey,
+      request: Promise<WorkbenchStreamResponse | WorkbenchMindResponse | WorkbenchTrendResponse>,
+    ): Promise<void> => {
+      try {
+        const response = await request
+        if (revision !== dataRevision) return
+        const identity = responseIdentity(response)
+        seenIdentities.add(identity)
+        if (key === 'stream') stream.value = response as WorkbenchStreamResponse
+        else if (key === 'mind') mind.value = response as WorkbenchMindResponse
+        else trend.value = response as WorkbenchTrendResponse
+        // 旧快照若属于另一 Scheme，立即移除，避免显示混合口径。
+        if (stream.value && responseIdentity(stream.value) !== identity) stream.value = null
+        if (mind.value && responseIdentity(mind.value) !== identity) mind.value = null
+        if (trend.value && responseIdentity(trend.value) !== identity) trend.value = null
+        moduleErrors.value[key] = null
+        if (key === 'mind') {
+          const dimensions = mind.value?.dimensions ?? []
+          if (!dimensions.some((item) => item.primary_label === selectedMind.value)) {
+            selectedMind.value = dimensions[0]?.primary_label ?? null
+          }
+        }
+      } catch (error) {
+        if (revision === dataRevision) moduleErrors.value[key] = apiErrorMessage(error)
+      } finally {
+        if (revision === dataRevision) moduleLoading.value[key] = false
+      }
+    }
+    await Promise.all([
+      settle('stream', fetchWorkbenchStream(params as GetWorkbenchStreamParams)),
+      settle('mind', fetchWorkbenchMind(params as GetWorkbenchMindParams)),
+      settle('trend', fetchWorkbenchTrend(params as GetWorkbenchTrendParams)),
     ])
     if (revision !== dataRevision) return
-    const [streamResult, mindResult, trendResult] = results
-    const nextStream = streamResult.status === 'fulfilled' ? streamResult.value : stream.value
-    const nextMind = mindResult.status === 'fulfilled' ? mindResult.value : mind.value
-    const nextTrend = trendResult.status === 'fulfilled' ? trendResult.value : trend.value
-    if (!dataIdentityConsistent(nextStream, nextMind, nextTrend)) {
+    if (seenIdentities.size > 1 || !dataIdentityConsistent(stream.value, mind.value, trend.value)) {
       globalError.value = 'Analysis Scheme 已切换，正在重新同步工作台口径。'
       if (!retried) {
         await refreshTaxonomy()
@@ -297,21 +326,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       globalError.value = '工作台模块暂未取得同一 Analysis Scheme Version，请稍后重试。'
       return
     }
-    stream.value = nextStream
-    mind.value = nextMind
-    trend.value = nextTrend
-    moduleErrors.value = {
-      stream: streamResult.status === 'fulfilled' ? null : apiErrorMessage(streamResult.reason),
-      mind: mindResult.status === 'fulfilled' ? null : apiErrorMessage(mindResult.reason),
-      trend: trendResult.status === 'fulfilled' ? null : apiErrorMessage(trendResult.reason),
-    }
-    moduleLoading.value = { stream: false, mind: false, trend: false }
     await alignTaxonomyWithData()
-    if (mind.value?.dimensions.length) {
-      if (!mind.value.dimensions.some((item) => item.primary_label === selectedMind.value)) {
-        selectedMind.value = mind.value.dimensions[0]?.primary_label ?? null
-      }
-    } else selectedMind.value = null
   }
 
   /** 页面首次进入时并行准备参考数据和模块数据，首屏不等待非关键目录串行加载。 */
@@ -326,8 +341,12 @@ export const useWorkbenchStore = defineStore('workbench', () => {
 
   /** 替换筛选快照；页面用 debounce 合并连续勾选后再触发查询。 */
   function setFilters(value: WorkbenchFilters): void {
+    const dates = [value.dateFrom, value.dateTo].filter(Boolean).sort()
+    const defaultDates = defaultFilters()
     filters.value = {
       ...value,
+      dateFrom: dates[0] ?? defaultDates.dateFrom,
+      dateTo: dates[1] ?? dates[0] ?? defaultDates.dateTo,
       platforms: [...value.platforms],
       brandIds: [...value.brandIds],
       vehicleModelIds: [...value.vehicleModelIds],
@@ -336,6 +355,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       primaryLabels: [...value.primaryLabels],
       secondaryLabels: [...value.secondaryLabels],
     }
+    dataRevision += 1
+    moduleLoading.value = { stream: true, mind: true, trend: true }
+    moduleErrors.value = { stream: null, mind: null, trend: null }
   }
 
   /** 进入显式布局编辑态，只创建本地草稿，不触发持久化。 */
