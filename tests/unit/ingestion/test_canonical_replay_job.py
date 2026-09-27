@@ -5,6 +5,9 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from pydantic import BaseModel
+from sqlalchemy.exc import OperationalError, ProgrammingError
+
 from aima_ugc.bootstrap.canonical_replay_worker import (
     PostgresCanonicalReplayJobExecutor,
     _ReplayScanBatchController,
@@ -20,8 +23,6 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     register_canonical_replay_job,
 )
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRegistry
-from pydantic import BaseModel
-from sqlalchemy.exc import OperationalError, ProgrammingError
 
 
 class _Executor:
