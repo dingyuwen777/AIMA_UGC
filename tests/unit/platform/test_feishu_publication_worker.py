@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 from aima_ugc.adapters.feishu import FeishuAPIError, FeishuApiError
 from aima_ugc.bootstrap import feishu_publication_worker as worker_module
+from aima_ugc.bootstrap import representative_selection_publication as selection_module
 from aima_ugc.bootstrap.feishu_publication_worker import (
     PostgresFeishuPublicationJobExecutor,
 )
@@ -245,3 +246,55 @@ def test_representative_worker_passes_stable_retry_identity_and_checkpoint(
     assert result.outcome == "succeeded"
     assert captured["idempotency_key"] == f"feishu-representative:{context.fence.job_id}"
     assert captured["checkpoint"] is not None
+
+
+def test_representative_retry_restores_frozen_rows_without_rerunning_llm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """已冻结代表性结果后，下一 Attempt 不再重新执行筛选模型。"""
+
+    frozen = {
+        "声音内容/连接": "真实体验\nhttps://example.test/1",
+        "声音截图": None,
+        "典型评论示例": None,
+        "来源": "抖音",
+        "发布时间": "2026-09-01 10:00:00",
+        "一级标签": "产品体验",
+        "二级标签": "骑行体验",
+        "用户情绪": "正面",
+        "处理建议": "",
+        "处理进展": "",
+    }
+    values: dict[str, object] = {"representative_rows": [frozen]}
+
+    class _Checkpoint:
+        def get(self, key: str) -> object | None:
+            return values.get(key)
+
+        def set(self, key: str, value: object | None) -> None:
+            values[key] = value
+
+    def fail_llm(*args: object, **kwargs: object) -> None:
+        raise AssertionError("重试不得重新初始化代表性筛选 LLM")
+
+    observed: dict[str, object] = {}
+
+    def publish_rows(**kwargs: object):
+        observed.update(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(selection_module, "_create_llm", fail_llm)
+    monkeypatch.setattr(selection_module, "publish_representative_rows_to_feishu", publish_rows)
+
+    result = selection_module.publish_representative_selection_to_feishu(
+        input_path=tmp_path / "not-read-on-retry.xlsx",
+        output_dir=tmp_path / "selection",
+        settings=SimpleNamespace(),
+        idempotency_key="feishu-representative:job-1",
+        checkpoint=_Checkpoint(),
+    )
+
+    assert isinstance(result, SimpleNamespace)
+    assert observed["rows"] == (frozen,)
+    assert observed["idempotency_key"] == "feishu-representative:job-1"
