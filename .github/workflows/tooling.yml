@@ -138,6 +138,25 @@ jobs:
             echo "::warning::Tooling evidence resolver failed; falling back to real Tooling validation (exit=${resolver_status})"
           fi
 
+  linux-tooling:
+    name: Linux Local Development Tooling
+    needs: main-evidence
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      (github.event_name != 'push' || needs.main-evidence.outputs.linux_reusable != 'true')
+    runs-on: ubuntu-24.04
+    env:
+      AIMA_DATA_DIR: .runtime/data
+      AIMA_LOG_DIR: .runtime/logs
+      AIMA_SECRET_DIR: .runtime/internal-secrets
+      AIMA_EXTERNAL_SECRET_DIR: .runtime/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
