@@ -57,7 +57,7 @@ def _migrate_multi_to_single(filters: dict[str, Any]) -> dict[str, Any] | None:
 
 def _update_jsonb(bind: Any, table: str, column: str, row_id: Any, value: dict[str, Any]) -> None:
     bind.execute(
-        sa.text(f"UPDATE {table} SET {column} = :snapshot::jsonb WHERE id = :id"),
+        sa.text(f"UPDATE {table} SET {column} = CAST(:snapshot AS jsonb) WHERE id = :id"),
         {"snapshot": json.dumps(value, ensure_ascii=False), "id": row_id},
     )
 
