@@ -3731,6 +3731,105 @@ export const ListVehicleModelsStatus = {
   merged: 'merged',
 } as const;
 
+export type GetWorkbenchMindParams = {
+date_from?: string | null;
+date_to?: string | null;
+/**
+ * @maxItems 5
+ */
+platforms?: PlatformName[];
+/**
+ * @maxItems 100
+ */
+brand_ids?: string[];
+/**
+ * @maxItems 100
+ */
+vehicle_model_ids?: string[];
+/**
+ * @maxItems 50
+ */
+voice_types?: string[];
+/**
+ * @maxItems 50
+ */
+sentiments?: string[];
+/**
+ * @maxItems 100
+ */
+primary_labels?: string[];
+/**
+ * @maxItems 200
+ */
+secondary_labels?: string[];
+};
+
+export type GetWorkbenchStreamParams = {
+date_from?: string | null;
+date_to?: string | null;
+/**
+ * @maxItems 5
+ */
+platforms?: PlatformName[];
+/**
+ * @maxItems 100
+ */
+brand_ids?: string[];
+/**
+ * @maxItems 100
+ */
+vehicle_model_ids?: string[];
+/**
+ * @maxItems 50
+ */
+voice_types?: string[];
+/**
+ * @maxItems 50
+ */
+sentiments?: string[];
+/**
+ * @maxItems 100
+ */
+primary_labels?: string[];
+/**
+ * @maxItems 200
+ */
+secondary_labels?: string[];
+};
+
+export type GetWorkbenchTrendParams = {
+date_from?: string | null;
+date_to?: string | null;
+/**
+ * @maxItems 5
+ */
+platforms?: PlatformName[];
+/**
+ * @maxItems 100
+ */
+brand_ids?: string[];
+/**
+ * @maxItems 100
+ */
+vehicle_model_ids?: string[];
+/**
+ * @maxItems 50
+ */
+voice_types?: string[];
+/**
+ * @maxItems 50
+ */
+sentiments?: string[];
+/**
+ * @maxItems 100
+ */
+primary_labels?: string[];
+/**
+ * @maxItems 200
+ */
+secondary_labels?: string[];
+};
+
 export const getGetFeishuPublicationJobUrl = (jobId: string,) => {
 
 
@@ -3832,104 +3931,6 @@ formData.append(`file`, bodyCreateFeishuRepresentativeSelection.file);
 }
 
 
-export type GetWorkbenchMindParams = {
-date_from?: string | null;
-date_to?: string | null;
-/**
- * @maxItems 5
- */
-platforms?: PlatformName[];
-/**
- * @maxItems 100
- */
-brand_ids?: string[];
-/**
- * @maxItems 100
- */
-vehicle_model_ids?: string[];
-/**
- * @maxItems 50
- */
-voice_types?: string[];
-/**
- * @maxItems 50
- */
-sentiments?: string[];
-/**
- * @maxItems 100
- */
-primary_labels?: string[];
-/**
- * @maxItems 200
- */
-secondary_labels?: string[];
-};
-
-export type GetWorkbenchStreamParams = {
-date_from?: string | null;
-date_to?: string | null;
-/**
- * @maxItems 5
- */
-platforms?: PlatformName[];
-/**
- * @maxItems 100
- */
-brand_ids?: string[];
-/**
- * @maxItems 100
- */
-vehicle_model_ids?: string[];
-/**
- * @maxItems 50
- */
-voice_types?: string[];
-/**
- * @maxItems 50
- */
-sentiments?: string[];
-/**
- * @maxItems 100
- */
-primary_labels?: string[];
-/**
- * @maxItems 200
- */
-secondary_labels?: string[];
-};
-
-export type GetWorkbenchTrendParams = {
-date_from?: string | null;
-date_to?: string | null;
-/**
- * @maxItems 5
- */
-platforms?: PlatformName[];
-/**
- * @maxItems 100
- */
-brand_ids?: string[];
-/**
- * @maxItems 100
- */
-vehicle_model_ids?: string[];
-/**
- * @maxItems 50
- */
-voice_types?: string[];
-/**
- * @maxItems 50
- */
-sentiments?: string[];
-/**
- * @maxItems 100
- */
-primary_labels?: string[];
-/**
- * @maxItems 200
- */
-secondary_labels?: string[];
-};
 
 export const getUpdateAnalysisSchemeDraftUrl = (versionId: string,) => {
 
