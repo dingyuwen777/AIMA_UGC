@@ -228,9 +228,7 @@ def _publication_generated_at(
     try:
         generated_at = datetime.fromisoformat(value)
     except ValueError as exc:
-        raise FeishuReportPublicationSnapshotMismatch(
-            "报告生成时间 checkpoint 数据损坏"
-        ) from exc
+        raise FeishuReportPublicationSnapshotMismatch("报告生成时间 checkpoint 数据损坏") from exc
     if generated_at.utcoffset() is None:
         raise FeishuReportPublicationSnapshotMismatch("报告生成时间 checkpoint 缺少时区")
     return generated_at
