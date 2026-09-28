@@ -8,8 +8,8 @@ from aima_ugc.adapters.providers.imports_test import test as imports_test
 from aima_ugc.modules.analysis import label_unified_content_jsonl
 
 
-def test_imports_test_defaults_to_250_single_item_concurrency() -> None:
-    assert imports_test.LLM_CONCURRENCY == 250
+def test_imports_test_limits_single_item_concurrency_for_provider_burst_control() -> None:
+    assert imports_test.LLM_CONCURRENCY == 80
     assert imports_test.MAX_TRANSPORT_RETRIES == 4
     assert not hasattr(imports_test, "LLM_BATCH_SIZE")
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from aima_ugc.database_schema import metadata
 
 ALLOWED_OWNERS = {
+    "administration",
     "analysis",
     "collection",
     "content",
