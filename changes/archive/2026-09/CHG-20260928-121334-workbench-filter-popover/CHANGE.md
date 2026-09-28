@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-121334-workbench-filter-popover
 title: 修复工作台声音流筛选浮层错位与自动滚动误关闭
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/642-workbench-filter-popover
 created: 2026-09-28
