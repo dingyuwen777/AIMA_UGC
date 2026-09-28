@@ -163,3 +163,84 @@ def test_renewed_claim_blocks_takeover_after_original_lease_window(
                 )
         session_a.close()
         session_b.close()
+
+
+def test_batch_claim_fences_each_mirror_when_one_lease_expires(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """批量认领中的单条 Lease 过期时，接管者只能写回该条记录。"""
+
+    document_tokens = (f"batch-claim-{uuid4()}", f"batch-claim-{uuid4()}")
+    session_a = database_runtime.new_session()
+    session_b = database_runtime.new_session()
+    mirror_ids = []
+    try:
+        repository_a = PostgresFeishuBitableMirrorRepository(session_a)
+        with session_a.begin():
+            for document_token in document_tokens:
+                mirror_ids.append(
+                    repository_a.register(
+                        publication_job_id=None,
+                        document_token=document_token,
+                        document_url=f"https://feishu.cn/doc/{document_token}",
+                        external_app_token=f"app-{uuid4()}",
+                        external_table_id="tbl-external",
+                        embedded_app_token=f"app-{uuid4()}",
+                        embedded_table_id="tbl-embedded",
+                    ).id
+                )
+
+        with session_a.begin():
+            claimed = repository_a.claim_due(
+                worker_id="batch-worker-a",
+                limit=2,
+                lease_seconds=30,
+            )
+        assert len(claimed) == 2
+        old_tokens = {mirror.id: mirror.claim_token for mirror in claimed}
+        assert all(token is not None for token in old_tokens.values())
+
+        expired_id = claimed[0].id
+        with session_b.begin():
+            session_b.execute(
+                text(
+                    "UPDATE feishu_bitable_mirrors "
+                    "SET claim_expires_at = clock_timestamp() - interval '1 second' "
+                    "WHERE id = :mirror_id"
+                ),
+                {"mirror_id": expired_id},
+            )
+        with session_b.begin():
+            takeover = PostgresFeishuBitableMirrorRepository(session_b).claim_due(
+                worker_id="batch-worker-b",
+                lease_seconds=30,
+            )
+        assert len(takeover) == 1
+        assert takeover[0].id == expired_id
+        assert takeover[0].claim_token != old_tokens[expired_id]
+
+        with session_a.begin():
+            with pytest.raises(LeaseLostError):
+                repository_a.mark_succeeded(
+                    expired_id,
+                    known_key_hashes=(),
+                    synced_at=takeover[0].next_sync_at,
+                    next_sync_at=takeover[0].next_sync_at,
+                    claim_token=old_tokens[expired_id] or "",
+                )
+            repository_a.mark_succeeded(
+                claimed[1].id,
+                known_key_hashes=(),
+                synced_at=claimed[1].next_sync_at,
+                next_sync_at=claimed[1].next_sync_at,
+                claim_token=old_tokens[claimed[1].id] or "",
+            )
+    finally:
+        with session_b.begin():
+            for mirror_id in mirror_ids:
+                session_b.execute(
+                    text("DELETE FROM feishu_bitable_mirrors WHERE id = :mirror_id"),
+                    {"mirror_id": mirror_id},
+                )
+        session_a.close()
+        session_b.close()

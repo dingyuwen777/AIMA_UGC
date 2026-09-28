@@ -145,126 +145,153 @@ class PostgresFeishuBitableMirrorService:
         self._worker_id = f"feishu-mirror-{uuid4().hex}"
 
     def run_once(self, *, limit: int = 20) -> FeishuBitableMirrorTickResult:
-        session = self._runtime.database.new_session()
-        try:
-            with session.begin():
-                mirrors = PostgresFeishuBitableMirrorRepository(session).claim_due(
-                    worker_id=self._worker_id,
-                    limit=limit,
-                    lease_seconds=_MIRROR_LEASE_SECONDS,
-                )
-        finally:
-            session.close()
-        if not mirrors:
-            return FeishuBitableMirrorTickResult(0, 0, 0, 0)
+        """逐条认领并执行，避免批量认领后在本地队列中耗尽 Lease。"""
 
-        config = FeishuConfig.from_settings(self._runtime.settings)
-        app_secret = read_secret_file(
-            self._runtime.settings.external_secret_root / config.app_secret_file,
-            root=self._runtime.settings.external_secret_root,
-        ).get_secret_value()
+        if limit < 1:
+            raise ValueError("镜像扫描数量必须大于 0")
+
+        config: FeishuConfig | None = None
+        app_secret: str | None = None
+        scanned = 0
         succeeded = 0
         failed = 0
         changed = 0
-        for mirror in mirrors:
-            heartbeat = _MirrorLeaseHeartbeat(
-                self._runtime,
-                mirror,
-                lease_seconds=_MIRROR_LEASE_SECONDS,
-                interval_seconds=_MIRROR_LEASE_HEARTBEAT_SECONDS,
-            )
-            heartbeat.start()
+        while scanned < limit:
+            session = self._runtime.database.new_session()
             try:
-                try:
-                    heartbeat.guard()
-                    with FeishuBitableClient(
-                        config=config,
-                        app_secret=app_secret,
-                        upsert_key_fields=("声音内容/连接",),
-                        before_request=heartbeat.guard,
-                    ) as client:
-                        last_synced_at_ms = (
-                            0
-                            if mirror.last_synced_at is None
-                            else int(mirror.last_synced_at.timestamp() * 1000)
-                        )
-                        result = client.mirror_records_bidirectionally(
-                            external_app_token=mirror.external_app_token,
-                            external_table_id=mirror.external_table_id,
-                            embedded_app_token=mirror.embedded_app_token,
-                            embedded_table_id=mirror.embedded_table_id,
-                            known_key_hashes=mirror.known_key_hashes,
-                            last_synced_at_ms=last_synced_at_ms,
-                        )
-                    heartbeat.guard()
-                except LeaseLostError:
-                    failed += 1
-                    log_event(
-                        logger,
-                        logging.WARNING,
-                        "feishu.bitable_mirror.claim_lost",
-                        "镜像同步 Lease 已丢失，已停止后续飞书写入。",
-                        mirror_id=str(mirror.id),
-                    )
-                    continue
-                except (FeishuAPIError, FeishuSyncError, OSError, ValueError) as exc:
-                    failed += 1
-                    try:
-                        self._mark_failed(mirror, type(exc).__name__)
-                    except LeaseLostError:
-                        log_event(
-                            logger,
-                            logging.WARNING,
-                            "feishu.bitable_mirror.claim_lost",
-                            "镜像失败结果未写回，因为同步 Lease 已被其他 Worker 接管。",
-                            mirror_id=str(mirror.id),
-                        )
-                    log_event(
-                        logger,
-                        logging.ERROR,
-                        "feishu.bitable_mirror.failed",
-                        "飞书双向镜像同步失败，将自动重试。",
-                        mirror_id=str(mirror.id),
-                        document_token_suffix=mirror.document_token[-6:],
-                        error_type=type(exc).__name__,
-                    )
-                    continue
-
-                mutation_count = (
-                    result.external_created_count
-                    + result.external_updated_count
-                    + result.external_deleted_count
-                    + result.embedded_created_count
-                    + result.embedded_updated_count
-                    + result.embedded_deleted_count
-                )
-                try:
-                    self._mark_succeeded(mirror, result.known_key_hashes)
-                except LeaseLostError:
-                    log_event(
-                        logger,
-                        logging.WARNING,
-                        "feishu.bitable_mirror.claim_lost",
-                        "镜像成功结果未写回，因为同步 Lease 已被其他 Worker 接管。",
-                        mirror_id=str(mirror.id),
-                    )
-                    continue
-                changed += mutation_count
-                succeeded += 1
-                if mutation_count:
-                    log_event(
-                        logger,
-                        logging.INFO,
-                        "feishu.bitable_mirror.synchronized",
-                        "飞书独立表与报告内嵌表已完成双向同步。",
-                        mirror_id=str(mirror.id),
-                        mutation_count=mutation_count,
-                        verified_count=result.verified_count,
-                        excluded_fields=list(result.excluded_fields),
+                with session.begin():
+                    mirrors = PostgresFeishuBitableMirrorRepository(session).claim_due(
+                        worker_id=self._worker_id,
+                        limit=1,
+                        lease_seconds=_MIRROR_LEASE_SECONDS,
                     )
             finally:
-                heartbeat.stop()
-        return FeishuBitableMirrorTickResult(len(mirrors), succeeded, failed, changed)
+                session.close()
+            if not mirrors:
+                break
+
+            mirror = mirrors[0]
+            scanned += 1
+            if config is None or app_secret is None:
+                config = FeishuConfig.from_settings(self._runtime.settings)
+                app_secret = read_secret_file(
+                    self._runtime.settings.external_secret_root / config.app_secret_file,
+                    root=self._runtime.settings.external_secret_root,
+                ).get_secret_value()
+            mirror_succeeded, mirror_failed, mirror_changed = self._sync_mirror(
+                mirror,
+                config=config,
+                app_secret=app_secret,
+            )
+            succeeded += mirror_succeeded
+            failed += mirror_failed
+            changed += mirror_changed
+
+        return FeishuBitableMirrorTickResult(scanned, succeeded, failed, changed)
+
+    def _sync_mirror(
+        self,
+        mirror: FeishuBitableMirrorRecord,
+        *,
+        config: FeishuConfig,
+        app_secret: str,
+    ) -> tuple[int, int, int]:
+        """在单条 Mirror 的 Lease 生命周期内完成同步。"""
+
+        heartbeat = _MirrorLeaseHeartbeat(
+            self._runtime,
+            mirror,
+            lease_seconds=_MIRROR_LEASE_SECONDS,
+            interval_seconds=_MIRROR_LEASE_HEARTBEAT_SECONDS,
+        )
+        heartbeat.start()
+        try:
+            try:
+                heartbeat.guard()
+                with FeishuBitableClient(
+                    config=config,
+                    app_secret=app_secret,
+                    upsert_key_fields=("声音内容/连接",),
+                    before_request=heartbeat.guard,
+                ) as client:
+                    last_synced_at_ms = (
+                        0
+                        if mirror.last_synced_at is None
+                        else int(mirror.last_synced_at.timestamp() * 1000)
+                    )
+                    result = client.mirror_records_bidirectionally(
+                        external_app_token=mirror.external_app_token,
+                        external_table_id=mirror.external_table_id,
+                        embedded_app_token=mirror.embedded_app_token,
+                        embedded_table_id=mirror.embedded_table_id,
+                        known_key_hashes=mirror.known_key_hashes,
+                        last_synced_at_ms=last_synced_at_ms,
+                    )
+                heartbeat.guard()
+            except LeaseLostError:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "feishu.bitable_mirror.claim_lost",
+                    "镜像同步 Lease 已丢失，已停止后续飞书写入。",
+                    mirror_id=str(mirror.id),
+                )
+                return 0, 1, 0
+            except (FeishuAPIError, FeishuSyncError, OSError, ValueError) as exc:
+                try:
+                    self._mark_failed(mirror, type(exc).__name__)
+                except LeaseLostError:
+                    log_event(
+                        logger,
+                        logging.WARNING,
+                        "feishu.bitable_mirror.claim_lost",
+                        "镜像失败结果未写回，因为同步 Lease 已被其他 Worker 接管。",
+                        mirror_id=str(mirror.id),
+                    )
+                log_event(
+                    logger,
+                    logging.ERROR,
+                    "feishu.bitable_mirror.failed",
+                    "飞书双向镜像同步失败，将自动重试。",
+                    mirror_id=str(mirror.id),
+                    document_token_suffix=mirror.document_token[-6:],
+                    error_type=type(exc).__name__,
+                )
+                return 0, 1, 0
+
+            mutation_count = (
+                result.external_created_count
+                + result.external_updated_count
+                + result.external_deleted_count
+                + result.embedded_created_count
+                + result.embedded_updated_count
+                + result.embedded_deleted_count
+            )
+            try:
+                self._mark_succeeded(mirror, result.known_key_hashes)
+            except LeaseLostError:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "feishu.bitable_mirror.claim_lost",
+                    "镜像成功结果未写回，因为同步 Lease 已被其他 Worker 接管。",
+                    mirror_id=str(mirror.id),
+                )
+                return 0, 1, 0
+            if mutation_count:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "feishu.bitable_mirror.synchronized",
+                    "飞书独立表与报告内嵌表已完成双向同步。",
+                    mirror_id=str(mirror.id),
+                    mutation_count=mutation_count,
+                    verified_count=result.verified_count,
+                    excluded_fields=list(result.excluded_fields),
+                )
+            return 1, 0, mutation_count
+        finally:
+            heartbeat.stop()
 
     def _mark_succeeded(
         self,
