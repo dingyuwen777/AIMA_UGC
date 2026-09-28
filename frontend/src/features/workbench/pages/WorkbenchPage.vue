@@ -143,19 +143,25 @@ async function openVoicePlaza(extra: { primaryLabel?: string; day?: string; cont
   await router.push({ path: '/voice-plaza', query: voicePlazaQuery(extra) })
 }
 
-/** Pointer Resize 只改本地草稿；列宽量化为 6/12，高度量化到 row_units。 */
+/** Pointer Resize 只改当前模块草稿；宽高分别按 Contract 的单列/单行量化。 */
 function startResize(event: PointerEvent, module: WorkbenchLayoutModule): void {
   if (!store.editing) return
   event.preventDefault()
+  event.stopPropagation()
   resizeCleanup?.()
   const startX = event.clientX
   const startY = event.clientY
   const initialSpan = module.column_span
   const initialRows = module.row_units
+  const grid = (event.currentTarget as HTMLElement | null)?.closest<HTMLElement>('.workbench-grid')
+  const columnGap = grid ? Number.parseFloat(getComputedStyle(grid).columnGap) || 0 : 0
+  const columnStep = grid
+    ? (grid.clientWidth - columnGap * 11) / 12 + columnGap
+    : 80
 
   /** Pointer 移动期间实时更新草稿几何，后端不会收到中间状态。 */
   const move = (moveEvent: PointerEvent): void => {
-    const span = initialSpan + (moveEvent.clientX - startX) / 80
+    const span = initialSpan + (moveEvent.clientX - startX) / columnStep
     const rows = initialRows + (moveEvent.clientY - startY) / 8
     store.resizeModule(module.module_id, span, rows)
   }
@@ -300,9 +306,6 @@ onBeforeUnmount(() => {
           class="module-shell"
           :class="{ 'module-shell--editing': store.editing }"
           :style="moduleStyle(module)"
-          :draggable="store.editing"
-          @dragstart="dragStart(module.module_id)"
-          @dragend="draggedModule = null"
           @dragover.prevent
           @drop.prevent="dropOn(module.module_id)"
         >
@@ -313,6 +316,9 @@ onBeforeUnmount(() => {
             <span
               class="drag-handle"
               title="拖动调整顺序"
+              draggable="true"
+              @dragstart.stop="dragStart(module.module_id)"
+              @dragend.stop="draggedModule = null"
             >⠿</span>
             <button
               type="button"
@@ -334,7 +340,7 @@ onBeforeUnmount(() => {
             @update:filters="updateFilters"
             @update:date-filters="updateDateFilters"
             @reset="resetFilters"
-            @retry="store.refreshData()"
+            @retry="store.refreshModule('stream')"
             @open-all="openVoicePlaza()"
             @open-content="openVoicePlaza({ contentId: $event })"
           />
@@ -347,7 +353,7 @@ onBeforeUnmount(() => {
             :error="store.moduleErrors.mind"
             @select="store.selectMind"
             @metric="store.setMindMetric"
-            @retry="store.refreshData()"
+            @retry="store.refreshModule('mind')"
             @open-voice="openVoicePlaza({ primaryLabel: $event })"
           />
           <UgcTrendCard
@@ -355,7 +361,7 @@ onBeforeUnmount(() => {
             :trend="store.trend"
             :loading="store.moduleLoading.trend"
             :error="store.moduleErrors.trend"
-            @retry="store.refreshData()"
+            @retry="store.refreshModule('trend')"
             @open-day="openVoicePlaza({ day: $event })"
           />
 
@@ -365,6 +371,8 @@ onBeforeUnmount(() => {
             type="button"
             aria-label="调整模块尺寸"
             title="拖动调整模块尺寸"
+            :draggable="false"
+            @dragstart.stop.prevent
             @pointerdown="startResize($event, module)"
           >
             ◢
@@ -390,9 +398,8 @@ onBeforeUnmount(() => {
 .hidden-modules { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .hidden-modules button { padding: 3px 7px; border: 1px solid var(--aima-border-strong); border-radius: 5px; color: var(--aima-primary); background: #fff; cursor: pointer; font-size: 10px; }
 .workbench-grid { display: grid; min-width: 0; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; padding-bottom: 20px; align-items: stretch; }
-.module-shell { position: relative; min-width: 0; box-sizing: border-box; }
-.module-shell--editing { padding: 5px; border: 1px dashed var(--aima-primary); border-radius: 10px; background: rgb(255 238 246 / 35%); cursor: grab; }
-.module-shell--editing:active { cursor: grabbing; }
+.module-shell { position: relative; min-width: 0; box-sizing: border-box; container-type: inline-size; }
+.module-shell--editing { padding: 5px; border: 1px dashed var(--aima-primary); border-radius: 10px; background: rgb(255 238 246 / 35%); }
 .module-edit-controls { position: absolute; z-index: 30; top: 10px; right: 10px; display: flex; align-items: center; gap: 5px; padding: 3px 5px; border: 1px solid var(--aima-border); border-radius: 6px; background: rgb(255 255 255 / 94%); box-shadow: 0 2px 8px rgb(23 35 61 / 10%); }
 .drag-handle { color: var(--aima-primary); cursor: grab; font-size: 14px; line-height: 18px; }
 .module-edit-controls button { border: 0; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 10px; }

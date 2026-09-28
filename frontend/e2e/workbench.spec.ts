@@ -343,6 +343,13 @@ test('声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开�
   await page.keyboard.press('Escape')
   await expect(trigger).toHaveAttribute('aria-expanded', 'false')
   await expect(panel).toBeHidden()
+
+  await trigger.click()
+  await page.getByRole('heading', { name: '工作台', exact: true }).click()
+  await expect(panel).toBeHidden()
+  await trigger.click()
+  await page.evaluate(() => window.dispatchEvent(new Event('scroll')))
+  await expect(panel).toBeHidden()
 })
 
 test('声音流筛选下拉可操作，选择后同口径刷新三个真实模块请求', async ({ page }) => {
@@ -646,11 +653,12 @@ test('趋势模块横向按单列缩放，窄模块内部自适应且不重叠',
   await page.getByRole('button', { name: '+ 编辑工作台' }).click()
   const trendShell = page.locator('.module-shell').filter({ has: page.getByRole('heading', { name: 'UGC 声量与情感趋势' }) })
   const handle = trendShell.getByRole('button', { name: '调整模块尺寸' })
+  await handle.scrollIntoViewIfNeeded()
   const handleBox = await handle.boundingBox()
   expect(handleBox).not.toBeNull()
   await page.mouse.move((handleBox?.x ?? 0) + 12, (handleBox?.y ?? 0) + 12)
   await page.mouse.down()
-  await page.mouse.move((handleBox?.x ?? 0) - 148, (handleBox?.y ?? 0) + 12, { steps: 8 })
+  await page.mouse.move((handleBox?.x ?? 0) - 320, (handleBox?.y ?? 0) + 12, { steps: 12 })
   await page.mouse.up()
 
   const [mainBox, asideBox] = await Promise.all([
@@ -669,6 +677,45 @@ test('趋势模块横向按单列缩放，窄模块内部自适应且不重叠',
   expect(payload.modules.find((item) => item.module_id === 'ugc-trend')?.column_span).toBe(4)
   expect(payload.modules.find((item) => item.module_id === 'sound-stream')?.column_span).toBe(6)
   expect(payload.modules.find((item) => item.module_id === 'brand-mind')?.column_span).toBe(6)
+})
+
+test('三个模块在各自最窄宽度下独立重排且不产生横向溢出', async ({ page }) => {
+  await page.unroute('**/api/v1/workbench/layout')
+  await page.route('**/api/v1/workbench/layout', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schema_version: 1,
+        revision: 4,
+        modules: modules.map((item) => ({ ...item, column_span: 4 })),
+        updated_at: '2026-09-27T08:12:00+08:00',
+      }),
+    })
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+
+  const shells = page.locator('.module-shell')
+  await expect(shells).toHaveCount(3)
+  for (let index = 0; index < 3; index += 1) {
+    const metrics = await shells.nth(index).evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }))
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
+  }
+
+  const [trendMain, trendAside, mindRanking, mindDetail, streamMain, streamTags] = await Promise.all([
+    page.locator('.trend-card .trend-main').boundingBox(),
+    page.locator('.trend-card aside').boundingBox(),
+    page.locator('.mind-card .ranking').boundingBox(),
+    page.locator('.mind-card .mind-detail').boundingBox(),
+    page.locator('.stream-card .stream-main').first().boundingBox(),
+    page.locator('.stream-card .stream-tags').first().boundingBox(),
+  ])
+  expect(trendAside?.y ?? 0).toBeGreaterThanOrEqual((trendMain?.y ?? 0) + (trendMain?.height ?? 0) - 1)
+  expect(mindDetail?.y ?? 0).toBeGreaterThanOrEqual((mindRanking?.y ?? 0) + (mindRanking?.height ?? 0) - 1)
+  expect(streamTags?.y ?? 0).toBeGreaterThanOrEqual(streamMain?.y ?? 0)
 })
 
 test('品牌心智深链把当前日期和一级标签恢复到声音广场', async ({ page }) => {
