@@ -1069,3 +1069,24 @@ def test_report_image_upload_ambiguous_failure_is_not_retryable() -> None:
 
     assert captured.value.retriable is False
     assert upload_attempts == 1
+
+
+def test_report_publication_generated_at_is_stable_across_retry() -> None:
+    """真实发布的展示时间必须跨 Attempt 稳定，避免仅因时钟变化触发 digest 漂移。"""
+
+    values: dict[str, object] = {}
+
+    class _Checkpoint:
+        def get(self, key: str) -> object | None:
+            return values.get(key)
+
+        def set(self, key: str, value: object | None) -> None:
+            values[key] = value
+
+    checkpoint = _Checkpoint()
+    first = publication_module._publication_generated_at(checkpoint)  # noqa: SLF001
+    second = publication_module._publication_generated_at(checkpoint)  # noqa: SLF001
+
+    assert first is not None
+    assert second == first
+    assert values["prepared_generated_at"] == first.isoformat()
