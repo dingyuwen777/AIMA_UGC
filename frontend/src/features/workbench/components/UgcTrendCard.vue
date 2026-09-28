@@ -16,6 +16,8 @@ const emit = defineEmits<{
 }>()
 
 const chartElement = ref<HTMLDivElement | null>(null)
+const preparing = computed(() => props.trend?.snapshot_status === 'preparing'
+  || (props.trend?.snapshot_status === 'failed' && !props.trend.computed_at))
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
 
@@ -151,11 +153,18 @@ onBeforeUnmount(() => {
     </header>
 
     <p
-      v-if="loading && trend"
+      v-if="trend?.snapshot_status === 'refreshing' || (loading && !preparing)"
       class="refresh-note"
       role="status"
     >
-      正在按当前筛选更新，以下为上次结果…
+      后台正在更新当前筛选，以下为最近成功结果…
+    </p>
+    <p
+      v-else-if="trend?.snapshot_status === 'failed' && trend.computed_at"
+      class="refresh-note"
+      role="status"
+    >
+      当前继续显示最近成功结果，后台会自动完成后续更新。
     </p>
 
     <div
@@ -174,10 +183,17 @@ onBeforeUnmount(() => {
       </button>
     </div>
     <div
-      v-if="loading && !trend"
+      v-if="preparing"
+      class="module-state"
+      role="status"
+    >
+      首次趋势聚合正在后台准备，完成后会自动显示…
+    </div>
+    <div
+      v-else-if="loading && !trend"
       class="module-state"
     >
-      正在计算声量与情感趋势…
+      正在读取声量与情感趋势…
     </div>
     <div
       v-else-if="!trend && !error"
@@ -193,7 +209,7 @@ onBeforeUnmount(() => {
       <div class="trend-main">
         <div class="kpis">
           <div><span>总声量</span><strong>{{ trend.total_count.toLocaleString('zh-CN') }}</strong></div>
-          <div><span>日均声量</span><strong>{{ trend.daily_average.toLocaleString('zh-CN') }}</strong></div>
+          <div><span>日均声量</span><strong>{{ Math.round(trend.daily_average).toLocaleString('zh-CN') }}</strong></div>
           <div><span>单日峰值</span><strong>{{ trend.peak_count.toLocaleString('zh-CN') }}</strong></div>
           <div class="emphasis">
             <span>较上期</span><strong>{{ changeRate(trend.period_change_rate) }}</strong>

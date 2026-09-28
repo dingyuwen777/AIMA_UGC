@@ -18,6 +18,7 @@ from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.voice_plaza_projection_worker import (
     ensure_voice_plaza_projection_backfill_job,
 )
+from aima_ugc.bootstrap.workbench_snapshot_worker import ensure_workbench_default_snapshot_jobs
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_reaper,
@@ -145,6 +146,7 @@ def _run_single_worker(*, foreground_only: bool = False) -> None:
     runtime = create_worker_runtime(log_instance=uuid4())
     registry = create_collection_job_registry(runtime=runtime)
     projection_job = ensure_voice_plaza_projection_backfill_job(runtime)
+    workbench_snapshot_jobs = ensure_workbench_default_snapshot_jobs(runtime)
     resources = detect_resources()
     maximum_processes = worker_process_limit(resources)
     supported_job_types = (
@@ -191,6 +193,7 @@ def _run_single_worker(*, foreground_only: bool = False) -> None:
         voice_plaza_projection_job_id=(
             str(projection_job.id) if projection_job is not None else None
         ),
+        workbench_snapshot_job_ids=tuple(str(job.id) for job in workbench_snapshot_jobs),
     )
     log_event(
         runtime.logger,

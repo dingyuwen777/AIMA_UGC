@@ -79,7 +79,7 @@ async function refreshPeriodically(): Promise<void> {
     || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend) return
   periodicRefreshPending = true
   try {
-    await store.refreshData(true)
+    await store.refreshAggregates()
   } finally {
     periodicRefreshPending = false
   }
@@ -341,6 +341,7 @@ onBeforeUnmount(() => {
             @update:date-filters="updateDateFilters"
             @reset="resetFilters"
             @retry="store.refreshModule('stream')"
+            @advance="store.advanceStream()"
             @open-all="openVoicePlaza()"
             @open-content="openVoicePlaza({ contentId: $event })"
           />

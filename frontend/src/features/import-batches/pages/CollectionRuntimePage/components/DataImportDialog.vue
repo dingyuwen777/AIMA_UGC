@@ -15,6 +15,7 @@ import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaModalContainer from '../../../../../shared/ui/AimaModalContainer.vue'
+import { useTransientNotice } from '../../../../../shared/ui/useTransientNotice'
 import { formatDateTime } from '../../../format'
 import {
   type DataImportLocalFileSelection,
@@ -36,7 +37,8 @@ const selectedBrandIds = ref<string[]>([])
 const selectedLocalFiles = ref<DataImportLocalFileSelection[]>([])
 const selectedPaths = ref<string[]>([])
 const validationError = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const { message: notice, show: showNotice, clear: clearNotice } = useTransientNotice()
+const persistentNotice = ref<string | null>(null)
 const revocationReason = ref('')
 const dialogBody = ref<HTMLElement | null>(null)
 const revocationPanel = ref<HTMLElement | null>(null)
@@ -184,17 +186,18 @@ async function pollCampaign(): Promise<void> {
   pollInFlight = true
   try {
     await store.refreshHistoricalCampaignLive(campaign.id)
+    persistentNotice.value = null
     if (store.selectedHistoricalCampaign?.status === 'revoking') {
       await store.previewHistoricalRevocation()
     }
     if (!activeStatuses.includes(store.selectedHistoricalCampaign?.status ?? '')) {
       await store.refreshHistoricalCampaign(campaign.id)
       if (store.historicalRevocationPreview?.status === 'succeeded') {
-        notice.value = '撤销完成。'
+        showNotice('撤销完成。')
       }
     }
   } catch {
-    notice.value = '导入任务状态刷新失败，页面会继续重试。'
+    persistentNotice.value = '导入任务状态刷新失败，页面会继续重试。'
   } finally {
     pollInFlight = false
   }
@@ -225,7 +228,8 @@ watch(
     confirmedRevocationPreview.value = null
     recursive.value = false
     validationError.value = null
-    notice.value = null
+    clearNotice()
+    persistentNotice.value = null
   },
 )
 
@@ -294,7 +298,7 @@ function selectLocalFiles(event: Event): void {
   selectedLocalFiles.value = accepted.sort((left, right) =>
     left.relativePath.localeCompare(right.relativePath),
   )
-  if (ignored > 0) notice.value = `已忽略 ${ignored} 个非 .xlsx 文件。`
+  if (ignored > 0) showNotice(`已忽略 ${ignored} 个非 .xlsx 文件。`)
 }
 
 function parentPath(): string {
@@ -318,7 +322,7 @@ async function createCampaign(): Promise<void> {
       ingestionPolicy.value,
       brandScope.value === 'selected' ? selectedBrandIds.value : [],
     )
-    if (campaign) notice.value = '文件上传完成，服务器正在准备并预检数据。'
+    if (campaign) showNotice('文件上传完成，服务器正在准备并预检数据。')
     return
   }
   const created = await store.submitHistoricalCampaign({
@@ -329,27 +333,27 @@ async function createCampaign(): Promise<void> {
     profile: 'aima-monitoring-excel.v1',
     ingestion_policy: ingestionPolicy.value,
   })
-  if (created) notice.value = '导入任务已创建，服务器正在准备并预检数据。'
+  if (created) showNotice('导入任务已创建，服务器正在准备并预检数据。')
 }
 
 async function startCampaign(): Promise<void> {
   if (!store.selectedHistoricalCampaign?.can_start) return
-  if (await store.actOnHistoricalCampaign('start')) notice.value = '导入任务已进入处理队列。'
+  if (await store.actOnHistoricalCampaign('start')) showNotice('导入任务已进入处理队列。')
 }
 
 async function cancelCampaign(): Promise<void> {
   if (!await store.actOnHistoricalCampaign('cancel')) return
-  notice.value = '已请求取消导入任务。'
+  showNotice('已请求取消导入任务。')
   await pollCampaign()
 }
 
 async function retryCampaign(): Promise<void> {
-  if (await store.actOnHistoricalCampaign('retry')) notice.value = '失败数据已重新进入处理队列。'
+  if (await store.actOnHistoricalCampaign('retry')) showNotice('失败数据已重新进入处理队列。')
 }
 
 async function previewRevocation(): Promise<void> {
   const preview = await store.previewHistoricalRevocation()
-  if (preview?.already_revoked) notice.value = '这次导入已经撤销，无需重复操作。'
+  if (preview?.already_revoked) showNotice('这次导入已经撤销，无需重复操作。')
   if (preview) {
     await nextTick()
     revocationPanel.value?.scrollIntoView({ block: 'start' })
@@ -375,9 +379,9 @@ async function revokeImport(): Promise<void> {
   }
   const result = await store.revokeHistoricalImport(revocationReason.value)
   if (!result) return
-  notice.value = result.status === 'succeeded'
+  showNotice(result.status === 'succeeded'
     ? '这次导入此前已经撤销。'
-    : '撤销请求已提交，服务器正在分批处理。'
+    : '撤销请求已提交，服务器正在分批处理。')
 }
 
 function viewCampaignContents(): void {
@@ -874,6 +878,13 @@ function viewCampaignContents(): void {
         role="status"
       >
         {{ notice }}
+      </AimaFeedbackBanner>
+      <AimaFeedbackBanner
+        v-if="persistentNotice"
+        tone="warning"
+        role="alert"
+      >
+        {{ persistentNotice }}
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="validationError"

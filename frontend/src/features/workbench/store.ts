@@ -16,7 +16,8 @@ import type {
   WorkbenchStreamResponse,
   WorkbenchTrendResponse,
 } from '../../generated/api/client'
-import { apiErrorMessage } from '../../shared/api/http'
+import { AimaApiError, apiErrorMessage } from '../../shared/api/http'
+import { useTransientNotice } from '../../shared/ui/useTransientNotice'
 import {
   fetchActiveBrands,
   fetchActiveVehicleModels,
@@ -148,7 +149,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const referenceError = ref<string | null>(null)
   const globalError = ref<string | null>(null)
   const layoutError = ref<string | null>(null)
-  const notice = ref<string | null>(null)
+  const { message: notice, show: showNotice, clear: clearNotice } = useTransientNotice()
   const selectedMind = ref<string | null>(null)
   const mindMetric = ref<WorkbenchMindMetric>('share')
   let dataRevision = 0
@@ -344,7 +345,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   }
 
   /** 只重试指定模块；仅遇到 Scheme 身份切换时升级为三个模块重新对齐。 */
-  async function refreshModule(key: WorkbenchModuleKey): Promise<void> {
+  async function refreshModule(
+    key: WorkbenchModuleKey,
+    suppressRetainedDataError = false,
+  ): Promise<void> {
     const dataGeneration = dataRevision
     const requestRevision = ++moduleRequestRevision[key]
     moduleLoading.value[key] = true
@@ -384,13 +388,73 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       await alignTaxonomyWithData()
     } catch (error) {
       if (dataGeneration === dataRevision && requestRevision === moduleRequestRevision[key]) {
-        moduleErrors.value[key] = apiErrorMessage(error)
+        const retainedData = key === 'stream'
+          ? stream.value !== null
+          : key === 'mind'
+            ? mind.value !== null
+            : trend.value !== null
+        if (!suppressRetainedDataError || !retainedData) {
+          moduleErrors.value[key] = apiErrorMessage(error)
+        }
       }
     } finally {
       if (dataGeneration === dataRevision && requestRevision === moduleRequestRevision[key]) {
         moduleLoading.value[key] = false
       }
     }
+  }
+
+  /** 声音流完成一页滚动后读取下一游标页；末页回到第一页以纳入最新内容。 */
+  async function advanceStream(): Promise<void> {
+    if (moduleLoading.value.stream || !stream.value?.items.length) return
+    const dataGeneration = dataRevision
+    const requestRevision = ++moduleRequestRevision.stream
+    moduleLoading.value.stream = true
+    moduleErrors.value.stream = null
+    try {
+      const cursor = stream.value.has_more ? stream.value.next_cursor : undefined
+      const fetchPage = (pageCursor?: string | null) => fetchWorkbenchStream({
+        ...queryParams(filters.value),
+        limit: 100,
+        cursor: pageCursor || undefined,
+      })
+      let response: WorkbenchStreamResponse
+      try {
+        response = await fetchPage(cursor)
+      } catch (error) {
+        const cursorExpired = Boolean(cursor)
+          && error instanceof AimaApiError
+          && error.errors.some((item) => item.code === 'invalid_content_cursor')
+        if (!cursorExpired) throw error
+        // 用户长时间悬停、切换标签页后旧游标可能超过签名有效期；此时从当前
+        // 筛选的第一页继续，而不是永久重试同一个失效游标。
+        response = await fetchPage()
+      }
+      if (dataGeneration !== dataRevision || requestRevision !== moduleRequestRevision.stream) return
+      const currentIdentity = `${response.analysis_scheme_version_id}:${response.taxonomy_sha256}`
+      const otherIdentity = mind.value
+        ? `${mind.value.analysis_scheme_version_id}:${mind.value.taxonomy_sha256}`
+        : trend.value
+          ? `${trend.value.analysis_scheme_version_id}:${trend.value.taxonomy_sha256}`
+          : null
+      if (otherIdentity && currentIdentity !== otherIdentity) {
+        await refreshData(true)
+        return
+      }
+      stream.value = response
+    } catch {
+      // 自动翻页失败时继续展示当前页，并在下一轮滚动后重试；不把瞬时网络波动
+      // 变成遮挡声音流的持久错误。首次加载仍由 refreshData 暴露真实失败。
+    } finally {
+      if (dataGeneration === dataRevision && requestRevision === moduleRequestRevision.stream) {
+        moduleLoading.value.stream = false
+      }
+    }
+  }
+
+  /** 周期补读只刷新两个聚合模块，避免每 15 秒把全量声音流遍历重置到第一页。 */
+  async function refreshAggregates(): Promise<void> {
+    await Promise.all([refreshModule('mind', true), refreshModule('trend', true)])
   }
 
   /** 页面首次进入时并行准备参考数据和模块数据，首屏不等待非关键目录串行加载。 */
@@ -420,6 +484,12 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       secondaryLabels: [...value.secondaryLabels],
     }
     dataRevision += 1
+    // 旧响应属于另一组筛选，不能在新筛选下冒充“最近成功结果”。服务端若已有
+    // 相同筛选快照会立即返回；冷筛选则返回明确 preparing 状态。
+    stream.value = null
+    mind.value = null
+    trend.value = null
+    selectedMind.value = null
     moduleLoading.value = { stream: true, mind: true, trend: true }
     moduleErrors.value = { stream: null, mind: null, trend: null }
   }
@@ -489,7 +559,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       layout.value = saved
       draftModules.value = cloneModules(saved.modules)
       editing.value = false
-      notice.value = '工作台布局已保存。'
+      showNotice('工作台布局已保存。')
       return true
     } catch (error) {
       layoutError.value = apiErrorMessage(error)
@@ -507,11 +577,6 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   /** 选择一个 active Taxonomy 一级心智作为右侧详情。 */
   function selectMind(primaryLabel: string): void {
     selectedMind.value = primaryLabel
-  }
-
-  /** 清理短时反馈，避免下一次成功操作仍显示旧消息。 */
-  function clearNotice(): void {
-    notice.value = null
   }
 
   return {
@@ -547,6 +612,8 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     refreshTaxonomy,
     refreshData,
     refreshModule,
+    advanceStream,
+    refreshAggregates,
     resetFilters,
     setFilters,
     startEditing,

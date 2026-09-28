@@ -118,12 +118,12 @@ data_changes:
 | 编号 | 要求 | 来源 | 状态 | 计划证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 声音流遍历筛选期内全部数据并持续滚动 | #644 / AC1 | not_satisfied | Contract、PostgreSQL 多页、Store/Browser |
-| R2 | 发帖时间显示时分且平台标记一致 | #644 / AC2 | not_satisfied | 组件 Unit/Browser |
+| R2 | 发帖时间显示时分且平台标记一致 | #644 / AC2 | satisfied | `SoundStreamCard` + Workbench Playwright |
 | R3 | 相同筛选热读不重复扫描明细，聚合持久/幂等/可失效 | #644 / AC3 | not_satisfied | Schema、Job、SQL statement count、benchmark |
 | R4 | 失败保留最近成功结果并暴露真实刷新状态 | #644 / AC4 | not_satisfied | PostgreSQL failure、API、Store/Browser |
-| R5 | active Taxonomy 驱动动态 N 边用户心智图并匹配参考样式 | #644 / AC5 | not_satisfied | Component/Browser/视觉截图 |
-| R6 | UGC 日均声量四舍五入为整数 | #644 / AC6 | not_satisfied | Unit/Browser |
-| R7 | 普通成功/信息提示共享 3 秒生命周期，错误/进度/警告保留 | #644 / AC7 | not_satisfied | composable fake timer + 页面回归 |
+| R5 | active Taxonomy 驱动动态 N 边用户心智图并匹配参考样式 | #644 / AC5 | satisfied | ECharts dynamic indicator + ResizeObserver + 21 项 Workbench Playwright |
+| R6 | UGC 日均声量四舍五入为整数 | #644 / AC6 | satisfied | `Math.round` + Unit/Browser |
+| R7 | 普通成功/信息提示共享 3 秒生命周期，错误/进度/警告保留 | #644 / AC7 | satisfied | `useTransientNotice` 2999/3000ms fake timer + 页面迁移 + Browser |
 | R8 | Contract/Schema/Client/Job/Docs 与依赖边界同步 | #644 / AC8 | not_satisfied | generation/migration/docs/quality gates |
 | R9 | 分层验证、Review、CI、合并和收尾 | #644 / AC9 | explicitly_deferred | Ready 后按正式顺序执行 |
 
@@ -177,7 +177,7 @@ data_changes:
 
 - **游标风险**：签名必须绑定完整筛选和 page limit；使用 `(published_at, content_id)` 严格 keyset 并固定 UTC/北京时间边界。
 - **陈旧风险**：响应显式包含状态、source revision、computed_at；UI 只有 freshness 为 fresh 才称为已同步。
-- **刷新风暴**：Job 使用 `(module, query_hash, requested_revision)` 持久幂等键；同一 revision 只存在一个有效刷新。
+- **刷新风暴**：Job 使用模块、规范化筛选、目标 revision、Scheme 与刷新代次组成的持久幂等身份；行锁把同一 Scheme 的连续写入合并到当前计算后的下一次补算。
 - **Schema/Migration**：只创建可重建表、索引、revision/dirty 机制；不在 Alembic 做大数据回填。
 - **部署**：Migration → Worker → API → Frontend；Worker 首次准备默认 snapshot。
 - **回滚**：回滚应用 revision；新增表保留不影响旧代码/canonical 事实；若必须删除使用后续 migration，不执行生产手工 SQL。
@@ -196,6 +196,15 @@ data_changes:
 
 # 完成证据与状态
 
-- 当前状态：完成事实调查、Issue #644、本 L3 Change 与 Red 证据；尚未开始生产实现。
+- 当前状态：生产实现、本地静态检查、Contract/API/前端 Unit、生产构建和 Workbench Browser 已完成；真实 PostgreSQL Migration/Integration 与 Linux 全套件等待 PR CI。
 - Red（2026-09-28）：`uv run pytest tests/unit/content/test_workbench_contract.py -q` 因缺少 `WorkbenchStreamQuery` 在收集期失败；`npm exec vitest run tests/transient-notice.spec.ts tests/workbench.spec.ts` 因缺少共享 composable 及“用户心智图”断言失败（其余 9 个 Workbench Unit 通过）。
-- Review/CI/merge/main-fresh/archive：待实施与分层验证后执行，不提前声明完成。
+- Green（2026-09-28，当前工作树）：
+  - `uv run ruff format --check backend scripts tests`：807 个文件符合格式；`uv run ruff check backend scripts tests`：通过；`uv run mypy backend/src`：390 个源文件通过。
+  - `uv run pytest tests/unit/content/test_workbench_contract.py tests/unit/database/test_workbench_schema.py tests/unit/workbench/test_snapshot_job.py tests/api/test_workbench.py -q`：14 passed。
+  - `uv run pytest tests/contracts -q`：112 passed；`uv run pytest tests/api -q`：83 passed。
+  - `uv run pytest tests/unit -q`：1358 passed、13 skipped；3 个 `test_prepare_host.py` 在 Windows 因 `os.geteuid/os.chown` 不存在失败，属于既有 Linux 主机权限测试，等待 Linux CI 复核。
+  - `npm exec vitest run`：34 files / 262 tests passed（含失效签名游标自动恢复）；`npm run typecheck`、`npm run lint`、`npm run build`：通过。
+  - `uv run pytest tests/unit/content/test_workbench_contract.py tests/unit/database/test_workbench_schema.py tests/unit/workbench/test_snapshot_job.py tests/api -q`：93 passed。
+  - `npm exec playwright test e2e/workbench.spec.ts`：21 passed，覆盖筛选、签名游标换页、自动滚动/暂停、动态 Radar、自由缩放、模块独立与 15 秒补读。
+  - `scripts/contracts/generate.py --check`、Contract Client 重生成、架构、表 Owner、Docs、Docs Facts、Secret Scan 与 Alembic 单一 head/父链：通过。
+- 待验证：CI PostgreSQL 18.4 `upgrade head/current/check`、内容 Integration（含分页无遗漏、revision、刷新合并、失败保留、旧 Scheme 隔离、热读不执行聚合 SQL）、current-head CI、Review、受保护合并、main-fresh、归档与 Issue Closure。

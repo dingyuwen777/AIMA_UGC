@@ -373,6 +373,7 @@ ingestion.canonical-replay-reversal.v1
 ingestion.canonical-replay-shard.v1
 ingestion.reversal-shard.v1
 content.voice-plaza-projection-backfill.v1
+workbench.snapshot-refresh.v1
 ```
 
 `ingestion.data-import-revocation.v1` 按持久断点分批撤销已完成 Campaign 的来源贡献；运行中根据已提交批次耗时与有效资源调整下一批大小。大任务的父 Job 可通过 `ingestion.reversal-shard.v1` 按互斥 Content 范围分片；Replay Run 可通过 `ingestion.canonical-replay-shard.v1` 在原 Run 内按稳定内容身份分片。两种子 Job 均由通用 Job Runtime 领取，父任务完成前必须结清全部子 Job 与业务分片。

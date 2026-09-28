@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.workbench import WorkbenchLayoutModule, WorkbenchQuery
+from aima_ugc.modules.content.content_cursor import ContentCursorPosition
 from aima_ugc.modules.workbench.tables import workbench_layouts_table
 
 
@@ -33,7 +34,8 @@ class PostgresWorkbenchRepository:
         query: WorkbenchQuery,
         start_at: datetime,
         end_at: datetime,
-        limit: int = 30,
+        limit: int = 100,
+        position: ContentCursorPosition | None = None,
     ) -> tuple[RowMapping, ...]:
         sql, params = self._base_sql(
             active_scheme_version_id=active_scheme_version_id,
@@ -42,6 +44,21 @@ class PostgresWorkbenchRepository:
             end_at=end_at,
         )
         params["limit"] = limit
+        cursor_filter = ""
+        if position is not None:
+            if position.sort_at is None:
+                raise ValueError("工作台声音流 Cursor 必须包含发布时间")
+            params["cursor_published_at"] = position.sort_at
+            params["cursor_content_id"] = position.content_id
+            cursor_filter = """
+                    AND (
+                        published_at < :cursor_published_at
+                        OR (
+                            published_at = :cursor_published_at
+                            AND content_id < :cursor_content_id
+                        )
+                    )
+            """
         return tuple(
             self._session.execute(
                 text(
@@ -52,6 +69,9 @@ class PostgresWorkbenchRepository:
                            effective_voice_type, effective_labels, vehicle_names
                     FROM base
                     WHERE effective_relevance IS DISTINCT FROM 'irrelevant'
+                    """
+                    + cursor_filter
+                    + """
                     ORDER BY published_at DESC NULLS LAST, content_id DESC
                     LIMIT :limit
                     """

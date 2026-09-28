@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, time, timedelta
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.workbench import (
     PostgresWorkbenchRepository,
     WorkbenchLayoutRevisionConflict,
+)
+from aima_ugc.adapters.persistence.postgres.workbench_snapshots import (
+    PostgresWorkbenchSnapshotRepository,
+    WorkbenchSnapshotModule,
+    WorkbenchSnapshotRefresh,
 )
 from aima_ugc.bootstrap.analysis_identity import active_analysis_configuration
 from aima_ugc.contracts.workbench import (
@@ -27,10 +36,23 @@ from aima_ugc.contracts.workbench import (
     WorkbenchQuery,
     WorkbenchSentimentStatResponse,
     WorkbenchStreamItemResponse,
+    WorkbenchStreamQuery,
     WorkbenchStreamResponse,
     WorkbenchTrendResponse,
 )
+from aima_ugc.modules.content.content_cursor import ContentCursorCodec, ContentCursorPosition
+from aima_ugc.modules.content.http import ContentCursorUnavailable
 from aima_ugc.modules.workbench.http import WorkbenchAnalysisUnavailable, WorkbenchLayoutConflict
+from aima_ugc.modules.workbench.jobs import (
+    WORKBENCH_SNAPSHOT_JOB_MAX_ATTEMPTS,
+    WORKBENCH_SNAPSHOT_JOB_PAYLOAD_VERSION,
+    WORKBENCH_SNAPSHOT_JOB_PRIORITY,
+    WORKBENCH_SNAPSHOT_JOB_TIMEOUT_SECONDS,
+    WORKBENCH_SNAPSHOT_JOB_TYPE,
+    WorkbenchSnapshotJobPayload,
+)
+from aima_ugc.platform.jobs import JobRecord
+from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.time import BEIJING_TIMEZONE, beijing_now, beijing_today
 
 from .runtime import PlatformRuntime
@@ -47,16 +69,29 @@ _DEFAULT_LAYOUT = (
     ),
 )
 
+_SNAPSHOT_FAILURE_RETRY_DELAY = timedelta(seconds=60)
+
 
 class PostgresWorkbenchHttpService:
     """工作台聚合只读；布局按 Principal 版本化保存。"""
 
-    def __init__(self, runtime: PlatformRuntime) -> None:
+    def __init__(
+        self,
+        runtime: PlatformRuntime,
+        *,
+        cursor_signing_secret: bytes | None = None,
+        use_snapshot_cache: bool = True,
+    ) -> None:
         self._runtime = runtime
+        self._cursor_signing_secret = cursor_signing_secret
+        self._use_snapshot_cache = use_snapshot_cache
 
-    def get_stream(self, query: WorkbenchQuery) -> WorkbenchStreamResponse:
+    def get_stream(self, query: WorkbenchStreamQuery) -> WorkbenchStreamResponse:
         session = self._runtime.database.new_session()
         try:
+            codec = self._cursor_codec()
+            query_hash = _stream_query_hash(query)
+            position = codec.decode(query.cursor, query_hash=query_hash) if query.cursor else None
             configuration = active_analysis_configuration(session, self._runtime.settings)
             self._require_positive(configuration.taxonomy.sentiments)
             _, _, start_at, end_at = _period(query)
@@ -65,19 +100,59 @@ class PostgresWorkbenchHttpService:
                 query=query,
                 start_at=start_at,
                 end_at=end_at,
+                limit=query.limit + 1,
+                position=position,
             )
+            page_rows = rows[: query.limit]
+            has_more = len(rows) > query.limit
+            next_cursor = None
+            if has_more and page_rows:
+                last = page_rows[-1]
+                next_cursor = codec.encode(
+                    ContentCursorPosition(
+                        sort_at=cast(datetime, last["published_at"]),
+                        content_id=cast(UUID, last["content_id"]),
+                    ),
+                    query_hash=query_hash,
+                )
             response = WorkbenchStreamResponse(
                 analysis_scheme_version_id=configuration.scheme.id,
                 taxonomy_sha256=configuration.taxonomy.taxonomy_sha256,
                 as_of=beijing_now(),
-                items=tuple(_stream_item(row) for row in rows),
+                items=tuple(_stream_item(row) for row in page_rows),
+                next_cursor=next_cursor,
+                has_more=has_more,
             )
             session.commit()
             return response
         finally:
             session.close()
 
+    def _cursor_codec(self) -> ContentCursorCodec:
+        secret = self._cursor_signing_secret
+        if secret is None:
+            try:
+                secret = (
+                    read_secret_file(
+                        self._runtime.settings.content_cursor_signing_key_file,
+                        root=self._runtime.settings.secret_dir,
+                    )
+                    .get_secret_value()
+                    .encode("utf-8")
+                )
+            except SecretFileError as exc:
+                raise ContentCursorUnavailable from exc
+        try:
+            return ContentCursorCodec(secret=secret)
+        except ValueError as exc:
+            raise ContentCursorUnavailable from exc
+
     def get_trend(self, query: WorkbenchQuery) -> WorkbenchTrendResponse:
+        if self._use_snapshot_cache:
+            return cast(WorkbenchTrendResponse, self._get_snapshot_response("trend", query))
+        return self._compute_trend(query)
+
+    def _compute_trend(self, query: WorkbenchQuery) -> WorkbenchTrendResponse:
         session = self._runtime.database.new_session()
         try:
             configuration = active_analysis_configuration(session, self._runtime.settings)
@@ -147,6 +222,11 @@ class PostgresWorkbenchHttpService:
             session.close()
 
     def get_mind(self, query: WorkbenchQuery) -> WorkbenchMindResponse:
+        if self._use_snapshot_cache:
+            return cast(WorkbenchMindResponse, self._get_snapshot_response("mind", query))
+        return self._compute_mind(query)
+
+    def _compute_mind(self, query: WorkbenchQuery) -> WorkbenchMindResponse:
         session = self._runtime.database.new_session()
         try:
             configuration = active_analysis_configuration(session, self._runtime.settings)
@@ -186,8 +266,6 @@ class PostgresWorkbenchHttpService:
             previous_users = int(previous_summary["identified_user_count"])
             dimensions = []
             for primary in configuration.taxonomy.primary_labels:
-                if primary == "无法分类":
-                    continue
                 current_row = current.get(primary)
                 user_count = 0 if current_row is None else int(current_row["user_count"])
                 content_count = 0 if current_row is None else int(current_row["content_count"])
@@ -236,6 +314,83 @@ class PostgresWorkbenchHttpService:
         finally:
             session.close()
 
+    def _get_snapshot_response(
+        self,
+        module: WorkbenchSnapshotModule,
+        query: WorkbenchQuery,
+    ) -> WorkbenchMindResponse | WorkbenchTrendResponse:
+        """热路径读取持久最近成功结果；陈旧结果立即返回并幂等安排后台刷新。"""
+
+        resolved_query = _resolved_snapshot_query(query)
+        query_hash = _snapshot_query_hash(module, resolved_query)
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                configuration = active_analysis_configuration(session, self._runtime.settings)
+                self._require_positive(configuration.taxonomy.sentiments)
+                snapshots = PostgresWorkbenchSnapshotRepository(session)
+                revision = snapshots.current_data_revision()
+                row = snapshots.get(module=module, query_hash=query_hash)
+                compatible_response = bool(
+                    row is not None
+                    and row["response"] is not None
+                    and row["analysis_scheme_version_id"] == configuration.scheme.id
+                    and row["taxonomy_sha256"] == configuration.taxonomy.taxonomy_sha256
+                )
+                if row is not None and compatible_response:
+                    fresh = row["status"] == "ready" and int(row["source_revision"]) == revision
+                    if fresh:
+                        return _stored_snapshot_response(module, row, status="fresh")
+                    if _snapshot_failure_backoff_active(
+                        row,
+                        source_revision=revision,
+                        analysis_scheme_version_id=configuration.scheme.id,
+                    ):
+                        return _stored_snapshot_response(module, row, status="failed")
+                    refresh = snapshots.request_refresh(
+                        module=module,
+                        query_hash=query_hash,
+                        query=resolved_query.model_dump(mode="json"),
+                        source_revision=revision,
+                        analysis_scheme_version_id=configuration.scheme.id,
+                    )
+                    if refresh is not None:
+                        _enqueue_snapshot_job(session, refresh=refresh, query=resolved_query)
+                    return _stored_snapshot_response(module, row, status="refreshing")
+
+                # 旧 Scheme/Taxonomy 的 response 不能作为当前筛选的最近成功结果；
+                # 它只用于保留可审计历史，当前响应返回同一身份的 preparing 状态。
+                if row is not None and _snapshot_failure_backoff_active(
+                    row,
+                    source_revision=revision,
+                    analysis_scheme_version_id=configuration.scheme.id,
+                ):
+                    return _pending_snapshot_response(
+                        module,
+                        resolved_query,
+                        configuration.scheme.id,
+                        configuration.taxonomy.taxonomy_sha256,
+                        status="failed",
+                    )
+                refresh = snapshots.request_refresh(
+                    module=module,
+                    query_hash=query_hash,
+                    query=resolved_query.model_dump(mode="json"),
+                    source_revision=revision,
+                    analysis_scheme_version_id=configuration.scheme.id,
+                )
+                if refresh is not None:
+                    _enqueue_snapshot_job(session, refresh=refresh, query=resolved_query)
+                return _pending_snapshot_response(
+                    module,
+                    resolved_query,
+                    configuration.scheme.id,
+                    configuration.taxonomy.taxonomy_sha256,
+                    status="preparing",
+                )
+        finally:
+            session.close()
+
     def get_layout(self, *, principal_id: str) -> WorkbenchLayoutResponse:
         session = self._runtime.database.new_session()
         try:
@@ -277,6 +432,157 @@ def _period(query: WorkbenchQuery) -> tuple[date, date, datetime, datetime]:
     start_at = datetime.combine(start_day, time.min, tzinfo=BEIJING_TIMEZONE)
     end_at = datetime.combine(end_day + timedelta(days=1), time.min, tzinfo=BEIJING_TIMEZONE)
     return start_day, end_day, start_at, end_at
+
+
+def _stream_query_hash(query: WorkbenchStreamQuery) -> str:
+    payload = query.model_dump(mode="json", exclude={"cursor"})
+    encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _resolved_snapshot_query(query: WorkbenchQuery) -> WorkbenchQuery:
+    """把动态默认日期冻结为快照身份，避免跨北京时间自然日复用旧结果。"""
+
+    date_from, date_to, _start_at, _end_at = _period(query)
+    return query.model_copy(update={"date_from": date_from, "date_to": date_to})
+
+
+def _snapshot_query_hash(module: WorkbenchSnapshotModule, query: WorkbenchQuery) -> str:
+    payload = query.model_dump(mode="json")
+    for key, value in payload.items():
+        if isinstance(value, list):
+            payload[key] = sorted(value)
+    encoded = json.dumps(
+        {"module": module, "query": payload},
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _stored_snapshot_response(
+    module: WorkbenchSnapshotModule,
+    row: RowMapping,
+    *,
+    status: Literal["fresh", "refreshing", "failed"],
+) -> WorkbenchMindResponse | WorkbenchTrendResponse:
+    model = WorkbenchMindResponse if module == "mind" else WorkbenchTrendResponse
+    response = model.model_validate(row["response"])
+    return response.model_copy(
+        update={
+            "snapshot_status": status,
+            "computed_at": cast(datetime | None, row["computed_at"]),
+            "source_revision": cast(int | None, row["source_revision"]),
+        }
+    )
+
+
+def _pending_snapshot_response(
+    module: WorkbenchSnapshotModule,
+    query: WorkbenchQuery,
+    analysis_scheme_version_id: UUID,
+    taxonomy_sha256: str,
+    *,
+    status: Literal["preparing", "failed"],
+) -> WorkbenchMindResponse | WorkbenchTrendResponse:
+    """冷筛选只返回真实准备状态，不把尚未聚合的数据伪装成零结果。"""
+
+    date_from, date_to, _start_at, _end_at = _period(query)
+    previous_from, previous_to, _previous_start, _previous_end = _previous_period(
+        date_from, date_to
+    )
+    as_of = beijing_now()
+    if module == "mind":
+        return WorkbenchMindResponse(
+            analysis_scheme_version_id=analysis_scheme_version_id,
+            taxonomy_sha256=taxonomy_sha256,
+            as_of=as_of,
+            snapshot_status=status,
+            computed_at=None,
+            source_revision=None,
+            date_from=date_from,
+            date_to=date_to,
+            previous_date_from=previous_from,
+            previous_date_to=previous_to,
+            identified_user_count=0,
+            unidentified_content_count=0,
+            analyzed_count=0,
+            analysis_coverage_rate=0,
+            dimensions=(),
+        )
+    return WorkbenchTrendResponse(
+        analysis_scheme_version_id=analysis_scheme_version_id,
+        taxonomy_sha256=taxonomy_sha256,
+        as_of=as_of,
+        snapshot_status=status,
+        computed_at=None,
+        source_revision=None,
+        date_from=date_from,
+        date_to=date_to,
+        previous_date_from=previous_from,
+        previous_date_to=previous_to,
+        total_count=0,
+        daily_average=0,
+        peak_day=None,
+        peak_count=0,
+        period_change_rate=None,
+        positive_rate=None,
+        positive_rate_change_pp=None,
+        analyzed_count=0,
+        analysis_coverage_rate=0,
+        daily=(),
+        sentiments=(),
+        summary="后台正在准备当前筛选的聚合结果。",
+    )
+
+
+def _snapshot_failure_backoff_active(
+    row: RowMapping,
+    *,
+    source_revision: int,
+    analysis_scheme_version_id: UUID,
+) -> bool:
+    """同一失败目标短暂退避，避免页面轮询持续创建昂贵聚合任务。"""
+
+    updated_at = cast(datetime | None, row["updated_at"])
+    return bool(
+        row["status"] == "failed"
+        and int(row["target_revision"]) == source_revision
+        and row["target_analysis_scheme_version_id"] == analysis_scheme_version_id
+        and updated_at is not None
+        and updated_at > beijing_now() - _SNAPSHOT_FAILURE_RETRY_DELAY
+    )
+
+
+def _enqueue_snapshot_job(
+    session: Session,
+    *,
+    refresh: WorkbenchSnapshotRefresh,
+    query: WorkbenchQuery,
+) -> JobRecord:
+    payload = WorkbenchSnapshotJobPayload(
+        module=refresh.module,
+        query_hash=refresh.query_hash,
+        query=query,
+        source_revision=refresh.source_revision,
+        refresh_generation=refresh.refresh_generation,
+        analysis_scheme_version_id=refresh.analysis_scheme_version_id,
+    )
+    return PostgresJobRepository(session).enqueue(
+        job_type=WORKBENCH_SNAPSHOT_JOB_TYPE,
+        payload_version=WORKBENCH_SNAPSHOT_JOB_PAYLOAD_VERSION,
+        payload=payload.model_dump(mode="json"),
+        internal_idempotency_key=(
+            f"workbench-snapshot:{refresh.module}:{refresh.query_hash}:"
+            f"{refresh.source_revision}:{refresh.analysis_scheme_version_id}:"
+            f"{refresh.refresh_generation}"
+        ),
+        request_id=None,
+        priority=WORKBENCH_SNAPSHOT_JOB_PRIORITY,
+        max_attempts=WORKBENCH_SNAPSHOT_JOB_MAX_ATTEMPTS,
+        timeout_seconds=WORKBENCH_SNAPSHOT_JOB_TIMEOUT_SECONDS,
+    )
 
 
 def _previous_period(

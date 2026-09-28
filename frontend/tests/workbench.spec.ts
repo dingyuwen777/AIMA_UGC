@@ -18,6 +18,7 @@ vi.mock('../src/features/workbench/api', () => api)
 
 import WorkbenchPage from '../src/features/workbench/pages/WorkbenchPage.vue'
 import { useWorkbenchStore } from '../src/features/workbench/store'
+import { AimaApiError } from '../src/shared/api/http'
 
 const schemeId = '11111111-1111-4111-8111-111111111111'
 const taxonomyHash = 'a'.repeat(64)
@@ -49,6 +50,8 @@ const stream = {
   taxonomy_sha256: taxonomyHash,
   as_of: '2026-09-27T08:10:00+08:00',
   items: [],
+  next_cursor: null,
+  has_more: false,
 }
 const mind = {
   analysis_scheme_version_id: schemeId,
@@ -164,6 +167,142 @@ describe('工作台状态与 Figma 基线', () => {
     expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(initial.stream + 1)
     expect(api.fetchWorkbenchMind).toHaveBeenCalledTimes(initial.mind + 1)
     expect(api.fetchWorkbenchTrend).toHaveBeenCalledTimes(initial.trend + 1)
+  })
+
+  it('声音流按游标换页且周期聚合刷新不会把它重置到第一页', async () => {
+    const firstPage = {
+      ...stream,
+      items: [{
+        content_id: '33333333-3333-4333-8333-333333333333',
+        platform: 'douyin' as const,
+        author_display_name: '用户甲',
+        published_at: '2026-09-27T14:35:00+08:00',
+        title: null,
+        text: '第一页声音',
+        sentiment: '正面',
+        voice_type: '真实用户发声',
+        labels: [],
+        analysis_current: true,
+        vehicle_names: [],
+      }],
+      next_cursor: 'signed-page-2',
+      has_more: true,
+    }
+    const secondPage = {
+      ...firstPage,
+      items: [{ ...firstPage.items[0], content_id: '44444444-4444-4444-8444-444444444444', text: '第二页声音' }],
+      next_cursor: null,
+      has_more: false,
+    }
+    api.fetchWorkbenchStream.mockResolvedValueOnce(firstPage)
+    const store = useWorkbenchStore()
+    await store.initialize()
+    const firstPageCallCount = api.fetchWorkbenchStream.mock.calls.length
+    api.fetchWorkbenchStream.mockResolvedValueOnce(secondPage)
+
+    await store.advanceStream()
+
+    expect(api.fetchWorkbenchStream).toHaveBeenLastCalledWith(expect.objectContaining({
+      cursor: 'signed-page-2',
+      limit: 100,
+    }))
+    expect(store.stream?.items[0]?.text).toBe('第二页声音')
+    await store.refreshAggregates()
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(firstPageCallCount + 1)
+    expect(store.stream?.items[0]?.text).toBe('第二页声音')
+  })
+
+  it('后台补读或自动翻页遇到瞬时失败时保留当前结果且不弹出模块错误', async () => {
+    const currentStream = {
+      ...stream,
+      items: [{
+        content_id: '33333333-3333-4333-8333-333333333333',
+        platform: 'douyin' as const,
+        author_display_name: '用户甲',
+        published_at: '2026-09-27T14:35:00+08:00',
+        title: null,
+        text: '当前声音',
+        sentiment: '正面',
+        voice_type: '真实用户发声',
+        labels: [],
+        analysis_current: true,
+        vehicle_names: [],
+      }],
+      next_cursor: 'signed-page-2',
+      has_more: true,
+    }
+    api.fetchWorkbenchStream.mockResolvedValueOnce(currentStream)
+    const store = useWorkbenchStore()
+    await store.initialize()
+    api.fetchWorkbenchStream.mockRejectedValueOnce(new Error('temporary stream failure'))
+    api.fetchWorkbenchMind.mockRejectedValueOnce(new Error('temporary mind failure'))
+    api.fetchWorkbenchTrend.mockRejectedValueOnce(new Error('temporary trend failure'))
+
+    await Promise.all([store.advanceStream(), store.refreshAggregates()])
+
+    expect(store.stream).toEqual(currentStream)
+    expect(store.mind).toEqual(mind)
+    expect(store.trend).toEqual(trend)
+    expect(store.moduleErrors).toEqual({ stream: null, mind: null, trend: null })
+  })
+
+  it('自动翻页游标过期后从当前筛选第一页恢复，不会永久重试失效游标', async () => {
+    const currentStream = {
+      ...stream,
+      items: [{
+        content_id: '33333333-3333-4333-8333-333333333333',
+        platform: 'douyin' as const,
+        author_display_name: '用户甲',
+        published_at: '2026-09-27T14:35:00+08:00',
+        title: null,
+        text: '当前声音',
+        sentiment: '正面',
+        voice_type: '真实用户发声',
+        labels: [],
+        analysis_current: true,
+        vehicle_names: [],
+      }],
+      next_cursor: 'expired-page-2',
+      has_more: true,
+    }
+    const recoveredFirstPage = {
+      ...currentStream,
+      items: [{ ...currentStream.items[0], text: '恢复后的第一页声音' }],
+      next_cursor: 'fresh-page-2',
+    }
+    api.fetchWorkbenchStream.mockResolvedValueOnce(currentStream)
+    const store = useWorkbenchStore()
+    await store.initialize()
+    api.fetchWorkbenchStream
+      .mockRejectedValueOnce(new AimaApiError({
+        detail: '声音流游标无效或已过期。',
+        errors: [{ code: 'invalid_content_cursor', field: 'query.cursor', message: '游标无效或已过期。' }],
+        request_id: 'request-cursor-expired',
+        status: 400,
+        title: 'Invalid content cursor',
+        type: 'https://aima.example/errors/invalid_content_cursor',
+      }))
+      .mockResolvedValueOnce(recoveredFirstPage)
+
+    await store.advanceStream()
+
+    const pageCalls = api.fetchWorkbenchStream.mock.calls.slice(-2)
+    expect(pageCalls[0]?.[0]).toEqual(expect.objectContaining({ cursor: 'expired-page-2', limit: 100 }))
+    expect(pageCalls[1]?.[0]).toEqual(expect.objectContaining({ cursor: undefined, limit: 100 }))
+    expect(store.stream).toEqual(recoveredFirstPage)
+    expect(store.moduleErrors.stream).toBeNull()
+  })
+
+  it('筛选改变后清除上一筛选结果，避免把旧数据冒充当前筛选快照', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+
+    store.setFilters({ ...store.filters, sentiments: ['负面'] })
+
+    expect(store.stream).toBeNull()
+    expect(store.mind).toBeNull()
+    expect(store.trend).toBeNull()
+    expect(store.selectedMind).toBeNull()
   })
 
   it('编辑态只改草稿，取消恢复；保存时一次提交 revision CAS', async () => {
@@ -345,5 +484,53 @@ describe('工作台状态与 Figma 基线', () => {
     expect(html).not.toContain('品牌印象')
     expect(html).not.toContain('设计审美')
     expect(html).not.toContain('日均声量</span><strong>4.49')
+  })
+
+  it('冷聚合显示后台准备状态，声音流显示北京时间时分', async () => {
+    const pinia: Pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useWorkbenchStore(pinia)
+    store.taxonomy = taxonomy
+    store.layout = layout
+    store.stream = {
+      ...stream,
+      items: [{
+        content_id: '33333333-3333-4333-8333-333333333333',
+        platform: 'douyin',
+        author_display_name: '用户甲',
+        published_at: '2026-09-27T14:35:00+08:00',
+        title: null,
+        text: '带真实时间的声音',
+        sentiment: '正面',
+        voice_type: '真实用户发声',
+        labels: [],
+        analysis_current: true,
+        vehicle_names: [],
+      }],
+    }
+    store.mind = { ...mind, snapshot_status: 'preparing', dimensions: [] }
+    store.trend = { ...trend, snapshot_status: 'preparing', daily: [] }
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { render: () => h('div') } },
+        { path: '/voice-plaza', component: { render: () => h('div') } },
+        { path: '/collection-runtime', component: { render: () => h('div') } },
+        { path: '/collection-strategy', component: { render: () => h('div') } },
+        { path: '/admin/configuration', component: { render: () => h('div') } },
+      ],
+    })
+    await router.push('/')
+    await router.isReady()
+    const app = createSSRApp({ render: () => h(WorkbenchPage) })
+    app.use(pinia)
+    app.use(router)
+
+    const html = await renderToString(app)
+
+    expect(html).toContain('首次聚合正在后台准备')
+    expect(html).toContain('首次趋势聚合正在后台准备')
+    expect(html).toContain('09/27 14:35')
   })
 })

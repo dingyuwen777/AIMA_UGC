@@ -283,8 +283,10 @@ test('工作台按 active Taxonomy 展示真实模块，并使用后端 as_of', 
   await expect(page.getByRole('heading', { name: '品牌用户心智' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'UGC 声量与情感趋势' })).toBeVisible()
   await expect(page.getByText('基于当前 active Taxonomy，动态查看一级用户心智')).toBeVisible()
-  await expect(page.locator('.mind-card .ranking').getByRole('button', { name: /外观设计/ })).toBeVisible()
-  await expect(page.locator('.mind-card .ranking').getByRole('button', { name: /电池、续航与充电/ })).toBeVisible()
+  await expect(page.locator('.mind-card .radar-chart')).toHaveAttribute('data-axis-count', '2')
+  await expect(page.locator('.mind-card .radar-chart canvas')).toBeVisible()
+  await expect(page.locator('.mind-card .radar-center')).toContainText('爱玛心智图')
+  await expect(page.locator('.mind-card .radar-selected-card')).toContainText('外观设计')
   await expect(page.locator('.trend-card .sentiment-list').getByText('混合', { exact: true })).toBeVisible()
   await expect(page.locator('.trend-card .sentiment-list').getByText('无法判断', { exact: true })).toBeVisible()
   await expect(page.getByText(/2026.*09.*27.*08.*10.*每 15 秒检查更新/)).toBeVisible()
@@ -307,6 +309,19 @@ test('工作台按 active Taxonomy 展示真实模块，并使用后端 as_of', 
     scrollWidth: document.documentElement.scrollWidth,
   }))
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
+  const [radarStage, radarCenter, radarSelection] = await Promise.all([
+    page.locator('.mind-card .radar-stage').boundingBox(),
+    page.locator('.mind-card .radar-center').boundingBox(),
+    page.locator('.mind-card .radar-selected-card').boundingBox(),
+  ])
+  expect(radarStage).not.toBeNull()
+  expect(radarCenter).not.toBeNull()
+  expect(radarSelection).not.toBeNull()
+  expect((radarCenter?.x ?? 0) + (radarCenter?.width ?? 0))
+    .toBeLessThanOrEqual((radarSelection?.x ?? 0) + 1)
+  expect(radarSelection?.x ?? 0).toBeGreaterThanOrEqual(radarStage?.x ?? 0)
+  expect((radarSelection?.x ?? 0) + (radarSelection?.width ?? 0))
+    .toBeLessThanOrEqual((radarStage?.x ?? 0) + (radarStage?.width ?? 0) + 1)
 })
 
 test('声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开关', async ({ page }) => {
@@ -369,7 +384,7 @@ test('空声音流时原生筛选面板紧贴对应触发器并位于视口内',
     })
   })
   await page.goto('/')
-  await expect(page.locator('.stream-card > footer')).toContainText('最新 0 条')
+  await expect(page.locator('.stream-card > footer')).toContainText('本页 0 条')
 
   const trigger = page.getByRole('button', { name: '发声', exact: true })
   const panel = page.getByRole('dialog', { name: '选择发声' })
@@ -554,7 +569,7 @@ test('日期取消、单日确认、清空后的默认范围始终一致', async
 test('筛选后的后端结果同步替换三个模块，重置后恢复', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.stream-list article')).toHaveCount(1)
-  await expect(page.locator('.mind-card .ranking > button')).toHaveCount(2)
+  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 
   await page.getByRole('button', { name: '情感', exact: true }).click()
@@ -566,14 +581,14 @@ test('筛选后的后端结果同步替换三个模块，重置后恢复', async
 
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(page.locator('.stream-list article')).toHaveCount(1)
-  await expect(page.locator('.mind-card .ranking > button')).toHaveCount(2)
+  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 })
 
-test('模块刷新暂时失败时紧凑提示错误并继续显示上次成功结果', async ({ page }) => {
+test('新筛选请求失败时不把上一筛选结果冒充当前数据', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(1)
-  await expect(page.locator('.mind-card .ranking > button')).toHaveCount(2)
+  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 
   await page.getByRole('button', { name: '情感', exact: true }).click()
@@ -582,10 +597,10 @@ test('模块刷新暂时失败时紧凑提示错误并继续显示上次成功�
   await expect(page.getByText('声音流暂时无法更新')).toBeVisible()
   await expect(page.getByText('品牌用户心智暂时无法更新')).toBeVisible()
   await expect(page.getByText('趋势数据暂时无法更新')).toBeVisible()
-  await expect(page.locator('.module-state--inline')).toHaveCount(3)
-  await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(1)
-  await expect(page.locator('.mind-card .ranking > button')).toHaveCount(2)
-  await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
+  await expect(page.locator('.module-state--inline')).toHaveCount(0)
+  await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(0)
+  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(0)
+  await expect(page.locator('.trend-card .kpis > div')).toHaveCount(0)
 })
 
 test('品牌心智失败只重试自身，不耦合刷新声音流和趋势', async ({ page }) => {
@@ -612,7 +627,7 @@ test('品牌心智失败只重试自身，不耦合刷新声音流和趋势', as
   await page.locator('.mind-card').getByRole('button', { name: '重试' }).click()
 
   await expect(page.getByText('品牌用户心智暂时无法更新')).toHaveCount(0)
-  await expect(page.locator('.mind-card .ranking > button')).toHaveCount(2)
+  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
   expect(reads.mind).toBe(beforeRetry.mind + 1)
   expect(reads.stream).toBe(beforeRetry.stream)
   expect(reads.trend).toBe(beforeRetry.trend)
@@ -644,7 +659,8 @@ test('声音流展示完整返回列表并自动向上滚动，悬停、聚焦�
   await page.goto('/')
   const list = page.getByRole('region', { name: '声音流列表' })
   await expect(list.locator('.stream-cycle:first-child article')).toHaveCount(18)
-  await expect(page.locator('.stream-card > footer')).toContainText('最新 18 条')
+  await expect(page.locator('.stream-card > footer')).toContainText('本页 18 条')
+  await expect(list.locator('.stream-cycle:first-child time').first()).toContainText('09/26 15:30')
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(5)
 
   await list.hover()
@@ -664,6 +680,48 @@ test('声音流展示完整返回列表并自动向上滚动，悬停、聚焦�
   const reducedAt = await list.evaluate((element) => element.scrollTop)
   await page.waitForTimeout(240)
   expect(await list.evaluate((element) => element.scrollTop)).toBe(reducedAt)
+})
+
+test('声音流滚完一页后使用签名游标继续下一页，末页不会重复上一页', async ({ page }) => {
+  const requestCursors: Array<string | null> = []
+  await page.route('**/api/v1/workbench/stream**', async (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get('cursor')
+    requestCursors.push(cursor)
+    const secondPage = cursor === 'signed-page-2'
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        analysis_scheme_version_id: schemeId,
+        taxonomy_sha256: taxonomyHash,
+        as_of: '2026-09-27T08:10:00+08:00',
+        items: Array.from({ length: 12 }, (_, index) => ({
+          content_id: `44444444-4444-4444-${secondPage ? '9444' : '8444'}-${String(index + 1).padStart(12, '0')}`,
+          platform: index % 2 ? 'douyin' : 'xiaohongshu',
+          author_display_name: `用户${index + 1}`,
+          published_at: `2026-09-${secondPage ? '25' : '26'}T15:30:00+08:00`,
+          text: `${secondPage ? '第二页' : '第一页'}第${index + 1}条声音`,
+          sentiment: '正面',
+          voice_type: '真实用户发声',
+          labels: [],
+          analysis_current: true,
+          vehicle_names: [],
+        })),
+        next_cursor: secondPage ? null : 'signed-page-2',
+        has_more: !secondPage,
+      }),
+    })
+  })
+  await page.goto('/')
+  const list = page.getByRole('region', { name: '声音流列表' })
+  await expect(list.locator('.stream-cycle:first-child')).toContainText('第一页第1条声音')
+  const cycleHeight = await list.locator('.stream-cycle:first-child').evaluate(
+    (element) => (element as HTMLElement).offsetHeight + 6,
+  )
+  await list.evaluate((element, target) => { element.scrollTop = target - 1 }, cycleHeight)
+
+  await expect.poll(() => requestCursors.includes('signed-page-2')).toBe(true)
+  await expect(list.locator('.stream-cycle:first-child')).toContainText('第二页第1条声音')
+  await expect(list.locator('.stream-cycle:first-child')).not.toContainText('第一页第1条声音')
 })
 
 test('短声音流按 Figma 连续滚动，平台标识复用声音广场样式', async ({ page }) => {
@@ -696,7 +754,7 @@ test('短声音流按 Figma 连续滚动，平台标识复用声音广场样式'
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(5)
 })
 
-test('页面保持可见时按 15 秒频率重新读取三个模块', async ({ page }) => {
+test('页面保持可见时按 15 秒补读聚合且不重置声音流游标', async ({ page }) => {
   await page.clock.install()
   const requests: string[] = []
   page.on('request', (request) => {
@@ -705,9 +763,15 @@ test('页面保持可见时按 15 秒频率重新读取三个模块', async ({ p
   })
   await page.goto('/')
   await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3)
-  const initial = requests.length
+  const initialStream = requests.filter((path) => path.endsWith('/stream')).length
+  const initialMind = requests.filter((path) => path.endsWith('/mind')).length
+  const initialTrend = requests.filter((path) => path.endsWith('/trend')).length
   await page.clock.fastForward(15_000)
-  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(initial + 3)
+  await expect.poll(() => requests.filter((path) => path.endsWith('/mind')).length)
+    .toBeGreaterThanOrEqual(initialMind + 1)
+  await expect.poll(() => requests.filter((path) => path.endsWith('/trend')).length)
+    .toBeGreaterThanOrEqual(initialTrend + 1)
+  expect(requests.filter((path) => path.endsWith('/stream'))).toHaveLength(initialStream)
 })
 
 test('显式编辑态先改草稿，取消恢复；保存一次提交完整 revision', async ({ page }) => {
@@ -736,6 +800,7 @@ test('显式编辑态先改草稿，取消恢复；保存一次提交完整 revi
   expect(payload.modules).toHaveLength(3)
   expect(payload.modules.find((item) => item.module_id === 'brand-mind')?.visible).toBe(false)
   await expect(page.getByText('工作台布局已保存。')).toBeVisible()
+  await expect(page.getByText('工作台布局已保存。')).toHaveCount(0, { timeout: 4_000 })
   await expect(page.getByRole('button', { name: '+ 编辑工作台' })).toBeVisible()
 })
 
@@ -800,7 +865,7 @@ test('三个模块在各自最窄宽度下独立重排且不产生横向溢出',
   const [trendMain, trendAside, mindRanking, mindDetail, streamMain, streamTags] = await Promise.all([
     page.locator('.trend-card .trend-main').boundingBox(),
     page.locator('.trend-card aside').boundingBox(),
-    page.locator('.mind-card .ranking').boundingBox(),
+    page.locator('.mind-card .mind-radar').boundingBox(),
     page.locator('.mind-card .mind-detail').boundingBox(),
     page.locator('.stream-card .stream-main').first().boundingBox(),
     page.locator('.stream-card .stream-tags').first().boundingBox(),

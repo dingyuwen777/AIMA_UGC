@@ -3,7 +3,7 @@
 from datetime import date
 
 import pytest
-from aima_ugc.bootstrap.workbench_http import _previous_period
+from aima_ugc.bootstrap.workbench_http import _pending_snapshot_response, _previous_period
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
 from aima_ugc.contracts.workbench import (
     WorkbenchLayoutModule,
@@ -98,3 +98,21 @@ def test_previous_period_is_adjacent_equal_length_beijing_calendar_range() -> No
     assert previous_to == date(2026, 9, 20)
     assert start_at.isoformat() == "2026-09-14T00:00:00+08:00"
     assert end_at.isoformat() == "2026-09-21T00:00:00+08:00"
+
+
+def test_cold_snapshot_response_reports_preparing_without_claiming_zero_is_final() -> None:
+    """冷筛选应立即返回准备状态，不能同步扫描或把占位零值标成 fresh。"""
+
+    response = _pending_snapshot_response(
+        "trend",
+        WorkbenchQuery(date_from=date(2026, 9, 1), date_to=date(2026, 9, 2)),
+        analysis_scheme_version_id="11111111-1111-4111-8111-111111111111",
+        taxonomy_sha256="a" * 64,
+        status="preparing",
+    )
+
+    assert response.snapshot_status == "preparing"
+    assert response.computed_at is None
+    assert response.source_revision is None
+    assert response.date_from == date(2026, 9, 1)
+    assert response.date_to == date(2026, 9, 2)

@@ -63,6 +63,10 @@ from aima_ugc.modules.vehicles.content_reclassification import (
     ContentReclassificationJobHandler,
     register_content_reclassification_job,
 )
+from aima_ugc.modules.workbench.jobs import (
+    WorkbenchSnapshotJobHandler,
+    register_workbench_snapshot_job,
+)
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
@@ -107,6 +111,10 @@ from .runtime import PlatformRuntime, create_platform_runtime
 from .voice_plaza_projection_worker import (
     PostgresVoicePlazaProjectionJobExecutor,
     voice_plaza_projection_job_terminal_callback,
+)
+from .workbench_snapshot_worker import (
+    PostgresWorkbenchSnapshotJobExecutor,
+    workbench_snapshot_job_terminal_callback,
 )
 
 
@@ -294,6 +302,11 @@ def create_collection_job_registry(
         registry,
         VoicePlazaProjectionJobHandler(PostgresVoicePlazaProjectionJobExecutor(runtime)),
         terminal_callback=voice_plaza_projection_job_terminal_callback,
+    )
+    register_workbench_snapshot_job(
+        registry,
+        WorkbenchSnapshotJobHandler(PostgresWorkbenchSnapshotJobExecutor(runtime)),
+        terminal_callback=workbench_snapshot_job_terminal_callback,
     )
     return registry
 

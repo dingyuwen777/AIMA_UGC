@@ -3241,6 +3241,16 @@ export interface WorkbenchMindDimensionResponse {
   user_share_change_pp?: number | null;
 }
 
+export type WorkbenchMindResponseSnapshotStatus = typeof WorkbenchMindResponseSnapshotStatus[keyof typeof WorkbenchMindResponseSnapshotStatus];
+
+
+export const WorkbenchMindResponseSnapshotStatus = {
+  preparing: 'preparing',
+  fresh: 'fresh',
+  refreshing: 'refreshing',
+  failed: 'failed',
+} as const;
+
 export interface WorkbenchMindResponse {
   /**
      * @minimum 0
@@ -3251,6 +3261,7 @@ export interface WorkbenchMindResponse {
   /** @minimum 0 */
   analyzed_count: number;
   as_of: string;
+  computed_at?: string | null;
   date_from: string;
   date_to: string;
   dimensions: WorkbenchMindDimensionResponse[];
@@ -3258,6 +3269,8 @@ export interface WorkbenchMindResponse {
   identified_user_count: number;
   previous_date_from: string;
   previous_date_to: string;
+  snapshot_status?: WorkbenchMindResponseSnapshotStatus;
+  source_revision?: number | null;
   /** @pattern ^[0-9a-f]{64}$ */
   taxonomy_sha256: string;
   /** @minimum 0 */
@@ -3292,10 +3305,22 @@ export interface WorkbenchStreamItemResponse {
 export interface WorkbenchStreamResponse {
   analysis_scheme_version_id: string;
   as_of: string;
+  has_more?: boolean;
   items: WorkbenchStreamItemResponse[];
+  next_cursor?: string | null;
   /** @pattern ^[0-9a-f]{64}$ */
   taxonomy_sha256: string;
 }
+
+export type WorkbenchTrendResponseSnapshotStatus = typeof WorkbenchTrendResponseSnapshotStatus[keyof typeof WorkbenchTrendResponseSnapshotStatus];
+
+
+export const WorkbenchTrendResponseSnapshotStatus = {
+  preparing: 'preparing',
+  fresh: 'fresh',
+  refreshing: 'refreshing',
+  failed: 'failed',
+} as const;
 
 export interface WorkbenchTrendResponse {
   /**
@@ -3307,6 +3332,7 @@ export interface WorkbenchTrendResponse {
   /** @minimum 0 */
   analyzed_count: number;
   as_of: string;
+  computed_at?: string | null;
   daily: WorkbenchDailyPointResponse[];
   /** @minimum 0 */
   daily_average: number;
@@ -3321,6 +3347,8 @@ export interface WorkbenchTrendResponse {
   previous_date_from: string;
   previous_date_to: string;
   sentiments: WorkbenchSentimentStatResponse[];
+  snapshot_status?: WorkbenchTrendResponseSnapshotStatus;
+  source_revision?: number | null;
   summary: string;
   /** @pattern ^[0-9a-f]{64}$ */
   taxonomy_sha256: string;
@@ -3680,6 +3708,12 @@ primary_labels?: string[];
  * @maxItems 200
  */
 secondary_labels?: string[];
+/**
+ * @minimum 10
+ * @maximum 500
+ */
+limit?: number;
+cursor?: string | null;
 };
 
 export type GetWorkbenchTrendParams = {

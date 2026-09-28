@@ -63,6 +63,8 @@ frontend
 
 `bootstrap` 与 `configure` 都是部署装配动作，不是常驻业务服务。Worker 当前实际注册内容以 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 为机器事实。
 
+工作台聚合快照的 Migration 只创建可重建快照表、数据修订序列与投影 statement trigger，不在 Alembic 内扫描或回填既有 Content。升级顺序保持 `migrate → worker → api/frontend`：Worker 启动后幂等安排默认近 30 日心智与趋势预热；预热完成前 API 对冷筛选返回真实 preparing 状态，同一 Scheme/Taxonomy 的兼容成功快照继续可读，旧口径快照不会混入当前结果。回滚应用镜像不删除快照或 canonical 事实；需要删除新增结构时只能通过后续批准的 Migration 处理。
+
 ---
 
 ## 3. 服务器 Host Root 与持久数据

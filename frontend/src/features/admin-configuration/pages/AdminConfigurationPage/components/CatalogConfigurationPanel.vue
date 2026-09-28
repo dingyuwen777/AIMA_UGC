@@ -10,6 +10,7 @@ import { apiErrorMessage } from '../../../../../shared/api/http'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
+import { useTransientNotice } from '../../../../../shared/ui/useTransientNotice'
 import {
   addBrand,
   addVehicle,
@@ -27,7 +28,7 @@ import { formatRuntimeStatus } from '../../../presentation'
 const saving = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const { message: notice, show: showNotice, clear: clearNotice } = useTransientNotice()
 const replayConfirmOpen = ref(false)
 const replaySubmitting = ref(false)
 const replayIdempotencyKey = ref('')
@@ -249,18 +250,18 @@ async function confirmReplayAll(): Promise<void> {
   if (replaySubmitting.value) return
   replaySubmitting.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     const result = await queueAllCanonicalReplays({
       idempotency_key: replayIdempotencyKey.value,
     })
     replayConfirmOpen.value = false
     replayIdempotencyKey.value = ''
-    notice.value = result.planning_status === 'queued'
+    showNotice(result.planning_status === 'queued'
       ? '全历史重筛已受理，系统正在后台冻结已受理范围并拆分任务，可在采集运行中心查看后续进度。'
       : result.artifact_count === 0
         ? '当前没有符合条件的历史 Canonical 数据，无需创建重筛任务。'
-        : `已将 ${result.artifact_count} 个 Canonical 文件拆分为 ${result.run_count} 个重筛任务，可在采集运行中心查看进度与结果。`
+        : `已将 ${result.artifact_count} 个 Canonical 文件拆分为 ${result.run_count} 个重筛任务，可在采集运行中心查看进度与结果。`)
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -289,7 +290,7 @@ async function saveBrand(): Promise<void> {
   const aliasInput = parseAliases(brandDraft.aliases)
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     const saved = brandDraft.id
       ? await editBrand(brandDraft.id, {
@@ -306,9 +307,9 @@ async function saveBrand(): Promise<void> {
     upsertBrand(saved)
     brandCreateOpen.value = false
     selectBrand(saved)
-    notice.value = aliasInput.duplicatesRemoved > 0
+    showNotice(aliasInput.duplicatesRemoved > 0
       ? aliasDeduplicatedNotice
-      : creating ? '品牌已创建并记录操作。' : '品牌与识别词已更新并记录操作。'
+      : creating ? '品牌已创建并记录操作。' : '品牌与识别词已更新并记录操作。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -321,7 +322,7 @@ async function setBrandStatus(item: BrandResponse, status: 'active' | 'deprecate
   if (saving.value || item.status === status) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     const saved = await editBrand(item.id, {
       display_name: item.display_name,
@@ -330,7 +331,7 @@ async function setBrandStatus(item: BrandResponse, status: 'active' | 'deprecate
     })
     upsertBrand(saved)
     selectBrand(saved)
-    notice.value = status === 'active' ? '品牌已启用并记录操作。' : '品牌已停用并记录操作。'
+    showNotice(status === 'active' ? '品牌已启用并记录操作。' : '品牌已停用并记录操作。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -354,7 +355,7 @@ async function confirmDeleteBrand(): Promise<void> {
     await removeBrand(item.id)
     brandDeleteTarget.value = null
     selectedBrandId.value = ''
-    notice.value = '未引用品牌已删除并记录操作。'
+    showNotice('未引用品牌已删除并记录操作。')
     await load()
   } catch (reason) {
     brandDeleteTarget.value = null
@@ -412,7 +413,7 @@ async function saveVehicle(): Promise<void> {
   const aliasInput = parseAliases(vehicleDraft.aliases)
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     let saved: VehicleModelResponse
     if (vehicleDraft.id) {
@@ -432,9 +433,9 @@ async function saveVehicle(): Promise<void> {
     }
     upsertVehicle(saved)
     vehicleEditorOpen.value = false
-    notice.value = aliasInput.duplicatesRemoved > 0
+    showNotice(aliasInput.duplicatesRemoved > 0
       ? aliasDeduplicatedNotice
-      : editing ? '车型已更新并记录操作。' : '车型已创建并记录操作。'
+      : editing ? '车型已更新并记录操作。' : '车型已创建并记录操作。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -464,12 +465,12 @@ async function confirmDeleteVehicle(): Promise<void> {
   if (!item || saving.value) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     await removeVehicle(item.id)
     vehicleDeleteTarget.value = null
     vehicleEditorOpen.value = false
-    notice.value = '未引用车型已删除并记录操作。'
+    showNotice('未引用车型已删除并记录操作。')
     await load()
   } catch (reason) {
     vehicleDeleteTarget.value = null
@@ -485,11 +486,11 @@ async function mergeSelectedVehicle(): Promise<void> {
   if (!window.confirm('合并后历史数据仍会保留，后续选择会统一到目标车型。是否继续？')) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     await mergeVehicle(vehicleDraft.id, { target_vehicle_model_id: mergeTargetId.value })
     vehicleEditorOpen.value = false
-    notice.value = '车型已合并并记录操作。'
+    showNotice('车型已合并并记录操作。')
     await load()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
