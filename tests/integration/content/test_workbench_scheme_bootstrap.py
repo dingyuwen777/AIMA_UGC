@@ -56,7 +56,10 @@ def test_parallel_workbench_requests_persist_one_active_scheme(monkeypatch) -> N
         monkeypatch.setenv("AIMA_DB_NAME", database)
         command.upgrade(Config(str(Path(__file__).resolve().parents[3] / "alembic.ini")), "head")
         runtime = create_platform_runtime("api", settings=load_settings())
-        service = PostgresWorkbenchHttpService(runtime)
+        service = PostgresWorkbenchHttpService(
+            runtime,
+            cursor_signing_secret=b"workbench-bootstrap-cursor-key-32-bytes-minimum",
+        )
         query = WorkbenchQuery(date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
         with ThreadPoolExecutor(max_workers=3) as pool:
             futures = (
