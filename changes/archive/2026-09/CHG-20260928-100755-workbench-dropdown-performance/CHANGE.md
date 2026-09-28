@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-100755-workbench-dropdown-performance
 title: 修复工作台下拉、聚合性能与独立缩放
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/640-workbench-dropdown-performance
 created: 2026-09-28
