@@ -278,7 +278,7 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 | V3 | run 36433340226 / Node 24.19.0 | Contract generator + Orval + diff + check + compatibility | success | generated assets 与 Pydantic 一致且兼容检查通过 |
 | V4 | run 36433340226 / Frontend | lint + two target Unit + build | 2 files / 51 tests；build success | 两页状态与正式构建通过 |
 | V5 | run 36433340226 / Chromium Browser Mock | Voice Plaza + Workbench E2E | 37 passed | 用户多选、父子联动、请求、深链、布局无回退 |
-| V6 | final diff review | main...feature compare + source re-read | behind 0；18 正式文件；临时 Workflow 已删除 | 无临时验证资产或 main 漂移混入 |
+| V6 | final diff review | main...feature compare + source re-read | behind 0；20 正式文件；临时 Workflow 已删除 | 无临时验证资产或 main 漂移混入 |
 | V7 | Repair run 36448358583 / Ubuntu 24.04 / Python 3.14.7 / Node 24.19.0 | Ruff + `tests/unit/content/test_content_cursor.py` + `tests/api/test_stage8d_contents.py` | 18 passed；Ruff green | R655-F2 旧 query-hash/v1 Cursor 兼容及 Content API 邻近回归 |
 | V8 | Repair run 36448358583 / Frontend | Voice Plaza Unit + lint + build | 1 file / 36 tests passed；build success | R655-F1 legacy Session 迁移后 List/Count/query Export 最终快照等价 |
 | V9 | Repair run 36448358583 / Chromium Browser Mock | Voice Plaza E2E | 16 passed | R655-F1 legacy secondary-only URL 等待真实 filter options 后最终请求与 Session 不被放宽 |
