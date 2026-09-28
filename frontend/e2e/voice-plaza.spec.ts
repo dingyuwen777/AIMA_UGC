@@ -475,6 +475,94 @@ test('旧 secondary-only 深链在目录加载后迁移为等价父子筛选且�
   })
 })
 
+test('旧 cross-parent singular 深链在目录加载后保持原 AND 语义并明确提示', async ({ page }) => {
+  const listRequests: URLSearchParams[] = []
+  const countFilters: Array<{ primary_labels?: string[], secondary_labels?: string[] }> = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname === '/api/v1/contents') {
+      listRequests.push(url.searchParams)
+    }
+    if (request.method() === 'POST' && url.pathname === '/api/v1/contents/count') {
+      const body = request.postDataJSON() as {
+        filters?: { primary_labels?: string[], secondary_labels?: string[] }
+      }
+      countFilters.push(body.filters ?? {})
+    }
+  })
+
+  await page.goto(
+    '/voice-plaza?primary_label=产品体验&secondary_label=客服与服务态度',
+  )
+  await expect(page.getByText(/当前保留旧版兼容筛选：一级「产品体验」 AND 二级「客服与服务态度」/))
+    .toBeVisible()
+
+  await expect.poll(() => listRequests.length).toBeGreaterThan(0)
+  await expect.poll(() => countFilters.length).toBeGreaterThan(0)
+  expect(listRequests.some((params) =>
+    params.getAll('primary_labels').includes('产品体验')
+      && params.getAll('secondary_labels').includes('客服与服务态度'),
+  )).toBe(true)
+  expect(listRequests.some((params) =>
+    params.getAll('primary_labels').includes('产品体验')
+      && params.getAll('secondary_labels').length === 0,
+  )).toBe(false)
+  expect(countFilters.some((filters) =>
+    filters.primary_labels?.includes('产品体验') === true
+      && filters.secondary_labels?.includes('客服与服务态度') === true,
+  )).toBe(true)
+  expect(countFilters.some((filters) =>
+    filters.primary_labels?.includes('产品体验') === true
+      && (filters.secondary_labels?.length ?? 0) === 0,
+  )).toBe(false)
+
+  const persisted = await page.evaluate(() => JSON.parse(
+    sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+  ))
+  expect(persisted.filters).toMatchObject({
+    primaryLabels: ['产品体验'],
+    secondaryLabels: ['客服与服务态度'],
+  })
+  expect(persisted.legacyLabelCompatibility).toEqual({
+    primaryLabels: ['产品体验'],
+    secondaryLabels: ['客服与服务态度'],
+  })
+})
+
+test('旧 catalog-missing singular 深链在目录加载后仍保留精确条件', async ({ page }) => {
+  const listRequests: URLSearchParams[] = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname === '/api/v1/contents') {
+      listRequests.push(url.searchParams)
+    }
+  })
+
+  await page.goto(
+    '/voice-plaza?primary_label=已下线一级&secondary_label=已下线二级',
+  )
+  await expect(page.getByText(/当前保留旧版兼容筛选：一级「已下线一级」 AND 二级「已下线二级」/))
+    .toBeVisible()
+
+  await expect.poll(() => listRequests.length).toBeGreaterThan(0)
+  expect(listRequests.some((params) =>
+    params.getAll('primary_labels').includes('已下线一级')
+      && params.getAll('secondary_labels').includes('已下线二级'),
+  )).toBe(true)
+  expect(listRequests.some((params) =>
+    params.getAll('primary_labels').length === 0
+      && params.getAll('secondary_labels').length === 0,
+  )).toBe(false)
+
+  const persisted = await page.evaluate(() => JSON.parse(
+    sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+  ))
+  expect(persisted.legacyLabelCompatibility).toEqual({
+    primaryLabels: ['已下线一级'],
+    secondaryLabels: ['已下线二级'],
+  })
+})
+
 test('loads backend filter options and submits voice type with dependent labels', async ({ page }) => {
   await page.goto('/voice-plaza')
 
