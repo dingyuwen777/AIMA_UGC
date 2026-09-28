@@ -203,3 +203,45 @@ def test_report_worker_logs_specific_feishu_endpoint_and_error_details(
     assert record.api_code == 99991672
     assert "添加报告交付入口" in record.error_message
     assert "Access denied" in record.error_message
+
+
+def test_representative_worker_passes_stable_retry_identity_and_checkpoint(
+    executor: PostgresFeishuPublicationJobExecutor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """独立代表性发布必须和报告发布一样具备跨 Attempt 稳定身份。"""
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(worker_module, "validate_xlsx_archive", lambda path: None)
+
+    def publish(**kwargs: object):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            target_table_id="tbl-new",
+            target_table_name="代表性内容",
+            created_count=1,
+            updated_count=0,
+            verified_count=1,
+            verification_errors=(),
+        )
+
+    monkeypatch.setattr(
+        worker_module,
+        "publish_representative_selection_to_feishu",
+        publish,
+    )
+    context = _Context()
+    payload = FeishuRepresentativeSelectionJobPayload(
+        input_artifact_id=uuid4(),
+        input_filename="labeled.xlsx",
+    )
+
+    result = executor.execute_representative_selection(
+        payload=payload,
+        fence=context.fence,
+        context=context,
+    )
+
+    assert result.outcome == "succeeded"
+    assert captured["idempotency_key"] == f"feishu-representative:{context.fence.job_id}"
+    assert captured["checkpoint"] is not None
