@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-164400-change-archive-multi
 title: 支持单个已合并 PR 确定性归档多个 Active Change
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: fix/580-change-archive-multi
 created: 2026-09-28
