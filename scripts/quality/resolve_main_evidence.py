@@ -12,6 +12,16 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+GITHUB_API_ERRORS = (
+    HTTPError,
+    URLError,
+    TimeoutError,
+    json.JSONDecodeError,
+    OSError,
+    KeyError,
+    TypeError,
+)
+
 
 @dataclass(frozen=True)
 class ReuseEvaluation:
@@ -212,7 +222,7 @@ def resolve_main_evidence(
             }
         )
         return result
-    except HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError, KeyError, TypeError:
+    except GITHUB_API_ERRORS:
         result["reason"] = "github_api_unavailable"
         return result
 

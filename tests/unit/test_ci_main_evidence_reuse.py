@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import runpy
 from pathlib import Path
 
@@ -66,3 +67,10 @@ def test_missing_or_failed_required_check_fails_closed() -> None:
     assert missing.reason == "required_check_not_green"
     assert failed.reusable is False
     assert failed.reason == "required_check_not_green"
+
+
+def test_resolver_source_is_compatible_with_python_312_grammar() -> None:
+    """Resolver 在 setup-python 前由 Runner bootstrap Python 执行，语法必须兼容 3.12。"""
+    source = (ROOT / "scripts" / "quality" / "resolve_main_evidence.py").read_text(encoding="utf-8")
+
+    ast.parse(source, feature_version=(3, 12))
