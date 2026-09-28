@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-164400-change-archive-multi
 title: 支持单个已合并 PR 确定性归档多个 Active Change
 level: L2
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: fix/580-change-archive-multi
 created: 2026-09-28
@@ -66,13 +66,13 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 支持同一 merged PR 的多个 Active Change | run 36396828934 / AC1 | not_satisfied | 待实现 batch selector/orchestrator |
+| R1 | 支持同一 merged PR 的多个 Active Change | run 36396828934 / AC1 | satisfied | `select_changes()` + `archive_changes()` batch 编排 |
 | R2 | 保持 merged revision/current-main 身份绑定 | existing archive contract / AC2 | satisfied | 复用 `merged_source_at_revision` 与 `archive_change` |
 | R3 | 保持生命周期最小冻结 | existing archive contract / AC3 | satisfied | 复用 `freeze_lifecycle` |
-| R4 | 多 Change exact diff allowlist | run 36396828934 / AC4 | not_satisfied | 待更新 workflow |
-| R5 | 单 Change/no-op/幂等兼容 | existing tests / AC5 | not_satisfied | 待补回归 |
-| R6 | 不降低既有安全门禁 | project governance / AC6 | not_satisfied | 待测试与 review |
-| R7 | PR #580 post-merge archive 完成 | user:continue-pr580-delivery / AC7 | not_satisfied | 待 workflow_dispatch 重跑 |
+| R4 | 多 Change exact diff allowlist | run 36396828934 / AC4 | satisfied | Workflow 从 `items[]` 生成 expected paths，与 staged diff 严格比较 |
+| R5 | 单 Change/no-op/幂等兼容 | existing tests / AC5 | satisfied | 既有测试保留；新增 multi select/archive/rerun regressions |
+| R6 | 不降低既有安全门禁 | project governance / AC6 | satisfied | 单 Change helper 仍拒绝多 Change 误用；merged revision/current-main/status/lifecycle 门禁均复用 |
+| R7 | PR #580 post-merge archive 完成 | user:continue-pr580-delivery / AC7 | explicitly_deferred | post-merge lifecycle：本修复进入 main 后由 repository-native workflow 对 #580 执行恢复归档 |
 
 # 验证矩阵
 
@@ -86,16 +86,16 @@ data_changes: []
 
 # 完成审计
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read：已重读 PR #580、失败 run 36396828934、当前 archive script/workflow 和 repository-native Archive Contract。
+- [x] change_coverage：AC1—AC6 已映射到 batch script、workflow exact allowlist 与永久回归；AC7 明确属于 post-merge lifecycle。
+- [x] reverse_audit：已反查 0 Change、单 Change、多 Change、重复 dispatch、非 ready、active/archive 冲突、merged revision/main 漂移和额外 staged path。
+- [x] unresolved_cleared：当前实现范围无未解决 blocker；PR #580 实际归档仅依赖本修复先进入 main。
 
 # 交付状态
 
-- implementation: in_progress
-- delivery: incomplete
-- validation: incomplete
+- implementation: complete
+- delivery: pr_ready
+- validation: pending current-head CI
 - main_fresh: not_applicable before merge
 - change_archive: not_applicable before merge
 - requirement_closure: incomplete
