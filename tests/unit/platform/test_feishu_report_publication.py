@@ -1029,3 +1029,43 @@ def test_report_retry_fails_closed_when_local_publication_digest_changes(
             idempotency_key="feishu-report:job-1",
             checkpoint=_Checkpoint(),
         )
+
+
+def test_report_image_upload_ambiguous_failure_is_not_retryable() -> None:
+    """无法按稳定请求身份对账的媒体上传遇到响应丢失时必须失败关闭。"""
+
+    upload_attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal upload_attempts
+        if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
+            return httpx.Response(
+                200,
+                json={"code": 0, "tenant_access_token": "tenant-token"},
+            )
+        if request.url.path == "/open-apis/drive/v1/medias/upload_all":
+            upload_attempts += 1
+            raise httpx.ReadTimeout("response lost", request=request)
+        raise AssertionError(f"unexpected request: {request.method} {request.url.path}")
+
+    publisher = FeishuReportPublisher(
+        FeishuReportPublisherConfig(
+            app_id="app-id",
+            app_secret=publication_module.SecretStr("app-secret"),
+            folder_token="folder-token",
+        ),
+        client=httpx.Client(
+            base_url="https://open.feishu.cn",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+
+    with pytest.raises(FeishuApiError) as captured:
+        publisher._upload_document_image(  # noqa: SLF001
+            parent_node="block-id",
+            file_name="chart.png",
+            content=b"png",
+        )
+
+    assert captured.value.retriable is False
+    assert upload_attempts == 1
