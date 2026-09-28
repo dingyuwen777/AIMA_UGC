@@ -371,6 +371,52 @@ def test_list_route_accepts_repeated_label_filters_and_legacy_singular_values() 
     assert service.last_query.secondary_label is None
 
 
+def test_legacy_label_normalization_rejects_post_merge_cardinality_overflow() -> None:
+    """singular 合并进 plural 后仍必须遵守最终 100/200 数量上限。"""
+
+    client = _client(_ContentService())
+    primary = client.get(
+        "/api/v1/contents",
+        params=[
+            *(( "primary_labels", f"primary-{index}") for index in range(100)),
+            ("primary_label", "legacy-primary-overflow"),
+        ],
+    )
+    secondary = client.get(
+        "/api/v1/contents",
+        params=[
+            *(( "secondary_labels", f"secondary-{index}") for index in range(200)),
+            ("secondary_label", "legacy-secondary-overflow"),
+        ],
+    )
+
+    assert primary.status_code == 422
+    assert secondary.status_code == 422
+
+
+def test_legacy_label_normalization_deduplicates_before_final_cardinality_check() -> None:
+    """singular 与 plural 已含同值时不应因兼容归一化产生伪溢出。"""
+
+    service = _ContentService()
+    response = _client(service).get(
+        "/api/v1/contents",
+        params=[
+            *(( "primary_labels", f"primary-{index}") for index in range(99)),
+            ("primary_labels", "same-primary"),
+            ("primary_label", "same-primary"),
+            *(( "secondary_labels", f"secondary-{index}") for index in range(199)),
+            ("secondary_labels", "same-secondary"),
+            ("secondary_label", "same-secondary"),
+        ],
+    )
+
+    assert response.status_code == 200
+    assert service.last_query.primary_labels[-1] == "same-primary"
+    assert len(service.last_query.primary_labels) == 100
+    assert service.last_query.secondary_labels[-1] == "same-secondary"
+    assert len(service.last_query.secondary_labels) == 200
+
+
 def test_filter_options_returns_backend_values_and_historical_sources() -> None:
     """声音广场筛选目录通过独立 Contract 返回，不改变 active Taxonomy 语义。"""
 
