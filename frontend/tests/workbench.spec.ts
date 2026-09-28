@@ -144,6 +144,42 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.activeMind?.primary_label).toBe('外观设计')
   })
 
+  it('一级标签变化后只保留所选父级的二级标签', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+
+    store.setFilters({
+      ...store.filters,
+      primaryLabels: ['外观设计', '电池、续航与充电'],
+      secondaryLabels: ['颜色与配色', '续航里程'],
+    })
+    expect(store.secondaryLabelOptions.map((item) => item.value)).toEqual([
+      '颜色与配色',
+      '整体造型与颜值',
+      '续航里程',
+    ])
+
+    store.setFilters({
+      ...store.filters,
+      primaryLabels: ['外观设计'],
+      secondaryLabels: ['颜色与配色', '续航里程'],
+    })
+
+    expect(store.filters.secondaryLabels).toEqual(['颜色与配色'])
+    expect(store.secondaryLabelOptions.map((item) => item.value)).toEqual([
+      '颜色与配色',
+      '整体造型与颜值',
+    ])
+
+    store.setFilters({
+      ...store.filters,
+      primaryLabels: [],
+      secondaryLabels: ['颜色与配色'],
+    })
+    expect(store.filters.secondaryLabels).toEqual([])
+    expect(store.secondaryLabelOptions).toEqual([])
+  })
+
   it('三个模块的显式重试分别只调用自身接口', async () => {
     const store = useWorkbenchStore()
     await store.initialize()
