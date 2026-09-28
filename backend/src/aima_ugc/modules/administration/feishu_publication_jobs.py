@@ -59,6 +59,8 @@ class FeishuRepresentativeSelectionJobPayload(BaseModel):
     )
     input_artifact_id: UUID
     input_filename: str = Field(min_length=1, max_length=255)
+    # 与报告发布共用跨 Attempt checkpoint；首次筛选结果与外部表身份都在这里冻结。
+    publication_checkpoint: dict[str, object] = Field(default_factory=dict)
 
 
 class FeishuPublicationJobExecutor(Protocol):
