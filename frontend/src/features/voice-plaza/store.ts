@@ -520,6 +520,24 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const loaded = await fetchContentFilterOptions()
       if (revision !== filterOptionsRevision) return
       filterOptions.value = loaded
+      const previousApplied = JSON.stringify({
+        primaryLabels: appliedFilters.primaryLabels,
+        secondaryLabels: appliedFilters.secondaryLabels,
+      })
+      Object.assign(filters, sanitizeLabelFilters(filters, loaded))
+      Object.assign(appliedFilters, sanitizeLabelFilters(appliedFilters, loaded))
+      const currentApplied = JSON.stringify({
+        primaryLabels: appliedFilters.primaryLabels,
+        secondaryLabels: appliedFilters.secondaryLabels,
+      })
+      if (currentApplied !== previousApplied) {
+        selectedIds.value = []
+        nextCursor.value = null
+        hasMore.value = false
+        listPageCache.clear()
+        persistAppliedSearch()
+        void refreshResults()
+      }
     } catch (reason) {
       if (revision !== filterOptionsRevision) return
       filterOptionsError.value = errorMessage(reason)
