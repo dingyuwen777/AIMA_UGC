@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 import pytest
 from aima_ugc.adapters.feishu import (
+    FeishuAPIError,
     FeishuBitableClient,
     FeishuConfig,
     FeishuConfigError,
@@ -1047,3 +1048,119 @@ def test_retryable_feishu_response_is_retried_with_bounded_delay() -> None:
 
     assert wiki_attempts == 2
     assert delays == [0.0]
+
+
+def test_create_table_network_ambiguity_is_not_retried_in_place() -> None:
+    """创建类 POST 的结果不确定时交给上层恢复，客户端不能再次盲发。"""
+
+    post_attempts = 0
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal post_attempts
+        path = request.url.path
+        if path.endswith("/tenant_access_token/internal"):
+            return httpx.Response(
+                200,
+                json={"code": 0, "tenant_access_token": "token", "expire": 7200},
+            )
+        if path.endswith("/fields"):
+            return httpx.Response(
+                200,
+                json={"code": 0, "data": {"items": _fields(), "has_more": False}},
+            )
+        if path.endswith("/tables") and request.method == "POST":
+            post_attempts += 1
+            raise httpx.ReadTimeout("response lost", request=request)
+        raise AssertionError(f"unexpected request: {request.method} {path}")
+
+    config = FeishuConfig(
+        app_id="app",
+        app_token="base",
+        table_id="template",
+        max_retries=3,
+    )
+    client = httpx.Client(
+        base_url="https://open.feishu.cn/",
+        transport=httpx.MockTransport(respond),
+    )
+    with FeishuBitableClient(config=config, app_secret="secret", client=client) as feishu:
+        with pytest.raises(FeishuAPIError) as captured:
+            feishu.create_table_from_current(name="AIMA代表性内容-stable")
+
+    assert captured.value.retryable is True
+    assert post_attempts == 1
+
+
+def test_find_table_by_name_recovers_exact_stable_table() -> None:
+    """Job 重试可按稳定名称回读已创建成功但响应丢失的数据表。"""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/tenant_access_token/internal"):
+            return httpx.Response(
+                200,
+                json={"code": 0, "tenant_access_token": "token", "expire": 7200},
+            )
+        if path.endswith("/tables") and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "items": [
+                            {"table_id": "tbl-other", "name": "其他表"},
+                            {"table_id": "tbl-stable", "name": "AIMA代表性内容-stable"},
+                        ],
+                        "has_more": False,
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.method} {path}")
+
+    config = FeishuConfig(app_id="app", app_token="base", table_id="template", max_retries=0)
+    client = httpx.Client(
+        base_url="https://open.feishu.cn/",
+        transport=httpx.MockTransport(respond),
+    )
+    with FeishuBitableClient(config=config, app_secret="secret", client=client) as feishu:
+        table = feishu.find_table_by_name("AIMA代表性内容-stable")
+
+    assert table is not None
+    assert table.table_id == "tbl-stable"
+    assert table.bitable_block_token == "base_tbl-stable"
+
+
+def test_bitable_attachment_ambiguous_upload_fails_closed() -> None:
+    """附件上传没有可回读身份时不进入 Job 自动重试，避免制造未知重复媒体。"""
+
+    upload_attempts = 0
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal upload_attempts
+        path = request.url.path
+        if path.endswith("/tenant_access_token/internal"):
+            return httpx.Response(
+                200,
+                json={"code": 0, "tenant_access_token": "token", "expire": 7200},
+            )
+        if path.endswith("/medias/upload_all"):
+            upload_attempts += 1
+            raise httpx.ReadTimeout("response lost", request=request)
+        raise AssertionError(f"unexpected request: {request.method} {path}")
+
+    config = FeishuConfig(app_id="app", app_token="base", table_id="template", max_retries=3)
+    client = httpx.Client(
+        base_url="https://open.feishu.cn/",
+        transport=httpx.MockTransport(respond),
+    )
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as tmp:
+        attachment = Path(tmp) / "shot.png"
+        attachment.write_bytes(b"png")
+        with FeishuBitableClient(config=config, app_secret="secret", client=client) as feishu:
+            with pytest.raises(FeishuAPIError) as captured:
+                feishu.upload_bitable_attachment(attachment)
+
+    assert captured.value.retryable is False
+    assert upload_attempts == 1
