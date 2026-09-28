@@ -275,7 +275,13 @@ def test_ci_control_plane_compiles_before_project_python_setup() -> None:
     compile_index = ci.index("Validate bootstrap-compatible CI control scripts")
     setup_index = ci.index("      - name: Setup Python")
     assert compile_index < setup_index
-    assert "python3 -m py_compile" in ci
+    compile_step = _section(
+        ci,
+        "      - name: Validate bootstrap-compatible CI control scripts\n",
+        "      - name: Resolve reusable PR evidence on main\n",
+    )
+    assert "github.event_name != 'push'" in compile_step
+    assert "python3 -m py_compile" in compile_step
     assert "scripts/quality/resolve_main_evidence.py" in ci
     assert "scripts/quality/classify_ci_scope.py" in ci
 
