@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-172120-replay-rule-reconciliation
 title: 历史重筛按最新品牌车型规则收敛有效结果
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: feature/649-replay-rule-reconciliation
 created: 2026-09-28
@@ -215,7 +215,7 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 - [x] 完成最小实现，不静默扩大范围
 - [x] 同步受影响的长期文档或明确不适用依据
 - [x] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -258,10 +258,10 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 
 # 完成审计
 
-- [ ] upstream_re_read：已重新读取所有上游正式事实源，并从它们独立重建完成定义。
-- [ ] change_coverage：已确认当前变更覆盖全部上游要求，没有把变更自身当作需求全集。
-- [ ] reverse_audit：已执行适用的反向能力或边界审计，并复核验证矩阵；不适用项已有明确依据。
-- [ ] unresolved_cleared：所有 `not_satisfied` 已清零；延期或不适用项均有正式依据。
+- [x] upstream_re_read：已重新读取 Issue #649 及 Product、Blueprint、Appendix 与模块 README 中的上游正式事实，并独立重建 AC1–AC7 完成定义。
+- [x] change_coverage：已将 AC1–AC7 分别对照 R1–R7、实现、测试、Migration 和文档，未把当前 Change 当作需求全集。
+- [x] reverse_audit：已从“重筛入库入口 → 父请求/Run/Shard → 终态对账 → Content 统一可见性 → 声音广场/工作台/导出/分析”反向复核，并确认无新的公共 HTTP Contract 或前端实现需求。
+- [x] unresolved_cleared：所有 `not_satisfied` 已清零；R7 中 required CI、merge、main-fresh、归档与 Issue Closure 依项目强制时序明确延后，外部 Provider 探测因 Replay 仅消费已持久化 Canonical 而不适用。
 
 # 完成证据与状态
 
@@ -271,7 +271,7 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 | --- | --- | --- | --- | --- |
 | V1 | 分支基线 `5d9108a9` / Windows / 本机开发 PostgreSQL | `pytest ...::test_all_replay_hides_content_not_matched_by_latest_rules_and_preserves_history` | 预期失败：`rows_filtered_out=1`，但 `content_has_active_source(...) is True`；整轮 2.88s | 当前实现没有让最新规则未命中项退出有效结果 |
 | V2 | 分支基线 `5d9108a9` / Windows / 本机开发 PostgreSQL | `pytest ...::test_all_replay_batches_existing_convergence_without_per_row_sql --durations=1` | 通过；测试调用 2.62s，总计 3.74s，既有断言 SQL `<150` | 修改前 101 条已有 Content 重筛热路径基线 |
-| V3 | 当前工作树 / Windows / 本机开发 PostgreSQL | 完整 `tests/integration/ingestion/test_canonical_replay_worker.py` | 42 passed，122.17s | Planner、Run/Shard、取消、失败、接管、撤回、乱序完成、受理后普通写入及最新规则发布整体回归 |
+| V3 | 当前 `81dc2b55` / Windows / 本机开发 PostgreSQL | 完整 `tests/integration/ingestion/test_canonical_replay_worker.py` | 42 passed，115.08s | Planner、Run/Shard、取消、失败、接管、撤回、乱序完成、受理后普通写入及最新规则发布整体回归 |
 | V4 | 当前工作树 / 同一 PostgreSQL/Fixture/资源 | 两项 101 条性能测试 `--durations=2` | 原已有 Content Replay 2.20s、SQL `<150`；101 条全退出发布 1.57s、一次集合 UPDATE、整轮 SQL `<100` | 相对修改前 2.62s 未观察到热路径回退，发布不按 Content 逐行 SQL |
 | V5 | 当前工作树 / Windows / 本机开发 PostgreSQL | Repository、API、声音广场/工作台、导出/分析目标相关套件 | 17 + 11 + 12 + 3 passed | 请求持久化、公共 API、业务读取与下游任务选择一致 |
 | V6 | 当前工作树 / PostgreSQL 18 开发容器及隔离空库 | 0074 downgrade→0073→upgrade head；`alembic check`；`verify_migration_compatibility.py` | 回退/升级成功，0074 head，无 Metadata 漂移；隔离空库完整历史兼容脚本 exit 0 | Migration 可逆、单一 head、旧正式 revision 可升级 |
@@ -279,6 +279,7 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 | V8 | 当前工作树 / Windows | `pytest tests/contracts -q`、`pytest tests/api -q` | 112 + 89 passed | 公共 Contract/API 无意外回归 |
 | V9 | 当前工作树 / Windows | `pytest tests/unit -q` | 1456 passed、16 skipped、1 个与本 Change 无关的抖音可选截图提示断言失败；隔离复跑同样失败 | 本次相关 Unit 通过；唯一失败等待 Linux CI 判断既有平台/编码问题，不能计作全套 Unit 绿 |
 | V10 | 当前工作树 / Windows / 本机开发 PostgreSQL | 受影响 Content Current/History、并发、历史导入、TikHub 标准化套件 | 37 passed | 规则时间戳复用数据库批量写语句，未破坏普通 Content 处理链 |
+| V11 | 当前 `81dc2b55` / `origin/main...HEAD` | 完成定义对照与独立 diff 复核；`git diff --check origin/main...HEAD` | AC1–AC7 对照无缺口，diff 无空白错误，未发现新的阻断性 finding | 要求、数据边界、并发/撤回、性能、Migration、Contract 与文档已进入 Ready 门禁 |
 
 ## 未验证内容与剩余风险
 
@@ -288,8 +289,8 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 
 ## 交付状态
 
-- 提交：治理提交 `5d9108a9`；Red 测试提交 `4f6514be`；实现/文档提交待创建。
-- 拉取请求：Draft PR #650 已创建，当前待 Completion Audit 与 Review 后转 Ready。
+- 提交：治理提交 `5d9108a9`；Red 测试提交 `4f6514be`；实现/测试/文档提交 `81dc2b55`。
+- 拉取请求：Draft PR #650 已创建，完成 Completion Audit 与两阶段复核后将转 Ready。
 - CI：早期 Draft PR CI 均按设计 skipped，不构成交付证据；转 Ready 后按当前 HEAD 重新验证。
 - 合并：尚未合并。
 - Change 归档：等待合并后 Automation。
