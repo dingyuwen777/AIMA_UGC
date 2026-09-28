@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-141055-workbench-live-aggregation
 title: 工作台全量声音流、聚合提速与用户心智图
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/644-workbench-live-aggregation
 created: 2026-09-28
