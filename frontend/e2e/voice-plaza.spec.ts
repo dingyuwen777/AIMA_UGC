@@ -453,7 +453,7 @@ test('loads backend filter options and submits voice type with dependent labels'
   await filters.getByLabel('一级标签', { exact: true }).click()
   await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
   await filters.getByLabel('二级标签', { exact: true }).click()
-  await secondaryField.getByRole('checkbox', { name: '实际续航表现' }).check()
+  await secondaryField.getByRole('checkbox', { name: '电池、续航与充电 / 实际续航表现', exact: true }).check()
 
   await page.getByRole('button', { name: '选择品牌', exact: true }).click()
   const brandDialog = page.getByRole('dialog', { name: '选择品牌', exact: true })
@@ -611,7 +611,7 @@ test('一级标签多选约束二级候选，父级取消后失效二级不会�
 
   await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
   await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toBeVisible()
-  await secondaryField.getByRole('checkbox', { name: '续航表现' }).check()
+  await secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }).check()
   await secondaryField.getByRole('checkbox', { name: '实际续航表现' }).check()
   await expect(secondarySummary).toContainText('已选 2 个二级标签')
 
