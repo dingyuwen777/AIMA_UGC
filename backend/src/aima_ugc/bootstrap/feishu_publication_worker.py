@@ -47,7 +47,7 @@ class _JobPublicationCheckpoint(FeishuPublicationCheckpointStore):
         self,
         runtime: PlatformRuntime,
         *,
-        payload: FeishuReportPublicationJobPayload,
+        payload: FeishuReportPublicationJobPayload | FeishuRepresentativeSelectionJobPayload,
         fence: JobExecutionFence,
     ) -> None:
         self._runtime = runtime
@@ -214,12 +214,19 @@ class PostgresFeishuPublicationJobExecutor(FeishuPublicationJobExecutor):
                 if context.cancel_requested():
                     return JobHandlerResult.cancelled()
                 context.heartbeat(progress=5)
+                checkpoint = _JobPublicationCheckpoint(
+                    self._runtime,
+                    payload=payload,
+                    fence=fence,
+                )
                 summary = publish_representative_selection_to_feishu(
                     input_path=input_path,
                     output_dir=directory / "selection",
                     settings=self._runtime.settings,
                     environ=os.environ,
                     progress=lambda value: context.heartbeat(progress=value),
+                    idempotency_key=f"feishu-representative:{fence.job_id}",
+                    checkpoint=checkpoint,
                 )
                 context.heartbeat(progress=100)
                 return JobHandlerResult.succeeded(
