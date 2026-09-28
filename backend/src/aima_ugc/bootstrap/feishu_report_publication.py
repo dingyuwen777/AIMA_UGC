@@ -7,7 +7,7 @@ import json
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from aima_ugc.adapters.feishu import (
@@ -25,6 +25,7 @@ from aima_ugc.bootstrap.representative_selection_publication import (
 )
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.reporting import ReportGenerationSummary, generate_excel_report
+from aima_ugc.platform.time import beijing_now
 
 
 class FeishuReportPublicationConfigurationError(RuntimeError):
@@ -122,6 +123,8 @@ def publish_all_report_to_feishu(
     actual_environment = dict(os.environ if environ is None else environ)
     publisher_config = None if dry_run else _load_publisher_config(settings, actual_environment)
 
+    generated_at = _publication_generated_at(checkpoint) if not dry_run else None
+
     preparation = prepare_representative_report(
         input_path=source,
         output_dir=target / "representative_selection",
@@ -137,6 +140,7 @@ def publish_all_report_to_feishu(
         output_dir=target,
         report_date_range=report_date_range,
         chart_workbook_name="report-charts.xlsx",
+        generated_at=generated_at,
         representative_rows=preparation.rows,
     )
     if progress is not None:
@@ -205,6 +209,31 @@ def publish_all_report_to_feishu(
         representative_sync=representative_sync,
         representative_count=len(preparation.rows),
     )
+
+
+def _publication_generated_at(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+) -> datetime | None:
+    """为真实发布冻结一次人类可见生成时间，使重试不会只因时钟变化而漂移。"""
+
+    if checkpoint is None:
+        return None
+    value = checkpoint.get("prepared_generated_at")
+    if value is None:
+        generated_at = beijing_now()
+        checkpoint.set("prepared_generated_at", generated_at.isoformat())
+        return generated_at
+    if not isinstance(value, str):
+        raise FeishuReportPublicationSnapshotMismatch("报告生成时间 checkpoint 数据损坏")
+    try:
+        generated_at = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise FeishuReportPublicationSnapshotMismatch(
+            "报告生成时间 checkpoint 数据损坏"
+        ) from exc
+    if generated_at.utcoffset() is None:
+        raise FeishuReportPublicationSnapshotMismatch("报告生成时间 checkpoint 缺少时区")
+    return generated_at
 
 
 def _prepared_publication_digest(
