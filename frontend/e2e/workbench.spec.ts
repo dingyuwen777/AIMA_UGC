@@ -338,8 +338,8 @@ test('声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开�
   await page.goto('/')
   await page.addStyleTag({ content: '[popover] { display: block; }' })
 
-  const trigger = page.getByRole('button', { name: '二级标签', exact: true })
-  const panel = page.getByRole('dialog', { name: '选择二级标签' })
+  const trigger = page.getByRole('button', { name: '一级标签', exact: true })
+  const panel = page.getByRole('dialog', { name: '选择一级标签' })
   await expect(trigger).toHaveAttribute('aria-expanded', 'false')
   await expect(panel).toBeHidden()
 
@@ -564,6 +564,35 @@ test('日期取消、单日确认、清空后的默认范围始终一致', async
   await page.getByRole('button', { name: '清空' }).click()
   await page.getByRole('button', { name: '确定' }).click()
   await expect(trigger).toHaveText(original ?? '')
+})
+
+test('一级标签多选只开放对应二级候选，并在父级取消后清理失效子项', async ({ page }) => {
+  await page.goto('/')
+
+  const primaryTrigger = page.getByRole('button', { name: '一级标签', exact: true })
+  const secondaryTrigger = page.getByRole('button', { name: '二级标签', exact: true })
+  await expect(secondaryTrigger).toBeDisabled()
+
+  await primaryTrigger.click()
+  const primaryPanel = page.getByRole('dialog', { name: '选择一级标签' })
+  await primaryPanel.getByRole('checkbox', { name: '外观设计' }).check()
+  await expect(secondaryTrigger).toBeEnabled()
+
+  await secondaryTrigger.click()
+  const secondaryPanel = page.getByRole('dialog', { name: '选择二级标签' })
+  await expect(secondaryPanel.getByRole('checkbox', { name: '外观设计 / 颜色与配色' })).toBeVisible()
+  await expect(secondaryPanel.getByText('电池、续航与充电 / 续航里程')).toHaveCount(0)
+
+  await primaryTrigger.click()
+  await primaryPanel.getByRole('checkbox', { name: '电池、续航与充电' }).check()
+  await secondaryTrigger.click()
+  await expect(secondaryPanel.getByRole('checkbox', { name: '电池、续航与充电 / 续航里程' })).toBeVisible()
+  await secondaryPanel.getByRole('checkbox', { name: '电池、续航与充电 / 续航里程' }).check()
+  await expect(secondaryTrigger).toContainText('续航里程')
+
+  await primaryTrigger.click()
+  await primaryPanel.getByRole('checkbox', { name: '电池、续航与充电' }).uncheck()
+  await expect(secondaryTrigger).toContainText('全部二级标签')
 })
 
 test('筛选后的后端结果同步替换三个模块，重置后恢复', async ({ page }) => {
@@ -881,10 +910,10 @@ test('品牌心智深链把当前日期和一级标签恢复到声音广场', as
 
   await page.getByRole('button', { name: '查看该心智的用户原声 →' }).click()
   await page.waitForURL((url) =>
-    url.pathname === '/voice-plaza' && url.searchParams.get('primary_label') === '外观设计')
+    url.pathname === '/voice-plaza' && url.searchParams.get('primary_labels') === '外观设计')
 
   const url = new URL(page.url())
-  expect(url.searchParams.get('primary_label')).toBe('外观设计')
+  expect(url.searchParams.get('primary_labels')).toBe('外观设计')
   expect(url.searchParams.get('published_from')).toBeTruthy()
   expect(url.searchParams.get('published_to')).toBeTruthy()
   await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
