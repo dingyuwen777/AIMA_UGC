@@ -266,6 +266,8 @@ class PostgresWorkbenchHttpService:
             previous_users = int(previous_summary["identified_user_count"])
             dimensions = []
             for primary in configuration.taxonomy.primary_labels:
+                if primary == "无法分类":
+                    continue
                 current_row = current.get(primary)
                 user_count = 0 if current_row is None else int(current_row["user_count"])
                 content_count = 0 if current_row is None else int(current_row["content_count"])

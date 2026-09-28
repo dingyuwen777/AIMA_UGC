@@ -74,6 +74,12 @@ def test_parallel_workbench_requests_persist_one_active_scheme(monkeypatch) -> N
         assert responses[1].snapshot_status == "preparing"
         assert responses[2].snapshot_status == "preparing"
         assert isinstance(responses[1], WorkbenchMindResponse)
+        direct_mind = PostgresWorkbenchHttpService(
+            runtime,
+            use_snapshot_cache=False,
+        ).get_mind(query)
+        assert direct_mind.dimensions
+        assert all(item.primary_label != "无法分类" for item in direct_mind.dimensions)
         with runtime.database.engine.connect() as connection:
             assert (
                 connection.scalar(

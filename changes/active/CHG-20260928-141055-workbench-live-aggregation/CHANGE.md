@@ -136,7 +136,7 @@ data_changes:
 | R2 | 发帖时间显示时分且平台标记一致 | #644 / AC2 | satisfied | `SoundStreamCard` 北京时间时分 + `AimaPlatformMark` + Workbench Playwright |
 | R3 | 相同筛选热读不重复扫描明细，聚合持久/幂等/可失效 | #644 / AC3 | satisfied | `workbench_snapshots`/revision migration、版本化 Job、行锁合并、热读 SQL 捕获 Integration、Worker 默认预热 |
 | R4 | 失败保留最近成功结果并暴露真实刷新状态 | #644 / AC4 | satisfied | `snapshot_status/computed_at/source_revision` Contract、失败退避/旧 Scheme 隔离 Integration、Store/Browser 保留结果 |
-| R5 | active Taxonomy 驱动动态 N 边用户心智图并匹配参考样式 | #644 / AC5 | satisfied | ECharts dynamic indicator + ResizeObserver + 21 项 Workbench Playwright |
+| R5 | active Taxonomy 驱动非“无法分类”一级标签的动态 N 边用户心智图并匹配参考样式 | #644 / AC5 | satisfied | Service Integration 排除兜底标签 + ECharts dynamic indicator + ResizeObserver + 21 项 Workbench Playwright |
 | R6 | UGC 日均声量四舍五入为整数 | #644 / AC6 | satisfied | `Math.round` + Unit/Browser |
 | R7 | 普通成功/信息提示共享 3 秒生命周期，错误/进度/警告保留 | #644 / AC7 | satisfied | `useTransientNotice` 2999/3000ms fake timer + 8 个页面/面板迁移 + Browser |
 | R8 | Contract/Schema/Client/Job/Docs 与依赖边界同步 | #644 / AC8 | satisfied | OpenAPI/Orval clean generation、Alembic 0072、Worker Registry、Product/Blueprint/Operations、Contract/架构/Table Owner/Docs/Secret gates |

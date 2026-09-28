@@ -58,7 +58,7 @@ function setMetric(value: WorkbenchMindMetric): void {
   emit('metric', value)
 }
 
-/** active Taxonomy 的每个一级标签对应一条雷达轴，数量变化时自然形成 N 边图。 */
+/** active Taxonomy 的每个业务一级标签对应一条雷达轴，数量变化时自然形成 N 边图。 */
 function renderChart(): void {
   if (!chartElement.value || dimensions.value.length === 0) return
   if (!chart) {
