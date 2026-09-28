@@ -162,7 +162,15 @@ class PlatformSettings(BaseModel):
             self.feishu_user_group_id,
             self.feishu_redirect_uri,
         )
-        if not any(value is not None and value.strip() for value in login_values):
+        bitable_values = (
+            self.feishu_app_token,
+            self.feishu_wiki_token,
+            self.feishu_table_id,
+        )
+        if (
+            not any(value is not None and value.strip() for value in login_values)
+            and any(value is not None and value.strip() for value in bitable_values)
+        ):
             from aima_ugc.platform.security import validate_secret_ref
 
             validate_secret_ref(self.feishu_app_secret_ref)
