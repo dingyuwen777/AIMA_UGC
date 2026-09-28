@@ -1216,8 +1216,20 @@ def _query_hash(
     sort_by: Literal["published_at", "follower_count"] | None = None,
     sort_direction: Literal["asc", "desc"] = "desc",
 ) -> str:
-    """默认调用保留旧摘要；显式排序绑定字段和方向，阻止跨排序复用。"""
+    """对语义等价筛选生成稳定摘要，同时保持 Cursor 的严格查询绑定。"""
     payload = filters.model_dump(mode="json", exclude_none=True)
+    for plural_key, singular_key in (
+        ("primary_labels", "primary_label"),
+        ("secondary_labels", "secondary_label"),
+    ):
+        values = payload.pop(plural_key, [])
+        if len(values) == 1:
+            # PR #655 前的 Cursor 使用 singular 键。单值 plural 与其语义等价，
+            # 继续使用旧键可让部署前尚未过期的 Cursor 在升级后正常翻页。
+            payload[singular_key] = values[0]
+        elif values:
+            # 真正多值是新增查询语义，必须拥有独立查询身份。
+            payload[plural_key] = values
     if sort_by is not None or sort_direction != "desc":
         payload["list_sort"] = {"by": sort_by, "direction": sort_direction}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
