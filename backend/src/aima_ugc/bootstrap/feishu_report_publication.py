@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
 
@@ -240,22 +240,23 @@ def _prepared_publication_digest(
     report: ReportGenerationSummary,
     representative_rows: tuple[dict[str, object], ...],
 ) -> str:
-    """冻结首次外部发布真正消费的本地结果，防止重试混用不同 Attempt 的产物。"""
+    """摘要首次外部发布的语义输入，忽略 DOCX/XLSX 包内非确定时间元数据。"""
 
     digest = hashlib.sha256()
-    for label, path in (
-        ("markdown", report.markdown_path),
-        ("word", report.word_path),
-        ("charts", report.chart_workbook_path),
-    ):
-        digest.update(label.encode("utf-8"))
-        if path is None:
-            digest.update(b"<none>")
-            continue
-        file_path = Path(path)
-        if not file_path.is_file():
-            raise FileNotFoundError(file_path)
-        digest.update(hashlib.sha256(file_path.read_bytes()).digest())
+    markdown_path = Path(report.markdown_path)
+    if not markdown_path.is_file():
+        raise FileNotFoundError(markdown_path)
+    digest.update(b"markdown")
+    digest.update(hashlib.sha256(markdown_path.read_bytes()).digest())
+    digest.update(b"chart-specs")
+    digest.update(
+        json.dumps(
+            [asdict(spec) for spec in report.chart_specs],
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
 
     normalized_rows: list[dict[str, object]] = []
     for row in representative_rows:
