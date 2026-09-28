@@ -146,8 +146,7 @@ def test_content_query_hash_preserves_pre_plural_cursor_identity() -> None:
         ).encode()
         signature = hmac.new(secret, raw, hashlib.sha256).digest()
         cursor = ".".join(
-            base64.urlsafe_b64encode(value).rstrip(b"=").decode()
-            for value in (raw, signature)
+            base64.urlsafe_b64encode(value).rstrip(b"=").decode() for value in (raw, signature)
         )
         assert codec.decode(cursor, query_hash=current_hash) == position
 
