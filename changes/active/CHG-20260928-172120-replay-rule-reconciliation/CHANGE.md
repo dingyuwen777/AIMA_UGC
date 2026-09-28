@@ -193,7 +193,7 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 | R3 | 运行/失败/取消不发布半快照；撤回恢复且后续写入优先 | #649 / AC3 | not_satisfied | 待实现与验证 |
 | R4 | 后续合法写入可恢复；重试、接管、分片保持幂等 | #649 / AC4 | not_satisfied | 待实现与验证 |
 | R5 | Raw/Canonical/Version/审计保留，Contract/Generated Client 同步 | #649 / AC5 | not_satisfied | 待实现与验证 |
-| R6 | 原热路径无按行新增 SQL，吞吐无有意义退化；新增对账批量执行并有性能证据 | #649 / AC6 | not_satisfied | 待建立基线与对照 |
+| R6 | 原热路径无按行新增 SQL，吞吐无有意义退化；新增对账批量执行并有性能证据 | #649 / AC6 | not_satisfied | 修改前 101 条已有 Content 重筛基线：测试调用 2.62s、总计 3.74s、SQL `<150`；待实现后同环境对照 |
 | R7 | 相关自动测试、Migration、Full-stack、静态/文档/CI 全绿 | #649 / AC7 | not_satisfied | 待验证 |
 
 # 计划改动
@@ -209,7 +209,7 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 
 - [x] 调查当前实现和事实源；新建项目则确认现有资料、目标和硬约束
 - [x] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据或说明测试例外
+- [x] 行为变化建立失败证据或说明测试例外
 - [ ] 完成最小实现，不静默扩大范围
 - [ ] 同步受影响的长期文档或明确不适用依据
 - [ ] 取得仍覆盖当前版本的验证证据
@@ -267,18 +267,19 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 分支基线 `bd56ddb8` / Windows / PostgreSQL 待执行 | 待记录 | 待执行 | 修改前失败行为与性能基线 |
+| V1 | 分支基线 `5d9108a9` / Windows / 本机开发 PostgreSQL | `pytest ...::test_all_replay_hides_content_not_matched_by_latest_rules_and_preserves_history` | 预期失败：`rows_filtered_out=1`，但 `content_has_active_source(...) is True`；整轮 2.88s | 当前实现没有让最新规则未命中项退出有效结果 |
+| V2 | 分支基线 `5d9108a9` / Windows / 本机开发 PostgreSQL | `pytest ...::test_all_replay_batches_existing_convergence_without_per_row_sql --durations=1` | 通过；测试调用 2.62s，总计 3.74s，既有断言 SQL `<150` | 修改前 101 条已有 Content 重筛热路径基线 |
 
 ## 未验证内容与剩余风险
 
-- 尚未建立 Red 失败证据、修改前性能基线、实现、Migration、集成/工作流验证、Review 或 CI；当前 Change 仅完成事实调查与施工边界。
+- 已建立 Red 失败证据和修改前热路径基线；尚未完成实现、Migration、同环境性能对照、完整集成/工作流验证、Review 或 CI。
 - 仓库外生产数据量、锁竞争和目标服务器性能未验证；不得用本地基准冒充生产容量结论。
 
 ## 交付状态
 
-- 提交：尚未创建首个治理/失败测试提交。
-- 拉取请求：尚未创建。
-- CI：尚未运行。
+- 提交：首个治理提交 `5d9108a9`；Red 测试提交待创建。
+- 拉取请求：Draft PR #650 已创建，当前未 Ready。
+- CI：早期 Draft PR CI 不构成交付证据；实现后按当前 HEAD 重新验证。
 - 合并：尚未合并。
 - Change 归档：等待合并后 Automation。
 - 发布 / 部署：不适用；用户只授权开发、PR、合并和本地已合并分支清理，未授权 Release/Deploy/生产 Migration。

@@ -1692,6 +1692,101 @@ def test_all_replay_batches_existing_convergence_without_per_row_sql(tmp_path: P
         runtime.close()
 
 
+def test_all_replay_hides_content_not_matched_by_latest_rules_and_preserves_history(
+    tmp_path: Path,
+) -> None:
+    """全量重筛成功后，旧命中必须退出有效结果，但审计历史不能被物理删除。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-latest-rules.xlsx",
+            rows=(("replay-latest-rules", "星曜旧规则命中"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        with runtime.database.new_session() as session:
+            alias = PostgresBrandVehicleRepository(session).list_brand_aliases(brand_id)[0]
+        PostgresBrandVehicleHttpService(runtime).delete_alias(
+            brand_id,
+            alias.id,
+            principal=_principal(),
+            request_id="canonical-replay-delete-alias",
+        )
+
+        created = _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-latest-rules-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="latest-rules").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            content_id = connection.scalar(
+                select(contents_table.c.id).where(
+                    contents_table.c.external_content_id == "replay-latest-rules"
+                )
+            )
+            assert isinstance(content_id, UUID)
+            run = (
+                connection.execute(
+                    select(canonical_replay_runs_table).where(
+                        canonical_replay_runs_table.c.all_request_id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert run["rows_seen"] == 1
+            assert run["rows_filtered_out"] == 1
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
+                )
+                is False
+            )
+            assert (
+                connection.scalar(
+                    select(voice_plaza_content_projection_table.c.is_visible).where(
+                        voice_plaza_content_projection_table.c.content_id == content_id
+                    )
+                )
+                is False
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(voice_plaza_filter_catalog_entries_table)
+                    .where(voice_plaza_filter_catalog_entries_table.c.content_id == content_id)
+                )
+                == 0
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(content_versions_table)
+                    .where(content_versions_table.c.content_id == content_id)
+                )
+                == 1
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
 def test_all_replay_revoke_keeps_version_when_only_evidence_converged(
     tmp_path: Path,
 ) -> None:
