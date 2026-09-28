@@ -1167,6 +1167,8 @@ class ContentFilterSnapshot(BaseModel):
     sentiment: str | None = Field(default=None, min_length=1, max_length=128)
     primary_label: str | None = Field(default=None, min_length=1, max_length=256)
     secondary_label: str | None = Field(default=None, min_length=1, max_length=256)
+    primary_labels: tuple[str, ...] = Field(default=(), max_length=100)
+    secondary_labels: tuple[str, ...] = Field(default=(), max_length=200)
     published_from: datetime | None = None
     published_to: datetime | None = None
     source_identifier: UUID | None = None
@@ -1179,12 +1181,35 @@ class ContentFilterSnapshot(BaseModel):
     def normalize_platforms(cls, value: object) -> object:
         return _normalize_platform_inputs(value)
 
+    @field_validator("primary_labels", "secondary_labels")
+    @classmethod
+    def validate_label_filters(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """多选标签必须保持稳定非空值且不得重复。"""
+
+        if len(value) != len(set(value)):
+            raise ValueError("标签多选值不能重复")
+        if any(not item.strip() or item != item.strip() or len(item) > 256 for item in value):
+            raise ValueError("标签多选值必须是无首尾空白且不超过 256 字符的非空文本")
+        return value
+
     @field_validator("published_from", "published_to")
     @classmethod
     def validate_aware_datetime(cls, value: datetime | None) -> datetime | None:
         if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("时间筛选必须包含时区")
         return to_beijing(value) if value is not None else None
+
+    def primary_label_values(self) -> tuple[str, ...]:
+        """合并新多选与旧单值一级标签，并保持调用方给出的稳定顺序。"""
+
+        legacy = (self.primary_label,) if self.primary_label is not None else ()
+        return tuple(dict.fromkeys((*self.primary_labels, *legacy)))
+
+    def secondary_label_values(self) -> tuple[str, ...]:
+        """合并新多选与旧单值二级标签，并保持调用方给出的稳定顺序。"""
+
+        legacy = (self.secondary_label,) if self.secondary_label is not None else ()
+        return tuple(dict.fromkeys((*self.secondary_labels, *legacy)))
 
     @model_validator(mode="after")
     def validate_date_order(self) -> ContentFilterSnapshot:

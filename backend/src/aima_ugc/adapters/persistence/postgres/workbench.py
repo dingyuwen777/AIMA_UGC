@@ -429,18 +429,23 @@ class PostgresWorkbenchRepository:
         if query.sentiments:
             effective_clauses.append("effective_sentiment = ANY(CAST(:sentiments AS text[]))")
             params["sentiments"] = list(query.sentiments)
-        if query.primary_labels:
+        if query.primary_labels or query.secondary_labels:
+            label_conditions: list[str] = []
+            if query.primary_labels:
+                label_conditions.append(
+                    "f.item ->> 'primary_label' = ANY(CAST(:primary_labels AS text[]))"
+                )
+                params["primary_labels"] = list(query.primary_labels)
+            if query.secondary_labels:
+                label_conditions.append(
+                    "f.item ->> 'secondary_label' = ANY(CAST(:secondary_labels AS text[]))"
+                )
+                params["secondary_labels"] = list(query.secondary_labels)
             effective_clauses.append(
-                "EXISTS (SELECT 1 FROM jsonb_array_elements(effective_labels) AS f(item) "
-                "WHERE f.item ->> 'primary_label' = ANY(CAST(:primary_labels AS text[])))"
+                "EXISTS (SELECT 1 FROM jsonb_array_elements(effective_labels) AS f(item) WHERE "
+                + " AND ".join(label_conditions)
+                + ")"
             )
-            params["primary_labels"] = list(query.primary_labels)
-        if query.secondary_labels:
-            effective_clauses.append(
-                "EXISTS (SELECT 1 FROM jsonb_array_elements(effective_labels) AS f(item) "
-                "WHERE f.item ->> 'secondary_label' = ANY(CAST(:secondary_labels AS text[])))"
-            )
-            params["secondary_labels"] = list(query.secondary_labels)
 
         projection_where_sql = "\n                  AND ".join(projection_clauses)
         effective_where_sql = "\n                  AND ".join(effective_clauses)
@@ -582,18 +587,23 @@ class PostgresWorkbenchRepository:
         if query.sentiments:
             effective_clauses.append("effective_sentiment = ANY(CAST(:sentiments AS text[]))")
             params["sentiments"] = list(query.sentiments)
-        if query.primary_labels:
+        if query.primary_labels or query.secondary_labels:
+            label_conditions: list[str] = []
+            if query.primary_labels:
+                label_conditions.append(
+                    "f.item ->> 'primary_label' = ANY(CAST(:primary_labels AS text[]))"
+                )
+                params["primary_labels"] = list(query.primary_labels)
+            if query.secondary_labels:
+                label_conditions.append(
+                    "f.item ->> 'secondary_label' = ANY(CAST(:secondary_labels AS text[]))"
+                )
+                params["secondary_labels"] = list(query.secondary_labels)
             effective_clauses.append(
-                "EXISTS (SELECT 1 FROM jsonb_array_elements(effective_labels) AS f(item) "
-                "WHERE f.item ->> 'primary_label' = ANY(CAST(:primary_labels AS text[])))"
+                "EXISTS (SELECT 1 FROM jsonb_array_elements(effective_labels) AS f(item) WHERE "
+                + " AND ".join(label_conditions)
+                + ")"
             )
-            params["primary_labels"] = list(query.primary_labels)
-        if query.secondary_labels:
-            effective_clauses.append(
-                "EXISTS (SELECT 1 FROM jsonb_array_elements(effective_labels) AS f(item) "
-                "WHERE f.item ->> 'secondary_label' = ANY(CAST(:secondary_labels AS text[])))"
-            )
-            params["secondary_labels"] = list(query.secondary_labels)
 
         projection_where_sql = "\n                  AND ".join(projection_clauses)
         effective_where_sql = "\n                  AND ".join(effective_clauses)

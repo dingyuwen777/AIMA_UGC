@@ -7,7 +7,19 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import BigInteger, and_, case, exists, func, literal, or_, select, true
+from sqlalchemy import (
+    BigInteger,
+    and_,
+    case,
+    cast as sa_cast,
+    exists,
+    func,
+    literal,
+    or_,
+    select,
+    true,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -1440,6 +1452,24 @@ def _latest_relevance_review_subquery() -> Any:
     ).subquery("latest_content_relevance_review")
 
 
+def _jsonb_label_pair_match(
+    labels: Any,
+    *,
+    primary_labels: tuple[str, ...],
+    secondary_labels: tuple[str, ...],
+) -> Any:
+    """在同一个 JSONB 标签元素上组合一级/二级条件，避免跨标签对误命中。"""
+
+    items = func.jsonb_array_elements(labels).table_valued("value").alias("filter_label")
+    item = sa_cast(items.c.value, JSONB)
+    conditions: list[Any] = []
+    if primary_labels:
+        conditions.append(item["primary_label"].astext.in_(primary_labels))
+    if secondary_labels:
+        conditions.append(item["secondary_label"].astext.in_(secondary_labels))
+    return exists(select(literal(1)).select_from(items).where(*conditions))
+
+
 def _apply_projection_filters(
     statement: Any,
     *,
@@ -1541,13 +1571,16 @@ def _apply_projection_filters(
         statement = statement.where(projection.c.analysis_status == filters.analysis_status)
     if filters.sentiment is not None:
         statement = statement.where(projection.c.effective_sentiment == filters.sentiment)
-    if filters.primary_label is not None or filters.secondary_label is not None:
-        label: dict[str, str] = {}
-        if filters.primary_label is not None:
-            label["primary_label"] = filters.primary_label
-        if filters.secondary_label is not None:
-            label["secondary_label"] = filters.secondary_label
-        statement = statement.where(projection.c.labels.contains([label]))
+    primary_labels = filters.primary_label_values()
+    secondary_labels = filters.secondary_label_values()
+    if primary_labels or secondary_labels:
+        statement = statement.where(
+            _jsonb_label_pair_match(
+                projection.c.labels,
+                primary_labels=primary_labels,
+                secondary_labels=secondary_labels,
+            )
+        )
     return statement
 
 
@@ -1728,24 +1761,26 @@ def _apply_filters(
         statement = statement.where(~has_any_analysis)
     if filters.sentiment is not None:
         statement = statement.where(effective_sentiment == filters.sentiment)
-    if filters.primary_label is not None or filters.secondary_label is not None:
+    primary_labels = filters.primary_label_values()
+    secondary_labels = filters.secondary_label_values()
+    if primary_labels or secondary_labels:
         pair = analysis_content_label_pairs_table
         label_conditions = [pair.c.analysis_result_id == analysis.c.id]
-        if filters.primary_label is not None:
-            label_conditions.append(pair.c.primary_label == filters.primary_label)
-        if filters.secondary_label is not None:
-            label_conditions.append(pair.c.secondary_label == filters.secondary_label)
-        manual_label: dict[str, str] = {}
-        if filters.primary_label is not None:
-            manual_label["primary_label"] = filters.primary_label
-        if filters.secondary_label is not None:
-            manual_label["secondary_label"] = filters.secondary_label
+        if primary_labels:
+            label_conditions.append(pair.c.primary_label.in_(primary_labels))
+        if secondary_labels:
+            label_conditions.append(pair.c.secondary_label.in_(secondary_labels))
         ai_label_match = exists(select(literal(1)).where(*label_conditions))
+        manual_label_match = _jsonb_label_pair_match(
+            manual.c.labels,
+            primary_labels=primary_labels,
+            secondary_labels=secondary_labels,
+        )
         statement = statement.where(
             or_(
                 and_(
                     manual.c.labels_locked.is_(True),
-                    manual.c.labels.contains([manual_label]),
+                    manual_label_match,
                 ),
                 and_(
                     or_(
