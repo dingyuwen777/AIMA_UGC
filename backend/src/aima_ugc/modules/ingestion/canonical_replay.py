@@ -41,6 +41,7 @@ CanonicalReplaySourceKind = Literal[
     "tikhub_search_attempt_v1",
 ]
 CanonicalReplayPlanningStatus = Literal["queued", "running", "planned", "failed", "cancelled"]
+CanonicalReplayReconciliationStatus = Literal["legacy", "pending", "succeeded"]
 CanonicalReplayLifecycleStatus = Literal[
     "active",
     "cancelling",
@@ -76,6 +77,7 @@ class CanonicalReplayAllRequestRecord:
     created_by: str
     created_at: datetime
     accepted_before: datetime
+    filter_snapshot: BrandVehicleFilterSnapshot | None
     planning_status: CanonicalReplayPlanningStatus
     planner_job_id: UUID | None
     reversible: bool
@@ -92,6 +94,8 @@ class CanonicalReplayAllRequestRecord:
     skipped_content_count: int
     restored_evidence_count: int
     skipped_evidence_count: int
+    reconciliation_status: CanonicalReplayReconciliationStatus
+    reconciled_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -406,6 +410,7 @@ __all__ = [
     "CanonicalReplayCounters",
     "CanonicalReplayLifecycleStatus",
     "CanonicalReplayPlanningStatus",
+    "CanonicalReplayReconciliationStatus",
     "CanonicalReplayJobExecutor",
     "CanonicalReplayPlanJobExecutor",
     "CanonicalReplayPlanJobHandler",

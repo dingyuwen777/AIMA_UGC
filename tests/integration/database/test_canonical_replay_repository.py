@@ -711,6 +711,7 @@ def test_sync_repository_enqueue_all_keeps_zero_input_compatibility() -> None:
                 assert request.run_count == 0
                 assert request.planning_status == "planned"
                 assert request.planner_job_id is None
+                assert request.reconciliation_status == "succeeded"
         finally:
             session.close()
     finally:

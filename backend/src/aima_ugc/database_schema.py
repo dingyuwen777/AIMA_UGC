@@ -86,6 +86,7 @@ from aima_ugc.modules.identity.tables import (
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
     canonical_replay_content_changes_table,
+    canonical_replay_filter_state_table,
     canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
     canonical_replay_seen_content_table,
@@ -168,6 +169,7 @@ __all__ = [
     "canonical_artifact_links_table",
     "canonical_replay_all_requests_table",
     "canonical_replay_content_changes_table",
+    "canonical_replay_filter_state_table",
     "canonical_replay_run_artifacts_table",
     "canonical_replay_run_shards_table",
     "canonical_replay_runs_table",

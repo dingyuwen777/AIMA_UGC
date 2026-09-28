@@ -46,6 +46,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
     CanonicalReplayCounters,
     CanonicalReplayLifecycleStatus,
     CanonicalReplayPlanningStatus,
+    CanonicalReplayReconciliationStatus,
     CanonicalReplayRunRecord,
     CanonicalReplaySourceKind,
     dump_filter_snapshot,
@@ -53,6 +54,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 )
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
+    canonical_replay_filter_state_table,
     canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
     canonical_replay_seen_content_table,
@@ -75,6 +77,7 @@ from aima_ugc.platform.time import beijing_now
 
 from .artifact_metadata import PostgresArtifactMetadataRepository
 from .brand_vehicle import PostgresBrandVehicleRepository
+from .content_rule_filter import PostgresContentRuleFilterRepository
 from .jobs import PostgresJobRepository
 
 _RUN_NAMESPACE = UUID("6112f610-4803-4590-a121-9f225e729e95")
@@ -266,6 +269,10 @@ class PostgresCanonicalReplayRepository:
                 raise RuntimeError("全量 Replay 请求缺少对应的子 Run")
             return existing
 
+        catalog = PostgresBrandVehicleRepository(self._session).snapshot(brand_ids=None)
+        if catalog.unresolved_active_vehicle_ids:
+            raise RuntimeError("存在未完成品牌归属的 active 车型，不能启动 Replay")
+        snapshot = BrandVehicleFilterSnapshot(catalog=catalog)
         now = cast(datetime, self._session.scalar(select(func.clock_timestamp())))
         self._session.execute(
             insert(canonical_replay_all_requests_table).values(
@@ -279,17 +286,15 @@ class PostgresCanonicalReplayRepository:
                 created_by=actor,
                 created_at=now,
                 accepted_before=now,
+                filter_snapshot=dump_filter_snapshot(snapshot),
                 planning_status="planned",
                 planner_job_id=None,
                 reversible=True,
                 lifecycle_status="active",
+                reconciliation_status="pending",
             )
         )
         if candidates:
-            catalog = PostgresBrandVehicleRepository(self._session).snapshot(brand_ids=None)
-            if catalog.unresolved_active_vehicle_ids:
-                raise RuntimeError("存在未完成品牌归属的 active 车型，不能启动 Replay")
-            snapshot = BrandVehicleFilterSnapshot(catalog=catalog)
             for ordinal in range(run_count):
                 offset = ordinal * CANONICAL_REPLAY_ARTIFACTS_PER_RUN
                 selected = candidates[offset : offset + CANONICAL_REPLAY_ARTIFACTS_PER_RUN]
@@ -308,6 +313,8 @@ class PostgresCanonicalReplayRepository:
                     all_request_id=all_request_id,
                     all_request_ordinal=ordinal,
                 )
+        if run_count == 0:
+            self.reconcile_all_request_if_ready(all_request_id)
         created = self._get_all_request(all_request_id)
         if created is None:
             raise RuntimeError("全量 Replay 请求创建后不可读")
@@ -357,10 +364,12 @@ class PostgresCanonicalReplayRepository:
                 created_by=actor,
                 created_at=accepted_before,
                 accepted_before=accepted_before,
+                filter_snapshot=dump_filter_snapshot(filter_snapshot),
                 planning_status="queued",
                 planner_job_id=None,
                 reversible=True,
                 lifecycle_status="active",
+                reconciliation_status="pending",
             )
         )
         planner = jobs.enqueue(
@@ -477,6 +486,8 @@ class PostgresCanonicalReplayRepository:
             return record
         if record.accepted_before != accepted_before:
             raise RuntimeError("Replay Planner 受理时间边界发生漂移")
+        if record.filter_snapshot != snapshot:
+            raise RuntimeError("Replay Planner 冻结规则快照发生漂移")
 
         selection_digest = _selection_digest(candidates)
         artifact_count = len(candidates)
@@ -1012,6 +1023,128 @@ class PostgresCanonicalReplayRepository:
             raise RuntimeError("历史重筛撤回 Job 创建后父请求不可读")
         return refreshed
 
+    def reconcile_all_request_if_ready(self, request_id: UUID) -> tuple[int, int] | None:
+        """全部子任务成功后原子发布最新规则结果；未到完成屏障时不改变可见性。"""
+
+        record = self.get_all_request(request_id, for_update=True)
+        if record is None:
+            raise LookupError(request_id)
+        if record.reconciliation_status == "succeeded":
+            return (0, 0)
+        if (
+            record.reconciliation_status != "pending"
+            or record.planning_status != "planned"
+            or record.lifecycle_status != "active"
+            or record.filter_snapshot is None
+        ):
+            return None
+        child_statuses = self._session.execute(
+            select(jobs_table.c.status, func.count())
+            .select_from(
+                canonical_replay_runs_table.join(
+                    jobs_table,
+                    jobs_table.c.id == canonical_replay_runs_table.c.job_id,
+                )
+            )
+            .where(canonical_replay_runs_table.c.all_request_id == request_id)
+            .group_by(jobs_table.c.status)
+        ).all()
+        status_counts = {cast(str, status): cast(int, count) for status, count in child_statuses}
+        if status_counts.get("succeeded", 0) != record.run_count:
+            return None
+
+        reconciled_at = cast(datetime, self._session.scalar(select(func.clock_timestamp())))
+        self._session.execute(
+            update(canonical_replay_all_requests_table)
+            .where(
+                canonical_replay_all_requests_table.c.id == request_id,
+                canonical_replay_all_requests_table.c.reconciliation_status == "pending",
+            )
+            .values(reconciliation_status="succeeded", reconciled_at=reconciled_at)
+        )
+        self._ensure_filter_state()
+        state = (
+            self._session.execute(
+                select(canonical_replay_filter_state_table)
+                .where(canonical_replay_filter_state_table.c.singleton.is_(True))
+                .with_for_update()
+            )
+            .mappings()
+            .one()
+        )
+        active_request_id = cast(UUID | None, state["active_request_id"])
+        if active_request_id is not None and active_request_id != request_id:
+            active = self.get_all_request(active_request_id)
+            if active is not None and (active.created_at, active.id) > (
+                record.created_at,
+                record.id,
+            ):
+                return (0, 0)
+        return self._publish_rule_filter(request_id)
+
+    def reconcile_rule_filter_after_reversal(self, request_id: UUID) -> tuple[int, int]:
+        """撤回当前发布快照时，重新发布最近一次仍有效的成功规则结果。"""
+
+        self._ensure_filter_state()
+        state = (
+            self._session.execute(
+                select(canonical_replay_filter_state_table)
+                .where(canonical_replay_filter_state_table.c.singleton.is_(True))
+                .with_for_update()
+            )
+            .mappings()
+            .one()
+        )
+        if state["active_request_id"] != request_id:
+            return (0, 0)
+        previous_request_id = self._session.scalar(
+            select(canonical_replay_all_requests_table.c.id)
+            .where(
+                canonical_replay_all_requests_table.c.id != request_id,
+                canonical_replay_all_requests_table.c.reconciliation_status == "succeeded",
+                canonical_replay_all_requests_table.c.lifecycle_status == "active",
+                canonical_replay_all_requests_table.c.filter_snapshot.is_not(None),
+            )
+            .order_by(
+                canonical_replay_all_requests_table.c.created_at.desc(),
+                canonical_replay_all_requests_table.c.id.desc(),
+            )
+            .limit(1)
+        )
+        return self._publish_rule_filter(cast(UUID | None, previous_request_id))
+
+    def _ensure_filter_state(self) -> None:
+        """开发重置会通过 TRUNCATE CASCADE 清空单例；业务入口必须可幂等自愈。"""
+
+        self._session.execute(
+            pg_insert(canonical_replay_filter_state_table)
+            .values(singleton=True, active_request_id=None, updated_at=func.clock_timestamp())
+            .on_conflict_do_nothing(
+                index_elements=[canonical_replay_filter_state_table.c.singleton]
+            )
+        )
+
+    def _publish_rule_filter(self, request_id: UUID | None) -> tuple[int, int]:
+        """校验 Replay 快照后，委托 Content Owner 原子发布规则可见性。"""
+
+        accepted_before: datetime | None = None
+        if request_id is not None:
+            target = self.get_all_request(request_id)
+            if target is None or target.reconciliation_status != "succeeded":
+                raise RuntimeError("只能发布已成功收敛的全历史重筛规则")
+            accepted_before = target.accepted_before
+
+        summary = PostgresContentRuleFilterRepository(self._session).publish(
+            request_id=request_id,
+            accepted_before=accepted_before,
+        )
+        self._session.execute(
+            update(canonical_replay_filter_state_table)
+            .where(canonical_replay_filter_state_table.c.singleton.is_(True))
+            .values(active_request_id=request_id, updated_at=func.clock_timestamp())
+        )
+        return summary
+
     def mark_reversal_failed(self, request_id: UUID) -> None:
         """只有未成功结束的父请求可被撤回 Job 终态回调标记失败。"""
 
@@ -1354,6 +1487,11 @@ def _all_request_from_row(row: RowMapping) -> CanonicalReplayAllRequestRecord:
         created_by=cast(str, row["created_by"]),
         created_at=cast(datetime, row["created_at"]),
         accepted_before=cast(datetime, row["accepted_before"]),
+        filter_snapshot=(
+            load_filter_snapshot(row["filter_snapshot"])
+            if row["filter_snapshot"] is not None
+            else None
+        ),
         planning_status=cast(CanonicalReplayPlanningStatus, row["planning_status"]),
         planner_job_id=cast(UUID | None, row["planner_job_id"]),
         reversible=cast(bool, row["reversible"]),
@@ -1370,6 +1508,11 @@ def _all_request_from_row(row: RowMapping) -> CanonicalReplayAllRequestRecord:
         skipped_content_count=cast(int, row["skipped_content_count"]),
         restored_evidence_count=cast(int, row["restored_evidence_count"]),
         skipped_evidence_count=cast(int, row["skipped_evidence_count"]),
+        reconciliation_status=cast(
+            CanonicalReplayReconciliationStatus,
+            row["reconciliation_status"],
+        ),
+        reconciled_at=cast(datetime | None, row["reconciled_at"]),
     )
 
 

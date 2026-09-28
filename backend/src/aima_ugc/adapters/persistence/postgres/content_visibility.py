@@ -206,6 +206,7 @@ def content_has_active_source(
         )
     )
     return and_(
+        contents_table.c.rule_filter_visible.is_(True),
         or_(
             direct_import_source,
             collection_candidate_source,

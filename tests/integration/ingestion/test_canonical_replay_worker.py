@@ -18,6 +18,12 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
 )
+from aima_ugc.adapters.persistence.postgres.content_queries import (
+    PostgresContentQueryRepository,
+)
+from aima_ugc.adapters.persistence.postgres.content_rule_filter import (
+    PostgresContentRuleFilterRepository,
+)
 from aima_ugc.adapters.persistence.postgres.content_visibility import (
     content_has_active_source,
 )
@@ -67,6 +73,7 @@ from aima_ugc.modules.ingestion.canonical_replay import (
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
     canonical_replay_content_changes_table,
+    canonical_replay_filter_state_table,
     canonical_replay_run_artifacts_table,
     canonical_replay_runs_table,
     canonical_replay_seen_content_table,
@@ -1481,6 +1488,7 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
         created = _create_all_replay(client, runtime, idempotency_key=f"replay-ledger-{uuid4()}")
         ledger_inserts: list[str] = []
         content_updates: list[str] = []
+        reconciliation_updates: list[str] = []
         source_pair_reads: list[str] = []
         content_reads: list[str] = []
         statement_count = 0
@@ -1499,7 +1507,10 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
             if statement.lstrip().startswith("INSERT INTO canonical_replay_content_changes"):
                 ledger_inserts.append(statement)
             if statement.lstrip().startswith("UPDATE contents"):
-                content_updates.append(statement)
+                if "replay_rule_visibility_changed" in statement:
+                    reconciliation_updates.append(statement)
+                else:
+                    content_updates.append(statement)
             if statement.lstrip().startswith("SELECT provider_request_attempts.raw_artifact_id"):
                 source_pair_reads.append(statement)
             if statement.lstrip().startswith("SELECT contents."):
@@ -1543,6 +1554,7 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
             )
         assert len(ledger_inserts) == (row_count + 999) // 1000
         assert len(content_updates) == 0
+        assert len(reconciliation_updates) == 1
         assert len(source_pair_reads) <= 1
         assert len(content_reads) == 0
         if row_count == 101:
@@ -1715,6 +1727,9 @@ def test_all_replay_hides_content_not_matched_by_latest_rules_and_preserves_hist
             brand_ids=(brand_id,),
             expected_rows_ingested=1,
         )
+        # Migration 后的存量 Content 没有正常命中时间；首次重筛仍必须正确收敛。
+        with runtime.database.engine.begin() as connection:
+            connection.execute(update(contents_table).values(latest_normal_filter_match_at=None))
         with runtime.database.new_session() as session:
             alias = PostgresBrandVehicleRepository(session).list_brand_aliases(brand_id)[0]
         PostgresBrandVehicleHttpService(runtime).delete_alias(
@@ -1782,6 +1797,548 @@ def test_all_replay_hides_content_not_matched_by_latest_rules_and_preserves_hist
                 )
                 == 1
             )
+        query_session = runtime.database.new_session()
+        try:
+            queries = PostgresContentQueryRepository(
+                query_session,
+                analysis_identity=None,
+            )
+            assert queries.content_exists(content_id) is False
+            assert queries.count_all_analysis_targets() == 0
+            assert queries.freeze_targets(content_ids=(content_id,)) == ()
+        finally:
+            query_session.close()
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_keeps_content_when_any_historical_source_matches_latest_rules(
+    tmp_path: Path,
+) -> None:
+    """同一 Content 的多个 Canonical 采用任一命中语义，不能被未命中来源覆盖。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-any-hit-first.xlsx",
+            rows=(("replay-any-hit", "星曜命中来源"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        with runtime.database.new_session() as session:
+            alias = PostgresBrandVehicleRepository(session).list_brand_aliases(brand_id)[0]
+        PostgresBrandVehicleHttpService(runtime).delete_alias(
+            brand_id,
+            alias.id,
+            principal=_principal(),
+            request_id="canonical-replay-any-hit-delete-alias",
+        )
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-any-hit-second.xlsx",
+            rows=(("replay-any-hit", "完全不命中的另一来源"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=0,
+        )
+        _add_replay_alias(runtime, brand_id)
+
+        created = _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-any-hit-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="any-hit").run_once() is True
+
+        with runtime.database.engine.connect() as connection:
+            content_id = cast(UUID, connection.scalar(select(contents_table.c.id)))
+            run = (
+                connection.execute(
+                    select(canonical_replay_runs_table).where(
+                        canonical_replay_runs_table.c.all_request_id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert run["rows_seen"] == 2
+            assert run["rows_filtered_out"] == 1
+            assert connection.scalar(select(contents_table.c.rule_filter_visible)) is True
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
+                )
+                is True
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(canonical_replay_content_changes_table)
+                    .where(
+                        canonical_replay_content_changes_table.c.all_request_id == request_id,
+                        canonical_replay_content_changes_table.c.content_id == content_id,
+                    )
+                )
+                == 1
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_older_all_replay_finishing_late_cannot_override_newer_rule_snapshot(
+    tmp_path: Path,
+) -> None:
+    """较早请求即使晚完成，也不能覆盖已经发布的较新规则快照。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-rule-out-of-order.xlsx",
+            rows=(("replay-rule-out-of-order", "星曜旧规则命中"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        older = _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-rule-out-of-order-older-{uuid4()}",
+        )
+        older_request_id = UUID(cast(str, older["request_id"]))
+        with runtime.database.engine.begin() as connection:
+            older_job_id = connection.scalar(
+                select(canonical_replay_runs_table.c.job_id).where(
+                    canonical_replay_runs_table.c.all_request_id == older_request_id
+                )
+            )
+            assert isinstance(older_job_id, UUID)
+            connection.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == older_job_id)
+                .values(available_at=text("clock_timestamp() + interval '5 minutes'"))
+            )
+
+        with runtime.database.new_session() as session:
+            alias = PostgresBrandVehicleRepository(session).list_brand_aliases(brand_id)[0]
+        PostgresBrandVehicleHttpService(runtime).delete_alias(
+            brand_id,
+            alias.id,
+            principal=_principal(),
+            request_id="canonical-replay-out-of-order-delete-alias",
+        )
+        newer = _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-rule-out-of-order-newer-{uuid4()}",
+        )
+        newer_request_id = UUID(cast(str, newer["request_id"]))
+        assert _worker(runtime, suffix="rule-out-of-order-newer").run_once() is True
+
+        with runtime.database.engine.begin() as connection:
+            assert connection.scalar(select(contents_table.c.rule_filter_visible)) is False
+            assert (
+                connection.scalar(select(canonical_replay_filter_state_table.c.active_request_id))
+                == newer_request_id
+            )
+            connection.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == older_job_id)
+                .values(available_at=text("clock_timestamp()"))
+            )
+
+        assert _worker(runtime, suffix="rule-out-of-order-older").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            assert connection.scalar(select(contents_table.c.rule_filter_visible)) is False
+            assert (
+                connection.scalar(select(canonical_replay_filter_state_table.c.active_request_id))
+                == newer_request_id
+            )
+            assert (
+                connection.scalar(
+                    select(canonical_replay_all_requests_table.c.reconciliation_status).where(
+                        canonical_replay_all_requests_table.c.id == older_request_id
+                    )
+                )
+                == "succeeded"
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_revoke_restores_content_hidden_by_rule_reconciliation(
+    tmp_path: Path,
+) -> None:
+    """撤回当前规则快照时应恢复此前有效结果，不依赖物理删除恢复数据。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-rule-revoke.xlsx",
+            rows=(("replay-rule-revoke", "星曜旧规则命中"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        first = _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-rule-revoke-first-{uuid4()}",
+        )
+        first_request_id = UUID(cast(str, first["request_id"]))
+        assert _worker(runtime, suffix="rule-revoke-first").run_once() is True
+        with runtime.database.new_session() as session:
+            alias = PostgresBrandVehicleRepository(session).list_brand_aliases(brand_id)[0]
+        PostgresBrandVehicleHttpService(runtime).delete_alias(
+            brand_id,
+            alias.id,
+            principal=_principal(),
+            request_id="canonical-replay-revoke-delete-alias",
+        )
+        created = _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-rule-revoke-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="rule-revoke-hide").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            content_id = cast(UUID, connection.scalar(select(contents_table.c.id)))
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
+                )
+                is False
+            )
+
+        assert client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke").status_code == 202
+        assert _worker(runtime, suffix="rule-revoke-restore").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    select(content_has_active_source(contents_table.c.id)).where(
+                        contents_table.c.id == content_id
+                    )
+                )
+                is True
+            )
+            assert (
+                connection.scalar(select(canonical_replay_filter_state_table.c.active_request_id))
+                == first_request_id
+            )
+            assert (
+                connection.scalar(
+                    select(voice_plaza_content_projection_table.c.is_visible).where(
+                        voice_plaza_content_projection_table.c.content_id == content_id
+                    )
+                )
+                is True
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_normal_import_after_rule_reconciliation_restores_content_visibility(
+    tmp_path: Path,
+) -> None:
+    """规则退出不是永久墓碑；后续按正式入口重新命中时必须恢复。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-rule-later-write.xlsx",
+            rows=(("replay-rule-later-write", "星曜后写恢复"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        with runtime.database.new_session() as session:
+            alias = PostgresBrandVehicleRepository(session).list_brand_aliases(brand_id)[0]
+        PostgresBrandVehicleHttpService(runtime).delete_alias(
+            brand_id,
+            alias.id,
+            principal=_principal(),
+            request_id="canonical-replay-later-write-delete-alias",
+        )
+        created = _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-rule-later-write-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        assert _worker(runtime, suffix="rule-later-write-hide").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            content_id = cast(UUID, connection.scalar(select(contents_table.c.id)))
+            assert connection.scalar(select(contents_table.c.rule_filter_visible)) is False
+
+        _add_replay_alias(runtime, brand_id)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-rule-later-write-again.xlsx",
+            rows=(("replay-rule-later-write", "星曜后写恢复"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        with runtime.database.engine.connect() as connection:
+            assert connection.scalar(select(contents_table.c.rule_filter_visible)) is True
+            normal_match_at = connection.scalar(
+                select(contents_table.c.latest_normal_filter_match_at)
+            )
+            accepted_before = connection.scalar(
+                select(canonical_replay_all_requests_table.c.accepted_before).where(
+                    canonical_replay_all_requests_table.c.id == request_id
+                )
+            )
+            assert normal_match_at is not None
+            assert accepted_before is not None
+            assert normal_match_at > accepted_before
+            assert (
+                connection.scalar(
+                    select(voice_plaza_content_projection_table.c.is_visible).where(
+                        voice_plaza_content_projection_table.c.content_id == content_id
+                    )
+                )
+                is True
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_normal_match_after_admission_survives_later_rule_snapshot_publish(
+    tmp_path: Path,
+) -> None:
+    """受理后的普通新鲜写入优先，不能被稍后完成的冻结快照重新隐藏。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-rule-concurrent-base.xlsx",
+            rows=(("replay-rule-concurrent", "星曜受理前来源"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        with runtime.database.new_session() as session:
+            alias = PostgresBrandVehicleRepository(session).list_brand_aliases(brand_id)[0]
+        PostgresBrandVehicleHttpService(runtime).delete_alias(
+            brand_id,
+            alias.id,
+            principal=_principal(),
+            request_id="canonical-replay-concurrent-delete-alias",
+        )
+        created = _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-rule-concurrent-{uuid4()}",
+        )
+        request_id = UUID(cast(str, created["request_id"]))
+        with runtime.database.engine.begin() as connection:
+            replay_job_id = connection.scalar(
+                select(canonical_replay_runs_table.c.job_id).where(
+                    canonical_replay_runs_table.c.all_request_id == request_id
+                )
+            )
+            assert isinstance(replay_job_id, UUID)
+            connection.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == replay_job_id)
+                .values(available_at=text("clock_timestamp() + interval '5 minutes'"))
+            )
+
+        _add_replay_alias(runtime, brand_id)
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-rule-concurrent-later.xlsx",
+            rows=(("replay-rule-concurrent", "星曜受理后新鲜来源"),),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=1,
+        )
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == replay_job_id)
+                .values(available_at=text("clock_timestamp()"))
+            )
+
+        assert _worker(runtime, suffix="rule-concurrent-publish").run_once() is True
+        with runtime.database.engine.connect() as connection:
+            request = (
+                connection.execute(
+                    select(canonical_replay_all_requests_table).where(
+                        canonical_replay_all_requests_table.c.id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            run = (
+                connection.execute(
+                    select(canonical_replay_runs_table).where(
+                        canonical_replay_runs_table.c.all_request_id == request_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            normal_match_at = connection.scalar(
+                select(contents_table.c.latest_normal_filter_match_at)
+            )
+            assert run["rows_filtered_out"] == 1
+            assert request["reconciliation_status"] == "succeeded"
+            assert normal_match_at is not None
+            assert normal_match_at > request["accepted_before"]
+            assert connection.scalar(select(contents_table.c.rule_filter_visible)) is True
+            assert (
+                connection.scalar(select(canonical_replay_filter_state_table.c.active_request_id))
+                == request_id
+            )
+    finally:
+        _truncate(runtime)
+        runtime.close()
+
+
+def test_all_replay_reconciles_101_filtered_contents_with_one_set_update(
+    tmp_path: Path,
+) -> None:
+    """规则收窄必须保持集合更新，不能按未命中 Content 逐行往返数据库。"""
+
+    runtime = _runtime(tmp_path)
+    _truncate(runtime)
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                canonical_replay_service=PostgresCanonicalReplayHttpService(runtime),
+            )
+        )
+        brand_id = _create_brand(runtime, alias="星曜")
+        _import_canonical(
+            client,
+            runtime,
+            filename="replay-rule-filtered-batch.xlsx",
+            rows=tuple(
+                (f"replay-rule-filtered-{index}", f"星曜旧命中 {index}") for index in range(101)
+            ),
+            brand_ids=(brand_id,),
+            expected_rows_ingested=101,
+        )
+        with runtime.database.new_session() as session:
+            alias = PostgresBrandVehicleRepository(session).list_brand_aliases(brand_id)[0]
+        PostgresBrandVehicleHttpService(runtime).delete_alias(
+            brand_id,
+            alias.id,
+            principal=_principal(),
+            request_id="canonical-replay-filtered-batch-delete-alias",
+        )
+        _create_all_replay(
+            client,
+            runtime,
+            idempotency_key=f"replay-rule-filtered-batch-{uuid4()}",
+        )
+
+        statement_count = 0
+        reconciliation_updates = 0
+
+        def count_sql(
+            connection: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            nonlocal reconciliation_updates, statement_count
+            del connection, cursor, parameters, context, executemany
+            statement_count += 1
+            if (
+                statement.lstrip().startswith("UPDATE contents")
+                and "replay_rule_visibility_changed" in statement
+            ):
+                reconciliation_updates += 1
+
+        event.listen(runtime.database.engine, "before_cursor_execute", count_sql)
+        try:
+            assert _worker(runtime, suffix="rule-filtered-batch").run_once() is True
+        finally:
+            event.remove(runtime.database.engine, "before_cursor_execute", count_sql)
+
+        with runtime.database.engine.connect() as connection:
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 101
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(contents_table)
+                    .where(contents_table.c.rule_filter_visible.is_(False))
+                )
+                == 101
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(voice_plaza_content_projection_table)
+                    .where(voice_plaza_content_projection_table.c.is_visible.is_(False))
+                )
+                == 101
+            )
+        assert reconciliation_updates == 1
+        assert statement_count < 100
     finally:
         _truncate(runtime)
         runtime.close()
@@ -3055,6 +3612,31 @@ def test_all_replay_stops_on_parent_cancellation_without_a_free_worker(
             assert run is not None and run.rows_seen == 1
         finally:
             session.close()
+        with runtime.database.engine.connect() as connection:
+            assert connection.scalar(select(contents_table.c.rule_filter_visible)) is False
+            assert (
+                connection.scalar(
+                    select(canonical_replay_all_requests_table.c.reconciliation_status).where(
+                        canonical_replay_all_requests_table.c.id == request.id
+                    )
+                )
+                == "pending"
+            )
+            assert (
+                connection.scalar(select(canonical_replay_filter_state_table.c.active_request_id))
+                is None
+            )
+        publish_session = runtime.database.new_session()
+        try:
+            with publish_session.begin():
+                PostgresContentRuleFilterRepository(publish_session).publish(
+                    request_id=None,
+                    accepted_before=None,
+                )
+        finally:
+            publish_session.close()
+        with runtime.database.engine.connect() as connection:
+            assert connection.scalar(select(contents_table.c.rule_filter_visible)) is False
     finally:
         _truncate(runtime)
         runtime.close()

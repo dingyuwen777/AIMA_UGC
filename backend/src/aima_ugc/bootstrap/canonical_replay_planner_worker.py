@@ -121,6 +121,7 @@ def canonical_replay_plan_terminal_callback(session, job: JobRecord) -> None:  #
         if repository.get_all_request(normalized) is None:
             return
         repository.mark_all_plan_terminal(normalized, job=job)
+        repository.reconcile_all_request_if_ready(normalized)
         repository.ensure_reversal_job_if_ready(normalized)
 
 
