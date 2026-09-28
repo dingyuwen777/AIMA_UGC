@@ -698,6 +698,73 @@ describe('voice plaza', () => {
     }))
   })
 
+  it('旧 secondary-only Session 在动态目录加载后迁移为等价父子筛选', async () => {
+    sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
+      filters: { secondaryLabel: '续航表现' },
+      sortBy: 'published_at',
+      sortDirection: 'desc',
+    }))
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    generated.countContents.mockResolvedValue({
+      count_mode: 'estimated',
+      count: 1,
+      count_kind: 'exact',
+      as_of: '2026-09-28T12:00:00+08:00',
+      truncated: false,
+    })
+    generated.createDataExport.mockResolvedValue({
+      export_id: 'export-legacy-label',
+      job_id: 'job-legacy-label',
+      target_count: 1,
+    })
+    generated.getDataExport.mockRejectedValue(new Error('仅验证创建请求快照'))
+
+    const store = useVoicePlazaStore()
+    expect(store.appliedFilters.primaryLabels).toEqual([])
+    expect(store.appliedFilters.secondaryLabels).toEqual(['续航表现'])
+
+    await store.refreshFilterOptions()
+    await vi.waitFor(() => {
+      expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
+        primary_labels: ['产品体验'],
+        secondary_labels: ['续航表现'],
+      }))
+    })
+
+    expect(store.filters.primaryLabels).toEqual(['产品体验'])
+    expect(store.filters.secondaryLabels).toEqual(['续航表现'])
+    expect(store.appliedFilters.primaryLabels).toEqual(['产品体验'])
+    expect(store.appliedFilters.secondaryLabels).toEqual(['续航表现'])
+    expect(generated.countContents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          primary_labels: ['产品体验'],
+          secondary_labels: ['续航表现'],
+        }),
+      }),
+      expect.anything(),
+    )
+
+    const persisted = JSON.parse(
+      sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+    )
+    expect(persisted.filters).toMatchObject({
+      primaryLabels: ['产品体验'],
+      secondaryLabels: ['续航表现'],
+    })
+
+    await store.createExport('query')
+    expect(generated.createDataExport).toHaveBeenCalledWith(expect.objectContaining({
+      targets: {
+        scope: 'query',
+        filters: expect.objectContaining({
+          primary_labels: ['产品体验'],
+          secondary_labels: ['续航表现'],
+        }),
+      },
+    }))
+  })
+
   it('fails taxonomy closed without blocking the independent content list', async () => {
     generated.getContentAnalysisTaxonomy.mockRejectedValue(
       new VoicePlazaApiError({
