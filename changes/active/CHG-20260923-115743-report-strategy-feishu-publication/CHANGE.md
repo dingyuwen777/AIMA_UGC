@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-115743-report-strategy-feishu-publication
 title: 报告策略页面与飞书发布 Job 前后端接通
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-20
@@ -164,7 +164,7 @@ data_changes:
 - [x] upstream_re_read：已重新核对用户确认的双 Excel/日期/Dry Run 要求、现有报告入口、Job Runtime、Artifact 边界和管理员 Contract。
 - [x] change_coverage：R1—R7 均已映射到 API、Worker、前端、Contract、测试或文档证据。
 - [x] reverse_audit：已从前端上传动作反查 API/Artifact/Job/Worker/结果轮询，并从 Worker 报告编排反查页面入口和 Dry Run 边界。
-- [ ] unresolved_cleared：正在完成外部副作用 retry 根机制的剩余投影回归与新鲜 CI；完成代表性 Job checkpoint、创建型 POST ambiguous failure、报告 digest fencing 的 re-review 后再勾选。
+- [x] unresolved_cleared：外部副作用 retry 根机制的已知投影已统一收口：两个发布 Job 都有 durable checkpoint；代表性结果冻结后 retry 不再调用 LLM；创建型 Bitable POST 不在客户端内盲重试并通过稳定名称/Upsert 对账；媒体上传无法对账时 fail closed；报告生成时间与本地发布输入 digest 跨 Attempt 固定，结果漂移时阻断后续外部写入。
 
 # 完成证据与状态
 
