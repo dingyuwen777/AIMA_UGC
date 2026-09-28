@@ -176,12 +176,12 @@ data_changes:
 | V4 | Windows 本地 `.uv-venv` | 目标后端 Ruff/Mypy | 相关源文件无错误 | Python 静态质量和类型边界 |
 | V5 | Prompt / 入口兼容性 | analysis taxonomy API + voice taxonomy/relevance unit | 30 passed | 当前受管 Prompt 指针继续满足 v4 taxonomy/voice contract；未把不兼容 v4.6 文件切成全局基线 |
 | V6 | 仓库质量脚本 | docs、architecture、table ownership、Change completion | UTF-8 终端复跑后记录 | 文档、架构、表 Owner 和治理门禁 |
-| V7 | GitHub Actions（上一轮提交 `f1255499`） | CI run `35974601442`：PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、Requirement Traceability `107552005101`、CI Gate `107555251372` | 上一轮全部通过；本轮修复后的新 HEAD required CI 待复跑 | 旧 HEAD 的 Schema/claim/发布验收；新 HEAD 需重新证明 main 0071→0072、renew 和慢同步 fencing |
+| V7 | GitHub Actions（HEAD `9df22246`） | CI run `36392662890`：Requirement Traceability `108831773053`、PostgreSQL Integration `108834240613`、Real Full-stack `108834240740`、CI Gate `108836108815`；另有 Runtime Acceptance `36392662637`、Release dry-run `36392662501`、Developer Tooling `36392662518` | 全部 success | 当前 HEAD 已重新证明发布 checkpoint/冻结结果、Bitable retry 收敛、0072 migration、PostgreSQL fencing、真实 API/Worker Browser Golden Path、运行时与离线发布门禁 |
 
 ## 未验证内容与剩余风险
 
-真实 PostgreSQL、真实飞书租户权限、真实 LLM 账号和生产 Worker 部署不在本地 Fake/Dry Run 验证范围内。目标源文件的 Mypy 已通过；PostgreSQL migration/claim 集成仍需由 required CI 提供 Linux/数据库证据，Windows 上 Vite/Playwright 退出清理仍需单独环境治理。
+真实飞书租户权限、真实付费 LLM 账号和生产 Worker 部署不在普通 CI 验证范围内；用户已完成本地正常功能实测。当前 HEAD 的 PostgreSQL migration/claim、Linux runtime 与跨组件 Golden Path 已由 GitHub Actions `36392662890` 重新验证。
 
 ## 交付状态
 
-实现、目标测试、前端构建、Contract 和文档同步已完成。本轮修复完成后继续推送到既有 PR #580；新 HEAD 的 required CI 全绿后再逐条回复 review 并请求复审。
+实现、目标测试、前端构建、Contract 和文档同步已完成。根机制修复当前审查 HEAD 为 `9df22246`，其 required CI / PostgreSQL / Real Full-stack / Runtime / Release dry-run / Tooling 均已通过；独立 re-review 未发现新的 blocking finding。等待本证据更新提交自身门禁后执行 guarded merge。
