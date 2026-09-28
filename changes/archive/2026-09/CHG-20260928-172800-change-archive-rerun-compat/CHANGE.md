@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-172800-change-archive-rerun-compat
 title: 兼容历史多 Change 归档 Run 的逐项重跑恢复
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: fix/580-change-archive-rerun-compat
 created: 2026-09-28
