@@ -635,7 +635,7 @@ Code Review 常用三种模式：**只审核**、**审核并合并**、**Review 
 
 只做 Review，不修改代码，也不要合并。
 
-按当前项目规则和 Agent_Skills current canonical Source Mode 执行。先从真实 Requirement Source、当前代码、Contract / Schema、测试、CI 和文档独立重建需求，不要把 PR 描述、作者说明或 CI 全绿直接当成正确结论。
+按当前项目规则和当前正式治理入口执行。先从真实 Requirement Source、当前代码、Contract / Schema、测试、CI 和文档独立重建需求，不要把 PR 描述、作者说明或 CI 全绿直接当成正确结论。
 
 系统性检查实现正确性、边界条件、错误处理、并发/异步、数据一致性、安全权限、兼容性、测试充分性、文档和交付门禁。
 
@@ -651,7 +651,7 @@ Code Review 常用三种模式：**只审核**、**审核并合并**、**Review 
 ```text
 审核 PR #XXX；如果 Review 通过，就按项目规则完成到主分支的端到端交付。
 
-按当前项目规则和 Agent_Skills current canonical Source Mode 独立重建 Requirement，不要依赖作者结论或 CI 全绿替代 Review。
+按当前项目规则和当前正式治理入口独立重建 Requirement，不要依赖作者结论或 CI 全绿替代 Review。
 
 如果发现复合高风险机制，在当前范围内先把同一根机制的主要失效路径审完整，再统一给 Findings。
 
@@ -662,7 +662,7 @@ Code Review 常用三种模式：**只审核**、**审核并合并**、**Review 
 
 只有当前 HEAD 的独立 Review、required CI、权限和 Branch Protection 全部满足时才合并。
 
-合并后继续完成 main-fresh CI、Change Archive、Requirement / Issue Closure 和任务分支 cleanup；所有 required 门禁完成后再报告端到端完成。
+合并后继续完成主分支新鲜 CI、项目要求的变更归档、Requirement / Issue 收尾和任务分支 cleanup；所有 required 门禁完成后再报告端到端完成。
 ```
 
 ### 10.3 Review 后直接修复
@@ -1078,7 +1078,7 @@ AI 也可以用于方案判断、问题分析和资料研究。
 
 存在 blocking Finding 时写入 PR Review 并停止合并。
 只有当前 HEAD 的独立 Review、required CI、权限和 Branch Protection 全满足才合并。
-合并后完成 main-fresh、Change Archive、Requirement / Issue Closure 和任务分支 cleanup。
+合并后完成主分支新鲜 CI、项目要求的变更归档、Requirement / Issue 收尾和任务分支 cleanup。
 ```
 
 ### Review 并修复

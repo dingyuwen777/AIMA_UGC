@@ -75,8 +75,8 @@ Requirement Source：GitHub Issue #646。当前 Code Review 使用说明缺少�
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 完整只审核模板 | #646 / AC1 | satisfied | Section 10.1 已按用户最终文本写入 |
-| R2 | 完整审核并合并模板 | #646 / AC2 | satisfied | Section 10.2 已按用户最终文本写入 |
+| R1 | 完整只审核模板 | #646 / AC1 | satisfied | Section 10.1 已按用户最终语义写入；维护者内部术语按公开 USAGE 边界规范化 |
+| R2 | 完整审核并合并模板 | #646 / AC2 | satisfied | Section 10.2 已按用户最终语义写入；维护者内部术语按公开 USAGE 边界规范化 |
 | R3 | 保留 Review 后直接修复 | #646 / AC3 | satisfied | Section 10.3 保留原独立修复模式 |
 | R4 | 不降低治理门禁 | #646 / AC4 | satisfied | 双模板保留 blocking Finding、current HEAD、required CI、权限、Branch Protection 与 post-merge finalization |
 | R5 | 快捷指令同步 | #646 / AC5 | satisfied | Section 18 已同步只审核 / 审核并合并 / Review 并修复 |
@@ -120,17 +120,17 @@ Requirement Source：GitHub Issue #646。当前 Code Review 使用说明缺少�
 
 # 完成审计
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read：已重读 #646、最终 USAGE Section 10/18 与适用 canonical Review/Delivery 规则，需求未漂移。
+- [x] change_coverage：R1-R5 均有当前 USAGE 与跨仓一致性 Evidence；R6 按 post-merge lifecycle 正式 deferred。
+- [x] reverse_audit：已反查只审核、审核并合并、直接修复、快捷入口、公开文档边界与治理 Ownership。
+- [x] unresolved_cleared：当前实现范围无 unresolved blocking Requirement；仅 R6 的 post-merge delivery lifecycle 未完成。
 
 # 完成证据与状态
 
 ## 新鲜证据
 
 - Requirement Source #646 已重读；AC1-AC5 与用户最终双模板一致。
-- USAGE 文档提交：`54665a0725c26a35a136f2e0e0e05c1fee5088b7`。
+- USAGE 当前 branch 已定向读取并验证最终双模板与快捷入口。
 - 两仓 Section 10 已定向读取并确认逐字一致。
 - Section 18 已确认存在“只审核 / 审核并合并 / Review 并修复”快捷入口。
 - canonical Ownership 审计：未修改 Review/Coding/Router 规则，USAGE 仅做人类入口。
