@@ -71,8 +71,8 @@ export interface VoicePlazaFilters {
   relevance: '' | ContentRelevance
   voiceType: string
   sentiment: string
-  primaryLabel: string
-  secondaryLabel: string
+  primaryLabels: string[]
+  secondaryLabels: string[]
   publishedFrom: string
   publishedTo: string
   sourceIdentifier: string
@@ -89,8 +89,8 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   relevance: '',
   voiceType: '',
   sentiment: '',
-  primaryLabel: '',
-  secondaryLabel: '',
+  primaryLabels: [],
+  secondaryLabels: [],
   publishedFrom: '',
   publishedTo: '',
   sourceIdentifier: '',
@@ -115,11 +115,33 @@ function copyFilters(source: VoicePlazaFilters): VoicePlazaFilters {
     brandIds: [...source.brandIds],
     vehicleModelIds: [...source.vehicleModelIds],
     competitionScopes: [...source.competitionScopes],
+    primaryLabels: [...source.primaryLabels],
+    secondaryLabels: [...source.secondaryLabels],
   }
 }
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+/** 只保留所选一级标签真实拥有的二级标签，父级变化后隐藏值不能继续参与查询。 */
+function sanitizeLabelFilters(
+  source: VoicePlazaFilters,
+  options: ContentFilterOptionsResponse,
+): VoicePlazaFilters {
+  const validPrimaryLabels = new Set(options.labels.map((item) => item.primary_label))
+  const primaryLabels = source.primaryLabels.filter((value) => validPrimaryLabels.has(value))
+  const selectedPrimaryLabels = new Set(primaryLabels)
+  const validSecondaryLabels = new Set(
+    options.labels
+      .filter((item) => selectedPrimaryLabels.has(item.primary_label))
+      .flatMap((item) => item.secondary_labels.map((label) => label.value)),
+  )
+  return {
+    ...copyFilters(source),
+    primaryLabels,
+    secondaryLabels: source.secondaryLabels.filter((value) => validSecondaryLabels.has(value)),
+  }
 }
 
 /** 只恢复本应用写入且仍符合当前 Contract 的会话筛选，损坏缓存直接回退默认值。 */
@@ -162,8 +184,12 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
         relevance,
         voiceType: stringValue('voiceType'),
         sentiment: stringValue('sentiment'),
-        primaryLabel: stringValue('primaryLabel'),
-        secondaryLabel: stringValue('secondaryLabel'),
+        primaryLabels: isStringArray(values.primaryLabels)
+          ? values.primaryLabels
+          : typeof values.primaryLabel === 'string' && values.primaryLabel ? [values.primaryLabel] : [],
+        secondaryLabels: isStringArray(values.secondaryLabels)
+          ? values.secondaryLabels
+          : typeof values.secondaryLabel === 'string' && values.secondaryLabel ? [values.secondaryLabel] : [],
         publishedFrom: stringValue('publishedFrom'),
         publishedTo: stringValue('publishedTo'),
         sourceIdentifier: stringValue('sourceIdentifier'),
@@ -294,8 +320,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       relevance: appliedFilters.relevance || undefined,
       voice_type: appliedFilters.voiceType.trim() || undefined,
       sentiment: appliedFilters.sentiment.trim() || undefined,
-      primary_label: appliedFilters.primaryLabel.trim() || undefined,
-      secondary_label: appliedFilters.secondaryLabel.trim() || undefined,
+      primary_labels: appliedFilters.primaryLabels.length ? [...appliedFilters.primaryLabels] : undefined,
+      secondary_labels: appliedFilters.secondaryLabels.length ? [...appliedFilters.secondaryLabels] : undefined,
       published_from: beijingDayBoundary(appliedFilters.publishedFrom, 'start'),
       published_to: beijingDayBoundary(appliedFilters.publishedTo, 'end'),
       source_identifier: appliedFilters.sourceIdentifier.trim() || undefined,
@@ -348,6 +374,9 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   /** 提交筛选草稿；列表、统计、导出和轮询在下一次提交前只消费这份快照。 */
   function applyFilters(): void {
+    if (filterOptions.value) {
+      Object.assign(filters, sanitizeLabelFilters(filters, filterOptions.value))
+    }
     Object.assign(appliedFilters, copyFilters(filters))
     selectedIds.value = []
     nextCursor.value = null
