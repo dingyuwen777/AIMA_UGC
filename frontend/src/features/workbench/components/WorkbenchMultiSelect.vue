@@ -22,6 +22,7 @@ const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const open = ref(false)
 const position = ref({ left: '12px', top: '12px', maxHeight: '270px' })
+let positionedTrigger: { left: number; top: number } | null = null
 const nativePopoverSupported = typeof HTMLElement !== 'undefined'
   && typeof HTMLElement.prototype.showPopover === 'function'
 
@@ -72,6 +73,7 @@ function updatePosition(): void {
     top: `${Math.round(top)}px`,
     maxHeight: `${Math.round(actualHeight)}px`,
   }
+  positionedTrigger = { left: box.left, top: box.top }
 }
 
 /** 显式打开面板；原生 Popover 只增强顶层和 light-dismiss，不拥有显示事实。 */
@@ -90,6 +92,7 @@ function hidePanel(restoreFocus = false): void {
     panel.value.hidePopover()
   }
   open.value = false
+  positionedTrigger = null
   if (restoreFocus) trigger.value?.focus()
 }
 
@@ -104,8 +107,15 @@ function dismissOnScroll(event: Event): void {
   if (!open.value) return
   const scrollTarget = event.target
   const triggerElement = trigger.value
-  if (scrollTarget === window
-    || (scrollTarget instanceof Node && triggerElement && scrollTarget.contains(triggerElement))) {
+  const triggerBox = triggerElement?.getBoundingClientRect()
+  const triggerMoved = !positionedTrigger || !triggerBox
+    || Math.abs(triggerBox.left - positionedTrigger.left) > 0.5
+    || Math.abs(triggerBox.top - positionedTrigger.top) > 0.5
+  const movedByAncestorScroll = scrollTarget instanceof Node
+    && triggerElement
+    && scrollTarget.contains(triggerElement)
+    && triggerMoved
+  if (scrollTarget === window || movedByAncestorScroll) {
     hidePanel()
   }
 }

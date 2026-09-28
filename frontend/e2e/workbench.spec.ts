@@ -340,9 +340,12 @@ test('声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开�
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual((viewport?.width ?? 0) - 12)
   expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual((viewport?.height ?? 0) - 12)
 
+  await panel.getByRole('checkbox').first().focus()
+  await expect(panel.getByRole('checkbox').first()).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(trigger).toHaveAttribute('aria-expanded', 'false')
   await expect(panel).toBeHidden()
+  await expect(trigger).toBeFocused()
 
   await trigger.click()
   await page.getByRole('heading', { name: '工作台', exact: true }).click()
@@ -386,6 +389,14 @@ test('空声音流时原生筛选面板紧贴对应触发器并位于视口内',
   expect(panelBox?.x ?? -1).toBeGreaterThanOrEqual(12)
   expect((panelBox?.x ?? 0) + (panelBox?.width ?? 0)).toBeLessThanOrEqual((viewport?.width ?? 0) - 12)
   expect((panelBox?.y ?? 0) + (panelBox?.height ?? 0)).toBeLessThanOrEqual((viewport?.height ?? 0) - 12)
+
+  const sentimentTrigger = page.getByRole('button', { name: '情感', exact: true })
+  const sentimentPanel = page.getByRole('dialog', { name: '选择情感' })
+  await sentimentTrigger.click()
+  await expect(panel).toBeHidden()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await expect(sentimentPanel).toBeVisible()
+  await expect(sentimentTrigger).toHaveAttribute('aria-expanded', 'true')
 })
 
 test('声音流自动滚动时筛选面板保持打开，筛选条滚动时关闭', async ({ page }) => {
@@ -425,9 +436,10 @@ test('声音流自动滚动时筛选面板保持打开，筛选条滚动时关�
   await expect(trigger).toHaveAttribute('aria-expanded', 'true')
   await expect(panel.getByRole('checkbox', { name: '真实用户发声' })).toBeVisible()
 
-  await page.locator('.workbench-filters').evaluate((element) => {
-    element.dispatchEvent(new Event('scroll'))
-  })
+  const filters = page.locator('.workbench-filters')
+  const initialScrollLeft = await filters.evaluate((element) => element.scrollLeft)
+  await filters.evaluate((element) => element.scrollBy({ left: 40 }))
+  await expect.poll(() => filters.evaluate((element) => element.scrollLeft)).toBeGreaterThan(initialScrollLeft)
   await expect(panel).toBeHidden()
   await expect(trigger).toHaveAttribute('aria-expanded', 'false')
 })

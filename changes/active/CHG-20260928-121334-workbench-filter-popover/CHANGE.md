@@ -24,7 +24,7 @@ data_changes: []
 # 变更摘要
 
 - **要解决的问题**：声音流为空时原生 Popover 面板被浏览器默认几何样式推离触发器；声音流有内容自动滚动时，全局 scroll 监听把兄弟列表滚动误判为页面滚动并立即关闭面板。
-- **实际修改**：用失败浏览器回归固定原生面板锚点与自动滚动共存行为；重置原生 Popover UA 几何；仅在滚动目标会移动当前触发器时关闭面板。
+- **实际修改**：用失败浏览器回归固定原生面板锚点与自动滚动共存行为；重置原生 Popover UA 几何；记录面板定位时的触发器坐标，仅在祖先滚动后触发器确实移动时关闭面板。
 - **预期结果**：空/有内容时所有筛选面板都紧贴对应触发器、位于视口内、可持续操作；页面/筛选条滚动仍关闭，面板和声音流列表滚动不误关闭。
 
 # 背景、现状与问题
@@ -57,6 +57,7 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 | E3 | 声音流自动动画持续写 `scrollTop`，产生列表 scroll | `SoundStreamCard.vue` 与既有 Browser | 兄弟列表滚动必须被忽略 |
 | E4 | `dismissOnScroll()` 对所有面板外 scroll 都关闭 | `WorkbenchMultiSelect.vue` | 只处理 viewport/触发器祖先滚动 |
 | E5 | 当前加载性能、三模块独立状态与后端聚合已在 #641 验收 | main@76a1291f / PR #641 | 本 Change 不动数据加载和聚合链 |
+| E6 | Review 补充焦点断言后，fallback 用例 5 次并发重复有 1 次在点击后立即关闭；触发器聚焦引起的筛选条滚动已在定位前完成，但延迟派发的 scroll 仍被误判 | Browser Review 回归 | 祖先 scroll 还需验证触发器相对定位坐标是否真的变化，不能只看事件 target |
 
 # 目标、成功标准与非目标
 
@@ -92,7 +93,7 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 | 决策维度 | 当前决定 | 依据 | 影响 |
 | --- | --- | --- | --- |
 | 几何 Owner | 作者 `position` 是原生/fallback 共同事实，重置 UA 剩余 inset/margin | E1–E2 | 不再被 top layer 自动居中二次偏移 |
-| Scroll dismiss | viewport 或包含 trigger 的滚动目标关闭；panel 和其它兄弟内部滚动忽略 | E3–E4 | 筛选条/页面移动时状态一致，声音流滚动不干扰 |
+| Scroll dismiss | viewport 关闭；trigger 祖先滚动后只有定位坐标确实改变才关闭；panel 和其它兄弟内部滚动忽略 | E3–E4、E6 | 筛选条/页面真实移动时状态一致，声音流与打开动作的延迟 scroll 不干扰 |
 | 数据/性能 | 不改 Store/API/PostgreSQL | E5 | 保持用户已接受的加载速度与数据口径 |
 
 # 修改方案与决策依据
@@ -102,7 +103,7 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 1. 新增原生 Popover 空流回归，断言面板与触发器相对坐标及视口边界。
 2. 新增长声音流自动滚动回归，断言列表继续滚动且面板持续打开、选项可操作。
 3. 面板 CSS 重置原生 Popover 的 `inset` 和 `margin`，继续使用现有实时测量的 `left/top/maxHeight`。
-4. `dismissOnScroll()` 识别 viewport/document 与包含 trigger 的滚动祖先；忽略 panel 内部和触发器无关的兄弟滚动。
+4. `dismissOnScroll()` 识别 viewport/document 与包含 trigger 的滚动祖先；祖先事件还要比较定位时和当前触发器坐标，避免打开动作先滚动、后派发事件的竞态；忽略 panel 内部和触发器无关的兄弟滚动。
 5. 复跑所有 Workbench Browser、完整 Browser Mock、Unit/lint/typecheck/build 与文档/治理门禁。
 
 ## 证据到决策
@@ -110,7 +111,7 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 | 决策 | 依据证据 | 为什么采用这个方案 |
 | --- | --- | --- |
 | D1 重置 UA 几何 | E1–E2 | 直接让现有真实测量坐标生效，保留 top layer |
-| D2 按 trigger 结构过滤 scroll | E3–E4 | 关闭语义取决于 trigger 是否移动，避免绑定具体声音流类名 |
+| D2 按 trigger 结构和定位坐标过滤 scroll | E3–E4、E6 | 关闭语义取决于 trigger 是否真的移动，避免绑定具体声音流类名和打开时序竞态 |
 | D3 保持数据链不变 | E5 | 当前性能已获用户确认，问题局限在浮层表现层 |
 
 # 需求追溯
@@ -119,8 +120,8 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 | --- | --- | --- | --- | --- |
 | R1 | 空声音流时原生面板紧贴触发器且在视口内 | #642 / AC1 | satisfied | Browser Red 横向偏移 289.6875px；Green 精确断言横向误差 ≤2px、垂直间距 0–8px 和四边安全距离。 |
 | R2 | 长声音流持续滚动时面板保持可见、可操作 | #642 / AC2 | satisfied | 18 条声音 Browser 验证列表打开前后持续滚动超过 3px，面板仍可见、ARIA 为 open 且选项可操作。 |
-| R3 | 页面/trigger 祖先滚动关闭；panel/兄弟列表滚动忽略 | #642 / AC3 | satisfied | 新回归覆盖兄弟声音流忽略、筛选条祖先关闭；既有回归覆盖 panel 自身忽略和 window 关闭。 |
-| R4 | fallback、外部点击、Escape、焦点、首次关闭不回退 | #642 / AC4 | satisfied | Workbench Browser 20/20 通过，包含无 Popover API、首次关闭、Escape、外部点击和 window scroll。 |
+| R3 | 页面/trigger 祖先滚动关闭；panel/兄弟列表滚动忽略 | #642 / AC3 | satisfied | 新回归覆盖兄弟声音流忽略、筛选条实际横移 40px 后关闭；既有回归覆盖 panel 自身忽略和 window 关闭。 |
+| R4 | fallback、外部点击、Escape、焦点、首次关闭不回退 | #642 / AC4 | satisfied | Workbench Browser 20/20 通过，包含无 Popover API、首次关闭、面板内焦点经 Escape 返回触发器、外部点击、window scroll 和原生筛选器互斥。 |
 | R5 | 工作台性能、真实筛选、滚动、布局和状态不回退，无 Contract/Schema/依赖变化 | #642 / AC5 | satisfied | Workbench 20/20、完整 Browser 161/161、Vitest 255/255、lint/typecheck/build；最终 diff 无 Store/API/Contract/Schema/依赖。 |
 | R6 | Completion、Review、CI、merge/main/archive/cleanup 完成交付 | #642 / AC6 | explicitly_deferred | 本地 Completion 已完成；独立 Review、最终提交 CI、合并、main-fresh、归档和分支清理只能在 Ready 提交后按顺序执行，不豁免。 |
 
@@ -184,9 +185,12 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 | V7 | 当前候选工作树 | `cd frontend && npm run build` | 835 modules，build 成功 | 正式打包通过；只有仓库既有的大 chunk 提示 |
 | V8 | 当前候选工作树 | `cd frontend && npm run test:e2e` | 161 passed | 全页面 Browser Mock Acceptance 无回退 |
 | V9 | 当前候选工作树 | governance / Secret / docs / docs-facts gates | 全部通过 | 治理接线、敏感信息和长期文档事实一致 |
+| V10 | Review 修复后候选 | fallback + 自动滚动两用例 `--repeat-each=10` | 20 passed | 打开瞬间祖先 scroll 竞态消除，声音流兄弟滚动忽略且实际筛选条滚动仍关闭 |
+| V11 | Review 修复后候选 | Workbench / Unit / lint / typecheck / build / 完整 Browser | 20、255、通过、通过、成功、161 passed | 最终实现的分层前端证据全部新鲜通过 |
 
 ## Review、CI 与交付记录
 
 - 当前状态：生产实现、文档、Red→Green、完整前端验证和 Completion Audit 已完成，Change 已转 `ready_for_review`。
-- Review：以 `main@76a1291f` → 当前完整候选为对象执行两阶段独立 Review；结论待记录。
+- Review 第一阶段（实现/风险）：发现 AC4 焦点恢复与原生互斥缺直接断言，并在补测后复现打开瞬间祖先 scroll 延迟派发竞态；已改为记录定位坐标、只在 trigger 实际移动时关闭。两组高风险用例并发重复 10 次后 20/20 通过，最终实现无剩余阻断项。
+- Review 第二阶段（测试/文档）：从 AC1–AC5 反查原生/fallback、空/长列表、四类 scroll、焦点/互斥、真实筛选、布局与完整前端证据；产品文档与最终关闭语义一致。结论：`NO_BLOCKING_FINDINGS_WITHIN_SCOPE`。
 - CI / merge / archive：Review 无阻断项并形成最终提交后，转 Ready、等待 current-head required checks，再按用户授权合并并完成 main-fresh、原生归档与分支清理。
