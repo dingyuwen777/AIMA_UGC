@@ -10,6 +10,12 @@ from aima_ugc.adapters.persistence.postgres.workbench import (
 )
 from aima_ugc.bootstrap.workbench_http import _period
 from aima_ugc.contracts.workbench import WorkbenchLayoutModule, WorkbenchQuery
+from aima_ugc.modules.analysis.manual_override_tables import (
+    analysis_content_manual_overrides_table,
+)
+from aima_ugc.modules.analysis.relevance_review_tables import (
+    analysis_content_relevance_reviews_table,
+)
 from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,
     analysis_schemes_table,
@@ -24,6 +30,60 @@ from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
+from sqlalchemy import event
+
+
+def test_workbench_mind_and_trend_each_execute_one_aggregate_statement() -> None:
+    """慢模块必须各用一次数据库执行复用范围事实，不能重建 5/4 次完整关联。"""
+
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    statements: list[str] = []
+
+    def capture_statement(
+        _connection: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        """只记录本测试主动执行的聚合 SQL。"""
+
+        statements.append(statement)
+
+    event.listen(runtime.engine, "before_cursor_execute", capture_statement)
+    try:
+        repository = PostgresWorkbenchRepository(session)
+        current_start = datetime(2026, 8, 30, tzinfo=UTC)
+        current_end = datetime(2026, 9, 29, tzinfo=UTC)
+        previous_start = datetime(2026, 7, 31, tzinfo=UTC)
+        query = WorkbenchQuery()
+        trend = repository.trend_snapshot(
+            active_scheme_version_id=uuid4(),
+            query=query,
+            previous_start_at=previous_start,
+            current_start_at=current_start,
+            end_at=current_end,
+        )
+        mind = repository.mind_snapshot(
+            active_scheme_version_id=uuid4(),
+            query=query,
+            previous_start_at=previous_start,
+            current_start_at=current_start,
+            end_at=current_end,
+        )
+
+        assert trend["current_summary"]["total_count"] == 0
+        assert mind["current_summary"]["identified_user_count"] == 0
+        aggregate_statements = [statement for statement in statements if "workbench:" in statement]
+        assert len(aggregate_statements) == 2
+        assert "workbench:trend-snapshot" in aggregate_statements[0]
+        assert "workbench:mind-snapshot" in aggregate_statements[1]
+    finally:
+        event.remove(runtime.engine, "before_cursor_execute", capture_statement)
+        session.close()
+        runtime.dispose()
 
 
 def _job_values(job_id: UUID, *, now: datetime, suffix: str) -> dict[str, object]:
@@ -294,10 +354,11 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
         query = WorkbenchQuery()
         start_at = now - timedelta(days=1)
         end_at = now + timedelta(days=1)
-        summary = repository.period_summary(
+        trend_snapshot = repository.trend_snapshot(
             active_scheme_version_id=active_version_id,
             query=query,
-            start_at=start_at,
+            previous_start_at=start_at - timedelta(days=2),
+            current_start_at=start_at,
             end_at=end_at,
         )
         stream = repository.stream_rows(
@@ -306,13 +367,16 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
             start_at=start_at,
             end_at=end_at,
         )
-        mind = repository.mind_counts(
+        mind_snapshot = repository.mind_snapshot(
             active_scheme_version_id=active_version_id,
             query=query,
-            start_at=start_at,
+            previous_start_at=start_at - timedelta(days=2),
+            current_start_at=start_at,
             end_at=end_at,
         )
 
+        summary = trend_snapshot["current_summary"]
+        mind = mind_snapshot["current_primary"]
         assert int(summary["analyzed_count"]) == 1
         assert int(summary["positive_count"]) == 1
         assert stream[0]["effective_sentiment"] == "正面"
@@ -321,13 +385,142 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
         ]
         assert [(row["primary_label"], int(row["user_count"])) for row in mind] == [("外观设计", 1)]
 
+        # Projection 仍指向旧 Scheme 时，回退路径必须应用当前 Content Version 的人工事实。
+        session.execute(
+            analysis_content_manual_overrides_table.insert().values(
+                content_id=content_id,
+                content_version=1,
+                voice_type="品牌官方发声",
+                sentiment="负面",
+                labels=[{"primary_label": "售后服务", "secondary_label": "维修体验"}],
+                voice_type_locked=True,
+                sentiment_locked=True,
+                labels_locked=True,
+                actor_ref="workbench-integration-test",
+                updated_at=now + timedelta(seconds=2),
+            )
+        )
+        session.execute(
+            analysis_content_relevance_reviews_table.insert().values(
+                id=uuid4(),
+                content_id=content_id,
+                content_version=1,
+                analysis_result_id=active_result_id,
+                review_no=1,
+                decision="irrelevant",
+                request_id=f"workbench-review-{content_id}-1",
+                reviewed_at=now + timedelta(seconds=2),
+            )
+        )
+        session.execute(
+            voice_plaza_content_projection_table.update()
+            .where(voice_plaza_content_projection_table.c.content_id == content_id)
+            .values(
+                is_visible=True,
+                analysis_result_id=old_result_id,
+                analysis_status="completed",
+                updated_at=now + timedelta(seconds=2),
+            )
+        )
+        irrelevant_snapshot = repository.trend_snapshot(
+            active_scheme_version_id=active_version_id,
+            query=query,
+            previous_start_at=start_at - timedelta(days=2),
+            current_start_at=start_at,
+            end_at=end_at,
+        )
+        assert int(irrelevant_snapshot["current_summary"]["total_count"]) == 0
+        session.execute(
+            analysis_content_relevance_reviews_table.insert().values(
+                id=uuid4(),
+                content_id=content_id,
+                content_version=1,
+                analysis_result_id=active_result_id,
+                review_no=2,
+                decision="relevant",
+                request_id=f"workbench-review-{content_id}-2",
+                reviewed_at=now + timedelta(seconds=3),
+            )
+        )
+        session.execute(
+            voice_plaza_content_projection_table.update()
+            .where(voice_plaza_content_projection_table.c.content_id == content_id)
+            .values(
+                is_visible=True,
+                analysis_result_id=old_result_id,
+                analysis_status="completed",
+                updated_at=now + timedelta(seconds=3),
+            )
+        )
+        manual_query = WorkbenchQuery(
+            voice_types=("品牌官方发声",),
+            sentiments=("负面",),
+            primary_labels=("售后服务",),
+            secondary_labels=("维修体验",),
+        )
+        manual_stream = repository.stream_rows(
+            active_scheme_version_id=active_version_id,
+            query=manual_query,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        manual_mind = repository.mind_snapshot(
+            active_scheme_version_id=active_version_id,
+            query=manual_query,
+            previous_start_at=start_at - timedelta(days=2),
+            current_start_at=start_at,
+            end_at=end_at,
+        )
+        assert manual_stream[0]["effective_voice_type"] == "品牌官方发声"
+        assert manual_stream[0]["effective_sentiment"] == "负面"
+        assert manual_stream[0]["effective_labels"] == [
+            {"primary_label": "售后服务", "secondary_label": "维修体验"}
+        ]
+        assert [row["primary_label"] for row in manual_mind["current_primary"]] == ["售后服务"]
+
+        # Projection 已同步到 active Scheme 后，应走派生读模型快路径且保持相同业务结果。
+        session.execute(
+            voice_plaza_content_projection_table.update()
+            .where(voice_plaza_content_projection_table.c.content_id == content_id)
+            .values(
+                analysis_result_id=active_result_id,
+                effective_relevance="relevant",
+                relevance_source="manual_review",
+                effective_voice_type="品牌官方发声",
+                effective_sentiment="负面",
+                labels=[{"primary_label": "售后服务", "secondary_label": "维修体验"}],
+                updated_at=now + timedelta(seconds=4),
+            )
+        )
+        fast_trend_snapshot = repository.trend_snapshot(
+            active_scheme_version_id=active_version_id,
+            query=query,
+            previous_start_at=start_at - timedelta(days=2),
+            current_start_at=start_at,
+            end_at=end_at,
+        )
+        fast_mind_snapshot = repository.mind_snapshot(
+            active_scheme_version_id=active_version_id,
+            query=query,
+            previous_start_at=start_at - timedelta(days=2),
+            current_start_at=start_at,
+            end_at=end_at,
+        )
+        assert int(fast_trend_snapshot["current_summary"]["relevant_count"]) == 1
+        assert int(fast_trend_snapshot["current_summary"]["positive_count"]) == 0
+        assert [row["sentiment"] for row in fast_trend_snapshot["sentiment_counts"]] == ["负面"]
+        assert [
+            (row["primary_label"], int(row["user_count"]))
+            for row in fast_mind_snapshot["current_primary"]
+        ] == [("售后服务", 1)]
+
         # 同一筛选源必须同时改变声音流、声量/情感聚合与心智聚合。
         excluded_queries = (
             WorkbenchQuery(platforms=("douyin",)),
-            WorkbenchQuery(voice_types=("品牌官方发声",)),
-            WorkbenchQuery(sentiments=("负面",)),
-            WorkbenchQuery(primary_labels=("售后服务",)),
-            WorkbenchQuery(secondary_labels=("维修体验",)),
+            WorkbenchQuery(voice_types=("真实用户发声",)),
+            WorkbenchQuery(sentiments=("正面",)),
+            WorkbenchQuery(primary_labels=("外观设计",)),
+            WorkbenchQuery(secondary_labels=("颜色与配色",)),
             WorkbenchQuery(brand_ids=(uuid4(),)),
             WorkbenchQuery(vehicle_model_ids=(uuid4(),)),
         )
@@ -343,23 +536,25 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
             )
             assert (
                 int(
-                    repository.period_summary(
+                    repository.trend_snapshot(
                         active_scheme_version_id=active_version_id,
                         query=excluded_query,
-                        start_at=start_at,
+                        previous_start_at=start_at - timedelta(days=2),
+                        current_start_at=start_at,
                         end_at=end_at,
-                    )["total_count"]
+                    )["current_summary"]["total_count"]
                 )
                 == 0
             )
             assert (
-                repository.mind_counts(
+                repository.mind_snapshot(
                     active_scheme_version_id=active_version_id,
                     query=excluded_query,
-                    start_at=start_at,
+                    previous_start_at=start_at - timedelta(days=2),
+                    current_start_at=start_at,
                     end_at=end_at,
-                )
-                == ()
+                )["current_primary"]
+                == []
             )
 
         earlier = WorkbenchQuery(date_from=date(2026, 9, 20), date_to=date(2026, 9, 21))
@@ -375,23 +570,25 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
         )
         assert (
             int(
-                repository.period_summary(
+                repository.trend_snapshot(
                     active_scheme_version_id=active_version_id,
                     query=earlier,
-                    start_at=earlier_start,
+                    previous_start_at=earlier_start - timedelta(days=2),
+                    current_start_at=earlier_start,
                     end_at=earlier_end,
-                )["total_count"]
+                )["current_summary"]["total_count"]
             )
             == 0
         )
         assert (
-            repository.mind_counts(
+            repository.mind_snapshot(
                 active_scheme_version_id=active_version_id,
                 query=earlier,
-                start_at=earlier_start,
+                previous_start_at=earlier_start - timedelta(days=2),
+                current_start_at=earlier_start,
                 end_at=earlier_end,
-            )
-            == ()
+            )["current_primary"]
+            == []
         )
     finally:
         transaction.rollback()

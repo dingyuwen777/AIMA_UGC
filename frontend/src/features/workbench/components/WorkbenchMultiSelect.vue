@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 export interface WorkbenchSelectOption {
   value: string
@@ -21,7 +21,10 @@ const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
 const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const open = ref(false)
-const position = ref({ left: '0px', top: '0px' })
+const position = ref({ left: '12px', top: '12px', maxHeight: '270px' })
+let positionedTrigger: { left: number; top: number } | null = null
+const nativePopoverSupported = typeof HTMLElement !== 'undefined'
+  && typeof HTMLElement.prototype.showPopover === 'function'
 
 const selectedText = computed(() => {
   if (props.modelValue.length === 0) return props.allLabel
@@ -44,30 +47,112 @@ function toggleAll(): void {
   emit('update:modelValue', props.modelValue.length ? [] : props.options.map((item) => item.value))
 }
 
-/** Popover 进入浏览器顶层，避免横向滚动的筛选条裁切选项。 */
-function togglePanel(): void {
-  if (open.value) {
-    panel.value?.hidePopover()
-    return
-  }
+/** 根据真实触发器、面板与视口尺寸选择展开方向并约束可滚动高度。 */
+function updatePosition(): void {
   const box = trigger.value?.getBoundingClientRect()
-  if (!box) return
-  const left = Math.max(12, Math.min(box.left, window.innerWidth - 232))
-  const top = box.bottom + 275 < window.innerHeight
-    ? box.bottom + 5
-    : Math.max(12, box.top - 275)
-  position.value = { left: `${left}px`, top: `${top}px` }
-  panel.value?.showPopover()
+  const menu = panel.value
+  if (!box || !menu) return
+  const viewportGap = 12
+  const anchorGap = 5
+  const panelWidth = menu.offsetWidth || 232
+  const desiredHeight = Math.min(menu.scrollHeight || 270, 270, window.innerHeight - viewportGap * 2)
+  const below = window.innerHeight - box.bottom - viewportGap - anchorGap
+  const above = box.top - viewportGap - anchorGap
+  const placeBelow = below >= Math.min(desiredHeight, 160) || below >= above
+  const availableHeight = Math.max(48, placeBelow ? below : above)
+  const actualHeight = Math.min(desiredHeight, availableHeight)
+  const left = Math.max(
+    viewportGap,
+    Math.min(box.left, window.innerWidth - panelWidth - viewportGap),
+  )
+  const top = placeBelow
+    ? box.bottom + anchorGap
+    : Math.max(viewportGap, box.top - actualHeight - anchorGap)
+  position.value = {
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
+    maxHeight: `${Math.round(actualHeight)}px`,
+  }
+  positionedTrigger = { left: box.left, top: box.top }
 }
 
-/** 页面滚动时关闭浮层；用户在选项面板内滚动时保持可操作。 */
+/** 显式打开面板；原生 Popover 只增强顶层和 light-dismiss，不拥有显示事实。 */
+async function showPanel(): Promise<void> {
+  open.value = true
+  await nextTick()
+  if (nativePopoverSupported && panel.value && !panel.value.matches(':popover-open')) {
+    panel.value.showPopover()
+  }
+  updatePosition()
+}
+
+/** 关闭原生或 fallback 面板，并按键盘操作需要恢复触发器焦点。 */
+function hidePanel(restoreFocus = false): void {
+  if (nativePopoverSupported && panel.value?.matches(':popover-open')) {
+    panel.value.hidePopover()
+  }
+  open.value = false
+  positionedTrigger = null
+  if (restoreFocus) trigger.value?.focus()
+}
+
+/** 切换当前组件自己的面板，不依赖浏览器初始 Popover 样式。 */
+function togglePanel(): void {
+  if (open.value) hidePanel()
+  else void showPanel()
+}
+
+/** 只有会移动触发器的滚动才关闭浮层，忽略面板和相邻模块自己的内部滚动。 */
 function dismissOnScroll(event: Event): void {
-  if (event.target instanceof Node && panel.value?.contains(event.target)) return
-  if (open.value) panel.value?.hidePopover()
+  if (!open.value) return
+  const scrollTarget = event.target
+  const triggerElement = trigger.value
+  const triggerBox = triggerElement?.getBoundingClientRect()
+  const triggerMoved = !positionedTrigger || !triggerBox
+    || Math.abs(triggerBox.left - positionedTrigger.left) > 0.5
+    || Math.abs(triggerBox.top - positionedTrigger.top) > 0.5
+  const movedByAncestorScroll = scrollTarget instanceof Node
+    && triggerElement
+    && scrollTarget.contains(triggerElement)
+    && triggerMoved
+  if (scrollTarget === window || movedByAncestorScroll) {
+    hidePanel()
+  }
 }
 
-onMounted(() => window.addEventListener('scroll', dismissOnScroll, true))
-onBeforeUnmount(() => window.removeEventListener('scroll', dismissOnScroll, true))
+/** fallback 模式补齐原生 Popover 的点击外部关闭。 */
+function dismissOnPointerDown(event: PointerEvent): void {
+  if (!open.value || !(event.target instanceof Node)) return
+  if (panel.value?.contains(event.target) || trigger.value?.contains(event.target)) return
+  hidePanel()
+}
+
+/** fallback 模式补齐 Escape 关闭并把焦点交还触发器。 */
+function dismissOnKeyDown(event: KeyboardEvent): void {
+  if (!open.value || event.key !== 'Escape') return
+  event.preventDefault()
+  hidePanel(true)
+}
+
+/** 原生 light-dismiss 后同步 Vue 状态，关闭态样式不继续占据页面。 */
+function syncNativeToggle(event: Event): void {
+  const nextState = (event as ToggleEvent).newState
+  open.value = nextState === 'open'
+}
+
+onMounted(() => {
+  window.addEventListener('scroll', dismissOnScroll, true)
+  window.addEventListener('resize', updatePosition)
+  document.addEventListener('pointerdown', dismissOnPointerDown, true)
+  document.addEventListener('keydown', dismissOnKeyDown)
+})
+onBeforeUnmount(() => {
+  hidePanel()
+  window.removeEventListener('scroll', dismissOnScroll, true)
+  window.removeEventListener('resize', updatePosition)
+  document.removeEventListener('pointerdown', dismissOnPointerDown, true)
+  document.removeEventListener('keydown', dismissOnKeyDown)
+})
 </script>
 
 <template>
@@ -86,12 +171,13 @@ onBeforeUnmount(() => window.removeEventListener('scroll', dismissOnScroll, true
     </button>
     <div
       ref="panel"
-      popover="auto"
+      :popover="nativePopoverSupported ? 'auto' : undefined"
       class="workbench-select__panel"
+      :class="{ 'workbench-select__panel--open': open }"
       :style="position"
       role="dialog"
       :aria-label="`选择${label}`"
-      @toggle="open = $event.newState === 'open'"
+      @toggle="syncNativeToggle"
     >
       <button
         class="workbench-select__all"
@@ -140,17 +226,19 @@ onBeforeUnmount(() => window.removeEventListener('scroll', dismissOnScroll, true
 .workbench-select__trigger[aria-expanded="true"] { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-color-focus-ring); }
 .workbench-select__panel {
   position: fixed;
-  display: grid;
+  inset: auto;
   width: 220px;
-  max-height: min(270px, calc(100dvh - 24px));
   gap: 1px;
   overflow: auto;
+  margin: 0;
   padding: 6px;
   border: 1px solid var(--aima-border);
   border-radius: 8px;
   background: var(--aima-surface);
   box-shadow: var(--aima-shadow-floating);
 }
+.workbench-select__panel:not(.workbench-select__panel--open) { display: none; }
+.workbench-select__panel--open { display: grid; }
 .workbench-select__panel label { display: flex; min-height: 30px; align-items: center; gap: 7px; padding: 4px 7px; border-radius: 5px; color: var(--aima-text); cursor: pointer; font-size: 11px; }
 .workbench-select__panel label:hover { background: var(--aima-color-bg-hover); }
 .workbench-select__panel input { accent-color: var(--aima-primary); }

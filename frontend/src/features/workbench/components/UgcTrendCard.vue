@@ -299,11 +299,20 @@ aside { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 
 .module-state--error span { color: var(--aima-text-secondary); }
 .module-state--inline { min-height: 0; grid-template-columns: auto auto auto; align-items: center; justify-content: start; margin: 5px 12px 0; padding: 5px 8px; border-radius: 5px; background: var(--aima-primary-soft); text-align: left; font-size: 10px; }
 .refresh-note { margin: 5px 12px 0; color: var(--aima-text-secondary); font-size: 10px; }
-@media (max-width: 1050px) {
+@container (max-width: 760px) {
+  header { align-items: flex-start; flex-wrap: wrap; }
   .trend-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   aside { display: grid; grid-template-columns: minmax(130px, .8fr) 110px minmax(150px, 1fr); align-items: center; }
   .sentiment-title, .rate-change, .coverage { grid-column: 1; }
   .positive-ring { grid-column: 2; grid-row: 1 / span 3; }
   .sentiment-list { grid-column: 3; grid-row: 1 / span 3; }
+}
+@container (max-width: 520px) {
+  .title p { white-space: normal; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .insight-card { grid-template-columns: auto minmax(0, 1fr); }
+  .insight-card button { grid-column: 2; justify-self: start; }
+  aside { display: flex; align-items: stretch; }
+  .sentiment-list { max-height: 112px; }
 }
 </style>
