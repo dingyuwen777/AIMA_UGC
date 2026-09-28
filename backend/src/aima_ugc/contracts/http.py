@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
@@ -1167,6 +1167,12 @@ class ContentFilterSnapshot(BaseModel):
     sentiment: str | None = Field(default=None, min_length=1, max_length=128)
     primary_label: str | None = Field(default=None, min_length=1, max_length=256)
     secondary_label: str | None = Field(default=None, min_length=1, max_length=256)
+    primary_labels: tuple[Annotated[str, Field(min_length=1, max_length=256)], ...] = Field(
+        default=(), max_length=100
+    )
+    secondary_labels: tuple[Annotated[str, Field(min_length=1, max_length=256)], ...] = Field(
+        default=(), max_length=200
+    )
     published_from: datetime | None = None
     published_to: datetime | None = None
     source_identifier: UUID | None = None
@@ -1200,6 +1206,23 @@ class ContentFilterSnapshot(BaseModel):
             raise ValueError("brand_ids 不能重复")
         if len(self.competition_scopes) != len(set(self.competition_scopes)):
             raise ValueError("competition_scopes 不能重复")
+        if len(self.primary_labels) != len(set(self.primary_labels)):
+            raise ValueError("primary_labels 不能重复")
+        if len(self.secondary_labels) != len(set(self.secondary_labels)):
+            raise ValueError("secondary_labels 不能重复")
+
+        # 新版调用统一消费 plural 字段；legacy singular 继续接受并在 Contract 边界
+        # 归一化为同一筛选事实，避免列表、Count、Analysis/Export 形成两套语义。
+        primary_labels = list(self.primary_labels)
+        secondary_labels = list(self.secondary_labels)
+        if self.primary_label is not None and self.primary_label not in primary_labels:
+            primary_labels.append(self.primary_label)
+        if self.secondary_label is not None and self.secondary_label not in secondary_labels:
+            secondary_labels.append(self.secondary_label)
+        self.primary_labels = tuple(primary_labels)
+        self.secondary_labels = tuple(secondary_labels)
+        self.primary_label = None
+        self.secondary_label = None
         return self
 
 
